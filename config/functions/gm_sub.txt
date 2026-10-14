@@ -1,0 +1,7 @@
+// Function starts of gm_sub, pinned for splat.
+// 8 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
+func_008FAE40 = 0x008FAE40; // type:func
+func_008FC080 = 0x008FC080; // type:func
+func_0090A390 = 0x0090A390; // type:func
+func_0090A9B0 = 0x0090A9B0; // type:func
+func_0090A9C0 = 0x0090A9C0; // type:func

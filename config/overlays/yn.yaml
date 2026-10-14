@@ -1,0 +1,73 @@
+# splat config for overlay 9, yn.bin (network configuration).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0xAC8000
+# including its 0x40-byte header, so text starts at 0xAC8040.
+name: yn.bin
+sha1: 756052623652abc6e57ed525725049d31ab1f034
+options:
+  basename: yn
+  target_path: build/orig/yn.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/yn
+  src_path: src/yn
+  build_path: build/yn
+  asset_path: assets/yn
+  ld_script_path: build/ld/yn.ld
+  undefined_funcs_auto_path: build/ld/yn.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/yn.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - build/symbols/sub_main.extern.txt
+    - config/symbols/yn.txt
+    - config/symbols/sdk_netcnfif.txt
+    - config/functions/yn.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: yn
+    type: code
+    start: 0x40
+    vram: 0xAC8040
+    bss_size: 0x46700
+    subsegments:
+      - [0x40, asm, text]              # the 0x40 zero bytes every overlay's text starts with
+      # 0xAC8080-0xAC96D0: Sony's netcnfif client library ("PsIInetcnfif3020"),
+      # built with GCC (sd saves, 8-byte aligned functions): stays assembly,
+      # with its .data, .rodata and .bss below.
+      - [0x80, asm, sdk/netcnfif]
+      - [0x16D0, c, yn_card]           # 0xAC96D0: memory card slot checks
+      - [0x1B90, c, yn_main]           # 0xAC9B90: the network settings screens
+      # the zeros from Yn_LoadModule's end to .data (0xAD1180): the linker aligned
+      # .data to 0x80; with yn_main's last function in C they are a piece of their own
+      - { start: 0x913C, type: data, name: text_end, linker_section_order: .text }
+      - [0x9180, data, data]             # .data (0xAD1180): netcnfif's
+      - [0x91A0, .data, yn_main]
+      - { start: 0xA280, type: data, name: rodata, linker_section_order: .rodata }  # .rodata (0xAD2280): netcnfif's
+      - [0xA770, .rodata, yn_card]
+      - [0xA780, .rodata, yn_main]
+      # the zeros from the last string to 0xAD3A80: the linker aligned the end of the
+      # overlay (where .bss starts) to 0x80
+      - { start: 0xBA34, type: data, name: rodata_end, linker_section_order: .rodata }
+      - { type: bss, vram: 0xAD3A80, name: bss }  # netcnfif's
+      - { type: .bss, vram: 0xAD5B40, name: yn_card }
+      - { type: .bss, vram: 0xAD9B50, name: yn_main }
+  - [0xBA80]

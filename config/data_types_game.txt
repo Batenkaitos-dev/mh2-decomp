@@ -1,0 +1,4 @@
+# struct layouts for tools/type_data.py (fields in order: TYPE or TYPE*N); must match include/em.h
+struct EmCurveKey f32 f32
+struct EmFlyParam s32 s32 s32 s32 s32 s32 s32 s32 s32 s32 s32 s32 s32 s32 s32 u16*6 s32 s32 s32 s32 f32 f32
+struct EmKutkuVec f32 f32 f32

@@ -1,0 +1,941 @@
+// Symbols for the boot ELF (SLPM_662.80). Format: name = 0xADDRESS; // attributes
+// Only names with evidence belong here. Every address
+// below was checked to be a function start in the split assembly.
+
+// Entry (crt0 calls it; __start is in sdk_crt0.txt)
+main = 0x0018CC20; // type:func
+
+// Capcom core (main ELF)
+Overlay_Relocate = 0x0018CF00; // type:func
+LoadOverlay = 0x0018D070; // type:func
+Afs_ReadFile = 0x001941D0; // type:func
+InitDisplay = 0x00180650; // type:func
+VBlankHandler = 0x001808D0; // type:func
+Overlay_IsLoaded = 0x0018D320; // type:func
+gVSyncCount = 0x001E8B40;
+Sys_InitWork = 0x00180710; // type:func
+Sys_Init = 0x00180810; // type:func
+gSysWork = 0x00218C70;
+gDmaQueue = 0x002189B0;
+Iop_StartPackedModule = 0x00182040; // type:func
+Iop_StartModule = 0x001820A0; // type:func
+Iop_Init = 0x00182130; // type:func
+Iop_LoadModule = 0x0017FA00; // type:func
+File_Read = 0x0017FAC0; // type:func
+File_Write = 0x0017FBA0; // type:func
+File_Append = 0x0017FC70; // type:func
+File_GetSize = 0x0017FD50; // type:func
+Dma_WaitIdle = 0x0017B090; // type:func
+Dma_FlushQueue = 0x0017B110; // type:func
+// DMA tags and VIF codes (src/main/dma.c): each writes one quadword and
+// returns the next; the tags set the IRQ bit when asked.
+DmaTag_Cnt = 0x00179590; // type:func
+DmaTag_Next = 0x001795C0; // type:func
+DmaTag_Ref = 0x00179620; // type:func
+DmaTag_RefE = 0x00179680; // type:func
+DmaTag_Call = 0x001796D0; // type:func
+DmaTag_Ret = 0x00179730; // type:func
+DmaTag_End = 0x00179760; // type:func
+Vif_MsCnt = 0x00179790; // type:func
+Vif_UnpackV4 = 0x001797B0; // type:func
+Vif_DirectHL = 0x001797F0; // type:func
+Dma_ImagePacketSize = 0x00179810; // type:func
+Dma_BuildLoadImage = 0x00179870; // type:func
+Dma_BuildEndPacket = 0x00179D20; // type:func
+Dma_QueueStoreImage = 0x00179DE0; // type:func
+Dma_StoreImage = 0x0017A220; // type:func
+Dma_StoreImagePacketSize = 0x00179D90; // type:func
+Dma_GsFinishHandler = 0x0017A760; // type:func
+DmaQueue_Init = 0x0017A820; // type:func
+DmaQueue_Add = 0x0017A8E0; // type:func
+DmaQueue_AddChain = 0x0017A9B0; // type:func
+DmaQueue_Handler = 0x0017AB70; // type:func
+SendFrameDmaChain = 0x0017AEB0; // type:func
+Mem_Fill = 0x0017FE20; // type:func
+Mem_Copy = 0x0017FEB0; // type:func
+// Set to 2 by code that flips frames itself; the flip at 0x186D80 counts it
+// down (0x186D40), and 0x17F420 waits while it is nonzero.
+gFlipCountdown = 0x001E8B58;
+// sceDmaGetChan(0..9), filled by 0x180810: [1] VIF1, [2] GIF
+gDmaChan = 0x00219034; // size:0x28
+
+// Display: setup, frame flip, clears and the debug log (src/main/unk_180A50.c)
+Gs_ClearVram = 0x00180A50; // type:func
+Gs_SetupDisplay = 0x00180B20; // type:func
+Gs_ShowFrame = 0x00181670; // type:func
+Gs_ClearFrame = 0x00181C50; // type:func
+Debug_Printf = 0x00181E00; // type:func
+Gs_ClearColor = 0x00181EF0; // type:func
+// The clear packet (a DMA END tag and a GIF packet: scissor, a sprite in the
+// background colour, the draw registers restored), ClearPacket in unk_180A50.c.
+gClearPacket = 0x002189F0; // size:0x140
+// The draw environments of the two frame buffers (0xA0 bytes each, sent at
+// each flip by Gs_ShowFrame).
+gDrawEnv = 0x00218B30; // size:0x140
+// The frame buffer described as an Image (Gs_SetupDisplay).
+gFrameImage = 0x00219140; // size:0x48
+
+// Render state (src/main/unk_183D20.c, unk_185460.c)
+Gs_ResetState = 0x00183D40; // type:func
+Gs_SetState = 0x00183F20; // type:func
+Gs_GetState = 0x00184EB0; // type:func
+Gs_SetBgColor = 0x00185440; // type:func
+Gs_GetBgColor = 0x00185450; // type:func
+
+// Monster rates in the save data (src/main/unk_18DA50.c, include/saveview.h)
+Rate_ListAdd = 0x0018DBB0; // type:func
+Rate_GroupOf = 0x0018DC90; // type:func
+
+// The character edit's colour editor (src/main/unk_18DA50.c)
+ColorEdit_Draw = 0x0018E000; // type:func
+
+// --- The game's sound manager (src/main/sound.c), over the Snd_* calls ----
+// sub_main 0x6A9DE0 (sub_main.txt names it gCamPos; the boot ELF's link doesn't
+// read sub_main.txt, so main needs its own name): the camera position, which the
+// SE volumes are measured from; Sound_PlaySePos matches only with it named
+gCameraPos = 0x006A9DE0;
+Sound_Init = 0x0018EBA0; // type:func
+Sound_InitBuffers = 0x0018EBB0; // type:func
+Sound_LoadSpuMap = 0x0018ECE0; // type:func
+Sound_Update = 0x0018ED20; // type:func
+Sound_GetSeBuf = 0x0018ED30; // type:func
+Sound_GetSeBufSize = 0x0018ED60; // type:func
+Sound_GetBankBuf = 0x0018ED90; // type:func
+Sound_GetBankBufSize = 0x0018EDC0; // type:func
+Sound_LoadBankFile = 0x0018EDF0; // type:func
+Sound_LoadMergedBanks = 0x0018EEC0; // type:func
+Sound_LoadBank = 0x0018EF90; // type:func
+Sound_LoadBankWait = 0x0018EFC0; // type:func
+Sound_CheckTransfer = 0x0018F020; // type:func
+Sound_LoadStaged = 0x0018F030; // type:func
+Sound_SetSpuMapPage = 0x0018F080; // type:func
+Sound_SetEffect = 0x0018F090; // type:func
+Sound_StopAll = 0x0018F0C0; // type:func
+Sound_StopBank = 0x0018F0D0; // type:func
+Sound_SetOutputMode = 0x0018F0E0; // type:func
+Sound_GetSeModValue = 0x0018F150; // type:func
+Sound_SetSeIds = 0x0018F1E0; // type:func
+Sound_PlaySeVolPan = 0x0018F2D0; // type:func
+Sound_PlaySe = 0x0018F360; // type:func
+Sound_PlaySePos = 0x0018F460; // type:func
+Sound_PlaySeAtPos = 0x0018FA80; // type:func
+Sound_InitStaging = 0x0018FA90; // type:func
+Sound_StageBank = 0x0018FAC0; // type:func
+gSndSeBufSizes = 0x001BB9E0; // size:0x40
+gSndBankBufSizes = 0x001BBA20; // size:0x40
+gSndSpuMapData = 0x0024C180;
+gSndBankData = 0x0024C380;
+gSndSeData = 0x0025C380;
+gSndStageCount = 0x0026C380;
+gSndStageHeads = 0x0026C384; // size:0x10
+gSndStageHeadUsed = 0x0026C394;
+gSndStageBodyUsed = 0x0026C398;
+gSndStageHeadBase = 0x0026C39C;
+gSndStageBodyBase = 0x0026C3A0;
+gSndBankBufs = 0x0026C3B0; // size:0x40
+gSndSeBufs = 0x0026C3F0; // size:0x40
+gSndSpuMapBuf = 0x0026C430;
+
+// --- Capcom Sound Engine, EE side (src/main/cse*.c, ml_rpc_queue.c) --------
+// Names in lower camel case
+// (cseCheckVtransStatus, mlRpcQueue*) are the original ones, from error
+// strings; the others are ours.
+// SPU memory map (cse_spumap.c)
+CseSpuMap_Init = 0x0018FBA0; // type:func
+CseSpuMap_SetPage = 0x0018FCA0; // type:func
+CseSpuMap_GetBankAddr = 0x0018FE60; // type:func
+CseSpuMap_GetEffectEnd = 0x0018FED0; // type:func
+gCseSpuMapPage = 0x0026C438;
+gCseSpuBanks = 0x0026C440; // size:0x80
+gCseEffectEnd = 0x0026C4C0; // size:0x8
+gCseSpuMap = 0x0026C4C8;
+// SIF RPC client, "sndtest(EE_RPC)" (cse_rpc.c)
+CseRpc_Init = 0x0018FEF0; // type:func
+CseRpc_Call = 0x00190070; // type:func
+CseRpc_Send = 0x001902D0; // type:func
+gCseRpcSema = 0x001BCC80;
+gCseRpcReqSema = 0x001BCC88;
+gCseRpcDoneSema = 0x001BCC90;
+gCseRpcEndFunc = 0x0026C4D0;
+gCseThmnReply = 0x0026C500;
+gCseStatReply = 0x0026C900;
+gCseCommReply = 0x0026C940;
+gCseRpcClient = 0x0026C980;
+gCseRpcRecvBuf = 0x0026C9C0;
+gCseRpcSendBuf = 0x0026CDC0;
+gCseRpcFno = 0x0026CE00;
+gCseClientThmn = 0x0026CE10; // size:0x28
+gCseClientStat = 0x0026CE40; // size:0x28
+gCseClientComm = 0x0026CE70; // size:0x28
+// Engine API, SE tables, and the game's sound calls (cse.c)
+Cse_Init = 0x001903B0; // type:func
+Cse_Update = 0x00190450; // type:func
+cseCheckVtransStatus = 0x001904B0; // type:func
+Cse_InitSpuMap = 0x001905E0; // type:func
+Cse_SetSpuMapPage = 0x001905F0; // type:func
+Cse_SetBank = 0x00190600; // type:func
+Cse_SetSeTable = 0x00190610; // type:func
+Cse_GetSeRecord = 0x00190620; // type:func
+Cse_UploadBank = 0x00190630; // type:func
+Cse_GetBankBodySize = 0x00190680; // type:func
+Cse_MergeBanks = 0x00190690; // type:func
+Cse_RequestSe = 0x001906A0; // type:func
+Cse_SetParam = 0x00190930; // type:func
+Snd_Init = 0x00190940; // type:func
+Snd_Update = 0x00190980; // type:func
+Snd_SetOutputMode = 0x00190990; // type:func
+Snd_SetMasterVolume = 0x00190A10; // type:func
+Snd_InitSpuMap = 0x00190A20; // type:func
+Snd_SetSpuMapPage = 0x00190A30; // type:func
+Snd_SetBank = 0x00190A40; // type:func
+Snd_SetSeTable = 0x00190A50; // type:func
+Snd_GetSeRecord = 0x00190A60; // type:func
+Snd_UploadBank = 0x00190A70; // type:func
+Snd_CheckTransfer = 0x00190A90; // type:func
+Snd_GetBankBodySize = 0x00190AA0; // type:func
+Snd_MergeBanks = 0x00190AB0; // type:func
+Snd_SetEffect = 0x00190AC0; // type:func
+Snd_StopAll = 0x00190AE0; // type:func
+Snd_StopBank = 0x00190AF0; // type:func
+Snd_SetParam = 0x00190B00; // type:func
+Snd_RequestSe = 0x00190B10; // type:func
+CseSe_Init = 0x00190B20; // type:func
+CseSe_Update = 0x00190B70; // type:func
+CseSe_SetTable = 0x00190B80; // type:func
+CseSe_GetRecord = 0x00190BA0; // type:func
+CseSe_KeyOn = 0x00190BF0; // type:func
+CseSe_Request = 0x00190C70; // type:func
+gSndOutputMode = 0x001BCC98;
+gCseFrame = 0x0026CEA0; // size:0x44
+gCseSeKeyOnHook = 0x0026CEE8;
+gCseSeTables = 0x0026CEF0; // size:0x40
+// Bank table (cse_bank.c)
+CseBank_Init = 0x00191030; // type:func
+CseBank_SetPage = 0x001910B0; // type:func
+CseBank_GetSpuAddr = 0x001910E0; // type:func
+CseBank_GetEffectEnd = 0x001910F0; // type:func
+CseBank_Set = 0x00191100; // type:func
+CseBank_Get = 0x00191170; // type:func
+CseBank_Merge = 0x001911E0; // type:func
+gCseBanks = 0x0026CF30; // size:0x40
+// Bank files: Head, Prog, Smpl and Vagi chunks (cse_bankfile.c)
+CseBankFile_IsHead = 0x00191970; // type:func
+CseBankFile_IsProg = 0x001919A0; // type:func
+CseBankFile_IsSmpl = 0x001919D0; // type:func
+CseBankFile_IsVagi = 0x00191A00; // type:func
+CseBankFile_GetNumSplits = 0x00191A30; // type:func
+CseBankFile_GetTone = 0x00191B40; // type:func
+CseBankFile_GetVoice = 0x00191D60; // type:func
+CseBankFile_GetBodySize = 0x00191FE0; // type:func
+// emlRpcQueue (ml_rpc_queue.c)
+MlRpcQueue_Init = 0x00192020; // type:func
+MlRpcQueue_NumUploads = 0x00192090; // type:func
+mlRpcQueueReferStatus = 0x001920A0; // type:func
+MlRpcQueue_Set = 0x00192100; // type:func
+mlRpcQueueSend = 0x00192230; // type:func
+mlRpcQueueSendIntr = 0x00192350; // type:func
+gMlRpcQueueThread = 0x001BCCA0;
+gMlRpcQueueSema = 0x001BCCA8;
+gMlRpcQueueUploads = 0x0026CF70;
+gMlRpcQueueIntrCount = 0x0026CF78;
+gMlRpcQueueIntrBuf = 0x0026CF80; // size:0x1200
+gMlRpcQueueCount = 0x0026E180;
+gMlRpcQueueRead = 0x0026E188;
+gMlRpcQueueWrite = 0x0026E190;
+gMlRpcQueue = 0x0026E1C0; // size:0x1200
+// Requests (cse_cmd.c)
+Cse_ReqInit = 0x00192490; // type:func
+Cse_ReqSetMono = 0x001924F0; // type:func
+Cse_ReqSetMasterVolume = 0x00192550; // type:func
+Cse_ReqSetVolume = 0x00192560; // type:func
+Cse_ReqModulate = 0x001925E0; // type:func
+Cse_ReqStop = 0x00192690; // type:func
+Cse_ReqKeyOff = 0x001926A0; // type:func
+Cse_ReqStopAll = 0x001926B0; // type:func
+Cse_ReqStopBank = 0x00192700; // type:func
+Cse_ReqSetParam = 0x00192760; // type:func
+Cse_ReqSetEffect = 0x00192940; // type:func
+Cse_ReqUpload = 0x001929C0; // type:func
+Cse_ReqKeyOn = 0x00192A20; // type:func
+Cse_KeyOnProgram = 0x00192AC0; // type:func
+Cse_CheckParam = 0x00192BD0; // type:func
+Cse_ReqParam = 0x00192CC0; // type:func
+Cse_ReqSetMixer = 0x00192DD0; // type:func
+Cse_InitSeq = 0x00192E30; // type:func
+Cse_NextSeq = 0x00192E80; // type:func
+gCseSeqInit = 0x0026F3C0;
+gCseSeq = 0x0026F3C8;
+
+// Memory managers (src/main/unk_1826D0.c, include/heap.h)
+Heap_Init = 0x001826D0; // type:func
+Heap_AllocTopAligned = 0x00182750; // type:func
+Heap_AllocTop = 0x00182760; // type:func
+Heap_Alloc = 0x001828C0; // type:func
+Heap_MaxAlloc = 0x00182BE0; // type:func
+Heap_GetAddr = 0x00182CA0; // type:func
+Heap_Free = 0x00182CE0; // type:func
+Heap_Compact = 0x00182D70; // type:func
+Heap_FreeSize = 0x00182F40; // type:func
+Heap_NewRecord = 0x00182F90; // type:func
+Heap_Link = 0x00183010; // type:func
+Heap_Unlink = 0x00183140; // type:func
+LinearHeap_Init = 0x001831C0; // type:func
+LinearHeap_Alloc = 0x00183240; // type:func
+LinearHeap_GetMark = 0x001832A0; // type:func
+LinearHeap_Release = 0x001832C0; // type:func
+Heap_Fill = 0x00183350; // type:func
+Heap_Move = 0x001833E0; // type:func
+MainHeap_Alloc = 0x00182670; // type:func
+MainHeap_AllocTop = 0x00182680; // type:func
+MainHeap_MaxAlloc = 0x00182690; // type:func
+MainHeap_GetAddr = 0x001826A0; // type:func
+MainHeap_Free = 0x001826B0; // type:func
+MainHeap_Compact = 0x001826C0; // type:func
+SysHeap_Alloc = 0x0017FFA0; // type:func
+SysHeap_GetMark = 0x0017FFC0; // type:func
+SysHeap_Release = 0x0017FFE0; // type:func
+SysHeap_AllocTop = 0x0017FFF0; // type:func
+Mem_Alloc = 0x00180010; // type:func
+Mem_Free = 0x00180050; // type:func
+Mem_GetAddr = 0x00180060; // type:func
+Mem_Compact = 0x00180070; // type:func
+Packet_InitBuffers = 0x001800B0; // type:func
+Packet_Reset = 0x00180110; // type:func
+Packet_Alloc = 0x001801A0; // type:func
+gHeap = 0x002491B0; // size:0x28
+gSysHeap = 0x00219110; // size:0x18
+
+// Image pixel access (src/main/unk_1826D0.c, include/image.h)
+Image_PixelAddr = 0x001835E0; // type:func
+Image_PutPixel = 0x001836A0; // type:func
+Image_SetPixel = 0x00183900; // type:func
+Image_GetPixel = 0x00183930; // type:func
+Image_Convert = 0x00183BD0; // type:func
+
+// 2D primitives and GS packets (src/main/unk_186D80.c)
+Prim_SendPacket = 0x00186E20; // type:func
+Prim_DrawLine = 0x00187080; // type:func
+Prim_FillRect = 0x00187380; // type:func
+Prim_FillGradRect = 0x00187620; // type:func
+Prim_FillTri = 0x00187DB0; // type:func
+Prim_DrawTexTri = 0x00188100; // type:func
+Prim_DrawLineF = 0x00188510; // type:func
+Prim_DrawTexTriF = 0x001887A0; // type:func
+Prim_FillRectF = 0x00188BE0; // type:func
+Prim_DrawSpriteF = 0x00188E70; // type:func
+
+// Streaming (include/stream.h): music channels, AFS partitions and loaders, background file reads
+Adx_Init = 0x00192EF0; // type:func
+Adx_ErrorCallback = 0x00192EE0; // type:func
+Stream_Update = 0x001930E0; // type:func
+Load_Idle = 0x00193110; // type:func
+FileQueue_Init = 0x00193200; // type:func
+FileQueue_AddFile = 0x00193270; // type:func
+FileQueue_AddCall = 0x00193320; // type:func
+FileQueue_Update = 0x001933A0; // type:func
+FileQueue_Next = 0x00193540; // type:func
+FileQueue_IsBusy = 0x00193660; // type:func
+FileQueue_Call = 0x00193690; // type:func
+FileQueue_Flush = 0x00193750; // type:func
+Stream_Init = 0x001937A0; // type:func
+Stream_PlayVol = 0x001939F0; // type:func
+Stream_IsReady = 0x00193B50; // type:func
+Brdata_LoadPartition = 0x00194360; // type:func
+Brdata_Read = 0x00194380; // type:func
+Dmcam_Init = 0x00194390; // type:func
+Dmcam_Find = 0x00194630; // type:func
+Dmcam_PreloadAlt = 0x00194690; // type:func
+Dmcam_Preload = 0x00194710; // type:func
+Afs_LoadPartition4 = 0x00194790; // type:func
+Afs_ReadOverlay = 0x001947E0; // type:func
+Sound_Boot = 0x001947F0; // type:func
+FileQueue_Cancel = 0x001935B0; // type:func
+Stream_Play = 0x00193810; // type:func
+Stream_PlayMusicVol = 0x00193840; // type:func
+Stream_PlayLevel = 0x00193940; // type:func
+Stream_PlayFadeIn = 0x00193990; // type:func
+Stream_Prepare = 0x00193AB0; // type:func
+Stream_StartPrepared = 0x00193B80; // type:func
+Stream_Pause = 0x00193C30; // type:func
+Stream_Stop = 0x00193C90; // type:func
+Stream_Reset = 0x00193CB0; // type:func
+Stream_UpdateMaxVol = 0x00193CE0; // type:func
+Stream_SetVol = 0x00193DB0; // type:func
+Sound_ApplyOutputMode = 0x00193E40; // type:func
+Stream_GetStat = 0x00193E90; // type:func
+Stream_FadeOut = 0x00193EE0; // type:func
+Stream_FadeToMax = 0x00193F10; // type:func
+Stream_FadeTo = 0x00193F50; // type:func
+Stream_UpdateFades = 0x00193FC0; // type:func
+Afs_LoadPartition = 0x00194080; // type:func
+Afs_ReadFileIdle = 0x00194100; // type:func
+Mib_Read = 0x00194290; // type:func
+Emcmd_LoadPartition = 0x001942F0; // type:func
+Emcmd_Read = 0x00194310; // type:func
+Dmcam_Load = 0x00194480; // type:func
+Stream_Server = 0x00194820; // type:func
+gAfsPartitions = 0x001BCCB0;
+gAdxtParams = 0x001BCCE0;
+gVolumeDb = 0x001BCD00;
+gVolumeMax = 0x001BCE00;
+gVolumeMaxSurround = 0x001BCE08;
+gDmcamGroupAlt = 0x001BCE10;
+gDmcamGroup = 0x001BCE18;
+gDmcamCount = 0x0026F3D0;
+gDmcamId = 0x0026F3E0;
+gDmcamSize = 0x0026F3F0;
+gDmcamAddr = 0x0026F430;
+gAdxtWork = 0x0026F470;
+gFileReqs = 0x002CF840;
+gFileQueue = 0x002DF840;
+gStreamChan = 0x002E3730;
+gStreamAdxt = 0x002E3758;
+gAfsPtInfo4 = 0x002E3760;
+SndLoad_Init = 0x00195240; // type:func
+SndLoad_ListBanks = 0x00195280; // type:func
+SndLoad_QuestBanks = 0x001955F0; // type:func
+Sound_QueueBank = 0x00195BE0; // type:func
+Sound_ReadBank = 0x00195BF0; // type:func
+Afs_ReadId = 0x0018CDC0; // type:func
+gSndLoad = 0x002E3890;
+Sound_LoadVoiceBank = 0x00195A10; // type:func
+
+// Textures and palettes (src/main/texture.c, include/texture.h): Capcom fl layer; flCreatePaletteHandle is named in its error string, the other fl names follow it
+Vram_AllocBlock = 0x0017B1B0; // type:func
+Vram_FreeBlock = 0x0017B280; // type:func
+flCreateTextureHandle = 0x0017B330; // type:func
+Tex_SetupRec = 0x0017B420; // type:func
+Tex_Upload = 0x0017B570; // type:func
+Tex_SendLevels = 0x0017B670; // type:func
+Tex_LevelVram = 0x0017B890; // type:func
+Tex_FindFree = 0x0017B980; // type:func
+flCreatePaletteHandle = 0x0017B9C0; // type:func
+Pal_SetupRec = 0x0017BAD0; // type:func
+Pal_Upload = 0x0017BC50; // type:func
+Pal_FindFree = 0x0017BD60; // type:func
+flReleaseTextureHandle = 0x0017BDA0; // type:func
+Tex_ReleaseKeep = 0x0017BE70; // type:func
+flReleasePaletteHandle = 0x0017BF30; // type:func
+Pal_ReleaseKeep = 0x0017C000; // type:func
+flLockTexture = 0x0017C0C0; // type:func
+flLockPalette = 0x0017C130; // type:func
+Tex_Lock = 0x0017C210; // type:func
+flUnlockTexture = 0x0017CC10; // type:func
+flUnlockPalette = 0x0017CC80; // type:func
+Tex_Unlock = 0x0017CCF0; // type:func
+gTexRecs = 0x00211950;
+gPalRecs = 0x0020E150;
+gTexCount = 0x002191A0;
+gPalCount = 0x00215180;
+gVramBlockCount = 0x00215150;
+gVramBlocks = 0x00215160;
+gVramSlots = 0x002151A0;
+gVramSlotCount = 0x00215188;
+gVramSlotHead = 0x00215190;
+Tex_MakeResident = 0x0017D250; // type:func
+Tex_Log2 = 0x0017D450; // type:func
+Tex_Size = 0x0017D4A0; // type:func
+Tex_VramBlocks = 0x0017D560; // type:func
+Pal_VramBlocks = 0x0017D9C0; // type:func
+flPS2ConvertTextureFromContext = 0x0017DA20; // type:func
+Tex_ConvertPixels = 0x0017DE50; // type:func
+Tex_Swizzle = 0x0017E1C0; // type:func
+Tex_Swizzle4 = 0x0017E220; // type:func
+Tex_Swizzle4Block = 0x0017E370; // type:func
+Tex_Swizzle4Kernel = 0x0017E460; // type:func
+Tex_Swizzle8 = 0x0017E590; // type:func
+Tex_Swizzle8Block = 0x0017E6E0; // type:func
+Tex_Swizzle8Kernel = 0x0017E7D0; // type:func
+Vram_Init = 0x0017E8E0; // type:func
+VramSlot_Alloc = 0x0017E990; // type:func
+VramSlot_Free = 0x0017EA00; // type:func
+VramSlot_Insert = 0x0017EAA0; // type:func
+VramSlot_Find = 0x0017EB00; // type:func
+VramSlot_Assign = 0x0017EB50; // type:func
+VramSlot_Replace = 0x0017EC50; // type:func
+VramSlot_FreeAll = 0x0017ED80; // type:func
+Tex_Evict = 0x0017EDD0; // type:func
+Tex_Reserve = 0x0017EE00; // type:func
+VramSlot_FindGap = 0x0017EF60; // type:func
+VramSlot_FindVictim = 0x0017F040; // type:func
+ScreenTex_Init = 0x0017F2F0; // type:func
+ScreenTex_Capture = 0x0017F420; // type:func
+ScreenTex_Upload = 0x0017F520; // type:func
+ScreenTex_Release = 0x0017F620; // type:func
+gScreenTex = 0x001E8B00;
+gScreenTexState = 0x001E8AE8;
+gScreenTexVram = 0x001E8AF0;
+ScreenTex_Send = 0x0017F660; // type:func
+ScreenTex_SetRegs = 0x0017F750; // type:func
+ScreenTex_Reserve = 0x0017F880; // type:func
+gScreenTexPacket = 0x001BA990; // size:0x80
+Tex_CreateFromTim2 = 0x00180210; // type:func
+Tex_AlphaToGs = 0x001805B0; // type:func
+
+// TIM2 pictures (src/main/unk_18AFE0.c): header checks, part addresses, Image descriptions
+Tim2_LastLevel = 0x0018C2E0; // type:func
+Tim2_DescribeLevels = 0x0018C330; // type:func
+Tim2_DescribeClut = 0x0018C5F0; // type:func
+Tim2_GetLevel = 0x0018C820; // type:func
+Tim2_GetClut = 0x0018C830; // type:func
+Tim2_CheckHeader = 0x0018C840; // type:func
+Tim2_Align = 0x0018C910; // type:func
+Tim2_GetPicture = 0x0018C970; // type:func
+Tim2_GetImage = 0x0018C9F0; // type:func
+Tim2_GetPictClut = 0x0018CB80; // type:func
+
+// Pad input (src/main/unk_189F90.c, unk_18AFE0.c, include/padio.h)
+Pad_ClearMem = 0x0018A030; // type:func
+Pad_Init = 0x0018A170; // type:func
+Pad_End = 0x0018A1D0; // type:func
+Pad_ClearInputs = 0x0018A1E0; // type:func
+Pad_SetConfig = 0x0018A220; // type:func
+Pad_Update = 0x0018A2A0; // type:func
+Pad_Remap = 0x0018A3D0; // type:func
+Pad_RaisePressure = 0x0018AA50; // type:func
+Pad_StickAngle = 0x0018AAB0; // type:func
+Pad_SetHeld = 0x0018AB50; // type:func
+Pad_CountHolds = 0x0018ABA0; // type:func
+Pad_GetConnected = 0x0018AC20; // type:func
+Pad_EnableVibration = 0x0018AC30; // type:func
+Pad_Open = 0x0018AC40; // type:func
+Pad_Close = 0x0018AE00; // type:func
+Pad_SetVibrationFlag = 0x0018AE30; // type:func
+Pad_SetLimits = 0x0018AE40; // type:func
+Pad_Read = 0x0018AE80; // type:func
+Pad_ClearBuffers = 0x0018AF80; // type:func
+Pad_ConvertData = 0x0018AFE0; // type:func
+Pad_StickPolar = 0x0018B4F0; // type:func
+Pad_StickDirBits = 0x0018B650; // type:func
+// Round 17 (units): not a symbol. 0x80000000 is the float-to-u32 bias in
+// Pad_StickDirBits (lui 0x8000), which spimdisasm paired with the table
+// load's 0(v0); banned so the expected asm keeps the immediates
+// (objdiff counted a relocation-only miss).
+D_80000000 = 0x80000000; // ignore:true
+Pad_StartLibs = 0x0018B6E0; // type:func
+Pad_OpenSocket = 0x0018B730; // type:func
+Pad_EndLibs = 0x0018B7B0; // type:func
+Pad_ReadPort = 0x0018B800; // type:func
+Pad_SetVibration = 0x0018C1C0; // type:func
+
+// Names left waiting after round 7, applied by the lead before round 8
+// draws sprite.h's Sprite, a textured rectangle (round 7 main core suggested Prim_DrawSprite, which lobby_browser.txt already uses)
+Sprite_Draw = 0x00187A80; // type:func
+// Sound_PlaySeAtPos unless the id is 0xFFFF (round 7 main core)
+Sound_PlaySeAtPosChecked = 0x00194980; // type:func
+
+// The current pad's input record (-> gPadIn, set by the pad code in unk_189F90.c);
+// sub_main's unk_2E3940.c reaches it by address
+gPadInputPtr = 0x0024BBE8;
+
+// main's render state (the viewport and projection), named so that overlays can
+// link them: sub_main's matrix and viewport functions (unk_2E3940.c) read them by name
+gViewClipH = 0x0020CB80; // size:0x4
+gViewClipW = 0x0020CB88; // size:0x4
+gViewCenterY = 0x0020CB90; // size:0x4
+gViewCenterX = 0x0020CB98; // size:0x4
+gViewH = 0x0020CBA0; // size:0x4
+gViewW = 0x0020CBA8; // size:0x4
+gViewY = 0x0020CBB0; // size:0x4
+gViewX = 0x0020CBB8; // size:0x4
+gSysFrameMode = 0x00218C74; // size:0x4
+gSysZMax = 0x00218CB4; // size:0x4
+gDispHeight = 0x00219190; // size:0x4
+gDispWidth = 0x00219198; // size:0x4
+
+// main.c: file systems, overlays, dojo records, rates, the season (round 13)
+Adx_InitFileSystems = 0x0018CD00; // type:func
+Overlay_ReadFile = 0x0018CFB0; // type:func
+Overlay_LoadGmSub = 0x0018CFE0; // type:func
+// 1 when every quest of HR gate n (0-2: HR 11, 17, 31) is cleared (Save_AddHrPoints)
+Save_HrGateCleared = 0x0018D3A0; // type:func
+// the training quests (gDojoParTimes: quest id, target time in minutes); index, best score and time
+Dojo_GetParMinutes = 0x0018D410; // type:func
+Dojo_FindQuest = 0x0018D490; // type:func
+Dojo_GetBestScore = 0x0018D4F0; // type:func
+Dojo_GetBestTime = 0x0018D570; // type:func
+Rate_GetSnapshot = 0x0018D660; // type:func
+Rate_TakeSnapshot = 0x0018D6A0; // type:func
+// the season, 0-2 (the low bits of sub_main's 0x5D4910); the quest's is in 0x5D87A9
+Season_Get = 0x0018D970; // type:func
+Season_Set = 0x0018D9C0; // type:func
+Quest_GetSeason = 0x0018DA00; // type:func
+// the window (load region) of each overlay, by id - 1; gOverlayWindowBase: each window's address
+gOverlayWindow = 0x001BB130; // size:0xB
+gOverlayWindowBase = 0x001C8580; // size:0x24
+// per HR gate, a 0-terminated list of quest ids (Save_HrGateCleared)
+gHrGateQuests = 0x001BB1E0; // size:0x18
+gDojoParTimes = 0x001BB200; // size:0x60
+// main's first three arguments (0x40 bytes each)
+gArgv = 0x0024C090; // size:0xc0
+// the CD/DVD cache system's work area (Adx_InitFileSystems)
+gAdxCacheWork = 0x0024BE70; // size:0x220
+// The monster rates: the save data's current value per kind (Rate_Get/Rate_Set,
+// with a trend and level byte), and a snapshot of them taken on entering the town
+// (Rate_TakeSnapshot, 0x5D4790) that the results compare against; Rate_ClearSnapshot
+// also clears the season and daytime bits. Rate_InitSave sets a new save's values.
+Rate_ClearSnapshot = 0x0018D5F0; // type:func
+Rate_Get = 0x0018D680; // type:func
+Rate_Set = 0x0018DD20; // type:func
+Rate_InitSave = 0x0018DAE0; // type:func
+Quest_SetSeason = 0x0018DA50; // type:func
+// 0 day, 1 night (bits 3-4 of the season flags); Daytime_Set(3 or 4) sets one
+Daytime_Get = 0x0018DA70; // type:func
+Daytime_Set = 0x0018DAA0; // type:func
+// 1 for ids >= 50000 (downloaded event quests)
+Quest_IsDownloadId = 0x0018DEF0; // type:func
+ColorEdit_DrawFrame = 0x0018DF10; // type:func
+// The quest record at sub_main 0x5D4920 (0xDC bytes): quest id, season and time, counts
+// of the 16 ids of 0x1BB280 (QuestRecord_Count) and two tables of 0x60 per monster kind
+QuestRecord_Clear = 0x0018D750; // type:func
+QuestRecord_Fill = 0x0018D770; // type:func
+QuestRecord_Count = 0x0018D900; // type:func
+gRateGroups = 0x001BB2A0; // size:0xDC
+gRateListsInit = 0x001BB380; // size:0x50
+
+// Sound helpers (src/main/unk_194830.c): flat SE at the SE volume setting (0x6ADFC7), random picks, player and monster SE (round 13)
+Sound_PlaySeFlat = 0x00194830; // type:func
+Sound_PlaySeFlatPan = 0x001948A0; // type:func
+Sound_RandomSe = 0x001949B0; // type:func
+Sound_PlayPlayerSe = 0x00194A60; // type:func
+Sound_PlayArmorRattle = 0x00194AE0; // type:func
+Sound_PlayEmSe = 0x00194E70; // type:func
+gSndVolumeScale = 0x001BCE20; // size:0x20
+// Sound banks read at once into the system work buffer: gm_sub's menu (2, 9, 8),
+// the select/plsel menus (2, 7), select's PSP connection (0xA)
+Sound_LoadGmSubBanks = 0x001958C0; // type:func
+Sound_LoadSelectBanks = 0x00195970; // type:func
+Sound_LoadPspBank = 0x00195AB0; // type:func
+
+// The render state's GS register setters (src/main/unk_185460.c; GS registers in the comments)
+// and gSysWork's fields as the C reaches them: separate objects, since a struct member
+// is scheduled differently from a plain extern (include/syswork.h). The GS register
+// shadows (gGs*, gScissor*) are gSysWork + 0x420 on.
+Gs_SetScissor = 0x00185460; // type:func
+Gs_SetZbuf = 0x00185760; // type:func
+Gs_SetTest = 0x001858F0; // type:func
+Gs_SetAlpha = 0x00185BD0; // type:func
+Gs_SetFogColor = 0x00186350; // type:func
+Gs_SetTexFilter = 0x00186410; // type:func
+gSysFbWidth = 0x00218C7C; // size:0x4
+gSysFbLines = 0x00218C80; // size:0x4
+gSysMagH = 0x00218C84; // size:0x4
+gSysFbDepth = 0x00218C88; // size:0x4
+gSysFbPsm = 0x00218C8C; // size:0x4
+gSysFbPageW = 0x00218C90; // size:0x4
+gSysFbPageH = 0x00218C94; // size:0x4
+gSysFbBlock0 = 0x00218C98; // size:0x4
+gSysFbBlock1 = 0x00218C9C; // size:0x4
+gSysZDepth = 0x00218CA0; // size:0x4
+gSysZPsm = 0x00218CA4; // size:0x4
+gSysZPageW = 0x00218CA8; // size:0x4
+gSysZPageH = 0x00218CAC; // size:0x4
+gSysZBlock = 0x00218CB0; // size:0x4
+gSysTexBlock = 0x00218CB8; // size:0x4
+gSysField = 0x00218CBC; // size:0x4
+gSysCurBuf = 0x00218CC0; // size:0x4
+gSysFlipAt = 0x00218CC4; // size:0x4
+gSysNextFlipAt = 0x00218CC8; // size:0x4
+gSysVblanks = 0x00218CCC; // size:0x4
+gSysFlipPending = 0x00218CD0; // size:0x4
+gSysBgColor = 0x00219010; // size:0x4
+gSysOffsetX = 0x00219014; // size:0x4
+gSysOffsetY = 0x00219018; // size:0x4
+gSysScrollX = 0x0021901C; // size:0x4
+gSysScrollY = 0x00219020; // size:0x4
+gSysDispX = 0x00219024; // size:0x4
+gSysDispY = 0x00219028; // size:0x4
+gSysNoDraw = 0x00219064; // size:0x4
+gGsTest1 = 0x00219090; // size:0x8
+gGsTest2 = 0x00219098; // size:0x8
+gGsZbuf1 = 0x002190A0; // size:0x8
+gGsZbuf2 = 0x002190A8; // size:0x8
+gGsScissor1 = 0x002190B0; // size:0x8
+gScissor1X0 = 0x002190B8; // size:0x4
+gScissor1Y0 = 0x002190BC; // size:0x4
+gScissor1X1 = 0x002190C0; // size:0x4
+gScissor1Y1 = 0x002190C4; // size:0x4
+gGsScissor2 = 0x002190C8; // size:0x8
+gScissor2X0 = 0x002190D0; // size:0x4
+gScissor2Y0 = 0x002190D4; // size:0x4
+gScissor2X1 = 0x002190D8; // size:0x4
+gScissor2Y1 = 0x002190DC; // size:0x4
+
+// Texture registers and screen-to-GS conversions (src/main/unk_1864E0.c): the
+// texture setter fills gTexRegPacket's A+D pairs (TEXA, TEX1, TEX0, CLAMP, MIPTBP1/2);
+// the conversions subtract the scroll and halve y in field mode; Gs_ColorToGs maps
+// 0-0xFF to the GS's 0-0x80.
+Gs_SetTexture = 0x001864E0; // type:func
+Gs_BuildTexRegs = 0x00186560; // type:func
+Gs_ScreenX = 0x00186B20; // type:func
+Gs_ScreenY = 0x00186B40; // type:func
+Gs_ScreenXf = 0x00186B80; // type:func
+Gs_ScreenYf = 0x00186BA0; // type:func
+Gs_DepthToZ = 0x00186BE0; // type:func
+Gs_ColorToGs = 0x00186C10; // type:func
+gTexRegPacket = 0x001BAB30; // size:0x20
+gTexRegTexa = 0x001BAB50; // size:0x8
+gTexRegTex1 = 0x001BAB60; // size:0x8
+gTexRegTex0 = 0x001BAB70; // size:0x8
+gTexRegClamp = 0x001BAB80; // size:0x8
+gTexRegMiptbp1 = 0x001BAB90; // size:0x8
+gTexRegMiptbp2 = 0x001BABA0; // size:0x8
+
+// Frame flip, power-off thread, 3D primitives, movie init (round 13)
+// The end of a frame: waits for the DMA and the flip (Sys_WaitFlip: the sound and CRI
+// updates, then the pending flip), resets timer 0, sends the frame's DMA chain, starts the
+// next packet buffer and clears the frame
+Sys_FlipFrame = 0x001809C0; // type:func
+Sys_WaitFlip = 0x00186D80; // type:func
+Sys_FlipTick = 0x00186D40; // type:func
+// gGameVSyncOn: VBlankHandler also counts sub_main's VSync counter (0x6AE398)
+Sys_EnableGameVSync = 0x00180640; // type:func
+gGameVSyncOn = 0x001E8B38; // size:0x4
+Sys_InitHeap = 0x00182640; // type:func
+// Forwards to Tex_MakeResident(n, handles)
+Tex_Use = 0x0017D240; // type:func
+Prim_InViewClip = 0x00186ED0; // type:func
+Prim_InGsRange = 0x00186FA0; // type:func
+Prim_DrawRect3D = 0x00189210; // type:func
+Prim_DrawSprite3D = 0x00189500; // type:func
+Prim_DrawTexTri3D = 0x00189840; // type:func
+// The power-off thread: on the power button it closes the HDD (or DEV9) and the CD
+// (sceDevctl calls) and waits
+PowerOff_Init = 0x00189D40; // type:func
+PowerOff_Thread = 0x00189DF0; // type:func
+PowerOff_Callback = 0x00189F80; // type:func
+Movie_InitSfd = 0x00189FB0; // type:func
+
+// The pad input (src/main/unk_189F90.c, unk_18AFE0.c, include/padio.h): gPadRaw per port after a read,
+// gPadIn as read and gPad remapped by gPadConfig (gPadConfigDefault at boot); gPadBit[i] is 1 << i
+Debug_Sprintf = 0x001832E0; // type:func
+gDebugMsg = 0x002491F0; // size:0x800
+gPadConnected = 0x0024BA90; // size:0x1
+gPad = 0x0024BAA0; // size:0x88
+gPadConfig = 0x0024BB30; // size:0x2C
+gPadIn = 0x0024BB60; // size:0x88
+gPadPtr = 0x0024BBEC; // size:0x4
+gPadSocketBuf = 0x0024BC00; // size:0x100
+gPadDataNone = 0x0024BDA0; // size:0x20
+gPadData = 0x0024BDC0; // size:0x20
+gPadLimits = 0x0024BE00; // size:0x10
+gPadPort = 0x0024BE10; // size:0x18
+gPadRaw = 0x0024BE30; // size:0x34
+gPadConfigDefault = 0x001C7C60; // size:0x2C
+gPadBit = 0x001C7C90; // size:0x60
+
+// The render state's flag words (the Z, alpha and test bits the setters take; set by
+// InitDisplay, read and changed by Gs_SetState/Gs_GetState), and the frame's packet buffer
+// (gSysWork + 0x400 on: Packet_Reset, Packet_Alloc)
+gRenderFlags = 0x00219128; // size:0x4
+gRenderFlags2 = 0x00219130; // size:0x4
+gPadDataCur = 0x0024BDE0; // size:0x20
+gPacketMode = 0x00219070; // size:0x4
+gPacketBufIdx = 0x00219074; // size:0x4
+gPacketBuf = 0x00219078; // size:0x4
+gPacketEnd = 0x0021907C; // size:0x4
+gPacketCur = 0x00219080; // size:0x4
+gPacketBlocks = 0x00219084; // size:0x8
+
+// Awards and the monster notes (src/main/unk_18DA50.c)
+// Gives award n (sub_main 0x3BD550) with its message unless the save has it; 1 when given
+Award_Grant = 0x0018E700; // type:func
+// The monster notes: the index of a monster id in gMonsterNoteIds (0xFF: none); four
+// bits per monster in the save data (+0x3688) mark which of the values of its gMonsterNoteMarks
+// list were reached (MonsterNote_Record); GetFlags returns them as 2n + 1
+MonsterNote_Index = 0x0018E8E0; // type:func
+MonsterNote_GetFlags = 0x0018E930; // type:func
+MonsterNote_GetListFlags = 0x0018E9A0; // type:func
+MonsterNote_Record = 0x0018EA20; // type:func
+gMonsterNoteIds = 0x001BB990; // size:0x36
+gMonsterNoteMarks = 0x001BB710; // size:0x68
+gHeapBlocks = 0x002191B0; // size:0x30000
+
+// sub_main objects the core reads (main needs its own names: the boot ELF does not link
+// sub_main.txt). The season (bits 0-2, Season_Get) and daytime (bits 3-4, Daytime_Get) flags
+gSeasonFlags = 0x005D4910; // size:0x1
+// The system settings and memory layout (include/syssettings.h)
+gSysSettings = 0x006ADF90; // size:0xF4
+Sound_PlaySeMusicVol = 0x00194910; // type:func
+gLoadLastVSync = 0x005D4A50; // size:0x4
+gQuestSeasonFlags = 0x005D87A9; // size:0x1
+
+// More Sony libc (named from their use: formats, arguments, results) and libusbkb (the
+// Sony API names; UsbKb_* in sub_main use them as those), round 13
+gLoadingScreenOn = 0x001E8B48; // size:0x4
+
+
+// Round 16 (asub): copy, clear and fill loops (main 0x182450, hand-written assembly: 8-byte
+// aligned entries; MWCC aligns every function to 16). Counts are in blocks, at least 1
+Mem_CopyWords = 0x00182450; // type:func
+Mem_Copy16ByWords = 0x00182470; // type:func
+Mem_Copy16ByDwords = 0x001824A8; // type:func
+Mem_CopyQwords = 0x001824D0; // type:func
+Mem_Copy32ByWords = 0x001824F0; // type:func
+Mem_Copy32ByDwords = 0x00182548; // type:func
+Mem_Copy32ByQwords = 0x00182580; // type:func
+Mem_Copy64ByQwords = 0x001825A8; // type:func
+Mem_ClearWords = 0x001825E0; // type:func
+Mem_ClearQwords = 0x001825F8; // type:func
+Mem_FillWords = 0x00182610; // type:func
+Mem_FillQwords = 0x00182628; // type:func
+
+// Round 17 (xref): bss objects sub_main's code reads (main's own code writes them as scalars).
+gGsColor67F = 0x0020D810; // size:0x10 Gs state 0x67 as floats over 255, copied into the VU1 packets (Vu1Pkt_V, Vu1Pkt_LV)
+gGsColor0EF = 0x0020D820; // size:0x10 Gs state 0xE as floats, RGB over 255 and alpha 0 to 128, scales the lights of the lit VU1 packets (Vu1Pkt_L, Vu1Pkt_SL)
+gGsFogFar = 0x00219100; // size:0x4 Gs state 0x11, the fog end depth (Gs_SetState, Vu1Pkt_D, Vu1Pkt_LD)
+gGsFogNear = 0x00219108; // size:0x4 Gs state 0x10, the fog start depth, with gGsFogFar gives the fog scale of the VU1 packets (Gs_SetState, Vu1Pkt_D)
+gSysExiting = 0x001E8B50; // size:0x4 set at power off (PowerOff_Thread) and before launching the setup guide (Yn_LaunchSetupGuide), stops the VBlank work and the main loop
+gDmaGsIntcId = 0x002189A0; // size:0x4 the GS interrupt handler id (AddIntcHandler in DmaQueue_Init, removed by Yn_LaunchSetupGuide)
+D_002189B8 = 0x002189B8; // size:0x4
+gDispTexScaleV = 0x001E8B60; // size:0x4 the display height over the next power of two (Gs_ResetState), Model_BuildVifPackets scales v by it
+gDispTexScaleU = 0x001E8B68; // size:0x4 the display width over the next power of two (Gs_ResetState), Model_BuildVifPackets scales u by it
+gModelCount = 0x001E8B78; // size:0x4 the number of models set up (Model_Setup, Model_FreeHandle), 0 at Sys_InitWork
+D_0020E134 = 0x0020E134; // size:0x4
+
+// Round 18 (nsub)
+Tex_UploadPacketSize = 0x00179860; // type:func
+Packet_SetMode0 = 0x00182010; // type:func
+Packet_SetMode2 = 0x00182020; // type:func
+Sys_SetNextFlipAt = 0x00182030; // type:func
+Packet_SetMode1Ok = 0x00183D10; // type:func
+Packet_SetMode2Ok = 0x00183D20; // type:func
+Display_SetOffset = 0x00186D10; // type:func
+Display_AdxVint = 0x00186D30; // type:func
+AdxWrap_VintHook = 0x00189F90; // type:func
+NetQuest_SetUnk4C = 0x0018DEA0; // type:func
+NetQuest_SetInfo = 0x0018DEB0; // type:func
+NetQuest_SetStage = 0x0018DED0; // type:func
+QuestId_IsStandard = 0x0018DEE0; // type:func
+RateFlag_Set = 0x0018E750; // type:func
+RateFlag_SetQuiet = 0x0018E810; // type:func
+RateFlag_SetAndNotify = 0x0018E890; // type:func
+SaveRecord_KindIndex_Unk = 0x0018EB20; // type:func
+Player_PlaySe = 0x00194DC0; // type:func
+Em_PlaySeChecked = 0x00194F40; // type:func
+Em_PlaySeAtPos = 0x00194FD0; // type:func
+Em_PlaySeType = 0x001950A0; // type:func
+Em_PlaySeSlot6 = 0x00195170; // type:func
+Em_PlaySeSlot1 = 0x001951D0; // type:func
+Sound_Silence = 0x00195230; // type:func
+Sound_LoadCommonBanks = 0x00195840; // type:func
+Sound_ReloadBank7 = 0x00195B20; // type:func
+Sound_ReloadBank1 = 0x00195B90; // type:func
+
+// Round 18 (nsub-h1)
+
+// Round 19 (ndata)
+gMtxSlots = 0x0020D830; // size:0x840
+gViewportMtx = 0x0020D6D0; // size:0x40
+
+// Round 20 (ndata)
+gMtxIdentity = 0x0020D7D0; // size:0x40
+gMtxProj = 0x0020D690; // size:0x40
+gDmaRecvDst = 0x001E8AD0; // size:0x4
+gDmaRecvQwc = 0x001E8AD8; // size:0x4
+gDmaSavedImr = 0x001E8AE0; // size:0x8
+gModelPool = 0x001E8B80; // size:0x24000
+gPresetColors = 0x001BB140; // size:0x40
+gCtypeTable = 0x001BD420;
+gMtxView = 0x0020E070; // size:0x40
+gMtxCamProj = 0x0020E030; // size:0x40
+gMtxClip = 0x0020E0B0; // size:0x40
+gMtxProjClip = 0x0020D710; // size:0x40
+gMtxScreen = 0x0020D790; // size:0x40
+gMtxProjScreen = 0x0020D750; // size:0x40
+gMtxRs19 = 0x0020E0F0; // size:0x40
+gRsMaterials = 0x0020CD10; // size:0x980
+
+// Round 24 (nnames): tables named by their use (session 2)
+gSePosVolCurves = 0x001BC990; // size:0x70 per kind volume curves of positional SEs, Sound_PlaySePos
+gSePosCurves2 = 0x001BCC00; // size:0x70 per kind second curves of positional SEs (CseOpt.v[7]) or NULL, Sound_PlaySePos
+gSePosRanges = 0x001BCA00; // size:0x1B0 per kind step, far distance and id offset of positional SEs, Sound_PlaySePos
+gIopModArgs = 0x001BAAA0; // size:0x90 the IOP modules Iop_Init starts in order, id -1 ends
+gTexSwizzle4Tbls = 0x001BA770; // size:0x10 swizzle tables of Tex_Swizzle4Kernel
+gTexSwizzle8Tbls = 0x001BA980; // size:0x10 swizzle tables of Tex_Swizzle8Kernel
+
+// Round 24 (nnames): entries of the tables named by their use (session 2), TABLE_N
+gSePosVolCurves_0 = 0x001BBA60; // size:0x90 entry 0 of gSePosVolCurves
+gSePosVolCurves_1 = 0x001BBAF0; // size:0x90 entry 1 of gSePosVolCurves
+gSePosVolCurves_2 = 0x001BBB80; // size:0x90 entry 2 of gSePosVolCurves
+gSePosVolCurves_3 = 0x001BBC10; // size:0x90 entry 3 of gSePosVolCurves
+gSePosVolCurves_4 = 0x001BBCA0; // size:0x90 entry 4 of gSePosVolCurves
+gSePosVolCurves_5 = 0x001BBD30; // size:0x90 entry 5 of gSePosVolCurves
+gSePosVolCurves_6 = 0x001BBDC0; // size:0x90 entry 6 of gSePosVolCurves
+gSePosVolCurves_7 = 0x001BBE50; // size:0x90 entry 7 of gSePosVolCurves
+gSePosVolCurves_8 = 0x001BBEE0; // size:0x90 entry 8 of gSePosVolCurves
+gSePosVolCurves_9 = 0x001BBF70; // size:0x90 entry 9 of gSePosVolCurves
+gSePosVolCurves_10 = 0x001BC000; // size:0x90 entry 10 of gSePosVolCurves
+gSePosVolCurves_11 = 0x001BC090; // size:0x90 entry 11 of gSePosVolCurves
+gSePosVolCurves_12 = 0x001BC120; // size:0x90 entry 12 of gSePosVolCurves
+gSePosVolCurves_13 = 0x001BC1B0; // size:0x90 entry 13 of gSePosVolCurves
+gSePosVolCurves_14 = 0x001BC240; // size:0x90 entry 14 of gSePosVolCurves
+gSePosVolCurves_15 = 0x001BC2D0; // size:0x90 entry 15 of gSePosVolCurves
+gSePosVolCurves_16 = 0x001BC360; // size:0x90 entry 16 of gSePosVolCurves
+gSePosVolCurves_17 = 0x001BC3F0; // size:0x90 entry 17 of gSePosVolCurves
+gSePosVolCurves_18 = 0x001BC480; // size:0x90 entry 18 of gSePosVolCurves
+gSePosVolCurves_19 = 0x001BC510; // size:0x90 entry 19 of gSePosVolCurves
+gSePosVolCurves_20 = 0x001BC5A0; // size:0x90 entry 20 of gSePosVolCurves
+gSePosVolCurves_21 = 0x001BC630; // size:0x90 entry 21 of gSePosVolCurves
+gSePosVolCurves_22 = 0x001BC6C0; // size:0x90 entry 22 of gSePosVolCurves
+gSePosVolCurves_23 = 0x001BC750; // size:0x90 entry 23 of gSePosVolCurves
+gSePosVolCurves_24 = 0x001BC7E0; // size:0x90 entry 24 of gSePosVolCurves
+gSePosVolCurves_25 = 0x001BC870; // size:0x90 entry 25 of gSePosVolCurves
+gSePosVolCurves_26 = 0x001BC900; // size:0x90 entry 26 of gSePosVolCurves
+gSePosCurves2_24 = 0x001BCBB0; // size:0x50 entry 24 of gSePosCurves2
+gTexSwizzle4Tbls_0 = 0x001BA370; // size:0x200 entry 0 of gTexSwizzle4Tbls
+gTexSwizzle4Tbls_1 = 0x001BA570; // size:0x200 entry 1 of gTexSwizzle4Tbls
+gTexSwizzle8Tbls_0 = 0x001BA780; // size:0x100 entry 0 of gTexSwizzle8Tbls
+gTexSwizzle8Tbls_1 = 0x001BA880; // size:0x100 entry 1 of gTexSwizzle8Tbls
+
+// Round 25 (names)
+gSysAllocHook = 0x002491E0; // size:0x4 the allocator hook of the model code, set to SysHeap_Alloc by Sys_InitWork
+gPadVibration = 0x0024BD90; // size:0x1 the vibration request flag (Pad_SetVibrationFlag, Pad_Read)
+gHttpActive = 0x00249A78; // size:0x4 NETWORK, 1 while the http front end is up (set by Http_Init, cleared by Http_Term in nethttp)
+gGsFogColor = 0x002190F8; // size:0x4 Gs state 0xF, the fog color, set through Gs_SetFogColor when it changes (Gs_SetState)
+gGsColor0E = 0x002190F0; // size:0x4 Gs state 0xE, a packed ARGB color, as floats in gGsColor0EF (Gs_SetState)
+gGsColor67 = 0x002190E8; // size:0x4 Gs state 0x67, a packed ARGB color, as floats in gGsColor67F (Gs_SetState)
+gPadButtonMaps = 0x0024BD00; // size:0x80 per port, 16 button mappings (mask and kind) copied from the default maps (Pad_ReadPort, Pad_ConvertData)
+gGsStateTextures = 0x0020E130; // size:0x10 the textures of Gs states 4 to 7 (Gs_SetState, Gs_GetState)
+gPadMapDigital = 0x001BB070; // size:0x40 the 16 button mappings of a digital pad, type 0 (Pad_ReadPort)
+gPadMapAnalog = 0x001BAFF0; // size:0x40 the 16 button mappings of an analog pad, types 1 and 2 (Pad_ReadPort)
+gPadPressIndex = 0x001BB0F0; // size:0x10 per button mapping, the pressure byte it reads (Pad_ConvertData)
+gPadStickDirBits = 0x001BB120; // size:0x10 the direction bits of a stick per 22.5 degree sector (Pad_StickDirBits)
+gPadDefaultLimits = 0x001BB100; // size:0x10 the default stick limits, dead zones (Pad_Open, gPadLimits)
+gPadDpadFix = 0x001BB110; // size:0x10 the d-pad bits of a raw read, remapped by the low nibble (Pad_Read)
+gDmaChcrRegs = 0x001BA120; // size:0x28 per DMA channel, the address of its CHCR register (DmaQueue_Handler)
+gPadFirstSocket = 0x001BAFE0; // size:0x4 the socket opened first, -1 before Pad_Open (Pad_Open)
+gPadDirRemap = 0x001C7F10; // size:0x40 per direction mode, the 16 d-pad or stick values remapped (Pad_Remap)
+gPadPressRemap = 0x001C7F50; // size:0x10 per direction mode, the four pressure bytes of the d-pad remapped (Pad_Remap)
+gSysHeapBase = 0x00219068; // size:0x4 the system heap taken by Sys_InitWork (SysHeap_AllocTop)
+gSysHeapSize = 0x0021906C; // size:0x4 the system heap size, 0xE00000 (Sys_InitWork)
+gPowerOffStack = 0x00249A90; // size:0x2000 the stack of the power off thread (PowerOff_Init)
+gPadPortCount = 0x0024BD80; // size:0x4 the number of pad ports opened (Pad_Open)
+
+// Round 27 (names)
+Quest_ClearVersusDefeat = 0x0018EB10; // type:func clears gQuest.versusDefeat
+gPadVibrationLast = 0x0024BD88; // size:0x1 the vibration request as of the last Pad_Read, which copies gPadVibration into it (Pad_Open clears it)
+gSysFlipCount = 0x00219188; // size:0x4 frames flipped, counted by Sys_FlipFrame
+gSysDispAdjX = 0x0021902C; // size:0x4 display position adjustment, x (Display_SetOffset), added to dispX times magH by Gs_ShowFrame, gSysWork.unk3BC
+gSysDispAdjY = 0x00219030; // size:0x4 display position adjustment, y (Display_SetOffset), added to dispY by Gs_ShowFrame, gSysWork.unk3C0
+gSysFreeHook = 0x002491D8; // size:0x4 the free hook next to gSysAllocHook, set to libc free by Sys_InitWork
+
+// Round 31 (names)
+gGsTexLodL = 0x0020E140; // size:0x4 the TEX1 L value (Gs_SetState states 0x68 and 0x69, Gs_BuildTexRegs shifts it to bit 19)
+gGsAlphaRef = 0x002190E0; // size:0x4 the alpha test reference (Gs_SetState state 0x60, Gs_SetTest)
+gSwizzleBlockCol = 0x001BA170; // size:0x80 per block of a page its column (Tex_Swizzle4Block, Tex_Swizzle8Block)
+gSwizzleBlockRow = 0x001BA1F0; // size:0x80 per block of a page its row
+gRsLights = 0x0020CBD0; // size:0x138 the render state lights (RsLight, Gs_SetState states 0x5A-0x5C normalize their direction at 0x34), Vu1_PutLightColors and the Vu1Pkt_ light packets read them
+gClutCsm1Order = 0x001BA150; // size:0x20 per palette index in a block of 32 its CSM1 position, 8-15 and 16-23 swapped (Tex_ConvertPixels)
+gSwizzle4BlockOrder = 0x001BA270; // size:0x80 the block order of a PSMT4 page (Tex_Swizzle4Block)
+gSwizzle8BlockOrder = 0x001BA2F0; // size:0x80 the block order of a PSMT8 page (Tex_Swizzle8Block)
+gTeamItemBits = 0x001BB3F0; // size:0x50 per item (0 ends) a value and the team bits (Versus_Init for Versus_ApplyTeamBits, the lobby ArenaFeed_Open and ArenaFeed_LoadPage), inside the C object D_001BB3D0, size to its end
+gGsFba = 0x001E8B70; // size:0x4 the FBA register value Gs_ClearFrame puts back into FBA_1 and FBA_2 (its packet, beside gGsTest1 and gGsZbuf1), 0 at Gs_ResetState
+gPowerOffStat = 0x00249A80; // size:0x4 PowerOff_Thread, the hdd devctl 0x4807 result, then the status sceCdPowerOff writes
+gDebugFileFirst = 0x001BAA10; // size:0x4 Debug_Printf, 1 until the debug file has been created
+gClearColorPacket = 0x001BAA20; // size:0x80 Gs_ClearColors A+D packet (test, rgbaq, two xyz, gGsTest1 put back), sent by Prim_SendPacket
+gQuestRecordIds = 0x001BB280; // size:0x20 QuestRecord_Count, the quest ids (0 ends, 16 at most) whose clears gQuestRecord.counts counts
+gArenaGaugeUpChances = 0x001BB920; // size:0x70 Versus_UpdateRecords, by MonsterNote_Index a row set of 5 by 4 bytes (minutes trained over 30, 60, 120, 180, by gauge level), the chance in 128 that the gauge level rises, inside the C object D_001BB900, size to its end
+gPersistentEmHp = 0x001BB9D0; // size:0x10 QuestEm_LoadPersistentHp, by Quest_FindSpecialMonster index, the hp (and hpMax) a persistent monster starts with
+gSndForwardAxis = 0x001BCC70; // size:0xC Sound_PlaySePos, the listener forward axis (0, 0, 1)
+Sys_InitCard = 0x00183C80; // type:func the memory card set up Sys_Init ends with, sceMcInit (again while it returns -0x65), then clears D_00249A10 (0x64 bytes) and two 0xC-byte records at D_002499F0

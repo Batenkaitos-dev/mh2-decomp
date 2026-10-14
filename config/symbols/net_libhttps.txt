@@ -1,0 +1,6 @@
+// Symbols for overlay 5, nethttp.bin: Sony libhttps, "PsIIlibhttps3020" (.data 0x950008),
+// text 0x8FD788-0x90AFE8, built with GCC (8-byte aligned): the HTTP client
+// (Content-Length, Digest authentication, SceHttpMemLockSema) and its SSL glue
+// (SSL_library_init, certificate import and expiry checks); asm piece net/libhttps.
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes

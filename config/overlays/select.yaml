@@ -1,0 +1,83 @@
+# splat config for overlay 2, select.bin (title and menus).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0x6AF200
+# including its 0x40-byte header, so text starts at 0x6AF240.
+name: select.bin
+sha1: af537d3f329f1c83b06673c065ee0db2ac11534b
+options:
+  basename: select
+  target_path: build/orig/select.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/select
+  src_path: src/select
+  build_path: build/select
+  asset_path: assets/select
+  ld_script_path: build/ld/select.ld
+  undefined_funcs_auto_path: build/ld/select.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/select.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - build/symbols/sub_main.extern.txt
+    # the pinned starts first, so that the names in select.txt win
+    - config/functions/select.txt
+    - config/symbols/select.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: select
+    type: code
+    start: 0x40
+    vram: 0x6AF240
+    bss_size: 0x1100
+    subsegments:
+      - [0x40, asm, text]              # the 0x40 zero bytes every overlay's text starts with
+      - [0x80, c, select_chara]        # 0x6AF280: character creation and selection
+      - [0x5930, c, select_ngword]     # 0x6B4B30: the name check (NG word list)
+      - [0x5FB0, c, select_boot]       # 0x6B51B0: the overlay's main task, copyright screens
+      - [0x7500, c, select_option]     # 0x6B6700: OPTIONS and NETWORK OPTIONS
+      - [0xA910, c, select_title]      # 0x6B9B10: the title menu and MODE SELECT
+      - [0xDC20, c, select_parts]      # 0x6BCE20: character parts lists (face, hair, colors)
+      - [0x101B0, c, select_gallery]   # 0x6BF3B0: GALLERY
+      - [0x13BB0, c, select_psp]       # 0x6C2DB0: CONNECT (PSP link over USB)
+      # the zeros after the last function to 0x6C7D80, where the linker put .data
+      - { start: 0x18B50, type: data, name: text_end, linker_section_order: .text }
+      - [0x18B80, .data, select_chara]     # .data (0x6C7D80)
+      - [0x18EA0, .data, select_ngword]    # 0x6C80A0
+      - [0x1B960, .data, select_option]    # 0x6CAB60
+      - [0x1BAC0, .data, select_title]     # 0x6CACC0
+      - [0x1C140, .data, select_parts]     # 0x6CB340
+      - [0x1C558, .data, select_gallery]   # 0x6CB758
+      - [0x1CFE0, .data, select_psp]       # 0x6CC1E0
+      - [0x1EB80, .rodata, select_chara]   # .rodata (0x6CDD80)
+      - [0x1ECA0, .rodata, select_boot]    # 0x6CDEA0
+      - [0x1ED50, .rodata, select_option]  # 0x6CDF50
+      - [0x1EDD8, .rodata, select_title]   # 0x6CDFD8
+      - [0x1EEF0, .rodata, select_parts]   # 0x6CE0F0
+      - [0x1EF88, .rodata, select_gallery] # 0x6CE188
+      - [0x21520, .rodata, select_psp]     # 0x6D0720
+      # the zeros from the last string to 0x6D2180: the linker aligned the end of the
+      # overlay (where .bss starts) to 0x80
+      - { start: 0x22F68, type: data, name: rodata_end, linker_section_order: .rodata }
+      - { type: .bss, vram: 0x6D2180, name: select_boot }    # .bss (0x6D2180)
+      - { type: .bss, vram: 0x6D2190, name: select_option }
+      - { type: .bss, vram: 0x6D21A8, name: select_psp }
+  - [0x22F80]

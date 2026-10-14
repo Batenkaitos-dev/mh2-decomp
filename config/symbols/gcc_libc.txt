@@ -1,0 +1,31 @@
+// Symbols for the boot ELF (SLPM_662.80): the EE toolchain's C library (newlib), text 0x1039B0-0x10FC18; asm piece gcc/libc
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+
+// Sony libc
+abs = 0x001039B0; // type:func
+memcpy = 0x00107D10; // type:func
+memset = 0x00107EC8; // type:func
+strncmp = 0x0010B4E0; // type:func
+strcpy = 0x0010B060; // type:func
+strlen = 0x0010B1F8; // type:func
+strcat = 0x0010AC58; // type:func
+strupr = 0x0010CE48; // type:func
+printf = 0x00109130; // type:func
+vsprintf = 0x0010F9F8; // type:func
+sprintf = 0x0010A8D0; // type:func
+memcmp = 0x00107C78; // type:func
+strncpy = 0x0010B698; // type:func
+strcmp = 0x0010AF18; // type:func
+strchr = 0x0010AD88; // type:func
+strrchr = 0x0010B858; // type:func (round 18 nsub) the loop keeps the last match (movz), Text_FillDollarFmt finds the last '$'
+strstr = 0x0010B8A8; // type:func
+strncat = 0x0010B330; // type:func
+memmove = 0x00107DC0; // type:func
+atoi = 0x001039E0; // type:func
+vsnprintf = 0x0010F920; // type:func
+
+// Round 27 (names h1) - library functions the C calls, named from the evidence
+free = 0x00107198; // type:func __malloc_lock, _free_r(reent, p), __malloc_unlock, the free hook beside SysHeap_Alloc
+rand = 0x00109BA8; // type:func newlib 64-bit LCG 6364136223846793005, returns (next >> 32) & 0x7FFFFFFF
+strtok = 0x0010C898; // type:func strtok_r(s, delim, the reent strtok_last slot)

@@ -1,0 +1,75 @@
+# splat config for overlay 11, plsel.bin (player select).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0xD60200
+# including its 0x40-byte header, so text starts at 0xD60240.
+name: plsel.bin
+sha1: 22a9e02f4ba397256c326ae096eb4e6aa347c6ed
+options:
+  basename: plsel
+  target_path: build/orig/plsel.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/plsel
+  src_path: src/plsel
+  build_path: build/plsel
+  asset_path: assets/plsel
+  ld_script_path: build/ld/plsel.ld
+  undefined_funcs_auto_path: build/ld/plsel.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/plsel.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - build/symbols/sub_main.extern.txt
+    - config/symbols/plsel.txt
+    - config/functions/plsel.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: plsel
+    type: code
+    start: 0x40
+    vram: 0xD60240
+    bss_size: 0x100
+    subsegments:
+      - [0x40, asm, text]              # the 0x40 zero bytes every overlay's text starts with
+      - [0x80, c, plsel]               # 0xD60280: the overlay's entry and the character select flow
+      - [0x4360, c, unk_D64560]        # 0xD64560: its own .bss (0xD7BD80) and callback tables
+      - [0x4A80, c, ending]            # 0xD64C80: the ending (the closing message, staff roll)
+      - [0x7330, c, unk_D67530]        # 0xD67530: the menus on the work area at 0x6AE018
+      - [0x14250, c, unk_D74450]       # 0xD74450: "galex"
+      # the zeros after the last function to 0xD75F80, where the linker put .data
+      - { start: 0x15D3C, type: data, name: text_end, linker_section_order: .text }
+      # .data (0xD75F80-0xD79580), all owned by the C files
+      - [0x15D80, .data, plsel]
+      - [0x15E60, .data, unk_D64560]
+      - [0x15F00, .data, ending]
+      - [0x18910, .data, unk_D67530]
+      - [0x19170, .data, unk_D74450]
+      # .rodata (0xD79580-0xD7BD80): plsel.c's first jump table starts it; the
+      # staff roll's strings (0xD795D8), which only ending.c's table points to,
+      # are ending.c's
+      - [0x19380, .rodata, plsel]
+      - [0x193D8, .rodata, ending]
+      - [0x1B8D0, .rodata, unk_D67530]
+      - [0x1BA80, .rodata, unk_D74450]
+      # .bss (0xD7BD80-0xD7BE80)
+      - { type: .bss, vram: 0xD7BD80, name: unk_D64560 }
+      - { type: .bss, vram: 0xD7BD90, name: unk_D67530 }
+  - [0x1BB80]

@@ -1,0 +1,141 @@
+// Symbols for overlay 9, yn.bin. Format: name = 0xADDRESS; // attributes
+
+// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+yn_entry = 0x00AC8080; // type:func
+
+// --- yn_main.c's .data: objects that other labels fall inside (splat then
+// writes references to those labels as sym + offset) -----------------------
+gYnWindows = 0x00AD11A0; // size:0x50 the four windows of the setup screens (Yn_DrawBackground draws 0, 1 and 3, Yn_DrawMessageWindow 2)
+gYnProxyWindows = 0x00AD11F0; // size:0x3C Yn_DrawProxy, its three windows
+gYnStorageNames = 0x00AD1230; // size:0x10 Yn_DrawEntryList, the storage names, the HDD (PlayStation BB Unit) then memory card slots 1 and 2 by YnCard_GetSlot + 1
+gYnFieldHeaders = 0x00AD1290; // size:0x18 field headers, [5] the HTTP proxy one (Yn_DrawScreen)
+gYnHttpsTexts = 0x00AD12A8; // size:0x8 the HTTPS proxy field label and the not available text (Yn_DrawScreen, Yn_DrawEntryList, Yn_DrawEntryDetails)
+gYnDeviceTexts = 0x00AD12B0; // size:0x8 connected device, connected device details (Yn_DrawEntryList, Yn_DrawEntryDetails)
+gYnUserIdTexts = 0x00AD12B8; // size:0x8 user ID, automatic (Yn_DrawEntryDetails)
+gYnHostIpTexts = 0x00AD12C0; // size:0x8 DHCP host name, IP address (Yn_DrawEntryDetails)
+gYnNetmaskTexts = 0x00AD12C8; // size:0x8 netmask, default router (Yn_DrawEntryDetails)
+gYnDnsTexts = 0x00AD12D0; // size:0x8 primary DNS, secondary DNS (Yn_DrawEntryDetails)
+gYnYesNoTexts = 0x00AD12D8; // size:0x8 yes and no on one line, yes (Yn_DrawMessageText, Yn_DrawChoiceCursor)
+
+// --- Functions: Capcom's (yn_card.c, yn_main.c). netcnfif's are in sdk_netcnfif.txt.
+YnCard_Reset = 0x00AC96D0; // type:func
+YnCard_CheckSlots = 0x00AC96F0; // type:func
+YnCard_CheckCurrentSlot = 0x00AC9880; // type:func
+YnCard_SetSlot = 0x00AC99E0; // type:func
+YnCard_GetSlot = 0x00AC99F0; // type:func
+YnCard_ListNetcnfDir = 0x00AC9A00; // type:func
+YnCard_MapError = 0x00AC9AE0; // type:func
+Yn_Init = 0x00AC9B90; // type:func
+Yn_Update = 0x00AC9C20; // type:func
+Yn_Draw = 0x00ACA3D0; // type:func
+Yn_Quit = 0x00ACA480; // type:func
+Yn_ScanCards = 0x00ACA510; // type:func
+Yn_ScanCardsForConnect = 0x00ACA960; // type:func
+Yn_Connect = 0x00ACADD0; // type:func
+Yn_ResetNameScroll = 0x00ACB1E0; // type:func
+Yn_UpdateNameScroll = 0x00ACB2E0; // type:func
+Yn_UpdateEntryList = 0x00ACB480; // type:func
+Yn_IsCardGone = 0x00ACBDC0; // type:func
+Yn_IsCurrentCardGone = 0x00ACBE80; // type:func
+Yn_DrawScreen = 0x00ACBF50; // type:func
+Yn_DrawItems = 0x00ACC060; // type:func
+Yn_DrawChoiceItems = 0x00ACC120; // type:func
+Yn_DrawEntryList = 0x00ACC260; // type:func
+Yn_DrawPort = 0x00ACC880; // type:func
+Yn_DrawTextField = 0x00ACCB70; // type:func
+Yn_DrawMessageWindow = 0x00ACCBF0; // type:func
+Yn_DrawMessage = 0x00ACCD20; // type:func
+Yn_DrawMessageText = 0x00ACCED0; // type:func
+Yn_DrawSlotMessage = 0x00ACD120; // type:func
+Yn_DrawEntryDetails = 0x00ACD240; // type:func
+Yn_AlignAddress = 0x00ACD840; // type:func
+Yn_DrawHelp = 0x00ACD990; // type:func
+Yn_Print = 0x00ACDA70; // type:func
+Yn_SetColor = 0x00ACDAA0; // type:func
+Yn_SetFontSize = 0x00ACDAB0; // type:func
+Yn_CenterX = 0x00ACDAF0; // type:func
+Yn_CenterXSjis = 0x00ACDB60; // type:func
+Yn_CopyForPrint = 0x00ACDBF0; // type:func
+Yn_StrCopy = 0x00ACDD00; // type:func
+Yn_BeginNumberEdit = 0x00ACDD30; // type:func
+Yn_UpdatePadRepeat = 0x00ACDD70; // type:func
+Yn_OpenKeyboard = 0x00ACDE00; // type:func
+Yn_PollKeyboard = 0x00ACDEF0; // type:func
+Yn_DrawTextLayer = 0x00ACDF70; // type:func
+Yn_ExportSettings = 0x00ACE050; // type:func
+Yn_ApplyEntry = 0x00ACE370; // type:func
+Yn_LoadProxy = 0x00ACE3F0; // type:func
+Yn_StoreProxy = 0x00ACE430; // type:func
+Yn_DrawBackground = 0x00ACE470; // type:func
+Yn_LaunchSetupGuide = 0x00ACE630; // type:func
+Yn_DrawChoiceCursor = 0x00ACE700; // type:func
+Yn_DrawIcon = 0x00ACE800; // type:func
+Yn_DrawProxy = 0x00ACE940; // type:func
+Yn_UpdateProxy = 0x00ACED20; // type:func
+Yn_DrawHelpBar = 0x00ACF5F0; // type:func
+YnNetcnf_LoadModules = 0x00ACF7D0; // type:func
+YnNetcnf_Open = 0x00ACF850; // type:func
+YnNetcnf_Close = 0x00ACF900; // type:func
+YnNetcnf_FindUsrName = 0x00ACF9A0; // type:func
+Yn_ConfigToIfc = 0x00ACFA60; // type:func
+Yn_IfcToConfig = 0x00ACFC50; // type:func
+Yn_ConfigToDev = 0x00ACFDA0; // type:func
+Yn_DevToConfig = 0x00ACFE90; // type:func
+Yn_BuildCombos = 0x00ACFF50; // type:func
+Yn_FindCombination = 0x00AD0050; // type:func
+Yn_CompareProxy = 0x00AD0240; // type:func
+Yn_IsAddressSet = 0x00AD0300; // type:func
+YnNetcnf_SetType = 0x00AD0350; // type:func
+YnNetcnf_GetCount = 0x00AD0450; // type:func
+YnNetcnf_GetList = 0x00AD0510; // type:func
+YnNetcnf_LoadCombos = 0x00AD05F0; // type:func
+YnNetcnf_IsEmpty = 0x00AD0710; // type:func
+YnNetcnf_CheckFile = 0x00AD0760; // type:func
+YnNetcnf_LoadFirst = 0x00AD0840; // type:func
+YnNetcnf_SetPath = 0x00AD0910; // type:func
+Yn_ParseAddress = 0x00AD0940; // type:func
+Yn_FormatAddress = 0x00AD09B0; // type:func
+Yn_FindDevice = 0x00AD0A10; // type:func
+Yn_GetDeviceKind = 0x00AD0AD0; // type:func
+Yn_SelectDevice = 0x00AD0BB0; // type:func
+Yn_Utf8ToSjis = 0x00AD0C30; // type:func
+Yn_SjisToUtf8 = 0x00AD0D60; // type:func
+Yn_UnloadModule = 0x00AD0EC0; // type:func
+Yn_LoadModule = 0x00AD0F70; // type:func
+// round 13 (ncoreh1): names
+Yn_ResetStreams = 0x00AC9B80; // type:func
+Yn_SetGlyphSize = 0x00ACDAC0; // type:func
+Yn_SetTextMode = 0x00ACDAD0; // type:func
+Yn_GetTextMode = 0x00ACDAE0; // type:func
+Yn_ResetNetDevices = 0x00AD09D0; // type:func
+
+// Round 20 (ndata)
+gYnWork = 0x00AD9B40; // size:0x4
+gYnWorkBuf = 0x00AD9C80; // size:0x40500
+gYnSetupGuideArg = 0x00AD9B50; // size:0x130
+gYnCardDirBuf = 0x00AD5B40; // size:0x4000
+gYnScreenItems = 0x00AD1570; // size:0x70
+gYnScreenItemCounts = 0x00AD15E0; // size:0x20
+gYnMsgItems = 0x00AD1D00; // size:0xF0
+gYnMsgItemCounts = 0x00AD1DF0; // size:0x40
+gYnHelpItems = 0x00AD2060; // size:0xA0
+gYnHelpItemCounts = 0x00AD2100; // size:0x28
+gYnHelpBars = 0x00AD2170;
+gYnHelpBarLabels = 0x00AD1240; // size:0x30
+gYnNetcnfArgs = 0x00AD21E0; // size:0x80
+
+// Round 23 (ndata-h1)
+gYnListBarYs = 0x00AD2128; // size:0x8
+gYnGuideArgv = 0x00AD2140; // size:0x10
+gYnProxyBarYs = 0x00AD2150; // size:0x8
+gYnProxyChoiceYs = 0x00AD2158; // size:0x8
+gYnHelpHints = 0x00AD2160; // size:0xE
+gYnNetcnfifArgs = 0x00AD2260; // size:0x20
+
+// Round 31 (names)
+gYnNoTexts = 0x00AD12E0; // size:0x10 no, there are no connection provider settings (Yn_DrawMessageText)
+gYnOtherPs2Lines = 0x00AD12F0; // size:0x18 the network settings file on the memory card in %s was made on another PlayStation 2 and cannot be used (Yn_DrawEntryList, NULL ends)
+gYnNoCardLines = 0x00AD1308; // size:0xC no memory card is in %s (Yn_DrawEntryList, NULL ends)
+gYnNoSettingsLines = 0x00AD1318; // size:0xC the memory card in %s has no valid network settings file (Yn_DrawEntryList, NULL ends)
+gYnEtherModeTexts = 0x00AD1270; // size:0x20 automatic, 10BaseT half and full duplex, 100BaseTX half and full duplex (Yn_DrawEntryDetails by the mode)
+gYnBackgroundRect = 0x00AD2130; // size:0xC Yn_DrawBackground, the text rectangle of window 3 (Window_DrawTextAlpha)

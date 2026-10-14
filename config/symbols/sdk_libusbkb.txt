@@ -1,0 +1,16 @@
+// Symbols for the boot ELF (SLPM_662.80): Sony libusbkb, "PsIIlibusbkb3020" (.data 0x1998F0), text 0x1285D0-0x129B30; asm piece sdk/libusbkb
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+sceUsbKbInit = 0x001285D0; // type:func
+sceUsbKbGetInfo = 0x00128890; // type:func
+sceUsbKbRead = 0x00128938; // type:func
+sceUsbKbSync = 0x00128DB8; // type:func
+
+// Round 27 (names h1) - library functions the C calls, named from the evidence
+sceUsbKbSetLEDStatus = 0x00128AF8; // type:func own error string sceUsbKbSetLEDStatus, RPC 4
+sceUsbKbSetLEDMode = 0x00128BD0; // type:func own error string sceUsbKbSetLEDMode, RPC 5
+sceUsbKbSetRepeat = 0x00128CD0; // type:func stores the repeat start time and interval in the port record
+sceUsbKbSetCodeType = 0x00128D18; // type:func port field 4 (2 values) read by the code conversion as the code type
+sceUsbKbSetArrangement = 0x00128D68; // type:func port field 8 (3 values) passed to the keyboard-layout converter (string Arrangement error)
+sceUsbKbSetReadMode = 0x001299D8; // type:func port field 0xC (2 values), the read buffer is reset when it changes
+sceUsbKbClearRbuf = 0x00129A48; // type:func RPC 6 then clears the port read-buffer counters

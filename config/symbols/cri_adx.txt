@@ -1,0 +1,39 @@
+// Symbols for the boot ELF (SLPM_662.80): CRI ADX and its file/stream layers, text 0x158930-0x179590, built with GCC (8-byte aligned);
+// asm piece cri/adx. Version strings, all built Nov 12 2004: SKG 0.64, ADXF 7.19, ADXT 9.34,
+// ADXPS2 2.57, ADXRT 3020, CFG 1.002, CVFS 2.37, SRD 2.22, DTR 1.06, DTX 1.08, DVCI 2.71,
+// HTCI 2.69, LSC 2.18, MFCI 1.09, PS2RNA 1.30, SJ 6.28, SJRMT 1.03, SJX 1.08, SVM 1.54,
+// PL2ENC 1.01. Text order by their error strings: ADXB 0x15AD30, ADXF 0x15E4F0, ADXT,
+// cvFs 0x169ED8, SRD 0x16BEA8, DTR, DTX, DVCI, HTCI, LSC, MFCI, PS2RNA 0x1739C8, SJ 0x175AA8, SVM 0x1788E0
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+
+// CRI ADX, EE side (GCC-built; named from their own error strings)
+ADXT_SetOutVol = 0x00166DF8; // type:func
+ADXT_StartAfs = 0x00167D88; // type:func
+ADXT_StartSeamless = 0x001606F8; // type:func
+ADXT_Stop = 0x001663F0; // type:func
+ADXT_GetStat = 0x001664B0; // type:func
+ADXT_SetWaitPlayStart = 0x00167578; // type:func
+ADXT_IsReadyPlayStart = 0x001675A8; // type:func
+ADXT_Pause = 0x001675D8; // type:func
+ADXT_Create = 0x00165AD8; // type:func
+ADXF_ReadNw = 0x0015F8C8; // type:func
+ADXF_GetStat = 0x0015FE68; // type:func
+ADXF_Stop = 0x0015F908; // type:func
+ADXF_Open = 0x0015F0B0; // type:func
+ADXT_EntryAfs = 0x00160630; // type:func
+ADXT_IsCompleted = 0x00167338; // type:func
+ADXT_GetErrCode = 0x00167478; // type:func
+ADXT_GetOutVol = 0x00166E60; // type:func
+ADXF_OpenAfs = 0x0015F368; // type:func
+ADXF_Close = 0x0015F478; // type:func
+ADXF_GetFsizeSct = 0x0015FD30; // type:func
+ADXF_LoadPartitionFromAfsNw = 0x0015E600; // type:func
+ADXF_GetPtStat = 0x0015EAB0; // type:func
+ADXT_SetOutputMono = 0x00167C68; // type:func
+ADXT_EntryErrFunc = 0x001677C8; // type:func
+ADXERR_EntryErrFunc = 0x0015DFB0; // type:func
+ADXERR_CallErrFunc1 = 0x0015DFD8; // type:func
+
+// Round 27 (names h1) - library functions the C calls, named from the evidence
+ADXF_LoadPartitionNw = 0x0015E5D8; // type:func file-name partition load with the default temp buffer, the pair of ADXF_LoadPartitionFromAfsNw, its blocking caller waits on ADXF_GetPtStat

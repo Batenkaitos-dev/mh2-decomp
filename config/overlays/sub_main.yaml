@@ -1,0 +1,216 @@
+# splat config for overlay 1, sub_main.bin (core: main loop and game systems).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0x2E3900
+# including its 0x40-byte header, so text starts at 0x2E3940.
+name: sub_main.bin
+sha1: f937e8e4b365bdcc420111b26220a3847d8a21ed
+options:
+  basename: sub_main
+  target_path: build/orig/sub_main.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/sub_main
+  src_path: src/sub_main
+  build_path: build/sub_main
+  asset_path: assets/sub_main
+  ld_script_path: build/ld/sub_main.ld
+  undefined_funcs_auto_path: build/ld/sub_main.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/sub_main.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - config/symbols/sub_main.txt
+    - config/functions/sub_main.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: sub_main
+    type: code
+    start: 0x40
+    vram: 0x2E3940
+    bss_size: 0x1FD900
+    subsegments:
+      - [0x40, asm, text]           # the 0x40 zero bytes (16 nops) every overlay's text starts with
+      - [0x80, c, unk_2E3940]       # 0x2E3980 (named for 0x2E3940, where its padding was; rename when its NON_MATCHING blocks are done)
+      - [0xB720, c, unk_2EF020]     # 0x2EF020: the bones (Bone_*), another unit than func_002E5780's
+      - [0xDEC0, c, unk_2F17C0]
+      - [0x128D0, c, unk_2F61D0]    # 0x2F61D0
+      - [0x12C40, c, unk_2F6540]    # 0x2F6540
+      - [0x16480, asm, access/unk_2F9D80]   # 0x2F9D80: ACCESS's kana-kanji engine, to 0x305E60 (assembly from your copy)
+      - [0x17490, asm, access/unk_2FAD90]   # 0x2FAD90: command builders for the interpreter at 0x2F9D80
+      - [0x177C0, asm, access/unk_2FB0C0]
+      - [0x1A8F0, asm, access/unk_2FE1F0]   # 0x2FE1F0
+      - [0x1AE90, asm, access/unk_2FE790]   # 0x2FE790
+      - [0x1BC10, asm, access/unk_2FF510]
+      - [0x1F810, asm, access/unk_303110]   # 0x303110
+      - [0x205F0, asm, access/unk_303EF0]
+      - [0x22560, c, ave_wrap]      # 0x305E60: NETWORK: AVE TCP wrapper RPC client
+      - [0x23CC0, c, net_tcp]       # 0x3075C0: NETWORK: connection layer and NetTcp_*
+      - [0x252C0, c, unk_308BC0]
+      - [0x2AB20, c, unk_30E420]    # 0x30E420
+      - [0x2B130, c, unk_30EA30]    # 0x30EA30 (Arena_Realloc, 0x30E8F0, is unk_30E420.c's)
+      - [0x311D0, c, unk_314AD0]    # 0x314AD0: Kbd_DrawCandidateBox, level 4
+      - [0x31500, c, unk_314E00]    # 0x314E00
+      - [0x38EE0, c, unk_31C7E0]
+      - [0x3A670, c, unk_31DF70]    # 0x31DF70
+      - [0x3A890, c, unk_31E190]
+      - [0x40390, c, unk_323C90]    # 0x323C90: requests to the state machine at 0x31E080
+      - [0x407E0, c, unk_3240E0]
+      - [0x453D0, c, unk_328CD0]
+      - [0x4D940, c, combine]       # 0x331240: item combination (recipes, success rate)
+      - [0x4E140, c, unk_331A40]
+      - [0x50470, c, unk_333D70]    # 0x333D70
+      - [0x50960, c, unk_334260]    # 0x334260
+      - [0x51740, c, unk_335040]
+      - [0x565C0, c, unk_339EC0]    # 0x339EC0
+      - [0x57780, c, unk_33B080]
+      - [0x59C30, c, unk_33D530]    # 0x33D530: task slots at D_005B3640
+      - [0x59ED0, c, unk_33D7D0]
+      - [0x5A930, c, unk_33E230]    # 0x33E230
+      - [0x5AD20, c, unk_33E620]
+      - [0x710F0, c, unk_3549F0]    # 0x3549F0
+      - [0x72A80, c, unk_356380]
+      - [0x7DC70, c, unk_361570]    # 0x361570
+      - [0x7FAC0, c, unk_3633C0]    # 0x3633C0: queries on the record owned by D_005BB0A8
+      - [0x7FC50, c, unk_363550]    # 0x363550
+      - [0x85200, c, rand]          # 0x368B00: random numbers, sound effect helpers
+      - [0x85610, c, unk_368F10]    # 0x368F10
+      - [0x87CB0, c, unk_36B5B0]    # 0x36B5B0: game reset, pad getters, small queries
+      - [0x88570, c, unk_36BE70]    # 0x36BE70
+      - [0x8A8D0, c, unk_36E1D0]
+      - [0x93300, c, unk_376C00]    # 0x376C00
+      - [0x965C0, c, unk_379EC0]
+      - [0x97380, c, unk_37AC80]    # 0x37AC80
+      - [0x97C70, c, unk_37B570]
+      - [0xA2860, c, unk_386160]    # 0x386160
+      - [0xA4CD0, c, unk_3885D0]
+      - [0xB6670, c, unk_399F70]    # 0x399F70
+      - [0xB8990, c, unk_39C290]    # 0x39C290
+      - [0xBD1A0, c, stage_data]    # 0x3A0AA0: stage data accessors (points, tables)
+      - [0xBD770, c, unk_3A1070]    # 0x3A1070: quest monsters and goals; mining points (0x3A5650); quest state and objectives, player state and flags (0x3A6130, 0x3AAD20)
+      - [0xC8AA0, c, unk_3AC3A0]    # 0x3AC3A0: player action reset, per-player pad input
+      - [0xC90C0, c, unk_3AC9C0]    # 0x3AC9C0: player (skills, ...)
+      - [0xCDB00, c, gather]        # 0x3B1400: gathering points, the gathering item roll
+      - [0xCE050, c, pouch]         # 0x3B1950: the player's item pouch
+      - [0xD1380, c, unk_3B4C80]    # 0x3B4C80: the player (item use, ...)
+      - [0xDA760, c, unk_3BE060]    # 0x3BE060: segment and sphere geometry, then ObjAttach
+      - [0xE6E90, c, unk_3CA790]    # 0x3CA790: the kind 6 effect objects (Effect06_*)
+      - [0xEA0C0, c, unk_3CD9C0]    # 0x3CD9C0: the kind 0xD effect objects (Effect0D_*), level 4
+      - [0xEE930, c, unk_3D2230]    # 0x3D2230: the ground effects, then kind 0x1A (Effect1A_*)
+      - [0xEF3B0, c, movie]         # 0x3D2CB0: movie player (Sofdec wrapper)
+      - [0xF0800, c, unk_3D4100]
+      - [0xF1BB0, c, unk_3D54B0]    # 0x3D54B0: the network menu (helpers, patch loader, states)
+      - [0xFA2A0, c, unk_3DDBA0]    # 0x3DDBA0
+      - [0xFD5C0, c, unk_3E0EC0]
+      - [0x100400, c, unk_3E3D00]   # 0x3E3D00: the fishing code
+      # the 32 nops from func_003E7E00's end to vu1_microcode (0x3E7F00-0x3E7F80): with
+      # unk_3E3D00.c's last function in C they are a piece of their own
+      - { start: 0x104600, type: data, name: text_end, linker_section_order: .text }
+      # Capcom's 60 VU1 programs, the start of the overlay's data area: built from
+      # src/sub_main/vu1_microcode.vsm (tools/vu1as.py); splat's .incbin of your copy is objdiff's target
+      - [0x104680, textbin, vu1_microcode]
+      - [0x11E8C0, .data, unk_2E3940]
+      - [0x11EC70, .data, unk_2EF020]
+      - [0x11F840, .data, unk_2F6540]
+      - [0x11F870, data, access/unk_2F9D80]
+      - [0x11FA20, data, access/unk_2FB0C0]
+      - [0x1204C0, data, access/unk_2FE1F0]
+      - [0x1204F0, .data, deco_table]       # 0x403DF0: Capcom's decoration table, between ACCESS's units
+      - [0x120CC0, data, access/unk_2FF510]
+      - [0x1214B0, data, access/unk_303110]
+      - [0x1214C0, data, access/unk_303EF0]
+      - [0x121878, .data, ave_wrap]
+      - [0x121880, .data, net_tcp]
+      - [0x121AA8, .data, unk_308BC0]
+      - [0x131BE0, .data, unk_314E00]
+      - [0x134EB0, .data, unk_31E190]
+      - [0x1395B0, .data, unk_323C90]
+      - [0x139600, .data, unk_3240E0]
+      - [0x1398F0, .data, unk_328CD0]
+      - [0x1399F0, .data, combine]
+      - [0x13A720, .data, unk_331A40]
+      - [0x13B450, .data, unk_334260]
+      - [0x13EBE0, .data, unk_335040]
+      - [0x14C330, .data, unk_33B080]
+      - [0x14CDC0, .data, unk_33E620]
+      - [0x14EDB8, .data, unk_356380]
+      - [0x157728, .data, unk_361570]
+      - [0x1577E0, .data, unk_363550]
+      - [0x158FC0, .data, unk_368F10]
+      - [0x159090, .data, unk_36BE70]
+      - [0x159130, .data, unk_36E1D0]
+      - [0x15B3F0, .data, unk_376C00]
+      - [0x15D850, .data, unk_37B570]
+      - [0x165C30, .data, unk_386160]
+      - [0x166890, .data, unk_399F70]
+      - [0x167680, .data, unk_39C290]
+      - [0x167B50, .data, unk_3A1070]
+      - [0x168630, .data, unk_3B4C80]
+      - [0x181CE0, .data, unk_3BE060]
+      - [0x181EA0, .data, unk_3CA790]
+      - [0x183040, .data, unk_3CD9C0]
+      - [0x184340, .data, unk_3D2230]
+      - [0x184378, .data, unk_3D54B0]
+      - [0x184F50, .data, unk_3DDBA0]
+      - [0x1852A8, .data, unk_3E0EC0]
+      - [0x185FE0, .data, unk_3E3D00]
+      - [0x186800, .rodata, unk_2E3940]
+      - [0x186A80, .rodata, unk_2F6540]
+      - [0x186AC0, rodata, access/unk_2FB0C0]
+      - [0x186B00, rodata, access/unk_2FF510]
+      - [0x186B20, rodata, access/unk_303EF0]
+      - [0x186B50, .rodata, net_tcp]
+      - [0x186C08, .rodata, unk_308BC0]
+      - [0x187030, .rodata, unk_30EA30]
+      - [0x1891D0, .rodata, unk_314AD0]
+      - [0x1891E0, .rodata, unk_314E00]
+      - [0x189360, .rodata, unk_31E190]
+      - [0x189450, .rodata, unk_3240E0]
+      - [0x189520, .rodata, unk_331A40]
+      - [0x189540, .rodata, unk_335040]
+      - [0x189640, .rodata, unk_33B080]
+      - [0x1896B8, .rodata, unk_33E620]
+      - [0x189810, .rodata, unk_356380]
+      - [0x1AD078, .rodata, unk_361570]
+      - [0x1AD080, .rodata, unk_363550]
+      - [0x1AD0B8, .rodata, unk_368F10]
+      - [0x1AD0D0, .rodata, unk_36B5B0]
+      - [0x1AD110, .rodata, unk_36BE70]
+      - [0x1AD130, .rodata, unk_36E1D0]
+      - [0x1AD270, .rodata, unk_37B570]
+      - [0x1BC3A0, .rodata, unk_386160]
+      - [0x1BC3B0, .rodata, unk_3885D0]
+      - [0x1BC440, .rodata, unk_39C290]
+      - [0x1BC460, .rodata, unk_3A1070]
+      - [0x1BC4E0, .rodata, unk_3AC9C0]
+      - [0x1BC500, .rodata, pouch]
+      - [0x1BC530, .rodata, unk_3B4C80]
+      - [0x1C76D0, .rodata, unk_3BE060]
+      - [0x1CAD60, .rodata, unk_3CA790]
+      - [0x1CAE40, .rodata, unk_3CD9C0]
+      - [0x1CB220, .rodata, unk_3D2230]
+      - [0x1CB248, .rodata, unk_3D54B0]
+      - [0x1CCC70, .rodata, unk_3DDBA0]
+      - [0x1CCDF0, .rodata, unk_3E0EC0]
+      - [0x1CCE30, .rodata, unk_3E3D00]
+      - { type: bss, vram: 0x4B1900, name: bss }
+      - { type: .bss, vram: 0x59BF80, name: net_tcp }
+      - { type: bss, vram: 0x59C1B0, name: bss_59C1B0 }
+  - [0x1CE000]

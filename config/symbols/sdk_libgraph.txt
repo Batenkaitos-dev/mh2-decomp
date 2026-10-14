@@ -1,0 +1,12 @@
+// Symbols for the boot ELF (SLPM_662.80): Sony libgraph, "PsIIlibgraph3000" (.data 0x197F80), text 0x1126E0-0x1130A0; asm piece sdk/libgraph
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+
+// Sony libgraph
+sceGsResetGraph = 0x001126E0; // type:func
+sceGsResetPath = 0x00112880; // type:func
+sceGsSyncV = 0x001128E8; // type:func
+sceGsSyncPath = 0x00112980; // type:func
+sceGsSetDefLoadImage = 0x00112C98; // type:func
+sceGsExecLoadImage = 0x00112E80; // type:func
+sceGsSyncVCallback = 0x00113000; // type:func

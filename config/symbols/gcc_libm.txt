@@ -1,0 +1,19 @@
+// Symbols for the boot ELF (SLPM_662.80): the EE toolchain's math library (newlib libm), text 0x11F8D0-0x1246A8; asm piece gcc/libm
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// atan2 and sqrt: wrappers of __ieee754_atan2 and __ieee754_sqrt
+atan2 = 0x001245E8; // type:func
+sqrt = 0x00124600; // type:func
+
+// Round 27 (names h1) - library functions the C calls, named from the evidence
+tan = 0x00123F18; // type:func double, rem_pio2 then the one tan kernel
+atanf = 0x00123FC0; // type:func float, atan breakpoints 7/16 and 39/16
+ceilf = 0x00124250; // type:func float, rounds up (1.0 and -0.0 for small values)
+cosf = 0x00124328; // type:func float, small argument goes to __kernel_cosf (C1 0x3D2AAAAA)
+fabsf = 0x00124400; // type:func float, clears the sign bit
+floorf = 0x00124428; // type:func float, rounds down (-1.0 for small negative values)
+sinf = 0x00124500; // type:func float, small argument goes to __kernel_sinf (S1 0xBE2AAAAA)
+acosf = 0x00124618; // type:func wrapper of __ieee754_acosf (pio2_hi, pS0 constants)
+atan2f = 0x00124630; // type:func wrapper of __ieee754_atan2f (pi, pi/2 constants)
+expf = 0x00124648; // type:func wrapper of __ieee754_expf (ln2, invln2, overflow threshold)
+powf = 0x00124678; // type:func wrapper of __ieee754_powf

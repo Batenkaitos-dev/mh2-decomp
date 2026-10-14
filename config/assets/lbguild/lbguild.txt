@@ -1,0 +1,33 @@
+# lbguild.bin's .data: the guild's quests (include/lbguild.h).
+#
+# A described asset (CONTRIBUTING, "Described assets"): this file holds the
+# layout, the types and the names; the values come from the user's copy.
+# tools/asset_c.py reads build/orig/lbguild.bin with this description and
+# writes build/assets/lbguild/lbguild.c, which the build compiles in place of
+# a src/ file: the YAML's `[0x100, .data, lbguild]` piece.
+#
+#   include FILE                      the header with the types
+#   range LO HI                       the bytes the C owns
+#   root ADDR TYPE N|[]|1             an object found by its address: TYPE[N],
+#                                     TYPE[] up to the next object, or one TYPE
+#   target TYPE N|[]|1                what a pointer to TYPE points to (same forms)
+#   name ADDR NAME                    a name other than D_<ADDR>
+# A TYPE is a scalar (u8 s8 u16 s16 u32 s32 f32 char), a struct of the
+# header, or either with stars (char*, GuildQuest**).
+#
+# Every other object is found by following the pointers of the types (so the
+# description holds no counts that only the data could give); the tool checks
+# that the objects cover the range, with zeros only in the alignment padding.
+
+include lbguild.h
+range 0x8FAF00 0x924280
+
+# The table of the 14 quest lists (two NULLs after them), which the lobby
+# reads at 0x924240 (Quest_GetDiscInfo's gGuildQuestLists).
+root 0x924240 GuildQuest** 16
+name 0x924240 gGuildQuestLists
+
+target GuildQuest* []   # a quest list: up to the next object (most end with NULL)
+target GuildQuest 1     # one quest
+target char* 8          # a quest's eight texts (GuildQuest.texts)
+target char []          # a text (Shift-JIS)

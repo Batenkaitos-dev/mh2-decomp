@@ -1,0 +1,50 @@
+// Symbols for overlay 5, nethttp.bin. Format: name = 0xADDRESS; // attributes
+
+// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+nethttp_entry = 0x008FAE80; // type:func
+
+// Round 17 (anet): Capcom's HTTP front end (0x8FB130-0x8FD788, src/nethttp/unk_8FB130.c)
+Http_GetCertSize = 0x008FB130; // type:func
+Http_Init = 0x008FB150; // type:func
+Http_Term = 0x008FB250; // type:func
+HttpReq_Alloc = 0x008FB280; // type:func
+HttpReq_HasFree = 0x008FB320; // type:func
+HttpReq_AllIdle = 0x008FB380; // type:func
+HttpReq_Free = 0x008FB3D0; // type:func
+HttpReq_Step = 0x008FB400; // type:func
+HttpReq_CheckSjis = 0x008FB440; // type:func
+HttpReq_Open = 0x008FB4B0; // type:func
+HttpReq_ParseUrl = 0x008FB800; // type:func
+HttpReq_CreateClient = 0x008FB950; // type:func
+HttpReq_SetOptions = 0x008FB9E0; // type:func
+HttpReq_Connect = 0x008FC0B0; // type:func
+HttpReq_Send = 0x008FC300; // type:func
+HttpReq_ReadBody = 0x008FC5A0; // type:func
+HttpReq_CheckStatus = 0x008FC6C0; // type:func
+HttpReq_Authenticate = 0x008FCB20; // type:func
+HttpReq_Close = 0x008FCE40; // type:func
+HttpReq_Done = 0x008FCF80; // type:func
+HttpReq_Abort = 0x008FCF90; // type:func
+HttpReq_Failed = 0x008FD1B0; // type:func
+HttpLbs_Send = 0x008FD1C0; // type:func
+HttpLbs_Wait = 0x008FD480; // type:func
+HttpLbs_Receive = 0x008FD4F0; // type:func
+HttpLbs_Done = 0x008FD6A0; // type:func
+HttpLbs_Abort = 0x008FD6B0; // type:func
+HttpLbs_Failed = 0x008FD6D0; // type:func
+HttpAfs_Read = 0x008FD6E0; // type:func
+HttpAfs_Next = 0x008FD730; // type:func
+HttpAfs_Done = 0x008FD740; // type:func
+Http_LoadAfsPartition = 0x008FD750; // type:func
+Http_ReadBrdata = 0x008FD770; // type:func
+Http_ReadFile = 0x008FD780; // type:func
+gHttpReqMax = 0x0094FF98; // size:0x1
+gHttpCertSize = 0x0094FFA8; // size:0x8
+gHttpLbsReq = 0x0095AA00; // size:0x4
+gHttpReq = 0x0095AA10; // size:0x720
+
+// Round 18 (lead, nsub-h1): the libhttps option callbacks Http_SetOptions registers
+// for options 0xA and 0x17, each storing the status byte c into req->async.
+// 0x8FB420 is a function start of its own (splat had it as HttpReq_Step's padding).
+HttpReq_AsyncCb17 = 0x008FB420; // type:func
+HttpReq_AsyncCb0A = 0x008FB430; // type:func

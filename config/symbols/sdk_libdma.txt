@@ -1,0 +1,12 @@
+// Symbols for the boot ELF (SLPM_662.80): Sony libdma, "PsIIlibdma  3000" (.data 0x1977D0), text 0x103168-0x1039B0; asm piece sdk/libdma
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+
+// Sony libdma
+sceDmaGetChan = 0x001032C0; // type:func
+sceDmaReset = 0x001032E8; // type:func
+sceDmaSend = 0x001035F0; // type:func
+sceDmaSync = 0x00103890; // type:func
+
+// Round 27 (names h1) - library functions the C calls, named from the evidence
+sceDmaRecvN = 0x00103790; // type:func D_CHCR normal mode, direction to memory (DIR 0), MADR and QWC set

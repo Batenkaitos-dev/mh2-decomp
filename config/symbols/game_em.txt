@@ -1,0 +1,3223 @@
+// Symbols for overlay 3, game.bin: the monster families (src/game/em_*.c,
+// 0x736740-0x868110). Format: name = 0xADDRESS; // attributes
+//
+// Kept apart from game.txt so that the game overlay's two workers never edit
+// the same file: new names for functions and data in the families' range go
+// here, everything else in game.txt. game.yaml reads both.
+
+// Per-state functions: Em<Family>_State<G>_<SS> is the function that the family
+// group-G dispatcher (Em<Family>_RunGroup<G>) calls for state SS (hex). A function
+// several states share is named after the first; the comment above it lists them.
+
+EmDrome_SpawnEffect01 = 0x007366C0; // type:func
+EmDrome_Reset = 0x007366D0; // type:func
+EmDrome_Start = 0x00736930; // type:func
+EmDrome_Reinit = 0x00736970; // type:func
+EmDrome_EndState = 0x00736980; // type:func
+EmDrome_State0_00 = 0x007369B0; // type:func
+// states 0:01, 0:0C
+EmDrome_State0_01 = 0x007369C0; // type:func
+EmDrome_State0_02 = 0x00736A40; // type:func
+EmDrome_State0_03 = 0x00736AC0; // type:func
+EmDrome_State0_04 = 0x00736BC0; // type:func
+EmDrome_State0_05 = 0x00736C40; // type:func
+EmDrome_State0_06 = 0x00736CC0; // type:func
+// states 0:07, 0:0D
+EmDrome_State0_07 = 0x00736D40; // type:func
+// states 0:08, 0:0E
+EmDrome_State0_08 = 0x00736EB0; // type:func
+EmDrome_State0_09 = 0x00736F40; // type:func
+EmDrome_State0_0A = 0x00736FD0; // type:func
+EmDrome_State0_0B = 0x00737040; // type:func
+EmDrome_State0_0F = 0x007370B0; // type:func
+EmDrome_State0_10 = 0x00737130; // type:func
+EmDrome_State0_11 = 0x007371B0; // type:func
+EmDrome_State0_12 = 0x00737230; // type:func
+EmDrome_RunGroup0 = 0x007372B0; // type:func
+EmDrome_State1_00 = 0x00737420; // type:func
+EmDrome_State1_01 = 0x007374B0; // type:func
+EmDrome_State1_02 = 0x00737600; // type:func
+EmDrome_State1_03 = 0x00737680; // type:func
+EmDrome_State1_04 = 0x007376F0; // type:func
+EmDrome_State1_05 = 0x00737770; // type:func
+EmDrome_RunGroup1 = 0x00737800; // type:func
+EmDrome_State2_00 = 0x007378A0; // type:func
+EmDrome_State2_01 = 0x007379C0; // type:func
+EmDrome_RunGroup2 = 0x00737AE0; // type:func
+EmDrome_State3_00 = 0x00737B30; // type:func
+EmDrome_State3_01 = 0x00737C50; // type:func
+EmDrome_State3_02 = 0x00737D90; // type:func
+EmDrome_State3_03 = 0x00737FF0; // type:func
+EmDrome_State3_04 = 0x00738100; // type:func
+EmDrome_State3_05 = 0x00738390; // type:func
+// states 3:06, 3:0E
+EmDrome_State3_06 = 0x00738620; // type:func
+EmDrome_State3_07 = 0x00738720; // type:func
+EmDrome_State3_08 = 0x007387D0; // type:func
+EmDrome_State3_09 = 0x007389D0; // type:func
+EmDrome_State3_0A = 0x00738A70; // type:func
+EmDrome_State3_0B = 0x00738C90; // type:func
+EmDrome_State3_0C = 0x00738EB0; // type:func
+EmDrome_State3_0D = 0x00739140; // type:func
+EmDrome_RunGroup3 = 0x00739200; // type:func
+EmDrome_State4_00 = 0x00739330; // type:func
+EmDrome_State4_01 = 0x007393C0; // type:func
+EmDrome_State4_02 = 0x00739510; // type:func
+EmDrome_State4_03 = 0x007396A0; // type:func
+EmDrome_State4_04 = 0x00739830; // type:func
+EmDrome_State4_05 = 0x007399C0; // type:func
+EmDrome_State4_06 = 0x00739A50; // type:func
+EmDrome_State4_07 = 0x00739B40; // type:func
+EmDrome_State4_08 = 0x00739C80; // type:func
+EmDrome_RunGroup4 = 0x00739D60; // type:func
+EmDrome_State5_00_Hunted = 0x00739E30; // type:func
+EmDrome_State5_01_Hunted = 0x0073A070; // type:func
+EmDrome_State5_02_Hunted = 0x0073A2C0; // type:func
+EmDrome_State5_03_Hunted = 0x0073A510; // type:func
+EmDrome_State5_04_Appear = 0x0073A760; // type:func
+EmDrome_RunGroup5 = 0x0073AB30; // type:func
+EmDrome_State6_01_Captured = 0x0073ABE0; // type:func
+EmDrome_State6_02 = 0x0073AD60; // type:func
+EmDrome_RunGroup6 = 0x0073AFC0; // type:func
+EmDrome_State7_00 = 0x0073B010; // type:func
+EmDrome_State7_01 = 0x0073B140; // type:func
+EmDrome_State7_02 = 0x0073B2F0; // type:func
+EmDrome_State7_03 = 0x0073B340; // type:func
+EmDrome_RunGroup7 = 0x0073B390; // type:func
+EmDrome_State8_00_CarveStart = 0x0073B420; // type:func
+EmDrome_State8_01 = 0x0073B540; // type:func
+EmDrome_State8_02 = 0x0073B5E0; // type:func
+EmDrome_State8_03 = 0x0073B680; // type:func
+EmDrome_State8_98 = 0x0073B720; // type:func
+EmDrome_State8_99 = 0x0073B7C0; // type:func
+EmDrome_RunGroup8 = 0x0073B870; // type:func
+// empty: the default case of EmDrome_MotionEffects
+EmDrome_MotionEffectsDefault = 0x0073C490; // type:func
+EmDrome_MotionEffects = 0x0073C4A0; // type:func
+EmDrome_UpdateMotionEffects = 0x0073C670; // type:func
+EmDrome_TableNop = 0x0073C6C0; // type:func
+EmDrome_SetGroup0State = 0x0073C6D0; // type:func
+EmDrome_SetGroup1State = 0x0073C920; // type:func
+EmDrome_SetGroup2State = 0x0073C9C0; // type:func
+EmDrome_SetGroup3State = 0x0073C9E0; // type:func
+EmDrome_CurveNone = 0x0073CD40; // type:func
+EmDrome_CurveVelY = 0x0073CD50; // type:func
+EmDrome_CurveSpeed = 0x0073CE70; // type:func
+EmDrome_UpdateCurves = 0x0073CF90; // type:func
+EmKind1D_Init = 0x0073D060; // type:func
+EmKind1D_EndState = 0x0073D260; // type:func
+// states 0:00 (groups 0 and 2)
+EmKind1D_State0_00 = 0x0073D270; // type:func
+// groups 0 and 2
+EmKind1D_RunGroup0 = 0x0073D280; // type:func
+EmKind1D_State1_00 = 0x0073D2D0; // type:func
+EmKind1D_RunGroup1 = 0x0073D2E0; // type:func
+EmKind1D_State3_00 = 0x0073D320; // type:func
+EmKind1D_RunGroup3 = 0x0073D330; // type:func
+EmKind1D_State4_00 = 0x0073D370; // type:func
+EmKind1D_State4_01 = 0x0073D3E0; // type:func
+// groups 4, 6 and 7
+EmKind1D_RunGroup4 = 0x0073D3F0; // type:func
+// group 5 (its steps): the sound of the kind table entry, effects; entry 4 also StageObj kind 0x0E
+EmKind1D_RunGroup5 = 0x0073D440; // type:func
+EmKind1D_Update = 0x0073D580; // type:func
+EmKind1D_RunState = 0x0073D670; // type:func
+EmKind1D_UpdateMotionEffects = 0x0073D730; // type:func
+EmKind1D_TableNop = 0x0073D770; // type:func
+EmKirin_MotionSounds = 0x0073D780; // type:func
+EmKirin_Init = 0x0073E160; // type:func
+// states 0:00, 2:00
+EmKirin_State0_00 = 0x0073E720; // type:func
+// states 0:01, 2:01
+EmKirin_State0_01 = 0x0073E730; // type:func
+// states 0:02, 2:02
+EmKirin_State0_02 = 0x0073E7A0; // type:func
+// states 0:03, 2:03
+EmKirin_State0_03 = 0x0073E810; // type:func
+// states 0:04, 2:04
+EmKirin_State0_04 = 0x0073E880; // type:func
+// states 0:05, 2:05
+EmKirin_State0_05 = 0x0073E8F0; // type:func
+// states 0:06, 2:06
+EmKirin_State0_06 = 0x0073E960; // type:func
+// states 0:07, 2:07
+EmKirin_State0_07 = 0x0073E9D0; // type:func
+// states 0:08, 2:08
+EmKirin_State0_08 = 0x0073EAA0; // type:func
+// states 0:09, 2:09
+EmKirin_State0_09 = 0x0073EBB0; // type:func
+// states 0:0A, 2:0A
+EmKirin_State0_0A = 0x0073EC40; // type:func
+// states 0:0B, 2:0B
+EmKirin_State0_0B = 0x0073ECC0; // type:func
+// states 0:0C, 2:0C
+EmKirin_State0_0C = 0x0073ED30; // type:func
+EmKirin_RunGroup0 = 0x0073EE00; // type:func
+EmKirin_State1_00 = 0x0073EF20; // type:func
+EmKirin_State1_01 = 0x0073EFE0; // type:func
+// states 1:02, 1:09
+EmKirin_State1_02 = 0x0073F070; // type:func
+// states 1:03, 1:0A
+EmKirin_State1_03 = 0x0073F150; // type:func
+EmKirin_State1_04 = 0x0073F290; // type:func
+EmKirin_State1_05 = 0x0073F340; // type:func
+EmKirin_State1_06 = 0x0073F3F0; // type:func
+EmKirin_State1_07 = 0x0073F4C0; // type:func
+EmKirin_State1_08 = 0x0073F590; // type:func
+EmKirin_State1_0B = 0x0073F600; // type:func
+EmKirin_State1_0C = 0x0073F750; // type:func
+EmKirin_State1_0D = 0x0073F9E0; // type:func
+EmKirin_RunGroup1 = 0x0073FBE0; // type:func
+EmKirin_State3_00 = 0x0073FD10; // type:func
+EmKirin_State3_01 = 0x0073FD80; // type:func
+EmKirin_State3_02 = 0x0073FE30; // type:func
+// states 3:03, 3:09
+EmKirin_State3_03 = 0x0073FEE0; // type:func
+// states 3:04, 3:0A
+EmKirin_State3_04 = 0x0073FFE0; // type:func
+// states 3:05, 3:0B
+EmKirin_State3_05 = 0x007400F0; // type:func
+// states 3:06, 3:0C
+EmKirin_State3_06 = 0x00740200; // type:func
+// states 3:07, 3:0D
+EmKirin_State3_07 = 0x00740310; // type:func
+// states 3:08, 3:0E
+EmKirin_State3_08 = 0x00740420; // type:func
+EmKirin_RunGroup3 = 0x00740530; // type:func
+EmKirin_State4_00 = 0x00740670; // type:func
+EmKirin_State4_01 = 0x007406F0; // type:func
+// states 4:02, 4:05
+EmKirin_State4_02 = 0x00740770; // type:func
+EmKirin_State4_03 = 0x00740940; // type:func
+EmKirin_State4_04 = 0x00740A30; // type:func
+EmKirin_RunGroup4 = 0x00740AF0; // type:func
+EmKirin_State5_00_Hunted = 0x00740B90; // type:func
+EmKirin_RunGroup5 = 0x00740D50; // type:func
+// states 6:00, 7:00
+EmKirin_State6_00 = 0x00740D90; // type:func
+EmKirin_RunGroup6 = 0x007411B0; // type:func
+EmKirin_EndState = 0x007414E0; // type:func
+EmKirin_SpawnEffects = 0x00741510; // type:func
+EmKirin_TableNop = 0x00741550; // type:func
+// empty: the default case of EmKirin_MotionEffects
+EmKirin_MotionEffectsDefault = 0x00741560; // type:func
+EmKirin_MotionEffects = 0x00741570; // type:func
+EmKirin_UpdateMotionEffects = 0x00741B30; // type:func
+EmGaruga_MotionSounds = 0x00741B80; // type:func
+EmGaruga_SpawnEffects = 0x00744440; // type:func
+EmGaruga_Init = 0x00744480; // type:func
+EmGaruga_Start = 0x00744A00; // type:func
+EmGaruga_Reinit = 0x00744AA0; // type:func
+EmGaruga_ToIdle = 0x00744B60; // type:func
+EmGaruga_EndState = 0x00744BB0; // type:func
+EmGaruga_State4_End = 0x00744BC0; // type:func
+EmGaruga_EndState2 = 0x00744BD0; // type:func
+EmGaruga_RestartLayerMotion = 0x00744C30; // type:func
+EmGaruga_State0_00 = 0x00744CD0; // type:func
+EmGaruga_State0_01 = 0x00744DB0; // type:func
+EmGaruga_State0_02 = 0x00744E40; // type:func
+EmGaruga_State0_03 = 0x00744ED0; // type:func
+EmGaruga_State0_04 = 0x00744F50; // type:func
+EmGaruga_State0_05 = 0x00744FF0; // type:func
+EmGaruga_State0_06 = 0x00745000; // type:func
+EmGaruga_State0_07 = 0x00745010; // type:func
+EmGaruga_State0_09 = 0x00745020; // type:func
+EmGaruga_State0_0A = 0x007450D0; // type:func
+EmGaruga_State0_0B = 0x007451D0; // type:func
+EmGaruga_State0_0C = 0x007452A0; // type:func
+EmGaruga_State0_0D = 0x00745320; // type:func
+EmGaruga_State0_0E = 0x007453F0; // type:func
+EmGaruga_State0_0F = 0x00745400; // type:func
+EmGaruga_State0_10 = 0x00745530; // type:func
+EmGaruga_State0_11 = 0x00745660; // type:func
+EmGaruga_State0_12 = 0x007456E0; // type:func
+EmGaruga_State0_13 = 0x00745850; // type:func
+EmGaruga_State0_28 = 0x00745950; // type:func
+EmGaruga_State0_14 = 0x00745A10; // type:func
+EmGaruga_State0_15 = 0x00745B30; // type:func
+EmGaruga_State0_16 = 0x00745C90; // type:func
+EmGaruga_State0_17 = 0x00745D10; // type:func
+EmGaruga_State0_18 = 0x00745DE0; // type:func
+EmGaruga_State0_19 = 0x00745EB0; // type:func
+EmGaruga_State0_1A = 0x00745F30; // type:func
+EmGaruga_State0_1B = 0x00745F40; // type:func
+EmGaruga_State0_1C = 0x00746060; // type:func
+EmGaruga_State0_1D = 0x00746130; // type:func
+EmGaruga_State0_1F = 0x00746280; // type:func
+// states 0:21, 0:23, 0:25
+EmGaruga_State0_21 = 0x007463D0; // type:func
+// states 0:08, 0:22, 0:24
+EmGaruga_State0_08 = 0x00746450; // type:func
+EmGaruga_State1_00 = 0x007464D0; // type:func
+EmGaruga_State1_01 = 0x007465B0; // type:func
+EmGaruga_State1_02 = 0x007465D0; // type:func
+EmGaruga_State1_03 = 0x007466B0; // type:func
+// states 1:04, 1:08
+EmGaruga_State1_04 = 0x00746760; // type:func
+EmGaruga_State1_05 = 0x00746840; // type:func
+EmGaruga_State1_06 = 0x007468F0; // type:func
+EmGaruga_State1_07 = 0x007469D0; // type:func
+EmGaruga_State1_09 = 0x00746B00; // type:func
+EmGaruga_State1_0A = 0x00746B10; // type:func
+EmGaruga_State2_00 = 0x00746C20; // type:func
+EmGaruga_State2_01_FlyInLand = 0x00746D20; // type:func
+EmGaruga_State2_02 = 0x00747000; // type:func
+EmGaruga_State2_03 = 0x00747120; // type:func
+EmGaruga_State2_04 = 0x007473C0; // type:func
+EmGaruga_State2_05 = 0x00747530; // type:func
+EmGaruga_State2_06 = 0x007476A0; // type:func
+EmGaruga_State2_07 = 0x007478D0; // type:func
+EmGaruga_State2_08 = 0x00747A10; // type:func
+EmGaruga_State2_09 = 0x00747CD0; // type:func
+EmGaruga_State2_0A = 0x00747E80; // type:func
+EmGaruga_State2_0B = 0x00747E90; // type:func
+EmGaruga_State2_0C = 0x007480E0; // type:func
+EmGaruga_State2_0D = 0x00748240; // type:func
+EmGaruga_State2_0E = 0x00748590; // type:func
+EmGaruga_State2_0F = 0x00748660; // type:func
+EmGaruga_State2_10 = 0x00748720; // type:func
+EmGaruga_State2_11 = 0x00748840; // type:func
+EmGaruga_State2_12 = 0x00748A90; // type:func
+EmGaruga_State2_13 = 0x00748C60; // type:func
+EmGaruga_State2_14 = 0x00748E50; // type:func
+EmGaruga_State2_15 = 0x00748FA0; // type:func
+EmGaruga_State2_16 = 0x007490E0; // type:func
+EmGaruga_State2_17 = 0x00749240; // type:func
+EmGaruga_State2_18 = 0x00749480; // type:func
+EmGaruga_State3_00 = 0x007495A0; // type:func
+EmGaruga_State3_01 = 0x00749650; // type:func
+// states 3:02, 3:0C
+EmGaruga_State3_02 = 0x007496D0; // type:func
+EmGaruga_State3_03 = 0x007497C0; // type:func
+EmGaruga_State3_04 = 0x00749870; // type:func
+EmGaruga_State3_05 = 0x00749980; // type:func
+EmGaruga_State3_06 = 0x00749A50; // type:func
+EmGaruga_State3_07 = 0x00749AE0; // type:func
+EmGaruga_State3_08 = 0x00749CE0; // type:func
+EmGaruga_State3_09 = 0x00749ED0; // type:func
+EmGaruga_State3_0A = 0x0074A0C0; // type:func
+EmGaruga_State3_0B = 0x0074A310; // type:func
+EmGaruga_State3_0D = 0x0074A4E0; // type:func
+EmGaruga_State4_00 = 0x0074A560; // type:func
+EmGaruga_State4_01 = 0x0074A5F0; // type:func
+EmGaruga_State4_02 = 0x0074A680; // type:func
+EmGaruga_State4_03 = 0x0074A710; // type:func
+EmGaruga_State4_04 = 0x0074A7A0; // type:func
+EmGaruga_State4_05 = 0x0074A940; // type:func
+EmGaruga_State4_06 = 0x0074AA60; // type:func
+EmGaruga_State4_07 = 0x0074AB80; // type:func
+EmGaruga_State4_08 = 0x0074AC70; // type:func
+EmGaruga_State4_09 = 0x0074ADD0; // type:func
+EmGaruga_State4_0A = 0x0074AF60; // type:func
+EmGaruga_State4_0B = 0x0074AFF0; // type:func
+EmGaruga_State4_0C = 0x0074B0F0; // type:func
+EmGaruga_State4_0D = 0x0074B210; // type:func
+EmGaruga_State4_0E = 0x0074B330; // type:func
+EmGaruga_State4_10 = 0x0074B430; // type:func
+EmGaruga_State4_11 = 0x0074B5A0; // type:func
+EmGaruga_State4_12 = 0x0074B6C0; // type:func
+EmGaruga_State4_13 = 0x0074B7A0; // type:func
+EmGaruga_State4_14 = 0x0074B880; // type:func
+EmGaruga_State4_15 = 0x0074B8F0; // type:func
+EmGaruga_State4_16 = 0x0074BA70; // type:func
+EmGaruga_State4_17 = 0x0074BB90; // type:func
+EmGaruga_State4_18 = 0x0074BC80; // type:func
+// states 6:00, 7:00
+EmGaruga_State6_00 = 0x0074BDC0; // type:func
+// states 6:04, 7:04
+EmGaruga_State6_04_Captured = 0x0074C490; // type:func
+// states 6:05, 7:05
+EmGaruga_State6_05_Captured = 0x0074C680; // type:func
+EmGaruga_State8_00_CarveStart = 0x0074C810; // type:func
+EmGaruga_State8_01 = 0x0074CA00; // type:func
+EmGaruga_State8_02 = 0x0074CAA0; // type:func
+EmGaruga_State8_03 = 0x0074CB40; // type:func
+EmGaruga_State8_98 = 0x0074CD30; // type:func
+EmGaruga_State8_99 = 0x0074CDD0; // type:func
+EmGaruga_State5_00_Hunted = 0x0074CE80; // type:func
+EmGaruga_State5_01_Hunted = 0x0074D080; // type:func
+EmGaruga_State5_02_HuntedFalling = 0x0074D270; // type:func
+EmGaruga_State5_03_Appear = 0x0074D540; // type:func
+EmGaruga_RunGroup0 = 0x0074D5D0; // type:func
+EmGaruga_RunGroup1 = 0x0074D860; // type:func
+EmGaruga_RunGroup2 = 0x0074D950; // type:func
+EmGaruga_RunGroup3 = 0x0074DB20; // type:func
+EmGaruga_RunGroup4 = 0x0074DC40; // type:func
+EmGaruga_RunGroup5 = 0x0074DE00; // type:func
+EmGaruga_RunGroup6 = 0x0074DE90; // type:func
+EmGaruga_RunGroup8 = 0x0074DF00; // type:func
+EmGaruga_RequestOnFrame = 0x0074E940; // type:func
+// empty: the default case of EmGaruga_MotionEffects
+EmGaruga_MotionEffectsDefault = 0x0074E990; // type:func
+EmGaruga_MotionEffects = 0x0074E9A0; // type:func
+EmGaruga_UpdateMotionEffects = 0x00750970; // type:func
+EmGaruga_SpawnK14Type0B = 0x007509C0; // type:func
+EmGaruga_State3_End = 0x007509E0; // type:func
+EmGaruga_TableNop = 0x007509F0; // type:func
+EmGaruga_AllowHit8 = 0x00750A00; // type:func
+EmGaruga_SetGroup0State = 0x00750B00; // type:func
+EmGaruga_SetGroup1State = 0x00750D00; // type:func
+EmGaruga_SetGroup2State = 0x00750F30; // type:func
+EmGaruga_SetGroup3State = 0x00751220; // type:func
+EmGaruga_SetGroup4State = 0x007514E0; // type:func
+EmGaruga_MoveByVelYCurve = 0x007518C0; // type:func
+EmGaruga_StartCurves = 0x007519D0; // type:func
+EmHermitaur_MotionSounds = 0x00751DD0; // type:func
+EmHermitaur_Init = 0x00758490; // type:func
+EmHermitaur_Reinit = 0x00758840; // type:func
+// states 0:00, 0:01
+EmHermitaur_State0_00 = 0x007597C0; // type:func
+EmHermitaur_State0_02 = 0x00759830; // type:func
+// states 0:03, 0:17
+EmHermitaur_State0_03 = 0x007598A0; // type:func
+// states 0:04, 0:11, 0:12
+EmHermitaur_State0_04 = 0x007599C0; // type:func
+EmHermitaur_State0_05 = 0x00759A30; // type:func
+EmHermitaur_State0_06 = 0x00759AD0; // type:func
+EmHermitaur_State0_07 = 0x00759B40; // type:func
+// states 0:08, 0:0D, 0:0E
+EmHermitaur_State0_08 = 0x00759C10; // type:func
+// states 0:09, 0:0F, 0:10
+EmHermitaur_State0_09 = 0x00759E60; // type:func
+// states 0:0A, 0:0B, 0:0C
+EmHermitaur_State0_0A = 0x00759EE0; // type:func
+EmHermitaur_State0_13 = 0x00759F60; // type:func
+EmHermitaur_State0_14 = 0x00759FF0; // type:func
+EmHermitaur_State0_15 = 0x0075A080; // type:func
+EmHermitaur_State0_16 = 0x0075A180; // type:func
+EmHermitaur_RunGroup0 = 0x0075A200; // type:func
+// states 1:00, 1:03, 1:08, 1:09
+EmHermitaur_State1_00 = 0x0075A3D0; // type:func
+// states 1:01, 1:04
+EmHermitaur_State1_01 = 0x0075A6F0; // type:func
+// states 1:02, 1:05, 1:12, 1:13, 1:18
+EmHermitaur_State1_02 = 0x0075A950; // type:func
+// states 1:06, 1:07, 1:0A, 1:0B, 1:0C, 1:0D, 1:0E, 1:0F, 1:10, 1:11
+EmHermitaur_State1_06 = 0x0075AC90; // type:func
+// states 1:14, 1:15, 1:16, 1:17
+EmHermitaur_State1_14 = 0x0075AF90; // type:func
+EmHermitaur_RunGroup1 = 0x0075B2B0; // type:func
+EmHermitaur_State2_00 = 0x0075B4B0; // type:func
+EmHermitaur_State2_01 = 0x0075B560; // type:func
+// states 2:02, 2:0A
+EmHermitaur_State2_02 = 0x0075B690; // type:func
+EmHermitaur_State2_03 = 0x0075B880; // type:func
+EmHermitaur_State2_04 = 0x0075B910; // type:func
+EmHermitaur_State2_05 = 0x0075BA90; // type:func
+EmHermitaur_State2_06 = 0x0075BB30; // type:func
+EmHermitaur_State2_07 = 0x0075BC90; // type:func
+// states 2:08, 2:0B
+EmHermitaur_State2_08 = 0x0075BD80; // type:func
+// states 2:09, 2:0C, 2:0D, 2:0E
+EmHermitaur_State2_09 = 0x0075BE90; // type:func
+EmHermitaur_RunGroup2 = 0x0075BF50; // type:func
+EmHermitaur_State3_00 = 0x0075C080; // type:func
+// states 3:01, 3:02, 3:06
+EmHermitaur_State3_01 = 0x0075C0F0; // type:func
+EmHermitaur_State3_03 = 0x0075C220; // type:func
+// states 3:04, 3:19
+EmHermitaur_State3_04 = 0x0075C3F0; // type:func
+EmHermitaur_State3_05 = 0x0075C540; // type:func
+EmHermitaur_State3_07 = 0x0075C5D0; // type:func
+// states 3:08, 3:13
+EmHermitaur_State3_08 = 0x0075C760; // type:func
+EmHermitaur_State3_09 = 0x0075C8E0; // type:func
+// states 3:0A, 3:0B, 3:0C
+EmHermitaur_State3_0A = 0x0075C9B0; // type:func
+// states 3:0D, 3:0E
+EmHermitaur_State3_0D = 0x0075CC00; // type:func
+// states 3:0F, 3:10
+EmHermitaur_State3_0F = 0x0075CC90; // type:func
+EmHermitaur_State3_11 = 0x0075CD20; // type:func
+// states 3:12, 3:14, 3:15
+EmHermitaur_State3_12 = 0x0075CF60; // type:func
+EmHermitaur_State3_16 = 0x0075D220; // type:func
+// states 3:17, 3:18
+EmHermitaur_State3_17 = 0x0075D400; // type:func
+// states 3:1A, 3:1B
+EmHermitaur_State3_1A = 0x0075D620; // type:func
+EmHermitaur_RunGroup3 = 0x0075D740; // type:func
+EmHermitaur_State4_00 = 0x0075D950; // type:func
+// states 4:01, 4:0F, 4:10
+EmHermitaur_State4_01 = 0x0075DA10; // type:func
+// states 4:02, 4:03
+EmHermitaur_State4_02 = 0x0075DA90; // type:func
+EmHermitaur_State4_04 = 0x0075DC60; // type:func
+EmHermitaur_State4_05 = 0x0075DD50; // type:func
+EmHermitaur_State4_06 = 0x0075DE10; // type:func
+EmHermitaur_State4_07 = 0x0075DEE0; // type:func
+EmHermitaur_State4_08 = 0x0075DFB0; // type:func
+// states 4:09, 4:0A
+EmHermitaur_State4_09 = 0x0075E0F0; // type:func
+// states 4:0B, 4:0E
+EmHermitaur_State4_0B = 0x0075E2E0; // type:func
+EmHermitaur_State4_0C = 0x0075E360; // type:func
+EmHermitaur_State4_0D = 0x0075E4F0; // type:func
+EmHermitaur_RunGroup4 = 0x0075E5B0; // type:func
+EmHermitaur_State5_00_Hunted = 0x0075E700; // type:func
+EmHermitaur_State5_01 = 0x0075E950; // type:func
+EmHermitaur_RunGroup5 = 0x0075E9D0; // type:func
+EmHermitaur_State6_00 = 0x0075EA50; // type:func
+EmHermitaur_State6_01 = 0x0075EAE0; // type:func
+EmHermitaur_State6_02_DaimyoEntrance = 0x0075EAF0; // type:func
+EmHermitaur_State6_03_ShogunEntrance = 0x0075ED90; // type:func
+EmHermitaur_State6_04_Captured = 0x0075F1D0; // type:func
+EmHermitaur_RunGroup6 = 0x0075F350; // type:func
+EmHermitaur_State7_00 = 0x0075F3F0; // type:func
+EmHermitaur_RunGroup7 = 0x0075F460; // type:func
+EmHermitaur_State8_00 = 0x0075F4A0; // type:func
+EmHermitaur_State8_01 = 0x0075F5A0; // type:func
+EmHermitaur_State8_02 = 0x0075F710; // type:func
+EmHermitaur_State8_03 = 0x0075F7B0; // type:func
+EmHermitaur_State8_98 = 0x0075F920; // type:func
+EmHermitaur_State8_99 = 0x0075F9C0; // type:func
+EmHermitaur_RunGroup8 = 0x0075FA60; // type:func
+EmHermitaur_EndState = 0x007609A0; // type:func
+EmHermitaur_EndStateTo0_02 = 0x007609D0; // type:func
+EmHermitaur_EndState2 = 0x00760A00; // type:func
+EmHermitaur_EndState2To2_05 = 0x00760A30; // type:func
+EmHermitaur_SpawnEffects = 0x00760A60; // type:func
+EmHermitaur_TableNop = 0x00760AB0; // type:func
+EmHermitaur_SpawnGroundEffect = 0x00760AC0; // type:func
+// empty: the default case of EmHermitaur_MotionEffects
+EmHermitaur_MotionEffectsDefault = 0x00760B40; // type:func
+EmHermitaur_MotionEffects = 0x00760B50; // type:func
+EmHermitaur_UpdateMotionEffects = 0x00761B20; // type:func
+EmHermitaur_ScriptQuery = 0x00761B70; // type:func
+EmHermitaur_AllowHit8 = 0x00761CF0; // type:func
+EmGravios_PlaySeOnFrame = 0x00761D50; // type:func
+EmGravios_MotionSounds = 0x00761DF0; // type:func
+EmGravios_SpawnEffects = 0x00764E60; // type:func
+EmGravios_Reset = 0x00764EA0; // type:func
+EmGravios_Start = 0x00765030; // type:func
+EmGravios_Reinit = 0x007650E0; // type:func
+EmGravios_EndState = 0x007650F0; // type:func
+EmGravios_EndState2 = 0x00765120; // type:func
+EmGravios_RestartLayerMotion = 0x00765150; // type:func
+EmGravios_State0_00 = 0x007651F0; // type:func
+EmGravios_State0_01 = 0x007652D0; // type:func
+EmGravios_State0_02 = 0x00765390; // type:func
+EmGravios_State0_03 = 0x00765420; // type:func
+EmGravios_State0_04 = 0x007654E0; // type:func
+EmGravios_State0_05 = 0x00765570; // type:func
+EmGravios_State0_06 = 0x00765660; // type:func
+EmGravios_State0_07 = 0x00765730; // type:func
+EmGravios_State0_08 = 0x007657F0; // type:func
+EmGravios_State0_09 = 0x007658C0; // type:func
+EmGravios_State0_0A = 0x00765960; // type:func
+EmGravios_State0_0B = 0x00765A70; // type:func
+EmGravios_State0_0C = 0x00765B40; // type:func
+EmGravios_State0_0D = 0x00765BF0; // type:func
+EmGravios_State0_0E = 0x00765CC0; // type:func
+EmGravios_State0_0F = 0x00765DE0; // type:func
+EmGravios_State0_10 = 0x00765F30; // type:func
+EmGravios_State0_11 = 0x00766060; // type:func
+EmGravios_State0_13 = 0x007660E0; // type:func
+EmGravios_State0_12 = 0x007661B0; // type:func
+EmGravios_State0_14 = 0x00766320; // type:func
+EmGravios_State0_16 = 0x00766440; // type:func
+// states 0:17, 0:18, 0:1C
+EmGravios_State0_17 = 0x00766540; // type:func
+// states 0:19, 0:21, 0:22, 0:23
+EmGravios_State0_19 = 0x00766620; // type:func
+EmGravios_State0_1A = 0x007666A0; // type:func
+EmGravios_State0_1B = 0x007667E0; // type:func
+EmGravios_State0_1D = 0x00766900; // type:func
+EmGravios_State0_1F = 0x00766A00; // type:func
+EmGravios_State0_24 = 0x00766B00; // type:func
+// states 0:25, 0:26
+EmGravios_State0_25 = 0x00766D50; // type:func
+// states 0:27, 0:28
+EmGravios_State0_27 = 0x00766E20; // type:func
+// states 1:00, 1:0D, 1:0E
+EmGravios_State1_00 = 0x00766EA0; // type:func
+EmGravios_State1_01 = 0x00766FC0; // type:func
+EmGravios_State1_02 = 0x00766FD0; // type:func
+// states 1:03, 1:0C
+EmGravios_State1_03 = 0x00767050; // type:func
+// states 1:04, 1:08
+EmGravios_State1_04 = 0x00767130; // type:func
+EmGravios_State1_05 = 0x00767270; // type:func
+EmGravios_State1_06 = 0x00767350; // type:func
+// states 1:07, 1:09
+EmGravios_State1_07 = 0x00767430; // type:func
+EmGravios_State1_0A = 0x00767570; // type:func
+EmGravios_State1_0B = 0x007675F0; // type:func
+EmGravios_State2_00 = 0x00767650; // type:func
+EmGravios_State2_01 = 0x00767750; // type:func
+EmGravios_State2_02 = 0x00767990; // type:func
+EmGravios_State2_03 = 0x00767AB0; // type:func
+EmGravios_State2_04 = 0x00767D60; // type:func
+EmGravios_State2_05 = 0x00767ED0; // type:func
+EmGravios_State2_07 = 0x00768040; // type:func
+EmGravios_State2_0E = 0x00768180; // type:func
+EmGravios_State2_10 = 0x00768240; // type:func
+EmGravios_State2_14 = 0x00768350; // type:func
+EmGravios_State2_15 = 0x00768470; // type:func
+EmGravios_State2_17 = 0x007685B0; // type:func
+EmGravios_State3_00 = 0x007687E0; // type:func
+EmGravios_State3_01 = 0x00768890; // type:func
+EmGravios_State3_02 = 0x007689A0; // type:func
+EmGravios_State3_03 = 0x00768B60; // type:func
+// states 3:04, 3:0B
+EmGravios_State3_04 = 0x00768BF0; // type:func
+// states 3:05, 3:07, 3:0A
+EmGravios_State3_05 = 0x00768DF0; // type:func
+EmGravios_State3_06 = 0x007690E0; // type:func
+EmGravios_State3_08 = 0x00769270; // type:func
+EmGravios_State3_09 = 0x00769340; // type:func
+EmGravios_State3_0C = 0x007693D0; // type:func
+EmGravios_State4_00 = 0x007694A0; // type:func
+EmGravios_State4_01 = 0x00769530; // type:func
+EmGravios_State4_02 = 0x007695C0; // type:func
+EmGravios_State4_03 = 0x00769650; // type:func
+EmGravios_State4_04 = 0x007696E0; // type:func
+EmGravios_State4_05 = 0x00769890; // type:func
+EmGravios_State4_06 = 0x00769930; // type:func
+EmGravios_State4_07 = 0x007699D0; // type:func
+EmGravios_State4_08 = 0x00769AC0; // type:func
+EmGravios_State4_09 = 0x00769C20; // type:func
+EmGravios_State4_0A = 0x00769D80; // type:func
+EmGravios_State4_0B = 0x00769E10; // type:func
+EmGravios_State4_0C = 0x00769F00; // type:func
+// states 4:0D, 4:12, 4:17
+EmGravios_State4_0D = 0x0076A030; // type:func
+// states 4:0E, 4:16
+EmGravios_State4_0E = 0x0076A150; // type:func
+EmGravios_State4_0F = 0x0076A300; // type:func
+EmGravios_State4_10 = 0x0076A390; // type:func
+EmGravios_State4_11 = 0x0076A4E0; // type:func
+// states 4:13, 4:14
+EmGravios_State4_13 = 0x0076A550; // type:func
+EmGravios_State4_15 = 0x0076A630; // type:func
+// states 6:00, 6:01, 6:02, 6:03, 7:00, 7:01, 7:02, 7:03
+EmGravios_State6_00_Entrance = 0x0076A770; // type:func
+// states 6:04, 7:04
+EmGravios_State6_04_Captured = 0x0076AD50; // type:func
+// states 6:05, 7:05
+EmGravios_State6_05_Captured = 0x0076AEC0; // type:func
+EmGravios_State8_00 = 0x0076B050; // type:func
+EmGravios_State8_01 = 0x0076B1F0; // type:func
+EmGravios_State8_02 = 0x0076B290; // type:func
+EmGravios_State8_03 = 0x0076B330; // type:func
+EmGravios_State8_98 = 0x0076B420; // type:func
+EmGravios_State8_99 = 0x0076B4C0; // type:func
+EmGravios_State5_00_Hunted = 0x0076B570; // type:func
+EmGravios_State5_01_Hunted = 0x0076B730; // type:func
+EmGravios_State5_02_HuntedFalling = 0x0076B8F0; // type:func
+EmGravios_State5_03_Hunted = 0x0076BB60; // type:func
+EmGravios_State5_04 = 0x0076BD50; // type:func
+EmGravios_RunGroup0 = 0x0076BF00; // type:func
+EmGravios_RunGroup1 = 0x0076C1A0; // type:func
+EmGravios_RunGroup2 = 0x0076C2D0; // type:func
+EmGravios_RunGroup3 = 0x0076C430; // type:func
+EmGravios_RunGroup4 = 0x0076C540; // type:func
+EmGravios_RunGroup5 = 0x0076C700; // type:func
+EmGravios_RunGroup6 = 0x0076C7B0; // type:func
+EmGravios_RunGroup8 = 0x0076C850; // type:func
+EmGravios_RequestOnFrame = 0x0076D1D0; // type:func
+// empty: the default case of EmGravios_MotionEffects
+EmGravios_MotionEffectsDefault = 0x0076D220; // type:func
+EmGravios_MotionEffects = 0x0076D230; // type:func
+EmGravios_UpdateMotionEffects = 0x0076F150; // type:func
+EmGravios_TableNop = 0x0076F1A0; // type:func
+EmGravios_AllowHit8 = 0x0076F1B0; // type:func
+EmGravios_SetGroup0State = 0x0076F2B0; // type:func
+EmGravios_SetGroup1State = 0x0076F500; // type:func
+EmGravios_SetGroup2State = 0x0076F780; // type:func
+EmGravios_SetGroup3State = 0x0076F960; // type:func
+EmGravios_MoveByVelYCurve = 0x0076FDC0; // type:func
+EmGravios_StartCurves = 0x0076FED0; // type:func
+EmGravios_SpawnPeriodicEffect06 = 0x00770380; // type:func
+EmKind12_MotionSounds = 0x00770400; // type:func
+EmKind12_Init = 0x007704D0; // type:func
+EmKind12_State0_00 = 0x00770650; // type:func
+EmKind12_State0_01 = 0x00770660; // type:func
+EmKind12_State0_02 = 0x007706F0; // type:func
+EmKind12_RunGroup0 = 0x00770770; // type:func
+EmKind12_State1_00 = 0x007707F0; // type:func
+EmKind12_State1_01 = 0x007708A0; // type:func
+EmKind12_State1_02 = 0x00770970; // type:func
+EmKind12_State1_03 = 0x00770A60; // type:func
+EmKind12_RunGroup1 = 0x00770B30; // type:func
+EmKind12_RunGroup2 = 0x00770BC0; // type:func
+EmKind12_State3_00 = 0x00770BD0; // type:func
+EmKind12_RunGroup3 = 0x00770BE0; // type:func
+EmKind12_State4_00 = 0x00770C20; // type:func
+// groups 4 to 7
+EmKind12_RunGroup4 = 0x00770C30; // type:func
+EmKind12_Update = 0x00770C70; // type:func
+EmKind12_RunState = 0x00770CE0; // type:func
+EmKind12_MotionEffects = 0x00770DA0; // type:func
+EmKind12_UpdateMotionEffects = 0x00770F50; // type:func
+// kind 0x12 (no quest names it); handler table D_0090DE10[0x12]
+EmKind12_SpawnEffect01 = 0x00770FA0; // type:func
+EmKind12_TableNop = 0x00770FB0; // type:func
+EmVespoid_MotionSounds = 0x00770FC0; // type:func
+EmVespoid_Init = 0x00771410; // type:func
+EmVespoid_Start = 0x007715C0; // type:func
+EmVespoid_Reinit = 0x00771600; // type:func
+EmVespoid_EndState = 0x00771A50; // type:func
+EmVespoid_EndState2 = 0x00771A70; // type:func
+EmVespoid_State0_00 = 0x00771A90; // type:func
+EmVespoid_State0_01 = 0x00771AA0; // type:func
+EmVespoid_State0_02 = 0x00771B40; // type:func
+EmVespoid_State0_03 = 0x00771BD0; // type:func
+EmVespoid_State0_04 = 0x00771D20; // type:func
+EmVespoid_RunGroup0 = 0x00771DC0; // type:func
+EmVespoid_State1_00 = 0x00771E70; // type:func
+EmVespoid_State1_01 = 0x00771F40; // type:func
+EmVespoid_State1_02 = 0x00771FF0; // type:func
+EmVespoid_RunGroup1 = 0x00772100; // type:func
+EmVespoid_State2_00 = 0x00772170; // type:func
+// states 2:01, 2:07
+EmVespoid_State2_01 = 0x00772260; // type:func
+EmVespoid_State2_02 = 0x007723B0; // type:func
+EmVespoid_State2_03 = 0x007724F0; // type:func
+EmVespoid_State2_04 = 0x00772600; // type:func
+EmVespoid_State2_05 = 0x00772790; // type:func
+EmVespoid_State2_06 = 0x00772900; // type:func
+EmVespoid_State2_08 = 0x00772A20; // type:func
+EmVespoid_State2_09 = 0x00772CF0; // type:func
+EmVespoid_RunGroup2 = 0x00772DD0; // type:func
+EmVespoid_State3_00 = 0x00772EB0; // type:func
+EmVespoid_State3_01 = 0x00772FA0; // type:func
+EmVespoid_State3_02 = 0x00773150; // type:func
+EmVespoid_State3_03 = 0x00773290; // type:func
+EmVespoid_State3_04 = 0x00773360; // type:func
+EmVespoid_RunGroup3 = 0x00773510; // type:func
+EmVespoid_State4_00 = 0x007735B0; // type:func
+EmVespoid_State4_01 = 0x00773640; // type:func
+EmVespoid_State4_02 = 0x00773770; // type:func
+EmVespoid_State4_03 = 0x007738F0; // type:func
+EmVespoid_State4_04 = 0x00773980; // type:func
+EmVespoid_State4_05 = 0x00773B30; // type:func
+EmVespoid_RunGroup4 = 0x00773C40; // type:func
+EmVespoid_State5_00_Hunted = 0x00773CE0; // type:func
+EmVespoid_State5_01_HuntedFalling = 0x00773E40; // type:func
+EmVespoid_State5_02 = 0x00774080; // type:func
+EmVespoid_RunGroup5 = 0x00774140; // type:func
+EmVespoid_State6_00 = 0x007741C0; // type:func
+EmVespoid_State6_01 = 0x00774240; // type:func
+EmVespoid_RunGroup6 = 0x007742C0; // type:func
+EmVespoid_State7_00 = 0x00774310; // type:func
+EmVespoid_RunGroup7 = 0x00774480; // type:func
+EmVespoid_MotionEffects = 0x00774800; // type:func
+EmVespoid_UpdateMotionEffects = 0x007748A0; // type:func
+EmVespoid_SpawnEffect01 = 0x007748F0; // type:func
+EmVespoid_TableNop = 0x00774900; // type:func
+EmVespoid_CurveNone = 0x00774A00; // type:func
+EmVespoid_CurveVelY = 0x00774A10; // type:func
+EmVespoid_CurveSpeed = 0x00774B10; // type:func
+EmVespoid_UpdateCurves = 0x00774C10; // type:func
+EmVespoid_MoveByVelocity = 0x00774CE0; // type:func
+EmKutku_MotionSounds = 0x00774D80; // type:func
+EmKutku_SpawnEffects = 0x00777C40; // type:func
+EmKutku_Init = 0x00777C80; // type:func
+EmKutku_Start = 0x00778230; // type:func
+EmKutku_Reinit = 0x00778270; // type:func
+EmKutku_ToIdle = 0x00778280; // type:func
+EmKutku_EndState = 0x007782D0; // type:func
+EmKutku_EndStateOrState3_1E = 0x007782E0; // type:func
+EmKutku_EndState2 = 0x007783C0; // type:func
+EmKutku_AddMinePoint = 0x00778430; // type:func
+EmKutku_StealItem = 0x007784B0; // type:func
+EmKutku_RestartLayerMotion = 0x00778650; // type:func
+EmKutku_State0_00 = 0x007786F0; // type:func
+EmKutku_State0_01 = 0x007787D0; // type:func
+EmKutku_State0_02 = 0x00778860; // type:func
+EmKutku_State0_03 = 0x007788F0; // type:func
+EmKutku_State0_04 = 0x00778970; // type:func
+EmKutku_State0_05 = 0x00778A10; // type:func
+EmKutku_State0_06 = 0x00778B00; // type:func
+EmKutku_State0_07 = 0x00778BD0; // type:func
+EmKutku_State0_09 = 0x00778C70; // type:func
+EmKutku_State0_0A = 0x00778D20; // type:func
+EmKutku_State0_0B = 0x00778E20; // type:func
+EmKutku_State0_0C = 0x00778EF0; // type:func
+EmKutku_State0_0D = 0x00778F70; // type:func
+EmKutku_State0_0E = 0x00779040; // type:func
+EmKutku_State0_0F = 0x007793E0; // type:func
+EmKutku_State0_10 = 0x00779510; // type:func
+EmKutku_State0_11 = 0x00779640; // type:func
+EmKutku_State0_12 = 0x007796C0; // type:func
+EmKutku_State0_13 = 0x007798B0; // type:func
+EmKutku_State0_28 = 0x007799B0; // type:func
+EmKutku_State0_14 = 0x00779A70; // type:func
+EmKutku_State0_15 = 0x00779B90; // type:func
+EmKutku_State0_16 = 0x00779D70; // type:func
+EmKutku_State0_17 = 0x00779DF0; // type:func
+EmKutku_State0_18 = 0x00779EC0; // type:func
+EmKutku_State0_19 = 0x00779F90; // type:func
+EmKutku_State0_1A = 0x0077A010; // type:func
+EmKutku_State0_1B = 0x0077A150; // type:func
+EmKutku_State0_1C = 0x0077A270; // type:func
+EmKutku_State0_1D = 0x0077A340; // type:func
+EmKutku_State0_1F = 0x0077A490; // type:func
+// states 0:21, 0:23, 0:25
+EmKutku_State0_21 = 0x0077A5E0; // type:func
+// states 0:08, 0:22, 0:24
+EmKutku_State0_08 = 0x0077A660; // type:func
+EmKutku_State1_00 = 0x0077A6E0; // type:func
+EmKutku_State1_01 = 0x0077A7C0; // type:func
+EmKutku_State1_02 = 0x0077A7E0; // type:func
+EmKutku_State1_03 = 0x0077A8C0; // type:func
+// states 1:04, 1:08
+EmKutku_State1_04 = 0x0077A970; // type:func
+EmKutku_State1_05 = 0x0077AA50; // type:func
+EmKutku_State1_06 = 0x0077AB00; // type:func
+EmKutku_State1_07 = 0x0077ABB0; // type:func
+EmKutku_State1_09 = 0x0077ACE0; // type:func
+EmKutku_State1_0A = 0x0077ACF0; // type:func
+EmKutku_State2_00 = 0x0077ADD0; // type:func
+EmKutku_State2_01_FlyInLand = 0x0077AED0; // type:func
+EmKutku_State2_02 = 0x0077B1C0; // type:func
+EmKutku_State2_03 = 0x0077B2E0; // type:func
+EmKutku_State2_04 = 0x0077B590; // type:func
+EmKutku_State2_05 = 0x0077B700; // type:func
+EmKutku_State2_06 = 0x0077B870; // type:func
+EmKutku_State2_07 = 0x0077BAA0; // type:func
+EmKutku_State2_08 = 0x0077BBE0; // type:func
+EmKutku_State2_09 = 0x0077BEC0; // type:func
+EmKutku_State2_0A = 0x0077C070; // type:func
+EmKutku_State2_0B = 0x0077C080; // type:func
+EmKutku_State2_0C = 0x0077C2D0; // type:func
+EmKutku_State2_0D = 0x0077C430; // type:func
+EmKutku_State2_0E = 0x0077C780; // type:func
+EmKutku_State2_0F = 0x0077C850; // type:func
+EmKutku_State2_10 = 0x0077C910; // type:func
+EmKutku_State2_11 = 0x0077CA30; // type:func
+EmKutku_State2_12 = 0x0077CC80; // type:func
+EmKutku_State2_13 = 0x0077CE50; // type:func
+EmKutku_State2_14 = 0x0077D040; // type:func
+EmKutku_State2_15 = 0x0077D190; // type:func
+EmKutku_State2_16 = 0x0077D2D0; // type:func
+EmKutku_State2_17 = 0x0077D430; // type:func
+EmKutku_State2_18 = 0x0077D670; // type:func
+EmKutku_State3_00 = 0x0077D790; // type:func
+EmKutku_State3_02 = 0x0077D840; // type:func
+EmKutku_State3_03 = 0x0077DA90; // type:func
+EmKutku_State3_04 = 0x0077DB10; // type:func
+EmKutku_State3_06 = 0x0077DC30; // type:func
+// states 3:07, 3:20
+EmKutku_State3_07 = 0x0077DD20; // type:func
+EmKutku_State3_08_SwoopThenLeave = 0x0077DDC0; // type:func
+EmKutku_State3_09 = 0x0077E740; // type:func
+EmKutku_State3_0A = 0x0077E840; // type:func
+EmKutku_State3_0B_Steal = 0x0077E8F0; // type:func
+EmKutku_State3_12 = 0x0077EA20; // type:func
+EmKutku_State3_15_SwoopThenLand = 0x0077EB30; // type:func
+// states 3:17, 3:18, 3:19, 3:1A
+EmKutku_State3_17 = 0x0077F3F0; // type:func
+EmKutku_State3_1B = 0x0077F5E0; // type:func
+EmKutku_State3_1C = 0x0077F6B0; // type:func
+EmKutku_State3_1D = 0x0077F780; // type:func
+EmKutku_State3_1E = 0x0077F820; // type:func
+EmKutku_State3_1F = 0x0077F990; // type:func
+EmKutku_State4_00 = 0x0077FA20; // type:func
+EmKutku_State4_01 = 0x0077FAB0; // type:func
+EmKutku_State4_02 = 0x0077FB40; // type:func
+EmKutku_State4_03 = 0x0077FBD0; // type:func
+EmKutku_State4_04 = 0x0077FC60; // type:func
+EmKutku_State4_05 = 0x0077FC70; // type:func
+EmKutku_State4_06 = 0x0077FD90; // type:func
+EmKutku_State4_07 = 0x0077FEB0; // type:func
+EmKutku_State4_08 = 0x0077FFA0; // type:func
+EmKutku_State4_09 = 0x00780100; // type:func
+EmKutku_State4_0A = 0x00780290; // type:func
+EmKutku_State4_0B = 0x00780320; // type:func
+EmKutku_State4_0C = 0x00780420; // type:func
+EmKutku_State4_0D = 0x00780540; // type:func
+EmKutku_State4_0E = 0x00780660; // type:func
+EmKutku_State4_0F = 0x00780760; // type:func
+EmKutku_State4_10 = 0x00780840; // type:func
+EmKutku_State4_11 = 0x00780910; // type:func
+EmKutku_State4_12 = 0x00780A30; // type:func
+EmKutku_State4_13 = 0x00780B10; // type:func
+EmKutku_State4_14 = 0x00780BF0; // type:func
+EmKutku_State4_15 = 0x00780D20; // type:func
+EmKutku_State4_16 = 0x00780EA0; // type:func
+EmKutku_State4_17 = 0x00780FC0; // type:func
+EmKutku_State4_18 = 0x007810B0; // type:func
+EmKutku_State4_19_FeignDeath = 0x007811F0; // type:func
+// states 6:00, 7:00
+EmKutku_State6_00 = 0x00781340; // type:func
+// states 6:04, 7:04
+EmKutku_State6_04_Captured = 0x00781860; // type:func
+// states 6:05, 7:05
+EmKutku_State6_05_Captured = 0x00781A50; // type:func
+EmKutku_State8_00_CarveStart = 0x00781BE0; // type:func
+EmKutku_State8_01 = 0x00781DD0; // type:func
+EmKutku_State8_02 = 0x00781F50; // type:func
+EmKutku_State8_03 = 0x007820A0; // type:func
+EmKutku_State8_98 = 0x007821F0; // type:func
+EmKutku_State8_99 = 0x00782290; // type:func
+EmKutku_State5_00_Hunted = 0x00782340; // type:func
+EmKutku_State5_01_Hunted = 0x00782540; // type:func
+EmKutku_State5_02_HuntedFalling = 0x00782730; // type:func
+EmKutku_State5_03_Appear = 0x00782A00; // type:func
+EmKutku_RunGroup0 = 0x00782B50; // type:func
+EmKutku_RunGroup1 = 0x00782DE0; // type:func
+EmKutku_RunGroup2 = 0x00782ED0; // type:func
+EmKutku_RunGroup3 = 0x007830A0; // type:func
+EmKutku_RunGroup4 = 0x00783300; // type:func
+EmKutku_RunGroup5 = 0x007834E0; // type:func
+EmKutku_RunGroup6 = 0x00783570; // type:func
+EmKutku_RunGroup8 = 0x007835E0; // type:func
+EmKutku_RequestOnFrame = 0x00784430; // type:func
+// empty: the default case of EmKutku_MotionEffects
+EmKutku_MotionEffectsDefault = 0x00784480; // type:func
+EmKutku_MotionEffects = 0x00784490; // type:func
+EmKutku_UpdateMotionEffects = 0x00786AB0; // type:func
+EmKutku_SpawnK14Type0B = 0x00786B00; // type:func
+EmKutku_SpawnK14Type0AEvery5 = 0x00786B20; // type:func
+EmKutku_ReachedTarget = 0x00786B70; // type:func
+EmKutku_State3_End = 0x00786C20; // type:func
+EmKutku_EndSwoop = 0x00786C30; // type:func
+EmKutku_SetMeshSetAlpha = 0x00786C40; // type:func
+EmKutku_TableNop = 0x00786EE0; // type:func
+EmKutku_SetGroup0State = 0x00786EF0; // type:func
+EmKutku_SetGroup1State = 0x007870F0; // type:func
+EmKutku_SetGroup2State = 0x00787430; // type:func
+EmKutku_SetGroup3State = 0x00787770; // type:func
+EmKutku_SetGroup4State = 0x00787990; // type:func
+EmKutku_SetEscapePoint = 0x00787D20; // type:func
+EmKutku_StepPitch = 0x00787EA0; // type:func
+EmKutku_MoveByVelYCurve = 0x00788040; // type:func
+EmKutku_StartCurves = 0x00788150; // type:func
+EmPlesioth_MotionSounds = 0x00788550; // type:func
+EmPlesioth_SpawnEffects = 0x00789FF0; // type:func
+EmPlesioth_Reset = 0x0078A030; // type:func
+EmPlesioth_Start = 0x0078A190; // type:func
+EmPlesioth_Reinit = 0x0078A270; // type:func
+EmPlesioth_EndState = 0x0078A280; // type:func
+EmPlesioth_EndState2 = 0x0078A2B0; // type:func
+EmPlesioth_SetMode = 0x0078A2E0; // type:func
+EmPlesioth_State0_00 = 0x0078A430; // type:func
+EmPlesioth_State0_01 = 0x0078A510; // type:func
+EmPlesioth_State0_02 = 0x0078A600; // type:func
+// states 0:04, 0:09
+EmPlesioth_State0_04 = 0x0078A6C0; // type:func
+// states 0:05, 0:29
+EmPlesioth_State0_05 = 0x0078A810; // type:func
+// states 0:06, 0:0D, 0:2A
+EmPlesioth_State0_06 = 0x0078A990; // type:func
+// states 0:07, 0:14, 0:15, 0:16
+EmPlesioth_State0_07 = 0x0078AA60; // type:func
+EmPlesioth_State0_08 = 0x0078AAF0; // type:func
+EmPlesioth_State0_0A = 0x0078AC40; // type:func
+EmPlesioth_State0_0C = 0x0078AD90; // type:func
+EmPlesioth_State0_0E = 0x0078AEB0; // type:func
+// states 0:0F, 0:11
+EmPlesioth_State0_0F = 0x0078B010; // type:func
+EmPlesioth_State0_10 = 0x0078B0E0; // type:func
+EmPlesioth_State0_12 = 0x0078B230; // type:func
+EmPlesioth_State0_13 = 0x0078B390; // type:func
+EmPlesioth_State1_00 = 0x0078B460; // type:func
+EmPlesioth_State1_01 = 0x0078B540; // type:func
+EmPlesioth_State1_02 = 0x0078B660; // type:func
+EmPlesioth_State1_03 = 0x0078B710; // type:func
+// states 2:00, 2:1B
+EmPlesioth_State2_00 = 0x0078B7F0; // type:func
+EmPlesioth_State2_01 = 0x0078B890; // type:func
+EmPlesioth_State2_02 = 0x0078B940; // type:func
+EmPlesioth_State2_03 = 0x0078B950; // type:func
+EmPlesioth_State2_04 = 0x0078B9F0; // type:func
+EmPlesioth_State2_05 = 0x0078BBB0; // type:func
+EmPlesioth_State2_06 = 0x0078BD00; // type:func
+EmPlesioth_State2_07 = 0x0078BDB0; // type:func
+EmPlesioth_State2_08 = 0x0078BF00; // type:func
+EmPlesioth_State2_09 = 0x0078C040; // type:func
+EmPlesioth_State2_0A = 0x0078C110; // type:func
+EmPlesioth_State2_0B = 0x0078C300; // type:func
+EmPlesioth_State2_0C = 0x0078C4F0; // type:func
+EmPlesioth_State2_0D = 0x0078C5F0; // type:func
+EmPlesioth_State2_0E = 0x0078C6F0; // type:func
+EmPlesioth_State2_0F = 0x0078C9D0; // type:func
+// states 2:10, 2:1A
+EmPlesioth_State2_10 = 0x0078CAA0; // type:func
+EmPlesioth_State2_11 = 0x0078CE50; // type:func
+EmPlesioth_State2_12 = 0x0078D040; // type:func
+EmPlesioth_State2_13 = 0x0078D340; // type:func
+EmPlesioth_State2_14 = 0x0078D660; // type:func
+EmPlesioth_State2_15 = 0x0078D960; // type:func
+EmPlesioth_State2_16 = 0x0078D9F0; // type:func
+EmPlesioth_State2_17 = 0x0078DA00; // type:func
+// states 2:18, 2:19
+EmPlesioth_State2_18 = 0x0078DB10; // type:func
+EmPlesioth_State3_00 = 0x0078DBC0; // type:func
+EmPlesioth_State3_01 = 0x0078DC50; // type:func
+EmPlesioth_State3_02 = 0x0078DD40; // type:func
+EmPlesioth_State3_03 = 0x0078DE30; // type:func
+EmPlesioth_State3_04 = 0x0078DF50; // type:func
+EmPlesioth_State3_05 = 0x0078E070; // type:func
+EmPlesioth_State3_06 = 0x0078E190; // type:func
+EmPlesioth_State3_07 = 0x0078E480; // type:func
+EmPlesioth_State4_00 = 0x0078E510; // type:func
+EmPlesioth_State4_01 = 0x0078E5F0; // type:func
+EmPlesioth_State4_02 = 0x0078E680; // type:func
+EmPlesioth_State4_03 = 0x0078E710; // type:func
+EmPlesioth_State4_04 = 0x0078E7A0; // type:func
+// states 4:05, 4:17, 4:19, 4:1A
+EmPlesioth_State4_05 = 0x0078E8B0; // type:func
+EmPlesioth_State4_06 = 0x0078EB80; // type:func
+EmPlesioth_State4_07 = 0x0078ED20; // type:func
+// states 4:08, 4:1B
+EmPlesioth_State4_08 = 0x0078EE90; // type:func
+EmPlesioth_State4_09 = 0x0078EFC0; // type:func
+EmPlesioth_State4_0A = 0x0078F170; // type:func
+EmPlesioth_State4_0B = 0x0078F200; // type:func
+EmPlesioth_State4_0C = 0x0078F300; // type:func
+EmPlesioth_State4_0D = 0x0078F420; // type:func
+// states 4:0E, 4:1C
+EmPlesioth_State4_0E = 0x0078F550; // type:func
+EmPlesioth_State4_0F = 0x0078F720; // type:func
+EmPlesioth_State4_10 = 0x0078FA80; // type:func
+EmPlesioth_State4_11 = 0x0078FB70; // type:func
+EmPlesioth_State4_12 = 0x0078FDD0; // type:func
+// states 4:13, 4:14
+EmPlesioth_State4_13 = 0x00790020; // type:func
+EmPlesioth_State4_15 = 0x00790100; // type:func
+EmPlesioth_State4_16 = 0x007901A0; // type:func
+EmPlesioth_State4_18 = 0x007904A0; // type:func
+// states 6:00, 7:00
+EmPlesioth_State6_00_Captured = 0x007905E0; // type:func
+// states 6:01, 7:01
+EmPlesioth_State6_01_Entrance = 0x007907B0; // type:func
+// states 6:02, 7:02
+EmPlesioth_State6_02_Captured = 0x007910E0; // type:func
+EmPlesioth_State5_00_Hunted = 0x00791270; // type:func
+EmPlesioth_State5_01_Hunted = 0x00791420; // type:func
+EmPlesioth_State5_02_HuntedFalling = 0x007915B0; // type:func
+EmPlesioth_State5_03_Hunted = 0x007919B0; // type:func
+EmPlesioth_RunGroup0 = 0x00791B90; // type:func
+EmPlesioth_RunGroup1 = 0x00791E00; // type:func
+EmPlesioth_RunGroup2 = 0x00791E90; // type:func
+EmPlesioth_RunGroup3 = 0x00792090; // type:func
+EmPlesioth_RunGroup4 = 0x00792150; // type:func
+EmPlesioth_RunGroup5 = 0x00792360; // type:func
+EmPlesioth_RunGroup6 = 0x007923F0; // type:func
+EmPlesioth_RequestOnFrame = 0x00793260; // type:func
+// empty: the default case of EmPlesioth_MotionEffects
+EmPlesioth_MotionEffectsDefault = 0x007932B0; // type:func
+EmPlesioth_MotionEffects = 0x007932C0; // type:func
+EmPlesioth_UpdateFinFold = 0x00794930; // type:func
+EmPlesioth_UpdateFinWave = 0x00794B00; // type:func
+EmPlesioth_UpdateFins = 0x00794E60; // type:func
+EmPlesioth_UpdateMotionEffects = 0x00794EC0; // type:func
+EmPlesioth_SetFinMode = 0x00794F40; // type:func
+EmPlesioth_SpawnK14Type0B = 0x00795000; // type:func
+// func_3E3D10 effect 2 at the surface height unk730 (every 4 frames)
+EmPlesioth_SpawnSurfaceEffect2 = 0x00795020; // type:func
+EmPlesioth_SpawnSurfaceEffect5 = 0x007950E0; // type:func
+EmPlesioth_SpawnSurfaceEffect4 = 0x00795170; // type:func
+EmPlesioth_TableNop = 0x00795210; // type:func
+EmPlesioth_SetGroup0State = 0x00795220; // type:func
+EmPlesioth_SetGroup1State = 0x007953C0; // type:func
+EmPlesioth_SetGroup2State = 0x007955C0; // type:func
+EmPlesioth_SetGroup3State = 0x00795920; // type:func
+EmPlesioth_CurveNone = 0x00795D40; // type:func
+EmPlesioth_CurveVelY = 0x00795D50; // type:func
+EmPlesioth_CurveSpeed = 0x00795E70; // type:func
+EmPlesioth_UpdateCurves = 0x00795F70; // type:func
+EmPlesioth_NextAreaPoint = 0x00796040; // type:func
+EmKind0A_MotionSounds = 0x007961E0; // type:func
+EmKind0A_AdjustItem = 0x007969D0; // type:func
+EmKind0A_SetMessage = 0x00796A40; // type:func
+EmKind0A_IsPlayerNear = 0x00796B20; // type:func
+EmKind0A_ShowMessage = 0x00796BF0; // type:func
+EmKind0A_GiveRandomItem = 0x00796D10; // type:func
+EmKind0A_Trade = 0x00796FA0; // type:func
+EmKind0A_Init = 0x00797F90; // type:func
+EmKind0A_TurnToYaw = 0x00798240; // type:func
+EmKind0A_State0_00 = 0x007982F0; // type:func
+EmKind0A_State0_01 = 0x00798490; // type:func
+EmKind0A_State0_02 = 0x00798570; // type:func
+EmKind0A_State0_03 = 0x00798700; // type:func
+EmKind0A_State0_04 = 0x007989D0; // type:func
+// states 0:05, 0:07, 0:08
+EmKind0A_State0_05 = 0x00798A90; // type:func
+EmKind0A_State0_06 = 0x00798BF0; // type:func
+EmKind0A_State0_09 = 0x00798D80; // type:func
+EmKind0A_State0_0A = 0x00798E90; // type:func
+EmKind0A_State0_0B = 0x00798FE0; // type:func
+// every group
+EmKind0A_RunGroup0 = 0x007990C0; // type:func
+EmKind0A_Update = 0x007991D0; // type:func
+EmKind0A_RunState = 0x00799220; // type:func
+EmKind0A_MotionEffects = 0x007992E0; // type:func
+EmKind0A_UpdateMotionEffects = 0x00799300; // type:func
+// kind 0xA (no quest names it): trades items with the player (Pouch_*); handler table D_0090DE10[0xA]
+EmKind0A_SpawnEffect01 = 0x00799350; // type:func
+// empty handler table entry
+EmKind0A_TableNop = 0x00799360; // type:func
+EmApceros_PlaySeOnFrame = 0x00799370; // type:func
+EmApceros_MotionSounds = 0x00799490; // type:func
+EmApceros_Init = 0x0079A130; // type:func
+EmApceros_Start = 0x0079A350; // type:func
+EmApceros_Reinit = 0x0079A390; // type:func
+EmApceros_EndState = 0x0079A520; // type:func
+// empty: all that EmApceros_RunGroup2 does
+EmApceros_Group2None = 0x0079A750; // type:func
+EmApceros_State0_01 = 0x0079A760; // type:func
+EmApceros_State0_02 = 0x0079A7E0; // type:func
+EmApceros_State0_03 = 0x0079A940; // type:func
+EmApceros_State0_04 = 0x0079A9E0; // type:func
+EmApceros_State0_05 = 0x0079AAA0; // type:func
+EmApceros_State0_06 = 0x0079AB30; // type:func
+EmApceros_State0_07 = 0x0079ABA0; // type:func
+EmApceros_State0_08 = 0x0079AC10; // type:func
+EmApceros_State0_09 = 0x0079ADB0; // type:func
+EmApceros_State0_0A = 0x0079AE50; // type:func
+EmApceros_State0_0B = 0x0079AEC0; // type:func
+EmApceros_State0_0C = 0x0079AF30; // type:func
+EmApceros_State0_0D = 0x0079B030; // type:func
+EmApceros_RunGroup0 = 0x0079B0A0; // type:func
+EmApceros_RunGroup2 = 0x0079B1C0; // type:func
+EmApceros_State1_00 = 0x0079B1D0; // type:func
+EmApceros_State1_01 = 0x0079B320; // type:func
+EmApceros_State1_02 = 0x0079B730; // type:func
+EmApceros_State1_03 = 0x0079B820; // type:func
+EmApceros_State1_04 = 0x0079B910; // type:func
+EmApceros_State1_05 = 0x0079BA90; // type:func
+EmApceros_State1_06 = 0x0079BBB0; // type:func
+EmApceros_State1_07 = 0x0079BCF0; // type:func
+EmApceros_State1_08 = 0x0079BE60; // type:func
+EmApceros_State1_09 = 0x0079BF60; // type:func
+EmApceros_State1_0A = 0x0079BFA0; // type:func
+EmApceros_RunGroup1 = 0x0079C030; // type:func
+EmApceros_State3_00 = 0x0079C120; // type:func
+EmApceros_State3_01 = 0x0079C190; // type:func
+EmApceros_State3_02 = 0x0079C250; // type:func
+EmApceros_State3_03 = 0x0079C300; // type:func
+EmApceros_State3_04 = 0x0079C370; // type:func
+EmApceros_RunGroup3 = 0x0079C420; // type:func
+EmApceros_State4_00 = 0x0079C4C0; // type:func
+EmApceros_State4_01 = 0x0079C570; // type:func
+EmApceros_State4_02 = 0x0079C6A0; // type:func
+// states 4:03, 4:04
+EmApceros_State4_03 = 0x0079C7E0; // type:func
+EmApceros_State4_05 = 0x0079CB60; // type:func
+EmApceros_State4_06 = 0x0079CD20; // type:func
+EmApceros_RunGroup4 = 0x0079CFE0; // type:func
+// states 5:00, 5:01
+EmApceros_State5_00_Hunted = 0x0079D090; // type:func
+EmApceros_State5_02_Hunted = 0x0079D600; // type:func
+EmApceros_State5_03 = 0x0079D710; // type:func
+EmApceros_RunGroup5 = 0x0079D790; // type:func
+EmApceros_SpawnEffect02AtBone2 = 0x0079D820; // type:func
+EmApceros_State6_00 = 0x0079DA10; // type:func
+EmApceros_State6_01 = 0x0079DAB0; // type:func
+EmApceros_State6_02 = 0x0079DC30; // type:func
+EmApceros_State6_03 = 0x0079DD50; // type:func
+EmApceros_State6_04 = 0x0079DEA0; // type:func
+EmApceros_State6_05 = 0x0079DF30; // type:func
+EmApceros_State6_06 = 0x0079DFD0; // type:func
+EmApceros_RunGroup6 = 0x0079E060; // type:func
+EmApceros_State7_00 = 0x0079E110; // type:func
+EmApceros_State7_01 = 0x0079E1E0; // type:func
+EmApceros_RunGroup7 = 0x0079E2B0; // type:func
+EmApceros_MotionEffects = 0x0079EA80; // type:func
+EmApceros_UpdateMotionEffects = 0x0079EF70; // type:func
+EmApceros_SpawnEffect01 = 0x0079EFC0; // type:func
+EmApceros_TableNop = 0x0079EFD0; // type:func
+EmApceros_ScriptQuery = 0x0079EFE0; // type:func
+EmDiablos_MotionSounds = 0x0079F1A0; // type:func
+EmDiablos_SpawnEffects = 0x007A1660; // type:func
+EmDiablos_Init = 0x007A16A0; // type:func
+EmDiablos_Start = 0x007A1850; // type:func
+EmDiablos_Reinit = 0x007A1890; // type:func
+EmDiablos_EndState = 0x007A18A0; // type:func
+EmDiablos_EndState2 = 0x007A18D0; // type:func
+EmDiablos_SetUnderground = 0x007A1900; // type:func
+EmDiablos_RestartLayerMotion = 0x007A1950; // type:func
+EmDiablos_State0_00 = 0x007A19F0; // type:func
+EmDiablos_State0_01 = 0x007A1AD0; // type:func
+EmDiablos_State0_02 = 0x007A1B60; // type:func
+EmDiablos_State0_03 = 0x007A1D50; // type:func
+EmDiablos_State0_04 = 0x007A1DF0; // type:func
+EmDiablos_State0_05 = 0x007A1E90; // type:func
+EmDiablos_State0_06 = 0x007A1F80; // type:func
+EmDiablos_State0_07 = 0x007A2050; // type:func
+EmDiablos_State0_08 = 0x007A20F0; // type:func
+EmDiablos_State0_09 = 0x007A2100; // type:func
+EmDiablos_State0_0A = 0x007A21A0; // type:func
+EmDiablos_State0_0B = 0x007A22B0; // type:func
+EmDiablos_State0_0C = 0x007A2380; // type:func
+EmDiablos_State0_0D = 0x007A2390; // type:func
+EmDiablos_State0_0E = 0x007A2460; // type:func
+EmDiablos_State0_0F = 0x007A2470; // type:func
+EmDiablos_State0_10 = 0x007A25A0; // type:func
+// states 0:11, 0:24, 0:25
+EmDiablos_State0_11 = 0x007A26D0; // type:func
+EmDiablos_State0_12 = 0x007A2750; // type:func
+EmDiablos_State0_13 = 0x007A28C0; // type:func
+EmDiablos_State0_14 = 0x007A28D0; // type:func
+EmDiablos_State0_15 = 0x007A29F0; // type:func
+EmDiablos_State0_16 = 0x007A2B60; // type:func
+EmDiablos_State0_17 = 0x007A2BE0; // type:func
+// states 0:18, 0:1C
+EmDiablos_State0_18 = 0x007A2CB0; // type:func
+// states 0:19, 0:21, 0:22, 0:23
+EmDiablos_State0_19 = 0x007A2D80; // type:func
+EmDiablos_State0_1A = 0x007A2E00; // type:func
+EmDiablos_State0_1B = 0x007A2E10; // type:func
+EmDiablos_State0_1D = 0x007A2F30; // type:func
+EmDiablos_State1_00 = 0x007A3130; // type:func
+EmDiablos_State1_01 = 0x007A3210; // type:func
+EmDiablos_State1_02 = 0x007A3220; // type:func
+EmDiablos_State1_03 = 0x007A3320; // type:func
+// states 1:04, 1:08
+EmDiablos_State1_04 = 0x007A33D0; // type:func
+EmDiablos_State1_05 = 0x007A3510; // type:func
+EmDiablos_State1_06 = 0x007A35C0; // type:func
+EmDiablos_State1_07 = 0x007A36A0; // type:func
+EmDiablos_State2_00 = 0x007A37E0; // type:func
+EmDiablos_State2_01 = 0x007A38B0; // type:func
+EmDiablos_State2_02 = 0x007A3940; // type:func
+EmDiablos_State2_03 = 0x007A3A60; // type:func
+EmDiablos_State2_04 = 0x007A3B00; // type:func
+EmDiablos_State2_05 = 0x007A3CF0; // type:func
+EmDiablos_State2_06 = 0x007A3DA0; // type:func
+EmDiablos_State2_07 = 0x007A3EA0; // type:func
+EmDiablos_State2_08 = 0x007A3FC0; // type:func
+EmDiablos_State2_09 = 0x007A40E0; // type:func
+EmDiablos_State2_0A = 0x007A4200; // type:func
+EmDiablos_State2_0B = 0x007A4290; // type:func
+EmDiablos_State2_0C = 0x007A43D0; // type:func
+EmDiablos_State2_0E = 0x007A4610; // type:func
+EmDiablos_State2_17 = 0x007A46D0; // type:func
+EmDiablos_State3_00 = 0x007A4900; // type:func
+EmDiablos_State3_03 = 0x007A49B0; // type:func
+EmDiablos_State3_06 = 0x007A4A30; // type:func
+EmDiablos_State3_0F = 0x007A4B20; // type:func
+EmDiablos_State3_10 = 0x007A4C50; // type:func
+EmDiablos_State3_11 = 0x007A4D80; // type:func
+EmDiablos_State3_1A = 0x007A4EB0; // type:func
+EmDiablos_State3_1B = 0x007A4F60; // type:func
+// states 3:1C, 3:1F
+EmDiablos_State3_1C = 0x007A5010; // type:func
+EmDiablos_State3_1D = 0x007A5090; // type:func
+EmDiablos_State3_1E = 0x007A5140; // type:func
+EmDiablos_State4_00 = 0x007A51C0; // type:func
+EmDiablos_State4_01 = 0x007A5250; // type:func
+EmDiablos_State4_02 = 0x007A52E0; // type:func
+EmDiablos_State4_03 = 0x007A5370; // type:func
+EmDiablos_State4_04 = 0x007A5400; // type:func
+// states 4:05, 4:10, 4:14, 4:15
+EmDiablos_State4_05 = 0x007A55B0; // type:func
+EmDiablos_State4_06 = 0x007A5850; // type:func
+EmDiablos_State4_07 = 0x007A59D0; // type:func
+EmDiablos_State4_08 = 0x007A5A60; // type:func
+EmDiablos_State4_09 = 0x007A5BC0; // type:func
+EmDiablos_State4_0A = 0x007A5D20; // type:func
+EmDiablos_State4_0B = 0x007A5DB0; // type:func
+EmDiablos_State4_0D = 0x007A5E90; // type:func
+// states 4:0E, 4:16
+EmDiablos_State4_0E = 0x007A5FB0; // type:func
+EmDiablos_State4_0F = 0x007A6290; // type:func
+// states 4:11, 4:17
+EmDiablos_State4_11 = 0x007A6300; // type:func
+EmDiablos_State4_12 = 0x007A6410; // type:func
+EmDiablos_State4_13 = 0x007A64E0; // type:func
+// states 6:00, 7:00
+EmDiablos_State6_00 = 0x007A6620; // type:func
+// states 6:01, 7:01
+EmDiablos_State6_01 = 0x007A68A0; // type:func
+// states 6:02, 7:02
+EmDiablos_State6_02_Captured = 0x007A6BF0; // type:func
+EmDiablos_State8_00_CarveStart = 0x007A6D80; // type:func
+EmDiablos_State8_01 = 0x007A6EB0; // type:func
+EmDiablos_State8_02 = 0x007A6F60; // type:func
+EmDiablos_State8_03 = 0x007A7010; // type:func
+EmDiablos_State8_98 = 0x007A70C0; // type:func
+EmDiablos_State8_99 = 0x007A7160; // type:func
+EmDiablos_State5_00_Hunted = 0x007A7210; // type:func
+EmDiablos_State5_01_Hunted = 0x007A7410; // type:func
+EmDiablos_State5_02_HuntedFalling = 0x007A7660; // type:func
+EmDiablos_State5_03_Appear = 0x007A78D0; // type:func
+EmDiablos_RunGroup0 = 0x007A7970; // type:func
+EmDiablos_RunGroup1 = 0x007A7BE0; // type:func
+EmDiablos_RunGroup2 = 0x007A7CB0; // type:func
+EmDiablos_RunGroup3 = 0x007A7E50; // type:func
+EmDiablos_RunGroup4 = 0x007A7FB0; // type:func
+EmDiablos_RunGroup5 = 0x007A8160; // type:func
+EmDiablos_RunGroup6 = 0x007A81F0; // type:func
+EmDiablos_RunGroup8 = 0x007A8260; // type:func
+EmDiablos_RequestOnFrame = 0x007A9020; // type:func
+// empty: the default case of EmDiablos_MotionEffects
+EmDiablos_MotionEffectsDefault = 0x007A9070; // type:func
+EmDiablos_MotionEffects = 0x007A9080; // type:func
+EmDiablos_UpdateMotionEffects = 0x007AB220; // type:func
+EmDiablos_State3_End = 0x007AB270; // type:func
+EmDiablos_TableNop = 0x007AB280; // type:func
+EmDiablos_AllowHit8 = 0x007AB290; // type:func
+EmDiablos_SetGroup0State = 0x007AB2F0; // type:func
+EmDiablos_SetGroup1State = 0x007AB480; // type:func
+EmDiablos_SetGroup2State = 0x007AB700; // type:func
+EmDiablos_SetGroup3State = 0x007AB980; // type:func
+EmDiablos_MoveByVelYCurve = 0x007ABE10; // type:func
+EmDiablos_StartCurves = 0x007ABF20; // type:func
+EmDiablos_ShouldEndState = 0x007AC360; // type:func
+EmDiablos_InMotion448To44A = 0x007AC460; // type:func
+EmKhezu_MotionSounds = 0x007AC5C0; // type:func
+EmKhezu_SpawnEffects = 0x007AE410; // type:func
+EmKhezu_Init = 0x007AE450; // type:func
+EmKhezu_Start = 0x007AE5B0; // type:func
+EmKhezu_Reinit = 0x007AE6A0; // type:func
+EmKhezu_EndState = 0x007AE6B0; // type:func
+EmKhezu_EndState2To2_19 = 0x007AE6E0; // type:func
+EmKhezu_EndState2 = 0x007AE710; // type:func
+EmKhezu_RestartLayerMotion = 0x007AE740; // type:func
+EmKhezu_State0_00 = 0x007AE7E0; // type:func
+EmKhezu_State0_01 = 0x007AE890; // type:func
+EmKhezu_State0_02 = 0x007AE920; // type:func
+EmKhezu_State0_03 = 0x007AE9D0; // type:func
+EmKhezu_State0_04 = 0x007AEA80; // type:func
+EmKhezu_State0_05 = 0x007AEB00; // type:func
+EmKhezu_State0_06 = 0x007AEBD0; // type:func
+EmKhezu_State0_07 = 0x007AEC50; // type:func
+EmKhezu_State0_08 = 0x007AECE0; // type:func
+EmKhezu_State0_0A = 0x007AED70; // type:func
+EmKhezu_State0_0D = 0x007AEE70; // type:func
+EmKhezu_State0_0E = 0x007AEF80; // type:func
+// states 0:11, 0:29, 0:2A
+EmKhezu_State0_11 = 0x007AF300; // type:func
+EmKhezu_State0_13 = 0x007AF380; // type:func
+EmKhezu_State0_28 = 0x007AF480; // type:func
+EmKhezu_State0_12 = 0x007AF540; // type:func
+EmKhezu_State0_14 = 0x007AF6B0; // type:func
+EmKhezu_State0_15 = 0x007AF7D0; // type:func
+// states 0:16, 0:19, 0:21, 0:22
+EmKhezu_State0_16 = 0x007AF930; // type:func
+EmKhezu_State0_17 = 0x007AF9B0; // type:func
+// states 0:18, 0:1C
+EmKhezu_State0_18 = 0x007AFA80; // type:func
+EmKhezu_State0_1A = 0x007AFB50; // type:func
+EmKhezu_State0_1B = 0x007AFCA0; // type:func
+EmKhezu_State0_1D = 0x007AFDC0; // type:func
+EmKhezu_State0_1F = 0x007AFF10; // type:func
+EmKhezu_State1_00 = 0x007B0060; // type:func
+EmKhezu_State1_03 = 0x007B0110; // type:func
+EmKhezu_State1_05 = 0x007B01B0; // type:func
+EmKhezu_State1_06 = 0x007B0250; // type:func
+EmKhezu_State1_07 = 0x007B0300; // type:func
+EmKhezu_State2_00 = 0x007B0440; // type:func
+EmKhezu_State2_01_FlyInLand = 0x007B0530; // type:func
+EmKhezu_State2_02 = 0x007B07F0; // type:func
+EmKhezu_State2_03 = 0x007B0910; // type:func
+EmKhezu_State2_04 = 0x007B0BA0; // type:func
+EmKhezu_State2_05 = 0x007B0CF0; // type:func
+EmKhezu_State2_06 = 0x007B0E40; // type:func
+EmKhezu_State2_07 = 0x007B0F50; // type:func
+EmKhezu_State2_08 = 0x007B1090; // type:func
+EmKhezu_State2_09 = 0x007B1290; // type:func
+EmKhezu_State2_0B = 0x007B1410; // type:func
+EmKhezu_State2_0C = 0x007B1610; // type:func
+EmKhezu_State2_0D = 0x007B1760; // type:func
+EmKhezu_State2_0E = 0x007B1A20; // type:func
+EmKhezu_State2_0F = 0x007B1AD0; // type:func
+EmKhezu_State2_10 = 0x007B1BF0; // type:func
+EmKhezu_State2_11 = 0x007B1D00; // type:func
+EmKhezu_State2_12 = 0x007B1D10; // type:func
+EmKhezu_State2_13 = 0x007B1D20; // type:func
+EmKhezu_State2_14 = 0x007B1D30; // type:func
+EmKhezu_State2_15 = 0x007B1E70; // type:func
+EmKhezu_State2_16 = 0x007B1FB0; // type:func
+EmKhezu_State2_17 = 0x007B1FC0; // type:func
+EmKhezu_State2_18 = 0x007B21F0; // type:func
+EmKhezu_State2_19 = 0x007B2370; // type:func
+EmKhezu_State2_1A = 0x007B2410; // type:func
+EmKhezu_State2_1B = 0x007B2570; // type:func
+EmKhezu_State2_1C = 0x007B2660; // type:func
+EmKhezu_State2_1D = 0x007B2710; // type:func
+EmKhezu_State2_1E = 0x007B2860; // type:func
+EmKhezu_State2_1F = 0x007B29B0; // type:func
+EmKhezu_State2_20 = 0x007B2AF0; // type:func
+EmKhezu_State2_21 = 0x007B2C20; // type:func
+EmKhezu_State2_22 = 0x007B2D60; // type:func
+EmKhezu_State3_00 = 0x007B2EA0; // type:func
+EmKhezu_State3_01 = 0x007B2FF0; // type:func
+EmKhezu_State3_02 = 0x007B30E0; // type:func
+EmKhezu_State3_03 = 0x007B3160; // type:func
+EmKhezu_State3_04 = 0x007B31E0; // type:func
+EmKhezu_State3_05 = 0x007B3260; // type:func
+EmKhezu_State3_06 = 0x007B33F0; // type:func
+EmKhezu_State3_07 = 0x007B34C0; // type:func
+EmKhezu_State3_08 = 0x007B3570; // type:func
+EmKhezu_State4_00 = 0x007B36C0; // type:func
+EmKhezu_State4_01 = 0x007B3750; // type:func
+EmKhezu_State4_02 = 0x007B38C0; // type:func
+EmKhezu_State4_03 = 0x007B3950; // type:func
+// states 4:04, 4:05, 4:12, 4:13
+EmKhezu_State4_04 = 0x007B39E0; // type:func
+EmKhezu_State4_08 = 0x007B3C90; // type:func
+// states 4:0A, 4:0D, 4:15
+EmKhezu_State4_0A = 0x007B3E00; // type:func
+EmKhezu_State4_0B = 0x007B3F30; // type:func
+EmKhezu_State4_0C = 0x007B4020; // type:func
+// states 4:0E, 4:14
+EmKhezu_State4_0E = 0x007B4150; // type:func
+// states 4:0F, 4:10
+EmKhezu_State4_0F = 0x007B4330; // type:func
+EmKhezu_State4_11 = 0x007B4410; // type:func
+// states 6:00, 7:00
+EmKhezu_State6_00 = 0x007B4550; // type:func
+// states 6:01, 6:02, 6:03, 6:04, 7:01, 7:02, 7:03, 7:04
+EmKhezu_State6_01_Captured = 0x007B48B0; // type:func
+// states 6:05, 7:05
+EmKhezu_State6_05_Captured = 0x007B4A90; // type:func
+EmKhezu_State8_00_CarveStart = 0x007B4C20; // type:func
+EmKhezu_State8_01 = 0x007B4D80; // type:func
+EmKhezu_State8_02 = 0x007B4E20; // type:func
+EmKhezu_State8_03 = 0x007B4EC0; // type:func
+EmKhezu_State8_98 = 0x007B4FA0; // type:func
+EmKhezu_State8_99 = 0x007B5040; // type:func
+EmKhezu_State5_00_Hunted = 0x007B50E0; // type:func
+EmKhezu_State5_01_Hunted = 0x007B52D0; // type:func
+EmKhezu_State5_02_HuntedFalling = 0x007B54B0; // type:func
+EmKhezu_State5_03_Appear = 0x007B5770; // type:func
+EmKhezu_RunGroup0 = 0x007B5800; // type:func
+EmKhezu_RunGroup1 = 0x007B5A30; // type:func
+EmKhezu_RunGroup2 = 0x007B5AD0; // type:func
+EmKhezu_RunGroup3 = 0x007B5D30; // type:func
+EmKhezu_RunGroup4 = 0x007B5E00; // type:func
+EmKhezu_RunGroup5 = 0x007B5F70; // type:func
+EmKhezu_RunGroup6 = 0x007B6000; // type:func
+EmKhezu_RunGroup8 = 0x007B60A0; // type:func
+EmKhezu_RequestOnFrame = 0x007B6C80; // type:func
+// empty: the default case of EmKhezu_MotionEffects
+EmKhezu_MotionEffectsDefault = 0x007B6CD0; // type:func
+EmKhezu_MotionEffects = 0x007B6CE0; // type:func
+EmKhezu_UpdateMotionEffects = 0x007B8690; // type:func
+EmKhezu_SpawnK14Type0B = 0x007B86E0; // type:func
+EmKhezu_TableNop = 0x007B8700; // type:func
+EmKhezu_ScriptQuery = 0x007B8710; // type:func
+EmKhezu_SetGroup0State = 0x007B8780; // type:func
+EmKhezu_SetGroup1State = 0x007B89E0; // type:func
+EmKhezu_SetGroup2State = 0x007B8C50; // type:func
+EmKhezu_SetGroup3State = 0x007B9140; // type:func
+EmKhezu_MoveByVelYCurve = 0x007B9520; // type:func
+EmKhezu_StartCurves = 0x007B9630; // type:func
+EmKhezu_NextAreaPoint = 0x007B9A60; // type:func
+EmVelociprey_MotionSounds = 0x007B9C00; // type:func
+EmVelociprey_SpawnEffect01 = 0x007BA470; // type:func
+EmVelociprey_Init = 0x007BA480; // type:func
+EmVelociprey_Start = 0x007BA830; // type:func
+EmVelociprey_Reinit = 0x007BA8A0; // type:func
+EmVelociprey_Respawn = 0x007BA8B0; // type:func
+EmVelociprey_EndState = 0x007BA9C0; // type:func
+EmVelociprey_State0_00 = 0x007BAA50; // type:func
+// states 0:01, 0:0D
+EmVelociprey_State0_01 = 0x007BAB00; // type:func
+EmVelociprey_State0_02 = 0x007BAB80; // type:func
+EmVelociprey_State0_03 = 0x007BABF0; // type:func
+EmVelociprey_State0_04 = 0x007BACF0; // type:func
+EmVelociprey_State0_05 = 0x007BAD60; // type:func
+EmVelociprey_State0_06 = 0x007BADD0; // type:func
+EmVelociprey_State0_07 = 0x007BAE40; // type:func
+EmVelociprey_State0_08 = 0x007BAF20; // type:func
+EmVelociprey_State0_09 = 0x007BAFB0; // type:func
+EmVelociprey_State0_0A = 0x007BB030; // type:func
+EmVelociprey_State0_0B = 0x007BB0C0; // type:func
+EmVelociprey_State0_0C = 0x007BB140; // type:func
+EmVelociprey_State0_10 = 0x007BB1D0; // type:func
+EmVelociprey_RunGroup0 = 0x007BB250; // type:func
+EmVelociprey_State1_00 = 0x007BB380; // type:func
+EmVelociprey_State1_01 = 0x007BB410; // type:func
+EmVelociprey_State1_02 = 0x007BB560; // type:func
+EmVelociprey_State1_03 = 0x007BB5D0; // type:func
+EmVelociprey_State1_04 = 0x007BB640; // type:func
+EmVelociprey_State1_05 = 0x007BB6B0; // type:func
+EmVelociprey_RunGroup1 = 0x007BB740; // type:func
+EmVelociprey_State2_00 = 0x007BB7E0; // type:func
+EmVelociprey_State2_01 = 0x007BB900; // type:func
+EmVelociprey_State2_02 = 0x007BBA20; // type:func
+EmVelociprey_RunGroup2 = 0x007BBBE0; // type:func
+EmVelociprey_State3_00 = 0x007BBC50; // type:func
+EmVelociprey_State3_01 = 0x007BBD50; // type:func
+EmVelociprey_State3_02 = 0x007BBD60; // type:func
+EmVelociprey_State3_03 = 0x007BBFF0; // type:func
+// states 3:04, 3:0D
+EmVelociprey_State3_04 = 0x007BC100; // type:func
+EmVelociprey_State3_05 = 0x007BC200; // type:func
+EmVelociprey_State3_06 = 0x007BC490; // type:func
+EmVelociprey_State3_07 = 0x007BC720; // type:func
+EmVelociprey_State3_08 = 0x007BC7D0; // type:func
+EmVelociprey_State3_09 = 0x007BC9F0; // type:func
+EmVelociprey_State3_0A = 0x007BCA90; // type:func
+EmVelociprey_State3_0B = 0x007BCCB0; // type:func
+EmVelociprey_State3_0C = 0x007BCED0; // type:func
+// states 3:0E, 3:0F
+EmVelociprey_State3_0E = 0x007BCFA0; // type:func
+EmVelociprey_RunGroup3 = 0x007BD0A0; // type:func
+EmVelociprey_State4_00 = 0x007BD1E0; // type:func
+EmVelociprey_State4_01 = 0x007BD260; // type:func
+EmVelociprey_State4_02 = 0x007BD3A0; // type:func
+EmVelociprey_State4_03 = 0x007BD520; // type:func
+EmVelociprey_State4_04 = 0x007BD6A0; // type:func
+EmVelociprey_State4_05 = 0x007BD820; // type:func
+EmVelociprey_State4_06 = 0x007BD8A0; // type:func
+EmVelociprey_State4_08 = 0x007BD960; // type:func
+EmVelociprey_RunGroup4 = 0x007BDA20; // type:func
+EmVelociprey_State5_00_Hunted = 0x007BDAE0; // type:func
+EmVelociprey_State5_01_Hunted = 0x007BDD00; // type:func
+EmVelociprey_State5_02_Hunted = 0x007BDF20; // type:func
+EmVelociprey_State5_03_Hunted = 0x007BE140; // type:func
+EmVelociprey_State5_04_Appear = 0x007BE360; // type:func
+EmVelociprey_State5_05 = 0x007BEB30; // type:func
+EmVelociprey_State5_06_Hunted = 0x007BEBD0; // type:func
+EmVelociprey_State5_07_Hunted = 0x007BED00; // type:func
+EmVelociprey_State5_08_Hunted = 0x007BEE40; // type:func
+EmVelociprey_State5_09_Hunted = 0x007BEF80; // type:func
+EmVelociprey_RunGroup5 = 0x007BF0C0; // type:func
+EmVelociprey_State6_00 = 0x007BF1B0; // type:func
+EmVelociprey_State6_01 = 0x007BF4E0; // type:func
+EmVelociprey_State6_02 = 0x007BF6A0; // type:func
+EmVelociprey_State6_03 = 0x007BF8A0; // type:func
+EmVelociprey_State6_04 = 0x007BF930; // type:func
+EmVelociprey_State6_05 = 0x007BF9C0; // type:func
+EmVelociprey_State6_06 = 0x007BFA50; // type:func
+EmVelociprey_RunGroup6 = 0x007BFAE0; // type:func
+EmVelociprey_State7_00 = 0x007BFB90; // type:func
+EmVelociprey_State7_01 = 0x007BFD50; // type:func
+EmVelociprey_State7_02 = 0x007BFF10; // type:func
+EmVelociprey_RunGroup7 = 0x007C00D0; // type:func
+// empty: the default case of EmVelociprey_MotionEffects
+EmVelociprey_MotionEffectsDefault = 0x007C08C0; // type:func
+EmVelociprey_MotionEffects = 0x007C08D0; // type:func
+EmVelociprey_UpdateMotionEffects = 0x007C0AA0; // type:func
+EmVelociprey_ScriptQuery = 0x007C0AF0; // type:func
+EmVelociprey_TableNop = 0x007C0B50; // type:func
+EmVelociprey_SetGroup0State = 0x007C0B60; // type:func
+EmVelociprey_SetGroup1State = 0x007C0CC0; // type:func
+EmVelociprey_SetGroup2State = 0x007C0D60; // type:func
+EmVelociprey_SetGroup3State = 0x007C0D80; // type:func
+EmVelociprey_CurveNone = 0x007C1050; // type:func
+EmVelociprey_CurveVelY = 0x007C1060; // type:func
+EmVelociprey_CurveSpeed = 0x007C1180; // type:func
+EmVelociprey_UpdateCurves = 0x007C12A0; // type:func
+EmAnteka_MotionSounds = 0x007C1370; // type:func
+EmAnteka_Init = 0x007C1D70; // type:func
+EmAnteka_Start = 0x007C2020; // type:func
+EmAnteka_Reinit = 0x007C2060; // type:func
+// states 0:00, 2:00
+EmAnteka_State0_00 = 0x007C2440; // type:func
+// states 0:01, 2:01
+EmAnteka_State0_01 = 0x007C2450; // type:func
+// states 0:02, 2:02
+EmAnteka_State0_02 = 0x007C24C0; // type:func
+// states 0:03, 2:03
+EmAnteka_State0_03 = 0x007C2530; // type:func
+// states 0:04, 2:04
+EmAnteka_State0_04 = 0x007C25A0; // type:func
+// states 0:05, 2:05
+EmAnteka_State0_05 = 0x007C2610; // type:func
+// states 0:06, 2:06
+EmAnteka_State0_06 = 0x007C2680; // type:func
+// states 0:07, 2:07
+EmAnteka_State0_07 = 0x007C26F0; // type:func
+// states 0:08, 2:08
+EmAnteka_State0_08 = 0x007C27C0; // type:func
+// states 0:09, 2:09
+EmAnteka_State0_09 = 0x007C28B0; // type:func
+// states 0:0A, 2:0A
+EmAnteka_State0_0A = 0x007C2940; // type:func
+// states 0:0B, 2:0B
+EmAnteka_State0_0B = 0x007C29D0; // type:func
+EmAnteka_RunGroup0 = 0x007C2A40; // type:func
+EmAnteka_State1_00 = 0x007C2B50; // type:func
+EmAnteka_State1_01 = 0x007C2C10; // type:func
+// states 1:02, 1:09
+EmAnteka_State1_02 = 0x007C2CA0; // type:func
+// states 1:03, 1:0A
+EmAnteka_State1_03 = 0x007C2D70; // type:func
+EmAnteka_State1_04 = 0x007C2E90; // type:func
+EmAnteka_State1_05 = 0x007C2F40; // type:func
+EmAnteka_State1_06 = 0x007C2FF0; // type:func
+EmAnteka_State1_07 = 0x007C30C0; // type:func
+EmAnteka_State1_08 = 0x007C3190; // type:func
+EmAnteka_State1_0B = 0x007C3200; // type:func
+EmAnteka_State1_0C = 0x007C3320; // type:func
+EmAnteka_State1_0D = 0x007C36D0; // type:func
+EmAnteka_RunGroup1 = 0x007C3880; // type:func
+EmAnteka_State3_00 = 0x007C39B0; // type:func
+EmAnteka_State3_01 = 0x007C3A50; // type:func
+EmAnteka_State3_02 = 0x007C3B00; // type:func
+EmAnteka_State3_03 = 0x007C3BB0; // type:func
+EmAnteka_State3_04 = 0x007C3BC0; // type:func
+EmAnteka_State3_05 = 0x007C3BD0; // type:func
+EmAnteka_State3_06 = 0x007C3BE0; // type:func
+EmAnteka_State3_07 = 0x007C3BF0; // type:func
+EmAnteka_State3_08 = 0x007C3C00; // type:func
+EmAnteka_RunGroup3 = 0x007C3C10; // type:func
+EmAnteka_State4_00 = 0x007C3CF0; // type:func
+EmAnteka_State4_01 = 0x007C3D70; // type:func
+// states 4:02, 4:05
+EmAnteka_State4_02 = 0x007C3DF0; // type:func
+EmAnteka_State4_03 = 0x007C3FF0; // type:func
+EmAnteka_State4_04 = 0x007C40C0; // type:func
+EmAnteka_RunGroup4 = 0x007C4180; // type:func
+EmAnteka_State5_00_Hunted = 0x007C4220; // type:func
+EmAnteka_State5_04 = 0x007C4470; // type:func
+EmAnteka_State5_05 = 0x007C44E0; // type:func
+EmAnteka_RunGroup5 = 0x007C4590; // type:func
+// states 6:00, 7:00
+EmAnteka_State6_00 = 0x007C4600; // type:func
+// states 6:01, 7:01
+EmAnteka_State6_01 = 0x007C4690; // type:func
+// states 6:02, 7:02
+EmAnteka_State6_02 = 0x007C47B0; // type:func
+EmAnteka_RunGroup6 = 0x007C4830; // type:func
+EmAnteka_EndState = 0x007C4AD0; // type:func
+EmAnteka_SetMotion = 0x007C4B00; // type:func
+EmAnteka_SpawnEffect01 = 0x007C4C00; // type:func
+EmAnteka_TableNop = 0x007C4C10; // type:func
+// empty: the default case of EmAnteka_MotionEffects
+EmAnteka_MotionEffectsDefault = 0x007C4C20; // type:func
+EmAnteka_MotionEffects = 0x007C4C30; // type:func
+EmAnteka_UpdateMotionEffects = 0x007C5300; // type:func
+EmMosswine_Init = 0x007C5350; // type:func
+EmMosswine_Start = 0x007C5560; // type:func
+EmMosswine_Reinit = 0x007C55A0; // type:func
+EmMosswine_EndState = 0x007C5880; // type:func
+// states 0:00, 2:00
+EmMosswine_State0_00 = 0x007C58A0; // type:func
+// states 0:01, 2:01
+EmMosswine_State0_01 = 0x007C58B0; // type:func
+// states 0:02, 2:02
+EmMosswine_State0_02 = 0x007C5920; // type:func
+// states 0:03, 2:03
+EmMosswine_State0_03 = 0x007C5A00; // type:func
+// states 0:04, 0:07, 0:08, 2:04, 2:07, 2:08
+EmMosswine_State0_04 = 0x007C5A90; // type:func
+// states 0:05, 2:05
+EmMosswine_State0_05 = 0x007C5B50; // type:func
+// states 0:06, 2:06
+EmMosswine_State0_06 = 0x007C5BD0; // type:func
+// states 0:0A, 2:0A
+EmMosswine_State0_0A = 0x007C5C50; // type:func
+// states 0:0B, 2:0B
+EmMosswine_State0_0B = 0x007C5D10; // type:func
+// states 0:09, 2:09
+EmMosswine_State0_09 = 0x007C5DB0; // type:func
+// states 0:0C, 2:0C
+EmMosswine_State0_0C = 0x007C5E30; // type:func
+// states 0:0D, 2:0D
+EmMosswine_State0_0D = 0x007C5EB0; // type:func
+EmMosswine_RunGroup0 = 0x007C5F50; // type:func
+// states 1:00, 1:06
+EmMosswine_State1_00 = 0x007C6080; // type:func
+EmMosswine_State1_01 = 0x007C61B0; // type:func
+EmMosswine_State1_02 = 0x007C6290; // type:func
+EmMosswine_State1_03 = 0x007C6370; // type:func
+EmMosswine_State1_04 = 0x007C6450; // type:func
+EmMosswine_State1_05 = 0x007C6540; // type:func
+EmMosswine_RunGroup1 = 0x007C6620; // type:func
+// states 3:00, 3:01, 3:02, 3:03, 3:04, 3:05
+EmMosswine_State3_00_Charge = 0x007C66D0; // type:func
+EmMosswine_RunGroup3 = 0x007C6960; // type:func
+// states 4:00, 7:00
+EmMosswine_State4_00 = 0x007C6A00; // type:func
+// states 4:01, 7:01
+EmMosswine_State4_01 = 0x007C6AF0; // type:func
+// states 4:02, 7:02
+EmMosswine_State4_02 = 0x007C6D30; // type:func
+// states 4:03, 7:03
+EmMosswine_State4_03 = 0x007C6F30; // type:func
+// states 4:04, 7:04
+EmMosswine_State4_04 = 0x007C7060; // type:func
+// states 4:05, 7:05
+EmMosswine_State4_05 = 0x007C7130; // type:func
+EmMosswine_RunGroup4 = 0x007C7220; // type:func
+EmMosswine_State5_00_Hunted = 0x007C72C0; // type:func
+EmMosswine_State5_01_Hunted = 0x007C7630; // type:func
+EmMosswine_State5_02 = 0x007C7910; // type:func
+EmMosswine_RunGroup5 = 0x007C7990; // type:func
+EmMosswine_State6_00 = 0x007C7A00; // type:func
+EmMosswine_State6_01 = 0x007C7A80; // type:func
+EmMosswine_RunGroup6 = 0x007C7B00; // type:func
+EmMosswine_SpawnEffect01 = 0x007C8010; // type:func
+EmMosswine_TableNop = 0x007C8020; // type:func
+EmMosswine_ScriptQuery = 0x007C8030; // type:func
+EmLaoshan_MotionSounds = 0x007C80B0; // type:func
+EmLaoshan_SpawnEffect01 = 0x007CB330; // type:func
+EmLaoshan_GetMinePointPos = 0x007CB340; // type:func
+EmLaoshan_AddMinePoint = 0x007CB3E0; // type:func
+EmLaoshan_AddMinePoints = 0x007CB540; // type:func
+EmLaoshan_UpdateMinePoints = 0x007CB740; // type:func
+EmLaoshan_RemoveMinePoints = 0x007CB810; // type:func
+EmLaoshan_Init = 0x007CB880; // type:func
+EmLaoshan_EndState = 0x007CBAF0; // type:func
+EmLaoshan_LayerMotionDone = 0x007CBB60; // type:func
+EmLaoshan_State0_00 = 0x007CBBB0; // type:func
+EmLaoshan_State0_01 = 0x007CBC40; // type:func
+EmLaoshan_State0_02 = 0x007CBD10; // type:func
+EmLaoshan_State0_03 = 0x007CBDD0; // type:func
+EmLaoshan_State0_04 = 0x007CBE70; // type:func
+EmLaoshan_State0_05 = 0x007CBEF0; // type:func
+EmLaoshan_State0_06 = 0x007CBF90; // type:func
+EmLaoshan_State0_07 = 0x007CC090; // type:func
+EmLaoshan_RunGroup0 = 0x007CC140; // type:func
+EmLaoshan_State1_00 = 0x007CC200; // type:func
+EmLaoshan_State1_01 = 0x007CC2D0; // type:func
+EmLaoshan_State1_02 = 0x007CC380; // type:func
+EmLaoshan_State1_03 = 0x007CC600; // type:func
+EmLaoshan_State1_04 = 0x007CC6D0; // type:func
+EmLaoshan_State1_05 = 0x007CC7B0; // type:func
+EmLaoshan_State1_06 = 0x007CC820; // type:func
+EmLaoshan_State1_07 = 0x007CC8A0; // type:func
+EmLaoshan_State1_08 = 0x007CC980; // type:func
+EmLaoshan_State1_09 = 0x007CCA60; // type:func
+EmLaoshan_State1_0A = 0x007CCAD0; // type:func
+EmLaoshan_State1_0B = 0x007CCB50; // type:func
+EmLaoshan_State1_0C = 0x007CCC30; // type:func
+EmLaoshan_State1_0D = 0x007CCD10; // type:func
+EmLaoshan_State1_0E = 0x007CCDF0; // type:func
+EmLaoshan_State1_0F = 0x007CCEE0; // type:func
+EmLaoshan_State1_10 = 0x007CCFD0; // type:func
+EmLaoshan_State1_11 = 0x007CD080; // type:func
+EmLaoshan_State1_12 = 0x007CD1C0; // type:func
+EmLaoshan_State1_13 = 0x007CD2C0; // type:func
+EmLaoshan_RunGroup1 = 0x007CD3C0; // type:func
+EmLaoshan_RunGroup2 = 0x007CD540; // type:func
+EmLaoshan_State3_00 = 0x007CD550; // type:func
+EmLaoshan_State3_01 = 0x007CD5D0; // type:func
+EmLaoshan_State3_02 = 0x007CD780; // type:func
+EmLaoshan_State3_03 = 0x007CD890; // type:func
+EmLaoshan_State3_04 = 0x007CDA10; // type:func
+EmLaoshan_State3_05 = 0x007CDAE0; // type:func
+EmLaoshan_RunGroup3 = 0x007CDBC0; // type:func
+EmLaoshan_State4_00 = 0x007CDC60; // type:func
+EmLaoshan_State4_01 = 0x007CDD70; // type:func
+EmLaoshan_State4_02 = 0x007CDE00; // type:func
+EmLaoshan_State4_03 = 0x007CDEF0; // type:func
+EmLaoshan_State4_04 = 0x007CDF80; // type:func
+EmLaoshan_State4_05 = 0x007CE000; // type:func
+EmLaoshan_State4_06 = 0x007CE0D0; // type:func
+EmLaoshan_RunGroup4 = 0x007CE210; // type:func
+EmLaoshan_State5_00_Hunted = 0x007CE2C0; // type:func
+EmLaoshan_State5_01_Hunted = 0x007CE430; // type:func
+EmLaoshan_RunGroup5 = 0x007CE540; // type:func
+// states 6:00, 7:00
+EmLaoshan_State6_00 = 0x007CE590; // type:func
+// states 6:01, 7:01
+EmLaoshan_State6_01 = 0x007CE870; // type:func
+EmLaoshan_RunGroup6 = 0x007CEAC0; // type:func
+// on motion frame N: func_0031FF90(em, i), request i of the slot D_005AFA30 (sub_main, next to the camera state)
+EmLaoshan_RequestOnFrame = 0x007CF020; // type:func
+// empty: the default case of EmLaoshan_MotionEffects
+EmLaoshan_MotionEffectsDefault = 0x007CF070; // type:func
+EmLaoshan_MotionEffects = 0x007CF080; // type:func
+EmLaoshan_UpdateMotionEffects = 0x007D2260; // type:func
+// SE, Effect02 and Effect0D at a fixed point per area
+EmLaoshan_SpawnAreaImpactEffects = 0x007D22B0; // type:func
+EmLaoshan_SpawnAreaImpactEffects2 = 0x007D2400; // type:func
+EmLaoshan_TableNop = 0x007D2560; // type:func
+EmLaoshan_SetGroup0State = 0x007D2570; // type:func
+EmLaoshan_SetGroup1State = 0x007D2590; // type:func
+EmLaoshan_SetGroup2State = 0x007D2770; // type:func
+EmLaoshan_SetGroup3State = 0x007D2790; // type:func
+EmCephadrome_MotionSounds = 0x007D28E0; // type:func
+EmCephadrome_SpawnEffects = 0x007D4450; // type:func
+EmCephadrome_Reset = 0x007D4490; // type:func
+EmCephadrome_Start = 0x007D4620; // type:func
+EmCephadrome_Reinit = 0x007D4700; // type:func
+EmCephadrome_EndState = 0x007D4710; // type:func
+EmCephadrome_EndState2 = 0x007D4740; // type:func
+EmCephadrome_State0_00 = 0x007D4770; // type:func
+EmCephadrome_State0_01 = 0x007D4840; // type:func
+EmCephadrome_State0_02 = 0x007D4920; // type:func
+EmCephadrome_State0_03 = 0x007D49D0; // type:func
+// states 0:04, 0:09
+EmCephadrome_State0_04 = 0x007D4D50; // type:func
+// states 0:05, 0:29
+EmCephadrome_State0_05 = 0x007D4E60; // type:func
+// states 0:06, 0:2A
+EmCephadrome_State0_06 = 0x007D4FE0; // type:func
+// states 0:07, 0:15, 0:16, 0:17
+EmCephadrome_State0_07 = 0x007D50B0; // type:func
+EmCephadrome_State0_0E = 0x007D5130; // type:func
+// states 0:0F, 0:11
+EmCephadrome_State0_0F = 0x007D5340; // type:func
+EmCephadrome_State0_10 = 0x007D5410; // type:func
+EmCephadrome_State0_12 = 0x007D5620; // type:func
+EmCephadrome_State0_13 = 0x007D5790; // type:func
+EmCephadrome_State0_14 = 0x007D5860; // type:func
+EmCephadrome_State0_28 = 0x007D5960; // type:func
+EmCephadrome_State1_00 = 0x007D5A20; // type:func
+EmCephadrome_State1_01 = 0x007D5AC0; // type:func
+EmCephadrome_State1_02 = 0x007D5B90; // type:func
+EmCephadrome_State1_03 = 0x007D5C30; // type:func
+EmCephadrome_State2_00 = 0x007D5CD0; // type:func
+EmCephadrome_State2_01 = 0x007D5D60; // type:func
+EmCephadrome_State2_02 = 0x007D5DF0; // type:func
+// states 2:03, 2:1A
+EmCephadrome_State2_03 = 0x007D5EF0; // type:func
+EmCephadrome_State2_04 = 0x007D5FD0; // type:func
+// states 2:05, 2:1B
+EmCephadrome_State2_05 = 0x007D61A0; // type:func
+EmCephadrome_State2_06 = 0x007D6300; // type:func
+EmCephadrome_State2_07 = 0x007D63A0; // type:func
+EmCephadrome_State2_08 = 0x007D64F0; // type:func
+EmCephadrome_State2_09 = 0x007D6630; // type:func
+// states 2:0A, 2:13
+EmCephadrome_State2_0A = 0x007D6730; // type:func
+// states 2:0B, 2:14
+EmCephadrome_State2_0B = 0x007D6930; // type:func
+EmCephadrome_State2_0C = 0x007D6B30; // type:func
+EmCephadrome_State2_0D = 0x007D6C30; // type:func
+EmCephadrome_State2_0E = 0x007D6D30; // type:func
+EmCephadrome_State2_0F = 0x007D6F00; // type:func
+EmCephadrome_State2_10 = 0x007D6FB0; // type:func
+EmCephadrome_State2_11 = 0x007D7390; // type:func
+EmCephadrome_State2_12 = 0x007D77B0; // type:func
+EmCephadrome_State2_15 = 0x007D7950; // type:func
+EmCephadrome_State2_16 = 0x007D79D0; // type:func
+// states 2:18, 2:19
+EmCephadrome_State2_18 = 0x007D7B70; // type:func
+EmCephadrome_State3_00 = 0x007D7C10; // type:func
+EmCephadrome_State3_01 = 0x007D7C90; // type:func
+EmCephadrome_State3_02 = 0x007D7DF0; // type:func
+EmCephadrome_State3_03 = 0x007D7EE0; // type:func
+EmCephadrome_State3_04 = 0x007D81C0; // type:func
+EmCephadrome_State3_05 = 0x007D84A0; // type:func
+EmCephadrome_State3_06 = 0x007D8660; // type:func
+EmCephadrome_State3_07 = 0x007D8A00; // type:func
+EmCephadrome_State3_08 = 0x007D8A80; // type:func
+EmCephadrome_State4_00 = 0x007D8C20; // type:func
+EmCephadrome_State4_01 = 0x007D8D00; // type:func
+EmCephadrome_State4_02 = 0x007D8D90; // type:func
+EmCephadrome_State4_03 = 0x007D8E20; // type:func
+EmCephadrome_State4_04 = 0x007D8EB0; // type:func
+// states 4:05, 4:14, 4:16, 4:17
+EmCephadrome_State4_05 = 0x007D8FB0; // type:func
+EmCephadrome_State4_06 = 0x007D9280; // type:func
+EmCephadrome_State4_07 = 0x007D9390; // type:func
+EmCephadrome_State4_09 = 0x007D9500; // type:func
+EmCephadrome_State4_0A = 0x007D9620; // type:func
+EmCephadrome_State4_0B = 0x007D96B0; // type:func
+EmCephadrome_State4_10 = 0x007D97A0; // type:func
+// states 4:11, 4:12
+EmCephadrome_State4_11 = 0x007D9880; // type:func
+EmCephadrome_State4_13 = 0x007D9AF0; // type:func
+EmCephadrome_State4_15 = 0x007D9B80; // type:func
+// states 6:00, 7:00
+EmCephadrome_State6_00_Entrance = 0x007D9CC0; // type:func
+// states 6:01, 7:01
+EmCephadrome_State6_01 = 0x007DA3C0; // type:func
+// states 6:02, 7:02
+EmCephadrome_State6_02_Captured = 0x007DA440; // type:func
+EmCephadrome_State5_00_Hunted = 0x007DA5D0; // type:func
+EmCephadrome_State5_01_Hunted = 0x007DA7B0; // type:func
+EmCephadrome_State5_02_HuntedFalling = 0x007DA960; // type:func
+EmCephadrome_State5_04 = 0x007DAC90; // type:func
+EmCephadrome_State5_05_HuntedFalling = 0x007DAD10; // type:func
+EmCephadrome_RunGroup0 = 0x007DAFA0; // type:func
+EmCephadrome_RunGroup1 = 0x007DB200; // type:func
+EmCephadrome_RunGroup2 = 0x007DB290; // type:func
+EmCephadrome_RunGroup3 = 0x007DB480; // type:func
+EmCephadrome_RunGroup4 = 0x007DB550; // type:func
+EmCephadrome_RunGroup5 = 0x007DB6C0; // type:func
+EmCephadrome_RunGroup6 = 0x007DB760; // type:func
+EmCephadrome_RequestOnFrame = 0x007DC2A0; // type:func
+// empty: the default case of EmCephadrome_MotionEffects
+EmCephadrome_MotionEffectsDefault = 0x007DC2F0; // type:func
+EmCephadrome_MotionEffects = 0x007DC300; // type:func
+EmCephadrome_UpdateFinFold = 0x007DD8F0; // type:func
+EmCephadrome_UpdateFinWave = 0x007DDAC0; // type:func
+EmCephadrome_UpdateFins = 0x007DDE20; // type:func
+EmCephadrome_UpdateMotionEffects = 0x007DDE80; // type:func
+// work mode for UpdateFins; 1 becomes 2 at hp <= 10 %
+EmCephadrome_SetFinMode = 0x007DDF00; // type:func
+EmCephadrome_SpawnK14Type0B = 0x007DDFC0; // type:func
+EmCephadrome_SpawnSurfaceEffect2 = 0x007DDFE0; // type:func
+EmCephadrome_SpawnSurfaceEffect5 = 0x007DE090; // type:func
+// EffCephadrome21_Create for kind 8, EffCephadrome23_Create for the others
+EmCephadrome_SpawnEffect21 = 0x007DE110; // type:func
+// pad vibration 3 for the local player when in the same area within 1000 units
+EmCephadrome_VibrateNearby = 0x007DE150; // type:func
+EmCephadrome_SetGroup0State = 0x007DE240; // type:func
+EmCephadrome_SetGroup1State = 0x007DE3F0; // type:func
+EmCephadrome_SetGroup2State = 0x007DE4F0; // type:func
+EmCephadrome_SetGroup3State = 0x007DE740; // type:func
+EmCephadrome_CurveNone = 0x007DEA60; // type:func
+EmCephadrome_CurveVelY = 0x007DEA70; // type:func
+EmCephadrome_CurveSpeed = 0x007DEB90; // type:func
+EmCephadrome_UpdateCurves = 0x007DEC90; // type:func
+EmCephadrome_NextAreaPoint = 0x007DED60; // type:func
+EmCephadrome_ShouldEndState = 0x007DEEB0; // type:func
+EmCephadrome_StepRouteIndex = 0x007DEF20; // type:func
+EmMelynx_MotionSounds = 0x007DF170; // type:func
+EmMelynx_Reset = 0x007E03D0; // type:func
+EmMelynx_Start = 0x007E05D0; // type:func
+EmMelynx_Reinit = 0x007E0690; // type:func
+// timer down to 15 when there is no target or the target is in another area
+EmMelynx_CapTimerOffTarget = 0x007E06E0; // type:func
+EmMelynx_EndState = 0x007E08E0; // type:func
+EmMelynx_StealItem = 0x007E09B0; // type:func
+EmMelynx_ReturnItem = 0x007E0B70; // type:func
+// states 0:00, 7:00
+EmMelynx_State0_00 = 0x007E0C70; // type:func
+// states 0:01, 7:01
+EmMelynx_State0_01 = 0x007E0D00; // type:func
+// states 0:02, 0:03, 0:04, 7:02, 7:03, 7:04
+EmMelynx_State0_02 = 0x007E0D80; // type:func
+// states 0:05, 7:05
+EmMelynx_State0_05 = 0x007E0E50; // type:func
+// states 0:06, 7:06
+EmMelynx_State0_06 = 0x007E0ED0; // type:func
+// states 0:07, 7:07
+EmMelynx_State0_07 = 0x007E0FB0; // type:func
+// states 0:08, 7:08
+EmMelynx_State0_08 = 0x007E1020; // type:func
+// states 0:09, 7:09
+EmMelynx_State0_09 = 0x007E10A0; // type:func
+// states 0:0A, 7:0A
+EmMelynx_State0_0A = 0x007E1160; // type:func
+// states 0:0B, 7:0B
+EmMelynx_State0_0B = 0x007E11E0; // type:func
+// states 0:0C, 7:0C
+EmMelynx_State0_0C = 0x007E12A0; // type:func
+// states 0:0D, 7:0D
+EmMelynx_State0_0D = 0x007E1380; // type:func
+// states 0:0E, 7:0E
+EmMelynx_State0_0E = 0x007E1410; // type:func
+// states 0:0F, 7:0F
+EmMelynx_State0_0F = 0x007E1510; // type:func
+// states 0:10, 7:10
+EmMelynx_State0_10 = 0x007E15D0; // type:func
+EmMelynx_RunGroup0 = 0x007E1650; // type:func
+EmMelynx_State1_00 = 0x007E17B0; // type:func
+EmMelynx_State1_01 = 0x007E18A0; // type:func
+EmMelynx_State1_02 = 0x007E19E0; // type:func
+EmMelynx_State1_04 = 0x007E1AC0; // type:func
+EmMelynx_State1_05 = 0x007E1BE0; // type:func
+EmMelynx_State1_06 = 0x007E1CB0; // type:func
+EmMelynx_State1_07 = 0x007E1D90; // type:func
+EmMelynx_State1_08 = 0x007E1E70; // type:func
+EmMelynx_State1_09 = 0x007E1F50; // type:func
+EmMelynx_State1_0A = 0x007E2060; // type:func
+EmMelynx_State1_0B = 0x007E2140; // type:func
+EmMelynx_State1_0C = 0x007E2220; // type:func
+EmMelynx_RunGroup1 = 0x007E2300; // type:func
+EmMelynx_State2_00 = 0x007E2400; // type:func
+EmMelynx_RunGroup2 = 0x007E24A0; // type:func
+EmMelynx_State3_00 = 0x007E24E0; // type:func
+// states 3:01, 3:03
+EmMelynx_State3_01 = 0x007E2750; // type:func
+EmMelynx_State3_02 = 0x007E2970; // type:func
+// states 3:04, 3:05
+EmMelynx_State3_04 = 0x007E2BA0; // type:func
+EmMelynx_RunGroup3 = 0x007E2D00; // type:func
+EmMelynx_State4_00 = 0x007E2DA0; // type:func
+EmMelynx_State4_01 = 0x007E2E70; // type:func
+EmMelynx_State4_02 = 0x007E3030; // type:func
+EmMelynx_State4_03 = 0x007E3100; // type:func
+EmMelynx_State4_04 = 0x007E32E0; // type:func
+EmMelynx_RunGroup4 = 0x007E33C0; // type:func
+EmMelynx_State5_00_Hunted = 0x007E3460; // type:func
+EmMelynx_State5_01_Hunted = 0x007E3720; // type:func
+EmMelynx_State5_02 = 0x007E3910; // type:func
+EmMelynx_RunGroup5 = 0x007E39C0; // type:func
+EmMelynx_State6_00 = 0x007E3A30; // type:func
+EmMelynx_RunGroup6 = 0x007E3AB0; // type:func
+// empty: the default case of EmMelynx_MotionEffects
+EmMelynx_MotionEffectsDefault = 0x007E4020; // type:func
+EmMelynx_MotionEffects = 0x007E4030; // type:func
+EmMelynx_UpdateFace = 0x007E4360; // type:func
+EmMelynx_SetMeshSetAlpha = 0x007E4470; // type:func
+EmMelynx_SpawnEffect01 = 0x007E4650; // type:func
+EmMelynx_TableNop = 0x007E4660; // type:func
+EmRathalos_MotionSounds = 0x007E4670; // type:func
+EmRathalos_SpawnEffects = 0x007E7250; // type:func
+EmRathalos_Init = 0x007E7290; // type:func
+EmRathalos_Start = 0x007E7810; // type:func
+EmRathalos_Reinit = 0x007E7950; // type:func
+EmRathalos_EndState = 0x007E7960; // type:func
+EmRathalos_EndState2 = 0x007E79E0; // type:func
+EmRathalos_RestartLayerMotion = 0x007E7A50; // type:func
+EmRathalos_LayerMotionToIdle = 0x007E7AF0; // type:func
+EmRathalos_State0_00 = 0x007E7C20; // type:func
+EmRathalos_State0_01 = 0x007E7CF0; // type:func
+EmRathalos_State0_02 = 0x007E7DB0; // type:func
+EmRathalos_State0_03 = 0x007E7E70; // type:func
+EmRathalos_State0_04 = 0x007E7F50; // type:func
+EmRathalos_State0_05 = 0x007E8010; // type:func
+EmRathalos_State0_06 = 0x007E8100; // type:func
+EmRathalos_State0_07 = 0x007E81F0; // type:func
+EmRathalos_State0_08 = 0x007E82D0; // type:func
+EmRathalos_State0_09 = 0x007E8400; // type:func
+EmRathalos_State0_0A = 0x007E84A0; // type:func
+EmRathalos_State0_0B = 0x007E85A0; // type:func
+EmRathalos_State0_0C = 0x007E8690; // type:func
+EmRathalos_State0_0D = 0x007E8710; // type:func
+EmRathalos_State0_0E = 0x007E8800; // type:func
+EmRathalos_State0_0F = 0x007E8BC0; // type:func
+EmRathalos_State0_10 = 0x007E8CF0; // type:func
+EmRathalos_State0_11 = 0x007E8E20; // type:func
+EmRathalos_State0_12 = 0x007E8EA0; // type:func
+EmRathalos_State0_13 = 0x007E90B0; // type:func
+EmRathalos_State0_28 = 0x007E91B0; // type:func
+EmRathalos_State0_14 = 0x007E9270; // type:func
+EmRathalos_State0_15 = 0x007E9390; // type:func
+EmRathalos_State0_16 = 0x007E95A0; // type:func
+EmRathalos_State0_17 = 0x007E9620; // type:func
+EmRathalos_State0_18 = 0x007E9730; // type:func
+EmRathalos_State0_19 = 0x007E9800; // type:func
+EmRathalos_State0_1A = 0x007E9880; // type:func
+EmRathalos_State0_1B = 0x007E99D0; // type:func
+EmRathalos_State0_1C = 0x007E9AF0; // type:func
+EmRathalos_State0_1D = 0x007E9BC0; // type:func
+EmRathalos_State0_1F = 0x007E9D10; // type:func
+// states 0:21, 0:22, 0:23
+EmRathalos_State0_21 = 0x007E9E60; // type:func
+EmRathalos_State1_00 = 0x007E9EE0; // type:func
+EmRathalos_State1_01 = 0x007E9F80; // type:func
+EmRathalos_State1_02 = 0x007E9F90; // type:func
+EmRathalos_State1_03 = 0x007E9FA0; // type:func
+// states 1:04, 1:08
+EmRathalos_State1_04 = 0x007EA050; // type:func
+EmRathalos_State1_05 = 0x007EA0F0; // type:func
+EmRathalos_State1_06 = 0x007EA1A0; // type:func
+// states 1:07, 1:09, 1:0A
+EmRathalos_State1_07 = 0x007EA250; // type:func
+EmRathalos_State2_00 = 0x007EA380; // type:func
+EmRathalos_State2_01_FlyInLand = 0x007EA4C0; // type:func
+EmRathalos_State2_02 = 0x007EA7A0; // type:func
+EmRathalos_State2_03 = 0x007EA8C0; // type:func
+EmRathalos_State2_04 = 0x007EABA0; // type:func
+EmRathalos_State2_05 = 0x007EAD10; // type:func
+EmRathalos_State2_06 = 0x007EAE80; // type:func
+EmRathalos_State2_07 = 0x007EB0B0; // type:func
+EmRathalos_State2_08 = 0x007EB1F0; // type:func
+EmRathalos_State2_09 = 0x007EB4B0; // type:func
+EmRathalos_State2_0A = 0x007EB670; // type:func
+EmRathalos_State2_0B = 0x007EB870; // type:func
+EmRathalos_State2_0C = 0x007EBAD0; // type:func
+EmRathalos_State2_0D = 0x007EBC30; // type:func
+EmRathalos_State2_0E = 0x007EBF80; // type:func
+EmRathalos_State2_0F = 0x007EC040; // type:func
+EmRathalos_State2_10 = 0x007EC100; // type:func
+EmRathalos_State2_11 = 0x007EC220; // type:func
+EmRathalos_State2_12 = 0x007EC470; // type:func
+EmRathalos_State2_13 = 0x007EC640; // type:func
+EmRathalos_State2_14 = 0x007EC830; // type:func
+EmRathalos_State2_15 = 0x007EC840; // type:func
+EmRathalos_State2_16 = 0x007EC980; // type:func
+EmRathalos_State2_17 = 0x007ECAF0; // type:func
+EmRathalos_State2_18 = 0x007ECD20; // type:func
+EmRathalos_State3_00 = 0x007ECE40; // type:func
+EmRathalos_State3_02 = 0x007ECEF0; // type:func
+EmRathalos_State3_03 = 0x007ED140; // type:func
+EmRathalos_State3_04 = 0x007ED1D0; // type:func
+EmRathalos_State3_05 = 0x007ED3C0; // type:func
+EmRathalos_State3_06 = 0x007ED470; // type:func
+EmRathalos_State3_07 = 0x007ED560; // type:func
+EmRathalos_State3_08_SwoopThenLeave = 0x007ED690; // type:func
+EmRathalos_State3_09 = 0x007EE0E0; // type:func
+EmRathalos_State3_0A = 0x007EE310; // type:func
+EmRathalos_State3_0B = 0x007EE540; // type:func
+EmRathalos_State3_0C = 0x007EEAF0; // type:func
+EmRathalos_State3_0D = 0x007EEC60; // type:func
+EmRathalos_State3_0E = 0x007EECE0; // type:func
+EmRathalos_State3_0F = 0x007EED70; // type:func
+// states 3:10, 3:1F, 3:20
+EmRathalos_State3_10 = 0x007EEE20; // type:func
+EmRathalos_State3_11 = 0x007EF040; // type:func
+EmRathalos_State3_12 = 0x007EF310; // type:func
+EmRathalos_State3_13 = 0x007EF410; // type:func
+EmRathalos_State3_14 = 0x007EF490; // type:func
+EmRathalos_State3_15_SwoopThenLand = 0x007EF660; // type:func
+EmRathalos_State3_16 = 0x007EFF70; // type:func
+EmRathalos_State3_17 = 0x007F0240; // type:func
+EmRathalos_State3_18 = 0x007F0490; // type:func
+EmRathalos_State3_19 = 0x007F0680; // type:func
+EmRathalos_State3_1A = 0x007F0870; // type:func
+EmRathalos_State3_1B = 0x007F0960; // type:func
+EmRathalos_StepForward = 0x007F0A50; // type:func
+EmRathalos_State3_1C = 0x007F0AE0; // type:func
+EmRathalos_State3_1D = 0x007F0D00; // type:func
+EmRathalos_State3_1E = 0x007F0FC0; // type:func
+EmRathalos_State4_00 = 0x007F12F0; // type:func
+EmRathalos_State4_01 = 0x007F1380; // type:func
+EmRathalos_State4_02 = 0x007F1410; // type:func
+EmRathalos_State4_03 = 0x007F14A0; // type:func
+EmRathalos_State4_04 = 0x007F1530; // type:func
+EmRathalos_State4_05 = 0x007F16D0; // type:func
+EmRathalos_State4_06 = 0x007F17F0; // type:func
+EmRathalos_State4_07 = 0x007F1800; // type:func
+EmRathalos_State4_08 = 0x007F1810; // type:func
+EmRathalos_State4_09 = 0x007F1990; // type:func
+EmRathalos_State4_0A = 0x007F1B20; // type:func
+EmRathalos_State4_0B = 0x007F1BB0; // type:func
+EmRathalos_State4_0C = 0x007F1CA0; // type:func
+EmRathalos_State4_0D = 0x007F1DC0; // type:func
+EmRathalos_State4_0E = 0x007F1ED0; // type:func
+EmRathalos_State4_0F = 0x007F1FD0; // type:func
+EmRathalos_State4_10 = 0x007F2040; // type:func
+EmRathalos_State4_11 = 0x007F2160; // type:func
+EmRathalos_State4_12 = 0x007F2250; // type:func
+EmRathalos_State4_13 = 0x007F2330; // type:func
+EmRathalos_State4_14 = 0x007F2410; // type:func
+EmRathalos_State4_15 = 0x007F2590; // type:func
+EmRathalos_State4_16 = 0x007F26B0; // type:func
+EmRathalos_State4_17 = 0x007F27A0; // type:func
+// states 6:02, 7:02
+EmRathalos_State6_02_QuestIntro = 0x007F28E0; // type:func
+// states 6:04, 7:04
+EmRathalos_State6_04_Captured = 0x007F3220; // type:func
+// states 6:05, 7:05
+EmRathalos_State6_05_Captured = 0x007F3410; // type:func
+// states 6:06, 7:06
+EmRathalos_State6_06 = 0x007F35A0; // type:func
+EmRathalos_State8_00_CarveStart = 0x007F39C0; // type:func
+EmRathalos_State8_01 = 0x007F3BB0; // type:func
+EmRathalos_State8_02 = 0x007F3C50; // type:func
+EmRathalos_State8_03 = 0x007F3CF0; // type:func
+EmRathalos_State8_98 = 0x007F3FA0; // type:func
+EmRathalos_State8_99 = 0x007F4040; // type:func
+EmRathalos_State5_00_Hunted = 0x007F40F0; // type:func
+EmRathalos_State5_01_Hunted = 0x007F42F0; // type:func
+EmRathalos_State5_02_HuntedFalling = 0x007F44E0; // type:func
+EmRathalos_State5_03_Appear = 0x007F47B0; // type:func
+EmRathalos_RunGroup0 = 0x007F4850; // type:func
+EmRathalos_RunGroup1 = 0x007F4AC0; // type:func
+EmRathalos_RunGroup2 = 0x007F4BB0; // type:func
+EmRathalos_RunGroup3 = 0x007F4D80; // type:func
+EmRathalos_RunGroup4 = 0x007F4FC0; // type:func
+EmRathalos_RunGroup5 = 0x007F5180; // type:func
+EmRathalos_RunGroup6 = 0x007F5210; // type:func
+EmRathalos_RunGroup8 = 0x007F52A0; // type:func
+EmRathalos_RequestOnFrame = 0x007F5E70; // type:func
+// empty: the default case of EmRathalos_MotionEffects
+EmRathalos_MotionEffectsDefault = 0x007F5EC0; // type:func
+EmRathalos_MotionEffects = 0x007F5ED0; // type:func
+EmRathalos_UpdateMotionEffects = 0x007F8020; // type:func
+EmRathalos_SpawnK14Type0B = 0x007F8070; // type:func
+EmRathalos_SpawnK14Type0AEvery5 = 0x007F8090; // type:func
+EmRathalos_ReachedTarget = 0x007F80E0; // type:func
+EmRathalos_ReachedPoint = 0x007F8190; // type:func
+EmRathalos_EndSwoop = 0x007F8230; // type:func
+EmRathalos_TableNop = 0x007F8240; // type:func
+EmRathalos_AllowHit8 = 0x007F8250; // type:func
+EmRathalos_SetGroup0State = 0x007F8350; // type:func
+EmRathalos_SetGroup1State = 0x007F8520; // type:func
+EmRathalos_SetGroup2State = 0x007F87D0; // type:func
+EmRathalos_SetGroup3State = 0x007F8AC0; // type:func
+EmRathalos_SetEscapePoint = 0x007F9410; // type:func
+EmRathalos_StepPitch = 0x007F9590; // type:func
+EmRathalos_MoveByVelYCurve = 0x007F9730; // type:func
+EmFatalis_MotionSounds = 0x007F9C50; // type:func
+EmFatalis_Init = 0x007FBAE0; // type:func
+EmFatalis_UpdateRageTimer = 0x007FBC40; // type:func
+EmFatalis_AddMinePoints = 0x007FBD40; // type:func
+EmFatalis_UpdateMinePoints = 0x007FBFB0; // type:func
+EmFatalis_RemoveMinePoints = 0x007FC080; // type:func
+// kind 0x47: StageObj K1C 0x26 on the monster; others: StageObj K11 0x33 at bones 1 and 2
+EmFatalis_SpawnK1COrK11 = 0x007FC0F0; // type:func
+// kind 0x47: EffEm33 0x0D; others: EffEm08 at bone 0x33
+EmFatalis_SpawnEffect33Or08 = 0x007FC170; // type:func
+// kind 0x47: EffEm33 0x0C; others: EffEm08 0x0C at bone 0
+EmFatalis_SpawnEffect33Or08b = 0x007FC1D0; // type:func
+EmFatalis_EndState = 0x007FC230; // type:func
+EmFatalis_EndState2 = 0x007FC250; // type:func
+EmFatalis_State0_00 = 0x007FC980; // type:func
+EmFatalis_State0_01 = 0x007FCA60; // type:func
+EmFatalis_State0_02 = 0x007FCAE0; // type:func
+EmFatalis_State0_03 = 0x007FCB60; // type:func
+EmFatalis_State0_04 = 0x007FCBE0; // type:func
+EmFatalis_State0_05 = 0x007FCD10; // type:func
+EmFatalis_State0_06 = 0x007FCDA0; // type:func
+EmFatalis_State1_00 = 0x007FCE20; // type:func
+EmFatalis_State1_01 = 0x007FCEC0; // type:func
+EmFatalis_State1_02 = 0x007FCF60; // type:func
+// states 2:00, 2:0F
+EmFatalis_State2_00 = 0x007FD240; // type:func
+EmFatalis_State2_01 = 0x007FD360; // type:func
+EmFatalis_State2_02 = 0x007FD530; // type:func
+// states 2:03, 2:0D
+EmFatalis_State2_03 = 0x007FD6B0; // type:func
+EmFatalis_State2_04 = 0x007FD7D0; // type:func
+EmFatalis_State2_05 = 0x007FD920; // type:func
+EmFatalis_State2_06 = 0x007FDA50; // type:func
+EmFatalis_State2_07 = 0x007FDBA0; // type:func
+EmFatalis_State2_08 = 0x007FDCD0; // type:func
+EmFatalis_State2_09 = 0x007FDDE0; // type:func
+// states 2:0A, 2:0C
+EmFatalis_State2_0A = 0x007FDF20; // type:func
+EmFatalis_State2_0B = 0x007FE0C0; // type:func
+EmFatalis_State2_0E = 0x007FE230; // type:func
+// states 3:00, 3:13
+EmFatalis_State3_00 = 0x007FE430; // type:func
+EmFatalis_State3_01 = 0x007FE4D0; // type:func
+EmFatalis_State3_02 = 0x007FE550; // type:func
+EmFatalis_State3_03 = 0x007FE610; // type:func
+// states 3:04, 3:0E, 3:0F, 3:10, 3:11
+EmFatalis_State3_04 = 0x007FE6D0; // type:func
+// states 3:05, 3:0A, 3:0B
+EmFatalis_State3_05 = 0x007FE830; // type:func
+EmFatalis_State3_06 = 0x007FEA60; // type:func
+EmFatalis_State3_07 = 0x007FEB70; // type:func
+EmFatalis_State3_08 = 0x007FECB0; // type:func
+EmFatalis_State3_09 = 0x007FED70; // type:func
+EmFatalis_State3_0C = 0x007FEFA0; // type:func
+EmFatalis_State3_0D = 0x007FF120; // type:func
+EmFatalis_State3_12 = 0x007FF460; // type:func
+EmFatalis_State3_14 = 0x007FF6B0; // type:func
+EmFatalis_State3_15 = 0x007FF9E0; // type:func
+EmFatalis_State4_00 = 0x007FFC80; // type:func
+EmFatalis_State4_01 = 0x007FFD10; // type:func
+EmFatalis_State4_02 = 0x007FFDA0; // type:func
+EmFatalis_State4_03 = 0x007FFE60; // type:func
+EmFatalis_State4_04 = 0x007FFFC0; // type:func
+EmFatalis_State4_05 = 0x008000E0; // type:func
+EmFatalis_State4_06 = 0x00800200; // type:func
+EmFatalis_State4_07 = 0x008002C0; // type:func
+EmFatalis_State4_08 = 0x00800350; // type:func
+EmFatalis_State5_00_Hunted = 0x008004B0; // type:func
+EmFatalis_State5_01_Hunted = 0x00800620; // type:func
+EmFatalis_State5_02_HuntedFalling = 0x008007B0; // type:func
+EmFatalis_RunGroup0 = 0x00800A10; // type:func
+EmFatalis_RunGroup1 = 0x00800AC0; // type:func
+EmFatalis_RunGroup2 = 0x00800B30; // type:func
+EmFatalis_RunGroup3 = 0x00800C70; // type:func
+EmFatalis_RunGroup4 = 0x00800E10; // type:func
+EmFatalis_RunGroup5 = 0x00800EE0; // type:func
+// states 6:00, 7:00
+EmFatalis_State6_00 = 0x00800F50; // type:func
+// states 6:01, 7:01
+EmFatalis_State6_01 = 0x00801100; // type:func
+// states 6:02, 7:02
+EmFatalis_State6_02 = 0x008015E0; // type:func
+// states 6:03, 7:03
+EmFatalis_State6_03 = 0x00801760; // type:func
+// states 6:04, 7:04
+EmFatalis_State6_04 = 0x00801B30; // type:func
+EmFatalis_RunGroup6 = 0x00801FF0; // type:func
+EmFatalis_SpawnK14Type1A = 0x00802170; // type:func
+EmFatalis_SpawnK1CInMotions = 0x008021F0; // type:func
+// empty: the default case of EmFatalis_MotionEffects
+EmFatalis_MotionEffectsDefault = 0x00802330; // type:func
+EmFatalis_MotionEffects = 0x00802340; // type:func
+EmFatalis_RequestOnFrame = 0x00804440; // type:func
+EmFatalis_UpdateMotionEffects = 0x00804490; // type:func
+EmFatalis_SpawnEffect01 = 0x008044E0; // type:func
+EmFatalis_TableNop = 0x008044F0; // type:func
+// kinds 0x33, 0x3D (Blangonga, Blango)
+EmBlangonga_MotionSounds = 0x00804500; // type:func
+// kinds 0x34, 0x3E (Congalala, Conga)
+EmBlangonga_MotionSoundsCongalala = 0x00807330; // type:func
+// kind 0x35
+EmBlangonga_MotionSoundsRajang = 0x0080A1D0; // type:func
+EmBlangonga_SpawnEffect01 = 0x0080CE00; // type:func
+EmBlangonga_Init = 0x0080CE50; // type:func
+// unreferenced: Init, quest placement, first ChangeState (the families' Start functions)
+EmBlangonga_Start = 0x0080D150; // type:func
+EmBlangonga_Reinit = 0x0080D260; // type:func
+EmBlangonga_EndState = 0x0080DCF0; // type:func
+EmBlangonga_EndState2 = 0x0080DD20; // type:func
+EmBlangonga_PickWeightedPart = 0x0080DD50; // type:func
+// 1 unless the part flag (EmBlangonga_SetPartFlag) is set; part 6: unless func_007257E0(em, 2) is 1
+EmBlangonga_PartFlagUnset = 0x0080DF10; // type:func
+EmBlangonga_IsSmallKind = 0x0080DFD0; // type:func
+EmBlangonga_IsBlangonga = 0x0080E000; // type:func
+EmBlangonga_IsCongalala = 0x0080E030; // type:func
+EmBlangonga_IsRajang = 0x0080E060; // type:func
+EmBlangonga_UpdateRageTimer = 0x0080E2B0; // type:func
+EmBlangonga_UpdateTint = 0x0080E490; // type:func
+EmBlangonga_RageTimerFull = 0x0080E950; // type:func
+// Effect06 kind 4 at a bone on frames 0, 10, 20 of every 90 (func_007082E0)
+EmBlangonga_SpawnPeriodicEffect06 = 0x0080E9B0; // type:func
+EmBlangonga_ShouldEndState = 0x0080EA30; // type:func
+// unk680 = unk684; position from the old area (unk882)
+EmBlangonga_EnterNewArea = 0x0080EDE0; // type:func
+EmBlangonga_State0_00 = 0x0080F2C0; // type:func
+EmBlangonga_State0_01 = 0x0080F2D0; // type:func
+EmBlangonga_State0_03 = 0x0080F340; // type:func
+// states 0:04, 0:1A, 0:26
+EmBlangonga_State0_04 = 0x0080F540; // type:func
+// states 0:05, 0:25
+EmBlangonga_State0_05 = 0x0080F5E0; // type:func
+EmBlangonga_State0_06 = 0x0080F760; // type:func
+// states 0:07, 0:14, 0:15, 0:23, 0:28, 0:29
+EmBlangonga_State0_07 = 0x0080F7E0; // type:func
+// states 0:08, 0:09
+EmBlangonga_State0_08 = 0x0080F960; // type:func
+// states 0:0A, 0:19, 0:1B
+EmBlangonga_State0_0A = 0x0080FB70; // type:func
+EmBlangonga_State0_0B = 0x0080FBF0; // type:func
+// states 0:0C, 0:1C, 0:1D, 0:1E, 0:1F, 0:21
+EmBlangonga_State0_0C = 0x0080FD10; // type:func
+EmBlangonga_State0_0D = 0x0080FF70; // type:func
+EmBlangonga_State0_0E = 0x0080FFF0; // type:func
+// states 0:0F, 0:27
+EmBlangonga_State0_0F = 0x008100D0; // type:func
+EmBlangonga_State0_10 = 0x00810200; // type:func
+EmBlangonga_State0_11 = 0x00810280; // type:func
+EmBlangonga_State0_12 = 0x00810390; // type:func
+// states 0:13, 0:24
+EmBlangonga_State0_13 = 0x00810430; // type:func
+EmBlangonga_State0_16 = 0x008106E0; // type:func
+EmBlangonga_State0_17 = 0x00810780; // type:func
+EmBlangonga_State0_18 = 0x00810800; // type:func
+EmBlangonga_State0_20 = 0x00810870; // type:func
+EmBlangonga_State0_22 = 0x00810920; // type:func
+EmBlangonga_RunGroup0 = 0x008109B0; // type:func
+// states 1:00, 1:09
+EmBlangonga_State1_00 = 0x00810C80; // type:func
+// states 1:01, 1:02
+EmBlangonga_State1_01 = 0x00810D40; // type:func
+// states 1:03, 1:08, 1:0A
+EmBlangonga_State1_03 = 0x00810E20; // type:func
+EmBlangonga_State1_04 = 0x00810F70; // type:func
+EmBlangonga_State1_05 = 0x00810FF0; // type:func
+EmBlangonga_State1_06 = 0x00811070; // type:func
+// states 1:07, 1:0F
+EmBlangonga_State1_07 = 0x008110F0; // type:func
+// states 1:0B, 1:0C, 1:0D, 1:0E
+EmBlangonga_State1_0B = 0x00811170; // type:func
+EmBlangonga_RunGroup1 = 0x00811370; // type:func
+// states 2:00, 2:0C, 2:10
+EmBlangonga_State2_00 = 0x008114B0; // type:func
+// states 2:01, 2:0E, 2:0F
+EmBlangonga_State2_01 = 0x00811840; // type:func
+EmBlangonga_State2_02 = 0x00811AC0; // type:func
+EmBlangonga_State2_03 = 0x00811BC0; // type:func
+// states 2:04, 2:0A
+EmBlangonga_State2_04 = 0x00811C80; // type:func
+EmBlangonga_State2_05 = 0x00811E40; // type:func
+EmBlangonga_State2_06 = 0x00812010; // type:func
+EmBlangonga_State2_07 = 0x008121A0; // type:func
+EmBlangonga_State2_08 = 0x00812260; // type:func
+EmBlangonga_State2_09 = 0x008124B0; // type:func
+EmBlangonga_State2_0B = 0x00812680; // type:func
+EmBlangonga_State2_0D = 0x00812860; // type:func
+EmBlangonga_RunGroup2 = 0x00812930; // type:func
+EmBlangonga_State3_00 = 0x00812A80; // type:func
+// states 3:01, 3:0D
+EmBlangonga_State3_01 = 0x00812C10; // type:func
+// states 3:02, 3:03
+EmBlangonga_State3_02 = 0x00812DF0; // type:func
+EmBlangonga_State3_04 = 0x00812F60; // type:func
+EmBlangonga_State3_05 = 0x00813040; // type:func
+EmBlangonga_State3_06 = 0x00813120; // type:func
+// states 3:07, 3:0F, 3:10
+EmBlangonga_State3_07 = 0x00813300; // type:func
+EmBlangonga_State3_08 = 0x00813460; // type:func
+EmBlangonga_State3_09 = 0x00813590; // type:func
+EmBlangonga_State3_0A = 0x00813710; // type:func
+// states 3:0B, 3:19
+EmBlangonga_State3_0B = 0x00813850; // type:func
+EmBlangonga_State3_0C = 0x00813970; // type:func
+EmBlangonga_State3_0E = 0x008139F0; // type:func
+// states 3:11, 3:1A
+EmBlangonga_State3_11 = 0x00813BA0; // type:func
+// states 3:12, 3:1B
+EmBlangonga_State3_12 = 0x00813DB0; // type:func
+// states 3:13, 3:18
+EmBlangonga_State3_13 = 0x00813F40; // type:func
+EmBlangonga_State3_14 = 0x008140D0; // type:func
+EmBlangonga_State3_15 = 0x00814370; // type:func
+EmBlangonga_State3_16 = 0x00814440; // type:func
+EmBlangonga_State3_17 = 0x00814570; // type:func
+EmBlangonga_RunGroup3 = 0x00814660; // type:func
+EmBlangonga_State4_00 = 0x00814860; // type:func
+// states 4:01, 4:14
+EmBlangonga_State4_01 = 0x008148F0; // type:func
+// states 4:02, 4:03, 4:0C, 4:0D
+EmBlangonga_State4_02 = 0x00814980; // type:func
+EmBlangonga_State4_04 = 0x00814C10; // type:func
+EmBlangonga_State4_05 = 0x00814D00; // type:func
+// states 4:06, 4:0A, 4:0F
+EmBlangonga_State4_06 = 0x00814E20; // type:func
+EmBlangonga_State4_07 = 0x00814FD0; // type:func
+EmBlangonga_State4_08 = 0x00815170; // type:func
+// states 4:09, 4:0E
+EmBlangonga_State4_09 = 0x00815180; // type:func
+// states 4:0B, 4:13
+EmBlangonga_State4_0B = 0x00815440; // type:func
+EmBlangonga_State4_10 = 0x00815520; // type:func
+// states 4:11, 4:15, 4:16, 4:17
+EmBlangonga_State4_11 = 0x00815610; // type:func
+EmBlangonga_State4_12 = 0x008156D0; // type:func
+EmBlangonga_State4_18 = 0x00815840; // type:func
+EmBlangonga_RunGroup4 = 0x00815850; // type:func
+EmBlangonga_State5_00_Hunted = 0x00815A20; // type:func
+EmBlangonga_State5_01_Hunted = 0x00815C70; // type:func
+EmBlangonga_State5_02_Hunted = 0x00815E40; // type:func
+EmBlangonga_State5_03_HuntedFalling = 0x00816040; // type:func
+EmBlangonga_State5_04 = 0x00816250; // type:func
+EmBlangonga_RunGroup5 = 0x00816370; // type:func
+// states 6:00, 7:00
+EmBlangonga_State6_00_Captured = 0x00816470; // type:func
+// states 6:01, 7:01
+EmBlangonga_State6_01_Captured = 0x008166F0; // type:func
+// states 6:02, 7:02
+EmBlangonga_State6_02 = 0x00816880; // type:func
+// states 6:03, 7:03
+EmBlangonga_State6_03 = 0x00816B50; // type:func
+// states 6:04, 7:04
+EmBlangonga_State6_04 = 0x00816C60; // type:func
+// states 6:05, 6:06, 6:07, 7:05, 7:06, 7:07
+EmBlangonga_State6_05 = 0x00816F80; // type:func
+// states 6:08, 7:08
+EmBlangonga_State6_08 = 0x00817230; // type:func
+EmBlangonga_RunGroup6 = 0x008172F0; // type:func
+EmBlangonga_State8_00_CarveStart = 0x008173C0; // type:func
+EmBlangonga_State8_01 = 0x00817520; // type:func
+EmBlangonga_State8_02 = 0x008176F0; // type:func
+EmBlangonga_State8_03 = 0x008178C0; // type:func
+EmBlangonga_State8_98 = 0x00817AC0; // type:func
+EmBlangonga_State8_99 = 0x00817B60; // type:func
+EmBlangonga_RunGroup8 = 0x00817C10; // type:func
+EmBlangonga_BreakParts = 0x00818D10; // type:func
+EmBlangonga_SpawnGroundEffect = 0x00818DB0; // type:func
+EmBlangonga_SpawnK1CInMotions = 0x00818E30; // type:func
+EmBlangonga_RequestOnFrame = 0x00818F80; // type:func
+// empty: the default case of EmBlangonga_MotionEffects
+EmBlangonga_MotionEffectsDefault = 0x00818FD0; // type:func
+EmBlangonga_MotionEffects = 0x00818FE0; // type:func
+EmBlangonga_UpdateMotionEffects = 0x0081AA30; // type:func
+EmBlangonga_TableNop = 0x0081AA80; // type:func
+EmBlangonga_ScriptQuery = 0x0081AA90; // type:func
+EmBlangonga_AllowHit8 = 0x0081AD80; // type:func
+EmShenGaoren_SetGroup0State = 0x0081AE00; // type:func
+EmShenGaoren_SetGroup1State = 0x0081AE50; // type:func
+EmShenGaoren_SetGroup2State = 0x0081B040; // type:func
+EmShenGaoren_SetGroup3State = 0x0081B060; // type:func
+EmShenGaoren_SetGroup4State = 0x0081B080; // type:func
+// Kushala's wind (work +8, 90-frame timer); off while unk8A2/unk70C, unk6AE 4, state 4:0C or parts 0/2 (func_007257E0)
+EmKushala_SetWind = 0x0081B2A0; // type:func
+EmKushala_WindActive = 0x0081B2D0; // type:func
+EmKushala_WindActive2 = 0x0081B390; // type:func
+EmKushala_SetGroup0State = 0x0081B450; // type:func
+EmKushala_SetGroup1State = 0x0081B730; // type:func
+EmKushala_SetGroup2State = 0x0081B9E0; // type:func
+EmKushala_SetGroup3State = 0x0081BC50; // type:func
+EmKushala_SetGroup4State = 0x0081BCE0; // type:func
+EmShenGaoren_PlaySeAtOffset = 0x0081C4E0; // type:func
+EmShenGaoren_PlaySeOnFrame = 0x0081C5C0; // type:func
+EmShenGaoren_MotionSounds = 0x0081C630; // type:func
+EmShenGaoren_SpawnEffect01 = 0x00822F60; // type:func
+EmShenGaoren_GetMinePointPos = 0x00822F70; // type:func
+EmShenGaoren_AddMinePoint = 0x00823010; // type:func
+EmShenGaoren_RemoveMinePoints = 0x008230F0; // type:func
+EmShenGaoren_Init = 0x00823160; // type:func
+EmShenGaoren_EndState = 0x00823410; // type:func
+EmShenGaoren_State0_00 = 0x00823480; // type:func
+EmShenGaoren_State0_01 = 0x00823510; // type:func
+EmShenGaoren_State0_02 = 0x008235E0; // type:func
+EmShenGaoren_State0_03 = 0x00823690; // type:func
+EmShenGaoren_State0_04 = 0x00823720; // type:func
+EmShenGaoren_State0_05 = 0x008237B0; // type:func
+EmShenGaoren_State0_06 = 0x00823850; // type:func
+EmShenGaoren_State0_07 = 0x00823950; // type:func
+EmShenGaoren_RunGroup0 = 0x00823A00; // type:func
+EmShenGaoren_State1_00 = 0x00823AC0; // type:func
+EmShenGaoren_State1_01 = 0x00823C10; // type:func
+EmShenGaoren_State1_02 = 0x00823D70; // type:func
+EmShenGaoren_State1_03 = 0x00823EC0; // type:func
+EmShenGaoren_State1_04 = 0x00824020; // type:func
+EmShenGaoren_State1_05 = 0x008240B0; // type:func
+EmShenGaoren_State1_06 = 0x00824140; // type:func
+EmShenGaoren_State1_07 = 0x008241D0; // type:func
+EmShenGaoren_RunGroup1 = 0x00824260; // type:func
+EmShenGaoren_RunGroup2 = 0x00824320; // type:func
+EmShenGaoren_State3_00 = 0x00824330; // type:func
+// states 3:01, 3:09, 3:0A
+EmShenGaoren_State3_01 = 0x00824480; // type:func
+EmShenGaoren_State3_02 = 0x00824710; // type:func
+// states 3:03, 3:08
+EmShenGaoren_State3_03 = 0x00824820; // type:func
+EmShenGaoren_State3_04 = 0x008249A0; // type:func
+EmShenGaoren_State3_05 = 0x00824A20; // type:func
+EmShenGaoren_State3_06 = 0x00824AA0; // type:func
+EmShenGaoren_State3_07 = 0x00824B20; // type:func
+EmShenGaoren_RunGroup3 = 0x00824BA0; // type:func
+// states 4:00, 4:09, 4:0A, 4:0B, 4:0C
+EmShenGaoren_State4_00 = 0x00824C90; // type:func
+EmShenGaoren_State4_01 = 0x00824D20; // type:func
+// states 4:02, 4:03, 4:04, 4:05, 4:11, 4:12, 4:13, 4:14
+EmShenGaoren_State4_02 = 0x00824DB0; // type:func
+// states 4:06, 4:15
+EmShenGaoren_State4_06 = 0x00824E40; // type:func
+// states 4:07, 4:0D, 4:0E, 4:0F, 4:10
+EmShenGaoren_State4_07 = 0x00824F50; // type:func
+EmShenGaoren_State4_08 = 0x00825050; // type:func
+EmShenGaoren_RunGroup4 = 0x00825110; // type:func
+EmShenGaoren_State5_00_Hunted = 0x008252B0; // type:func
+EmShenGaoren_State5_01_Hunted = 0x00825400; // type:func
+EmShenGaoren_RunGroup5 = 0x00825500; // type:func
+// states 6:00, 7:00
+EmShenGaoren_State6_00 = 0x00825550; // type:func
+// states 6:01, 7:01
+EmShenGaoren_State6_01 = 0x008258C0; // type:func
+EmShenGaoren_RunGroup6 = 0x00825B30; // type:func
+EmShenGaoren_SpawnGroundEffect = 0x00826370; // type:func
+EmShenGaoren_SpawnFootEffect = 0x00826500; // type:func
+// empty: the default case of EmShenGaoren_MotionEffects
+EmShenGaoren_MotionEffectsDefault = 0x00826570; // type:func
+EmShenGaoren_MotionEffects = 0x00826580; // type:func
+EmShenGaoren_UpdateMotionEffects = 0x00827FD0; // type:func
+EmShenGaoren_SpawnAreaImpactEffects = 0x00828020; // type:func
+EmShenGaoren_TableNop = 0x008281E0; // type:func
+EmShenGaoren_ScriptQuery = 0x008281F0; // type:func
+EmKushala_MotionSounds = 0x00828200; // type:func
+// for kinds 0x40, 0x41 (Lunastra, Teostra); EmKushala_MotionSounds for 0x36, 0x3C
+EmKushala_MotionSoundsTesca = 0x0082A4A0; // type:func
+EmKushala_SpawnEffects = 0x0082CEF0; // type:func
+EmKushala_Init = 0x0082CF80; // type:func
+EmKushala_Start = 0x0082D510; // type:func
+EmKushala_Reinit = 0x0082D690; // type:func
+EmKushala_ToIdle = 0x0082D740; // type:func
+EmKushala_EndState = 0x0082D860; // type:func
+EmKushala_EndState2 = 0x0082D870; // type:func
+EmKushala_BreakParts = 0x0082D8E0; // type:func
+// EffKushala29_CreateAtBone, with the bone moved on when D_006ADCB0.unk030 is 0x0B or 0x15
+EmKushala_SpawnEffect29AtBone = 0x0082DAB0; // type:func
+EmKushala_State0_00 = 0x0082DB20; // type:func
+EmKushala_State0_01 = 0x0082DBF0; // type:func
+EmKushala_State0_02 = 0x0082DC90; // type:func
+EmKushala_State0_03 = 0x0082DD20; // type:func
+// states 0:04, 0:19
+EmKushala_State0_04 = 0x0082DDA0; // type:func
+// states 0:05, 0:1A
+EmKushala_State0_05 = 0x0082E000; // type:func
+EmKushala_State0_06 = 0x0082E0C0; // type:func
+// states 0:07, 0:18
+EmKushala_State0_07 = 0x0082E140; // type:func
+EmKushala_State0_08 = 0x0082E1C0; // type:func
+EmKushala_State0_09 = 0x0082E240; // type:func
+EmKushala_State0_0A = 0x0082E3D0; // type:func
+EmKushala_State0_0B = 0x0082E4E0; // type:func
+EmKushala_State0_0C = 0x0082E5F0; // type:func
+EmKushala_State0_0D = 0x0082E710; // type:func
+EmKushala_State0_0E = 0x0082E800; // type:func
+// states 0:0F, 0:10, 0:11, 0:14
+EmKushala_State0_0F = 0x0082E8A0; // type:func
+EmKushala_State0_12 = 0x0082EA10; // type:func
+EmKushala_State0_13 = 0x0082EA90; // type:func
+EmKushala_State0_15 = 0x0082EB10; // type:func
+EmKushala_State0_16 = 0x0082EC20; // type:func
+EmKushala_State0_17 = 0x0082ED40; // type:func
+EmKushala_State0_1B = 0x0082EDC0; // type:func
+EmKushala_State1_00 = 0x0082EF30; // type:func
+EmKushala_State1_01 = 0x0082EFD0; // type:func
+EmKushala_State1_02 = 0x0082F0C0; // type:func
+EmKushala_State1_03 = 0x0082F170; // type:func
+EmKushala_State1_04 = 0x0082F350; // type:func
+// states 1:05, 1:08, 1:09, 1:0A, 1:0B, 1:0C
+EmKushala_State1_05 = 0x0082F450; // type:func
+EmKushala_State1_06 = 0x0082F630; // type:func
+EmKushala_State1_07 = 0x0082F730; // type:func
+EmKushala_State1_14 = 0x0082F830; // type:func
+// states 1:15, 1:16
+EmKushala_State1_15 = 0x0082F960; // type:func
+// states 1:17, 1:1C, 1:1D
+EmKushala_State1_17 = 0x0082FB60; // type:func
+EmKushala_State1_18 = 0x0082FCC0; // type:func
+EmKushala_State1_19 = 0x0082FEE0; // type:func
+// states 1:1A, 1:1E
+EmKushala_State1_1A = 0x00830070; // type:func
+EmKushala_State1_1B = 0x00830180; // type:func
+EmKushala_State2_00 = 0x00830250; // type:func
+// states 2:01, 2:0E
+EmKushala_State2_01 = 0x008303C0; // type:func
+EmKushala_State2_02 = 0x00830620; // type:func
+EmKushala_State2_03 = 0x008306E0; // type:func
+EmKushala_State2_04 = 0x008307A0; // type:func
+EmKushala_State2_05 = 0x008308C0; // type:func
+EmKushala_State2_06 = 0x00830A00; // type:func
+EmKushala_State2_07 = 0x00830B00; // type:func
+EmKushala_State2_08 = 0x00830C10; // type:func
+EmKushala_State2_09 = 0x00830E60; // type:func
+EmKushala_State2_0A = 0x00831100; // type:func
+EmKushala_State2_0B = 0x00831450; // type:func
+EmKushala_State2_0C = 0x00831660; // type:func
+EmKushala_State2_0D = 0x008317C0; // type:func
+// states 2:0F, 2:10, 2:11
+EmKushala_State2_0F = 0x008319F0; // type:func
+EmKushala_State3_00 = 0x00831C50; // type:func
+EmKushala_State3_01 = 0x00831D20; // type:func
+EmKushala_State3_02 = 0x00831DF0; // type:func
+EmKushala_State3_03 = 0x00831F20; // type:func
+EmKushala_State3_04 = 0x00832030; // type:func
+// states 3:05, 3:07, 3:1A, 3:1B
+EmKushala_State3_05 = 0x008320B0; // type:func
+EmKushala_State3_06 = 0x008321F0; // type:func
+EmKushala_State3_08 = 0x00832270; // type:func
+EmKushala_State3_09 = 0x00832330; // type:func
+EmKushala_StepForward = 0x008323C0; // type:func
+// states 3:0A, 3:15, 3:16
+EmKushala_State3_0A = 0x00832480; // type:func
+EmKushala_State3_0B = 0x00832690; // type:func
+EmKushala_State3_0C = 0x008327F0; // type:func
+// states 3:0D, 3:0E
+EmKushala_State3_0D = 0x00832880; // type:func
+// states 3:0F, 3:10, 3:11, 3:12, 3:13, 3:14, 3:17, 3:19
+EmKushala_State3_0F = 0x00832990; // type:func
+EmKushala_State3_18 = 0x00832E80; // type:func
+// states 4:00, 4:0F
+EmKushala_State4_00 = 0x008330E0; // type:func
+EmKushala_State4_01 = 0x00833170; // type:func
+EmKushala_State4_02 = 0x00833250; // type:func
+EmKushala_State4_03 = 0x008332E0; // type:func
+EmKushala_State4_04 = 0x008333F0; // type:func
+EmKushala_State4_05 = 0x008335C0; // type:func
+EmKushala_State4_06 = 0x008336B0; // type:func
+EmKushala_State4_07 = 0x00833800; // type:func
+EmKushala_State4_08 = 0x00833810; // type:func
+EmKushala_State4_09 = 0x008339E0; // type:func
+EmKushala_State4_0A = 0x00833BB0; // type:func
+EmKushala_State4_0B = 0x00833C40; // type:func
+EmKushala_State4_0C = 0x00833D60; // type:func
+EmKushala_State4_0D = 0x00833EE0; // type:func
+EmKushala_State4_0E = 0x00833FF0; // type:func
+// states 6:00, 7:00
+EmKushala_State6_00 = 0x00834100; // type:func
+// states 6:01, 7:01
+EmKushala_State6_01 = 0x00834370; // type:func
+// states 6:02, 7:02
+EmKushala_State6_02 = 0x008344F0; // type:func
+// states 6:03, 7:03
+EmKushala_State6_03 = 0x008347C0; // type:func
+// states 6:04, 7:04
+EmKushala_State6_04_Captured = 0x00834A90; // type:func
+// states 6:05, 7:05
+EmKushala_State6_05 = 0x00834B70; // type:func
+// states 6:06, 7:06
+EmKushala_State6_06 = 0x00834EB0; // type:func
+// states 6:07, 7:07
+EmKushala_State6_07 = 0x00835390; // type:func
+// states 5:00, 5:01
+EmKushala_State5_00_Hunted = 0x008355E0; // type:func
+EmKushala_State5_02_HuntedFalling = 0x008357B0; // type:func
+EmKushala_State5_03 = 0x00835A30; // type:func
+EmKushala_RunGroup0 = 0x00835AB0; // type:func
+EmKushala_RunGroup1 = 0x00835CB0; // type:func
+EmKushala_RunGroup2 = 0x00835E70; // type:func
+EmKushala_RunGroup3 = 0x00835FD0; // type:func
+EmKushala_RunGroup4 = 0x008361D0; // type:func
+EmKushala_RunGroup5 = 0x00836320; // type:func
+EmKushala_RunGroup6 = 0x008363B0; // type:func
+// 1 in the states whose ground effects still spawn while the wind (EmKushala_WindActive) blows
+EmKushala_GroundEffectStateInWind = 0x008372C0; // type:func
+EmKushala_SpawnGroundEffect = 0x008373D0; // type:func
+EmKushala_SpawnGroundEffectNearGround = 0x00837450; // type:func
+// spawns stage object kind 0x14 (func_0087E9F0) when near the ground
+EmKushala_SpawnK14NearGround = 0x00837510; // type:func
+// empty: the default case of EmKushala_MotionEffects
+EmKushala_MotionEffectsDefault = 0x008375D0; // type:func
+// in some motions, every 45 frames while unk80A: stage object kind 0x1C type 0xD (func_0088A960)
+EmKushala_SpawnK1CInMotions = 0x008375E0; // type:func
+EmKushala_MotionEffects = 0x00837700; // type:func
+EmKushala_UpdateMotionEffects = 0x00838E10; // type:func
+// EffKushala30_Create for kinds 0x36 and 0x3C, EffKushala30b_Create for the others
+EmKushala_SpawnEffect30 = 0x00838E60; // type:func
+EmKushala_SpawnEffect02AtBone27 = 0x00838EB0; // type:func
+EmKushala_TableNop = 0x00838F90; // type:func
+EmKushala_AllowHit8 = 0x00838FA0; // type:func
+EmKind38_UpdateLoopSe = 0x008390A0; // type:func
+EmKind38_Init = 0x00839170; // type:func
+EmKind38_Start = 0x00839350; // type:func
+EmKind38_Reinit = 0x008393E0; // type:func
+EmKind38_EndState = 0x008393F0; // type:func
+EmKind38_EndState2 = 0x00839410; // type:func
+EmKind38_State0_00 = 0x00839430; // type:func
+EmKind38_State0_01 = 0x00839440; // type:func
+EmKind38_RunGroup0 = 0x008394C0; // type:func
+EmKind38_State1_00 = 0x00839520; // type:func
+EmKind38_RunGroup1 = 0x00839530; // type:func
+// states 2:00, 2:02
+EmKind38_State2_00 = 0x00839570; // type:func
+EmKind38_State2_01 = 0x00839790; // type:func
+EmKind38_State2_03 = 0x008398E0; // type:func
+EmKind38_State2_04 = 0x00839990; // type:func
+EmKind38_State2_05 = 0x00839B20; // type:func
+// states 2:06, 2:07
+EmKind38_State2_06 = 0x00839CD0; // type:func
+EmKind38_State2_08 = 0x00839E80; // type:func
+EmKind38_State2_09 = 0x0083A030; // type:func
+EmKind38_State2_0A = 0x0083A040; // type:func
+EmKind38_RunGroup2 = 0x0083A270; // type:func
+// states 3:00, 3:01
+EmKind38_State3_00 = 0x0083A360; // type:func
+// EffEm02_Create, variant 2 when the state random byte is under D_008CA278[unk01B]
+EmKind38_SpawnEffect02 = 0x0083A570; // type:func
+EmKind38_State3_02 = 0x0083A5B0; // type:func
+EmKind38_RunGroup3 = 0x0083A800; // type:func
+// states 4:00, 4:01
+EmKind38_State4_00 = 0x0083A870; // type:func
+EmKind38_State4_02 = 0x0083A8E0; // type:func
+EmKind38_State4_03 = 0x0083A8F0; // type:func
+EmKind38_RunGroup4 = 0x0083A960; // type:func
+// states 5:00, 5:01
+EmKind38_State5_00_Hunted = 0x0083A9F0; // type:func
+EmKind38_State5_02 = 0x0083AB60; // type:func
+EmKind38_RunGroup5 = 0x0083AC10; // type:func
+EmKind38_State6_00 = 0x0083AC90; // type:func
+EmKind38_RunGroup6 = 0x0083ACA0; // type:func
+EmKind38_State7_00 = 0x0083ACE0; // type:func
+EmKind38_RunGroup7 = 0x0083AE10; // type:func
+EmKind38_Update = 0x0083AE60; // type:func
+EmKind38_RunState = 0x0083B0E0; // type:func
+EmKind38_MotionEffects = 0x0083B1A0; // type:func
+EmKind38_UpdateMotionEffects = 0x0083B1C0; // type:func
+// kind 0x38 (no quest names it); handler table D_0090DE10[0x38]
+EmKind38_SpawnEffects = 0x0083B210; // type:func
+EmKind38_TableNop = 0x0083B250; // type:func
+EmKind38_ChangeState = 0x0083B260; // type:func
+EmKind38_InitHover = 0x0083B3E0; // type:func
+EmKind38_SteerHover = 0x0083B470; // type:func
+EmKind38_ApplyHover = 0x0083B5C0; // type:func
+EmKind38_MoveByVelocity = 0x0083B660; // type:func
+EmKind38_ClampVelocity = 0x0083B710; // type:func
+EmKind38_KeepHeight = 0x0083B820; // type:func
+// made by EmYamaTsukami_State3_00 (QuestEm_Spawn of kind 0x38)
+EmKind38_SpawnAtEm = 0x0083B930; // type:func
+EmKind38_PlaySeAtBone2 = 0x0083BA80; // type:func
+EmShakalaka_MotionSounds = 0x0083BA90; // type:func
+EmShakalaka_Init = 0x0083C8C0; // type:func
+EmShakalaka_Start = 0x0083CC20; // type:func
+EmShakalaka_Reinit = 0x0083CCF0; // type:func
+EmShakalaka_CheckTargetArea = 0x0083CD50; // type:func
+EmShakalaka_EndState = 0x0083CF00; // type:func
+// states 0:00, 7:00
+EmShakalaka_State0_00 = 0x0083CFD0; // type:func
+// states 0:01, 7:01
+EmShakalaka_State0_01 = 0x0083D060; // type:func
+// states 0:02, 0:03, 0:04, 7:02, 7:03, 7:04
+EmShakalaka_State0_02 = 0x0083D0E0; // type:func
+// states 0:05, 7:05
+EmShakalaka_State0_05 = 0x0083D1F0; // type:func
+// states 0:06, 7:06
+EmShakalaka_State0_06 = 0x0083D260; // type:func
+// states 0:07, 7:07
+EmShakalaka_State0_07 = 0x0083D2D0; // type:func
+// states 0:08, 7:08
+EmShakalaka_State0_08 = 0x0083D340; // type:func
+// states 0:09, 7:09
+EmShakalaka_State0_09 = 0x0083D470; // type:func
+// states 0:0A, 7:0A
+EmShakalaka_State0_0A = 0x0083D590; // type:func
+// states 0:0B, 7:0B
+EmShakalaka_State0_0B = 0x0083D620; // type:func
+EmShakalaka_RunGroup0 = 0x0083D6A0; // type:func
+// states 1:00, 1:01, 1:02, 1:0A, 1:0B, 1:0C, 1:14
+EmShakalaka_State1_00 = 0x0083D7B0; // type:func
+// states 1:03, 1:04
+EmShakalaka_State1_03 = 0x0083D9A0; // type:func
+EmShakalaka_State1_05 = 0x0083DAF0; // type:func
+// states 1:06, 1:07
+EmShakalaka_State1_06 = 0x0083DBC0; // type:func
+// states 1:08, 1:09
+EmShakalaka_State1_08 = 0x0083DCD0; // type:func
+// states 1:0D, 1:0E, 1:0F, 1:10, 1:11, 1:12
+EmShakalaka_State1_0D = 0x0083DDE0; // type:func
+EmShakalaka_State1_13 = 0x0083DFE0; // type:func
+EmShakalaka_RunGroup1 = 0x0083E110; // type:func
+EmShakalaka_RunGroup2 = 0x0083E2A0; // type:func
+EmShakalaka_State3_00 = 0x0083E2B0; // type:func
+// states 3:01, 3:07
+EmShakalaka_State3_01 = 0x0083E320; // type:func
+EmShakalaka_State3_02 = 0x0083E480; // type:func
+// states 3:03, 3:04, 3:05
+EmShakalaka_State3_03 = 0x0083E660; // type:func
+EmShakalaka_State3_06 = 0x0083E7E0; // type:func
+EmShakalaka_RunGroup3 = 0x0083E860; // type:func
+EmShakalaka_State4_00 = 0x0083E920; // type:func
+EmShakalaka_State4_01 = 0x0083E9B0; // type:func
+EmShakalaka_State4_02 = 0x0083EAD0; // type:func
+EmShakalaka_State4_03 = 0x0083EB60; // type:func
+EmShakalaka_State4_04 = 0x0083ECB0; // type:func
+EmShakalaka_State4_05 = 0x0083EE40; // type:func
+EmShakalaka_RunGroup4 = 0x0083EF70; // type:func
+EmShakalaka_State5_00_Hunted = 0x0083F010; // type:func
+EmShakalaka_State5_01_Hunted = 0x0083F1D0; // type:func
+EmShakalaka_State5_02 = 0x0083F4B0; // type:func
+EmShakalaka_RunGroup5 = 0x0083F5C0; // type:func
+EmShakalaka_State6_00 = 0x0083F630; // type:func
+EmShakalaka_RunGroup6 = 0x0083F640; // type:func
+// empty: the default case of EmShakalaka_MotionEffects
+EmShakalaka_MotionEffectsDefault = 0x0083F9F0; // type:func
+EmShakalaka_SpawnGroundEffect = 0x0083FA00; // type:func
+EmShakalaka_SpawnGroundEffectOffset = 0x0083FA80; // type:func
+EmShakalaka_MotionEffects = 0x0083FB80; // type:func
+EmShakalaka_UpdateMotionEffects = 0x00840220; // type:func
+EmShakalaka_ScriptQuery = 0x00840270; // type:func
+EmShakalaka_SpawnEffect01 = 0x008402D0; // type:func
+EmShakalaka_TableNop = 0x008402E0; // type:func
+EmYamaTsukami_SetGroup0State = 0x00840700; // type:func
+EmYamaTsukami_SetGroup1State = 0x00840740; // type:func
+EmYamaTsukami_SetGroup2State = 0x00840890; // type:func
+EmYamaTsukami_SetGroup3State = 0x00840950; // type:func
+EmYamaTsukami_SetGroup4State = 0x00840970; // type:func
+EmYamaTsukami_MotionSounds = 0x00840B90; // type:func
+EmYamaTsukami_SpawnEffects = 0x00844770; // type:func
+EmYamaTsukami_GetMinePointPos = 0x008447B0; // type:func
+EmYamaTsukami_AddMinePoint = 0x00844850; // type:func
+EmYamaTsukami_RemoveMinePoints = 0x00844940; // type:func
+EmYamaTsukami_AnglesToPoint = 0x008449B0; // type:func
+EmYamaTsukami_Start = 0x00844A30; // type:func
+EmYamaTsukami_EndState = 0x00844BF0; // type:func
+EmYamaTsukami_EndState2 = 0x00844C20; // type:func
+EmYamaTsukami_State0_00 = 0x00844C50; // type:func
+EmYamaTsukami_State0_01 = 0x00844CC0; // type:func
+EmYamaTsukami_State0_02 = 0x00844D40; // type:func
+EmYamaTsukami_State0_03 = 0x00844E10; // type:func
+EmYamaTsukami_State0_04 = 0x00844ED0; // type:func
+EmYamaTsukami_RunGroup0 = 0x00844F50; // type:func
+EmYamaTsukami_State1_00 = 0x00844FF0; // type:func
+EmYamaTsukami_State1_01 = 0x00845140; // type:func
+// states 1:02, 2:02, 2:03
+EmYamaTsukami_State1_02 = 0x008452A0; // type:func
+EmYamaTsukami_RunGroup1 = 0x00845500; // type:func
+EmYamaTsukami_State2_00 = 0x00845570; // type:func
+EmYamaTsukami_State2_01 = 0x008455F0; // type:func
+// states 2:04, 2:05, 2:06, 2:13
+EmYamaTsukami_State2_04 = 0x008456C0; // type:func
+// states 2:07, 2:08
+EmYamaTsukami_State2_07 = 0x00845A80; // type:func
+// states 2:09, 2:0D, 2:15
+EmYamaTsukami_State2_09 = 0x00845BC0; // type:func
+// states 2:0A, 2:0E
+EmYamaTsukami_State2_0A = 0x00845C90; // type:func
+// states 2:0B, 2:0F
+EmYamaTsukami_State2_0B = 0x00845D70; // type:func
+// states 2:0C, 2:10
+EmYamaTsukami_State2_0C = 0x00845E60; // type:func
+EmYamaTsukami_State2_11 = 0x00845F40; // type:func
+EmYamaTsukami_State2_12 = 0x00845FC0; // type:func
+EmYamaTsukami_State2_14 = 0x00846060; // type:func
+EmYamaTsukami_State2_16 = 0x00846140; // type:func
+EmYamaTsukami_RunGroup2 = 0x008462B0; // type:func
+EmYamaTsukami_State3_00 = 0x00846460; // type:func
+EmYamaTsukami_InterpKeys = 0x008465C0; // type:func
+// states 3:01, 3:0F
+EmYamaTsukami_State3_01 = 0x00846700; // type:func
+EmYamaTsukami_State3_02 = 0x00846A10; // type:func
+EmYamaTsukami_State3_03 = 0x00846AE0; // type:func
+EmYamaTsukami_State3_04 = 0x00846B80; // type:func
+EmYamaTsukami_State3_05 = 0x00846C20; // type:func
+EmYamaTsukami_State3_06 = 0x00846CC0; // type:func
+// states 3:07, 3:10
+EmYamaTsukami_State3_07 = 0x00846D60; // type:func
+EmYamaTsukami_State3_08 = 0x00846EE0; // type:func
+EmYamaTsukami_State3_09 = 0x00846F80; // type:func
+EmYamaTsukami_State3_0A = 0x008470F0; // type:func
+EmYamaTsukami_State3_0B = 0x00847190; // type:func
+EmYamaTsukami_State3_0C = 0x00847230; // type:func
+EmYamaTsukami_State3_0D = 0x00847380; // type:func
+EmYamaTsukami_State3_0E = 0x00847450; // type:func
+EmYamaTsukami_RunGroup3 = 0x00847560; // type:func
+EmYamaTsukami_State4_00 = 0x008476B0; // type:func
+EmYamaTsukami_State4_01 = 0x00847820; // type:func
+// states 4:02, 4:09
+EmYamaTsukami_State4_02 = 0x008479D0; // type:func
+// states 4:03, 4:0A
+EmYamaTsukami_State4_03 = 0x00847A90; // type:func
+// states 4:04, 4:05, 4:0B, 4:0C
+EmYamaTsukami_State4_04 = 0x00847B60; // type:func
+EmYamaTsukami_State4_06 = 0x00847C30; // type:func
+EmYamaTsukami_State4_07 = 0x00847CC0; // type:func
+EmYamaTsukami_State4_08 = 0x00847D50; // type:func
+EmYamaTsukami_State4_0D = 0x00847E10; // type:func
+EmYamaTsukami_RunGroup4 = 0x00847ED0; // type:func
+EmYamaTsukami_State5_00_Hunted = 0x00847FF0; // type:func
+EmYamaTsukami_State5_01_HuntedFalling = 0x008480F0; // type:func
+EmYamaTsukami_RunGroup5 = 0x00848280; // type:func
+// states 6:00, 7:00
+EmYamaTsukami_State6_00 = 0x008482D0; // type:func
+// states 6:01, 7:01
+EmYamaTsukami_State6_01 = 0x00848600; // type:func
+EmYamaTsukami_RunGroup6 = 0x00848980; // type:func
+// empty: the default case of EmYamaTsukami_MotionEffects
+EmYamaTsukami_MotionEffectsDefault = 0x00848FD0; // type:func
+EmYamaTsukami_MotionEffects = 0x00848FE0; // type:func
+EmYamaTsukami_UpdateMotionEffects = 0x00849800; // type:func
+EmYamaTsukami_SpawnAreaImpactEffects = 0x00849880; // type:func
+EmYamaTsukami_InitBoneFloorFlags = 0x008499B0; // type:func
+EmYamaTsukami_SpawnBoneFloorEffects = 0x00849AA0; // type:func
+EmYamaTsukami_ScriptQuery = 0x00849C60; // type:func
+EmChameleos_MotionSounds = 0x00849CD0; // type:func
+EmChameleos_SpawnEffects = 0x0084BD70; // type:func
+EmChameleos_Init = 0x0084BDB0; // type:func
+EmChameleos_Start = 0x0084BF70; // type:func
+EmChameleos_Reinit = 0x0084BFB0; // type:func
+EmChameleos_EndState = 0x0084BFC0; // type:func
+EmChameleos_EndState2 = 0x0084BFF0; // type:func
+EmChameleos_StealItem = 0x0084C090; // type:func
+EmChameleos_State0_00 = 0x0084C270; // type:func
+EmChameleos_State0_01 = 0x0084C320; // type:func
+EmChameleos_State0_02 = 0x0084C3C0; // type:func
+EmChameleos_State0_03 = 0x0084C460; // type:func
+EmChameleos_State0_04 = 0x0084C560; // type:func
+EmChameleos_State0_05 = 0x0084C5E0; // type:func
+EmChameleos_State0_09 = 0x0084C660; // type:func
+// states 0:0A, 0:0B
+EmChameleos_State0_0A = 0x0084C6E0; // type:func
+EmChameleos_State0_12 = 0x0084C9D0; // type:func
+EmChameleos_State0_14 = 0x0084CB10; // type:func
+EmChameleos_State0_17 = 0x0084CC00; // type:func
+EmChameleos_State0_18 = 0x0084CCA0; // type:func
+EmChameleos_State0_19 = 0x0084CD40; // type:func
+EmChameleos_State0_1B = 0x0084CDC0; // type:func
+EmChameleos_State0_1C = 0x0084CEB0; // type:func
+// states 0:20, 0:21
+EmChameleos_State0_20 = 0x0084CF50; // type:func
+EmChameleos_State1_00 = 0x0084CFD0; // type:func
+EmChameleos_State1_01 = 0x0084D070; // type:func
+// states 1:02, 1:08
+EmChameleos_State1_02 = 0x0084D1C0; // type:func
+// states 1:04, 1:07
+EmChameleos_State1_04 = 0x0084D330; // type:func
+EmChameleos_State1_05 = 0x0084D470; // type:func
+EmChameleos_State1_06 = 0x0084D530; // type:func
+EmChameleos_State2_00 = 0x0084D680; // type:func
+EmChameleos_State2_01 = 0x0084D810; // type:func
+EmChameleos_State2_02 = 0x0084DA10; // type:func
+EmChameleos_State2_03 = 0x0084DAD0; // type:func
+EmChameleos_State2_04 = 0x0084DAE0; // type:func
+EmChameleos_State2_05 = 0x0084DAF0; // type:func
+EmChameleos_State2_06 = 0x0084DB00; // type:func
+EmChameleos_State2_07 = 0x0084DD30; // type:func
+EmChameleos_State2_08 = 0x0084DE60; // type:func
+EmChameleos_State2_09 = 0x0084E080; // type:func
+EmChameleos_State2_0A = 0x0084E250; // type:func
+EmChameleos_State2_0B = 0x0084E260; // type:func
+EmChameleos_State2_0C = 0x0084E4C0; // type:func
+EmChameleos_State2_0D = 0x0084E4D0; // type:func
+EmChameleos_State2_0E = 0x0084E840; // type:func
+EmChameleos_State2_0F = 0x0084E9A0; // type:func
+EmChameleos_State2_10 = 0x0084EA60; // type:func
+EmChameleos_State2_11 = 0x0084EB70; // type:func
+EmChameleos_State2_12 = 0x0084EDC0; // type:func
+EmChameleos_State2_13 = 0x0084EF90; // type:func
+EmChameleos_State2_14 = 0x0084F180; // type:func
+EmChameleos_State2_15 = 0x0084F190; // type:func
+EmChameleos_State2_16 = 0x0084F2D0; // type:func
+EmChameleos_State2_17 = 0x0084F440; // type:func
+EmChameleos_State2_18 = 0x0084F450; // type:func
+// states 3:00, 3:0B
+EmChameleos_State3_00 = 0x0084F570; // type:func
+EmChameleos_State3_01 = 0x0084F6D0; // type:func
+EmChameleos_State3_02 = 0x0084F7A0; // type:func
+EmChameleos_State3_03 = 0x0084F830; // type:func
+EmChameleos_State3_04 = 0x0084F8C0; // type:func
+EmChameleos_State3_05 = 0x0084F9C0; // type:func
+// states 3:06, 3:09
+EmChameleos_State3_06 = 0x0084FA90; // type:func
+// states 3:07, 3:0A
+EmChameleos_State3_07 = 0x0084FC30; // type:func
+EmChameleos_State3_08 = 0x0084FDD0; // type:func
+EmChameleos_State3_0C = 0x0084FF00; // type:func
+EmChameleos_State4_00 = 0x0084FF80; // type:func
+EmChameleos_State4_01 = 0x00850010; // type:func
+// states 4:02, 4:0C
+EmChameleos_State4_02 = 0x008500A0; // type:func
+// states 4:03, 4:05
+EmChameleos_State4_03 = 0x008501A0; // type:func
+EmChameleos_State4_04 = 0x00850390; // type:func
+EmChameleos_State4_06 = 0x008504E0; // type:func
+EmChameleos_State4_07 = 0x008504F0; // type:func
+// states 4:08, 4:09, 4:0D
+EmChameleos_State4_08 = 0x00850500; // type:func
+EmChameleos_State4_0A = 0x00850710; // type:func
+EmChameleos_State4_0B = 0x008507A0; // type:func
+// states 6:00, 7:00
+EmChameleos_State6_00 = 0x00850890; // type:func
+// states 6:01, 7:01
+EmChameleos_State6_01 = 0x00850B70; // type:func
+// states 6:02, 7:02
+EmChameleos_State6_02 = 0x00850E70; // type:func
+EmChameleos_State5_00_Hunted = 0x00850FF0; // type:func
+EmChameleos_State5_01 = 0x008511A0; // type:func
+EmChameleos_State5_02_HuntedFalling = 0x008511B0; // type:func
+EmChameleos_State5_03 = 0x00851430; // type:func
+EmChameleos_RunGroup0 = 0x008514E0; // type:func
+EmChameleos_RunGroup1 = 0x008516D0; // type:func
+EmChameleos_RunGroup2 = 0x00851790; // type:func
+EmChameleos_RunGroup3 = 0x00851960; // type:func
+EmChameleos_RunGroup4 = 0x00851A70; // type:func
+EmChameleos_RunGroup5 = 0x00851B90; // type:func
+EmChameleos_RunGroup6 = 0x00851C20; // type:func
+EmChameleos_BreakParts = 0x00852520; // type:func
+EmChameleos_SpawnGroundEffect = 0x008525A0; // type:func
+EmChameleos_SpawnGroundEffectOffset = 0x00852620; // type:func
+EmChameleos_SpawnGroundEffectNearGround = 0x00852730; // type:func
+EmChameleos_SpawnK14NearGround = 0x008527C0; // type:func
+EmChameleos_SpawnK1CInMotions = 0x00852850; // type:func
+// empty: the default case of EmChameleos_MotionEffects
+EmChameleos_MotionEffectsDefault = 0x00852960; // type:func
+EmChameleos_MotionEffects = 0x00852970; // type:func
+EmChameleos_UpdateMotionEffects = 0x008535B0; // type:func
+EmChameleos_TableNop = 0x00853600; // type:func
+EmChameleos_ScriptQuery = 0x00853610; // type:func
+EmChameleos_AllowHit8 = 0x008536A0; // type:func
+EmRemobra_MotionSounds = 0x00853720; // type:func
+EmRemobra_Init = 0x00854510; // type:func
+EmRemobra_Start = 0x00854590; // type:func
+EmRemobra_Reinit = 0x008545D0; // type:func
+EmRemobra_EndState = 0x00854A00; // type:func
+EmRemobra_EndState2 = 0x00854A30; // type:func
+EmRemobra_State0_00 = 0x00854A60; // type:func
+EmRemobra_State0_01 = 0x00854A70; // type:func
+EmRemobra_RunGroup0 = 0x00854B10; // type:func
+EmRemobra_State1_00 = 0x00854B70; // type:func
+EmRemobra_RunGroup1 = 0x00854B80; // type:func
+EmRemobra_UpdateHop = 0x00854BD0; // type:func
+EmRemobra_State2_00 = 0x00854CE0; // type:func
+EmRemobra_State2_01 = 0x00854DD0; // type:func
+// states 2:02, 2:14
+EmRemobra_State2_02 = 0x00854E50; // type:func
+// states 2:03, 2:04, 2:05, 2:06
+EmRemobra_State2_03 = 0x00855110; // type:func
+// states 2:07, 2:08
+EmRemobra_State2_07 = 0x008552B0; // type:func
+// states 2:09, 2:0B, 2:0E
+EmRemobra_State2_09 = 0x008553C0; // type:func
+// states 2:0A, 2:12
+EmRemobra_State2_0A = 0x008554C0; // type:func
+// states 2:0C, 2:0D, 2:1A
+EmRemobra_State2_0C = 0x008555D0; // type:func
+// states 2:0F, 2:13
+EmRemobra_State2_0F = 0x00855750; // type:func
+EmRemobra_State2_10 = 0x00855990; // type:func
+EmRemobra_State2_11 = 0x00855AB0; // type:func
+// states 2:15, 2:16, 2:17, 2:18, 2:19
+EmRemobra_State2_15 = 0x00855BA0; // type:func
+EmRemobra_RunGroup2 = 0x00855D70; // type:func
+EmRemobra_State3_00 = 0x00855FA0; // type:func
+// states 3:01, 3:02, 3:03
+EmRemobra_State3_01 = 0x00856050; // type:func
+EmRemobra_State3_04 = 0x00856230; // type:func
+EmRemobra_State3_05 = 0x008562F0; // type:func
+EmRemobra_RunGroup3 = 0x00856400; // type:func
+EmRemobra_State4_00 = 0x008564A0; // type:func
+EmRemobra_State4_01 = 0x00856530; // type:func
+EmRemobra_State4_02 = 0x00856660; // type:func
+EmRemobra_State4_03 = 0x00856750; // type:func
+EmRemobra_RunGroup4 = 0x00856890; // type:func
+EmRemobra_State5_00_Hunted = 0x00856920; // type:func
+EmRemobra_State5_01 = 0x00856AE0; // type:func
+EmRemobra_State5_02 = 0x00856B60; // type:func
+EmRemobra_RunGroup5 = 0x00856C60; // type:func
+EmRemobra_State6_00 = 0x00856CE0; // type:func
+EmRemobra_RunGroup6 = 0x00856CF0; // type:func
+EmRemobra_State7_00 = 0x00856D30; // type:func
+EmRemobra_RunGroup7 = 0x00856DA0; // type:func
+EmRemobra_SpawnGroundEffect = 0x00857090; // type:func
+EmRemobra_SpawnGroundEffectNearGround = 0x00857110; // type:func
+EmRemobra_MotionEffects = 0x00857150; // type:func
+EmRemobra_UpdateMotionEffects = 0x00857440; // type:func
+EmRemobra_MoveByVelocity = 0x00857490; // type:func
+EmRemobra_StartCurves = 0x00857530; // type:func
+EmRemobra_CurveVelY = 0x00857570; // type:func
+EmRemobra_CurveSpeed = 0x00857670; // type:func
+EmRemobra_UpdateCurves = 0x00857770; // type:func
+EmRemobra_SpawnEffect01 = 0x00857810; // type:func
+EmRemobra_TableNop = 0x00857820; // type:func
+EmChameleos_SetGroup0State = 0x00857830; // type:func
+EmChameleos_SetGroup1State = 0x008579B0; // type:func
+EmChameleos_SetGroup2State = 0x00857B90; // type:func
+EmChameleos_SetGroup3State = 0x00857E60; // type:func
+EmChameleos_StartCurves = 0x008581A0; // type:func
+// fading (unk484 != 0xFFFF) or WantsInvisible
+EmChameleos_IsInvisible = 0x00858540; // type:func
+EmChameleos_UpdateInvisibility = 0x008585A0; // type:func
+EmChameleos_WantsInvisible = 0x00858760; // type:func
+// unk89C & 1 and part 0 not broken; 2 without the flag
+EmChameleos_CanTurnInvisible = 0x00858880; // type:func
+EmChameleos_InvisibilityBlocked = 0x008588D0; // type:func
+EmChameleos_SpawnPeriodicEffect06 = 0x00858940; // type:func
+EmBulldrome_Init = 0x00858A10; // type:func
+EmBulldrome_Start = 0x00858B90; // type:func
+EmBulldrome_Reinit = 0x00858BD0; // type:func
+EmBulldrome_EndState = 0x00858BE0; // type:func
+EmBulldrome_State0_00 = 0x00858C10; // type:func
+EmBulldrome_State0_01 = 0x00858C20; // type:func
+EmBulldrome_State0_02 = 0x00858C90; // type:func
+EmBulldrome_State0_03 = 0x00858CA0; // type:func
+// states 0:04, 0:07, 0:08
+EmBulldrome_State0_04 = 0x00858D30; // type:func
+EmBulldrome_State0_05 = 0x00858DD0; // type:func
+// states 0:06, 0:0A, 0:14, 0:15
+EmBulldrome_State0_06 = 0x00858DE0; // type:func
+EmBulldrome_State0_09 = 0x00858E60; // type:func
+// states 0:0B, 0:0E, 0:12
+EmBulldrome_State0_0B = 0x00858EE0; // type:func
+// states 0:0C, 0:0F, 0:13
+EmBulldrome_State0_0C = 0x00859130; // type:func
+// states 0:0D, 0:10, 0:11
+EmBulldrome_State0_0D = 0x008591F0; // type:func
+EmBulldrome_RunGroup0 = 0x00859290; // type:func
+// states 1:00, 1:06
+EmBulldrome_State1_00 = 0x00859440; // type:func
+// states 1:01, 1:02
+EmBulldrome_State1_01 = 0x00859580; // type:func
+EmBulldrome_State1_03 = 0x00859610; // type:func
+EmBulldrome_State1_04 = 0x00859620; // type:func
+EmBulldrome_State1_05 = 0x00859630; // type:func
+// states 1:07, 1:09
+EmBulldrome_State1_07 = 0x00859710; // type:func
+// states 1:08, 1:0A
+EmBulldrome_State1_08 = 0x00859890; // type:func
+EmBulldrome_RunGroup1 = 0x008599C0; // type:func
+EmBulldrome_State2_00 = 0x00859AB0; // type:func
+EmBulldrome_State2_01 = 0x00859B90; // type:func
+EmBulldrome_State2_02 = 0x00859D00; // type:func
+EmBulldrome_State2_03 = 0x00859F00; // type:func
+EmBulldrome_RunGroup2 = 0x00859FA0; // type:func
+// states 3:00, 3:01, 3:02, 3:03, 3:04, 3:05
+EmBulldrome_State3_00 = 0x0085A030; // type:func
+EmBulldrome_State3_06 = 0x0085A180; // type:func
+EmBulldrome_RunGroup3 = 0x0085A370; // type:func
+// states 4:00, 7:00
+EmBulldrome_State4_00 = 0x0085A420; // type:func
+// states 4:01, 7:01
+EmBulldrome_State4_01 = 0x0085A510; // type:func
+// states 4:02, 7:02
+EmBulldrome_State4_02 = 0x0085A690; // type:func
+// states 4:03, 7:03
+EmBulldrome_State4_03 = 0x0085A7C0; // type:func
+// states 4:04, 7:04
+EmBulldrome_State4_04 = 0x0085A8B0; // type:func
+// states 4:05, 7:05
+EmBulldrome_State4_05 = 0x0085A9A0; // type:func
+EmBulldrome_RunGroup4 = 0x0085AAD0; // type:func
+EmBulldrome_State5_00_Hunted = 0x0085AB70; // type:func
+EmBulldrome_State5_01_Hunted = 0x0085ADB0; // type:func
+EmBulldrome_State5_02 = 0x0085AFA0; // type:func
+EmBulldrome_RunGroup5 = 0x0085B020; // type:func
+EmBulldrome_State6_00_Captured = 0x0085B090; // type:func
+EmBulldrome_State6_01 = 0x0085B220; // type:func
+EmBulldrome_RunGroup6 = 0x0085B4D0; // type:func
+EmBulldrome_State8_00 = 0x0085B520; // type:func
+EmBulldrome_State8_01 = 0x0085B620; // type:func
+EmBulldrome_State8_02 = 0x0085B6C0; // type:func
+EmBulldrome_State8_03 = 0x0085B780; // type:func
+EmBulldrome_State8_98 = 0x0085B820; // type:func
+EmBulldrome_State8_99 = 0x0085B8C0; // type:func
+EmBulldrome_RunGroup8 = 0x0085B960; // type:func
+EmBulldrome_SpawnEffect01 = 0x0085BF10; // type:func
+EmBulldrome_TableNop = 0x0085BF20; // type:func
+EmBulldrome_SetGroup0State = 0x0085BF30; // type:func
+EmBulldrome_SetGroup1State = 0x0085C060; // type:func
+EmBulldrome_SetGroup2State = 0x0085C130; // type:func
+EmBulldrome_SetGroup3State = 0x0085C1E0; // type:func
+EmBulldrome_SetGroup4State = 0x0085C2D0; // type:func
+// velocity D_008CB4E0 turned away from hitAngle, acceleration D_008CB4F0, stance 2
+EmBulldrome_LaunchFromHit = 0x0085C540; // type:func
+EmBulldrome_SetMotionForSide = 0x0085C5B0; // type:func
+EmFatalis_SetGroup0State = 0x0085C5F0; // type:func
+EmFatalis_SetGroup1State = 0x0085C6D0; // type:func
+EmFatalis_SetGroup2State = 0x0085C770; // type:func
+EmFatalis_SetGroup3State = 0x0085CA60; // type:func
+EmFatalis_MoveByVelYCurve = 0x0085CE60; // type:func
+EmFatalis_StartCurves = 0x0085CF70; // type:func
+// kind 0x00: made by the great sword states (StageObj_K00_Create)
+StageObj_K00_Update = 0x0085D320; // type:func
+StageObj_K00_Setup = 0x0085D3B0; // type:func
+StageObj_K00_Run = 0x0085D7C0; // type:func
+StageObj_K00_End = 0x0085D900; // type:func
+StageObj_K00_Free = 0x0085D970; // type:func
+StageObj_K00_Draw = 0x0085D980; // type:func
+StageObj_K00_Create = 0x0085DB30; // type:func
+EmFxSeg_Update = 0x0085DBD0; // type:func
+EmFxSeg_Setup = 0x0085DC60; // type:func
+EmFxSeg_Move = 0x0085DDC0; // type:func
+EmFxSeg_End = 0x0085E040; // type:func
+EmFxSeg_Delete = 0x0085E0D0; // type:func
+EmFxSeg_Draw = 0x0085E0E0; // type:func
+EmFxSeg_BoneMatrix = 0x0085E210; // type:func
+EmFxSeg_Spawn = 0x0085E4B0; // type:func
+EmFxSpark_Update = 0x0085E520; // type:func
+EmFxSpark_Setup = 0x0085E5B0; // type:func
+EmFxSpark_Move = 0x0085EDF0; // type:func
+EmFxSpark_End = 0x0085FAB0; // type:func
+EmFxSpark_Delete = 0x0085FB60; // type:func
+EmFxSpark_Draw = 0x0085FB70; // type:func
+EmFxSpark_BonePos = 0x00860D90; // type:func
+EmFxSpark_PickBones = 0x00860E20; // type:func
+EmFxSpark_FaceCamera = 0x008611E0; // type:func
+EmFxSpark_SpawnOnEm = 0x008612A0; // type:func
+EmFxSpark_SpawnAt = 0x00861320; // type:func
+EmFxSpark_SpawnTimed = 0x008613B0; // type:func
+// kind 0x05: made for players (unk_6AF280.c) and monsters; its offsets and bones follow Player_DualSwordIndex
+StageObj_K05_Update = 0x008614B0; // type:func
+StageObj_K05_Setup = 0x00861540; // type:func
+StageObj_K05_Run = 0x00861780; // type:func
+StageObj_K05_End = 0x00861A90; // type:func
+StageObj_K05_Free = 0x00861B60; // type:func
+StageObj_K05_Draw = 0x00861B70; // type:func
+StageObj_K05_GetMatrix = 0x008621A0; // type:func
+StageObj_K05_GetOffset = 0x00862460; // type:func
+StageObj_K05_Create = 0x008625F0; // type:func
+StageObj_K05_CreateEx = 0x00862730; // type:func
+EmFxTri_Update = 0x00862760; // type:func
+EmFxTri_Setup = 0x008627F0; // type:func
+EmFxTri_Move = 0x00862B60; // type:func
+EmFxTri_End = 0x008635C0; // type:func
+EmFxTri_Delete = 0x008636B0; // type:func
+EmFxTri_Draw = 0x008636C0; // type:func
+
+EmFxTri_AreaType = 0x008641D0; // type:func
+EmFxTri_Spawn = 0x00864340; // type:func
+// kind 0x09: one per monster (StageObj_K09_Create from the families' Init, kept at Em +0x7CC); a mine (EmHolder_CreateMine) at a bone
+StageObj_K09_Update = 0x00864410; // type:func
+StageObj_K09_Setup = 0x008644A0; // type:func
+StageObj_K09_FollowBone = 0x008645B0; // type:func
+StageObj_K09_CreateMine = 0x008646B0; // type:func
+StageObj_K09_Place = 0x00864720; // type:func
+StageObj_K09_Run = 0x00864760; // type:func
+StageObj_K09_End = 0x00864C90; // type:func
+StageObj_K09_Free = 0x00864CE0; // type:func
+StageObj_K09_Draw = 0x00864CF0; // type:func
+StageObj_K09_BoneForKind = 0x00865240; // type:func
+StageObj_K09_OwnerInvisible = 0x008652A0; // type:func
+StageObj_K09_Create = 0x008652E0; // type:func
+// kind 0x0A: made by EmLaoshan_MotionEffects (StageObj_K0A_Create)
+StageObj_K0A_Update = 0x00865350; // type:func
+StageObj_K0A_Setup = 0x008653E0; // type:func
+StageObj_K0A_Run = 0x008655A0; // type:func
+StageObj_K0A_End = 0x00865960; // type:func
+StageObj_K0A_Free = 0x00865A10; // type:func
+StageObj_K0A_Draw = 0x00865A20; // type:func
+StageObj_K0A_Create = 0x00865C60; // type:func
+// kind 0x0B
+StageObj_K0B_Update = 0x00865CF0; // type:func
+StageObj_K0B_Setup = 0x00865D80; // type:func
+StageObj_K0B_Run = 0x00865E40; // type:func
+StageObj_K0B_End = 0x00865ED0; // type:func
+StageObj_K0B_Free = 0x00865F10; // type:func
+StageObj_K0B_Draw = 0x00865F20; // type:func
+StageObj_K0B_Create = 0x00866630; // type:func
+StageObj_K0C_Update = 0x00866690; // type:func
+StageObj_K0C_Setup = 0x00866720; // type:func
+StageObj_K0C_Run = 0x008667D0; // type:func
+StageObj_K0C_Draw = 0x00866860; // type:func
+StageObj_K0C_SetupType0 = 0x008668F0; // type:func
+StageObj_K0C_RunType0 = 0x008669D0; // type:func
+StageObj_K0C_DrawType0 = 0x00866A60; // type:func
+StageObj_K0C_SetupType1 = 0x00866C70; // type:func
+StageObj_K0C_RunType1 = 0x00866DD0; // type:func
+StageObj_K0C_DrawType1 = 0x008671E0; // type:func
+StageObj_K0C_SetupType3 = 0x00867500; // type:func
+StageObj_K0C_RunType3 = 0x008675D0; // type:func
+StageObj_K0C_DrawType3 = 0x00867680; // type:func
+StageObj_K0C_BonePosOffset = 0x00867A50; // type:func
+StageObj_K0C_SetupType4 = 0x00867AD0; // type:func
+StageObj_K0C_RunType4 = 0x00867B80; // type:func
+StageObj_K0C_DrawType4 = 0x00867D80; // type:func
+// Round 20 (ndata-h1)
+EmChameleos_HasFlag43C = 0x00858590; // type:func em->unk43C != 0 (next to SetFlag43C and ClearFlag43C)
+
+// Round 25 (names h1)
+EmKind0A_ToIdle = 0x00798110; // type:func picks state 0/0, 0/0xA or 0/6 by Em +0x294 with its motion, sets fieldCollide (as EmKutku_ToIdle)
+EmApceros_CheckHerdHurt = 0x0079A650; // type:func type 0x46 not variant 2, work +0x3D = 1 when another type 0x46 of variant 2 in its area is in state group 4 or 5
+
+// Round 27 (names)
+EmCephadrome_EffEm14State = 0x007E0950; // type:func the state EffEm14 follows, -1 inactive, -2 hit, 1 when work 0xE is set
+EmKushala_EffEm14State = 0x0083CD00; // type:func the state EffEm14 follows, -1 inactive, 1 when work 0xE is set
+EmYamaTsukami_EaseToTarget = 0x00849640; // type:func eases work 0x20-0x28 toward EmYamatsukami_EaseTargets entry work 0x34 while work 0x35 is 0

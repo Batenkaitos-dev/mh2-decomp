@@ -1,0 +1,19 @@
+// Symbols for the boot ELF (SLPM_662.80): CRI Sofdec, text 0x1313C0-0x158930, built with CodeWarrior (16-byte aligned); asm piece cri/sofdec
+// version strings (.rodata): MWSFD/PS2EE 3.33(SE), CRI M2V 1.945, MPS 1.924, MPV 1.933, SFD 1.946,
+// SFH 1.19, all built Sep 17 2004; in the text they come in that order (mwPly* from 0x1313C0)
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+
+// CRI Sofdec (MWSFD), called by the game's movie player
+mwPlyCreateSofdec = 0x001340B0; // type:func
+mwPlyStartAfs = 0x00135640; // type:func
+
+// CRI Sofdec, named from its error strings
+mwPlyInitSfdFx = 0x001349F0; // type:func
+
+// Round 27 (names h1) - library functions the C calls, named from the evidence
+mwPlySetFrmSync = 0x001313C0; // type:func own error string mwPlySetFrmSync
+mwPlyGetCurFrm = 0x00131410; // type:func own error string mwPlyGetCurFrm
+mwPlyRelCurFrm = 0x00131B90; // type:func own error string mwPlyRelCurFrm
+mwPlyCalcWorkCprmSfd = 0x00133210; // type:func own error string mwPlyCalcWorkCprmSfd
+mwPlyGetPlyInf = 0x00135E10; // type:func own error string mwPlyGetPlyInf

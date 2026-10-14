@@ -1,0 +1,8 @@
+# Settings for decomp-permuter (https://github.com/simonlindholm/decomp-permuter).
+# The permuter works on single-function C files, so it calls MWCC directly
+# (via wibo) with the project's flags; see docs/mwcc-matching.md for usage.
+compiler_type = "mwcc"
+compiler_command = "env MWCIncludes=. tools/deps/linux-x64/wibo/wibo tools/deps/linux-x64/mwcc/mwccps2.exe -c -nostdinc -O3,p -sdatathreshold 0 -str readonly -i include"
+assembler_command = "tools/deps/linux-x64/binutils/mips-ps2-decompals-as -EL -march=r5900 -mabi=eabi -G0 -I build/include"
+asm_prelude_file = "tools/permuter_prelude.inc"
+objdump_command = "tools/deps/linux-x64/binutils/mips-ps2-decompals-objdump -drz -m mips:5900"

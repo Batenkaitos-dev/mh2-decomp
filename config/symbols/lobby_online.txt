@@ -1,0 +1,1087 @@
+// Symbols for overlay 4, lobby.bin: the online parts (0x700AF0-0x719A30: the
+// network message builders and handlers, lobby_net.c; 0x7AF6C0 to the end of
+// the code: packet receive and dispatch, lobby screens, login, KDDI
+// connection, patch download). The HTML browser (0x729AC0-0x757600) has
+// lobby_browser.txt. Format: name = 0xADDRESS; // attributes
+//
+// One symbol file per round-5 lobby worker, so that they never edit the same
+// file: new names in these ranges go here, sorted by address. lobby.txt has
+// the names from earlier rounds; lobby.yaml reads all three files.
+
+// --- NETWORK (preserve for Phase 6): the lobby protocol, round 7 ------------
+// LobbyPkt_XXXX builds and sends command XXXX (returns the sequence number),
+// LobbyReq_XXXX takes a NetReq slot and sends XXXX as a request,
+// LobbyReply_XXXX / LobbyNotify_XXXX handle a reply / a notification from the
+// server, LobbySrvReq_XXXX a request from the server (it builds the reply).
+// The LobbyPkt_Entry*, ListCount and Leave builders take a level (0, 1, 2)
+// and send one of three codes. NetTaskN_Start / NetTaskN_Run: the starter
+// and the step function of gLobbyNet.task[N].
+// --- round 8 (decomp-b8-lnet) ---
+Gallery_Aim = 0x0070D270; // type:func
+Gallery_Run = 0x0070D8B0; // type:func
+Gallery_DrawShotMarks = 0x0070EF20; // type:func
+LobbyConnect_Reset = 0x007B0020; // type:func
+LobbyConnect_Connect = 0x007B0050; // type:func
+LobbyDialog_Draw = 0x007B1C70; // type:func
+LobbyStep_Level2Entry = 0x007B5970; // type:func
+ChatLog_Scroll = 0x007B91F0; // type:func
+ChatLog_IsNewSpeaker = 0x007B95B0; // type:func
+LobbyScreen_InitLists = 0x007B98E0; // type:func
+LobbyScreen_Enter = 0x007B9B10; // type:func
+LobbyScreen_LeaveParty = 0x007BA000; // type:func
+LobbyScreen_EnterSeq = 0x007BA260; // type:func
+LobbyScreen_LoadBanks = 0x007BB2C0; // type:func
+LobbyScreen_EnterArea = 0x007BBA30; // type:func
+LobbyRoom_RunClose = 0x007BE210; // type:func
+LobbyRoom_Close0 = 0x007BE240; // type:func
+LevelList_Run = 0x007BF560; // type:func
+LevelList_Input = 0x007BFD40; // type:func
+// --- end of round 8 (decomp-b8-lnet) ---
+// --- round 9 (decomp-b9-lnet) ---
+LobbyExit_Run = 0x007BCE60; // type:func
+LobbyExit_Steps0 = 0x007BCEB0; // type:func
+LobbyExit_Steps4 = 0x007BD260; // type:func
+LobbyLogin_DrawMenu = 0x007CE120; // type:func
+LobbyNetXfer_Reset = 0x007D5730; // type:func
+LobbyNetXfer_Run = 0x007D5750; // type:func
+LobbyCard_Select = 0x007CAE70; // type:func
+// the login menu's colour tables (LobbyLogin_DrawMenu reads [i - 1] for items 2..5, func_007CEEF0 [sel + 1])
+// --- end of round 9 (decomp-b9-lnet) ---
+// --- round 10 (decomp-b10-lobby-h1) ---
+Gallery_DrawShooting = 0x0070E2A0; // type:func the shooting gallery draw callback (LobbyMenu_SetDraw)
+// --- end of round 10 (decomp-b10-lobby-h1) ---
+LobbyPkt_6714 = 0x00700B40; // type:func
+LobbyNotify_6702 = 0x00700BE0; // type:func
+LobbyPkt_6708 = 0x00700CF0; // type:func
+LobbyNotify_6708 = 0x00700D60; // type:func
+LobbyReq_670B = 0x00700DB0; // type:func
+LobbyPkt_670B = 0x00700E50; // type:func
+LobbyReply_670B = 0x00700F10; // type:func
+LobbyNotify_670C = 0x00700F20; // type:func
+LobbyReq_670D = 0x00700FE0; // type:func
+LobbyPkt_670D = 0x00701080; // type:func
+LobbyReply_670D = 0x00701120; // type:func
+LobbyNotify_670E = 0x00701130; // type:func
+LobbyReply_6181 = 0x00701180; // type:func
+LobbyReply_6188 = 0x00701190; // type:func
+NetTask13_Start = 0x007011A0; // type:func the download list
+NetTask13_Run = 0x00701230; // type:func
+NetTask14_Start = 0x00701570; // type:func downloads a file
+NetTask14_Run = 0x00701630; // type:func
+LobbyReq_6882 = 0x007018F0; // type:func
+LobbyReply_6882 = 0x00701990; // type:func
+LobbyPkt_6882 = 0x00701A20; // type:func
+LobbyReq_6881 = 0x00701AC0; // type:func
+LobbyReply_6881 = 0x00701B30; // type:func
+LobbyPkt_6881 = 0x00701BC0; // type:func
+LobbyReq_6883 = 0x00701C10; // type:func
+LobbyPkt_6883 = 0x00701C90; // type:func
+LobbyReply_6883 = 0x00701D00; // type:func
+LobbyNotify_6010 = 0x00701D90; // type:func
+LobbyReply_68A0 = 0x00701DC0; // type:func
+LobbyReply_68A1 = 0x00701E60; // type:func
+LobbyReq_6148 = 0x00701EA0; // type:func
+LobbyPkt_6148 = 0x00701F20; // type:func
+LobbyReply_6148 = 0x00701F90; // type:func
+LobbyReq_6149 = 0x00701FE0; // type:func
+LobbyPkt_6149 = 0x00702080; // type:func
+LobbyReply_6149 = 0x00702130; // type:func
+LobbyReq_6884 = 0x007021A0; // type:func
+LobbyPkt_6884 = 0x00702250; // type:func
+LobbyReply_6884 = 0x007022E0; // type:func
+LobbyNotify_6885 = 0x00702510; // type:func
+LobbyReq_68C0 = 0x007025B0; // type:func
+LobbyPkt_68C0 = 0x00702650; // type:func
+LobbyReply_68C0 = 0x007026C0; // type:func
+LobbyReply_6144 = 0x00702710; // type:func
+LobbyReply_6145 = 0x00702720; // type:func
+LobbyReply_6146 = 0x00702730; // type:func
+LobbyPkt_6138 = 0x00702740; // type:func
+LobbyPkt_6139 = 0x00702880; // type:func
+NetList_Select = 0x00702BE0; // type:func
+NetList_Leave = 0x00702C40; // type:func
+NetList_Enter = 0x00702CA0; // type:func
+NetTask3_Start = 0x00702D30; // type:func level 1 list
+NetTask3_Run = 0x00702DC0; // type:func
+LobbyReq_6301 = 0x00703410; // type:func
+LobbyReply_6301 = 0x007034A0; // type:func
+LobbyReq_6302 = 0x007034E0; // type:func
+LobbyReply_6302 = 0x007035B0; // type:func
+LobbyReq_6303 = 0x00703680; // type:func
+LobbyReply_6303 = 0x00703790; // type:func
+LobbyReq_6304 = 0x007037D0; // type:func
+LobbyReply_6304 = 0x00703890; // type:func
+LobbyReq_6308 = 0x00703930; // type:func
+LobbyReply_6308 = 0x00703A00; // type:func
+LobbyReq_630D = 0x00703AD0; // type:func
+LobbyPkt_630D = 0x00703B90; // type:func
+LobbyReply_630D = 0x00703C00; // type:func
+LobbyReq_630B = 0x00703CA0; // type:func
+LobbyPkt_630B = 0x00703D20; // type:func
+LobbyReply_630B = 0x00703D90; // type:func
+LobbyReq_631B = 0x00703E20; // type:func
+LobbyPkt_631B = 0x00703EF0; // type:func
+LobbyReply_631B = 0x00703F60; // type:func
+LobbyReq_6305 = 0x007040D0; // type:func
+LobbyReply_6305 = 0x00704160; // type:func
+LobbyReq_6408 = 0x007041A0; // type:func
+LobbyReply_6408 = 0x00704210; // type:func
+NetList_ReadValues = 0x00704390; // type:func
+LobbyReq_6209 = 0x00704430; // type:func
+LobbyPkt_6209 = 0x007044F0; // type:func
+LobbyReply_6209 = 0x00704590; // type:func
+LobbyReply_6208 = 0x007045E0; // type:func
+LobbyReply_6202 = 0x00704650; // type:func
+LobbyNotify_640C = 0x00704660; // type:func
+LobbyPkt_ListCount = 0x007046A0; // type:func 6203/6301/6401 by level
+LobbyPkt_EntryName = 0x00704750; // type:func 6204/6302/6402 by level
+LobbyPkt_EntryValues = 0x00704820; // type:func 6205/6303/6403 by level
+LobbyPkt_EntryByte = 0x007048F0; // type:func 6206/6304/6404 by level
+LobbyPkt_EntryText = 0x007049C0; // type:func 620A/6308/640D by level
+LobbyPkt_6305 = 0x00704A90; // type:func
+LobbyPkt_Leave = 0x00704B50; // type:func 6306/6408/6501 by level
+LobbyPkt_EntryFlag = 0x00704C00; // type:func 620B/630E/6418 by level
+LobbyReply_640F = 0x00704D50; // type:func
+LobbyReq_630A = 0x00704DB0; // type:func
+LobbyPkt_630A = 0x00704EC0; // type:func
+LobbyReply_630A = 0x00704F30; // type:func
+LobbyNotify_6410 = 0x007050D0; // type:func
+LobbyNotify_6411 = 0x007050E0; // type:func
+LobbyReply_6890 = 0x007050F0; // type:func
+LobbyReq_6891 = 0x00705130; // type:func
+LobbyReply_6891 = 0x007051D0; // type:func
+LobbyPkt_6891 = 0x00705230; // type:func
+LobbyReq_6310 = 0x00705280; // type:func
+LobbyPkt_6310 = 0x00705300; // type:func
+LobbyReply_6310 = 0x00705370; // type:func
+NetTask5_Start = 0x007053B0; // type:func level 1 entry values
+NetTask5_Run = 0x00705440; // type:func
+LobbyReq_6312 = 0x007058D0; // type:func
+LobbyReply_6312 = 0x00705950; // type:func
+LobbyPkt_6312 = 0x007059E0; // type:func
+LobbyReq_6313 = 0x00705A50; // type:func
+LobbyReply_6313 = 0x00705AD0; // type:func
+LobbyPkt_6313 = 0x00705B60; // type:func
+LobbyReq_6314 = 0x00705BD0; // type:func
+LobbyReply_6314 = 0x00705C50; // type:func
+LobbyPkt_6314 = 0x00705CE0; // type:func
+NetTask8_Start = 0x00705D50; // type:func sends settings
+NetTask8_Run = 0x00705E20; // type:func
+LobbyReq_6315 = 0x007063C0; // type:func
+LobbyPkt_6315 = 0x00706440; // type:func
+LobbyReply_6315 = 0x007064C0; // type:func
+LobbyReq_6316 = 0x007064D0; // type:func
+LobbyPkt_6316 = 0x00706550; // type:func
+LobbyReply_6316 = 0x007065D0; // type:func
+LobbyReq_6317 = 0x007065E0; // type:func
+LobbyPkt_6317 = 0x00706660; // type:func
+LobbyReply_6317 = 0x007066E0; // type:func
+LobbyReq_630C = 0x007066F0; // type:func
+LobbyPkt_630C = 0x00706770; // type:func
+LobbyReply_630C = 0x007067E0; // type:func
+LobbyReq_6318 = 0x007067F0; // type:func
+LobbyPkt_6318 = 0x00706870; // type:func
+LobbyReply_6318 = 0x00706930; // type:func
+LobbyReq_6311 = 0x00706940; // type:func
+LobbyPkt_6311 = 0x007069B0; // type:func
+LobbyReply_6311 = 0x00706A00; // type:func
+LobbyReq_6892 = 0x00706A10; // type:func
+LobbyReply_6892 = 0x00706AC0; // type:func
+LobbyPkt_6892 = 0x00706BB0; // type:func
+LobbyReq_630E = 0x00706C00; // type:func
+LobbyReply_630E = 0x00706C80; // type:func
+NetTask0_Start = 0x00706D90; // type:func the login
+LobbySrvReq_6101 = 0x007071B0; // type:func
+LobbySrvReq_6103 = 0x007071F0; // type:func
+LobbyReply_600E = 0x00707230; // type:func
+LobbyNotify_6131 = 0x007072D0; // type:func
+LobbyReply_6132 = 0x00707320; // type:func
+LobbyReq_6190 = 0x007073D0; // type:func
+LobbyReply_6190 = 0x00707450; // type:func
+LobbyNotify_6191 = 0x007074A0; // type:func
+LobbyReq_6192 = 0x00707510; // type:func
+LobbyReply_6192 = 0x007075B0; // type:func
+LobbyNotify_6193 = 0x00707600; // type:func
+LobbyPkt_6192 = 0x00707690; // type:func
+LobbyNotify_6104 = 0x00707730; // type:func
+LobbySrvReq_6105 = 0x00707760; // type:func
+LobbyPkt_6105 = 0x00707900; // type:func
+LobbyReply_6143 = 0x00707980; // type:func
+LobbyReq_614C = 0x00707990; // type:func
+LobbyPkt_614C = 0x00707AD0; // type:func
+LobbyReply_614C = 0x00707B20; // type:func
+NetLogin_Done = 0x00707C30; // type:func
+LobbySrvReq_6189 = 0x00707C80; // type:func
+LobbySrvReq_6138 = 0x00707C90; // type:func
+LobbyReq_6139 = 0x00707CC0; // type:func
+LobbyReply_6139 = 0x00707D40; // type:func
+LobbyPkt_6101 = 0x00707D50; // type:func
+LobbyPkt_6103 = 0x00707E10; // type:func
+LobbyPkt_6132 = 0x00707F20; // type:func
+LobbyPkt_6141 = 0x00707FA0; // type:func
+LobbyPkt_6190 = 0x00707FE0; // type:func
+LobbyPkt_600E = 0x00708060; // type:func
+NetLogin_ReadCharas = 0x007080D0; // type:func
+LobbyPkt_61A0 = 0x007081D0; // type:func
+LobbyReply_61A0 = 0x00708220; // type:func
+LobbyPkt_61A1 = 0x007082B0; // type:func
+LobbyReply_61A1 = 0x007082F0; // type:func
+LobbyReq_614D = 0x007083B0; // type:func
+LobbyReply_614D = 0x00708460; // type:func
+LobbyPkt_614D = 0x007084C0; // type:func
+LobbyReq_6712 = 0x00708510; // type:func
+LobbyReply_6712 = 0x007085B0; // type:func
+LobbyPkt_6712 = 0x00708690; // type:func
+LobbyNotify_68B0 = 0x00708740; // type:func
+LobbyNotify_6106 = 0x00708830; // type:func
+LobbySrvReq_614A = 0x00708880; // type:func
+LobbyNotify_6705 = 0x00708910; // type:func
+LobbyReq_6704 = 0x00708940; // type:func
+LobbyReply_6704 = 0x00708A30; // type:func
+LobbyPkt_6704 = 0x00708A40; // type:func
+LobbyReq_6713 = 0x00708B30; // type:func
+LobbyReply_6713 = 0x00708C00; // type:func
+LobbyPkt_6713 = 0x00708C40; // type:func
+LobbySrvReq_6706 = 0x00708E00; // type:func
+LobbyReq_6709 = 0x00708E40; // type:func
+LobbyPkt_6709 = 0x00708F10; // type:func
+LobbyPkt_6709Next = 0x007090E0; // type:func 6709 notification, the next page
+LobbyReply_6709 = 0x00709150; // type:func also 670A
+LobbyPkt_6416Next = 0x007092A0; // type:func 6416 notification, the next page
+LobbyReply_6416 = 0x00709310; // type:func
+LobbyReq_6707 = 0x00709490; // type:func
+LobbyReply_6707 = 0x00709550; // type:func
+LobbyPkt_6707 = 0x00709590; // type:func
+LobbyReq_670F = 0x00709660; // type:func
+LobbyReply_670F = 0x007096E0; // type:func
+LobbyPkt_670F = 0x007096F0; // type:func
+LobbyReply_6417 = 0x00709760; // type:func
+LobbyReq_6711 = 0x007097A0; // type:func
+LobbyPkt_6711 = 0x00709850; // type:func
+LobbyReply_6711 = 0x007098D0; // type:func
+LobbyPkt_6711Next = 0x00709A10; // type:func 6711 notification, the next page
+LobbyReq_6319 = 0x00709A80; // type:func
+LobbyPkt_6319 = 0x00709B30; // type:func
+LobbyPkt_6319Next = 0x00709C90; // type:func 6319 notification, the next page
+LobbyReply_6319 = 0x00709D00; // type:func
+LobbyReq_631A = 0x00709ED0; // type:func
+LobbyPkt_631A = 0x00709FA0; // type:func
+LobbyReply_631A = 0x0070A010; // type:func
+LobbyNotify_6910 = 0x0070A050; // type:func
+LobbyPkt_6508 = 0x0070A060; // type:func
+LobbyReply_640E = 0x0070A0A0; // type:func
+LobbyReq_6504 = 0x0070A0B0; // type:func
+LobbyPkt_6504 = 0x0070A130; // type:func
+LobbyReply_6504 = 0x0070A1A0; // type:func
+NetTask9_Start = 0x0070A1B0; // type:func the server list
+LobbyReply_6911 = 0x0070A230; // type:func
+LobbyReply_6912 = 0x0070A2B0; // type:func
+LobbyReply_6913 = 0x0070A360; // type:func
+LobbyReply_6917 = 0x0070A510; // type:func
+LobbyReply_6915 = 0x0070A6C0; // type:func
+LobbyReply_6914 = 0x0070A770; // type:func
+LobbyReply_6916 = 0x0070A800; // type:func
+NetTask9_Finish = 0x0070A8B0; // type:func
+LobbyPkt_6911 = 0x0070A920; // type:func
+LobbyPkt_6912 = 0x0070A970; // type:func
+LobbyPkt_6913 = 0x0070A9D0; // type:func
+LobbyPkt_6917 = 0x0070AA30; // type:func
+LobbyPkt_6914 = 0x0070AA90; // type:func
+LobbyPkt_6915 = 0x0070AAD0; // type:func
+LobbyPkt_6916 = 0x0070AB10; // type:func
+LobbyPkt_6918 = 0x0070AB50; // type:func
+LobbyNotify_6121 = 0x0070AC80; // type:func
+NetPatch_ReadHeader = 0x0070AD00; // type:func
+LobbyNotify_6122 = 0x0070ADC0; // type:func
+NetPatch_ReadData = 0x0070ADF0; // type:func
+LobbySrvReq_6124 = 0x0070AE50; // type:func
+LobbyPkt_6124 = 0x0070AE90; // type:func
+LobbyNotify_6123 = 0x0070AF00; // type:func
+LobbySrvReq_6125 = 0x0070AF10; // type:func
+LobbyPkt_6125 = 0x0070AFD0; // type:func
+NetPatch_CheckSum = 0x0070B090; // type:func
+NetTask2_Start = 0x0070B150; // type:func level 0 list
+NetTask2_Run = 0x0070B1E0; // type:func
+LobbyReq_6203 = 0x0070B7C0; // type:func
+LobbyReply_6203 = 0x0070B850; // type:func
+LobbyReq_6204 = 0x0070B890; // type:func
+LobbyReply_6204 = 0x0070B960; // type:func
+LobbyReq_6205 = 0x0070BA30; // type:func
+LobbyReply_6205 = 0x0070BB80; // type:func
+LobbyReq_6206 = 0x0070BBC0; // type:func
+LobbyReply_6206 = 0x0070BC80; // type:func
+LobbyReq_620A = 0x0070BD20; // type:func
+LobbyReply_620A = 0x0070BDF0; // type:func
+LobbyReply_6207 = 0x0070BEB0; // type:func
+LobbyReq_6306 = 0x0070BEF0; // type:func
+LobbyReply_6306 = 0x0070BF60; // type:func
+LobbyNotify_6307 = 0x0070BFA0; // type:func
+LobbyReq_620B = 0x0070C0F0; // type:func
+LobbyReply_620B = 0x0070C1B0; // type:func
+NetTask4_Start = 0x00713250; // type:func level 2 list
+NetTask4_Run = 0x007132E0; // type:func
+LobbyReq_6401 = 0x00713970; // type:func
+LobbyReply_6401 = 0x00713A00; // type:func
+LobbyReq_6403 = 0x00713A40; // type:func
+LobbyReply_6403 = 0x00713B10; // type:func
+LobbyReq_6404 = 0x00713B50; // type:func
+LobbyReply_6404 = 0x00713C10; // type:func
+LobbyReq_6402 = 0x00713CB0; // type:func
+LobbyReply_6402 = 0x00713D80; // type:func
+LobbyReq_640D = 0x00713E50; // type:func
+LobbyReply_640D = 0x00713F20; // type:func
+LobbyReq_640B = 0x00713FF0; // type:func
+LobbyPkt_640B = 0x00714100; // type:func
+LobbyReply_640B = 0x00714170; // type:func
+LobbyReq_650A = 0x00714230; // type:func
+Net_Get650A = 0x007142B0; // type:func
+LobbyPkt_650A = 0x007142F0; // type:func
+LobbyReply_650A = 0x00714360; // type:func
+LobbyReq_650C = 0x00714400; // type:func
+Net_Get650C = 0x00714480; // type:func
+LobbyPkt_650C = 0x00714550; // type:func
+LobbyReply_650C = 0x007145C0; // type:func
+LobbyReq_6509 = 0x00714680; // type:func
+LobbyPkt_6509 = 0x00714700; // type:func
+LobbyReply_6509 = 0x00714770; // type:func
+LobbyReq_650B = 0x00714780; // type:func
+LobbyPkt_650B = 0x00714800; // type:func
+LobbyReply_650B = 0x00714880; // type:func
+LobbyReply_6406 = 0x00714890; // type:func
+LobbyReq_6406 = 0x007148D0; // type:func
+LobbyPkt_6406 = 0x00714970; // type:func
+LobbyReq_6501 = 0x00714A50; // type:func
+LobbyReply_6501 = 0x00714AC0; // type:func
+LobbyReq_6407 = 0x00714B00; // type:func
+LobbyPkt_6407 = 0x00714B90; // type:func
+LobbyReply_6407 = 0x00714C20; // type:func
+NetTask7_Start = 0x00714C60; // type:func sends settings2
+NetTask7_Run = 0x00714D30; // type:func
+NetTask7_OnReply = 0x007153C0; // type:func
+LobbyPkt_660B = 0x00715400; // type:func
+LobbyReply_660B = 0x00715490; // type:func
+LobbyReq_6609 = 0x007154A0; // type:func
+LobbyPkt_6609 = 0x00715520; // type:func
+LobbyReply_6609 = 0x007155A0; // type:func
+LobbyReq_660A = 0x007155B0; // type:func
+LobbyPkt_660A = 0x00715630; // type:func
+LobbyReply_660A = 0x007156B0; // type:func
+LobbyReq_6610 = 0x007156C0; // type:func
+LobbyPkt_6610 = 0x00715740; // type:func
+LobbyReply_6610 = 0x007157C0; // type:func
+LobbyReq_660C = 0x007157D0; // type:func
+LobbyPkt_660C = 0x00715840; // type:func
+LobbyReply_660C = 0x00715890; // type:func
+LobbyNotify_6503 = 0x007158E0; // type:func
+LobbyNotify_6502 = 0x007158F0; // type:func
+NetTask6_Start = 0x00715900; // type:func fetches recs2
+NetTask6_Run = 0x00715990; // type:func
+NetTask6_OnReply = 0x00716640; // type:func
+NetTask6_OnRecReply = 0x00716680; // type:func
+LobbyReq_6603 = 0x007166F0; // type:func
+LobbyPkt_6603 = 0x00716770; // type:func
+LobbyReply_6603 = 0x007167E0; // type:func
+LobbyReq_6601 = 0x00716820; // type:func
+LobbyPkt_6601 = 0x007168A0; // type:func
+LobbyReply_6601 = 0x00716910; // type:func
+LobbyReq_6602 = 0x00716950; // type:func
+LobbyReply_6602 = 0x007169D0; // type:func
+LobbyPkt_6602 = 0x00716A10; // type:func
+LobbyReq_6405 = 0x00716A80; // type:func
+LobbyPkt_6405 = 0x00716B40; // type:func
+LobbyReply_6405 = 0x00716BB0; // type:func
+LobbyReq_640A = 0x00716C40; // type:func
+LobbyPkt_640A = 0x00716D50; // type:func
+LobbyReply_640A = 0x00716DC0; // type:func
+LobbyReq_6604 = 0x00716E40; // type:func
+LobbyPkt_6604 = 0x00716EC0; // type:func
+LobbyReply_6604 = 0x00716F50; // type:func
+LobbyReq_6607 = 0x00716FE0; // type:func
+LobbyPkt_6607 = 0x00717060; // type:func
+LobbyReply_6607 = 0x007170F0; // type:func
+LobbyReq_6606 = 0x00717160; // type:func
+LobbyPkt_6606 = 0x007171E0; // type:func
+LobbyReply_6606 = 0x00717270; // type:func
+LobbyReq_6605 = 0x007172E0; // type:func
+LobbyPkt_6605 = 0x00717360; // type:func
+LobbyReply_6605 = 0x007173F0; // type:func
+LobbyReq_6608 = 0x00717460; // type:func
+LobbyPkt_6608 = 0x00717500; // type:func
+LobbyReply_6608 = 0x007175A0; // type:func
+LobbyReq_660E = 0x00717640; // type:func
+LobbyPkt_660E = 0x007176E0; // type:func
+LobbyReply_660E = 0x00717780; // type:func
+LobbyReply_6409 = 0x00717B90; // type:func
+LobbyReq_6412 = 0x00717BD0; // type:func
+LobbyReply_6412 = 0x00717CA0; // type:func
+LobbyNotify_6506 = 0x00717D90; // type:func
+LobbyPkt_6412 = 0x00717E30; // type:func
+LobbyReply_6413 = 0x00717EA0; // type:func
+LobbyNotify_6414 = 0x00717FB0; // type:func
+LobbyReq_660F = 0x00718050; // type:func
+LobbyPkt_660F = 0x007180D0; // type:func
+LobbyReply_660F = 0x00718140; // type:func
+LobbyReq_6415 = 0x00718180; // type:func
+LobbyPkt_6415 = 0x00718200; // type:func
+LobbyReply_6415 = 0x007182C0; // type:func
+LobbyNotify_6505 = 0x007182D0; // type:func
+LobbyReply_6507 = 0x00718350; // type:func
+LobbyReq_6418 = 0x00718360; // type:func
+LobbyReply_6418 = 0x007183E0; // type:func
+NetReq_TakeFixed = 0x00718640; // type:func takes req2 slot i
+LobbyReq_6002 = 0x00718B90; // type:func
+LobbyPkt_6002 = 0x00718C00; // type:func
+LobbyReq_6006 = 0x00718CB0; // type:func
+LobbyPkt_6006 = 0x00718D20; // type:func
+LobbySrvReq_6001 = 0x00718E00; // type:func
+LobbyPkt_6001 = 0x00718E30; // type:func
+LobbyNotify_6003 = 0x00718E70; // type:func
+LobbyNotify_6004 = 0x00718EA0; // type:func
+LobbyNotify_6005 = 0x00718EB0; // type:func
+LobbyNotify_6007 = 0x00718EE0; // type:func
+LobbyRecv_Reset = 0x007AF660; // type:func
+LobbyConn_Run = 0x007B10B0; // type:func
+LobbyConn_Close = 0x007B1130; // type:func
+LobbyConn_Open = 0x007B11A0; // type:func
+LobbyConn_WaitOpen = 0x007B1280; // type:func
+LobbyConn_SetOption = 0x007B1390; // type:func
+LobbyConn_Next = 0x007B15C0; // type:func
+LobbyConn_StartQuest = 0x007B15E0; // type:func
+LobbyStep_6190 = 0x007B3140; // type:func
+LobbyStep_6190Done = 0x007B3220; // type:func
+LobbyStep_614C = 0x007B32D0; // type:func
+LobbyStep_614CDone = 0x007B3390; // type:func
+LobbyStep_614D = 0x007B3420; // type:func
+LobbyStep_614DDone = 0x007B3520; // type:func
+LobbyStep_670F = 0x007B35B0; // type:func
+LobbyStep_670FDone = 0x007B36B0; // type:func
+LobbyStep_6139 = 0x007B3740; // type:func
+LobbyStep_6139Done = 0x007B3810; // type:func
+LobbyStep_6884 = 0x007B39B0; // type:func
+LobbyStep_6884Done = 0x007B3B40; // type:func
+LobbyStep_6892 = 0x007B3BE0; // type:func
+LobbyStep_6892Done = 0x007B3CA0; // type:func
+LobbyStep_Task5Done = 0x007B40F0; // type:func
+LobbyStep_Task3Done = 0x007B4190; // type:func
+LobbyStep_6305 = 0x007B4240; // type:func
+LobbyStep_6305Done = 0x007B4320; // type:func
+LobbyStep_630A = 0x007B43D0; // type:func
+LobbyStep_630ADone = 0x007B44C0; // type:func
+LobbyStep_6310Done = 0x007B4810; // type:func
+LobbyStep_6310 = 0x007B48A0; // type:func
+LobbyStep_Task8Done = 0x007B4980; // type:func
+LobbyStep_Task8 = 0x007B4A10; // type:func
+LobbyStep_EnterLevel1 = 0x007B4BF0; // type:func
+LobbyStep_630CDone = 0x007B4D10; // type:func
+LobbyStep_630C = 0x007B4DA0; // type:func
+LobbyStep_UsersLevel1 = 0x007B4E70; // type:func
+LobbyStep_630AUsers = 0x007B4F30; // type:func
+LobbyStep_630AUsersDone = 0x007B5070; // type:func
+LobbyStep_Download = 0x007B55D0; // type:func
+LobbyStep_DownloadDone = 0x007B57A0; // type:func
+LobbyStep_6408Done = 0x007B58E0; // type:func
+LobbyText_UpdatePart = 0x007B6080; // type:func
+LobbyStep_6504Leave = 0x007B65B0; // type:func
+LobbyStep_6504LeaveDone = 0x007B6680; // type:func
+IdMenu_Run = 0x007B6AB0; // type:func runs the id menu (D_00819450[screen]), returns its choice
+IdMenu_Start = 0x007B6B10; // type:func
+IdMenu_Choose = 0x007B6BE0; // type:func chooses one of the three ids
+IdMenu_Quit = 0x007B6DF0; // type:func
+IdMenu_DrawId = 0x007B6F30; // type:func a menu line with an id of LobbyState.unk26
+IdMenu_DrawText = 0x007B7040; // type:func a menu line with a text of LobbyState + 0x46
+IdMenu_Redraw = 0x007B7420; // type:func
+SrvMenu_Run = 0x007B74E0; // type:func the server menu (D_00819460[screen]), returns the chosen server
+SrvMenu_Start = 0x007B7570; // type:func
+SrvMenu_SlideIn = 0x007B7650; // type:func
+SrvMenu_Choose = 0x007B7750; // type:func
+SrvMenu_Intro = 0x007B7990; // type:func
+SrvMenu_Quit = 0x007B7B00; // type:func
+SrvMenu_DrawList = 0x007B7D80; // type:func
+SrvMenu_DrawInfo = 0x007B80C0; // type:func
+SrvMenu_DrawWindow = 0x007B8130; // type:func
+LobbySrv_Name = 0x007B8250; // type:func
+LobbySrv_CurIndex = 0x007B82F0; // type:func
+LobbySrv_IsCur = 0x007B8380; // type:func
+LobbySrv_Index = 0x007B83B0; // type:func
+LobbySrv_Exists = 0x007B8440; // type:func
+LobbySrv_Value = 0x007B8500; // type:func
+ChatLog_Clear = 0x007B8610; // type:func
+ChatLog_Add = 0x007B8670; // type:func adds a line (name, id, colour, text in two rows)
+ChatLog_LinesBefore = 0x007B8B50; // type:func
+ChatLog_Lines = 0x007B8BC0; // type:func
+ChatLog_FormatName = 0x007B8C20; // type:func
+Lobby_PrepareQuest = 0x007B9F10; // type:func
+LobbyScreen_ClearRequests = 0x007BC600; // type:func
+Lobby_ReceiveWhileWaiting = 0x007BC960; // type:func
+LobbyScreen_ShowResult = 0x007BD690; // type:func
+LobbyScreen_Close = 0x007BDA10; // type:func
+LobbyRoom_Run = 0x007BDB00; // type:func
+LobbyRoom_FetchParty = 0x007BDB80; // type:func
+LobbyRoom_Send6002 = 0x007BDE50; // type:func
+LobbyRoom_PartyDone = 0x007BDF70; // type:func
+LobbyRoom_6002Done = 0x007BE010; // type:func
+LobbyStep_6504 = 0x007BE060; // type:func
+LobbyStep_6504Done = 0x007BE130; // type:func
+TagText_ReadTag = 0x007BE4F0; // type:func reads a tag name up to the closing bracket
+TagText_HandleTag = 0x007BE620; // type:func
+TagText_ReadTags = 0x007BE9E0; // type:func
+TagText_ReadLine = 0x007BEAD0; // type:func reads a line into runs
+TagText_DrawLine = 0x007BEE60; // type:func
+TagText_Print = 0x007BF390; // type:func prints a text with tags (BODY SIZE COLOR BR CENTER LEFT RIGHT END LF C)
+LevelList_DrawEntries = 0x007C0190; // type:func the level 0 list window (entries, users per maximum)
+LevelList_DrawInfo = 0x007C0530; // type:func
+LevelList_DrawWindow = 0x007C05E0; // type:func
+LevelList_DrawHelp = 0x007C06A0; // type:func
+LevelList_DrawText = 0x007C0780; // type:func
+LobbyStep_6891 = 0x007C0F50; // type:func
+LobbyStep_6891Done = 0x007C1010; // type:func
+LobbyRoute_6412 = 0x007C24D0; // type:func
+LobbyRoute_Chat = 0x007C2900; // type:func
+LobbyRoute_6191 = 0x007C2AA0; // type:func
+LobbyRoute_6193 = 0x007C2B60; // type:func
+LobbyLogin_OnProgress = 0x007C4610; // type:func
+Lobby_NetMenuAllowed = 0x007C49E0; // type:func
+Lobby_NetMenu2Allowed = 0x007C4B20; // type:func
+LobbyLogin_SendSummary = 0x007C4C00; // type:func
+LobbyLogin_OnSummaryReply = 0x007C4DD0; // type:func
+LobbyKddi_WaitPage = 0x007C5270; // type:func
+LobbyLogin_EnterEntry = 0x007C5360; // type:func
+LobbyLogin_On6209Reply = 0x007C5780; // type:func
+LobbyUser_On6712Reply = 0x007C5820; // type:func
+LobbyUser_FetchDetails = 0x007C58C0; // type:func
+LobbyUser_FindById = 0x007C5A50; // type:func
+LobbyUser_OnReply = 0x007C5BB0; // type:func
+LobbyUser_FindByName = 0x007C5C20; // type:func
+LobbyUser_On6711Reply = 0x007C5D90; // type:func
+LobbyUser_Search = 0x007C5E20; // type:func
+LobbyUser_On6709Reply = 0x007C6130; // type:func
+Lobby_CanEnterByRank = 0x007C61E0; // type:func
+LobbyLevel1_ToVillage = 0x007C66D0; // type:func
+LobbyLevel1_Enter = 0x007C6A40; // type:func
+LobbyLevel1_Leave = 0x007C6BB0; // type:func
+LobbyLevel0_OnLeaveReply = 0x007C6CB0; // type:func
+LobbyLevel0_Leave = 0x007C6D20; // type:func
+LobbyLevel0_LeaveCountdown = 0x007C6E10; // type:func
+LobbyLevel0_OnCountdownReply = 0x007C7050; // type:func
+LobbyTown_Enter = 0x007C7410; // type:func
+LobbyTown_Leave = 0x007C7670; // type:func
+LobbyLevel1_On6307Reply = 0x007C7A50; // type:func
+LobbyLevel1_On6319Reply = 0x007C7AE0; // type:func
+LobbyLevel1_Search = 0x007C7B80; // type:func
+LobbyLevel1_On631AReply = 0x007C7C40; // type:func
+LobbyLevel1_FetchInfo = 0x007C7CF0; // type:func
+LobbyLevel2_Refresh = 0x007C7DB0; // type:func
+LobbyLevel2_FetchList = 0x007C7E30; // type:func
+LobbyLevel2_OnList = 0x007C7F50; // type:func
+LobbyLevel2_EnterFree = 0x007C8110; // type:func
+LobbyLevel2_On6407Reply = 0x007C82A0; // type:func
+LobbyLevel2_FetchRecords = 0x007C8330; // type:func
+LobbyLevel2_On36Reply = 0x007C85C0; // type:func
+LobbyLevel2_SendSettings = 0x007C8670; // type:func
+LobbyLevel2_On37Reply = 0x007C8890; // type:func
+LobbyLevel2_Send6509 = 0x007C8940; // type:func
+LobbyLevel2_On6509Reply = 0x007C8A10; // type:func
+LobbyLevel2_Send650B = 0x007C8AA0; // type:func
+LobbyLevel2_On650BReply = 0x007C8BB0; // type:func
+LobbyLevel2_EnterWithPass = 0x007C8C50; // type:func
+LobbyLevel2_On6406Reply = 0x007C8D50; // type:func
+LobbyLevel2_On640AReply = 0x007C8E00; // type:func
+LobbyLevel2_On6403Reply = 0x007C8EB0; // type:func
+LobbyLevel2_On6412Reply = 0x007C8F40; // type:func
+Lobby_CountPlayTime = 0x007C9010; // type:func
+LobbyLogin_StepConnect = 0x007C9670; // type:func
+LobbyLogin_StateConnect = 0x007C9740; // type:func
+LobbyKddi_Portal = 0x007CCDB0; // type:func
+LobbyLogin_FreeTextures = 0x007CDD80; // type:func the network mode textures released
+LobbyKddi_PortalScene = 0x007CDE10; // type:func
+LobbyLogin_DrawIcon = 0x007D0C60; // type:func
+LobbyLogin_DrawProgressBar = 0x007D0DE0; // type:func
+LobbyLogin_DrawSprites = 0x007D1E50; // type:func
+LobbyLogin_DrawWaveTitle = 0x007D21F0; // type:func
+LobbyCard_SaveNetFile = 0x007D2560; // type:func
+LobbyMsg_DrawCountdown = 0x007D28B0; // type:func
+LobbyCard_CheckNetFile = 0x007D3490; // type:func
+LobbyCard_DecodeNetFile = 0x007D34E0; // type:func
+LobbyMsg_GetLines = 0x007D35A0; // type:func
+LobbyMsg_DrawPart = 0x007D35D0; // type:func
+LobbyMsg_PartCount = 0x007D38C0; // type:func
+LobbyMsg_CenterX = 0x007D3F20; // type:func
+LobbyMsg_Print = 0x007D4000; // type:func
+LobbyMsg_DrawPage = 0x007D41D0; // type:func
+LobbyWorld_NextDay = 0x007D7CB0; // type:func
+LobbyWorld_AddDays = 0x007D7DF0; // type:func
+LobbyWorld_TicksToSeconds = 0x007D8110; // type:func
+LobbyWorld_Skip = 0x007D81F0; // type:func
+LobbyWorld_CatchUp = 0x007D82E0; // type:func
+LobbyBgm_NearestEntry = 0x007D84E0; // type:func
+LobbyBgm_Restart = 0x007D87A0; // type:func
+LobbyBgm_FindEntry = 0x007D9020; // type:func
+LobbyBgm_GetEntry = 0x007D90D0; // type:func
+LobbyBgm_SelectEntry = 0x007D9150; // type:func
+LobbyWorld_GetFadeColor = 0x007D9550; // type:func
+LobbyBgm_GetEnd = 0x007D98E0; // type:func
+LobbyBgm_EndsToday = 0x007D9920; // type:func
+LobbyWorld_Reset = 0x007D99A0; // type:func
+LobbyWorld_ClearFades = 0x007D9A80; // type:func
+LobbyWorld_GetTime = 0x007D9B40; // type:func
+LobbyWorld_EventTime = 0x007D9CE0; // type:func
+LobbyWorld_ClearEvents = 0x007D9E40; // type:func
+LobbyWorld_RunEvents = 0x007D9EA0; // type:func
+LobbyActor_DrawPart = 0x007DB0A0; // type:func
+LobbyActor_StartScript = 0x007DB290; // type:func
+LobbyActor_Update = 0x007DB300; // type:func
+LobbyActor_RunScript = 0x007DB470; // type:func
+LobbyActor_GetScript = 0x007DB530; // type:func
+LobbyActor_SetMatrix = 0x007DB570; // type:func
+LobbyActor_Draw = 0x007DB600; // type:func
+
+// Names left waiting after round 7, applied by the lead before round 8
+// draws the message window, its text a character a frame (round 7 lobby online)
+LobbyMsg_Draw = 0x007B2860; // type:func
+// round 7 lobby online; called from the village
+LobbyStep_6408 = 0x007B5810; // type:func
+// round 7 lobby online; called from the village
+LobbyText_Update = 0x007B5DE0; // type:func
+// round 7 lobby online; called from the village
+LobbyText_UpdateByte2 = 0x007B5F50; // type:func
+// round 7 lobby online; called from the village
+LobbySrv_MyName = 0x007B81B0; // type:func
+// adds a received chat line to the log (round 7 lobby online)
+ChatLog_Receive = 0x007B8850; // type:func
+// the lobby's web page (round 7 lobby online h1)
+LobbyWeb_Run = 0x007C4F80; // type:func
+// round 7 lobby online h1
+Lobby_CheckDay = 0x007CA060; // type:func
+// once a frame (round 7 lobby online h1)
+LobbyWorld_Tick = 0x007D8010; // type:func
+// round 7 lobby online h1
+LobbyBgm_Stop = 0x007D88B0; // type:func
+// the selected entry's position, 0 when idle (round 7 lobby online h1)
+LobbyBgm_GetPos = 0x007D90A0; // type:func
+// the track playing, -1 when idle (round 7 lobby online h1)
+LobbyBgm_GetTrack = 0x007D9100; // type:func
+// track, position, flag (round 7 lobby online h1)
+LobbyBgm_Play = 0x007D9700; // type:func
+// round 7 lobby online h1
+LobbyBgm_SetUnk11F = 0x007D9860; // type:func
+
+// h1 round 8
+// sub_main data the lobby reads by name (the schedule shows named objects); no sub_main symbol yet
+D_005D46B1 = 0x005D46B1; // the network mode entry sent at login (NetModeState + 0x11)
+LobbyArea_StartEvent = 0x007BAB20; // type:func
+
+// --- Round 13 names (decomp-b13-nlobby) ---
+NetTask13_Steps = 0x007012B0; // type:func
+NetTask13_Done = 0x00701340; // type:func
+NetTask13_Failed = 0x00701370; // type:func
+NetTask13_Step0 = 0x007013B0; // type:func
+NetTask13_Step1 = 0x007013D0; // type:func
+NetTask13_Step2 = 0x00701440; // type:func
+NetTask13_Step3 = 0x007014C0; // type:func
+NetTask14_Steps = 0x007016B0; // type:func
+NetTask14_Done = 0x00701720; // type:func
+NetTask14_Failed = 0x00701750; // type:func
+NetTask14_Step0 = 0x00701790; // type:func
+NetTask14_Step1 = 0x007017D0; // type:func
+NetTask14_Step2 = 0x00701850; // type:func
+Bits16_Set = 0x007022C0; // type:func
+// the LobbyNet_Get* copy out the data of a reply once its step is done
+LobbyNet_Get6884 = 0x007023F0; // type:func
+// LobbyReq_6884 in a fixed slot of req2 (NetReq_TakeFixed)
+LobbyReq2_6884 = 0x00702470; // type:func
+LobbyReply_6417Read = 0x00702910; // type:func
+LobbyReply_631ARead = 0x00702A40; // type:func
+NetTask3_Steps = 0x00702E40; // type:func
+NetTask3_Done = 0x00702EE0; // type:func
+NetTask3_Failed = 0x00702F10; // type:func
+NetTask3_Step0 = 0x00702F50; // type:func
+NetTask3_Step1 = 0x00702FD0; // type:func
+NetTask3_Step2 = 0x00703020; // type:func
+NetTask3_Step3 = 0x007030C0; // type:func
+NetTask3_Step4 = 0x007030F0; // type:func
+NetTask3_Step5 = 0x007032A0; // type:func
+NetTask3_Step1Reply = 0x00703360; // type:func
+// then onDone
+NetTask3_Step4Reply = 0x007033A0; // type:func
+LobbyNet_GetUser = 0x00704E40; // type:func
+LobbyReply_630A_Users = 0x00704F70; // type:func
+// up to 10 users (id, name, text), skipping extra fields
+LobbyMsg_ReadUsers = 0x00704FB0; // type:func
+LobbyNet_Get6891 = 0x007051A0; // type:func
+NetTask5_Steps = 0x007054C0; // type:func
+NetTask5_Done = 0x00705530; // type:func
+NetTask5_Failed = 0x00705560; // type:func
+NetTask5_Step0 = 0x007055A0; // type:func
+NetTask5_Step1 = 0x00705610; // type:func
+NetTask5_Step2 = 0x007056C0; // type:func
+NetTask5_Step1Reply1 = 0x007057A0; // type:func
+NetTask5_Step1Reply2 = 0x007057E0; // type:func
+NetTask5_Step1Reply4 = 0x00705820; // type:func
+NetTask8_Steps = 0x00705EA0; // type:func
+NetTask8_Done = 0x00705F40; // type:func
+NetTask8_Failed = 0x00705F70; // type:func
+NetTask8_Step0 = 0x00705FB0; // type:func
+NetTask8_Step1 = 0x00705FE0; // type:func
+NetTask8_Step2 = 0x00706190; // type:func
+NetTask8_Step3 = 0x007061E0; // type:func
+NetTask8_Step4 = 0x00706230; // type:func
+NetTask8_Step1Reply1 = 0x00706280; // type:func
+NetTask8_Step1Reply2 = 0x007062C0; // type:func
+NetTask8_Step1Reply4 = 0x00706300; // type:func
+NetTask8_Step3Reply = 0x00706340; // type:func
+NetTask8_Step1Reply8 = 0x00706380; // type:func
+LobbyNet_Get6892 = 0x00706A80; // type:func
+LobbyNet_Get614C = 0x00707A90; // type:func
+LobbyReply_6132Read = 0x007081A0; // type:func
+LobbyNet_Get614D = 0x00708440; // type:func
+LobbyNotify_6705Read = 0x00708AE0; // type:func
+LobbyReply_6713Read = 0x00708CB0; // type:func
+LobbyNet_Get6709 = 0x00708EF0; // type:func
+LobbyReply_6707Read = 0x00709600; // type:func
+LobbyNet_Get6711 = 0x00709830; // type:func
+NetTask2_Steps = 0x0070B260; // type:func
+NetTask2_Done = 0x0070B300; // type:func
+NetTask2_Failed = 0x0070B330; // type:func
+NetTask2_Step0 = 0x0070B370; // type:func
+NetTask2_Step1 = 0x0070B3F0; // type:func
+NetTask2_Step2 = 0x0070B440; // type:func
+NetTask2_Step3 = 0x0070B4E0; // type:func
+NetTask2_Step4 = 0x0070B510; // type:func
+NetTask2_Step5 = 0x0070B660; // type:func
+// reply 1 on success, 2 on failure
+NetTask2_Step1Reply = 0x0070B710; // type:func
+// as Step1Reply, then onDone
+NetTask2_Step4Reply = 0x0070B750; // type:func
+LobbyMsg_ReadU16 = 0x0070BFE0; // type:func
+LobbyMsg_ReadU16Str = 0x0070BFF0; // type:func
+LobbyMsg_ReadU16U8b = 0x0070C030; // type:func
+// the save menu (memory card save, costs living expenses) (town mode 0x14)
+TownSave_Open = 0x0070C240; // type:func
+TownSave_Update = 0x0070C380; // type:func
+TownSave_Draw = 0x0070C800; // type:func
+Gallery_Open = 0x0070CB70; // type:func
+Gallery_Close = 0x0070CC10; // type:func
+// the prize list by the day's kind (an event list on event days), the choices cleared
+Gallery_InitPrizes = 0x0070CD40; // type:func
+// the aim and the round's counters back to their start
+Gallery_ResetWork = 0x0070CEC0; // type:func
+// empties the 15 target slots
+Gallery_ClearTargets = 0x0070CF10; // type:func
+// fills the target slots up to the round's counts of each kind, then shuffles them
+Gallery_PlaceTargets = 0x0070CF90; // type:func
+// clears the shots in flight; the shots allowed by the level
+Gallery_ResetShots = 0x0070D230; // type:func
+Gallery_ShootInput = 0x0070D680; // type:func
+// mode 0 - the targets' group; else a shot into the first free slot
+Gallery_AddObj = 0x0070EA70; // type:func
+// the shots in flight
+Gallery_CountShots = 0x0070EAE0; // type:func
+// adds the target's points, flashes the HUD
+Gallery_ScoreTarget = 0x0070EB30; // type:func
+// empties the 10 shot slots
+Gallery_ClearShots = 0x0070EB70; // type:func
+// each shot against the walls and the targets
+Gallery_UpdateShots = 0x0070EB90; // type:func
+Gallery_DrawPrizeList = 0x0070F0B0; // type:func
+// time limit, shots, level, best score
+Gallery_DrawCourseCard = 0x0070F420; // type:func
+Gallery_DrawPrizePage = 0x0070F580; // type:func
+// the prize page with the gallery's name and the points
+Gallery_DrawPrizeWindow = 0x0070F910; // type:func
+// marks the prizes costing more than the points
+Gallery_MarkTooDear = 0x0070FE00; // type:func
+// marks the full stacks when the chosen prizes fill the pouch
+Gallery_CheckPouchFull = 0x0070FF70; // type:func
+Gallery_IsPouchFull = 0x00710070; // type:func
+// 1 when chosen prize n repeats an earlier one
+Gallery_IsRepeatPrize = 0x00710160; // type:func
+// 1 when prize k of the list is among the chosen
+Gallery_IsPrizeChosen = 0x007101C0; // type:func
+// the prize under the cursor into the chosen list
+Gallery_ChoosePrize = 0x00710220; // type:func
+// the courses whose fee is above the money
+Gallery_MarkTooDearCourses = 0x007102B0; // type:func
+Gallery_MarkAllTaken = 0x00710480; // type:func
+// the sound of the target kind hit
+Gallery_PlayHitSe = 0x00710510; // type:func
+NetTask4_Steps = 0x00713360; // type:func
+NetTask4_Done = 0x00713400; // type:func
+NetTask4_Failed = 0x00713440; // type:func
+NetTask4_Step0 = 0x00713480; // type:func
+NetTask4_Step1 = 0x00713500; // type:func
+NetTask4_Step2 = 0x00713550; // type:func
+NetTask4_Step3 = 0x007135F0; // type:func
+NetTask4_Step4 = 0x00713620; // type:func
+NetTask4_Step5 = 0x00713800; // type:func
+// reply 1 on success, 2 on failure
+NetTask4_Step1Reply = 0x007138C0; // type:func
+// then onDone
+NetTask4_Step4Reply = 0x00713900; // type:func
+NetTask7_Steps = 0x00714DB0; // type:func
+NetTask7_Done = 0x00714EC0; // type:func
+NetTask7_Failed = 0x00714EF0; // type:func
+NetTask7_Step0 = 0x00714F30; // type:func
+NetTask7_Step1 = 0x00714F50; // type:func
+NetTask7_Step2 = 0x00714FD0; // type:func
+NetTask7_Step3 = 0x00715020; // type:func
+NetTask7_Step4 = 0x007150A0; // type:func
+NetTask7_Step5 = 0x007150F0; // type:func
+NetTask7_Step6 = 0x00715190; // type:func
+NetTask7_Step7 = 0x007151A0; // type:func
+NetTask7_Step8 = 0x00715230; // type:func
+NetTask7_Step9 = 0x00715280; // type:func
+NetTask7_Step10 = 0x007152E0; // type:func
+NetTask7_Step11 = 0x00715330; // type:func
+NetTask7_Step12 = 0x00715380; // type:func
+NetTask6_State0 = 0x00715A40; // type:func
+NetTask6_State1 = 0x00715AE0; // type:func
+NetTask6_State2 = 0x00715B90; // type:func
+NetTask6_Done = 0x00715C30; // type:func
+NetTask6_Failed = 0x00715C60; // type:func
+NetTask6_S0Step0 = 0x00715CA0; // type:func
+NetTask6_S0Step1 = 0x00715CE0; // type:func
+NetTask6_S0Step2 = 0x00715D30; // type:func
+NetTask6_S0Step3 = 0x00715D90; // type:func
+NetTask6_S0Step4 = 0x00715DB0; // type:func
+NetTask6_S0Step5 = 0x00715E30; // type:func
+NetTask6_S1Step0 = 0x00715F30; // type:func
+NetTask6_S1Step1 = 0x00716090; // type:func
+NetTask6_S1Step2 = 0x007160E0; // type:func
+NetTask6_S1Step3 = 0x00716140; // type:func
+NetTask6_S1Step4 = 0x00716190; // type:func
+NetTask6_S1Step5 = 0x007161F0; // type:func
+NetTask6_S1Step6 = 0x00716240; // type:func
+NetTask6_S2Step0 = 0x007162C0; // type:func
+NetTask6_S2Step1 = 0x007162E0; // type:func
+NetTask6_S2Step2 = 0x00716390; // type:func
+NetTask6_S2Step3 = 0x00716460; // type:func
+NetTask6_S2Step4 = 0x00716480; // type:func
+NetTask6_S2Step5 = 0x00716570; // type:func
+LobbyReply_640A_Users = 0x00716E00; // type:func
+LobbyNet_GetErrText = 0x00718DD0; // type:func
+LobbyMsg_ReadErrText = 0x00719090; // type:func
+// the LobbyMsg_Read* helpers read the received message from its start
+LobbyMsg_ReadU8 = 0x007190D0; // type:func
+LobbyMsg_ReadU32 = 0x007190F0; // type:func
+LobbyMsg_ReadU8Str = 0x00719100; // type:func
+LobbyMsg_ReadU8U8 = 0x00719140; // type:func
+LobbyMsg_ReadU16U8 = 0x00719180; // type:func
+LobbyMsg_ReadU16U16 = 0x007191C0; // type:func
+LobbyMsg_ReadU16U32 = 0x00719200; // type:func
+LobbyMsg_ReadU8U8Str = 0x00719240; // type:func
+QuestDesk_Open = 0x007196F0; // type:func
+// whether the top menu shows item k
+QuestDesk_HasItem = 0x00719850; // type:func
+QuestDesk_Close = 0x007199A0; // type:func
+// aborts and deletes the TCP socket (gNetSock)
+LobbyNet_AbortSocket = 0x007B17A0; // type:func
+// the connection dialog, kind 1 (waiting); arg0 into D_008F8D38
+LobbyDialog_OpenWait = 0x007B17D0; // type:func
+// the connection dialog, kind 3 (a countdown from arg1)
+LobbyDialog_OpenCountdown = 0x007B1800; // type:func
+Menu_SetYesNo = 0x007B1840; // type:func
+LobbyDialog_Clear = 0x007B1860; // type:func
+// restarts the box's growing (3 steps); the menus' input locked 9 frames
+LobbyDialog_Grow = 0x007B1880; // type:func
+// the growing steps left
+LobbyDialog_GetGrow = 0x007B18A0; // type:func
+// opens the message box of a message (D_0080D7B0), run by LobbyText_Update
+LobbyText_Open = 0x007B1940; // type:func
+// the player id and name box of the lobby screens
+LobbyMenu_DrawIdName = 0x007B2990; // type:func
+// the online frame - receive, the keep-alive and idle timers, the pad
+Lobby_Tick = 0x007B2BF0; // type:func
+// puts the layers 0-4 with a draw callback into the ordering table
+LobbyMenu_QueueLayers = 0x007B2FE0; // type:func
+// layer 4 draw callback
+LobbyMenu_DrawDialog = 0x007B30F0; // type:func
+// a minute
+LobbyMenu_StartTimer = 0x007BC3A0; // type:func
+// 1 (and Lobby_Disconnect(5)) when it runs out
+LobbyMenu_TickTimer = 0x007BC3C0; // type:func
+LobbyMenu_Init = 0x007BC420; // type:func
+// the draw callbacks of layers 0-3
+LobbyMenu_SetDraw = 0x007BCA00; // type:func
+// LobbyWorld_Tick
+LobbyTime_Tick = 0x007BCB60; // type:func
+// gLobbyTime before 12 -00
+LobbyTime_IsAm = 0x007BCBA0; // type:func
+// gLobbyTime from 12 -00
+LobbyTime_IsPm = 0x007BCBC0; // type:func
+// leaves the lobby - phase 5, reason 4 idle, 5 a menu timed out, 6/8 kicked, 7 the connection lost
+Lobby_Disconnect = 0x007BCD60; // type:func
+// 0-2 (LobbyWorld.season)
+LobbyWorld_GetSeason = 0x007D8460; // type:func
+// the day in the season
+LobbyWorld_GetSeasonDay = 0x007D8470; // type:func
+// the clock's next count skipped
+LobbyWorld_HoldClock = 0x007D8480; // type:func
+// the time of day as a fraction of the day
+LobbyWorld_GetDayFrac = 0x007D84A0; // type:func
+// the area's music again (0x6ADCC4)
+LobbyWorld_PlayAreaMusic = 0x007D84B0; // type:func
+
+// --- Round 14 names (decomp-b14-nlobby) ---
+LobbyNet_Send6714 = 0x00700AF0; // type:func
+LobbyNet_Get6702 = 0x00700B00; // type:func
+LobbyNet_Send6708 = 0x00700CA0; // type:func
+LobbyNet_Get6708 = 0x00700CB0; // type:func
+NetTask13_OnReply = 0x00701510; // type:func
+LobbyNet_GetDlFiles = 0x00701550; // type:func
+NetTask14_OnReply = 0x007018B0; // type:func
+LobbyNet_Get6149 = 0x00702180; // type:func
+LobbyNet_SetSlotBuf = 0x00702410; // type:func
+LobbyNotify_6885OnReply = 0x007024D0; // type:func
+LobbyNet_GetListReplies = 0x00702D10; // type:func
+NetList1_GetCount = 0x00703480; // type:func
+NetList1_GetName = 0x00703560; // type:func
+NetList1_GetUsers = 0x00703700; // type:func
+NetList1_GetMaxUsers = 0x00703750; // type:func
+NetList1_GetByte = 0x00703850; // type:func
+NetList1_GetText = 0x007039B0; // type:func
+NetList1_Get630D = 0x00703B50; // type:func
+NetList1_Get631B = 0x00703EA0; // type:func
+// clears the requests, tasks and the connection state
+LobbyNet_Reset = 0x00706D10; // type:func
+// copies the answer to the server's 6103 (Net6103)
+LobbyNet_Set6103 = 0x00706EF0; // type:func
+// the player's id, name and text; sends 6132
+LobbyNet_SetMe = 0x00706F30; // type:func
+LobbyNet_GetCharaCount = 0x00707050; // type:func
+LobbyNet_GetCharaId = 0x00707060; // type:func
+LobbyNet_GetCharaName = 0x007070B0; // type:func
+LobbyNet_GetCharaText = 0x00707100; // type:func
+LobbyNet_GetMyCharaId = 0x00707150; // type:func
+LobbyNet_GetMyCharaName = 0x00707180; // type:func
+LobbyNet_Get6105 = 0x007078A0; // type:func
+LobbyNet_Send6105 = 0x007078E0; // type:func
+LobbyNet_Send6141 = 0x00707960; // type:func
+LobbyNet_Get6712 = 0x00708650; // type:func
+LobbyNet_Get68B0 = 0x007087F0; // type:func
+LobbyNet_Get6705 = 0x007089C0; // type:func
+LobbyNet_Get6713 = 0x00708BC0; // type:func
+LobbyNet_Get6707 = 0x00709510; // type:func
+LobbyNet_Get6319 = 0x00709B10; // type:func
+LobbyNet_Get631A = 0x00709F60; // type:func
+LobbyNet_GetParty = 0x0070ABA0; // type:func
+LobbyNet_GetPartyAddr = 0x0070ABE0; // type:func
+LobbyNet_Send6125 = 0x0070AFB0; // type:func
+LobbyNet_GetPatchInfo = 0x0070B020; // type:func
+NetList0_GetCount = 0x0070B830; // type:func
+NetList0_GetName = 0x0070B910; // type:func
+NetList0_GetUsers = 0x0070BAB0; // type:func
+NetList0_GetMaxUsers = 0x0070BB00; // type:func
+NetList0_GetValue10 = 0x0070BB40; // type:func
+NetList0_GetByte = 0x0070BC40; // type:func
+NetList0_GetText = 0x0070BDA0; // type:func
+// monster trade prices (the price information menu), Rate_GetSnapshot
+PriceInfo_Open = 0x007111B0; // type:func
+PriceInfo_Update = 0x007117D0; // type:func
+PriceInfo_ListInput = 0x00711AC0; // type:func
+// the heading of the A-rank wanted board
+PriceInfo_DrawWanted = 0x00711BF0; // type:func
+// the title of the monster trade prices
+PriceInfo_DrawTitle = 0x00711C90; // type:func
+PriceInfo_DrawList = 0x00712370; // type:func
+PriceInfo_DrawDetails = 0x00712820; // type:func
+PriceInfo_Draw = 0x00713020; // type:func
+PriceInfo_Draw2 = 0x00713150; // type:func
+NetList2_GetCount = 0x007139E0; // type:func
+NetList2_GetUsers = 0x00713AC0; // type:func
+NetList2_GetByte = 0x00713BD0; // type:func
+NetList2_GetName = 0x00713D30; // type:func
+NetList2_GetText = 0x00713ED0; // type:func
+NetList2_Get640B = 0x00714070; // type:func
+// --- Round 14 names (decomp-b14-nlobby-h1) ---
+// runs jtbl_008193E0 by D_008F8AA1
+NetScreen_Run = 0x007B00E0; // type:func
+NetScreen_Step0 = 0x007B0850; // type:func
+NetScreen_Step1 = 0x007B0A60; // type:func
+NetScreen_Step2 = 0x007B0C30; // type:func
+NetScreen_Step3 = 0x007B0C60; // type:func
+NetScreen_Step4 = 0x007B0D80; // type:func
+NetScreen_Step5 = 0x007B0DA0; // type:func
+// the id and name shown in the dialog
+LobbyDialog_SetMember = 0x007B18B0; // type:func
+LobbyDialog_ClearMember = 0x007B1900; // type:func
+// D_0080D4F0 - LOGIN, INFORMATION, LAND SELECT, AREA SELECT, ID SELECT
+LobbyTitle_Set = 0x007B1B70; // type:func
+LobbyHelp_Reset = 0x007B1B90; // type:func
+// the help texts D_0080D510
+LobbyHelp_Set = 0x007B1BD0; // type:func
+LobbyHelp_SetText = 0x007B1BF0; // type:func
+LobbyHelp_SetBox = 0x007B1C00; // type:func
+LobbyDialog_DrawMember = 0x007B27E0; // type:func
+LobbyTitle_Draw = 0x007B2840; // type:func
+IdMenu_Draw = 0x007B7180; // type:func
+ChatLog_ListSpeakers = 0x007B9630; // type:func
+// screen 7 of D_00819430
+LobbyEnter_Run = 0x007C0B90; // type:func
+// Net_SetHandler(route, handler)
+LobbyRoute_Register = 0x007C10B0; // type:func
+// route 1
+LobbyRoute_Players = 0x007C1360; // type:func
+LobbyRoute_6003 = 0x007C14C0; // type:func
+LobbyRoute_6005 = 0x007C1540; // type:func
+LobbyRoute_6007 = 0x007C1590; // type:func
+// D_00819700
+ChatMsg_ColorDigit = 0x007C15E0; // type:func
+// a chat line, dropped from muted ids
+LobbyRoute_6702 = 0x007C1630; // type:func
+LobbyRoute_670C = 0x007C17C0; // type:func
+// a mail
+LobbyRoute_6705 = 0x007C1900; // type:func
+LobbyRoute_6204 = 0x007C1AF0; // type:func
+LobbyRoute_6205 = 0x007C1B30; // type:func
+LobbyRoute_6206 = 0x007C1BA0; // type:func
+LobbyRoute_6303 = 0x007C1BE0; // type:func
+LobbyRoute_6308 = 0x007C1C30; // type:func
+LobbyRoute_631B = 0x007C1C70; // type:func
+LobbyRoute_6302 = 0x007C1CB0; // type:func
+LobbyRoute_6304 = 0x007C1CF0; // type:func
+LobbyRoute_630D = 0x007C1D30; // type:func
+LobbyRoute_6402 = 0x007C2240; // type:func
+LobbyRoute_6404 = 0x007C2280; // type:func
+LobbyRoute_650A = 0x007C2330; // type:func
+LobbyRoute_6403 = 0x007C2370; // type:func
+LobbyRoute_640B = 0x007C23C0; // type:func
+LobbyRoute_6405 = 0x007C2410; // type:func
+LobbyRoute_640D = 0x007C2450; // type:func
+LobbyRoute_650C = 0x007C2490; // type:func
+LobbyRoute_6307 = 0x007C2970; // type:func
+LobbyRoute_640C = 0x007C29D0; // type:func
+LobbyRoute_6505 = 0x007C2A30; // type:func
+// screen 0 of D_00819430 - runs D_00819710 by gLobby->mode
+LobbyEntry_Run = 0x007C2C20; // type:func
+// mode 0 - title LOGIN, handlers registered
+LobbyEntry_Init = 0x007C2C80; // type:func
+// mode 1 - the local page N_KYK_TP.HTM
+LobbyEntry_Terms = 0x007C2EF0; // type:func
+LobbyEntry_Step2 = 0x007C2FD0; // type:func
+LobbyEntry_Step3 = 0x007C31F0; // type:func
+// mode 4 - IdMenu_Run
+LobbyEntry_IdSelect = 0x007C33B0; // type:func
+LobbyEntry_Step5 = 0x007C38A0; // type:func
+// mode 6 - LobbyLogin_SendSummary, HunterCard_Build
+LobbyEntry_Login = 0x007C3A30; // type:func
+// mode 7 - title INFORMATION, 614C
+LobbyEntry_Info = 0x007C3CB0; // type:func
+// mode 8 - NetMenu, getting the area information
+LobbyEntry_AreaInfo = 0x007C3F20; // type:func
+LobbyEntry_Step9 = 0x007C4460; // type:func
+// expands %s %d %1 %2 %a %r ...
+LobbyMsg_Format = 0x007D3930; // type:func
+
+// Round 23 (ndata-h1)
+Lobby_LacksQuest = 0x007B6330; // type:func Lobby_HasQuest() != 1
+LobbyConn_Finish = 0x007B1630; // type:func the last of gLobbyConnSteps, resets gNetConnStep
+LobbyScreen_CamIntro = 0x007BBF70; // type:func step 4 of gLobbyScreenSteps, hides the player during a camera sequence and SeqA, then places it at gLobbyStartPos and returns to screen mode 2
+Lobby_HandleLeaveRequest = 0x007B6730; // type:func starts the close, kick or leave the lobby state asks for (unk3962, unk3963, unk395F-unk3961), 1 when one started
+LobbyDialog_ShowConnMsg = 0x007B2B10; // type:func (opens lobby message 2, 0 or 1 for 1, 2, 3 unless it is already shown, then draws the dialog)
+
+// Round 24 (nnames-h1)
+NetTask6_GetRecs = 0x00718310; // type:func copies the records NetTask6 fetched (D_00857E24)
+
+// Round 27 (names)
+PriceInfo_IsListed = 0x00711520; // type:func the id is in the price list ids at 0x7EC5F0 (up to 0x4A, zero ended), PriceInfo_Open
+LobbyRoute_OnMsg05 = 0x007C1510; // type:func the net handler of message 5 (LobbyRoute_Register), sets gLobby unk3963 in phase 4

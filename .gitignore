@@ -1,0 +1,91 @@
+# ---------------------------------------------------------------------------
+# GAME DATA POLICY: nothing from the disc, and nothing derived from it, may be
+# committed. The build and the port read the user's own copy (see README).
+# Patterns use [xX] classes so they also match on case-sensitive filesystems.
+# ---------------------------------------------------------------------------
+
+# Disc images and disc contents
+*.[iI][sS][oO]
+*.[bB][iI][nN]
+*.[cC][uU][eE]
+*.[cC][hH][dD]
+*.[cC][sS][oO]
+*.[zZ][sS][oO]
+*.[aA][fF][sS]
+*.[iI][rR][xX]
+*.[iI][mM][gG]
+*.[dD][aA][tT]
+*.[dD][iI][rR]
+*.[pP][fF]
+*.[rR][gG][bB]
+*.[iI][cC][oO]
+*.[bB][dD]
+*.[hH][dD]
+[sS][lL][pP][mM]_*
+[sS][yY][sS][tT][eE][mM].[cC][nN][fF]
+[iI][cC][oO][nN].[sS][yY][sS]
+*.[sS][cC][cC]
+/[iI][oO][pP]/
+/[nN][tT][gG][uU][iI][dD][vV][dD]/
+/orig/
+/disc/
+/extracted/
+
+# Anything derived from the game executable or data
+*.[eE][lL][fF]
+*.o
+*.a
+*.map
+/asm/
+/assets/
+/bin/
+/build/
+/expected/
+/out/
+# Sound recordings (--wav) are the game's audio
+*.[wW][aA][vV]
+
+# Emulator state, BIOS, saves, captures (may contain game data or personal data)
+*.[pP][sS]2
+*.[mM][cC][dD]
+*.[pP][sS][uU]
+*.[mM][aA][xX]
+*.[cC][bB][sS]
+*.[sS][pP][sS]
+*.[xX][pP][sS]
+*.[nN][pP][oO]
+*.[pP]2[sS]
+*.[nN][vV][mM]
+*.[mM][eE][cC]
+*.[rR][oO][mM][0-9]
+*.gs
+*.gs.xz
+*.gs.zst
+*.pcap
+*.pcapng
+
+# Project-local toolchain (created by tools/setup.sh)
+/tools/deps/
+
+# Generated build files
+/build.ninja
+/.ninja_log
+/.ninja_deps
+/objdiff.json
+/report.json
+/nonmatchings/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

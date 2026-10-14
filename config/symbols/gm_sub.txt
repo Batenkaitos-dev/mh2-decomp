@@ -1,0 +1,309 @@
+// Symbols for overlay 6, gm_sub.bin. Format: name = 0xADDRESS; // attributes
+
+// sub_main data that gm_sub's C reads by name. MWCC keeps a load from an
+// absolute address behind a store, but not a load from a named object
+// (QNetIf_OnPlayerLeft needs it); a better name belongs in sub_main.txt.
+D_004476FC = 0x004476FC; // size:0x4
+
+// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+gm_sub_entry = 0x008FAE80; // type:func
+
+// gm_main.c (the module's task and its menu) and gm_em.c (monster setup and
+// update), named in round 2; sorted by address.
+GmSub_OpenYesNo = 0x008FAF40; // type:func
+GmSub_Task = 0x008FAFD0; // type:func
+GmSub_InitMenu = 0x008FB3E0; // type:func
+GmSub_MoveCursorV = 0x008FB570; // type:func
+GmSub_MoveCursorH = 0x008FB640; // type:func
+GmSub_UpdateMenu = 0x008FB700; // type:func
+GmSub_UpdateYesNo = 0x008FBFA0; // type:func
+GmEm_SetQuestSounds = 0x00902AD0; // type:func
+GmEm_SetupKind = 0x00903EE0; // type:func
+GmEm_ResetSize = 0x009042F0; // type:func
+GmEm_ApplySize = 0x009043C0; // type:func
+GmEm_ScaleBySize = 0x00904430; // type:func
+GmEm_ResetState = 0x00904480; // type:func
+GmEm_Setup = 0x00904880; // type:func
+GmEm_UpdateKind = 0x00904AB0; // type:func
+GmEm_Update = 0x00904CF0; // type:func
+GmEm_Finish = 0x009057F0; // type:func
+GmEm_Free = 0x00905810; // type:func
+GmEm_CanUpdate = 0x00905850; // type:func
+GmEm_Task = 0x00905930; // type:func
+GmEm_Fx0F = 0x00905BF0; // type:func
+GmEm_Fx15 = 0x00905C80; // type:func
+GmEm_Fx3A = 0x00905D10; // type:func
+GmEm_Fx3B = 0x00905DB0; // type:func
+GmEm_Fx47 = 0x00905F00; // type:func
+GmEm_ApplyFx = 0x00905FB0; // type:func
+GmEm_SetPartFx = 0x00906080; // type:func
+GmEm_PartColor = 0x00906090; // type:func
+GmEm_QuestFx = 0x0090A2B0; // type:func
+
+// --- NETWORK (preserve for Phase 6): in-quest protocol -----------------------
+// qnet.c: the session (gQNet), its queues and the packet format; qnet_if.c: the
+// game's side (settings, callbacks, wrappers).
+QuestNet_Send = 0x008FC970; // type:func
+QuestNet_Parse = 0x008FD6F0; // type:func
+QuestNet_Recv = 0x008FD9F0; // type:func
+QuestNet_Clock = 0x008FC740; // type:func
+QuestNet_SendError = 0x008FC840; // type:func
+QuestNet_RecvError = 0x008FC850; // type:func
+QuestNet_LinkError = 0x008FC870; // type:func
+QuestNet_Loopback = 0x008FC880; // type:func
+QuestNet_SetPeerState = 0x008FCE40; // type:func
+QuestNet_DropPeers = 0x008FCED0; // type:func
+QuestNet_Queue = 0x008FCF60; // type:func
+QuestNet_SysAlive = 0x008FCFF0; // type:func
+QuestNet_SysReady = 0x008FD020; // type:func
+QuestNet_SysUnready = 0x008FD060; // type:func
+QuestNet_SysLeave = 0x008FD090; // type:func
+QuestNet_SysTime = 0x008FD0C0; // type:func
+QuestNet_SysTimeReply = 0x008FD100; // type:func
+QuestNet_OnSysMsg = 0x008FD140; // type:func
+QuestNet_OnGameMsg = 0x008FD350; // type:func
+QuestNet_OnPacket = 0x008FD370; // type:func
+QuestNet_Dispatch = 0x008FD440; // type:func
+QuestNet_CheckSeq = 0x008FD660; // type:func
+QuestNet_ProcessQueue = 0x008FD8E0; // type:func
+QuestNet_EverySecond = 0x008FDCF0; // type:func
+QuestNet_ResetTotals = 0x008FDEC0; // type:func
+QuestNet_CheckTimeouts = 0x008FDED0; // type:func
+QuestNet_UnreadyAll = 0x008FE000; // type:func
+QuestNet_UpdateJoin = 0x008FE080; // type:func
+QuestNet_Update = 0x008FE3E0; // type:func
+QuestNet_Init = 0x008FE6A0; // type:func
+QuestNet_IsActive = 0x008FE960; // type:func
+QuestNet_GetState = 0x008FE970; // type:func
+QuestNet_IsRunning = 0x008FE980; // type:func
+QuestNet_GetCount = 0x008FE9A0; // type:func
+QuestNet_GetError = 0x008FE9B0; // type:func
+QuestNet_CanSend = 0x008FEA50; // type:func
+QuestNet_GetPing = 0x008FEAF0; // type:func
+QuestNet_NoPeerReady = 0x008FEBD0; // type:func
+QuestNet_Post = 0x008FEC20; // type:func
+QuestNet_Flush = 0x008FEC60; // type:func
+QuestNet_Receive = 0x008FECC0; // type:func
+QuestNet_Tick = 0x008FED00; // type:func
+QuestNet_Ready = 0x008FED50; // type:func
+QuestNet_Unready = 0x008FEE10; // type:func
+QuestNet_Leave = 0x008FEE70; // type:func
+QuestNet_Close = 0x008FEEE0; // type:func
+QNetIf_OnMessage = 0x008FC0C0; // type:func
+QNetIf_FindHost = 0x008FC180; // type:func
+QNetIf_OnPlayerLost = 0x008FC210; // type:func
+QNetIf_OnPlayerLeft = 0x008FC2D0; // type:func
+QNetIf_Update = 0x008FC3B0; // type:func
+QNetIf_Start = 0x008FC460; // type:func
+QNetIf_Post = 0x008FC5D0; // type:func
+QNetIf_Flush = 0x008FC5E0; // type:func
+QNetIf_IsRunning = 0x008FC5F0; // type:func
+QNetIf_UpdateReceive = 0x008FC600; // type:func
+QNetIf_UpdateOnline = 0x008FC650; // type:func
+QNetIf_Leave = 0x008FC690; // type:func
+QNetIf_Close = 0x008FC6A0; // type:func
+QNetIf_GetCount = 0x008FC6B0; // type:func
+QNetIf_Ready = 0x008FC6C0; // type:func
+QNetIf_Unready = 0x008FC710; // type:func
+gQNetSendInterval = 0x0090AC80;
+gQNetSendBudget = 0x0090AC88;
+gQNetPeerTimeout = 0x0090AC90;
+gQNetJoinTimeout = 0x0090AC98;
+gQNetMaxStall = 0x0090ACA0;
+gQNetReadyArg = 0x0090ACB8; // size:0x8
+gQNetIfText = 0x00933390;
+gQNetPing = 0x009334A0;
+gQNetMsg = 0x009334B0; // size:0x200
+gQNetSysSendData = 0x009336B0;
+gQNetSysRecvData = 0x00933AB0;
+gQNetGameSendData = 0x00933EB0;
+gQNetGameRecvData = 0x00934EB0;
+gQNetRecvData = 0x00938EB0;
+gQNetSysSend = 0x009392B0; // size:0xC
+gQNetSysRecv = 0x009392C0; // size:0xC
+gQNetGameSend = 0x009392D0; // size:0xC
+gQNetGameRecv = 0x009392E0; // size:0xC
+gQNetRecv = 0x009392F0; // size:0xC
+gQNet = 0x00939300; // size:0xD0
+
+// --- gm_em.c's .data: the per-kind data file lists that gm_load.c's D_00932C70
+// points to (labelled here so that the split keeps them apart) ---------------
+gGmKindFileLists_0 = 0x00931AA0; // size:0x130 entry 0 of gGmKindFileLists
+gGmKindFileLists_2 = 0x00931BD0; // size:0x130 entry 2 of gGmKindFileLists
+gGmKindFileLists_3 = 0x00931D00; // size:0x130 entry 3 of gGmKindFileLists
+gGmKindFileLists_4 = 0x00931E30; // size:0x130 entry 4 of gGmKindFileLists
+gGmKindFileLists_5 = 0x00931F60; // size:0x130 entry 5 of gGmKindFileLists
+gGmKindFileLists_6 = 0x00932090; // size:0x130 entry 6 of gGmKindFileLists
+gGmKindFileLists_7 = 0x009321C0; // size:0x130 entry 7 of gGmKindFileLists
+gGmKindFileLists_8 = 0x009322F0; // size:0x130 entry 8 of gGmKindFileLists
+gGmKindFileLists_9 = 0x00932420; // size:0x130 entry 9 of gGmKindFileLists
+gGmKindFileLists_10 = 0x00932550; // size:0x130 entry 10 of gGmKindFileLists
+gGmKindFileLists_11 = 0x00932680; // size:0x130 entry 11 of gGmKindFileLists
+gGmKindFileLists_12 = 0x009327B0; // size:0x130 entry 12 of gGmKindFileLists
+gGmKindFileLists_13 = 0x009328E0; // size:0x130 entry 13 of gGmKindFileLists
+gGmKindFileLists_14 = 0x00932A10; // size:0x130 entry 14 of gGmKindFileLists
+gGmKindFileLists_15 = 0x00932B40; // size:0x130 entry 15 of gGmKindFileLists
+
+// qnet_sync.c (game messages 1-4, 6, 7 and 10; the pending positions)
+QSync_SendPlayer = 0x008FEF60; // type:func
+QSync_OnPlayer = 0x008FF440; // type:func
+QSync_SendEm = 0x008FFCE0; // type:func
+QSync_OnEm = 0x00900340; // type:func
+QSync_PackEmParts = 0x00900F60; // type:func
+QSync_UnpackEmParts = 0x00900FF0; // type:func
+QSync_PackEmState = 0x00901080; // type:func
+QSync_ApplyEmState = 0x00901370; // type:func
+QSync_SendState = 0x00901790; // type:func
+QSync_OnState = 0x00901A90; // type:func
+QSync_SendChat = 0x00901E80; // type:func
+QSync_OnChat = 0x00902020; // type:func
+QSync_SendSupply = 0x00902210; // type:func
+QSync_OnSupply = 0x00902330; // type:func
+QSync_Begin = 0x009024E0; // type:func
+QSync_QueuePlayerPos = 0x009026F0; // type:func
+QSync_UpdatePlayerPos = 0x00902790; // type:func
+QSync_QueueEmState = 0x00902830; // type:func
+// round 13 (ncoreh1): names
+GmSub_Setup = 0x008FB3B0; // type:func
+QSync_UpdateEmState = 0x00902990; // type:func
+GmEm_MotionEffects = 0x0090A3A0; // type:func
+GmEm_UpdateSfx = 0x0090A900; // type:func
+GmEm_CallFunc3 = 0x0090A990; // type:func
+GmEm_SpawnEffect01 = 0x0090A9A0; // type:func
+GmLoad_Relocate = 0x0090A9D0; // type:func
+GmLoad_Reset = 0x0090AAA0; // type:func
+GmLoad_LoadStagePartition = 0x0090AAF0; // type:func
+GmLoad_LoadEmData = 0x0090AB00; // type:func
+GmLoad_GetEmData = 0x0090AC10; // type:func
+
+// Round 16 (data-h1)
+// game addresses gm_sub data points to (game is loaded with gm_sub): the families
+// callback tables (D_0090DE10, per kind).
+EmDrome_Callbacks = 0x008C3F50;
+EmKind1D_Callbacks = 0x008C41A0;
+EmKirin_Callbacks = 0x008C41C0;
+EmGaruga_Callbacks = 0x008C42F0;
+EmHermitaur_Callbacks = 0x008C4B10;
+EmGravios_Callbacks = 0x008C4B70;
+EmKind12_Callbacks = 0x008C5350;
+EmVespoid_Callbacks = 0x008C5380;
+EmKutku_Callbacks = 0x008C58D0;
+EmPlesioth_Callbacks = 0x008C6240;
+EmKind0A_Callbacks = 0x008C7290;
+EmApceros_Callbacks = 0x008C7320;
+EmDiablos_Callbacks = 0x008C73B0;
+EmKhezu_Callbacks = 0x008C7C40;
+EmVelociprey_Callbacks = 0x008C8920;
+EmAnteka_Callbacks = 0x008C8B10;
+EmMosswine_Callbacks = 0x008C8BB0;
+EmLaoshan_Callbacks = 0x008C8BF0;
+EmCephadrome_Callbacks = 0x008C8DE0;
+EmMelynx_Callbacks = 0x008C90E0;
+EmRathalos_Callbacks = 0x008C9210;
+EmFatalis_Callbacks = 0x008C9C40;
+EmBlangonga_Callbacks = 0x008C9E40;
+EmShenGaoren_Callbacks = 0x008CA0E0;
+EmKushala_Callbacks = 0x008CA240;
+EmKind38_Callbacks = 0x008CA2D0;
+EmShakalaka_Callbacks = 0x008CA350;
+EmYamaTsukami_Callbacks = 0x008CAAE0;
+EmChameleos_Callbacks = 0x008CABE0;
+EmRemobra_Callbacks = 0x008CAE50;
+EmBulldrome_Callbacks = 0x008CB4C0;
+// game data gm_em.c points to:
+D_008C07C0 = 0x008C07C0; // game unk_708850.c (MapPosSet)
+D_008C1DC0 = 0x008C1DC0; // game unk_708850.c
+D_008C30E0 = 0x008C30E0; // game unk_708850.c
+
+// Round 17 (xref): names for raw addresses in the C.
+gGmWork = 0x00933380; // size:0x4
+
+// Round 18 (ngame)
+GmSub_StepLaunch = 0x008FBD90; // type:func case 3 - sets online/offline and starts the mode when the sequence ends
+GmSub_StepExit = 0x008FBED0; // type:func case 4 - fade, then task D_6B5230
+
+// Round 19 (ndata)
+gGmLoadSlots = 0x00939450; // size:0x12C
+
+// Round 23 (ndata)
+gQSyncResendDelay = 0x0090ACA8; // size:0x4
+gQSyncSendPeriod = 0x0090ACB0; // size:0x4
+
+// Round 24 (nnames): tables named by their use (session 2)
+gGmEmCallbackTbl = 0x0090DE10; // size:0x130 per kind Em callbacks (EmRathalos_Callbacks...), GmEm_SetupKind sets em->handlers
+gGmKindFileLists = 0x00932C70; // size:0x90 per kind list of data file ids, gm_load.c
+
+// Round 24 (nnames): entries of the tables named by their use (session 2), TABLE_N
+gGmEmCallbackTbl_0 = 0x0090DF90; // size:0x20 entry 0 of gGmEmCallbackTbl
+
+// Round 25 (names)
+gGmLoadEmDataUsed = 0x00939440; // size:0x4 bytes used in the monster data area (GmLoad_LoadEmData, GmLoad_Reset)
+gGmLoadEmIds = 0x00939580; // size:0x4B the monster data id loaded per slot, 0xFF when free (GmLoad_LoadEmData)
+gGmEmKind24MeshTex = 0x0090DF40; // size:0x50 kind 0x24 the texture index of each of its 32 meshes (+8 under 8 when the flag is set), func_00906210
+
+// Round 27 (names)
+GmEm_SetMeshAlphas = 0x00906210; // type:func each mesh of a monster kind gets the monster alpha, 0 for broken or hidden parts (by kind, mode and the part table)
+
+// Round 31 (names)
+gEmScaleRows = 0x0090D470; // size:0x128 per monster type its EmScaleRow table (Em_ComputeSize, Em_RageScale1, Em_RageScale2), inside the C object D_0090D330, size to its end
+gEmMinePoints = 0x0092E8B0; // size:0x128 EmMine_Create and EmHolder_CreateMine, the carcass mine point of a monster kind (16 bytes, by em type), inside the C object D_0092E8A0, size to its end
+gEmMinePoints2 = 0x0092EB10; // size:0x130 EmMine_CreateTimed and EmMine_Drop, a second mine point of a monster kind (8 bytes, by em type), inside the C object D_0092EB00, size to its end
+gEmPartHpTables = 0x0090B3C0; // size:0x130 Em_InitParts and Em_ResetPartHp, by em type a table of the hp of its 9 parts (s16), inside the C object D_0090B3A0, size to its end
+gQNetPingCounts = 0x00933490; // size:0x4 QuestNet_OnSysMsg, per peer the ping replies counted until the third sets gQNetPing (cleared by QuestNet_Init)
+gAmbSePosArea48 = 0x0092A530; // size:0x18
+gAmbSeIdsArea48 = 0x0092A548; // size:0x8
+gAmbSePeriodsArea48 = 0x0092A550; // size:0x4
+gAmbSeKindsArea48 = 0x0092A558; // size:0x4
+gAmbSePosArea4B = 0x0092A560; // size:0x24
+gAmbSeIdsArea4B = 0x0092A588; // size:0xC
+gAmbSePeriodsArea4B = 0x0092A598; // size:0x6
+gAmbSeKindsArea4B = 0x0092A5A0; // size:0x6
+gAmbSePosArea01 = 0x0092A5B0; // size:0x18
+gAmbSeIdsArea01 = 0x0092A5C8; // size:0x8
+gAmbSePeriodsArea01 = 0x0092A5D0; // size:0x4
+gAmbSeKindsArea01 = 0x0092A5D8; // size:0x4
+gAmbSePosArea02 = 0x0092A5E0; // size:0xC
+gAmbSeIdsArea02 = 0x0092A5F0; // size:0x4
+gAmbSePeriodsArea02 = 0x0092A5F8; // size:0x2
+gAmbSeKindsArea02 = 0x0092A600; // size:0x2
+gAmbSePosArea05 = 0x0092A608; // size:0xC
+gAmbSeIdsArea05 = 0x0092A618; // size:0x4
+gAmbSePeriodsArea05 = 0x0092A620; // size:0x2
+gAmbSeKindsArea05 = 0x0092A628; // size:0x2
+gAmbSePosArea16 = 0x0092A630; // size:0x18
+gAmbSeIdsArea16 = 0x0092A648; // size:0x8
+gAmbSePeriodsArea16 = 0x0092A650; // size:0x4
+gAmbSeKindsArea16 = 0x0092A658; // size:0x4
+gAmbSePosArea17 = 0x0092A660; // size:0xC
+gAmbSeIdsArea17 = 0x0092A670; // size:0x4
+gAmbSePeriodsArea17 = 0x0092A678; // size:0x2
+gAmbSeKindsArea17 = 0x0092A680; // size:0x2
+gAmbSePosArea79 = 0x0092A688; // size:0xC
+gAmbSeIdsArea79 = 0x0092A698; // size:0x4
+gAmbSePeriodsArea79 = 0x0092A6A0; // size:0x2
+gAmbSeKindsArea79 = 0x0092A6A8; // size:0x2
+gAmbSePosArea7A = 0x0092A6B0; // size:0xC
+gAmbSeIdsArea7A = 0x0092A6C0; // size:0x4
+gAmbSePeriodsArea7A = 0x0092A6C8; // size:0x2
+gAmbSeKindsArea7A = 0x0092A6D0; // size:0x2
+gAmbSePosArea41 = 0x0092A6D8; // size:0xC
+gAmbSeIdsArea41 = 0x0092A6E8; // size:0x4
+gAmbSePeriodsArea41 = 0x0092A6F0; // size:0x2
+gAmbSeKindsArea41 = 0x0092A6F8; // size:0x2
+gAmbSePosAreaA9 = 0x0092A700; // size:0xC
+gAmbSeIdsAreaA9 = 0x0092A710; // size:0x4
+gAmbSePeriodsAreaA9 = 0x0092A718; // size:0x2
+gAmbSeKindsAreaA9 = 0x0092A720; // size:0x2
+gGatherItemTables = 0x0092DDA0;
+gRewardItemTables = 0x00930B00;
+gPartRewardRecs = 0x00931060;
+gStartAreaTables = 0x009316B0;
+gEmLevelTables = 0x0090D5B8;
+gEmLevelTableIdx = 0x0090D5D0;
+gEmLevelSeasonAdd = 0x0090D670;
+gEmSizeSeasonAdd = 0x0090D750;
+gPlayerResetPos = 0x0092A380;
+gPlayerResetRotY = 0x0092A4C0;
+gEmLowHpRatios = 0x0090CD00;
+gEmSizeLevelFactors = 0x0090DD50;
+gEmMotionGroupCounts = 0x0090DDC0;

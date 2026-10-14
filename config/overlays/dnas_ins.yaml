@@ -1,0 +1,53 @@
+# splat config for overlay 8, dnas_ins.bin (DNAS2 install / patch decryption (network)).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0xAC8000
+# including its 0x40-byte header, so text starts at 0xAC8040.
+name: dnas_ins.bin
+sha1: 1f7619954f4d9d218438af10dfd5cb7798948e06
+options:
+  basename: dnas_ins
+  target_path: build/orig/dnas_ins.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/dnas_ins
+  src_path: src/dnas_ins
+  build_path: build/dnas_ins
+  asset_path: assets/dnas_ins
+  ld_script_path: build/ld/dnas_ins.ld
+  undefined_funcs_auto_path: build/ld/dnas_ins.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/dnas_ins.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - build/symbols/sub_main.extern.txt
+    - config/symbols/dnas_ins.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: dnas_ins
+    type: code
+    start: 0x40
+    vram: 0xAC8040
+    bss_size: 0x6FB00
+    subsegments:
+      - [0x40, textbin, sdk/dnas2]  # Sony DNAS2 library, partly encrypted (decrypted at runtime); kept as binary
+      - [0x29A00, data, data]
+      - { type: bss, vram: 0xAF9D80, name: bss }
+  - [0x31D80]

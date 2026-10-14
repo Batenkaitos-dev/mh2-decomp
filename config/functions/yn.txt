@@ -1,0 +1,31 @@
+// Function starts of yn, pinned for splat.
+// 29 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
+func_00AC8040 = 0x00AC8040; // type:func
+func_00AC8128 = 0x00AC8128; // type:func
+func_00AC8168 = 0x00AC8168; // type:func
+func_00AC8230 = 0x00AC8230; // type:func
+func_00AC8290 = 0x00AC8290; // type:func
+func_00AC8540 = 0x00AC8540; // type:func
+func_00AC8908 = 0x00AC8908; // type:func
+func_00AC8990 = 0x00AC8990; // type:func
+func_00AC8A30 = 0x00AC8A30; // type:func
+func_00AC8AB0 = 0x00AC8AB0; // type:func
+func_00AC8B30 = 0x00AC8B30; // type:func
+func_00AC8B88 = 0x00AC8B88; // type:func
+func_00AC8BE0 = 0x00AC8BE0; // type:func
+func_00AC8C38 = 0x00AC8C38; // type:func
+func_00AC8CC0 = 0x00AC8CC0; // type:func
+func_00AC8D70 = 0x00AC8D70; // type:func
+func_00AC8DC0 = 0x00AC8DC0; // type:func
+func_00AC8E00 = 0x00AC8E00; // type:func
+func_00AC8EE8 = 0x00AC8EE8; // type:func
+func_00AC8F58 = 0x00AC8F58; // type:func
+func_00AC9008 = 0x00AC9008; // type:func
+func_00AC9258 = 0x00AC9258; // type:func
+func_00AC94C8 = 0x00AC94C8; // type:func
+func_00AC94F0 = 0x00AC94F0; // type:func
+func_00AC9550 = 0x00AC9550; // type:func
+func_00AC95A8 = 0x00AC95A8; // type:func
+func_00AC9638 = 0x00AC9638; // type:func
+func_00ACBF40 = 0x00ACBF40; // type:func
+func_00ACDF60 = 0x00ACDF60; // type:func

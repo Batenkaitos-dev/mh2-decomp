@@ -1,0 +1,18 @@
+# Matching-build targets: the v1.04 boot ELF and the 12 CodeWarrior overlays
+# stored in DATA.BIN entry 1 (an inner AFS archive). tools/extract.py pulls
+# them from the user's copy into build/orig/; the build must reproduce each
+# of them byte for byte.
+# Format: sha1  size  target  source
+ffbc8d731049da3eb2efc055e086d1bcd779517b  822368  SLPM_662.80  SLPM_662.80
+f937e8e4b365bdcc420111b26220a3847d8a21ed  1892352  sub_main.bin  DATA.BIN:1:0
+af537d3f329f1c83b06673c065ee0db2ac11534b  143232  select.bin  DATA.BIN:1:1
+74e0e4b80b0a2dc133d839c866ef7f0dd5e8ee12  2383872  game.bin  DATA.BIN:1:2
+ed82c6fc62eb5c0cbeb71f370626c7bb91a00ced  1682816  lobby.bin  DATA.BIN:1:3
+acdf6451e4d3d78956720959f619ae103c8d250e  392192  nethttp.bin  DATA.BIN:1:4
+49086af3d3a0969e5a96eec113d554e18e556688  230784  gm_sub.bin  DATA.BIN:1:5
+c5ebc39c20ee3114983fabe62a228ff70939477e  592640  dnas_net.bin  DATA.BIN:1:6
+1f7619954f4d9d218438af10dfd5cb7798948e06  204160  dnas_ins.bin  DATA.BIN:1:7
+756052623652abc6e57ed525725049d31ab1f034  47744  yn.bin  DATA.BIN:1:8
+076dd438e72b7914a523c63491ba85faab64fe6d  169088  lbguild.bin  DATA.BIN:1:9
+22a9e02f4ba397256c326ae096eb4e6aa347c6ed  113536  plsel.bin  DATA.BIN:1:10
+d5fc36414c65918fe87f651ad373e1eb8b15fc3b  256  test.bin  DATA.BIN:1:11

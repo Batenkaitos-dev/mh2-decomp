@@ -1,0 +1,34 @@
+# Pinned tool versions and download checksums.
+# Single source of truth for tools/setup.sh.
+# Format: KEY=VALUE, no spaces or quotes. Lines starting with '#' are comments.
+# Python packages are pinned separately in pyproject.toml / uv.lock.
+#
+# Anything marked AFFECTS BUILD OUTPUT must not change unless the build
+# still reproduces config/targets.sha1.
+
+# uv: installs the pinned CPython and the project virtualenv
+UV_VERSION=0.12.18
+UV_SHA256_LINUX=89eadd7c76fc063887959510d5ba0ab1264dfd5f1143b925ddb73021a40acf16
+
+# CPython (python-build-standalone, installed by uv into tools/deps/<platform>/python)
+PYTHON_VERSION=3.14.7
+
+# GNU binutils 2.40 + decomp patches, R5900 (EE) capable. AFFECTS BUILD OUTPUT.
+# https://github.com/decompals/binutils-mips-ps2-decompals
+BINUTILS_PS2_VERSION=v0.10
+BINUTILS_PS2_SHA256_LINUX=9fe31ea3ee1a37536f9f0e2e12c668e7c3cb99e59f5154bd2f1fc4762473094c
+
+# Matching compiler (Linux only): Metrowerks CodeWarrior for PS2, compiler
+# build 3.0b52-030722, from decomp.me's compiler archive, run through wibo.
+# Chosen by compiling candidates and comparing the output with the game's code.
+# AFFECTS BUILD OUTPUT.
+MWCC_PS2_VERSION=3.0b52-030722
+MWCC_PS2_SHA256=5c2f5f96c0a360cc6d4fc866226768f7ab9b290777bcd5cadeeba030b1d596a5
+# wibo runs the Windows compiler on Linux: https://github.com/decompals/wibo
+WIBO_VERSION=1.2.0
+WIBO_SHA256=13f86a2d618f0dbe67179d349625345eabf9b46450295cb4c904e49f6aff85af
+
+# objdiff (function-level diffing): https://github.com/encounter/objdiff
+OBJDIFF_VERSION=v3.8.1
+OBJDIFF_CLI_SHA256_LINUX=c8290281e82114bcc1a06ff73061110d3902a177822e750337de2537188e358f
+OBJDIFF_GUI_SHA256_LINUX=6e529cf35e93724479247c753936c4937abf1b1f82f1bb06656013c005f1c0f1

@@ -1,0 +1,948 @@
+// Symbols for overlay 4, lobby.bin: the second half of the village
+// (0x757600-0x7AF6C0: the equipment shop, the village conditions and quest
+// data, the house and its boxes, the combination shop, townspeople, Poogie
+// points, the village event checks). Format: name = 0xADDRESS; // attributes
+//
+// One symbol file per round-5 lobby worker, so that they never edit the same
+// file: new names in this range go here, sorted by address. lobby.txt has the
+// names from earlier rounds; lobby.yaml reads all three files.
+
+// --- the village, second half --------------------------------------------
+LobbyMenu_MoveCursor = 0x007571E0; // type:func
+LobbyPad_Pressed = 0x007573E0; // type:func
+LobbyPad_Held = 0x00757400; // type:func
+LobbySe_Play = 0x00757510; // type:func
+EquipShop_Open = 0x00757F90; // type:func
+EquipShop_IsListed = 0x00758630; // type:func
+EquipShop_GetList = 0x00758710; // type:func
+EquipShop_BuildPage = 0x00758810; // type:func
+EquipShop_OpenList = 0x00758B80; // type:func
+EquipShop_DrawMenu = 0x00759DF0; // type:func
+Box_CountEquip = 0x00759F50; // type:func
+EquipShop_DrawLine = 0x00759FF0; // type:func
+Equip_DrawWearer = 0x0075AE50; // type:func
+EquipBox_DrawSellNote = 0x0075AF80; // type:func
+EquipBox_DrawSellPrice = 0x0075B0E0; // type:func
+EquipShop_DrawTask = 0x0075B240; // type:func
+Menu_DrawLabelsPos = 0x00760C70; // type:func
+Menu_DrawLabelsNeg = 0x00760DB0; // type:func
+Menu_DrawArrows = 0x00761FA0; // type:func
+Menu_DrawArrowsRev = 0x007620F0; // type:func
+Menu_DrawArrowsSized = 0x00762240; // type:func
+BoxMenu_Open = 0x007623F0; // type:func
+BoxMenu_TakeToPouch = 0x00763070; // type:func
+BoxMenu_EquipMenu = 0x00763B40; // type:func
+BoxMenu_CloseStep = 0x00765C60; // type:func
+BoxMenu_EquipPickInput = 0x00765D50; // type:func
+BoxMenu_UpdateSkillPreview = 0x00766470; // type:func
+EquipSet_RemoveSlot = 0x00766850; // type:func
+EquipSet_DropUnfit = 0x00766920; // type:func
+EquipBox_TryRemove = 0x007678C0; // type:func
+BoxMenu_CanSplit = 0x00767970; // type:func
+BoxMenu_CanTakeSeveral = 0x00767A10; // type:func
+BoxMenu_InputAmount = 0x00767A90; // type:func
+Equip_SwapSlots = 0x00767C40; // type:func
+Equip_ArmorFits = 0x007681F0; // type:func
+BoxList_InsertSorted = 0x0076A080; // type:func
+BoxMenu_Draw = 0x0076AB50; // type:func
+BoxMenu_DrawEquip = 0x0076AF50; // type:func
+Color_Half = 0x0076B740; // type:func
+BoxMenu_DrawAmount = 0x0076CC60; // type:func
+BoxMenu_DrawZenny = 0x0076CDA0; // type:func
+BoxEquip_SortKey = 0x0076D2C0; // type:func
+Box_FindEquip = 0x0076D5F0; // type:func
+QuestCounter_Step = 0x0076DD30; // type:func
+LobbyMember_DrawList = 0x00774240; // type:func
+CombShop_Update = 0x007766D0; // type:func
+CombShop_OpenList = 0x00776980; // type:func
+CombShop_Steps = 0x007769D0; // type:func
+CombShop_InputAmount = 0x00776E40; // type:func
+CombShop_InputLine = 0x00777140; // type:func
+CombShop_InputPage = 0x00777340; // type:func
+Item_IsCombinable = 0x007774A0; // type:func
+CombShop_CanCombine = 0x007774F0; // type:func
+CombShop_PageReady = 0x007775F0; // type:func
+CombShop_BuildList = 0x00777700; // type:func
+CombShop_Price = 0x007779B0; // type:func
+CombShop_DrawList = 0x00777AB0; // type:func
+CombShop_DrawLine = 0x00777FD0; // type:func
+CombShop_DrawLines = 0x007781A0; // type:func
+CombShop_DrawLineWindow = 0x007782B0; // type:func
+CombShop_DrawAmount = 0x007785E0; // type:func
+CombShop_DrawWindow = 0x00778940; // type:func
+CombShop_Draw = 0x00778D10; // type:func
+Npc_DrawProps = 0x0077AFB0; // type:func
+Npc_HidePart = 0x0077B6A0; // type:func
+Npc_Draw = 0x0077B980; // type:func
+NpcTable_Find = 0x0077C3E0; // type:func
+Npc_IsPresent = 0x0077C500; // type:func
+Npc_SelectRoute = 0x0077CD00; // type:func
+Npc_SetRouteByKind = 0x0077CF10; // type:func
+Npc_SetRouteByVillage = 0x0077D740; // type:func
+Npc_UpdateMatrix = 0x0077E1F0; // type:func
+Npc_PlayVoice = 0x0077E660; // type:func
+Npc_MotionSounds = 0x0077E740; // type:func
+Npc_Spawn = 0x0077F660; // type:func
+Npc_Exists = 0x0077F740; // type:func
+Npc_Find = 0x0077F7B0; // type:func
+Npc_SpawnArea = 0x0077F800; // type:func
+Npc_IsFree = 0x0077FCB0; // type:func
+Npc_TurnToPlayer = 0x007806B0; // type:func
+Npc_PlayerAboveLine = 0x007808D0; // type:func
+Npc_FindByKind = 0x0078E140; // type:func
+NameTags_Draw = 0x0078F3C0; // type:func
+Text_DrawShadowed = 0x007912E0; // type:func
+Color_Pulse = 0x00791BA0; // type:func
+Icon_Draw = 0x007925F0; // type:func
+WordFilter_Check = 0x00793460; // type:func
+WordFilter_Scan = 0x00793470; // type:func
+WordFilter_Normalize = 0x00793760; // type:func
+WordFilter_InList = 0x00793950; // type:func
+Actor_SetMotionLayer = 0x00794990; // type:func
+Actor_StartMotions = 0x00794C00; // type:func
+Actor_StartWalk = 0x00795520; // type:func
+Actor_ClearFlag = 0x007957E0; // type:func
+Actor_SetFlag = 0x00795830; // type:func
+ActSpot_IsUsable = 0x00795AA0; // type:func
+LockOn_SetSector = 0x00796300; // type:func
+LockOn_TestCandidate = 0x00796740; // type:func
+LockOn_Update = 0x00796880; // type:func
+ItemInfo_Draw = 0x007A2D50; // type:func
+Town_UpdateMode = 0x007A4FD0; // type:func
+Talk_FollowUp = 0x007A8700; // type:func
+Talk_StepAction = 0x007A8E60; // type:func
+Talk_Finish = 0x007A8ED0; // type:func
+Talk_Check01 = 0x007A9200; // type:func
+Talk_Check02 = 0x007A97E0; // type:func
+Talk_Check03 = 0x007A9A50; // type:func
+Talk_Check04 = 0x007A9CA0; // type:func
+Talk_Check05 = 0x007A9DC0; // type:func
+Talk_Check06 = 0x007AA120; // type:func
+Talk_Check07 = 0x007AA180; // type:func
+Talk_Check08 = 0x007AA460; // type:func
+Talk_Check09 = 0x007AA700; // type:func
+Talk_Check0A = 0x007AA760; // type:func
+Talk_Check0B = 0x007AA820; // type:func
+Talk_Check0C = 0x007AA940; // type:func
+Talk_Check0D = 0x007AAA20; // type:func
+Talk_Check0E = 0x007AAAB0; // type:func
+Talk_Check0F = 0x007AAFA0; // type:func
+Talk_Check10 = 0x007AB070; // type:func
+Talk_Check12 = 0x007AB2E0; // type:func
+Talk_Check13 = 0x007AB460; // type:func
+Talk_Check15 = 0x007AB5F0; // type:func
+Talk_Check16 = 0x007AB710; // type:func
+Talk_Check17 = 0x007AB770; // type:func
+Talk_Check18 = 0x007AB7D0; // type:func
+Talk_Check19 = 0x007AB850; // type:func
+Talk_Check1A = 0x007AB8D0; // type:func
+Talk_Check1B = 0x007AB9E0; // type:func
+Talk_Check1C = 0x007ABA40; // type:func
+Talk_Check1E = 0x007ABAC0; // type:func
+Talk_Check1F = 0x007ABC10; // type:func
+Talk_Check20 = 0x007ABC70; // type:func
+Talk_Check21 = 0x007ABCD0; // type:func
+Talk_Check23 = 0x007ABD30; // type:func
+Talk_Check24 = 0x007ABDB0; // type:func
+Talk_Check25 = 0x007ABE10; // type:func
+Talk_Check26 = 0x007ABE70; // type:func
+Talk_Check27 = 0x007ABED0; // type:func
+Talk_Check28 = 0x007ABF30; // type:func
+Talk_Check29 = 0x007AC050; // type:func
+Talk_Check2A = 0x007AC0B0; // type:func
+Talk_Check2B = 0x007AC110; // type:func
+Talk_Check2C = 0x007AC170; // type:func
+Talk_Check2D = 0x007AC2A0; // type:func
+Talk_Check2E = 0x007AC390; // type:func
+Talk_Check2F = 0x007AC480; // type:func
+Talk_Check30 = 0x007AC520; // type:func
+Talk_Check33 = 0x007AC580; // type:func
+Talk_Check37 = 0x007AC5E0; // type:func
+Talk_Check38 = 0x007AC780; // type:func
+Talk_Check39 = 0x007AC900; // type:func
+Talk_Check3A = 0x007ACA60; // type:func
+Talk_Check3B = 0x007ACAC0; // type:func
+Talk_Check3C = 0x007ACB40; // type:func
+Talk_Check3D = 0x007ACBC0; // type:func
+Talk_Check40 = 0x007ACC20; // type:func
+Talk_Check41 = 0x007ACF50; // type:func
+Talk_Check42 = 0x007AD070; // type:func
+Talk_Check45 = 0x007AD110; // type:func
+Talk_Check46 = 0x007AD170; // type:func
+Talk_Check47 = 0x007AD1D0; // type:func
+Talk_Check49 = 0x007AD230; // type:func
+Talk_Check4A = 0x007AD340; // type:func
+Talk_Check4B = 0x007AD3A0; // type:func
+Talk_Check4C = 0x007AD400; // type:func
+Talk_Check4D = 0x007AD460; // type:func
+Talk_Check4E = 0x007AD5A0; // type:func
+Talk_Check4F = 0x007AD7A0; // type:func
+Talk_Check50 = 0x007AD8B0; // type:func
+Talk_Check51 = 0x007AD950; // type:func
+Talk_Check52 = 0x007AD9B0; // type:func
+Talk_Check53 = 0x007ADA10; // type:func
+Talk_Check54 = 0x007ADA70; // type:func
+Talk_Check55 = 0x007ADAD0; // type:func
+Talk_Check56 = 0x007ADB50; // type:func
+Talk_Check57 = 0x007ADC70; // type:func
+Talk_Check58 = 0x007ADCD0; // type:func
+Talk_Check69 = 0x007ADD50; // type:func
+Talk_Check6B = 0x007ADEE0; // type:func
+Talk_Check71 = 0x007ADF90; // type:func
+Talk_Check = 0x007AE030; // type:func
+Talk_CheckState = 0x007AE830; // type:func
+Talk_CheckMode = 0x007AE8C0; // type:func
+Talk_Start = 0x007AE940; // type:func
+Talk_FindScript = 0x007AEDE0; // type:func
+Talk_StepData = 0x007AEE90; // type:func
+Talk_FirstByte = 0x007AEF20; // type:func
+
+// --- NETWORK (preserve for Phase 6) ------------------------------------------
+TownMsg_Recv = 0x00778DD0; // type:func
+Lobby_ShowMemberName = 0x00779760; // type:func
+Chat_Receive = 0x00779D70; // type:func
+Lobby_FindMember = 0x00779DD0; // type:func
+TownMsg_OnActor = 0x00779E60; // type:func
+TownMsg_OnMove = 0x0077A130; // type:func
+TownMsg_OnArea = 0x0077A3A0; // type:func
+Lobby_ClearReadyBit = 0x0077AC30; // type:func
+Lobby_SetReadyBit = 0x0077ACD0; // type:func
+Lobby_SetMemberSlot = 0x0077AF20; // type:func
+TownMsg_PositionUnchanged = 0x0079EDC0; // type:func
+TownMsg_SendPosition = 0x0079EF00; // type:func
+TownMsg_SendStatus = 0x0079F650; // type:func
+TownMsg_SendState = 0x0079F7D0; // type:func
+TownMsg_SendActor = 0x0079FC60; // type:func
+TownMsg_SendArea = 0x0079FD90; // type:func
+TownMsg_SendAreaTo = 0x0079FE20; // type:func
+TownMsg_SendRecords = 0x0079FF90; // type:func
+TownMsg_Send = 0x007A0D50; // type:func
+TownMsg_SendTo = 0x007A0E40; // type:func
+TownMsg_SendSelf = 0x007A0F40; // type:func
+Net_Connect = 0x007AF690; // type:func
+TownPc_Action = 0x0079C540; // type:func
+
+// --- Round 13 names (decomp-b13-nlobby) ---
+// --- Round 13 names (decomp-b13-nlobby-h1) ---
+// the equipment shop (Town_UpdateMode)
+EquipShop_Update = 0x007580B0; // type:func
+// the top menu
+EquipShop_InputTop = 0x00758420; // type:func
+// puts the chosen piece on the player model and previews the skills
+EquipShop_TryOn = 0x00758CA0; // type:func
+// the list of things for sale
+EquipShop_InputList = 0x00758ED0; // type:func
+// picking equipment to sell from the box
+EquipShop_InputSell = 0x00759280; // type:func
+// the purchase confirmation (Equip_CanWear, EquipShop_Buy)
+EquipShop_InputBuy = 0x007597C0; // type:func
+// zoom and move the model preview
+Equip_DrawPreviewHelp = 0x0075A800; // type:func
+// gLobby->unk396F == 1 (the elder dragon interception state, set from D_008BEFA0)
+ElderRaid_InState1 = 0x0075D790; // type:func
+// gLobby->unk396F == 2
+ElderRaid_InState2 = 0x0075D7B0; // type:func
+// 0 - the quest order conditions are not met
+Quest_CheckOrderTerms = 0x0075FE60; // type:func
+// participants, password, recruitment text
+QuestRoom_ResetSettings = 0x00760C10; // type:func
+// the box menu (Town_UpdateMode) - its top menu and the submenus
+BoxMenu_Update = 0x00762500; // type:func
+// the box cursor over its pages
+BoxMenu_MoveCursor = 0x00762860; // type:func
+// puts pouch items into the item box
+BoxMenu_StoreFromPouch = 0x00762B00; // type:func
+// skills, attack, defence and resistances after an equipment change
+EquipSet_RecalcStats = 0x00765510; // type:func
+// the skills with a piece tried on (forge and box previews)
+Equip_PreviewSkills = 0x00766500; // type:func
+// box step 3 - two slots swapped
+BoxMenu_ArrangeMenu = 0x00766CF0; // type:func
+// box step 4 - items and equipment sold for money
+BoxMenu_SellMenu = 0x007670A0; // type:func
+// the box list of one equipment class, in box order or sorted; its pages of 7
+BoxList_Build = 0x00769EF0; // type:func
+// rotate camera, hide/show the menu
+BoxMenu_DrawControls = 0x0076A890; // type:func
+// (equip) - 0 the item box merged and sorted, 1 the used equipment sorted; into D_008B2C00
+Box_BuildSortedList = 0x0076CEC0; // type:func
+// by BoxEquip_SortKey
+BoxEquip_ShellSort = 0x0076D3E0; // type:func
+// clears the menu state, talk script 0x63, draws with func_00770690 / func_007708F0
+QuestCounter_Open = 0x0076DC20; // type:func
+QuestCounter_Close = 0x0076DCF0; // type:func
+// one of three kinds (the fourth option needs 0x5D7392)
+QuestCounter_ChooseKind = 0x0076E770; // type:func
+// a quest of the posted list (D_008BEC00)
+QuestCounter_ChooseQuest = 0x0076E8C0; // type:func
+// the chosen quest's room (D_008EA200), its pages; refused when it can't be joined
+QuestCounter_ViewRoom = 0x0076EA10; // type:func
+// 1 (a message shown) when the quest can't be taken - the time of day, the terms, the fee
+QuestCounter_CheckQuest = 0x0076EB20; // type:func
+// the quest's room is open, not full, and in this area
+QuestCounter_CanJoin = 0x0076EE10; // type:func
+// the quest place, orderer, members
+QuestCounter_DrawRecruitInfo = 0x0076F0E0; // type:func
+// hunter recruitment
+QuestCounter_DrawRecruit = 0x0076F4F0; // type:func
+// grand arena - teams A and B
+Quest_DrawArenaTeams = 0x0076FA10; // type:func
+QuestCounter_Draw = 0x00770690; // type:func
+// grand arena - choose the team to join
+QuestCounter_DrawTeamChoice = 0x00770770; // type:func
+QuestCounter_Draw2 = 0x007708F0; // type:func
+// the speaker list
+Chat_DrawSpeakers = 0x007728D0; // type:func
+// the list of blocked speakers
+Chat_DrawMutedTitle = 0x00772ED0; // type:func
+// area and group chat state
+Chat_DrawState = 0x00773140; // type:func
+// the local player's hunter card (equipment, HR, weapon, village levels ...) into out
+HunterCard_Build = 0x00775C00; // type:func
+// town mode 10 - combination requests, buy, sell
+CombShop_Open = 0x00776580; // type:func
+// --- NETWORK, round 13 names (decomp-b13-nlobby-h1; preserve for Phase 6) ---
+TownMsg_On31 = 0x00779630; // type:func
+TownMsg_On28 = 0x00779710; // type:func
+TownMsg_On24 = 0x00779800; // type:func
+TownMsg_On25 = 0x007798B0; // type:func
+// a member asks for an item (+0x85C id, +0x85E count) - state 0xA
+TownMsg_On0A = 0x00779960; // type:func
+// takes the item asked for from the pouch if it is there; answers 0 or 1
+TownMsg_On0B = 0x007799E0; // type:func
+// the position of townsperson 0x14
+TownMsg_On39 = 0x0077A330; // type:func
+TownMsg_On1B = 0x0077A620; // type:func
+TownMsg_On1C = 0x0077A740; // type:func
+TownMsg_On1E = 0x0077A890; // type:func
+TownMsg_On04 = 0x0077A8D0; // type:func
+TownMsg_On15 = 0x0077A960; // type:func
+TownMsg_On05 = 0x0077AA60; // type:func
+TownMsg_On16 = 0x0077AB50; // type:func
+TownMsg_On0F = 0x0077ACC0; // type:func
+// answers a new member with the area and the actor
+TownMsg_On0D = 0x0077ADD0; // type:func
+TownMsg_On06 = 0x0077AF80; // type:func
+// a draw slot calling Npc_Draw
+Npc_SetupDraw = 0x0077BCE0; // type:func
+Npc_Init = 0x0077BE00; // type:func
+Npc_FollowFloor = 0x0077DD80; // type:func
+Npc_Run = 0x0077DEB0; // type:func
+Npc_Free = 0x0077DFD0; // type:func
+// the object update - 0 Npc_Init, 1 Npc_Run, 2 Npc_Free; draws
+Npc_Update = 0x0077E020; // type:func
+// (obj, frame, se) - plays se (Em_PlaySeSlot6) at the object when its motion reaches frame
+Npc_SeOnFrame = 0x0077E540; // type:func
+// as Npc_SeOnFrame with Em_PlaySeSlot1
+Npc_SeOnFrameB = 0x0077E5D0; // type:func
+// Em +0x1B
+Npc_IsType4D = 0x0077FDB0; // type:func
+Npc_IsType4E = 0x0077FDC0; // type:func
+Npc_IsType31to36 = 0x0077FDD0; // type:func
+Npc_IsType40 = 0x0077FE60; // type:func
+Npc_IsType52 = 0x0077FE70; // type:func
+Npc_IsType3Cto3E = 0x0077FE80; // type:func
+Npc_IsType4B = 0x0077FED0; // type:func
+Npc_IsType49 = 0x0077FEE0; // type:func
+// one of 6 routes (D_007F6FA0 ...), from its first point
+Npc_SetRouteTable = 0x0077FEF0; // type:func
+// runs the state (by type), moves and turns, advances the route
+Npc_UpdateState = 0x00780100; // type:func
+// NpcWork.holdRoute = 1
+Npc_HoldRoute = 0x00780520; // type:func
+// enters the state of the current route point
+Npc_EnterRoutePoint = 0x00780530; // type:func
+Npc_NextRoutePoint = 0x00780580; // type:func
+// turns +0xA4 by the step +0x472 while the count +0x470 runs
+Npc_StepTurn = 0x00780680; // type:func
+// (npc, frames, yaw)
+Npc_StartTurnTo = 0x00780760; // type:func
+// turns back to the yaw kept at +0x46E
+Npc_StartTurnBack = 0x007807A0; // type:func
+// a pair of route kinds split by a line - the one on the player side
+Npc_RouteKindBySide = 0x00780970; // type:func
+Npc_State01 = 0x007817F0; // type:func
+Npc_State03 = 0x00781E20; // type:func
+Npc_State04 = 0x00782250; // type:func
+// also state 0x36
+Npc_State35 = 0x00782440; // type:func
+// also states 0x44, 0x45, 0x8B
+Npc_State43 = 0x00782510; // type:func
+Npc_State5A = 0x007828E0; // type:func
+// also states 0x38, 0x39
+Npc_State37 = 0x00782970; // type:func
+Npc_State2C = 0x00782A60; // type:func
+// also state 0x47
+Npc_State46 = 0x00783740; // type:func
+// also state 0x3B
+Npc_State3A = 0x007837E0; // type:func
+Npc_State41 = 0x007838C0; // type:func
+// also state 0x25
+Npc_State14 = 0x00783B20; // type:func
+// also state 0x49
+Npc_State48 = 0x00783C30; // type:func
+Npc_State4A = 0x00783CE0; // type:func
+Npc_State42 = 0x00783D20; // type:func
+Npc_State5B = 0x00783D90; // type:func
+Npc_State84 = 0x00783E70; // type:func
+Npc_State85 = 0x00783F40; // type:func
+Npc_State86 = 0x00783FB0; // type:func
+Npc_State87 = 0x00784000; // type:func
+Npc_State88 = 0x00784050; // type:func
+Npc_State89 = 0x007840A0; // type:func
+Npc_State4B = 0x007840F0; // type:func
+// also state 0x4D
+Npc_State4C = 0x007841A0; // type:func
+Npc_State30 = 0x00784240; // type:func
+Npc_State31 = 0x00784340; // type:func
+Npc_StateA2 = 0x007845B0; // type:func
+Npc_State0E = 0x00784690; // type:func
+Npc_State32 = 0x00784700; // type:func
+Npc_State33 = 0x007848D0; // type:func
+Npc_State34 = 0x00784990; // type:func
+Npc_State3F = 0x00784B20; // type:func
+Npc_State40 = 0x00784CF0; // type:func
+Npc_State2E = 0x00784DF0; // type:func
+Npc_State2F = 0x00784ED0; // type:func
+Npc_State3C = 0x00785060; // type:func
+Npc_State3D = 0x00785200; // type:func
+Npc_State3E = 0x00785380; // type:func
+Npc_State7A = 0x00785510; // type:func
+Npc_State5F = 0x007855B0; // type:func
+Npc_State66 = 0x007855D0; // type:func
+Npc_State67 = 0x007858E0; // type:func
+// also state 0x7F
+Npc_State68 = 0x00785BF0; // type:func
+Npc_State69 = 0x007861C0; // type:func
+Npc_State76 = 0x00786240; // type:func
+Npc_State9D = 0x00786480; // type:func
+Npc_State78 = 0x007865F0; // type:func
+Npc_State7B = 0x00786960; // type:func
+Npc_State7C = 0x007869E0; // type:func
+Npc_StateA1 = 0x00786A10; // type:func
+// also state 0xA7
+Npc_StateA6 = 0x00786B30; // type:func
+Npc_State6A = 0x00786C90; // type:func
+Npc_State6B = 0x00786F80; // type:func
+Npc_State77 = 0x007873A0; // type:func
+Npc_State6D = 0x007873F0; // type:func
+Npc_State6E = 0x00787580; // type:func
+Npc_State70 = 0x007875F0; // type:func
+Npc_State6F = 0x00787620; // type:func
+Npc_State72 = 0x00787660; // type:func
+Npc_State73 = 0x007876E0; // type:func
+Npc_State74 = 0x007877D0; // type:func
+Npc_State75 = 0x00787850; // type:func
+Npc_State7D = 0x007878F0; // type:func
+Npc_State7E = 0x00787950; // type:func
+Npc_State81 = 0x00787C60; // type:func
+Npc_State82 = 0x00787CC0; // type:func
+Npc_State8A = 0x00787EA0; // type:func
+Npc_State8C = 0x00787F90; // type:func
+Npc_State8E = 0x00788000; // type:func
+Npc_State8F = 0x00788160; // type:func
+Npc_State92 = 0x007882D0; // type:func
+Npc_State93 = 0x00788430; // type:func
+// also state 0x95
+Npc_State94 = 0x00788520; // type:func
+Npc_State96 = 0x007885A0; // type:func
+Npc_State9F = 0x007887B0; // type:func
+Npc_State15 = 0x00788810; // type:func
+Npc_StateA3 = 0x00788860; // type:func
+Npc_StateA4 = 0x007888F0; // type:func
+Npc_StateA5 = 0x00788980; // type:func
+Npc_StateAD = 0x00788A30; // type:func
+Npc_StateAE = 0x00788B00; // type:func
+Npc_State29 = 0x00788CA0; // type:func
+Npc_State18 = 0x00788D80; // type:func
+Npc_State83 = 0x00788E60; // type:func
+Npc_StateB3 = 0x00788EB0; // type:func
+// the state handler by +0x15, for most townspeople
+Npc_RunState = 0x00788F60; // type:func
+// also state 0x6C
+Npc51_State4E = 0x007899A0; // type:func
+// also state 0x59
+Npc51_State01 = 0x00789A10; // type:func
+// also states 0x3, 0x4, 0xB0
+Npc51_State02 = 0x00789C20; // type:func
+Npc51_State4F = 0x00789E50; // type:func
+Npc51_State50 = 0x00789F00; // type:func
+Npc51_StateAA = 0x0078A070; // type:func
+Npc51_State97 = 0x0078A2C0; // type:func
+Npc51_State98 = 0x0078A450; // type:func
+Npc51_StateB1 = 0x0078A630; // type:func
+Npc51_StateB2 = 0x0078A690; // type:func
+Npc51_State99 = 0x0078A760; // type:func
+Npc51_State9B = 0x0078A880; // type:func
+Npc51_State2C = 0x0078AA80; // type:func
+Npc51_State9E = 0x0078AE50; // type:func
+Npc51_State55 = 0x0078AEB0; // type:func
+Npc51_StateA8 = 0x0078AFD0; // type:func
+Npc51_StateB4 = 0x0078B320; // type:func
+Npc51_StateB5 = 0x0078B3F0; // type:func
+// the state handler by +0x15, for types (+0x1B) 0x51-0x55
+Npc51_RunState = 0x0078B550; // type:func
+// also state 0x59
+Npc4F_State01 = 0x0078B8A0; // type:func
+Npc4F_StateB6 = 0x0078B920; // type:func
+// also state 0x53
+Npc4F_State52 = 0x0078B9B0; // type:func
+Npc4F_State2C = 0x0078BBB0; // type:func
+Npc4F_StateA9 = 0x0078BE30; // type:func
+Npc4F_State54 = 0x0078BF90; // type:func
+Npc4F_State55 = 0x0078C190; // type:func
+Npc4F_State5E = 0x0078C2B0; // type:func
+Npc4F_State56 = 0x0078C370; // type:func
+Npc4F_StateAF = 0x0078C650; // type:func
+Npc4F_State57 = 0x0078C850; // type:func
+Npc4F_State58 = 0x0078CB00; // type:func
+Npc4F_State5C = 0x0078D3C0; // type:func
+Npc4F_State5D = 0x0078D8D0; // type:func
+Npc4F_StateAB = 0x0078DCB0; // type:func
+Npc4F_StateAC = 0x0078DD30; // type:func
+// the state handler by +0x15, for types (+0x1B) 0x4F and 0x50
+Npc4F_RunState = 0x0078E210; // type:func
+// the equipment icon of its kind (a weapon by its class) in its rarity colour
+Lobby_DrawEquipIcon = 0x00790C00; // type:func
+Text_CenterX = 0x00790EC0; // type:func
+// the coin icon and the money ("%7dz"); dimmed when flag
+Menu_DrawMoney = 0x00790F20; // type:func
+// the points of 0x5D73E4 ("%7dP")
+Menu_DrawPoints = 0x007910C0; // type:func
+// icon 0x42 repeated across w
+Menu_DrawDashLine = 0x00791230; // type:func
+// a bar of three pieces (two caps, the middle) rotated about cx, cy
+Menu_DrawBarRotated = 0x00791380; // type:func
+// Menu_DrawRowBar and its label
+Menu_DrawLabelBar = 0x00791530; // type:func
+// a row's bar with its shadow; the blinking cursor when sel
+Menu_DrawRowBar = 0x007915B0; // type:func
+// "page/n" with the arrows when n > 1
+Menu_DrawPageArrows = 0x007916F0; // type:func
+// page/count, with arrows when there are several
+Menu_DrawPageNum = 0x00791800; // type:func
+// the cursor (icon 0x29), size w
+Menu_DrawCursorIcon = 0x007919B0; // type:func
+// a row's underline and the blinking cursor left of it
+Menu_DrawCursorRow = 0x007919C0; // type:func
+// the arrows left and right of a w-wide item, blinking
+Menu_DrawSideArrows = 0x00791A90; // type:func
+// color with a pulsing alpha
+Color_PulseAlpha = 0x00791C40; // type:func
+// pulsing unless flag
+Menu_DrawLine = 0x00791CF0; // type:func
+// the frame's four edges and the inner line
+Menu_DrawFrameBox = 0x00791F90; // type:func
+// equipment icon i (D_007FEAF0), 1.25 x wide
+Icon_DrawEquip = 0x007920D0; // type:func
+Win_Draw = 0x00792190; // type:func
+// the mail icon, blinking, while a mail is in D_5C0540
+Menu_DrawMailIcon = 0x00792280; // type:func
+Icon_DrawRotated = 0x00792690; // type:func
+// rotated about cx, cy
+Icon_DrawRotatedAt = 0x00792740; // type:func
+// TexRect_Draw with mode
+Icon_DrawMode = 0x00792810; // type:func
+// entry i of the table D_007FF250 (position, size, color, icon)
+Icon_DrawPreset = 0x007928D0; // type:func
+TownPc_IsLoaded = 0x00793C40; // type:func
+// frees the players whose member left (returns 1 if any)
+TownPc_RemoveLeft = 0x00793CF0; // type:func
+// members whose data changed - recalculates skills (returns 1 if any)
+TownPc_RefreshChanged = 0x00793E70; // type:func
+// copies new members into D_008EA908 and spawns their players
+TownPc_AddJoined = 0x00793F90; // type:func
+// per frame online - removes, refreshes, adds members, loads their models
+TownPc_SyncMembers = 0x00794170; // type:func
+TownPc_LoadAllModels = 0x00794330; // type:func
+// (index, member, name) - a player slot, its draw slot, idle state
+TownPc_Spawn = 0x00794480; // type:func
+// (p, mode) - mode 1 also marks the member loaded
+TownPc_LoadModel = 0x00794660; // type:func
+// marks the member loading (D_008EA908 +0x3954) when Player_QueueLookFiles starts
+TownPc_StartLoad = 0x00794760; // type:func
+TownPc_LoadModelNow = 0x007947A0; // type:func
+// (p, mode) - mode 0 frees the player, 1 only the changed models
+TownPc_Free = 0x007947B0; // type:func
+TownPc_Remove = 0x007948B0; // type:func
+TownPc_FreeChangedModels = 0x007948C0; // type:func
+// the motion on layer 0, and motion + 100 on layer 1 unless the actor has one layer
+Actor_SetMotion = 0x007948D0; // type:func
+// Actor_SetMotionLayer with the arguments passed through (clears +0x771 first)
+Actor_SetMotionOnLayer = 0x00794980; // type:func
+// reads the pad into the local player unless a menu has it (LangState +0x39)
+TownPc_UpdateInput = 0x007949D0; // type:func
+TownPc_ReadPad = 0x00794A10; // type:func
+TownPc_TickTimers = 0x00794C90; // type:func
+// Actor_SetStateEx, and +0x653 = 1 - TownPc_Update runs the new state in the same frame
+Actor_SetStateNow = 0x00794DB0; // type:func
+// (obj, group, state, flags) - flags & 1 keeps the +0x66C timers
+Actor_SetStateEx = 0x00794DE0; // type:func
+// online, the local player, in an area where the state is sent (func_0077AD50)
+Actor_NeedsStateSend = 0x00794F20; // type:func
+// clears the state work and enters state (0, 1) with motion 1 / 101
+Actor_SetIdle = 0x00795010; // type:func
+Actor_ClearStateWork = 0x00795090; // type:func
+// motion 1 / 101 on both layers, state (0, 1); sends the state when online
+Actor_StartIdle = 0x00795170; // type:func
+// (obj, group, state)
+Actor_IsState = 0x00795280; // type:func
+// 0 stand, 1 walk, 3 run (stick +0x38C; others from their state), 5 with button 0x10
+TownPc_MoveKind = 0x007952C0; // type:func
+// the stick angle +0x388[i] plus the camera yaw
+TownPc_InputYaw = 0x00795430; // type:func
+// +0x390 = mode (0..2); mode & 0x8000 clears flag 8, else sets it; clears flags 1, 2
+Actor_SetAction = 0x00795480; // type:func
+// moves to +0x888 in n frames (step at +0x44C, count at +0x476)
+Actor_StartMoveTo = 0x00795620; // type:func
+// as Actor_StepMove, without the count sign check (townspeople)
+Actor_StepMoveNpc = 0x00795680; // type:func
+// another member - turns +0xA4 a quarter of the way to the received +0xE
+TownPc_SmoothRemoteYaw = 0x00795720; // type:func
+// one step of Actor_StartMoveTo
+Actor_StepMove = 0x00795790; // type:func
+// in the local player area, and shown to it online
+TownPc_IsInMyArea = 0x00795F50; // type:func
+// (obj, group, state) - townspeople and players; clears the per-state work
+Actor_SetState = 0x007960D0; // type:func
+// inserts by priority, then depth
+LockOn_Insert = 0x00796240; // type:func
+TownPc_UpdateAll = 0x00797040; // type:func
+// runs the state (group 0 - func_0079BC90, 1 - func_0079E880), motions, floor, draw
+TownPc_Update = 0x00797180; // type:func
+// idle; group 0 states are run by func_0079BC90
+TownPc_State01 = 0x007977A0; // type:func
+// also states 5 and 0x23
+TownPc_State03 = 0x00797890; // type:func
+TownPc_State04 = 0x00797BE0; // type:func
+TownPc_State06 = 0x00797E30; // type:func
+TownPc_State0A = 0x007981C0; // type:func
+TownPc_State0B = 0x007982D0; // type:func
+TownPc_State0C = 0x007983F0; // type:func
+TownPc_State0D = 0x007984B0; // type:func
+TownPc_State0E = 0x00798570; // type:func
+TownPc_State0F = 0x00798720; // type:func
+TownPc_State10 = 0x00798800; // type:func
+TownPc_State11 = 0x007988E0; // type:func
+TownPc_State12 = 0x007989B0; // type:func
+TownPc_State13 = 0x00798A90; // type:func
+TownPc_State9A = 0x00798C40; // type:func
+// also state 0x25
+TownPc_State14 = 0x00798CF0; // type:func
+TownPc_State15 = 0x00799100; // type:func
+TownPc_State17 = 0x00799190; // type:func
+// also state 0x1A
+TownPc_State19 = 0x00799270; // type:func
+TownPc_State1B = 0x007996E0; // type:func
+TownPc_State1C = 0x00799760; // type:func
+TownPc_State09 = 0x00799820; // type:func
+TownPc_State1D = 0x007998B0; // type:func
+TownPc_State1E = 0x007999E0; // type:func
+TownPc_State1F = 0x00799A70; // type:func
+TownPc_State20 = 0x00799BC0; // type:func
+TownPc_State21 = 0x00799C20; // type:func
+TownPc_State22 = 0x00799CD0; // type:func
+TownPc_State16 = 0x00799D70; // type:func
+TownPc_State24 = 0x00799E10; // type:func
+TownPc_State26 = 0x00799F00; // type:func
+TownPc_State07 = 0x00799FC0; // type:func
+// also state 0x18
+TownPc_State27 = 0x0079A060; // type:func
+TownPc_State28 = 0x0079A190; // type:func
+TownPc_State08 = 0x0079A250; // type:func
+TownPc_State29 = 0x0079A2F0; // type:func
+TownPc_State2A = 0x0079A380; // type:func
+TownPc_State2B = 0x0079A480; // type:func
+TownPc_State61 = 0x0079AB50; // type:func
+TownPc_State62 = 0x0079AC20; // type:func
+TownPc_State63 = 0x0079AD20; // type:func
+// also 0x65 (arg 1)
+TownPc_State64 = 0x0079AEC0; // type:func
+TownPc_State79 = 0x0079B000; // type:func
+// also 0x71 (arg 1)
+TownPc_State70 = 0x0079B070; // type:func
+TownPc_State6F = 0x0079B220; // type:func
+TownPc_State75 = 0x0079B2B0; // type:func
+TownPc_State74 = 0x0079B430; // type:func
+TownPc_State80 = 0x0079B5A0; // type:func
+TownPc_State8D = 0x0079B7F0; // type:func
+TownPc_State90 = 0x0079B890; // type:func
+TownPc_State91 = 0x0079B960; // type:func
+TownPc_State9C = 0x0079BA20; // type:func
+TownPc_StateA0 = 0x0079BB90; // type:func
+// runs the state (+0x15) of state group 0
+TownPc_RunGroup0 = 0x0079BC90; // type:func
+// another player - walk/run toward its network destination
+TownPc_SteerToDest = 0x0079D6C0; // type:func
+TownPc_G1State00 = 0x0079DB60; // type:func
+TownPc_G1State01 = 0x0079DC30; // type:func
+TownPc_G1State02 = 0x0079DCD0; // type:func
+TownPc_G1State03 = 0x0079DDD0; // type:func
+TownPc_G1State04 = 0x0079DEC0; // type:func
+TownPc_G1State05 = 0x0079DFB0; // type:func
+// also 0x0E (arg 2)
+TownPc_G1State06 = 0x0079E0B0; // type:func
+TownPc_G1State07 = 0x0079E1B0; // type:func
+TownPc_G1State08 = 0x0079E2B0; // type:func
+// also 0x0D (arg 1), 0x0F (arg 3)
+TownPc_G1State09 = 0x0079E3B0; // type:func
+TownPc_G1State0A = 0x0079E470; // type:func
+TownPc_G1State0B = 0x0079E570; // type:func
+TownPc_G1State0C = 0x0079E670; // type:func
+TownPc_G1State10 = 0x0079E770; // type:func
+TownPc_G1State11 = 0x0079E870; // type:func
+// runs the state of group 1 (debug text "NO PL ACTION")
+TownPc_RunGroup1 = 0x0079E880; // type:func
+// reply callback - chat send error
+Chat_OnSendError = 0x0079ECF0; // type:func
+// a position (the player's, or a fixed point by the facility's level) to a member
+TownMsg_Send39 = 0x0079F050; // type:func
+// message 0x23 - the music's track and position, to a member
+TownMsg_SendBgmTo = 0x0079F450; // type:func
+// message 0x23 - track x, to all and to self
+TownMsg_SendBgm = 0x0079F4A0; // type:func
+// the song chosen in SongMenu, to all and to self
+TownMsg_SendSong = 0x0079F4E0; // type:func
+// c, x and 8 bytes of src, to all and to self
+TownMsg_Send25 = 0x0079F520; // type:func
+// TownMsg_SendState(.., 0) - skipped in the movement states
+TownMsg_SendStateChange = 0x0079F7B0; // type:func
+// TownMsg_SendState(.., 1) - always sent
+TownMsg_SendStateNow = 0x0079F7C0; // type:func
+// a name and two bytes, to all and to self
+TownMsg_Send16 = 0x007A05B0; // type:func
+// a name and two bytes, to all and to self
+TownMsg_Send1C = 0x007A0740; // type:func
+// each of the two members to the other
+TownMsg_Send1F = 0x007A0800; // type:func
+// a name and two bytes, to all and to self
+TownMsg_Send05 = 0x007A0970; // type:func
+// player p's name and two fields, to a member
+TownMsg_Send0A = 0x007A0AB0; // type:func
+// the local player's name, two fields and c, to a member
+TownMsg_Send0C = 0x007A0BD0; // type:func
+// town mode 2 - buy, sell, shooting gallery or requests
+ItemShop_Open = 0x007A0FB0; // type:func
+ItemShop_Update = 0x007A1120; // type:func
+Shop_BuildSellList = 0x007A13A0; // type:func
+Shop_StartSell = 0x007A1490; // type:func
+Shop_SellStep = 0x007A14E0; // type:func
+Shop_Sell = 0x007A1730; // type:func
+Shop_SellAmountInput = 0x007A1800; // type:func
+Shop_SellListInput = 0x007A1A80; // type:func
+// the menu rows (shooting gallery for NPC 0x39, else requests if any)
+ItemShop_SetRows = 0x007A1C10; // type:func
+// the items on sale
+Shop_BuildStock = 0x007A1DD0; // type:func
+Shop_StartBuy = 0x007A2190; // type:func
+Shop_BuyStep = 0x007A22B0; // type:func
+Shop_Buy = 0x007A2460; // type:func
+Shop_BuyAmountInput = 0x007A2650; // type:func
+Shop_BuyListInput = 0x007A2830; // type:func
+// the item icon of gItemData[item], size high (1.25 x wide), in its colour
+Item_DrawIcon = 0x007A3520; // type:func
+// item shop and CombShop
+Shop_DrawBuy = 0x007A3690; // type:func
+Shop_DrawSell = 0x007A3D70; // type:func
+ItemShop_Draw = 0x007A42C0; // type:func
+Win_DrawText = 0x007A4370; // type:func
+// pressed buttons plus the auto-repeated D-pad; none while gMenuInputLock
+LobbyPad_Read = 0x007A4410; // type:func
+// the frame buttons read by LobbyPad_Read (LobbyState.pad)
+LobbyPad_Get = 0x007A44D0; // type:func
+// n rows of Menu_DrawLabelBar from y 60, row cur in color
+Menu_DrawLabelList = 0x007A4650; // type:func
+// the turn from an actor facing to a point (0x10000 a turn)
+Actor_HeadingDiff = 0x007A7030; // type:func
+Menu_WrapUpDown = 0x007A70F0; // type:func
+Menu_WrapUpDownSe = 0x007A7240; // type:func
+Menu_WrapLeftRight = 0x007A7300; // type:func
+Menu_YesNoInput = 0x007A77E0; // type:func
+// moves a window from one position to another in 5 frames
+WinSlide_Step = 0x007A7A20; // type:func
+// ceil(n / perPage); 1 when perPage is 0
+Menu_CountPages = 0x007A7C20; // type:func
+// Menu_PushNotice, at most one every 90 frames
+Menu_PushNoticeOnce = 0x007A7ED0; // type:func
+// the notice of a message (D_0080D390 index)
+Menu_PushNotice = 0x007A7F30; // type:func
+// a chat line from "CAPCOM" - D_0080D440[msg], %s = arg
+Chat_SystemMsg = 0x007A7F80; // type:func
+// blinking "press the button"
+Lobby_DrawPressButton = 0x007A81A0; // type:func
+// the text with its first $ replaced (a static buffer)
+Text_FillDollar = 0x007A8220; // type:func
+ActSpot_ClearAll = 0x007A84A0; // type:func
+ActSpot_Release = 0x007A84C0; // type:func
+// town message 04 grants a spot - set its bit
+ActSpot_Take = 0x007A8530; // type:func
+// bit n of the taken-spot mask D_008BEB24/D_008BEB28 is clear
+ActSpot_IsFree = 0x007A85A0; // type:func
+// the text of talk line k (Talk_StepData)
+Talk_LineText = 0x007AEF10; // type:func
+Talk_Step = 0x007AF010; // type:func
+// returns 3 when the line is done, after giving its gift (money or an item)
+Talk_Update = 0x007AF3E0; // type:func
+// (line, mode) - shows a line of the current script; mode 1 - no gift at the end
+Talk_Say = 0x007AF5B0; // type:func
+
+// --- Round 14 names (decomp-b14-nlobby) ---
+// first empty record (0x30 bytes each), -1 when full
+FriendList_FindFree = 0x00757BD0; // type:func
+// the record with this 8-byte user id, -1 when none
+FriendList_FindId = 0x00757C20; // type:func
+// moves the later records down
+FriendList_DeleteAt = 0x00757CB0; // type:func
+// records in use (0x18 bytes each)
+// --- Round 14 names (decomp-b14-nlobby-h1) ---
+// lists of 0x18-byte entries keyed by an 8-byte id
+IdList_Count = 0x00757DA0; // type:func
+IdList_FindFree = 0x00757DE0; // type:func
+IdList_Find = 0x00757E30; // type:func
+IdList_Remove = 0x00757EC0; // type:func
+EquipSet_RenameInput = 0x00765920; // type:func
+BoxMenu_DrawEquipGrid = 0x007697D0; // type:func
+// the list of the five box actions
+BoxMenu_DrawActions = 0x0076AAB0; // type:func
+BoxMenu_DrawStore = 0x0076AD00; // type:func
+BoxMenu_DrawTake = 0x0076ADD0; // type:func
+BoxMenu_DrawEquipInfo = 0x0076C180; // type:func
+BoxMenu_DrawEquipPick = 0x0076C2E0; // type:func
+BoxMenu_DrawArrange = 0x0076C910; // type:func
+BoxMenu_DrawSell = 0x0076CAA0; // type:func
+BoxMenu_DrawSkillHint = 0x0076DB00; // type:func
+GameMenu_Reset = 0x00770970; // type:func
+// town mode 0xB - the start-button menu (items, combine, status, quests, info, chat, mail, search, options, quit; texts D_0080CDC0)
+GameMenu_Open = 0x007709A0; // type:func
+// chooses the item table - offline, area 0x83, online
+GameMenu_Start = 0x00770AB0; // type:func
+GameMenu_Clear = 0x00770B90; // type:func
+// Town_UpdateMode 0xB - 1 once closed, else keeps the pad
+GameMenu_Poll = 0x00770BC0; // type:func
+GameMenu_GetPad = 0x00770C50; // type:func
+// runs the item open/update tables D_007F1D40...
+GameMenu_Update = 0x00770CB0; // type:func
+// back to the item list (cancel sound)
+GameMenu_Back = 0x00771090; // type:func
+GameMenu_SetHelp = 0x007710E0; // type:func
+GameMenu_IsBusy = 0x00771170; // type:func
+GameMenu_Draw = 0x00771190; // type:func
+GameMenu_DrawList = 0x00771310; // type:func
+GameMenu_UpdateItems = 0x007714C0; // type:func
+GameMenu_OpenCombine = 0x00771510; // type:func
+GameMenu_UpdateCombine = 0x00771550; // type:func
+GameMenu_OpenSearch = 0x007715A0; // type:func
+GameMenu_UpdateSearch = 0x007715F0; // type:func
+GameMenu_DrawSearch = 0x00771980; // type:func
+GameMenu_OpenChat = 0x00771A20; // type:func
+// pages - log, phrase edit, speakers, chat state
+GameMenu_UpdateChat = 0x00771A60; // type:func
+GameMenu_DrawChat = 0x00771D10; // type:func
+ChatPage_OpenMuted = 0x00771E80; // type:func
+ChatPage_CloseMuted = 0x00771EF0; // type:func
+ChatPage_OpenSpeakers = 0x00771F50; // type:func
+ChatPage_UpdateSpeakers = 0x00772060; // type:func
+ChatPage_MarkMuted = 0x00772610; // type:func
+ChatPage_LoadSpeakers = 0x007726C0; // type:func
+// D_5C3730, 20 entries of 0x18
+MuteList_Add = 0x00772720; // type:func
+MuteList_Remove = 0x007727B0; // type:func
+ChatPage_CountMuted = 0x00772800; // type:func
+ChatPage_OpenState = 0x00772F30; // type:func
+ChatPage_UpdateState = 0x00772FF0; // type:func
+GameMenu_OpenQuit = 0x007732E0; // type:func
+// sets town mode 0x23 (fade out, leave the town)
+GameMenu_Quit = 0x00773340; // type:func
+GameMenu_UpdateQuit = 0x007733B0; // type:func
+GameMenu_OpenPause = 0x007739A0; // type:func
+GameMenu_UpdatePause = 0x00773A30; // type:func
+GameMenu_DrawPause = 0x00773A90; // type:func
+GameMenu_DrawQuit = 0x00773AD0; // type:func
+GameMenu_OpenMail = 0x00774CC0; // type:func
+GameMenu_UpdateMail = 0x00774D10; // type:func
+GameMenu_DrawMail = 0x00775050; // type:func
+// online quit
+GameMenu_OpenExit = 0x007753D0; // type:func
+GameMenu_UpdateExit = 0x00775450; // type:func
+// town mode 3 - the card of the player in front (status, friend registration)
+PcCard_Open = 0x007754D0; // type:func
+PcCard_Update = 0x00775590; // type:func
+PcCard_Draw = 0x00775870; // type:func
+Npc_UpdateMotion = 0x0077E140; // type:func
+Npc_Idle0F = 0x00780D40; // type:func
+// Npc_State01 for NPC 5
+Npc_Idle05 = 0x00781030; // type:func
+// NPCs 0x69 and 0x6B
+Npc_Idle69 = 0x00781150; // type:func
+Npc_Idle4D = 0x00781370; // type:func
+// NPCs 0x3C-0x3E
+Npc_Idle3C = 0x00781470; // type:func
+Npc_Idle4B = 0x00781530; // type:func
+Npc_Idle4E = 0x00781620; // type:func
+Town_IsMode = 0x00792900; // type:func
+QuestParty_UserMask = 0x00792B40; // type:func
+MemberCard_Draw = 0x00792C70; // type:func
+MemberCard_DrawFriendReg = 0x00792FB0; // type:func
+LobbyMember_GetCard = 0x00793040; // type:func
+LobbyMember_LoadEquip = 0x00793070; // type:func
+// moves by +0x760 for +0x76C frames
+TownPc_StepSlide = 0x007956D0; // type:func
+// town mode 0x37 (online contest, area 0x86 spot kind 0xE)
+Contest_TakeSeat = 0x0079A5C0; // type:func
+TownPc_CheckAction = 0x0079DB00; // type:func
+TownMsg_Send31 = 0x0079F180; // type:func
+TownMsg_Send28 = 0x0079F210; // type:func
+// then 0x2A
+TownMsg_Send29 = 0x0079F2F0; // type:func
+TownMsg_Send14 = 0x0079F5B0; // type:func
+// the position (x, z)
+TownMsg_Send02 = 0x0079F5C0; // type:func
+TownMsg_Send02Zero = 0x0079F610; // type:func
+TownMsg_Send06 = 0x0079F640; // type:func
+TownMsg_Send10 = 0x0079FD80; // type:func
+TownMsg_Send0E = 0x0079FEC0; // type:func
+TownMsg_Send2B = 0x0079FF20; // type:func
+TownMsg_Send27 = 0x007A0410; // type:func
+TownMsg_Send15 = 0x007A0490; // type:func
+TownMsg_Send17 = 0x007A0510; // type:func
+TownMsg_Send18 = 0x007A0630; // type:func
+TownMsg_Send1B = 0x007A06D0; // type:func
+TownMsg_Send1D = 0x007A0700; // type:func
+TownMsg_Send1E = 0x007A07C0; // type:func
+TownMsg_Send22 = 0x007A0860; // type:func
+TownMsg_Send20 = 0x007A0890; // type:func
+TownMsg_Send21 = 0x007A08C0; // type:func
+TownMsg_Send04 = 0x007A0900; // type:func
+TownMsg_Send07 = 0x007A0930; // type:func
+TownMsg_Send0F = 0x007A09F0; // type:func
+// TownMsg_Send0A sends to one member
+TownMsg_Send0AAll = 0x007A0A30; // type:func
+TownMsg_Send0B = 0x007A0B40; // type:func
+TownMsg_Send12 = 0x007A0C80; // type:func
+TownMsg_Send0D = 0x007A0C90; // type:func
+TownMsg_Send0DTo = 0x007A0CD0; // type:func
+// the empty callback of TownMsg_SendTo
+TownMsg_OnSent = 0x007A0F30; // type:func
+// +0x6A0 - the position plus the model bounds centre
+Npc_UpdateAreaPos = 0x007A7080; // type:func
+
+// Round 23 (ndata-h1)
+SeqA_IsPlaying = 0x00757B00; // type:func 1 while SeqA_GetState is 1 (LobbyScreen_CamIntro waits on the same state)
+AreaNpc_IsPresent = 0x0077C490; // type:func Npc_IsPresent for entry idx of the area set gAreaNpcTables table (Town_SpawnNpcs)
+BoxMenu_ListStyles = 0x0076DB40; // type:func writes the indices of the owned styles (mask from gSave.unk27B4 and styleFlag, 12 bits) and returns their count (BoxMenu_EquipMenu)
+Shop_PickByTimer = 0x007A1D80; // type:func p[1] when offline and Village_GetTimerState(x) is nonzero, else p[0] (gShopStockNpc0A)
+Lobby_ApplyServerTimers = 0x0079EA30; // type:func sets gTownMoveFrames, gRecruitFrames, gFriendCheckFrames and gAreaSearchFrames from the nonzero values of the downloaded data (LobbyStep_DownloadQuests)
+Npc_SetRouteFixed = 0x0077D450; // type:func sets the one route of townspeople 0x1C-0x4E by kind (gNpcRoute1D ... gNpcRoute4E, 0x1F also scales its +0x884 by 1.3)
+Talk_PlayAmJingle = 0x007A8E00; // type:func (plays jingle 0x133 when the talk event step is 0x63 in the morning, townspeople 0x45-0x47)
+
+// Round 24 (nnames-h1)
+Area_HasTownPcs = 0x0077AD50; // type:func areas 0x84, 0x86-0x88 and 0xAD-0xAF where the town players are loaded
+NetScene_ToPortalPage3 = 0x007AF5E0; // type:func portal page 3 (gPortalUrlB), entry mode 0, NetScene_ToState6
+TownPc_IsInContest = 0x0079B1D0; // type:func states 0x6F-0x71 (Contest_TakeSeat, Contest_Play)
+Actor_RestartMotionTime = 0x007951F0; // type:func motionTime from the motion start and blend
+Npc_UpdateHitStop = 0x00796090; // type:func the lobby copy of Player_UpdateHitStop
+TownPc_IdleCheckOffer = 0x0079C310; // type:func freeState set, a requested offer starts state 0xA/0x10
+
+// Round 27 (names)
+TownPc_FishInput = 0x0079AA80; // type:func the fishing idle input of the local town player, button 0x20 hooks (fishTimer), reels or casts
+Npc_HideAndAdvance = 0x00780560; // type:func a town NPC route step, hides the NPC and moves to the next task phase

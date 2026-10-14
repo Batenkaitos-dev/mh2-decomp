@@ -1,0 +1,6 @@
+// Symbols for overlay 8, dnas_ins.bin. Format: name = 0xADDRESS; // attributes
+// Sony DNAS2 ("PsIIdnas2no 300", jp fermat 20040315: the first .data), the whole text,
+// kept as binary (textbin piece sdk/dnas2): partly encrypted, decrypted at runtime.
+
+// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+dnas_ins_entry = 0x00AC8080; // type:func

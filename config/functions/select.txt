@@ -1,0 +1,7 @@
+// Function starts of select, pinned for splat.
+// 24 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
+func_006AF240 = 0x006AF240; // type:func
+func_006B5CE0 = 0x006B5CE0; // type:func
+func_006B6680 = 0x006B6680; // type:func
+func_006B98A0 = 0x006B98A0; // type:func
+func_006BB690 = 0x006BB690; // type:func

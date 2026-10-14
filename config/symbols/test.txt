@@ -1,0 +1,2 @@
+// Symbols for overlay 12, test.bin. Format: name = 0xADDRESS; // attributes
+

@@ -1,0 +1,5 @@
+// Symbols for overlay 10, lbguild.bin. Format: name = 0xADDRESS; // attributes
+
+// Round 17 (xref): the table of the 14 quest lists (config/assets/lbguild/lbguild.txt),
+// which the lobby reads (link-only: tools/configure.py, LOADED_WITH).
+gGuildQuestLists = 0x00924240; // size:0x40

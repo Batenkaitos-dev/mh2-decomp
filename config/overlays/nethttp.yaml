@@ -1,0 +1,75 @@
+# splat config for overlay 5, nethttp.bin (Sony libhttps (network)).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0x8FAE00
+# including its 0x40-byte header, so text starts at 0x8FAE40.
+name: nethttp.bin
+sha1: acdf6451e4d3d78956720959f619ae103c8d250e
+options:
+  basename: nethttp
+  target_path: build/orig/nethttp.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/nethttp
+  src_path: src/nethttp
+  build_path: build/nethttp
+  asset_path: assets/nethttp
+  ld_script_path: build/ld/nethttp.ld
+  undefined_funcs_auto_path: build/ld/nethttp.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/nethttp.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - build/symbols/sub_main.extern.txt
+    # nethttp is loaded right after lobby.bin (whose .bss ends at 0x8FAE00) and
+    # its Capcom front end calls the lobby: the lobby's names, for splat and the link
+    - config/symbols/lobby.txt
+    - config/symbols/lobby_village2.txt
+    - config/symbols/lobby_online.txt
+    - config/symbols/lobby_browser.txt
+    - config/symbols/nethttp.txt
+    - config/symbols/net_base64.txt
+    - config/symbols/net_libhttps.txt
+    - config/symbols/net_openssl.txt
+    - config/functions/nethttp.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: nethttp
+    type: code
+    start: 0x40
+    vram: 0x8FAE40
+    bss_size: 0x1480
+    subsegments:
+      - [0x40, asm, text]                      # the 0x40 zero bytes every overlay's text starts with
+      - [0x80, asm, net/base64]                # 0x8FAE80: PsIIbase64  3020 (its .data opens the data piece)
+      # 0x8FB130-0x8FD788: Capcom's HTTP front end (CodeWarrior-built, 16-byte aligned functions):
+      # it calls the game's File_Read, Path_ToBackslashes, Net_InitSockets, Brdata_Read...
+      - [0x330, c, unk_8FB130]
+      - [0x2988, asm, net/libhttps]            # 0x8FD788: PsIIlibhttps3020 (SceHttpMemLockSema, the SSL glue)
+      - [0x101E8, asm, net/openssl]            # 0x90AFE8: OpenSSL-derived crypto and SSL ("./bio/../bio/b_print.c", SSLv3, x509)
+      - [0x55080, data, data]                  # .data (0x94FE80): base64's
+      - [0x55198, .data, unk_8FB130]           # 0x94FF98: Capcom's (the request count, the HTTPS option, the certificate sizes, gHttpStateFn)
+      - [0x55208, data, data_950008]           # 0x950008: libhttps' ("PsIIlibhttps3020"), OpenSSL's
+      - { start: 0x59F00, type: data, name: rodata, linker_section_order: .rodata }  # .rodata (0x954D00): base64's alphabet
+      - [0x59F50, .rodata, unk_8FB130]         # 0x954D50: Capcom's jump tables and HTTP header strings
+      - { start: 0x5A060, type: data, name: rodata_954E60, linker_section_order: .rodata }  # libhttps' ("UNLOCK", "LOCK"...)
+      - { type: .bss, vram: 0x95AA00, name: unk_8FB130 }
+      - { type: bss, vram: 0x95B130, name: bss }
+  - [0x5FC00]

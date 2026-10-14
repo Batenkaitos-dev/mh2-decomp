@@ -1,0 +1,76 @@
+# splat config for overlay 6, gm_sub.bin (quest sub-module, in-quest network protocol).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0x8FAE00
+# including its 0x40-byte header, so text starts at 0x8FAE40.
+name: gm_sub.bin
+sha1: 49086af3d3a0969e5a96eec113d554e18e556688
+options:
+  basename: gm_sub
+  target_path: build/orig/gm_sub.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/gm_sub
+  src_path: src/gm_sub
+  build_path: build/gm_sub
+  asset_path: assets/gm_sub
+  ld_script_path: build/ld/gm_sub.ld
+  undefined_funcs_auto_path: build/ld/gm_sub.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/gm_sub.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - build/symbols/sub_main.extern.txt
+    - config/symbols/gm_sub.txt
+    - config/functions/gm_sub.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: gm_sub
+    type: code
+    start: 0x40
+    vram: 0x8FAE40
+    bss_size: 0x6280
+    subsegments:
+      - [0x40, asm, text]              # the 0x40 zero bytes every overlay's text starts with
+      - [0x80, c, gm_main]             # 0x8FAE80: the quest sub-module's main (work area D_00933380)
+      - [0x12C0, c, qnet_if]           # 0x8FC0C0: the game side of the in-quest protocol (callbacks, wrappers)
+      - [0x1940, c, qnet]              # 0x8FC740: NETWORK: the in-quest protocol (QuestNet_*)
+      - [0x4160, c, qnet_sync]         # 0x8FEF60: NETWORK: game state sync messages (players, monsters)
+      - [0x7CD0, c, gm_em]             # 0x902AD0: monster management, per-kind tables
+      - [0xF590, c, gm_load]           # 0x90A390: per-kind data loading
+      # the zeros from func_0090AC10's end to .data (0x90AC80): the linker aligned
+      # .data to 0x80; with gm_load's last function in C they are a piece of their own
+      - { start: 0xFE30, type: data, name: text_end, linker_section_order: .text }
+      - [0xFE80, .data, qnet_if]       # .data (0x90AC80): the protocol's settings
+      - [0xFEC0, .data, gm_em]         # the per-kind monster tables (0x90ACC0-0x932C70)
+      - [0x37E70, .data, gm_load]      # each kind's data file lists (0x932C70)
+      - [0x37F00, .rodata, qnet_if]    # .rodata (0x932D00)
+      - [0x37F60, .rodata, qnet]
+      - [0x37FB0, .rodata, qnet_sync]
+      - [0x38090, .rodata, gm_em]
+      # the zeros after GmEm_SetMeshAlphas' last jump table (0x933350) up to .bss: with it
+      # in C they are a piece of their own
+      - { start: 0x38550, type: data, name: rodata_end, linker_section_order: .rodata }
+      - { type: .bss, vram: 0x933380, name: gm_main }
+      - { type: .bss, vram: 0x933390, name: qnet_if }
+      - { type: .bss, vram: 0x933490, name: qnet }
+      - { type: .bss, vram: 0x9393D0, name: gm_em }
+      - { type: .bss, vram: 0x939440, name: gm_load }
+  - [0x38580]

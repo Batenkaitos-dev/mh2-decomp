@@ -1,0 +1,24 @@
+# Python tooling for the matching build. This is not an installable package:
+# uv uses it to pin the interpreter and every tool, and uv.lock records the
+# exact resolved versions with hashes. Install with tools/setup.sh, which
+# runs `uv sync --locked`.
+
+[project]
+name = "mh2-decomp-tools"
+version = "0.0.0"
+requires-python = "==3.14.*"
+dependencies = [
+    # Disassembly / splitting. The [mips] extra is required even for PS2:
+    # splat imports its N64 segment types (and so n64img) unconditionally.
+    "splat64[mips]==0.50.0",
+    "spimdisasm==1.42.4",
+    "rabbitizer==1.16.2",
+    # ELF and ISO 9660 inspection
+    "pyelftools==0.33",
+    "pycdlib==1.20.0",
+    # Build tool (the PyPI wheel ships a pinned native binary)
+    "ninja==1.13.2",
+]
+
+[tool.uv]
+package = false

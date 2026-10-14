@@ -1,0 +1,52 @@
+# splat config for overlay 10, lbguild.bin (lobby guild data (no code)).
+# CodeWarrior MWo3 overlay from DATA.BIN entry 1, loaded at 0x8FAE00
+# including its 0x40-byte header, so text starts at 0x8FAE40.
+name: lbguild.bin
+sha1: 076dd438e72b7914a523c63491ba85faab64fe6d
+options:
+  basename: lbguild
+  target_path: build/orig/lbguild.bin
+  base_path: ../..
+  platform: ps2
+  compiler: MWCCPS2
+
+  asm_path: asm/lbguild
+  src_path: src/lbguild
+  build_path: build/lbguild
+  asset_path: assets/lbguild
+  ld_script_path: build/ld/lbguild.ld
+  undefined_funcs_auto_path: build/ld/lbguild.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/lbguild.undefined_syms_auto.txt
+  symbol_addrs_path:
+    - build/symbols/main.extern.txt
+    - build/symbols/sub_main.extern.txt
+    - config/symbols/lbguild.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, header]
+  - name: lbguild
+    type: code
+    start: 0x40
+    vram: 0x8FAE40
+    bss_size: 0x0
+    subsegments:
+      - [0x40, textbin, text]
+      - [0x100, .data, lbguild]
+  - [0x29480]

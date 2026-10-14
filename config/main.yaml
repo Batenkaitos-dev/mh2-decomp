@@ -1,0 +1,197 @@
+# splat config for the boot ELF (v1.04). Splits the original ELF file by file
+# offset: the ELF header/program headers and the trailing section tables are
+# re-emitted verbatim from the user's copy (bin segments), so linking the
+# pieces at their file offsets and objcopy -O binary reproduces the file.
+name: SLPM_662.80 (Monster Hunter 2 v1.04 boot ELF)
+sha1: ffbc8d731049da3eb2efc055e086d1bcd779517b
+options:
+  basename: SLPM_662.80
+  target_path: build/orig/SLPM_662.80
+  base_path: ..
+  platform: ps2
+  compiler: MWCCPS2
+
+  gp_value: 0x001D05F0
+  ld_gp_expression: "0x001D05F0"
+
+  asm_path: asm/main
+  src_path: src/main
+  build_path: build/main
+  asset_path: assets/main
+  ld_script_path: build/ld/main.ld
+  undefined_funcs_auto_path: build/ld/main.undefined_funcs_auto.txt
+  undefined_syms_auto_path: build/ld/main.undefined_syms_auto.txt
+  # The pinned starts first, so that a name in config/symbols/main.txt wins
+  # over the pinned func_ name (as in lobby.yaml).
+  symbol_addrs_path:
+    - config/functions/main.txt
+    - config/symbols/main.txt
+    # the libraries' names, one file per library (exported to the overlays with main.txt)
+    - config/symbols/sdk_crt0.txt
+    - config/symbols/sdk_libcdvd.txt
+    - config/symbols/sdk_libdbc.txt
+    - config/symbols/sdk_libdma.txt
+    - config/symbols/gcc_libc.txt
+    - config/symbols/gcc_libgcc.txt
+    - config/symbols/sdk_libgraph.txt
+    - config/symbols/sdk_libipu.txt
+    - config/symbols/sdk_libkernl.txt
+    - config/symbols/gcc_libm.txt
+    - config/symbols/sdk_libmc.txt
+    - config/symbols/sdk_libpad2.txt
+    - config/symbols/sdk_libscf.txt
+    - config/symbols/sdk_libvu0.txt
+    - config/symbols/sdk_libusbkb.txt
+    - config/symbols/sdk_libvib.txt
+    - config/symbols/sdk_libmpeg.txt
+    - config/symbols/cri_sofdec.txt
+    - config/symbols/cri_adx.txt
+
+  find_file_boundaries: False
+  o_as_suffix: True
+  generated_asm_macros_directory: build/include
+  disasm_unknown: True
+  make_full_disasm_for_code: True
+
+  string_encoding: SHIFT-JIS
+  data_string_encoding: SHIFT-JIS
+  rodata_string_guesser_level: 2
+  data_string_guesser_level: 2
+
+  section_order: [.text, .data, .rodata, .bss]
+  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # data can be split per C file at any address.
+  emit_subalign: False
+  ld_align_section_vram_end: False
+
+segments:
+  - [0x0, bin, elf_header]
+  - name: main
+    type: code
+    start: 0x280
+    vram: 0x100000
+    bss_size: 0x11B300
+    subsegments:
+      - [0x280, asm, sdk/crt0]                 # 0x100000: crt0: __start, _exit, _root (ExitThread)
+      - [0x4B0, asm, mw/console]               # 0x100230: tty00: console open/write/read; CodeWarrior-built (16-byte aligned), called by libkernl's stdio glue
+      - [0x528, asm, sdk/libcdvd]              # 0x1002A8: PsIIlibcdvd 3000; sceCd*, "Libcdvd bind err"
+      - [0x2198, asm, sdk/libdbc]              # 0x101F18: PsIIlibdbc 3030; sceDbc*, "libdbc: bind failed"
+      - [0x33E8, asm, sdk/libdma]              # 0x103168: PsIIlibdma 3000; sceDma*, "libdma: sync timeout"
+      - [0x3C30, asm, gcc/libc]                # 0x1039B0: the toolchain's newlib libc: abs ... vsprintf
+      - [0xFE98, asm, gcc/libgcc]              # 0x10FC18: __muldi3, __divdi3, __moddi3, __udivdi3, __umoddi3 (each with its own __clz_tab), soft double (dpadd, litodp...)
+      - [0x12960, asm, sdk/libgraph]           # 0x1126E0: PsIIlibgraph3000; sceGs*
+      - [0x13320, asm, sdk/libipu]             # 0x1130A0: PsIIlibipu  3000; IPU and DMA ch.3/4 registers
+      - [0x13980, asm, sdk/libkernl/syscall]   # 0x113700: PsIIlibkernl3000: kernel syscall stubs
+      - [0x14220, asm, sdk/libkernl/glue]      # 0x113FA0: stdio and newlib glue, interrupt and DMAC enable wrappers
+      - [0x14AA0, asm, sdk/libkernl/thread]    # 0x114820: "## internel error in libkernl.a!", SceKerneltopThread, DelayThread
+      - [0x15080, asm, sdk/libkernl/deci2]     # 0x114E00: Deci2Call wrappers
+      - [0x153D8, asm, sdk/libkernl/kprintf]   # 0x115158: scePrintf and its formatter
+      - [0x16640, asm, sdk/libkernl/sif]       # 0x1163C0: SIF commands and RPC: sceSifInitCmd, sceSifInitRpc, sceSifBindRpc, sceSifCallRpc
+      - [0x17ED0, asm, sdk/libkernl/fileio]    # 0x117C50: sceOpen ... (SceStdio*Sema)
+      - [0x1BB08, asm, sdk/libkernl/iopheap]   # 0x11B888: sceSifInitIopHeap, sceSifAllocIopHeap
+      - [0x1C058, asm, sdk/libkernl/loadfile]  # 0x11BDD8: sceSifLoadModule ...
+      - [0x1CDB8, asm, sdk/libkernl/iopreset]  # 0x11CB38: sceSifResetIop, sceSifSyncIop, sceSifRebootIop ("rom0:UDNL ")
+      - [0x1D098, asm, sdk/libkernl/initsys]   # 0x11CE18: TLB, ExecPS2/LoadExecPS2 wrappers, _InitSys (called by crt0)
+      - [0x1E190, asm, sdk/libkernl/alarm]     # 0x11DF10: alarms and timers
+      - [0x1FB50, asm, gcc/libm]               # 0x11F8D0: the toolchain's newlib libm; ends with the atan2/sqrt wrappers
+      - [0x24928, asm, sdk/libmc]              # 0x1246A8: PsIIlibmc   3031; sceMc*
+      - [0x26A78, asm, sdk/libpad2]            # 0x1267F8: PsIIlibpad2 3020; scePad2*
+      - [0x27330, asm, sdk/libscf]             # 0x1270B0: PsIIlibscf  3000; "rom0:ROMVER"
+      - [0x27A20, asm, sdk/libvu0]             # 0x1277A0: PsIIlibvu0  3000; sceVu0*, ends with the VU0/VIF0 reset
+      - [0x28770, asm, mw/overlay]             # 0x1284F0: static constructors and overlay start-up (called by Overlay_Relocate); CodeWarrior-built (16-byte aligned)
+      - [0x28850, asm, sdk/libusbkb]           # 0x1285D0: PsIIlibusbkb3020; sceUsbKb*
+      - [0x29DB0, asm, sdk/libvib]             # 0x129B30: sceVibGetProfile, sceVibSetActParam
+      - [0x29F20, asm, sdk/libmpeg]            # 0x129CA0: MPEG decoder ("[MPEG ERROR]")
+      - [0x31640, asm, cri/sofdec]             # 0x1313C0: CRI Sofdec (MWSFD 3.33, M2V, MPS, MPV, SFD, SFH; Sep 2004), CodeWarrior-built (16-byte aligned)
+      - [0x58BB0, asm, cri/adx]                # 0x158930: CRI ADX (ADXT 9.34, ADXF, CVFS, SJ, SVM...; Nov 2004), GCC-built (8-byte aligned)
+      - [0x79810, c, dma]  # 0x179590: DMA tags, image uploads, the DMA queue and handlers
+      - [0x7b390, c, unk_17B110]  # automatch: 1 of 1
+      - [0x7B430, c, texture]  # 0x17B1B0: texture and palette handles (flCreatePaletteHandle)
+      - [0x7d4c0, c, unk_17D240]  # automatch: 1 of 1
+      - [0x7D4D0, c, texconv]  # 0x17D250: texture upload and conversion (flPS2ConvertTextureFromContext), swizzle tables, VRAM blocks
+      - [0x7ed80, c, unk_17EB00]  # automatch: 2 of 12
+      - [0x7F8E0, c, unk_17F660]
+      - [0x800A0, c, unk_17FE20]   # 0x17FE20: byte fill/copy, heap wrappers
+      - [0x80390, c, unk_180110]
+      - [0x808c0, c, unk_180640]  # automatch: 1 of 1
+      - [0x808D0, c, display]  # 0x180650: display and GS setup at boot (InitDisplay), the VBlank handler
+      - [0x80c40, c, unk_1809C0]  # automatch: 1 of 1
+      - [0x80CD0, c, unk_180A50]
+      - [0x82290, c, unk_182010]  # automatch: 3 of 3
+      - [0x822C0, c, iop]  # 0x182040: IOP reboot and module loading
+      - [0x826D0, asm, mem_loops]  # 0x182450: Capcom's hand-written copy, clear and fill loops (Mem_*), built from src/main/mem_loops.s
+      - [0x828C0, c, unk_182640]
+      - [0x828f0, c, unk_182670]  # automatch: 6 of 6
+      - [0x82950, c, unk_1826D0]
+      - [0x83fa0, c, unk_183D20]  # automatch: 3 of 6
+      - [0x856E0, c, unk_185460]
+      - [0x86760, c, unk_1864E0]
+      - [0x86f90, c, unk_186D10]  # automatch: 2 of 3
+      - [0x87000, c, unk_186D80]
+      - [0x8a210, c, unk_189F90]  # automatch: 8 of 22
+      - [0x8B260, c, unk_18AFE0]
+      - [0x8ce90, c, unk_18CC10]  # automatch: 1 of 1
+      - [0x8CEA0, c, main]  # 0x18CC20: main, the file systems, file loading by id, LoadOverlay, save-data accessors
+      - [0x8dcd0, c, unk_18DA50]  # automatch: 8 of 23
+      - [0x8EDA0, c, unk_18EB20]
+      - [0x8EE20, c, sound]          # 0x18EBA0: the game's sound manager (bank slots, SE requests)
+      - [0x8FE20, c, cse_spumap]     # 0x18FBA0: CSE SPU memory map (SPUMAPDT)
+      - [0x90170, c, cse_rpc]        # 0x18FEF0: CSE SIF RPC client (COMM, STAT, THMN)
+      - [0x90630, c, cse]            # 0x1903B0: CSE API, SE tables, the game's sound calls
+      - [0x912B0, c, cse_bank]       # 0x191030: CSE bank table
+      - [0x91BF0, c, cse_bankfile]   # 0x191970: CSE bank file (Head/Prog/Smpl/Vagi)
+      - [0x922A0, c, ml_rpc_queue]   # 0x192020: mlRpcQueue (request queue)
+      - [0x92710, c, cse_cmd]        # 0x192490: CSE requests (COMM commands)
+      - [0x93170, c, unk_192EF0]
+      - [0x93360, c, unk_1930E0]  # automatch: 2 of 12
+      - [0x93A20, c, unk_1937A0]
+      - [0x93f30, c, unk_193CB0]  # automatch: 9 of 26
+      - [0x94AB0, c, unk_194830]
+      - [0x954b0, c, unk_195230]  # automatch: 3 of 8
+      - [0x95C90, c, unk_195A10]
+      - [0x95E80, data, data]            # .data (0x195C00)
+      - [0xBA390, .data, dma]
+      - [0xBA3D0, .data, texconv]
+      - [0xBAC10, .data, unk_17F660]
+      - [0xBAC90, .data, unk_180A50]
+      - [0xBAD20, .data, iop]
+      - [0xBADB0, .data, unk_1864E0]
+      - [0xBAE30, .data, unk_186D80]
+      - [0xBB260, .data, unk_189F90]
+      - [0xBB270, .data, unk_18AFE0]
+      - [0xBB3B0, .data, main]
+      - [0xBB520, .data, unk_18DA50]
+      - [0xBBC60, .data, sound]
+      - [0xBCF00, .data, cse_rpc]
+      - [0xBCF18, .data, cse]
+      - [0xBCF20, .data, ml_rpc_queue]
+      - [0xBCF30, .data, unk_192EF0]
+      - [0xBCF80, .data, unk_1937A0]
+      - [0xBD090, .data, unk_193CB0]
+      - [0xBD0A0, .data, unk_194830]
+      - { start: 0xBD100, type: data, name: rodata, linker_section_order: .rodata }  # .rodata (0x1BCE80)
+      - [0xC7D90, .rodata, dma]
+      - [0xC7DF0, .rodata, texture]
+      - [0xC7E70, .rodata, texconv]
+      - [0xC7EB0, .rodata, unk_17F660]
+      - [0xC7F78, .rodata, unk_180A50]
+      - [0xC7FB0, .rodata, iop]
+      - [0xC80E0, .rodata, unk_183D20]
+      - [0xC8120, .rodata, unk_185460]
+      - [0xC8168, .rodata, unk_186D80]
+      - [0xC8190, .rodata, unk_189F90]
+      - [0xC81E0, .rodata, main]
+      - [0xC8260, .rodata, unk_18DA50]
+      - [0xC8280, .rodata, unk_18EB20]
+      - [0xC82B8, .rodata, cse_spumap]
+      - [0xC83B8, .rodata, cse_rpc]
+      - [0xC8468, .rodata, cse]
+      - [0xC84F8, .rodata, cse_bank]
+      - [0xC8548, .rodata, cse_bankfile]
+      - [0xC85F8, .rodata, ml_rpc_queue]
+      - [0xC86D8, .rodata, cse_cmd]
+      - [0xC8770, .rodata, unk_192EF0]
+      - [0xC87B0, .rodata, unk_193CB0]
+      - { type: bss, vram: 0x1C8600, name: bss }
+  - [0xC8880, bin, elf_tail]
+  - [0xC8C60]

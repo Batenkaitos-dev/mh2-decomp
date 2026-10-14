@@ -1,0 +1,3 @@
+// Symbols for the boot ELF (SLPM_662.80): Sony libmpeg (no version string; "[MPEG ERROR]"), text 0x129CA0-0x1313C0; asm piece sdk/libmpeg
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes

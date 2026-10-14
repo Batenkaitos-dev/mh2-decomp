@@ -1,0 +1,5 @@
+// Symbols for the boot ELF (SLPM_662.80): Sony libvib (no version string), text 0x129B30-0x129CA0; asm piece sdk/libvib
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+sceVibGetProfile = 0x00129B30; // type:func
+sceVibSetActParam = 0x00129BB0; // type:func

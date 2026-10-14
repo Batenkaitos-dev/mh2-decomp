@@ -1,0 +1,114 @@
+// Symbols for the boot ELF (SLPM_662.80): Sony libkernl, "PsIIlibkernl3000" (.data 0x198040), text 0x113700-0x11F8D0;
+// asm pieces sdk/libkernl/*: syscall 0x113700, glue 0x113FA0, thread 0x114820, deci2 0x114E00,
+// kprintf 0x115158, sif 0x1163C0, fileio 0x117C50, iopheap 0x11B888, loadfile 0x11BDD8,
+// iopreset 0x11CB38, initsys 0x11CE18, alarm 0x11DF10
+// Library code: it stays assembly. Public API
+// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+
+// scePrintf (the port routes it to the log)
+scePrintf = 0x001162C0; // type:func
+
+// Sony SIF RPC (libkernl); sceSifCallRpc is named in an error string.
+// sceSifInitRpc: runs once (guard flag), installs the RPC command handlers;
+// every client calls it before sceSifBindRpc.
+sceSifInitRpc = 0x00116B98; // type:func
+sceSifBindRpc = 0x00117340; // type:func
+sceSifCallRpc = 0x00117520; // type:func
+sceSifCheckStatRpc = 0x00117720; // type:func
+
+// EE kernel syscall stubs (libkernl), named by the syscall number each loads
+SetGsCrt = 0x00113720; // type:func
+Exit = 0x00113740; // type:func
+LoadExecPS2 = 0x00113760; // type:func
+ExecPS2 = 0x00113770; // type:func
+AddIntcHandler = 0x00113800; // type:func
+RemoveIntcHandler = 0x00113820; // type:func
+AddDmacHandler = 0x00113830; // type:func
+RemoveDmacHandler = 0x00113850; // type:func
+_EnableIntc = 0x00113860; // type:func
+_DisableIntc = 0x00113870; // type:func
+_EnableDmac = 0x00113880; // type:func
+_DisableDmac = 0x00113890; // type:func
+CreateThread = 0x00113920; // type:func
+DeleteThread = 0x00113930; // type:func
+StartThread = 0x00113940; // type:func
+ExitThread = 0x00113950; // type:func
+ExitDeleteThread = 0x00113960; // type:func
+TerminateThread = 0x00113970; // type:func
+ChangeThreadPriority = 0x001139B0; // type:func
+RotateThreadReadyQueue = 0x001139D0; // type:func
+GetThreadId = 0x00113A10; // type:func
+ReferThreadStatus = 0x00113A20; // type:func
+iReferThreadStatus = 0x00113A30; // type:func
+SleepThread = 0x00113A40; // type:func
+WakeupThread = 0x00113A50; // type:func
+iWakeupThread = 0x00113A60; // type:func
+SuspendThread = 0x00113A90; // type:func
+iSuspendThread = 0x00113AA0; // type:func
+ResumeThread = 0x00113AB0; // type:func
+SetupThread = 0x00113AE0; // type:func
+SetupHeap = 0x00113AF0; // type:func
+EndOfHeap = 0x00113B00; // type:func
+CreateSema = 0x00113B20; // type:func
+DeleteSema = 0x00113B30; // type:func
+SignalSema = 0x00113B40; // type:func
+iSignalSema = 0x00113B50; // type:func
+WaitSema = 0x00113B60; // type:func
+PollSema = 0x00113B70; // type:func
+ReferSemaStatus = 0x00113B90; // type:func
+SetOsdConfigParam = 0x00113BC0; // type:func
+GetOsdConfigParam = 0x00113BD0; // type:func
+GetThreadTLS = 0x00113CD0; // type:func
+FlushCache = 0x00113DA0; // type:func
+iFlushCache = 0x00113DD0; // type:func
+GsPutIMR = 0x00113E60; // type:func
+SetVSyncFlag = 0x00113E90; // type:func
+SetSyscall = 0x00113EA0; // type:func
+SifDmaStat = 0x00113EC0; // type:func
+SifSetDma = 0x00113EE0; // type:func
+iSifSetDma = 0x00113EF0; // type:func
+SifSetDChain = 0x00113F00; // type:func
+iSifSetDChain = 0x00113F10; // type:func
+SifSetReg = 0x00113F20; // type:func
+SifGetReg = 0x00113F30; // type:func
+Deci2Call = 0x00113F50; // type:func
+GetMemorySize = 0x00113F80; // type:func
+
+// libkernl: DelayThread(usec) creates a semaphore, sets an alarm that signals
+// it and waits; DIntr/EIntr disable and re-enable interrupts (COP0 Status EIE).
+DelayThread = 0x00114B98; // type:func
+DIntr = 0x0011D6A0; // type:func
+EIntr = 0x0011D6F0; // type:func
+sceSifRebootIop = 0x0011CD08; // type:func
+sceSifSyncIop = 0x0011CCB8; // type:func
+sceSifLoadStartModuleBuffer = 0x0011C590; // type:func
+sceSifLoadStartModule = 0x0011C7F8; // type:func
+sceSifSearchModuleByName = 0x0011C440; // type:func
+sceSifInitIopHeap = 0x0011B888; // type:func
+sceSifLoadFileReset = 0x0011BF68; // type:func
+sceFsReset = 0x001186F8; // type:func
+sceOpen = 0x00118960; // type:func
+sceLseek = 0x00118D68; // type:func
+sceRead = 0x00118FA8; // type:func
+sceClose = 0x00118BF0; // type:func
+sceSifAllocIopHeap = 0x0011B910; // type:func
+sceSifFreeIopHeap = 0x0011BA78; // type:func
+sceSifLoadModule = 0x0011C7D8; // type:func
+sceWrite = 0x00119218; // type:func
+
+// Round 27 (names h1) - library functions the C calls, named from the evidence
+_iEnableIntc = 0x001138C0; // type:func syscall -0x1A
+_iDisableIntc = 0x001138D0; // type:func syscall -0x1B
+SyncDCache = 0x00114418; // type:func DIntr, index writeback-invalidate D-cache loop (cache 0x14) over start..end, EIntr
+DisableIntc = 0x00114600; // type:func DIntr, _DisableIntc (syscall 0x15), sync, EIntr
+EnableIntc = 0x00114668; // type:func DIntr, _EnableIntc (syscall 0x14), sync, EIntr
+DisableDmac = 0x001146D0; // type:func DIntr, _DisableDmac (syscall 0x17), sync, EIntr
+EnableDmac = 0x00114738; // type:func DIntr, _EnableDmac (syscall 0x16), sync, EIntr
+iEnableIntc = 0x001147A0; // type:func _iEnableIntc (syscall -0x1A), sync
+iDisableIntc = 0x001147C0; // type:func _iDisableIntc (syscall -0x1B), sync
+sceSifExitCmd = 0x001166B8; // type:func DisableDmac(5) and RemoveDmacHandler(5) for the SIF0 channel, clears the SIF command init flag
+sceDevctl = 0x0011B208; // type:func fileio command 0x17 with the SceStdioDevctlSema semaphore, (name, cmd, arg, arglen, buf, buflen)
+sceSifStopModule = 0x0011C1A8; // type:func LOADFILE RPC function 7 (sceSifSearchModuleByName is 9)
+sceSifUnloadModule = 0x0011C3B0; // type:func LOADFILE RPC function 8, one argument (the module id)
+GetTimerSystemTime = 0x0011E848; // type:func DIntr, reads timer 1 count and its overflow count, scaled to bus clocks, EIntr
+TimerBusClock2USec = 0x0011F0D8; // type:func (clock, sec, usec) divides by the bus clock 147456000 and scales the rest by 1000000

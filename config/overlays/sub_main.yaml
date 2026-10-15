@@ -48,7 +48,7 @@ segments:
     bss_size: 0x1FD900
     subsegments:
       - [0x40, asm, text]           # the 0x40 zero bytes (16 nops) every overlay's text starts with
-      - [0x80, c, unk_2E3940]       # 0x2E3980 (named for 0x2E3940, where its padding was; rename when its NON_MATCHING blocks are done)
+      - [0x80, c, unk_2E3940]       # 0x2E3980 (named for 0x2E3940, where its padding was; free to rename now that it matches)
       - [0xB720, c, unk_2EF020]     # 0x2EF020: the bones (Bone_*), another unit than func_002E5780's
       - [0xDEC0, c, unk_2F17C0]
       - [0x128D0, c, unk_2F61D0]    # 0x2F61D0

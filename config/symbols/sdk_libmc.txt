@@ -7,8 +7,8 @@
 sceMcInit = 0x001246A8; // type:func
 sceMcOpen = 0x00124C00; // type:func
 sceMcClose = 0x00124D68; // type:func
-sceMcWrite = 0x00124FE0; // type:func
-sceMcRead = 0x00125100; // type:func
+sceMcRead = 0x00124FE0; // type:func
+sceMcWrite = 0x00125100; // type:func
 sceMcMkdir = 0x00124D38; // type:func
 sceMcDelete = 0x001259B0; // type:func
 sceMcFormat = 0x001258D8; // type:func

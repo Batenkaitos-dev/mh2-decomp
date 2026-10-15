@@ -94,15 +94,15 @@ s32 sceMcFormat(s32 a, s32 b);
 s32 sceMcGetInfo(s32 port, s32 slot, s32 *type, s32 *free, s32 *format);
 s32 sceMcOpen(s32 port, s32 slot, char *name, s32 mode);
 s32 sceMcClose(s32 fd);
-s32 sceMcWrite(s32 fd, u8 *buf, s32 size);
 s32 sceMcRead(s32 fd, u8 *buf, s32 size);
+s32 sceMcWrite(s32 fd, u8 *buf, s32 size);
 s32 sceMcSetFileInfo(s32 port, s32 slot, char *name, u8 *info, s32 flags);
 s32 Card_GetDir(CardTask *t);
 s32 Card_GetDirEntry(CardTask *t);
-s32 Card_WriteFile(CardTask *t);
+s32 Card_ReadFile(CardTask *t);
 s32 Card_MkDir(CardTask *t);
 s32 Card_CreateFile(CardTask *t);
-s32 Card_ReadFile(CardTask *t);
+s32 Card_WriteFile(CardTask *t);
 s32 Card_SetFileInfo(CardTask *t);
 s32 Card_Delete(CardTask *t);
 void CardOp_MakeIconSys(CardTask *t);
@@ -711,7 +711,7 @@ s32 Card_GetDirEntry(CardTask *t)
     return -1;
 }
 
-s32 Card_WriteFile(CardTask *t)
+s32 Card_ReadFile(CardTask *t)
 {
     switch (t->subStep) {
     case 0:
@@ -733,7 +733,7 @@ s32 Card_WriteFile(CardTask *t)
             goto fail;
         }
         t->fd = t->syncResult;
-        if (sceMcWrite(t->fd, t->buf, t->size) < 0) {
+        if (sceMcRead(t->fd, t->buf, t->size) < 0) {
             goto fail;
         }
         t->subStep++;
@@ -821,7 +821,7 @@ s32 Card_CreateFile(CardTask *t)
     return -1;
 }
 
-s32 Card_ReadFile(CardTask *t)
+s32 Card_WriteFile(CardTask *t)
 {
     switch (t->subStep) {
     case 0:
@@ -843,7 +843,7 @@ s32 Card_ReadFile(CardTask *t)
             goto fail;
         }
         t->fd = t->syncResult;
-        if (sceMcRead(t->fd, t->buf, t->size) < 0) {
+        if (sceMcWrite(t->fd, t->buf, t->size) < 0) {
             goto fail;
         }
         t->subStep++;
@@ -1154,7 +1154,7 @@ void CardTask_WriteStep(CardTask *t)
         }
         break;
     case 2:
-        switch (Card_WriteFile(t)) {
+        switch (Card_ReadFile(t)) {
         case 0:
             t->step = 0;
             t->result = 0;
@@ -1230,7 +1230,7 @@ void CardTask_SpaceStep(CardTask *t)
         }
         break;
     case 2:
-        switch (Card_WriteFile(t)) {
+        switch (Card_ReadFile(t)) {
         case 0:
             t->step = 0;
             t->result = 0;
@@ -1403,7 +1403,7 @@ void CardTask_SaveStep(CardTask *t)
         }
         break;
     case 7:
-        switch (Card_ReadFile(t)) {
+        switch (Card_WriteFile(t)) {
         case 0:
         next:
             if (++t->fileNo < 9) {

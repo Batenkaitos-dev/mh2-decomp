@@ -8,6 +8,13 @@ the conventions, and how the code and data are laid out. Which C gives
 which instructions with the game's compiler is in the MWCC matching
 reference, [docs/mwcc-matching.md](docs/mwcc-matching.md).
 
+What is left, at the last count:
+- about 1,200 struct fields in `include/` named by their offset (`unk1C`),
+  and more in structs local to one file;
+- data objects still named by their address (`D_00XXXXXX`);
+- small groups of field accesses through raw byte offsets;
+- 33 fakematches ("Fakematches").
+
 ## Ground rules
 
 - **Never commit game data:** no executable, disc image, extracted file,
@@ -21,8 +28,8 @@ reference, [docs/mwcc-matching.md](docs/mwcc-matching.md).
   none of its text ("Content"); `python tools/content_scan.py` must pass.
 - The licensed code (Sony's SDK and the toolchain's runtime, CRI's
   middleware, the network libraries and DNAS, ACCESS's kana-kanji engine)
-  stays assembly generated from your copy. It is not decompiled or
-  rewritten as C.
+  stays assembly generated from your copy (DNAS: a binary copy of its
+  bytes). It is not decompiled or rewritten as C.
 
 ## What goes in the repository
 
@@ -182,8 +189,9 @@ marker so that they can be counted:
   return type differs from the definition in another file, where the
   calling code matches only with it, is how the game's unit declared it.
   Mark it `/* unit's own declaration: <evidence> */`; proto_check counts
-  these apart. Where a cast at the call gives the same code, declare the
-  callee as it is defined and cast the call instead.
+  these apart (431 at the last count). Where a cast at the call gives the
+  same code, declare the callee as it is defined and cast the call
+  instead.
 
 Ordinary, with no marker: a block-scope declaration, `volatile` on a
 global that other code changes, a dead variable reused for a later value,
@@ -199,7 +207,10 @@ left.
 
 Capcom's own assembly is source: main's 12 memory copy and fill loops
 (`Mem_*`, src/main/mem_loops.s) and sub_main's VU1 microcode (60
-programs, src/sub_main/vu1_microcode.vsm).
+programs, src/sub_main/vu1_microcode.vsm). sub_main's 42 VU0 routines
+are CodeWarrior `asm` functions inside their C files
+(src/sub_main/unk_2E3940.c and unk_2F17C0.c): MWCC never emits VU0 macro
+instructions from C (docs/mwcc-matching.md, "What can't come from C").
 - The YAML keeps an `asm` piece for the range, and configure.py builds it
   from src/<module>/<piece>.s when that file exists. splat still writes
   its own disassembly to asm/, which objdiff compares the object with.
@@ -232,10 +243,10 @@ of its own in the YAML (`[0x186B50, .rodata, net_tcp]`).
 
 ## Data in C
 
-All of Capcom's initialized data is declared in C, with its values
-generated from your copy ("Content"; `python tools/data_progress.py` shows
-it per module); the libraries' data, and ACCESS's engine's, stays
-assembly.
+All of Capcom's initialized data, 1.75 MB, is declared in C, with its
+values generated from your copy ("Content"; `python
+tools/data_progress.py` shows it per module); the libraries' data, and
+ACCESS's engine's, stays assembly.
 - **Aliases.** A name inside a C object (a label splat made at a field, a
   table's second record) is defined for the linker relative to its
   object, in config/ld/MODULE_aliases.ld: `D_008C9BCC = D_008C9BB0 +

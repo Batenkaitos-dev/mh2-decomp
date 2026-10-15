@@ -3,14 +3,13 @@
 A research and preservation project: a matching decompilation of
 **Monster Hunter 2 (Dos)** for the PlayStation 2 (NTSC-J, version 1.04,
 `SLPM_662.80`; Capcom, 2006). Capcom's code is reconstructed as C that the
-game's original compiler turns back into the original's exact bytes: the
-build reproduces the boot executable and all 12 code overlays byte for
+game's original compiler turns back into the original's exact bytes, and
+the build reproduces the boot executable and all 12 code overlays byte for
 byte.
 
 The project exists to preserve how the game works, in a form people can
-read and study, and to study the code of a large PS2 title: how a 2006
-CodeWarrior codebase of over 12,500 functions was written, compiled and
-laid out.
+read, and to show how a large PS2 title was made: how a 2006 CodeWarrior
+codebase of over 12,500 functions was written, compiled and laid out.
 
 **This repository contains no game data.** It holds the code and the
 structure of the game's data (types, names, sizes). Everything else comes
@@ -18,57 +17,55 @@ from your own copy of the game when you build.
 
 ## Status
 
-| `ninja progress` row | What it is | Functions | Code | Status |
-|---|---|---|---|---|
-| `game` | Capcom's code | 12,551 | 4.57 MB | 100% matched |
-| `vu1` | Capcom's VU1 microcode | 60 programs | 107 KB | 100% matched, as VU1 assembly |
-| `access` | ACCESS's kana-kanji engine | 262 | 48 KB | assembly from your copy |
-| `sdk` | Sony's SDK, the toolchain's runtime, the network libraries | 2,530 | 1.17 MB | assembly from your copy |
-| `middleware` | CRI's Sofdec and ADX | 1,982 | 288 KB | assembly from your copy |
+The rows of `ninja progress`:
 
-- **Complete.** All 12,551 of Capcom's functions are source and match:
-  12,539 as C, and main's 12 memory copy and fill loops as Capcom's
-  hand-written assembly ([src/main/mem_loops.s](src/main/mem_loops.s)),
-  which no C produces. No `NON_MATCHING` block is left. Capcom's VU1
-  microcode is source as VU1 assembly
-  ([src/sub_main/vu1_microcode.vsm](src/sub_main/vu1_microcode.vsm)),
-  built by the project's own assembler (tools/vu1as.py). The boot
-  executable and the 12 code overlays build byte for byte: `ninja` checks
-  all 13 against [config/targets.sha1](config/targets.sha1).
+| Part | What it is | Functions | Code | Matched | Built from |
+|---|---|---|---|---|---|
+| `game` | Capcom's code | 12,551 | 4.57 MB | 100% | the repository's C and assembly |
+| `vu1` | Capcom's VU1 microcode | 60 programs | 107 KB | 100% | the repository's VU1 assembly |
+| `access` | ACCESS's kana-kanji engine | 262 | 48 KB | not decompiled | assembly from your copy |
+| `sdk` | Sony's SDK, the toolchain's runtime, the network libraries | 2,530 | 1.17 MB | not decompiled | assembly from your copy; DNAS as a binary copy |
+| `middleware` | CRI's Sofdec and ADX | 1,982 | 288 KB | not decompiled | assembly from your copy |
+
+- **Complete.** All 12,551 of Capcom's functions are source and match; no
+  `NON_MATCHING` block is left.
+  - 12,497 are C.
+  - 42 are CodeWarrior `asm` functions in their C files
+    (`src/sub_main/unk_2E3940.c` and `unk_2F17C0.c`): VU0 code, which MWCC
+    never emits from C ([docs/mwcc-matching.md](docs/mwcc-matching.md),
+    "What can't come from C").
+  - 12 are main's hand-written copy and fill loops
+    ([src/main/mem_loops.s](src/main/mem_loops.s)), which no C produces.
+  - The VU1 microcode (60 programs) is VU1 assembly
+    ([src/sub_main/vu1_microcode.vsm](src/sub_main/vu1_microcode.vsm)),
+    built by the project's own assembler, `tools/vu1as.py`.
+- **Byte for byte.** The build reproduces the boot executable and all 12
+  overlays; `ninja` checks all 13 against
+  [config/targets.sha1](config/targets.sha1). Four of the overlays hold no
+  Capcom code: `dnas_net` and `dnas_ins` (Sony's DNAS2 library, copied from
+  your disc as is), `lbguild` (data only) and `test` (a 256-byte all-zero
+  stub).
 - **Counted apart.** Code that Capcom licensed rather than wrote has rows
-  of its own and stays assembly, which splat generates from your copy at
-  build time: Sony's EE libraries (with the toolchain's C library, libm,
-  libgcc and CodeWarrior's runtime), CRI's middleware, the network
-  libraries (nethttp's HTTPS and OpenSSL-derived code, DNAS), and ACCESS's
-  kana-kanji conversion engine in sub_main. It is not decompiled; its
-  names are in [config/symbols/](config/symbols/). Over the whole
-  program, 12,552 of 17,326 functions, 75.6% of 6.19 MB of code, are
-  source.
-- **Data and text.** Capcom's data and the game's text are described in
-  C, not stored in it. Every data object has its type, name and size in
-  the C; its values come from your copy at build time
-  (tools/content_gen.py writes them into `build/gen/`). A text the game
-  shows is a `TXT(0xADDR)` reference with a comment saying what it is. All
-  1,706.7 KiB of Capcom's initialized data is declared in C this way
-  (`python tools/data_progress.py`), and `python tools/content_scan.py`
-  checks that the source holds none of the game's data values or text.
-- **Readability.** 12,400 of the 12,551 game functions have real names
-  (the `named` column of `ninja progress`). Every function declaration
-  agrees with its definition (`tools/proto_check.py`: 0 disagreements),
-  except 431 that are marked as the game's own declarations, which the
-  matching code needs. Still to do: about 1,200 struct fields in
-  `include/` named by their offset (`unk1C`), and more in structs local
-  to one file; data objects still named by their address
-  (`D_00XXXXXX`); small groups of field accesses through raw byte
-  offsets; and 33 fakematches, marked `FAKEMATCH`
-  ([CONTRIBUTING.md](CONTRIBUTING.md)).
+  of its own and is not decompiled: Sony's EE libraries (with the
+  toolchain's C library, libm, libgcc and CodeWarrior's runtime), CRI's
+  middleware, the network libraries (nethttp's HTTPS and OpenSSL-derived
+  code, and DNAS) and ACCESS's kana-kanji engine in sub_main. The build
+  takes it from your copy: splat turns it into assembly, except DNAS,
+  whose bytes are copied as they are. Its names are in
+  [config/symbols/](config/symbols/). Over the whole program, 12,552 of
+  17,326 functions (75.6% of 6.19 MB of code) are source.
+- **Data and text** are described in C, not stored in it: each object's
+  type, name and size are in the source, and its values and the game's
+  texts come from your copy at build time
+  ([CONTRIBUTING.md](CONTRIBUTING.md), "Content").
+- **Readability.** 12,400 of the 12,551 functions have real names (the
+  `named` column of `ninja progress`). What is left to name and tidy is
+  under [Contributing](#contributing).
 
-## You need your own copy of the game
+## Your copy of the game
 
-The repository holds no executable, disc image, extracted file, asset,
-data value or game text, and nothing derived from them. The build reads
-the files of your own copy of the disc, either the `.iso` or the
-extracted disc files. Only version 1.04 is supported: other releases and
+The build reads your own copy of the disc: either the `.iso` or the
+extracted disc files. Only version 1.04 is supported; other releases and
 reprints may have different executables.
 
 By default, the tools look for your files in the **parent directory of the
@@ -100,13 +97,13 @@ against their SHA-256, and [uv.lock](uv.lock) for Python. That takes about
 
 ### Linux
 
-You need `git`, and on Debian or Ubuntu `sudo`: the setup script installs
-`ca-certificates`, `curl`, `git`, `tar` and `clang` with apt (clang reads
-the C files' types for tools/content_gen.py). On another distribution,
-install those yourself and run `tools/setup.sh --no-apt`.
+You need `git`, and `sudo` on Debian or Ubuntu, where the setup script
+installs `ca-certificates`, `curl`, `git`, `tar` and `clang` with apt
+(clang reads the C files' types for `tools/content_gen.py`). On another
+distribution, install those yourself and run `tools/setup.sh --no-apt`.
 
 ```sh
-git clone https://github.com/Batenkaitos-dev/mh2-decomp.git
+git clone <repository URL> mh2-decomp
 cd mh2-decomp
 tools/setup.sh                   # once: the pinned toolchain, into tools/deps/
 source tools/env.sh              # in every new shell
@@ -126,13 +123,10 @@ OK    select.bin
 OK    sub_main.bin
 ```
 
-**`OK` for all 13** (the boot executable and the 12 overlays: `select`,
-`lobby`, `nethttp`, `dnas_net`, `gm_sub`, `dnas_ins`, `yn`, `lbguild`,
-`test`, `plsel`, `game`, `sub_main`) means that the SHA-1 of every built
-file equals the game's, in [config/targets.sha1](config/targets.sha1): your
-build is byte-identical to the original. The first `configure.py` takes
-about a minute and a half, and a full build a little over a minute with
-8 jobs.
+**`OK` for all 13** means that each built file's SHA-1 equals the game's
+([config/targets.sha1](config/targets.sha1)): your build is
+byte-identical to the original. The first `configure.py` takes about a
+minute and a half, and a full build a little over a minute with 8 jobs.
 
 The setup script keeps its downloads in `tools/deps/downloads/` and
 fetches only what is missing there, so a second checkout can reuse a first
@@ -149,8 +143,8 @@ tools/deps/downloads` before `tools/setup.sh`.
 3. Follow the Linux steps. Your disc files can stay on Windows: for a copy
    in `D:\games\mh2`, `export MH2_ORIG_DIR=/mnt/d/games/mh2`.
 
-The game's compiler is a Windows program, but the build runs it through
-wibo on Linux, so the build doesn't run natively on Windows.
+The game's compiler is a Windows program; wibo runs it on Linux, and
+there is no native Windows build.
 
 ## Project layout
 
@@ -169,22 +163,23 @@ code overlays stored in the disc's `DATA.BIN`.
 ## How it matches
 
 - **The compiler** is Metrowerks CodeWarrior for PS2, compiler build
-  `3.0b52-030722`, chosen by compiling candidates and comparing their
-  output with the game's code, with the flags `-O3,p -sdatathreshold 0
-  -str readonly` (and `#pragma optimization_level` where the game built a
-  file or a function at another level). It is a Windows program: the build
-  runs it on Linux through wibo, and the setup script downloads it from
-  decomp.me's compiler archive.
+  `3.0b52-030722`, with the flags `-O3,p -sdatathreshold 0 -str readonly`
+  (and `#pragma optimization_level` where the game built a file or a
+  function at another level). It was chosen by compiling candidates and
+  comparing their output with the game's code. The setup script downloads
+  it from decomp.me's compiler archive, and the build runs it through
+  wibo.
 - **splat** splits the boot executable and the overlays by the YAML files
   in `config/`, with spimdisasm and rabbitizer disassembling the R5900
-  code; that is where the libraries' assembly comes from.
-  tools/content_gen.py writes the data values and texts the C includes,
-  from your copy, with the types clang reads from the C. tools/mwcc_cc.py
-  compiles each C file (converted from UTF-8 to Shift-JIS, the game's
-  encoding), and binutils, built for the PS2's R5900, assembles and links.
-  tools/check_targets.py compares the results with the game's hashes.
+  code. That is where the libraries' assembly comes from.
+- **`tools/content_gen.py`** writes the data values and texts the C
+  includes, from your copy, with the types clang reads from the C.
+- **`tools/mwcc_cc.py`** compiles each C file, converted from UTF-8 to
+  Shift-JIS (the game's encoding). binutils, built for the PS2's R5900,
+  assembles and links, and `tools/check_targets.py` compares the results
+  with the game's hashes.
 - **objdiff** diffs each unit against the original, function by function,
-  and makes the progress report; tools/func_diff.py checks one file's
+  and makes the progress report; `tools/func_diff.py` checks one file's
   functions in about a second.
 - [docs/mwcc-matching.md](docs/mwcc-matching.md) is the project's
   reference on which C gives which instructions with this compiler: its
@@ -218,20 +213,10 @@ help:
   matches.
 
 Every change must keep `ninja` at `OK` for all 13 targets and
-`tools/proto_check.py` at 0 disagreements, and must add no game content:
-no game data, data values or game text in the source.
-`python tools/content_scan.py` must report 0 findings (CONTRIBUTING.md,
-"Content"). [CONTRIBUTING.md](CONTRIBUTING.md) has the checks, the
-conventions and the tools.
-
-## A PC port
-
-A native PC port of the game, built from this decompilation's C, is in
-development as a separate project, not yet published. Mods for PC will be
-made through it: a mod is a change to this C, compiled natively by the
-port, with this byte-matching build as the reference every change is
-checked against. The port takes the game's content from your own copy
-too; nothing of the game ships with it.
+`tools/proto_check.py` at 0 disagreements, and add no game content
+(`python tools/content_scan.py`: 0 findings).
+[CONTRIBUTING.md](CONTRIBUTING.md) has the checks, the conventions, the
+tools and the counts of what is left.
 
 ## Made with AI
 
@@ -242,8 +227,7 @@ project's owner, Batenkaitos, orchestrated the work, tested it, and made
 the decisions when important questions came up.
 
 - **What the build guarantees:** every matched function compiles to the
-  original's exact bytes, and the build reproduces the game's executables
-  byte for byte.
+  original's exact bytes ([Status](#status)).
 - **What it doesn't:** names, types, comments and explanations are the
   AI's reading of the code, and can be wrong. Corrections are welcome.
 

@@ -7,6 +7,11 @@ game's original compiler turns back into the original's exact bytes, and
 the build reproduces the boot executable and all 12 code overlays byte for
 byte.
 
+The code matches, but much of it doesn't read well yet. Readability work
+was deliberately left until the whole build matched, so that every cleanup
+can be checked against it. That work is underway, and any assistance is welcome
+(see [Contributing](#contributing)).
+
 The project exists to preserve how the game works, in a form people can
 read, and to show how a large PS2 title was made: how a 2006 CodeWarrior
 codebase of over 12,500 functions was written, compiled and laid out.

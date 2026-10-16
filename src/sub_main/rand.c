@@ -9,7 +9,11 @@
  * by the sound code's random variations. Rand_Seed sets streams 0 and 1 to
  * the same byte; the select screen calls it with the result of
  * func_003DDBA0, which always returns 0, so both streams start from 1.
- * Another 32 streams (Rand_NextSaved) are copied into the save data.
+ * Another RAND_SAVED_STREAMS streams (Rand_NextSaved) are copied into the
+ * save data. Rand_InitGauss tabulates a bell curve.
+ *
+ * At the range's end, gUnreadFlags: a table of 64 flags that the boot,
+ * the quest's end and the text code clear, and no code reads.
  */
 #include "common.h"
 #include "scene.h"
@@ -18,10 +22,14 @@
 extern u8 gSoundEffectSet[2];        /* per SPU core: effect already set */
 extern u16 gBgmId;
 extern u16 gRandSeeds[4];
-extern u16 gRandSaved[32];
-extern f32 gRandGauss[60];
+#define RAND_SAVED_STREAMS 32
+#define RAND_GAUSS_SAMPLES 60
+#define UNREAD_FLAG_COUNT 64
+
+extern u16 gRandSaved[RAND_SAVED_STREAMS];
+extern f32 gRandGauss[RAND_GAUSS_SAMPLES];
 extern f32 gRandGaussSum;
-extern u8 D_006AE1A0[64][4];
+extern u8 gUnreadFlags[UNREAD_FLAG_COUNT][4];
 
 s32 Sound_SetEffect(s32 core, s32 mode, s32 depth, s32 delay, s32 feedback); /* main */
 f32 Math_Exp(f32 x);       /* expf */
@@ -51,6 +59,8 @@ void Sound_ResetEffects(void)
     gSoundEffectSet[1] = 0;
 }
 
+/* Sets an SPU core's effect (Sound_SetEffect), unless one was set already
+ * since Sound_ResetEffects. */
 void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback)
 {
     u8 *set = &gSoundEffectSet[core];
@@ -61,6 +71,8 @@ void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback)
     }
 }
 
+/* In area 0x87, clears the BGM id (0xFF: none); the lobby calls it.
+ * Returns 0. */
 s32 Bgm_StopInArea87(void)
 {
     if (gScene.area != 0x87) {
@@ -80,6 +92,7 @@ void Rand_Seed(u8 seed)
     gRandSeeds[1] = seed;
 }
 
+/* Steps a stream (0 or 1) and returns its new state, 1..65362. */
 u16 Rand_Next(s32 stream)
 {
     u32 x = gRandSeeds[stream];
@@ -90,74 +103,81 @@ u16 Rand_Next(s32 stream)
     return gRandSeeds[stream] = x * 176 % 0xFF53;
 }
 
-/* The saved stream is read and written through a declared byte offset o = i * 2 read through a
- * byte pointer (the form of Kbd_DrawSpecialKey's ofs): gRandSaved[i] recomputes the scaled index
- * after the if, where the original keeps it, and gSave.randSaved[i] shares it. */
+/*
+ * Steps saved stream i like Rand_Next, copies it into the save data
+ * (gSave.randSaved) and returns it. The stream is reached through a byte
+ * offset for the match: the original keeps i * 2 in one register for both
+ * arrays, where gRandSaved[i] would compute it again after the if.
+ */
 u16 Rand_NextSaved(s16 i)
 {
-    s32 o = i * 2;
-    u32 x = *(u16 *)((u8 *)gRandSaved + o);
-    u16 r;
+    s32 offset = i * 2;
+    u32 x = *(u16 *)((u8 *)gRandSaved + offset);
+    u16 next;
 
     if (x == 0) {
         x = 1;
     }
-    r = x * 176 % 0xFF53;
-    *(u16 *)((u8 *)gRandSaved + o) = r;
-    gSave.randSaved[i] = *(u16 *)((u8 *)gRandSaved + o);
-    return r;
+    next = x * 176 % 0xFF53;
+    *(u16 *)((u8 *)gRandSaved + offset) = next;
+    gSave.randSaved[i] = *(u16 *)((u8 *)gRandSaved + offset);
+    return next;
 }
 
+/* Steps every saved stream once. */
 void Rand_StepSaved(void)
 {
     s16 i;
 
-    for (i = 0; i < 32; i++) {
+    for (i = 0; i < RAND_SAVED_STREAMS; i++) {
         Rand_NextSaved(i);
     }
 }
 
 /*
- * 60 samples of a bell curve, exp(-x*x/2) * sqrt(2 pi) for x = -30/9 ..
+ * RAND_GAUSS_SAMPLES samples of a bell curve, exp(-x*x/2) * sqrt(2 pi) for x = -30/9 ..
  * 29/9, and their sum. (The factor is sqrt(2 pi), not its inverse; callers
  * that divide by the sum don't see it.)
  */
 void Rand_InitGauss(void)
 {
     s32 i;
-    f32 *p = gRandGauss;
-    f32 e;
-    f32 s;
+    f32 *sample = gRandGauss;
+    f32 bell;
+    f32 scale;
 
     gRandGaussSum = 0.0f;
-    for (i = 0; i < 60; i++) {
-        e = Math_Exp(-Math_Pow((i - 30) / 9.0f, 2.0f) / 2.0f);
-        s = Math_Sqrtf(6.2831855f);
-        *p = 1.0f / (1.0f / s) * e;
-        gRandGaussSum += *p;
-        p++;
+    for (i = 0; i < RAND_GAUSS_SAMPLES; i++) {
+        bell = Math_Exp(-Math_Pow((i - 30) / 9.0f, 2.0f) / 2.0f);
+        scale = Math_Sqrtf(6.2831855f);
+        *sample = 1.0f / (1.0f / scale) * bell;
+        gRandGaussSum += *sample;
+        sample++;
     }
 }
 
-void func_00368E80(void)
+/* Clears the whole table (select's boot). */
+void UnreadFlags_Init(void)
 {
-    memset(D_006AE1A0, 0, sizeof(D_006AE1A0));
+    memset(gUnreadFlags, 0, sizeof(gUnreadFlags));
 }
 
-void func_00368EA0(s16 i)
+/* Clears flag i (the first byte of its entry) if it is set. */
+void UnreadFlags_Clear(s16 i)
 {
-    s8 *p = (s8 *)D_006AE1A0[i];
+    s8 *flag = (s8 *)gUnreadFlags[i];
 
-    if (*p != 0) {
-        *p = 0;
+    if (*flag != 0) {
+        *flag = 0;
     }
 }
 
-void func_00368ED0(void)
+/* Clears every flag (the quest's end, the text code). */
+void UnreadFlags_ClearAll(void)
 {
     s16 i;
 
-    for (i = 0; i < 64; i++) {
-        func_00368EA0(i);
+    for (i = 0; i < UNREAD_FLAG_COUNT; i++) {
+        UnreadFlags_Clear(i);
     }
 }

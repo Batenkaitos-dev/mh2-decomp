@@ -39,7 +39,7 @@ extern CountEntry gRecordCountEntries[];
 extern u8 *gArenaGaugeUpChances[];
 extern s16 gPersistentEmHp[];
 /* The versus settings at 0x6ADAD0 (unk_3A6130.c views the two teams as
- * QuestExtraEm gQuestExtra[2]; D_006ADB14 is unk44). */
+ * QuestExtraEm gNextQuest[2]; D_006ADB14 is unk44). */
 typedef struct NetTeam {
     s8 unk0;                    /* 0x00: of the team before it: see Versus_Init */
     s8 unk1;
@@ -67,7 +67,7 @@ typedef struct TeamEntry {
     u32 bits;                   /* for Versus_ApplyTeamBits */
 } TeamEntry;
 
-extern NetQuest gQuestExtra;
+extern NetQuest gNextQuest;
 extern TeamEntry gTeamItemBits[];
 extern TeamEntry *gMonsterNoteMarks[];
 extern s8 D_0044B448[];
@@ -85,7 +85,7 @@ u8 Pouch_Add(Player *p, u16 item, s16 n);
 void Em_ChangeStateRouted(Em *em, s32 a, s32 b, s32 c);
 s32 Side_Match(u8 a, u8 b, u8 none);
 void CamReq_Player(void *arg, u8 b);
-void SeqA_Start(s32 a);
+void FadeA_Start(s32 a);
 u8 Quest_FindSpecialMonster(u8 id);
 u8 MonsterGroup_First(u8 id);
 void Eff10_Create(f32 *pos, u8 kind, u16 area, Player *pl);
@@ -1086,16 +1086,16 @@ void Versus_Init(void)
     s32 k;
 
     for (i = 0; i < 2; i++) {
-        QuestGoal_Add(0x201, gQuestExtra.team[i].kind, 1);
+        QuestGoal_Add(0x201, gNextQuest.team[i].kind, 1);
         gQuest.teams[i].unk0 = 0;
-        gQuest.teams[i].gaugeLevel = gQuestExtra.team[i].unk1B;
-        gQuest.teams[i].baseLevel = gQuestExtra.team[i + 1].unk1;
+        gQuest.teams[i].gaugeLevel = gNextQuest.team[i].unk1B;
+        gQuest.teams[i].baseLevel = gNextQuest.team[i + 1].unk1;
         gQuest.teams[i].rageScale1 = 100;
         gQuest.teams[i].rageScale2 = 100;
         gQuest.teams[i].sizeScale = 100;
-        gQuest.teams[i].sizePct = gQuestExtra.team[i].unk10;
+        gQuest.teams[i].sizePct = gNextQuest.team[i].unk10;
         gQuest.teams[i].flags = 0;
-        gQuest.teams[i].item = item = gQuestExtra.unk3C[i];
+        gQuest.teams[i].item = item = gNextQuest.unk3C[i];
         if (item == 0) {
             item = 0x2A7;
         }
@@ -1105,7 +1105,7 @@ void Versus_Init(void)
             }
         }
         if (e->key == 0) {
-            k = MonsterNote_Index(gQuestExtra.team[i].kind);
+            k = MonsterNote_Index(gNextQuest.team[i].kind);
             if (k != 0xFF) {
                 for (e = gMonsterNoteMarks[k]; e->key != 0; e++) {
                     if (item == e->key) {
@@ -1116,11 +1116,11 @@ void Versus_Init(void)
         }
         if (e->key != 0) {
             gQuest.teams[i].unk0 = e->val;
-            Versus_ApplyTeamBits(&gQuest.teams[i], e->bits, gQuestExtra.team[i].kind);
+            Versus_ApplyTeamBits(&gQuest.teams[i], e->bits, gNextQuest.team[i].kind);
         } else {
-            Versus_ApplyTeamBits(&gQuest.teams[i], 0, gQuestExtra.team[i].kind);
+            Versus_ApplyTeamBits(&gQuest.teams[i], 0, gNextQuest.team[i].kind);
         }
-        gQuest.teams[i].emLevel = gQuest.teams[i].baseLevel + D_0044B448[gQuestExtra.team[i + 1].unk0];
+        gQuest.teams[i].emLevel = gQuest.teams[i].baseLevel + D_0044B448[gNextQuest.team[i + 1].unk0];
         if (gQuest.teams[i].emLevel > 15) {
             gQuest.teams[i].emLevel = 15;
         }
@@ -1132,7 +1132,7 @@ void Versus_Init(void)
     gQuest.sideEmLeft[0] = 3;
     gQuest.sideEmLeft[1] = 3;
     gQuest.inputLock = 90;
-    gQuest.info->timeLimit = gQuestExtra.unk5F * 1800;
+    gQuest.info->timeLimit = gNextQuest.unk5F * 1800;
 }
 
 void Versus_ConsumeTeamItem(void)
@@ -1397,7 +1397,7 @@ s32 Versus_DefeatCamera(Em *pl)
 void Versus_MarkDefeat(Em *em)
 {
     if ((gQuest.versusDefeat & 3) == 0) {
-        SeqA_Start(10);
+        FadeA_Start(10);
     }
     if (em->remote == 0) {
         if (Versus_Team(em->side) == 0) {
@@ -1799,9 +1799,12 @@ void Quest_UpdateCountdown(void)
     }
 }
 
-void func_003A0810(void)
+/* Marks the quest's event as triggered (gQuest.eventTriggered). Kushala,
+ * Lao-Shan, Shen Gaoren and Yama Tsukami call it with themselves; the
+ * monster is not used. */
+void Quest_TriggerEvent(Em *em)
 {
-    gQuest.unk138 = 1;
+    gQuest.eventTriggered = 1;
 }
 
 u8 Quest_FindSpecialMonster(u8 id)

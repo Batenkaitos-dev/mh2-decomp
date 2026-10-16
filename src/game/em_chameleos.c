@@ -55,7 +55,7 @@ void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
 void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmBulldrome_State0_0B: 97 of 147 words differ, EmChameleos_State0_12: 42 of 80 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_SetHold2(Em *em);
@@ -200,7 +200,7 @@ void Em_EndStatus1(Em *em);
 void Em_EndStatus2(Em *em);
 void Em_EndStatus4(Em *em);
 void Em_EndStatus5(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_ResetNotice(Em *em);
 s32 Game_IsOnline(void);
 void Versus_MarkDefeat(Em *);
@@ -217,10 +217,10 @@ void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_ClearPart(Em *em, u16 part);
 void Em_AddHp(Em *em, s16 n);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Add7EC(Em *em, s32 n);
-void Em_Clear7F0State(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_ClearNeed1State(Em *em);
+void Em_ClearNeed2State(Em *em);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 void MinePoint_Remove(s32);
 void Vec_Copy(f32 *out, f32 *in);
@@ -265,7 +265,7 @@ extern EmTurnParams EmChameleos_TurnParams[1];
 extern EmTurnParams EmBulldrome_TurnParams[1];
 void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
 s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
 u8 Player_InCurrentArea(void *obj);
 void Effect08_Spawn(f32 *pos, s32 k, s32 b, f32 scale);
@@ -280,7 +280,7 @@ u8 Pouch_Add(Player *p, u16 item, s16 n);
 u8 Notice_Push(u8 kind, s16 a, s16 b);
 s32 Em_UpdateCombatTimer(Em *em);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_SetStatus4Timer(Em *em);
 void EmRemobra_RunState(Em *em);
@@ -294,7 +294,7 @@ s32 ScEvent_CurId(void);
 void EmBulldrome_RunState(Em *em);
 u16 Area_DayId(u16 id);
 void Em_RaiseTrigger80Lax(Em *em);
-void Em_Decay7EC(Em *em);
+void Em_DecayNeed2(Em *em);
 s32 func_00725820(Em *arg0, s32 arg1);
 void CamReq_ForMonster(Em *em);
 void EmChameleos_RunState(Em *em, s32 arg1);
@@ -598,14 +598,14 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
     f32 pos[3];
     f32 v[3];
 
-    Em_SetFlag6AE(em, 3);
+    Em_SetHitReactMode(em, 3);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x31, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         switch (variant) {
         case 0:
@@ -645,15 +645,15 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
                 Em_AddHp(em, 0.05f * em->hpMax);
                 switch (variant) {
                 default:
-                    Em_Add7F0(em, em->need1Max);
-                    Em_Clear7F0State(em);
+                    Em_AddNeed1(em, em->need1Max);
+                    Em_ClearNeed1State(em);
                     break;
                 case 1:
-                    Em_Add7EC(em, em->need2Max);
-                    Em_Clear7ECState(em);
+                    Em_AddNeed2(em, em->need2Max);
+                    Em_ClearNeed2State(em);
                     break;
                 }
-                Em_SetRow638(em, 0);
+                Em_SelectSightRow(em, 0);
                 Em_LoadReactionSet(em, 0);
                 EmChameleos_EndState(em, 0, 0);
             } else {
@@ -667,7 +667,7 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
 void EmChameleos_State0_12(Em *em)
 {
     em->blind = 2;
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -697,7 +697,7 @@ void EmChameleos_State0_12(Em *em)
 void EmChameleos_State0_14(Em *em)
 {
     em->blind = 2;
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -781,7 +781,7 @@ void EmChameleos_State0_19(Em *em)
 void EmChameleos_State0_1B(Em *em)
 {
     em->blind = 2;
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2469,7 +2469,7 @@ void EmChameleos_State4_0A(Em *em)
 
 void EmChameleos_State4_0B(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3145,14 +3145,14 @@ void EmChameleos_Update(Em *em)
         switch ((u16) Area_BaseId(gScene.map)) {
         case 2:
             Em_CheckLowHp(em, 0.15f);
-            Em_Decay7EC(em);
+            Em_DecayNeed2(em);
             break;
         case 4:
             Em_CheckLowHp(em, 0.15f);
             break;
         case 6:
             Em_CheckLowHp(em, 0.15f);
-            Em_Decay7EC(em);
+            Em_DecayNeed2(em);
             break;
         }
     }
@@ -3294,7 +3294,7 @@ void EmChameleos_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmChameleos_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmChameleos_RunState(em, (s32) w);
@@ -4952,7 +4952,7 @@ void EmRemobra_State4_01(Em *em, s32 unused)
 
 void EmRemobra_State4_02(Em *em, s32 unused)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4977,7 +4977,7 @@ void EmRemobra_State4_02(Em *em, s32 unused)
 
 void EmRemobra_State4_03(Em *em, s32 unused)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -5235,7 +5235,7 @@ void EmRemobra_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmRemobra_RunState(em);
     if (em->stateRequest != 0) {
         EmRemobra_RunState(em);
@@ -5517,7 +5517,7 @@ void EmChameleos_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_BeginStatus2(em);
         break;
     case 23:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 24:
         Em_EndStatus2(em);
@@ -6258,7 +6258,7 @@ void EmBulldrome_State0_0B(Em *em, s32 variant)
     s32 k2;
     s32 k;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -7026,7 +7026,7 @@ void EmBulldrome_State4_02(Em *em)
 
 void EmBulldrome_State4_03(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -7659,7 +7659,7 @@ void EmBulldrome_Update(Em *em)
     } else {
         Em_UpdatePendingScript(em);
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmBulldrome_RunState(em);
     if (em->stateRequest != 0) {
         EmBulldrome_RunState(em);

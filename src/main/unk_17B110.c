@@ -1,22 +1,28 @@
-/* Functions matched automatically from m2c's output;
- * the others are still assembly. First-pass C, to be named and typed. */
+/*
+ * Dma_FlushQueue (main 0x17B110), the DMA queue's flush: the queued packet
+ * chain is sent at once instead of at the frame's end. The queue
+ * (gDmaQueue, include/dma.h) and the rest of its code are in dma.c.
+ */
 #include "common.h"
-#include "m2c_macros.h"
+#include "dma.h"
 
 void Packet_Reset(void);
 void SendFrameDmaChain(void);
 s32 Dma_WaitIdle(void);
-extern s32 D_002189C4;
-extern s32 D_002189C8;
+extern DmaQueue gDmaQueue;
 extern s32 gPacketBufIdx;
 extern s32 gFlipCountdown;
 
-s32 Dma_FlushQueue(void) {
-    if ((D_002189C4 == 0) && (D_002189C8 == 0)) {
+/* Sends the current buffer's queued chain and waits for it, then resets
+ * the packet buffer and holds the flip for 2 frames (gFlipCountdown).
+ * Returns 1 if anything was sent, else 0. */
+s32 Dma_FlushQueue(void)
+{
+    if ((gDmaQueue.count[0] == 0) && (gDmaQueue.count[1] == 0)) {
         return 0;
     }
     Dma_WaitIdle();
-    if ((&D_002189C4)[gPacketBufIdx] == 0) {
+    if (gDmaQueue.count[gPacketBufIdx] == 0) {
         return 0;
     }
     SendFrameDmaChain();

@@ -223,7 +223,7 @@ s32 Save_IsItemObtained(SaveData *save, u16 item);
 void Plsel_CheckVersusAwards(void);
 
 
-MonsterNoteDef *MonsterList_Find(s32 kind);
+MonsterNoteDef *MonsterNote_FindKind(s32 kind);
 
 s32 Records_HuntedAtLeast(f32 f, SaveData *save, u8 m, u16 n);
 
@@ -796,7 +796,7 @@ s32 Plsel_CheckStoryScene2(void) {
     return 1;
 }
 
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void Sound_Silence(void);
 void QuestRecord_Fill(void);
 void QuestStats_Tally(void);
@@ -894,7 +894,7 @@ void Plsel_ResultsUpdate(void) {
             sc->timer = 0x96;
             sc->timer2 = 1;
             Plsel_FlushMoney();
-            SeqA_Start(2);
+            FadeA_Start(2);
             *(void (**)(void))0x6A3A24 = PlselRes_DrawPanel;
             Plsel_RestorePouch();
             break;
@@ -907,14 +907,14 @@ void Plsel_ResultsUpdate(void) {
                 sc->step = 0x19;
                 w->timeout = 0xE10;
                 sc->timer = 0x1E;
-                SeqA_Start(0xA);
+                FadeA_Start(0xA);
                 Plsel_FadeOutMusic();
             } else {
                 Plsel_LoadResultsTextures();
                 sc->step = 0x10;
                 sc->subStep = 0;
                 *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
-                SeqA_Start(2);
+                FadeA_Start(2);
             }
             return;
         }
@@ -980,7 +980,7 @@ void Plsel_ResultsUpdate(void) {
                 Plsel_InitItemBoxMenu();
             }
             sc->timer = 0x1E;
-            SeqA_Start(2);
+            FadeA_Start(2);
         } else {
             Quest_UpdateSaveRecords(1);
             Plsel_AddCounterPoints();
@@ -1012,7 +1012,7 @@ void Plsel_ResultsUpdate(void) {
                     w->closeState = 0;
                     *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
                     sc->timer = 0x1E;
-                    SeqA_Start(2);
+                    FadeA_Start(2);
                     break;
                 }
                 if (Plsel_RollBonus() == 1) {
@@ -1020,7 +1020,7 @@ void Plsel_ResultsUpdate(void) {
                     sc->subStep = 0;
                     Plsel_InitSaveRecordMenu();
                     sc->timer = 0x1E;
-                    SeqA_Start(2);
+                    FadeA_Start(2);
                     break;
                 }
             }
@@ -1030,13 +1030,13 @@ void Plsel_ResultsUpdate(void) {
             Plsel_ComputeAllRewards();
             *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
             sc->timer = 0x1E;
-            SeqA_Start(2);
+            FadeA_Start(2);
         }
         break;
     case 3:
         if (Plsel_ItemBoxMenu() <= 0) {
             sc->step++;
-            SeqA_Start(1);
+            FadeA_Start(1);
             sc->timer = 0x1E;
             Stream_FadeOut(0, 0x1E);
             Save_StorePouch(&gPlayers[sc->localPlayer]);
@@ -1049,7 +1049,7 @@ void Plsel_ResultsUpdate(void) {
             if (Quest_IsDrill() == 1) {
                 sc->step = 0x14;
                 sc->subStep = 0;
-                SeqA_Start(2);
+                FadeA_Start(2);
                 sc->timer = 0x1E;
             } else {
                 if (Quest_IsVersus() == 1) {
@@ -1070,7 +1070,7 @@ void Plsel_ResultsUpdate(void) {
                     Plsel_ComputeAllRewards();
                 }
                 *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
-                SeqA_Start(2);
+                FadeA_Start(2);
                 sc->timer = 0x1E;
             }
         }
@@ -1083,7 +1083,7 @@ void Plsel_ResultsUpdate(void) {
             w->timeout--;
             if (w->timeout == 0 || i != 0) {
                 sc->step++;
-                SeqA_Start(1);
+                FadeA_Start(1);
                 sc->timer = 0x1E;
             }
         }
@@ -1106,7 +1106,7 @@ void Plsel_ResultsUpdate(void) {
             w->timeout = 0xE10;
             w->closeState = 0;
             PlselRes_InitPointsPage();
-            SeqA_Start(2);
+            FadeA_Start(2);
             sc->timer = 0x1E;
             *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
             if (w->rankChange == 1) {
@@ -1122,7 +1122,7 @@ void Plsel_ResultsUpdate(void) {
             w->timeout--;
             if (w->timeout == 0 || i != 0) {
                 sc->step++;
-                SeqA_Start(1);
+                FadeA_Start(1);
                 sc->timer = 0x1E;
             }
         }
@@ -1145,14 +1145,14 @@ void Plsel_ResultsUpdate(void) {
             w->timeout = 0xE10;
             w->closeState = 0;
             *(void (**)(void))0x6A3A24 = NULL;
-            SeqA_Start(2);
+            FadeA_Start(2);
         } else {
             sc->step = 0xB;
             w->timeout = 0xE10;
             w->closeState = 0;
             Plsel_BuildItemText();
             *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
-            SeqA_Start(2);
+            FadeA_Start(2);
             sc->timer = 0x1E;
             Stream_Play(1, 0x1D);
         }
@@ -1165,7 +1165,7 @@ void Plsel_ResultsUpdate(void) {
             w->timeout--;
             if (w->timeout == 0 || i != 0) {
                 sc->step++;
-                SeqA_Start(1);
+                FadeA_Start(1);
                 sc->timer = 0x1E;
             }
         }
@@ -1188,14 +1188,14 @@ void Plsel_ResultsUpdate(void) {
             sc->subStep = 0;
             w->timeout = 0xE10;
             w->closeState = 0;
-            SeqA_Start(2);
+            FadeA_Start(2);
         } else {
             PlselRes_InitRecordPage();
             sc->step = 0xE;
             sc->subStep = 0;
             w->timeout = 0xE10;
             w->closeState = 0;
-            SeqA_Start(2);
+            FadeA_Start(2);
             sc->timer = 0x1E;
             *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
         }
@@ -1208,7 +1208,7 @@ void Plsel_ResultsUpdate(void) {
             w->timeout--;
             if (w->timeout == 0 || i != 0) {
                 sc->step++;
-                SeqA_Start(1);
+                FadeA_Start(1);
                 sc->timer = 0x1E;
             }
         }
@@ -1250,7 +1250,7 @@ void Plsel_ResultsUpdate(void) {
             w->timeout = 0xE10;
             w->closeState = 0;
             sc->timer = 0x1E;
-            SeqA_Start(2);
+            FadeA_Start(2);
             *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
         }
         break;
@@ -1263,7 +1263,7 @@ void Plsel_ResultsUpdate(void) {
             if (w->timeout == 0 || i != 0) {
                 sc->step = 0x12;
                 sc->timer = 0x1E;
-                SeqA_Start(0xA);
+                FadeA_Start(0xA);
             }
         }
         Plsel_DrawAwardText();
@@ -1282,7 +1282,7 @@ void Plsel_ResultsUpdate(void) {
     case 1:
         if (Plsel_SaveRecordMenu() <= 0) {
             sc->step++;
-            SeqA_Start(1);
+            FadeA_Start(1);
             sc->timer = 0x1E;
         }
         break;
@@ -1292,7 +1292,7 @@ void Plsel_ResultsUpdate(void) {
                 Plsel_InitItemBoxMenu();
                 sc->step = 3;
                 sc->subStep = 0;
-                SeqA_Start(2);
+                FadeA_Start(2);
                 sc->timer = 0x1E;
             } else {
                 Plsel_LoadResultsTextures();
@@ -1302,7 +1302,7 @@ void Plsel_ResultsUpdate(void) {
                 Plsel_ComputeAllRewards();
                 *(void (**)(void))0x6A3A24 = Plsel_DrawResultsBg;
                 sc->timer = 0x1E;
-                SeqA_Start(2);
+                FadeA_Start(2);
             }
         }
         break;
@@ -1314,7 +1314,7 @@ void Plsel_ResultsUpdate(void) {
             w->timeout--;
             if (w->timeout == 0 || i != 0) {
                 sc->step++;
-                SeqA_Start(1);
+                FadeA_Start(1);
                 sc->timer = 0x1E;
             }
         }
@@ -1333,7 +1333,7 @@ void Plsel_ResultsUpdate(void) {
     case 23:
         if (--sc->timer <= 0) {
             sc->step++;
-            SeqA_Start(1);
+            FadeA_Start(1);
         }
         PlselRes_DrawCommError();
         break;
@@ -2497,7 +2497,7 @@ void Plsel_RewardListDraw(void);
 void Plsel_BuildRewardLines(PlselList *l);
 void PlselRes_BeginClose(void);
 void Save_AddZenny(s32);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 
 s32 Plsel_RewardListTask(PlselRewTask *t) {
     PlselList *l;
@@ -2615,7 +2615,7 @@ s32 Plsel_RewardListTask(PlselRewTask *t) {
         break;
     case 4:
         if (--w->closeTimer <= 0) {
-            SeqA_Start(1);
+            FadeA_Start(1);
             t->wait = 30;
             t->state++;
         }
@@ -3882,7 +3882,7 @@ void Plsel_CheckSizeAwards(void) {
     small = 0;
     crown = 0;
     for (i = 1; i < 0x49; i++) {
-        d = MonsterList_Find(MonsterGroup_First(i));
+        d = MonsterNote_FindKind(MonsterGroup_First(i));
         if (d != NULL) {
             m = gSave.sizeMax[i];
             if (m >= d->goldCrown && d->bigCrown != -1) {
@@ -3965,8 +3965,8 @@ void Plsel_ComputeAllRewards(void) {
 s32 Gs_GetState(u8 reg);
 s32 Tex_Use(s32 n, u32 *handles);
 s32 EntryPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
-s32 MonsterList_DrawLargeMark(u16 i, s16 x, s16 y, s32 v);
-s32 MonsterList_DrawSmallMark(u16 i, s16 x, s16 y, s32 v);
+s32 MonsterNote_DrawLargeCrown(u16 i, s16 x, s16 y, s32 v);
+s32 MonsterNote_DrawSmallCrown(u16 i, s16 x, s16 y, s32 v);
 extern s32 gResultsBgTex;
 extern s32 gResultsIconTex;
 extern s32 gPlselResultsTex;
@@ -4066,20 +4066,20 @@ void Plsel_DrawResultsBg(void) {
     Gs_SetState(0x5E, s5E);
     Gs_SetState(0x63, s63);
     if (gScene.step >= 0xD && gScene.step < 0x10 && w->page == 5) {
-        def = MonsterList_Find(MonsterGroup_First(*((u8 *)w + 0x210)));
+        def = MonsterNote_FindKind(MonsterGroup_First(*((u8 *)w + 0x210)));
         if (w->oldLargest > 0) {
-            MonsterList_DrawLargeMark(def->note, 0xC9, 0xB1, (s16)w->oldLargest);
+            MonsterNote_DrawLargeCrown(def->note, 0xC9, 0xB1, (s16)w->oldLargest);
         }
         if (w->oldSmallest > 0) {
-            MonsterList_DrawSmallMark(def->note, 0xC9, 0xC5, (s16)w->oldSmallest);
+            MonsterNote_DrawSmallCrown(def->note, 0xC9, 0xC5, (s16)w->oldSmallest);
         }
         if (w->oldLargest < w->newLargest && w->newLargest > 0) {
-            MonsterList_DrawLargeMark(def->note, 0xC9, 0x108, (s16)w->newLargest);
+            MonsterNote_DrawLargeCrown(def->note, 0xC9, 0x108, (s16)w->newLargest);
         }
         if (w->oldSmallest == 0) {
-            MonsterList_DrawSmallMark(def->note, 0xC9, 0x11C, (s16)w->newSmallest);
+            MonsterNote_DrawSmallCrown(def->note, 0xC9, 0x11C, (s16)w->newSmallest);
         } else if (w->newSmallest < w->oldSmallest && w->newSmallest > 0) {
-            MonsterList_DrawSmallMark(def->note, 0xC9, 0x11C, (s16)w->newSmallest);
+            MonsterNote_DrawSmallCrown(def->note, 0xC9, 0x11C, (s16)w->newSmallest);
         }
     }
     Draw_Icons((Icon *)gPlselResultsBgIcon, 1);

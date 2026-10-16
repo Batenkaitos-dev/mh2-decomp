@@ -14,7 +14,7 @@
 extern u8 gSoundLoading;
 extern u8 gFieldControl;
 extern u8 gOnlineFlag;
-extern u32 gQuestExtra;
+extern u32 gNextQuest;
 extern s32 gLoadingState;
 extern s32 gLoadingArg;
 extern char *gLoadingMessage;
@@ -26,7 +26,7 @@ void SysSettings_Reset(void);
 s8 Kbd_IsOpen(void);
 void Area_FreeModels(void);
 void TaskSlot_Clear9(void);
-void Task_SetBootMode1(void);
+void Task_StartBootToGmSub(void);
 void Hud_SetCancel(void);
 s32 QuestMenu_CheckInfo(void);
 s32 Chat_IsAvailable(void);
@@ -86,7 +86,7 @@ void Game_ReturnToTitle(void)
     LoadOverlay(2);
     TaskSlot_Clear9();
     SysSettings_Reset();
-    Task_SetBootMode1();
+    Task_StartBootToGmSub();
 }
 
 s32 SubMain_ResetRequested(void)
@@ -206,7 +206,7 @@ s32 Game_IsOnline(void)
 s32 Quest_IsDrill(void)
 {
     if (gScene.online == 1) {
-        if (QuestMenu_CheckInfo() == 1 && (gQuestExtra & 0x200000)) {
+        if (QuestMenu_CheckInfo() == 1 && (gNextQuest & 0x200000)) {
             return 1;
         }
         return 0;

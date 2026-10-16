@@ -14,11 +14,65 @@
  */
 #include "common.h"
 
-/* The game's button bits (PadInput.held ...): bit i is gPadBit[i]. */
+/*
+ * The core's button bits (PadRaw.buttons, PadInput.held ...): bit i is
+ * gPadBit[i]. Bits 0..15 are the buttons, in the order of gPadMapAnalog
+ * (unk_18AFE0.c), which gives each its libpad2 bit; bits 16..19 are the
+ * left stick and 20..23 the right stick as directions (Pad_StickDirBits),
+ * in the D-pad's order. sub_main's PadState_Update reorders them into the
+ * game's PAD_* bits (include/pad.h). Named for the default configuration.
+ */
+#define PADIO_UP 0x0001
+#define PADIO_DOWN 0x0002
+#define PADIO_LEFT 0x0004
+#define PADIO_RIGHT 0x0008
+#define PADIO_CROSS 0x0010
+#define PADIO_CIRCLE 0x0020
+#define PADIO_R2 0x0040
+#define PADIO_L2 0x0080
+#define PADIO_SQUARE 0x0100
+#define PADIO_TRIANGLE 0x0200
+#define PADIO_R1 0x0400
+#define PADIO_L1 0x0800
+#define PADIO_L3 0x1000
+#define PADIO_R3 0x2000
+#define PADIO_SELECT 0x4000
+#define PADIO_START 0x8000
 #define PAD_DIR_MASK 0x000F     /* 0..3: the directional buttons */
+#define PAD_DIR_COUNT 4
 #define PAD_LSTICK_SHIFT 16     /* 16..19: the left stick as 4 directions */
 #define PAD_RSTICK_SHIFT 20     /* 20..23: the right stick */
 #define PAD_BUTTONS 24
+#define PAD_KEYS 16             /* the pad's buttons, bits 0..15, each with a pressure */
+#define PAD_STICK_MAX 127       /* a stick's reach from the centre */
+
+/* PadRaw.kind, PadInput.kind: the pad in the port (0x8000 when its kind
+ * has neither bit 0 nor bit 1: Pad_ConvertData). */
+#define PAD_KIND_NONE 0
+#define PAD_KIND_STANDARD 1     /* what Pad_ReadPort sets for every pad type */
+#define PAD_KIND_UNSUPPORTED 0x8000
+
+/* PadPort.state. */
+#define PAD_PORT_CLOSED 0
+#define PAD_PORT_READ 1         /* the data is this frame's (read, or no pad: gPadDataNone) */
+#define PAD_PORT_UNREAD 2       /* opened, not read yet */
+
+/* PadPort.type, from the pad's button profile (Pad_ReadPort). */
+#define PAD_TYPE_DIGITAL 0
+#define PAD_TYPE_ANALOG 1
+#define PAD_TYPE_PRESSURE 2     /* analog with pressure-sensitive buttons */
+
+/* PadButton.kind: which of the pad's pressures the button has, and which
+ * PAD_CAP_PRESS_* bit gates it (gPadMapAnalog). */
+#define PAD_PRESS_NONE 0
+#define PAD_PRESS_DPAD 1        /* the directions */
+#define PAD_PRESS_SHAPES 2      /* cross, circle, square and triangle */
+#define PAD_PRESS_SHOULDERS 3   /* L1, R1, L2 and R2 */
+
+/* PadConfig.stickLMode, stickRMode: how Pad_Remap mirrors the stick. */
+#define PAD_STICK_MIRROR_X 1
+#define PAD_STICK_MIRROR_Y 2
+#define PAD_STICK_MIRROR_XY 3
 
 /* An analog stick (0x0C bytes). */
 typedef struct PadStick {
@@ -41,19 +95,25 @@ typedef struct PadId {
 typedef struct PadRaw {
     /* 0x00 */ u8 state;        /* PadPort.state */
     /* 0x01 */ u8 caps;         /* PAD_CAP_* */
-    /* 0x02 */ u16 kind;        /* 0: none; 1 ...; 0x8000: not supported */
+    /* 0x02 */ u16 kind;        /* PAD_KIND_* */
     /* 0x04 */ PadId id;
     /* 0x08 */ u32 buttons;     /* the game's bits */
-    /* 0x0C */ u8 pressure[16]; /* per button bit 0..15 */
+    /* 0x0C */ u8 pressure[PAD_KEYS]; /* per button bit 0..15 */
     /* 0x1C */ PadStick stickL;
     /* 0x28 */ PadStick stickR;
 } PadRaw;
 
-#define PAD_CAP_PRESS_DIR 0x01  /* pressure of the kind-2 buttons */
-#define PAD_CAP_PRESS_SHAPE 0x02 /* pressure of the kind-3 buttons */
-#define PAD_CAP_PRESS_PAD 0x10  /* pressure of the kind-1 buttons */
+#define PAD_CAP_PRESS_SHAPES 0x01    /* pressure of the PAD_PRESS_SHAPES buttons */
+#define PAD_CAP_PRESS_SHOULDERS 0x02 /* pressure of the PAD_PRESS_SHOULDERS buttons */
+#define PAD_CAP_PRESS_DPAD 0x10      /* pressure of the PAD_PRESS_DPAD buttons */
 #define PAD_CAP_STICK_L 0x20
 #define PAD_CAP_STICK_R 0x40
+
+/* A port's PAD_KEYS pressures as one block: Pad_Update copies them
+ * with one block copy, which its match needs. */
+typedef struct PadPressures {
+    u8 v[PAD_KEYS];
+} PadPressures;
 
 /* Frames a button has been held (2 bytes). */
 typedef struct PadHold {
@@ -73,7 +133,7 @@ typedef struct PadInput {
     /* 0x10 */ u32 pressed;     /* newly down this frame */
     /* 0x14 */ u32 released;
     /* 0x18 */ u32 changed;
-    /* 0x1C */ u8 pressure[16];
+    /* 0x1C */ u8 pressure[PAD_KEYS];
     /* 0x2C */ PadStick stickL;
     /* 0x38 */ PadStick stickR;
     /* 0x44 */ u32 trigger;     /* = pressed */
@@ -102,6 +162,8 @@ typedef struct PadLimits {
     /* 0x06 */ s16 unk6;
 } PadLimits;
 
+#define PAD_DATA_PRESSURES 12  /* the pressures a read gives (PadData.press) */
+
 /* The libpad-style data of a read (0x20 bytes). */
 typedef struct PadData {
     /* 0x00 */ u8 status;
@@ -111,7 +173,7 @@ typedef struct PadData {
     /* 0x05 */ u8 ry;
     /* 0x06 */ u8 lx;
     /* 0x07 */ u8 ly;
-    /* 0x08 */ u8 press[12];    /* right left up down, triangle circle
+    /* 0x08 */ u8 press[PAD_DATA_PRESSURES];    /* right left up down, triangle circle
                                    cross square, L1 R1 L2 R2 */
     /* 0x14 */ u8 unk14[0x20 - 0x14];
 } PadData;
@@ -119,20 +181,19 @@ typedef struct PadData {
 /* A controller button: its libpad2 bit and its kind (0x08 bytes). */
 typedef struct PadButton {
     /* 0x00 */ u32 mask;        /* in PadData.buttons (inverted) */
-    /* 0x04 */ s32 kind;        /* 1..3: pressure from PadData.press, 0: none */
+    /* 0x04 */ s32 kind;        /* PAD_PRESS_*: its pressure in PadData.press */
 } PadButton;
 
 /* A libpad2 socket (0x18 bytes). */
 typedef struct PadPort {
-    /* 0x00 */ u8 state;        /* 0: closed; 1: the data is this frame's (read,
-                                   or no pad: gPadDataNone); 2: not read */
+    /* 0x00 */ u8 state;        /* PAD_PORT_* */
     /* 0x01 */ u8 setup;        /* profile read */
     /* 0x02 */ u8 port;
     /* 0x03 */ u8 slot;
     /* 0x04 */ u8 unk4;
     /* 0x05 */ u8 vibOk;        /* has actuators */
     /* 0x06 */ u8 socket;
-    /* 0x07 */ u8 type;         /* 0: digital, 1: analog, 2: pressure */
+    /* 0x07 */ u8 type;         /* PAD_TYPE_* */
     /* 0x08 */ void *buf;       /* the socket's buffer, 64-byte aligned */
     /* 0x0C */ u32 profile;     /* scePad2GetButtonProfile */
     /* 0x10 */ u32 vibProfile;  /* sceVibGetProfile */

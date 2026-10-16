@@ -7,7 +7,7 @@
 #include "menu_task.h"
 
 /* prototypes */
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 s32 LobbyNet_GetErrText(char *);
 void Lobby_Disconnect(s32);
 void LobbyNet_Get6105(Net6105 *dst);
@@ -67,7 +67,7 @@ void LobbyLogin_OnProgress(NetMsg m, NetMsg *pm)
                 gLobby->mode = 4;
                 gLobby->step = 0;
                 gLobby->subStep = 0;
-                SeqA_Start(1);
+                FadeA_Start(1);
                 break;
             case 1:
             case 2:
@@ -118,7 +118,7 @@ void LobbyLogin_OnProgress(NetMsg m, NetMsg *pm)
             gLobby->mode = 5;
             gLobby->step = 0;
             gLobby->unk1D = 1;
-            SeqA_Start(1);
+            FadeA_Start(1);
             LobbyNet_GetErrText(gLobby->errText);
             break;
         case 8:

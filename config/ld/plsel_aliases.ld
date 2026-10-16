@@ -1,8 +1,8 @@
 /* Names the code uses inside C-owned data objects, each defined relative to
  * the object that contains it. */
 /* Round 19 (ndata): names the code uses inside named objects */
-D_6ADADE = gQuestExtra + 0xE;
-D_6ADB30 = gQuestExtra + 0x60;
+D_6ADADE = gNextQuest + 0xE;
+D_6ADB30 = gNextQuest + 0x60;
 /* Round 21 (ndata): names the code uses inside named objects */
 D_446F40 = gStageNames + 0xC0;
 D_446F90 = gStageNames + 0x110;

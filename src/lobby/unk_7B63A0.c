@@ -19,8 +19,8 @@ extern NetUser gNetUsers[10];
 u16 LobbyPad_Get(s32 a);
 void Menu_SetYesNo(s8 a);
 s32 Menu_YesNoInput(void);
-void SeqA_Start(s32 a);
-u8 SeqA_GetState(void);
+void FadeA_Start(s32 a);
+u8 FadeA_GetState(void);
 
 extern MailEntry gShortMailMsg;
 s32 LobbyReq_6704(void *id, char *s, void (*onReply)(NetMsg, NetMsg *));
@@ -407,7 +407,7 @@ void IdMenu_Quit(void)
         if (LobbyDialog_GetGrow() == -1) {
             switch (Menu_YesNoInput()) {
             case 0:
-                SeqA_Start(1);
+                FadeA_Start(1);
                 gLobbyMenu->step++;
                 break;
             case 3:
@@ -420,7 +420,7 @@ void IdMenu_Quit(void)
         }
         break;
     case 2:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gIdMenuResult = 0;
         }
         break;

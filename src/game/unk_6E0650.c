@@ -81,7 +81,7 @@ void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
 void Draw_ApplyStates(u32);
 s32 Model_Draw(u32 h, s32 flags);
 void Draw_SetDefaultState(void);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 void Key_LerpVec2(f32 *k, volatile f32 *out, f32 t);
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
 extern void *EffKushala29_AlphaKeys[];
@@ -103,7 +103,7 @@ void EffYamatsukami31_Update(ObjAttach *o);
 void EffEm02_Update(ObjAttach *o);
 extern u8 EffEm33_SeqTypes[];
 extern u16 EffEm33_SeqFrames[];
-f32 Lure_RandUnit(void);
+f32 Rand_Unit(void);
 void Vec_RotateX(f32 *v, f32 angle);
 extern s16 EffEm33_PartPeriods[];
 void Vec_RotateY(f32 *v, f32 angle);
@@ -129,7 +129,7 @@ extern s16 EffEm33_MotionBase[];
 extern void *EffEm33_MotionDesc;
 typedef struct EffPart { s16 slot; u8 type; u8 unk03; f32 vec[3]; u32 color; f32 size[3]; f32 scale; u8 *draw; f32 unk28; s16 unk2C; u16 unk2E; u16 unk30; u16 unk32; s16 unk34; s16 unk36; s16 unk38; u8 unk3A; u8 unk3B; } EffPart;
 void EffEm33_StartPart(ObjAttach *o, EffPart *p);
-f32 Lure_RandSigned(void);
+f32 Rand_Signed(void);
 u16 Area_IdForCurrentTime(u16);
 ObjAttach *ObjAttach_Alloc(s32 n);
 void ObjAttach_Free(ObjAttach *p);
@@ -264,7 +264,7 @@ typedef struct Ku29Part {
     s16 slot;                   /* 0x34 */
     s8 kind;                    /* 0x36: 0, 1 (on the floor) or 2 */
     u8 active;                  /* 0x37 */
-    u8 alpha;                   /* 0x38: 255 * Key_LerpF32 of EffKushala29_AlphaKeys */
+    u8 alpha;                   /* 0x38: 255 * Key_LerpFloat of EffKushala29_AlphaKeys */
     u8 flags;                   /* 0x39: 4: spins forward (EffKushala29_SpinPart), 2: the second model (kind 1) */
     u8 pad3A[2];
 } Ku29Part;
@@ -497,7 +497,7 @@ void EffKushala29_Setup(ObjAttach *o)
         } else {
             e->kind = 2;
             e->timer = -(i - 5) * 3;
-            e->vel[2] = 100.0f + (-300.0f + -200.0f * Lure_RandUnit()) / 6.0f;
+            e->vel[2] = 100.0f + (-300.0f + -200.0f * Rand_Unit()) / 6.0f;
             Vec_RotateY(e->vel, (6.2831855f * o->rotY) / 65536.0f);
         }
     }
@@ -718,9 +718,9 @@ void EffKushala29_Run(ObjAttach *o)
                     e->rot[2] = Rand_Next(1);
                     e->flags = Rand_Next(1) & 4;
                     Vec_Copy(r, D_008A8BFC);
-                    r[0] *= Lure_RandSigned();
-                    r[1] *= Lure_RandSigned();
-                    r[2] *= Lure_RandSigned();
+                    r[0] *= Rand_Signed();
+                    r[1] *= Rand_Signed();
+                    r[2] *= Rand_Signed();
                     Vec_Copy(d, EffKushala29_Dir0);
                     Vec_Add(d, d, r);
                     break;
@@ -734,9 +734,9 @@ void EffKushala29_Run(ObjAttach *o)
                     e->rot[1] = (s16) (Rand_Next(1) % 1820) - 0x71C;
                     e->rot[2] = (s16) (Rand_Next(1) % 1820) - 0x71C;
                     Vec_Copy(r, D_008A8C14);
-                    r[0] *= Lure_RandSigned();
-                    r[1] *= Lure_RandSigned();
-                    r[2] *= Lure_RandSigned();
+                    r[0] *= Rand_Signed();
+                    r[1] *= Rand_Signed();
+                    r[2] *= Rand_Signed();
                     Vec_Copy(d, D_008A8C08);
                     Vec_Add(d, d, r);
                     break;
@@ -841,7 +841,7 @@ void EffKushala29_DrawPart(ObjAttach *o, Ku29Part *p)
         k = 2;
         break;
     }
-    Key_LerpF32(EffKushala29_AlphaKeys[k], &a, p->timer);
+    Key_LerpFloat(EffKushala29_AlphaKeys[k], &a, p->timer);
     p->alpha = 255.0f * a;
     switch (p->kind) {
     case 1:

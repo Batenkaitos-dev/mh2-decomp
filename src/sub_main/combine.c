@@ -3,8 +3,10 @@
  * combination itself, which draws from random stream 1 twice (success,
  * then the quantity made).
  *
- * Recipes are 8-byte records (gRecipes), listed per first ingredient
- * (gRecipeIndex: count and first record, by the smaller item id).
+ * Recipes are 8-byte records (gRecipes, include/combine.h), listed per first
+ * ingredient (gRecipeIndex: two bytes per item id, the smaller of the two:
+ * the count and the first record). The three-item recipes are in
+ * unk_331A40.c.
  */
 #include "common.h"
 #include "scene.h"
@@ -15,9 +17,15 @@
 
 
 extern u8 gRecipeIndex[];       /* per item: count, first recipe */
+/* The two bytes of an item's gRecipeIndex entry. Read as bytes: the game
+ * computes the entry's address as item + item, which a struct index would
+ * not give. */
+#define RECIPE_INDEX_COUNT  0
+#define RECIPE_INDEX_FIRST  1
 extern u8 gRecipeRates[];       /* base success rate (percent) by class */
 extern u8 gCombineBookBonus[];         /* rate bonus by combination books owned */
-extern u16 gCombineBookItems[5];       /* the combination books (items) */
+#define COMBINE_BOOK_COUNT 5
+extern u16 gCombineBookItems[COMBINE_BOOK_COUNT];  /* the combination books (items) */
 extern u8 gRecipeYieldBase[];         /* quantity made, by yield class */
 extern u8 *gRecipeYieldChances[];        /* quantity: base, then chances of one more */
 extern char *gRecipeYieldLabels[];
@@ -37,27 +45,27 @@ s32 Combine_HasFixedYield(Player *player, u16 item);
 /* 1 if some recipe that uses item can be made now. */
 s32 Combine_ItemHasRecipe(s16 item)
 {
-    u8 *ix = &gRecipeIndex[item + item];
-    Recipe *r;
-    s32 n;
+    u8 *index = &gRecipeIndex[item + item];
+    Recipe *recipe;
+    s32 count;
     s32 i;
 
-    n = ix[0];
-    if (n != 0) {
-        r = &gRecipes[ix[1]];
-        for (; n > 0; n--, r++) {
-            if (Recipe_CanUse(&gPlayers[gScene.localPlayer], r) == 1) {
+    count = index[RECIPE_INDEX_COUNT];
+    if (count != 0) {
+        recipe = &gRecipes[index[RECIPE_INDEX_FIRST]];
+        for (; count > 0; count--, recipe++) {
+            if (Recipe_CanUse(&gPlayers[gScene.localPlayer], recipe) == 1) {
                 return 1;
             }
         }
     }
     for (i = 0; i < item; i++) {
-        ix = &gRecipeIndex[i + i];
-        n = ix[0];
-        if (n != 0) {
-            r = &gRecipes[ix[1]];
-            for (; n > 0; n--, r++) {
-                if (r->item == item && Recipe_CanUse(&gPlayers[gScene.localPlayer], r) == 1) {
+        index = &gRecipeIndex[i + i];
+        count = index[RECIPE_INDEX_COUNT];
+        if (count != 0) {
+            recipe = &gRecipes[index[RECIPE_INDEX_FIRST]];
+            for (; count > 0; count--, recipe++) {
+                if (recipe->item == item && Recipe_CanUse(&gPlayers[gScene.localPlayer], recipe) == 1) {
                     return 1;
                 }
             }
@@ -66,29 +74,30 @@ s32 Combine_ItemHasRecipe(s16 item)
     return 0;
 }
 
-/* The recipe for items a and b (in any order), or NULL. */
-Recipe *Combine_FindRecipe(s16 a, s16 b)
+/* The recipe for items itemA and itemB (in any order), or NULL, also when
+ * the local player can't use it. */
+Recipe *Combine_FindRecipe(s16 itemA, s16 itemB)
 {
-    Recipe *r;
-    u8 *ix;
-    u32 n;
-    s16 t;
+    Recipe *recipe;
+    u8 *index;
+    u32 count;
+    s16 swap;
 
-    if (a > b) {
-        t = b;
-        b = a;
-        a = t;
+    if (itemA > itemB) {
+        swap = itemB;
+        itemB = itemA;
+        itemA = swap;
     }
-    ix = &gRecipeIndex[a + a];
-    n = ix[0];
-    if (n == 0) {
+    index = &gRecipeIndex[itemA + itemA];
+    count = index[RECIPE_INDEX_COUNT];
+    if (count == 0) {
         return NULL;
     }
-    r = &gRecipes[ix[1]];
-    for (; n != 0; n--, r++) {
-        if (r->item == b) {
-            if (Recipe_CanUse(&gPlayers[gScene.localPlayer], r) == 1) {
-                return r;
+    recipe = &gRecipes[index[RECIPE_INDEX_FIRST]];
+    for (; count != 0; count--, recipe++) {
+        if (recipe->item == itemB) {
+            if (Recipe_CanUse(&gPlayers[gScene.localPlayer], recipe) == 1) {
+                return recipe;
             }
             break;
         }
@@ -99,36 +108,38 @@ Recipe *Combine_FindRecipe(s16 a, s16 b)
 s32 Combine_GetRate(s16 a, s16 b, s32 mode);
 
 /*
- * Combines items a and b. Returns the item made, or -1 on failure, and
- * the quantity in *count. The ingredients are used up either way (from the
- * pouch in mode 0, else from the box).
+ * Combines items itemA and itemB. Returns the item made, or -1 on failure,
+ * and the quantity in *count: the recipe's yield class gives a base, then
+ * each roll under the next chance adds one. The ingredients are used up
+ * either way (from the pouch in mode 0, else from the save's pouch, or the
+ * box when the pouch has none).
  */
-s16 Combine_Do(u8 *count, Player *player, s16 a, s16 b, s32 mode)
+s16 Combine_Do(u8 *count, Player *player, s16 itemA, s16 itemB, s32 mode)
 {
-    Recipe *r;
+    Recipe *recipe;
     s16 result;
     u8 *chance;
-    s32 x;
+    s32 roll;
 
-    r = Combine_FindRecipe(a, b);
-    if (r == NULL) {
+    recipe = Combine_FindRecipe(itemA, itemB);
+    if (recipe == NULL) {
         return -1;
     }
-    result = (s8)Combine_GetRate(a, b, mode);
+    result = (s8)Combine_GetRate(itemA, itemB, mode);
     if ((u16)Rand_Next(1) % 100 < result) {
-        result = r->result;
+        result = recipe->result;
         if (Combine_HasFixedYield(player, result) == 1) {
-            *count = gRecipeYieldBase[r->yieldClass];
+            *count = gRecipeYieldBase[recipe->yieldClass];
         } else {
-            chance = gRecipeYieldChances[r->yieldClass];
+            chance = gRecipeYieldChances[recipe->yieldClass];
             *count = *chance++;
-            x = (u16)Rand_Next(1) % 100;
+            roll = (u16)Rand_Next(1) % 100;
             for (;;) {
-                if (x < *chance) {
+                if (roll < *chance) {
                     break;
                 }
                 (*count)++;
-                x -= *chance;
+                roll -= *chance;
                 chance++;
             }
         }
@@ -137,42 +148,44 @@ s16 Combine_Do(u8 *count, Player *player, s16 a, s16 b, s32 mode)
         result = -1;
     }
     if (mode == 0) {
-        Pouch_Add(player, a, -1);
-        Pouch_Add(player, b, -1);
+        Pouch_Add(player, itemA, -1);
+        Pouch_Add(player, itemB, -1);
     } else {
-        if (SavePouch_Count(a) == 0) {
-            ItemBox_Remove(a, 1);
+        if (SavePouch_Count(itemA) == 0) {
+            ItemBox_Remove(itemA, 1);
         } else {
-            SavePouch_Add(a, -1);
+            SavePouch_Add(itemA, -1);
         }
-        if (SavePouch_Count(b) == 0) {
-            ItemBox_Remove(b, 1);
+        if (SavePouch_Count(itemB) == 0) {
+            ItemBox_Remove(itemB, 1);
         } else {
-            SavePouch_Add(b, -1);
+            SavePouch_Add(itemB, -1);
         }
     }
     return result;
 }
 
-/* Nonzero for items of type 2 or 3 when the player has 0xAA (from
- * Player_HasSkill); such results are made in the fixed quantity. */
+/* Nonzero for ammo and coatings when the player has SKILL_COMBINE_AMMO_FIXED:
+ * such results are made in the yield class's base quantity. */
 s32 Combine_HasFixedYield(Player *player, u16 item)
 {
     u8 type = gItemData[item].type;
 
-    if (type != 2 && type != 3) {
+    if (type != ITEM_TYPE_AMMO && type != ITEM_TYPE_COATING) {
         return 0;
     }
-    return Player_HasSkill(player, 0xAA);
+    return Player_HasSkill(player, SKILL_COMBINE_AMMO_FIXED);
 }
 
 /*
- * Success rate in percent (mode != 0: always 100): the recipe's base rate,
- * 100 for flagged recipes with item 0x48, then the combination skill
- * (-15..+20), +5 for some recipes (else 95 and up round to 100), plus a
- * bonus for each combination book owned (in order), at most 100.
+ * Success rate in percent (mode != 0: always 100; -1 when the local player
+ * can't use the recipe): the recipe's base rate, 100 for recipes flagged 2
+ * with SKILL_COMBINE_SURE, then the combination skill (-15 to +20), +5 for a
+ * known recipe (else 95 and up round to 100), plus the bonus for the
+ * combination books held (counted in order, up to the first missing), at
+ * most 100.
  */
-s32 Combine_RecipeRate(Recipe *r, s32 mode)
+s32 Combine_RecipeRate(Recipe *recipe, s32 mode)
 {
     u8 rate;
     Player *player;
@@ -180,36 +193,36 @@ s32 Combine_RecipeRate(Recipe *r, s32 mode)
 
     if (mode == 0) {
         player = &gPlayers[gScene.localPlayer];
-        if (Recipe_CanUse(player, r) != 1) {
+        if (Recipe_CanUse(player, recipe) != 1) {
             return -1;
         }
-        rate = gRecipeRates[r->rateClass];
-        if ((r->flags & 2) && Player_HasSkill(player, 0x48) == 1) {
+        rate = gRecipeRates[recipe->rateClass];
+        if ((recipe->flags & RECIPE_SURE_WITH_SKILL) && Player_HasSkill(player, SKILL_COMBINE_SURE) == 1) {
             return 100;
         }
-        switch (Player_GetSkill(player, 0x25)) {
-        case 0xA7:
+        switch (Player_GetSkill(player, SKILL_GROUP_COMBINE)) {
+        case SKILL_COMBINE_PLUS20:
             rate += 20;
             break;
-        case 0xA6:
+        case SKILL_COMBINE_PLUS10:
             rate += 10;
             break;
-        case 0xA5:
+        case SKILL_COMBINE_PLUS5:
             rate += 5;
             break;
-        case 0xA8:
+        case SKILL_COMBINE_MINUS5:
             rate -= 5;
             break;
-        case 0xA9:
+        case SKILL_COMBINE_MINUS15:
             rate -= 15;
             break;
         }
-        if (Recipe_IsKnown(r) == 1) {
+        if (Recipe_IsKnown(recipe) == 1) {
             rate += 5;
         } else if (rate >= 95) {
             rate = 100;
         }
-        for (i = 0; i < 5; i++) {
+        for (i = 0; i < COMBINE_BOOK_COUNT; i++) {
             if (Pouch_Count(player, gCombineBookItems[i]) == 0) {
                 break;
             }
@@ -224,40 +237,45 @@ s32 Combine_RecipeRate(Recipe *r, s32 mode)
     return (s8)rate;
 }
 
-s32 Combine_GetRate(s16 a, s16 b, s32 mode)
+/* The success rate of combining itemA and itemB (Combine_RecipeRate), -1
+ * without a recipe. */
+s32 Combine_GetRate(s16 itemA, s16 itemB, s32 mode)
 {
-    Recipe *r = Combine_FindRecipe(a, b);
+    Recipe *recipe = Combine_FindRecipe(itemA, itemB);
 
-    if (r == NULL) {
+    if (recipe == NULL) {
         return -1;
     }
-    return Combine_RecipeRate(r, mode);
+    return Combine_RecipeRate(recipe, mode);
 }
 
-u8 Recipe_YieldBase(Recipe *r)
+/* The quantity a recipe makes with SKILL_COMBINE_AMMO_FIXED. */
+u8 Recipe_YieldBase(Recipe *recipe)
 {
-    return gRecipeYieldBase[r->yieldClass];
+    return gRecipeYieldBase[recipe->yieldClass];
 }
 
-u8 Recipe_YieldAmount(Recipe *r)
+/* The quantity a recipe makes at least (its yield chances' first byte). */
+u8 Recipe_YieldAmount(Recipe *recipe)
 {
-    return *gRecipeYieldChances[r->yieldClass];
+    return *gRecipeYieldChances[recipe->yieldClass];
 }
 
-void *Recipe_YieldLabel(Recipe *r)
+/* The text naming a recipe's yield. */
+void *Recipe_YieldLabel(Recipe *recipe)
 {
-    return gRecipeYieldLabels[r->yieldClass];
+    return gRecipeYieldLabels[recipe->yieldClass];
 }
 
-/* 1 if the recipe for a and b is in the player's combination list. */
-s32 Combine_IsKnown(s16 a, s16 b)
+/* 1 if the recipe for itemA and itemB is in the player's combination list. */
+s32 Combine_IsKnown(s16 itemA, s16 itemB)
 {
-    Recipe *r = Combine_FindRecipe(a, b);
+    Recipe *recipe = Combine_FindRecipe(itemA, itemB);
 
-    if (r == NULL) {
+    if (recipe == NULL) {
         return 0;
     }
-    return (gSave.recipeBits[r->listBit >> 3] & (1 << (r->listBit & 7))) != 0;
+    return (gSave.recipeBits[recipe->listBit >> 3] & (1 << (recipe->listBit & 7))) != 0;
 }
 
 /* combine's .data (0x41D2F0-0x41E020) */

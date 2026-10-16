@@ -8,6 +8,8 @@
  */
 #include "common.h"
 #include "em.h"
+#include "model.h"
+#include "motion.h"
 
 static u8 *ModelFile_Header(u8 *h);
 static s32 ModelChunk_Check(u8 *h, s32 type);
@@ -16,22 +18,6 @@ u8 *ModelFile_GetPart(u8 *h, u32 idx);
 u8 *ModelFile_GetMat(u8 *h, u32 idx);
 u8 *ModelFile_GetTex(u8 *h, u32 idx);
 
-/* An animation curve (8 bytes) and its key formats, as in unk_2F17C0.c (the keys at
- * gAnimKeyBase + keys; the 16-bit formats hold signed values). */
-typedef struct AnimCurve {
-    u8 type;                    /* 0x0: the key format */
-    u8 idx;                     /* 0x1: the pose value it drives */
-    u16 count;                  /* 0x2: keys */
-    s32 keys;                   /* 0x4: offset of the keys from gAnimKeyBase */
-} AnimCurve;
-
-typedef struct KeyF2 { f32 v, t; } KeyF2;                       /* 0x21: linear */
-typedef struct KeyF4 { f32 v, t, in, out; } KeyF4;              /* 0x22: cubic */
-typedef struct KeyFM { u32 mode; f32 v, t, in, out; } KeyFM;    /* 0x23: either, per key */
-typedef struct KeyS2 { s16 v, t; } KeyS2;                       /* 0x11 */
-typedef struct KeyS4 { s16 v, t, in, out; } KeyS4;              /* 0x12 */
-typedef struct KeySM { u32 mode; s16 v, t, in, out; } KeySM;    /* 0x13 */
-
 /* prototypes */
 f32 AnimCurve_EndTime(AnimCurve *c);
 f32 Vec_Length2(f32 *);
@@ -39,41 +25,6 @@ s32 Debug_Sprintf(const char *fmt, ...);
 extern s32 gAnimKeyBase;
 extern s16 gUsbKbReady;
 /* end of prototypes */
-
-/* A skeleton as loaded: a 16-byte header, then count BoneDefs of 0x40 bytes. */
-typedef struct SkelHeader {
-    s16 unk0;                   /* 0x0 */
-    s16 count;                  /* 0x2 */
-    s32 size;                   /* 0x4: of the header (0x10) */
-    struct SkelHeader *next;    /* 0x8 */
-    s32 unkC;                   /* 0xC */
-} SkelHeader;
-
-typedef struct BoneDef {
-    s16 index;                  /* 0x00 */
-    u16 id;                     /* 0x02 */
-    u8 pad04[2];
-    s16 child;                  /* 0x06 */
-    s16 sibling;                /* 0x08 */
-    s16 unkA;                   /* 0x0A */
-    u8 pad0C[4];
-    f32 scale[4];               /* 0x10 */
-    f32 rot[4];                 /* 0x20 */
-    f32 trans[4];               /* 0x30 */
-} BoneDef;
-
-/* A node of the model file (SkelFile_GetNode). */
-typedef struct FileNode {
-    s32 index;                  /* 0x00 */
-    s32 unk4;
-    s32 child;                  /* 0x08 */
-    s32 sibling;                /* 0x0C */
-    f32 scale[4];               /* 0x10 */
-    f32 rot[4];                 /* 0x20 */
-    f32 trans[4];               /* 0x30 */
-    s32 unkA;                   /* 0x40 */
-    s32 id;                     /* 0x44 */
-} FileNode;
 
 s32 SkelFile_PartCount(void *f);
 s32 SkelFile_PartRoot(void *f, u32 i);
@@ -91,16 +42,16 @@ s32 SkelFile_BuildPart(SkelHeader *dst, SkelHeader *h, void *f, s32 part)
     s32 base;
     BoneDef *d;
     BoneDef *b;
-    FileNode *src;
+    SkelFileNode *src;
 
     if (part >= SkelFile_PartCount(f)) {
         return 0;
     }
-    h->unkC = SkelFile_PartSize(f, part);
+    h->size = SkelFile_PartSize(f, part);
     h->count = n = SkelFile_PartBoneCount(f, part);
-    h->size = 0x10;
+    h->headerSize = sizeof(SkelHeader);
     d = (BoneDef *)(h + 1);
-    h->next = NULL;
+    h->block = NULL;
     for (i = 0; i < n; i++) {
         b = &d[i];
         for (k = 0; k < 4; k++) {
@@ -111,7 +62,7 @@ s32 SkelFile_BuildPart(SkelHeader *dst, SkelHeader *h, void *f, s32 part)
     }
     base = SkelFile_PartRoot(f, part);
     for (i = 0; i < n; i++, d++) {
-        src = (FileNode *)SkelFile_GetNode(f, i + base);
+        src = (SkelFileNode *)SkelFile_GetNode(f, i + base);
         d->index = src->index;
         d->id = src->id;
         d->child = src->child;
@@ -130,7 +81,7 @@ s32 SkelFile_BuildPart(SkelHeader *dst, SkelHeader *h, void *f, s32 part)
         }
     }
     *dst = *h;
-    dst->next = h;
+    dst->block = h;
     return 1;
 }
 
@@ -161,7 +112,6 @@ s32 ModelFile_GetPartList(s16 *out, u8 *f, s32 idx)
     }
     return 0;
 }
-
 
 
 s32 ModelFile_GetDrawStates(void *ds, u8 *f, s32 idx)
@@ -1090,25 +1040,25 @@ f32 AnimCurve_StartTime(AnimCurve *c)
     case 0x20:
         t = 0.0f;
         break;
-    case 0x21:
+    case ANIM_KEY_F32_LINEAR:
         t = ((KeyF2 *)keys)->t;
         break;
-    case 0x22:
+    case ANIM_KEY_F32_CUBIC:
         t = ((KeyF4 *)keys)->t;
         break;
-    case 0x23:
+    case ANIM_KEY_F32_MIXED:
         t = ((KeyFM *)keys)->t;
         break;
     case 0x10:
         t = 0.0f;
         break;
-    case 0x11:
+    case ANIM_KEY_S16_LINEAR:
         t = ((KeyS2 *)keys)->t;
         break;
-    case 0x12:
+    case ANIM_KEY_S16_CUBIC:
         t = ((KeyS4 *)keys)->t;
         break;
-    case 0x13:
+    case ANIM_KEY_S16_MIXED:
         t = ((KeySM *)keys)->t;
         break;
     }
@@ -1131,25 +1081,25 @@ f32 AnimCurve_EndTime(AnimCurve *c)
     case 0x20:
         t = 0.0f;
         break;
-    case 0x21:
+    case ANIM_KEY_F32_LINEAR:
         t = ((KeyF2 *)keys)[c->count - 1].t;
         break;
-    case 0x22:
+    case ANIM_KEY_F32_CUBIC:
         t = ((KeyF4 *)keys)[c->count - 1].t;
         break;
-    case 0x23:
+    case ANIM_KEY_F32_MIXED:
         t = ((KeyFM *)keys)[c->count - 1].t;
         break;
     case 0x10:
         t = 0.0f;
         break;
-    case 0x11:
+    case ANIM_KEY_S16_LINEAR:
         t = ((KeyS2 *)keys)[c->count - 1].t;
         break;
-    case 0x12:
+    case ANIM_KEY_S16_CUBIC:
         t = ((KeyS4 *)keys)[c->count - 1].t;
         break;
-    case 0x13:
+    case ANIM_KEY_S16_MIXED:
         t = ((KeySM *)keys)[c->count - 1].t;
         break;
     }

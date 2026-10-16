@@ -102,11 +102,11 @@ EmBone *Em_Bone(void *obj, s16 bone);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 void EmYamaTsukami_SpawnAreaImpactEffects(Em *);
 s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
-void func_3A0810(Em *em);
+void Quest_TriggerEvent(Em *em);
 void Em_BreakPart(Em *em, s32 part);
 void Em_EndStatus5(Em *em);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 s32 MinePoint_Count(s32);
 void QSync_SendEm(Em *em, u8 kind, u8 arg);
@@ -1343,7 +1343,7 @@ void EmYamaTsukami_State3_07(Em *em, s32 variant)
                 if (n < 0xA) {
                     w->unk1 = n + 1;
                     if (w->unk1 >= 0xA) {
-                        func_3A0810(em);
+                        Quest_TriggerEvent(em);
                     }
                     gScene.fortStage = w->unk1;
                 }
@@ -2355,7 +2355,7 @@ void EmYamaTsukami_Update(Em *em)
     } else {
         Em_UpdatePendingScript(em);
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmYamaTsukami_RunState(em);
     if (em->stateRequest != 0) {
         EmYamaTsukami_RunState(em);

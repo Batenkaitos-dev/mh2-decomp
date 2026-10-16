@@ -19,6 +19,11 @@ typedef struct Recipe {
 } Recipe;
 typedef char Recipe_size_check[(sizeof(Recipe) == 8) ? 1 : -1];
 
+/* Recipe.flags */
+#define RECIPE_NEEDS_SKILL      0x01    /* usable only with SKILL_RECIPE_FLAG1 or item 6 in the pouch */
+#define RECIPE_SURE_WITH_SKILL  0x02    /* always succeeds with SKILL_COMBINE_SURE */
+#define RECIPE_THREE_ITEMS      0x80    /* a recipe of gRecipesEx */
+
 extern Recipe gRecipes[];       /* 0xBD recipes of two items (and an end record) */
 extern Recipe gRecipesEx[];     /* 0x30 recipes of three items */
 

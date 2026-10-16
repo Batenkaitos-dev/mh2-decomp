@@ -1,7 +1,13 @@
 /*
- * select: the name check of character creation (0x6B4B30-0x6B51B0). Its
- * .data (0x6C80A0-0x6CAB60) is the list of names that can't be used
- * (16-byte records: the name, then its length at byte 15).
+ * select: the name check of character creation (0x6B4B30-0x6B51B0).
+ *
+ * NgWord_Check (called by select_chara.c when a name is entered) refuses a
+ * name that contains a listed word. The list, gNgWords, is the file's
+ * .data (0x6C80A0-0x6CAB60): NgWordRec records of 16 bytes, a word longer
+ * than 14 characters continuing in the next records. The name is compared
+ * in upper case, with look-alike characters folded to letters
+ * (NgWord_Normalize). The lobby's WordFilter_Scan (unk_793070.c) is the
+ * same check for chat.
  */
 #include "common.h"
 #include "m2c_macros.h"
@@ -9,12 +15,12 @@
 
 extern s8 gCtypeTable[];       /* main: the ctype table (1 + c: 2 lower case, 7 letter or digit) */
 
-s32 strlen(s8 *);      /* strlen */
+s32 strlen(s8 *);
 s32 strncmp(s8 *, s8 *, s32);
 void NgWord_Normalize(s8 *dst, s8 *src, s32 n);
-s32 NgWord_MatchAt(s8 *p);
-s32 NgWord_StartsWithListed(s8 *name, s8 *list);
-s32 NgWord_ReadRecord(s8 *rec, s8 *out, s32 max);
+s32 NgWord_MatchAt(s8 *text);
+s32 NgWord_StartsWithListed(s8 *name, NgWordRec *list);
+s32 NgWord_ReadRecord(NgWordRec *rec, s8 *out, s32 max);
 
 /* .data */
 u32 gNgWords[2736] = {
@@ -22,50 +28,54 @@ u32 gNgWords[2736] = {
 };
 
 
-/* The name check: 0 when the name contains a listed word (compared in upper
- * case; 1 and ! also stand for L, and ( or < are skipped before the first
- * letter matches). The lobby's WordFilter_Scan (unk_793070.c) is its twin.
- * c1 and c2 each serve a loop of their own first (the current character of
- * buf, the first character of a record) and are reused in the word loop (the
- * word's and the name's character): MWCC numbers a reused variable's later
- * values after the loop optimizer's walkers, which gives the game's t2-t5. */
-s32 NgWord_Check(s8 *name) {
-    s8 buf[0x50];
-    s8 *w;
+/*
+ * The name check: returns 0 when the name contains a listed word, else 1.
+ * The search starts at each word of the name (a letter or digit after
+ * anything else). The name is compared in upper case; 1 and ! also stand
+ * for L, and ( or < are skipped before the first letter matches. A match
+ * that runs on into more letters counts only when the rest starts a listed
+ * word too (NgWord_MatchAt).
+ * wordCh and nameCh serve a loop of their own first (the current character
+ * of upper, the first character of a record) before the word loop: the
+ * game's register use needs the reuse.
+ */
+s32 NgWord_Check(s8 *name)
+{
+    s8 upper[0x50];
+    NgWordRec *rec;
     s32 len;
     s8 word[0x50];
-    s32 i;
+    s32 start;
     s32 found;
-    s8 *p;
-    s32 n;
+    s8 *cursor;
+    s32 wordLen;
     s32 k;
     s32 j;
-    s8 c1;
-    s8 c2;
-    s8 *list;
-
-    list = (s8 *)gNgWords;
+    s8 wordCh;
+    s8 nameCh;
+    NgWordRec *list;
+    list = (NgWordRec *)gNgWords;
     len = strlen(name);
-    NgWord_Normalize(buf, name, len);
-    i = 0;
-    p = buf;
-    for (c1 = *p; c1 != 0; c1 = *p) {
+    NgWord_Normalize(upper, name, len);
+    start = 0;
+    cursor = upper;
+    for (wordCh = *cursor; wordCh != 0; wordCh = *cursor) {
         found = 0;
-        for (w = list, c2 = *w; c2 != 0; w += 0x10, c2 = *w) {
-            n = NgWord_ReadRecord(w, word, len);
-            if (n == -1) {
+        for (rec = list, nameCh = rec->text[0]; nameCh != 0; rec++, nameCh = rec->text[0]) {
+            wordLen = NgWord_ReadRecord(rec, word, len);
+            if (wordLen == -1) {
                 continue;
             }
             k = 0;
-            j = i;
-            for (; !(c1 = word[k]) == 0 && (c2 = name[j]) != 0; j++) {
-                if (gCtypeTable[buf[j] + 1] & 7) {
-                    if (buf[j] != c1) {
-                        if (c2 == '1' || c2 == '!') {
-                            if (c1 != 'L') {
+            j = start;
+            for (; !(wordCh = word[k]) == 0 && (nameCh = name[j]) != 0; j++) {
+                if (gCtypeTable[upper[j] + 1] & 7) {
+                    if (upper[j] != wordCh) {
+                        if (nameCh == '1' || nameCh == '!') {
+                            if (wordCh != 'L') {
                                 break;
                             }
-                        } else if (c2 == '(' || c2 == '<') {
+                        } else if (nameCh == '(' || nameCh == '<') {
                             if (k != 0) {
                                 break;
                             }
@@ -75,7 +85,7 @@ s32 NgWord_Check(s8 *name) {
                         }
                     }
                     k++;
-                    if (k == n) {
+                    if (k == wordLen) {
                         found = 1;
                         j++;
                         break;
@@ -83,19 +93,19 @@ s32 NgWord_Check(s8 *name) {
                 }
             }
             if (found == 1) {
-                if ((gCtypeTable[name[j] + 1] & 7) && NgWord_MatchAt(&buf[j]) == 0) {
+                if ((gCtypeTable[name[j] + 1] & 7) && NgWord_MatchAt(&upper[j]) == 0) {
                     found = 0;
                     continue;
                 }
                 return 0;
             }
         }
-        while (*p != 0) {
+        while (*cursor != 0) {
             if (found) {
                 break;
             }
-            p++;
-            if (!(gCtypeTable[name[i++] + 1] & 7) && (gCtypeTable[*p + 1] & 7)) {
+            cursor++;
+            if (!(gCtypeTable[name[start++] + 1] & 7) && (gCtypeTable[*cursor + 1] & 7)) {
                 break;
             }
         }
@@ -103,7 +113,11 @@ s32 NgWord_Check(s8 *name) {
     return 1;
 }
 
-void NgWord_Normalize(s8 *dst, s8 *src, s32 n) {
+/* Copies the name (n characters and its terminator) in upper case, with
+ * look-alikes folded: @ to A, $ and 5 to S, < and ( to C, ! and 1 to I,
+ * 2 to Z, 0 to O. */
+void NgWord_Normalize(s8 *dst, s8 *src, s32 n)
+{
     s32 i;
 
     for (i = 0; i <= n; i++) {
@@ -141,58 +155,65 @@ void NgWord_Normalize(s8 *dst, s8 *src, s32 n) {
     }
 }
 
-s32 NgWord_MatchAt(s8 *p) {
-    s32 ret;
-
-    if (*p == 0) {
-        ret = 1;
-    } else if (!((gCtypeTable + 1)[*p] & 7)) {
-        ret = 1;
+/* Where a match ends inside the name: returns 1 when the text there is at
+ * its end, is not a letter or digit, or starts a listed word itself; 0 when
+ * the match is only the start of a longer word. */
+s32 NgWord_MatchAt(s8 *text)
+{
+    s32 result;
+    if (*text == 0) {
+        result = 1;
+    } else if (!((gCtypeTable + 1)[*text] & 7)) {
+        result = 1;
     } else {
-        ret = NgWord_StartsWithListed(p, (s8 *)gNgWords) != 0;
+        result = NgWord_StartsWithListed(text, (NgWordRec *)gNgWords) != 0;
     }
-    return ret;
+    return result;
 }
 
-s32 NgWord_StartsWithListed(s8 *name, s8 *list) {
+/* 1 when the name starts with a word of the list. */
+s32 NgWord_StartsWithListed(s8 *name, NgWordRec *list)
+{
     s8 word[0x60];
     s32 len;
-    s32 n;
-
+    s32 wordLen;
     len = strlen(name);
-    while (*list != 0) {
-        n = NgWord_ReadRecord(list, word, len);
-        if (n != -1 && strncmp(name, word, n) == 0) {
+    while (list->text[0] != 0) {
+        wordLen = NgWord_ReadRecord(list, word, len);
+        if (wordLen != -1 && strncmp(name, word, wordLen) == 0) {
             return 1;
         }
-        list += 0x10;
+        list++;
     }
     return 0;
 }
 
-s32 NgWord_ReadRecord(s8 *rec, s8 *out, s32 max) {
+/* Copies the word that starts at rec into out (joining its continuation
+ * records) and returns its length; -1, without copying, when it is longer
+ * than max. */
+s32 NgWord_ReadRecord(NgWordRec *rec, s8 *out, s32 max)
+{
     s32 len;
-    s32 k;
-    s32 n;
+    s32 part;
+    s32 left;
     s32 i;
-
-    len = rec[0xF];
+    len = rec->len;
     if (max < len) {
         return -1;
     }
-    k = 0;
-    n = len;
-    while (rec[0x1F] == -1) {
-        for (i = 0; i < 0xE; i++) {
-            out[k * 0xE + i] = rec[i];
+    part = 0;
+    left = len;
+    while (rec[1].len == -1) {
+        for (i = 0; i < NGWORD_PART_LEN; i++) {
+            out[part * NGWORD_PART_LEN + i] = rec->text[i];
         }
-        rec += 0x10;
-        k++;
-        n -= 0xE;
+        rec++;
+        part++;
+        left -= NGWORD_PART_LEN;
     }
-    for (i = 0; i < n; i++) {
-        out[k * 0xE + i] = rec[i];
+    for (i = 0; i < left; i++) {
+        out[part * NGWORD_PART_LEN + i] = rec->text[i];
     }
-    out[k * 0xE + i] = 0;
+    out[part * NGWORD_PART_LEN + i] = 0;
     return len;
 }

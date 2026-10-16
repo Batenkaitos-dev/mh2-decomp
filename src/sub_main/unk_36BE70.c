@@ -93,7 +93,7 @@ s32 Gs_SetState(u8 reg, u32 v);
 void Gfx_DrawLine(s32 a, s32 b, s32 c, s32 d, u32 color);
 void Callbacks_Clear(void);
 void LayerCallbacks_Clear(void);
-void SeqA_Draw(void);
+void FadeA_Draw(void);
 void Loading_DrawLetters(void);
 u16 Pad_ReadButtons(s32 port);
 void Pad_CopyWords(s32 port);
@@ -114,7 +114,7 @@ void Prim_DrawAll(void);
 void Text_DrawPage(s32 layer);
 void Text_DrawBoxes(s32 layer);
 void EquipPreview_Draw(void);
-void SeqB_Draw(void);
+void FadeB_Draw(void);
 void Text_Disable(void);
 void Gfx_ResetRenderStates(s32 a);
 void Text_Reset(void);
@@ -534,7 +534,7 @@ void Callbacks_Run(void)
             (*fn)();
         }
     }
-    SeqA_Draw();
+    FadeA_Draw();
     Loading_DrawLetters();
 }
 
@@ -732,7 +732,7 @@ void Frame_Draw(void)
     Text_DrawPage(4);
     Text_DrawBoxes(4);
     Task_RunList(gDrawOtText3);
-    SeqB_Draw();
+    FadeB_Draw();
     Gfx_SetState63(1);
     Text_DrawPage(3);
     Text_DrawBoxes(3);

@@ -17,6 +17,7 @@ GmSub_MoveCursorV = 0x008FB570; // type:func
 GmSub_MoveCursorH = 0x008FB640; // type:func
 GmSub_UpdateMenu = 0x008FB700; // type:func
 GmSub_UpdateYesNo = 0x008FBFA0; // type:func
+GmSub_IsCharaSelectMenu = 0x008FC080; // type:func 1 when the character selection runs as the menu screen (the main menu entry 1 or the PSP link waiting for a character)
 GmEm_SetQuestSounds = 0x00902AD0; // type:func
 GmEm_SetupKind = 0x00903EE0; // type:func
 GmEm_ResetSize = 0x009042F0; // type:func

@@ -18,7 +18,7 @@ s32 LobbyNet_Get6709(NetFound6709 **out);
 s32 Browser_Update(void);
 void LobbyKddi_CloseBrowser(void);
 s32 memcmp(void *a, void *b, s32 n);  /* memcmp */
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 extern LobbyMenu *gLobbyMenu;
 /* a page's data kept across the browser (0x1D0 bytes, 16-aligned) */
 typedef struct LobbyPageData {
@@ -36,7 +36,7 @@ void FlushCache(s32);
 void func_007A6460(s8 arg0);
 s32 LobbyEntry_InStep9(void);
 void Kbd_Cancel(void);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void Game_ResetSubsystems(void);
 void NetScene_ToPortalPage3(void);
 void *memset(void *dst, s32 c, u32 n);
@@ -101,7 +101,7 @@ void LobbyWeb_Run(void)
     case 3:
         gLobbyPageDataPrev = gLobbyPageData;
         gLobby->webStep++;
-        SeqA_Start(2);
+        FadeA_Start(2);
         break;
     case 4:
         switch (LobbyKddi_WaitPage()) {
@@ -130,7 +130,7 @@ void LobbyWeb_Run(void)
         }
         break;
     case 5:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             gLobby->webStep = 0;
             gLobby->connected = 1;
             gLobby->linkState = 2;
@@ -138,7 +138,7 @@ void LobbyWeb_Run(void)
         }
         break;
     case 6:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             gLobby->webStep = 0;
             Game_ResetSubsystems();
             gLobby->connected = 1;
@@ -171,15 +171,15 @@ s32 LobbyKddi_WaitPage(void)
         } else {
             gLobby->unk3942 = 0;
         }
-        SeqA_Start(1);
+        FadeA_Start(1);
         return 0;
     case -1:
         LobbyKddi_CloseBrowser();
-        SeqA_Start(2);
+        FadeA_Start(2);
         return 0;
     case -100:
         LobbyKddi_CloseBrowser();
-        SeqA_Start(2);
+        FadeA_Start(2);
         return 1;
     }
     return 2;

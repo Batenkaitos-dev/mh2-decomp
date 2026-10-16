@@ -41,9 +41,9 @@ void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 /* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmDrome_ChangeState: 47 of 148 words differ, EmDrome_SetGroup0State: 1 of 146 words differ ... */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
@@ -125,15 +125,15 @@ f32 Vec_DistanceXZ(f32 *a, f32 *b);
 void Em_SetTargetAngle(Em *em);
 s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Em_ResetNotice(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_ClearPart(Em *em, u16 part);
 void Em_AddHp(Em *em, s16 n);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Add7EC(Em *em, s32 n);
-void Em_Clear7F0State(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_ClearNeed1State(Em *em);
+void Em_ClearNeed2State(Em *em);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 void MinePoint_Remove(s32);
 f32 GmEm_ScaleBySize(Em *em, f32 v);
@@ -404,7 +404,7 @@ void EmDrome_State0_06(Em *em)
 
 void EmDrome_State0_07(Em *em, EmWork *work, s32 variant)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1756,7 +1756,7 @@ void EmDrome_State4_05(Em *em, EmWork *work)
 
 void EmDrome_State4_06(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2806,7 +2806,7 @@ void EmDrome_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmDrome_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmDrome_RunState(em, (s32) w);
@@ -3465,7 +3465,7 @@ void EmKind1D_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmKind1D_RunState(em);
     if (em->stateRequest != 0) {
         EmKind1D_RunState(em);
@@ -3812,7 +3812,7 @@ void EmKirin_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmKirin_RunState(em);
     if (em->stateRequest != 0) {
         EmKirin_RunState(em);
@@ -3943,7 +3943,7 @@ void EmKirin_State0_07(Em *em, EmWork *work)
 
 void EmKirin_State0_08(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -4838,7 +4838,7 @@ void EmKirin_State4_02(Em *em, EmWork *work, s16 variant)
 
 void EmKirin_State4_03(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;

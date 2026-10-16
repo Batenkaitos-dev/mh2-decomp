@@ -180,10 +180,10 @@ struct Sprite;
 s32 Sprite_Draw(struct Sprite *);
 
 void Text_SetDefaults(void);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void Stream_Prepare(s32, s32, s32, s32);
 void Stream_StartPrepared(s32);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void Movie_Stop(void);
 void Stream_Stop(s32);
 void Ending_FreeTextures(void);
@@ -347,26 +347,26 @@ s32 Ending_Update(void) {
     Text_SetDefaults();
     switch (w->unk00) {
     case 0:
-        SeqA_Start(2);
+        FadeA_Start(2);
         Stream_Prepare(0, 0x134, 0, 0);
         w->unk00++;
     case 1:
         w->unk00++;
         Stream_StartPrepared(0);
-        SeqA_Start(2);
+        FadeA_Start(2);
         break;
     case 2:
         w->unk9F8--;
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             if (gSysSettings.galleryPlay != 0) {
                 if ((gPadState[0].pressed & 0x40) || w->unk9F8 == 0) {
                     w->unk00 = 5;
-                    SeqA_Start(1);
+                    FadeA_Start(1);
                     break;
                 }
             } else if ((gPadState[0].pressed & 0x8000) || w->unk9F8 == 0) {
                 w->unk00 = 5;
-                SeqA_Start(1);
+                FadeA_Start(1);
                 break;
             }
         }
@@ -375,12 +375,12 @@ s32 Ending_Update(void) {
     case 3:
         if (--w->unk04 == 0) {
             w->unk00 = 4;
-            SeqA_Start(1);
+            FadeA_Start(1);
         }
         break;
     case 4:
     case 5:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             Movie_Stop();
             Stream_Stop(0);
             Ending_FreeTextures();
@@ -388,7 +388,7 @@ s32 Ending_Update(void) {
         }
         break;
     case 99:
-        SeqA_Start(2);
+        FadeA_Start(2);
         w->unk00 = 1;
         break;
     }

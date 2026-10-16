@@ -12385,7 +12385,7 @@ s32 CamFocus_IsOn(void);
 s32 BaitMenu_IsOpen(void);
 s32 Hud_SupplyBoxOpen(void);
 s32 Hud_SupplyBoxActive(void);
-s32 Hud_PlayerBusy8D5_Unk(void);
+s32 Hud_DeliveryOpen(void);
 
 s32 Chat_IsAvailable(void)
 {
@@ -12401,7 +12401,7 @@ s32 Chat_IsAvailable(void)
         if (BaitMenu_IsOpen() == 1) {
             return 0;
         }
-    } else if (Hud_SupplyBoxOpen() == 1 || Hud_SupplyBoxActive() == 1 || Hud_PlayerBusy8D5_Unk() == 1) {
+    } else if (Hud_SupplyBoxOpen() == 1 || Hud_SupplyBoxActive() == 1 || Hud_DeliveryOpen() == 1) {
         return 0;
     }
     return 1;
@@ -17793,10 +17793,13 @@ char *gArmorDescTexts[1207][4] = {
 u32 gIconUVs[32] = {
 #include "sub_main/0043AA90.inc"
 };
-u32 gEquipColors[14] = {
+u32 gEquipColors[10] = {
 #include "sub_main/0043AB10.inc"
 };
-u32 gRarityColors[2] = {
+u8 gRarityColorSlots[14] = {
+#include "sub_main/0043AB38.inc"
+};
+u8 gRarityColors[8] = {
 #include "sub_main/0043AB48.inc"
 };
 FrameStyle gFrameStyles[4] = {

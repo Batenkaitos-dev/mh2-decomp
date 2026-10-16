@@ -209,7 +209,7 @@ s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
 void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 u16 Rand_Next(s32 stream);
-f32 Lure_RandUnit(void);
+f32 Rand_Unit(void);
 u16 Math_Heading(f32 x, f32 z, f32 a, f32 b);
 void VObj_Draw(DrawSlot *);
 extern f32 gCamMatrix[];
@@ -301,7 +301,7 @@ void VObj_Init(VObj *o)
             } else {
                 sign = 1;
             }
-            d->spin = (u16)(s32)(0.5f + 65536.0f * (sign * ((20.0f + 10.0f * Lure_RandUnit()) / 8.0f)) / 360.0f);
+            d->spin = (u16)(s32)(0.5f + 65536.0f * (sign * ((20.0f + 10.0f * Rand_Unit()) / 8.0f)) / 360.0f);
             d->heading[15] = Rand_Next(1);
             d->period = 8;
             break;

@@ -85,7 +85,7 @@ extern f32 StageObj_K1B_SpinDeg[];
 extern u8 StageObj_K1B_PartFalls[];
 extern u8 StageObj_K1B_Type1ScaleKeys[];
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 void StageObj_K1C_FollowBone(StageObj *o, Obj1CPartA *w, Obj1CPartA *prev, f32 *m, f32 *dir, s16 first);
 void StageObj_K1C_Draw(DrawSlot *node);
@@ -99,7 +99,7 @@ void Vec_RotateY(f32 *v, f32 a);
 f32 StageObj_K1C_GrowFactor(StageObj *o);
 extern s16 StageObj_K1C_StepCFrames[];
 extern u16 StageObj_K1C_StepAFrames[];
-f32 Lure_RandUnit(void);
+f32 Rand_Unit(void);
 extern u8 D_008D6738[];
 extern u16 StageObj_K1C_StepCWaits[];
 extern u8 StageObj_K1C_StepCKinds17[];
@@ -142,7 +142,7 @@ void Vec_Copy(f32 *out, f32 *in);
 extern f32 gAreaFlyerCenters[][3];
 extern u8 StageObj_K1C_StepBKinds[];
 extern u16 StageObj_K1C_StepBStart[];
-f32 Lure_RandSigned(void);
+f32 Rand_Signed(void);
 extern u8 D_008D6138[];
 extern u16 StageObj_K1C_StepAStart[];
 void StageObj_K1B_Update(StageObj *o);
@@ -197,7 +197,7 @@ void StageObj_K1B_Run(StageObj *o)
             if (StageObj_K1B_ScaleKeys[i] != NULL) {
                 Key_LerpVec3(StageObj_K1B_ScaleKeys[i], p->scale, p->t);
             }
-            Key_LerpF32(StageObj_K1B_AlphaKeys[i], &a, p->t);
+            Key_LerpFloat(StageObj_K1B_AlphaKeys[i], &a, p->t);
             p->alpha = 255.0f * a;
             if (o->var0 == 0) {
                 p->rot[2] += (u16) (s32) (0.5f + (65536.0f * StageObj_K1B_SpinDeg[i]) / 360.0f);
@@ -744,9 +744,9 @@ void StageObj_K1C_SetupSeq(StageObj *o)
                 p->unk2E = Rand_Next(1);
                 p->unk34 = (Rand_Next(1) & 0xFF) - 0x80;
                 p->unk36 = 1;
-                p->pos[0] += 75.0f * Lure_RandSigned();
-                p->pos[1] += 35.0f * Lure_RandSigned();
-                p->pos[2] += 25.0f * Lure_RandSigned();
+                p->pos[0] += 75.0f * Rand_Signed();
+                p->pos[1] += 35.0f * Rand_Signed();
+                p->pos[2] += 25.0f * Rand_Signed();
                 p->unk36 = 0;
                 break;
             }
@@ -785,7 +785,7 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             Vec_Copy(p->pos, t);
             p->unk2E = Rand_Next(1);
             p->unk34 = (Rand_Next(1) & 0xFF) - 0x80;
-            p->scale *= 0.8f + 0.4f * Lure_RandUnit();
+            p->scale *= 0.8f + 0.4f * Rand_Unit();
             break;
         case 5:
         case 6:
@@ -816,7 +816,7 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             } else {
                 p->idx = ((r >> i) & 1) + 1;
                 p->scale *= 1.0f - 0.16f * (i - 1);
-                p->unk38 = p->scale * ((70.0f + 20.0f * Lure_RandUnit()) / 8.0f);
+                p->unk38 = p->scale * ((70.0f + 20.0f * Rand_Unit()) / 8.0f);
                 p->wait = (i - 1) * -5;
             }
             Vec_Copy(p->pos, t);
@@ -878,7 +878,7 @@ void StageObj_K1C_SetupSeq(StageObj *o)
                 p->idx = 1;
             } else {
                 p->idx = 2;
-                p->unk2A = o->angle2 + (u16) (8192.0f * Lure_RandUnit());
+                p->unk2A = o->angle2 + (u16) (8192.0f * Rand_Unit());
                 p->unk2C = o->angle;
                 p->unk2E = Rand_Next(1);
                 p->unk34 = (Rand_Next(1) & 0x7FF) - 0x400;
@@ -893,7 +893,7 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             } else {
                 p->idx = ((r >> i) & 1) + 1;
                 p->scale *= 1.0f - 0.16f * (i - 1);
-                p->unk38 = p->scale * ((70.0f + 20.0f * Lure_RandUnit()) / 8.0f);
+                p->unk38 = p->scale * ((70.0f + 20.0f * Rand_Unit()) / 8.0f);
                 p->wait = (i - 1) * -5;
             }
             Vec_Copy(p->pos, t);
@@ -902,7 +902,7 @@ void StageObj_K1C_SetupSeq(StageObj *o)
         case 14:
             switch (i) {
             case 0:
-                sc = 0.8f + 0.4f * Lure_RandUnit();
+                sc = 0.8f + 0.4f * Rand_Unit();
                 p->scale *= sc;
                 p->unk2E = 0x4000;
                 break;
@@ -914,11 +914,11 @@ void StageObj_K1C_SetupSeq(StageObj *o)
                 p->idx = ((r >> 2) & 1) + 2;
                 p->unk2C = o->angle;
                 p->unk2E = Rand_Next(1);
-                p->unk34 = 0.5f + 65536.0f * ((5.0f + 15.0f * Lure_RandUnit()) / 15.0f) / 360.0f;
+                p->unk34 = 0.5f + 65536.0f * ((5.0f + 15.0f * Rand_Unit()) / 15.0f) / 360.0f;
                 if (r & 0x8000) {
                     p->unk34 = -p->unk34;
                 }
-                p->unk38 = (100.0f + 100.0f * Lure_RandUnit()) / 15.0f;
+                p->unk38 = (100.0f + 100.0f * Rand_Unit()) / 15.0f;
                 break;
             }
             Vec_Copy(p->pos, o->pos);
@@ -994,12 +994,12 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             break;
         case 22:
             Vec_Copy(p->pos, o->pos);
-            p->pos[0] += 100.0f * Lure_RandSigned();
-            p->pos[1] += 100.0f * Lure_RandSigned();
-            p->pos[2] += 100.0f * Lure_RandSigned();
+            p->pos[0] += 100.0f * Rand_Signed();
+            p->pos[1] += 100.0f * Rand_Signed();
+            p->pos[2] += 100.0f * Rand_Signed();
             p->unk2E = Rand_Next(1);
             p->unk34 = (Rand_Next(1) & 0x1FF) - 0x100;
-            p->scale = 2.5f + 0.5f * Lure_RandUnit();
+            p->scale = 2.5f + 0.5f * Rand_Unit();
             p->unk38 = 2.0f;
             break;
         case 23:
@@ -1064,14 +1064,14 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             Vec_Copy(p->pos, o->pos);
             p->unk2E = Rand_Next(1);
             p->unk34 = (Rand_Next(1) & 0xFF) - 0x80;
-            p->scale *= 5.0f + 1.5f * Lure_RandSigned();
+            p->scale *= 5.0f + 1.5f * Rand_Signed();
             break;
         case 28:
             p->idx = Rand_Next(1) % 3;
             Vec_Copy(p->pos, o->pos);
             p->unk2E = Rand_Next(1);
             p->unk34 = 0x5B0;
-            p->scale *= 0.8f + 0.2f * Lure_RandUnit();
+            p->scale *= 0.8f + 0.2f * Rand_Unit();
             break;
         case 29:
             if (i < 2) {
@@ -1089,32 +1089,32 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             switch (p->idx) {
             case 0:
             case 1:
-                p->unk38 = 40.0f + 20.0f * Lure_RandSigned();
-                p->unk32 = 0.5f + 65536.0f * (20.0f * Lure_RandSigned()) / 360.0f;
-                p->unk2E = (s16) (0.5f + 65536.0f * (360.0f * Lure_RandUnit()) / 360.0f);
+                p->unk38 = 40.0f + 20.0f * Rand_Signed();
+                p->unk32 = 0.5f + 65536.0f * (20.0f * Rand_Signed()) / 360.0f;
+                p->unk2E = (s16) (0.5f + 65536.0f * (360.0f * Rand_Unit()) / 360.0f);
                 p->unk3C = 30.0f;
                 break;
             case 2:
             case 3:
-                p->unk38 = 15.0f + 10.0f * Lure_RandSigned();
-                p->unk2E = (s16) (0.5f + 65536.0f * (360.0f * Lure_RandUnit()) / 360.0f);
+                p->unk38 = 15.0f + 10.0f * Rand_Signed();
+                p->unk2E = (s16) (0.5f + 65536.0f * (360.0f * Rand_Unit()) / 360.0f);
                 p->unk3C = 20.0f;
                 break;
             case 4:
             case 5:
             case 6:
-                p->unk2E = (s16) (0.5f + 65536.0f * (360.0f * Lure_RandUnit()) / 360.0f);
-                p->unk34 = 0.5f + 65536.0f * ((20.0f * Lure_RandSigned()) / ((s16 *) StageObj_K1C_T6Frames)[p->idx]) / 360.0f;
+                p->unk2E = (s16) (0.5f + 65536.0f * (360.0f * Rand_Unit()) / 360.0f);
+                p->unk34 = 0.5f + 65536.0f * ((20.0f * Rand_Signed()) / ((s16 *) StageObj_K1C_T6Frames)[p->idx]) / 360.0f;
                 p->sub = (Rand_Next(1) % 2) * 14;
-                p->pos[0] += 100.0f * Lure_RandSigned();
-                p->pos[1] += 100.0f * Lure_RandSigned();
-                p->pos[2] += 100.0f * Lure_RandSigned();
+                p->pos[0] += 100.0f * Rand_Signed();
+                p->pos[1] += 100.0f * Rand_Signed();
+                p->pos[2] += 100.0f * Rand_Signed();
                 break;
             }
             switch (p->idx) {
             case 0:
             case 1:
-                p->scale = 0.5f + 0.5f * Lure_RandUnit();
+                p->scale = 0.5f + 0.5f * Rand_Unit();
                 break;
             case 2:
             case 3:
@@ -1125,10 +1125,10 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             break;
         case 31:
             p->unk2E = Rand_Next(1);
-            p->unk38 = -10.0f * Lure_RandUnit();
-            p->pos[0] = o->pos[0] + 50.0f * Lure_RandSigned();
-            p->pos[1] = o->pos[1] + 50.0f * Lure_RandSigned();
-            p->pos[2] = o->pos[2] + 50.0f * Lure_RandSigned();
+            p->unk38 = -10.0f * Rand_Unit();
+            p->pos[0] = o->pos[0] + 50.0f * Rand_Signed();
+            p->pos[1] = o->pos[1] + 50.0f * Rand_Signed();
+            p->pos[2] = o->pos[2] + 50.0f * Rand_Signed();
             break;
         case 32:
             Vec_Copy(p->pos, o->pos);
@@ -1143,7 +1143,7 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             case 2:
                 p->unk2E = Rand_Next(1);
                 p->sub = dist[cnt++];
-                p->unk38 = p->scale * ((300.0f + 100.0f * Lure_RandUnit()) / ((u16 *) StageObj_K1C_T2Frames)[p->idx]);
+                p->unk38 = p->scale * ((300.0f + 100.0f * Rand_Unit()) / ((u16 *) StageObj_K1C_T2Frames)[p->idx]);
                 break;
             case 3:
                 p->unk37 = 0;
@@ -1162,7 +1162,7 @@ void StageObj_K1C_SetupSeq(StageObj *o)
                     p->unk34 = -p->unk34;
                 }
                 p->sub = dist[cnt++];
-                p->unk38 = p->scale * ((400.0f + 100.0f * Lure_RandUnit()) / ((u16 *) StageObj_K1C_T33Frames)[p->idx]);
+                p->unk38 = p->scale * ((400.0f + 100.0f * Rand_Unit()) / ((u16 *) StageObj_K1C_T33Frames)[p->idx]);
                 break;
             case 1:
                 p->unk2A = 0x4000;
@@ -1174,8 +1174,8 @@ void StageObj_K1C_SetupSeq(StageObj *o)
                 p->pos[1] += 30.0f * p->scale;
                 break;
             case 2:
-                p->pos[0] += 400.0f * Lure_RandSigned();
-                p->pos[2] += 400.0f * Lure_RandSigned();
+                p->pos[0] += 400.0f * Rand_Signed();
+                p->pos[2] += 400.0f * Rand_Signed();
                 p->unk2E = Rand_Next(1);
                 break;
             }
@@ -1235,8 +1235,8 @@ void StageObj_K1C_SetupSeq(StageObj *o)
             break;
         case 39:
             Vec_Copy(p->pos, o->pos);
-            p->pos[0] += o->scale * (50.0f * Lure_RandSigned());
-            p->pos[2] += o->scale * (50.0f * Lure_RandSigned());
+            p->pos[0] += o->scale * (50.0f * Rand_Signed());
+            p->pos[2] += o->scale * (50.0f * Rand_Signed());
             p->idx = r & 1;
             p->unk2E = r;
             p->unk34 = 0x5B;
@@ -1803,8 +1803,8 @@ void StageObj_K1C_RunSeq(StageObj *o)
                     if (o->timer < 0x34) {
                         p->wait = 1;
                         p->unk2E = Rand_Next(1);
-                        p->pos[0] = o->pos[0] + 400.0f * Lure_RandSigned();
-                        p->pos[2] = o->pos[2] + 400.0f * Lure_RandSigned();
+                        p->pos[0] = o->pos[0] + 400.0f * Rand_Signed();
+                        p->pos[2] = o->pos[2] + 400.0f * Rand_Signed();
                     }
                     break;
                 }
@@ -1914,7 +1914,7 @@ void StageObj_K1C_RunSeq(StageObj *o)
         w = p->wait;
         if (p->unk36 == 0) {
             key = gStageObjK1C_ScaleCurves[c1++];
-            Key_LerpF32(key, &f, w);
+            Key_LerpFloat(key, &f, w);
             p->color = ((u8) (255.0f * f) << 24) | 0xFFFFFF;
         } else {
             ckey = gStageObjK1C_ColorKeys[c2++];
@@ -3062,13 +3062,13 @@ void StageObj_K1C_InitStepA(StageObj *o, Obj1CPart *w)
     case 0:
         w->scale = o->scale;
         w->unk37 = 0;
-        w->unk2A = (u16) (9102.0f * Lure_RandUnit()) + 0x31C7;
+        w->unk2A = (u16) (9102.0f * Rand_Unit()) + 0x31C7;
         f = 60.0f;
         break;
     case 1:
         w->scale = o->scale;
         w->unk37 = 0;
-        w->unk2A = (u16) (5461.0f * Lure_RandUnit()) + 0x38E4;
+        w->unk2A = (u16) (5461.0f * Rand_Unit()) + 0x38E4;
         f = 600.0f;
         Vec_Copy(w->pos, o->pos);
         w->unk2C = o->angle2;
@@ -3225,8 +3225,8 @@ void StageObj_K1C_InitStepC(StageObj *o, Obj1CPart *w)
         w->unk30 = (Rand_Next(1) & 0x1FF) - 0x100;
         w->unk32 = (Rand_Next(1) & 0x1FF) - 0x100;
         w->unk34 = (Rand_Next(1) & 0x1FF) - 0x100;
-        w->unk38 = w->scale * ((400.0f + 200.0f * Lure_RandUnit()) / StageObj_K1C_StepCFrames[w->idx]);
-        w->unk3C = w->scale * (70.0f + 25.0f * Lure_RandUnit());
+        w->unk38 = w->scale * ((400.0f + 200.0f * Rand_Unit()) / StageObj_K1C_StepCFrames[w->idx]);
+        w->unk3C = w->scale * (70.0f + 25.0f * Rand_Unit());
         break;
     case 6:
     case 7:
@@ -3242,7 +3242,7 @@ void StageObj_K1C_InitStepC(StageObj *o, Obj1CPart *w)
     case 8:
     default:
         w->unk37 = 0;
-        w->unk2A = (u16) (5461.0f * Lure_RandUnit()) + 0x38E4;
+        w->unk2A = (u16) (5461.0f * Rand_Unit()) + 0x38E4;
         w->unk2E = Rand_Next(1);
         w->unk34 = 0.5f + 65536.0f * (600.0f / StageObj_K1C_StepCFrames[w->idx]) / 360.0f;
         if (Rand_Next(1) & 1) {
@@ -3381,7 +3381,7 @@ void StageObj_K1C_InitStepB(StageObj *o, Obj1CPart *w)
         w->unk37 = 0;
         break;
     case 1:
-        w->unk2A = (s16) (0.5f + (65536.0f * (70.0f + 50.0f * Lure_RandUnit())) / 360.0f);
+        w->unk2A = (s16) (0.5f + (65536.0f * (70.0f + 50.0f * Rand_Unit())) / 360.0f);
         w->unk2C = o->angle2;
         w->unk2E = Rand_Next(1);
         w->unk37 = 0;
@@ -3398,14 +3398,14 @@ void StageObj_K1C_InitStepB(StageObj *o, Obj1CPart *w)
             w->unk34 = -w->unk34;
         }
         Vec_Copy(w->pos, o->pos);
-        v[0] = w->scale * (300.0f * Lure_RandSigned());
-        v[1] = w->scale * (150.0f * Lure_RandSigned());
-        v[2] = w->scale * (400.0f * Lure_RandSigned());
+        v[0] = w->scale * (300.0f * Rand_Signed());
+        v[1] = w->scale * (150.0f * Rand_Signed());
+        v[2] = w->scale * (400.0f * Rand_Signed());
         Vec_RotateY(v, (6.2831855f * o->angle2) / 65536.0f);
         w->pos[0] += v[0];
         w->pos[1] += v[1];
         w->pos[2] += v[2];
-        w->unk38 = (100.0f + 100.0f * Lure_RandUnit()) / StageObj_K1C_StepBFrames[w->idx];
+        w->unk38 = (100.0f + 100.0f * Rand_Unit()) / StageObj_K1C_StepBFrames[w->idx];
         if (!(o->angle & 1)) {
             Em_PlaySeChecked((struct Em *)em, 0x18, 0, w->pos, 6, 0);
         }
@@ -3413,7 +3413,7 @@ void StageObj_K1C_InitStepB(StageObj *o, Obj1CPart *w)
         break;
     case 3:
     default:
-        w->unk2A = (s16) (0.5f + (65536.0f * (70.0f + 50.0f * Lure_RandUnit())) / 360.0f);
+        w->unk2A = (s16) (0.5f + (65536.0f * (70.0f + 50.0f * Rand_Unit())) / 360.0f);
         w->unk2C = Rand_Next(1);
         if (!(Rand_Next(1) & 1)) {
             w->unk32 = -w->unk32;
@@ -3421,7 +3421,7 @@ void StageObj_K1C_InitStepB(StageObj *o, Obj1CPart *w)
         w->unk37 = 0;
         w->scale *= 1.3f;
         Vec_Copy(w->pos, o->pos);
-        w->unk38 = (200.0f + 100.0f * Lure_RandUnit()) / StageObj_K1C_StepBFrames[w->idx];
+        w->unk38 = (200.0f + 100.0f * Rand_Unit()) / StageObj_K1C_StepBFrames[w->idx];
         break;
     }
 }
@@ -3496,9 +3496,9 @@ s32 StageObj_K1C_OwnerActive(Em *em)
 
 void StageObj_K1C_Jitter(Obj1CPart *w, f32 r)
 {
-    w->pos[0] += r * Lure_RandSigned();
-    w->pos[1] += r * Lure_RandSigned();
-    w->pos[2] += r * Lure_RandSigned();
+    w->pos[0] += r * Rand_Signed();
+    w->pos[1] += r * Rand_Signed();
+    w->pos[2] += r * Rand_Signed();
 }
 
 void StageObj_RandomDistinct(s16 n, s16 count, s16 *out)
@@ -3819,7 +3819,7 @@ void StageObj_AreaFlyer_Create(u8 k)
     AreaState *area = &gAreaState;
     StageObj *o;
 
-    if (gQuest.unk15C != 0) {
+    if (gQuest.flyer != 0) {
         o = StageObj_Alloc(0);
         if (o != NULL) {
             o->kind = 0x1D;
@@ -3950,9 +3950,9 @@ void StageObj_Gun_Setup(StageObj *o)
             w->count = 6;
             r = (f32 *) StageObj_Gun_Pos23[0];
             for (j = 0; j < 3; j++) {
-                rp[j][0] = (f32) (u32) (1.0f + 2.0f * r[0]) * Lure_RandUnit() - 150.0f;
-                rp[j][1] = (f32) (u32) (1.0f + 2.0f * r[1]) * Lure_RandUnit() - 150.0f;
-                rp[j][2] = (f32) (u32) (1.0f + 2.0f * r[2]) * Lure_RandUnit() - 150.0f;
+                rp[j][0] = (f32) (u32) (1.0f + 2.0f * r[0]) * Rand_Unit() - 150.0f;
+                rp[j][1] = (f32) (u32) (1.0f + 2.0f * r[1]) * Rand_Unit() - 150.0f;
+                rp[j][2] = (f32) (u32) (1.0f + 2.0f * r[2]) * Rand_Unit() - 150.0f;
             }
             pos = rp;
             var = (s32 *) StageObj_Gun_Vars23[0];
@@ -3971,7 +3971,7 @@ void StageObj_Gun_Setup(StageObj *o)
             case 0:
             case 1:
             case 2:
-                f = 25.0f * Lure_RandSigned();
+                f = 25.0f * Rand_Signed();
                 a[0] = f + pos[i][0];
                 a[1] = f + pos[i][1];
                 a[2] = f + pos[i][2];
@@ -3987,7 +3987,7 @@ void StageObj_Gun_Setup(StageObj *o)
                 Mtx_GetTrans(o->pos, w->m);
                 p->t = var[i];
                 p->angle = Rand_Next(1);
-                p->unk1C = 0.5f + 65536.0f * ((s16) (s32) (30.0f * Lure_RandSigned()) / 30.0f) / 360.0f;
+                p->unk1C = 0.5f + 65536.0f * ((s16) (s32) (30.0f * Rand_Signed()) / 30.0f) / 360.0f;
                 p->unk18 = sc[i];
                 break;
             case 3:
@@ -4073,7 +4073,7 @@ void StageObj_Gun_Setup(StageObj *o)
             if (i == 0) {
                 w->unk1AE[i] = 0;
             } else {
-                w->unk1AE[i] = 10.0f * Lure_RandUnit();
+                w->unk1AE[i] = 10.0f * Rand_Unit();
             }
             w->unk1AB[i] = 0;
             w->angle[i] = 0;
@@ -4118,18 +4118,18 @@ void StageObj_Gun_Setup(StageObj *o)
                 case 3:
                 case 4:
                 case 5:
-                    b[0] = 105.0f + 10.0f * Lure_RandSigned();
-                    b[1] = 15.0f + 10.0f * Lure_RandSigned();
-                    b[2] = 167.0f - 80.0f * Lure_RandUnit();
+                    b[0] = 105.0f + 10.0f * Rand_Signed();
+                    b[1] = 15.0f + 10.0f * Rand_Signed();
+                    b[2] = 167.0f - 80.0f * Rand_Unit();
                     p->angle = Rand_Next(1);
-                    p->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Lure_RandSigned()) / 15.0f) / 360.0f;
+                    p->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Rand_Signed()) / 15.0f) / 360.0f;
                     break;
                 case 6:
                 case 7:
                     b[0] = 105.0f;
                     b[1] = 15.0f;
                     b[2] = 167.0f;
-                    p->sc[2] = 80.0f + 20.0f * Lure_RandUnit();
+                    p->sc[2] = 80.0f + 20.0f * Rand_Unit();
                     p->angle = Rand_Next(1);
                     break;
                 }
@@ -4150,32 +4150,32 @@ void StageObj_Gun_Setup(StageObj *o)
             switch (i) {
             case 0:
             case 1:
-                p->unk18 = 1.0f + Lure_RandUnit();
+                p->unk18 = 1.0f + Rand_Unit();
                 p->angle = Rand_Next(1);
-                p->sc[2] = ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7] * Lure_RandUnit() + 2.0f * ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7];
-                b[0] = ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Lure_RandSigned();
-                b[1] = -25.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Lure_RandSigned();
-                b[2] = 80.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Lure_RandSigned();
+                p->sc[2] = ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7] * Rand_Unit() + 2.0f * ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7];
+                b[0] = ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Rand_Signed();
+                b[1] = -25.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Rand_Signed();
+                b[2] = 80.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Rand_Signed();
                 p->t = ((s8 *) StageObj_Gun_Life1)[i];
                 break;
             case 2:
-                p->unk18 = 0.01f * (100.0f + 20.0f * Lure_RandUnit());
+                p->unk18 = 0.01f * (100.0f + 20.0f * Rand_Unit());
                 p->angle = Rand_Next(1);
-                p->sc[2] = 100.0f + 20.0f * Lure_RandUnit();
-                b[0] = ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][0] * Lure_RandSigned();
-                b[1] = -25.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][1] * Lure_RandSigned();
-                b[2] = 80.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][2] * Lure_RandSigned();
-                p->t = -1.0f * (10.0f + 10.0f * Lure_RandUnit());
+                p->sc[2] = 100.0f + 20.0f * Rand_Unit();
+                b[0] = ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][0] * Rand_Signed();
+                b[1] = -25.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][1] * Rand_Signed();
+                b[2] = 80.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][2] * Rand_Signed();
+                p->t = -1.0f * (10.0f + 10.0f * Rand_Unit());
                 break;
             case 3:
                 p->unk18 = 1.0f;
                 p->angle = Rand_Next(1);
-                p->sc[2] = ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7] * Lure_RandUnit() + 4.0f * ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7];
+                p->sc[2] = ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7] * Rand_Unit() + 4.0f * ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7];
                 p->unk1C = 0;
                 b[0] = 0.0f;
                 b[1] = -25.0f;
                 b[2] = 80.0f;
-                p->t = -1.0f * (5.0f + 5.0f * Lure_RandSigned());
+                p->t = -1.0f * (5.0f + 5.0f * Rand_Signed());
                 break;
             }
             p->frame = 0;
@@ -4208,19 +4208,19 @@ void StageObj_Gun_Setup(StageObj *o)
                 p->node->part = i;
                 p->node->draw = StageObj_Gun_Draw;
                 p->angle = Rand_Next(1);
-                p->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Lure_RandSigned()) / 15.0f) / 360.0f;
+                p->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Rand_Signed()) / 15.0f) / 360.0f;
                 b[0] = 105.0f;
                 b[1] = 15.0f;
                 b[2] = 167.0f;
                 Vec_Copy(d, b);
                 Vec_Normalize(d);
-                Vec_Scale(d, d, -10.0f - 70.0f * Lure_RandUnit());
+                Vec_Scale(d, d, -10.0f - 70.0f * Rand_Unit());
                 b[0] += d[0];
                 b[1] += d[1];
                 b[2] += d[2];
-                b[0] += 10.0f * Lure_RandSigned();
-                b[1] += 10.0f * Lure_RandSigned();
-                b[2] += 10.0f * Lure_RandSigned();
+                b[0] += 10.0f * Rand_Signed();
+                b[1] += 10.0f * Rand_Signed();
+                b[2] += 10.0f * Rand_Signed();
                 Vec_RotateSelf(b, w->m);
                 Mtx_GetTrans(o->pos, w->m);
                 p->node->pos[0] = o->pos[0] + b[0];
@@ -4469,8 +4469,8 @@ void StageObj_Gun_Run(StageObj *o)
                     break;
                 case 2:
                     if (w->unk1AB[i] < 2) {
-                        w->unk1B1[i] = 1.25f + 0.1f * (10.0f * Lure_RandUnit());
-                        w->unk1B4[i] = 10.0f + 5.0f * Lure_RandUnit();
+                        w->unk1B1[i] = 1.25f + 0.1f * (10.0f * Rand_Unit());
+                        w->unk1B4[i] = 10.0f + 5.0f * Rand_Unit();
                         w->unk1A8[i] = 1;
                     } else {
                         w->unk1A8[i]++;
@@ -4513,11 +4513,11 @@ void StageObj_Gun_Run(StageObj *o)
                     case 5:
                         if (q->t > ((s8 *) gStageObjGun_Lifetimes)[i] && o->timer < 35) {
                             q->t = 0;
-                            b[0] = 105.0f + 10.0f * Lure_RandSigned();
-                            b[1] = 15.0f + 10.0f * Lure_RandSigned();
-                            b[2] = 167.0f - 80.0f * Lure_RandUnit();
+                            b[0] = 105.0f + 10.0f * Rand_Signed();
+                            b[1] = 15.0f + 10.0f * Rand_Signed();
+                            b[2] = 167.0f - 80.0f * Rand_Unit();
                             q->angle = Rand_Next(1);
-                            q->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Lure_RandSigned()) / 15.0f) / 360.0f;
+                            q->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Rand_Signed()) / 15.0f) / 360.0f;
                             Mtx_Copy((f32 *) w->m, (f32 *) (Em_GetBone(o->owner, 0xE)));
                             Vec_RotateSelf(b, w->m);
                             Mtx_GetTrans(o->pos, w->m);
@@ -4534,8 +4534,8 @@ void StageObj_Gun_Run(StageObj *o)
                     case 6:
                     case 7:
                         if (q->t > ((s8 *) gStageObjGun_Lifetimes)[i] && o->timer < 26) {
-                            q->t = 2.0f * Lure_RandUnit() - 4.0f;
-                            q->sc[2] = 80.0f + 20.0f * Lure_RandUnit();
+                            q->t = 2.0f * Rand_Unit() - 4.0f;
+                            q->sc[2] = 80.0f + 20.0f * Rand_Unit();
                             q->angle = Rand_Next(1);
                             b[0] = 105.0f;
                             b[1] = 15.0f;
@@ -4626,10 +4626,10 @@ void StageObj_Gun_Run(StageObj *o)
                         q->t = ((s8 *) StageObj_Gun_Life1)[i];
                         break;
                     case 2:
-                        q->t = -1.0f * (10.0f + 10.0f * Lure_RandUnit());
+                        q->t = -1.0f * (10.0f + 10.0f * Rand_Unit());
                         break;
                     case 3:
-                        q->t = -1.0f * (5.0f + 5.0f * Lure_RandSigned());
+                        q->t = -1.0f * (5.0f + 5.0f * Rand_Signed());
                         break;
                     }
                     b[0] = 0.0f;
@@ -4661,12 +4661,12 @@ void StageObj_Gun_Run(StageObj *o)
                     case 0:
                     case 1:
                         if (q->t > ((s8 *) StageObj_Gun_End1)[i]) {
-                            q->unk18 = 1.0f + Lure_RandUnit();
+                            q->unk18 = 1.0f + Rand_Unit();
                             q->angle = Rand_Next(1);
-                            b[0] = ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Lure_RandSigned();
-                            b[1] = -25.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Lure_RandSigned();
-                            b[2] = 80.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Lure_RandSigned();
-                            q->sc[2] = ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7] * Lure_RandUnit() + 2.0f * ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7];
+                            b[0] = ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Rand_Signed();
+                            b[1] = -25.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Rand_Signed();
+                            b[2] = 80.0f + ((f32 *) StageObj_Gun_Jitter1)[w->unk1B7] * Rand_Signed();
+                            q->sc[2] = ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7] * Rand_Unit() + 2.0f * ((f32 *) StageObj_Gun_ScaleZ1)[w->unk1B7];
                         }
                         f = q->sc[2];
                         sc = ((void **) StageObj_Gun_SizeScaleKeys1)[w->unk1B7];
@@ -4677,11 +4677,11 @@ void StageObj_Gun_Run(StageObj *o)
                         break;
                     case 2:
                         if (q->t > ((s8 *) StageObj_Gun_End1)[i]) {
-                            q->unk18 = 0.01f * (100.0f + 20.0f * Lure_RandUnit());
-                            b[0] = ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][0] * Lure_RandSigned();
-                            b[1] = -25.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][1] * Lure_RandSigned();
-                            b[2] = 80.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][2] * Lure_RandSigned();
-                            q->sc[2] = 100.0f + 20.0f * Lure_RandUnit();
+                            q->unk18 = 0.01f * (100.0f + 20.0f * Rand_Unit());
+                            b[0] = ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][0] * Rand_Signed();
+                            b[1] = -25.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][1] * Rand_Signed();
+                            b[2] = 80.0f + ((f32 (*)[3]) StageObj_Gun_Jitter2)[w->unk1B7][2] * Rand_Signed();
+                            q->sc[2] = 100.0f + 20.0f * Rand_Unit();
                         }
                         f = q->sc[2];
                         sc = ((void **) StageObj_Gun_SizeScaleKeys2)[w->unk1B7];
@@ -4695,7 +4695,7 @@ void StageObj_Gun_Run(StageObj *o)
                             b[0] = 0.0f;
                             b[1] = -25.0f;
                             b[2] = 80.0f;
-                            q->sc[2] = ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7] * Lure_RandUnit() + 4.0f * ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7];
+                            q->sc[2] = ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7] * Rand_Unit() + 4.0f * ((f32 *) StageObj_Gun_ScaleZ3)[w->unk1B7];
                             q->unk1C = 0;
                         }
                         f = q->sc[2];
@@ -4720,10 +4720,10 @@ void StageObj_Gun_Run(StageObj *o)
                             q->t = 0;
                             break;
                         case 2:
-                            q->t = -1.0f * (10.0f + 10.0f * Lure_RandUnit());
+                            q->t = -1.0f * (10.0f + 10.0f * Rand_Unit());
                             break;
                         case 3:
-                            q->t = -1.0f * (5.0f + 5.0f * Lure_RandUnit());
+                            q->t = -1.0f * (5.0f + 5.0f * Rand_Unit());
                             break;
                         }
                     }
@@ -4770,15 +4770,15 @@ void StageObj_Gun_Run(StageObj *o)
                         b[2] = 167.0f;
                         Vec_Copy(d, b);
                         Vec_Normalize(d);
-                        Vec_Scale(d, d, -10.0f - 70.0f * Lure_RandUnit());
+                        Vec_Scale(d, d, -10.0f - 70.0f * Rand_Unit());
                         b[0] += d[0];
                         b[1] += d[1];
                         b[2] += d[2];
-                        b[0] += 10.0f * Lure_RandSigned();
-                        b[1] += 10.0f * Lure_RandSigned();
-                        b[2] += 10.0f * Lure_RandSigned();
+                        b[0] += 10.0f * Rand_Signed();
+                        b[1] += 10.0f * Rand_Signed();
+                        b[2] += 10.0f * Rand_Signed();
                         q->angle = Rand_Next(1);
-                        q->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Lure_RandSigned()) / 15.0f) / 360.0f;
+                        q->unk1C = 0.5f + 65536.0f * ((s16) (s32) (15.0f * Rand_Signed()) / 15.0f) / 360.0f;
                         Mtx_Copy((f32 *) w->m, (f32 *) (Em_GetBone(o->owner, 0xE)));
                         Vec_RotateSelf(b, w->m);
                         Mtx_GetTrans(o->pos, w->m);

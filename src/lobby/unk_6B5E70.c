@@ -406,7 +406,7 @@ void ModelObj_Init(VObj *o)
 }
 
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 s16 Cook_GetTime(void);
 void Vec_RotateY(f32 *v, f32 a);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
@@ -537,7 +537,7 @@ void ModelObj_Run(VObj *o)
             v.z += w.z;
             key += 3;
             curve = gModelObjKeys[(s16)(k + 2)];
-            Key_LerpF32(curve, &p->alpha, p->unk30);
+            Key_LerpFloat(curve, &p->alpha, p->unk30);
             break;
         case 1:
             k = key;
@@ -562,7 +562,7 @@ void ModelObj_Run(VObj *o)
             Key_LerpVec3(curve, &w.x, p->unk30);
             Vec_RotateY((f32 *) &w, 6.2831855f * o->angle / 65536.0f);
             key += 3;
-            Key_LerpF32(gModelObjKeys[(s16)(k + 2)], &p->alpha, p->unk30);
+            Key_LerpFloat(gModelObjKeys[(s16)(k + 2)], &p->alpha, p->unk30);
             v.x = p->unk30 * (0.010000001f * ((p->unk32 & 0x3FF) - 0x200)) / dur;
             v.y = 0.0f;
             v.z = 0.0f;
@@ -586,7 +586,7 @@ void ModelObj_Run(VObj *o)
             curve = gModelObjKeys[k];
             Key_LerpVec3(curve, &p->size.x, p->unk30);
             key += 2;
-            Key_LerpF32(gModelObjKeys[(s16)(k + 1)], &p->alpha, p->unk30);
+            Key_LerpFloat(gModelObjKeys[(s16)(k + 1)], &p->alpha, p->unk30);
             v.z = 5.0f * i;
             Vec_RotateSelf(&v.x, gCamMatrix);
             break;

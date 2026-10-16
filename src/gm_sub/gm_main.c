@@ -39,14 +39,14 @@ void Sound_ReverbOn(void);
 void Stream_Play(s32, s32);
 void Sound_LoadGmSubBanks(void);
 void Gs_SetTableColor(s32);
-u8 SeqA_GetState(void);
-void SeqA_Start(s32);
+u8 FadeA_GetState(void);
+void FadeA_Start(s32);
 void Tex_LoadSystemPack(s32);
 void TaskSlot_Set(void *func, s16 slot);
 void TaskSlot_End(TaskSlot *t);
-void TaskSlot_Start(s16 slot);
-void TaskSlot2_EndCode1(void);
-void TaskSlot2_EndCode2(void);
+void TaskSlot_Hold(s16 slot);
+void Task_EndGmSubForNetScene(void);
+void Task_EndGmSubForNetSetup(void);
 u16 Pad_KeyRepeat(s32 pad, u16 held, u16 pressed);
 void Game_ResetSubsystems(void);
 void Sound_PlayCursorMove(void);
@@ -79,7 +79,7 @@ void Sound_PlaySe73(void);
 void Sound_PlayCancel(void);
 void Stream_Stop(s32);
 TaskSlot *TaskSlot_Get(s16 slot);
-void Task_SetBootMode0(void);
+void Task_StartBootScreens(void);
 void GmSub_InitMenu(void);
 void GmSub_MoveCursorV(u16, u16, u8 *, u8);
 s32 GmSub_UpdateYesNo(u16, u16);
@@ -99,7 +99,7 @@ void gm_sub_entry(void) {
     Tex_LoadSystemPack(0);
     Sel_LoadCommonTextures();
     TaskSlot_Set(D_6BF5A0, 4);
-    TaskSlot_Start(2);
+    TaskSlot_Hold(2);
 }
 
 void GmSub_OpenYesNo(void) {
@@ -145,7 +145,7 @@ void GmSub_Task(TaskSlot *t) {
             case 0:
                 gSysSettings.systemSaved = 0;
                 TaskSlot_Set(D_6B1EA0, 4);
-                TaskSlot_Start(2);
+                TaskSlot_Hold(2);
                 gGmWork->unk0 = 1;
                 gGmWork->unk4 = 0xB;
                 break;
@@ -155,7 +155,7 @@ void GmSub_Task(TaskSlot *t) {
                 } else {
                     gSysSettings.systemSaved = 0;
                     TaskSlot_Set(D_6B3B50, 4);
-                    TaskSlot_Start(2);
+                    TaskSlot_Hold(2);
                     gGmWork->unk0 = 1;
                     gGmWork->unk4 = 0xB;
                 }
@@ -167,7 +167,7 @@ void GmSub_Task(TaskSlot *t) {
             case 3:
                 TaskSlot_Set(D_6B6840, 4);
             common3:
-                TaskSlot_Start(2);
+                TaskSlot_Hold(2);
                 gGmWork->unk0 = 1;
                 gGmWork->unk4 = 0xA;
                 break;
@@ -176,13 +176,13 @@ void GmSub_Task(TaskSlot *t) {
                 goto common3;
             case 2:
                 TaskSlot_Set(D_6BF5A0, 4);
-                TaskSlot_Start(2);
+                TaskSlot_Hold(2);
                 gGmWork->unk0 = 1;
                 gGmWork->unk4 = 0xB;
                 break;
             case 5:
                 TaskSlot_Set(D_6C2E60, 5);
-                TaskSlot_Start(2);
+                TaskSlot_Hold(2);
                 gGmWork->unk0 = 1;
                 gGmWork->unk4 = 0xA;
                 break;
@@ -313,10 +313,10 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
     case 0:
         gGmWork->unk4++;
         GmSub_InitMenu();
-        SeqA_Start(0xC);
+        FadeA_Start(0xC);
         break;
     case 1:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gGmWork->unk4 = 2;
             if (gGmWork->unk20 != 0) {
                 if (gGmWork->unk2C == 1) {
@@ -362,22 +362,22 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
             gGmWork->unk2C = gGmWork->unk24;
             switch (gGmWork->unk24) {
             case 0:
-                SeqA_Start(0xB);
+                FadeA_Start(0xB);
                 break;
             case 1:
-                SeqA_Start(0xB);
+                FadeA_Start(0xB);
                 break;
             case 2:
             case 3:
             case 4:
-                SeqA_Start(0xB);
+                FadeA_Start(0xB);
                 break;
             }
             break;
         case 0x40:
             Sound_PlayCancel();
             gGmWork->unk4 = 0x14;
-            SeqA_Start(0xB);
+            FadeA_Start(0xB);
             break;
         default:
             old = gGmWork->unk24;
@@ -391,7 +391,7 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
         }
         break;
     case 4:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             Stream_Stop(0);
             switch (gGmWork->unk24) {
             case 0:
@@ -416,7 +416,7 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
         }
         break;
     case 5:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             switch (GmSub_UpdateYesNo(a, b)) {
             case 1:
                 gGmWork->unk30 = gGmWork->unk28;
@@ -424,18 +424,18 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
                 Sound_PlaySe73();
                 gOnlineBonusState = 0;
                 gGmWork->unk4 = 4;
-                SeqA_Start(5);
+                FadeA_Start(5);
                 break;
             case -1:
                 Sound_PlayCancel();
                 gGmWork->unk4 = 6;
-                SeqA_Start(5);
+                FadeA_Start(5);
                 break;
             }
         }
         break;
     case 6:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gGmWork->unk4 = 0xB;
             gGmWork->unk38 = D_6B9CF0;
             Title_ResetBgAnim();
@@ -444,7 +444,7 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
         }
         break;
     case 10:
-        SeqA_Start(0xC);
+        FadeA_Start(0xC);
         gGmWork->unk4 = 1;
         gGmWork->unk20 = 1;
         gGmWork->unk50 = 4;
@@ -454,7 +454,7 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
         GmSub_OpenYesNo();
         Game_ResetSubsystems();
         Tex_LoadSystemPack(0);
-        SeqA_Start(0xC);
+        FadeA_Start(0xC);
         gGmWork->unk4 = 1;
         gGmWork->unk20 = 1;
         gGmWork->unk50 = 4;
@@ -464,7 +464,7 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
         gGmWork->unk30 = -1;
         Game_ResetSubsystems();
         Tex_LoadSystemPack(0);
-        SeqA_Start(0xC);
+        FadeA_Start(0xC);
         gGmWork->unk4 = 1;
         gGmWork->unk20 = 1;
         gGmWork->unk50 = 4;
@@ -473,9 +473,9 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
         gGmWork->unk34 = D_6BA0C0;
         break;
     case 20:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             TaskSlot_End(TaskSlot_Get(2));
-            Task_SetBootMode0();
+            Task_StartBootScreens();
         }
         break;
     }
@@ -487,7 +487,7 @@ s32 GmSub_StepLaunch(TaskSlot *t, u16 a, u16 b) {
     switch (gGmWork->unk24) {
     case 0:
     case 1:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gSysSettings.galleryPlay = 0;
             gSysSettings.unk45 = 0;
             switch (gGmWork->unk28) {
@@ -509,9 +509,9 @@ s32 GmSub_StepLaunch(TaskSlot *t, u16 a, u16 b) {
             gSysSettings.unk05 = 0;
             TaskSlot_End(t);
             if (gSysSettings.online == 0) {
-                TaskSlot2_EndCode1();
+                Task_EndGmSubForNetScene();
             } else {
-                TaskSlot2_EndCode2();
+                Task_EndGmSubForNetSetup();
             }
         }
         return 1;
@@ -524,10 +524,10 @@ s32 GmSub_StepExit(TaskSlot *t, u16 a, u16 b) {
     switch (t->count) {
     case 0:
         t->count++;
-        SeqA_Start(0xB);
+        FadeA_Start(0xB);
         break;
     case 1:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             t->count++;
         }
         break;
@@ -563,7 +563,7 @@ s32 GmSub_UpdateYesNo(u16 a, u16 b) {
 }
 
 /* 1 when the scene flag 0x6ADFD8 is 1 or the entry chosen is 1 (select's character screens test it). */
-s32 func_008FC080(void) {
+s32 GmSub_IsCharaSelectMenu(void) {
     if (gSysSettings.pspCharaWait == 1) {
         return 1;
     }

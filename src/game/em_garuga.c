@@ -19,7 +19,7 @@ void Em_StartPendingRage(Em *);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_ResetNotice(Em *em);
 void Em_BeginStatus2(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
@@ -47,7 +47,7 @@ void QuestEm_Captured(Em *em);
 s32 Save_TestEventFlag(s32);
 void EffEm08_CreateAtBone(Em *, s32, s32, s32, s32, s32);
 void EffGaruga25_Create(Em *, s8);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
@@ -58,7 +58,7 @@ void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SetGoal12(Em *em);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmGaruga_State0_12: 45 of 94 words differ, EmGaruga_State0_15: 43 of 92 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
@@ -177,7 +177,7 @@ void Em_SetStatus2Timer(Em *em);
 void Em_SetStatus5Timer(Em *em);
 void Em_ResetKindTimer(Em *em);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 s32 Em_IsHeld(Em *em);
 void EmGaruga_RunState(Em *em, s32 arg1);
 /* end of prototypes */
@@ -701,7 +701,7 @@ void EmGaruga_State0_11(Em *em)
 
 void EmGaruga_State0_12(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -736,14 +736,14 @@ void EmGaruga_State0_12(Em *em)
 
 void EmGaruga_State0_13(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -766,7 +766,7 @@ void EmGaruga_State0_28(Em *em)
     case 0:
         em->step++;
         em->hitReactMode = 0;
-        Em_SetRow638(em, 0);
+        Em_SelectSightRow(em, 0);
         Em_LoadReactionSet(em, 0);
         break;
     case 1:
@@ -786,7 +786,7 @@ void EmGaruga_State0_28(Em *em)
 
 void EmGaruga_State0_14(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -818,7 +818,7 @@ void EmGaruga_State0_14(Em *em)
 
 void EmGaruga_State0_15(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -944,7 +944,7 @@ void EmGaruga_State0_1A(Em *em)
 
 void EmGaruga_State0_1B(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1005,7 +1005,7 @@ void EmGaruga_State0_1D(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1041,7 +1041,7 @@ void EmGaruga_State0_1F(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -3216,7 +3216,7 @@ void EmGaruga_State4_0A(Em *em, EmWork *work)
 
 void EmGaruga_State4_0B(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3244,7 +3244,7 @@ void EmGaruga_State4_0B(Em *em, EmWork *work)
 
 void EmGaruga_State4_0C(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3307,7 +3307,7 @@ void EmGaruga_State4_0D(Em *em, EmWork *work)
 void EmGaruga_State4_0E(Em *em, EmWork *work)
 {
     em->holdTimer = 5;
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4893,7 +4893,7 @@ void EmGaruga_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmGaruga_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmGaruga_RunState(em, (s32) w);
@@ -5582,7 +5582,7 @@ void EmGaruga_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_BeginStatus2(em);
         break;
     case 23:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 24:
         Em_EndStatus2(em);

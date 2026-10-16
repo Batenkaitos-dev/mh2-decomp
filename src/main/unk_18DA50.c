@@ -191,9 +191,9 @@ void NetQuest_SetInfo(u8 *info) {
     memcpy(&D_6ADB30, (void *)info, 0x18);
 }
 
-extern s16 D_006ADB48;
+extern s16 gNextQuestId;
 void NetQuest_SetStage(u16 id) {
-    D_006ADB48 = id;
+    gNextQuestId = id;
 }
 
 s32 QuestId_IsStandard(s32 id) {

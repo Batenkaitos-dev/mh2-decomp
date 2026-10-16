@@ -4,12 +4,12 @@
 #include "m2c_macros.h"
 #include "lobby_state.h"
 
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 extern LobbyMenu *gLobbyMenu;
 
 void LobbyRoom_Close3(void) {
     gLobbyMenu->redraw = 1;
-    if ((SeqA_GetState() & 0xFF) != 1) {
+    if ((FadeA_GetState() & 0xFF) != 1) {
         gLobby->mode = (u8) (gLobby->mode + 1);
         gLobby->step = 0;
     }

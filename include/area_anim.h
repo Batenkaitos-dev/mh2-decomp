@@ -86,4 +86,24 @@ typedef struct AnimScrollRot {
 } AnimScrollRot;
 typedef char AnimScrollRot_size_check[(sizeof(AnimScrollRot) == 0x8) ? 1 : -1];
 
+/* An animated part's command byte (Area_DrawProp, record +2): the function
+ * that builds its matrix (unk_37AC80.c). */
+#define AREA_ANIM_CMD_SPIN              1   /* AreaAnim_TranslateSpin */
+#define AREA_ANIM_CMD_UV_SCROLL         2   /* AreaAnim_UvScroll */
+#define AREA_ANIM_CMD_UV_WAVE           3   /* AreaAnim_UvWave */
+#define AREA_ANIM_CMD_TRANSLATE         4   /* AreaAnim_Translate */
+#define AREA_ANIM_CMD_ROTATE            5   /* AreaAnim_TranslateRotate */
+#define AREA_ANIM_CMD_SCALE_ROTATE      6   /* AreaAnim_ScaleTranslateRotate */
+#define AREA_ANIM_CMD_TRANSLATE_XZ      7   /* AreaAnim_TranslateXZ */
+#define AREA_ANIM_CMD_UV_SCROLL_MOVE    8   /* AreaAnim_UvScrollTranslate */
+#define AREA_ANIM_CMD_UV_SCROLL_SPIN    9   /* AreaAnim_UvScrollSpin */
+#define AREA_ANIM_CMD_UV_SCROLL_ROTATE  10  /* AreaAnim_UvScrollRotate */
+#define AREA_ANIM_CMD_SPIN_SCROLL       11  /* AreaAnim_SpinScroll */
+#define AREA_ANIM_CMD_UV_STEP           12  /* AreaAnim_UvStep */
+
+/* An animated part's flags byte (record +3). */
+#define AREA_ANIM_REVERSE   0x04    /* the motion runs backwards */
+#define AREA_ANIM_ROT_X     0x40    /* turns about x (else y) */
+#define AREA_ANIM_ROT_Z     0x80    /* turns about z */
+
 #endif /* AREA_ANIM_H */

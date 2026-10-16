@@ -55,13 +55,13 @@ void TownPc_ReadPad(s32 pl)
     in->prevStickDirPressed = in->stickDirPressed;
     in->stickDirPressed = in->stickDir & ~in->prevStickDir;
     in->stickAngle = gPadInput.stickAngle[0].cur;
-    in->prevStickAngle = gPadInput.stickAngle[0].prev;
+    in->rightStickAngle = gPadInput.stickAngle[0].prev;
     if (Hud_TownMenuOpen() == 0) {
         in->stickTilt = gPadInput.stickTilt[0].cur;
-        in->prevStickTilt = gPadInput.stickTilt[0].prev;
+        in->rightStickTilt = gPadInput.stickTilt[0].prev;
     } else {
         in->stickTilt = 0;
-        in->prevStickTilt = 0;
+        in->rightStickTilt = 0;
     }
     if (Hud_InputBlocked() == 0 && player->supplyBoxOpen == 0) {
         in->held = gPadInput.buttons[0].cur;
@@ -92,8 +92,8 @@ void TownPc_ReadPad(s32 pl)
             in->prevStickDirPressed = 0;
             in->stickDirPressed = 0;
         }
-        in->prevStickAngle = 0;
-        in->prevStickTilt = 0;
+        in->rightStickAngle = 0;
+        in->rightStickTilt = 0;
         in->held = 0;
         in->prevHeld = 0;
         in->pressed = 0;

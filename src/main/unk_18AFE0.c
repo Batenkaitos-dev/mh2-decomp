@@ -1,6 +1,13 @@
 /*
- * main 0x18AFE0-0x18CC10: the pad code (0x18AFE0-0x18C2E0, with unk_189F90.c), then the TIM2
- * picture helpers that Tex_CreateFromTim2 (unk_180110.c) uses.
+ * The pad's lower half (main 0x18AFE0-0x18C2E0), under unk_189F90.c's
+ * Pad_Update: libpad2's sockets (Pad_OpenSocket, Pad_ReadPort), the
+ * conversion of a read into the core's button bits, pressures and sticks
+ * (Pad_ConvertData, Pad_StickPolar), and the vibration. A port's pad is
+ * described by its PadPort; its PadButton table (gPadButtonMaps, from
+ * gPadMapDigital or gPadMapAnalog) gives each core button its libpad2 bit.
+ *
+ * Then the TIM2 picture helpers (0x18C2E0-0x18CC10) that
+ * Tex_CreateFromTim2 (unk_180110.c) uses.
  */
 #include "common.h"
 #include "image.h"
@@ -27,30 +34,33 @@ extern u8 gPadPressIndex[16];           /* per button: its pressure in PadData.p
 void Pad_ReadPort(s32 port);
 s32 Pad_SetVibration(s32 port, s32 level, s32 on);
 
-/* Converts a port's PadData into its PadRaw: the buttons as the game's
- * bits, pressures (halved, 0 under the limit), sticks centred on 0. */
-/* Round 21: the button table, gPadBit and gPadPressIndex indexed by i (walkers: 18 words off). */
+/* Reads a port and converts its PadData into its PadRaw: the buttons as
+ * the core's bits, the pressures (halved, 0 under the port's least), the
+ * sticks centred on 0. A kind with neither bit 0 nor bit 1 becomes
+ * PAD_KIND_UNSUPPORTED, which reads as nothing. Returns 0 when the port
+ * is closed. */
 s32 Pad_ConvertData(s32 port)
 {
     u32 bits;
-    u8 press[12];
+    u8 press[PAD_DATA_PRESSURES];
     s32 i;
-    u8 v;
+    u8 value;
 
-    if (gPadPort[port].state == 0) {
+    if (gPadPort[port].state == PAD_PORT_CLOSED) {
         return 0;
     }
     Pad_ReadPort(port);
-    if (gPadRaw[port].kind != 0 && (gPadRaw[port].kind & 3) == 0) {
-        gPadRaw[port].kind = 0x8000;
+    if (gPadRaw[port].kind != PAD_KIND_NONE && (gPadRaw[port].kind & 3) == 0) {
+        gPadRaw[port].kind = PAD_KIND_UNSUPPORTED;
     }
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < PAD_KEYS; i++) {
         gPadRaw[port].pressure[i] = 0;
     }
-    for (i = 0; i < 12; i++) {
+    for (i = 0; i < PAD_DATA_PRESSURES; i++) {
         press[i] = gPadDataCur[port].press[i] / 2;
     }
     gPadDataCur[port].buttons = ~gPadDataCur[port].buttons;
+    /* the kinds with one bit set (Pad_ReadPort sets 1) */
     switch (gPadRaw[port].kind) {
     case 1:
     case 2:
@@ -59,39 +69,39 @@ s32 Pad_ConvertData(s32 port)
     case 0x10:
     case 0x20:
         bits = 0;
-        for (i = 0; i < 16; i++) {
+        for (i = 0; i < PAD_KEYS; i++) {
             if (gPadDataCur[port].buttons & gPadButtonMaps[port][i].mask) {
                 bits |= gPadBit[i];
-                gPadRaw[port].pressure[i] = 0x7F;
+                gPadRaw[port].pressure[i] = 0x7F;   /* full, unless the pad gives one */
             }
             switch (gPadButtonMaps[port][i].kind) {
-            case 1:
-                if (gPadRaw[port].caps & PAD_CAP_PRESS_PAD) {
-                    v = press[gPadPressIndex[i]];
-                    if (v < gPadLimits[port].pressMin) {
+            case PAD_PRESS_DPAD:
+                if (gPadRaw[port].caps & PAD_CAP_PRESS_DPAD) {
+                    value = press[gPadPressIndex[i]];
+                    if (value < gPadLimits[port].pressMin) {
                         gPadRaw[port].pressure[i] = 0;
                     } else {
-                        gPadRaw[port].pressure[i] = v;
+                        gPadRaw[port].pressure[i] = value;
                     }
                 }
                 break;
-            case 2:
-                if (gPadRaw[port].caps & PAD_CAP_PRESS_DIR) {
-                    v = press[gPadPressIndex[i]];
-                    if (v < gPadLimits[port].pressMin) {
+            case PAD_PRESS_SHAPES:
+                if (gPadRaw[port].caps & PAD_CAP_PRESS_SHAPES) {
+                    value = press[gPadPressIndex[i]];
+                    if (value < gPadLimits[port].pressMin) {
                         gPadRaw[port].pressure[i] = 0;
                     } else {
-                        gPadRaw[port].pressure[i] = v;
+                        gPadRaw[port].pressure[i] = value;
                     }
                 }
                 break;
-            case 3:
-                if (gPadRaw[port].caps & PAD_CAP_PRESS_SHAPE) {
-                    v = press[gPadPressIndex[i]];
-                    if (v < gPadLimits[port].pressMin) {
+            case PAD_PRESS_SHOULDERS:
+                if (gPadRaw[port].caps & PAD_CAP_PRESS_SHOULDERS) {
+                    value = press[gPadPressIndex[i]];
+                    if (value < gPadLimits[port].pressMin) {
                         gPadRaw[port].pressure[i] = 0;
                     } else {
-                        gPadRaw[port].pressure[i] = v;
+                        gPadRaw[port].pressure[i] = value;
                     }
                 }
                 break;
@@ -101,21 +111,21 @@ s32 Pad_ConvertData(s32 port)
         if (gPadRaw[port].caps & PAD_CAP_STICK_L) {
             gPadRaw[port].stickL.x = gPadDataCur[port].lx - 0x80;
             gPadRaw[port].stickL.y = gPadDataCur[port].ly - 0x80;
-            if (gPadRaw[port].stickL.x < -0x7F) {
-                gPadRaw[port].stickL.x = -0x7F;
+            if (gPadRaw[port].stickL.x < -PAD_STICK_MAX) {
+                gPadRaw[port].stickL.x = -PAD_STICK_MAX;
             }
-            if (gPadRaw[port].stickL.y < -0x7F) {
-                gPadRaw[port].stickL.y = -0x7F;
+            if (gPadRaw[port].stickL.y < -PAD_STICK_MAX) {
+                gPadRaw[port].stickL.y = -PAD_STICK_MAX;
             }
         }
         if (gPadRaw[port].caps & PAD_CAP_STICK_R) {
             gPadRaw[port].stickR.x = gPadDataCur[port].rx - 0x80;
             gPadRaw[port].stickR.y = gPadDataCur[port].ry - 0x80;
-            if (gPadRaw[port].stickR.x < -0x7F) {
-                gPadRaw[port].stickR.x = -0x7F;
+            if (gPadRaw[port].stickR.x < -PAD_STICK_MAX) {
+                gPadRaw[port].stickR.x = -PAD_STICK_MAX;
             }
-            if (gPadRaw[port].stickR.y < -0x7F) {
-                gPadRaw[port].stickR.y = -0x7F;
+            if (gPadRaw[port].stickR.y < -PAD_STICK_MAX) {
+                gPadRaw[port].stickR.y = -PAD_STICK_MAX;
             }
         }
         gPadData[port] = gPadDataCur[port];
@@ -132,81 +142,81 @@ s32 Pad_ConvertData(s32 port)
     return 1;
 }
 
-/* Polar coordinates of a stick: angle (y up), distance up to 127; inside
- * the dead zone everything is 0. */
-void Pad_StickPolar(PadStick *s, s16 dead)
+/* Polar coordinates of a stick: the angle (y up) in radians and degrees,
+ * the distance up to PAD_STICK_MAX; inside the dead zone everything is 0. */
+void Pad_StickPolar(PadStick *stick, s16 deadZone)
 {
     f32 rad;
 
-    if ((s->y | s->x) == 0) {
+    if ((stick->y | stick->x) == 0) {
         rad = 0.0f;
     } else {
-        rad = atan2(-s->y, s->x);
+        rad = atan2(-stick->y, stick->x);
         if (rad < 0.0f) {
             rad += 6.2831855f;
         }
     }
-    s->rad = rad;
-    s->deg = 360.0f * (s->rad / 6.2831855f);
-    s->mag = sqrt((double)(s->x * s->x) + (double)(s->y * s->y));
-    if (s->mag > 127) {
-        s->mag = 127;
+    stick->rad = rad;
+    stick->deg = 360.0f * (stick->rad / 6.2831855f);
+    stick->mag = sqrt((double)(stick->x * stick->x) + (double)(stick->y * stick->y));
+    if (stick->mag > PAD_STICK_MAX) {
+        stick->mag = PAD_STICK_MAX;
     }
-    if (s->mag < dead) {
-        s->x = 0;
-        s->y = 0;
-        s->rad = 0.0f;
-        s->deg = 0;
-        s->mag = 0;
+    if (stick->mag < deadZone) {
+        stick->x = 0;
+        stick->y = 0;
+        stick->rad = 0.0f;
+        stick->deg = 0;
+        stick->mag = 0;
     }
 }
 
-/* The pad bits of a stick's direction (sixteen sectors), 0 near the
- * centre. */
-u8 Pad_StickDirBits(PadStick *s)
+/* The direction bits of a stick (PAD_DIR_MASK's, from its sixteen sectors
+ * of 22.5 degrees), 0 near the centre. */
+u8 Pad_StickDirBits(PadStick *stick)
 {
-    if (s->mag < 0x25) {
+    if (stick->mag < 37) {
         return 0;
     }
-    return gPadStickDirBits[(u32)(s->deg / 22.5f)];
+    return gPadStickDirBits[(u32)(stick->deg / 22.5f)];
 }
 
 /* Starts libdbc and libpad2; 1 when both are up. */
 s32 Pad_StartLibs(void)
 {
-    s32 r;
+    s32 result;
 
     if (sceDbcInit() != 1) {
         return 0;
     }
-    r = scePad2Init(0);
-    return r == 1;
+    result = scePad2Init(0);
+    return result == 1;
 }
 
 /* Opens the socket of a port and slot. */
-void Pad_OpenSocket(s32 port, s32 slot, PadPort *p)
+void Pad_OpenSocket(s32 port, s32 slot, PadPort *padPort)
 {
-    scePad2SocketParam prm;
+    scePad2SocketParam param;
 
-    prm.number = 0;
-    prm.port = port;
-    prm.slot = slot;
-    prm.flag = 2;
-    if ((p->socket = scePad2CreateSocket(&prm, p->buf)) >= 0) {
-        p->state = 1;
-        p->setup = 0;
-        p->port = port;
-        p->slot = slot;
+    param.number = 0;
+    param.port = port;
+    param.slot = slot;
+    param.flag = 2;
+    if ((padPort->socket = scePad2CreateSocket(&param, padPort->buf)) >= 0) {
+        padPort->state = 1;
+        padPort->setup = 0;
+        padPort->port = port;
+        padPort->slot = slot;
     }
 }
 
 /* Closes the socket, then libpad2 and libdbc. */
 void Pad_EndLibs(void)
 {
-    PadPort *p = (PadPort *)gPadPort;
+    PadPort *padPort = (PadPort *)gPadPort;
 
-    if (p->state != 0) {
-        scePad2DeleteSocket(p->socket);
+    if (padPort->state != 0) {
+        scePad2DeleteSocket(padPort->socket);
     }
     scePad2End();
     sceDbcEnd();
@@ -222,87 +232,90 @@ extern PadButton gPadMapDigital[16];        /* digital pads */
 void Pad_ReadPort(s32 port)
 {
     u8 data[0x28];
-    u8 prof[4];
-    u8 vib[4];
+    u8 buttonProfile[4];
+    u8 vibBytes[4];
     s32 i;
 
     gPadDataCur[port] = gPadData[port];
+    /* scePad2GetState: 1 goes on to read; 0 and the rest read as no pad */
     switch (scePad2GetState(gPadPort[port].socket)) {
     case 1:
-        gPadPort[port].state = 2;
+        gPadPort[port].state = PAD_PORT_UNREAD;
         break;
     case 0:
-        gPadPort[port].state = 1;
+        gPadPort[port].state = PAD_PORT_READ;
         gPadPort[port].setup = 0;
         gPadPort[port].unk4 = 0;
         gPadPort[port].vibOk = 0;
         gPadPort[port].profile = 0;
         gPadPort[port].vibProfile = 0;
         gPadDataCur[port] = gPadDataNone;
-        gPadRaw[port].kind = 0;
+        gPadRaw[port].kind = PAD_KIND_NONE;
         gPadRaw[port].caps = 0;
         gPadRaw[port].state = gPadPort[port].state;
         return;
     case 2:
     case 3:
     default:
-        gPadPort[port].state = 2;
+        gPadPort[port].state = PAD_PORT_UNREAD;
         gPadPort[port].setup = 0;
         gPadPort[port].unk4 = 0;
         gPadPort[port].vibOk = 0;
         gPadPort[port].profile = 0;
         gPadPort[port].vibProfile = 0;
         gPadDataCur[port] = gPadDataNone;
-        gPadRaw[port].kind = 0;
+        gPadRaw[port].kind = PAD_KIND_NONE;
         gPadRaw[port].caps = 0;
         gPadRaw[port].state = gPadPort[port].state;
         return;
     }
     if (gPadPort[port].setup == 0) {
-        if (scePad2GetButtonProfile(gPadPort[port].socket, prof) < 0) {
+        if (scePad2GetButtonProfile(gPadPort[port].socket, buttonProfile) < 0) {
             return;
         }
-        gPadPort[port].profile = (prof[3] << 24) | (prof[2] << 16) | (prof[1] << 8) | prof[0];
-        if (sceVibGetProfile(gPadPort[port].socket, vib) >= 0) {
-            gPadPort[port].vibProfile = vib[0];
+        gPadPort[port].profile = (buttonProfile[3] << 24) | (buttonProfile[2] << 16) | (buttonProfile[1] << 8) | buttonProfile[0];
+        if (sceVibGetProfile(gPadPort[port].socket, vibBytes) >= 0) {
+            gPadPort[port].vibProfile = vibBytes[0];
         }
+        /* the profile's high half lists the analog parts: the sticks from bit
+         * 16, the pressures from bit 20 */
         if (gPadPort[port].profile & 0xFFFF0000) {
             if (gPadPort[port].profile & 0xFFF00000) {
-                gPadPort[port].type = 2;
+                gPadPort[port].type = PAD_TYPE_PRESSURE;
             } else {
-                gPadPort[port].type = 1;
+                gPadPort[port].type = PAD_TYPE_ANALOG;
             }
         } else {
-            gPadPort[port].type = 0;
+            gPadPort[port].type = PAD_TYPE_DIGITAL;
         }
         switch (gPadPort[port].type) {
-        case 0:
-            gPadRaw[port].kind = 1;
+        case PAD_TYPE_DIGITAL:
+            gPadRaw[port].kind = PAD_KIND_STANDARD;
             gPadRaw[port].caps = 0;
-            for (i = 0; i < 16; i++) {
+            for (i = 0; i < PAD_KEYS; i++) {
                 gPadButtonMaps[port][i].mask = gPadMapDigital[i].mask;
                 gPadButtonMaps[port][i].kind = gPadMapDigital[i].kind;
             }
             break;
-        case 1:
-            gPadRaw[port].kind = 1;
+        case PAD_TYPE_ANALOG:
+            gPadRaw[port].kind = PAD_KIND_STANDARD;
             gPadRaw[port].caps = PAD_CAP_STICK_L | PAD_CAP_STICK_R;
-            for (i = 0; i < 16; i++) {
+            for (i = 0; i < PAD_KEYS; i++) {
                 gPadButtonMaps[port][i].mask = gPadMapAnalog[i].mask;
                 gPadButtonMaps[port][i].kind = gPadMapAnalog[i].kind;
             }
             break;
-        case 2:
-            gPadRaw[port].kind = 1;
-            gPadRaw[port].caps = PAD_CAP_STICK_L | PAD_CAP_STICK_R | PAD_CAP_PRESS_PAD |
-                                    PAD_CAP_PRESS_SHAPE | PAD_CAP_PRESS_DIR;
-            for (i = 0; i < 16; i++) {
+        case PAD_TYPE_PRESSURE:
+            gPadRaw[port].kind = PAD_KIND_STANDARD;
+            gPadRaw[port].caps = PAD_CAP_STICK_L | PAD_CAP_STICK_R | PAD_CAP_PRESS_DPAD |
+                                    PAD_CAP_PRESS_SHOULDERS | PAD_CAP_PRESS_SHAPES;
+            for (i = 0; i < PAD_KEYS; i++) {
                 gPadButtonMaps[port][i].mask = gPadMapAnalog[i].mask;
                 gPadButtonMaps[port][i].kind = gPadMapAnalog[i].kind;
             }
             break;
         }
-        if ((gPadPort[port].vibProfile & 3) == 0) {
+        if ((gPadPort[port].vibProfile & 3) == 0) {   /* neither motor */
             gPadPort[port].vibOk = 0;
         } else {
             gPadPort[port].vibOk = 1;
@@ -312,20 +325,20 @@ void Pad_ReadPort(s32 port)
         if (scePad2Read(gPadPort[port].socket, data) < 0) {
             return;
         }
-        gPadPort[port].state = 1;
+        gPadPort[port].state = PAD_PORT_READ;
         gPadDataCur[port].status = 0;
         gPadDataCur[port].mode = 0;
         gPadDataCur[port].buttons = (data[0] << 8) | data[1];
         switch (gPadPort[port].type) {
-        case 0:
+        case PAD_TYPE_DIGITAL:
             break;
-        case 1:
+        case PAD_TYPE_ANALOG:
             gPadDataCur[port].rx = data[2];
             gPadDataCur[port].ry = data[3];
             gPadDataCur[port].lx = data[4];
             gPadDataCur[port].ly = data[5];
             break;
-        case 2:
+        case PAD_TYPE_PRESSURE:
             gPadDataCur[port].rx = data[2];
             gPadDataCur[port].ry = data[3];
             gPadDataCur[port].lx = data[4];
@@ -356,285 +369,255 @@ void Pad_ReadPort(s32 port)
     gPadRaw[port].state = gPadPort[port].state;
 }
 
-/* Sets the vibration of a port: on with level 0..7 (the large motor and
- * the small one), or off. 0 when the pad has no actuators. */
-s32 Pad_SetVibration(s32 port, s32 level, s32 on)
+/*
+ * Sets the vibration of a port: on at level 0..7 for `frames` frames
+ * (Pad_ReadPort counts them down and stops it), or off when frames is 0.
+ * Returns 0 when the pad has no actuators. The tests of vibProfile are
+ * assignments of 3, so the two-actuator form is always taken; the code
+ * is Capcom's, kept as it is for the match.
+ */
+s32 Pad_SetVibration(s32 port, s32 level, s32 frames)
 {
-    u8 prof;
+    u8 actuators;
     u8 data[3];
-    u8 v;
-    s32 n;
+    u8 motorBits;
+    s32 dataSize;
     if (gPadPort[port].vibProfile == 0) {
         return 0;
     }
-    gPadPort[port].vibTime = on;
-    if (on == 0) {
+    gPadPort[port].vibTime = frames;
+    if (frames == 0) {
         if ((gPadPort[port].vibProfile = 3) != 0) {
-            prof = 3;
-            n = 2;
+            actuators = 3;
+            dataSize = 2;
             data[0] = 0;
             data[1] = 0;
         } else {
             data[0] = 0;
-            n = 1;
-            prof = 2;
+            dataSize = 1;
+            actuators = 2;
         }
     } else {
-        v = ((level & 7) << 5) | 0xF;
+        motorBits = ((level & 7) << 5) | 0xF;
         if ((gPadPort[port].vibProfile = 3) != 0) {
-            prof = 3;
-            n = 2;
-            data[0] = ((v & 0x7F) << 1) | 1;
-            data[1] = (v & 0x80) >> 7;
+            actuators = 3;
+            dataSize = 2;
+            data[0] = ((motorBits & 0x7F) << 1) | 1;
+            data[1] = (motorBits & 0x80) >> 7;
         } else {
-            data[0] = v;
-            n = 1;
-            prof = 2;
+            data[0] = motorBits;
+            dataSize = 1;
+            actuators = 2;
         }
     }
-    sceVibSetActParam(gPadPort[port].socket, 1, &prof, n, data);
+    sceVibSetActParam(gPadPort[port].socket, 1, &actuators, dataSize, data);
     return 1;
 }
 
 
 /*
  * TIM2 pictures (0x18C2E0-0x18CC10): the header checks and the addresses of
- * picture 0's parts that Tex_CreateFromTim2 (unk_180110.c) needs. The file
- * layout is TIM2's: a 16-byte file header, then per picture a header, its
- * mip-map header, the image levels and the palette (CLUT), each part
- * aligned to 16 bytes (format 0) or 128.
+ * picture 0's parts that Tex_CreateFromTim2 (unk_180110.c) needs. The
+ * structures and type numbers are in include/image.h.
  */
-typedef struct Tim2FileHeader {
-    u8 id[4];                   /* 0x00: 'TIM2' */
-    u8 version;                 /* 0x04: 3 or 4 */
-    u8 format;                  /* 0x05: 0 = 16-byte alignment, 1 = 128 */
-    u16 pictures;               /* 0x06 */
-    u8 pad[8];                  /* 0x08 */
-} Tim2FileHeader;
-
-typedef struct Tim2PictureHeader {
-    u32 totalSize;              /* 0x00 */
-    u32 clutSize;               /* 0x04 */
-    u32 imageSize;              /* 0x08 */
-    u16 headerSize;             /* 0x0C */
-    u16 clutColors;             /* 0x0E */
-    u8 pictFormat;              /* 0x10 */
-    u8 mipMaps;                 /* 0x11: image levels, 1 to 7 */
-    u8 clutType;                /* 0x12: 1 16-bit, 2 24-bit, 3 32-bit colours */
-    u8 imageType;               /* 0x13: the same, or 4 (4-bit), 5 (8-bit indices) */
-    u16 width;                  /* 0x14 */
-    u16 height;                 /* 0x16 */
-    u64 gsTex0;                 /* 0x18 */
-    u64 gsTex1;                 /* 0x20 */
-    u32 gsTexaFbaPabe;          /* 0x28 */
-    u32 gsTexClut;              /* 0x2C */
-} Tim2PictureHeader;
-
-/* After the picture header when there is more than one level. */
-typedef struct Tim2MipHeader {
-    u64 gsMiptbp1;              /* 0x00 */
-    u64 gsMiptbp2;              /* 0x08 */
-    u32 levelSize[8];           /* 0x10 */
-} Tim2MipHeader;
-
-s32 Tim2_CheckHeader(u8 *tim2);
-static Tim2PictureHeader *Tim2_GetPicture(u8 *tim2, s32 n);
-u8 *Tim2_GetImage(u8 *tim2, s32 pict, s32 level);
-u8 *Tim2_GetPictClut(u8 *tim2, s32 pict);
+s32 Tim2_CheckHeader(u8 *file);
+static Tim2PictureHeader *Tim2_GetPicture(u8 *file, s32 index);
+u8 *Tim2_GetImage(u8 *file, s32 pictIndex, s32 level);
+u8 *Tim2_GetPictClut(u8 *file, s32 pictIndex);
 
 /* The number of mip levels after the first of picture 0; 0 when the file
  * is not TIM2. */
-s32 Tim2_LastLevel(u8 *tim2)
+s32 Tim2_LastLevel(u8 *file)
 {
-    Tim2PictureHeader *ph;
+    Tim2PictureHeader *pict;
 
-    if (Tim2_CheckHeader(tim2) == 0) {
+    if (Tim2_CheckHeader(file) == 0) {
         return 0;
     }
-    ph = Tim2_GetPicture(tim2, 0);
-    return (u8)(ph->mipMaps - 1);
+    pict = Tim2_GetPicture(file, 0);
+    return (u8)(pict->mipMaps - 1);
 }
 
 /* Describes the image levels of picture 0 (up to 7). */
-s32 Tim2_DescribeLevels(Image *img, u8 *tim2)
+s32 Tim2_DescribeLevels(Image *image, u8 *file)
 {
-    Tim2PictureHeader *ph;
+    Tim2PictureHeader *pict;
     s32 i;
-    s32 w;
-    s32 h;
+    s32 levelWidth;
+    s32 levelHeight;
 
-    if (Tim2_CheckHeader(tim2) == 0) {
+    if (Tim2_CheckHeader(file) == 0) {
         return 0;
     }
-    ph = Tim2_GetPicture(tim2, 0);
-    if (ph->mipMaps > 7) {
+    pict = Tim2_GetPicture(file, 0);
+    if (pict->mipMaps > TIM2_MAX_LEVELS) {
         return 0;
     }
-    w = ph->width;
-    h = ph->height;
-    for (i = 0; i < ph->mipMaps; i++) {
-        img->flags = 0;
-        img->width = w;
-        img->height = h;
-        switch (ph->imageType) {
-        case 4:
-            img->flags |= IMAGE_INDEXED | IMAGE_NIBBLE_HI;
-            img->bpp = 0;
-            img->pitch = img->width >> 1;
-            img->r.shift = 0;
-            img->r.bits = 0;
-            img->r.mask = 0;
-            img->g.shift = 0;
-            img->g.bits = 0;
-            img->g.mask = 0;
-            img->b.shift = 0;
-            img->b.bits = 0;
-            img->b.mask = 0;
-            img->a.shift = 0;
-            img->a.bits = 0;
-            img->a.mask = 0;
+    levelWidth = pict->width;
+    levelHeight = pict->height;
+    for (i = 0; i < pict->mipMaps; i++) {
+        image->flags = 0;
+        image->width = levelWidth;
+        image->height = levelHeight;
+        switch (pict->imageType) {
+        case TIM2_TYPE_INDEX4:
+            image->flags |= IMAGE_INDEXED | IMAGE_NIBBLE_HI;
+            image->bpp = 0;
+            image->pitch = image->width >> 1;
+            image->r.shift = 0;
+            image->r.bits = 0;
+            image->r.mask = 0;
+            image->g.shift = 0;
+            image->g.bits = 0;
+            image->g.mask = 0;
+            image->b.shift = 0;
+            image->b.bits = 0;
+            image->b.mask = 0;
+            image->a.shift = 0;
+            image->a.bits = 0;
+            image->a.mask = 0;
             break;
-        case 5:
-            img->flags |= IMAGE_INDEXED;
-            img->bpp = 1;
-            img->pitch = img->bpp * img->width;
-            img->r.shift = 0;
-            img->r.bits = 0;
-            img->r.mask = 0;
-            img->g.shift = 0;
-            img->g.bits = 0;
-            img->g.mask = 0;
-            img->b.shift = 0;
-            img->b.bits = 0;
-            img->b.mask = 0;
-            img->a.shift = 0;
-            img->a.bits = 0;
-            img->a.mask = 0;
+        case TIM2_TYPE_INDEX8:
+            image->flags |= IMAGE_INDEXED;
+            image->bpp = 1;
+            image->pitch = image->bpp * image->width;
+            image->r.shift = 0;
+            image->r.bits = 0;
+            image->r.mask = 0;
+            image->g.shift = 0;
+            image->g.bits = 0;
+            image->g.mask = 0;
+            image->b.shift = 0;
+            image->b.bits = 0;
+            image->b.mask = 0;
+            image->a.shift = 0;
+            image->a.bits = 0;
+            image->a.mask = 0;
             break;
-        case 1:
-            img->bpp = 2;
-            img->pitch = img->bpp * img->width;
-            IMAGE_RGBA5551(img);
-            img->r.shift = 0; /* the GS order, blue high */
-            img->b.shift = 10;
+        case TIM2_TYPE_RGB16:
+            image->bpp = 2;
+            image->pitch = image->bpp * image->width;
+            IMAGE_RGBA5551(image);
+            image->r.shift = 0; /* the GS order, blue high */
+            image->b.shift = 10;
             break;
-        case 2:
-            img->bpp = 3;
-            img->pitch = img->bpp * img->width;
-            IMAGE_RGB888(img);
-            IMAGE_GS_ORDER_32(img);
+        case TIM2_TYPE_RGB24:
+            image->bpp = 3;
+            image->pitch = image->bpp * image->width;
+            IMAGE_RGB888(image);
+            IMAGE_GS_ORDER_32(image);
             break;
-        case 3:
-            img->bpp = 4;
-            img->pitch = img->bpp * img->width;
-            IMAGE_RGBA8888(img);
-            IMAGE_GS_ORDER_32(img);
+        case TIM2_TYPE_RGB32:
+            image->bpp = 4;
+            image->pitch = image->bpp * image->width;
+            IMAGE_RGBA8888(image);
+            IMAGE_GS_ORDER_32(image);
             break;
         }
-        img++;
-        w >>= 1;
-        h >>= 1;
+        image++;
+        levelWidth >>= 1;
+        levelHeight >>= 1;
     }
     return 1;
 }
 
 /* Describes picture 0's palette (16 or 256 colours). */
-s32 Tim2_DescribeClut(Image *img, u8 *tim2)
+s32 Tim2_DescribeClut(Image *image, u8 *file)
 {
-    Tim2PictureHeader *ph;
+    Tim2PictureHeader *pict;
 
-    if (Tim2_CheckHeader(tim2) == 0) {
+    if (Tim2_CheckHeader(file) == 0) {
         return 0;
     }
-    ph = Tim2_GetPicture(tim2, 0);
-    if (ph->mipMaps > 7) {
+    pict = Tim2_GetPicture(file, 0);
+    if (pict->mipMaps > TIM2_MAX_LEVELS) {
         return 0;
     }
-    img->flags = 0;
-    switch (ph->clutType) {
-    case 1:
-        img->bpp = 2;
-        IMAGE_RGBA5551(img);
-        img->r.shift = 0; /* the GS order, blue high */
-        img->b.shift = 10;
+    image->flags = 0;
+    switch (pict->clutType) {
+    case TIM2_TYPE_RGB16:
+        image->bpp = 2;
+        IMAGE_RGBA5551(image);
+        image->r.shift = 0; /* the GS order, blue high */
+        image->b.shift = 10;
         break;
-    case 2:
-        img->bpp = 3;
-        IMAGE_RGB888(img);
-        IMAGE_GS_ORDER_32(img);
+    case TIM2_TYPE_RGB24:
+        image->bpp = 3;
+        IMAGE_RGB888(image);
+        IMAGE_GS_ORDER_32(image);
         break;
-    case 3:
-        img->bpp = 4;
-        IMAGE_RGBA8888(img);
-        IMAGE_GS_ORDER_32(img);
+    case TIM2_TYPE_RGB32:
+        image->bpp = 4;
+        IMAGE_RGBA8888(image);
+        IMAGE_GS_ORDER_32(image);
         break;
     default:
         return 0;
     }
-    switch (ph->imageType) {
-    case 4:
-        if (ph->clutColors != 16) {
+    switch (pict->imageType) {
+    case TIM2_TYPE_INDEX4:
+        if (pict->clutColors != 16) {
             return 0;
         }
-        img->width = 16;
-        img->height = 1;
+        image->width = 16;
+        image->height = 1;
         break;
-    case 5:
-        if (ph->clutColors != 256) {
+    case TIM2_TYPE_INDEX8:
+        if (pict->clutColors != 256) {
             return 0;
         }
-        img->width = 256;
-        img->height = 1;
+        image->width = 256;
+        image->height = 1;
         break;
     default:
         return 0;
     }
-    img->pitch = img->bpp * img->width;
+    image->pitch = image->bpp * image->width;
     return 1;
 }
 
 /* Level `level` of picture 0's image. */
-u8 *Tim2_GetLevel(u8 *tim2, s32 level)
+u8 *Tim2_GetLevel(u8 *file, s32 level)
 {
-    return Tim2_GetImage(tim2, 0, level);
+    return Tim2_GetImage(file, 0, level);
 }
 
 /* Picture 0's palette. */
-u8 *Tim2_GetClut(u8 *tim2)
+u8 *Tim2_GetClut(u8 *file)
 {
-    return Tim2_GetPictClut(tim2, 0);
+    return Tim2_GetPictClut(file, 0);
 }
 
 /* 1 for a TIM2 file of version 3, or 4 with format 0 or 1, holding one
  * picture; else 0. */
-s32 Tim2_CheckHeader(u8 *tim2)
+s32 Tim2_CheckHeader(u8 *file)
 {
-    Tim2FileHeader *h = (Tim2FileHeader *)tim2;
+    Tim2FileHeader *header = (Tim2FileHeader *)file;
     s32 kind;
-    u8 fmt;
+    u8 fileFormat;
 
-    if (h->id[0] == 'T' && h->id[1] == 'I' && h->id[2] == 'M' && h->id[3] == '2') {
+    if (header->id[0] == 'T' && header->id[1] == 'I' && header->id[2] == 'M' && header->id[3] == '2') {
         kind = 1;
-    } else if (h->id[0] == 'C' && h->id[1] == 'L' && h->id[2] == 'T' && h->id[3] == '2') {
+    } else if (header->id[0] == 'C' && header->id[1] == 'L' && header->id[2] == 'T' && header->id[3] == '2') {
         /* a palette file (CLT2) */
         return 0;
     } else {
         return 0;
     }
-    fmt = h->format;
-    if (!(h->version == 3 || (h->version == 4 && fmt <= 1U))) {
+    fileFormat = header->format;
+    if (!(header->version == 3 || (header->version == 4 && fileFormat <= 1U))) {
         return 0;
     }
-    if (h->pictures != 1) {
+    if (header->pictures != 1) {
         return 0;
     }
     return kind;
 }
 
 /* size rounded up to the file's alignment. */
-static u32 Tim2_Align(u8 *tim2, u32 size)
+static u32 Tim2_Align(u8 *file, u32 size)
 {
-    u32 align = ((Tim2FileHeader *)tim2)->format == 0 ? 0x10 : 0x80;
+    u32 align = ((Tim2FileHeader *)file)->format == 0 ? 0x10 : 0x80;
 
     if (size % align != 0) {
         size += align - (size - size / align * align) % align;
@@ -643,99 +626,101 @@ static u32 Tim2_Align(u8 *tim2, u32 size)
 }
 
 /* Picture n's header. */
-static Tim2PictureHeader *Tim2_GetPicture(u8 *tim2, s32 n)
+static Tim2PictureHeader *Tim2_GetPicture(u8 *file, s32 index)
 {
     s32 i;
-    Tim2FileHeader *h;
-    Tim2PictureHeader *ph;
+    Tim2FileHeader *header;
+    Tim2PictureHeader *pict;
 
-    h = (Tim2FileHeader *)tim2;
-    tim2 += Tim2_Align(tim2, sizeof(Tim2FileHeader));
-    ph = (Tim2PictureHeader *)tim2;
-    for (i = 0; i < n; i++) {
-        if (i >= h->pictures) {
+    header = (Tim2FileHeader *)file;
+    file += Tim2_Align(file, sizeof(Tim2FileHeader));
+    pict = (Tim2PictureHeader *)file;
+    for (i = 0; i < index; i++) {
+        if (i >= header->pictures) {
             break;
         }
-        tim2 += Tim2_Align((u8 *)h, sizeof(Tim2PictureHeader));
-        tim2 += ph->totalSize;
-        ph = (Tim2PictureHeader *)tim2;
+        file += Tim2_Align((u8 *)header, sizeof(Tim2PictureHeader));
+        file += pict->totalSize;
+        pict = (Tim2PictureHeader *)file;
     }
-    return ph;
+    return pict;
 }
 
-/* Level `level` of picture 0's image (pict is not used). ph keeps the
- * picture's start (its mipMaps byte, 0x11, is read through it); p is a byte
- * cursor: the mip header, then the image. The level-size index is unsigned,
- * as the original's code shows: with a signed index MWCC strength-reduces
- * the pointer, the original computes i * 4 + p in each group of eight. */
-u8 *Tim2_GetImage(u8 *tim2, s32 pict, s32 level)
+/*
+ * Level `level` of picture 0's image (pictIndex is not used): after the
+ * picture header, its mip-map header and the levels before it, each
+ * aligned. Two forms are kept for the match: pict is the picture header
+ * as bytes, its mipMaps byte (0x11) read by index (a field read compiles
+ * differently), and the level-size index is unsigned (with a signed one
+ * MWCC strength-reduces the pointer).
+ */
+u8 *Tim2_GetImage(u8 *file, s32 pictIndex, s32 level)
 {
     u32 *sizes[8];
-    u8 *p;
-    u8 *ph;
-    u32 hsize;
-    u32 add;
+    u8 *cursor;
+    u8 *pict;
+    u32 headerSize;
+    u32 mipHeaderSize;
     s32 i;
-    u32 skip;
-    u8 *img;
+    u32 offset;
+    u8 *image;
 
-    p = (u8 *)Tim2_GetPicture(tim2, 0);
-    ph = p;
-    hsize = sizeof(Tim2PictureHeader);
-    if (ph[0x11] > 1) {
-        p = ph + sizeof(Tim2PictureHeader);
-        for (i = 0; i < ph[0x11] - 1; i++) {
-            sizes[i] = &((Tim2MipHeader *)p)->levelSize[(u32)i];
+    cursor = (u8 *)Tim2_GetPicture(file, 0);
+    pict = cursor;
+    headerSize = sizeof(Tim2PictureHeader);
+    if (pict[0x11] > 1) {
+        cursor = pict + sizeof(Tim2PictureHeader);
+        for (i = 0; i < pict[0x11] - 1; i++) {
+            sizes[i] = &((Tim2MipHeader *)cursor)->levelSize[(u32)i];
         }
-        if (ph[0x11] <= 4) {
-            add = 0x20;
+        if (pict[0x11] <= 4) {
+            mipHeaderSize = 0x20;
         } else {
-            add = 0x30;
+            mipHeaderSize = 0x30;
         }
-        hsize += add;
+        headerSize += mipHeaderSize;
     }
-    p = ph + Tim2_Align(tim2, hsize);
-    if (ph[0x11] > 1) {
-        skip = 0;
+    cursor = pict + Tim2_Align(file, headerSize);
+    if (pict[0x11] > 1) {
+        offset = 0;
         for (i = 0; i < level; i++) {
-            skip += Tim2_Align(tim2, *sizes[i]);
+            offset += Tim2_Align(file, *sizes[i]);
         }
-        img = p + skip;
+        image = cursor + offset;
     } else {
-        img = p;
+        image = cursor;
     }
-    return img;
+    return image;
 }
 
-/* Picture 0's palette, or 0 when it has none. */
-/* the CLUT of picture 0 of a TIM2 file: after the picture header (plus the
- * mipmap headers) and the image, or NULL when it has none */
-u8 *Tim2_GetPictClut(u8 *tim2, s32 pict)
+/* Picture 0's palette (pictIndex is not used): after the picture header,
+ * its mip-map header and the image; NULL when it has none. */
+u8 *Tim2_GetPictClut(u8 *file, s32 pictIndex)
 {
-    u8 *p;
-    Tim2PictureHeader *ph;
-    u32 hsize;
-    u32 add;
-    u8 *r;
+    u8 *cursor;
+    Tim2PictureHeader *pict;
+    u32 headerSize;
+    u32 mipHeaderSize;
+    u8 *clut;
 
-    p = (u8 *)Tim2_GetPicture(tim2, 0);
-    ph = (Tim2PictureHeader *)p;
-    hsize = sizeof(Tim2PictureHeader);
-    if (ph->mipMaps > 1) {
-        if (ph->mipMaps <= 4) {
-            add = 0x20;
+    cursor = (u8 *)Tim2_GetPicture(file, 0);
+    pict = (Tim2PictureHeader *)cursor;
+    headerSize = sizeof(Tim2PictureHeader);
+    if (pict->mipMaps > 1) {
+        if (pict->mipMaps <= 4) {
+            mipHeaderSize = 0x20;
         } else {
-            add = 0x30;
+            mipHeaderSize = 0x30;
         }
-        hsize += add;
+        headerSize += mipHeaderSize;
     }
-    p += Tim2_Align(tim2, hsize);
-    if (ph->clutSize != 0) {
-        r = p + ph->imageSize;
+    cursor += Tim2_Align(file, headerSize);
+    if (pict->clutSize != 0) {
+        clut = cursor + pict->imageSize;
     } else {
         return NULL;
     }
-    return r;
+    return clut;
 }
 
 /* unk_18AFE0's .data (0x1BAFF0-0x1BB130) */

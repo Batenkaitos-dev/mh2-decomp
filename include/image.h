@@ -100,4 +100,54 @@ s32 Image_Convert(Image *dst, Image *src);
     (img)->b.shift = 16
 #define IMAGE_SET_PITCH(img) (img)->pitch = (img)->width * (img)->bpp
 
+/*
+ * TIM2 pictures, as main's Tim2_* helpers (src/main/unk_18AFE0.c) read them
+ * for Tex_CreateFromTim2: a 16-byte file header, then per picture a
+ * header, its mip-map header when it has more than one level, the image
+ * levels and the palette (CLUT), each part aligned to 16 bytes (format 0)
+ * or 128 (format 1).
+ */
+typedef struct Tim2FileHeader {
+    u8 id[4];                   /* 0x00: 'TIM2' ('CLT2' for a palette file) */
+    u8 version;                 /* 0x04: 3 or 4 */
+    u8 format;                  /* 0x05: 0 = 16-byte alignment, 1 = 128 */
+    u16 pictures;               /* 0x06 */
+    u8 pad[8];                  /* 0x08 */
+} Tim2FileHeader;
+
+/* Tim2PictureHeader.clutType and imageType. */
+#define TIM2_TYPE_RGB16 1       /* 16-bit colours (RGBA 5551) */
+#define TIM2_TYPE_RGB24 2       /* 24-bit colours */
+#define TIM2_TYPE_RGB32 3       /* 32-bit colours */
+#define TIM2_TYPE_INDEX4 4      /* imageType only: 4-bit indices (16 colours) */
+#define TIM2_TYPE_INDEX8 5      /* imageType only: 8-bit indices (256 colours) */
+
+#define TIM2_MAX_LEVELS 7       /* the most image levels Tim2_DescribeLevels takes */
+
+typedef struct Tim2PictureHeader {
+    u32 totalSize;              /* 0x00 */
+    u32 clutSize;               /* 0x04 */
+    u32 imageSize;              /* 0x08 */
+    u16 headerSize;             /* 0x0C */
+    u16 clutColors;             /* 0x0E */
+    u8 pictFormat;              /* 0x10 */
+    u8 mipMaps;                 /* 0x11: image levels, 1 to TIM2_MAX_LEVELS */
+    u8 clutType;                /* 0x12: TIM2_TYPE_RGB16 to _RGB32 */
+    u8 imageType;               /* 0x13: TIM2_TYPE_* */
+    u16 width;                  /* 0x14 */
+    u16 height;                 /* 0x16 */
+    u64 gsTex0;                 /* 0x18 */
+    u64 gsTex1;                 /* 0x20 */
+    u32 gsTexaFbaPabe;          /* 0x28 */
+    u32 gsTexClut;              /* 0x2C */
+} Tim2PictureHeader;
+
+/* After the picture header when there is more than one level: 0x20 bytes
+ * for up to 4 levels, 0x30 for more. */
+typedef struct Tim2MipHeader {
+    u64 gsMiptbp1;              /* 0x00 */
+    u64 gsMiptbp2;              /* 0x08 */
+    u32 levelSize[8];           /* 0x10 */
+} Tim2MipHeader;
+
 #endif /* IMAGE_H */

@@ -6,9 +6,9 @@
 
 /* Maps the byte at +0x19 of a record (0-12) to 0-9: pairs 0-1, 2-3, 4-5,
  * 6-7 give 0-3, then 8-12 give 4, 5, 6, 8, 9; anything else 9. */
-s8 SaveRecord_KindIndex_Unk(u8 *p)
+s8 SaveRecord_KindIndex_Unk(u8 *record)
 {
-    switch ((s8)p[0x19]) {
+    switch ((s8)record[0x19]) {
     case 0:
     case 1:
         return 0;

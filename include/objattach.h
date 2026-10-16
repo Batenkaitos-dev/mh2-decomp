@@ -3,6 +3,28 @@
 
 #include "common.h"
 
+/* The attack kinds (ObjAttach.attackKind, the hit target's lastAttackKind):
+ * how a player reacts to the hit (Player_ReactToHit, unk_733EA0.c). Kinds
+ * not listed (8, 11, 12, 13, 0x10, 24) are seen only as exceptions there
+ * and in ObjAttach_DamagePlayer. In the air (Player.action 2) every kind but
+ * 8, 11, 12, 13, ATTACK_INHALE, ATTACK_TOSS_HIGH and 24 blows the player
+ * away. */
+enum AttackKind {
+    ATTACK_BLOW = 2,         /* blows the player away (PL_REACT_BLOWN_BACK, _FORWARD) */
+    ATTACK_TOSS = 3,         /* tosses the player up (PL_REACT_TOSSED_BACK, _FORWARD) */
+    ATTACK_ROAR = 4,         /* likely a roar: PL_REACT_ROAR; skills 0x8F, 0x90 and meal effect 4 block it */
+    ATTACK_WIND = 5,         /* likely wind pressure: PL_REACT_WIND; skill 0x5B blocks it */
+    ATTACK_PAINT = 7,        /* paints the monster hit (Em.painted) */
+    ATTACK_REVIVE = 0xA,     /* hits only fainted players: gets them up (PL_EVENT_REVIVE, versus) */
+    ATTACK_WIND_WEAK = 0xE,  /* PL_REACT_WIND_SHORT; skill 0x5A or 0x5B blocks it */
+    ATTACK_ROAR_WEAK = 0xF,  /* PL_REACT_ROAR_SHORT; skill 0x8E blocks it */
+    ATTACK_QUAKE_LONG = 0x12, /* PL_REACT_QUAKE_LONG */
+    ATTACK_QUAKE = 0x14,     /* likely a tremor: PL_REACT_QUAKE; skill 0xC3 blocks it */
+    ATTACK_ROAR_STRONG = 0x15, /* PL_REACT_ROAR_STRONG; only skill 0x90 blocks it */
+    ATTACK_INHALE = 0x16,    /* pulls the player in (PL_REACT_INHALED) */
+    ATTACK_TOSS_HIGH = 0x17  /* as ATTACK_TOSS (seen: the same reactions) */
+};
+
 /*
  * An object of sub_main's second object pool (0x40 objects of 0xD4 bytes at
  * 0x5B70D0; ObjAttach_Alloc, ObjAttach_Free), attached to a player or a

@@ -12,6 +12,10 @@
 #define T0_MODE (*(volatile u32 *)0x10000010)
 #define T1_COUNT (*(volatile u32 *)0x10000800)
 #define T1_MODE (*(volatile u32 *)0x10000810)
+/* Tn_MODE's fields (the EE user's manual): CLKS, the clock counted, and
+ * CUE, which starts the count */
+#define T_MODE_CLKS_HBLANK 0x03     /* count H-blanks */
+#define T_MODE_CUE 0x80
 
 /* VIF1 */
 #define VIF1_STAT (*(volatile u32 *)0x10003C00)

@@ -360,7 +360,7 @@ void DrinkMug_Init(VObj *o)
 }
 
 void Em_BonePos(void *t, s16 bone, f32 *out);
-f32 Lure_RandSigned(void);
+f32 Rand_Signed(void);
 f32 Math_Absf(f32 x);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 void Vec_Copy(f32 *dst, f32 *src);
@@ -435,7 +435,7 @@ void DrinkMug_Step(VObj *o)
             o->type = 2;
             w->unkE = 0;
             w->unkF = 0;
-            w->unk38 = 6.2831855f * (f32)w->target->ang / 65536.0f + 0.34906587f * Lure_RandSigned();
+            w->unk38 = 6.2831855f * (f32)w->target->ang / 65536.0f + 0.34906587f * Rand_Signed();
         } else if (w->unkE-- <= 0) {
             w->unkE = 2;
         }

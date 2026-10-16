@@ -1,8 +1,17 @@
 /*
- * select: OPTIONS (game settings, sound, screen position, brightness) and
- * NETWORK OPTIONS (0x6B6700-0x6B9B10). The file owns its .data
- * (0x6CAB60-0x6CACC0), .rodata (0x6CDF50-0x6CDFD8) and .bss
- * (0x6D2190-0x6D21A8).
+ * select: the options and the network options (0x6B6700-0x6B9B10).
+ *
+ * Both run as a task (Option_Task, NetOption_Task) over OptWork (select.h,
+ * gOptWork). The options have four pages: the main one (sound mode,
+ * volumes, the equipment view, and rows that open the others), the
+ * controls (vibration, chat size, aim and camera), the screen position
+ * and the brightness. The network options have their settings, the
+ * network menu (sub_main's NetMenu, run as a page) and a confirmation that
+ * starts the network setup guide (the yn overlay). Leaving saves the
+ * settings to the memory card when they changed.
+ *
+ * The file owns its .data (0x6CAB60-0x6CACC0), .rodata (0x6CDF50-0x6CDFD8)
+ * and .bss (0x6D2190-0x6D21A8).
  */
 #include "common.h"
 #include "window.h"
@@ -13,53 +22,12 @@
 #include "syssave.h"
 
 void SysSettings_Reset(void);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void Option_Update(TaskSlot *t);
 void Option_Start(TaskSlot *t, u16 net);
 void Option_Exit(void *t, s32 net);
 void Gfx_SetBlend(s32, s32);
 void Frame_Draw(void);
-/* OPTIONS' work (gOptWork). */
-typedef struct OptWork {
-    s32 state;              /* 0x00 */
-    s32 step;               /* 0x04 */
-    s32 unk8;               /* 0x08 */
-    u8 unkC[4];
-    s32 unk10;              /* 0x10 */
-    u8 unk14[0xC];
-    s32 page;               /* 0x20: the page shown */
-    s32 nextPage;           /* 0x24: the page after the fade */
-    s32 unk28;              /* 0x28 */
-    s32 unk2C;              /* 0x2C */
-    u8 unk30[8];
-    s32 unk38;              /* 0x38 */
-    s32 unk3C;              /* 0x3C */
-    s32 unk40;              /* 0x40 */
-    s32 unk44;              /* 0x44 */
-    s32 unk48;              /* 0x48 */
-    f32 unk4C;              /* 0x4C */
-    s32 unk50;              /* 0x50 */
-    s32 unk54;              /* 0x54: a colour */
-    u32 unk58;              /* 0x58: a colour */
-    u32 unk5C;              /* 0x5C: a colour */
-    u32 unk60;              /* 0x60: a colour */
-    s32 unk64;              /* 0x64 */
-    s32 unk68;              /* 0x68 */
-    s32 unk6C;              /* 0x6C */
-    s32 unk70;              /* 0x70 */
-    s32 unk74;              /* 0x74 */
-    s32 unk78;              /* 0x78 */
-    s32 unk7C;              /* 0x7C */
-    s8 unk80[0x10];         /* 0x80: a copy of gSysSave.options */
-    s8 unk90[0x10];         /* 0x90: a copy of gSysSave.netOptions */
-    s32 unkA0;              /* 0xA0: the arrows are shown */
-    s16 unkA4;              /* 0xA4: 1 left, 2 right (the arrow pressed) */
-    s16 unkA6;              /* 0xA6: left arrow x */
-    s16 unkA8;              /* 0xA8: right arrow x */
-    s16 unkAA;              /* 0xAA: left arrow offset */
-    s16 unkAC;              /* 0xAC: right arrow offset */
-    s16 unkAE;              /* 0xAE: arrows y */
-} OptWork;
 
 void Stream_UpdateMaxVol(s32 apply);
 void Sound_PlaySe73(void);
@@ -70,8 +38,8 @@ void TexRect_DrawRotated(struct TexRect *r, s32 angle);
 
 void Title_DrawMenu(void *unused);
 void Sel_DrawHeader(s16 kind);
-extern M2C_UNK D_5B3680;
-void NetOption_Update(TaskSlot *t, s32 unused);
+
+void NetOption_Update(TaskSlot *task, s32 unused);
 
 extern u32 gNetOptValueNames_0[];
 extern u32 gNetOptValueNames_1[];
@@ -85,16 +53,16 @@ u8 gNetOptDefaults[0x10];
 u32 gOptSysDefaults[4] = {
 #include "select/006CAB60.inc"
 };
-u32 gOptGameDefaults[4] = {
+u32 gOptMainDefaults[4] = {
 #include "select/006CAB70.inc"
 };
-u32 gOptSoundDefaults[4] = {
+u32 gOptControlDefaults[4] = {
 #include "select/006CAB80.inc"
 };
-u32 gOptGameValueCounts[4] = {
+u32 gOptMainValueCounts[4] = {
 #include "select/006CAB90.inc"
 };
-u32 gOptSoundValueCounts[4] = {
+u32 gOptControlValueCounts[4] = {
 #include "select/006CABA0.inc"
 };
 Frame gOptPageFrame = {
@@ -113,10 +81,10 @@ u32 gNetOptValueCounts[2] = {
 u32 gOptScreenPosRects[8] = {
 #include "select/006CAC10.inc"
 };
-u32 gOptGameArrows[8] = {
+u32 gOptMainArrows[8] = {
 #include "select/006CAC30.inc"
 };
-u32 gOptSoundArrows[6] = {
+u32 gOptControlArrows[6] = {
 #include "select/006CAC50.inc"
 };
 u32 gNetOptArrows[2] = {
@@ -136,18 +104,25 @@ u32 gNetOptConfirmWin[8] = {
 };
 
 
-void Option_SetDefaults(void) {
+/* Resets every option to its default and applies them. */
+void Option_SetDefaults(void)
+{
     memcpy(&gSysSave.options, &gOptSysDefaults, 0x10);
     SysSettings_Reset();
 }
 
-void Option_GameDefaults(void) {
+/*
+ * Resets the main page's settings to their defaults (gOptMainDefaults,
+ * whose -1 bytes leave a setting alone), applies them and the music volume.
+ */
+void Option_MainDefaults(void)
+{
     s8 *src;
     s8 *dst;
     s32 i;
 
     dst = &gSysSave.options.soundMode;
-    src = (s8 *)gOptGameDefaults;
+    src = (s8 *)gOptMainDefaults;
     for (i = 0; i < 0x10; i++, dst++, src++) {
         if (*src != -1) {
             *dst = *src;
@@ -157,7 +132,12 @@ void Option_GameDefaults(void) {
     Stream_UpdateMaxVol(1);
 }
 
-void Option_NetDefaults(void) {
+/*
+ * Resets the network settings to their defaults (gNetOptDefaults, whose -1
+ * bytes leave a setting alone).
+ */
+void Option_NetDefaults(void)
+{
     s8 *src;
     s8 *dst;
     s32 i;
@@ -171,13 +151,18 @@ void Option_NetDefaults(void) {
     }
 }
 
-void Option_SoundDefaults(void) {
+/*
+ * Resets the controls page's settings to their defaults (gOptControlDefaults,
+ * whose -1 bytes leave a setting alone).
+ */
+void Option_ControlDefaults(void)
+{
     s8 *src;
     s8 *dst;
     s32 i;
 
     dst = &gSysSave.options.soundMode;
-    src = (s8 *)gOptSoundDefaults;
+    src = (s8 *)gOptControlDefaults;
     for (i = 0; i < 0x10; i++, dst++, src++) {
         if (*src != -1) {
             *dst = *src;
@@ -185,59 +170,77 @@ void Option_SoundDefaults(void) {
     }
 }
 
-void Option_Task(TaskSlot *t) {
+/*
+ * The options' task: starts them, runs the pages, then leaves (task->mode
+ * 0, 1, 2).
+ */
+void Option_Task(TaskSlot *task)
+{
     u8 step;
 
     Gfx_SetBlend(4, 5);
-    step = t->mode;
-    switch (step) {                              /* irregular */
+    step = task->mode;
+    switch (step) {
     case 0:
-        Option_Start(t, 0);
+        Option_Start(task, 0);
         break;
     case 1:
-        Option_Update(t);
+        Option_Update(task);
         break;
     case 2:
-        Option_Exit(t, 0);
+        Option_Exit(task, 0);
         break;
     }
     Frame_Draw();
 }
 
-void Option_OpenGamePage(void) {
+/* Fades to the main page. */
+void Option_OpenMainPage(void)
+{
     gOptWork->nextPage = 0;
     gOptWork->state = 3;
     gOptWork->step = 0;
 }
 
-void Option_OpenSoundPage(void) {
+/* Fades to the controls page, its cursor on the first row. */
+void Option_OpenControlPage(void)
+{
     gOptWork->nextPage = 1;
-    gOptWork->unk2C = 0;
+    gOptWork->subCursor = 0;
     gOptWork->state = 3;
     gOptWork->step = 0;
 }
 
-void Option_OpenScreenPage(void) {
+/* Fades to the screen position page. */
+void Option_OpenScreenPage(void)
+{
     gOptWork->nextPage = 2;
     gOptWork->state = 3;
     gOptWork->step = 0;
 }
 
-void Option_OpenBrightnessPage(void) {
+/* Fades to the brightness page. */
+void Option_OpenBrightnessPage(void)
+{
     gOptWork->nextPage = 3;
     gOptWork->state = 3;
     gOptWork->step = 0;
 }
 
-void Option_DrawArrows(void) {
+/*
+ * Draws the left and right arrows of the row under the cursor, with their
+ * bounce offsets.
+ */
+void Option_DrawArrows(void)
+{
     Sprite spr;
 
-    if (gOptWork->unkA0 != 0) {
+    if (gOptWork->arrowsShown != 0) {
         Gfx_SetState63(1);
         Tex_Prepare(1, 0x155);
         Tex_Bind(0x155);
-        spr.x = gOptWork->unkA6 - gOptWork->unkAA;
-        spr.y = gOptWork->unkAE;
+        spr.x = gOptWork->arrowLeftX - gOptWork->arrowLeftOfs;
+        spr.y = gOptWork->arrowY;
         spr.w = 0x18;
         spr.h = 0x1E;
         spr.color = 0xFF32BC64;
@@ -246,47 +249,53 @@ void Option_DrawArrows(void) {
         spr.u1 = 0xF0;
         spr.v1 = 0xFF;
         Sprite_Draw(&spr);
-        spr.x = gOptWork->unkA8 + gOptWork->unkAC;
+        spr.x = gOptWork->arrowRightX + gOptWork->arrowRightOfs;
         spr.u0 = 0xF0;
         spr.u1 = 0xFF;
         Sprite_Draw(&spr);
     }
 }
 
-/* The arrow helpers are static: MWCC knows which registers they use, and
- * the input handlers (Option_GameInput, Option_SoundInput, NetOption_Input) keep
- * values in the others across the calls. */
-static void Option_ResetArrows(void) {
-    gOptWork->unkAA = 0;
-    gOptWork->unkAC = 0;
-    gOptWork->unkA4 = 0;
+/* Stops the arrows' bounce. The arrow helpers are static, as the input
+ * handlers' code needs (it keeps values in registers across the calls). */
+static void Option_ResetArrows(void)
+{
+    gOptWork->arrowLeftOfs = 0;
+    gOptWork->arrowRightOfs = 0;
+    gOptWork->arrowBounce = 0;
 }
 
-static void Option_PressLeft(void) {
-    gOptWork->unkA4 = 1;
+/* Bounces the right arrow (the value went up). */
+static void Option_BounceRightArrow(void)
+{
+    gOptWork->arrowBounce = 1;
 }
 
-static void Option_PressRight(void) {
-    gOptWork->unkA4 = 2;
+/* Bounces the left arrow (the value went down). */
+static void Option_BounceLeftArrow(void)
+{
+    gOptWork->arrowBounce = 2;
 }
 
-static void Option_UpdateArrows(void) {
-    s32 d;
+/* Steps the arrow's bounce: 5 frames, then it stops. */
+static void Option_UpdateArrows(void)
+{
+    s32 bounce;
 
-    if ((d = gOptWork->unkA4) != 0) {
-        if ((s16)d == 1) {
-            gOptWork->unkAA = 0;
-            gOptWork->unkAC++;
-            if (gOptWork->unkAC >= 5) {
-                gOptWork->unkAC = 0;
-                gOptWork->unkA4 = 0;
+    if ((bounce = gOptWork->arrowBounce) != 0) {
+        if ((s16)bounce == 1) {
+            gOptWork->arrowLeftOfs = 0;
+            gOptWork->arrowRightOfs++;
+            if (gOptWork->arrowRightOfs >= 5) {
+                gOptWork->arrowRightOfs = 0;
+                gOptWork->arrowBounce = 0;
             }
         } else {
-            gOptWork->unkAC = 0;
-            gOptWork->unkAA++;
-            if (gOptWork->unkAA >= 5) {
-                gOptWork->unkAA = 0;
-                gOptWork->unkA4 = 0;
+            gOptWork->arrowRightOfs = 0;
+            gOptWork->arrowLeftOfs++;
+            if (gOptWork->arrowLeftOfs >= 5) {
+                gOptWork->arrowLeftOfs = 0;
+                gOptWork->arrowBounce = 0;
             }
         }
     }
@@ -294,108 +303,117 @@ static void Option_UpdateArrows(void) {
 
 void Options_Apply(void);
 
-/* The game page's input: 1 when the page is left. */
-s32 Option_GameInput(u16 trig, u16 rep) {
-    s8 n;
-    s8 k;
-    s8 *v;
+/*
+ * The main page's input: up and down move the cursor (skipping the defaults
+ * row while nothing differs from them), left and right change the value
+ * under the cursor (the sound mode and the equipment view wrap, the volumes
+ * stop at their ends), confirm opens the controls, screen position or
+ * brightness page, resets to the defaults or leaves. Returns 1 when the page
+ * is left. The gotos share the value code between rows, as the game's code
+ * does.
+ */
+s32 Option_MainInput(u16 trig, u16 rep)
+{
+    s8 count;
+    s8 value;
+    s8 *setting;
 
     if (rep & 0x2000) {
         do {
-            gOptWork->unk28--;
-            if (gOptWork->unk28 < 0) {
-                gOptWork->unk28 = 8;
+            gOptWork->cursor--;
+            if (gOptWork->cursor < 0) {
+                gOptWork->cursor = 8;
             }
-        } while (gOptWork->unk28 == 7 && gOptWork->unk70 == 0);
+        } while (gOptWork->cursor == 7 && gOptWork->mainDiffers == 0);
         Option_ResetArrows();
         Sound_PlayCursorMove();
         return 0;
     }
     if (rep & 0x1000) {
         do {
-            gOptWork->unk28++;
-            if (gOptWork->unk28 >= 9) {
-                gOptWork->unk28 = 0;
+            gOptWork->cursor++;
+            if (gOptWork->cursor >= 9) {
+                gOptWork->cursor = 0;
             }
-        } while (gOptWork->unk28 == 7 && gOptWork->unk70 == 0);
+        } while (gOptWork->cursor == 7 && gOptWork->mainDiffers == 0);
         Option_ResetArrows();
         Sound_PlayCursorMove();
         return 0;
     }
     if (trig & 0x40) {
         Sound_PlayCancel();
-        if (gOptWork->unk28 == 8) {
+        if (gOptWork->cursor == 8) {
             return 1;
         }
-        gOptWork->unk28 = 8;
+        gOptWork->cursor = 8;
         return 0;
     }
-    n = ((s8 *)gOptGameValueCounts)[gOptWork->unk28];
-    switch (gOptWork->unk28) {
+    count = ((s8 *)gOptMainValueCounts)[gOptWork->cursor];
+    switch (gOptWork->cursor) {
     case 0:
         if (trig & 0x20) {
-            Option_OpenSoundPage();
+            Option_OpenControlPage();
             Sound_PlaySe73();
         }
         break;
     case 1:
-        v = &gSysSave.options.soundMode;
+        setting = &gSysSave.options.soundMode;
     wrap:
-        k = *v;
+        value = *setting;
         if (trig & 0x400) {
-            k++;
-            k %= n;
-            Option_PressLeft();
+            value++;
+            value %= count;
+            Option_BounceRightArrow();
         wrap_set:
-            *v = k;
-            if (gOptWork->unk28 == 1) {
+            *setting = value;
+            if (gOptWork->cursor == 1) {
                 Options_Apply();
             }
             Sound_PlayCursorMove();
             break;
         }
         if (trig & 0x800) {
-            k--;
-            if (k < 0) {
-                k += n;
+            value--;
+            if (value < 0) {
+                value += count;
             }
-            Option_PressRight();
+            Option_BounceLeftArrow();
             goto wrap_set;
         }
         break;
     case 2:
-        v = &gSysSave.options.musicVolume;
+        setting = &gSysSave.options.musicVolume;
     clamp:
-        k = *v;
-        if ((rep & 0x400) && k < n - 1) {
-            k++;
-            k %= n;
-            Option_PressLeft();
+        value = *setting;
+        if ((rep & 0x400) && value < count - 1) {
+            value++;
+            value %= count;
+            Option_BounceRightArrow();
         clamp_set:
-            *v = k;
-            if (gOptWork->unk28 == 2 || gOptWork->unk28 == 3) {
+            *setting = value;
+            if (gOptWork->cursor == 2 || gOptWork->cursor == 3) {
                 Options_Apply();
             }
-            if (gOptWork->unk28 == 1) {
+            if (gOptWork->cursor == 1) {
                 Options_Apply();
             }
             Sound_PlayCursorMove();
             break;
         }
-        if ((rep & 0x800) && k > 0) {
-            k--;
-            if (k < 0) {
-                k += n;
+        if ((rep & 0x800) && value > 0) {
+            value--;
+            if (value < 0) {
+                value += count;
             }
-            Option_PressRight();
+            Option_BounceLeftArrow();
             goto clamp_set;
         }
         break;
     case 3:
-        v = &gSysSave.options.seVolume;
+        setting = &gSysSave.options.seVolume;
         goto clamp;
     case 4:
-        v = &gSysSave.options.equipView;
+        setting = &gSysSave.options.equipView;
         goto wrap;
     case 5:
         if (trig & 0x20) {
@@ -412,7 +430,7 @@ s32 Option_GameInput(u16 trig, u16 rep) {
     case 7:
         if (trig & 0x20) {
             Sound_PlaySe73();
-            Option_GameDefaults();
+            Option_MainDefaults();
         }
         break;
     case 8:
@@ -426,12 +444,14 @@ s32 Option_GameInput(u16 trig, u16 rep) {
     return 0;
 }
 
-void Option_DrawText(s32 x, s32 y, char *str, s32 size, s32 color) {
-    s32 d;
+/* Draws a text with a black shadow (3 pixels off for large letters, else 2). */
+void Option_DrawText(s32 x, s32 y, char *str, s32 size, s32 color)
+{
+    s32 shadowOfs;
 
     Font_SetSpacing(size, size);
-    d = (size > 0x16) ? 3 : 2;
-    Font_SetPos(x + d, y + d);
+    shadowOfs = (size > 0x16) ? 3 : 2;
+    Font_SetPos(x + shadowOfs, y + shadowOfs);
     Font_SetColor(0x80000000);
     Font_Printf(str);
     Font_SetColor(color);
@@ -439,10 +459,10 @@ void Option_DrawText(s32 x, s32 y, char *str, s32 size, s32 color) {
     Font_Printf(str);
 }
 
-extern char *gOptGameLabels[];     /* messages (select_psp.c) */
-extern char *gOptGameHelp[];
-extern char *gOptSoundLabels[];
-extern char *gOptSoundHelp[];
+extern char *gOptMainLabels[];     /* messages (select_psp.c) */
+extern char *gOptMainHelp[];
+extern char *gOptControlLabels[];
+extern char *gOptControlHelp[];
 extern char *gSoundModeTexts[];
 extern char *gVolumeBarTexts[];
 extern char *gOffOnTexts[];
@@ -455,183 +475,193 @@ void Font_SetPal(s32);
 s32 Str_Length(char *);
 void Sel_DrawBackground(u8);
 
-/* The game settings page: one row per setting, the cursor row enlarged. */
-void Option_DrawGamePage(void) {
-    s32 w;
-    u32 c;
-    s32 sz;
-    s32 ty;
+/*
+ * The main page: one row per setting with its value and arrows, the row
+ * under the cursor enlarged, then the help line of that row. The gotos
+ * share the value code between rows, as the game's code does.
+ */
+void Option_DrawMainPage(void)
+{
+    s32 width;
+    u32 rowColor;
+    s32 rowSize;
+    s32 rowY;
     s32 x;
     char **label;
     s32 i;
     s32 y;
     u32 color;
     s16 (*arrow)[2];
-    char **p;
+    char **valueText;
     s32 size;
-    char **tbl;
-    s32 k;
+    char **valueTexts;
+    s32 value;
 
     Sel_DrawBackground(0xFF);
     Sel_DrawHeader(2);
     WindowFrame_Draw(&gOptPageFrame, 0);
     Font_SetPal(0);
     color = 0;
-    label = gOptGameLabels;
+    label = gOptMainLabels;
     i = 0;
-    arrow = (s16 (*)[2])gOptGameArrows;
-    x = gOptWork->unk40;
-    y = gOptWork->unk44;
-    for (; i < 9; i++, label++, arrow++, y += gOptWork->unk48) {
-        gOptWork->unkA0 = 0;
+    arrow = (s16 (*)[2])gOptMainArrows;
+    x = gOptWork->rowX;
+    y = gOptWork->rowY;
+    for (; i < 9; i++, label++, arrow++, y += gOptWork->rowStep) {
+        gOptWork->arrowsShown = 0;
         if (i == 8) {
-            y += (s32)(0.5f * gOptWork->unk48);
+            y += (s32)(0.5f * gOptWork->rowStep);
         }
-        ty = y;
-        sz = gOptWork->unk38;
-        if (i == gOptWork->unk28) {
-            sz = sz * gOptWork->unk4C;
-            ty = y - (sz - gOptWork->unk38) / 2;
-            c = gOptWork->unk58;
+        rowY = y;
+        rowSize = gOptWork->textSize;
+        if (i == gOptWork->cursor) {
+            rowSize = rowSize * gOptWork->selScale;
+            rowY = y - (rowSize - gOptWork->textSize) / 2;
+            rowColor = gOptWork->selColor;
         } else if (i == 7) {
-            if (gOptWork->unk70 != 0) {
-                c = gOptWork->unk5C;
+            if (gOptWork->mainDiffers != 0) {
+                rowColor = gOptWork->defaultsColor;
             } else {
-                c = gOptWork->unk60;
+                rowColor = gOptWork->dimColor;
             }
         } else {
-            c = gOptWork->unk54;
+            rowColor = gOptWork->textColor;
         }
-        if (c != color) {
-            color = c;
+        if (rowColor != color) {
+            color = rowColor;
         }
-        Option_DrawText(x, ty, *label, sz, color);
-        size = gOptWork->unk38;
+        Option_DrawText(x, rowY, *label, rowSize, color);
+        size = gOptWork->textSize;
         switch (i) {
         case 1:
-            k = gSysSave.options.soundMode;
-            tbl = gSoundModeTexts;
+            value = gSysSave.options.soundMode;
+            valueTexts = gSoundModeTexts;
         common:
-            if (i == gOptWork->unk28) {
-                gOptWork->unkA0 = 1;
-                gOptWork->unkAE = y - 6;
+            if (i == gOptWork->cursor) {
+                gOptWork->arrowsShown = 1;
+                gOptWork->arrowY = y - 6;
             }
-            p = &tbl[k];
-            w = Str_Length(*p);
-            Option_DrawText(gOptWork->unk50 + (s32)((320.0f - (size / 2) * w) / 2.0f),
-                          y, *p, size, color);
-            if (gOptWork->unkA0 != 0) {
-                gOptWork->unkA6 = (*arrow)[0];
-                gOptWork->unkA8 = (*arrow)[1];
+            valueText = &valueTexts[value];
+            width = Str_Length(*valueText);
+            Option_DrawText(gOptWork->valueX + (s32)((320.0f - (size / 2) * width) / 2.0f),
+                          y, *valueText, size, color);
+            if (gOptWork->arrowsShown != 0) {
+                gOptWork->arrowLeftX = (*arrow)[0];
+                gOptWork->arrowRightX = (*arrow)[1];
             }
             Option_DrawArrows();
             break;
         case 2:
-            k = gSysSave.options.musicVolume;
-            tbl = gVolumeBarTexts;
+            value = gSysSave.options.musicVolume;
+            valueTexts = gVolumeBarTexts;
             goto common;
         case 3:
-            k = gSysSave.options.seVolume;
-            tbl = gVolumeBarTexts;
+            value = gSysSave.options.seVolume;
+            valueTexts = gVolumeBarTexts;
             goto common;
         case 4:
-            k = gSysSave.options.equipView;
-            tbl = gOffOnTexts;
+            value = gSysSave.options.equipView;
+            valueTexts = gOffOnTexts;
             goto common;
         }
     }
-    Option_DrawText(gOptWork->unk64, gOptWork->unk68,
-                  gOptGameHelp[gOptWork->unk28], gOptWork->unk38,
-                  gOptWork->unk54);
+    Option_DrawText(gOptWork->helpX, gOptWork->helpY,
+                  gOptMainHelp[gOptWork->cursor], gOptWork->textSize,
+                  gOptWork->textColor);
 }
 
 void Vib_Start(s32, s32);
 
-/* The sound page's input. */
-void Option_SoundInput(u16 trig, u16 rep) {
-    s8 n;
-    s8 *v;
-    s8 k;
+/*
+ * The controls page's input, as Option_MainInput's for its rows (every
+ * value wraps); turning vibration on starts a short vibration. The gotos
+ * share the value code between rows, as the game's code does.
+ */
+void Option_ControlInput(u16 trig, u16 rep)
+{
+    s8 count;
+    s8 *setting;
+    s8 value;
 
     if (rep & 0x2000) {
         do {
-            gOptWork->unk2C--;
-            if (gOptWork->unk2C < 0) {
-                gOptWork->unk2C = 6;
+            gOptWork->subCursor--;
+            if (gOptWork->subCursor < 0) {
+                gOptWork->subCursor = 6;
             }
-        } while (gOptWork->unk2C == 5 && gOptWork->unk74 == 0);
+        } while (gOptWork->subCursor == 5 && gOptWork->controlsDiffer == 0);
         Option_ResetArrows();
         Sound_PlayCursorMove();
         return;
     }
     if (rep & 0x1000) {
         do {
-            gOptWork->unk2C++;
-            if (gOptWork->unk2C >= 7) {
-                gOptWork->unk2C = 0;
+            gOptWork->subCursor++;
+            if (gOptWork->subCursor >= 7) {
+                gOptWork->subCursor = 0;
             }
-        } while (gOptWork->unk2C == 5 && gOptWork->unk74 == 0);
+        } while (gOptWork->subCursor == 5 && gOptWork->controlsDiffer == 0);
         Option_ResetArrows();
         Sound_PlayCursorMove();
         return;
     }
     if (trig & 0x40) {
         Sound_PlayCancel();
-        if (gOptWork->unk2C == 6) {
-            Option_OpenGamePage();
+        if (gOptWork->subCursor == 6) {
+            Option_OpenMainPage();
             return;
         }
-        gOptWork->unk2C = 6;
+        gOptWork->subCursor = 6;
         return;
     }
-    n = ((s8 *)gOptSoundValueCounts)[gOptWork->unk2C];
-    switch (gOptWork->unk2C) {
+    count = ((s8 *)gOptControlValueCounts)[gOptWork->subCursor];
+    switch (gOptWork->subCursor) {
     case 2:
-        v = &gSysSave.options.aimReverse;
+        setting = &gSysSave.options.aimReverse;
     common:
-        k = *v;
+        value = *setting;
         if (trig & 0x400) {
-            k++;
-            k %= n;
-            Option_PressLeft();
+            value++;
+            value %= count;
+            Option_BounceRightArrow();
         set:
-            *v = k;
-            if (gOptWork->unk2C == 0 && k == 1) {
+            *setting = value;
+            if (gOptWork->subCursor == 0 && value == 1) {
                 Vib_Start(0, 1);
             }
             Sound_PlayCursorMove();
             break;
         }
         if (trig & 0x800) {
-            k--;
-            if (k < 0) {
-                k += n;
+            value--;
+            if (value < 0) {
+                value += count;
             }
-            Option_PressRight();
+            Option_BounceLeftArrow();
             goto set;
         }
         break;
     case 3:
-        v = &gSysSave.options.camControl;
+        setting = &gSysSave.options.camControl;
         goto common;
     case 4:
-        v = &gSysSave.options.camFollow;
+        setting = &gSysSave.options.camFollow;
         goto common;
     case 0:
-        v = &gSysSave.options.vibration;
+        setting = &gSysSave.options.vibration;
         goto common;
     case 1:
-        v = &gSysSave.options.chatSize;
+        setting = &gSysSave.options.chatSize;
         goto common;
     case 5:
         if (trig & 0x20) {
             Sound_PlaySe73();
-            Option_SoundDefaults();
+            Option_ControlDefaults();
         }
         break;
     case 6:
         if (trig & 0x20) {
-            Option_OpenGamePage();
+            Option_OpenMainPage();
             Sound_PlaySe73();
         }
         break;
@@ -639,101 +669,108 @@ void Option_SoundInput(u16 trig, u16 rep) {
     Option_UpdateArrows();
 }
 
-/* The sound page: one row per setting, the cursor row enlarged. */
-void Option_DrawSoundPage(void) {
-    s32 w;
-    u32 c;
-    s32 sz;
-    s32 ty;
+/*
+ * The controls page: one row per setting with its value and arrows, the row
+ * under the cursor enlarged, then the help line of that row. The gotos
+ * share the value code between rows, as the game's code does.
+ */
+void Option_DrawControlPage(void)
+{
+    s32 width;
+    u32 rowColor;
+    s32 rowSize;
+    s32 rowY;
     s32 x;
     char **label;
     s32 i;
     s32 y;
     u32 color;
     s16 (*arrow)[2];
-    char **p;
+    char **valueText;
     s32 size;
-    char **tbl;
-    s32 k;
+    char **valueTexts;
+    s32 value;
 
     Sel_DrawBackground(0xFF);
     Sel_DrawHeader(0xA);
     WindowFrame_Draw(&gOptPageFrame, 0);
     Font_SetPal(0);
     color = 0;
-    label = gOptSoundLabels;
+    label = gOptControlLabels;
     i = 0;
-    arrow = (s16 (*)[2])gOptSoundArrows;
-    x = gOptWork->unk40;
-    y = gOptWork->unk44 + gOptWork->unk48;
-    for (; i < 7; i++, label++, arrow++, y += gOptWork->unk48) {
-        gOptWork->unkA0 = 0;
+    arrow = (s16 (*)[2])gOptControlArrows;
+    x = gOptWork->rowX;
+    y = gOptWork->rowY + gOptWork->rowStep;
+    for (; i < 7; i++, label++, arrow++, y += gOptWork->rowStep) {
+        gOptWork->arrowsShown = 0;
         if (i == 6) {
-            y += (s32)(0.5f * gOptWork->unk48);
+            y += (s32)(0.5f * gOptWork->rowStep);
         }
-        ty = y;
-        sz = gOptWork->unk38;
-        if (i == gOptWork->unk2C) {
-            sz = sz * gOptWork->unk4C;
-            ty = y - (sz - gOptWork->unk38) / 2;
-            c = gOptWork->unk58;
+        rowY = y;
+        rowSize = gOptWork->textSize;
+        if (i == gOptWork->subCursor) {
+            rowSize = rowSize * gOptWork->selScale;
+            rowY = y - (rowSize - gOptWork->textSize) / 2;
+            rowColor = gOptWork->selColor;
         } else if (i == 5) {
-            if (gOptWork->unk74 != 0) {
-                c = gOptWork->unk5C;
+            if (gOptWork->controlsDiffer != 0) {
+                rowColor = gOptWork->defaultsColor;
             } else {
-                c = gOptWork->unk60;
+                rowColor = gOptWork->dimColor;
             }
         } else {
-            c = gOptWork->unk54;
+            rowColor = gOptWork->textColor;
         }
-        if (c != color) {
-            color = c;
+        if (rowColor != color) {
+            color = rowColor;
         }
-        Option_DrawText(x, ty, *label, sz, color);
-        size = gOptWork->unk38;
+        Option_DrawText(x, rowY, *label, rowSize, color);
+        size = gOptWork->textSize;
         switch (i) {
         case 2:
-            k = gSysSave.options.aimReverse;
-            tbl = gReverseTexts;
+            value = gSysSave.options.aimReverse;
+            valueTexts = gReverseTexts;
         common:
-            if (i == gOptWork->unk2C) {
-                gOptWork->unkA0 = 1;
-                gOptWork->unkAE = y - 6;
+            if (i == gOptWork->subCursor) {
+                gOptWork->arrowsShown = 1;
+                gOptWork->arrowY = y - 6;
             }
-            p = &tbl[k];
-            w = Str_Length(*p);
-            Option_DrawText(gOptWork->unk50 + (s32)((320.0f - (size / 2) * w) / 2.0f),
-                          y, *p, size, color);
-            if (gOptWork->unkA0 != 0) {
-                gOptWork->unkA6 = (*arrow)[0];
-                gOptWork->unkA8 = (*arrow)[1];
+            valueText = &valueTexts[value];
+            width = Str_Length(*valueText);
+            Option_DrawText(gOptWork->valueX + (s32)((320.0f - (size / 2) * width) / 2.0f),
+                          y, *valueText, size, color);
+            if (gOptWork->arrowsShown != 0) {
+                gOptWork->arrowLeftX = (*arrow)[0];
+                gOptWork->arrowRightX = (*arrow)[1];
             }
             Option_DrawArrows();
             break;
         case 3:
-            k = gSysSave.options.camControl;
-            tbl = gReverseTexts;
+            value = gSysSave.options.camControl;
+            valueTexts = gReverseTexts;
             goto common;
         case 4:
-            k = gSysSave.options.camFollow;
-            tbl = gTypeNumTexts;
+            value = gSysSave.options.camFollow;
+            valueTexts = gTypeNumTexts;
             goto common;
         case 0:
-            k = gSysSave.options.vibration;
-            tbl = gOffOnTexts;
+            value = gSysSave.options.vibration;
+            valueTexts = gOffOnTexts;
             goto common;
         case 1:
-            k = gSysSave.options.chatSize;
-            tbl = gSizeTexts;
+            value = gSysSave.options.chatSize;
+            valueTexts = gSizeTexts;
             goto common;
         }
     }
-    Option_DrawText(gOptWork->unk64, gOptWork->unk68,
-                  gOptSoundHelp[gOptWork->unk2C], gOptWork->unk38,
-                  gOptWork->unk54);
+    Option_DrawText(gOptWork->helpX, gOptWork->helpY,
+                  gOptControlHelp[gOptWork->subCursor], gOptWork->textSize,
+                  gOptWork->textColor);
 }
 
-void Option_DrawFrame(void) {
+/* Draws the screen position page's frame (system texture 4). */
+void Option_DrawFrame(void)
+{
     Sprite spr;
 
     Gfx_SetState63(1);
@@ -755,70 +792,72 @@ void Option_DrawFrame(void) {
 
 void Display_SetOffset(s32 x, s32 y);
 
-/* The screen position setting: moves the picture with the pad. */
-/* Each offset is read into an int, then stored before the flags are set;
- * changed is tested as an s16. */
-void Option_ScreenPosInput(u16 trig, u16 rep) {
+/* The screen position page's input: the D-pad moves the picture (-16 to 16
+ * each way), 0x200 centres it, cancel goes back. screenPosMoved keeps the
+ * directions moved this frame. The int offset and the (s16) tests of
+ * changed are what the match needs. */
+void Option_ScreenPosInput(u16 trig, u16 rep)
+{
     s32 changed;
     u16 moved;
-    s8 *px;
-    s8 *py;
-    s32 y;
+    s8 *offsetX;
+    s8 *offsetY;
+    s32 offset;
 
     changed = 0;
     moved = 0;
-    px = &gSysSave.options.screenX;
-    py = &gSysSave.options.screenY;
-    gOptWork->unk6C = 0;
+    offsetX = &gSysSave.options.screenX;
+    offsetY = &gSysSave.options.screenY;
+    gOptWork->screenPosMoved = 0;
     if (trig & 0x40) {
-        Option_OpenGamePage();
+        Option_OpenMainPage();
         Sound_PlayCancel();
         return;
     }
     if (trig & 0x200) {
         Sound_PlaySe73();
-        *px = 0;
+        *offsetX = 0;
         changed = 1;
-        *py = 0;
+        *offsetY = 0;
     } else {
         if (rep & 0x2000) {
-            y = *py;
-            if (y > -0x10) {
-                *py = y - 1;
+            offset = *offsetY;
+            if (offset > -0x10) {
+                *offsetY = offset - 1;
                 moved |= 0x2000;
                 changed = 1;
             } else {
-                *py = -0x10;
+                *offsetY = -0x10;
             }
         }
         if (rep & 0x1000) {
-            y = *py;
-            if (y < 0x10) {
-                *py = y + 1;
+            offset = *offsetY;
+            if (offset < 0x10) {
+                *offsetY = offset + 1;
                 moved |= 0x1000;
                 changed = 1;
             } else {
-                *py = 0x10;
+                *offsetY = 0x10;
             }
         }
         if (rep & 0x800) {
-            y = *px;
-            if (y > -0x10) {
-                *px = y - 1;
+            offset = *offsetX;
+            if (offset > -0x10) {
+                *offsetX = offset - 1;
                 moved |= 0x800;
                 changed = 1;
             } else {
-                *px = -0x10;
+                *offsetX = -0x10;
             }
         }
         if (rep & 0x400) {
-            y = *px;
-            if (y < 0x10) {
-                *px = y + 1;
+            offset = *offsetX;
+            if (offset < 0x10) {
+                *offsetX = offset + 1;
                 moved |= 0x400;
                 changed = 1;
             } else {
-                *px = 0x10;
+                *offsetX = 0x10;
             }
         }
         if ((s16)changed) {
@@ -826,46 +865,48 @@ void Option_ScreenPosInput(u16 trig, u16 rep) {
         }
     }
     if ((s16)changed) {
-        Display_SetOffset(*px, *py);
+        Display_SetOffset(*offsetX, *offsetY);
     }
-    gOptWork->unk6C = moved;
+    gOptWork->screenPosMoved = moved;
 }
 
-void Option_DrawCorners(void) {
-    Sprite a;
-    Sprite b;
+/* Draws the four corner marks of the screen position page. */
+void Option_DrawCorners(void)
+{
+    Sprite corner;
+    Sprite cornerRotated;
     s32 i;
 
     Gfx_SetState63(1);
     Tex_Prepare(1, 4);
     Tex_Bind(4);
     Gs_SetState(0x6C, 0);
-    a.w = 0x60;
-    a.h = 0xA;
-    a.color = -1;
-    a.u0 = 0;
-    a.v0 = 0xF0;
-    a.u1 = 0x2F;
-    a.v1 = 0xF7;
-    b.w = 0x60;
-    b.h = 0xA;
-    b.color = -1;
-    b.u0 = 0;
-    b.v0 = 0xF8;
-    b.u1 = 0x2F;
-    b.v1 = 0xFF;
+    corner.w = 0x60;
+    corner.h = 0xA;
+    corner.color = -1;
+    corner.u0 = 0;
+    corner.v0 = 0xF0;
+    corner.u1 = 0x2F;
+    corner.v1 = 0xF7;
+    cornerRotated.w = 0x60;
+    cornerRotated.h = 0xA;
+    cornerRotated.color = -1;
+    cornerRotated.u0 = 0;
+    cornerRotated.v0 = 0xF8;
+    cornerRotated.u1 = 0x2F;
+    cornerRotated.v1 = 0xFF;
     for (i = 0; i < 4; i++) {
-        a.x = gOptCornerPosA[i][0];
-        a.y = gOptCornerPosA[i][1];
-        Sprite_Draw(&a);
-        b.x = gOptCornerPosB[i][0];
-        b.y = gOptCornerPosB[i][1];
-        TexRect_DrawRotated((struct TexRect *)&b, gOptCornerAngles[i][0]);
+        corner.x = gOptCornerPosA[i][0];
+        corner.y = gOptCornerPosA[i][1];
+        Sprite_Draw(&corner);
+        cornerRotated.x = gOptCornerPosB[i][0];
+        cornerRotated.y = gOptCornerPosB[i][1];
+        TexRect_DrawRotated((struct TexRect *)&cornerRotated, gOptCornerAngles[i][0]);
     }
     Gs_SetState(0x6C, 1);
 }
 
-const char D_006CDFA0[3] = {
+const char gOptNumberFormat[3] = {
 #include "select/006CDFA0.inc"
 };
 
@@ -873,12 +914,13 @@ extern char *gScreenPosTexts[];     /* messages (select_psp.c) */
 extern char *gBackResetTexts[];
 s32 sprintf(char *, const char *, ...);    /* sprintf */
 s32 strlen(char *);                         /* strlen */
-void Hud_DrawButtonIconWhite(s32, s16, s16, s32, f32);       /* a button icon */ /* unit's own declaration: x, y s16 (the definition has s32); with the definition's type Option_DrawScreenPosPage by 99 of 158, Option_DrawBrightnessPage by 19 of 138 words differ */
+void Hud_DrawButtonIconWhite(s32, s16, s16, s32, f32); /* unit's own declaration: s16 x and y, though the definition (sub_main) takes s32; the page drawers' code needs them */
 void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
 void Sel_DrawBackground(u8);
-
-/* The screen position page. */
-void Option_DrawScreenPosPage(void) {
+/* The screen position page: the offsets, the frame and corner marks, and
+ * four arrows, lit while their direction moves. */
+void Option_DrawScreenPosPage(void)
+{
     Sprite spr;
     char buf[0x80];
     u16 *rec;
@@ -899,9 +941,9 @@ void Option_DrawScreenPosPage(void) {
     Hud_DrawButtonIconWhite(3, i, 0x185, 8, 1.0f);
     Text_DrawShadow(i + 0x18, 0x188, 1, 0, gBackResetTexts[1]);
     Font_SetSpacing(0x24, 0x12);
-    sprintf(buf, D_006CDFA0, gSysSave.options.screenX);
+    sprintf(buf, gOptNumberFormat, gSysSave.options.screenX);
     Text_DrawShadow(0x1A2, 0x130, 1, 0, buf);
-    sprintf(buf, D_006CDFA0, gSysSave.options.screenY);
+    sprintf(buf, gOptNumberFormat, gSysSave.options.screenY);
     Text_DrawShadow(0x1A2, 0x154, 1, 0, buf);
     Tex_Prepare(1, 8);
     Tex_Bind(8);
@@ -916,7 +958,7 @@ void Option_DrawScreenPosPage(void) {
     for (i = 0; i < 4; i++, rec += 2) {
         spr.x = *rec++;
         spr.y = *rec++;
-        if (gOptWork->unk6C & rec[0]) {
+        if (gOptWork->screenPosMoved & rec[0]) {
             spr.color = 0xFF00FFFF;
         } else {
             spr.color = -1;
@@ -926,64 +968,65 @@ void Option_DrawScreenPosPage(void) {
 }
 
 /* The brightness page's input: left/right step the brightness (0x80 is the
- * middle; 1 per step above it, 2 below, within 0x39..0xA3). The game's
- * "changed" test compares the old offset with the same value recomputed,
- * so the cursor sound never plays. v an s32 (a u8 lets MWCC fold that
- * test), and the no-op cast keeps &gSysSettings.brightness in s0 for the load. */
-void Option_BrightnessInput(u16 trig, u16 rep) {
-    s32 v;
-    u8 *q;
-    u8 *p;
+ * middle; 1 per step above it, 2 below, within 0x39..0xA3), 0x200 resets
+ * it, cancel keeps it and goes back. The game's "changed" test compares
+ * the old offset with the same value recomputed, so the cursor sound never
+ * plays. level is an s32 and the pointers are cast as the match needs. */
+void Option_BrightnessInput(u16 trig, u16 rep)
+{
+    s32 level;
+    u8 *savedPtr;
+    u8 *levelPtr;
     s32 old;
 
-    q = (u8 *)&gSysSave.options.brightness;
-    p = (u8 *)&gSysSettings.brightness;
-    v = *p;
+    savedPtr = (u8 *)&gSysSave.options.brightness;
+    levelPtr = (u8 *)&gSysSettings.brightness;
+    level = *levelPtr;
     if (rep & 0x800) {
-        old = v - 0x80;
+        old = level - 0x80;
         if (old == 0) {
-            *p = v - 2;
+            *levelPtr = level - 2;
         } else if (old > 0) {
-            if (v - 1 > 0x38) {
-                *p = v - 1;
+            if (level - 1 > 0x38) {
+                *levelPtr = level - 1;
             }
         } else {
-            if (v - 2 > 0x38) {
-                *p = v - 2;
+            if (level - 2 > 0x38) {
+                *levelPtr = level - 2;
             }
         }
-        if (old != v - 0x80) {
+        if (old != level - 0x80) {
             Sound_PlayCursorMove();
         }
         return;
     }
     if (rep & 0x400) {
-        old = v - 0x80;
+        old = level - 0x80;
         if (old == 0) {
-            *p = v + 1;
+            *levelPtr = level + 1;
         } else if (old > 0) {
-            if (v + 1 < 0xA4) {
-                *p = v + 1;
+            if (level + 1 < 0xA4) {
+                *levelPtr = level + 1;
             }
         } else {
-            if (v + 2 < 0xA4) {
-                *p = v + 2;
+            if (level + 2 < 0xA4) {
+                *levelPtr = level + 2;
             }
         }
-        if (old != v - 0x80) {
+        if (old != level - 0x80) {
             Sound_PlayCursorMove();
         }
         return;
     }
     if (trig & 0x40) {
-        *q = v;
-        Option_OpenGamePage();
+        *savedPtr = level;
+        Option_OpenMainPage();
         Sound_PlayCancel();
         return;
     }
     if (trig & 0x200) {
         Sound_PlaySe73();
-        *p = 0x80;
+        *levelPtr = 0x80;
     }
 }
 
@@ -993,41 +1036,45 @@ s32 sprintf(char *, const char *, ...);    /* sprintf */
 s32 strlen(char *);                         /* strlen */
 s32 Str_Length(char *);                         /* a message's width */
 void Font_SetPal(s32);
-void Hud_DrawButtonIconWhite(s32, s16, s16, s32, f32);       /* a button icon */ /* unit's own declaration: x, y s16 (the definition has s32); with the definition's type Option_DrawScreenPosPage by 99 of 158, Option_DrawBrightnessPage by 19 of 138 words differ */
+void Hud_DrawButtonIconWhite(s32, s16, s16, s32, f32); /* unit's own declaration: s16 x and y, though the definition (sub_main) takes s32; the page drawers' code needs them */
 void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
 void Sel_DrawBackground(u8);
 void Option_DrawBrightnessStrip(void);
 
-/* The brightness setting screen. */
-void Option_DrawBrightnessPage(void) {
+/*
+ * The brightness page: the brightness strip, the offset from the middle
+ * (halved below it), the help lines and the button help.
+ */
+void Option_DrawBrightnessPage(void)
+{
     char buf[0x100];
-    s32 v;
+    s32 offset;
     s32 i;
     s32 y;
-    char **s;
-    s32 w;
+    char **line;
+    s32 width;
     s32 x;
 
     Sel_DrawBackground(0xFF);
     Option_DrawFrame();
     Sel_DrawHeader(9);
     Option_DrawBrightnessStrip();
-    v = gSysSettings.brightness - 0x80;
-    if (v == 0) {
-        sprintf(buf, " %d", v);
-    } else if (v > 0) {
-        sprintf(buf, "+%d", v);
+    offset = gSysSettings.brightness - 0x80;
+    if (offset == 0) {
+        sprintf(buf, " %d", offset);
+    } else if (offset > 0) {
+        sprintf(buf, "+%d", offset);
     } else {
-        sprintf(buf, D_006CDFA0, v / 2);
+        sprintf(buf, gOptNumberFormat, offset / 2);
     }
     Font_SetPal(0);
     Option_DrawText(0x20C, 0x158, buf, 0x14, 0x80808080);
-    s = gOptBrightnessTexts;
+    line = gOptBrightnessTexts;
     y = 0xF0;
-    for (i = 0; i < 3; i++, s++) {
-        w = Str_Length(*s);
-        if (w != 0) {
-            Option_DrawText((640.0f - 10.0f * w) / 2.0f, y, *s, 0x14, 0x80808080);
+    for (i = 0; i < 3; i++, line++) {
+        width = Str_Length(*line);
+        if (width != 0) {
+            Option_DrawText((640.0f - 10.0f * width) / 2.0f, y, *line, 0x14, 0x80808080);
             y += 0x18;
         }
     }
@@ -1041,22 +1088,28 @@ void Option_DrawBrightnessPage(void) {
     Text_DrawShadow(x + 0x18, 0x188, 1, 0, gBackResetTexts[1]);
 }
 
-s32 Option_Differs(s8 *opts) {
+/*
+ * 1 when a setting of gSysSave.options differs from its default in opts (a
+ * -1 there is not compared). The loop is written with a goto, as the game's
+ * code has it.
+ */
+s32 Option_DiffersFrom(s8 *opts)
+{
     s32 i;
-    s8 *p;
+    s8 *def;
     s8 *cur;
-    s8 v;
+    s8 value;
 
-    p = opts;
+    def = opts;
     i = 0;
     cur = &gSysSave.options.soundMode;
 loop_1:
-    v = *p;
-    if ((v != -1) && (v != *cur)) {
+    value = *def;
+    if ((value != -1) && (value != *cur)) {
         return 1;
     }
     i += 1;
-    p += 1;
+    def += 1;
     cur += 1;
     if (i >= 0x10) {
         return 0;
@@ -1064,40 +1117,45 @@ loop_1:
     goto loop_1;
 }
 
-s32 Option_GameInput(u16 trig, u16 rep);
-void Option_SoundInput(u16 trig, u16 rep);
+s32 Option_MainInput(u16 trig, u16 rep);
+void Option_ControlInput(u16 trig, u16 rep);
 void Option_ScreenPosInput(u16 trig, u16 rep);
 void Option_BrightnessInput(u16 trig, u16 rep);
-void Option_DrawSoundPage(void);
+void Option_DrawControlPage(void);
 void Option_DrawScreenPosPage(void);
-void Option_DrawGamePage(void);
+void Option_DrawMainPage(void);
 
-/* OPTIONS' task: the four pages (game, sound, screen position, brightness). */
-void Option_Update(TaskSlot *t) {
+/*
+ * The options' frame: the fades between the pages, the current page's input
+ * and drawing; also notes which settings differ from the defaults and from
+ * those at the start.
+ */
+void Option_Update(TaskSlot *task)
+{
     u16 rep;
     u16 trig;
     s32 i;
-    s8 *a;
-    s8 *b;
+    s8 *saved;
+    s8 *current;
 
     trig = gPadState[0].pressed;
     rep = gPadState[0].repeat | trig;
     switch (gOptWork->state) {
     case 0:
-        SeqA_Start(0xC);
+        FadeA_Start(0xC);
         gOptWork->state++;
     case 1:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gOptWork->state++;
         case 2:
             switch (gOptWork->page) {
             case 0:
-                if (Option_GameInput(trig, rep) == 1) {
-                    t->mode = 2;
+                if (Option_MainInput(trig, rep) == 1) {
+                    task->mode = 2;
                 }
                 break;
             case 1:
-                Option_SoundInput(trig, rep);
+                Option_ControlInput(trig, rep);
                 break;
             case 2:
                 Option_ScreenPosInput(trig, rep);
@@ -1109,33 +1167,33 @@ void Option_Update(TaskSlot *t) {
         }
         break;
     case 3:
-        SeqA_Start(0xB);
+        FadeA_Start(0xB);
         gOptWork->state++;
     case 4:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gOptWork->page = gOptWork->nextPage;
             gOptWork->state = 0;
         }
         break;
     }
-    gOptWork->unk70 = Option_Differs((s8 *)gOptGameDefaults);
-    gOptWork->unk74 = Option_Differs((s8 *)gOptSoundDefaults);
-    b = &gSysSave.options.soundMode;
+    gOptWork->mainDiffers = Option_DiffersFrom((s8 *)gOptMainDefaults);
+    gOptWork->controlsDiffer = Option_DiffersFrom((s8 *)gOptControlDefaults);
+    current = &gSysSave.options.soundMode;
     i = 0;
-    a = (s8 *)gOptWork + 0x80;
-    gOptWork->unk78 = 0;
-    for (; i < 0x10; i++, a++, b++) {
-        if (*a != *b) {
-            gOptWork->unk78 = 1;
+    saved = gOptWork->savedOptions;
+    gOptWork->changed = 0;
+    for (; i < 0x10; i++, saved++, current++) {
+        if (*saved != *current) {
+            gOptWork->changed = 1;
             break;
         }
     }
     switch (gOptWork->page) {
     case 0:
-        Option_DrawGamePage();
+        Option_DrawMainPage();
         break;
     case 1:
-        Option_DrawSoundPage();
+        Option_DrawControlPage();
         break;
     case 2:
         Option_DrawScreenPosPage();
@@ -1149,65 +1207,74 @@ void Option_Update(TaskSlot *t) {
 void Stream_Play(s32, s32);
 void Gs_SetTableColor(s32);
 
-/* OPTIONS' start (net: NETWORK OPTIONS). */
-void Option_Start(TaskSlot *t, u16 net) {
-    if ((u8)SeqA_GetState() != 1) {
-        t->unk14 = 0;
-        t->unk15 = 0;
-        t->mode++;
+/*
+ * Starts the options (net: the network options instead): the music for the
+ * plain options, the work at 0x100 in gSysSettings.selWork, the settings at
+ * the start kept, and the layout of the rows.
+ */
+void Option_Start(TaskSlot *task, u16 net)
+{
+    if ((u8)FadeA_GetState() != 1) {
+        task->unk14 = 0;
+        task->unk15 = 0;
+        task->mode++;
         if (net == 0) {
             Stream_Play(0, 0xC9);
         }
         Gs_SetTableColor(0);
         gOptWork = (OptWork *)(gSysSettings.selWork + 0x100);
         memset(gOptWork, 0, 0xB0);
-        memcpy((u8 *)gOptWork + 0x80, &gSysSave.options, 0x10);
-        memcpy((u8 *)gOptWork + 0x90, gSysSave.netOptions, 0x10);
-        gOptWork->unk38 = 0x12;
-        gOptWork->unk3C = 0x12;
+        memcpy(gOptWork->savedOptions, &gSysSave.options, 0x10);
+        memcpy(gOptWork->savedNetOptions, gSysSave.netOptions, 0x10);
+        gOptWork->textSize = 0x12;
+        gOptWork->textSize2 = 0x12;
         if (net == 0) {
-            gOptWork->unk40 = 0x3C;
-            gOptWork->unk44 = 0x46;
-            gOptWork->unk48 = 0x1E;
-            gOptWork->unk4C = 1.35f;
-            gOptWork->unk64 = 0x32;
-            gOptWork->unk68 = 0x170;
-            gOptWork->unk50 = 0x122;
+            gOptWork->rowX = 0x3C;
+            gOptWork->rowY = 0x46;
+            gOptWork->rowStep = 0x1E;
+            gOptWork->selScale = 1.35f;
+            gOptWork->helpX = 0x32;
+            gOptWork->helpY = 0x170;
+            gOptWork->valueX = 0x122;
         } else {
-            gOptWork->unk40 = 0x3C;
-            gOptWork->unk44 = 0x5A;
-            gOptWork->unk48 = 0x1E;
-            gOptWork->unk4C = 1.35f;
-            gOptWork->unk64 = 0x32;
-            gOptWork->unk68 = 0x15E;
-            gOptWork->unk50 = 0x140;
+            gOptWork->rowX = 0x3C;
+            gOptWork->rowY = 0x5A;
+            gOptWork->rowStep = 0x1E;
+            gOptWork->selScale = 1.35f;
+            gOptWork->helpX = 0x32;
+            gOptWork->helpY = 0x15E;
+            gOptWork->valueX = 0x140;
         }
-        gOptWork->unk54 = 0x80808080;
-        gOptWork->unk58 = 0x80784100;
-        gOptWork->unk5C = 0x802B802B;
-        gOptWork->unk60 = 0x80404040;
+        gOptWork->textColor = 0x80808080;
+        gOptWork->selColor = 0x80784100;
+        gOptWork->defaultsColor = 0x802B802B;
+        gOptWork->dimColor = 0x80404040;
     }
 }
 
 void Stream_Reset(void);
-/* unit's own declaration: with the definition's u8 (void) (sub_main/unk_3D54B0.c), NetOption_Update: 68 of 196 words differ */
+/* unit's own declaration: s32, though sub_main/unk_3D54B0.c defines it u8; NetOption_Update's code needs the s32 return */
 s32 NetMenu_Update(void);
 void NetMenu_Open(u8 mode);
 void Vib_StopAll(void);
 void func_3240D0(void);
-void Task_SetGmSub(void);
-void Option_DrawGamePage(void);
+void Task_StartGmSub(void);
+void Option_DrawMainPage(void);
 void NetOption_DrawPage(void);
 
-/* Leaving OPTIONS: saves the settings to the memory card first when needed. */
-void Option_Exit(void *t, s32 net) {
+/*
+ * Leaves the options: saves the settings to the memory card first (through
+ * the network menu's save) when they changed, fades out and starts gm_sub.
+ */
+void Option_Exit(void *task, s32 net)
+{
     switch (gOptWork->step) {
     case 0:
         Stream_Reset();
-        if (gOptWork->unk78 == 0) {
-            SeqA_Start(0xB);
+        if (gOptWork->changed == 0) {
+            FadeA_Start(0xB);
             gOptWork->step = 2;
-            gOptWork->unk10 = 0;
+            gOptWork->timer = 0;
         } else {
             gOptWork->step++;
             NetMenu_Open(1);
@@ -1216,13 +1283,13 @@ void Option_Exit(void *t, s32 net) {
     case 1:
         if ((u8)NetMenu_Update() != 0) {
             gOptWork->step++;
-            SeqA_Start(0xB);
+            FadeA_Start(0xB);
         }
         break;
     case 2:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gOptWork->step++;
-            gOptWork->unk10 = 0;
+            gOptWork->timer = 0;
             SysSettings_Reset();
             Stream_Reset();
             Vib_StopAll();
@@ -1230,78 +1297,91 @@ void Option_Exit(void *t, s32 net) {
         }
         break;
     case 3:
-        if (++gOptWork->unk10 >= 10) {
+        if (++gOptWork->timer >= 10) {
             gOptWork = NULL;
-            TaskSlot_End(t);
-            Task_SetGmSub();
-            SeqA_Start(0xC);
+            TaskSlot_End(task);
+            Task_StartGmSub();
+            FadeA_Start(0xC);
             return;
         }
         break;
     }
     if ((u16)net == 0) {
-        Option_DrawGamePage();
+        Option_DrawMainPage();
     } else {
         NetOption_DrawPage();
     }
 }
 
-void NetOption_OpenMainPage(void) {
+/* Fades to the network options' main page. */
+void NetOption_OpenMainPage(void)
+{
     gOptWork->nextPage = 0;
     gOptWork->state = 3;
     gOptWork->step = 0;
 }
 
-void NetOption_OpenNetMenuPage(void) {
+/* Fades to the network menu's page. */
+void NetOption_OpenNetMenuPage(void)
+{
     gOptWork->nextPage = 1;
-    gOptWork->unk2C = 1;
+    gOptWork->subCursor = 1;
     gOptWork->state = 3;
     gOptWork->step = 0;
 }
 
-void NetOption_OpenConfirmPage(void) {
+/* Fades to the confirmation before the network setup guide. */
+void NetOption_OpenConfirmPage(void)
+{
     gOptWork->nextPage = 2;
-    gOptWork->unk2C = 1;
+    gOptWork->subCursor = 1;
     gOptWork->state = 3;
     gOptWork->step = 0;
 }
 
-void NetOption_Task(TaskSlot *t) {
+/* The network options' task: starts them, runs the pages, then leaves. */
+void NetOption_Task(TaskSlot *task)
+{
     u8 step;
 
     Gfx_SetBlend(4, 5);
     Gfx_SetBlend(4, 5);
-    step = t->mode;
-    switch (step) {                              /* irregular */
+    step = task->mode;
+    switch (step) {
     case 0:
-        Option_Start(t, 1);
+        Option_Start(task, 1);
         break;
     case 1:
-        NetOption_Update(t, 1);
+        NetOption_Update(task, 1);
         break;
     case 2:
-        Option_Exit(t, 1);
+        Option_Exit(task, 1);
         break;
     }
     Frame_Draw();
 }
 
-s32 NetOption_SettingsDiffer(s8 *opts) {
+/*
+ * 1 when a network setting differs from its default in opts (a -1 there is
+ * not compared). The loop is written with a goto, as the game's code has it.
+ */
+s32 NetOption_DiffersFrom(s8 *opts)
+{
     s32 i;
-    s8 *p;
+    s8 *def;
     s8 *cur;
-    s8 v;
+    s8 value;
 
-    p = opts;
+    def = opts;
     i = 0;
     cur = (s8 *)gSysSave.netOptions;
 loop_1:
-    v = *p;
-    if ((v != -1) && (v != *cur)) {
+    value = *def;
+    if ((value != -1) && (value != *cur)) {
         return 1;
     }
     i += 1;
-    p += 1;
+    def += 1;
     cur += 1;
     if (i >= 0x10) {
         return 0;
@@ -1312,30 +1392,36 @@ loop_1:
 s32 NetOption_Input(u16 trig, u16 rep);
 void NetOption_ConfirmInput(u16 pad, u16 rep);
 void NetOption_DrawPage(void);
-void func_006B98A0(void);
+void NetOption_DrawNetMenuPage(void);
 void NetOption_DrawConfirm(void);
 
-/* NETWORK OPTIONS' task. */
-void NetOption_Update(TaskSlot *t, s32 unused) {
+/*
+ * The network options' frame: the fades between the pages; the main page's
+ * input (rows 2 and 3 open the network menu's page and the setup guide's
+ * confirmation; leaving notes whether anything changed); the network menu
+ * run as a page; the confirmation.
+ */
+void NetOption_Update(TaskSlot *task, s32 unused)
+{
     u16 rep;
     u16 trig;
     s32 i;
-    s8 *a;
-    s8 *b;
+    s8 *saved;
+    s8 *current;
 
     trig = gPadState[0].pressed;
     rep = gPadState[0].repeat | trig;
     switch (gOptWork->state) {
     case 0:
-        SeqA_Start(0xC);
+        FadeA_Start(0xC);
         gOptWork->state++;
     case 1:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gOptWork->state++;
         case 2:
             switch (gOptWork->page) {
             case 0:
-                gOptWork->unk7C = NetOption_SettingsDiffer((s8 *)gNetOptDefaults);
+                gOptWork->netDiffers = NetOption_DiffersFrom((s8 *)gNetOptDefaults);
                 switch (NetOption_Input(trig, rep)) {
                 case 0:
                     break;
@@ -1346,14 +1432,14 @@ void NetOption_Update(TaskSlot *t, s32 unused) {
                     NetOption_OpenConfirmPage();
                     break;
                 case -1:
-                    t->mode = 2;
-                    b = (s8 *)gSysSave.netOptions;
+                    task->mode = 2;
+                    current = (s8 *)gSysSave.netOptions;
                     i = 0;
-                    a = (s8 *)gOptWork + 0x90;
-                    gOptWork->unk78 = 0;
-                    for (; i < 0x10; i++, a++, b++) {
-                        if (*a != *b) {
-                            gOptWork->unk78 = 1;
+                    saved = gOptWork->savedNetOptions;
+                    gOptWork->changed = 0;
+                    for (; i < 0x10; i++, saved++, current++) {
+                        if (*saved != *current) {
+                            gOptWork->changed = 1;
                             break;
                         }
                     }
@@ -1380,10 +1466,10 @@ void NetOption_Update(TaskSlot *t, s32 unused) {
         }
         break;
     case 3:
-        SeqA_Start(0xB);
+        FadeA_Start(0xB);
         gOptWork->state++;
     case 4:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gOptWork->page = gOptWork->nextPage;
             gOptWork->state = 0;
         }
@@ -1394,7 +1480,7 @@ void NetOption_Update(TaskSlot *t, s32 unused) {
         NetOption_DrawPage();
         break;
     case 1:
-        func_006B98A0();
+        NetOption_DrawNetMenuPage();
         break;
     case 2:
         NetOption_DrawConfirm();
@@ -1402,70 +1488,75 @@ void NetOption_Update(TaskSlot *t, s32 unused) {
     }
 }
 
-/* "%s" comes here in the game's .rodata, before NetOption_Input's jump table,
- * although its only user is NetOption_DrawConfirm (a function inlined or stripped
- * earlier in the file may have used it first). */
+/* D_006CDFB8, a format that prints one string, sits here in the game's
+ * .rodata, before NetOption_Input's jump table, though only
+ * NetOption_DrawConfirm uses it. */
 INCLUDE_RODATA("asm/select/nonmatchings/select_option", D_006CDFB8);
 
-/* NETWORK OPTIONS' input: 1 or 2 for the pages behind rows 2 and 3, -1
- * when the page is left. */
-s32 NetOption_Input(u16 trig, u16 rep) {
-    s8 n;
-    s8 k;
-    s8 *v;
+/*
+ * The network options' input: two settings that wrap, two rows that open
+ * pages, the defaults and the exit. Returns 1 or 2 for the pages, -1 when
+ * the page is left, else 0. The goto shares the value code, as the game's
+ * code does.
+ */
+s32 NetOption_Input(u16 trig, u16 rep)
+{
+    s8 count;
+    s8 value;
+    s8 *setting;
     s32 cursor;
 
     if (rep & 0x2000) {
         do {
-            gOptWork->unk28--;
-            if (gOptWork->unk28 < 0) {
-                gOptWork->unk28 = 5;
+            gOptWork->cursor--;
+            if (gOptWork->cursor < 0) {
+                gOptWork->cursor = 5;
             }
-        } while (gOptWork->unk28 == 4 && gOptWork->unk7C == 0);
+        } while (gOptWork->cursor == 4 && gOptWork->netDiffers == 0);
         Option_ResetArrows();
         Sound_PlayCursorMove();
         return 0;
     }
     if (rep & 0x1000) {
         do {
-            gOptWork->unk28++;
-            if (gOptWork->unk28 >= 6) {
-                gOptWork->unk28 = 0;
+            gOptWork->cursor++;
+            if (gOptWork->cursor >= 6) {
+                gOptWork->cursor = 0;
             }
-        } while (gOptWork->unk28 == 4 && gOptWork->unk7C == 0);
+        } while (gOptWork->cursor == 4 && gOptWork->netDiffers == 0);
         Option_ResetArrows();
         Sound_PlayCursorMove();
         return 0;
     }
     if (trig & 0x40) {
         Sound_PlayCancel();
-        if (gOptWork->unk28 == 5) {
+        if (gOptWork->cursor == 5) {
             return -1;
         }
-        gOptWork->unk28 = 5;
+        gOptWork->cursor = 5;
         return 0;
     }
-    n = ((s8 *)gNetOptValueCounts)[gOptWork->unk28];
-    switch (cursor = gOptWork->unk28) {
+    count = ((s8 *)gNetOptValueCounts)[gOptWork->cursor];
+    switch (cursor = gOptWork->cursor) {
     case 0:
     case 1:
-        v = (s8 *)&gSysSave.netOptions[cursor];
-        k = *v;
+        setting = (s8 *)&gSysSave.netOptions[cursor];
+        value = *setting;
         if (rep & 0x400) {
-            k++;
-            k %= n;
-            Option_PressLeft();
+            value++;
+            value %= count;
+            Option_BounceRightArrow();
         set:
-            *v = k;
+            *setting = value;
             Sound_PlayCursorMove();
             break;
         }
         if (rep & 0x800) {
-            k--;
-            if (k < 0) {
-                k += n;
+            value--;
+            if (value < 0) {
+                value += count;
             }
-            Option_PressRight();
+            Option_BounceLeftArrow();
             goto set;
         }
         break;
@@ -1501,82 +1592,88 @@ s32 NetOption_Input(u16 trig, u16 rep) {
 extern char *gNetOptLabels[];     /* messages (select_psp.c) */
 extern char *gNetOptHelp[];
 
-/* NETWORK OPTIONS' page. */
-void NetOption_DrawPage(void) {
-    s32 w;
-    u32 c;
-    s32 sz;
-    s32 ty;
+/*
+ * The network options' page: one row per setting with its value and
+ * arrows, the row under the cursor enlarged, then the help line. The values
+ * are read at netSetting[0x10], 16 bytes past gSysSave.options: the
+ * network settings, read this way in the game's code.
+ */
+void NetOption_DrawPage(void)
+{
+    s32 width;
+    u32 rowColor;
+    s32 rowSize;
+    s32 rowY;
     s32 x;
     char **label;
     s32 i;
     s32 y;
     u32 color;
     s16 (*arrow)[2];
-    char **p;
+    char **valueText;
     s32 size;
-    char ***tbl;
-    u8 *set;
-    s32 xx;
+    char ***valueTexts;
+    u8 *netSetting;
+    s32 valueX;
 
     Sel_DrawBackground(0xFF);
     Sel_DrawHeader(7);
     WindowFrame_Draw(&gNetOptPageFrame, 0);
     label = gNetOptLabels;
     i = 0;
-    tbl = (char ***)gNetOptValueNames;
-    set = (u8 *)&gSysSave.options;
+    valueTexts = (char ***)gNetOptValueNames;
+    netSetting = (u8 *)&gSysSave.options;
     arrow = (s16 (*)[2])gNetOptArrows;
-    x = gOptWork->unk40;
-    y = gOptWork->unk44;
-    for (; i < 6; i++, tbl++, set++, arrow++, y += gOptWork->unk48) {
-        gOptWork->unkA0 = 0;
+    x = gOptWork->rowX;
+    y = gOptWork->rowY;
+    for (; i < 6; i++, valueTexts++, netSetting++, arrow++, y += gOptWork->rowStep) {
+        gOptWork->arrowsShown = 0;
         if (i == 5) {
-            y += (s32)(0.5f * gOptWork->unk48);
+            y += (s32)(0.5f * gOptWork->rowStep);
         }
-        ty = y;
-        sz = gOptWork->unk38;
-        if (i == gOptWork->unk28) {
-            sz = sz * gOptWork->unk4C;
-            ty = y - (sz - gOptWork->unk38) / 2;
-            c = gOptWork->unk58;
+        rowY = y;
+        rowSize = gOptWork->textSize;
+        if (i == gOptWork->cursor) {
+            rowSize = rowSize * gOptWork->selScale;
+            rowY = y - (rowSize - gOptWork->textSize) / 2;
+            rowColor = gOptWork->selColor;
         } else if (i == 4) {
-            if (gOptWork->unk7C != 0) {
-                c = gOptWork->unk5C;
+            if (gOptWork->netDiffers != 0) {
+                rowColor = gOptWork->defaultsColor;
             } else {
-                c = gOptWork->unk60;
+                rowColor = gOptWork->dimColor;
             }
         } else {
-            c = gOptWork->unk54;
+            rowColor = gOptWork->textColor;
         }
-        if (c != color) {
-            color = c;
+        if (rowColor != color) {
+            color = rowColor;
         }
-        Option_DrawText(x, ty, *label, sz, color);
-        size = gOptWork->unk38;
+        Option_DrawText(x, rowY, *label, rowSize, color);
+        size = gOptWork->textSize;
         switch (i) {
         case 0:
         case 1:
-            if (i == gOptWork->unk28) {
-                gOptWork->unkA0 = 1;
+            if (i == gOptWork->cursor) {
+                gOptWork->arrowsShown = 1;
                 if (i == 0) {
-                    gOptWork->unkAE = y + gOptWork->unk48 / 2 - 6;
+                    gOptWork->arrowY = y + gOptWork->rowStep / 2 - 6;
                 } else {
-                    gOptWork->unkAE = y - 6;
+                    gOptWork->arrowY = y - 6;
                 }
             }
-            p = &(*tbl)[set[0x10]];
-            w = Str_Length(*p);
-            xx = gOptWork->unk50 + (s32)((320.0f - (size / 2) * w) / 2.0f);
+            valueText = &(*valueTexts)[netSetting[0x10]];
+            width = Str_Length(*valueText);
+            valueX = gOptWork->valueX + (s32)((320.0f - (size / 2) * width) / 2.0f);
             Font_SetSpacing(size, size);
             if (i == 0) {
-                Option_DrawText(xx, y + gOptWork->unk48 / 2, *p, size, color);
+                Option_DrawText(valueX, y + gOptWork->rowStep / 2, *valueText, size, color);
             } else {
-                Option_DrawText(xx, y, *p, size, color);
+                Option_DrawText(valueX, y, *valueText, size, color);
             }
-            if (gOptWork->unkA0 != 0) {
-                gOptWork->unkA6 = (*arrow)[0];
-                gOptWork->unkA8 = (*arrow)[1];
+            if (gOptWork->arrowsShown != 0) {
+                gOptWork->arrowLeftX = (*arrow)[0];
+                gOptWork->arrowRightX = (*arrow)[1];
             }
             Option_DrawArrows();
             break;
@@ -1587,55 +1684,61 @@ void NetOption_DrawPage(void) {
         }
         label++;
         if (i == 0) {
-            y += (s32)(gOptWork->unk48 * (1.0f / gOptWork->unk4C));
+            y += (s32)(gOptWork->rowStep * (1.0f / gOptWork->selScale));
         }
     }
-    Option_DrawText(gOptWork->unk64, gOptWork->unk68,
-                  gNetOptHelp[gOptWork->unk28], gOptWork->unk38,
-                  gOptWork->unk54);
+    Option_DrawText(gOptWork->helpX, gOptWork->helpY,
+                  gNetOptHelp[gOptWork->cursor], gOptWork->textSize,
+                  gOptWork->textColor);
 }
 
 void LoadOverlay(s32 id);
-void func_ACE630(void);
+void Yn_LaunchSetupGuide(void); /* yn: the overlay's entry */
 
-void NetOption_ConfirmInput(u16 pad, u16 rep) {
-    u16 b;
+/*
+ * The confirmation before the network setup guide: left and right choose
+ * yes or no; yes waits 20 frames, then loads the yn overlay (9) and starts
+ * it; no, or cancel on no, goes back.
+ */
+void NetOption_ConfirmInput(u16 pad, u16 rep)
+{
+    u16 buttons;
 
     switch (gOptWork->step) {
     case 0:
-        gOptWork->unk2C = 1;
+        gOptWork->subCursor = 1;
         gOptWork->step++;
-        gOptWork->unk8 = 0;
+        gOptWork->confirmStep = 0;
         break;
     case 1:
-        switch (gOptWork->unk8) {
+        switch (gOptWork->confirmStep) {
         case 0:
-            b = pad;
-            if ((b & 0x400) || (b & 0x800)) {
+            buttons = pad;
+            if ((buttons & 0x400) || (buttons & 0x800)) {
                 Sound_PlayCursorMove();
-                gOptWork->unk2C ^= 1;
-            } else if (b & 0x20) {
+                gOptWork->subCursor ^= 1;
+            } else if (buttons & 0x20) {
                 Sound_PlaySe73();
-                if (gOptWork->unk2C == 0) {
-                    gOptWork->unk8++;
-                    gOptWork->unk10 = 0x14;
+                if (gOptWork->subCursor == 0) {
+                    gOptWork->confirmStep++;
+                    gOptWork->timer = 0x14;
                 } else {
                     NetOption_OpenMainPage();
                 }
-            } else if (b & 0x40) {
+            } else if (buttons & 0x40) {
                 Sound_PlayCancel();
-                if (gOptWork->unk2C == 0) {
-                    gOptWork->unk2C = 1;
+                if (gOptWork->subCursor == 0) {
+                    gOptWork->subCursor = 1;
                 } else {
                     NetOption_OpenMainPage();
                 }
             }
             break;
         case 1:
-            gOptWork->unk10--;
-            if (gOptWork->unk10 == 0) {
+            gOptWork->timer--;
+            if (gOptWork->timer == 0) {
                 LoadOverlay(9);
-                func_ACE630();
+                Yn_LaunchSetupGuide();
             }
             break;
         }
@@ -1643,11 +1746,13 @@ void NetOption_ConfirmInput(u16 pad, u16 rep) {
     }
 }
 
-void func_006B98A0(void) {
+/* Empty: the network menu draws itself. */
+void NetOption_DrawNetMenuPage(void)
+{
 
 }
 
-extern char *gNetOptConfirmTexts[];      /* NETWORK OPTIONS' notice (select_psp.c) */
+extern char *gNetOptConfirmTexts[];      /* the network options' notice (select_psp.c) */
 extern char *gPouchMenuPanel2_6[];        /* sub_main: the YES/NO strings */
 extern char D_006CDFB8[];
 void Text_SetColor(s16 color);
@@ -1658,35 +1763,40 @@ struct Window;
 void Window_DrawTextAlpha(struct Window *w, u8 *text, u8 alpha);
 void Sel_DrawBackground(u8);
 
-void NetOption_DrawConfirm(void) {
+/*
+ * Draws the confirmation: the notice's lines and the two choices, the
+ * chosen one on a glowing bar.
+ */
+void NetOption_DrawConfirm(void)
+{
     s32 y;
     s32 i;
-    char **s;
+    char **line;
     s32 x;
-    char **p;
+    char **choice;
     s32 j;
     s32 color;
-    s32 w;
+    s32 lineX;
 
     Sel_DrawBackground(0xFF);
     Sel_DrawHeader(7);
     Window_DrawTextAlpha((struct Window *) gNetOptConfirmWin, 0, 0x80);
     Font_SetSpacing(0x12, 0x12);
-    s = gNetOptConfirmTexts;
+    line = gNetOptConfirmTexts;
     y = 0x78;
     Text_SetColor(0);
     for (i = 0; i < 6; i++) {
-        if (**s != ' ') {
-            w = Str_Length(*s);
-            w = (0x280 - w * 9) / 2;
-            Font_SetPos(w, y);
-            Text_PrintfColored(D_006CDFB8, *s);
+        if (**line != ' ') {
+            lineX = Str_Length(*line);
+            lineX = (0x280 - lineX * 9) / 2;
+            Font_SetPos(lineX, y);
+            Text_PrintfColored(D_006CDFB8, *line);
         }
         y += 0x18;
-        s++;
+        line++;
     }
-    for (j = 0, p = gPouchMenuPanel2_6; j < 2; j++, p++) {
-        color = (gOptWork->unk2C == j) ? 5 : 0;
+    for (j = 0, choice = gPouchMenuPanel2_6; j < 2; j++, choice++) {
+        color = (gOptWork->subCursor == j) ? 5 : 0;
         x = 0xF0;
         if (j == 0) {
             x += 0x14;
@@ -1699,15 +1809,20 @@ void NetOption_DrawConfirm(void) {
         } else {
             Font_SetPos(x - 0x1E, 0x144);
         }
-        Text_PrintfColored(D_006CDFB8, *p);
-        if (gOptWork->unk2C == j) {
+        Text_PrintfColored(D_006CDFB8, *choice);
+        if (gOptWork->subCursor == j) {
             Menu_DrawGlowBar(x, 0x142, 0x78, 0x18, 0xFF20C0C0);
         }
     }
     Font_SetSpacing(0x12, 0x12);
 }
 
-void Option_DrawBrightnessStrip(void) {
+/*
+ * Draws the strip of grey steps the brightness is judged by (system texture
+ * 5).
+ */
+void Option_DrawBrightnessStrip(void)
+{
     Sprite spr;
 
     Gfx_SetState63(1);

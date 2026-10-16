@@ -11,6 +11,7 @@
 #include "texture.h"
 #include "padio.h"
 #include "model.h"
+#include "motion.h"
 
 /* Built at optimization level 4 like unk_2E3940.c (every function matches either way). */
 #pragma optimization_level 4
@@ -24,49 +25,7 @@ f32 Motion_GetLength(s32 h);
 s32 Anim_GetLoopTime(s32 h, f32 *out);
 s32 Bone_PosePart(f32 t, EmBone *b, s32 id);
 s32 Bone_BlendPart(f32 wa, f32 wb, EmBone *a, EmBone *b, s32 id);
-typedef struct ModelEntry {
-    u32 flags;                  /* 0x00: 2 and 4 select how Model_Draw builds its packets */
-    s32 used;                   /* 0x04: from the file header, 0 free */
-    s32 unk08;                  /* 0x08 */
-    s32 frame;                  /* 0x0C: the frame its data was last set up */
-    s32 size;                   /* 0x10: of the copy at 0x14 */
-    void *file;                 /* 0x14: a handle, the copied file */
-    s32 unk18;                  /* 0x18 */
-    void *data;                 /* 0x1C: a handle */
-    u8 *dataAddr;               /* 0x20 */
-    s32 unk24;                  /* 0x24 */
-    s32 pktSize;                /* 0x28 */
-    s32 unk2C;                  /* 0x2C */
-    s32 unk30;                  /* 0x30 */
-    s32 partCount;              /* 0x34 */
-    s32 texCount;               /* 0x38 */
-    s32 unk3C;                  /* 0x3C */
-    s32 unk40;                  /* 0x40 */
-    s32 unk44;                  /* 0x44 */
-    s32 prog;                   /* 0x48: VU1 program (Vu1_SelectProgram), -1 none */
-    s32 *progInfo;              /* 0x4C */
-    s32 unk50;                  /* 0x50 */
-    s32 unk54;                  /* 0x54 */
-    u8 pad58[0x60 - 0x58];
-    u8 mat[0x20];               /* 0x60: per part, a material of gRsMaterials */
-    s32 partTex[0x20];          /* 0x80: per part, its material's texture */
-    s32 tex[0x20];              /* 0x100: the distinct textures */
-} ModelEntry;
 void Vu1_SelectProgram(ModelEntry *e, MeshDesc *hdr);
-typedef struct AnimCurve {
-    u8 type;                    /* 0x0: the key format (Anim_EvalCurve) */
-    u8 idx;                     /* 0x1: the pose value it drives */
-    u16 count;                  /* 0x2: keys */
-    s32 keys;                   /* 0x4: offset of the keys */
-} AnimCurve;
-typedef struct AnimHeader {
-    u16 flags;                  /* 0x0: 0x1000 or 0x2000 in the top 4 bits; 0x8000 */
-    s16 count;                  /* 0x2: curves */
-    s32 curves;                 /* 0x4: offset of the curves (AnimCurve) */
-} AnimHeader;
-typedef struct Mtx44Copy {
-    f32 m[4][4];
-} Mtx44Copy;
 extern Mtx44Copy gMtxSlots[];
 asm void Mtx_Identity(f32 *m);
 asm void Mtx_Mul(f32 *dst, f32 *a, f32 *b);
@@ -79,20 +38,6 @@ asm void Mtx_Inverse(f32 *dst, f32 *src);
 asm void Mtx_Blend(f32 *dst, f32 *a, f32 *b, f32 wa, f32 wb);
 void Anim_SetData(s32 arg0);
 
-
-/* A bone of a skeleton file (0x40 bytes, from +0x10; the count at +2). */
-typedef struct BoneDef {
-    s16 index;                  /* 0x00 */
-    u16 id;                     /* 0x02 */
-    u8 pad04[2];
-    s16 child;                  /* 0x06 */
-    s16 sibling;                /* 0x08 */
-    s16 unkA;                   /* 0x0A */
-    u8 pad0C[4];
-    f32 scale[4];               /* 0x10 */
-    f32 rot[4];                 /* 0x20 */
-    f32 trans[4];               /* 0x30 */
-} BoneDef;
 
 EmBone *Bone_FindPart(EmBone *b, s32 id);
 s32 Bone_BlendTree(EmBone *a, EmBone *b, f32 wa, f32 wb, s32 id);
@@ -382,7 +327,7 @@ s32 Anim_EvalPoseMatrix(AnimHeader *hdr, f32 *base, f32 *pose, f32 *m, s16 *keys
         pose[i] = base[i];
     }
     if (hdr != NULL) {
-        switch (hdr->flags & 0xF000) {
+        switch (hdr->flags & ANIM_TYPE_MASK) {
         case 0x1000:
             c = (AnimCurve *)(hdr->curves + gAnimData);
             for (i = 0; i < hdr->count; i++, c++) {
@@ -545,7 +490,7 @@ s32 Bone_InitTree(EmBone *bones, s32 h, s32 unused, s32 mode)
     EmBone *b;
 
     data = Mem_GetAddr((void *)h);
-    n = *(s16 *)(data + 2);
+    n = ((SkelHeader *)data)->count;
     for (i = 0; i < n; i++) {
         b = &bones[i];
         b->count = n;
@@ -710,10 +655,11 @@ s32 Bone_PoseMatrix(f32 *m, f32 *pose, f32 sx, f32 sy, f32 sz)
     return 1;
 }
 
-/* Node i of a skeleton file (data) into b: its ids, links and rest pose. */
+/* Bone i of a built skeleton (data: a SkelHeader, then its BoneDefs) into
+ * b: its ids, links and rest pose. */
 s32 Bone_ReadDef(EmBone *b, u8 *data, s32 i)
 {
-    BoneDef *d = (BoneDef *)(data + 0x10);
+    BoneDef *d = (BoneDef *)((SkelHeader *)data + 1);
 
     d += i;
     b->unk174 = d->unkA;
@@ -742,7 +688,7 @@ s32 Anim_EvalPose(AnimHeader *hdr, f32 *base, f32 *pose, s16 *keys, f32 t)
     AnimCurve *c;
 
     if (hdr != NULL) {
-        switch (hdr->flags & 0xF000) {
+        switch (hdr->flags & ANIM_TYPE_MASK) {
         case 0x1000:
             c = (AnimCurve *)(hdr->curves + gAnimData);
             for (i = 0; i < hdr->count; i++, c++) {

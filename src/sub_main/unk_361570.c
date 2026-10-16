@@ -1,3 +1,16 @@
+/*
+ * The equipment windows' parts and the chat's word filter and phrases.
+ * For the equipment menus (unk_356380.c draws the windows): whether an
+ * armour fits the player, the weapon's element, the skill points, the
+ * sharpness gauge, the compare arrow, the page tabs, the button hints and
+ * the equipment icons. For the chat: masking the filtered words, the
+ * phrase list (SysSave.phrases and their short names, gPhraseEntries) and
+ * its keyboard, cutting a Shift-JIS string to a width. And the HUD's
+ * shake (gShakeOffset).
+ *
+ * Text colours given to Text_SetColor here: 4 marks a value higher than
+ * the compared equipment's, 2 a lower one.
+ */
 #include "common.h"
 #include "sprite.h"
 #include "scene.h"
@@ -6,18 +19,21 @@
 #include "prim.h"
 #include "syssave.h"
 #include "save.h"
+#include "hud.h"
+/* The whole file is compiled at optimization level 4: its functions match only so. */
 #pragma optimization_level 4
 
+/* A point or a texture coordinate. */
 typedef struct Pt {
     s16 x;
     s16 y;
 } Pt;
 
-typedef struct Pos8 {
-    Pt p;
-    s16 unk4;
-    s16 unk6;
-} Pos8;
+/* A weapon icon's texture rectangle in gWeaponIconUVs: two corners. */
+typedef struct WeaponIconUV {
+    Pt uv0;
+    Pt uv1;
+} WeaponIconUV;
 
 /* A skill and its points (Equip_ListSkillPoints fills 9 of them). */
 typedef struct SkillPt {
@@ -25,19 +41,13 @@ typedef struct SkillPt {
     s8 pts;
 } SkillPt;
 
-/* A name of 12 bytes and its source string. */
-typedef struct NameEntry {
-    char name[12];
-    char *src;
-} NameEntry;
 
 extern u8 gUnwearableCheckSlots[];
 extern char *gDetailsHintText;
 extern u8 gButtonHintDetailIcons[];
-extern Pos8 gWeaponIconUVs[];
-extern Pos8 D_00432664[];
+extern WeaponIconUV gWeaponIconUVs[];
 extern char gDefaultPhrases[][45];
-extern NameEntry gQuestListEntries[];
+extern PhraseEntry gPhraseEntries[];
 extern char *gSkillPointsTitle[];
 extern char *gSkillPointsFmt;
 extern char *gNoSkillText[];
@@ -49,7 +59,7 @@ extern char *gElementLineFmt;
 extern char *gDefenseBonusFmt;
 extern u16 gFrameTick;
 extern Pt gButtonHintSortPos[];
-extern Pt D_0043B0C2[];
+
 extern u8 gButtonHintSortIcons[][8];
 extern char *gSortHintText[];
 extern char *gSelectText[];
@@ -103,9 +113,11 @@ void Tex_Prepare(s32 a, s32 b);
 void Tex_Bind(s32 a);
 void Menu_DrawArrow(s16 x, s16 y, s16 w, s16 h, u32 color, u8 flags);
 
-s32 Equip_DataWearable(Player *p, EquipItem *e)
+/* Whether armour piece fits pl: its data's flags must hold the hunter's
+ * gender (1 male, 2 female) and the weapon's kind (4 blade, 8 gun). */
+s32 Equip_DataWearable(Player *pl, EquipItem *piece)
 {
-    ArmorData *data = &Equip_GetData(e)->armor;
+    ArmorData *data = &Equip_GetData(piece)->armor;
     u8 mask;
 
     if (gSave.gender == 0) {
@@ -113,7 +125,7 @@ s32 Equip_DataWearable(Player *p, EquipItem *e)
     } else {
         mask = 2;
     }
-    if (p->equip[6].type == 6) {
+    if (pl->equip[6].type == 6) {
         mask |= 4;
     } else {
         mask |= 8;
@@ -124,165 +136,176 @@ s32 Equip_DataWearable(Player *p, EquipItem *e)
     return 0;
 }
 
-void Player_RemoveUnwearable(Player *p)
+/* Takes off the armour pieces (the five slots of gUnwearableCheckSlots)
+ * that don't fit pl (Equip_DataWearable). */
+void Player_RemoveUnwearable(Player *pl)
 {
     u32 i;
 
     for (i = 0; i < 5; i++) {
         u8 idx = gUnwearableCheckSlots[i];
-        if (p->equip[idx].id != 0 && (u8)Equip_DataWearable(p, &p->equip[idx]) == 0) {
-            p->equip[idx].id = 0;
+        if (pl->equip[idx].id != 0 && (u8)Equip_DataWearable(pl, &pl->equip[idx]) == 0) {
+            pl->equip[idx].id = 0;
         }
     }
 }
 
-static s32 BladeData_ElementKind(BladeData *d, s16 *out)
+/* A blade's element or status: *out gets its kind (elements 0..4, the
+ * statuses from 5; -1 none) and the value is returned (-1 none). */
+static s32 BladeData_ElementKind(BladeData *data, s16 *out)
 {
-    if (d->elementType != 0) {
-        *out = d->elementType - 1;
-        return d->elementValue;
+    if (data->elementType != 0) {
+        *out = data->elementType - 1;
+        return data->elementValue;
     }
-    if (d->statusType != 0) {
-        *out = d->statusType + 4;
-        return d->statusValue;
-    }
-    *out = -1;
-    return -1;
-}
-
-static s32 GunData_ElementKind(GunData *d, s16 *out)
-{
-    if (d->elementType != 0) {
-        *out = d->elementType - 1;
-        return d->elementValue;
+    if (data->statusType != 0) {
+        *out = data->statusType + 4;
+        return data->statusValue;
     }
     *out = -1;
     return -1;
 }
 
-void Weapon_GetElementInfo(EquipItem *e, s16 *a, s16 *b, s16 *c)
+/* A gun's element, as BladeData_ElementKind. */
+static s32 GunData_ElementKind(GunData *data, s16 *out)
 {
-    EquipData *d;
+    if (data->elementType != 0) {
+        *out = data->elementType - 1;
+        return data->elementValue;
+    }
+    *out = -1;
+    return -1;
+}
 
-    if (e->type == 6) {
-        d = Equip_GetData(e);
-        *a = BladeData_ElementKind(&d->blade, b);
-        *c = d->blade.defense;
+/* The weapon's element value (*value), its kind (*kind, as
+ * BladeData_ElementKind; a gun has one only in class 10) and its defense
+ * bonus (*defenseBonus). Type 6 is a blade, 7 a gun. */
+void Weapon_GetElementInfo(EquipItem *weapon, s16 *value, s16 *kind, s16 *defenseBonus)
+{
+    EquipData *data;
+
+    if (weapon->type == 6) {
+        data = Equip_GetData(weapon);
+        *value = BladeData_ElementKind(&data->blade, kind);
+        *defenseBonus = data->blade.defense;
     } else {
-        d = Equip_GetData(e);
-        *c = d->gun.defense;
-        *a = -1;
-        *b = -1;
-        if ((u8)Equip_GetClass(e) == 10) {
-            *a = GunData_ElementKind(&d->gun, b);
+        data = Equip_GetData(weapon);
+        *defenseBonus = data->gun.defense;
+        *value = -1;
+        *kind = -1;
+        if ((u8)Equip_GetClass(weapon) == 10) {
+            *value = GunData_ElementKind(&data->gun, kind);
         }
     }
 }
 
-void EquipMenu_DrawElement(EquipItem *e, s16 x, s16 y, EquipItem *cmp)
+/* Draws the weapon's element line and defense bonus at (x, y), each value
+ * coloured against weapon cmp's when one is given. */
+void EquipMenu_DrawElement(EquipItem *weapon, s16 x, s16 y, EquipItem *cmp)
 {
     char buf[0x30];
-    s16 b, a, c;
-    s16 b2, a2, c2;
-    s16 col1, col2, col3, col0;
+    s16 kind, value, defense;
+    s16 cmpKind, cmpValue, cmpDefense;
+    s16 kindColor, defColor, defLabelColor, valueColor;
 
     Font_SetSpacing(0x12, 0x12);
-    Weapon_GetElementInfo(e, &a, &b, &c);
-    col1 = col0 = col3 = col2 = 0;
+    Weapon_GetElementInfo(weapon, &value, &kind, &defense);
+    kindColor = valueColor = defLabelColor = defColor = 0;
     if (cmp != NULL) {
-        Weapon_GetElementInfo(cmp, &a2, &b2, &c2);
-        if (b >= 0) {
-            if (b == b2) {
-                if (a > a2) {
-                    col0 = 4;
-                } else if (a < a2) {
-                    col0 = 2;
+        Weapon_GetElementInfo(cmp, &cmpValue, &cmpKind, &cmpDefense);
+        if (kind >= 0) {
+            if (kind == cmpKind) {
+                if (value > cmpValue) {
+                    valueColor = 4;
+                } else if (value < cmpValue) {
+                    valueColor = 2;
                 }
             } else {
-                col1 = col0 = 4;
+                kindColor = valueColor = 4;
             }
         }
-        if (c > 0) {
-            if (c2 > 0) {
-                if (c2 < c) {
-                    col2 = 4;
-                } else if (c < c2) {
-                    col2 = 2;
+        if (defense > 0) {
+            if (cmpDefense > 0) {
+                if (cmpDefense < defense) {
+                    defColor = 4;
+                } else if (defense < cmpDefense) {
+                    defColor = 2;
                 }
             } else {
-                col3 = col2 = 4;
+                defLabelColor = defColor = 4;
             }
         }
     }
-    if (b >= 0) {
-        s16 msg = (b < 5) ? 0xC : 0xD;
+    if (kind >= 0) {
+        s16 msg = (kind < 5) ? 0xC : 0xD;
 
-        sprintf(buf, gEquipNameFmt[msg], col0, a);
+        sprintf(buf, gEquipNameFmt[msg], valueColor, value);
         Font_SetPos(x, y);
-        Text_Printf(gElementLineFmt, col1, gElementNames[b], buf);
+        Text_Printf(gElementLineFmt, kindColor, gElementNames[kind], buf);
         y += 0x14;
     }
-    if (c != 0) {
+    if (defense != 0) {
         Font_SetPos(x, y);
-        Text_Printf(gDefenseBonusFmt, col3, col2, c);
+        Text_Printf(gDefenseBonusFmt, defLabelColor, defColor, defense);
     }
 }
 
 /* Draws the equipment's skill points (Equip_ListSkillPoints) at x, y: up to 9 rows at
- * gEquipSkillPos, each coloured 4 or 2 when cmp's points are higher or lower (SkillPts_Compare).
- * Matched in round 29 (nm-other: cols and gEquipSkillPos indexed by i, y narrowed into ty,
- * e != cmp; nm-sub: p, i, col, ty declared first, in that order, as the saved registers
- * need; the compare loop walks cols with cp set in its for, and the draw loop steps p in
- * its for, so that p is incremented after the walkers MWCC creates, as in the game). */
-void EquipMenu_DrawSkills(EquipItem *e, s16 x, s32 y, EquipItem *cmp, u8 flags)
+ * gEquipSkillPos, each coloured 4 or 2 when cmp's points are higher or lower
+ * (SkillPts_Compare). With flags 8 everything is drawn in colour 10 and nothing compared.
+ * Skills 0x29, 0x2A and 0x2B show their name without points.
+ * The locals' order (skillPt, i, col, top first) and the loops' forms (the compare loop
+ * walks the colours with colorOut set in its for, the draw loop steps skillPt in its for)
+ * are what the saved registers and the loop order of the original need. */
+void EquipMenu_DrawSkills(EquipItem *equip, s16 x, s32 y, EquipItem *cmp, u8 flags)
 {
     SkillPt pts[16];
-    SkillPt pts2[16];
+    SkillPt cmpList[16];
     u8 cols[9];
-    SkillPt *p;
+    SkillPt *skillPt;
     u32 i;
     u8 col;
-    s32 ty;
-    u8 tc;
-    SkillPt *q;
-    u8 *cp;
+    s32 top;
+    u8 titleColor;
+    SkillPt *cmpPts;
+    u8 *colorOut;
 
     if (!(flags & 8)) {
         col = 0;
-        tc = 5;
+        titleColor = 5;
     } else {
         col = 10;
-        tc = col;
+        titleColor = col;
         cmp = NULL;
     }
-    Text_SetColor(tc);
-    ty = (s16)y;
-    Font_SetPos(x, ty);
+    Text_SetColor(titleColor);
+    top = (s16)y;
+    Font_SetPos(x, top);
     Text_Draw(gSkillPointsTitle[0]);
-    p = pts;
+    skillPt = pts;
     cols[0] = cols[1] = cols[2] = cols[3] = cols[4] = cols[5] = cols[6] = cols[7] = cols[8] = col;
-    Equip_ListSkillPoints(e, p);
+    Equip_ListSkillPoints(equip, skillPt);
     if (cmp != NULL) {
-        if (e != cmp) {
-            q = pts2;
-            Equip_ListSkillPoints(cmp, q);
-            for (i = 0, cp = cols; i < 9; i++) {
-                s16 r = SkillPts_Compare(p, q);
+        if (equip != cmp) {
+            cmpPts = cmpList;
+            Equip_ListSkillPoints(cmp, cmpPts);
+            for (i = 0, colorOut = cols; i < 9; i++) {
+                s16 order = SkillPts_Compare(skillPt, cmpPts);
 
-                if (r > 0) {
-                    *cp = 4;
-                } else if (r < 0) {
-                    *cp = 2;
+                if (order > 0) {
+                    *colorOut = 4;
+                } else if (order < 0) {
+                    *colorOut = 2;
                 }
-                cp++;
-                p++;
+                colorOut++;
+                skillPt++;
             }
         }
-        p = pts;
+        skillPt = pts;
     }
-    for (i = 0; i < 9; i++, p++) {
-        Font_SetPos(x + gEquipSkillPos[i].x, ty + gEquipSkillPos[i].y);
-        if (p->id == 0) {
+    for (i = 0; i < 9; i++, skillPt++) {
+        Font_SetPos(x + gEquipSkillPos[i].x, top + gEquipSkillPos[i].y);
+        if (skillPt->id == 0) {
             if (i == 0) {
                 Text_SetColor(col);
                 Text_Draw(gNoSkillText[0]);
@@ -290,24 +313,26 @@ void EquipMenu_DrawSkills(EquipItem *e, s16 x, s32 y, EquipItem *cmp, u8 flags)
             break;
         }
         Text_SetColor(col);
-        if ((u32)(p->id - 0x29) <= 1 || p->id == 0x2B) {
-            Text_Draw(gSkillNames[p->id]);
+        if ((u32)(skillPt->id - 0x29) <= 1 || skillPt->id == 0x2B) {
+            Text_Draw(gSkillNames[skillPt->id]);
         } else {
-            Text_Printf(gSkillPointsFmt, gSkillNames[p->id], cols[i], p->pts);
+            Text_Printf(gSkillPointsFmt, gSkillNames[skillPt->id], cols[i], skillPt->pts);
         }
     }
 }
 
-void Equip_ListSkillPoints(EquipItem *e, SkillPt *out)
+/* Lists equip's skill points (skills 1 to 0x51 with nonzero points) into
+ * out: at most 9 entries, the rest cleared (id 0). NULL lists none. */
+void Equip_ListSkillPoints(EquipItem *equip, SkillPt *out)
 {
     s32 n = 0;
-    s32 k;
+    s32 skill;
 
-    if (e != NULL) {
-        for (k = 1; k < 0x52; k++) {
-            s8 pts = Equip_GetSkillPoints(e, k);
+    if (equip != NULL) {
+        for (skill = 1; skill < 0x52; skill++) {
+            s8 pts = Equip_GetSkillPoints(equip, skill);
             if (pts != 0) {
-                out->id = k;
+                out->id = skill;
                 out->pts = pts;
                 if (n > 7) {
                     return;
@@ -324,89 +349,99 @@ void Equip_ListSkillPoints(EquipItem *e, SkillPt *out)
     }
 }
 
-s32 SkillPts_Compare(SkillPt *a, SkillPt *b)
+/* Compares skillPt's points with the same skill's in list (9 entries, ended
+ * by id 0; a skill missing counts as 0 points): 1 higher, -1 lower, 0 equal. */
+s32 SkillPts_Compare(SkillPt *skillPt, SkillPt *list)
 {
     s32 n = 9;
 
     do {
-        if (b->id == 0) {
+        if (list->id == 0) {
             break;
         }
-        if (a->id == b->id) {
-            if (a->pts > b->pts) {
+        if (skillPt->id == list->id) {
+            if (skillPt->pts > list->pts) {
                 return 1;
-            } else if (a->pts < b->pts) {
+            } else if (skillPt->pts < list->pts) {
                 return -1;
             }
             return 0;
         }
-        b++;
+        list++;
     } while (--n != 0);
-    if (a->pts > 0) {
+    if (skillPt->pts > 0) {
         return 1;
-    } else if (a->pts < 0) {
+    } else if (skillPt->pts < 0) {
         return -1;
     }
     return 0;
 }
 
 
+/* Draws the compare windows' arrow between them, pulsing in colour and
+ * moving between two heights every 16 frames. */
 void StatusPage_DrawArrow(s32 x, s16 y)
 {
-    f32 s;
-    s8 r, g, b;
-    u8 bc;
+    f32 pulse;
+    s8 red, green, blue;
+    u8 blueByte;
 
     Gfx_SetState63(1);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    s = Math_Sin(0.0000958738f * (f32)(u32)(u16)((gFrameTick & 0x1F) << 11));
-    r = 96.0f * s;
-    g = 20.0f * s;
-    b = 7.0f * s;
-    bc = b + 0xF7;
+    pulse = Math_Sin(0.0000958738f * (f32)(u32)(u16)((gFrameTick & 0x1F) << 11));
+    red = 96.0f * pulse;
+    green = 20.0f * pulse;
+    blue = 7.0f * pulse;
+    blueByte = blue + 0xF7;
     y += (gFrameTick & 0x10) == 0 ? 0x7D : 0x8C;
     Menu_DrawArrow((s16)x + 0x89, y, 0x20, 0x10,
-                  0xFF000000 | ((u8)(r + 0x90) << 16) | ((u8)(g + 0xE4) << 8) | bc, 3);
+                  0xFF000000 | ((u8)(red + 0x90) << 16) | ((u8)(green + 0xE4) << 8) | blueByte, 3);
 }
 
-void EquipCompare_Draw(EquipItem *a, EquipItem *b, s32 c, s16 y, u8 flags)
+/* Draws two equipment windows to compare, shown above other (0xA2 lower),
+ * each compared with the other, and the arrow; online the local player's
+ * skills are worked out again first. */
+void EquipCompare_Draw(EquipItem *shown, EquipItem *other, s32 x, s16 y, u8 flags)
 {
-    Player *p = &gPlayers[gScene.localPlayer];
+    Player *pl = &gPlayers[gScene.localPlayer];
 
     if (gScene.online != 0) {
-        Player_CalcSkills(p);
+        Player_CalcSkills(pl);
     }
-    EquipWindow_Draw(p, a, c, y, (flags | 0x20) & ~8, b, 0xB2);
-    EquipWindow_Draw(p, b, c, y + 0xA2, flags, a, 0xB2);
-    StatusPage_DrawArrow(c, y);
+    EquipWindow_Draw(pl, shown, x, y, (flags | 0x20) & ~8, other, 0xB2);
+    EquipWindow_Draw(pl, other, x, y + 0xA2, flags, shown, 0xB2);
+    StatusPage_DrawArrow(x, y);
 }
 
-void StatusPage_DrawBoxes(s32 a, s16 y, s32 c)
+/* Draws the two empty compare windows and the arrow. */
+void StatusPage_DrawBoxes(s32 x, s16 y, s32 width)
 {
-    StatusPage_DrawBox(a, y, c);
-    StatusPage_DrawBox(a, y + 0xA2, c);
-    StatusPage_DrawArrow(a, y);
+    StatusPage_DrawBox(x, y, width);
+    StatusPage_DrawBox(x, y + 0xA2, width);
+    StatusPage_DrawArrow(x, y);
 }
 
-s32 Player_ApplySharpnessSkill(Player *p, s32 n)
+/* A sharpness level after pl's sharpness skill (skill group 0x20): one up
+ * at value 0x21 (at most 5), else one down (at least 0). */
+s32 Player_ApplySharpnessSkill(Player *pl, s32 level)
 {
-    u8 s = Player_GetSkill(p, 0x20);
+    u8 skill = Player_GetSkill(pl, 0x20);
 
-    if (s != 0) {
-        if (s == 0x21) {
-            n++;
-            if (n > 5) {
-                n = 5;
+    if (skill != 0) {
+        if (skill == 0x21) {
+            level++;
+            if (level > 5) {
+                level = 5;
             }
         } else {
-            n--;
-            if (n < 0) {
-                n = 0;
+            level--;
+            if (level < 0) {
+                level = 0;
             }
         }
     }
-    return n;
+    return level;
 }
 
 typedef s16 SharpRow[6];
@@ -418,90 +453,90 @@ s32 Prim_FillTri(PrimTri *t);
 s32 Prim_FillRect(PrimLine *r);
 void Text_PrintfColored(const char *fmt, ...);
 
-/* Draws weapon e's sharpness gauge at (x, y) for player p: the frame, the six colour
+/* Draws the weapon's sharpness gauge at (x, y) for player pl: the frame, the six colour
  * segments (gSharpnessTables, 0.35 pixel a unit), a black cover past the level after the
  * sharpness skill (Player_ApplySharpnessSkill) and, when the skill changes it, a +1 or -1. */
-void EquipMenu_DrawSharpness(Player *p, EquipItem *e, s16 x, s16 y)
+void EquipMenu_DrawSharpness(Player *pl, EquipItem *weapon, s16 x, s16 y)
 {
     BladeData *data;
     s16 *bar;
     u32 *col;
     u32 color;
-    s32 lv;
-    s32 d;
+    s32 level;
+    s32 delta;
     PrimTri tri;
-    PrimLine r;
+    PrimLine rect;
     s32 i;
     s32 base;
-    f32 fx;
-    s16 *px1;
-    s16 sy;
+    f32 left;
+    s16 *rectRight;
+    s16 top;
 
-    data = &Equip_GetData(e)->blade;
+    data = &Equip_GetData(weapon)->blade;
     base = data->sharpMax;
-    lv = Player_ApplySharpnessSkill(Player_PreviewWith(p, e), base);
-    if (lv == base) {
+    level = Player_ApplySharpnessSkill(Player_PreviewWith(pl, weapon), base);
+    if (level == base) {
         color = 0xFF968A63;
     } else {
-        if (base < lv) {
+        if (base < level) {
             color = 0xFF57FFFF;
             Text_SetColor(4);
-            d = 1;
+            delta = 1;
         } else {
             color = 0xFFFF435D;
             Text_SetColor(2);
-            d = -1;
+            delta = -1;
         }
         Font_SetSpacing(0x12, 0x12);
         Font_SetPos(163.0f + (s16)(x - 0x24), (s16)(y - 4) + 2);
-        Text_PrintfColored("%+d", d);
+        Text_PrintfColored("%+d", delta);
     }
     x -= 0x24;
     tri.color = color;
     tri.x0 = x;
     tri.x1 = tri.x2 = x + 5;
-    sy = y - 4;
-    tri.y1 = sy;
-    tri.y0 = sy + 0xB;
-    tri.y2 = sy + 0x15;
+    top = y - 4;
+    tri.y1 = top;
+    tri.y0 = top + 0xB;
+    tri.y2 = top + 0x15;
     Prim_FillTri(&tri);
-    fx = 146.0f + x;
-    tri.x0 = 10.0f + fx;
-    tri.x1 = tri.x2 = 5.0f + fx;
+    left = 146.0f + x;
+    tri.x0 = 10.0f + left;
+    tri.x1 = tri.x2 = 5.0f + left;
     Prim_FillTri(&tri);
-    fx = 5.0f + x;
-    r.x0 = fx;
-    r.x1 = 146.0f + fx;
-    r.y0 = sy;
-    r.y1 = r.y0 + 0x15;
-    r.color = color;
-    Prim_FillRect(&r);
-    fx = 6.0f + x;
-    r.x0 = fx;
-    r.x1 = 144.0f + fx;
-    r.y0 = sy + 2;
-    r.y1 = r.y0 + 0x11;
-    r.color = 0xFF000000;
-    Prim_FillRect(&r);
+    left = 5.0f + x;
+    rect.x0 = left;
+    rect.x1 = 146.0f + left;
+    rect.y0 = top;
+    rect.y1 = rect.y0 + 0x15;
+    rect.color = color;
+    Prim_FillRect(&rect);
+    left = 6.0f + x;
+    rect.x0 = left;
+    rect.x1 = 144.0f + left;
+    rect.y0 = top + 2;
+    rect.y1 = rect.y0 + 0x11;
+    rect.color = 0xFF000000;
+    Prim_FillRect(&rect);
     bar = (s16 *)gSharpnessTables[gWeaponKindClass[data->kind]];
     bar += data->sharpType * 6;
-    r.y0 = sy + 4;
-    r.y1 = sy + 0x11;
-    fx = 8.0f + x;
-    r.x1 = fx;
-    px1 = &r.x1;
+    rect.y0 = top + 4;
+    rect.y1 = top + 0x11;
+    left = 8.0f + x;
+    rect.x1 = left;
+    rectRight = &rect.x1;
     col = gSharpnessColors;
     for (i = 0; i < 6; i++, bar++) {
-        r.x0 = *px1;
-        r.x1 = fx + 0.35f * *bar;
-        r.color = col[i];
-        Prim_FillRect(&r);
+        rect.x0 = *rectRight;
+        rect.x1 = left + 0.35f * *bar;
+        rect.color = col[i];
+        Prim_FillRect(&rect);
     }
-    if (lv < 5) {
-        r.x0 = fx + 0.35f * (150.0f + lv * 50);
-        r.x1 = 140.0f + fx;
-        r.color = 0xFF000000;
-        Prim_FillRect(&r);
+    if (level < 5) {
+        rect.x0 = left + 0.35f * (150.0f + level * 50);
+        rect.x1 = 140.0f + left;
+        rect.color = 0xFF000000;
+        Prim_FillRect(&rect);
     }
 }
 
@@ -515,7 +550,7 @@ void Font_SetColor(s32 color);
  * and color, in rgba. */
 void Hud_DrawTab(s16 x, s16 y, u8 flags, u8 color, u32 rgba)
 {
-    Sprite s;
+    Sprite spr;
     s16 *pos;
     char *text;
     u8 num = flags & 0xF;
@@ -526,32 +561,32 @@ void Hud_DrawTab(s16 x, s16 y, u8 flags, u8 color, u32 rgba)
     if (big) {
         pos = gHudTabLayoutBig;
     }
-    s.w = pos[3];
-    s.y = y;
-    s.h = 0x12;
-    s.color = 0xFF20FF30;
-    s.x = x + pos[1];
-    *(s32 *)&s.u0 = 0x1A00A6;
-    *(s32 *)&s.u1 = 0x2E0094;
-    Sprite_Draw(&s);
-    s.x = x + pos[2];
-    s.u0 = 0x94;
-    s.u1 = 0xA6;
-    Sprite_Draw(&s);
+    spr.w = pos[3];
+    spr.y = y;
+    spr.h = 0x12;
+    spr.color = 0xFF20FF30;
+    spr.x = x + pos[1];
+    *(s32 *)&spr.u0 = 0x1A00A6;
+    *(s32 *)&spr.u1 = 0x2E0094;
+    Sprite_Draw(&spr);
+    spr.x = x + pos[2];
+    spr.u0 = 0x94;
+    spr.u1 = 0xA6;
+    Sprite_Draw(&spr);
     text = gTabPageFmt[0];
     if (big) {
-        s.y = y - 1;
-        s.w = 0x18;
-        s.h = 0x14;
-        s.color = -1;
-        s.x = x + pos[4];
-        *(s32 *)&s.u0 = 0x61;
-        *(s32 *)&s.u1 = 0x180078;
-        Sprite_Draw(&s);
-        s.x = x + pos[5];
-        s.u0 = 0x91;
-        s.u1 = 0xA8;
-        Sprite_Draw(&s);
+        spr.y = y - 1;
+        spr.w = 0x18;
+        spr.h = 0x14;
+        spr.color = -1;
+        spr.x = x + pos[4];
+        *(s32 *)&spr.u0 = 0x61;
+        *(s32 *)&spr.u1 = 0x180078;
+        Sprite_Draw(&spr);
+        spr.x = x + pos[5];
+        spr.u0 = 0x91;
+        spr.u1 = 0xA8;
+        Sprite_Draw(&spr);
         text = gPageFmt;
     }
     Font_SetSpacing(0x12, 0x12);
@@ -560,6 +595,7 @@ void Hud_DrawTab(s16 x, s16 y, u8 flags, u8 color, u32 rgba)
     Text_PrintfColored(text, num, color);
 }
 
+/* Draws the button hint for the details page, with its button icon. */
 void ButtonHint_DrawDetails(void)
 {
     Font_SetSpacing(0x12, 0x12);
@@ -567,55 +603,68 @@ void ButtonHint_DrawDetails(void)
     Draw_Icons((Icon *) gButtonHintDetailIcons, 1);
 }
 
-void ButtonHint_DrawSort(u8 i)
+/* Draws the sort hint of menu index (gButtonHintSortPos): the select
+ * button's label, the sort text and the button icon. */
+void ButtonHint_DrawSort(u8 index)
 {
     Text_SetColor(0);
     Font_SetSpacing(0x10, 0xE);
-    Font_SetPos(gButtonHintSortPos[i].x - 0x4F, D_0043B0C2[i].x + 2);
+    Font_SetPos(gButtonHintSortPos[index].x - 0x4F, gButtonHintSortPos[index].y + 2);
     Text_Draw(gSelectText[0]);
     Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(gButtonHintSortPos[i].x, D_0043B0C2[i].x);
+    Font_SetPos(gButtonHintSortPos[index].x, gButtonHintSortPos[index].y);
     Text_Draw(gSortHintText[0]);
-    Draw_Icons((Icon *) gButtonHintSortIcons[i], 1);
+    Draw_Icons((Icon *) gButtonHintSortIcons[index], 1);
 }
 
-void Equip_GetIconUV(EquipItem *e, Pt *uv0, Pt *uv1)
+/* The texture rectangle of equip's icon on the 32-pixel icon sheet: a
+ * weapon's by its class (cells from 0x3F), an armour's by its type (cells
+ * from 0x4A, in row 9). */
+void Equip_GetIconUV(EquipItem *equip, Pt *topLeft, Pt *bottomRight)
 {
-    if (e->type == 6 || e->type == 7) {
-        s32 c = (u8)Equip_GetClass(e) + 0x3F;
-        uv0->x = (c & 7) * 32 + 1;
-        uv0->y = (c >> 3) * 32 + 1;
-        uv1->x = uv0->x + 0x1E;
-        uv1->y = uv0->y + 0x1E;
+    if (equip->type == 6 || equip->type == 7) {
+        s32 cell = (u8)Equip_GetClass(equip) + 0x3F;
+        topLeft->x = (cell & 7) * 32 + 1;
+        topLeft->y = (cell >> 3) * 32 + 1;
+        bottomRight->x = topLeft->x + 0x1E;
+        bottomRight->y = topLeft->y + 0x1E;
     } else {
-        uv0->x = (((u16)e->type + 0x4A) & 7) * 32 + 1;
-        uv0->y = 0x121;
-        uv1->x = uv0->x + 0x1E;
-        uv1->y = 0x13F;
+        topLeft->x = (((u16)equip->type + 0x4A) & 7) * 32 + 1;
+        topLeft->y = 0x121;
+        bottomRight->x = topLeft->x + 0x1E;
+        bottomRight->y = 0x13F;
     }
 }
 
-void Hud_WeaponIconUV(u8 *a, Pt *p0, Pt *p1)
+/* The weapon icon's texture rectangle for the byte at +2 of equip (an
+ * EquipItem's id, its low byte), from gWeaponIconUVs. */
+void Hud_WeaponIconUV(u8 *equip, Pt *topLeft, Pt *bottomRight)
 {
-    *p0 = gWeaponIconUVs[a[2]].p;
-    *p1 = D_00432664[a[2]].p;
+    *topLeft = gWeaponIconUVs[equip[2]].uv0;
+    *bottomRight = gWeaponIconUVs[equip[2]].uv1;
 }
 
-void Chat_FilterWords(char *s)
+/* Masks the filtered words in a chat text: list A wherever found, list B
+ * only as whole words (Chat_MaskWord's modes 0 and 2). */
+void Chat_FilterWords(char *text)
 {
-    char **w = gChatNgWordsA;
+    char **word = gChatNgWordsA;
 
     do {
-        Chat_MaskWord(s, *w, 0);
-        w++;
-    } while (*w != 0);
-    w = gChatNgWordsB;
+        Chat_MaskWord(text, *word, 0);
+        word++;
+    } while (*word != 0);
+    word = gChatNgWordsB;
     do {
-        Chat_MaskWord(s, *w, 2);
-        w++;
-    } while (*w != 0);
+        Chat_MaskWord(text, *word, 2);
+        word++;
+    } while (*word != 0);
 }
 
+/* Replaces each match of word in text by full-width asterisks (Shift-JIS
+ * 0x8196, one per two bytes). Modes 0 and 1 mask every match; mode 2 only
+ * one that starts the text or follows a symbol or digit, or ends the text
+ * or is followed by one (Sjis_IsSymbolOrDigit). Returns 0. */
 s32 Chat_MaskWord(char *text, char *word, s8 mode)
 {
     s32 mask;
@@ -664,104 +713,117 @@ s32 Chat_MaskWord(char *text, char *word, s8 mode)
     return 0;
 }
 
-s32 Sjis_IsSymbolOrDigit(u8 *s)
+/* Whether the Shift-JIS character at sjis is a full-width symbol (lead
+ * byte 0x81) or a full-width digit (0x824F to 0x8258). */
+s32 Sjis_IsSymbolOrDigit(u8 *sjis)
 {
-    if (s[0] == 0x81 && s[1] >= 0x40 && s[1] < 0xED) {
+    if (sjis[0] == 0x81 && sjis[1] >= 0x40 && sjis[1] < 0xED) {
         return 1;
     }
-    if (s[0] == 0x82 && s[1] >= 0x4F && s[1] < 0x59) {
+    if (sjis[0] == 0x82 && sjis[1] >= 0x4F && sjis[1] < 0x59) {
         return 1;
     }
     return 0;
 }
 
-s32 Chat_FilterIfNotBlank(u8 *s)
+/* Filters a chat text (Chat_FilterWords) unless it holds only spaces
+ * (half-width or full-width); returns 1 if it held anything else. */
+s32 Chat_FilterIfNotBlank(u8 *text)
 {
-    u8 *p = s;
-    u8 c = *p;
+    u8 *cursor = text;
+    u8 byte = *cursor;
 
-    while (c != 0) {
-        if (c == 0x20) {
-            p++;
-        } else if (c == 0x81 && p[1] == 0x40) {
-            p += 2;
+    while (byte != 0) {
+        if (byte == 0x20) {
+            cursor++;
+        } else if (byte == 0x81 && cursor[1] == 0x40) {
+            cursor += 2;
         } else {
-            Chat_FilterWords((char *)s);
+            Chat_FilterWords((char *)text);
             return 1;
         }
-        c = *p;
+        byte = *cursor;
     }
     return 0;
 }
 
+/* Puts the default chat phrases back (gDefaultPhrases) and remakes their
+ * names. */
 void Phrase_ResetDefaults(void)
 {
-    memcpy(gSysSave.phrases[0], gDefaultPhrases, 0x438);
+    memcpy(gSysSave.phrases[0], gDefaultPhrases, sizeof(gSysSave.phrases));
     Phrase_TruncateNames();
 }
 
+/* Makes each phrase's name: the phrase cut to PHRASE_NAME_LEN bytes. */
 void Phrase_TruncateNames(void)
 {
-    NameEntry *e = gQuestListEntries;
-    s32 n = 0x18;
+    PhraseEntry *entry = gPhraseEntries;
+    s32 n = PHRASE_COUNT;
 
     do {
-        Sjis_Truncate(e->name, 10, e->src);
-        e++;
+        Sjis_Truncate(entry->name, PHRASE_NAME_LEN, entry->text);
+        entry++;
     } while (--n);
 }
 
-void ChatPhrase_Set(char *s, u8 idx)
+/* Sets phrase index to text (at most PHRASE_LEN - 1 bytes) and remakes its
+ * name. */
+void ChatPhrase_Set(char *text, u8 index)
 {
-    NameEntry *e;
+    PhraseEntry *entry;
     s32 n;
-    char *p;
-    char *d;
+    char *src;
+    char *dst;
 
-    p = s;
-    e = &gQuestListEntries[idx];
-    n = 0x2C;
-    d = e->src;
+    src = text;
+    entry = &gPhraseEntries[index];
+    n = PHRASE_LEN - 1;
+    dst = entry->text;
 
     do {
-        if (*p == 0) {
+        if (*src == 0) {
             break;
         }
-        *d = *p;
+        *dst = *src;
         n--;
-        p++;
-        d++;
+        src++;
+        dst++;
     } while (n > 0);
-    *d = 0;
-    Sjis_Truncate(e->name, 10, s);
+    *dst = 0;
+    Sjis_Truncate(entry->name, PHRASE_NAME_LEN, text);
 }
 
-
-s32 PhraseMenu_OpenKbd(u8 idx)
+/* Opens the software keyboard on phrase index to edit it, when the field
+ * control allows; returns 1 if it opened. */
+s32 PhraseMenu_OpenKbd(u8 index)
 {
     if (Field_ControlEnabled() == 0) {
         return 0;
     }
     Kbd_SetPos(0x50, 80.0f);
-    Chat_OpenKbd(2, 0xE, 0x2C, gQuestListEntries[idx].src);
+    Chat_OpenKbd(2, 0xE, PHRASE_LEN - 1, gPhraseEntries[index].text);
     Sound_PlaySeFlat(0, 0x11, 0);
     return 1;
 }
 
-s8 PhraseMenu_KbdUpdate(u8 idx)
+/* Runs the phrase keyboard for phrase index: button 0x4000 cancels; an
+ * entered text replaces the phrase. Returns 1 once the keyboard closed,
+ * else 0. */
+s8 PhraseMenu_KbdUpdate(u8 index)
 {
     char buf[0x30];
-    s8 r;
+    s8 result;
 
     if (gPadState[0].pressed & 0x4000) {
         Kbd_Cancel();
         return 1;
     }
     buf[0] = 0;
-    r = Kbd_Run(buf, gPadState[0].held, gPadState[0].pressed);
-    if (r != 0) {
-        if (r > 0) {
-            ChatPhrase_Set(buf, idx);
+    result = Kbd_Run(buf, gPadState[0].held, gPadState[0].pressed);
+    if (result != 0) {
+        if (result > 0) {
+            ChatPhrase_Set(buf, index);
         }
         Kbd_Cancel();
         return 1;
@@ -769,6 +831,7 @@ s8 PhraseMenu_KbdUpdate(u8 idx)
     return 0;
 }
 
+/* Draws src cut to n bytes (Sjis_Truncate). */
 void Text_DrawTruncated(u8 n, char *src)
 {
     char buf[0x30];
@@ -783,132 +846,140 @@ void Sjis_Truncate(char *dst, u8 n, char *src)
 {
     char flags[0x30];
     s32 left = n + 1;
-    char *s = dst;
-    char *f = flags;
+    char *start = dst;
+    char *wide = flags;
 
     while (left > 0) {
-        u8 c;
+        u8 lead;
 
         *dst = *src;
-        c = *dst;
-        if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFF)) {
+        lead = *dst;
+        if ((lead >= 0x80 && lead <= 0x9F) || (lead >= 0xE0 && lead <= 0xFF)) {
             dst[1] = src[1];
             left--;
             src += 2;
-            f[0] = 0;
+            wide[0] = 0;
             dst += 2;
-            f[1] = 1;
-            f += 2;
+            wide[1] = 1;
+            wide += 2;
         } else {
             if (*src == 0) {
                 return;
             }
-            f[0] = 0;
+            wide[0] = 0;
             dst++;
             src++;
-            f++;
+            wide++;
         }
         left--;
     }
     if (flags[n - 2] == 0) {
-        s[n - 1] = 0xA5;
-        s[n - 2] = 0xA5;
+        start[n - 1] = 0xA5;
+        start[n - 2] = 0xA5;
     } else {
-        s[n - 1] = 0xA5;
-        s[n - 2] = 0xA5;
-        s[n - 3] = 0xA5;
+        start[n - 1] = 0xA5;
+        start[n - 2] = 0xA5;
+        start[n - 3] = 0xA5;
     }
-    s[n] = 0;
+    start[n] = 0;
 }
 
-void Hud_DrawPouchBarEnds(s16 x, s16 y, s16 h)
+/* Draws the two end caps of the pouch bar, height high, at x and x + 0x15. */
+void Hud_DrawPouchBarEnds(s16 x, s16 y, s16 height)
 {
-    Sprite s;
+    Sprite spr;
 
-    s.w = 5;
-    s.x = x;
-    s.color = -1;
-    s.y = y;
-    s.h = h;
-    *(s32 *)&s.u0 = 0x200074;
-    *(s32 *)&s.u1 = 0x340079;
-    Sprite_Draw(&s);
-    s.x = x + 0x15;
-    *(s32 *)&s.u0 = 0x200078;
-    *(s32 *)&s.u1 = 0x340073;
-    Sprite_Draw(&s);
+    spr.w = 5;
+    spr.x = x;
+    spr.color = -1;
+    spr.y = y;
+    spr.h = height;
+    *(s32 *)&spr.u0 = 0x200074;
+    *(s32 *)&spr.u1 = 0x340079;
+    Sprite_Draw(&spr);
+    spr.x = x + 0x15;
+    *(s32 *)&spr.u0 = 0x200078;
+    *(s32 *)&spr.u1 = 0x340073;
+    Sprite_Draw(&spr);
 }
 
-void Hud_AmmoIconSprite(u8 *a, Sprite *s)
+/* Sets spr to the ammo icon for the byte at +2 of equip: one icon for 10,
+ * another for the rest. */
+void Hud_AmmoIconSprite(u8 *equip, Sprite *spr)
 {
-    if (a[2] != 10) {
-        s->x = 0x1A8;
-        s->y = 0xFD;
-        s->w = 0xB;
-        s->h = 0x14;
-        *(s32 *)&s->u0 = 0xAD0015;
-        *(s32 *)&s->u1 = 0xC10020;
+    if (equip[2] != 10) {
+        spr->x = 0x1A8;
+        spr->y = 0xFD;
+        spr->w = 0xB;
+        spr->h = 0x14;
+        *(s32 *)&spr->u0 = 0xAD0015;
+        *(s32 *)&spr->u1 = 0xC10020;
     } else {
-        s->x = 0x1B0;
-        s->y = 0xFE;
-        s->w = 0x10;
-        s->h = 0x14;
-        *(s32 *)&s->u0 = 0xAD0004;
-        *(s32 *)&s->u1 = 0xC10014;
+        spr->x = 0x1B0;
+        spr->y = 0xFE;
+        spr->w = 0x10;
+        spr->h = 0x14;
+        *(s32 *)&spr->u0 = 0xAD0004;
+        *(s32 *)&spr->u1 = 0xC10014;
     }
 }
 
+/* Starts a shake of the HUD element id (gShakeOffset) for SHAKE_FRAMES
+ * frames along the axis in flags (SHAKE_AXIS_*): it eases from amp back
+ * to 0, or with SHAKE_SLIDE it slides from 0 out to amp and stays. */
 void Shake_Start(u8 id, u8 flags, f32 amp)
 {
     gShakeId = id;
     *(s32 *)&gShakeOffset = 0;
     gShakeOn = 1;
-    gShakeTimer = 6;
+    gShakeTimer = SHAKE_FRAMES;
     gShakeFlags = flags;
     gShakeAmp = amp;
-    if (flags & 0x80) {
+    if (flags & SHAKE_SLIDE) {
         amp = 0.0f;
     }
-    switch (flags & 0xF) {
-    case 0:
+    switch (flags & SHAKE_AXIS_MASK) {
+    case SHAKE_AXIS_X:
         gShakeOffset.x = amp;
         break;
-    case 1:
+    case SHAKE_AXIS_Y:
         gShakeOffset.y = amp;
         break;
     }
 }
 
+/* Steps the shake of element id: returns 1 while it moves. When it ends,
+ * the offset goes back to 0 (or, after a slide, the shake is let go). */
 s32 Shake_Update(u8 id)
 {
-    f32 t;
+    f32 progress;
 
     if (gShakeId == id) {
         if (gShakeTimer != 0) {
-            t = 0.16666667f * gShakeTimer;
-            if ((gShakeFlags & 0x80) == 0) {
-                t = Math_Pow(t, 2.25f);
+            progress = 0.16666667f * gShakeTimer /* 1 / SHAKE_FRAMES */;
+            if ((gShakeFlags & SHAKE_SLIDE) == 0) {
+                progress = Math_Pow(progress, 2.25f);
             } else {
-                t = 1.0f - t;
+                progress = 1.0f - progress;
             }
-            switch (gShakeFlags & 0xF) {
-            case 0:
-                gShakeOffset.x = gShakeAmp * t;
+            switch (gShakeFlags & SHAKE_AXIS_MASK) {
+            case SHAKE_AXIS_X:
+                gShakeOffset.x = gShakeAmp * progress;
                 break;
-            case 1:
-                gShakeOffset.y = gShakeAmp * t;
+            case SHAKE_AXIS_Y:
+                gShakeOffset.y = gShakeAmp * progress;
                 break;
             }
             gShakeTimer--;
             return 1;
         }
         if (gShakeOn != 0) {
-            if ((gShakeFlags & 0x80) == 0) {
-                switch (gShakeFlags & 0xF) {
-                case 0:
+            if ((gShakeFlags & SHAKE_SLIDE) == 0) {
+                switch (gShakeFlags & SHAKE_AXIS_MASK) {
+                case SHAKE_AXIS_X:
                     gShakeOffset.x = 0;
                     break;
-                case 1:
+                case SHAKE_AXIS_Y:
                     gShakeOffset.y = 0;
                     break;
                 }

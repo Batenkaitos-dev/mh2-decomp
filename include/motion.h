@@ -32,4 +32,51 @@ typedef struct MotionLayer {
 } MotionLayer;
 typedef char MotionLayer_size_check[(sizeof(MotionLayer) == 0x50) ? 1 : -1];
 
+/*
+ * Animation data: unk_2F17C0.c builds it from the motion files, the Anim_*
+ * functions (unk_2E3940.c) evaluate it, and unk_2EF020.c poses the bones
+ * with it. A bone's animation is an AnimHeader; its `count` curves are
+ * AnimCurves, each driving one value of the bone's pose (EmBone.pose[idx]:
+ * 0..2 the scale, 3..5 the rotation, 6..8 the translation) through `count`
+ * keys of one format. The offsets are from a base the user keeps:
+ * gAnimData for the curves, gAnimCurveKeys, gAnimKeyBase or gAnimCurveBuf
+ * for the keys.
+ */
+#define ANIM_TYPE_MASK 0xF000           /* AnimHeader.flags: the motion file's type 1 (0x1000) or 2 (0x2000) */
+
+typedef struct AnimHeader {
+    u16 flags;                  /* 0x0: ANIM_TYPE_MASK; 0x8000 */
+    s16 count;                  /* 0x2: curves */
+    s32 curves;                 /* 0x4: offset of the curves (AnimCurve) */
+} AnimHeader;
+
+typedef struct AnimCurve {
+    u8 type;                    /* 0x0: the key format, ANIM_KEY_* (Anim_EvalCurve) */
+    u8 idx;                     /* 0x1: the pose value it drives */
+    u16 count;                  /* 0x2: keys */
+    s32 keys;                   /* 0x4: offset of the keys */
+} AnimCurve;
+
+/* AnimCurve.type: the key format (Anim_EvalCurve's switch, Anim_ConvertKeys'). */
+#define ANIM_KEY_S16_LINEAR 0x11        /* KeyS2 */
+#define ANIM_KEY_S16_CUBIC 0x12         /* KeyS4 */
+#define ANIM_KEY_S16_MIXED 0x13         /* KeySM: linear or cubic per key */
+#define ANIM_KEY_NONE 0x20              /* no keys (Anim_ConvertChunk's first value) */
+#define ANIM_KEY_F32_LINEAR 0x21        /* KeyF2 */
+#define ANIM_KEY_F32_CUBIC 0x22         /* KeyF4 */
+#define ANIM_KEY_F32_MIXED 0x23         /* KeyFM: linear or cubic per key */
+
+/* KeyFM.mode and KeySM.mode: how the curve goes from this key to the next. */
+#define ANIM_KEY_MODE_LINEAR 0x10000    /* Anim_LerpKeys */
+#define ANIM_KEY_MODE_CUBIC 0x20000     /* Anim_CubicKeys, with this key's out and the next key's in */
+
+/* The keys: a value v at time t, with the slopes in and out for a cubic key.
+ * The 16-bit formats hold signed values. */
+typedef struct KeyF2 { f32 v, t; } KeyF2;
+typedef struct KeyF4 { f32 v, t, in, out; } KeyF4;
+typedef struct KeyFM { u32 mode; f32 v, t, in, out; } KeyFM;
+typedef struct KeyS2 { s16 v, t; } KeyS2;
+typedef struct KeyS4 { s16 v, t, in, out; } KeyS4;
+typedef struct KeySM { u32 mode; s16 v, t, in, out; } KeySM;
+
 #endif /* MOTION_H */

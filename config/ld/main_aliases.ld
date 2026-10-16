@@ -32,7 +32,7 @@ D_001C7C8C = gPadConfigDefault + 0x2C;
 D_001BB37C = gRateGroups + 0xDC;
 D_001BA110 = gVif1Path3Unmask + 0x0;
 /* Round 19 (ndata): names the code uses inside named objects */
-D_6ADB30 = gQuestExtra + 0x60;
+D_6ADB30 = gNextQuest + 0x60;
 D_0020E030 = gMtxSlots + 0x800;
 /* Round 25 (names): names the code uses inside named objects */
 D_0020D814 = gGsColor67F + 0x4;

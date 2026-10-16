@@ -48,7 +48,7 @@ void Em_SetRequest(Em *em, s32 a, s32 prio);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
 void Em_SetGoal12(Em *em);
 void Em_ApplyAreaValues(Em *em);
@@ -161,7 +161,7 @@ s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Em_StartRage(Em *em);
 void Em_StartPendingRage(Em *em);
 void Em_ResetNotice(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void EmPlesioth_SetGroup1State(Em *em, u16 state, u8 mode);
 void EmPlesioth_SetGroup2State(Em *em, u16 state, u8 mode);
@@ -170,10 +170,10 @@ u8 EmPlesioth_NextAreaPoint(Em *em, f32 *out);
 void EmPlesioth_SetGroup0State(Em *em, u16 state, u8 mode);
 void Em_ClearPart(Em *em, u16 part);
 void Em_AddHp(Em *em, s16 n);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Add7EC(Em *em, s32 n);
-void Em_Clear7F0State(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_ClearNeed1State(Em *em);
+void Em_ClearNeed2State(Em *em);
 /* unit's own declaration: with the definition's s16 (void *obj, u8 state, u8 sub) (sub_main/unk_3A1070.c), EmKind0A_TurnToYaw: 33 of 42 words differ, EmPlesioth_State2_11: 59 of 123 words differ */
 s32 Player_IsState(void *obj, s32 group, s32 state);
 void MinePoint_Remove(s32);
@@ -225,7 +225,7 @@ u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_SetStatus4Timer(Em *em);
 void Em_SetStatus2Timer(Em *em);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 u8 Em_SenseObjects(Em *em, EmObj *self);
 s32 ObjListA70_Add(EmObj *obj);
 u16 Area_DayId(u16 id);
@@ -240,7 +240,7 @@ void Em_ResetKindTimer(Em *em);
 void EmCephadrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 void EmPlesioth_RunState(Em *em, EmWork *work);
 s32 Player_IsLocal(void *obj);
-s32 Effect_ExistsKind16(void *pl);
+s32 Lure_PlayerHasMonsterBait(void *pl);
 void Vib_StartLocal(void *port, s32 i);
 f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void CamReq_Mode05(void *arg);
@@ -559,7 +559,7 @@ void EmPlesioth_State0_04(Em *em, EmWork *work, u8 variant)
 
 void EmPlesioth_State0_05(Em *em, s32 unused, s32 variant)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -642,7 +642,7 @@ void EmPlesioth_State0_08(Em *em, EmWork *work)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
@@ -677,7 +677,7 @@ void EmPlesioth_State0_0A(Em *em, EmWork *work)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
@@ -710,7 +710,7 @@ void EmPlesioth_State0_0A(Em *em, EmWork *work)
 
 void EmPlesioth_State0_0C(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -741,7 +741,7 @@ void EmPlesioth_State0_0C(Em *em)
 
 void EmPlesioth_State0_0E(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -803,7 +803,7 @@ void EmPlesioth_State0_0F(Em *em)
 
 void EmPlesioth_State0_10(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -843,7 +843,7 @@ void EmPlesioth_State0_12(Em *em)
     s16 hpMax;
     s16 hp;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1606,13 +1606,13 @@ void EmPlesioth_State2_11(Em *em, EmWork *work)
         em->hooked = 0;
         em->timer = 120;
         em->noReact = 1;
-        if (Player_IsLocal(p) == 1 && Effect_ExistsKind16(p) == 1 && EmPlesioth_NoneHookedNear(em, p) == 1) {
+        if (Player_IsLocal(p) == 1 && Lure_PlayerHasMonsterBait(p) == 1 && EmPlesioth_NoneHookedNear(em, p) == 1) {
             p->fishTimer = em->timer;
             Vib_StartLocal(p, 2);
         }
         break;
     case 1:
-        if (em->remote == 0 && em->combat == 0 && p->active && Player_IsLocal(p) == 1 && (s16) Player_IsState(p, 0, 0x53) && Obj_SameArea(em, p) && Effect_ExistsKind16(p) == 1) {
+        if (em->remote == 0 && em->combat == 0 && p->active && Player_IsLocal(p) == 1 && (s16) Player_IsState(p, 0, 0x53) && Obj_SameArea(em, p) && Lure_PlayerHasMonsterBait(p) == 1) {
             if (EmPlesioth_NoneHookedNear(em, p)) {
                 em->step++;
                 em->hooked = 1;
@@ -1699,7 +1699,7 @@ void EmPlesioth_State2_13(Em *em, EmWork *work)
     f32 pos[3];
     f32 pos2[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1716,7 +1716,7 @@ void EmPlesioth_State2_13(Em *em, EmWork *work)
     case 1:
         work->moveAngBY = em->rotY;
         Em_MoveRotated(em, (s32 *) &work->moveAngBX);
-        Em_SetFlag6AE(em, 2);
+        Em_SetHitReactMode(em, 2);
         em->blind = 2;
         if (!(em->posY <= em->surfaceY)) {
             em->stance = 2;
@@ -1727,7 +1727,7 @@ void EmPlesioth_State2_13(Em *em, EmWork *work)
     case 2:
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
-        Em_SetFlag6AE(em, 2);
+        Em_SetHitReactMode(em, 2);
         em->blind = 2;
         if (em->posY <= em->surfaceY) {
             em->step++;
@@ -1736,7 +1736,7 @@ void EmPlesioth_State2_13(Em *em, EmWork *work)
         }
         break;
     case 3:
-        Em_SetFlag6AE(em, 2);
+        Em_SetHitReactMode(em, 2);
         em->blind = 2;
         if (em->posY < em->surfaceY) {
             em->step++;
@@ -1746,7 +1746,7 @@ void EmPlesioth_State2_13(Em *em, EmWork *work)
         }
         break;
     case 4:
-        Em_SetFlag6AE(em, 2);
+        Em_SetHitReactMode(em, 2);
         em->blind = 2;
         if (--em->timer <= 0) {
             em->step++;
@@ -1781,7 +1781,7 @@ void EmPlesioth_State2_14(Em *em, EmWork *work)
     f32 pos[3];
     f32 pos2[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1820,12 +1820,12 @@ void EmPlesioth_State2_14(Em *em, EmWork *work)
             em->lookAtTarget = 0;
             em->stance = 4;
             Em_SetMotion(em, 0x82, 0, 0);
-            Em_SetFlag6AE(em, 2);
+            Em_SetHitReactMode(em, 2);
             em->blind = 2;
         }
         break;
     case 4:
-        Em_SetFlag6AE(em, 2);
+        Em_SetHitReactMode(em, 2);
         em->blind = 2;
         if (--em->timer <= 0) {
             em->step++;
@@ -2392,7 +2392,7 @@ void EmPlesioth_State4_06(Em *em, EmWork *work)
 
 void EmPlesioth_State4_07(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2526,7 +2526,7 @@ void EmPlesioth_State4_0A(Em *em)
 
 void EmPlesioth_State4_0B(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2552,7 +2552,7 @@ void EmPlesioth_State4_0B(Em *em)
 
 void EmPlesioth_State4_0C(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2618,7 +2618,7 @@ void EmPlesioth_State4_0E(Em *em, s32 unused, s32 variant)
 
     k = variant & 0xFF;
     if (k == 0) {
-        Em_SetFlag6AE(em, 4U);
+        Em_SetHitReactMode(em, 4U);
     }
     em->holdTimer = 5;
     switch (em->step) {
@@ -2660,7 +2660,7 @@ void EmPlesioth_State4_0E(Em *em, s32 unused, s32 variant)
 
 void EmPlesioth_State4_0F(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3);
+    Em_SetHitReactMode(em, 3);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2840,7 +2840,7 @@ void EmPlesioth_State4_11(Em *em, EmWork *work)
 
 void EmPlesioth_State4_12(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2953,7 +2953,7 @@ void EmPlesioth_State4_16(Em *em, EmWork *work)
     f32 pos[3];
     f32 pos2[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2993,11 +2993,11 @@ void EmPlesioth_State4_16(Em *em, EmWork *work)
             em->stance = 4;
             Em_SetMotion(em, 0x82, 0, 0);
             em->blind = 2;
-            Em_SetFlag6AE(em, 2);
+            Em_SetHitReactMode(em, 2);
         }
         break;
     case 4:
-        Em_SetFlag6AE(em, 2);
+        Em_SetHitReactMode(em, 2);
         em->blind = 2;
         if (--em->timer <= 0) {
             em->step++;
@@ -4251,7 +4251,7 @@ void EmPlesioth_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmPlesioth_RunState(em, (EmWork *) w);
     if (em->stateRequest != 0) {
         EmPlesioth_RunState(em, (EmWork *) w);
@@ -7288,7 +7288,7 @@ void EmApceros_State0_08(Em *em)
 {
     f32 v[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -8183,10 +8183,10 @@ void EmApceros_State4_06(Em *em)
         Em_SetMotion(em, 0x3D, 0, 0);
         Em_BeginStatus4(em);
         em->noReact = 1;
-        Em_SetFlag6AE(em, 4);
+        Em_SetHitReactMode(em, 4);
         break;
     case 1:
-        Em_SetFlag6AE(em, 4);
+        Em_SetHitReactMode(em, 4);
         if (EmMotion_ReachedFrame(em, 0, 22.0f) == 0 && em->motion[0].blend == 0) {
             v[0] = 10.909091f * em->scaleX;
             v[1] = 0.0f;
@@ -8201,7 +8201,7 @@ void EmApceros_State4_06(Em *em)
         }
         break;
     case 2:
-        Em_SetFlag6AE(em, 4);
+        Em_SetHitReactMode(em, 4);
         Em_SpawnEffect06Bone(em, 2);
         if (--em->timer <= 0) {
             em->step++;
@@ -8909,7 +8909,7 @@ void EmApceros_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmApceros_RunState(em);
     if (em->stateRequest != 0) {
         EmApceros_RunState(em);

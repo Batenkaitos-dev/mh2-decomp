@@ -8,7 +8,7 @@ size 0x9D0
 0x390 u8 stance // 0: on the ground, 1: family-specific (Kushala kinds hovering, Lao-Shan, Shen Gaoren), 2: in the air (flying, leaping out of the sand), 3: dead (QuestEm_Hunted), 4: under the sand or water (Diablos, Cephadrome, Plesioth)
 0x662 u16 floorAttr // the u16 at +2 of the floor triangle (TriHdr.unk02, Em_GetFloorInfo): EmScript_Op5F and Op62 test 1..3, EmBlangonga_ScriptQuery 1, func_00708640 nonzero without bit 0x8000; GmEm_ResetState sets 1 (Player +0x662: compared by EmScript_Op5A)
 0x680 u16 area // the area (map zone) the monster is in (gScene.unk014 is the current one)
-0x6AE u8 hitReactMode // how Em_UpdateDamage reacts to a hit: 0 normal flinch, 2 no flinch (reaction 0xA; Em_BeginStatus1/2, captured states set it every frame through Em_SetFlag6AE), 3 reaction 0xD (Fatalis State4_04), 4 kept through the hit (Em_BeginStatus4/5); Em_ClearFlag6AE resets it each frame; EmScript_Op0A sets, Op32/Op33 test it
+0x6AE u8 hitReactMode // how Em_UpdateDamage reacts to a hit: 0 normal flinch, 2 no flinch (reaction 0xA; Em_BeginStatus1/2, captured states set it every frame through Em_SetHitReactMode), 3 reaction 0xD (EmFatalis_KnockDown), 4 kept through the hit (Em_BeginStatus4/5); Em_ClearHitReactMode resets it each frame; EmScript_Op0A sets, Op32/Op33 test it
 0x6F6 s16 status5Buildup // raised by Em_AddStatus5; reaching status5Threshold sets statusFlags 0x10
 0x6F8 s16 status5Decay // frames to the next decay of status5Buildup
 0x6FC s16 status2Threshold
@@ -33,11 +33,11 @@ size 0x9D0
 0x7DC u8 combat // 1 while the monster fights the hunters (Em_SetCombat); back to 0 it forgets them (seen bits, alertBuildup, unk86C, unk7E4 cleared)
 0x7DD u8 requested // 1 while a request (Em_SetRequest) is pending: the families' state choice leaves it alone
 0x7DE u8 requestId // the pending request: an id of the kind's gEmKindInfo entry (Em_PickRequest)
-0x7EC s32 need2Gauge // gauge of need 2 (request gEmKindInfo.need2Request): Em_Decay7EC lowers it (D_008BC690 rates, out of and in combat) and sets need2 at 0; Kut-Ku State0_0E refills it by 0xDE a frame up to need2Max; EmScript_Op21 compares it with 30% of the maximum; quest entry +0x10
-0x7F0 s32 need1Gauge // gauge of need 1 (named after gEmKindInfo.need1Request, the request it makes): Em_Decay7F0 lowers it by the kind rate (D_008BC520) and sets need1 at 0; refilled to need1Max by eating-like states (Kut-Ku State0_1A, with +5% hp); func_00702830 looks for an action spot under the kind threshold; from the quest entry (+0xC)
-0x7F4 s32 need3Gauge // gauge of need 3 (request gEmKindInfo.need3Request): Em_Decay7F4 lowers it and sets need3 at 0; refilled to need3Max by Em_Refill7F4, Em_BeginStatus1/2, Em_ResetNotice; quest entry +0x14
-0x7F8 s32 need2Max // maximum of need2Gauge (need2Gauge): Em_Add7EC caps at it
-0x7FC s32 need1Max // maximum of need1Gauge (need1Gauge): Em_Add7F0 caps at it, refills set it; Em_CheckRageByHp takes the percentage of it (kind 0x34)
+0x7EC s32 need2Gauge // gauge of need 2 (request gEmKindInfo.need2Request): Em_DecayNeed2 lowers it (D_008BC690 rates, out of and in combat) and sets need2 at 0; Kut-Ku State0_0E refills it by 0xDE a frame up to need2Max; EmScript_Op21 compares it with 30% of the maximum; quest entry +0x10
+0x7F0 s32 need1Gauge // gauge of need 1 (named after gEmKindInfo.need1Request, the request it makes): Em_DecayNeed1 lowers it by the kind rate (D_008BC520) and sets need1 at 0; refilled to need1Max by eating-like states (Kut-Ku State0_1A, with +5% hp); func_00702830 looks for an action spot under the kind threshold; from the quest entry (+0xC)
+0x7F4 s32 need3Gauge // gauge of need 3 (request gEmKindInfo.need3Request): Em_DecayNeed3 lowers it and sets need3 at 0; refilled to need3Max by Em_RefillNeed3, Em_BeginStatus1/2, Em_ResetNotice; quest entry +0x14
+0x7F8 s32 need2Max // maximum of need2Gauge (need2Gauge): Em_AddNeed2 caps at it
+0x7FC s32 need1Max // maximum of need1Gauge (need1Gauge): Em_AddNeed1 caps at it, refills set it; Em_CheckRageByHp takes the percentage of it (kind 0x34)
 0x800 s32 need3Max // maximum of need3Gauge (need3Gauge): Em_Add7F4 caps at it, the refills set it
 0x804 s16 rageThreshold // the kind's EmRageRow threshold (gEmRageTbl[type]), -1 without one (Em_InitRage); Em_CheckRageByHp raises rageBuildup to it; the families pass it to Em_CheckRageByHp
 0x806 s16 rageBuildup // raised by Em_CheckRageByHp (damage times a factor picked by the hp percent, doubled for some kinds with part 0 broken); reaching rageThreshold sets ragePending; Em_InitRage, Em_EndRage clear it
@@ -49,8 +49,8 @@ size 0x9D0
 0x80F u8 guardTimer // frames the hits cannot kill (hp kept at 1, also against poison), flinch or add status buildup (Em_UpdateDamage, Em_PickDamagedPart, Em_UpdateStatus), and Em_CheckFlash ignores flashes; counted down by GmEm_Update; states set 2 or 5, Em_BeginStatus2 30
 0x810 u8 flashed // 1 when a flash object is in the sight cone (Em_CheckFlash, unk_6FF630.c); cleared when Em_ApplyFlash applies it
 0x811 u8 noReact // 1 while a status (Em_BeginStatus1/2/4/5 .. EndStatus) or a special state runs: GmEm_Update raises no triggers or rage actions, Em_CheckPartBuildup and func_00708640 do nothing; GmEm_ResetState clears it
-0x814 u8 need2State // 0 until need2Gauge first runs out (Em_Decay7EC sets 1 with need2); EmScript_Op0C sets, Op2B compares, Op0D/Op1E and Em_Clear7ECState clear it
-0x815 u8 need1State // 0 until need1Gauge first runs out (Em_Decay7F0 sets 1 with need1); Em_Clear7F0State, EmScript_Op1E clear it
+0x814 u8 need2State // 0 until need2Gauge first runs out (Em_DecayNeed2 sets 1 with need2); EmScript_Op0C sets, Op2B compares, Op0D/Op1E and Em_ClearNeed2State clear it
+0x815 u8 need1State // 0 until need1Gauge first runs out (Em_DecayNeed1 sets 1 with need1); Em_ClearNeed1State, EmScript_Op1E clear it
 0x816 u8 noAlert // set by EmScript_Op26 (the script byte), 0 at reset: while 1, GmEm_Update raises no sight trigger (0x20) out of combat and the kind Update functions (Blangonga, Cephadrome, Kushala, Khezu) start no rage; func_00708640 does nothing unless 0
 0x817 u8 remote // online: 1 when another player's console runs the monster (hostNo), 0 when this one does (EmSlot_Alloc, GmEm_Setup); most AI code runs only when 0
 0x846 s16 aimPitch // as Player.aimPitch (same offset): Player_AddLean846 (player code typed Em) adds to it, clamped to +-0x2000
@@ -63,9 +63,9 @@ size 0x9D0
 0x966 u8 large // per-kind flag gEmIsLarge[type] (Em_InitKindParams), nonzero for the large monsters: synced online (GmEm_Setup, GmEm_Update, Em_SyncState, Em_IsSyncFree), death handled by the area owner (Em_UpdateDamage, Em_UpdateStatus), target point Player.targetPos (Em_GetTargetPos); EmScript_Op23 kind 0x4A matches any of them
 0x967 u8 requestPrio // priority of the pending request (0x80 low HP ... 0x40 idle); a new one needs at least this
 0x968 u8 lowHpNeed // 1 when hp fell under the kind's ratio (Em_CheckLowHp): Em_PickRequest makes it a request of priority 0x80
-0x96A u8 need1 // 1 when need1Gauge ran out (Em_Decay7F0): Em_PickRequest makes request gEmKindInfo.need1Request at priority 0x60; Em_Clear7F0State, EmScript_Op1E clear it
-0x96B u8 need2 // 1 when need2Gauge ran out (Em_Decay7EC): Em_PickRequest makes request gEmKindInfo.need2Request at priority 0x50; Em_Clear7ECState, EmScript_Op1E clear it
-0x96C u8 need3 // 1 when need3Gauge ran out (Em_Decay7F4, kinds with gEmKindInfo.need3Request): Em_PickRequest makes request need3Request at priority 0x40 out of combat; the status begin/end functions, Em_Refill7F4, EmScript_Op1E clear it
+0x96A u8 need1 // 1 when need1Gauge ran out (Em_DecayNeed1): Em_PickRequest makes request gEmKindInfo.need1Request at priority 0x60; Em_ClearNeed1State, EmScript_Op1E clear it
+0x96B u8 need2 // 1 when need2Gauge ran out (Em_DecayNeed2): Em_PickRequest makes request gEmKindInfo.need2Request at priority 0x50; Em_ClearNeed2State, EmScript_Op1E clear it
+0x96C u8 need3 // 1 when need3Gauge ran out (Em_DecayNeed3, kinds with gEmKindInfo.need3Request): Em_PickRequest makes request need3Request at priority 0x40 out of combat; the status begin/end functions, Em_RefillNeed3, EmScript_Op1E clear it
 0x96D u8 showOnMap // per kind (D_008BF2D0[type], Em_InitKindParams): nonzero: Map_DrawArea draws the monster, Hud_DrawPlayerStatus marks its target player
 0x970 u8 startsBattle // per kind (D_008BF970[type], Em_InitKindParams): nonzero: Player_UpdateInBattle counts the visible monster in the player area as a battle
 0x015 u8 state // current state: the family's state dispatcher switches on it
@@ -114,7 +114,7 @@ size 0x9D0
 0x98C s16 trapTimer // frames the trapped states (State4_0D, 4_11, 4_17 ...) last, counted down there: Em_SetGoal12Dist sets 0x340, 0x208 or 0x138 when enraged (0x9C kind 0x35); goalKind 12 carries it as goalNo (/ 4, Em_SetGoal12, Em_ComputeGoal2)
 0x994 s16 scriptDelay // frames before the pending script runs: Em_UpdatePendingScript counts it down, then runs the script if scriptPending (scriptPending); set by EmScript_Op48, cleared by EmScript_Restart
 0x9A1 u8 rageStarted // 1 from Em_StartPendingRage to Em_EndRage; GmEm_Update then sets itemUseKind to 0x88
-0x9A2 u8 stateArmor // 1 while the state is in a move the monster does not break off: set by the family states, cleared each frame by Em_ClearFlag6AE (with hitReactMode); ObjAttach_HitAll ignores attack kind 0x13 then, Blangonga ignores the flash (EmBlangonga_IgnoresFlash), Hermitaur takes no group-4 reaction (EmHermitaur_AllowHit8); the ScriptQuery functions report it
+0x9A2 u8 stateArmor // 1 while the state is in a move the monster does not break off: set by the family states, cleared each frame by Em_ClearHitReactMode (with hitReactMode); ObjAttach_HitAll ignores attack kind 0x13 then, Blangonga ignores the flash (EmBlangonga_IgnoresFlash), Hermitaur takes no group-4 reaction (EmHermitaur_AllowHit8); the ScriptQuery functions report it
 0x9A3 u8 holdTimer2 // the second hold (Em_IsHeld): Em_SetCaptured(em, 1) and Em_SetHold2 set 5; counted down by GmEm_Update; the trap Eff10_RunTrap catches a monster with it > 0 within 500 and lets go at 0; cleared by the SetGroup0State functions
 0x020 f32 rotMtx[4][4] // rotation matrix built from rotX..rotZ (Mtx_FromAnglesYXZ)
 0x2C4 EmPart{8} parts[9] // 9 parts (Em_InitParts): active +0, index +1, hp +4, state +6
@@ -129,7 +129,7 @@ size 0x9D0
 0x78F u8 scriptFlags // the running script thread: 0x20, 0x10 trigger scripts, 1 a loop (EmScript_Op0F); EmScript_GetPos picks the resume position by it
 0x7E2 u8 hostNo // the player whose console runs the monster (online; GmEm_Setup, func_00707060)
 0x7E4 s16 noticeTimer[4] // one per player: frames the player stays noticed (from Em_NoticeTime)
-0x813 u8 need3State // 0 until need3Gauge first runs out (Em_Decay7F4 sets 1 with need3); EmScript_Op1E clears it
+0x813 u8 need3State // 0 until need3Gauge first runs out (Em_DecayNeed3 sets 1 with need3); EmScript_Op1E clears it
 0x858 u16 playerAngle[4] // u16[4], one per player: direction from the monster to the player (Em_SensePlayers: Math_AngleXZ, as v->dir); Em_AngleSector finds the sense sector it falls in
 0x860 u16 sectorHalfAngle[4] // u16[4]: half widths of the 4 sense sectors around the heading, from the kind's sense row D_008BB150[type] (func_00704060, with the ranges at 0x838..0x844); Em_AngleSector
 0x869 u8 alertedPlayers // one bit per player whose alertBuildup (alertBuildup) reached the kind limit (Em_CheckPartBuildup, with trigger 0x10); EmScript_Op11 tests the bits
@@ -244,9 +244,9 @@ size 0x9D0
 0x4C8 u8 meshShown[32] // one per model mesh, 1: drawn (in the EmWork area: work + 0x90): Em_SetupKind fills it from the variant tables gEmVariantShownMeshes/gEmVariantMeshes, GmEm_Setup sets all 32, Em_UpdateState cycles the variants; Diablos/Garuga/Gravios/Rathalos State4_04 clear element 1 at frame 6
 0x52C struct DrawSlot * drawSlot // its draw slot (DrawSlot_Get), positioned at the Em every frame and put into an ordering table (gm_sub func_00905930, the lobby's townspeople)
 0x530 s16 drawSlotId // an entry of the 0x6A5AD0 pool, -1: none (DrawSlot_Alloc; gm_sub func_00903EE0)
-0x532 u8 painted // 1 while marked by a paint hit: ObjAttach_DamageEm sets it (attack kind 7) with paintTimer = 0x4650 frames; Player_TickTimers-side code (unk_399F70) counts paintTimer down and clears it (0xFF: never); Hud_GlowCond_Unk shows the monster while set; synced online (QSync flag 0x10)
+0x532 u8 painted // 1 while marked by a paint hit: ObjAttach_DamageEm sets it (attack kind 7) with paintTimer = 0x4650 frames; Player_TickTimers-side code (unk_399F70) counts paintTimer down and clears it (0xFF: never); Map_MonsterLocated shows the monster while set; synced online (QSync flag 0x10)
 0x53A s16 paintTimer // frames the paint mark lasts: 0x4650 (ObjAttach_DamageEm, QSync_OnEm), counted down while painted is set, which clears at 0
-0x59A u8 cartPlayer // the Felyne cart (kind 0x12): the player it carries (Player_State4_00 sets it; EmKind12_State1_01 waits while that player's stateGroup is 4)
+0x59A u8 cartPlayer // the Felyne cart (kind 0x12): the player it carries (Player_StateCart sets it; EmKind12_State1_01 waits while that player's stateGroup is 4)
 0x636 u16 msgItem // the item EmKind0A_SetMessage prints in its message (gItemNames), 0 at EmKind0A_Init
 0x651 u8 lookAtPoint // 1: Em_UpdateBendTarget bends toward lookPoint instead of the target player (Rathalos State3_0C)
 0x653 u8 stateRequest // as Player.stateRequest: 1 after Em_SetState (Player_ForceState): the family Update runs the new state a second time in the same frame, then clears it
@@ -275,7 +275,7 @@ size 0x9D0
 0x4B8 u16 statusIcons // as Player.statusIcons: StageObj_K05_* and EmFxSeg_Move read bit 0x8000 of the player they are given
 0x776 u8 scriptCallEntry // entry of the EmScript_Op82 jump (script table k + 0xF); em_bulldrome.c reads 0x776..0x777 as one s16
 0x777 u8 scriptCallEntryHi // cleared when the Em is set up (gm_em.c); the high byte of em_bulldrome.c s16 read
-0x294 u16 yawCenter // the heading targetYaw is kept within +-0x4000 of (Player_UpdateLean, motion 0x19E); Player_State0_36 sets it from the action spot angle (kind 6) or targetYaw
+0x294 u16 yawCenter // the heading targetYaw is kept within +-0x4000 of (Player_UpdateLean, motion 0x19E); Player_StateMountedGunAim sets it from the action spot angle (kind 6) or targetYaw
 0x296 s16 tradeStep // step of EmKind0A_Trade (switch), 0 when EmKind0A_ShowMessage starts a message
 0x298 u16 msgId // the trader kind 0x0A: the message shown, a row of gEmTraderMsgs (EmKind0A_ShowMessage, EmKind0A_Trade)
 0x29A s16 msgTimer // the trader kind 0x0A: frames since msgId was shown (EmKind0A_Trade counts to 999)
@@ -286,8 +286,8 @@ size 0x9D0
 0x628 s8 tutorialSlot // lobby NPCs in the village tutorial: the bit of gTutorial.mask that is this NPC (Tutorial_RunNpc; -1 none): its point on the route set, and the kind ThrownObj_Spawn gets in Npc51 state 3
 0x634 s16 unk634
 0x688 f32 startPos[3] // where the monster starts (as Player.startPos): EmKind0A_Init copies posX..posZ
-0x7D0 u8 hookedBy // the player whose bait Plesioth took (targetNo; EmPlesioth_State2_11/2_12), compared with the player index in Player_State0_53
-0x80D u8 hooked // 1 while Plesioth has taken the bait of a player in state 0/0x53 (the line: Effect_ExistsKind16): EmPlesioth_State2_11 sets it with hookedBy = targetNo; Player_State0_53 finds the monster on its line by it; EmScript_Op47, State4_0F clear it
+0x7D0 u8 hookedBy // the player whose bait Plesioth took (targetNo; EmPlesioth_State2_11/2_12), compared with the player index in Player_StateFishReel
+0x80D u8 hooked // 1 while Plesioth has taken the bait of a player in state 0/0x53 (the line: Lure_PlayerHasMonsterBait): EmPlesioth_State2_11 sets it with hookedBy = targetNo; Player_StateFishReel finds the monster on its line by it; EmScript_Op47, State4_0F clear it
 0x398 u32 flags // as Player.flags: flag bits (Player_SetFlag/ClearFlag/TestFlag without bit 31; stateFlags at 0x39C with it); GmEm_Update and gm_sub func_00904CF0 set 0x20000
 0x723 u8 shadowOff // nonzero: GmEm_Update sets hideShadow (as under the sand, stance 4) unless hideShadowHold runs
 0x736 s16 unk736 // 2 while Em.wallHitDirs is set (gm_sub func_00904CF0)
@@ -308,7 +308,7 @@ size 0x9D0
 0x6EC struct Player * contact // the player of the last contact: the one it hit or that hit it (ObjAttach_DamagePlayer, with the attack at +0x6F0); Kut-Ku and Chameleos steal from it; in the lobby the player talking to the townsperson
 0x6F0 struct ObjAttach * contactAttach // the attack of that contact (ObjAttach_DamagePlayer); Kut-Ku State3_0B tests its kind 0x11
 0x7BC u8 * routeResume // the script position after the route command (EmScript_Op3F); EmScript_OpFF resumes there at the end of the route and clears it
-0x7C0 u8 routePointScript // the current route point's script table entry (point +0x12; EmScript_GetTable30 picks the commands to run there: EmScript_Op3F, EmScript_OpFF)
+0x7C0 u8 routePointScript // the current route point's script table entry (point +0x12; EmScript_RoutePointScript picks the commands to run there: EmScript_Op3F, EmScript_OpFF)
 0x7C1 u8 routeNo // route index (EmScript_Op3F; goalArg of the route goal, Em_ComputeGoal copies curGoalArg back); EmScript_OpFF walks it
 0x7C2 u8 routePoint // point index in the route (EmScript_Op3F, EmScript_OpFF steps it down to 0; goalNo of the route goal)
 0x894 void ** tables // the per-kind area tables (D_8BB280[type]): [0] points, [6] route sets; func_00707D70 finds the entry of an area, func_00707E40 its points
@@ -348,15 +348,15 @@ size 0x9D0
 0x77E u8 scriptCaseCount // EmScript_Op83: the number of cases it skips through
 0x77F u8 routedStateArg // third argument of script command 5 (Em_ChangeStateRouted, EmScript_Run); func_00733A30 switches on it
 0x784 u8 loopMode // the script loop kind (EmScript_Op0F byte 0: 0, 1, 2 loop over the area points; Op10 and OpFF switch on it)
-0x785 u8 loopPointTable // the point list of the loop (EmScript_Op0F; EmScript_GetTable08b, read by Op10 and OpFF)
-0x786 u8 loopScript // the script table entry run at each loop point (EmScript_Op0F; EmScript_GetTable08)
-0x787 u8 loopEndScript // the script table entry run when the loop ends (EmScript_Op0F; EmScript_OpFF, EmScript_GetTable08)
+0x785 u8 loopPointTable // the point list of the loop (EmScript_Op0F; EmScript_LoopPointList, read by Op10 and OpFF)
+0x786 u8 loopScript // the script table entry run at each loop point (EmScript_Op0F; EmScript_LoopScript)
+0x787 u8 loopEndScript // the script table entry run when the loop ends (EmScript_Op0F; EmScript_OpFF, EmScript_LoopScript)
 0x78C u8 scriptCombat // combat when the EmScript_Op0B block started (Op0B, OpFF after Em_SetCombat)
 0x78E u8 scriptVar // a script value: EmScript_Op0C sets it, Op0D clears it, Op2B compares it
 0x798 u8 scriptPlayer // the player the script picked (s8, -1: none; low nibble a gPlayers index): EmScript_Op45/Op52/Op53/Op5F pick it, Op46 and Op49 use it, Em_ComputeGoal makes it the goal in combat
 0x799 u8 subScriptNo // the subscript EmScript_Call runs (EmScript_SubScript)
 0x79A u8 areaSeqTable // the area list of the area sequence (EmScript_Op17 byte 0; Op18 reads table 14 at areaSeqPos)
-0x79B u8 areaSeqScript // the script table entry of the area sequence (EmScript_Op17; Op18, EmScript_GetTable18)
+0x79B u8 areaSeqScript // the script table entry of the area sequence (EmScript_Op17; Op18, EmScript_AreaSeqScript)
 0x79C u8 * areaSeqNext // the script position EmScript_Op18 saves
 0x7A0 u8 areaSeqMode // EmScript_Op17 byte 1: Op18 and OpFF test it for 0
 0x7C8 s16 scriptOffset // EmScript_Run: the start of the script minus scriptPos when it stops
@@ -377,7 +377,7 @@ size 0x9D0
 0x95F u8 routeResult // EmScript_Op3F: 0 found, 2 no route point near, 7 a route without points
 0x974 u8 routeHeight // EmScript_Op3F byte 2: a height in tenths (h = 10.0f * it)
 # Round 25 (types h1): pads split from their indexed uses and the file-local views of Em
-0x060 f32 worldMtx[4][4] // the world matrix: scale, rotation, position (Em_UpdateWorldMatrix, Em_Draw: Mtx_Copy into it); Vec_Rotate turns by it (EmKind0A_State0_02, Player_State0_11/15/1E/44); the effects typed Em keep a counter in its byte 1 (Eff00_Update, Eff06_Fall)
+0x060 f32 worldMtx[4][4] // the world matrix: scale, rotation, position (Em_UpdateWorldMatrix, Em_Draw: Mtx_Copy into it); Vec_Rotate turns by it (EmKind0A_State0_02, Player_StateLedgeHang/15/1E/44); the effects typed Em keep a counter in its byte 1 (Eff00_Update, Eff06_Fall)
 0x2B8 u8 unk2B8 // as Player.unk2B8 (same offset): Player_UpdateAutoTurn clears it
 0x2BC u8 motionStarted[4] // as Player.motionStarted (same offset): the lobby townspeople (Npc_UpdateMotion) begin the layer motion (Player_BeginLayerMotion) while it is 0, then set it
 0x310 u8 unk310 // as Player.unk310 (same offset): Player_RunWeaponState clears it
@@ -392,7 +392,7 @@ size 0x9D0
 0x64E u16 turnHold // EmTurnView: hold frames of Em_TurnToward
 0x650 u8 turnPhase // EmTurnView: the phase of Em_TurnToward
 0x652 u8 motionRemap // nonzero: Em_SetMotion takes the row's remap row of the alternate table once, then clears it
-0x668 u8 unk668 // as Player.unk668 (same offset): Player_State0_3B/3D test it with the dodge button
+0x668 u8 unk668 // as Player.unk668 (same offset): Player_StateCrouchWalk/3D test it with the dodge button
 0x69C u16 unk69C // as Player.unk69C (same offset): Player_UpdateAutoTurn's turn angle (moved by 0x300 a frame, kept in 0xA00..0xF600)
 0x6B2 s16 hitPartDamage[9] // the hit's damage per part (EmDamageView of unk_70A290.c): Em_PickDamagedPart and Em_UpdateDamage scale it by damageFactor into parts[i].hp; [8] takes the damage of the part partFlags names
 0x6C4 s16 reactValue[4] // one per player: Em_UpdateReactions runs the reaction of a player whose value changed (EmReactView)

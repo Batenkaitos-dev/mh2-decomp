@@ -101,7 +101,7 @@ s32 Kbd_CharIsPlain(KbdKey *p);
 s32 CamFollow_IsBlownAway(void);
 f32 AreaGrid2_GetFloorY(f32 *pos); /* the ground height at pos */
 void Hud_SetCancel(void);
-void func_003634B0(void);
+void Kbd_EmptyInit(void);
 void Player_RequestAct(u8 a);
 void Mem_Fill(void *dst, u8 c, s32 n);
 extern u8 gKbdDakutenSjis;

@@ -420,7 +420,7 @@ void GameMenu_Open(void);
 
 void CamFocus_End(void);
 void CamReq_Cancel(void);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void Stream_FadeOut(s32 ch, s32 frames);
 void Hud_StartQuest(void);
 void LobbyMenu_Init(void);
@@ -661,7 +661,7 @@ void Town_UpdateMode(void)
         Stream_FadeOut(0, 0xF);
         break;
     case 0x20:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gTownMode = 0x21;
             LobbyMenu_SetDraw(0, 0, NULL, 0);
             Hud_StartQuest();
@@ -672,7 +672,7 @@ void Town_UpdateMode(void)
         Stream_FadeOut(0, 0xF);
         break;
     case 0x24:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gTownMode = 0x25;
             LobbyMenu_SetDraw(0, 0, NULL, 0);
             Hud_StartQuest();

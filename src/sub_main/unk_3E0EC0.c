@@ -903,7 +903,7 @@ extern s16 gSparkFxSteps[];
 extern s16 D_004698D0[];
 extern f32 *gSparkFxKeys[];
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 
@@ -975,7 +975,7 @@ void SparkFx_Run(SparkEmitter *e)
         Key_LerpVec3(track, p->unk4, p->unk2C);
         if (p->unk2E == 0) {
             track = gSparkFxKeys[k++];
-            Key_LerpF32(track, &p->unk30, p->unk2C);
+            Key_LerpFloat(track, &p->unk30, p->unk2C);
         }
         p->unk20 += (s32)p->unk22;
         switch (e->type) {

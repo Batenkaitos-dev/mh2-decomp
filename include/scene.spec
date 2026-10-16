@@ -16,7 +16,7 @@ size 0x2BC
 0x016 u16 startArea // the area loaded first (Quest_SetStartArea sets it with area; Quest_Setup: Area_Load)
 0x02A u8 emKind[4] // per monster slot, its kind (QuestEm_SpawnArea, Quest_SpawnMonsters from gQuestSync.emKind); 0 none
 0x02E u16 questId // the quest id (QuestDesk_Accept, Quest_Init; Tex_LoadStageFile(map, questId))
-0x031 u8 campArea // the map's base camp: a fainted player goes back there (Player_State0_0B), the Felyne kind 0x12 spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1)
+0x031 u8 campArea // the map's base camp: a fainted player goes back there (Player_StateThrowItem), the Felyne kind 0x12 spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1)
 0x03C u8 localPlayer // the local player's index (gPlayers, per-player arrays)
 0x03D u8 unk03D // set to 1 with online when the lobby starts an online quest as a guest (lobby unk_7C8FA0.c, NetScene_SetMode 1)
 0x040 u8 questPhase // 0-2 before the start, 3/4 running, 5-7 ending, 8 (Quest_IsRunning)
@@ -30,7 +30,7 @@ size 0x2BC
 0x273 s8 mealDefense // the meal's defense buff (Meal_ApplyEffects); the local player's starting defenseDrug
 0x274 s8 mealHealth // the meal's health bonus (Meal_ApplyEffects): added to the local player's maximum health at the start
 0x13C u8 placed1 // the local player placed objects of kind 1 (fewer than 2 allowed, Item_CanPlaceLargeBarrelBomb); the game decrements it when one disappears (game func_006D4920)
-0x13D u8 placed3 // the same for kind 3 (fewer than 3, Scene_FewPlaced3_Unk; game func_00868B00)
+0x13D u8 placed3 // the same for kind 3 (fewer than 3, Scene_CanPlaceKind3; game func_00868B00)
 0x13E u8 placed2 // the same for kind 2 (none allowed while set, Scene_CanPlaceKind2; game func_006D4920)
 0x110 u8 itemUses[4] // per player: the items used (Stats_CountItemUse)
 0x13F s8 fortStage // 0 to 10, set by the fortress monsters from their scripts (em_laoshan, em_shengaoren, em_yamatsukami, em_kushala); QuestMenu_DrawRate prints (10 - fortStage) * 10 percent

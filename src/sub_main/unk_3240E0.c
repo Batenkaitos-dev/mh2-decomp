@@ -1,3 +1,22 @@
+/*
+ * The scene and the quest's start (sub_main): Scene_QuestTask, the task that
+ * runs the scene gScene.scene (SCENE_* in scene.h) every frame, and the
+ * scenes' steps: entering the field and starting a quest (Scene_EnterField,
+ * Scene_QuestStartTask and its QSTART_* steps: the players, the models, the
+ * sounds, the monsters), the field (Scene_UpdateQuest, with the area
+ * change), the quest's end (Scene_ResultFade), the results and the opening
+ * movie (Scene_Opening), and the offline pause and the play time.
+ *
+ * With them: the pool of stage objects (StageObj_*, include/stageobj.h), the
+ * keyframe helpers the effects use (Key_Lerp*, Color_EvalKeys), the material
+ * set draws of the effects (Model_DrawFade, Effect_DrawModel*), the two
+ * screen fades (FadeA_*, FadeB_*, ScreenFade_Task; FADE_* in scene.h), the
+ * brightness overlay, and the loading of an area's model and grids
+ * (Area_Load, Area_LoadTables).
+ *
+ * The quest's own state is gQuest (quest.h, unk_3A1070.c); the scene state
+ * is gScene (scene.h).
+ */
 #include "common.h"
 #include "syssettings.h"
 #include "quest.h"
@@ -47,10 +66,10 @@ void Vec_Scale(f32 *, f32 *, f32);
 void Draw_ApplyStates(u32 a);
 void Draw_SetDefaultState(void);
 void Player_InitPartTable(s32 idx);
-void TaskSlot2_EndCode1(void);
+void Task_EndGmSubForNetScene(void);
 void *Hud_Init(void);
 void Jingle_OnAreaChange(u16 area);
-void func_00368ED0(void);
+void UnreadFlags_ClearAll(void);
 void Gfx_SetBlend(s32 a, s32 b);
 void Gfx_SetState63(s32 a);
 void Gfx_SetBlendOp(s32 a);
@@ -66,7 +85,7 @@ void Sound_Silence(void);
 void Sound_ReloadBank1(void);
 s32 QuestNet_NoPeerReady(void);
 void QSync_SendState(u8 kind, u8 who);
-s32 func_D683C0(void);
+void Plsel_ResultsUpdate(void);
 void * memset(void *p, s32 c, u32 n);
 extern u8 gAreaKindColors[];
 extern u8 D_0041CF01[];
@@ -74,7 +93,7 @@ extern u8 D_0041CF02[];
 extern u8 D_0041CF03[];
 extern s16 gAreaKinds[];
 extern u8 gLightSets;
-extern u16 D_006ADB48;
+extern u16 gNextQuestId;
 extern s8 gGalleryTitle[];
 void plsel_entry(TaskSlot *task); /* plsel (overlay 0xB) */
 void Player_SetMyUserId(u8 i);
@@ -104,8 +123,8 @@ void Players_UpdateSides(void);
 void Hud_LoadTextures(void);
 void Player_SetupQuest(s32 i);
 void Quest_LoadCommonModels(void);
-void func_00327F70(void);
-void func_003350B0(void);
+void Quest_SetupStub(void);
+void Quest_EmptyHook(void);
 void func_0033A360(void);
 void Anim_LoadCommon(s32 arg0);
 s32 Gs_GetState(u8 reg);
@@ -116,17 +135,6 @@ typedef struct ScreenRect {
     s16 x, y, w, h;
     u32 color;
 } ScreenRect;
-/* The header of the two tables Area_LoadTables loads (AreaTable_Relocate and
- * AreaTable2_Relocate relocate them): offsets from the header. */
-typedef struct DataHdr {
-    u32 unk00;
-    u32 unk04;
-    u32 rows;           /* 0x08 */
-    u32 cols;           /* 0x0C */
-    u8 unk10[0x18 - 0x10];
-    u32 tblOff;         /* 0x18: rows * cols offsets of lists ended by -1 */
-    u32 dataOff;        /* 0x1C: the base of the offsets in the lists */
-} DataHdr;
 extern u32 gAreaGridCellX;
 extern u32 gAreaGridCellZ;
 extern u32 gAreaGridCols;
@@ -140,10 +148,8 @@ extern u32 gAreaGrid2Rows;
 extern s32 **gAreaGrid2Cells;
 extern u32 gAreaGrid2Data;
 extern s32 gAreaTexFiles[];
-extern s32 gArea83TexFiles;
-extern s32 D_0042582C;
-extern s32 gArea84TexFiles;
-extern s32 D_00425834;
+extern s32 gArea83TexFiles[2];
+extern s32 gArea84TexFiles[2];
 void Load_AreaPack(s32 id);
 s32 Model_Alloc(s32 n);
 Model *Model_Get(s32 i);
@@ -222,8 +228,9 @@ s32 Player_IsLocal(void *obj);
 void Player_LoadFromSave(Player *p);
 void Player_LoadName(Player *p);
 void Player_LoadPreset(s8 *id, Player *p);
-void func_D63170(Player *p, s32 i);
-void func_D633F0(Player *p, s32 i);
+void Plsel_ApplyPresetEquip(Player *p, s32 i);
+/* unit's own declaration: with the definition's void (Player *) (plsel/plsel.c), Quest_InitPlayers: 4 of 178 words differ (the game passes the player's index too) */
+void Plsel_ApplyStageEquip(Player *p, s32 i);
 void Player_CalcSkills(Player *p);
 u8 WeaponClass_IsGunner(u8 cls);
 u8 Equip_GetBladeSpecial(EquipItem *e);
@@ -240,21 +247,21 @@ void Movie_Stop(void);
 void EventFlag_Set(s32 n);
 s32 EventFlag_Test(s32 n);
 void Ending_Init(void);
-s32 func_D64D40(void);
+s32 Ending_Update(void);
 void Font_SetSpacing(u8 a, u8 b);
 void Text_SetColor(s16 color);
 s32 Str_Length(char *s);
 void Font_SetPos(s16 x, s16 y);
 void Text_Printf(char *fmt, ...);
 void Text_DrawAllPages(void);
-u8 SeqA_GetState(void);
-void SeqA_Reset(void);
+u8 FadeA_GetState(void);
+void FadeA_Reset(void);
 extern u8 gCameraPreset;
 void Pad_ResetInput(void);
-void func_00328660(void);
+void Area_ResetStub(void);
 void Light_Reset(void);
 void Area_Enter(u16 area);
-void SeqB_Reset(void);
+void FadeB_Reset(void);
 void Camera_SetPreset(s32 id);
 void CamCtl_Init(void);
 void func_00364BD0(s32 unused0);
@@ -313,136 +320,137 @@ void ObjBuf_MarkUsed(s32 start, s32 n);
 void ObjBuf_MarkFree(s32 start, s32 n);
 extern StageObj **gStageObjFreeTop;   /* the free stack */
 extern s32 gStageObjFreeCount;          /* its number of free objects */
-extern StageObj gStageObjs[0x80];
+#define STAGEOBJ_COUNT 0x80             /* the pool's objects */
+extern StageObj gStageObjs[STAGEOBJ_COUNT];
 extern StageObj *gStageObjList;    /* the objects in use */
 
 /* Clears the pool and stacks every object as free. */
 void StageObj_InitPool(void)
 {
     s32 i;
-    StageObj *p;
+    StageObj *obj;
 
     memset(gStageObjs, 0, sizeof(gStageObjs));
     gStageObjList = NULL;
-    p = &gStageObjs[0x7F];
+    obj = &gStageObjs[STAGEOBJ_COUNT - 1];
     gStageObjFreeTop = (StageObj **)gStageObjs;
-    for (i = 0; i < 0x80; i++, p--) {
-        *--gStageObjFreeTop = p;
+    for (i = 0; i < STAGEOBJ_COUNT; i++, obj--) {
+        *--gStageObjFreeTop = obj;
     }
     gScene.placed3 = 0;
-    gStageObjFreeCount = 0x80;
+    gStageObjFreeCount = STAGEOBJ_COUNT;
 }
 
 /* Frees every object in use but those marked keep. */
 void StageObj_FreeUnkept(void)
 {
-    StageObj *p = gStageObjList;
-    StageObj *q;
+    StageObj *obj = gStageObjList;
+    StageObj *dead;
 
-    while (p != NULL) {
-        if (p->active != 0 && p->keep == 0) {
-            q = p;
-            p = p->next;
-            StageObj_Free(q);
+    while (obj != NULL) {
+        if (obj->active != 0 && obj->keep == 0) {
+            dead = obj;
+            obj = obj->next;
+            StageObj_Free(dead);
         } else {
-            p = p->next;
+            obj = obj->next;
         }
     }
 }
 
 /* Takes a free object with n blocks of the object buffer, at the head of the
  * list. */
-StageObj *StageObj_Alloc(s32 n)
+StageObj *StageObj_Alloc(s32 blocks)
 {
-    s32 blk;
-    StageObj *p;
+    s32 block;
+    StageObj *obj;
 
-    if ((blk = ObjBuf_FindFree(n)) < 0) {
+    if ((block = ObjBuf_FindFree(blocks)) < 0) {
         return NULL;
     }
     if (gStageObjFreeCount == 0) {
         return NULL;
     }
     gStageObjFreeCount--;
-    p = *gStageObjFreeTop++;
-    p->prev = NULL;
-    p->next = gStageObjList;
-    gStageObjList = p;
-    if (p->next != NULL) {
-        p->next->prev = p;
+    obj = *gStageObjFreeTop++;
+    obj->prev = NULL;
+    obj->next = gStageObjList;
+    gStageObjList = obj;
+    if (obj->next != NULL) {
+        obj->next->prev = obj;
     }
-    p->active = 1;
-    p->keep = 0;
-    p->buf = ObjBuf_GetBlock(blk);
-    p->blk = blk;
-    p->nblk = n;
-    ObjBuf_MarkUsed(blk, n);
-    return p;
+    obj->active = 1;
+    obj->keep = 0;
+    obj->buf = ObjBuf_GetBlock(block);
+    obj->blk = block;
+    obj->nblk = blocks;
+    ObjBuf_MarkUsed(block, blocks);
+    return obj;
 }
 
 /* The same, at the tail of the list. */
-StageObj *StageObj_AllocTail(s32 n)
+StageObj *StageObj_AllocTail(s32 blocks)
 {
-    s32 blk;
-    StageObj *p;
-    StageObj *q;
+    s32 block;
+    StageObj *obj;
+    StageObj *last;
 
-    if ((blk = ObjBuf_FindFree(n)) < 0) {
+    if ((block = ObjBuf_FindFree(blocks)) < 0) {
         return NULL;
     }
     if (gStageObjFreeCount == 0) {
         return NULL;
     }
     gStageObjFreeCount--;
-    p = *gStageObjFreeTop++;
+    obj = *gStageObjFreeTop++;
     if (gStageObjList == NULL) {
-        gStageObjList = p;
-        p->prev = NULL;
+        gStageObjList = obj;
+        obj->prev = NULL;
     } else {
-        q = gStageObjList;
-        while (q->next != NULL) {
-            q = q->next;
+        last = gStageObjList;
+        while (last->next != NULL) {
+            last = last->next;
         }
-        q->next = p;
-        p->prev = q;
+        last->next = obj;
+        obj->prev = last;
     }
-    p->next = NULL;
-    p->active = 1;
-    p->keep = 0;
-    p->buf = ObjBuf_GetBlock(blk);
-    p->blk = blk;
-    p->nblk = n;
-    ObjBuf_MarkUsed(blk, n);
-    return p;
+    obj->next = NULL;
+    obj->active = 1;
+    obj->keep = 0;
+    obj->buf = ObjBuf_GetBlock(block);
+    obj->blk = block;
+    obj->nblk = blocks;
+    ObjBuf_MarkUsed(block, blocks);
+    return obj;
 }
 
 /* Unlinks an object and gives it and its blocks back. */
-void StageObj_Free(StageObj *p)
+void StageObj_Free(StageObj *obj)
 {
-    if (p->prev == NULL) {
-        gStageObjList = p->next;
+    if (obj->prev == NULL) {
+        gStageObjList = obj->next;
     } else {
-        p->prev->next = p->next;
+        obj->prev->next = obj->next;
     }
-    if (p->next != NULL) {
-        p->next->prev = p->prev;
+    if (obj->next != NULL) {
+        obj->next->prev = obj->prev;
     }
     gStageObjFreeCount++;
-    *--gStageObjFreeTop = p;
-    ObjBuf_MarkFree(p->blk, p->nblk);
-    memset(p, 0, 8);
-    p->slot = 0;
-    *(s32 *)&p->node = 0;
+    *--gStageObjFreeTop = obj;
+    ObjBuf_MarkFree(obj->blk, obj->nblk);
+    memset(obj, 0, 8);
+    obj->slot = 0;
+    *(s32 *)&obj->node = 0;
 }
 
 /* Runs the update of every object in use. */
 void StageObj_UpdateAll(void)
 {
-    StageObj *p;
+    StageObj *obj;
 
-    for (p = gStageObjList; p != NULL; p = p->next) {
-        if (p->active != 0) {
-            ((void (*)(StageObj *))p->update)(p);
+    for (obj = gStageObjList; obj != NULL; obj = obj->next) {
+        if (obj->active != 0) {
+            ((void (*)(StageObj *))obj->update)(obj);
         }
     }
 }
@@ -450,12 +458,12 @@ void StageObj_UpdateAll(void)
 /* Draws the visible objects, but kind 4 type 0 (drawn by StageObj_DrawKind4). */
 void StageObj_DrawAll(void)
 {
-    StageObj *p;
+    StageObj *obj;
 
-    for (p = gStageObjList; p != NULL; p = p->next) {
-        if (p->draw != NULL && p->active != 0 && p->visible != 0) {
-            if (p->kind != 4 || p->type != 0) {
-                ((void (*)(StageObj *))p->draw)(p);
+    for (obj = gStageObjList; obj != NULL; obj = obj->next) {
+        if (obj->draw != NULL && obj->active != 0 && obj->visible != 0) {
+            if (obj->kind != 4 || obj->type != 0) {
+                ((void (*)(StageObj *))obj->draw)(obj);
             }
         }
     }
@@ -464,148 +472,160 @@ void StageObj_DrawAll(void)
 /* Draws the visible objects of kind 4 type 0. */
 void StageObj_DrawKind4(void)
 {
-    StageObj *p;
+    StageObj *obj;
 
-    for (p = gStageObjList; p != NULL; p = p->next) {
-        if (p->draw != NULL && p->active != 0 && p->visible != 0 && p->kind == 4 && p->type == 0) {
-            ((void (*)(StageObj *))p->draw)(p);
+    for (obj = gStageObjList; obj != NULL; obj = obj->next) {
+        if (obj->draw != NULL && obj->active != 0 && obj->visible != 0 && obj->kind == 4 && obj->type == 0) {
+            ((void (*)(StageObj *))obj->draw)(obj);
         }
     }
 }
 
-void Key_LerpVec3(f32 *k, f32 *out, f32 t)
+/*
+ * Keys {time, x, y, z}, ended by a time of -1.0f: the vector at `time`, by
+ * linear interpolation between the two keys around it; a key's own time gives
+ * its value, and a time past the last key the last key's value.
+ */
+void Key_LerpVec3(f32 *keys, f32 *out, f32 time)
 {
-    f32 r;
-    f32 k1;
-    f32 k0;
+    f32 frac;
+    f32 nextTime;
+    f32 keyTime;
 
-    for (;; k += 4) {
-        k0 = k[0];
-        if (k0 == -1.0f) {
+    for (;; keys += 4) {
+        keyTime = keys[0];
+        if (keyTime == -1.0f) {
             break;
         }
-        if (t == k0) {
-            out[0] = k[1];
-            out[1] = k[2];
-            out[2] = k[3];
+        if (time == keyTime) {
+            out[0] = keys[1];
+            out[1] = keys[2];
+            out[2] = keys[3];
             return;
         }
-        if (t > k0 && t < (k1 = k[4])) {
-            r = (t - k0) / (k1 - k0);
-            out[0] = k[1] + r * (k[5] - k[1]);
-            out[1] = k[2] + r * (k[6] - k[2]);
-            out[2] = k[3] + r * (k[7] - k[3]);
+        if (time > keyTime && time < (nextTime = keys[4])) {
+            frac = (time - keyTime) / (nextTime - keyTime);
+            out[0] = keys[1] + frac * (keys[5] - keys[1]);
+            out[1] = keys[2] + frac * (keys[6] - keys[2]);
+            out[2] = keys[3] + frac * (keys[7] - keys[3]);
             return;
         }
     }
-    out[0] = k[-3];
-    out[1] = k[-2];
-    out[2] = k[-1];
+    out[0] = keys[-3];
+    out[1] = keys[-2];
+    out[2] = keys[-1];
 }
 
-/* {t, x, y} keys, ended by t = -1.0f: x and y at t (z set to 1). The
- * volatile keeps the store of 1.0 in the loop, as in the original; the last
- * key case writes z, not y (sic). */
-void Key_LerpVec2(f32 *k, volatile f32 *out, f32 t)
+/*
+ * Keys {time, x, y}, ended by a time of -1.0f: x and y at `time`, as
+ * Key_LerpVec3 does, with out[2] set to 1. Past the last key the game writes
+ * the key's y to out[2], not out[1]. The volatile keeps the store of 1.0f
+ * inside the loop, where the game has it.
+ */
+void Key_LerpVec2(f32 *keys, volatile f32 *out, f32 time)
 {
-    f32 r;
-    f32 k1;
-    f32 k0;
-    for (;; k += 3) {
+    f32 frac;
+    f32 nextTime;
+    f32 keyTime;
+    for (;; keys += 3) {
         out[2] = 1.0f;
-        k0 = k[0];
-        if (k0 == -1.0f) {
+        keyTime = keys[0];
+        if (keyTime == -1.0f) {
             break;
         }
-        if (t == k0) {
-            out[0] = k[1];
-            out[1] = k[2];
+        if (time == keyTime) {
+            out[0] = keys[1];
+            out[1] = keys[2];
             return;
         }
-        if (t > k0 && t < (k1 = k[3])) {
-            r = (t - k0) / (k1 - k0);
-            out[0] = k[1] + r * (k[4] - k[1]);
-            out[1] = k[2] + r * (k[5] - k[2]);
+        if (time > keyTime && time < (nextTime = keys[3])) {
+            frac = (time - keyTime) / (nextTime - keyTime);
+            out[0] = keys[1] + frac * (keys[4] - keys[1]);
+            out[1] = keys[2] + frac * (keys[5] - keys[2]);
             return;
         }
     }
-    out[0] = k[-2];
-    out[2] = k[-1];
+    out[0] = keys[-2];
+    out[2] = keys[-1];
 }
 
-void Key_LerpF32(f32 *k, f32 *out, f32 t)
+/* Keys {time, value}, ended by a time of -1.0f: the value at `time`, as
+ * Key_LerpVec3 does. */
+void Key_LerpFloat(f32 *keys, f32 *out, f32 time)
 {
-    f32 r;
-    f32 k1;
-    f32 k0;
+    f32 frac;
+    f32 nextTime;
+    f32 keyTime;
 
-    for (;; k += 2) {
-        k0 = k[0];
-        if (k0 == -1.0f) {
+    for (;; keys += 2) {
+        keyTime = keys[0];
+        if (keyTime == -1.0f) {
             break;
         }
-        if (t == k0) {
-            out[0] = k[1];
+        if (time == keyTime) {
+            out[0] = keys[1];
             return;
         }
-        if (t > k0 && t < (k1 = k[2])) {
-            r = (t - k0) / (k1 - k0);
-            out[0] = k[1] + r * (k[3] - k[1]);
+        if (time > keyTime && time < (nextTime = keys[2])) {
+            frac = (time - keyTime) / (nextTime - keyTime);
+            out[0] = keys[1] + frac * (keys[3] - keys[1]);
             return;
         }
     }
-    out[0] = k[-1];
+    out[0] = keys[-1];
 }
 
-/* Color keys {time, 0xAARRGGBB}, ended by time -1: the color at time t,
- * each channel interpolated. The numerator t - k0 goes in c0 (reused for the
- * first color below): as a new value it is scheduled before k1 - k0, as the
- * game does (an in-place t -= k0 went after it). */
-void Color_EvalKeys(s32 *k, s32 t, u32 *out)
+/*
+ * Colour keys {time, 0xAARRGGBB}, ended by a time of -1: the colour at
+ * `time`, each channel interpolated between the two keys around it. color0
+ * first holds time - time0: computed into a variable of its own, the
+ * difference is scheduled before time1 - time0, as in the game.
+ */
+void Color_EvalKeys(s32 *keys, s32 time, u32 *out)
 {
-    f32 r;
-    s32 k0;
-    s32 k1;
-    u32 c0;
-    u32 c1;
-    u8 r0;
-    u8 a0;
-    u8 g0;
-    u8 b0;
-    u8 a;
-    u8 rr;
-    u8 g;
-    u8 b;
+    f32 frac;
+    s32 keyTime;
+    s32 nextTime;
+    u32 colorFrom;
+    u32 colorTo;
+    u8 redFrom;
+    u8 alphaFrom;
+    u8 greenFrom;
+    u8 blueFrom;
+    u8 alpha;
+    u8 red;
+    u8 green;
+    u8 blue;
 
-    for (;; k += 2) {
-        k0 = k[0];
-        if (k0 == -1) {
+    for (;; keys += 2) {
+        keyTime = keys[0];
+        if (keyTime == -1) {
             break;
         }
-        if (t == k0) {
-            *out = k[1];
+        if (time == keyTime) {
+            *out = keys[1];
             return;
         }
-        k1 = k[2];
-        if (t > k0 && t < k1) {
-            c0 = t - k0;
-            c1 = k1 - k0;
-            r = (f32)(s32)c0 / (f32)(s32)c1;
-            c0 = k[1];
-            c1 = k[3];
-            r0 = c0 >> 16;
-            g0 = c0 >> 8;
-            b0 = c0;
-            a0 = c0 >> 24;
-            a = a0 + (u8)(r * ((f32)(u8)(c1 >> 24) - (f32)a0));
-            rr = r0 + (u8)(r * ((f32)(u8)(c1 >> 16) - (f32)r0));
-            g = g0 + (u8)(r * ((f32)(u8)(c1 >> 8) - (f32)g0));
-            b = b0 + (u8)(r * ((f32)(u8)c1 - (f32)b0));
-            *out = (a << 24) | (rr << 16) | (g << 8) | b;
+        nextTime = keys[2];
+        if (time > keyTime && time < nextTime) {
+            colorFrom = time - keyTime;
+            colorTo = nextTime - keyTime;
+            frac = (f32)(s32)colorFrom / (f32)(s32)colorTo;
+            colorFrom = keys[1];
+            colorTo = keys[3];
+            redFrom = colorFrom >> 16;
+            greenFrom = colorFrom >> 8;
+            blueFrom = colorFrom;
+            alphaFrom = colorFrom >> 24;
+            alpha = alphaFrom + (u8)(frac * ((f32)(u8)(colorTo >> 24) - (f32)alphaFrom));
+            red = redFrom + (u8)(frac * ((f32)(u8)(colorTo >> 16) - (f32)redFrom));
+            green = greenFrom + (u8)(frac * ((f32)(u8)(colorTo >> 8) - (f32)greenFrom));
+            blue = blueFrom + (u8)(frac * ((f32)(u8)colorTo - (f32)blueFrom));
+            *out = (alpha << 24) | (red << 16) | (green << 8) | blue;
             return;
         }
     }
-    *out = k[-1];
+    *out = keys[-1];
 }
 
 void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
@@ -616,102 +636,122 @@ void Mtx_RotateZ(f32 *m, f32 a);
 void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_RotateZXY(f32 *m, f32 x, f32 y, f32 z);
 
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m)
+/*
+ * Builds mtx from a scale, rotations and a translation. rotOrder says which
+ * rotations, in order: 0 none, 1 x, 2 y, 3 z, 4 x then y, 5 z then y, 6 the
+ * three by Mtx_RotateXYZ, 7 by Mtx_RotateZXY.
+ */
+void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 rotOrder, f32 *mtx)
 {
     f32 x = trans[0];
     f32 y = trans[1];
     f32 z = trans[2];
 
-    Mtx_Scale(m, scale[0], scale[1], scale[2]);
-    switch (order) {
+    Mtx_Scale(mtx, scale[0], scale[1], scale[2]);
+    switch (rotOrder) {
     case 6:
-        Mtx_RotateXYZ(m, rot[0], rot[1], rot[2]);
+        Mtx_RotateXYZ(mtx, rot[0], rot[1], rot[2]);
         break;
     case 7:
-        Mtx_RotateZXY(m, rot[0], rot[1], rot[2]);
+        Mtx_RotateZXY(mtx, rot[0], rot[1], rot[2]);
         break;
     case 4:
-        Mtx_RotateX(m, rot[0]);
-        Mtx_RotateY(m, rot[1]);
+        Mtx_RotateX(mtx, rot[0]);
+        Mtx_RotateY(mtx, rot[1]);
         break;
     case 5:
-        Mtx_RotateZ(m, rot[2]);
-        Mtx_RotateY(m, rot[1]);
+        Mtx_RotateZ(mtx, rot[2]);
+        Mtx_RotateY(mtx, rot[1]);
         break;
     case 1:
-        Mtx_RotateX(m, rot[0]);
+        Mtx_RotateX(mtx, rot[0]);
         break;
     case 2:
-        Mtx_RotateY(m, rot[1]);
+        Mtx_RotateY(mtx, rot[1]);
         break;
     case 3:
-        Mtx_RotateZ(m, rot[2]);
+        Mtx_RotateZ(mtx, rot[2]);
         break;
     case 0:
         break;
     }
-    Mtx_SetTrans(m, x, y, z);
+    Mtx_SetTrans(mtx, x, y, z);
 }
 
-s32 Model_DrawFade(void *mdl, f32 *a1, u16 flags, void *a3, f32 alpha)
+/*
+ * Draws a material set (ModelMatSet, include/model.h) with the matrix mtx and
+ * the materials mats, faded to `alpha` (0 to 1): white, or black when bit 0 of
+ * flags is set; the other bits of flags go to Draw_SetBlendFlags. Returns 0
+ * when there is nothing to draw, else 1.
+ */
+s32 Model_DrawFade(void *set, f32 *mtx, u16 flags, void *mats, f32 alpha)
 {
-    if (mdl == NULL) {
+    if (set == NULL) {
         return 0;
     }
-    if (*(s32 *)mdl == -1) {
+    if (((ModelMatSet *)set)->id == -1) {
         return 0;
     }
     Gs_SetState(0x60, 0);
-    Gs_SetState(0x1A, (s32) a1);
+    Gs_SetState(0x1A, (s32) mtx);
     if (flags & 1) {
         Gs_SetState(0x67, (u8)(255.0f * alpha) << 24);
     } else {
         Gs_SetState(0x67, ((u8)(255.0f * alpha) << 24) | 0xFFFFFF);
     }
-    Gs_SetLightList(a3, mdl);
-    Draw_ApplyStates(*(s32 *)((u8 *)mdl + 0x88));
+    Gs_SetLightList(mats, set);
+    Draw_ApplyStates(((ModelMatSet *)set)->flags);
     Draw_SetBlendFlags(flags);
-    Model_Draw(*(s32 *)mdl, 0);
+    Model_Draw(((ModelMatSet *)set)->id, 0);
     Draw_SetDefaultState();
     return 1;
 }
 
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4)
+/* Model_DrawFade with a colour, 0xAARRGGBB (the callers build it so),
+ * instead of a fade. */
+s32 Effect_DrawModel(void *set, f32 *mtx, s32 color, u16 flags, void *mats)
 {
-    if (mdl == NULL) {
+    if (set == NULL) {
         return 0;
     }
-    if (*(s32 *)mdl == -1) {
+    if (((ModelMatSet *)set)->id == -1) {
         return 0;
     }
     Gs_SetState(0x60, 0);
-    Gs_SetState(0x1A, (s32) a1);
+    Gs_SetState(0x1A, (s32) mtx);
     Gs_SetState(0x67, color);
-    Gs_SetLightList(a4, mdl);
-    Draw_ApplyStates(*(s32 *)((u8 *)mdl + 0x88));
+    Gs_SetLightList(mats, set);
+    Draw_ApplyStates(((ModelMatSet *)set)->flags);
     Draw_SetBlendFlags(flags);
-    Model_Draw(*(s32 *)mdl, 0);
+    Model_Draw(((ModelMatSet *)set)->id, 0);
     Draw_SetDefaultState();
     return 1;
 }
 
-s32 Effect_DrawModelAdd(void *list, f32 *v, void *base)
+/* Draws a material set with the matrix mtx, GS state 0x60 set to 0x80 where
+ * the other two set 0, and the set's own colour and blending. */
+s32 Effect_DrawModelAdd(void *set, f32 *mtx, void *mats)
 {
-    if (list == NULL) {
+    if (set == NULL) {
         return 0;
     }
-    if (*(s32 *)((u8 *)list + 0) == -1) {
+    if (((ModelMatSet *)set)->id == -1) {
         return 0;
     }
     Gs_SetState(0x60, 0x80);
-    Gs_SetState(0x1A, (s32) v);
-    Gs_SetLightList(base, list);
-    Draw_ApplyStates(*(s32 *)((u8 *)list + 0x88));
-    Model_Draw(*(s32 *)((u8 *)list + 0), 0);
+    Gs_SetState(0x1A, (s32) mtx);
+    Gs_SetLightList(mats, set);
+    Draw_ApplyStates(((ModelMatSet *)set)->flags);
+    Model_Draw(((ModelMatSet *)set)->id, 0);
     Draw_SetDefaultState();
     return 1;
 }
 
+/*
+ * Sets the blending of the next draw from a model's draw flags: bit 4 calls
+ * Gfx_SetState63(0); bits 1 to 3 pick the blend: 2 Gfx_SetBlend(4, 1),
+ * 4 Gfx_SetBlend(4, 5), 8 Gfx_SetBlend(1, 1) with Gfx_SetBlendOp(2).
+ */
 void Draw_SetBlendFlags(u16 flags)
 {
     if (flags & 0x10) {
@@ -731,82 +771,103 @@ void Draw_SetBlendFlags(u16 flags)
     }
 }
 
-void Effect_GetColor(s32 area, u8 *r, u8 *g, u8 *b, u8 *a)
+/*
+ * An area's effect colour: its kind's entry of gAreaKindColors (four bytes,
+ * r, g, b, a). The four bytes are read through four names (the table and the
+ * aliases D_0041CF01 to D_0041CF03 at +1 to +3): the game loads each with its
+ * own address, which one array read would not give.
+ */
+void Effect_GetColor(s32 area, u8 *red, u8 *green, u8 *blue, u8 *alpha)
 {
     s32 ofs;
 
     ofs = gAreaKinds[area & 0xFFFF] * 4;
-    *r = *(gAreaKindColors + ofs);
-    *g = *(D_0041CF01 + ofs);
-    *b = *(D_0041CF02 + ofs);
-    *a = *(D_0041CF03 + ofs);
+    *red = *(gAreaKindColors + ofs);
+    *green = *(D_0041CF01 + ofs);
+    *blue = *(D_0041CF02 + ofs);
+    *alpha = *(D_0041CF03 + ofs);
 }
 
-s32 Scene_FewPlaced3_Unk(void)
+/* Whether the local player may place another object counted by
+ * gScene.placed3: fewer than 3 are out (the items 0x28 and 0x2C to 0x2E test
+ * it before use, unk_3549F0.c and the game's unk_70A290.c). */
+s32 Scene_CanPlaceKind3(void)
 {
     return (s32) gScene.placed3 < 3;
 }
 
-
-s32 Effect_ExistsKind16(void *pl)
+/*
+ * Whether pl has a lure of type 1 out: a stage object of kind 0x16 (the lure,
+ * unk_3E3D00.c) and type 1 owned by pl. Seen: Plesioth bites only that type
+ * (em_plesioth.c), the fish never do (unk_3E3D00.c).
+ */
+s32 Lure_PlayerHasMonsterBait(void *pl)
 {
-    u8 *p;
+    StageObj *obj;
     s16 i;
 
     i = 0;
-    p = (u8 *)&gStageObjs;
+    obj = gStageObjs;
     do {
-        if (p[0] != 0 && p[2] == 0x16 && p[3] == 1 && *(void **)(p + 0x34) == pl) {
+        if (obj->active != 0 && obj->kind == 0x16 && obj->type == 1 && obj->owner == pl) {
             return 1;
         }
         i++;
-        p += 0x40;
-    } while (i < 0x80);
+        obj++;
+    } while (i < STAGEOBJ_COUNT);
     return 0;
 }
 
-typedef struct KindRange {
-    s16 lo;
-    s16 hi;
-} KindRange;
+extern WeaponKindRange gDualSwordRanges[];
 
-extern KindRange gDualSwordRanges[];
-
+/*
+ * For a player holding a weapon of type 6 (the dual swords): its place in the
+ * list of dual swords that gDualSwordRanges gives as ranges of weapon kinds
+ * (-1 ends it), counted from 0 across the ranges; -1 for another weapon.
+ * Seen: Bulldrome's effect keeps it per player (em_bulldrome.c).
+ */
 s16 Player_DualSwordIndex(void *obj)
 {
-    Player *p = obj;
+    Player *pl = obj;
     s16 i;
-    s16 n;
+    s16 index;
     s32 kind;
 
-    if (p->weaponType == 6) {
-        for (i = 0, n = 0; gDualSwordRanges[i].lo != -1; i++) {
-            kind = p->weaponKind;
+    if (pl->weaponType == 6) {
+        for (i = 0, index = 0; gDualSwordRanges[i].lo != -1; i++) {
+            kind = pl->weaponKind;
             if (kind >= gDualSwordRanges[i].lo && kind <= gDualSwordRanges[i].hi) {
-                return n + kind - gDualSwordRanges[i].lo;
+                return index + kind - gDualSwordRanges[i].lo;
             }
-            n += gDualSwordRanges[i].hi - gDualSwordRanges[i].lo + 1;
+            index += gDualSwordRanges[i].hi - gDualSwordRanges[i].lo + 1;
         }
     }
     return -1;
 }
 
-void Effect_ScaleVec(f32 *v)
+/* Scales a vector by Effect_Scale. */
+void Effect_ScaleVec(f32 *vec)
 {
-    Vec_Scale((f32 *) v, (f32 *) v, Effect_Scale());
+    Vec_Scale((f32 *) vec, (f32 *) vec, Effect_Scale());
 }
 
+/* The effects' global scale: always 1.0f. */
 f32 Effect_Scale(void)
 {
     return 1.0f;
 }
 
-s32 Effect_KindClass_Unk(s32 ownerIndex)
+/*
+ * The row of gEffectColors a stage object of kind 0x10 takes from its
+ * ownerIndex (unk_868110.c): 2 for 0x13, 0x18 and 0x38; 6 for 0x08 and 0x22;
+ * 7 for 0x30, 0x37, 0x42, 0x43 and 0x49; 0 for the rest.
+ */
+s32 Effect_OwnerColorRow(s32 ownerIndex)
 {
-    s32 owner;
+    s32 ownerKind;
 
-    owner = ownerIndex & 0xFF;
-    switch (owner) {
+    ownerKind = ownerIndex & 0xFF;
+    switch (ownerKind) {
     case 0x13:
     case 0x18:
     case 0x38:
@@ -825,18 +886,25 @@ s32 Effect_KindClass_Unk(s32 ownerIndex)
     }
 }
 
-f32 Lure_RandUnit(void)
+/* A random number from 0 to 1.023, in steps of 0.001. */
+f32 Rand_Unit(void)
 {
     return 0.001f * (f32) (Rand_Next(1) & 0xFFFF & 0x3FF);
 }
 
-f32 Lure_RandSigned(void)
+/* A random number from -1.024 to 1.022, in steps of 0.002. */
+f32 Rand_Signed(void)
 {
     return 0.002f * (f32) ((Rand_Next(1) & 0xFFFF & 0x3FF) - 0x200);
 }
 
 extern s16 gEffectTexIds[];
 
+/*
+ * An effect texture's id as loaded: offline the id itself; online, where only
+ * the textures of gEffectTexIds are loaded, its index in that list (-1 ends
+ * it), or -1 when it is not there.
+ */
 s16 Effect_MapTexId(s16 id)
 {
     s16 i;
@@ -852,146 +920,124 @@ s16 Effect_MapTexId(s16 id)
     return -1;
 }
 
-/* A key of a sequence (gSeqKeys, 0x1C bytes; a sequence numbers its keys
- * from 1): a colored rectangle (SeqA_Draw) whose alpha (SeqState.unk08,
- * 256 = opaque) goes from unk14 to unk16 by unk18 a frame, after unk1A
- * frames. */
-typedef struct SeqKey {
-    u8 unk00;           /* 0x00: nonzero on a sequence's last key */
-    u8 color;           /* 0x01: an index into the color table */
-    u8 unk02[2];
-    f32 x;              /* 0x04 */
-    f32 y;              /* 0x08 */
-    f32 z;              /* 0x0C */
-    s16 w;              /* 0x10 */
-    s16 h;              /* 0x12 */
-    s16 unk14;          /* 0x14: the alpha at the start */
-    s16 unk16;          /* 0x16: the alpha at the end */
-    s16 unk18;          /* 0x18: added to the alpha each frame */
-    s16 unk1A;          /* 0x1A: frames before the alpha moves */
-} SeqKey;
+extern FadeKey gFadeKeys[];
+extern FadeState gFadeB;
+extern FadeState gFadeA;
 
-/* The two sequence players, gSeqA and gSeqB. */
-typedef struct SeqState {
-    u8 active;          /* 0x00: 1 running, 2 at the last key */
-    u8 unk01;           /* 0x01 */
-    u8 unk02[2];
-    s16 id;             /* 0x04: the first key (from 1), 0 when none */
-    s16 cur;            /* 0x06: the current key */
-    s16 unk08;          /* 0x08: the alpha */
-    s16 unk0A;          /* 0x0A: the alpha of the previous frame */
-    SeqKey *key;        /* 0x0C: the current key */
-    s16 unk10;          /* 0x10: frames left before the alpha moves */
-} SeqState;
-
-extern SeqKey gSeqKeys[];
-extern SeqState gSeqB;
-extern SeqState gSeqA;
-
-void Seq_UpdateAll(u8 *task)
+/*
+ * The task (started by select's boot) that steps the two screen fades, gFadeA
+ * and gFadeB, every frame: the task's mode is gFadeA's step, its step
+ * gFadeB's (0 clears the fade, 1 runs it). A fade starts at its key `id` (set
+ * by FadeX_Start), waits the key's delay, moves its alpha to the key's
+ * alphaTo, then goes on to the next key or, after the last, stops. A new id
+ * restarts it from that key. The goto keeps the restart inside the switch,
+ * as the game's code has it.
+ */
+void ScreenFade_Task(u8 *task)
 {
-    SeqState *s;
-    SeqKey *e;
+    TaskSlot *slot = (TaskSlot *)task;
+    FadeState *fade;
+    FadeKey *key;
 
-    s = &gSeqA;
-    switch (task[8]) {
+    fade = &gFadeA;
+    switch (slot->mode) {
     case 0:
-        memset(s, 0, sizeof(SeqState));
-        s->key = NULL;
-        task[8]++;
+        memset(fade, 0, sizeof(FadeState));
+        fade->key = NULL;
+        slot->mode++;
     case 1:
-        switch (s->active) {
+        switch (fade->active) {
         case 0:
-            if (s->id == 0) {
+            if (fade->id == 0) {
                 break;
             }
         start:
-            s->active = 1;
-            s->cur = s->id;
-            s->unk08 = gSeqKeys[s->cur - 1].unk14;
-            s->unk10 = gSeqKeys[s->cur - 1].unk1A;
+            fade->active = 1;
+            fade->cur = fade->id;
+            fade->alpha = gFadeKeys[fade->cur - 1].alphaFrom;
+            fade->delay = gFadeKeys[fade->cur - 1].delay;
         case 1:
         case 2:
-            if (s->id == 0) {
-                s->active = 0;
-                s->key = NULL;
+            if (fade->id == 0) {
+                fade->active = 0;
+                fade->key = NULL;
                 break;
             }
-            if (s->id != s->cur) {
+            if (fade->id != fade->cur) {
                 goto start;
             }
-            e = &gSeqKeys[s->cur - 1];
-            s->key = e;
-            s->unk0A = s->unk08;
-            if (s->unk08 != e->unk16) {
-                if (s->unk10 == 0) {
-                    s->unk08 += e->unk18;
+            key = &gFadeKeys[fade->cur - 1];
+            fade->key = key;
+            fade->prevAlpha = fade->alpha;
+            if (fade->alpha != key->alphaTo) {
+                if (fade->delay == 0) {
+                    fade->alpha += key->alphaStep;
                 } else {
-                    s->unk10--;
+                    fade->delay--;
                 }
                 break;
             }
-            s->unk01 = 0;
-            if (e->unk00 != 0) {
-                s->active = 0;
-                s->id = 0;
-                s->key = NULL;
+            fade->starting = 0;
+            if (key->last != 0) {
+                fade->active = 0;
+                fade->id = 0;
+                fade->key = NULL;
                 break;
             }
-            if (s->active == 1) {
-                s->active++;
+            if (fade->active == 1) {
+                fade->active++;
             }
             break;
         }
         break;
     }
-    s = &gSeqB;
-    switch (task[9]) {
+    fade = &gFadeB;
+    switch (slot->step) {
     case 0:
-        memset(s, 0, sizeof(SeqState));
-        s->key = NULL;
-        task[9]++;
+        memset(fade, 0, sizeof(FadeState));
+        fade->key = NULL;
+        slot->step++;
     case 1:
-        switch (s->active) {
+        switch (fade->active) {
         case 0:
-            if (s->id == 0) {
+            if (fade->id == 0) {
                 break;
             }
         start2:
-            s->active = 1;
-            s->cur = s->id;
-            s->unk08 = gSeqKeys[s->cur - 1].unk14;
-            s->unk10 = gSeqKeys[s->cur - 1].unk1A;
+            fade->active = 1;
+            fade->cur = fade->id;
+            fade->alpha = gFadeKeys[fade->cur - 1].alphaFrom;
+            fade->delay = gFadeKeys[fade->cur - 1].delay;
         case 1:
         case 2:
-            if (s->id == 0) {
-                s->active = 0;
-                s->key = NULL;
+            if (fade->id == 0) {
+                fade->active = 0;
+                fade->key = NULL;
                 break;
             }
-            if (s->id != s->cur) {
+            if (fade->id != fade->cur) {
                 goto start2;
             }
-            e = &gSeqKeys[s->cur - 1];
-            s->key = e;
-            s->unk0A = s->unk08;
-            if (s->unk08 != e->unk16) {
-                if (s->unk10 == 0) {
-                    s->unk08 += e->unk18;
+            key = &gFadeKeys[fade->cur - 1];
+            fade->key = key;
+            fade->prevAlpha = fade->alpha;
+            if (fade->alpha != key->alphaTo) {
+                if (fade->delay == 0) {
+                    fade->alpha += key->alphaStep;
                 } else {
-                    s->unk10--;
+                    fade->delay--;
                 }
                 break;
             }
-            s->unk01 = 0;
-            if (e->unk00 != 0) {
-                s->active = 0;
-                s->id = 0;
-                s->key = NULL;
+            fade->starting = 0;
+            if (key->last != 0) {
+                fade->active = 0;
+                fade->id = 0;
+                fade->key = NULL;
                 break;
             }
-            if (s->active == 1) {
-                s->active++;
+            if (fade->active == 1) {
+                fade->active++;
             }
             break;
         }
@@ -1000,217 +1046,232 @@ void Seq_UpdateAll(u8 *task)
 }
 
 
-typedef struct SeqQuad {
-    f32 p0[4];
-    f32 p1[4];
-    u32 color;
-} SeqQuad;
-
-extern u32 gSeqAColors[];
-extern u32 gSeqBColors[];
+extern u32 gFadeAColors[];
+extern u32 gFadeBColors[];
 struct PrimLineF;
 s32 Prim_FillRectF(struct PrimLineF *q);
 
-
-u8 SeqA_GetState(void)
+/*
+ * gFadeA's state: 0 idle, 1 while its alpha moves (or before the last key's
+ * first pass ends), 2 when it holds its last alpha. The lobby and the game
+ * wait for it to leave 1.
+ */
+u8 FadeA_GetState(void)
 {
-    SeqState *s = &gSeqA;
-    SeqKey *e;
+    FadeState *fade = &gFadeA;
+    FadeKey *key;
 
-    if ((s->active == 0 && s->unk01 == 0) || s->id == 0) {
+    if ((fade->active == 0 && fade->starting == 0) || fade->id == 0) {
         return 0;
     }
-    e = &gSeqKeys[s->cur - 1];
-    if (s->unk08 != e->unk16 || (e->unk00 == 0 && s->active == 1)) {
+    key = &gFadeKeys[fade->cur - 1];
+    if (fade->alpha != key->alphaTo || (key->last == 0 && fade->active == 1)) {
         return 1;
     }
     return 2;
 }
 
-u8 SeqB_GetState(void)
+/* The same for gFadeB. */
+u8 FadeB_GetState(void)
 {
-    SeqState *s = &gSeqB;
-    SeqKey *e;
+    FadeState *fade = &gFadeB;
+    FadeKey *key;
 
-    if ((s->active == 0 && s->unk01 == 0) || s->id == 0) {
+    if ((fade->active == 0 && fade->starting == 0) || fade->id == 0) {
         return 0;
     }
-    e = &gSeqKeys[s->cur - 1];
-    if (s->unk08 != e->unk16 || (e->unk00 == 0 && s->active == 1)) {
+    key = &gFadeKeys[fade->cur - 1];
+    if (fade->alpha != key->alphaTo || (key->last == 0 && fade->active == 1)) {
         return 1;
     }
     return 2;
 }
 
-void SeqA_Draw(void)
+/* Draws gFadeA's current key: its rectangle in its colour (gFadeAColors) at
+ * the fade's alpha. */
+void FadeA_Draw(void)
 {
-    SeqState *s = &gSeqA;
-    f32 a;
-    SeqQuad q;
+    FadeState *fade = &gFadeA;
+    f32 alpha;
+    FadeQuad quad;
 
-    if (s->id == 0) {
+    if (fade->id == 0) {
         return;
     }
-    if (s->key == NULL) {
+    if (fade->key == NULL) {
         return;
     }
-    a = (f32)s->unk08 / 256.0f;
-    if (a <= 0.0f) {
-        return;
-    }
-    Gfx_SetBlend(4, 5);
-    Gs_SetState(0x6D, 7);
-    q.p0[0] = s->key->x;
-    q.p0[1] = s->key->y;
-    q.p0[2] = s->key->z;
-    q.p0[3] = 1.0f;
-    q.p1[0] = q.p0[0] + s->key->w;
-    q.p1[1] = q.p0[1] + s->key->h;
-    q.p1[2] = q.p0[2];
-    q.p1[3] = 1.0f;
-    q.color = ((u32)(255.0f * a) << 24 & 0xFF000000) | (gSeqAColors[s->key->color] & 0xFFFFFF);
-    Prim_FillRectF((struct PrimLineF *)&q);
-    Gs_SetState(0x6D, 3);
-}
-
-void SeqB_Draw(void)
-{
-    SeqState *s = &gSeqB;
-    f32 a;
-    SeqQuad q;
-
-    if (s->id == 0) {
-        return;
-    }
-    if (s->key == NULL) {
-        return;
-    }
-    a = (f32)s->unk08 / 256.0f;
-    if (a <= 0.0f) {
+    alpha = (f32)fade->alpha / 256.0f;
+    if (alpha <= 0.0f) {
         return;
     }
     Gfx_SetBlend(4, 5);
     Gs_SetState(0x6D, 7);
-    q.p0[0] = s->key->x;
-    q.p0[1] = s->key->y;
-    q.p0[2] = s->key->z;
-    q.p0[3] = 1.0f;
-    q.p1[0] = q.p0[0] + s->key->w;
-    q.p1[1] = q.p0[1] + s->key->h;
-    q.p1[2] = q.p0[2];
-    q.p1[3] = 1.0f;
-    q.color = ((u32)(255.0f * a) << 24 & 0xFF000000) | (gSeqBColors[s->key->color] & 0xFFFFFF);
-    Prim_FillRectF((struct PrimLineF *)&q);
+    quad.p0[0] = fade->key->x;
+    quad.p0[1] = fade->key->y;
+    quad.p0[2] = fade->key->z;
+    quad.p0[3] = 1.0f;
+    quad.p1[0] = quad.p0[0] + fade->key->w;
+    quad.p1[1] = quad.p0[1] + fade->key->h;
+    quad.p1[2] = quad.p0[2];
+    quad.p1[3] = 1.0f;
+    quad.color = ((u32)(255.0f * alpha) << 24 & 0xFF000000) | (gFadeAColors[fade->key->color] & 0xFFFFFF);
+    Prim_FillRectF((struct PrimLineF *)&quad);
     Gs_SetState(0x6D, 3);
 }
 
-void SeqA_Start(s32 id)
+/* The same for gFadeB (gFadeBColors). */
+void FadeB_Draw(void)
 {
-    SeqState *s = &gSeqA;
-    SeqKey *e;
-    s32 d;
-    s32 n;
+    FadeState *fade = &gFadeB;
+    f32 alpha;
+    FadeQuad quad;
 
-    s->id = id;
-    e = &gSeqKeys[s->id - 1];
-    d = e->unk16 - e->unk14;
-    if (d < 0) {
-        d = -d;
+    if (fade->id == 0) {
+        return;
     }
-    n = e->unk18;
-    if (n < 0) {
-        n = -n;
+    if (fade->key == NULL) {
+        return;
     }
-    s->unk0A = d / n;
-    s->cur = s->id;
-    s->unk08 = gSeqKeys[s->cur - 1].unk14;
-    s->unk10 = gSeqKeys[s->cur - 1].unk1A;
-    s->unk01 = 1;
+    alpha = (f32)fade->alpha / 256.0f;
+    if (alpha <= 0.0f) {
+        return;
+    }
+    Gfx_SetBlend(4, 5);
+    Gs_SetState(0x6D, 7);
+    quad.p0[0] = fade->key->x;
+    quad.p0[1] = fade->key->y;
+    quad.p0[2] = fade->key->z;
+    quad.p0[3] = 1.0f;
+    quad.p1[0] = quad.p0[0] + fade->key->w;
+    quad.p1[1] = quad.p0[1] + fade->key->h;
+    quad.p1[2] = quad.p0[2];
+    quad.p1[3] = 1.0f;
+    quad.color = ((u32)(255.0f * alpha) << 24 & 0xFF000000) | (gFadeBColors[fade->key->color] & 0xFFFFFF);
+    Prim_FillRectF((struct PrimLineF *)&quad);
+    Gs_SetState(0x6D, 3);
 }
 
-void SeqA_Reset(void)
+/*
+ * Starts gFadeA at key `id` (FADE_* in scene.h). prevAlpha holds the first
+ * ramp's length in frames until Fade_Task's first step overwrites it.
+ */
+void FadeA_Start(s32 id)
 {
-    gSeqA.active = 0;
-    gSeqA.unk01 = 0;
-    gSeqA.id = 0;
-    gSeqA.key = NULL;
-    gSeqA.unk0A = 0;
-}
+    FadeState *fade = &gFadeA;
+    FadeKey *key;
+    s32 range;
+    s32 step;
 
-void SeqB_Start(s32 id)
-{
-    SeqState *s = &gSeqB;
-    SeqKey *e;
-    s32 d;
-    s32 n;
-
-    s->id = id;
-    e = &gSeqKeys[s->id - 1];
-    d = e->unk16 - e->unk14;
-    if (d < 0) {
-        d = -d;
+    fade->id = id;
+    key = &gFadeKeys[fade->id - 1];
+    range = key->alphaTo - key->alphaFrom;
+    if (range < 0) {
+        range = -range;
     }
-    n = e->unk18;
-    if (n < 0) {
-        n = -n;
+    step = key->alphaStep;
+    if (step < 0) {
+        step = -step;
     }
-    s->unk0A = d / n;
-    s->cur = s->id;
-    s->unk08 = gSeqKeys[s->cur - 1].unk14;
-    s->unk10 = gSeqKeys[s->cur - 1].unk1A;
-    s->unk01 = 1;
+    fade->prevAlpha = range / step;
+    fade->cur = fade->id;
+    fade->alpha = gFadeKeys[fade->cur - 1].alphaFrom;
+    fade->delay = gFadeKeys[fade->cur - 1].delay;
+    fade->starting = 1;
 }
 
-void SeqB_Reset(void)
+/* Stops gFadeA at once. */
+void FadeA_Reset(void)
 {
-    gSeqB.active = 0;
-    gSeqB.unk01 = 0;
-    gSeqB.id = 0;
-    gSeqB.key = NULL;
-    gSeqB.unk0A = 0;
+    gFadeA.active = 0;
+    gFadeA.starting = 0;
+    gFadeA.id = 0;
+    gFadeA.key = NULL;
+    gFadeA.prevAlpha = 0;
 }
 
-void Fade_Draw(void)
+/* The same as FadeA_Start, for gFadeB. */
+void FadeB_Start(s32 id)
+{
+    FadeState *fade = &gFadeB;
+    FadeKey *key;
+    s32 range;
+    s32 step;
+
+    fade->id = id;
+    key = &gFadeKeys[fade->id - 1];
+    range = key->alphaTo - key->alphaFrom;
+    if (range < 0) {
+        range = -range;
+    }
+    step = key->alphaStep;
+    if (step < 0) {
+        step = -step;
+    }
+    fade->prevAlpha = range / step;
+    fade->cur = fade->id;
+    fade->alpha = gFadeKeys[fade->cur - 1].alphaFrom;
+    fade->delay = gFadeKeys[fade->cur - 1].delay;
+    fade->starting = 1;
+}
+
+/* Stops gFadeB at once. */
+void FadeB_Reset(void)
+{
+    gFadeB.active = 0;
+    gFadeB.starting = 0;
+    gFadeB.id = 0;
+    gFadeB.key = NULL;
+    gFadeB.prevAlpha = 0;
+}
+
+/*
+ * Draws the brightness option over the whole screen (640 x 448): above the
+ * neutral 0x80 a white rectangle of alpha brightness - 0x80, below it a black
+ * one of alpha (0x80 - brightness) * 2, each with its own GS blending (state
+ * 0x5E); GS states 0xD and 0x5E are put back after.
+ */
+void Brightness_Draw(void)
 {
     s32 dark;
-    s32 a;
-    s32 c;
-    s32 alpha;
-    s32 test;
-    ScreenRect r;
+    s32 alphaLevel;
+    s32 level;
+    s32 savedAlpha;
+    s32 savedTest;
+    ScreenRect rect;
 
     if (gSysSettings.brightness == 0x80) {
         return;
     }
     if (gSysSettings.brightness > 0x80U) {
-        a = gSysSettings.brightness - 0x80;
+        alphaLevel = gSysSettings.brightness - 0x80;
         dark = 0;
-        c = 0xFF;
+        level = 0xFF;
     } else {
-        a = 0x80 - gSysSettings.brightness;
+        alphaLevel = 0x80 - gSysSettings.brightness;
         dark = 1;
-        a *= 2;
-        c = 0;
+        alphaLevel *= 2;
+        level = 0;
     }
-    if (a == 0) {
+    if (alphaLevel == 0) {
         return;
     }
-    r.w = 0x280;
-    r.y = 0;
-    r.h = 0x1C0;
-    r.x = 0;
-    r.color = (a << 24) | (c << 16) | (c << 8) | c;
-    alpha = Gs_GetState(0xD);
-    test = Gs_GetState(0x5E);
+    rect.w = 640;
+    rect.y = 0;
+    rect.h = 448;
+    rect.x = 0;
+    rect.color = (alphaLevel << 24) | (level << 16) | (level << 8) | level;
+    savedAlpha = Gs_GetState(0xD);
+    savedTest = Gs_GetState(0x5E);
     Gs_SetState(0xD, 0);
     if (dark == 0) {
         Gs_SetState(0x5E, 0x12);
     } else {
         Gs_SetState(0x5E, 0x32);
     }
-    Prim_FillRect((struct PrimLine *)&r);
-    Gs_SetState(0xD, alpha);
-    Gs_SetState(0x5E, test);
+    Prim_FillRect((struct PrimLine *)&rect);
+    Gs_SetState(0xD, savedAlpha);
+    Gs_SetState(0x5E, savedTest);
 }
 
 void PlayTime_Tick(void);
@@ -1223,51 +1284,59 @@ void Scene_EnterField(void);
 void Scene_QuestStartTask(void);
 void Scene_UpdateQuest(void);
 void Scene_ResultFade(void);
-void func_003274E0(void);
+void Scene_Idle(void);
 void Scene_QuestFrameTick(void);
 void Scene_Opening(void);
 s32 Quest_Teardown(s32 arg0);
 extern u8 gGmSubLoaded;
 
-void Scene_QuestTask(u8 *obj)
+/*
+ * The scene task (a task slot; the lobby starts it too): counts the play
+ * time, loads gm_sub offline on its first frame, then each frame runs the
+ * scene gScene.scene (SCENE_*), between the network's receive and flush when
+ * online.
+ */
+void Scene_QuestTask(u8 *task)
 {
+    TaskSlot *slot = (TaskSlot *)task;
+
     PlayTime_Tick();
     func_0036CCE0();
-    switch (obj[8]) {
+    switch (slot->mode) {
     case 0:
         if (Game_IsOnline() == 0) {
             gGmSubLoaded = 0;
             Overlay_LoadGmSub();
         }
         Scene_RequestPause(0);
-        obj[8]++;
+        slot->mode++;
     case 1:
         if (Game_IsOnline() == 1) {
             QNetIf_UpdateReceive();
         }
         switch (gScene.scene) {
-        case 0:
+        case SCENE_ENTER:
             Scene_EnterField();
-        case 1:
+        case SCENE_QUEST_START:
             Scene_QuestStartTask();
             break;
-        case 2:
+        case SCENE_FIELD:
             Scene_UpdateQuest();
             break;
-        case 3:
+        case SCENE_QUEST_END:
             Scene_ResultFade();
             break;
-        case 4:
-            func_003274E0();
+        case SCENE_IDLE:
+            Scene_Idle();
             break;
-        case 5:
+        case SCENE_RESULTS:
             Scene_QuestFrameTick();
             break;
-        case 7:
+        case SCENE_OPENING:
             Scene_Opening();
             break;
-        case 6:
-            if (Quest_Teardown((s32)obj) == 1) {
+        case SCENE_EXIT:
+            if (Quest_Teardown((s32)task) == 1) {
                 return;
             }
             break;
@@ -1279,13 +1348,18 @@ void Scene_QuestTask(u8 *obj)
     }
 }
 
+/*
+ * SCENE_ENTER: goes on to SCENE_QUEST_START with every player local and no
+ * preset hunters, and starts the quest preparation (plsel_entry, with the
+ * overlays 3 and 0xB) to run alongside.
+ */
 void Scene_EnterField(void)
 {
     s16 i;
 
     gScene.step = 0;
     gScene.subStep = 0;
-    gScene.scene = 1;
+    gScene.scene = SCENE_QUEST_START;
     gScene.allLocal = 1;
     gScene.openingFirst = 0;
     gGalleryTitle[0] = 0;
@@ -1306,18 +1380,25 @@ void Scene_EnterField(void)
     TaskSlot_Set(plsel_entry, 6);
 }
 
+/*
+ * QSTART_INIT, run once the quest preparation has cleared allLocal: resets
+ * the subsystems (keeping gSoundLoading), copies the options and each
+ * player's choices from gQuestSync, sets up the quest and its supply box,
+ * and tells the peers. A drill starts plsel's select task; a training quest
+ * loads overlay 0xB too.
+ */
 void Scene_StartQuest(void)
 {
-    u8 save;
+    u8 soundLoading;
     s32 i;
 
     if (gScene.allLocal != 0) {
         return;
     }
-    save = gSoundLoading;
+    soundLoading = gSoundLoading;
     Game_ResetSubsystems();
     Gfx_ClearModelBuffers();
-    gSoundLoading = save;
+    gSoundLoading = soundLoading;
     gScene.subStep = 0;
     gScene.step++;
     Quest_Clear();
@@ -1347,6 +1428,14 @@ void Scene_StartQuest(void)
     QSync_SendState(8, gScene.localPlayer);
 }
 
+/*
+ * QSTART_PLAY: while a drill's select screen runs (allLocal set) it sends
+ * the state every 16 frames and waits; a quest given up there
+ * (QUEST_PHASE_QUIT) goes to SCENE_RESULTS. Then it copies the players'
+ * choices again, sets up the HUD, the quest, the object lists and the
+ * monsters, and goes on to load the sounds. The goto joins the two ways to
+ * SCENE_RESULTS, as the game's code does.
+ */
 void Scene_StartQuestPlay(void)
 {
     s16 i;
@@ -1355,16 +1444,16 @@ void Scene_StartQuestPlay(void)
         if ((gFrameTick & 0xF) == 0) {
             QSync_SendState(8, gScene.localPlayer);
         }
-        if (gScene.questPhase == 8) {
+        if (gScene.questPhase == QUEST_PHASE_QUIT) {
             Loading_Stop();
             goto quit;
         }
         return;
     }
-    if (Quest_IsDrill() == 1 && gScene.questPhase == 8) {
+    if (Quest_IsDrill() == 1 && gScene.questPhase == QUEST_PHASE_QUIT) {
     quit:
         gScene.step = 0;
-        gScene.scene = 5;
+        gScene.scene = SCENE_RESULTS;
         Scene_LoadOverlay(0xB);
         return;
     }
@@ -1391,7 +1480,7 @@ void Scene_StartQuestPlay(void)
     ObjListA70_Clear();
     Versus_ConsumeTeamItem();
     for (i = 0; i < 10; i++) {
-        gScene.itemUses[i] = 0; /* itemUses and the 6 bytes after */
+        gScene.itemUses[i] = 0; /* itemUses and the 6 bytes after it */
     }
     Quest_SpawnMonsters(1);
     Packet_SetMode2();
@@ -1400,10 +1489,16 @@ void Scene_StartQuestPlay(void)
     QSync_SendState(8, gScene.localPlayer);
 }
 
+/*
+ * QSTART_SOUNDS, one subStep a frame: the common bank 1, the area's sound
+ * effect bank 7 (gAreaSeBanks), each of the four players' banks 2 to 5
+ * (three subSteps each: clear, list and load, wait), then the monsters'
+ * bank 6; then the next scene step. Banks are read into gLoadBuf.
+ */
 void Scene_LoadQuestSounds(void)
 {
     u8 *buf = gLoadBuf;
-    s16 k;
+    s16 player;
     u32 bank;
 
     Loading_SetMessage(1);
@@ -1450,8 +1545,8 @@ void Scene_LoadQuestSounds(void)
     case 12:
     case 15:
         gScene.subStep++;
-        k = (gScene.subStep - 6) / 3;
-        Sound_StopBank(k + 2);
+        player = (gScene.subStep - 6) / 3;
+        Sound_StopBank(player + 2);
         FlushCache(0);
         SndLoad_Init(2);
         return;
@@ -1459,10 +1554,10 @@ void Scene_LoadQuestSounds(void)
     case 10:
     case 13:
     case 16:
-        k = (gScene.subStep - 7) / 3;
-        if (SndLoad_QuestBanks(buf, (u8 *)&gPlayers[k])) {
+        player = (gScene.subStep - 7) / 3;
+        if (SndLoad_QuestBanks(buf, (u8 *)&gPlayers[player])) {
             gScene.subStep++;
-            Sound_LoadStaged((struct SndFile *) buf, buf + 0x20000, k + 2);
+            Sound_LoadStaged((struct SndFile *) buf, buf + 0x20000, player + 2);
         }
         return;
     case 8:
@@ -1498,6 +1593,11 @@ void Scene_LoadQuestSounds(void)
     }
 }
 
+/*
+ * QSTART_FIELD: online, waits for every peer (QSync_Begin); then runs the
+ * field once, shows the players, clears the quest's per-run scene state and
+ * the timer, starts the area's fog and objects, and fades in.
+ */
 void Scene_StartField(void)
 {
     s16 i;
@@ -1527,7 +1627,7 @@ void Scene_StartField(void)
     Tex_LoadCommon();
     Mem_Compact();
     CamCtl_Update(1);
-    SeqA_Start(2);
+    FadeA_Start(FADE_IN_BLACK);
     Tex_PatchClut_Unk();
     Loading_Stop();
     gGalleryTitle[0] = 0;
@@ -1535,6 +1635,8 @@ void Scene_StartField(void)
     gScene.step++;
 }
 
+/* QSTART_AREA: online, waits for the peers; then goes to SCENE_FIELD and
+ * starts the area's music. */
 void Scene_EnterArea(void)
 {
     if ((Game_IsOnline() == 1) && (QuestNet_NoPeerReady() == 0)) {
@@ -1542,36 +1644,47 @@ void Scene_EnterArea(void)
         return;
     }
     gScene.step = 0;
-    gScene.scene = 2;
+    gScene.scene = SCENE_FIELD;
     Bgm_EnterArea(gScene.area);
     Jingle_OnAreaChange(gScene.area);
 }
 
+/* SCENE_QUEST_START: runs the quest start's step (QSTART_*). */
 void Scene_QuestStartTask(void)
 {
     Pad_UpdateInput();
     switch (gScene.step) {
-    case 0:
+    case QSTART_INIT:
         Scene_StartQuest();
         break;
-    case 1:
+    case QSTART_PLAY:
         Scene_StartQuestPlay();
         break;
-    case 2:
+    case QSTART_SOUNDS:
         Scene_LoadQuestSounds();
         break;
-    case 3:
+    case QSTART_FIELD:
         Scene_StartField();
         break;
-    case 4:
+    case QSTART_AREA:
         Scene_EnterArea();
         break;
     }
 }
 
+/*
+ * SCENE_FIELD, the quest in the field. Steps 0 and 1 run the frame: events,
+ * the field, the notices and the quest; when the quest is over it clears the
+ * local player's aim and requests and goes to SCENE_QUEST_END (or to
+ * SCENE_RESULTS when the quest was given up). When the local player starts
+ * to leave the area, step 2 silences the sound and draws the map for 10
+ * frames, then swaps the areas: frees the old one, loads the new one, its
+ * objects and monsters. Steps 3 to 6 load the monsters' bank 6 and the
+ * area's bank 7, then fade in.
+ */
 void Scene_UpdateQuest(void)
 {
-    Player *p = &gPlayers[gScene.localPlayer];
+    Player *pl = &gPlayers[gScene.localPlayer];
     u8 *buf;
     u32 bank;
 
@@ -1592,24 +1705,24 @@ void Scene_UpdateQuest(void)
         Quest_Update();
         if (Quest_PhaseIsOver(2) == 1) {
             gScene.step = 0;
-            gScene.scene = 3;
-            p->aimLockTimer = 0;
-            p->aimMode = 0;
-            p->unk393[0x395 - 0x393] = 0;
-            *(s16 *)&p->unk6B1[0x6B2 - 0x6B1] = 0;
-            p->hitStop = 0;
-            p->hitStopAdd = 0;
-            p->teamItemMask = 0;
-            p->actRequest = 0;
-            p->offerRequest = 0;
-            if (gScene.questPhase == 8) {
+            gScene.scene = SCENE_QUEST_END;
+            pl->aimLockTimer = 0;
+            pl->aimMode = 0;
+            pl->unk393[0x395 - 0x393] = 0;
+            *(s16 *)&pl->unk6B1[0x6B2 - 0x6B1] = 0;
+            pl->hitStop = 0;
+            pl->hitStopAdd = 0;
+            pl->teamItemMask = 0;
+            pl->actRequest = 0;
+            pl->offerRequest = 0;
+            if (gScene.questPhase == QUEST_PHASE_QUIT) {
                 gScene.step = 0;
-                gScene.scene = 5;
+                gScene.scene = SCENE_RESULTS;
                 Scene_LoadOverlay(0xB);
             }
             break;
         }
-        if (p->areaMoveState != 0) {
+        if (pl->areaMoveState != 0) {
             gScene.step++;
             if (gScene.step == 2) {
                 Sound_Silence();
@@ -1637,10 +1750,10 @@ void Scene_UpdateQuest(void)
         Vib_StopAll();
         Stream_Pause(0, 1);
         Area_FreeAll();
-        QuestEm_LeaveArea(p->area, p->nextArea);
+        QuestEm_LeaveArea(pl->area, pl->nextArea);
         MinePoint_RemoveTemporary();
-        gScene.area = (u8)p->nextArea;
-        p->area = p->nextArea;
+        gScene.area = (u8)pl->nextArea;
+        pl->area = pl->nextArea;
         Mem_Compact();
         Area_Load(gScene.area);
         Obj_FreeAll();
@@ -1697,7 +1810,7 @@ void Scene_UpdateQuest(void)
             gScene.step = 0;
             Player_InitAll(1);
             CamCtl_Update(1);
-            SeqA_Start(2);
+            FadeA_Start(FADE_IN_BLACK);
             Tex_PatchClut_Unk();
             QNetIf_Unready();
             if ((gScreenCaptureOk & 0x7F) == 2 && ScreenTex_Capture(1) != 0) {
@@ -1710,42 +1823,49 @@ void Scene_UpdateQuest(void)
     }
 }
 
+/*
+ * SCENE_QUEST_END: waits 120 frames, darkens the screen to alpha 0xC0 by 8 a
+ * frame, shows the quest's end (the result texture and an area object of
+ * kind 0x17 with the quest phase) for 150 frames, then marks the local
+ * player ready, goes to SCENE_RESULTS and loads overlay 0xB. The screen is
+ * covered by a sprite of colour 0xFF703A18 at the timer's alpha.
+ */
 void Scene_ResultFade(void)
 {
-    SceneState *sc = &gScene;
+    SceneState *sceneState = &gScene;
     SprDesc spr;
 
     Pad_UpdateInput();
     switch (gScene.step) {
     case 0:
-        sc->step++;
-        sc->timer = 0;
-        sc->timer2 = 0;
+        sceneState->step++;
+        sceneState->timer = 0;
+        sceneState->timer2 = 0;
         break;
     case 1:
-        if (++sc->timer >= 120) {
-            sc->step++;
+        if (++sceneState->timer >= 120) {
+            sceneState->step++;
         }
         break;
     case 2:
-        sc->timer += 8;
-        if (sc->timer >= 0xC0) {
-            sc->step++;
-            sc->timer = 0xC0;
-            sc->timer2 = 0;
+        sceneState->timer += 8;
+        if (sceneState->timer >= 0xC0) {
+            sceneState->step++;
+            sceneState->timer = 0xC0;
+            sceneState->timer2 = 0;
             Tex_LoadResultTex_Unk();
             AreaObj_K17_Create(gScene.questPhase);
         }
         break;
     case 3:
-        if (++sc->timer2 >= 150) {
-            sc->step++;
+        if (++sceneState->timer2 >= 150) {
+            sceneState->step++;
         }
         break;
     case 4:
-        sc->scene = 5;
+        sceneState->scene = SCENE_RESULTS;
         Scene_LoadOverlay(0xB);
-        sc->step = 0;
+        sceneState->step = 0;
         gQuestSync.ready[gScene.localPlayer] = 1;
         if (Game_IsOnline() != 0) {
             QSync_SendState(2, gScene.localPlayer);
@@ -1760,7 +1880,7 @@ void Scene_ResultFade(void)
     spr.size[1] = 448.0f;
     spr.scale[0] = 1.0f;
     spr.scale[1] = 1.0f;
-    spr.alpha = (f32)sc->timer / 255.0f;
+    spr.alpha = (f32)sceneState->timer / 255.0f;
     spr.unk34 = 0;
     spr.flags = 5;
     spr.color = 0xFF703A18;
@@ -1770,36 +1890,45 @@ void Scene_ResultFade(void)
     Frame_Draw();
 }
 
-void func_003274E0(void)
+/* SCENE_IDLE: nothing. */
+void Scene_Idle(void)
 {
 }
 
+/* SCENE_RESULTS: runs overlay 0xB's results frame (Plsel_ResultsUpdate), sending
+ * the state to the peers every 60 frames. */
 void Scene_QuestFrameTick(void)
 {
     s16 frame;
 
-    func_D683C0();
+    Plsel_ResultsUpdate();
     frame = gScene.stateSyncFrame + 1;
     gScene.stateSyncFrame = frame;
-    if (frame >= 0x3C) {
+    if (frame >= 60) {
         gScene.stateSyncFrame = 0;
         QSync_SendState(8, gScene.localPlayer);
     }
     Frame_Draw();
 }
 
+/*
+ * Runs and draws one field frame; while paused it only updates the item HUD
+ * and draws over the screen's capture, and on leaving the pause it clears
+ * the state and runs the frame. Returns 0. The goto shares the frame's code
+ * between the two ways in, as the game's code does.
+ */
 s32 Scene_FieldFrame(void)
 {
     Pad_UpdateInput();
-    if (Game_PauseState() < 2) {
+    if (Game_PauseState() < PAUSE_CAPTURED) {
     draw:
         Field_UpdateAll();
         Frame_Draw();
         Hit_ClearStatusAll();
         return 0;
     }
-    if (Game_PauseState() == 4) {
-        gScene.pauseState = 0;
+    if (Game_PauseState() == PAUSE_LEAVING) {
+        gScene.pauseState = PAUSE_NONE;
         goto draw;
     }
     ItemHud_Update();
@@ -1807,53 +1936,68 @@ s32 Scene_FieldFrame(void)
     return 0;
 }
 
+/*
+ * Counts gScene.frame, and the save's play time in seconds every 30 frames
+ * (not while paused offline), up to PLAYTIME_MAX.
+ */
 void PlayTime_Tick(void)
 {
     gScene.frame += 1;
     if (Game_IsOnline() == 0) {
-        if (Game_PauseState() < 2) {
-            goto block_3;
+        if (Game_PauseState() < PAUSE_CAPTURED) {
+            goto count;
         }
     } else {
-block_3:
+count:
         if (((s32) gScene.frame % 30) == 0) {
             gSave.playTime += 1;
-            if (gSave.playTime > 35999999U) {
-                gSave.playTime = 0x022550FF;
+            if (gSave.playTime > (u32)PLAYTIME_MAX) {
+                gSave.playTime = PLAYTIME_MAX;
             }
         }
     }
 }
 
+/*
+ * The offline pause: mode 1 asks for it (from no pause), mode 0 leaves it
+ * (from a pause shown). Returns 1 when the state changed. Online, or once
+ * the quest is over, there is no pause.
+ */
 s32 Scene_RequestPause(s32 mode)
 {
-    s32 st;
+    s32 state;
 
     if (Game_IsOnline() == 1) {
-        gScene.pauseState = 0;
+        gScene.pauseState = PAUSE_NONE;
         return 0;
     }
     if (Quest_PhaseIsOver(0) == 1) {
-        gScene.pauseState = 0;
+        gScene.pauseState = PAUSE_NONE;
         return 0;
     }
-    st = gScene.pauseState;
-    if (mode == 0 && st >= 2 && st < 4) {
-        gScene.pauseState = 4;
+    state = gScene.pauseState;
+    if (mode == 0 && state >= PAUSE_CAPTURED && state < PAUSE_LEAVING) {
+        gScene.pauseState = PAUSE_LEAVING;
         return 1;
     }
-    if (mode == 1 && st == 0) {
-        gScene.pauseState = 1;
+    if (mode == 1 && state == PAUSE_NONE) {
+        gScene.pauseState = PAUSE_REQUESTED;
         return 1;
     }
     return 0;
 }
 
+/* The pause state, PAUSE_*. */
 s32 Game_PauseState(void)
 {
     return (s32) gScene.pauseState;
 }
 
+/*
+ * SCENE_EXIT: ends the quest's sound and sync. Online the lobby takes over
+ * (step 0); offline it resets the subsystems and clears quest flag 0x200000.
+ * Returns 1. The argument (the task) is not used.
+ */
 s32 Quest_Teardown(s32 unused)
 {
     gSysSettings.plselLoaded = 0;
@@ -1873,31 +2017,41 @@ s32 Quest_Teardown(s32 unused)
     return 1;
 }
 
+/* Ends the task in slot 2 with code 1 (Task_EndGmSubForNetScene). */
 void Quest_TeardownNet(void)
 {
-    TaskSlot2_EndCode1();
+    Task_EndGmSubForNetScene();
 }
 
+/*
+ * SCENE_OPENING plays a movie. subStep 0 is the first boot: movie 7, then
+ * SCENE_EXIT. Otherwise movie 8, then the overlay's sequence that follows it
+ * (Ending_Init, Ending_Update), and, the first time only (openingFirst, event
+ * flag 0x26 not yet set), the award texts gAwardNoticeLines[5] centred on the
+ * screen for 150 frames (button 0x20 shortens it after the first 60), then
+ * SCENE_EXIT. Button 0x8000 stops a movie that is playing; each movie ends
+ * with FADE_OUT_BLACK and a wait of at most 30 frames for it to stop.
+ */
 void Scene_Opening(void)
 {
-    SceneState *sc = &gScene;
-    s32 st;
+    SceneState *sceneState = &gScene;
+    s32 status;
     char **lines;
     s32 y;
     s32 x;
 
     switch (gScene.step) {
     case 0:
-        if (sc->subStep == 0) {
+        if (sceneState->subStep == 0) {
             Save_SetEventFlag(0x185);
             Movie_Play(7);
             EventFlag_Set(0x25);
         } else {
             Movie_Play(8);
             if (EventFlag_Test(0x26) == 0) {
-                sc->openingFirst = 1;
+                sceneState->openingFirst = 1;
             } else {
-                sc->openingFirst = 0;
+                sceneState->openingFirst = 0;
             }
             EventFlag_Set(0x26);
             EventFlag_Set(0x31);
@@ -1905,97 +2059,99 @@ void Scene_Opening(void)
             EventFlag_Set(0x33);
             EventFlag_Set(0x34);
         }
-        sc->step++;
-        sc->timer = 0;
+        sceneState->step++;
+        sceneState->timer = 0;
         break;
     case 1:
         Movie_Update();
-        st = Movie_GetStatus();
-        if (st != 3) {
-            sc->timer++;
-            if (st != 2 || !(D_006AE0B4 & 0x8000)) {
+        status = Movie_GetStatus();
+        if (status != 3) {
+            sceneState->timer++;
+            if (status != 2 || !(gPadState[0].pressed & 0x8000)) {
                 break;
             }
         }
-        SeqA_Start(1);
-        sc->step++;
-        sc->timer = 30;
+        FadeA_Start(FADE_OUT_BLACK);
+        sceneState->step++;
+        sceneState->timer = 30;
         Movie_RequestStop();
         break;
     case 2:
         Movie_Update();
-        if (SeqA_GetState() == 1) {
+        if (FadeA_GetState() == 1) {
             break;
         }
         if (Movie_GetStatus() == 0) {
         stop:
             Movie_Stop();
-            if (sc->subStep == 0) {
-                SeqA_Start(2);
-                sc->scene = 6;
-                sc->step = 0;
-                sc->subStep = 0;
+            if (sceneState->subStep == 0) {
+                FadeA_Start(FADE_IN_BLACK);
+                sceneState->scene = SCENE_EXIT;
+                sceneState->step = 0;
+                sceneState->subStep = 0;
             } else {
-                sc->step++;
+                sceneState->step++;
                 Ending_Init();
             }
         } else {
-            if (sc->timer == 0) {
+            if (sceneState->timer == 0) {
                 goto stop;
             }
-            sc->timer--;
+            sceneState->timer--;
         }
         break;
     case 3:
-        if (func_D64D40() != 0) {
+        if (Ending_Update() != 0) {
             break;
         }
-        if (sc->openingFirst == 1) {
-            SeqA_Reset();
-            sc->step++;
-            sc->timer = 150;
+        if (sceneState->openingFirst == 1) {
+            FadeA_Reset();
+            sceneState->step++;
+            sceneState->timer = 150;
         } else {
-            SeqA_Start(2);
-            sc->scene = 6;
-            sc->step = 0;
-            sc->subStep = 0;
+            FadeA_Start(FADE_IN_BLACK);
+            sceneState->scene = SCENE_EXIT;
+            sceneState->step = 0;
+            sceneState->subStep = 0;
         }
         break;
     case 4:
-        if (--sc->timer != 0) {
-            if (sc->timer < 90 && (D_006AE0B4 & 0x20)) {
-                sc->timer = 1;
+        if (--sceneState->timer != 0) {
+            if (sceneState->timer < 90 && (gPadState[0].pressed & 0x20)) {
+                sceneState->timer = 1;
             }
             lines = gAwardNoticeLines[5];
-            Font_SetSpacing(0x12, 0x12);
+            Font_SetSpacing(18, 18);
             Text_SetColor(0);
-            for (y = 0xA0; *lines != NULL; lines++, y += 0x16) {
+            for (y = 160; *lines != NULL; lines++, y += 22) {
                 x = Str_Length(*lines);
-                x = (0x280 - x * 9) / 2;
+                x = (640 - x * 9) / 2;
                 Font_SetPos(x, y);
                 Text_Printf(*lines);
             }
             Text_DrawAllPages();
         } else {
-            SeqA_Start(2);
-            sc->scene = 6;
-            sc->step = 0;
-            sc->subStep = 0;
+            FadeA_Start(FADE_IN_BLACK);
+            sceneState->scene = SCENE_EXIT;
+            sceneState->step = 0;
+            sceneState->subStep = 0;
             return;
         }
         break;
     }
 }
 
+/* Clears the scene state and the models: player 0 local, pads 0 and 1, the
+ * next quest id 1, offline, the save's character slot from gQuestSync. */
 void Scene_ResetAll(void)
 {
-    memset(&gScene, 0, 0x2BCU);
+    memset(&gScene, 0, sizeof(gScene));
     Model_FreeAll();
-    func_00368ED0();
+    UnreadFlags_ClearAll();
     Mem_Compact();
     gScene.frame = 0;
     gScene.localPlayer = 0;
-    D_006ADB48 = 1;
+    gNextQuestId = 1;
     gScene.padIndex[1] = 1;
     *gScene.padIndex = 0;
     gScene.online = 0;
@@ -2003,12 +2159,18 @@ void Scene_ResetAll(void)
     CamCtl_Clear();
 }
 
+/* Sets up the HUD and resets the camera requests. */
 void Hud_Start(void)
 {
     Hud_Init();
     CamReq_Reset();
 }
 
+/*
+ * Loads the quest's start: the common textures, the start area, the common
+ * animations, the players (those not in the quest hidden), the HUD's
+ * textures and the common models.
+ */
 void Quest_Setup(void)
 {
     s32 i;
@@ -2029,82 +2191,99 @@ void Quest_Setup(void)
     }
     Hud_LoadTextures();
     Quest_LoadCommonModels();
-    func_00327F70();
-    func_003350B0();
+    Quest_SetupStub();
+    Quest_EmptyHook();
     func_0033A360();
 }
 
+/* Loads player idx's animations for its weapon and sets it up for the
+ * quest. */
 void Player_SetupQuest(s32 idx)
 {
-    Player *p;
+    Player *pl;
 
-    p = &gPlayers[idx];
-    Anim_LoadPlayer(idx, (s32) p->weaponType);
+    pl = &gPlayers[idx];
+    Anim_LoadPlayer(idx, (s32) pl->weaponType);
     Player_InitPartTable(idx);
-    Player_InitForQuest(p);
+    Player_InitForQuest(pl);
 }
 
+/*
+ * Loads the stage objects' common model sets gStageModelSets[0], [1], [2]
+ * and [4], each from its pack with its texture file (gCommonModelTexFiles);
+ * set 0 comes from pack 5 online, pack 0 offline. Stops at the first model
+ * slot it can't get.
+ */
 void Quest_LoadCommonModels(void)
 {
-    s32 kind;
-    s32 m;
-    s32 m2;
+    s32 pack;
+    s32 slot;
+    s32 nextSlot;
 
-    kind = gScene.online == 0 ? 0 : 5;
-    Load_CommonModelPack(kind);
-    m = Model_Alloc(1);
-    if (m < 0) {
+    pack = gScene.online == 0 ? 0 : 5;
+    Load_CommonModelPack(pack);
+    slot = Model_Alloc(1);
+    if (slot < 0) {
         return;
     }
-    gStageModelSets[0] = Model_Get(m);
-    Model_Reserve(m, 1);
-    Model_SetupWithPack(m, (*(s32 *)&gSysSettings.modelPack), 0xF3, gCommonModelTexFiles[kind], 0xB00, 0);
+    gStageModelSets[0] = Model_Get(slot);
+    Model_Reserve(slot, 1);
+    Model_SetupWithPack(slot, (*(s32 *)&gSysSettings.modelPack), 0xF3, gCommonModelTexFiles[pack], 0xB00, 0);
     Load_CommonModelPack(1);
-    m2 = Model_Alloc(1);
-    if (m2 < 0) {
+    nextSlot = Model_Alloc(1);
+    if (nextSlot < 0) {
         return;
     }
-    gStageModelSets[1] = Model_Get(m2);
-    Model_Reserve(m2, 1);
-    Model_SetupWithPack(m2, (*(s32 *)&gSysSettings.modelPack), 0x106, gCommonModelTexFiles[1], 0x900, 1);
+    gStageModelSets[1] = Model_Get(nextSlot);
+    Model_Reserve(nextSlot, 1);
+    Model_SetupWithPack(nextSlot, (*(s32 *)&gSysSettings.modelPack), 0x106, gCommonModelTexFiles[1], 0x900, 1);
     Load_CommonModelPack(2);
-    m2 = Model_Alloc(1);
-    if (m2 < 0) {
+    nextSlot = Model_Alloc(1);
+    if (nextSlot < 0) {
         return;
     }
-    gStageModelSets[2] = Model_Get(m2);
-    Model_Reserve(m2, 1);
-    Model_SetupWithPack(m2, (*(s32 *)&gSysSettings.modelPack), 0x105, gCommonModelTexFiles[2], 0x900, 1);
+    gStageModelSets[2] = Model_Get(nextSlot);
+    Model_Reserve(nextSlot, 1);
+    Model_SetupWithPack(nextSlot, (*(s32 *)&gSysSettings.modelPack), 0x105, gCommonModelTexFiles[2], 0x900, 1);
     Load_CommonModelPack(4);
-    m2 = Model_Alloc(1);
-    if (m2 < 0) {
+    nextSlot = Model_Alloc(1);
+    if (nextSlot < 0) {
         return;
     }
-    gStageModelSets[4] = Model_Get(m2);
-    Model_Reserve(m2, 1);
-    Model_SetupWithPack(m2, (*(s32 *)&gSysSettings.modelPack), 0x103, gCommonModelTexFiles[4], 0x800, 1);
+    gStageModelSets[4] = Model_Get(nextSlot);
+    Model_Reserve(nextSlot, 1);
+    Model_SetupWithPack(nextSlot, (*(s32 *)&gSysSettings.modelPack), 0x103, gCommonModelTexFiles[4], 0x800, 1);
 }
 
-void func_00327F70(void)
+/* An empty step of Quest_Setup. */
+void Quest_SetupStub(void)
 {
 }
 
+/*
+ * Resets the input, the lights, the fades, the pause and the camera for the
+ * area entered; mode 0xFF (an area change) stops there. Otherwise it places
+ * the quest's monsters: a quest (questId set) through Quest_EnterArea;
+ * without one, each monster slot's kind and count from gQuestSync. With
+ * debug switch 0x17 on, test monsters of fixed kinds instead (debug switch
+ * 0x74 gives a second one in area 0).
+ */
 void Quest_SpawnMonsters(s32 mode)
 {
     s16 i;
     s16 n;
-    s16 id;
+    s16 index;
     s16 j;
-    u8 cnt[4];
+    u8 variants[4];
     Em *em;
 
     Pad_ResetInput();
-    func_00328660();
+    Area_ResetStub();
     Light_Reset();
     Area_Enter(gScene.area);
-    SeqA_Reset();
-    SeqB_Reset();
-    gScene.pauseState = 0;
+    FadeA_Reset();
+    FadeB_Reset();
+    gScene.pauseState = PAUSE_NONE;
     gCameraPreset = 0xFF;
     gScene.heldMask = 0;
     Camera_SetPreset(0);
@@ -2130,23 +2309,23 @@ void Quest_SpawnMonsters(s32 mode)
     if (Debug_IsOn(0x17) == 0) {
         GmLoad_Reset();
         GmLoad_LoadStagePartition();
-        cnt[0] = 0;
-        cnt[1] = 0;
-        cnt[2] = 0;
-        cnt[3] = 0;
-        id = 0;
+        variants[0] = 0;
+        variants[1] = 0;
+        variants[2] = 0;
+        variants[3] = 0;
+        index = 0;
         for (i = 0; i < 4; i++) {
             gScene.emKind[i] = gQuestSync.emKind[i];
             if (gScene.emKind[i] != 0) {
                 GmLoad_LoadEmData(gScene.map, gScene.emKind[i]);
                 EmSlot_LoadModels(i);
-                for (n = 0; n < gQuestSync.emCount[i]; n++, id++) {
+                for (n = 0; n < gQuestSync.emCount[i]; n++, index++) {
                     em = EmSlot_Alloc();
                     if (em != NULL) {
                         em->modelSlot = i;
                         em->type = gScene.emKind[em->modelSlot];
-                        em->variant = cnt[i]++;
-                        em->index = id;
+                        em->variant = variants[i]++;
+                        em->index = index;
                         em->sizePct = 100;
                         em->area = gScene.area;
                     }
@@ -2200,72 +2379,83 @@ void Quest_SpawnMonsters(s32 mode)
     }
 }
 
+/*
+ * Clears the players and sets up those in the quest from the scene's copies
+ * of their choices: offline, players after the first get their weapon from
+ * gQuestSync and a numbered default name; online a player uses the save
+ * (the local one) or its preset, unless presetEquip asks for the weapon
+ * given. Then the drill's and the training's set-ups (overlay functions),
+ * the skills, and the weapon's class and flags.
+ */
 void Quest_InitPlayers(void)
 {
     s16 i;
-    Player *p;
+    Player *pl;
 
     memset(gPlayerSys, 0, 0x10);
     for (i = 0; i < 4; i++) {
-        p = &gPlayers[i];
-        memset(p, 0, sizeof(Player));
+        pl = &gPlayers[i];
+        memset(pl, 0, sizeof(Player));
         if (i >= gScene.playerCount) {
             continue;
         }
         if (gScene.inQuest[i] == 1) {
-            p->active = 1;
+            pl->active = 1;
         } else {
-            p->active = 0;
+            pl->active = 0;
             continue;
         }
-        p->index = i;
-        p->gender = gScene.playerGender[i];
-        p->presetEquip = gScene.presetEquip[i];
-        p->startItemList = gScene.startItemList[i];
+        pl->index = i;
+        pl->gender = gScene.playerGender[i];
+        pl->presetEquip = gScene.presetEquip[i];
+        pl->startItemList = gScene.startItemList[i];
         Quest_SetStartArea(i);
         if (Game_IsOnline() == 0 && i > 0) {
-            p->equip[6] = gScene.weapon[i];
-            p->weaponKind = Equip_GetKind(&gScene.weapon[i]);
-            sprintf((char *)p->name, TXT(0x0046CE10) /* a default player name, with the number */, i + 1);
+            pl->equip[6] = gScene.weapon[i];
+            pl->weaponKind = Equip_GetKind(&gScene.weapon[i]);
+            sprintf((char *)pl->name, TXT(0x0046CE10) /* a default player name, with the number */, i + 1);
         } else if (gScene.presetEquip[i] == 0 || gSysSettings.useSavedEquip != 0) {
-            if (Player_IsLocal(p) == 1) {
-                Player_LoadFromSave(p);
-                Player_LoadName(p);
+            if (Player_IsLocal(pl) == 1) {
+                Player_LoadFromSave(pl);
+                Player_LoadName(pl);
             } else {
-                Player_LoadPreset(gScene.preset[i], p);
+                Player_LoadPreset(gScene.preset[i], pl);
             }
         } else {
-            p->equip[6] = gScene.weapon[i];
-            p->weaponKind = Equip_GetKind(&gScene.weapon[i]);
-            sprintf((char *)p->name, TXT(0x0046CE10) /* a default player name, with the number */, i + 1);
+            pl->equip[6] = gScene.weapon[i];
+            pl->weaponKind = Equip_GetKind(&gScene.weapon[i]);
+            sprintf((char *)pl->name, TXT(0x0046CE10) /* a default player name, with the number */, i + 1);
         }
         if (Quest_IsDrill() == 1) {
-            func_D63170(p, i);
+            Plsel_ApplyPresetEquip(pl, i);
         }
         if (Quest_IsTraining() == 1) {
-            func_D633F0(p, i);
+            Plsel_ApplyStageEquip(pl, i);
         }
-        Player_CalcSkills(p);
-        p->weaponType = gWeaponKindClass[p->weaponKind];
-        p->isGunner = WeaponClass_IsGunner(p->weaponType);
-        p->bladeSpecial = Equip_GetBladeSpecial(&p->equip[6]);
-        p->weaponFlags = WeaponType_Flags(p->weaponType);
-        if (Player_IsLocal(p) == 1) {
-            Player_BackupPouch(p, 0);
+        Player_CalcSkills(pl);
+        pl->weaponType = gWeaponKindClass[pl->weaponKind];
+        pl->isGunner = WeaponClass_IsGunner(pl->weaponType);
+        pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[6]);
+        pl->weaponFlags = WeaponType_Flags(pl->weaponType);
+        if (Player_IsLocal(pl) == 1) {
+            Player_BackupPouch(pl, 0);
         }
     }
 }
 
-void func_00328660(void)
+/* An empty step of Quest_SpawnMonsters. */
+void Area_ResetStub(void)
 {
 }
 
+/* Clears the light sets and sets up the area's. */
 void Light_Reset(void)
 {
     memset(&gLightSets, 0, 0x290U);
     Light_InitAll((s32) gScene.area);
 }
 
+/* Clears the pad replay and both ports' input, this frame's and the last. */
 void Pad_ResetInput(void)
 {
     memset(&gPadReplay, 0, 0x20U);
@@ -2287,71 +2477,84 @@ void Pad_ResetInput(void)
     gPadInput.stickTilt[1].prev = 0;
 }
 
+/*
+ * Loads an area: its pack, its grids (Area_LoadTables), its model with its
+ * texture file, its sub-models and its camera data. Areas 0x83 and 0x84 take
+ * a second texture file online while ElderRaid_InState1.
+ */
 void Area_Load(s32 area)
 {
-    AreaState *as = &gAreaState;
-    s32 m;
+    AreaState *areaState = &gAreaState;
+    s32 slot;
     s32 tex;
 
     gScene.area = area;
-    as->area = area;
+    areaState->area = area;
     Load_AreaPack(gScene.area);
     Area_LoadTables(gScene.area);
-    m = Model_Alloc(1);
-    if (m >= 0) {
-        as->modelSlot = m;
-        as->modelCount = 1;
-        as->model = Model_Get(m);
-        Model_Reserve(m, 1);
+    slot = Model_Alloc(1);
+    if (slot >= 0) {
+        areaState->modelSlot = slot;
+        areaState->modelCount = 1;
+        areaState->model = Model_Get(slot);
+        Model_Reserve(slot, 1);
         switch (gScene.area) {
         case 0x83:
             if (gScene.online != 0 && ElderRaid_InState1() == 1) {
-                tex = D_0042582C;
+                tex = gArea83TexFiles[1];
             } else {
-                tex = gArea83TexFiles;
+                tex = gArea83TexFiles[0];
             }
             break;
         case 0x84:
             if (gScene.online != 0 && ElderRaid_InState1() == 1) {
-                tex = D_00425834;
+                tex = gArea84TexFiles[1];
             } else {
-                tex = gArea84TexFiles;
+                tex = gArea84TexFiles[0];
             }
             break;
         default:
             tex = gAreaTexFiles[gScene.area];
             break;
         }
-        Model_SetupTexPack(m, (*(s32 *)&gSysSettings.modelPack), 0x108, tex, 0x100);
+        Model_SetupTexPack(slot, (*(s32 *)&gSysSettings.modelPack), 0x108, tex, 0x100);
         Area_LoadSubModels(gScene.area);
         Area_LoadCamData(gScene.area);
     }
 }
 
-void Anim_LoadCommon(s32 i)
+/* Loads and sets up the common animations (set `set`). */
+void Anim_LoadCommon(s32 set)
 {
-    Load_CommonAnim(i);
+    Load_CommonAnim(set);
     Anim_SetupCommon();
 }
 
-void Anim_LoadPlayer(s32 idx, s32 i)
+/* Loads and sets up player idx's animations for a weapon type. */
+void Anim_LoadPlayer(s32 idx, s32 weaponType)
 {
-    Load_PlayerAnim(idx, i);
+    Load_PlayerAnim(idx, weaponType);
     Anim_SetupPlayer(idx);
 }
 
-void Anim_LoadEm(s32 idx, s32 arg1)
+/* Loads and sets up the animations of monster slot idx (`kind` is passed on). */
+void Anim_LoadEm(s32 idx, s32 kind)
 {
-    Load_EmAnim(idx, arg1);
-    Anim_SetupEm(idx, arg1);
+    Load_EmAnim(idx, kind);
+    Anim_SetupEm(idx, kind);
 }
 
-void Anim_LoadEmSlot(s32 i, s32 j, s32 idx)
+/* Loads animation set (slot, set) and sets up idx's. */
+void Anim_LoadEmSlot(s32 slot, s32 set, s32 idx)
 {
-    Load_EmSlotAnim(i, j);
+    Load_EmSlotAnim(slot, set);
     Anim_SetupEmSlot(idx);
 }
 
+/*
+ * Loads an area's two grids from its table file (gAreaTableFiles): part 0
+ * into gWorkArea, part 1 into gSysSettings.extraBuf, each relocated in place.
+ */
 void Area_LoadTables(s32 id)
 {
     u8 *buf;
@@ -2367,51 +2570,57 @@ void Area_LoadTables(s32 id)
     AreaTable2_Relocate(dst);
 }
 
+/*
+ * Relocates the first grid (the header 8 bytes into the part): each cell's
+ * list of offsets, ended by -1, becomes pointers, and the grid's globals
+ * gAreaGrid* are set.
+ */
 void AreaTable_Relocate(u8 *file)
 {
-    DataHdr *h = (DataHdr *)(file + 8);
+    AreaGridHeader *hdr = (AreaGridHeader *)(file + 8);
     u32 i;
     u32 j;
     s32 k;
-    s32 **pp;
+    s32 **cell;
 
-    gAreaGridCellX = h->unk00;
-    gAreaGridCellZ = h->unk04;
-    gAreaGridRows = h->rows;
-    gAreaGridCols = h->cols;
-    gAreaGridCells = (s32 **)((u8 *)h + h->tblOff);
-    gAreaGridData = (u32)((u8 *)h + h->dataOff);
-    for (i = 0; i < h->rows; i++) {
-        for (j = 0; j < h->cols; j++) {
-            pp = &gAreaGridCells[i * h->cols + j];
-            *pp = (s32 *)((u8 *)*pp + (u32)h);
-            for (k = 0; (*pp)[k] != -1; k++) {
-                (*pp)[k] += gAreaGridData;
+    gAreaGridCellX = hdr->cellX;
+    gAreaGridCellZ = hdr->cellZ;
+    gAreaGridRows = hdr->rows;
+    gAreaGridCols = hdr->cols;
+    gAreaGridCells = (s32 **)((u8 *)hdr + hdr->tblOff);
+    gAreaGridData = (u32)((u8 *)hdr + hdr->dataOff);
+    for (i = 0; i < hdr->rows; i++) {
+        for (j = 0; j < hdr->cols; j++) {
+            cell = &gAreaGridCells[i * hdr->cols + j];
+            *cell = (s32 *)((u8 *)*cell + (u32)hdr);
+            for (k = 0; (*cell)[k] != -1; k++) {
+                (*cell)[k] += gAreaGridData;
             }
         }
     }
 }
 
+/* The same for the second grid (gAreaGrid2*). */
 void AreaTable2_Relocate(u8 *file)
 {
-    DataHdr *h = (DataHdr *)(file + 8);
+    AreaGridHeader *hdr = (AreaGridHeader *)(file + 8);
     u32 i;
     u32 j;
     s32 k;
-    s32 **pp;
+    s32 **cell;
 
-    gAreaGrid2CellX = h->unk00;
-    gAreaGrid2CellZ = h->unk04;
-    gAreaGrid2Rows = h->rows;
-    gAreaGrid2Cols = h->cols;
-    gAreaGrid2Cells = (s32 **)((u8 *)h + h->tblOff);
-    gAreaGrid2Data = (u32)((u8 *)h + h->dataOff);
-    for (i = 0; i < h->rows; i++) {
-        for (j = 0; j < h->cols; j++) {
-            pp = &gAreaGrid2Cells[i * h->cols + j];
-            *pp = (s32 *)((u8 *)*pp + (u32)h);
-            for (k = 0; (*pp)[k] != -1; k++) {
-                (*pp)[k] += gAreaGrid2Data;
+    gAreaGrid2CellX = hdr->cellX;
+    gAreaGrid2CellZ = hdr->cellZ;
+    gAreaGrid2Rows = hdr->rows;
+    gAreaGrid2Cols = hdr->cols;
+    gAreaGrid2Cells = (s32 **)((u8 *)hdr + hdr->tblOff);
+    gAreaGrid2Data = (u32)((u8 *)hdr + hdr->dataOff);
+    for (i = 0; i < hdr->rows; i++) {
+        for (j = 0; j < hdr->cols; j++) {
+            cell = &gAreaGrid2Cells[i * hdr->cols + j];
+            *cell = (s32 *)((u8 *)*cell + (u32)hdr);
+            for (k = 0; (*cell)[k] != -1; k++) {
+                (*cell)[k] += gAreaGrid2Data;
             }
         }
     }
@@ -2421,7 +2630,7 @@ void AreaTable2_Relocate(u8 *file)
 u8 gAreaKindColors[80] = {
 #include "sub_main/0041CF00.inc"
 };
-KindRange gDualSwordRanges[12] = {
+WeaponKindRange gDualSwordRanges[12] = {
 #include "sub_main/0041CF50.inc"
 };
 s16 gEffectTexIds[44] = {
@@ -2432,12 +2641,12 @@ u32 D_0041CFD8[2] = {
     0, 0,
 };
 #pragma explicit_zero_data reset
-SeqKey gSeqKeys[15] = {
+FadeKey gFadeKeys[15] = {
 #include "sub_main/0041CFE0.inc"
 };
-u32 gSeqAColors[12] = {
+u32 gFadeAColors[12] = {
 #include "sub_main/0041D190.inc"
 };
-u32 gSeqBColors[12] = {
+u32 gFadeBColors[12] = {
 #include "sub_main/0041D1C0.inc"
 };

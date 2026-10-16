@@ -39,11 +39,11 @@ extern NoiseSrc gEmWallContacts[][11];
 
 /* prototypes */
 s16 Pouch_CursorCount(Player *p);
-s32 func_3648F0(void);
+s32 Item_RideItemUsable(void);
 s32 Item_UsableOutsideCamp(void);
 s32 Item_CanUseSmallBarrelBomb(void);
-s32 func_364A70(void);
-s32 Scene_FewPlaced3_Unk(void);
+s32 Scene_InNoBarrelBombArea(void);
+s32 Scene_CanPlaceKind3(void);
 s32 Item_CanPlaceLargeBarrelBomb(void);
 s32 Item_CanPlaceKind1(void);
 s32 Item_CanPlaceKind2(void);
@@ -63,11 +63,11 @@ void Player_FaceStick(Player *em);
 s32 Player_InSceneEvent(void);
 void Player_SetFlag(void *obj, u32 flag);
 void Player_StartAct(Player *p);
-void Player_State0_01(Player *em, s32 variant);
-void Player_State0_27(Player *em, s32 arg1);
-void Player_State0_28(Player *player, s32 arg1);
+void Player_StateMove(Player *em, s32 variant);
+void Player_StateWallHold(Player *em, s32 arg1);
+void Player_StateWallClimbUp(Player *player, s32 arg1);
 u32 Player_TestFlag(void *obj, u32 flag);
-void Player_TryDrawWeapon(Player *em, u8 mode);
+void Player_HoldSpecialInput(Player *em, u8 mode);
 void Player_UpdateMotionTime(Player *p, s16 step);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
 AreaRecord *Stage_GetAreaRecord(s32 area); /* unit's own declaration: the definition (sub_main) is AreaRecord *(u16 x); u16 here adds masks in two functions */ /* unit's own declaration: with the definition's AreaRecord *(u16 x) (sub_main/stage_data.c), EmScript_Op1A 246 of 276 words, Em_PickRoutePoint 3 of 226 words differ */
@@ -88,9 +88,9 @@ void Gunlance_DrawAttack(Player *em);
 void Hammer_DrawAttack(Player *em);
 void HuntingHorn_DrawAttack(Player *em);
 void LongSword_DrawAttack(Player *em);
-extern s16 Player_State0_01_NextByWeapon[];
+extern s16 gDrawnWalkStopIdle[];
 s32 Player_HasMealEffect(Player *pl, s16 kind);
-void Player_GatherStep(Player *p);
+void Player_GuardInput(Player *p);
 s32 Player_Damage(Player *p, s16 damage, s16 lose);
 s16 Player_CountSpecialItems(Player *p);
 s16 Area_Temperature(u16 area);
@@ -144,13 +144,13 @@ void Player_UseStamina(Player *p, s32 n);
 s32 Player_FloorAheadBelow(Player *em, u16 above, f32 fwd, f32 up);
 u16 Bowgun_NextAmmoSlot(Player *p, u16 slot, u8 dir);
 void Bowgun_LoadAmmo(Player *p, s32 a);
-void Hammer_Draw(Player *em);
-void HuntingHorn_Draw(Player *em, s32 a);
-void DualSwords_Draw(Player *em, s32 a);
-void LongSword_Draw(Player *p);
-void Bow_Draw(Player *em);
+void Hammer_StartCharge(Player *em);
+void HuntingHorn_StartPlaying(Player *em, s32 a);
+void DualSwords_DemonToggle(Player *em, s32 a);
+void LongSword_SpiritDraw(Player *p);
+void Bow_DrawToAim(Player *em);
 void Player_ResetAim(Player *p);
-void Hammer_EvadeCharge(Player *em);
+void Hammer_ChargeFromRoll(Player *em);
 u16 Player_FindActionSpot(Player *, f32 *, u16 *arg, u8 *);
 s32 Player_NearEmKind10(void *obj);
 void Player_StartMoveTo(Player *em, s16 frames);
@@ -194,21 +194,21 @@ void Save_SetEventFlag(s32 n);
 void Stream_Pause(s32 ch, s32 pause);
 s32 CamReq_State(void);
 void CamReq_Cancel(void);
-void SeqA_Start(s32 id);
+void FadeA_Start(s32 id);
 s32 Versus_BothDefeated(void);
 void Effect2C_Spawn(s16);
 typedef struct WeaponMotion { s16 motion; s16 blend; s16 flag; s16 next; } WeaponMotion;
-extern WeaponMotion Player_State0_04_Motions0[];
-extern WeaponMotion Player_State0_04_Motions4[];
-extern WeaponMotion Player_State0_04_Motions2[];
-extern WeaponMotion Player_State0_04_Motions5[];
+extern WeaponMotion gDrawMotions[];
+extern WeaponMotion gSheatheMotions[];
+extern WeaponMotion gSheatheMovingMotions[];
+extern WeaponMotion gDrawMovingMotions[];
 void Player_UseItem(Player *em, u8 mode);
 s32 Player_PouchHasSelectable(Player *p);
 u16 Pouch_NextSelectable(Player *pl, u16 cur, u8 dir);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
 void Save_ClearEventFlag(s32 n);
-s32 func_3A46B0(u8 *ids);
+s32 Quest_GetStageEmKinds(u8 *ids);
 extern ScEventRec ScEvent_DemoCam7;
 extern ScEventRec ScEvent_DemoCam32;
 extern ScEventRec ScEvent_DemoCam2;
@@ -227,17 +227,17 @@ void Player_AddStamina(Player *p, s16 n);
 s32 Player_HasSkill(Player *p, u8 skill);
 s32 Player_IsLocal(void *);
 void Player_RequestState(Player *p, u16 state, u8 sub, u16 flags);
-void Player_SetMotionPair(Player *, s32, s32, s32); /* unit's own declaration: the last parameter s32 (the definition has s16); with the definition's type Player_State0_55 by 418 of 469 words differ */
+void Player_SetMotionPair(Player *, s32, s32, s32); /* unit's own declaration: the last parameter s32 (the definition has s16); with the definition's type Player_StateSpitRoast by 418 of 469 words differ */
 void Player_SetMoveMode(Player *, u16 mode, s16 flag1, s16 flag2);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
 void Quest_DeliverFromPouch(Player *pl, s32 mode);
 s32 Save_TestEventFlag(s32);
-void Lance_GatherAttack(Player *p, s32 arg1);
-void SwordShield_GatherAttack(Player *p);
-s32 Gunlance_GatherInput(Player *p, s32 arg1);
+void Lance_GuardAttack(Player *p, s32 arg1);
+void SwordShield_GuardSlash(Player *p);
+s32 Gunlance_GuardInput(Player *p, s32 arg1);
 u8 Player_StickMoveLevel(Player *, s32);
-s32 Player_TrySideStep(Player *, s16);
-s32 Player_IdleInput(Player *);
+s32 Player_WallClimbInput(Player *, s16);
+s32 Player_CrouchInput(Player *);
 void Player_StepBack(Player *, s32);
 void StageObj_K0C_CreateAtPlayer(Player *, s32 k);
 void Dmcam_Init(void *ptinfo, s32 keep);
@@ -594,7 +594,7 @@ void Em_SetTargetAngle(Em *em)
 {
     f32 pos[3];
     f32 pos2[3];
-    Player *p;
+    Player *pl;
     s8 i;
 
     em->turnStep = 0;
@@ -602,10 +602,10 @@ void Em_SetTargetAngle(Em *em)
     if (i == -1) {
         em->targetAngle = em->stateRand;
     } else {
-        p = &gPlayers[i];
-        em->target = p;
+        pl = &gPlayers[i];
+        em->target = pl;
         Em_GetTargetPos(em, (u8) em->targetNo, pos);
-        Area_ToWorld((s32) p->area, pos, pos2);
+        Area_ToWorld((s32) pl->area, pos, pos2);
         em->targetAngle = (u16) Math_AngleXZ(em->mapPos, pos2);
     }
 }
@@ -1002,7 +1002,7 @@ s32 ScEvent_LoadDemoCams(ScEventList *h)
     Save_ClearEventFlag(0xAE);
     Save_ClearEventFlag(0xAF);
     Dmcam_Init(gSysSettings.readBuf, 0);
-    n = func_3A46B0(ids);
+    n = Quest_GetStageEmKinds(ids);
     for (i = 0; i < n; i++) {
         switch (ids[i]) {
         case 7:
@@ -1132,7 +1132,7 @@ s32 ScEvent_CheckDay(ScEvent *e)
 
 s32 ScEvent_RunA(ScEvent *ev)
 {
-    Player *p = &gPlayers[gScene.localPlayer];
+    Player *pl = &gPlayers[gScene.localPlayer];
     ScEventList *d = &gSceneEvents;
 
     switch (ev->step) {
@@ -1178,9 +1178,9 @@ s32 ScEvent_RunA(ScEvent *ev)
         }
         if (ev->data->jingleDay != 0) {
             if (Area_IsDay(gScene.area) == 1) {
-                Jingle_Play(p, ev->data->jingleDay);
+                Jingle_Play(pl, ev->data->jingleDay);
             } else {
-                Jingle_Play(p, ev->data->jingleNight);
+                Jingle_Play(pl, ev->data->jingleNight);
             }
         }
         ev->step++;
@@ -1194,16 +1194,16 @@ s32 ScEvent_RunA(ScEvent *ev)
                 case 1:
                     break;
                 case 4:
-                    Jingle_Play(p, 0xDD);
+                    Jingle_Play(pl, 0xDD);
                     break;
                 case 5:
-                    Jingle_Play(p, 0xDD);
+                    Jingle_Play(pl, 0xDD);
                     break;
                 case 6:
-                    Jingle_Play(p, 0xDD);
+                    Jingle_Play(pl, 0xDD);
                     break;
                 case 7:
-                    Jingle_Play(p, 0xDD);
+                    Jingle_Play(pl, 0xDD);
                     break;
                 case 2:
                     Bgm_Play(0xBC);
@@ -1275,7 +1275,7 @@ s32 ScEvent_RunVersusEnd(ScEvent *e)
     case 1:
         if (gQuest.versusDefeat & 3) {
             e->step++;
-            SeqA_Start(6);
+            FadeA_Start(6);
         }
         break;
     case 2:
@@ -1451,58 +1451,58 @@ s32 Player_InSceneEvent(void)
     return gSceneEvents.ended != 0;
 }
 
-static void Player_SetAimLayers(Player *p, u16 motA, u16 motB)
+static void Player_SetAimLayers(Player *pl, u16 motA, u16 motB)
 {
 
-    if (p->aimWeight == 0) {
-        p->partAnimOn[0] = 0;
-        p->partAnimOn[1] = 0;
+    if (pl->aimWeight == 0) {
+        pl->partAnimOn[0] = 0;
+        pl->partAnimOn[1] = 0;
         return;
     }
-    p->partAnimOn[0] = 1;
-    p->partAnimOn[1] = 1;
-    if (p->aimWeight > 0) {
+    pl->partAnimOn[0] = 1;
+    pl->partAnimOn[1] = 1;
+    if (pl->aimWeight > 0) {
         if (motA == 0x581) {
-            p->partAnimMotion[0] = 0x580;
-            p->partAnimOn[0] = 0;
+            pl->partAnimMotion[0] = 0x580;
+            pl->partAnimOn[0] = 0;
         } else {
-            p->partAnimMotion[0] = motA;
+            pl->partAnimMotion[0] = motA;
         }
-        p->partAnimMotion[1] = motA + 100;
-        p->partAnimWeight[0] = p->aimWeight;
-        p->partAnimWeight[1] = p->aimWeight;
+        pl->partAnimMotion[1] = motA + 100;
+        pl->partAnimWeight[0] = pl->aimWeight;
+        pl->partAnimWeight[1] = pl->aimWeight;
     } else {
         if (motB == 0x582) {
-            p->partAnimMotion[0] = 0x580;
-            p->partAnimOn[0] = 0;
+            pl->partAnimMotion[0] = 0x580;
+            pl->partAnimOn[0] = 0;
         } else {
-            p->partAnimMotion[0] = motB;
+            pl->partAnimMotion[0] = motB;
         }
-        p->partAnimMotion[1] = motB + 100;
-        p->partAnimWeight[0] = -p->aimWeight;
-        p->partAnimWeight[1] = -p->aimWeight;
+        pl->partAnimMotion[1] = motB + 100;
+        pl->partAnimWeight[0] = -pl->aimWeight;
+        pl->partAnimWeight[1] = -pl->aimWeight;
     }
-    if (p->partAnimWeight[0] > 100) {
-        p->partAnimWeight[0] = 100;
+    if (pl->partAnimWeight[0] > 100) {
+        pl->partAnimWeight[0] = 100;
     }
-    if (p->partAnimWeight[1] > 100) {
-        p->partAnimWeight[1] = 100;
+    if (pl->partAnimWeight[1] > 100) {
+        pl->partAnimWeight[1] = 100;
     }
 }
 
-static void Bowgun_AddAimWeight(Player *p, s8 delta)
+static void Bowgun_AddAimWeight(Player *pl, s8 delta)
 {
 
-    p->aimWeight += delta;
-    if (p->aimWeight >= 100) {
-        p->aimWeight = 100;
+    pl->aimWeight += delta;
+    if (pl->aimWeight >= 100) {
+        pl->aimWeight = 100;
     }
-    if (p->aimWeight < -99) {
-        p->aimWeight = -100;
+    if (pl->aimWeight < -99) {
+        pl->aimWeight = -100;
     }
 }
 
-void Player_UpdateEnvironment(Player *p)
+void Player_UpdateEnvironment(Player *pl)
 {
     f32 v[3];
     s16 n;
@@ -1510,90 +1510,90 @@ void Player_UpdateEnvironment(Player *p)
     u8 f;
     u16 iv;
 
-    if (p->stateGroup == 3) {
+    if (pl->stateGroup == PL_GROUP_FAINT) {
         return;
     }
-    p->inPoisonArea = 0;
-    if (p->poison > 0) {
-        if (--p->poisonTimer <= 0) {
-            p->poison--;
-            if (Player_HasSkill(p, 0xA) == 1) {
+    pl->inPoisonArea = 0;
+    if (pl->poison > 0) {
+        if (--pl->poisonTimer <= 0) {
+            pl->poison--;
+            if (Player_HasSkill(pl, 0xA) == 1) {
                 k = 60;
-            } else if (Player_HasSkill(p, 0xC) == 1) {
+            } else if (Player_HasSkill(pl, 0xC) == 1) {
                 k = 15;
             } else {
                 k = 30;
             }
-            p->poisonTimer = k;
-            if (Player_IsLocal(p) == 1) {
+            pl->poisonTimer = k;
+            if (Player_IsLocal(pl) == 1) {
                 v[0] = 0.0f;
                 v[1] = 20.0f;
                 v[2] = 0.0f;
-                Effect06_SpawnAt(p, 3, 0x14, v, 1.0f);
+                Effect06_SpawnAt(pl, 3, 0x14, v, 1.0f);
             }
-            if (Player_Damage(p, 1, 0) == 1) {
+            if (Player_Damage(pl, 1, 0) == 1) {
                 return;
             }
         }
     }
-    if (Player_IsLocal(p) == 0 && (p->statusIcons & 1)) {
-        k = Player_HasSkill(p, 0xA) ? 60 : 30;
+    if (Player_IsLocal(pl) == 0 && (pl->statusIcons & 1)) {
+        k = Player_HasSkill(pl, 0xA) ? 60 : 30;
         if (gScene.frame % k == 0) {
             v[0] = 0.0f;
             v[1] = 20.0f;
             v[2] = 0.0f;
-            Effect06_SpawnAt(p, 3, 0x14, v, 1.0f);
+            Effect06_SpawnAt(pl, 3, 0x14, v, 1.0f);
         }
     }
-    if (Player_IsLocal(p) == 1) {
-        n = Player_CountSpecialItems(p);
+    if (Player_IsLocal(pl) == 1) {
+        n = Player_CountSpecialItems(pl);
         if (n > 0 && gScene.frame % 30 == 0) {
-            if (Player_Damage(p, n, 0) == 1) {
+            if (Player_Damage(pl, n, 0) == 1) {
                 return;
             }
         }
     }
-    if (Player_IsLocal(p) != 1) {
+    if (Player_IsLocal(pl) != 1) {
         return;
     }
-    k = Area_Temperature(p->area);
+    k = Area_Temperature(pl->area);
     switch (k) {
     case 1:
     case 3:
-        if (p->coolDrinkTimer != 0) {
+        if (pl->coolDrinkTimer != 0) {
             break;
         }
-        if (k == 1 && (Player_HasSkill(p, 0x85) == 1 || Player_HasSkill(p, 0x86) == 1)) {
+        if (k == 1 && (Player_HasSkill(pl, 0x85) == 1 || Player_HasSkill(pl, 0x86) == 1)) {
             break;
         }
-        if (k == 3 && Player_HasSkill(p, 0x86) == 1) {
+        if (k == 3 && Player_HasSkill(pl, 0x86) == 1) {
             break;
         }
-        if (--p->envTimer > 0) {
+        if (--pl->envTimer > 0) {
             break;
         }
         if (k == 1) {
-            p->envTimer = 90;
-            if (Player_HasSkill(p, 0x87) == 1) {
-                p->envTimer = 60;
-            } else if (Player_HasSkill(p, 0x88) == 1) {
-                p->envTimer = 45;
-            } else if (Player_HasSkill(p, 0x84) == 1) {
-                p->envTimer = 180;
+            pl->envTimer = 90;
+            if (Player_HasSkill(pl, 0x87) == 1) {
+                pl->envTimer = 60;
+            } else if (Player_HasSkill(pl, 0x88) == 1) {
+                pl->envTimer = 45;
+            } else if (Player_HasSkill(pl, 0x84) == 1) {
+                pl->envTimer = 180;
             }
         } else {
-            p->envTimer = 60;
-            if (Player_HasSkill(p, 0x87) == 1) {
-                p->envTimer = 40;
-            } else if (Player_HasSkill(p, 0x88) == 1) {
-                p->envTimer = 30;
-            } else if (Player_HasSkill(p, 0x84) == 1) {
-                p->envTimer = 120;
-            } else if (Player_HasSkill(p, 0x85) == 1) {
-                p->envTimer = 180;
+            pl->envTimer = 60;
+            if (Player_HasSkill(pl, 0x87) == 1) {
+                pl->envTimer = 40;
+            } else if (Player_HasSkill(pl, 0x88) == 1) {
+                pl->envTimer = 30;
+            } else if (Player_HasSkill(pl, 0x84) == 1) {
+                pl->envTimer = 120;
+            } else if (Player_HasSkill(pl, 0x85) == 1) {
+                pl->envTimer = 180;
             }
         }
-        if (Player_Damage(p, 1, 0) == 1) {
+        if (Player_Damage(pl, 1, 0) == 1) {
             return;
         }
         break;
@@ -1601,8 +1601,8 @@ void Player_UpdateEnvironment(Player *p)
     case 4:
         break;
     }
-    if (p->stateGroup == 2) {
-        switch (p->state) {
+    if (pl->stateGroup == PL_GROUP_REACT) {
+        switch (pl->state) {
         case 1:
         case 3:
         case 8:
@@ -1615,48 +1615,48 @@ void Player_UpdateEnvironment(Player *p)
             return;
         }
     }
-    if (p->stateGroup == 3) {
+    if (pl->stateGroup == PL_GROUP_FAINT) {
         return;
     }
-    if (p->stateGroup == 4) {
+    if (pl->stateGroup == PL_GROUP_EVENT) {
         return;
     }
-    if (p->action == 2) {
+    if (pl->action == 2) {
         return;
     }
-    if (p->noHitTimer > 0) {
+    if (pl->noHitTimer > 0) {
         return;
     }
-    f = p->unk669;
-    if (f == 0 && Player_NearEm40(p) == 1) {
+    f = pl->unk669;
+    if (f == 0 && Player_NearEm40(pl) == 1) {
         f = 2;
     }
-    StageObj_K29_TickType6(p, f);
+    StageObj_K29_TickType6(pl, f);
     switch (f) {
     case 0:
         break;
     case 1:
-        if (Player_HasSkill(p, 0xB) == 0) {
-            p->inPoisonArea = 1;
-            if (p->poison < 10) {
-                p->poison = 10;
+        if (Player_HasSkill(pl, 0xB) == 0) {
+            pl->inPoisonArea = 1;
+            if (pl->poison < 10) {
+                pl->poison = 10;
             }
         }
         break;
     case 2:
-        p->inPoisonArea = 1;
+        pl->inPoisonArea = 1;
         iv = 8;
-        if (Player_HasSkill(p, 0xBF) == 1) {
+        if (Player_HasSkill(pl, 0xBF) == 1) {
             iv = 12;
-        } else if (Player_HasSkill(p, 0xC0) == 1) {
+        } else if (Player_HasSkill(pl, 0xC0) == 1) {
             iv = 24;
-        } else if (Player_HasSkill(p, 0xC1) == 1) {
+        } else if (Player_HasSkill(pl, 0xC1) == 1) {
             iv = 6;
-        } else if (Player_HasSkill(p, 0xC2) == 1) {
+        } else if (Player_HasSkill(pl, 0xC2) == 1) {
             iv = 4;
         }
         if (gScene.frame % iv == 0) {
-            if (Player_Damage(p, 1, 0) == 1) {
+            if (Player_Damage(pl, 1, 0) == 1) {
                 return;
             }
         }
@@ -1664,92 +1664,92 @@ void Player_UpdateEnvironment(Player *p)
     }
 }
 
-s32 Player_PouchHasSelectable(Player *p)
+s32 Player_PouchHasSelectable(Player *pl)
 {
     s16 i;
 
     for (i = 0; i < 20; i++) {
-        if (p->pouch[i].item != 0 && p->pouch[i].count > 0 && (gItemData[p->pouch[i].item].flags & 1)) {
+        if (pl->pouch[i].item != 0 && pl->pouch[i].count > 0 && (gItemData[pl->pouch[i].item].flags & 1)) {
             return 1;
         }
     }
     return 0;
 }
 
-void Player_UpdateItemSelect(Player *p)
+void Player_UpdateItemSelect(Player *pl)
 {
     u16 b;
 
-    if (Player_IsLocal(p) != 0) {
-        if (Player_IsState(p, 2, 0x13) == 0 && (u32) (p->stateGroup - 3) > 1 && Quest_PhaseIsOver(1) != 1) {
-            if (p->input.held2 & 4) {
-                if (p->itemSelect == 0) {
+    if (Player_IsLocal(pl) != 0) {
+        if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STUN) == 0 && (u32) (pl->stateGroup - 3) > 1 && Quest_PhaseIsOver(1) != 1) {
+            if (pl->input.held2 & 4) {
+                if (pl->itemSelect == 0) {
                     Sound_PlaySeFlat(0, 0x11, 0);
                 }
-                p->itemSelect = 1;
-                if (Player_PouchHasSelectable(p) != 0) {
-                    b = p->input.pressed2;
+                pl->itemSelect = 1;
+                if (Player_PouchHasSelectable(pl) != 0) {
+                    b = pl->input.pressed2;
                     if (b & 0x20) {
                         Sound_PlaySeFlat(0, 0x12, 0);
-                        p->pouchCursor = Pouch_NextSelectable(p, p->pouchCursor, 0);
-                        p->pouchHudFlags |= 2;
+                        pl->pouchCursor = Pouch_NextSelectable(pl, pl->pouchCursor, 0);
+                        pl->pouchHudFlags |= 2;
                     } else if (b & 0x200) {
                         Sound_PlaySeFlat(0, 0x12, 0);
-                        p->pouchCursor = Pouch_NextSelectable(p, p->pouchCursor, 1);
-                        p->pouchHudFlags |= 4;
+                        pl->pouchCursor = Pouch_NextSelectable(pl, pl->pouchCursor, 1);
+                        pl->pouchHudFlags |= 4;
                     }
                 }
-            } else if (p->itemSelect != 0) {
+            } else if (pl->itemSelect != 0) {
                 Sound_PlaySeFlat(0, 0x14, 0);
-                p->itemSelect = 0;
+                pl->itemSelect = 0;
             }
             return;
         }
-        p->itemSelect = 0;
+        pl->itemSelect = 0;
     }
 }
 
-static s32 Player_AmmoTypeChanged(Player *p)
+static s32 Player_AmmoTypeChanged(Player *pl)
 {
-    if ((p->isGunner != 1) && ((u16) p->ammoSlot == 0xFF)) {
+    if ((pl->isGunner != 1) && ((u16) pl->ammoSlot == 0xFF)) {
         return 0;
     }
-    if (p->input.held2 & 4) {
+    if (pl->input.held2 & 4) {
         return 0;
     }
-    if ((p->ammoMenuOpen == 0) && (p->savedAmmoType != p->ammoType) && (p->weaponOut != 0)) {
+    if ((pl->ammoMenuOpen == 0) && (pl->savedAmmoType != pl->ammoType) && (pl->weaponOut != 0)) {
         return 1;
     }
     return 0;
 }
 
-s32 Player_BowgunAmmoSwitch(Player *p)
+s32 Player_BowgunAmmoSwitch(Player *pl)
 {
 
-    if (Player_IsLocal(p) == 0) {
+    if (Player_IsLocal(pl) == 0) {
         return 0;
     }
-    if (p->isGunner != 1) {
+    if (pl->isGunner != 1) {
         return 0;
     }
-    if (Player_IsState(p, 2, 0x13) != 0) {
+    if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STUN) != 0) {
         return 0;
     }
-    if (p->stateGroup == 3 || p->stateGroup == 4) {
+    if (pl->stateGroup == PL_GROUP_FAINT || pl->stateGroup == PL_GROUP_EVENT) {
         return 0;
     }
     if (Quest_PhaseIsOver(1) == 1) {
         return 0;
     }
-    if (p->unk816 != 0) {
+    if (pl->unk816 != 0) {
         return 0;
     }
-    if (p->stateGroup == 1) {
-        if (p->weaponType == 10) {
-            switch (p->state) {
+    if (pl->stateGroup == PL_GROUP_WEAPON) {
+        if (pl->weaponType == WEAPON_BOW) {
+            switch (pl->state) {
             case 0:
             case 14:
-                if (p->step < 2) {
+                if (pl->step < 2) {
                     return 0;
                 }
                 break;
@@ -1759,69 +1759,69 @@ s32 Player_BowgunAmmoSwitch(Player *p)
                 return 0;
             }
         } else {
-            switch (p->state) {
+            switch (pl->state) {
             case 0:
             case 4:
             case 5:
-                if (p->step < 2) {
+                if (pl->step < 2) {
                     return 0;
                 }
                 break;
             case 8:
-                if (p->step < 3) {
+                if (pl->step < 3) {
                     return 0;
                 }
                 break;
             }
         }
     }
-    if (p->ammoMenuOpen == 0) {
-        p->ammoMenuOpen = 1;
-        p->savedAmmoType = p->ammoType;
-        p->savedAmmoCount = p->ammoCount;
-        p->savedClipSize = p->clipSize;
-        p->savedRoundsLoaded = p->roundsLoaded;
-        p->savedCoatingSlot = p->coatingSlot;
+    if (pl->ammoMenuOpen == 0) {
+        pl->ammoMenuOpen = 1;
+        pl->savedAmmoType = pl->ammoType;
+        pl->savedAmmoCount = pl->ammoCount;
+        pl->savedClipSize = pl->clipSize;
+        pl->savedRoundsLoaded = pl->roundsLoaded;
+        pl->savedCoatingSlot = pl->coatingSlot;
     }
-    if (p->input.held2 & 4) {
-        if (p->input.pressed2 & 0x40) {
-            if (p->ammoSlot == 0xFF) {
-                p->ammoSlot = Bowgun_NextAmmoSlot(p, 0, 3);
+    if (pl->input.held2 & 4) {
+        if (pl->input.pressed2 & 0x40) {
+            if (pl->ammoSlot == 0xFF) {
+                pl->ammoSlot = Bowgun_NextAmmoSlot(pl, 0, 3);
             } else {
-                p->ammoSlot = Bowgun_NextAmmoSlot(p, p->ammoSlot, 1);
+                pl->ammoSlot = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 1);
             }
-            Bowgun_LoadAmmo(p, 0);
-            if (p->ammoSlot != 0xFF) {
-                p->pouchHudFlags |= 8;
+            Bowgun_LoadAmmo(pl, 0);
+            if (pl->ammoSlot != 0xFF) {
+                pl->pouchHudFlags |= 8;
                 Sound_PlaySeFlat(0, 0x12, 0);
             }
-        } else if (p->input.pressed2 & 0x100) {
-            if (p->ammoSlot == 0xFF) {
-                p->ammoSlot = Bowgun_NextAmmoSlot(p, 0, 2);
+        } else if (pl->input.pressed2 & 0x100) {
+            if (pl->ammoSlot == 0xFF) {
+                pl->ammoSlot = Bowgun_NextAmmoSlot(pl, 0, 2);
             } else {
-                p->ammoSlot = Bowgun_NextAmmoSlot(p, p->ammoSlot, 0);
+                pl->ammoSlot = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 0);
             }
-            Bowgun_LoadAmmo(p, 0);
-            if (p->ammoSlot != 0xFF) {
-                p->pouchHudFlags |= 0x10;
+            Bowgun_LoadAmmo(pl, 0);
+            if (pl->ammoSlot != 0xFF) {
+                pl->pouchHudFlags |= 0x10;
                 Sound_PlaySeFlat(0, 0x12, 0);
             }
         }
-    } else if (p->ammoMenuOpen != 0) {
-        p->ammoMenuOpen = 0;
-        if (p->savedAmmoType != p->ammoType) {
-            Bowgun_LoadAmmo(p, 0);
+    } else if (pl->ammoMenuOpen != 0) {
+        pl->ammoMenuOpen = 0;
+        if (pl->savedAmmoType != pl->ammoType) {
+            Bowgun_LoadAmmo(pl, 0);
         } else {
-            p->ammoCount = p->savedAmmoCount;
-            p->clipSize = p->savedClipSize;
-            p->roundsLoaded = p->savedRoundsLoaded;
+            pl->ammoCount = pl->savedAmmoCount;
+            pl->clipSize = pl->savedClipSize;
+            pl->roundsLoaded = pl->savedRoundsLoaded;
         }
     }
-    if (p->savedAmmoType == p->ammoType) {
-        p->ammoCount = p->savedAmmoCount;
-        p->clipSize = p->savedClipSize;
-        p->roundsLoaded = p->savedRoundsLoaded;
-        p->coatingSlot = p->savedCoatingSlot;
+    if (pl->savedAmmoType == pl->ammoType) {
+        pl->ammoCount = pl->savedAmmoCount;
+        pl->clipSize = pl->savedClipSize;
+        pl->roundsLoaded = pl->savedRoundsLoaded;
+        pl->coatingSlot = pl->savedCoatingSlot;
     }
     return 0;
 }
@@ -1831,55 +1831,55 @@ u8 Player_PushNotice3(s32 arg0)
     return Notice_Push(1, 3, arg0);
 }
 
-static s32 Player_PickStatusState(Player *p)
+static s32 Player_PickStatusState(Player *pl)
 {
-    if (p->status2Buildup > 0) {
+    if (pl->status2Buildup > 0) {
         return 1;
     }
-    if (p->status4Buildup > 0) {
+    if (pl->status4Buildup > 0) {
         return 2;
     }
     return 0;
 }
 
-s32 Player_GetStickYaw(Player *p, s32 i)
+s32 Player_GetStickYaw(Player *pl, s32 i)
 {
     s32 yaw = Camera_GetYaw() & 0xFFFF;
 
-    return ((&p->input.stickAngle)[i] + yaw) & 0xFFFF;
+    return ((&pl->input.stickAngle)[i] + yaw) & 0xFFFF;
 }
 
-void Player_FaceStick(Player *p)
+void Player_FaceStick(Player *pl)
 {
     if (CamCtl_IsTurningBehind() != 1) {
-        *(s16 *)&p->targetYaw = (s16) (p->input.stickAngle + (Camera_GetYaw() & 0xFFFF));
+        *(s16 *)&pl->targetYaw = (s16) (pl->input.stickAngle + (Camera_GetYaw() & 0xFFFF));
     }
 }
 
-u8 Player_StickMoveLevel(Player *p, s32 unused)
+u8 Player_StickMoveLevel(Player *pl, s32 unused)
 {
     u8 lvl = 0;
     u16 v;
 
-    switch (p->weaponType) {
-    case 1:
-    case 5:
-    case 10:
-        if (p->weaponOut != 0 && p->aimMode == 1) {
+    switch (pl->weaponType) {
+    case WEAPON_HEAVY_BOWGUN:
+    case WEAPON_LIGHT_BOWGUN:
+    case WEAPON_BOW:
+        if (pl->weaponOut != 0 && pl->aimMode == 1) {
             return 0;
         }
         break;
-    case 0:
-    case 2:
-    case 3:
-    case 4:
-    case 6:
-    case 7:
-    case 8:
-    case 9:
+    case WEAPON_GREAT_SWORD:
+    case WEAPON_HAMMER:
+    case WEAPON_LANCE:
+    case WEAPON_SWORD_SHIELD:
+    case WEAPON_DUAL_SWORDS:
+    case WEAPON_LONG_SWORD:
+    case WEAPON_HUNTING_HORN:
+    case WEAPON_GUNLANCE:
         break;
     }
-    v = p->input.stickTilt;
+    v = pl->input.stickTilt;
     if (v >= 120) {
         lvl = 3;
     } else if (v >= 85) {
@@ -1887,33 +1887,33 @@ u8 Player_StickMoveLevel(Player *p, s32 unused)
     } else if (v >= 40) {
         lvl = 1;
     }
-    if (p->action == 0 && p->weaponOut == 0 && (p->input.held & 0x10) && lvl != 0
-        && (Player_IsState(p, 0, 0x24) == 0 || p->dashDelay == 0)) {
+    if (pl->action == 0 && pl->weaponOut == 0 && (pl->input.held & 0x10) && lvl != 0
+        && (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH) == 0 || pl->dashDelay == 0)) {
         return 5;
     }
     return lvl;
 }
 
-void Player_UpdateInBattle(Player *p)
+void Player_UpdateInBattle(Player *pl)
 {
     s16 i;
     u8 bit;
     Em *m;
     s32 t;
 
-    bit = 1 << p->index;
-    p->prevInBattle = p->inBattle;
-    p->inBattle = 0;
+    bit = 1 << pl->index;
+    pl->prevInBattle = pl->inBattle;
+    pl->inBattle = 0;
     for (i = 0, m = gEms; i < 20; i++, m++) {
-        if (m->area == p->area && m->active != 0 && m->visible != 0 && m->startsBattle != 0 && m->stateGroup != 5
+        if (m->area == pl->area && m->active != 0 && m->visible != 0 && m->startsBattle != 0 && m->stateGroup != 5
             && (m->noticed & bit) && m->combat == 1) {
             m->combatPlayers |= bit;
-            p->inBattle = 1;
-            p->target = m;
-            p->targetAngle = (u16) (Vec_Heading(&m->posX, p->pos) + 0x4000);
+            pl->inBattle = 1;
+            pl->target = m;
+            pl->targetAngle = (u16) (Vec_Heading(&m->posX, pl->pos) + 0x4000);
             t = m->type;
             if (t == 0x1B || t == 0x1C || t == 0x1F) {
-                p->unk73A_combat = 1;
+                pl->unk73A_combat = 1;
             }
         }
     }
@@ -1935,7 +1935,7 @@ static s32 Player_EnteredBattle(Em *em)
 }
 
 //---
-s16 Player_CheckRideSlip(Player *p)
+s16 Player_CheckRideSlip(Player *pl)
 {
     Em *m;
     s16 i;
@@ -1943,79 +1943,79 @@ s16 Player_CheckRideSlip(Player *p)
     f32 lim;
 
     for (m = gEms, i = 0; i < 20; i++, m++) {
-        if (p->rideEm == m->slotNo && m->type != 0x37) {
+        if (pl->rideEm == m->slotNo && m->type != 0x37) {
             return 0;
         }
     }
-    len = Vec_Length(p->rideDelta);
-    if (p->stateGroup == 0 && p->state == 0xC) {
+    len = Vec_Length(pl->rideDelta);
+    if (pl->stateGroup == PL_GROUP_ACTION && pl->state == PL_ACT_BED_MENU) {
         lim = 10.0f;
-    } else if (p->stateGroup == 0 && p->state == 0x16) {
+    } else if (pl->stateGroup == PL_GROUP_ACTION && pl->state == PL_ACT_RIDE_STAGGER) {
         lim = 4.0f;
     } else {
         lim = 7.0f;
     }
     if (!(len < lim)) {
-        if (p->stateGroup == 0 && p->state == 0x16) {
+        if (pl->stateGroup == PL_GROUP_ACTION && pl->state == PL_ACT_RIDE_STAGGER) {
             return 1;
         }
-        Player_SetState(p, 0, 0x16, 0);
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RIDE_STAGGER, 0);
         return 1;
     }
     return 0;
 }
 
-void Player_UseDashStamina(Player *p)
+void Player_UseDashStamina(Player *pl)
 {
-    if (Player_HasSkill(p, 0xB6) == 1) {
-        Player_AddStamina(p, -8);
+    if (Player_HasSkill(pl, 0xB6) == 1) {
+        Player_AddStamina(pl, -8);
         return;
     }
-    if (Player_HasSkill(p, 0xB7) == 1) {
-        Player_AddStamina(p, -0x12);
+    if (Player_HasSkill(pl, 0xB7) == 1) {
+        Player_AddStamina(pl, -0x12);
         return;
     }
-    Player_AddStamina(p, -0xF);
+    Player_AddStamina(pl, -0xF);
 }
 
-s32 Player_TrySideStep(Player *p, s16 noTurn)
+s32 Player_WallClimbInput(Player *pl, s16 noTurn)
 {
-    u16 s = p->input.stickDir;
+    u16 s = pl->input.stickDir;
 
     if (s & 0x2000) {
-        if (p->input.held & 0x10) {
-            if (Player_IsState(p, 0, 0x77) == 0) {
-                Player_RequestState(p, 0, 0x77, 0xC);
+        if (pl->input.held & 0x10) {
+            if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_UP_FAST) == 0) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_UP_FAST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 if (noTurn == 0) {
-                    Player_UseDashStamina(p);
+                    Player_UseDashStamina(pl);
                 }
             }
-        } else if (Player_IsState(p, 0, 0x28) == 0) {
-            Player_RequestState(p, 0, 0x28, 0xC);
+        } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_UP) == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_UP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
         return 1;
     }
     if (s & 0x1000) {
-        if (p->input.held & 0x10) {
-            if (Player_IsState(p, 0, 0x78) == 0) {
-                Player_RequestState(p, 0, 0x78, 0xC);
+        if (pl->input.held & 0x10) {
+            if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_DOWN_FAST) == 0) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_DOWN_FAST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 if (noTurn == 0) {
-                    Player_UseDashStamina(p);
+                    Player_UseDashStamina(pl);
                 }
             }
-        } else if (Player_IsState(p, 0, 0x29) == 0) {
-            Player_RequestState(p, 0, 0x29, 0xC);
+        } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_DOWN) == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_DOWN, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
         return 1;
     }
-    if (p->input.pressed & 0x40) {
-        Player_RequestState(p, 0, 0x30, 0);
+    if (pl->input.pressed & 0x40) {
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_LET_GO, 0);
         return 1;
     }
     return 0;
 }
 
-void Player_StartSpotAction(Player *p, s32 mode)
+void Player_StartSpotAction(Player *pl, s32 mode)
 {
     s8 kind;
     u16 angle;
@@ -2025,143 +2025,143 @@ void Player_StartSpotAction(Player *p, s32 mode)
     s32 ang[3];
     f32 m[16];
 
-    switch (Player_FindActionSpot((Player *)p, (f32 *)pos, &angle, (u8 *)&kind)) {
+    switch (Player_FindActionSpot((Player *)pl, (f32 *)pos, &angle, (u8 *)&kind)) {
     case 0:
     case 2:
     case 6:
     case 8:
     default:
-        if ((u8) Player_NearEmKind10(p)) {
-            Player_RequestState(p, 0, 0x5B, 0);
+        if ((u8) Player_NearEmKind10(pl)) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TRADE, 0);
         }
         break;
     case 1:
-        Vec_Copy(p->moveTo, pos);
-        Player_StartMoveTo(p, 0x14);
-        p->targetYaw = angle;
-        Player_RequestState(p, 0, 0x4C, 0);
+        Vec_Copy(pl->moveTo, pos);
+        Player_StartMoveTo(pl, 0x14);
+        pl->targetYaw = angle;
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_START, 0);
         break;
     case 3:
-        if (p->itemSelect == 0) {
-            Player_RequestState(p, 0, 0x57, 0);
+        if (pl->itemSelect == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SUPPLY_BOX, 0);
         }
         break;
     case 4:
-        p->targetYaw = angle;
-        Player_RequestState(p, 0, 0x5C, 0);
+        pl->targetYaw = angle;
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TAKE_REWARDS, 0);
         break;
     case 5:
         if (mode == 0) {
-            Player_RequestState(p, 0, 0xC, 0);
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BED_MENU, 0);
             break;
         }
-        Vec_Copy(p->moveTo, pos);
+        Vec_Copy(pl->moveTo, pos);
         ang[0] = 0;
         ang[1] = angle;
         ang[2] = 0;
         Mtx_FromAnglesXYZ(ang, m);
-        Vec_Set(v, 120.0f * gSpotLineupOffsets[p->index], 0.0f, 0.0f);
+        Vec_Set(v, 120.0f * gSpotLineupOffsets[pl->index], 0.0f, 0.0f);
         Vec_Rotate(d, v, m);
-        p->moveTo[0] += d[0];
-        p->moveTo[1] += d[1];
-        p->moveTo[2] += d[2];
-        p->targetYaw = angle;
-        Player_StartMoveTo(p, 0x14);
-        Player_RequestState(p, 0, 0x33, 0);
+        pl->moveTo[0] += d[0];
+        pl->moveTo[1] += d[1];
+        pl->moveTo[2] += d[2];
+        pl->targetYaw = angle;
+        Player_StartMoveTo(pl, 0x14);
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BED_LIE_DOWN, 0);
         break;
     case 9:
         if (gScene.countdownOn == 0) {
-            p->targetYaw = Vec_Heading(&p->pos[0], pos) - 0x4000;
-            Player_RequestState(p, 0, 0x56, 0);
+            pl->targetYaw = Vec_Heading(&pl->pos[0], pos) - 0x4000;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_START_COUNTDOWN, 0);
         }
         break;
     case 7:
-        if (Quest_PhaseIsOver(0) != 1 && p->itemSelect == 0) {
-            Player_RequestState(p, 0, 0x7B, 0);
+        if (Quest_PhaseIsOver(0) != 1 && pl->itemSelect == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DELIVERY_BOX, 0);
         }
         break;
     }
 }
 
-void Player_TryDrawWeapon(Player *p, u8 mode)
+void Player_HoldSpecialInput(Player *pl, u8 mode)
 {
 
-    if (p->input.held & 0x80) {
+    if (pl->input.held & 0x80) {
         if (mode == 0 || mode == 2) {
-            switch (p->weaponType) {
-            case 0:
-                if (mode == 2 && (p->carry & 0xF)) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
+            switch (pl->weaponType) {
+            case WEAPON_GREAT_SWORD:
+                if (mode == 2 && (pl->carry & 0xF)) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
                 }
-                Player_RequestState(p, 2, 3, 0);
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_START, 0);
                 break;
-            case 3:
-            case 4:
-            case 9:
-                if (mode == 2 && (p->carry & 0xF)) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
+            case WEAPON_LANCE:
+            case WEAPON_SWORD_SHIELD:
+            case WEAPON_GUNLANCE:
+                if (mode == 2 && (pl->carry & 0xF)) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
                 }
-                Player_RequestState(p, 2, 0x17, 0);
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_DRAW, 0);
                 break;
-            case 6:
-                if (mode == 2 && (p->carry & 0xF)) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
+            case WEAPON_DUAL_SWORDS:
+                if (mode == 2 && (pl->carry & 0xF)) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
                 }
-                if (p->demonMode == 0) {
-                    DualSwords_Draw(p, 0);
+                if (pl->demonMode == 0) {
+                    DualSwords_DemonToggle(pl, 0);
                 }
                 break;
-            case 2:
-                if (mode == 2 && (p->carry & 0xF)) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
+            case WEAPON_HAMMER:
+                if (mode == 2 && (pl->carry & 0xF)) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
                 }
-                Hammer_Draw(p);
+                Hammer_StartCharge(pl);
                 break;
-            case 8:
-                if (mode == 2 && (p->carry & 0xF)) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
+            case WEAPON_HUNTING_HORN:
+                if (mode == 2 && (pl->carry & 0xF)) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
                 }
-                HuntingHorn_Draw(p, 1);
+                HuntingHorn_StartPlaying(pl, 1);
                 break;
-            case 7:
-                if (mode == 2 && (p->carry & 0xF)) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
+            case WEAPON_LONG_SWORD:
+                if (mode == 2 && (pl->carry & 0xF)) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
                 }
-                LongSword_Draw(p);
+                LongSword_SpiritDraw(pl);
                 break;
-            case 10:
-                if (mode == 2 && (p->carry & 0xF)) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
+            case WEAPON_BOW:
+                if (mode == 2 && (pl->carry & 0xF)) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
                 }
-                Bow_Draw(p);
+                Bow_DrawToAim(pl);
                 break;
             }
         } else {
-            switch (p->weaponType) {
-            case 0:
-            case 3:
-            case 4:
-            case 9:
-                Player_RequestState(p, 2, 3, 0);
+            switch (pl->weaponType) {
+            case WEAPON_GREAT_SWORD:
+            case WEAPON_LANCE:
+            case WEAPON_SWORD_SHIELD:
+            case WEAPON_GUNLANCE:
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_START, 0);
                 break;
-            case 2:
-                Hammer_Draw(p);
+            case WEAPON_HAMMER:
+                Hammer_StartCharge(pl);
                 break;
-            case 8:
-                HuntingHorn_Draw(p, 0);
+            case WEAPON_HUNTING_HORN:
+                HuntingHorn_StartPlaying(pl, 0);
                 break;
-            case 6:
-                if (p->demonMode == 0) {
-                    DualSwords_Draw(p, 0);
+            case WEAPON_DUAL_SWORDS:
+                if (pl->demonMode == 0) {
+                    DualSwords_DemonToggle(pl, 0);
                 } else {
-                    DualSwords_Draw(p, 1);
+                    DualSwords_DemonToggle(pl, 1);
                 }
                 break;
             }
@@ -2169,17 +2169,17 @@ void Player_TryDrawWeapon(Player *p, u8 mode)
     }
 }
 
-void Player_TryGather(Player *p, s32 a)
+void Player_TryGather(Player *pl, s32 a)
 {
     f32 pos[3];
     u16 kind;
     u16 id;
     u16 r;
 
-    if ((u8) Player_NearEmKind10(p) && (u8) a != 2) {
+    if ((u8) Player_NearEmKind10(pl) && (u8) a != 2) {
         return;
     }
-    if (Player_GetGatherPoint(p, &kind, pos) == 0xFFFF) {
+    if (Player_GetGatherPoint(pl, &kind, pos) == 0xFFFF) {
         goto other;
     }
     switch (kind) {
@@ -2188,20 +2188,20 @@ void Player_TryGather(Player *p, s32 a)
             goto other;
         }
         if ((u8) a == 0) {
-            Player_SetState(p, 0, 0x47, 0);
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER, 0);
         } else {
-            Player_SetState(p, 0, 0x5D, 0);
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_CROUCHED, 0);
         }
         break;
     case 3:
         if ((u8) a == 2) {
-            switch (p->pouch[p->pouchCursor].item) {
+            switch (pl->pouch[pl->pouchCursor].item) {
             case 150:
             case 151:
             case 152:
-                p->targetYaw = Vec_Heading(&p->pos[0], pos) - 0x4000;
-                p->useItem = p->pouch[p->pouchCursor].item;
-                Player_SetState(p, 0, 0x51, 0);
+                pl->targetYaw = Vec_Heading(&pl->pos[0], pos) - 0x4000;
+                pl->useItem = pl->pouch[pl->pouchCursor].item;
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_MINE, 0);
                 break;
             case 153:
             case 154:
@@ -2213,13 +2213,13 @@ void Player_TryGather(Player *p, s32 a)
         break;
     case 4:
         if ((u8) a == 2) {
-            id = p->pouch[p->pouchCursor].item;
+            id = pl->pouch[pl->pouchCursor].item;
             switch (id) {
             case 153:
             case 154:
             case 155:
-                p->useItem = id;
-                Player_SetState(p, 0, 0x52, 0);
+                pl->useItem = id;
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_BUG_NET, 0);
                 break;
             case 150:
             case 151:
@@ -2231,7 +2231,7 @@ void Player_TryGather(Player *p, s32 a)
         break;
     default:
     other:
-        switch (p->pouch[p->pouchCursor].item) {
+        switch (pl->pouch[pl->pouchCursor].item) {
         case 150:
         case 151:
         case 152:
@@ -2246,30 +2246,30 @@ void Player_TryGather(Player *p, s32 a)
         break;
     }
     if ((u8) a != 2) {
-        r = MinePoint_FindNearPlayer(p);
+        r = MinePoint_FindNearPlayer(pl);
         if (r != 0xFFFF) {
             if ((u8) a == 0) {
                 switch (r) {
                 default:
-                    Player_SetState(p, 0, 0x7C, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_DROP, 0);
                     break;
                 case 5:
-                    Player_SetState(p, 0, 0x75, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_SPECIAL, 0);
                     break;
                 case 2:
-                    Player_SetState(p, 0, 0x4A, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CARVE, 0);
                     break;
                 }
             } else {
                 switch (r) {
                 default:
-                    Player_SetState(p, 0, 0x7D, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_DROP_CROUCHED, 0);
                     break;
                 case 5:
-                    Player_SetState(p, 0, 0x76, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_SPECIAL_CROUCHED, 0);
                     break;
                 case 2:
-                    Player_SetState(p, 0, 0x60, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CARVE_CROUCHED, 0);
                     break;
                 }
             }
@@ -2277,201 +2277,201 @@ void Player_TryGather(Player *p, s32 a)
     }
 }
 
-s32 Player_IdleInput(Player *p)
+s32 Player_CrouchInput(Player *pl)
 {
 
-    if (Player_IsLocal(p) == 0 && Game_IsOnline() == 1) {
+    if (Player_IsLocal(pl) == 0 && Game_IsOnline() == 1) {
         return 0;
     }
     switch (gScene.questPhase) {
     case 4:
-        if (p->unk7E5 == 0) {
-            Player_RequestState(p, 4, 2, 0);
+        if (pl->unk7E5 == 0) {
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_QUEST_START, 0);
             return 0;
         }
         break;
     case 6:
     case 5:
-        Player_RequestState(p, 4, 3, 0);
+        Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_QUEST_END, 0);
         return 0;
     case 7:
-        Player_RequestState(p, 4, 6, 0);
+        Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_ABORT, 0);
         return 0;
     case 8:
-        Player_RequestState(p, 4, 5, 0);
+        Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_LEAVE, 0);
         return 0;
     }
-    p->freeState = 1;
-    switch ((u8) Player_StickMoveLevel(p, 0)) {
+    pl->freeState = 1;
+    switch ((u8) Player_StickMoveLevel(pl, 0)) {
     case 1:
     case 2:
-        Player_FaceStick(p);
-        if (Player_IsState(p, 0, 0x3B) == 0) {
-            if (Player_IsState(p, 0, 0x3D) != 0) {
-                Player_RequestState(p, 0, 0x3C, 0);
+        Player_FaceStick(pl);
+        if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK) == 0) {
+            if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK_FAST) != 0) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_STOP, 0);
             } else {
-                Player_SetState(p, 0, 0x3B, 0);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
         }
         break;
     case 3:
-        Player_FaceStick(p);
-        if (Player_IsState(p, 0, 0x3D) == 0) {
-            Player_SetState(p, 0, 0x3D, 0);
+        Player_FaceStick(pl);
+        if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK_FAST) == 0) {
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK_FAST, 0);
         }
         break;
     case 0:
     default:
-        if ((Player_IsState(p, 0, 0x3B) != 0 || Player_IsState(p, 0, 0x3D) != 0) && p->timer == 0) {
-            Player_RequestState(p, 0, 0x3C, 0);
+        if ((Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK_FAST) != 0) && pl->timer == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_STOP, 0);
         }
         break;
     }
-    if ((p->input.pressed & 0x40) && p->unk668 == 0) {
-        Player_RequestState(p, 0, 0x39, 0);
+    if ((pl->input.pressed & 0x40) && pl->unk668 == 0) {
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_STAND_UP, 0);
     }
     if (Quest_PhaseIsOver(1) == 1) {
         return 0;
     }
-    if (p->actRequest != 0) {
-        Player_StartAct(p);
+    if (pl->actRequest != 0) {
+        Player_StartAct(pl);
     }
-    if (p->unk668 == 0) {
-        if (p->input.stickDirPressed & 0x3C) {
-            Player_SetState(p, 0, 4, 0);
+    if (pl->unk668 == 0) {
+        if (pl->input.stickDirPressed & 0x3C) {
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DRAW, 0);
         }
-        Player_TryDrawWeapon(p, 0);
+        Player_HoldSpecialInput(pl, 0);
     }
-    if ((p->input.pressed & 0x200) && p->itemUseDelay == 0 && p->itemSelect == 0) {
-        Player_TryGather(p, 2);
-        Player_UseItem(p, 0);
-        p->pouchHudFlags |= 1;
+    if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+        Player_TryGather(pl, 2);
+        Player_UseItem(pl, 0);
+        pl->pouchHudFlags |= 1;
     }
-    if (p->input.pressed & 0x20) {
-        if (Player_TakeOfferedItem(p) == 0) {
-            Player_StartSpotAction(p, 0);
-            Player_TryGather(p, 1);
+    if (pl->input.pressed & 0x20) {
+        if (Player_TakeOfferedItem(pl) == 0) {
+            Player_StartSpotAction(pl, 0);
+            Player_TryGather(pl, 1);
         }
-    } else if (p->offerRequest != 0) {
-        p->freeState = 0;
-        p->offerStarted = 1;
-        Player_RequestState(p, 0, 0x67, 0x10);
+    } else if (pl->offerRequest != 0) {
+        pl->freeState = 0;
+        pl->offerStarted = 1;
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM, PL_SET_SYNC_OFFER);
     }
     return 0;
 }
 
 /* The weapons input checks (the states cancel into another action), for the local player or a human one
  * when input is allowed. */
-void Player_WeaponAttackInput(Player *p, s32 arg)
+void Player_WeaponAttackInput(Player *pl, s32 arg)
 {
 
-    if ((Player_IsLocal(p) != 0 || Game_IsOnline() != 1) && p->itemSelect == 0 && Quest_PhaseIsOver(1) != 1) {
-        switch (p->weaponType) {
-        case 0:
-            GreatSword_AttackInput(p);
+    if ((Player_IsLocal(pl) != 0 || Game_IsOnline() != 1) && pl->itemSelect == 0 && Quest_PhaseIsOver(1) != 1) {
+        switch (pl->weaponType) {
+        case WEAPON_GREAT_SWORD:
+            GreatSword_AttackInput(pl);
             break;
-        case 7:
-            LongSword_AttackInput(p);
+        case WEAPON_LONG_SWORD:
+            LongSword_AttackInput(pl);
             break;
-        case 1:
-        case 5:
-            Bowgun_AttackInput(p);
+        case WEAPON_HEAVY_BOWGUN:
+        case WEAPON_LIGHT_BOWGUN:
+            Bowgun_AttackInput(pl);
             break;
-        case 10:
-            Bow_AttackInput(p, arg);
+        case WEAPON_BOW:
+            Bow_AttackInput(pl, arg);
             break;
-        case 2:
-            Hammer_AttackInput(p);
+        case WEAPON_HAMMER:
+            Hammer_AttackInput(pl);
             break;
-        case 8:
-            HuntingHorn_AttackInput(p);
+        case WEAPON_HUNTING_HORN:
+            HuntingHorn_AttackInput(pl);
             break;
-        case 3:
-            Lance_AttackInput(p);
+        case WEAPON_LANCE:
+            Lance_AttackInput(pl);
             break;
-        case 9:
-            Gunlance_AttackInput(p);
+        case WEAPON_GUNLANCE:
+            Gunlance_AttackInput(pl);
             break;
-        case 4:
-            SwordShield_AttackInput(p);
+        case WEAPON_SWORD_SHIELD:
+            SwordShield_AttackInput(pl);
             break;
-        case 6:
-            DualSwords_AttackInput(p);
+        case WEAPON_DUAL_SWORDS:
+            DualSwords_AttackInput(pl);
             return;
         }
     }
 }
 
-void Player_GatherStep(Player *p)
+void Player_GuardInput(Player *pl)
 {
     u8 temp_a0;
 
-    if (((Player_IsLocal(p) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1)) {
-        temp_a0 = p->weaponType;
+    if (((Player_IsLocal(pl) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1)) {
+        temp_a0 = pl->weaponType;
         switch (temp_a0) {
         case 3:
-            if ((Player_StickMoveLevel(p, 0) & 0xFF) && (p->motionId[0] != 0x3F3)) {
-                Player_SetState(p, 0U, 7U, 4);
+            if ((Player_StickMoveLevel(pl, 0) & 0xFF) && (pl->motionId[0] != 0x3F3)) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GUARD_WALK, PL_SET_SNAP_POS);
             }
-            if (p->input.pressed & 1) {
-                Lance_GatherAttack(p, 0);
+            if (pl->input.pressed & 1) {
+                Lance_GuardAttack(pl, 0);
             }
-            if (p->input.stickDirPressed & 0x3C) {
-                Lance_GatherAttack(p, 1);
+            if (pl->input.stickDirPressed & 0x3C) {
+                Lance_GuardAttack(pl, 1);
             }
             break;
         case 9:
-            if ((Gunlance_GatherInput(p, 0) == 0) && (Player_StickMoveLevel(p, 0) & 0xFF) && (p->motionId[0] != 0x3F3)) {
-                Player_SetState(p, 0U, 7U, 4);
+            if ((Gunlance_GuardInput(pl, 0) == 0) && (Player_StickMoveLevel(pl, 0) & 0xFF) && (pl->motionId[0] != 0x3F3)) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GUARD_WALK, PL_SET_SNAP_POS);
             }
             break;
         case 4:
-            if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B)) {
-                Player_SetState(p, 0U, 0x1CU, 4);
+            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             }
-            if (p->input.stickDirPressed & 0x20) {
-                SwordShield_GatherAttack(p);
+            if (pl->input.stickDirPressed & 0x20) {
+                SwordShield_GuardSlash(pl);
             }
             break;
         case 0:
         case 7:
-            if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B)) {
-                Player_SetState(p, 0U, 0x1CU, 4);
+            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             }
             break;
         }
     }
 }
 
-s8 Player_TurnAlongWall(Player *p, s16 side)
+s8 Player_TurnAlongWall(Player *pl, s16 side)
 {
     s16 i;
     u16 flags;
     u16 ang;
 
-    if ((u8)Obj_InCurrentArea(p) == 0) {
+    if ((u8)Obj_InCurrentArea(pl) == 0) {
         return 0;
     }
-    if (p->wallHitDirs != 0) {
+    if (pl->wallHitDirs != 0) {
         for (i = 0; i < 10; i++) {
-            flags = gEmWallContacts[p->index][i].flags;
+            flags = gEmWallContacts[pl->index][i].flags;
             if (flags == 0) {
                 break;
             }
-            ang = Math_Heading(gEmWallContacts[p->index][i].pos[0], gEmWallContacts[p->index][i].pos[2], 0.0f, 0.0f);
-            if ((flags & 2) && (p->wallHitDirs & 0xE0000007)) {
+            ang = Math_Heading(gEmWallContacts[pl->index][i].pos[0], gEmWallContacts[pl->index][i].pos[2], 0.0f, 0.0f);
+            if ((flags & 2) && (pl->wallHitDirs & 0xE0000007)) {
                 if (side == 0) {
-                    p->rot[1] = (u16) (ang - 0x4000);
+                    pl->rot[1] = (u16) (ang - 0x4000);
                 } else {
-                    p->rot[1] = (u16) (ang + 0x4000);
+                    pl->rot[1] = (u16) (ang + 0x4000);
                 }
-                p->targetYaw = p->rot[1];
+                pl->targetYaw = pl->rot[1];
                 return 1;
             }
             if (flags != 0) {
                 if (side == 1) {
-                    p->rot[1] = (u16) (ang + 0x4000);
-                    p->targetYaw = p->rot[1];
+                    pl->rot[1] = (u16) (ang + 0x4000);
+                    pl->targetYaw = pl->rot[1];
                 }
                 return 2;
             }
@@ -2480,30 +2480,30 @@ s8 Player_TurnAlongWall(Player *p, s16 side)
     return 0;
 }
 
-s32 Player_TurnAlongWallSide(Player *p, s16 side)
+s32 Player_TurnAlongWallSide(Player *pl, s16 side)
 {
     s16 i;
     u16 flags;
     u16 ang;
 
-    if ((u8)Obj_InCurrentArea(p) == 0) {
+    if ((u8)Obj_InCurrentArea(pl) == 0) {
         return 0;
     }
-    if (p->wallHitDirs & (side == 0 ? 0xE0000007 : 0x3E000)) {
+    if (pl->wallHitDirs & (side == 0 ? 0xE0000007 : 0x3E000)) {
         for (i = 0; i < 10; i++) {
-            flags = gEmWallContacts[p->index][i].flags;
+            flags = gEmWallContacts[pl->index][i].flags;
             if (flags == 0) {
                 break;
             }
-            ang = Math_Heading(gEmWallContacts[p->index][i].pos[0], gEmWallContacts[p->index][i].pos[2], 0.0f, 0.0f);
+            ang = Math_Heading(gEmWallContacts[pl->index][i].pos[0], gEmWallContacts[pl->index][i].pos[2], 0.0f, 0.0f);
             if ((flags & 2) && side == 0) {
-                p->rot[1] = (u16) (ang - 0x4000);
-                p->targetYaw = p->rot[1];
+                pl->rot[1] = (u16) (ang - 0x4000);
+                pl->targetYaw = pl->rot[1];
                 return 1;
             }
             if (side == 1) {
-                p->rot[1] = (u16) (ang + 0x4000);
-                p->targetYaw = p->rot[1];
+                pl->rot[1] = (u16) (ang + 0x4000);
+                pl->targetYaw = pl->rot[1];
                 return 2;
             }
         }
@@ -2511,55 +2511,55 @@ s32 Player_TurnAlongWallSide(Player *p, s16 side)
     return 0;
 }
 
-u8 Player_CheckClimb(Player *p)
+u8 Player_CheckClimb(Player *pl)
 {
     f32 dist;
     u8 ret = 0;
 
-    switch (Player_TurnAlongWall(p, 0)) {
+    switch (Player_TurnAlongWall(pl, 0)) {
     case 0:
         break;
     case 1:
-        Player_SetState(p, 0, 0x2B, 0xC);
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALL_GRAB, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         ret = 1;
         break;
     }
-    if (Player_FloorAheadAbove(p, &dist, 55.0f, 60.0f, 120.0f) != 0) {
-        p->targetYaw = p->rot[1];
-        Player_RequestState(p, 0, 0x1E, 0xC);
+    if (Player_FloorAheadAbove(pl, &dist, 55.0f, 60.0f, 120.0f) != 0) {
+        pl->targetYaw = pl->rot[1];
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_STEP_UP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         ret = 1;
-    } else if (Player_FloorAheadAbove(p, &dist, 55.0f, 180.0f, 30.0f) != 0) {
-        p->targetYaw = p->rot[1];
-        Player_RequestState(p, 0, 0x1B, 0xC);
+    } else if (Player_FloorAheadAbove(pl, &dist, 55.0f, 180.0f, 30.0f) != 0) {
+        pl->targetYaw = pl->rot[1];
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         ret = 1;
-    } else if (Player_FloorAheadAbove(p, &dist, 55.0f, 210.0f, 90.0f) != 0) {
-        p->targetYaw = p->rot[1];
-        Player_RequestState(p, 0, 0x15, 0xC);
+    } else if (Player_FloorAheadAbove(pl, &dist, 55.0f, 210.0f, 90.0f) != 0) {
+        pl->targetYaw = pl->rot[1];
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_JUMP_TO_LEDGE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         ret = 1;
     }
     return ret;
 }
 
 /* Uses the selected pouch item (see config/symbols/game.txt). */
-void Player_UseItem(Player *p, u8 mode)
+void Player_UseItem(Player *pl, u8 mode)
 {
     f32 v[3];
     u16 ang;
     u8 k;
 
-    if (Pouch_CursorCount(p) <= 0) {
+    if (Pouch_CursorCount(pl) <= 0) {
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
         }
         return;
     }
     if (mode == 2) {
-        switch (p->pouch[p->pouchCursor].item) {
+        switch (pl->pouch[pl->pouchCursor].item) {
         case 0x61:
-            if (func_3648F0() == 1) {
-                p->useItem = p->pouch[p->pouchCursor].item;
-                Player_RequestState(p, 0, 0x6F, 0xC);
+            if (Item_RideItemUsable() == 1) {
+                pl->useItem = pl->pouch[pl->pouchCursor].item;
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_LARGE_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             } else {
                 Sound_PlaySeFlat(0, 0x15, 0);
             }
@@ -2570,30 +2570,30 @@ void Player_UseItem(Player *p, u8 mode)
         }
         return;
     }
-    switch (p->pouch[p->pouchCursor].item) {
+    switch (pl->pouch[pl->pouchCursor].item) {
     case 0x4C:
     case 0x4B:
-        p->useItem = p->pouch[p->pouchCursor].item;
-        if (!Player_TestFlag(p, 0x2000600)) {
-            Player_RequestState(p, 0, 0xB, 0xC);
+        pl->useItem = pl->pouch[pl->pouchCursor].item;
+        if (!Player_TestFlag(pl, 0x2000600)) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_THROW_ITEM_ALT, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
-            Player_RequestState(p, 0, 0xE, 0xC);
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_THROW_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
         break;
     case 0x4D:
     case 0x2BA:
     case 0x4F:
-        p->useItem = p->pouch[p->pouchCursor].item;
-        Player_RequestState(p, 0, 0xB, 0xC);
+        pl->useItem = pl->pouch[pl->pouchCursor].item;
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_THROW_ITEM_ALT, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         break;
     case 0x4E:
         if (Item_UsableOutsideCamp() == 1) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x72, 0xC);
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_RETURN_TO_CAMP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2609,14 +2609,14 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x2BB:
     case 0x2BC:
     case 0x40:
-        p->useItem = p->pouch[p->pouchCursor].item;
-        Player_RequestState(p, 0, 0xE, 0xC);
+        pl->useItem = pl->pouch[pl->pouchCursor].item;
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_THROW_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         break;
     case 0x50:
     case 0x45:
         if (Quest_IsVersus() == 0) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0xE, 0xC);
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_THROW_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
         break;
     case 0x5B:
@@ -2628,35 +2628,35 @@ void Player_UseItem(Player *p, u8 mode)
         }
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     case 0x56:
-        if (func_364A70() == 1) {
+        if (Scene_InNoBarrelBombArea() == 1) {
             goto drink;
         }
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     case 0x28:
     case 0x2C:
     case 0x2E:
     case 0x2D:
-        if (Scene_FewPlaced3_Unk() == 1) {
+        if (Scene_CanPlaceKind3() == 1) {
         drink:
-            if (p->action == 0) {
-                p->useItem = p->pouch[p->pouchCursor].item;
-                Player_RequestState(p, 0, 0x19, 0xC);
-            } else if (p->action == 1) {
-                p->useItem = p->pouch[p->pouchCursor].item;
-                Player_RequestState(p, 0, 0x59, 0xC);
+            if (pl->action == 0) {
+                pl->useItem = pl->pouch[pl->pouchCursor].item;
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_KNEEL_TO_PLACE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
+            } else if (pl->action == 1) {
+                pl->useItem = pl->pouch[pl->pouchCursor].item;
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_KNEEL_TO_PLACE_CROUCHED, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2664,47 +2664,47 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x5E:
     case 0x29A:
         if (Item_CanPlaceLargeBarrelBomb() == 1) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x6F, 0xC);
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_LARGE_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0x62:
         if (Item_CanPlaceKind1() == 1) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x6F, 0xC);
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_LARGE_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0x55:
     case 0x296:
         if (Item_CanPlaceKind2() == 1) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x2E, 0xC);
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0x54:
     case 0x299:
-        if (Player_GetAreaAmbModel(p) >= 0) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x2E, 0xC);
+        if (Player_GetAreaAmbModel(pl) >= 0) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2736,13 +2736,13 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x30C:
     case 0x319:
     case 0x313:
-        if (SpecialMine_IsFree(p) == 1) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x2E, 0xC);
+        if (SpecialMine_IsFree(pl) == 1) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2754,54 +2754,54 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x93:
     case 0x94:
     case 0x95:
-        if (Player_FindActionSpot((Player *)p, (f32 *)v, &ang, (u8 *)&k) == 2) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            p->targetYaw = ang;
-            Player_RequestState(p, 0, 0x4F, 0);
+        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 2) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            pl->targetYaw = ang;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_CAST, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0x2A6:
-        if (Player_FindActionSpot((Player *)p, (f32 *)v, &ang, (u8 *)&k) == 0xB) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x2E, 0xC);
+        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 0xB) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0x29B:
-        if (Player_FindActionSpot((Player *)p, (f32 *)v, &ang, (u8 *)&k) == 6) {
-            p->moveTo[0] = v[0];
-            p->moveTo[1] = v[1];
-            p->moveTo[2] = v[2];
-            p->targetYaw = ang;
-            Player_StartMoveTo(p, 0x14);
-            p->stateRand = k;
-            Player_RequestState(p, 0, 0x36, 0x20);
+        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 6) {
+            pl->moveTo[0] = v[0];
+            pl->moveTo[1] = v[1];
+            pl->moveTo[2] = v[2];
+            pl->targetYaw = ang;
+            Player_StartMoveTo(pl, 0x14);
+            pl->stateRand = k;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_AIM, PL_SET_KEEP_RAND);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0x2B7:
-        if (Player_FindActionSpot((Player *)p, (f32 *)v, &ang, (u8 *)&k) == 0xA) {
-            p->targetYaw = Vec_Heading(p->pos, v) - 0x4000;
-            p->stateRand = k;
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x79, 0x20);
+        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 0xA) {
+            pl->targetYaw = Vec_Heading(pl->pos, v) - 0x4000;
+            pl->stateRand = k;
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPOT_ITEM_STRIKE, PL_SET_KEEP_RAND);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2838,13 +2838,13 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x14:
     case 0x1E:
     case 0xC8:
-        if (func_00723BC0((Em *)p) == 0) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x58, 0);
+        if (func_00723BC0((Em *)pl) == 0) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DRINK, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2854,13 +2854,13 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x9F:
     case 0x9E:
     case 0xA0:
-        if (Pouch_HasItem28(p) == 1) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_SetState(p, 0, 0x4C, 0);
+        if (Pouch_HasItem28(pl) == 1) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_START, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2871,33 +2871,33 @@ void Player_UseItem(Player *p, u8 mode)
     case 0xA3:
     case 0xA8:
     case 0xA9:
-        p->useItem = p->pouch[p->pouchCursor].item;
-        Player_SetState(p, 0, 0x4C, 0);
+        pl->useItem = pl->pouch[pl->pouchCursor].item;
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_START, 0);
         break;
     case 0xAC:
     case 0x295:
     case 0xEA:
     case 0xF2:
-        if (p->isGunner != 1) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x61, 0);
+        if (pl->isGunner != 1) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SHARPEN, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0xAF:
-        p->useItem = p->pouch[p->pouchCursor].item;
-        Player_SetState(p, 0, 0x5E, 0xC);
+        pl->useItem = pl->pouch[pl->pouchCursor].item;
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_HORN_PLAY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         break;
     case 0xB0:
     case 0xB1:
     case 0xB2:
     case 0xB3:
-        p->useItem = p->pouch[p->pouchCursor].item;
-        Player_SetState(p, 0, 0x62, 0xC);
+        pl->useItem = pl->pouch[pl->pouchCursor].item;
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_TEAM_ITEM_USE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         break;
     case 0x2F:
     case 0x30:
@@ -2918,27 +2918,27 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x3C:
     case 0x3D:
     case 0x3E:
-        if (func_00723BC0((Em *)p) == 0) {
-            p->useItem = p->pouch[p->pouchCursor].item;
-            Player_RequestState(p, 0, 0x5A, 0);
+        if (func_00723BC0((Em *)pl) == 0) {
+            pl->useItem = pl->pouch[pl->pouchCursor].item;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_EAT, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
     case 0xAD:
         if (Player_LocalAreaOk_Unk() == 1) {
-            if (p->action == 1) {
-                Player_RequestState(p, 0, 0x66, 0);
+            if (pl->action == 1) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS_CROUCHED, 0);
             } else {
-                Player_RequestState(p, 0, 0x65, 0);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS, 0);
             }
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
         }
         break;
@@ -2956,20 +2956,20 @@ void Player_UseItem(Player *p, u8 mode)
     case 0x2B4:
     case 0x2B5:
     case 0x2B6:
-        p->useItem = p->pouch[p->pouchCursor].item;
-        Player_RequestState(p, 0, 0x73, 0);
+        pl->useItem = pl->pouch[pl->pouchCursor].item;
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_HORN_ITEM_PLAY, 0);
         break;
     default:
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
 extern s32 gPouchFullTakeText;
-s32 Player_TakeOfferedItem(Player *p)
+s32 Player_TakeOfferedItem(Player *pl)
 {
     s16 i;
     Player *o;
@@ -2977,36 +2977,36 @@ s32 Player_TakeOfferedItem(Player *p)
     if (Game_IsOnline() == 0) {
         return 0;
     }
-    if (p->offerNoticeTimer != 0) {
+    if (pl->offerNoticeTimer != 0) {
         return 0;
     }
     o = gPlayers;
     for (i = 0; i < gScene.playerCount; i++, o++) {
-        if (i != p->index && o->active != 0 && o->area == p->area && Player_IsState(o, 0, 0x67) != 0
-            && o->offerTo == p->index && Vec_Distance(p->pos, o->pos) <= 300.0f && gItemData[o->offerItem].rarity < 3) {
-            if (Pouch_Count(p, o->offerItem) == 0) {
-                if (Pouch_HasFreeSlot(p) != 0) {
-                    p->offerItem = o->offerItem;
-                    p->offerCount = o->offerCount;
-                    if (Player_IsLocal(p) == 1) {
-                        QSync_SendPlayer(p, 7, o->index);
+        if (i != pl->index && o->active != 0 && o->area == pl->area && Player_IsState(o, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM) != 0
+            && o->offerTo == pl->index && Vec_Distance(pl->pos, o->pos) <= 300.0f && gItemData[o->offerItem].rarity < 3) {
+            if (Pouch_Count(pl, o->offerItem) == 0) {
+                if (Pouch_HasFreeSlot(pl) != 0) {
+                    pl->offerItem = o->offerItem;
+                    pl->offerCount = o->offerCount;
+                    if (Player_IsLocal(pl) == 1) {
+                        QSync_SendPlayer(pl, 7, o->index);
                     }
-                    Player_RequestState(p, 0, 0x68, 0);
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TAKE_ITEM_WAIT, 0);
                     return 1;
                 }
                 Notice_PushItem((char *)gPouchFullTakeText);
-                p->offerNoticeTimer = 0x5A;
-            } else if (Pouch_Room(p, o->offerItem) >= o->offerCount) {
-                p->offerItem = o->offerItem;
-                p->offerCount = o->offerCount;
-                if (Player_IsLocal(p) == 1) {
-                    QSync_SendPlayer(p, 7, o->index);
+                pl->offerNoticeTimer = 0x5A;
+            } else if (Pouch_Room(pl, o->offerItem) >= o->offerCount) {
+                pl->offerItem = o->offerItem;
+                pl->offerCount = o->offerCount;
+                if (Player_IsLocal(pl) == 1) {
+                    QSync_SendPlayer(pl, 7, o->index);
                 }
-                Player_RequestState(p, 0, 0x68, 0);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TAKE_ITEM_WAIT, 0);
                 return 1;
             } else {
                 Notice_Push(1, 0xF, o->offerItem);
-                p->offerNoticeTimer = 0x5A;
+                pl->offerNoticeTimer = 0x5A;
             }
             return 0;
         }
@@ -3014,7 +3014,7 @@ s32 Player_TakeOfferedItem(Player *p)
     return 0;
 }
 
-void Player_IdleActions(Player *p, s32 arg)
+void Player_IdleActions(Player *pl, s32 arg)
 {
     Em *m = gEms;
     s16 i;
@@ -3024,810 +3024,810 @@ void Player_IdleActions(Player *p, s32 arg)
     u16 d;
 
     if (Game_IsOnline() == 0) {
-        if (Player_IsLocal(p) == 0) {
+        if (Player_IsLocal(pl) == 0) {
             return;
         }
-    } else if (Player_IsLocal(p) == 0) {
+    } else if (Player_IsLocal(pl) == 0) {
         return;
     }
     drew = 0;
-    if (gScene.questPhase == 4 && p->unk7E5 == 0) {
-        Player_RequestState(p, 4, 2, 0);
+    if (gScene.questPhase == 4 && pl->unk7E5 == 0) {
+        Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_QUEST_START, 0);
         return;
     }
-    p->freeState = 1;
-    if (p->rideState != 0) {
-        k = p->rideEm;
+    pl->freeState = 1;
+    if (pl->rideState != 0) {
+        k = pl->rideEm;
         for (i = 0; i < 20; i++, m++) {
             if (k == m->slotNo && (m->type == 7 || m->type == 0x32 || m->type == 0x3A || m->type == 0x48 ||
                                    m->type == 0x37)) {
                 if (m->quakeTimer != 0) {
-                    Player_SetState(p, 2, 7, 0);
+                    Player_SetState(pl, PL_GROUP_REACT, PL_REACT_TOSSED_BACK, 0);
                     return;
                 }
                 break;
             }
         }
-        if ((u8) Player_StickMoveLevel(p, 1) > 0 && p->state != 0x12) {
-            Player_FaceStick(p);
-            Player_SetState(p, 0, 0x12, 0);
+        if ((u8) Player_StickMoveLevel(pl, 1) > 0 && pl->state != 0x12) {
+            Player_FaceStick(pl);
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RIDE_WALK, 0);
         }
-        Player_CheckRideSlip(p);
+        Player_CheckRideSlip(pl);
         if (Quest_PhaseIsOver(1) == 1) {
             return;
         }
-        if (p->input.pressed & 0x20) {
-            if (Player_TakeOfferedItem(p) == 0) {
-                Player_StartSpotAction(p, 0);
-                Player_TryGather(p, 0);
+        if (pl->input.pressed & 0x20) {
+            if (Player_TakeOfferedItem(pl) == 0) {
+                Player_StartSpotAction(pl, 0);
+                Player_TryGather(pl, 0);
             }
         }
-        if ((p->input.pressed & 0x200) && p->itemUseDelay == 0 && p->itemSelect == 0) {
-            Player_UseItem(p, 2);
-            p->pouchHudFlags |= 1;
+        if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+            Player_UseItem(pl, 2);
+            pl->pouchHudFlags |= 1;
         }
     } else {
         if (gScene.questPhase == 6 || gScene.questPhase == 5) {
-            Player_RequestState(p, 4, 3, 0);
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_QUEST_END, 0);
             return;
         }
         if (gScene.questPhase == 7) {
-            Player_RequestState(p, 4, 6, 0);
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_ABORT, 0);
             return;
         }
         if (gScene.questPhase == 8) {
-            Player_RequestState(p, 4, 5, 0);
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_LEAVE, 0);
             return;
         }
-        if (p->weaponOut != 0) {
-            r = Player_StickMoveLevel(p, 1);
+        if (pl->weaponOut != 0) {
+            r = Player_StickMoveLevel(pl, 1);
             switch (r) {
             case 0:
                 break;
             case 1:
             case 2:
             case 3:
-                if (p->state != 0x24 && p->state != 3 && p->state != 0x74 && p->unk668 == 0) {
-                    Player_SetState(p, 0, 3, 0);
+                if (pl->state != 0x24 && pl->state != 3 && pl->state != 0x74 && pl->unk668 == 0) {
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALK_DRAWN, 0);
                 }
                 break;
             case 4:
                 break;
             }
-            if (r != 0 && p->unk668 != 0 && p->state != 0x3B) {
-                Player_SetState(p, 0, 0x3B, 0);
+            if (r != 0 && pl->unk668 != 0 && pl->state != 0x3B) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
             if (Quest_PhaseIsOver(1) == 1) {
                 return;
             }
-            if (p->actRequest != 0) {
-                Player_StartAct(p);
+            if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
-            switch (p->weaponType) {
-            case 4:
-                if ((p->input.pressed & 0x20) || ((p->input.pressed & 0x10) && p->input.stickTilt >= 0x28)) {
-                    if (Player_TestFlag(p, 0x1200) == 0) {
-                        Player_SetState(p, 0, 5, 0);
+            switch (pl->weaponType) {
+            case WEAPON_SWORD_SHIELD:
+                if ((pl->input.pressed & 0x20) || ((pl->input.pressed & 0x10) && pl->input.stickTilt >= 0x28)) {
+                    if (Player_TestFlag(pl, 0x1200) == 0) {
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SHEATHE, 0);
                     } else {
-                        Player_SetState(p, 0, 0xA, 0);
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SHEATHE_MOVING, 0);
                     }
-                } else if ((p->input.pressed & 0x200) && p->itemUseDelay == 0 && p->itemSelect == 0) {
-                    Player_TryGather(p, 2);
-                    Player_UseItem(p, 0);
-                    p->pouchHudFlags |= 1;
+                } else if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+                    Player_TryGather(pl, 2);
+                    Player_UseItem(pl, 0);
+                    pl->pouchHudFlags |= 1;
                 }
                 break;
             default:
-                if ((p->input.pressed & 0x220) || ((p->input.pressed & 0x10) && p->input.stickTilt >= 0x28)) {
-                    if (Player_TestFlag(p, 0x1200) == 0) {
-                        Player_SetState(p, 0, 5, 0);
+                if ((pl->input.pressed & 0x220) || ((pl->input.pressed & 0x10) && pl->input.stickTilt >= 0x28)) {
+                    if (Player_TestFlag(pl, 0x1200) == 0) {
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SHEATHE, 0);
                     } else {
-                        Player_SetState(p, 0, 0xA, 0);
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SHEATHE_MOVING, 0);
                     }
-                    p->pouchHudFlags |= 1;
+                    pl->pouchHudFlags |= 1;
                 }
                 break;
             }
-            Player_TryDrawWeapon(p, 1);
-            if ((Player_AmmoTypeChanged(p) & 0xFF) == 0) {
-                Player_WeaponAttackInput(p, arg);
+            Player_HoldSpecialInput(pl, 1);
+            if ((Player_AmmoTypeChanged(pl) & 0xFF) == 0) {
+                Player_WeaponAttackInput(pl, arg);
             }
-            if (p->offerRequest != 0) {
-                p->freeState = 0;
-                p->offerStarted = 1;
-                Player_RequestState(p, 0, 0x67, 0x10);
+            if (pl->offerRequest != 0) {
+                pl->freeState = 0;
+                pl->offerStarted = 1;
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM, PL_SET_SYNC_OFFER);
             }
-            if (Player_Status5Full(p) & 0xFF) {
-                p->freeState = 0;
-                Player_RequestState(p, 2, 0x13, 0);
+            if (Player_Status5Full(pl) & 0xFF) {
+                pl->freeState = 0;
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_STUN, 0);
                 return;
             }
-            if (Player_HasMashBuildup(p) & 0xFF) {
-                p->freeState = 0;
-                Player_RequestState(p, 2, 0x1B, 0);
+            if (Player_HasMashBuildup(pl) & 0xFF) {
+                pl->freeState = 0;
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_START, 0);
             }
         } else {
-            r = Player_StickMoveLevel(p, 0);
+            r = Player_StickMoveLevel(pl, 0);
             switch (r) {
             case 0:
                 break;
             case 1:
-                if (p->state != 0x49 && p->state != 0x24 && p->unk668 == 0) {
-                    Player_FaceStick(p);
-                    Player_SetState(p, 0, 0x49, 0);
+                if (pl->state != 0x49 && pl->state != 0x24 && pl->unk668 == 0) {
+                    Player_FaceStick(pl);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALK_SLOW, 0);
                 }
                 break;
             case 2:
-                if (p->state != 2 && p->state != 0x24 && p->unk668 == 0) {
-                    Player_FaceStick(p);
-                    Player_SetState(p, 0, 2, 0);
+                if (pl->state != 2 && pl->state != 0x24 && pl->unk668 == 0) {
+                    Player_FaceStick(pl);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALK, 0);
                 }
                 break;
             case 3:
-                if (p->state != 1 && p->state != 0x3F && p->state != 0x13 && p->state != 0x24 &&
-                    p->state != 0x1F && p->unk668 == 0) {
-                    Player_FaceStick(p);
-                    d = p->targetYaw + 0x10000 - p->rot[1];
+                if (pl->state != 1 && pl->state != 0x3F && pl->state != 0x13 && pl->state != 0x24 &&
+                    pl->state != 0x1F && pl->unk668 == 0) {
+                    Player_FaceStick(pl);
+                    d = pl->targetYaw + 0x10000 - pl->rot[1];
                     if (d >= 0x6000U && d < 0xA001U) {
-                        Player_SetState(p, 0, 0x3F, 0xC);
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_TURN_AROUND, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                     } else {
-                        Player_SetState(p, 0, 1, 0);
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN, 0);
                     }
                 }
                 break;
             case 4:
                 break;
             case 5:
-                if (Player_TestFlag(p, 0x200) == 0) {
-                    if (p->inBattle != 0 && (u16) (p->targetAngle - p->rot[1] + 0x2000) > 0x4000) {
-                        Player_SetState(p, 0, 0x20, 0);
+                if (Player_TestFlag(pl, 0x200) == 0) {
+                    if (pl->inBattle != 0 && (u16) (pl->targetAngle - pl->rot[1] + 0x2000) > 0x4000) {
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_FLEE_DASH, 0);
                     } else {
-                        Player_SetState(p, 0, 0x1F, 0);
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DASH, 0);
                     }
                     drew = 1;
                 }
                 break;
             }
-            if (p->actRequest != 0) {
-                Player_StartAct(p);
+            if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
-            if (r != 0 && p->unk668 != 0 && p->state != 0x3B) {
-                Player_SetState(p, 0, 0x3B, 0);
+            if (r != 0 && pl->unk668 != 0 && pl->state != 0x3B) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
             if (Quest_PhaseIsOver(1) == 1) {
                 return;
             }
-            if (p->input.pressed & 0x40) {
-                if (p->input.stickTilt >= 0x55) {
-                    if (p->stamina >= 0x4B) {
-                        Player_SetState(p, 0, 0x1C, 4);
+            if (pl->input.pressed & 0x40) {
+                if (pl->input.stickTilt >= 0x55) {
+                    if (pl->stamina >= 0x4B) {
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                     }
                 } else {
-                    Player_SetState(p, 0, 8, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH, 0);
                 }
             }
-            if ((p->input.pressed & 0x200) && p->itemUseDelay == 0 && p->itemSelect == 0) {
-                Player_TryGather(p, 2);
-                Player_UseItem(p, 0);
-                p->pouchHudFlags |= 1;
+            if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+                Player_TryGather(pl, 2);
+                Player_UseItem(pl, 0);
+                pl->pouchHudFlags |= 1;
             }
-            Player_TryDrawWeapon(p, 0);
-            if ((drew == 0 ? p->input.pressed : p->input.held) & 0x20) {
-                Player_CheckClimb(p);
+            Player_HoldSpecialInput(pl, 0);
+            if ((drew == 0 ? pl->input.pressed : pl->input.held) & 0x20) {
+                Player_CheckClimb(pl);
             }
-            if (p->input.stickDirPressed & 0x3C) {
-                if (Player_TestFlag(p, 0x2000600) == 0) {
-                    if (p->weaponType == 1 || p->weaponType == 5) {
-                        Bowgun_DrawAttack(p, 0);
+            if (pl->input.stickDirPressed & 0x3C) {
+                if (Player_TestFlag(pl, 0x2000600) == 0) {
+                    if (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN) {
+                        Bowgun_DrawAttack(pl, 0);
                     } else {
-                        Player_SetState(p, 0, 4, 0);
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DRAW, 0);
                     }
                 } else {
-                    switch (p->weaponType) {
-                    case 0:
+                    switch (pl->weaponType) {
+                    case WEAPON_GREAT_SWORD:
                     default:
-                        GreatSword_DrawAttack(p);
+                        GreatSword_DrawAttack(pl);
                         break;
-                    case 1:
-                    case 5:
-                        Bowgun_DrawAttack(p, 1);
+                    case WEAPON_HEAVY_BOWGUN:
+                    case WEAPON_LIGHT_BOWGUN:
+                        Bowgun_DrawAttack(pl, 1);
                         break;
-                    case 10:
-                        Bow_DrawAttack(p);
+                    case WEAPON_BOW:
+                        Bow_DrawAttack(pl);
                         break;
-                    case 4:
-                        SwordShield_DrawAttack(p);
+                    case WEAPON_SWORD_SHIELD:
+                        SwordShield_DrawAttack(pl);
                         break;
-                    case 6:
-                        DualSwords_DrawAttack(p);
+                    case WEAPON_DUAL_SWORDS:
+                        DualSwords_DrawAttack(pl);
                         break;
-                    case 3:
-                        Lance_DrawAttack(p);
+                    case WEAPON_LANCE:
+                        Lance_DrawAttack(pl);
                         break;
-                    case 9:
-                        Gunlance_DrawAttack(p);
+                    case WEAPON_GUNLANCE:
+                        Gunlance_DrawAttack(pl);
                         break;
-                    case 2:
-                        Hammer_DrawAttack(p);
+                    case WEAPON_HAMMER:
+                        Hammer_DrawAttack(pl);
                         break;
-                    case 8:
-                        HuntingHorn_DrawAttack(p);
+                    case WEAPON_HUNTING_HORN:
+                        HuntingHorn_DrawAttack(pl);
                         break;
-                    case 7:
-                        LongSword_DrawAttack(p);
+                    case WEAPON_LONG_SWORD:
+                        LongSword_DrawAttack(pl);
                         break;
                     }
                 }
             }
-            if (p->input.pressed & 1) {
-                Player_SetState(p, 1, 0x63, 4);
+            if (pl->input.pressed & 1) {
+                Player_SetState(pl, PL_GROUP_WEAPON, PL_WPN_SHARED_ATTACK, PL_SET_SNAP_POS);
             }
-            if (p->input.pressed & 0x20) {
-                if (Player_TakeOfferedItem(p) == 0) {
-                    Player_StartSpotAction(p, 0);
-                    Player_TryGather(p, 0);
+            if (pl->input.pressed & 0x20) {
+                if (Player_TakeOfferedItem(pl) == 0) {
+                    Player_StartSpotAction(pl, 0);
+                    Player_TryGather(pl, 0);
                 }
-            } else if (p->offerRequest != 0) {
-                p->freeState = 0;
-                p->offerStarted = 1;
-                Player_RequestState(p, 0, 0x67, 0x10);
+            } else if (pl->offerRequest != 0) {
+                pl->freeState = 0;
+                pl->offerStarted = 1;
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM, PL_SET_SYNC_OFFER);
             }
-            if ((Player_EnteredBattle((Em *) p) & 0xFF) == 1) {
-                p->freeState = 0;
-                Player_SetState(p, 0, 0x3E, 0);
-                CamCtl_SetTargetObj((u8 *) p);
+            if ((Player_EnteredBattle((Em *) pl) & 0xFF) == 1) {
+                pl->freeState = 0;
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_BATTLE_ALERT, 0);
+                CamCtl_SetTargetObj((u8 *) pl);
             }
-            if (Player_Status5Full(p) & 0xFF) {
-                p->freeState = 0;
-                Player_RequestState(p, 2, 0x13, 0);
+            if (Player_Status5Full(pl) & 0xFF) {
+                pl->freeState = 0;
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_STUN, 0);
                 return;
             }
-            if (Player_HasMashBuildup(p) & 0xFF) {
-                p->freeState = 0;
-                Player_RequestState(p, 2, 0x1B, 0);
+            if (Player_HasMashBuildup(pl) & 0xFF) {
+                pl->freeState = 0;
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_START, 0);
             }
         }
     }
 }
 
-void Player_BowgunAim(Player *p)
+void Player_BowgunAim(Player *pl)
 {
     s8 s;
     s8 a;
     u16 da;
 
-    if (Player_IsLocal(p) == 0) {
+    if (Player_IsLocal(pl) == 0) {
         return;
     }
-    if (p->isGunner != 1) {
+    if (pl->isGunner != 1) {
         return;
     }
-    if (p->motionId[0] != 0x3E9) {
+    if (pl->motionId[0] != 0x3E9) {
         return;
     }
-    if (p->aimLockTimer != 0 || p->aimMode != 0) {
-        p->aimLockTimer = 10;
+    if (pl->aimLockTimer != 0 || pl->aimMode != 0) {
+        pl->aimLockTimer = 10;
     }
-    Player_SetAimLayers(p, 0x3ED, 0x3EE);
-    if (p->aimLockTimer == 0 && p->aimMode == 0) {
-        if (p->input.held & 4) {
+    Player_SetAimLayers(pl, 0x3ED, 0x3EE);
+    if (pl->aimLockTimer == 0 && pl->aimMode == 0) {
+        if (pl->input.held & 4) {
             return;
         }
-        if (!(p->input.held & 8)) {
+        if (!(pl->input.held & 8)) {
             return;
         }
     }
-    if (p->input.held & 0x3000) {
+    if (pl->input.held & 0x3000) {
         a = 5;
-        if (p->aimMode != 0 && gScene.aimReverse != 0) {
+        if (pl->aimMode != 0 && gScene.aimReverse != 0) {
             a *= -1;
         }
-        if (p->input.held & 0x2000) {
-            Bowgun_AddAimWeight(p, a);
+        if (pl->input.held & 0x2000) {
+            Bowgun_AddAimWeight(pl, a);
         } else {
-            Bowgun_AddAimWeight(p, (s8) -a);
+            Bowgun_AddAimWeight(pl, (s8) -a);
         }
-        p->aimLockTimer = 5;
+        pl->aimLockTimer = 5;
     }
-    if (p->input.held & 0x800) {
-        p->aimLockTimer = 10;
-        if (p->aimMode != 0 && gScene.aimReverse == 2) {
-            p->targetYaw -= 0x240;
+    if (pl->input.held & 0x800) {
+        pl->aimLockTimer = 10;
+        if (pl->aimMode != 0 && gScene.aimReverse == 2) {
+            pl->targetYaw -= 0x240;
         } else {
-            p->targetYaw += 0x240;
-        }
-    }
-    if (p->input.held & 0x400) {
-        p->aimLockTimer = 10;
-        if (p->aimMode != 0 && gScene.aimReverse == 2) {
-            p->targetYaw += 0x240;
-        } else {
-            p->targetYaw -= 0x240;
+            pl->targetYaw += 0x240;
         }
     }
-    Player_SetAimLayers(p, 0x3ED, 0x3EE);
-    if (p->aimLockTimer != 0 || p->aimMode != 0) {
-        if (!(p->input.stickDir & 0x3C00) || p->input.stickTilt < 0x28) {
+    if (pl->input.held & 0x400) {
+        pl->aimLockTimer = 10;
+        if (pl->aimMode != 0 && gScene.aimReverse == 2) {
+            pl->targetYaw += 0x240;
+        } else {
+            pl->targetYaw -= 0x240;
+        }
+    }
+    Player_SetAimLayers(pl, 0x3ED, 0x3EE);
+    if (pl->aimLockTimer != 0 || pl->aimMode != 0) {
+        if (!(pl->input.stickDir & 0x3C00) || pl->input.stickTilt < 0x28) {
             return;
         }
         s = 1;
         da = 0x4C;
-        if (p->input.stickTilt >= 0x78) {
+        if (pl->input.stickTilt >= 0x78) {
             s = 8;
             da = 0x200;
-        } else if (p->input.stickTilt >= 0x5A) {
+        } else if (pl->input.stickTilt >= 0x5A) {
             s = 4;
             da = 0xC0;
-        } else if (p->input.stickTilt >= 0x3C) {
+        } else if (pl->input.stickTilt >= 0x3C) {
             s = 2;
             da = 0x80;
         }
-        if (p->input.stickDir & 0x3000) {
+        if (pl->input.stickDir & 0x3000) {
             if (gScene.aimReverse != 0) {
                 s = -s;
             }
             s = (s8) s;
-            if (p->input.stickDir & 0x2000) {
-                Bowgun_AddAimWeight(p, s);
+            if (pl->input.stickDir & 0x2000) {
+                Bowgun_AddAimWeight(pl, s);
             } else {
-                Bowgun_AddAimWeight(p, (s8) -s);
+                Bowgun_AddAimWeight(pl, (s8) -s);
             }
-            p->aimLockTimer = 5;
-            Player_SetAimLayers(p, 0x3ED, 0x3EE);
+            pl->aimLockTimer = 5;
+            Player_SetAimLayers(pl, 0x3ED, 0x3EE);
         }
-        if (p->input.stickDir & 0x800) {
-            p->aimLockTimer = 10;
+        if (pl->input.stickDir & 0x800) {
+            pl->aimLockTimer = 10;
             if (gScene.aimReverse == 2) {
-                p->targetYaw -= da;
+                pl->targetYaw -= da;
             } else {
-                p->targetYaw += da;
+                pl->targetYaw += da;
             }
         }
-        if (p->input.stickDir & 0x400) {
-            p->aimLockTimer = 10;
+        if (pl->input.stickDir & 0x400) {
+            pl->aimLockTimer = 10;
             if (gScene.aimReverse == 2) {
-                p->targetYaw += da;
+                pl->targetYaw += da;
             } else {
-                p->targetYaw -= da;
+                pl->targetYaw -= da;
             }
         }
     }
-    Player_SetAimLayers(p, 0x3ED, 0x3EE);
+    Player_SetAimLayers(pl, 0x3ED, 0x3EE);
 }
 
-static void Player_AddAimPitch(Player *p, s16 d)
+static void Player_AddAimPitch(Player *pl, s16 d)
 {
-    p->aimPitch += d;
+    pl->aimPitch += d;
     if (d >= 0) {
-        if (p->aimPitch >= 0x2000) {
-            p->aimPitch = 0x2000;
+        if (pl->aimPitch >= 0x2000) {
+            pl->aimPitch = 0x2000;
         }
     } else {
-        if (p->aimPitch <= -0x2000) {
-            p->aimPitch = -0x2000;
+        if (pl->aimPitch <= -0x2000) {
+            pl->aimPitch = -0x2000;
         }
     }
 }
 
-static void Player_AddAimPitchPct(Player *p, s8 d)
+static void Player_AddAimPitchPct(Player *pl, s8 d)
 {
     f32 f;
     s8 v;
 
-    p->aimPitchPct += d;
-    if (p->aimPitchPct > 100) {
-        p->aimPitchPct = 100;
+    pl->aimPitchPct += d;
+    if (pl->aimPitchPct > 100) {
+        pl->aimPitchPct = 100;
     }
-    if (p->aimPitchPct < -100) {
-        p->aimPitchPct = -100;
+    if (pl->aimPitchPct < -100) {
+        pl->aimPitchPct = -100;
     }
-    v = p->aimPitchPct;
+    v = pl->aimPitchPct;
     f = v / 100.0f;
     if (v >= 0) {
-        p->aimPitch = 0.5f + (65536.0f * (45.0f * f)) / 360.0f;
+        pl->aimPitch = 0.5f + (65536.0f * (45.0f * f)) / 360.0f;
         return;
     }
-    p->aimPitch = 0.5f + (65536.0f * (35.0f * f)) / 360.0f;
+    pl->aimPitch = 0.5f + (65536.0f * (35.0f * f)) / 360.0f;
 }
 
-void Player_UpdateLean(Player *p, s32 mot)
+void Player_UpdateLean(Player *pl, s32 mot)
 {
     s8 s;
     s8 a;
     u16 da;
     u16 d;
 
-    if (Player_IsLocal(p) == 0) {
+    if (Player_IsLocal(pl) == 0) {
         return;
     }
-    if (p->motionId[0] != (u16) mot) {
+    if (pl->motionId[0] != (u16) mot) {
         return;
     }
-    if (p->aimLockTimer != 0 || p->aimMode != 0) {
-        p->aimLockTimer = 10;
+    if (pl->aimLockTimer != 0 || pl->aimMode != 0) {
+        pl->aimLockTimer = 10;
     }
-    if (p->aimLockTimer == 0 && p->aimMode == 0) {
-        if (p->input.held & 4) {
+    if (pl->aimLockTimer == 0 && pl->aimMode == 0) {
+        if (pl->input.held & 4) {
             return;
         }
-        if (!(p->input.held & 8)) {
+        if (!(pl->input.held & 8)) {
             return;
         }
     }
-    if (p->input.held & 0x3000) {
+    if (pl->input.held & 0x3000) {
         a = 4;
-        if (p->aimMode != 0 && gScene.aimReverse != 0) {
+        if (pl->aimMode != 0 && gScene.aimReverse != 0) {
             a *= -1;
         }
-        if (p->input.held & 0x2000) {
+        if (pl->input.held & 0x2000) {
             if ((u16) mot != 0x19E) {
-                Player_AddAimPitch(p, a << 8);
+                Player_AddAimPitch(pl, a << 8);
             } else {
-                Player_AddAimPitchPct(p, a);
+                Player_AddAimPitchPct(pl, a);
             }
         } else {
             if ((u16) mot != 0x19E) {
-                Player_AddAimPitch(p, -a << 8);
+                Player_AddAimPitch(pl, -a << 8);
             } else {
-                Player_AddAimPitchPct(p, (s8) -a);
+                Player_AddAimPitchPct(pl, (s8) -a);
             }
         }
-        p->aimLockTimer = 5;
+        pl->aimLockTimer = 5;
     }
-    if (p->input.held & 0x800) {
-        p->aimLockTimer = 10;
+    if (pl->input.held & 0x800) {
+        pl->aimLockTimer = 10;
         if (gScene.aimReverse == 2) {
-            p->targetYaw -= 0x180;
+            pl->targetYaw -= 0x180;
         } else {
-            p->targetYaw += 0x180;
+            pl->targetYaw += 0x180;
         }
     }
-    if (p->input.held & 0x400) {
-        p->aimLockTimer = 10;
+    if (pl->input.held & 0x400) {
+        pl->aimLockTimer = 10;
         if (gScene.aimReverse == 2) {
-            p->targetYaw += 0x180;
+            pl->targetYaw += 0x180;
         } else {
-            p->targetYaw -= 0x180;
+            pl->targetYaw -= 0x180;
         }
     }
-    if (p->aimLockTimer != 0 || p->aimMode != 0) {
-        if ((p->input.stickDir & 0x3C00) && p->input.stickTilt >= 0x28) {
+    if (pl->aimLockTimer != 0 || pl->aimMode != 0) {
+        if ((pl->input.stickDir & 0x3C00) && pl->input.stickTilt >= 0x28) {
             s = 1;
             da = 0x4C;
-            if (p->input.stickTilt >= 0x78) {
+            if (pl->input.stickTilt >= 0x78) {
                 s = 8;
                 da = 0x200;
-            } else if (p->input.stickTilt >= 0x5A) {
+            } else if (pl->input.stickTilt >= 0x5A) {
                 s = 4;
                 da = 0xC0;
-            } else if (p->input.stickTilt >= 0x3C) {
+            } else if (pl->input.stickTilt >= 0x3C) {
                 s = 2;
                 da = 0x80;
             }
-            if (p->input.stickDir & 0x3000) {
+            if (pl->input.stickDir & 0x3000) {
                 if (gScene.aimReverse != 0) {
                     s = -s;
                 }
                 s = (s8) s;
-                if (p->input.stickDir & 0x2000) {
+                if (pl->input.stickDir & 0x2000) {
                     if ((u16) mot != 0x19E) {
-                        Player_AddAimPitch(p, s << 8);
+                        Player_AddAimPitch(pl, s << 8);
                     } else {
-                        Player_AddAimPitchPct(p, s);
+                        Player_AddAimPitchPct(pl, s);
                     }
                 } else {
                     if ((u16) mot != 0x19E) {
-                        Player_AddAimPitch(p, -s << 8);
+                        Player_AddAimPitch(pl, -s << 8);
                     } else {
-                        Player_AddAimPitchPct(p, (s8) -s);
+                        Player_AddAimPitchPct(pl, (s8) -s);
                     }
                 }
-                p->aimLockTimer = 5;
+                pl->aimLockTimer = 5;
             }
-            if (p->input.stickDir & 0x800) {
-                p->aimLockTimer = 10;
+            if (pl->input.stickDir & 0x800) {
+                pl->aimLockTimer = 10;
                 if (gScene.aimReverse == 2) {
-                    p->targetYaw -= da;
+                    pl->targetYaw -= da;
                 } else {
-                    p->targetYaw += da;
+                    pl->targetYaw += da;
                 }
             }
-            if (p->input.stickDir & 0x400) {
-                p->aimLockTimer = 10;
+            if (pl->input.stickDir & 0x400) {
+                pl->aimLockTimer = 10;
                 if (gScene.aimReverse == 2) {
-                    p->targetYaw += da;
+                    pl->targetYaw += da;
                 } else {
-                    p->targetYaw -= da;
+                    pl->targetYaw -= da;
                 }
             }
         }
     }
     if ((u16) mot == 0x19E) {
-        d = p->targetYaw - p->yawCenter;
+        d = pl->targetYaw - pl->yawCenter;
         if (d <= 0x8000U && d > 0x4000U) {
-            p->targetYaw = p->yawCenter + 0x4000;
+            pl->targetYaw = pl->yawCenter + 0x4000;
         } else if (d >= 0x8000U && d < 0xC000U) {
-            p->targetYaw = p->yawCenter - 0x4000;
+            pl->targetYaw = pl->yawCenter - 0x4000;
         }
     }
 }
 
-void Player_State0_00(Player *p, s32 unused)
+void Player_StateIdle(Player *pl, s32 unused)
 {
-    u16 motion = p->motionId[0];
+    u16 motion = pl->motionId[0];
 
     switch (motion) {
     case 1:
     case 0x3F:
-        if (p->staminaMax < 76) {
-            Player_SetMotionPair(p, 0x193, 6, 0);
-        } else if (p->motionTime >= 240 && p->gender == 1 && motion != 0x3F) {
-            Player_SetMotionPair(p, 0x3F, 2, 0);
+        if (pl->staminaMax < 76) {
+            Player_SetMotionPair(pl, 0x193, 6, 0);
+        } else if (pl->motionTime >= 240 && pl->gender == 1 && motion != 0x3F) {
+            Player_SetMotionPair(pl, 0x3F, 2, 0);
         }
         break;
     case 0x15:
-        if (p->motion[0].playing == 0) {
-            Player_SetMotionPair(p, 5, 4, 0x90);
+        if (pl->motion[0].playing == 0) {
+            Player_SetMotionPair(pl, 5, 4, 0x90);
         }
         break;
     case 5:
         if (!(gScene.frame & 0x1F)) {
-            Effect02_SpawnOnOwner(p, 8, 0x14, 0.1f);
+            Effect02_SpawnOnOwner(pl, 8, 0x14, 0.1f);
         }
         break;
     case 0x193:
-        if (p->staminaMax > 75) {
-            Player_SetMotionPair(p, 1, 4, 0);
+        if (pl->staminaMax > 75) {
+            Player_SetMotionPair(pl, 1, 4, 0);
         }
         break;
     case 0x3E9:
-        if (p->weaponOut != 0 && p->isGunner == 1 && p->weaponType != 10) {
-            Player_SetAimLayers(p, 0x3ED, 0x3EE);
+        if (pl->weaponOut != 0 && pl->isGunner == 1 && pl->weaponType != WEAPON_BOW) {
+            Player_SetAimLayers(pl, 0x3ED, 0x3EE);
         }
         break;
     }
-    switch (p->weaponType) {
-    case 1:
-    case 5:
-        Player_BowgunAim(p);
+    switch (pl->weaponType) {
+    case WEAPON_HEAVY_BOWGUN:
+    case WEAPON_LIGHT_BOWGUN:
+        Player_BowgunAim(pl);
         break;
     }
-    Player_IdleActions(p, 0);
+    Player_IdleActions(pl, 0);
 }
 
-void Player_State0_01(Player *p, s32 variant)
+void Player_StateMove(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
     u8 r;
     u8 t;
 
-    if (p->step == 0) {
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 10;
-        p->timer = 10;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x1000);
+    if (pl->step == 0) {
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 10;
+        pl->timer = 10;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x1000);
         switch (variant) {
         case 0:
-            Player_SetMotionPair(p, 3, 6, 0);
-            Player_SetFlag(p, 0x2000000);
+            Player_SetMotionPair(pl, 3, 6, 0);
+            Player_SetFlag(pl, 0x2000000);
             break;
         case 1:
-            Player_SetMotionPair(p, 2, 4, 0);
+            Player_SetMotionPair(pl, 2, 4, 0);
             break;
         case 2:
         case 9:
-            switch (p->weaponType) {
-            case 0:
-            case 7:
+            switch (pl->weaponType) {
+            case WEAPON_GREAT_SWORD:
+            case WEAPON_LONG_SWORD:
             default:
-                Player_SetMotionPair(p, 0x3EC, 4, 0);
+                Player_SetMotionPair(pl, 0x3EC, 4, 0);
                 break;
-            case 3:
-            case 9:
-                Player_SetMotionPair(p, 0x3EC, 4, 0);
+            case WEAPON_LANCE:
+            case WEAPON_GUNLANCE:
+                Player_SetMotionPair(pl, 0x3EC, 4, 0);
                 break;
-            case 2:
-            case 8:
-                Player_SetMotionPair(p, 0x3EC, 8, 0);
+            case WEAPON_HAMMER:
+            case WEAPON_HUNTING_HORN:
+                Player_SetMotionPair(pl, 0x3EC, 8, 0);
                 break;
-            case 1:
-            case 4:
-            case 5:
-            case 6:
-            case 10:
-                Player_SetMotionPair(p, 0x3EC, 6, 0);
+            case WEAPON_HEAVY_BOWGUN:
+            case WEAPON_SWORD_SHIELD:
+            case WEAPON_LIGHT_BOWGUN:
+            case WEAPON_DUAL_SWORDS:
+            case WEAPON_BOW:
+                Player_SetMotionPair(pl, 0x3EC, 6, 0);
                 break;
             }
             break;
         case 3:
-            Player_SetMotionPair(p, 10, 6, 0);
+            Player_SetMotionPair(pl, 10, 6, 0);
             break;
         case 4:
             break;
         case 5:
-            Player_SetMotionPair(p, 10, 2, 0);
-            p->action = 1;
+            Player_SetMotionPair(pl, 10, 2, 0);
+            pl->action = 1;
             break;
         case 6:
-            p->dashDelay = 30;
-            if (p->motionId[0] != 3) {
-                Player_SetMotionPair(p, 3, 0, 0x26);
+            pl->dashDelay = 30;
+            if (pl->motionId[0] != 3) {
+                Player_SetMotionPair(pl, 3, 0, 0x26);
             }
-            Player_SetFlag(p, 0x2000000);
+            Player_SetFlag(pl, 0x2000000);
             break;
         case 7:
-            Player_SetMotionPair(p, 0x31, 6, 0);
+            Player_SetMotionPair(pl, 0x31, 6, 0);
             break;
         case 8:
-            Player_SetFlag(p, 0x8000);
-            Player_SetMotionPair(p, 0x3F3, 4, 0);
+            Player_SetFlag(pl, 0x8000);
+            Player_SetMotionPair(pl, 0x3F3, 4, 0);
             break;
         }
-        p->motionTime = 0;
+        pl->motionTime = 0;
     }
-    if (Player_IsLocal(p) == 0 && Game_IsOnline() == 1) {
+    if (Player_IsLocal(pl) == 0 && Game_IsOnline() == 1) {
         return;
     }
-    r = Player_StickMoveLevel(p, p->weaponOut) & 0xFF;
-    if (p->stateVar1 != 0) {
-        p->stateVar1--;
+    r = Player_StickMoveLevel(pl, pl->weaponOut) & 0xFF;
+    if (pl->stateVar1 != 0) {
+        pl->stateVar1--;
     }
-    if (p->timer > 0) {
-        p->timer--;
+    if (pl->timer > 0) {
+        pl->timer--;
     }
     t = r;
-    if (t == 0 && p->timer == 0) {
-        if (p->motionId[0] == 0x3EC) {
+    if (t == 0 && pl->timer == 0) {
+        if (pl->motionId[0] == 0x3EC) {
             if (variant == 9) {
-                Player_SetState(p, 1, 7, 4);
+                Player_SetState(pl, PL_GROUP_WEAPON, BOW_AIM_RESUME, PL_SET_SNAP_POS);
             } else {
-                Player_BeginState(p, 0, Player_State0_01_NextByWeapon[p->weaponType], 0);
+                Player_BeginState(pl, 0, gDrawnWalkStopIdle[pl->weaponType], 0);
             }
-        } else if (p->motionId[0] == 3 || p->motionId[0] == 4) {
-            if (p->stateVar1 == 0) {
-                p->freeState = 1;
-                Player_SetState(p, 0, 0x2C, 0);
+        } else if (pl->motionId[0] == 3 || pl->motionId[0] == 4) {
+            if (pl->stateVar1 == 0) {
+                pl->freeState = 1;
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
             } else {
-                Player_BeginState(p, 0, 4, 0);
+                Player_BeginState(pl, 0, 4, 0);
             }
-        } else if (p->motionId[0] == 0x3F3) {
-            Player_RequestState(p, 2, 0xC, 0);
+        } else if (pl->motionId[0] == 0x3F3) {
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
         } else {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
         }
         return;
     }
-    switch (p->motionId[0]) {
+    switch (pl->motionId[0]) {
     case 2:
-        if (Motion_PassedFrame(p, 0, 108.0f)) {
-            p->stateVar0++;
-            if (p->stateVar0 >= 5) {
-                p->stateVar0 = 0;
-                Player_SetMotionPair(p, 0x1D, 2, 0);
+        if (Motion_PassedFrame(pl, 0, 108.0f)) {
+            pl->stateVar0++;
+            if (pl->stateVar0 >= 5) {
+                pl->stateVar0 = 0;
+                Player_SetMotionPair(pl, 0x1D, 2, 0);
             }
         }
         break;
     case 3:
         if (t < 3) {
-            p->freeState = 1;
-            Player_SetState(p, 0, 0x2C, 0);
+            pl->freeState = 1;
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
             return;
         }
         break;
     case 0x1D:
-        if (p->motion[0].playing == 0) {
-            Player_SetMotionPair(p, 2, 6, 0x24);
+        if (pl->motion[0].playing == 0) {
+            Player_SetMotionPair(pl, 2, 6, 0x24);
         }
         break;
     case 0x3F3:
-        if (!(p->input.held & 0x80)) {
-            Player_RequestState(p, 2, 0xC, 0);
+        if (!(pl->input.held & 0x80)) {
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
         }
         break;
     }
-    if (p->unk668 != 0 && (variant != 5 || variant != 8)) {
-        Player_SetState(p, 0, 0x3B, 0);
+    if (pl->unk668 != 0 && (variant != 5 || variant != 8)) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
     }
     if (t != 0) {
-        Player_FaceStick(p);
+        Player_FaceStick(pl);
     }
-    if (Player_IsLocal(p) == 0) {
+    if (Player_IsLocal(pl) == 0) {
         return;
     }
-    if (variant == 2 && p->weaponType == 8 && Player_IsLocal(p) == 1 && p->motionId[0] == 0x3EC &&
-        Player_HasMealEffect(p, 0) == 1 && p->mealEffect[0] > 0) {
+    if (variant == 2 && pl->weaponType == WEAPON_HUNTING_HORN && Player_IsLocal(pl) == 1 && pl->motionId[0] == 0x3EC &&
+        Player_HasMealEffect(pl, 0) == 1 && pl->mealEffect[0] > 0) {
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 8.0f;
-        Vec_Rotate(d, v, p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[2] += d[2];
+        Vec_Rotate(d, v, pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[2] += d[2];
     }
-    if (variant == 2 && p->weaponType == 6 && Player_IsLocal(p) == 1 && p->motionId[0] == 0x3EC &&
-        p->demonMode != 0) {
+    if (variant == 2 && pl->weaponType == WEAPON_DUAL_SWORDS && Player_IsLocal(pl) == 1 && pl->motionId[0] == 0x3EC &&
+        pl->demonMode != 0) {
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 2.0f;
-        Vec_Rotate(d, v, p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[2] += d[2];
+        Vec_Rotate(d, v, pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[2] += d[2];
     }
     if (variant != 8) {
         if (variant == 9) {
-            Player_IdleActions(p, 1);
+            Player_IdleActions(pl, 1);
         } else {
-            Player_IdleActions(p, 0);
+            Player_IdleActions(pl, 0);
         }
     } else {
-        Player_GatherStep(p);
+        Player_GuardInput(pl);
     }
 }
 
-void Player_State0_04(Player *p, u32 variant)
+void Player_StateDrawSheathe(Player *pl, u32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
         switch (variant) {
         case 0:
-            p->weaponOut = Player_State0_04_Motions0[p->weaponType].flag;
-            Player_SetMotionPair(p, Player_State0_04_Motions0[p->weaponType].motion, Player_State0_04_Motions0[p->weaponType].blend, 0);
+            pl->weaponOut = gDrawMotions[pl->weaponType].flag;
+            Player_SetMotionPair(pl, gDrawMotions[pl->weaponType].motion, gDrawMotions[pl->weaponType].blend, 0);
             break;
         case 1:
         case 3:
         case 4:
-            p->weaponOut = Player_State0_04_Motions4[p->weaponType].flag;
-            Player_SetMotionPair(p, Player_State0_04_Motions4[p->weaponType].motion, Player_State0_04_Motions4[p->weaponType].blend, 0);
+            pl->weaponOut = gSheatheMotions[pl->weaponType].flag;
+            Player_SetMotionPair(pl, gSheatheMotions[pl->weaponType].motion, gSheatheMotions[pl->weaponType].blend, 0);
             break;
         case 2:
-            Player_SetFlag(p, 0x1000);
-            p->weaponOut = Player_State0_04_Motions2[p->weaponType].flag;
-            if (p->weaponType == 8) {
-                Player_SetMotionPair(p, Player_State0_04_Motions2[p->weaponType].motion, Player_State0_04_Motions2[p->weaponType].blend, 0xA);
+            Player_SetFlag(pl, 0x1000);
+            pl->weaponOut = gSheatheMovingMotions[pl->weaponType].flag;
+            if (pl->weaponType == WEAPON_HUNTING_HORN) {
+                Player_SetMotionPair(pl, gSheatheMovingMotions[pl->weaponType].motion, gSheatheMovingMotions[pl->weaponType].blend, 0xA);
             } else {
-                Player_SetMotionPair(p, Player_State0_04_Motions2[p->weaponType].motion, Player_State0_04_Motions2[p->weaponType].blend, 0);
+                Player_SetMotionPair(pl, gSheatheMovingMotions[pl->weaponType].motion, gSheatheMovingMotions[pl->weaponType].blend, 0);
             }
             break;
         case 5:
-            p->weaponOut = Player_State0_04_Motions5[p->weaponType].flag;
-            Player_SetMotionPair(p, Player_State0_04_Motions5[p->weaponType].motion, Player_State0_04_Motions5[p->weaponType].blend, 0);
+            pl->weaponOut = gDrawMovingMotions[pl->weaponType].flag;
+            Player_SetMotionPair(pl, gDrawMovingMotions[pl->weaponType].motion, gDrawMovingMotions[pl->weaponType].blend, 0);
             break;
         }
-        if (p->carry & 0xF) {
-            p->carry &= 0xF0;
-            StageObj_K0C_CreateAtPlayer(p, 4);
+        if (pl->carry & 0xF) {
+            pl->carry &= 0xF0;
+            StageObj_K0C_CreateAtPlayer(pl, 4);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
+        if (pl->motion[0].playing == 0) {
             switch (variant) {
             case 0:
-                Player_BeginState(p, 0, Player_State0_04_Motions0[p->weaponType].next, 0);
+                Player_BeginState(pl, 0, gDrawMotions[pl->weaponType].next, 0);
                 break;
             case 1:
-                Player_BeginState(p, 0, Player_State0_04_Motions4[p->weaponType].next, 0);
+                Player_BeginState(pl, 0, gSheatheMotions[pl->weaponType].next, 0);
                 break;
             case 2:
-                Player_BeginState(p, 0, Player_State0_04_Motions2[p->weaponType].next, 0);
+                Player_BeginState(pl, 0, gSheatheMovingMotions[pl->weaponType].next, 0);
                 break;
             case 3:
-                Player_RequestState(p, 0, 8, 2);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH, PL_SET_NO_SYNC);
                 break;
             case 4:
-                if (Player_IsLocal(p) == 1) {
-                    Player_UseItem(p, 1);
-                    p->pouchHudFlags |= 1;
+                if (Player_IsLocal(pl) == 1) {
+                    Player_UseItem(pl, 1);
+                    pl->pouchHudFlags |= 1;
                     break;
                 }
-                Player_BeginState(p, 0, Player_State0_04_Motions0[p->weaponType].next, 0);
+                Player_BeginState(pl, 0, gDrawMotions[pl->weaponType].next, 0);
                 break;
             case 5:
-                Player_BeginState(p, 0, Player_State0_04_Motions5[p->weaponType].next, 0);
+                Player_BeginState(pl, 0, gDrawMovingMotions[pl->weaponType].next, 0);
                 break;
             }
         }
@@ -3835,282 +3835,282 @@ void Player_State0_04(Player *p, u32 variant)
     }
 }
 
-void Player_State0_06(Player *p, s32 variant)
+void Player_StateLeapOrFall(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
     f32 t;
 
-    p->timer++;
-    switch (p->step) {
+    pl->timer++;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->action = 2;
-        p->aimLockTimer = 0;
-        Player_ResetAim(p);
+        pl->step++;
+        pl->action = 2;
+        pl->aimLockTimer = 0;
+        Player_ResetAim(pl);
         switch (variant) {
         default:
-            Player_SetMotionPair(p, 0xF, 0, 0);
-            p->vel[0] = 0.0f;
-            p->vel[2] = 20.0f;
-            p->vel[1] = 18.0f;
-            p->accel[0] = 0.0f;
-            p->accel[2] = -(p->vel[2] / 80.0f);
-            Player_StartJump(p, 0x13);
-            if (p->rideState) {
-                p->rideState = 2;
+            Player_SetMotionPair(pl, 0xF, 0, 0);
+            pl->vel[0] = 0.0f;
+            pl->vel[2] = 20.0f;
+            pl->vel[1] = 18.0f;
+            pl->accel[0] = 0.0f;
+            pl->accel[2] = -(pl->vel[2] / 80.0f);
+            Player_StartJump(pl, 0x13);
+            if (pl->rideState) {
+                pl->rideState = 2;
             }
             break;
         case 1:
-            Player_SetMotionPair(p, 0xF, 8, 0x20);
-            p->rideState = 0;
-            p->vel[0] = 0.0f;
-            p->vel[2] = 8.0f;
-            p->vel[1] = -10.0f;
-            p->accel[2] = 0.0f;
-            p->accel[0] = 0.0f;
-            p->accel[1] = -0.72727275f;
+            Player_SetMotionPair(pl, 0xF, 8, 0x20);
+            pl->rideState = 0;
+            pl->vel[0] = 0.0f;
+            pl->vel[2] = 8.0f;
+            pl->vel[1] = -10.0f;
+            pl->accel[2] = 0.0f;
+            pl->accel[0] = 0.0f;
+            pl->accel[1] = -0.72727275f;
             break;
         }
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 2, 0, 0);
-        p->timer = 0;
-        p->stateVar1 = 0;
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 2, 0, 0);
+        pl->timer = 0;
+        pl->stateVar1 = 0;
         break;
     case 1:
-        p->vel[0] += p->accel[0];
-        p->vel[1] += p->accel[1];
-        p->vel[2] += p->accel[2];
-        if (p->vel[0] < 0.0f) {
-            p->vel[0] = 0.0f;
+        pl->vel[0] += pl->accel[0];
+        pl->vel[1] += pl->accel[1];
+        pl->vel[2] += pl->accel[2];
+        if (pl->vel[0] < 0.0f) {
+            pl->vel[0] = 0.0f;
         }
-        if (p->vel[2] < 0.0f) {
-            p->vel[2] = 0.0f;
+        if (pl->vel[2] < 0.0f) {
+            pl->vel[2] = 0.0f;
         }
-        v[0] = p->vel[0];
-        v[1] = p->vel[1];
-        v[2] = p->vel[2];
-        Vec_Rotate(d, v, p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[1] += d[1];
-        p->pos[2] += d[2];
-        if (p->vel[1] < 0.0f) {
-            if (Player_FloorAheadAbove(p, &t, 55.0f, 180.0f, 30.0f) && p->hp > 0 && p->unk893 < 21) {
-                p->targetYaw = p->rot[1];
-                Player_RequestState(p, 0, 0x1B, 4);
+        v[0] = pl->vel[0];
+        v[1] = pl->vel[1];
+        v[2] = pl->vel[2];
+        Vec_Rotate(d, v, pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[1] += d[1];
+        pl->pos[2] += d[2];
+        if (pl->vel[1] < 0.0f) {
+            if (Player_FloorAheadAbove(pl, &t, 55.0f, 180.0f, 30.0f) && pl->hp > 0 && pl->unk893 < 21) {
+                pl->targetYaw = pl->rot[1];
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB, PL_SET_SNAP_POS);
                 break;
             }
-            if (p->floorY < p->pos[1]) {
+            if (pl->floorY < pl->pos[1]) {
                 break;
             }
-            p->pos[1] = p->floorY;
-            p->action = 0;
-            p->rideState = 0;
-            if (p->hp <= 0 && Player_IsLocal(p) == 1) {
-                Player_Die(p);
+            pl->pos[1] = pl->floorY;
+            pl->action = 0;
+            pl->rideState = 0;
+            if (pl->hp <= 0 && Player_IsLocal(pl) == 1) {
+                Player_Die(pl);
                 break;
             }
-            if (p->timer >= 30) {
-                Player_RequestState(p, 0, 0x26, 0);
+            if (pl->timer >= 30) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LAND_HARD, 0);
                 break;
             }
-            p->step++;
-            if (p->weaponOut == 0 && (p->input.held & 0x10) && (Player_StickMoveLevel(p, 0) & 0xFF)) {
-                p->stateVar1 = 1;
-                Player_SetMotionPair(p, 0x10, 0, 0);
+            pl->step++;
+            if (pl->weaponOut == 0 && (pl->input.held & 0x10) && (Player_StickMoveLevel(pl, 0) & 0xFF)) {
+                pl->stateVar1 = 1;
+                Player_SetMotionPair(pl, 0x10, 0, 0);
             } else {
-                p->stateVar1 = 0;
-                Player_SetMotionPair(p, 0x3E, 0, 0);
+                pl->stateVar1 = 0;
+                Player_SetMotionPair(pl, 0x3E, 0, 0);
             }
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            if (p->stateVar1 == 0) {
-                Player_BeginState(p, 0, 8, 0);
-            } else if (p->inBattle == 0) {
-                Player_RequestState(p, 0, 0x46, 0);
+        if (pl->motion[0].playing == 0) {
+            if (pl->stateVar1 == 0) {
+                Player_BeginState(pl, 0, 8, 0);
+            } else if (pl->inBattle == 0) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DASH_RESUME, 0);
             } else {
-                Player_RequestState(p, 0, 0x20, 0);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FLEE_DASH, 0);
             }
         }
         break;
     }
 }
 
-void Player_State0_15(Player *p, s32 variant)
+void Player_StateClimbAirborne(Player *pl, s32 variant)
 {
     f32 y;
     f32 v[3];
     f32 d[3];
 
-    p->timer++;
-    switch (p->step) {
+    pl->timer++;
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
         default:
-            p->step++;
-            Player_SetMotionPair(p, 0xB, 2, 0);
-            Player_SetMoveMode(p, 0, 0, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0xB, 2, 0);
+            Player_SetMoveMode(pl, 0, 0, 0);
             break;
         case 2:
-            p->pos[1] -= 195.0f;
+            pl->pos[1] -= 195.0f;
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = -30.0f;
-            Vec_Rotate(d, v, (f32 *) p->worldMtx);
-            p->pos[0] += d[0];
-            p->pos[2] += d[2];
+            Vec_Rotate(d, v, (f32 *) pl->worldMtx);
+            pl->pos[0] += d[0];
+            pl->pos[2] += d[2];
         case 1:
-            p->step = 2;
-            Player_SetMoveMode(p, 2, 0, 0);
-            Player_StopMove(p);
-            p->vel[1] = -9.0f;
-            p->accel[1] = -8.0f / 11.0f;
+            pl->step = 2;
+            Player_SetMoveMode(pl, 2, 0, 0);
+            Player_StopMove(pl);
+            pl->vel[1] = -9.0f;
+            pl->accel[1] = -8.0f / 11.0f;
             if (variant == 1) {
-                Player_SetMotionPair(p, 0xC, 4, 0x16);
+                Player_SetMotionPair(pl, 0xC, 4, 0x16);
             } else {
-                Player_SetMotionPair(p, 0xC, 0, 0x16);
+                Player_SetMotionPair(pl, 0xC, 0, 0x16);
             }
             break;
         }
-        Player_ResetAim(p);
-        Player_UpdateMotionTime(p, 0);
-        p->timer = 0;
+        Player_ResetAim(pl);
+        Player_UpdateMotionTime(pl, 0);
+        pl->timer = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_StopMove(p);
-            p->vel[1] = 2.0f * (15.0f * (p->weaponOut ? 0.8f : 1.0f));
-            Player_StartJump(p, 0x14);
-            Player_SetMotionPair(p, 0xC, 2, 0);
-            p->action = 2;
-            if (p->rideState != 0) {
-                p->rideState = 2;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_StopMove(pl);
+            pl->vel[1] = 2.0f * (15.0f * (pl->weaponOut ? 0.8f : 1.0f));
+            Player_StartJump(pl, 0x14);
+            Player_SetMotionPair(pl, 0xC, 2, 0);
+            pl->action = 2;
+            if (pl->rideState != 0) {
+                pl->rideState = 2;
             }
-            Player_UpdateMotionTime(p, 0);
-            p->timer = 0;
+            Player_UpdateMotionTime(pl, 0);
+            pl->timer = 0;
         }
         break;
     case 2:
-        Player_MoveAccel(p);
-        if (p->vel[1] < 0.0f) {
-            if (variant != 2 && Player_FloorAheadAbove(p, &y, 55.0f, 180.0f, 30.0f) && p->hp > 0) {
-                p->targetYaw = p->rot[1];
-                Player_RequestState(p, 0, 0x1B, 0xC);
+        Player_MoveAccel(pl);
+        if (pl->vel[1] < 0.0f) {
+            if (variant != 2 && Player_FloorAheadAbove(pl, &y, 55.0f, 180.0f, 30.0f) && pl->hp > 0) {
+                pl->targetYaw = pl->rot[1];
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 break;
             }
-            if (!(p->floorY < p->pos[1])) {
-                p->pos[1] = p->floorY;
-                p->action = 0;
-                p->rideState = 0;
-                if (p->hp <= 0 && Player_IsLocal(p) == 1) {
-                    Player_Die(p);
+            if (!(pl->floorY < pl->pos[1])) {
+                pl->pos[1] = pl->floorY;
+                pl->action = 0;
+                pl->rideState = 0;
+                if (pl->hp <= 0 && Player_IsLocal(pl) == 1) {
+                    Player_Die(pl);
                     break;
                 }
-                if (p->timer >= 30) {
-                    Player_SetState(p, 0, 0x26, 0);
+                if (pl->timer >= 30) {
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LAND_HARD, 0);
                     break;
                 }
-                p->step++;
-                Player_SetMotionPair(p, 0xD, 0, 0);
+                pl->step++;
+                Player_SetMotionPair(pl, 0xD, 0, 0);
             }
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 3, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 3, 0);
         }
         break;
     }
 }
 
-void Player_State0_08(Player *p, s32 variant)
+void Player_StateCrouch(Player *pl, s32 variant)
 {
     u8 carry;
 
-    p->freeState = 1;
-    switch (p->step) {
+    pl->freeState = 1;
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
-            p->step++;
-            p->motionTime = 0;
-            Player_SetMotionPair(p, 7, 2, 0);
-            Player_SetMoveMode(p, 0, 0, 0);
-            p->weaponOut = 0;
-            carry = p->carry;
+            pl->step++;
+            pl->motionTime = 0;
+            Player_SetMotionPair(pl, 7, 2, 0);
+            Player_SetMoveMode(pl, 0, 0, 0);
+            pl->weaponOut = 0;
+            carry = pl->carry;
             if (carry & 0xF) {
-                p->carry = carry & 0xF0;
-                StageObj_K0C_CreateAtPlayer(p, 4);
+                pl->carry = carry & 0xF0;
+                StageObj_K0C_CreateAtPlayer(pl, 4);
             }
             break;
         case 1:
-            p->step = 2;
-            if (p->motionId[0] == 0x19C) {
-                Player_SetMotionPair(p, 8, 8, 0);
+            pl->step = 2;
+            if (pl->motionId[0] == 0x19C) {
+                Player_SetMotionPair(pl, 8, 8, 0);
             } else {
-                Player_SetMotionPair(p, 8, 2, 0);
+                Player_SetMotionPair(pl, 8, 2, 0);
             }
-            Player_UpdateMotionTime(p, 0);
-            Player_SetMoveMode(p, 0x8001, 0, 0);
-            p->weaponOut = 0;
+            Player_UpdateMotionTime(pl, 0);
+            Player_SetMoveMode(pl, 0x8001, 0, 0);
+            pl->weaponOut = 0;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 8, 6, 0);
-            Player_SetMoveMode(p, 0x8001, 0, 0);
-            Player_UpdateMotionTime(p, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 8, 6, 0);
+            Player_SetMoveMode(pl, 0x8001, 0, 0);
+            Player_UpdateMotionTime(pl, 0);
         }
         break;
     case 2:
-        Player_IdleInput(p);
+        Player_CrouchInput(pl);
         break;
     }
 }
 
 //---
-void Player_State0_0C(Player *p, s32 unused)
+void Player_StateBedMenu(Player *pl, s32 unused)
 {
 
-    p->timer--;
-    if (p->timer <= 0) {
-        p->timer = 0;
+    pl->timer--;
+    if (pl->timer <= 0) {
+        pl->timer = 0;
     }
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->timer = 30;
-        Player_SetMotionPair(p, 1, 4, 0);
-        p->deliveryMenu = 0xFF;
-        p->menuDelay = 30;
-        p->menuCursor = 0;
-        p->menuPage = 0;
+        pl->step++;
+        pl->timer = 30;
+        Player_SetMotionPair(pl, 1, 4, 0);
+        pl->deliveryMenu = 0xFF;
+        pl->menuDelay = 30;
+        pl->menuCursor = 0;
+        pl->menuPage = 0;
         break;
     case 1:
-        if ((s32) p->motionTime >= 0xF0 && p->gender == 1 && p->motionId[0] != 0x3F) {
-            Player_SetMotionPair(p, 0x3F, 2, 0);
+        if ((s32) pl->motionTime >= 0xF0 && pl->gender == 1 && pl->motionId[0] != 0x3F) {
+            Player_SetMotionPair(pl, 0x3F, 2, 0);
         }
-        if (Player_IsLocal(p) == 1 && p->timer <= 0) {
-            if (Quest_PhaseIsOver(1) == 1 || p->deliveryMenu == 0) {
-                Player_BeginState(p, 0, 2, 0);
-            } else if (p->deliveryMenu == 1) {
-                p->deliveryMenu = 0;
-                switch (p->menuCursor) {
+        if (Player_IsLocal(pl) == 1 && pl->timer <= 0) {
+            if (Quest_PhaseIsOver(1) == 1 || pl->deliveryMenu == 0) {
+                Player_BeginState(pl, 0, 2, 0);
+            } else if (pl->deliveryMenu == 1) {
+                pl->deliveryMenu = 0;
+                switch (pl->menuCursor) {
                 case 0:
-                    Player_StartSpotAction(p, 1);
+                    Player_StartSpotAction(pl, 1);
                     break;
                 case 1:
                     Quest_Start();
-                    Player_BeginState(p, 0, 2, 0);
+                    Player_BeginState(pl, 0, 2, 0);
                     break;
                 case 2:
                     Quest_Abort();
-                    Player_BeginState(p, 0, 2, 0);
+                    Player_BeginState(pl, 0, 2, 0);
                     break;
                 }
             }
@@ -4119,140 +4119,140 @@ void Player_State0_0C(Player *p, s32 unused)
     }
 }
 
-void Player_State0_0D(Player *p, s32 unused)
+void Player_StateToIdle(Player *pl, s32 unused)
 {
-    Player_BeginState(p, 0, 0x2, 0);
+    Player_BeginState(pl, 0, 0x2, 0);
 }
 
-void Player_State0_0B(Player *p, s32 variant)
+void Player_StateThrowItem(Player *pl, s32 variant)
 {
     s8 kind;
     u8 nouse;
     u8 k;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x191, 2, 0);
+            Player_SetMotionPair(pl, 0x191, 2, 0);
         } else {
-            Player_SetMotionPair(p, 0x1A1, 2, 0);
+            Player_SetMotionPair(pl, 0x1A1, 2, 0);
         }
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (Motion_PassedFrame(p, 0, variant ? 20.0f : 24.0f)) {
+        if (Motion_PassedFrame(pl, 0, variant ? 20.0f : 24.0f)) {
             kind = 0;
-            if (p->prevStateGroup == 0) {
-                if (p->prevState == 1) {
+            if (pl->prevStateGroup == 0) {
+                if (pl->prevState == 1) {
                     kind = 2;
                 }
-                if (p->prevState == 2) {
+                if (pl->prevState == 2) {
                     kind = 1;
                 }
             }
             nouse = 0;
-            switch (p->useItem) {
+            switch (pl->useItem) {
             case 0x4C:
-                Eff03_Create(p, 0, kind);
+                Eff03_Create(pl, 0, kind);
                 break;
             case 0x4E:
-                Eff03_Create(p, 7, kind);
+                Eff03_Create(pl, 7, kind);
                 break;
             case 0x48:
-                Eff03_Create(p, 1, kind);
+                Eff03_Create(pl, 1, kind);
                 break;
             case 0x297:
-                Eff03_Create(p, 1, kind);
+                Eff03_Create(pl, 1, kind);
                 break;
             case 0x4B:
-                Eff03_Create(p, 5, kind);
+                Eff03_Create(pl, 5, kind);
                 break;
             case 0x4D:
-                Eff03_Create(p, 0xb, kind);
+                Eff03_Create(pl, 0xb, kind);
                 break;
             case 0x47:
-                Eff03_Create(p, 6, kind);
+                Eff03_Create(pl, 6, kind);
                 break;
             case 0xD7:
-                Eff03_Create(p, 8, kind);
+                Eff03_Create(pl, 8, kind);
                 break;
             case 0x49:
-                Eff03_Create(p, 9, kind);
+                Eff03_Create(pl, 9, kind);
                 break;
             case 0x50:
-                Eff03_Create(p, 0xa, kind);
+                Eff03_Create(pl, 0xa, kind);
                 break;
             case 0x41:
-                Eff03_Create(p, 0xc, kind);
+                Eff03_Create(pl, 0xc, kind);
                 break;
             case 0x42:
-                Eff03_Create(p, 0xd, kind);
+                Eff03_Create(pl, 0xd, kind);
                 break;
             case 0x43:
-                Eff03_Create(p, 0xe, kind);
+                Eff03_Create(pl, 0xe, kind);
                 break;
             case 0x44:
-                Eff03_Create(p, 0xf, kind);
+                Eff03_Create(pl, 0xf, kind);
                 break;
             case 0x45:
-                Eff03_Create(p, 0x15, kind);
+                Eff03_Create(pl, 0x15, kind);
                 break;
             case 0x2BA:
-                Eff03_Create(p, 0x11, kind);
+                Eff03_Create(pl, 0x11, kind);
                 break;
             case 0x2BB:
-                Eff03_Create(p, 0x12, kind);
+                Eff03_Create(pl, 0x12, kind);
                 break;
             case 0x2BC:
-                Eff03_Create(p, 0x13, kind);
+                Eff03_Create(pl, 0x13, kind);
                 break;
             case 0x4F:
-                Eff03_Create(p, 0x17, kind);
+                Eff03_Create(pl, 0x17, kind);
                 break;
             case 0x40:
-                if (p->prevStateGroup == 0 && p->prevState == 0x49) {
+                if (pl->prevStateGroup == 0 && pl->prevState == 0x49) {
                     kind = 1;
                 }
-                if (p->stateRand % 8) {
+                if (pl->stateRand % 8) {
                     nouse = 1;
                 }
-                if (Player_HasSkill(p, 0x2D) == 1 && !(Rand_Next(1) & 7)) {
+                if (Player_HasSkill(pl, 0x2D) == 1 && !(Rand_Next(1) & 7)) {
                     nouse = 1;
                 }
-                if (nouse == 0 && Player_IsLocal(p) == 1) {
+                if (nouse == 0 && Player_IsLocal(pl) == 1) {
                     Notice_Push(1, 5, 0x40);
                 }
-                Eff28_Create((Em *) p, kind, nouse);
+                Eff28_Create((Em *) pl, kind, nouse);
                 break;
             }
             if (Quest_PhaseIsOver(1) == 0 && nouse == 0) {
-                Pouch_Add(p, p->useItem, -1);
+                Pouch_Add(pl, pl->useItem, -1);
             }
         }
-        if (p->motion[0].playing == 0) {
+        if (pl->motion[0].playing == 0) {
             switch (variant) {
             case 0:
-                Player_BeginState(p, 0, 0xA, 0);
+                Player_BeginState(pl, 0, 0xA, 0);
                 break;
             case 1:
-                Player_BeginState(p, 0, 2, 0);
+                Player_BeginState(pl, 0, 2, 0);
                 break;
             case 2:
-                if (Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
+                if (Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
                     k = gScene.campArea;
-                    p->areaMoveState = 1;
-                    p->startPos[0] = gStartPos[k][0];
-                    p->startPos[1] = D_43F0A4[k][0];
-                    p->startPos[2] = D_43F0A8[k][0];
-                    p->startAngle = gStartAngle[k];
-                    p->nextArea = k;
-                    Player_AddSpawnOffset(p, p->startPos, p->startAngle);
-                    p->noHitTimer = 5;
-                    QSync_SendPlayer(p, 5, 0);
+                    pl->areaMoveState = 1;
+                    pl->startPos[0] = gStartPos[k][0];
+                    pl->startPos[1] = D_43F0A4[k][0];
+                    pl->startPos[2] = D_43F0A8[k][0];
+                    pl->startAngle = gStartAngle[k];
+                    pl->nextArea = k;
+                    Player_AddSpawnOffset(pl, pl->startPos, pl->startAngle);
+                    pl->noHitTimer = 5;
+                    QSync_SendPlayer(pl, 5, 0);
                 } else {
-                    Player_BeginState(p, 0, 2, 0);
+                    Player_BeginState(pl, 0, 2, 0);
                 }
                 break;
             }
@@ -4263,7 +4263,7 @@ void Player_State0_0B(Player *p, s32 variant)
     }
 }
 
-void Player_State0_11(Player *p, s32 variant)
+void Player_StateLedgeHang(Player *pl, s32 variant)
 {
     f32 y;
     s32 ang[3];
@@ -4272,141 +4272,141 @@ void Player_State0_11(Player *p, s32 variant)
     f32 d[3];
     f32 m[16];
 
-    p->noPushTimer = 2;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        p->targetYaw = p->rot[1];
-        Player_SetMotionPair(p, 0x11, 0, 0);
-        p->timer = 30;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        pl->targetYaw = pl->rot[1];
+        Player_SetMotionPair(pl, 0x11, 0, 0);
+        pl->timer = 30;
+        Player_SetMoveMode(pl, 0, 0, 0);
         if (variant == 1) {
             ang[0] = 0;
-            ang[1] = p->rot[1];
+            ang[1] = pl->rot[1];
             ang[2] = 0;
             Mtx_FromAnglesXYZ(ang, m);
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = 55.0f;
             Vec_Rotate(d, v, m);
-            pos[0] = p->pos[0] + d[0];
-            pos[1] = p->pos[1] + d[1];
-            pos[2] = p->pos[2] + d[2];
-            if (Em_GetFloorYAbove((Em *) p, pos, &y) == 1) {
-                p->pos[1] = y;
+            pos[0] = pl->pos[0] + d[0];
+            pos[1] = pl->pos[1] + d[1];
+            pos[2] = pl->pos[2] + d[2];
+            if (Em_GetFloorYAbove((Em *) pl, pos, &y) == 1) {
+                pl->pos[1] = y;
             }
             v[2] = 55.0f;
-            Vec_Rotate(d, v, (f32 *) p->worldMtx);
-            p->pos[0] += d[0];
-            p->pos[1] += d[1];
-            p->pos[2] += d[2];
+            Vec_Rotate(d, v, (f32 *) pl->worldMtx);
+            pl->pos[0] += d[0];
+            pl->pos[1] += d[1];
+            pl->pos[2] += d[2];
         }
-        if (Player_IsState(p, 0, 0x1B) == 1 && p->prevStateGroup == 0 && p->prevState == 9) {
-            p->unk893++;
+        if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB) == 1 && pl->prevStateGroup == 0 && pl->prevState == 9) {
+            pl->unk893++;
         }
         break;
     case 1:
-        if (p->timer != 0) {
-            p->timer--;
-            if (p->timer <= 0) {
-                p->timer = 0;
+        if (pl->timer != 0) {
+            pl->timer--;
+            if (pl->timer <= 0) {
+                pl->timer = 0;
             }
         }
-        if (p->motion[0].playing == 0 || (p->input.pressed & 0x20) || (p->input.stickDir & 0x2000)) {
-            Player_RequestState(p, 0, 0x3A, 0xC);
-        } else if (Player_IsLocal(p) == 1 && (p->input.stickDirPressed & 0x1000) && p->timer == 0) {
-            Player_RequestState(p, 0, 0x38, 4);
+        if (pl->motion[0].playing == 0 || (pl->input.pressed & 0x20) || (pl->input.stickDir & 0x2000)) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_PULL_UP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
+        } else if (Player_IsLocal(pl) == 1 && (pl->input.stickDirPressed & 0x1000) && pl->timer == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_DROP, PL_SET_SNAP_POS);
         }
         break;
     }
 }
 
-void Player_State0_16(Player *p, s32 variant)
+void Player_StateRideStagger(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x1A, 6, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x1A, 6, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (Player_CheckRideSlip(p) == 0) {
-            Player_BeginState(p, 0, 8, 0);
+        if (Player_CheckRideSlip(pl) == 0) {
+            Player_BeginState(pl, 0, 8, 0);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
         }
         break;
     }
 }
 
-void Player_State0_14(Player *p, s32 variant)
+void Player_StatePlaceItem(Player *pl, s32 variant)
 {
     s32 timer;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->motionTime = 0;
-        p->timer = 0;
+        pl->motionTime = 0;
+        pl->timer = 0;
         switch (variant) {
         case 0:
-            p->step++;
-            Player_SetMotionPair(p, 8, 6, 0);
-            Player_SetMoveMode(p, 0, 0, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 8, 6, 0);
+            Player_SetMoveMode(pl, 0, 0, 0);
             break;
         case 1:
-            p->step = 3;
-            Player_SetMoveMode(p, 1, 0, 0);
-            Player_SetMotionPair(p, 0x199, 0, 0x14);
+            pl->step = 3;
+            Player_SetMoveMode(pl, 1, 0, 0);
+            Player_SetMotionPair(pl, 0x199, 0, 0x14);
             break;
         }
-        Player_UpdateMotionTime(p, 0);
-        if (Player_IsLocal(p) == 1) {
-            Item_UseTool(p);
+        Player_UpdateMotionTime(pl, 0);
+        if (Player_IsLocal(pl) == 1) {
+            Item_UseTool(pl);
         }
         break;
     case 1:
-        timer = p->timer + 1;
-        p->timer = timer;
+        timer = pl->timer + 1;
+        pl->timer = timer;
         if (timer >= 0xE) {
-            p->step++;
-            Player_SetMotionPair(p, 9, 0, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 9, 0, 0);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 2, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 2, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 0U, 0x1DU, 2);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_HOLD, PL_SET_NO_SYNC);
         }
         break;
     }
 }
 
-void Player_State0_19(Player *p, s32 unused)
+void Player_StateKneelToPlace(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        p->timer = 0;
-        Player_SetMotionPair(p, 7, 2, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        pl->timer = 0;
+        Player_SetMotionPair(pl, 7, 2, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            if (Player_IsLocal(p) == 1) {
-                Player_RequestState(p, 0U, 0x18U, 0xC);
+        if (pl->motion[0].playing == 0) {
+            if (Player_IsLocal(pl) == 1) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 break;
             }
-            p->step++;
-            Player_SetMotionPair(p, 8, 6, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 8, 6, 0);
         } else {
         case 2:
             break;
@@ -4415,77 +4415,77 @@ void Player_State0_19(Player *p, s32 unused)
     }
 }
 
-void Player_State0_1C(Player *p, s32 variant)
+void Player_StateRoll(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->motionTime = 0;
-        Player_SetEvadeFrames(p);
-        p->timer = 0;
-        Player_ResetAim(p);
-        p->noFlinchTimer = 0;
-        p->stateVar0 = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_AddStamina(p, -75);
-        Player_PlaySe(p, 30, 0, p->pos, 1, 0);
-        if (p->carry & 0xF) {
-            p->carry &= 0xF0;
-            StageObj_K0C_CreateAtPlayer(p, 4);
+        pl->motionTime = 0;
+        Player_SetEvadeFrames(pl);
+        pl->timer = 0;
+        Player_ResetAim(pl);
+        pl->noFlinchTimer = 0;
+        pl->stateVar0 = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_AddStamina(pl, -75);
+        Player_PlaySe(pl, 30, 0, pl->pos, 1, 0);
+        if (pl->carry & 0xF) {
+            pl->carry &= 0xF0;
+            StageObj_K0C_CreateAtPlayer(pl, 4);
         }
         if (variant == 0) {
-            p->step = 2;
-            if ((p->weaponType == 2 || p->weaponType == 8) && p->weaponOut != 0) {
-                Player_SetMotionPair(p, 0x3F3, 2, 0);
+            pl->step = 2;
+            if ((pl->weaponType == WEAPON_HAMMER || pl->weaponType == WEAPON_HUNTING_HORN) && pl->weaponOut != 0) {
+                Player_SetMotionPair(pl, 0x3F3, 2, 0);
             } else {
-                Player_SetMotionPair(p, 0x1C, 2, 0);
+                Player_SetMotionPair(pl, 0x1C, 2, 0);
             }
         } else {
-            p->step++;
-            Player_SetMotionPair(p, 0x16, 0, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x16, 0, 0);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x1C, 0, 6);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x1C, 0, 6);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-        } else if (Player_IsLocal(p) == 1 && variant == 0 && p->weaponOut != 0) {
-            switch (p->weaponType) {
-            case 4:
-            case 6:
-                if ((p->input.stickDirPressed & 0x20) && Motion_InFrameRange(p, 0, 10.0f, 44.0f) && p->stateVar0 == 0) {
-                    p->stateVar0 = 1;
-                    if (p->input.stickDir & 0x800) {
-                        p->stateVar0 = 2;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+        } else if (Player_IsLocal(pl) == 1 && variant == 0 && pl->weaponOut != 0) {
+            switch (pl->weaponType) {
+            case WEAPON_SWORD_SHIELD:
+            case WEAPON_DUAL_SWORDS:
+                if ((pl->input.stickDirPressed & 0x20) && Motion_InFrameRange(pl, 0, 10.0f, 44.0f) && pl->stateVar0 == 0) {
+                    pl->stateVar0 = 1;
+                    if (pl->input.stickDir & 0x800) {
+                        pl->stateVar0 = 2;
                     }
-                    if (p->input.stickDir & 0x400) {
-                        p->stateVar0 = 3;
+                    if (pl->input.stickDir & 0x400) {
+                        pl->stateVar0 = 3;
                     }
                 }
-                if (Motion_ReachedFrame(p, 0, 44.0f) && p->stateVar0 != 0) {
-                    if ((p->stateVar0 & 0xFF) == 2) {
-                        p->rot[1] += 0x2000;
-                        p->targetYaw = p->rot[1];
+                if (Motion_ReachedFrame(pl, 0, 44.0f) && pl->stateVar0 != 0) {
+                    if ((pl->stateVar0 & 0xFF) == 2) {
+                        pl->rot[1] += 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    if (p->stateVar0 == 3) {
-                        p->rot[1] -= 0x2000;
-                        p->targetYaw = p->rot[1];
+                    if (pl->stateVar0 == 3) {
+                        pl->rot[1] -= 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    if (p->weaponType == 4) {
-                        SwordShield_EvadeAttack(p);
+                    if (pl->weaponType == WEAPON_SWORD_SHIELD) {
+                        SwordShield_EvadeAttack(pl);
                     } else {
-                        DualSwords_EvadeAttack(p);
+                        DualSwords_EvadeAttack(pl);
                     }
                 }
                 break;
-            case 2:
-                if (Motion_ReachedFrame(p, 0, 40.0f) && (p->input.held & 0x80)) {
-                    Hammer_EvadeCharge(p);
+            case WEAPON_HAMMER:
+                if (Motion_ReachedFrame(pl, 0, 40.0f) && (pl->input.held & 0x80)) {
+                    Hammer_ChargeFromRoll(pl);
                 }
                 break;
             }
@@ -4495,7 +4495,7 @@ void Player_State0_1C(Player *p, s32 variant)
 }
 
 //---
-void Player_State0_1E(Player *p, s32 unused)
+void Player_StateStepUp(Player *pl, s32 unused)
 {
     f32 v[3];
     f32 pos[4];
@@ -4505,315 +4505,315 @@ void Player_State0_1E(Player *p, s32 unused)
     f32 *dy;
     f32 *dz;
 
-    p->noPushTimer = 2;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMotionPair(p, 0x12, 0, 0x58);
-        p->targetYaw = p->rot[1];
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMotionPair(pl, 0x12, 0, 0x58);
+        pl->targetYaw = pl->rot[1];
         v[0] = 0.0f;
         v[1] = 0.0f;
         vz = &v[2];
         *vz = 55.0f;
-        Vec_Rotate(d, v, (f32 *) p->worldMtx);
+        Vec_Rotate(d, v, (f32 *) pl->worldMtx);
         dy = &d[1];
         dz = &d[2];
-        pos[0] = p->pos[0] + d[0];
-        pos[1] = p->pos[1] + *dy;
-        pos[2] = p->pos[2] + *dz;
-        if (Em_GetFloorYAbove((Em *) p, pos, &y) == 1) {
-            p->pos[1] = y;
+        pos[0] = pl->pos[0] + d[0];
+        pos[1] = pl->pos[1] + *dy;
+        pos[2] = pl->pos[2] + *dz;
+        if (Em_GetFloorYAbove((Em *) pl, pos, &y) == 1) {
+            pl->pos[1] = y;
         }
         *vz = 55.0f;
-        Vec_Rotate(d, v, (f32 *) p->worldMtx);
-        p->pos[0] += d[0];
-        p->pos[1] += *dy;
-        p->pos[2] += *dz;
-        Player_SetMoveMode(p, 0, 0, 0);
+        Vec_Rotate(d, v, (f32 *) pl->worldMtx);
+        pl->pos[0] += d[0];
+        pl->pos[1] += *dy;
+        pl->pos[2] += *dz;
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_1F(Player *p, s32 variant)
+void Player_StateDash(Player *pl, s32 variant)
 {
     u8 r;
     f32 v[3];
     f32 d[3];
 
-    p->freeState = 1;
-    switch (p->step) {
+    pl->freeState = 1;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x600);
-        p->motionTime = 0;
-        p->dashDelay = 30;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x600);
+        pl->motionTime = 0;
+        pl->dashDelay = 30;
         switch (variant) {
         case 0:
-            if (p->motionId[0] != 3) {
-                Player_SetMotionPair(p, 3, 0, 0);
+            if (pl->motionId[0] != 3) {
+                Player_SetMotionPair(pl, 3, 0, 0);
             }
             break;
         case 1:
-            Player_SetMotionPair(p, 3, 4, 30);
+            Player_SetMotionPair(pl, 3, 4, 30);
             break;
         }
-        p->motion[0].step = 2.5f;
-        p->motion[1].step = 2.5f;
-        p->targetYaw = p->rot[1];
+        pl->motion[0].step = 2.5f;
+        pl->motion[1].step = 2.5f;
+        pl->targetYaw = pl->rot[1];
         break;
     case 1:
-        p->motion[0].step = 2.5f;
-        p->motion[1].step = 2.5f;
-        Player_UseStamina(p, -1);
-        if (p->stamina < 0x4C) {
-            Player_RequestState(p, 0, 0x22, 0);
+        pl->motion[0].step = 2.5f;
+        pl->motion[1].step = 2.5f;
+        Player_UseStamina(pl, -1);
+        if (pl->stamina < 0x4C) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DASH_TIRED, 0);
             break;
         }
-        if ((p->input.pressed & 0x40) && p->stamina >= 0x4B && Quest_PhaseIsOver(1) == 0) {
-            p->targetYaw = p->rot[1];
-            Player_SetState(p, 0, 0x1C, 4);
+        if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B && Quest_PhaseIsOver(1) == 0) {
+            pl->targetYaw = pl->rot[1];
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             break;
         }
-        if (p->input.stickTilt >= 0x28) {
-            Player_FaceStick(p);
+        if (pl->input.stickTilt >= 0x28) {
+            Player_FaceStick(pl);
         }
-        if (Player_FloorAheadBelow(p, 0, 85.0f, -60.0f)) {
-            p->targetYaw = p->rot[1];
-            Player_RequestState(p, 0, 6, 0);
+        if (Player_FloorAheadBelow(pl, 0, 85.0f, -60.0f)) {
+            pl->targetYaw = pl->rot[1];
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEAP_OFF_LEDGE, 0);
             break;
         }
-        if (p->inBattle != 0 && (u16) (p->targetAngle - p->rot[1] + 0x2000) > 0x4000) {
-            Player_SetState(p, 0, 0x20, 0);
+        if (pl->inBattle != 0 && (u16) (pl->targetAngle - pl->rot[1] + 0x2000) > 0x4000) {
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_FLEE_DASH, 0);
             break;
         }
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 5.0f;
-        Vec_Rotate(d, v, (f32 *) p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[2] += d[2];
-        if (Player_IsLocal(p) != 0) {
-            r = Player_StickMoveLevel(p, 0);
-            if (r != 5 && (Player_IsLocal(p) == 1 || Game_IsOnline() == 0)) {
-                if (Player_IsState(p, 0, 0x22) == 0 || p->stamina > 0) {
+        Vec_Rotate(d, v, (f32 *) pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[2] += d[2];
+        if (Player_IsLocal(pl) != 0) {
+            r = Player_StickMoveLevel(pl, 0);
+            if (r != 5 && (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0)) {
+                if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_DASH_TIRED) == 0 || pl->stamina > 0) {
                     if (r == 3) {
-                        if (p->dashDelay == 0) {
-                            Player_SetState(p, 0, 0x24, 0);
+                        if (pl->dashDelay == 0) {
+                            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH, 0);
                         } else {
-                            Player_IdleActions(p, 0);
+                            Player_IdleActions(pl, 0);
                         }
                     } else {
-                        p->freeState = 1;
-                        Player_SetState(p, 0, 0x2C, 0);
+                        pl->freeState = 1;
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
                     }
                 } else {
-                    Player_SetState(p, 0, 0x21, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_OUT_OF_BREATH, 0);
                 }
             } else {
-                Player_IdleActions(p, 0);
+                Player_IdleActions(pl, 0);
             }
-            if (p->unk668 != 0) {
-                Player_SetState(p, 0, 0x3B, 0);
+            if (pl->unk668 != 0) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
         }
         break;
     }
 }
 
-void Player_State0_20(Player *p, s32 variant)
+void Player_StateFleeDash(Player *pl, s32 variant)
 {
     u8 r;
     f32 v[3];
     f32 d[3];
 
-    p->freeState = 1;
-    switch (p->step) {
+    pl->freeState = 1;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x600);
-        p->motionTime = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x600);
+        pl->motionTime = 0;
         switch (variant) {
         case 0:
-            Player_SetMotionPair(p, 0x26, 0, 0);
+            Player_SetMotionPair(pl, 0x26, 0, 0);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x27, 0, 0);
+            Player_SetMotionPair(pl, 0x27, 0, 0);
             break;
         case 2:
-            Player_SetMotionPair(p, 0x26, 4, 0);
+            Player_SetMotionPair(pl, 0x26, 4, 0);
             break;
         }
-        p->targetYaw = p->rot[1];
+        pl->targetYaw = pl->rot[1];
         break;
     case 1:
         if (variant != 1) {
-            Player_UseStamina(p, -2);
-            if (p->stamina < 0x4C) {
-                Player_RequestState(p, 0, 0x22, 0);
+            Player_UseStamina(pl, -2);
+            if (pl->stamina < 0x4C) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DASH_TIRED, 0);
                 break;
             }
-            if (p->inBattle == 0 || (u16) (p->targetAngle - p->rot[1] + 0x2000) <= 0x4000) {
-                Player_SetState(p, 0, 0x46, 0);
+            if (pl->inBattle == 0 || (u16) (pl->targetAngle - pl->rot[1] + 0x2000) <= 0x4000) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DASH_RESUME, 0);
                 break;
             }
         } else {
-            Player_UseStamina(p, -1);
+            Player_UseStamina(pl, -1);
         }
-        if ((p->input.pressed & 0x40) && variant != 1 && p->stamina >= 0x4B) {
-            p->targetYaw = p->rot[1];
-            Player_SetState(p, 0, 0x44, 4);
+        if ((pl->input.pressed & 0x40) && variant != 1 && pl->stamina >= 0x4B) {
+            pl->targetYaw = pl->rot[1];
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DIVE, PL_SET_SNAP_POS);
             break;
         }
-        if (p->input.stickTilt >= 0x28) {
-            Player_FaceStick(p);
+        if (pl->input.stickTilt >= 0x28) {
+            Player_FaceStick(pl);
         }
-        if (Player_FloorAheadBelow(p, 0, 85.0f, -60.0f) && variant != 1) {
-            p->targetYaw = p->rot[1];
-            Player_RequestState(p, 0, 6, 0);
+        if (Player_FloorAheadBelow(pl, 0, 85.0f, -60.0f) && variant != 1) {
+            pl->targetYaw = pl->rot[1];
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEAP_OFF_LEDGE, 0);
             break;
         }
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 1.5f;
-        Vec_Rotate(d, v, (f32 *) p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[2] += d[2];
-        if (Player_IsLocal(p) != 0) {
-            r = Player_StickMoveLevel(p, 0);
-            if (r != 5 && (Player_IsLocal(p) == 1 || Game_IsOnline() == 0)) {
-                if (Player_IsState(p, 0, 0x22) == 0 || p->stamina > 0) {
+        Vec_Rotate(d, v, (f32 *) pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[2] += d[2];
+        if (Player_IsLocal(pl) != 0) {
+            r = Player_StickMoveLevel(pl, 0);
+            if (r != 5 && (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0)) {
+                if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_DASH_TIRED) == 0 || pl->stamina > 0) {
                     if (r == 3 && variant != 1) {
-                        Player_SetState(p, 0, 0x24, 0);
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH, 0);
                     } else {
-                        p->freeState = 1;
-                        Player_SetState(p, 0, 0x2C, 0);
+                        pl->freeState = 1;
+                        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
                     }
                 } else {
-                    Player_SetState(p, 0, 0x21, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_OUT_OF_BREATH, 0);
                 }
             } else {
-                Player_IdleActions(p, 0);
+                Player_IdleActions(pl, 0);
             }
-            if (p->unk668 != 0) {
-                Player_SetState(p, 0, 0x3B, 0);
+            if (pl->unk668 != 0) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
         }
         break;
     }
 }
 
-void Player_State0_21(Player *p, s32 variant)
+void Player_StateOutOfBreath(Player *pl, s32 variant)
 {
-    Player_AddStamina(p, 4);
-    switch (p->step) {
+    Player_AddStamina(pl, 4);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        p->weaponOut = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        pl->weaponOut = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
         if (variant == 0) {
-            Player_SetMotionPair(p, 5, 4, 0);
-            p->step = 2;
-            p->timer = 0x96;
+            Player_SetMotionPair(pl, 5, 4, 0);
+            pl->step = 2;
+            pl->timer = 0x96;
             break;
         }
-        Player_SetMotionPair(p, 0x15, 8, 0);
-        p->timer = 0xA;
+        Player_SetMotionPair(pl, 0x15, 8, 0);
+        pl->timer = 0xA;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 5, 4, 0x90);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 5, 4, 0x90);
         }
         break;
     case 2:
-        if (--p->timer <= 0) {
-            p->step++;
-            Player_SetMotionPair(p, 6, 4, 0);
+        if (--pl->timer <= 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 6, 4, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_AddStamina(p, (s32) p->staminaMax);
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_AddStamina(pl, (s32) pl->staminaMax);
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_25(Player *p, s32 unused)
+void Player_StateTiredStop(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x27, 0, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x27, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 5, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 5, 0);
         }
         break;
     }
 }
 
-void Player_State0_26(Player *p, s32 unused)
+void Player_StateHardLanding(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0x8000, 0, 0);
-        p->rideState = 0;
-        Player_SetMotionPair(p, 0x13, 2, 0);
-        Vib_StartLocal(p, 1);
-        CamShake_ReqA(p, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0x8000, 0, 0);
+        pl->rideState = 0;
+        Player_SetMotionPair(pl, 0x13, 2, 0);
+        Vib_StartLocal(pl, 1);
+        CamShake_ReqA(pl, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
         }
         break;
     }
 }
 
-void Player_State0_27(Player *p, s32 unused)
+void Player_StateWallHold(Player *pl, s32 unused)
 {
     u8 step;
 
-    step = p->step;
+    step = pl->step;
     if (step == 0) {
-        p->step = step + 1;
-        Player_SetFlag(p, 0x20000U);
-        p->stateVar0 = 0;
-        if (p->motionId[0] == 0x22) {
-            if (Motion_PassedFrame(p, 0, 46.0f) != 0) {
-                Player_SetMotionPair(p, 0x22, 0, 0x2E);
+        pl->step = step + 1;
+        Player_SetFlag(pl, 0x20000U);
+        pl->stateVar0 = 0;
+        if (pl->motionId[0] == 0x22) {
+            if (Motion_PassedFrame(pl, 0, 46.0f) != 0) {
+                Player_SetMotionPair(pl, 0x22, 0, 0x2E);
             } else {
-                Player_SetMotionPair(p, 0x22, 0, 0x5A);
+                Player_SetMotionPair(pl, 0x22, 0, 0x5A);
             }
-        } else if (Motion_PassedFrame(p, 0, 0.0f) != 0) {
-            Player_SetMotionPair(p, 0x23, 0, 0);
+        } else if (Motion_PassedFrame(pl, 0, 0.0f) != 0) {
+            Player_SetMotionPair(pl, 0x23, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0x23, 0, 0x2C);
+            Player_SetMotionPair(pl, 0x23, 0, 0x2C);
         }
     } else {
-        p->stateVar0 = 1;
+        pl->stateVar0 = 1;
     }
-    p->noPushTimer = 2;
-    Player_SetMoveMode(p, 0x8002, 0, 0);
-    Player_StepBack(p, 1);
-    Player_TrySideStep(p, 0);
+    pl->noPushTimer = 2;
+    Player_SetMoveMode(pl, 0x8002, 0, 0);
+    Player_StepBack(pl, 1);
+    Player_WallClimbInput(pl, 0);
 }
 
-void Player_State0_28(Player *player, s32 variant)
+void Player_StateWallClimbUp(Player *player, s32 variant)
 {
     f32 h;
     u16 motion;
@@ -4845,246 +4845,246 @@ void Player_State0_28(Player *player, s32 variant)
             }
         }
     } else if (((Motion_PassedFrame((void *) player, 0, 46.0f) != 0) || (Motion_PassedFrame((void *) player, 0, 90.0f) != 0)) && (Player_IsLocal(player) == 1)) {
-        if (!(Player_TrySideStep(player, 1) & 0xFF)) {
-            Player_RequestState((void *) player, 0U, 0x27U, 0);
+        if (!(Player_WallClimbInput(player, 1) & 0xFF)) {
+            Player_RequestState((void *) player, PL_GROUP_ACTION, PL_ACT_WALL_HOLD, 0);
         } else if (variant == 1) {
             Player_UseDashStamina(player);
         }
     }
     if (player->stamina <= 0) {
-        Player_RequestState((void *) player, 0U, 0x30U, 0);
+        Player_RequestState((void *) player, PL_GROUP_ACTION, PL_ACT_WALL_LET_GO, 0);
         return;
     }
     if (Player_FloorAheadAbove((void *) player, &h, 55.0f, 180.0f, 30.0f) != 0) {
         player->targetYaw = (s16) player->rot[1];
-        Player_RequestState((void *) player, 0U, 0x1BU, 0);
+        Player_RequestState((void *) player, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB, 0);
     }
     Player_StepBack(player, 1);
 }
 
-void Player_State0_29(Player *p, s32 variant)
+void Player_StateWallClimbDown(Player *pl, s32 variant)
 {
     u16 motion;
 
-    p->noPushTimer = 2;
+    pl->noPushTimer = 2;
     if (variant == 0) {
-        p->motion[0].step = 1.6f;
-        p->motion[1].step = 1.6f;
+        pl->motion[0].step = 1.6f;
+        pl->motion[1].step = 1.6f;
     } else {
-        p->motion[0].step = 2.6f;
-        p->motion[1].step = 2.6f;
+        pl->motion[0].step = 2.6f;
+        pl->motion[1].step = 2.6f;
     }
-    if (p->step == 0) {
-        p->step++;
-        Player_SetMoveMode(p, 2, 0, 0);
-        p->rideState = 0;
-        motion = p->motionId[0];
+    if (pl->step == 0) {
+        pl->step++;
+        Player_SetMoveMode(pl, 2, 0, 0);
+        pl->rideState = 0;
+        motion = pl->motionId[0];
         if (motion != 0x23) {
             if (motion == 0x22) {
-                if (Motion_ReachedFrame(p, 0, 86.0f) != 0) {
-                    Player_SetMotionPair(p, 0x23, 0, 0x2C);
+                if (Motion_ReachedFrame(pl, 0, 86.0f) != 0) {
+                    Player_SetMotionPair(pl, 0x23, 0, 0x2C);
                 } else {
-                    Player_SetMotionPair(p, 0x23, 0, 0);
+                    Player_SetMotionPair(pl, 0x23, 0, 0);
                 }
             } else {
-                Player_SetMotionPair(p, 0x23, 4, 0);
+                Player_SetMotionPair(pl, 0x23, 4, 0);
             }
         }
-    } else if (Motion_PassedFrame(p, 0, 0.0f) != 0 || Motion_PassedFrame(p, 0, 44.0f) != 0) {
-        if (Player_IsLocal(p) == 1) {
-            if (!(Player_TrySideStep(p, 1) & 0xFF)) {
-                Player_RequestState(p, 0, 0x27, 0);
+    } else if (Motion_PassedFrame(pl, 0, 0.0f) != 0 || Motion_PassedFrame(pl, 0, 44.0f) != 0) {
+        if (Player_IsLocal(pl) == 1) {
+            if (!(Player_WallClimbInput(pl, 1) & 0xFF)) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_HOLD, 0);
             } else if (variant == 1) {
-                Player_UseDashStamina(p);
+                Player_UseDashStamina(pl);
             }
         }
     }
-    if (p->stamina <= 0) {
-        Player_RequestState(p, 0, 0x30, 0);
+    if (pl->stamina <= 0) {
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_LET_GO, 0);
         return;
     }
-    if (p->pos[1] <= p->floorY) {
-        Player_RequestState(p, 0, 0x2A, 0);
+    if (pl->pos[1] <= pl->floorY) {
+        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_DISMOUNT, 0);
     }
-    Player_StepBack(p, 1);
+    Player_StepBack(pl, 1);
 }
 
-void Player_State0_2A(Player *p, s32 unused)
+void Player_StateWallDismount(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x24, 6, 0);
-        Player_StepBack(p, 1);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x24, 6, 0);
+        Player_StepBack(pl, 1);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        Player_StepBack(p, 1);
+        Player_StepBack(pl, 1);
         break;
     }
 }
 
-void Player_State0_2B(Player *p, s32 unused)
+void Player_StateWallGrab(Player *pl, s32 unused)
 {
-    p->noPushTimer = 2;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 2, 0, 0);
-        p->rideState = 0;
-        Player_TurnAlongWallSide(p, 0);
-        Player_SetMotionPair(p, 0x22, 4, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 2, 0, 0);
+        pl->rideState = 0;
+        Player_TurnAlongWallSide(pl, 0);
+        Player_SetMotionPair(pl, 0x22, 4, 0);
         break;
     case 1:
-        if (Motion_ReachedFrame(p, 0, 90.0f) != 0) {
-            Player_RequestState(p, 0U, 0x27U, 0);
+        if (Motion_ReachedFrame(pl, 0, 90.0f) != 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_HOLD, 0);
         }
         break;
     }
-    Player_StepBack(p, 1);
+    Player_StepBack(pl, 1);
 }
 
-void Player_State0_2C(Player *p, s32 unused)
+void Player_StateRunStop(Player *pl, s32 unused)
 {
-    p->freeState = 1;
-    switch (p->step) {
+    pl->freeState = 1;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x1E, 4, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x1E, 4, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xA, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
-void Player_State0_2E(Player *p, s32 unused)
+void Player_StateSetTrap(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x195, -0xE, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x195, -0xE, 0);
         break;
     case 1:
-        if (Motion_ReachedFrame(p, 0, 130.0f) != 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x19A, 4, 0);
+        if (Motion_ReachedFrame(pl, 0, 130.0f) != 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x19A, 4, 0);
         }
         break;
     case 2:
-        if (Motion_ReachedFrame(p, 0, 60.0f) != 0) {
-            if (Player_IsLocal(p) == 1) {
-                Player_RequestState(p, 0U, 0x2FU, 0xC);
+        if (Motion_ReachedFrame(pl, 0, 60.0f) != 0) {
+            if (Player_IsLocal(pl) == 1) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP_DONE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 break;
             }
-            p->step++;
+            pl->step++;
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xA, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
-void Player_State0_2F(Player *p, s32 unused)
+void Player_StateSetTrapDone(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x19A, 0, 0x3C);
-        if (Player_IsLocal(p) == 1) {
-            if (p->useItem == 0x2A6) {
-                Quest_DeliverFromPouch(p, 1);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x19A, 0, 0x3C);
+        if (Player_IsLocal(pl) == 1) {
+            if (pl->useItem == 0x2A6) {
+                Quest_DeliverFromPouch(pl, 1);
                 break;
             }
-            Item_UseMisc(p);
+            Item_UseMisc(pl);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x195, -4, 0xCE);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x195, -4, 0xCE);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xA, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
-void Player_State0_31(Player *p, s32 variant)
+void Player_StateSideEvade(Player *pl, s32 variant)
 {
     u8 dir;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->noFlinchTimer = 0;
-        Player_SetEvadeFrames(p);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_AddStamina(p, -75);
-        Player_PlaySe(p, 0x1E, 0, &p->pos[0], 1, 0);
-        p->motionTime = 0;
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->noFlinchTimer = 0;
+        Player_SetEvadeFrames(pl);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_AddStamina(pl, -75);
+        Player_PlaySe(pl, 0x1E, 0, &pl->pos[0], 1, 0);
+        pl->motionTime = 0;
         if (variant == 0) {
-            if (p->weaponType == 7) {
-                Player_SetMotionPair(p, 0x3EF, 2, 0);
+            if (pl->weaponType == WEAPON_LONG_SWORD) {
+                Player_SetMotionPair(pl, 0x3EF, 2, 0);
                 break;
             }
-            Player_SetMotionPair(p, 0x3F5, 2, 0);
+            Player_SetMotionPair(pl, 0x3F5, 2, 0);
             break;
         }
-        if (p->weaponType == 7) {
-            Player_SetMotionPair(p, 0x3EE, 2, 0);
+        if (pl->weaponType == WEAPON_LONG_SWORD) {
+            Player_SetMotionPair(pl, 0x3EE, 2, 0);
             break;
         }
-        Player_SetMotionPair(p, 0x3F4, 2, 0);
+        Player_SetMotionPair(pl, 0x3F4, 2, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
             break;
         }
-        if (Player_IsLocal(p) == 1 && p->weaponOut != 0) {
-            switch (p->weaponType) {
-            case 4:
-            case 6:
-                if ((p->input.stickDirPressed & 0x20) && Motion_InFrameRange(p, 0, 10.0f, 42.0f) != 0 && p->stateVar0 == 0) {
-                    p->stateVar0 = 1;
-                    if (p->input.stickDir & 0x800) {
-                        p->stateVar0 = 2;
+        if (Player_IsLocal(pl) == 1 && pl->weaponOut != 0) {
+            switch (pl->weaponType) {
+            case WEAPON_SWORD_SHIELD:
+            case WEAPON_DUAL_SWORDS:
+                if ((pl->input.stickDirPressed & 0x20) && Motion_InFrameRange(pl, 0, 10.0f, 42.0f) != 0 && pl->stateVar0 == 0) {
+                    pl->stateVar0 = 1;
+                    if (pl->input.stickDir & 0x800) {
+                        pl->stateVar0 = 2;
                     }
-                    if (p->input.stickDir & 0x400) {
-                        p->stateVar0 = 3;
+                    if (pl->input.stickDir & 0x400) {
+                        pl->stateVar0 = 3;
                     }
                 }
-                if (Motion_ReachedFrame(p, 0, 42.0f) != 0 && (dir = p->stateVar0)) {
+                if (Motion_ReachedFrame(pl, 0, 42.0f) != 0 && (dir = pl->stateVar0)) {
                     if (dir == 2) {
-                        p->rot[1] += 0x2000;
-                        p->targetYaw = p->rot[1];
+                        pl->rot[1] += 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    if (p->stateVar0 == 3) {
-                        p->rot[1] -= 0x2000;
-                        p->targetYaw = p->rot[1];
+                    if (pl->stateVar0 == 3) {
+                        pl->rot[1] -= 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    if (p->weaponType == 4) {
-                        SwordShield_EvadeAttack(p);
+                    if (pl->weaponType == WEAPON_SWORD_SHIELD) {
+                        SwordShield_EvadeAttack(pl);
                         break;
                     }
-                    DualSwords_EvadeAttack(p);
+                    DualSwords_EvadeAttack(pl);
                 }
                 break;
             }
@@ -5236,19 +5236,19 @@ ScEventHead *gGalleryScEvents[48] = {
 f32 gSpotLineupOffsets[4] = {
 #include "game/008C3AE0.inc"
 };
-s16 Player_State0_01_NextByWeapon[16] = {
+s16 gDrawnWalkStopIdle[16] = {
 #include "game/008C3AF0.inc"
 };
-WeaponMotion Player_State0_04_Motions0[12] = {
+WeaponMotion gDrawMotions[12] = {
 #include "game/008C3B10.inc"
 };
-WeaponMotion Player_State0_04_Motions4[12] = {
+WeaponMotion gSheatheMotions[12] = {
 #include "game/008C3B70.inc"
 };
-WeaponMotion Player_State0_04_Motions2[12] = {
+WeaponMotion gSheatheMovingMotions[12] = {
 #include "game/008C3BD0.inc"
 };
-WeaponMotion Player_State0_04_Motions5[12] = {
+WeaponMotion gDrawMovingMotions[12] = {
 #include "game/008C3C30.inc"
 };
 
@@ -5287,7 +5287,7 @@ void Bgm_StopEvent(void *obj);
 s32 Quest_PlayerFainted(Player *pl, s32 other);
 void Versus_MonsterDown(Em *em);
 void Quest_ShowValue(void);
-void func_3A1F30(void);
+void Quest_ResetMusicIfIdle(void);
 void func_367A90(void);
 s32 Player_GetHpSkillBonus(Player *p);
 void Player_ClearBuffs(Player *pl);
@@ -5306,7 +5306,7 @@ s32 MsgEvent_Check(u16 id);
 u16 Pouch_NextSelectable(Player *pl, u16 cur, u8 dir);
 f32 Math_Cos(f32 x);
 s32 Game_IsOnline(void);
-void Player_GatherStep(Player *p);
+void Player_GuardInput(Player *p);
 void Player_RequestStateSynced(Player *p, u16 state, u8 sub, u16 flags);
 void Sound_PlayArmorRattle(Player *p, s32 a);
 void Em_GetBonePos(void *obj, s16 bone, f32 *out);
@@ -5317,7 +5317,7 @@ s32 Player_StartJump(void *obj, s16 frames);
 void Player_MoveAccel(Player *p);
 void Player_UseStamina(Player *p, s32 n);
 void StageObj_Stun_CreatePlayer(Player *em, u8 k);
-extern s8 Player_State2_13_Need[];
+extern s8 gStunMashNeed[];
 void Player_AddSharpness(Player *p, s16 n);
 s32 Player_FloorAheadBelow(Player *em, u16 above, f32 fwd, f32 up);
 s32 func_3B5440(Em *em);
@@ -5347,69 +5347,69 @@ s32 Motion_PassedFrame(void *, s32 layer, f32 frame);
 s32 Player_HasSkill(Player *p, u8 skill);
 s32 Player_IsLocal(void *);
 void Player_RequestState(Player *p, u16 state, u8 sub, u16 flags);
-void Player_SetMotionPair(Player *, s32, s32, s32); /* unit's own declaration: the last parameter s32 (the definition has s16); with the definition's type Player_State0_55 by 418 of 469 words differ */
+void Player_SetMotionPair(Player *, s32, s32, s32); /* unit's own declaration: the last parameter s32 (the definition has s16); with the definition's type Player_StateSpitRoast by 418 of 469 words differ */
 void Player_SetMoveMode(Player *, u16 mode, s16 flag1, s16 flag2);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
 void Player_StartIdleMotion(Player *p, s32 a, s32 b);
 void Quest_StartCountdown(Player *p);
 void Eff00_Create(Player *, u8);
 void Eff22_CreateForPlayer(Player *, u8 kind);
-s32 Player_IdleInput(Player *);
+s32 Player_CrouchInput(Player *);
 void Player_UpdateLean(Player *, s32);
-void Player_State0_00(Player *, s32);
-void Player_State0_04(Player *, u32);
-void Player_State0_06(Player *, s32);
-void Player_State0_15(Player *, s32);
-void Player_State0_08(Player *, s32);
-void Player_State0_0C(Player *, s32);
-void Player_State0_0D(Player *em, s32 arg1);
-void Player_State0_0B(Player *, s32);
-void Player_State0_11(Player *, s32);
-void Player_State0_16(Player *, s32);
-void Player_State0_14(Player *, s32);
-void Player_State0_19(Player *em, s32 arg1);
-void Player_State0_1C(Player *, s32);
-void Player_State0_1E(Player *, s32);
-void Player_State0_1F(Player *, s32);
-void Player_State0_20(Player *, s32);
-void Player_State0_21(Player *em, s32 arg1);
-void Player_State0_25(Player *em, s32 arg1);
-void Player_State0_26(Player *em, s32 arg1);
-void Player_State0_29(Player *, s32);
-void Player_State0_2A(Player *em, s32 arg1);
-void Player_State0_2B(Player *, s32);
-void Player_State0_2C(Player *, s32);
-void Player_State0_2E(Player *, s32);
-void Player_State0_2F(Player *, s32);
-void Player_State0_31(Player *, s32);
-void Player_State0_34(Player *, s32);
-void Player_State0_36(Player *, s32);
-void Player_State0_48(Player *, s32);
-void Player_State0_3C(Player *, s32);
+void Player_StateIdle(Player *, s32);
+void Player_StateDrawSheathe(Player *, u32);
+void Player_StateLeapOrFall(Player *, s32);
+void Player_StateClimbAirborne(Player *, s32);
+void Player_StateCrouch(Player *, s32);
+void Player_StateBedMenu(Player *, s32);
+void Player_StateToIdle(Player *em, s32 arg1);
+void Player_StateThrowItem(Player *, s32);
+void Player_StateLedgeHang(Player *, s32);
+void Player_StateRideStagger(Player *, s32);
+void Player_StatePlaceItem(Player *, s32);
+void Player_StateKneelToPlace(Player *em, s32 arg1);
+void Player_StateRoll(Player *, s32);
+void Player_StateStepUp(Player *, s32);
+void Player_StateDash(Player *, s32);
+void Player_StateFleeDash(Player *, s32);
+void Player_StateOutOfBreath(Player *em, s32 arg1);
+void Player_StateTiredStop(Player *em, s32 arg1);
+void Player_StateHardLanding(Player *em, s32 arg1);
+void Player_StateWallClimbDown(Player *, s32);
+void Player_StateWallDismount(Player *em, s32 arg1);
+void Player_StateWallGrab(Player *, s32);
+void Player_StateRunStop(Player *, s32);
+void Player_StateSetTrap(Player *, s32);
+void Player_StateSetTrapDone(Player *, s32);
+void Player_StateSideEvade(Player *, s32);
+void Player_StateBedSleep(Player *, s32);
+void Player_StateMountedGunAim(Player *, s32);
+void Player_StateMountedGunFire(Player *, s32);
+void Player_StateCrouchStop(Player *, s32);
 void Player_StepBack(Player *, s32);
 void Player_UpdateWallSidle(Player *em);
-void Player_State0_44(Player *, s32);
-void Player_State0_47(Player *, u32);
-void Player_State0_5D(Player *, s32);
+void Player_StateDive(Player *, s32);
+void Player_StateGather(Player *, u32);
+void Player_StateGatherCrouched(Player *, s32);
 void Player_UpdateFishingInput(Player *);
-void Player_State0_53(Player *, s32);
-void Player_State0_54(Player *em, s32 arg1);
-void Player_State0_55(Player *, s32);
-void Player_State0_5B(Player *, s32);
-void Player_State0_5E(Player *, s32);
-void Player_State0_5F(Player *, s32);
-void Player_State0_61(Player *, s32);
-void Player_State0_6B(Player *, s32);
-void Player_State0_73(Player *, s32);
-void Player_State3_00(Player *, s32);
-void Player_State4_00(Player *, s32);
-void Player_State4_05(Player *em, s32 arg1);
+void Player_StateFishReel(Player *, s32);
+void Player_StateFishReelEmpty(Player *em, s32 arg1);
+void Player_StateSpitRoast(Player *, s32);
+void Player_StateTrade(Player *, s32);
+void Player_StateInstrumentPlay(Player *, s32);
+void Player_StateInstrumentEnd(Player *, s32);
+void Player_StateSharpen(Player *, s32);
+void Player_StateLanceHop(Player *, s32);
+void Player_StateHornItemPlay(Player *, s32);
+void Player_StateFaint(Player *, s32);
+void Player_StateCart(Player *, s32);
+void Player_StateLeave(Player *em, s32 arg1);
 void Player_UpdateCarryKind(Player *);
 void Player_UpdateCarryInput(Player *, s32);
-void Player_State5_01(Player *, s32);
-void Player_State5_02(Player *, s32);
-void Player_State5_03(Player *, s32);
-void Player_State5_05(Player *, s32);
+void Player_StateCarryWalk(Player *, s32);
+void Player_StateCarryRun(Player *, s32);
+void Player_StateCarryPutDown(Player *, s32);
+void Player_StateCarryAirborne(Player *, s32);
 void StageObj_K0C_CreateAtPlayer(Player *, s32 k);
 void StageObj_K1B_Create(s8, s16 *);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
@@ -5426,7 +5426,7 @@ u16 Pouch_FindCarryItem(Player *);
 void Player_ResetAim(Player *p);
 void Lure_Spawn(Player *pl, u8 k);
 void Jingle_Play(void *obj, s32 id);
-extern s16 Player_State6_09_MotionStates[];
+extern s16 gGestureOneShots[];
 u16 Rand_Next(s32 stream);
 u16 Player_FindActionSpot(Player *, f32 *, u16 *arg, u8 *);
 s16 Pouch_Count(Player *p, u16 item);
@@ -5434,56 +5434,56 @@ s16 Player_IsState(void *obj, u8 state, u8 sub);
 u8 Item_CarryKind(u16);
 /* end of prototypes */
 
-void Player_State0_33(Player *p, s32 unused)
+void Player_StateBedLieDown(Player *pl, s32 unused)
 {
-    p->noPushTimer = 2;
-    p->fieldCollide = 0;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    pl->fieldCollide = 0;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->motionTime = 0;
-        Player_SetMotionPair(p, 0x1AA, -6, 0);
-        p->poison = 0;
-        p->mashBuildup = 0;
-        p->mashLeft = 0;
-        p->status7Timer = 0;
-        p->status6Timer = 0;
-        p->status5Buildup = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->motionTime = 0;
+        Player_SetMotionPair(pl, 0x1AA, -6, 0);
+        pl->poison = 0;
+        pl->mashBuildup = 0;
+        pl->mashLeft = 0;
+        pl->status7Timer = 0;
+        pl->status6Timer = 0;
+        pl->status5Buildup = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 0U, 0x34U, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BED_SLEEP, 0);
         }
         break;
     }
 }
 
-void Player_State0_34(Player *p, s32 variant)
+void Player_StateBedSleep(Player *pl, s32 variant)
 {
     f32 v[3];
 
-    p->noPushTimer = 2;
-    p->fieldCollide = 0;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    pl->fieldCollide = 0;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->motionTime = 0;
-        p->timer = 120;
-        Player_SetMotionPair(p, 0x1AB, 0, 0);
-        Effect06_SpawnAtBone(p, 0, 0, 10, 4.0f);
+        pl->step++;
+        pl->stateVar0 = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->motionTime = 0;
+        pl->timer = 120;
+        Player_SetMotionPair(pl, 0x1AB, 0, 0);
+        Effect06_SpawnAtBone(pl, 0, 0, 10, 4.0f);
         break;
     case 1:
-        if (--p->timer <= 0 && Player_IsLocal(p) == 1) {
-            Player_RequestState(p, 0, 0x35, 0);
+        if (--pl->timer <= 0 && Player_IsLocal(pl) == 1) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BED_GET_UP, 0);
             break;
         }
-        if (p->motionId[0] == 0x1AB && !(Rand_Next(1) & 0x7F)) {
-            Player_SetMotionPair(p, 0x1AC, 4, 0);
-        } else if (p->motionId[0] == 0x1AC && p->motion[0].playing == 0) {
-            Player_SetMotionPair(p, 0x1AB, 4, 0);
+        if (pl->motionId[0] == 0x1AB && !(Rand_Next(1) & 0x7F)) {
+            Player_SetMotionPair(pl, 0x1AC, 4, 0);
+        } else if (pl->motionId[0] == 0x1AC && pl->motion[0].playing == 0) {
+            Player_SetMotionPair(pl, 0x1AB, 4, 0);
         }
         v[0] = 0.0f;
         v[1] = 20.0f;
@@ -5492,309 +5492,309 @@ void Player_State0_34(Player *p, s32 variant)
         case 0:
         case 10:
         case 20:
-            Effect06_SpawnAt(p, 4, 20, v, 0.8f);
+            Effect06_SpawnAt(pl, 4, 20, v, 0.8f);
         }
-        Player_AddHp(p, 1);
+        Player_AddHp(pl, 1);
         break;
     }
 }
 
-void Player_State0_35(Player *p, s32 unused)
+void Player_StateBedGetUp(Player *pl, s32 unused)
 {
-    p->noPushTimer = 2;
-    p->fieldCollide = 0;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    pl->fieldCollide = 0;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->motionTime = 0;
-        p->rot[1] = (p->rot[1] + 0x7FFF + 1) & 0xFFFF;
-        p->targetYaw = (u16) p->rot[1];
-        Player_SetMotionPair(p, 0x1AD, 0, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->motionTime = 0;
+        pl->rot[1] = (pl->rot[1] + 0x7FFF + 1) & 0xFFFF;
+        pl->targetYaw = (u16) pl->rot[1];
+        Player_SetMotionPair(pl, 0x1AD, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_36(Player *p, s32 variant)
+void Player_StateMountedGunAim(Player *pl, s32 variant)
 {
     f32 pos[3];
     u16 angle;
     s8 kind;
 
-    p->noPushTimer = 2;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x19E, 4, 0);
-            p->aimPitch = 0;
-            p->aimPitchPct = 0;
+            Player_SetMotionPair(pl, 0x19E, 4, 0);
+            pl->aimPitch = 0;
+            pl->aimPitchPct = 0;
         } else {
-            Player_SetMotionPair(p, 0x19E, 0, 0x42);
+            Player_SetMotionPair(pl, 0x19E, 0, 0x42);
         }
-        Player_UpdateMotionTime(p, 0);
-        p->timer = 60;
-        p->stateVar0 = 30;
-        if (Player_FindActionSpot((Player *)p, (f32 *)pos, &angle, (u8 *)&kind) == 6) {
-            p->yawCenter = angle;
+        Player_UpdateMotionTime(pl, 0);
+        pl->timer = 60;
+        pl->stateVar0 = 30;
+        if (Player_FindActionSpot((Player *)pl, (f32 *)pos, &angle, (u8 *)&kind) == 6) {
+            pl->yawCenter = angle;
             break;
         }
-        p->yawCenter = p->targetYaw;
+        pl->yawCenter = pl->targetYaw;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (p->stateVar0 > 0) {
-            p->stateVar0--;
+        if (pl->stateVar0 > 0) {
+            pl->stateVar0--;
         }
-        if (Player_IsLocal(p) == 1) {
+        if (Player_IsLocal(pl) == 1) {
             if (Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 6, 0);
+                Player_BeginState(pl, 0, 6, 0);
                 break;
             }
-            Player_UpdateLean(p, 0x19E);
-            if (p->stateVar0 == 0 && (p->input.pressed & 0x21) && Pouch_Count(p, 0x29B) != 0) {
-                Player_RequestState(p, 0, 0x48, 0x4C);
+            Player_UpdateLean(pl, 0x19E);
+            if (pl->stateVar0 == 0 && (pl->input.pressed & 0x21) && Pouch_Count(pl, 0x29B) != 0) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_FIRE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW | PL_SET_SYNC_ALT);
                 break;
             }
-            if (p->timer == 0 && (p->input.pressed2 & 0x40) && p->itemSelect == 0) {
-                Player_BeginState(p, 0, 6, 0);
+            if (pl->timer == 0 && (pl->input.pressed2 & 0x40) && pl->itemSelect == 0) {
+                Player_BeginState(pl, 0, 6, 0);
             }
         }
         break;
     }
 }
 
-void Player_State0_48(Player *p, s32 variant)
+void Player_StateMountedGunFire(Player *pl, s32 variant)
 {
 
-    p->noPushTimer = 2;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x19E, 0, 0x42);
-        Player_UpdateMotionTime(p, 0);
-        p->timer = 60;
-        if (Player_IsLocal(p) != 1 || Pouch_Count(p, 0x29B) != 0) {
-            Pouch_Add(p, 0x29B, -1);
-            Vib_StartLocal(p, 2);
-            Eff22_CreateForPlayer(p, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x19E, 0, 0x42);
+        Player_UpdateMotionTime(pl, 0);
+        pl->timer = 60;
+        if (Player_IsLocal(pl) != 1 || Pouch_Count(pl, 0x29B) != 0) {
+            Pouch_Add(pl, 0x29B, -1);
+            Vib_StartLocal(pl, 2);
+            Eff22_CreateForPlayer(pl, 0);
         }
         break;
     case 1:
-        p->timer -= 1;
-        if (p->timer == 0) {
-            if (Pouch_Count(p, 0x29B) > 0) {
-                Player_RequestState(p, 0, 0x7A, 0xC);
+        pl->timer -= 1;
+        if (pl->timer == 0) {
+            if (Pouch_Count(pl, 0x29B) > 0) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_REAIM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 break;
             }
-            Player_BeginState(p, 0, 6, 0);
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_37(Player *p, s32 unused)
+void Player_StateCannonFire(Player *pl, s32 unused)
 {
-    p->noPushTimer = 2;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0xD3, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Vib_StartLocal(p, 3);
-        CamShake_ReqA(p, 5);
-        Eff22_CreateForPlayer(p, 1U);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0xD3, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Vib_StartLocal(pl, 3);
+        CamShake_ReqA(pl, 5);
+        Eff22_CreateForPlayer(pl, 1U);
         break;
     case 1:
-        if (Motion_PassedFrame(p, 0, p->motion[0].frameCount) != 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xD4, 2, 0);
+        if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xD4, 2, 0);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State0_39(Player *p, s32 unused)
+void Player_StateCrouchStandUp(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 1, 0, 0);
-        Player_SetMotionPair(p, 9, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 1, 0, 0);
+        Player_SetMotionPair(pl, 9, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State0_3A(Player *p, s32 unused)
+void Player_StateLedgePullUp(Player *pl, s32 unused)
 {
-    p->noPushTimer = 2;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->motionTime = 0;
-        Player_SetMotionPair(p, 0x12, 4, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->motionTime = 0;
+        Player_SetMotionPair(pl, 0x12, 4, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_3B(Player *p, s32 unused)
+void Player_StateCrouchWalk(Player *pl, s32 unused)
 {
     s32 timer;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMotionPair(p, 0xA, 8, 0);
-        Player_SetMoveMode(p, 1, 0, 0);
-        p->weaponOut = 0;
-        Player_SetFlag(p, 0x1000U);
-        p->freeState = 1;
-        p->timer = 0xF;
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMotionPair(pl, 0xA, 8, 0);
+        Player_SetMoveMode(pl, 1, 0, 0);
+        pl->weaponOut = 0;
+        Player_SetFlag(pl, 0x1000U);
+        pl->freeState = 1;
+        pl->timer = 0xF;
         break;
     case 1:
-        timer = p->timer;
+        timer = pl->timer;
         if (timer != 0) {
-            p->timer = timer - 1;
+            pl->timer = timer - 1;
         }
-        if (Player_IsLocal(p) == 1) {
-            if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B) && (p->unk668 == 0)) {
-                Player_SetState(p, 0U, 0x2DU, 4);
+        if (Player_IsLocal(pl) == 1) {
+            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B) && (pl->unk668 == 0)) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL_FROM_CROUCH, PL_SET_SNAP_POS);
                 break;
             }
-            Player_IdleInput(p);
+            Player_CrouchInput(pl);
         } else {
         }
         break;
     }
 }
 
-void Player_State0_3C(Player *p, s32 variant)
+void Player_StateCrouchStop(Player *pl, s32 variant)
 {
     s16 blend;
 
-    p->timer++;
-    p->freeState = 1;
-    switch (p->step) {
+    pl->timer++;
+    pl->freeState = 1;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        if (p->motionId[0] == 0x25) {
+        pl->step++;
+        if (pl->motionId[0] == 0x25) {
             blend = 12;
         } else {
             blend = 8;
         }
-        Player_SetMoveMode(p, 0x8001, 0, 0);
-        Player_SetMotionPair(p, 8, blend, 0);
-        p->timer = 0;
+        Player_SetMoveMode(pl, 0x8001, 0, 0);
+        Player_SetMotionPair(pl, 8, blend, 0);
+        pl->timer = 0;
         break;
     case 1:
-        if (p->timer >= 12) {
-            Player_SetState(p, 0, 0x1D, 0);
+        if (pl->timer >= 12) {
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_HOLD, 0);
         }
         break;
     }
 }
 
-void Player_State0_3D(Player *p, s32 unused)
+void Player_StateCrouchWalkFast(Player *pl, s32 unused)
 {
     s32 timer;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMotionPair(p, 0x25, 6, 0);
-        Player_SetMoveMode(p, 1, 0, 0);
-        Player_SetFlag(p, 0x02000000U);
-        p->freeState = 1;
-        p->timer = 0xF;
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMotionPair(pl, 0x25, 6, 0);
+        Player_SetMoveMode(pl, 1, 0, 0);
+        Player_SetFlag(pl, 0x02000000U);
+        pl->freeState = 1;
+        pl->timer = 0xF;
         break;
     case 1:
-        timer = p->timer;
+        timer = pl->timer;
         if (timer != 0) {
-            p->timer = timer - 1;
+            pl->timer = timer - 1;
         }
-        if (Player_IsLocal(p) == 1) {
-            if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B) && (p->unk668 == 0)) {
-                Player_SetState(p, 0U, 0x2DU, 4);
+        if (Player_IsLocal(pl) == 1) {
+            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B) && (pl->unk668 == 0)) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL_FROM_CROUCH, PL_SET_SNAP_POS);
                 break;
             }
-            Player_IdleInput(p);
+            Player_CrouchInput(pl);
         } else {
         }
         break;
     }
 }
 
-void Player_State0_3E(Player *p, s32 unused)
+void Player_StateBattleAlert(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMotionPair(p, 0x29, 2, 0);
-        Player_SetMoveMode(p, 0x8000, 0, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMotionPair(pl, 0x29, 2, 0);
+        Player_SetMoveMode(pl, 0x8000, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
         }
         break;
     }
 }
 
-void Player_State0_3F(Player *p, s32 unused)
+void Player_StateTurnAround(Player *pl, s32 unused)
 {
-    p->freeState = 1;
-    switch (p->step) {
+    pl->freeState = 1;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        p->rot[1] = (s32) p->targetYaw;
-        Player_SetMotionPair(p, 0x2A, 0, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x1000);
+        pl->step++;
+        pl->motionTime = 0;
+        pl->rot[1] = (s32) pl->targetYaw;
+        Player_SetMotionPair(pl, 0x2A, 0, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x1000);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 0U, 0x24U, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH, 0);
         }
         break;
     }
 }
 
 /* moves the player 3 units back along its heading (forward when fwd is set) */
-void Player_StepBack(Player *p, s32 fwd)
+void Player_StepBack(Player *pl, s32 fwd)
 {
     f32 v[3];
     f32 d[3];
@@ -5803,7 +5803,7 @@ void Player_StepBack(Player *p, s32 fwd)
 
     ang[0] = 0;
     ang[2] = 0;
-    ang[1] = p->rot[1];
+    ang[1] = pl->rot[1];
     Mtx_FromAnglesXYZ(ang, m);
     v[0] = 0.0f;
     v[1] = 0.0f;
@@ -5812,145 +5812,145 @@ void Player_StepBack(Player *p, s32 fwd)
         v[2] *= -1.0f;
     }
     Vec_Rotate(d, v, m);
-    p->pos[0] += d[0];
-    p->pos[2] += d[2];
+    pl->pos[0] += d[0];
+    pl->pos[2] += d[2];
 }
 
-void Player_UpdateWallSidle(Player *p)
+void Player_UpdateWallSidle(Player *pl)
 {
     s32 d;
 
-    if (Player_IsLocal(p) != 0) {
-        switch (Player_StickMoveLevel(p, 0)) {
+    if (Player_IsLocal(pl) != 0) {
+        switch (Player_StickMoveLevel(pl, 0)) {
         case 1:
         case 2:
         case 3:
-            d = (u16) ((u16) Player_GetStickYaw(p, 0) - *(u16 *) &p->rot[1]);
+            d = (u16) ((u16) Player_GetStickYaw(pl, 0) - *(u16 *) &pl->rot[1]);
             if (d >= 0x2000 && d <= 0x6000) {
-                if (Player_IsState(p, 0, 0x42) == 0) {
-                    Player_SetState(p, 0, 0x42, 0);
+                if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_POS) == 0) {
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_POS, 0);
                 }
             } else if (d >= 0xA000 && d <= 0xE000) {
-                if (Player_IsState(p, 0, 0x41) == 0) {
-                    Player_SetState(p, 0, 0x41, 0);
+                if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_NEG) == 0) {
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_NEG, 0);
                 }
-            } else if (Player_IsState(p, 0, 0x40) == 0 && Player_IsState(p, 0, 0x43) == 0) {
-                Player_SetState(p, 0, 0x43, 0);
+            } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_PRESS) == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_PRESS_HOLD) == 0) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALL_PRESS_HOLD, 0);
             }
             break;
         default:
-            if (Player_IsState(p, 0, 0x40) == 0 && Player_IsState(p, 0, 0x43) == 0) {
-                Player_SetState(p, 0, 0x43, 0);
+            if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_PRESS) == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_PRESS_HOLD) == 0) {
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALL_PRESS_HOLD, 0);
             }
             break;
         }
-        if ((p->input.pressed & 0x40) || !(Player_TurnAlongWallSide(p, 1) & 0xFF)) {
-            p->freeState = 1;
-            Player_RequestState(p, 0, 0x2C, 0);
+        if ((pl->input.pressed & 0x40) || !(Player_TurnAlongWallSide(pl, 1) & 0xFF)) {
+            pl->freeState = 1;
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
         }
     }
 }
 
-void Player_State0_40(Player *p, s32 variant)
+void Player_StateWallPress(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
+        pl->step++;
+        pl->motionTime = 0;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x2B, 2, 0);
+            Player_SetMotionPair(pl, 0x2B, 2, 0);
         } else {
-            Player_SetMotionPair(p, 0x2B, 2, 0x1E);
+            Player_SetMotionPair(pl, 0x2B, 2, 0x1E);
         }
-        Player_SetMoveMode(p, 0x8000, 0, 0);
-        Player_StepBack(p, 0);
+        Player_SetMoveMode(pl, 0x8000, 0, 0);
+        Player_StepBack(pl, 0);
         break;
     case 1:
-        Player_StepBack(p, 0);
-        if (Motion_ReachedFrame(p, 0, 30.0f) != 0) {
-            Player_UpdateWallSidle(p);
+        Player_StepBack(pl, 0);
+        if (Motion_ReachedFrame(pl, 0, 30.0f) != 0) {
+            Player_UpdateWallSidle(pl);
         }
         break;
     }
 }
 
-void Player_State0_41(Player *p, s32 variant)
+void Player_StateWallSidle(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
+        pl->step++;
+        pl->motionTime = 0;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x2C, 2, 0);
+            Player_SetMotionPair(pl, 0x2C, 2, 0);
         } else {
-            Player_SetMotionPair(p, 0x2D, 2, 0);
+            Player_SetMotionPair(pl, 0x2D, 2, 0);
         }
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x1000);
-        Player_StepBack(p, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x1000);
+        Player_StepBack(pl, 0);
         break;
     case 1:
-        Player_StepBack(p, 0);
-        Player_UpdateWallSidle(p);
+        Player_StepBack(pl, 0);
+        Player_UpdateWallSidle(pl);
         break;
     }
 }
 
-void Player_State0_44(Player *p, s32 unused)
+void Player_StateDive(Player *pl, s32 unused)
 {
     f32 v[3];
     f32 d[3];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMotionPair(p, 0x2E, 4, 0);
-        Player_SetMoveMode(p, 2, 0, 0);
-        Player_AddStamina(p, -75);
-        Player_PlaySe(p, 0x1E, 0, p->pos, 1, 0);
-        p->noHitTimer = 3;
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMotionPair(pl, 0x2E, 4, 0);
+        Player_SetMoveMode(pl, 2, 0, 0);
+        Player_AddStamina(pl, -75);
+        Player_PlaySe(pl, 0x1E, 0, pl->pos, 1, 0);
+        pl->noHitTimer = 3;
         break;
     case 1:
-        p->noHitTimer = 3;
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x2F, 0, 0);
-            p->pos[1] += 100.0f;
+        pl->noHitTimer = 3;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x2F, 0, 0);
+            pl->pos[1] += 100.0f;
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = 16.0f;
-            Vec_Rotate(d, v, (f32 *) p->worldMtx);
-            p->vel[0] = d[0];
-            p->vel[1] = 3.0f;
-            p->vel[2] = d[2];
-            Player_ClearAccel(p);
-            Player_StartJump(p, 8);
+            Vec_Rotate(d, v, (f32 *) pl->worldMtx);
+            pl->vel[0] = d[0];
+            pl->vel[1] = 3.0f;
+            pl->vel[2] = d[2];
+            Player_ClearAccel(pl);
+            Player_StartJump(pl, 8);
         }
         break;
     case 2:
-        p->noHitTimer = 3;
-        Player_MoveAccel(p);
-        if (p->vel[1] <= 0.0f && p->pos[1] <= p->floorY) {
-            p->step++;
-            p->action = 0;
-            p->pos[1] = p->floorY;
-            Player_SetMotionPair(p, 0x30, 0, 0);
-            Vib_StartLocal(p, 1);
-            CamShake_ReqA(p, 0);
+        pl->noHitTimer = 3;
+        Player_MoveAccel(pl);
+        if (pl->vel[1] <= 0.0f && pl->pos[1] <= pl->floorY) {
+            pl->step++;
+            pl->action = 0;
+            pl->pos[1] = pl->floorY;
+            Player_SetMotionPair(pl, 0x30, 0, 0);
+            Vib_StartLocal(pl, 1);
+            CamShake_ReqA(pl, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            p->noHitTimer = 0;
-            if (p->input.held & 0x10) {
-                Player_RequestState(p, 0, 0x45, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->noHitTimer = 0;
+            if (pl->input.held & 0x10) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FLEE_DASH_RESUME, 0);
             } else {
-                p->freeState = 1;
-                Player_RequestState(p, 0, 0x2C, 0);
+                pl->freeState = 1;
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
             }
-        } else if (Motion_ReachedFrame(p, 0, 30.0f) == 0) {
-            p->noHitTimer = 2;
+        } else if (Motion_ReachedFrame(pl, 0, 30.0f) == 0) {
+            pl->noHitTimer = 2;
         }
         break;
     }
@@ -5958,7 +5958,7 @@ void Player_State0_44(Player *p, s32 unused)
 
 extern s32 gNothingMoreText;
 /* gathering at the player's spot (kind 0: a gather point, 1-3: a mining point); stat: 1, 2 count quest stats 0xE, 0xF. 1: an item was taken */
-s32 Player_GatherAtSpot(Player *p, u16 kind, u16 stat)
+s32 Player_GatherAtSpot(Player *pl, u16 kind, u16 stat)
 {
     u16 item;
     u16 sel;
@@ -5970,12 +5970,12 @@ s32 Player_GatherAtSpot(Player *p, u16 kind, u16 stat)
     }
     switch (kind) {
     case 0:
-        item = Gather_AtPoint(p);
+        item = Gather_AtPoint(pl);
         break;
     case 1:
     case 2:
     case 3:
-        item = Gather_AtMinePoint(p);
+        item = Gather_AtMinePoint(pl);
         break;
     }
     if (item == 0 || item == 0xFFFE || item == 0xFFFF) {
@@ -5995,7 +5995,7 @@ s32 Player_GatherAtSpot(Player *p, u16 kind, u16 stat)
                 break;
             }
         } else {
-            Jingle_Play(p, 0xA);
+            Jingle_Play(pl, 0xA);
             Notice_PushItem((char *)gNothingMoreText);
         }
     } else {
@@ -6020,22 +6020,22 @@ s32 Player_GatherAtSpot(Player *p, u16 kind, u16 stat)
         if (kind == 1) {
             MsgEvent_Check(0xD);
         }
-        r = Pouch_GiveItem(p, item, p->gotItem, 3);
+        r = Pouch_GiveItem(pl, item, pl->gotItem, 3);
         switch (r) {
         case 0:
         case 1:
         case 2:
             if (Item_CarryKind(item) & 0xFF) {
-                p->stateVar1 = 1;
+                pl->stateVar1 = 1;
                 MsgEvent_Check(0x10);
                 if (item == 0x2A3) {
                     Notice_Push(1, 0x14, item);
                 }
             }
-            sel = p->pouchCursor;
-            id = p->pouch[sel].item;
+            sel = pl->pouchCursor;
+            id = pl->pouch[sel].item;
             if (id != 0 && !(gItemData[id].flags & 1)) {
-                p->pouchCursor = Pouch_NextSelectable(p, sel, 0);
+                pl->pouchCursor = Pouch_NextSelectable(pl, sel, 0);
             }
             return 1;
         }
@@ -6043,75 +6043,75 @@ s32 Player_GatherAtSpot(Player *p, u16 kind, u16 stat)
     return 0;
 }
 
-void Player_State0_47(Player *p, u32 variant)
+void Player_StateGather(Player *pl, u32 variant)
 {
     u16 n;
 
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    p->noPushTimer = 2;
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        p->timer = 0;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        pl->timer = 0;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         switch (variant) {
         case 0:
         case 1:
         case 6:
         case 7:
-            Player_SetMotionPair(p, 0x195, -0xE, 0);
-            if (Player_HasSkill(p, 0x97) == 1) {
-                p->motion[0].step = 2.6f;
-                p->motion[1].step = 2.6f;
+            Player_SetMotionPair(pl, 0x195, -0xE, 0);
+            if (Player_HasSkill(pl, 0x97) == 1) {
+                pl->motion[0].step = 2.6f;
+                pl->motion[1].step = 2.6f;
             }
             break;
         case 2:
-            if (Player_IsLocal(p) == 1) {
+            if (Player_IsLocal(pl) == 1) {
                 Notice_Push(0, 0xA, 0);
             }
-            Player_SetMotionPair(p, 0x195, -0xE, 0);
-            if (Player_HasSkill(p, 0x97) == 1) {
-                p->motion[0].step = 2.6f;
-                p->motion[1].step = 2.6f;
+            Player_SetMotionPair(pl, 0x195, -0xE, 0);
+            if (Player_HasSkill(pl, 0x97) == 1) {
+                pl->motion[0].step = 2.6f;
+                pl->motion[1].step = 2.6f;
             }
             break;
         case 3:
-            Player_SetMotionPair(p, 0x1A3, -6, 0);
+            Player_SetMotionPair(pl, 0x1A3, -6, 0);
             break;
         case 4:
-            Player_SetMotionPair(p, 0x19F, 0, 0);
-            if (Player_HasSkill(p, 0x97) == 1) {
-                p->timer = 0x28;
-                p->motion[0].step = 2.8f;
-                p->motion[1].step = 2.8f;
+            Player_SetMotionPair(pl, 0x19F, 0, 0);
+            if (Player_HasSkill(pl, 0x97) == 1) {
+                pl->timer = 0x28;
+                pl->motion[0].step = 2.8f;
+                pl->motion[1].step = 2.8f;
             }
             break;
         case 5:
-            Player_SetMotionPair(p, 0x1A2, 0, 0);
-            if (Player_HasSkill(p, 0x97) == 1) {
-                p->timer = 0x28;
-                p->motion[0].step = 2.8f;
-                p->motion[1].step = 2.8f;
+            Player_SetMotionPair(pl, 0x1A2, 0, 0);
+            if (Player_HasSkill(pl, 0x97) == 1) {
+                pl->timer = 0x28;
+                pl->motion[0].step = 2.8f;
+                pl->motion[1].step = 2.8f;
             }
             break;
         }
         break;
     case 1:
-        if (Player_IsLocal(p) == 1) {
-            if (p->timer > 0) {
-                p->timer--;
+        if (Player_IsLocal(pl) == 1) {
+            if (pl->timer > 0) {
+                pl->timer--;
             }
-            if (p->timer == 0 && p->stateVar0 == 0 && Quest_PhaseIsOver(1) == 0) {
+            if (pl->timer == 0 && pl->stateVar0 == 0 && Quest_PhaseIsOver(1) == 0) {
                 n = 1;
-                p->stateVar0 = 1;
+                pl->stateVar0 = 1;
                 switch (variant) {
                 case 4:
                 case 5:
-                    switch (p->useItem) {
+                    switch (pl->useItem) {
                     case 0x96:
                         n = 3;
                         break;
@@ -6131,398 +6131,398 @@ void Player_State0_47(Player *p, u32 variant)
                         n = 15;
                         break;
                     }
-                    if (Player_HasSkill(p, 0x9A) == 1 && (Rand_Next(1) & 3) == 0) {
+                    if (Player_HasSkill(pl, 0x9A) == 1 && (Rand_Next(1) & 3) == 0) {
                         n = n / 2U + 1;
                     }
-                    if (Player_HasSkill(p, 0x9B) == 1 && (Rand_Next(1) & 1) == 0) {
+                    if (Player_HasSkill(pl, 0x9B) == 1 && (Rand_Next(1) & 1) == 0) {
                         n = n / 2U + 1;
                     }
                     if (Rand_Next(1) % n == 0
-                        && (Player_HasSkill(p, 0x98) != 1 || (Rand_Next(1) & 3))
-                        && (Player_HasSkill(p, 0x99) != 1 || (Rand_Next(1) & 1))) {
-                        Notice_Push(1, 0xE, p->useItem);
-                        Pouch_Add(p, p->useItem, -1);
+                        && (Player_HasSkill(pl, 0x98) != 1 || (Rand_Next(1) & 3))
+                        && (Player_HasSkill(pl, 0x99) != 1 || (Rand_Next(1) & 1))) {
+                        Notice_Push(1, 0xE, pl->useItem);
+                        Pouch_Add(pl, pl->useItem, -1);
                     }
                 default:
                     switch (variant) {
                     default:
-                        Player_GatherAtSpot(p, 0, 0);
+                        Player_GatherAtSpot(pl, 0, 0);
                         break;
                     case 4:
-                        Player_GatherAtSpot(p, 0, 1);
+                        Player_GatherAtSpot(pl, 0, 1);
                         break;
                     case 5:
-                        Player_GatherAtSpot(p, 0, 2);
+                        Player_GatherAtSpot(pl, 0, 2);
                         break;
                     }
                     break;
                 case 6:
-                    Player_GatherAtSpot(p, 2, 0);
+                    Player_GatherAtSpot(pl, 2, 0);
                     break;
                 case 7:
-                    Player_GatherAtSpot(p, 3, 0);
+                    Player_GatherAtSpot(pl, 3, 0);
                     break;
                 case 2:
-                    Quest_GiveRewards(p);
+                    Quest_GiveRewards(pl);
                     break;
                 case 3:
-                    Player_GatherAtSpot(p, 1, 0);
+                    Player_GatherAtSpot(pl, 1, 0);
                     break;
                 }
                 break;
             }
         }
-        if (p->motion[0].playing == 0) {
-            if (p->stateVar1 == 0) {
+        if (pl->motion[0].playing == 0) {
+            if (pl->stateVar1 == 0) {
                 switch (variant) {
                 case 0:
                 case 1:
                 case 2:
                 case 6:
                 case 7:
-                    Player_BeginState(p, 0, 0xA, 0);
+                    Player_BeginState(pl, 0, 0xA, 0);
                     break;
                 case 3:
                 case 5:
-                    Player_BeginState(p, 0, 6, 0);
+                    Player_BeginState(pl, 0, 6, 0);
                     break;
                 default:
-                    Player_BeginState(p, 0, 4, 0);
+                    Player_BeginState(pl, 0, 4, 0);
                     break;
                 }
             } else {
-                Player_UpdateCarryKind(p);
-                Player_RequestState(p, 5, 9, 0);
+                Player_UpdateCarryKind(pl);
+                Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_PICKED_UP, 0);
             }
-        } else if (Motion_PassedFrame(p, 0, 100.0f) != 0 && variant == 3 && Player_HasSkill(p, 0x97) == 1) {
-            Player_SetMotionPair(p, 0x1A3, -8, 0xE0);
+        } else if (Motion_PassedFrame(pl, 0, 100.0f) != 0 && variant == 3 && Player_HasSkill(pl, 0x97) == 1) {
+            Player_SetMotionPair(pl, 0x1A3, -8, 0xE0);
         }
         break;
     }
 }
 
-void Player_State0_5D(Player *p, s32 variant)
+void Player_StateGatherCrouched(Player *pl, s32 variant)
 {
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    p->noPushTimer = 2;
-    p->timer++;
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    pl->noPushTimer = 2;
+    pl->timer++;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        p->timer = 0;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 1, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        pl->timer = 0;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 1, 0, 0);
         switch (variant) {
         case 0:
         case 2:
         case 3:
-            Player_SetMotionPair(p, 0x19B, -6, 0);
+            Player_SetMotionPair(pl, 0x19B, -6, 0);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x1A6, -6, 0);
+            Player_SetMotionPair(pl, 0x1A6, -6, 0);
             break;
         }
-        if (Player_HasSkill(p, 0x97) == 1) {
-            p->motion[0].step = 2.6f;
-            p->motion[1].step = 2.6f;
+        if (Player_HasSkill(pl, 0x97) == 1) {
+            pl->motion[0].step = 2.6f;
+            pl->motion[1].step = 2.6f;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
             switch (variant) {
             case 0:
             case 2:
             case 3:
-                Player_SetMotionPair(p, 0x195, -4, 0x24);
+                Player_SetMotionPair(pl, 0x195, -4, 0x24);
                 break;
             case 1:
-                Player_SetMotionPair(p, 0x1A3, 0, 0x44);
+                Player_SetMotionPair(pl, 0x1A3, 0, 0x44);
                 break;
             }
         }
         break;
     case 2:
-        if ((Player_IsLocal(p) == 1) && (p->timer >= 0x3C) && (p->stateVar0 == 0) && (Quest_PhaseIsOver(1) == 0)) {
-            p->stateVar0 = 1;
-            Player_GatherAtSpot(p, variant & 0xFFFF, 0);
+        if ((Player_IsLocal(pl) == 1) && (pl->timer >= 0x3C) && (pl->stateVar0 == 0) && (Quest_PhaseIsOver(1) == 0)) {
+            pl->stateVar0 = 1;
+            Player_GatherAtSpot(pl, variant & 0xFFFF, 0);
         }
         switch (variant) {
         case 0:
         case 2:
         case 3:
-            if (Motion_ReachedFrame(p, 0, 200.0f) != 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x19C, -4, 0);
+            if (Motion_ReachedFrame(pl, 0, 200.0f) != 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x19C, -4, 0);
             }
             break;
         case 1:
-            if (Motion_ReachedFrame(p, 0, 294.0f) != 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x1A7, -2, 0);
+            if (Motion_ReachedFrame(pl, 0, 294.0f) != 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x1A7, -2, 0);
             }
             break;
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            if (p->stateVar1 == 0) {
-                Player_RequestState(p, 0U, 0x1DU, 2);
+        if (pl->motion[0].playing == 0) {
+            if (pl->stateVar1 == 0) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_HOLD, PL_SET_NO_SYNC);
                 break;
             }
-            Player_UpdateCarryKind(p);
-            Player_RequestState(p, 5U, 9U, 0);
+            Player_UpdateCarryKind(pl);
+            Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_PICKED_UP, 0);
         }
         break;
     }
 }
 
-void Player_State0_4C(Player *p, s32 unused)
+void Player_StateSpitRoastStart(Player *pl, s32 unused)
 {
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    p->noPushTimer = 2;
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
-        p->cookTimer = 0;
-        p->cookResult = 0;
-        Player_SetMotionPair(p, 0x320, -4, 0);
-        CamCtl_TurnToObj_Unk((u8 *) p);
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
+        pl->cookTimer = 0;
+        pl->cookResult = 0;
+        Player_SetMotionPair(pl, 0x320, -4, 0);
+        CamCtl_TurnToObj_Unk((u8 *) pl);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 0U, 0x55U, 2);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST, PL_SET_NO_SYNC);
         }
         break;
     }
 }
 
-void Player_State0_4B(Player *p, s32 variant)
+void Player_StateSpitRoastEnd(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x321, 0, 0);
+            Player_SetMotionPair(pl, 0x321, 0, 0);
             break;
         }
-        Player_SetMotionPair(p, 0x322, 0, 0);
+        Player_SetMotionPair(pl, 0x322, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_UpdateFishingInput(Player *p)
+void Player_UpdateFishingInput(Player *pl)
 {
 
-    if (Player_IsLocal(p) != 0) {
-        if (p->stateGroup != 0) {
-            Player_BeginState(p, 0, 4, 0);
+    if (Player_IsLocal(pl) != 0) {
+        if (pl->stateGroup != PL_GROUP_ACTION) {
+            Player_BeginState(pl, 0, 4, 0);
             return;
         }
         if (Quest_PhaseIsOver(1) == 1) {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
             return;
         }
-        switch (p->state) {
+        switch (pl->state) {
         case 0x4E:
         case 0x4F:
         case 0x53:
             break;
         case 0x50:
-            if (p->input.pressed & 0x20) {
-                if (p->fishTimer > 0) {
-                    Player_RequestState(p, 0, 0x53, 0);
-                } else if (p->baited == 1) {
-                    Player_RequestState(p, 0, 0x64, 0);
+            if (pl->input.pressed & 0x20) {
+                if (pl->fishTimer > 0) {
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_REEL, 0);
+                } else if (pl->baited == 1) {
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_REEL_BAITED, 0);
                 } else {
-                    Player_RequestState(p, 0, 0x54, 0);
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_REEL_EMPTY, 0);
                 }
             }
             break;
         case 0x51:
         case 0x52:
-            if (p->input.pressed & 0x20) {
-                Player_RequestState(p, 0, 0x53, 0);
+            if (pl->input.pressed & 0x20) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_REEL, 0);
             }
             break;
         }
     }
 }
 
-void Player_State0_4E(Player *p, s32 variant)
+void Player_StateFishWait(Player *pl, s32 variant)
 {
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    p->noPushTimer = 2;
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x80000U);
-        p->weaponOut = 0;
-        p->timer = 0;
-        p->stateVar1 = 0;
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x80000U);
+        pl->weaponOut = 0;
+        pl->timer = 0;
+        pl->stateVar1 = 0;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x324, 0, 0);
+            Player_SetMotionPair(pl, 0x324, 0, 0);
             break;
         }
-        Player_SetMotionPair(p, 0x326, 2, 0);
+        Player_SetMotionPair(pl, 0x326, 2, 0);
         break;
     case 1:
-        if (((s8) p->fishTimer != 0) && (p->stateVar1 == 0)) {
-            p->stateVar1 = 1;
+        if (((s8) pl->fishTimer != 0) && (pl->stateVar1 == 0)) {
+            pl->stateVar1 = 1;
         }
-        Player_UpdateFishingInput(p);
+        Player_UpdateFishingInput(pl);
         break;
     }
 }
 
-void Player_State0_4F(Player *p, s32 unused)
+void Player_StateFishCast(Player *pl, s32 unused)
 {
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    p->noPushTimer = 2;
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    pl->noPushTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x80000);
-        p->weaponOut = 0;
-        p->fishTimer = 0;
-        p->gotItemId = 0;
-        p->baited = 1;
-        Player_SetMotionPair(p, 0x325, -2, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x80000);
+        pl->weaponOut = 0;
+        pl->fishTimer = 0;
+        pl->gotItemId = 0;
+        pl->baited = 1;
+        Player_SetMotionPair(pl, 0x325, -2, 0);
         break;
     case 1:
-        if (Motion_PassedFrame(p, 0, 104.0f) != 0) {
-            if (p->useItem == 0x91) {
-                Lure_Spawn(p, 1);
+        if (Motion_PassedFrame(pl, 0, 104.0f) != 0) {
+            if (pl->useItem == 0x91) {
+                Lure_Spawn(pl, 1);
             } else {
-                Lure_Spawn(p, 0);
+                Lure_Spawn(pl, 0);
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 0U, 0x50U, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_WAIT, 0);
         }
         break;
     }
 }
 
-void Player_State0_53(Player *p, s32 variant)
+void Player_StateFishReel(Player *pl, s32 variant)
 {
-    Em *e = gEms;
+    Em *em = gEms;
     s16 i;
 
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    p->noPushTimer = 2;
-    p->noHitTimer = 2;
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    pl->noPushTimer = 2;
+    pl->noHitTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        p->msgTimer = 0;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x80000);
-        p->weaponOut = 0;
-        for (i = 0; i < 20; i++, e++) {
-            if (e->active != 0 && e->area == p->area && e->hooked != 0 && e->hookedBy == p->index) {
-                p->stateVar0 = 1;
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        pl->msgTimer = 0;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x80000);
+        pl->weaponOut = 0;
+        for (i = 0; i < 20; i++, em++) {
+            if (em->active != 0 && em->area == pl->area && em->hooked != 0 && em->hookedBy == pl->index) {
+                pl->stateVar0 = 1;
             }
         }
-        Player_SetMotionPair(p, 0x327, 2, 0);
+        Player_SetMotionPair(pl, 0x327, 2, 0);
         break;
     case 1:
-        if (p->stateVar0 == 0) {
-            if (Motion_PassedFrame(p, 0, 118.0f) != 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x328, 2, 0);
+        if (pl->stateVar0 == 0) {
+            if (Motion_PassedFrame(pl, 0, 118.0f) != 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x328, 2, 0);
                 break;
             }
-            for (i = 0; i < 20; i++, e++) {
-                if (e->area == p->area && e->hooked != 0 && e->hookedBy == p->index) {
-                    p->stateVar0 = 1;
+            for (i = 0; i < 20; i++, em++) {
+                if (em->area == pl->area && em->hooked != 0 && em->hookedBy == pl->index) {
+                    pl->stateVar0 = 1;
                 }
             }
             break;
         }
-        if (Motion_PassedFrame(p, 0, p->motion[0].frameCount) != 0) {
-            p->stateVar1++;
-            if (p->stateVar1 >= 2) {
-                p->step = 3;
-                Player_SetMotionPair(p, 0x32A, 4, 0);
+        if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
+            pl->stateVar1++;
+            if (pl->stateVar1 >= 2) {
+                pl->step = 3;
+                Player_SetMotionPair(pl, 0x32A, 4, 0);
                 if (Quest_PhaseIsOver(1) == 0) {
-                    Pouch_Add(p, p->useItem, -1);
+                    Pouch_Add(pl, pl->useItem, -1);
                 }
             }
         }
         break;
     case 2:
-        if (Motion_PassedFrame(p, 0, 120.0f) != 0 && Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
-            Notice_Push(1, 0xB, p->gotItemId);
-            Jingle_Play(p, 7);
-            Pouch_Add(p, p->useItem, -1);
-            i = p->gotItem;
-            if ((s16) Pouch_GiveItem(p, p->gotItemId, i, 0) == 3) {
-                Player_PushNotice3(p->gotItemId);
+        if (Motion_PassedFrame(pl, 0, 120.0f) != 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
+            Notice_Push(1, 0xB, pl->gotItemId);
+            Jingle_Play(pl, 7);
+            Pouch_Add(pl, pl->useItem, -1);
+            i = pl->gotItem;
+            if ((s16) Pouch_GiveItem(pl, pl->gotItemId, i, 0) == 3) {
+                Player_PushNotice3(pl->gotItemId);
             }
             QuestStats_Add(0xD, 1);
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 2, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 2, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xD8, 2, 0x24);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xD8, 2, 0x24);
         }
         break;
     case 4:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State0_54(Player *p, s32 variant)
+void Player_StateFishReelEmpty(Player *pl, s32 variant)
 {
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x80000U);
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x329, 2, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x80000U);
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x329, 2, 0);
         break;
     case 1:
-        if ((Motion_PassedFrame(p, 0, 120.0f) != 0) && (Player_IsLocal(p) == 1) && (Quest_PhaseIsOver(1) == 0)) {
+        if ((Motion_PassedFrame(pl, 0, 120.0f) != 0) && (Player_IsLocal(pl) == 1) && (Quest_PhaseIsOver(1) == 0)) {
             if (variant == 0) {
-                Jingle_Play(p, 0xA);
-                Pouch_Add(p, (s32) p->useItem, -1);
+                Jingle_Play(pl, 0xA);
+                Pouch_Add(pl, (s32) pl->useItem, -1);
                 Notice_Push(0, 3, 0);
             } else {
                 Notice_Push(0, 0xD, 0);
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 2, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 2, 0);
         }
         break;
     }
@@ -6576,7 +6576,7 @@ u8 SpitMeat_Kind(u16 item)
     return r;
 }
 
-void Player_State0_55(Player *p, s32 unused)
+void Player_StateSpitRoast(Player *pl, s32 unused)
 {
     SpitMeat *m;
     s16 done;
@@ -6586,101 +6586,101 @@ void Player_State0_55(Player *p, s32 unused)
     s16 limit;
     s32 j;
     s16 n;
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    p->noPushTimer = 2;
-    m = &gSpitMeats[SpitMeat_Kind(p->useItem)];
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    pl->noPushTimer = 2;
+    m = &gSpitMeats[SpitMeat_Kind(pl->useItem)];
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x323, 4, Rand_Next(1) & 0x3F);
-        p->cookTimer = 0;
-        p->cookResult = 0;
-        Jingle_Play(p, m->jingle);
+        pl->step++;
+        pl->motionTime = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x323, 4, Rand_Next(1) & 0x3F);
+        pl->cookTimer = 0;
+        pl->cookResult = 0;
+        Jingle_Play(pl, m->jingle);
         break;
     case 1:
-        p->cookTimer++;
+        pl->cookTimer++;
         done = m->done;
         doneLen = m->doneLen;
         gourmet = m->gourmet;
         gourmetLen = m->gourmetLen;
-        if (Player_HasSkill(p, 0xC6) == 1) {
+        if (Player_HasSkill(pl, 0xC6) == 1) {
             done -= 2;
             doneLen += 4;
             if (gourmet > 0) {
                 gourmet -= 1;
                 gourmetLen += 2;
             }
-        } else if (Player_HasSkill(p, 0xC7) == 1) {
+        } else if (Player_HasSkill(pl, 0xC7) == 1) {
             done -= 4;
             doneLen += 8;
             if (gourmet > 0) {
                 gourmet -= 2;
                 gourmetLen += 4;
             }
-        } else if (Player_HasSkill(p, 0xC8) == 1) {
+        } else if (Player_HasSkill(pl, 0xC8) == 1) {
             doneLen /= 2;
             if (gourmet > 0) {
                 gourmet /= 2;
                 gourmetLen /= 2;
             }
         }
-        if (p->cookTimer >= done + doneLen) {
-            p->cookResult = 3;
-        } else if (p->cookTimer >= done) {
-            if (gourmet > 0 && p->cookTimer >= done + gourmet && p->cookTimer < gourmetLen + (done + gourmet)) {
-                p->cookResult = 4;
+        if (pl->cookTimer >= done + doneLen) {
+            pl->cookResult = 3;
+        } else if (pl->cookTimer >= done) {
+            if (gourmet > 0 && pl->cookTimer >= done + gourmet && pl->cookTimer < gourmetLen + (done + gourmet)) {
+                pl->cookResult = 4;
             } else {
-                p->cookResult = 2;
+                pl->cookResult = 2;
             }
-        } else if (p->cookTimer >= m->rare) {
-            p->cookResult = 1;
+        } else if (pl->cookTimer >= m->rare) {
+            pl->cookResult = 1;
         } else {
-            p->cookResult = 0;
+            pl->cookResult = 0;
         }
-        if (SpitMeat_Kind(p->useItem) == 2) {
+        if (SpitMeat_Kind(pl->useItem) == 2) {
             limit = 180;
         } else {
             limit = 330;
         }
-        if (Player_IsLocal(p) == 1 && ((p->input.pressed & 0x20) || p->cookTimer >= limit)) {
-            Bgm_StopEvent(p);
-            switch (p->cookResult) {
+        if (Player_IsLocal(pl) == 1 && ((pl->input.pressed & 0x20) || pl->cookTimer >= limit)) {
+            Bgm_StopEvent(pl);
+            switch (pl->cookResult) {
             case 0:
                 if (Quest_PhaseIsOver(1) == 0) {
                     Notice_Push(0, 0xB, 0);
                 }
-                Player_RequestState(p, 0, 0x4B, 0);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_FAIL, 0);
                 break;
             case 1:
                 if (Quest_PhaseIsOver(1) == 0) {
                     if (m->raw == 0) {
-                        Pouch_Add(p, 0x28, -1);
+                        Pouch_Add(pl, 0x28, -1);
                     } else {
-                        Pouch_Add(p, p->useItem, -1);
-                        Pouch_Add(p, 0xA2, 1);
+                        Pouch_Add(pl, pl->useItem, -1);
+                        Pouch_Add(pl, 0xA2, 1);
                     }
                     Notice_Push(1, 9, m->itemRare);
-                    Jingle_Play(p, 0xE);
-                    n = p->gotItem;
-                    if ((s16) Pouch_GiveItem(p, m->itemRare, n, 0) == 3) {
+                    Jingle_Play(pl, 0xE);
+                    n = pl->gotItem;
+                    if ((s16) Pouch_GiveItem(pl, m->itemRare, n, 0) == 3) {
                         Player_PushNotice3(m->itemRare);
                     }
                 }
-                Player_RequestState(p, 0, 0x4B, 0);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_FAIL, 0);
                 break;
             case 2:
             case 4:
                 if (Quest_PhaseIsOver(1) == 0) {
                     if (m->raw == 0) {
-                        Pouch_Add(p, 0x28, -1);
+                        Pouch_Add(pl, 0x28, -1);
                     } else {
-                        Pouch_Add(p, p->useItem, -1);
-                        Pouch_Add(p, 0xA2, 1);
+                        Pouch_Add(pl, pl->useItem, -1);
+                        Pouch_Add(pl, 0xA2, 1);
                     }
-                    if (p->cookResult == 4) {
+                    if (pl->cookResult == 4) {
                         switch (m->jingle) {
                         case 0x1E:
                             j = 0x22;
@@ -6721,39 +6721,39 @@ void Player_State0_55(Player *p, s32 unused)
                             break;
                         }
                     }
-                    Jingle_Play(p, j);
-                    if (p->cookResult == 4) {
+                    Jingle_Play(pl, j);
+                    if (pl->cookResult == 4) {
                         Notice_Push(1, 9, m->itemGourmet);
-                        n = p->gotItem;
-                        if ((s16) Pouch_GiveItem(p, m->itemGourmet, n, 0) == 3) {
+                        n = pl->gotItem;
+                        if ((s16) Pouch_GiveItem(pl, m->itemGourmet, n, 0) == 3) {
                             Player_PushNotice3(m->itemGourmet);
                         }
                     } else {
                         Notice_Push(1, 9, m->itemDone);
-                        n = p->gotItem;
-                        if ((s16) Pouch_GiveItem(p, m->itemDone, n, 0) == 3) {
+                        n = pl->gotItem;
+                        if ((s16) Pouch_GiveItem(pl, m->itemDone, n, 0) == 3) {
                             Player_PushNotice3(m->itemDone);
                         }
                     }
                 }
-                Player_RequestState(p, 0, 0x4D, 0);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_SUCCESS, 0);
                 break;
             case 3:
                 if (Quest_PhaseIsOver(1) == 0) {
                     if (m->raw == 0) {
-                        Pouch_Add(p, 0x28, -1);
+                        Pouch_Add(pl, 0x28, -1);
                     } else {
-                        Pouch_Add(p, p->useItem, -1);
-                        Pouch_Add(p, 0xA2, 1);
+                        Pouch_Add(pl, pl->useItem, -1);
+                        Pouch_Add(pl, 0xA2, 1);
                     }
                     Notice_Push(1, 0xA, m->itemBurnt);
-                    Jingle_Play(p, 0x10);
-                    n = p->gotItem;
-                    if ((s16) Pouch_GiveItem(p, m->itemBurnt, n, 0) == 3) {
+                    Jingle_Play(pl, 0x10);
+                    n = pl->gotItem;
+                    if ((s16) Pouch_GiveItem(pl, m->itemBurnt, n, 0) == 3) {
                         Player_PushNotice3(m->itemBurnt);
                     }
                 }
-                Player_RequestState(p, 0, 0x4B, 0);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_FAIL, 0);
                 break;
             }
         }
@@ -6761,56 +6761,56 @@ void Player_State0_55(Player *p, s32 unused)
     }
 }
 
-void Player_State0_56(Player *p, s32 variant)
+void Player_StateSpotStrike(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x19F, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x19F, 0, 0);
         if (variant == 0) {
-            Quest_StartCountdown((Player *) p);
+            Quest_StartCountdown((Player *) pl);
             break;
         }
-        Eff22_CreateForPlayer(p, 7U);
-        Pouch_Add(p, (s32) p->useItem, -1);
+        Eff22_CreateForPlayer(pl, 7U);
+        Pouch_Add(pl, (s32) pl->useItem, -1);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_57(Player *p, s32 variant)
+void Player_StateBoxMenu(Player *pl, s32 variant)
 {
     u8 var_v0;
 
-    p->noPushTimer = 2;
-    p->noHitTimer = 5;
-    switch (p->step) {
+    pl->noPushTimer = 2;
+    pl->noHitTimer = 5;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        if (p->motionId[0] != 1) {
-            Player_SetMotionPair(p, 1, 6, 0);
+        pl->step++;
+        if (pl->motionId[0] != 1) {
+            Player_SetMotionPair(pl, 1, 6, 0);
         }
         if (variant == 0) {
-            p->supplyBoxOpen = 1;
+            pl->supplyBoxOpen = 1;
         } else {
-            p->deliveryOpen = 1;
-            p->menuCursor = 0;
-            p->menuPage = 0;
+            pl->deliveryOpen = 1;
+            pl->menuCursor = 0;
+            pl->menuPage = 0;
         }
-        p->menuDelay = 0;
-        if (Player_IsLocal(p) == 1) {
+        pl->menuDelay = 0;
+        if (Player_IsLocal(pl) == 1) {
             Sound_PlaySeFlat(1, 0x8E, 0);
         }
         break;
     case 1:
         if (variant == 0) {
-            var_v0 = p->supplyBoxOpen;
+            var_v0 = pl->supplyBoxOpen;
         } else {
-            var_v0 = p->deliveryOpen;
+            var_v0 = pl->deliveryOpen;
         }
         if (var_v0 & 0xFF) {
             if (Quest_PhaseIsOver(1) == 1) {
@@ -6818,102 +6818,102 @@ void Player_State0_57(Player *p, s32 variant)
             }
         } else {
 block_17:
-            p->noHitTimer = 0;
-            Player_BeginState(p, 0, 6, 0);
+            pl->noHitTimer = 0;
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_58(Player *p, s32 variant)
+void Player_StateConsume(Player *pl, s32 variant)
 {
     u8 stateVar0;
 
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
         switch (variant) {
         case 0:
-            Player_SetMotionPair(p, 0x196, 4, 0);
+            Player_SetMotionPair(pl, 0x196, 4, 0);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x1A0, 4, 0);
+            Player_SetMotionPair(pl, 0x1A0, 4, 0);
             break;
         }
-        p->motionTime = 0;
+        pl->motionTime = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            if (Player_IsLocal(p) == 1) {
-                Player_RequestState(p, 0U, 0x71U, 0);
+        if (pl->motion[0].playing == 0) {
+            if (Player_IsLocal(pl) == 1) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_APPLY_ITEM, 0);
                 break;
             }
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
         if (variant == 1) {
-            if ((Player_HasSkill(p, 0xBD) == 1) && (Motion_PassedFrame(p, 0, 62.0f) != 0)) {
-                stateVar0 = p->stateVar0;
+            if ((Player_HasSkill(pl, 0xBD) == 1) && (Motion_PassedFrame(pl, 0, 62.0f) != 0)) {
+                stateVar0 = pl->stateVar0;
                 if ((s32) stateVar0 < 4) {
-                    p->stateVar0 = stateVar0 + 1;
-                    p->stateVar1 = 1;
-                    Player_SetMotionPair(p, 0x1A0, 4, 0x34);
+                    pl->stateVar0 = stateVar0 + 1;
+                    pl->stateVar1 = 1;
+                    Player_SetMotionPair(pl, 0x1A0, 4, 0x34);
                 }
             }
-            if ((Motion_ReachedFrame(p, 0, 38.0f) != 0) && (Motion_ReachedFrame(p, 0, 180.0f) == 0) && (Player_HasSkill(p, 0xBC) == 1)) {
-                p->motion[0].step = 3.6f;
-                p->motion[1].step = 3.6f;
+            if ((Motion_ReachedFrame(pl, 0, 38.0f) != 0) && (Motion_ReachedFrame(pl, 0, 180.0f) == 0) && (Player_HasSkill(pl, 0xBC) == 1)) {
+                pl->motion[0].step = 3.6f;
+                pl->motion[1].step = 3.6f;
                 break;
             }
-            p->motion[0].step = 2.0f;
-            p->motion[1].step = 2.0f;
+            pl->motion[0].step = 2.0f;
+            pl->motion[1].step = 2.0f;
         } else {
         }
         break;
     }
 }
 
-void Player_State0_71(Player *p, s32 unused)
+void Player_StateApplyItem(Player *pl, s32 unused)
 {
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    switch (p->step) {
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        if (Player_IsLocal(p) == 1) {
-            Item_Use(p);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        if (Player_IsLocal(pl) == 1) {
+            Item_Use(pl);
         }
-        p->motionTime = 0;
+        pl->motionTime = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State0_59(Player *p, s32 unused)
+void Player_StateKneelToPlaceCrouched(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 1, 0, 0);
-        Player_SetMotionPair(p, 0x199, 2, 0);
-        p->motionTime = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 1, 0, 0);
+        Player_SetMotionPair(pl, 0x199, 2, 0);
+        pl->motionTime = 0;
         break;
     case 1:
-        if (Motion_PassedFrame(p, 0, 20.0f) != 0) {
-            if (Player_IsLocal(p) == 1) {
-                Player_RequestState(p, 0U, 0x14U, 0xC);
+        if (Motion_PassedFrame(pl, 0, 20.0f) != 0) {
+            if (Player_IsLocal(pl) == 1) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_ITEM_CROUCHED, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 break;
             }
-            p->step++;
-            Player_SetMotionPair(p, 8, 6, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 8, 6, 0);
         } else {
         case 2:
             break;
@@ -6922,74 +6922,74 @@ void Player_State0_59(Player *p, s32 unused)
     }
 }
 
-static void Player_StartTradeTimer(Player *p)
+static void Player_StartTradeTimer(Player *pl)
 {
-    if (p->tradeCooldown <= 0) {
-        p->tradeCooldown = 9000;
+    if (pl->tradeCooldown <= 0) {
+        pl->tradeCooldown = 9000;
     }
 }
 
-void Player_State0_5B(Player *p, s32 variant)
+void Player_StateTrade(Player *pl, s32 variant)
 {
 
-    p->noHitTimer = 3;
-    switch (p->step) {
+    pl->noHitTimer = 3;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        if (p->motionId[0] != 1) {
-            Player_SetMotionPair(p, 1, -6, 0);
+        pl->step++;
+        if (pl->motionId[0] != 1) {
+            Player_SetMotionPair(pl, 1, -6, 0);
         }
-        p->tradeMsgTimer = 60;
-        if (p->tradeCount < 7) {
-            p->tradeCount++;
-            if (p->tradeCount >= 4 && (Rand_Next(1) & 1)) {
-                p->tradeCount = 7;
-                Player_StartTradeTimer(p);
+        pl->tradeMsgTimer = 60;
+        if (pl->tradeCount < 7) {
+            pl->tradeCount++;
+            if (pl->tradeCount >= 4 && (Rand_Next(1) & 1)) {
+                pl->tradeCount = 7;
+                Player_StartTradeTimer(pl);
             }
         } else {
-            p->tradeCount = 7;
-            Player_StartTradeTimer(p);
+            pl->tradeCount = 7;
+            Player_StartTradeTimer(pl);
         }
-        p->timer = 60;
+        pl->timer = 60;
         break;
     case 1:
-        if (p->tradeMsgTimer == 0) {
-            Player_BeginState(p, 0, 2, 0);
+        if (pl->tradeMsgTimer == 0) {
+            Player_BeginState(pl, 0, 2, 0);
         }
         break;
     }
 }
 
-void Player_State0_5E(Player *p, s32 variant)
+void Player_StateInstrumentPlay(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x1A4, 4, 0);
-            Player_SetFlag(p, 0x10000);
+            Player_SetMotionPair(pl, 0x1A4, 4, 0);
+            Player_SetFlag(pl, 0x10000);
         } else {
-            Player_SetMotionPair(p, 0x1A8, 4, 0);
+            Player_SetMotionPair(pl, 0x1A8, 4, 0);
         }
-        p->motionTime = 0;
+        pl->motionTime = 0;
         break;
     case 1:
         switch (variant) {
         case 0:
-            if (p->stateVar0 >= 3 || (Motion_ReachedFrame(p, 0, 44.0f) != 0 && (p->input.pressed & 0x40))) {
-                Player_RequestState(p, 0, 0x5F, 0);
-            } else if (Motion_PassedFrame(p, 0, p->motion[0].frameCount) != 0) {
-                p->stateVar0++;
+            if (pl->stateVar0 >= 3 || (Motion_ReachedFrame(pl, 0, 44.0f) != 0 && (pl->input.pressed & 0x40))) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_HORN_END, 0);
+            } else if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
+                pl->stateVar0++;
             }
             break;
         case 1:
-            if (Motion_PassedFrame(p, 0, p->motion[0].frameCount) != 0) {
-                p->stateVar0++;
-                if (p->stateVar0 >= 2) {
-                    Player_RequestState(p, 0, 0x63, 0);
+            if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
+                pl->stateVar0++;
+                if (pl->stateVar0 >= 2) {
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TEAM_ITEM_END, 0);
                 }
             }
             break;
@@ -6998,23 +6998,23 @@ void Player_State0_5E(Player *p, s32 variant)
     }
 }
 
-void Player_State0_5F(Player *p, s32 variant)
+void Player_StateInstrumentEnd(Player *pl, s32 variant)
 {
     u16 chance = 1;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
         if (variant == 0) {
             chance = 5;
-            Player_SetMotionPair(p, 0x1A5, 2, 0);
+            Player_SetMotionPair(pl, 0x1A5, 2, 0);
         } else {
-            Player_SetMotionPair(p, 0x1A9, 4, 0);
-            if (Player_IsLocal(p) == 1) {
-                Item_UseTeamPowder(p);
+            Player_SetMotionPair(pl, 0x1A9, 4, 0);
+            if (Player_IsLocal(pl) == 1) {
+                Item_UseTeamPowder(pl);
             }
-            switch (p->useItem) {
+            switch (pl->useItem) {
             case 0xB0:
                 chance = 12;
                 break;
@@ -7029,51 +7029,51 @@ void Player_State0_5F(Player *p, s32 variant)
                 break;
             }
         }
-        if (Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
-            if (Player_HasSkill(p, 0x9A) == 1 && !(Rand_Next(1) & 3)) {
+        if (Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
+            if (Player_HasSkill(pl, 0x9A) == 1 && !(Rand_Next(1) & 3)) {
                 chance = chance / 2 + 1;
             }
-            if (Player_HasSkill(p, 0x9B) == 1 && !(Rand_Next(1) & 1)) {
+            if (Player_HasSkill(pl, 0x9B) == 1 && !(Rand_Next(1) & 1)) {
                 chance = chance / 2 + 1;
             }
             if (Rand_Next(1) % chance == 0) {
-                if (Player_HasSkill(p, 0x98) != 1 || (Rand_Next(1) & 3)) {
-                    if ((Player_HasSkill(p, 0x99) != 1 || (Rand_Next(1) & 1)) && (p->weaponType != 8 || (Rand_Next(1) & 3))) {
-                        Notice_Push(1, 0xE, p->useItem);
-                        Pouch_Add(p, p->useItem, -1);
+                if (Player_HasSkill(pl, 0x98) != 1 || (Rand_Next(1) & 3)) {
+                    if ((Player_HasSkill(pl, 0x99) != 1 || (Rand_Next(1) & 1)) && (pl->weaponType != WEAPON_HUNTING_HORN || (Rand_Next(1) & 3))) {
+                        Notice_Push(1, 0xE, pl->useItem);
+                        Pouch_Add(pl, pl->useItem, -1);
                     }
                 }
             }
         }
-        p->motionTime = 0;
+        pl->motionTime = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State0_61(Player *p, s32 unused)
+void Player_StateSharpen(Player *pl, s32 unused)
 {
     s16 n;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x19D, 4, 0);
-        p->motionTime = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x19D, 4, 0);
+        pl->motionTime = 0;
         break;
     case 1:
-        if (Player_HasSkill(p, 0x26) == 1 && Motion_PassedFrame(p, 0, 98.0f) != 0) {
-            Player_SetMotionPair(p, 0x19D, 0, 0xEE);
+        if (Player_HasSkill(pl, 0x26) == 1 && Motion_PassedFrame(pl, 0, 98.0f) != 0) {
+            Player_SetMotionPair(pl, 0x19D, 0, 0xEE);
         }
-        if (Motion_PassedFrame(p, 0, 260.0f) != 0 && Quest_PhaseIsOver(1) == 0) {
-            Pouch_Add(p, p->useItem, -1);
-            switch (p->useItem) {
+        if (Motion_PassedFrame(pl, 0, 260.0f) != 0 && Quest_PhaseIsOver(1) == 0) {
+            Pouch_Add(pl, pl->useItem, -1);
+            switch (pl->useItem) {
             case 0xF2:
                 n = 200;
                 break;
@@ -7085,177 +7085,177 @@ void Player_State0_61(Player *p, s32 unused)
                 n = 100;
                 break;
             }
-            if (Player_HasSkill(p, 0x27) == 1) {
+            if (Player_HasSkill(pl, 0x27) == 1) {
                 n = n / 2;
             }
-            Player_AddSharpness(p, n);
+            Player_AddSharpness(pl, n);
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State0_65(Player *p, s32 variant)
+void Player_StateBinoculars(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 1, 0, 0);
-        p->aimMode = 1;
-        p->weaponOut = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 1, 0, 0);
+        pl->aimMode = 1;
+        pl->weaponOut = 0;
         if (variant == 0) {
-            Player_SetMotionPair(p, 7, 2, 0);
+            Player_SetMotionPair(pl, 7, 2, 0);
             break;
         }
-        p->step++;
-        Player_SetMotionPair(p, 8, 2, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 8, 2, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 8, 6, 0);
-            Player_UpdateLean(p, 8);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 8, 6, 0);
+            Player_UpdateLean(pl, 8);
             break;
         }
-        Player_UpdateLean(p, 7);
+        Player_UpdateLean(pl, 7);
         break;
     case 2:
-        Player_UpdateLean(p, 8);
-        if (Player_IsLocal(p) != 0) {
-            if (!(p->input.pressed & 0x40)) {
+        Player_UpdateLean(pl, 8);
+        if (Player_IsLocal(pl) != 0) {
+            if (!(pl->input.pressed & 0x40)) {
                 if (Quest_PhaseIsOver(1) == 1) {
                     goto block_15;
                 }
             } else {
 block_15:
-                Player_ResetAim(p);
-                Player_RequestState(p, 0U, 0x1DU, 0);
+                Player_ResetAim(pl);
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_HOLD, 0);
             }
         }
         break;
     }
 }
 
-void Player_State0_67(Player *p, s32 unused)
+void Player_StateOfferItem(Player *pl, s32 unused)
 {
-    p->offerStarted = 1;
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    Player_ResetAim(p);
-    switch (p->step) {
+    pl->offerStarted = 1;
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    Player_ResetAim(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x3C, 4, 0);
-        p->offerState = 0U;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x3C, 4, 0);
+        pl->offerState = 0U;
         break;
     case 1:
-        if ((Player_IsLocal(p) == 1) && ((p->input.pressed & 0x40) || (p->offerState != 0))) {
-            Player_RequestState(p, 0U, 0x69U, 0);
+        if ((Player_IsLocal(pl) == 1) && ((pl->input.pressed & 0x40) || (pl->offerState != 0))) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM_END, 0);
         }
         break;
     }
 }
 
-void Player_State0_68(Player *p, s32 unused)
+void Player_StateTakeItemWait(Player *pl, s32 unused)
 {
     s32 timer;
 
-    p->offerStarted = 1;
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    Player_ResetAim(p);
-    switch (p->step) {
+    pl->offerStarted = 1;
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    Player_ResetAim(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        if (p->motionId[0] != 1) {
-            Player_SetMotionPair(p, 1, 6, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        if (pl->motionId[0] != 1) {
+            Player_SetMotionPair(pl, 1, 6, 0);
         }
-        p->offerState = 0U;
-        p->timer = 0;
+        pl->offerState = 0U;
+        pl->timer = 0;
         break;
     case 1:
-        timer = p->timer + 1;
-        p->timer = timer;
-        if ((timer >= 0x259) || (p->offerState != 0)) {
-            if (p->offerState == 1) {
-                Player_RequestState(p, 0U, 0x6AU, 0);
+        timer = pl->timer + 1;
+        pl->timer = timer;
+        if ((timer >= 0x259) || (pl->offerState != 0)) {
+            if (pl->offerState == 1) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TAKE_ITEM, 0);
                 break;
             }
-            Player_BeginState(p, 0, 2, 0);
+            Player_BeginState(pl, 0, 2, 0);
         } else {
         }
         break;
     }
 }
 
-void Player_State0_69(Player *p, s32 unused)
+void Player_StateOfferItemEnd(Player *pl, s32 unused)
 {
-    p->offerStarted = 1;
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    Player_ResetAim(p);
-    switch (p->step) {
+    pl->offerStarted = 1;
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    Player_ResetAim(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMotionPair(p, 0x3D, 4, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMotionPair(pl, 0x3D, 4, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_6A(Player *p, s32 unused)
+void Player_StateTakeItem(Player *pl, s32 unused)
 {
-    p->offerStarted = 1;
-    ItemGet_Reserve((s32) p, (u16 *) &p->gotItem);
-    Player_ResetAim(p);
-    switch (p->step) {
+    pl->offerStarted = 1;
+    ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
+    Player_ResetAim(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMotionPair(p, 0x280, 4, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMotionPair(pl, 0x280, 4, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State0_6B(Player *p, s32 variant)
+void Player_StateLanceHop(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
     u16 a;
     u16 b;
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetEvadeFrames(p);
-        Player_AddStamina(p, -75);
-        Player_PlaySe(p, 0x1E, 0, p->pos, 1, 0);
-        p->stateVar1 = 0xFF;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetEvadeFrames(pl);
+        Player_AddStamina(pl, -75);
+        Player_PlaySe(pl, 0x1E, 0, pl->pos, 1, 0);
+        pl->stateVar1 = 0xFF;
         switch (variant) {
         case 0:
-            Player_SetMotionPair(p, 0x3F6, 2, 0);
+            Player_SetMotionPair(pl, 0x3F6, 2, 0);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x3F7, 2, 0);
+            Player_SetMotionPair(pl, 0x3F7, 2, 0);
             break;
         case 2:
         case 3:
-            Player_SetMotionPair(p, 0x3F8, 2, 0);
+            Player_SetMotionPair(pl, 0x3F8, 2, 0);
             break;
         }
         break;
@@ -7263,7 +7263,7 @@ void Player_State0_6B(Player *p, s32 variant)
         switch (variant) {
         case 0:
         case 1:
-            if (p->weaponType == 9 && Motion_ReachedFrame(p, 0, 20.0f) == 0) {
+            if (pl->weaponType == WEAPON_GUNLANCE && Motion_ReachedFrame(pl, 0, 20.0f) == 0) {
                 if (variant == 0) {
                     v[0] = 9.0f;
                 } else {
@@ -7271,741 +7271,741 @@ void Player_State0_6B(Player *p, s32 variant)
                 }
                 v[1] = 0.0f;
                 v[2] = 0.0f;
-                Vec_Rotate(d, v, p->rotMtx);
-                p->pos[0] += d[0];
-                p->pos[2] += d[2];
+                Vec_Rotate(d, v, pl->rotMtx);
+                pl->pos[0] += d[0];
+                pl->pos[2] += d[2];
             }
             break;
         case 3:
-            if (Motion_ReachedFrame(p, 0, 28.0f) == 0) {
+            if (Motion_ReachedFrame(pl, 0, 28.0f) == 0) {
                 v[0] = 0.0f;
                 v[1] = 0.0f;
                 v[2] = -8.0f;
-                Vec_Rotate(d, v, p->rotMtx);
-                p->pos[0] += d[0];
-                p->pos[2] += d[2];
+                Vec_Rotate(d, v, pl->rotMtx);
+                pl->pos[0] += d[0];
+                pl->pos[2] += d[2];
             }
             break;
         }
-        if (Motion_ReachedFrame(p, 0, p->motion[0].frameCount - 30.0f) != 0 && Player_IsLocal(p) == 1) {
-            if (p->input.stickDirPressed & 0x3C) {
-                a = p->input.prevStickAngle + 0x1555;
-                switch (p->weaponType) {
-                case 3:
+        if (Motion_ReachedFrame(pl, 0, pl->motion[0].frameCount - 30.0f) != 0 && Player_IsLocal(pl) == 1) {
+            if (pl->input.stickDirPressed & 0x3C) {
+                a = pl->input.rightStickAngle + 0x1555;
+                switch (pl->weaponType) {
+                case WEAPON_LANCE:
                     if (a < 0xAAAC) {
-                        p->stateVar1 = 0;
+                        pl->stateVar1 = 0;
                     } else {
-                        p->stateVar1 = 1;
+                        pl->stateVar1 = 1;
                     }
                     break;
-                case 9:
+                case WEAPON_GUNLANCE:
                     if (a < 0xAAAC) {
-                        p->stateVar1 = 0;
-                    } else if (p->roundsLoaded < p->clipSize) {
-                        p->stateVar1 = 0x1B;
+                        pl->stateVar1 = 0;
+                    } else if (pl->roundsLoaded < pl->clipSize) {
+                        pl->stateVar1 = 0x1B;
                     } else {
-                        p->stateVar1 = 4;
+                        pl->stateVar1 = 4;
                     }
                     break;
                 }
             }
-            if (Motion_ReachedFrame(p, 0, p->motion[0].frameCount - 10.0f) != 0 && p->stateVar1 != 0xFF) {
-                if (p->input.stickDir & 0x3C00) {
-                    b = p->input.stickAngle - 0x1555;
+            if (Motion_ReachedFrame(pl, 0, pl->motion[0].frameCount - 10.0f) != 0 && pl->stateVar1 != 0xFF) {
+                if (pl->input.stickDir & 0x3C00) {
+                    b = pl->input.stickAngle - 0x1555;
                     if (b >= 0xAAAB) {
-                        if (p->weaponType == 9) {
-                            p->targetYaw -= 0x1555;
+                        if (pl->weaponType == WEAPON_GUNLANCE) {
+                            pl->targetYaw -= 0x1555;
                         } else {
-                            p->targetYaw -= 0x1000;
+                            pl->targetYaw -= 0x1000;
                         }
                     } else if (b >= 0x5555) {
-                        if (p->weaponType == 9) {
-                            p->targetYaw += 0x1555;
+                        if (pl->weaponType == WEAPON_GUNLANCE) {
+                            pl->targetYaw += 0x1555;
                         } else {
-                            p->targetYaw += 0x1000;
+                            pl->targetYaw += 0x1000;
                         }
                     }
                 }
-                Player_SetState(p, 1, p->stateVar1, 0xC);
+                Player_SetState(pl, PL_GROUP_WEAPON, pl->stateVar1, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
         }
-        if (p->motion[0].playing == 0) {
+        if (pl->motion[0].playing == 0) {
             if (variant == 2) {
-                Player_BeginState(p, 0, 6, 0);
+                Player_BeginState(pl, 0, 6, 0);
             } else {
-                Player_BeginState(p, 0, 8, 0);
+                Player_BeginState(pl, 0, 8, 0);
             }
         }
         break;
     }
 }
 
-void Player_State0_6F(Player *p, s32 unused)
+void Player_StatePlaceLargeItem(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        p->timer = 0;
-        Player_SetMotionPair(p, 0x1B0, 6, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->motionTime = 0;
+        pl->timer = 0;
+        Player_SetMotionPair(pl, 0x1B0, 6, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (Motion_ReachedFrame(p, 0, 78.0f) != 0) {
-            if (Player_IsLocal(p) == 1) {
-                Player_RequestState(p, 0U, 0x70U, 0xC);
+        if (Motion_ReachedFrame(pl, 0, 78.0f) != 0) {
+            if (Player_IsLocal(pl) == 1) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_LARGE_ITEM_SET, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 break;
             }
-            p->step++;
+            pl->step++;
         }
         break;
     case 2:
-        Player_SetMotionPair(p, 0x1B0, 0, 0x4E);
+        Player_SetMotionPair(pl, 0x1B0, 0, 0x4E);
         break;
     }
 }
 
-void Player_State0_70(Player *p, s32 unused)
+void Player_StatePlaceLargeItemSet(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->motionTime = 0;
-        p->timer = 0;
-        Player_SetMotionPair(p, 0x1B0, 0, 0x4E);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        if (Player_IsLocal(p) == 1) {
-            Item_UsePlaced(p);
+        pl->step++;
+        pl->motionTime = 0;
+        pl->timer = 0;
+        Player_SetMotionPair(pl, 0x1B0, 0, 0x4E);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        if (Player_IsLocal(pl) == 1) {
+            Item_UsePlaced(pl);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
         }
         break;
     }
 }
 
-void Player_State0_73(Player *p, s32 variant)
+void Player_StateHornItemPlay(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 1;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x1A4, 4, 0);
-        Player_SetFlag(p, 0x10000);
-        p->motionTime = 0;
-        switch (p->useItem) {
+        pl->step++;
+        pl->stateVar1 = 1;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x1A4, 4, 0);
+        Player_SetFlag(pl, 0x10000);
+        pl->motionTime = 0;
+        switch (pl->useItem) {
         case 0x2B0:
         case 0x2B1:
         case 0x2B4:
         case 0x2B5:
-            p->stateVar0 = 2;
-            p->stateVar1 = 16;
+            pl->stateVar0 = 2;
+            pl->stateVar1 = 16;
             break;
         case 0x2B2:
-            p->stateVar0 = 1;
-            p->stateVar1 = 12;
+            pl->stateVar0 = 1;
+            pl->stateVar1 = 12;
             break;
         case 0x2B3:
         case 0x2B6:
-            p->stateVar0 = 3;
-            p->stateVar1 = 8;
+            pl->stateVar0 = 3;
+            pl->stateVar1 = 8;
             break;
         }
         break;
     case 1:
-        if (p->stateVar0 <= 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x1A5, 2, 0);
-            if (Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0 && Rand_Next(1) % p->stateVar1 == 0) {
-                if (Player_HasSkill(p, 0x98) == 1) {
+        if (pl->stateVar0 <= 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x1A5, 2, 0);
+            if (Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0 && Rand_Next(1) % pl->stateVar1 == 0) {
+                if (Player_HasSkill(pl, 0x98) == 1) {
                     if (!(Rand_Next(1) & 3)) {
                         break;
                     }
                 }
-                if (Player_HasSkill(p, 0x99) == 1) {
+                if (Player_HasSkill(pl, 0x99) == 1) {
                     if (!(Rand_Next(1) & 1)) {
                         break;
                     }
                 }
-                if (p->weaponType == 8) {
+                if (pl->weaponType == WEAPON_HUNTING_HORN) {
                     if (!(Rand_Next(1) & 3)) {
                         break;
                     }
                 }
-                Notice_Push(1, 0xE, p->useItem);
-                Pouch_Add(p, p->useItem, -1);
+                Notice_Push(1, 0xE, pl->useItem);
+                Pouch_Add(pl, pl->useItem, -1);
             }
-        } else if (Motion_PassedFrame(p, 0, p->motion[0].frameCount) != 0) {
-            p->stateVar0--;
+        } else if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
+            pl->stateVar0--;
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_RunGroup0(Player *p)
+void Player_RunActionState(Player *pl)
 {
-    switch (p->state) {
-    case 0x0:
-        Player_State0_00(p, 0);
+    switch (pl->state) {
+    case PL_ACT_IDLE:
+        Player_StateIdle(pl, 0);
         break;
-    case 0x1:
-        Player_State0_01(p, 0U);
+    case PL_ACT_RUN:
+        Player_StateMove(pl, 0U);
         break;
-    case 0x2:
-        Player_State0_01(p, 1U);
+    case PL_ACT_WALK:
+        Player_StateMove(pl, 1U);
         break;
-    case 0x3:
-        Player_State0_01(p, 2U);
+    case PL_ACT_WALK_DRAWN:
+        Player_StateMove(pl, 2U);
         break;
-    case 0x4:
-        Player_State0_04(p, 0U);
+    case PL_ACT_DRAW:
+        Player_StateDrawSheathe(pl, 0U);
         break;
-    case 0x5:
-        Player_State0_04(p, 1U);
+    case PL_ACT_SHEATHE:
+        Player_StateDrawSheathe(pl, 1U);
         break;
-    case 0x6:
-        Player_State0_06(p, 0);
+    case PL_ACT_LEAP_OFF_LEDGE:
+        Player_StateLeapOrFall(pl, 0);
         break;
-    case 0x7:
-        Player_State0_01(p, 8U);
+    case PL_ACT_GUARD_WALK:
+        Player_StateMove(pl, 8U);
         break;
-    case 0x8:
-        Player_State0_08(p, 0);
+    case PL_ACT_CROUCH:
+        Player_StateCrouch(pl, 0);
         break;
-    case 0x9:
-        Player_State0_06(p, 1);
+    case PL_ACT_FALL:
+        Player_StateLeapOrFall(pl, 1);
         break;
-    case 0xA:
-        Player_State0_04(p, 2U);
+    case PL_ACT_SHEATHE_MOVING:
+        Player_StateDrawSheathe(pl, 2U);
         break;
-    case 0xB:
-        Player_State0_0B(p, 1);
+    case PL_ACT_THROW_ITEM_ALT:
+        Player_StateThrowItem(pl, 1);
         break;
-    case 0xC:
-        Player_State0_0C(p, 0);
+    case PL_ACT_BED_MENU:
+        Player_StateBedMenu(pl, 0);
         break;
-    case 0xD:
-        Player_State0_0D(p, 0);
+    case PL_ACT_TO_IDLE:
+        Player_StateToIdle(pl, 0);
         break;
-    case 0xE:
-        Player_State0_0B(p, 0);
+    case PL_ACT_THROW_ITEM:
+        Player_StateThrowItem(pl, 0);
         break;
-    case 0xF:
-        Player_State0_04(p, 3U);
+    case PL_ACT_SHEATHE_TO_CROUCH:
+        Player_StateDrawSheathe(pl, 3U);
         break;
-    case 0x10:
-        Player_State0_04(p, 4U);
+    case PL_ACT_SHEATHE_TO_USE_ITEM:
+        Player_StateDrawSheathe(pl, 4U);
         break;
-    case 0x11:
-        Player_State0_11(p, 0);
+    case PL_ACT_LEDGE_HANG:
+        Player_StateLedgeHang(pl, 0);
         break;
-    case 0x12:
-        Player_State0_01(p, 3U);
+    case PL_ACT_RIDE_WALK:
+        Player_StateMove(pl, 3U);
         break;
-    case 0x13:
-        Player_State0_01(p, 4U);
+    case PL_ACT_MOVE_KEEP_MOTION:
+        Player_StateMove(pl, 4U);
         break;
-    case 0x14:
-        Player_State0_14(p, 1);
+    case PL_ACT_PLACE_ITEM_CROUCHED:
+        Player_StatePlaceItem(pl, 1);
         break;
-    case 0x15:
-        Player_State0_15(p, 0);
+    case PL_ACT_JUMP_TO_LEDGE:
+        Player_StateClimbAirborne(pl, 0);
         break;
-    case 0x16:
-        Player_State0_16(p, 0);
+    case PL_ACT_RIDE_STAGGER:
+        Player_StateRideStagger(pl, 0);
         break;
-    case 0x17:
-        Player_State0_04(p, 5U);
+    case PL_ACT_DRAW_MOVING:
+        Player_StateDrawSheathe(pl, 5U);
         break;
-    case 0x18:
-        Player_State0_14(p, 0);
+    case PL_ACT_PLACE_ITEM:
+        Player_StatePlaceItem(pl, 0);
         break;
-    case 0x19:
-        Player_State0_19(p, 0);
+    case PL_ACT_KNEEL_TO_PLACE:
+        Player_StateKneelToPlace(pl, 0);
         break;
-    case 0x1A:
-        Player_State0_01(p, 5U);
+    case PL_ACT_CROUCH_WALK_ALT:
+        Player_StateMove(pl, 5U);
         break;
-    case 0x1B:
-        Player_State0_11(p, 1);
+    case PL_ACT_LEDGE_GRAB:
+        Player_StateLedgeHang(pl, 1);
         break;
-    case 0x1C:
-        Player_State0_1C(p, 0);
+    case PL_ACT_ROLL:
+        Player_StateRoll(pl, 0);
         break;
-    case 0x1D:
-        Player_State0_08(p, 1);
+    case PL_ACT_CROUCH_HOLD:
+        Player_StateCrouch(pl, 1);
         break;
-    case 0x1E:
-        Player_State0_1E(p, 0);
+    case PL_ACT_STEP_UP:
+        Player_StateStepUp(pl, 0);
         break;
-    case 0x1F:
-        Player_State0_1F(p, 0);
+    case PL_ACT_DASH:
+        Player_StateDash(pl, 0);
         break;
-    case 0x20:
-        Player_State0_20(p, 0);
+    case PL_ACT_FLEE_DASH:
+        Player_StateFleeDash(pl, 0);
         break;
-    case 0x21:
-        Player_State0_21(p, 0);
+    case PL_ACT_OUT_OF_BREATH:
+        Player_StateOutOfBreath(pl, 0);
         break;
-    case 0x22:
-        Player_State0_20(p, 1);
+    case PL_ACT_DASH_TIRED:
+        Player_StateFleeDash(pl, 1);
         break;
-    case 0x24:
-        Player_State0_01(p, 6U);
+    case PL_ACT_RUN_AFTER_DASH:
+        Player_StateMove(pl, 6U);
         break;
-    case 0x25:
-        Player_State0_25(p, 0);
+    case PL_ACT_TIRED_STOP:
+        Player_StateTiredStop(pl, 0);
         break;
-    case 0x26:
-        Player_State0_26(p, 0);
+    case PL_ACT_LAND_HARD:
+        Player_StateHardLanding(pl, 0);
         break;
-    case 0x27:
-        Player_State0_27(p, 0);
+    case PL_ACT_WALL_HOLD:
+        Player_StateWallHold(pl, 0);
         break;
-    case 0x28:
-        Player_State0_28(p, 0);
+    case PL_ACT_WALL_CLIMB_UP:
+        Player_StateWallClimbUp(pl, 0);
         break;
-    case 0x29:
-        Player_State0_29(p, 0);
+    case PL_ACT_WALL_CLIMB_DOWN:
+        Player_StateWallClimbDown(pl, 0);
         break;
-    case 0x2A:
-        Player_State0_2A(p, 0);
+    case PL_ACT_WALL_DISMOUNT:
+        Player_StateWallDismount(pl, 0);
         break;
-    case 0x2B:
-        Player_State0_2B(p, 0);
+    case PL_ACT_WALL_GRAB:
+        Player_StateWallGrab(pl, 0);
         break;
-    case 0x2C:
-        Player_State0_2C(p, 0);
+    case PL_ACT_RUN_STOP:
+        Player_StateRunStop(pl, 0);
         break;
-    case 0x2D:
-        Player_State0_1C(p, 1);
+    case PL_ACT_ROLL_FROM_CROUCH:
+        Player_StateRoll(pl, 1);
         break;
-    case 0x2E:
-        Player_State0_2E(p, 0);
+    case PL_ACT_SET_TRAP:
+        Player_StateSetTrap(pl, 0);
         break;
-    case 0x2F:
-        Player_State0_2F(p, 0);
+    case PL_ACT_SET_TRAP_DONE:
+        Player_StateSetTrapDone(pl, 0);
         break;
-    case 0x30:
-        Player_State0_15(p, 1);
+    case PL_ACT_WALL_LET_GO:
+        Player_StateClimbAirborne(pl, 1);
         break;
-    case 0x31:
-        Player_State0_31(p, 0);
+    case PL_ACT_EVADE_RIGHT:
+        Player_StateSideEvade(pl, 0);
         break;
-    case 0x32:
-        Player_State0_31(p, 1);
+    case PL_ACT_EVADE_LEFT:
+        Player_StateSideEvade(pl, 1);
         break;
-    case 0x33:
-        Player_State0_33(p, 0);
+    case PL_ACT_BED_LIE_DOWN:
+        Player_StateBedLieDown(pl, 0);
         break;
-    case 0x34:
-        Player_State0_34(p, 0);
+    case PL_ACT_BED_SLEEP:
+        Player_StateBedSleep(pl, 0);
         break;
-    case 0x35:
-        Player_State0_35(p, 0);
+    case PL_ACT_BED_GET_UP:
+        Player_StateBedGetUp(pl, 0);
         break;
-    case 0x36:
-        Player_State0_36(p, 0);
+    case PL_ACT_MOUNTED_GUN_AIM:
+        Player_StateMountedGunAim(pl, 0);
         break;
-    case 0x37:
-        Player_State0_37(p, 0);
+    case PL_ACT_CANNON_FIRE:
+        Player_StateCannonFire(pl, 0);
         break;
-    case 0x38:
-        Player_State0_15(p, 2);
+    case PL_ACT_LEDGE_DROP:
+        Player_StateClimbAirborne(pl, 2);
         break;
-    case 0x39:
-        Player_State0_39(p, 0);
+    case PL_ACT_CROUCH_STAND_UP:
+        Player_StateCrouchStandUp(pl, 0);
         break;
-    case 0x3A:
-        Player_State0_3A(p, 0);
+    case PL_ACT_LEDGE_PULL_UP:
+        Player_StateLedgePullUp(pl, 0);
         break;
-    case 0x3B:
-        Player_State0_3B(p, 0);
+    case PL_ACT_CROUCH_WALK:
+        Player_StateCrouchWalk(pl, 0);
         break;
-    case 0x3C:
-        Player_State0_3C(p, 0);
+    case PL_ACT_CROUCH_STOP:
+        Player_StateCrouchStop(pl, 0);
         break;
-    case 0x3D:
-        Player_State0_3D(p, 0);
+    case PL_ACT_CROUCH_WALK_FAST:
+        Player_StateCrouchWalkFast(pl, 0);
         break;
-    case 0x3E:
-        Player_State0_3E(p, 0);
+    case PL_ACT_BATTLE_ALERT:
+        Player_StateBattleAlert(pl, 0);
         break;
-    case 0x3F:
-        Player_State0_3F(p, 0);
+    case PL_ACT_TURN_AROUND:
+        Player_StateTurnAround(pl, 0);
         break;
-    case 0x40:
-        Player_State0_40(p, 0);
+    case PL_ACT_WALL_PRESS:
+        Player_StateWallPress(pl, 0);
         break;
-    case 0x41:
-        Player_State0_41(p, 0);
+    case PL_ACT_WALL_SIDLE_NEG:
+        Player_StateWallSidle(pl, 0);
         break;
-    case 0x42:
-        Player_State0_41(p, 1);
+    case PL_ACT_WALL_SIDLE_POS:
+        Player_StateWallSidle(pl, 1);
         break;
-    case 0x43:
-        Player_State0_40(p, 1);
+    case PL_ACT_WALL_PRESS_HOLD:
+        Player_StateWallPress(pl, 1);
         break;
-    case 0x44:
-        Player_State0_44(p, 0);
+    case PL_ACT_DIVE:
+        Player_StateDive(pl, 0);
         break;
-    case 0x45:
-        Player_State0_20(p, 2);
+    case PL_ACT_FLEE_DASH_RESUME:
+        Player_StateFleeDash(pl, 2);
         break;
-    case 0x46:
-        Player_State0_1F(p, 1);
+    case PL_ACT_DASH_RESUME:
+        Player_StateDash(pl, 1);
         break;
-    case 0x47:
-        Player_State0_47(p, 0U);
+    case PL_ACT_GATHER:
+        Player_StateGather(pl, 0U);
         break;
-    case 0x48:
-        Player_State0_48(p, 0);
+    case PL_ACT_MOUNTED_GUN_FIRE:
+        Player_StateMountedGunFire(pl, 0);
         break;
-    case 0x49:
-        Player_State0_01(p, 7U);
+    case PL_ACT_WALK_SLOW:
+        Player_StateMove(pl, 7U);
         break;
-    case 0x4A:
-        Player_State0_47(p, 3U);
+    case PL_ACT_CARVE:
+        Player_StateGather(pl, 3U);
         break;
-    case 0x4B:
-        Player_State0_4B(p, 1);
+    case PL_ACT_SPIT_ROAST_FAIL:
+        Player_StateSpitRoastEnd(pl, 1);
         break;
-    case 0x4C:
-        Player_State0_4C(p, 0);
+    case PL_ACT_SPIT_ROAST_START:
+        Player_StateSpitRoastStart(pl, 0);
         break;
-    case 0x4D:
-        Player_State0_4B(p, 0);
+    case PL_ACT_SPIT_ROAST_SUCCESS:
+        Player_StateSpitRoastEnd(pl, 0);
         break;
-    case 0x4E:
-        Player_State0_4E(p, 0);
+    case PL_ACT_FISH_READY:
+        Player_StateFishWait(pl, 0);
         break;
-    case 0x4F:
-        Player_State0_4F(p, 0);
+    case PL_ACT_FISH_CAST:
+        Player_StateFishCast(pl, 0);
         break;
-    case 0x50:
-        Player_State0_4E(p, 1);
+    case PL_ACT_FISH_WAIT:
+        Player_StateFishWait(pl, 1);
         break;
-    case 0x51:
-        Player_State0_47(p, 4U);
+    case PL_ACT_MINE:
+        Player_StateGather(pl, 4U);
         break;
-    case 0x52:
-        Player_State0_47(p, 5U);
+    case PL_ACT_BUG_NET:
+        Player_StateGather(pl, 5U);
         break;
-    case 0x53:
-        Player_State0_53(p, 0);
+    case PL_ACT_FISH_REEL:
+        Player_StateFishReel(pl, 0);
         break;
-    case 0x54:
-        Player_State0_54(p, 0);
+    case PL_ACT_FISH_REEL_EMPTY:
+        Player_StateFishReelEmpty(pl, 0);
         break;
-    case 0x55:
-        Player_State0_55(p, 0);
+    case PL_ACT_SPIT_ROAST:
+        Player_StateSpitRoast(pl, 0);
         break;
-    case 0x56:
-        Player_State0_56(p, 0);
+    case PL_ACT_START_COUNTDOWN:
+        Player_StateSpotStrike(pl, 0);
         break;
-    case 0x57:
-        Player_State0_57(p, 0);
+    case PL_ACT_SUPPLY_BOX:
+        Player_StateBoxMenu(pl, 0);
         break;
-    case 0x58:
-        Player_State0_58(p, 0);
+    case PL_ACT_DRINK:
+        Player_StateConsume(pl, 0);
         break;
-    case 0x59:
-        Player_State0_59(p, 0);
+    case PL_ACT_KNEEL_TO_PLACE_CROUCHED:
+        Player_StateKneelToPlaceCrouched(pl, 0);
         break;
-    case 0x5A:
-        Player_State0_58(p, 1);
+    case PL_ACT_EAT:
+        Player_StateConsume(pl, 1);
         break;
-    case 0x5B:
-        Player_State0_5B(p, 0);
+    case PL_ACT_TRADE:
+        Player_StateTrade(pl, 0);
         break;
-    case 0x5C:
-        Player_State0_47(p, 2U);
+    case PL_ACT_TAKE_REWARDS:
+        Player_StateGather(pl, 2U);
         break;
-    case 0x5D:
-        Player_State0_5D(p, 0);
+    case PL_ACT_GATHER_CROUCHED:
+        Player_StateGatherCrouched(pl, 0);
         break;
-    case 0x5E:
-        Player_State0_5E(p, 0);
+    case PL_ACT_HORN_PLAY:
+        Player_StateInstrumentPlay(pl, 0);
         break;
-    case 0x5F:
-        Player_State0_5F(p, 0);
+    case PL_ACT_HORN_END:
+        Player_StateInstrumentEnd(pl, 0);
         break;
-    case 0x60:
-        Player_State0_5D(p, 1);
+    case PL_ACT_CARVE_CROUCHED:
+        Player_StateGatherCrouched(pl, 1);
         break;
-    case 0x61:
-        Player_State0_61(p, 0);
+    case PL_ACT_SHARPEN:
+        Player_StateSharpen(pl, 0);
         break;
-    case 0x62:
-        Player_State0_5E(p, 1);
+    case PL_ACT_TEAM_ITEM_USE:
+        Player_StateInstrumentPlay(pl, 1);
         break;
-    case 0x63:
-        Player_State0_5F(p, 1);
+    case PL_ACT_TEAM_ITEM_END:
+        Player_StateInstrumentEnd(pl, 1);
         break;
-    case 0x64:
-        Player_State0_54(p, 1);
+    case PL_ACT_FISH_REEL_BAITED:
+        Player_StateFishReelEmpty(pl, 1);
         break;
-    case 0x65:
-        Player_State0_65(p, 0);
+    case PL_ACT_BINOCULARS:
+        Player_StateBinoculars(pl, 0);
         break;
-    case 0x66:
-        Player_State0_65(p, 1);
+    case PL_ACT_BINOCULARS_CROUCHED:
+        Player_StateBinoculars(pl, 1);
         break;
-    case 0x67:
-        Player_State0_67(p, 0);
+    case PL_ACT_OFFER_ITEM:
+        Player_StateOfferItem(pl, 0);
         break;
-    case 0x68:
-        Player_State0_68(p, 0);
+    case PL_ACT_TAKE_ITEM_WAIT:
+        Player_StateTakeItemWait(pl, 0);
         break;
-    case 0x69:
-        Player_State0_69(p, 0);
+    case PL_ACT_OFFER_ITEM_END:
+        Player_StateOfferItemEnd(pl, 0);
         break;
-    case 0x6A:
-        Player_State0_6A(p, 0);
+    case PL_ACT_TAKE_ITEM:
+        Player_StateTakeItem(pl, 0);
         break;
-    case 0x6B:
-        Player_State0_6B(p, 0);
+    case PL_ACT_LANCE_HOP_SIDE_A:
+        Player_StateLanceHop(pl, 0);
         break;
-    case 0x6C:
-        Player_State0_6B(p, 1);
+    case PL_ACT_LANCE_HOP_SIDE_B:
+        Player_StateLanceHop(pl, 1);
         break;
-    case 0x6D:
-        Player_State0_6B(p, 2);
+    case PL_ACT_LANCE_HOP_BACK:
+        Player_StateLanceHop(pl, 2);
         break;
-    case 0x6E:
-        Player_State0_6B(p, 3);
+    case PL_ACT_LANCE_HOP_BACK_LONG:
+        Player_StateLanceHop(pl, 3);
         break;
-    case 0x6F:
-        Player_State0_6F(p, 0);
+    case PL_ACT_PLACE_LARGE_ITEM:
+        Player_StatePlaceLargeItem(pl, 0);
         break;
-    case 0x70:
-        Player_State0_70(p, 0);
+    case PL_ACT_PLACE_LARGE_ITEM_SET:
+        Player_StatePlaceLargeItemSet(pl, 0);
         break;
-    case 0x71:
-        Player_State0_71(p, 0);
+    case PL_ACT_APPLY_ITEM:
+        Player_StateApplyItem(pl, 0);
         break;
-    case 0x72:
-        Player_State0_0B(p, 2);
+    case PL_ACT_RETURN_TO_CAMP:
+        Player_StateThrowItem(pl, 2);
         break;
-    case 0x73:
-        Player_State0_73(p, 0);
+    case PL_ACT_HORN_ITEM_PLAY:
+        Player_StateHornItemPlay(pl, 0);
         break;
-    case 0x74:
-        Player_State0_01(p, 9U);
+    case PL_ACT_BOW_WALK:
+        Player_StateMove(pl, 9U);
         break;
-    case 0x75:
-        Player_State0_47(p, 6U);
+    case PL_ACT_GATHER_SPECIAL:
+        Player_StateGather(pl, 6U);
         break;
-    case 0x76:
-        Player_State0_5D(p, 2);
+    case PL_ACT_GATHER_SPECIAL_CROUCHED:
+        Player_StateGatherCrouched(pl, 2);
         break;
-    case 0x77:
-        Player_State0_28(p, 1);
+    case PL_ACT_WALL_CLIMB_UP_FAST:
+        Player_StateWallClimbUp(pl, 1);
         break;
-    case 0x78:
-        Player_State0_29(p, 1);
+    case PL_ACT_WALL_CLIMB_DOWN_FAST:
+        Player_StateWallClimbDown(pl, 1);
         break;
-    case 0x79:
-        Player_State0_56(p, 1);
+    case PL_ACT_SPOT_ITEM_STRIKE:
+        Player_StateSpotStrike(pl, 1);
         break;
-    case 0x7A:
-        Player_State0_36(p, 1);
+    case PL_ACT_MOUNTED_GUN_REAIM:
+        Player_StateMountedGunAim(pl, 1);
         break;
-    case 0x7B:
-        Player_State0_57(p, 1);
+    case PL_ACT_DELIVERY_BOX:
+        Player_StateBoxMenu(pl, 1);
         break;
-    case 0x7C:
-        Player_State0_47(p, 7U);
+    case PL_ACT_GATHER_DROP:
+        Player_StateGather(pl, 7U);
         break;
-    case 0x7D:
-        Player_State0_5D(p, 3);
+    case PL_ACT_GATHER_DROP_CROUCHED:
+        Player_StateGatherCrouched(pl, 3);
         break;
     default:
-        Player_BeginState(p, 0, 4, 0);
+        Player_BeginState(pl, 0, 4, 0);
         break;
     }
 }
 
-void Player_WeaponState63(Player *p, s32 unused)
+void Player_StateSharedAttack(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x32, 4, 0);
-        Eff00_Create(p, 5U);
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x32, 4, 0);
+        Eff00_Create(pl, 5U);
+        Player_SetMoveMode(pl, 0, 1, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_RunWeaponState(Player *p)
+void Player_RunWeaponState(Player *pl)
 {
-    p->unk310 = 0;
-    if (p->state == 0x63) {
-        Player_WeaponState63(p, 0);
+    pl->unk310 = 0;
+    if (pl->state == 0x63) {
+        Player_StateSharedAttack(pl, 0);
     } else {
-        switch (p->weaponType) {
-        case 0:
-            GreatSword_RunState(p);
+        switch (pl->weaponType) {
+        case WEAPON_GREAT_SWORD:
+            GreatSword_RunState(pl);
             return;
-        case 7:
-            LongSword_RunState(p);
+        case WEAPON_LONG_SWORD:
+            LongSword_RunState(pl);
             return;
-        case 1:
-        case 5:
-            Bowgun_RunState(p);
+        case WEAPON_HEAVY_BOWGUN:
+        case WEAPON_LIGHT_BOWGUN:
+            Bowgun_RunState(pl);
             return;
-        case 10:
-            Bow_RunState(p);
+        case WEAPON_BOW:
+            Bow_RunState(pl);
             return;
-        case 2:
-            Hammer_RunState(p);
+        case WEAPON_HAMMER:
+            Hammer_RunState(pl);
             return;
-        case 8:
-            HuntingHorn_RunState(p);
+        case WEAPON_HUNTING_HORN:
+            HuntingHorn_RunState(pl);
             return;
-        case 3:
-            Lance_RunState(p);
+        case WEAPON_LANCE:
+            Lance_RunState(pl);
             return;
-        case 9:
-            Gunlance_RunState(p);
+        case WEAPON_GUNLANCE:
+            Gunlance_RunState(pl);
             return;
-        case 4:
-            SwordShield_RunState(p);
+        case WEAPON_SWORD_SHIELD:
+            SwordShield_RunState(pl);
             return;
-        case 6:
-            DualSwords_RunState(p);
+        case WEAPON_DUAL_SWORDS:
+            DualSwords_RunState(pl);
             return;
         }
     }
 }
 
-void Player_State2_00(Player *p)
+void Player_StateKnockdownFront(Player *pl)
 {
-    p->noHitTimer = 2;
-    switch (p->step) {
+    pl->noHitTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMotionPair(p, 0xCA, 0, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
+        pl->step++;
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMotionPair(pl, 0xCA, 0, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xD8, 6, 0x22);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xD8, 6, 0x22);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-            p->noHitTimer = 6;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+            pl->noHitTimer = 6;
         }
         break;
     }
 }
 
-void Player_State2_01(Player *p, s32 variant)
+void Player_StateGuardRecoil(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x586, 2, 0);
-        } else if (p->weaponType == 1) {
-            Player_SetMotionPair(p, 0x58B, 0, 0);
+            Player_SetMotionPair(pl, 0x586, 2, 0);
+        } else if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
+            Player_SetMotionPair(pl, 0x58B, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0x587, 0, 0);
+            Player_SetMotionPair(pl, 0x587, 0, 0);
         }
-        Player_UpdateMotionTime(p, 0);
-        Sound_PlayPlayerSe(p, 0x67, 0, p->pos, 1, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
-        Vib_StartLocal(p, 1);
-        Player_SetFlag(p, 2);
-        Player_SetFlag(p, 0x8000);
-        p->weaponOut = 1;
+        Player_UpdateMotionTime(pl, 0);
+        Sound_PlayPlayerSe(pl, 0x67, 0, pl->pos, 1, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
+        Vib_StartLocal(pl, 1);
+        Player_SetFlag(pl, 2);
+        Player_SetFlag(pl, 0x8000);
+        pl->weaponOut = 1;
         break;
     case 1:
         v[2] = 0.0f;
         if (variant == 0) {
-            if (Motion_ReachedFrame(p, 0, 30.0f) == 0) {
+            if (Motion_ReachedFrame(pl, 0, 30.0f) == 0) {
                 v[0] = 0.0f;
                 v[1] = 0.0f;
-                switch (p->weaponType) {
-                case 3:
-                case 9:
-                case 1:
-                    v[2] = -15.0f * Math_Cos(6.2831855f * (90.0f * (p->motion[0].frame / 32.0f)) / 360.0f);
+                switch (pl->weaponType) {
+                case WEAPON_LANCE:
+                case WEAPON_GUNLANCE:
+                case WEAPON_HEAVY_BOWGUN:
+                    v[2] = -15.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 32.0f)) / 360.0f);
                     break;
-                case 0:
-                case 7:
-                case 4:
-                    v[2] = -20.0f * Math_Cos(6.2831855f * (90.0f * (p->motion[0].frame / 32.0f)) / 360.0f);
+                case WEAPON_GREAT_SWORD:
+                case WEAPON_LONG_SWORD:
+                case WEAPON_SWORD_SHIELD:
+                    v[2] = -20.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 32.0f)) / 360.0f);
                     break;
                 }
-                Vec_Rotate(d, v, p->rotMtx);
-                p->pos[0] += d[0];
-                p->pos[2] += d[2];
+                Vec_Rotate(d, v, pl->rotMtx);
+                pl->pos[0] += d[0];
+                pl->pos[2] += d[2];
             }
         } else {
             v[0] = 0.0f;
             v[1] = 0.0f;
-            switch (p->weaponType) {
-            case 3:
-            case 9:
-            case 1:
-                if (Motion_ReachedFrame(p, 0, 90.0f) == 0) {
-                    v[2] = -16.0f * Math_Cos(6.2831855f * (90.0f * (p->motion[0].frame / 104.0f)) / 360.0f);
+            switch (pl->weaponType) {
+            case WEAPON_LANCE:
+            case WEAPON_GUNLANCE:
+            case WEAPON_HEAVY_BOWGUN:
+                if (Motion_ReachedFrame(pl, 0, 90.0f) == 0) {
+                    v[2] = -16.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 104.0f)) / 360.0f);
                 }
                 break;
-            case 0:
-            case 7:
-                if (Motion_ReachedFrame(p, 0, 104.0f) == 0) {
-                    v[2] = -22.0f * Math_Cos(6.2831855f * (90.0f * (p->motion[0].frame / 104.0f)) / 360.0f);
+            case WEAPON_GREAT_SWORD:
+            case WEAPON_LONG_SWORD:
+                if (Motion_ReachedFrame(pl, 0, 104.0f) == 0) {
+                    v[2] = -22.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 104.0f)) / 360.0f);
                 }
                 break;
-            case 4:
-                if (Motion_ReachedFrame(p, 0, 94.0f) == 0) {
-                    v[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (p->motion[0].frame / 94.0f)) / 360.0f);
+            case WEAPON_SWORD_SHIELD:
+                if (Motion_ReachedFrame(pl, 0, 94.0f) == 0) {
+                    v[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 94.0f)) / 360.0f);
                 }
                 break;
             }
-            Vec_Rotate(d, v, p->rotMtx);
-            p->pos[0] += d[0];
-            p->pos[2] += d[2];
+            Vec_Rotate(d, v, pl->rotMtx);
+            pl->pos[0] += d[0];
+            pl->pos[2] += d[2];
         }
-        if (p->motion[0].playing == 0) {
-            switch (p->weaponType) {
-            case 3:
-            case 9:
-                Player_RequestState(p, 2, 0xC, 0);
+        if (pl->motion[0].playing == 0) {
+            switch (pl->weaponType) {
+            case WEAPON_LANCE:
+            case WEAPON_GUNLANCE:
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
                 break;
-            case 4:
-                Player_BeginState(p, 0, 6, 0);
+            case WEAPON_SWORD_SHIELD:
+                Player_BeginState(pl, 0, 6, 0);
                 break;
-            case 0:
-            case 7:
-            case 1:
+            case WEAPON_GREAT_SWORD:
+            case WEAPON_LONG_SWORD:
+            case WEAPON_HEAVY_BOWGUN:
             default:
-                Player_BeginState(p, 0, 0xA, 0);
+                Player_BeginState(pl, 0, 0xA, 0);
                 break;
             }
         }
@@ -8013,7 +8013,7 @@ void Player_State2_01(Player *p, s32 variant)
     }
 }
 
-void Player_State2_02(Player *p)
+void Player_StateBlownBack(Player *pl)
 {
     f32 v[3];
     f32 d[3];
@@ -8021,72 +8021,72 @@ void Player_State2_02(Player *p)
     f32 m[16];
     f32 y;
 
-    p->noHitTimer = 2;
-    switch (p->step) {
+    pl->noHitTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->demonMode = 0;
-        Player_SetMotionPair(p, 0xCD, 0, 0x10);
-        Em_GetBonePos(p, 2, v);
-        if (p->pos[1] < v[1]) {
-            p->pos[1] = v[1];
+        pl->step++;
+        pl->demonMode = 0;
+        Player_SetMotionPair(pl, 0xCD, 0, 0x10);
+        Em_GetBonePos(pl, 2, v);
+        if (pl->pos[1] < v[1]) {
+            pl->pos[1] = v[1];
         }
-        Player_SetMoveMode(p, 2, 0, 1);
-        p->rideState = 0;
-        Player_ClearAccel(p);
+        Player_SetMoveMode(pl, 2, 0, 1);
+        pl->rideState = 0;
+        Player_ClearAccel(pl);
         ang[0] = 0;
-        ang[1] = p->rot[1];
+        ang[1] = pl->rot[1];
         ang[2] = 0;
         Mtx_FromAnglesXYZ(ang, m);
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = -11.17f;
         Vec_Rotate(d, v, m);
-        p->vel[0] = 2.0f * d[0];
-        p->vel[2] = 2.0f * d[2];
-        p->vel[1] = 6.0f;
-        Player_StartJump(p, 0xC);
-        p->vel[1] = 0.0f;
-        p->accel[1] = -1.0f / 3.0f;
-        p->timer = 16;
+        pl->vel[0] = 2.0f * d[0];
+        pl->vel[2] = 2.0f * d[2];
+        pl->vel[1] = 6.0f;
+        Player_StartJump(pl, 0xC);
+        pl->vel[1] = 0.0f;
+        pl->accel[1] = -1.0f / 3.0f;
+        pl->timer = 16;
         break;
     case 1:
-        if (p->motion[0].playing == 0 && p->motionId[0] == 0xCD) {
-            Player_SetMotionPair(p, 0xD6, 0, 0);
+        if (pl->motion[0].playing == 0 && pl->motionId[0] == 0xCD) {
+            Player_SetMotionPair(pl, 0xD6, 0, 0);
         }
-        Player_MoveAccel(p);
-        if (p->timer > 0) {
-            p->timer--;
-            y = 63.0f + p->floorY;
-            if (p->pos[1] <= y) {
-                p->pos[1] = y;
+        Player_MoveAccel(pl);
+        if (pl->timer > 0) {
+            pl->timer--;
+            y = 63.0f + pl->floorY;
+            if (pl->pos[1] <= y) {
+                pl->pos[1] = y;
             }
-        } else if (p->vel[1] <= 0.0f && p->pos[1] <= 63.0f + p->floorY) {
-            p->step++;
-            p->pos[1] = p->floorY;
-            Sound_PlayPlayerSe(p, 0x42, 0, p->pos, 1, 0);
-            Sound_PlayArmorRattle(p, 3);
-            Player_SetMotionPair(p, 0xCE, 0, 0);
-            p->action = 3;
+        } else if (pl->vel[1] <= 0.0f && pl->pos[1] <= 63.0f + pl->floorY) {
+            pl->step++;
+            pl->pos[1] = pl->floorY;
+            Sound_PlayPlayerSe(pl, 0x42, 0, pl->pos, 1, 0);
+            Sound_PlayArmorRattle(pl, 3);
+            Player_SetMotionPair(pl, 0xCE, 0, 0);
+            pl->action = 3;
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            if (p->hp > 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0xCF, 2, 0);
-            } else if (Player_IsLocal(p) == 1) {
-                Player_RequestStateSynced(p, 3, 1, 0);
+        if (pl->motion[0].playing == 0) {
+            if (pl->hp > 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0xCF, 2, 0);
+            } else if (Player_IsLocal(pl) == 1) {
+                Player_RequestStateSynced(pl, PL_GROUP_FAINT, PL_FAINT_FACE_UP, 0);
             } else {
-                p->step = 4;
-                Player_SetFlag(p, 0x20000);
+                pl->step = 4;
+                Player_SetFlag(pl, 0x20000);
             }
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
-            p->noHitTimer = 6;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
+            pl->noHitTimer = 6;
         }
         break;
     case 4:
@@ -8094,76 +8094,76 @@ void Player_State2_02(Player *p)
     }
 }
 
-void Player_State2_03(Player *p, s32 variant)
+void Player_StateGuard(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         if (variant == 0) {
-            switch (p->weaponType) {
-            case 0:
+            switch (pl->weaponType) {
+            case WEAPON_GREAT_SWORD:
             default:
-            case 7:
-                Player_SetMotionPair(p, 0x584, 3, 0);
+            case WEAPON_LONG_SWORD:
+                Player_SetMotionPair(pl, 0x584, 3, 0);
                 break;
-            case 4:
-                Player_SetMotionPair(p, 0x3ED, 2, 0);
+            case WEAPON_SWORD_SHIELD:
+                Player_SetMotionPair(pl, 0x3ED, 2, 0);
                 break;
-            case 3:
-            case 9:
-                Player_SetMotionPair(p, 0x3ED, 2, 0);
+            case WEAPON_LANCE:
+            case WEAPON_GUNLANCE:
+                Player_SetMotionPair(pl, 0x3ED, 2, 0);
                 break;
             }
         } else {
-            switch (p->weaponType) {
-            case 0:
+            switch (pl->weaponType) {
+            case WEAPON_GREAT_SWORD:
             default:
-            case 7:
-                Player_SetMotionPair(p, 0x584, 6, 0x28);
+            case WEAPON_LONG_SWORD:
+                Player_SetMotionPair(pl, 0x584, 6, 0x28);
                 break;
-            case 4:
-            case 3:
-                Player_SetMotionPair(p, 0x3EE, 2, 0);
+            case WEAPON_SWORD_SHIELD:
+            case WEAPON_LANCE:
+                Player_SetMotionPair(pl, 0x3EE, 2, 0);
                 break;
-            case 9:
+            case WEAPON_GUNLANCE:
                 if (variant == 1) {
-                    Player_SetMotionPair(p, 0x3EE, 2, 0);
+                    Player_SetMotionPair(pl, 0x3EE, 2, 0);
                 } else {
-                    Player_SetMotionPair(p, 0x3ED, 4, 4);
+                    Player_SetMotionPair(pl, 0x3ED, 4, 4);
                 }
                 break;
-            case 1:
-                Player_SetMotionPair(p, 0x58A, 2, 0);
+            case WEAPON_HEAVY_BOWGUN:
+                Player_SetMotionPair(pl, 0x58A, 2, 0);
                 break;
             }
         }
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x8000);
-        p->weaponOut = 1;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x8000);
+        pl->weaponOut = 1;
         break;
     case 1:
-        if (Player_IsLocal(p) == 1 || Game_IsOnline() == 0) {
-            if (p->motionTime > 18 && !(p->input.held & 0x80)) {
-                Player_RequestState(p, 2, 8, 0);
+        if (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0) {
+            if (pl->motionTime > 18 && !(pl->input.held & 0x80)) {
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_END, 0);
                 break;
             }
         }
-        switch (p->weaponType) {
-        case 3:
-        case 9:
-        case 4:
-            if (p->motionId[0] == 0x3ED && p->motion[0].playing == 0) {
-                Player_SetMotionPair(p, 0x3EE, 2, 0);
+        switch (pl->weaponType) {
+        case WEAPON_LANCE:
+        case WEAPON_GUNLANCE:
+        case WEAPON_SWORD_SHIELD:
+            if (pl->motionId[0] == 0x3ED && pl->motion[0].playing == 0) {
+                Player_SetMotionPair(pl, 0x3EE, 2, 0);
             }
-            if (p->motionTime > 18) {
-                Player_GatherStep(p);
+            if (pl->motionTime > 18) {
+                Player_GuardInput(pl);
             }
             break;
-        case 0:
-        case 7:
-            if (p->motionTime > 18) {
-                Player_GatherStep(p);
+        case WEAPON_GREAT_SWORD:
+        case WEAPON_LONG_SWORD:
+            if (pl->motionTime > 18) {
+                Player_GuardInput(pl);
             }
             break;
         }
@@ -8171,34 +8171,34 @@ void Player_State2_03(Player *p, s32 variant)
     }
 }
 
-void Player_State2_04(Player *p, s32 variant)
+void Player_StateRoarStrong(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        Player_SetMotionPair(p, 0xE3, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
+        pl->step++;
+        pl->stateVar0 = 0;
+        Player_SetMotionPair(pl, 0xE3, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-            p->noHitTimer = 6;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+            pl->noHitTimer = 6;
             break;
         }
-        if (Motion_ReachedFrame(p, 0, 40.0f) == 0 && p->motionTime % 7 == 0) {
-            Effect0D_SpawnForPlayer(p, 5, 9);
-            Effect0D_SpawnForPlayer(p, 8, 9);
+        if (Motion_ReachedFrame(pl, 0, 40.0f) == 0 && pl->motionTime % 7 == 0) {
+            Effect0D_SpawnForPlayer(pl, 5, 9);
+            Effect0D_SpawnForPlayer(pl, 8, 9);
         }
-        if (Motion_ReachedFrame(p, 0, 64.0f) == 0) {
-            p->noHitTimer = 2;
+        if (Motion_ReachedFrame(pl, 0, 64.0f) == 0) {
+            pl->noHitTimer = 2;
         }
         break;
     }
 }
 
-void Player_State2_05(Player *p)
+void Player_StateBlownForward(Player *pl)
 {
     f32 v[3];
     f32 d[3];
@@ -8206,71 +8206,71 @@ void Player_State2_05(Player *p)
     f32 m[16];
     f32 y;
 
-    p->noHitTimer = 2;
-    switch (p->step) {
+    pl->noHitTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->demonMode = 0;
-        Player_SetMotionPair(p, 0xD0, 0, 0);
-        Em_GetBonePos(p, 2, v);
-        if (p->pos[1] < v[1]) {
-            p->pos[1] = v[1];
+        pl->step++;
+        pl->demonMode = 0;
+        Player_SetMotionPair(pl, 0xD0, 0, 0);
+        Em_GetBonePos(pl, 2, v);
+        if (pl->pos[1] < v[1]) {
+            pl->pos[1] = v[1];
         }
-        p->targetYaw = p->rot[1];
-        Player_SetMoveMode(p, 2, 0, 1);
-        p->rideState = 0;
-        Player_ClearAccel(p);
+        pl->targetYaw = pl->rot[1];
+        Player_SetMoveMode(pl, 2, 0, 1);
+        pl->rideState = 0;
+        Player_ClearAccel(pl);
         ang[0] = 0;
-        ang[1] = (u16) p->rot[1];
+        ang[1] = (u16) pl->rot[1];
         ang[2] = 0;
         Mtx_FromAnglesXYZ(ang, m);
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 11.5f;
         Vec_Rotate(d, v, m);
-        p->vel[0] = 2.0f * d[0];
-        p->vel[2] = 2.0f * d[2];
-        p->vel[1] = 0.0f;
-        p->accel[1] = -0.25f;
-        p->timer = 16;
+        pl->vel[0] = 2.0f * d[0];
+        pl->vel[2] = 2.0f * d[2];
+        pl->vel[1] = 0.0f;
+        pl->accel[1] = -0.25f;
+        pl->timer = 16;
         break;
     case 1:
-        if (p->motion[0].playing == 0 && p->motionId[0] == 0xD0) {
-            Player_SetMotionPair(p, 0xDC, 0, 0);
+        if (pl->motion[0].playing == 0 && pl->motionId[0] == 0xD0) {
+            Player_SetMotionPair(pl, 0xDC, 0, 0);
         }
-        Player_MoveAccel(p);
-        if (p->timer > 0) {
-            p->timer--;
-            y = 63.0f + p->floorY;
-            if (p->pos[1] <= y) {
-                p->pos[1] = y;
+        Player_MoveAccel(pl);
+        if (pl->timer > 0) {
+            pl->timer--;
+            y = 63.0f + pl->floorY;
+            if (pl->pos[1] <= y) {
+                pl->pos[1] = y;
             }
-        } else if (p->vel[1] <= 0.0f && p->pos[1] <= 63.0f + p->floorY) {
-            p->step++;
-            p->pos[1] = p->floorY;
-            Sound_PlayPlayerSe(p, 0x42, 0, p->pos, 1, 0);
-            Sound_PlayArmorRattle(p, 3);
-            Player_SetMotionPair(p, 0xD1, 0, 0);
-            p->action = 3;
+        } else if (pl->vel[1] <= 0.0f && pl->pos[1] <= 63.0f + pl->floorY) {
+            pl->step++;
+            pl->pos[1] = pl->floorY;
+            Sound_PlayPlayerSe(pl, 0x42, 0, pl->pos, 1, 0);
+            Sound_PlayArmorRattle(pl, 3);
+            Player_SetMotionPair(pl, 0xD1, 0, 0);
+            pl->action = 3;
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            if (p->hp > 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0xD8, 0, 0);
-            } else if (Player_IsLocal(p) == 1) {
-                Player_RequestStateSynced(p, 3, 2, 0);
+        if (pl->motion[0].playing == 0) {
+            if (pl->hp > 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0xD8, 0, 0);
+            } else if (Player_IsLocal(pl) == 1) {
+                Player_RequestStateSynced(pl, PL_GROUP_FAINT, PL_FAINT_FACE_DOWN, 0);
             } else {
-                p->step = 4;
-                Player_SetFlag(p, 0x20000);
+                pl->step = 4;
+                Player_SetFlag(pl, 0x20000);
             }
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-            p->noHitTimer = 6;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+            pl->noHitTimer = 6;
         }
         break;
     case 4:
@@ -8278,32 +8278,32 @@ void Player_State2_05(Player *p)
     }
 }
 
-void Player_State2_06(Player *p)
+void Player_StateKnockdownBack(Player *pl)
 {
-    p->noHitTimer = 2;
-    switch (p->step) {
+    pl->noHitTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMotionPair(p, 0xCC, 0, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
+        pl->step++;
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMotionPair(pl, 0xCC, 0, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xCF, 6, 0x3A);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xCF, 6, 0x3A);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-            p->noHitTimer = 6;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+            pl->noHitTimer = 6;
         }
         break;
     }
 }
 
-void Player_State2_07(Player *p, s32 variant)
+void Player_StateTossed(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
@@ -8311,25 +8311,25 @@ void Player_State2_07(Player *p, s32 variant)
     f32 m[16];
     f32 z;
 
-    p->noHitTimer = 2;
-    switch (p->step) {
+    pl->noHitTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->demonMode = 0;
+        pl->step++;
+        pl->demonMode = 0;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0xD5, 0, 0);
+            Player_SetMotionPair(pl, 0xD5, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0xDB, 0, 0);
+            Player_SetMotionPair(pl, 0xDB, 0, 0);
         }
-        Em_GetBonePos(p, 2, v);
-        if (p->pos[1] < v[1]) {
-            p->pos[1] = v[1];
+        Em_GetBonePos(pl, 2, v);
+        if (pl->pos[1] < v[1]) {
+            pl->pos[1] = v[1];
         }
-        Player_SetMoveMode(p, 2, 0, 1);
-        p->rideState = 0;
-        Player_ClearAccel(p);
+        Player_SetMoveMode(pl, 2, 0, 1);
+        pl->rideState = 0;
+        Player_ClearAccel(pl);
         ang[0] = 0;
-        ang[1] = p->rot[1];
+        ang[1] = pl->rot[1];
         ang[2] = 0;
         Mtx_FromAnglesXYZ(ang, m);
         v[0] = 0.0f;
@@ -8341,97 +8341,97 @@ void Player_State2_07(Player *p, s32 variant)
         }
         v[2] = z;
         Vec_Rotate(d, v, m);
-        p->vel[0] = 2.0f * d[0];
-        p->vel[2] = 2.0f * d[2];
-        p->vel[1] = 20.0f;
-        p->accel[1] = -8.0f / 11.0f;
+        pl->vel[0] = 2.0f * d[0];
+        pl->vel[2] = 2.0f * d[2];
+        pl->vel[1] = 20.0f;
+        pl->accel[1] = -8.0f / 11.0f;
         break;
     case 1:
-        if (p->motion[0].playing == 0 && (p->motionId[0] == 0xD5 || p->motionId[0] == 0xDB)) {
+        if (pl->motion[0].playing == 0 && (pl->motionId[0] == 0xD5 || pl->motionId[0] == 0xDB)) {
             if (variant == 0) {
-                Player_SetMotionPair(p, 0xD6, 0, 0);
+                Player_SetMotionPair(pl, 0xD6, 0, 0);
             } else {
-                Player_SetMotionPair(p, 0xDC, 0, 0);
+                Player_SetMotionPair(pl, 0xDC, 0, 0);
             }
         }
-        Player_MoveAccel(p);
-        if (p->vel[1] <= 0.0f && p->pos[1] <= 63.0f + p->floorY) {
-            p->step++;
-            Sound_PlayPlayerSe(p, 0x42, 0, p->pos, 1, 0);
-            Sound_PlayArmorRattle(p, 3);
-            Player_SetMotionPair(p, 0xD7, 0, 0);
-            p->pos[1] = p->floorY;
-            p->action = 3;
+        Player_MoveAccel(pl);
+        if (pl->vel[1] <= 0.0f && pl->pos[1] <= 63.0f + pl->floorY) {
+            pl->step++;
+            Sound_PlayPlayerSe(pl, 0x42, 0, pl->pos, 1, 0);
+            Sound_PlayArmorRattle(pl, 3);
+            Player_SetMotionPair(pl, 0xD7, 0, 0);
+            pl->pos[1] = pl->floorY;
+            pl->action = 3;
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            p->rot[1] = (p->rot[1] + 0x8000) & 0xFFFF;
-            p->targetYaw = p->rot[1];
-            Player_SetMotionPair(p, 0xD8, 0, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            pl->rot[1] = (pl->rot[1] + 0x8000) & 0xFFFF;
+            pl->targetYaw = pl->rot[1];
+            Player_SetMotionPair(pl, 0xD8, 0, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-            p->noHitTimer = 6;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+            pl->noHitTimer = 6;
         }
         break;
     }
 }
 
-void Player_State2_08(Player *p)
+void Player_StateGuardEnd(Player *pl)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        switch (p->weaponType) {
-        case 0:
+        pl->step++;
+        switch (pl->weaponType) {
+        case WEAPON_GREAT_SWORD:
         default:
-        case 7:
-            Player_SetMotionPair(p, 0x586, 2, 0);
+        case WEAPON_LONG_SWORD:
+            Player_SetMotionPair(pl, 0x586, 2, 0);
             break;
-        case 4:
-        case 3:
-        case 9:
-            Player_SetMotionPair(p, 0x3EF, 2, 0);
+        case WEAPON_SWORD_SHIELD:
+        case WEAPON_LANCE:
+        case WEAPON_GUNLANCE:
+            Player_SetMotionPair(pl, 0x3EF, 2, 0);
             break;
-        case 1:
-            Player_SetMotionPair(p, 0x58D, 2, 0);
+        case WEAPON_HEAVY_BOWGUN:
+            Player_SetMotionPair(pl, 0x58D, 2, 0);
             break;
         }
-        Player_SetFlag(p, 0x8000);
-        Player_SetMoveMode(p, 0, 0, 0);
+        Player_SetFlag(pl, 0x8000);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 2, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 2, 0);
         }
         break;
     }
 }
 
-void Player_State2_09(Player *p, s32 variant)
+void Player_StateFlinch(Player *pl, s32 variant)
 {
     f32 v[3];
     s32 ang[3];
     f32 m[16];
     f32 z;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_UpdateMotionTime(p, 0);
-        if (p->weaponOut != 0) {
-            Player_SetMotionPair(p, 0x4BB, 0, 0);
+        pl->step++;
+        Player_UpdateMotionTime(pl, 0);
+        if (pl->weaponOut != 0) {
+            Player_SetMotionPair(pl, 0x4BB, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0xC9, 0, 0);
+            Player_SetMotionPair(pl, 0xC9, 0, 0);
         }
-        Player_SetMoveMode(p, 0, 0, 1);
+        Player_SetMoveMode(pl, 0, 0, 1);
         ang[0] = 0;
         ang[2] = 0;
-        ang[1] = p->targetYaw;
+        ang[1] = pl->targetYaw;
         Mtx_FromAnglesXYZ(ang, m);
         v[0] = 0.0f;
         v[1] = 0.0f;
@@ -8441,263 +8441,263 @@ void Player_State2_09(Player *p, s32 variant)
             z = -4.0f;
         }
         v[2] = z;
-        Vec_Rotate(&p->vel[0], v, m);
+        Vec_Rotate(&pl->vel[0], v, m);
         break;
     case 1:
-        if (Motion_ReachedFrame(p, 0, 16.0f) == 0) {
-            Player_Move(p);
+        if (Motion_ReachedFrame(pl, 0, 16.0f) == 0) {
+            Player_Move(pl);
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State2_0B(Player *p)
+void Player_StateGuardPush(Player *pl)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        if (p->weaponType == 1) {
-            Player_SetMotionPair(p, 0x58A, 0, 0);
+        pl->step++;
+        if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
+            Player_SetMotionPair(pl, 0x58A, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0x585, 0, 0);
+            Player_SetMotionPair(pl, 0x585, 0, 0);
         }
-        Player_UpdateMotionTime(p, 0);
-        Sound_PlayPlayerSe(p, 0x67, 0, &p->pos[0], 1, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
-        Player_SetFlag(p, 0x8000U);
-        Vib_StartLocal(p, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Sound_PlayPlayerSe(pl, 0x67, 0, &pl->pos[0], 1, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
+        Player_SetFlag(pl, 0x8000U);
+        Vib_StartLocal(pl, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            if (p->weaponType == 1) {
-                Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
+                Player_BeginState(pl, 0, 6, 0);
                 break;
             }
-            Player_RequestState(p, 2U, 0xCU, 0);
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
         } else {
         }
         break;
     }
 }
 
-void Player_State2_0F(Player *p, s32 variant)
+void Player_StateRoar(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        Player_SetMotionPair(p, 0xDA, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
+        pl->step++;
+        pl->stateVar0 = 0;
+        Player_SetMotionPair(pl, 0xDA, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
         break;
     case 1:
-        if (Motion_ReachedFrame(p, 0, 28.0f) != 0 && variant == 1) {
-            p->step = 3;
-            Player_SetMotionPair(p, 0xE2, 6, 0x14);
-        } else if (Motion_ReachedFrame(p, 0, 40.0f) == 0) {
+        if (Motion_ReachedFrame(pl, 0, 28.0f) != 0 && variant == 1) {
+            pl->step = 3;
+            Player_SetMotionPair(pl, 0xE2, 6, 0x14);
+        } else if (Motion_ReachedFrame(pl, 0, 40.0f) == 0) {
             v[0] = 0.0f;
             v[1] = 0.0f;
-            v[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (p->motion[0].frame / 42.0f)) / 360.0f);
-            Vec_Rotate(d, v, p->rotMtx);
-            p->pos[0] += d[0];
-            p->pos[2] += d[2];
-            if (p->motionTime % 7 == 0) {
-                Effect0D_SpawnForPlayer(p, 5, 9);
-                Effect0D_SpawnForPlayer(p, 8, 9);
+            v[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 42.0f)) / 360.0f);
+            Vec_Rotate(d, v, pl->rotMtx);
+            pl->pos[0] += d[0];
+            pl->pos[2] += d[2];
+            if (pl->motionTime % 7 == 0) {
+                Effect0D_SpawnForPlayer(pl, 5, 9);
+                Effect0D_SpawnForPlayer(pl, 8, 9);
             }
         } else {
-            p->step++;
+            pl->step++;
         }
         break;
     case 2:
-        if (Motion_ReachedFrame(p, 0, 44.0f) != 0) {
-            p->stateVar0++;
-            if (variant == 1 || (variant == 0 && p->stateVar0 >= 2)) {
-                p->step++;
-                Player_SetMotionPair(p, 0xE2, 2, 0);
+        if (Motion_ReachedFrame(pl, 0, 44.0f) != 0) {
+            pl->stateVar0++;
+            if (variant == 1 || (variant == 0 && pl->stateVar0 >= 2)) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0xE2, 2, 0);
             }
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xC, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xC, 0);
         }
         break;
     }
 }
 
-void Player_State2_10(Player *p, s32 variant)
+void Player_StateWind(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
+        pl->step++;
+        pl->stateVar0 = 0;
         if (variant == 0) {
-            p->stateVar1 = 4;
+            pl->stateVar1 = 4;
         } else {
-            p->stateVar1 = 1;
+            pl->stateVar1 = 1;
         }
-        Player_SetMotionPair(p, 0xD3, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
-        p->timer = 0;
+        Player_SetMotionPair(pl, 0xD3, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
+        pl->timer = 0;
         break;
     case 1:
-        if (Motion_PassedFrame(p, 0, p->motion[0].frameCount) != 0) {
-            p->stateVar0++;
-            if ((s32) p->stateVar0 >= (s32) p->stateVar1) {
-                p->step++;
-                Player_SetMotionPair(p, 0xD4, 2, 0);
+        if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
+            pl->stateVar0++;
+            if ((s32) pl->stateVar0 >= (s32) pl->stateVar1) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0xD4, 2, 0);
                 break;
             }
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xC, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xC, 0);
         }
         break;
     }
 }
 
-void Player_State2_11(Player *p, s32 unused)
+void Player_StateFlinchCarrying(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_UpdateMotionTime(p, 0);
-        if (p->weaponOut != 0) {
-            Player_SetMotionPair(p, 0x4BB, 0, 0);
+        pl->step++;
+        Player_UpdateMotionTime(pl, 0);
+        if (pl->weaponOut != 0) {
+            Player_SetMotionPair(pl, 0x4BB, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0xC9, 0, 0);
+            Player_SetMotionPair(pl, 0xC9, 0, 0);
         }
-        Player_SetMoveMode(p, 0, 0, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-static void Player_ClearStatus5(Player *p)
+static void Player_ClearStun(Player *pl)
 {
-    p->status5Delay = 0;
-    p->status5Buildup = 0;
-    p->itemUseDelay = 0x1E;
+    pl->status5Delay = 0;
+    pl->status5Buildup = 0;
+    pl->itemUseDelay = 0x1E;
 }
 
-void Player_State2_13(Player *p, s32 unused)
+void Player_StateStun(Player *pl, s32 unused)
 {
     s8 need;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_UpdateMotionTime(p, 0);
-        p->weaponOut = 0;
-        p->noFlinchTimer = 0;
-        Player_SetMotionPair(p, 0x1A, 4, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
-        p->timer = 300;
-        p->stateVar0 = 0;
-        p->stateVar1 = 5;
-        p->status5Delay = 0;
-        p->status5Buildup = 0;
-        Player_ClearMash(p);
-        p->targetYaw = p->rot[1];
-        StageObj_Stun_CreatePlayer(p, 0);
+        pl->step++;
+        Player_UpdateMotionTime(pl, 0);
+        pl->weaponOut = 0;
+        pl->noFlinchTimer = 0;
+        Player_SetMotionPair(pl, 0x1A, 4, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
+        pl->timer = 300;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 5;
+        pl->status5Delay = 0;
+        pl->status5Buildup = 0;
+        Player_ClearMash(pl);
+        pl->targetYaw = pl->rot[1];
+        StageObj_Stun_CreatePlayer(pl, 0);
         break;
     case 1:
-        if (--p->timer <= 0) {
-            p->stateVar0 = 0;
-            p->stateVar1--;
-            p->timer = 300;
-        } else if ((p->input.pressed & 0x3FF) || (p->input.stickDirPressed & 0x3C3C)) {
-            p->stateVar0++;
-            need = Player_State2_13_Need[p->stateVar1];
-            if (Player_HasSkill(p, 9) == 1) {
+        if (--pl->timer <= 0) {
+            pl->stateVar0 = 0;
+            pl->stateVar1--;
+            pl->timer = 300;
+        } else if ((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) {
+            pl->stateVar0++;
+            need = gStunMashNeed[pl->stateVar1];
+            if (Player_HasSkill(pl, 9) == 1) {
                 need *= 2;
             }
-            if (p->stateVar0 >= need) {
-                p->stateVar0 = 0;
-                p->stateVar1--;
-                p->timer = 300;
+            if (pl->stateVar0 >= need) {
+                pl->stateVar0 = 0;
+                pl->stateVar1--;
+                pl->timer = 300;
             }
         }
-        if (p->stateVar1 == 0) {
-            Player_ClearStatus5(p);
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->stateVar1 == 0) {
+            Player_ClearStun(pl);
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State2_14(Player *p, s32 unused)
+void Player_StateReact14(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x197, 4, 0);
-        p->motionTime = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x197, 4, 0);
+        pl->motionTime = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State2_15(Player *p, s32 variant)
+void Player_StateStatus2(Player *pl, s32 variant)
 {
     f32 v[3];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 0, 1);
-        p->weaponOut = 0;
-        p->status2Buildup = 0;
-        Player_ClearStatus5(p);
-        Player_ClearMash(p);
-        Player_SetMotionPair(p, 0xE1, 4, 0);
-        p->motionTime = 0;
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 0, 1);
+        pl->weaponOut = 0;
+        pl->status2Buildup = 0;
+        Player_ClearStun(pl);
+        Player_ClearMash(pl);
+        Player_SetMotionPair(pl, 0xE1, 4, 0);
+        pl->motionTime = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            p->timer = 240;
-            if (Player_HasSkill(p, 4) == 1) {
-                p->timer /= 2;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            pl->timer = 240;
+            if (Player_HasSkill(pl, 4) == 1) {
+                pl->timer /= 2;
             }
-            if (Player_HasSkill(p, 6) == 1) {
-                p->timer *= 2;
+            if (Player_HasSkill(pl, 6) == 1) {
+                pl->timer *= 2;
             }
-            Player_SetMotionPair(p, 0xD2, 0, 0x9A);
+            Player_SetMotionPair(pl, 0xD2, 0, 0x9A);
         }
         break;
     case 2:
-        if (p->stateVar1 > 0) {
-            p->stateVar1--;
+        if (pl->stateVar1 > 0) {
+            pl->stateVar1--;
         }
-        if (((p->input.pressed & 0x3FF) || (p->input.stickDirPressed & 0x3C3C)) && p->stateVar1 == 0) {
-            p->stateVar1 = 3;
-            p->timer--;
+        if (((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) && pl->stateVar1 == 0) {
+            pl->stateVar1 = 3;
+            pl->timer--;
         }
-        if (--p->timer <= 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xCF, 0, 0);
+        if (--pl->timer <= 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xCF, 0, 0);
             break;
         }
         v[0] = 0.0f;
@@ -8707,426 +8707,426 @@ void Player_State2_15(Player *p, s32 variant)
         case 0:
         case 10:
         case 20:
-            Effect06_SpawnAt(p, 4, 20, v, 0.8f);
+            Effect06_SpawnAt(pl, 4, 20, v, 0.8f);
         }
-        Player_AddStamina(p, 2);
+        Player_AddStamina(pl, 2);
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State2_16(Player *p, s32 variant)
+void Player_StateStatus4(Player *pl, s32 variant)
 {
 
-    p->stateVar0++;
-    switch (p->step) {
+    pl->stateVar0++;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 0, 1);
-        p->weaponOut = 0;
-        p->status4Buildup = 0;
-        p->status2Buildup = 0;
-        Player_ClearStatus5(p);
-        Player_ClearMash(p);
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 0, 1);
+        pl->weaponOut = 0;
+        pl->status4Buildup = 0;
+        pl->status2Buildup = 0;
+        Player_ClearStun(pl);
+        Player_ClearMash(pl);
         if (variant == 0) {
-            Player_SetMotionPair(p, 0xE0, 4, 0);
-            p->motionTime = 0;
-            p->stateVar0 = 0;
-            Effect06_SpawnAtBone(p, 5, 0, 2, 0.75f);
-            p->recoverTimer = 150;
-            if (Player_HasSkill(p, 1) == 1) {
-                p->recoverTimer /= 2;
+            Player_SetMotionPair(pl, 0xE0, 4, 0);
+            pl->motionTime = 0;
+            pl->stateVar0 = 0;
+            Effect06_SpawnAtBone(pl, 5, 0, 2, 0.75f);
+            pl->recoverTimer = 150;
+            if (Player_HasSkill(pl, 1) == 1) {
+                pl->recoverTimer /= 2;
             }
-            if (Player_HasSkill(p, 3) == 1) {
-                p->recoverTimer *= 2;
+            if (Player_HasSkill(pl, 3) == 1) {
+                pl->recoverTimer *= 2;
             }
-            p->noHitTimer = 2;
+            pl->noHitTimer = 2;
             break;
         }
-        p->step = 2;
-        if (p->recoverTimer <= 0) {
-            p->recoverTimer = 0;
+        pl->step = 2;
+        if (pl->recoverTimer <= 0) {
+            pl->recoverTimer = 0;
         }
-        Player_SetMotionPair(p, 0xD2, 2, 0x96);
+        Player_SetMotionPair(pl, 0xD2, 2, 0x96);
         break;
     case 1:
-        p->noHitTimer = 2;
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xD2, 2, 0x96);
-            p->noHitTimer = 0;
+        pl->noHitTimer = 2;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xD2, 2, 0x96);
+            pl->noHitTimer = 0;
         }
-        if (p->step < 3 && !(p->stateVar0 & 0x1F)) {
-            Effect06_SpawnAtBone(p, 5, 0, 2, 0.75f);
+        if (pl->step < 3 && !(pl->stateVar0 & 0x1F)) {
+            Effect06_SpawnAtBone(pl, 5, 0, 2, 0.75f);
         }
         break;
     case 2:
-        if (p->stateVar1 > 0) {
-            p->stateVar1--;
+        if (pl->stateVar1 > 0) {
+            pl->stateVar1--;
         }
-        if (((p->input.pressed & 0x3FF) || (p->input.stickDirPressed & 0x3C3C)) && p->stateVar1 == 0) {
-            p->stateVar1 = 3;
-            p->recoverTimer--;
+        if (((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) && pl->stateVar1 == 0) {
+            pl->stateVar1 = 3;
+            pl->recoverTimer--;
         }
-        if (--p->recoverTimer <= 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xCF, 0, 0);
-            p->noHitTimer = 2;
+        if (--pl->recoverTimer <= 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xCF, 0, 0);
+            pl->noHitTimer = 2;
             break;
         }
-        if (p->motionId[0] == 0xD2 && Motion_PassedFrame(p, 0, 170.0f) != 0 && !(Rand_Next(1) & 0x3F)) {
-            Player_SetMotionPair(p, 0xDF, 0, 0);
-        } else if (p->motionId[0] == 0xDF && p->motion[0].playing == 0) {
-            Player_SetMotionPair(p, 0xD2, 4, 0xAA);
+        if (pl->motionId[0] == 0xD2 && Motion_PassedFrame(pl, 0, 170.0f) != 0 && !(Rand_Next(1) & 0x3F)) {
+            Player_SetMotionPair(pl, 0xDF, 0, 0);
+        } else if (pl->motionId[0] == 0xDF && pl->motion[0].playing == 0) {
+            Player_SetMotionPair(pl, 0xD2, 4, 0xAA);
         }
-        if (p->step < 3 && !(p->stateVar0 & 0x1F)) {
-            Effect06_SpawnAtBone(p, 5, 0, 2, 0.75f);
+        if (pl->step < 3 && !(pl->stateVar0 & 0x1F)) {
+            Effect06_SpawnAtBone(pl, 5, 0, 2, 0.75f);
         }
         break;
     case 3:
-        p->noHitTimer = 2;
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-            p->noHitTimer = 6;
+        pl->noHitTimer = 2;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+            pl->noHitTimer = 6;
         }
         break;
     }
 }
 
-void Player_State2_17(Player *p, s32 unused)
+void Player_StateGuardDraw(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x3FA, 2, 1);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x8000);
-        p->weaponOut = 1;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x3FA, 2, 1);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x8000);
+        pl->weaponOut = 1;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 2U, 0xCU, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
         }
         break;
     }
 }
 
-void Player_UpdateMashEscape(Player *p, s32 caller)
+void Player_UpdateMashEscape(Player *pl, s32 caller)
 {
     s16 n;
 
-    if (Player_IsLocal(p) != 0) {
-        if (p->mashTimer == 0) {
-            if ((p->input.pressed & 0x3FF) || (p->input.stickDirPressed & 0x3C3C)) {
-                if (p->mashLeft > 0) {
+    if (Player_IsLocal(pl) != 0) {
+        if (pl->mashTimer == 0) {
+            if ((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) {
+                if (pl->mashLeft > 0) {
                     n = 10;
-                    if (Player_HasSkill(p, 0x10) == 1) {
+                    if (Player_HasSkill(pl, 0x10) == 1) {
                         n *= 2;
                     }
-                    if (Player_HasSkill(p, 0x12) == 1) {
+                    if (Player_HasSkill(pl, 0x12) == 1) {
                         n /= 2;
                     }
-                    p->mashLeft -= n;
-                    if (p->mashLeft < 0) {
-                        p->mashLeft = 0;
+                    pl->mashLeft -= n;
+                    if (pl->mashLeft < 0) {
+                        pl->mashLeft = 0;
                     }
-                    p->mashTimer = 1;
+                    pl->mashTimer = 1;
                 }
             }
         } else {
-            p->mashTimer--;
+            pl->mashTimer--;
         }
-        if (p->mashLeft <= 0) {
-            Player_ClearMash(p);
-            p->statusIcons &= 0xFFBF;
-            Player_RequestState(p, 2, 0x1C, 0);
+        if (pl->mashLeft <= 0) {
+            Player_ClearMash(pl);
+            pl->statusIcons &= 0xFFBF;
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_FREE, 0);
             return;
         }
-        if (p->input.stickTilt >= 40) {
-            Player_FaceStick(p);
-            if ((p->input.held & 0x10) && p->dashDelay == 0) {
-                if (Player_IsState(p, 2, 0x20) == 0) {
-                    Player_RequestState(p, 2, 0x20, 0);
+        if (pl->input.stickTilt >= 40) {
+            Player_FaceStick(pl);
+            if ((pl->input.held & 0x10) && pl->dashDelay == 0) {
+                if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_MASH_RUN) == 0) {
+                    Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_RUN, 0);
                 }
-            } else if (Player_IsState(p, 2, 0x1F) == 0 && p->dashDelay == 0) {
-                Player_RequestState(p, 2, 0x1F, 0);
+            } else if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_MASH_WALK) == 0 && pl->dashDelay == 0) {
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_WALK, 0);
             }
-        } else if (Player_TestFlag(p, 0x2001200) != 0) {
-            if ((s16) caller != 1 || p->timer == 0) {
-                Player_RequestState(p, 2, 0x1E, 0);
+        } else if (Player_TestFlag(pl, 0x2001200) != 0) {
+            if ((s16) caller != 1 || pl->timer == 0) {
+                Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_IDLE, 0);
             }
         }
     }
 }
 
-static void Player_ClearMash(Player *p)
+static void Player_ClearMash(Player *pl)
 {
-    p->mashLeft = 0;
-    p->mashBuildup = 0;
-    p->mashTimer = 0;
+    pl->mashLeft = 0;
+    pl->mashBuildup = 0;
+    pl->mashTimer = 0;
 }
 
-void Player_State2_1B(Player *p, s32 variant)
+void Player_StateMashIdle(Player *pl, s32 variant)
 {
-    if (p->motionId[0] != 0x33) {
-        Player_SetMotionPair(p, 0x33, 4, 0);
+    if (pl->motionId[0] != 0x33) {
+        Player_SetMotionPair(pl, 0x33, 4, 0);
     }
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->weaponOut = 0;
+        pl->step++;
+        pl->weaponOut = 0;
         if (variant == 0) {
-            p->status4Buildup = 0;
-            p->status2Buildup = 0;
-            Player_ClearStatus5(p);
-            Player_ClearMash(p);
-            p->mashLeft = 900;
-            p->noFlinchTimer = 0;
-            p->noFlinchItemTimer = 0;
-            p->timer = 15;
+            pl->status4Buildup = 0;
+            pl->status2Buildup = 0;
+            Player_ClearStun(pl);
+            Player_ClearMash(pl);
+            pl->mashLeft = 900;
+            pl->noFlinchTimer = 0;
+            pl->noFlinchItemTimer = 0;
+            pl->timer = 15;
         } else {
-            p->timer = 30;
+            pl->timer = 30;
         }
-        Player_SetMoveMode(p, 0, 0, 1);
-        p->weaponOut = 0;
+        Player_SetMoveMode(pl, 0, 0, 1);
+        pl->weaponOut = 0;
     case 1:
-        if (--p->timer <= 0) {
-            p->step++;
+        if (--pl->timer <= 0) {
+            pl->step++;
         }
         break;
     case 2:
-        if (Player_IsLocal(p) == 1) {
-            Player_UpdateMashEscape(p, 0);
+        if (Player_IsLocal(pl) == 1) {
+            Player_UpdateMashEscape(pl, 0);
         }
         break;
     }
 }
 
-void Player_State2_1C(Player *p, s32 unused)
+void Player_StateMashFree(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->weaponOut = 0;
-        Player_SetMoveMode(p, 0, 0, 1);
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x197, 6, 0);
-        StageObj_K1B_Create(0, (s16 *) p);
+        pl->step++;
+        pl->weaponOut = 0;
+        Player_SetMoveMode(pl, 0, 0, 1);
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x197, 6, 0);
+        StageObj_K1B_Create(0, (s16 *) pl);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State2_1D(Player *p, s32 variant)
+void Player_StateQuake(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x1A, 6, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 1);
+        pl->step++;
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x1A, 6, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 1);
         if (variant == 0) {
-            p->timer = 0x28;
+            pl->timer = 0x28;
             break;
         }
-        p->timer = 0x50;
+        pl->timer = 0x50;
         break;
     case 1:
-        if (--p->timer <= 0) {
-            Player_BeginState(p, 0, 0xC, 0);
+        if (--pl->timer <= 0) {
+            Player_BeginState(pl, 0, 0xC, 0);
         }
         break;
     }
 }
 
-void Player_State2_1F(Player *p, s32 unused)
+void Player_StateMashWalk(Player *pl, s32 unused)
 {
     f32 v[3];
     f32 d[3];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->timer = 0x14;
-        p->dashDelay = 0x1E;
-        Player_SetMotionPair(p, 0x34, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x1000);
+        pl->step++;
+        pl->timer = 0x14;
+        pl->dashDelay = 0x1E;
+        Player_SetMotionPair(pl, 0x34, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x1000);
         break;
     case 1:
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 2.0f;
-        Vec_Rotate(d, v, p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[2] += d[2];
-        if (p->timer > 0) {
-            p->timer--;
+        Vec_Rotate(d, v, pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[2] += d[2];
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        Player_UpdateMashEscape(p, 1);
+        Player_UpdateMashEscape(pl, 1);
         break;
     }
     if (((s32) gScene.frame % 10) == 0) {
-        StageObj_K1B_Create(1, (s16 *) p);
+        StageObj_K1B_Create(1, (s16 *) pl);
     }
 }
 
-void Player_State2_20(Player *p, s32 unused)
+void Player_StateMashRun(Player *pl, s32 unused)
 {
     f32 v[3];
     f32 d[3];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        if (p->gender == 0) {
-            Player_SetMotionPair(p, 0x35, 4, 0);
+        pl->step++;
+        if (pl->gender == 0) {
+            Player_SetMotionPair(pl, 0x35, 4, 0);
         } else {
-            Player_SetMotionPair(p, 0x3B, 4, 0);
+            Player_SetMotionPair(pl, 0x3B, 4, 0);
         }
-        p->timer = 0x14;
-        p->dashDelay = 0x1E;
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x2000200);
+        pl->timer = 0x14;
+        pl->dashDelay = 0x1E;
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x2000200);
         break;
     case 1:
-        if (Player_FloorAheadBelow(p, 0, 85.0f, -60.0f) != 0) {
-            p->targetYaw = p->rot[1];
-            Player_RequestState(p, 2, 0x21, 0);
+        if (Player_FloorAheadBelow(pl, 0, 85.0f, -60.0f) != 0) {
+            pl->targetYaw = pl->rot[1];
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_JUMP_OFF, 0);
             return;
         }
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 5.0f;
-        Vec_Rotate(d, v, p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[2] += d[2];
-        if (p->timer > 0) {
-            p->timer--;
+        Vec_Rotate(d, v, pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[2] += d[2];
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        Player_UpdateMashEscape(p, 1);
+        Player_UpdateMashEscape(pl, 1);
         break;
     }
     if (((s32) gScene.frame % 10) == 0) {
-        StageObj_K1B_Create(1, (s16 *) p);
+        StageObj_K1B_Create(1, (s16 *) pl);
     }
 }
 
-void Player_State2_21(Player *p, s32 variant)
+void Player_StateMashAirborne(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
 
-    p->timer++;
-    switch (p->step) {
+    pl->timer++;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->action = 2;
+        pl->step++;
+        pl->action = 2;
         switch (variant) {
         case 0:
         default:
-            Player_SetMotionPair(p, 0x38, 0, 0);
-            p->vel[0] = 0.0f;
-            p->vel[2] = 20.0f;
-            p->vel[1] = 18.0f;
-            p->accel[0] = 0.0f;
-            p->accel[2] = -(p->vel[2] / 80.0f);
-            Player_StartJump(p, 0x13);
+            Player_SetMotionPair(pl, 0x38, 0, 0);
+            pl->vel[0] = 0.0f;
+            pl->vel[2] = 20.0f;
+            pl->vel[1] = 18.0f;
+            pl->accel[0] = 0.0f;
+            pl->accel[2] = -(pl->vel[2] / 80.0f);
+            Player_StartJump(pl, 0x13);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x38, 8, 0x20);
-            p->rideState = 0;
-            p->vel[0] = 0.0f;
-            p->vel[2] = 8.0f;
-            p->vel[1] = -10.0f;
-            p->accel[2] = 0.0f;
-            p->accel[0] = 0.0f;
-            p->accel[1] = -8.0f / 11.0f;
+            Player_SetMotionPair(pl, 0x38, 8, 0x20);
+            pl->rideState = 0;
+            pl->vel[0] = 0.0f;
+            pl->vel[2] = 8.0f;
+            pl->vel[1] = -10.0f;
+            pl->accel[2] = 0.0f;
+            pl->accel[0] = 0.0f;
+            pl->accel[1] = -8.0f / 11.0f;
             break;
         }
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 2, 0, 0);
-        p->timer = 0;
-        p->stateVar1 = 0;
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 2, 0, 0);
+        pl->timer = 0;
+        pl->stateVar1 = 0;
         break;
     case 1:
-        p->vel[0] += p->accel[0];
-        p->vel[1] += p->accel[1];
-        p->vel[2] += p->accel[2];
-        if (p->vel[0] < 0.0f) {
-            p->vel[0] = 0.0f;
+        pl->vel[0] += pl->accel[0];
+        pl->vel[1] += pl->accel[1];
+        pl->vel[2] += pl->accel[2];
+        if (pl->vel[0] < 0.0f) {
+            pl->vel[0] = 0.0f;
         }
-        if (p->vel[2] < 0.0f) {
-            p->vel[2] = 0.0f;
+        if (pl->vel[2] < 0.0f) {
+            pl->vel[2] = 0.0f;
         }
-        v[0] = p->vel[0];
-        v[1] = p->vel[1];
-        v[2] = p->vel[2];
-        Vec_Rotate(d, v, p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[1] += d[1];
-        p->pos[2] += d[2];
-        if (p->vel[1] < 0.0f) {
-            p->timer++;
-            if (!(p->floorY < p->pos[1])) {
-                p->pos[1] = p->floorY;
-                p->action = 0;
-                p->rideState = 0;
-                if (p->timer >= 50) {
-                    StageObj_K1B_Create(0, (s16 *) p);
-                    Player_ClearMash(p);
-                    Player_RequestState(p, 0, 0x26, 0);
-                } else if (p->timer >= 30) {
-                    Player_RequestState(p, 2, 0x22, 2);
+        v[0] = pl->vel[0];
+        v[1] = pl->vel[1];
+        v[2] = pl->vel[2];
+        Vec_Rotate(d, v, pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[1] += d[1];
+        pl->pos[2] += d[2];
+        if (pl->vel[1] < 0.0f) {
+            pl->timer++;
+            if (!(pl->floorY < pl->pos[1])) {
+                pl->pos[1] = pl->floorY;
+                pl->action = 0;
+                pl->rideState = 0;
+                if (pl->timer >= 50) {
+                    StageObj_K1B_Create(0, (s16 *) pl);
+                    Player_ClearMash(pl);
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LAND_HARD, 0);
+                } else if (pl->timer >= 30) {
+                    Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_LAND_HARD, PL_SET_NO_SYNC);
                 } else {
-                    Player_RequestState(p, 2, 0x23, 2);
+                    Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_LAND, PL_SET_NO_SYNC);
                 }
             }
         }
         break;
     }
     if (((s32) gScene.frame % 10) == 0) {
-        StageObj_K1B_Create(1, (s16 *) p);
+        StageObj_K1B_Create(1, (s16 *) pl);
     }
 }
 
-void Player_State2_22(Player *p, s32 variant)
+void Player_StateMashLand(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x39, 0, 0);
+            Player_SetMotionPair(pl, 0x39, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0x3A, 0, 0);
+            Player_SetMotionPair(pl, 0x3A, 0, 0);
         }
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 2U, 0x1EU, 2);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_IDLE, PL_SET_NO_SYNC);
         }
         break;
     }
     if (((s32) gScene.frame % 10) == 0) {
-        StageObj_K1B_Create(1, (s16 *) p);
+        StageObj_K1B_Create(1, (s16 *) pl);
     }
 }
 
-void Player_State2_27(Player *p, s32 variant)
+void Player_StateInhaled(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
@@ -9136,31 +9136,31 @@ void Player_State2_27(Player *p, s32 variant)
     Em *m;
     s16 i;
     s16 found;
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->demonMode = 0;
-        Player_SetMotionPair(p, 0xD5, 0, 0);
-        p->noHitTimer = 10;
-        Em_GetBonePos(p, 2, v);
-        if (p->pos[1] < v[1]) {
-            p->pos[1] = v[1];
+        pl->step++;
+        pl->demonMode = 0;
+        Player_SetMotionPair(pl, 0xD5, 0, 0);
+        pl->noHitTimer = 10;
+        Em_GetBonePos(pl, 2, v);
+        if (pl->pos[1] < v[1]) {
+            pl->pos[1] = v[1];
         }
-        Player_SetMoveMode(p, 2, 0, 1);
-        p->rideState = 0;
-        Player_ClearAccel(p);
+        Player_SetMoveMode(pl, 2, 0, 1);
+        pl->rideState = 0;
+        Player_ClearAccel(pl);
         found = 0;
         m = gEms;
         for (i = 0; i < 20; i++, m++) {
             if (m->active && m->visible && (Player_InCurrentArea(m) & 0xFF) && m->type == 0x3A) {
                 found = 1;
                 Em_BonePos(m, 0x24, t);
-                p->rot[1] = Vec_Heading(p->pos, t) + 0x4000;
-                p->targetYaw = p->rot[1];
+                pl->rot[1] = Vec_Heading(pl->pos, t) + 0x4000;
+                pl->targetYaw = pl->rot[1];
             }
         }
         ang[0] = 0;
-        ang[1] = p->rot[1];
+        ang[1] = pl->rot[1];
         ang[2] = 0;
         Mtx_FromAnglesXYZ(ang, mtx);
         if (found == 0) {
@@ -9168,203 +9168,203 @@ void Player_State2_27(Player *p, s32 variant)
             v[1] = 0.0f;
             v[2] = -7.0f;
             Vec_Rotate(d, v, mtx);
-            p->vel[0] = 2.0f * d[0];
-            p->vel[2] = 2.0f * d[2];
-            p->vel[1] = 20.0f;
-            p->accel[1] = -8.0f / 11.0f;
+            pl->vel[0] = 2.0f * d[0];
+            pl->vel[2] = 2.0f * d[2];
+            pl->vel[1] = 20.0f;
+            pl->accel[1] = -8.0f / 11.0f;
         } else {
-            d[0] = (t[0] - p->pos[0]) / 50.0f;
-            d[1] = (t[1] - p->pos[1]) / 50.0f;
-            d[2] = (t[2] - p->pos[2]) / 50.0f;
-            p->vel[0] = d[0];
-            p->vel[2] = d[2];
+            d[0] = (t[0] - pl->pos[0]) / 50.0f;
+            d[1] = (t[1] - pl->pos[1]) / 50.0f;
+            d[2] = (t[2] - pl->pos[2]) / 50.0f;
+            pl->vel[0] = d[0];
+            pl->vel[2] = d[2];
             if (d[1] <= 15.0f) {
                 d[1] = 15.0f;
             }
-            p->vel[1] = 2.0f * d[1];
-            p->accel[1] = -8.0f / 11.0f;
+            pl->vel[1] = 2.0f * d[1];
+            pl->accel[1] = -8.0f / 11.0f;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0 && (p->motionId[0] == 0xD5 || p->motionId[0] == 0xDB)) {
+        if (pl->motion[0].playing == 0 && (pl->motionId[0] == 0xD5 || pl->motionId[0] == 0xDB)) {
             if (variant == 0) {
-                Player_SetMotionPair(p, 0xD6, 0, 0);
+                Player_SetMotionPair(pl, 0xD6, 0, 0);
             } else {
-                Player_SetMotionPair(p, 0xDC, 0, 0);
+                Player_SetMotionPair(pl, 0xDC, 0, 0);
             }
         }
-        Player_MoveAccel(p);
-        if (p->vel[1] <= 0.0f && p->pos[1] <= 63.0f + p->floorY) {
-            p->noHitTimer = 2;
-            p->step++;
-            Sound_PlayPlayerSe(p, 0x42, 0, p->pos, 1, 0);
-            Sound_PlayArmorRattle(p, 3);
-            Player_SetMotionPair(p, 0xD7, 0, 0);
-            p->pos[1] = p->floorY;
-            p->action = 3;
+        Player_MoveAccel(pl);
+        if (pl->vel[1] <= 0.0f && pl->pos[1] <= 63.0f + pl->floorY) {
+            pl->noHitTimer = 2;
+            pl->step++;
+            Sound_PlayPlayerSe(pl, 0x42, 0, pl->pos, 1, 0);
+            Sound_PlayArmorRattle(pl, 3);
+            Player_SetMotionPair(pl, 0xD7, 0, 0);
+            pl->pos[1] = pl->floorY;
+            pl->action = 3;
         }
         break;
     case 2:
-        p->noHitTimer = 2;
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            p->rot[1] = (p->rot[1] + 0x8000) & 0xFFFF;
-            p->targetYaw = p->rot[1];
-            Player_SetMotionPair(p, 0xD8, 0, 0);
+        pl->noHitTimer = 2;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            pl->rot[1] = (pl->rot[1] + 0x8000) & 0xFFFF;
+            pl->targetYaw = pl->rot[1];
+            Player_SetMotionPair(pl, 0xD8, 0, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-            p->noHitTimer = 6;
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+            pl->noHitTimer = 6;
         }
         break;
     }
 }
 
-void Player_RunGroup2(Player *p)
+void Player_RunReactState(Player *pl)
 {
     u8 state;
     u8 carry;
 
-    Player_ResetAim(p);
-    p->supplyBoxOpen = 0;
-    p->deliveryMenu = 0;
-    p->deliveryOpen = 0;
-    p->tradeMsgTimer = 0;
-    p->noFlinchTimer = 0;
-    Player_ClearFlag(p, 0x80000);
-    state = p->state;
+    Player_ResetAim(pl);
+    pl->supplyBoxOpen = 0;
+    pl->deliveryMenu = 0;
+    pl->deliveryOpen = 0;
+    pl->tradeMsgTimer = 0;
+    pl->noFlinchTimer = 0;
+    Player_ClearFlag(pl, 0x80000);
+    state = pl->state;
     if ((state != 0x11) && (state != 0x12)) {
-        carry = p->carry;
+        carry = pl->carry;
         if (carry & 0xF) {
-            p->carry = carry & 0xF0;
-            StageObj_K0C_CreateAtPlayer(p, 4);
+            pl->carry = carry & 0xF0;
+            StageObj_K0C_CreateAtPlayer(pl, 4);
         }
     }
-    switch (p->state) {
-    case 0:
-        Player_State2_00(p);
+    switch (pl->state) {
+    case PL_REACT_KNOCKDOWN_FRONT:
+        Player_StateKnockdownFront(pl);
         break;
-    case 1:
-        Player_State2_01(p, 0);
+    case PL_REACT_GUARD_STAGGER:
+        Player_StateGuardRecoil(pl, 0);
         break;
-    case 2:
-        Player_State2_02(p);
+    case PL_REACT_BLOWN_BACK:
+        Player_StateBlownBack(pl);
         break;
-    case 3:
-        Player_State2_03(p, 0);
+    case PL_REACT_GUARD_START:
+        Player_StateGuard(pl, 0);
         break;
-    case 4:
-        Player_State2_04(p, 0);
+    case PL_REACT_ROAR_STRONG:
+        Player_StateRoarStrong(pl, 0);
         break;
-    case 5:
-        Player_State2_05(p);
+    case PL_REACT_BLOWN_FORWARD:
+        Player_StateBlownForward(pl);
         break;
-    case 6:
-        Player_State2_06(p);
+    case PL_REACT_KNOCKDOWN_BACK:
+        Player_StateKnockdownBack(pl);
         break;
-    case 7:
-        Player_State2_07(p, 0);
+    case PL_REACT_TOSSED_BACK:
+        Player_StateTossed(pl, 0);
         break;
-    case 8:
-        Player_State2_08(p);
+    case PL_REACT_GUARD_END:
+        Player_StateGuardEnd(pl);
         break;
-    case 9:
-        Player_State2_09(p, 0);
+    case PL_REACT_FLINCH_FRONT:
+        Player_StateFlinch(pl, 0);
         break;
-    case 10:
-        Player_State2_01(p, 1);
+    case PL_REACT_GUARD_KNOCKBACK:
+        Player_StateGuardRecoil(pl, 1);
         break;
-    case 11:
-        Player_State2_0B(p);
+    case PL_REACT_GUARD_PUSH:
+        Player_StateGuardPush(pl);
         break;
-    case 12:
-        Player_State2_03(p, 1);
+    case PL_REACT_GUARD_HOLD:
+        Player_StateGuard(pl, 1);
         break;
-    case 13:
-        Player_State2_09(p, 1);
+    case PL_REACT_FLINCH_BACK:
+        Player_StateFlinch(pl, 1);
         break;
-    case 14:
-        Player_State2_07(p, 1);
+    case PL_REACT_TOSSED_FORWARD:
+        Player_StateTossed(pl, 1);
         break;
-    case 15:
-        Player_State2_0F(p, 0);
+    case PL_REACT_ROAR:
+        Player_StateRoar(pl, 0);
         break;
-    case 16:
-        Player_State2_10(p, 0);
+    case PL_REACT_WIND:
+        Player_StateWind(pl, 0);
         break;
-    case 17:
-        Player_State2_11(p, 0);
+    case PL_REACT_FLINCH_CARRYING:
+        Player_StateFlinchCarrying(pl, 0);
         break;
-    case 18:
-        Player_State2_11(p, 1);
+    case PL_REACT_FLINCH_CARRYING2:
+        Player_StateFlinchCarrying(pl, 1);
         break;
-    case 19:
-        Player_State2_13(p, 0);
+    case PL_REACT_STUN:
+        Player_StateStun(pl, 0);
         break;
-    case 20:
-        Player_State2_14(p, 0);
+    case PL_REACT_14:
+        Player_StateReact14(pl, 0);
         break;
-    case 21:
-        Player_State2_15(p, 0);
+    case PL_REACT_STATUS2:
+        Player_StateStatus2(pl, 0);
         break;
-    case 22:
-        Player_State2_16(p, 0);
+    case PL_REACT_STATUS4:
+        Player_StateStatus4(pl, 0);
         break;
-    case 23:
-        Player_State2_17(p, 0);
+    case PL_REACT_GUARD_DRAW:
+        Player_StateGuardDraw(pl, 0);
         break;
-    case 24:
-        Player_State2_16(p, 1);
+    case PL_REACT_STATUS4_HIT:
+        Player_StateStatus4(pl, 1);
         break;
-    case 25:
-        Player_State2_10(p, 1);
+    case PL_REACT_WIND_SHORT:
+        Player_StateWind(pl, 1);
         break;
-    case 26:
-        Player_State2_0F(p, 1);
+    case PL_REACT_ROAR_SHORT:
+        Player_StateRoar(pl, 1);
         break;
-    case 27:
-        Player_State2_1B(p, 0);
+    case PL_REACT_MASH_START:
+        Player_StateMashIdle(pl, 0);
         break;
-    case 28:
-        Player_State2_1C(p, 0);
+    case PL_REACT_MASH_FREE:
+        Player_StateMashFree(pl, 0);
         break;
-    case 29:
-        Player_State2_1D(p, 0);
+    case PL_REACT_QUAKE:
+        Player_StateQuake(pl, 0);
         break;
-    case 30:
-        Player_State2_1B(p, 1);
+    case PL_REACT_MASH_IDLE:
+        Player_StateMashIdle(pl, 1);
         break;
-    case 31:
-        Player_State2_1F(p, 0);
+    case PL_REACT_MASH_WALK:
+        Player_StateMashWalk(pl, 0);
         break;
-    case 32:
-        Player_State2_20(p, 0);
+    case PL_REACT_MASH_RUN:
+        Player_StateMashRun(pl, 0);
         break;
-    case 33:
-        Player_State2_21(p, 0);
+    case PL_REACT_MASH_JUMP_OFF:
+        Player_StateMashAirborne(pl, 0);
         break;
-    case 34:
-        Player_State2_22(p, 0);
+    case PL_REACT_MASH_LAND_HARD:
+        Player_StateMashLand(pl, 0);
         break;
-    case 35:
-        Player_State2_22(p, 1);
+    case PL_REACT_MASH_LAND:
+        Player_StateMashLand(pl, 1);
         break;
-    case 36:
-        Player_State2_21(p, 1);
+    case PL_REACT_MASH_FALL:
+        Player_StateMashAirborne(pl, 1);
         break;
-    case 37:
-        Player_State2_1D(p, 1);
+    case PL_REACT_QUAKE_LONG:
+        Player_StateQuake(pl, 1);
         break;
-    case 38:
-        Player_State2_03(p, 2);
+    case PL_REACT_GUARD_HOLD_ALT:
+        Player_StateGuard(pl, 2);
         break;
-    case 39:
-        Player_State2_27(p, 0);
+    case PL_REACT_INHALED:
+        Player_StateInhaled(pl, 0);
         break;
     default:
-        Player_BeginState(p, 0, 4, 0);
+        Player_BeginState(pl, 0, 4, 0);
         break;
     }
 }
@@ -9373,45 +9373,45 @@ extern s32 gRewardZeroText;
 extern s32 gFaintedText;
 extern s32 gRewardZeroText2;
 extern s32 gNoMoreReviveText;
-void Player_State3_00(Player *p, s32 variant)
+void Player_StateFaint(Player *pl, s32 variant)
 {
     s8 f;
     s8 r;
     u8 k;
 
-    p->noPushTimer = 10;
-    Player_ResetAim(p);
-    p->supplyBoxOpen = 0;
-    p->deliveryMenu = 0;
-    p->deliveryOpen = 0;
-    p->tradeMsgTimer = 0;
-    Player_ClearFlag(p, 0x80000);
-    if (p->carry & 0xF) {
-        p->carry &= 0xF0;
-        StageObj_K0C_CreateAtPlayer(p, 4);
+    pl->noPushTimer = 10;
+    Player_ResetAim(pl);
+    pl->supplyBoxOpen = 0;
+    pl->deliveryMenu = 0;
+    pl->deliveryOpen = 0;
+    pl->tradeMsgTimer = 0;
+    Player_ClearFlag(pl, 0x80000);
+    if (pl->carry & 0xF) {
+        pl->carry &= 0xF0;
+        StageObj_K0C_CreateAtPlayer(pl, 4);
     }
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         switch (variant) {
         case 0:
-            Player_SetMotionPair(p, 0xD2, 0, 0);
+            Player_SetMotionPair(pl, 0xD2, 0, 0);
             break;
         case 1:
-            Player_SetMotionPair(p, 0xD2, 0, 0x8C);
+            Player_SetMotionPair(pl, 0xD2, 0, 0x8C);
             break;
         case 2:
-            Player_SetMotionPair(p, 0xD1, 0, 0x8C);
-            Player_SetFlag(p, 0x20000);
+            Player_SetMotionPair(pl, 0xD1, 0, 0x8C);
+            Player_SetFlag(pl, 0x20000);
             break;
         }
-        Vib_StartLocal(p, 3);
-        Player_UpdateMotionTime(p, 0);
-        Player_PlaySeAtSelf((u8 *) p, 0x22);
-        Player_ClearFlag(p, 2);
-        Player_ClearFlag(p, 0x8000);
-        p->weaponOut = 0;
-        switch (*(u8 *) &p->stateRand) {
+        Vib_StartLocal(pl, 3);
+        Player_UpdateMotionTime(pl, 0);
+        Player_PlaySeAtSelf((u8 *) pl, 0x22);
+        Player_ClearFlag(pl, 2);
+        Player_ClearFlag(pl, 0x8000);
+        pl->weaponOut = 0;
+        switch (*(u8 *) &pl->stateRand) {
         default:
             f = 0;
             break;
@@ -9419,22 +9419,22 @@ void Player_State3_00(Player *p, s32 variant)
             f = 1;
             break;
         }
-        if (p->side == 0) {
-            r = Quest_PlayerFainted(p, f);
+        if (pl->side == 0) {
+            r = Quest_PlayerFainted(pl, f);
             if (r != 0 && r != 3) {
-                p->step++;
+                pl->step++;
             }
         } else {
             r = 2;
-            Versus_MonsterDown((Em *) p);
+            Versus_MonsterDown((Em *) pl);
         }
-        if (p->faints <= 98) {
-            p->faints++;
+        if (pl->faints <= 98) {
+            pl->faints++;
         } else {
-            p->faints = 99;
+            pl->faints = 99;
         }
-        if (Player_IsLocal(p) == 0) {
-            Notice_Push(3, 0, p->index);
+        if (Player_IsLocal(pl) == 0) {
+            Notice_Push(3, 0, pl->index);
             if (r <= 1) {
                 Quest_ShowValue();
             }
@@ -9447,8 +9447,8 @@ void Player_State3_00(Player *p, s32 variant)
             if (r <= 1) {
                 Quest_ShowValue();
             }
-            if (p->step <= 1) {
-                func_3A1F30();
+            if (pl->step <= 1) {
+                Quest_ResetMusicIfIdle();
                 func_367A90();
             } else {
                 if (r == 1) {
@@ -9459,20 +9459,20 @@ void Player_State3_00(Player *p, s32 variant)
         }
         break;
     case 1:
-        if (p->side != 0) {
-            p->step = 3;
-            p->timer = 0;
+        if (pl->side != 0) {
+            pl->step = 3;
+            pl->timer = 0;
         }
-        if (p->motionId[0] == 0xD2 && Motion_PassedFrame(p, 0, 164.0f) != 0 && (Rand_Next(1) & 0x3F) == 0) {
-            Player_SetMotionPair(p, 0xDF, 0, 0);
-        } else if (p->motionId[0] == 0xDF && p->motion[0].playing == 0) {
-            Player_SetMotionPair(p, 0xD2, 4, 0xA4);
+        if (pl->motionId[0] == 0xD2 && Motion_PassedFrame(pl, 0, 164.0f) != 0 && (Rand_Next(1) & 0x3F) == 0) {
+            Player_SetMotionPair(pl, 0xDF, 0, 0);
+        } else if (pl->motionId[0] == 0xDF && pl->motion[0].playing == 0) {
+            Player_SetMotionPair(pl, 0xD2, 4, 0xA4);
         }
         if (Quest_PhaseIsOver(2) == 1) {
-            p->step++;
+            pl->step++;
             break;
         }
-        if (p->motionTime == 300 && Player_IsLocal(p) == 1) {
+        if (pl->motionTime == 300 && Player_IsLocal(pl) == 1) {
             switch (gScene.area) {
             case 0x7C:
             case 0x7E:
@@ -9484,99 +9484,99 @@ void Player_State3_00(Player *p, s32 variant)
                 break;
             }
         }
-        if (p->motionTime == 600 && Player_IsLocal(p) == 1) {
+        if (pl->motionTime == 600 && Player_IsLocal(pl) == 1) {
             switch (gScene.area) {
             case 0x7C:
                 k = 0x54;
-                p->areaMoveState = 3;
+                pl->areaMoveState = 3;
                 break;
             case 0x7E:
                 k = 0x7D;
-                p->areaMoveState = 3;
+                pl->areaMoveState = 3;
                 break;
             case 0x8A:
                 k = 0x81;
-                p->areaMoveState = 3;
+                pl->areaMoveState = 3;
                 break;
             default:
                 k = gScene.campArea;
-                p->areaMoveState = 2;
+                pl->areaMoveState = 2;
                 break;
             }
-            p->startPos[0] = gStartPos[k][0];
-            p->startPos[1] = D_43F0A4[k][0];
-            p->startPos[2] = D_43F0A8[k][0];
-            p->startAngle = gStartAngle[k];
-            p->nextArea = k;
-            QSync_SendPlayer(p, 4, 0);
+            pl->startPos[0] = gStartPos[k][0];
+            pl->startPos[1] = D_43F0A4[k][0];
+            pl->startPos[2] = D_43F0A8[k][0];
+            pl->startAngle = gStartAngle[k];
+            pl->nextArea = k;
+            QSync_SendPlayer(pl, 4, 0);
         }
         break;
     case 2:
         break;
     case 3:
-        if (p->motionId[0] == 0xD2 && Motion_PassedFrame(p, 0, 164.0f) != 0 && (Rand_Next(1) & 0x3F) == 0) {
-            Player_SetMotionPair(p, 0xDF, 0, 0);
-        } else if (p->motionId[0] == 0xDF && p->motion[0].playing == 0) {
-            Player_SetMotionPair(p, 0xD2, 4, 0xA4);
+        if (pl->motionId[0] == 0xD2 && Motion_PassedFrame(pl, 0, 164.0f) != 0 && (Rand_Next(1) & 0x3F) == 0) {
+            Player_SetMotionPair(pl, 0xDF, 0, 0);
+        } else if (pl->motionId[0] == 0xDF && pl->motion[0].playing == 0) {
+            Player_SetMotionPair(pl, 0xD2, 4, 0xA4);
         }
-        if (Player_IsLocal(p) == 1) {
-            if (++p->timer >= 450) {
+        if (Player_IsLocal(pl) == 1) {
+            if (++pl->timer >= 450) {
                 CamReq_Cancel();
-                p->hpMax = (s16)Player_GetHpSkillBonus(p) + 100;
-                if (p->hpMax > 150) {
-                    p->hpMax = 150;
+                pl->hpMax = (s16)Player_GetHpSkillBonus(pl) + 100;
+                if (pl->hpMax > 150) {
+                    pl->hpMax = 150;
                 }
-                p->hp = p->hpMax;
-                p->hpRecoverable = p->hpMax;
-                p->hpMaxBase = p->hpMax;
-                p->staminaMax = 300;
-                p->staminaTimer = 0x2A30;
-                p->stamina = p->staminaMax;
-                Player_ClearBuffs(p);
-                p->weaponSeMute = 0;
-                Player_RequestState(p, 4, 4, 2);
+                pl->hp = pl->hpMax;
+                pl->hpRecoverable = pl->hpMax;
+                pl->hpMaxBase = pl->hpMax;
+                pl->staminaMax = 300;
+                pl->staminaTimer = 0x2A30;
+                pl->stamina = pl->staminaMax;
+                Player_ClearBuffs(pl);
+                pl->weaponSeMute = 0;
+                Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_REVIVE, PL_SET_NO_SYNC);
             }
         }
         break;
     }
 }
 
-void Player_RunGroup3(Player *p)
+void Player_RunFaintState(Player *pl)
 {
-    p->supplyBoxOpen = 0;
-    p->deliveryMenu = 0;
-    p->deliveryOpen = 0;
-    p->tradeMsgTimer = 0;
-    switch (p->state) {
-    case 0:
-        Player_State3_00(p, 0);
+    pl->supplyBoxOpen = 0;
+    pl->deliveryMenu = 0;
+    pl->deliveryOpen = 0;
+    pl->tradeMsgTimer = 0;
+    switch (pl->state) {
+    case PL_FAINT:
+        Player_StateFaint(pl, 0);
         break;
-    case 1:
-        Player_State3_00(p, 1);
+    case PL_FAINT_FACE_UP:
+        Player_StateFaint(pl, 1);
         break;
-    case 2:
-        Player_State3_00(p, 2);
+    case PL_FAINT_FACE_DOWN:
+        Player_StateFaint(pl, 2);
         break;
     default:
-        Player_BeginState(p, 0, 4, 0);
+        Player_BeginState(pl, 0, 4, 0);
         break;
     }
 }
 
-void Player_State4_00(Player *p, s32 variant)
+void Player_StateCart(Player *pl, s32 variant)
 {
     Em *m;
     s16 i;
     s16 kind;
 
-    p->noPushTimer = 10;
-    p->noHitTimer = 10;
-    p->visible = 1;
-    switch (p->step) {
+    pl->noPushTimer = 10;
+    pl->noHitTimer = 10;
+    pl->visible = 1;
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         kind = -1;
-        p->stateVar0 = 0;
+        pl->stateVar0 = 0;
         for (i = 0; i < 4; i++) {
             if (gScene.emKind[i] == 0x12 && (m = EmSlot_Alloc()) != NULL) {
                 m->modelSlot = i;
@@ -9584,119 +9584,119 @@ void Player_State4_00(Player *p, s32 variant)
                 m->area = gScene.area;
                 m->variant = 0;
                 m->variant = 0xFF;
-                m->cartPlayer = p->index;
+                m->cartPlayer = pl->index;
                 GmEm_Task(m);
-                m->posX = p->pos[0];
-                m->posY = p->pos[1];
-                m->posZ = p->pos[2];
-                m->rotY = p->rot[1];
-                p->cart = m;
+                m->posX = pl->pos[0];
+                m->posY = pl->pos[1];
+                m->posZ = pl->pos[2];
+                m->rotY = pl->rot[1];
+                pl->cart = m;
                 kind = gScene.emKind[i];
                 break;
             }
         }
         if (kind != 0x12) {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
         } else {
-            p->stateVar1 = 0;
-            Player_SetMotionPair(p, 0xDD, 0, 0);
+            pl->stateVar1 = 0;
+            Player_SetMotionPair(pl, 0xDD, 0, 0);
         }
-        if (Player_IsLocal(p) == 1) {
+        if (Player_IsLocal(pl) == 1) {
             CamReq_Mode01();
         }
         break;
     case 1:
-        m = p->cart;
+        m = pl->cart;
         if (m == NULL) {
-            Player_BeginState(p, 0, 4, 0);
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        Em_BonePos(m, 0x1D, &p->pos[0]);
+        Em_BonePos(m, 0x1D, &pl->pos[0]);
         if (m->motionId[0] == 0x3EB) {
-            Player_RequestState(p, 4, 1, 2);
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_CART_DROP, PL_SET_NO_SYNC);
         }
-        p->rot[1] = m->rotY;
-        p->targetYaw = p->rot[1];
+        pl->rot[1] = m->rotY;
+        pl->targetYaw = pl->rot[1];
         break;
     }
 }
 
-void Player_State4_01(Player *p, s32 unused)
+void Player_StateCartDrop(Player *pl, s32 unused)
 {
     f32 floorY;
 
-    p->noPushTimer = 0xA;
-    p->noHitTimer = 0xA;
-    switch (p->step) {
+    pl->noPushTimer = 0xA;
+    pl->noHitTimer = 0xA;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0xDE, 0, 0);
-        p->action = 2;
+        pl->step++;
+        Player_SetMotionPair(pl, 0xDE, 0, 0);
+        pl->action = 2;
         break;
     case 1:
-        if (Motion_ReachedFrame(p, 0, 28.0f) != 0) {
-            p->pos[1] -= 4.0f;
+        if (Motion_ReachedFrame(pl, 0, 28.0f) != 0) {
+            pl->pos[1] -= 4.0f;
         }
-        floorY = p->floorY;
-        if (p->pos[1] <= floorY) {
-            p->pos[1] = floorY;
+        floorY = pl->floorY;
+        if (pl->pos[1] <= floorY) {
+            pl->pos[1] = floorY;
         }
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xD1, 0, 0x46);
-            p->action = 0;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xD1, 0, 0x46);
+            pl->action = 0;
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0xD8, 0, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0xD8, 0, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Player_State4_02(Player *p, s32 unused)
+void Player_StateQuestStart(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->unk7E5 = 1;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x197, 4, 0);
-        p->motionTime = 0;
+        pl->step++;
+        pl->unk7E5 = 1;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x197, 4, 0);
+        pl->motionTime = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State4_03(Player *p, s32 unused)
+void Player_StateQuestEnd(Player *pl, s32 unused)
 {
     u8 carry;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
-        Player_SetMotionPair(p, 0x26F, 6, 0);
-        p->motionTime = 0;
-        carry = p->carry;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
+        Player_SetMotionPair(pl, 0x26F, 6, 0);
+        pl->motionTime = 0;
+        carry = pl->carry;
         if (carry & 0xF) {
-            p->carry = carry & 0xF0;
-            StageObj_K0C_CreateAtPlayer(p, 4);
+            pl->carry = carry & 0xF0;
+            StageObj_K0C_CreateAtPlayer(pl, 4);
         }
-        if (Player_IsLocal(p) == 1) {
+        if (Player_IsLocal(pl) == 1) {
             CamReq_Mode0A();
         }
         
@@ -9705,172 +9705,172 @@ void Player_State4_03(Player *p, s32 unused)
     }
 }
 
-void Player_State4_04(Player *p, s32 unused)
+void Player_StateRevive(Player *pl, s32 unused)
 {
-    p->noHitTimer = 4;
-    switch (p->step) {
+    pl->noHitTimer = 4;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 0;
-        if (p->motionId[0] == 0xD1) {
-            Player_SetMotionPair(p, 0xD8, 0, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 0;
+        if (pl->motionId[0] == 0xD1) {
+            Player_SetMotionPair(pl, 0xD8, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0xCF, 0, 0);
+            Player_SetMotionPair(pl, 0xCF, 0, 0);
         }
-        p->motionTime = 0;
+        pl->motionTime = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->noHitTimer = 0x96;
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->noHitTimer = 0x96;
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State4_05(Player *p, s32 unused)
+void Player_StateLeave(Player *pl, s32 unused)
 {
     u8 carry;
 
-    p->noHitTimer = 0xA;
-    p->noPushTimer = 0xA;
-    Player_ResetAim(p);
-    p->supplyBoxOpen = 0;
-    p->deliveryMenu = 0;
-    p->deliveryOpen = 0;
-    p->tradeMsgTimer = 0;
-    Player_ClearFlag(p, 0x80000);
-    p->pos[1] = p->floorY;
-    switch (p->step) {
+    pl->noHitTimer = 0xA;
+    pl->noPushTimer = 0xA;
+    Player_ResetAim(pl);
+    pl->supplyBoxOpen = 0;
+    pl->deliveryMenu = 0;
+    pl->deliveryOpen = 0;
+    pl->tradeMsgTimer = 0;
+    Player_ClearFlag(pl, 0x80000);
+    pl->pos[1] = pl->floorY;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0xD2, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_PlaySeAtSelf((u8 *) p, 0x22);
-        Player_ClearFlag(p, 2);
-        Player_ClearFlag(p, 0x8000);
-        p->weaponOut = 0;
-        p->timer = 0x12C;
-        carry = p->carry;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0xD2, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_PlaySeAtSelf((u8 *) pl, 0x22);
+        Player_ClearFlag(pl, 2);
+        Player_ClearFlag(pl, 0x8000);
+        pl->weaponOut = 0;
+        pl->timer = 0x12C;
+        carry = pl->carry;
         if (carry & 0xF) {
-            p->carry = carry & 0xF0;
-            StageObj_K0C_CreateAtPlayer(p, 4);
+            pl->carry = carry & 0xF0;
+            StageObj_K0C_CreateAtPlayer(pl, 4);
         }
         if (Game_IsOnline() != 1) {
             return;
         }
         return;
     case 1:
-        if (--p->timer <= 0) {
-            p->step++;
+        if (--pl->timer <= 0) {
+            pl->step++;
             return;
         }
         break;
     case 2:
-        p->active = 0;
-        p->visible = 0;
+        pl->active = 0;
+        pl->visible = 0;
         break;
     }
 }
 
-void Player_State4_06(Player *p, s32 unused)
+void Player_StateQuestAbort(Player *pl, s32 unused)
 {
     u8 carry;
 
-    p->noHitTimer = 0xA;
-    p->noPushTimer = 0xA;
-    Player_ResetAim(p);
-    p->supplyBoxOpen = 0;
-    p->deliveryMenu = 0;
-    p->deliveryOpen = 0;
-    p->tradeMsgTimer = 0;
-    Player_ClearFlag(p, 0x80000);
-    p->pos[1] = p->floorY;
-    switch (p->step) {
+    pl->noHitTimer = 0xA;
+    pl->noPushTimer = 0xA;
+    Player_ResetAim(pl);
+    pl->supplyBoxOpen = 0;
+    pl->deliveryMenu = 0;
+    pl->deliveryOpen = 0;
+    pl->tradeMsgTimer = 0;
+    Player_ClearFlag(pl, 0x80000);
+    pl->pos[1] = pl->floorY;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x15, 0, 0);
-        Player_ClearFlag(p, 2);
-        Player_ClearFlag(p, 0x8000);
-        p->weaponOut = 0;
-        p->timer = 0x12C;
-        carry = p->carry;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x15, 0, 0);
+        Player_ClearFlag(pl, 2);
+        Player_ClearFlag(pl, 0x8000);
+        pl->weaponOut = 0;
+        pl->timer = 0x12C;
+        carry = pl->carry;
         if (carry & 0xF) {
-            p->carry = carry & 0xF0;
-            StageObj_K0C_CreateAtPlayer(p, 4);
+            pl->carry = carry & 0xF0;
+            StageObj_K0C_CreateAtPlayer(pl, 4);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 5, 4, 0x90);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 5, 4, 0x90);
         }
         break;
     case 2:
-        if (--p->timer <= 0) {
-            p->step++;
+        if (--pl->timer <= 0) {
+            pl->step++;
         }
         break;
     case 3:
-        p->active = 0;
-        p->visible = 0;
+        pl->active = 0;
+        pl->visible = 0;
         break;
     }
 }
 
-void Player_RunGroup4(Player *p)
+void Player_RunEventState(Player *pl)
 {
-    p->supplyBoxOpen = 0;
-    p->deliveryMenu = 0;
-    p->tradeMsgTimer = 0;
-    p->deliveryOpen = 0;
-    switch (p->state) {
-    case 0:
-        Player_State4_00(p, 0);
+    pl->supplyBoxOpen = 0;
+    pl->deliveryMenu = 0;
+    pl->tradeMsgTimer = 0;
+    pl->deliveryOpen = 0;
+    switch (pl->state) {
+    case PL_EVENT_CART:
+        Player_StateCart(pl, 0);
         break;
-    case 1:
-        Player_State4_01(p, 0);
+    case PL_EVENT_CART_DROP:
+        Player_StateCartDrop(pl, 0);
         break;
-    case 2:
-        Player_State4_02(p, 0);
+    case PL_EVENT_QUEST_START:
+        Player_StateQuestStart(pl, 0);
         break;
-    case 3:
-        Player_State4_03(p, 0);
+    case PL_EVENT_QUEST_END:
+        Player_StateQuestEnd(pl, 0);
         break;
-    case 4:
-        Player_State4_04(p, 0);
+    case PL_EVENT_REVIVE:
+        Player_StateRevive(pl, 0);
         break;
-    case 5:
-        Player_State4_05(p, 0);
+    case PL_EVENT_LEAVE:
+        Player_StateLeave(pl, 0);
         break;
-    case 6:
-        Player_State4_06(p, 0);
+    case PL_EVENT_ABORT:
+        Player_StateQuestAbort(pl, 0);
         break;
     default:
-        Player_BeginState(p, 0, 4, 0);
+        Player_BeginState(pl, 0, 4, 0);
         break;
     }
 }
 
-void Player_UpdateCarryKind(Player *p)
+void Player_UpdateCarryKind(Player *pl)
 {
     u16 slot;
 
-    if (Player_IsLocal(p) == 1 && Player_IsState(p, 5, 10) == 0 && Player_IsState(p, 5, 11) == 0) {
-        slot = Pouch_FindCarryItem(p);
+    if (Player_IsLocal(pl) == 1 && Player_IsState(pl, PL_GROUP_CARRY, PL_CARRY_DELIVER) == 0 && Player_IsState(pl, PL_GROUP_CARRY, PL_CARRY_HAND_OVER) == 0) {
+        slot = Pouch_FindCarryItem(pl);
         if (slot != 0xFFFF) {
-            p->carry = ((Item_CarryKind(slot) & 0xFF) - 1) * 0x10;
+            pl->carry = ((Item_CarryKind(slot) & 0xFF) - 1) * 0x10;
         } else {
-            p->carry = 0;
+            pl->carry = 0;
         }
     }
-    p->carry = (p->carry & 0xF0) | 4;
+    pl->carry = (pl->carry & 0xF0) | 4;
 }
 
-void Player_UpdateCarryInput(Player *p, s32 caller)
+void Player_UpdateCarryInput(Player *pl, s32 caller)
 {
     f32 buf[3];
     ItemStack st;
@@ -9878,85 +9878,85 @@ void Player_UpdateCarryInput(Player *p, s32 caller)
     u8 k;
     s16 i;
 
-    if (Player_IsLocal(p) != 0) {
+    if (Player_IsLocal(pl) != 0) {
         switch (gScene.questPhase) {
         case 6:
         case 5:
-            Player_RequestState(p, 4, 3, 0);
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_QUEST_END, 0);
             break;
         case 7:
-            Player_RequestState(p, 4, 6, 0);
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_ABORT, 0);
             break;
         case 8:
-            Player_RequestState(p, 4, 5, 0);
+            Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_LEAVE, 0);
             break;
         default:
-            if ((u16) Pouch_FindCarryItem(p) == 0xFFFF) {
-                Player_RequestState(p, 5, 3, 0);
+            if ((u16) Pouch_FindCarryItem(pl) == 0xFFFF) {
+                Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_DROP, 0);
                 break;
             }
-            if (p->input.stickTilt >= 40) {
-                Player_FaceStick(p);
-                if ((p->input.held & 0x10) && p->dashDelay == 0) {
-                    if (Player_IsState(p, 5, 2) == 0) {
-                        Player_RequestState(p, 5, 2, 0);
+            if (pl->input.stickTilt >= 40) {
+                Player_FaceStick(pl);
+                if ((pl->input.held & 0x10) && pl->dashDelay == 0) {
+                    if (Player_IsState(pl, PL_GROUP_CARRY, PL_CARRY_RUN) == 0) {
+                        Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_RUN, 0);
                     }
-                } else if (Player_IsState(p, 5, 1) == 0 && p->dashDelay == 0) {
-                    Player_RequestState(p, 5, 1, 0);
+                } else if (Player_IsState(pl, PL_GROUP_CARRY, PL_CARRY_WALK) == 0 && pl->dashDelay == 0) {
+                    Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_WALK, 0);
                 }
-            } else if (Player_TestFlag(p, 0x2001200) != 0) {
-                if ((s16) caller != 1 || p->timer == 0) {
-                    Player_RequestState(p, 5, 0, 0);
+            } else if (Player_TestFlag(pl, 0x2001200) != 0) {
+                if ((s16) caller != 1 || pl->timer == 0) {
+                    Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_IDLE, 0);
                 }
             }
             if (Quest_PhaseIsOver(1) == 1) {
                 break;
             }
-            if (p->input.pressed & 0x40) {
-                if (p->input.stickTilt >= 85) {
-                    if (p->stamina >= 75) {
-                        Player_RequestState(p, 0, 0x1C, 4);
+            if (pl->input.pressed & 0x40) {
+                if (pl->input.stickTilt >= 85) {
+                    if (pl->stamina >= 75) {
+                        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                     }
                 } else {
-                    Player_RequestState(p, 0, 8, 0);
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH, 0);
                 }
                 return;
             }
-            if (p->input.stickDirPressed & 0x3C) {
-                Player_RequestState(p, 0, 4, 0);
+            if (pl->input.stickDirPressed & 0x3C) {
+                Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DRAW, 0);
                 break;
             }
-            if ((p->input.pressed & 0x200) && p->itemSelect == 0) {
-                Player_RequestState(p, 5, 3, 0);
+            if ((pl->input.pressed & 0x200) && pl->itemSelect == 0) {
+                Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_DROP, 0);
             }
-            Player_TryDrawWeapon(p, 2);
-            if (p->input.pressed & 0x20) {
-                switch (Player_FindActionSpot((Player *)p, (f32 *)buf, &ang, (u8 *)&k)) {
+            Player_HoldSpecialInput(pl, 2);
+            if (pl->input.pressed & 0x20) {
+                switch (Player_FindActionSpot((Player *)pl, (f32 *)buf, &ang, (u8 *)&k)) {
                 case 7:
                     if (Quest_PhaseIsOver(0) == 1) {
                         break;
                     }
                     for (i = 0; i < 3; i++) {
-                        if (Quest_GetDeliveryTarget(p, i, &st) == 2 && st.item == (u16) Pouch_FindCarryItem(p)) {
-                            Quest_DeliverItem(p, st.item, 1);
+                        if (Quest_GetDeliveryTarget(pl, i, &st) == 2 && st.item == (u16) Pouch_FindCarryItem(pl)) {
+                            Quest_DeliverItem(pl, st.item, 1);
                         }
                     }
-                    if ((u16) Pouch_FindCarryItem(p) == 0xFFFF) {
-                        Player_RequestState(p, 5, 0xA, 0);
+                    if ((u16) Pouch_FindCarryItem(pl) == 0xFFFF) {
+                        Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_DELIVER, 0);
                     }
                     break;
                 case 8:
-                    if ((u16) Pouch_FindCarryItem(p) == 0x29C) {
-                        p->carry &= 0xF0;
-                        Pouch_Add(p, 0x29C, -10);
-                        p->targetYaw = ang;
-                        p->stateRand = k;
-                        Player_RequestState(p, 0, 0x37, 0x20);
+                    if ((u16) Pouch_FindCarryItem(pl) == 0x29C) {
+                        pl->carry &= 0xF0;
+                        Pouch_Add(pl, 0x29C, -10);
+                        pl->targetYaw = ang;
+                        pl->stateRand = k;
+                        Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CANNON_FIRE, PL_SET_KEEP_RAND);
                     }
                     break;
                 default:
-                    if (Player_NearEmKind10(p) & 0xFF) {
-                        Player_RequestState(p, 5, 0xB, 0);
+                    if (Player_NearEmKind10(pl) & 0xFF) {
+                        Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_HAND_OVER, 0);
                         return;
                     }
                     break;
@@ -9967,234 +9967,234 @@ void Player_UpdateCarryInput(Player *p, s32 caller)
     }
 }
 
-void Player_State5_00(Player *p, s32 variant)
+void Player_StateCarryIdle(Player *pl, s32 variant)
 {
     s32 timer;
 
-    Player_UpdateCarryKind(p);
-    switch (p->step) {
+    Player_UpdateCarryKind(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->timer = 0x1E;
-        p->dashDelay = 0;
+        pl->step++;
+        pl->timer = 0x1E;
+        pl->dashDelay = 0;
         
     case 1:
-        if (p->motionId[0] != 0x33) {
-            Player_SetMotionPair(p, 0x33, 4, 0);
+        if (pl->motionId[0] != 0x33) {
+            Player_SetMotionPair(pl, 0x33, 4, 0);
         }
         if (variant == 1) {
-            timer = p->timer;
+            timer = pl->timer;
             if (timer <= 0) {
-                Player_UpdateCarryInput(p, 0);
+                Player_UpdateCarryInput(pl, 0);
                 break;
             }
-            p->timer = timer - 1;
+            pl->timer = timer - 1;
             break;
         }
-        Player_UpdateCarryInput(p, 0);
+        Player_UpdateCarryInput(pl, 0);
         break;
     }
 }
 
-void Player_State5_01(Player *p, s32 unused)
+void Player_StateCarryWalk(Player *pl, s32 unused)
 {
     f32 v[3];
     f32 d[3];
 
-    Player_UpdateCarryKind(p);
-    switch (p->step) {
+    Player_UpdateCarryKind(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->timer = 0x14;
-        p->dashDelay = 0x1E;
-        Player_SetMotionPair(p, 0x34, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x1000);
+        pl->step++;
+        pl->timer = 0x14;
+        pl->dashDelay = 0x1E;
+        Player_SetMotionPair(pl, 0x34, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x1000);
         break;
     case 1:
-        if (func_3B5440((Em *) p) != 0) {
+        if (func_3B5440((Em *) pl) != 0) {
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = 2.0f;
-            Vec_Rotate(d, v, p->rotMtx);
-            p->pos[0] += d[0];
-            p->pos[2] += d[2];
+            Vec_Rotate(d, v, pl->rotMtx);
+            pl->pos[0] += d[0];
+            pl->pos[2] += d[2];
         }
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        Player_UpdateCarryInput(p, 1);
+        Player_UpdateCarryInput(pl, 1);
         break;
     }
 }
 
-void Player_State5_02(Player *p, s32 unused)
+void Player_StateCarryRun(Player *pl, s32 unused)
 {
     f32 v[3];
     f32 d[3];
 
-    Player_UpdateCarryKind(p);
-    switch (p->step) {
+    Player_UpdateCarryKind(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
-        if (p->gender == 0) {
-            Player_SetMotionPair(p, 0x35, 4, 0);
+        pl->step++;
+        if (pl->gender == 0) {
+            Player_SetMotionPair(pl, 0x35, 4, 0);
         } else {
-            Player_SetMotionPair(p, 0x3B, 4, 0);
+            Player_SetMotionPair(pl, 0x3B, 4, 0);
         }
-        p->timer = 0x14;
-        p->dashDelay = 0x1E;
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetFlag(p, 0x2000200);
+        pl->timer = 0x14;
+        pl->dashDelay = 0x1E;
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetFlag(pl, 0x2000200);
         break;
     case 1:
-        if (Player_FloorAheadBelow(p, 0, 85.0f, -60.0f) != 0) {
-            p->targetYaw = p->rot[1];
-            Player_RequestState(p, 5, 5, 0);
+        if (Player_FloorAheadBelow(pl, 0, 85.0f, -60.0f) != 0) {
+            pl->targetYaw = pl->rot[1];
+            Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_JUMP_OFF, 0);
             break;
         }
-        Player_UseStamina(p, -1);
-        if (p->stamina <= 0) {
-            Player_RequestState(p, 5, 4, 0);
+        Player_UseStamina(pl, -1);
+        if (pl->stamina <= 0) {
+            Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_DROP_TIRED, 0);
             break;
         }
-        if (func_3B5440((Em *) p) != 0) {
+        if (func_3B5440((Em *) pl) != 0) {
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = 5.0f;
-            Vec_Rotate(d, v, p->rotMtx);
-            p->pos[0] += d[0];
-            p->pos[2] += d[2];
+            Vec_Rotate(d, v, pl->rotMtx);
+            pl->pos[0] += d[0];
+            pl->pos[2] += d[2];
         }
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        Player_UpdateCarryInput(p, 1);
+        Player_UpdateCarryInput(pl, 1);
         break;
     }
 }
 
-void Player_State5_03(Player *p, s32 variant)
+void Player_StateCarryPutDown(Player *pl, s32 variant)
 {
     u16 item;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         if (variant == 1) {
-            Player_SetMotionPair(p, 0x37, 4, 0);
+            Player_SetMotionPair(pl, 0x37, 4, 0);
         } else {
-            Player_SetMotionPair(p, 0x36, 4, 0);
+            Player_SetMotionPair(pl, 0x36, 4, 0);
         }
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (Motion_PassedFrame(p, 0, variant == 1 ? 4 : 0x72) != 0) {
-            p->step++;
-            p->carry &= 0xF0;
+        if (Motion_PassedFrame(pl, 0, variant == 1 ? 4 : 0x72) != 0) {
+            pl->step++;
+            pl->carry &= 0xF0;
             if (variant != 2) {
-                StageObj_K0C_CreateAtPlayer(p, 4);
+                StageObj_K0C_CreateAtPlayer(pl, 4);
             }
-            if (variant == 0 && Player_IsLocal(p) == 1) {
-                item = Pouch_FindCarryItem(p);
+            if (variant == 0 && Player_IsLocal(pl) == 1) {
+                item = Pouch_FindCarryItem(pl);
                 if (item != 0xFFFF) {
                     Notice_Push(1, 0xC, item);
-                    Pouch_Add(p, item, -100);
+                    Pouch_Add(pl, item, -100);
                 }
             }
             break;
         }
-        Player_UpdateCarryKind(p);
+        Player_UpdateCarryKind(pl);
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
         }
         break;
     }
 }
 
-void Player_State5_05(Player *p, s32 variant)
+void Player_StateCarryAirborne(Player *pl, s32 variant)
 {
     f32 v[3];
     f32 d[3];
     s16 hi;
     s16 lo;
 
-    Player_UpdateCarryKind(p);
-    p->timer++;
-    switch (p->step) {
+    Player_UpdateCarryKind(pl);
+    pl->timer++;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->action = 2;
+        pl->step++;
+        pl->action = 2;
         switch (variant) {
         case 0:
         default:
-            Player_SetMotionPair(p, 0x38, 0, 0);
-            p->vel[0] = 0.0f;
-            p->vel[2] = 20.0f;
-            p->vel[1] = 18.0f;
-            p->accel[0] = 0.0f;
-            p->accel[2] = -(p->vel[2] / 80.0f);
-            Player_StartJump(p, 0x13);
+            Player_SetMotionPair(pl, 0x38, 0, 0);
+            pl->vel[0] = 0.0f;
+            pl->vel[2] = 20.0f;
+            pl->vel[1] = 18.0f;
+            pl->accel[0] = 0.0f;
+            pl->accel[2] = -(pl->vel[2] / 80.0f);
+            Player_StartJump(pl, 0x13);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x38, 8, 0x20);
-            p->rideState = 0;
-            p->vel[0] = 0.0f;
-            p->vel[2] = 8.0f;
-            p->vel[1] = -10.0f;
-            p->accel[2] = 0.0f;
-            p->accel[0] = 0.0f;
-            p->accel[1] = -8.0f / 11.0f;
+            Player_SetMotionPair(pl, 0x38, 8, 0x20);
+            pl->rideState = 0;
+            pl->vel[0] = 0.0f;
+            pl->vel[2] = 8.0f;
+            pl->vel[1] = -10.0f;
+            pl->accel[2] = 0.0f;
+            pl->accel[0] = 0.0f;
+            pl->accel[1] = -8.0f / 11.0f;
             break;
         }
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 2, 0, 0);
-        p->timer = 0;
-        p->stateVar1 = 0;
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 2, 0, 0);
+        pl->timer = 0;
+        pl->stateVar1 = 0;
         break;
     case 1:
-        p->vel[0] += p->accel[0];
-        p->vel[1] += p->accel[1];
-        p->vel[2] += p->accel[2];
-        if (p->vel[0] < 0.0f) {
-            p->vel[0] = 0.0f;
+        pl->vel[0] += pl->accel[0];
+        pl->vel[1] += pl->accel[1];
+        pl->vel[2] += pl->accel[2];
+        if (pl->vel[0] < 0.0f) {
+            pl->vel[0] = 0.0f;
         }
-        if (p->vel[2] < 0.0f) {
-            p->vel[2] = 0.0f;
+        if (pl->vel[2] < 0.0f) {
+            pl->vel[2] = 0.0f;
         }
-        v[0] = p->vel[0];
-        v[1] = p->vel[1];
-        v[2] = p->vel[2];
-        Vec_Rotate(d, v, p->rotMtx);
-        p->pos[0] += d[0];
-        p->pos[1] += d[1];
-        p->pos[2] += d[2];
-        if (p->vel[1] < 0.0f) {
-            p->timer++;
-            if (!(p->floorY < p->pos[1])) {
-                p->pos[1] = p->floorY;
-                p->action = 0;
-                p->rideState = 0;
-                if (func_3B5440((Em *) p) == 1) {
+        v[0] = pl->vel[0];
+        v[1] = pl->vel[1];
+        v[2] = pl->vel[2];
+        Vec_Rotate(d, v, pl->rotMtx);
+        pl->pos[0] += d[0];
+        pl->pos[1] += d[1];
+        pl->pos[2] += d[2];
+        if (pl->vel[1] < 0.0f) {
+            pl->timer++;
+            if (!(pl->floorY < pl->pos[1])) {
+                pl->pos[1] = pl->floorY;
+                pl->action = 0;
+                pl->rideState = 0;
+                if (func_3B5440((Em *) pl) == 1) {
                     hi = 60;
                     lo = 40;
                 } else {
                     hi = 50;
                     lo = 30;
                 }
-                if (p->timer >= hi) {
-                    p->carry &= 0xF0;
-                    StageObj_K0C_CreateAtPlayer(p, 4);
-                    Player_RequestState(p, 0, 0x26, 0);
-                } else if (p->timer >= lo) {
-                    Player_RequestState(p, 5, 7, 2);
+                if (pl->timer >= hi) {
+                    pl->carry &= 0xF0;
+                    StageObj_K0C_CreateAtPlayer(pl, 4);
+                    Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LAND_HARD, 0);
+                } else if (pl->timer >= lo) {
+                    Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_LAND_HARD, PL_SET_NO_SYNC);
                 } else {
-                    Player_RequestState(p, 5, 8, 2);
+                    Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_LAND, PL_SET_NO_SYNC);
                 }
             }
         }
@@ -10202,133 +10202,133 @@ void Player_State5_05(Player *p, s32 variant)
     }
 }
 
-void Player_State5_07(Player *p, s32 variant)
+void Player_StateCarryLand(Player *pl, s32 variant)
 {
-    Player_UpdateCarryKind(p);
-    switch (p->step) {
+    Player_UpdateCarryKind(pl);
+    switch (pl->step) {
     case 0:
-        p->step++;
+        pl->step++;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x39, 0, 0);
+            Player_SetMotionPair(pl, 0x39, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0x3A, 0, 0);
+            Player_SetMotionPair(pl, 0x3A, 0, 0);
         }
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 5U, 0U, 2);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_IDLE, PL_SET_NO_SYNC);
         }
         break;
     }
 }
 
-void Player_State5_0B(Player *p, s32 unused)
+void Player_StateCarryHandOver(Player *pl, s32 unused)
 {
-    p->noHitTimer = 3;
-    switch (p->step) {
+    pl->noHitTimer = 3;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_UpdateCarryKind(p);
-        if (p->motionId[0] != 0x33) {
-            Player_SetMotionPair(p, 0x33, 4, 0);
+        pl->step++;
+        Player_UpdateCarryKind(pl);
+        if (pl->motionId[0] != 0x33) {
+            Player_SetMotionPair(pl, 0x33, 4, 0);
         }
-        p->tradeMsgTimer = 0x3C;
-        p->timer = 0x3C;
+        pl->tradeMsgTimer = 0x3C;
+        pl->timer = 0x3C;
         break;
     case 1:
-        Player_UpdateCarryKind(p);
-        if ((Pouch_FindCarryItem(p) & 0xFFFF) == 0xFFFF) {
-            p->step++;
-            Player_SetMotionPair(p, 0x36, 4, 0);
+        Player_UpdateCarryKind(pl);
+        if ((Pouch_FindCarryItem(pl) & 0xFFFF) == 0xFFFF) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x36, 4, 0);
         }
         break;
     case 2:
-        if (Motion_PassedFrame(p, 0, 114.0f) != 0) {
-            p->step++;
-            p->carry &= 0xF0;
+        if (Motion_PassedFrame(pl, 0, 114.0f) != 0) {
+            pl->step++;
+            pl->carry &= 0xF0;
             break;
         }
-        Player_UpdateCarryKind(p);
+        Player_UpdateCarryKind(pl);
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_StartIdleMotion(p, 8, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_StartIdleMotion(pl, 8, 0);
         }
         break;
     case 4:
-        if (p->tradeMsgTimer == 0) {
-            Player_BeginState(p, 0, 2, 0);
+        if (pl->tradeMsgTimer == 0) {
+            Player_BeginState(pl, 0, 2, 0);
         }
         break;
     }
 }
 
-void Player_RunGroup5(Player *p)
+void Player_RunCarryState(Player *pl)
 {
-    p->weaponOut = 0;
-    switch (p->state) {
-    case 0:
-        Player_State5_00(p, 0);
+    pl->weaponOut = 0;
+    switch (pl->state) {
+    case PL_CARRY_IDLE:
+        Player_StateCarryIdle(pl, 0);
         break;
-    case 1:
-        Player_State5_01(p, 0);
+    case PL_CARRY_WALK:
+        Player_StateCarryWalk(pl, 0);
         break;
-    case 2:
-        Player_State5_02(p, 0);
+    case PL_CARRY_RUN:
+        Player_StateCarryRun(pl, 0);
         break;
-    case 3:
-        Player_State5_03(p, 0);
+    case PL_CARRY_DROP:
+        Player_StateCarryPutDown(pl, 0);
         break;
-    case 4:
-        Player_State5_03(p, 1);
+    case PL_CARRY_DROP_TIRED:
+        Player_StateCarryPutDown(pl, 1);
         break;
-    case 5:
-        Player_State5_05(p, 0);
+    case PL_CARRY_JUMP_OFF:
+        Player_StateCarryAirborne(pl, 0);
         break;
-    case 6:
-        Player_State5_05(p, 1);
+    case PL_CARRY_FALL:
+        Player_StateCarryAirborne(pl, 1);
         break;
-    case 7:
-        Player_State5_07(p, 0);
+    case PL_CARRY_LAND_HARD:
+        Player_StateCarryLand(pl, 0);
         break;
-    case 8:
-        Player_State5_07(p, 1);
+    case PL_CARRY_LAND:
+        Player_StateCarryLand(pl, 1);
         break;
-    case 9:
-        Player_State5_00(p, 1);
+    case PL_CARRY_PICKED_UP:
+        Player_StateCarryIdle(pl, 1);
         break;
-    case 10:
-        Player_State5_03(p, 2);
+    case PL_CARRY_DELIVER:
+        Player_StateCarryPutDown(pl, 2);
         break;
-    case 11:
-        Player_State5_0B(p, 0);
+    case PL_CARRY_HAND_OVER:
+        Player_StateCarryHandOver(pl, 0);
         break;
     default:
-        Player_BeginState(p, 0, 4, 0);
+        Player_BeginState(pl, 0, 4, 0);
         break;
     }
 }
 
-void Player_State6_00(Player *p, s32 unused)
+void Player_StateGestureLieDown(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0xD2, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0xD2, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (Player_IsLocal(p) == 1) {
-            if (((s32) p->input.stickTilt >= 0x28) || (Quest_PhaseIsOver(1) == 1)) {
-                Player_RequestState(p, 6U, 1U, 0);
+        if (Player_IsLocal(pl) == 1) {
+            if (((s32) pl->input.stickTilt >= 0x28) || (Quest_PhaseIsOver(1) == 1)) {
+                Player_RequestState(pl, PL_GROUP_GESTURE, PL_GESTURE_GET_UP, 0);
                 break;
             }
-            if (p->actRequest != 0) {
-                Player_StartAct(p);
+            if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         } else {
         }
@@ -10336,52 +10336,52 @@ void Player_State6_00(Player *p, s32 unused)
     }
 }
 
-void Player_State6_01(Player *p, s32 unused)
+void Player_StateGestureGetUp(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0xCF, 0, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0xCF, 0, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State6_02(Player *p, s32 variant)
+void Player_StateGestureScout(Player *pl, s32 variant)
 {
     f32 pos[3];
     s32 d;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x26C, 6, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 60;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x26C, 6, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 60;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 4, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
-            } else if (func_379E40() == 1 && p->unk8FE == 0) {
-                func_379E50(pos, p->area);
-                d = (u16) (p->rot[1] - (u16) (Vec_Heading(pos, p->pos) + 0x4000));
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 4, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
+            } else if (func_379E40() == 1 && pl->unk8FE == 0) {
+                func_379E50(pos, pl->area);
+                d = (u16) (pl->rot[1] - (u16) (Vec_Heading(pos, pl->pos) + 0x4000));
                 if (d <= 0x1800 || d >= 0xE800) {
-                    p->unk8FE = 1;
-                    p->actDetectTimer = 300;
+                    pl->unk8FE = 1;
+                    pl->actDetectTimer = 300;
                 }
             }
         }
@@ -10389,278 +10389,278 @@ void Player_State6_02(Player *p, s32 variant)
     }
 }
 
-void Player_State6_03(Player *p, s32 variant)
+void Player_StateGesture03(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x26F, 6, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x26F, 6, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (Player_IsLocal(p) == 1 && Motion_ReachedFrame(p, 0, 90.0f) != 0) {
-            if (p->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
-                Player_RequestState(p, 6, 4, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && Motion_ReachedFrame(pl, 0, 90.0f) != 0) {
+            if (pl->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
+                Player_RequestState(pl, PL_GROUP_GESTURE, PL_GESTURE_03_END, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_04(Player *p, s32 unused)
+void Player_StateGesture03End(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x270, 6, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x270, 6, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetFlag(p, 0x20000);
-            Player_SetMotionPair(p, 0xCF, -4, 0x3C);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetFlag(pl, 0x20000);
+            Player_SetMotionPair(pl, 0xCF, -4, 0x3C);
         }
         break;
     case 2:
-        Player_SetFlag(p, 0x20000);
-        if (p->motion[0].playing == 0) {
-            Player_ClearFlag(p, 0x20000);
-            Player_BeginState(p, 0, 4, 0);
+        Player_SetFlag(pl, 0x20000);
+        if (pl->motion[0].playing == 0) {
+            Player_ClearFlag(pl, 0x20000);
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Player_State6_05(Player *p, s32 variant)
+void Player_StateGesture05(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x274, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 60;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x274, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 60;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Motion_PassedFrame(p, 0, 48.0f) != 0) {
-            Eff00_Create(p, 0x60);
+        if (Motion_PassedFrame(pl, 0, 48.0f) != 0) {
+            Eff00_Create(pl, 0x60);
         }
-        if (Motion_PassedFrame(p, 0, 68.0f) != 0) {
-            Eff00_Create(p, 0x61);
+        if (Motion_PassedFrame(pl, 0, 68.0f) != 0) {
+            Eff00_Create(pl, 0x61);
         }
-        if (Motion_PassedFrame(p, 0, 168.0f) != 0) {
-            Eff00_Create(p, 0x61);
+        if (Motion_PassedFrame(pl, 0, 168.0f) != 0) {
+            Eff00_Create(pl, 0x61);
         }
-        if (Motion_PassedFrame(p, 0, 190.0f) != 0) {
-            Eff00_Create(p, 0x60);
+        if (Motion_PassedFrame(pl, 0, 190.0f) != 0) {
+            Eff00_Create(pl, 0x60);
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 0xA, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 0xA, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_06(Player *p, s32 unused)
+void Player_StateGesture06(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x278, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x278, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 0xA, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 0xA, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_07(Player *p, s32 unused)
+void Player_StateGesture07(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x26E, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x26E, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 0x4, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 0x4, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_08(Player *p, s32 unused)
+void Player_StateGesture08(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x273, 6, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x273, 6, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 4, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 4, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_09(Player *p, s32 variant)
+void Player_StateGestureOneShot(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, Player_State6_09_MotionStates[variant * 2], 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, gGestureOneShots[variant * 2], 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, Player_State6_09_MotionStates[variant * 2 + 1], 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, gGestureOneShots[variant * 2 + 1], 0);
         }
         break;
     }
 }
 
-void Player_State6_0A(Player *p, s32 unused)
+void Player_StateGesture0A(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x271, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x271, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 0x4, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 0x4, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_0B(Player *p, s32 unused)
+void Player_StateGesture0B(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x276, 0x10, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x276, 0x10, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 0xA, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 0xA, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_0C(Player *p, s32 unused)
+void Player_StateGesture0C(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x272, 6, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x272, 6, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 4, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 4, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
     }
 }
 
-void Player_State6_10(Player *p, s32 unused)
+void Player_StateGesture10(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x279, 6, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->timer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x279, 6, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->timer = 0x3C;
         break;
     case 1:
-        if (p->timer > 0) {
-            p->timer--;
+        if (pl->timer > 0) {
+            pl->timer--;
         }
-        if (Player_IsLocal(p) == 1 && p->timer == 0) {
-            if (p->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(p, 0, 4, 0);
-            } else if (p->actRequest != 0) {
-                Player_StartAct(p);
+        if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
+            if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
+                Player_BeginState(pl, 0, 4, 0);
+            } else if (pl->actRequest != 0) {
+                Player_StartAct(pl);
             }
         }
         break;
@@ -10671,10 +10671,10 @@ void Player_State6_10(Player *p, s32 unused)
 SpitMeat gSpitMeats[13] = {
 #include "game/008C3C90.inc"
 };
-s8 Player_State2_13_Need[8] = {
+s8 gStunMashNeed[8] = {
 #include "game/008C3DC8.inc"
 };
-s16 Player_State6_09_MotionStates[8] = {
+s16 gGestureOneShots[8] = {
 #include "game/008C3DD0.inc"
 };
 
@@ -10686,11 +10686,11 @@ void EmCephadrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 void EmPlesioth_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 void Em_SpawnPartEffects(Em *em, u8 mask);
 s32 Em_NearLowHp(Em *em);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_CheckKindRequest(Em *em);
-void Em_Add7EC(Em *em, s32 n);
-void Em_Add7F0(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_AddNeed1(Em *em, s32 n);
 void Em_Add7F4(Em *em, s32 n);
 void Vec_Copy(f32 *out, f32 *in);
 void Em_TypeSetup(Em *em);
@@ -10724,7 +10724,7 @@ void Player_FindLookTarget(Player *em);
 void Player_CheckPointMessages(u8 *arg0);
 void Player_CheckTeamComboLost(Player *em);
 u8 AreaHit_Raycast(f32 *a, f32 *b, f32 *out, u16 mask);
-void *EmScript_GetTable30(Em *em, u8 i);
+void *EmScript_RoutePointScript(Em *em, u8 i);
 s16 *Em_IdSetLookup(Em *em);
 void EmScript_Op7B(Em *em);
 void Em_ChangeStateRouted(Em *em, s32 a, s32 b, s32 c);
@@ -10896,11 +10896,11 @@ typedef struct EmDamageView {
 } EmDamageView;
 extern u8 *gEmDamagedPartTbls[];
 void Em_CheckRageByHp(Em *em, s16 n);
-void *EmScript_GetTable08b(Em *em, u8 i);
+void *EmScript_LoopPointList(Em *em, u8 i);
 void Em_RestartScript(Em *em);
-s32 Effect_ExistsKind16(void *pl);
-void *EmScript_GetTable14(Em *em, u8 i);
-void *EmScript_GetTable18(Em *em, u8 i);
+s32 Lure_PlayerHasMonsterBait(void *pl);
+void *EmScript_AreaSeqList(Em *em, u8 i);
+void *EmScript_AreaSeqScript(Em *em, u8 i);
 u8 *EmScript_PickWeighted(Em *em, u8 *p);
 u16 Area_DayId(u16 id);
 s32 Em_KindMatches(u8 type, u8 v);
@@ -10911,7 +10911,7 @@ s32 Quest_GetSeason(void);
 void *GmLoad_GetEmData(s32 i);
 extern s32 D_008F5AB8;
 void EmScript_SetPos(Em *obj, u8 *value);
-void *EmScript_GetTable08(Em *obj, u8 i);
+void *EmScript_LoopScript(Em *obj, u8 i);
 struct EmIdEntry *Em_FindAreaEntry(struct Em *em, struct EmIdEntry *entry, s16 id);
 s32 Em_CanEnterArea(Em *em, u16 area);
 u16 Area_IdForCurrentTime(u16);
@@ -10926,26 +10926,26 @@ u8 Notice_Push(u8, s16, s16);
 s32 Player_IsLocal(void *);
 s32 MsgEvent_Check(u16 kind);
 void Em_ComputeGoal(Em *em, f32 *target);
-void Player_RunGroup0(Player *);
+void Player_RunActionState(Player *);
 void Player_RunWeaponState(Player *);
-void Player_RunGroup2(Player *);
-void Player_RunGroup3(Player *em);
-void Player_RunGroup4(Player *);
-void Player_RunGroup5(Player *);
-void Player_State6_00(Player *em, s32 arg1);
-void Player_State6_01(Player *em, s32 arg1);
-void Player_State6_02(Player *, s32);
-void Player_State6_03(Player *, s32);
-void Player_State6_04(Player *em, s32 arg1);
-void Player_State6_05(Player *, s32);
-void Player_State6_06(Player *, s32);
-void Player_State6_07(Player *, s32);
-void Player_State6_08(Player *, s32);
-void Player_State6_09(Player *, s32);
-void Player_State6_0A(Player *, s32);
-void Player_State6_0B(Player *, s32);
-void Player_State6_0C(Player *, s32);
-void Player_State6_10(Player *, s32);
+void Player_RunReactState(Player *);
+void Player_RunFaintState(Player *em);
+void Player_RunEventState(Player *);
+void Player_RunCarryState(Player *);
+void Player_StateGestureLieDown(Player *em, s32 arg1);
+void Player_StateGestureGetUp(Player *em, s32 arg1);
+void Player_StateGestureScout(Player *, s32);
+void Player_StateGesture03(Player *, s32);
+void Player_StateGesture03End(Player *em, s32 arg1);
+void Player_StateGesture05(Player *, s32);
+void Player_StateGesture06(Player *, s32);
+void Player_StateGesture07(Player *, s32);
+void Player_StateGesture08(Player *, s32);
+void Player_StateGestureOneShot(Player *, s32);
+void Player_StateGesture0A(Player *, s32);
+void Player_StateGesture0B(Player *, s32);
+void Player_StateGesture0C(Player *, s32);
+void Player_StateGesture10(Player *, s32);
 void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
 void Player_BeginState(Player *p, s32 action, s32 a2, s32 a3);
 u16 Player_FindActionSpot(Player *, f32 *, u16 *arg, u8 *);
@@ -10990,66 +10990,66 @@ extern s32 gQSyncSendPeriod; /* gm_sub; this unit reads its low half */
 s16 *Em_IdSetHas(Em *em, u16 area);
 /* end of prototypes */
 
-void Player_RunGroup6(Player *p)
+void Player_RunGestureState(Player *pl)
 {
     u8 state;
 
-    Player_ResetAim(p);
-    state = p->state;
+    Player_ResetAim(pl);
+    state = pl->state;
     switch (state) {
-    case 0:
-        Player_State6_00(p, 0);
+    case PL_GESTURE_LIE_DOWN:
+        Player_StateGestureLieDown(pl, 0);
         break;
-    case 1:
-        Player_State6_01(p, 0);
+    case PL_GESTURE_GET_UP:
+        Player_StateGestureGetUp(pl, 0);
         break;
-    case 2:
-        Player_State6_02(p, 0);
+    case PL_GESTURE_SCOUT:
+        Player_StateGestureScout(pl, 0);
         break;
-    case 3:
-        Player_State6_03(p, 0);
+    case PL_GESTURE_03:
+        Player_StateGesture03(pl, 0);
         break;
-    case 4:
-        Player_State6_04(p, 0);
+    case PL_GESTURE_03_END:
+        Player_StateGesture03End(pl, 0);
         break;
-    case 5:
-        Player_State6_05(p, 0);
+    case PL_GESTURE_05:
+        Player_StateGesture05(pl, 0);
         break;
-    case 6:
-        Player_State6_06(p, 0);
+    case PL_GESTURE_06:
+        Player_StateGesture06(pl, 0);
         break;
-    case 7:
-        Player_State6_07(p, 0);
+    case PL_GESTURE_07:
+        Player_StateGesture07(pl, 0);
         break;
-    case 8:
-        Player_State6_08(p, 0);
+    case PL_GESTURE_08:
+        Player_StateGesture08(pl, 0);
         break;
-    case 9:
-        Player_State6_09(p, 0);
+    case PL_GESTURE_ONESHOT0:
+        Player_StateGestureOneShot(pl, 0);
         break;
-    case 10:
-        Player_State6_0A(p, 0);
+    case PL_GESTURE_0A:
+        Player_StateGesture0A(pl, 0);
         break;
-    case 11:
-        Player_State6_0B(p, 0);
+    case PL_GESTURE_0B:
+        Player_StateGesture0B(pl, 0);
         break;
-    case 12:
-        Player_State6_0C(p, 0);
+    case PL_GESTURE_0C:
+        Player_StateGesture0C(pl, 0);
         break;
-    case 13:
-        Player_State6_09(p, 1);
+    case PL_GESTURE_ONESHOT1:
+        Player_StateGestureOneShot(pl, 1);
         break;
-    case 14:
-        Player_State6_06(p, 0);
+    case PL_GESTURE_06_ALT:
+        Player_StateGesture06(pl, 0);
         break;
-    case 15:
-        Player_State6_09(p, 3);
+    case PL_GESTURE_ONESHOT3:
+        Player_StateGestureOneShot(pl, 3);
         break;
-    case 16:
-        Player_State6_10(p, 0);
+    case PL_GESTURE_10:
+        Player_StateGesture10(pl, 0);
         break;
     default:
-        Player_BeginState(p, 0, 4, 0);
+        Player_BeginState(pl, 0, 4, 0);
         break;
     }
 }
@@ -11066,48 +11066,48 @@ void Game_UpdatePlayers(void)
     ObjAttach_UpdateAllTimers();
 }
 
-void Player_RunState(Player *p)
+void Player_RunState(Player *pl)
 {
-    p->freeState = 0;
-    p->fieldCollide = 1;
-    switch (p->stateGroup) {
+    pl->freeState = 0;
+    pl->fieldCollide = 1;
+    switch (pl->stateGroup) {
     case 0:
-        Player_RunGroup0(p);
+        Player_RunActionState(pl);
         break;
     case 1:
-        Player_RunWeaponState(p);
+        Player_RunWeaponState(pl);
         break;
     case 2:
-        Player_RunGroup2(p);
+        Player_RunReactState(pl);
         break;
     case 3:
-        Player_RunGroup3(p);
+        Player_RunFaintState(pl);
         break;
     case 4:
-        Player_RunGroup4(p);
+        Player_RunEventState(pl);
         break;
     case 5:
-        Player_RunGroup5(p);
+        Player_RunCarryState(pl);
         break;
     case 6:
-        Player_RunGroup6(p);
+        Player_RunGestureState(pl);
         
     default:
         break;
     }
 }
 
-void Player_CheckKushalaSeen(Player *p)
+void Player_CheckKushalaSeen(Player *pl)
 {
     Em *m;
     s16 i;
 
-    if (Player_IsLocal(p) == 0 || Game_IsOnline() == 1) {
+    if (Player_IsLocal(pl) == 0 || Game_IsOnline() == 1) {
         return;
     }
     m = gEms;
     for (i = 0; i < 20; i++) {
-        if (m->active != 0 && m->visible != 0 && m->type == 0x36 && m->area == p->area && Save_TestEventFlag(0x81) == 0) {
+        if (m->active != 0 && m->visible != 0 && m->type == 0x36 && m->area == pl->area && Save_TestEventFlag(0x81) == 0) {
             Save_SetEventFlag(0x81);
         }
         m++;
@@ -11119,7 +11119,7 @@ struct DrawSlot;
 s32 OT_AddByDepth(u32 *table, struct DrawSlot *node, u32 n, s32 clamp);
 s32 Player_LocalAreaOk_Unk(void);
 f32 Camera_Distance(void *out);
-s16 HuntingHorn_StateKind(Player *);
+s16 HuntingHorn_PlayKind(Player *);
 extern u16 gFrameTick; /* sub_main: the frame counter */
 
 s32 CamCtl_GetPlayerFade(f32 *out);
@@ -11130,7 +11130,7 @@ s32 Em_FindFloorTri(Em *em, f32 *out, s32 apply);
 void HuntingHorn_ClearNotes(struct Player *em);
 void Player_ReactToHit(struct Player *em);
 /* A player's per-frame update (Game_UpdatePlayers). */
-void Player_Update(Player *p)
+void Player_Update(Player *pl)
 {
     f32 floorY;
     f32 pos[3];
@@ -11144,112 +11144,112 @@ void Player_Update(Player *p)
     u8 w;
     s16 n;
 
-    if (p->active == 0) {
+    if (pl->active == 0) {
         return;
     }
-    Player_CheckKushalaSeen(p);
-    Player_UpdateInBattle(p);
-    Player_TickTimers(p);
-    p->pouchHudFlags = 0;
-    p->offerStarted = 0;
-    if (p->supplyBoxOpen == 0 || p->deliveryMenu != 0) {
-        Player_UpdateItemSelect(p);
-        Player_BowgunAmmoSwitch(p);
+    Player_CheckKushalaSeen(pl);
+    Player_UpdateInBattle(pl);
+    Player_TickTimers(pl);
+    pl->pouchHudFlags = 0;
+    pl->offerStarted = 0;
+    if (pl->supplyBoxOpen == 0 || pl->deliveryMenu != 0) {
+        Player_UpdateItemSelect(pl);
+        Player_BowgunAmmoSwitch(pl);
     }
-    ((Em *) p)->prevPosX = p->pos[0];
-    ((Em *) p)->prevPosY = p->pos[1];
-    ((Em *) p)->prevPosZ = p->pos[2];
-    p->unk58C = -1;
-    p->unk58E = -1;
-    p->unk3F8 = 0;
-    p->bowgunReady = 0;
-    p->freeState = 0;
-    if (Player_IsLocal(p) == 1) {
-        if (Player_IsState(p, 0, 9) == 0 && Player_IsState(p, 0, 0x1B) == 0) {
-            p->unk893 = 0;
+    ((Em *) pl)->prevPosX = pl->pos[0];
+    ((Em *) pl)->prevPosY = pl->pos[1];
+    ((Em *) pl)->prevPosZ = pl->pos[2];
+    pl->unk58C = -1;
+    pl->unk58E = -1;
+    pl->unk3F8 = 0;
+    pl->bowgunReady = 0;
+    pl->freeState = 0;
+    if (Player_IsLocal(pl) == 1) {
+        if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_FALL) == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB) == 0) {
+            pl->unk893 = 0;
         }
-        Player_CheckTeamComboLost(p);
+        Player_CheckTeamComboLost(pl);
     } else {
-        p->unk893 = 0;
+        pl->unk893 = 0;
     }
-    Player_ReactToHit((struct Player *)p);
-    p->prevFreeState = 0;
-    switch ((u8) Player_PickStatusState(p)) {
+    Player_ReactToHit((struct Player *)pl);
+    pl->prevFreeState = 0;
+    switch ((u8) Player_PickStatusState(pl)) {
     case 1:
-        Player_SetState(p, 2, 0x15, 0);
+        Player_SetState(pl, PL_GROUP_REACT, PL_REACT_STATUS2, 0);
         break;
     case 2:
-        if (Player_IsState(p, 2, 0x16) == 0 && Player_IsState(p, 2, 0x18) == 0) {
-            Player_SetState(p, 2, 0x16, 0);
+        if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STATUS4) == 0 && Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STATUS4_HIT) == 0) {
+            Player_SetState(pl, PL_GROUP_REACT, PL_REACT_STATUS4, 0);
         }
         break;
     }
-    Player_CalcAttack(p);
-    Player_CalcDefense(p);
-    Player_CalcResists(p);
-    if (p->hitStop == 0) {
-        Player_UpdateEnvironment(p);
-        Player_RunState(p);
-        if (p->stateRequest != 0) {
-            Player_RunState(p);
-            p->stateRequest = 0;
+    Player_CalcAttack(pl);
+    Player_CalcDefense(pl);
+    Player_CalcResists(pl);
+    if (pl->hitStop == 0) {
+        Player_UpdateEnvironment(pl);
+        Player_RunState(pl);
+        if (pl->stateRequest != 0) {
+            Player_RunState(pl);
+            pl->stateRequest = 0;
         }
-        Player_UpdateAutoTurn(p);
-        Player_FindLookTarget(p);
-        if (p->stateGroup != 4) {
-            Player_UpdateMoveTo(p);
-        }
-    }
-    Player_CheckPointMessages((u8 *) p);
-    p->prevFreeState = p->freeState;
-    if (p->weaponOut == 0) {
-        p->demonMode = 0;
-    }
-    Player_UpdateStatusIcons(p);
-    if (p->statusIcons & 0x400) {
-        StageObj_K29_TickType9(p);
-    }
-    if (p->statusIcons & 0x800) {
-        StageObj_K29_TickType9Late(p);
-    }
-    p->actRequest = 0;
-    p->offerRequest = 0;
-    Player_UpdateHitStop(p);
-    if (Player_IsState(p, 0, 0x27) == 0 || (Player_IsState(p, 0, 0x27) != 0 && p->stateVar0 == 0)) {
-        Player_UpdateMotionStep(p);
-    }
-    Player_UpdateHitTimers(p);
-    (*(void (**)(Player *)) ((u8 *) p->handlers + 0xC))(p);
-    if (Player_IsState(p, 0, 0x1B) == 0 || Player_IsState(p, 0, 0x1E) == 0) {
-        if ((u8) Obj_InCurrentArea(p)) {
-            Em_CollideField((struct Em *)p, 0);
+        Player_UpdateAutoTurn(pl);
+        Player_FindLookTarget(pl);
+        if (pl->stateGroup != PL_GROUP_EVENT) {
+            Player_UpdateMoveTo(pl);
         }
     }
-    if (p->stateGroup == 0 && (p->state == 1 || p->state == 2 || p->state == 3 || p->state == 0x13) && (u8) Obj_InCurrentArea(p)) {
-        Em_FindFloorTri((Em *)p, buf, 1);
+    Player_CheckPointMessages((u8 *) pl);
+    pl->prevFreeState = pl->freeState;
+    if (pl->weaponOut == 0) {
+        pl->demonMode = 0;
     }
-    Player_RecordActionSpot(p);
-    if (Em_GetFloorInfo((struct Em *)p, p->pos, (struct TriHdr *)(&(p)->floorKind), &floorY, (s32 *)(&(p)->surfaceY)) == 1 && Player_IsState(p, 4, 0) == 0) {
-        p->floorY = floorY;
+    Player_UpdateStatusIcons(pl);
+    if (pl->statusIcons & 0x400) {
+        StageObj_K29_TickType9(pl);
     }
-    if ((u8) Obj_InCurrentArea(p)) {
-        func_330DE0(p);
+    if (pl->statusIcons & 0x800) {
+        StageObj_K29_TickType9Late(pl);
     }
-    if (p->action != 2 && p->rideState == 0 && Player_IsState(p, 0, 0x3A) == 0 && p->stateGroup != 4 && (u8) Obj_InCurrentArea(p)) {
-        fy = p->floorY;
-        y = p->pos[1];
+    pl->actRequest = 0;
+    pl->offerRequest = 0;
+    Player_UpdateHitStop(pl);
+    if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_HOLD) == 0 || (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_HOLD) != 0 && pl->stateVar0 == 0)) {
+        Player_UpdateMotionStep(pl);
+    }
+    Player_UpdateHitTimers(pl);
+    (*(void (**)(Player *)) ((u8 *) pl->handlers + 0xC))(pl);
+    if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB) == 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_STEP_UP) == 0) {
+        if ((u8) Obj_InCurrentArea(pl)) {
+            Em_CollideField((struct Em *)pl, 0);
+        }
+    }
+    if (pl->stateGroup == PL_GROUP_ACTION && (pl->state == 1 || pl->state == 2 || pl->state == 3 || pl->state == 0x13) && (u8) Obj_InCurrentArea(pl)) {
+        Em_FindFloorTri((Em *)pl, buf, 1);
+    }
+    Player_RecordActionSpot(pl);
+    if (Em_GetFloorInfo((struct Em *)pl, pl->pos, (struct TriHdr *)(&(pl)->floorKind), &floorY, (s32 *)(&(pl)->surfaceY)) == 1 && Player_IsState(pl, PL_GROUP_EVENT, PL_EVENT_CART) == 0) {
+        pl->floorY = floorY;
+    }
+    if ((u8) Obj_InCurrentArea(pl)) {
+        func_330DE0(pl);
+    }
+    if (pl->action != 2 && pl->rideState == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_PULL_UP) == 0 && pl->stateGroup != PL_GROUP_EVENT && (u8) Obj_InCurrentArea(pl)) {
+        fy = pl->floorY;
+        y = pl->pos[1];
         if (y < fy) {
-            p->pos[1] = fy;
-            p->rideState = 0;
+            pl->pos[1] = fy;
+            pl->rideState = 0;
         } else if (y >= fy) {
             if (y - fy < 30.0f) {
-                p->pos[1] = fy;
-                p->rideState = 0;
-            } else if (p->hp > 0) {
-            g = p->stateGroup;
+                pl->pos[1] = fy;
+                pl->rideState = 0;
+            } else if (pl->hp > 0) {
+            g = pl->stateGroup;
             if (g != 5) {
                 if (g == 2) {
-                switch (p->state) {
+                switch (pl->state) {
                 case 27:
                 case 30:
                 case 31:
@@ -11257,28 +11257,28 @@ void Player_Update(Player *p)
                 case 33:
                 case 34:
                 case 35:
-                    Player_SetState(p, 2, 0x24, 0);
+                    Player_SetState(pl, PL_GROUP_REACT, PL_REACT_MASH_FALL, 0);
                     break;
                 default:
-                    Player_SetState(p, 0, 9, 0);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_FALL, 0);
                     break;
                 }
             } else {
-                Player_SetState(p, 0, 9, 0);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_FALL, 0);
             }
             } else {
-                Player_SetState(p, 5, 6, 0);
+                Player_SetState(pl, PL_GROUP_CARRY, PL_CARRY_FALL, 0);
             }
             }
         }
     }
-    p->unk417 = 1;
-    Player_UpdateAreaPos(p);
-    g = p->stateGroup;
+    pl->unk417 = 1;
+    Player_UpdateAreaPos(pl);
+    g = pl->stateGroup;
     if (g != 2 && g != 3) {
-        if (p->weaponOut && (p->weaponType == 1 || p->weaponType == 5) && (p->input.pressed & 0x80)) {
+        if (pl->weaponOut && (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN) && (pl->input.pressed & 0x80)) {
             if (g == 0) {
-                switch (p->state) {
+                switch (pl->state) {
                 case 0x1C:
                 case 0x67:
                 case 0x68:
@@ -11287,88 +11287,88 @@ void Player_Update(Player *p)
                     break;
                 case 0x1B:
                 case 0x3A:
-                    p->aimMode = 0;
+                    pl->aimMode = 0;
                     break;
                 default:
-                    p->aimMode ^= 1;
+                    pl->aimMode ^= 1;
                     break;
                 }
-            } else if (g != 6 && Player_IsState(p, 1, 3) == 0) {
-                p->aimMode ^= 1;
+            } else if (g != 6 && Player_IsState(pl, PL_GROUP_WEAPON, BOWGUN_MELEE) == 0) {
+                pl->aimMode ^= 1;
             }
-            if (p->action == 2) {
-                p->aimMode = 0;
+            if (pl->action == 2) {
+                pl->aimMode = 0;
             }
             if (Player_LocalAreaOk_Unk() == 0) {
-                if ((u8) Obj_InCurrentArea(p) == 1) {
+                if ((u8) Obj_InCurrentArea(pl) == 1) {
                     Sound_PlaySeFlat(0, 0x15, 0);
                 }
-                Player_ResetAim(p);
+                Player_ResetAim(pl);
             }
-        } else if (p->weaponOut == 0) {
-            if (Player_IsState(p, 0, 0x36) != 0 || Player_IsState(p, 0, 0x7A) != 0 || Player_IsState(p, 0, 0x48) != 0) {
-                if (p->input.pressed & 0x80) {
-                    p->aimMode ^= 1;
+        } else if (pl->weaponOut == 0) {
+            if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_AIM) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_REAIM) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_FIRE) != 0) {
+                if (pl->input.pressed & 0x80) {
+                    pl->aimMode ^= 1;
                 }
-            } else if (Player_IsState(p, 0, 0x65) != 0 || Player_IsState(p, 0, 0x66) != 0) {
-                p->aimMode = 1;
+            } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS_CROUCHED) != 0) {
+                pl->aimMode = 1;
             } else {
-                Player_ResetAim(p);
+                Player_ResetAim(pl);
             }
-        } else if (p->isGunner != 1) {
-            if (Player_IsState(p, 0, 0x65) != 0 || Player_IsState(p, 0, 0x66) != 0) {
-                p->aimMode = 1;
+        } else if (pl->isGunner != 1) {
+            if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS_CROUCHED) != 0) {
+                pl->aimMode = 1;
             } else {
-                Player_ResetAim(p);
+                Player_ResetAim(pl);
             }
         }
     }
-    if (p->aimMode == 0) {
-        p->aimLockTimer = 0;
+    if (pl->aimMode == 0) {
+        pl->aimLockTimer = 0;
     }
-    if (p->weaponType == 8 && HuntingHorn_StateKind(p) == 0) {
-        HuntingHorn_ClearNotes((struct Player *)p);
+    if (pl->weaponType == WEAPON_HUNTING_HORN && HuntingHorn_PlayKind(pl) == 0) {
+        HuntingHorn_ClearNotes((struct Player *)pl);
     }
-    if (p->area == gScene.area) {
-        Player_UpdateNearMonster(p);
-        *(f32 *) ((u8 *) p->drawSlot + 8) = p->pos[0];
-        *(f32 *) ((u8 *) p->drawSlot + 0xC) = p->pos[1];
-        *(f32 *) ((u8 *) p->drawSlot + 0x10) = p->pos[2];
-        if (Player_IsLocal(p) == 1) {
-            p->nearCamera = 0;
+    if (pl->area == gScene.area) {
+        Player_UpdateNearMonster(pl);
+        *(f32 *) ((u8 *) pl->drawSlot + 8) = pl->pos[0];
+        *(f32 *) ((u8 *) pl->drawSlot + 0xC) = pl->pos[1];
+        *(f32 *) ((u8 *) pl->drawSlot + 0x10) = pl->pos[2];
+        if (Player_IsLocal(pl) == 1) {
+            pl->nearCamera = 0;
         } else {
-            pos[0] = p->pos[0];
-            pos[1] = p->pos[1] + 80.0f;
-            pos[2] = p->pos[2];
+            pos[0] = pl->pos[0];
+            pos[1] = pl->pos[1] + 80.0f;
+            pos[2] = pl->pos[2];
             if (Camera_Distance(pos) <= 200.0f) {
-                p->nearCamera = 1;
+                pl->nearCamera = 1;
             } else {
-                p->nearCamera = 0;
+                pl->nearCamera = 0;
             }
         }
-        if (Player_IsLocal(p) == 0 && Player_TestFlag(p, 0x02001600) != 0) {
-            p->rot[1] = (u16) (Vec_Heading(p->pos, p->prevPos) + 0x4000);
+        if (Player_IsLocal(pl) == 0 && Player_TestFlag(pl, 0x02001600) != 0) {
+            pl->rot[1] = (u16) (Vec_Heading(pl->pos, pl->prevPos) + 0x4000);
         }
         CamCtl_GetPlayerFade(&d);
         clamp = Player_InSceneEvent() == 1;
-        if (p->nearCamera == 0 && !(d < 1.0f)) {
-            OT_AddByDepth(gDrawOt32, p->drawSlot, 0x20, clamp);
+        if (pl->nearCamera == 0 && !(d < 1.0f)) {
+            OT_AddByDepth(gDrawOt32, pl->drawSlot, 0x20, clamp);
         } else {
-            OT_AddByDepth(gDrawOtSorted, p->drawSlot, 0x40, clamp);
+            OT_AddByDepth(gDrawOtSorted, pl->drawSlot, 0x40, clamp);
         }
-        if (p->syncTimer != 0) {
-            (p->syncTimer)--;
+        if (pl->syncTimer != 0) {
+            (pl->syncTimer)--;
         }
         n = *(s16 *)&gQSyncSendPeriod;
-        if (p->syncTimer == 0 && gFrameTick % n == 0) {
-            QSync_SendPlayer(p, 2, 0);
+        if (pl->syncTimer == 0 && gFrameTick % n == 0) {
+            QSync_SendPlayer(pl, 2, 0);
         }
     }
 }
 
 /* turns the monster (unkA4) toward unk00E by a step that depends on its state, and swings the
  * body angle at +0x69C (a u16) with it */
-void Player_UpdateAutoTurn(Player *p)
+void Player_UpdateAutoTurn(Player *pl)
 {
     s32 step;
     u32 d;
@@ -11376,27 +11376,27 @@ void Player_UpdateAutoTurn(Player *p)
     s32 target;
     s32 dir;
 
-    if (p->areaMoveState != 0) {
+    if (pl->areaMoveState != 0) {
         return;
     }
-    if (p->weaponOut != 0 && p->stateGroup == 0 && (
-        (u32) (p->state - 1) <= 1
-        || p->state == 12)) {
+    if (pl->weaponOut != 0 && pl->stateGroup == PL_GROUP_ACTION && (
+        (u32) (pl->state - 1) <= 1
+        || pl->state == 12)) {
         step = 0x71C;
-    } else if (Player_IsState(p, 0, 1) != 0 || Player_IsState(p, 0, 0x24) != 0) {
+    } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_RUN) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH) != 0) {
         step = 0x71C;
-    } else if (Player_IsState(p, 0, 0x1F) != 0) {
+    } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_DASH) != 0) {
         step = 0x5B0;
-    } else if (Player_IsState(p, 0, 0x3F) != 0) {
+    } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_TURN_AROUND) != 0) {
         step = 0;
     } else {
         step = 0xFA4;
     }
 turn:
-    dir = p->rot[1];
-    target = p->targetYaw;
+    dir = pl->rot[1];
+    target = pl->targetYaw;
     d = (u16) (target - (u16) dir);
-    switch (p->motionId[0]) {
+    switch (pl->motionId[0]) {
     case 3:
         turn = 0x80;
         break;
@@ -11408,37 +11408,37 @@ turn:
         break;
     }
     if ((u16) (d + step) < (u32) (step * 2)) {
-        p->rot[1] = target;
-        p->unk2B8 = 0;
-        if (p->lean + 0x300 <= 0x600) {
-            p->lean = 0;
-        } else if (p->lean < 0x8000) {
-            p->lean -= 0x300;
+        pl->rot[1] = target;
+        pl->unk2B8 = 0;
+        if (pl->lean + 0x300 <= 0x600) {
+            pl->lean = 0;
+        } else if (pl->lean < 0x8000) {
+            pl->lean -= 0x300;
         } else {
-            p->lean += 0x300;
+            pl->lean += 0x300;
         }
     } else if (d < 0x8000U) {
-        p->rot[1] = (u16) (dir + step);
-        p->lean -= turn;
+        pl->rot[1] = (u16) (dir + step);
+        pl->lean -= turn;
     } else {
-        p->rot[1] = (u16) (dir - step);
-        p->lean += turn;
+        pl->rot[1] = (u16) (dir - step);
+        pl->lean += turn;
     }
-    if (p->lean <= 0xF600 && p->lean >= 0xA00) {
-        if (p->lean >= 0x8000) {
-            p->lean = 0xF600;
+    if (pl->lean <= 0xF600 && pl->lean >= 0xA00) {
+        if (pl->lean >= 0x8000) {
+            pl->lean = 0xF600;
         } else {
-            p->lean = 0xA00;
+            pl->lean = 0xA00;
         }
     }
 }
 
-void Player_FindLookTarget(Player *p)
+void Player_FindLookTarget(Player *pl)
 {
-    EmHeadView *h = (EmHeadView *) p;
+    EmHeadView *h = (EmHeadView *) pl;
     u32 i;
     u32 best;
-    Em *e;
+    Em *em;
     f32 min;
     f32 d;
     u16 a;
@@ -11446,11 +11446,11 @@ void Player_FindLookTarget(Player *p)
     best = 0xFF;
     h->found = 0;
     min = 1500.0f;
-    e = gEms;
-    if (p->motionId[0] == 0x26) {
-        for (i = 0; i < 20; i++, e++) {
-            if (e->active != 0 && e->visible != 0) {
-                d = Vec_Distance(&p->pos[0], &e->posX);
+    em = gEms;
+    if (pl->motionId[0] == 0x26) {
+        for (i = 0; i < 20; i++, em++) {
+            if (em->active != 0 && em->visible != 0) {
+                d = Vec_Distance(&pl->pos[0], &em->posX);
                 if (!(min < d)) {
                     best = i;
                     min = d;
@@ -11470,7 +11470,7 @@ void Player_FindLookTarget(Player *p)
             }
         }
     } else {
-        a = (u16) (Vec_Heading(&gEms[best].posX, &p->pos[0]) + 0x4000) + 0x10000 - p->rot[1];
+        a = (u16) (Vec_Heading(&gEms[best].posX, &pl->pos[0]) + 0x4000) + 0x10000 - pl->rot[1];
         if (a >= 0x8000) {
             if (a < 0xD556) {
                 a = -0x2AAA;
@@ -11501,15 +11501,15 @@ void Player_FindLookTarget(Player *p)
     }
 }
 
-void Player_CheckPointMessages(u8 *p)
+void Player_CheckPointMessages(u8 *script)
 {
     f32 pos[3];
     u16 sp2C;
     s8 sp2F;
     s32 spot;
 
-    if (Player_IsLocal(p) != 0) {
-        spot = Player_FindActionSpot((Player *)p, (f32 *)pos, &sp2C, (u8 *)&sp2F) & 0xFFFF;
+    if (Player_IsLocal(script) != 0) {
+        spot = Player_FindActionSpot((Player *)script, (f32 *)pos, &sp2C, (u8 *)&sp2F) & 0xFFFF;
         switch (spot) {
         case 3:
             MsgEvent_Check(1);
@@ -11524,17 +11524,17 @@ void Player_CheckPointMessages(u8 *p)
     }
 }
 
-s16 Player_CountSpecialItems(Player *p)
+s16 Player_CountSpecialItems(Player *pl)
 {
     s16 n = 0;
 
-    if (Pouch_Count(p, 0x2A4) > 0 || ItemGet_Result() == 0x2A4) {
+    if (Pouch_Count(pl, 0x2A4) > 0 || ItemGet_Result() == 0x2A4) {
         n++;
     }
-    if (Pouch_Count(p, 0x2A6) > 0 || ItemGet_Result() == 0x2A6) {
+    if (Pouch_Count(pl, 0x2A6) > 0 || ItemGet_Result() == 0x2A6) {
         n++;
     }
-    if (Pouch_Count(p, 0x2A3) > 0) {
+    if (Pouch_Count(pl, 0x2A3) > 0) {
         n++;
     }
     return n;
@@ -11549,7 +11549,7 @@ void Player_CheckTeamCombo(Player *self)
     u8 want[4];
     s16 i;
     s16 n;
-    Player *p;
+    Player *pl;
     s16 m;
     u8 w;
     u8 *src;
@@ -11562,31 +11562,31 @@ void Player_CheckTeamCombo(Player *self)
     self->mealSkill = 0;
     self->mealSkillGroup = 0;
     if (Quest_IsVersus() != 1 && gScene.playerCount > 3) {
-    for (p = gPlayers, i = 0; i < 4; i++, p++) {
-        if (p->active == 0) {
+    for (pl = gPlayers, i = 0; i < 4; i++, pl++) {
+        if (pl->active == 0) {
             return;
         }
         have[i] = 0xFF;
         n = 0;
-        if (func_3BCCB0(&p->equip[2], p->gender) == 1) {
+        if (func_3BCCB0(&pl->equip[2], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&p->equip[3], p->gender) == 1) {
+        if (func_3BCCB0(&pl->equip[3], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&p->equip[4], p->gender) == 1) {
+        if (func_3BCCB0(&pl->equip[4], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&p->equip[5], p->gender) == 1) {
+        if (func_3BCCB0(&pl->equip[5], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&p->equip[0], p->gender) == 1) {
+        if (func_3BCCB0(&pl->equip[0], pl->gender) == 1) {
             n++;
         }
         if (n == 0) {
             return;
         }
-        have[i] = p->style;
+        have[i] = pl->style;
     }
     for (i = 0, c = gArmorCombos; i < 14; i++, c++) {
         ca = c->a;
@@ -11620,15 +11620,15 @@ void Player_CheckTeamCombo(Player *self)
     }
 }
 
-void Player_CheckTeamComboLost(Player *p)
+void Player_CheckTeamComboLost(Player *pl)
 {
     s16 i;
 
-    if (p->mealSkill != 0) {
+    if (pl->mealSkill != 0) {
         for (i = 0; i < gScene.playerCount; i++) {
             if (gScene.inQuest[i] != 1) {
-                p->mealSkill = 0;
-                p->mealSkillGroup = 0;
+                pl->mealSkill = 0;
+                pl->mealSkillGroup = 0;
                 Notice_Push(0, 0x1E, 0);
                 return;
             }
@@ -11636,16 +11636,16 @@ void Player_CheckTeamComboLost(Player *p)
     }
 }
 
-void Player_SetEvadeFrames(Player *p)
+void Player_SetEvadeFrames(Player *pl)
 {
     s16 v = 6;
 
-    if (Player_HasSkill(p, 0xAF) == 1) {
+    if (Player_HasSkill(pl, 0xAF) == 1) {
         v += 2;
-    } else if (Player_HasSkill(p, 0xB0) == 1) {
+    } else if (Player_HasSkill(pl, 0xB0) == 1) {
         v += 4;
     }
-    p->noHitTimer = v;
+    pl->noHitTimer = v;
 }
 
 s32 func_00723BC0(Em *em)
@@ -12947,7 +12947,7 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
                             return 0;
                         }
                         r = 0xE;
-                        Em_SetRow638(em, 0);
+                        Em_SelectSightRow(em, 0);
                         Em_LoadReactionSet(em, 0);
                         if (*out == 0 || em->hitReactMode != 0) {
                             Em_RestartScript(em);
@@ -12970,7 +12970,7 @@ end:
     return r;
 }
 
-static void EmScript_SetVar95E(Em *em, u8 *p, s32 v)
+static void EmScript_SetVar95E(Em *em, u8 *script, s32 v)
 {
     em->scriptAbort = (u8) v;
 }
@@ -13006,7 +13006,7 @@ void EmScript_Init(Em *em)
 void EmScript_Run(Em *em)
 {
     u8 run;
-    u8 *p;
+    u8 *script;
     s32 n;
     s32 a;
     s32 b;
@@ -13023,418 +13023,418 @@ void EmScript_Run(Em *em)
     }
     em->noReact = 0;
     EmScript_Restart(em);
-    if ((p = EmScript_PickTrigger(em)) == NULL) {
-        p = EmScript_GetPos(em);
+    if ((script = EmScript_PickTrigger(em)) == NULL) {
+        script = EmScript_GetPos(em);
     }
     while (run) {
         n++;
         if (n >= 1000) {
-            EmScript_SetVar95E(em, p, 2);
+            EmScript_SetVar95E(em, script, 2);
         }
         if (em->scriptAbort != 0) {
             Em_RestartScript(em);
             break;
         }
-        if (p == NULL) {
+        if (script == NULL) {
             em->scriptAbort = 0;
             Em_RestartScript(em);
             break;
         }
-        switch (*p) {
+        switch (*script) {
         case 0x01:
-            p = EmScript_Op01(em, p + 1);
+            script = EmScript_Op01(em, script + 1);
             break;
         case 0x02:
-            p = EmScript_Op02(em, p + 1);
+            script = EmScript_Op02(em, script + 1);
             break;
         case 0x03:
-            p = EmScript_Op03(em, p + 1);
+            script = EmScript_Op03(em, script + 1);
             break;
         case 0x04:
             em->scriptNo = 0;
-            p = (u8 *) Em_StartScript(em);
+            script = (u8 *) Em_StartScript(em);
             break;
         case 0x05:
-            p++;
-            a = *p++;
-            b = *p++;
-            em->routedStateArg = *p++;
+            script++;
+            a = *script++;
+            b = *script++;
+            em->routedStateArg = *script++;
             if (em->remote == 0) {
                 Em_ChangeStateRouted(em, a, b, 1);
             }
-            EmScript_SetPos(em, p);
+            EmScript_SetPos(em, script);
             run = 0;
             break;
         case 0x06:
-            p = EmScript_Op06(em, p + 1);
+            script = EmScript_Op06(em, script + 1);
             break;
         case 0x07:
-            p = (u8 *) EmScript_Start(em, p + 1);
+            script = (u8 *) EmScript_Start(em, script + 1);
             break;
         case 0x08:
-            p = EmScript_Op08(em, p + 1);
+            script = EmScript_Op08(em, script + 1);
             break;
         case 0x1F:
-            p = EmScript_Op1F(em, p + 1);
+            script = EmScript_Op1F(em, script + 1);
             break;
         case 0x09:
-            p = EmScript_Op09(em, p + 1);
+            script = EmScript_Op09(em, script + 1);
             break;
         case 0x0A:
-            p = EmScript_Op0A(em, p + 1);
+            script = EmScript_Op0A(em, script + 1);
             break;
         case 0x0B:
-            p = EmScript_Op0B(em, p + 1);
+            script = EmScript_Op0B(em, script + 1);
             break;
         case 0x0C:
-            p = EmScript_Op0C(em, p + 1);
+            script = EmScript_Op0C(em, script + 1);
             break;
         case 0x0D:
-            p = EmScript_Op0D(em, p + 1);
+            script = EmScript_Op0D(em, script + 1);
             break;
         case 0x0E:
-            p = EmScript_Op0E(em, p + 1);
+            script = EmScript_Op0E(em, script + 1);
             break;
         case 0x0F:
-            p = EmScript_Op0F(em, p + 1);
+            script = EmScript_Op0F(em, script + 1);
             break;
         case 0x10:
-            p = EmScript_Op10(em, p + 1);
+            script = EmScript_Op10(em, script + 1);
             break;
         case 0x11:
-            p = EmScript_Op11(em, p + 1);
+            script = EmScript_Op11(em, script + 1);
             break;
         case 0x12:
-            p = EmScript_Op12(em, p + 1);
+            script = EmScript_Op12(em, script + 1);
             break;
         case 0x13:
-            p = EmScript_Op13(em, p + 1);
+            script = EmScript_Op13(em, script + 1);
             break;
         case 0x14:
-            p = EmScript_Op14(em, p + 1);
+            script = EmScript_Op14(em, script + 1);
             break;
         case 0x15:
-            p = EmScript_Op15(em, p + 1);
+            script = EmScript_Op15(em, script + 1);
             break;
         case 0x16:
-            p = EmScript_Call(em, p + 1);
+            script = EmScript_Call(em, script + 1);
             break;
         case 0x17:
-            p = EmScript_Op17(em, p + 1);
+            script = EmScript_Op17(em, script + 1);
             break;
         case 0x18:
-            p = EmScript_Op18(em, p + 1);
+            script = EmScript_Op18(em, script + 1);
             break;
         case 0x19:
-            p = EmScript_Op19(em, p + 1);
+            script = EmScript_Op19(em, script + 1);
             break;
         case 0x1A:
-            p = EmScript_Op1A(em, p + 1);
+            script = EmScript_Op1A(em, script + 1);
             break;
         case 0x1B:
-            p = EmScript_Op1B(em, p + 1);
+            script = EmScript_Op1B(em, script + 1);
             break;
         case 0x1C:
-            p = EmScript_Op1C(em, p + 1);
+            script = EmScript_Op1C(em, script + 1);
             break;
         case 0x1D:
-            p = EmScript_Op1D(em, p + 1);
+            script = EmScript_Op1D(em, script + 1);
             break;
         case 0x1E:
-            p = EmScript_Op1E(em, p + 1);
+            script = EmScript_Op1E(em, script + 1);
             break;
         case 0x20:
-            p = EmScript_Op20(em, p + 1);
+            script = EmScript_Op20(em, script + 1);
             break;
         case 0x21:
-            p = EmScript_Op21(em, p + 1);
+            script = EmScript_Op21(em, script + 1);
             break;
         case 0x22:
-            p = EmScript_Op22(em, p + 1);
+            script = EmScript_Op22(em, script + 1);
             break;
         case 0x36:
-            p = EmScript_Op36(em, p + 1);
+            script = EmScript_Op36(em, script + 1);
             break;
         case 0x23:
-            p = EmScript_Op23(em, p + 1);
+            script = EmScript_Op23(em, script + 1);
             break;
         case 0x24:
-            p = EmScript_Op24(em, p + 1);
+            script = EmScript_Op24(em, script + 1);
             break;
         case 0x25:
-            p = EmScript_Op25(em, p + 1);
+            script = EmScript_Op25(em, script + 1);
             break;
         case 0x26:
-            p = EmScript_Op26(em, p + 1);
+            script = EmScript_Op26(em, script + 1);
             break;
         case 0x27:
-            p = EmScript_Op27(em, p + 1);
+            script = EmScript_Op27(em, script + 1);
             break;
         case 0x28:
-            p = EmScript_Op28(em, p + 1);
+            script = EmScript_Op28(em, script + 1);
             break;
         case 0x29:
-            p = EmScript_Op29(em, p + 1);
+            script = EmScript_Op29(em, script + 1);
             break;
         case 0x2A:
-            p = EmScript_Op2A(em, p + 1);
+            script = EmScript_Op2A(em, script + 1);
             break;
         case 0x2B:
-            p = EmScript_Op2B(em, p + 1);
+            script = EmScript_Op2B(em, script + 1);
             break;
         case 0x2C:
-            p = EmScript_Op2C(em, p + 1);
+            script = EmScript_Op2C(em, script + 1);
             break;
         case 0x70:
-            p = EmScript_Op70(em, p + 1);
+            script = EmScript_Op70(em, script + 1);
             break;
         case 0x2D:
-            p = EmScript_Op2D(em, p + 1);
+            script = EmScript_Op2D(em, script + 1);
             break;
         case 0x2E:
-            p = EmScript_Op2E(em, p + 1);
+            script = EmScript_Op2E(em, script + 1);
             break;
         case 0x2F:
-            p = EmScript_Op2F(em, p + 1);
+            script = EmScript_Op2F(em, script + 1);
             break;
         case 0x30:
-            p = EmScript_Op30(em, p + 1);
+            script = EmScript_Op30(em, script + 1);
             break;
         case 0x31:
-            p = EmScript_Op31(em, p + 1);
+            script = EmScript_Op31(em, script + 1);
             break;
         case 0x32:
-            p = EmScript_Op32(em, p + 1);
+            script = EmScript_Op32(em, script + 1);
             break;
         case 0x33:
-            p = EmScript_Op33(em, p + 1);
+            script = EmScript_Op33(em, script + 1);
             break;
         case 0x34:
-            p = EmScript_Op34(em, p + 1);
+            script = EmScript_Op34(em, script + 1);
             break;
         case 0x35:
-            p = EmScript_Op35(em, p + 1);
+            script = EmScript_Op35(em, script + 1);
             break;
         case 0x37:
-            p = EmScript_Op37(em, p + 1);
+            script = EmScript_Op37(em, script + 1);
             break;
         case 0x38:
-            p = EmScript_Op38(em, p + 1);
+            script = EmScript_Op38(em, script + 1);
             break;
         case 0x39:
-            p = EmScript_Op39(em, p + 1);
+            script = EmScript_Op39(em, script + 1);
             break;
         case 0x3A:
-            p = EmScript_Op3A(em, p + 1);
+            script = EmScript_Op3A(em, script + 1);
             break;
         case 0x3B:
-            p = EmScript_Op3B(em, p + 1);
+            script = EmScript_Op3B(em, script + 1);
             break;
         case 0x3C:
-            p = EmScript_Op3C(em, p + 1);
+            script = EmScript_Op3C(em, script + 1);
             break;
         case 0x3D:
-            p = EmScript_Op3D(em, p + 1);
+            script = EmScript_Op3D(em, script + 1);
             break;
         case 0x3E:
-            p = EmScript_Op3E(em, p + 1);
+            script = EmScript_Op3E(em, script + 1);
             break;
         case 0x3F:
-            p = EmScript_Op3F(em, p + 1);
+            script = EmScript_Op3F(em, script + 1);
             break;
         case 0x40:
-            p = EmScript_Op40(em, p + 1);
+            script = EmScript_Op40(em, script + 1);
             break;
         case 0x41:
-            p = EmScript_Op41(em, p + 1);
+            script = EmScript_Op41(em, script + 1);
             break;
         case 0x42:
-            p = EmScript_Op42(em, p + 1);
+            script = EmScript_Op42(em, script + 1);
             break;
         case 0x69:
-            p = EmScript_Op69(em, p + 1);
+            script = EmScript_Op69(em, script + 1);
             break;
         case 0x44:
-            p = EmScript_Op44(em, p + 1);
+            script = EmScript_Op44(em, script + 1);
             break;
         case 0x45:
-            p = EmScript_Op45(em, p + 1);
+            script = EmScript_Op45(em, script + 1);
             break;
         case 0x46:
-            p = EmScript_Op46(em, p + 1);
+            script = EmScript_Op46(em, script + 1);
             break;
         case 0x47:
-            p = EmScript_Op47(em, p + 1);
+            script = EmScript_Op47(em, script + 1);
             break;
         case 0x48:
-            p = EmScript_Op48(em, p + 1);
+            script = EmScript_Op48(em, script + 1);
             break;
         case 0x49:
-            p = EmScript_Op49(em, p + 1);
+            script = EmScript_Op49(em, script + 1);
             break;
         case 0x4A:
-            p = EmScript_Op4A(em, p + 1);
+            script = EmScript_Op4A(em, script + 1);
             break;
         case 0x4B:
-            p = EmScript_Op4B(em, p + 1);
+            script = EmScript_Op4B(em, script + 1);
             break;
         case 0x4C:
-            p = EmScript_Op4C(em, p + 1);
+            script = EmScript_Op4C(em, script + 1);
             break;
         case 0x4D:
-            p = EmScript_Op4D(em, p + 1);
+            script = EmScript_Op4D(em, script + 1);
             break;
         case 0x4E:
-            p = EmScript_Op4E(em, p + 1);
+            script = EmScript_Op4E(em, script + 1);
             break;
         case 0x4F:
-            p = EmScript_Op4F(em, p + 1);
+            script = EmScript_Op4F(em, script + 1);
             break;
         case 0x50:
-            p = EmScript_Op50(em, p + 1);
+            script = EmScript_Op50(em, script + 1);
             break;
         case 0x51:
-            p = EmScript_Op51(em, p + 1);
+            script = EmScript_Op51(em, script + 1);
             break;
         case 0x52:
-            p = EmScript_Op52(em, p + 1);
+            script = EmScript_Op52(em, script + 1);
             break;
         case 0x53:
-            p = EmScript_Op53(em, p + 1);
+            script = EmScript_Op53(em, script + 1);
             break;
         case 0x54:
-            p = EmScript_Op54(em, p + 1);
+            script = EmScript_Op54(em, script + 1);
             break;
         case 0x55:
-            p = EmScript_Op55(em, p + 1);
+            script = EmScript_Op55(em, script + 1);
             break;
         case 0x56:
-            p = EmScript_Op56(em, p + 1);
+            script = EmScript_Op56(em, script + 1);
             break;
         case 0x57:
-            p = EmScript_Op57(em, p + 1);
+            script = EmScript_Op57(em, script + 1);
             break;
         case 0x58:
-            p = EmScript_Op58(em, p + 1);
+            script = EmScript_Op58(em, script + 1);
             break;
         case 0x59:
-            p = EmScript_Op59(em, p + 1);
+            script = EmScript_Op59(em, script + 1);
             break;
         case 0x5A:
-            p = EmScript_Op5A(em, p + 1);
+            script = EmScript_Op5A(em, script + 1);
             break;
         case 0x5B:
-            p = EmScript_Op5B(em, p + 1);
+            script = EmScript_Op5B(em, script + 1);
             break;
         case 0x5C:
-            p = EmScript_Op5C(em, p + 1);
+            script = EmScript_Op5C(em, script + 1);
             break;
         case 0x5D:
-            p = EmScript_Op5D(em, p + 1);
+            script = EmScript_Op5D(em, script + 1);
             break;
         case 0x5E:
-            p = EmScript_Op5E(em, p + 1);
+            script = EmScript_Op5E(em, script + 1);
             break;
         case 0x5F:
-            p = EmScript_Op5F(em, p + 1);
+            script = EmScript_Op5F(em, script + 1);
             break;
         case 0x60:
-            p = EmScript_Op60(em, p + 1);
+            script = EmScript_Op60(em, script + 1);
             break;
         case 0x61:
-            p = EmScript_Op61(em, p + 1);
+            script = EmScript_Op61(em, script + 1);
             break;
         case 0x62:
-            p = EmScript_Op62(em, p + 1);
+            script = EmScript_Op62(em, script + 1);
             break;
         case 0x63:
-            p = EmScript_Op63(em, p + 1);
+            script = EmScript_Op63(em, script + 1);
             break;
         case 0x64:
-            p = EmScript_Op64(em, p + 1);
+            script = EmScript_Op64(em, script + 1);
             break;
         case 0x65:
-            p = EmScript_Op65(em, p + 1);
+            script = EmScript_Op65(em, script + 1);
             break;
         case 0x66:
-            p = EmScript_Op66(em, p + 1);
+            script = EmScript_Op66(em, script + 1);
             break;
         case 0x67:
-            p = EmScript_Op67(em, p + 1);
+            script = EmScript_Op67(em, script + 1);
             break;
         case 0x68:
-            p = (u8 *) EmScript_Op68(em, (s32) (p + 1));
+            script = (u8 *) EmScript_Op68(em, (s32) (script + 1));
             break;
         case 0x80:
-            p = EmScript_Op80(em, p + 1);
+            script = EmScript_Op80(em, script + 1);
             break;
         case 0x81:
-            p = EmScript_Op81(em, p + 1);
+            script = EmScript_Op81(em, script + 1);
             break;
         case 0x82:
-            p = EmScript_Op82(em, p + 1);
+            script = EmScript_Op82(em, script + 1);
             break;
         case 0x83:
-            p = EmScript_Op83(em, p + 1);
+            script = EmScript_Op83(em, script + 1);
             break;
         case 0x84:
         case 0x7B:
             EmScript_Op7B(em);
-            p++;
+            script++;
             break;
         case 0xFF:
-            p = EmScript_OpFF(em, p + 1);
+            script = EmScript_OpFF(em, script + 1);
             break;
         case 0x90:
-            p = EmScript_Op90(em, p + 1);
+            script = EmScript_Op90(em, script + 1);
             break;
         case 0x91:
-            p = EmScript_Op91(em, p + 1);
+            script = EmScript_Op91(em, script + 1);
             break;
         case 0x99:
-            p = EmScript_Op99(em, p + 1);
+            script = EmScript_Op99(em, script + 1);
             break;
         case 0x92:
-            p = (u8 *) EmScript_Op92(self, (s32) (p + 1));
+            script = (u8 *) EmScript_Op92(self, (s32) (script + 1));
             break;
         case 0x93:
-            p = (u8 *) EmScript_Op93(self, (s32) (p + 1));
+            script = (u8 *) EmScript_Op93(self, (s32) (script + 1));
             break;
         case 0x94:
-            p = EmScript_Op94(em, p + 1);
+            script = EmScript_Op94(em, script + 1);
             break;
         case 0x71:
-            p = EmScript_Op71(em, p + 1);
+            script = EmScript_Op71(em, script + 1);
             break;
         case 0x72:
-            p = EmScript_Op72(em, p + 1);
+            script = EmScript_Op72(em, script + 1);
             break;
         case 0x73:
-            p = EmScript_Op73(em, p + 1);
+            script = EmScript_Op73(em, script + 1);
             break;
         case 0x74:
-            p = EmScript_Op74(em, p + 1);
+            script = EmScript_Op74(em, script + 1);
             break;
         case 0x75:
-            p = EmScript_Op75(em, p + 1);
+            script = EmScript_Op75(em, script + 1);
             break;
         case 0x76:
-            p = EmScript_Op76(em, p + 1);
+            script = EmScript_Op76(em, script + 1);
             break;
         case 0x77:
-            p = EmScript_Op77(em, p + 1);
+            script = EmScript_Op77(em, script + 1);
             break;
         case 0x78:
-            p = EmScript_Op78(em, p + 1);
+            script = EmScript_Op78(em, script + 1);
             break;
         case 0x79:
-            p = EmScript_Op79(em, p + 1);
+            script = EmScript_Op79(em, script + 1);
             break;
         case 0x7A:
-            p = EmScript_Op7A(em, p + 1);
+            script = EmScript_Op7A(em, script + 1);
             break;
         case 0x7C:
-            p = EmScript_Op7C(em, p + 1);
+            script = EmScript_Op7C(em, script + 1);
             break;
 
         default:
@@ -13451,14 +13451,14 @@ void EmScript_Op7B(Em *em)
     em->stateRand++;
 }
 
-u8 *EmScript_Op01(Em *em, u8 *p)
+u8 *EmScript_Op01(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
 
-    switch (*p) {
+    switch (*script) {
     case 0:
-        p++;
+        script++;
         for (i = 0, n = 0; i < gScene.playerCount; i++) {
             if (em->sensedPlayers & (1 << i)) {
                 n++;
@@ -13466,69 +13466,69 @@ u8 *EmScript_Op01(Em *em, u8 *p)
         }
         if (n == 0) {
             for (;;) {
-                if (p[0] == 1 && p[1] == 1) {
+                if (script[0] == 1 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 1 && p[1] == 2) {
+                if (script[0] == 1 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 1, 2);
+                script = EmScript_SkipBlock(em, script, 1, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 1 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 1 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p + 1, 1);
+        script = EmScript_SkipToEnd(em, script + 1, 1);
         break;
     case 2:
-        p++;
+        script++;
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op02(Em *em, u8 *p)
+u8 *EmScript_Op02(Em *em, u8 *script)
 {
-    switch (*p) {
+    switch (*script) {
     case 0:
-        p++;
+        script++;
         if (em->noticed == 0) {
             *(s8 *) &em->scriptPlayer = -1;
             for (;;) {
-                if (p[0] == 2 && p[1] == 1) {
+                if (script[0] == 2 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 2 && p[1] == 2) {
+                if (script[0] == 2 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 2, 2);
+                script = EmScript_SkipBlock(em, script, 2, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 2 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 2 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p + 1, 2);
+        script = EmScript_SkipToEnd(em, script + 1, 2);
         break;
     case 2:
-        p++;
+        script++;
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op03(Em *em, u8 *p)
+u8 *EmScript_Op03(Em *em, u8 *script)
 {
     s32 ok;
 
-    switch (*p) {
+    switch (*script) {
     case 0:
-        p++;
+        script++;
         if (em->area == em->nextArea || em->nextArea == 0xFFFF) {
             goto skip;
         }
@@ -13546,162 +13546,162 @@ u8 *EmScript_Op03(Em *em, u8 *p)
             em->curGoalArg = 0;
             em->curGoalNo = 0;
             for (;;) {
-                if (p[0] == 3 && p[1] == 1) {
+                if (script[0] == 3 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 3 && p[1] == 2) {
+                if (script[0] == 3 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 3, 2);
+                script = EmScript_SkipBlock(em, script, 3, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 3 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 3 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
             break;
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p + 1, 3);
+        script = EmScript_SkipToEnd(em, script + 1, 3);
         break;
     case 2:
-        p++;
+        script++;
         break;
     }
-    return p;
+    return script;
 }
 
 /* Script command: start script *p (Em_StartScript). */
-s32 EmScript_Start(Em *em, u8 *p)
+s32 EmScript_Start(Em *em, u8 *script)
 {
-    em->scriptNo = *p;
+    em->scriptNo = *script;
     return Em_StartScript(em);
 }
 
-u8 *EmScript_Op08(Em *em, u8 *p)
+u8 *EmScript_Op08(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->stance != 0) {
             for (;;) {
-                if (p[0] == 8 && p[1] == 1) {
+                if (script[0] == 8 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 8 && p[1] == 2) {
+                if (script[0] == 8 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 8, 2);
+                script = EmScript_SkipBlock(em, script, 8, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 8 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 8 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 8);
+        script = EmScript_SkipToEnd(em, script, 8);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op1F(Em *em, u8 *p)
+u8 *EmScript_Op1F(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->stance != 1) {
             for (;;) {
-                if (p[0] == 0x1F && p[1] == 1) {
+                if (script[0] == 0x1F && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x1F && p[1] == 2) {
+                if (script[0] == 0x1F && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x1F, 2);
+                script = EmScript_SkipBlock(em, script, 0x1F, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x1F && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x1F && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x1F);
+        script = EmScript_SkipToEnd(em, script, 0x1F);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op09(Em *em, u8 *p)
+u8 *EmScript_Op09(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->stance != 2) {
             for (;;) {
-                if (p[0] == 9 && p[1] == 1) {
+                if (script[0] == 9 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 9 && p[1] == 2) {
+                if (script[0] == 9 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 9, 2);
+                script = EmScript_SkipBlock(em, script, 9, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 9 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 9 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 9);
+        script = EmScript_SkipToEnd(em, script, 9);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op0A(Em *em, u8 *p)
+u8 *EmScript_Op0A(Em *em, u8 *script)
 {
-    em->hitReactMode = *p;
-    return p + 1;
+    em->hitReactMode = *script;
+    return script + 1;
 }
 
-u8 *EmScript_Op0B(Em *em, u8 *p)
+u8 *EmScript_Op0B(Em *em, u8 *script)
 {
     u8 v;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         em->scriptCombat = em->combat;
         if (em->combat != v) {
             for (;;) {
-                if (p[0] == 0xB && p[1] == 1) {
+                if (script[0] == 0xB && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0xB && p[1] == 2) {
+                if (script[0] == 0xB && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0xB, 2);
+                script = EmScript_SkipBlock(em, script, 0xB, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0xB && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0xB && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0xB);
+        script = EmScript_SkipToEnd(em, script, 0xB);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
 /* Script op 0x0C: k and v are the two bytes at p; sets the Em byte k picks to v (1: blind,
@@ -13710,7 +13710,7 @@ u8 *EmScript_Op0B(Em *em, u8 *p)
  * checks of cases 6 and 7: the loop hoists &em->work from there into its preheader (between the
  * compare constants 55 and 45) and keeps 0x44/0x45 as the store offsets.
  */
-u8 *EmScript_Op0C(Em *em, u8 *p)
+u8 *EmScript_Op0C(Em *em, u8 *script)
 {
     u8 k;
     u8 v;
@@ -13718,8 +13718,8 @@ u8 *EmScript_Op0C(Em *em, u8 *p)
     s32 n;
     u8 *w;
 
-    k = *p++;
-    v = *p++;
+    k = *script++;
+    v = *script++;
     if (k == 0) {
         k = 1;
         n = 10;
@@ -13777,20 +13777,20 @@ u8 *EmScript_Op0C(Em *em, u8 *p)
             break;
         }
     }
-    return p;
+    return script;
 }
 
 /* Script op 0x0D: clears the Em byte the byte at p picks (the fields of EmScript_Op0C; 10:
  * unk882 = 0xFFFF); 0 clears all of them. w is set as in EmScript_Op0C.
  */
-u8 *EmScript_Op0D(Em *em, u8 *p)
+u8 *EmScript_Op0D(Em *em, u8 *script)
 {
     u8 k;
     s32 i;
     s32 n;
     u8 *w;
 
-    k = p[0];
+    k = script[0];
     if (k == 0) {
         k = 1;
         n = 10;
@@ -13856,56 +13856,56 @@ u8 *EmScript_Op0D(Em *em, u8 *p)
             k++;
         } while (i < n);
     }
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op0E(Em *em, u8 *p)
+u8 *EmScript_Op0E(Em *em, u8 *script)
 {
     u16 id;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        id = p[0] << 8;
-        id |= p[1];
-        p += 2;
+        id = script[0] << 8;
+        id |= script[1];
+        script += 2;
         if (em->area != Area_IdForCurrentTime(id)) {
             for (;;) {
-                if (p[0] == 0xE && p[1] == 1) {
+                if (script[0] == 0xE && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0xE && p[1] == 2) {
+                if (script[0] == 0xE && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0xE, 2);
+                script = EmScript_SkipBlock(em, script, 0xE, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0xE && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0xE && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0xE);
+        script = EmScript_SkipToEnd(em, script, 0xE);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op0F(Em *em, u8 *p)
+u8 *EmScript_Op0F(Em *em, u8 *script)
 {
     u8 *q;
     u8 n;
     s16 *e;
 
     em->loopIndex = 0;
-    em->loopMode = p[0];
-    n = p[1];
-    em->loopPointTable = *(p += 2);
-    em->loopScript = p[1];
-    em->loopEndScript = *(p += 2);
-    EmScript_SetPos(em, p + 1);
+    em->loopMode = script[0];
+    n = script[1];
+    em->loopPointTable = *(script += 2);
+    em->loopScript = script[1];
+    em->loopEndScript = *(script += 2);
+    EmScript_SetPos(em, script + 1);
     em->scriptFlags |= 1;
     switch (em->loopMode) {
     case 0:
@@ -13914,21 +13914,21 @@ u8 *EmScript_Op0F(Em *em, u8 *p)
         e = (s16 *)Em_FindAreaEntry(em, em->tables[1], em->area);
         if (e == NULL) {
             em->scriptFlags &= 0xFE;
-            return p + 1;
+            return script + 1;
         }
         if (em->loopMode != 1 && e[1] < n) {
             n = e[1];
         }
         em->loopCount = n;
         em->areaPointCount = e[1];
-        em->loopScriptPos = EmScript_GetTable08(em, em->loopScript);
+        em->loopScriptPos = EmScript_LoopScript(em, em->loopScript);
         break;
     }
     return em->loopScriptPos;
 }
 
 //---
-u8 *EmScript_Op10(Em *em, u8 *p)
+u8 *EmScript_Op10(Em *em, u8 *script)
 {
     u8 list[16];
     s8 n;
@@ -13950,7 +13950,7 @@ u8 *EmScript_Op10(Em *em, u8 *p)
         break;
     case 1:
         if (em->loopPoint == -1 || em->loopPoint >= em->areaPointCount) {
-            em->loopPoint = *(u8 *)EmScript_GetTable08b(em, em->loopPointTable);
+            em->loopPoint = *(u8 *)EmScript_LoopPointList(em, em->loopPointTable);
         }
         break;
     case 2:
@@ -13962,10 +13962,10 @@ u8 *EmScript_Op10(Em *em, u8 *p)
     em->goalKind = 2;
     em->goalArg = 1;
     em->goalNo = em->loopPoint;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op11(Em *em, u8 *p)
+u8 *EmScript_Op11(Em *em, u8 *script)
 {
     s32 i;
 
@@ -13979,10 +13979,10 @@ u8 *EmScript_Op11(Em *em, u8 *p)
     }
     em->goalKind = 1;
     em->goalArg = 0;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op12(Em *em, u8 *p)
+u8 *EmScript_Op12(Em *em, u8 *script)
 {
     s32 i;
 
@@ -13998,10 +13998,10 @@ u8 *EmScript_Op12(Em *em, u8 *p)
         em->syncPulse[1] = 2;
     }
     em->scriptFlags &= 0xEE;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op13(Em *em, u8 *p)
+u8 *EmScript_Op13(Em *em, u8 *script)
 {
     s8 v;
 
@@ -14013,10 +14013,10 @@ u8 *EmScript_Op13(Em *em, u8 *p)
     } else {
         em->goalNo = v & 0xF;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op14(Em *em, u8 *p)
+u8 *EmScript_Op14(Em *em, u8 *script)
 {
     s32 ok;
     u8 k;
@@ -14027,9 +14027,9 @@ u8 *EmScript_Op14(Em *em, u8 *p)
     f32 pa[4];
     f32 pb[4];
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        k = *p++;
+        k = *script++;
         a = (s32) (65536.0f * k / 360.0f + 0.5f);
         ok = 0;
         if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (t = *(u16 *) &em->goalNo) != -1) {
@@ -14047,41 +14047,41 @@ u8 *EmScript_Op14(Em *em, u8 *p)
             ok = 1;
         }
         if (!ok) {
-            if (p[0] == 0x14 && p[1] == 1) {
-                p = EmScript_NextCmd(em, p);
-                if (p[0] == 0x14 && p[1] == 2) {
-                    p = EmScript_NextCmd(em, p);
+            if (script[0] == 0x14 && script[1] == 1) {
+                script = EmScript_NextCmd(em, script);
+                if (script[0] == 0x14 && script[1] == 2) {
+                    script = EmScript_NextCmd(em, script);
                 } else {
-                    p = EmScript_SkipBlock(em, p, 0x14, 2);
-                    p = EmScript_NextCmd(em, p);
+                    script = EmScript_SkipBlock(em, script, 0x14, 2);
+                    script = EmScript_NextCmd(em, script);
                 }
             }
         } else {
             for (;;) {
-                if (p[0] == 0x14 && p[1] == 1) {
+                if (script[0] == 0x14 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x14 && p[1] == 2) {
+                if (script[0] == 0x14 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x14, 2);
+                script = EmScript_SkipBlock(em, script, 0x14, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x14 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x14 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x14);
+        script = EmScript_SkipToEnd(em, script, 0x14);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op15(Em *em, u8 *p)
+u8 *EmScript_Op15(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -14090,78 +14090,78 @@ u8 *EmScript_Op15(Em *em, u8 *p)
     u16 d;
     u16 e;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = p[0] << 8;
-                v |= p[1];
-                p += 2;
+                v = script[0] << 8;
+                v |= script[1];
+                script += 2;
                 d = Area_DayId(v);
                 e = Area_DayId(em->area);
                 if (e == d) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x15, 3);
-                if (p[1] == 2 || p[1] == 3) {
-                    p += 2;
+                script = EmScript_SkipBlock(em, script, 0x15, 3);
+                if (script[1] == 2 || script[1] == 3) {
+                    script += 2;
                     break;
                 }
-                p += 2;
+                script += 2;
                 i++;
             } while (i < n);
         }
         break;
     case 1:
-        p += 2;
+        script += 2;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x15, 3);
-            if (p[0] == 0x15 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x15, 3);
+            if (script[0] == 0x15 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Call(Em *em, u8 *p)
+u8 *EmScript_Call(Em *em, u8 *script)
 {
-    em->subScriptNo = *p;
-    em->subScriptReturn = p + 1;
-    p = EmScript_SubScript(em, em->subScriptNo);
-    em->scriptPos = p;
-    return p;
+    em->subScriptNo = *script;
+    em->subScriptReturn = script + 1;
+    script = EmScript_SubScript(em, em->subScriptNo);
+    em->scriptPos = script;
+    return script;
 }
 
 /* Command 0x17 (4 argument bytes), once while +0x880 is -1: two pairs of bytes into +0x79A/+0x880 and
  * +0x79B/+0x7A0; a zero +0x880 becomes -1 again. The last step is two increments (`p += 2` is folded
  * into each return). */
-u8 *EmScript_Op17(Em *em, u8 *p)
+u8 *EmScript_Op17(Em *em, u8 *script)
 {
     if (em->areaSeqLen != -1) {
-        return p + 4;
+        return script + 4;
     }
-    em->areaSeqTable = p[0];
-    em->areaSeqLen = p[1];
-    em->areaSeqScript = *(p += 2);
-    em->areaSeqMode = p[1];
+    em->areaSeqTable = script[0];
+    em->areaSeqLen = script[1];
+    em->areaSeqScript = *(script += 2);
+    em->areaSeqMode = script[1];
     em->areaSeqPos = 0;
-    p++;
-    p++;
+    script++;
+    script++;
     if (em->areaSeqLen == 0) {
         em->areaSeqLen = -1;
-        return p;
+        return script;
     }
-    return p;
+    return script;
 }
 
 //---
@@ -14176,7 +14176,7 @@ u8 *EmScript_Op18(Em *em, u8 *p)
     em->areaSeqActive = 1;
     em->prevArea = 0xFFFF;
     do {
-        v = ((u16 *)EmScript_GetTable14(em, em->areaSeqTable))[em->areaSeqPos];
+        v = ((u16 *)EmScript_AreaSeqList(em, em->areaSeqTable))[em->areaSeqPos];
         if (v >= 0x8000) {
             *(u16 *) &em->destArea = Area_IdForCurrentTime(*(u16 *) EmScript_PickWeighted(em, em->script[7][v & 0x7FFF]));
         } else {
@@ -14199,12 +14199,12 @@ u8 *EmScript_Op18(Em *em, u8 *p)
     return p;
 other:
     em->areaSeqNext = p;
-    p = EmScript_GetTable18(em, em->areaSeqScript);
+    p = EmScript_AreaSeqScript(em, em->areaSeqScript);
     em->scriptPos = p;
     return p;
 }
 
-u8 *EmScript_Op19(Em *em, u8 *p)
+u8 *EmScript_Op19(Em *em, u8 *script)
 {
     u16 dest;
 
@@ -14212,14 +14212,14 @@ u8 *EmScript_Op19(Em *em, u8 *p)
     dest = *(u16 *) &em->destArea;
     em->goalNo = (s16) dest;
     em->goalArg = (s16) dest;
-    return p;
+    return script;
 }
 
 /* Script op 0x1A: walks the route toward area (the two bytes at p): up to 20 steps of
  * Em_PickRoutePoint's pick from the areas Em_IdSetLookup/Em_IdSetHas list, until an area passes
  * Em_CanEnterArea or the target is reached; the result goes to Em +0x986, +0x77C and +0x77A.
  * `area = area | *p++` (not `|=`) gives the game's stack slot for area. */
-u8 *EmScript_Op1A(Em *em, u8 *p)
+u8 *EmScript_Op1A(Em *em, u8 *script)
 {
     s16 *list;
     u16 tgt;
@@ -14237,8 +14237,8 @@ u8 *EmScript_Op1A(Em *em, u8 *p)
     u16 diff[8];
     u16 ids[8];
 
-    area = *p++ << 8;
-    area = area | *p++;
+    area = *script++ << 8;
+    area = area | *script++;
     skip = em->prevArea;
     from = em->area;
     em->goalKind = 3;
@@ -14311,42 +14311,42 @@ u8 *EmScript_Op1A(Em *em, u8 *p)
     }
 end:
     em->goalArg = em->goalNo = *(u16 *) &em->destArea;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op1B(Em *em, u8 *p)
+u8 *EmScript_Op1B(Em *em, u8 *script)
 {
     u8 v;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         if (v != em->requested) {
             for (;;) {
-                if (p[0] == 0x1B && p[1] == 1) {
+                if (script[0] == 0x1B && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x1B && p[1] == 2) {
+                if (script[0] == 0x1B && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x1B, 2);
+                script = EmScript_SkipBlock(em, script, 0x1B, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x1B && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x1B && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x1B);
+        script = EmScript_SkipToEnd(em, script, 0x1B);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op1C(Em *em, u8 *p)
+u8 *EmScript_Op1C(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -14354,79 +14354,79 @@ u8 *EmScript_Op1C(Em *em, u8 *p)
     u8 ok;
     u8 x;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         x = em->hp * 100 / em->hpMax;
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (v > x) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x1C, 3);
-                if (p[1] == 2 || p[1] == 3) {
-                    p += 2;
+                script = EmScript_SkipBlock(em, script, 0x1C, 3);
+                if (script[1] == 2 || script[1] == 3) {
+                    script += 2;
                     break;
                 }
-                p += 2;
+                script += 2;
                 i++;
             } while (i < n);
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x1C, 3);
-            if (p[0] == 0x1C && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x1C, 3);
+            if (script[0] == 0x1C && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op1D(Em *em, u8 *p)
+u8 *EmScript_Op1D(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u8 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (em->requestId == v) {
                     break;
                 }
                 if (v < em->requestId) {
-                    p = EmScript_SkipBlock(em, p, 0x1D, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x1D, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x1D, 3);
-                        if ((p[0] == 0x1D && p[1] == 2) || (p[0] == 0x1D && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x1D, 3);
+                        if ((script[0] == 0x1D && script[1] == 2) || (script[0] == 0x1D && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -14435,24 +14435,24 @@ u8 *EmScript_Op1D(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x1D, 3);
-            if (p[0] == 0x1D && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x1D, 3);
+            if (script[0] == 0x1D && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op1E(Em *em, u8 *p)
+u8 *EmScript_Op1E(Em *em, u8 *script)
 {
     em->requested = 0;
     em->requestId = 0;
@@ -14465,10 +14465,10 @@ u8 *EmScript_Op1E(Em *em, u8 *p)
     em->need1State = 0;
     em->need2State = 0;
     em->need3State = 0;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op20(Em *em, u8 *p)
+u8 *EmScript_Op20(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -14480,10 +14480,10 @@ u8 *EmScript_Op20(Em *em, u8 *p)
     f32 b[4];
     Player *pl;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
-        p += 3;
+        n = script[0];
+        script += 3;
         if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (k = *(u16 *) &em->goalNo) != -1) {
             Em_GetTargetPos(em, k, a);
             pl = &gPlayers[k];
@@ -14492,145 +14492,145 @@ u8 *EmScript_Op20(Em *em, u8 *p)
         } else {
             ok = 1;
             do {
-                p = EmScript_SkipBlock(em, p, 0x20, 3);
-                if ((p[0] == 0x20 && p[1] == 2) || (p[0] == 0x20 && p[1] == 3)) {
+                script = EmScript_SkipBlock(em, script, 0x20, 3);
+                if ((script[0] == 0x20 && script[1] == 2) || (script[0] == 0x20 && script[1] == 3)) {
                     ok = 0;
                 }
-                p = EmScript_NextCmd(em, p);
+                script = EmScript_NextCmd(em, script);
             } while (ok);
             break;
         }
         i = 0;
         if (i < n) {
             do {
-                v = *p++ << 8;
+                v = *script++ << 8;
                 if (v >= ang) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x20, 3);
-                if (p[1] == 2 || p[1] == 3) {
-                    p += 2;
+                script = EmScript_SkipBlock(em, script, 0x20, 3);
+                if (script[1] == 2 || script[1] == 3) {
+                    script += 2;
                     break;
                 }
-                p += 2;
+                script += 2;
                 i++;
             } while (i < n);
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x20, 3);
-            if (p[0] == 0x20 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x20, 3);
+            if (script[0] == 0x20 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op21(Em *em, u8 *p)
+u8 *EmScript_Op21(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->need2Gauge > (s32) (0.3f * em->need2Max)) {
             for (;;) {
-                if (p[0] == 0x21 && p[1] == 1) {
+                if (script[0] == 0x21 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x21 && p[1] == 2) {
+                if (script[0] == 0x21 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x21, 2);
+                script = EmScript_SkipBlock(em, script, 0x21, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x21 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x21 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x21);
+        script = EmScript_SkipToEnd(em, script, 0x21);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op22(Em *em, u8 *p)
+u8 *EmScript_Op22(Em *em, u8 *script)
 {
     u8 v;
     f32 lim;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        lim = 100.0f * *p++;
+        lim = 100.0f * *script++;
         if (!(Vec_DistanceXZ(&em->posX, em->goal) <= lim)) {
             for (;;) {
-                if (p[0] == 0x22 && p[1] == 1) {
+                if (script[0] == 0x22 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x22 && p[1] == 2) {
+                if (script[0] == 0x22 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x22, 2);
+                script = EmScript_SkipBlock(em, script, 0x22, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x22 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x22 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x22);
+        script = EmScript_SkipToEnd(em, script, 0x22);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op36(Em *em, u8 *p)
+u8 *EmScript_Op36(Em *em, u8 *script)
 {
     u8 v;
     f32 lim;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        lim = 100.0f * *p++;
+        lim = 100.0f * *script++;
         if (!(Vec_Distance(&em->posX, em->goal) <= lim)) {
             for (;;) {
-                if (p[0] == 0x36 && p[1] == 1) {
+                if (script[0] == 0x36 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x36 && p[1] == 2) {
+                if (script[0] == 0x36 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x36, 2);
+                script = EmScript_SkipBlock(em, script, 0x36, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x36 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x36 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x36);
+        script = EmScript_SkipToEnd(em, script, 0x36);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op23(Em *em, u8 *p)
+u8 *EmScript_Op23(Em *em, u8 *script)
 {
     u8 n;
     u8 v;
@@ -14640,14 +14640,14 @@ u8 *EmScript_Op23(Em *em, u8 *p)
     u8 ok;
     Em *e;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 for (j = 0, found = 0, e = gEms; j < 20; j++, e++) {
                     if (e->active != 0) {
                         if (v == 0x4A) {
@@ -14666,108 +14666,108 @@ u8 *EmScript_Op23(Em *em, u8 *p)
                 if (found != 0) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x23, 3);
-                if (p[1] == 2 || p[1] == 3) {
-                    p += 2;
+                script = EmScript_SkipBlock(em, script, 0x23, 3);
+                if (script[1] == 2 || script[1] == 3) {
+                    script += 2;
                     break;
                 }
-                p += 2;
+                script += 2;
                 i++;
             } while (i < n);
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x23, 3);
-            if (p[0] == 0x23 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x23, 3);
+            if (script[0] == 0x23 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op24(Em *em, u8 *p)
+u8 *EmScript_Op24(Em *em, u8 *script)
 {
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        em->repeatCount = *p++;
-        em->repeatPos = p;
+        em->repeatCount = *script++;
+        em->repeatPos = script;
         if (em->repeatCount <= 0) {
             for (;;) {
-                if (p[0] == 0x24 && p[1] == 2) {
+                if (script[0] == 0x24 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x24, 1);
+                script = EmScript_SkipBlock(em, script, 0x24, 1);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x24 && p[1] == 1) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x24 && script[1] == 1) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
         if (--em->repeatCount > 0) {
-            p = em->repeatPos;
+            script = em->repeatPos;
         }
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op25(Em *em, u8 *p)
+u8 *EmScript_Op25(Em *em, u8 *script)
 {
     em->repeatCount = 0;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op26(Em *em, u8 *p)
+u8 *EmScript_Op26(Em *em, u8 *script)
 {
-    em->noAlert = *p;
-    return p + 1;
+    em->noAlert = *script;
+    return script + 1;
 }
 
-u8 *EmScript_Op27(Em *em, u8 *p)
+u8 *EmScript_Op27(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u8 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (em->variant == v) {
                     break;
                 }
                 if (v < em->variant) {
-                    p = EmScript_SkipBlock(em, p, 0x27, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x27, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x27, 3);
-                        if ((p[0] == 0x27 && p[1] == 2) || (p[0] == 0x27 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x27, 3);
+                        if ((script[0] == 0x27 && script[1] == 2) || (script[0] == 0x27 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -14776,56 +14776,56 @@ u8 *EmScript_Op27(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x27, 3);
-            if (p[0] == 0x27 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x27, 3);
+            if (script[0] == 0x27 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op75(Em *em, u8 *p)
+u8 *EmScript_Op75(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u8 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (em->spawnParam == v) {
                     break;
                 }
                 if (v < em->spawnParam) {
-                    p = EmScript_SkipBlock(em, p, 0x75, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x75, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x75, 3);
-                        if ((p[0] == 0x75 && p[1] == 2) || (p[0] == 0x75 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x75, 3);
+                        if ((script[0] == 0x75 && script[1] == 2) || (script[0] == 0x75 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -14834,24 +14834,24 @@ u8 *EmScript_Op75(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x75, 3);
-            if (p[0] == 0x75 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x75, 3);
+            if (script[0] == 0x75 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op76(Em *em, u8 *p)
+u8 *EmScript_Op76(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -14859,33 +14859,33 @@ u8 *EmScript_Op76(Em *em, u8 *p)
     u8 ok;
     u8 x;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         x = Quest_GetSeason();
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (x == v) {
                     break;
                 }
                 if (v < x) {
-                    p = EmScript_SkipBlock(em, p, 0x76, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x76, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x76, 3);
-                        if ((p[0] == 0x76 && p[1] == 2) || (p[0] == 0x76 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x76, 3);
+                        if ((script[0] == 0x76 && script[1] == 2) || (script[0] == 0x76 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -14894,24 +14894,24 @@ u8 *EmScript_Op76(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x76, 3);
-            if (p[0] == 0x76 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x76, 3);
+            if (script[0] == 0x76 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op7A(Em *em, u8 *p)
+u8 *EmScript_Op7A(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -14919,33 +14919,33 @@ u8 *EmScript_Op7A(Em *em, u8 *p)
     u8 ok;
     u8 x;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         x = Area_BaseId(gScene.map);
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = Area_BaseId(*p++);
+                v = Area_BaseId(*script++);
                 if (x == v) {
                     break;
                 }
                 if (v < x) {
-                    p = EmScript_SkipBlock(em, p, 0x7A, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x7A, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x7A, 3);
-                        if ((p[0] == 0x7A && p[1] == 2) || (p[0] == 0x7A && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x7A, 3);
+                        if ((script[0] == 0x7A && script[1] == 2) || (script[0] == 0x7A && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -14954,24 +14954,24 @@ u8 *EmScript_Op7A(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x7A, 3);
-            if (p[0] == 0x7A && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x7A, 3);
+            if (script[0] == 0x7A && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op79(Em *em, u8 *p)
+u8 *EmScript_Op79(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -14981,39 +14981,39 @@ u8 *EmScript_Op79(Em *em, u8 *p)
     s32 k;
     u8 (*fn)(Em *, u8);
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         fn = em->handlers->unk10;
-        n = *p++;
-        k = *p++;
+        n = *script++;
+        k = *script++;
         if (fn != NULL) {
             x = fn(em, k);
         } else {
             x = 0;
         }
-        p += 2;
+        script += 2;
         i = 0;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (x == v) {
                     break;
                 }
                 if (v < x) {
-                    p = EmScript_SkipBlock(em, p, 0x79, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x79, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x79, 3);
-                        if ((p[0] == 0x79 && p[1] == 2) || (p[0] == 0x79 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x79, 3);
+                        if ((script[0] == 0x79 && script[1] == 2) || (script[0] == 0x79 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -15022,30 +15022,30 @@ u8 *EmScript_Op79(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x79, 3);
-            if (p[0] == 0x79 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x79, 3);
+            if (script[0] == 0x79 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op28(Em *em, u8 *p)
+u8 *EmScript_Op28(Em *em, u8 *script)
 {
     Player *pl = gPlayers;
     s32 i;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         ok = 1;
         for (i = 0; i < gScene.playerCount; i++, pl++) {
@@ -15056,98 +15056,98 @@ u8 *EmScript_Op28(Em *em, u8 *p)
         }
         if (ok) {
             while (ok) {
-                if (p[0] == 0x28 && p[1] == 1) {
+                if (script[0] == 0x28 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x28 && p[1] == 2) {
+                if (script[0] == 0x28 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x28, 2);
+                script = EmScript_SkipBlock(em, script, 0x28, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x28 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x28 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x28);
+        script = EmScript_SkipToEnd(em, script, 0x28);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op29(Em *em, u8 *p)
+u8 *EmScript_Op29(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->areaTimer1 > 0) {
             for (;;) {
-                if (p[0] == 0x29 && p[1] == 1) {
+                if (script[0] == 0x29 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x29 && p[1] == 2) {
+                if (script[0] == 0x29 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x29, 2);
+                script = EmScript_SkipBlock(em, script, 0x29, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x29 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x29 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x29);
+        script = EmScript_SkipToEnd(em, script, 0x29);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op2A(Em *em, u8 *p)
+u8 *EmScript_Op2A(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->areaTimer2 > 0) {
             for (;;) {
-                if (p[0] == 0x2A && p[1] == 1) {
+                if (script[0] == 0x2A && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x2A && p[1] == 2) {
+                if (script[0] == 0x2A && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x2A, 2);
+                script = EmScript_SkipBlock(em, script, 0x2A, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x2A && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x2A && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x2A);
+        script = EmScript_SkipToEnd(em, script, 0x2A);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op2B(Em *em, u8 *p)
+u8 *EmScript_Op2B(Em *em, u8 *script)
 {
     u8 k;
     u8 v;
     u8 ne;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        k = p[0];
-        v = p[1];
-        p += 2;
+        k = script[0];
+        v = script[1];
+        script += 2;
         switch (k) {
         case 1:
             if (em->blind == v) {
@@ -15228,105 +15228,105 @@ u8 *EmScript_Op2B(Em *em, u8 *p)
             break;
         }
         while (ne) {
-            if (p[0] == 0x2B && p[1] == 1) {
+            if (script[0] == 0x2B && script[1] == 1) {
                 break;
             }
-            if (p[0] == 0x2B && p[1] == 2) {
+            if (script[0] == 0x2B && script[1] == 2) {
                 break;
             }
-            p = EmScript_SkipBlock(em, p, 0x2B, 2);
+            script = EmScript_SkipBlock(em, script, 0x2B, 2);
         }
-        p = EmScript_NextCmd(em, p);
-        if (p[0] == 0x2B && p[1] == 2) {
-            p = EmScript_NextCmd(em, p);
+        script = EmScript_NextCmd(em, script);
+        if (script[0] == 0x2B && script[1] == 2) {
+            script = EmScript_NextCmd(em, script);
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x2B);
+        script = EmScript_SkipToEnd(em, script, 0x2B);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op2C(Em *em, u8 *p)
+u8 *EmScript_Op2C(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                if (Em_KindMatches(em->type, *p++) != 0) {
+                if (Em_KindMatches(em->type, *script++) != 0) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x2C, 3);
-                if (p[1] == 2 || p[1] == 3) {
-                    p += 2;
+                script = EmScript_SkipBlock(em, script, 0x2C, 3);
+                if (script[1] == 2 || script[1] == 3) {
+                    script += 2;
                     break;
                 }
-                p += 2;
+                script += 2;
                 i++;
             } while (i < n);
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x2C, 3);
-            if (p[0] == 0x2C && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x2C, 3);
+            if (script[0] == 0x2C && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op70(Em *em, u8 *p)
+u8 *EmScript_Op70(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u8 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (em->type == v) {
                     break;
                 }
                 if (v < em->type) {
-                    p = EmScript_SkipBlock(em, p, 0x70, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x70, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x70, 3);
-                        if ((p[0] == 0x70 && p[1] == 2) || (p[0] == 0x70 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x70, 3);
+                        if ((script[0] == 0x70 && script[1] == 2) || (script[0] == 0x70 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -15335,43 +15335,43 @@ u8 *EmScript_Op70(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x70, 3);
-            if (p[0] == 0x70 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x70, 3);
+            if (script[0] == 0x70 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op2D(Em *em, u8 *p)
+u8 *EmScript_Op2D(Em *em, u8 *script)
 {
     em->goalKind = 7;
     em->goalArg = (s16) em->actionGoal[1];
     em->goalNo = (s16) em->actionGoal[2];
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op2E(Em *em, u8 *p)
+u8 *EmScript_Op2E(Em *em, u8 *script)
 {
-    Em_SetRow638(em, *p);
-    return p + 1;
+    Em_SelectSightRow(em, *script);
+    return script + 1;
 }
 
-u8 *EmScript_Op2F(Em *em, u8 *p)
+u8 *EmScript_Op2F(Em *em, u8 *script)
 {
     s8 i;
     u8 found;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         found = 0;
         for (i = 0; i < gScene.playerCount; i++) {
@@ -15382,30 +15382,30 @@ u8 *EmScript_Op2F(Em *em, u8 *p)
         }
         if (!found) {
             for (;;) {
-                if (p[0] == 0x2F && p[1] == 1) {
+                if (script[0] == 0x2F && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x2F && p[1] == 2) {
+                if (script[0] == 0x2F && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x2F, 2);
+                script = EmScript_SkipBlock(em, script, 0x2F, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x2F && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x2F && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x2F);
+        script = EmScript_SkipToEnd(em, script, 0x2F);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op30(Em *em, u8 *p)
+u8 *EmScript_Op30(Em *em, u8 *script)
 {
     s8 i;
     s32 found = 0;
@@ -15419,307 +15419,307 @@ u8 *EmScript_Op30(Em *em, u8 *p)
     if (found) {
         em->need4 = 1;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op31(Em *em, u8 *p)
+u8 *EmScript_Op31(Em *em, u8 *script)
 {
     em->goalKind = 8;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op32(Em *em, u8 *p)
+u8 *EmScript_Op32(Em *em, u8 *script)
 {
     u8 v;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         if (em->hitReactMode != v) {
             for (;;) {
-                if (p[0] == 0x32 && p[1] == 1) {
+                if (script[0] == 0x32 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x32 && p[1] == 2) {
+                if (script[0] == 0x32 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x32, 2);
+                script = EmScript_SkipBlock(em, script, 0x32, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x32 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x32 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x32);
+        script = EmScript_SkipToEnd(em, script, 0x32);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op33(Em *em, u8 *p)
+u8 *EmScript_Op33(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u8 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (em->hitReactMode == v) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x33, 3);
-                if (p[1] == 2 || p[1] == 3) {
-                    p += 2;
+                script = EmScript_SkipBlock(em, script, 0x33, 3);
+                if (script[1] == 2 || script[1] == 3) {
+                    script += 2;
                     break;
                 }
-                p += 2;
+                script += 2;
                 i++;
             } while (i < n);
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x33, 3);
-            if (p[0] == 0x33 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x33, 3);
+            if (script[0] == 0x33 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op34(Em *em, u8 *p)
+u8 *EmScript_Op34(Em *em, u8 *script)
 {
     u8 g;
     u8 s;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        g = p[0];
-        s = p[1];
-        p += 2;
+        g = script[0];
+        s = script[1];
+        script += 2;
         if (em->stateGroup != g || em->state != s) {
             for (;;) {
-                if (p[0] == 0x34 && p[1] == 1) {
+                if (script[0] == 0x34 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x34 && p[1] == 2) {
+                if (script[0] == 0x34 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x34, 2);
+                script = EmScript_SkipBlock(em, script, 0x34, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x34 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x34 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x34);
+        script = EmScript_SkipToEnd(em, script, 0x34);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op35(Em *em, u8 *p)
+u8 *EmScript_Op35(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->rage == 0) {
             for (;;) {
-                if (p[0] == 0x35 && p[1] == 1) {
+                if (script[0] == 0x35 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x35 && p[1] == 2) {
+                if (script[0] == 0x35 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x35, 2);
+                script = EmScript_SkipBlock(em, script, 0x35, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x35 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x35 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x35);
+        script = EmScript_SkipToEnd(em, script, 0x35);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op37(Em *em, u8 *p)
+u8 *EmScript_Op37(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (!(gQuest.flags & 0x200000)) {
             for (;;) {
-                if (p[0] == 0x37 && p[1] == 1) {
+                if (script[0] == 0x37 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x37 && p[1] == 2) {
+                if (script[0] == 0x37 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x37, 2);
+                script = EmScript_SkipBlock(em, script, 0x37, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x37 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x37 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x37);
+        script = EmScript_SkipToEnd(em, script, 0x37);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op38(Em *em, u8 *p)
+u8 *EmScript_Op38(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (!func_330E80(em)) {
             for (;;) {
-                if (p[0] == 0x38 && p[1] == 1) {
+                if (script[0] == 0x38 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x38 && p[1] == 2) {
+                if (script[0] == 0x38 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x38, 2);
+                script = EmScript_SkipBlock(em, script, 0x38, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x38 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x38 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x38);
+        script = EmScript_SkipToEnd(em, script, 0x38);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op39(Em *em, u8 *p)
+u8 *EmScript_Op39(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->blindTimer == 0) {
             for (;;) {
-                if (p[0] == 0x39 && p[1] == 1) {
+                if (script[0] == 0x39 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x39 && p[1] == 2) {
+                if (script[0] == 0x39 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x39, 2);
+                script = EmScript_SkipBlock(em, script, 0x39, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x39 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x39 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x39);
+        script = EmScript_SkipToEnd(em, script, 0x39);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op3A(Em *em, u8 *p)
+u8 *EmScript_Op3A(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->senseDelay != 0) {
             for (;;) {
-                if (p[0] == 0x3A && p[1] == 1) {
+                if (script[0] == 0x3A && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x3A && p[1] == 2) {
+                if (script[0] == 0x3A && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x3A, 2);
+                script = EmScript_SkipBlock(em, script, 0x3A, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x3A && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x3A && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x3A);
+        script = EmScript_SkipToEnd(em, script, 0x3A);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op3B(Em *em, u8 *p)
+u8 *EmScript_Op3B(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->link == NULL) {
             for (;;) {
-                if (p[0] == 0x3B && p[1] == 1) {
+                if (script[0] == 0x3B && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x3B && p[1] == 2) {
+                if (script[0] == 0x3B && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x3B, 2);
+                script = EmScript_SkipBlock(em, script, 0x3B, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x3B && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x3B && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x3B);
+        script = EmScript_SkipToEnd(em, script, 0x3B);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op3C(Em *em, u8 *p)
+u8 *EmScript_Op3C(Em *em, u8 *script)
 {
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         ok = 1;
         if (em->link == NULL) {
@@ -15732,39 +15732,39 @@ u8 *EmScript_Op3C(Em *em, u8 *p)
         }
         {
             while (ok) {
-                if (p[0] == 0x3C && p[1] == 1) {
+                if (script[0] == 0x3C && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x3C && p[1] == 2) {
+                if (script[0] == 0x3C && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x3C, 2);
+                script = EmScript_SkipBlock(em, script, 0x3C, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x3C && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x3C && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x3C);
+        script = EmScript_SkipToEnd(em, script, 0x3C);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op3D(Em *em, u8 *p)
+u8 *EmScript_Op3D(Em *em, u8 *script)
 {
     u8 ok;
     u16 id;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        id = p[0] << 8;
-        id |= p[1];
-        p += 2;
+        id = script[0] << 8;
+        id |= script[1];
+        script += 2;
         if (id == 0xFFFF) {
             ok = 1;
         } else {
@@ -15774,29 +15774,29 @@ u8 *EmScript_Op3D(Em *em, u8 *p)
             ok = 1;
         }
         while (ok) {
-            if (p[0] == 0x3D && p[1] == 1) {
+            if (script[0] == 0x3D && script[1] == 1) {
                 break;
             }
-            if (p[0] == 0x3D && p[1] == 2) {
+            if (script[0] == 0x3D && script[1] == 2) {
                 break;
             }
-            p = EmScript_SkipBlock(em, p, 0x3D, 2);
+            script = EmScript_SkipBlock(em, script, 0x3D, 2);
         }
-        p = EmScript_NextCmd(em, p);
-        if (p[0] == 0x3D && p[1] == 2) {
-            p = EmScript_NextCmd(em, p);
+        script = EmScript_NextCmd(em, script);
+        if (script[0] == 0x3D && script[1] == 2) {
+            script = EmScript_NextCmd(em, script);
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x3D);
+        script = EmScript_SkipToEnd(em, script, 0x3D);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op3E(Em *em, u8 *p)
+u8 *EmScript_Op3E(Em *em, u8 *script)
 {
     u16 x = em->prevArea;
     u8 n;
@@ -15804,52 +15804,52 @@ u8 *EmScript_Op3E(Em *em, u8 *p)
     u16 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = p[0] << 8;
-                v |= p[1];
-                p += 2;
+                v = script[0] << 8;
+                v |= script[1];
+                script += 2;
                 if (x == Area_IdForCurrentTime(v) && x != 0xFFFF) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x3E, 3);
-                if (p[1] == 2 || p[1] == 3) {
-                    p += 2;
+                script = EmScript_SkipBlock(em, script, 0x3E, 3);
+                if (script[1] == 2 || script[1] == 3) {
+                    script += 2;
                     break;
                 }
-                p += 2;
+                script += 2;
                 i++;
             } while (i < n);
         }
         break;
     case 1:
-        p += 2;
+        script += 2;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x3E, 3);
-            if (p[0] == 0x3E && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x3E, 3);
+            if (script[0] == 0x3E && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
 /* Script command 0x3F: move to area p[0..1] (big-endian) by a route. Picks the route to that
  * area (the one starting nearest when the area has no id at this time), then the point to start
  * at: outside the scene's area the nearest flagged one, inside it the first flagged one in line
  * of sight (AreaHit_Raycast) at height p[2] * 10. */
-u8 *EmScript_Op3F(Em *em, u8 *p)
+u8 *EmScript_Op3F(Em *em, u8 *script)
 {
     EmRoute *r;
     s16 j;
@@ -15868,17 +15868,17 @@ u8 *EmScript_Op3F(Em *em, u8 *p)
 
     found = 0;
     em->routeMissCount = 0;
-    area = p[0] << 8;
-    area |= p[1];
-    em->routeHeight = *(p += 2);
+    area = script[0] << 8;
+    area |= script[1];
+    em->routeHeight = *(script += 2);
     h = 10.0f * em->routeHeight;
     if (em->area == Area_IdForCurrentTime(area)) {
-        return p + 1;
+        return script + 1;
     }
     set = (EmRouteSet *) Em_FindAreaEntry(em, em->tables[6], em->area);
     r = set->routes;
     if (r == NULL) {
-        return p + 1;
+        return script + 1;
     }
     em->nextArea = Area_IdForCurrentTime(area);
     if (em->nextArea == 0xFFFF) {
@@ -15908,7 +15908,7 @@ u8 *EmScript_Op3F(Em *em, u8 *p)
             }
         }
         if (!found) {
-            return p + 1;
+            return script + 1;
         }
     }
     em->routeNo = idx;
@@ -15971,28 +15971,28 @@ end:
     em->curGoalKind = em->goalKind;
     em->curGoalArg = *(u16 *) &em->goalArg;
     em->curGoalNo = *(u16 *) &em->goalNo;
-    em->routeResume = p + 1;
+    em->routeResume = script + 1;
     em->routePointScript = pt->unk12;
-    return EmScript_GetTable30(em, em->routePointScript);
+    return EmScript_RoutePointScript(em, em->routePointScript);
 }
 
-u8 *EmScript_Op40(Em *em, u8 *p)
+u8 *EmScript_Op40(Em *em, u8 *script)
 {
-    if (*p == 0) {
+    if (*script == 0) {
         Em_SetCombat(em, 0, 0);
     } else {
         Em_SetCombat(em, 1, gEmCombatInit[em->type]);
     }
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op41(Em *em, u8 *p)
+u8 *EmScript_Op41(Em *em, u8 *script)
 {
     u8 temp_a1;
     u8 type;
 
     type = em->type;
-    temp_a1 = *p;
+    temp_a1 = *script;
     switch (type) {
     case 27:
         if (!(temp_a1 & 0xFF)) {
@@ -16010,20 +16010,20 @@ u8 *EmScript_Op41(Em *em, u8 *p)
         }
         break;
     }
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op42(Em *em, u8 *p)
+u8 *EmScript_Op42(Em *em, u8 *script)
 {
     s32 ok;
     u8 k;
     u16 a;
     u16 d;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         Em_ComputeGoal(em, em->goal);
-        k = *p++;
+        k = *script++;
         a = (s32) (65536.0f * k / 360.0f + 0.5f);
         ok = 0;
         d = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
@@ -16034,51 +16034,51 @@ u8 *EmScript_Op42(Em *em, u8 *p)
             ok = 1;
         }
         if (!ok) {
-            if (p[0] == 0x42 && p[1] == 1) {
-                p = EmScript_NextCmd(em, p);
-                if (p[0] == 0x42 && p[1] == 2) {
-                    p = EmScript_NextCmd(em, p);
+            if (script[0] == 0x42 && script[1] == 1) {
+                script = EmScript_NextCmd(em, script);
+                if (script[0] == 0x42 && script[1] == 2) {
+                    script = EmScript_NextCmd(em, script);
                 } else {
-                    p = EmScript_SkipBlock(em, p, 0x42, 2);
-                    p = EmScript_NextCmd(em, p);
+                    script = EmScript_SkipBlock(em, script, 0x42, 2);
+                    script = EmScript_NextCmd(em, script);
                 }
             }
         } else {
             for (;;) {
-                if (p[0] == 0x42 && p[1] == 1) {
+                if (script[0] == 0x42 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x42 && p[1] == 2) {
+                if (script[0] == 0x42 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x42, 2);
+                script = EmScript_SkipBlock(em, script, 0x42, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x42 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x42 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x42);
+        script = EmScript_SkipToEnd(em, script, 0x42);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op69(Em *em, u8 *p)
+u8 *EmScript_Op69(Em *em, u8 *script)
 {
     s32 ok;
     u8 k;
     u16 a;
     u16 d;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         Em_ComputeGoal(em, em->goal);
-        k = *p++;
+        k = *script++;
         a = (s32) (65536.0f * k / 360.0f + 0.5f);
         ok = 0;
         d = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
@@ -16089,45 +16089,45 @@ u8 *EmScript_Op69(Em *em, u8 *p)
             ok = 1;
         }
         if (!ok) {
-            if (p[0] == 0x69 && p[1] == 1) {
-                p = EmScript_NextCmd(em, p);
-                if (p[0] == 0x69 && p[1] == 2) {
-                    p = EmScript_NextCmd(em, p);
+            if (script[0] == 0x69 && script[1] == 1) {
+                script = EmScript_NextCmd(em, script);
+                if (script[0] == 0x69 && script[1] == 2) {
+                    script = EmScript_NextCmd(em, script);
                 } else {
-                    p = EmScript_SkipBlock(em, p, 0x69, 2);
-                    p = EmScript_NextCmd(em, p);
+                    script = EmScript_SkipBlock(em, script, 0x69, 2);
+                    script = EmScript_NextCmd(em, script);
                 }
             }
         } else {
             for (;;) {
-                if (p[0] == 0x69 && p[1] == 1) {
+                if (script[0] == 0x69 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x69 && p[1] == 2) {
+                if (script[0] == 0x69 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x69, 2);
+                script = EmScript_SkipBlock(em, script, 0x69, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x69 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x69 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x69);
+        script = EmScript_SkipToEnd(em, script, 0x69);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op44(Em *em, u8 *p)
+u8 *EmScript_Op44(Em *em, u8 *script)
 {
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->link == NULL) {
             ok = 1;
@@ -16138,31 +16138,31 @@ u8 *EmScript_Op44(Em *em, u8 *p)
             ok = 1;
         }
         while (ok) {
-            if (p[0] == 0x44 && p[1] == 1) {
+            if (script[0] == 0x44 && script[1] == 1) {
                 break;
             }
-            if (p[0] == 0x44 && p[1] == 2) {
+            if (script[0] == 0x44 && script[1] == 2) {
                 break;
             }
-            p = EmScript_SkipBlock(em, p, 0x44, 2);
+            script = EmScript_SkipBlock(em, script, 0x44, 2);
         }
-        p = EmScript_NextCmd(em, p);
-        if (p[0] == 0x44 && p[1] == 2) {
-            p = EmScript_NextCmd(em, p);
+        script = EmScript_NextCmd(em, script);
+        if (script[0] == 0x44 && script[1] == 2) {
+            script = EmScript_NextCmd(em, script);
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x44);
+        script = EmScript_SkipToEnd(em, script, 0x44);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
 /* Command 0x45 (if/else/end): true when exactly one player is in the area and it passes flag 0x80000 and
- * Effect_ExistsKind16; the monster then targets it (+0x798). */
-u8 *EmScript_Op45(Em *em, u8 *p)
+ * Lure_PlayerHasMonsterBait; the monster then targets it (+0x798). */
+u8 *EmScript_Op45(Em *em, u8 *script)
 {
     Player *pl = gPlayers;
     u8 list[4];
@@ -16172,7 +16172,7 @@ u8 *EmScript_Op45(Em *em, u8 *p)
     s8 cnt;
     u8 *w;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         for (i = 0, n = 0, cnt = 0, ok = 0, w = list; i < 4; i++, pl++) {
             if (pl->active != 0 && Obj_SameArea(em, pl) != 0) {
@@ -16181,7 +16181,7 @@ u8 *EmScript_Op45(Em *em, u8 *p)
                     ok = 0;
                     break;
                 }
-                if (Player_TestFlag(pl, 0x80000) != 0 && Effect_ExistsKind16(pl) == 1) {
+                if (Player_TestFlag(pl, 0x80000) != 0 && Lure_PlayerHasMonsterBait(pl) == 1) {
                     *w++ = i;
                     n++;
                     ok = 1;
@@ -16192,104 +16192,104 @@ u8 *EmScript_Op45(Em *em, u8 *p)
             em->scriptPlayer = list[em->stateRand % n];
         } else {
             for (;;) {
-                if (p[0] == 0x45 && p[1] == 1) {
+                if (script[0] == 0x45 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x45 && p[1] == 2) {
+                if (script[0] == 0x45 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x45, 2);
+                script = EmScript_SkipBlock(em, script, 0x45, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x45 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x45 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x45);
+        script = EmScript_SkipToEnd(em, script, 0x45);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op46(Em *em, u8 *p)
+u8 *EmScript_Op46(Em *em, u8 *script)
 {
     u8 g;
     u8 s;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        g = p[0];
-        s = p[1];
-        p += 2;
+        g = script[0];
+        s = script[1];
+        script += 2;
         if (Player_IsState(&gPlayers[(s8) em->scriptPlayer & 0xF], g, s) == 0) {
             for (;;) {
-                if (p[0] == 0x46 && p[1] == 1) {
+                if (script[0] == 0x46 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x46 && p[1] == 2) {
+                if (script[0] == 0x46 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x46, 2);
+                script = EmScript_SkipBlock(em, script, 0x46, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x46 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x46 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x46);
+        script = EmScript_SkipToEnd(em, script, 0x46);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op47(Em *em, u8 *p)
+u8 *EmScript_Op47(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->hooked != 0) {
             em->hooked = 0;
         } else {
             for (;;) {
-                if (p[0] == 0x47 && p[1] == 1) {
+                if (script[0] == 0x47 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x47 && p[1] == 2) {
+                if (script[0] == 0x47 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x47, 2);
+                script = EmScript_SkipBlock(em, script, 0x47, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x47 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x47 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x47);
+        script = EmScript_SkipToEnd(em, script, 0x47);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op48(Em *em, u8 *p)
+u8 *EmScript_Op48(Em *em, u8 *script)
 {
-    em->scriptDelay = *p;
-    return p + 1;
+    em->scriptDelay = *script;
+    return script + 1;
 }
 
-u8 *EmScript_Op49(Em *em, u8 *p)
+u8 *EmScript_Op49(Em *em, u8 *script)
 {
-    s32 v = *p;
+    s32 v = *script;
 
     if ((s8) em->scriptPlayer == -1) {
         em->goalKind = 1;
@@ -16303,42 +16303,42 @@ u8 *EmScript_Op49(Em *em, u8 *p)
     em->curGoalKind = em->goalKind;
     em->curGoalArg = *(u16 *) &em->goalArg;
     em->curGoalNo = *(u16 *) &em->goalNo;
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op4A(Em *em, u8 *p)
+u8 *EmScript_Op4A(Em *em, u8 *script)
 {
     s8 k;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         k = em->scriptPlayer;
         if (!(em->seen & (1 << (k & 0xF))) || k == -1) {
             for (;;) {
-                if (p[0] == 0x4A && p[1] == 1) {
+                if (script[0] == 0x4A && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x4A && p[1] == 2) {
+                if (script[0] == 0x4A && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x4A, 2);
+                script = EmScript_SkipBlock(em, script, 0x4A, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x4A && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x4A && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x4A);
+        script = EmScript_SkipToEnd(em, script, 0x4A);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op4B(Em *em, u8 *p)
+u8 *EmScript_Op4B(Em *em, u8 *script)
 {
     s8 idx;
 
@@ -16346,10 +16346,10 @@ u8 *EmScript_Op4B(Em *em, u8 *p)
     if (idx != -1) {
         em->alertBuildup[idx & 0xF] = 0;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op4C(Em *em, u8 *p)
+u8 *EmScript_Op4C(Em *em, u8 *script)
 {
     s8 idx;
 
@@ -16357,78 +16357,78 @@ u8 *EmScript_Op4C(Em *em, u8 *p)
     if (idx != -1) {
         em->noticeCount[idx & 0xF] = 0;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op4D(Em *em, u8 *p)
+u8 *EmScript_Op4D(Em *em, u8 *script)
 {
     Em_ComputeGoal(em, em->goal);
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op4E(Em *em, u8 *p)
+u8 *EmScript_Op4E(Em *em, u8 *script)
 {
-    switch (*p) {
+    switch (*script) {
     case 0:
-        Em_Add7EC(em, em->need2Max / 2);
+        Em_AddNeed2(em, em->need2Max / 2);
         break;
     }
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op4F(Em *em, u8 *p)
+u8 *EmScript_Op4F(Em *em, u8 *script)
 {
-    switch (*p) {
+    switch (*script) {
     case 0:
-        Em_Add7F0(em, em->need1Max / 2);
+        Em_AddNeed1(em, em->need1Max / 2);
         break;
     }
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op50(Em *em, u8 *p)
+u8 *EmScript_Op50(Em *em, u8 *script)
 {
-    switch (*p) {
+    switch (*script) {
     case 0:
         Em_Add7F4(em, em->need3Max / 2);
         break;
     }
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op51(Em *em, u8 *p)
+u8 *EmScript_Op51(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->stance != 4) {
             for (;;) {
-                if (p[0] == 0x51 && p[1] == 1) {
+                if (script[0] == 0x51 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x51 && p[1] == 2) {
+                if (script[0] == 0x51 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x51, 2);
+                script = EmScript_SkipBlock(em, script, 0x51, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x51 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x51 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x51);
+        script = EmScript_SkipToEnd(em, script, 0x51);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
 /* Script command 0x52: picks the target player into +0x798 among those it is angry with (+0x7E3)
  * and can reach: anger (+0x86C) 50000 or more first, then 30000, by the largest +0x818; else the
  * angriest (none if all are 0); -1 when none. */
-u8 *EmScript_Op52(Em *em, u8 *p)
+u8 *EmScript_Op52(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
@@ -16509,10 +16509,10 @@ u8 *EmScript_Op52(Em *em, u8 *p)
     } else {
         *(s8 *) &em->scriptPlayer = -1;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op53(Em *em, u8 *p)
+u8 *EmScript_Op53(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
@@ -16531,7 +16531,7 @@ u8 *EmScript_Op53(Em *em, u8 *p)
         }
         if (mask == 0) {
             *(s8 *) &em->scriptPlayer = -1;
-            return p;
+            return script;
         }
         for (i = 0, n = 0; i < gScene.playerCount; i++) {
             if (em->noticeCount[i] >= 50000 && (mask & (1 << i))) {
@@ -16602,143 +16602,143 @@ u8 *EmScript_Op53(Em *em, u8 *p)
     } else {
         *(s8 *) &em->scriptPlayer = -1;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op54(Em *em, u8 *p)
+u8 *EmScript_Op54(Em *em, u8 *script)
 {
     s8 k;
     Player *pl;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         k = em->scriptPlayer;
         if (k == -1 || Obj_SameArea(em, pl = &gPlayers[k]) == 0 || pl->active == 0) {
             for (;;) {
-                if (p[0] == 0x54 && p[1] == 1) {
+                if (script[0] == 0x54 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x54 && p[1] == 2) {
+                if (script[0] == 0x54 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x54, 2);
+                script = EmScript_SkipBlock(em, script, 0x54, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x54 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x54 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x54);
+        script = EmScript_SkipToEnd(em, script, 0x54);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op55(Em *em, u8 *p)
+u8 *EmScript_Op55(Em *em, u8 *script)
 {
     s8 k;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         k = em->scriptPlayer;
         if (k == -1 || em->noticeCount[k] < 30000) {
             for (;;) {
-                if (p[0] == 0x55 && p[1] == 1) {
+                if (script[0] == 0x55 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x55 && p[1] == 2) {
+                if (script[0] == 0x55 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x55, 2);
+                script = EmScript_SkipBlock(em, script, 0x55, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x55 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x55 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x55);
+        script = EmScript_SkipToEnd(em, script, 0x55);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op56(Em *em, u8 *p)
+u8 *EmScript_Op56(Em *em, u8 *script)
 {
     u16 day;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        day = p[0] << 8;
-        day |= p[1];
-        p += 2;
+        day = script[0] << 8;
+        day |= script[1];
+        script += 2;
         if (gQuest.stage != day) {
             for (;;) {
-                if (p[0] == 0x56 && p[1] == 1) {
+                if (script[0] == 0x56 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x56 && p[1] == 2) {
+                if (script[0] == 0x56 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x56, 2);
+                script = EmScript_SkipBlock(em, script, 0x56, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x56 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x56 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x56);
+        script = EmScript_SkipToEnd(em, script, 0x56);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op57(Em *em, u8 *p)
+u8 *EmScript_Op57(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u16 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = p[0] << 8;
-                v |= p[1];
-                p += 2;
+                v = script[0] << 8;
+                v |= script[1];
+                script += 2;
                 if (em->questKey == v) {
                     break;
                 }
                 if (v < em->questKey) {
-                    p = EmScript_SkipBlock(em, p, 0x57, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x57, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x57, 3);
-                        if ((p[0] == 0x57 && p[1] == 2) || (p[0] == 0x57 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x57, 3);
+                        if ((script[0] == 0x57 && script[1] == 2) || (script[0] == 0x57 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -16747,24 +16747,24 @@ u8 *EmScript_Op57(Em *em, u8 *p)
         }
         break;
     case 1:
-        p += 2;
+        script += 2;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x57, 3);
-            if (p[0] == 0x57 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x57, 3);
+            if (script[0] == 0x57 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op58(Em *em, u8 *p)
+u8 *EmScript_Op58(Em *em, u8 *script)
 {
     Em *link = em->link;
 
@@ -16776,46 +16776,46 @@ u8 *EmScript_Op58(Em *em, u8 *p)
         em->goalNo = link->targetNo;
     }
     em->scriptPlayer = *(u16 *) &em->goalNo;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op59(Em *em, u8 *p)
+u8 *EmScript_Op59(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if ((s8) em->ceilingTimer == 0) {
             for (;;) {
-                if (p[0] == 0x59 && p[1] == 1) {
+                if (script[0] == 0x59 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x59 && p[1] == 2) {
+                if (script[0] == 0x59 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x59, 2);
+                script = EmScript_SkipBlock(em, script, 0x59, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x59 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x59 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x59);
+        script = EmScript_SkipToEnd(em, script, 0x59);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op5A(Em *em, u8 *p)
+u8 *EmScript_Op5A(Em *em, u8 *script)
 {
     u8 v;
     s8 k;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         if (em->curGoalKind == 0xB || em->curGoalKind == 1) {
             k = em->scriptPlayer;
             if (k != -1 && v == ((Player *) ((u8 *) gPlayers + (k & 0xF) * sizeof(Player)))->floorAttr) {
@@ -16823,31 +16823,31 @@ u8 *EmScript_Op5A(Em *em, u8 *p)
             }
         }
         for (;;) {
-            if (p[0] == 0x5A && p[1] == 1) {
+            if (script[0] == 0x5A && script[1] == 1) {
                 break;
             }
-            if (p[0] == 0x5A && p[1] == 2) {
+            if (script[0] == 0x5A && script[1] == 2) {
                 break;
             }
-            p = EmScript_SkipBlock(em, p, 0x5A, 2);
+            script = EmScript_SkipBlock(em, script, 0x5A, 2);
         }
-        p = EmScript_NextCmd(em, p);
-        if (p[0] == 0x5A && p[1] == 2) {
-            p = EmScript_NextCmd(em, p);
+        script = EmScript_NextCmd(em, script);
+        if (script[0] == 0x5A && script[1] == 2) {
+            script = EmScript_NextCmd(em, script);
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x5A);
+        script = EmScript_SkipToEnd(em, script, 0x5A);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op5B(Em *em, u8 *p)
+u8 *EmScript_Op5B(Em *em, u8 *script)
 {
-    u8 v = *p;
+    u8 v = *script;
     s8 i;
 
     for (i = 0; i < gScene.playerCount; i++) {
@@ -16859,104 +16859,104 @@ u8 *EmScript_Op5B(Em *em, u8 *p)
             break;
         }
     }
-    return p + 1;
+    return script + 1;
 }
 
-u8 *EmScript_Op5C(Em *em, u8 *p)
+u8 *EmScript_Op5C(Em *em, u8 *script)
 {
     f32 a;
     f32 b;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (em->area != gScene.area || AreaGrid2_GetCeiling(&em->posX, &a, (struct AreaTri *) &b) == 0) {
             for (;;) {
-                if (p[0] == 0x5C && p[1] == 1) {
+                if (script[0] == 0x5C && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x5C && p[1] == 2) {
+                if (script[0] == 0x5C && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x5C, 2);
+                script = EmScript_SkipBlock(em, script, 0x5C, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x5C && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x5C && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x5C);
+        script = EmScript_SkipToEnd(em, script, 0x5C);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op5D(Em *em, u8 *p)
+u8 *EmScript_Op5D(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         Em_ComputeGoal(em, em->goal);
         if (em->goal[0] == 0.0f || em->goal[1] == 0.0f || em->goal[2] == 0.0f) {
             for (;;) {
-                if (p[0] == 0x5D && p[1] == 1) {
+                if (script[0] == 0x5D && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x5D && p[1] == 2) {
+                if (script[0] == 0x5D && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x5D, 2);
+                script = EmScript_SkipBlock(em, script, 0x5D, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x5D && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x5D && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x5D);
+        script = EmScript_SkipToEnd(em, script, 0x5D);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op5E(Em *em, u8 *p)
+u8 *EmScript_Op5E(Em *em, u8 *script)
 {
     u8 v;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         if (*((u8 *) em + 0x662) != v) {
             for (;;) {
-                if (p[0] == 0x5E && p[1] == 1) {
+                if (script[0] == 0x5E && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x5E && p[1] == 2) {
+                if (script[0] == 0x5E && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x5E, 2);
+                script = EmScript_SkipBlock(em, script, 0x5E, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x5E && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x5E && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x5E);
+        script = EmScript_SkipToEnd(em, script, 0x5E);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op5F(Em *em, u8 *p)
+u8 *EmScript_Op5F(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
@@ -16973,7 +16973,7 @@ u8 *EmScript_Op5F(Em *em, u8 *p)
         }
         if (mask == 0 || em->floorAttr == 0) {
             *(s8 *) &em->scriptPlayer = -1;
-            return p;
+            return script;
         }
         if (em->floorAttr > 0 && em->floorAttr < 4) {
             for (i = 0; i < gScene.playerCount; i++) {
@@ -17040,51 +17040,51 @@ u8 *EmScript_Op5F(Em *em, u8 *p)
     } else {
         *(s8 *) &em->scriptPlayer = -1;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op60(Em *em, u8 *p)
+u8 *EmScript_Op60(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (gScene.unk20A == 0) {
             for (;;) {
-                if (p[0] == 0x60 && p[1] == 1) {
+                if (script[0] == 0x60 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x60 && p[1] == 2) {
+                if (script[0] == 0x60 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x60, 2);
+                script = EmScript_SkipBlock(em, script, 0x60, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x60 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x60 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x60);
+        script = EmScript_SkipToEnd(em, script, 0x60);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
 struct EmIdPair;
 void Em_SetAreaValue8A0(Em *em, struct EmIdPair *pair);
-u8 *EmScript_Op61(Em *em, u8 *p)
+u8 *EmScript_Op61(Em *em, u8 *script)
 {
     Em_SetAreaValue8A0(em, (struct EmIdPair *)gEmAreaValues8A0[em->type]);
-    return p;
+    return script;
 }
 
 //---
 /* Command 0x62 (a branch on the target player, 0..3 then 0xFF): picks branch 1 (runs on), 2 or 3 from the
  * target player +0x662 and the monster +0x662, skipping to it; no target: branch 3. As in the game, go is
  * only set on that path (the others read it uninitialized). */
-u8 *EmScript_Op62(Em *em, u8 *p)
+u8 *EmScript_Op62(Em *em, u8 *script)
 {
     Player *pl;
     s8 k;
@@ -17092,10 +17092,10 @@ u8 *EmScript_Op62(Em *em, u8 *p)
     u8 go;
     u8 want;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         k = em->scriptPlayer;
-        p += 2;
+        script += 2;
         if (k != -1) {
             pl = &gPlayers[k & 0xF];
         } else {
@@ -17139,122 +17139,122 @@ u8 *EmScript_Op62(Em *em, u8 *p)
     found:
         while (go) {
             want = r;
-            p = EmScript_SkipBlock(em, p, 0x62, 0xFF);
-            if ((p[0] == 0x62 && p[1] == want) || (p[0] == 0x62 && p[1] == 0xFF)) {
+            script = EmScript_SkipBlock(em, script, 0x62, 0xFF);
+            if ((script[0] == 0x62 && script[1] == want) || (script[0] == 0x62 && script[1] == 0xFF)) {
                 go = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         }
         break;
     case 1:
     case 2:
     case 3:
         for (;;) {
-            p = EmScript_SkipBlock(em, p, 0x62, 0xFF);
-            if (p[1] == 0xFF) {
-                p += 2;
+            script = EmScript_SkipBlock(em, script, 0x62, 0xFF);
+            if (script[1] == 0xFF) {
+                script += 2;
                 break;
             }
-            p += 2;
+            script += 2;
         }
         break;
     case 0xFF:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op63(Em *em, u8 *p)
+u8 *EmScript_Op63(Em *em, u8 *script)
 {
     u8 v;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         if (!(em->variant & v)) {
             for (;;) {
-                if (p[0] == 0x63 && p[1] == 1) {
+                if (script[0] == 0x63 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x63 && p[1] == 2) {
+                if (script[0] == 0x63 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x63, 2);
+                script = EmScript_SkipBlock(em, script, 0x63, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x63 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x63 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x63);
+        script = EmScript_SkipToEnd(em, script, 0x63);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op77(Em *em, u8 *p)
+u8 *EmScript_Op77(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (Daytime_Get() & 0xFF) {
             for (;;) {
-                if (p[0] == 0x77 && p[1] == 1) {
+                if (script[0] == 0x77 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x77 && p[1] == 2) {
+                if (script[0] == 0x77 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x77, 2);
+                script = EmScript_SkipBlock(em, script, 0x77, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x77 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x77 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x77);
+        script = EmScript_SkipToEnd(em, script, 0x77);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op7C(Em *em, u8 *p)
+u8 *EmScript_Op7C(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if ((u32) ((Area_BaseId(gScene.map) & 0xFF) - 9) > 1) {
             for (;;) {
-                if (p[0] == 0x7C && p[1] == 1) {
+                if (script[0] == 0x7C && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x7C && p[1] == 2) {
+                if (script[0] == 0x7C && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x7C, 2);
+                script = EmScript_SkipBlock(em, script, 0x7C, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x7C && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x7C && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x7C);
+        script = EmScript_SkipToEnd(em, script, 0x7C);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op78(Em *em, u8 *p)
+u8 *EmScript_Op78(Em *em, u8 *script)
 {
     s32 ok;
     u16 lo;
@@ -17265,12 +17265,12 @@ u8 *EmScript_Op78(Em *em, u8 *p)
     f32 pa[4];
     f32 pb[4];
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        lo = p[0];
-        hi = p[1];
+        lo = script[0];
+        hi = script[1];
         ok = 0;
-        p += 2;
+        script += 2;
         if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (t = *(u16 *) &em->goalNo) != -1) {
             Em_GetTargetPos(em, t, pa);
             pl = &gPlayers[t];
@@ -17283,90 +17283,90 @@ u8 *EmScript_Op78(Em *em, u8 *p)
             ok = 1;
         }
         if (!ok) {
-            if (p[0] == 0x78 && p[1] == 1) {
-                p = EmScript_NextCmd(em, p);
-                if (p[0] == 0x78 && p[1] == 2) {
-                    p = EmScript_NextCmd(em, p);
+            if (script[0] == 0x78 && script[1] == 1) {
+                script = EmScript_NextCmd(em, script);
+                if (script[0] == 0x78 && script[1] == 2) {
+                    script = EmScript_NextCmd(em, script);
                 } else {
-                    p = EmScript_SkipBlock(em, p, 0x78, 2);
-                    p = EmScript_NextCmd(em, p);
+                    script = EmScript_SkipBlock(em, script, 0x78, 2);
+                    script = EmScript_NextCmd(em, script);
                 }
             }
         } else {
             for (;;) {
-                if (p[0] == 0x78 && p[1] == 1) {
+                if (script[0] == 0x78 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x78 && p[1] == 2) {
+                if (script[0] == 0x78 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x78, 2);
+                script = EmScript_SkipBlock(em, script, 0x78, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x78 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x78 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x78);
+        script = EmScript_SkipToEnd(em, script, 0x78);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op64(Em *em, u8 *p)
+u8 *EmScript_Op64(Em *em, u8 *script)
 {
     u8 v;
     s8 k;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         k = em->scriptPlayer;
         if (k == -1 || em->noticeCount[k] < gEmNoticeThresholds[v]) {
             for (;;) {
-                if (p[0] == 0x64 && p[1] == 1) {
+                if (script[0] == 0x64 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x64 && p[1] == 2) {
+                if (script[0] == 0x64 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x64, 2);
+                script = EmScript_SkipBlock(em, script, 0x64, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x64 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x64 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x64);
+        script = EmScript_SkipToEnd(em, script, 0x64);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op65(Em *em, u8 *p)
+u8 *EmScript_Op65(Em *em, u8 *script)
 {
     em->noticeCount[0] = 0;
     em->noticeCount[1] = 0;
     em->noticeCount[2] = 0;
     em->noticeCount[3] = 0;
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op66(Em *em, u8 *p)
+u8 *EmScript_Op66(Em *em, u8 *script)
 {
     u8 ok = 1;
     Player *pl;
     s8 i;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         pl = gPlayers;
         for (i = 0; i < gScene.playerCount; i++, pl++) {
@@ -17376,59 +17376,59 @@ u8 *EmScript_Op66(Em *em, u8 *p)
         }
         if (ok) {
             while (ok) {
-                if (p[0] == 0x66 && p[1] == 1) {
+                if (script[0] == 0x66 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x66 && p[1] == 2) {
+                if (script[0] == 0x66 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x66, 2);
+                script = EmScript_SkipBlock(em, script, 0x66, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x66 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x66 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x66);
+        script = EmScript_SkipToEnd(em, script, 0x66);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op67(Em *em, u8 *p)
+u8 *EmScript_Op67(Em *em, u8 *script)
 {
     s32 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         ok = em->remote != 0;
         if (ok) {
             while (ok) {
-                if (p[0] == 0x67 && p[1] == 1) {
+                if (script[0] == 0x67 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x67 && p[1] == 2) {
+                if (script[0] == 0x67 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x67, 2);
+                script = EmScript_SkipBlock(em, script, 0x67, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x67 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x67 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x67);
+        script = EmScript_SkipToEnd(em, script, 0x67);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
 s32 EmScript_Op68(Em *em, s32 p)
@@ -17437,7 +17437,7 @@ s32 EmScript_Op68(Em *em, s32 p)
     return p;
 }
 
-u8 *EmScript_Op80(Em *em, u8 *p)
+u8 *EmScript_Op80(Em *em, u8 *script)
 {
     u16 i;
     u8 sum;
@@ -17445,17 +17445,17 @@ u8 *EmScript_Op80(Em *em, u8 *p)
     u8 n;
     u8 w;
 
-    switch (*p) {
+    switch (*script) {
     case 0:
-        n = p[1];
+        n = script[1];
         r = em->stateRand & 0x1F;
         sum = 0;
         i = 0;
-        p += 2;
+        script += 2;
         for (; i < n; i++) {
-            p = EmScript_SkipBlock(em, p, 0x80, 0xFF);
-            w = p[2];
-            p += 3;
+            script = EmScript_SkipBlock(em, script, 0x80, 0xFF);
+            w = script[2];
+            script += 3;
             if (!w) {
                 continue;
             }
@@ -17481,21 +17481,21 @@ u8 *EmScript_Op80(Em *em, u8 *p)
     case 11:
     case 12:
     case 13:
-        p += 2;
+        script += 2;
         for (;;) {
-            p = EmScript_SkipBlock(em, p, 0x80, 0xFF);
-            if (p[1] == 0xFF) {
-                p += 2;
+            script = EmScript_SkipBlock(em, script, 0x80, 0xFF);
+            if (script[1] == 0xFF) {
+                script += 2;
                 break;
             }
-            p += 3;
+            script += 3;
         }
         break;
     case 0xFF:
-        p++;
+        script++;
         break;
     }
-    return p;
+    return script;
 }
 
 u8 *EmScript_Op81(Em *em, u8 *p)
@@ -17527,39 +17527,39 @@ u8 *EmScript_Op82(Em *em, u8 *p)
     return p;
 }
 
-u8 *EmScript_Op06(Em *em, u8 *p)
+u8 *EmScript_Op06(Em *em, u8 *script)
 {
     s32 i;
     Em *m;
 
-    em->goalKind = p[0];
+    em->goalKind = script[0];
     switch (em->goalKind) {
     case 0:
         em->goalKind = 0;
-        em->goalArg = p[1];
-        em->goalNo = *(p += 2);
-        p++;
+        em->goalArg = script[1];
+        em->goalNo = *(script += 2);
+        script++;
         break;
     case 1:
         em->goalKind = 1;
-        em->goalArg = p[1];
-        em->goalNo = *(p += 2);
-        p++;
+        em->goalArg = script[1];
+        em->goalNo = *(script += 2);
+        script++;
         break;
     case 2:
     case 4:
     case 5:
     case 6:
-        em->goalArg = p[1];
-        em->goalNo = *(p += 2);
-        p++;
+        em->goalArg = script[1];
+        em->goalNo = *(script += 2);
+        script++;
         break;
     case 3:
-        em->goalArg = p[1];
-        em->goalNo = *(p += 2);
+        em->goalArg = script[1];
+        em->goalNo = *(script += 2);
         em->goalNo = *(u16 *) &em->goalNo << 8;
-        *(u16 *) &em->goalNo |= p[1];
-        p += 2;
+        *(u16 *) &em->goalNo |= script[1];
+        script += 2;
         em->goalNo = Area_IdForCurrentTime(*(u16 *) &em->goalNo);
         em->goalArg = *(u16 *) &em->goalNo;
         em->nextArea = *(u16 *) &em->goalNo;
@@ -17567,9 +17567,9 @@ u8 *EmScript_Op06(Em *em, u8 *p)
         break;
     case 0xA:
         em->goalKind = 3;
-        em->goalArg = p[1];
-        em->goalNo = *(p += 2);
-        p++;
+        em->goalArg = script[1];
+        em->goalNo = *(script += 2);
+        script++;
         if ((s8) em->scriptPlayer == -1) {
             em->goalNo = *(u8 *) &em->area;
         } else {
@@ -17581,9 +17581,9 @@ u8 *EmScript_Op06(Em *em, u8 *p)
         break;
     case 0xD:
         em->goalKind = 0xD;
-        em->goalArg = p[1];
-        em->goalNo = *(p += 2);
-        p++;
+        em->goalArg = script[1];
+        em->goalNo = *(script += 2);
+        script++;
         em->goalNo = 0;
         for (i = 0, m = gEms; i < 20; i++, m++) {
             if (m->active != 0 && em->area == m->area && m != em && m->large != 0) {
@@ -17597,17 +17597,17 @@ u8 *EmScript_Op06(Em *em, u8 *p)
         }
         break;
     default:
-        em->goalArg = p[1];
-        em->goalNo = *(p += 2);
-        p++;
+        em->goalArg = script[1];
+        em->goalNo = *(script += 2);
+        script++;
         break;
     }
-    return p;
+    return script;
 }
 
 /* Command 0x83 (a multi-way branch on distance, 0..5 then 0xFF): picks the first limit (+0x764) the
  * distance to the target reaches and runs that branch; -1: no target, the last one. */
-u8 *EmScript_Op83(Em *em, u8 *p)
+u8 *EmScript_Op83(Em *em, u8 *script)
 {
     s8 k;
     f32 d;
@@ -17616,7 +17616,7 @@ u8 *EmScript_Op83(Em *em, u8 *p)
     s32 j;
     s32 off;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         k = em->scriptPlayer;
         if (k == -1) {
@@ -17627,7 +17627,7 @@ u8 *EmScript_Op83(Em *em, u8 *p)
             off = (k & 0xF) * 4;
             d = *(f32 *) (off + (s32) em + 0x818);
         }
-        n = *p++;
+        n = *script++;
         if (d == -1.0f) {
             i = n;
         } else {
@@ -17640,10 +17640,10 @@ u8 *EmScript_Op83(Em *em, u8 *p)
         }
         em->scriptCaseCount = i;
         for (j = 0; j < em->scriptCaseCount; j++) {
-            p = EmScript_NextCmd(em, p);
-            p = EmScript_SkipBlock(em, p, 0x83, 0xFF);
+            script = EmScript_NextCmd(em, script);
+            script = EmScript_SkipBlock(em, script, 0x83, 0xFF);
         }
-        p = EmScript_NextCmd(em, p);
+        script = EmScript_NextCmd(em, script);
         break;
     case 1:
     case 2:
@@ -17651,21 +17651,21 @@ u8 *EmScript_Op83(Em *em, u8 *p)
     case 4:
     case 5:
         for (;;) {
-            p = EmScript_SkipBlock(em, p, 0x83, 0xFF);
-            if (p[1] == 0xFF) {
-                p += 2;
+            script = EmScript_SkipBlock(em, script, 0x83, 0xFF);
+            if (script[1] == 0xFF) {
+                script += 2;
                 break;
             }
-            p += 2;
+            script += 2;
         }
         break;
     case 0xFF:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_OpFF(Em *em, u8 *p)
+u8 *EmScript_OpFF(Em *em, u8 *script)
 {
     EmRouteSet *set;
     EmRoute *routes;
@@ -17679,30 +17679,30 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
     u8 buf[16];
     f32 v[4];
 
-    switch (*p) {
+    switch (*script) {
     case 0:
         em->scriptNo = 0;
-        p = (u8 *) Em_StartScript(em);
+        script = (u8 *) Em_StartScript(em);
         em->scriptFlags = 0;
         Em_RequestSync(em, 2);
         break;
     case 1:
         em->scriptCallDepth = 0;
-        p = em->scriptCallReturn;
+        script = em->scriptCallReturn;
         break;
     case 2:
         em->scriptCallDepth = 1;
-        p = em->scriptJumpReturn;
+        script = em->scriptJumpReturn;
         break;
     case 3:
-        p = em->subScriptReturn;
+        script = em->subScriptReturn;
         break;
     case 4:
     case 5:
         set = (EmRouteSet *) Em_FindAreaEntry(em, em->tables[6], em->area);
         routes = set->routes;
         if (routes == NULL) {
-            p = em->routeResume;
+            script = em->routeResume;
             em->routeResume = NULL;
             em->goalKind = 0;
             em->curGoalKind = 0;
@@ -17718,10 +17718,10 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
         if (em->remote != 0) {
             if (em->curGoalKind == 9) {
                 em->routePointScript = pts[em->routePoint].unk12;
-                p = EmScript_GetTable30(em, em->routePointScript);
+                script = EmScript_RoutePointScript(em, em->routePointScript);
             } else {
                 em->scriptNo = 0;
-                p = (u8 *) Em_StartScript(em);
+                script = (u8 *) Em_StartScript(em);
             }
             break;
         }
@@ -17745,11 +17745,11 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
             em->curGoalArg = *(u16 *) &em->goalArg;
             em->curGoalNo = *(u16 *) &em->goalNo;
             em->routePointScript = pts[em->routePoint].unk12;
-            p = EmScript_GetTable30(em, em->routePointScript);
-            em->scriptPos = p;
+            script = EmScript_RoutePointScript(em, em->routePointScript);
+            em->scriptPos = script;
         } else if (em->routePoint == 0) {
         last:
-            if (*p == 4 && (s16) routes[em->curGoalArg].area != -1 && em->large != 0) {
+            if (*script == 4 && (s16) routes[em->curGoalArg].area != -1 && em->large != 0) {
                 em->posX = routes[em->routeNo].pos[0];
                 em->posY = routes[em->routeNo].pos[1];
                 em->posZ = routes[em->routeNo].pos[2];
@@ -17761,7 +17761,7 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
                 Em_RequestSync(em, 1);
                 Em_GetFloorInfoEx(em, &em->posX, (struct TriHdr *) &em->floorKind, &em->floorY, &em->surfaceY);
             }
-            p = em->routeResume;
+            script = em->routeResume;
             em->routeResume = NULL;
             em->goalKind = 0;
             em->curGoalKind = 0;
@@ -17775,24 +17775,24 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
             em->curGoalArg = *(u16 *) &em->goalArg;
             em->curGoalNo = *(u16 *) &em->goalNo;
             em->routePointScript = pts[em->routePoint].unk12;
-            p = EmScript_GetTable30(em, em->routePointScript);
+            script = EmScript_RoutePointScript(em, em->routePointScript);
         }
         break;
     case 0xF5:
         em->scriptNo = 0;
-        p = (u8 *) Em_StartScript(em);
+        script = (u8 *) Em_StartScript(em);
         em->scriptFlags = 0;
         Em_RequestSync(em, 2);
         break;
     case 0xF6:
         em->scriptNo = 0;
-        p = (u8 *) Em_StartScript(em);
+        script = (u8 *) Em_StartScript(em);
         em->scriptFlags = 0;
         Em_RequestSync(em, 2);
         break;
     case 0xF7:
         em->scriptNo = 0;
-        p = (u8 *) Em_StartScript(em);
+        script = (u8 *) Em_StartScript(em);
         em->scriptFlags = 0;
         Em_RequestSync(em, 2);
         if ((s8) em->scriptPlayer != -1) {
@@ -17806,38 +17806,38 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
     case 0xF8:
         em->scriptFlags &= 0xF7;
         if (em->scriptFlags & 1) {
-            p = EmScript_GetTable08(em, em->loopEndScript);
+            script = EmScript_LoopScript(em, em->loopEndScript);
         } else {
             em->scriptNo = 0;
-            p = (u8 *) Em_StartScript(em);
+            script = (u8 *) Em_StartScript(em);
             Em_RequestSync(em, 2);
         }
         break;
     case 0xF9:
         em->scriptFlags &= 0xFB;
         if (em->scriptFlags & 1) {
-            p = EmScript_GetTable08(em, em->loopEndScript);
+            script = EmScript_LoopScript(em, em->loopEndScript);
         } else {
             em->scriptNo = 0;
-            p = (u8 *) Em_StartScript(em);
+            script = (u8 *) Em_StartScript(em);
             Em_RequestSync(em, 2);
         }
         break;
     case 0xFA:
         Em_StartScript(em);
         em->scriptFlags &= 0xFD;
-        Em_SetRow638(em, 0);
+        Em_SelectSightRow(em, 0);
         if (em->scriptFlags & 1) {
-            p = EmScript_GetTable08(em, em->loopEndScript);
+            script = EmScript_LoopScript(em, em->loopEndScript);
         } else {
             em->scriptNo = 0;
-            p = (u8 *) Em_StartScript(em);
+            script = (u8 *) Em_StartScript(em);
             Em_RequestSync(em, 2);
         }
         break;
     case 0xFB:
         em->areaSeqActive = 0;
-        p = em->areaSeqNext;
+        script = em->areaSeqNext;
         em->areaSeqPos++;
         if (em->areaSeqLen <= em->areaSeqPos) {
             if (em->areaSeqMode == 0) {
@@ -17853,17 +17853,17 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
             em->scriptCombat = em->combat;
         }
         em->scriptNo = 0;
-        p = (u8 *) Em_StartScript(em);
+        script = (u8 *) Em_StartScript(em);
         em->scriptFlags = 0;
         Em_RequestSync(em, 2);
         break;
     case 0xFD:
         em->scriptFlags &= 0xEF;
         if (em->scriptFlags & 1) {
-            p = EmScript_GetTable08(em, em->loopEndScript);
+            script = EmScript_LoopScript(em, em->loopEndScript);
         } else {
             em->scriptNo = 0;
-            p = (u8 *) Em_StartScript(em);
+            script = (u8 *) Em_StartScript(em);
             em->syncRequest = 2;
         }
         break;
@@ -17900,31 +17900,31 @@ u8 *EmScript_OpFF(Em *em, u8 *p)
                 }
                 break;
             case 1:
-                em->loopPoint = ((u8 *)EmScript_GetTable08b(em, em->loopPointTable))[(s8) em->loopIndex];
+                em->loopPoint = ((u8 *)EmScript_LoopPointList(em, em->loopPointTable))[(s8) em->loopIndex];
                 break;
             case 2:
                 em->loopPoint++;
                 break;
             }
         }
-        p = EmScript_GetTable08(em, em->loopEndScript);
+        script = EmScript_LoopScript(em, em->loopEndScript);
         break;
     case 0xFF:
         if ((s8) em->loopIndex < em->loopCount) {
-            p = EmScript_GetTable08(em, em->loopScript);
+            script = EmScript_LoopScript(em, em->loopScript);
         } else {
             em->scriptFlags &= 0xFE;
-            p = EmScript_GetPos(em);
+            script = EmScript_GetPos(em);
         }
         break;
     }
-    em->scriptPos = p;
-    return p;
+    em->scriptPos = script;
+    return script;
 }
 
-u8 *EmScript_Op90(Em *em, u8 *p)
+u8 *EmScript_Op90(Em *em, u8 *script)
 {
-    f32 *v = (f32 *) (gEmGoalPoints[em->type] + *p * sizeof(f32[3]));
+    f32 *v = (f32 *) (gEmGoalPoints[em->type] + *script * sizeof(f32[3]));
 
     em->posX = v[0];
     em->posY = v[1];
@@ -17932,19 +17932,19 @@ u8 *EmScript_Op90(Em *em, u8 *p)
     em->prevPosX = em->posX;
     em->prevPosY = em->posY;
     em->prevPosZ = em->posZ;
-    return p + 1;
+    return script + 1;
 }
 
-void * EmScript_Op91(Em *em, u8 *p)
+void * EmScript_Op91(Em *em, u8 *script)
 {
-    em->rotY = Math_AngleXZ((f32 *) &em->posX, (f32 *) (gEmGoalPoints[em->type] + (*p * 0xC))) & 0xFFFF;
-    return p + 1;
+    em->rotY = Math_AngleXZ((f32 *) &em->posX, (f32 *) (gEmGoalPoints[em->type] + (*script * 0xC))) & 0xFFFF;
+    return script + 1;
 }
 
-void * EmScript_Op99(Em *em, u8 *p)
+void * EmScript_Op99(Em *em, u8 *script)
 {
-    em->rotY = *p << 8;
-    return p + 1;
+    em->rotY = *script << 8;
+    return script + 1;
 }
 
 s32 EmScript_Op92(s32 unused, s32 p)
@@ -17957,39 +17957,39 @@ s32 EmScript_Op93(s32 unused, s32 p)
     return p;
 }
 
-u8 *EmScript_Op94(Em *em, u8 *p)
+u8 *EmScript_Op94(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
     u8 v;
     u8 ok;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 if (D_008F5AB8 == v) {
                     break;
                 }
                 if (v < D_008F5AB8) {
-                    p = EmScript_SkipBlock(em, p, 0x94, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x94, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x94, 3);
-                        if ((p[0] == 0x94 && p[1] == 2) || (p[0] == 0x94 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x94, 3);
+                        if ((script[0] == 0x94 && script[1] == 2) || (script[0] == 0x94 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -17998,85 +17998,85 @@ u8 *EmScript_Op94(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x94, 3);
-            if (p[0] == 0x94 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x94, 3);
+            if (script[0] == 0x94 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op71(Em *em, u8 *p)
+u8 *EmScript_Op71(Em *em, u8 *script)
 {
     u8 v;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         if (em->level < v) {
             for (;;) {
-                if (p[0] == 0x71 && p[1] == 1) {
+                if (script[0] == 0x71 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x71 && p[1] == 2) {
+                if (script[0] == 0x71 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x71, 2);
+                script = EmScript_SkipBlock(em, script, 0x71, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x71 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x71 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x71);
+        script = EmScript_SkipToEnd(em, script, 0x71);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op72(Em *em, u8 *p)
+u8 *EmScript_Op72(Em *em, u8 *script)
 {
-    switch (*p++) {
+    switch (*script++) {
     case 0:
         if (Quest_IsVersus() != 1) {
             for (;;) {
-                if (p[0] == 0x72 && p[1] == 1) {
+                if (script[0] == 0x72 && script[1] == 1) {
                     break;
                 }
-                if (p[0] == 0x72 && p[1] == 2) {
+                if (script[0] == 0x72 && script[1] == 2) {
                     break;
                 }
-                p = EmScript_SkipBlock(em, p, 0x72, 2);
+                script = EmScript_SkipBlock(em, script, 0x72, 2);
             }
-            p = EmScript_NextCmd(em, p);
-            if (p[0] == 0x72 && p[1] == 2) {
-                p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
+            if (script[0] == 0x72 && script[1] == 2) {
+                script = EmScript_NextCmd(em, script);
             }
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x72);
+        script = EmScript_SkipToEnd(em, script, 0x72);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op73(Em *em, u8 *p)
+u8 *EmScript_Op73(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -18084,34 +18084,34 @@ u8 *EmScript_Op73(Em *em, u8 *p)
     u8 ok;
     u8 x;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        n = p[0];
+        n = script[0];
         i = 0;
-        p += 3;
+        script += 3;
         if (i < n) {
             do {
-                v = *p++;
+                v = *script++;
                 x = em->itemUseKind & ~0x80;
                 if (x == v) {
                     em->itemUseKind &= 0x80;
                     break;
                 }
                 if (v < x) {
-                    p = EmScript_SkipBlock(em, p, 0x73, 3);
-                    if (p[1] == 2 || p[1] == 3) {
-                        p += 2;
+                    script = EmScript_SkipBlock(em, script, 0x73, 3);
+                    if (script[1] == 2 || script[1] == 3) {
+                        script += 2;
                         break;
                     }
-                    p += 2;
+                    script += 2;
                 } else {
                     ok = 1;
                     do {
-                        p = EmScript_SkipBlock(em, p, 0x73, 3);
-                        if ((p[0] == 0x73 && p[1] == 2) || (p[0] == 0x73 && p[1] == 3)) {
+                        script = EmScript_SkipBlock(em, script, 0x73, 3);
+                        if ((script[0] == 0x73 && script[1] == 2) || (script[0] == 0x73 && script[1] == 3)) {
                             ok = 0;
                         }
-                        p = EmScript_NextCmd(em, p);
+                        script = EmScript_NextCmd(em, script);
                     } while (ok);
                     break;
                 }
@@ -18120,31 +18120,31 @@ u8 *EmScript_Op73(Em *em, u8 *p)
         }
         break;
     case 1:
-        p++;
+        script++;
     case 2:
         ok = 1;
         do {
-            p = EmScript_SkipBlock(em, p, 0x73, 3);
-            if (p[0] == 0x73 && p[1] == 3) {
+            script = EmScript_SkipBlock(em, script, 0x73, 3);
+            if (script[0] == 0x73 && script[1] == 3) {
                 ok = 0;
             }
-            p = EmScript_NextCmd(em, p);
+            script = EmScript_NextCmd(em, script);
         } while (ok);
         break;
     case 3:
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op74(Em *em, u8 *p)
+u8 *EmScript_Op74(Em *em, u8 *script)
 {
     u8 v;
     u8 n;
 
-    switch (*p++) {
+    switch (*script++) {
     case 0:
-        v = *p++;
+        v = *script++;
         if (Quest_IsVersus() == 1 && (n = em->itemUseKind & ~0x80) > v) {
             if (Versus_AddGauge(em, n) == 1) {
                 break;
@@ -18152,26 +18152,26 @@ u8 *EmScript_Op74(Em *em, u8 *p)
             em->itemUseKind &= 0x80;
         }
         for (;;) {
-            if (p[0] == 0x74 && p[1] == 1) {
+            if (script[0] == 0x74 && script[1] == 1) {
                 break;
             }
-            if (p[0] == 0x74 && p[1] == 2) {
+            if (script[0] == 0x74 && script[1] == 2) {
                 break;
             }
-            p = EmScript_SkipBlock(em, p, 0x74, 2);
+            script = EmScript_SkipBlock(em, script, 0x74, 2);
         }
-        p = EmScript_NextCmd(em, p);
-        if (p[0] == 0x74 && p[1] == 2) {
-            p = EmScript_NextCmd(em, p);
+        script = EmScript_NextCmd(em, script);
+        if (script[0] == 0x74 && script[1] == 2) {
+            script = EmScript_NextCmd(em, script);
         }
         break;
     case 1:
-        p = EmScript_SkipToEnd(em, p, 0x74);
+        script = EmScript_SkipToEnd(em, script, 0x74);
         break;
     case 2:
         break;
     }
-    return p;
+    return script;
 }
 
 /* Starts script em->scriptNo of the monster's command scripts. */
@@ -18185,137 +18185,137 @@ s32 Em_StartScript(Em *em)
     return (s32)pos;
 }
 
-u8 *EmScript_SkipBlock(Em *em, u8 *p, u8 op, u8 end)
+u8 *EmScript_SkipBlock(Em *em, u8 *script, u8 op, u8 end)
 {
     for (;;) {
-        while (p[0] != op) {
-            p = EmScript_NextCmd(em, p);
+        while (script[0] != op) {
+            script = EmScript_NextCmd(em, script);
         }
-        if (p[0] != op || p[1] != 0) {
+        if (script[0] != op || script[1] != 0) {
             break;
         }
-        p = EmScript_NextCmd(em, p);
+        script = EmScript_NextCmd(em, script);
         for (;;) {
-            if (p[0] == op && p[1] == end) {
-                p = EmScript_NextCmd(em, p);
+            if (script[0] == op && script[1] == end) {
+                script = EmScript_NextCmd(em, script);
                 break;
             }
-            if (p[0] == op) {
-                p = EmScript_NextCmd(em, p);
+            if (script[0] == op) {
+                script = EmScript_NextCmd(em, script);
             }
-            p = EmScript_SkipBlock(em, p, op, end);
+            script = EmScript_SkipBlock(em, script, op, end);
         }
     }
-    return p;
+    return script;
 }
 
 /* Skips the command at p (its arguments, and a sub-command where it has one); an unknown command
  * stops the script (EmScript_SetVar95E with 4). The game keeps p in a1 across that call: EmScript_SetVar95E
  * is static and defined earlier in this file (catalogue "Arguments kept or reloaded across calls"). */
-u8 *EmScript_NextCmd(Em *em, u8 *p)
+u8 *EmScript_NextCmd(Em *em, u8 *script)
 {
-    switch (*p) {
+    switch (*script) {
     case 1:
-        p += 2;
+        script += 2;
         break;
     case 2:
-        p += 2;
+        script += 2;
         break;
     case 3:
-        p += 2;
+        script += 2;
         break;
     case 4:
-        p += 1;
+        script += 1;
         break;
     case 5:
-        p += 4;
+        script += 4;
         break;
     case 6:
-        if (p[1] == 3) {
-            p += 5;
+        if (script[1] == 3) {
+            script += 5;
         } else {
-            p += 4;
+            script += 4;
         }
         break;
     case 7:
-        p += 2;
+        script += 2;
         break;
     case 8:
-        p += 2;
+        script += 2;
         break;
     case 0x1F:
-        p += 2;
+        script += 2;
         break;
     case 9:
-        p += 2;
+        script += 2;
         break;
     case 0x0A:
-        p += 2;
+        script += 2;
         break;
     case 0x0B:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x0C:
-        p += 3;
+        script += 3;
         break;
     case 0x0D:
-        p += 2;
+        script += 2;
         break;
     case 0x0E:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x0F:
-        p += 6;
+        script += 6;
         break;
     case 0x10:
-        p += 1;
+        script += 1;
         break;
     case 0x11:
-        p += 1;
+        script += 1;
         break;
     case 0x12:
-        p += 1;
+        script += 1;
         break;
     case 0x13:
-        p += 1;
+        script += 1;
         break;
     case 0x14:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x15:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 2;
+            script += 2;
             break;
         case 2:
         case 3:
@@ -18323,39 +18323,39 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x16:
-        p += 2;
+        script += 2;
         break;
     case 0x17:
-        p += 5;
+        script += 5;
         break;
     case 0x18:
-        p += 1;
+        script += 1;
         break;
     case 0x19:
-        p += 1;
+        script += 1;
         break;
     case 0x1A:
-        p += 3;
+        script += 3;
         break;
     case 0x1B:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x1C:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18363,12 +18363,12 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x1D:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18376,15 +18376,15 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x1E:
-        p += 1;
+        script += 1;
         break;
     case 0x20:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18392,48 +18392,48 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x21:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 1;
+            script += 1;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x22:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x36:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x23:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18441,29 +18441,29 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x24:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x25:
-        p += 1;
+        script += 1;
         break;
     case 0x26:
-        p += 2;
+        script += 2;
         break;
     case 0x27:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18471,34 +18471,34 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x28:
-        p += 2;
+        script += 2;
         break;
     case 0x29:
-        p += 2;
+        script += 2;
         break;
     case 0x2A:
-        p += 2;
+        script += 2;
         break;
     case 0x2B:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x2C:
     case 0x70:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18506,39 +18506,39 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x2D:
-        p += 1;
+        script += 1;
         break;
     case 0x2E:
-        p += 2;
+        script += 2;
         break;
     case 0x2F:
-        p += 2;
+        script += 2;
         break;
     case 0x30:
-        p += 1;
+        script += 1;
         break;
     case 0x31:
-        p += 1;
+        script += 1;
         break;
     case 0x32:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x33:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18546,274 +18546,274 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x34:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x35:
-        p += 2;
+        script += 2;
         break;
     case 0x37:
-        p += 2;
+        script += 2;
         break;
     case 0x38:
-        p += 2;
+        script += 2;
         break;
     case 0x39:
-        p += 2;
+        script += 2;
         break;
     case 0x3A:
-        p += 2;
+        script += 2;
         break;
     case 0x3B:
-        p += 2;
+        script += 2;
         break;
     case 0x3C:
-        p += 2;
+        script += 2;
         break;
     case 0x3D:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x3E:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 3;
+            script += 3;
             break;
         case 2:
         case 3:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x3F:
-        p += 4;
+        script += 4;
         break;
     case 0x40:
-        p += 2;
+        script += 2;
         break;
     case 0x41:
-        p += 2;
+        script += 2;
         break;
     case 0x42:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x69:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x44:
-        p += 2;
+        script += 2;
         break;
     case 0x45:
-        p += 2;
+        script += 2;
         break;
     case 0x46:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x47:
-        p += 2;
+        script += 2;
         break;
     case 0x48:
-        p += 2;
+        script += 2;
         break;
     case 0x49:
-        p += 2;
+        script += 2;
         break;
     case 0x4A:
-        p += 2;
+        script += 2;
         break;
     case 0x4B:
-        p += 1;
+        script += 1;
         break;
     case 0x4C:
-        p += 1;
+        script += 1;
         break;
     case 0x4D:
-        p += 1;
+        script += 1;
         break;
     case 0x4E:
     case 0x4F:
     case 0x50:
-        p += 2;
+        script += 2;
         break;
     case 0x51:
-        p += 2;
+        script += 2;
         break;
     case 0x52:
-        p += 1;
+        script += 1;
         break;
     case 0x53:
-        p += 1;
+        script += 1;
         break;
     case 0x54:
-        p += 2;
+        script += 2;
         break;
     case 0x55:
-        p += 2;
+        script += 2;
         break;
     case 0x56:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x57:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 3;
+            script += 3;
             break;
         case 2:
         case 3:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x58:
-        p += 1;
+        script += 1;
         break;
     case 0x59:
-        p += 2;
+        script += 2;
         break;
     case 0x5A:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x5B:
-        p += 2;
+        script += 2;
         break;
     case 0x5C:
-        p += 2;
+        script += 2;
         break;
     case 0x5D:
-        p += 2;
+        script += 2;
         break;
     case 0x5E:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x5F:
-        p += 1;
+        script += 1;
         break;
     case 0x60:
-        p += 2;
+        script += 2;
         break;
     case 0x61:
-        p += 1;
+        script += 1;
         break;
     case 0x62:
-        p += 2;
+        script += 2;
         break;
     case 0x63:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x64:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x65:
-        p += 1;
+        script += 1;
         break;
     case 0x66:
-        p += 2;
+        script += 2;
         break;
     case 0x67:
-        p += 2;
+        script += 2;
         break;
     case 0x68:
-        p += 1;
+        script += 1;
         break;
     case 0x80:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
         case 2:
         case 3:
@@ -18827,24 +18827,24 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         case 0x0B:
         case 0x0C:
         case 0x0D:
-            p += 2;
+            script += 2;
             break;
         case 0xFF:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x81:
-        p += 2;
+        script += 2;
         break;
     case 0x82:
-        p += 3;
+        script += 3;
         break;
     case 0x83:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 4;
+            script += 4;
             break;
         case 1:
         case 2:
@@ -18852,35 +18852,35 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         case 4:
         case 5:
         case 0xFF:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x84:
     case 0x7B:
-        p += 1;
+        script += 1;
         break;
     case 0xFF:
-        p += 2;
+        script += 2;
         break;
     case 0x90:
-        p += 2;
+        script += 2;
         break;
     case 0x91:
     case 0x99:
-        p += 2;
+        script += 2;
         break;
     case 0x92:
     case 0x93:
-        p += 1;
+        script += 1;
         break;
     case 0x94:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 2;
+            script += 2;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18888,27 +18888,27 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x71:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x72:
-        p += 2;
+        script += 2;
         break;
     case 0x73:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18916,24 +18916,24 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x74:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 2;
+            script += 2;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x75:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18941,12 +18941,12 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x76:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18954,27 +18954,27 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x77:
-        p += 2;
+        script += 2;
         break;
     case 0x78:
-        p += 1;
-        switch (*p) {
+        script += 1;
+        switch (*script) {
         case 0:
-            p += 3;
+            script += 3;
             break;
         case 1:
         case 2:
-            p += 1;
+            script += 1;
             break;
         }
         break;
     case 0x79:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 4;
+            script += 4;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18982,12 +18982,12 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x7A:
-        p += 1;
-        switch (*p++) {
+        script += 1;
+        switch (*script++) {
         case 0:
-            p += 3;
+            script += 3;
         case 1:
-            p += 1;
+            script += 1;
             break;
         case 2:
         case 3:
@@ -18995,32 +18995,32 @@ u8 *EmScript_NextCmd(Em *em, u8 *p)
         }
         break;
     case 0x7C:
-        p += 2;
+        script += 2;
         break;
     default:
-        EmScript_SetVar95E(em, p, 4);
+        EmScript_SetVar95E(em, script, 4);
         break;
     }
-    return p;
+    return script;
 }
 
-u8 *EmScript_SkipToEnd(Em *em, u8 *p, u8 op)
+u8 *EmScript_SkipToEnd(Em *em, u8 *script, u8 op)
 {
     Em *e;
 
-    if (p[0] == op && p[1] == 2) {
-        p = EmScript_NextCmd(em, p);
+    if (script[0] == op && script[1] == 2) {
+        script = EmScript_NextCmd(em, script);
     } else {
         e = em; /* a copy for the loop (found by the permuter): with em itself MWCC lays the loop out differently */
         for (;;) {
-            if (p[0] == op && p[1] == 2) {
-                p = EmScript_NextCmd(e, p);
+            if (script[0] == op && script[1] == 2) {
+                script = EmScript_NextCmd(e, script);
                 break;
             }
-            p = EmScript_SkipBlock(e, p, op, 2);
+            script = EmScript_SkipBlock(e, script, op, 2);
         }
     }
-    return p;
+    return script;
 }
 
 void Em_RestartScript(Em *em)
@@ -19283,7 +19283,7 @@ void Em_TargetPlayerInRange(Em *em)
     }
 }
 
-u8 *EmScript_PickWeighted(Em *em, u8 *p)
+u8 *EmScript_PickWeighted(Em *em, u8 *script)
 {
     u16 n;
     u16 i;
@@ -19291,15 +19291,15 @@ u8 *EmScript_PickWeighted(Em *em, u8 *p)
     u16 r;
     u8 w;
 
-    n = *(u16 *) (p + 4);
+    n = *(u16 *) (script + 4);
     sum = 0;
     r = em->stateRand & 0x1F;
-    p += 6;
+    script += 6;
     for (i = 0; i < n; i++) {
-        w = p[4];
-        p += 6;
+        w = script[4];
+        script += 6;
         if (!w) {
-            p += 2;
+            script += 2;
             continue;
         }
         if (w == 0xFF) {
@@ -19309,9 +19309,9 @@ u8 *EmScript_PickWeighted(Em *em, u8 *p)
         if (r < sum) {
             break;
         }
-        p += 2;
+        script += 2;
     }
-    return p;
+    return script;
 }
 
 /* The 0x722400 part's .data (0x8C3DE0-0x8C3E50) */

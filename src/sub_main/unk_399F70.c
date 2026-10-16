@@ -1257,10 +1257,10 @@ u32 D_0044A580[24] = {
 u32 D_0044A5E0[158] = {
 #include "sub_main/0044A5E0.inc"
 };
-u32 D_0044A858[2] = {
+u32 gEquipFxListsAltTorso[2] = {
     (u32)D_0044A3A0, (u32)D_0044A580,
 };
-u32 D_0044A860[2] = {
+u32 gEquipFxListsTorso[2] = {
     (u32)D_0044A3D0, (u32)D_0044A5E0,
 };
 u32 gLobbyActorFxIds[2] = {

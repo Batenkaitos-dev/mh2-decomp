@@ -63,7 +63,7 @@ s32 Kbd_CharIsPlain(KbdKey *p);
 s32 CamFollow_IsBlownAway(void);
 f32 AreaGrid2_GetFloorY(f32 *pos); /* the ground height at pos */
 void Hud_SetCancel(void);
-void func_003634B0(void);
+void Kbd_EmptyInit(void);
 void Player_RequestAct(u8 a);
 void Mem_Fill(void *dst, u8 c, s32 n);
 extern u8 gKbdDakutenSjis[];
@@ -320,7 +320,7 @@ void Kbd_InitState(s8 arg0)
     gKbd->polled = 0;
     gKbdSavedKanaInput = 0;
     Kbd_ClearUnk34(arg0);
-    func_003634B0();
+    Kbd_EmptyInit();
 }
 
 void Kbd_ClearUnk34(s8 arg0)
@@ -4681,7 +4681,7 @@ u8 gKbdKindConfs[5][56] = {
 u32 D_00416860[48] = {
 #include "sub_main/00416860.inc"
 };
-u32 gQuestListEntries[96] = {
+u32 gPhraseEntries[96] = {
 #include "sub_main/00416920.inc"
 };
 u8 gKbdKeySets[16][2] = {

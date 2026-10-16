@@ -1,18 +1,8 @@
 #include "common.h"
 #include "scene.h"
 #include "area.h"
+#include "quest.h"   /* GatherPoint, ActionSpot */
 
-/* A gathering point (gather.c), 0x18 bytes; x == -1.0f ends a list. */
-typedef struct GatherPoint {
-    f32 x;                      /* 0x00 */
-    f32 y;                      /* 0x04 */
-    f32 z;                      /* 0x08 */
-    f32 radius;                 /* 0x0C */
-    u16 table;                  /* 0x10 */
-    u16 count;                  /* 0x12: gathers left */
-    u16 unk14;                  /* 0x14 */
-    u16 bonus;                  /* 0x16 */
-} GatherPoint;
 
 s32 LobbyTime_IsAm(void);
 s32 func_7BC280(void);
@@ -27,16 +17,6 @@ extern s16 gAreaFade;
 extern s16 gAreaFadeTimer;
 extern f32 gArea85EffectPos[][3];
 
-/* An action spot of the area (gather.c), 0x18 bytes; x == -1.0f ends a list. */
-typedef struct ActionSpot {
-    u16 type;                   /* 0x00 */
-    u16 kind;                   /* 0x02 */
-    f32 x;                      /* 0x04 */
-    f32 y;                      /* 0x08 */
-    f32 z;                      /* 0x0C */
-    f32 radius;                 /* 0x10 */
-    u16 unk14;                  /* 0x14 */
-} ActionSpot;
 
 void *Stage_GetActionSpots(s32 area);
 f32 Stage_GetDataPoint(s32 area, f32 *pos);

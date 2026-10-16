@@ -80,8 +80,8 @@ void LobbyLevel2_On37Reply(NetMsg m, NetMsg *pm);
 char *strcpy(char *dst, const char *src);
 s32 LobbyScreen_FadeOut(s32);
 s32 LobbyScreen_EnterSeq(s32);
-u8 SeqB_GetState(void);
-void SeqB_Start(s32);
+u8 FadeB_GetState(void);
+void FadeB_Start(s32);
 s32 LobbyTown_WantsMovie(void);
 void LobbyTown_StartMovie(void);
 s32 LobbyTown_MovieDone(void);
@@ -96,7 +96,7 @@ s32 LobbyStep_6408(void);
 struct Player;
 void TownPc_Remove(struct Player *);
 void Mem_Fill(void *dst, u8 c, s32 n);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void LobbyVillage_Begin3(s32);
 void Text_SetSize(s32 size);
 s32 sprintf(char *, const char *, ...);
@@ -139,8 +139,8 @@ void LobbyTown_Enter(void)
             if (gLobby->groupJoin != 0) {
                 memset(gLobby, 0, 0x1C);
             }
-            if (SeqB_GetState() != 0) {
-                SeqB_Start(0xC);
+            if (FadeB_GetState() != 0) {
+                FadeB_Start(0xC);
             }
             break;
         }
@@ -240,7 +240,7 @@ void LobbyTown_Leave(void)
         }
         break;
     case 4:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             LobbyMenu_SetDraw(0, 0, 0, 0);
             LobbyVillage_Begin3(1);
         }

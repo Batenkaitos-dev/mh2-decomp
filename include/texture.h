@@ -135,4 +135,18 @@ void ScreenTex_Send(TexRec *t);
 void ScreenTex_SetRegs(void);
 s32 ScreenTex_Reserve(u32 *pixels);
 
+/* The most textures one pack registers (Tex_RegisterPack). */
+#define TEX_PACK_MAX 100
+
+/* A model's texture pack as Model_SetupLoadedPack passes it (unk_333D70.c):
+ * its count, then its file. */
+typedef struct TexPackHead {
+    s32 count;          /* 0x0: the textures (Model.texCount); a second is registered from 2 */
+    s32 *file;          /* 0x4: the pack file, an index of gTexPackFiles */
+} TexPackHead;
+
+/* The slots of the textures loaded by id (gTexIds, gTexIdHandles;
+ * Tex_LoadById, unk_335040.c): the player looks' texture sets. */
+#define TEX_ID_SLOTS 8
+
 #endif /* TEXTURE_H */

@@ -117,7 +117,7 @@ s32 SpecialMine_Rank(void);
 extern s16 D_008CEEA8[];
 void StageObj_K10_PlaySound(StageObj *o, f32 *pos);
 void StageObj_K10_Draw(DrawSlot *node);
-s32 Effect_KindClass_Unk(s32 a);
+s32 Effect_OwnerColorRow(s32 a);
 void Effect_ScaleVec(f32 *scale);
 extern Rgb4 gEffectColors[];
 void Mtx_RotateX(f32 *m, f32 a);
@@ -133,7 +133,7 @@ extern s16 StageObj_K0F_Durations[];
 extern s16 *StageObj_K0F_DurLists[];
 extern void *StageObj_K0F_Curves[];
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
 s32 StageObj_K0F_RestartPart(StageObj *o, Obj0FPart *w);
 s32 StageObj_K0F_OwnerBone(StageObj *o);
@@ -160,7 +160,7 @@ void StageObj_K0C_PlaySound(StageObj *o, s16 i);
 EmBone *Em_Bone(void *obj, s16 bone);
 extern u32 StageObj_K0E_PartInit[];
 extern f32 D_008CEE84[]; /* StageObj_K0E_PartInit + 4 */
-f32 Lure_RandSigned(void);
+f32 Rand_Signed(void);
 extern f32 StageObj_K10_Scales[];
 s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
 s16 DrawSlot_Alloc(void);
@@ -366,7 +366,7 @@ void StageObj_K0C_RunParts(StageObj *o)
         }
         curve = StageObj_K0C_PartCurves[c++];
         Key_LerpVec3(curve, p->unk04, p->delay);
-        Key_LerpF32(StageObj_K0C_PartCurves[c], &p->alpha, p->delay);
+        Key_LerpFloat(StageObj_K0C_PartCurves[c], &p->alpha, p->delay);
         p->alpha *= p->unk18;
         switch (o->type) {
         case 5:
@@ -755,8 +755,8 @@ void StageObj_K0E_InitPartAt(StageObj *o, Obj0EPart *w)
     Vec_Copy(w->unk18, o->pos);
     r = Rand_Next(1);
     w->unk02 = -0xF;
-    w->unk18[0] += o->scale * (5.0f * Lure_RandSigned());
-    w->unk18[2] += o->scale * (5.0f * Lure_RandSigned());
+    w->unk18[0] += o->scale * (5.0f * Rand_Signed());
+    w->unk18[2] += o->scale * (5.0f * Rand_Signed());
     w->unk06 = r & 1;
     w->unk08 = r;
     w->unk0A = 0x5B;
@@ -1149,7 +1149,7 @@ void StageObj_K0E_RunParts(StageObj *o)
         }
         if (o->type != 9 && w->unk06 != 0xFF) {
             curve = StageObj_K0E_PartCurves[k++];
-            Key_LerpF32(curve, &w->unk24, w->unk02);
+            Key_LerpFloat(curve, &w->unk24, w->unk02);
         }
         if ((o->type == 0 || o->type == 11) && ((u32) w->unk06 <= 1 || w->unk06 == 2)) {
             for (j = 0; StageObj_K0E_ListA[j] != -1; j++) {
@@ -1822,7 +1822,7 @@ void StageObj_K0F_Run(StageObj *o)
             curve = StageObj_K0F_Curves[ci];
             Key_LerpVec3(curve, p->sc, p->unk24);
             c += 2;
-            Key_LerpF32(StageObj_K0F_Curves[(s16) (ci + 1)], &a, p->unk24);
+            Key_LerpFloat(StageObj_K0F_Curves[(s16) (ci + 1)], &a, p->unk24);
             p->alpha = 255.0f * a;
             switch (p->kind) {
             case 0:
@@ -1860,7 +1860,7 @@ void StageObj_K0F_Run(StageObj *o)
             curve = StageObj_K0F_Curves[ci];
             Key_LerpVec3(curve, p->sc, p->unk24);
             c += 2;
-            Key_LerpF32(StageObj_K0F_Curves[(s16) (ci + 1)], &a, p->unk24);
+            Key_LerpFloat(StageObj_K0F_Curves[(s16) (ci + 1)], &a, p->unk24);
             p->alpha = 255.0f * a;
             break;
         case 5:
@@ -1870,7 +1870,7 @@ void StageObj_K0F_Run(StageObj *o)
             curve = StageObj_K0F_Curves[ci];
             Key_LerpVec3(curve, p->sc, p->unk24);
             c += 2;
-            Key_LerpF32(StageObj_K0F_Curves[(s16) (ci + 1)], &a, p->unk24);
+            Key_LerpFloat(StageObj_K0F_Curves[(s16) (ci + 1)], &a, p->unk24);
             p->alpha = 255.0f * a;
             d[0] = 0.0f;
             d[1] = 0.0f;
@@ -2646,7 +2646,7 @@ void StageObj_K10_Run(StageObj *o)
             curve = (void *) StageObj_K10_Curves[cj];
             Key_LerpVec3(curve, p->sc, p->delay);
             k += 2;
-            Key_LerpF32((void *) StageObj_K10_Curves[(s16) (cj + 1)], &a, p->delay);
+            Key_LerpFloat((void *) StageObj_K10_Curves[(s16) (cj + 1)], &a, p->delay);
             p->alpha = 255.0f * a;
             break;
         case 2:
@@ -2673,7 +2673,7 @@ void StageObj_K10_Run(StageObj *o)
                 p->idx = Rand_Next(1) % 3;
             } else {
                 curve = (void *) StageObj_K10_Curves[k++];
-                Key_LerpF32(curve, &a, p->delay);
+                Key_LerpFloat(curve, &a, p->delay);
                 p->alpha = 255.0f * a;
             }
             break;
@@ -2684,7 +2684,7 @@ void StageObj_K10_Run(StageObj *o)
             curve = (void *) StageObj_K10_Curves[ci];
             Key_LerpVec3(curve, p->sc, p->delay);
             k += 2;
-            Key_LerpF32((void *) StageObj_K10_Curves[(s16) (ci + 1)], &a, p->delay);
+            Key_LerpFloat((void *) StageObj_K10_Curves[(s16) (ci + 1)], &a, p->delay);
             p->alpha = 255.0f * a;
             for (si = 0; StageObj_K10_List[si] != -1; si++) {
                 if (p->delay == StageObj_K10_List[si]) {
@@ -2851,7 +2851,7 @@ void StageObj_K10_Draw(DrawSlot *node)
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, m);
             Mtx_Translation(tm, 0.125f * (p->unk30 & 1), 0.125f * (p->unk30 >> 1), 0.0f);
             Gs_SetState(0x19, (s32) tm);
-            i = Effect_KindClass_Unk(o->ownerIndex);
+            i = Effect_OwnerColorRow(o->ownerIndex);
             r = gEffectColors[i].r;
             g = gEffectColors[i].g;
             b = gEffectColors[i].b;
@@ -2889,7 +2889,7 @@ void StageObj_K10_Draw(DrawSlot *node)
                 }
             } else {
                 Effect_ScaleVec(scale);
-                i = Effect_KindClass_Unk(o->ownerIndex);
+                i = Effect_OwnerColorRow(o->ownerIndex);
                 r = gEffectColors[i].r;
                 g = gEffectColors[i].g;
                 b = gEffectColors[i].b;
@@ -2921,7 +2921,7 @@ void StageObj_K10_Draw(DrawSlot *node)
                 }
             } else {
                 Effect_ScaleVec(scale);
-                i = Effect_KindClass_Unk(o->ownerIndex);
+                i = Effect_OwnerColorRow(o->ownerIndex);
                 r = gEffectColors[i].r;
                 g = gEffectColors[i].g;
                 b = gEffectColors[i].b;
@@ -3928,7 +3928,7 @@ void StageObj_K11_RunDefault(StageObj *o)
         }
         if (step > 1 && o->type != 15) {
             curve = StageObj_K11_Curves[k++];
-            Key_LerpF32(curve, &p->unk1C, p->delay);
+            Key_LerpFloat(curve, &p->unk1C, p->delay);
         }
         if (p->node != NULL) {
             if (o->type == 5 || o->type == 16) {

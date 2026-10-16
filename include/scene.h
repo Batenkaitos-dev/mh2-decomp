@@ -45,7 +45,7 @@ typedef struct SceneState {
     u8 emKind[4];               /* 0x02A: per monster slot, its kind (QuestEm_SpawnArea, Quest_SpawnMonsters from gQuestSync.emKind); 0 none */
     u16 questId;                /* 0x02E: the quest id (QuestDesk_Accept, Quest_Init; Tex_LoadStageFile(map, questId)) */
     u8 map;                     /* 0x030: the stage map: Map_AreaIndex(map, area), Area_BaseId, Tex_LoadStageFile, the per-map tables (Quest_Init: stage data word 0) */
-    u8 campArea;                /* 0x031: the map's base camp: a fainted player goes back there (Player_State0_0B), the Felyne kind 0x12 spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1) */
+    u8 campArea;                /* 0x031: the map's base camp: a fainted player goes back there (Player_StateThrowItem), the Felyne kind 0x12 spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1) */
     u8 playerGender[4];         /* 0x032: per player, from gQuestSync (Quest_InitPlayers: Player.gender) */
     u8 unk036[0x03C - 0x036];
     u8 localPlayer;             /* 0x03C: the local player's index (gPlayers, per-player arrays) */
@@ -78,7 +78,7 @@ typedef struct SceneState {
     s16 mealStamina;            /* 0x138: the meal's stamina bonus (Meal_ApplyEffects): added to the local player's maximum stamina at the start (Player_Reset) */
     s16 unk13A;                 /* 0x13A: compared with 0x1900-0x6400 for the quest goal kind 0xB (unk_3A1070.c) */
     u8 placed1;                 /* 0x13C: the local player placed objects of kind 1 (fewer than 2 allowed, Item_CanPlaceLargeBarrelBomb); the game decrements it when one disappears (game func_006D4920) */
-    u8 placed3;                 /* 0x13D: the same for kind 3 (fewer than 3, Scene_FewPlaced3_Unk; game func_00868B00) */
+    u8 placed3;                 /* 0x13D: the same for kind 3 (fewer than 3, Scene_CanPlaceKind3; game func_00868B00) */
     u8 placed2;                 /* 0x13E: the same for kind 2 (none allowed while set, Scene_CanPlaceKind2; game func_006D4920) */
     s8 fortStage;               /* 0x13F: 0 to 10, set by the fortress monsters from their scripts (em_laoshan, em_shengaoren, em_yamatsukami, em_kushala); QuestMenu_DrawRate prints (10 - fortStage) * 10 percent */
     ItemStack supply[48];       /* 0x140: the supply box, from the stage data (Scene_InitSupplyBox clears 48, the field draws 40, plsel counts 48) */
@@ -110,5 +110,96 @@ typedef struct SceneState {
 typedef char SceneState_size_check[(sizeof(SceneState) == 0x2BC) ? 1 : -1];
 
 extern SceneState gScene;
+
+/* gScene.scene: what Scene_QuestTask (unk_3240E0.c) runs each frame. */
+#define SCENE_ENTER         0   /* Scene_EnterField: starts the quest preparation, then SCENE_QUEST_START */
+#define SCENE_QUEST_START   1   /* Scene_QuestStartTask, by QSTART_* step */
+#define SCENE_FIELD         2   /* Scene_UpdateQuest: the quest in the field */
+#define SCENE_QUEST_END     3   /* Scene_ResultFade: the quest's end on screen */
+#define SCENE_IDLE          4   /* nothing */
+#define SCENE_RESULTS       5   /* Scene_QuestFrameTick: the results (overlay 0xB) */
+#define SCENE_EXIT          6   /* Quest_Teardown */
+#define SCENE_OPENING       7   /* Scene_Opening: the opening movie and the boot */
+
+/* gScene.step in SCENE_QUEST_START (Scene_QuestStartTask). */
+#define QSTART_INIT         0   /* Scene_StartQuest */
+#define QSTART_PLAY         1   /* Scene_StartQuestPlay */
+#define QSTART_SOUNDS       2   /* Scene_LoadQuestSounds */
+#define QSTART_FIELD        3   /* Scene_StartField */
+#define QSTART_AREA         4   /* Scene_EnterArea */
+
+/* gScene.pauseState: the offline pause (Scene_RequestPause; the capture in unk_36BE70.c). */
+#define PAUSE_NONE          0
+#define PAUSE_REQUESTED     1   /* the screen is captured at the frame's end (Pause_CaptureScreen) */
+#define PAUSE_CAPTURED      2   /* the capture is made opaque and shown (Pause_DrawCapture) */
+#define PAUSE_SHOWN         3
+#define PAUSE_LEAVING       4   /* Scene_FieldFrame clears it on the next frame */
+
+/* The save's play time stops at 9999:59:59 (PlayTime_Tick: seconds). */
+#define PLAYTIME_MAX        35999999
+
+/*
+ * The screen fades (unk_3240E0.c): two players, gFadeA and gFadeB, each
+ * running one key of gFadeKeys at a time (FadeA_Start(id), ids from 1). A key
+ * is a coloured rectangle whose alpha (256 opaque) moves from alphaFrom to
+ * alphaTo by alphaStep a frame, after `delay` frames; the fade then holds the
+ * key, or ends after a key marked last.
+ */
+typedef struct FadeKey {
+    u8 last;            /* 0x00: nonzero: the fade ends after this key */
+    u8 color;           /* 0x01: an index into gFadeAColors / gFadeBColors (0 black, 7 white) */
+    u8 unk02[2];        /* 0x02: the same two bytes in every key; nothing reads them */
+    f32 x;              /* 0x04: the rectangle's corner */
+    f32 y;              /* 0x08 */
+    f32 z;              /* 0x0C */
+    s16 w;              /* 0x10 */
+    s16 h;              /* 0x12 */
+    s16 alphaFrom;      /* 0x14 */
+    s16 alphaTo;        /* 0x16 */
+    s16 alphaStep;      /* 0x18: added each frame */
+    s16 delay;          /* 0x1A: frames before the alpha moves */
+} FadeKey;
+
+/* A fade player (gFadeA, gFadeB). */
+typedef struct FadeState {
+    u8 active;          /* 0x00: 0 idle, 1 moving, 2 holding the key's end */
+    u8 starting;        /* 0x01: set by FadeX_Start, cleared when the alpha reaches the key's end */
+    u8 unk02[2];
+    s16 id;             /* 0x04: the key asked for (from 1), 0 none */
+    s16 cur;            /* 0x06: the key running */
+    s16 alpha;          /* 0x08 */
+    s16 prevAlpha;      /* 0x0A: the alpha of the frame before */
+    FadeKey *key;       /* 0x0C: the key running, NULL none */
+    s16 delay;          /* 0x10: frames left before the alpha moves */
+} FadeState;
+
+/* The rectangle FadeA_Draw gives Prim_FillRectF: two corners (x, y, z, 1)
+ * and a colour. */
+typedef struct FadeQuad {
+    f32 p0[4];
+    f32 p1[4];
+    u32 color;
+} FadeQuad;
+
+/*
+ * The keys of gFadeKeys (FadeA_Start, FadeB_Start), from the table: "out"
+ * keys go to opaque and hold, "in" keys go back to clear and end the fade.
+ * The frame counts are the ramp's length.
+ */
+#define FADE_OUT_BLACK          1   /* 16 frames */
+#define FADE_IN_BLACK           2   /* 16 frames */
+#define FADE_OUT_WHITE          3   /* 16 frames */
+#define FADE_IN_WHITE           4   /* 16 frames */
+#define FADE_OUT_BLACK_SLOW     5   /* 32 frames */
+#define FADE_IN_BLACK_SLOW      6   /* 32 frames */
+#define FADE_OUT_HALF_BLACK     7   /* to half opaque, 16 frames */
+#define FADE_IN_HALF_BLACK      8   /* from half opaque, 16 frames */
+#define FADE_OUT_WHITE_SLOW     9   /* 128 frames */
+#define FADE_BLACK              10  /* opaque black at once, held */
+#define FADE_OUT_BLACK_FAST     11  /* 8 frames */
+#define FADE_IN_BLACK_FAST      12  /* 8 frames */
+#define FADE_IN_WHITE_FAST      13  /* 4 frames */
+#define FADE_IN_BAND            14  /* a black band 32 pixels high at y 246, 16 frames */
+#define FADE_IN_BLACK_DELAYED   15  /* 16 frames, after 4 */
 
 #endif /* SCENE_H */

@@ -1397,7 +1397,7 @@ void QSync_SendState(u8 kind, u8 who) {
     }
 }
 
-extern u16 D_006ADB48;
+extern u16 gNextQuestId;
 /* Game message 10 (QSync_SendState builds it). Kind 1: the host's 0x6ADCEE;
  * 2: a player's QSyncState fields, and from player 0 the shared ones; 6:
  * the block at 0x5D87B0 (Quest_HandleNetMsg applies it); 7: a request to the host
@@ -1440,7 +1440,7 @@ void QSync_OnState(u8 from, QSyncStateMsg *msg, s32 arg) {
             }
             if (gScene.localPlayer != gScene.host && who == 0) {
                 g->area = d->k2.area;
-                D_006ADB48 = d->k2.stageId;
+                gNextQuestId = d->k2.stageId;
                 g->unkDE = d->k2.unk11;
                 g->unkDA = d->k2.unk12;
                 g->unkDC = d->k2.unk14;

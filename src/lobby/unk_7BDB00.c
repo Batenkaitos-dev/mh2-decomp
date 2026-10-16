@@ -21,7 +21,7 @@ void Game_ResetSubsystems(void);
 s32 LobbyNet_GetErrText(char *);
 void LobbyText_Open(s32 a);
 void LobbyDialog_OpenWait(void *text);
-void SeqA_Start(s32 a);
+void FadeA_Start(s32 a);
 u16 LobbyPad_Get(s32 a);
 void LobbySe_Play(s32 a);
 extern s32 D_008F8C98;
@@ -269,7 +269,7 @@ void LobbyRoom_Close0(void)
     gLobby->mode++;
     LobbyMenu_Init();
     LobbyMenu_SetDraw(Lobby_DrawBlackLine, 0, 0, 0);
-    SeqA_Start(10);
+    FadeA_Start(10);
     Loading_Stop();
 }
 
@@ -284,7 +284,7 @@ void LobbyRoom_Close1(void)
         LobbyDialog_OpenWait(gLobby->errText);
     }
     gLobby->countdown = 0x14;
-    SeqA_Start(2);
+    FadeA_Start(2);
 }
 
 void LobbyRoom_Close2(void)
@@ -295,7 +295,7 @@ void LobbyRoom_Close2(void)
     gLobbyMenu->redraw = 1;
     if (gLobby->countdown++ >= 300 || (gLobby->countdown >= 60 && (pad & 0x60))) {
         gLobby->mode++;
-        SeqA_Start(1);
+        FadeA_Start(1);
         LobbySe_Play(8);
     }
 }

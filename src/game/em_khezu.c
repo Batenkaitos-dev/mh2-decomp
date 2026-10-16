@@ -51,7 +51,7 @@ void QuestEm_Leave(Em *em);
 ObjAttach *Eff02_Create(Em *em, s8 kind);
 void EffEm08_CreateAtBone(Em *, s32, s32, s32, s32, s32);
 void EffVelociprey13_Create(Em *, s8);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *, void *);
 void Em_LoadReactionSet(Em *em, u8 k);
@@ -59,12 +59,12 @@ void Em_ComputeGoal(Em *em, f32 *target);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
-void Em_Clear7F0State(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_ClearNeed1State(Em *em);
+void Em_ClearNeed2State(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Add7EC(Em *em, s32 n);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SetGoal12(Em *em);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmKhezu_State0_12: 44 of 92 words differ, EmKhezu_State0_15: 42 of 90 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
@@ -182,7 +182,7 @@ s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Em_StartRage(Em *em);
 void Em_StartPendingRage(Em *em);
 void Em_ResetNotice(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_ClearPart(Em *em, u16 part);
 /* unit's own declaration: with the definition's s16 (void *obj, u8 state, u8 sub) (sub_main/unk_3A1070.c), EmMosswine_ScriptQuery: 17 of 31 words differ, EmMosswine_Update: 109 of 256 words differ */
@@ -247,7 +247,7 @@ void Em_SetStatus2Timer(Em *em);
 void EmAnteka_RunState(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 void Em_SetStatus5Timer(Em *em);
 void Em_ResetPartHp(Em *em, u32 i);
 void EmMosswine_RunState(Em *em);
@@ -264,8 +264,8 @@ void Em_ResetKindTimer(Em *em);
 s32 Em_IsHeld(Em *em);
 u16 Area_BaseId(u16);
 void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_Decay7F0Only(Em *em);
-void Em_Decay7F0(Em *em);
+void Em_DecayNeed1Only(Em *em);
+void Em_DecayNeed1(Em *em);
 /* Velociprey's quest appearance points: a position and the point it faces
    (splat split these tables at each field), or a position and a heading. */
 typedef struct EmVelocipreyAppearPoint {
@@ -695,14 +695,14 @@ void EmKhezu_State0_0D(Em *em, EmWork *work)
 
 void EmKhezu_State0_0E(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -742,14 +742,14 @@ block_12:
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetRow638(em, 0);
+            Em_SelectSightRow(em, 0);
             Em_LoadReactionSet(em, 0);
-            Em_Clear7ECState(em);
+            Em_ClearNeed2State(em);
             EmKhezu_EndState(em);
         }
         break;
     }
-    Em_Add7EC(em, 0xDE);
+    Em_AddNeed2(em, 0xDE);
 }
 
 void EmKhezu_State0_11(Em *em, EmWork *work)
@@ -772,14 +772,14 @@ void EmKhezu_State0_11(Em *em, EmWork *work)
 
 void EmKhezu_State0_13(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -801,7 +801,7 @@ void EmKhezu_State0_28(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetRow638(em, 0);
+        Em_SelectSightRow(em, 0);
         Em_LoadReactionSet(em, 0);
         break;
     case 1:
@@ -821,7 +821,7 @@ void EmKhezu_State0_28(Em *em, EmWork *work)
 
 void EmKhezu_State0_12(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -856,7 +856,7 @@ void EmKhezu_State0_12(Em *em, EmWork *work)
 
 void EmKhezu_State0_14(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -888,7 +888,7 @@ void EmKhezu_State0_14(Em *em, EmWork *work)
 
 void EmKhezu_State0_15(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -991,29 +991,29 @@ void EmKhezu_State0_18(Em *em, EmWork *work)
 
 void EmKhezu_State0_1A(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, 0x3B, 0, 0);
-            Em_Add7F0(em, em->need1Max);
-            Em_Clear7F0State(em);
+            Em_AddNeed1(em, em->need1Max);
+            Em_ClearNeed1State(em);
             Em_AddHp(em, (s32) (0.05f * (f32) em->hpMax));
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetRow638(em, 0);
+            Em_SelectSightRow(em, 0);
             Em_LoadReactionSet(em, 0);
             EmKhezu_EndState(em);
         }
@@ -1023,7 +1023,7 @@ void EmKhezu_State0_1A(Em *em, EmWork *work)
 
 void EmKhezu_State0_1B(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1057,7 +1057,7 @@ void EmKhezu_State0_1D(Em *em, EmWork *work)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
@@ -1093,7 +1093,7 @@ void EmKhezu_State0_1F(Em *em, EmWork *work)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
@@ -2982,7 +2982,7 @@ void EmKhezu_State4_0A(Em *em)
 
 void EmKhezu_State4_0B(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3009,7 +3009,7 @@ void EmKhezu_State4_0B(Em *em)
 
 void EmKhezu_State4_0C(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3049,7 +3049,7 @@ void EmKhezu_State4_0E(Em *em, EmWork *work, s32 variant)
 
     k = variant & 0xFF;
     if (k == 0) {
-        Em_SetFlag6AE(em, 4U);
+        Em_SetHitReactMode(em, 4U);
     }
     em->holdTimer = 5;
     switch (em->step) {
@@ -4113,11 +4113,11 @@ void EmKhezu_Update(Em *em)
     if (em->noAlert != 1) {
         switch (Area_BaseId(gScene.map)) {
         case 0xB:
-            Em_Decay7F0Only(em);
+            Em_DecayNeed1Only(em);
             Em_CheckLowHp(em, 0.2f);
             break;
         case 4:
-            Em_Decay7F0(em);
+            Em_DecayNeed1(em);
             Em_CheckLowHp(em, 0.2f);
             break;
         }
@@ -4310,7 +4310,7 @@ void EmKhezu_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmKhezu_RunState(em, (EmWork *) w);
     if (em->stateRequest != 0) {
         EmKhezu_RunState(em, (EmWork *) w);
@@ -4891,7 +4891,7 @@ void EmKhezu_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_EndStatus4(em);
         break;
     case 23:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 24:
         Em_EndStatus2(em);
@@ -6018,7 +6018,7 @@ void EmVelociprey_State0_06(Em *em, EmWork *work)
 
 void EmVelociprey_State0_07(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -7288,7 +7288,7 @@ void EmVelociprey_State4_05(Em *em, EmWork *work)
 
 void EmVelociprey_State4_06(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -8544,7 +8544,7 @@ void EmVelociprey_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmVelociprey_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmVelociprey_RunState(em, (s32) w);
@@ -9298,7 +9298,7 @@ void EmAnteka_Update(Em *em)
         em->scriptPending = 1;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmAnteka_RunState(em);
     if (em->stateRequest != 0) {
         EmAnteka_RunState(em);
@@ -9429,7 +9429,7 @@ void EmAnteka_State0_07(Em *em, EmWork *work)
 
 void EmAnteka_State0_08(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -10179,7 +10179,7 @@ void EmAnteka_State4_02(Em *em, EmWork *work, s16 variant)
 
 void EmAnteka_State4_03(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -11024,7 +11024,7 @@ void EmMosswine_State0_06(Em *em)
 
 void EmMosswine_State0_0A(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -11580,7 +11580,7 @@ void EmMosswine_State4_03(Em *em)
 {
     s32 timer;
 
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     timer = em->timer;
     if (timer > 0) {
         em->timer = timer - 1;
@@ -12037,7 +12037,7 @@ void EmMosswine_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmMosswine_RunState(em);
     if (em->stateRequest != 0) {
         EmMosswine_RunState(em);

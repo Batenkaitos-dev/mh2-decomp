@@ -8,36 +8,17 @@
  * item from the point's table (Gather_RollItem), then may use the point up:
  * a point has `count` gathers left (0xFF: unlimited); after its `bonus`
  * gathers, each gather empties it with chance (c + 1) / 32, where c is 4,
- * or 0, 2, 8, 12 with skills 0x94, 0x93, 0x95, 0x96.
+ * or with a skill of the gathering group 0, 2, 8 or 12 (SKILL_GATHER_*).
+ *
+ * The action spots (Player_FindActionSpot, Player_RecordActionSpot) are the
+ * places in an area where the player can act (seen: kinds 2 and 0xB in the
+ * game's unk_70A290.c): the same kind of list, from Stage_GetActionSpots.
+ * The records (GatherPoint, GatherEntry, ActionSpot) are in quest.h.
  */
 #include "common.h"
 #include "player.h"
-
-typedef struct GatherPoint {
-    f32 x;              /* 0x00; -1.0f ends the list */
-    f32 y;
-    f32 z;
-    f32 radius;         /* 0x0C */
-    u16 table;          /* 0x10: item table id (bit 15 is a flag) */
-    u16 count;          /* 0x12: gathers left, 0xFF = unlimited */
-    u16 unk14;
-    u16 bonus;          /* 0x16: gathers before the point can run out */
-} GatherPoint;
-
-typedef struct GatherEntry {
-    u16 weight;         /* 0xFFFF ends the table */
-    u16 item;
-} GatherEntry;
-
-typedef struct ActionSpot {
-    u16 type;           /* 0x00 */
-    u16 kind;           /* 0x02 */
-    f32 x;              /* 0x04; -1.0f ends the list */
-    f32 y;
-    f32 z;
-    f32 radius;         /* 0x10 */
-    u16 unk14;
-} ActionSpot;
+#include "item.h"
+#include "quest.h"
 
 void *Gather_GetPoints(s32 area);
 void *Stage_GetActionSpots(s32 area);
@@ -50,63 +31,64 @@ u16 Rand_Next(s32 stream);
 u16 Gather_RollItem(u16 table);
 
 /*
- * Gathers at the point the player stands at: the item (0 or 0xFFFF for
- * nothing), 0xFFFE if the point is used up, 0xFFFF if the map has none.
+ * Gathers at the point the player stands at: the item (0 or GATHER_NO_ITEM
+ * for nothing), GATHER_USED_UP if the point is used up, GATHER_NO_ITEM if
+ * the map has no points, 0 when the player is at none.
  */
-u16 Gather_AtPoint(Player *p)
+u16 Gather_AtPoint(Player *pl)
 {
-    GatherPoint *pt;
+    GatherPoint *point;
     u16 item;
     u16 chance;
     f32 dx;
     f32 dz;
 
-    pt = Gather_GetPoints(p->area);
-    if (pt == NULL) {
-        return 0xFFFF;
+    point = Gather_GetPoints(pl->area);
+    if (point == NULL) {
+        return GATHER_NO_ITEM;
     }
-    for (; pt->x != -1.0f; pt++) {
-        if (p->pos[1] < pt->y - 200.0f) {
+    for (; point->x != -1.0f; point++) {
+        if (pl->pos[1] < point->y - 200.0f) {
             continue;
         }
-        if (!(p->pos[1] < pt->y + 100.0f)) {
+        if (!(pl->pos[1] < point->y + 100.0f)) {
             continue;
         }
-        dx = p->pos[0] - pt->x;
-        dz = p->pos[2] - pt->z;
-        if (!(Math_Sqrtf(dx * dx + dz * dz) <= pt->radius)) {
+        dx = pl->pos[0] - point->x;
+        dz = pl->pos[2] - point->z;
+        if (!(Math_Sqrtf(dx * dx + dz * dz) <= point->radius)) {
             continue;
         }
-        if (pt->count > 0) {
-            item = Gather_RollItem(pt->table & 0x7FFF);
-            if (item != 0 && item != 0xFFFF) {
+        if (point->count > 0) {
+            item = Gather_RollItem(point->table & GATHER_TABLE_MASK);
+            if (item != 0 && item != GATHER_NO_ITEM) {
                 chance = 4;
-                if (Player_GetSkill(p, 0x16) != 0) {
-                    if (Player_HasSkill(p, 0x94) == 1) {
+                if (Player_GetSkill(pl, SKILL_GROUP_GATHER) != 0) {
+                    if (Player_HasSkill(pl, SKILL_GATHER_PLUS2) == 1) {
                         chance = 0;
-                    } else if (Player_HasSkill(p, 0x93) == 1) {
+                    } else if (Player_HasSkill(pl, SKILL_GATHER_PLUS1) == 1) {
                         chance = 2;
-                    } else if (Player_HasSkill(p, 0x95) == 1) {
+                    } else if (Player_HasSkill(pl, SKILL_GATHER_MINUS1) == 1) {
                         chance = 8;
-                    } else if (Player_HasSkill(p, 0x96) == 1) {
+                    } else if (Player_HasSkill(pl, SKILL_GATHER_MINUS2) == 1) {
                         chance = 12;
                     }
                 }
-                if (pt->count != 0xFF) {
-                    if (pt->bonus > 0) {
-                        pt->bonus--;
+                if (point->count != GATHER_UNLIMITED) {
+                    if (point->bonus > 0) {
+                        point->bonus--;
                     }
-                    if (pt->bonus > 0) {
-                        pt->count--;
+                    if (point->bonus > 0) {
+                        point->count--;
                     } else if ((Rand_Next(1) & 0x1F) > chance) {
-                        pt->count--;
+                        point->count--;
                     } else {
-                        pt->count = 0;
+                        point->count = 0;
                     }
                 }
             }
         } else {
-            return 0xFFFE;
+            return GATHER_USED_UP;
         }
         return item;
     }
@@ -114,98 +96,100 @@ u16 Gather_AtPoint(Player *p)
 }
 
 /*
- * The action spot the player stands at: copies its position, returns its
- * kind (0 if none).
+ * The action spot the player stands at (within 50 up or down and its
+ * radius): copies its position to pos, its angle to *angle and its type to
+ * *type, and returns its kind (0 if none).
  */
-u16 Player_FindActionSpot(Player *p, f32 *pos, u16 *arg, u8 *type)
+u16 Player_FindActionSpot(Player *pl, f32 *pos, u16 *angle, u8 *type)
 {
-    ActionSpot *s;
+    ActionSpot *spot;
     f32 dx;
     f32 dz;
 
-    s = Stage_GetActionSpots(p->area);
-    if (s == NULL) {
+    spot = Stage_GetActionSpots(pl->area);
+    if (spot == NULL) {
         return 0;
     }
-    for (; s->x != -1.0f; s++) {
-        if (p->pos[1] < s->y - 50.0f) {
+    for (; spot->x != -1.0f; spot++) {
+        if (pl->pos[1] < spot->y - 50.0f) {
             continue;
         }
-        if (!(p->pos[1] < s->y + 50.0f)) {
+        if (!(pl->pos[1] < spot->y + 50.0f)) {
             continue;
         }
-        dx = p->pos[0] - s->x;
-        dz = p->pos[2] - s->z;
-        if (!(Math_Sqrtf(dx * dx + dz * dz) <= s->radius)) {
+        dx = pl->pos[0] - spot->x;
+        dz = pl->pos[2] - spot->z;
+        if (!(Math_Sqrtf(dx * dx + dz * dz) <= spot->radius)) {
             continue;
         }
-        pos[0] = s->x;
-        pos[1] = s->y;
-        pos[2] = s->z;
-        *arg = s->unk14;
-        *type = s->type;
-        return s->kind;
+        pos[0] = spot->x;
+        pos[1] = spot->y;
+        pos[2] = spot->z;
+        *angle = spot->angle;
+        *type = spot->type;
+        return spot->kind;
     }
     return 0;
 }
 
-/* Records the action spot the player stands at in p->spot (kind 2 spots
- * reach 30 further with flag 0x80000). */
-void Player_RecordActionSpot(Player *p)
+/* Records the action spot the player stands at in pl->spot (kind 2 spots
+ * reach 30 further with player flag 0x80000), or NULL. */
+void Player_RecordActionSpot(Player *pl)
 {
-    ActionSpot *s;
+    ActionSpot *spot;
     f32 dx;
     f32 dz;
-    f32 d;
+    f32 dist;
 
-    s = Stage_GetActionSpots(p->area);
-    if (s == NULL) {
-        p->spot = NULL;
+    spot = Stage_GetActionSpots(pl->area);
+    if (spot == NULL) {
+        pl->spot = NULL;
         return;
     }
-    for (; s->x != -1.0f; s++) {
-        if (p->pos[1] < s->y - 50.0f) {
+    for (; spot->x != -1.0f; spot++) {
+        if (pl->pos[1] < spot->y - 50.0f) {
             continue;
         }
-        if (!(p->pos[1] < s->y + 50.0f)) {
+        if (!(pl->pos[1] < spot->y + 50.0f)) {
             continue;
         }
-        dx = p->pos[0] - s->x;
-        dz = p->pos[2] - s->z;
-        d = Math_Sqrtf(dx * dx + dz * dz);
-        if (s->kind == 2 && Player_TestFlag(p, 0x80000) != 0) {
-            d -= 30.0f;
+        dx = pl->pos[0] - spot->x;
+        dz = pl->pos[2] - spot->z;
+        dist = Math_Sqrtf(dx * dx + dz * dz);
+        if (spot->kind == 2 && Player_TestFlag(pl, 0x80000) != 0) {
+            dist -= 30.0f;
         }
-        if (d <= s->radius) {
-            p->spot = s;
+        if (dist <= spot->radius) {
+            pl->spot = spot;
             return;
         }
     }
-    p->spot = NULL;
+    pl->spot = NULL;
 }
 
 /*
  * Rolls an item from gathering table `table`: {weight, item} pairs ended by
- * weight 0xFFFF, drawn with random stream 0.
+ * weight GATHER_END, drawn with random stream 0. GATHER_NO_ITEM if the roll
+ * falls past the last.
  */
 u16 Gather_RollItem(u16 table)
 {
-    GatherEntry *e;
+    GatherEntry *entry;
     u16 sum;
     u16 acc;
-    u16 r;
+    u16 roll;
 
     sum = 0;
-    for (e = Gather_GetTable(table); e->weight != 0xFFFF; e++) {
-        sum += e->weight;
+    for (entry = Gather_GetTable(table); entry->weight != GATHER_END; entry++) {
+        sum += entry->weight;
     }
-    r = Rand_Next(0) % sum;
+    roll = Rand_Next(0) % sum;
     acc = 0;
-    for (e = Gather_GetTable(table); e->weight != 0xFFFF; e++) {
-        acc += e->weight;
-        if (r < acc) {
-            return e->item;
+    for (entry = Gather_GetTable(table); entry->weight != GATHER_END; entry++) {
+        acc += entry->weight;
+        if (roll < acc) {
+            return entry->item;
         }
     }
-    return 0xFFFF;
+    return GATHER_NO_ITEM;
 }

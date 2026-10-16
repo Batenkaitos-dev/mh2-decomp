@@ -1,33 +1,20 @@
 #include "common.h"
 #include "em.h"
+#include "motion.h"
 #include "dma.h"
-
-/* An animation curve (8 bytes) and its key formats, as in unk_2E6F40.c. */
-typedef struct AnimCurve {
-    u8 type;                    /* 0x0: the key format */
-    u8 idx;                     /* 0x1: the pose value it drives */
-    u16 count;                  /* 0x2: keys */
-    s32 keys;                   /* 0x4: offset of the keys from gAnimCurveBuf */
-} AnimCurve;
-
-typedef struct KeyF2 { f32 v, t; } KeyF2;                       /* 0x21: linear */
-typedef struct KeyF4 { f32 v, t, in, out; } KeyF4;              /* 0x22: cubic */
-typedef struct KeyFM { u32 mode; f32 v, t, in, out; } KeyFM;    /* 0x23: either, per key */
-typedef struct KeyS2 { u16 v, t; } KeyS2;                       /* 0x11 (signed values, copied as u16 here) */
-typedef struct KeyS4 { u16 v, t, in, out; } KeyS4;              /* 0x12 */
-typedef struct KeySM { u32 mode; u16 v, t, in, out; } KeySM;    /* 0x13 */
 
 extern s32 gAnimCurveBuf;          /* the base of the curves' keys */
 extern u8 gAnimKeyHeap[];         /* the heap of the keys */
 struct LinearHeap;
 void *LinearHeap_Alloc(struct LinearHeap *heap, u32 size, s32 flag);
 
-/* An animation: its curves at gAnimCurveBuf + curves (as in unk_2E6F40.c). */
-typedef struct AnimHeader {
-    u16 flags;                  /* 0x0: 0x1000 or 0x2000 in the top 4 bits */
-    s16 count;                  /* 0x2: curves */
-    s32 curves;                 /* 0x4 */
-} AnimHeader;
+/* The 16-bit keys as the motion file stores them: KeyS2, KeyS4 and KeySM
+ * (motion.h) read as unsigned halves. Anim_ConvertKeysS2/S4/SM copy them
+ * through these, which the match needs: a signed half loads with lh, these
+ * copies load with lhu. */
+typedef struct FileKeyS2 { u16 v, t; } FileKeyS2;
+typedef struct FileKeyS4 { u16 v, t, in, out; } FileKeyS4;
+typedef struct FileKeySM { u32 mode; u16 v, t, in, out; } FileKeySM;
 
 /* prototypes */
 void Anim_ConvertKeysF2(void *rec, AnimCurve *c);
@@ -1482,22 +1469,22 @@ s32 Anim_ChunkKeySize(u8 *c)
 
     for (i = 0; i < n; i++) {
         switch ((*(u32 *)rec & 0xFF0000) >> 16) {
-        case 0x21:
+        case ANIM_KEY_F32_LINEAR:
             size += *(s32 *)(rec + 4) * 8;
             break;
-        case 0x22:
+        case ANIM_KEY_F32_CUBIC:
             size += *(s32 *)(rec + 4) * 16;
             break;
-        case 0x23:
+        case ANIM_KEY_F32_MIXED:
             size += *(s32 *)(rec + 4) * 20;
             break;
-        case 0x11:
+        case ANIM_KEY_S16_LINEAR:
             size += *(s32 *)(rec + 4) * 4;
             break;
-        case 0x12:
+        case ANIM_KEY_S16_CUBIC:
             size += *(s32 *)(rec + 4) * 8;
             break;
-        case 0x13:
+        case ANIM_KEY_S16_MIXED:
             size += *(s32 *)(rec + 4) * 12;
             break;
         }
@@ -1609,7 +1596,7 @@ void Anim_LoadChunk(AnimHeader *h, void *f, s32 i)
         h->flags = 0x2000;
         break;
     }
-    switch (h->flags & 0xF000) {
+    switch (h->flags & ANIM_TYPE_MASK) {
     case 0x1000:
     case 0x2000:
         Anim_ConvertChunk(f, h, ch, 0);
@@ -1634,7 +1621,7 @@ void Anim_ConvertChunk(void *f, AnimHeader *h, u8 *ch, s32 unused)
     c = LinearHeap_Alloc((struct LinearHeap *)gAnimKeyHeap, n * sizeof(AnimCurve), 0);
     h->curves = (s32)c;
     for (i = 0; i < n; i++) {
-        c[i].type = 0x20;
+        c[i].type = ANIM_KEY_NONE;
         c[i].count = 0;
     }
     rec = ch + 0xC;
@@ -1711,7 +1698,7 @@ void Anim_ConvertKeysF2(void *rec, AnimCurve *c)
     KeyF2 *d;
     s32 i;
 
-    c->type = 0x21;
+    c->type = ANIM_KEY_F32_LINEAR;
     c->idx = 0;
     c->count = *(s32 *)((u8 *)rec + 4);
     d = LinearHeap_Alloc((struct LinearHeap *)gAnimKeyHeap, c->count * sizeof(KeyF2), 0);
@@ -1732,7 +1719,7 @@ void Anim_ConvertKeysF4(void *rec, AnimCurve *c)
     KeyF4 *d;
     s32 i;
 
-    c->type = 0x22;
+    c->type = ANIM_KEY_F32_CUBIC;
     c->idx = 0;
     c->count = *(s32 *)((u8 *)rec + 4);
     d = LinearHeap_Alloc((struct LinearHeap *)gAnimKeyHeap, c->count * sizeof(KeyF4), 0);
@@ -1755,7 +1742,7 @@ void Anim_ConvertKeysFM(void *rec, AnimCurve *c)
     KeyFM *d;
     s32 i;
 
-    c->type = 0x23;
+    c->type = ANIM_KEY_F32_MIXED;
     c->idx = 0;
     c->count = *(s32 *)((u8 *)rec + 4);
     d = LinearHeap_Alloc((struct LinearHeap *)gAnimKeyHeap, c->count * sizeof(KeyFM), 0);
@@ -1775,11 +1762,11 @@ void Anim_ConvertKeysFM(void *rec, AnimCurve *c)
 /* Curve c in format 0x11 from the keys of record rec (their count at +4, the keys at +0xC). */
 void Anim_ConvertKeysS2(void *rec, AnimCurve *c)
 {
-    KeyS2 *s = (KeyS2 *)((u8 *)rec + 0xC);
+    FileKeyS2 *s = (FileKeyS2 *)((u8 *)rec + 0xC);
     KeyS2 *d;
     s32 i;
 
-    c->type = 0x11;
+    c->type = ANIM_KEY_S16_LINEAR;
     c->idx = 0;
     c->count = *(s32 *)((u8 *)rec + 4);
     d = LinearHeap_Alloc((struct LinearHeap *)gAnimKeyHeap, c->count * sizeof(KeyS2), 0);
@@ -1796,11 +1783,11 @@ void Anim_ConvertKeysS2(void *rec, AnimCurve *c)
 /* Curve c in format 0x12 from the keys of record rec (their count at +4, the keys at +0xC). */
 void Anim_ConvertKeysS4(void *rec, AnimCurve *c)
 {
-    KeyS4 *s = (KeyS4 *)((u8 *)rec + 0xC);
+    FileKeyS4 *s = (FileKeyS4 *)((u8 *)rec + 0xC);
     KeyS4 *d;
     s32 i;
 
-    c->type = 0x12;
+    c->type = ANIM_KEY_S16_CUBIC;
     c->idx = 0;
     c->count = *(s32 *)((u8 *)rec + 4);
     d = LinearHeap_Alloc((struct LinearHeap *)gAnimKeyHeap, c->count * sizeof(KeyS4), 0);
@@ -1819,11 +1806,11 @@ void Anim_ConvertKeysS4(void *rec, AnimCurve *c)
 /* Curve c in format 0x13 from the keys of record rec (their count at +4, the keys at +0xC). */
 void Anim_ConvertKeysSM(void *rec, AnimCurve *c)
 {
-    KeySM *s = (KeySM *)((u8 *)rec + 0xC);
+    FileKeySM *s = (FileKeySM *)((u8 *)rec + 0xC);
     KeySM *d;
     s32 i;
 
-    c->type = 0x13;
+    c->type = ANIM_KEY_S16_MIXED;
     c->idx = 0;
     c->count = *(s32 *)((u8 *)rec + 4);
     d = LinearHeap_Alloc((struct LinearHeap *)gAnimKeyHeap, c->count * sizeof(KeySM), 0);

@@ -1,3 +1,11 @@
+/*
+ * The field's per-frame update (Field_UpdateAll) and the HUD's setup:
+ * Hud_Reset clears the HUD state (hud.h) and the chat state (chat_log.h),
+ * Hud_Init and Hud_StartQuest prepare them for a stage and for a quest, and
+ * Hud_InputBlocked tells the field code when the HUD's menus take the pad.
+ * The HUD's update and drawing are in unk_33E620.c, its small queries in
+ * unk_33E230.c.
+ */
 #include "common.h"
 #include "chat_log.h"
 #include "scene.h"
@@ -5,6 +13,9 @@
 #include "player.h"
 #include "hud.h"
 #include "syssave.h"
+#include "sprite.h"
+
+extern DrawSlot gHudDrawHooks[4];
 
 /* prototypes */
 void Chat_ClearLog(void);
@@ -37,9 +48,13 @@ void Area_UpdateTimers(void);
 void ItemHud_Update(void);
 
 /*
- * The field's per-frame update: the monsters (bones, then the game overlay's update or
- * Em_RunByState and the world matrix), Field_PushApart outside gScene.eventRunning, the attachments
- * of the players and the monsters (Em_CollideField), then the objects, areas and timers.
+ * The field's per-frame update: the players (outside events, or in a
+ * versus quest), then each monster: its bones, then the game overlay's
+ * monster task, or sub_main's own state runner for the objects set up by
+ * Em_SetupKind (Em.unk01E set). Then the push-apart (outside events), the
+ * BGM, a second field collision for each player and monster the push moved,
+ * and the matrices, lights, stage objects, attachments, objects, areas,
+ * timers and the item HUD.
  */
 void Field_UpdateAll(void)
 {
@@ -54,7 +69,7 @@ void Field_UpdateAll(void)
     for (i = 0; i < 20; i++, em++) {
         if (em->active) {
             Em_CopyBoneMatrices(em);
-            if (((u8 *)em)[0x1E] == 0) {
+            if (em->unk01E == 0) {
                 if (GmEm_Task(em) == 0) {
                     Em_UpdateMatrix(em);
                     Em_CarryRiders(em);
@@ -68,8 +83,9 @@ void Field_UpdateAll(void)
         Field_PushApart();
     }
     Bgm_FieldUpdate();
+    /* a player keeps Em's layout up to +0x738 (Em.pushed) */
     for (i = 0, pl = gPlayers; i < 10; i++, pl++) {
-        if (pl->active && pl->unk72C[0x738 - 0x72C]) {
+        if (pl->active && ((Em *)pl)->pushed) {
             Em_CollideField((Em *)pl, 1);
         }
     }
@@ -91,13 +107,15 @@ void Field_UpdateAll(void)
     ItemHud_Update();
 }
 
+/* Points gHudState at its buffer and clears it and the chat state; the map
+ * ping needs the button held 10 frames. */
 void Hud_Reset(void)
 {
     gHudState = &gHudStateBuf;
-    memset((void *) gHudState, 0, 0x108U);
-    memset(&gChat, 0, 0x1420U);
+    memset((void *) gHudState, 0, sizeof(HudState));
+    memset(&gChat, 0, sizeof(ChatState));
     gScene.menuOpen = 0;
-    gHudState->pingHold = 0xA;
+    gHudState->pingHold = 10;
     Chat_ClearLog();
 }
 
@@ -116,10 +134,7 @@ void Hud_DrawLayer3(void);
 void Hud_DrawLayer1B(void);
 void Hud_DrawLayer2B(void);
 void Hud_DrawLayer3B(void);
-extern void (*D_006A3A64)(void);
-extern void (*D_006A3A84)(void);
-extern void (*D_006A3AA4)(void);
-extern void (*D_006A3AC4)(void);
+
 extern s32 gChatSendWait;
 extern u16 gChatWinTimer;
 extern u8 gChatWinOpen;
@@ -139,17 +154,23 @@ extern f32 gMapScales[][2];
 s32 Game_IsOnline(void);
 s32 Quest_GetTime(s32 a);
 
-/* Hud_StartQuest with the chat, the scale of the display mode gScene.map and the
- * options (gSysSave.options.aimReverse..) copied into the state; returns the state. */
+/*
+ * Sets up the HUD for a stage: what Hud_StartQuest does, and also clears the
+ * chat log and its recipients, takes the map's scale (gMapScales) and the
+ * clock's times, and copies the options (gSysSave.options) into the scene
+ * and the option menu's copies. The four draw hooks get the HUD's draw
+ * layers, layers 1 to 3 the online town's (the B ones) when online.
+ * Returns the state.
+ */
 void *Hud_Init(void)
 {
     DrawPool_ClearHud();
-    D_006A3A64 = Hud_DrawLayer0;
-    D_006A3A84 = Hud_DrawLayer1;
-    D_006A3AA4 = Hud_DrawLayer2;
-    D_006A3AC4 = Hud_DrawLayer3;
+    gHudDrawHooks[0].draw = (DrawSlotFn)Hud_DrawLayer0;
+    gHudDrawHooks[1].draw = (DrawSlotFn)Hud_DrawLayer1;
+    gHudDrawHooks[2].draw = (DrawSlotFn)Hud_DrawLayer2;
+    gHudDrawHooks[3].draw = (DrawSlotFn)Hud_DrawLayer3;
     gHudState->player = &gPlayers[gScene.localPlayer];
-    *(s32 *)((u8 *)gHudState + 4) = 0;
+    gHudState->states = 0;
     Hud_ResetMenuState();
     gHudState->menuPhase = 0;
     gScene.menuOpen = 0;
@@ -172,8 +193,8 @@ void *Hud_Init(void)
     Chat_InitMode();
     gChatWinHold = 0;
     Chat_ShowWindows();
-    gHudState->invScaleX = 1.0f / gMapScales[gScene.map][0];
-    gHudState->invScaleY = 1.0f / gMapScales[gScene.map][1];
+    gHudState->mapScaleX = 1.0f / gMapScales[gScene.map][0];
+    gHudState->mapScaleZ = 1.0f / gMapScales[gScene.map][1];
     gHudState->pingTimer[3] = -1;
     gHudState->pingTimer[2] = -1;
     gHudState->pingTimer[1] = -1;
@@ -186,13 +207,13 @@ void *Hud_Init(void)
     gHudState->fadeActive = 0;
     gHudState->dropItem = 0;
     gHudState->combineTaken = 0;
-    gHudState->camEventFade = 4;
-    gHudState->camEventBlink = 0;
-    gHudState->camEventStart = 0;
+    gHudState->aimFade = AIM_FADE_IDLE;
+    gHudState->aimBlink = 0;
+    gHudState->aimStart = 0;
     gHudState->pouchCursor = gHudState->player->pouchCursor;
     gHudState->ammoSlot = gHudState->player->ammoSlot;
     gHudState->cockpitOff = 0;
-    gHudState->onlineHud = 0;
+    gHudState->mapOff = 0;
     gScene.aimReverse = gSysSave.options.aimReverse;
     gHudState->optAimReverse = gSysSave.options.aimReverse;
     gScene.camControl = gSysSave.options.camControl;
@@ -209,24 +230,24 @@ void *Hud_Init(void)
     if (gScene.online == 1) {
         GameMenu_Reset();
         BoxMenu_InitWork();
-        gHudState->onlineHud = 1;
-        D_006A3A84 = Hud_DrawLayer1B;
-        D_006A3AA4 = Hud_DrawLayer2B;
-        D_006A3AC4 = Hud_DrawLayer3B;
+        gHudState->mapOff = 1;
+        gHudDrawHooks[1].draw = (DrawSlotFn)Hud_DrawLayer1B;
+        gHudDrawHooks[2].draw = (DrawSlotFn)Hud_DrawLayer2B;
+        gHudDrawHooks[3].draw = (DrawSlotFn)Hud_DrawLayer3B;
     } else {
         gHudState->timer[0] = -1;
         gHudState->timer[1] = -1;
         gHudState->timer[2] = -1;
         gHudState->timer[3] = -1;
-        gHudState->onlineHud = 0;
+        gHudState->mapOff = 0;
         gHudState->timeLeft = Quest_GetTime(0);
         gHudState->timeTotal = Quest_GetTime(1);
         gHudState->clockHand = 0;
-        gHudState->unkB3 = 0;
+        gHudState->pouchBarState = 0;
         gHudState->popupOpen = 0;
     }
     gHudState->camReqStarted = 0;
-    gHudState->camEvent = -1;
+    gHudState->aimKind = -1;
     gPauseWinStep = 0;
     gPauseMenuReq = 0;
     return (void *)gHudState;
@@ -247,10 +268,7 @@ void Hud_DrawLayer3(void);
 void Hud_DrawLayer1B(void);
 void Hud_DrawLayer2B(void);
 void Hud_DrawLayer3B(void);
-extern void (*D_006A3A64)(void);
-extern void (*D_006A3A84)(void);
-extern void (*D_006A3AA4)(void);
-extern void (*D_006A3AC4)(void);
+
 extern s32 gChatSendWait;
 extern u16 gChatWinTimer;
 extern u8 gChatWinOpen;
@@ -262,17 +280,21 @@ extern u8 gNoticeFlags;
 extern u8 gPauseWinStep;
 extern u8 gPauseMenuReq;
 
-/* Starts the quest's game screen state: the menu callbacks, the local player (the
- * online ones when gScene.online is 1) and the state at gHudState. */
+/*
+ * Resets the HUD for a quest's start: the draw hooks (as Hud_Init), the
+ * local player, the menus, the chat input and windows, the map pings, the
+ * item and camera event displays, and the notice window; offline, the
+ * clock and the players' timers.
+ */
 void Hud_StartQuest(void)
 {
     DrawPool_ClearHud();
-    D_006A3A64 = Hud_DrawLayer0;
-    D_006A3A84 = Hud_DrawLayer1;
-    D_006A3AA4 = Hud_DrawLayer2;
-    D_006A3AC4 = Hud_DrawLayer3;
+    gHudDrawHooks[0].draw = (DrawSlotFn)Hud_DrawLayer0;
+    gHudDrawHooks[1].draw = (DrawSlotFn)Hud_DrawLayer1;
+    gHudDrawHooks[2].draw = (DrawSlotFn)Hud_DrawLayer2;
+    gHudDrawHooks[3].draw = (DrawSlotFn)Hud_DrawLayer3;
     gHudState->player = &gPlayers[gScene.localPlayer];
-    *(s32 *)((u8 *)gHudState + 4) = 0;
+    gHudState->states = 0;
     Hud_ResetMenuState();
     gHudState->menuPhase = 0;
     gScene.menuOpen = 0;
@@ -298,9 +320,9 @@ void Hud_StartQuest(void)
     gHudState->fadeActive = 0;
     gHudState->dropItem = 0;
     gHudState->combineTaken = 0;
-    gHudState->camEventFade = 4;
-    gHudState->camEventBlink = 0;
-    gHudState->camEventStart = 0;
+    gHudState->aimFade = AIM_FADE_IDLE;
+    gHudState->aimBlink = 0;
+    gHudState->aimStart = 0;
     gHudState->pouchCursor = gHudState->player->pouchCursor;
     gHudState->ammoSlot = gHudState->player->ammoSlot;
     gChat.notice = 0;
@@ -309,26 +331,28 @@ void Hud_StartQuest(void)
     if (gScene.online == 1) {
         GameMenu_Reset();
         BoxMenu_InitWork();
-        gHudState->onlineHud = 1;
-        D_006A3A84 = Hud_DrawLayer1B;
-        D_006A3AA4 = Hud_DrawLayer2B;
-        D_006A3AC4 = Hud_DrawLayer3B;
+        gHudState->mapOff = 1;
+        gHudDrawHooks[1].draw = (DrawSlotFn)Hud_DrawLayer1B;
+        gHudDrawHooks[2].draw = (DrawSlotFn)Hud_DrawLayer2B;
+        gHudDrawHooks[3].draw = (DrawSlotFn)Hud_DrawLayer3B;
     } else {
         gHudState->timer[0] = -1;
         gHudState->timer[1] = -1;
         gHudState->timer[2] = -1;
         gHudState->timer[3] = -1;
-        gHudState->onlineHud = 0;
+        gHudState->mapOff = 0;
         gHudState->clockHand = 0;
-        gHudState->unkB3 = 0;
+        gHudState->pouchBarState = 0;
         gHudState->popupOpen = 0;
     }
     gHudState->camReqStarted = 0;
-    gHudState->camEvent = -1;
+    gHudState->aimKind = -1;
     gPauseWinStep = 0;
     gPauseMenuReq = 0;
 }
 
+/* Whether the HUD's input is taken by something else: a menu, the chat
+ * input, the pouch-full dialog, or offline a message popup. */
 s32 Hud_InputBlocked(void)
 {
     if (gScene.menuOpen != 0) {

@@ -5301,7 +5301,7 @@ void Mtx_TurnZ(f32 *m, f32 a);
 void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
 void Draw_SetBlendFlags(u16 flags);
 void Effect_ScaleVec(f32 *v);
-s32 Effect_KindClass_Unk(s32 a);
+s32 Effect_OwnerColorRow(s32 a);
 s16 Effect_MapTexId(s16 id);
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
 void Color_EvalKeys(s32 *k, s32 t, u32 *out);
@@ -5349,7 +5349,7 @@ void Effect02_Draw(DrawSlot *s)
             b = r;
         } else {
             Effect_ScaleVec(v);
-            ci = Effect_KindClass_Unk(o->ownerIndex);
+            ci = Effect_OwnerColorRow(o->ownerIndex);
         }
         Mtx_Scale(m2, v[0], v[1], v[2]);
         t = o->type;
@@ -5384,7 +5384,7 @@ void Effect02_Draw(DrawSlot *s)
         } else {
             Mtx_SetTrans(m1, 0.0f, 0.0f, 0.0f);
         }
-        ci = Effect_KindClass_Unk(o->ownerIndex);
+        ci = Effect_OwnerColorRow(o->ownerIndex);
         break;
     case 4:
         Gs_SetState(0x60, 0);
@@ -5401,7 +5401,7 @@ void Effect02_Draw(DrawSlot *s)
             Mtx_SetTrans(m1, 0.125f, 0.0f, 0.0f);
         } else {
             Effect_ScaleVec(v);
-            ci = Effect_KindClass_Unk(o->ownerIndex);
+            ci = Effect_OwnerColorRow(o->ownerIndex);
             Mtx_SetTrans(m1, 0.0f, 0.0f, 0.0f);
         }
         Mtx_Scale(m2, v[0], v[1], v[2]);

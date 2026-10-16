@@ -355,9 +355,9 @@ void Menu_SetYesNo(s8 arg0);
 void LobbyDialog_Grow(void);
 s32 Menu_YesNoInput(void);
 void ChatLog_Clear(void);
-void SeqB_Start(s32);
+void FadeB_Start(s32);
 void Lobby_Disconnect(s32);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void Stream_Stop(s32);
 s32 LobbyLogin_EnterEntry(s32 a, s32 b);
 void LobbyVillage_Begin2(void);
@@ -411,13 +411,13 @@ s32 Group_Join(V8BD1E0 *g, u16 pad)
                         if (area != gLobby->land) {
                             ChatLog_Clear();
                         }
-                        SeqB_Start(1);
+                        FadeB_Start(1);
                     }
                     LobbyText_Open(0x1D);
                 }
             } else {
                 Lobby_Disconnect(0);
-                SeqA_Start(10);
+                FadeA_Start(10);
                 Stream_Stop(0);
                 Stream_Stop(1);
             }
@@ -438,7 +438,7 @@ s32 Group_Join(V8BD1E0 *g, u16 pad)
                 } else {
                     LobbyVillage_Begin1();
                 }
-                SeqB_Start(10);
+                FadeB_Start(10);
                 memset(gLobby, 0, 0x1C);
             } else {
                 g->step++;
@@ -453,7 +453,7 @@ s32 Group_Join(V8BD1E0 *g, u16 pad)
                 LobbyDialog_OpenWait(gLobby->errText);
             }
             LobbyDialog_Grow();
-            SeqB_Start(2);
+            FadeB_Start(2);
             if (g->joinArea != gLobbyLevel0Sel && gLobbyLevel0Sel != 0) {
                 Town_PlaceLocalPlayer(gScene.area);
             }

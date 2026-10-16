@@ -17,33 +17,6 @@ void EmKushala_MotionSounds(void *arg0, EmWork *work);
 void EmKushala_MotionSoundsTesca(Em *em, EmWork *work);
 s32 EmKind38_MoveByVelocity(Em *em);
 
-/* A monster of the quest (sub_main's QuestEm_Spawn; as in sub_main unk_3A1070.c). */
-typedef struct QuestEm {
-    s16 kind;           /* 0x00 */
-    s16 unk02;
-    s8 count;           /* 0x04 */
-    u8 unk05;
-    u16 unk06;
-    u16 area;           /* 0x08 */
-    s8 unk0A;
-    s8 spawn;           /* 0x0B */
-    s32 unk0C;
-    s32 unk10;
-    s32 unk14;
-    s32 unk18;
-    s32 unk1C;
-    f32 x;              /* 0x20 */
-    f32 y;
-    f32 z;
-    s16 unk2C;
-    s16 flags;          /* 0x2E */
-    u16 unk30;          /* 0x30: size */
-    s16 hp;             /* 0x32: -1: the monster's */
-    s8 unk34;
-    s8 unk35;
-    s8 unk36;
-    u8 unk37[0x3C - 0x37];
-} QuestEm;
 
 /* prototypes */
 void EmKushala_ChangeState(Em *em, u16 group, u16 state, u8 mode);
@@ -92,7 +65,7 @@ void EffKushala30b_Create(Em *, s32);
 ObjAttach *EffEm02_Create(Em *em, s8 kind);
 /* unit's own declaration: with the definition's void (Em *em, u8 kind) (game/unk_6EB590.c), EmKushala_State3_05: 1 of 79 words differ */
 void EffKushala39_Create(Em *, s32);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
@@ -101,7 +74,7 @@ void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmKushala_State0_09: 61 of 104 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_PlaySeAtBoneVol(Em *em, s32 se, s32 bone, s32 vol);
@@ -265,7 +238,7 @@ void StageObj_K15_Create(Em *em, u8 k);
 void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
 void Effect0D_SpawnAt(f32 *pos, s32 a, f32 scale);
 void Mtx_Copy(f32 *dst, f32 *src);
-void func_3A0810(Em *em);
+void Quest_TriggerEvent(Em *em);
 extern f32 gAreaGroundY[];
 u16 Area_DayId(u16 id);
 void Hud_TriggerGlow(Em *em);
@@ -284,7 +257,7 @@ void Em_SetStatus4Timer(Em *em);
 void Em_SetStatus5Timer(Em *em);
 void Em_ResetPartHp(Em *em, u32 i);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 void StageObj_K11_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
 void Em_SetPartScaled(Em *em, s32 bit);
 void QuestEm_LoadPersistentHp(Em *em);
@@ -304,9 +277,9 @@ void EmKushala_RunState(Em *em, s32 arg1);
 void Em_RaiseTrigger80Lax(Em *em);
 u16 Area_BaseId(u16);
 void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_Decay7EC(Em *em);
-void Em_Decay7F0(Em *em);
-void Em_Decay7F4(Em *em);
+void Em_DecayNeed2(Em *em);
+void Em_DecayNeed1(Em *em);
+void Em_DecayNeed3(Em *em);
 void Em_SetStatus1Timer(Em *em);
 void Em_CheckRageByHp(Em *em, s16 n);
 s32 func_00725820(Em *em, s32 arg1);
@@ -690,7 +663,7 @@ void EmKushala_State0_04(Em *em, EmWork *work, s32 variant)
     f32 ofs[3];
     f32 m[16];
 
-    Em_SetFlag6AE(em, 3);
+    Em_SetHitReactMode(em, 3);
     switch (em->step) {
     case 0:
         em->step++;
@@ -814,7 +787,7 @@ void EmKushala_State0_09(Em *em)
 {
     u8 type;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -884,7 +857,7 @@ void EmKushala_State0_0A(Em *em)
 
 void EmKushala_State0_0B(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -952,14 +925,14 @@ void EmKushala_State0_0C(Em *em)
 
 void EmKushala_State0_0D(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x23, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -984,7 +957,7 @@ void EmKushala_State0_0E(Em *em)
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x24, 0, 0);
-        Em_SetRow638(em, 0);
+        Em_SelectSightRow(em, 0);
         Em_LoadReactionSet(em, 0);
         break;
     case 1:
@@ -1078,7 +1051,7 @@ void EmKushala_State0_13(Em *em)
 
 void EmKushala_State0_15(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -2927,7 +2900,7 @@ void EmKushala_State3_0F(Em *em, EmWork *work, s32 variant)
                     if (em->remote == 0 && w[1] < 10) {
                         w[1]++;
                         if (w[1] >= 10) {
-                            func_3A0810(em);
+                            Quest_TriggerEvent(em);
                         }
                         gScene.fortStage = w[1];
                     }
@@ -3005,7 +2978,7 @@ void EmKushala_State3_18(Em *em, EmWork *work)
             if (em->remote == 0 && w->fortHits <= 9) {
                 w->fortHits++;
                 if (w->fortHits >= 10) {
-                    func_3A0810(em);
+                    Quest_TriggerEvent(em);
                 }
                 gScene.fortStage = w->fortHits;
             }
@@ -3183,7 +3156,7 @@ void EmKushala_State4_04(Em *em, EmWork *work)
 
 void EmKushala_State4_05(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4681,12 +4654,12 @@ void EmKushala_Update(Em *em)
             switch (k) {
             case 6:
                 Em_CheckLowHp(em, ratio);
-                Em_Decay7EC(em);
-                Em_Decay7F0(em);
-                Em_Decay7F4(em);
+                Em_DecayNeed2(em);
+                Em_DecayNeed1(em);
+                Em_DecayNeed3(em);
                 break;
             case 3:
-                Em_Decay7EC(em);
+                Em_DecayNeed2(em);
                 Em_CheckLowHp(em, ratio);
                 break;
             case 0xB:
@@ -4700,7 +4673,7 @@ void EmKushala_Update(Em *em)
                 break;
             case 5:
                 Em_CheckLowHp(em, ratio);
-                Em_Decay7F0(em);
+                Em_DecayNeed1(em);
                 break;
             case 4:
                 Em_CheckLowHp(em, ratio);
@@ -4923,7 +4896,7 @@ void EmKushala_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmKushala_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmKushala_RunState(em, (s32) w);
@@ -6534,7 +6507,7 @@ void EmKind38_Update(Em *em)
         }
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmKind38_RunState(em);
     if (em->stateRequest != 0) {
         EmKind38_RunState(em);
@@ -6806,11 +6779,11 @@ void EmKind38_SpawnAtEm(Em *em)
 
     if (em->area == gScene.area) {
         q.kind = 0x38;
-        q.unk02 = 1;
+        q.variant = 1;
         q.hp = -1;
-        q.unk06 = 1;
-        q.unk30 = 100;
-        q.unk36 = em->level;
+        q.spawnParam = 1;
+        q.size = 100;
+        q.level = em->level;
         m = QuestEm_Spawn(&q);
         if (m != NULL) {
             mtx = (f32 *)Em_Bone(em, 0x22);
@@ -7443,7 +7416,7 @@ void EmShakalaka_State0_09(Em *em)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -8148,7 +8121,7 @@ void EmShakalaka_State4_03(Em *em)
     if (timer > 0) {
         em->timer = timer - 1;
         Em_SpawnEffect06Bone(em, 2);
-        Em_SetFlag6AE(em, 4U);
+        Em_SetHitReactMode(em, 4U);
     }
     switch (em->step) {
     case 0:
@@ -8546,7 +8519,7 @@ void EmShakalaka_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmShakalaka_RunState(em);
     if (em->stateRequest != 0) {
         EmShakalaka_RunState(em);

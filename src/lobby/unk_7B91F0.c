@@ -23,7 +23,7 @@ void Lobby_ReceiveWhileWaiting(void);
 void TownPc_LoadAllModels(void);
 void Hud_LoadTextures(void);
 void Quest_LoadCommonModels(void);
-void func_327F70(void);
+void Quest_SetupStub(void);
 void Effect01_Spawn(void *obj, s16 type);
 void Loading_Stop(void);
 void Loading_SetMessage(u32 mode);
@@ -40,8 +40,8 @@ void LobbyBgm_Stop(void);
 void LobbyBgm_StopAll(void);
 void Stream_Pause(s32, s32);
 void Stream_FadeOut(s32, s32);
-u8 SeqA_GetState(void);
-void SeqA_Start(s32);
+u8 FadeA_GetState(void);
+void FadeA_Start(s32);
 s32 func_367690(void);
 void Bgm_StopEvent(void *obj);
 void Bgm_StopEventFade(Player *p);
@@ -447,7 +447,7 @@ void Lobby_PrepareQuest(void)
     Lobby_ReceiveWhileWaiting();
     Quest_LoadCommonModels();
     Lobby_ReceiveWhileWaiting();
-    func_327F70();
+    Quest_SetupStub();
     Lobby_ReceiveWhileWaiting();
     Lobby_ReceiveWhileWaiting();
     for (i = 0, pl = gPlayers; i < 10; i++, pl++) {
@@ -582,7 +582,7 @@ s32 LobbyScreen_EnterSeq(s32 mode)
     switch (*step) {
     case 0:
         (*step)++;
-        SeqA_Start(0xA);
+        FadeA_Start(0xA);
         switch (mode) {
         case 6:
         case 5:
@@ -693,7 +693,7 @@ s32 LobbyScreen_EnterSeq(s32 mode)
         gLobby->seqStep = 0;
         gLobby->connected = 1;
         Town_StartAreaMusic(mode);
-        SeqA_Start(0xF);
+        FadeA_Start(0xF);
         func_007A6460(1);
         LobbyMenu_SetDraw(0, 0, 0, 0);
         switch (mode) {
@@ -746,7 +746,7 @@ s32 LobbyScreen_EnterSeq(s32 mode)
         }
         gLobby->connected = 1;
         CamCtl_Update(0);
-        SeqA_Start(0xF);
+        FadeA_Start(0xF);
         Town_StartAreaMusic(mode);
         func_007A6460(1);
         LobbyMenu_SetDraw(0, 0, 0, 0);
@@ -938,12 +938,12 @@ s32 LobbyScreen_FadeOut(s32 kind)
         case 3:
             Stream_FadeOut(0, 0x10);
             gLobby->countdown = 0x10;
-            SeqA_Start(1);
+            FadeA_Start(1);
             break;
         }
         break;
     case 1:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             Stream_Stop(0);
             Stream_Stop(1);
             Stream_Reset();
@@ -1107,7 +1107,7 @@ s32 LobbyScreen_LoadBanks(void)
             Stream_Stop(1);
             Stream_Pause(0, 1);
             gLobbyScreenSubStep++;
-            SeqA_Start(0xF);
+            FadeA_Start(0xF);
             gLobbyMenu->hideLayers = 0;
         }
         break;
@@ -1115,7 +1115,7 @@ s32 LobbyScreen_LoadBanks(void)
         gLobbyMenu->hideLayers = 0;
         if ((u8)NetMenu_Update()) {
             gLobbyScreenSubStep++;
-            SeqA_Start(0xA);
+            FadeA_Start(0xA);
             Stream_Pause(0, 0);
             Stream_SetVol(0, 0);
             Stream_FadeToMax(0, 0xF);
@@ -1123,10 +1123,10 @@ s32 LobbyScreen_LoadBanks(void)
         break;
     case 14:
         gLobbyMenu->hideLayers = 0;
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gSoundLoading = 0;
             gLobby->connected = 1;
-            SeqA_Start(0xF);
+            FadeA_Start(0xF);
             gLobbyScreenSubStep = 0;
             return 0;
         }
@@ -1145,16 +1145,16 @@ void LobbyScreen_Start(void)
     }
     switch (gLobbyScreenStep) {
     case 0:
-        SeqA_Start(0xA);
+        FadeA_Start(0xA);
         gLobbyScreenStep += 1;
         break;
     case 1:
-        if ((SeqA_GetState() & 0xFF) != 1) {
+        if ((FadeA_GetState() & 0xFF) != 1) {
             gLobbyScreenStep += 1;
         }
         break;
     case 2:
-        state = SeqA_GetState() & 0xFF;
+        state = FadeA_GetState() & 0xFF;
         if (state != 1) {
             if (Game_IsOnline() == 0) {
                 gLobbyScreenStep += 1;
@@ -1215,7 +1215,7 @@ void LobbyScreen_EnterArea(void)
         }
         gTownActionDelay = 0x14;
         TownPc_SyncMembers();
-        SeqA_Start(0xA);
+        FadeA_Start(0xA);
         gSoundLoading = 0;
         Loading_Stop();
         if (p->nextArea == 0x57 && r == 0) {
@@ -1241,7 +1241,7 @@ void LobbyScreen_EnterArea(void)
             gLobbyScreenStep = 0;
             gLobbyScreenSubStep = 0;
             gLobbyScreenMode++;
-            SeqA_Start(0xF);
+            FadeA_Start(0xF);
             if (gSysSettings.galleryPlay != 1) {
                 gLobby->connected = 1;
                 gTownMenuOpen = 0;
@@ -1282,7 +1282,7 @@ void LobbyScreen_LeaveArea(void)
         if (Game_IsOnline() == 1) {
             LobbyText_Open(0x7D);
         } else {
-            SeqA_Start(0xA);
+            FadeA_Start(0xA);
         }
         p->unk844 = 0;
         Actor_SetAction(p, 0, 0, 0);
@@ -1303,7 +1303,7 @@ void LobbyScreen_LeaveArea(void)
         gLobbyScreenStep += 1;
         break;
     case 2:
-        state = SeqA_GetState() & 0xFF;
+        state = FadeA_GetState() & 0xFF;
         if (state != 1) {
             if (Game_IsOnline() == 0) {
                 Stream_Pause(0, 1);
@@ -1360,13 +1360,13 @@ void LobbyScreen_CamIntro(void)
         case 0:
         case -1:
             gLobbyScreenStep++;
-            SeqA_Start(1);
+            FadeA_Start(1);
             break;
         }
         break;
     case 2:
         p->visible = 0;
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gLobbyScreenStep++;
             gLobbyScreenSubStep = 5;
             if (gLobbyStartPosIdx != 0 && gLobbyStartPosIdx != -1) {
@@ -1385,7 +1385,7 @@ void LobbyScreen_CamIntro(void)
         break;
     case 3:
         if (--gLobbyScreenSubStep <= 0) {
-            SeqA_Start(2);
+            FadeA_Start(2);
             gLobbyScreenStep = 0;
             gLobbyScreenMode = 2;
             gFieldControl = 1;

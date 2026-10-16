@@ -2192,7 +2192,7 @@ temporary still live where another is made pushes it up.
   value gets a0 or a1 while the compare form stays (`cy < top + 0x10`, not
   `top + 0x10 > cy`); `if (x % 100 < -v)` puts the `negu` in the `bgez`
   slot where `-v > x % 100` doesn't. Seen in: func_00D676E0 (plsel),
-  unk_361570.c (sub_main), EmRathalos_State3_0B, EmYamaTsukami_State3_01
+  unk_361570.c (sub_main), EmRathalos_AirDive, EmYamaTsukami_State3_01
   and Eff00_Setup (game), Page_PointerScroll and Page_PointAt (lobby).
 - **A compare the original keeps and yours folds.** Cause: `(f() == 0) == 1`
   is folded, and so is the test of a local just assigned a constant. Fix:
@@ -2311,7 +2311,7 @@ temporary still live where another is made pushes it up.
   && pad & 0x8000))`; `beq x, 1, L; bnez x, end; <test>; L: body` is `if (x
   == 1 || (x == 0 && test))`; `beq 8; bne 9` with the third block last is
   `if (x != 8) { if (x == 9) A else B } else C`. `x == 2 || x == 4`
-  compiled `beq; beq; b` is a switch. Seen in: EmRathalos_State8_03,
+  compiled `beq; beq; b` is a switch. Seen in: EmRathalos_VersusPoseC,
   EmChameleos_Update, EmBulldrome_Update, Player_State2_0F and
   Player_State0_01 (game), func_0070C800, func_007C90C0 and Form_Submit
   (lobby). Round 9: a guard `if (t != 6 && t != 7 && t != 4) return;` gives

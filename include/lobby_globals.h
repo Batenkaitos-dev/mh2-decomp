@@ -99,7 +99,7 @@ extern s32 gQuestTimeLeft;
 extern s32 gQuestReward;
 extern struct QuestInfo *gQuestInfo;
 extern f32 gCamDir;
-extern u32 gQuestExtra;
+extern u32 gNextQuest;
 extern s16 D_6ADADE;
 extern s16 D_6ADAFA;
 extern u8 D_6ADB0C[];

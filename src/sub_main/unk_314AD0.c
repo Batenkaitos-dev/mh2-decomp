@@ -1,23 +1,21 @@
 /*
- * The keyboard's conversion candidate box: a unit of its own at level 4 (its "%s" is not the
- * one of unk_314E00.c's functions). Where it starts (after 0x314580) and ends (before
- * 0x3166D0) is not known: it is cut to Kbd_DrawCandidateBox alone.
+ * The software keyboard's conversion candidate box (Kbd_DrawCandidateBox),
+ * drawn while the kana-kanji converter offers candidates (the keyboard's
+ * state, gKbd, is in include/kbd.h; the candidates' list is
+ * unk_30EA30.c's). The game built it as a unit of its own, at level 4:
+ * its "%s" is not the one of unk_314E00.c's functions.
  */
 #include "common.h"
 #include "em.h"
 
-/* Built at optimization level 4: Kbd_DrawCandidateBox matches only at 4, while Kbd_PrevCand
- * and Kbd_NextCand (unk_30EA30.c) match only at 3. */
+/* Kbd_DrawCandidateBox matches only at level 4 (Kbd_PrevCand and
+ * Kbd_NextCand in unk_30EA30.c only at 3). */
 #pragma optimization_level 4
 
 extern u8 gKbdCandLines[];
 #include "kbd.h"
+#include "prim.h"
 
-typedef struct Rect16 {
-    s16 x, y, w, h;
-    s32 color;
-} Rect16;
-struct PrimLine;
 s32 Prim_FillRect(struct PrimLine *r);
 void Font_SetSpacing(u8 a, u8 b);
 void Text_SetColor(s16 color);
@@ -32,49 +30,49 @@ void Kbd_Printf(const char *fmt, ...);
 void Kbd_DrawCandidateBox(f32 x, s16 y)
 {
     char buf[128];
-    Rect16 r;
+    PrimLine box;
     s16 dx;
-    f32 sc;
+    f32 scale;
     s16 i;
-    s32 ty;
-    u8 *p;
-    s32 yy;
+    s32 lineY;
+    u8 *line;
+    s32 boxY;
 
     if (gKbd->converting != 0) {
-        sc = gKbd->drawScale;
-        if (sc != 1.0f) {
+        scale = gKbd->drawScale;
+        if (scale != 1.0f) {
             dx = 10.0f * gKbd->candCol - 28.0f;
         } else {
             dx = 10.0f * gKbd->candCol - 7.0f;
         }
-        yy = y;
-        r.x = x + dx * sc;
-        r.w = r.x + 0xA2;
-        r.y = yy + 0x14;
-        r.h = r.y + 0x56;
-        r.color = *(s32 *)gKbd->kindConf;
-        Prim_FillRect((struct PrimLine *)&r);
-        r.x = r.x + (s32)(5.0f * *(f32 *)&gKbd->drawScale); /* through an (f32 *) view: a plain gKbd->drawScale here and below allocates other registers */
-        r.w -= (s16)(5.0f * *(f32 *)&gKbd->drawScale);
-        r.y += 5;
-        r.h -= 5;
-        r.color = 0xFF303030;
-        Prim_FillRect((struct PrimLine *)&r);
+        boxY = y;
+        box.x0 = x + dx * scale;
+        box.x1 = box.x0 + 0xA2;
+        box.y0 = boxY + 0x14;
+        box.y1 = box.y0 + 0x56;
+        box.color = *(s32 *)gKbd->kindConf;
+        Prim_FillRect(&box);
+        box.x0 = box.x0 + (s32)(5.0f * *(f32 *)&gKbd->drawScale); /* through an (f32 *) view: a plain gKbd->drawScale here and below allocates other registers */
+        box.x1 -= (s16)(5.0f * *(f32 *)&gKbd->drawScale);
+        box.y0 += 5;
+        box.y1 -= 5;
+        box.color = 0xFF303030;
+        Prim_FillRect(&box);
         Font_SetSpacing(0x12, 0x12);
         x += 10.0f * gKbd->candCol;
         Text_SetColor(0);
-        for (i = 0, ty = y, p = gKbdCandLines; i < 3; i++, ty += 20, p += 0x100) {
-            if (i != gKbd->candIdx % 3) {
+        for (i = 0, lineY = y, line = gKbdCandLines; i < KBD_CAND_PAGE; i++, lineY += 20, line += KBD_CAND_LINE_SIZE) {
+            if (i != gKbd->candIdx % KBD_CAND_PAGE) {
                 Text_SetColor(0);
             } else {
                 Text_SetColor(-3);
             }
-            Font_SetPos(x + 10.0f, 26.0f + ty);
-            Kbd_Printf("%s", p);
+            Font_SetPos(x + 10.0f, 26.0f + lineY);
+            Kbd_Printf("%s", line);
         }
         Text_SetColor(0);
         sprintf(buf, "%3d/%3d", gKbd->candIdx + 1, gKbd->candCount);
-        Font_SetPos(52.0f + (20.0f + x), yy + 0x53);
+        Font_SetPos(52.0f + (20.0f + x), boxY + 0x53);
         Kbd_Printf(buf);
     }
 }

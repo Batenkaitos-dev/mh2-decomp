@@ -135,7 +135,7 @@ extern char D_008384D0[];
 extern char D_008384E8[];
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: with the definition's void (s32 x, s32 y, s32 w, s32 h, s32 c1, s32 c2, s16 kind) (lobby/unk_790EC0.c), Minigame_DrawResult 14 of 189 words differ */
 void Gfx_SetBlend(s32 a, s32 b);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
 s32 sprintf(char *buf, const char *fmt, ...);
 void Font_SetColor(s32 color);
@@ -177,7 +177,7 @@ void Minigame_DrawResult(s8 kind, s16 t, s8 flag)
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
     ft = 60.0f - t;
-    Key_LerpF32((f32 *) scaleKey, (f32 *) &scale, ft);
+    Key_LerpFloat((f32 *) scaleKey, (f32 *) &scale, ft);
     Key_LerpVec3((f32 *) posKey, (f32 *) pos, ft);
     s.x = 320.0f + pos[0];
     s.y = 224.0f + pos[1];

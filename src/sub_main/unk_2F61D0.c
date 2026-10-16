@@ -1,150 +1,161 @@
 /*
- * A chunked data block: a header {u32 flags, u32 count} and, from +0xC,
- * chunks {u8 type, ..., u32 size at +8}. Chunk type 0 holds a table of
- * node indices; the nodes form a binary tree (+8/+0xC children, -1 for
- * none).
+ * Skeleton files (sub_main 0x2F61D0-0x2F6540): counting and finding the
+ * parts, chunks and nodes of a skeleton file (SkelFileHeader, SkelChunk
+ * and SkelFileNode, include/model.h), for unk_2F6540.c, which builds the
+ * skeletons from them. Also an animation file's entry count.
  */
 #include "common.h"
-
-typedef struct ChunkHdr {
-    u32 flags;                  /* 0x0: bit 31 */
-    u32 count;                  /* 0x4 */
-} ChunkHdr;
+#include "model.h"
 
 extern s32 gSkelTreeCount;
 
-ChunkHdr *AnimFile_Header(void *f);
-static ChunkHdr *SkelFile_Header(void *f);
-u8 *SkelFile_FindChunk(void *f, s32 type);
-s32 SkelFile_PartRoot(void *f, u32 i);
-s32 SkelFile_CountTree(void *f, s32 node);
-void SkelFile_CountTreeRec(void *f, s32 node);
-u8 *SkelFile_NodeChunk(void *f, u32 idx);
-s32 *SkelFile_GetNode(void *f, s32 node);
-s32 SkelFile_PartCount(void *f);
-s32 SkelFile_PartBoneCount(void *f, s32 i);
+void *AnimFile_Header(void *file);
+static SkelFileHeader *SkelFile_Header(void *file);
+u8 *SkelFile_FindChunk(void *file, s32 type);
+s32 SkelFile_PartRoot(void *file, u32 i);
+s32 SkelFile_CountTree(void *file, s32 node);
+void SkelFile_CountTreeRec(void *file, s32 node);
+u8 *SkelFile_NodeChunk(void *file, u32 idx);
+s32 *SkelFile_GetNode(void *file, s32 node);
+s32 SkelFile_PartCount(void *file);
+s32 SkelFile_PartBoneCount(void *file, s32 i);
 
-s32 AnimFile_Count(void *f)
+/* The entries of an animation file: its header starts like a skeleton
+ * file's, flags then a count. */
+s32 AnimFile_Count(void *file)
 {
-    return AnimFile_Header(f)->count;
+    return ((SkelFileHeader *)AnimFile_Header(file))->count;
 }
 
-s32 SkelFile_BoneCount(void *f)
+/* The file's bones: its chunks, less the parts chunk when it has one. */
+s32 SkelFile_BoneCount(void *file)
 {
-    ChunkHdr *h = SkelFile_Header(f);
-    s32 n = h->count;
+    SkelFileHeader *header = SkelFile_Header(file);
+    s32 n = header->count;
 
-    if (h->flags & 0x80000000) {
+    if (header->flags & SKEL_FILE_HAS_PARTS) {
         n -= 1;
     }
     return n;
 }
 
-s32 SkelFile_PartCount(void *f)
+/* The file's parts (its parts chunk's count), 0 without a parts chunk. */
+s32 SkelFile_PartCount(void *file)
 {
-    u8 *c = SkelFile_FindChunk(f, 0);
+    u8 *chunk = SkelFile_FindChunk(file, SKEL_CHUNK_PARTS);
 
-    if (c != NULL) {
-        return *(s32 *)(c + 4);
+    if (chunk != NULL) {
+        return ((SkelChunk *)chunk)->count;
     }
     return 0;
 }
 
-s32 SkelFile_PartRoot(void *f, u32 i)
+/* Part i's root node, -1 when there is no such part. */
+s32 SkelFile_PartRoot(void *file, u32 i)
 {
-    u8 *c = SkelFile_FindChunk(f, 0);
+    u8 *chunk = SkelFile_FindChunk(file, SKEL_CHUNK_PARTS);
 
-    if (c != NULL && i < *(u32 *)(c + 4)) {
-        return ((s32 *)(c + 0xC))[i];
+    if (chunk != NULL && i < ((SkelChunk *)chunk)->count) {
+        return ((s32 *)(chunk + sizeof(SkelChunk)))[i];
     }
     return -1;
 }
 
-s32 SkelFile_PartBoneCount(void *f, s32 i)
+/* The bones of part i: the nodes of its tree. */
+s32 SkelFile_PartBoneCount(void *file, s32 i)
 {
-    return SkelFile_CountTree(f, SkelFile_PartRoot(f, i));
+    return SkelFile_CountTree(file, SkelFile_PartRoot(file, i));
 }
 
 /* Counts the nodes of the tree below node. */
-s32 SkelFile_CountTree(void *f, s32 node)
+s32 SkelFile_CountTree(void *file, s32 node)
 {
     gSkelTreeCount = 0;
-    SkelFile_CountTreeRec(f, node);
+    SkelFile_CountTreeRec(file, node);
     return gSkelTreeCount;
 }
 
-void SkelFile_CountTreeRec(void *f, s32 node)
+/* Counts node, then its child's tree and its sibling's (into
+ * gSkelTreeCount). */
+void SkelFile_CountTreeRec(void *file, s32 node)
 {
-    s32 *n;
+    SkelFileNode *fileNode;
 
     gSkelTreeCount++;
-    n = SkelFile_GetNode(f, node);
-    if (n[2] != -1) {
-        SkelFile_CountTreeRec(f, n[2]);
+    fileNode = (SkelFileNode *)SkelFile_GetNode(file, node);
+    if (fileNode->child != -1) {
+        SkelFile_CountTreeRec(file, fileNode->child);
     }
-    if (n[3] != -1) {
-        SkelFile_CountTreeRec(f, n[3]);
+    if (fileNode->sibling != -1) {
+        SkelFile_CountTreeRec(file, fileNode->sibling);
     }
 }
 
-static ChunkHdr *SkelFile_Header(void *f)
+static SkelFileHeader *SkelFile_Header(void *file)
 {
-    return f;
+    return file;
 }
 
-/* The first chunk of a type. */
-u8 *SkelFile_FindChunk(void *f, s32 type)
+/* The first chunk of a type, NULL when there is none. The parameter is
+ * reused as the chunk cursor. */
+u8 *SkelFile_FindChunk(void *file, s32 type)
 {
     u32 i;
-    u32 n = SkelFile_Header(f)->count;
+    u32 n = SkelFile_Header(file)->count;
 
-    f = (u8 *)f + 0xC;
+    file = (u8 *)file + sizeof(SkelFileHeader);
     for (i = 0; i < n; i++) {
-        if (*(u8 *)f == type) {
-            return f;
+        if (((SkelChunk *)file)->type == type) {
+            return file;
         }
-        f = (u8 *)f + *(u32 *)((u8 *)f + 8);
+        file = (u8 *)file + ((SkelChunk *)file)->size;
     }
     return NULL;
 }
 
-/* The idx-th chunk whose type is not 0. */
-u8 *SkelFile_NodeChunk(void *f, u32 idx)
+/* The idx-th node chunk (a chunk whose type is not the parts chunk's),
+ * NULL when there is none. */
+u8 *SkelFile_NodeChunk(void *file, u32 idx)
 {
     u32 k = 0;
     u32 i;
-    u32 n = SkelFile_Header(f)->count;
+    u32 n = SkelFile_Header(file)->count;
 
     if (idx < n) {
-        f = (u8 *)f + 0xC;
+        file = (u8 *)file + sizeof(SkelFileHeader);
         for (i = 0; i < n; i++) {
-            if (*(u8 *)f != 0) {
+            if (((SkelChunk *)file)->type != SKEL_CHUNK_PARTS) {
                 if (k == idx) {
-                    return f;
+                    return file;
                 }
                 k++;
             }
-            f = (u8 *)f + *(u32 *)((u8 *)f + 8);
+            file = (u8 *)file + ((SkelChunk *)file)->size;
         }
     }
     return NULL;
 }
 
-s32 *SkelFile_GetNode(void *f, s32 node)
+/* Node `node` of the file (a SkelFileNode, after its chunk's header),
+ * NULL when there is none. */
+s32 *SkelFile_GetNode(void *file, s32 node)
 {
-    u8 *c = SkelFile_NodeChunk(f, node);
+    u8 *chunk = SkelFile_NodeChunk(file, node);
 
-    if (c != NULL) {
-        return (s32 *)(c + 0xC);
+    if (chunk != NULL) {
+        return (s32 *)(chunk + sizeof(SkelChunk));
     }
     return NULL;
 }
 
-s32 SkelFile_PartSize(void *f, s32 i)
+/* The bytes part i's skeleton takes when built: a 0x10-byte header and
+ * 0x40 bytes a bone (unk_2F6540.c's SkelHeader and BoneDef); 0 when there
+ * is no such part. */
+s32 SkelFile_PartSize(void *file, s32 i)
 {
-    if (i >= SkelFile_PartCount(f)) {
+    if (i >= SkelFile_PartCount(file)) {
         return 0;
     }
-    i = SkelFile_PartBoneCount(f, i);
+    i = SkelFile_PartBoneCount(file, i);
     return (i << 6) + 0x10;
 }

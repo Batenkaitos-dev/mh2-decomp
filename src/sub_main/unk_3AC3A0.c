@@ -159,9 +159,9 @@ void Player_CopyPadInput(s32 playerNo)
     in->prevStickDirPressed = in->stickDirPressed;
     in->stickDirPressed = in->stickDir & ~in->prevStickDir;
     in->stickAngle = gPadInput.stickAngle[port].cur;
-    in->prevStickAngle = gPadInput.stickAngle[port].prev;
+    in->rightStickAngle = gPadInput.stickAngle[port].prev;
     in->stickTilt = gPadInput.stickTilt[port].cur;
-    in->prevStickTilt = gPadInput.stickTilt[port].prev;
+    in->rightStickTilt = gPadInput.stickTilt[port].prev;
 
     in->held = gPadInput.buttons[port].cur;
     in->prevHeld = gPadInput.buttons[port].prev;
@@ -197,8 +197,8 @@ void Player_CopyPadInput(s32 playerNo)
             in->prevStickDirPressed = 0;
             in->stickDirPressed = 0;
         }
-        in->prevStickAngle = 0;
-        in->prevStickTilt = 0;
+        in->rightStickAngle = 0;
+        in->rightStickTilt = 0;
         in->held = 0;
         in->prevHeld = 0;
         in->pressed = 0;

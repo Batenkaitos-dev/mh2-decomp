@@ -17,14 +17,12 @@
 #include "objhead.h"
 #include "qsync.h"
 
-/* One of Capcom's units, 0x3A1070-0x3AC3A0 (unk_3A1070.c calls
- * Quest_DeliveredCount, static further down), built at optimization level 4
+/* One of Capcom's units, 0x3A1070-0x3AC3A0 (it calls the static
+ * Quest_DeliveredCount, defined further down), built at optimization level 4
  * throughout (docs/mwcc-matching.md, "Optimization level 4 files"). */
 #pragma optimization_level 4
 
-/* The quest's settings (QuestState.info). */
-
-/* A player's start position in the stage file (header word 1). */
+/* A player's start in the stage file (StageHeader.startAreas, one per player). */
 typedef struct StartArea {
     s32 area;
     u8 unk04[0x10 - 0x04];
@@ -38,49 +36,13 @@ typedef struct AreaSpawns {
 } AreaSpawns;
 
 typedef struct SpawnPoint {
-    s32 unk0;
+    s32 rotY;
     f32 x;
     f32 y;
     f32 z;
 } SpawnPoint;
 
-/* A monster of the quest (QuestEm_FindForEm). */
-typedef struct QuestEm {
-    s16 kind;                   /* 0x00: the monster kind; 0 ends the list; 10 depends on QuestState.unk15A */
-    s16 unk02;
-    s8 count;                   /* 0x04: how many more times it appears */
-    u8 unk05;
-    u16 unk06;
-    u16 area;                   /* 0x08 */
-    s8 unk0A;
-    s8 spawn;                   /* 0x0B: 0 at (x, y, z), 1 at a random point of the area */
-    s32 unk0C;
-    s32 unk10;
-    s32 unk14;
-    s32 unk18;
-    s32 unk1C;
-    f32 x;                      /* 0x20 */
-    f32 y;
-    f32 z;
-    s16 unk2C;                  /* 0x2C: running index */
-    s16 flags;                  /* 0x2E: 1 dead, 2 appeared, 4 captured?, 8 */
-    u16 size;                   /* 0x30: in percent (Em.unk984) */
-    s16 hp;                     /* 0x32: -1: take the monster's */
-    s8 unk34;
-    s8 unk35;
-    s8 level;                   /* 0x36: 0..16 */
-    u8 unk37[0x3C - 0x37];
-} QuestEm;
-
-/* A monster added to the quest (D_006ADAD0, 0x1C bytes). */
-typedef struct QuestExtraEm {
-    u32 flags;          /* 0x00 */
-    u8 pad4[0xE - 0x4];
-    s16 kind;           /* 0x0E: the monster kind */
-    u8 pad10[0x1C - 0x10];
-} QuestExtraEm;
-
-/* A u8 range (gQuestTimerRanges). */
+/* A range of monster sizes in percent (gEmSizeRanges). */
 typedef struct RangeU8 {
     u8 min;
     u8 max;
@@ -99,8 +61,8 @@ extern u32 gStageFile;          /* base address of the stage file */
 extern u16 **gStartAreaTables[];
 extern u16 gEmAppearMax[];
 extern PartEffect gPartBreakEffects[];
-extern char *D_004455CC;
-extern char *D_0044556C;
+extern char *gDrillScoreTexts[];
+extern char *gQuestNoticeTexts[];
 extern u8 *gQuestTimedEventTbls[];
 
 void *memset(void *p, s32 c, u32 n);
@@ -123,7 +85,7 @@ u16 Pouch_Add(Player *pl, u16 item, s16 n);
 void QuestEm_CountCaptured(u16 i);
 void QuestEm_CountHunted(u16 i);
 QuestEm * QuestEm_FindByIndex(s16 idx, u16 area);
-s32 QuestEm_RollAlarm(s32 a);
+s32 QuestEm_RollYamaTsukamiB(s32 a);
 Em * QuestEm_Spawn(QuestEm *q);
 s32 QuestGoal_DeliverCountFor(u16 target, u16 i);
 u16 QuestGoal_DeliverItem(u16 i);
@@ -165,7 +127,7 @@ s32 Quest_HasDrillFlag(void);
 void Quest_CountEventKill(u16 type);
 void Quest_CountTarget(u16 type);
 void QuestStats_Add(s32 a, s32 b);
-void Quest_SetFailed(s32 a);
+void Quest_JumpToEnd(s32 a);
 void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
 EmBone *Em_Bone(void *obj, s16 bone);
 s32 MonsterNote_Index(u16 id);
@@ -186,9 +148,9 @@ u16 Quest_Deliver(Player *pl, u16 item, s32 count);
 void Jingle_Play(void *obj, s32 a);
 static s16 Quest_FindReward(u16 id);
 u16 Quest_AddReward(u16 item, s16 n);
-extern s8 D_0044BDC0[];
+extern s8 gRewardGiveRolls[];
 void Effect17_SpawnArea(s32 area);
-void QuestEm_SpawnKind48(void);
+void QuestEm_SpawnYamaTsukamiB(void);
 void GmLoad_LoadEmData(s32 kind, s32 idx);
 void EmSlot_LoadModels(s32 i);
 Em *EmSlot_Alloc(void);
@@ -217,15 +179,12 @@ u16 Save_RankFromPoints(SaveData *s);
 s32 Side_Match(u8 a, u8 b, u8 c);
 void Quest_UpdateTimedEvent(void);
 void Quest_CheckItemTargets(void);
-extern u8 D_006ADB30[24];
-extern u16 D_006ADB48;
-extern u16 D_006ADB4A;
-extern s8 D_006ADB4C;
-extern QuestExtraEm gQuestExtra[2];
+extern u16 gNextQuestId;
+extern NextQuest gNextQuest;
 extern u8 gNetQuestSeeds[15];
-extern RangeU8 gQuestTimerRanges[5];
-extern RangeU8 gQuestTimerRangeDefaults[5];
-extern s8 D_0044B450[16];
+extern RangeU8 gEmSizeRanges[5];
+extern RangeU8 gEmSizeRangeDefaults[5];
+extern s8 gTraderVariantRolls[16];
 extern s16 *gStageFileTbls[];
 extern s16 D_1BB3D0[];
 void *memcpy(void *dst, const void *src, u32 n);
@@ -258,6 +217,10 @@ void QuestEm_ResetArea(s32 a);
 void EmSlot_FreeModels(s16 i);
 void QuestEm_Hunted(Em *em);
 
+/*
+ * Clears gQuest for no quest: the default stage header's tables, the script
+ * stopped. Only the versus defeat bits are kept.
+ */
 void Quest_Clear(void)
 {
     u8 keep = gQuest.versusDefeat;
@@ -268,13 +231,13 @@ void Quest_Clear(void)
     gQuest.loopPc = -1;
     gQuest.scriptPc = -1;
     gQuest.script = (void *)gDefaultStageHeader.script;
-    gQuest.noticeTexts = (void *)gDefaultStageHeader.unk30;
-    gQuest.texts = (void *)gDefaultStageHeader.unk30;
+    gQuest.noticeTexts = (void *)gDefaultStageHeader.noticeTexts;
+    gQuest.texts = (void *)gDefaultStageHeader.noticeTexts;
     gQuest.emSpawns = (void *)gDefaultStageHeader.emSpawns;
-    gQuest.stageEntry = (void *)gDefaultStageHeader.unk18;
+    gQuest.stageEntry = (void *)gDefaultStageHeader.stageEntry;
     gQuest.areaData = (void *)gDefaultStageHeader.areaData;
     gQuest.areaRecords = (void *)gDefaultStageHeader.areaRecords;
-    gQuest.rewardTable = (void *)gDefaultStageHeader.unk0C;
+    gQuest.rewardTable = (void *)gDefaultStageHeader.rewardTable;
     gQuest.gatherPoints = (void *)gDefaultStageHeader.gatherPoints;
     gQuest.actionSpots = (void *)gDefaultStageHeader.actionSpots;
     gQuest.info = (QuestInfo *)gDefaultStageHeader.info;
@@ -283,6 +246,15 @@ void Quest_Clear(void)
     QuestRecord_Clear();
 }
 
+/*
+ * Sets up the quest gNextQuestId (gNextQuest): clears the quest's records,
+ * seeds its random stream (online, from the seeds the host sent), loads the
+ * stage file of the season and time of day (for a quest id below 50000; from
+ * 50000 the quest was downloaded and its file is already loaded), points
+ * gQuest at the file's tables and sets up the goals, the targets, the
+ * monsters and the mining points. With no quest (stage 0) only the area is
+ * set.
+ */
 void Quest_Init(void)
 {
     s16 *tbl = D_1BB3D0;
@@ -294,39 +266,40 @@ void Quest_Init(void)
     s32 file;
     u16 r;
 
-    gScene.questId = D_006ADB48;
-    gQuest.stage = D_006ADB48;
-    gQuest.unk15C = D_006ADB4C;
-    memcpy(gQuest.huntGoals, D_006ADB30, 0x18);
+    gScene.questId = gNextQuestId;
+    gQuest.stage = gNextQuestId;
+    gQuest.flyer = gNextQuest.flyer;
+    memcpy(gQuest.huntGoals, gNextQuest.huntGoals, sizeof(gQuest.huntGoals));
     QuestRecord_Clear();
     gScene.rewardDeducted = 0;
-    gScene.questPhase = 2;
+    gScene.questPhase = QUEST_PHASE_READY;
     MinePoint_ResetAll();
     QuestGoal_ClearAll();
     Bgm_Init();
     Quest_ClearTargets();
     if (Game_IsOnline() == 0) {
-        for (i = 0; i < 15; i++) {
+        for (i = 0; i < (s32)sizeof(gQuest.seed); i++) {
             r = Rand_Next(0);
             gQuest.seed[i] = r;
         }
-        gQuestTimerRanges[0].min = gQuestTimerRangeDefaults[0].min;
-        gQuestTimerRanges[0].max = gQuestTimerRangeDefaults[0].max;
-        gQuestTimerRanges[1].min = gQuestTimerRangeDefaults[1].min;
-        gQuestTimerRanges[1].max = gQuestTimerRangeDefaults[1].max;
-        gQuestTimerRanges[2].min = gQuestTimerRangeDefaults[2].min;
-        gQuestTimerRanges[2].max = gQuestTimerRangeDefaults[2].max;
-        gQuestTimerRanges[3].min = gQuestTimerRangeDefaults[3].min;
-        gQuestTimerRanges[3].max = gQuestTimerRangeDefaults[3].max;
-        gQuestTimerRanges[4].min = gQuestTimerRangeDefaults[4].min;
-        gQuestTimerRanges[4].max = gQuestTimerRangeDefaults[4].max;
+        gEmSizeRanges[0].min = gEmSizeRangeDefaults[0].min;
+        gEmSizeRanges[0].max = gEmSizeRangeDefaults[0].max;
+        gEmSizeRanges[1].min = gEmSizeRangeDefaults[1].min;
+        gEmSizeRanges[1].max = gEmSizeRangeDefaults[1].max;
+        gEmSizeRanges[2].min = gEmSizeRangeDefaults[2].min;
+        gEmSizeRanges[2].max = gEmSizeRangeDefaults[2].max;
+        gEmSizeRanges[3].min = gEmSizeRangeDefaults[3].min;
+        gEmSizeRanges[3].max = gEmSizeRangeDefaults[3].max;
+        gEmSizeRanges[4].min = gEmSizeRangeDefaults[4].min;
+        gEmSizeRanges[4].max = gEmSizeRangeDefaults[4].max;
     } else {
-        for (i = 0; i < 15; i++) {
+        for (i = 0; i < (s32)sizeof(gQuest.seed); i++) {
             gQuest.seed[i] = gNetQuestSeeds[i];
         }
     }
     Quest_SeedRandom();
     Quest_Random();
+    /* only the first 74 kinds; sizeMin, captured and parts stay */
     for (i = 0; i < 74; i++) {
         gQuest.sizeMax[i] = 0;
         gQuest.hunted[i] = 0;
@@ -340,8 +313,8 @@ void Quest_Init(void)
     }
     gQuest.acks = 0;
     gQuest.netMsgArgs = 0;
-    gQuest.unk138 = 0;
-    gQuest.unk137 = 0;
+    gQuest.eventTriggered = 0;
+    gQuest.eventLabel = 0;
     gQuest.goalLabel = 0;
     for (i = 0; i < 4; i++) {
         gQuest.hunterRank[i][0] = 0;
@@ -373,7 +346,9 @@ void Quest_Init(void)
     gQuest.traderWantItem = 0;
     MsgEvent_Init();
     if (gQuest.stage != 0) {
-        if (gQuest.stage < 50000) {
+        if (gQuest.stage < QUEST_ID_DOWNLOADED) {
+            /* the group of stage ids the quest falls in (each bound is the
+             * group's last id), then its file in the group's table */
             for (i = 0; *tbl != 0; i++) {
                 if (*tbl >= gQuest.stage) {
                     break;
@@ -384,25 +359,26 @@ void Quest_Init(void)
             tbl += gQuest.stage % 100;
             file = *tbl;
             if (Quest_IsVersus() == 0) {
-                if (gQuestExtra[0].flags & 0x4600000) {
-                    if (gQuestExtra[0].flags & 0x800000) {
-                        a = 2;
-                    } else if (gQuestExtra[0].flags & 0x1000000) {
-                        a = 0;
+                if (gNextQuest.flags & QUEST_FLAGS_FIXED_SEASON) {
+                    if (gNextQuest.flags & QUEST_FLAG_SET_BREEDING) {
+                        a = SEASON_BREEDING;
+                    } else if (gNextQuest.flags & QUEST_FLAG_SET_WARM) {
+                        a = SEASON_WARM;
                     } else {
-                        a = 1;
+                        a = SEASON_COLD;
                     }
                 } else {
                     a = Season_Get();
                 }
-                switch (D_006ADB4A) {
+                /* these maps are always played by day */
+                switch (gNextQuest.map) {
                 case 7:
                 case 8:
                 case 13:
                 case 14:
                 case 15:
-                    b = 0;
-                    Daytime_Set(3);
+                    b = DAYTIME_DAY * 3;
+                    Daytime_Set(DAYTIME_SET_DAY);
                     break;
                 default:
                     b = Daytime_Get() * 3;
@@ -410,33 +386,34 @@ void Quest_Init(void)
                 }
                 file += b + a;
             } else {
-                a = 0;
-                file += 3;
+                /* versus: the warm night's file */
+                a = SEASON_WARM;
+                file += DAYTIME_NIGHT * 3;
             }
             switch (a) {
-            case 0:
-                Quest_SetSeason(0);
+            case SEASON_WARM:
+                Quest_SetSeason(SEASON_WARM);
                 break;
-            case 1:
-                Quest_SetSeason(1);
+            case SEASON_COLD:
+                Quest_SetSeason(SEASON_COLD);
                 break;
-            case 2:
+            case SEASON_BREEDING:
             default:
-                Quest_SetSeason(2);
+                Quest_SetSeason(SEASON_BREEDING);
                 break;
             }
             Mib_Read(file, (void *)gStageFile);
         } else {
-            gQuest.info = (QuestInfo *)(*(u32 *)gStageFile + gStageFile);
-            if (gQuest.info->flags & 0x10000) {
-                a = 2;
-            } else if (gQuest.info->flags & 0x40000) {
-                a = 1;
+            gQuest.info = (QuestInfo *)(((StageHeader *)gStageFile)->info + gStageFile);
+            if (gQuest.info->flags & QUEST_FLAG_BREEDING) {
+                a = SEASON_BREEDING;
+            } else if (gQuest.info->flags & QUEST_FLAG_COLD) {
+                a = SEASON_COLD;
             } else {
-                a = 0;
+                a = SEASON_WARM;
             }
             Quest_SetSeason(a);
-            Daytime_Set((gQuest.info->flags & 0x80000) ? 3 : 4);
+            Daytime_Set((gQuest.info->flags & QUEST_FLAG_DAY) ? DAYTIME_SET_DAY : DAYTIME_SET_NIGHT);
         }
         h = (StageHeader *)gStageFile;
         Quest_SetCurrent(gQuest.stage, h, 0);
@@ -446,11 +423,11 @@ void Quest_Init(void)
             Versus_Init();
         } else {
             gQuest.nextSide = 0;
-            gQuest.inputLock = 60;
+            gQuest.inputLock = 60; /* frames: 2 s */
         }
-        Quest_SetStartArea(0xFF);
-        gQuest.timeLeft = Quest_GetTime(1);
-        gQuest.timeNoticeIdx = (gQuest.timeLeft - 1) / 9000;
+        Quest_SetStartArea(START_AREA_SCENE);
+        gQuest.timeLeft = Quest_GetTime(QUEST_TIME_LIMIT);
+        gQuest.timeNoticeIdx = (gQuest.timeLeft - 1) / QUEST_TIME_NOTICE_STEP;
         if (gQuest.timeNoticeIdx > 2) {
             gQuest.timeNoticeIdx = 2;
         }
@@ -458,10 +435,10 @@ void Quest_Init(void)
         gQuest.loopPc = 0;
         gQuest.scriptPc = 0;
         gQuest.areaData = (void *)(h->areaData + gStageFile);
-        gQuest.noticeTexts = (void *)(h->unk30 + gStageFile);
+        gQuest.noticeTexts = (void *)(h->noticeTexts + gStageFile);
         gQuest.texts = (void *)(gQuest.info->texts + gStageFile);
         gQuest.emSpawns = (void *)(h->emSpawns + gStageFile);
-        gQuest.stageEntry = (void *)(h->unk18 + gStageFile);
+        gQuest.stageEntry = (void *)(h->stageEntry + gStageFile);
         gQuest.areaRecords = (void *)(h->areaRecords + gStageFile);
         gQuest.gatherPoints = (void *)(h->gatherPoints + gStageFile);
         gQuest.actionSpots = (void *)(h->actionSpots + gStageFile);
@@ -469,7 +446,7 @@ void Quest_Init(void)
         gQuest.seasonalData = (void *)(h->seasonalData + gStageFile);
         gQuest.reward = gQuest.info->reward;
         gQuest.penalty = gQuest.info->penalty;
-        gQuest.rewardTable = (void *)(h->unk0C + gStageFile);
+        gQuest.rewardTable = (void *)(h->rewardTable + gStageFile);
         gQuest.flags = gQuest.info->flags;
         gQuest.emLevel = h->emLevel;
         gQuest.header->tables += gStageFile;
@@ -479,11 +456,11 @@ void Quest_Init(void)
         gQuest.timedEvent = h->timedEvent;
         gQuest.eventKind = h->eventKind;
         gQuest.eventCount = h->eventCount;
-        gQuest.timedEventSet = gQuest.timeLeft / 9000;
-        gQuest.unk09C = 0;
-        gQuest.unk15A = D_0044B450[Quest_Random() & 0xF];
+        gQuest.timedEventSet = gQuest.timeLeft / QUEST_TIME_NOTICE_STEP;
+        gQuest.timedEventStep = 0;
+        gQuest.traderVariant = gTraderVariantRolls[Quest_Random() & 0xF];
         if (Quest_IsDrill() == 1) {
-            gQuest.unk15A = 0;
+            gQuest.traderVariant = 0;
         }
         QuestGoal_InitFromDef();
         Quest_LoadTargets();
@@ -494,18 +471,20 @@ void Quest_Init(void)
         gScene.area = gQuestSync.area;
         gScene.startArea = gQuestSync.area;
         gQuest.header = &gDefaultStageHeader;
-        Quest_SetSeason(0);
+        Quest_SetSeason(SEASON_WARM);
         gScene.map = 2;
     }
     GmLoad_Reset();
 }
 
+/* Abandons the quest unless it is running or already ending (online, also
+ * leaves the network quest). */
 void Quest_Abort(void)
 {
     if (Quest_IsRunning(1) == 0) {
-        gScene.questPhase = 7;
+        gScene.questPhase = QUEST_PHASE_ABORTED;
         gQuest.scriptPc = -1;
-        gQuest.result = 7;
+        gQuest.result = QUEST_PHASE_ABORTED;
         Quest_StoreElapsed();
         if (Game_IsOnline() != 0) {
             QNetIf_Leave();
@@ -513,6 +492,10 @@ void Quest_Abort(void)
     }
 }
 
+/*
+ * Starts a quest that is set up: the script goes on from its first start
+ * mark (QUEST_OP_START or QUEST_OP_START_ALT) and the quest is RUNNING.
+ */
 void Quest_Start(void)
 {
     s16 *p = gQuest.script;
@@ -521,27 +504,29 @@ void Quest_Start(void)
     switch (gScene.questPhase) {
     case 0:
     case 1:
-    case 2:
+    case QUEST_PHASE_READY:
         for (;;) {
-            if (*p == -1 || *p == 0x26) {
+            if (*p == QUEST_OP_START || *p == QUEST_OP_START_ALT) {
                 break;
             }
             i++;
-            p += 4;
+            p += sizeof(QuestCmd) / sizeof(s16);
         }
         gQuest.scriptPc = i;
-        gScene.questPhase = 3;
+        gScene.questPhase = QUEST_PHASE_RUNNING;
         break;
     }
 }
 
+/* Ends the quest at once for the results (QUEST_PHASE_QUIT) and stops the script. */
 void Quest_Finish(void)
 {
-    gScene.questPhase = 8;
-    gQuest.result = 8;
+    gScene.questPhase = QUEST_PHASE_QUIT;
+    gQuest.result = QUEST_PHASE_QUIT;
     gQuest.scriptPc = -1;
 }
 
+/* Quest_Finish, unless the quest is running or already ending. */
 void Quest_FinishIfIdle(void)
 {
     if (Quest_IsRunning(1) == 0) {
@@ -549,6 +534,12 @@ void Quest_FinishIfIdle(void)
     }
 }
 
+/*
+ * Sets the start area of player `who`, or with START_AREA_SCENE the scene's
+ * area (the local player's). Without a quest it is gQuestSync.area; with
+ * the stage's randomStart a weighted roll on the player's seed byte;
+ * otherwise the stage file's start area of the player.
+ */
 void Quest_SetStartArea(u16 who)
 {
     u16 **tbl = gStartAreaTables[gQuest.info->map];
@@ -560,7 +551,7 @@ void Quest_SetStartArea(u16 who)
     u16 area;
 
     if (gQuest.stage == 0) {
-        if (who == 0xFF) {
+        if (who == START_AREA_SCENE) {
             gScene.area = gQuestSync.area;
             gScene.startArea = gQuestSync.area;
         } else {
@@ -568,13 +559,14 @@ void Quest_SetStartArea(u16 who)
         }
         return;
     }
-    if (gQuest.header->unk5D != 0) {
-        w = tbl[gQuest.header->unk5D - 1];
+    if (gQuest.header->randomStart != 0) {
+        /* (weight, area) pairs, 0xFFFF-terminated */
+        w = tbl[gQuest.header->randomStart - 1];
         sum = 0;
         for (p = w; *p != 0xFFFF; p += 2) {
             sum += *p;
         }
-        if (who == 0xFF) {
+        if (who == START_AREA_SCENE) {
             r = gQuest.seed[gScene.localPlayer] % sum;
         } else {
             r = gQuest.seed[who] % sum;
@@ -586,7 +578,7 @@ void Quest_SetStartArea(u16 who)
             }
             w++;
         }
-        if (who == 0xFF) {
+        if (who == START_AREA_SCENE) {
             area = *w;
             gScene.area = area;
             gScene.startArea = area;
@@ -595,8 +587,8 @@ void Quest_SetStartArea(u16 who)
         gPlayers[who].area = *w;
         return;
     }
-    s = (StartArea *)(((u32 *)gStageFile)[1] + gStageFile);
-    if (who == 0xFF) {
+    s = (StartArea *)(((StageHeader *)gStageFile)->startAreas + gStageFile);
+    if (who == START_AREA_SCENE) {
         s += gScene.localPlayer;
         area = s->area;
         gScene.area = area;
@@ -606,19 +598,25 @@ void Quest_SetStartArea(u16 who)
     gPlayers[who].area = s[who].area;
 }
 
-void func_003A1F30(void)
+/* Restarts the BGM state machine, unless the quest is running or ending. */
+void Quest_ResetMusicIfIdle(void)
 {
     if (Quest_IsRunning(1) == 0) {
         gScene.musicState = 0;
     }
 }
 
+/*
+ * 1 while the quest runs (RUNNING or CLEARED); -1 when it is ending (ENDED,
+ * FAILED or ABORTED) and `ending` is nonzero; otherwise 0.
+ */
 s32 Quest_IsRunning(s32 ending)
 {
-    if (gScene.questPhase == 3 || gScene.questPhase == 4) {
+    if (gScene.questPhase == QUEST_PHASE_RUNNING || gScene.questPhase == QUEST_PHASE_CLEARED) {
         return 1;
     }
-    if ((u32)(gScene.questPhase - 5) <= 1 || gScene.questPhase == 7) {
+    /* ENDED or FAILED */
+    if ((u32)(gScene.questPhase - QUEST_PHASE_ENDED) <= 1 || gScene.questPhase == QUEST_PHASE_ABORTED) {
         if (ending != 0) {
             return -1;
         }
@@ -626,15 +624,17 @@ s32 Quest_IsRunning(s32 ending)
     return 0;
 }
 
+/* The time left (QUEST_TIME_LEFT, never below 0) or the time limit
+ * (QUEST_TIME_LIMIT), in frames. */
 s32 Quest_GetTime(s32 which)
 {
     s32 t;
 
     switch (which) {
-    case 0:
+    case QUEST_TIME_LEFT:
         t = gQuest.timeLeft;
         return (t < 0) ? 0 : t;
-    case 1:
+    case QUEST_TIME_LIMIT:
         return gQuest.info->timeLimit;
     default:
         t = gQuest.timeLeft;
@@ -645,6 +645,8 @@ s32 Quest_GetTime(s32 which)
     }
 }
 
+/* On entering an area: loads the stage's part and spawns the quest's
+ * monsters and those of the area. */
 void Quest_EnterArea(s32 a)
 {
     GmLoad_LoadStagePartition();
@@ -652,6 +654,8 @@ void Quest_EnterArea(s32 a)
     QuestEm_SpawnArea(a);
 }
 
+/* Moves em to a random spawn point of its area (StageHeader.areaSpawns):
+ * 0, or -1 when the area has none. */
 s32 QuestEm_PlaceAtRandomPoint(Em *em)
 {
     AreaSpawns *p = (AreaSpawns *)(gQuest.header->areaSpawns + gStageFile);
@@ -668,13 +672,15 @@ s32 QuestEm_PlaceAtRandomPoint(Em *em)
     }
     sp = (SpawnPoint *)(p->offset + gStageFile);
     sp += Rand_Next(0) % p->count;
-    em->rotY = sp->unk0;
+    em->rotY = sp->rotY;
     em->posX = sp->x;
     em->posY = sp->y;
     em->posZ = sp->z;
     return 0;
 }
 
+/* 1 when em's quest monster may appear again: the quest not running, the
+ * entry not done and some appearances left. */
 s32 QuestEm_CanAppear(Em *em)
 {
     QuestEm *q;
@@ -684,10 +690,10 @@ s32 QuestEm_CanAppear(Em *em)
     }
     q = QuestEm_FindForEm(em);
     if (q != NULL) {
-        if (q->flags & 1) {
+        if (q->flags & QUEST_EM_DONE) {
             return 0;
         }
-        if (q->unk0A == 1) {
+        if (q->noReappear == 1) {
             return 0;
         }
         if (q->count > 0) {
@@ -697,23 +703,31 @@ s32 QuestEm_CanAppear(Em *em)
     return 0;
 }
 
+/*
+ * Brings em's quest monster back: a monster with a random size grows by 5
+ * percent (up to the kind's gEmAppearMax) and, unless the quest says not,
+ * gains a level, as does the quest's level (up to 15). It takes its place
+ * (a random point for spawn 1, else the entry's), its parts and state are
+ * reset and its appear handler runs. Returns its appearances left, 0 when
+ * none.
+ */
 s8 QuestEm_Appear(Em *em)
 {
     QuestEm *q;
     u16 max;
 
     if ((q = QuestEm_FindForEm(em)) != NULL) {
-        if (q->flags & 1) {
+        if (q->flags & QUEST_EM_DONE) {
             return 0;
         }
-        q->flags = 2;
+        q->flags = QUEST_EM_ACTIVE;
         if (Em_HasRandomSize2(em->type) == 1) {
             em->sizePct += 5;
             max = gEmAppearMax[MonsterGroup_First(em->type)];
             if (em->sizePct > max) {
                 em->sizePct = max;
             }
-            if (!(gQuest.flags & 0x8000)) {
+            if (!(gQuest.flags & QUEST_FLAG_NO_LEVEL_UP)) {
                 if (gQuest.emLevel < 15) {
                     gQuest.emLevel++;
                 }
@@ -739,7 +753,7 @@ s8 QuestEm_Appear(Em *em)
             em->posX = q->x;
             em->posY = q->y;
             em->posZ = q->z;
-            em->rotY = q->unk1C;
+            em->rotY = q->rotY;
             break;
         }
         em->area = q->area;
@@ -753,32 +767,41 @@ s8 QuestEm_Appear(Em *em)
     return 0;
 }
 
+/* Runs em's appear handler and clears its pending script. */
 void Em_RunAppearHook(Em *em)
 {
     em->handlers->appear(em);
     em->scriptPending = 0;
 }
 
+/* Notes em as the target that went down last when its kind is a clear
+ * target; once the quest is cleared, the camera turns to it. */
 void Quest_NoteTargetDown(Em *em)
 {
     if (QuestGoal_IsClearTarget(em->type) == 1) {
         gQuest.downEm = em;
-        if (Quest_IsRunning(0) != 0 && gQuest.result == 4 && gSysSettings.clearCapture == 0) {
+        if (Quest_IsRunning(0) != 0 && gQuest.result == QUEST_PHASE_CLEARED && gSysSettings.clearCapture == 0) {
             CamReq_TargetDown(gQuest.result);
         }
     }
 }
 
+/*
+ * em was hunted: counts it (the quest's targets, events and records, the
+ * largest and smallest sizes, outside versus), uses up one appearance of its
+ * entry, tells the other players when the kill is ours, and counts the
+ * goal.
+ */
 void QuestEm_Hunted(Em *em)
 {
     QuestEm *q;
 
     if ((q = QuestEm_FindForEm(em)) != NULL) {
-        if (q->flags & 5) {
+        if (q->flags & (QUEST_EM_DONE | QUEST_EM_HUNTED)) {
             Quest_NoteTargetDown(em);
             return;
         }
-        if (q->unk35 != 0) {
+        if (q->large != 0) {
             gQuest.emLeft--;
         }
         q->count--;
@@ -787,8 +810,8 @@ void QuestEm_Hunted(Em *em)
         if (Quest_IsVersus() == 0) {
             QuestEm_CountHunted(em->type);
             gQuest.hunted[em->type]++;
-            if (gQuest.hunted[em->type] > 9999) {
-                gQuest.hunted[em->type] = 9999;
+            if (gQuest.hunted[em->type] > QUEST_COUNT_MAX) {
+                gQuest.hunted[em->type] = QUEST_COUNT_MAX;
             }
             if (Em_HasRandomSize(em->type) == 1) {
                 if (em->sizePct > gQuest.sizeMax[em->type]) {
@@ -802,10 +825,10 @@ void QuestEm_Hunted(Em *em)
             }
         }
         if (q->count > 0) {
-            q->flags = 4;
+            q->flags = QUEST_EM_HUNTED;
         } else {
-            q->unk34 = -1;
-            q->flags = 1;
+            q->emIndex = -1;
+            q->flags = QUEST_EM_DONE;
         }
         if (em->remote == 0) {
             Quest_SendKill(q, (Player *)em);
@@ -819,22 +842,27 @@ void QuestEm_Hunted(Em *em)
     }
 }
 
+/* em leaves the area: its entry keeps its health for the next appearance. */
 void QuestEm_Leave(Em *em)
 {
     QuestEm *q = QuestEm_FindForEm(em);
 
-    if (q != NULL && !(q->flags & 1)) {
+    if (q != NULL && !(q->flags & QUEST_EM_DONE)) {
         q->hp = em->hp;
-        q->unk34 = -1;
+        q->emIndex = -1;
     }
 }
 
+/*
+ * em was captured: as QuestEm_Hunted (once per entry), and the kind, size
+ * and level (level - 3, 1 to 12) of the capture are kept for the records.
+ */
 void QuestEm_Captured(Em *em)
 {
     QuestEm *q;
 
     if ((q = QuestEm_FindForEm(em)) != NULL) {
-        if (q->flags & 8) {
+        if (q->flags & QUEST_EM_CAPTURED) {
             Quest_NoteTargetDown(em);
             return;
         }
@@ -842,8 +870,8 @@ void QuestEm_Captured(Em *em)
         if (Quest_IsVersus() == 0) {
             QuestEm_CountCaptured(em->type);
             gQuest.captured[em->type]++;
-            if (gQuest.captured[em->type] > 9999) {
-                gQuest.captured[em->type] = 9999;
+            if (gQuest.captured[em->type] > QUEST_COUNT_MAX) {
+                gQuest.captured[em->type] = QUEST_COUNT_MAX;
             }
             if (Em_HasRandomSize(em->type) == 1) {
                 if (em->sizePct > gQuest.sizeMax[em->type]) {
@@ -869,23 +897,25 @@ void QuestEm_Captured(Em *em)
         }
         QuestGoal_OnCapture(em->type);
         Quest_NoteTargetDown(em);
-        if (!(q->flags & 5)) {
+        if (!(q->flags & (QUEST_EM_DONE | QUEST_EM_HUNTED))) {
             func_003AB680(q, em);
-            if (q->unk35 != 0) {
+            if (q->large != 0) {
                 gQuest.emLeft--;
             }
             q->count--;
             if (q->count > 0) {
-                q->flags = 4;
+                q->flags = QUEST_EM_HUNTED;
             } else {
-                q->unk34 = -1;
-                q->flags = 1;
+                q->emIndex = -1;
+                q->flags = QUEST_EM_DONE;
             }
         }
-        q->flags |= 8;
+        q->flags |= QUEST_EM_CAPTURED;
     }
 }
 
+/* Shows the part break effect at the bone of em's part, the first time it breaks
+ * (gPartBreakEffects lists the kinds' parts). */
 void Em_PartBreakEffect(Em *em, s32 part)
 {
     f32 pos[3];
@@ -911,6 +941,8 @@ void Em_PartBreakEffect(Em *em, s32 part)
     }
 }
 
+/* Breaks part `part` of em (with its effect the first time) and counts it
+ * for the quest, its goals and the drill statistics. */
 void Em_BreakPart(Em *em, s32 part)
 {
     s32 bit = 1 << part;
@@ -921,15 +953,17 @@ void Em_BreakPart(Em *em, s32 part)
     em->partsBroken |= (u16)bit;
     gQuest.parts[em->type] |= (u16)bit;
     QuestGoal_OnPartBroken(em->type, part);
-    QuestStats_Add(1, 1);
+    QuestStats_Add(QSTAT_PART_BROKEN, 1);
 }
 
+/* Breaks the parts in `bits` at once (Em_BreakPart for a set; the statistic
+ * counts once when any of them is new to the quest). */
 void Em_BreakParts(Em *em, u16 bits)
 {
     s32 i;
 
     if (bits != 0 && (bits & gQuest.parts[em->type]) != bits) {
-        QuestStats_Add(1, 1);
+        QuestStats_Add(QSTAT_PART_BROKEN, 1);
     }
     for (i = 0; i < 16; i++) {
         if ((bits & (1 << i)) && !(em->partsBroken & (1 << i))) {
@@ -941,6 +975,7 @@ void Em_BreakParts(Em *em, u16 bits)
     QuestGoal_OnPartBroken(em->type, bits);
 }
 
+/* 1 when part `part` of monster kind `type` was broken during the quest. */
 s32 Quest_IsPartBroken(u16 type, u16 part)
 {
     return (gQuest.parts[type] & (1 << part)) != 0;
@@ -951,55 +986,71 @@ void Em_ClearPart(Em *em, u16 part)
     em->partsBroken &= (u16)~(u16)(1 << part);
 }
 
-s32 Quest_PlayerFainted(Player *pl, s32 other)
+/*
+ * A player fainted: the reward loses the penalty, unless the faint is
+ * free (`noPenalty`, or the local player's drill charm takes it). Returns
+ * FAINT_* (quest.h).
+ */
+s32 Quest_PlayerFainted(Player *pl, s32 noPenalty)
 {
     if (gQuest.reward <= 0) {
-        return 2;
+        return FAINT_QUEST_OVER;
     }
-    QuestStats_Add(3, 1);
-    if (Player_IsLocal(pl) == 1 && (gQuest.flags & 0x200000) && gQuest.drillCharm == 1) {
-        gQuest.drillCharm = 0xFF;
-        return 3;
+    QuestStats_Add(QSTAT_FAINT, 1);
+    if (Player_IsLocal(pl) == 1 && (gQuest.flags & QUEST_FLAG_DRILL) && gQuest.drillCharm == DRILL_CHARM_TAKEN) {
+        gQuest.drillCharm = DRILL_CHARM_USED;
+        return FAINT_FREE;
     }
-    if (other == 0) {
+    if (noPenalty == 0) {
         gQuest.anyFainted = 1;
         if ((gQuest.reward -= gQuest.penalty) <= 0) {
-            Quest_SetFailed(0);
+            Quest_JumpToEnd(0);
             if (gQuest.reward <= 0) {
                 gQuest.reward = 0;
             }
             if (Quest_HasDrillFlag() == 1 || Quest_IsVersus() == 1) {
-                return 2;
+                return FAINT_QUEST_OVER;
             }
-            return 1;
+            return FAINT_FAILED;
         }
     } else {
-        return 3;
+        return FAINT_FREE;
     }
     if (Quest_HasDrillFlag() == 1 || Quest_IsVersus() == 1) {
-        return 2;
+        return FAINT_QUEST_OVER;
     }
-    return 0;
+    return FAINT_PENALTY;
 }
 
+/* In a drill, takes the charm the first time (with its notice): 1 when taken. */
 s32 Quest_DrillTakeCharm(void)
 {
-    if ((gQuest.flags & 0x200000) && gQuest.drillCharm == 0) {
-        gQuest.drillCharm = 1;
-        Notice_PushItem(D_004455CC);
+    if ((gQuest.flags & QUEST_FLAG_DRILL) && gQuest.drillCharm == DRILL_CHARM_NONE) {
+        gQuest.drillCharm = DRILL_CHARM_TAKEN;
+        Notice_PushItem(gDrillScoreTexts[QSTAT_CHARM]);
         return 1;
     }
     return 0;
 }
 
+/* 1 when a drill's charm is taken and not yet used up. */
 s32 Quest_DrillHasCharm(void)
 {
-    if ((gQuest.flags & 0x200000) && gQuest.drillCharm == 1) {
+    if ((gQuest.flags & QUEST_FLAG_DRILL) && gQuest.drillCharm == DRILL_CHARM_TAKEN) {
         return 1;
     }
     return 0;
 }
 
+/*
+ * The quest's frame (gQuest.state): while it plays, the goals, the clear
+ * check, the countdown, a step of the script, the timed event and the
+ * item targets; once cleared, the return countdown with its notice; then
+ * the reward: the reward split between the players and two rounds of
+ * acknowledgements between them; in versus, the wait before won or lost.
+ * Returns 1 once the quest is cleared or the script stopped, -1 when it
+ * failed, -2 when abandoned or quit, otherwise 0.
+ */
 s32 Quest_Update(void)
 {
     Player *pl = &gPlayers[gScene.localPlayer];
@@ -1010,7 +1061,7 @@ s32 Quest_Update(void)
 
     for (i = 0; i < 4; i++) {
         if (gScene.inQuest[i] != 1) {
-            gQuest.acks |= 1 << (i + 8);
+            gQuest.acks |= 1 << (i + QUEST_ACK_STARTED_SHIFT);
         }
     }
     if (gQuest.inputLock > 0) {
@@ -1020,18 +1071,18 @@ s32 Quest_Update(void)
     if (gQuest.stage == 0) {
         return 0;
     }
-    if (gQuest.result == 7) {
+    if (gQuest.result == QUEST_PHASE_ABORTED) {
         return -2;
     }
-    if (gQuest.result == 8) {
+    if (gQuest.result == QUEST_PHASE_QUIT) {
         return -2;
     }
     switch (gQuest.state) {
-    case 0:
-        if (gQuest.result == 4) {
+    case QSTATE_PLAY:
+        if (gQuest.result == QUEST_PHASE_CLEARED) {
             return 1;
         }
-        if (gQuest.result == 6) {
+        if (gQuest.result == QUEST_PHASE_FAILED) {
             return -1;
         }
         if (gQuest.scriptPc == -1) {
@@ -1054,18 +1105,18 @@ s32 Quest_Update(void)
             Quest_CheckCampAdvice();
         }
         return 0;
-    case 1:
+    case QSTATE_CLEAR:
         switch (gQuest.step) {
         case 0:
             gQuest.step++;
-            t = Quest_GetTime(1);
-            gQuest.elapsed = t - Quest_GetTime(0);
+            t = Quest_GetTime(QUEST_TIME_LIMIT);
+            gQuest.elapsed = t - Quest_GetTime(QUEST_TIME_LEFT);
             gQuest.msgArg0 = 0;
-            gQuest.msgType = 15;
+            gQuest.msgType = QMSG_CLEAR_TIME;
             gQuest.msgArg2 = gQuest.elapsed;
             gQuest.msgArg1 = gQuest.elapsed >> 16;
             QSync_SendState(6, gScene.localPlayer);
-            gQuest.timeLeft = 150;
+            gQuest.timeLeft = 150; /* frames: 5 s */
             break;
         case 1:
             Quest_UpdateTimers(1);
@@ -1074,15 +1125,17 @@ s32 Quest_Update(void)
             }
             gQuest.step++;
             if (QuestGoal_IsDone(0) == 1) {
+                /* the return time after the main goal: 20 s for these
+                 * quests, else a minute; 10 s after a sub goal */
                 if (gQuest.flags & 0x20000006) {
-                    gQuest.timeLeft = 600;
+                    gQuest.timeLeft = 600; /* frames: 20 s */
                     if (Game_IsOnline() == 1) {
                         Notice_PushItem(gReturn20sTownText[0]);
                     } else {
                         Notice_PushItem(gReturn20sVillageText);
                     }
                 } else {
-                    gQuest.timeLeft = 1800;
+                    gQuest.timeLeft = 1800; /* frames: 1 min */
                     if (Game_IsOnline() == 1) {
                         Notice_PushItem(gReturn1mTownText[0]);
                     } else {
@@ -1090,7 +1143,7 @@ s32 Quest_Update(void)
                     }
                 }
             } else {
-                gQuest.timeLeft = 300;
+                gQuest.timeLeft = 300; /* frames: 10 s */
                 if (Game_IsOnline() == 1) {
                     Notice_PushItem(gReturn10sTownText[0]);
                 } else {
@@ -1119,21 +1172,21 @@ s32 Quest_Update(void)
             break;
         }
         break;
-    case 2:
+    case QSTATE_REWARD:
         switch (gQuest.step) {
         case 0:
             gQuest.step++;
-            gQuest.result = 4;
+            gQuest.result = QUEST_PHASE_CLEARED;
             t = gQuest.reward /= gScene.playerCount;
             idx = gScene.localPlayer;
             gQuest.hunterRank[idx][0] = Save_RankFromPoints(&gSave);
             gQuest.msgArg0 = 0;
-            gQuest.msgType = 12;
+            gQuest.msgType = QMSG_RANK;
             gQuest.msgArg1 = gQuest.hunterRank[idx][0];
             gQuest.msgArg2 = 0;
             QSync_SendState(6, idx);
             gQuest.acks |= 1 << gScene.localPlayer;
-            gQuest.ackTimer = 5400;
+            gQuest.ackTimer = 5400; /* frames: 3 min */
             break;
         case 1:
             if (gQuest.ackTimer > 0) {
@@ -1144,17 +1197,17 @@ s32 Quest_Update(void)
                     gQuest.acks |= 1 << i;
                 }
             }
-            if ((gQuest.acks & 0xF) != 0xF && gQuest.ackTimer > 0 && gScene.inQuest[gScene.localPlayer] == 1) {
+            if ((gQuest.acks & QUEST_ACKS_RANK) != QUEST_ACKS_RANK&& gQuest.ackTimer > 0 && gScene.inQuest[gScene.localPlayer] == 1) {
                 break;
             }
             gQuest.msgArg0 = 0;
-            gQuest.msgType = 13;
+            gQuest.msgType = QMSG_REWARD_ACK;
             gQuest.step++;
             gQuest.msgArg2 = gQuest.netMsgArgs;
             gQuest.msgArg1 = gQuest.netMsgArgs >> 16;
             QSync_SendState(6, gScene.localPlayer);
-            gQuest.acks |= 1 << (gScene.localPlayer + 4);
-            gQuest.ackTimer = 1800;
+            gQuest.acks |= 1 << (gScene.localPlayer + QUEST_ACK_REWARD_SHIFT);
+            gQuest.ackTimer = 1800; /* frames: 1 min */
             break;
         case 2:
             if (gQuest.ackTimer > 0) {
@@ -1162,20 +1215,20 @@ s32 Quest_Update(void)
             }
             for (i = 0; i < 4; i++) {
                 if (gScene.inQuest[i] != 1) {
-                    gQuest.acks |= 1 << (i + 4);
+                    gQuest.acks |= 1 << (i + QUEST_ACK_REWARD_SHIFT);
                 }
             }
-            if ((gQuest.acks & 0xFF) != 0xFF && gQuest.ackTimer > 0 && gScene.inQuest[gScene.localPlayer] == 1) {
+            if ((gQuest.acks & (QUEST_ACKS_RANK | QUEST_ACKS_REWARD)) != (QUEST_ACKS_RANK | QUEST_ACKS_REWARD)&& gQuest.ackTimer > 0 && gScene.inQuest[gScene.localPlayer] == 1) {
                 break;
             }
             gQuest.step++;
-            gScene.questPhase = 4;
+            gScene.questPhase = QUEST_PHASE_CLEARED;
             break;
         case 3:
             break;
         }
         break;
-    case 3:
+    case QSTATE_VERSUS_END:
         switch (gQuest.step) {
         case 0:
             if (gQuest.ackTimer > 0) {
@@ -1186,14 +1239,14 @@ s32 Quest_Update(void)
                     gQuest.acks |= 1 << i;
                 }
             }
-            if ((gQuest.acks & 0xF) != 0xF && gQuest.ackTimer > 0 && gScene.inQuest[gScene.localPlayer] == 1) {
+            if ((gQuest.acks & QUEST_ACKS_RANK) != QUEST_ACKS_RANK&& gQuest.ackTimer > 0 && gScene.inQuest[gScene.localPlayer] == 1) {
                 break;
             }
             gQuest.step++;
-            t = Quest_GetTime(1);
-            gQuest.elapsed = t - Quest_GetTime(0);
-            if (gQuest.result == 4) {
-                gScene.questPhase = 4;
+            t = Quest_GetTime(QUEST_TIME_LIMIT);
+            gQuest.elapsed = t - Quest_GetTime(QUEST_TIME_LEFT);
+            if (gQuest.result == QUEST_PHASE_CLEARED) {
+                gScene.questPhase = QUEST_PHASE_CLEARED;
                 for (i = 0; i < gScene.playerCount; i++) {
                     if (gPlayers[i].side < 3 && Side_Match(gPlayers[i].side, gPlayers[gScene.localPlayer].side, 1) == 1) {
                         break;
@@ -1201,7 +1254,7 @@ s32 Quest_Update(void)
                 }
                 Notice_Push(3, 3, i);
             } else {
-                gScene.questPhase = 6;
+                gScene.questPhase = QUEST_PHASE_FAILED;
                 for (i = 0; i < gScene.playerCount; i++) {
                     if (gPlayers[i].side < 3 && Side_Match(gPlayers[i].side, gPlayers[gScene.localPlayer].side, 1) == 0) {
                         break;
@@ -1216,6 +1269,7 @@ s32 Quest_Update(void)
     return 0;
 }
 
+/* Seeds the quest's random stream from the seed bytes (0x1C3 for a zero sum). */
 void Quest_SeedRandom(void)
 {
     s32 i;
@@ -1229,6 +1283,8 @@ void Quest_SeedRandom(void)
     }
 }
 
+/* The quest's next random number (gQuest.random * 176 mod 0xFF53): the
+ * same on every player's machine, as the seed is the host's. */
 u16 Quest_Random(void)
 {
     u32 x = gQuest.random;
@@ -1244,62 +1300,73 @@ u8 Quest_GetSeedByte(u8 i)
     return gQuest.seed[i];
 }
 
+/*
+ * The timed supply event: each (minutes left, chance in 128) pair of the
+ * event's table rolls once when the time left comes down to it; on
+ * success the supplies arrive (the supply notice and its sound) and the
+ * others are told.
+ */
 void Quest_UpdateTimedEvent(void)
 {
     u8 *tbl = gQuestTimedEventTbls[gQuest.timedEventSet];
 
     switch (gQuest.timedEvent) {
-    case 1:
-        tbl += gQuest.unk09C * 2;
+    case QUEST_EVENT_TIMED:
+        tbl += gQuest.timedEventStep * 2;
         if (tbl[0] == 0) {
             return;
         }
-        if (tbl[0] * 1800 < gQuest.timeLeft) {
+        if (tbl[0] * 1800 /* frames per minute */ < gQuest.timeLeft) {
             return;
         }
-        gQuest.unk09C++;
+        gQuest.timedEventStep++;
         if ((Rand_Next(0) & 0x7F) < tbl[1]) {
-            gQuest.timedEvent = 0;
-            Notice_PushItem(D_0044556C);
+            gQuest.timedEvent = QUEST_EVENT_NONE;
+            Notice_PushItem(gQuestNoticeTexts[3]);
             Sound_PlaySeFlat(1, 0x77, 0);
             gQuest.msgArg0 = 0;
-            gQuest.msgType = 14;
+            gQuest.msgType = QMSG_EVENT_OVER;
             gQuest.msgArg1 = 0;
             gQuest.msgArg2 = 0;
             QSync_SendState(6, gScene.localPlayer);
         }
         break;
-    case 0:
+    case QUEST_EVENT_NONE:
         break;
     }
 }
 
+/* The kill supply event: a kill of the event's monster kind counts, and
+ * the supplies arrive after the last one. */
 void Quest_CountEventKill(u16 type)
 {
     switch (gQuest.timedEvent) {
-    case 2:
+    case QUEST_EVENT_KILLS:
         if (gQuest.eventKind == type) {
             if (--gQuest.eventCount <= 0) {
-                gQuest.timedEvent = 0;
-                Notice_PushItem(D_0044556C);
+                gQuest.timedEvent = QUEST_EVENT_NONE;
+                Notice_PushItem(gQuestNoticeTexts[3]);
                 Sound_PlaySeFlat(1, 0x77, 0);
             }
         }
         break;
-    case 0:
+    case QUEST_EVENT_NONE:
         break;
     }
 }
 
+/* Tells the others the quest's progress (QMSG_PROGRESS). */
 void Quest_TargetMessage(void)
 {
     gQuest.msgArg0 = 0;
     gQuest.msgArg2 = 0;
-    gQuest.msgType = 6;
+    gQuest.msgType = QMSG_PROGRESS;
     gQuest.msgArg1 = gQuest.progress;
     QSync_SendState(6, gScene.localPlayer);
 }
 
+/* An item target is met once the local player holds its count: the
+ * progress moves on to the target's index. */
 void Quest_CheckItemTargets(void)
 {
     QuestTarget *t = gQuest.targets;
@@ -1307,22 +1374,24 @@ void Quest_CheckItemTargets(void)
 
     for (i = 0; i < 2; i++, t++) {
         switch (t->state) {
-        case 0:
-        case 1:
+        case TARGET_DONE:
+        case TARGET_KILLS:
             break;
-        case 2:
+        case TARGET_ITEMS:
             if (Pouch_Count(&gPlayers[gScene.localPlayer], t->item) >= t->count) {
                 if (t->idx > gQuest.progress) {
                     gQuest.progress = t->idx;
                     Quest_TargetMessage();
                 }
-                t->state = 0;
+                t->state = TARGET_DONE;
             }
             break;
         }
     }
 }
 
+/* A kill of monster kind `type` counts for the kill targets of that kind
+ * (their `item`); the last one moves the progress on. */
 void Quest_CountTarget(u16 type)
 {
     QuestTarget *t = gQuest.targets;
@@ -1330,14 +1399,14 @@ void Quest_CountTarget(u16 type)
 
     for (i = 0; i < 2; i++, t++) {
         switch (t->state) {
-        case 1:
+        case TARGET_KILLS:
             if (t->item == type) {
                 if (--t->count <= 0) {
                     if (t->idx > gQuest.progress) {
                         gQuest.progress = t->idx;
                         Quest_TargetMessage();
                     }
-                    t->state = 0;
+                    t->state = TARGET_DONE;
                 }
             }
             break;
@@ -1345,6 +1414,7 @@ void Quest_CountTarget(u16 type)
     }
 }
 
+/* Clears the quest's two targets. */
 void Quest_ClearTargets(void)
 {
     QuestTarget *t = gQuest.targets;
@@ -1357,6 +1427,7 @@ void Quest_ClearTargets(void)
     }
 }
 
+/* Copies the stage's targets (StageHeader.targets) into gQuest. */
 void Quest_LoadTargets(void)
 {
     QuestTarget *dst = gQuest.targets;
@@ -1373,6 +1444,10 @@ void Quest_LoadTargets(void)
     }
 }
 
+/* Creates the monster of quest entry q, when its kind has a model slot
+ * (gScene.emKind): its place, size, level and needs from the entry; a
+ * large monster in its own area, a small one in the scene's. Returns it,
+ * or NULL. */
 Em *QuestEm_Spawn(QuestEm *q)
 {
     Em *em;
@@ -1389,31 +1464,31 @@ Em *QuestEm_Spawn(QuestEm *q)
     if ((em = EmSlot_Alloc()) != NULL) {
         em->modelSlot = i;
         em->type = q->kind;
-        em->variant = q->unk02;
-        em->questIndex = q->unk2C;
+        em->variant = q->variant;
+        em->questIndex = q->index;
         if (gEmIsLarge[em->type] != 0) {
             em->area = q->area;
         } else {
             em->area = gScene.area;
         }
-        em->need1Gauge = q->unk0C;
-        em->need2Gauge = q->unk10;
-        em->need3Gauge = q->unk14;
-        em->spawnParam = q->unk06;
-        em->questKey = q->unk18;
+        em->need1Gauge = q->need1Gauge;
+        em->need2Gauge = q->need2Gauge;
+        em->need3Gauge = q->need3Gauge;
+        em->spawnParam = q->spawnParam;
+        em->questKey = q->questKey;
         em->posX = q->x;
         em->posY = q->y;
         em->posZ = q->z;
-        em->rotY = q->unk1C;
+        em->rotY = q->rotY;
         em->sizePct = q->size;
         em->level = q->level;
-        q->unk34 = em->index;
+        q->emIndex = em->index;
         GmEm_Task(em);
         GmEm_ApplySize(em);
         Em_UpdateMatrix(em);
         if (q->hp == -1) {
             q->hp = em->hp;
-            if (q->unk35 != 0) {
+            if (q->large != 0) {
                 gQuest.spawnedEm = em;
                 gQuest.savedEmHp = em->hp;
             }
@@ -1424,7 +1499,15 @@ Em *QuestEm_Spawn(QuestEm *q)
     return em;
 }
 
-void QuestEm_LeaveArea(s32 a, s32 area)
+/*
+ * Leaving area fromArea for toArea: the monsters that stay are the large
+ * ones and the stage-wide kinds (StageEntry part 0); the others are freed,
+ * their quest entries keeping their health, or counted as hunted when
+ * they were down (a Melynx gives back what it stole; a player's felyne
+ * cart is let go). The area's entries are reset, and the model slots of
+ * kinds that neither the stage nor toArea's spawns need are freed.
+ */
+void QuestEm_LeaveArea(s32 fromArea, s32 toArea)
 {
     s32 *ids;
     Em *em;
@@ -1438,7 +1521,7 @@ void QuestEm_LeaveArea(s32 a, s32 area)
     em = gEms;
     ids = StageEntry_GetData(gQuest.stageEntry, 0);
 
-    for (i = 0; i < 20; i++, em++) {
+    for (i = 0; i < 20 /* gEms */; i++, em++) {
         if (em->active == 0) {
             continue;
         }
@@ -1461,24 +1544,24 @@ void QuestEm_LeaveArea(s32 a, s32 area)
         } else {
             keep = 0;
         }
-    checked:
-        if ((q = QuestEm_FindForEm(em)) != NULL && q->flags != 1 && !keep) {
-            if (em->type == 0x17) {
+    checked: /* the search's exits are gotos in the game's code */
+        if ((q = QuestEm_FindForEm(em)) != NULL && q->flags != QUEST_EM_DONE && !keep) {
+            if (em->type == EM_KIND_MELYNX) {
                 EmMelynx_DeductReward(em);
             }
-            if (em->taskPhase >= 2 || em->stateGroup == 5) {
+            if (em->taskPhase >= 2 || em->stateGroup == EM_GROUP_DEFEAT) {
                 QuestEm_Hunted(em);
-                if (q->flags & 4) {
-                    q->flags = 2;
+                if (q->flags & QUEST_EM_HUNTED) {
+                    q->flags = QUEST_EM_ACTIVE;
                     q->hp = -1;
                 }
             } else {
                 q->hp = em->hp;
             }
-            q->unk34 = -1;
+            q->emIndex = -1;
         }
         if (!keep) {
-            if (em->type == 0x12) {
+            if (em->type == EM_KIND_FELYNE_CART) {
                 pl = gPlayers;
                 for (j = 0; j < gScene.playerCount; j++, pl++) {
                     if (pl->active && pl->cart == em) {
@@ -1489,7 +1572,7 @@ void QuestEm_LeaveArea(s32 a, s32 area)
             EmSlot_Free(em);
         }
     }
-    QuestEm_ResetArea(a);
+    QuestEm_ResetArea(fromArea);
     for (i = 0; i < 4; i++) {
         if (gScene.emKind[i] <= 0) {
             continue;
@@ -1512,7 +1595,7 @@ void QuestEm_LeaveArea(s32 a, s32 area)
                 continue;
             }
         }
-        ids = Stage_FindEntryData(gQuest.emSpawns, area, 0, gQuest.progress);
+        ids = Stage_FindEntryData(gQuest.emSpawns, toArea, 0, gQuest.progress);
         if (ids != NULL) {
             j = 0;
             for (;;) {
@@ -1539,12 +1622,19 @@ void QuestEm_LeaveArea(s32 a, s32 area)
     }
 }
 
+/*
+ * Entering an area: its effects; at the base camp the felyne cart's
+ * model; the models of the area's spawn kinds for the current progress
+ * and its quest monsters (not those done; the trader's by
+ * gQuest.traderVariant); Yama Tsukami's second kind when rolled; and the
+ * special mining point's object when it lies here.
+ */
 void QuestEm_SpawnArea(s32 area)
 {
     QuestEm *q;
     s32 i;
     s32 *ids;
-    s32 alarm;
+    s32 addYama;
     u8 *p;
     s32 k;
     s32 id;
@@ -1553,18 +1643,18 @@ void QuestEm_SpawnArea(s32 area)
     if (area == gScene.campArea) {
         for (i = 0; i < 4; i++) {
             if (gScene.emKind[i] <= 0) {
-                gScene.emKind[i] = 0x12;
+                gScene.emKind[i] = EM_KIND_FELYNE_CART;
                 GmLoad_LoadEmData(gScene.map, gScene.emKind[i]);
                 EmSlot_LoadModels(i);
                 break;
             }
         }
     }
-    alarm = (s8)QuestEm_RollAlarm(area);
-    if (alarm != 0) {
+    addYama = (s8)QuestEm_RollYamaTsukamiB(area);
+    if (addYama != 0) {
         for (i = 0; i < 4; i++) {
             if (gScene.emKind[i] <= 0) {
-                gScene.emKind[i] = 0x48;
+                gScene.emKind[i] = EM_KIND_YAMA_TSUKAMI_B;
                 GmLoad_LoadEmData(gScene.map, gScene.emKind[i]);
                 EmSlot_LoadModels(i);
                 break;
@@ -1579,6 +1669,7 @@ void QuestEm_SpawnArea(s32 area)
             if (id <= 0) {
                 break;
             }
+            /* the kind's model slot, if loaded (gScene.emKind read through a byte pointer, as the game does) */
             p = (u8 *)&gScene;
             for (k = 0; k < 4; k++, p++) {
                 if (((SceneState *)p)->emKind[0] == id) {
@@ -1603,16 +1694,16 @@ void QuestEm_SpawnArea(s32 area)
             if (q->kind <= 0) {
                 break;
             }
-            if (q->flags & 1) {
+            if (q->flags & QUEST_EM_DONE) {
                 continue;
             }
-            if (q->kind == 10) {
-                if (gQuest.unk15A == 0) {
-                    if (q->unk02 != 0) {
+            if (q->kind == 10) { /* the trader: only the entries of gQuest.traderVariant */
+                if (gQuest.traderVariant == 0) {
+                    if (q->variant != 0) {
                         continue;
                     }
                 } else {
-                    if (q->unk02 == 0) {
+                    if (q->variant == 0) {
                         continue;
                     }
                 }
@@ -1623,14 +1714,15 @@ void QuestEm_SpawnArea(s32 area)
             }
         }
     }
-    if ((s8)alarm != 0) {
-        QuestEm_SpawnKind48();
+    if ((s8)addYama != 0) {
+        QuestEm_SpawnYamaTsukamiB();
     }
     if (gQuest.specialMineArea == area) {
         StageObj_K0E_CreateAt(gQuest.specialMinePos, 10);
     }
 }
 
+/* Quest text i: offline from the stage file's texts, online the selected quest's. */
 void *QuestInfo_Get(s32 i)
 {
     void *p;
@@ -1649,7 +1741,9 @@ void *QuestInfo_Get(s32 i)
     return p;
 }
 
-s32 func_003A46B0(u8 *out)
+/* Copies the stage-wide monster kinds (StageEntry part 0, up to 4) to
+ * kinds and returns their count; 0 when the stage has none. */
+s32 Quest_GetStageEmKinds(u8 *kinds)
 {
     s32 *a;
     s32 *b;
@@ -1668,14 +1762,15 @@ s32 func_003A46B0(u8 *out)
         if (*a <= 0) {
             break;
         }
-        *out = *a;
+        *kinds = *a;
         n++;
-        out++;
+        kinds++;
         a++;
     }
     return n;
 }
 
+/* The count of item id in the quest's item list (gQuest.rewards), 0 when absent. */
 static s16 Quest_FindReward(u16 id)
 {
     s16 i;
@@ -1688,7 +1783,14 @@ static s16 Quest_FindReward(u16 id)
     return 0;
 }
 
-/* Matches with Quest_FindReward static (its caller then knows which registers it keeps). */
+/*
+ * Adds n of item to the quest's item list (gQuest.rewards, five slots). A
+ * new item takes a free slot, or else overwrites the next slot in turn
+ * (rewardNext); a listed one is capped at the item's maximum and leaves the
+ * list at 0. Returns 0 new, 1 added, 2 capped, 3 already full, 4 gone, 5
+ * overwritten. Quest_FindReward is static, which lets the compiler keep
+ * this function's registers across the call.
+ */
 u16 Quest_AddReward(u16 item, s16 n)
 {
     s16 i;
@@ -1737,10 +1839,14 @@ u16 Quest_AddReward(u16 item, s16 n)
             }
         }
     }
-    /* the game reads a register it never set: when the second loop finds no reward slot holding item (Quest_FindReward said there is one), r is a2, still the caller's */
+    /* r is not set when the second loop finds no slot of item: the game
+     * then returns what its register held (a2, the caller's) */
     return r;
 }
 
+/* An item stolen from player p (the game's Melynx, em_cephadrome.c): n of
+ * item off the quest's item list, noted for the scene (deductedItem,
+ * deductedCount), and the list is to be given (rewardsPending). */
 void Quest_DeductReward(Player *p, u16 item, s16 n)
 {
     gScene.deductedItem = item;
@@ -1750,13 +1856,19 @@ void Quest_DeductReward(Player *p, u16 item, s16 n)
     gQuest.rewardsPending = 1;
 }
 
+/*
+ * Gives pl the quest's item list (unk_70A290.c), as rolled from
+ * gRewardGiveRolls: the listed items (0), item 0xFF instead (1), or
+ * nothing (2), each with its notice; then the list is cleared.
+ */
 void Quest_GiveRewards(Player *pl)
 {
     s32 i;
     s32 any = 0;
 
     if (gQuest.rewardsPending != 0) {
-        switch (D_0044BDC0[Rand_Next(0) & 8]) {
+        /* only entries 0 and 8 can be rolled */
+        switch (gRewardGiveRolls[Rand_Next(0) & 8]) {
         default:
             for (i = 0; i < 5; i++) {
                 if (gQuest.rewards[i].id != 0) {
@@ -2059,13 +2171,13 @@ u16 Quest_DeliverItem(Player *pl, u16 item, s16 count)
 
 /* unk_3A1070's .data (0x44B450-0x44B790) */
 extern u32 D_006AEDB8[];
-s8 D_0044B450[16] = {
+s8 gTraderVariantRolls[16] = {
 #include "sub_main/0044B450.inc"
 };
 u16 gSpecialMineAgeRanks[8] = {
 #include "sub_main/0044B460.inc"
 };
-RangeU8 gQuestTimerRangeDefaults[5] = {
+RangeU8 gEmSizeRangeDefaults[5] = {
 #include "sub_main/0044B470.inc"
 };
 u16 gEmAppearMax[76] = {
@@ -2161,11 +2273,6 @@ u8 *gQuestTimedEventTbls[16] = {
 
 u16 Gather_RollMineItem(Player *p, u16 table);
 
-
-typedef struct GatherEntry {
-    u16 weight;         /* 0xFFFF ends the table */
-    u16 item;
-} GatherEntry;
 
 extern GatherEntry *gGatherItemTables[];
 
@@ -2593,8 +2700,8 @@ void EmMine_Remove(Em *em);
 s32 Quest_CheckSubClear(void);
 void QuestGoal_Complete(u16 i, u32 flag);
 void QuestGoal_CompleteIfRunning(u16 i, s32 flag);
-void Quest_SetFailed(s32 a);
-static void Quest_SetCleared(s32 a);
+void Quest_JumpToEnd(s32 a);
+static void Quest_JumpToStart(s32 a);
 s32 QuestGoal_IsDone(s32 i);
 s32 QuestGoal_IsUsed(s32 i);
 s32 SpecialMine_Rank(void);
@@ -2930,14 +3037,15 @@ void QuestStats_Init(void)
     gQuest.markHunt = Quest_Random() & 0xF;
 }
 
-/* Adds n to statistic id (id 1 only once) and shows the message of some ids. */
+/* In a drill, adds n to statistic id (QSTAT_*; QSTAT_PART_BROKEN only
+ * once) and shows the notice of some of them. */
 void QuestStats_Add(s32 id, s32 n)
 {
     if (Quest_IsDrill() == 0) {
         return;
     }
     switch (id) {
-    case 1:
+    case QSTAT_PART_BROKEN:
         if (gQuestStats[id] != 0) {
             return;
         }
@@ -2948,9 +3056,9 @@ void QuestStats_Add(s32 id, s32 n)
         break;
     }
     switch (id) {
-    case 1:
-    case 2:
-    case 11:
+    case QSTAT_PART_BROKEN:
+    case QSTAT_HEAL:
+    case QSTAT_CHARM:
     case 13:
     case 14:
     case 15:
@@ -2959,7 +3067,8 @@ void QuestStats_Add(s32 id, s32 n)
     }
 }
 
-/* Adds the item counts (gQuest.hunted) to the statistics by kind (gEmTallyClass) and sets the all-done flags. */
+/* At a drill's end: the quest time, the hunts by class (gEmTallyClass) into
+ * the statistics, and the all-goals and charm marks. */
 void QuestStats_Tally(void)
 {
     s32 i;
@@ -2976,30 +3085,30 @@ void QuestStats_Tally(void)
         }
         switch (gEmTallyClass[i]) {
         case 1:
-            gQuestStats[4] += n;
+            gQuestStats[QSTAT_HUNTED_FIRST] += n;
             break;
         case 2:
-            gQuestStats[5] += n;
+            gQuestStats[QSTAT_HUNTED_FIRST + 1] += n;
             break;
         case 3:
-            gQuestStats[6] += n;
+            gQuestStats[QSTAT_HUNTED_FIRST + 2] += n;
             break;
         case 4:
-            gQuestStats[7] += n;
+            gQuestStats[QSTAT_HUNTED_FIRST + 3] += n;
             break;
         case 5:
-            gQuestStats[8] += n;
+            gQuestStats[QSTAT_HUNTED_FIRST + 4] += n;
             break;
         case 6:
-            gQuestStats[9] += n;
+            gQuestStats[QSTAT_HUNTED_FIRST + 5] += n;
             break;
         }
     }
     if (QuestGoal_IsDone(0) == 1 && QuestGoal_IsDone(1) == 1 && QuestGoal_IsDone(2) == 1) {
-        gQuest.stats[10] = 1;
+        gQuest.stats[QSTAT_ALL_GOALS] = 1;
     }
-    if (gQuest.drillCharm == 1 || gQuest.drillCharm == 0xFF) {
-        gQuest.stats[11] = 1;
+    if (gQuest.drillCharm == DRILL_CHARM_TAKEN || gQuest.drillCharm == DRILL_CHARM_USED) {
+        gQuest.stats[QSTAT_CHARM] = 1;
     }
 }
 
@@ -3022,7 +3131,8 @@ void Quest_Sprintf(char *buf, char *fmt, ...)
     vsprintf(buf, fmt, ap);
 }
 
-/* Resets the quest monsters of area a that have flag 4. */
+/* The quest monsters of area a hunted with appearances left come back
+ * active, at full health (area entries of the current progress). */
 void QuestEm_ResetArea(s32 a)
 {
     QuestEm *q;
@@ -3035,8 +3145,8 @@ void QuestEm_ResetArea(s32 a)
         if (q->kind <= 0) {
             break;
         }
-        if (q->flags & 4) {
-            q->flags = 2;
+        if (q->flags & QUEST_EM_HUNTED) {
+            q->flags = QUEST_EM_ACTIVE;
             q->hp = -1;
         }
     }
@@ -3059,11 +3169,11 @@ u16 QuestEm_RollSize(void)
 
     tbl = gEmSizeRollTbls[gEmSizeRollPicks[Quest_Random() & 0x1F]];
     v = tbl[Quest_Random() & 0x1F];
-    if (v < gQuestTimerRanges[gStageHeader->unk46].min) {
-        v = gQuestTimerRanges[gStageHeader->unk46].min;
+    if (v < gEmSizeRanges[gStageHeader->sizeRange].min) {
+        v = gEmSizeRanges[gStageHeader->sizeRange].min;
     }
-    if (v > gQuestTimerRanges[gStageHeader->unk46].max) {
-        v = gQuestTimerRanges[gStageHeader->unk46].max;
+    if (v > gEmSizeRanges[gStageHeader->sizeRange].max) {
+        v = gEmSizeRanges[gStageHeader->sizeRange].max;
     }
     return v;
 }
@@ -3077,7 +3187,7 @@ void QuestEm_RollLevel(QuestEm *q)
     u16 acc;
     s8 lv;
 
-    if (gQuest.flags & 0x4000) {
+    if (gQuest.flags & QUEST_FLAG_FIXED_LEVEL) {
         q->level = gQuest.emLevel;
         return;
     }
@@ -3114,12 +3224,12 @@ void QuestEm_RollLevel(QuestEm *q)
 /* Initialises quest monster q with index *n and counts it. */
 void QuestEm_Init(QuestEm *q, s32 *n)
 {
-    q->flags = 2;
+    q->flags = QUEST_EM_ACTIVE;
     q->hp = -1;
-    q->unk34 = -1;
-    q->unk2C = *n;
+    q->emIndex = -1;
+    q->index = *n;
     QuestEm_RollLevel(q);
-    if ((q->unk35 = gEmIsLarge2[q->kind]) != 0) {
+    if ((q->large = gEmIsLarge2[q->kind]) != 0) {
         gQuest.emLeft += q->count;
     }
     (*n)++;
@@ -3287,7 +3397,9 @@ void QuestEm_InitAreaSets(u8 **list, s32 *n)
     }
 }
 
-/* Adds the extra monsters (gQuestExtra) to the quest list, registers the kinds in SceneState.unk02A and spawns the monsters. */
+/* In versus, writes the two sides' monsters (gNextQuest.teams) into the
+ * stage's monster list; then loads the models of the stage-wide kinds
+ * (gScene.emKind) and spawns the stage-wide monsters. */
 void QuestEm_SpawnAll(void)
 {
     s32 j;
@@ -3300,11 +3412,11 @@ void QuestEm_SpawnAll(void)
     q = (QuestEm *)StageEntry_GetData((struct StageEntry *) gQuestEmSets, 1);
     if (Quest_IsVersus() == 1) {
         for (i = 0; i < 2; i++) {
-            if (gQuestExtra[i].kind != 0) {
-                ids[i] = gQuestExtra[i].kind;
-                q[i].kind = gQuestExtra[i].kind;
+            if (gNextQuest.teams[i].emKind != 0) {
+                ids[i] = gNextQuest.teams[i].emKind;
+                q[i].kind = gNextQuest.teams[i].emKind;
                 q[i].count = 1;
-                q[i].unk1C = gVersusEmAngles[i];
+                q[i].rotY = gVersusEmAngles[i];
                 q[i].x = gVersusEmPos[i][0];
                 q[i].y = gVersusEmPos[i][1];
                 q[i].z = gVersusEmPos[i][2];
@@ -3363,7 +3475,7 @@ QuestEm *QuestEm_FindForEm(Em *em)
             if (q->kind <= 0) {
                 break;
             }
-            if (em->index == q->unk34) {
+            if (em->index == q->emIndex) {
                 return q;
             }
         }
@@ -3380,7 +3492,7 @@ QuestEm *QuestEm_FindForEm(Em *em)
         if (q->kind <= 0) {
             break;
         }
-        if (em->index == q->unk34) {
+        if (em->index == q->emIndex) {
             return q;
         }
     }
@@ -3404,7 +3516,7 @@ QuestEm *QuestEm_FindByIndex(s16 idx, u16 area)
             if (q->kind <= 0) {
                 break;
             }
-            if (idx == q->unk2C) {
+            if (idx == q->index) {
                 return q;
             }
         }
@@ -3421,7 +3533,7 @@ QuestEm *QuestEm_FindByIndex(s16 idx, u16 area)
         if (q->kind <= 0) {
             break;
         }
-        if (idx == q->unk2C) {
+        if (idx == q->index) {
             return q;
         }
     }
@@ -3564,7 +3676,7 @@ void QuestGoal_Complete(u16 i, u32 flag)
             for (k = (n - 1) * 8 + 0x18, end = k + 8; k < end; k++) {
                 if (gScene.supply[k].item != 0) {
                     if (Quest_IsMustOrder() == 1) {
-                        Notice_PushItem(D_0044556C);
+                        Notice_PushItem(gQuestNoticeTexts[3]);
                     } else if (n == 1) {
                         Notice_PushItem(D_0044557C);
                     } else {
@@ -3607,7 +3719,7 @@ s32 Quest_CheckClear(s32 notify)
             if ((gQuest.goals[i].flags & 0x440) == 0x40) {
                 gQuest.goals[i].flags |= 0x400;
                 if (notify == 1) {
-                    Quest_SetFailed(0);
+                    Quest_JumpToEnd(0);
                 }
                 return 0;
             }
@@ -3622,7 +3734,7 @@ s32 Quest_CheckClear(s32 notify)
     case 1:
         if (done) {
             if (notify == 1) {
-                Quest_SetCleared(0);
+                Quest_JumpToStart(0);
             }
             return 1;
         }
@@ -3630,7 +3742,7 @@ s32 Quest_CheckClear(s32 notify)
     case 2:
         if ((done & 1) == 1) {
             if (notify == 1) {
-                Quest_SetCleared(0);
+                Quest_JumpToStart(0);
             }
             return 1;
         }
@@ -3638,7 +3750,7 @@ s32 Quest_CheckClear(s32 notify)
     case 3:
         if ((done & 3) == 3) {
             if (notify == 1) {
-                Quest_SetCleared(0);
+                Quest_JumpToStart(0);
             }
             return 1;
         }
@@ -3646,7 +3758,7 @@ s32 Quest_CheckClear(s32 notify)
     case 4:
         if ((done | unused) == 7) {
             if (notify == 1) {
-                Quest_SetCleared(0);
+                Quest_JumpToStart(0);
             }
             return 1;
         }
@@ -3668,7 +3780,7 @@ s32 Quest_CheckSubClear(void)
             }
             if ((gQuest.goals[i].flags & 0x440) == 0x40) {
                 gQuest.goals[i].flags |= 0x400;
-                Quest_SetFailed(0);
+                Quest_JumpToEnd(0);
                 return 0;
             }
         }
@@ -4005,13 +4117,6 @@ s32 QuestGoal_OnKillSlot(u16 target, u16 i)
     return 0;
 }
 
-/* A command of the quest script (((QuestCmd *)gQuest.script), 8 bytes). */
-typedef struct QuestCmd {
-    s16 op;
-    s16 arg;
-    s16 arg2;
-    s16 arg3;
-} QuestCmd;
 typedef struct QuestTimeMsg {
     s32 time;
     s32 unk4;
@@ -4032,11 +4137,14 @@ u8 EmList_AnyBelowHalfHp(void); /* unit's own declaration: the definition (game)
 void Versus_End(s8 side);
 
 /*
- * Runs the quest script (QuestState at 0x5D8260: the commands at +0x54) from command pc until a
- * command waits; returns the next pc (or the one marked by command 0x31). Labels are commands
- * 0x1A; 6, 0x28 and 0x2A skip to their end commands 7, 0x29 and 0x2B. Command 11 reads its
- * notice text through a pointer local advanced by the index: the table read written in place
- * numbers the index before the base, and swaps v1 and a0 (round 29).
+ * Steps the quest script (gQuest.script, QUEST_OP_* in quest.h) from
+ * command pc until a command waits, and returns where it stopped (or the
+ * QUEST_OP_MARK position). Before the quest runs it also counts the time
+ * down, with the time-left notices and a QMSG_TIME_LEFT every 5 minutes;
+ * when the time is up it jumps to the time-out label. A goal with flag
+ * 0x100 (goalLabel) or a triggered event (eventLabel) jumps to its label.
+ * QUEST_OP_NOTICE's text pointer is a local advanced by the index, the
+ * form that gives the game's register order.
  */
 s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
 {
@@ -4047,9 +4155,9 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
     s16 lbl;
 
     mark = -1;
-    if (gScene.questPhase == 2 && gQuestTimeLeft >= 0) {
+    if (gScene.questPhase == QUEST_PHASE_READY&& gQuestTimeLeft >= 0) {
         if (gQuest.timeNoticeIdx > 0 && gQuestTimeNotices[gQuest.timeNoticeIdx].time >= gQuestTimeLeft) {
-            Quest_Sprintf(buf, gTimeLeftMinFmt[0], gQuestTimeNotices[gQuest.timeNoticeIdx].time / 1800);
+            Quest_Sprintf(buf, gTimeLeftMinFmt[0], gQuestTimeNotices[gQuest.timeNoticeIdx].time / 1800 /* frames per minute */);
             buf[31] = 0;
             Notice_PushText(buf);
             gQuest.timeNoticeIdx--;
@@ -4062,14 +4170,14 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             Quest_SendTime();
             gQuestTimeLeft = -1;
             for (;;) {
-                if (e->op == 0x1A && gQuest.unk00A == e->arg) {
+                if (e->op == QUEST_OP_LABEL && gQuest.timeoutLabel == e->arg) {
                     pc++;
                     break;
                 }
                 pc++;
                 e++;
             }
-        } else if (gQuestTimeLeft % 9000 == 0) {
+        } else if (gQuestTimeLeft % QUEST_TIME_NOTICE_STEP == 0) {
             Quest_SendTime();
         }
     }
@@ -4077,7 +4185,7 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
         if (gQuest.goalLabel != 0 && QuestGoal_HasFlag100() == 1) {
             pc = 0;
             for (e = ((QuestCmd *)gQuest.script);; e++) {
-                if (e->op == 0x1A && gQuest.goalLabel == e->arg) {
+                if (e->op == QUEST_OP_LABEL && gQuest.goalLabel == e->arg) {
                     pc++;
                     break;
                 }
@@ -4085,42 +4193,42 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             }
             gQuest.goalLabel = 0;
         }
-        if (gQuest.unk137 != 0 && gQuest.unk138 != 0) {
-            lbl = gQuest.unk137;
+        if (gQuest.eventLabel != 0 && gQuest.eventTriggered != 0) {
+            lbl = gQuest.eventLabel;
             e = ((QuestCmd *)gQuest.script);
             pc = 0;
             for (;;) {
-                if (e->op == 0x1A && lbl == e->arg) {
+                if (e->op == QUEST_OP_LABEL && lbl == e->arg) {
                     pc++;
                     break;
                 }
                 pc++;
                 e++;
             }
-            gQuest.unk137 = 0;
+            gQuest.eventLabel = 0;
         }
         e = &((QuestCmd *)gQuest.script)[pc];
         switch (e->op) {
-        case 1:
+        case QUEST_OP_CLEAR_TYPE:
             gQuest.clearType = e->arg;
             pc++;
             continue;
-        case 2:
+        case QUEST_OP_ADD_GOAL:
             QuestGoal_Add(e->arg, e->arg2, e->arg3);
             pc++;
             continue;
-        case 3:
+        case QUEST_OP_HALT:
             break;
-        case 9:
+        case QUEST_OP_SET_WAIT:
             gQuest.scriptWait = e->arg;
             pc++;
             break;
-        case 10:
+        case QUEST_OP_WAIT:
             if (--gQuest.scriptWait <= 0) {
                 pc++;
             }
             break;
-        case 11: {
+        case QUEST_OP_NOTICE: {
             s32 *ofs = gQuest.noticeTexts;
 
             ofs += e->arg;
@@ -4128,10 +4236,10 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             pc++;
             break;
         }
-        case 5:
+        case QUEST_OP_NOP:
             pc++;
             continue;
-        case 6:
+        case QUEST_OP_IF_CLEAR:
             if (Quest_CheckClear(0) == 1 || Quest_CheckSubClear() == 1) {
                 pc++;
                 continue;
@@ -4139,7 +4247,7 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             pc++;
             e++;
             for (;;) {
-                if (e->op == 7) {
+                if (e->op == QUEST_OP_ENDIF) {
                     pc++;
                     break;
                 }
@@ -4147,23 +4255,23 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
                 e++;
             }
             continue;
-        case 0x24:
+        case QUEST_OP_WAIT_HUNTED:
             if (QuestGoal_HuntCountFor(e->arg) <= e->arg2) {
                 pc++;
                 continue;
             }
             break;
-        case 12:
+        case QUEST_OP_WAIT_AREA:
             if (pl->area == e->arg) {
                 pc++;
                 continue;
             }
             break;
-        case 4:
+        case QUEST_OP_ADD_TIME:
             gQuestTimeLeft += (u16)e->arg;
             pc++;
             break;
-        case -1:
+        case QUEST_OP_START:
             em = gQuest.spawnedEm;
             if (em != NULL && Quest_FindSpecialMonster(em->type) != 0xFF) {
                 gQuest.savedEmHp = em->hp;
@@ -4172,48 +4280,48 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             gQuest.msgArg0 = 0;
             gQuest.msgArg1 = 0;
             gSysSettings.clearCapture = 0x81;
-            gQuest.result = 3;
+            gQuest.result = QUEST_PHASE_RUNNING;
             pc++;
-            gScene.questPhase = 3;
+            gScene.questPhase = QUEST_PHASE_RUNNING;
             gQuest.msgArg2 = 0;
-            gQuest.acks |= 1 << (gScene.localPlayer + 8);
-            gQuest.msgType = 2;
+            gQuest.acks |= 1 << (gScene.localPlayer + QUEST_ACK_STARTED_SHIFT);
+            gQuest.msgType = QMSG_STARTED;
             QSync_SendState(6, gScene.localPlayer);
             continue;
-        case 0x2D:
-            if ((gQuest.acks & 0xF00) == 0xF00 || gScene.inQuest[gScene.localPlayer] != 1) {
+        case QUEST_OP_WAIT_ALL_START:
+            if ((gQuest.acks & QUEST_ACKS_STARTED) == QUEST_ACKS_STARTED || gScene.inQuest[gScene.localPlayer] != 1) {
                 pc++;
             }
             break;
-        case 0x1E:
+        case QUEST_OP_CLEARED:
             gQuest.step = 0;
             pc = -1;
-            (*(s8 *)&gQuest)++;
+            (*(s8 *)&gQuest)++; /* gQuest.state, to QSTATE_CLEAR */
             break;
-        case 0x17:
+        case QUEST_OP_LOOP:
             pc = gQuest.loopPc;
             gQuest.scriptPc = pc;
             continue;
-        case 0x18:
+        case QUEST_OP_WAIT_STATE4:
             if (Player_IsState(pl, 4, 0) != 0) {
                 pc++;
                 continue;
             }
             break;
-        case -2:
-            gScene.questPhase = 5;
-            gQuest.result = 5;
+        case QUEST_OP_END:
+            gScene.questPhase = QUEST_PHASE_ENDED;
+            gQuest.result = QUEST_PHASE_ENDED;
             gQuest.msgArg0 = 0;
             pc++;
             gQuest.msgArg1 = 0;
             gQuest.msgArg2 = 0;
-            gQuest.msgType = 4;
+            gQuest.msgType = QMSG_ENDED;
             QSync_SendState(6, gScene.localPlayer);
             continue;
-        case 0x1F:
-            gQuest.result = 6;
+        case QUEST_OP_FAIL:
+            gQuest.result = QUEST_PHASE_FAILED;
             pc = -1;
-            gScene.questPhase = 6;
+            gScene.questPhase = QUEST_PHASE_FAILED;
             Quest_StoreElapsed();
             if (Quest_IsVersus() == 0) {
                 Notice_PushItem(gQuestNoticeTexts[0]);
@@ -4222,9 +4330,9 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
                 Notice_Push(0, 0xF, 0);
             }
             break;
-        case 0x1B:
-            gQuest.unk00A = e->arg;
-            Quest_Sprintf(buf, D_00445564, Quest_GetTime(1) / 1800);
+        case QUEST_OP_BEGIN:
+            gQuest.timeoutLabel = e->arg;
+            Quest_Sprintf(buf, gQuestNoticeTexts[1], Quest_GetTime(QUEST_TIME_LIMIT) / 1800 /* frames per minute */);
             buf[31] = 0;
             Notice_PushText(buf);
             if (Quest_IsVersus() == 0) {
@@ -4232,53 +4340,53 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             }
             pc++;
             break;
-        case 0x20:
+        case QUEST_OP_PROGRESS:
             gQuest.progress = (u16)e->arg;
             Quest_TargetMessage();
             pc++;
             continue;
-        case 0x21:
+        case QUEST_OP_WAIT_ITEMS:
             if (Cond_HasItems(&gQuest, (u16 *)e) != 0) {
                 pc++;
                 continue;
             }
             break;
-        case 0x23:
+        case QUEST_OP_GOAL_LABEL:
             gQuest.goalLabel = e->arg;
             pc++;
             break;
-        case 0x2C:
-            gQuest.unk137 = e->arg;
+        case QUEST_OP_EVENT_LABEL:
+            gQuest.eventLabel = e->arg;
             pc++;
             break;
-        case 0x25:
-            gScene.questPhase = 5;
+        case QUEST_OP_END_ALT:
+            gScene.questPhase = QUEST_PHASE_ENDED;
             pc++;
-            gQuest.result = 5;
-            Notice_PushItem(D_00445568);
+            gQuest.result = QUEST_PHASE_ENDED;
+            Notice_PushItem(gQuestNoticeTexts[2]);
             gQuest.msgArg0 = 0;
-            gQuest.msgType = 10;
+            gQuest.msgType = QMSG_ENDED_ALT;
             gQuest.msgArg1 = 0;
             gQuest.msgArg2 = 0;
             QSync_SendState(6, gScene.localPlayer);
             continue;
-        case 0x26:
+        case QUEST_OP_START_ALT:
             em = gQuest.spawnedEm;
             if (em != NULL && Quest_FindSpecialMonster(em->type) != 0xFF) {
                 gQuest.savedEmHp = em->hp;
                 gQuest.parts[em->type] = em->partsBroken;
             }
             gQuest.msgArg0 = 0;
-            gQuest.result = 3;
+            gQuest.result = QUEST_PHASE_RUNNING;
             pc++;
             gQuest.msgArg1 = 0;
-            gScene.questPhase = 3;
+            gScene.questPhase = QUEST_PHASE_RUNNING;
             gQuest.msgArg2 = 0;
-            gQuest.acks |= 1 << (gScene.localPlayer + 8);
-            gQuest.msgType = 11;
+            gQuest.acks |= 1 << (gScene.localPlayer + QUEST_ACK_STARTED_SHIFT);
+            gQuest.msgType = QMSG_STARTED_ALT;
             QSync_SendState(6, gScene.localPlayer);
             continue;
-        case 0x28:
+        case QUEST_OP_IF_EM_HURT:
             if (gQuest.spawnedEm->hp <= gQuest.savedEmHp - e->arg) {
                 gQuest.savedEmHp = gQuest.spawnedEm->hp;
                 pc++;
@@ -4287,7 +4395,7 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             pc++;
             e++;
             for (;;) {
-                if (e->op == 0x29) {
+                if (e->op == QUEST_OP_ENDIF_EM_HURT) {
                     pc++;
                     break;
                 }
@@ -4295,7 +4403,7 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
                 e++;
             }
             continue;
-        case 0x2A:
+        case QUEST_OP_IF_EM_WEAK:
             if (EmList_AnyBelowHalfHp() == 1) {
                 QuestGoal_CompleteIfRunning(0, 0x200);
                 pc++;
@@ -4304,7 +4412,7 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             pc++;
             e++;
             for (;;) {
-                if (e->op == 0x2B) {
+                if (e->op == QUEST_OP_ENDIF_EM_WEAK) {
                     pc++;
                     break;
                 }
@@ -4312,12 +4420,12 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
                 e++;
             }
             continue;
-        case 0x1C:
+        case QUEST_OP_GOTO:
             lbl = e->arg;
             e = ((QuestCmd *)gQuest.script);
             pc = 0;
             for (;;) {
-                if (e->op == 0x1A && lbl == e->arg) {
+                if (e->op == QUEST_OP_LABEL && lbl == e->arg) {
                     pc++;
                     break;
                 }
@@ -4325,22 +4433,22 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
                 e++;
             }
             continue;
-        case 0x27:
+        case QUEST_OP_HALT2:
             break;
-        case 0x1A:
+        case QUEST_OP_LABEL:
             pc++;
             continue;
-        case 0x2F:
-            gQuest.unk00A = e->arg;
+        case QUEST_OP_TIMEOUT_LABEL:
+            gQuest.timeoutLabel = e->arg;
             pc++;
             break;
-        case 0x30:
+        case QUEST_OP_IF_HUNTED_GOTO:
             if (QuestGoal_HuntCountFor(e->arg) <= e->arg2) {
                 lbl = e->arg3;
                 e = ((QuestCmd *)gQuest.script);
                 pc = 0;
                 for (;;) {
-                    if (e->op == 0x1A && lbl == e->arg) {
+                    if (e->op == QUEST_OP_LABEL && lbl == e->arg) {
                         pc++;
                         break;
                     }
@@ -4351,16 +4459,16 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
             }
             pc++;
             continue;
-        case 0x31:
+        case QUEST_OP_MARK:
             mark = pc;
             pc++;
             continue;
-        case 0x32:
+        case QUEST_OP_UNMARK:
             mark = -1;
             pc++;
             continue;
-        case 0x33:
-            if (D_006ADB2E == 0) {
+        case QUEST_OP_VERSUS_END:
+            if (gNextQuest.unk5E == 0) {
                 if (QuestGoal_IsHunt(0) == 1) {
                     Versus_End(2);
                     pc = -1;
@@ -4376,7 +4484,7 @@ s16 Quest_StepScript(Player *pl, s16 pc, s32 *out)
                 pc = -1;
             }
             break;
-        case 0x34:
+        case QUEST_OP_COMPLETE_GOAL:
             QuestGoal_CompleteIfRunning(0, 0);
             pc++;
             continue;
@@ -4887,7 +4995,7 @@ u16 gSpecialMinePoints[40] = {
 u32 gDefaultStageHeader_3[4] = {
 #include "sub_main/0044BDB0.inc"
 };
-s8 D_0044BDC0[16] = {
+s8 gRewardGiveRolls[16] = {
 #include "sub_main/0044BDC0.inc"
 };
 QuestTimeMsg gQuestTimeNotices[3] = {
@@ -4924,38 +5032,27 @@ u32 gStageFileTbls_3[44] = {
  * the area's climate, and a few quest helpers.
  */
 
-/* An entry of the list at (*(Unk8 * *)&gQuest.unk054) (8 bytes), searched by its first
- * halfword. */
-typedef struct Unk8 {
-    s16 id;
-    u8 unk2[6];
-} Unk8;
-
-/* An item requirement: at least `count` of `item` in the pouch. */
-typedef struct ItemReq {
-    u16 unk0;
-    u16 item;           /* 0x2 */
-    s16 count;          /* 0x4 */
-} ItemReq;
-
-/* The request built by QuestEm_SpawnKind48 for QuestEm_Spawn. */
-typedef struct Req3A3E80 {
-    s16 unk00;
-    s16 unk02;
+/* The monster QuestEm_SpawnYamaTsukamiB builds for QuestEm_Spawn: a
+ * QuestEm, but 0x40 bytes, the stack frame the game's function has. The
+ * positions are written as integers (0). */
+typedef struct SpawnRequest {
+    s16 kind;
+    s16 variant;
     u8 unk04[0x1C - 0x04];
-    s32 unk1C;
-    s32 unk20;
-    s32 unk24;
-    s32 unk28;
+    s32 rotY;
+    s32 x;
+    s32 y;
+    s32 z;
     u8 unk2C[0x30 - 0x2C];
-    s16 unk30;
-    s16 unk32;
+    s16 size;
+    s16 hp;
     u8 unk34[0x40 - 0x34];
-} Req3A3E80;
+} SpawnRequest;
 
-/* The message sent with QSync_SendState (gm_sub). */
-extern u8 D_005D493C[];
-extern u8 D_005D499C[];
+/* The quest record's counts per monster kind (QuestRecord in the boot
+ * ELF's main.c: kindA and kindB). */
+extern u8 gQuestRecordHunted[];
+extern u8 gQuestRecordCaptured[];
 extern s32 gQuestPartyClearTime;
 
 
@@ -4979,29 +5076,31 @@ void Player_ClearPartOverrides(Player *p);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
 void Player_SetFlag(void *obj, u32 flag);
 
-/* Nonzero when the local player has the item and count of a requirement (an ItemReq, read
- * as halfwords: the pointer steps to the item, then to the count). */
-s32 Cond_HasItems(void *unused, u16 *r)
+/* Nonzero when the local player holds the items of a QUEST_OP_WAIT_ITEMS
+ * command (cmd: the command read as halfwords: its item, then its count). */
+s32 Cond_HasItems(void *unused, u16 *cmd)
 {
     u16 item;
-    s16 c;
+    s16 count;
 
-    r++;
-    item = *r++;
-    c = *r;
-    return c <= Pouch_Count(&gPlayers[gScene.localPlayer], item);
+    cmd++;
+    item = *cmd++;
+    count = *cmd;
+    return count <= Pouch_Count(&gPlayers[gScene.localPlayer], item);
 }
 
-void Quest_SetFailed(s32 a)
+/* The quest is ENDED: the script jumps to its end mark (QUEST_OP_END, or
+ * with `alt` QUEST_OP_END_ALT). */
+void Quest_JumpToEnd(s32 alt)
 {
-    Unk8 *e = (*(Unk8 * *)&gQuest.script);
+    QuestCmd *e = (QuestCmd *)gQuest.script;
     s16 i = 0;
-    s16 id;
+    s16 op;
 
-    gScene.questPhase = 5;
-    id = a == 0 ? -2 : 0x25;
+    gScene.questPhase = QUEST_PHASE_ENDED;
+    op = alt == 0 ? QUEST_OP_END : QUEST_OP_END_ALT;
     for (;;) {
-        if (e->id == id) {
+        if (e->op == op) {
             break;
         }
         i++;
@@ -5010,170 +5109,177 @@ void Quest_SetFailed(s32 a)
     gQuest.scriptPc = i;
 }
 
-static void Quest_SetCleared(s32 a)
+/* Another player started the quest: unless it runs already, the script
+ * jumps to its start mark (QUEST_OP_START, or with `alt`
+ * QUEST_OP_START_ALT) and the quest is RUNNING. */
+static void Quest_JumpToStart(s32 alt)
 {
-    Unk8 *e = (*(Unk8 * *)&gQuest.script);
+    QuestCmd *e = (QuestCmd *)gQuest.script;
     s16 i = 0;
-    s16 id;
+    s16 op;
 
     switch (gScene.questPhase) {
     case 0:
     case 1:
-    case 2:
-        id = a == 0 ? -1 : 0x26;
+    case QUEST_PHASE_READY:
+        op = alt == 0 ? QUEST_OP_START : QUEST_OP_START_ALT;
         for (;;) {
-            if (e->id == id) {
+            if (e->op == op) {
                 break;
             }
             i++;
             e++;
         }
         gQuest.scriptPc = i;
-        gScene.questPhase = 3;
+        gScene.questPhase = QUEST_PHASE_RUNNING;
         break;
     }
 }
 
-/* One chance in 16, on maps 0x2B04-0x2B06 when Area_DayId gives 0x6E. */
-s32 QuestEm_RollAlarm(s32 a)
+/* 1, one time in 16, on the quests 0x2B04 to 0x2B06 in the area of day id
+ * 0x6E (QuestEm_SpawnArea then adds Yama Tsukami's second kind). */
+s32 QuestEm_RollYamaTsukamiB(s32 area)
 {
     switch (gQuest.stage) {
     case 0x2B04:
     case 0x2B05:
     case 0x2B06:
-        if (Area_DayId(a) == 0x6E && (Rand_Next(0) & 0xF) == 0) {
+        if (Area_DayId(area) == 0x6E && (Rand_Next(0) & 0xF) == 0) {
             return 1;
         }
     }
     return 0;
 }
 
-void QuestEm_SpawnKind48(void)
+/* Spawns Yama Tsukami's second kind at the area's origin, at its full
+ * health and the normal size. */
+void QuestEm_SpawnYamaTsukamiB(void)
 {
-    Req3A3E80 r;
+    SpawnRequest r;
 
-    r.unk00 = 0x48;
-    r.unk02 = 0;
-    r.unk32 = -1;
-    r.unk20 = 0;
-    r.unk30 = 100;
-    r.unk24 = 0;
-    r.unk28 = 0;
-    r.unk1C = 0;
+    r.kind = EM_KIND_YAMA_TSUKAMI_B;
+    r.variant = 0;
+    r.hp = -1;
+    r.x = 0;
+    r.size = 100;
+    r.y = 0;
+    r.z = 0;
+    r.rotY = 0;
     QuestEm_Spawn((QuestEm *)&r);
 }
 
-extern char *D_0044556C;
 extern s32 gQuestCountdown;
-void Quest_SetFailed(s32 a);
+void Quest_JumpToEnd(s32 a);
 void Quest_OnRemoteKill(void);
 u8 Quest_SetDelivered(Player *pl, u16 item, s32 count);
 void QuestGoal_Complete(u16 i, u32 flag);
 void Versus_End(s8 side);
 s32 Side_Match(u8 a, u8 b, u8 c);
 
-/* Matches with Quest_SetCleared static (round 19: unk_3A1070.c, unk_3A6130.c and unk_3AAD20.c are one unit). */
+/* Applies the quest message another player sent (gQuest.msgType, QMSG_*);
+ * Quest_JumpToStart is static in this unit. */
 void Quest_HandleNetMsg(void)
 {
     s32 v;
 
     switch (gQuest.msgType) {
-    case 2:
-        gQuest.acks |= 1 << (gQuest.msgFrom + 8);
-        Quest_SetCleared(0);
+    case QMSG_STARTED:
+        gQuest.acks |= 1 << (gQuest.msgFrom + QUEST_ACK_STARTED_SHIFT);
+        Quest_JumpToStart(0);
         break;
-    case 4:
-        if (gScene.questPhase != 5 && gScene.questPhase != 6) {
-            Quest_SetFailed(0);
+    case QMSG_ENDED:
+        if (gScene.questPhase != QUEST_PHASE_ENDED && gScene.questPhase != QUEST_PHASE_FAILED) {
+            Quest_JumpToEnd(0);
         }
         break;
-    case 5:
+    case QMSG_TIME_LEFT:
         v = (gQuest.msgArg2 & 0xFFFF) | ((gQuest.msgArg1 << 16) & 0xFFFF0000);
         if (v < (s32)gQuestTimeLeft) {
             gQuestTimeLeft = v;
         }
         break;
-    case 6:
+    case QMSG_PROGRESS:
         if (gQuest.progress < gQuest.msgArg1) {
             gQuest.progress = gQuest.msgArg1;
         }
         break;
-    case 7:
+    case QMSG_KILL:
         Quest_OnRemoteKill();
         break;
-    case 9:
+    case QMSG_DELIVERED:
         Quest_SetDelivered(&gPlayers[gQuest.msgFrom], gQuest.msgArg1, gQuest.msgArg2);
         break;
-    case 10:
-        if (gScene.questPhase != 5 && gScene.questPhase != 6) {
-            Quest_SetFailed(1);
+    case QMSG_ENDED_ALT:
+        if (gScene.questPhase != QUEST_PHASE_ENDED && gScene.questPhase != QUEST_PHASE_FAILED) {
+            Quest_JumpToEnd(1);
         }
         break;
-    case 11:
-        gQuest.acks |= 1 << (gQuest.msgFrom + 8);
-        Quest_SetCleared(1);
+    case QMSG_STARTED_ALT:
+        gQuest.acks |= 1 << (gQuest.msgFrom + QUEST_ACK_STARTED_SHIFT);
+        Quest_JumpToStart(1);
         break;
-    case 12:
+    case QMSG_RANK:
         gQuest.acks |= 1 << gQuest.msgFrom;
         gQuest.hunterRank[gQuest.msgFrom][0] = gQuest.msgArg1;
         break;
-    case 13:
-        gQuest.acks |= 1 << (gQuest.msgFrom + 4);
+    case QMSG_REWARD_ACK:
+        gQuest.acks |= 1 << (gQuest.msgFrom + QUEST_ACK_REWARD_SHIFT);
         gQuest.netMsgArgs |= gQuest.msgArg1 << 16;
         gQuest.netMsgArgs |= gQuest.msgArg2;
         break;
-    case 14:
+    case QMSG_EVENT_OVER:
         if (gQuest.timedEvent != 0) {
             gQuest.timedEvent = 0;
-            Notice_PushItem(D_0044556C);
+            Notice_PushItem(gQuestNoticeTexts[3]);
         }
         break;
-    case 15:
+    case QMSG_CLEAR_TIME:
         v = (gQuest.msgArg2 & 0xFFFF) | ((gQuest.msgArg1 << 16) & 0xFFFF0000);
         if (gQuestPartyClearTime < v) {
             gQuestPartyClearTime = v;
         }
         break;
-    case 16:
+    case QMSG_GOAL_DONE:
         QuestGoal_Complete(gQuest.msgArea, (gQuest.msgArg2 & 0xFFFF) | ((gQuest.msgArg1 << 16) & 0xFFFF0000));
         break;
-    case 17:
+    case QMSG_VERSUS_END:
         gQuest.acks |= 1 << gQuest.msgFrom;
-        if (gQuest.state < 3) {
+        if (gQuest.state < QSTATE_VERSUS_END) {
             Versus_End(gQuest.msgArg1);
         }
         if (Side_Match(gPlayers[gScene.localPlayer].side, gQuest.msgArg1, 1) == 0) {
-            gQuest.result = 6;
+            gQuest.result = QUEST_PHASE_FAILED;
         }
         break;
-    case 18:
+    case QMSG_COUNTDOWN_MSG:
         if (gQuest.countdownMsg < gQuest.msgArg1) {
             gQuest.countdownMsg = gQuest.msgArg1;
             gQuestCountdown = -1;
         }
         break;
-    case 19:
+    case QMSG_COUNTDOWN_START:
         gScene.countdownOn = 1;
-        gQuestCountdown = 0x4650;
+        gQuestCountdown = 18000; /* frames: 10 min */
         break;
-    case 20:
+    case QMSG_VERSUS_DEFEAT:
         gQuest.versusDefeat |= (u8)gQuest.msgArg1;
         break;
     }
 }
 
-/* The part of a quest monster entry (unk_3A6130.c's QuestEm) read here. */
+/* Quest_OnRemoteKill's view of a QuestEm (quest.h): the game reads the
+ * index's low byte only (lbu), which this view gives. */
 typedef struct QuestEmView {
-    s16 id;             /* 0x00: monster kind */
+    s16 kind;           /* 0x00 */
     u8 pad2[2];
-    s8 left;            /* 0x04: still to appear */
+    s8 count;           /* 0x04 */
     u8 pad5[0x2C - 0x5];
-    u8 index;           /* 0x2C: running index (s16) */
+    u8 index;           /* 0x2C: QuestEm.index's low byte */
     u8 pad2D;
     s16 flags;          /* 0x2E */
     u8 pad30[0x34 - 0x30];
-    s8 slot;            /* 0x34 */
-    s8 counted;         /* 0x35 */
+    s8 emIndex;         /* 0x34 */
+    s8 large;           /* 0x35 */
 } QuestEmView;
 
 void EmMine_Remove(Em *em);
@@ -5184,48 +5290,53 @@ s32 Quest_IsVersus(void);
 void QuestEm_CountHunted(u16 i);
 extern Em gEms[];
 
-/* The kill message of another player (gQuest.msgFrom on, type 7: Quest_SendKill):
- * the quest monster it names leaves (its monster, if still here, changes
- * to state 5), or is counted as killed. */
+/*
+ * Another player's QMSG_KILL (Quest_SendKill): the quest monster it names
+ * (by index, in msgArea) is down for them. When its monster is here and
+ * alive, it is put down too (state group 5, no health; its mining point
+ * goes if it was already down). When it isn't here, the kill is counted
+ * as ours would be, unless this player has already counted it (the
+ * appearances left are no more than the sender's).
+ */
 void Quest_OnRemoteKill(void)
 {
     QuestEmView *q;
     Em *em;
-    u16 n;
+    u16 countLeft;
     s16 flags;
-    s8 slot;
+    s8 emIndex;
     s32 i;
 
-    n = gQuest.msgArg2;
+    countLeft = gQuest.msgArg2;
     em = gEms;
     if ((q = (QuestEmView *)QuestEm_FindByIndex(gQuest.msgArg1, gQuest.msgArea)) != NULL) {
         flags = q->flags;
-        if (flags & 6) {
-            slot = q->slot;
-            for (i = 0; i < 20; i++, em++) {
-                if (em->index == slot && em->questIndex == q->index) {
-                    if (em->type != q->id) {
+        if (flags & (QUEST_EM_ACTIVE | QUEST_EM_HUNTED)) {
+            emIndex = q->emIndex;
+            for (i = 0; i < 20 /* gEms */; i++, em++) {
+                if (em->index == emIndex && em->questIndex == q->index) {
+                    if (em->type != q->kind) {
                         return;
                     }
                     if (em->active == 0) {
                         return;
                     }
-                    if (!(flags & 4)) {
+                    if (!(flags & QUEST_EM_HUNTED)) {
                         if (em->taskPhase >= 2) {
                             return;
                         }
-                        if (em->stateGroup == 5) {
+                        if (em->stateGroup == EM_GROUP_DEFEAT) {
                             return;
                         }
-                    } else if (q->left <= n) {
+                    } else if (q->count <= countLeft) {
                         return;
                     }
-                    if (em->taskPhase >= 2 || em->stateGroup == 5) {
+                    if (em->taskPhase >= 2 || em->stateGroup == EM_GROUP_DEFEAT) {
                         EmMine_Remove(em);
                     }
-                    Em_ChangeState(em, 5, 0, 0);
+                    Em_ChangeState(em, EM_GROUP_DEFEAT, 0, 0);
                     em->alpha = 1.0f;
-                    q->flags = 2;
+                    q->flags = QUEST_EM_ACTIVE;
                     em->hp = 0;
                     if (QuestGoal_IsClearTarget(em->type) == 1) {
                         (*(Em * *)&gQuest.downEm) = em;
@@ -5233,48 +5344,51 @@ void Quest_OnRemoteKill(void)
                     return;
                 }
             }
-            if (q->left > n) {
-                QuestGoal_OnKill(q->id);
-                Quest_CountEventKill(q->id);
-                Quest_CountTarget(q->id);
+            if (q->count > countLeft) {
+                QuestGoal_OnKill(q->kind);
+                Quest_CountEventKill(q->kind);
+                Quest_CountTarget(q->kind);
                 if (Quest_IsVersus() == 0) {
-                    QuestEm_CountHunted(q->id);
-                    gQuest.hunted[q->id]++;
-                    if (gQuest.hunted[q->id] > 9999) {
-                        gQuest.hunted[q->id] = 9999;
+                    QuestEm_CountHunted(q->kind);
+                    gQuest.hunted[q->kind]++;
+                    if (gQuest.hunted[q->kind] > QUEST_COUNT_MAX) {
+                        gQuest.hunted[q->kind] = QUEST_COUNT_MAX;
                     }
                 }
-                if (q->counted != 0) {
+                if (q->large != 0) {
                     gQuest.emLeft--;
                 }
-                q->left--;
-                if (q->left > 0) {
-                    q->flags = 2;
+                q->count--;
+                if (q->count > 0) {
+                    q->flags = QUEST_EM_ACTIVE;
                     return;
                 }
-                q->flags = 1;
-                q->slot = -1;
+                q->flags = QUEST_EM_DONE;
+                q->emIndex = -1;
             }
         }
     }
 }
 
+/* Sends the local time left to the others (not during an event scene). */
 void Quest_SendTime(void)
 {
     if (gScene.eventRunning == 0) {
         gQuest.msgArg0 = 0;
-        gQuest.msgType = 5;
+        gQuest.msgType = QMSG_TIME_LEFT;
         gQuest.msgArg2 = gQuestTimeLeft;
         gQuest.msgArg1 = (u32)gQuestTimeLeft >> 16;
         QSync_SendState(6, gScene.localPlayer);
     }
 }
 
+/* Tells the others that quest monster q is down (QMSG_KILL); p is the
+ * monster, read as a player for its area. */
 void Quest_SendKill(QuestEm *q, Player *p)
 {
     gQuest.msgArg0 = 0;
-    gQuest.msgType = 7;
-    gQuest.msgArg1 = q->unk2C;
+    gQuest.msgType = QMSG_KILL;
+    gQuest.msgArg1 = q->index;
     gQuest.msgArg2 = q->count;
     gQuest.msgArea = p->area;
     QSync_SendState(6, gScene.localPlayer);
@@ -5284,37 +5398,41 @@ void func_003AB680(void)
 {
 }
 
-void QuestEm_CountHunted(u16 i)
+/* Counts a hunt of monster kind `kind` in the quest record: twice on the
+ * stage tiers 1 and 2. */
+void QuestEm_CountHunted(u16 kind)
 {
     switch (gStageHeader->tier) {
     case 1:
     case 2:
-        D_005D493C[i] += 2;
+        gQuestRecordHunted[kind] += 2;
         break;
     default:
-        D_005D493C[i] += 1;
+        gQuestRecordHunted[kind] += 1;
         break;
     }
 }
 
-void QuestEm_CountCaptured(u16 i)
+/* Counts a capture of monster kind `kind` in the quest record, as QuestEm_CountHunted. */
+void QuestEm_CountCaptured(u16 kind)
 {
     switch (gStageHeader->tier) {
     case 1:
     case 2:
-        D_005D499C[i] += 2;
+        gQuestRecordCaptured[kind] += 2;
         break;
     default:
-        D_005D499C[i] += 1;
+        gQuestRecordCaptured[kind] += 1;
         break;
     }
 }
 
+/* Stores the quest time so far (gQuest.elapsed). */
 void Quest_StoreElapsed(void)
 {
-    s32 a = Quest_GetTime(1);
+    s32 limit = Quest_GetTime(QUEST_TIME_LIMIT);
 
-    gQuest.elapsed = a - Quest_GetTime(0);
+    gQuest.elapsed = limit - Quest_GetTime(QUEST_TIME_LEFT);
 }
 
 void Player_ClearPartOverrides(Player *p)

@@ -145,6 +145,38 @@ extern ArmorData gArmorArmsData[];
 extern ArmorData gArmorWaistData[];
 extern ArmorData gArmorLegsData[];
 
+/*
+ * Skills (Player_HasSkill, Player_GetSkill). SKILL_GROUP_GATHER is the group
+ * Player_GetSkill tests; the four skills change how soon a gathering point
+ * runs out (Gather_AtPoint: the chance in 32 a gather empties it, 4 without
+ * one), and are named here by that effect.
+ */
+#define SKILL_GROUP_GATHER      0x16
+#define SKILL_GATHER_PLUS1      0x93    /* chance 2 */
+#define SKILL_GATHER_PLUS2      0x94    /* chance 0 */
+#define SKILL_GATHER_MINUS1     0x95    /* chance 8 */
+#define SKILL_GATHER_MINUS2     0x96    /* chance 12 */
+
+#define SKILL_COMBINE_SURE      0x48    /* recipes flagged RECIPE_SURE_WITH_SKILL always succeed */
+#define SKILL_GROUP_COMBINE     0x25    /* the combination rate skills: */
+#define SKILL_COMBINE_PLUS5     0xA5
+#define SKILL_COMBINE_PLUS10    0xA6
+#define SKILL_COMBINE_PLUS20    0xA7
+#define SKILL_COMBINE_MINUS5    0xA8
+#define SKILL_COMBINE_MINUS15   0xA9
+#define SKILL_COMBINE_AMMO_FIXED 0xAA   /* ammo and coatings are made in the base quantity (Combine_HasFixedYield) */
+#define SKILL_RECIPE_FLAG1      0xAB    /* recipes flagged 1 are usable with it (Recipe_CanUse) */
+
+/* ItemData.type values seen (the bowgun's ammo slots, Combine_HasFixedYield). */
+#define ITEM_TYPE_AMMO          2
+#define ITEM_TYPE_COATING       3
+
+/* A range of weapon kinds, lo to hi (gDualSwordRanges: the dual swords; lo -1 ends the list). */
+typedef struct WeaponKindRange {
+    s16 lo;
+    s16 hi;
+} WeaponKindRange;
+
 EquipData *Equip_GetData(EquipItem *item);
 
 #endif /* ITEM_H */

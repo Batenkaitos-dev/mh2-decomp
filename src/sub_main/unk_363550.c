@@ -864,7 +864,7 @@ void ObjAttach_DrawAll(void)
     }
 }
 
-s32 func_003648F0(void)
+s32 Item_RideItemUsable(void)
 {
     return 1;
 }
@@ -907,7 +907,7 @@ s32 Item_CanPlaceKind2(void)
     return Scene_CanPlaceKind2();
 }
 
-s32 func_00364A70(void)
+s32 Scene_InNoBarrelBombArea(void)
 {
     return Area_NoBarrelBombs(gScene.area) == 1;
 }
@@ -2309,7 +2309,7 @@ void Bgm_Play(s32 id)
 
 void Jingle_OnAreaChange(u16 area)
 {
-    if (gQuest.stage != 0 && gStageHeader->unk5D != 0 && !(gScene.musicFlags & 1)) {
+    if (gQuest.stage != 0 && gStageHeader->randomStart != 0 && !(gScene.musicFlags & 1)) {
         switch (Area_BaseId(gScene.map)) {
         case 2:
         case 3:

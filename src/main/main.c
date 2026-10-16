@@ -81,7 +81,7 @@ void Sound_Init(void);
 void Adx_InitFileSystems(void);
 void Sound_Boot(void);
 void LoadOverlay(s32 id);
-void func_0018CC10(void);
+void Sys_EmptyHook(void);
 void sub_main_entry(void);
 void func_001657B8(s32);
 void func_00165400(AdxDvdFsParam *);
@@ -123,7 +123,7 @@ s32 main(s32 argc, char **argv)
     Adx_InitFileSystems();
     Sound_Boot();
     LoadOverlay(1);
-    func_0018CC10();
+    Sys_EmptyHook();
     sub_main_entry();
     return 0;
 }
@@ -468,7 +468,7 @@ void QuestRecord_Fill(void)
     gQuestRecord.unk04 = b;
     gQuestRecord.unk05 = Area_MapGroup(*(u16 *)qs, v);
     c = gQuest.header->tier;
-    d = gQuest.unk15C;
+    d = gQuest.flyer;
     if (c < 0 || c > 3) { /* compiled-out check */
     }
     n = gScene.playerCount;

@@ -85,4 +85,20 @@ typedef char AreaState_size_check[(sizeof(AreaState) == 0x120) ? 1 : -1];
 
 extern AreaState gAreaState;
 
+/* Map_AreaIndex's answer when the map has no such area. */
+#define AREA_INDEX_NONE 0xFFFF
+
+/* The header of an area's grid (the two parts of its table file, gAreaTableFiles;
+ * Area_LoadTables and AreaTable_Relocate in unk_3240E0.c): the grid's offsets are
+ * from this header. */
+typedef struct AreaGridHeader {
+    u32 cellX;          /* 0x00: gAreaGridCellX */
+    u32 cellZ;          /* 0x04: gAreaGridCellZ */
+    u32 rows;           /* 0x08 */
+    u32 cols;           /* 0x0C */
+    u8 unk10[0x18 - 0x10];
+    u32 tblOff;         /* 0x18: rows * cols offsets of the cells' lists, each ended by -1 */
+    u32 dataOff;        /* 0x1C: the base of the offsets in the lists */
+} AreaGridHeader;
+
 #endif /* AREA_H */

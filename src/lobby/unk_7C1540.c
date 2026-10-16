@@ -18,7 +18,7 @@ void Lobby_Disconnect(s32);
 void Lobby_MarkDisconnected(void);
 void LobbyWeb_Run(void);
 char *strcpy(void *dst, const void *src);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 extern u8 gLobbyWebUrl;
 extern s8 D_008BFAFD;
 s32 LobbyNet_GetPatchInfo(NetPatchInfo *info);
@@ -121,7 +121,7 @@ void LobbyLogin_OnProgress(NetMsg m, NetMsg *pm);
 extern s32 gLobbyActive;
 extern s32 gQuestQNetReadyArg;
 extern s8 D_005D46B1;
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void LobbyDialog_OpenWait(void *text);
 s32 LobbyStep_614C(void);
 s32 Lobby_NetMenu2Allowed(u8 item);
@@ -130,8 +130,8 @@ s32 LobbyNet_GetCharaId(u8 i, char *dst);
 s32 LobbyNet_GetCharaName(u8 i, char *dst);
 s32 LobbyNet_GetCharaText(u8 i, u8 *dst);
 s32 LobbyStep_614D(void);
-u8 SeqB_GetState(void);
-void SeqB_Start(s32);
+u8 FadeB_GetState(void);
+void FadeB_Start(s32);
 s32 IdMenu_Run(void);                  /* an s8, used as an int */
 s32 LobbyNet_SetMe(char *id, char *name, u8 *text);
 s32 LobbyNet_GetMyCharaId(char *dst);
@@ -889,7 +889,7 @@ void LobbyEntry_Terms(void)
     switch (step) {
     case 0:
         gLobby->step = (u8) (step + 1);
-        SeqA_Start(2);
+        FadeA_Start(2);
         strcpy(&gLobbyWebUrl, "file://SRC/BROWSER/DATA/N_KYK_TP.HTM");
         Lobby_MarkDisconnected();
         break;
@@ -897,7 +897,7 @@ void LobbyEntry_Terms(void)
         if (gLobby->linkState == 2) {
             gLobby->step = (u8) (step + 1);
             gLobby->linkState = 0U;
-            SeqA_Start(1);
+            FadeA_Start(1);
             break;
         }
         LobbyWeb_Run();
@@ -1083,14 +1083,14 @@ void LobbyEntry_IdSelect(void)
         break;
     case 2:
         gLobbyMenu->redraw = 1;
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gLobby->step++;
             if (gNetEntryMode == 0) {
                 memset(gLobby, 0, 0x1C);
                 gElderForecastHeard = 0;
-                SeqA_Start(2);
-                if ((u8)SeqB_GetState() != 0) {
-                    SeqB_Start(2);
+                FadeA_Start(2);
+                if ((u8)FadeB_GetState() != 0) {
+                    FadeB_Start(2);
                 }
             }
         }
@@ -1111,7 +1111,7 @@ void LobbyEntry_IdSelect(void)
         break;
     case 4:
         gLobbyMenu->redraw = 1;
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gLobby->step++;
         }
     case 5:
@@ -1159,7 +1159,7 @@ void LobbyEntry_Step5(void)
         LobbyMenu_Init();
         LobbyMenu_SetDraw(LobbyEntry_Draw, 0, NULL, 0);
         gLobby->step++;
-        SeqA_Start(2);
+        FadeA_Start(2);
         gLobby->countdown = 0x258;
         LobbyDialog_OpenWait(gLobby->errText);
         break;
@@ -1170,15 +1170,15 @@ void LobbyEntry_Step5(void)
             if (gLobby->countdown < 0x1E0 && (btn & 0x20)) {
                 gLobby->step++;
                 LobbySe_Play(0);
-                SeqA_Start(1);
+                FadeA_Start(1);
             }
         } else {
             gLobby->step++;
-            SeqA_Start(1);
+            FadeA_Start(1);
         }
         break;
     case 2:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gLobbyMenu->hideLayers = 1;
             gLobby->mode = 4;
             gLobby->step = 1;
@@ -1296,8 +1296,8 @@ void LobbyEntry_Info(void)
         break;
     case 4:
         (*seq)++;
-        if ((u8)SeqA_GetState() != 0) {
-            SeqA_Start(2);
+        if ((u8)FadeA_GetState() != 0) {
+            FadeA_Start(2);
         }
         LobbyDialog_OpenWait(gLobby->msg614CText);
         gLobby->countdown = 0x1E;
@@ -1307,7 +1307,7 @@ void LobbyEntry_Info(void)
         t = &p->countdown;
         if (*t != 0) {
             (*t)--;
-        } else if ((u8)SeqA_GetState() != 1) {
+        } else if ((u8)FadeA_GetState() != 1) {
             if ((btn & 0x20) || --gLobby->waitTimer <= 0) {
                 gLobby->step++;
                 LobbySe_Play(0);
@@ -1316,7 +1316,7 @@ void LobbyEntry_Info(void)
         }
         break;
     case 6:
-        if ((u8)SeqA_GetState() == 1) {
+        if ((u8)FadeA_GetState() == 1) {
             break;
         }
     case 7:
@@ -1358,8 +1358,8 @@ void LobbyEntry_AreaInfo(void)
             gLobby->connected = 1;
         }
         LobbyText_Open(0x1B);
-        if ((u8)SeqA_GetState() != 0) {
-            SeqA_Start(2);
+        if ((u8)FadeA_GetState() != 0) {
+            FadeA_Start(2);
         }
         break;
     case 1:
@@ -1454,7 +1454,7 @@ void LobbyEntry_AreaInfo(void)
         break;
     case 10:
         gLobbyMenu->redraw = 1;
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             if (gNetEntryMode == 3 && gLobby->groupJoin == 0) {
                 gLobby->unk3969 = 1;
             } else {

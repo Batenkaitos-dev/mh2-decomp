@@ -11,10 +11,10 @@
 void NetMode_CloseAll(void);
 void Mem_Compact(void);
 void Tex_FreeRange(s32 a, s32 b);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void NetMode_DrawScreen(s32);
-u8 SeqA_GetState(void);
-void SeqA_Reset(void);
+u8 FadeA_GetState(void);
+void FadeA_Reset(void);
 void CardTask_Begin(s32 i);
 
 
@@ -117,7 +117,7 @@ void NetMode_Begin(DrawSlot *ds)
 s32 NetMode_SeqABusy(void) {
     s32 state;
 
-    state = SeqA_GetState() & 0xFF;
+    state = FadeA_GetState() & 0xFF;
     switch (state) {                              /* irregular */
     case 0:
         return 0;
@@ -129,15 +129,15 @@ s32 NetMode_SeqABusy(void) {
 }
 
 void NetMode_SeqAReset(void) {
-    SeqA_Reset();
+    FadeA_Reset();
 }
 
 s32 NetMode_SeqAStart(s32 unused0, s32 unused1, s64 arg2)
 {
     if (((s64) (arg2 << 0x30) >> 0x30) == 1) {
-        SeqA_Start(1);
+        FadeA_Start(1);
     } else {
-        SeqA_Start(2);
+        FadeA_Start(2);
     }
     return 1;
 }

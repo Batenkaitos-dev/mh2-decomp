@@ -1,10 +1,12 @@
-/* Functions matched automatically from m2c's output;
- * the others are still assembly. First-pass C, to be named and typed. */
+/*
+ * Sys_EnableGameVSync (main 0x180640): turns on the game's VSync counter,
+ * which VBlankHandler (display.c) advances while it is on.
+ */
 #include "common.h"
-#include "m2c_macros.h"
 
 extern s32 gGameVSyncOn;
 
-void Sys_EnableGameVSync(void) {
+void Sys_EnableGameVSync(void)
+{
     gGameVSyncOn = 1;
 }

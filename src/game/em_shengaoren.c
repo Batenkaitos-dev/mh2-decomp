@@ -37,7 +37,7 @@ void CamReq_ForMonster(Em *em);
 void Em_EndStatus5(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 s32 MinePoint_Count(s32);
 void QSync_SendEm(Em *em, u8 kind, u8 arg);
 s32 Quest_IsRunning(s32 ending);
@@ -77,7 +77,7 @@ EmBone *Em_Bone(void *obj, s16 bone);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 u16 Area_IdForCurrentTime(u16);
 void EffEm33_CreateShengaoren(Em *em, s32 arg1, u16 arg2, s32 arg3, s32 arg4);
-void func_3A0810(Em *em);
+void Quest_TriggerEvent(Em *em);
 void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
 void CamShake_ReqARange(Em *obj, s32 i, s32 flag);
 u8 Player_InCurrentArea(void *obj);
@@ -864,7 +864,7 @@ void EmShenGaoren_State3_01(Em *em, s32 variant)
                     if (n < 0xA) {
                         w->fortHits = n + 1;
                         if (w->fortHits >= 0xA) {
-                            func_3A0810(em);
+                            Quest_TriggerEvent(em);
                         }
                         gScene.fortStage = w->fortHits;
                     }
@@ -913,7 +913,7 @@ void EmShenGaoren_State3_02(Em *em)
             if (em->remote == 0 && w->fortHits <= 9) {
                 w->fortHits++;
                 if (w->fortHits >= 10) {
-                    func_3A0810(em);
+                    Quest_TriggerEvent(em);
                 }
                 gScene.fortStage = w->fortHits;
             }
@@ -944,7 +944,7 @@ void EmShenGaoren_State3_03(Em *em, s32 variant)
                 if (em->remote == 0 && w->fortHits <= 9) {
                     w->fortHits++;
                     if (w->fortHits >= 10) {
-                        func_3A0810(em);
+                        Quest_TriggerEvent(em);
                     }
                     gScene.fortStage = w->fortHits;
                 }
@@ -1700,7 +1700,7 @@ void EmShenGaoren_Update(Em *em)
     }
     Em_UpdatePendingScript(em);
 skip:
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmShenGaoren_RunState(em);
     if (em->stateRequest != 0) {
         EmShenGaoren_RunState(em);

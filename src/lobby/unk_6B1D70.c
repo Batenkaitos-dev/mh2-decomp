@@ -1012,9 +1012,9 @@ u16 MonsterGroup_MinNonzero(u16 *list, u8 group, u8 *out);
 f32 Monster_SizeFromPercent(u8 kind, u16 x);
 f64 fptodp(f32 x);
 /* unit's own declaration: with the definition's s32 (u16 i, s16 x, s16 y, s32 v) (sub_main/unk_33E620.c), Records_DrawMonsters: 77 of 301 words differ */
-s32 MonsterList_DrawLargeMark(u16 a, s16 x, s16 y, s16 n);
+s32 MonsterNote_DrawLargeCrown(u16 a, s16 x, s16 y, s16 n);
 /* unit's own declaration: with the definition's s32 (u16 i, s16 x, s16 y, s32 v) (sub_main/unk_33E620.c), Records_DrawMonsters: 38 of 301 words differ */
-s32 MonsterList_DrawSmallMark(u16 a, s16 x, s16 y, s16 n);
+s32 MonsterNote_DrawSmallCrown(u16 a, s16 x, s16 y, s16 n);
 
 void Records_DrawMonsters(RecordMenu *m, s16 x, s16 y)
 {
@@ -1035,7 +1035,7 @@ void Records_DrawMonsters(RecordMenu *m, s16 x, s16 y)
     Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
     n = 0;
-    e = gSizeRecordTbl;
+    e = gMonsterNoteDefs;
     for (i = 0; i < 0x34; i++, e++) {
         if (MonsterGroup_Sum(m->hunts, e->emType, 0) > 0) {
             n++;
@@ -1049,7 +1049,7 @@ void Records_DrawMonsters(RecordMenu *m, s16 x, s16 y)
     }
     page = m->page;
     i = 0;
-    e = gSizeRecordTbl;
+    e = gMonsterNoteDefs;
     if (page > 0) {
         n = 0;
         do {
@@ -1089,7 +1089,7 @@ void Records_DrawMonsters(RecordMenu *m, s16 x, s16 y)
                     Font_SetPos((s16)tx - 2, sy);
                     sprintf(buf, D_0080C3E4, fptodp(size));
                     Text_PrintfColored(buf);
-                    MonsterList_DrawLargeMark(e->note, (s16)tx - 1, (s16)sy - 2, c2);
+                    MonsterNote_DrawLargeCrown(e->note, (s16)tx - 1, (s16)sy - 2, c2);
                 }
                 c = MonsterGroup_MinNonzero(m->sizeMin, e->emType, 0);
                 if (c > 0) {
@@ -1098,7 +1098,7 @@ void Records_DrawMonsters(RecordMenu *m, s16 x, s16 y)
                     Font_SetPos((s16)tx + 0x9A, ty + 0x14);
                     sprintf(buf, gMinSizeTexts[0], fptodp(size));
                     Text_PrintfColored(buf);
-                    MonsterList_DrawSmallMark(e->note, (s16)tx + 0x9C, (s16)sy - 2, c);
+                    MonsterNote_DrawSmallCrown(e->note, (s16)tx + 0x9C, (s16)sy - 2, c);
                 }
                 ty += 0x28;
                 j++;
@@ -1120,7 +1120,7 @@ s32 Records_CountMonsterPages(u8 *save)
     s32 q;
 
     n = 0;
-    p = gSizeRecordTbl;
+    p = gMonsterNoteDefs;
     for (i = 0; i < 0x34; i++, p++) {
         if (MonsterGroup_Sum((u16 *) (save + 0x2B0), p->emType, 0) > 0) {
             n++;

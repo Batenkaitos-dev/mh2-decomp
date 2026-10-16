@@ -401,8 +401,8 @@ s32 LobbyLeave_Run(u8 kind);
 void LobbyLeave_Reset(void);
 void LobbyExit_Draw(MenuTask *layer);
 void LobbyStream_FadeOut(s32 a);
-void SeqA_Start(s32);
-u8 SeqA_GetState(void);
+void FadeA_Start(s32);
+u8 FadeA_GetState(void);
 void Stream_Stop(s32 ch);
 void Kbd_Cancel(void);
 void LobbyScreen_ShowResult(s32 k);
@@ -436,18 +436,18 @@ void LobbyExit_Steps0(void)
             LobbyMenu_Init();
             LobbyMenu_SetDraw(LobbyExit_Draw, 0, 0, 0);
             LobbyStream_FadeOut(0xF);
-            SeqA_Start(0xA);
+            FadeA_Start(0xA);
         } else {
             gLobby->step = 3;
         }
         break;
     case 1:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             if (gLobby->quitReason != 0) {
                 Stream_Stop(0);
                 Stream_Stop(1);
                 if (gPlayers[gScene.localPlayer].state != 0xF) {
-                    SeqA_Start(2);
+                    FadeA_Start(2);
                     LobbyStream_Stop();
                     Hud_StartQuest();
                     gLobby->step += 2;
@@ -469,9 +469,9 @@ void LobbyExit_Steps0(void)
         Kbd_Cancel();
         if (gLobby->quitReason == 4) {
             LobbyText_Open(0xB);
-            SeqA_Start(2);
+            FadeA_Start(2);
         } else if (gLobby->quitReason != 0) {
-            SeqA_Start(2);
+            FadeA_Start(2);
             LobbyText_Open(9);
         }
         Area_FreeAll();
@@ -487,16 +487,16 @@ void LobbyExit_Steps0(void)
         }
         break;
     case 6:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gLobby->step++;
             if (gLobby->quitReason != 0) {
                 gLobbyMenu->redraw = 1;
-                SeqA_Start(1);
+                FadeA_Start(1);
             }
         }
         break;
     case 7:
-        if ((u8)SeqA_GetState() == 1) {
+        if ((u8)FadeA_GetState() == 1) {
             if (gLobby->quitReason != 0) {
                 gLobbyMenu->redraw = 1;
             }
@@ -545,11 +545,11 @@ void LobbyExit_Steps4(void)
             LobbyStream_FadeOut(0xF);
         }
         gLobby->step = 4;
-        SeqA_Start(0xA);
+        FadeA_Start(0xA);
         break;
     case 1:
         gLobbyMenu->hideLayers = 1;
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gLobby->step++;
             if (gLobby->quitReason != 0) {
                 Stream_Stop(0);
@@ -570,10 +570,10 @@ void LobbyExit_Steps4(void)
         break;
     case 4:
         gLobbyMenu->hideLayers = 1;
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gLobby->step++;
             LobbyLeave_Reset();
-            SeqA_Start(2);
+            FadeA_Start(2);
             LobbyText_Open(9);
             Kbd_Cancel();
         }
@@ -604,19 +604,19 @@ void LobbyExit_Steps4(void)
         if (pad & 0x20) {
             gLobby->step = 0xA;
             LobbySe_Play(0);
-            SeqA_Start(1);
+            FadeA_Start(1);
         }
         break;
     case 9:
         gLobbyMenu->redraw = 1;
         if (pad & 0x20) {
             gLobby->step++;
-            SeqA_Start(1);
+            FadeA_Start(1);
             LobbySe_Play(0);
         }
         break;
     case 10:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             Game_ResetSubsystems();
             gLobbyMenu->hideLayers = 1;
             switch (gLobby->quitReason) {

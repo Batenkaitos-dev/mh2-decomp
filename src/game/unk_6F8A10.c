@@ -246,7 +246,7 @@ void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 void Em_ComputeGoal(Em *em, f32 *target);
 void Em_ComputeGoal2(Em *em, f32 *target);
 s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_Add7F0(Em *em, s32 n);
+void Em_AddNeed1(Em *em, s32 n);
 void Em_UseGoalAction(Em *em);
 void EmKind38_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 s32 Sprite_Draw(Sprite *s);

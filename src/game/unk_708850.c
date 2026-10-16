@@ -75,7 +75,7 @@ void Em_ApplyActionStatus(Em *em, EmAction *action);
 void EmScript_Run(Em *em);
 void Em_RestartScript(Em *em);
 void StageObj_K09_Place(struct StageObj *fx);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 f32 Em_RageScale1(Em *em);
 f32 Em_RageScale2(Em *em);
 void Em_SetAreaValue89E(Em *em, EmIdPair *pair);
@@ -175,7 +175,7 @@ u8 Em_AllPlayersHere(Em *em)
     return 1;
 }
 
-void Em_SetFlag6AE(Em *em, u8 a)
+void Em_SetHitReactMode(Em *em, u8 a)
 {
     em->hitReactMode = a;
 }
@@ -536,9 +536,9 @@ void Em_UpdatePendingScript(Em *em)
     }
 }
 
-void Em_ClearFlag6AE(Em *em)
+void Em_ClearHitReactMode(Em *em)
 {
-    Em_SetFlag6AE(em, 0);
+    Em_SetHitReactMode(em, 0);
     em->stateArmor = 0;
 }
 
@@ -557,7 +557,7 @@ void Em_SetCaptured(Em *em, s32 a)
 {
     em->noHitTimer = 5;
     em->noPushTimer = 5;
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     if (a == 0) {
         em->holdTimer = 5;

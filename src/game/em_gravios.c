@@ -36,17 +36,17 @@ void QuestEm_Captured(Em *em);
 u16 Rand_Next(s32 stream);
 void EffEm08_CreateAtBone2(Em *, s32, s32, s32, s32, s32, s32);
 void EffEm11_Create(Em *, s8);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *, void *);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SetGoal12(Em *em);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
@@ -147,14 +147,14 @@ void Em_StartRage(Em *em);
 void Em_StartPendingRage(Em *em);
 void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
 void Em_ResetNotice(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_ClearPart(Em *em, u16 part);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Add7EC(Em *em, s32 n);
-void Em_Clear7F0State(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_ClearNeed1State(Em *em);
+void Em_ClearNeed2State(Em *em);
 void MinePoint_Remove(s32);
 void Vec_Copy(f32 *out, f32 *in);
 void Vec_Sub(f32 *out, f32 *a, f32 *b);
@@ -804,20 +804,20 @@ void EmGravios_State0_11(Em *em, EmWork *work)
 
 void EmGravios_State0_13(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x68, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetRow638(em, 0);
+            Em_SelectSightRow(em, 0);
             Em_LoadReactionSet(em, 0);
             EmGravios_EndState(em, 0, 0);
         }
@@ -829,7 +829,7 @@ void EmGravios_State0_12(Em *em, EmWork *work)
 {
     s16 n;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -870,7 +870,7 @@ void EmGravios_State0_12(Em *em, EmWork *work)
 
 void EmGravios_State0_14(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -905,7 +905,7 @@ void EmGravios_State0_16(Em *em, EmWork *work)
     em->hideShadowHold = 2;
     em->hideShadow = 2;
     em->blind = 2;
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -978,7 +978,7 @@ void EmGravios_State0_1A(Em *em, EmWork *work)
     em->hideShadowHold = 2;
     em->hideShadow = 2;
     em->blind = 2;
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->noReact = 0;
@@ -1011,7 +1011,7 @@ void EmGravios_State0_1A(Em *em, EmWork *work)
 
 void EmGravios_State0_1B(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1043,7 +1043,7 @@ void EmGravios_State0_1B(Em *em, EmWork *work)
 
 void EmGravios_State0_1D(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
@@ -1071,7 +1071,7 @@ void EmGravios_State0_1D(Em *em, EmWork *work)
 
 void EmGravios_State0_1F(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
@@ -2609,7 +2609,7 @@ void EmGravios_State4_0A(Em *em)
 
 void EmGravios_State4_0B(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2635,7 +2635,7 @@ void EmGravios_State4_0B(Em *em)
 
 void EmGravios_State4_0C(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2704,7 +2704,7 @@ void EmGravios_State4_0E(Em *em, s32 unused, s32 variant)
 
     k = variant & 0xFF;
     if (k == 0) {
-        Em_SetFlag6AE(em, 4U);
+        Em_SetHitReactMode(em, 4U);
         Em_SpawnEffect06Bone(em, 2);
     }
     em->holdTimer = 5;
@@ -4076,7 +4076,7 @@ void EmGravios_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmGravios_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmGravios_RunState(em, (s32) w);
@@ -4757,7 +4757,7 @@ void EmGravios_SetGroup0State(Em *em, u16 state, u8 mode)
         em->motionSpeed = 0.0f;
         break;
     case 23:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 24:
         Em_EndStatus2(em);
@@ -5540,7 +5540,7 @@ void EmKind12_Update(Em *em)
     }
     em->senseDelay = 5;
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmKind12_RunState(em);
     if (em->stateRequest != 0) {
         EmKind12_RunState(em);
@@ -5959,7 +5959,7 @@ void EmVespoid_State0_03(Em *em)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -6749,17 +6749,17 @@ void EmVespoid_State4_02(Em *em)
         Em_RestartScript(em);
         Em_BeginStatus4(em);
         em->noReact = 1;
-        Em_SetFlag6AE(em, 4U);
+        Em_SetHitReactMode(em, 4U);
         break;
     case 1:
-        Em_SetFlag6AE(em, 4U);
+        Em_SetHitReactMode(em, 4U);
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, 0x10, 0, 0);
         }
         break;
     case 2:
-        Em_SetFlag6AE(em, 4U);
+        Em_SetHitReactMode(em, 4U);
         Em_SpawnEffect06Bone(em, 2);
         if (--em->timer <= 0) {
             em->step++;
@@ -7208,7 +7208,7 @@ void EmVespoid_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmVespoid_RunState(em);
     if (em->stateRequest != 0) {
         EmVespoid_RunState(em);

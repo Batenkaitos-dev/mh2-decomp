@@ -36,8 +36,8 @@ void LobbyMenu_Init(void);
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
 void LoginWave_Clear(void);
 void LoginWave_Mark(s32);
-u8 SeqA_GetState(void);
-void SeqA_Start(s32);
+u8 FadeA_GetState(void);
+void FadeA_Start(s32);
 void Bgm_PlayWithVolume(s32, s32);
 typedef struct TextBox { u8 pad[0x18]; s32 size; } TextBox;
 void LevelList_DrawInfo(TextBox *t);
@@ -230,8 +230,8 @@ void LevelList_Init(void)
 {
     s32 i;
 
-    if (SeqA_GetState() & 0xFF) {
-        SeqA_Start(2);
+    if (FadeA_GetState() & 0xFF) {
+        FadeA_Start(2);
     }
     ChatLog_Clear();
     gLobbyLevel0Sel = 0;

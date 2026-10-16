@@ -135,7 +135,7 @@ f32 AreaGrid2_GetFloorY(f32 *pos);
 void Vec_RotateX(f32 *v, f32 a);
 void StageObj_K12_Draw(DrawSlot *node);
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 void Gfx_SetBlend(s32 a, s32 b);
 void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
 void Mtx_Identity(f32 *m);
@@ -952,7 +952,7 @@ void StageObj_K12_RunDefault(StageObj *o)
                 curve = StageObj_K12_Curves[ci];
                 Key_LerpVec3(curve, p->sc, p->delay);
                 c += 2;
-                Key_LerpF32(StageObj_K12_Curves[(s16) (ci + 1)], &p->alpha, p->delay);
+                Key_LerpFloat(StageObj_K12_Curves[(s16) (ci + 1)], &p->alpha, p->delay);
             }
             if (p->node != NULL) {
                 p->node->pos[0] = o->pos[0] + v[0];
@@ -969,7 +969,7 @@ void StageObj_K12_RunDefault(StageObj *o)
             curve = StageObj_K12_Curves[(s16) (ci + 1)];
             Key_LerpVec3(curve, p->sc, p->delay);
             c += 3;
-            Key_LerpF32(StageObj_K12_Curves[(s16) (ci + 2)], &p->alpha, p->delay);
+            Key_LerpFloat(StageObj_K12_Curves[(s16) (ci + 2)], &p->alpha, p->delay);
             if (p->node != NULL) {
                 p->node->pos[1] += 0.5f;
                 OT_AddByDepth(gDrawOtSorted, p->node, 0x40, 0);
@@ -1298,7 +1298,7 @@ void StageObj_K12_DrawType3(DrawSlot *node)
     if (mdl != NULL && mdl->active != 0) {
         mats = mdl->mats;
         Key_LerpVec3(D_008D0F34, scale, o->timer);
-        Key_LerpF32(D_008D0F38, &alpha, o->timer);
+        Key_LerpFloat(D_008D0F38, &alpha, o->timer);
         rot[2] = (6.2831855f * o->angle) / 65536.0f;
         Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, m);
         Mtx_Concat3x3(m, gCamMatrix);
@@ -2453,7 +2453,7 @@ void StageObj_K14_Run(StageObj *o)
         }
         if (p->unk01 == 0) {
             curve = StageObj_K14_Curves[ci++];
-            Key_LerpF32(curve, &p->alpha, p->time);
+            Key_LerpFloat(curve, &p->alpha, p->time);
         }
         if (p->node != NULL) {
             if (o->type == 0x10) {

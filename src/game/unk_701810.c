@@ -269,7 +269,7 @@ void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 void Em_ComputeGoal(Em *em, f32 *target);
 void Em_ComputeGoal2(Em *em, f32 *target);
 s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_Add7F0(Em *em, s32 n);
+void Em_AddNeed1(Em *em, s32 n);
 void Em_UseGoalAction(Em *em);
 /* unit's own declaration: with the definition's void (Em *em, u16 group, u16 state, u8 mode) (game/em_kushala.c), Em_ChangeState: 40 of 131 words differ */
 void EmKind38_ChangeState(Em *, s32, s32, s32);
@@ -942,7 +942,7 @@ void Em_StartGoalAction(Em *em, s32 n)
         Em_ComputeGoal(em, em->goal);
     }
     Em_UseGoalAction(em);
-    Em_Add7F0(em, n);
+    Em_AddNeed1(em, n);
 }
 
 void Em_MoveRotated(Em *em, void *src)
@@ -1361,7 +1361,7 @@ void Em_AddNotice(Em *em, s32 add, s32 max, u8 player)
     s32 n;
     s32 off;
 
-    if (pl->active != 0 && pl->stateGroup != 3) {
+    if (pl->active != 0 && pl->stateGroup != PL_GROUP_FAINT) {
         /* a byte offset of its own, added before the monster's address (`&em->noticeCount[i]` adds em
          * first) */
         off = i * 4;
@@ -2203,7 +2203,7 @@ void Em_SensePlayers(Em *em)
     for (i = 0; i < 4; i++) {
         if (gPlayers[i].active != 0) {
             if (i < gScene.playerCount) {
-                if (Obj_SameArea(em, &gPlayers[i]) != 0 && gPlayers[i].stateGroup != 3) {
+                if (Obj_SameArea(em, &gPlayers[i]) != 0 && gPlayers[i].stateGroup != PL_GROUP_FAINT) {
                     lim = gEmSenseLimits[em->type];
                     Em_GetTargetPos(em, i, out);
                     v->dist[i] = Vec_Distance(&em->posX, out);
@@ -2648,7 +2648,7 @@ void Em_CheckCarryRequest(Em *em)
     }
 }
 
-void Em_Decay7F0(Em *em)
+void Em_DecayNeed1(Em *em)
 {
     EmRate *rate = gEmRateTbl[em->type];
     s32 n;
@@ -2674,7 +2674,7 @@ void Em_Decay7F0(Em *em)
     }
 }
 
-void Em_Decay7F0Only(Em *em)
+void Em_DecayNeed1Only(Em *em)
 {
     EmRate *rate = gEmRateTbl[em->type];
     s32 n;
@@ -2690,7 +2690,7 @@ void Em_Decay7F0Only(Em *em)
     }
 }
 
-void Em_Decay7EC(Em *em)
+void Em_DecayNeed2(Em *em)
 {
     EmRate *rate = gEmDecay7ECRates[em->type];
     s32 n;
@@ -2716,7 +2716,7 @@ void Em_Decay7EC(Em *em)
     }
 }
 
-void Em_Decay7F4(Em *em)
+void Em_DecayNeed3(Em *em)
 {
     EmRate *rate = D_008BC7D0[em->type];
     s32 n;
@@ -2840,7 +2840,7 @@ u8 EmObj_AlertMonsters(EmObj *obj)
             continue;
         }
         player = &gPlayers[obj->goalArg];
-        if (Obj_SameArea(em, player) && player->stateGroup != 3) {
+        if (Obj_SameArea(em, player) && player->stateGroup != PL_GROUP_FAINT) {
             em->noticed |= 1 << obj->goalArg;
             em->noticeTimer[obj->goalArg] = Em_NoticeTime(em->type);
             r = Em_GetReaction(em, 7, obj->goalArg);

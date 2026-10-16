@@ -1,3 +1,23 @@
+/*
+ * Models and the files behind them, and the engine's vector maths
+ * (sub_main 0x335040-0x339EC0, data 0x4224E0-0x42FC30).
+ * - Loading: the stage's model files (Stage_LoadFilePair), an area's
+ *   camera data, the pack files (Pack_*: a count, then each part's offset
+ *   and size) and the area pack's environment (fog, lights, sky band).
+ * - The players' looks: a look (PlayerLook: equipment and colours) is
+ *   queued (Player_QueueLookFiles), loaded into gReadBuf by the file
+ *   loader, then applied (Player_ApplyLook, Player_LoadLookModels).
+ * - The textures loaded by id (TEX_ID_SLOTS slots) and the common texture.
+ * - Angles (16-bit, 0x10000 a turn), vectors, matrices and 2D triangles.
+ * - The players' part records and the equipment's swing chains
+ *   (EquipFx_ChainUpdate: hair, cloth and the like follow the bones).
+ * - Model set-up (Model_SetupWithPack and the like): materials, material
+ *   sets with their draw states and draw models, the skeleton
+ *   (Model_InitSkeleton, from unk_2F6540.c's skeleton files); the model
+ *   pools are in unk_339EC0.c, the model files' readers in unk_2F6540.c.
+ * Then the file's data: the file id tables of areas, equipment, texture
+ * packs and player looks, and the swing chains' parameters.
+ */
 #include "common.h"
 #include "em.h"
 #include "player.h"
@@ -7,6 +27,8 @@
 #include "scene.h"
 #include "syssettings.h"
 #include "area.h"
+#include "texture.h"
+#include "render_state.h"
 
 /* prototypes */
 void Bone_Release(s32 first, s32 n);
@@ -26,12 +48,14 @@ void Gfx_SetState63(s32 a);
 void Gfx_SetBlendOp(s32 a);
 void * memset(void *p, s32 c, u32 n);
 extern s32 gAreaCamDataFiles[];
-extern s8 gTexIds;
-extern s32 gTexIdHandles[];
+extern s8 gTexIds[TEX_ID_SLOTS];
+extern s32 gTexIdHandles[TEX_ID_SLOTS];
 extern s32 gModels;
 /* end of prototypes */
 
-/* Two files per entry, loaded one after the other into the buffer at gModelLoadBuf. */
+/* A stage's two model files (gStageFilePairs), loaded into gModelLoadBuf: the
+ * first at its start, the second at MODEL_LOAD_ALT_SKEL_OFFSET
+ * (Model_InitSkeleton's alternative skeleton). */
 typedef struct FilePair {
     s32 first;
     s32 second;
@@ -40,15 +64,18 @@ typedef struct FilePair {
 extern FilePair gStageFilePairs[];
 extern u8 *gModelLoadBuf;
 
+/* Loads stage file pair i into gModelLoadBuf (FilePair). */
 void Stage_LoadFilePair(s32 i)
 {
     u8 *buf = gModelLoadBuf;
 
     LoadFile(buf, gStageFilePairs[i].first);
-    LoadFile(buf + 0x298000, gStageFilePairs[i].second);
+    LoadFile(buf + MODEL_LOAD_ALT_SKEL_OFFSET, gStageFilePairs[i].second);
 }
 
-void func_003350B0(void)
+/* An empty function: the quest's set-up calls it last (unk_3240E0.c),
+ * and plsel calls it too. */
+void Quest_EmptyHook(void)
 {
 }
 
@@ -58,6 +85,8 @@ extern s16 gTexPrepLastCount;
 extern s16 gTexPrepLast;
 s32 Tex_Use(s32 n, u32 *handles);
 
+/* Marks the n texture handles from gTexHandles[tex] in use this frame
+ * (Tex_Use), and counts them in gTexPrepFrameCount. */
 void Tex_Prepare(s32 n, s32 tex)
 {
     if (n != 0) {
@@ -68,22 +97,26 @@ void Tex_Prepare(s32 n, s32 tex)
     }
 }
 
+/* Loads area's camera data file (gAreaCamDataFiles; 0: none) into
+ * gSysSettings.camData and relocates it, or relocates NULL when the area
+ * has none. */
 void Area_LoadCamData(s32 area)
 {
     s32 id;
-    s32 h;
+    s32 camData;
 
     id = gAreaCamDataFiles[area];
-    h = 0;
+    camData = 0;
     if (id != 0) {
         LoadCompressedFile(gSysSettings.camData, id);
-        h = (s32)gSysSettings.camData;
+        camData = (s32)gSysSettings.camData;
     }
-    CamData_Relocate((void *) h);
+    CamData_Relocate((void *) camData);
 }
 
 s32 LzDecompress(u8 *src, u8 *dst);
 
+/* LzDecompress; size, the buffer's, is not used. */
 s32 LzDecompressSized(u8 *src, u8 *dst, s32 size)
 {
     return LzDecompress(src, dst);
@@ -91,6 +124,7 @@ s32 LzDecompressSized(u8 *src, u8 *dst, s32 size)
 
 extern u8 gLookDelay[];
 
+/* Clears every player's look delay (gLookDelay): no look is pending. */
 void PlayerLook_ResetLoaded(void)
 {
     s16 i;
@@ -107,7 +141,8 @@ typedef struct PlayerLook {
     u16 kind;           /* 0x0C: the weapon kind (Player.unk30C) */
     EquipItem armour[6];/* 0x0E: Player.equip[0-5] */
     u8 colour[6];       /* 0x56: Player.armourKind */
-    u8 unk5C[2];
+    u8 variant;         /* 0x5C: Player.lookVariant (Player_BuildPartIds) */
+    u8 pad5D;
 } PlayerLook;
 u8 WeaponClass_IsGunner(u8 cls);
 u8 WeaponType_Flags(u8 cls);
@@ -115,51 +150,35 @@ u8 Equip_GetBladeSpecial(EquipItem *e);
 extern u8 gWeaponKindClass[];
 
 /* Puts look l on player p: the equipment, colours and weapon, and what depends on the weapon. */
-void Player_SetLook(Player *p, PlayerLook *l)
+void Player_SetLook(Player *pl, PlayerLook *look)
 {
     s32 i;
 
-    p->weaponKind = l->kind;
+    pl->weaponKind = look->kind;
     for (i = 0; i < 6; i++) {
-        p->equip[i] = l->armour[i];
-        p->armourKind[i] = l->colour[i];
+        pl->equip[i] = look->armour[i];
+        pl->armourKind[i] = look->colour[i];
     }
-    p->equip[6] = l->weapon;
-    p->weaponType = gWeaponKindClass[p->weaponKind];
-    p->isGunner = WeaponClass_IsGunner(p->weaponType);
-    p->weaponFlags = WeaponType_Flags(p->weaponType);
-    p->bladeSpecial = Equip_GetBladeSpecial(&p->equip[6]);
+    pl->equip[6] = look->weapon;
+    pl->weaponType = gWeaponKindClass[pl->weaponKind];
+    pl->isGunner = WeaponClass_IsGunner(pl->weaponType);
+    pl->weaponFlags = WeaponType_Flags(pl->weaponType);
+    pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[6]);
 }
 
+/* The six armour pieces as one object, so that they copy as a whole. */
 typedef struct EquipSet {
     EquipItem e[6];
 } EquipSet;
 
-typedef struct LookFile {
-    s32 unk0;
-    s32 *unk4;
-} LookFile;
-
 extern u8 *gReadBuf;
-extern LookFile *gPlayerLookFiles[];
+/* Per gender (7 sets each: the six armour parts, then the torso's
+ * alternative), per part model id, the part's texture pack. */
+extern TexPackHead *gPlayerLookFiles[];
 void Player_BuildPartIds(Player *p, u8 *ids, EquipItem *a, u8 *b);
 s16 Look_MapPartId(Player *p, s16 kind, s16 id, u8 k);
 s32 Armor_LacksSexModel(s32 id, u8 a);
 
-/* A player's model slots (as in unk_33B080.c): the body's range, then parts 1-5 each with a
- * range of slots, and the part ids at +0x8A8. */
-typedef struct PlModels {
-    u8 pad0[0x4E8];
-    s16 count;                  /* 0x4E8 */
-    s16 first;                  /* 0x4EA */
-    Model *data;                /* 0x4EC */
-    u8 pad4F0[0x4FC - 0x4F0];
-    Model *partData[6];         /* 0x4FC */
-    s16 partCount[6];           /* 0x514 */
-    s16 partFirst[6];           /* 0x520 */
-    u8 pad52C[0x8A8 - 0x52C];
-    u8 partId[6];               /* 0x8A8: 0xFF: none */
-} PlModels;
 
 extern u8 *gLoadBuf;
 void Pack_CopyParts01(u8 *pack, u8 *dst0, u8 *dst1);
@@ -168,88 +187,92 @@ s32 Model_Alloc(s32 n);
 void Model_Reserve(s32 first, s32 n);
 Model *Model_SetupLoadedPackEx(s16 idx, s32 a, s32 slot, s32 *pack, s32 b, s32 d, s32 c, s32 e);
 
-/* Loads the player's six look models (body and five parts) from the packed look files. */
-void Player_LoadLookModels(Player *p)
+/*
+ * Loads the player's six look models (the body and five parts) from the
+ * files Player_QueueLookFiles read into gReadBuf: the weapon's pack at 0,
+ * the model packs at 0x18000, then per part i the model at 0x20000 +
+ * i * 0x20000 and its texture pack 0x18000 after it. Each is unpacked
+ * through gLoadBuf into gModelLoadBuf and set up in a new model slot.
+ */
+void Player_LoadLookModels(Player *pl)
 {
-    s16 k;
+    s16 fileSet;
     u8 *end;
     s16 i;
     s32 part;
-    s16 m;
-    PlModels *pm;
+    s16 lookId;
     s16 id;
-    LookFile *f;
+    TexPackHead *pack;
     u8 *buf;
 
     buf = gModelLoadBuf;
-    end = buf + 0x128000;
-    pm = (PlModels *)p;
+    end = buf + MODEL_LOAD_SKEL_OFFSET;
 
     LzDecompressSized(gReadBuf, gLoadBuf, 0x18000);
     Pack_CopyParts01(gLoadBuf, buf, end);
-    Player_AllocWeaponModel(p->weaponKind, p->index, buf, gReadBuf + 0x18000);
-    Player_BuildPartIds(p, p->armourKind, p->equip, &p->lookVariant);
+    Player_AllocWeaponModel(pl->weaponKind, pl->index, buf, gReadBuf + 0x18000);
+    Player_BuildPartIds(pl, pl->armourKind, pl->equip, &pl->lookVariant);
     for (i = 0; i < 6; i++) {
         part = i;
-        m = Look_MapPartId(p, i, p->armourKind[part], p->lookVariant);
+        lookId = Look_MapPartId(pl, i, pl->armourKind[part], pl->lookVariant);
         if (part == 2) {
-            if (Armor_LacksSexModel(p->equip[2].id, p->gender) == 1) {
-                p->torsoAltModel = 1;
-                k = 6;
+            if (Armor_LacksSexModel(pl->equip[2].id, pl->gender) == 1) {
+                pl->torsoAltModel = 1;
+                fileSet = 6;
             } else {
-                p->torsoAltModel = 0;
-                k = i;
+                pl->torsoAltModel = 0;
+                fileSet = i;
             }
         } else {
-            k = i;
+            fileSet = i;
         }
         id = Model_Alloc(1);
         if (id < 0) {
             return;
         }
         if (part == 0) {
-            pm->first = id;
-            pm->count = 1;
-            pm->data = Model_Get(id);
+            pl->modelFirst = id;
+            pl->modelCount = 1;
+            pl->model = Model_Get(id);
         } else {
-            pm->partFirst[i] = id;
-            pm->partCount[i] = 1;
-            pm->partData[i] = Model_Get(id);
+            pl->partModelFirst[i] = id;
+            pl->partModelCount[i] = 1;
+            pl->partModels[i] = Model_Get(id);
         }
         Model_Reserve(id, 1);
-        f = gPlayerLookFiles[k + p->gender * 7];
-        f += m;
-        p->lookPartId[part] = m;
+        pack = gPlayerLookFiles[fileSet + pl->gender * 7];
+        pack += lookId;
+        pl->lookPartId[part] = lookId;
         switch (part) {
         case 0:
             LzDecompressSized(gReadBuf + 0x20000, gLoadBuf, 0x18000);
             Pack_CopyParts01(gLoadBuf, buf, end);
-            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(p->index * 12 + 0x2B + i * 2), (s32 *)f, 0x900, (u16)(p->lookVariant + p->gender * 4), 2, (s32)(gReadBuf + 0x38000));
+            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(pl->index * 12 + 0x2B + i * 2), (s32 *)pack, 0x900, (u16)(pl->lookVariant + pl->gender * 4), 2, (s32)(gReadBuf + 0x38000));
             break;
         case 1:
             LzDecompressSized(gReadBuf + 0x40000, gLoadBuf, 0x18000);
             Pack_CopyParts01(gLoadBuf, buf, end);
-            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(p->index * 12 + 0x2B + i * 2), (s32 *)f, 0x900, (u16)(p->lookVariant + p->gender * 4), 1, (s32)(gReadBuf + 0x58000));
+            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(pl->index * 12 + 0x2B + i * 2), (s32 *)pack, 0x900, (u16)(pl->lookVariant + pl->gender * 4), 1, (s32)(gReadBuf + 0x58000));
             break;
         case 2:
             LzDecompressSized(gReadBuf + 0x60000, gLoadBuf, 0x18000);
             Pack_CopyParts01(gLoadBuf, buf, end);
-            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(p->index * 12 + 0x2B + i * 2), (s32 *)f, 0x900, (u16)(p->lookVariant + p->gender * 4), 1, (s32)(gReadBuf + 0x78000));
+            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(pl->index * 12 + 0x2B + i * 2), (s32 *)pack, 0x900, (u16)(pl->lookVariant + pl->gender * 4), 1, (s32)(gReadBuf + 0x78000));
             break;
         case 3:
             LzDecompressSized(gReadBuf + 0x80000, gLoadBuf, 0x18000);
             Pack_CopyParts01(gLoadBuf, buf, end);
-            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(p->index * 12 + 0x2B + i * 2), (s32 *)f, 0x900, (u16)(p->lookVariant + p->gender * 4), 1, (s32)(gReadBuf + 0x98000));
+            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(pl->index * 12 + 0x2B + i * 2), (s32 *)pack, 0x900, (u16)(pl->lookVariant + pl->gender * 4), 1, (s32)(gReadBuf + 0x98000));
             break;
         case 4:
             LzDecompressSized(gReadBuf + 0xA0000, gLoadBuf, 0x18000);
             Pack_CopyParts01(gLoadBuf, buf, end);
-            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(p->index * 12 + 0x2B + i * 2), (s32 *)f, 0x900, (u16)(p->lookVariant + p->gender * 4), 1, (s32)(gReadBuf + 0xB8000));
+            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(pl->index * 12 + 0x2B + i * 2), (s32 *)pack, 0x900, (u16)(pl->lookVariant + pl->gender * 4), 1, (s32)(gReadBuf + 0xB8000));
             break;
         case 5:
             LzDecompressSized(gReadBuf + 0xC0000, gLoadBuf, 0x18000);
             Pack_CopyParts01(gLoadBuf, buf, end);
-            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(p->index * 12 + 0x2B + i * 2), (s32 *)f, 0x900, (u16)(p->lookVariant + p->gender * 4), 1, (s32)(gReadBuf + 0xD8000));
+            Model_SetupLoadedPackEx(id, (s32)gModelLoadBuf, (s16)(pl->index * 12 + 0x2B + i * 2), (s32 *)pack, 0x900, (u16)(pl->lookVariant + pl->gender * 4), 1, (s32)(gReadBuf + 0xD8000));
             break;
         }
     }
@@ -272,50 +295,52 @@ void Player_InitRecords(Player *p);
 /* Applies player p's pending look (gLookPending) once its delay (gLookDelay) runs out: reloads
  * its models and motions and, in the lobby, marks it loaded; in the lobby a player that left
  * (or with its slot state 2 or more) is only cleared. */
-void Player_ApplyLook(Player *p)
+void Player_ApplyLook(Player *pl)
 {
-    PlayerLook *look = &gLookPending[p->index];
+    PlayerLook *look = &gLookPending[pl->index];
 
     if (Overlay_IsLoaded(4) == 1) {
         Lobby_ReceiveWhileWaiting();
     }
-    if (gLookDelay[p->index] > 0) {
-        gLookDelay[p->index]--;
-        if (gLookDelay[p->index] > 0) {
+    if (gLookDelay[pl->index] > 0) {
+        gLookDelay[pl->index]--;
+        if (gLookDelay[pl->index] > 0) {
             return;
         }
     }
-    if (Overlay_IsLoaded(4) == 1 && ((s8)gLobbyState.lookPending[p->index] >= 2 || p->active == 0)) {
-        gLobbyState.modelLoading[p->index] = 0;
-        gLobbyState.modelLoaded[p->index] = 0;
-        gLobbyState.pcLoaded[p->index] = 0;
-        gLobbyState.lookPending[p->index] = 0;
+    if (Overlay_IsLoaded(4) == 1 && ((s8)gLobbyState.lookPending[pl->index] >= 2 || pl->active == 0)) {
+        gLobbyState.modelLoading[pl->index] = 0;
+        gLobbyState.modelLoaded[pl->index] = 0;
+        gLobbyState.pcLoaded[pl->index] = 0;
+        gLobbyState.lookPending[pl->index] = 0;
         return;
     }
-    Player_SetLook(p, look);
-    Player_FreeWeaponModel(p);
-    Player_FreeModels(p);
+    Player_SetLook(pl, look);
+    Player_FreeWeaponModel(pl);
+    Player_FreeModels(pl);
     Mem_Compact();
-    Player_InitPartTable(p->index);
-    Player_LoadLookModels(p);
-    Player_ClearFxBlock(p);
-    Player_StartMotionLayer(p, p->motionId[0], 0, 0, 0);
-    Player_StartMotionLayer(p, p->motionId[1], 0, 0, 1);
-    Player_InitRecords(p);
-    p->visible = 1;
+    Player_InitPartTable(pl->index);
+    Player_LoadLookModels(pl);
+    Player_ClearFxBlock(pl);
+    Player_StartMotionLayer(pl, pl->motionId[0], 0, 0, 0);
+    Player_StartMotionLayer(pl, pl->motionId[1], 0, 0, 1);
+    Player_InitRecords(pl);
+    pl->visible = 1;
     if (Overlay_IsLoaded(4) == 1) {
-        gLobbyState.modelLoading[p->index] = 0;
-        gLobbyState.modelLoaded[p->index] = 1;
-        gLobbyState.pcLoaded[p->index] = 1;
-        gLobbyState.lookPending[p->index] = 0;
+        gLobbyState.modelLoading[pl->index] = 0;
+        gLobbyState.modelLoaded[pl->index] = 1;
+        gLobbyState.pcLoaded[pl->index] = 1;
+        gLobbyState.lookPending[pl->index] = 0;
     }
 }
 
 void FileQueue_AddFile(u32 id, void *dst);
 
-void FileQueue_AddPlayerFile(s32 id, s32 a)
+/* Queues file id of the data archive (id | 0x30000, as LoadFile reads it)
+ * for the file loader, to be read into dst. */
+void FileQueue_AddPlayerFile(s32 id, s32 dst)
 {
-    FileQueue_AddFile(id | 0x30000, (void *)a);
+    FileQueue_AddFile(id | 0x30000, (void *)dst);
 }
 
 extern s32 *gPartModelFiles0[];
@@ -327,86 +352,93 @@ u16 Equip_GetKind(EquipItem *e);
 s32 Tex_LoadById(s32 id, s32 buf, s32 kind);
 void FileQueue_AddCall(void (*func)(void), s32 nargs, s32 a0, s32 a1, s32 a2, s32 a3);
 
-s32 Player_QueueLookFiles(Player *p)
+/*
+ * Queues the files of player p's pending look (gLookPending, filled here
+ * from its equipment) for the file loader, into gReadBuf as
+ * Player_LoadLookModels reads them, then a call of Player_ApplyLook.
+ * Returns 1, or 0 in the lobby when the player's look is already loaded
+ * or queued.
+ */
+s32 Player_QueueLookFiles(Player *pl)
 {
     s16 part;
-    s16 m;
-    s16 k;
-    s32 *tbl;
-    LookFile *f;
+    s16 lookId;
+    s16 fileSet;
+    s32 *modelFile;
+    TexPackHead *pack;
     s16 i;
-    PlayerLook *look = &gLookPending[p->index];
+    PlayerLook *look = &gLookPending[pl->index];
 
     if (Overlay_IsLoaded(4) == 1) {
-        if ((s8)gLobbyState.pcLoaded[p->index] == 1) {
+        if ((s8)gLobbyState.pcLoaded[pl->index] == 1) {
             return 0;
         }
-        if ((s8)gLobbyState.lookPending[p->index] == 1) {
+        if ((s8)gLobbyState.lookPending[pl->index] == 1) {
             return 0;
         }
     }
-    if (Overlay_IsLoaded(4) == 1 && (s8)gLobbyState.lookPending[p->index] == 0) {
-        gLobbyState.lookPending[p->index] = 1;
+    if (Overlay_IsLoaded(4) == 1 && (s8)gLobbyState.lookPending[pl->index] == 0) {
+        gLobbyState.lookPending[pl->index] = 1;
     }
-    p->weaponKind = Equip_GetKind(&p->equip[6]);
-    look->kind = p->weaponKind;
-    look->weapon = p->equip[6];
-    *(EquipSet *)look->armour = *(EquipSet *)p->equip;
-    Player_BuildPartIds(p, look->colour, look->armour, look->unk5C);
-    Tex_LoadById(look->unk5C[0] + p->gender * 4, (s32)(gReadBuf + 0xE0000), 0);
-    gLookDelay[p->index]++;
+    pl->weaponKind = Equip_GetKind(&pl->equip[6]);
+    look->kind = pl->weaponKind;
+    look->weapon = pl->equip[6];
+    *(EquipSet *)look->armour = *(EquipSet *)pl->equip;
+    Player_BuildPartIds(pl, look->colour, look->armour, &look->variant);
+    Tex_LoadById(look->variant + pl->gender * 4, (s32)(gReadBuf + 0xE0000), 0);
+    gLookDelay[pl->index]++;
     FileQueue_AddPlayerFile(gWeaponModelPackFiles[look->kind], (s32)gReadBuf);
     FileQueue_AddPlayerFile(gModelPackIds[look->kind], (s32)(gReadBuf + 0x18000));
     for (i = 0; i < 6; i++) {
         part = i;
-        m = Look_MapPartId(p, i, look->colour[part], look->unk5C[0]);
+        lookId = Look_MapPartId(pl, i, look->colour[part], look->variant);
         if (part == 2) {
-            if (Armor_LacksSexModel(look->armour[2].id, p->gender) == 1) {
-                p->torsoAltModel = 1;
-                k = 6;
+            if (Armor_LacksSexModel(look->armour[2].id, pl->gender) == 1) {
+                pl->torsoAltModel = 1;
+                fileSet = 6;
             } else {
-                p->torsoAltModel = 0;
-                k = part;
+                pl->torsoAltModel = 0;
+                fileSet = part;
             }
         } else {
-            k = part;
+            fileSet = part;
         }
-        if (p->gender == 0) {
-            tbl = gPartModelFiles0[k];
+        if (pl->gender == 0) {
+            modelFile = gPartModelFiles0[fileSet];
         } else {
-            tbl = gPartModelFiles1[k];
+            modelFile = gPartModelFiles1[fileSet];
         }
-        f = gPlayerLookFiles[k + p->gender * 7];
-        tbl += m;
-        f += m;
+        pack = gPlayerLookFiles[fileSet + pl->gender * 7];
+        modelFile += lookId;
+        pack += lookId;
         switch (part) {
         case 0:
-            FileQueue_AddPlayerFile(*tbl, (s32)(gReadBuf + 0x20000));
-            FileQueue_AddPlayerFile(gTexPackFiles[*f->unk4], (s32)(gReadBuf + 0x38000));
+            FileQueue_AddPlayerFile(*modelFile, (s32)(gReadBuf + 0x20000));
+            FileQueue_AddPlayerFile(gTexPackFiles[*pack->file], (s32)(gReadBuf + 0x38000));
             break;
         case 3:
-            FileQueue_AddPlayerFile(*tbl, (s32)(gReadBuf + 0x80000));
-            FileQueue_AddPlayerFile(gTexPackFiles[*f->unk4], (s32)(gReadBuf + 0x98000));
+            FileQueue_AddPlayerFile(*modelFile, (s32)(gReadBuf + 0x80000));
+            FileQueue_AddPlayerFile(gTexPackFiles[*pack->file], (s32)(gReadBuf + 0x98000));
             break;
         case 4:
-            FileQueue_AddPlayerFile(*tbl, (s32)(gReadBuf + 0xA0000));
-            FileQueue_AddPlayerFile(gTexPackFiles[*f->unk4], (s32)(gReadBuf + 0xB8000));
+            FileQueue_AddPlayerFile(*modelFile, (s32)(gReadBuf + 0xA0000));
+            FileQueue_AddPlayerFile(gTexPackFiles[*pack->file], (s32)(gReadBuf + 0xB8000));
             break;
         case 1:
-            FileQueue_AddPlayerFile(*tbl, (s32)(gReadBuf + 0x40000));
-            FileQueue_AddPlayerFile(gTexPackFiles[*f->unk4], (s32)(gReadBuf + 0x58000));
+            FileQueue_AddPlayerFile(*modelFile, (s32)(gReadBuf + 0x40000));
+            FileQueue_AddPlayerFile(gTexPackFiles[*pack->file], (s32)(gReadBuf + 0x58000));
             break;
         case 2:
-            FileQueue_AddPlayerFile(*tbl, (s32)(gReadBuf + 0x60000));
-            FileQueue_AddPlayerFile(gTexPackFiles[*f->unk4], (s32)(gReadBuf + 0x78000));
+            FileQueue_AddPlayerFile(*modelFile, (s32)(gReadBuf + 0x60000));
+            FileQueue_AddPlayerFile(gTexPackFiles[*pack->file], (s32)(gReadBuf + 0x78000));
             break;
         case 5:
-            FileQueue_AddPlayerFile(*tbl, (s32)(gReadBuf + 0xC0000));
-            FileQueue_AddPlayerFile(gTexPackFiles[*f->unk4], (s32)(gReadBuf + 0xD8000));
+            FileQueue_AddPlayerFile(*modelFile, (s32)(gReadBuf + 0xC0000));
+            FileQueue_AddPlayerFile(gTexPackFiles[*pack->file], (s32)(gReadBuf + 0xD8000));
             break;
         }
     }
-    FileQueue_AddCall((void (*)(void))Player_ApplyLook, 1, (s32)p, 0, 0, 0);
+    FileQueue_AddCall((void (*)(void))Player_ApplyLook, 1, (s32)pl, 0, 0, 0);
     return 1;
 }
 /*
@@ -472,32 +504,40 @@ s32 LzDecompress(u8 *src, u8 *dst)
     return dst - start;
 }
 
-s32 Pack_Count(s32 *buf)
+/*
+ * A pack file (areas, models, textures): an s32 count of parts, then per
+ * part its offset from the pack's start and its size, s32 each.
+ */
+
+/* The pack's part count. */
+s32 Pack_Count(s32 *pack)
 {
-    return *buf;
+    return *pack;
 }
 
-void *Pack_GetPart(u8 *buf, s32 a)
+/* The address of the pack's part i. */
+void *Pack_GetPart(u8 *pack, s32 i)
 {
-    return buf + *(s32 *)(buf + a * 8 + 4);
+    return pack + *(s32 *)(pack + i * 8 + 4);
 }
 
-s32 Pack_PartSize(u8 *base, s32 i)
+/* The size of the pack's part i, in bytes. */
+s32 Pack_PartSize(u8 *pack, s32 i)
 {
-    return *(s32 *)(base + i * 8 + 8);
+    return *(s32 *)(pack + i * 8 + 8);
 }
 
 void *memcpy(void *dst, const void *src, unsigned long n);
 
-/* Copies parts 0 and 1 of the pack at pack to dst0 and dst1. */
-void Pack_CopyParts01(u8 *pack, u8 *dst0, u8 *dst1)
+/* Copies parts 0 and 1 of the pack to firstDst and secondDst. */
+void Pack_CopyParts01(u8 *pack, u8 *firstDst, u8 *secondDst)
 {
     void *part;
 
     part = Pack_GetPart(pack, 0);
-    memcpy(dst0, part, Pack_PartSize(pack, 0));
+    memcpy(firstDst, part, Pack_PartSize(pack, 0));
     part = Pack_GetPart(pack, 1);
-    memcpy(dst1, part, Pack_PartSize(pack, 1));
+    memcpy(secondDst, part, Pack_PartSize(pack, 1));
 }
 
 /* Reads part 0 of the area's environment (AreaPack_ReadPart2): the fog's colour, then its two
@@ -519,30 +559,30 @@ u8 * AreaPack_ReadPart1(u8 *src)
 }
 
 /* Reads block 3 of the area pack: the sky's far point and its band (the rectangle, then the
- * eight colours stored in a mixed byte order). */
-u8 *AreaPack_ReadBlock3(u8 *p)
+ * eight colours stored in a mixed byte order). Returns the end of the block. */
+u8 *AreaPack_ReadBlock3(u8 *src)
 {
-    u8 b[4];
+    u8 bytes[4];
 
-    memcpy(gAreaState.skyPos, p, 0xC);
-    memcpy(&gAreaState.band, p + 0xC, 4);
-    memcpy(b, p + 0x10, 4);
-    gAreaState.band.c[0] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    memcpy(b, p + 0x14, 4);
-    gAreaState.band.c[1] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    memcpy(b, p + 0x18, 4);
-    gAreaState.band.c[2] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    memcpy(b, p + 0x1C, 4);
-    gAreaState.band.c[3] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    memcpy(b, p + 0x20, 4);
-    gAreaState.band.c[4] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    memcpy(b, p + 0x24, 4);
-    gAreaState.band.c[5] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    memcpy(b, p + 0x28, 4);
-    gAreaState.band.c[6] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    memcpy(b, p + 0x2C, 4);
-    gAreaState.band.c[7] = (b[3] << 24) | (b[0] << 16) | (b[1] << 8) | b[2];
-    return p + 0x30;
+    memcpy(gAreaState.skyPos, src, 0xC);
+    memcpy(&gAreaState.band, src + 0xC, 4);
+    memcpy(bytes, src + 0x10, 4);
+    gAreaState.band.c[0] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    memcpy(bytes, src + 0x14, 4);
+    gAreaState.band.c[1] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    memcpy(bytes, src + 0x18, 4);
+    gAreaState.band.c[2] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    memcpy(bytes, src + 0x1C, 4);
+    gAreaState.band.c[3] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    memcpy(bytes, src + 0x20, 4);
+    gAreaState.band.c[4] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    memcpy(bytes, src + 0x24, 4);
+    gAreaState.band.c[5] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    memcpy(bytes, src + 0x28, 4);
+    gAreaState.band.c[6] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    memcpy(bytes, src + 0x2C, 4);
+    gAreaState.band.c[7] = (bytes[3] << 24) | (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
+    return src + 0x30;
 }
 
 u8 *AreaPack_ReadBlock3(u8 *p);
@@ -550,16 +590,16 @@ u8 *AreaPack_ReadBlock3(u8 *p);
 /* Reads part 2 of the area pack: its first halfword (gAreaState.envBlocks) says which blocks follow. */
 void AreaPack_ReadPart2(s32 *pack)
 {
-    AreaState *as = &gAreaState;
+    AreaState *area = &gAreaState;
     u8 *part;
 
     if (Pack_Count(pack) < 3) {
-        as->envBlocks = 0;
+        area->envBlocks = 0;
         return;
     }
     part = Pack_GetPart((u8 *)pack, 2);
-    as->envBlocks = *(s16 *)part;
-    switch (as->envBlocks) {
+    area->envBlocks = *(s16 *)part;
+    switch (area->envBlocks) {
     case 1:
         AreaPack_ReadPart1(AreaPack_ReadPart0(part + 2));
         break;
@@ -567,36 +607,39 @@ void AreaPack_ReadPart2(s32 *pack)
         AreaPack_ReadBlock3(AreaPack_ReadPart1(AreaPack_ReadPart0(part + 2)));
         break;
     default:
-        as->envBlocks = 0;
+        area->envBlocks = 0;
         break;
     }
 }
 
+/* Empties the TEX_ID_SLOTS slots of the textures loaded by id, without
+ * freeing them (Tex_ReleaseIdSlots frees them). */
 void Tex_ClearIdSlots(void)
 {
-    memset(gTexIdHandles, 0, 0x20U);
-    memset(&gTexIds, -1, 8U);
+    memset(gTexIdHandles, 0, sizeof(gTexIdHandles));
+    memset(gTexIds, -1, sizeof(gTexIds));
 }
 
 s32 flReleaseTextureHandle(u32);
 s32 flReleasePaletteHandle(u32);
 
-/* Frees the 8 texture handles of gTexIdHandles (texture id | CLUT id << 16) and clears gTexIds. */
+/* Frees the TEX_ID_SLOTS texture handles of gTexIdHandles (a texture's
+ * handle | its CLUT's << 16) and empties their slots. */
 void Tex_ReleaseIdSlots(void)
 {
     s32 i;
-    s32 *h;
-    s8 *f;
+    s32 *handle;
+    s8 *id;
 
     i = 0;
-    h = gTexIdHandles;
-    f = &gTexIds;
+    handle = gTexIdHandles;
+    id = gTexIds;
     do {
-        s32 v = *h;
+        s32 value = *handle;
 
-        if (v != 0) {
-            u32 tex = v & 0xFFFF;
-            u32 clut = (u32)(v & 0xFFFF0000) >> 16;
+        if (value != 0) {
+            u32 tex = value & 0xFFFF;
+            u32 clut = (u32)(value & 0xFFFF0000) >> 16;
 
             if (tex != 0) {
                 flReleaseTextureHandle(tex);
@@ -605,74 +648,77 @@ void Tex_ReleaseIdSlots(void)
                 flReleasePaletteHandle(clut);
             }
         }
-        *h = 0;
+        *handle = 0;
         i++;
-        *f = -1;
-        h++;
-        f++;
-    } while (i < 8);
+        *id = -1;
+        handle++;
+        id++;
+    } while (i < TEX_ID_SLOTS);
 }
 
 extern s16 gTexByIdFiles[];
 extern s32 gTexCreateKinds[];
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 
-/* The texture handle loaded with id; loads it (file gTexByIdFiles[id] into buf, kind gTexCreateKinds[kind]) into the first free slot when it is not there. */
+/* The texture handle loaded with id, marked in use this frame; loads it
+ * first (file gTexByIdFiles[id] through buf, kind gTexCreateKinds[kind])
+ * into the first free slot when it is not there. */
 s32 Tex_LoadById(s32 id, s32 buf, s32 kind)
 {
     s32 i;
-    s8 *p;
-    u32 *h;
+    s8 *slotId;
+    u32 *handle;
 
-    for (i = 0, p = &gTexIds; i < 8; i++, p++) {
-        if (*p == -1) {
+    for (i = 0, slotId = gTexIds; i < TEX_ID_SLOTS; i++, slotId++) {
+        if (*slotId == -1) {
             break;
         }
-        if (*p == (s8)id) {
-            h = (u32 *)&gTexIdHandles[i];
-            if (*h != 0) {
-                Tex_Use(1, h);
+        if (*slotId == (s8)id) {
+            handle = (u32 *)&gTexIdHandles[i];
+            if (*handle != 0) {
+                Tex_Use(1, handle);
             }
-            return *h;
+            return *handle;
         }
     }
     LoadCompressedFile((u8 *)buf, gTexByIdFiles[id]);
-    h = (u32 *)&gTexIdHandles[i];
-    *h = Tex_CreateFromTim2((u8 *)buf, gTexCreateKinds[kind]);
-    (&gTexIds)[i] = id;
-    return *h;
+    handle = (u32 *)&gTexIdHandles[i];
+    *handle = Tex_CreateFromTim2((u8 *)buf, gTexCreateKinds[kind]);
+    gTexIds[i] = id;
+    return *handle;
 }
 
-/* The texture handle loaded with id (gTexIds, -1 ends the list), after Tex_Use(1, handle); 0 when there is none. */
+/* The texture handle loaded with id (gTexIds, -1 ends the list), marked in
+ * use this frame; 0 when there is none. buf and kind are not used. */
 s32 Tex_FindById(s8 id, u8 *buf, s32 kind)
 {
     s32 i;
-    s8 *p;
+    s8 *slotId;
 
-    for (i = 0, p = &gTexIds; i < 8; i++, p++) {
-        if (*p == -1) {
+    for (i = 0, slotId = gTexIds; i < TEX_ID_SLOTS; i++, slotId++) {
+        if (*slotId == -1) {
             break;
         }
-        if (*p == id) {
-            u32 *h = (u32 *)&gTexIdHandles[i];
+        if (*slotId == id) {
+            u32 *handle = (u32 *)&gTexIdHandles[i];
 
-            if (*h != 0) {
-                Tex_Use(1, h);
+            if (*handle != 0) {
+                Tex_Use(1, handle);
             }
-            return *h;
+            return *handle;
         }
     }
     return 0;
 }
 
-/* 1 when texture handle h is one of the 8 in gTexIdHandles. */
-s32 Tex_IsIdSlot(s32 h)
+/* 1 when texture handle h is one of the textures loaded by id. */
+s32 Tex_IsIdSlot(s32 handle)
 {
     s32 i;
-    s32 *p;
+    s32 *slot;
 
-    for (i = 0, p = gTexIdHandles; i < 8; i++, p++) {
-        if (h == *p) {
+    for (i = 0, slot = gTexIdHandles; i < TEX_ID_SLOTS; i++, slot++) {
+        if (handle == *slot) {
             return 1;
         }
     }
@@ -715,6 +761,7 @@ void Tex_LoadCommon(void)
     gLoadLettersTex = clut << 16 | tex;
 }
 
+/* A 16-bit angle (0x10000 a turn) in radians. */
 f32 Math_AngleToRad(s32 angle)
 {
     return 0.0000958738f * (f32) (angle & 0xFFFF);
@@ -723,25 +770,25 @@ f32 Math_AngleToRad(s32 angle)
 f32 Math_AngleToRad(s32 a);
 
 /* Three integer angles to floats (Player.rotX). */
-void Vec_AnglesToRad(s32 *in, f32 *out)
+void Vec_AnglesToRad(s32 *angles, f32 *out)
 {
-    out[0] = Math_AngleToRad(in[0]);
-    out[1] = Math_AngleToRad(in[1]);
-    out[2] = Math_AngleToRad(in[2]);
+    out[0] = Math_AngleToRad(angles[0]);
+    out[1] = Math_AngleToRad(angles[1]);
+    out[2] = Math_AngleToRad(angles[2]);
 }
 
 void Mtx_Identity(f32 *m);
 void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
 
 /* A rotation matrix from three integer angles (X, Y, Z order). */
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m)
+f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *mtx)
 {
-    f32 r[3];
+    f32 rad[3];
 
-    Vec_AnglesToRad(angles, r);
-    Mtx_Identity(m);
-    Mtx_SetRotXYZ(m, r[0], r[1], r[2]);
-    return m;
+    Vec_AnglesToRad(angles, rad);
+    Mtx_Identity(mtx);
+    Mtx_SetRotXYZ(mtx, rad[0], rad[1], rad[2]);
+    return mtx;
 }
 
 void Mtx_Identity(f32 *m);
@@ -750,49 +797,49 @@ void Mtx_TurnX(f32 *m, f32 a);
 void Mtx_TurnZ(f32 *m, f32 a);
 
 /* A rotation matrix from three integer angles (Y, X, Z order). */
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m)
+f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *mtx)
 {
-    f32 r[3];
+    f32 rad[3];
 
-    Vec_AnglesToRad(angles, r);
-    Mtx_Identity(m);
-    Mtx_TurnY(m, r[1]);
-    Mtx_TurnX(m, r[0]);
-    Mtx_TurnZ(m, r[2]);
-    return m;
+    Vec_AnglesToRad(angles, rad);
+    Mtx_Identity(mtx);
+    Mtx_TurnY(mtx, rad[1]);
+    Mtx_TurnX(mtx, rad[0]);
+    Mtx_TurnZ(mtx, rad[2]);
+    return mtx;
 }
 
-/* out = v * m (the rotation part); returns out. */
-f32 *Mtx_RotateVec(f32 *m, f32 *v, f32 *out)
+/* out = vec * mtx (the rotation part); returns out. */
+f32 *Mtx_RotateVec(f32 *mtx, f32 *vec, f32 *out)
 {
-    Vec_Rotate(out, v, m);
+    Vec_Rotate(out, vec, mtx);
     return out;
 }
 
 f32 Math_Atan2(f32 y, f32 x);
 
-/* The 16-bit angle of the direction from (x2, z2) to (x1, z1). */
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2)
+/* The 16-bit angle of the direction from (originX, originZ) to (targetX, targetZ). */
+u16 Math_Heading(f32 targetX, f32 targetZ, f32 originX, f32 originZ)
 {
-    f32 v[3];
+    f32 dir[3];
 
-    v[1] = 0.0f;
-    v[0] = x1 - x2;
-    v[2] = z1 - z2;
-    Vec_Normalize(v);
-    return (s32)(0.5f + 65536.0f * Math_Atan2(-v[2], v[0]) / 6.2831855f);
+    dir[1] = 0.0f;
+    dir[0] = targetX - originX;
+    dir[2] = targetZ - originZ;
+    Vec_Normalize(dir);
+    return (s32)(0.5f + 65536.0f * Math_Atan2(-dir[2], dir[0]) / 6.2831855f);
 }
 
-/* The 16-bit angle of the direction from b to a (x, z). */
-u16 Vec_Heading(f32 *a, f32 *b)
+/* The 16-bit angle of the direction from origin to target (x, z). */
+u16 Vec_Heading(f32 *target, f32 *origin)
 {
-    f32 v[3];
+    f32 dir[3];
 
-    v[0] = a[0] - b[0];
-    v[1] = 0.0f;
-    v[2] = a[2] - b[2];
-    Vec_Normalize(v);
-    return (s32)(0.5f + 65536.0f * Math_Atan2(-v[2], v[0]) / 6.2831855f);
+    dir[0] = target[0] - origin[0];
+    dir[1] = 0.0f;
+    dir[2] = target[2] - origin[2];
+    Vec_Normalize(dir);
+    return (s32)(0.5f + 65536.0f * Math_Atan2(-dir[2], dir[0]) / 6.2831855f);
 }
 
 f32 Math_Sqrtf(f32 x);
@@ -806,18 +853,18 @@ void Vec_DirToAngles(f32 *dir, s16 *pitch, s16 *yaw)
 
 void Vec4_Transform(f32 *out, f32 *v, f32 *m);
 
-/* The 16-bit heading of matrix m (its z axis in the x-z plane). */
-u16 Mtx_Heading(f32 *m)
+/* The 16-bit heading of matrix mtx (its z axis in the x-z plane). */
+u16 Mtx_Heading(f32 *mtx)
 {
-    f32 v[4];
+    f32 axisZ[4];
     f32 out[4];
 
-    v[2] = 1.0f;
-    v[3] = 1.0f;
-    v[0] = 0.0f;
-    v[1] = 0.0f;
-    Vec4_Transform(out, v, m);
-    return (s32)(0.5f + 65536.0f * Math_Atan2(-(out[2] - m[14]), out[0] - m[12]) / 6.2831855f);
+    axisZ[2] = 1.0f;
+    axisZ[3] = 1.0f;
+    axisZ[0] = 0.0f;
+    axisZ[1] = 0.0f;
+    Vec4_Transform(out, axisZ, mtx);
+    return (s32)(0.5f + 65536.0f * Math_Atan2(-(out[2] - mtx[14]), out[0] - mtx[12]) / 6.2831855f);
 }
 
 void Vec_Sub(f32 *out, f32 *a, f32 *b);
@@ -825,53 +872,53 @@ void Vec_Cross(f32 *out, f32 *a, f32 *b);
 f32 Vec_Dot(f32 *a, f32 *b);
 extern f32 gCamPos[];
 
-/* Turns the x and y axes of m about its z axis so that its x axis is square to the direction from pos to the point gCamPos (a billboard). */
-void Mtx_Billboard(f32 *m, f32 *pos)
+/* Turns the x and y axes of mtx about its z axis so that its x axis is square to the direction from pos to the point gCamPos (a billboard). */
+void Mtx_Billboard(f32 *mtx, f32 *pos)
 {
-    f32 d[3];
+    f32 toCam[3];
     f32 z[3];
     f32 x[3];
     f32 y[3];
 
-    Vec_Sub(d, gCamPos, pos);
-    Vec_Copy(z, m + 8);
-    Vec_Cross(x, d, z);
+    Vec_Sub(toCam, gCamPos, pos);
+    Vec_Copy(z, mtx + 8);
+    Vec_Cross(x, toCam, z);
     Vec_Normalize(x);
     Vec_Cross(y, z, x);
     if (!(Vec_Dot(y, y) <= 0.0001f)) {
         Vec_Cross(x, y, z);
-        Vec_Copy(m, x);
-        Vec_Copy(m + 4, y);
+        Vec_Copy(mtx, x);
+        Vec_Copy(mtx + 4, y);
     }
 }
 
 f32 Vec_Length(f32 *v);
 void Mtx_Billboard(f32 *m, f32 *pos);
 
-/* Mtx_Billboard keeping the scale of each axis of m. */
-void Mtx_BillboardScaled(f32 *m, f32 *pos)
+/* Mtx_Billboard keeping the scale of each axis of mtx. */
+void Mtx_BillboardScaled(f32 *mtx, f32 *pos)
 {
-    f32 sx = Vec_Length(m);
-    f32 sy = Vec_Length(m + 4);
-    f32 sz = Vec_Length(m + 8);
+    f32 scaleX = Vec_Length(mtx);
+    f32 scaleY = Vec_Length(mtx + 4);
+    f32 scaleZ = Vec_Length(mtx + 8);
 
-    Vec_Normalize(m + 8);
-    Mtx_Billboard(m, pos);
-    m[0] *= sx;
-    m[1] *= sx;
-    m[2] *= sx;
-    m[4] *= sy;
-    m[5] *= sy;
-    m[6] *= sy;
-    m[8] *= sz;
-    m[9] *= sz;
-    m[10] *= sz;
+    Vec_Normalize(mtx + 8);
+    Mtx_Billboard(mtx, pos);
+    mtx[0] *= scaleX;
+    mtx[1] *= scaleX;
+    mtx[2] *= scaleX;
+    mtx[4] *= scaleY;
+    mtx[5] *= scaleY;
+    mtx[6] *= scaleY;
+    mtx[8] *= scaleZ;
+    mtx[9] *= scaleZ;
+    mtx[10] *= scaleZ;
 }
 
-/* out = v normalized, times len. */
-void Vec_Resize(f32 *out, f32 len, f32 *v)
+/* out = vec normalized, times len. */
+void Vec_Resize(f32 *out, f32 len, f32 *vec)
 {
-    Vec_Copy(out, v);
+    Vec_Copy(out, vec);
     Vec_Normalize(out);
     out[0] *= len;
     out[1] *= len;
@@ -884,119 +931,120 @@ f32 Vec_Dot(f32 *a, f32 *b);
 /* A rotation matrix whose axis `axis` (0 x, 1 y, 2 z) is the direction dir
  * (normalized in place); the other two axes are made from world z (or x/y,
  * when dir is too close to it). */
-void Mtx_FromDirection(f32 *dir, f32 *m, u8 axis)
+void Mtx_FromDirection(f32 *dir, f32 *mtx, u8 axis)
 {
     f32 x[4];
     f32 y[4];
     f32 z[4];
-    f32 up[3];
+    f32 refAxis[3];
 
     Vec_Normalize(dir);
     switch (axis) {
     case 0:
-        up[0] = 0.0f;
-        up[1] = 0.0f;
-        up[2] = 1.0f;
-        Vec_Cross(y, up, dir);
+        refAxis[0] = 0.0f;
+        refAxis[1] = 0.0f;
+        refAxis[2] = 1.0f;
+        Vec_Cross(y, refAxis, dir);
         if (Vec_Dot(y, y) < 0.001f) {
-            up[2] = 0.0f;
-            up[0] = 1.0f;
-            Vec_Cross(y, up, dir);
+            refAxis[2] = 0.0f;
+            refAxis[0] = 1.0f;
+            Vec_Cross(y, refAxis, dir);
         }
         Vec_Normalize(y);
         Vec_Copy(x, dir);
         Vec_Cross(z, x, y);
         break;
     case 1:
-        up[0] = 0.0f;
-        up[1] = 0.0f;
-        up[2] = 1.0f;
-        Vec_Cross(x, dir, up);
+        refAxis[0] = 0.0f;
+        refAxis[1] = 0.0f;
+        refAxis[2] = 1.0f;
+        Vec_Cross(x, dir, refAxis);
         if (Vec_Dot(x, x) < 0.001f) {
-            up[2] = 0.0f;
-            up[1] = 1.0f;
-            Vec_Cross(x, up, dir);
+            refAxis[2] = 0.0f;
+            refAxis[1] = 1.0f;
+            Vec_Cross(x, refAxis, dir);
         }
         Vec_Normalize(x);
         Vec_Copy(y, dir);
         Vec_Cross(z, x, y);
         break;
     case 2:
-        up[0] = 0.0f;
-        up[1] = 1.0f;
-        up[2] = 0.0f;
-        Vec_Cross(x, up, dir);
+        refAxis[0] = 0.0f;
+        refAxis[1] = 1.0f;
+        refAxis[2] = 0.0f;
+        Vec_Cross(x, refAxis, dir);
         if (Vec_Dot(x, x) < 0.001f) {
-            up[2] = 1.0f;
-            up[1] = 0.0f;
-            Vec_Cross(x, dir, up);
+            refAxis[2] = 1.0f;
+            refAxis[1] = 0.0f;
+            Vec_Cross(x, dir, refAxis);
         }
         Vec_Normalize(x);
         Vec_Copy(z, dir);
         Vec_Cross(y, z, x);
         break;
     }
-    Mtx_Identity(m);
-    Vec_Copy(m, x);
-    Vec_Copy(m + 4, y);
-    Vec_Copy(m + 8, z);
+    Mtx_Identity(mtx);
+    Vec_Copy(mtx, x);
+    Vec_Copy(mtx + 4, y);
+    Vec_Copy(mtx + 8, z);
 }
 
-void Vec_Set(f32 *v, f32 x, f32 y, f32 z)
+/* vec = (x, y, z). */
+void Vec_Set(f32 *vec, f32 x, f32 y, f32 z)
 {
-    v[0] = x;
-    v[1] = y;
-    v[2] = z;
+    vec[0] = x;
+    vec[1] = y;
+    vec[2] = z;
 }
 
-/* out = a - b. */
-void Vec_Sub(f32 *out, f32 *a, f32 *b)
+/* out = lhs - rhs. */
+void Vec_Sub(f32 *out, f32 *lhs, f32 *rhs)
 {
-    out[0] = a[0] - b[0];
-    out[1] = a[1] - b[1];
-    out[2] = a[2] - b[2];
+    out[0] = lhs[0] - rhs[0];
+    out[1] = lhs[1] - rhs[1];
+    out[2] = lhs[2] - rhs[2];
 }
 
-/* out = a + b. */
-void Vec_Add(f32 *out, f32 *a, f32 *b)
+/* out = lhs + rhs. */
+void Vec_Add(f32 *out, f32 *lhs, f32 *rhs)
 {
-    out[0] = a[0] + b[0];
-    out[1] = a[1] + b[1];
-    out[2] = a[2] + b[2];
+    out[0] = lhs[0] + rhs[0];
+    out[1] = lhs[1] + rhs[1];
+    out[2] = lhs[2] + rhs[2];
 }
 
-/* out = a - b (as Vec_Sub). */
-void Vec_Diff(f32 *out, f32 *a, f32 *b)
+/* out = lhs - rhs (as Vec_Sub). */
+void Vec_Diff(f32 *out, f32 *lhs, f32 *rhs)
 {
-    out[0] = a[0] - b[0];
-    out[1] = a[1] - b[1];
-    out[2] = a[2] - b[2];
+    out[0] = lhs[0] - rhs[0];
+    out[1] = lhs[1] - rhs[1];
+    out[2] = lhs[2] - rhs[2];
 }
 
-/* out = v * s. */
-void Vec_Scale(f32 *out, f32 *v, f32 s)
+/* out = vec * scale. */
+void Vec_Scale(f32 *out, f32 *vec, f32 scale)
 {
-    out[0] = v[0] * s;
-    out[1] = v[1] * s;
-    out[2] = v[2] * s;
+    out[0] = vec[0] * scale;
+    out[1] = vec[1] * scale;
+    out[2] = vec[2] * scale;
 }
 
 f32 Vec_Length(f32 *v);
 void Vec_Cross(f32 *out, f32 *a, f32 *b);
 
-/* The unit normal of the triangle a, b, c; 0 when it is degenerate. */
 f32 Vec_Length(f32 *v);
 void Vec_Cross(f32 *out, f32 *a, f32 *b);
 
-/* The unit normal of the triangle a, b, c; 0 when it is degenerate. */
-s32 Tri_Normal(f32 *a, f32 *b, f32 *c, f32 *out)
+/* out = the unit normal of the triangle cornerA, cornerB, cornerC; returns
+ * 1, or 0 when the triangle is degenerate. */
+s32 Tri_Normal(f32 *cornerA, f32 *cornerB, f32 *cornerC, f32 *out)
 {
-    f32 ab[3];
-    f32 cb[3];
+    f32 edgeBA[3];
+    f32 edgeBC[3];
 
-    Vec_Sub(ab, a, b);
-    Vec_Sub(cb, c, b);
-    Vec_Cross(out, cb, ab);
+    Vec_Sub(edgeBA, cornerA, cornerB);
+    Vec_Sub(edgeBC, cornerC, cornerB);
+    Vec_Cross(out, edgeBC, edgeBA);
     Vec_Normalize(out);
     if (Vec_Length(out) == 0.0f) {
         return 0;
@@ -1004,70 +1052,71 @@ s32 Tri_Normal(f32 *a, f32 *b, f32 *c, f32 *out)
     return 1;
 }
 
-/* The 2D cross product (b - a) x (c - a) in x-y; products one float step apart count as equal. */
-f32 Tri_Cross2D(f32 *a, f32 *b, f32 *c)
+/* The 2D cross product (cornerB - cornerA) x (cornerC - cornerA) in x-y;
+ * products one float step apart (their bits compared) count as equal. */
+f32 Tri_Cross2D(f32 *cornerA, f32 *cornerB, f32 *cornerC)
 {
-    f32 v[2];
-    s32 pi;
-    s32 qi;
+    f32 products[2];
+    s32 bitsA;
+    s32 bitsB;
 
-    v[0] = (b[0] - a[0]) * (c[1] - a[1]);
-    v[1] = (c[0] - a[0]) * (b[1] - a[1]);
-    qi = *(s32 *)&v[1];
-    pi = *(s32 *)&v[0];
-    if (pi == qi + 1) {
-        v[0] = v[1];
+    products[0] = (cornerB[0] - cornerA[0]) * (cornerC[1] - cornerA[1]);
+    products[1] = (cornerC[0] - cornerA[0]) * (cornerB[1] - cornerA[1]);
+    bitsB = *(s32 *)&products[1];
+    bitsA = *(s32 *)&products[0];
+    if (bitsA == bitsB + 1) {
+        products[0] = products[1];
     }
-    if (pi == qi - 1) {
-        v[0] = v[1];
+    if (bitsA == bitsB - 1) {
+        products[0] = products[1];
     }
-    return v[0] - v[1];
+    return products[0] - products[1];
 }
 
-/* Whether p is inside the triangle a, b, c (by Tri_Cross2D): 1 when the
+/* Whether point is inside the triangle cornerA, cornerB, cornerC (by Tri_Cross2D): 1 when the
  * triangle's winding is negative, 2 when positive, 0 outside or when the
  * triangle is degenerate. */
-u8 Tri_Side2D(f32 *a, f32 *b, f32 *c, f32 *p)
+u8 Tri_Side2D(f32 *cornerA, f32 *cornerB, f32 *cornerC, f32 *point)
 {
-    f32 w = Tri_Cross2D(a, b, c);
+    f32 winding = Tri_Cross2D(cornerA, cornerB, cornerC);
 
-    if (w == 0.0f) {
+    if (winding == 0.0f) {
         return 0;
     }
-    if (w < 0.0f) {
-        if (!(Tri_Cross2D(a, b, p) <= 0.0f)) {
+    if (winding < 0.0f) {
+        if (!(Tri_Cross2D(cornerA, cornerB, point) <= 0.0f)) {
             return 0;
         }
-        if (!(Tri_Cross2D(b, c, p) <= 0.0f)) {
+        if (!(Tri_Cross2D(cornerB, cornerC, point) <= 0.0f)) {
             return 0;
         }
-        return !(Tri_Cross2D(c, a, p) > 0.0f) ? 1 : 0;
+        return !(Tri_Cross2D(cornerC, cornerA, point) > 0.0f) ? 1 : 0;
     }
-    if (Tri_Cross2D(a, b, p) < 0.0f) {
+    if (Tri_Cross2D(cornerA, cornerB, point) < 0.0f) {
         return 0;
     }
-    if (Tri_Cross2D(b, c, p) < 0.0f) {
+    if (Tri_Cross2D(cornerB, cornerC, point) < 0.0f) {
         return 0;
     }
-    if (Tri_Cross2D(c, a, p) < 0.0f) {
+    if (Tri_Cross2D(cornerC, cornerA, point) < 0.0f) {
         return 0;
     }
     return 2;
 }
 
-/* Whether p lies inside the triangle tri (three f32[3] corners), by the
+/* Whether point lies inside the triangle tri (three f32[3] corners), by the
  * side Tri_Side2D reports and the winding (Tri_Cross2D). */
-s32 Tri_Contains2D(f32 *tri, f32 *p)
+s32 Tri_Contains2D(f32 *tri, f32 *point)
 {
     u8 side;
     s8 sum;
-    s32 cw;
+    s32 clockwise;
 
-    cw = (s32)Tri_Cross2D(tri, tri + 3, tri + 6) <= 0;
+    clockwise = (s32)Tri_Cross2D(tri, tri + 3, tri + 6) <= 0;
     sum = 0;
-    side = Tri_Side2D(tri, tri + 3, tri + 6, p);
+    side = Tri_Side2D(tri, tri + 3, tri + 6, point);
     if (side != 0) {
-        if (cw) {
+        if (clockwise) {
             if (side == 1) {
                 sum++;
             } else {
@@ -1105,71 +1154,72 @@ void Mtx_RotateX(f32 *m, f32 a);
 void Mtx_Identity(f32 *m);
 void Mtx_Mul3x3(f32 *m, f32 *a, f32 *b);
 
-/* m = the rotation by a about x times m (3x3). */
-void Mtx_TurnX(f32 *m, f32 a)
+/* mtx = the rotation by angle (radians) about x times mtx (3x3). */
+void Mtx_TurnX(f32 *mtx, f32 angle)
 {
-    f32 r[16];
+    f32 rot[16];
 
-    Mtx_Identity(r);
-    Mtx_RotateX(r, a);
-    Mtx_Mul3x3(m, r, m);
+    Mtx_Identity(rot);
+    Mtx_RotateX(rot, angle);
+    Mtx_Mul3x3(mtx, rot, mtx);
 }
 
 void Mtx_RotateY(f32 *m, f32 angle);
 void Mtx_Identity(f32 *m);
 void Mtx_Mul3x3(f32 *m, f32 *a, f32 *b);
 
-/* m = the rotation by a about y times m (3x3). */
-void Mtx_TurnY(f32 *m, f32 a)
+/* mtx = the rotation by angle (radians) about y times mtx (3x3). */
+void Mtx_TurnY(f32 *mtx, f32 angle)
 {
-    f32 r[16];
+    f32 rot[16];
 
-    Mtx_Identity(r);
-    Mtx_RotateY(r, a);
-    Mtx_Mul3x3(m, r, m);
+    Mtx_Identity(rot);
+    Mtx_RotateY(rot, angle);
+    Mtx_Mul3x3(mtx, rot, mtx);
 }
 
 void Mtx_RotateZ(f32 *m, f32 a);
 void Mtx_Identity(f32 *m);
 void Mtx_Mul3x3(f32 *m, f32 *a, f32 *b);
 
-/* m = the rotation by a about z times m (3x3). */
-void Mtx_TurnZ(f32 *m, f32 a)
+/* mtx = the rotation by angle (radians) about z times mtx (3x3). */
+void Mtx_TurnZ(f32 *mtx, f32 angle)
 {
-    f32 r[16];
+    f32 rot[16];
 
-    Mtx_Identity(r);
-    Mtx_RotateZ(r, a);
-    Mtx_Mul3x3(m, r, m);
+    Mtx_Identity(rot);
+    Mtx_RotateZ(rot, angle);
+    Mtx_Mul3x3(mtx, rot, mtx);
 }
 
 f32 Math_Sqrtf(f32 x);
 
-/* The 16-bit elevation angle of the direction from a to b. */
-u16 Vec_Elevation(f32 *a, f32 *b)
+/* The 16-bit elevation angle of the direction from `from` to `to`. */
+u16 Vec_Elevation(f32 *from, f32 *to)
 {
-    f32 dx = b[0] - a[0];
-    f32 dy = b[1] - a[1];
-    f32 dz = b[2] - a[2];
+    f32 dx = to[0] - from[0];
+    f32 dy = to[1] - from[1];
+    f32 dz = to[2] - from[2];
 
     return (s32)(0.5f + 65536.0f * Math_Atan2(dy, Math_Sqrtf(dx * dx + dz * dz)) / 6.2831855f);
 }
 
-/* out = a * t + b * (1 - t). */
-void Vec_Lerp(f32 *out, f32 *a, f32 *b, f32 t)
+/* out = first * weight + second * (1 - weight). */
+void Vec_Lerp(f32 *out, f32 *first, f32 *second, f32 weight)
 {
-    f32 s = 1.0f - t;
+    f32 rest = 1.0f - weight;
 
-    out[0] = a[0] * t + b[0] * s;
-    out[1] = a[1] * t + b[1] * s;
-    out[2] = a[2] * t + b[2] * s;
+    out[0] = first[0] * weight + second[0] * rest;
+    out[1] = first[1] * weight + second[1] * rest;
+    out[2] = first[2] * weight + second[2] * rest;
 }
 
 f32 Math_Cos(f32 x);
 
-f32 Math_CosAngle(s32 a)
+/* The cosine of a 16-bit angle (0x10000 a turn). */
+f32 Math_CosAngle(s32 angle)
 {
-    return Math_Cos(3.1415927f * a / 32768.0f);
+    return Math_Cos(3.1415927f * angle / 32768.0f);
 }
 
 /* atan2 as a 16-bit angle (0x10000 a turn). */
@@ -1178,49 +1228,50 @@ s32 Math_Atan2Angle(f32 y, f32 x)
     return 10430.378f * Math_Atan2(y, x);
 }
 
-/* out = v * m plus the translation of m. */
-void Vec_Transform(f32 *out, f32 *v, f32 *m)
+/* out = vec * mtx plus the translation of mtx. */
+void Vec_Transform(f32 *out, f32 *vec, f32 *mtx)
 {
-    Vec_Rotate(out, v, m);
-    out[0] = out[0] + m[12];
-    out[1] = out[1] + m[13];
-    out[2] = out[2] + m[14];
+    Vec_Rotate(out, vec, mtx);
+    out[0] = out[0] + mtx[12];
+    out[1] = out[1] + mtx[13];
+    out[2] = out[2] + mtx[14];
 }
 
-void Mtx_FromAxisAngle(f32 *m, f32 *axis, f32 fparg0)
+/* mtx = the rotation by angle about axis (through a quaternion). */
+void Mtx_FromAxisAngle(f32 *mtx, f32 *axis, f32 angle)
 {
-    f32 q[3];
+    f32 quat[3];
 
-    Quat_Set((f32 *) axis, q, fparg0);
-    Quat_ToMatrix(q, (void *) m);
+    Quat_Set((f32 *) axis, quat, angle);
+    Quat_ToMatrix(quat, (void *) mtx);
 }
 
 f32 Vec_Length(f32 *v);
 
-/* The distance between a and b in the x-z plane. */
-f32 Vec_DistanceXZ(f32 *a, f32 *b)
+/* The distance between posA and posB in the x-z plane. */
+f32 Vec_DistanceXZ(f32 *posA, f32 *posB)
 {
-    f32 d[3];
+    f32 delta[3];
 
-    d[0] = a[0] - b[0];
-    d[1] = 0.0f;
-    d[2] = a[2] - b[2];
-    return Vec_Length(d);
+    delta[0] = posA[0] - posB[0];
+    delta[1] = 0.0f;
+    delta[2] = posA[2] - posB[2];
+    return Vec_Length(delta);
 }
 
 /* Turns the 16-bit angle *cur toward *target by at most step (the shorter way); returns the step taken. */
 s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step)
 {
-    s32 d;
+    s32 delta;
     s32 dist;
 
     *target = (u16)*target;
-    d = (u16)(*target - *cur);
-    dist = (d >= 0x8000) ? (u16)-d : d;
+    delta = (u16)(*target - *cur);
+    dist = (delta >= 0x8000) ? (u16)-delta : delta;
     if (dist < step) {
         step = dist;
     }
-    if (d >= 0x8000) {
+    if (delta >= 0x8000) {
         *cur -= step;
     } else {
         *cur += step;
@@ -1228,116 +1279,116 @@ s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step)
     return step;
 }
 
-/* A bone (0x190 bytes) as its scale. */
-typedef struct BoneScale {
-    u8 pad00[0xDC];
-    f32 scale[3];               /* 0xDC */
-    u8 padE8[0x190 - 0xE8];
-} BoneScale;
 
 extern PlRec gPlayerRecs[][32];
 
-/* Gives the player its 32 records (both matrices identity), marks them all and sets the
- * scale of its model's first 21 bones (in both bone sets) and records to 1. MWCC unrolls
- * the last loop by 7 only while its body is this small: the chained stores, the bone
- * pointers stepped and the records typed (no cast) in Player. */
-void Player_InitRecords(Player *p)
+/* Gives the player its 32 part records (gPlayerRecs; both matrices
+ * identity), shows all 32 meshes and sets the scale of its model's first
+ * 21 bones (in both bone sets) and of their records to 1. The last loop's
+ * chained stores and stepped bone pointers keep its body small enough for
+ * MWCC to unroll it by 7, as the original does. */
+void Player_InitRecords(Player *pl)
 {
     s16 i;
-    PlRec *r;
-    BoneScale *b;
-    BoneScale *a;
-    Model *m;
+    PlRec *rec;
+    EmBone *bone;
+    EmBone *altBone;
+    Model *body;
 
-    r = gPlayerRecs[p->index];
-    for (i = 0; i < 32; i++, r++) {
-        p->partRecs[i] = r;
-        Mtx_Identity(r->m0);
-        Mtx_Identity(r->m1);
+    rec = gPlayerRecs[pl->index];
+    for (i = 0; i < 32; i++, rec++) {
+        pl->partRecs[i] = rec;
+        Mtx_Identity(rec->m0);
+        Mtx_Identity(rec->m1);
     }
     for (i = 0; i < 32; i++) {
-        p->meshShown[i] = 1;
+        pl->meshShown[i] = 1;
     }
-    m = p->model;
-    b = (BoneScale *)m->partBones[0];
-    a = (BoneScale *)m->partBones2[0];
+    body = pl->model;
+    bone = body->partBones[0];
+    altBone = body->partBones2[0];
     for (i = 0; i < 21; i++) {
-        p->partRecs[i]->scale[0] = b->scale[0] = a->scale[0] = 1.0f;
-        p->partRecs[i]->scale[1] = b->scale[1] = a->scale[1] = 1.0f;
-        p->partRecs[i]->scale[2] = b->scale[2] = a->scale[2] = 1.0f;
-        a++;
-        b++;
+        pl->partRecs[i]->scale[0] = bone->base[0] = altBone->base[0] = 1.0f;
+        pl->partRecs[i]->scale[1] = bone->base[1] = altBone->base[1] = 1.0f;
+        pl->partRecs[i]->scale[2] = bone->base[2] = altBone->base[2] = 1.0f;
+        altBone++;
+        bone++;
     }
 }
 
-/* Sets the flag at +0x4C8 of entry sel of the range of kind (0x12: entries 2 and 3, 0xE: 4 and 5) and clears the others. */
-void PlayerRec_SelectInRange(u8 *p, u8 kind, u8 sel)
+/* Shows mesh sel of the range of kind (0x12: meshes 2 and 3, 0xE: 4 and 5)
+ * of a player or monster p and hides the range's other mesh: p's
+ * meshShown (+0x4C8, at the same place in Player and Em). */
+void Obj_ShowMeshInRange(u8 *obj, u8 kind, u8 sel)
 {
     u8 first;
-    u8 n;
+    u8 count;
     u8 i;
 
     switch (kind) {
     case 0x12:
-        n = 2;
-        first = n;
+        count = 2;
+        first = count;
         break;
     case 0xE:
-        n = 2;
+        count = 2;
         first = 4;
         break;
     default:
         return;
     }
-    for (i = first; i < first + n; i++) {
+    for (i = first; i < first + count; i++) {
         if (i == sel + first) {
-            p[0x4C8 + i] = 1;
+            obj[0x4C8 + i] = 1;
         } else {
-            p[0x4C8 + i] = 0;
+            obj[0x4C8 + i] = 0;
         }
     }
 }
 
-void FxBlock_Clear(EquipFxSwing *p)
+/* Clears the four swing chains of an equipment's effects. */
+void FxBlock_Clear(EquipFxSwing *swing)
 {
     s16 i;
 
     i = 0;
     do {
-        p->vel[0][0] = 0.0f;
-        p->vel[0][1] = 0.0f;
-        p->vel[0][2] = 0.0f;
-        p->vel[1][0] = 0.0f;
-        p->vel[1][1] = 0.0f;
-        p->vel[1][2] = 0.0f;
-        p->calls = 0;
-        p->unk01[0] = 0;
-        p->unk01[1] = 0;
-        p->unk01[2] = 0;
+        swing->vel[0][0] = 0.0f;
+        swing->vel[0][1] = 0.0f;
+        swing->vel[0][2] = 0.0f;
+        swing->vel[1][0] = 0.0f;
+        swing->vel[1][1] = 0.0f;
+        swing->vel[1][2] = 0.0f;
+        swing->calls = 0;
+        swing->unk01[0] = 0;
+        swing->unk01[1] = 0;
+        swing->unk01[2] = 0;
         i++;
-        p++;
+        swing++;
     } while (i < 4);
 }
 
 void FxBlock_Clear(EquipFxSwing *p);
 
-void Player_ClearFxBlock(Player *p)
+/* Clears the player's equipment swing chains (FxBlock_Clear). */
+void Player_ClearFxBlock(Player *pl)
 {
-    FxBlock_Clear(p->equipFx);
+    FxBlock_Clear(pl->equipFx);
 }
 
 void Player_RunEquipEffects(Player *p);
 
-/* Player_RunEquipEffects for each player in use (online, only those flagged at +0x152E of the lobby state at *0x8EA908). */
+/* Player_RunEquipEffects for each active, visible player (online, only
+ * those whose model the lobby has loaded: gLobby's pcLoaded). */
 void Players_RunEquipEffects(void)
 {
     s16 i;
-    Player *p;
+    Player *pl;
 
-    for (i = 0, p = gPlayers; i < 10; i++, p++) {
-        if (p->active != 0 && p->visible != 0) {
-            if (gScene.online == 0 || *(s8 *)(*(s32 *)&gLobby + i + 0x152E) != 0) {
-                Player_RunEquipEffects(p);
+    for (i = 0, pl = gPlayers; i < 10; i++, pl++) {
+        if (pl->active != 0 && pl->visible != 0) {
+            if (gScene.online == 0 || (s8)gLobby->pcLoaded[i] != 0) {
+                Player_RunEquipEffects(pl);
             }
         }
     }
@@ -1349,8 +1400,8 @@ typedef struct FxIdList {
     s32 key;
     s16 *ids;
 } FxIdList;
-extern FxIdList *D_0044A858[];
-extern FxIdList *D_0044A860[];
+extern FxIdList *gEquipFxListsAltTorso[];
+extern FxIdList *gEquipFxListsTorso[];
 extern s16 gLobbyActorFxIds[];
 extern u32 gEffectListPoints[];
 s32 EquipFx_ChainUpdate(EquipFxSwing *a, EmBone *b1, EmBone *b2, EmBone *m, f32 **list, s16 n);
@@ -1389,38 +1440,44 @@ void Mtx_Copy(f32 *dst, f32 *src);
 void Mtx_GetTrans(f32 *out, f32 *m);
 s32 Vec_ProjectOnDir(f32 *p, f32 *o, f32 *t, f32 *out, f32 r);
 
-/* Moves the bone chains of list (FxChain rows) on m's bones: from the third call on (a[0], one
- * 0x20-byte record per chain), each bone's direction follows its parent (b1 first), pulled by
- * gEquipFxPulls, swung by the chain's up vector with its velocity at a + 4 (damped by
- * gEquipFxDamps), pushed off b2's target by Vec_ProjectOnDir, and clamped by gEquipFxClamps.
- * FAKEMATCH: (round 30) two forms only mirror the game's allocation. (1) The copies b1, b2,
- * m are made again in the outer loop's step: a plain copy of a parameter is propagated away
- * and spills as the parameter (a 4-byte slot), where the game spills b1, b2 and m as locals
- * (16-byte slots 0x100..0xE0); two definitions keep them variables, and the step copies give
- * no code. (2) The clamp reads dir[1] and dir[2] through dy and dz, set before the loop: the
- * game numbers its two hoisted addresses before bone and st (s4, s3 over s2, s1), which
- * MWCC's own hoisting doesn't (docs/notes/nm/EquipFx_ChainUpdate.md). */
 #pragma optimization_level 4
-s32 EquipFx_ChainUpdate(EquipFxSwing *pa, EmBone *pb1, EmBone *pb2, EmBone *pm, f32 **list, s16 pn)
+/*
+ * Moves the count bone chains of list (FxChain rows) on the part's bones:
+ * from the third call on (swing->calls; one EquipFxSwing per chain), each
+ * bone's direction follows its parent (baseBone first), pulled by
+ * gEquipFxPulls, swung by the chain's up vector with its velocity
+ * (swing->vel, damped by gEquipFxDamps), pushed off pushBone's target by
+ * Vec_ProjectOnDir, and clamped by gEquipFxClamps. Returns 0.
+ * FAKEMATCH: two forms only mirror the game's allocation. (1) The copies
+ * baseBone, pushBone and bones are made again in the outer loop's step: a
+ * plain copy of a parameter is propagated away and spills as the parameter
+ * (a 4-byte slot), where the game spills them as locals (16-byte slots
+ * 0x100..0xE0); two definitions keep them variables, and the step copies
+ * give no code. (2) The clamp reads dir[1] and dir[2] through dy and dz,
+ * set before the loop: the game numbers its two hoisted addresses before
+ * bone and swingRec (s4, s3 over s2, s1), which MWCC's own hoisting
+ * doesn't (docs/notes/nm/EquipFx_ChainUpdate.md).
+ */
+s32 EquipFx_ChainUpdate(EquipFxSwing *swingsIn, EmBone *baseBoneIn, EmBone *pushBoneIn, EmBone *bonesIn, f32 **list, s16 countIn)
 {
-    EmBone *b1 = pb1;
-    EmBone *b2 = pb2;
-    EmBone *m = pm;
-    EquipFxSwing *a;
-    s32 n = pn;
+    EmBone *baseBone = baseBoneIn;
+    EmBone *pushBone = pushBoneIn;
+    EmBone *bones = bonesIn;
+    EquipFxSwing *swing;
+    s32 count = countIn;
     s16 i;
     s16 j;
     s16 k;
     s32 end;
-    FxChain **l;
+    FxChain **chain;
     f32 *dy;
     f32 *dz;
     EmBone *bone;
-    u8 *st;
-    s32 cl;
-    f32 *c;
-    f32 rx;
-    f32 rz;
+    u8 *swingRec;
+    s32 clampIdx;
+    f32 *clampRow;
+    f32 angleX;
+    f32 angleZ;
     f32 vec[4];
     f32 wpos[4];
     f32 tip[4];
@@ -1429,49 +1486,49 @@ s32 EquipFx_ChainUpdate(EquipFxSwing *pa, EmBone *pb1, EmBone *pb2, EmBone *pm, 
     f32 tgt[4];
     f32 hit[4];
     f32 side[4];
-    f32 side2[4];
-    f32 up0[4];
+    f32 swingDir[4];
+    f32 baseUp[4];
     f32 off[4];
     f32 pos[4];
     f32 cur[16];
     f32 inv[16];
-    f32 mtx2[16];
+    f32 pushMtx[16];
 
     i = 0;
-    if (i < n) {
-    l = (FxChain **)list;
-    a = pa;
+    if (i < count) {
+    chain = (FxChain **)list;
+    swing = swingsIn;
     dy = &dir[1];
     dz = &dir[2];
     do {
-        up0[0] = gEquipFxBases[(*l)->base][0];
-        up0[1] = gEquipFxBases[(*l)->base][1];
-        up0[2] = gEquipFxBases[(*l)->base][2];
-        Vec_RotateSelf(up0, (f32 *)b1);
-        if (a->calls < 2) {
-            a->calls++;
+        baseUp[0] = gEquipFxBases[(*chain)->base][0];
+        baseUp[1] = gEquipFxBases[(*chain)->base][1];
+        baseUp[2] = gEquipFxBases[(*chain)->base][2];
+        Vec_RotateSelf(baseUp, (f32 *)baseBone);
+        if (swing->calls < 2) {
+            swing->calls++;
             continue;
         }
-        if ((*l)->target != -1) {
-            Vec_Copy(tgt, gEquipFxTargets[(*l)->target]);
-            Mtx_Copy(mtx2, (f32 *)b2);
-            Vec_RotateSelf(tgt, mtx2);
+        if ((*chain)->target != -1) {
+            Vec_Copy(tgt, gEquipFxTargets[(*chain)->target]);
+            Mtx_Copy(pushMtx, (f32 *)pushBone);
+            Vec_RotateSelf(tgt, pushMtx);
         }
         upv[0] = 0.0f;
-        upv[1] = gEquipFxUps[(*l)->up];
+        upv[1] = gEquipFxUps[(*chain)->up];
         upv[2] = 0.0f;
-        Vec_Add(upv, upv, up0);
-        k = gEquipFxRanges[(*l)->range].start;
-        end = gEquipFxRanges[(*l)->range].end;
+        Vec_Add(upv, upv, baseUp);
+        k = gEquipFxRanges[(*chain)->range].start;
+        end = gEquipFxRanges[(*chain)->range].end;
         j = 0;
         if (k < end) {
-            st = (u8 *) a; /* the record walked by bone: vel[j] at st + 4 (the game keeps the record base) */
-            bone = &m[k];
+            swingRec = (u8 *) swing; /* walked per bone: vel[j] at swingRec + 4 (the game keeps the record's base) */
+            bone = &bones[k];
             do {
             Mtx_GetTrans(wpos, bone->world);
             Mtx_GetTrans(off, bone->local);
             if (j == 0) {
-                Mtx_Copy(cur, (f32 *)b1);
+                Mtx_Copy(cur, (f32 *)baseBone);
             } else {
                 Mtx_Mul(inv, bone->parent->local, cur);
                 Mtx_Copy(cur, inv);
@@ -1481,116 +1538,121 @@ s32 EquipFx_ChainUpdate(EquipFxSwing *pa, EmBone *pb1, EmBone *pb2, EmBone *pm, 
             Mtx_GetTrans(off, bone[1].local);
             Vec_Rotate(vec, off, (f32 *)bone);
             Vec_Sub(dir, wpos, pos);
-            Vec_Scale(dir, dir, gEquipFxPulls[(*l)->pull]);
+            Vec_Scale(dir, dir, gEquipFxPulls[(*chain)->pull]);
             Vec_Add(vec, vec, dir);
             Vec_Cross(side, vec, upv);
-            Vec_Cross(side2, side, vec);
-            Vec_Normalize(side2);
-            Vec_Scale(side2, side2, Vec_Dot(side2, upv));
-            Vec_Add((f32 *)(st + 4), (f32 *)(st + 4), side2);
-            Vec_Add(vec, vec, (f32 *)(st + 4));
+            Vec_Cross(swingDir, side, vec);
+            Vec_Normalize(swingDir);
+            Vec_Scale(swingDir, swingDir, Vec_Dot(swingDir, upv));
+            Vec_Add((f32 *)(swingRec + 4), (f32 *)(swingRec + 4), swingDir);
+            Vec_Add(vec, vec, (f32 *)(swingRec + 4));
             Vec_Add(tip, pos, vec);
             Mtx_Inverse(inv, cur);
-            if ((*l)->target == -1) {
+            if ((*chain)->target == -1) {
                 dir[0] = -vec[0];
                 dir[1] = -vec[1];
                 dir[2] = -vec[2];
                 Vec_RotateSelf(dir, inv);
                 Vec_Normalize(dir);
             } else {
-                Mtx_Copy(mtx2, (f32 *)b2);
-                if (Vec_ProjectOnDir(tip, &mtx2[12], tgt, hit, gEquipFxLimits[j + (*l)->limit * 2]) != 0) {
+                Mtx_Copy(pushMtx, (f32 *)pushBone);
+                if (Vec_ProjectOnDir(tip, &pushMtx[12], tgt, hit, gEquipFxLimits[j + (*chain)->limit * 2]) != 0) {
                     Vec_Add(tip, tip, hit);
                 }
                 Vec_Sub(dir, pos, tip);
                 Vec_RotateSelf(dir, inv);
                 Vec_Normalize(dir);
             }
-            if (j == 0 || ((*l)->flags & 1)) {
-                cl = (*l)->clamp;
-                if (cl != -1) {
-                    c = gEquipFxClamps[(s16)cl];
-                    if (dir[0] < c[0]) {
-                        dir[0] = c[0];
-                    } else if (dir[0] > c[1]) {
-                        dir[0] = c[1];
+            if (j == 0 || ((*chain)->flags & 1)) {
+                clampIdx = (*chain)->clamp;
+                if (clampIdx != -1) {
+                    clampRow = gEquipFxClamps[(s16)clampIdx];
+                    if (dir[0] < clampRow[0]) {
+                        dir[0] = clampRow[0];
+                    } else if (dir[0] > clampRow[1]) {
+                        dir[0] = clampRow[1];
                     }
-                    if (*dy < c[2]) {
-                        *dy = c[2];
-                    } else if (*dy > c[3]) {
-                        *dy = c[3];
+                    if (*dy < clampRow[2]) {
+                        *dy = clampRow[2];
+                    } else if (*dy > clampRow[3]) {
+                        *dy = clampRow[3];
                     }
-                    if (*dz < c[4]) {
-                        *dz = c[4];
-                    } else if (*dz > c[5]) {
-                        *dz = c[5];
+                    if (*dz < clampRow[4]) {
+                        *dz = clampRow[4];
+                    } else if (*dz > clampRow[5]) {
+                        *dz = clampRow[5];
                     }
                 }
             }
-            rx = Math_Atan2(dir[2], dir[1]);
-            rz = Math_Atan2(-dir[0], Math_Sqrtf(dir[1] * dir[1] + dir[2] * dir[2]));
+            angleX = Math_Atan2(dir[2], dir[1]);
+            angleZ = Math_Atan2(-dir[0], Math_Sqrtf(dir[1] * dir[1] + dir[2] * dir[2]));
             Mtx_Identity(inv);
-            Mtx_RotateZ(inv, rz);
-            Mtx_RotateX(inv, rx);
+            Mtx_RotateZ(inv, angleZ);
+            Mtx_RotateX(inv, angleX);
             Vec_Copy(&bone->local[0], &inv[0]);
             Vec_Copy(&bone->local[4], &inv[4]);
             Vec_Copy(&bone->local[8], &inv[8]);
-            Vec_Scale((f32 *)(st + 4), (f32 *)(st + 4), gEquipFxDamps[(*l)->damp]);
+            Vec_Scale((f32 *)(swingRec + 4), (f32 *)(swingRec + 4), gEquipFxDamps[(*chain)->damp]);
                 k++;
                 bone++;
-                st += 0xC;
+                swingRec += 0xC;
                 j++;
             } while (k < end);
         }
-    } while (a++, l++, b1 = pb1, b2 = pb2, m = pm, ++i < n);
+    } while (swing++, chain++, baseBone = baseBoneIn, pushBone = pushBoneIn, bones = bonesIn, ++i < count);
     }
     return 0;
 }
 #pragma optimization_level reset
 
-/* Runs the effects listed for key under kind (the second table when alt) on m
- * (when its +0xC2 is at least 5). */
-void Effect_RunList(a, b1, b2, m, key, alt, kind)
-    EquipFxSwing *a;
-    EmBone *b1;
-    EmBone *b2;
-    EmBone *m;
+/*
+ * Runs the swing chains listed for key (the torso armour's kind) under kind
+ * (the gender) on the part's bones, when it has at least 5 bones: from
+ * gEquipFxListsAltTorso when the torso uses the alternative model (alt 0),
+ * else from gEquipFxListsTorso. Each list entry names up to four rows of
+ * gEffectListPoints (-1 ends it).
+ */
+void Effect_RunList(swing, baseBone, pushBone, bones, key, alt, kind)
+    EquipFxSwing *swing;
+    EmBone *baseBone;
+    EmBone *pushBone;
+    EmBone *bones;
     u16 key;
     u8 alt;
     u8 kind;
 {
     f32 *list[4];
-    FxIdList *l;
+    FxIdList *entry;
     s16 i;
     s16 *ids;
     s16 id;
-    s16 n;
+    s16 listLen;
 
-    if (m->count > 4) {
+    if (bones->count > 4) {
         if (alt == 0) {
-            l = D_0044A858[kind];
+            entry = gEquipFxListsAltTorso[kind];
         } else {
-            l = D_0044A860[kind];
+            entry = gEquipFxListsTorso[kind];
         }
         ids = NULL;
-        for (; l->key != -1; l++) {
-            if (l->key == key) {
-                ids = l->ids;
+        for (; entry->key != -1; entry++) {
+            if (entry->key == key) {
+                ids = entry->ids;
                 break;
             }
         }
         if (ids != NULL) {
             i = 0;
-            n = 0;
+            listLen = 0;
             for (; i < 4; i++) {
                 if ((id = *ids) == -1) {
                     break;
                 }
-                list[n++] = ((f32 (*)[4])gEffectListPoints)[id];
+                list[listLen++] = ((f32 (*)[4])gEffectListPoints)[id];
                 ids++;
             }
-            if (n != 0) {
-                EquipFx_ChainUpdate(a, b1, b2, m, list, n);
+            if (listLen != 0) {
+                EquipFx_ChainUpdate(swing, baseBone, pushBone, bones, list, listLen);
             }
         }
     }
@@ -1599,57 +1661,63 @@ void Effect_RunList(a, b1, b2, m, key, alt, kind)
 EmBone *Em_GetBone(void *obj, s16 bone);
 s32 Armor_LacksSexModel(s32 id, u8 a);
 
-/* A player's swinging equipment parts (equipFx), from bones 0x14 and 0xA, on the bones of its part 2's
- * model when it has one. */
-void Player_RunEquipEffects(Player *p)
+/* Moves the player's swinging equipment parts (equipFx) on the bones of its
+ * torso model (part 2), when it has one: the chains start from bone 0x14
+ * and are pushed off bone 0xA. */
+void Player_RunEquipEffects(Player *pl)
 {
-    if (p->partModels[2] != NULL) {
-        s32 k = p->armourKind[2];
-        s32 flag = Armor_LacksSexModel(p->equip[2].id, p->gender) != 1;
-        EmBone *b1 = Em_GetBone(p, 0x14);
+    if (pl->partModels[2] != NULL) {
+        s32 torsoKind = pl->armourKind[2];
+        s32 ownModel = Armor_LacksSexModel(pl->equip[2].id, pl->gender) != 1;
+        EmBone *baseBone = Em_GetBone(pl, 0x14);
 
-        Effect_RunList(p->equipFx, b1, Em_GetBone(p, 0xA), p->partModels[2]->bones, k, flag, p->gender);
+        Effect_RunList(pl->equipFx, baseBone, Em_GetBone(pl, 0xA), pl->partModels[2]->bones, torsoKind, ownModel, pl->gender);
     }
 }
 
-/* Runs the fixed effect list gLobbyActorFxIds on m (when its +0xC2 is at least 27). */
-void Effect_RunFixedList(EquipFxSwing *a, EmBone *b1, EmBone *b2, EmBone *m)
+/* Runs the swing chains of the fixed list gLobbyActorFxIds on the bones,
+ * when there are at least 27 of them. */
+void Effect_RunFixedList(EquipFxSwing *swing, EmBone *baseBone, EmBone *pushBone, EmBone *bones)
 {
     f32 *list[4];
     s16 i;
     s16 *ids;
     s16 id;
-    s16 n;
+    s16 listLen;
 
-    if (m->count > 0x1A) {
+    if (bones->count > 0x1A) {
         ids = gLobbyActorFxIds;
         if (ids != NULL) {
             i = 0;
-            n = 0;
+            listLen = 0;
             for (; i < 4; i++) {
                 if ((id = *ids) == -1) {
                     break;
                 }
-                list[n++] = ((f32 (*)[4])gEffectListPoints)[id];
+                list[listLen++] = ((f32 (*)[4])gEffectListPoints)[id];
                 ids++;
             }
-            if (n != 0) {
-                EquipFx_ChainUpdate(a, b1, b2, m, list, n);
+            if (listLen != 0) {
+                EquipFx_ChainUpdate(swing, baseBone, pushBone, bones, list, listLen);
             }
         }
     }
 }
 
+/* Clears every model of the pool at gModels and frees every slot of the
+ * material, bone, material set and draw model pools. */
 void Model_ResetAll(void)
 {
-    memset((void *) gModels, 0, 0x4000U);
-    Material_Release(0, 0x400);
-    Bone_Release(0, 0x800);
-    MatSet_Release(0, 0x180);
-    Model_Release(0, 0x80);
+    memset((void *) gModels, 0, MODEL_POOL_COUNT * sizeof(Model));
+    Material_Release(0, MATERIAL_POOL_COUNT);
+    Bone_Release(0, BONE_POOL_COUNT);
+    MatSet_Release(0, MATSET_POOL_COUNT);
+    Model_Release(0, MODEL_POOL_COUNT);
 }
 
-/* Draw state settings: each field indexes one of the D_0042FBxx tables. */
+/* A model file part's draw states (ModelFile_GetDrawStates): each field
+ * indexes a table of values for one render state (gDrawState15Values ...)
+ * or gives bits of the set's packed flags (DrawStates_Apply). */
 typedef struct DrawStates {
     s32 unk0;
     s32 s15;        /* 0x04: gDrawState15Values, state 0x15 */
@@ -1680,21 +1748,22 @@ extern s32 gDrawState62Values[4];
 extern s32 gDrawState00Values[4];
 s32 Gs_SetState(u8 reg, u32 v);
 
-/* Sets the GS states of ds and packs its other settings into *flags (for Draw_ApplyStates). */
-void DrawStates_Apply(DrawStates *ds, s32 *flags)
+/* Sets the render states of ds and packs its other settings into *flags
+ * (bit 0 set; for Draw_ApplyStates). */
+void DrawStates_Apply(DrawStates *states, s32 *flags)
 {
-    Gs_SetState(0x15, gDrawState15Values[ds->s15]);
-    Gs_SetState(0x12, gDrawState12Values[ds->s12]);
-    Gs_SetState(1, gDrawState01Values[ds->s01]);
-    Gs_SetState(2, gDrawState02Values[ds->s02]);
-    Gs_SetState(0xC, gDrawState0CValues[ds->s0C]);
-    Gs_SetState(0x66, gDrawState66Values[ds->s66]);
-    Gs_SetState(0x62, gDrawState62Values[ds->s62]);
-    Gs_SetState(0, gDrawState00Values[ds->s00]);
-    if (gDrawState66Values[ds->s66] == 1) {
-        Gs_SetState(0x67, -1);
+    Gs_SetState(0x15, gDrawState15Values[states->s15]);
+    Gs_SetState(0x12, gDrawState12Values[states->s12]);
+    Gs_SetState(1, gDrawState01Values[states->s01]);
+    Gs_SetState(2, gDrawState02Values[states->s02]);
+    Gs_SetState(RS_SCISSOR, gDrawState0CValues[states->s0C]);
+    Gs_SetState(0x66, gDrawState66Values[states->s66]);
+    Gs_SetState(0x62, gDrawState62Values[states->s62]);
+    Gs_SetState(0, gDrawState00Values[states->s00]);
+    if (gDrawState66Values[states->s66] == 1) {
+        Gs_SetState(RS_COLOR2, -1);
     }
-    switch (ds->s5D) {
+    switch (states->s5D) {
     case 6:
         Gs_SetState(0x5D, 0x06000000);
         break;
@@ -1707,13 +1776,13 @@ void DrawStates_Apply(DrawStates *ds, s32 *flags)
         break;
     }
     *flags = 1;
-    *flags |= (ds->s66 & 1) << 1;
-    *flags |= (ds->f2 & 0xF) << 2;
-    *flags |= (ds->f6 & 0xF) << 6;
-    *flags |= (ds->f10 & 3) << 10;
-    *flags |= (ds->f12 & 1) << 12;
-    *flags |= (ds->f13 & 3) << 13;
-    *flags |= (ds->s0C & 1) << 15;
+    *flags |= (states->s66 & 1) << 1;
+    *flags |= (states->f2 & 0xF) << 2;
+    *flags |= (states->f6 & 0xF) << 6;
+    *flags |= (states->f10 & 3) << 10;
+    *flags |= (states->f12 & 1) << 12;
+    *flags |= (states->f13 & 3) << 13;
+    *flags |= (states->s0C & 1) << 15;
 }
 
 extern s32 gDrawBlendFactors[];
@@ -1724,18 +1793,22 @@ void Gfx_SetBlend(s32 a, s32 b);
 void Gfx_SetBlendOp(s32 a);
 void Gfx_SetState63(s32 a);
 
-/* Applies packed draw states when bit 0 is set: bits 2-5 and 6-9 Gfx_SetBlend, 10-11 Gfx_SetBlendOp, 12 Gfx_SetState63, 13-14 mode 0x64, 15 mode 0xC. */
-void Draw_ApplyStates(u32 f)
+/* Applies a material set's packed draw states (DrawStates_Apply) when bit 0
+ * is set: bits 2-5 and 6-9 Gfx_SetBlend, 10-11 Gfx_SetBlendOp, 12
+ * Gfx_SetState63, 13-14 render state 0x64, 15 RS_SCISSOR. */
+void Draw_ApplyStates(u32 packed)
 {
-    if (f & 1) {
-        Gfx_SetBlend(gDrawBlendFactors[(f >> 2) & 0xF], gDrawBlendFactors[(f >> 6) & 0xF]);
-        Gfx_SetBlendOp(gDrawBlendOps[(f >> 10) & 3]);
-        Gfx_SetState63(gDrawState63Values[(f >> 12) & 1]);
-        Gs_SetState(0x64, gDrawState64Values[(f >> 13) & 3]);
-        Gs_SetState(0xC, gDrawState0CValues[(f >> 15) & 1]);
+    if (packed & 1) {
+        Gfx_SetBlend(gDrawBlendFactors[(packed >> 2) & 0xF], gDrawBlendFactors[(packed >> 6) & 0xF]);
+        Gfx_SetBlendOp(gDrawBlendOps[(packed >> 10) & 3]);
+        Gfx_SetState63(gDrawState63Values[(packed >> 12) & 1]);
+        Gs_SetState(0x64, gDrawState64Values[(packed >> 13) & 3]);
+        Gs_SetState(RS_SCISSOR, gDrawState0CValues[(packed >> 15) & 1]);
     }
 }
 
+/* The default blending (Gfx_SetBlend(4, 5), operation 0) with filtered
+ * textures. */
 void Draw_SetDefaultState(void)
 {
     Gfx_SetBlend(4, 5);
@@ -1743,14 +1816,6 @@ void Draw_SetDefaultState(void)
     Gfx_SetState63(1);
 }
 
-typedef struct SkelHeader {
-    s16 unk0;
-    s16 count;
-    s32 size;
-    struct SkelHeader *next;
-    s32 unkC;
-} SkelHeader;
-/* A bone slot of the 0x190-byte pool (Bone_Get). */
 s32 SkelFile_BoneCount(void *f);
 s32 SkelFile_PartCount(void *f);
 s32 SkelFile_PartBoneCount(void *f, s32 i);
@@ -1762,35 +1827,36 @@ EmBone *Bone_Get(s32 i);
 void Bone_Reserve(s32 first, s32 n);
 
 /*
- * Sets model m up with kind 0 (none), 1 (one bone set) or 2 (two sets) of the skeleton
- * file at base + 0x128000 (+ 0x298000 with alt): its bones, and for each part its skeleton
- * copy and first bones. `off` holds the part count for kind 2 and `first` is reused as the
- * part counter: their registers (the permuter found the first).
+ * Sets the model up with kind 0 (none), 1 (one bone set) or 2 (two sets)
+ * of the skeleton file at base + MODEL_LOAD_SKEL_OFFSET
+ * (MODEL_LOAD_ALT_SKEL_OFFSET with alt): its bones, and for each part its
+ * skeleton copy and first bones. `off` holds the part count for kind 2 and `first` is reused as the
+ * part counter, which the original's register use needs.
  */
-void Model_InitSkeleton(u8 *base, Model *m, s32 kind, s32 alt)
+void Model_InitSkeleton(u8 *base, Model *model, s32 kind, s32 alt)
 {
     EmBone *bones;
-    s32 b;
+    s32 boneIdx;
     s32 off;
-    SkelHeader h;
+    SkelHeader skel;
     EmBone *bone;
     s32 first;
     EmBone *bones2;
     s32 n;
 
     if (alt != 0) {
-        base = (u8 *)base + 0x298000;
+        base = (u8 *)base + MODEL_LOAD_ALT_SKEL_OFFSET;
     } else {
-        base = (u8 *)base + 0x128000;
+        base = (u8 *)base + MODEL_LOAD_SKEL_OFFSET;
     }
-    m->boneKind = kind;
+    model->boneKind = kind;
     switch (kind) {
     case 0:
-        m->boneFirst = 0;
-        m->boneCount = 0;
-        m->bones = NULL;
-        m->bones2 = NULL;
-        m->partCount = 0;
+        model->boneFirst = 0;
+        model->boneCount = 0;
+        model->bones = NULL;
+        model->bones2 = NULL;
+        model->partCount = 0;
         return;
     case 1:
         n = SkelFile_BoneCount(base);
@@ -1804,35 +1870,34 @@ void Model_InitSkeleton(u8 *base, Model *m, s32 kind, s32 alt)
     if (first < 0) {
         return;
     }
-    m->boneFirst = first;
-    m->boneCount = n;
-    m->bones = Bone_Get(first);
+    model->boneFirst = first;
+    model->boneCount = n;
+    model->bones = Bone_Get(first);
     if (kind == 2) {
-        m->bones2 = Bone_Get(first + n / 2);
+        model->bones2 = Bone_Get(first + n / 2);
     } else {
-        m->bones2 = NULL;
+        model->bones2 = NULL;
     }
     Bone_Reserve(first, n);
-    m->partCount = SkelFile_PartCount(base);
-    b = 0;
-    bones = m->bones;
-    bones2 = m->bones2;
-    for (first = 0; first < m->partCount; first++) {
-        SkelFile_BuildPart(&h, (SkelHeader *)gLoadBuf, base, first);
-        m->partSkels[first] = (s32)Skeleton_CopyData((u8 *)&h);
-        off = b * sizeof(EmBone);
-        Bone_InitTreeRoot((EmBone *)((u8 *)bones + off), m->partSkels[first]);
-        m->partBones[first] = (EmBone *)((u8 *)bones + off);
+    model->partCount = SkelFile_PartCount(base);
+    boneIdx = 0;
+    bones = model->bones;
+    bones2 = model->bones2;
+    for (first = 0; first < model->partCount; first++) {
+        SkelFile_BuildPart(&skel, (SkelHeader *)gLoadBuf, base, first);
+        model->partSkels[first] = (s32)Skeleton_CopyData((u8 *)&skel);
+        off = boneIdx * sizeof(EmBone);
+        Bone_InitTreeRoot((EmBone *)((u8 *)bones + off), model->partSkels[first]);
+        model->partBones[first] = (EmBone *)((u8 *)bones + off);
         if (kind == 2) {
-            Bone_InitTreeRoot((EmBone *)((u8 *)bones2 + off), m->partSkels[first]);
-            m->partBones2[first] = (EmBone *)((u8 *)bones2 + off);
+            Bone_InitTreeRoot((EmBone *)((u8 *)bones2 + off), model->partSkels[first]);
+            model->partBones2[first] = (EmBone *)((u8 *)bones2 + off);
         }
-        b += SkelFile_PartBoneCount(base, first);
+        boneIdx += SkelFile_PartBoneCount(base, first);
     }
 }
 
-/* Model_InitMatSets: sets up a model's material sets (0x8C-byte records) from its file:
- * draw states, texture is and each set's model, then its skeleton. */
+
 extern char D_0046CEA0[];
 extern char D_0046CEC0[];
 extern char D_0046CEE0[];
@@ -1855,38 +1920,47 @@ s32 Model_Create(MeshDesc *hdr, u32 flags);
 s32 SysHeap_GetMark(void *mark);
 void SysHeap_Release(void *mark);
 
-void Model_InitMatSets(Model *m, s32 arg1, s32 kind, s32 alt)
+/*
+ * Sets up the model's material sets (ModelMatSet), one per part of its
+ * file: each set's render states (from the file's draw states, or
+ * defaults), its materials (set as the RS_MATERIAL states) and its draw
+ * model (Model_Create); then its skeleton (kind, alt: Model_InitSkeleton).
+ * setupFlags: 0x100 picks gMatSetModelKinds[1] for the draw models; 0x200,
+ * 0x800, 0x1000 and 0x2000 give render states 1, 0x12, 0x66 and 0 other
+ * values.
+ */
+void Model_InitMatSets(Model *model, s32 setupFlags, s32 kind, s32 alt)
 {
     MeshDesc desc;
-    DrawStates ds;
+    DrawStates states;
     u8 mark[8];
     s32 j;
-    ModelMatSet *p;
+    ModelMatSet *set;
     ModelMat *mats;
     u8 *base;
     s32 i;
     s32 sel;
     u16 flags;
 
-    flags = arg1;
+    flags = setupFlags;
     sel = (flags & 0x100) / 256;
-    base = m->file;
-    m->matSetCount = ModelFile_PartCount(base);
-    if (m->matSetCount == 0) {
+    base = model->file;
+    model->matSetCount = ModelFile_PartCount(base);
+    if (model->matSetCount == 0) {
         Debug_Message(D_0046CEA0, 0, 0, 0);
     }
-    i = MatSet_FindFree(m->matSetCount);
+    i = MatSet_FindFree(model->matSetCount);
     if (i < 0) {
         return;
     }
-    m->matSetFirst = i;
-    p = m->matSets = MatSet_Get(i);
-    MatSet_Reserve(i, m->matSetCount);
-    Gs_SetState(0xC, 0);
-    mats = m->mats;
-    for (i = 0; i < m->matSetCount; i++, p++) {
-        if (ModelFile_GetDrawStates(&ds, base, i) >= 0) {
-            DrawStates_Apply(&ds, &p->flags);
+    model->matSetFirst = i;
+    set = model->matSets = MatSet_Get(i);
+    MatSet_Reserve(i, model->matSetCount);
+    Gs_SetState(RS_SCISSOR, 0);
+    mats = model->mats;
+    for (i = 0; i < model->matSetCount; i++, set++) {
+        if (ModelFile_GetDrawStates(&states, base, i) >= 0) {
+            DrawStates_Apply(&states, &set->flags);
             if (flags & 0x800) {
                 Gs_SetState(0x12, D_0042FB34);
             }
@@ -1897,9 +1971,9 @@ void Model_InitMatSets(Model *m, s32 arg1, s32 kind, s32 alt)
                 Gs_SetState(0, 0x20);
             }
         } else {
-            p->flags = 0;
+            set->flags = 0;
             Gs_SetState(0x66, 0);
-            Gs_SetState(0xC, 0);
+            Gs_SetState(RS_SCISSOR, 0);
             Gs_SetState(0x62, 0);
             Gs_SetState(0, 0);
             Gs_SetState(2, 0);
@@ -1920,71 +1994,72 @@ void Model_InitMatSets(Model *m, s32 arg1, s32 kind, s32 alt)
                 Gs_SetState(0, 0);
             }
         }
-        p->count = ModelFile_PartMatCount(base, i);
-        if (p->count == 0) {
-            Debug_Message(D_0046CEC0, (s16)i, m->matSetCount, 0);
+        set->count = ModelFile_PartMatCount(base, i);
+        if (set->count == 0) {
+            Debug_Message(D_0046CEC0, (s16)i, model->matSetCount, 0);
         }
-        if (ModelFile_GetPartMats(base, i, p->mat) == 0) {
-            Debug_Message(D_0046CEE0, (s16)i, m->matSetCount, 0);
+        if (ModelFile_GetPartMats(base, i, set->mat) == 0) {
+            Debug_Message(D_0046CEE0, (s16)i, model->matSetCount, 0);
         }
-        for (j = 0; j < p->count; j++) {
-            Gs_SetState((u8)(j + 0x3A), (s32)&mats[p->mat[j]]);
+        for (j = 0; j < set->count; j++) {
+            Gs_SetState((u8)RS_MATERIAL(j), (s32)&mats[set->mat[j]]);
         }
         SysHeap_GetMark(mark);
         if (ModelFile_LoadMesh(&desc, base, i) != 0) {
-            p->id = Model_Create(&desc, gMatSetModelKinds[sel]);
+            set->id = Model_Create(&desc, gMatSetModelKinds[sel]);
         } else {
-            Debug_Message(D_0046CF00, (s16)i, m->matSetCount, 0);
-            p->id = -1;
+            Debug_Message(D_0046CF00, (s16)i, model->matSetCount, 0);
+            set->id = -1;
         }
         SysHeap_Release(mark);
     }
-    Model_InitSkeleton(base, m, kind, alt);
+    Model_InitSkeleton(base, model, kind, alt);
     Gs_SetState(0x12, 0);
     Gs_SetState(0x66, 0);
-    Gs_SetState(0xC, 0);
+    Gs_SetState(RS_SCISSOR, 0);
 }
 
-/* Model_InitMatSets for a model with matrix slot slot: its material sets' matrix lists
- * (gModelPartLists[slot], -1 filled, then read by ModelFile_GetPartList), one heap mark for all. */
 extern s16 gModelPartLists[][16][0x21];
 s32 ModelFile_GetPartList(s16 *out, u8 *f, s32 idx);
 
-void Model_InitMatSetsSlot(Model *m, s32 arg1, u8 slot, s32 kind)
+/* Model_InitMatSets for a model with matrix slot `slot`: also its material
+ * sets' matrix lists (gModelPartLists[slot], filled with -1, then read by
+ * ModelFile_GetPartList), with one heap mark for all the draw models. */
+void Model_InitMatSetsSlot(Model *model, s32 setupFlags, u8 slot, s32 kind)
 {
     MeshDesc desc;
-    DrawStates ds;
+    DrawStates states;
     u8 mark[8];
     s32 j;
-    ModelMatSet *p;
+    ModelMatSet *set;
     ModelMat *mats;
     u8 *base;
     s32 i;
     s32 sel;
     u16 flags;
 
-    flags = arg1;
+    flags = setupFlags;
     sel = (flags & 0x100) / 256;
-    base = m->file;
-    m->matSetCount = ModelFile_PartCount(base);
-    if (m->matSetCount == 0) {
+    base = model->file;
+    model->matSetCount = ModelFile_PartCount(base);
+    if (model->matSetCount == 0) {
         Debug_Message(D_0046CEA0, 0, 0, 0);
     }
-    i = MatSet_FindFree(m->matSetCount);
+    i = MatSet_FindFree(model->matSetCount);
     if (i < 0) {
         return;
     }
-    m->matSetFirst = i;
-    p = m->matSets = MatSet_Get(i);
-    MatSet_Reserve(i, m->matSetCount);
-    mats = m->mats;
-    Gs_SetState(0xC, 0);
+    model->matSetFirst = i;
+    set = model->matSets = MatSet_Get(i);
+    MatSet_Reserve(i, model->matSetCount);
+    mats = model->mats;
+    Gs_SetState(RS_SCISSOR, 0);
     SysHeap_GetMark(mark);
-    for (i = 0; i < m->matSetCount; i++, p++) {
-        if (ModelFile_GetDrawStates(&ds, base, i) >= 0) {
-            DrawStates_Apply(&ds, &p->flags);
+    for (i = 0; i < model->matSetCount; i++, set++) {
+        if (ModelFile_GetDrawStates(&states, base, i) >= 0) {
+            DrawStates_Apply(&states, &set->flags);
         } else {
-            p->flags = 0;
+            set->flags = 0;
             Gs_SetState(0x62, 0);
             Gs_SetState(0, 0);
             Gs_SetState(0x15, gMatSetState15[0]);
@@ -2001,36 +2076,36 @@ void Model_InitMatSetsSlot(Model *m, s32 arg1, u8 slot, s32 kind)
             }
             Gs_SetState(2, 0);
         }
-        p->count = ModelFile_PartMatCount(base, i);
-        if (p->count == 0) {
-            Debug_Message(D_0046CEC0, (s16)i, m->matSetCount, 0);
+        set->count = ModelFile_PartMatCount(base, i);
+        if (set->count == 0) {
+            Debug_Message(D_0046CEC0, (s16)i, model->matSetCount, 0);
         }
-        if (ModelFile_GetPartMats(base, i, p->mat) == 0) {
-            Debug_Message(D_0046CEE0, (s16)i, m->matSetCount, 0);
+        if (ModelFile_GetPartMats(base, i, set->mat) == 0) {
+            Debug_Message(D_0046CEE0, (s16)i, model->matSetCount, 0);
         }
-        for (j = 0; j < p->count; j++) {
-            Gs_SetState((u8)(j + 0x3A), (s32)&mats[p->mat[j]]);
+        for (j = 0; j < set->count; j++) {
+            Gs_SetState((u8)RS_MATERIAL(j), (s32)&mats[set->mat[j]]);
         }
         if (ModelFile_LoadMesh(&desc, base, i) != 0) {
-            p->id = Model_Create(&desc, gMatSetModelKinds[sel]);
-            if (p->id == 0) {
-                Debug_Message(D_0046CF00, (s16)i, m->matSetCount, 0);
+            set->id = Model_Create(&desc, gMatSetModelKinds[sel]);
+            if (set->id == 0) {
+                Debug_Message(D_0046CF00, (s16)i, model->matSetCount, 0);
             }
         } else {
-            Debug_Message(D_0046CF00, (s16)i, m->matSetCount, 0);
-            p->id = -1;
+            Debug_Message(D_0046CF00, (s16)i, model->matSetCount, 0);
+            set->id = -1;
         }
     }
-    for (i = 0; i < m->matSetCount; i++) {
+    for (i = 0; i < model->matSetCount; i++) {
         for (j = 0; j < 0x40; j++) {
             gModelPartLists[slot][i][j] = -1;
         }
     }
-    for (i = 0; i < m->matSetCount; i++) {
+    for (i = 0; i < model->matSetCount; i++) {
         ModelFile_GetPartList(gModelPartLists[slot][i], base, i);
     }
     SysHeap_Release(mark);
-    Model_InitSkeleton(base, m, kind, 0);
+    Model_InitSkeleton(base, model, kind, 0);
 }
 
 INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_335040", D_0046CEA0);
@@ -2046,14 +2121,14 @@ struct Obj50 *Material_Get(s32 i);
 void Material_Reserve(s32 first, s32 n);
 
 /* Allocates the materials of model data f (ModelFile_MatCount of them) and reads them, their texture ids made handles; -1 when the pool is full. */
-s32 Model_LoadMaterials(Model *m, s32 f)
+s32 Model_LoadMaterials(Model *model, s32 file)
 {
     s32 i;
     s32 first;
     s32 n;
     ModelMat *mat;
 
-    n = (s16)ModelFile_MatCount((u8 *)f);
+    n = (s16)ModelFile_MatCount((u8 *)file);
     if (n == 0) {
         Debug_Message("MATERIAL NUM IS ZERO !!", 0, 0, 0);
     }
@@ -2061,14 +2136,14 @@ s32 Model_LoadMaterials(Model *m, s32 f)
     if (first < 0) {
         return -1;
     }
-    m->matFirst = first;
-    m->matCount = n;
-    m->mats = (ModelMat *)Material_Get(first);
+    model->matFirst = first;
+    model->matCount = n;
+    model->mats = (ModelMat *)Material_Get(first);
     Material_Reserve(first, n);
-    mat = m->mats;
-    for (i = 0; i < m->matCount; i++, mat++) {
-        ModelFile_ReadMat(f, i, mat);
-        mat->tex = gTexHandles[m->texSlot + mat->tex];
+    mat = model->mats;
+    for (i = 0; i < model->matCount; i++, mat++) {
+        ModelFile_ReadMat(file, i, mat);
+        mat->tex = gTexHandles[model->texSlot + mat->tex];
     }
     return 0;
 }
@@ -2078,112 +2153,118 @@ s32 Tex_LoadPack(s32 id, s16 slot, s32 kind);
 void Model_InitMatSets(Model *m, s32 a, s32 b, s32 c);
 s32 Model_LoadMaterials(Model *m, s32 a);
 
-/* Sets up model idx from data a with the texture pack file tex in slot (Model_SetupTexPack with two more arguments). */
-Model *Model_SetupWithPack(s16 idx, s32 a, s32 slot, s32 tex, s32 b, s32 c)
+/* Sets up model idx from model file modelFile with the texture pack file
+ * packId in texture slot `slot`: its materials, material sets (setupFlags,
+ * Model_InitMatSets) and skeleton (skelKind). Returns the model, or NULL
+ * when the material pool is full. */
+Model *Model_SetupWithPack(s16 idx, s32 modelFile, s32 slot, s32 packId, s32 setupFlags, s32 skelKind)
 {
-    Model *m = Model_Get(idx);
+    Model *model = Model_Get(idx);
 
-    m->active = 1;
-    m->unk75 = 0;
-    m->unk01 = 0;
-    m->file = (u8 *)a;
-    m->texSlot = slot;
-    m->texCount = Tex_LoadPack(tex, slot, 0);
-    if (Model_LoadMaterials(m, a) == -1) {
+    model->active = 1;
+    model->unk75 = 0;
+    model->unk01 = 0;
+    model->file = (u8 *)modelFile;
+    model->texSlot = slot;
+    model->texCount = Tex_LoadPack(packId, slot, 0);
+    if (Model_LoadMaterials(model, modelFile) == -1) {
         return NULL;
     }
-    Model_InitMatSets(m, b, c, 0);
-    return m;
+    Model_InitMatSets(model, setupFlags, skelKind, 0);
+    return model;
 }
 
 /* unit's own declaration: as Tex_LoadPack above; with s32 Model_SetupWithPackRaw differs by 15 words */
 s32 Tex_LoadPackRaw(s32 id, s16 slot, s32 kind);
 
 /* As Model_SetupWithPack with Tex_LoadPackRaw, and Model_InitMatSets mode 1. */
-Model *Model_SetupWithPackRaw(s16 idx, s32 a, s32 slot, s32 tex, s32 b, s32 c)
+Model *Model_SetupWithPackRaw(s16 idx, s32 modelFile, s32 slot, s32 packId, s32 setupFlags, s32 skelKind)
 {
-    Model *m = Model_Get(idx);
+    Model *model = Model_Get(idx);
 
-    m->active = 1;
-    m->unk75 = 0;
-    m->unk01 = 0;
-    m->file = (u8 *)a;
-    m->texSlot = slot;
-    m->texCount = Tex_LoadPackRaw(tex, slot, 0);
-    if (Model_LoadMaterials(m, a) == -1) {
+    model->active = 1;
+    model->unk75 = 0;
+    model->unk01 = 0;
+    model->file = (u8 *)modelFile;
+    model->texSlot = slot;
+    model->texCount = Tex_LoadPackRaw(packId, slot, 0);
+    if (Model_LoadMaterials(model, modelFile) == -1) {
         return NULL;
     }
-    Model_InitMatSets(m, b, c, 1);
-    return m;
+    Model_InitMatSets(model, setupFlags, skelKind, 1);
+    return model;
 }
 
 /* unit's own declaration: s16 slot, as Tex_LoadPack above */
 s32 Tex_LoadPackLz(s32 id, s16 slot, s32 kind, s32 d);
 
-/* As Model_SetupWithPack with Tex_LoadPackLz (one more argument, d). */
-Model *Model_SetupWithPackEx(s16 idx, s32 a, s32 slot, s32 tex, s32 b, s32 c, s32 d)
+/* As Model_SetupWithPack with a texture pack packed in memory at src
+ * (Tex_LoadPackLz; packId is not used). */
+Model *Model_SetupWithPackEx(s16 idx, s32 modelFile, s32 slot, s32 packId, s32 setupFlags, s32 skelKind, s32 src)
 {
-    Model *m = Model_Get(idx);
+    Model *model = Model_Get(idx);
 
-    m->active = 1;
-    m->unk75 = 0;
-    m->unk01 = 0;
-    m->file = (u8 *)a;
-    m->texSlot = slot;
-    m->texCount = Tex_LoadPackLz(tex, slot, 0, d);
-    if (Model_LoadMaterials(m, a) == -1) {
+    model->active = 1;
+    model->unk75 = 0;
+    model->unk01 = 0;
+    model->file = (u8 *)modelFile;
+    model->texSlot = slot;
+    model->texCount = Tex_LoadPackLz(packId, slot, 0, src);
+    if (Model_LoadMaterials(model, modelFile) == -1) {
         return NULL;
     }
-    Model_InitMatSets(m, b, c, 0);
-    return m;
+    Model_InitMatSets(model, setupFlags, skelKind, 0);
+    return model;
 }
 void Tex_LoadPackFile(s32 *pack, s16 slot, s32 kind, u16 d); /* unit's own declaration: with the definition's void (TexPackHead *p, s32 slot, s32 kind, s32 d) (sub_main/unk_333D70.c), Model_SetupLoadedPack 8 of 62 words differ */
 
-/* As Model_SetupWithPack with an already loaded texture pack (Tex_LoadPackFile), or no texture when pack is NULL. */
-Model *Model_SetupLoadedPack(s16 idx, s32 a, s32 slot, s32 *pack, s32 b, s32 d, s32 c)
+/* As Model_SetupWithPack with a model's texture pack (Tex_LoadPackFile,
+ * secondId its second texture), or no texture when pack is NULL. */
+Model *Model_SetupLoadedPack(s16 idx, s32 modelFile, s32 slot, s32 *pack, s32 setupFlags, s32 secondId, s32 skelKind)
 {
-    Model *m = Model_Get(idx);
+    Model *model = Model_Get(idx);
 
-    m->active = 1;
-    m->unk75 = 0;
-    m->unk01 = 0;
-    m->file = (u8 *)a;
-    m->texSlot = (u16)slot;
+    model->active = 1;
+    model->unk75 = 0;
+    model->unk01 = 0;
+    model->file = (u8 *)modelFile;
+    model->texSlot = (u16)slot;
     if (pack != NULL) {
-        m->texCount = *pack;
-        Tex_LoadPackFile(pack, slot, 0, d);
+        model->texCount = *pack;
+        Tex_LoadPackFile(pack, slot, 0, secondId);
     } else {
-        m->texCount = 0;
+        model->texCount = 0;
     }
-    if (Model_LoadMaterials(m, a) == -1) {
+    if (Model_LoadMaterials(model, modelFile) == -1) {
         return NULL;
     }
-    Model_InitMatSets(m, b, c, 0);
-    return m;
+    Model_InitMatSets(model, setupFlags, skelKind, 0);
+    return model;
 }
 void Tex_LoadPackLzHigh(s32 *pack, s16 slot, s32 kind, u16 d, s32 e); /* unit's own declaration: with the definition's void (TexPackHead *p, s32 slot, s32 kind, s32 d, s32 src) (sub_main/unk_333D70.c), Model_SetupLoadedPackEx 38 of 67 words differ */
 
-/* As Model_SetupLoadedPack with Tex_LoadPackLzHigh (one more argument, e). */
-Model *Model_SetupLoadedPackEx(s16 idx, s32 a, s32 slot, s32 *pack, s32 b, s32 d, s32 c, s32 e)
+/* As Model_SetupLoadedPack with the pack packed in memory at src
+ * (Tex_LoadPackLzHigh). */
+Model *Model_SetupLoadedPackEx(s16 idx, s32 modelFile, s32 slot, s32 *pack, s32 setupFlags, s32 secondId, s32 skelKind, s32 src)
 {
-    Model *m = Model_Get(idx);
+    Model *model = Model_Get(idx);
 
-    m->active = 1;
-    m->unk75 = 0;
-    m->unk01 = 0;
-    m->file = (u8 *)a;
-    m->texSlot = (u16)slot;
+    model->active = 1;
+    model->unk75 = 0;
+    model->unk01 = 0;
+    model->file = (u8 *)modelFile;
+    model->texSlot = (u16)slot;
     if (pack != NULL) {
-        m->texCount = *pack;
-        Tex_LoadPackLzHigh(pack, slot, 0, d, e);
+        model->texCount = *pack;
+        Tex_LoadPackLzHigh(pack, slot, 0, secondId, src);
     } else {
-        m->texCount = 0;
+        model->texCount = 0;
     }
-    if (Model_LoadMaterials(m, a) == -1) {
+    if (Model_LoadMaterials(model, modelFile) == -1) {
         return NULL;
     }
-    Model_InitMatSets(m, b, c, 0);
-    return m;
+    Model_InitMatSets(model, setupFlags, skelKind, 0);
+    return model;
 }
 
 /* unk_335040's .data (0x4224E0-0x42FC30) */

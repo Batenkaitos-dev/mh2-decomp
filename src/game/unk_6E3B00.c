@@ -108,7 +108,7 @@ void EffEm33_DrawPart(DrawSlot *d);
 EmBone *Em_GetBone(void *obj, s16 bone);
 extern u8 EffEm33_SeqTypes[];
 extern u16 EffEm33_SeqFrames[];
-f32 Lure_RandUnit(void);
+f32 Rand_Unit(void);
 void Vec_RotateX(f32 *v, f32 angle);
 extern s16 EffEm33_PartPeriods[];
 void Vec_RotateY(f32 *v, f32 angle);
@@ -127,7 +127,7 @@ extern s16 EffEm33_MotionBase[];
 extern void *EffEm33_MotionDesc;
 typedef struct EffPart { s16 slot; u8 type; u8 unk03; f32 vec[3]; u32 color; f32 size[3]; f32 scale; DrawSlot *draw; f32 unk28; s16 unk2C; u16 unk2E; u16 unk30; u16 unk32; s16 unk34; s16 unk36; s16 unk38; u8 unk3A; u8 unk3B; } EffPart;
 void EffEm33_StartPart(ObjAttach *o, EffPart *p);
-f32 Lure_RandSigned(void);
+f32 Rand_Signed(void);
 u16 Area_IdForCurrentTime(u16);
 ObjAttach *ObjAttach_Alloc(s32 n);
 void ObjAttach_Free(ObjAttach *p);
@@ -1274,9 +1274,9 @@ void EffEm33_Run(ObjAttach *o)
             case 13:
                 switch (p->type) {
                 case 3:
-                    p->vec[0] = 40.0f * Lure_RandSigned();
-                    p->vec[1] = 40.0f * Lure_RandSigned();
-                    p->vec[2] = 40.0f * Lure_RandSigned();
+                    p->vec[0] = 40.0f * Rand_Signed();
+                    p->vec[1] = 40.0f * Rand_Signed();
+                    p->vec[2] = 40.0f * Rand_Signed();
                     p->unk32 = Rand_Next(1);
                     break;
                 }
@@ -2238,7 +2238,7 @@ void EffEm33_StartPartType0(ObjAttach *o, EffPart *p)
         p->vec[1] += v[1];
         p->vec[2] += v[2];
         p->unk32 = Rand_Next(1);
-        p->unk38 = 0.5f + (65536.0f * ((20.0f + 20.0f * Lure_RandUnit()) / 30.0f)) / 360.0f;
+        p->unk38 = 0.5f + (65536.0f * ((20.0f + 20.0f * Rand_Unit()) / 30.0f)) / 360.0f;
         if (p->unk32 & 1) {
             p->unk38 = -p->unk38;
         }
@@ -2252,7 +2252,7 @@ void EffEm33_StartPartType0(ObjAttach *o, EffPart *p)
         p->vec[0] += v[0];
         p->vec[1] += v[1];
         p->vec[2] += v[2];
-        p->scale = m->scaleX * (1.0f + Lure_RandUnit());
+        p->scale = m->scaleX * (1.0f + Rand_Unit());
         p->unk2E = Rand_Next(1);
         p->unk30 = Rand_Next(1);
         p->unk32 = Rand_Next(1);
@@ -2391,9 +2391,9 @@ void EffEm33_StartPartType9(ObjAttach *o, EffPart *p)
     if (Rand_Next(1) & 1) {
         p->unk38 = -p->unk38;
     }
-    p->vec[0] = p->scale * (40.0f * Lure_RandSigned());
-    p->vec[1] = p->scale * (40.0f * Lure_RandSigned());
-    p->vec[2] = p->scale * (40.0f * Lure_RandSigned());
+    p->vec[0] = p->scale * (40.0f * Rand_Signed());
+    p->vec[1] = p->scale * (40.0f * Rand_Signed());
+    p->vec[2] = p->scale * (40.0f * Rand_Signed());
 }
 
 void EffEm33_PlaceAtBone(ObjAttach *o, u16 *ang)

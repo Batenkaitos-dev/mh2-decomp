@@ -1,17 +1,15 @@
 /*
- * sub_main 0x37AC80-0x37B570: the area's animation timers and the matrices
- * of animated area model parts.
+ * The area's animation timers and the matrices of animated area model
+ * parts.
  * - Area_UpdateTimers runs the timers of gAreaState: state 0 (Area_StartTimers)
  *   clears the frame counter (frame) and moves to state 1; state 1
  *   (Area_Update) adds 1 to frame and 0x2E to spin every frame.
  * - The others build one matrix each for the part drawer Area_DrawProp,
- *   which reads a command byte per part (record +2) and a data pointer
- *   (+4); the flags byte (+3) is passed on: 0x4 reverses the motion, 0x40
- *   rotates about X, 0x80 about Z (default Y). Object matrices go to
- *   Gs_SetState(0x1A, m) (the first slot of the matrix palette), texture
- *   matrices to Gs_SetState(0x19, m).
- *   Command -> function: 1 ADD0, 2 B000, 3 B150, 4 ACE0, 5 AD20, 6 AEF0,
- *   7 AFC0, 8 B370, 9 B290, 0xA B3C0, 0xB B420, 0xC B2F0.
+ *   which reads a command byte per part (record +2, AREA_ANIM_CMD_* in
+ *   area_anim.h) and a data pointer (+4); the flags byte (+3) is passed on
+ *   (AREA_ANIM_REVERSE, AREA_ANIM_ROT_X, AREA_ANIM_ROT_Z; about Y without
+ *   them). Object matrices go to Gs_SetState(0x1A, mtx) (the first slot of
+ *   the matrix palette), texture matrices to Gs_SetState(0x19, mtx).
  */
 #include "common.h"
 #include "area_anim.h"
@@ -31,169 +29,195 @@ f32 Math_Floor(f32 x);                           /* floorf */
  * loads the two arguments in the other order for a local matrix. */
 s32 Gs_SetState(u8 reg, u32 v);
 
+/* Steps gAreaState's timers: starts them, then runs them (see above). */
 void Area_UpdateTimers(void)
 {
-    AreaState *s = &gAreaState;
+    AreaState *areaState = &gAreaState;
 
-    switch (s->timerState) {
+    switch (areaState->timerState) {
     case 0:
-        Area_StartTimers(s);
+        Area_StartTimers(areaState);
         break;
     case 1:
-        Area_Update(s);
+        Area_Update(areaState);
         break;
     }
 }
 
-void AreaAnim_Translate(void *m, f32 *pos)
+/* AREA_ANIM_CMD_TRANSLATE: the part moved to pos. */
+void AreaAnim_Translate(void *mtx, f32 *pos)
 {
-    Mtx_Translation(m, pos[0], pos[1], pos[2]);
-    Gs_SetState(0x1A, (u32)m);
+    Mtx_Translation(mtx, pos[0], pos[1], pos[2]);
+    Gs_SetState(0x1A, (u32)mtx);
 }
 
-void AreaAnim_TranslateRotate(void *m, AnimRot *p, u8 flags)
+/* AREA_ANIM_CMD_ROTATE: moved and turned by a fixed angle. */
+void AreaAnim_TranslateRotate(void *mtx, AnimRot *anim, u8 flags)
 {
-    Mtx_Translation(m, p->pos[0], p->pos[1], p->pos[2]);
-    if (flags & 0x40) {
-        Mtx_RotateX(m, p->angle);
-    } else if (flags & 0x80) {
-        Mtx_RotateZ(m, p->angle);
+    Mtx_Translation(mtx, anim->pos[0], anim->pos[1], anim->pos[2]);
+    if (flags & AREA_ANIM_ROT_X) {
+        Mtx_RotateX(mtx, anim->angle);
+    } else if (flags & AREA_ANIM_ROT_Z) {
+        Mtx_RotateZ(mtx, anim->angle);
     } else {
-        Mtx_RotateY(m, p->angle);
+        Mtx_RotateY(mtx, anim->angle);
     }
-    Gs_SetState(0x1A, (u32)m);
+    Gs_SetState(0x1A, (u32)mtx);
 }
 
-void AreaAnim_TranslateSpin(void *m, AnimSpin *p, u8 flags)
+/*
+ * AREA_ANIM_CMD_SPIN: moved, and turning with the area's frame counter: a
+ * turn every 0x10000 >> shift frames, backwards with AREA_ANIM_REVERSE.
+ */
+void AreaAnim_TranslateSpin(void *mtx, AnimSpin *anim, u8 flags)
 {
-    AreaState *s = &gAreaState;
-    u16 t;
-    f32 a;
+    AreaState *areaState = &gAreaState;
+    u16 tick;
+    f32 angle;
 
-    Mtx_Translation(m, p->pos[0], p->pos[1], p->pos[2]);
-    if (flags & 4) {
-        t = -s->frame;
+    Mtx_Translation(mtx, anim->pos[0], anim->pos[1], anim->pos[2]);
+    if (flags & AREA_ANIM_REVERSE) {
+        tick = -areaState->frame;
     } else {
-        t = s->frame;
+        tick = areaState->frame;
     }
-    a = (6.2831855f * ((t & (0xFFFF >> p->shift)) << p->shift)) / 65536.0f;
-    if (flags & 0x40) {
-        Mtx_RotateX(m, a);
-    } else if (flags & 0x80) {
-        Mtx_RotateZ(m, a);
+    angle = (6.2831855f * ((tick & (0xFFFF >> anim->shift)) << anim->shift)) / 65536.0f;
+    if (flags & AREA_ANIM_ROT_X) {
+        Mtx_RotateX(mtx, angle);
+    } else if (flags & AREA_ANIM_ROT_Z) {
+        Mtx_RotateZ(mtx, angle);
     } else {
-        Mtx_RotateY(m, a);
+        Mtx_RotateY(mtx, angle);
     }
-    Gs_SetState(0x1A, (u32)m);
+    Gs_SetState(0x1A, (u32)mtx);
 }
 
-void AreaAnim_ScaleTranslateRotate(void *m, AnimRotScale *p, u8 flags)
+/* AREA_ANIM_CMD_SCALE_ROTATE: scaled, moved and turned by a fixed angle. */
+void AreaAnim_ScaleTranslateRotate(void *mtx, AnimRotScale *anim, u8 flags)
 {
-    Mtx_Scale(m, p->scale[0], p->scale[1], p->scale[2]);
-    Mtx_SetTrans(m, p->rot->pos[0], p->rot->pos[1], p->rot->pos[2]);
-    if (flags & 0x40) {
-        Mtx_RotateX(m, p->rot->angle);
-    } else if (flags & 0x80) {
-        Mtx_RotateZ(m, p->rot->angle);
+    Mtx_Scale(mtx, anim->scale[0], anim->scale[1], anim->scale[2]);
+    Mtx_SetTrans(mtx, anim->rot->pos[0], anim->rot->pos[1], anim->rot->pos[2]);
+    if (flags & AREA_ANIM_ROT_X) {
+        Mtx_RotateX(mtx, anim->rot->angle);
+    } else if (flags & AREA_ANIM_ROT_Z) {
+        Mtx_RotateZ(mtx, anim->rot->angle);
     } else {
-        Mtx_RotateY(m, p->rot->angle);
+        Mtx_RotateY(mtx, anim->rot->angle);
     }
-    Gs_SetState(0x1A, (u32)m);
+    Gs_SetState(0x1A, (u32)mtx);
 }
 
-void AreaAnim_TranslateXZ(void *m, f32 *p)
+/* AREA_ANIM_CMD_TRANSLATE_XZ: moved to (x, 0, z). */
+void AreaAnim_TranslateXZ(void *mtx, f32 *posXZ)
 {
-    Mtx_Translation(m, p[0], 0.0f, p[1]);
-    Gs_SetState(0x1A, (u32)m);
+    Mtx_Translation(mtx, posXZ[0], 0.0f, posXZ[1]);
+    Gs_SetState(0x1A, (u32)mtx);
 }
 
-void AreaAnim_UvScroll(UvScroll *p, u8 flags)
+/*
+ * AREA_ANIM_CMD_UV_SCROLL: the texture scrolled in u and v, each through a
+ * full repeat every `period` frames (a power of two; 0 still), backwards
+ * with AREA_ANIM_REVERSE.
+ */
+void AreaAnim_UvScroll(UvScroll *anim, u8 flags)
 {
-    f32 m[4][4];
-    AreaState *s = &gAreaState;
-    f32 u;
-    f32 v;
+    f32 texMtx[4][4];
+    AreaState *areaState = &gAreaState;
+    f32 uOffset;
+    f32 vOffset;
 
-    if (p->period[0] == 0) {
-        u = 0.0f;
+    if (anim->period[0] == 0) {
+        uOffset = 0.0f;
     } else {
-        u = (f32)(s->frame & (p->period[0] - 1)) / p->period[0];
-        if (flags & 4) {
-            u = 1.0f - u;
+        uOffset = (f32)(areaState->frame & (anim->period[0] - 1)) / anim->period[0];
+        if (flags & AREA_ANIM_REVERSE) {
+            uOffset = 1.0f - uOffset;
         }
     }
-    if (p->period[1] == 0) {
-        v = 0.0f;
+    if (anim->period[1] == 0) {
+        vOffset = 0.0f;
     } else {
-        v = (f32)(s->frame & (p->period[1] - 1)) / p->period[1];
-        if (flags & 4) {
-            v = 1.0f - v;
+        vOffset = (f32)(areaState->frame & (anim->period[1] - 1)) / anim->period[1];
+        if (flags & AREA_ANIM_REVERSE) {
+            vOffset = 1.0f - vOffset;
         }
     }
-    Mtx_Translation((f32 *) m, u, v, 0.0f);
-    Gs_SetState(0x19, (u32)m);
+    Mtx_Translation((f32 *) texMtx, uOffset, vOffset, 0.0f);
+    Gs_SetState(0x19, (u32)texMtx);
 }
 
-void AreaAnim_UvWave(UvWave *p)
+/* AREA_ANIM_CMD_UV_WAVE: the texture swayed in u and v: base + amp *
+ * sin(speed * the frame), the frame taken modulo `period`. */
+void AreaAnim_UvWave(UvWave *waves)
 {
-    f32 m[4][4];
-    AreaState *s = &gAreaState;
-    f32 u;
-    f32 v;
+    f32 texMtx[4][4];
+    AreaState *areaState = &gAreaState;
+    f32 uOffset;
+    f32 vOffset;
 
-    if (p[0].period == 0) {
-        u = 0.0f;
+    if (waves[0].period == 0) {
+        uOffset = 0.0f;
     } else {
-        u = p[0].base + p[0].amp * Math_Sin((6.2831855f * (p[0].speed * ((u16)s->frame & (p[0].period - 1)))) / 65536.0f);
+        uOffset = waves[0].base + waves[0].amp * Math_Sin((6.2831855f * (waves[0].speed * ((u16)areaState->frame & (waves[0].period - 1)))) / 65536.0f);
     }
-    if (p[1].period == 0) {
-        v = 0.0f;
+    if (waves[1].period == 0) {
+        vOffset = 0.0f;
     } else {
-        v = p[1].base + p[1].amp * Math_Sin((6.2831855f * (p[1].speed * ((u16)s->frame & (p[1].period - 1)))) / 65536.0f);
+        vOffset = waves[1].base + waves[1].amp * Math_Sin((6.2831855f * (waves[1].speed * ((u16)areaState->frame & (waves[1].period - 1)))) / 65536.0f);
     }
-    Mtx_Translation((f32 *) m, u, v, 0.0f);
-    Gs_SetState(0x19, (u32)m);
+    Mtx_Translation((f32 *) texMtx, uOffset, vOffset, 0.0f);
+    Gs_SetState(0x19, (u32)texMtx);
 }
 
-void AreaAnim_UvScrollSpin(void *m, AnimScrollSpin *p, u8 flags)
+/* AREA_ANIM_CMD_UV_SCROLL_SPIN: AreaAnim_UvScroll and AreaAnim_TranslateSpin. */
+void AreaAnim_UvScrollSpin(void *mtx, AnimScrollSpin *anim, u8 flags)
 {
-    AreaAnim_UvScroll(p->uv, flags);
-    AreaAnim_TranslateSpin(m, p->spin, flags);
+    AreaAnim_UvScroll(anim->uv, flags);
+    AreaAnim_TranslateSpin(mtx, anim->spin, flags);
 }
 
-void AreaAnim_UvStep(UvStep *p)
+/* AREA_ANIM_CMD_UV_STEP: the texture moved in steps: step * ((frame >>
+ * shift) & mask) in u and in v (frames of a texture strip). */
+void AreaAnim_UvStep(UvStep *steps)
 {
-    f32 m[4][4];
+    f32 texMtx[4][4];
 
-    Mtx_Translation((f32 *) m, p[0].step * (f32)(p[0].mask & (gAreaState.frame >> p[0].shift)),
-                  p[1].step * (f32)(p[1].mask & (gAreaState.frame >> p[1].shift)), 0.0f);
-    Gs_SetState(0x19, (u32)m);
+    Mtx_Translation((f32 *) texMtx, steps[0].step * (f32)(steps[0].mask & (gAreaState.frame >> steps[0].shift)),
+                  steps[1].step * (f32)(steps[1].mask & (gAreaState.frame >> steps[1].shift)), 0.0f);
+    Gs_SetState(0x19, (u32)texMtx);
 }
 
-void AreaAnim_UvScrollTranslate(void *m, AnimScrollPos *p, u8 flags)
+/* AREA_ANIM_CMD_UV_SCROLL_MOVE: AreaAnim_UvScroll and AreaAnim_Translate. */
+void AreaAnim_UvScrollTranslate(void *mtx, AnimScrollPos *anim, u8 flags)
 {
-    AreaAnim_UvScroll(p->uv, flags);
-    AreaAnim_Translate(m, p->pos);
+    AreaAnim_UvScroll(anim->uv, flags);
+    AreaAnim_Translate(mtx, anim->pos);
 }
 
-void AreaAnim_UvScrollRotate(void *m, AnimScrollRot *p, u8 flags)
+/* AREA_ANIM_CMD_UV_SCROLL_ROTATE: AreaAnim_UvScroll and AreaAnim_TranslateRotate. */
+void AreaAnim_UvScrollRotate(void *mtx, AnimScrollRot *anim, u8 flags)
 {
-    AreaAnim_UvScroll(p->uv, flags);
-    AreaAnim_TranslateRotate(m, p->rot, flags);
+    AreaAnim_UvScroll(anim->uv, flags);
+    AreaAnim_TranslateRotate(mtx, anim->rot, flags);
 }
 
-void AreaAnim_SpinScroll(void *m, AnimSpin2 *p)
+/*
+ * AREA_ANIM_CMD_SPIN_SCROLL: turning about Y with gAreaState.spin (scaled by
+ * shift), the texture scrolled in u with the same angle (a full scroll every
+ * 30 degrees of turn).
+ */
+void AreaAnim_SpinScroll(void *mtx, AnimSpin2 *anim)
 {
-    f32 mt[4][4];
-    u16 t;
-    f32 u;
+    f32 texMtx[4][4];
+    u16 tick;
+    f32 uOffset;
 
-    t = gAreaState.spin << p->shift;
-    u = 0.033333335f * ((360.0f * t) / 65536.0f);
-    u -= Math_Floor(u);
-    Mtx_Translation((f32 *) mt, u, 0.0f, 0.0f);
-    Gs_SetState(0x19, (u32)mt);
-    AreaAnim_Translate(m, p->pos);
-    Mtx_RotateY(m, (6.2831855f * t) / 65536.0f);
-    Gs_SetState(0x1A, (u32)m);
+    tick = gAreaState.spin << anim->shift;
+    uOffset = 0.033333335f * ((360.0f * tick) / 65536.0f);
+    uOffset -= Math_Floor(uOffset);
+    Mtx_Translation((f32 *) texMtx, uOffset, 0.0f, 0.0f);
+    Gs_SetState(0x19, (u32)texMtx);
+    AreaAnim_Translate(mtx, anim->pos);
+    Mtx_RotateY(mtx, (6.2831855f * tick) / 65536.0f);
+    Gs_SetState(0x1A, (u32)mtx);
 }

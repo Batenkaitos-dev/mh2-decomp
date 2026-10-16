@@ -11,7 +11,7 @@ size 0x100
 0x044 s32 rollSpeed // flying families: rotZ is stepped back to 0 by it (0x100 at init); Velocidrome and Velociprey State3: an f32 velZ kept while a wall stops the jump
 0x050 s16 unk050
 0x000 u8 fxStep // UpdateMotionEffects: 0, then 1 (runs MotionEffects): Kirin, Anteka, kind 0x1D (the families with a view keep their own, at +0 or elsewhere)
-0x002 s16 sndMotion // the MotionSounds copies (Kut-Ku, Garuga, Rathalos, Gravios, Diablos, Khezu, Chameleos, Fatalis) switch on it as a motion id; no monster writes it (Yama Tsukami keeps a timer here, EmYamaTsukamiWork)
+0x002 s16 sndMotion // the motion id the MotionEffects functions keep (motionId[0], stored when it changes) and the MotionSounds copies (Kut-Ku, Garuga, Rathalos, Gravios, Diablos, Khezu, Chameleos, Fatalis) switch on; Rathalos and Fatalis write it through their views (EmFlyerWork.sndMotion, EmFatalisWork.fxMotion); Yama Tsukami keeps a timer here (EmYamaTsukamiWork)
 0x004 s16 prevMotion // a motion id kept to see it change (motionId[0] stored and compared; switched on)
 0x008 s32 accelAngX // angles X, Y, Z for Em_MoveRotatedAccel (&accelAngX; set from rotX, rotY and 0)
 0x00C s32 accelAngY // set from rotY, or rotY +- 0x4000, + 0x8000

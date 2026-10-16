@@ -681,7 +681,7 @@ void DrinkContest_Draw(void *t)
     }
 }
 
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 extern u8 gDrinkHitSizeKeys[];
 extern u8 gDrinkHitAlphaKeys[];
 void DrinkContest_DrawHit(u32 r, u32 g, u32 b, u32 t, f32 x, f32 y)
@@ -698,9 +698,9 @@ void DrinkContest_DrawHit(u32 r, u32 g, u32 b, u32 t, f32 x, f32 y)
     s.u0 = 0x20;
     s.u1 = 0x30;
     s.v1 = 0x20;
-    Key_LerpF32((f32 *) gDrinkHitAlphaKeys, (f32 *) &alpha, t);
+    Key_LerpFloat((f32 *) gDrinkHitAlphaKeys, (f32 *) &alpha, t);
     s.color = b | ((g << 8) | (((u8)(u32)(255.0f * alpha) << 24) | (r << 16)));
-    Key_LerpF32((f32 *) gDrinkHitSizeKeys, (f32 *) &size, t);
+    Key_LerpFloat((f32 *) gDrinkHitSizeKeys, (f32 *) &size, t);
     off = (size - 26.0f) / 2.0f;
     s.h = s.w = size;
     s.y = y - off;

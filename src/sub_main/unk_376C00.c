@@ -41,8 +41,9 @@ typedef struct CamPreset {
     f32 unkC;
 } CamPreset;
 
-/* An action spot of an area (0x34 bytes; Stage_GetAreaData64). */
-typedef struct ActionSpot {
+/* A spot of an area's data (0x34 bytes; Stage_GetAreaData): where the player can act;
+ * the stage's own action spots, from Stage_GetActionSpots, are ActionSpot (quest.h). */
+typedef struct AreaSpot {
     u16 id;             /* 0x00: 0xFFFF ends the list */
     s16 type;           /* 0x02: 0: a cylinder (radius, height), 1: Slab_Contains */
     f32 pos[3];         /* 0x04 */
@@ -52,7 +53,7 @@ typedef struct ActionSpot {
     f32 target[3];      /* 0x24: where the player is put */
     u16 angle;          /* 0x30: his angle, less 0x4000 */
     u8 unk32[2];
-} ActionSpot;
+} AreaSpot;
 
 /* Per area id (4 bytes): four setup ids for Area_StartObjects (0xFF: none). unk0
  * is also a kind: 8, 0xD and 0xE get Area_MonsterState's state. */
@@ -144,7 +145,7 @@ void Effect06_Start(s16 i);
 void SoundObj_Start(s32 bank, s32 se, s32 k, f32 *pos, s16 n, u8 quiet);
 void AmbientSound_Spawn(s32 a);
 void Player_AddSpawnOffset(Player *p, f32 *pos, u16 angle);
-void *Stage_GetAreaData64(s32 area);
+void *Stage_GetAreaData(s32 area);
 /* unit's own declaration: with the definition's u8 *(u16 x) (sub_main/stage_data.c), Area_Enter: 33 of 147 words differ */
 AreaRecord *Stage_GetAreaRecord(u32 id);
 s32 Quest_IsRunning(s32 ending);
@@ -1375,14 +1376,14 @@ s16 Area_SubModelCount(u16 area)
 
 /*
  * Checks whether the local player stands at one of the current area's action
- * spots (Stage_GetAreaData64: 0x34-byte records ended by id 0xFFFF). The first one
+ * spots (Stage_GetAreaData: 0x34-byte records ended by id 0xFFFF). The first one
  * found moves the player to its target position and angle.
  */
 void Player_CheckActionSpot(void)
 {
     f32 a[3];
     f32 b[3];
-    ActionSpot *spot;
+    AreaSpot *spot;
     Player *p = &gPlayers[gScene.localPlayer];
     s16 hit;
     f32 dx;
@@ -1407,7 +1408,7 @@ void Player_CheckActionSpot(void)
     if (gScene.online == 1) {
         spot = NULL;
     } else {
-        spot = Stage_GetAreaData64(p->area);
+        spot = Stage_GetAreaData(p->area);
     }
     if (spot == NULL) {
         return;

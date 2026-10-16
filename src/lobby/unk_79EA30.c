@@ -27,7 +27,7 @@ extern u16 gTownMoveFrames;
 extern u16 gRecruitFrames;
 extern u16 gFriendCheckFrames;
 extern u16 gAreaSearchFrames;
-extern u8 gQuestTimerRanges[];
+extern u8 gEmSizeRanges[];
 
 void Lobby_ApplyServerTimers(void)
 {
@@ -46,7 +46,7 @@ void Lobby_ApplyServerTimers(void)
     if (*(u16 *)(q + 0xB86) != 0) {
         gAreaSearchFrames = *(u16 *)(q + 0xB86);
     }
-    memcpy(gQuestTimerRanges, q + 0xB8C, 10);
+    memcpy(gEmSizeRanges, q + 0xB8C, 10);
 }
 
 void Town_Reset(void)
@@ -336,7 +336,7 @@ void TownMsg_Send29(void)
         if ((s8)p[0x5A6] != 0) {
             TownMsg_SendTo(0x40, 0x29, buf, p + 0x5A6);
             k = Lobby_FindMember((u8 *)gLobby + off + 0x5A6);
-            memcpy((u8 *)&gQuestExtra + (((HunterCard *)gNetUsers[k].text)->arenaRole - 1) * 6 + 0x46, (u8 *)gLobby + off + 0x5A6, 6);
+            memcpy((u8 *)&gNextQuest + (((HunterCard *)gNetUsers[k].text)->arenaRole - 1) * 6 + 0x46, (u8 *)gLobby + off + 0x5A6, 6);
         }
     }
     for (j = 0, off2 = 0; j < 4; j++, off2 += 0x11C) {

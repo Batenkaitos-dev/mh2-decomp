@@ -594,11 +594,11 @@ void LobbySe_Play(s32 se)
     }
 }
 
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 s32 SeqA_IsPlaying(void) {
     s32 state;
 
-    state = SeqA_GetState() & 0xFF;
+    state = FadeA_GetState() & 0xFF;
     switch (state) {                              /* irregular */
     case 0:
         return 0;

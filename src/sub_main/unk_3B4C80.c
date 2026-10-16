@@ -86,7 +86,7 @@ extern s8 gMyUserId[8];
 extern s8 D_006ADF26[][8];
 
 void *memcpy(void *dst, void *src, u32 n);
-void MonsterList_OnItemGet(u16 item);
+void MonsterNote_OnItemGet(u16 item);
 s32 Menu_PushNoticeOnce(s32 n);
 s32 Quest_IsVersus(void);
 s16 Pouch_Count(Player *p, u16 item);
@@ -955,7 +955,7 @@ u8 SavePouch_Add(u16 item, s16 n)
 
     if (Item_IsRecordOnly(item) == 1) {
         if (Save_IsItemObtained(s, item) == 0) {
-            MonsterList_OnItemGet(item);
+            MonsterNote_OnItemGet(item);
             Save_MarkItemObtained(s, item);
             if (gScene.online != 0) {
                 Menu_PushNoticeOnce(4);

@@ -30,10 +30,26 @@ typedef struct SysOptions {
     u8 unk0D[3];
 } SysOptions;
 
+/* The chat phrases (SysSave.phrases): 24 of 0x2C bytes and a terminator;
+ * the phrase menu shows each cut to PHRASE_NAME_LEN bytes (gPhraseEntries). */
+#define PHRASE_COUNT    24
+#define PHRASE_LEN      0x2D
+#define PHRASE_NAME_LEN 10
+
+/* A chat phrase in the phrase menu (gPhraseEntries, PHRASE_COUNT of them):
+ * its name (the phrase cut to PHRASE_NAME_LEN bytes, Phrase_TruncateNames)
+ * and the phrase itself (in SysSave.phrases). */
+typedef struct PhraseEntry {
+    char name[12];
+    char *text;
+} PhraseEntry;
+
+typedef char PhraseEntry_size_check[(sizeof(PhraseEntry) == 0x10) ? 1 : -1];
+
 typedef struct SysSave {
     SysOptions options;         /* 0x000 */
     u8 netOptions[16];          /* 0x010: the network options (select_option.c's network page; lobby Lobby_GetNetOption0/1); was gNetOptions, an alias */
-    char phrases[24][0x2D];     /* 0x020: the chat phrases (Phrase_ResetDefaults copies the defaults; the phrase menu gQuestListEntries) */
+    char phrases[PHRASE_COUNT][PHRASE_LEN];     /* 0x020: the chat phrases (Phrase_ResetDefaults copies the defaults; the phrase menu gPhraseEntries) */
     s32 unk458;                 /* 0x458: set by func_003BDA10; 0 hides the character editor option 0x11, the lobby tests it with event flag 0x7C */
     u8 lastSlot;                /* 0x45C: the character slot last saved or loaded (gChrEdit.slot) */
     u8 unk45D;                  /* 0x45D: set to 3 when a character is saved */

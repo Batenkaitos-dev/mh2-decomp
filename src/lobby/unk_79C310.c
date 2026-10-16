@@ -170,7 +170,7 @@ void NetQuest_SetInfo(u8 *);
 void NetQuest_SetUnk4C(s32); /* unit's own declaration: with the definition's void (s8 v) (main/unk_18DA50.c), TownPc_Action 19 of 1118 words differ */
 s32 Lobby_EnterRollRare(void);
 void PspLink_ClearFlags(void);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void Save_SetEventFlag(s32 n);
 void QuestCounter_Open(void);
 void LobbySe_Play(s32 se);
@@ -556,7 +556,7 @@ void TownPc_Action(Player *pc)
                         }
                         NetQuest_SetUnk4C(Lobby_EnterRollRare());
                         PspLink_ClearFlags();
-                        SeqA_Start(1);
+                        FadeA_Start(1);
                         if (gLobbyQuestId == 0x1771 && Save_TestEventFlag(0x30) == 0) {
                             Save_SetEventFlag(0x30);
                         }

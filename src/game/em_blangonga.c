@@ -39,17 +39,17 @@ void EffEm08_CreateAtBone(Em *, s32, s32, s32, u16, s32);
 void EffBlangonga27_Create(Em *em, s32 kind);
 /* unit's own declaration: with the definition's void *(Em *em, s32 kind, s32 c, s32 a, s32 b) (game/unk_6E3B00.c), EmBlangonga_State3_08: 24 of 73 words differ */
 void * EffEm33_Create(Em *, s16, s16, s32, s32);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotatedAccel(Em *em, void *ang);
 /* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmBlangonga_ChangeState: 3 of 671 words differ, EmKushala_ChangeState: 27 of 217 words differ ... */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
 void Em_CheckRageByHp(Em *em, s16 n);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ClearLowHpNeed(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_ClearNeed2State(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_Add7EC(Em *em, s32 n);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SetGoal12(Em *em);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmBlangonga_State0_03: 82 of 132 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
@@ -176,15 +176,15 @@ u16 Math_AngleXZ(f32 *from, f32 *to);
 f32 Vec_DistanceXZ(f32 *a, f32 *b);
 void Em_ClearPart(Em *em, u16 part);
 void Em_ResetNotice(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_BeginStatus2(Em *em);
 void Em_EndStatus1(Em *em);
 void Em_EndStatus2(Em *em);
 void Em_EndStatus4(Em *em);
 void Em_EndStatus5(Em *em);
 void Em_StartGoalAction(Em *em, s32 arg1);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Clear7F0State(Em *em);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_ClearNeed1State(Em *em);
 void Vec_Copy(f32 *out, f32 *in);
 typedef struct EmBEntry {
     s16 id;
@@ -242,9 +242,9 @@ void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
 u8 Em_SenseObjects(Em *em, EmObj *self);
 s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
 void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_Decay7F0(Em *em);
-void Em_Decay7F0Only(Em *em);
-void Em_Decay7EC(Em *em);
+void Em_DecayNeed1(Em *em);
+void Em_DecayNeed1Only(Em *em);
+void Em_DecayNeed2(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_SetGoal12Dist(Em *em, u8 *p);
 void Em_SetStatus1Timer(Em *em);
@@ -256,7 +256,7 @@ void Em_ResetKindTimer(Em *em);
 s32 func_00725820(Em *em, s32 arg1);
 s32 Save_TestEventFlag(s32 flag);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 void EmBlangonga_RunState(Em *em, s32 arg1);
 void EmBlangonga_BreakParts(Em *em, s32 apply);
 /* end of prototypes */
@@ -450,7 +450,7 @@ void EmBlangonga_ChangeState(Em *em, u16 group, u16 state, u8 mode)
             Em_EndStatus5(em);
             break;
         case 26:
-            Em_Refill7F4(em);
+            Em_RefillNeed3(em);
             break;
         case 27:
             em->holdTimer2 = 0;
@@ -1444,7 +1444,7 @@ void EmBlangonga_State0_01(Em *em)
 
 void EmBlangonga_State0_03(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1504,7 +1504,7 @@ void EmBlangonga_State0_04(Em *em)
 
 void EmBlangonga_State0_05(Em *em, EmWork *work, s32 variant)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1659,7 +1659,7 @@ void EmBlangonga_State0_0A(Em *em)
 
 void EmBlangonga_State0_0B(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1678,19 +1678,19 @@ void EmBlangonga_State0_0B(Em *em)
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_Clear7ECState(em);
+            Em_ClearNeed2State(em);
             EmBlangonga_EndState(em, 0, 0);
         }
         break;
     }
-    Em_Add7EC(em, 0xDE);
+    Em_AddNeed2(em, 0xDE);
 }
 
 void EmBlangonga_State0_0C(Em *em, EmWork *work, s32 variant)
 {
     u16 t = 0;
 
-    Em_SetFlag6AE(em, 3);
+    Em_SetHitReactMode(em, 3);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1712,8 +1712,8 @@ void EmBlangonga_State0_0C(Em *em, EmWork *work, s32 variant)
             } else {
                 Em_AddHp(em, 0.01f * em->hpMax);
             }
-            Em_Add7F0(em, em->need1Max);
-            Em_Clear7F0State(em);
+            Em_AddNeed1(em, em->need1Max);
+            Em_ClearNeed1State(em);
             EmBlangonga_EndState(em, 0, 0);
         }
         break;
@@ -1773,7 +1773,7 @@ void EmBlangonga_State0_0F(Em *em, EmWork *work, s32 variant)
 
     k = variant & 0xFF;
     if (k == 0) {
-        Em_SetFlag6AE(em, 3U);
+        Em_SetHitReactMode(em, 3U);
     }
     switch (em->step) {
     case 0:
@@ -1871,7 +1871,7 @@ void EmBlangonga_State0_13(Em *em, EmWork *work, s32 variant)
 {
     u16 motion;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
@@ -2017,7 +2017,7 @@ void EmBlangonga_State0_22(Em *em)
     case 0:
         em->step++;
         em->stance = 0;
-        Em_SetRow638(em, 0);
+        Em_SelectSightRow(em, 0);
         Em_LoadReactionSet(em, 0);
         break;
     case 1:
@@ -4021,7 +4021,7 @@ void EmBlangonga_State4_02(Em *em, EmWork *work, u8 variant)
 
 void EmBlangonga_State4_04(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4046,7 +4046,7 @@ void EmBlangonga_State4_04(Em *em)
 
 void EmBlangonga_State4_05(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -5509,7 +5509,7 @@ void EmBlangonga_Update(Em *em)
         case 0x33:
             switch (k) {
             case 0xB:
-                Em_Decay7F0Only(em);
+                Em_DecayNeed1Only(em);
                 Em_CheckLowHp(em, 0.3f);
                 break;
             }
@@ -5517,17 +5517,17 @@ void EmBlangonga_Update(Em *em)
         case 0x34:
             switch (k) {
             case 6:
-                Em_Decay7F0(em);
-                Em_Decay7EC(em);
+                Em_DecayNeed1(em);
+                Em_DecayNeed2(em);
                 Em_CheckLowHp(em, 0.2f);
                 break;
             case 4:
-                Em_Decay7F0(em);
+                Em_DecayNeed1(em);
                 Em_CheckLowHp(em, 0.2f);
                 break;
             case 9:
             case 0xA:
-                Em_Decay7F0Only(em);
+                Em_DecayNeed1Only(em);
                 break;
             }
             break;
@@ -5775,7 +5775,7 @@ done:
     }
     Em_UpdatePendingScript(em);
 skip:
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmBlangonga_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmBlangonga_RunState(em, (s32) w);
@@ -6727,14 +6727,14 @@ void EmKushala_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_ClearPart(em, 0);
         em->parts[0].state = 0;
         Em_AddHp(em, 0.05f * em->hpMax);
-        Em_Add7F0(em, em->need1Max);
-        Em_Clear7F0State(em);
+        Em_AddNeed1(em, em->need1Max);
+        Em_ClearNeed1State(em);
         break;
     case 7:
         Em_EndStatus4(em);
         break;
     case 10:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 12:
         Em_EndStatus2(em);
@@ -6750,8 +6750,8 @@ void EmKushala_SetGroup0State(Em *em, u16 state, u8 mode)
         break;
     case 26:
         Em_AddHp(em, 0.05f * em->hpMax);
-        Em_Add7EC(em, em->need2Max);
-        Em_Clear7ECState(em);
+        Em_AddNeed2(em, em->need2Max);
+        Em_ClearNeed2State(em);
         break;
     case 20:
         if (em->remote == 0 && w->windOn != 0) {

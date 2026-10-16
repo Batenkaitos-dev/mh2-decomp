@@ -26,7 +26,7 @@ typedef struct Spark {
     struct DrawSlot *obj;       /* 0x28: DrawSlot_Get(id) */
     s16 unk2C;                  /* 0x2C: its frame; negative: not started yet */
     u16 unk2E;                  /* 0x2E: nonzero: no second track */
-    f32 unk30;                  /* 0x30: from the key track gSparkFxKeys[k + 1] (Key_LerpF32) */
+    f32 unk30;                  /* 0x30: from the key track gSparkFxKeys[k + 1] (Key_LerpFloat) */
 } Spark;
 typedef char Spark_size_check[(sizeof(Spark) == 0x34) ? 1 : -1];
 

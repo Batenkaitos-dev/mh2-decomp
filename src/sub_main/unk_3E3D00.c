@@ -808,8 +808,8 @@ void Lure_Run(FxObj *o)
 }
 
 u16 Area_DayId(u16 a);
-f32 Lure_RandUnit(void);
-f32 Lure_RandSigned(void);
+f32 Rand_Unit(void);
+f32 Rand_Signed(void);
 
 /* The lure's first state: at the rod (bone 0xE of the player), a random throw velocity turned to
  * the player's heading, its scale (0.3 for variant 1), the water height of the area (+0x1C), and a
@@ -828,9 +828,9 @@ void Lure_Start(FxObj *o)
     Vec_Copy(w->target, o->pos);
     o->angle = p->rot[1];
     w->unk02 = 0;
-    w->vel[0] = Lure_RandSigned();
-    w->vel[1] = 2.0f + 2.0f * Lure_RandUnit();
-    w->vel[2] = 30.0f + 2.0f * Lure_RandUnit();
+    w->vel[0] = Rand_Signed();
+    w->vel[1] = 2.0f + 2.0f * Rand_Unit();
+    w->vel[2] = 30.0f + 2.0f * Rand_Unit();
     w->gravity = -2.0f;
     switch (o->type) {
     default:

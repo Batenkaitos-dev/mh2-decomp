@@ -53,10 +53,10 @@ void Em_StartPendingRage(Em *);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_ResetNotice(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
 void Em_SetGoal12(Em *em);
 void Em_ClearPoison(Em *em);
@@ -132,10 +132,10 @@ void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_ClearPart(Em *em, u16 part);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Add7EC(Em *em, s32 n);
-void Em_Clear7F0State(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_ClearNeed1State(Em *em);
+void Em_ClearNeed2State(Em *em);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 void MinePoint_Remove(s32);
 void EmDiablos_SetGroup1State(Em *em, u16 state, u8 mode);
@@ -184,7 +184,7 @@ void Em_SetStatus4Timer(Em *em);
 void Em_SetStatus5Timer(Em *em);
 void Em_ResetKindTimer(Em *em);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 u16 Area_DayId(u16 id);
 void EmDiablos_RunState(Em *em, EmWork *work);
 s32 EmDiablos_ShouldEndState(Em *em);
@@ -737,7 +737,7 @@ void EmDiablos_State0_12(Em *em, EmWork *work)
 {
     s16 n;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -782,7 +782,7 @@ void EmDiablos_State0_13(void)
 
 void EmDiablos_State0_14(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -816,7 +816,7 @@ void EmDiablos_State0_15(Em *em, EmWork *work)
 {
     s16 n;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -948,7 +948,7 @@ void EmDiablos_State0_1A(void)
 
 void EmDiablos_State0_1B(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -982,7 +982,7 @@ void EmDiablos_State0_1D(Em *em, EmWork *work)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -2431,7 +2431,7 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
     s32 k = variant;
 
     if (k == 0) {
-        Em_SetFlag6AE(em, 4);
+        Em_SetHitReactMode(em, 4);
     }
     switch (em->step) {
     case 0:
@@ -3753,7 +3753,7 @@ void EmDiablos_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmDiablos_RunState(em, (EmWork *) w);
     if (em->stateRequest != 0) {
         EmDiablos_RunState(em, (EmWork *) w);
@@ -4442,7 +4442,7 @@ void EmDiablos_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_BeginStatus2(em);
         break;
     case 23:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 24:
         Em_EndStatus2(em);

@@ -1,6 +1,23 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
+/* The camera mode that runs the scripts (CamCtl.modes[CAM_MODE_SCRIPT],
+ * gCamModeInit's handler CamScript_Init; unk_31DF70.c). */
+#define CAM_MODE_SCRIPT 5
+
+/* CamView.flags in the script mode. */
+#define CAM_SCRIPT_ENDED 0x01   /* the script ended */
+#define CAM_SCRIPT_STARTED 0x02 /* started by CamReq_Start (CamReq_Started tests it) */
+
+/* CamScript.eyeSpace and atSpace: the space the points are in
+ * (CamScript_EyePoint, CamScript_AtPoint). */
+#define CAM_SPACE_BODY 0        /* the local player's body */
+#define CAM_SPACE_POSITION 1    /* the local player's position */
+#define CAM_SPACE_PART 2        /* a part of the local player (eyePart) */
+#define CAM_SPACE_OBJECT 3      /* obj's matrix */
+#define CAM_SPACE_WORLD 4
+#define CAM_SPACE_AT 5          /* at[0] (eyeSpace only) */
+
 #include "common.h"
 
 /*

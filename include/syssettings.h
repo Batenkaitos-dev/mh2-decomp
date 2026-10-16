@@ -18,7 +18,7 @@ typedef struct SysSettings {
     /* 0x00 */ u8 unk00[2];
     /* 0x02 */ u8 unk02;                /* cleared when the mode select or the character select ends */
     /* 0x03 */ u8 unk03;                /* set to 1 when gm_main, the character select or plsel ends */
-    /* 0x04 */ u8 bootFrom;             /* where Boot_Task is entered from (Boot_SetMode): 0 the power on, 1 gm_main's exit, 2 a sub_main task (Task_SetBoot*) */
+    /* 0x04 */ u8 bootFrom;             /* where Boot_Task is entered from (Boot_SetMode): 0 the power on, 1 gm_main's exit, 2 a sub_main task (Task_StartBoot*) */
     /* 0x05 */ u8 unk05;
     /* 0x06 */ u8 unk06;
     /* 0x07 */ u8 unk07[4];

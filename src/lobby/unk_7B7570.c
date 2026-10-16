@@ -14,7 +14,7 @@ void LobbyMenu_SetDraw(void *, void *, void *, void *);
 void NetMode_Init(void);
 void LoginWave_Clear(void);
 void LoginWave_Mark(s32);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void SrvMenu_DrawInfo(MenuTask *task);
 void SrvMenu_DrawWindow(MenuTask *task);
 extern LobbyMenu *gLobbyMenu;
@@ -31,7 +31,7 @@ void SrvMenu_Start(void) {
     gLobbyMenu->page = 0;
     gLobbyMenu->pages = Menu_CountPages(D_5C34F8, 8);
     LobbyMenu_SetDraw(SrvMenu_DrawInfo, SrvMenu_DrawWindow, 0, &LobbyDialog_DrawPending);
-    SeqA_Start(2);
+    FadeA_Start(2);
     LobbyTitle_Set(2);
     LobbyHelp_Set(0);
     LobbySe_Play(0x16);

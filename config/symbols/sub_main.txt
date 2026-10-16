@@ -48,8 +48,13 @@ Rand_Next = 0x00368C70; // type:func
 Rand_NextSaved = 0x00368CD0; // type:func
 Rand_StepSaved = 0x00368D50; // type:func
 Rand_InitGauss = 0x00368D90; // type:func
+UnreadFlags_Init = 0x00368E80; // type:func
+UnreadFlags_Clear = 0x00368EA0; // type:func
+UnreadFlags_ClearAll = 0x00368ED0; // type:func
 gRandSaved = 0x006AE140; // size:0x40
 gRandSeeds = 0x006AE180; // size:0x8
+// 64 flags of 4 bytes that the boot, the quest end and the text code clear and no code reads
+gUnreadFlags = 0x006AE1A0; // size:0x100
 // a frame counter: the village blinks with `& 0x10` (lobby unk_760C70.c,
 // unk_7580B0.c); lobby's func_00771310 and func_0078FBE0 match only with it named
 gFrameTick = 0x006AE188;
@@ -517,6 +522,8 @@ Quest_Start = 0x003A1C10; // type:func
 Quest_Finish = 0x003A1CA0; // type:func
 Quest_FinishIfIdle = 0x003A1CD0; // type:func
 Quest_SetStartArea = 0x003A1D00; // type:func
+Quest_ResetMusicIfIdle = 0x003A1F30; // type:func
+Quest_GetStageEmKinds = 0x003A46B0; // type:func the stage-wide monster kinds, up to 4
 Quest_IsRunning = 0x003A1F60; // type:func
 Quest_GetTime = 0x003A1FC0; // type:func
 Quest_EnterArea = 0x003A2030; // type:func
@@ -1537,16 +1544,16 @@ StageObj_DrawAll = 0x003245A0; // type:func
 StageObj_DrawKind4 = 0x00324630; // type:func
 Key_LerpVec3 = 0x003246C0; // type:func
 Key_LerpVec2 = 0x003247A0; // type:func
-Key_LerpF32 = 0x00324860; // type:func
+Key_LerpFloat = 0x00324860; // type:func
 Model_DrawFade = 0x00324E20; // type:func
 Player_DualSwordIndex = 0x003252F0; // type:func
-SeqA_GetState = 0x00325920; // type:func
-SeqB_GetState = 0x003259C0; // type:func
-SeqA_Draw = 0x00325A60; // type:func
-SeqB_Draw = 0x00325C00; // type:func
-SeqA_Start = 0x00325DA0; // type:func
-SeqB_Start = 0x00325EA0; // type:func
-Fade_Draw = 0x00325FA0; // type:func
+FadeA_GetState = 0x00325920; // type:func
+FadeB_GetState = 0x003259C0; // type:func
+FadeA_Draw = 0x00325A60; // type:func
+FadeB_Draw = 0x00325C00; // type:func
+FadeA_Start = 0x00325DA0; // type:func
+FadeB_Start = 0x00325EA0; // type:func
+Brightness_Draw = 0x00325FA0; // type:func
 Scene_EnterField = 0x00326220; // type:func
 Scene_StartQuest = 0x003262E0; // type:func
 Scene_StartQuestPlay = 0x003264B0; // type:func
@@ -1554,6 +1561,9 @@ Scene_LoadQuestSounds = 0x00326770; // type:func
 Scene_StartField = 0x00326B20; // type:func
 Scene_UpdateQuest = 0x00326DC0; // type:func
 Scene_ResultFade = 0x003272D0; // type:func
+Scene_Idle = 0x003274E0; // type:func
+Quest_SetupStub = 0x00327F70; // type:func
+Area_ResetStub = 0x00328660; // type:func
 Scene_RequestPause = 0x003276A0; // type:func
 Scene_Opening = 0x00327820; // type:func
 Quest_Setup = 0x00327C40; // type:func
@@ -1742,8 +1752,8 @@ NetTcp_SetOption = 0x0030E190; // type:func
 StageObj_Alloc = 0x003242A0; // type:func
 // returns a StageObj to the pool (round 7 sub_main)
 StageObj_Free = 0x00324490; // type:func
-// the task that steps the keyed fade sequence gSeqA; select starts it (round 7 sub_main)
-Seq_UpdateAll = 0x003255C0; // type:func
+// the task that steps the two screen fades gFadeA and gFadeB; select starts it
+ScreenFade_Task = 0x003255C0; // type:func
 // the floor height under a point (round 7 sub_main)
 AreaGrid2_GetFloorY = 0x0032C950; // type:func
 // the floor height of a grid cell (round 7 sub_main)
@@ -1885,7 +1895,7 @@ Kana_FindWord = 0x00305040; // type:func
 // the three-item Combine_Do (h2)
 Combine_Do3 = 0x00332020; // type:func
 // the CamAim_GetState bar and frame (h1)
-Hud_DrawCamEvent = 0x00350B70; // type:func
+Hud_DrawAimView = 0x00350B70; // type:func
 // pouch item-swap dialog state machine (h1)
 PouchDrop_Update = 0x003473B0; // type:func
 // compass markers, clock face and hands (h1)
@@ -2142,7 +2152,7 @@ FieldMenu_Update = 0x0033F1E0; // type:func
 StatusMenu_Update = 0x0033F9A0; // type:func
 InfoMenu_Update = 0x0033FEC0; // type:func
 Menu_DrawEntryPicture = 0x00341510; // type:func
-Hud_DrawRoundGauge = 0x00341780; // type:func
+MonsterNote_DrawCrown = 0x00341780; // type:func
 // left/right by 1, shoulder buttons by 10
 Menu_AdjustCount = 0x003434D0; // type:func
 // above the other hunters (team colours in versus)
@@ -2454,7 +2464,7 @@ Letterbox_Draw = 0x003E7E00; // type:func
 // lead (ncoreh1): clears slot and sets its function, state 0xC
 TaskSlot_Set = 0x0033D530; // type:func
 TaskSlot_End = 0x0033D5E0; // type:func
-TaskSlot_Start = 0x0033D5F0; // type:func
+TaskSlot_Hold = 0x0033D5F0; // type:func
 // (first, count): Tex_ReleaseRange wrapper
 Tex_FreeRange = 0x00333D70; // type:func
 // D_006ADFA0 (gm_sub's mode select sets it for the network mode); the online field menu has Chat, no Pause/Advice
@@ -2484,18 +2494,18 @@ LocationInfo_Update = 0x00340250; // type:func
 LocationInfo_Draw = 0x00340290; // type:func
 CombineList_Open = 0x003402C0; // type:func
 CombineList_Update = 0x00340340; // type:func
-MonsterList_Open = 0x00340AD0; // type:func
-MonsterList_Update = 0x00340B50; // type:func
+MonsterNote_Open = 0x00340AD0; // type:func
+MonsterNote_Update = 0x00340B50; // type:func
 // record (14 bytes at D_00431570): draws the large-size mark when v >= r[1] (gold when >= r[2])
 SizeRecord_DrawLarge = 0x003419B0; // type:func
 // mark when v <= r[3]
 SizeRecord_DrawSmall = 0x00341A20; // type:func
-MonsterList_DrawLargeMark = 0x00341740; // type:func
-MonsterList_DrawSmallMark = 0x00341760; // type:func
+MonsterNote_DrawLargeCrown = 0x00341740; // type:func
+MonsterNote_DrawSmallCrown = 0x00341760; // type:func
 // the record of monster kind k (+1), or 0
-MonsterList_Find = 0x00341A70; // type:func
+MonsterNote_FindKind = 0x00341A70; // type:func
 // sets the note flag of every record whose item (+0xA) is this one
-MonsterList_OnItemGet = 0x00341AC0; // type:func
+MonsterNote_OnItemGet = 0x00341AC0; // type:func
 QuestMenu_CheckInfo = 0x00341B30; // type:func
 QuestMenu_Open = 0x00341B90; // type:func
 QuestMenu_Update = 0x00341C20; // type:func
@@ -2662,9 +2672,9 @@ Effect_ScaleVec = 0x003253C0; // type:func
 // 1.0
 Effect_Scale = 0x00325400; // type:func
 // 0 .. 1.023
-Lure_RandUnit = 0x003254B0; // type:func
+Rand_Unit = 0x003254B0; // type:func
 // -1.024 .. 1.022
-Lure_RandSigned = 0x003254F0; // type:func
+Rand_Signed = 0x003254F0; // type:func
 // in the town (D_006ADCF1) the index in D_0041CF80
 Effect_MapTexId = 0x00325540; // type:func
 // D_005D6A9C seconds (not while paused offline)
@@ -2774,15 +2784,15 @@ PhraseMenu_MoveCursor = 0x00355040; // type:func
 // decoration items: the page of the help (D_005BB0B0)
 PouchMenu_DecoCursor = 0x003551A0; // type:func
 StatusPage_HasSymbolColor = 0x00355AC0; // type:func
+Player_IsAiming = 0x00355E90; // type:func
 ListPanel_DrawCursorBar = 0x00355F30; // type:func
-// alpha << 24 | D_0043AB10[D_0043AB38[idx (+7 alt)]]
 Equip_Color = 0x00356160; // type:func
 // skill 0x23 = 0x91, or a map item
 Player_HasMap = 0x003561D0; // type:func
 // skill 0x1B: 4 (0xA2) or 2
 Player_DetectLevel = 0x00356230; // type:func
-Player_InMaplessArea = 0x003562B0; // type:func
-Map_IsMaplessArea = 0x003562C0; // type:func
+Player_GetMapHalf = 0x003562B0; // type:func
+Map_GetHalf = 0x003562C0; // type:func
 // (file, slot, kind)
 Tex_LoadFile = 0x00334680; // type:func
 Tex_LoadStageFile = 0x00334840; // type:func
@@ -2875,6 +2885,7 @@ Hud_SetCancel = 0x0033E470; // type:func
 FieldMenu_Exit = 0x0033E5E0; // type:func
 // the window shake of Shake_Start: id D_005BB0A8, offset D_005BB0A0
 Shake_Stop = 0x003633C0; // type:func
+Kbd_EmptyInit = 0x003634B0; // type:func
 Shake_Value = 0x003633D0; // type:func
 // the offset while window id shakes, else a zero one
 Shake_GetOffset = 0x00363400; // type:func
@@ -4121,9 +4132,10 @@ CountdownFx_Free = 0x003E7640; // type:func
 // the countdown and the letterbox
 CountdownFx_Draw = 0x003E7650; // type:func
 // quest state 5 and the ending entry -2 (a 0) or 0x25 (a 1) of D_005D82B4
-Quest_SetFailed = 0x003AAD90; // type:func
+Quest_JumpToEnd = 0x003AAD90; // type:func
 // from states 0-2: state 3 and the ending entry -1 (a 0) or 0x26 (a 1)
-Quest_SetCleared = 0x003AADF0; // type:func
+Quest_JumpToStart = 0x003AADF0; // type:func
+Quest_TriggerEvent = 0x003A0810; // type:func
 // NETWORK: a quest sync message received in D_005D87B0 (QSync), by type (2 clear ... 16 goal)
 Quest_HandleNetMsg = 0x003AAF60; // type:func
 // NETWORK: sends quest sync message type 5 with D_005D8270 (QSync_SendState)
@@ -4471,20 +4483,20 @@ gCamDir = 0x006A9DD0; // size:0x4
 // the loading letters texture handle (Loading_DrawLetters)
 gLoadLettersTex = 0x006AE3F0; // size:0x4
 // task slot 2 runs gm_sub's GmSub_Task (state 0xC)
-Task_SetGmSub = 0x0033D590; // type:func
+Task_StartGmSub = 0x0033D590; // type:func
 // task slot 3 runs select's Boot_Task, D_006AE04C = 1 (Game_ReturnToTitle)
-Task_SetBootMode1 = 0x0033D6E0; // type:func
+Task_StartBootToGmSub = 0x0033D6E0; // type:func
 // the same with D_006AE04C = 2
-Task_SetBootMode2 = 0x0033D720; // type:func
+Task_StartBootToGmSubKeep = 0x0033D720; // type:func
 // the same, D_006AE04C unchanged
-Task_SetBoot = 0x0033D760; // type:func
+Task_StartBoot = 0x0033D760; // type:func
 // the same with D_006AE04C = 0 (GmSub_UpdateMenu)
-Task_SetBootMode0 = 0x0033D790; // type:func
+Task_StartBootScreens = 0x0033D790; // type:func
 // one of the SE 0x78..0x7B at random (the menus cursor moves)
 Sound_PlayCursorMove = 0x0036B9D0; // type:func
 // gSysSettings.workArea: the overlays shared work area (0x18000 bytes at 0xC0A200)
 gWorkArea = 0x006AE01C; // size:0x4
-// gSysSettings.unkBC: the mode select's Boot_Task starts in (Task_SetBootMode0/1/2)
+// gSysSettings.bootMode, where select Boot_Task goes on to (Task_StartBootScreens and the rest)
 gBootMode = 0x006AE04C; // size:0x1
 // gSysSettings.unk54 (0xAC8000): the start of the memory areas Mem_InitLayout clears
 gMemAreas = 0x006ADFE4; // size:0x4
@@ -4583,13 +4595,13 @@ D_0045EB04 = 0x0045EB04; // size:0x4
 D_0045EB24 = 0x0045EB24; // size:0x4
 D_006AEE04 = 0x006AEE04; // size:0x4
 gNothingMoreText = 0x00446AF4; // size:0x4 Player_GatherAtSpot, nothing more seems to be here, inside gNoticeMadeTexts
-gRewardZeroText = 0x00446AF8; // size:0x4 Player_State3_00, the reward became 0z, inside gNoticeMadeTexts
-gFaintedText = 0x00446AFC; // size:0x4 Player_State3_00, the player fainted, inside gNoticeMadeTexts
-gRewardZeroText2 = 0x00446B00; // size:0x4 Player_State3_00, the reward became 0z (a second copy), inside gNoticeMadeTexts
-gNoMoreReviveText = 0x00446B04; // size:0x4 Player_State3_00, no more revivals, inside gNoticeMadeTexts
+gRewardZeroText = 0x00446AF8; // size:0x4 Player_StateFaint, the reward became 0z, inside gNoticeMadeTexts
+gFaintedText = 0x00446AFC; // size:0x4 Player_StateFaint, the player fainted, inside gNoticeMadeTexts
+gRewardZeroText2 = 0x00446B00; // size:0x4 Player_StateFaint, the reward became 0z (a second copy), inside gNoticeMadeTexts
+gNoMoreReviveText = 0x00446B04; // size:0x4 Player_StateFaint, no more revivals, inside gNoticeMadeTexts
 D_005D6B39 = 0x005D6B39; // size:0x1
 D_004476F8 = 0x004476F8; // size:0x4
-D_006ADB48 = 0x006ADB48; // size:0x2
+gNextQuestId = 0x006ADB48; // size:0x2 the quest to start, Quest_Init copies it to gScene.questId and gQuest.stage
 D_005D824E = 0x005D824E; // size:0x2
 D_005D8252 = 0x005D8252; // size:0x1
 D_005D8253 = 0x005D8253; // size:0x1
@@ -4626,7 +4638,7 @@ gFieldMenuTitle = 0x00445C50; // size:0x8 FieldMenu_DrawList, the menu title
 D_00446F80 = 0x00446F80; // size:0x4
 D_00446FA0 = 0x00446FA0; // size:0x4
 D_005F89D1 = 0x005F89D1; // size:0x1
-D_004475C0 = 0x004475C0; // size:0x4
+gEquipSetNameFormat = 0x004475C0; // size:0x4 the format of a new equipment set name, numbered from 1 (Chara_MakeSave)
 D_005F93E4 = 0x005F93E4; // size:0x4
 D_005F9D54 = 0x005F9D54; // size:0x4
 D_006A3A04 = 0x006A3A04; // size:0x4
@@ -4801,11 +4813,11 @@ CamReq_Mode25 = 0x00323FA0; // type:func
 CamReq_FromTable = 0x00323FD0; // type:func
 CamReq_Lobby44 = 0x00324070; // type:func
 Cam_ResetRequests_Unk = 0x00324080; // type:func
-Scene_FewPlaced3_Unk = 0x00325260; // type:func
-Effect_ExistsKind16 = 0x00325270; // type:func
-Effect_KindClass_Unk = 0x00325410; // type:func
-SeqA_Reset = 0x00325E70; // type:func
-SeqB_Reset = 0x00325F70; // type:func
+Scene_CanPlaceKind3 = 0x00325260; // type:func
+Lure_PlayerHasMonsterBait = 0x00325270; // type:func
+Effect_OwnerColorRow = 0x00325410; // type:func
+FadeA_Reset = 0x00325E70; // type:func
+FadeB_Reset = 0x00325F70; // type:func
 Scene_QuestFrameTick = 0x003274F0; // type:func
 Quest_Teardown = 0x00327770; // type:func
 Quest_TeardownNet = 0x00327810; // type:func
@@ -4835,7 +4847,7 @@ FileQueue_AddPlayerFile = 0x00335C80; // type:func
 Player_QueueLookFiles = 0x00335C90; // type:func
 AreaPack_ReadPart0 = 0x003363C0; // type:func
 AreaPack_ReadPart1 = 0x00336410; // type:func
-PlayerRec_SelectInRange = 0x00338020; // type:func
+Obj_ShowMeshInRange = 0x00338020; // type:func
 FxBlock_Clear = 0x003380D0; // type:func
 Player_ClearFxBlock = 0x00338120; // type:func
 EquipFx_ChainUpdate = 0x003381D0; // type:func
@@ -4856,19 +4868,19 @@ Area_FreeSubModel = 0x0033D1F0; // type:func
 TaskSlot_InitAll = 0x0033D240; // type:func
 TaskSlot_Clear9 = 0x0033D260; // type:func
 TaskSlot_Prepare = 0x0033D620; // type:func
-TaskSlot2_EndCode1 = 0x0033D6A0; // type:func
-TaskSlot2_EndCode2 = 0x0033D6C0; // type:func
+Task_EndGmSubForNetScene = 0x0033D6A0; // type:func
+Task_EndGmSubForNetSetup = 0x0033D6C0; // type:func
 Hud_Reset = 0x0033D9A0; // type:func
 Hud_StartQuest = 0x0033DEA0; // type:func
 Hud_InputBlocked = 0x0033E1A0; // type:func
 Hud_TownMenuOpen = 0x0033E230; // type:func
-Hud_FieldInputAllowed_Unk = 0x0033E2A0; // type:func
-Map_PlayerIconKind = 0x0033E320; // type:func
+Hud_ChatKeyAllowed = 0x0033E2A0; // type:func
+Map_MonsterVisibility = 0x0033E320; // type:func
 Hud_SupplyBoxActive = 0x0033E430; // type:func
-Hud_PlayerBusy8D5_Unk = 0x0033E450; // type:func
-Hud_SetUnkA9 = 0x0033E490; // type:func
+Hud_DeliveryOpen = 0x0033E450; // type:func
+Hud_SetCamReqStarted = 0x0033E490; // type:func
 Hud_ResetMenuState = 0x0033E4B0; // type:func
-Hud_MenuAllowed_Unk = 0x00344850; // type:func
+Hud_ItemMenusAllowed = 0x00344850; // type:func
 CombineMenu_DrawItemName = 0x003463D0; // type:func
 Map_DrawMain_Unk = 0x0034AD90; // type:func
 Hud_DrawPouchSelector = 0x0034BA30; // type:func
@@ -4877,7 +4889,7 @@ Hud_DrawItemWindow = 0x0034DC60; // type:func
 Hud_HealthFlashes = 0x0034F880; // type:func
 Hud_HealthBarColor = 0x0034FB60; // type:func
 Hud_DrawBlinkIcon = 0x00351230; // type:func
-Hud_GlowCond_Unk = 0x00351520; // type:func
+Map_MonsterLocated = 0x00351520; // type:func
 Hud_TriggerGlow = 0x00351580; // type:func
 Hud_DrawGlowEffect = 0x003515E0; // type:func
 Hud_StartSupplyMsg = 0x00352350; // type:func
@@ -4887,8 +4899,8 @@ QuestMenu_Begin = 0x00353E70; // type:func
 QuestMenu_DrawWideNumber = 0x00353F00; // type:func
 QuestMenu_DrawParTime = 0x00353F40; // type:func
 QuestMenu_DrawBestRecord = 0x003540A0; // type:func
-QuestMenu_MapIndex_Unk = 0x00354740; // type:func
-Stage_GetAreaData64 = 0x003A0C70; // type:func
+QuestMenu_DrillItemList = 0x00354740; // type:func
+Stage_GetAreaData = 0x003A0C70; // type:func
 Stage_GetActionSpots = 0x003A0E20; // type:func
 QuestGoal_DeliveryDone = 0x003A5650; // type:func
 Player_ClearMotion = 0x003AC450; // type:func
@@ -4922,8 +4934,8 @@ Fish_StepState_Unk = 0x003E6F20; // type:func
 gAnimCurveKeys = 0x00581948; // size:0x4
 gAnimData = 0x00581950; // size:0x4
 gAnimKeyBase = 0x00581980; // size:0x4
-gSeqB = 0x005B1D80; // size:0x14
-gSeqA = 0x005B1DA0; // size:0x14
+gFadeB = 0x005B1D80; // size:0x14
+gFadeA = 0x005B1DA0; // size:0x14
 
 // Round 18 (nsub-h1)
 YesNo_Toggle = 0x00355210; // type:func flips a yes/no choice on the buttons of mask (0x1400 on, 0x2800 off) with sound 0x17
@@ -5005,7 +5017,7 @@ Quest_IsMustOrderOrVersus = 0x0039F9F0; // type:func versus, or an online must-o
 Quest_DrillTakeCharm = 0x003A2D80; // type:func a drill quest (flag 0x200000) - once (gQuest.unk1F0), the notice "drill - got a charm, so subtract"
 Quest_DrillHasCharm = 0x003A2DF0; // type:func a drill quest with gQuest.unk1F0 == 1 (a status icon)
 Quest_DeductReward = 0x003A4A00; // type:func takes n of item from the reward (Quest_AddReward(item, -n)), noting it in gScene.unk12C
-QuestEm_RollAlarm = 0x003AAE80; // type:func stages 0x2B04-0x2B06 in day area 0x6E - 1 in 16 (QuestEm_SpawnArea)
+QuestEm_RollYamaTsukamiB = 0x003AAE80; // type:func quests 0x2B04-0x2B06 in day area 0x6E, 1 in 16 (QuestEm_SpawnArea adds kind 0x48)
 Player_TestFlags = 0x003ABE60; // type:func Player.unk078 & mask
 Player_TestSetFlags = 0x003ABE70; // type:func Player.unk078 & mask, then sets mask
 Equip_TorsoUpBonus = 0x003AEAC0; // type:func pieces of torso-up-like skills 0x29 (1), 0x2A (2)... of one piece (Player_GetTorsoSkillPoints)
@@ -5082,7 +5094,7 @@ gOnlineBonusState = 0x005D4780; // size:0x1
 gChatBlockList = 0x005C3730; // size:0x1E0
 gAreaGridCellX = 0x005D9FF8; // size:0x4
 gAreaGridCellZ = 0x005D9FFC; // size:0x4
-gQuestExtra = 0x006ADAD0; // size:0x80
+gNextQuest = 0x006ADAD0; // size:0x80 the quest to start next, NextQuest in quest.h (was gQuestExtra)
 gCardMenu = 0x006AEF90; // size:0xBC
 gChatTextSizes = 0x00432718; // size:0x8
 gTaskSlots = 0x005B3640; // size:0x200
@@ -5116,7 +5128,7 @@ gSharpnessTables = 0x0045E860; // size:0x30
 gWeaponClassInfo = 0x0044A1E0; // size:0x20
 gChat = 0x005BB080;
 gKbdCharClass = 0x00404DC0; // size:0x100
-gSizeRecordTbl = 0x00431570; // size:0x2D8
+gMonsterNoteDefs = 0x00431570; // size:0x2D8
 gSeVolumeByType = 0x0043C780; // size:0x50
 gAreaHitCount = 0x005B1FE8; // size:0x1
 gShakeId = 0x005BB0A8; // size:0x1
@@ -5130,7 +5142,7 @@ gChatClassColors = 0x0043B0D0; // size:0x10
 gConvEditLine = 0x0059B820;
 gEquipPreview = 0x005BAD60; // size:0xB0
 gChatWinState = 0x005BC49D; // size:0x1
-gSeqKeys = 0x0041CFE0; // size:0x1A4
+gFadeKeys = 0x0041CFE0; // size:0x1A4
 gRecipesEx = 0x0041E020; // size:0x180
 gNumConvMode = 0x00581C48; // size:0x4
 gRewardMoney = 0x005BC4A0; // size:0x4
@@ -5148,7 +5160,7 @@ gChatLogScroll = 0x005BB0BF; // size:0x1
 gGalleryTitle = 0x005BC4B0;
 gModelPktSteps = 0x004024B0; // size:0x20
 gUserDictFlags = 0x00403D80; // size:0x4
-gQuestListEntries = 0x00416920; // size:0x180
+gPhraseEntries = 0x00416920; // size:0x180
 gAreaQuadOffsets = 0x0041D1F0; // size:0x20
 gPlayerLookFiles = 0x0042FCF0; // size:0x40
 gAreaSeBanks = 0x0043B6C0; // size:0x200
@@ -5333,7 +5345,8 @@ WeaponType_Flags = 0x003B4F60; // type:func
 
 // Round 22 (ndata)
 gIconUVs = 0x0043AA90; // size:0x80
-gEquipColors = 0x0043AB10; // size:0x38
+gEquipColors = 0x0043AB10; // size:0x28 the equipment colours (0xRRGGBB), indexed by gRarityColorSlots
+gRarityColorSlots = 0x0043AB38; // size:0xE per rarity (7), then per rarity for the second set, an index into gEquipColors (Equip_Color)
 gFrameStyles = 0x0043AB50; // size:0x48
 gFrameStyles2 = 0x0043ABA0; // size:0x24
 gTargetMarkerPieces = 0x0043ABD0; // size:0x28
@@ -5356,8 +5369,8 @@ gMapMonsterIconU = 0x00431090; // size:0x10
 gMapMonsterIconColors = 0x004310A0; // size:0x10
 gMapPoints = 0x004310B0; // size:0x4B0
 gMapPoints80 = 0x00431560; // size:0xC
-gCamEventSprites = 0x00431860; // size:0x40
-gCamEventTris = 0x004318D0; // size:0x70
+gAimViewSprites = 0x00431860; // size:0x40
+gAimViewTris = 0x004318D0; // size:0x70
 gBlinkIconDefs = 0x00431940; // size:0x30
 gBowgunAmmoSprite = 0x00431970; // size:0x14
 gFieldMenuHelpLines = 0x00431F20; // size:0x10
@@ -5486,11 +5499,12 @@ gPouchIconFromB = 0x00430E58; // size:0x8
 gPouchBarXA = 0x00430E80; // size:0x10
 gPouchBarXB = 0x00430E90; // size:0x10
 gHudStepPulse = 0x00431850; // size:0x10
-gCamEventSizes = 0x004318A0; // size:0x30
+gAimViewSizes = 0x004318A0; // size:0x30
 gHudFadeSetsA = 0x00431B90; // size:0x10
 gHudFadeDefsB = 0x00431C50; // size:0x40
 gHudFadeSetsC = 0x00431E70; // size:0x10
-Player_IsFree = 0x00355A60; // type:func returns unk848 (set by Player_IdleInput and Player_IdleActions), pouch actions refused when 0
+Player_IsFree = 0x00355A60; // type:func returns unk848 (set by Player_CrouchInput and Player_IdleActions), pouch actions refused when 0
+Save_HasRate = 0x00355A70; // type:func
 gChatSendWait = 0x005BB0B4; // size:0x4
 gPauseMenuReq = 0x005BB0B1; // size:0x1
 gPauseWinStep = 0x005BB0B2; // size:0x1
@@ -5568,7 +5582,7 @@ Chat_ShowWindows = 0x0035C040; // type:func
 Player_UpdateMotionStep = 0x0039C0D0; // type:func per-frame motion step (0 in hit stop, 0.2 while hitSlowTimer runs, else twice motionSpeed) and the start of both layer motions
 Versus_DefeatCamera = 0x0039F770; // type:func sets versusDefeat bit 4 (team 0) or 8 (after bit 1) with the camera request for the player, returns 1 then
 QuestEm_CanAppear = 0x003A2150; // type:func the quest monster record of em still has appearances left (not flag 1, unk0A not 1, count above 0), outside a running quest phase 0
-QuestEm_SpawnKind48 = 0x003AAF10; // type:func spawns quest monster kind 0x48 at weight 100
+QuestEm_SpawnYamaTsukamiB = 0x003AAF10; // type:func spawns monster kind 0x48 (Yama Tsukami family) at size 100
 Decoration_SkillRows = 0x00360DB0; // type:func rows a decoration needs in the equipment window, half its skill entries rounded up
 AreaHit_Raycast = 0x0032E9D0; // type:func the segment a to b against the area walls of mask, first hit point to out (the monsters line of sight)
 AreaHit_CollideCapsule = 0x00328CD0; // type:func a capsule against the area triangles of its grid cell for em
@@ -5576,6 +5590,7 @@ AreaHit_CollideSweep = 0x003294A0; // type:func a moving capsule against the are
 AreaHit_SpherePushOut = 0x0032C400; // type:func pushes a sphere out of area hit point id (AreaHit_Resolve)
 Scene_CanPlaceKind2 = 0x003649A0; // type:func no kind 2 object placed and not high up in area day id 0x5E
 Item_CanPlaceKind2 = 0x00364A30; // type:func Scene_CanPlaceKind2 outside the camp
+Scene_InNoBarrelBombArea = 0x00364A70; // type:func
 Item_CanPlaceKind1 = 0x00364AA0; // type:func outside the camp with fewer than 2 kind 1 objects placed
 gDictLearn = 0x00581C40; // size:0x4
 gUsbKbSyncResult = 0x005819B8; // size:0x4
@@ -8117,6 +8132,15 @@ gHudFadeSetsC_0_10 = 0x00431D70; // size:0x20 entry 10 of gHudFadeSetsC_0
 gHudFadeSetsC_1_10 = 0x00431D90; // size:0x20 entry 10 of gHudFadeSetsC_1
 gHudFadeSetsC_2_6 = 0x00431DB0; // size:0x20 entry 6 of gHudFadeSetsC_2
 gHudFadeSetsC_3_6 = 0x00431DD0; // size:0x20 entry 6 of gHudFadeSetsC_3
+gHudFmtInt = 0x0046CFD0; // size:0x8
+gHudFmtInt2 = 0x0046CFF0; // size:0x8
+gHudFmtFraction = 0x0046CFF8; // size:0x8
+gSideNameNone = 0x0046D0B0; // size:0x8
+gSideNameA = 0x0046D0B8; // size:0x8
+gSideNameB = 0x0046D0C0; // size:0x8
+gHudFmtSideName = 0x0046D0C8; // size:0x8
+gHudFmtCount = 0x0046D0D0; // size:0x8
+gHudFmtString = 0x0046D0D8; // size:0x8
 gHelpTexts_1_8 = 0x0046D110; // size:0x8 entry 8 of gHelpTexts_1
 gHelpTexts_1_216 = 0x0046FFC0; // size:0x40 entry 216 of gHelpTexts_1
 gHelpTexts_1_219 = 0x004700C0; // size:0x40 entry 219 of gHelpTexts_1
@@ -8678,7 +8702,7 @@ gNetDevSeenCount = 0x0059DE18; // size:0x4 NETWORK, the device count at the last
 gNetXferResult = 0x0059D4C8; // size:0x4 NETWORK, the result of the last transfer call, negative on error (NetXfer_Step)
 gChatTextColor = 0x005BFB98; // size:0x1 the chat text color, set by TextColor_Input, sent at login and in the hunter card
 gNetMenuDrawHooks = 0x006A3A10; // size:0x40 two 0x20-byte draw hooks of the net menu (NetMode_Begin, OT_AddAt)
-gQuestTimerRanges = 0x006AEDD0; // size:0xA five (min, max) byte ranges, set from the defaults at 0x44B470 (Quest_Init) or by the server (Lobby_ApplyServerTimers)
+gEmSizeRanges = 0x006AEDD0; // size:0xA five (min, max) ranges of the rolled monster sizes in percent (QuestEm_RollSize), set from gEmSizeRangeDefaults (Quest_Init) or by the server (Lobby_ApplyServerTimers)
 gBgmTimers = 0x0043B218; // size:0xC the music timer per Bgm index (Bgm_Update, Bgm_PlayAreaMusic)
 Tex147_GetCellUv = 0x00358F90; // type:func UV corners of the 42-pixel cell of an id in texture 0x147 (6 per row, byte map at 0x4328B0), 0xFF gives the fallback cell
 gHostCacheNext = 0x0059C1B0; // size:0x4 NETWORK, the next slot of gHostCache, modulo 8 (net_gethostbyname, net_clear_host_cache)
@@ -8833,6 +8857,7 @@ gVu1ProgInfo58 = 0x004030E0; // size:0x30 the descriptor of VU1 program 58 (Vu1_
 gVu1ProgInfo59 = 0x00403110; // size:0x30 the descriptor of VU1 program 59 (Vu1_SelectProgram sets e->prog 59 and e->progInfo)
 
 // Round 31 (names)
+Item_RideItemUsable = 0x003648F0; // type:func
 Item_CanPlaceLargeBarrelBomb = 0x00364900; // type:func the large barrel bombs (items 0x5D 0x5E 0x29A), not in the camp or an Area_NoBarrelBombs area, fewer than 2 placed (placed1)
 Item_CanUseSmallBarrelBomb = 0x00364970; // type:func the small and launched barrel bombs (items 0x5B 0x5C 0x5F 0x60), not in an Area_NoBarrelBombs area
 Area_NoBarrelBombs = 0x00379CA0; // type:func 1 in the areas where the barrel bombs (items 0x5B-0x60, 0x29A) are not usable and item 0x56 is (Pouch_IsSlotUsable), areas 0x60-0x6D while Area_MonsterState is 2
@@ -8867,7 +8892,7 @@ gBgmAreasADtoAF = 0x0043B1B0; // size:0x20 Bgm_PlayAreaMusic areas 0xAD 0xAE 0xA
 gBgmFarm = 0x0043B1D0; // size:0x18 Bgm_PlayAreaMusic area 0x89 (and 0xAA-0xAC at half volume), id and volume by Village_AverageLevel * 4 + LobbyTime_IsPm * 2
 gBgmAreas56and57 = 0x0043B1E8; // size:0xC Bgm_PlayAreaMusic areas 0x56 0x57, by LobbyTime_IsPm the id, the volume in 0x57, the volume in 0x56
 gPadReplay = 0x006ADF70; // size:0x20 cleared by Pad_ResetInput, per port at +0xA replaying, +0xC the cursor in the replay data (buttons, frames), +0x14 the frames left (Pad_ReadButtons)
-gQuestNoticeTexts = 0x00445560; // size:0x20 the quest notices (Notice_PushItem), [0] quest failed, [1] the time limit is %d minutes, [2] time is up, [3] the supplies have arrived
+gQuestNoticeTexts = 0x00445560; // size:0x20 the quest notices (Notice_PushItem), [0] the failure notice, [1] the time limit notice (a format with the minutes), [2] the time-up notice, [3] the supply notice
 gSinVu0Poly = 0x00402560; // size:0x10 the sine series coefficients (x^9/9!, -x^7/7!, x^5/5!, -x^3/3!) after gSinVu0Coefs (Math_SinVu0, Math_CosVu0, Math_SinCos)
 gPouchBoxSprites = 0x00430B10; // size:0x70 Hud_DrawPouchItem, the item box sprite (+8 its color, the season color) and a list of 2 at +0x14
 gPouchSelectorSprites = 0x00430C20; // size:0x50 Hud_DrawPouchSelector, a list of 3 sprites
@@ -9307,7 +9332,9 @@ gEmTallyClass = 0x0044B390; // size:0x50 QuestStats_Tally, by monster kind the g
 gMarkMonsterCands = 0x0044B3E0; // size:0x50 QuestStats_Init, the monster kinds gQuest.markMonster is rolled from (0 ends)
 gDrillPayoutThresholds = 0x0044B430; // size:0x18 Quest_RollRewards, reward conditions 0x29-0x2D, the Plsel_DrillPayout each needs
 gSpecialMineAgeRanks = 0x0044B460; // size:0x10 SpecialMine_Rank, the gSpecialMineAge thresholds of the 5 ranks
-gQuestTimerRangeDefaults = 0x0044B470; // size:0xA Quest_Init, the five (min, max) byte ranges gQuestTimerRanges starts from
+gEmSizeRangeDefaults = 0x0044B470; // size:0xA Quest_Init, the five (min, max) size ranges gEmSizeRanges starts from offline
+gTraderVariantRolls = 0x0044B450; // size:0x10 Quest_Init, rolled for gQuest.traderVariant
+gRewardGiveRolls = 0x0044BDC0; // size:0x10 Quest_GiveRewards, how the quest's item list is given
 gRewardDeliverBands = 0x0044B518; // size:0xC Quest_RollRewards, reward conditions 0x15-0x19, the bands of the delivered count (range i to i+1)
 gRewardHuntBands = 0x0044B530; // size:0x20 Quest_RollRewards, reward conditions 0x1A-0x23, the bands of 20 minus the hunt count
 gEmSizeRollPicks = 0x0044B890; // size:0x20 QuestEm_RollSize, the gEmSizeRollTbls table by Quest_Random 0-31
@@ -9364,8 +9391,8 @@ gEquipCollectKinds = 0x0044CC88; // size:0xC EquipCollect_CheckArmor, the equipm
 gArea83TexFiles = 0x00425828; // size:0x8 Area_Load area 0x83, the texture file, [1] online while ElderRaid_InState1
 gArea84TexFiles = 0x00425830; // size:0x8 Area_Load area 0x84, the texture file, [1] online while ElderRaid_InState1
 gCommonModelTexFiles = 0x0042F1C0; // size:0x8 Quest_LoadCommonModels, the texture file of the common models by kind (0 offline, 5 online, Load_CommonModelPack)
-gSeqAColors = 0x0041D190; // size:0x30 SeqA_Draw, the colour by the key colour index
-gSeqBColors = 0x0041D1C0; // size:0x30 SeqB_Draw, the colour by the key colour index
+gFadeAColors = 0x0041D190; // size:0x30 FadeA_Draw, the colour by the key colour index
+gFadeBColors = 0x0041D1C0; // size:0x30 FadeB_Draw, the colour by the key colour index
 gAreaKindColors = 0x0041CF00; // size:0x50
 gAwardNoticeLines = 0x00447CB0; // size:0x28
 gAwardGalleryTitles = 0x00447CE0; // size:0xA0
@@ -9493,3 +9520,9 @@ gLoadingStartPos = 0x00468740; // size:0x18
 gCardSlotPos = 0x00468830; // size:0x18
 gFogDefault = 0x004485B0; // size:0x10
 gFogArea56 = 0x004485C0; // size:0x10
+// round 32 lane engine, unk_335040.c
+// an empty function the quest set-up and plsel call
+Quest_EmptyHook = 0x003350B0; // type:func
+// the swing chain lists per gender, for the torso's alternative model and its own
+gEquipFxListsAltTorso = 0x0044A858; // size:0x8
+gEquipFxListsTorso = 0x0044A860; // size:0x8

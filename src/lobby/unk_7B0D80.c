@@ -95,7 +95,7 @@ extern u8 gLbsConnectStep;
 extern u8 D_008BFAF9;                   /* the menu state's unk39 (gLobbyMenuData + 0x39) */
 u16 Pad_GetPressedRepeat(s32 port);
 void LobbyStream_Stop(void);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 s32 SeqA_IsPlaying(void);
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
 void Lobby_DrawBlackLine(void);
@@ -126,7 +126,7 @@ s32 NetScreen_Step5(void)
     case 0:
         gNetScreenStep++;
         LobbyStream_Stop();
-        SeqA_Start(1);
+        FadeA_Start(1);
         break;
     case 1:
         if (SeqA_IsPlaying() == 0) {

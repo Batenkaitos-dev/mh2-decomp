@@ -128,14 +128,14 @@ s32 Overlay_IsLoaded(s32);
 extern GalView *gGalleryScEvents[];
 void ScEvent_SetupB(ScEventHead *h);
 void Scene_LoadOverlay(s32);
-void SeqA_Reset(void);
+void FadeA_Reset(void);
 void func_36BC60(void);
 void *memset(void *, s32, u32);
 void Game_ResetSubsystems(void);
 void Gfx_ClearModelBuffers(void);
 void Quest_Clear(void);
 void Packet_SetMode0(void);
-extern u8 gQuestExtra[];
+extern u8 gNextQuest[];
 void Daytime_Set(u8); /* unit's own declaration: the definition (main) takes s32; Galex_QuestTask is 1 word off with it */
 void Season_Set(s32);
 void Galex_SetupQuest(void);
@@ -146,8 +146,8 @@ void Hud_Start(void);
 void Area_Load(s32);
 void Quest_InitPlayers(void);
 void Quest_LoadCommonModels(void);
-void func_327F70(void);
-void func_3350B0(void);
+void Quest_SetupStub(void);
+void Quest_EmptyHook(void);
 void func_33A360(void);
 void Quest_SpawnMonsters(s32);
 void Packet_SetMode2(void);
@@ -171,19 +171,19 @@ void Bgm_EnterArea(u16);
 void ScEvent_SetCamera(u8, u8);
 void Mem_Compact(void);
 void CamCtl_Update(s32);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void Loading_Stop(void);
 void func_00D74550(u8);
 void ScEvent_Update(void);
 void Frame_Draw(void);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void Pad_UpdateInput(void);
 void Stream_FadeOut(s32, s32);
 void CamReq_Cancel(void);
 void TaskSlot_End(TaskSlot *t);
-void Task_SetBootMode1(void);
+void Task_StartBootToGmSub(void);
 
-extern u16 D_006ADB48;
+extern u16 gNextQuestId;
 /* The galex (gallery) quest from the player select: loads the quest, its
  * sounds and area, runs it (with the camera of the game overlay's table when
  * that overlay is loaded) and restores the scene. */
@@ -212,7 +212,7 @@ void Galex_QuestTask(TaskSlot *t) {
     case 0:
         Scene_LoadOverlay(3);
         t->step = 0;
-        SeqA_Reset();
+        FadeA_Reset();
         t->mode++;
         memset(&gScene, 0, 0x2BC);
         func_36BC60();
@@ -225,12 +225,12 @@ void Galex_QuestTask(TaskSlot *t) {
         t->mode++;
         t->step = 0;
         Packet_SetMode0();
-        memset(gQuestExtra, 0, 0x80);
+        memset(gNextQuest, 0, 0x80);
         f = gSysSettings.galleryEntry;
         j = f & 0x7F;
-        D_006ADB48 = gGalexQuests[j].unk0;
-        if (D_006ADB48 == 0) {
-            D_006ADB48 = 0x3AB1;
+        gNextQuestId = gGalexQuests[j].unk0;
+        if (gNextQuestId == 0) {
+            gNextQuestId = 0x3AB1;
         }
         time = f & 0x80 ? 4 : 3;
         e = gGalexDaytimes;
@@ -245,7 +245,7 @@ void Galex_QuestTask(TaskSlot *t) {
         }
         Daytime_Set(time);
         Season_Set(gGalexQuests[j].unk4);
-        if (D_006ADB48 == 0x3AB1) {
+        if (gNextQuestId == 0x3AB1) {
             Galex_SetupQuest();
         } else {
             Quest_Init();
@@ -264,8 +264,8 @@ void Galex_QuestTask(TaskSlot *t) {
         Area_Load(gScene.startArea);
         Quest_InitPlayers();
         Quest_LoadCommonModels();
-        func_327F70();
-        func_3350B0();
+        Quest_SetupStub();
+        Quest_EmptyHook();
         func_33A360();
         Quest_SpawnMonsters(1);
         Packet_SetMode2();
@@ -378,7 +378,7 @@ void Galex_QuestTask(TaskSlot *t) {
         CamCtl_Update(1);
         gScene.eventRunning = 1;
         Galex_UpdateMonsters();
-        SeqA_Start(2);
+        FadeA_Start(2);
         gAreaState.drawSky = 1;
         Loading_Stop();
         gScene.galexTimer = 0;
@@ -390,7 +390,7 @@ void Galex_QuestTask(TaskSlot *t) {
         ScEvent_Update();
         Galex_UpdateMonsters();
         Frame_Draw();
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             t->mode++;
         }
         break;
@@ -406,14 +406,14 @@ void Galex_QuestTask(TaskSlot *t) {
             t->mode++;
             Stream_FadeOut(0, 15);
             Stream_FadeOut(1, 15);
-            SeqA_Start(1);
+            FadeA_Start(1);
         }
         break;
     case 6:
         gScene.frame++;
         (gScene.galexTimer)++;
         Galex_UpdateMonsters();
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             gScene.eventRunning = 0;
             CamReq_Cancel();
             t->mode++;
@@ -428,8 +428,8 @@ void Galex_QuestTask(TaskSlot *t) {
         gSysSettings.gmSubLoaded = 0;
         gSysSettings.galleryEntry &= 0x7F;
         Scene_LoadOverlay(2);
-        Task_SetBootMode1();
-        SeqA_Start(2);
+        Task_StartBootToGmSub();
+        FadeA_Start(2);
         gSysSettings.plselLoaded = 0;
         break;
     }
@@ -496,7 +496,7 @@ typedef struct GalVec {
 } GalVec;
 
 void Scene_LoadOverlay(s32);
-void SeqA_Reset(void);
+void FadeA_Reset(void);
 void func_36BC60(void);
 void *memset(void *, s32, u32);
 /* unit's own declaration: with the definition's u16 (SaveData *save, u8 type, u16 id, u16 level) (sub_main/unk_3B4C80.c), Galex_Task: 1 of 323 words differ */
@@ -513,12 +513,12 @@ s32 LobbyScreen_RunStep(void);
 void Town_Frame(void);
 s32 CamReq_State(void);
 void Stream_FadeOut(s32, s32);
-void SeqA_Start(s32);
-u8 SeqA_GetState(void);
+void FadeA_Start(s32);
+u8 FadeA_GetState(void);
 void Frame_Draw(void);
 void CamReq_Cancel(void);
 void Game_ResetSubsystems(void);
-void Task_SetBootMode1(void);
+void Task_StartBootToGmSub(void);
 extern GalVec gLobbyStartPos[];
 extern u8 D_5F8A7C[];
 extern u8 D_5F9124[];
@@ -549,7 +549,7 @@ void Galex_Task(TaskSlot *t) {
     case 0:
         Scene_LoadOverlay(4);
         t->step = 0;
-        SeqA_Reset();
+        FadeA_Reset();
         t->mode++;
         func_36BC60();
         memset(gSave.pouch, 0, 0x50);
@@ -614,7 +614,7 @@ void Galex_Task(TaskSlot *t) {
         if ((lim != 0 && lim <= gScene.galexTimer) || (gPadState[0].pressed & 0x40) || CamReq_State() != 1) {
             Stream_FadeOut(0, 15);
             t->mode++;
-            SeqA_Start(1);
+            FadeA_Start(1);
         }
         gPlayers[0].visible = 0;
         Frame_Draw();
@@ -625,7 +625,7 @@ void Galex_Task(TaskSlot *t) {
         if (CamReq_State() == 1) {
             Town_Frame();
         }
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             CamReq_Cancel();
             t->mode++;
         }
@@ -641,8 +641,8 @@ void Galex_Task(TaskSlot *t) {
         gSysSettings.gmSubLoaded = 0;
         gSysSettings.galleryEntry &= 0x7F;
         Scene_LoadOverlay(2);
-        Task_SetBootMode1();
-        SeqA_Start(2);
+        Task_StartBootToGmSub();
+        FadeA_Start(2);
         gSysSettings.plselLoaded = 0;
         break;
     }
@@ -784,7 +784,7 @@ void Galex_PlaceObjectLists(u8 **list, s32 *cnt) {
 }
 
 extern u8 D_6ADB30[];
-extern u16 D_006ADB48;
+extern u16 gNextQuestId;
 extern s8 D_006ADB4C;
 void *memcpy(void *, const void *, u32);
 void Bgm_Init(void);
@@ -836,11 +836,11 @@ void Galex_SetupQuest(void) {
     u32 *p;
 
     Galex_LoadFiles();
-    id = D_006ADB48;
+    id = gNextQuestId;
     c = D_006ADB4C;
     gScene.questId = id;
     gQuest.stage = id;
-    gQuest.unk15C = c;
+    gQuest.flyer = c;
     memcpy(&gQuest.huntGoals, &D_6ADB30, 0x18);
     gScene.rewardDeducted = 0;
     gScene.questPhase = 2;
@@ -860,8 +860,8 @@ void Galex_SetupQuest(void) {
     gQuest.capturedLevel = 0;
     gQuest.acks = 0;
     gQuest.netMsgArgs = 0;
-    gQuest.unk138 = 0;
-    gQuest.unk137 = 0;
+    gQuest.eventTriggered = 0;
+    gQuest.eventLabel = 0;
     gQuest.goalLabel = 0;
     gQuest.hunterRank[0][0] = 0;
     gQuest.hunterRank[0][1] = 0;
@@ -918,10 +918,10 @@ void Galex_SetupQuest(void) {
     gQuest.loopPc = 0;
     gQuest.scriptPc = 0;
     gQuest.areaData = (void *) (h->areaData + i);
-    gQuest.noticeTexts = (void *) (h->unk30 + i);
+    gQuest.noticeTexts = (void *) (h->noticeTexts + i);
     gQuest.texts = (void *) (gQuest.info->texts + i);
     gQuest.emSpawns = (void *) (h->emSpawns + i);
-    gQuest.stageEntry = (void *) (h->unk18 + i);
+    gQuest.stageEntry = (void *) (h->stageEntry + i);
     gQuest.areaRecords = (void *) (h->areaRecords + i);
     gQuest.gatherPoints = (void *) (h->gatherPoints + i);
     gQuest.actionSpots = (void *) (h->actionSpots + i);
@@ -929,7 +929,7 @@ void Galex_SetupQuest(void) {
     gQuest.seasonalData = (void *) (h->seasonalData + i);
     gQuest.reward = gQuest.info->reward;
     gQuest.penalty = gQuest.info->penalty;
-    gQuest.rewardTable = (void *) (h->unk0C + i);
+    gQuest.rewardTable = (void *) (h->rewardTable + i);
     gQuest.flags = gQuest.info->flags;
     gQuest.emLevel = h->emLevel;
     gQuest.header->tables += gSysSettings.stageFile;
@@ -940,8 +940,8 @@ void Galex_SetupQuest(void) {
     gQuest.eventKind = h->eventKind;
     gQuest.eventCount = h->eventCount;
     gQuest.timedEventSet = gQuest.timeLeft / 9000;
-    gQuest.unk09C = 0;
-    gQuest.unk15A = 0;
+    gQuest.timedEventStep = 0;
+    gQuest.traderVariant = 0;
     Galex_LoadTargets();
     cnt = 0;
     Galex_PlaceRecords((u8 *) gQuest.stageEntry, &cnt);

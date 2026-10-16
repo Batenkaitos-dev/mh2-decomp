@@ -264,7 +264,7 @@ void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 void Em_ComputeGoal(Em *em, f32 *target);
 void Em_ComputeGoal2(Em *em, f32 *target);
 s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_Add7F0(Em *em, s32 n);
+void Em_AddNeed1(Em *em, s32 n);
 void Em_UseGoalAction(Em *em);
 void EmKind38_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 s32 Sprite_Draw(Sprite *s);
@@ -908,7 +908,7 @@ s8 Em_SeePlayers(Em *em)
     sight.half = half;
     sight.pos = pos;
     for (i = 0; i < 4; i++, pl++) {
-        if (pl->stateGroup != 3 && Obj_SameArea(em, pl) && pl->active) {
+        if (pl->stateGroup != PL_GROUP_FAINT && Obj_SameArea(em, pl) && pl->active) {
             Em_GetTargetPos(em, i, pt);
             Em_CheckFlash(em, i, &sight);
             dy = pt[1] - y;
@@ -1018,7 +1018,7 @@ s32 Em_SightBlocked(Em *em, void **seg)
     return 0;
 }
 
-void Em_SetRow638(Em *em, u8 idx)
+void Em_SelectSightRow(Em *em, u8 idx)
 {
     em->sightTable = gEmRows638[em->type] + idx * 0x20;
 }

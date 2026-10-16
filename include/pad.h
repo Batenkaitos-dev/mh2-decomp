@@ -27,9 +27,39 @@ typedef char PadState_size_check[(sizeof(PadState) == 0x22) ? 1 : -1];
 
 extern PadState gPadState[2];
 
-/* The game's button bits, as the menus use them: 0x20 confirms (circle),
- * 0x40 cancels (cross); the D-pad is 0x2000 up, 0x1000 down, 0x800 left,
- * 0x400 right. */
+/*
+ * The game's button bits (PadState.held, pressed, repeat ...;
+ * PadPortInput.buttons), which PadState_Update (unk_2E3940.c) builds from
+ * the core's bits (PADIO_*, include/padio.h). They are named for the
+ * buttons of the default configuration: the core's PadConfig can remap
+ * them first. In the menus PAD_CIRCLE confirms and PAD_CROSS cancels.
+ */
+#define PAD_R3 0x0001
+#define PAD_L3 0x0002
+#define PAD_L2 0x0004
+#define PAD_L1 0x0008
+#define PAD_R2 0x0010
+#define PAD_CIRCLE 0x0020
+#define PAD_CROSS 0x0040
+#define PAD_R1 0x0080
+#define PAD_TRIANGLE 0x0100
+#define PAD_SQUARE 0x0200
+#define PAD_RIGHT 0x0400
+#define PAD_LEFT 0x0800
+#define PAD_DOWN 0x1000
+#define PAD_UP 0x2000
+#define PAD_SELECT 0x4000
+#define PAD_START 0x8000
+#define PAD_DPAD (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT) /* 0x3C00 */
+
+/*
+ * PadState.dir: the sticks' directions as bits. The left stick uses the
+ * D-pad's bits (PAD_UP ... PAD_RIGHT); the right stick these.
+ */
+#define PAD_RSTICK_UP 0x0020
+#define PAD_RSTICK_DOWN 0x0010
+#define PAD_RSTICK_LEFT 0x0008
+#define PAD_RSTICK_RIGHT 0x0004
 
 /* A pad value this frame and the frame before (PadPortInput). */
 typedef struct PadPair {

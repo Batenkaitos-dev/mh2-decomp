@@ -15,7 +15,7 @@ s32 ChatMenu_CanSetState(void);
 void Lobby_SetBootMode(s32);
 s32 Lobby_CheckDay(s32);
 s32 Lobby_GetDayState(void);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 void Chat_ShowWindows(void);
 extern s32 gTownMode;
 
@@ -81,8 +81,8 @@ void Font_SetPos(s16 x, s16 y);
 void Font_SetColor(s32 color);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-struct Pair;
-s32 Shake_CopyOffset(u8 id, struct Pair *out);
+struct ShakeOffset;
+s32 Shake_CopyOffset(u8 id, struct ShakeOffset *out);
 void Text_PrintfStyled(s32 a, const char *fmt, ...);
 void Text_PrintfColored(const char *, ...);
 extern ListPanel gChatStatePanel;
@@ -99,7 +99,7 @@ void Chat_DrawState(void)
     s32 a;
     s32 b;
 
-    Shake_CopyOffset(0x10, (struct Pair *) x);
+    Shake_CopyOffset(0x10, (struct ShakeOffset *) x);
     if (gScene.area != 0x83) {
         ListPanel_Draw(&gChatStatePanel, x, D_0080CFAC, gSubMenuWork->windowSel);
         Font_SetPos(x[0] + 0x1A9, 0x55);
@@ -144,7 +144,7 @@ void GameMenu_Quit(void)
     }
     Lobby_SetBootMode((gSubMenuWork->subEntry == 0) ? 1 : 2);
     gTownMode = 0x23;
-    SeqA_Start(1);
+    FadeA_Start(1);
     gFieldControl = 1;
     Chat_ShowWindows();
 }

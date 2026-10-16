@@ -406,7 +406,7 @@ void QuestDesk_Accept(u16 id, s16 money, s32 pay)
     }
     HunterCard_Build(gLobby->members[gScene.localPlayer].text);
     HunterCard_Build(gNetUsers[gScene.localPlayer].text);
-    gQuestExtra = q->flags;
+    gNextQuest = q->flags;
     D_6ADB4A = q->map;
     if (Game_IsOnline() == 1) {
         LobbyText_Update();

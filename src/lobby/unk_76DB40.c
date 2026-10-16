@@ -34,7 +34,7 @@ extern u8 *gTalkScriptRec;
 extern s16 gTalkScript;
 extern s32 gTalkLine;
 extern s8 gLobbyLevel2Index;
-s32 func_355A70(void);
+s32 Save_HasRate(void);
 s32 Game_IsOnline(void);
 void QuestCounter_DrawRecruit(WinSlide *, s16);
 void QuestCounter_DrawQuestWindow(s16 x, s16 y);
@@ -46,10 +46,10 @@ u8 BoxMenu_ListStyles(u8 *out)
     u32 i;
     u8 n;
 
-    if (func_355A70() == 1) {
+    if (Save_HasRate() == 1) {
         mask = save->rateFlags;
     }
-    if ((Game_IsOnline() != 1 || func_355A70() != 1) && save->styleBits != 0) {
+    if ((Game_IsOnline() != 1 || Save_HasRate() != 1) && save->styleBits != 0) {
         mask |= (u16)(1 << save->styleFlag);
     }
     for (i = 0, n = 0; i < 12; i++) {

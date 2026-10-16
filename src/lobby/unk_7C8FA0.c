@@ -16,8 +16,8 @@
 #include "browser.h"
 #include "task.h"
 s32 NetSetup_ShowLoginError(void);
-void SeqA_Start(s32);
-u8 SeqA_GetState(void);
+void FadeA_Start(s32);
+u8 FadeA_GetState(void);
 s32 Save_TestEventFlag(s32);
 s32 Movie_Update(void);
 void Movie_Stop(void);
@@ -55,7 +55,7 @@ void Net_ClearState(void);
 s32 NetMsg_Update(void);
 s32 LobbyCard_Select(void);
 s32 NetSetup_Connect(void);
-void func_18CC10(void);
+void Sys_EmptyHook(void);
 s32 NetSetup_Mode5(void);
 s32 NetSetup_SaveNetFile(void);
 s32 NetSetup_Dnas(void);
@@ -78,12 +78,12 @@ void Scene_QuestTask(u8 *obj);     /* a sub_main task */
 
 void Lobby_ResetState(void);
 s32 Lobby_Tick(void);
-void SeqA_Reset(void);
+void FadeA_Reset(void);
 s32 LobbyConn_Run(void);
 void Loading_Reset(void);
-void SeqB_Start(s32);
+void FadeB_Start(s32);
 s32 LobbyLogin_Leave(void);
-void SeqB_Reset(void);
+void FadeB_Reset(void);
 s32 LobbyLogin_Exit(void);
 void NetMode_ResetToFrame(void);
 void NetMode_OpenIcon(void);
@@ -251,7 +251,7 @@ void Sound_LoadCommonBanks(void);
 void Lobby_ClearSysBusy(void);
 void Mem_Compact(void);
 void TaskSlot_End(TaskSlot *t);
-void Task_SetBoot(void);
+void Task_StartBoot(void);
 void Game_ResetSubsystems(void);
 void TaskSlot_Set(void *func, s16 slot);
 void func_36CCE0(void);   /* func_0036CCE0 (sub_main), empty */
@@ -326,7 +326,7 @@ void NetScene_Run(TaskSlot *t)
         }
         Dmcam_PreloadAlt();
         NetScene_LoadOverlayA();
-        SeqA_Start(2);
+        FadeA_Start(2);
         if (gScene.scene == 6) {
             Gfx_ClearModelBuffers();
             Scene_ResetAll();
@@ -381,7 +381,7 @@ void NetScene_Run(TaskSlot *t)
                 }
             }
             func_8FC600();
-            SeqA_Reset();
+            FadeA_Reset();
             if (func_8FC5F0() == 0 && gScene.inQuest[gScene.localPlayer] != 0xFF) {
                 break;
             }
@@ -401,21 +401,21 @@ void NetScene_Run(TaskSlot *t)
     case 4:
         switch (t->step) {
         case 0:
-            SeqA_Start(2);
+            FadeA_Start(2);
             Movie_Play(6);
             t->step++;
         case 1:
             Movie_Update();
             r = Movie_GetStatus();
             if (r == 3 || (r == 2 && (gPadState[0].pressed & 0x8000))) {
-                SeqA_Start(1);
+                FadeA_Start(1);
                 t->step++;
                 Movie_RequestStop();
             }
             break;
         case 2:
             Movie_Update();
-            if ((u8)SeqA_GetState() != 1) {
+            if ((u8)FadeA_GetState() != 1) {
                 Movie_Stop();
                 NetScene_SetMode(t, 0);
                 goto restart;
@@ -443,7 +443,7 @@ void NetScene_Quit(void *t)
     if ((temp_v1 != 1) && (temp_v1 != 2)) {
         Lobby_SetBootMode(1);
     }
-    Task_SetBoot();
+    Task_StartBoot();
 }
 
 void Lobby_SetBootMode(s32 mode) {
@@ -521,7 +521,7 @@ s32 LobbyLogin_StateConnect(TaskSlot *t)
         if (Lobby_Tick() == 0) {
             NetScene_SetStep(t, 3);
             gNetEntryMode = 3;
-            SeqA_Reset();
+            FadeA_Reset();
         }
         func_007C9600();
         if (gLobby->phase != 4) {
@@ -540,7 +540,7 @@ s32 LobbyLogin_StateConnect(TaskSlot *t)
             gNetConnStep = 0;
             gLbsConnectStep = 0;
             gNetScreenStep = 0;
-            SeqB_Start(0xA);
+            FadeB_Start(0xA);
             break;
         }
         NetScene_DrawFrame();
@@ -550,18 +550,18 @@ s32 LobbyLogin_StateConnect(TaskSlot *t)
         case 1:
             NetScene_SetStep(t, 7);
             gLoginExitStep = 5;
-            SeqB_Reset();
+            FadeB_Reset();
             break;
         case 2:
             gPortalPage = 3;
             gNetEntryMode = 0;
             NetScene_ToState6();
-            SeqB_Reset();
+            FadeB_Reset();
             break;
         case 3:
             NetScene_SetStep(t, 7);
             gLoginExitStep = 0;
-            SeqB_Reset();
+            FadeB_Reset();
             break;
         default:
             NetScene_DrawFrame();
@@ -976,7 +976,7 @@ void NetSetupTask_Quit(TaskSlot *t) {
     gSysSettings.unk40 = 0;
     Scene_LoadOverlay(2);
     TaskSlot_End(t);
-    Task_SetBoot();
+    Task_StartBoot();
 }
 
 void NetSetupTask_StartScene(TaskSlot *t) {
@@ -1078,7 +1078,7 @@ s32 NetMode_RunSetup(void)
         t = NetSetup_Login();
         if (t != 0) {
             if (t == 1) {
-                func_18CC10();
+                Sys_EmptyHook();
                 NetMode_SetMode(6);
             } else {
                 NetMode_SetMode(9);
@@ -2707,7 +2707,7 @@ s32 NetSetup_SettingsMenu(void)
             case 0:
                 break;
             case 1:
-                SeqA_Start(1);
+                FadeA_Start(1);
                 st->subStep = 1;
                 st->innerStep = 0x14;
                 break;

@@ -289,7 +289,7 @@ void Effect0D_Setup(StageObj *o)
 }
 
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 u16 Mtx_Heading(f32 *m);
 void Mtx_GetTrans(f32 *out, f32 *m);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
@@ -478,7 +478,7 @@ void Effect0D_Run(StageObj *o)
             key += 2;
             break;
         }
-        Key_LerpF32(keys, &part->unk20, part->unk02);
+        Key_LerpFloat(keys, &part->unk20, part->unk02);
         if (part->draw != NULL) {
             switch (o->type) {
             case 3:

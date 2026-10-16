@@ -10,8 +10,8 @@ extern u8 gMenuWork[];
 extern LobbyMenu *gLobbyMenu;
 extern s8 gLobbyLevel1Sel;
 extern u8 gLobbyScreenMode;
-u8 SeqA_GetState(void);
-void SeqA_Start(s32);
+u8 FadeA_GetState(void);
+void FadeA_Start(s32);
 s32 LobbyLevel1_Leave(void);
 s32 LobbyLevel1_Enter(void);
 void LobbyLevel0_LeaveCountdown(void);
@@ -23,8 +23,8 @@ s32 LobbyTown_WantsMovie(void);
 void LobbyTown_StartMovie(void);
 s32 LobbyTown_MovieDone(void);
 s32 LobbyScreen_EnterSeq(s32);
-u8 SeqB_GetState(void);
-void SeqB_Start(s32);
+u8 FadeB_GetState(void);
+void FadeB_Start(s32);
 s32 Lobby_HandleLeaveRequest(void);
 void LobbyScene_Run(void);
 void LobbyTown_Begin(void);
@@ -49,8 +49,8 @@ void LobbyLevel1_ToVillage(void)
         gLobby->mode++;
         gLobby->step = 0;
         gLobby->seqStep = 0;
-        if (SeqA_GetState() != 0) {
-            SeqA_Start(0xC);
+        if (FadeA_GetState() != 0) {
+            FadeA_Start(0xC);
         }
         gLobbyMenu->redraw = 1;
     case 1:
@@ -79,8 +79,8 @@ void LobbyLevel1_ToVillage(void)
             gLobbyMenu->hideLayers = 1;
             switch (LobbyScreen_EnterSeq(gLobby->enterSeq)) {
             case 0:
-                if (SeqB_GetState() != 0) {
-                    SeqB_Start(0xC);
+                if (FadeB_GetState() != 0) {
+                    FadeB_Start(0xC);
                 }
                 gLobbyScreenMode = 2;
                 gLobby->mode++;

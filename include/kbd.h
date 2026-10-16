@@ -126,4 +126,10 @@ typedef char RomajiEntry_size_check[(sizeof(RomajiEntry) == 0x10) ? 1 : -1];
 
 extern RomajiEntry gRomajiKanaTbl[];
 
+/* The conversion candidates (gKbdCandLines): a page shows
+ * KBD_CAND_PAGE of them (Kbd_DrawCandidateBox), each a line of
+ * KBD_CAND_LINE_SIZE bytes. */
+#define KBD_CAND_PAGE 3
+#define KBD_CAND_LINE_SIZE 0x100
+
 #endif

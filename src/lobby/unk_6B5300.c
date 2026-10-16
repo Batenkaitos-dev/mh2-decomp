@@ -89,8 +89,8 @@ s32 Talk_Update(void);
 void CamReq_Lobby44(s32 n);
 void Jingle_Play(void *obj, s32 id);
 s32 CamReq_State(void);
-void SeqA_Start(s32 a);
-u8 SeqA_GetState(void);
+void FadeA_Start(s32 a);
+u8 FadeA_GetState(void);
 void AreaMenu_Open(u16 id);
 
 
@@ -152,14 +152,14 @@ void PickMenu_Update(void)
         switch (CamReq_State()) {
         case 0:
         case -1:
-            SeqA_Start(1);
+            FadeA_Start(1);
             m->state += 1;
             break;
         }
         break;
     case 4:
         p->visible = 0;
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             gFieldControl = 1;
             gTownMenuOpen = 0;
             gTownMode = 0;

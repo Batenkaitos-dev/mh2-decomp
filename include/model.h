@@ -118,6 +118,21 @@ typedef struct MeshDesc {
 } MeshDesc;
 typedef char MeshDesc_size_check[(sizeof(MeshDesc) == 0x24) ? 1 : -1];
 
+/* The pools' sizes, in entries (Model_ResetAll frees them all): the models
+ * (*gModels), the materials, the bones (EmBone), the material sets
+ * (ModelMatSet) and the draw models. */
+#define MODEL_POOL_COUNT 0x80
+#define MATERIAL_POOL_COUNT 0x400
+#define BONE_POOL_COUNT 0x800
+#define MATSET_POOL_COUNT 0x180
+
+/* Places in the model load buffer (gModelLoadBuf, unk_335040.c): a model
+ * file at its start, its skeleton file (the pack's part 1) after it; a
+ * stage's second file (FilePair) holds the alternative skeleton
+ * (Model_InitSkeleton's alt). */
+#define MODEL_LOAD_SKEL_OFFSET 0x128000
+#define MODEL_LOAD_ALT_SKEL_OFFSET 0x298000
+
 Model *Model_Get(s32 i);
 
 /* sub_main 0x5DA070: the current area's four model sets (unk_33B080.c sets them from Model_Get; the
@@ -141,5 +156,116 @@ extern Model *gCommonModels[5];
  * Player_GetAreaAmbModel checks and Eff12 draws (three from it), [1] AmbientSound_Draw's,
  * [2..9] AreaObj_K09_DrawType1..8's. */
 extern s16 *gAreaAmbModels[200];
+
+/*
+ * A skeleton file (read by unk_2F61D0.c; unk_2F6540.c builds skeletons
+ * from it): a SkelFileHeader, then `count` chunks, each a SkelChunk
+ * header and its data from +0xC. The parts chunk (type
+ * SKEL_CHUNK_PARTS) lists each part's root node; every other chunk holds
+ * one node, a SkelFileNode. A part's nodes form a tree through child and
+ * sibling (-1: none).
+ */
+#define SKEL_FILE_HAS_PARTS 0x80000000  /* SkelFileHeader.flags: one chunk is the parts chunk, not a bone */
+#define SKEL_CHUNK_PARTS 0              /* SkelChunk.type of the parts chunk */
+
+typedef struct SkelFileHeader {
+    u32 flags;                  /* 0x0: SKEL_FILE_HAS_PARTS */
+    u32 count;                  /* 0x4: the chunks */
+    u32 unk8;
+} SkelFileHeader;
+
+typedef struct SkelChunk {
+    u8 type;                    /* 0x0: SKEL_CHUNK_PARTS, or a node's */
+    u8 pad1[3];
+    u32 count;                  /* 0x4: the parts chunk's: the parts (s32 root nodes from +0xC) */
+    u32 size;                   /* 0x8: the whole chunk's: the next chunk follows */
+} SkelChunk;
+
+/* A node of a skeleton file (SkelFile_GetNode). */
+typedef struct SkelFileNode {
+    s32 index;                  /* 0x00 */
+    s32 unk4;
+    s32 child;                  /* 0x08 */
+    s32 sibling;                /* 0x0C */
+    f32 scale[4];               /* 0x10 */
+    f32 rot[4];                 /* 0x20 */
+    f32 trans[4];               /* 0x30 */
+    s32 unkA;                   /* 0x40 */
+    s32 id;                     /* 0x44 */
+} SkelFileNode;
+
+/*
+ * A skeleton part as built (SkelFile_BuildPart, unk_2F6540.c, from a
+ * skeleton file): this header, then `count` BoneDefs, SkelFile_PartSize
+ * bytes in all. It is built in a buffer (gLoadBuf), and the header is
+ * copied to the caller's, whose `block` then points at the buffer;
+ * Skeleton_CopyData (unk_2E3940.c) copies the block into a memory handle,
+ * from which Bone_InitTree (unk_2EF020.c) sets up a model's bones.
+ */
+typedef struct SkelHeader {
+    s16 unk0;                   /* 0x0: not set by SkelFile_BuildPart */
+    s16 count;                  /* 0x2: the bones */
+    s32 headerSize;             /* 0x4: 0x10: the bones follow */
+    struct SkelHeader *block;   /* 0x8: in the caller's copy, the built block; NULL in the block */
+    s32 size;                   /* 0xC: the block's bytes */
+} SkelHeader;
+
+/* A bone of a built skeleton (0x40 bytes): a skeleton file's node with its
+ * links made relative to the part (-1: none). Bone_ReadDef reads it into an
+ * EmBone. */
+typedef struct BoneDef {
+    s16 index;                  /* 0x00 */
+    u16 id;                     /* 0x02: the part it belongs to (EmBone.id) */
+    u8 pad04[2];
+    s16 child;                  /* 0x06 */
+    s16 sibling;                /* 0x08 */
+    s16 unkA;                   /* 0x0A: the node's unkA; Bone_ReadDef keeps it in EmBone.unk174 */
+    u8 pad0C[4];
+    f32 scale[4];               /* 0x10 */
+    f32 rot[4];                 /* 0x20 */
+    f32 trans[4];               /* 0x30 */
+} BoneDef;
+
+/*
+ * An entry of the draw model pool gModelPool (0x180 entries of 0x180 bytes;
+ * a draw model's handle is its index + 1): a model file part set up for
+ * drawing (Model_Create, Model_Setup; unk_2E3940.c), with its VU1 program
+ * and its materials' textures.
+ */
+typedef struct ModelEntry {
+    u32 flags;                  /* 0x00: 2 and 4 select how Model_Draw builds its packets */
+    s32 used;                   /* 0x04: from the file header, 0 free */
+    s32 unk08;                  /* 0x08 */
+    s32 frame;                  /* 0x0C: the frame its data was last set up */
+    s32 size;                   /* 0x10: of the copy at 0x14 */
+    void *file;                 /* 0x14: a handle, the copied file */
+    s32 unk18;                  /* 0x18 */
+    void *data;                 /* 0x1C: a handle */
+    u8 *dataAddr;               /* 0x20 */
+    s32 unk24;                  /* 0x24 */
+    s32 pktSize;                /* 0x28 */
+    s32 unk2C;                  /* 0x2C */
+    s32 unk30;                  /* 0x30 */
+    s32 partCount;              /* 0x34 */
+    s32 texCount;               /* 0x38 */
+    s32 unk3C;                  /* 0x3C */
+    s32 unk40;                  /* 0x40 */
+    s32 unk44;                  /* 0x44 */
+    s32 prog;                   /* 0x48: VU1 program (Vu1_SelectProgram), -1 none */
+    s32 *progInfo;              /* 0x4C */
+    s32 unk50;                  /* 0x50 */
+    s32 unk54;                  /* 0x54 */
+    u8 pad58[0x60 - 0x58];
+    u8 mat[0x20];               /* 0x60: per part, a material of gRsMaterials */
+    s32 partTex[0x20];          /* 0x80: per part, its material's texture */
+    s32 tex[0x20];              /* 0x100: the distinct textures */
+} ModelEntry;
+typedef char ModelEntry_size_check[(sizeof(ModelEntry) == 0x180) ? 1 : -1];
+
+/* A 4x4 matrix as one object, so that it copies as a whole: a slot of the
+ * matrix table gMtxSlots (MtxSlot_Store, MtxSlot_Load; EmBone.index). */
+typedef struct Mtx44Copy {
+    f32 m[4][4];
+} Mtx44Copy;
 
 #endif /* MODEL_H */

@@ -1,9 +1,10 @@
-/* Functions matched automatically from m2c's output;
- * the others are still assembly. First-pass C, to be named and typed. */
+/*
+ * Sys_EmptyHook (main 0x18CC10): an empty function. main calls it once,
+ * after loading the first overlay and before entering sub_main; the
+ * lobby's NetMode_RunSetup and select's select_psp.c call it too.
+ */
 #include "common.h"
-#include "m2c_macros.h"
 
-
-void func_0018CC10(void) {
-
+void Sys_EmptyHook(void)
+{
 }

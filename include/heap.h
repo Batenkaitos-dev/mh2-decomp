@@ -49,6 +49,7 @@ typedef struct LinearMark {
     s32 side;
 } LinearMark;
 
+#define HEAP_BLOCK_COUNT 0x3000  /* gHeapBlocks' entries, gHeap's blocks (Sys_InitHeap) */
 #define HEAP_ALIGN(x, a) (~((a) - 1) & ((x) + (a) - 1))
 
 #endif /* HEAP_H */

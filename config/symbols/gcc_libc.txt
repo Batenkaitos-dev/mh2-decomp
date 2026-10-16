@@ -29,3 +29,8 @@ vsnprintf = 0x0010F920; // type:func
 free = 0x00107198; // type:func __malloc_lock, _free_r(reent, p), __malloc_unlock, the free hook beside SysHeap_Alloc
 rand = 0x00109BA8; // type:func newlib 64-bit LCG 6364136223846793005, returns (next >> 32) & 0x7FFFFFFF
 strtok = 0x0010C898; // type:func strtok_r(s, delim, the reent strtok_last slot)
+
+// The C library's sscanf, named from its calls
+eofread = 0x0010A960; // type:func the string stream's read (newlib's sscanf.c), answers 0
+sscanf = 0x0010A968; // type:func nethttp's answer parser calls it
+__svfscanf = 0x0010EB90; // type:func the scanner, sscanf calls it (stream, fmt, ap)

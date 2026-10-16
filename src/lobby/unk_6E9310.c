@@ -354,7 +354,7 @@ s32 HunterInfo_Update(u16 pad);
 s32 Menu_YesNoInput(void);
 void *memcpy(void *dst, const void *src, u32 n);
 void Lobby_Disconnect(s32);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 s32 LobbyLogin_EnterEntry(s32 entry, s32 sub);
 s32 Menu_WrapLeftRight(s32 cur, s32 n);
 s32 GroupBoard_ResultsInput(u16 pad)
@@ -502,7 +502,7 @@ s32 GroupBoard_ResultsInput(u16 pad)
                 gLobby->area = r->unk10;
                 gLobby->land = r->unk12;
                 Lobby_Disconnect(0);
-                SeqA_Start(10);
+                FadeA_Start(10);
                 Stream_Stop(0);
                 Stream_Stop(1);
             }

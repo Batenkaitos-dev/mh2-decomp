@@ -382,21 +382,21 @@ void Em_CheckKindRequest(Em *em)
     }
 }
 
-void Em_Clear7F0State(Em *em)
+void Em_ClearNeed1State(Em *em)
 {
     em->need1 = 0;
     em->need1State = 0;
     em->hitReactMode = 0;
 }
 
-void Em_Clear7ECState(Em *em)
+void Em_ClearNeed2State(Em *em)
 {
     em->need2 = 0;
     em->need2State = 0;
     em->hitReactMode = 0;
 }
 
-void Em_Refill7F4(Em *em)
+void Em_RefillNeed3(Em *em)
 {
     em->need3Gauge = em->need3Max;
     em->need3 = 0;
@@ -494,7 +494,7 @@ s16 *Em_IdSetHas(Em *em, u16 id)
     return 0;
 }
 
-void Em_Add7F0(Em *em, s32 n)
+void Em_AddNeed1(Em *em, s32 n)
 {
     em->need1Gauge += n;
     if (em->need1Gauge > em->need1Max) {
@@ -502,7 +502,7 @@ void Em_Add7F0(Em *em, s32 n)
     }
 }
 
-void Em_Add7EC(Em *em, s32 n)
+void Em_AddNeed2(Em *em, s32 n)
 {
     em->need2Gauge += n;
     if (em->need2Gauge > em->need2Max) {

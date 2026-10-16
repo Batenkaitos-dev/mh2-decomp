@@ -191,22 +191,23 @@ typedef struct HunterTitle {
 typedef char HunterTitle_size_check[(sizeof(HunterTitle) == 0x8) ? 1 : -1];
 extern HunterTitle gHunterTitles[148];
 
-/* A monster note's definition: a row of gSizeRecordTbl (sub_main, 52 rows, one per note), read by
+/* A monster note's definition: a row of gMonsterNoteDefs (sub_main, 52 rows, one per note), read by
  * the monster notes (MonsterNote_DrawPage), the size records' crowns (SizeRecord_DrawLarge and
  * SizeRecord_DrawSmall; plsel's awards) and the lobby's hunt records (Records_DrawMonsters). The
  * sizes are in percent, as SaveData.sizeMax and sizeMin. */
 typedef struct MonsterNoteDef {
     u8 note;                    /* 0x0: the note's number (its bit in SaveData.noteKnown; gEmDescTexts) */
-    u8 emType;                  /* 0x1: the monster kind (gMonsterNames; the Record_Group* and MonsterGroup_* tallies; MonsterList_Find) */
+    u8 emType;                  /* 0x1: the monster kind (gMonsterNames; the Record_Group* and MonsterGroup_* tallies; MonsterNote_FindKind) */
     s16 bigCrown;               /* 0x2: the size from which the big crown is drawn, -1: no size records */
     s16 goldCrown;              /* 0x4: the size from which the big crown is gold */
     s16 smallCrown;             /* 0x6: the size up to which the small crown is drawn, -1: none */
     s16 unk08;                  /* 0x8: 0 in every row (no reader seen) */
-    u16 knownItem;              /* 0xA: the item whose pickup makes the note known (MonsterList_OnItemGet) */
+    u16 knownItem;              /* 0xA: the item whose pickup makes the note known (MonsterNote_OnItemGet) */
     u8 emClass;                 /* 0xC: gEmClassNames index */
     u8 picture;                 /* 0xD: the picture (EntryPicture_GetUV), 0xFF: none (Menu_DrawEntryPicture) */
 } MonsterNoteDef;
 typedef char MonsterNoteDef_size_check[(sizeof(MonsterNoteDef) == 0xE) ? 1 : -1];
-extern MonsterNoteDef gSizeRecordTbl[52];
+#define MONSTER_NOTE_COUNT 52
+extern MonsterNoteDef gMonsterNoteDefs[MONSTER_NOTE_COUNT];
 
 #endif /* SAVE_H */

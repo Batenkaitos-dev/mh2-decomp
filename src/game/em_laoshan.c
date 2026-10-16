@@ -74,7 +74,7 @@ void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 void EmLaoshan_SetGroup1State(Em *em, u16 state, u8 mode);
 void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
 void Em_MotionDelta(Em *em, f32 *out);
-void func_3A0810(Em *em);
+void Quest_TriggerEvent(Em *em);
 void Player_ClearVelocity(void *);
 void GmEm_ResetSize(); /* unit's own declaration: GmEm_ResetSize reads a0 = em (the incoming argument, still in a0); the call passes no argument */
 s32 Save_TestEventFlag(s32);
@@ -96,7 +96,7 @@ void CamReq_ForMonster(Em *em);
 s32 Quest_IsRunning(s32 ending);
 void Em_EndStatus5(Em *em);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void EmLaoshan_RunState(Em *em);
 /* end of prototypes */
@@ -1253,7 +1253,7 @@ void EmLaoshan_State3_02(Em *em)
                 if (w->fortHits < 0xA) {
                     w->fortHits++;
                     if (w->fortHits >= 0xA) {
-                        func_3A0810(em);
+                        Quest_TriggerEvent(em);
                     }
                     gScene.fortStage = w->fortHits;
                 }
@@ -1962,7 +1962,7 @@ void EmLaoshan_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmLaoshan_RunState(em);
     if (em->stateRequest != 0) {
         EmLaoshan_RunState(em);

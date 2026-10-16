@@ -83,7 +83,7 @@ void LobbyDialog_Grow(void);
 void LobbyText_Open(s32);
 void Lobby_Disconnect(s32 a);
 void LobbyVillage_Begin2(void);
-void SeqA_Start(s32 a);
+void FadeA_Start(s32 a);
 extern LobbyMenu *gLobbyMenu;
 /* unk_6F4B30's .rodata (0x838298-0x8382B0) */
 #pragma rodata on
@@ -154,7 +154,7 @@ void MoveMenu_Update(void)
         switch (Menu_YesNoInput()) {
         case 0:
             Lobby_Disconnect(0);
-            SeqA_Start(0xA);
+            FadeA_Start(0xA);
             Stream_Stop(0);
             Stream_Stop(1);
             break;
@@ -205,8 +205,8 @@ void MoveMenu_OpenEntries(void)
 s32 Lobby_CanEnterByRank(s32 i, s32 again);
 u16 Rand_Next(s32 stream);
 s32 Menu_WrapLeftRight(s32 cur, s32 n);
-void SeqB_Start(s32);
-u8 SeqB_GetState(void);
+void FadeB_Start(s32);
+u8 FadeB_GetState(void);
 s32 LobbyLogin_EnterEntry(s32 a, s32 b);
 void ChatLog_Clear(void);
 void LobbyDialog_OpenWait(void *text);
@@ -282,12 +282,12 @@ s32 MoveMenu_EntryInput(u16 pad)
             m->tA = 0;
             m->tC = 0;
             m->state++;
-            SeqB_Start(1);
+            FadeB_Start(1);
         }
         break;
     case 3:
         gLobbyMenu->redraw = 1;
-        if (SeqB_GetState() != 1) {
+        if (FadeB_GetState() != 1) {
             switch (LobbyLogin_EnterEntry(id, 0)) {
             case 0:
                 m->state = 0;
@@ -297,7 +297,7 @@ s32 MoveMenu_EntryInput(u16 pad)
                 m->state = 99;
                 LobbyDialog_OpenWait(gLobby->errText);
                 LobbyDialog_Grow();
-                SeqB_Start(2);
+                FadeB_Start(2);
                 break;
             }
         }

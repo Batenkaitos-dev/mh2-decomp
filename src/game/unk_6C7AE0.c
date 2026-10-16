@@ -1162,7 +1162,7 @@ void Eff06_PlaySe(ObjAttach *o, s16 kind)
                 break;
             }
             if (LightBowgun_HasOption10(o->owner)) {
-                if (((Player *) o->owner)->weaponType == 1) {
+                if (((Player *) o->owner)->weaponType == WEAPON_HEAVY_BOWGUN) {
                     s = 5;
                 } else {
                     s = 6;

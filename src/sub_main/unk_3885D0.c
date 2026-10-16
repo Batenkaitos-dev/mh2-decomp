@@ -36,7 +36,7 @@ void Player_MotionEffects(Player *p, Work438 *w);
 s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame);
 /* unit's own declaration: with the definition's void (Player *p, s16 arg, s32 type) (sub_main/unk_3CD9C0.c), Player_EffectAtFrame: 73 of 96 words differ */
 void Effect0D_SpawnForPlayer(Player *p, s32 a, u8 b);
-void PlayerRec_SelectInRange(u8 *p, u8 kind, u8 sel);
+void Obj_ShowMeshInRange(u8 *p, u8 kind, u8 sel);
 
 /*
  * The hunter's motion sounds: per motion (w->unk6) the voice, armour rattle
@@ -3442,8 +3442,8 @@ void Player_EffectAtFrame(void *obj, f32 frame, s32 a, s16 kind)
 
 void func_00395EC0(void *obj, Work438 *w)
 {
-    PlayerRec_SelectInRange(obj, 0x12, 0);
-    PlayerRec_SelectInRange(obj, 0xE, 0);
+    Obj_ShowMeshInRange(obj, 0x12, 0);
+    Obj_ShowMeshInRange(obj, 0xE, 0);
 }
 
 s32 Player_IsLocal(void *obj);

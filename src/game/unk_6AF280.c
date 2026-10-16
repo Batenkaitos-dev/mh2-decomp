@@ -1,6 +1,23 @@
 /*
- * Game overlay code at 0x6AF280-0x6BB9D0 (starts with GreatSword_State00), not identified yet: a
- * range of the overlay split off for the functions m2c drafts that match.
+ * The drawn weapons' states, first part: the great sword, the bowguns (heavy
+ * and light share them), the hammer, the lance, the sword and shield, the
+ * dual swords, the long sword, and the hunting horn's play stance (the rest
+ * of the horn, the gunlance and the bow are in unk_6BB9D0.c).
+ *
+ * Player_RunWeaponState (unk_70A290.c) runs the drawn weapon's
+ * <Weapon>_RunState, which maps the player's state in group PL_GROUP_WEAPON
+ * (the per-weapon enums of include/player.h) to a handler and a variant.
+ * A handler steps through pl->step: it plays its motions
+ * (Player_SetMotionPair; motion ids are plain numbers), makes the attack's
+ * hit object (Eff00_Create with an attack id, unk_6BB9D0.c), checks the hit
+ * (<Weapon>_CheckHit: a bounce, the hit slow) and in its input window reads
+ * the next input (<Weapon>_CheckInput); then it chains another state or
+ * returns to idle (Player_BeginState). <Weapon>_AttackInput reads the drawn
+ * idle's input, <Weapon>_DrawAttack starts the attack that draws on the move.
+ * The attack input is a flick of the right stick (input.stickDirPressed
+ * 0x3C), its direction in input.rightStickAngle; the roll button is
+ * input.pressed 0x40, and input.held 0x80 the weapon's hold special
+ * (Player_HoldSpecialInput: the guard, the charge, the demon mode...).
  */
 #include "common.h"
 #include "em.h"
@@ -9,22 +26,25 @@
 /* prototypes */
 typedef struct HornMotion { s16 mot; s16 blend; s16 mot2; s16 blend2; s16 start2; } HornMotion;
 typedef struct FrameRange { f32 from; f32 to; } FrameRange;
-extern u16 HuntingHorn_State00_Motions[];
-extern HornMotion HuntingHorn_State00_VarMotions[];
-extern FrameRange HuntingHorn_State00_Fx57D[];
-extern FrameRange HuntingHorn_State00_Fx57E[];
-extern FrameRange HuntingHorn_State00_Fx57F[];
+extern u16 HuntingHorn_StanceMotions[];
+extern HornMotion HuntingHorn_StanceEntryMotions[];
+extern FrameRange HuntingHorn_Note0WalkFrames[];
+extern FrameRange HuntingHorn_Note1WalkFrames[];
+extern FrameRange HuntingHorn_Note2WalkFrames[];
 void Player_StickTurnMove(Player *, s16, f32);
-void HuntingHorn_IdleInput(Player *, s32);
+void HuntingHorn_PlayInput(Player *, s32);
 void HuntingHorn_AddNote(Player *, u8);
 void GreatSword_SetChargeAttack(Player *em);
 typedef struct MotionBlend { s16 blend; s16 start; } MotionBlend;
-extern MotionBlend GreatSword_State02_Motions[];
+extern MotionBlend GreatSword_OverheadBlends[];
 void StageObj_K00_Create(void *owner, u8 k, f32 *pos, u8 c);
 void GreatSword_CheckInput(Player *em, s32 arg1);
 typedef struct GunMotion { s16 mot; u16 aimA; u16 aimB; } GunMotion;
-extern GunMotion Bowgun_State00_AimLayers[];
-extern u8 D_45E0E2[][4]; /* +2 of a 4-byte row per ammo type in main's data (gAmmoLevels) */
+extern GunMotion Bowgun_FireMotions[];
+/* Byte 2 of each 4-byte row of sub_main's gAmmoLevels (one row per ammo type):
+ * the rapid-fire shots after the first. A linker alias (game_aliases.ld), which
+ * the match needs: the code indexes from it, not from gAmmoLevels. */
+extern u8 gAmmoRapidShots[][4];
 void CamShake_ReqB(void *obj, s32 i);
 void Bowgun_FireShot(Player *em, s32 arg1, s32 arg2, f32 scale);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
@@ -45,63 +65,63 @@ s32 Motion_PassedFrame(void *, s32 layer, f32 frame);
 s32 Player_IsLocal(void *);
 void Player_RequestState(Player *p, u16 state, u8 sub, u16 flags);
 void Player_SetFlag(void *obj, u32 flag);
-void Player_SetMotionPair(Player *, s32, s32, s32); /* unit's own declaration: the last parameter s32 (the definition has s16); with the definition's type GreatSword_State00 by 94 of 281, GreatSword_State01 by 141 of 316, GreatSword_State02 by 293 of 560 words differ */
+void Player_SetMotionPair(Player *, s32, s32, s32); /* unit's own declaration: the last parameter s32 (the definition has s16); with the definition's type GreatSword_StateSweepLeft by 94 of 281, GreatSword_StateSweepRight by 141 of 316, GreatSword_StateOverhead by 293 of 560 words differ */
 void Player_SetMoveMode(Player *, u16 mode, s16 flag1, s16 flag2);
 void Player_SetState(Player *, u8, u8, s32); /* unit's own declaration: (u8, u8, s32) (the definition has u16, u8, u16); with the definition's type Player_TurnAndSetState by 3 of 21 words differ */
 u32 Player_TestFlag(void *obj, u32 flag);
 void Player_UpdateMotionTime(Player *p, s16 step);
 void Player_UseStamina(Player *p, s32 n);
-void GreatSword_State01(Player *, s32);
-void GreatSword_State02(Player *, u32);
-void GreatSword_State03(Player *, s32);
-void GreatSword_State19(Player *, u32);
-void GreatSword_State26(Player *, s32);
-void Bowgun_State00(Player *, s32, s32);
-void Bowgun_State01(Player *, s32);
-void Bowgun_State06(Player *, s32);
-void Bowgun_State02(Player *, s32);
-void Hammer_State00(Player *, s32);
-void Hammer_State01(Player *, s32);
-void Hammer_State02(Player *, s32);
-void Hammer_State03(Player *, s32);
-void Hammer_State05(Player *, s32);
-void Hammer_State06(Player *, s32);
-void Hammer_State07(Player *, s32);
-void Hammer_State09(Player *, s32);
-void Hammer_State10(Player *, s32);
+void GreatSword_StateSweepRight(Player *, s32);
+void GreatSword_StateOverhead(Player *, u32);
+void GreatSword_StateBounce(Player *, s32);
+void GreatSword_StateCharge(Player *, u32);
+void GreatSword_StateChargeSlash(Player *, s32);
+void Bowgun_StateFire(Player *, s32, s32);
+void Bowgun_StateReload(Player *, s32);
+void Bowgun_StateDrawReload(Player *, s32);
+void Bowgun_StateDryFire(Player *, s32);
+void Hammer_StateDownAttack(Player *, s32);
+void Hammer_StateCombo1(Player *, s32);
+void Hammer_StateCombo2(Player *, s32);
+void Hammer_StateCharge(Player *, s32);
+void Hammer_StateChargeSpin(Player *, s32);
+void Hammer_StateChargeRelease(Player *, s32);
+void Hammer_StateChargeRelease2(Player *, s32);
+void Hammer_StateFinisher(Player *, s32);
+void Hammer_StateBounce(Player *, s32);
 void Hammer_CheckInput(Player *em, s32 arg1);
 void Hammer_CheckChargeInput(Player *);
-void Lance_State00(Player *, s32);
-void Lance_State01(Player *, s32);
-void Lance_State03(Player *, s32);
-void Lance_State06(Player *, s32);
-void Lance_State07(Player *, s32);
+void Lance_StateThrust(Player *, s32);
+void Lance_StateUpperThrust(Player *, s32);
+void Lance_StateCharge(Player *, s32);
+void Lance_StateChargeFinish(Player *, s32);
+void Lance_StateBounce(Player *, s32);
 void Lance_CheckInput(Player *, s32);
 s32 SwordShield_CheckHit(Player *);
-void SwordShield_State00(Player *, s32);
-void SwordShield_State04(Player *, s32);
-void SwordShield_State05(Player *, s32);
+void SwordShield_StateCombo(Player *, s32);
+void SwordShield_StateRisingSlash(Player *, s32);
+void SwordShield_StateBounce(Player *, s32);
 void SwordShield_CheckInput(Player *em, s32 arg1);
 s32 DualSwords_CheckHit(Player *);
-void DualSwords_State00(Player *, s32);
-void DualSwords_State01(Player *em, s32 arg1);
-void DualSwords_State03(Player *, s32);
-void DualSwords_State04(Player *, s32);
-void DualSwords_State05(Player *, s32);
-void DualSwords_State08(Player *, s32);
+void DualSwords_StateCombo(Player *, s32);
+void DualSwords_StateSideSlash(Player *em, s32 arg1);
+void DualSwords_StateRisingSlash(Player *, s32);
+void DualSwords_StateDemonToggle(Player *, s32);
+void DualSwords_StateDemonSideSlash(Player *, s32);
+void DualSwords_StateBounce(Player *, s32);
 void DualSwords_CheckInput(Player *, s32);
-void LongSword_State00(Player *, s32, s32);
-void LongSword_State01(Player *, s32);
-void LongSword_State02(Player *, u32);
-void LongSword_State03(Player *, s32);
-void LongSword_State04(Player *, s32);
-void LongSword_State07(Player *, u32);
-void LongSword_State08(Player *, s32);
-void LongSword_State09(Player *, s32);
-void LongSword_State10(Player *, s32);
-void LongSword_State14(Player *, s32);
-void LongSword_State15(Player *, s32);
-void LongSword_State16(Player *, s32);
+void LongSword_StateSlash(Player *, s32, s32);
+void LongSword_StateSlash2(Player *, s32);
+void LongSword_StateFadeSlash(Player *, u32);
+void LongSword_StateBounce(Player *, s32);
+void LongSword_StateThrust(Player *, s32);
+void LongSword_StateSpirit1(Player *, u32);
+void LongSword_StateSpiritThrust(Player *, s32);
+void LongSword_StateSpirit2(Player *, s32);
+void LongSword_StateSpiritRising(Player *, s32);
+void LongSword_StateRisingSlash(Player *, s32);
+void LongSword_StateSpirit3(Player *, s32);
+void LongSword_StateExtraSlash(Player *, s32);
 void Eff00_Create(Player *, u8);
 s32 Motion_ReachedFrame(void *, s32, f32);
 void CamShake_ReqA(void *obj, s32 i);
@@ -110,20 +130,23 @@ s32 Quest_PhaseIsOver(s32);
 void Player_BeginState(Player *p, s32 action, s32 a2, s32 a3);
 void Player_TickWeaponTimer(Player *p);
 s32 LongSword_GaugeAtLeast(Player *p, s16 n);
-void GreatSword_State00(Player *, s32);
+void GreatSword_StateSweepLeft(Player *, s32);
 void Eff00_CreateDual(Player *, s32, s32);
-extern s16 DualSwords_State01_Motions[];
+extern s16 DualSwords_SideSlashMotions[];
 s32 Motion_InFrameRange(void *, s32, f32, f32);
 void Vib_StartLocal(void *port, s32 i);
-s32 LongSword_StickAction(Player *em);
-void LongSword_CheckInput(Player *em);
+s32 LongSword_ReadAttackKey(Player *em);
+void LongSword_EvadeInput(Player *em);
 u8 LongSword_ComboInput(Player *, u32, u8, u8);
 void Player_TurnAndSetState(Player *em, u8 group, u8 state, s32 mode, u8 turn);
 struct StageObj *StageObj_K05_Create(void *owner, s32 arg1, s32 kind);
 void StageObj_K29_CreateOnPlayerDefault(Player *p, u8 k, f32 scale);
 void LongSword_AddGauge(Player *p, s16 n);
 typedef struct GunAmmoMask { u16 id; u32 mask; } GunAmmoMask;
-extern GunAmmoMask D_45EE20[];
+/* The light bowguns' rapid-fire ammo (Bowgun_RapidFireMask): a gun's id and a
+ * mask with a bit per ammo type; id 999 ends it. A linker alias into sub_main's
+ * data (game_aliases.ld). */
+extern GunAmmoMask gRapidFireAmmo[];
 /* end of prototypes */
 
 /* unk_6AF280's .rodata (0x8DA570-0x8DCB50) */
@@ -894,65 +917,72 @@ char D_008DCB40[0x10] = {
 };
 #pragma rodata off
 
-void GreatSword_State00(Player *p, s32 variant)
+/*
+ * The left sweep, GSWORD_SWEEP_LEFT and its chained forms. variant: 0 from
+ * idle; 1 after the overhead or the charged slash; 2 after the right sweep; 3
+ * and 4 as 1 and 2, turned 45 degrees left first. 1-4 play a link motion
+ * before the sweep. A bounce goes to GSWORD_BOUNCE; frames 72-98 are the
+ * combo window (GreatSword_CheckInput caller 1).
+ */
+void GreatSword_StateSweepLeft(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->unk417 = 1;
-        p->stateVar1 = 0;
-        p->noFlinchTimer = 0x3C;
+        pl->unk417 = 1;
+        pl->stateVar1 = 0;
+        pl->noFlinchTimer = 0x3C;
         switch (variant) {
         case 0:
-            p->step++;
-            Player_SetMotionPair(p, 0x57E, 4, 0);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 2);
-            Player_SetMoveMode(p, 0, 1, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57E, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 2);
+            Player_SetMoveMode(pl, 0, 1, 0);
             break;
         case 1:
         case 2:
         case 3:
         case 4:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                Player_UpdateMotionTime(p, 0);
+                pl->stateVar0++;
+                Player_UpdateMotionTime(pl, 0);
                 switch (variant) {
                 case 1:
-                    Player_SetMotionPair(p, 0x589, 4, 0);
+                    Player_SetMotionPair(pl, 0x589, 4, 0);
                     break;
                 case 2:
-                    Player_SetMotionPair(p, 0x58D, 4, 0);
+                    Player_SetMotionPair(pl, 0x58D, 4, 0);
                     break;
                 case 3:
                 case 4:
-                    p->rot[1] = (u16) (p->rot[1] + 0x2000);
-                    p->targetYaw = p->rot[1];
+                    pl->rot[1] = (u16) (pl->rot[1] + 0x2000);
+                    pl->targetYaw = pl->rot[1];
                     if (variant == 3) {
-                        Player_SetMotionPair(p, 0x58F, 0, 0);
+                        Player_SetMotionPair(pl, 0x58F, 0, 0);
                     } else {
-                        Player_SetMotionPair(p, 0x593, 0, 0);
+                        Player_SetMotionPair(pl, 0x593, 0, 0);
                     }
                     break;
                 }
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
                     switch (variant) {
                     case 2:
-                        Player_SetMotionPair(p, 0x57E, 2, 0x2C);
+                        Player_SetMotionPair(pl, 0x57E, 2, 0x2C);
                         break;
                     case 4:
-                        Player_SetMotionPair(p, 0x57E, 0, 0x2C);
+                        Player_SetMotionPair(pl, 0x57E, 0, 0x2C);
                         break;
                     default:
-                        Player_SetMotionPair(p, 0x57E, 2, 0x1A);
+                        Player_SetMotionPair(pl, 0x57E, 2, 0x1A);
                         break;
                     }
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 2);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 2);
                 }
                 break;
             }
@@ -960,104 +990,110 @@ void GreatSword_State00(Player *p, s32 variant)
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-        } else if (p->hitPending != 0 && p->stateVar1 == 0) {
-            p->stateVar1 = 1;
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+        } else if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+            pl->stateVar1 = 1;
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                StageObj_K05_Create(p, 0xF, 0);
+                StageObj_K05_Create(pl, 0xF, 0);
                 break;
             case 1:
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                p->unk417 = 0;
-                Player_SetState(p, 1, 3, 0);
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                pl->unk417 = 0;
+                Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_BOUNCE, 0);
                 break;
             case 2:
             case 3:
-                p->step++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 2);
+                pl->step++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 2);
                 break;
             }
-        } else if (Motion_ReachedFrame(p, 0, 72.0f) != 0 && Motion_ReachedFrame(p, 0, 98.0f) == 0) {
-            GreatSword_CheckInput(p, 1);
+        } else if (Motion_ReachedFrame(pl, 0, 72.0f) != 0 && Motion_ReachedFrame(pl, 0, 98.0f) == 0) {
+            GreatSword_CheckInput(pl, 1);
         }
         break;
     case 2:
-        if (p->hitSlowTimer <= 0) {
-            p->step++;
-            StageObj_K05_Create(p, 0x1C, 0);
+        if (pl->hitSlowTimer <= 0) {
+            pl->step++;
+            StageObj_K05_Create(pl, 0x1C, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
-        } else if (Motion_ReachedFrame(p, 0, 78.0f) != 0 && Motion_ReachedFrame(p, 0, 104.0f) == 0) {
-            GreatSword_CheckInput(p, 1);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
+        } else if (Motion_ReachedFrame(pl, 0, 78.0f) != 0 && Motion_ReachedFrame(pl, 0, 104.0f) == 0) {
+            GreatSword_CheckInput(pl, 1);
         }
         break;
     }
 }
 
-void GreatSword_State01(Player *p, s32 variant)
+/*
+ * The right sweep, GSWORD_SWEEP_RIGHT and its chained forms, the mirror of
+ * GreatSword_StateSweepLeft (variants likewise; 2 is after the left sweep).
+ * When nothing was hit, a ground impact at frame 106. Window: frames 116-192
+ * (caller 2).
+ */
+void GreatSword_StateSweepRight(Player *pl, s32 variant)
 {
     f32 v[4];
     f32 out[4];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->unk417 = 1;
-        p->stateVar1 = 0;
-        p->noFlinchTimer = 0x3C;
+        pl->unk417 = 1;
+        pl->stateVar1 = 0;
+        pl->noFlinchTimer = 0x3C;
         switch (variant) {
         case 0:
-            p->step++;
-            Player_SetMotionPair(p, 0x57F, 4, 0);
-            p->motionTime = 0;
-            Eff00_Create(p, 1);
-            Player_SetMoveMode(p, 0, 1, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57F, 4, 0);
+            pl->motionTime = 0;
+            Eff00_Create(pl, 1);
+            Player_SetMoveMode(pl, 0, 1, 0);
             break;
         case 1:
         case 2:
         case 3:
         case 4:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                Player_UpdateMotionTime(p, 0);
+                pl->stateVar0++;
+                Player_UpdateMotionTime(pl, 0);
                 switch (variant) {
                 case 1:
-                    Player_SetMotionPair(p, 0x588, 4, 0);
+                    Player_SetMotionPair(pl, 0x588, 4, 0);
                     break;
                 case 2:
-                    Player_SetMotionPair(p, 0x58B, 4, 0);
+                    Player_SetMotionPair(pl, 0x58B, 4, 0);
                     break;
                 case 3:
                 case 4:
-                    p->rot[1] = (u16) (p->rot[1] - 0x2000);
-                    p->targetYaw = p->rot[1];
+                    pl->rot[1] = (u16) (pl->rot[1] - 0x2000);
+                    pl->targetYaw = pl->rot[1];
                     if (variant == 3) {
-                        Player_SetMotionPair(p, 0x58E, 0, 0);
+                        Player_SetMotionPair(pl, 0x58E, 0, 0);
                     } else {
-                        Player_SetMotionPair(p, 0x591, 0, 0);
+                        Player_SetMotionPair(pl, 0x591, 0, 0);
                     }
                     break;
                 }
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
                     if (variant == 1) {
-                        Player_SetMotionPair(p, 0x57F, 2, 0x40);
+                        Player_SetMotionPair(pl, 0x57F, 2, 0x40);
                     } else {
-                        Player_SetMotionPair(p, 0x57F, 0, 0x42);
+                        Player_SetMotionPair(pl, 0x57F, 0, 0x42);
                     }
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 1);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 1);
                 }
                 break;
             }
@@ -1065,105 +1101,112 @@ void GreatSword_State01(Player *p, s32 variant)
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-        } else if (p->hitPending != 0 && p->stateVar1 == 0) {
-            p->stateVar1 = 1;
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+        } else if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+            pl->stateVar1 = 1;
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                StageObj_K05_Create(p, 0xF, 0);
+                StageObj_K05_Create(pl, 0xF, 0);
                 break;
             case 1:
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                p->unk417 = 0;
-                Player_SetState(p, 1, 3, 0);
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                pl->unk417 = 0;
+                Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_BOUNCE, 0);
                 break;
             case 2:
             case 3:
-                p->step++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 2);
+                pl->step++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 2);
                 break;
             }
         } else {
-            if (p->stateVar1 == 0 && Motion_PassedFrame(p, 0, 106.0f) != 0) {
+            if (pl->stateVar1 == 0 && Motion_PassedFrame(pl, 0, 106.0f) != 0) {
                 v[0] = 30.0f;
                 v[1] = 0.0f;
                 v[2] = -150.0f;
-                Vec_Rotate(out, v, p->rotMtx);
-                v[0] = p->pos[0] + out[0];
-                v[1] = 15.0f + (p->pos[1] + out[1]);
-                v[2] = p->pos[2] + out[2];
-                StageObj_K00_Create(p, 0, v, 1);
-                Vib_StartLocal(p, 2);
-                CamShake_ReqA(p, 0);
+                Vec_Rotate(out, v, pl->rotMtx);
+                v[0] = pl->pos[0] + out[0];
+                v[1] = 15.0f + (pl->pos[1] + out[1]);
+                v[2] = pl->pos[2] + out[2];
+                StageObj_K00_Create(pl, 0, v, 1);
+                Vib_StartLocal(pl, 2);
+                CamShake_ReqA(pl, 0);
             }
-            if (Motion_ReachedFrame(p, 0, 116.0f) != 0 && Motion_ReachedFrame(p, 0, 192.0f) == 0) {
-                GreatSword_CheckInput(p, 2);
+            if (Motion_ReachedFrame(pl, 0, 116.0f) != 0 && Motion_ReachedFrame(pl, 0, 192.0f) == 0) {
+                GreatSword_CheckInput(pl, 2);
             }
         }
         break;
     case 2:
-        if (p->hitSlowTimer <= 0) {
-            p->step++;
-            StageObj_K05_Create(p, 0x1C, 0);
+        if (pl->hitSlowTimer <= 0) {
+            pl->step++;
+            StageObj_K05_Create(pl, 0x1C, 0);
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
-        } else if (Motion_ReachedFrame(p, 0, 116.0f) != 0 && Motion_ReachedFrame(p, 0, 192.0f) == 0) {
-            GreatSword_CheckInput(p, 2);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
+        } else if (Motion_ReachedFrame(pl, 0, 116.0f) != 0 && Motion_ReachedFrame(pl, 0, 192.0f) == 0) {
+            GreatSword_CheckInput(pl, 2);
         }
         break;
     }
 }
 
-void GreatSword_State02(Player *p, u32 variant)
+/*
+ * The overhead slash, GSWORD_OVERHEAD and its forms. variant: 0 from idle, 1
+ * GSWORD_DRAW_OVERHEAD, 2 after the right sweep, 3 after the left, 4 after
+ * the bounce, 5 and 6 as 3 and 2 turned. The slash motion's blend and start
+ * come from GreatSword_OverheadBlends[variant]. Window: frames 48-102 (caller
+ * 3).
+ */
+void GreatSword_StateOverhead(Player *pl, u32 variant)
 {
     f32 v[4];
     f32 out[4];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0x3C;
-        p->weaponOut = 1;
-        p->unk417 = 1;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0x3C;
+        pl->weaponOut = 1;
+        pl->unk417 = 1;
         switch (variant) {
         case 0:
-            p->step++;
-            Player_SetMotionPair(p, 0x579, 4, 0);
-            Player_UpdateMotionTime(p, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x579, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
             break;
         case 1:
-            p->step++;
-            Player_SetMotionPair(p, 0x582, 2, 0);
-            p->unk417 = 0;
+            pl->step++;
+            Player_SetMotionPair(pl, 0x582, 2, 0);
+            pl->unk417 = 0;
             break;
         case 2:
-            Player_SetMotionPair(p, 0x58C, 4, 0);
+            Player_SetMotionPair(pl, 0x58C, 4, 0);
             break;
         case 3:
-            Player_SetMotionPair(p, 0x58A, 4, 0);
+            Player_SetMotionPair(pl, 0x58A, 4, 0);
             break;
         case 4:
-            p->step++;
-            Player_SetMotionPair(p, 0x57D, 4, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57D, 4, 0);
             break;
         case 5:
-            p->rot[1] += 0x2000;
-            p->targetYaw = p->rot[1];
-            Player_SetMotionPair(p, 0x590, 0, 0);
+            pl->rot[1] += 0x2000;
+            pl->targetYaw = pl->rot[1];
+            Player_SetMotionPair(pl, 0x590, 0, 0);
             break;
         case 6:
-            p->rot[1] -= 0x2000;
-            p->targetYaw = p->rot[1];
-            Player_SetMotionPair(p, 0x592, 0, 0);
+            pl->rot[1] -= 0x2000;
+            pl->targetYaw = pl->rot[1];
+            Player_SetMotionPair(pl, 0x592, 0, 0);
             break;
         }
         break;
@@ -1172,30 +1215,30 @@ void GreatSword_State02(Player *p, u32 variant)
         case 0:
         case 1:
         case 4:
-            p->step++;
+            pl->step++;
             break;
         case 2:
-            if (p->motion[0].playing == 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x579, 2, 0x32);
+            if (pl->motion[0].playing == 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x579, 2, 0x32);
             }
             break;
         case 3:
-            if (Motion_ReachedFrame(p, 0, 24.0f) != 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x595, 2, 0);
+            if (Motion_ReachedFrame(pl, 0, 24.0f) != 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x595, 2, 0);
             }
             break;
         case 5:
-            if (Motion_ReachedFrame(p, 0, 26.0f) != 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x596, 2, 0);
+            if (Motion_ReachedFrame(pl, 0, 26.0f) != 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x596, 2, 0);
             }
             break;
         case 6:
-            if (p->motion[0].playing == 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x579, 0, 0x34);
+            if (pl->motion[0].playing == 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x579, 0, 0x34);
             }
             break;
         }
@@ -1205,176 +1248,185 @@ void GreatSword_State02(Player *p, u32 variant)
         case 0:
         case 2:
         case 6:
-            if (Motion_ReachedFrame(p, 0, 58.0f) != 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x594, GreatSword_State02_Motions[variant].blend, GreatSword_State02_Motions[variant].start);
-                Player_UpdateMotionTime(p, 0);
-                Eff00_Create(p, 3);
+            if (Motion_ReachedFrame(pl, 0, 58.0f) != 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x594, GreatSword_OverheadBlends[variant].blend, GreatSword_OverheadBlends[variant].start);
+                Player_UpdateMotionTime(pl, 0);
+                Eff00_Create(pl, 3);
             }
             break;
         case 1:
         case 3:
         case 4:
         case 5:
-            if (p->motion[0].playing == 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x594, GreatSword_State02_Motions[variant].blend, GreatSword_State02_Motions[variant].start);
-                Player_UpdateMotionTime(p, 0);
-                Eff00_Create(p, 3);
+            if (pl->motion[0].playing == 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x594, GreatSword_OverheadBlends[variant].blend, GreatSword_OverheadBlends[variant].start);
+                Player_UpdateMotionTime(pl, 0);
+                Eff00_Create(pl, 3);
             }
             break;
         }
         break;
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-        } else if (p->hitPending != 0 && p->stateVar1 == 0) {
-            p->stateVar1 = 1;
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+        } else if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+            pl->stateVar1 = 1;
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                StageObj_K05_Create(p, 0xF, 0);
+                StageObj_K05_Create(pl, 0xF, 0);
                 break;
             case 1:
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                Player_SetState(p, 1, 3, 0);
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_BOUNCE, 0);
                 break;
             case 2:
             case 3:
-                p->step++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 1);
+                pl->step++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 1);
                 break;
             }
         } else {
-            if (p->stateVar1 == 0 && Motion_PassedFrame(p, 0, 42.0f) != 0) {
+            if (pl->stateVar1 == 0 && Motion_PassedFrame(pl, 0, 42.0f) != 0) {
                 v[0] = 0.0f;
                 v[1] = 0.0f;
                 v[2] = 150.0f;
-                Vec_Rotate(out, v, p->rotMtx);
-                v[0] = p->pos[0] + out[0];
-                v[1] = 15.0f + (p->pos[1] + out[1]);
-                v[2] = p->pos[2] + out[2];
-                StageObj_K00_Create(p, 0, v, 1);
-                Vib_StartLocal(p, 2);
-                CamShake_ReqA(p, 0);
+                Vec_Rotate(out, v, pl->rotMtx);
+                v[0] = pl->pos[0] + out[0];
+                v[1] = 15.0f + (pl->pos[1] + out[1]);
+                v[2] = pl->pos[2] + out[2];
+                StageObj_K00_Create(pl, 0, v, 1);
+                Vib_StartLocal(pl, 2);
+                CamShake_ReqA(pl, 0);
             }
-            if (Motion_ReachedFrame(p, 0, 48.0f) != 0 && Motion_ReachedFrame(p, 0, 102.0f) == 0) {
-                GreatSword_CheckInput(p, 3);
+            if (Motion_ReachedFrame(pl, 0, 48.0f) != 0 && Motion_ReachedFrame(pl, 0, 102.0f) == 0) {
+                GreatSword_CheckInput(pl, 3);
             }
         }
         break;
     case 4:
-        if (p->hitSlowTimer <= 0) {
-            p->step++;
-            StageObj_K05_Create(p, 0x1C, 0);
+        if (pl->hitSlowTimer <= 0) {
+            pl->step++;
+            StageObj_K05_Create(pl, 0x1C, 0);
         }
         break;
     case 5:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-        } else if (p->hitPending != 0 && p->stateVar1 == 0) {
-            p->stateVar1 = 1;
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+        } else if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+            pl->stateVar1 = 1;
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                StageObj_K05_Create(p, 0xF, 0);
+                StageObj_K05_Create(pl, 0xF, 0);
                 break;
             case 1:
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                Player_SetState(p, 1, 3, 0);
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_BOUNCE, 0);
                 break;
             case 2:
             case 3:
-                p->step++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 1);
+                pl->step++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 1);
                 break;
             }
         } else {
-            if (p->stateVar1 == 0 && Motion_PassedFrame(p, 0, 42.0f) != 0) {
+            if (pl->stateVar1 == 0 && Motion_PassedFrame(pl, 0, 42.0f) != 0) {
                 v[0] = 0.0f;
                 v[1] = 0.0f;
                 v[2] = 150.0f;
-                Vec_Rotate(out, v, p->rotMtx);
-                v[0] = p->pos[0] + out[0];
-                v[1] = 15.0f + (p->pos[1] + out[1]);
-                v[2] = p->pos[2] + out[2];
-                StageObj_K00_Create(p, 0, v, 1);
-                Vib_StartLocal(p, 2);
-                CamShake_ReqA(p, 0);
+                Vec_Rotate(out, v, pl->rotMtx);
+                v[0] = pl->pos[0] + out[0];
+                v[1] = 15.0f + (pl->pos[1] + out[1]);
+                v[2] = pl->pos[2] + out[2];
+                StageObj_K00_Create(pl, 0, v, 1);
+                Vib_StartLocal(pl, 2);
+                CamShake_ReqA(pl, 0);
             }
-            if (Motion_ReachedFrame(p, 0, 48.0f) != 0 && Motion_ReachedFrame(p, 0, 102.0f) == 0) {
-                GreatSword_CheckInput(p, 3);
+            if (Motion_ReachedFrame(pl, 0, 48.0f) != 0 && Motion_ReachedFrame(pl, 0, 102.0f) == 0) {
+                GreatSword_CheckInput(pl, 3);
             }
         }
         break;
     case 6:
-        if (p->hitSlowTimer <= 0) {
-            p->step++;
-            StageObj_K05_Create(p, 0x1C, 0);
+        if (pl->hitSlowTimer <= 0) {
+            pl->step++;
+            StageObj_K05_Create(pl, 0x1C, 0);
         }
         break;
     case 7:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
-        } else if (Motion_ReachedFrame(p, 0, 48.0f) != 0 && Motion_ReachedFrame(p, 0, 102.0f) == 0) {
-            GreatSword_CheckInput(p, 3);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
+        } else if (Motion_ReachedFrame(pl, 0, 48.0f) != 0 && Motion_ReachedFrame(pl, 0, 102.0f) == 0) {
+            GreatSword_CheckInput(pl, 3);
         }
         break;
     }
 }
 
-void GreatSword_State03(Player *p, s32 unused)
+/*
+ * GSWORD_BOUNCE: the attack bounced off. A flick in frames 2-30 queues
+ * GSWORD_BOUNCE_OVERHEAD at frame 18; else the state ends in idle.
+ */
+void GreatSword_StateBounce(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x57C, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x57C, 0, 0);
         break;
     case 1:
-        if (p->stateVar0 != 0) {
-            if (Motion_ReachedFrame(p, 0, 18.0f) != 0) {
-                Player_SetState(p, 1U, 0x10U, 0xC);
+        if (pl->stateVar0 != 0) {
+            if (Motion_ReachedFrame(pl, 0, 18.0f) != 0) {
+                Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_BOUNCE_OVERHEAD, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
-        } else if ((Motion_InFrameRange(p, 0, 2.0f, 30.0f) != 0) && (p->stateVar0 == 0) && (p->itemSelect == 0) && (p->input.stickDirPressed & 0x3C)) {
-            p->stateVar0 = 1;
-            p->stateVar1 = 0;
+        } else if ((Motion_InFrameRange(pl, 0, 2.0f, 30.0f) != 0) && (pl->stateVar0 == 0) && (pl->itemSelect == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            pl->stateVar0 = 1;
+            pl->stateVar1 = 0;
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xA, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
-void GreatSword_State04(Player *p, s32 unused)
+/* GSWORD_STRIKE: one motion with hit object 4, then idle. */
+void GreatSword_StateStrike(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x583, 0, 0);
-        Eff00_Create(p, 4U);
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x583, 0, 0);
+        Eff00_Create(pl, 4U);
+        Player_SetMoveMode(pl, 0, 1, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-u8 GreatSword_ChargeLevel(Player *p)
+/*
+ * Returns the charge level from weaponTimer: 0 under 40 frames, then one more
+ * per 20 frames, 3 at most.
+ */
+u8 GreatSword_ChargeLevel(Player *pl)
 {
-    s16 v = p->weaponTimer;
+    s16 v = pl->weaponTimer;
     u8 r;
 
     if (v < 40) {
@@ -1387,48 +1439,56 @@ u8 GreatSword_ChargeLevel(Player *p)
     return r;
 }
 
-void GreatSword_State19(Player *p, u32 variant)
+/*
+ * The charge, GSWORD_CHARGE and its forms. variant: 0 from idle, 1
+ * GSWORD_DRAW_CHARGE, 2 after the right sweep, 3 after the left, 4 no lead-
+ * in, 5 and 6 as 3 and 2 turned. For the local player, the charge motion runs
+ * at half speed and weaponTimer counts while the stick is held down (90
+ * frames at most); then chargeLevel is set and the charged slash requested
+ * (after 3 and 5 their own forms).
+ */
+void GreatSword_StateCharge(Player *pl, u32 variant)
 {
     f32 from;
     f32 to;
 
-    p->noFlinchTimer = 2;
-    switch (p->step) {
+    pl->noFlinchTimer = 2;
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->weaponOut = 1;
-        p->unk417 = 1;
-        p->weaponTimer = 0;
-        p->timer = 90;
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->weaponOut = 1;
+        pl->unk417 = 1;
+        pl->weaponTimer = 0;
+        pl->timer = 90;
         switch (variant) {
         case 0:
-            p->step++;
-            Player_SetMotionPair(p, 0x579, 4, 0);
-            Player_UpdateMotionTime(p, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x579, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x597, 2, 0);
+            Player_SetMotionPair(pl, 0x597, 2, 0);
             break;
         case 2:
-            Player_SetMotionPair(p, 0x58C, 4, 0);
+            Player_SetMotionPair(pl, 0x58C, 4, 0);
             break;
         case 3:
-            p->step++;
-            Player_SetMotionPair(p, 0x58A, 4, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x58A, 4, 0);
             break;
         case 5:
-            p->step++;
-            p->rot[1] += 0x2000;
-            p->targetYaw = p->rot[1];
-            Player_SetMotionPair(p, 0x590, 0, 0);
+            pl->step++;
+            pl->rot[1] += 0x2000;
+            pl->targetYaw = pl->rot[1];
+            Player_SetMotionPair(pl, 0x590, 0, 0);
             break;
         case 6:
-            p->rot[1] -= 0x2000;
-            p->targetYaw = p->rot[1];
-            Player_SetMotionPair(p, 0x592, 0, 0);
+            pl->rot[1] -= 0x2000;
+            pl->targetYaw = pl->rot[1];
+            Player_SetMotionPair(pl, 0x592, 0, 0);
             break;
         }
         break;
@@ -1436,30 +1496,30 @@ void GreatSword_State19(Player *p, u32 variant)
         switch (variant) {
         default:
             /* the game reloads the step here (the cases reuse the switch value): volatile gives the reload */
-            (*(volatile u8 *) &p->step)++;
+            (*(volatile u8 *) &pl->step)++;
             break;
         case 1:
-            if (p->motion[0].playing == 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x579, 0, 0x38);
+            if (pl->motion[0].playing == 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x579, 0, 0x38);
             }
             break;
         case 2:
-            if (p->motion[0].playing == 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x579, 2, 0x32);
+            if (pl->motion[0].playing == 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x579, 2, 0x32);
             }
             break;
         case 6:
-            if (p->motion[0].playing == 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x579, 0, 0x34);
+            if (pl->motion[0].playing == 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x579, 0, 0x34);
             }
             break;
         }
         break;
     case 2:
-        if (Player_IsLocal(p) != 0) {
+        if (Player_IsLocal(pl) != 0) {
             if (variant == 3) {
                 to = 24.0f;
                 from = 0.0f;
@@ -1470,36 +1530,36 @@ void GreatSword_State19(Player *p, u32 variant)
                 to = 58.0f;
                 from = 34.0f;
             }
-            if (Motion_ReachedFrame(p, 0, from) != 0) {
-                if (p->stateVar1 == 0) {
-                    p->stateVar1++;
-                    StageObj_K29_CreateOnPlayerDefault(p, 8, 1.0f);
+            if (Motion_ReachedFrame(pl, 0, from) != 0) {
+                if (pl->stateVar1 == 0) {
+                    pl->stateVar1++;
+                    StageObj_K29_CreateOnPlayerDefault(pl, 8, 1.0f);
                 }
-                if (!(p->input.stickDir & 0x10)) {
-                    p->stateVar0 = 1;
+                if (!(pl->input.stickDir & 0x10)) {
+                    pl->stateVar0 = 1;
                 }
-                if (p->stateVar0 == 0) {
-                    p->motionSpeed = 0.5f;
-                    p->weaponTimer++;
-                    if (--p->timer <= 0) {
-                        p->stateVar0 = 1;
+                if (pl->stateVar0 == 0) {
+                    pl->motionSpeed = 0.5f;
+                    pl->weaponTimer++;
+                    if (--pl->timer <= 0) {
+                        pl->stateVar0 = 1;
                     }
                 } else {
-                    p->motionSpeed = 1.0f;
+                    pl->motionSpeed = 1.0f;
                 }
             }
-            if (Motion_ReachedFrame(p, 0, to) != 0 && p->stateVar0 == 1) {
-                p->chargeLevel = GreatSword_ChargeLevel(p);
-                p->motionSpeed = 1.0f;
+            if (Motion_ReachedFrame(pl, 0, to) != 0 && pl->stateVar0 == 1) {
+                pl->chargeLevel = GreatSword_ChargeLevel(pl);
+                pl->motionSpeed = 1.0f;
                 switch (variant) {
                 case 3:
-                    Player_RequestState(p, 1, 0x1B, 4);
+                    Player_RequestState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE_SLASH_AFTER_LEFT, PL_SET_SNAP_POS);
                     break;
                 case 5:
-                    Player_RequestState(p, 1, 0x1C, 4);
+                    Player_RequestState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE_SLASH_AFTER_LEFT_TURN, PL_SET_SNAP_POS);
                     break;
                 default:
-                    Player_RequestState(p, 1, 0x1A, 4);
+                    Player_RequestState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE_SLASH, PL_SET_SNAP_POS);
                     break;
                 }
             }
@@ -1508,284 +1568,301 @@ void GreatSword_State19(Player *p, u32 variant)
     }
 }
 
-void GreatSword_SetChargeAttack(Player *p)
+/*
+ * Sets the charged slash's attack by chargeLevel 0-3: attackPercent 100, 110,
+ * 120 or 130, and hit object 3, 0x5B, 0x5C or 0x5D.
+ */
+void GreatSword_SetChargeAttack(Player *pl)
 {
 
-    switch (p->chargeLevel) {
+    switch (pl->chargeLevel) {
     case 0:
     default:
-        p->attackPercent = 100;
-        Eff00_Create(p, 3);
+        pl->attackPercent = 100;
+        Eff00_Create(pl, 3);
         break;
     case 1:
-        p->attackPercent = 110;
-        Eff00_Create(p, 0x5B);
+        pl->attackPercent = 110;
+        Eff00_Create(pl, 0x5B);
         break;
     case 2:
-        p->attackPercent = 120;
-        Eff00_Create(p, 0x5C);
+        pl->attackPercent = 120;
+        Eff00_Create(pl, 0x5C);
         break;
     case 3:
-        p->attackPercent = 130;
-        Eff00_Create(p, 0x5D);
+        pl->attackPercent = 130;
+        Eff00_Create(pl, 0x5D);
         break;
     }
 }
 
-void GreatSword_State26(Player *p, s32 variant)
+/*
+ * The charged slash, GSWORD_CHARGE_SLASH and its forms. variant: 0 direct, 1
+ * and 2 after the left sweep's link motions. Level 2 and up adds an effect;
+ * level 3 replaces the ground impact. Window: frames 48-102 (caller 4).
+ */
+void GreatSword_StateChargeSlash(Player *pl, s32 variant)
 {
     f32 v[4];
     f32 out[4];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0x3C;
-        p->unk417 = 1;
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0x3C;
+        pl->unk417 = 1;
         switch (variant) {
         case 0:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x594, 2, 0);
-            Player_UpdateMotionTime(p, 0);
-            GreatSword_SetChargeAttack(p);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x594, 2, 0);
+            Player_UpdateMotionTime(pl, 0);
+            GreatSword_SetChargeAttack(pl);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x595, 0, 0);
-            Player_UpdateMotionTime(p, 0);
+            Player_SetMotionPair(pl, 0x595, 0, 0);
+            Player_UpdateMotionTime(pl, 0);
             break;
         case 2:
-            Player_SetMotionPair(p, 0x596, 0, 0);
-            Player_UpdateMotionTime(p, 0);
+            Player_SetMotionPair(pl, 0x596, 0, 0);
+            Player_UpdateMotionTime(pl, 0);
             break;
         }
-        if (p->chargeLevel >= 2) {
-            StageObj_K29_CreateOnPlayerDefault(p, 4, 1.0f);
+        if (pl->chargeLevel >= 2) {
+            StageObj_K29_CreateOnPlayerDefault(pl, 4, 1.0f);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_UpdateMotionTime(p, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_UpdateMotionTime(pl, 0);
             if (variant == 1) {
-                Player_SetMotionPair(p, 0x594, 2, 8);
+                Player_SetMotionPair(pl, 0x594, 2, 8);
             } else {
-                Player_SetMotionPair(p, 0x594, 0, 0xA);
+                Player_SetMotionPair(pl, 0x594, 0, 0xA);
             }
-            GreatSword_SetChargeAttack(p);
+            GreatSword_SetChargeAttack(pl);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-        } else if (p->hitPending != 0 && p->stateVar1 == 0) {
-            p->stateVar1 = 1;
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+        } else if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+            pl->stateVar1 = 1;
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                StageObj_K05_Create(p, 0xF, 0);
+                StageObj_K05_Create(pl, 0xF, 0);
                 break;
             case 1:
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                Player_SetState(p, 1, 3, 0);
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_BOUNCE, 0);
                 break;
             case 2:
             case 3:
-                p->step++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 1);
+                pl->step++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 1);
                 break;
             }
         } else {
-            if (p->stateVar1 == 0 && Motion_PassedFrame(p, 0, 42.0f) != 0) {
+            if (pl->stateVar1 == 0 && Motion_PassedFrame(pl, 0, 42.0f) != 0) {
                 v[0] = 0.0f;
                 v[1] = 0.0f;
                 v[2] = 150.0f;
-                Vec_Rotate(out, v, p->rotMtx);
-                v[0] = p->pos[0] + out[0];
-                v[1] = 15.0f + (p->pos[1] + out[1]);
-                v[2] = p->pos[2] + out[2];
-                if (p->chargeLevel == 3) {
-                    StageObj_K29_CreateOnPlayerDefault(p, 0xA, 1.0f);
+                Vec_Rotate(out, v, pl->rotMtx);
+                v[0] = pl->pos[0] + out[0];
+                v[1] = 15.0f + (pl->pos[1] + out[1]);
+                v[2] = pl->pos[2] + out[2];
+                if (pl->chargeLevel == 3) {
+                    StageObj_K29_CreateOnPlayerDefault(pl, 0xA, 1.0f);
                 } else {
-                    StageObj_K00_Create(p, 0, v, 1);
+                    StageObj_K00_Create(pl, 0, v, 1);
                 }
-                Vib_StartLocal(p, 2);
-                CamShake_ReqA(p, 0);
+                Vib_StartLocal(pl, 2);
+                CamShake_ReqA(pl, 0);
             }
-            if (Motion_ReachedFrame(p, 0, 48.0f) != 0 && Motion_ReachedFrame(p, 0, 102.0f) == 0) {
-                GreatSword_CheckInput(p, 4);
+            if (Motion_ReachedFrame(pl, 0, 48.0f) != 0 && Motion_ReachedFrame(pl, 0, 102.0f) == 0) {
+                GreatSword_CheckInput(pl, 4);
             }
         }
         break;
     case 3:
-        if (p->hitSlowTimer <= 0) {
-            p->step++;
-            StageObj_K05_Create(p, 0x1C, 0);
+        if (pl->hitSlowTimer <= 0) {
+            pl->step++;
+            StageObj_K05_Create(pl, 0x1C, 0);
         }
         break;
     case 4:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 8, 0);
-        } else if (p->hitPending != 0 && p->stateVar1 == 0) {
-            p->stateVar1 = 1;
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 8, 0);
+        } else if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+            pl->stateVar1 = 1;
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                StageObj_K05_Create(p, 0xF, 0);
+                StageObj_K05_Create(pl, 0xF, 0);
                 break;
             case 1:
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                Player_SetState(p, 1, 3, 0);
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_BOUNCE, 0);
                 break;
             case 2:
             case 3:
-                p->step++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 1);
+                pl->step++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 1);
                 break;
             }
         } else {
-            if (p->stateVar1 == 0 && Motion_PassedFrame(p, 0, 42.0f) != 0) {
+            if (pl->stateVar1 == 0 && Motion_PassedFrame(pl, 0, 42.0f) != 0) {
                 v[0] = 0.0f;
                 v[1] = 0.0f;
                 v[2] = 150.0f;
-                Vec_Rotate(out, v, p->rotMtx);
-                v[0] = p->pos[0] + out[0];
-                v[1] = 15.0f + (p->pos[1] + out[1]);
-                v[2] = p->pos[2] + out[2];
-                StageObj_K00_Create(p, 0, v, 1);
-                Vib_StartLocal(p, 2);
-                CamShake_ReqA(p, 0);
+                Vec_Rotate(out, v, pl->rotMtx);
+                v[0] = pl->pos[0] + out[0];
+                v[1] = 15.0f + (pl->pos[1] + out[1]);
+                v[2] = pl->pos[2] + out[2];
+                StageObj_K00_Create(pl, 0, v, 1);
+                Vib_StartLocal(pl, 2);
+                CamShake_ReqA(pl, 0);
             }
-            if (Motion_ReachedFrame(p, 0, 48.0f) != 0 && Motion_ReachedFrame(p, 0, 102.0f) == 0) {
-                GreatSword_CheckInput(p, 4);
+            if (Motion_ReachedFrame(pl, 0, 48.0f) != 0 && Motion_ReachedFrame(pl, 0, 102.0f) == 0) {
+                GreatSword_CheckInput(pl, 4);
             }
         }
         break;
     case 5:
-        if (p->hitSlowTimer <= 0) {
-            p->step++;
-            StageObj_K05_Create(p, 0x1C, 0);
+        if (pl->hitSlowTimer <= 0) {
+            pl->step++;
+            StageObj_K05_Create(pl, 0x1C, 0);
         }
         break;
     case 6:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
-        } else if (Motion_ReachedFrame(p, 0, 48.0f) != 0 && Motion_ReachedFrame(p, 0, 102.0f) == 0) {
-            GreatSword_CheckInput(p, 4);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
+        } else if (Motion_ReachedFrame(pl, 0, 48.0f) != 0 && Motion_ReachedFrame(pl, 0, 102.0f) == 0) {
+            GreatSword_CheckInput(pl, 4);
         }
         break;
     }
 }
 
-void GreatSword_RunState(Player *p)
+/*
+ * Runs the great sword's PL_GROUP_WEAPON state: maps the state to its handler
+ * and variant.
+ */
+void GreatSword_RunState(Player *pl)
 {
-    switch (p->state) {
-    case 0:
-        GreatSword_State00(p, 0);
+    switch (pl->state) {
+    case GSWORD_SWEEP_LEFT:
+        GreatSword_StateSweepLeft(pl, 0);
         break;
-    case 1:
-        GreatSword_State01(p, 0);
+    case GSWORD_SWEEP_RIGHT:
+        GreatSword_StateSweepRight(pl, 0);
         break;
-    case 2:
-        GreatSword_State02(p, 0U);
+    case GSWORD_OVERHEAD:
+        GreatSword_StateOverhead(pl, 0U);
         break;
-    case 3:
-        GreatSword_State03(p, 0);
+    case GSWORD_BOUNCE:
+        GreatSword_StateBounce(pl, 0);
         break;
-    case 4:
-        GreatSword_State04(p, 0);
+    case GSWORD_STRIKE:
+        GreatSword_StateStrike(pl, 0);
         break;
-    case 5:
-        GreatSword_State00(p, 1);
+    case GSWORD_SWEEP_LEFT_AFTER_OVERHEAD:
+        GreatSword_StateSweepLeft(pl, 1);
         break;
-    case 6:
-        GreatSword_State00(p, 2);
+    case GSWORD_SWEEP_LEFT_AFTER_RIGHT:
+        GreatSword_StateSweepLeft(pl, 2);
         break;
-    case 7:
-        GreatSword_State00(p, 3);
+    case GSWORD_SWEEP_LEFT_AFTER_OVERHEAD_TURN:
+        GreatSword_StateSweepLeft(pl, 3);
         break;
-    case 8:
-        GreatSword_State00(p, 4);
+    case GSWORD_SWEEP_LEFT_AFTER_RIGHT_TURN:
+        GreatSword_StateSweepLeft(pl, 4);
         break;
-    case 9:
-        GreatSword_State01(p, 1);
+    case GSWORD_SWEEP_RIGHT_AFTER_OVERHEAD:
+        GreatSword_StateSweepRight(pl, 1);
         break;
-    case 10:
-        GreatSword_State01(p, 2);
+    case GSWORD_SWEEP_RIGHT_AFTER_LEFT:
+        GreatSword_StateSweepRight(pl, 2);
         break;
-    case 11:
-        GreatSword_State01(p, 3);
+    case GSWORD_SWEEP_RIGHT_AFTER_OVERHEAD_TURN:
+        GreatSword_StateSweepRight(pl, 3);
         break;
-    case 12:
-        GreatSword_State01(p, 4);
+    case GSWORD_SWEEP_RIGHT_AFTER_LEFT_TURN:
+        GreatSword_StateSweepRight(pl, 4);
         break;
-    case 13:
-        GreatSword_State02(p, 1U);
+    case GSWORD_DRAW_OVERHEAD:
+        GreatSword_StateOverhead(pl, 1U);
         break;
-    case 14:
-        GreatSword_State02(p, 2U);
+    case GSWORD_OVERHEAD_AFTER_RIGHT:
+        GreatSword_StateOverhead(pl, 2U);
         break;
-    case 15:
-        GreatSword_State02(p, 3U);
+    case GSWORD_OVERHEAD_AFTER_LEFT:
+        GreatSword_StateOverhead(pl, 3U);
         break;
-    case 16:
-        GreatSword_State02(p, 4U);
+    case GSWORD_BOUNCE_OVERHEAD:
+        GreatSword_StateOverhead(pl, 4U);
         break;
-    case 17:
-        GreatSword_State02(p, 5U);
+    case GSWORD_OVERHEAD_AFTER_LEFT_TURN:
+        GreatSword_StateOverhead(pl, 5U);
         break;
-    case 18:
-        GreatSword_State02(p, 6U);
+    case GSWORD_OVERHEAD_AFTER_RIGHT_TURN:
+        GreatSword_StateOverhead(pl, 6U);
         break;
-    case 19:
-        GreatSword_State19(p, 0U);
+    case GSWORD_CHARGE:
+        GreatSword_StateCharge(pl, 0U);
         break;
-    case 20:
-        GreatSword_State19(p, 1U);
+    case GSWORD_DRAW_CHARGE:
+        GreatSword_StateCharge(pl, 1U);
         break;
-    case 21:
-        GreatSword_State19(p, 2U);
+    case GSWORD_CHARGE_AFTER_RIGHT:
+        GreatSword_StateCharge(pl, 2U);
         break;
-    case 22:
-        GreatSword_State19(p, 3U);
+    case GSWORD_CHARGE_AFTER_LEFT:
+        GreatSword_StateCharge(pl, 3U);
         break;
-    case 23:
-        GreatSword_State19(p, 4U);
+    case GSWORD_CHARGE_NO_LEAD_IN:
+        GreatSword_StateCharge(pl, 4U);
         break;
-    case 24:
-        GreatSword_State19(p, 5U);
+    case GSWORD_CHARGE_AFTER_LEFT_TURN:
+        GreatSword_StateCharge(pl, 5U);
         break;
-    case 25:
-        GreatSword_State19(p, 6U);
+    case GSWORD_CHARGE_AFTER_RIGHT_TURN:
+        GreatSword_StateCharge(pl, 6U);
         break;
-    case 26:
-        GreatSword_State26(p, 0);
+    case GSWORD_CHARGE_SLASH:
+        GreatSword_StateChargeSlash(pl, 0);
         break;
-    case 27:
-        GreatSword_State26(p, 1);
+    case GSWORD_CHARGE_SLASH_AFTER_LEFT:
+        GreatSword_StateChargeSlash(pl, 1);
         break;
-    case 28:
-        GreatSword_State26(p, 2);
+    case GSWORD_CHARGE_SLASH_AFTER_LEFT_TURN:
+        GreatSword_StateChargeSlash(pl, 2);
         
     default:
         break;
     }
 }
 
-static s32 GreatSword_StickAttackDir(Player *p)
+/*
+ * Returns the direction of a flick of the attack stick, from
+ * input.rightStickAngle: 0 none, 1 left, 2 right, 3 up, 4 down.
+ */
+static s32 GreatSword_StickAttackDir(Player *pl)
 {
     s32 dir;
     s32 ret;
 
-    if (p->input.stickDirPressed & 0x3C) {
-        dir = (p->input.prevStickAngle + 0x2AAB) & 0xFFFF;
+    if (pl->input.stickDirPressed & 0x3C) {
+        dir = (pl->input.rightStickAngle + 0x2AAB) & 0xFFFF;
         if (dir < 0x471C) {
             return 2;
         }
@@ -1802,58 +1879,68 @@ static s32 GreatSword_StickAttackDir(Player *p)
     return 0;
 }
 
-//---
-s32 GreatSword_AttackInput(Player *p)
+/*
+ * The drawn idle's input: a flick starts the left or right sweep, the
+ * overhead or the charge; input.pressed 1 the strike; the roll button rolls.
+ * Returns 1 when it started a state.
+ */
+s32 GreatSword_AttackInput(Player *pl)
 {
 
-    switch (GreatSword_StickAttackDir(p)) {
+    switch (GreatSword_StickAttackDir(pl)) {
     case 0:
         break;
     case 1:
-        Player_SetState(p, 1, 0, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_LEFT, PL_SET_SNAP_POS);
         return 1;
     case 2:
-        Player_SetState(p, 1, 1, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_RIGHT, PL_SET_SNAP_POS);
         return 1;
     case 3:
-        Player_SetState(p, 1, 2, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_OVERHEAD, PL_SET_SNAP_POS);
         return 1;
     case 4:
-        Player_SetState(p, 1, 0x13, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE, PL_SET_SNAP_POS);
         return 1;
     }
-    if (p->input.pressed & 1) {
-        Player_SetState(p, 1, 4, 4);
+    if (pl->input.pressed & 1) {
+        Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_STRIKE, PL_SET_SNAP_POS);
         return 1;
     }
-    if ((p->input.pressed & 0x40) && p->stamina >= 0x4B) {
-        Player_SetState(p, 0, 0x1C, 4);
+    if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         return 1;
     }
     return 0;
 }
 
-void GreatSword_CheckInput(Player *p, s32 caller)
+/*
+ * An attack window's input. caller is the running attack (1 the left sweep, 2
+ * the right, 3 the overhead, 4 the charged slash). The roll button evades by
+ * the left stick; a flick another way starts the chained attack, its "_TURN"
+ * form when the left stick points that way.
+ */
+void GreatSword_CheckInput(Player *pl, s32 caller)
 {
     s32 k;
     s32 dir;
 
-    if ((Player_IsLocal(p) != 0 || Game_IsOnline() != 1) && Quest_PhaseIsOver(1) != 1 && p->itemSelect == 0) {
-        if ((p->input.pressed & 0x40) && p->stamina >= 0x4B) {
-            if (p->input.stickDir & 0x3C00) {
-                dir = (u16) (p->input.stickAngle + 0x2AAB);
+    if ((Player_IsLocal(pl) != 0 || Game_IsOnline() != 1) && Quest_PhaseIsOver(1) != 1 && pl->itemSelect == 0) {
+        if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+            if (pl->input.stickDir & 0x3C00) {
+                dir = (u16) (pl->input.stickAngle + 0x2AAB);
                 if (dir < 0x5C72) {
-                    Player_SetState(p, 0, 0x31, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
                 } else if (dir < 0xA38E) {
-                    Player_SetState(p, 0, 0x1C, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 0, 0x32, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_LEFT, PL_SET_SNAP_POS);
                 }
             } else {
-                Player_SetState(p, 0, 0x1C, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             }
         }
-        k = GreatSword_StickAttackDir(p);
+        k = GreatSword_StickAttackDir(pl);
         if (k == 0 || k == caller) {
             return;
         }
@@ -1861,24 +1948,24 @@ void GreatSword_CheckInput(Player *p, s32 caller)
         case 1:
             switch (caller) {
             case 3:
-                if (p->input.stickDir & 0x800) {
-                    Player_SetState(p, 1, 7, 4);
+                if (pl->input.stickDir & 0x800) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_LEFT_AFTER_OVERHEAD_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 5, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_LEFT_AFTER_OVERHEAD, PL_SET_SNAP_POS);
                 }
                 break;
             case 2:
-                if (p->input.stickDir & 0x800) {
-                    Player_SetState(p, 1, 8, 4);
+                if (pl->input.stickDir & 0x800) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_LEFT_AFTER_RIGHT_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 6, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_LEFT_AFTER_RIGHT, PL_SET_SNAP_POS);
                 }
                 break;
             case 4:
-                if (p->input.stickDir & 0x800) {
-                    Player_SetState(p, 1, 7, 4);
+                if (pl->input.stickDir & 0x800) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_LEFT_AFTER_OVERHEAD_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 5, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_LEFT_AFTER_OVERHEAD, PL_SET_SNAP_POS);
                 }
                 break;
             }
@@ -1886,24 +1973,24 @@ void GreatSword_CheckInput(Player *p, s32 caller)
         case 2:
             switch (caller) {
             case 3:
-                if (p->input.stickDir & 0x400) {
-                    Player_SetState(p, 1, 0xB, 4);
+                if (pl->input.stickDir & 0x400) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_RIGHT_AFTER_OVERHEAD_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 9, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_RIGHT_AFTER_OVERHEAD, PL_SET_SNAP_POS);
                 }
                 break;
             case 1:
-                if (p->input.stickDir & 0x400) {
-                    Player_SetState(p, 1, 0xC, 4);
+                if (pl->input.stickDir & 0x400) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_RIGHT_AFTER_LEFT_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 0xA, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_RIGHT_AFTER_LEFT, PL_SET_SNAP_POS);
                 }
                 break;
             case 4:
-                if (p->input.stickDir & 0x400) {
-                    Player_SetState(p, 1, 0xB, 4);
+                if (pl->input.stickDir & 0x400) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_RIGHT_AFTER_OVERHEAD_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 9, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_SWEEP_RIGHT_AFTER_OVERHEAD, PL_SET_SNAP_POS);
                 }
                 break;
             }
@@ -1911,17 +1998,17 @@ void GreatSword_CheckInput(Player *p, s32 caller)
         case 3:
             switch (caller) {
             case 2:
-                if (p->input.stickDir & 0x400) {
-                    Player_SetState(p, 1, 0x12, 4);
+                if (pl->input.stickDir & 0x400) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_OVERHEAD_AFTER_RIGHT_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 0xE, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_OVERHEAD_AFTER_RIGHT, PL_SET_SNAP_POS);
                 }
                 break;
             case 1:
-                if (p->input.stickDir & 0x800) {
-                    Player_SetState(p, 1, 0x11, 4);
+                if (pl->input.stickDir & 0x800) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_OVERHEAD_AFTER_LEFT_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 0xF, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_OVERHEAD_AFTER_LEFT, PL_SET_SNAP_POS);
                 }
                 break;
             case 4:
@@ -1931,17 +2018,17 @@ void GreatSword_CheckInput(Player *p, s32 caller)
         case 4:
             switch (caller) {
             case 1:
-                if (p->input.stickDir & 0x800) {
-                    Player_SetState(p, 1, 0x18, 4);
+                if (pl->input.stickDir & 0x800) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE_AFTER_LEFT_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 0x16, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE_AFTER_LEFT, PL_SET_SNAP_POS);
                 }
                 break;
             case 2:
-                if (p->input.stickDir & 0x400) {
-                    Player_SetState(p, 1, 0x19, 4);
+                if (pl->input.stickDir & 0x400) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE_AFTER_RIGHT_TURN, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 1, 0x15, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_CHARGE_AFTER_RIGHT, PL_SET_SNAP_POS);
                 }
                 break;
             case 3:
@@ -1952,419 +2039,464 @@ void GreatSword_CheckInput(Player *p, s32 caller)
     }
 }
 
-void GreatSword_DrawAttack(Player *p)
+/*
+ * The attack that draws on the move: GSWORD_DRAW_CHARGE with the stick held
+ * down, else GSWORD_DRAW_OVERHEAD.
+ */
+void GreatSword_DrawAttack(Player *pl)
 {
-    if (p->input.stickDir & 0x10) {
-        Player_SetState(p, 1U, 0x14U, 4);
+    if (pl->input.stickDir & 0x10) {
+        Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_DRAW_CHARGE, PL_SET_SNAP_POS);
         return;
     }
-    Player_SetState(p, 1U, 0xDU, 4);
+    Player_SetState(pl, PL_GROUP_WEAPON, GSWORD_DRAW_OVERHEAD, PL_SET_SNAP_POS);
 }
 
-static u32 Bowgun_RapidFireMask(Player *p)
+/*
+ * Returns the light bowgun's rapid-fire ammo mask (a bit per ammo type, from
+ * gRapidFireAmmo by the gun's id); 0 for a heavy bowgun.
+ */
+static u32 Bowgun_RapidFireMask(Player *pl)
 {
-    GunAmmoMask *e = D_45EE20;
+    GunAmmoMask *e = gRapidFireAmmo;
 
-    if (p->weaponType != 5) {
+    if (pl->weaponType != WEAPON_LIGHT_BOWGUN) {
         return 0;
     }
     for (; e->id != 999; e++) {
-        if (e->id == p->equip[6].id) {
+        if (e->id == pl->equip[6].id) {
             return e->mask;
         }
     }
     return 0;
 }
 
-s32 Bowgun_CanRapidFire(Player *p)
+/* Returns 1 when the loaded ammo type fires rapidly from this gun. */
+s32 Bowgun_CanRapidFire(Player *pl)
 {
-    u32 m = Bowgun_RapidFireMask(p);
+    u32 m = Bowgun_RapidFireMask(pl);
 
     if (m == 0) {
         return 0;
     }
-    if (m & (1 << p->ammoType)) {
+    if (m & (1 << pl->ammoType)) {
         return 1;
     }
     return 0;
 }
 
-static void Bowgun_SetAimLayers(Player *p, u16 motA, u16 motB)
+/*
+ * Shows the aim in the two part-motion layers: motA when aimWeight is
+ * positive, motB when negative, weighted |aimWeight| (at most 100); off at 0.
+ */
+static void Bowgun_SetAimLayers(Player *pl, u16 motA, u16 motB)
 {
 
-    if (p->aimWeight == 0) {
-        p->partAnimOn[0] = 0;
-        p->partAnimOn[1] = 0;
+    if (pl->aimWeight == 0) {
+        pl->partAnimOn[0] = 0;
+        pl->partAnimOn[1] = 0;
         return;
     }
-    p->partAnimOn[0] = 1;
-    p->partAnimOn[1] = 1;
-    if (p->aimWeight > 0) {
+    pl->partAnimOn[0] = 1;
+    pl->partAnimOn[1] = 1;
+    if (pl->aimWeight > 0) {
         if (motA == 0x581) {
-            p->partAnimMotion[0] = 0x580;
-            p->partAnimOn[0] = 0;
+            pl->partAnimMotion[0] = 0x580;
+            pl->partAnimOn[0] = 0;
         } else {
-            p->partAnimMotion[0] = motA;
+            pl->partAnimMotion[0] = motA;
         }
-        p->partAnimMotion[1] = motA + 100;
-        p->partAnimWeight[0] = p->aimWeight;
-        p->partAnimWeight[1] = p->aimWeight;
+        pl->partAnimMotion[1] = motA + 100;
+        pl->partAnimWeight[0] = pl->aimWeight;
+        pl->partAnimWeight[1] = pl->aimWeight;
     } else {
         if (motB == 0x582) {
-            p->partAnimMotion[0] = 0x580;
-            p->partAnimOn[0] = 0;
+            pl->partAnimMotion[0] = 0x580;
+            pl->partAnimOn[0] = 0;
         } else {
-            p->partAnimMotion[0] = motB;
+            pl->partAnimMotion[0] = motB;
         }
-        p->partAnimMotion[1] = motB + 100;
-        p->partAnimWeight[0] = -p->aimWeight;
-        p->partAnimWeight[1] = -p->aimWeight;
+        pl->partAnimMotion[1] = motB + 100;
+        pl->partAnimWeight[0] = -pl->aimWeight;
+        pl->partAnimWeight[1] = -pl->aimWeight;
     }
-    if (p->partAnimWeight[0] > 100) {
-        p->partAnimWeight[0] = 100;
+    if (pl->partAnimWeight[0] > 100) {
+        pl->partAnimWeight[0] = 100;
     }
-    if (p->partAnimWeight[1] > 100) {
-        p->partAnimWeight[1] = 100;
+    if (pl->partAnimWeight[1] > 100) {
+        pl->partAnimWeight[1] = 100;
     }
 }
 
-void Bowgun_State00(Player *p, s32 aim, s32 variant)
+/*
+ * The shot, BOWGUN_FIRE_RECOIL_0/1/2 and BOWGUN_RAPID_FIRE. row: the row of
+ * Bowgun_FireMotions (1 recoil level 0, 0 level 1, 2 level 2); variant 1 is
+ * rapid fire. Fires at frame 8 and spends the round (kept with skill 0x33,
+ * except in rapid fire) and the pouch item; rapid fire shoots again from
+ * frame 34, gAmmoRapidShots[ammo] more times.
+ */
+void Bowgun_StateFire(Player *pl, s32 row, s32 variant)
 {
     s32 k;
 
-    if (p->aimLockTimer != 0) {
-        p->aimLockTimer = 5;
+    if (pl->aimLockTimer != 0) {
+        pl->aimLockTimer = 5;
     }
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
+        pl->step++;
+        pl->stateVar0 = 0;
         if (variant == 0) {
-            p->stateVar1 = 0;
+            pl->stateVar1 = 0;
         } else {
-            p->stateVar1 = D_45E0E2[p->ammoType][0];
+            pl->stateVar1 = gAmmoRapidShots[pl->ammoType][0];
         }
-        Player_SetMoveMode(p, 0, 1, 0);
-        Bowgun_SetAimLayers(p, Bowgun_State00_AimLayers[aim].aimA, Bowgun_State00_AimLayers[aim].aimB);
-        Player_SetMotionPair(p, Bowgun_State00_AimLayers[aim].mot, 0, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Bowgun_SetAimLayers(pl, Bowgun_FireMotions[row].aimA, Bowgun_FireMotions[row].aimB);
+        Player_SetMotionPair(pl, Bowgun_FireMotions[row].mot, 0, 0);
         break;
     case 1:
     case 2:
-        if (Motion_PassedFrame(p, 1, 8.0f) != 0 && p->step == 1) {
-            p->step++;
-            Vib_StartLocal(p, 0);
-            CamShake_ReqB(p, 1);
+        if (Motion_PassedFrame(pl, 1, 8.0f) != 0 && pl->step == 1) {
+            pl->step++;
+            Vib_StartLocal(pl, 0);
+            CamShake_ReqB(pl, 1);
             if (variant == 0) {
-                Bowgun_FireShot(p, 0, 0xE, 1.0f);
+                Bowgun_FireShot(pl, 0, 0xE, 1.0f);
             } else {
-                Bowgun_FireShot(p, 0, 0xE, 0.5f);
+                Bowgun_FireShot(pl, 0, 0xE, 0.5f);
             }
-            if (p->stateVar0 <= 0) {
-                p->stateVar0++;
-                if (Player_HasSkill(p, 0x33) == 0 || variant == 1) {
-                    p->roundsLoaded--;
+            if (pl->stateVar0 <= 0) {
+                pl->stateVar0++;
+                if (Player_HasSkill(pl, 0x33) == 0 || variant == 1) {
+                    pl->roundsLoaded--;
                 }
                 if (Quest_PhaseIsOver(1) == 0) {
-                    Pouch_Add(p, p->pouch[p->ammoSlot].item, -1);
+                    Pouch_Add(pl, pl->pouch[pl->ammoSlot].item, -1);
                 }
-                if (p->ammoCount == 0) {
-                    p->roundsLoaded = 0;
+                if (pl->ammoCount == 0) {
+                    pl->roundsLoaded = 0;
                 }
-                p->savedAmmoCount = p->ammoCount;
-                p->savedClipSize = p->clipSize;
-                p->savedRoundsLoaded = p->roundsLoaded;
+                pl->savedAmmoCount = pl->ammoCount;
+                pl->savedClipSize = pl->clipSize;
+                pl->savedRoundsLoaded = pl->roundsLoaded;
             }
         }
-        if (p->aimMode == 0 && Motion_PassedFrame(p, 0, 28.0f) != 0) {
-            StageObj_Gun_CreateReload(p, 2);
+        if (pl->aimMode == 0 && Motion_PassedFrame(pl, 0, 28.0f) != 0) {
+            StageObj_Gun_CreateReload(pl, 2);
         }
-        if (p->motion[0].playing == 0) {
-            Bowgun_SetAimLayers(p, 0x3ED, 0x3EE);
-            Player_BeginStateKeepParts(p, 0, 0, 0);
-        } else if (Motion_ReachedFrame(p, 0, 34.0f) != 0 && p->stateVar1 > 0) {
-            p->step = 1;
-            p->stateVar1--;
-            k = p->stateVar1 > 0;
-            if (p->stateRand & 0x8000) {
-                p->stateRand = (p->stateRand << 1) | 1;
+        if (pl->motion[0].playing == 0) {
+            Bowgun_SetAimLayers(pl, 0x3ED, 0x3EE);
+            Player_BeginStateKeepParts(pl, 0, 0, 0);
+        } else if (Motion_ReachedFrame(pl, 0, 34.0f) != 0 && pl->stateVar1 > 0) {
+            pl->step = 1;
+            pl->stateVar1--;
+            k = pl->stateVar1 > 0;
+            if (pl->stateRand & 0x8000) {
+                pl->stateRand = (pl->stateRand << 1) | 1;
             } else {
-                p->stateRand = p->stateRand << 1;
+                pl->stateRand = pl->stateRand << 1;
             }
-            Bowgun_SetAimLayers(p, Bowgun_State00_AimLayers[k].aimA, Bowgun_State00_AimLayers[k].aimB);
-            Player_SetMotionPair(p, Bowgun_State00_AimLayers[k].mot, 0, 0);
+            Bowgun_SetAimLayers(pl, Bowgun_FireMotions[k].aimA, Bowgun_FireMotions[k].aimB);
+            Player_SetMotionPair(pl, Bowgun_FireMotions[k].mot, 0, 0);
         }
         break;
     }
 }
 
-void Bowgun_State01(Player *p, s32 unused)
+/*
+ * BOWGUN_RELOAD: fills the clip from the pouch at once (at most ammoCount),
+ * the motion's speed by Bowgun_ReloadLevel.
+ */
+void Bowgun_StateReload(Player *pl, s32 unused)
 {
 
-    if (p->aimLockTimer != 0) {
-        p->aimLockTimer = 5;
+    if (pl->aimLockTimer != 0) {
+        pl->aimLockTimer = 5;
     }
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Bowgun_SetAimLayers(p, 0x586, 0x587);
-        Player_SetMotionPair(p, 0x57C, 0, 0);
-        p->roundsLoaded = p->clipSize;
-        if (p->ammoCount < p->roundsLoaded) {
-            p->roundsLoaded = p->ammoCount;
+        pl->step++;
+        Bowgun_SetAimLayers(pl, 0x586, 0x587);
+        Player_SetMotionPair(pl, 0x57C, 0, 0);
+        pl->roundsLoaded = pl->clipSize;
+        if (pl->ammoCount < pl->roundsLoaded) {
+            pl->roundsLoaded = pl->ammoCount;
         }
-        Player_SetMoveMode(p, 0, 0, 0);
-        switch (Bowgun_ReloadLevel(p, p->ammoType)) {
+        Player_SetMoveMode(pl, 0, 0, 0);
+        switch (Bowgun_ReloadLevel(pl, pl->ammoType)) {
         case 0:
-            p->motionSpeed = 1.25f;
+            pl->motionSpeed = 1.25f;
             break;
         case 1:
         default:
-            p->motionSpeed = 1.0f;
+            pl->motionSpeed = 1.0f;
             break;
         case 2:
-            p->motionSpeed = 0.75f;
+            pl->motionSpeed = 0.75f;
             break;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginStateKeepParts(p, 0, 0, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginStateKeepParts(pl, 0, 0, 0);
         }
         break;
     }
 }
 
-//---
-void Bowgun_State06(Player *p, s32 variant)
+/*
+ * Draws, then reloads as Bowgun_StateReload. variant: 0 BOWGUN_DRAW_RELOAD, 1
+ * BOWGUN_DRAW_RELOAD_MOVING.
+ */
+void Bowgun_StateDrawReload(Player *pl, s32 variant)
 {
 
-    if (p->aimLockTimer != 0) {
-        p->aimLockTimer = 5;
+    if (pl->aimLockTimer != 0) {
+        pl->aimLockTimer = 5;
     }
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->weaponOut = 1;
+        pl->step++;
+        pl->weaponOut = 1;
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x58E, 0, 0);
+            Player_SetMotionPair(pl, 0x58E, 0, 0);
         } else {
-            Player_SetMotionPair(p, 0x58F, 0, 0);
+            Player_SetMotionPair(pl, 0x58F, 0, 0);
         }
-        p->roundsLoaded = p->clipSize;
-        if (p->ammoCount < p->roundsLoaded) {
-            p->roundsLoaded = p->ammoCount;
+        pl->roundsLoaded = pl->clipSize;
+        if (pl->ammoCount < pl->roundsLoaded) {
+            pl->roundsLoaded = pl->ammoCount;
         }
-        p->stateVar0 = Bowgun_ReloadLevel(p, p->ammoType);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->stateVar0 = Bowgun_ReloadLevel(pl, pl->ammoType);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Bowgun_SetAimLayers(p, 0x586, 0x587);
-            Player_SetMotionPair(p, 0x57C, 0, 0x1E);
-            switch (p->stateVar0) {
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Bowgun_SetAimLayers(pl, 0x586, 0x587);
+            Player_SetMotionPair(pl, 0x57C, 0, 0x1E);
+            switch (pl->stateVar0) {
             case 0:
-                p->motionSpeed = 1.25f;
+                pl->motionSpeed = 1.25f;
                 break;
             case 1:
             default:
-                p->motionSpeed = 1.0f;
+                pl->motionSpeed = 1.0f;
                 break;
             case 2:
-                p->motionSpeed = 0.75f;
+                pl->motionSpeed = 0.75f;
                 break;
             }
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginStateKeepParts(p, 0, 0, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginStateKeepParts(pl, 0, 0, 0);
         }
         break;
     }
 }
 
-//---
-void Bowgun_State02(Player *p, s32 unused)
+/* BOWGUN_DRY_FIRE: one motion, then idle with the aim layers kept. */
+void Bowgun_StateDryFire(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Bowgun_SetAimLayers(p, 0x588, 0x589);
-        Player_SetMotionPair(p, 0x584, 0, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Bowgun_SetAimLayers(pl, 0x588, 0x589);
+        Player_SetMotionPair(pl, 0x584, 0, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginStateKeepParts(p, 0, 0, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginStateKeepParts(pl, 0, 0, 0);
         }
         break;
     }
 }
 
-void Bowgun_State03(Player *p, s32 unused)
+/* BOWGUN_MELEE: one motion with hit object 0x1D, then idle. */
+void Bowgun_StateMelee(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x585, 4, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        Eff00_Create(p, 0x1DU);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x585, 4, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Eff00_Create(pl, 0x1DU);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Bowgun_RunState(Player *p)
+/* Runs the bowguns' PL_GROUP_WEAPON state (heavy and light share them). */
+void Bowgun_RunState(Player *pl)
 {
-    switch (p->state) {
-    case 0:
-        Bowgun_State00(p, 1, 0);
+    switch (pl->state) {
+    case BOWGUN_FIRE_RECOIL_0:
+        Bowgun_StateFire(pl, 1, 0);
         break;
-    case 1:
-        Bowgun_State01(p, 0);
+    case BOWGUN_RELOAD:
+        Bowgun_StateReload(pl, 0);
         break;
-    case 2:
-        Bowgun_State02(p, 0);
+    case BOWGUN_DRY_FIRE:
+        Bowgun_StateDryFire(pl, 0);
         break;
-    case 3:
-        Bowgun_State03(p, 0);
+    case BOWGUN_MELEE:
+        Bowgun_StateMelee(pl, 0);
         break;
-    case 4:
-        Bowgun_State00(p, 0, 0);
+    case BOWGUN_FIRE_RECOIL_1:
+        Bowgun_StateFire(pl, 0, 0);
         break;
-    case 5:
-        Bowgun_State00(p, 2, 0);
+    case BOWGUN_FIRE_RECOIL_2:
+        Bowgun_StateFire(pl, 2, 0);
         break;
-    case 6:
-        Bowgun_State06(p, 0);
+    case BOWGUN_DRAW_RELOAD:
+        Bowgun_StateDrawReload(pl, 0);
         break;
-    case 7:
-        Bowgun_State06(p, 1);
+    case BOWGUN_DRAW_RELOAD_MOVING:
+        Bowgun_StateDrawReload(pl, 1);
         break;
-    case 8:
-        Bowgun_State00(p, 1, 1);
+    case BOWGUN_RAPID_FIRE:
+        Bowgun_StateFire(pl, 1, 1);
         
     default:
         break;
     }
 }
 
-s32 Bowgun_AttackInput(Player *p)
+/*
+ * The drawn input: the roll button rolls; input.pressed 1 fires (rapid, by
+ * recoil level, or dry); a flick down reloads when the clip isn't full; a
+ * flick up is the melee outside the aim mode. Sets bowgunReady while loaded.
+ * Returns 1 when it started a state.
+ */
+s32 Bowgun_AttackInput(Player *pl)
 {
 
-    if ((p->input.pressed & 0x40) && p->stamina >= 0x4B) {
-        Player_SetState(p, 0, 0x1C, 4);
+    if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         return 1;
     }
-    if (p->roundsLoaded == 0) {
-        if (p->input.pressed & 1) {
-            Player_SetState(p, 1, 2, 5);
+    if (pl->roundsLoaded == 0) {
+        if (pl->input.pressed & 1) {
+            Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_DRY_FIRE, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
             return 1;
         }
     } else {
-        p->bowgunReady = 1;
-        if (p->input.pressed & 1) {
-            if (Bowgun_CanRapidFire(p) == 1) {
-                Player_SetState(p, 1, 8, 5);
+        pl->bowgunReady = 1;
+        if (pl->input.pressed & 1) {
+            if (Bowgun_CanRapidFire(pl) == 1) {
+                Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_RAPID_FIRE, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
                 return 1;
             }
-            switch (Bowgun_RecoilLevel(p, p->ammoType)) {
+            switch (Bowgun_RecoilLevel(pl, pl->ammoType)) {
             case 0:
-                Player_SetState(p, 1, 0, 5);
+                Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_FIRE_RECOIL_0, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
                 break;
             case 1:
             default:
-                Player_SetState(p, 1, 4, 5);
+                Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_FIRE_RECOIL_1, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
                 break;
             case 2:
-                Player_SetState(p, 1, 5, 5);
+                Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_FIRE_RECOIL_2, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
                 break;
             }
             return 1;
         }
     }
-    if (p->roundsLoaded == 0 || (p->roundsLoaded < p->clipSize && p->roundsLoaded < p->ammoCount)) {
-        if ((p->input.stickDirPressed & 0x10) && p->ammoCount > 0) {
-            Player_RequestState(p, 1, 1, 5);
+    if (pl->roundsLoaded == 0 || (pl->roundsLoaded < pl->clipSize && pl->roundsLoaded < pl->ammoCount)) {
+        if ((pl->input.stickDirPressed & 0x10) && pl->ammoCount > 0) {
+            Player_RequestState(pl, PL_GROUP_WEAPON, BOWGUN_RELOAD, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
             return 1;
         }
     }
-    if ((p->input.stickDirPressed & 0x20) && p->aimLockTimer == 0 && p->aimMode == 0) {
-        Player_SetState(p, 1, 3, 4);
+    if ((pl->input.stickDirPressed & 0x20) && pl->aimLockTimer == 0 && pl->aimMode == 0) {
+        Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_MELEE, PL_SET_SNAP_POS);
         return 1;
     }
     return 0;
 }
 
-void Bowgun_DrawAttack(Player *p, s32 arg1)
+/*
+ * The draw with the stick held down and a clip to fill reloads
+ * (BOWGUN_DRAW_RELOAD, _MOVING for a light bowgun on the move); else
+ * PL_ACT_DRAW, or PL_ACT_DRAW_MOVING. moving: the caller's moving flags.
+ */
+void Bowgun_DrawAttack(Player *pl, s32 moving)
 {
     u8 rounds;
 
-    if (p->input.stickDir & 0x10) {
-        rounds = p->roundsLoaded;
+    if (pl->input.stickDir & 0x10) {
+        rounds = pl->roundsLoaded;
         if (rounds != 0) {
-            if (((s32) rounds < (s32) p->clipSize) && ((s32) rounds < p->ammoCount)) {
+            if (((s32) rounds < (s32) pl->clipSize) && ((s32) rounds < pl->ammoCount)) {
                 goto block_5;
             }
             goto block_13;
         }
 block_5:
-        if (p->ammoCount > 0) {
-            if (p->weaponType == 1) {
-                Player_SetState(p, 1U, 6U, 4);
+        if (pl->ammoCount > 0) {
+            if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
+                Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_DRAW_RELOAD, PL_SET_SNAP_POS);
                 return;
             }
-            if (!(arg1 & 0xFF)) {
-                Player_SetState(p, 1U, 6U, 4);
+            if (!(moving & 0xFF)) {
+                Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_DRAW_RELOAD, PL_SET_SNAP_POS);
                 return;
             }
-            Player_SetState(p, 1U, 7U, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, BOWGUN_DRAW_RELOAD_MOVING, PL_SET_SNAP_POS);
             return;
         }
         goto block_13;
     }
 block_13:
-    if ((p->weaponType == 1) || !(arg1 & 0xFF)) {
-        Player_SetState(p, 0U, 4U, 0);
+    if ((pl->weaponType == WEAPON_HEAVY_BOWGUN) || !(moving & 0xFF)) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DRAW, 0);
         return;
     }
-    Player_SetState(p, 0U, 0x17U, 0);
+    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DRAW_MOVING, 0);
 }
 
-s32 Hammer_CheckHit(Player *p)
+/*
+ * The attack's hit, tracked in stateVar1. A bounce (hitKind 1) requests
+ * HAMMER_BOUNCE and returns 1; kinds 2 and 3 step the motion back 2 frames
+ * for the hit slow. Returns 0 otherwise.
+ */
+s32 Hammer_CheckHit(Player *pl)
 {
 
-    switch (p->stateVar1) {
+    switch (pl->stateVar1) {
     case 0:
-        if (p->hitPending != 0) {
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->hitPending != 0) {
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                p->stateVar1++;
+                pl->stateVar1++;
                 break;
             case 1:
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                Player_RequestState(p, 1, 0xA, 0);
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_BOUNCE, 0);
                 return 1;
             case 2:
             case 3:
-                p->stateVar1++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 1);
+                pl->stateVar1++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 1);
                 break;
             }
         }
         break;
     case 1:
-        if (p->hitSlowTimer <= 0) {
-            p->stateVar1++;
+        if (pl->hitSlowTimer <= 0) {
+            pl->stateVar1++;
         }
         break;
     case 2:
@@ -2373,29 +2505,34 @@ s32 Hammer_CheckHit(Player *p)
     return 0;
 }
 
-void Hammer_State00(Player *p, s32 unused)
+/*
+ * HAMMER_DOWN_ATTACK (hit object 6). In frames 50-80 a flick another way
+ * chains HAMMER_COMBO_1_AFTER_DOWN; the charge button held at frame 72
+ * charges (HAMMER_CHARGE_AFTER_ATTACK).
+ */
+void Hammer_StateDownAttack(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMotionPair(p, 0x579, 4, 0);
-        Eff00_Create(p, 6U);
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0x3C;
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMotionPair(pl, 0x579, 4, 0);
+        Eff00_Create(pl, 6U);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        if (Hammer_CheckHit(p) != 1) {
-            if (p->motion[0].playing == 0) {
-                Player_BeginState(p, 0, 6, 0);
+        if (Hammer_CheckHit(pl) != 1) {
+            if (pl->motion[0].playing == 0) {
+                Player_BeginState(pl, 0, 6, 0);
                 break;
             }
-            if (Player_IsLocal(p) == 1) {
-                if (Motion_InFrameRange(p, 0, 50.0f, 80.0f) != 0) {
-                    Hammer_CheckInput(p, 1);
+            if (Player_IsLocal(pl) == 1) {
+                if (Motion_InFrameRange(pl, 0, 50.0f, 80.0f) != 0) {
+                    Hammer_CheckInput(pl, 1);
                 }
-                if ((Motion_ReachedFrame(p, 0, 72.0f) != 0) && (p->input.held & 0x80)) {
-                    Player_SetState(p, 1U, 0xDU, 0);
+                if ((Motion_ReachedFrame(pl, 0, 72.0f) != 0) && (pl->input.held & 0x80)) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_AFTER_ATTACK, 0);
                 }
             }
         } else {
@@ -2404,65 +2541,70 @@ void Hammer_State00(Player *p, s32 unused)
     }
 }
 
-void Hammer_State01(Player *p, s32 variant)
+/*
+ * The combo's first swing (hit object 7). variant: 0 HAMMER_COMBO_1, 1
+ * HAMMER_COMBO_1_AFTER_DOWN (a link motion first). A flick in frames 30-88
+ * queues HAMMER_COMBO_2 at frame 70; evade window frames 80-120.
+ */
+void Hammer_StateCombo1(Player *pl, s32 variant)
 {
     u8 stateVar0;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->timer = 0;
-        p->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->timer = 0;
+        pl->stateVar1 = 0;
         switch (variant) {
         case 0:
-            p->step++;
-            Player_SetMotionPair(p, 0x57A, 4, 0);
-            Player_UpdateMotionTime(p, 0);
-            Player_SetMoveMode(p, 0, 1, 0);
-            Eff00_Create(p, 7U);
-            p->noFlinchTimer = 0x1B;
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57A, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
+            Player_SetMoveMode(pl, 0, 1, 0);
+            Eff00_Create(pl, 7U);
+            pl->noFlinchTimer = 0x1B;
             break;
         case 1:
-            stateVar0 = p->stateVar0;
+            stateVar0 = pl->stateVar0;
             switch (stateVar0) {
             case 0:
-                p->stateVar0 = stateVar0 + 1;
-                Player_UpdateMotionTime(p, 0);
-                Player_SetMotionPair(p, 0x581, 4, 0);
-                Player_SetMoveMode(p, 0, 1, 0);
-                p->weaponOut = 1;
+                pl->stateVar0 = stateVar0 + 1;
+                Player_UpdateMotionTime(pl, 0);
+                Player_SetMotionPair(pl, 0x581, 4, 0);
+                Player_SetMoveMode(pl, 0, 1, 0);
+                pl->weaponOut = 1;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    Player_SetMotionPair(p, 0x57A, 0, 0x10);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 7U);
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    Player_SetMotionPair(pl, 0x57A, 0, 0x10);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 7U);
                 }
                 break;
             }
         }
         break;
     case 1:
-        if (Hammer_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 58.0f) != 0) {
-                Vib_StartLocal(p, 2);
-                CamShake_ReqA(p, 2);
+        if (Hammer_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 58.0f) != 0) {
+                Vib_StartLocal(pl, 2);
+                CamShake_ReqA(pl, 2);
             }
-            if ((Player_IsLocal(p) == 1) && (Motion_InFrameRange(p, 0, 30.0f, 88.0f) != 0) && (p->input.stickDirPressed & 0x3C) && (((p->input.prevStickAngle + 0x1555) & 0xFFFF) < 0xAAAC)) {
-                p->timer = 1;
+            if ((Player_IsLocal(pl) == 1) && (Motion_InFrameRange(pl, 0, 30.0f, 88.0f) != 0) && (pl->input.stickDirPressed & 0x3C) && (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC)) {
+                pl->timer = 1;
             }
-            if (p->motion[0].playing == 0) {
-                Player_BeginState(p, 0, 6, 0);
+            if (pl->motion[0].playing == 0) {
+                Player_BeginState(pl, 0, 6, 0);
                 break;
             }
-            if (p->hitSlowTimer == 0) {
-                if (Motion_InFrameRange(p, 0, 80.0f, 120.0f) != 0) {
-                    Hammer_CheckInput(p, 2);
+            if (pl->hitSlowTimer == 0) {
+                if (Motion_InFrameRange(pl, 0, 80.0f, 120.0f) != 0) {
+                    Hammer_CheckInput(pl, 2);
                     break;
                 }
-                if ((Motion_ReachedFrame(p, 0, 70.0f) != 0) && (p->timer != 0)) {
-                    Player_SetState(p, 1U, 2U, 4);
+                if ((Motion_ReachedFrame(pl, 0, 70.0f) != 0) && (pl->timer != 0)) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_COMBO_2, PL_SET_SNAP_POS);
                 }
             }
         }
@@ -2470,287 +2612,312 @@ void Hammer_State01(Player *p, s32 variant)
     }
 }
 
-void Hammer_State02(Player *p, s32 variant)
+/*
+ * HAMMER_COMBO_2 (hit object 0x21). A flick in frames 30-60 queues
+ * HAMMER_COMBO_3 at the motion's end; else a recovery with the evade window.
+ * variant is always 0.
+ */
+void Hammer_StateCombo2(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMotionPair(p, 0x584, 2, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0;
-        Eff00_Create(p, 0x21U);
-        p->timer = 0;
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMotionPair(pl, 0x584, 2, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0;
+        Eff00_Create(pl, 0x21U);
+        pl->timer = 0;
         break;
     case 1:
-        if (Hammer_CheckHit(p) != 1) {
-            if (p->motion[0].playing == 0) {
-                if ((Player_IsLocal(p) == 1) && (p->timer != 0) && (variant == 0)) {
-                    Player_SetState(p, 1U, 0x13U, 4);
+        if (Hammer_CheckHit(pl) != 1) {
+            if (pl->motion[0].playing == 0) {
+                if ((Player_IsLocal(pl) == 1) && (pl->timer != 0) && (variant == 0)) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_COMBO_3, PL_SET_SNAP_POS);
                     break;
                 }
-                p->step++;
-                Player_SetMotionPair(p, 0x57A, 4, 0x4A);
+                pl->step++;
+                Player_SetMotionPair(pl, 0x57A, 4, 0x4A);
                 break;
             }
-            if ((Player_IsLocal(p) == 1) && (Motion_InFrameRange(p, 0, 30.0f, 60.0f) != 0) && (p->input.stickDirPressed & 0x3C) && (((p->input.prevStickAngle + 0x1555) & 0xFFFF) < 0xAAAC)) {
-                p->timer = 1;
+            if ((Player_IsLocal(pl) == 1) && (Motion_InFrameRange(pl, 0, 30.0f, 60.0f) != 0) && (pl->input.stickDirPressed & 0x3C) && (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC)) {
+                pl->timer = 1;
             }
-            if (Motion_PassedFrame(p, 0, 52.0f) != 0) {
-                Vib_StartLocal(p, 2);
-                CamShake_ReqA(p, 2);
+            if (Motion_PassedFrame(pl, 0, 52.0f) != 0) {
+                Vib_StartLocal(pl, 2);
+                CamShake_ReqA(pl, 2);
                 break;
             }
         } else {
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (Motion_InFrameRange(p, 0, 80.0f, 120.0f) != 0) {
-            Hammer_CheckInput(p, 2);
+        if (Motion_InFrameRange(pl, 0, 80.0f, 120.0f) != 0) {
+            Hammer_CheckInput(pl, 2);
         }
         break;
     }
 }
 
-//---
-void Hammer_State03(Player *p, s32 variant)
+/*
+ * The charge, standing. variant: 0 HAMMER_CHARGE, 1 HAMMER_CHARGE_HOLD (keeps
+ * the charge time), 2 HAMMER_CHARGE_AFTER_ATTACK, 3 HAMMER_CHARGE_RESUME.
+ * weaponTimer counts, stamina drains 1 a frame, and Hammer_CheckChargeInput
+ * walks or releases.
+ */
+void Hammer_StateCharge(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->weaponOut = 1;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->timer = 0;
+        pl->weaponOut = 1;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->timer = 0;
         switch (variant) {
         case 0:
         case 3:
-            p->step = 2;
+            pl->step = 2;
             if (variant == 3) {
-                Player_SetMotionPair(p, 0x3EE, 6, 0xC);
+                Player_SetMotionPair(pl, 0x3EE, 6, 0xC);
             } else {
-                Player_SetMotionPair(p, 0x3EE, 4, 0);
+                Player_SetMotionPair(pl, 0x3EE, 4, 0);
             }
-            p->weaponTimer = 0;
-            Effect06_SpawnAtBone(p, 6, 0, 2, 4.0f);
-            p->noFlinchTimer = 0x3C;
+            pl->weaponTimer = 0;
+            Effect06_SpawnAtBone(pl, 6, 0, 2, 4.0f);
+            pl->noFlinchTimer = 0x3C;
             break;
         case 1:
-            p->step = 3;
-            Player_SetMotionPair(p, 0x3EF, 8, 0);
+            pl->step = 3;
+            Player_SetMotionPair(pl, 0x3EF, 8, 0);
             goto charge;
         case 2:
-            p->step = 1;
-            Player_SetMotionPair(p, 0x582, 4, 0);
-            p->weaponTimer = 0;
-            p->noFlinchTimer = 0x3C;
+            pl->step = 1;
+            Player_SetMotionPair(pl, 0x582, 4, 0);
+            pl->weaponTimer = 0;
+            pl->noFlinchTimer = 0x3C;
             break;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x3EE, 0, 0xE);
-            p->weaponTimer = 0;
-            Effect06_SpawnAtBone(p, 6, 0, 2, 4.0f);
-            p->noFlinchTimer = 0x3C;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x3EE, 0, 0xE);
+            pl->weaponTimer = 0;
+            Effect06_SpawnAtBone(pl, 6, 0, 2, 4.0f);
+            pl->noFlinchTimer = 0x3C;
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x3EF, 4, 0);
-            p->noFlinchTimer = 1;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x3EF, 4, 0);
+            pl->noFlinchTimer = 1;
         }
         break;
     case 3:
     charge:
-        Player_TickWeaponTimer(p);
-        if (Player_IsLocal(p) == 1) {
-            p->timer++;
-            if (p->timer >= 2) {
-                Player_UseStamina(p, -1);
+        Player_TickWeaponTimer(pl);
+        if (Player_IsLocal(pl) == 1) {
+            pl->timer++;
+            if (pl->timer >= 2) {
+                Player_UseStamina(pl, -1);
             }
         }
-        Hammer_CheckChargeInput(p);
+        Hammer_CheckChargeInput(pl);
         break;
     }
 }
 
-void Hammer_State04(Player *p, s32 unused)
+/*
+ * HAMMER_CHARGE_WALK: charges while walking; the moving flags make the
+ * release a moving one.
+ */
+void Hammer_StateChargeWalk(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x3ED, 8, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        Player_SetFlag(p, 0x02001000U);
-        p->timer = 0;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x3ED, 8, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Player_SetFlag(pl, 0x02001000U);
+        pl->timer = 0;
         
     case 1:
-        Player_TickWeaponTimer(p);
-        if (Player_IsLocal(p) == 1) {
-            p->timer++;
-            if (p->timer >= 2) {
-                Player_UseStamina(p, -1);
+        Player_TickWeaponTimer(pl);
+        if (Player_IsLocal(pl) == 1) {
+            pl->timer++;
+            if (pl->timer >= 2) {
+                Player_UseStamina(pl, -1);
             }
         }
-        Hammer_CheckChargeInput(p);
+        Hammer_CheckChargeInput(pl);
         break;
     }
 }
 
-void Hammer_State05(Player *p, s32 unused)
+/*
+ * HAMMER_CHARGE_SPIN: chargeLevel + 2 turns (5 at most), steered by the left
+ * stick. A flick up ends it in HAMMER_CHARGE_RELEASE_1_MOVING (turns 1-2) or
+ * HAMMER_SPIN_FINISH (turns 3-5); out of turns, a last strike.
+ */
+void Hammer_StateChargeSpin(Player *pl, s32 unused)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x57B, 6, 0);
-        p->stateVar0 = p->chargeLevel + 2;
-        if (p->stateVar0 >= 5) {
-            p->stateVar0 = 5;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x57B, 6, 0);
+        pl->stateVar0 = pl->chargeLevel + 2;
+        if (pl->stateVar0 >= 5) {
+            pl->stateVar0 = 5;
         }
-        p->stateVar1 = 0;
-        p->timer = 0;
-        p->targetYaw = p->rot[1];
-        Eff00_Create(p, 0xC);
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0x3C;
+        pl->stateVar1 = 0;
+        pl->timer = 0;
+        pl->targetYaw = pl->rot[1];
+        Eff00_Create(pl, 0xC);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        p->noFlinchTimer = 2;
-        if (Motion_PassedFrame(p, 0, 44.0f) != 0) {
-            p->timer++;
-            if (--p->stateVar0 <= 0) {
-                p->step++;
-                Player_SetMotionPair(p, 0x57C, 0, 0);
-                p->stateRand += 3;
-                Eff00_Create(p, 0xF);
+        pl->noFlinchTimer = 2;
+        if (Motion_PassedFrame(pl, 0, 44.0f) != 0) {
+            pl->timer++;
+            if (--pl->stateVar0 <= 0) {
+                pl->step++;
+                Player_SetMotionPair(pl, 0x57C, 0, 0);
+                pl->stateRand += 3;
+                Eff00_Create(pl, 0xF);
                 break;
             }
-            switch (p->timer) {
+            switch (pl->timer) {
             case 0:
                 break;
             case 1:
             case 2:
-                if (p->stateVar1 != 0) {
-                    if (p->input.stickDir & 0x800) {
-                        p->rot[1] += 0x2000;
-                        p->targetYaw = p->rot[1];
+                if (pl->stateVar1 != 0) {
+                    if (pl->input.stickDir & 0x800) {
+                        pl->rot[1] += 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    if (p->input.stickDir & 0x400) {
-                        p->rot[1] -= 0x2000;
-                        p->targetYaw = p->rot[1];
+                    if (pl->input.stickDir & 0x400) {
+                        pl->rot[1] -= 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    Player_RequestState(p, 1, 0x11, 4);
+                    Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RELEASE_1_MOVING, PL_SET_SNAP_POS);
                 }
                 break;
             case 3:
             case 4:
             case 5:
-                if (p->stateVar1 != 0) {
-                    if (p->input.stickDir & 0x800) {
-                        p->rot[1] += 0x2000;
-                        p->targetYaw = p->rot[1];
+                if (pl->stateVar1 != 0) {
+                    if (pl->input.stickDir & 0x800) {
+                        pl->rot[1] += 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    if (p->input.stickDir & 0x400) {
-                        p->rot[1] -= 0x2000;
-                        p->targetYaw = p->rot[1];
+                    if (pl->input.stickDir & 0x400) {
+                        pl->rot[1] -= 0x2000;
+                        pl->targetYaw = pl->rot[1];
                     }
-                    Player_RequestState(p, 1, 9, 4);
+                    Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_SPIN_FINISH, PL_SET_SNAP_POS);
                 }
                 break;
             }
         } else {
-            if (Player_IsLocal(p) == 1) {
-                if (p->input.stickDir & 0x800) {
-                    p->targetYaw += 0xC0;
-                } else if (p->input.stickDir & 0x400) {
-                    p->targetYaw -= 0xC0;
+            if (Player_IsLocal(pl) == 1) {
+                if (pl->input.stickDir & 0x800) {
+                    pl->targetYaw += 0xC0;
+                } else if (pl->input.stickDir & 0x400) {
+                    pl->targetYaw -= 0xC0;
                 }
-                if (p->input.stickDirPressed & 0x20) {
-                    p->stateVar1++;
+                if (pl->input.stickDirPressed & 0x20) {
+                    pl->stateVar1++;
                 }
             }
-            if (Motion_PassedFrame(p, 0, 26.0f) != 0) {
-                Eff00_Create(p, 0xD);
+            if (Motion_PassedFrame(pl, 0, 26.0f) != 0) {
+                Eff00_Create(pl, 0xD);
             }
-            if (Motion_PassedFrame(p, 0, 52.0f) != 0) {
-                Eff00_Create(p, 0xE);
+            if (Motion_PassedFrame(pl, 0, 52.0f) != 0) {
+                Eff00_Create(pl, 0xE);
             }
         }
         break;
     case 2:
-        p->noFlinchTimer = 2;
-        if (Motion_PassedFrame(p, 0, 38.0f) != 0) {
-            Vib_StartLocal(p, 2);
-            CamShake_ReqA(p, 1);
+        pl->noFlinchTimer = 2;
+        if (Motion_PassedFrame(pl, 0, 38.0f) != 0) {
+            Vib_StartLocal(pl, 2);
+            CamShake_ReqA(pl, 1);
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Hammer_State06(Player *p, s32 variant)
+/*
+ * The releases. variant: 0 HAMMER_CHARGE_RELEASE_1 (two hits), 1 _RELEASE_0,
+ * 2 _RELEASE_0_MOVING, 3 _RELEASE_1_MOVING, 4 HAMMER_BOUNCE_SWING. The moving
+ * forms push forward for 30 frames; all but the first stop at frame 30. The
+ * charge button held charges again.
+ */
+void Hammer_StateChargeRelease(Player *pl, s32 variant)
 {
     f32 in[4];
     f32 out[4];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
+        pl->step++;
+        pl->stateVar1 = 0;
         if (variant == 4) {
-            Player_SetMotionPair(p, 0x57D, 2, 0);
+            Player_SetMotionPair(pl, 0x57D, 2, 0);
         } else {
-            Player_SetMotionPair(p, 0x57D, 4, 0);
+            Player_SetMotionPair(pl, 0x57D, 4, 0);
         }
-        Player_SetMoveMode(p, 0, 1, 0);
-        Eff00_Create(p, 8);
-        p->noFlinchTimer = 0x3C;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Eff00_Create(pl, 8);
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        if ((Motion_ReachedFrame(p, 0, 30.0f) == 0) && (variant == 2 || variant == 3)) {
+        if ((Motion_ReachedFrame(pl, 0, 30.0f) == 0) && (variant == 2 || variant == 3)) {
             in[0] = 0.0f;
             in[1] = 0.0f;
-            in[2] = 18.0f * Math_Cos((6.2831855f * (90.0f * (p->motion[0].frame / 24.0f))) / 360.0f);
-            Vec_Rotate(out, in, p->rotMtx);
-            p->pos[0] += out[0];
-            p->pos[2] += out[2];
+            in[2] = 18.0f * Math_Cos((6.2831855f * (90.0f * (pl->motion[0].frame / 24.0f))) / 360.0f);
+            Vec_Rotate(out, in, pl->rotMtx);
+            pl->pos[0] += out[0];
+            pl->pos[2] += out[2];
         }
         if (variant == 0 || variant == 3) {
-            if (Motion_PassedFrame(p, 0, 60.0f) != 0) {
-                Eff00_Create(p, 9);
+            if (Motion_PassedFrame(pl, 0, 60.0f) != 0) {
+                Eff00_Create(pl, 9);
             }
-            if (p->motion[0].playing == 0) {
-                Player_BeginState(p, 0, 4, 0);
-            } else if (Player_IsLocal(p) == 1) {
-                if ((Motion_ReachedFrame(p, 0, 80.0f) != 0) && (p->input.held & 0x80)) {
-                    Player_SetState(p, 1, 0xE, 0);
-                } else if (Motion_ReachedFrame(p, 0, 88.0f) != 0) {
-                    Hammer_CheckInput(p, 0);
+            if (pl->motion[0].playing == 0) {
+                Player_BeginState(pl, 0, 4, 0);
+            } else if (Player_IsLocal(pl) == 1) {
+                if ((Motion_ReachedFrame(pl, 0, 80.0f) != 0) && (pl->input.held & 0x80)) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RESUME, 0);
+                } else if (Motion_ReachedFrame(pl, 0, 88.0f) != 0) {
+                    Hammer_CheckInput(pl, 0);
                 }
             }
-        } else if ((Hammer_CheckHit(p) != 1) && (Motion_ReachedFrame(p, 0, 30.0f) != 0)) {
-            p->step++;
-            Player_SetMotionPair(p, 0x57F, 0, 0);
+        } else if ((Hammer_CheckHit(pl) != 1) && (Motion_ReachedFrame(pl, 0, 30.0f) != 0)) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57F, 0, 0);
         }
         break;
     case 2:
-        if (Hammer_CheckHit(p) != 1) {
-            if (p->motion[0].playing == 0) {
-                Player_BeginState(p, 0, 4, 0);
-            } else if (Player_IsLocal(p) == 1) {
-                if ((Motion_ReachedFrame(p, 0, 46.0f) != 0) && (p->input.held & 0x80)) {
-                    Player_SetState(p, 1, 0xD, 0);
-                } else if (Motion_InFrameRange(p, 0, 32.0f, 46.0f) != 0) {
-                    Hammer_CheckInput(p, 0);
+        if (Hammer_CheckHit(pl) != 1) {
+            if (pl->motion[0].playing == 0) {
+                Player_BeginState(pl, 0, 4, 0);
+            } else if (Player_IsLocal(pl) == 1) {
+                if ((Motion_ReachedFrame(pl, 0, 46.0f) != 0) && (pl->input.held & 0x80)) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_AFTER_ATTACK, 0);
+                } else if (Motion_InFrameRange(pl, 0, 32.0f, 46.0f) != 0) {
+                    Hammer_CheckInput(pl, 0);
                 }
             }
         }
@@ -2758,1398 +2925,1555 @@ void Hammer_State06(Player *p, s32 variant)
     }
 }
 
-void Hammer_State07(Player *p, s32 unused)
+/*
+ * HAMMER_CHARGE_RELEASE_2: two hits (0xA, then 0xB at frame 74), an impact at
+ * frame 80; evade window frames 84-170.
+ */
+void Hammer_StateChargeRelease2(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x57E, 2, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        Eff00_Create(p, 0xAU);
-        p->noFlinchTimer = 0x3C;
+        pl->step++;
+        Player_SetMotionPair(pl, 0x57E, 2, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Eff00_Create(pl, 0xAU);
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        if (Motion_PassedFrame(p, 0, 74.0f) != 0) {
-            Eff00_Create(p, 0xBU);
+        if (Motion_PassedFrame(pl, 0, 74.0f) != 0) {
+            Eff00_Create(pl, 0xBU);
         }
-        if (Motion_PassedFrame(p, 0, 80.0f) != 0) {
-            Vib_StartLocal(p, 2);
-            CamShake_ReqA(p, 2);
+        if (Motion_PassedFrame(pl, 0, 80.0f) != 0) {
+            Vib_StartLocal(pl, 2);
+            CamShake_ReqA(pl, 2);
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (Motion_InFrameRange(p, 0, 84.0f, 170.0f) != 0) {
-            Hammer_CheckInput(p, 0);
+        if (Motion_InFrameRange(pl, 0, 84.0f, 170.0f) != 0) {
+            Hammer_CheckInput(pl, 0);
         }
         break;
     }
 }
 
-void Hammer_State08(Player *p, s32 unused)
+/*
+ * HAMMER_DRAW_ATTACK: draws into a swing (hit object 0x22 at frame 56). The
+ * charge button held at frame 80 charges again; evade from frame 88.
+ */
+void Hammer_StateDrawAttack(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 1, 0);
-        Player_UpdateMotionTime(p, 0);
-        Player_SetMotionPair(p, 0x3F2, 2, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->weaponOut = 1;
-        p->unk417 = 1;
-        p->noFlinchTimer = 0x3C;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Player_SetMotionPair(pl, 0x3F2, 2, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->weaponOut = 1;
+        pl->unk417 = 1;
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x57D, 2, 0x2E);
-            Player_UpdateMotionTime(p, 0);
-            p->unk417 = 1;
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57D, 2, 0x2E);
+            Player_UpdateMotionTime(pl, 0);
+            pl->unk417 = 1;
         }
         break;
     case 2:
-        if (Motion_PassedFrame(p, 0, 56.0f) != 0) {
-            Eff00_Create(p, 0x22U);
-            p->step++;
+        if (Motion_PassedFrame(pl, 0, 56.0f) != 0) {
+            Eff00_Create(pl, 0x22U);
+            pl->step++;
         }
         
     case 3:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (Player_IsLocal(p) == 1) {
-            if ((Motion_ReachedFrame(p, 0, 80.0f) != 0) && (p->input.held & 0x80)) {
-                Player_SetState(p, 1U, 0xEU, 0);
+        if (Player_IsLocal(pl) == 1) {
+            if ((Motion_ReachedFrame(pl, 0, 80.0f) != 0) && (pl->input.held & 0x80)) {
+                Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RESUME, 0);
                 break;
             }
-            if (Motion_ReachedFrame(p, 0, 88.0f) != 0) {
-                Hammer_CheckInput(p, 0);
+            if (Motion_ReachedFrame(pl, 0, 88.0f) != 0) {
+                Hammer_CheckInput(pl, 0);
             }
         }
         break;
     }
 }
 
-void Hammer_State09(Player *p, s32 variant)
+/*
+ * The finishing swing (hit object 0x20). variant: 0 HAMMER_SPIN_FINISH, 1
+ * HAMMER_COMBO_3 (a lead-in motion first). Evade window frames 102-132.
+ */
+void Hammer_StateFinisher(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0x1C;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0x1C;
         switch (variant) {
         case 0:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x583, 0, 0);
-            Eff00_Create(p, 0x20U);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x583, 0, 0);
+            Eff00_Create(pl, 0x20U);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x585, 0, 0);
+            Player_SetMotionPair(pl, 0x585, 0, 0);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x583, 0, 0x20);
-            Eff00_Create(p, 0x20U);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x583, 0, 0x20);
+            Eff00_Create(pl, 0x20U);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (Motion_PassedFrame(p, 0, 40.0f) != 0) {
-            Vib_StartLocal(p, 2);
-            CamShake_ReqA(p, 1);
+        if (Motion_PassedFrame(pl, 0, 40.0f) != 0) {
+            Vib_StartLocal(pl, 2);
+            CamShake_ReqA(pl, 1);
         }
-        if (Motion_InFrameRange(p, 0, 102.0f, 132.0f) != 0) {
-            Hammer_CheckInput(p, 0);
+        if (Motion_InFrameRange(pl, 0, 102.0f, 132.0f) != 0) {
+            Hammer_CheckInput(pl, 0);
         }
         break;
     }
 }
 
-void Hammer_State10(Player *p, s32 unused)
+/*
+ * HAMMER_BOUNCE: a flick in frames 2-30 queues HAMMER_BOUNCE_SWING at frame
+ * 32; else idle.
+ */
+void Hammer_StateBounce(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x580, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x580, 0, 0);
         break;
     case 1:
-        if (p->stateVar0 != 0) {
-            if (Motion_ReachedFrame(p, 0, 32.0f) != 0) {
-                Player_SetState(p, 1U, 0x12U, 0xC);
+        if (pl->stateVar0 != 0) {
+            if (Motion_ReachedFrame(pl, 0, 32.0f) != 0) {
+                Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_BOUNCE_SWING, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
-        } else if ((Motion_InFrameRange(p, 0, 2.0f, 30.0f) != 0) && (p->stateVar0 == 0) && (p->itemSelect == 0) && (p->input.stickDirPressed & 0x3C)) {
-            p->stateVar0 = 1;
+        } else if ((Motion_InFrameRange(pl, 0, 2.0f, 30.0f) != 0) && (pl->stateVar0 == 0) && (pl->itemSelect == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            pl->stateVar0 = 1;
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xA, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
-void Hammer_RunState(Player *p)
+/*
+ * Runs the hammer's PL_GROUP_WEAPON state: maps the state to its handler and
+ * variant.
+ */
+void Hammer_RunState(Player *pl)
 {
-    switch (p->state) {
-    case 0:
-        Hammer_State00(p, 0);
+    switch (pl->state) {
+    case HAMMER_DOWN_ATTACK:
+        Hammer_StateDownAttack(pl, 0);
         break;
-    case 1:
-        Hammer_State01(p, 0);
+    case HAMMER_COMBO_1:
+        Hammer_StateCombo1(pl, 0);
         break;
-    case 2:
-        Hammer_State02(p, 0);
+    case HAMMER_COMBO_2:
+        Hammer_StateCombo2(pl, 0);
         break;
-    case 3:
-        Hammer_State03(p, 0);
+    case HAMMER_CHARGE:
+        Hammer_StateCharge(pl, 0);
         break;
-    case 4:
-        Hammer_State04(p, 0);
+    case HAMMER_CHARGE_WALK:
+        Hammer_StateChargeWalk(pl, 0);
         break;
-    case 5:
-        Hammer_State05(p, 0);
+    case HAMMER_CHARGE_SPIN:
+        Hammer_StateChargeSpin(pl, 0);
         break;
-    case 6:
-        Hammer_State06(p, 0);
+    case HAMMER_CHARGE_RELEASE_1:
+        Hammer_StateChargeRelease(pl, 0);
         break;
-    case 7:
-        Hammer_State07(p, 0);
+    case HAMMER_CHARGE_RELEASE_2:
+        Hammer_StateChargeRelease2(pl, 0);
         break;
-    case 8:
-        Hammer_State08(p, 0);
+    case HAMMER_DRAW_ATTACK:
+        Hammer_StateDrawAttack(pl, 0);
         break;
-    case 9:
-        Hammer_State09(p, 0);
+    case HAMMER_SPIN_FINISH:
+        Hammer_StateFinisher(pl, 0);
         break;
-    case 10:
-        Hammer_State10(p, 0);
+    case HAMMER_BOUNCE:
+        Hammer_StateBounce(pl, 0);
         break;
-    case 11:
-        Hammer_State01(p, 1);
+    case HAMMER_COMBO_1_AFTER_DOWN:
+        Hammer_StateCombo1(pl, 1);
         break;
-    case 12:
-        Hammer_State03(p, 1);
+    case HAMMER_CHARGE_HOLD:
+        Hammer_StateCharge(pl, 1);
         break;
-    case 13:
-        Hammer_State03(p, 2);
+    case HAMMER_CHARGE_AFTER_ATTACK:
+        Hammer_StateCharge(pl, 2);
         break;
-    case 14:
-        Hammer_State03(p, 3);
+    case HAMMER_CHARGE_RESUME:
+        Hammer_StateCharge(pl, 3);
         break;
-    case 15:
-        Hammer_State06(p, 1);
+    case HAMMER_CHARGE_RELEASE_0:
+        Hammer_StateChargeRelease(pl, 1);
         break;
-    case 16:
-        Hammer_State06(p, 2);
+    case HAMMER_CHARGE_RELEASE_0_MOVING:
+        Hammer_StateChargeRelease(pl, 2);
         break;
-    case 17:
-        Hammer_State06(p, 3);
+    case HAMMER_CHARGE_RELEASE_1_MOVING:
+        Hammer_StateChargeRelease(pl, 3);
         break;
-    case 18:
-        Hammer_State06(p, 4);
+    case HAMMER_BOUNCE_SWING:
+        Hammer_StateChargeRelease(pl, 4);
         break;
-    case 19:
-        Hammer_State09(p, 1);
+    case HAMMER_COMBO_3:
+        Hammer_StateFinisher(pl, 1);
         
     default:
         break;
     }
 }
 
-s32 Hammer_AttackInput(Player *p)
+/*
+ * The drawn idle's input: a flick down starts HAMMER_DOWN_ATTACK, any other
+ * way HAMMER_COMBO_1; the roll button rolls. Returns 1 when it started a
+ * state.
+ */
+s32 Hammer_AttackInput(Player *pl)
 {
-    if (p->input.stickDirPressed & 0x3C) {
-        if (((p->input.prevStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
-            Player_SetState(p, 1U, 1U, 4);
+    if (pl->input.stickDirPressed & 0x3C) {
+        if (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
+            Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_COMBO_1, PL_SET_SNAP_POS);
             return 1;
         }
-        Player_SetState(p, 1U, 0U, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_DOWN_ATTACK, PL_SET_SNAP_POS);
         return 1;
     }
-    if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B)) {
-        Player_SetState(p, 0U, 0x1CU, 4);
+    if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         return 1;
     }
     return 0;
 }
 
-void Hammer_CheckInput(Player *p, s32 caller)
+/*
+ * An attack window's input: the roll button evades by the left stick; with
+ * caller 1 (the down attack) a flick another way chains
+ * HAMMER_COMBO_1_AFTER_DOWN.
+ */
+void Hammer_CheckInput(Player *pl, s32 caller)
 {
     s32 dir;
 
-    if (((Player_IsLocal(p) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1) && (p->itemSelect == 0)) {
-        if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B)) {
-            if (p->input.stickDir & 0x3C00) {
-                dir = (p->input.stickAngle + 0x4000) & 0xFFFF;
+    if (((Player_IsLocal(pl) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1) && (pl->itemSelect == 0)) {
+        if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+            if (pl->input.stickDir & 0x3C00) {
+                dir = (pl->input.stickAngle + 0x4000) & 0xFFFF;
                 if (dir < 0x5C72) {
-                    Player_SetState(p, 0U, 0x31U, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
                 } else if (dir < 0xA38E) {
-                    Player_SetState(p, 0U, 0x1CU, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 0U, 0x32U, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_LEFT, PL_SET_SNAP_POS);
                 }
             } else {
-                Player_SetState(p, 0U, 0x1CU, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             }
         }
-        if ((p->input.stickDirPressed & 0x3C) && (caller == 1) && (((p->input.prevStickAngle + 0x1555) & 0xFFFF) < 0xAAAC)) {
-            Player_SetState(p, 1U, 0xBU, 4);
+        if ((pl->input.stickDirPressed & 0x3C) && (caller == 1) && (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC)) {
+            Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_COMBO_1_AFTER_DOWN, PL_SET_SNAP_POS);
         }
     }
 }
 
-u8 Hammer_ChargeLevel(Player *p)
+/* Returns the charge level, weaponTimer / 30. */
+u8 Hammer_ChargeLevel(Player *pl)
 {
-    return p->weaponTimer / 30;
+    return pl->weaponTimer / 30;
 }
 
-void Hammer_ReleaseCharge(Player *p)
+/*
+ * Requests the release for the charge level, standing or moving (player flag
+ * 0x1000): level 0 HAMMER_CHARGE_RELEASE_0(_MOVING), level 1 _RELEASE_1
+ * (_MOVING), level 2 and up _RELEASE_2 standing or HAMMER_CHARGE_SPIN moving
+ * (which sets chargeLevel).
+ */
+void Hammer_ReleaseCharge(Player *pl)
 {
     s32 level;
 
-    level = Hammer_ChargeLevel(p) & 0xFF;
+    level = Hammer_ChargeLevel(pl) & 0xFF;
     switch (level) {
     case 0:
-        if (Player_TestFlag(p, 0x1000U) != 0) {
-            Player_RequestState(p, 1U, 0x10U, 4);
+        if (Player_TestFlag(pl, 0x1000U) != 0) {
+            Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RELEASE_0_MOVING, PL_SET_SNAP_POS);
             break;
         }
-        Player_RequestState(p, 1U, 0xFU, 4);
+        Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RELEASE_0, PL_SET_SNAP_POS);
         break;
     case 1:
-        if (Player_TestFlag(p, 0x1000U) != 0) {
-            Player_RequestState(p, 1U, 0x11U, 4);
+        if (Player_TestFlag(pl, 0x1000U) != 0) {
+            Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RELEASE_1_MOVING, PL_SET_SNAP_POS);
             break;
         }
-        Player_RequestState(p, 1U, 6U, 4);
+        Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RELEASE_1, PL_SET_SNAP_POS);
         break;
     default:
     case 2:
-        if (Player_TestFlag(p, 0x1000U) != 0) {
-            p->chargeLevel = Hammer_ChargeLevel(p);
-            Player_RequestState(p, 1U, 5U, 4);
+        if (Player_TestFlag(pl, 0x1000U) != 0) {
+            pl->chargeLevel = Hammer_ChargeLevel(pl);
+            Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_SPIN, PL_SET_SNAP_POS);
             break;
         }
-        Player_RequestState(p, 1U, 7U, 4);
+        Player_RequestState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_RELEASE_2, PL_SET_SNAP_POS);
         break;
     }
 }
 
-void Hammer_CheckChargeInput(Player *p)
+/*
+ * The local player's input while charging: the roll button rolls; while the
+ * charge button is held with stamina, the left stick walks
+ * (HAMMER_CHARGE_WALK) or stands (HAMMER_CHARGE_HOLD) and a flick up releases
+ * early; letting go releases.
+ */
+void Hammer_CheckChargeInput(Player *pl)
 {
 
-    if (Player_IsLocal(p) != 0) {
-        if ((p->input.pressed & 0x40) && p->stamina >= 0x4B) {
-            Player_RequestState(p, 0, 0x1C, 4);
+    if (Player_IsLocal(pl) != 0) {
+        if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+            Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             return;
         }
-        if ((p->input.held & 0x80) && p->stamina > 0) {
-            if (Player_StickMoveLevel(p, 0) != 0) {
-                if (Player_IsState(p, 1, 4) == 0) {
-                    Player_FaceStick(p);
-                    Player_SetState(p, 1, 4, 0);
+        if ((pl->input.held & 0x80) && pl->stamina > 0) {
+            if (Player_StickMoveLevel(pl, 0) != 0) {
+                if (Player_IsState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_WALK) == 0) {
+                    Player_FaceStick(pl);
+                    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_WALK, 0);
                 } else {
-                    Player_FaceStick(p);
+                    Player_FaceStick(pl);
                 }
-            } else if (p->stateGroup == 1) {
-                switch (p->state) {
-                case 3:
-                case 0xC:
-                case 0xD:
-                case 0xE:
+            } else if (pl->stateGroup == PL_GROUP_WEAPON) {
+                switch (pl->state) {
+                case HAMMER_CHARGE:
+                case HAMMER_CHARGE_HOLD:
+                case HAMMER_CHARGE_AFTER_ATTACK:
+                case HAMMER_CHARGE_RESUME:
                     break;
                 default:
-                    Player_SetState(p, 1, 0xC, 0);
+                    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_HOLD, 0);
                     break;
                 }
             } else {
-                Player_SetState(p, 1, 0xC, 0);
+                Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE_HOLD, 0);
             }
-            if ((p->input.stickDirPressed & 0x20) && p->itemSelect == 0) {
-                Hammer_ReleaseCharge(p);
+            if ((pl->input.stickDirPressed & 0x20) && pl->itemSelect == 0) {
+                Hammer_ReleaseCharge(pl);
             }
         } else {
-            Hammer_ReleaseCharge(p);
+            Hammer_ReleaseCharge(pl);
         }
     }
 }
 
-void Hammer_DrawAttack(Player *p)
+/* The attack that draws on the move: HAMMER_DRAW_ATTACK. */
+void Hammer_DrawAttack(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x8, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_DRAW_ATTACK, PL_SET_SNAP_POS);
 }
 
-void Hammer_EvadeCharge(Player *p)
+/*
+ * Charges from a roll (frame 40 with the charge button held): HAMMER_CHARGE.
+ */
+void Hammer_ChargeFromRoll(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x3, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE, PL_SET_SNAP_POS);
 }
 
-void Hammer_Draw(Player *p)
+/* The charge button held (Player_HoldSpecialInput): HAMMER_CHARGE. */
+void Hammer_StartCharge(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x3, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, HAMMER_CHARGE, PL_SET_SNAP_POS);
 }
 
-s32 Lance_CheckHit(Player *p)
+/*
+ * When the thrust bounced off (hitKind 1): shakes the camera, clears the hit
+ * stop, requests LANCE_BOUNCE and returns 1; else 0.
+ */
+s32 Lance_CheckHit(Player *pl)
 {
-    if ((p->hitPending != 0) && (p->hitKind == 1)) {
-        CamShake_ReqA(p, 0);
-        p->hitStop = 0;
-        p->hitStopAdd = 0;
-        Player_RequestState(p, 1U, 7U, 0);
+    if ((pl->hitPending != 0) && (pl->hitKind == 1)) {
+        CamShake_ReqA(pl, 0);
+        pl->hitStop = 0;
+        pl->hitStopAdd = 0;
+        Player_RequestState(pl, PL_GROUP_WEAPON, LANCE_BOUNCE, 0);
         return 1;
     }
     return 0;
 }
 
-void Lance_State00(Player *p, s32 variant)
+/*
+ * The thrusts. variant: 0 LANCE_THRUST, 1 LANCE_DRAW_THRUST (the draw motion
+ * first), 2 LANCE_THRUST_2, 3 LANCE_THRUST_3, 4 LANCE_BOUNCE_THRUST. Frames
+ * 36-62 run Lance_CheckInput, and a flick chains the next thrust (down an
+ * upper thrust); LANCE_THRUST_3 chains none.
+ */
+void Lance_StateThrust(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
         switch (variant) {
         case 0:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57D, 4, 0);
-            Eff00_Create(p, 0x10);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57D, 4, 0);
+            Eff00_Create(pl, 0x10);
             break;
         case 1:
-            p->step++;
-            Player_SetMotionPair(p, 0x3F2, 2, 0);
-            p->weaponOut = 1;
-            Eff00_Create(p, 0x14);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x3F2, 2, 0);
+            pl->weaponOut = 1;
+            Eff00_Create(pl, 0x14);
             break;
         case 2:
         case 3:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57D, 6, 0xA);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57D, 6, 0xA);
             if (variant == 3) {
-                Eff00_Create(p, 0x24);
+                Eff00_Create(pl, 0x24);
                 break;
             }
-            Eff00_Create(p, 0x10);
+            Eff00_Create(pl, 0x10);
             break;
         case 4:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57D, 4, 0xA);
-            Eff00_Create(p, 0x10);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57D, 4, 0xA);
+            Eff00_Create(pl, 0x10);
             break;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x57D, 0, 0x22);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57D, 0, 0x22);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (Lance_CheckHit(p) != 1 && Player_IsLocal(p) == 1 && Motion_InFrameRange(p, 0, 36.0f, 62.0f) != 0) {
-            Lance_CheckInput(p, 0);
-            if ((p->input.stickDirPressed & 0x3C) && variant != 3) {
-                if (((p->input.prevStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
+        if (Lance_CheckHit(pl) != 1 && Player_IsLocal(pl) == 1 && Motion_InFrameRange(pl, 0, 36.0f, 62.0f) != 0) {
+            Lance_CheckInput(pl, 0);
+            if ((pl->input.stickDirPressed & 0x3C) && variant != 3) {
+                if (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
                     if (variant == 2) {
-                        Player_SetState(p, 1, 0xA, 4);
+                        Player_SetState(pl, PL_GROUP_WEAPON, LANCE_THRUST_3, PL_SET_SNAP_POS);
                         break;
                     }
-                    Player_SetState(p, 1, 9, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, LANCE_THRUST_2, PL_SET_SNAP_POS);
                     break;
                 }
                 if (variant == 2) {
-                    Player_SetState(p, 1, 0xD, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, LANCE_UPPER_THRUST_3, PL_SET_SNAP_POS);
                     break;
                 }
-                Player_SetState(p, 1, 0xC, 4);
+                Player_SetState(pl, PL_GROUP_WEAPON, LANCE_UPPER_THRUST_2, PL_SET_SNAP_POS);
             }
         }
         break;
     }
 }
 
-void Lance_State01(Player *p, s32 variant)
+/*
+ * The upper thrusts (likely). variant: 0 LANCE_UPPER_THRUST, 1 _2, 2 _3; they
+ * chain as Lance_StateThrust's.
+ */
+void Lance_StateUpperThrust(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
         switch (variant) {
         default:
-            Player_SetMotionPair(p, 0x57E, 4, 0);
-            Eff00_Create(p, 0x1C);
+            Player_SetMotionPair(pl, 0x57E, 4, 0);
+            Eff00_Create(pl, 0x1C);
             break;
         case 1:
         case 2:
-            Player_SetMotionPair(p, 0x57E, -6, 0xA);
+            Player_SetMotionPair(pl, 0x57E, -6, 0xA);
             if (variant == 2) {
-                Eff00_Create(p, 0x23);
+                Eff00_Create(pl, 0x23);
                 break;
             }
-            Eff00_Create(p, 0x1C);
+            Eff00_Create(pl, 0x1C);
             break;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (Lance_CheckHit(p) != 1 && Player_IsLocal(p) == 1 && Motion_InFrameRange(p, 0, 36.0f, 62.0f) != 0) {
-            Lance_CheckInput(p, 0);
-            if ((p->input.stickDirPressed & 0x3C) && variant != 2) {
-                if (((p->input.prevStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
+        if (Lance_CheckHit(pl) != 1 && Player_IsLocal(pl) == 1 && Motion_InFrameRange(pl, 0, 36.0f, 62.0f) != 0) {
+            Lance_CheckInput(pl, 0);
+            if ((pl->input.stickDirPressed & 0x3C) && variant != 2) {
+                if (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
                     if (variant == 1) {
-                        Player_SetState(p, 1, 0xA, 4);
+                        Player_SetState(pl, PL_GROUP_WEAPON, LANCE_THRUST_3, PL_SET_SNAP_POS);
                         break;
                     }
-                    Player_SetState(p, 1, 9, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, LANCE_THRUST_2, PL_SET_SNAP_POS);
                     break;
                 }
                 if (variant == 1) {
-                    Player_SetState(p, 1, 0xD, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, LANCE_UPPER_THRUST_3, PL_SET_SNAP_POS);
                     break;
                 }
-                Player_SetState(p, 1, 0xC, 4);
+                Player_SetState(pl, PL_GROUP_WEAPON, LANCE_UPPER_THRUST_2, PL_SET_SNAP_POS);
             }
         }
         break;
     }
 }
 
-void Lance_State02(Player *p, s32 unused)
+/*
+ * LANCE_GUARD_THRUST: frames 18-28 run Lance_CheckInput; it ends back in the
+ * held guard (PL_REACT_GUARD_HOLD).
+ */
+void Lance_StateGuardThrust(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x588, 2, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        Eff00_Create(p, 0x12U);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x588, 2, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Eff00_Create(pl, 0x12U);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 2U, 0xCU, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
             break;
         }
-        if ((Lance_CheckHit(p) != 1) && (Motion_ReachedFrame(p, 0, 18.0f) != 0) && (Motion_ReachedFrame(p, 0, 28.0f) == 0)) {
-            Lance_CheckInput(p, 0);
+        if ((Lance_CheckHit(pl) != 1) && (Motion_ReachedFrame(pl, 0, 18.0f) != 0) && (Motion_ReachedFrame(pl, 0, 28.0f) == 0)) {
+            Lance_CheckInput(pl, 0);
         }
         break;
     }
 }
 
-void Lance_State03(Player *p, s32 variant)
+/*
+ * The charge. variant: 0 LANCE_CHARGE (a start motion), 1
+ * LANCE_CHARGE_RESUME. Stamina drains; the left stick steers; the charge
+ * button or a flick down stops it and a flick up finishes it. A hit reacts by
+ * sharpness (level 0 a knockdown, 1 LANCE_CHARGE_HIT_STOP, 2
+ * LANCE_CHARGE_HIT; skills 0x24/0x25 skip this); a wall gives
+ * LANCE_CHARGE_WALL.
+ */
+void Lance_StateCharge(Player *pl, s32 variant)
 {
     u8 level;
 
-    p->noFlinchTimer = 2;
-    switch (p->step) {
+    pl->noFlinchTimer = 2;
+    switch (pl->step) {
     case 0:
         if (variant == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x579, 4, 0);
+            pl->step++;
+            Player_SetMotionPair(pl, 0x579, 4, 0);
         } else {
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57A, 0, 6);
-            Eff00_Create(p, 0x11);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57A, 0, 6);
+            Eff00_Create(pl, 0x11);
         }
-        p->hitPending = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
+        pl->hitPending = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x57A, 0, 4);
-            Eff00_Create(p, 0x11);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57A, 0, 4);
+            Eff00_Create(pl, 0x11);
         }
         break;
     case 2:
-        if (Player_IsLocal(p) == 1) {
-            if (p->input.stickDir & 0x800) {
-                p->targetYaw += 0x80;
+        if (Player_IsLocal(pl) == 1) {
+            if (pl->input.stickDir & 0x800) {
+                pl->targetYaw += 0x80;
             }
-            if (p->input.stickDir & 0x400) {
-                p->targetYaw -= 0x80;
+            if (pl->input.stickDir & 0x400) {
+                pl->targetYaw -= 0x80;
             }
         }
-        Player_UseStamina(p, -2);
-        if (p->stamina <= 0) {
-            Player_SetState(p, 1, 4, 4);
+        Player_UseStamina(pl, -2);
+        if (pl->stamina <= 0) {
+            Player_SetState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_STOP, PL_SET_SNAP_POS);
             break;
         }
-        if (Player_IsLocal(p) == 1) {
-            if ((p->input.stickDirPressed & 0x10) || (p->input.pressed & 1)) {
-                Player_SetState(p, 1, 4, 4);
-            } else if (p->input.stickDirPressed & 0x20) {
-                Player_SetState(p, 1, 6, 4);
+        if (Player_IsLocal(pl) == 1) {
+            if ((pl->input.stickDirPressed & 0x10) || (pl->input.pressed & 1)) {
+                Player_SetState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_STOP, PL_SET_SNAP_POS);
+            } else if (pl->input.stickDirPressed & 0x20) {
+                Player_SetState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_FINISH, PL_SET_SNAP_POS);
             }
         }
-        if (p->hitPending != 0) {
-            if (Player_HasSkill(p, 0x24) == 0 && Player_HasSkill(p, 0x25) == 0) {
-                if (p->hitPending & 0x80) {
+        if (pl->hitPending != 0) {
+            if (Player_HasSkill(pl, 0x24) == 0 && Player_HasSkill(pl, 0x25) == 0) {
+                if (pl->hitPending & 0x80) {
                     level = 0;
                 } else {
-                    level = p->sharpnessLevel;
+                    level = pl->sharpnessLevel;
                 }
                 switch (level) {
                 case 0:
-                    p->hitStop = 0;
-                    p->hitStopAdd = 0;
-                    Player_SetState(p, 2, 0, 0);
+                    pl->hitStop = 0;
+                    pl->hitStopAdd = 0;
+                    Player_SetState(pl, PL_GROUP_REACT, PL_REACT_KNOCKDOWN_FRONT, 0);
                     break;
                 case 2:
-                    p->hitStop = 0;
-                    p->hitStopAdd = 0;
-                    Player_RequestState(p, 1, 5, 0);
+                    pl->hitStop = 0;
+                    pl->hitStopAdd = 0;
+                    Player_RequestState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_HIT, 0);
                     break;
                 case 1:
-                    p->hitStop = 0;
-                    p->hitStopAdd = 0;
-                    Player_RequestState(p, 1, 0xF, 0);
+                    pl->hitStop = 0;
+                    pl->hitStopAdd = 0;
+                    Player_RequestState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_HIT_STOP, 0);
                     break;
                 }
             }
-        } else if (p->wallHitDirs & 0xE0000007) {
-            Player_RequestState(p, 1, 0x10, 0);
+        } else if (pl->wallHitDirs & 0xE0000007) {
+            Player_RequestState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_WALL, 0);
         }
         break;
     }
 }
 
-void Lance_State04(Player *p, s32 variant)
+/*
+ * The charge's end, then idle. variant: 0 LANCE_CHARGE_STOP, 1
+ * LANCE_CHARGE_HIT_STOP.
+ */
+void Lance_StateChargeStop(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        p->noFlinchTimer = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        pl->noFlinchTimer = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x57B, 2, 0);
+            Player_SetMotionPair(pl, 0x57B, 2, 0);
             break;
         }
-        Player_SetMotionPair(p, 0x583, 0, 0);
+        Player_SetMotionPair(pl, 0x583, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void Lance_State05(Player *p, s32 variant)
+/*
+ * variant 0 LANCE_CHARGE_HIT: stamina drains, then LANCE_CHARGE_RESUME, or
+ * LANCE_CHARGE_STOP after the charge button or a flick down; variant 1
+ * LANCE_CHARGE_WALL: always LANCE_CHARGE_STOP.
+ */
+void Lance_StateChargeHit(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->hitStop = 0;
-        p->hitStopAdd = 0;
-        Player_SetMotionPair(p, 0x57C, 0, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0;
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->hitStop = 0;
+        pl->hitStopAdd = 0;
+        Player_SetMotionPair(pl, 0x57C, 0, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0;
         break;
     case 1:
-        Player_UseStamina(p, -2);
-        if (p->motion[0].playing == 0) {
-            if ((variant == 0) && (p->stateVar0 == 0)) {
-                Player_RequestState(p, 1U, 0xEU, 0);
+        Player_UseStamina(pl, -2);
+        if (pl->motion[0].playing == 0) {
+            if ((variant == 0) && (pl->stateVar0 == 0)) {
+                Player_RequestState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_RESUME, 0);
                 break;
             }
-            Player_RequestState(p, 1U, 4U, 0);
+            Player_RequestState(pl, PL_GROUP_WEAPON, LANCE_CHARGE_STOP, 0);
             break;
         }
-        if ((p->input.stickDirPressed & 0x10) || (p->input.pressed & 1)) {
-            p->stateVar0 = 1;
+        if ((pl->input.stickDirPressed & 0x10) || (pl->input.pressed & 1)) {
+            pl->stateVar0 = 1;
         }
         break;
     }
 }
 
-void Lance_State06(Player *p, s32 unused)
+/*
+ * LANCE_CHARGE_FINISH: the charge's last thrust, without flinching for 60
+ * frames. Frames 72-102 run Lance_CheckInput.
+ */
+void Lance_StateChargeFinish(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x584, 2, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0x3C;
-        Eff00_Create(p, 0x1FU);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x584, 2, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0x3C;
+        Eff00_Create(pl, 0x1FU);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->noFlinchTimer = 0;
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->noFlinchTimer = 0;
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (Motion_InFrameRange(p, 0, 72.0f, 102.0f) != 0) {
-            Lance_CheckInput(p, 0);
+        if (Motion_InFrameRange(pl, 0, 72.0f, 102.0f) != 0) {
+            Lance_CheckInput(pl, 0);
         }
         break;
     }
 }
 
-void Lance_State07(Player *p, s32 unused)
+/*
+ * LANCE_BOUNCE: a flick in frames 10-40 queues LANCE_BOUNCE_THRUST at frame
+ * 42.
+ */
+void Lance_StateBounce(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x589, 0, 0);
-        CamShake_ReqA(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x589, 0, 0);
+        CamShake_ReqA(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->stateVar0 != 0) {
-            if (Motion_ReachedFrame(p, 0, 42.0f) != 0) {
-                Player_SetState(p, 1U, 0xBU, 0xC);
+        if (pl->stateVar0 != 0) {
+            if (Motion_ReachedFrame(pl, 0, 42.0f) != 0) {
+                Player_SetState(pl, PL_GROUP_WEAPON, LANCE_BOUNCE_THRUST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
-        } else if ((Motion_InFrameRange(p, 0, 10.0f, 40.0f) != 0) && (p->stateVar0 == 0) && (p->itemSelect == 0) && (p->input.stickDirPressed & 0x3C)) {
-            p->stateVar0 = 1;
+        } else if ((Motion_InFrameRange(pl, 0, 10.0f, 40.0f) != 0) && (pl->stateVar0 == 0) && (pl->itemSelect == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            pl->stateVar0 = 1;
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void Lance_RunState(Player *p)
+/*
+ * Runs the lance's PL_GROUP_WEAPON state: maps the state to its handler and
+ * variant.
+ */
+void Lance_RunState(Player *pl)
 {
-    switch (p->state) {
-    case 0:
-        Lance_State00(p, 0);
+    switch (pl->state) {
+    case LANCE_THRUST:
+        Lance_StateThrust(pl, 0);
         break;
-    case 1:
-        Lance_State01(p, 0);
+    case LANCE_UPPER_THRUST:
+        Lance_StateUpperThrust(pl, 0);
         break;
-    case 2:
-        Lance_State02(p, 0);
+    case LANCE_GUARD_THRUST:
+        Lance_StateGuardThrust(pl, 0);
         break;
-    case 3:
-        Lance_State03(p, 0);
+    case LANCE_CHARGE:
+        Lance_StateCharge(pl, 0);
         break;
-    case 4:
-        Lance_State04(p, 0);
+    case LANCE_CHARGE_STOP:
+        Lance_StateChargeStop(pl, 0);
         break;
-    case 5:
-        Lance_State05(p, 0);
+    case LANCE_CHARGE_HIT:
+        Lance_StateChargeHit(pl, 0);
         break;
-    case 6:
-        Lance_State06(p, 0);
+    case LANCE_CHARGE_FINISH:
+        Lance_StateChargeFinish(pl, 0);
         break;
-    case 7:
-        Lance_State07(p, 0);
+    case LANCE_BOUNCE:
+        Lance_StateBounce(pl, 0);
         break;
-    case 8:
-        Lance_State00(p, 1);
+    case LANCE_DRAW_THRUST:
+        Lance_StateThrust(pl, 1);
         break;
-    case 9:
-        Lance_State00(p, 2);
+    case LANCE_THRUST_2:
+        Lance_StateThrust(pl, 2);
         break;
-    case 10:
-        Lance_State00(p, 3);
+    case LANCE_THRUST_3:
+        Lance_StateThrust(pl, 3);
         break;
-    case 11:
-        Lance_State00(p, 4);
+    case LANCE_BOUNCE_THRUST:
+        Lance_StateThrust(pl, 4);
         break;
-    case 12:
-        Lance_State01(p, 1);
+    case LANCE_UPPER_THRUST_2:
+        Lance_StateUpperThrust(pl, 1);
         break;
-    case 13:
-        Lance_State01(p, 2);
+    case LANCE_UPPER_THRUST_3:
+        Lance_StateUpperThrust(pl, 2);
         break;
-    case 14:
-        Lance_State03(p, 1);
+    case LANCE_CHARGE_RESUME:
+        Lance_StateCharge(pl, 1);
         break;
-    case 15:
-        Lance_State04(p, 1);
+    case LANCE_CHARGE_HIT_STOP:
+        Lance_StateChargeStop(pl, 1);
         break;
-    case 16:
-        Lance_State05(p, 1);
+    case LANCE_CHARGE_WALL:
+        Lance_StateChargeHit(pl, 1);
         
     default:
         break;
     }
 }
 
-s32 Lance_AttackInput(Player *p)
+/*
+ * The drawn idle's input: the roll button hops back (75 stamina), the charge
+ * button charges, a flick thrusts (down an upper thrust). Returns 0.
+ */
+s32 Lance_AttackInput(Player *pl)
 {
 
-    if ((p->input.pressed & 0x40) && p->stamina >= 0x4B) {
-        Player_SetState(p, 0, 0x6D, 4);
+    if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_BACK, PL_SET_SNAP_POS);
     }
-    if (p->input.pressed & 1) {
-        Player_SetState(p, 1, 3, 0xC);
+    if (pl->input.pressed & 1) {
+        Player_SetState(pl, PL_GROUP_WEAPON, LANCE_CHARGE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
     }
-    if (p->input.stickDirPressed & 0x3C) {
-        if ((u16)(p->input.prevStickAngle + 0x1555) < 0xAAAC) {
-            Player_SetState(p, 1, 0, 0xC);
+    if (pl->input.stickDirPressed & 0x3C) {
+        if ((u16)(pl->input.rightStickAngle + 0x1555) < 0xAAAC) {
+            Player_SetState(pl, PL_GROUP_WEAPON, LANCE_THRUST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
-            Player_SetState(p, 1, 1, 0xC);
+            Player_SetState(pl, PL_GROUP_WEAPON, LANCE_UPPER_THRUST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
     }
     return 0;
 }
 
-void Lance_CheckInput(Player *p, s32 variant)
+/*
+ * An attack window's input (the local player, no item selector open): the
+ * roll button hops (the left stick picks the side, or the long back hop), the
+ * charge button charges. variant is not used (always 0).
+ */
+void Lance_CheckInput(Player *pl, s32 variant)
 {
     s32 dir;
 
-    if ((Player_IsLocal(p) != 0 || Game_IsOnline() != 1) && Quest_PhaseIsOver(1) != 1 && p->itemSelect == 0) {
-        if ((p->input.pressed & 0x40) && p->stamina >= 0x4B) {
-            if (p->input.stickDir & 0x3C00) {
-                dir = (u16) (p->input.stickAngle + 0x2000);
+    if ((Player_IsLocal(pl) != 0 || Game_IsOnline() != 1) && Quest_PhaseIsOver(1) != 1 && pl->itemSelect == 0) {
+        if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+            if (pl->input.stickDir & 0x3C00) {
+                dir = (u16) (pl->input.stickAngle + 0x2000);
                 if (dir < 0x6000) {
-                    Player_SetState(p, 0, 0x6C, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_SIDE_B, PL_SET_SNAP_POS);
                 } else if (dir >= 0x6000 && dir < 0xC001) {
-                    Player_SetState(p, 0, 0x6B, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_SIDE_A, PL_SET_SNAP_POS);
                 } else {
-                    Player_SetState(p, 0, 0x6E, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_BACK_LONG, PL_SET_SNAP_POS);
                 }
             } else {
-                Player_SetState(p, 0, 0x6D, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_BACK, PL_SET_SNAP_POS);
             }
         }
-        if (p->input.pressed & 1) {
-            Player_SetState(p, 1, 3, 0xC);
+        if (pl->input.pressed & 1) {
+            Player_SetState(pl, PL_GROUP_WEAPON, LANCE_CHARGE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
     }
 }
 
-void Lance_GatherAttack(Player *p, s32 arg1)
+/*
+ * From the guard (Player_GuardInput): thrust 0 charges (LANCE_CHARGE), 1
+ * thrusts (LANCE_GUARD_THRUST).
+ */
+void Lance_GuardAttack(Player *pl, s32 thrust)
 {
-    if (arg1 == 0) {
-        Player_SetState(p, 1U, 3U, 0xC);
+    if (thrust == 0) {
+        Player_SetState(pl, PL_GROUP_WEAPON, LANCE_CHARGE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         return;
     }
-    Player_SetState(p, 1U, 2U, 0xC);
+    Player_SetState(pl, PL_GROUP_WEAPON, LANCE_GUARD_THRUST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
 }
 
-void Lance_DrawAttack(Player *p)
+/* The attack that draws on the move: LANCE_DRAW_THRUST. */
+void Lance_DrawAttack(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x8, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, LANCE_DRAW_THRUST, PL_SET_SNAP_POS);
 }
 
-//---
-s32 SwordShield_CheckHit(Player *p)
+/*
+ * The attack's first hit, once per state (stateVar1): a bounce requests
+ * SNS_BOUNCE and returns 1; kinds 2 and 3 step the motion back 2 frames and
+ * mute the weapon sound. Returns 0 otherwise.
+ */
+s32 SwordShield_CheckHit(Player *pl)
 {
 
-    if (p->hitPending != 0 && p->stateVar1 == 0) {
-        p->stateVar1 = 1;
-        switch (p->hitKind) {
+    if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+        pl->stateVar1 = 1;
+        switch (pl->hitKind) {
         case 0:
             break;
         case 1:
-            p->hitStopAdd = p->hitStop = 0;
-            Player_SetState(p, 1, 5, 0);
+            pl->hitStopAdd = pl->hitStop = 0;
+            Player_SetState(pl, PL_GROUP_WEAPON, SNS_BOUNCE, 0);
             return 1;
         case 2:
         case 3:
-            Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-            p->weaponSeMute = 2;
+            Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+            pl->weaponSeMute = 2;
             break;
         }
     }
     return 0;
 }
 
-void SwordShield_State00(Player *p, s32 variant)
+/*
+ * The flick-up combo. variant: 0 SNS_COMBO_1, 1 SNS_COMBO_2, 2 SNS_COMBO_3, 3
+ * SNS_COMBO_1_LINKED. A queued flick chains: up the next slash (none after
+ * the third), sideways SNS_SIDE_SLASH; else the evade window.
+ */
+void SwordShield_StateCombo(Player *pl, s32 variant)
 {
     f32 from;
     f32 to;
     s32 dir;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
         switch (variant) {
         case 0:
-            Player_SetMotionPair(p, 0x579, 4, 0);
-            Eff00_Create(p, 0x15);
+            Player_SetMotionPair(pl, 0x579, 4, 0);
+            Eff00_Create(pl, 0x15);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x57A, 2, 0);
-            Eff00_Create(p, 0x19);
+            Player_SetMotionPair(pl, 0x57A, 2, 0);
+            Eff00_Create(pl, 0x19);
             break;
         case 2:
-            Player_SetMotionPair(p, 0x57B, 2, 0);
-            Eff00_Create(p, 0x1A);
+            Player_SetMotionPair(pl, 0x57B, 2, 0);
+            Eff00_Create(pl, 0x1A);
             break;
         case 3:
-            Player_SetMotionPair(p, 0x579, 2, 0xA);
-            Eff00_Create(p, 0x15);
-            StageObj_K05_Create(p, 8, 1);
+            Player_SetMotionPair(pl, 0x579, 2, 0xA);
+            Eff00_Create(pl, 0x15);
+            StageObj_K05_Create(pl, 8, 1);
             break;
         }
         break;
     case 1:
-        if (p->stateVar0 == 0) {
+        if (pl->stateVar0 == 0) {
             from = 10.0f;
             to = 50.0f;
             if (variant == 2) {
                 from = 30.0f;
                 to = 70.0f;
             }
-            if (Motion_ReachedFrame(p, 0, from) != 0 && Motion_ReachedFrame(p, 0, to) == 0 && (p->input.stickDirPressed & 0x3C)) {
-                dir = (u16) (p->input.prevStickAngle + 0x2AAB);
+            if (Motion_ReachedFrame(pl, 0, from) != 0 && Motion_ReachedFrame(pl, 0, to) == 0 && (pl->input.stickDirPressed & 0x3C)) {
+                dir = (u16) (pl->input.rightStickAngle + 0x2AAB);
                 if (dir < 0x4001) {
-                    p->stateVar0 = 2;
+                    pl->stateVar0 = 2;
                 } else if (dir < 0x9556) {
-                    p->stateVar0 = 1;
+                    pl->stateVar0 = 1;
                 } else if (dir < 0xD556) {
-                    p->stateVar0 = 2;
+                    pl->stateVar0 = 2;
                 }
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (SwordShield_CheckHit(p) == 1) {
+        if (SwordShield_CheckHit(pl) == 1) {
             break;
         }
         switch (variant) {
         case 0:
         case 3:
         case 4:
-            if (Motion_ReachedFrame(p, 0, 24.0f) != 0) {
-                if (p->stateVar0 != 0) {
-                    if (p->stateVar0 == 1) {
-                        Player_SetState(p, 1, 6, 4);
+            if (Motion_ReachedFrame(pl, 0, 24.0f) != 0) {
+                if (pl->stateVar0 != 0) {
+                    if (pl->stateVar0 == 1) {
+                        Player_SetState(pl, PL_GROUP_WEAPON, SNS_COMBO_2, PL_SET_SNAP_POS);
                     } else {
-                        Player_SetState(p, 1, 2, 4);
+                        Player_SetState(pl, PL_GROUP_WEAPON, SNS_SIDE_SLASH, PL_SET_SNAP_POS);
                     }
-                } else if (Motion_ReachedFrame(p, 0, 50.0f) == 0) {
-                    SwordShield_CheckInput(p, 0);
+                } else if (Motion_ReachedFrame(pl, 0, 50.0f) == 0) {
+                    SwordShield_CheckInput(pl, 0);
                 }
             }
             break;
         case 1:
-            if (Motion_ReachedFrame(p, 0, 20.0f) != 0) {
-                if (p->stateVar0 != 0) {
-                    if (p->stateVar0 == 1) {
-                        Player_SetState(p, 1, 7, 4);
+            if (Motion_ReachedFrame(pl, 0, 20.0f) != 0) {
+                if (pl->stateVar0 != 0) {
+                    if (pl->stateVar0 == 1) {
+                        Player_SetState(pl, PL_GROUP_WEAPON, SNS_COMBO_3, PL_SET_SNAP_POS);
                     } else {
-                        Player_SetState(p, 1, 2, 4);
+                        Player_SetState(pl, PL_GROUP_WEAPON, SNS_SIDE_SLASH, PL_SET_SNAP_POS);
                     }
-                } else if (Motion_ReachedFrame(p, 0, 50.0f) == 0) {
-                    SwordShield_CheckInput(p, 0);
+                } else if (Motion_ReachedFrame(pl, 0, 50.0f) == 0) {
+                    SwordShield_CheckInput(pl, 0);
                 }
             }
             break;
         case 2:
-            if (Motion_ReachedFrame(p, 0, 64.0f) != 0) {
-                if (p->stateVar0 == 2) {
-                    Player_SetState(p, 1, 2, 4);
-                } else if (Motion_ReachedFrame(p, 0, 92.0f) == 0) {
-                    SwordShield_CheckInput(p, 0);
+            if (Motion_ReachedFrame(pl, 0, 64.0f) != 0) {
+                if (pl->stateVar0 == 2) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, SNS_SIDE_SLASH, PL_SET_SNAP_POS);
+                } else if (Motion_ReachedFrame(pl, 0, 92.0f) == 0) {
+                    SwordShield_CheckInput(pl, 0);
                 }
             }
             break;
         }
-        if (Motion_PassedFrame(p, 0, 52.0f) != 0 && variant == 2) {
-            Eff00_Create(p, 0x1B);
+        if (Motion_PassedFrame(pl, 0, 52.0f) != 0 && variant == 2) {
+            Eff00_Create(pl, 0x1B);
         }
         break;
     }
 }
 
-void SwordShield_State01(Player *p, s32 variant)
+/*
+ * The jump slash (likely). variant: 0 SNS_JUMP_SLASH, 1 SNS_DRAW_JUMP_SLASH,
+ * 2 SNS_BOUNCE_JUMP_SLASH. A flick up in frames 20-42 queues SNS_RISING_SLASH
+ * at frame 34.
+ */
+void SwordShield_StateJumpSlash(Player *pl, s32 variant)
 {
     s32 dir;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
         switch (variant) {
         case 0:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57C, 2, 0);
-            Eff00_Create(p, 0x16U);
-            p->noFlinchTimer = 0x64;
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57C, 2, 0);
+            Eff00_Create(pl, 0x16U);
+            pl->noFlinchTimer = 0x64;
             break;
         case 1:
-            p->step++;
-            p->weaponOut = 1;
-            Player_SetMotionPair(p, 0x3F2, 2, 0);
-            p->noFlinchTimer = 0x64;
+            pl->step++;
+            pl->weaponOut = 1;
+            Player_SetMotionPair(pl, 0x3F2, 2, 0);
+            pl->noFlinchTimer = 0x64;
             break;
         case 2:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57C, 4, 0);
-            Eff00_Create(p, 0x16U);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57C, 4, 0);
+            Eff00_Create(pl, 0x16U);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x57C, 0, 8);
-            Eff00_Create(p, 0x16U);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57C, 0, 8);
+            Eff00_Create(pl, 0x16U);
         }
         break;
     case 2:
-        if ((p->stateVar0 == 0) && (Motion_ReachedFrame(p, 0, 20.0f) != 0) && (Motion_ReachedFrame(p, 0, 42.0f) == 0) && (p->input.stickDirPressed & 0x3C)) {
-            dir = (p->input.prevStickAngle + 0x2AAB) & 0xFFFF;
+        if ((pl->stateVar0 == 0) && (Motion_ReachedFrame(pl, 0, 20.0f) != 0) && (Motion_ReachedFrame(pl, 0, 42.0f) == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            dir = (pl->input.rightStickAngle + 0x2AAB) & 0xFFFF;
             if ((dir > 16384) && (dir < 0x9556)) {
-                p->stateVar0 = 1;
+                pl->stateVar0 = 1;
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if ((SwordShield_CheckHit(p) != 1) && (Motion_ReachedFrame(p, 0, 34.0f) != 0)) {
-            if (p->stateVar0 != 0) {
-                Player_SetState(p, 1U, 4U, 4);
+        if ((SwordShield_CheckHit(pl) != 1) && (Motion_ReachedFrame(pl, 0, 34.0f) != 0)) {
+            if (pl->stateVar0 != 0) {
+                Player_SetState(pl, PL_GROUP_WEAPON, SNS_RISING_SLASH, PL_SET_SNAP_POS);
                 break;
             }
-            if (Motion_ReachedFrame(p, 0, 42.0f) == 0) {
-                SwordShield_CheckInput(p, 0);
+            if (Motion_ReachedFrame(pl, 0, 42.0f) == 0) {
+                SwordShield_CheckInput(pl, 0);
             }
         }
         break;
     }
 }
 
-void SwordShield_State02(Player *p, s32 unused)
+/* SNS_SIDE_SLASH: no attack chains; the evade from frame 40. */
+void SwordShield_StateSideSlash(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMotionPair(p, 0x57D, 4, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        Eff00_Create(p, 0x17U);
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMotionPair(pl, 0x57D, 4, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Eff00_Create(pl, 0x17U);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if ((SwordShield_CheckHit(p) != 1) && (Motion_ReachedFrame(p, 0, 20.0f) != 0) && (Motion_ReachedFrame(p, 0, 40.0f) != 0)) {
-            SwordShield_CheckInput(p, 0);
+        if ((SwordShield_CheckHit(pl) != 1) && (Motion_ReachedFrame(pl, 0, 20.0f) != 0) && (Motion_ReachedFrame(pl, 0, 40.0f) != 0)) {
+            SwordShield_CheckInput(pl, 0);
         }
         break;
     }
 }
 
-void SwordShield_State03(Player *p, s32 unused)
+/* SNS_GUARD_SLASH: slashes from the guard, back to PL_REACT_GUARD_HOLD. */
+void SwordShield_StateGuardSlash(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMotionPair(p, 0x588, 4, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        Eff00_Create(p, 0x18U);
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMotionPair(pl, 0x588, 4, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Eff00_Create(pl, 0x18U);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_RequestState(p, 2U, 0xCU, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
             break;
         }
-        SwordShield_CheckHit(p);
+        SwordShield_CheckHit(pl);
         break;
     }
 }
 
-void SwordShield_State04(Player *p, s32 variant)
+/*
+ * The rising slash (likely). variant: 0 SNS_RISING_SLASH, 1
+ * SNS_EVADE_RISING_SLASH, 2 SNS_SHIELD_BASH (hit object 0x64 at frame 18,
+ * then the rising slash's motion). At frame 26 a flick up chains
+ * SNS_COMBO_1_LINKED, sideways SNS_SIDE_SLASH.
+ */
+void SwordShield_StateRisingSlash(Player *pl, s32 variant)
 {
     s32 dir;
     u8 stateVar0;
     u8 temp_v1;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
         switch (variant) {
         case 0:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57E, 2, 0);
-            Eff00_Create(p, 0x1EU);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57E, 2, 0);
+            Eff00_Create(pl, 0x1EU);
             break;
         case 1:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57E, 2, 8);
-            Eff00_Create(p, 0x1EU);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57E, 2, 8);
+            Eff00_Create(pl, 0x1EU);
             break;
         case 2:
-            Player_SetMotionPair(p, 0x589, 2, 0);
+            Player_SetMotionPair(pl, 0x589, 2, 0);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            p->stateVar0 = 0;
-            Player_SetMotionPair(p, 0x57E, 0, 0x10);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            pl->stateVar0 = 0;
+            Player_SetMotionPair(pl, 0x57E, 0, 0x10);
             break;
         }
-        if (Motion_ReachedFrame(p, 0, 18.0f) != 0) {
-            temp_v1 = p->stateVar0;
+        if (Motion_ReachedFrame(pl, 0, 18.0f) != 0) {
+            temp_v1 = pl->stateVar0;
             if (temp_v1 == 0) {
-                p->stateVar0 = temp_v1 + 1;
-                Eff00_Create(p, 0x64U);
+                pl->stateVar0 = temp_v1 + 1;
+                Eff00_Create(pl, 0x64U);
                 break;
             }
         }
         break;
     case 2:
-        if ((p->stateVar0 == 0) && (Motion_ReachedFrame(p, 0, 26.0f) != 0) && (Motion_ReachedFrame(p, 0, 38.0f) == 0) && (p->input.stickDirPressed & 0x3C)) {
-            dir = (u16) (p->input.prevStickAngle + 0x2AAB);
+        if ((pl->stateVar0 == 0) && (Motion_ReachedFrame(pl, 0, 26.0f) != 0) && (Motion_ReachedFrame(pl, 0, 38.0f) == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            dir = (u16) (pl->input.rightStickAngle + 0x2AAB);
             if (dir <= 0x4000) {
-                p->stateVar0 = 2;
+                pl->stateVar0 = 2;
             } else if (dir < 0x9556) {
-                p->stateVar0 = 1;
+                pl->stateVar0 = 1;
             } else if (dir < 0xD556) {
-                p->stateVar0 = 2;
+                pl->stateVar0 = 2;
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if ((SwordShield_CheckHit(p) != 1) && (Motion_ReachedFrame(p, 0, 26.0f) != 0)) {
-            stateVar0 = p->stateVar0;
+        if ((SwordShield_CheckHit(pl) != 1) && (Motion_ReachedFrame(pl, 0, 26.0f) != 0)) {
+            stateVar0 = pl->stateVar0;
             if (stateVar0 == 1) {
-                Player_SetState(p, 1U, 8U, 4);
+                Player_SetState(pl, PL_GROUP_WEAPON, SNS_COMBO_1_LINKED, PL_SET_SNAP_POS);
                 break;
             }
             if (stateVar0 == 2) {
-                Player_SetState(p, 1U, 2U, 4);
+                Player_SetState(pl, PL_GROUP_WEAPON, SNS_SIDE_SLASH, PL_SET_SNAP_POS);
                 break;
             }
-            if (Motion_ReachedFrame(p, 0, 38.0f) == 0) {
-                SwordShield_CheckInput(p, 0);
+            if (Motion_ReachedFrame(pl, 0, 38.0f) == 0) {
+                SwordShield_CheckInput(pl, 0);
             }
         }
         break;
     }
 }
 
-void SwordShield_State05(Player *p, s32 unused)
+/*
+ * SNS_BOUNCE: a flick in frames 14-40 queues SNS_BOUNCE_JUMP_SLASH at frame
+ * 32.
+ */
+void SwordShield_StateBounce(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x580, 4, 0);
-        CamShake_ReqA(p, 0);
-        Player_SetMoveMode(p, 0, 0, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x580, 4, 0);
+        CamShake_ReqA(pl, 0);
+        Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
-        if (p->stateVar0 != 0) {
-            if (Motion_ReachedFrame(p, 0, 32.0f) != 0) {
-                Player_RequestState(p, 1U, 0xAU, 0xC);
+        if (pl->stateVar0 != 0) {
+            if (Motion_ReachedFrame(pl, 0, 32.0f) != 0) {
+                Player_RequestState(pl, PL_GROUP_WEAPON, SNS_BOUNCE_JUMP_SLASH, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
-        } else if ((Motion_InFrameRange(p, 0, 14.0f, 40.0f) != 0) && (p->stateVar0 == 0) && (p->itemSelect == 0) && (p->input.stickDirPressed & 0x3C)) {
-            p->stateVar0 = 1;
+        } else if ((Motion_InFrameRange(pl, 0, 14.0f, 40.0f) != 0) && (pl->stateVar0 == 0) && (pl->itemSelect == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            pl->stateVar0 = 1;
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void SwordShield_RunState(Player *p)
+/*
+ * Runs the sword and shield's PL_GROUP_WEAPON state: maps the state to its
+ * handler and variant.
+ */
+void SwordShield_RunState(Player *pl)
 {
-    switch (p->state) {
-    case 0:
-        SwordShield_State00(p, 0);
+    switch (pl->state) {
+    case SNS_COMBO_1:
+        SwordShield_StateCombo(pl, 0);
         break;
-    case 1:
-        SwordShield_State01(p, 0);
+    case SNS_JUMP_SLASH:
+        SwordShield_StateJumpSlash(pl, 0);
         break;
-    case 2:
-        SwordShield_State02(p, 0);
+    case SNS_SIDE_SLASH:
+        SwordShield_StateSideSlash(pl, 0);
         break;
-    case 3:
-        SwordShield_State03(p, 0);
+    case SNS_GUARD_SLASH:
+        SwordShield_StateGuardSlash(pl, 0);
         break;
-    case 4:
-        SwordShield_State04(p, 0);
+    case SNS_RISING_SLASH:
+        SwordShield_StateRisingSlash(pl, 0);
         break;
-    case 5:
-        SwordShield_State05(p, 0);
+    case SNS_BOUNCE:
+        SwordShield_StateBounce(pl, 0);
         break;
-    case 6:
-        SwordShield_State00(p, 1);
+    case SNS_COMBO_2:
+        SwordShield_StateCombo(pl, 1);
         break;
-    case 7:
-        SwordShield_State00(p, 2);
+    case SNS_COMBO_3:
+        SwordShield_StateCombo(pl, 2);
         break;
-    case 8:
-        SwordShield_State00(p, 3);
+    case SNS_COMBO_1_LINKED:
+        SwordShield_StateCombo(pl, 3);
         break;
-    case 9:
-        SwordShield_State01(p, 1);
+    case SNS_DRAW_JUMP_SLASH:
+        SwordShield_StateJumpSlash(pl, 1);
         break;
-    case 10:
-        SwordShield_State01(p, 2);
+    case SNS_BOUNCE_JUMP_SLASH:
+        SwordShield_StateJumpSlash(pl, 2);
         break;
-    case 11:
-        SwordShield_State04(p, 1);
+    case SNS_EVADE_RISING_SLASH:
+        SwordShield_StateRisingSlash(pl, 1);
         break;
-    case 12:
-        SwordShield_State04(p, 2);
+    case SNS_SHIELD_BASH:
+        SwordShield_StateRisingSlash(pl, 2);
         
     default:
         break;
     }
 }
 
-s32 SwordShield_AttackInput(Player *p)
+/*
+ * The drawn idle's input: input.pressed 1 the shield bash; a flick up the
+ * combo, sideways the side slash, down the jump slash; the roll button rolls.
+ * Returns 1 when it started a state.
+ */
+s32 SwordShield_AttackInput(Player *pl)
 {
     s32 dir;
     u16 btn;
 
-    btn = p->input.pressed;
+    btn = pl->input.pressed;
     if (btn & 1) {
-        Player_SetState(p, 1U, 0xCU, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, SNS_SHIELD_BASH, PL_SET_SNAP_POS);
         return 1;
     }
-    if (p->input.stickDirPressed & 0x3C) {
-        dir = (p->input.prevStickAngle + 0x2AAB) & 0xFFFF;
+    if (pl->input.stickDirPressed & 0x3C) {
+        dir = (pl->input.rightStickAngle + 0x2AAB) & 0xFFFF;
         if (dir < 0x4001) {
-            Player_SetState(p, 1U, 2U, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, SNS_SIDE_SLASH, PL_SET_SNAP_POS);
             return 1;
         }
         if (dir < 0x9556) {
-            Player_SetState(p, 1U, 0U, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, SNS_COMBO_1, PL_SET_SNAP_POS);
             return 1;
         }
         if (dir < 0xD556) {
-            Player_SetState(p, 1U, 2U, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, SNS_SIDE_SLASH, PL_SET_SNAP_POS);
             return 1;
         }
-        Player_SetState(p, 1U, 1U, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, SNS_JUMP_SLASH, PL_SET_SNAP_POS);
         return 1;
     }
-    if ((btn & 0x40) && (p->stamina >= 0x4B)) {
-        Player_SetState(p, 0U, 0x1CU, 4);
+    if ((btn & 0x40) && (pl->stamina >= 0x4B)) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         return 1;
     }
     return 0;
 }
 
-void SwordShield_CheckInput(Player *p, s32 unused)
+/*
+ * An attack window's input: the roll button (75 stamina) evades right or left
+ * or rolls, by the left stick.
+ */
+void SwordShield_CheckInput(Player *pl, s32 unused)
 {
     s32 dir;
 
-    if (((Player_IsLocal(p) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1) && (p->itemSelect == 0) && (p->input.pressed & 0x40) && (p->stamina >= 0x4B)) {
-        if (p->input.stickDir & 0x3C00) {
-            dir = (p->input.stickAngle + 0x4000) & 0xFFFF;
+    if (((Player_IsLocal(pl) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1) && (pl->itemSelect == 0) && (pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+        if (pl->input.stickDir & 0x3C00) {
+            dir = (pl->input.stickAngle + 0x4000) & 0xFFFF;
             if (dir < 0x5C72) {
-                Player_SetState(p, 0U, 0x31U, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
                 return;
             }
             if (dir < 0xA38E) {
-                Player_SetState(p, 0U, 0x1CU, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                 return;
             }
-            Player_SetState(p, 0U, 0x32U, 4);
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_LEFT, PL_SET_SNAP_POS);
             return;
         }
-        Player_SetState(p, 0U, 0x1CU, 4);
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
     }
 }
 
-void SwordShield_DrawAttack(Player *p)
+/* The attack that draws on the move: SNS_DRAW_JUMP_SLASH. */
+void SwordShield_DrawAttack(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x9, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, SNS_DRAW_JUMP_SLASH, PL_SET_SNAP_POS);
 }
 
-void SwordShield_GatherAttack(Player *p)
+/* A flick up from the guard (Player_GuardInput): SNS_GUARD_SLASH. */
+void SwordShield_GuardSlash(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x3, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, SNS_GUARD_SLASH, PL_SET_SNAP_POS);
 }
 
-void SwordShield_EvadeAttack(Player *p)
+/* A flick up in a roll or an evade: SNS_EVADE_RISING_SLASH. */
+void SwordShield_EvadeAttack(Player *pl)
 {
-    Player_SetState(p, 0x1, 0xB, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, SNS_EVADE_RISING_SLASH, PL_SET_SNAP_POS);
 }
 
-s32 DualSwords_CheckHit(Player *p)
+/* As SwordShield_CheckHit; a bounce requests DSWORDS_BOUNCE. */
+s32 DualSwords_CheckHit(Player *pl)
 {
 
-    if (p->hitPending != 0 && p->stateVar1 == 0) {
-        p->stateVar1 = 1;
-        switch (p->hitKind) {
+    if (pl->hitPending != 0 && pl->stateVar1 == 0) {
+        pl->stateVar1 = 1;
+        switch (pl->hitKind) {
         case 0:
             break;
         case 1:
-            p->hitStopAdd = p->hitStop = 0;
-            Player_SetState(p, 1, 8, 0);
+            pl->hitStopAdd = pl->hitStop = 0;
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_BOUNCE, 0);
             return 1;
         case 2:
         case 3:
-            Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-            p->weaponSeMute = 2;
+            Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+            pl->weaponSeMute = 2;
             break;
         }
     }
     return 0;
 }
 
-void DualSwords_State00(Player *p, s32 variant)
+/*
+ * The flick-up combo. variant: 0 DSWORDS_COMBO_1, 1 _COMBO_2, 2 _COMBO_3, 3
+ * DSWORDS_COMBO_1_LINKED. A queued flick chains: up the next slash, the other
+ * ways DualSwords_ComboInput (linked).
+ */
+void DualSwords_StateCombo(Player *pl, s32 variant)
 {
     f32 f0;
     f32 f1;
     u16 a;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
         switch (variant) {
         case 0:
-            Player_SetMotionPair(p, 0x579, 2, 0);
-            Eff00_Create(p, 0x25);
+            Player_SetMotionPair(pl, 0x579, 2, 0);
+            Eff00_Create(pl, 0x25);
             break;
         case 1:
-            Player_SetMotionPair(p, 0x57A, 2, 0);
-            Eff00_Create(p, 0x26);
+            Player_SetMotionPair(pl, 0x57A, 2, 0);
+            Eff00_Create(pl, 0x26);
             break;
         case 2:
-            Player_SetMotionPair(p, 0x57B, 2, 0);
-            Eff00_Create(p, 0x28);
+            Player_SetMotionPair(pl, 0x57B, 2, 0);
+            Eff00_Create(pl, 0x28);
             break;
         case 3:
-            Player_SetMotionPair(p, 0x579, 2, 10);
-            Eff00_Create(p, 0x25);
-            StageObj_K05_Create(p, 8, 1);
+            Player_SetMotionPair(pl, 0x579, 2, 10);
+            Eff00_Create(pl, 0x25);
+            StageObj_K05_Create(pl, 8, 1);
             break;
         }
         break;
     case 1:
-        if (p->stateVar0 == 0) {
+        if (pl->stateVar0 == 0) {
             f0 = 10.0f;
             f1 = 50.0f;
             if (variant == 2) {
                 f0 = 60.0f;
                 f1 = 120.0f;
             }
-            if (Motion_ReachedFrame(p, 0, f0) != 0 && Motion_ReachedFrame(p, 0, f1) == 0
-                && (p->input.stickDirPressed & 0x3C)) {
-                a = p->input.prevStickAngle + 0x2AAB;
+            if (Motion_ReachedFrame(pl, 0, f0) != 0 && Motion_ReachedFrame(pl, 0, f1) == 0
+                && (pl->input.stickDirPressed & 0x3C)) {
+                a = pl->input.rightStickAngle + 0x2AAB;
                 if (a <= 0x4000) {
-                    p->stateVar0 = 2;
+                    pl->stateVar0 = 2;
                 } else if (a <= 0x9555) {
-                    p->stateVar0 = 1;
+                    pl->stateVar0 = 1;
                 } else if (a <= 0xD555) {
-                    p->stateVar0 = 3;
+                    pl->stateVar0 = 3;
                 } else {
-                    p->stateVar0 = 4;
+                    pl->stateVar0 = 4;
                 }
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (DualSwords_CheckHit(p) == 1) {
+        if (DualSwords_CheckHit(pl) == 1) {
             break;
         }
         switch (variant) {
         case 0:
         case 3:
-            if (Motion_ReachedFrame(p, 0, 22.0f) != 0) {
-                switch (p->stateVar0) {
+            if (Motion_ReachedFrame(pl, 0, 22.0f) != 0) {
+                switch (pl->stateVar0) {
                 case 1:
-                    Player_SetState(p, 1, 9, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_COMBO_2, PL_SET_SNAP_POS);
                     break;
                 case 2:
-                    DualSwords_ComboInput(p, 0, 1);
+                    DualSwords_ComboInput(pl, 0, 1);
                     break;
                 case 3:
-                    DualSwords_ComboInput(p, 1, 1);
+                    DualSwords_ComboInput(pl, 1, 1);
                     break;
                 case 4:
-                    DualSwords_ComboInput(p, 3, 1);
+                    DualSwords_ComboInput(pl, 3, 1);
                     break;
                 default:
-                    if (Motion_ReachedFrame(p, 0, 50.0f) == 0) {
-                        DualSwords_CheckInput(p, 0);
+                    if (Motion_ReachedFrame(pl, 0, 50.0f) == 0) {
+                        DualSwords_CheckInput(pl, 0);
                     }
                     break;
                 }
             }
             break;
         case 1:
-            if (Motion_ReachedFrame(p, 0, 28.0f) != 0) {
-                switch (p->stateVar0) {
+            if (Motion_ReachedFrame(pl, 0, 28.0f) != 0) {
+                switch (pl->stateVar0) {
                 case 1:
-                    Player_SetState(p, 1, 10, 4);
+                    Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_COMBO_3, PL_SET_SNAP_POS);
                     break;
                 case 2:
-                    DualSwords_ComboInput(p, 0, 1);
+                    DualSwords_ComboInput(pl, 0, 1);
                     break;
                 case 3:
-                    DualSwords_ComboInput(p, 1, 1);
+                    DualSwords_ComboInput(pl, 1, 1);
                     break;
                 case 4:
-                    DualSwords_ComboInput(p, 3, 1);
+                    DualSwords_ComboInput(pl, 3, 1);
                     break;
                 default:
-                    if (Motion_ReachedFrame(p, 0, 50.0f) == 0) {
-                        DualSwords_CheckInput(p, 0);
+                    if (Motion_ReachedFrame(pl, 0, 50.0f) == 0) {
+                        DualSwords_CheckInput(pl, 0);
                     }
                     break;
                 }
             }
-            if (Motion_PassedFrame(p, 0, 18.0f) != 0) {
-                Eff00_Create(p, 0x27);
+            if (Motion_PassedFrame(pl, 0, 18.0f) != 0) {
+                Eff00_Create(pl, 0x27);
             }
             break;
         case 2:
-            if (Motion_ReachedFrame(p, 0, 88.0f) != 0) {
-                switch (p->stateVar0) {
+            if (Motion_ReachedFrame(pl, 0, 88.0f) != 0) {
+                switch (pl->stateVar0) {
                 case 2:
-                    DualSwords_ComboInput(p, 0, 1);
+                    DualSwords_ComboInput(pl, 0, 1);
                     break;
                 case 3:
-                    DualSwords_ComboInput(p, 1, 1);
+                    DualSwords_ComboInput(pl, 1, 1);
                     break;
                 case 4:
-                    DualSwords_ComboInput(p, 3, 1);
+                    DualSwords_ComboInput(pl, 3, 1);
                     break;
                 default:
-                    if (Motion_ReachedFrame(p, 0, 120.0f) == 0) {
-                        DualSwords_CheckInput(p, 0);
+                    if (Motion_ReachedFrame(pl, 0, 120.0f) == 0) {
+                        DualSwords_CheckInput(pl, 0);
                     }
                     break;
                 }
             }
-            if (Motion_PassedFrame(p, 0, 58.0f) != 0) {
-                Eff00_Create(p, 0x29);
+            if (Motion_PassedFrame(pl, 0, 58.0f) != 0) {
+                Eff00_Create(pl, 0x29);
             }
-            if (Motion_PassedFrame(p, 0, 70.0f) != 0) {
-                Eff00_Create(p, 0x2A);
+            if (Motion_PassedFrame(pl, 0, 70.0f) != 0) {
+                Eff00_Create(pl, 0x2A);
             }
             break;
         }
@@ -4157,98 +4481,109 @@ void DualSwords_State00(Player *p, s32 variant)
     }
 }
 
-void DualSwords_State01(Player *p, s32 variant)
+/*
+ * The side slashes, three hits; the motion and its start from
+ * DualSwords_SideSlashMotions[variant]. variant: 0 right, 1 left, 2 right
+ * linked, 3 left linked. Evade and demon window from frame 50.
+ */
+void DualSwords_StateSideSlash(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0;
-        Player_SetMotionPair(p, DualSwords_State01_Motions[variant * 2], 4, DualSwords_State01_Motions[variant * 2 + 1]);
-        Player_SetMoveMode(p, 0, 1, 0);
-        Eff00_CreateDual(p, 0x2D, variant & 0xFF);
+        pl->step++;
+        pl->stateVar1 = 0;
+        Player_SetMotionPair(pl, DualSwords_SideSlashMotions[variant * 2], 4, DualSwords_SideSlashMotions[variant * 2 + 1]);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Eff00_CreateDual(pl, 0x2D, variant & 0xFF);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (DualSwords_CheckHit(p) != 1) {
-            if (Motion_ReachedFrame(p, 0, 50.0f) != 0) {
-                DualSwords_CheckInput(p, 0);
+        if (DualSwords_CheckHit(pl) != 1) {
+            if (Motion_ReachedFrame(pl, 0, 50.0f) != 0) {
+                DualSwords_CheckInput(pl, 0);
             }
-            if (Motion_PassedFrame(p, 0, 24.0f) != 0) {
-                Eff00_CreateDual(p, 0x2E, variant & 0xFF);
+            if (Motion_PassedFrame(pl, 0, 24.0f) != 0) {
+                Eff00_CreateDual(pl, 0x2E, variant & 0xFF);
             }
-            if (Motion_PassedFrame(p, 0, 34.0f) != 0) {
-                Eff00_CreateDual(p, 0x2F, variant & 0xFF);
+            if (Motion_PassedFrame(pl, 0, 34.0f) != 0) {
+                Eff00_CreateDual(pl, 0x2F, variant & 0xFF);
             }
         }
         break;
     }
 }
 
-void DualSwords_State02(Player *p, s32 variant)
+/*
+ * The jump slash (likely). variant: 0 DSWORDS_JUMP_SLASH, 1
+ * DSWORDS_DRAW_JUMP_SLASH, 2 DSWORDS_BOUNCE_JUMP_SLASH. A flick up in frames
+ * 20-42 queues DSWORDS_RISING_SLASH at frame 42; timer marks the extra hit
+ * made.
+ */
+void DualSwords_StateJumpSlash(Player *pl, s32 variant)
 {
     s32 dir;
     s32 timer;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        p->timer = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        pl->timer = 0;
         switch (variant) {
         case 0:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57C, 2, 0);
-            Eff00_Create(p, 0x2BU);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57C, 2, 0);
+            Eff00_Create(pl, 0x2BU);
             break;
         case 1:
-            p->step++;
-            p->weaponOut = 1;
-            Player_SetMotionPair(p, 0x585, 4, 0);
+            pl->step++;
+            pl->weaponOut = 1;
+            Player_SetMotionPair(pl, 0x585, 4, 0);
             break;
         case 2:
-            p->step = 2;
-            Player_SetMotionPair(p, 0x57C, 4, 0);
-            Eff00_Create(p, 0x2BU);
+            pl->step = 2;
+            Player_SetMotionPair(pl, 0x57C, 4, 0);
+            Eff00_Create(pl, 0x2BU);
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x57C, 2, 0x1C);
-            Eff00_Create(p, 0x37U);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57C, 2, 0x1C);
+            Eff00_Create(pl, 0x37U);
         }
         break;
     case 2:
-        if ((p->stateVar0 == 0) && (Motion_ReachedFrame(p, 0, 20.0f) != 0) && (Motion_ReachedFrame(p, 0, 42.0f) == 0) && (p->input.stickDirPressed & 0x3C)) {
-            dir = (p->input.prevStickAngle + 0x2AAB) & 0xFFFF;
+        if ((pl->stateVar0 == 0) && (Motion_ReachedFrame(pl, 0, 20.0f) != 0) && (Motion_ReachedFrame(pl, 0, 42.0f) == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            dir = (pl->input.rightStickAngle + 0x2AAB) & 0xFFFF;
             if ((dir > 16384) && (dir < 0x9556)) {
-                p->stateVar0 = 1;
+                pl->stateVar0 = 1;
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (DualSwords_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 36.0f) != 0) {
-                timer = p->timer;
+        if (DualSwords_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 36.0f) != 0) {
+                timer = pl->timer;
                 if (timer == 0) {
-                    p->timer = timer + 1;
-                    Eff00_Create(p, 0x38U);
+                    pl->timer = timer + 1;
+                    Eff00_Create(pl, 0x38U);
                 }
             }
-            if (Motion_ReachedFrame(p, 0, 42.0f) != 0) {
-                if (p->stateVar0 != 0) {
-                    Player_SetState(p, 1U, 3U, 4);
+            if (Motion_ReachedFrame(pl, 0, 42.0f) != 0) {
+                if (pl->stateVar0 != 0) {
+                    Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_RISING_SLASH, PL_SET_SNAP_POS);
                     break;
                 }
-                if (Motion_ReachedFrame(p, 0, 60.0f) == 0) {
-                    DualSwords_CheckInput(p, 0);
+                if (Motion_ReachedFrame(pl, 0, 60.0f) == 0) {
+                    DualSwords_CheckInput(pl, 0);
                 }
             }
         }
@@ -4256,54 +4591,58 @@ void DualSwords_State02(Player *p, s32 variant)
     }
 }
 
-//---
-void DualSwords_State03(Player *p, s32 variant)
+/*
+ * The rising slash (likely). variant: 0 DSWORDS_RISING_SLASH, 1
+ * DSWORDS_EVADE_RISING_SLASH. At frame 26 a flick up chains
+ * DSWORDS_COMBO_1_LINKED, sideways the side slashes.
+ */
+void DualSwords_StateRisingSlash(Player *pl, s32 variant)
 {
     u16 a;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->stateVar0 = 0;
-        Player_SetMotionPair(p, 0x57E, 2, variant ? 4 : 0);
-        Eff00_Create(p, 0x2C);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->stateVar0 = 0;
+        Player_SetMotionPair(pl, 0x57E, 2, variant ? 4 : 0);
+        Eff00_Create(pl, 0x2C);
         break;
     case 1:
-        if (p->stateVar0 == 0 && Motion_ReachedFrame(p, 0, 26.0f) != 0 && Motion_ReachedFrame(p, 0, 38.0f) == 0
-            && (p->input.stickDirPressed & 0x3C)) {
-            a = p->input.prevStickAngle + 0x2AAB;
+        if (pl->stateVar0 == 0 && Motion_ReachedFrame(pl, 0, 26.0f) != 0 && Motion_ReachedFrame(pl, 0, 38.0f) == 0
+            && (pl->input.stickDirPressed & 0x3C)) {
+            a = pl->input.rightStickAngle + 0x2AAB;
             if (a <= 0x4000) {
-                p->stateVar0 = 2;
+                pl->stateVar0 = 2;
             } else if (a < 0x9556) {
-                p->stateVar0 = 1;
+                pl->stateVar0 = 1;
             } else if (a < 0xD556) {
-                p->stateVar0 = 3;
+                pl->stateVar0 = 3;
             }
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
             break;
         }
-        if (DualSwords_CheckHit(p) == 1) {
+        if (DualSwords_CheckHit(pl) == 1) {
             break;
         }
-        if (Motion_ReachedFrame(p, 0, 26.0f) == 0) {
+        if (Motion_ReachedFrame(pl, 0, 26.0f) == 0) {
             break;
         }
-        switch (p->stateVar0) {
+        switch (pl->stateVar0) {
         case 1:
-            Player_SetState(p, 1, 0xB, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_COMBO_1_LINKED, PL_SET_SNAP_POS);
             break;
         case 2:
-            DualSwords_ComboInput(p, 0, 0);
+            DualSwords_ComboInput(pl, 0, 0);
             break;
         case 3:
-            DualSwords_ComboInput(p, 1, 0);
+            DualSwords_ComboInput(pl, 1, 0);
             break;
         default:
-            if (Motion_ReachedFrame(p, 0, 38.0f) == 0) {
-                DualSwords_CheckInput(p, 0);
+            if (Motion_ReachedFrame(pl, 0, 38.0f) == 0) {
+                DualSwords_CheckInput(pl, 0);
             }
             break;
         }
@@ -4311,169 +4650,174 @@ void DualSwords_State03(Player *p, s32 variant)
     }
 }
 
-/* The dual swords state 4. Step 0: variant 1 (motion 0x3FB) or the others (0x3FA; variant 0 without the
- * blend); the shared case keeps the compare of 2 (). */
-void DualSwords_State04(Player *p, s32 variant)
+/*
+ * Enters or leaves the demon mode. variant: 0 DSWORDS_DEMON_START, 1
+ * DSWORDS_DEMON_END, 2 DSWORDS_DEMON_START_LINKED. While entering it doesn't
+ * flinch, and a flick from frame 60 starts the jump slash.
+ */
+void DualSwords_StateDemonToggle(Player *pl, s32 variant)
 {
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        p->weaponOut = 1;
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        pl->weaponOut = 1;
         switch (variant) {
         case 0:
         default:
         case 2:
-            p->demonMode = 1;
-            p->noFlinchTimer = 2;
+            pl->demonMode = 1;
+            pl->noFlinchTimer = 2;
             if (variant == 0) {
-                Player_SetMotionPair(p, 0x3FA, 4, 0);
+                Player_SetMotionPair(pl, 0x3FA, 4, 0);
                 break;
             }
-            Player_SetMotionPair(p, 0x3FA, 4, 0xA);
+            Player_SetMotionPair(pl, 0x3FA, 4, 0xA);
             break;
         case 1:
-            p->demonMode = 0;
-            Player_SetMotionPair(p, 0x3FB, 4, 0);
+            pl->demonMode = 0;
+            Player_SetMotionPair(pl, 0x3FB, 4, 0);
             break;
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->noFlinchTimer = 0;
-            Player_BeginState(p, 0, 2, 0);
+        if (pl->motion[0].playing == 0) {
+            pl->noFlinchTimer = 0;
+            Player_BeginState(pl, 0, 2, 0);
             break;
         }
         if (variant != 1) {
-            p->noFlinchTimer = 2;
-            if (Player_IsLocal(p) == 1 && Motion_ReachedFrame(p, 0, 60.0f) != 0 && (p->input.stickDirPressed & 0x3C)) {
-                Player_SetState(p, 1, 2, 4);
+            pl->noFlinchTimer = 2;
+            if (Player_IsLocal(pl) == 1 && Motion_ReachedFrame(pl, 0, 60.0f) != 0 && (pl->input.stickDirPressed & 0x3C)) {
+                Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_JUMP_SLASH, PL_SET_SNAP_POS);
             }
         }
         break;
     }
 }
 
-/* The dual swords state 5: a two-part attack (motions 0x583/0x582, or 0x57D/0x581 for a nonzero
- * variant); from frame 22 of the second part, the stick and buttons read before it pick the next
- * state (unk006: 1 forward with a 0x2000 turn from timer, 2-5 by button and direction, 6 back). */
-void DualSwords_State05(Player *p, s32 variant)
+/*
+ * The demon mode's side slashes in two parts, six hits. variant: 0 right, 1
+ * left. Input before frame 22 of the second part (stateVar0) acts at frame
+ * 22: up the jump slash, the evades, down the dance.
+ */
+void DualSwords_StateDemonSideSlash(Player *pl, s32 variant)
 {
     u16 a;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0xFF;
-        p->stateVar1 = 0;
-        p->timer = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->step++;
+        pl->stateVar0 = 0xFF;
+        pl->stateVar1 = 0;
+        pl->timer = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
         if (variant == 0) {
-            Player_SetMotionPair(p, 0x583, 4, 0);
+            Player_SetMotionPair(pl, 0x583, 4, 0);
         } else {
-            Player_SetMotionPair(p, 0x57D, 4, 0);
+            Player_SetMotionPair(pl, 0x57D, 4, 0);
         }
-        Eff00_CreateDual(p, 0x2D, variant & 0xFF);
+        Eff00_CreateDual(pl, 0x2D, variant & 0xFF);
         break;
     case 1:
-        if (Motion_ReachedFrame(p, 0, 40.0f) != 0) {
-            p->step++;
+        if (Motion_ReachedFrame(pl, 0, 40.0f) != 0) {
+            pl->step++;
             if (variant == 0) {
-                Player_SetMotionPair(p, 0x582, 0, 0);
+                Player_SetMotionPair(pl, 0x582, 0, 0);
             } else {
-                Player_SetMotionPair(p, 0x581, 0, 0);
+                Player_SetMotionPair(pl, 0x581, 0, 0);
             }
-            Eff00_CreateDual(p, 0x34, variant & 0xFF);
-            p->stateVar1 = 0;
+            Eff00_CreateDual(pl, 0x34, variant & 0xFF);
+            pl->stateVar1 = 0;
             break;
         }
-        if (DualSwords_CheckHit(p) == 1) {
+        if (DualSwords_CheckHit(pl) == 1) {
             break;
         }
-        if (Motion_PassedFrame(p, 0, 24.0f) != 0) {
-            Eff00_CreateDual(p, 0x2E, variant & 0xFF);
+        if (Motion_PassedFrame(pl, 0, 24.0f) != 0) {
+            Eff00_CreateDual(pl, 0x2E, variant & 0xFF);
         }
-        if (Motion_PassedFrame(p, 0, 34.0f) != 0) {
-            Eff00_CreateDual(p, 0x2F, variant & 0xFF);
+        if (Motion_PassedFrame(pl, 0, 34.0f) != 0) {
+            Eff00_CreateDual(pl, 0x2F, variant & 0xFF);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (DualSwords_CheckHit(p) == 1) {
+        if (DualSwords_CheckHit(pl) == 1) {
             break;
         }
-        if (Motion_PassedFrame(p, 0, 28.0f) != 0) {
-            Eff00_CreateDual(p, 0x35, variant & 0xFF);
+        if (Motion_PassedFrame(pl, 0, 28.0f) != 0) {
+            Eff00_CreateDual(pl, 0x35, variant & 0xFF);
         }
-        if (Motion_PassedFrame(p, 0, 38.0f) != 0) {
-            Eff00_CreateDual(p, 0x36, variant & 0xFF);
+        if (Motion_PassedFrame(pl, 0, 38.0f) != 0) {
+            Eff00_CreateDual(pl, 0x36, variant & 0xFF);
         }
-        if (Player_IsLocal(p) != 1) {
+        if (Player_IsLocal(pl) != 1) {
             break;
         }
-        if (p->stateVar0 == 0xFF) {
-            if (Motion_ReachedFrame(p, 0, 22.0f) == 0) {
-                if (p->input.stickDirPressed & 0x3C) {
-                    a = p->input.prevStickAngle + 0x2AAB;
+        if (pl->stateVar0 == 0xFF) {
+            if (Motion_ReachedFrame(pl, 0, 22.0f) == 0) {
+                if (pl->input.stickDirPressed & 0x3C) {
+                    a = pl->input.rightStickAngle + 0x2AAB;
                     if (a > 0x4000 && a < 0x9556) {
-                        p->stateVar0 = 1;
-                        if (p->input.stickDir & 0x800) {
-                            p->timer = 1;
-                        } else if (p->input.stickDir & 0x400) {
-                            p->timer = 2;
+                        pl->stateVar0 = 1;
+                        if (pl->input.stickDir & 0x800) {
+                            pl->timer = 1;
+                        } else if (pl->input.stickDir & 0x400) {
+                            pl->timer = 2;
                         }
                     } else if (a > 0xD555) {
-                        p->stateVar0 = 6;
+                        pl->stateVar0 = 6;
                     }
                 }
-                if ((p->input.pressed & 0x40) && p->stamina >= 0x4B) {
-                    if (p->input.stickDir & 0x3C00) {
-                        a = p->input.stickAngle + 0x4000;
+                if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+                    if (pl->input.stickDir & 0x3C00) {
+                        a = pl->input.stickAngle + 0x4000;
                         if (a < 0x5C72) {
-                            p->stateVar0 = 2;
+                            pl->stateVar0 = 2;
                         } else if (a < 0xA38E) {
-                            p->stateVar0 = 3;
+                            pl->stateVar0 = 3;
                         } else {
-                            p->stateVar0 = 4;
+                            pl->stateVar0 = 4;
                         }
                     } else {
-                        p->stateVar0 = 5;
+                        pl->stateVar0 = 5;
                     }
                 }
             }
-        } else if (Motion_PassedFrame(p, 0, 22.0f) != 0) {
-            switch (p->stateVar0) {
+        } else if (Motion_PassedFrame(pl, 0, 22.0f) != 0) {
+            switch (pl->stateVar0) {
             case 1:
-                switch (p->timer) {
+                switch (pl->timer) {
                 case 1:
-                    p->rot[1] += 0x2000;
-                    p->targetYaw = p->rot[1];
+                    pl->rot[1] += 0x2000;
+                    pl->targetYaw = pl->rot[1];
                     break;
                 case 2:
-                    p->rot[1] -= 0x2000;
-                    p->targetYaw = p->rot[1];
+                    pl->rot[1] -= 0x2000;
+                    pl->targetYaw = pl->rot[1];
                     break;
                 }
-                Player_SetState(p, 1, 2, 4);
+                Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_JUMP_SLASH, PL_SET_SNAP_POS);
                 break;
             case 2:
-                Player_SetState(p, 0, 0x31, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
                 break;
             case 3:
-                Player_SetState(p, 0, 0x1C, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                 break;
             case 4:
-                Player_SetState(p, 0, 0x32, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_LEFT, PL_SET_SNAP_POS);
                 break;
             case 5:
-                Player_SetState(p, 0, 0x1C, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                 break;
             case 6:
-                DualSwords_ComboInput(p, 3, 1);
+                DualSwords_ComboInput(pl, 3, 1);
                 break;
             }
         }
@@ -4481,401 +4825,445 @@ void DualSwords_State05(Player *p, s32 variant)
     }
 }
 
-void DualSwords_State06(Player *p, s32 unused)
+/*
+ * DSWORDS_DEMON_DANCE: ten hits. At frame 58 below sharpness level 2 it stops
+ * (DSWORDS_DANCE_STOP); the evade from frame 132.
+ */
+void DualSwords_StateDemonDance(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x57F, 2, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
-        p->noFlinchTimer = 0x1C;
-        Eff00_Create(p, 0x30U);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x57F, 2, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
+        pl->noFlinchTimer = 0x1C;
+        Eff00_Create(pl, 0x30U);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if ((Motion_PassedFrame(p, 0, 58.0f) != 0) && ((s32) p->sharpnessLevel < 2)) {
-            Player_SetState(p, 1U, 7U, 4);
+        if ((Motion_PassedFrame(pl, 0, 58.0f) != 0) && ((s32) pl->sharpnessLevel < 2)) {
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_DANCE_STOP, PL_SET_SNAP_POS);
             break;
         }
-        if (Motion_PassedFrame(p, 0, 20.0f) != 0) {
-            Eff00_Create(p, 0x31U);
+        if (Motion_PassedFrame(pl, 0, 20.0f) != 0) {
+            Eff00_Create(pl, 0x31U);
         }
-        if (Motion_PassedFrame(p, 0, 26.0f) != 0) {
-            Eff00_Create(p, 0x32U);
+        if (Motion_PassedFrame(pl, 0, 26.0f) != 0) {
+            Eff00_Create(pl, 0x32U);
         }
-        if (Motion_PassedFrame(p, 0, 50.0f) != 0) {
-            Eff00_Create(p, 0x32U);
+        if (Motion_PassedFrame(pl, 0, 50.0f) != 0) {
+            Eff00_Create(pl, 0x32U);
         }
-        if (Motion_PassedFrame(p, 0, 54.0f) != 0) {
-            Eff00_Create(p, 0x31U);
+        if (Motion_PassedFrame(pl, 0, 54.0f) != 0) {
+            Eff00_Create(pl, 0x31U);
         }
-        if (Motion_PassedFrame(p, 0, 66.0f) != 0) {
-            Eff00_Create(p, 0x31U);
+        if (Motion_PassedFrame(pl, 0, 66.0f) != 0) {
+            Eff00_Create(pl, 0x31U);
         }
-        if (Motion_PassedFrame(p, 0, 70.0f) != 0) {
-            Eff00_Create(p, 0x32U);
+        if (Motion_PassedFrame(pl, 0, 70.0f) != 0) {
+            Eff00_Create(pl, 0x32U);
         }
-        if (Motion_PassedFrame(p, 0, 82.0f) != 0) {
-            Eff00_Create(p, 0x32U);
+        if (Motion_PassedFrame(pl, 0, 82.0f) != 0) {
+            Eff00_Create(pl, 0x32U);
         }
-        if (Motion_PassedFrame(p, 0, 88.0f) != 0) {
-            Eff00_Create(p, 0x31U);
+        if (Motion_PassedFrame(pl, 0, 88.0f) != 0) {
+            Eff00_Create(pl, 0x31U);
         }
-        if (Motion_PassedFrame(p, 0, 118.0f) != 0) {
-            Eff00_Create(p, 0x33U);
+        if (Motion_PassedFrame(pl, 0, 118.0f) != 0) {
+            Eff00_Create(pl, 0x33U);
         }
-        if ((Player_IsLocal(p) == 1) && (Motion_ReachedFrame(p, 0, 132.0f) != 0)) {
-            DualSwords_CheckInput(p, 1);
+        if ((Player_IsLocal(pl) == 1) && (Motion_ReachedFrame(pl, 0, 132.0f) != 0)) {
+            DualSwords_CheckInput(pl, 1);
         }
         break;
     }
 }
 
-void DualSwords_State07(Player *p, s32 unused)
+/* DSWORDS_DANCE_STOP: its motion, then idle. */
+void DualSwords_StateDanceStop(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x584, 0, 0);
+        pl->step++;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x584, 0, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
         }
         break;
     }
 }
 
-void DualSwords_State08(Player *p, s32 unused)
+/*
+ * DSWORDS_BOUNCE: a flick in frames 14-40 queues DSWORDS_BOUNCE_JUMP_SLASH at
+ * frame 32.
+ */
+void DualSwords_StateBounce(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        Player_SetMotionPair(p, 0x580, 4, 0);
-        CamShake_ReqA(p, 0);
-        Player_SetMoveMode(p, 0, 1, 0);
+        pl->step++;
+        Player_SetMotionPair(pl, 0x580, 4, 0);
+        CamShake_ReqA(pl, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
         break;
     case 1:
-        if (p->stateVar0 != 0) {
-            if (Motion_ReachedFrame(p, 0, 32.0f) != 0) {
-                Player_RequestState(p, 1U, 0x10U, 0xC);
+        if (pl->stateVar0 != 0) {
+            if (Motion_ReachedFrame(pl, 0, 32.0f) != 0) {
+                Player_RequestState(pl, PL_GROUP_WEAPON, DSWORDS_BOUNCE_JUMP_SLASH, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
-        } else if ((Motion_InFrameRange(p, 0, 14.0f, 40.0f) != 0) && (p->stateVar0 == 0) && (p->itemSelect == 0) && (p->input.stickDirPressed & 0x3C)) {
-            p->stateVar0 = 1;
+        } else if ((Motion_InFrameRange(pl, 0, 14.0f, 40.0f) != 0) && (pl->stateVar0 == 0) && (pl->itemSelect == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            pl->stateVar0 = 1;
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 6, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 6, 0);
         }
         break;
     }
 }
 
-void DualSwords_RunState(Player *p)
+/*
+ * Runs the dual swords' PL_GROUP_WEAPON state: maps the state to its handler
+ * and variant.
+ */
+void DualSwords_RunState(Player *pl)
 {
-    switch (p->state) {
-    case 0:
-        DualSwords_State00(p, 0);
+    switch (pl->state) {
+    case DSWORDS_COMBO_1:
+        DualSwords_StateCombo(pl, 0);
         break;
-    case 1:
-        DualSwords_State01(p, 0);
+    case DSWORDS_SIDE_SLASH_RIGHT:
+        DualSwords_StateSideSlash(pl, 0);
         break;
-    case 2:
-        DualSwords_State02(p, 0);
+    case DSWORDS_JUMP_SLASH:
+        DualSwords_StateJumpSlash(pl, 0);
         break;
-    case 3:
-        DualSwords_State03(p, 0);
+    case DSWORDS_RISING_SLASH:
+        DualSwords_StateRisingSlash(pl, 0);
         break;
-    case 4:
-        DualSwords_State04(p, 0);
+    case DSWORDS_DEMON_START:
+        DualSwords_StateDemonToggle(pl, 0);
         break;
-    case 5:
-        DualSwords_State05(p, 0);
+    case DSWORDS_DEMON_SIDE_RIGHT:
+        DualSwords_StateDemonSideSlash(pl, 0);
         break;
-    case 6:
-        DualSwords_State06(p, 0);
+    case DSWORDS_DEMON_DANCE:
+        DualSwords_StateDemonDance(pl, 0);
         break;
-    case 7:
-        DualSwords_State07(p, 0);
+    case DSWORDS_DANCE_STOP:
+        DualSwords_StateDanceStop(pl, 0);
         break;
-    case 8:
-        DualSwords_State08(p, 0);
+    case DSWORDS_BOUNCE:
+        DualSwords_StateBounce(pl, 0);
         break;
-    case 9:
-        DualSwords_State00(p, 1);
+    case DSWORDS_COMBO_2:
+        DualSwords_StateCombo(pl, 1);
         break;
-    case 10:
-        DualSwords_State00(p, 2);
+    case DSWORDS_COMBO_3:
+        DualSwords_StateCombo(pl, 2);
         break;
-    case 11:
-        DualSwords_State00(p, 3);
+    case DSWORDS_COMBO_1_LINKED:
+        DualSwords_StateCombo(pl, 3);
         break;
-    case 12:
-        DualSwords_State01(p, 1);
+    case DSWORDS_SIDE_SLASH_LEFT:
+        DualSwords_StateSideSlash(pl, 1);
         break;
-    case 13:
-        DualSwords_State01(p, 2);
+    case DSWORDS_SIDE_SLASH_RIGHT_LINKED:
+        DualSwords_StateSideSlash(pl, 2);
         break;
-    case 14:
-        DualSwords_State01(p, 3);
+    case DSWORDS_SIDE_SLASH_LEFT_LINKED:
+        DualSwords_StateSideSlash(pl, 3);
         break;
-    case 15:
-        DualSwords_State02(p, 1);
+    case DSWORDS_DRAW_JUMP_SLASH:
+        DualSwords_StateJumpSlash(pl, 1);
         break;
-    case 16:
-        DualSwords_State02(p, 2);
+    case DSWORDS_BOUNCE_JUMP_SLASH:
+        DualSwords_StateJumpSlash(pl, 2);
         break;
-    case 17:
-        DualSwords_State03(p, 1);
+    case DSWORDS_EVADE_RISING_SLASH:
+        DualSwords_StateRisingSlash(pl, 1);
         break;
-    case 18:
-        DualSwords_State04(p, 1);
+    case DSWORDS_DEMON_END:
+        DualSwords_StateDemonToggle(pl, 1);
         break;
-    case 19:
-        DualSwords_State04(p, 2);
+    case DSWORDS_DEMON_START_LINKED:
+        DualSwords_StateDemonToggle(pl, 2);
         break;
-    case 20:
-        DualSwords_State05(p, 1);
+    case DSWORDS_DEMON_SIDE_LEFT:
+        DualSwords_StateDemonSideSlash(pl, 1);
         
     default:
         break;
     }
 }
 
-void DualSwords_ComboInput(Player *p, s32 arg1, s32 arg2)
+/*
+ * Starts the attack of a flick's sector: sector 0 right, 1 left, 2 down from
+ * idle, 3 down within a combo (nothing outside the demon mode); linked picks
+ * the side slashes' linked forms. In the demon mode it starts the demon side
+ * slashes or the dance.
+ */
+void DualSwords_ComboInput(Player *pl, s32 sector, s32 linked)
 {
-    switch (arg1) {
+    switch (sector) {
     case 0:
-        if ((s8) p->demonMode != 0) {
-            Player_SetState(p, 1U, 5U, 4);
+        if ((s8) pl->demonMode != 0) {
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_DEMON_SIDE_RIGHT, PL_SET_SNAP_POS);
             break;
         }
-        if (arg2 == 0) {
-            Player_SetState(p, 1U, 1U, 4);
+        if (linked == 0) {
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_SIDE_SLASH_RIGHT, PL_SET_SNAP_POS);
             break;
         }
-        Player_SetState(p, 1U, 0xDU, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_SIDE_SLASH_RIGHT_LINKED, PL_SET_SNAP_POS);
         break;
     case 1:
-        if ((s8) p->demonMode != 0) {
-            Player_SetState(p, 1U, 0x14U, 4);
+        if ((s8) pl->demonMode != 0) {
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_DEMON_SIDE_LEFT, PL_SET_SNAP_POS);
             break;
         }
-        if (arg2 == 0) {
-            Player_SetState(p, 1U, 0xCU, 4);
+        if (linked == 0) {
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_SIDE_SLASH_LEFT, PL_SET_SNAP_POS);
             break;
         }
-        Player_SetState(p, 1U, 0xEU, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_SIDE_SLASH_LEFT_LINKED, PL_SET_SNAP_POS);
         break;
     case 2:
     case 3:
-        if ((s8) p->demonMode != 0) {
-            Player_SetState(p, 1U, 6U, 4);
+        if ((s8) pl->demonMode != 0) {
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_DEMON_DANCE, PL_SET_SNAP_POS);
             break;
         }
-        if (arg1 == 2) {
-            Player_SetState(p, 1U, 2U, 4);
+        if (sector == 2) {
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_JUMP_SLASH, PL_SET_SNAP_POS);
         }
         break;
     }
 }
 
-s32 DualSwords_AttackInput(Player *p)
+/*
+ * The drawn idle's input: a flick up the combo, the other ways
+ * DualSwords_ComboInput; the roll button rolls. Returns 1 when it started a
+ * state.
+ */
+s32 DualSwords_AttackInput(Player *pl)
 {
     s32 dir;
 
-    if (p->input.stickDirPressed & 0x3C) {
-        dir = (p->input.prevStickAngle + 0x2AAB) & 0xFFFF;
+    if (pl->input.stickDirPressed & 0x3C) {
+        dir = (pl->input.rightStickAngle + 0x2AAB) & 0xFFFF;
         if (dir < 0x4001) {
-            DualSwords_ComboInput(p, 0, 0);
+            DualSwords_ComboInput(pl, 0, 0);
             return 1;
         }
         if (dir < 0x9556) {
-            Player_SetState(p, 1U, 0U, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_COMBO_1, PL_SET_SNAP_POS);
             return 1;
         }
         if (dir < 0xD556) {
-            DualSwords_ComboInput(p, 1, 0);
+            DualSwords_ComboInput(pl, 1, 0);
             return 1;
         }
-        DualSwords_ComboInput(p, 2, 0);
+        DualSwords_ComboInput(pl, 2, 0);
         return 1;
     }
-    if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B)) {
-        Player_SetState(p, 0U, 0x1CU, 4);
+    if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         return 1;
     }
     return 0;
 }
 
-void DualSwords_CheckInput(Player *p, s32 variant)
+/*
+ * An attack window's input: the evade as the sword and shield's; with variant
+ * 0, input.pressed 0x80 also toggles the demon mode.
+ */
+void DualSwords_CheckInput(Player *pl, s32 variant)
 {
     u16 pressed;
     s32 dir;
 
-    if ((Player_IsLocal(p) != 0 || Game_IsOnline() != 1) && Quest_PhaseIsOver(1) != 1 && p->itemSelect == 0) {
-        pressed = p->input.pressed;
-        if ((pressed & 0x40) && p->stamina >= 75) {
-            if (p->input.stickDir & 0x3C00) {
-                dir = (p->input.stickAngle + 0x4000) & 0xFFFF;
+    if ((Player_IsLocal(pl) != 0 || Game_IsOnline() != 1) && Quest_PhaseIsOver(1) != 1 && pl->itemSelect == 0) {
+        pressed = pl->input.pressed;
+        if ((pressed & 0x40) && pl->stamina >= 75) {
+            if (pl->input.stickDir & 0x3C00) {
+                dir = (pl->input.stickAngle + 0x4000) & 0xFFFF;
                 if (dir < 0x5C72) {
-                    Player_SetState(p, 0, 0x31, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
                     return;
                 }
                 if (dir < 0xA38E) {
-                    Player_SetState(p, 0, 0x1C, 4);
+                    Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                     return;
                 }
-                Player_SetState(p, 0, 0x32, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_LEFT, PL_SET_SNAP_POS);
                 return;
             }
-            Player_SetState(p, 0, 0x1C, 4);
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             return;
         }
         if (variant == 0 && (pressed & 0x80)) {
-            if (p->demonMode == 0) {
-                Player_RequestState(p, 1, 0x13, 0);
+            if (pl->demonMode == 0) {
+                Player_RequestState(pl, PL_GROUP_WEAPON, DSWORDS_DEMON_START_LINKED, 0);
                 return;
             }
-            Player_RequestState(p, 1, 0x12, 0);
+            Player_RequestState(pl, PL_GROUP_WEAPON, DSWORDS_DEMON_END, 0);
             return;
         }
     }
 }
 
-void DualSwords_DrawAttack(Player *p)
+/* The attack that draws on the move: DSWORDS_DRAW_JUMP_SLASH. */
+void DualSwords_DrawAttack(Player *pl)
 {
-    Player_SetState(p, 0x1, 0xF, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_DRAW_JUMP_SLASH, PL_SET_SNAP_POS);
 }
 
-void DualSwords_EvadeAttack(Player *p)
+/* A flick up in a roll or an evade: DSWORDS_EVADE_RISING_SLASH. */
+void DualSwords_EvadeAttack(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x11, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, DSWORDS_EVADE_RISING_SLASH, PL_SET_SNAP_POS);
 }
 
-void DualSwords_Draw(Player *p, s32 arg1)
+/*
+ * input.held 0x80 (Player_HoldSpecialInput): end 0 enters the demon mode, 1
+ * leaves it.
+ */
+void DualSwords_DemonToggle(Player *pl, s32 end)
 {
-    if (arg1 == 0) {
-        Player_SetState((void *) p, 1U, 4U, 4);
+    if (end == 0) {
+        Player_SetState((void *) pl, PL_GROUP_WEAPON, DSWORDS_DEMON_START, PL_SET_SNAP_POS);
         return;
     }
-    Player_SetState((void *) p, 1U, 0x12U, 4);
+    Player_SetState((void *) pl, PL_GROUP_WEAPON, DSWORDS_DEMON_END, PL_SET_SNAP_POS);
 }
 
-s32 LongSword_CheckHit(Player *p)
+/*
+ * The attack's first hit, once (timer): a bounce requests LSWORD_BOUNCE and
+ * returns 1; kinds 2 and 3 step the motion back 2 frames and mute the weapon
+ * sound. Returns 0 otherwise.
+ */
+s32 LongSword_CheckHit(Player *pl)
 {
 
-    if (p->hitPending != 0 && *(s32 *) &p->timer == 0) {
-        *(s32 *) &p->timer = 1;
-        switch (p->hitKind) {
+    if (pl->hitPending != 0 && *(s32 *) &pl->timer == 0) {
+        *(s32 *) &pl->timer = 1;
+        switch (pl->hitKind) {
         case 0:
             break;
         case 1:
-            p->hitStopAdd = p->hitStop = 0;
-            Player_SetState(p, 1, 3, 0);
+            pl->hitStopAdd = pl->hitStop = 0;
+            Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_BOUNCE, 0);
             return 1;
         case 2:
         case 3:
-            Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-            p->weaponSeMute = 2;
+            Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+            pl->weaponSeMute = 2;
             break;
         }
     }
     return 0;
 }
 
-void LongSword_State00(Player *p, s32 variant, s32 arg2)
+/*
+ * The slash. variant: the lead-in (0 none, 1 a wind-up, 2 from the bounce, 3
+ * the draw); stepForward 1 steps forward in frames 40-56. A key read in
+ * frames 44-94 chains at frame 80; evade in frames 80-164.
+ */
+void LongSword_StateSlash(Player *pl, s32 variant, s32 stepForward)
 {
     f32 in[4];
     f32 out[4];
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
-            p->unk417 = 1;
-            p->weaponOut = 1;
-            p->fxMade = 0;
-            p->step++;
-            p->stateVar1 = 0xFF;
-            p->timer = 0;
-            Player_SetMoveMode(p, 0, 1, 0);
-            Player_SetMotionPair(p, 0x579, 4, 0xA);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 0x39);
-            p->noFlinchTimer = 0x28;
+            pl->unk417 = 1;
+            pl->weaponOut = 1;
+            pl->fxMade = 0;
+            pl->step++;
+            pl->stateVar1 = 0xFF;
+            pl->timer = 0;
+            Player_SetMoveMode(pl, 0, 1, 0);
+            Player_SetMotionPair(pl, 0x579, 4, 0xA);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 0x39);
+            pl->noFlinchTimer = 0x28;
             break;
         case 1:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                p->unk417 = 1;
-                p->weaponOut = 1;
-                p->fxMade = 0;
-                Player_SetMoveMode(p, 0, 1, 0);
-                Player_SetMotionPair(p, 0x584, 2, 0);
-                Player_UpdateMotionTime(p, 0);
-                p->noFlinchTimer = 0x28;
+                pl->stateVar0++;
+                pl->unk417 = 1;
+                pl->weaponOut = 1;
+                pl->fxMade = 0;
+                Player_SetMoveMode(pl, 0, 1, 0);
+                Player_SetMotionPair(pl, 0x584, 2, 0);
+                Player_UpdateMotionTime(pl, 0);
+                pl->noFlinchTimer = 0x28;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    Player_SetMotionPair(p, 0x579, 2, 0x40);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x39);
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    Player_SetMotionPair(pl, 0x579, 2, 0x40);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x39);
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
             break;
         case 2:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                p->unk417 = 1;
-                p->fxMade = 0;
-                p->weaponOut = 1;
-                Player_SetMoveMode(p, 0, 1, 0);
-                Player_SetMotionPair(p, 0x586, 2, 0);
-                Player_UpdateMotionTime(p, 0);
-                p->noFlinchTimer = 0x28;
+                pl->stateVar0++;
+                pl->unk417 = 1;
+                pl->fxMade = 0;
+                pl->weaponOut = 1;
+                Player_SetMoveMode(pl, 0, 1, 0);
+                Player_SetMotionPair(pl, 0x586, 2, 0);
+                Player_UpdateMotionTime(pl, 0);
+                pl->noFlinchTimer = 0x28;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    Player_SetMotionPair(p, 0x579, 2, 0x26);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x39);
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    Player_SetMotionPair(pl, 0x579, 2, 0x26);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x39);
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
             break;
         case 3:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                p->unk417 = 1;
-                p->fxMade = 0;
-                p->weaponOut = 1;
-                Player_SetMoveMode(p, 0, 1, 0);
-                Player_SetMotionPair(p, 0x587, 2, 0);
-                Player_UpdateMotionTime(p, 0);
-                p->noFlinchTimer = 0x28;
+                pl->stateVar0++;
+                pl->unk417 = 1;
+                pl->fxMade = 0;
+                pl->weaponOut = 1;
+                Player_SetMoveMode(pl, 0, 1, 0);
+                Player_SetMotionPair(pl, 0x587, 2, 0);
+                Player_UpdateMotionTime(pl, 0);
+                pl->noFlinchTimer = 0x28;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    Player_SetMotionPair(p, 0x579, 0, 0x30);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x39);
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    Player_SetMotionPair(pl, 0x579, 0, 0x30);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x39);
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
@@ -4883,69 +5271,72 @@ void LongSword_State00(Player *p, s32 variant, s32 arg2)
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-        } else if (LongSword_CheckHit(p) != 1) {
-            if ((Motion_ReachedFrame(p, 0, 48.0f) != 0) && (p->fxMade == 0)) {
-                p->fxMade = 1;
-                StageObj_K05_Create(p, 9, 5);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+        } else if (LongSword_CheckHit(pl) != 1) {
+            if ((Motion_ReachedFrame(pl, 0, 48.0f) != 0) && (pl->fxMade == 0)) {
+                pl->fxMade = 1;
+                StageObj_K05_Create(pl, 9, 5);
             }
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 44.0f, 94.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 1, LongSword_StickAction(p) & 0xFF, 1);
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 44.0f, 94.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 1, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if ((Motion_InFrameRange(p, 0, 40.0f, 56.0f) != 0) && (arg2 != 0)) {
+            if ((Motion_InFrameRange(pl, 0, 40.0f, 56.0f) != 0) && (stepForward != 0)) {
                 in[0] = 0.0f;
                 in[1] = 0.0f;
                 in[2] = 7.5f;
-                Vec_Rotate(out, in, p->rotMtx);
-                p->pos[0] += out[0];
-                p->pos[2] += out[2];
+                Vec_Rotate(out, in, pl->rotMtx);
+                pl->pos[0] += out[0];
+                pl->pos[2] += out[2];
             }
-            if ((Motion_ReachedFrame(p, 0, 80.0f) != 0) && (p->stateVar1 != 0xFF)) {
-                LongSword_ComboInput(p, 1, p->stateVar1, 0);
-            } else if (Motion_InFrameRange(p, 0, 80.0f, 164.0f) != 0) {
-                LongSword_CheckInput(p);
+            if ((Motion_ReachedFrame(pl, 0, 80.0f) != 0) && (pl->stateVar1 != 0xFF)) {
+                LongSword_ComboInput(pl, 1, pl->stateVar1, 0);
+            } else if (Motion_InFrameRange(pl, 0, 80.0f, 164.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         }
         break;
     }
 }
 
-void LongSword_State01(Player *p, s32 variant)
+/*
+ * The second slash. variant 1: LSWORD_SLASH_2_AFTER_RISING (a wind-up first).
+ */
+void LongSword_StateSlash2(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
-            p->step++;
-            p->stateVar1 = 0xFF;
-            p->timer = 0;
-            p->unk417 = 1;
-            Player_SetMotionPair(p, 0x57A, 4, 0xA);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 0x3A);
-            p->noFlinchTimer = 0x46;
-            Player_SetMoveMode(p, 0, 1, 0);
+            pl->step++;
+            pl->stateVar1 = 0xFF;
+            pl->timer = 0;
+            pl->unk417 = 1;
+            Player_SetMotionPair(pl, 0x57A, 4, 0xA);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 0x3A);
+            pl->noFlinchTimer = 0x46;
+            Player_SetMoveMode(pl, 0, 1, 0);
             break;
         case 1:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                p->unk417 = 1;
-                p->weaponOut = 1;
-                Player_SetMoveMode(p, 0, 1, 0);
-                Player_SetMotionPair(p, 0x58C, 2, 0);
-                Player_UpdateMotionTime(p, 0);
-                p->noFlinchTimer = 0x28;
+                pl->stateVar0++;
+                pl->unk417 = 1;
+                pl->weaponOut = 1;
+                Player_SetMoveMode(pl, 0, 1, 0);
+                Player_SetMotionPair(pl, 0x58C, 2, 0);
+                Player_UpdateMotionTime(pl, 0);
+                pl->noFlinchTimer = 0x28;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    Player_SetMotionPair(p, 0x57A, 0, 0x18);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x3A);
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    Player_SetMotionPair(pl, 0x57A, 0, 0x18);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x3A);
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
@@ -4953,40 +5344,44 @@ void LongSword_State01(Player *p, s32 variant)
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-        } else if (LongSword_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 48.0f) != 0) {
-                StageObj_K05_Create(p, 8, 5);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+        } else if (LongSword_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 48.0f) != 0) {
+                StageObj_K05_Create(pl, 8, 5);
             }
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 44.0f, 104.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 2, LongSword_StickAction(p) & 0xFF, 1);
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 44.0f, 104.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 2, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if ((Motion_ReachedFrame(p, 0, 80.0f) != 0) && (p->stateVar1 != 0xFF)) {
-                LongSword_ComboInput(p, 2, p->stateVar1, 0);
-            } else if (Motion_InFrameRange(p, 0, 80.0f, 164.0f) != 0) {
-                LongSword_CheckInput(p);
+            if ((Motion_ReachedFrame(pl, 0, 80.0f) != 0) && (pl->stateVar1 != 0xFF)) {
+                LongSword_ComboInput(pl, 2, pl->stateVar1, 0);
+            } else if (Motion_InFrameRange(pl, 0, 80.0f, 164.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         }
         break;
     }
 }
 
-void LongSword_State02(Player *p, u32 variant)
+/*
+ * The fade slash (likely a backward slash). variant 0-6: the lead-in motion
+ * for the attack it follows. No attack follows; only the evade.
+ */
+void LongSword_StateFadeSlash(Player *pl, u32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
-            p->unk417 = 1;
-            p->step++;
-            p->stateVar1 = 0xFF;
-            p->timer = 0;
-            Player_SetMoveMode(p, 0, 1, 0);
-            Player_SetMotionPair(p, 0x57B, 4, 0);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 0x3B);
-            p->noFlinchTimer = 0x28;
+            pl->unk417 = 1;
+            pl->step++;
+            pl->stateVar1 = 0xFF;
+            pl->timer = 0;
+            Player_SetMoveMode(pl, 0, 1, 0);
+            Player_SetMotionPair(pl, 0x57B, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 0x3B);
+            pl->noFlinchTimer = 0x28;
             break;
         case 1:
         case 2:
@@ -4994,57 +5389,57 @@ void LongSword_State02(Player *p, u32 variant)
         case 4:
         case 5:
         case 6:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->unk417 = 1;
-                p->stateVar0++;
+                pl->unk417 = 1;
+                pl->stateVar0++;
                 switch (variant) {
                 case 1:
                 case 2:
-                    Player_SetMotionPair(p, 0x582, 2, 0);
+                    Player_SetMotionPair(pl, 0x582, 2, 0);
                     break;
                 case 3:
-                    Player_SetMotionPair(p, 0x589, 2, 0);
+                    Player_SetMotionPair(pl, 0x589, 2, 0);
                     break;
                 case 4:
-                    Player_SetMotionPair(p, 0x58A, 2, 0);
+                    Player_SetMotionPair(pl, 0x58A, 2, 0);
                     break;
                 case 5:
-                    Player_SetMotionPair(p, 0x58D, 4, 0);
+                    Player_SetMotionPair(pl, 0x58D, 4, 0);
                     break;
                 case 6:
-                    Player_SetMotionPair(p, 0x58E, 2, 0);
+                    Player_SetMotionPair(pl, 0x58E, 2, 0);
                     break;
                 }
-                Player_UpdateMotionTime(p, 0);
-                Player_SetMoveMode(p, 0, 1, 0);
-                p->noFlinchTimer = 0x28;
+                Player_UpdateMotionTime(pl, 0);
+                Player_SetMoveMode(pl, 0, 1, 0);
+                pl->noFlinchTimer = 0x28;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                     switch (variant) {
                     case 1:
                     case 2:
-                        Player_SetMotionPair(p, 0x57B, 2, 0x12);
+                        Player_SetMotionPair(pl, 0x57B, 2, 0x12);
                         break;
                     case 3:
-                        Player_SetMotionPair(p, 0x57B, 0, 0x14);
+                        Player_SetMotionPair(pl, 0x57B, 0, 0x14);
                         break;
                     case 4:
-                        Player_SetMotionPair(p, 0x57B, 0, 0x14);
+                        Player_SetMotionPair(pl, 0x57B, 0, 0x14);
                         break;
                     case 5:
-                        Player_SetMotionPair(p, 0x57B, 0, 0x10);
+                        Player_SetMotionPair(pl, 0x57B, 0, 0x10);
                         break;
                     case 6:
-                        Player_SetMotionPair(p, 0x57B, 0, 0xC);
+                        Player_SetMotionPair(pl, 0x57B, 0, 0xC);
                         break;
                     }
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x3B);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x3B);
                 }
                 break;
             }
@@ -5052,87 +5447,92 @@ void LongSword_State02(Player *p, u32 variant)
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-        } else if (LongSword_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 22.0f) != 0) {
-                StageObj_K05_Create(p, 0x11, 5);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+        } else if (LongSword_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 22.0f) != 0) {
+                StageObj_K05_Create(pl, 0x11, 5);
             }
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 28.0f, 68.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 3, LongSword_StickAction(p) & 0xFF, 1);
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 28.0f, 68.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 3, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if ((Motion_ReachedFrame(p, 0, 68.0f) != 0) && (p->stateVar1 != 0xFF)) {
-                LongSword_ComboInput(p, 3, p->stateVar1, 0);
-            } else if (Motion_InFrameRange(p, 0, 80.0f, 128.0f) != 0) {
-                LongSword_CheckInput(p);
+            if ((Motion_ReachedFrame(pl, 0, 68.0f) != 0) && (pl->stateVar1 != 0xFF)) {
+                LongSword_ComboInput(pl, 3, pl->stateVar1, 0);
+            } else if (Motion_InFrameRange(pl, 0, 80.0f, 128.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         }
         break;
     }
 }
 
-void LongSword_State03(Player *p, s32 unused)
+/*
+ * LSWORD_BOUNCE: a flick in frames 2-30 queues LSWORD_BOUNCE_SLASH at frame
+ * 22; else idle.
+ */
+void LongSword_StateBounce(Player *pl, s32 unused)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar0 = 0;
-        p->stateVar1 = 0;
-        Player_SetMoveMode(p, 0, 0, 0);
-        Player_SetMotionPair(p, 0x585, 0, 0);
+        pl->step++;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 0;
+        Player_SetMoveMode(pl, 0, 0, 0);
+        Player_SetMotionPair(pl, 0x585, 0, 0);
         break;
     case 1:
-        if (p->stateVar0 != 0) {
-            if (Motion_ReachedFrame(p, 0, 22.0f) != 0) {
-                Player_SetState(p, 1U, 0x11U, 4);
+        if (pl->stateVar0 != 0) {
+            if (Motion_ReachedFrame(pl, 0, 22.0f) != 0) {
+                Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_BOUNCE_SLASH, PL_SET_SNAP_POS);
             }
-        } else if ((Motion_InFrameRange(p, 0, 2.0f, 30.0f) != 0) && (p->stateVar0 == 0) && (p->itemSelect == 0) && (p->input.stickDirPressed & 0x3C)) {
-            p->stateVar0 = 1;
-            p->stateVar1 = 0;
+        } else if ((Motion_InFrameRange(pl, 0, 2.0f, 30.0f) != 0) && (pl->stateVar0 == 0) && (pl->itemSelect == 0) && (pl->input.stickDirPressed & 0x3C)) {
+            pl->stateVar0 = 1;
+            pl->stateVar1 = 0;
         }
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 0xA, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
-void LongSword_State04(Player *p, s32 unused)
+/* LSWORD_THRUST: a key read in frames 28-100 chains at frame 38. */
+void LongSword_StateThrust(Player *pl, s32 unused)
 {
     u8 stick;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->stateVar1 = 0xFF;
-        p->timer = 0;
-        p->unk417 = 1;
-        Player_SetMotionPair(p, 0x57D, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Eff00_Create(p, 0x48U);
-        p->noFlinchTimer = 0x3C;
+        pl->step++;
+        pl->stateVar1 = 0xFF;
+        pl->timer = 0;
+        pl->unk417 = 1;
+        Player_SetMotionPair(pl, 0x57D, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Eff00_Create(pl, 0x48U);
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        if (LongSword_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 18.0f) != 0) {
-                StageObj_K05_Create(p, 9, 5);
+        if (LongSword_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 18.0f) != 0) {
+                StageObj_K05_Create(pl, 9, 5);
             }
-            if (p->motion[0].playing == 0) {
-                Player_BeginState(p, 0, 4, 0);
+            if (pl->motion[0].playing == 0) {
+                Player_BeginState(pl, 0, 4, 0);
                 break;
             }
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 28.0f, 100.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 0xBU, LongSword_StickAction(p) & 0xFF, 1);
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 28.0f, 100.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 0xBU, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if (Motion_ReachedFrame(p, 0, 38.0f) != 0) {
-                stick = p->stateVar1;
+            if (Motion_ReachedFrame(pl, 0, 38.0f) != 0) {
+                stick = pl->stateVar1;
                 if (stick != 0xFF) {
-                    LongSword_ComboInput(p, 0xBU, stick, 0);
+                    LongSword_ComboInput(pl, 0xBU, stick, 0);
                     break;
                 }
             }
-            if (Motion_InFrameRange(p, 0, 38.0f, 160.0f) != 0) {
-                LongSword_CheckInput(p);
+            if (Motion_InFrameRange(pl, 0, 38.0f, 160.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         } else {
         }
@@ -5140,72 +5540,77 @@ void LongSword_State04(Player *p, s32 unused)
     }
 }
 
-void LongSword_State07(Player *p, u32 variant)
+/*
+ * The first spirit slash. The even variants spend the gauge (15; 20 for 2 and
+ * 4) and don't bounce; the odd ones are the "_EMPTY" forms. 2 and 3 follow a
+ * rising slash, 4 and 5 are the draw's.
+ */
+void LongSword_StateSpirit1(Player *pl, u32 variant)
 {
     u8 a;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
         case 1:
-            p->unk417 = 1;
-            p->weaponOut = 1;
-            p->fxMade = 0;
-            p->step++;
-            p->stateVar1 = 0xFF;
-            p->timer = 0;
-            Player_SetMoveMode(p, 0, 1, 0);
-            Player_SetMotionPair(p, 0x57C, 4, 8);
-            Player_UpdateMotionTime(p, 0);
+            pl->unk417 = 1;
+            pl->weaponOut = 1;
+            pl->fxMade = 0;
+            pl->step++;
+            pl->stateVar1 = 0xFF;
+            pl->timer = 0;
+            Player_SetMoveMode(pl, 0, 1, 0);
+            Player_SetMotionPair(pl, 0x57C, 4, 8);
+            Player_UpdateMotionTime(pl, 0);
             if (variant == 0) {
-                Eff00_Create(p, 0x45);
-                LongSword_AddGauge(p, -0xF);
-                StageObj_K29_CreateOnPlayerDefault(p, 0, 1.0f);
+                Eff00_Create(pl, 0x45);
+                LongSword_AddGauge(pl, -0xF);
+                StageObj_K29_CreateOnPlayerDefault(pl, 0, 1.0f);
             } else {
-                Eff00_Create(p, 0x4F);
+                Eff00_Create(pl, 0x4F);
             }
-            p->noFlinchTimer = 0x23;
+            pl->noFlinchTimer = 0x23;
             break;
         case 2:
         case 3:
         case 4:
         case 5:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                p->unk417 = 1;
-                p->weaponOut = 1;
-                p->fxMade = 0;
-                Player_SetMoveMode(p, 0, 1, 0);
+                pl->stateVar0++;
+                pl->unk417 = 1;
+                pl->weaponOut = 1;
+                pl->fxMade = 0;
+                Player_SetMoveMode(pl, 0, 1, 0);
                 if (variant == 2 || variant == 3) {
-                    Player_SetMotionPair(p, 0x591, 2, 0);
+                    Player_SetMotionPair(pl, 0x591, 2, 0);
                 } else {
-                    Player_SetMotionPair(p, 0x592, 4, 0);
+                    Player_SetMotionPair(pl, 0x592, 4, 0);
                 }
-                Player_UpdateMotionTime(p, 0);
+                Player_UpdateMotionTime(pl, 0);
                 if (variant == 2 || variant == 4) {
-                    LongSword_AddGauge(p, -0x14);
-                    StageObj_K29_CreateOnPlayerDefault(p, 0, 1.0f);
+                    LongSword_AddGauge(pl, -0x14);
+                    StageObj_K29_CreateOnPlayerDefault(pl, 0, 1.0f);
                 }
-                p->noFlinchTimer = 0x23;
+                pl->noFlinchTimer = 0x23;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
                     if (variant == 2 || variant == 3) {
-                        Player_SetMotionPair(p, 0x57C, 0, 0x1E);
+                        Player_SetMotionPair(pl, 0x57C, 0, 0x1E);
                     } else {
-                        Player_SetMotionPair(p, 0x57C, 0, 0x2C);
+                        Player_SetMotionPair(pl, 0x57C, 0, 0x2C);
                     }
-                    Player_UpdateMotionTime(p, 0);
+                    Player_UpdateMotionTime(pl, 0);
                     if (variant == 2 || variant == 4) {
-                        Eff00_Create(p, 0x45);
+                        Eff00_Create(pl, 0x45);
                     } else {
-                        Eff00_Create(p, 0x4F);
+                        Eff00_Create(pl, 0x4F);
                     }
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
@@ -5213,209 +5618,215 @@ void LongSword_State07(Player *p, u32 variant)
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
         if (variant == 1 || variant == 3 || variant == 5) {
-            if (LongSword_CheckHit(p) == 1) {
+            if (LongSword_CheckHit(pl) == 1) {
                 break;
             }
         }
-        if (Motion_ReachedFrame(p, 0, 40.0f) != 0 && p->fxMade == 0) {
-            p->fxMade = 1;
+        if (Motion_ReachedFrame(pl, 0, 40.0f) != 0 && pl->fxMade == 0) {
+            pl->fxMade = 1;
             if (variant == 0 || variant == 2 || variant == 4) {
-                StageObj_K05_Create(p, 6, 6);
+                StageObj_K05_Create(pl, 6, 6);
             } else {
-                StageObj_K05_Create(p, 6, 5);
+                StageObj_K05_Create(pl, 6, 5);
             }
         }
-        if (p->stateVar1 == 0xFF && Motion_InFrameRange(p, 0, 46.0f, 100.0f) != 0) {
-            a = LongSword_StickAction(p);
+        if (pl->stateVar1 == 0xFF && Motion_InFrameRange(pl, 0, 46.0f, 100.0f) != 0) {
+            a = LongSword_ReadAttackKey(pl);
             if (variant == 0 || variant == 2 || variant == 4) {
-                p->stateVar1 = LongSword_ComboInput(p, 4, a, 1);
+                pl->stateVar1 = LongSword_ComboInput(pl, 4, a, 1);
             } else {
-                p->stateVar1 = LongSword_ComboInput(p, 0xD, a, 1);
+                pl->stateVar1 = LongSword_ComboInput(pl, 0xD, a, 1);
             }
         }
-        if (Motion_ReachedFrame(p, 0, 56.0f) != 0) {
-            a = p->stateVar1;
+        if (Motion_ReachedFrame(pl, 0, 56.0f) != 0) {
+            a = pl->stateVar1;
             if (a != 0xFF) {
                 if (variant == 0 || variant == 2 || variant == 4) {
-                    LongSword_ComboInput(p, 4, a, 0);
+                    LongSword_ComboInput(pl, 4, a, 0);
                     break;
                 }
-                LongSword_ComboInput(p, 0xD, a, 0);
+                LongSword_ComboInput(pl, 0xD, a, 0);
                 break;
             }
         }
-        if (Motion_InFrameRange(p, 0, 56.0f, 160.0f) != 0) {
-            LongSword_CheckInput(p);
+        if (Motion_InFrameRange(pl, 0, 56.0f, 160.0f) != 0) {
+            LongSword_EvadeInput(pl);
         }
         break;
     }
 }
 
-void LongSword_State08(Player *p, s32 unused)
+/* LSWORD_SPIRIT_THRUST: the thrust after the first spirit slash. */
+void LongSword_StateSpiritThrust(Player *pl, s32 unused)
 {
     u8 stick;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->unk417 = 1;
-        p->step++;
-        p->stateVar1 = 0xFF;
-        p->timer = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
-        Player_SetMotionPair(p, 0x58F, 2, 0);
-        Player_UpdateMotionTime(p, 0);
-        p->noFlinchTimer = 0x3C;
+        pl->unk417 = 1;
+        pl->step++;
+        pl->stateVar1 = 0xFF;
+        pl->timer = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Player_SetMotionPair(pl, 0x58F, 2, 0);
+        Player_UpdateMotionTime(pl, 0);
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x57D, 0, 0x10);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 0x47U);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x57D, 0, 0x10);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 0x47U);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (LongSword_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 18.0f) != 0) {
-                StageObj_K05_Create(p, 9, 5);
+        if (LongSword_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 18.0f) != 0) {
+                StageObj_K05_Create(pl, 9, 5);
             }
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 28.0f, 100.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 5U, LongSword_StickAction(p) & 0xFF, 1);
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 28.0f, 100.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 5U, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if (Motion_ReachedFrame(p, 0, 38.0f) != 0) {
-                stick = p->stateVar1;
+            if (Motion_ReachedFrame(pl, 0, 38.0f) != 0) {
+                stick = pl->stateVar1;
                 if (stick != 0xFF) {
-                    LongSword_ComboInput(p, 5U, stick, 0);
+                    LongSword_ComboInput(pl, 5U, stick, 0);
                     break;
                 }
             }
-            if (Motion_InFrameRange(p, 0, 38.0f, 160.0f) != 0) {
-                LongSword_CheckInput(p);
+            if (Motion_InFrameRange(pl, 0, 38.0f, 160.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         }
         break;
     }
 }
 
-void LongSword_State09(Player *p, s32 variant)
+/*
+ * The second spirit slash (gauge 20; no bounce). variant 1:
+ * LSWORD_SPIRIT_2_AFTER_THRUST.
+ */
+void LongSword_StateSpirit2(Player *pl, s32 variant)
 {
     u8 stick;
     u8 stateVar0;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
-            p->unk417 = 1;
-            p->step++;
-            p->stateVar1 = 0xFF;
-            p->timer = 0;
-            Player_SetMoveMode(p, 0, 1, 0);
-            Player_SetMotionPair(p, 0x57E, 4, 0);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 0x49U);
-            LongSword_AddGauge(p, -0x14);
-            StageObj_K29_CreateOnPlayerDefault(p, 0U, 1.0f);
-            p->noFlinchTimer = 0x3C;
+            pl->unk417 = 1;
+            pl->step++;
+            pl->stateVar1 = 0xFF;
+            pl->timer = 0;
+            Player_SetMoveMode(pl, 0, 1, 0);
+            Player_SetMotionPair(pl, 0x57E, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 0x49U);
+            LongSword_AddGauge(pl, -0x14);
+            StageObj_K29_CreateOnPlayerDefault(pl, 0U, 1.0f);
+            pl->noFlinchTimer = 0x3C;
             break;
         case 1:
-            stateVar0 = p->stateVar0;
+            stateVar0 = pl->stateVar0;
             switch (stateVar0) {
             case 0:
-                p->stateVar0 = stateVar0 + 1;
-                p->unk417 = 1;
-                p->weaponOut = 1;
-                Player_SetMoveMode(p, 0, 1, 0);
-                Player_SetMotionPair(p, 0x590, 2, 0);
-                Player_UpdateMotionTime(p, 0);
-                LongSword_AddGauge(p, -0x14);
-                StageObj_K29_CreateOnPlayerDefault(p, 0U, 1.0f);
-                p->noFlinchTimer = 0x3C;
+                pl->stateVar0 = stateVar0 + 1;
+                pl->unk417 = 1;
+                pl->weaponOut = 1;
+                Player_SetMoveMode(pl, 0, 1, 0);
+                Player_SetMotionPair(pl, 0x590, 2, 0);
+                Player_UpdateMotionTime(pl, 0);
+                LongSword_AddGauge(pl, -0x14);
+                StageObj_K29_CreateOnPlayerDefault(pl, 0U, 1.0f);
+                pl->noFlinchTimer = 0x3C;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    Player_SetMotionPair(p, 0x57E, 0, 0x18);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x49U);
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    Player_SetMotionPair(pl, 0x57E, 0, 0x18);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x49U);
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (Motion_PassedFrame(p, 0, 28.0f) != 0) {
-            StageObj_K05_Create(p, 8, 6);
+        if (Motion_PassedFrame(pl, 0, 28.0f) != 0) {
+            StageObj_K05_Create(pl, 8, 6);
         }
-        if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 34.0f, 100.0f) != 0)) {
-            p->stateVar1 = LongSword_ComboInput(p, 6U, LongSword_StickAction(p) & 0xFF, 1);
+        if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 34.0f, 100.0f) != 0)) {
+            pl->stateVar1 = LongSword_ComboInput(pl, 6U, LongSword_ReadAttackKey(pl) & 0xFF, 1);
         }
-        if (Motion_ReachedFrame(p, 0, 44.0f) != 0) {
-            stick = p->stateVar1;
+        if (Motion_ReachedFrame(pl, 0, 44.0f) != 0) {
+            stick = pl->stateVar1;
             if (stick != 0xFF) {
-                LongSword_ComboInput(p, 6U, stick, 0);
+                LongSword_ComboInput(pl, 6U, stick, 0);
                 break;
             }
         }
-        if (Motion_InFrameRange(p, 0, 62.0f, 160.0f) != 0) {
-            LongSword_CheckInput(p);
+        if (Motion_InFrameRange(pl, 0, 62.0f, 160.0f) != 0) {
+            LongSword_EvadeInput(pl);
         }
         break;
     }
 }
 
-void LongSword_State10(Player *p, s32 unused)
+/* LSWORD_SPIRIT_RISING: the rising slash after the second spirit slash. */
+void LongSword_StateSpiritRising(Player *pl, s32 unused)
 {
     u8 stick;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->unk417 = 1;
-        p->step++;
-        p->stateVar1 = 0xFF;
-        p->timer = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
-        Player_SetMotionPair(p, 0x57F, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Eff00_Create(p, 0x4AU);
-        p->noFlinchTimer = 0x3C;
+        pl->unk417 = 1;
+        pl->step++;
+        pl->stateVar1 = 0xFF;
+        pl->timer = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Player_SetMotionPair(pl, 0x57F, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Eff00_Create(pl, 0x4AU);
+        pl->noFlinchTimer = 0x3C;
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (LongSword_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 22.0f) != 0) {
-                StageObj_K05_Create(p, 5, 5);
+        if (LongSword_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 22.0f) != 0) {
+                StageObj_K05_Create(pl, 5, 5);
             }
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 32.0f, 100.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 7U, LongSword_StickAction(p) & 0xFF, 1);
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 32.0f, 100.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 7U, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if (Motion_ReachedFrame(p, 0, 42.0f) != 0) {
-                stick = p->stateVar1;
+            if (Motion_ReachedFrame(pl, 0, 42.0f) != 0) {
+                stick = pl->stateVar1;
                 if (stick != 0xFF) {
-                    LongSword_ComboInput(p, 7U, stick, 0);
+                    LongSword_ComboInput(pl, 7U, stick, 0);
                     break;
                 }
             }
-            if (Motion_InFrameRange(p, 0, 42.0f, 160.0f) != 0) {
-                LongSword_CheckInput(p);
+            if (Motion_InFrameRange(pl, 0, 42.0f, 160.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         } else {
         }
@@ -5423,39 +5834,40 @@ void LongSword_State10(Player *p, s32 unused)
     }
 }
 
-void LongSword_State14(Player *p, s32 variant)
+/* The rising slash (likely). variant 1: LSWORD_RISING_AFTER_THRUST. */
+void LongSword_StateRisingSlash(Player *pl, s32 variant)
 {
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
-            p->step++;
-            p->stateVar1 = 0xFF;
-            p->timer = 0;
-            p->unk417 = 1;
-            Player_SetMotionPair(p, 0x57F, 4, 0);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 0x4B);
+            pl->step++;
+            pl->stateVar1 = 0xFF;
+            pl->timer = 0;
+            pl->unk417 = 1;
+            Player_SetMotionPair(pl, 0x57F, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 0x4B);
             break;
         case 1:
-            switch (p->stateVar0) {
+            switch (pl->stateVar0) {
             case 0:
-                p->stateVar0++;
-                p->unk417 = 1;
-                p->weaponOut = 1;
-                Player_SetMoveMode(p, 0, 1, 0);
-                Player_SetMotionPair(p, 0x588, 2, 0);
-                Player_UpdateMotionTime(p, 0);
-                p->noFlinchTimer = 0x28;
+                pl->stateVar0++;
+                pl->unk417 = 1;
+                pl->weaponOut = 1;
+                Player_SetMoveMode(pl, 0, 1, 0);
+                Player_SetMotionPair(pl, 0x588, 2, 0);
+                Player_UpdateMotionTime(pl, 0);
+                pl->noFlinchTimer = 0x28;
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    Player_SetMotionPair(p, 0x57F, 0, 0x14);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x4B);
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    Player_SetMotionPair(pl, 0x57F, 0, 0x14);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x4B);
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
@@ -5463,147 +5875,152 @@ void LongSword_State14(Player *p, s32 variant)
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
-        } else if (LongSword_CheckHit(p) != 1) {
-            if (Motion_PassedFrame(p, 0, 22.0f) != 0) {
-                StageObj_K05_Create(p, 5, 5);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
+        } else if (LongSword_CheckHit(pl) != 1) {
+            if (Motion_PassedFrame(pl, 0, 22.0f) != 0) {
+                StageObj_K05_Create(pl, 5, 5);
             }
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 32.0f, 100.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 0xC, LongSword_StickAction(p) & 0xFF, 1);
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 32.0f, 100.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 0xC, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if ((Motion_ReachedFrame(p, 0, 42.0f) != 0) && (p->stateVar1 != 0xFF)) {
-                LongSword_ComboInput(p, 0xC, p->stateVar1, 0);
-            } else if (Motion_InFrameRange(p, 0, 42.0f, 160.0f) != 0) {
-                LongSword_CheckInput(p);
+            if ((Motion_ReachedFrame(pl, 0, 42.0f) != 0) && (pl->stateVar1 != 0xFF)) {
+                LongSword_ComboInput(pl, 0xC, pl->stateVar1, 0);
+            } else if (Motion_InFrameRange(pl, 0, 42.0f, 160.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         }
         break;
     }
 }
 
-void LongSword_State15(Player *p, s32 variant)
+/*
+ * The third spirit slash (gauge 25), three hits. variant 1:
+ * LSWORD_SPIRIT_3_AFTER_RISING. Only the fade slash follows.
+ */
+void LongSword_StateSpirit3(Player *pl, s32 variant)
 {
     u8 stick;
     u8 stateVar0;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
         switch (variant) {
         case 0:
-            p->unk417 = 1;
-            p->step++;
-            p->stateVar0 = 0;
-            p->stateVar1 = 0xFF;
-            p->timer = 0;
-            Player_SetMoveMode(p, 0, 1, 0);
-            Player_SetMotionPair(p, 0x580, 4, 0);
-            Player_UpdateMotionTime(p, 0);
-            Eff00_Create(p, 0x4CU);
-            LongSword_AddGauge(p, -0x19);
-            StageObj_K29_CreateOnPlayerDefault(p, 0U, 1.0f);
-            p->noFlinchTimer = 0x3C;
+            pl->unk417 = 1;
+            pl->step++;
+            pl->stateVar0 = 0;
+            pl->stateVar1 = 0xFF;
+            pl->timer = 0;
+            Player_SetMoveMode(pl, 0, 1, 0);
+            Player_SetMotionPair(pl, 0x580, 4, 0);
+            Player_UpdateMotionTime(pl, 0);
+            Eff00_Create(pl, 0x4CU);
+            LongSword_AddGauge(pl, -0x19);
+            StageObj_K29_CreateOnPlayerDefault(pl, 0U, 1.0f);
+            pl->noFlinchTimer = 0x3C;
             break;
         case 1:
-            stateVar0 = p->stateVar0;
+            stateVar0 = pl->stateVar0;
             switch (stateVar0) {
             case 0:
-                p->stateVar0 = stateVar0 + 1;
-                p->unk417 = 1;
-                p->weaponOut = 1;
-                Player_SetMoveMode(p, 0, 1, 0);
-                Player_SetMotionPair(p, 0x58B, 2, 0);
-                Player_UpdateMotionTime(p, 0);
-                p->noFlinchTimer = 0x3C;
-                LongSword_AddGauge(p, -0x19);
-                StageObj_K29_CreateOnPlayerDefault(p, 0U, 1.0f);
+                pl->stateVar0 = stateVar0 + 1;
+                pl->unk417 = 1;
+                pl->weaponOut = 1;
+                Player_SetMoveMode(pl, 0, 1, 0);
+                Player_SetMotionPair(pl, 0x58B, 2, 0);
+                Player_UpdateMotionTime(pl, 0);
+                pl->noFlinchTimer = 0x3C;
+                LongSword_AddGauge(pl, -0x19);
+                StageObj_K29_CreateOnPlayerDefault(pl, 0U, 1.0f);
                 break;
             case 1:
-                if (p->motion[0].playing == 0) {
-                    p->step++;
-                    p->stateVar0 = 0;
-                    Player_SetMotionPair(p, 0x580, 0, 0xA);
-                    Player_UpdateMotionTime(p, 0);
-                    Eff00_Create(p, 0x4CU);
-                    p->stateVar1 = 0xFF;
-                    p->timer = 0;
+                if (pl->motion[0].playing == 0) {
+                    pl->step++;
+                    pl->stateVar0 = 0;
+                    Player_SetMotionPair(pl, 0x580, 0, 0xA);
+                    Player_UpdateMotionTime(pl, 0);
+                    Eff00_Create(pl, 0x4CU);
+                    pl->stateVar1 = 0xFF;
+                    pl->timer = 0;
                 }
                 break;
             }
         }
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (Motion_PassedFrame(p, 0, 14.0f) != 0) {
-            StageObj_K05_Create(p, 6, 6);
+        if (Motion_PassedFrame(pl, 0, 14.0f) != 0) {
+            StageObj_K05_Create(pl, 6, 6);
         }
-        if (Motion_PassedFrame(p, 0, 34.0f) != 0) {
-            StageObj_K05_Create(p, 6, 6);
+        if (Motion_PassedFrame(pl, 0, 34.0f) != 0) {
+            StageObj_K05_Create(pl, 6, 6);
         }
-        if (Motion_PassedFrame(p, 0, 84.0f) != 0) {
-            StageObj_K05_Create(p, 8, 6);
+        if (Motion_PassedFrame(pl, 0, 84.0f) != 0) {
+            StageObj_K05_Create(pl, 8, 6);
         }
-        if ((Motion_PassedFrame(p, 0, 34.0f) != 0) && (p->stateVar0 != 1)) {
-            p->stateVar0 = 1;
-            Eff00_Create(p, 0x4DU);
+        if ((Motion_PassedFrame(pl, 0, 34.0f) != 0) && (pl->stateVar0 != 1)) {
+            pl->stateVar0 = 1;
+            Eff00_Create(pl, 0x4DU);
         }
-        if ((Motion_PassedFrame(p, 0, 88.0f) != 0) && (p->stateVar0 != 2)) {
-            p->stateVar0 = 2;
-            Eff00_Create(p, 0x50U);
+        if ((Motion_PassedFrame(pl, 0, 88.0f) != 0) && (pl->stateVar0 != 2)) {
+            pl->stateVar0 = 2;
+            Eff00_Create(pl, 0x50U);
         }
-        if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 100.0f, 160.0f) != 0)) {
-            p->stateVar1 = LongSword_ComboInput(p, 8U, LongSword_StickAction(p) & 0xFF, 1);
+        if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 100.0f, 160.0f) != 0)) {
+            pl->stateVar1 = LongSword_ComboInput(pl, 8U, LongSword_ReadAttackKey(pl) & 0xFF, 1);
         }
-        if (Motion_ReachedFrame(p, 0, 110.0f) != 0) {
-            stick = p->stateVar1;
+        if (Motion_ReachedFrame(pl, 0, 110.0f) != 0) {
+            stick = pl->stateVar1;
             if (stick != 0xFF) {
-                LongSword_ComboInput(p, 8U, stick, 0);
+                LongSword_ComboInput(pl, 8U, stick, 0);
                 break;
             }
         }
-        if (Motion_InFrameRange(p, 0, 110.0f, 160.0f) != 0) {
-            LongSword_CheckInput(p);
+        if (Motion_InFrameRange(pl, 0, 110.0f, 160.0f) != 0) {
+            LongSword_EvadeInput(pl);
         }
         break;
     }
 }
 
-void LongSword_State16(Player *p, s32 unused)
+/* LSWORD_EXTRA_SLASH: only the fade slash follows (no entry seen). */
+void LongSword_StateExtraSlash(Player *pl, s32 unused)
 {
     u8 stick;
 
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->unk417 = 1;
-        p->step++;
-        p->stateVar1 = 0xFF;
-        p->timer = 0;
-        Player_SetMoveMode(p, 0, 1, 0);
-        Player_SetMotionPair(p, 0x581, 4, 0);
-        Player_UpdateMotionTime(p, 0);
-        Eff00_Create(p, 0x4EU);
+        pl->unk417 = 1;
+        pl->step++;
+        pl->stateVar1 = 0xFF;
+        pl->timer = 0;
+        Player_SetMoveMode(pl, 0, 1, 0);
+        Player_SetMotionPair(pl, 0x581, 4, 0);
+        Player_UpdateMotionTime(pl, 0);
+        Eff00_Create(pl, 0x4EU);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            Player_BeginState(p, 0, 4, 0);
+        if (pl->motion[0].playing == 0) {
+            Player_BeginState(pl, 0, 4, 0);
             break;
         }
-        if (LongSword_CheckHit(p) != 1) {
-            if ((p->stateVar1 == 0xFF) && (Motion_InFrameRange(p, 0, 40.0f, 100.0f) != 0)) {
-                p->stateVar1 = LongSword_ComboInput(p, 9U, LongSword_StickAction(p) & 0xFF, 1);
+        if (LongSword_CheckHit(pl) != 1) {
+            if ((pl->stateVar1 == 0xFF) && (Motion_InFrameRange(pl, 0, 40.0f, 100.0f) != 0)) {
+                pl->stateVar1 = LongSword_ComboInput(pl, 9U, LongSword_ReadAttackKey(pl) & 0xFF, 1);
             }
-            if (Motion_ReachedFrame(p, 0, 60.0f) != 0) {
-                stick = p->stateVar1;
+            if (Motion_ReachedFrame(pl, 0, 60.0f) != 0) {
+                stick = pl->stateVar1;
                 if (stick != 0xFF) {
-                    LongSword_ComboInput(p, 9U, stick, 0);
+                    LongSword_ComboInput(pl, 9U, stick, 0);
                     break;
                 }
             }
-            if (Motion_InFrameRange(p, 0, 90.0f, 160.0f) != 0) {
-                LongSword_CheckInput(p);
+            if (Motion_InFrameRange(pl, 0, 90.0f, 160.0f) != 0) {
+                LongSword_EvadeInput(pl);
             }
         } else {
         }
@@ -5611,223 +6028,243 @@ void LongSword_State16(Player *p, s32 unused)
     }
 }
 
-void LongSword_RunState(Player *p)
+/*
+ * Runs the long sword's PL_GROUP_WEAPON state: maps the state to its handler
+ * and variant.
+ */
+void LongSword_RunState(Player *pl)
 {
-    switch (p->state) {
-    case 0:
-        LongSword_State00(p, 0, 0);
+    switch (pl->state) {
+    case LSWORD_SLASH:
+        LongSword_StateSlash(pl, 0, 0);
         break;
-    case 1:
-        LongSword_State01(p, 0);
+    case LSWORD_SLASH_2:
+        LongSword_StateSlash2(pl, 0);
         break;
-    case 2:
-        LongSword_State02(p, 0U);
+    case LSWORD_FADE_SLASH:
+        LongSword_StateFadeSlash(pl, 0U);
         break;
-    case 3:
-        LongSword_State03(p, 0);
+    case LSWORD_BOUNCE:
+        LongSword_StateBounce(pl, 0);
         break;
-    case 4:
-        LongSword_State04(p, 0);
+    case LSWORD_THRUST:
+        LongSword_StateThrust(pl, 0);
         break;
-    case 5:
-        LongSword_State02(p, 1U);
+    case LSWORD_FADE_AFTER_SLASH:
+        LongSword_StateFadeSlash(pl, 1U);
         break;
-    case 6:
-        LongSword_State02(p, 2U);
+    case LSWORD_FADE_AFTER_SLASH_2:
+        LongSword_StateFadeSlash(pl, 2U);
         break;
-    case 7:
-        LongSword_State07(p, 0U);
+    case LSWORD_SPIRIT_1:
+        LongSword_StateSpirit1(pl, 0U);
         break;
-    case 8:
-        LongSword_State08(p, 0);
+    case LSWORD_SPIRIT_THRUST:
+        LongSword_StateSpiritThrust(pl, 0);
         break;
-    case 9:
-        LongSword_State09(p, 0);
+    case LSWORD_SPIRIT_2:
+        LongSword_StateSpirit2(pl, 0);
         break;
-    case 10:
-        LongSword_State10(p, 0);
+    case LSWORD_SPIRIT_RISING:
+        LongSword_StateSpiritRising(pl, 0);
         break;
-    case 11:
-        LongSword_State00(p, 1, 0);
+    case LSWORD_SLASH_ALT:
+        LongSword_StateSlash(pl, 1, 0);
         break;
-    case 12:
-        LongSword_State00(p, 0, 1);
+    case LSWORD_STEP_SLASH:
+        LongSword_StateSlash(pl, 0, 1);
         break;
-    case 13:
-        LongSword_State00(p, 1, 1);
+    case LSWORD_STEP_SLASH_ALT:
+        LongSword_StateSlash(pl, 1, 1);
         break;
-    case 14:
-        LongSword_State14(p, 0);
+    case LSWORD_RISING_SLASH:
+        LongSword_StateRisingSlash(pl, 0);
         break;
-    case 15:
-        LongSword_State15(p, 0);
+    case LSWORD_SPIRIT_3:
+        LongSword_StateSpirit3(pl, 0);
         break;
-    case 16:
-        LongSword_State16(p, 0);
+    case LSWORD_EXTRA_SLASH:
+        LongSword_StateExtraSlash(pl, 0);
         break;
-    case 17:
-        LongSword_State00(p, 2, 0);
+    case LSWORD_BOUNCE_SLASH:
+        LongSword_StateSlash(pl, 2, 0);
         break;
-    case 18:
-        LongSword_State07(p, 1U);
+    case LSWORD_SPIRIT_1_EMPTY:
+        LongSword_StateSpirit1(pl, 1U);
         break;
-    case 19:
-        LongSword_State00(p, 3, 0);
+    case LSWORD_DRAW_SLASH:
+        LongSword_StateSlash(pl, 3, 0);
         break;
-    case 20:
-        LongSword_State14(p, 1);
+    case LSWORD_RISING_AFTER_THRUST:
+        LongSword_StateRisingSlash(pl, 1);
         break;
-    case 21:
-        LongSword_State02(p, 3U);
+    case LSWORD_FADE_AFTER_THRUST:
+        LongSword_StateFadeSlash(pl, 3U);
         break;
-    case 22:
-        LongSword_State02(p, 4U);
+    case LSWORD_FADE_AFTER_RISING:
+        LongSword_StateFadeSlash(pl, 4U);
         break;
-    case 23:
-        LongSword_State15(p, 1);
+    case LSWORD_SPIRIT_3_AFTER_RISING:
+        LongSword_StateSpirit3(pl, 1);
         break;
-    case 24:
-        LongSword_State01(p, 1);
+    case LSWORD_SLASH_2_AFTER_RISING:
+        LongSword_StateSlash2(pl, 1);
         break;
-    case 25:
-        LongSword_State02(p, 5U);
+    case LSWORD_FADE_AFTER_SPIRIT_1:
+        LongSword_StateFadeSlash(pl, 5U);
         break;
-    case 26:
-        LongSword_State02(p, 6U);
+    case LSWORD_FADE_AFTER_SPIRIT_2:
+        LongSword_StateFadeSlash(pl, 6U);
         break;
-    case 27:
-        LongSword_State09(p, 1);
+    case LSWORD_SPIRIT_2_AFTER_THRUST:
+        LongSword_StateSpirit2(pl, 1);
         break;
-    case 28:
-        LongSword_State07(p, 2U);
+    case LSWORD_SPIRIT_1_AFTER_RISING:
+        LongSword_StateSpirit1(pl, 2U);
         break;
-    case 29:
-        LongSword_State07(p, 3U);
+    case LSWORD_SPIRIT_1_AFTER_RISING_EMPTY:
+        LongSword_StateSpirit1(pl, 3U);
         break;
-    case 30:
-        LongSword_State07(p, 4U);
+    case LSWORD_DRAW_SPIRIT_1:
+        LongSword_StateSpirit1(pl, 4U);
         break;
-    case 31:
-        LongSword_State07(p, 5U);
+    case LSWORD_DRAW_SPIRIT_1_EMPTY:
+        LongSword_StateSpirit1(pl, 5U);
         
     default:
         break;
     }
 }
 
-s32 LongSword_AttackInput(Player *p)
+/*
+ * The drawn idle's input: key 1 the slash (LSWORD_STEP_SLASH with the left
+ * stick held), key 3 the fade slash, key 4 the first spirit slash (or its
+ * empty form), input.pressed 1 the thrust, the roll button rolls. Returns 1
+ * when it started a state.
+ */
+s32 LongSword_AttackInput(Player *pl)
 {
     u16 pressed;
 
-    switch (LongSword_StickAction(p) & 0xFF) {
+    switch (LongSword_ReadAttackKey(pl) & 0xFF) {
     case 0:
         break;
     case 1:
-        if (p->input.stickDir & 0x3C00) {
-            Player_SetState(p, 1, 0xC, 4);
+        if (pl->input.stickDir & 0x3C00) {
+            Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_STEP_SLASH, PL_SET_SNAP_POS);
         } else {
-            Player_SetState(p, 1, 0, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_SLASH, PL_SET_SNAP_POS);
         }
         return 1;
     case 3:
-        Player_SetState(p, 1, 2, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_SLASH, PL_SET_SNAP_POS);
         return 1;
     case 4:
-        if (LongSword_GaugeAtLeast(p, 0xF) == 1) {
-            Player_SetState(p, 1, 7, 4);
+        if (LongSword_GaugeAtLeast(pl, 0xF) == 1) {
+            Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_1, PL_SET_SNAP_POS);
         } else {
-            Player_SetState(p, 1, 0x12, 4);
+            Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_1_EMPTY, PL_SET_SNAP_POS);
         }
         return 1;
     }
-    pressed = p->input.pressed;
+    pressed = pl->input.pressed;
     if (pressed & 1) {
-        Player_SetState(p, 1, 4, 4);
+        Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_THRUST, PL_SET_SNAP_POS);
         return 1;
     }
-    if ((pressed & 0x40) && p->stamina >= 75) {
-        Player_SetState(p, 0, 0x1C, 4);
+    if ((pressed & 0x40) && pl->stamina >= 75) {
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         return 1;
     }
     return 0;
 }
 
-s32 LongSword_StickAction(Player *p)
+/*
+ * Returns the key pressed: 1 a flick to the attack stick's upper half, 3 to
+ * its lower half, 4 input.pressed 0x80, 10 input.pressed 1, 0 none.
+ */
+s32 LongSword_ReadAttackKey(Player *pl)
 {
     u16 btn;
 
-    if (p->input.stickDirPressed & 0x3C) {
-        if (p->input.prevStickAngle < 0x8001) {
+    if (pl->input.stickDirPressed & 0x3C) {
+        if (pl->input.rightStickAngle < 0x8001) {
             return 1;
         }
         return 3;
     }
-    btn = p->input.pressed;
+    btn = pl->input.pressed;
     if (btn & 0x80) {
         return 4;
     }
     return !(btn & 1) ? 0 : 0xA;
 }
 
-void LongSword_CheckInput(Player *p)
+/* The roll button (75 stamina): a roll, or a side evade by the left stick. */
+void LongSword_EvadeInput(Player *pl)
 {
     s32 dir;
 
-    if ((p->input.pressed & 0x40) && (p->stamina >= 0x4B)) {
-        if (p->input.stickDir & 0x3C00) {
-            dir = (p->input.stickAngle + 0x4000) & 0xFFFF;
+    if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+        if (pl->input.stickDir & 0x3C00) {
+            dir = (pl->input.stickAngle + 0x4000) & 0xFFFF;
             if (dir < 0x5C72) {
-                Player_SetState(p, 0U, 0x31U, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
                 return;
             }
             if (dir < 0xA38E) {
-                Player_SetState(p, 0U, 0x1CU, 4);
+                Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
                 return;
             }
-            Player_SetState(p, 0U, 0x32U, 4);
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_LEFT, PL_SET_SNAP_POS);
             return;
         }
-        Player_SetState(p, 0U, 0x1CU, 4);
+        Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
     }
 }
 
-u8 LongSword_ComboInput(Player *p, u32 kind, u8 stick, u8 check)
+/*
+ * The follow-up of combo row `row` for key `key`. With peek 1, returns the
+ * key when the row has a follow-up for it, else 0xFF; with peek 0,
+ * starts it (key 4 checks the spirit gauge first).
+ */
+u8 LongSword_ComboInput(Player *pl, u32 row, u8 key, u8 peek)
 {
-    switch (stick) {
+    switch (key) {
     case 1:
-        switch (kind) {
+        switch (row) {
         case 1:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 1, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SLASH_2, 4, 0);
             } else {
                 return 1;
             }
             break;
         case 4:
         case 13:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 8, 4, 1);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_THRUST, 4, 1);
             } else {
                 return 1;
             }
             break;
         case 6:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 0xA, 4, 1);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_RISING, 4, 1);
             } else {
                 return 1;
             }
             break;
         case 12:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 0x18, 4, 1);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SLASH_2_AFTER_RISING, 4, 1);
             } else {
                 return 1;
             }
             break;
         case 11:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 0x14, 4, 1);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_RISING_AFTER_THRUST, 4, 1);
             } else {
                 return 1;
             }
@@ -5837,62 +6274,62 @@ u8 LongSword_ComboInput(Player *p, u32 kind, u8 stick, u8 check)
         }
         break;
     case 3:
-        switch (kind) {
+        switch (row) {
         case 1:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 5, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_AFTER_SLASH, 4, 0);
             } else {
                 return 3;
             }
             break;
         case 2:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 6, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_AFTER_SLASH_2, 4, 0);
             } else {
                 return 3;
             }
             break;
         case 4:
         case 13:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 0x19, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_AFTER_SPIRIT_1, 4, 0);
             } else {
                 return 3;
             }
             break;
         case 6:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 0x1A, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_AFTER_SPIRIT_2, 4, 0);
             } else {
                 return 3;
             }
             break;
         case 8:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 5, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_AFTER_SLASH, 4, 0);
             } else {
                 return 3;
             }
             break;
         case 9:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 2, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_SLASH, 4, 0);
             } else {
                 return 3;
             }
             break;
         case 5:
         case 11:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 0x15, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_AFTER_THRUST, 4, 0);
             } else {
                 return 3;
             }
             break;
         case 7:
         case 12:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 0x16, 4, 0);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_FADE_AFTER_RISING, 4, 0);
             } else {
                 return 3;
             }
@@ -5902,62 +6339,62 @@ u8 LongSword_ComboInput(Player *p, u32 kind, u8 stick, u8 check)
         }
         break;
     case 4:
-        switch (kind) {
+        switch (row) {
         case 1:
         case 2:
         case 11:
-            if (check == 0) {
-                if (LongSword_GaugeAtLeast(p, 0xF) == 1) {
-                    Player_TurnAndSetState(p, 1, 7, 4, 1);
+            if (peek == 0) {
+                if (LongSword_GaugeAtLeast(pl, 0xF) == 1) {
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_1, 4, 1);
                 } else {
-                    Player_TurnAndSetState(p, 1, 0x12, 4, 1);
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_1_EMPTY, 4, 1);
                 }
             } else {
                 return 4;
             }
             break;
         case 12:
-            if (check == 0) {
-                if (LongSword_GaugeAtLeast(p, 0xF) == 1) {
-                    Player_TurnAndSetState(p, 1, 0x1C, 4, 1);
+            if (peek == 0) {
+                if (LongSword_GaugeAtLeast(pl, 0xF) == 1) {
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_1_AFTER_RISING, 4, 1);
                 } else {
-                    Player_TurnAndSetState(p, 1, 0x1D, 4, 1);
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_1_AFTER_RISING_EMPTY, 4, 1);
                 }
             } else {
                 return 4;
             }
             break;
         case 4:
-            if (check == 0) {
-                if (LongSword_GaugeAtLeast(p, 0x14) == 1) {
-                    Player_TurnAndSetState(p, 1, 9, 4, 1);
+            if (peek == 0) {
+                if (LongSword_GaugeAtLeast(pl, 0x14) == 1) {
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_2, 4, 1);
                 }
             } else {
                 return 4;
             }
             break;
         case 5:
-            if (check == 0) {
-                if (LongSword_GaugeAtLeast(p, 0x14) == 1) {
-                    Player_TurnAndSetState(p, 1, 0x1B, 4, 1);
+            if (peek == 0) {
+                if (LongSword_GaugeAtLeast(pl, 0x14) == 1) {
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_2_AFTER_THRUST, 4, 1);
                 }
             } else {
                 return 4;
             }
             break;
         case 6:
-            if (check == 0) {
-                if (LongSword_GaugeAtLeast(p, 0x19) == 1) {
-                    Player_TurnAndSetState(p, 1, 0xF, 4, 1);
+            if (peek == 0) {
+                if (LongSword_GaugeAtLeast(pl, 0x19) == 1) {
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_3, 4, 1);
                 }
             } else {
                 return 4;
             }
             break;
         case 7:
-            if (check == 0) {
-                if (LongSword_GaugeAtLeast(p, 0x19) == 1) {
-                    Player_TurnAndSetState(p, 1, 0x17, 4, 1);
+            if (peek == 0) {
+                if (LongSword_GaugeAtLeast(pl, 0x19) == 1) {
+                    Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_SPIRIT_3_AFTER_RISING, 4, 1);
                 }
             } else {
                 return 4;
@@ -5968,11 +6405,11 @@ u8 LongSword_ComboInput(Player *p, u32 kind, u8 stick, u8 check)
         }
         break;
     case 10:
-        switch (kind) {
+        switch (row) {
         case 1:
         case 2:
-            if (check == 0) {
-                Player_TurnAndSetState(p, 1, 4, 4, 1);
+            if (peek == 0) {
+                Player_TurnAndSetState(pl, PL_GROUP_WEAPON, LSWORD_THRUST, 4, 1);
             } else {
                 return 10;
             }
@@ -5985,62 +6422,76 @@ u8 LongSword_ComboInput(Player *p, u32 kind, u8 stick, u8 check)
     return 0xFF;
 }
 
-void LongSword_DrawAttack(Player *p)
+/* The attack that draws on the move: LSWORD_DRAW_SLASH. */
+void LongSword_DrawAttack(Player *pl)
 {
-    Player_SetState(p, 0x1, 0x13, 0x4);
+    Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_DRAW_SLASH, PL_SET_SNAP_POS);
 }
 
-void LongSword_Draw(Player *p)
+/*
+ * input.held 0x80 while sheathed: LSWORD_DRAW_SPIRIT_1, or its empty form
+ * with the gauge below 15.
+ */
+void LongSword_SpiritDraw(Player *pl)
 {
-    if (LongSword_GaugeAtLeast(p, 0xF) == 1) {
-        Player_SetState(p, 1U, 0x1EU, 4);
+    if (LongSword_GaugeAtLeast(pl, 0xF) == 1) {
+        Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_DRAW_SPIRIT_1, PL_SET_SNAP_POS);
         return;
     }
-    Player_SetState(p, 1U, 0x1FU, 4);
+    Player_SetState(pl, PL_GROUP_WEAPON, LSWORD_DRAW_SPIRIT_1_EMPTY, PL_SET_SNAP_POS);
 }
 
-void Player_TurnAndSetState(Player *p, u8 group, u8 state, s32 mode, u8 turn)
+/*
+ * Sets the state; with turn 1, first turns targetYaw 0x1000 toward a sideways
+ * left stick.
+ */
+void Player_TurnAndSetState(Player *pl, u8 group, u8 state, s32 mode, u8 turn)
 {
     if (turn == 1) {
-        if (p->input.stickDir & 0x800) {
-            p->targetYaw += 0x1000;
-        } else if (p->input.stickDir & 0x400) {
-            p->targetYaw -= 0x1000;
+        if (pl->input.stickDir & 0x800) {
+            pl->targetYaw += 0x1000;
+        } else if (pl->input.stickDir & 0x400) {
+            pl->targetYaw -= 0x1000;
         }
     }
-    Player_SetState(p, group, state, mode);
+    Player_SetState(pl, group, state, mode);
 }
 
-s32 HuntingHorn_CheckHit(Player *p)
+/*
+ * The attack's hit, tracked in stateVar1: a bounce requests HORN_BOUNCE and
+ * returns 1; kinds 2 and 3 step the motion back 2 frames and shake the
+ * camera. Returns 0 otherwise.
+ */
+s32 HuntingHorn_CheckHit(Player *pl)
 {
 
-    switch (p->stateVar1) {
+    switch (pl->stateVar1) {
     case 0:
-        if (p->hitPending != 0) {
-            CamShake_ReqA(p, 0);
-            switch (p->hitKind) {
+        if (pl->hitPending != 0) {
+            CamShake_ReqA(pl, 0);
+            switch (pl->hitKind) {
             case 0:
-                p->stateVar1++;
+                pl->stateVar1++;
                 break;
             case 1:
-                p->stateVar1++;
-                p->hitStop = 0;
-                p->hitStopAdd = 0;
-                Player_RequestState(p, 1, 0x18, 0);
+                pl->stateVar1++;
+                pl->hitStop = 0;
+                pl->hitStopAdd = 0;
+                Player_RequestState(pl, PL_GROUP_WEAPON, HORN_BOUNCE, 0);
                 return 1;
             case 2:
             case 3:
-                p->stateVar1++;
-                Player_SetMotionPair(p, p->motionId[0], 0, (s16) (p->motion[0].frame - 2.0f));
-                p->weaponSeMute = 2;
-                CamShake_ReqA(p, 1);
+                pl->stateVar1++;
+                Player_SetMotionPair(pl, pl->motionId[0], 0, (s16) (pl->motion[0].frame - 2.0f));
+                pl->weaponSeMute = 2;
+                CamShake_ReqA(pl, 1);
                 break;
             }
         }
         break;
     case 1:
-        if (p->hitSlowTimer <= 0) {
-            p->stateVar1++;
+        if (pl->hitSlowTimer <= 0) {
+            pl->stateVar1++;
         }
         break;
     case 2:
@@ -6051,42 +6502,49 @@ s32 HuntingHorn_CheckHit(Player *p)
 
 u16 Camera_GetYaw(void);
 f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-/* While the stick is pushed: turns rotY toward the stick direction (+0x388, relative to the camera
- * yaw) by at most n, then moves dist along the new heading. */
-void Player_StickTurnMove(Player *p, s16 n, f32 dist)
+/* While the stick is pushed: turns the heading toward the stick's direction
+ * (input.stickAngle, relative to the camera's yaw) by at most maxTurn, then
+ * moves dist along the new heading. */
+void Player_StickTurnMove(Player *pl, s16 maxTurn, f32 dist)
 {
-    f32 m[16];
-    f32 v[3];
+    f32 mtx[16];
+    f32 step[3];
     f32 out[3];
     s32 ang[3];
     u16 target;
-    s32 d;
+    s32 delta;
 
-    if (Player_StickMoveLevel(p, 0) > 0) {
-        target = *(u16 *) ((u8 *) p + 0x388) + Camera_GetYaw();
-        d = (target - p->rot[1]) & 0xFFFF;
-        if ((u32) (d + n) < (u32) (n * 2)) {
-            p->rot[1] = target;
-        } else if (d < 0x8000U) {
-            p->rot[1] += n;
+    if (Player_StickMoveLevel(pl, 0) > 0) {
+        target = pl->input.stickAngle + Camera_GetYaw();
+        delta = (target - pl->rot[1]) & 0xFFFF;
+        if ((u32) (delta + maxTurn) < (u32) (maxTurn * 2)) {
+            pl->rot[1] = target;
+        } else if (delta < 0x8000U) {
+            pl->rot[1] += maxTurn;
         } else {
-            p->rot[1] -= n;
+            pl->rot[1] -= maxTurn;
         }
-        p->targetYaw = p->rot[1];
+        pl->targetYaw = pl->rot[1];
         ang[0] = 0;
         ang[2] = 0;
-        ang[1] = p->rot[1];
-        Mtx_FromAnglesXYZ(ang, m);
-        v[0] = 0.0f;
-        v[2] = dist;
-        v[1] = 0.0f;
-        Vec_Rotate(out, v, m);
-        p->pos[0] += out[0];
-        p->pos[2] += out[2];
+        ang[1] = pl->rot[1];
+        Mtx_FromAnglesXYZ(ang, mtx);
+        step[0] = 0.0f;
+        step[2] = dist;
+        step[1] = 0.0f;
+        Vec_Rotate(out, step, mtx);
+        pl->pos[0] += out[0];
+        pl->pos[2] += out[2];
     }
 }
 
-void HuntingHorn_State00(Player *p, s32 motion, s32 variant)
+/*
+ * A play stance: stance 0-3 (up, right, left, down) loops its motion and adds
+ * its note every 60 frames. variant: 0 and 1 the blend (4 or 0), 2-4 the
+ * entry motions from a swing. input.pressed 0x80 leaves (the play end), a
+ * flick starts the stance attack; the left stick turns and walks.
+ */
+void HuntingHorn_StatePlay(Player *pl, s32 stance, s32 variant)
 {
     s16 i;
     FrameRange *r;
@@ -6095,109 +6553,109 @@ void HuntingHorn_State00(Player *p, s32 motion, s32 variant)
     FrameRange *r3;
     s16 k;
 
-    if (p->timer > 0) {
-        p->timer--;
+    if (pl->timer > 0) {
+        pl->timer--;
     }
-    if (p->stateVar1 > 0) {
-        p->stateVar1--;
+    if (pl->stateVar1 > 0) {
+        pl->stateVar1--;
     }
-    switch (p->step) {
+    switch (pl->step) {
     case 0:
-        p->step++;
-        p->weaponOut = 1;
-        p->timer = 10;
-        p->stateVar0 = 0;
-        p->stateVar1 = 40;
+        pl->step++;
+        pl->weaponOut = 1;
+        pl->timer = 10;
+        pl->stateVar0 = 0;
+        pl->stateVar1 = 40;
         switch (variant) {
         case 0:
-            p->step = 3;
-            Player_SetMotionPair(p, HuntingHorn_State00_Motions[motion], 4, 0);
+            pl->step = 3;
+            Player_SetMotionPair(pl, HuntingHorn_StanceMotions[stance], 4, 0);
             break;
         case 1:
-            p->step = 3;
-            Player_SetMotionPair(p, HuntingHorn_State00_Motions[motion], 0, 0);
+            pl->step = 3;
+            Player_SetMotionPair(pl, HuntingHorn_StanceMotions[stance], 0, 0);
             break;
         case 2:
         case 3:
-            p->step = 2;
-            Player_SetMotionPair(p, HuntingHorn_State00_VarMotions[variant].mot, HuntingHorn_State00_VarMotions[variant].blend, 0);
+            pl->step = 2;
+            Player_SetMotionPair(pl, HuntingHorn_StanceEntryMotions[variant].mot, HuntingHorn_StanceEntryMotions[variant].blend, 0);
             break;
         case 4:
-            Player_SetMotionPair(p, HuntingHorn_State00_VarMotions[variant].mot, HuntingHorn_State00_VarMotions[variant].blend, 0);
+            Player_SetMotionPair(pl, HuntingHorn_StanceEntryMotions[variant].mot, HuntingHorn_StanceEntryMotions[variant].blend, 0);
             break;
         }
-        Player_SetMoveMode(p, 0, 1, 0);
+        Player_SetMoveMode(pl, 0, 1, 0);
         break;
     case 1:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, 0x594, 0, 8);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, 0x594, 0, 8);
         }
         break;
     case 2:
-        if (p->motion[0].playing == 0) {
-            p->step++;
-            Player_SetMotionPair(p, HuntingHorn_State00_VarMotions[variant].mot2, HuntingHorn_State00_VarMotions[variant].blend2, HuntingHorn_State00_VarMotions[variant].start2);
+        if (pl->motion[0].playing == 0) {
+            pl->step++;
+            Player_SetMotionPair(pl, HuntingHorn_StanceEntryMotions[variant].mot2, HuntingHorn_StanceEntryMotions[variant].blend2, HuntingHorn_StanceEntryMotions[variant].start2);
         }
         break;
     case 3:
-        if (Player_IsLocal(p) == 1) {
-            if (p->stateVar1 == 0) {
-                p->stateVar0++;
-                p->stateVar1 = 60;
-                StageObj_K29_CreateOnPlayerDefault(p, 0xB, 1.0f);
-                switch (p->motionId[0]) {
+        if (Player_IsLocal(pl) == 1) {
+            if (pl->stateVar1 == 0) {
+                pl->stateVar0++;
+                pl->stateVar1 = 60;
+                StageObj_K29_CreateOnPlayerDefault(pl, 0xB, 1.0f);
+                switch (pl->motionId[0]) {
                 case 0x57D:
                 default:
-                    HuntingHorn_AddNote(p, 0);
+                    HuntingHorn_AddNote(pl, 0);
                     break;
                 case 0x57E:
-                    HuntingHorn_AddNote(p, 1);
+                    HuntingHorn_AddNote(pl, 1);
                     break;
                 case 0x57F:
-                    HuntingHorn_AddNote(p, 2);
+                    HuntingHorn_AddNote(pl, 2);
                     break;
                 }
             }
-            if (p->timer == 0) {
-                if (p->input.pressed & 0x80) {
-                    switch (p->motionId[0]) {
+            if (pl->timer == 0) {
+                if (pl->input.pressed & 0x80) {
+                    switch (pl->motionId[0]) {
                     case 0x57D:
                     default:
-                        Player_RequestState(p, 1, 0x13, 4);
+                        Player_RequestState(pl, PL_GROUP_WEAPON, HORN_PLAY_END, PL_SET_SNAP_POS);
                         break;
                     case 0x57E:
-                        Player_RequestState(p, 1, 0x1A, 4);
+                        Player_RequestState(pl, PL_GROUP_WEAPON, HORN_PLAY_END_NOTE1, PL_SET_SNAP_POS);
                         break;
                     case 0x57F:
-                        Player_RequestState(p, 1, 0x1B, 4);
+                        Player_RequestState(pl, PL_GROUP_WEAPON, HORN_PLAY_END_NOTE2, PL_SET_SNAP_POS);
                         break;
                     }
                 } else {
-                    switch (p->motionId[0]) {
+                    switch (pl->motionId[0]) {
                     case 0x57D:
-                        for (i = 0, r = HuntingHorn_State00_Fx57D; i < 3; i++, r++) {
-                            if (Motion_InFrameRange(p, 0, r->from, r->to) != 0) {
-                                Player_StickTurnMove(p, 0x180, 3.0f);
+                        for (i = 0, r = HuntingHorn_Note0WalkFrames; i < 3; i++, r++) {
+                            if (Motion_InFrameRange(pl, 0, r->from, r->to) != 0) {
+                                Player_StickTurnMove(pl, 0x180, 3.0f);
                             }
                         }
                         break;
                     case 0x57E:
-                        for (j = 0, r2 = HuntingHorn_State00_Fx57E; j < 3; j++, r2++) {
-                            if (Motion_InFrameRange(p, 0, r2->from, r2->to) != 0) {
-                                Player_StickTurnMove(p, 0x180, 1.5f);
+                        for (j = 0, r2 = HuntingHorn_Note1WalkFrames; j < 3; j++, r2++) {
+                            if (Motion_InFrameRange(pl, 0, r2->from, r2->to) != 0) {
+                                Player_StickTurnMove(pl, 0x180, 1.5f);
                             }
                         }
                         break;
                     case 0x57F:
-                        for (k = 0, r3 = HuntingHorn_State00_Fx57F; k < 2; k++, r3++) {
-                            if (Motion_InFrameRange(p, 0, r3->from, r3->to) != 0) {
-                                Player_StickTurnMove(p, 0x180, 1.5f);
+                        for (k = 0, r3 = HuntingHorn_Note2WalkFrames; k < 2; k++, r3++) {
+                            if (Motion_InFrameRange(pl, 0, r3->from, r3->to) != 0) {
+                                Player_StickTurnMove(pl, 0x180, 1.5f);
                             }
                         }
                         break;
                     }
-                    HuntingHorn_IdleInput(p, motion);
+                    HuntingHorn_PlayInput(pl, stance);
                 }
             }
         }
@@ -6754,27 +7212,27 @@ u32 D_00896D70[4] = {
 u32 D_00896D80[24] = {
 #include "game/00896D80.inc"
 };
-MotionBlend GreatSword_State02_Motions[8] = {
+MotionBlend GreatSword_OverheadBlends[8] = {
 #include "game/00896DE0.inc"
 };
-GunMotion Bowgun_State00_AimLayers[5] = {
+GunMotion Bowgun_FireMotions[5] = {
 #include "game/00896E00.inc"
 };
-s16 DualSwords_State01_Motions[8] = {
+s16 DualSwords_SideSlashMotions[8] = {
 #include "game/00896E20.inc"
 };
-u16 HuntingHorn_State00_Motions[8] = {
+u16 HuntingHorn_StanceMotions[8] = {
 #include "game/00896E30.inc"
 };
-HornMotion HuntingHorn_State00_VarMotions[6] = {
+HornMotion HuntingHorn_StanceEntryMotions[6] = {
 #include "game/00896E40.inc"
 };
-FrameRange HuntingHorn_State00_Fx57D[4] = {
+FrameRange HuntingHorn_Note0WalkFrames[4] = {
 #include "game/00896E80.inc"
 };
-FrameRange HuntingHorn_State00_Fx57E[4] = {
+FrameRange HuntingHorn_Note1WalkFrames[4] = {
 #include "game/00896EA0.inc"
 };
-FrameRange HuntingHorn_State00_Fx57F[2] = {
+FrameRange HuntingHorn_Note2WalkFrames[2] = {
 #include "game/00896EC0.inc"
 };

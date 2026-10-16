@@ -182,7 +182,7 @@ s32 CreateThread(struct ThreadParam *);
 s32 TerminateThread(s32);
 s32 DeleteThread(s32);
 s32 func_114C60(s32, void *);       /* StartThread */
-s32 func_18CC10(void);
+void Sys_EmptyHook(void);
 s32 Save_TestEventFlag(s32);
 s32 Save_TestListBit(u16 item);
 s32 LoadCompressedFile(u8 *dst, s32 id);
@@ -360,7 +360,7 @@ const char D_006D0720[10] = {
 #include "select/006D0720.inc"
 };
 
-void SeqA_Reset(void);
+void FadeA_Reset(void);
 void Chara_SelectTask(TaskSlot *t);
 void Game_ResetSubsystems(void);
 void Sound_LoadPspBank(void);
@@ -370,7 +370,7 @@ void Psp_UpdateScene(void);
 void Callbacks_Add(void (*fn)(void));
 void Psp_Draw(void);
 void Psp_DrawTexts(void);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 void Psp_Shutdown(PspWork *w);
 void Psp_StartThread(PspWork *w);
 void Psp_InitItemMask(void);
@@ -383,12 +383,12 @@ void Stream_FadeOut(s32 ch, s32 frames);
 s32 Psp_AnyObjectActive(void);
 void Psp_Release(void);
 void Stream_Stop(s32 ch);
-void Task_SetBootMode1(void);
+void Task_StartBootToGmSub(void);
 /* unit's own declaration: with the definition's u8 (void) (sub_main/unk_3D54B0.c), Psp_ConnectTask: 8 of 959 words differ */
 s32 NetMenu_Update(void);
 void Gfx_DrawBlackLineFixed(void);
 void Frame_Draw(void);
-void Task_SetBootMode2(void);
+void Task_StartBootToGmSubKeep(void);
 
 /* CONNECT's task, every frame: waits for the character selection's end,
  * connects to the PSP (step 4, by gPspWork->unk0: the link, the features,
@@ -415,7 +415,7 @@ void Psp_ConnectTask(TaskSlot *t) {
     trig = gPadState[0].pressed;
     switch (t->mode) {
     case 0:
-        SeqA_Reset();
+        FadeA_Reset();
         gSysSettings.galleryPlay = 2;
         gSysSettings.pspCharaWait = 1;
         TaskSlot_Set(Chara_SelectTask, 4);
@@ -431,10 +431,10 @@ void Psp_ConnectTask(TaskSlot *t) {
     case 2:
         Psp_Init();
         t->mode++;
-        SeqA_Start(2);
+        FadeA_Start(2);
         break;
     case 3:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             gPspWork->unk58 = 6;
             if (trig & 0x40) {
                 Psp_PlayCancelSe();
@@ -510,7 +510,7 @@ void Psp_ConnectTask(TaskSlot *t) {
                 Psp_PlayDecideSe();
                 gPspWork->unk58 = 0;
                 if (gPspWork->unkD4 == 0) {
-                    SeqA_Start(0xB);
+                    FadeA_Start(0xB);
                     Stream_Reset();
                     t->mode = 6;
                 } else {
@@ -746,7 +746,7 @@ void Psp_ConnectTask(TaskSlot *t) {
                 if (trig & 0x20) {
                     Psp_PlayConfirmSe();
                     gPspWork->unk58 = 0;
-                    SeqA_Start(0xB);
+                    FadeA_Start(0xB);
                     Stream_Reset();
                     t->mode = 6;
                 }
@@ -757,19 +757,19 @@ void Psp_ConnectTask(TaskSlot *t) {
         }
         break;
     case 5:
-        if ((u8)SeqA_GetState() != 1) {
+        if ((u8)FadeA_GetState() != 1) {
             Psp_Release();
             Stream_Stop(0);
             TaskSlot_End(t);
             gSysSettings.systemSaved = 0;
-            Task_SetBootMode1();
-            SeqA_Start(0xC);
+            Task_StartBootToGmSub();
+            FadeA_Start(0xC);
             return;
         }
         break;
     case 6:
-        if ((u8)SeqA_GetState() != 1) {
-            SeqA_Reset();
+        if ((u8)FadeA_GetState() != 1) {
+            FadeA_Reset();
             Stream_Reset();
             t->mode = 8;
             return;
@@ -778,7 +778,7 @@ void Psp_ConnectTask(TaskSlot *t) {
     case 7:
         if ((u8)NetMenu_Update()) {
             t->mode++;
-            SeqA_Start(7);
+            FadeA_Start(7);
         }
         Gfx_DrawBlackLineFixed();
         Frame_Draw();
@@ -787,14 +787,14 @@ void Psp_ConnectTask(TaskSlot *t) {
         Psp_Release();
         Stream_Stop(0);
         TaskSlot_End(t);
-        Task_SetBootMode2();
-        SeqA_Start(0xC);
+        Task_StartBootToGmSubKeep();
+        FadeA_Start(0xC);
         return;
     case 9:
         gPspWork->unk58 = 0xD;
         if (trig & 0x20) {
             Psp_PlayDecideSe();
-            SeqA_Start(0xB);
+            FadeA_Start(0xB);
             t->mode = 5;
         }
         break;
@@ -884,7 +884,7 @@ void Psp_StartThread(PspWork *w) {
         id = Psp_LoadModule("cdrom0:\\IOP\\MODULES\\USBPSPCM.IRX;1", 0x20, "-psp=1\0-unit=1\0-title=ULJM05066");
         if (id >= 0) {
             w->unk10 = id;
-            func_18CC10();
+            Sys_EmptyHook();
             if (gPspThreadId == 0) {
                 gPspState = 0;
                 tp.entry = Psp_Thread;
@@ -912,7 +912,7 @@ void Psp_Shutdown(PspWork *w) {
         Psp_UnloadModule(w->unk10);
         w->unk10 = -1;
         gPspThreadId = 0;
-        func_18CC10();
+        Sys_EmptyHook();
     }
 }
 
@@ -2621,7 +2621,7 @@ u32 gContentWarningText[4] = {
 u32 gCharaPartNames[8] = {
 #include "select/006CD810.inc"
 };
-u32 gNameEntryHelpTexts[4] = {
+u32 gCharaListHelpTexts[4] = {
 #include "select/006CD830.inc"
 };
 u32 gCharaPartHelpTexts[8] = {
@@ -2669,10 +2669,10 @@ u32 gGenderBackTexts[2] = {
 u32 gAgeFeatureTexts[2] = {
 #include "select/006CD8E8.inc"
 };
-u32 D_006CD8F0[2] = {
+u32 gHairRowTexts[2] = {
 #include "select/006CD8F0.inc"
 };
-u32 D_006CD8F8[2] = {
+u32 gFaceHairRowTexts[2] = {
 #include "select/006CD8F8.inc"
 };
 u32 gNoMatchTexts[4] = {
@@ -2774,16 +2774,16 @@ u32 gPspValueNames[8] = {
     (u32)gPspValueNames_0, (u32)gPspValueNames_1, (u32)gPspValueNames_2, (u32)gPspValueNames_3,
     (u32)gPspValueNames_4, (u32)gPspValueNames_5, 0x00000000, 0x00000000,
 };
-u32 gOptGameLabels[12] = {
+u32 gOptMainLabels[12] = {
 #include "select/006CDBE0.inc"
 };
-u32 gOptGameHelp[12] = {
+u32 gOptMainHelp[12] = {
 #include "select/006CDC10.inc"
 };
-u32 gOptSoundLabels[8] = {
+u32 gOptControlLabels[8] = {
 #include "select/006CDC40.inc"
 };
-u32 gOptSoundHelp[8] = {
+u32 gOptControlHelp[8] = {
 #include "select/006CDC60.inc"
 };
 u32 gSoundModeTexts[4] = {

@@ -349,8 +349,8 @@ void LobbyMenu_QueueLayers(void);
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
 void Lobby_SetBootMode(s32);
 void NetMode_ReleaseTextures(M2C_UNK unused0);
-u8 SeqA_GetState(void);
-void SeqA_Start(s32);
+u8 FadeA_GetState(void);
+void FadeA_Start(s32);
 void Game_ResetSubsystems(void);
 void NetMenu_Open(u8);
 u8 NetMenu_Update(void);
@@ -1472,7 +1472,7 @@ s32 LobbyLogin_Exit(void)
         Game_ResetSubsystems();
         NetMode_ReleaseTextures(0);
         LobbyMenu_SetDraw(0, 0, &Gfx_DrawBlackLineFixed, 0);
-        SeqA_Start(2);
+        FadeA_Start(2);
         LobbyStream_Stop();
         NetMenu_Open(8);
         gNetConnStep += 1;
@@ -1484,11 +1484,11 @@ s32 LobbyLogin_Exit(void)
                 Lobby_SetBootMode(1);
             }
             gNetConnStep += 1;
-            SeqA_Start(1);
+            FadeA_Start(1);
         }
         break;
     case 2:
-        if ((SeqA_GetState() & 0xFF) != 1) {
+        if ((FadeA_GetState() & 0xFF) != 1) {
             gNetConnStep += 1;
         }
         break;

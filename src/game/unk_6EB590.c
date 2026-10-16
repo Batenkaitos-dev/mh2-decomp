@@ -31,8 +31,8 @@ extern void *EffGunlance38_MotionDesc;
 extern u8 EffGunlance38_Power3[];
 extern u8 EffGunlance38_Power[];
 extern s8 EffKushala39_Life[];
-f32 Lure_RandUnit(void);
-f32 Lure_RandSigned(void);
+f32 Rand_Unit(void);
+f32 Rand_Signed(void);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 ObjAttach *ObjAttach_Alloc(s32 n);
 u8 Player_InCurrentArea(void *obj);
@@ -351,8 +351,8 @@ void EffKushala39_Setup(ObjAttach *o)
     v[1] += y;
     v[2] += r * EffKushala39_UnpackFloat(o->randBits * o->stateVar0, 14);
     b->phase = 0;
-    b->rotZ = 0.5f + (65536.0f * (360.0f * Lure_RandUnit())) / 360.0f;
-    b->scale = 0.01f * (100.0f + 20.0f * Lure_RandUnit());
+    b->rotZ = 0.5f + (65536.0f * (360.0f * Rand_Unit())) / 360.0f;
+    b->scale = 0.01f * (100.0f + 20.0f * Rand_Unit());
     b->seDone = 0;
     if (o->stateVar0 <= 0) {
         o->hitDelay += 7;
@@ -408,9 +408,9 @@ void EffKushala39_Run(ObjAttach *o)
         case 1:
             o->ownerMotion = 1;
             b->phase = 2;
-            b->rotZ = 0.5f + (65536.0f * (360.0f * Lure_RandUnit())) / 360.0f;
-            b->spin = 0.5f + (65536.0f * ((10.0f * Lure_RandSigned()) / EffKushala39_Life[2])) / 360.0f;
-            b->rise = (100.0f + 100.0f * Lure_RandUnit()) / EffKushala39_Life[2];
+            b->rotZ = 0.5f + (65536.0f * (360.0f * Rand_Unit())) / 360.0f;
+            b->spin = 0.5f + (65536.0f * ((10.0f * Rand_Signed()) / EffKushala39_Life[2])) / 360.0f;
+            b->rise = (100.0f + 100.0f * Rand_Unit()) / EffKushala39_Life[2];
             break;
         case 2:
         default:

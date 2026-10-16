@@ -1,17 +1,19 @@
 /*
- * main 0x182640-0x182670
+ * Sys_InitHeap (main 0x182640): sets up the main handle heap gHeap
+ * (include/heap.h; the heap code is in unk_1826D0.c) over a memory area,
+ * with gHeapBlocks' HEAP_BLOCK_COUNT blocks.
  */
 #include "common.h"
-#include "em.h"
-
-/* prototypes */
 #include "heap.h"
+
 extern HeapBlock gHeapBlocks[];
 extern Heap gHeap;
-/* end of prototypes */
 
 void Heap_Init(Heap *h, HeapBlock *blocks, s32 count, u32 start, u32 size, s32 align, s32 upward);
+
+/* Display's Sys_InitWork gives it the system heap's area, aligned to
+ * 0x40; the heap allocates upward. */
 void Sys_InitHeap(void *start, s32 size, s32 align)
 {
-    Heap_Init(&gHeap, gHeapBlocks, 0x3000, (u32)start, size, align, 0x1);
+    Heap_Init(&gHeap, gHeapBlocks, HEAP_BLOCK_COUNT, (u32)start, size, align, 1);
 }

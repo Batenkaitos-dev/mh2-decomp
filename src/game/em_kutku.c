@@ -21,7 +21,7 @@ void Em_EndStatus5(Em *em);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_ResetNotice(Em *em);
 void Em_BeginStatus2(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_EndStatus2(Em *em);
 void Em_EndStatus1(Em *em);
 void Em_BeginStatus4(Em *em);
@@ -48,7 +48,7 @@ void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 void QuestEm_Captured(Em *em);
 void EffKutku17_Create(Em *, s8);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
@@ -58,7 +58,7 @@ void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Em_ClearLowHpNeed(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SetGoal12(Em *em);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmKutku_State0_12: 66 of 130 words differ, EmKutku_State0_15: 64 of 128 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
@@ -208,9 +208,9 @@ s32 func_00786E50(Em *em);
 s32 Em_UpdateCombatTimer(Em *em);
 void Em_RaiseTrigger80Lax(Em *em);
 void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_Decay7EC(Em *em);
-void Em_Decay7F0Only(Em *em);
-void Em_Decay7F0(Em *em);
+void Em_DecayNeed2(Em *em);
+void Em_DecayNeed1Only(Em *em);
+void Em_DecayNeed1(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_SetGoal12Dist(Em *em, u8 *p);
 void Em_SetStatus1Timer(Em *em);
@@ -222,7 +222,7 @@ s32 Em_IsHeld(Em *em);
 void Em_CheckRageByHp(Em *em, s16 n);
 void Em_BreakPart(Em *em, s32 part);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 u8 Em_AllPlayersHere(Em *em);
 void Area_ToWorld(s32 area, f32 *pos, f32 *out);
 void Em_GetPitchToTarget(Em *em, s32 *out, f32 a, f32 b);
@@ -774,14 +774,14 @@ void EmKutku_State0_0E(Em *em)
 {
     s32 need2Max;
 
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -822,7 +822,7 @@ block_12:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->hitReactMode = 0;
-            Em_SetRow638(em, 0);
+            Em_SelectSightRow(em, 0);
             Em_LoadReactionSet(em, 0);
             EmKutku_EndState(em, 0, 0);
         }
@@ -930,7 +930,7 @@ void EmKutku_State0_12(Em *em)
     u8 type;
     u8 emType;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -975,14 +975,14 @@ void EmKutku_State0_12(Em *em)
 
 void EmKutku_State0_13(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -1005,7 +1005,7 @@ void EmKutku_State0_28(Em *em)
     case 0:
         em->step++;
         em->hitReactMode = 0;
-        Em_SetRow638(em, 0);
+        Em_SelectSightRow(em, 0);
         Em_LoadReactionSet(em, 0);
         break;
     case 1:
@@ -1025,7 +1025,7 @@ void EmKutku_State0_28(Em *em)
 
 void EmKutku_State0_14(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1060,7 +1060,7 @@ void EmKutku_State0_15(Em *em)
     u8 type;
     u8 emType;
 
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1191,14 +1191,14 @@ void EmKutku_State0_19(Em *em)
 
 void EmKutku_State0_1A(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -1213,7 +1213,7 @@ void EmKutku_State0_1A(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->hitReactMode = 0;
-            Em_SetRow638(em, 0);
+            Em_SelectSightRow(em, 0);
             Em_LoadReactionSet(em, 0);
             EmKutku_EndState(em, 0, 0);
         }
@@ -1223,7 +1223,7 @@ void EmKutku_State0_1A(Em *em)
 
 void EmKutku_State0_1B(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1284,7 +1284,7 @@ void EmKutku_State0_1D(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1320,7 +1320,7 @@ void EmKutku_State0_1F(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -3920,7 +3920,7 @@ void EmKutku_State4_0A(Em *em, EmWork *work)
 
 void EmKutku_State4_0B(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3948,7 +3948,7 @@ void EmKutku_State4_0B(Em *em, EmWork *work)
 
 void EmKutku_State4_0C(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4011,7 +4011,7 @@ void EmKutku_State4_0D(Em *em, EmWork *work)
 void EmKutku_State4_0E(Em *em, EmWork *work)
 {
     em->holdTimer = 5;
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -5531,22 +5531,22 @@ void EmKutku_Update(Em *em)
             break;
         case 4:
             Em_CheckLowHp(em, 0.2f);
-            Em_Decay7EC(em);
+            Em_DecayNeed2(em);
             Em_CheckCarryRequest(em);
-            Em_Decay7F0Only(em);
+            Em_DecayNeed1Only(em);
             break;
         case 2:
             Em_CheckLowHp(em, 0.2f);
-            Em_Decay7EC(em);
-            Em_Decay7F0(em);
+            Em_DecayNeed2(em);
+            Em_DecayNeed1(em);
             break;
         case 6:
             Em_CheckLowHp(em, 0.2f);
-            Em_Decay7EC(em);
-            Em_Decay7F0Only(em);
+            Em_DecayNeed2(em);
+            Em_DecayNeed1Only(em);
             break;
         default:
-            Em_Decay7F0Only(em);
+            Em_DecayNeed1Only(em);
             break;
         }
     }
@@ -5781,7 +5781,7 @@ void EmKutku_Update(Em *em)
         Em_UpdatePendingScript(em);
         break;
     }
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmKutku_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmKutku_RunState(em, (s32) w);
@@ -6658,7 +6658,7 @@ void EmKutku_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_BeginStatus2(em);
         break;
     case 23:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 24:
         Em_EndStatus2(em);

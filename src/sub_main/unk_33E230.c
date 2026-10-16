@@ -1,12 +1,16 @@
 /*
- * Queries and resets on the state at *gHudState (+8 is a Player).
+ * Small queries on the HUD state (gHudState, hud.h) for the other menu and
+ * field code: whether a town menu is open, whether the chat key may open
+ * the chat, how a monster shows on the map, the supply box and delivery
+ * menus of the local player, the menus' D-pad key repeat, and closing the
+ * field menu. The HUD's update and drawing are in unk_33E620.c.
  */
 #include "common.h"
 #include "scene.h"
 #include "em.h"
 #include "player.h"
 #include "hud.h"
-#include "objhead.h"
+
 
 /* prototypes */
 s32 Field_ControlEnabled(void);
@@ -20,6 +24,9 @@ extern u8 gHelpShow;
 s32 Game_IsOnline(void);
 
 extern s32 gTownMenuOpen[];
+
+/* Whether one of the online town's menus is open (the lobby's
+ * gTownMenuOpen); always 0 offline. */
 s32 Hud_TownMenuOpen(void)
 {
     if (Game_IsOnline() == 1 && gScene.online == 1) {
@@ -33,7 +40,11 @@ s32 Hud_ItemGetBusy(void)
     return gHudState->dropState != 0;
 }
 
-s32 Hud_FieldInputAllowed_Unk(void)
+/* Whether the chat key may open the chat input now (Hud_Update): not while
+ * the lobby's day state (Lobby_GetDayState) is busy, nor while the field
+ * control is off, and offline only once the game's condition 1 holds
+ * (Cond_Check). Returns 1 if allowed, else 0. */
+s32 Hud_ChatKeyAllowed(void)
 {
     if (Lobby_GetDayState() != 0) {
         return 0;
@@ -47,40 +58,45 @@ s32 Hud_FieldInputAllowed_Unk(void)
     return 1;
 }
 
-s32 Map_IsMaplessArea(u8 stage, u8 area);
+s32 Map_GetHalf(u8 stage, u8 area);
 extern u8 gMapIconKinds[];
 
-u8 Map_PlayerIconKind(void *obj)
+/* How monster em shows on the map: 0 not at all, else a DETECT_* level.
+ * Only a monster in the map half shown counts. A kind drawn as nothing or
+ * as a small dot (gMapIconKinds) shows only while paint-marked (1). Any
+ * other shows by the local player's
+ * detectLevel, with DETECT_TIMER added while it is marked; the detect
+ * skill's lower level alone shows nothing. */
+u8 Map_MonsterVisibility(Em *em)
 {
-    ObjHead *o = obj;
-    HudState *s;
-    u8 team;
-    u8 k;
-    u8 v;
+    HudState *hud;
+    u8 half;
+    u8 iconKind;
+    u8 level;
 
-    if (o->active == 0) {
+    if (em->active == 0) {
         return 0;
     }
-    s = gHudState;
-    team = s->maplessArea;
-    if (team != (u8)Map_IsMaplessArea(gScene.map, o->area)) {
+    hud = gHudState;
+    half = hud->mapHalf;
+    if (half != (u8)Map_GetHalf(gScene.map, em->area)) {
         return 0;
     }
-    k = gMapIconKinds[o->weaponType];
-    if (k == 0xFF || (k & 0xC0) == 0x80) {
-        if (o->painted != 0) {
+    iconKind = gMapIconKinds[em->type];
+    if (iconKind == MAP_ICON_NONE || (iconKind & (MAP_ICON_DOT | MAP_ICON_DOT_LARGE)) == MAP_ICON_DOT) {
+        if (em->painted != 0) {
             return 1;
         }
         return 0;
     }
-    v = s->unkAA;
-    if (o->painted != 0) {
-        v |= 1;
+    level = hud->detectLevel;
+    if (em->painted != 0) {
+        level |= DETECT_TIMER;
     }
-    if (v == 2) {
+    if (level == DETECT_SKILL) {
         return 0;
     }
-    return v;
+    return level;
 }
 
 s32 Hud_SupplyBoxOpen(void)
@@ -88,12 +104,14 @@ s32 Hud_SupplyBoxOpen(void)
     return gHudState->player->supplyBoxOpen != 0;
 }
 
+/* Whether the local player's delivery menu is up (Player.deliveryMenu). */
 s32 Hud_SupplyBoxActive(void)
 {
     return gHudState->player->deliveryMenu != 0;
 }
 
-s32 Hud_PlayerBusy8D5_Unk(void)
+/* Whether the local player's delivery window is open (Player.deliveryOpen). */
+s32 Hud_DeliveryOpen(void)
 {
     return gHudState->player->deliveryOpen != 0;
 }
@@ -103,11 +121,12 @@ void Hud_SetCancel(void)
     gHudState->cancel = 1;
 }
 
-void Hud_SetUnkA9(void)
+void Hud_SetCamReqStarted(void)
 {
     gHudState->camReqStarted = 1;
 }
 
+/* Clears the menus' D-pad key repeat (Menu_ReadDpad). */
 void Hud_ResetMenuState(void)
 {
     gHudState->dpadRepeatDir = 0;
@@ -116,34 +135,37 @@ void Hud_ResetMenuState(void)
     gHudState->dpadPrev = 0;
 }
 
-/* The D-pad of pad (stick included) with key repeat, into +0xAE and returned: a new press
- * at once, a held direction after 8 frames, then every 3. */
+/* The D-pad of pad (the stick counted as the D-pad) with key repeat, kept in
+ * gHudState->dpadRepeat and returned: a new press at once, a held direction
+ * after DPAD_REPEAT_DELAY frames, then every DPAD_REPEAT_RATE. */
 u16 Menu_ReadDpad(u8 pad)
 {
     u16 held;
-    u16 edge;
-    u16 rep;
+    u16 pressed;
+    u16 repeat;
 
     held = Pad_StickToDpad(pad);
-    edge = held & ~gHudState->dpadPrev;
-    if (edge != 0) {
-        rep = gHudState->dpadRepeatDir = edge;
-        gHudState->dpadRepeatTimer = 8;
+    pressed = held & ~gHudState->dpadPrev;
+    if (pressed != 0) {
+        repeat = gHudState->dpadRepeatDir = pressed;
+        gHudState->dpadRepeatTimer = DPAD_REPEAT_DELAY;
     } else if (held == 0) {
-        rep = gHudState->dpadRepeatDir = 0;
+        repeat = gHudState->dpadRepeatDir = 0;
     } else {
         gHudState->dpadRepeatTimer--;
-        rep = 0;
+        repeat = 0;
         if (gHudState->dpadRepeatTimer <= 0) {
-            gHudState->dpadRepeatTimer = 3;
-            rep = gHudState->dpadRepeatDir &= held;
+            gHudState->dpadRepeatTimer = DPAD_REPEAT_RATE;
+            repeat = gHudState->dpadRepeatDir &= held;
         }
     }
     gHudState->dpadPrev = held;
-    gHudState->dpadRepeat = rep;
-    return rep;
+    gHudState->dpadRepeat = repeat;
+    return repeat;
 }
 
+/* Closes the field menu: its mode and page, the scene's menu flag, the
+ * help line and any menu fade. */
 void FieldMenu_Exit(void)
 {
     gHudState->mode = 0;

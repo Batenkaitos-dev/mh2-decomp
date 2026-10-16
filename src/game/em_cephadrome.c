@@ -8,6 +8,7 @@
 #include "common.h"
 #include "quest.h"
 #include "em.h"
+#include "em_rathalos.h"
 #include "player.h"
 #include "scene.h"
 #include "objattach.h"
@@ -52,7 +53,7 @@ void EffEm08_CreateAtBone(Em *, s32, s32, s32, s32, s32);
 void EffEm14_Create(Em *, s8);
 void EffCephadrome21_Create(Em *, s32);
 void EffCephadrome23_Create(Em *, s32);
-void Em_SetRow638(Em *em, u8 idx);
+void Em_SelectSightRow(Em *em, u8 idx);
 void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
@@ -62,12 +63,12 @@ void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_SetRequest(Em *em, u8 a, u8 prio);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
-void Em_Clear7ECState(Em *em);
-void Em_Refill7F4(Em *em);
+void Em_ClearNeed2State(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_ResetNotice(Em *em);
 void Em_SpawnEffect06Bone(Em *em, s32 a);
-void Em_Add7EC(Em *em, s32 n);
-void Em_SetFlag6AE(Em *em, u8 a);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmCephadrome_State0_12: 45 of 94 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_ClearPoison(Em *em);
@@ -211,7 +212,7 @@ void Em_SetStatus2Timer(Em *em);
 s32 Em_UpdateCombatTimer(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_UpdatePendingScript(Em *em);
-void Em_ClearFlag6AE(Em *em);
+void Em_ClearHitReactMode(Em *em);
 void EmMelynx_RunState(Em *em);
 void Em_RaiseTrigger80Lax(Em *em);
 void Em_CheckLowHp(Em *em, f32 ratio);
@@ -508,14 +509,14 @@ void EmCephadrome_State0_02(Em *em, EmWork *work)
 
 void EmCephadrome_State0_03(Em *em, EmWork *work)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -555,14 +556,14 @@ block_12:
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetRow638(em, 0);
+            Em_SelectSightRow(em, 0);
             Em_LoadReactionSet(em, 0);
-            Em_Clear7ECState(em);
+            Em_ClearNeed2State(em);
             EmCephadrome_EndState(em);
         }
         break;
     }
-    Em_Add7EC(em, 0xDE);
+    Em_AddNeed2(em, 0xDE);
 }
 
 void EmCephadrome_State0_04(Em *em, EmWork *work, u8 variant)
@@ -606,7 +607,7 @@ void EmCephadrome_State0_04(Em *em, EmWork *work, u8 variant)
 
 void EmCephadrome_State0_05(Em *em, s32 unused, s32 variant)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -692,7 +693,7 @@ void EmCephadrome_State0_0E(Em *em, EmWork *work)
     f32 pos[3];
     f32 pos2[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -773,7 +774,7 @@ void EmCephadrome_State0_10(Em *em, EmWork *work)
     f32 pos[3];
     f32 pos2[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -825,7 +826,7 @@ void EmCephadrome_State0_10(Em *em, EmWork *work)
 
 void EmCephadrome_State0_12(Em *em)
 {
-    Em_SetFlag6AE(em, 2U);
+    Em_SetHitReactMode(em, 2U);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -886,14 +887,14 @@ void EmCephadrome_State0_13(Em *em)
 
 void EmCephadrome_State0_14(Em *em)
 {
-    Em_SetFlag6AE(em, 3U);
+    Em_SetHitReactMode(em, 3U);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = 0;
         em->lookAtTarget = 0;
         Em_SetMotion(em, 0x4F, 0, 0);
-        Em_SetRow638(em, 1);
+        Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
@@ -915,7 +916,7 @@ void EmCephadrome_State0_28(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetRow638(em, 0);
+        Em_SelectSightRow(em, 0);
         Em_LoadReactionSet(em, 0);
         break;
     case 1:
@@ -2414,7 +2415,7 @@ void EmCephadrome_State4_06(Em *em, EmWork *work)
 
 void EmCephadrome_State4_07(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2506,7 +2507,7 @@ void EmCephadrome_State4_0A(Em *em)
 
 void EmCephadrome_State4_0B(Em *em)
 {
-    Em_SetFlag6AE(em, 4U);
+    Em_SetHitReactMode(em, 4U);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3693,7 +3694,7 @@ void EmCephadrome_Update(Em *em)
         break;
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmCephadrome_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
         EmCephadrome_RunState(em, (s32) w);
@@ -4475,7 +4476,7 @@ void EmCephadrome_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_EndStatus1(em);
         break;
     case 19:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 21:
         Em_EndStatus4(em);
@@ -5714,7 +5715,7 @@ void EmMelynx_State0_0C(Em *em)
 {
     f32 pos[3];
 
-    Em_SetFlag6AE(em, 2);
+    Em_SetHitReactMode(em, 2);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -6600,7 +6601,7 @@ void EmMelynx_State4_03(Em *em)
     }
     if (em->step <= 3) {
         Em_SpawnEffect06Bone(em, 2);
-        Em_SetFlag6AE(em, 4);
+        Em_SetHitReactMode(em, 4);
     }
     switch (em->step) {
     case 0:
@@ -6984,7 +6985,7 @@ void EmMelynx_Update(Em *em)
         }
     }
     Em_UpdatePendingScript(em);
-    Em_ClearFlag6AE(em);
+    Em_ClearHitReactMode(em);
     EmMelynx_RunState(em);
     if (em->stateRequest != 0) {
         EmMelynx_RunState(em);
@@ -7209,56 +7210,62 @@ void EmMelynx_TableNop(void)
 {
 }
 
+/*
+ * The Rathalos family's motion sounds (called by EmRathalos_MotionEffects
+ * when the motion changes): per motion, the sounds to play at bones on
+ * given frames (Em_PlaySeAtBoneOnFrame(em, frame, sound, bone)). It lies
+ * in the Cephadrome range, before Rathalos's setup function.
+ */
 void EmRathalos_MotionSounds(Em *em, EmWork *work)
 {
     s16 motion;
 
     motion = work->sndMotion;
     switch (motion) {
-    case 0x3EA:
+    case EM_MOTION_ID(0, 0x2):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x1A);
         break;
-    case 0x3EB:
+    case EM_MOTION_ID(0, RATH_MOT_WALK):
         Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
         break;
-    case 0x3EC:
+    case EM_MOTION_ID(0, 0x4):
         Em_PlaySeAtBoneOnFrame(em, 0x28, 6, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x1A);
         break;
-    case 0x3ED:
+    case EM_MOTION_ID(0, RATH_MOT_TURN_RIGHT):
         Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
         break;
-    case 0x3EE:
+    case EM_MOTION_ID(0, RATH_MOT_TURN_LEFT):
         Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x14);
         break;
-    case 0x3EF:
+    case EM_MOTION_ID(0, 0x7):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x14);
         break;
-    case 0x3F0:
+    case EM_MOTION_ID(0, 0x8):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
         break;
-    case 0x3F1:
+    case EM_MOTION_ID(0, RATH_MOT_RUN_STOP):
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 6, 0x13, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 4, 0x1A);
         break;
-    case 0x3F2:
+    case EM_MOTION_ID(0, RATH_MOT_LIMP):
         Em_PlaySe6AtBoneOnFrame(em, 6, 0x59, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
         break;
-    case 0x3F3:
+    case EM_MOTION_ID(0, RATH_MOT_DESCEND):
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
@@ -7266,7 +7273,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
         break;
-    case 0x3F4:
+    case EM_MOTION_ID(0, RATH_MOT_GLIDE):
         Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 6);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0xC, 6);
@@ -7281,7 +7288,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x19, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x19, 6);
         break;
-    case 0x3F5:
+    case EM_MOTION_ID(0, 0xD):
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0xF, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xF, 6);
@@ -7289,11 +7296,11 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0xF, 0xC);
         break;
-    case 0x3F6:
-    case 0x43D:
-    case 0x43E:
-    case 0x440:
-    case 0x441:
+    case EM_MOTION_ID(0, RATH_MOT_FLY):
+    case EM_MOTION_ID(0, 0x55):
+    case EM_MOTION_ID(0, 0x56):
+    case EM_MOTION_ID(0, 0x58):
+    case EM_MOTION_ID(0, 0x59):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1A, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0x19, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 6);
@@ -7301,7 +7308,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x19, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x19, 6);
         break;
-    case 0x3F7:
+    case EM_MOTION_ID(0, RATH_MOT_HOVER):
         Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
         Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 6);
@@ -7311,12 +7318,12 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xD4, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xD8, 0xB, 0xC);
         break;
-    case 0x3F9:
+    case EM_MOTION_ID(0, RATH_MOT_RUN):
         Em_PlaySe6AtBoneOnFrame(em, 0x12, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
         break;
-    case 0x3FA:
+    case EM_MOTION_ID(0, RATH_MOT_TAKE_OFF):
         Em_PlaySeAtBoneOnFrame(em, 0x28, 7, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 0xC);
@@ -7327,7 +7334,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xBA, 0xB, 0xC);
         break;
-    case 0x3FB:
+    case EM_MOTION_ID(0, RATH_MOT_TOUCH_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1A);
@@ -7335,16 +7342,16 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 7, 9);
         break;
-    case 0x405:
+    case EM_MOTION_ID(0, 0x1D):
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x13, 0);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 8, 0xE, 6);
         break;
-    case 0x40A:
+    case EM_MOTION_ID(0, RATH_MOT_LIE):
         Em_PlaySe6AtBoneOnFrame(em, 0x24, 0x57, 0x23);
         break;
-    case 0x40B:
+    case EM_MOTION_ID(0, RATH_MOT_ROAR):
         Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 6, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x1A);
@@ -7367,7 +7374,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySe6AtBoneOnFrame(em, 0xB8, 0x4C, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x120, 0x22, 0x23);
         break;
-    case 0x40C:
+    case EM_MOTION_ID(0, 0x24):
         Em_PlaySe6AtBoneOnFrame(em, 0x24, 0x4C, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x14);
@@ -7376,14 +7383,14 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
         break;
-    case 0x40D:
+    case EM_MOTION_ID(0, RATH_MOT_GET_UP):
         Em_PlaySe6AtBoneOnFrame(em, 0x1E, 0x48, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
         break;
-    case 0x40E:
+    case EM_MOTION_ID(0, RATH_MOT_COLLAPSE):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x57, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
@@ -7391,13 +7398,13 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
         break;
-    case 0x40F:
+    case EM_MOTION_ID(0, RATH_MOT_LIE_DOWN):
         Em_PlaySe6AtBoneOnFrame(em, 2, 0x57, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x66, 0x10, 0x1A);
         break;
-    case 0x410:
+    case EM_MOTION_ID(0, RATH_MOT_LEAP):
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xD, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x66, 0xD, 6);
@@ -7421,7 +7428,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xD6, 0x1B, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0xDA, 0x1B, 6);
         break;
-    case 0x411:
+    case EM_MOTION_ID(0, RATH_MOT_LEAP_LAND):
         Em_PlaySe6AtBoneOnFrame(em, 0xC, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0xC);
@@ -7439,21 +7446,21 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x70, 6, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 6, 0x1A);
         break;
-    case 0x412:
+    case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN_B):
         Em_PlaySe6AtBoneOnFrame(em, 8, 0x4B, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
         break;
-    case 0x413:
+    case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN):
         Em_PlaySe6AtBoneOnFrame(em, 8, 0x4B, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
         break;
-    case 0x414:
+    case EM_MOTION_ID(0, RATH_MOT_SWOOP_DIVE):
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 0xB, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 6, 0x1A, 0x22);
@@ -7463,7 +7470,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1B, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1B, 6);
         break;
-    case 0x415:
+    case EM_MOTION_ID(0, RATH_MOT_SWOOP_CLAW):
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x5B, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
@@ -7492,13 +7499,13 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x1D, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x1D, 6);
         break;
-    case 0x416:
+    case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x18, 0x23);
         Em_PlaySe6AtBoneOnFrame(em, 6, 0x51, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
         break;
-    case 0x417:
+    case EM_MOTION_ID(0, RATH_MOT_FIREBALL):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
         if ((em->stateGroup != 8) || (em->state != 3)) {
             Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0x23);
@@ -7511,14 +7518,14 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xBB, 0x13, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x12, 0);
         break;
-    case 0x418:
+    case EM_MOTION_ID(0, 0x30):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x22, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x72, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x14);
         break;
-    case 0x419:
+    case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL_RISE):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 0xC);
@@ -7527,7 +7534,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xBE, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xC2, 0xB, 0xC);
         break;
-    case 0x41A:
+    case EM_MOTION_ID(0, RATH_MOT_FIREBALL_B):
         Em_PlaySe6AtBoneOnFrame(em, 0x14, 0x56, 0x23);
         Em_PlaySe6AtBoneOnFrame(em, 0x4E, 0x51, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x18, 0x23);
@@ -7541,7 +7548,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x12A, 0x12, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x11E, 0x13, 0);
         break;
-    case 0x41B:
+    case EM_MOTION_ID(0, RATH_MOT_ALERT_IDLE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x1A);
@@ -7550,7 +7557,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySe6AtBoneOnFrame(em, 0xE6, 0x5D, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x16, 0);
         break;
-    case 0x41C:
+    case EM_MOTION_ID(0, RATH_MOT_BACK_HOP):
         Em_PlaySe6AtBoneOnFrame(em, 0x16, 0x56, 0x23);
         Em_PlaySe6AtBoneOnFrame(em, 0x48, 0x51, 0x23);
         if ((em->stateGroup == 3) && (em->state == 0x10)) {
@@ -7565,7 +7572,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xAC, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xB0, 0xB, 0xC);
         break;
-    case 0x41D:
+    case EM_MOTION_ID(0, RATH_MOT_AIR_DIVE):
         Em_PlaySe6AtBoneOnFrame(em, 0x50, 0x49, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x58, 0x30, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0xF, 6);
@@ -7583,7 +7590,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xBC, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xB8, 0xB, 0xC);
         break;
-    case 0x41E:
+    case EM_MOTION_ID(0, RATH_MOT_TURN_IN_PLACE):
         Em_PlaySe6AtBoneOnFrame(em, 0x10, 0x56, 0x23);
         Em_PlaySe6AtBoneInFrames(em, 0x6E, 0x118, 0x5C, 0x23, 7, 0);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
@@ -7596,25 +7603,25 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 0xC, 6);
         break;
-    case 0x41F:
+    case EM_MOTION_ID(0, 0x37):
         Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 8, 8, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 5, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0x14);
         break;
-    case 0x421:
+    case EM_MOTION_ID(0, RATH_MOT_BACK_HOP_LAND):
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x12, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x28, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 2, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0xC);
         break;
-    case 0x423:
+    case EM_MOTION_ID(0, RATH_MOT_FEED):
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 6, 0x22, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
         break;
-    case 0x424:
+    case EM_MOTION_ID(0, 0x3C):
         Em_PlaySe6AtBoneOnFrame(em, 6, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
@@ -7626,7 +7633,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0xC, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
         break;
-    case 0x425:
+    case EM_MOTION_ID(0, 0x3D):
         Em_PlaySe6AtBoneOnFrame(em, 6, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
@@ -7635,7 +7642,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xAC, 3, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
         break;
-    case 0x426:
+    case EM_MOTION_ID(0, RATH_MOT_SHAKE_OFF):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
@@ -7644,19 +7651,19 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
         break;
-    case 0x427:
+    case EM_MOTION_ID(0, 0x3F):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1A);
         break;
-    case 0x428:
+    case EM_MOTION_ID(0, 0x40):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0x1A);
         break;
-    case 0x429:
+    case EM_MOTION_ID(0, 0x41):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x2A, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x2C);
@@ -7677,15 +7684,15 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x11E, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x122, 0xD, 0xC);
         break;
-    case 0x42A:
+    case EM_MOTION_ID(0, 0x42):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         break;
-    case 0x42B:
+    case EM_MOTION_ID(0, 0x43):
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0);
         break;
-    case 0x42C:
+    case EM_MOTION_ID(0, RATH_MOT_DIE):
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x10, 0x1A);
@@ -7701,30 +7708,30 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x174, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x176, 0xE, 0xC);
         break;
-    case 0x42D:
+    case EM_MOTION_ID(0, RATH_MOT_KNOCK_DOWN):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
         break;
-    case 0x42E:
-    case 0x433:
+    case EM_MOTION_ID(0, RATH_MOT_DOWN):
+    case EM_MOTION_ID(0, 0x4B):
         Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 0x31, 0x23);
         break;
-    case 0x42F:
+    case EM_MOTION_ID(0, RATH_MOT_DOWN_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1A);
         break;
-    case 0x430:
+    case EM_MOTION_ID(0, 0x48):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x14);
         break;
-    case 0x431:
+    case EM_MOTION_ID(0, 0x49):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 6);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x1D, 0xC);
@@ -7735,18 +7742,18 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x22, 7, 0);
         break;
-    case 0x432:
+    case EM_MOTION_ID(0, 0x4A):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
         break;
-    case 0x434:
+    case EM_MOTION_ID(0, 0x4C):
         Em_PlaySe6AtBoneOnFrame(em, 0x10, 0x54, 0x23);
         Em_PlaySe6AtBoneOnFrame(em, 0x74, 0x5A, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x1A);
         break;
-    case 0x435:
+    case EM_MOTION_ID(0, RATH_MOT_FALL):
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0xB, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x14, 0);
@@ -7754,20 +7761,20 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1B, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x1B, 0xC);
         break;
-    case 0x436:
+    case EM_MOTION_ID(0, RATH_MOT_FALL_LAND):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 7, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 0x2C, 0x23);
         break;
-    case 0x437:
+    case EM_MOTION_ID(0, RATH_MOT_HEAD_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x24, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x22, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x66, 0x22, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x22, 0x23);
         break;
-    case 0x438:
+    case EM_MOTION_ID(0, 0x50):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
@@ -7775,7 +7782,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x1A);
         break;
-    case 0x439:
+    case EM_MOTION_ID(0, 0x51):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
@@ -7783,11 +7790,11 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x14);
         break;
-    case 0x43A:
+    case EM_MOTION_ID(0, RATH_MOT_DIE_FALLING):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
         Em_PlaySe6AtBoneOnFrame(em, 0x32, 0x54, 0x23);
         break;
-    case 0x43B:
+    case EM_MOTION_ID(0, 0x53):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x10, 0x1A);
@@ -7802,7 +7809,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xA6, 0xD, 0xC);
         break;
-    case 0x43C:
+    case EM_MOTION_ID(0, 0x54):
         Em_PlaySeAtBoneOnFrame(em, 0x30, 0x2A, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xC);
@@ -7816,14 +7823,14 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x50, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x56, 3, 0x14);
         break;
-    case 0x43F:
+    case EM_MOTION_ID(0, RATH_MOT_SWOOP):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1A, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x1B, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1B, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1C, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1C, 0x22);
         break;
-    case 0x442:
+    case EM_MOTION_ID(0, RATH_MOT_LEVEL_OUT):
         Em_PlaySe6AtBoneOnFrame(em, 0x30, 0x51, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 0xC);
@@ -7832,7 +7839,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xB, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x80, 0xB, 0xC);
         break;
-    case 0x443:
+    case EM_MOTION_ID(0, RATH_MOT_CHARGE_TRIP):
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0xB0, 3, 0x14);
@@ -7848,7 +7855,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x10A, 0xC, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x10E, 0xC, 0xC);
         break;
-    case 0x444:
+    case EM_MOTION_ID(0, RATH_MOT_FLIP):
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
@@ -7862,25 +7869,25 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xD2, 0xC, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xD6, 0xC, 0xC);
         break;
-    case 0x445:
+    case EM_MOTION_ID(0, RATH_MOT_FLIP_FALL):
         Em_PlaySeAtBoneOnFrame(em, 8, 0xA, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0xA, 0xC);
         break;
-    case 0x446:
+    case EM_MOTION_ID(0, RATH_MOT_FLIP_LAND):
         Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 8, 8, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x68, 5, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 1, 0x14);
         break;
-    case 0x447:
+    case EM_MOTION_ID(0, RATH_MOT_TRAPPED):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x23);
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
         break;
-    case 0x448:
+    case EM_MOTION_ID(0, RATH_MOT_STRUGGLE):
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
@@ -7890,7 +7897,7 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySe6AtBoneOnFrame(em, 0x28, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
         break;
-    case 0x449:
+    case EM_MOTION_ID(0, RATH_MOT_DOWNED):
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
@@ -7898,14 +7905,14 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x23);
         Em_PlaySe6AtBoneOnFrame(em, 4, 0x53, 0x23);
         break;
-    case 0x44A:
+    case EM_MOTION_ID(0, RATH_MOT_DOWNED_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 6);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0x20, 0x23);
         
-    case 0x3E9:
+    case EM_MOTION_ID(0, RATH_MOT_IDLE):
     default:
         break;
     }

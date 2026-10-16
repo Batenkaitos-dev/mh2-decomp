@@ -389,117 +389,117 @@ Player_RunWeaponState = 0x0071B830; // type:func
 GreatSword_RunState = 0x006B1290; // type:func
 // (was game_entry: the first function after the overlay's 0x40 bytes of padding, which seeds the
 // disassembler)
-GreatSword_State00 = 0x006AF280; // type:func
-GreatSword_State01 = 0x006AF6F0; // type:func
-GreatSword_State02 = 0x006AFBE0; // type:func
-GreatSword_State03 = 0x006B04A0; // type:func
-GreatSword_State04 = 0x006B05D0; // type:func
-GreatSword_State19 = 0x006B06E0; // type:func
-GreatSword_State26 = 0x006B0BD0; // type:func
+GreatSword_StateSweepLeft = 0x006AF280; // type:func
+GreatSword_StateSweepRight = 0x006AF6F0; // type:func
+GreatSword_StateOverhead = 0x006AFBE0; // type:func
+GreatSword_StateBounce = 0x006B04A0; // type:func
+GreatSword_StateStrike = 0x006B05D0; // type:func
+GreatSword_StateCharge = 0x006B06E0; // type:func
+GreatSword_StateChargeSlash = 0x006B0BD0; // type:func
 // heavy and light bowguns (weapon types 1 and 5)
 Bowgun_RunState = 0x006B2390; // type:func
-Bowgun_State00 = 0x006B1C20; // type:func
-Bowgun_State01 = 0x006B1F80; // type:func
-Bowgun_State02 = 0x006B2250; // type:func
-Bowgun_State03 = 0x006B22F0; // type:func
-Bowgun_State06 = 0x006B20B0; // type:func
+Bowgun_StateFire = 0x006B1C20; // type:func
+Bowgun_StateReload = 0x006B1F80; // type:func
+Bowgun_StateDryFire = 0x006B2250; // type:func
+Bowgun_StateMelee = 0x006B22F0; // type:func
+Bowgun_StateDrawReload = 0x006B20B0; // type:func
 // hammer (weapon type 2)
 Hammer_RunState = 0x006B3ED0; // type:func
-Hammer_State00 = 0x006B28D0; // type:func
-Hammer_State01 = 0x006B2A10; // type:func
-Hammer_State02 = 0x006B2CF0; // type:func
-Hammer_State03 = 0x006B2F00; // type:func
-Hammer_State04 = 0x006B3140; // type:func
-Hammer_State05 = 0x006B3210; // type:func
-Hammer_State06 = 0x006B3580; // type:func
-Hammer_State07 = 0x006B3910; // type:func
-Hammer_State08 = 0x006B3A40; // type:func
-Hammer_State09 = 0x006B3C10; // type:func
-Hammer_State10 = 0x006B3DB0; // type:func
+Hammer_StateDownAttack = 0x006B28D0; // type:func
+Hammer_StateCombo1 = 0x006B2A10; // type:func
+Hammer_StateCombo2 = 0x006B2CF0; // type:func
+Hammer_StateCharge = 0x006B2F00; // type:func
+Hammer_StateChargeWalk = 0x006B3140; // type:func
+Hammer_StateChargeSpin = 0x006B3210; // type:func
+Hammer_StateChargeRelease = 0x006B3580; // type:func
+Hammer_StateChargeRelease2 = 0x006B3910; // type:func
+Hammer_StateDrawAttack = 0x006B3A40; // type:func
+Hammer_StateFinisher = 0x006B3C10; // type:func
+Hammer_StateBounce = 0x006B3DB0; // type:func
 // lance (weapon type 3)
 Lance_RunState = 0x006B5340; // type:func
-Lance_State00 = 0x006B4630; // type:func
-Lance_State01 = 0x006B4910; // type:func
-Lance_State02 = 0x006B4B40; // type:func
-Lance_State03 = 0x006B4C40; // type:func
-Lance_State04 = 0x006B4F40; // type:func
-Lance_State05 = 0x006B5010; // type:func
-Lance_State06 = 0x006B5130; // type:func
-Lance_State07 = 0x006B5210; // type:func
+Lance_StateThrust = 0x006B4630; // type:func
+Lance_StateUpperThrust = 0x006B4910; // type:func
+Lance_StateGuardThrust = 0x006B4B40; // type:func
+Lance_StateCharge = 0x006B4C40; // type:func
+Lance_StateChargeStop = 0x006B4F40; // type:func
+Lance_StateChargeHit = 0x006B5010; // type:func
+Lance_StateChargeFinish = 0x006B5130; // type:func
+Lance_StateBounce = 0x006B5210; // type:func
 // sword and shield (weapon type 4)
 SwordShield_RunState = 0x006B6460; // type:func
-SwordShield_State00 = 0x006B57E0; // type:func
-SwordShield_State01 = 0x006B5C20; // type:func
-SwordShield_State02 = 0x006B5EA0; // type:func
-SwordShield_State03 = 0x006B5FA0; // type:func
-SwordShield_State04 = 0x006B6050; // type:func
-SwordShield_State05 = 0x006B6330; // type:func
+SwordShield_StateCombo = 0x006B57E0; // type:func
+SwordShield_StateJumpSlash = 0x006B5C20; // type:func
+SwordShield_StateSideSlash = 0x006B5EA0; // type:func
+SwordShield_StateGuardSlash = 0x006B5FA0; // type:func
+SwordShield_StateRisingSlash = 0x006B6050; // type:func
+SwordShield_StateBounce = 0x006B6330; // type:func
 // dual swords (weapon type 6)
 DualSwords_RunState = 0x006B7F20; // type:func
-DualSwords_State00 = 0x006B68B0; // type:func
-DualSwords_State01 = 0x006B6E30; // type:func
-DualSwords_State02 = 0x006B6F90; // type:func
-DualSwords_State03 = 0x006B7240; // type:func
-DualSwords_State04 = 0x006B7470; // type:func
-DualSwords_State05 = 0x006B75F0; // type:func
-DualSwords_State06 = 0x006B7AD0; // type:func
-DualSwords_State07 = 0x006B7D60; // type:func
-DualSwords_State08 = 0x006B7DF0; // type:func
+DualSwords_StateCombo = 0x006B68B0; // type:func
+DualSwords_StateSideSlash = 0x006B6E30; // type:func
+DualSwords_StateJumpSlash = 0x006B6F90; // type:func
+DualSwords_StateRisingSlash = 0x006B7240; // type:func
+DualSwords_StateDemonToggle = 0x006B7470; // type:func
+DualSwords_StateDemonSideSlash = 0x006B75F0; // type:func
+DualSwords_StateDemonDance = 0x006B7AD0; // type:func
+DualSwords_StateDanceStop = 0x006B7D60; // type:func
+DualSwords_StateBounce = 0x006B7DF0; // type:func
 // long sword (weapon type 7)
 LongSword_RunState = 0x006BA6B0; // type:func
-LongSword_State00 = 0x006B85B0; // type:func
-LongSword_State01 = 0x006B8A70; // type:func
-LongSword_State02 = 0x006B8D10; // type:func
-LongSword_State03 = 0x006B90C0; // type:func
-LongSword_State04 = 0x006B91F0; // type:func
-LongSword_State07 = 0x006B93B0; // type:func
-LongSword_State08 = 0x006B9860; // type:func
-LongSword_State09 = 0x006B9A70; // type:func
-LongSword_State10 = 0x006B9D30; // type:func
-LongSword_State14 = 0x006B9EF0; // type:func
-LongSword_State15 = 0x006BA170; // type:func
-LongSword_State16 = 0x006BA510; // type:func
+LongSword_StateSlash = 0x006B85B0; // type:func
+LongSword_StateSlash2 = 0x006B8A70; // type:func
+LongSword_StateFadeSlash = 0x006B8D10; // type:func
+LongSword_StateBounce = 0x006B90C0; // type:func
+LongSword_StateThrust = 0x006B91F0; // type:func
+LongSword_StateSpirit1 = 0x006B93B0; // type:func
+LongSword_StateSpiritThrust = 0x006B9860; // type:func
+LongSword_StateSpirit2 = 0x006B9A70; // type:func
+LongSword_StateSpiritRising = 0x006B9D30; // type:func
+LongSword_StateRisingSlash = 0x006B9EF0; // type:func
+LongSword_StateSpirit3 = 0x006BA170; // type:func
+LongSword_StateExtraSlash = 0x006BA510; // type:func
 // hunting horn (weapon type 8)
 HuntingHorn_RunState = 0x006BCAF0; // type:func
-HuntingHorn_State00 = 0x006BB4B0; // type:func
-HuntingHorn_State09 = 0x006BB9D0; // type:func
-HuntingHorn_State10 = 0x006BBCD0; // type:func
-HuntingHorn_State11 = 0x006BBE70; // type:func
-HuntingHorn_State12 = 0x006BBFF0; // type:func
-HuntingHorn_State14 = 0x006BC350; // type:func
-HuntingHorn_State15 = 0x006BC480; // type:func
-HuntingHorn_State19 = 0x006BC7F0; // type:func
-HuntingHorn_State20 = 0x006BC9B0; // type:func
-HuntingHorn_State24 = 0x006BC200; // type:func
+HuntingHorn_StatePlay = 0x006BB4B0; // type:func
+HuntingHorn_StateSwingLeft = 0x006BB9D0; // type:func
+HuntingHorn_StateSwingRight = 0x006BBCD0; // type:func
+HuntingHorn_StateSwingDown = 0x006BBE70; // type:func
+HuntingHorn_StateSwingDownNext = 0x006BBFF0; // type:func
+HuntingHorn_StatePlayStart = 0x006BC350; // type:func
+HuntingHorn_StatePlayAttack = 0x006BC480; // type:func
+HuntingHorn_StatePlayEnd = 0x006BC7F0; // type:func
+HuntingHorn_StateSlam = 0x006BC9B0; // type:func
+HuntingHorn_StateBounce = 0x006BC200; // type:func
 // gunlance (weapon type 9)
 Gunlance_RunState = 0x006C0190; // type:func
-Gunlance_State00 = 0x006BECF0; // type:func
-Gunlance_State01 = 0x006BF090; // type:func
-Gunlance_State02 = 0x006BF520; // type:func
-Gunlance_State03 = 0x006BF800; // type:func
-Gunlance_State04 = 0x006BFAE0; // type:func
-Gunlance_State05 = 0x006BFC50; // type:func
-Gunlance_State06 = 0x006BFD40; // type:func
-Gunlance_State07 = 0x006BFFB0; // type:func
-Gunlance_State14 = 0x006C00E0; // type:func
+Gunlance_StateThrust = 0x006BECF0; // type:func
+Gunlance_StateShell = 0x006BF090; // type:func
+Gunlance_StateGuardThrust = 0x006BF520; // type:func
+Gunlance_StateWyvernFire = 0x006BF800; // type:func
+Gunlance_StateUpperThrust = 0x006BFAE0; // type:func
+Gunlance_StateReload = 0x006BFC50; // type:func
+Gunlance_StateLunge = 0x006BFD40; // type:func
+Gunlance_StateBounce = 0x006BFFB0; // type:func
+Gunlance_StateShellEmpty = 0x006C00E0; // type:func
 // bow (weapon type 10)
 Bow_RunState = 0x006C22B0; // type:func
-Bow_State00 = 0x006C0F90; // type:func
-Bow_State01 = 0x006C1270; // type:func
-Bow_State02 = 0x006C1630; // type:func
-Bow_State03 = 0x006C16C0; // type:func
-Bow_State04 = 0x006C19A0; // type:func
-Bow_State05 = 0x006C1A60; // type:func
-Bow_State06 = 0x006C1C00; // type:func
-Bow_State08 = 0x006C1D60; // type:func
-Bow_State12 = 0x006C1F90; // type:func
-Bow_State16 = 0x006C2030; // type:func
-Bow_State17 = 0x006C20C0; // type:func
+Bow_StateFire = 0x006C0F90; // type:func
+Bow_StateCharge = 0x006C1270; // type:func
+Bow_StateToIdle = 0x006C1630; // type:func
+Bow_StateStab = 0x006C16C0; // type:func
+Bow_StateStab2 = 0x006C19A0; // type:func
+Bow_StateAim = 0x006C1A60; // type:func
+Bow_StateChargeWalk = 0x006C1C00; // type:func
+Bow_StateEvade = 0x006C1D60; // type:func
+Bow_StateDrawAim = 0x006C1F90; // type:func
+Bow_StateBounce = 0x006C2030; // type:func
+Bow_StateLoadCoating = 0x006C20C0; // type:func
 // the charge level 0-3 from the charge time +0x7D4 (from 40 frames, one level per 20)
 GreatSword_ChargeLevel = 0x006B0670; // type:func
 // the attack power (+0x8A2: 100-130%) and attack id by the charge level +0x7D8
 GreatSword_SetChargeAttack = 0x006B0B30; // type:func
-// light bowgun: the ammo kinds the equipped gun fires rapidly (gun id -> mask table D_45EE20)
+// light bowgun: the ammo kinds the equipped gun fires rapidly (gun id -> mask table gRapidFireAmmo)
 Bowgun_RapidFireMask = 0x006B1A70; // type:func
 // whether the loaded ammo kind (+0x534) is in that mask
 Bowgun_CanRapidFire = 0x006B1AD0; // type:func
@@ -756,21 +756,21 @@ Gunlance_AddAimWeight = 0x006BF7C0; // type:func
 // clears hornNoteSlot and hornNotes
 HuntingHorn_ClearNotes = 0x006BE9C0; // type:func
 // the note (1-3) the current attack state plays, 0 none (motion 0x584 only from frame 72)
-HuntingHorn_AttackNote = 0x006BD570; // type:func
+HuntingHorn_PlayingNote = 0x006BD570; // type:func
 // the colour of that note in the horn's note set (D_44AE30[bladeSpecial * 3 + note - 1])
-HuntingHorn_AttackNoteColour = 0x006BEBD0; // type:func
+HuntingHorn_PlayingNoteColour = 0x006BEBD0; // type:func
 // local player in a horn attack state: 1 (2 with unk006 set), else 0
-HuntingHorn_AttackStateKind = 0x006BE9F0; // type:func
-// HuntingHorn_AttackStateKind, else 3 in the recital states (1/0F..1/22); 0: Player_Update clears the notes
-HuntingHorn_StateKind = 0x006BEAE0; // type:func
+HuntingHorn_PlayStanceKind = 0x006BE9F0; // type:func
+// HuntingHorn_PlayStanceKind, else 3 in the recital states (1/0F..1/22); 0: Player_Update clears the notes
+HuntingHorn_PlayKind = 0x006BEAE0; // type:func
 // the player's frame update (attack, defence and resists, the state, ...)
 Player_Update = 0x007227F0; // type:func
-// the draw states of Player_TryDrawWeapon per weapon type (the others request 2/03 or 2/17 directly)
-Hammer_Draw = 0x006B45B0; // type:func
-HuntingHorn_Draw = 0x006BD520; // type:func
-DualSwords_Draw = 0x006B8490; // type:func
-LongSword_Draw = 0x006BB190; // type:func
-Bow_Draw = 0x006C2870; // type:func
+// the draw states of Player_HoldSpecialInput per weapon type (the others request 2/03 or 2/17 directly)
+Hammer_StartCharge = 0x006B45B0; // type:func
+HuntingHorn_StartPlaying = 0x006BD520; // type:func
+DualSwords_DemonToggle = 0x006B8490; // type:func
+LongSword_SpiritDraw = 0x006BB190; // type:func
+Bow_DrawToAim = 0x006C2870; // type:func
 // ObjAttach kind 0 (Eff00) on the owner, type kind (GreatSword, Hammer, Bowgun states); CreateDual (DualSwords) also sets unk007
 Eff00_Create = 0x006C2880; // type:func
 Eff00_CreateDual = 0x006C2950; // type:func
@@ -806,10 +806,10 @@ Player_PickStatusState = 0x0070DFD0; // type:func
 Hammer_ChargeLevel = 0x006B4270; // type:func
 // the charged attack of the level: 0 state 1/0F, 1 1/06, 2 and up 1/07 (with Player flag 0x1000: 1/10, 1/11, 1/05 keeping chargeLevel)
 Hammer_ReleaseCharge = 0x006B42A0; // type:func
-// the weapon state an evasion (Player_State0_1C) goes on to: sword and shield 1/0B, dual swords 1/11 (after frame 44 with a direction); the hammer 1/03 (the charge, button 0x80 held at frame 40)
+// the weapon state an evasion (Player_StateRoll) goes on to: sword and shield 1/0B, dual swords 1/11 (after frame 44 with a direction); the hammer 1/03 (the charge, button 0x80 held at frame 40)
 SwordShield_EvadeAttack = 0x006B67D0; // type:func
 DualSwords_EvadeAttack = 0x006B8480; // type:func
-Hammer_EvadeCharge = 0x006B45A0; // type:func
+Hammer_ChargeFromRoll = 0x006B45A0; // type:func
 // (player, &flags, &level): the weapon stats 0-3 and 7 (Player_GetWeaponStat) as flags 0x10, 0x20, 0x40, 0x80, 0x200 and the value
 Player_WeaponElementFlags = 0x006DD700; // type:func
 // the attack factor (Player +0x724), ammo (+0x534) and element flags of the shot
@@ -827,194 +827,192 @@ Player_InGuardArc = 0x00734740; // type:func
 // ---- round 13 (ngame): end ----
 
 // The player's non-weapon state groups (Player_RunState: group 1 is the weapon's, Player_RunWeaponState).
-// Systematic names, as the families': Player_RunGroup<G> switches on the state (+0x15) to one function per
-// state, called (player, variant); Player_State<G>_<SS> is the function group G's dispatcher calls for state
-// SS (hex); a function several states share is named after the first (the list below). Group 0 holds the
-// common actions: the evasions (0x1C, and 0x31/0x32, 0x6B-0x6E by the stick; the weapons' states start
-// them on button 0x40 with 75 stamina), item and tool use (0x5F, 0x63, 0x73). Group 2 includes the
-// recoveries sped up by pressing buttons (0x15, 0x16, 0x18: timers halved or doubled by skills).
-// Player_State0_01: group 0 states 01, 02, 03, 07, 12, 13, 1A, 24, 49, 74
-// Player_State0_04: group 0 states 04, 05, 0A, 0F, 10, 17
-// Player_State0_06: group 0 states 06, 09
-// Player_State0_08: group 0 states 08, 1D
-// Player_State0_0B: group 0 states 0B, 0E, 72
-// Player_State0_11: group 0 states 11, 1B
-// Player_State0_14: group 0 states 14, 18
-// Player_State0_15: group 0 states 15, 30, 38
-// Player_State0_1C: group 0 states 1C, 2D
-// Player_State0_1F: group 0 states 1F, 46
-// Player_State0_20: group 0 states 20, 22, 45
-// Player_State0_28: group 0 states 28, 77
-// Player_State0_29: group 0 states 29, 78
-// Player_State0_31: group 0 states 31, 32
-// Player_State0_36: group 0 states 36, 7A
-// Player_State0_40: group 0 states 40, 43
-// Player_State0_41: group 0 states 41, 42
-// Player_State0_47: group 0 states 47, 4A, 51, 52, 5C, 75, 7C
-// Player_State0_4B: group 0 states 4B, 4D
-// Player_State0_4E: group 0 states 4E, 50
-// Player_State0_54: group 0 states 54, 64
-// Player_State0_56: group 0 states 56, 79
-// Player_State0_57: group 0 states 57, 7B
-// Player_State0_58: group 0 states 58, 5A
-// Player_State0_5D: group 0 states 5D, 60, 76, 7D
-// Player_State0_5E: group 0 states 5E, 62
-// Player_State0_5F: group 0 states 5F, 63
-// Player_State0_65: group 0 states 65, 66
-// Player_State0_6B: group 0 states 6B, 6C, 6D, 6E
-// Player_State2_01: group 2 states 01, 0A
-// Player_State2_03: group 2 states 03, 0C, 26
-// Player_State2_07: group 2 states 07, 0E
-// Player_State2_09: group 2 states 09, 0D
-// Player_State2_0F: group 2 states 0F, 1A
-// Player_State2_10: group 2 states 10, 19
-// Player_State2_11: group 2 states 11, 12
-// Player_State2_16: group 2 states 16, 18
-// Player_State2_1B: group 2 states 1B, 1E
-// Player_State2_1D: group 2 states 1D, 25
-// Player_State2_21: group 2 states 21, 24
-// Player_State2_22: group 2 states 22, 23
-// Player_State3_00: group 3 states 00, 01, 02
-// Player_State5_00: group 5 states 00, 09
-// Player_State5_03: group 5 states 03, 04, 0A
-// Player_State5_05: group 5 states 05, 06
-// Player_State5_07: group 5 states 07, 08
-// Player_State6_06: group 6 states 06, 0E
-// Player_State6_09: group 6 states 09, 0D, 0F
-Player_RunGroup0 = 0x0071AF70; // type:func
-Player_State0_00 = 0x007124E0; // type:func
-Player_State0_01 = 0x007126A0; // type:func
-Player_State0_04 = 0x00712D50; // type:func
-Player_State0_06 = 0x00713120; // type:func
-Player_State0_08 = 0x00713900; // type:func
-Player_State0_0B = 0x00713C50; // type:func
-Player_State0_0C = 0x00713A80; // type:func
-Player_State0_0D = 0x00713C40; // type:func
-Player_State0_11 = 0x00714230; // type:func
-Player_State0_14 = 0x007145A0; // type:func
-Player_State0_15 = 0x00713550; // type:func
-Player_State0_16 = 0x007144D0; // type:func
-Player_State0_19 = 0x00714720; // type:func
-Player_State0_1C = 0x00714800; // type:func
-Player_State0_1E = 0x00714B60; // type:func
-Player_State0_1F = 0x00714CF0; // type:func
-Player_State0_20 = 0x00715090; // type:func
-Player_State0_21 = 0x00715460; // type:func
-Player_State0_25 = 0x007155E0; // type:func
-Player_State0_26 = 0x00715670; // type:func
-Player_State0_27 = 0x00715720; // type:func
-Player_State0_28 = 0x00715850; // type:func
-Player_State0_29 = 0x00715A70; // type:func
-Player_State0_2A = 0x00715C70; // type:func
-Player_State0_2B = 0x00715D20; // type:func
-Player_State0_2C = 0x00715DE0; // type:func
-Player_State0_2E = 0x00715E70; // type:func
-Player_State0_2F = 0x00715FB0; // type:func
-Player_State0_31 = 0x007160B0; // type:func
-Player_State0_33 = 0x00716360; // type:func
-Player_State0_34 = 0x00716410; // type:func
-Player_State0_35 = 0x007165F0; // type:func
-Player_State0_36 = 0x007166B0; // type:func
-Player_State0_37 = 0x00716A10; // type:func
-Player_State0_39 = 0x00716B20; // type:func
-Player_State0_3A = 0x00716BB0; // type:func
-Player_State0_3B = 0x00716C50; // type:func
-Player_State0_3C = 0x00716D60; // type:func
-Player_State0_3D = 0x00716E30; // type:func
-Player_State0_3E = 0x00716F40; // type:func
-Player_State0_3F = 0x00716FD0; // type:func
-Player_State0_40 = 0x00717350; // type:func
-Player_State0_41 = 0x00717420; // type:func
-Player_State0_44 = 0x007174E0; // type:func
-Player_State0_47 = 0x00717A60; // type:func
-Player_State0_48 = 0x007168C0; // type:func
-Player_State0_4B = 0x00718440; // type:func
-Player_State0_4C = 0x00718380; // type:func
-Player_State0_4E = 0x00718660; // type:func
-Player_State0_4F = 0x00718760; // type:func
-Player_State0_53 = 0x00718880; // type:func
-Player_State0_54 = 0x00718C10; // type:func
-Player_State0_55 = 0x00718E60; // type:func
-Player_State0_56 = 0x007195B0; // type:func
-Player_State0_57 = 0x00719670; // type:func
-Player_State0_58 = 0x00719790; // type:func
-Player_State0_59 = 0x00719A50; // type:func
-Player_State0_5B = 0x00719B50; // type:func
-Player_State0_5D = 0x00718060; // type:func
-Player_State0_5E = 0x00719C50; // type:func
-Player_State0_5F = 0x00719DE0; // type:func
-Player_State0_61 = 0x0071A090; // type:func
-Player_State0_65 = 0x0071A240; // type:func
-Player_State0_67 = 0x0071A3B0; // type:func
-Player_State0_68 = 0x0071A490; // type:func
-Player_State0_69 = 0x0071A5A0; // type:func
-Player_State0_6A = 0x0071A660; // type:func
-Player_State0_6B = 0x0071A720; // type:func
-Player_State0_6F = 0x0071AB60; // type:func
-Player_State0_70 = 0x0071AC50; // type:func
-Player_State0_71 = 0x007199A0; // type:func
-Player_State0_73 = 0x0071AD10; // type:func
-Player_RunGroup2 = 0x0071EE50; // type:func
-Player_State2_00 = 0x0071B940; // type:func
-Player_State2_01 = 0x0071BA20; // type:func
-Player_State2_02 = 0x0071BF60; // type:func
-Player_State2_03 = 0x0071C260; // type:func
-Player_State2_04 = 0x0071C550; // type:func
-Player_State2_05 = 0x0071C680; // type:func
-Player_State2_06 = 0x0071C980; // type:func
-Player_State2_07 = 0x0071CA60; // type:func
-Player_State2_08 = 0x0071CD50; // type:func
-Player_State2_09 = 0x0071CE70; // type:func
-Player_State2_0B = 0x0071CFC0; // type:func
-Player_State2_0F = 0x0071D0E0; // type:func
-Player_State2_10 = 0x0071D360; // type:func
-Player_State2_11 = 0x0071D490; // type:func
-Player_State2_13 = 0x0071D580; // type:func
-Player_State2_14 = 0x0071D740; // type:func
-Player_State2_15 = 0x0071D7D0; // type:func
-Player_State2_16 = 0x0071DA30; // type:func
-Player_State2_17 = 0x0071DDD0; // type:func
-Player_State2_1B = 0x0071E0D0; // type:func
-Player_State2_1C = 0x0071E1F0; // type:func
-Player_State2_1D = 0x0071E290; // type:func
-Player_State2_1F = 0x0071E360; // type:func
-Player_State2_20 = 0x0071E4A0; // type:func
-Player_State2_21 = 0x0071E650; // type:func
-Player_State2_22 = 0x0071E940; // type:func
-Player_State2_27 = 0x0071EA30; // type:func
-Player_RunGroup3 = 0x0071F970; // type:func
-Player_State3_00 = 0x0071F2A0; // type:func
-Player_RunGroup4 = 0x00720270; // type:func
-Player_State4_00 = 0x0071FA10; // type:func
-Player_State4_01 = 0x0071FC30; // type:func
-Player_State4_02 = 0x0071FD80; // type:func
-Player_State4_03 = 0x0071FE20; // type:func
-Player_State4_04 = 0x0071FEE0; // type:func
-Player_State4_05 = 0x0071FFB0; // type:func
-Player_State4_06 = 0x00720110; // type:func
-Player_RunGroup5 = 0x00721350; // type:func
-Player_State5_00 = 0x00720870; // type:func
-Player_State5_01 = 0x00720950; // type:func
-Player_State5_02 = 0x00720A70; // type:func
-Player_State5_03 = 0x00720C40; // type:func
-Player_State5_05 = 0x00720DE0; // type:func
-Player_State5_07 = 0x00721100; // type:func
-Player_State5_0B = 0x007211E0; // type:func
-Player_RunGroup6 = 0x00722400; // type:func
-Player_State6_00 = 0x00721470; // type:func
-Player_State6_01 = 0x00721560; // type:func
-Player_State6_02 = 0x00721600; // type:func
-Player_State6_03 = 0x007217A0; // type:func
-Player_State6_04 = 0x007218B0; // type:func
-Player_State6_05 = 0x007219A0; // type:func
-Player_State6_06 = 0x00721B60; // type:func
-Player_State6_07 = 0x00721C80; // type:func
-Player_State6_08 = 0x00721DA0; // type:func
-Player_State6_09 = 0x00721EC0; // type:func
-Player_State6_0A = 0x00721F80; // type:func
-Player_State6_0B = 0x007220A0; // type:func
-Player_State6_0C = 0x007221C0; // type:func
-Player_State6_10 = 0x007222E0; // type:func
+// The dispatcher of each group (Player_Run<Group>State) switches on the state (+0x15) to one function per
+// state, called (player, variant). The states are named by the enums of include/player.h (PL_ACT_*,
+// PL_REACT_*, PL_FAINT*, PL_EVENT_*, PL_CARRY_*, PL_GESTURE_*). A function several states share is
+// listed below with its states (hex).
+// Player_StateMove: group 0 states 01, 02, 03, 07, 12, 13, 1A, 24, 49, 74
+// Player_StateDrawSheathe: group 0 states 04, 05, 0A, 0F, 10, 17
+// Player_StateLeapOrFall: group 0 states 06, 09
+// Player_StateCrouch: group 0 states 08, 1D
+// Player_StateThrowItem: group 0 states 0B, 0E, 72
+// Player_StateLedgeHang: group 0 states 11, 1B
+// Player_StatePlaceItem: group 0 states 14, 18
+// Player_StateClimbAirborne: group 0 states 15, 30, 38
+// Player_StateRoll: group 0 states 1C, 2D
+// Player_StateDash: group 0 states 1F, 46
+// Player_StateFleeDash: group 0 states 20, 22, 45
+// Player_StateWallClimbUp: group 0 states 28, 77
+// Player_StateWallClimbDown: group 0 states 29, 78
+// Player_StateSideEvade: group 0 states 31, 32
+// Player_StateMountedGunAim: group 0 states 36, 7A
+// Player_StateWallPress: group 0 states 40, 43
+// Player_StateWallSidle: group 0 states 41, 42
+// Player_StateGather: group 0 states 47, 4A, 51, 52, 5C, 75, 7C
+// Player_StateSpitRoastEnd: group 0 states 4B, 4D
+// Player_StateFishWait: group 0 states 4E, 50
+// Player_StateFishReelEmpty: group 0 states 54, 64
+// Player_StateSpotStrike: group 0 states 56, 79
+// Player_StateBoxMenu: group 0 states 57, 7B
+// Player_StateConsume: group 0 states 58, 5A
+// Player_StateGatherCrouched: group 0 states 5D, 60, 76, 7D
+// Player_StateInstrumentPlay: group 0 states 5E, 62
+// Player_StateInstrumentEnd: group 0 states 5F, 63
+// Player_StateBinoculars: group 0 states 65, 66
+// Player_StateLanceHop: group 0 states 6B, 6C, 6D, 6E
+// Player_StateGuardRecoil: group 2 states 01, 0A
+// Player_StateGuard: group 2 states 03, 0C, 26
+// Player_StateTossed: group 2 states 07, 0E
+// Player_StateFlinch: group 2 states 09, 0D
+// Player_StateRoar: group 2 states 0F, 1A
+// Player_StateWind: group 2 states 10, 19
+// Player_StateFlinchCarrying: group 2 states 11, 12
+// Player_StateStatus4: group 2 states 16, 18
+// Player_StateMashIdle: group 2 states 1B, 1E
+// Player_StateQuake: group 2 states 1D, 25
+// Player_StateMashAirborne: group 2 states 21, 24
+// Player_StateMashLand: group 2 states 22, 23
+// Player_StateFaint: group 3 states 00, 01, 02
+// Player_StateCarryIdle: group 5 states 00, 09
+// Player_StateCarryPutDown: group 5 states 03, 04, 0A
+// Player_StateCarryAirborne: group 5 states 05, 06
+// Player_StateCarryLand: group 5 states 07, 08
+// Player_StateGesture06: group 6 states 06, 0E
+// Player_StateGestureOneShot: group 6 states 09, 0D, 0F
+Player_RunActionState = 0x0071AF70; // type:func
+Player_StateIdle = 0x007124E0; // type:func
+Player_StateMove = 0x007126A0; // type:func
+Player_StateDrawSheathe = 0x00712D50; // type:func
+Player_StateLeapOrFall = 0x00713120; // type:func
+Player_StateCrouch = 0x00713900; // type:func
+Player_StateThrowItem = 0x00713C50; // type:func
+Player_StateBedMenu = 0x00713A80; // type:func
+Player_StateToIdle = 0x00713C40; // type:func
+Player_StateLedgeHang = 0x00714230; // type:func
+Player_StatePlaceItem = 0x007145A0; // type:func
+Player_StateClimbAirborne = 0x00713550; // type:func
+Player_StateRideStagger = 0x007144D0; // type:func
+Player_StateKneelToPlace = 0x00714720; // type:func
+Player_StateRoll = 0x00714800; // type:func
+Player_StateStepUp = 0x00714B60; // type:func
+Player_StateDash = 0x00714CF0; // type:func
+Player_StateFleeDash = 0x00715090; // type:func
+Player_StateOutOfBreath = 0x00715460; // type:func
+Player_StateTiredStop = 0x007155E0; // type:func
+Player_StateHardLanding = 0x00715670; // type:func
+Player_StateWallHold = 0x00715720; // type:func
+Player_StateWallClimbUp = 0x00715850; // type:func
+Player_StateWallClimbDown = 0x00715A70; // type:func
+Player_StateWallDismount = 0x00715C70; // type:func
+Player_StateWallGrab = 0x00715D20; // type:func
+Player_StateRunStop = 0x00715DE0; // type:func
+Player_StateSetTrap = 0x00715E70; // type:func
+Player_StateSetTrapDone = 0x00715FB0; // type:func
+Player_StateSideEvade = 0x007160B0; // type:func
+Player_StateBedLieDown = 0x00716360; // type:func
+Player_StateBedSleep = 0x00716410; // type:func
+Player_StateBedGetUp = 0x007165F0; // type:func
+Player_StateMountedGunAim = 0x007166B0; // type:func
+Player_StateCannonFire = 0x00716A10; // type:func
+Player_StateCrouchStandUp = 0x00716B20; // type:func
+Player_StateLedgePullUp = 0x00716BB0; // type:func
+Player_StateCrouchWalk = 0x00716C50; // type:func
+Player_StateCrouchStop = 0x00716D60; // type:func
+Player_StateCrouchWalkFast = 0x00716E30; // type:func
+Player_StateBattleAlert = 0x00716F40; // type:func
+Player_StateTurnAround = 0x00716FD0; // type:func
+Player_StateWallPress = 0x00717350; // type:func
+Player_StateWallSidle = 0x00717420; // type:func
+Player_StateDive = 0x007174E0; // type:func
+Player_StateGather = 0x00717A60; // type:func
+Player_StateMountedGunFire = 0x007168C0; // type:func
+Player_StateSpitRoastEnd = 0x00718440; // type:func
+Player_StateSpitRoastStart = 0x00718380; // type:func
+Player_StateFishWait = 0x00718660; // type:func
+Player_StateFishCast = 0x00718760; // type:func
+Player_StateFishReel = 0x00718880; // type:func
+Player_StateFishReelEmpty = 0x00718C10; // type:func
+Player_StateSpitRoast = 0x00718E60; // type:func
+Player_StateSpotStrike = 0x007195B0; // type:func
+Player_StateBoxMenu = 0x00719670; // type:func
+Player_StateConsume = 0x00719790; // type:func
+Player_StateKneelToPlaceCrouched = 0x00719A50; // type:func
+Player_StateTrade = 0x00719B50; // type:func
+Player_StateGatherCrouched = 0x00718060; // type:func
+Player_StateInstrumentPlay = 0x00719C50; // type:func
+Player_StateInstrumentEnd = 0x00719DE0; // type:func
+Player_StateSharpen = 0x0071A090; // type:func
+Player_StateBinoculars = 0x0071A240; // type:func
+Player_StateOfferItem = 0x0071A3B0; // type:func
+Player_StateTakeItemWait = 0x0071A490; // type:func
+Player_StateOfferItemEnd = 0x0071A5A0; // type:func
+Player_StateTakeItem = 0x0071A660; // type:func
+Player_StateLanceHop = 0x0071A720; // type:func
+Player_StatePlaceLargeItem = 0x0071AB60; // type:func
+Player_StatePlaceLargeItemSet = 0x0071AC50; // type:func
+Player_StateApplyItem = 0x007199A0; // type:func
+Player_StateHornItemPlay = 0x0071AD10; // type:func
+Player_RunReactState = 0x0071EE50; // type:func
+Player_StateKnockdownFront = 0x0071B940; // type:func
+Player_StateGuardRecoil = 0x0071BA20; // type:func
+Player_StateBlownBack = 0x0071BF60; // type:func
+Player_StateGuard = 0x0071C260; // type:func
+Player_StateRoarStrong = 0x0071C550; // type:func
+Player_StateBlownForward = 0x0071C680; // type:func
+Player_StateKnockdownBack = 0x0071C980; // type:func
+Player_StateTossed = 0x0071CA60; // type:func
+Player_StateGuardEnd = 0x0071CD50; // type:func
+Player_StateFlinch = 0x0071CE70; // type:func
+Player_StateGuardPush = 0x0071CFC0; // type:func
+Player_StateRoar = 0x0071D0E0; // type:func
+Player_StateWind = 0x0071D360; // type:func
+Player_StateFlinchCarrying = 0x0071D490; // type:func
+Player_StateStun = 0x0071D580; // type:func
+Player_StateReact14 = 0x0071D740; // type:func
+Player_StateStatus2 = 0x0071D7D0; // type:func
+Player_StateStatus4 = 0x0071DA30; // type:func
+Player_StateGuardDraw = 0x0071DDD0; // type:func
+Player_StateMashIdle = 0x0071E0D0; // type:func
+Player_StateMashFree = 0x0071E1F0; // type:func
+Player_StateQuake = 0x0071E290; // type:func
+Player_StateMashWalk = 0x0071E360; // type:func
+Player_StateMashRun = 0x0071E4A0; // type:func
+Player_StateMashAirborne = 0x0071E650; // type:func
+Player_StateMashLand = 0x0071E940; // type:func
+Player_StateInhaled = 0x0071EA30; // type:func
+Player_RunFaintState = 0x0071F970; // type:func
+Player_StateFaint = 0x0071F2A0; // type:func
+Player_RunEventState = 0x00720270; // type:func
+Player_StateCart = 0x0071FA10; // type:func
+Player_StateCartDrop = 0x0071FC30; // type:func
+Player_StateQuestStart = 0x0071FD80; // type:func
+Player_StateQuestEnd = 0x0071FE20; // type:func
+Player_StateRevive = 0x0071FEE0; // type:func
+Player_StateLeave = 0x0071FFB0; // type:func
+Player_StateQuestAbort = 0x00720110; // type:func
+Player_RunCarryState = 0x00721350; // type:func
+Player_StateCarryIdle = 0x00720870; // type:func
+Player_StateCarryWalk = 0x00720950; // type:func
+Player_StateCarryRun = 0x00720A70; // type:func
+Player_StateCarryPutDown = 0x00720C40; // type:func
+Player_StateCarryAirborne = 0x00720DE0; // type:func
+Player_StateCarryLand = 0x00721100; // type:func
+Player_StateCarryHandOver = 0x007211E0; // type:func
+Player_RunGestureState = 0x00722400; // type:func
+Player_StateGestureLieDown = 0x00721470; // type:func
+Player_StateGestureGetUp = 0x00721560; // type:func
+Player_StateGestureScout = 0x00721600; // type:func
+Player_StateGesture03 = 0x007217A0; // type:func
+Player_StateGesture03End = 0x007218B0; // type:func
+Player_StateGesture05 = 0x007219A0; // type:func
+Player_StateGesture06 = 0x00721B60; // type:func
+Player_StateGesture07 = 0x00721C80; // type:func
+Player_StateGesture08 = 0x00721DA0; // type:func
+Player_StateGestureOneShot = 0x00721EC0; // type:func
+Player_StateGesture0A = 0x00721F80; // type:func
+Player_StateGesture0B = 0x007220A0; // type:func
+Player_StateGesture0C = 0x007221C0; // type:func
+Player_StateGesture10 = 0x007222E0; // type:func
 
 // Hunting horn notes (src/game/unk_6BB9D0.c): HuntingHorn_AddNote(p, n) stores the note (by the horn's note
 // table D_44AE30, row Player +0x8C7) in the ring of the last 8 notes (+0x8BE, last slot +0x8BD), plays SE
@@ -1036,7 +1034,7 @@ Bow_SetAimLayers = 0x006C0E70; // type:func
 // of the kind's table (gm_sub func_0090AC10(em->type)).
 EmScript_Init = 0x007262E0; // type:func
 // The bow's charge level: the charge +0x7D4 (frames, sped up 20/17 by skill 0x33) / 30, at most 2 (3 with
-// skill 0xB8); Bow_State00, 01 and 06 use it. The bow's helpers come before its states (0x6C0390-0x6C0F20).
+// skill 0xB8); Bow_StateFire, 01 and 06 use it. The bow's helpers come before its states (0x6C0390-0x6C0F20).
 Bow_ChargeLevel = 0x006C0B00; // type:func
 
 // The weapons' input checks: called by most of a weapon's states in their cancel windows, they read the pad
@@ -1048,8 +1046,8 @@ Hammer_CheckChargeInput = 0x006B43F0; // type:func
 Lance_CheckInput = 0x006B5560; // type:func
 SwordShield_CheckInput = 0x006B6690; // type:func
 DualSwords_CheckInput = 0x006B82E0; // type:func
-LongSword_StickAction = 0x006BAA80; // type:func
-LongSword_CheckInput = 0x006BAAE0; // type:func
+LongSword_ReadAttackKey = 0x006BAA80; // type:func
+LongSword_EvadeInput = 0x006BAAE0; // type:func
 HuntingHorn_CheckInput = 0x006BCEF0; // type:func
 Gunlance_CheckInput = 0x006C04D0; // type:func
 Bow_CheckInput = 0x006C2600; // type:func
@@ -1437,7 +1435,7 @@ StageObj_K11_Free = 0x00875340; // type:func
 StageObj_K11_Alloc = 0x00875480; // type:func
 StageObj_K11_CreateType3 = 0x00875610; // type:func
 StageObj_K11_CreateAt = 0x00875790; // type:func
-// kind 0x12: type 0xC is the gunlance shell (Gunlance_State01, Gunlance_State03); types 3 and 4 have their own states.
+// kind 0x12: type 0xC is the gunlance shell (Gunlance_StateShell, Gunlance_StateWyvernFire); types 3 and 4 have their own states.
 StageObj_K12_Update = 0x00875880; // type:func
 StageObj_K12_Setup = 0x00875910; // type:func
 StageObj_K12_Run = 0x00875990; // type:func
@@ -1520,9 +1518,9 @@ StageObj_AreaFlyer_Free = 0x0088B080; // type:func
 StageObj_AreaFlyer_Draw = 0x0088B090; // type:func
 StageObj_AreaFlyer_GetCenter = 0x0088B3D0; // type:func
 StageObj_AreaFlyer_Create = 0x0088B3F0; // type:func
-// kind 0x1F: the gun weapons' effects: types 0/1 the gunlance shelling (Gunlance_State01/03, sized by the shell
-// level: 0.8, 1.2, 1.2, 2.0), 2 and 3 the reloads (Bowgun_State00, Gunlance_State05 when the shells are
-// refilled), 4 and 6 made in Gunlance_State03, 5 by a Hermitaur function (StageObj_Gun_CreateType5).
+// kind 0x1F: the gun weapons' effects: types 0/1 the gunlance shelling (Gunlance_StateShell/03, sized by the shell
+// level: 0.8, 1.2, 1.2, 2.0), 2 and 3 the reloads (Bowgun_StateFire, Gunlance_StateReload when the shells are
+// refilled), 4 and 6 made in Gunlance_StateWyvernFire, 5 by a Hermitaur function (StageObj_Gun_CreateType5).
 StageObj_Gun_Update = 0x0088B470; // type:func
 StageObj_Gun_Setup = 0x0088B500; // type:func
 StageObj_Gun_Run = 0x0088CA20; // type:func
@@ -1962,8 +1960,8 @@ Eff06_Create = 0x006C7280; // type:func
 Eff03_Create = 0x006C3FF0; // type:func
 Eff03_DrawPart = 0x006C5C20; // type:func
 // The bow's aim: Bow_UpdateAim(em, layers) reads the stick while aiming (tilt +-5 into Player +0x821 through
-// Bow_AddAimTilt, clamped to -100..100; turn +-0x240 with the 0x800/0x400 buttons) and sets the aim layers.
-Bow_AddAimTilt = 0x006C0BE0; // type:func
+// Bow_AddAimWeight, clamped to -100..100; turn +-0x240 with the 0x800/0x400 buttons) and sets the aim layers.
+Bow_AddAimWeight = 0x006C0BE0; // type:func
 Bow_UpdateAim = 0x006C0C50; // type:func
 // Eff03 (kind 3): Setup picks by D_00899550[type] (1, 2, else), Run likewise; Hit is states 5 and 9
 // (sticks to the monster func_364AE0 accepts, else bounces off).
@@ -2002,8 +2000,8 @@ SpitMeat_Kind = 0x00718D60; // type:func
 Player_TakeOfferedItem = 0x00710DA0; // type:func
 Player_BowgunAmmoSwitch = 0x0070DC30; // type:func
 Player_BowgunAim = 0x00711B90; // type:func
-Player_IdleInput = 0x0070EFF0; // type:func
-Player_TryDrawWeapon = 0x0070E950; // type:func
+Player_CrouchInput = 0x0070EFF0; // type:func
+Player_HoldSpecialInput = 0x0070E950; // type:func
 
 // Round 14 (agame)
 Player_StickTurnMove = 0x006BB390; // type:func
@@ -2138,11 +2136,11 @@ gPouchFullTakeText = 0x00446AF0; // size:0x4 Player_TakeOfferedItem and the lobb
 // Round 18 (ngame)
 DualSwords_ComboInput = 0x006B80B0; // type:func
 LongSword_ComboInput = 0x006BABB0; // type:func
-HuntingHorn_IdleInput = 0x006BD1A0; // type:func
-Gunlance_RequestState2_0C = 0x006BECD0; // type:func
-Gunlance_RequestState2_26 = 0x006BECE0; // type:func
+HuntingHorn_PlayInput = 0x006BD1A0; // type:func
+Gunlance_ReturnToGuard = 0x006BECD0; // type:func
+Gunlance_ReturnToGuardAlt = 0x006BECE0; // type:func
 Bow_UpdateAmmoType = 0x006C0AB0; // type:func from the coating in the pouch slot
-Bow_DrainStamina = 0x006C0C20; // type:func
+Bow_TickCharge = 0x006C0C20; // type:func
 Eff00_AttachTransform = 0x006C2BC0; // type:func
 Eff03_AnimSprites = 0x006C4ED0; // type:func
 Eff03_Fall = 0x006C5A40; // type:func until the floor, then state 2
@@ -2172,7 +2170,7 @@ MsgEvent_DrawIcon = 0x006EE200; // type:func
 MsgEvent_CopyQuestInfo = 0x006EE2F0; // type:func
 MsgEvent_CheckStageIntro = 0x006EE790; // type:func first-visit messages by gQuest.stage (event flags)
 AreaObj_K17_DrawPart = 0x006FF990; // type:func
-Em_SetRow638 = 0x00701430; // type:func em+0x638 = row idx of D_008BA5C0[type]
+Em_SelectSightRow = 0x00701430; // type:func em+0x638 = row idx of D_008BA5C0[type]
 Em_UpdateBendTarget = 0x007018E0; // type:func picks the target of func_00701990 (D_5F8A7C, em+0x654 or a player)
 Em_BendStep = 0x00702160; // type:func per-kind bend table D_008BA750
 Em_NearestActionToBone = 0x007026D0; // type:func nearest object of D_5D8C70 to a bone
@@ -2188,10 +2186,10 @@ Em_ComputeGoal = 0x00704120; // type:func the goal point from goalKind (local)
 Em_ComputeGoal2 = 0x00704B90; // type:func the goal point from goalKind (also used for remote monsters)
 Em_CheckPartBuildup = 0x007059C0; // type:func unk848[i] over the limit sets trigger 0x10
 Em_TypeSetup = 0x00705B80; // type:func
-Em_Decay7F0 = 0x007066D0; // type:func unk7F0 decays (D_008BC520 rates), then a per-kind step
-Em_Decay7F0Only = 0x00706780; // type:func
-Em_Decay7EC = 0x007067E0; // type:func
-Em_Decay7F4 = 0x00706890; // type:func
+Em_DecayNeed1 = 0x007066D0; // type:func unk7F0 decays (D_008BC520 rates), then a per-kind step
+Em_DecayNeed1Only = 0x00706780; // type:func
+Em_DecayNeed2 = 0x007067E0; // type:func
+Em_DecayNeed3 = 0x00706890; // type:func
 Em_Reduce7F0 = 0x00706940; // type:func
 Em_Reduce7EC = 0x00706990; // type:func
 Em_AngleSector = 0x007069E0; // type:func
@@ -2205,19 +2203,19 @@ Em_SenseObjects = 0x007075B0; // type:func D_5D8A70
 Em_InitCollMask = 0x00707F10; // type:func collMask = gEmCollMasks[type]
 Em_InitKindParams = 0x00708070; // type:func unk966, unk96D, unk970 from per-kind tables
 Em_CheckKindRequest = 0x007080D0; // type:func
-Em_Clear7F0State = 0x00708220; // type:func unk96A, unk815, unk6AE
-Em_Clear7ECState = 0x00708230; // type:func unk96B, unk814, unk6AE
-Em_Refill7F4 = 0x00708240; // type:func unk7F4 = max, status buildups cleared
+Em_ClearNeed1State = 0x00708220; // type:func unk96A, unk815, unk6AE
+Em_ClearNeed2State = 0x00708230; // type:func unk96B, unk814, unk6AE
+Em_RefillNeed3 = 0x00708240; // type:func unk7F4 = max, status buildups cleared
 Em_ResetNotice = 0x00708270; // type:func
 Em_SpawnEffect06Periodic = 0x007082E0; // type:func
 Em_SpawnEffect06Bone = 0x00708350; // type:func
 Em_IdSetLookup = 0x007083B0; // type:func D_008BF320 per kind, gScene.unk030
 Em_IdSetHas = 0x007084B0; // type:func
-Em_Add7F0 = 0x007085B0; // type:func
-Em_Add7EC = 0x007085E0; // type:func
+Em_AddNeed1 = 0x007085B0; // type:func
+Em_AddNeed2 = 0x007085E0; // type:func
 Em_Add7F4 = 0x00708610; // type:func
 Em_AllPlayersHere = 0x00708B90; // type:func 0 when a hunter is in another area or inactive
-Em_SetFlag6AE = 0x00708C60; // type:func
+Em_SetHitReactMode = 0x00708C60; // type:func
 Em_ComputeSize = 0x00708C70; // type:func 1700 x the kind and versus scales
 Em_RageScale1 = 0x00708E10; // type:func row unk4 of D_90D470 (versus team scaled)
 Em_RageScale2 = 0x00708EE0; // type:func row unk8 of D_90D470
@@ -2233,7 +2231,7 @@ Em_SetAreaValue89E = 0x007097E0; // type:func
 Em_SetAreaValue8A0 = 0x007098A0; // type:func
 Em_ApplyAreaValues = 0x00709960; // type:func
 Em_TypeUsesK14 = 0x007099C0; // type:func
-Em_ClearFlag6AE = 0x00709AE0; // type:func
+Em_ClearHitReactMode = 0x00709AE0; // type:func
 Em_ClearPoison = 0x00709B10; // type:func
 Em_SetCaptured = 0x00709B30; // type:func
 Em_IsSyncFree = 0x0070A250; // type:func
@@ -2254,12 +2252,12 @@ Player_UpdateEnvironment = 0x0070D360; // type:func area temperature and the ski
 Player_UpdateItemSelect = 0x0070DA40; // type:func
 Player_PushNotice3 = 0x0070DFB0; // type:func
 Player_TryGather = 0x0070EC40; // type:func MinePoint_FindNearPlayer
-Player_GatherStep = 0x0070F510; // type:func
+Player_GuardInput = 0x0070F510; // type:func
 Player_CheckClimb = 0x0070F9C0; // type:func Player_FloorAheadAbove
 Player_IdleActions = 0x00711030; // type:func
 Player_AddAimPitch = 0x00711F30; // type:func
 Player_UpdateLean = 0x00712090; // type:func
-Player_ClearStatus5 = 0x0071D560; // type:func
+Player_ClearStun = 0x0071D560; // type:func
 Player_UpdateCarryKind = 0x00720340; // type:func
 Player_UpdateAutoTurn = 0x00723220; // type:func
 Player_FindLookTarget = 0x00723460; // type:func nearest monster within 1500 for the head
@@ -2279,11 +2277,11 @@ Em_EnterNextArea = 0x00733250; // type:func
 Em_PickRoutePoint = 0x00733430; // type:func
 Em_AreaExitPoint = 0x007337C0; // type:func
 EmScript_PickWeighted = 0x00733B10; // type:func
-EmScript_GetTable08 = 0x00733C40; // type:func
-EmScript_GetTable14 = 0x00733D90; // type:func
-EmScript_GetTable18 = 0x00733DC0; // type:func
-EmScript_GetTable08b = 0x00733DE0; // type:func
-EmScript_GetTable30 = 0x00733E10; // type:func
+EmScript_LoopScript = 0x00733C40; // type:func
+EmScript_AreaSeqList = 0x00733D90; // type:func
+EmScript_AreaSeqScript = 0x00733DC0; // type:func
+EmScript_LoopPointList = 0x00733DE0; // type:func
+EmScript_RoutePointScript = 0x00733E10; // type:func
 Player_Status5Full = 0x00734380; // type:func status5Buildup >= 50
 Player_Die = 0x007346B0; // type:func hp 0, state group 3
 EmDrome_MotionSounds = 0x00735DB0; // type:func
@@ -2726,7 +2724,7 @@ AreaObj_K14_SePos = 0x008B1490; // size:0x18
 HuntingHorn_NoteFrames = 0x00896ED0; // size:0x10
 HuntingHorn_Attacks = 0x00896EE0;
 HuntingHorn_SongNotes = 0x00896FA0; // size:0x80
-Gunlance_State01Motions = 0x00897020; // size:0x20
+Gunlance_ShellMotions = 0x00897020; // size:0x20
 Eff00_Vals088 = 0x00897760; // size:0x50
 Eff00_MotionRef = 0x00898128; // size:0x4
 Eff01_Vals088 = 0x008988B0; // size:0x50
@@ -2785,9 +2783,9 @@ EffEm33_Bones = 0x008AD2D0; // size:0x10
 EffEm33_BoneOfs = 0x008AD2E0; // size:0xC0
 
 // Round 21 (ndata)
-Lance_GatherAttack = 0x006B56B0; // type:func
-SwordShield_GatherAttack = 0x006B67C0; // type:func
-Gunlance_GatherInput = 0x006C0840; // type:func
+Lance_GuardAttack = 0x006B56B0; // type:func
+SwordShield_GuardSlash = 0x006B67C0; // type:func
+Gunlance_GuardInput = 0x006C0840; // type:func
 gEmGoalPoints = 0x008BB3B0; // size:0x130
 gEmStatusParams = 0x008BCCB0; // size:0x128
 gEmKindTimerValues = 0x008BDC78; // size:0x8
@@ -2988,13 +2986,13 @@ ScEvent_Cam2 = 0x008C39A0; // size:0x20
 ScEvent_Cam3 = 0x008C39C0; // size:0x20
 ScEvent_Cam4 = 0x008C39E0; // size:0x20
 ScEvent_Cam5 = 0x008C3A00; // size:0x20
-Player_State0_01_NextByWeapon = 0x008C3AF0; // size:0x20
-Player_State0_04_Motions0 = 0x008C3B10; // size:0x60
-Player_State0_04_Motions4 = 0x008C3B70; // size:0x60
-Player_State0_04_Motions2 = 0x008C3BD0; // size:0x60
-Player_State0_04_Motions5 = 0x008C3C30; // size:0x60
-Player_State2_13_Need = 0x008C3DC8; // size:0x8
-Player_State6_09_MotionStates = 0x008C3DD0; // size:0x10
+gDrawnWalkStopIdle = 0x008C3AF0; // size:0x20
+gDrawMotions = 0x008C3B10; // size:0x60
+gSheatheMotions = 0x008C3B70; // size:0x60
+gSheatheMovingMotions = 0x008C3BD0; // size:0x60
+gDrawMovingMotions = 0x008C3C30; // size:0x60
+gStunMashNeed = 0x008C3DC8; // size:0x8
+gGestureOneShots = 0x008C3DD0; // size:0x10
 StageObj_K25_Offset = 0x008D8B90; // size:0x10
 StageObj_K25_Fade = 0x008D8BA0; // size:0x8
 StageObj_K27_ModelSetIds = 0x008D8BA8; // size:0x8
@@ -3213,14 +3211,14 @@ EffKushala39_MotionDesc = 0x008AEBF0; // size:0x4
 EffKushala39_Angles = 0x008AEC00; // size:0x20
 EffKushala39_Angles1 = 0x008AEC20; // size:0x20
 EffKushala39_Life = 0x008AEC40; // size:0x10
-GreatSword_State02_Motions = 0x00896DE0; // size:0x20
-Bowgun_State00_AimLayers = 0x00896E00; // size:0x1E
-DualSwords_State01_Motions = 0x00896E20; // size:0x10
-HuntingHorn_State00_Motions = 0x00896E30; // size:0x10
-HuntingHorn_State00_VarMotions = 0x00896E40; // size:0x3C
-HuntingHorn_State00_Fx57D = 0x00896E80; // size:0x20
-HuntingHorn_State00_Fx57E = 0x00896EA0; // size:0x20
-HuntingHorn_State00_Fx57F = 0x00896EC0; // size:0x10
+GreatSword_OverheadBlends = 0x00896DE0; // size:0x20
+Bowgun_FireMotions = 0x00896E00; // size:0x1E
+DualSwords_SideSlashMotions = 0x00896E20; // size:0x10
+HuntingHorn_StanceMotions = 0x00896E30; // size:0x10
+HuntingHorn_StanceEntryMotions = 0x00896E40; // size:0x3C
+HuntingHorn_Note0WalkFrames = 0x00896E80; // size:0x20
+HuntingHorn_Note1WalkFrames = 0x00896EA0; // size:0x20
+HuntingHorn_Note2WalkFrames = 0x00896EC0; // size:0x10
 EffEm08_MotionDesc = 0x0089CFC0; // size:0x4
 EffEm08_KeysP12 = 0x0089D120; // size:0x10
 EffEm08_Keys2 = 0x0089D1C0; // size:0x20
@@ -5753,14 +5751,14 @@ EffKushala29_SpinPart = 0x006E2180; // type:func turns a particle (+0x30) by n, 
 EffKushala29_DrawPart = 0x006E21C0; // type:func alpha and scale of a particle from EffKushala29_AlphaKeys and VecKeys, then draws types 0 and 2
 EmDiablos_InSandState = 0x007AC4A0; // type:func states 0/0x1D and 4/6, 0xD, 0xE, 0x11, 0x12, 0x16, 0x17 (burrowing in and out of the sand)
 Player_StartSpotAction = 0x0070E6C0; // type:func the state for the action spot Player_FindActionSpot finds
-Player_TrySideStep = 0x0070E520; // type:func set2 0x2000 or 0x1000 -> states 0/0x28 or 0x29 (0x77 or 0x78 with button 0x10 held, dash stamina), button 0x40 -> 0/0x30
+Player_WallClimbInput = 0x0070E520; // type:func set2 0x2000 or 0x1000 -> states 0/0x28 or 0x29 (0x77 or 0x78 with button 0x10 held, dash stamina), button 0x40 -> 0/0x30
 Player_CheckRideSlip = 0x0070E370; // type:func state 0/0x16 when the monster the player stands on carried it too far this frame (rideDelta)
 Player_AmmoTypeChanged = 0x0070DBB0; // type:func 1 when the ammo menu closed on another ammo type with the weapon out
 Player_TurnAlongWall = 0x0070F6E0; // type:func turns the player a quarter turn off the first wall contact (gEmWallContacts), 1 for a flag-2 wall ahead, 2 for another wall
 Player_TurnAlongWallSide = 0x0070F860; // type:func as Player_TurnAlongWall for side 0 (a flag-2 wall ahead) or side 1 (a wall behind)
 Player_UpdateWallSidle = 0x00717140; // type:func sidling along a wall, states 0/0x40-0x43 by the stick, 0/0x2C when it ends
 Player_UpdateFishingInput = 0x00718510; // type:func fishing states 0/0x4E-0x53, button 0x20 strikes (0x53, 0x54 or 0x64)
-Player_WeaponState63 = 0x0071B790; // type:func the weapon state 0x63 every weapon shares (motion 0x32, Eff00 kind 5, then state 0/6)
+Player_StateSharedAttack = 0x0071B790; // type:func the weapon state 0x63 every weapon shares (motion 0x32, Eff00 kind 5, then state 0/6)
 Bow_ArcVisible = 0x006C0920; // type:func 1 while the bow is drawn (group 1 states, button 0x80 held), the condition of StageObj_BowArc
 EffEm33_StartPartType0 = 0x006E8F80; // type:func restarts a particle of an EffEm33 of type 0
 EffEm33_StartPartType1 = 0x006E9380; // type:func restarts a particle of an EffEm33 of type 1 (sound 0x1A)

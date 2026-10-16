@@ -214,11 +214,11 @@ typedef struct VFx {
     /* 0x40 */ u8 unk40;
     /* 0x41 */ u8 unk41[3];
     /* 0x44 */ Vec3f scale;      /* Key_LerpVec3 */
-    /* 0x50 */ f32 alpha;         /* Key_LerpF32 */
+    /* 0x50 */ f32 alpha;         /* Key_LerpFloat */
     /* 0x54 */ s16 rand;
 } VFx;
 extern s8 D_007DCE97[];
-f32 Lure_RandSigned(void);
+f32 Rand_Signed(void);
 void Vec_RotateY(f32 *v, f32 a);
 s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
@@ -253,9 +253,9 @@ void VFx_Init(VObj *o)
             v.y = 0.0f;
             v.z = 0.0f;
             Vec_RotateY((f32 *)&v, (f32)(u32)o->angle2 * 6.2831855f / 65536.0f);
-            f = 15.0f * Lure_RandSigned();
+            f = 15.0f * Rand_Signed();
             o->pos[0] += v.x * f;
-            o->pos[1] += 15.0f * Lure_RandSigned();
+            o->pos[1] += 15.0f * Rand_Signed();
             w->speed = 1.0f;
         }
         break;
@@ -275,7 +275,7 @@ extern u8 gVFxScaleKeys0[];
 extern u8 gVFxAlphaKeys1[];
 extern u8 gVFxScaleKeys1[];
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 s32 Gallery_AddObj(VObj *, u8 mode);
 void Vec_Copy(f32 *dst, f32 *src);
@@ -310,7 +310,7 @@ void VFx_Run(VObj *o)
             o->state++;
         } else {
             Key_LerpVec3((f32 *) vc, (f32 *) &w->scale, o->timer);
-            Key_LerpF32((f32 *) fc, (f32 *) &w->alpha, o->timer);
+            Key_LerpFloat((f32 *) fc, (f32 *) &w->alpha, o->timer);
             Vec_Copy(o->node->pos, (f32 *)&o->pos);
             OT_AddByDepth(gDrawOtSorted, o->node, 0x40, 0);
         }
@@ -327,7 +327,7 @@ void VFx_Run(VObj *o)
             o->state++;
         } else {
             Key_LerpVec3((f32 *) vc, (f32 *) &w->scale, o->timer);
-            Key_LerpF32((f32 *) fc, (f32 *) &w->alpha, o->timer);
+            Key_LerpFloat((f32 *) fc, (f32 *) &w->alpha, o->timer);
             o->pos[1] += w->speed;
             Vec_Copy(o->node->pos, (f32 *)&o->pos);
             OT_AddByDepth(gDrawOtSorted, o->node, 0x40, 0);
@@ -727,7 +727,7 @@ typedef struct VPartFx {
 } VPartFx;
 void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 s32 Npc_IsBusyNotAct3C4B(Em *arg0);
-f32 Lure_RandUnit(void);
+f32 Rand_Unit(void);
 s32 Motion_PassedFrame(void *, s32 layer, f32 frame);
 void Vec_RotateX(f32 *v, f32 angle);
 
@@ -787,19 +787,19 @@ void VPart_Init(VObj *o)
             } else {
                 Em_GetBonePos(o->owner, 0x14, &d->pos[i].x);
             }
-            d->vy[i] = 8.0f + 6.0f * Lure_RandUnit();
+            d->vy[i] = 8.0f + 6.0f * Rand_Unit();
             d->pos[i].y += 15.0f;
-            d->timer[i] = 60.0f * Lure_RandUnit();
+            d->timer[i] = 60.0f * Rand_Unit();
             d->speed[i] = 3.0f + (f32)((u16)Rand_Next(1) % 3);
-            d->rot[i].x = 360.0f * Lure_RandUnit();
-            d->rot[i].y = 360.0f * Lure_RandUnit();
-            d->rot[i].z = 360.0f * Lure_RandUnit();
+            d->rot[i].x = 360.0f * Rand_Unit();
+            d->rot[i].y = 360.0f * Rand_Unit();
+            d->rot[i].z = 360.0f * Rand_Unit();
             d->frame[i] = 0;
             r = (s8)Rand_Next(1) % 2;
             sign = r == 0 ? 1 : -1;
-            x = 30.0f + 15.0f * (sign * Lure_RandUnit());
-            y = 30.0f + 15.0f * (sign * Lure_RandUnit());
-            z = 30.0f + 15.0f * (sign * Lure_RandUnit());
+            x = 30.0f + 15.0f * (sign * Rand_Unit());
+            y = 30.0f + 15.0f * (sign * Rand_Unit());
+            z = 30.0f + 15.0f * (sign * Rand_Unit());
             d->spin[i].x = x / d->timer[i];
             d->spin[i].y = y / d->timer[i];
             d->spin[i].z = z / d->timer[i];
@@ -844,8 +844,8 @@ void VPart_Init(VObj *o)
             case 2:
             case 3:
                 d->timer[i] = 30;
-                d->rot[i].z = 360.0f * Lure_RandUnit();
-                d->spin[i].z = 120.0f * Lure_RandSigned() / d->timer[i];
+                d->rot[i].z = 360.0f * Rand_Unit();
+                d->spin[i].z = 120.0f * Rand_Signed() / d->timer[i];
                 break;
             case 4:
             case 5:
@@ -931,16 +931,16 @@ void VPart_Run(VObj *o)
                         case 1:
                             d->frame[i] = 0;
                             d->speed[i] = 3.0f + (f32)((u16)Rand_Next(1) % 3);
-                            d->timer[i] = 60.0f * Lure_RandUnit();
+                            d->timer[i] = 60.0f * Rand_Unit();
                             d->pos[i].y += 15.0f;
-                            d->vy[i] = 8.0f + 6.0f * Lure_RandUnit();
-                            d->rot[i].x = 360.0f * Lure_RandUnit();
-                            d->rot[i].y = 360.0f * Lure_RandUnit();
-                            d->rot[i].z = 360.0f * Lure_RandUnit();
+                            d->vy[i] = 8.0f + 6.0f * Rand_Unit();
+                            d->rot[i].x = 360.0f * Rand_Unit();
+                            d->rot[i].y = 360.0f * Rand_Unit();
+                            d->rot[i].z = 360.0f * Rand_Unit();
                             r = (s8)Rand_Next(1) % 2; sign = r == 0 ? 1 : -1;
-                            x = 30.0f + 15.0f * (sign * Lure_RandUnit());
-                            y = 30.0f + 15.0f * (sign * Lure_RandUnit());
-                            z = 30.0f + 15.0f * (sign * Lure_RandUnit());
+                            x = 30.0f + 15.0f * (sign * Rand_Unit());
+                            y = 30.0f + 15.0f * (sign * Rand_Unit());
+                            z = 30.0f + 15.0f * (sign * Rand_Unit());
                             d->spin[i].x = x / 60.0f;
                             d->spin[i].y = y / 60.0f;
                             d->spin[i].z = z / 60.0f;
@@ -1049,7 +1049,7 @@ void VPart_Draw(DrawSlot *slot)
             scale.y = 2.0f;
             scale.z = 2.0f;
             set = &mdl->matSets[35];
-            Key_LerpF32((f32 *) gVPartAlphaKeys, (f32 *) &alpha, d->frame[slot->part]);
+            Key_LerpFloat((f32 *) gVPartAlphaKeys, (f32 *) &alpha, d->frame[slot->part]);
             rgb = *(u32 *)((u8 *)o->owner + 0x580);
             color = ((u8)(255.0f * alpha) << 24) | ((u8)(rgb >> 16) << 16) | ((u8)(rgb >> 8) << 8) | (u8)rgb;
             Mtx_FromScaleRotTrans((f32 *) &scale.x, (f32 *) &rot.x, slot->pos, 6, (f32 *) m);
@@ -1389,8 +1389,8 @@ void Meal_ApplyEffects(u8 **arg)
 }
 
 s32 Talk_Update(void);
-void SeqA_Start(s32 a);
-u8 SeqA_GetState(void);
+void FadeA_Start(s32 a);
+u8 FadeA_GetState(void);
 void Actor_SetState(void *, s32, s32);
 void Player_MoveToSpawn(Player *p, s16 id);
 void Tutorial_Start(s32 a, s32 mask, u8 level); /* unit's own declaration: with the definition's void (s8 arg0, s32 mask, s32 level) (lobby/unk_78E4D0.c), MealScene_Update 2 of 238 words differ */
@@ -1423,12 +1423,12 @@ void MealScene_Update(void)
         case 0:
         case 3:
             m->state++;
-            SeqA_Start(1);
+            FadeA_Start(1);
             break;
         }
         break;
     case 2:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             m->state++;
             m->timer = 3;
             CamFocus_End();
@@ -1441,7 +1441,7 @@ void MealScene_Update(void)
     case 3:
         if (--m->timer <= 0) {
             m->state++;
-            SeqA_Start(2);
+            FadeA_Start(2);
             switch (gScene.area) {
             case 0xAD:
             default:
@@ -1491,15 +1491,15 @@ void MealScene_Update(void)
         switch (Talk_Update()) {
         case 0:
             m->state++;
-            SeqA_Start(1);
+            FadeA_Start(1);
             break;
         }
         break;
     case 9:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             Npc_HideAndAdvance(m->npc);
             m->npc = NULL;
-            SeqA_Start(2);
+            FadeA_Start(2);
             MealScene_Close();
         }
         break;

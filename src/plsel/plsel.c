@@ -24,7 +24,7 @@ extern s32 gTexHandles[];
  * other function compiles the same at both levels. */
 #pragma optimization_level 4
 
-void SeqA_Reset(void);
+void FadeA_Reset(void);
 void Text_Printf(const char *fmt, ...);
 s32 Tex_LoadPack(s32 id, s32 slot, s32 kind);
 void Tex_LoadSystemPack(s32);
@@ -150,7 +150,7 @@ void Camera_Reset(void);
 void CamCtl_Clear(void);
 void Light_InitAll(s32 unused0);
 void Plsel_SetupPresetPlayer(Player *, s16);
-void SeqA_Start(s32);
+void FadeA_Start(s32);
 s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
 void Kbd_Close(void);
@@ -172,7 +172,7 @@ void Player_LoadWeaponModel(s32 kind, s32 pl);
 
 s8 Kbd_IsOpen(void);
 void Stream_FadeOut(s32 ch, s32 frames);
-u8 SeqA_GetState(void);
+u8 FadeA_GetState(void);
 
 extern char gMyUserId[];
 extern char gMyName[];
@@ -255,7 +255,7 @@ void plsel_entry(TaskSlot *task) {
         Loading_Stop();
         gScene.scene = 5;
         Quest_Finish();
-        SeqA_Reset();
+        FadeA_Reset();
         TaskSlot_End(task);
     } else {
         if (++gQuestSync.bumpLeft >= 60) {
@@ -271,7 +271,7 @@ void Plsel_Setup(TaskSlot *task) {
     Game_ResetSubsystems();
     Player_ClearAll();
     Area_ClearState();
-    SeqA_Reset();
+    FadeA_Reset();
     Tex_LoadFile(0, 1, 0);
     Tex_LoadSystemPack(0);
     Tex_LoadPack(D_0042F1D8, 0xA3, 0);
@@ -592,7 +592,7 @@ void Plsel_SetCamera(void) {
 }
 
 extern s32 gSystemTexFiles[];
-extern u16 D_006ADB48;
+extern u16 gNextQuestId;
 void Plsel_SelectInit(TaskSlot *task) {
     s16 i;
     Player *pl;
@@ -608,7 +608,7 @@ void Plsel_SelectInit(TaskSlot *task) {
     task->unk14 = 0;
     task->unk15 = gSysSettings.unk45;
     Plsel_InitSlots();
-    D_006ADB48 = 0xFFFF;
+    gNextQuestId = 0xFFFF;
     gQuestSync.presetSet = Plsel_PresetSetForStage();
     gQuestSync.builtSet = 0xFF;
     gQuestSync.pick = 1;
@@ -622,7 +622,7 @@ void Plsel_SelectInit(TaskSlot *task) {
     gCamera->roll = 0.0f;
     Plsel_SetupPresetPlayer(&gPlayers[5], gSave.gender & 1);
     Plsel_SetCamera();
-    SeqA_Start(2);
+    FadeA_Start(2);
     for (i = 0, pl = gPlayers; i < 6; i++, pl++) {
         pl->drawSlotId = DrawSlot_Alloc();
         pl->index = i;
@@ -849,7 +849,7 @@ void Plsel_SelectSetupPlayers(TaskSlot *task) {
     gCamera->eye[2] += 190.0f;
     gCamera->at[1] -= 35.0f;
     gCamera->eye[1] -= 35.0f;
-    SeqA_Start(2);
+    FadeA_Start(2);
     QNetIf_Unready();
     Loading_Stop();
     Stream_Play(0, 0x125);
@@ -1290,11 +1290,11 @@ void Plsel_StateChoose(TaskSlot *task) {
         }
         break;
     case 1:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             task->mode = 2;
             task->step = 0;
             Plsel_SetCamera();
-            SeqA_Start(2);
+            FadeA_Start(2);
             st->timer = 0xF;
             return;
         }
@@ -1365,7 +1365,7 @@ void Plsel_StateReady(TaskSlot *task) {
                 Kbd_Cancel();
             }
             Stream_FadeOut(0, 10);
-            SeqA_Start(5);
+            FadeA_Start(5);
             task->flag++;
         } else {
             task->count = (task->count + 1) & 0x3F;
@@ -1375,7 +1375,7 @@ void Plsel_StateReady(TaskSlot *task) {
         }
         break;
     case 2:
-        if (SeqA_GetState() != 1) {
+        if (FadeA_GetState() != 1) {
             task->count = 0x3C;
             task->flag++;
         }

@@ -141,7 +141,7 @@ u16 GameMenu_GetPad(void) {
 
 s32 Town_IsMode(s32 a);
 s32 Lobby_HasQuest(void);
-s32 Hud_MenuAllowed_Unk(void);
+s32 Hud_ItemMenusAllowed(void);
 s32 ItemGet_IsReady(struct Player *p);
 void Chat_SetWindowMode(s8 a, s8 b);
 s32 Shake_Update(u8 id);
@@ -173,7 +173,7 @@ s32 GameMenu_Update(u16 pad)
     }
     gSubMenuWork->pad = 0;
     gSubMenuWork->busy = 1;
-    if (Lobby_HasQuest() == 0 && Hud_MenuAllowed_Unk() == 1 && ItemGet_IsReady(0) == 1) {
+    if (Lobby_HasQuest() == 0 && Hud_ItemMenusAllowed() == 1 && ItemGet_IsReady(0) == 1) {
         gSubMenuWork->busy = 0;
     }
     Chat_SetWindowMode(1, 2);

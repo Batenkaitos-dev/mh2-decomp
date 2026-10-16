@@ -1,8 +1,14 @@
 /*
- * main 0x189F90-0x18AFE0: the movie library's start-up (CRI), then the pad
- * input (include/padio.h): the port's state after a read (gPadRaw, filled
- * in unk_18AFE0.c) is copied into gPadIn and remapped by the configuration
- * into gPad; button edges, hold counters and stick angles.
+ * The movie library's start-up (CRI's Sofdec), then the core's pad input
+ * (include/padio.h), main 0x189F90-0x18AFE0.
+ *
+ * Every frame Pad_Update reads the port (Pad_Read, which calls
+ * Pad_ConvertData in unk_18AFE0.c) into gPadRaw, copies it into gPadIn
+ * (PadInput: the buttons as read, their edges and hold counters, the
+ * sticks) and remaps gPadIn by the button configuration (PadConfig) into
+ * gPad, which sub_main's PadState_Update turns into the game's PAD_* bits
+ * (include/pad.h). One port is used: the arrays indexed by port have one
+ * element in use.
  */
 #include "common.h"
 #include "padio.h"
@@ -43,9 +49,6 @@ extern u32 gPadBit[];        /* bit i */
 extern u8 gPadDirRemap[][16];
 extern u8 gPadPressRemap[][4];
 
-typedef struct PadPress {
-    u8 v[16];
-} PadPress;
 
 double atan2(double y, double x);
 void func_00161F00(s32 arg0);
@@ -53,7 +56,7 @@ void func_00161750(void (*func)(void), s32 arg1);
 void mwPlyInitSfdFx(SfdInitPrm *prm);
 void *memset(void *dst, s32 c, u32 n);
 
-void func_00189FA0(void);
+void Movie_NullCallback(void);
 void Pad_ClearMem(void *dst, s32 size);
 void Pad_ClearInputs(void);
 void Pad_SetConfig(PadConfig *cfg, s32 port);
@@ -77,15 +80,20 @@ s32 Pad_StartLibs(void);
 void Pad_OpenSocket(s32 port, s32 slot, PadPort *p);
 void Pad_EndLibs(void);
 
-void AdxWrap_VintHook(s32 arg0)
+/* The VBlank hook of the CRI libraries: Display_AdxVint calls it with 0,
+ * which goes on to the library. */
+void AdxWrap_VintHook(s32 param)
 {
-    func_00161F00(arg0);
+    func_00161F00(param);
 }
 
-void func_00189FA0(void)
+/* An empty callback Movie_InitSfd hands to the CRI library. */
+void Movie_NullCallback(void)
 {
 }
 
+/* Starts the Sofdec movie library for the display's rate (pal: 50 Hz,
+ * else 59.94 Hz). */
 void Movie_InitSfd(s32 pal)
 {
     SfdInitPrm prm;
@@ -99,7 +107,7 @@ void Movie_InitSfd(s32 pal)
     prm.dispCycle = 1;
     prm.dispLatency = 1;
     prm.decSvr = 0;
-    func_00161750(func_00189FA0, 0);
+    func_00161750(Movie_NullCallback, 0);
     mwPlyInitSfdFx(&prm);
 }
 
@@ -108,24 +116,26 @@ void Pad_ClearMem(void *dst, s32 size)
 {
     s32 i;
     s32 rest;
-    s32 n;
-    u32 *w = dst;
-    u8 *b;
+    s32 wordCount;
+    u32 *word = dst;
+    u8 *byte;
 
-    rest = size & 3;
+    rest = size & (sizeof(u32) - 1);
     i = 0;
-    n = size / 4;
-    for (; i < n; i++) {
-        *w++ = 0;
+    wordCount = size / 4;
+    for (; i < wordCount; i++) {
+        *word++ = 0;
     }
     if (rest != 0) {
-        b = (u8 *)w;
+        byte = (u8 *)word;
         for (size = 0; size < rest; size++) {
-            *b++ = 0;
+            *byte++ = 0;
         }
     }
 }
 
+/* Opens the pad (Pad_Open), clears the inputs and sets the default button
+ * configuration on port 0. Returns 0 if libpad2 failed to start. */
 s32 Pad_Init(void)
 {
     s32 ret;
@@ -155,10 +165,13 @@ void Pad_SetConfig(PadConfig *cfg, s32 port)
     Pad_SetLimits(port, gPadConfig[port].pressMin, gPadConfig[port].deadL, gPadConfig[port].deadR);
 }
 
+/* The frame's pad update: reads the port into gPadRaw, copies it into
+ * gPadIn with the button edges and hold counts, and remaps it into gPad.
+ * gPadConnected counts the ports with a supported pad. */
 void Pad_Update(void)
 {
     PadRaw *raw;
-    PadInput *in;
+    PadInput *input;
 
     Pad_Read();
     gPadConnected = 0;
@@ -167,20 +180,26 @@ void Pad_Update(void)
     gPadInputPtr->caps = raw->caps;
     gPadInputPtr->kind = raw->kind;
     gPadInputPtr->id = raw->id;
-    in = gPadInputPtr;
-    if (in->kind != 0 && in->kind != 0x8000) {
+    input = gPadInputPtr;
+    if (input->kind != PAD_KIND_NONE && input->kind != PAD_KIND_UNSUPPORTED) {
         gPadConnected++;
     }
-    in->stickL = raw->stickL;
-    in->stickR = raw->stickR;
-    *(PadPress *)in->pressure = *(PadPress *)raw->pressure;
-    Pad_SetHeld(in, raw->buttons);
+    input->stickL = raw->stickL;
+    input->stickR = raw->stickR;
+    *(PadPressures *)input->pressure = *(PadPressures *)raw->pressure;
+    Pad_SetHeld(input, raw->buttons);
     Pad_CountHolds(gPadInputPtr);
     gPadInputPtr->trigger = gPadInputPtr->pressed;
     Pad_Remap();
 }
 
-/* gPad from gPadIn, remapped by the configuration of port 0. */
+/*
+ * gPad from gPadIn, remapped by port 0's button configuration: the
+ * directions and each stick's directions through a gPadDirRemap row, then
+ * every bit i moved to bit map[i] with its pressure (a map entry above 24
+ * names several bits: their pressures all rise to the button's), and the
+ * sticks mirrored as the configuration says.
+ */
 void Pad_Remap(void)
 {
     u8 press[PAD_BUTTONS];
@@ -188,39 +207,41 @@ void Pad_Remap(void)
     u32 bits;
     s16 i;
     u32 held;
-    u8 *pp = press;
-    u8 k;
+    u8 *pressPtr = press;
+    u8 target;
 
     gPadPtr->state = gPadInputPtr->state;
     gPadPtr->caps = gPadInputPtr->caps;
     gPadPtr->kind = gPadInputPtr->kind;
     gPadPtr->id = gPadInputPtr->id;
-    held = gPadInputPtr->held & 0xFFF0;
-    held |= gPadDirRemap[cfg->dirMode][gPadInputPtr->held & 0xF];
-    held |= gPadDirRemap[cfg->stickLMode][(gPadInputPtr->held >> 16) & 0xF] << 16;
-    held |= gPadDirRemap[cfg->stickRMode][(gPadInputPtr->held >> 20) & 0xF] << 20;
-    /* the directions pressed as remapped (pressure[] is at 0x1C) */
-    for (i = 0; i < 4; i++) {
+    held = gPadInputPtr->held & (0xFFFF & ~PAD_DIR_MASK);
+    held |= gPadDirRemap[cfg->dirMode][gPadInputPtr->held & PAD_DIR_MASK];
+    held |= gPadDirRemap[cfg->stickLMode][(gPadInputPtr->held >> PAD_LSTICK_SHIFT) & PAD_DIR_MASK] << PAD_LSTICK_SHIFT;
+    held |= gPadDirRemap[cfg->stickRMode][(gPadInputPtr->held >> PAD_RSTICK_SHIFT) & PAD_DIR_MASK] << PAD_RSTICK_SHIFT;
+    /* the directions' pressures, remapped as their bits are; written as a
+     * byte offset (pressure[] is at 0x1C), as the match needs: indexing
+     * pressure[] allocates the registers differently */
+    for (i = 0; i < PAD_DIR_COUNT; i++) {
         press[i] = ((u8 *)gPadInputPtr)[gPadPressRemap[cfg->dirMode][i] + 0x1C];
     }
-    for (i = 4; i < 16; i++) {
+    for (i = PAD_DIR_COUNT; i < PAD_KEYS; i++) {
         press[i] = gPadInputPtr->pressure[i];
     }
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < PAD_KEYS; i++) {
         gPadPtr->pressure[i] = 0;
     }
     bits = 0;
-    for (i = 0; i < PAD_BUTTONS; i++, pp++) {
+    for (i = 0; i < PAD_BUTTONS; i++, pressPtr++) {
         if (held & gPadBit[i]) {
             bits |= gPadBit[cfg->map[i]];
         }
-        k = cfg->map[i];
-        if (k < 16) {
-            if (gPadPtr->pressure[k] < *pp) {
-                gPadPtr->pressure[k] = *pp;
+        target = cfg->map[i];
+        if (target < PAD_KEYS) {
+            if (gPadPtr->pressure[target] < *pressPtr) {
+                gPadPtr->pressure[target] = *pressPtr;
             }
-        } else if (k > 24) {
-            Pad_RaisePressure(gPadPtr->pressure, *pp, gPadBit[k]);
+        } else if (target > PAD_BUTTONS) {
+            Pad_RaisePressure(gPadPtr->pressure, *pressPtr, gPadBit[target]);
         }
     }
     Pad_SetHeld(gPadPtr, bits);
@@ -228,15 +249,15 @@ void Pad_Remap(void)
     gPadPtr->trigger = gPadPtr->pressed;
     gPadPtr->stickL = gPadInputPtr->stickL;
     switch (cfg->stickLMode) {
-    case 1:
+    case PAD_STICK_MIRROR_X:
         gPadPtr->stickL.x = -gPadPtr->stickL.x;
         gPadPtr->stickL.deg = 540 - gPadPtr->stickL.deg;
         break;
-    case 2:
+    case PAD_STICK_MIRROR_Y:
         gPadPtr->stickL.y = -gPadPtr->stickL.y;
         gPadPtr->stickL.deg = 360 - gPadPtr->stickL.deg;
         break;
-    case 3:
+    case PAD_STICK_MIRROR_XY:
         gPadPtr->stickL.x = -gPadPtr->stickL.x;
         gPadPtr->stickL.y = -gPadPtr->stickL.y;
         gPadPtr->stickL.deg += 180;
@@ -244,15 +265,15 @@ void Pad_Remap(void)
     }
     gPadPtr->stickR = gPadInputPtr->stickR;
     switch (cfg->stickRMode) {
-    case 1:
+    case PAD_STICK_MIRROR_X:
         gPadPtr->stickR.x = -gPadPtr->stickR.x;
         gPadPtr->stickR.deg = 540 - gPadPtr->stickR.deg;
         break;
-    case 2:
+    case PAD_STICK_MIRROR_Y:
         gPadPtr->stickR.y = -gPadPtr->stickR.y;
         gPadPtr->stickR.deg = 360 - gPadPtr->stickR.deg;
         break;
-    case 3:
+    case PAD_STICK_MIRROR_XY:
         gPadPtr->stickR.x = -gPadPtr->stickR.x;
         gPadPtr->stickR.y = -gPadPtr->stickR.y;
         gPadPtr->stickR.deg += 180;
@@ -269,7 +290,7 @@ void Pad_RaisePressure(u8 *pressure, u8 value, u32 bits)
 {
     s32 i;
 
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < PAD_KEYS; i++) {
         if (bits & gPadBit[i]) {
             if (pressure[i] < value) {
                 pressure[i] = value;
@@ -282,45 +303,48 @@ void Pad_RaisePressure(u8 *pressure, u8 value, u32 bits)
     }
 }
 
-/* The stick's direction in radians (0 when centred). */
-void Pad_StickAngle(PadStick *s)
+/* The stick's direction in radians, 0 to 2 pi (0 when centred). */
+void Pad_StickAngle(PadStick *stick)
 {
-    s16 x = s->x;
-    s16 y = s->y;
-    f32 a;
+    s16 x = stick->x;
+    s16 y = stick->y;
+    f32 angle;
 
     if ((y | x) == 0) {
-        a = 0.0f;
+        angle = 0.0f;
     } else {
-        a = atan2(-y, x);
-        if (a < 0.0f) {
-            a += 6.2831855f;
+        angle = atan2(-y, x);
+        if (angle < 0.0f) {
+            angle += 6.2831855f;
         }
     }
-    s->rad = a;
+    stick->rad = angle;
 }
 
-void Pad_SetHeld(PadInput *p, u32 held)
+/* Sets the buttons held this frame, and from the previous frame's the
+ * buttons pressed, released and changed. */
+void Pad_SetHeld(PadInput *pad, u32 held)
 {
-    p->prev = p->held;
-    p->held = held;
-    p->pressed = p->held & (p->prev ^ p->held);
-    p->released = p->prev & (p->prev ^ p->held);
-    p->changed = p->pressed | p->released;
+    pad->prev = pad->held;
+    pad->held = held;
+    pad->pressed = pad->held & (pad->prev ^ pad->held);
+    pad->released = pad->prev & (pad->prev ^ pad->held);
+    pad->changed = pad->pressed | pad->released;
 }
 
-/* Counts the frames each button has been held. */
-void Pad_CountHolds(PadInput *p)
+/* Counts the frames each button has been held, up to 0xFF; a button let go
+ * clears its whole PadHold (one halfword store). */
+void Pad_CountHolds(PadInput *pad)
 {
     s16 i;
 
     for (i = 0; i < PAD_BUTTONS; i++) {
-        if (p->held & gPadBit[i]) {
-            if (p->hold[i].count != 0xFF) {
-                p->hold[i].count++;
+        if (pad->held & gPadBit[i]) {
+            if (pad->hold[i].count != 0xFF) {
+                pad->hold[i].count++;
             }
         } else {
-            *(u16 *)&p->hold[i] = 0;
+            *(u16 *)&pad->hold[i] = 0;
         }
     }
 }
@@ -330,9 +354,9 @@ u8 Pad_GetConnected(void)
     return gPadConnected;
 }
 
-void Pad_EnableVibration(u8 on)
+void Pad_EnableVibration(u8 enable)
 {
-    Pad_SetVibrationFlag(on);
+    Pad_SetVibrationFlag(enable);
 }
 
 /* Starts libpad2 and opens the port's socket; 0 on failure. */
@@ -345,7 +369,7 @@ s32 Pad_Open(void)
     }
     Pad_ClearBuffers();
     gPadDataNone.status = 0xFF;
-    gPadDataNone.buttons = 0xFFFF;
+    gPadDataNone.buttons = 0xFFFF;  /* active low: none held */
     gPadData[0] = gPadDataNone;
     gPadPort[0].buf = gPadSocketBuf;
     gPadPort[0].state = 0;
@@ -377,11 +401,13 @@ void Pad_Close(void)
     Pad_EndLibs();
 }
 
-void Pad_SetVibrationFlag(u8 on)
+void Pad_SetVibrationFlag(u8 enable)
 {
-    gPadVibration = on;
+    gPadVibration = enable;
 }
 
+/* Sets a port's thresholds: the least pressure that counts and the
+ * sticks' dead zones. */
 void Pad_SetLimits(s32 port, s16 pressMin, s16 deadL, s16 deadR)
 {
     gPadLimits[port].pressMin = pressMin;
@@ -408,7 +434,7 @@ void Pad_Read(void)
     vibCur = &gPadVibrationLast;
     if (Pad_ConvertData(0) != 0) {
         raw->id.vib = port->vibOk;
-        raw->buttons = (raw->buttons & 0xFFF0) | gPadDpadFix[raw->buttons & 0xF];
+        raw->buttons = (raw->buttons & (0xFFFF & ~PAD_DIR_MASK)) | gPadDpadFix[raw->buttons & PAD_DIR_MASK];
         Pad_StickPolar(&raw->stickL, lim->deadL);
         Pad_StickPolar(&raw->stickR, lim->deadR);
         dirL = Pad_StickDirBits(&raw->stickL);

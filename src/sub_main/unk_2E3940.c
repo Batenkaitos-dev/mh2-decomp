@@ -14,6 +14,8 @@
 #include "syssettings.h"
 #include "ram_areas.h"
 #include "em.h"
+#include "model.h"
+#include "motion.h"
 #include "player.h"
 #include "image.h"
 #include "dma.h"
@@ -146,7 +148,7 @@ s32 Net_Start(void);
 void Kbd_ReadUsb(void);
 void Kbd_InitState(s8);
 void func_00319FE0(void);
-void Fade_Draw(void);
+void Brightness_Draw(void);
 void Tex_LoadFile(s32 a, s32 b, s32 c);
 void PlayerLook_ResetLoaded(void);
 void TaskSlot_InitAll(void);
@@ -167,7 +169,7 @@ void Save_ClearCopy(void);
 s32 Sys_FlipFrame(s32 unused0);
 void Sys_SetNextFlipAt(s32);
 void Pad_Update(void);
-void func_18CC10(void);
+void Sys_EmptyHook(void);
 void Overlay_LoadGmSub(void);
 void Stream_Server(void);
 void * memset(void *p, s32 c, u32 n);
@@ -275,7 +277,6 @@ char D_0046A200[272] = {
 };
 #pragma rodata off
 
-
 s32 SubMain_Step(void);
 s32 Game_IsOnline(void);
 s32 NetIf_IsConnected(void);
@@ -316,7 +317,7 @@ s32 SubMain_Step(void)
     switch (gSubMainStep) {
     case 0:
         SubMain_Init();
-        func_18CC10();
+        Sys_EmptyHook();
         TaskSlot_Set(&D_6B5CF0, 0);
         gSubMainStep += 1;
         break;
@@ -397,7 +398,7 @@ void SubMain_EndFrame(void)
         Loading_Draw(1);
     }
     if (gSubMainStep != 0) {
-        Fade_Draw();
+        Brightness_Draw();
     }
     Draw_EndFrame();
     Stream_Server();
@@ -518,83 +519,83 @@ extern PadState gPadState[];
 /* Updates gPadState[i] from pad i as read: the buttons in the game's bit order, the stick
  * directions, angles (0x10000 a turn) and magnitudes, the press/release edges and the
  * auto-repeat (after 13 frames held, then every 3). */
-void PadState_Update(s32 i)
+void PadState_Update(s32 port)
 {
     PadInput *pad;
     u32 held;
-    PadState *ps;
-    u16 d;
+    PadState *padState;
+    u16 bits;
 
-    ps = &gPadState[i];
-    ps->onPrev = ps->on;
-    pad = &gPadInputPtr[i];
+    padState = &gPadState[port];
+    padState->onPrev = padState->on;
+    pad = &gPadInputPtr[port];
     if (pad->state == 1) {
-        ps->on = (pad->kind & 3) != 0;
+        padState->on = (pad->kind & 3) != 0;
     } else {
-        ps->on = 0;
+        padState->on = 0;
     }
-    ps->unk20 = 0;
-    if (gPadInputPtr[i].state == 1) {
-        ps->prevHeld = ps->held;
-        ps->dirPrev = ps->dir;
-        held = gPadInputPtr[i].held;
-        d = 0;
-        if (held & 1) d |= 0x2000;
-        if (held & 2) d |= 0x1000;
-        if (held & 4) d |= 0x800;
-        if (held & 8) d |= 0x400;
-        if (held & 0x100) d |= 0x200;
-        if (held & 0x200) d |= 0x100;
-        if (held & 0x400) d |= 0x80;
-        if (held & 0x10) d |= 0x40;
-        if (held & 0x20) d |= 0x20;
-        if (held & 0x40) d |= 0x10;
-        if (held & 0x800) d |= 8;
-        if (held & 0x80) d |= 4;
-        if (held & 0x1000) d |= 2;
-        if (held & 0x2000) d |= 1;
-        if (held & 0x8000) d |= 0x8000;
-        if (held & 0x4000) d |= 0x4000;
-        ps->held = d;
-        d = 0;
-        if (gPadInputPtr[i].caps & 0x30) {
-            if (held & 0x10000) d |= 0x2000;
-            if (held & 0x20000) d |= 0x1000;
-            if (held & 0x40000) d |= 0x800;
-            if (held & 0x80000) d |= 0x400;
-            ps->degL = (gPadInputPtr[i].stickL.deg << 16) / 360;
-            ps->magL = Pad_StickDeadZone(gPadInputPtr[i].stickL.mag);
+    padState->unk20 = 0;
+    if (gPadInputPtr[port].state == 1) {
+        padState->prevHeld = padState->held;
+        padState->dirPrev = padState->dir;
+        held = gPadInputPtr[port].held;
+        bits = 0;
+        if (held & PADIO_UP) bits |= PAD_UP;
+        if (held & PADIO_DOWN) bits |= PAD_DOWN;
+        if (held & PADIO_LEFT) bits |= PAD_LEFT;
+        if (held & PADIO_RIGHT) bits |= PAD_RIGHT;
+        if (held & PADIO_SQUARE) bits |= PAD_SQUARE;
+        if (held & PADIO_TRIANGLE) bits |= PAD_TRIANGLE;
+        if (held & PADIO_R1) bits |= PAD_R1;
+        if (held & PADIO_CROSS) bits |= PAD_CROSS;
+        if (held & PADIO_CIRCLE) bits |= PAD_CIRCLE;
+        if (held & PADIO_R2) bits |= PAD_R2;
+        if (held & PADIO_L1) bits |= PAD_L1;
+        if (held & PADIO_L2) bits |= PAD_L2;
+        if (held & PADIO_L3) bits |= PAD_L3;
+        if (held & PADIO_R3) bits |= PAD_R3;
+        if (held & PADIO_START) bits |= PAD_START;
+        if (held & PADIO_SELECT) bits |= PAD_SELECT;
+        padState->held = bits;
+        bits = 0;
+        if (gPadInputPtr[port].caps & 0x30) {
+            if (held & (PADIO_UP << PAD_LSTICK_SHIFT)) bits |= PAD_UP;
+            if (held & (PADIO_DOWN << PAD_LSTICK_SHIFT)) bits |= PAD_DOWN;
+            if (held & (PADIO_LEFT << PAD_LSTICK_SHIFT)) bits |= PAD_LEFT;
+            if (held & (PADIO_RIGHT << PAD_LSTICK_SHIFT)) bits |= PAD_RIGHT;
+            padState->degL = (gPadInputPtr[port].stickL.deg << 16) / 360;
+            padState->magL = Pad_StickDeadZone(gPadInputPtr[port].stickL.mag);
         }
-        if (gPadInputPtr[i].caps & 0x50) {
-            if (held & 0x100000) d |= 0x20;
-            if (held & 0x200000) d |= 0x10;
-            if (held & 0x400000) d |= 8;
-            if (held & 0x800000) d |= 4;
-            ps->degR = (gPadInputPtr[i].stickR.deg << 16) / 360;
-            ps->magR = Pad_StickDeadZone(gPadInputPtr[i].stickR.mag);
+        if (gPadInputPtr[port].caps & 0x50) {
+            if (held & (PADIO_UP << PAD_RSTICK_SHIFT)) bits |= PAD_RSTICK_UP;
+            if (held & (PADIO_DOWN << PAD_RSTICK_SHIFT)) bits |= PAD_RSTICK_DOWN;
+            if (held & (PADIO_LEFT << PAD_RSTICK_SHIFT)) bits |= PAD_RSTICK_LEFT;
+            if (held & (PADIO_RIGHT << PAD_RSTICK_SHIFT)) bits |= PAD_RSTICK_RIGHT;
+            padState->degR = (gPadInputPtr[port].stickR.deg << 16) / 360;
+            padState->magR = Pad_StickDeadZone(gPadInputPtr[port].stickR.mag);
         }
-        ps->dir = d;
+        padState->dir = bits;
     } else {
-        ps->held = 0;
-        ps->dir = 0;
-        ps->degR = 0;
-        ps->degL = 0;
-        ps->magR = 0;
-        ps->magL = 0;
+        padState->held = 0;
+        padState->dir = 0;
+        padState->degR = 0;
+        padState->degL = 0;
+        padState->magR = 0;
+        padState->magL = 0;
     }
-    ps->pressed = ~ps->prevHeld & ps->held;
-    ps->released = ps->prevHeld & ~ps->held;
-    ps->dirPressed = ~ps->dirPrev & ps->dir;
-    ps->dirReleased = ps->dirPrev & ~ps->dir;
-    ps->repeat = 0;
-    if (ps->prevHeld == ps->held) {
-        ps->repeatCnt++;
-        if (ps->repeatCnt > 10 && ps->repeatCnt > 12) {
-            ps->repeatCnt = 10;
-            ps->repeat = ps->held;
+    padState->pressed = ~padState->prevHeld & padState->held;
+    padState->released = padState->prevHeld & ~padState->held;
+    padState->dirPressed = ~padState->dirPrev & padState->dir;
+    padState->dirReleased = padState->dirPrev & ~padState->dir;
+    padState->repeat = 0;
+    if (padState->prevHeld == padState->held) {
+        padState->repeatCnt++;
+        if (padState->repeatCnt > 10 && padState->repeatCnt > 12) {
+            padState->repeatCnt = 10;
+            padState->repeat = padState->held;
         }
     } else {
-        ps->repeatCnt = 0;
+        padState->repeatCnt = 0;
     }
 }
 
@@ -1109,7 +1110,6 @@ void Player_BeginLayerMotion(Player *p, s32 frame, s32 n, s32 part)
     }
 }
 
-
 /* Sets the animation of part `part` of the player's model from its id in
  * +0x670 (thousands: the set: 0 common (gCommonMotionGroupFirst), else the weapon's
  * (+0xC, gPlayerMotionGroupFirst) or, for the other players' kind, +0x30F's (gEmMotionGroupFirst);
@@ -1307,7 +1307,6 @@ s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame)
     return 0;
 }
 
-
 s32 Player_PassedFrameScaled(void *obj, f32 frame, s32 layer)
 {
     Player *p = obj;
@@ -1319,7 +1318,6 @@ s32 Player_PassedFrameScaled(void *obj, f32 frame, s32 layer)
     }
     return Motion_PassedFrame(p, layer, frame);
 }
-
 
 /* 1 once the motion of layer has reached frame (0 while motions are held). */
 s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame)
@@ -1930,7 +1928,6 @@ void Text_DrawString(TextRun *r)
 }
 
 
-
 /* Draws the glyphs of run r from its position, one advance apart (Font_DrawGlyph). */
 void Text_DrawRun(TextRun *r)
 {
@@ -2492,36 +2489,6 @@ void Text_UpdatePulse(void)
 
 /* gRsMaterials (main): a ModelMat per register 0x3A-0x59 (include/model.h). */
 
-/* An entry of the model pool gModelPool (0x180 entries of 0x180 bytes; a handle is index + 1). */
-typedef struct ModelEntry {
-    u32 flags;                  /* 0x00: 2 and 4 select how Model_Draw builds its packets */
-    s32 used;                   /* 0x04: from the file header, 0 free */
-    s32 unk08;                  /* 0x08 */
-    s32 frame;                  /* 0x0C: the frame its data was last set up */
-    s32 size;                   /* 0x10: of the copy at 0x14 */
-    void *file;                 /* 0x14: a handle, the copied file */
-    s32 unk18;                  /* 0x18 */
-    void *data;                 /* 0x1C: a handle */
-    u8 *dataAddr;               /* 0x20 */
-    s32 unk24;                  /* 0x24 */
-    s32 pktSize;                /* 0x28 */
-    s32 unk2C;                  /* 0x2C */
-    s32 unk30;                  /* 0x30 */
-    s32 partCount;              /* 0x34 */
-    s32 texCount;               /* 0x38 */
-    s32 unk3C;                  /* 0x3C */
-    s32 unk40;                  /* 0x40 */
-    s32 unk44;                  /* 0x44 */
-    s32 prog;                   /* 0x48: VU1 program (Vu1_SelectProgram), -1 none */
-    s32 *progInfo;              /* 0x4C */
-    s32 unk50;                  /* 0x50 */
-    s32 unk54;                  /* 0x54 */
-    u8 pad58[0x60 - 0x58];
-    u8 mat[0x20];               /* 0x60: per part, a material of gRsMaterials */
-    s32 partTex[0x20];          /* 0x80: per part, its material's texture */
-    s32 tex[0x20];              /* 0x100: the distinct textures */
-} ModelEntry;
-
 extern ModelEntry gModelPool[];
 extern ModelMat gRsMaterials[];
 
@@ -2600,7 +2567,6 @@ s32 Model_Setup(ModelEntry *e, MeshDesc *hdr)
     gModelCount++;
     return 1;
 }
-
 
 /*
  * hdr = the 0x24-byte header of model file obj (its handle at +0x14), then hdr+8 = its
@@ -3744,7 +3710,6 @@ s32 Model_Draw(u32 h, s32 flags)
     return 1;
 }
 
-
 /* Frees model h (its handles and pool entry); 0 when h is not a model in use. */
 s32 Model_FreeHandle(u32 h)
 {
@@ -3777,29 +3742,6 @@ void Anim_SetCurveKeys(u8 *keys)
     gAnimCurveKeys = (s32) keys;
 }
 
-/* A curve of an animation (8 bytes): its keys are at gAnimCurveKeys + keys. */
-typedef struct AnimCurve {
-    u8 type;                    /* 0x0: the key format (Anim_EvalCurve) */
-    u8 idx;                     /* 0x1: the pose value it drives */
-    u16 count;                  /* 0x2: keys */
-    s32 keys;                   /* 0x4: offset of the keys */
-} AnimCurve;
-
-/* The animation of a bone (at gAnimData + the bone's offset). */
-typedef struct AnimHeader {
-    u16 flags;                  /* 0x0: 0x1000 or 0x2000 in the top 4 bits; 0x8000 */
-    s16 count;                  /* 0x2: curves */
-    s32 curves;                 /* 0x4: offset of the curves (AnimCurve) */
-} AnimHeader;
-
-/* The key formats: a value v at time t, with the slopes in and out for a cubic. */
-typedef struct KeyF2 { f32 v, t; } KeyF2;                       /* 0x21: linear */
-typedef struct KeyF4 { f32 v, t, in, out; } KeyF4;              /* 0x22: cubic */
-typedef struct KeyFM { u32 mode; f32 v, t, in, out; } KeyFM;    /* 0x23: either, per key */
-typedef struct KeyS2 { s16 v, t; } KeyS2;                       /* 0x11 */
-typedef struct KeyS4 { s16 v, t, in, out; } KeyS4;              /* 0x12 */
-typedef struct KeySM { u32 mode; s16 v, t, in, out; } KeySM;    /* 0x13 */
-
 f32 Anim_EvalLinearF(AnimCurve *c, s16 *cur, f32 t);
 f32 Anim_EvalCubicF(AnimCurve *c, s16 *cur, f32 t);
 f32 Anim_EvalMixedF(AnimCurve *c, s16 *cur, f32 t);
@@ -3821,22 +3763,22 @@ f32 Anim_EvalCurve(f32 t, AnimCurve *c, s16 *cur)
     f32 v;
 
     switch (c->type) {
-    case 0x21:
+    case ANIM_KEY_F32_LINEAR:
         v = Anim_EvalLinearF(c, cur, t);
         break;
-    case 0x22:
+    case ANIM_KEY_F32_CUBIC:
         v = Anim_EvalCubicF(c, cur, t);
         break;
-    case 0x23:
+    case ANIM_KEY_F32_MIXED:
         v = Anim_EvalMixedF(c, cur, t);
         break;
-    case 0x11:
+    case ANIM_KEY_S16_LINEAR:
         v = Anim_EvalLinearS(c, cur, t);
         break;
-    case 0x12:
+    case ANIM_KEY_S16_CUBIC:
         v = Anim_EvalCubicS(c, cur, t);
         break;
-    case 0x13:
+    case ANIM_KEY_S16_MIXED:
         v = Anim_EvalMixedS(c, cur, t);
         break;
     }
@@ -3880,9 +3822,9 @@ f32 Anim_EvalMixedF(AnimCurve *c, s16 *cur, f32 t)
         return a->v;
     }
     switch (a->mode) {
-    case 0x10000:
+    case ANIM_KEY_MODE_LINEAR:
         return Anim_LerpKeys(t, a->v, a->t, b->v, b->t);
-    case 0x20000:
+    case ANIM_KEY_MODE_CUBIC:
         return Anim_CubicKeys(t, a->v, a->t, a->out, b->v, b->t, b->in);
     }
     return 0.0f;
@@ -3925,9 +3867,9 @@ f32 Anim_EvalMixedS(AnimCurve *c, s16 *cur, f32 t)
         return a->v;
     }
     switch (a->mode) {
-    case 0x10000:
+    case ANIM_KEY_MODE_LINEAR:
         return Anim_LerpKeys(t, a->v, a->t, b->v, b->t);
-    case 0x20000:
+    case ANIM_KEY_MODE_CUBIC:
         return Anim_CubicKeys(t, a->v, a->t, a->out, b->v, b->t, b->in);
     }
     return 0.0f;
@@ -4552,10 +4494,6 @@ L002EC668:
     jr ra
     sqc2 vf6, 0x0(a0)
 }
-
-typedef struct Mtx44Copy {
-    f32 m[4][4];
-} Mtx44Copy;
 
 extern Mtx44Copy gMtxSlots[];
 
@@ -6152,7 +6090,6 @@ asm void Vec_Project(f32 *out, f32 *v, f32 *m)
     addiu sp, sp, 0x10
 }
 
-
 /* v rotated by a about the x axis. */
 void Vec_RotateX(f32 *v, f32 a)
 {
@@ -6546,7 +6483,6 @@ void Quat_FromAxisAngle(f32 *q, f32 angle)
     q[2] *= s;
 }
 
-
 void Quat_Set(f32 *axis, f32 *q, f32 angle)
 {
     q[3] = 0.0f;
@@ -6593,11 +6529,13 @@ void Anim_SetData(s32 handle)
     Anim_SetCurveKeys((u8 *) gAnimData);
 }
 
-
-/* A copy of the object's data block (+8, its size at +0xC) in a new handle. */
-void *Skeleton_CopyData(u8 *obj)
+/* A copy of a built skeleton (the block skel's header points at, its size
+ * bytes; model.h's SkelHeader) in a new memory handle, which it returns
+ * (Model_InitSkeleton). The header's block (+8) and size (+0xC) are read
+ * as bytes: read through SkelHeader, the code differs. */
+void *Skeleton_CopyData(u8 *skel)
 {
-    u8 *src = *(u8 **)(obj + 8);
+    u8 *src = *(u8 **)(skel + 8);
     void *h = Mem_Alloc(*(s32 *)(src + 0xC), 4);
     u8 *dst = Mem_GetAddr(h);
     u32 i;

@@ -39,8 +39,8 @@ u8 ChatPage_CountMuted(void)
     return gSubMenuWork->mutedCount;
 }
 
-struct Pair;
-s32 Shake_CopyOffset(u8 id, struct Pair *out);
+struct ShakeOffset;
+s32 Shake_CopyOffset(u8 id, struct ShakeOffset *out);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
 void Menu_DrawFrame(void *b, s16 *pos);
@@ -94,7 +94,7 @@ void Chat_DrawSpeakers(void)
     s32 n;
     u8 *m;
 
-    Shake_CopyOffset(0xF, (struct Pair *) pos);
+    Shake_CopyOffset(0xF, (struct ShakeOffset *) pos);
     m = (u8 *)gSubMenuWork;
     switch (m[6]) {
     case 0:

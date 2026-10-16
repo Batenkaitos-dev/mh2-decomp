@@ -7,6 +7,7 @@
 #include "sprite.h"
 #include "scene.h"
 #include "em.h"
+#include "em_fatalis.h"
 #include "objhead.h"
 #include "player.h"
 #include "stageobj.h"
@@ -122,17 +123,17 @@ void Em_MoveRotatedAccel(Em *em, void *ang);
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
 void Em_StartRage(Em *);
 void Em_StartPendingRage(Em *);
-void Em_Refill7F4(Em *em);
+void Em_RefillNeed3(Em *em);
 void Em_ResetNotice(Em *em);
 void Em_TargetPlayerInRange(Em *);
 s32 EmChameleos_IsInvisible(Em *);
 void EmBulldrome_SetGroup1State(Em *em, u16 state, u8 mode);
 void EmBulldrome_SetGroup2State(Em *em, u16 state, u8 mode);
 void EmBulldrome_SetGroup3State(Em *em, u16 state, u8 mode);
-void EmFatalis_SetGroup0State(Em *em, u16 state, u8 mode);
-void EmFatalis_SetGroup1State(Em *em, u16 state, u8 mode);
-void EmFatalis_SetGroup2State(Em *em, u16 state, u8 mode);
-void EmFatalis_SetGroup3State(Em *em, u16 state, u8 mode);
+void EmFatalis_SetIdleState(Em *em, u16 state, u8 mode);
+void EmFatalis_SetMoveState(Em *em, u16 state, u8 mode);
+void EmFatalis_SetFlyState(Em *em, u16 state, u8 mode);
+void EmFatalis_SetAttackState(Em *em, u16 state, u8 mode);
 void StageObj_K00_Setup(StageObj *fx);
 void StageObj_K00_Draw(DrawSlot *node);
 void StageObj_K00_Run(StageObj *fx);
@@ -235,7 +236,7 @@ extern s16 D_008F5CC0[];
 extern s16 *D_008F5CC8[];
 extern void *StageObj_K0A_Keys0[];
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpF32(f32 *k, f32 *out, f32 t);
+void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 extern s16 D_008CDB28[];
 void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
 f32 Vec_DistanceXZ(f32 *a, f32 *b);
@@ -255,10 +256,10 @@ u16 Math_AngleXZ(f32 *from, f32 *to);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_ClearPart(Em *em, u16 part);
 void Em_AddHp(Em *em, s16 n);
-void Em_Add7F0(Em *em, s32 n);
-void Em_Add7EC(Em *em, s32 n);
-void Em_Clear7F0State(Em *em);
-void Em_Clear7ECState(Em *em);
+void Em_AddNeed1(Em *em, s32 n);
+void Em_AddNeed2(Em *em, s32 n);
+void Em_ClearNeed1State(Em *em);
+void Em_ClearNeed2State(Em *em);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 void MinePoint_Remove(s32);
 void EmFatalis_ChangeState(Em *em, u16 group, u16 state, u8 mode);
@@ -456,7 +457,7 @@ void EmBulldrome_SetGroup0State(Em *em, u16 state, u8 mode)
         Em_ResetNotice(em);
         break;
     case 19:
-        Em_Refill7F4(em);
+        Em_RefillNeed3(em);
         break;
     case 20:
         Em_StartRage(em);
@@ -617,32 +618,38 @@ void EmBulldrome_SetMotionForSide(Em *em, s16 frame)
     Em_SetMotion(em, row, 0, frame);
 }
 
-void EmFatalis_SetGroup0State(Em *em, u16 state, u8 mode)
+/*
+ * Starts a state of group 0: FAT_IDLE and FAT_IDLE_ACTION pick one of the
+ * two at random (Em.stateRand); the status states begin or end their
+ * status.
+ */
+void EmFatalis_SetIdleState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 1:
-    case 2:
+    case FAT_IDLE:
+    case FAT_IDLE_ACTION:
         if (em->stateRand & 1) {
-            state = 1;
+            state = FAT_IDLE;
         } else {
-            state = 2;
+            state = FAT_IDLE_ACTION;
         }
         break;
-    case 4:
+    case FAT_IDLE_STATUS2:
         Em_BeginStatus2(em);
         break;
-    case 5:
+    case FAT_IDLE_STATUS2_END:
         Em_EndStatus2(em);
         break;
-    case 6:
+    case FAT_IDLE_STATUS4_END:
         Em_EndStatus4(em);
         break;
     }
-    Em_SetStateSync(em, 0, state, mode);
+    Em_SetStateSync(em, EM_GROUP_IDLE, state, mode);
 }
 
-void EmFatalis_SetGroup1State(Em *em, u16 state, u8 mode)
+/* Starts a state of group 1; the walk sets its speed. */
+void EmFatalis_SetMoveState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
     switch ((u16) state) {
@@ -653,28 +660,33 @@ void EmFatalis_SetGroup1State(Em *em, u16 state, u8 mode)
     case 2:
         break;
     }
-    Em_SetStateSync(em, 1, state, mode);
+    Em_SetStateSync(em, EM_GROUP_MOVE, state, mode);
 }
 
-void EmFatalis_SetGroup2State(Em *em, u16 state, u8 mode)
+/*
+ * Starts a state of group 2. A flight asked for on the ground takes off
+ * first (FAT_FLY_TAKE_OFF); the flights set their speed and their timer
+ * (300 frames, or from the goal's distance).
+ */
+void EmFatalis_SetFlyState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 2:
-    case 3:
-    case 13:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_FLY_HOVER:
+    case FAT_FLY_HOVER_TURN:
+    case FAT_FLY_HOVER_TURN_STOP:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         em->timer = 300;
         break;
-    case 4:
-    case 9:
-    case 10:
-    case 12:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_FLY_TO_GOAL:
+    case FAT_FLY_LEVEL_TO_GOAL:
+    case FAT_FLY_CLIMB_TO_GOAL:
+    case FAT_FLY_CLIMB_TO_GOAL_NEAR:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         Player_ClearVelocity(em);
@@ -684,162 +696,172 @@ void EmFatalis_SetGroup2State(Em *em, u16 state, u8 mode)
             em->timer = 30;
         }
         break;
-    case 5:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_FLY_RISE:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         Player_ClearVelocity(em);
         em->velZ = 10.0f;
         em->timer = (s32) (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) / em->velZ) * 3;
         break;
-    case 6:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_FLY_STRAIGHT_TO_GOAL:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         Player_ClearVelocity(em);
         em->velZ = 10.0f;
         em->timer = (s32) (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) / em->velZ) * 3;
         break;
-    case 7:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_FLY_DESCEND:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         Player_ClearVelocity(em);
         em->velZ = 10.0f;
         em->timer = 300;
         break;
-    case 8:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_FLY_RISE_HIGH:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         Player_ClearVelocity(em);
         em->velZ = 10.0f;
         em->timer = 300;
         break;
-    case 11:
+    case FAT_FLY_TAKE_OFF_AND_RISE:
         Player_ClearVelocity(em);
         em->velZ = 10.0f;
         em->timer = 300;
         break;
-    case 0:
-    case 1:
-    case 14:
-    case 15:
+    case FAT_FLY_TAKE_OFF:
+    case FAT_FLY_LAND:
+    case FAT_FLY_LAND_AT_HEIGHT:
+    case FAT_FLY_TAKE_OFF_HIGH:
         break;
     }
-    Em_SetStateSync(em, 2, state, mode);
+    Em_SetStateSync(em, EM_GROUP_FLY, state, mode);
 }
 
-void EmFatalis_SetGroup3State(Em *em, u16 state, u8 mode)
+/*
+ * Starts a state of group 3. A ground attack asked for in the air lands
+ * first (FAT_FLY_LAND) and an air attack on the ground takes off first; the
+ * charge and the glide set their speed, the air fireballs their count, the
+ * dives their distance (100, or the goal's) and timer.
+ */
+void EmFatalis_SetAttackState(Em *em, u16 state, u8 mode)
 {
     EmFatalisWork *w = (EmFatalisWork *)&em->work;
-    f32 f;
+    f32 dist;
 
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 0:
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 7:
-    case 8:
-    case 14:
-    case 15:
-    case 16:
-    case 17:
-    case 18:
-    case 19:
-        if (em->remote == 0 && em->stance == 2) {
-            EmFatalis_ChangeState(em, 2, 1, 1);
+    case FAT_ATK_SINGLE_A:
+    case FAT_ATK_SINGLE_B:
+    case FAT_ATK_FIREBALL:
+    case FAT_ATK_FIREBALL_B:
+    case FAT_ATK_SWEEP_NO_EFFECT:
+    case FAT_ATK_HOP_FIREBALL:
+    case FAT_ATK_CHARGE_START:
+    case FAT_ATK_SWEEP_A:
+    case FAT_ATK_SWEEP_B:
+    case FAT_ATK_SWEEP_C:
+    case FAT_ATK_SWEEP_D:
+    case FAT_ATK_SWEEP_DOUBLE:
+    case FAT_ATK_SINGLE_C:
+        if (em->remote == 0 && em->stance == EM_STANCE_AIR) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_LAND, EM_SYNC_SEND);
             return;
         }
         break;
-    case 6:
-    case 12:
-        if (em->remote == 0 && em->stance == 2) {
-            EmFatalis_ChangeState(em, 2, 1, 1);
+    case FAT_ATK_CHARGE:
+    case FAT_ATK_GLIDE:
+        if (em->remote == 0 && em->stance == EM_STANCE_AIR) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_LAND, EM_SYNC_SEND);
             return;
         }
         Em_SetSpeedScaled(em, 6, 1000.0f, 500.0f);
         break;
-    case 5:
-    case 10:
-    case 11:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_ATK_AIR_FIREBALL:
+    case FAT_ATK_AIR_FIREBALL_B:
+    case FAT_ATK_AIR_FIREBALL_C:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         w->countdown = 1;
         break;
-    case 9:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_ATK_AIR_FIREBALL_TRIPLE:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         w->countdown = 3;
         break;
-    case 13:
-    case 20:
-        if (em->remote == 0 && em->stance == 0) {
-            EmFatalis_ChangeState(em, 2, 0, 1);
+    case FAT_ATK_DIVE:
+    case FAT_ATK_DIVE_B:
+        if (em->remote == 0 && em->stance == EM_STANCE_GROUND) {
+            EmFatalis_ChangeState(em, EM_GROUP_FLY, FAT_FLY_TAKE_OFF, EM_SYNC_SEND);
             return;
         }
         if (em->curGoalKind == 0) {
-            w->unk017 = 0;
+            w->diveToGoal = 0;
             w->runDist = 100.0f;
             em->timer = (em->stateRand % 120 + 180) / 2;
         } else {
-            w->unk017 = 1;
-            f = Vec_DistanceXZ(&em->posX, em->goal);
-            w->runDist = f;
-            em->timer = (s32) f / 7;
+            w->diveToGoal = 1;
+            dist = Vec_DistanceXZ(&em->posX, em->goal);
+            w->runDist = dist;
+            em->timer = (s32) dist / 7;
         }
         break;
-    case 21:
+    case FAT_ATK_BLASTS:
         break;
     }
-    Em_SetStateSync(em, 3, state, mode);
+    Em_SetStateSync(em, EM_GROUP_ATTACK, state, mode);
 }
 
+/*
+ * Changes the state; the sync mode says how the change reaches the other
+ * players online, and a remote copy drops the owner's modes (EM_SYNC_OWNER,
+ * EM_SYNC_OWNER_FLAGGED). Groups 0-3 go through their Set function;
+ * FAT_REACT_KNOCK_DOWN ends every status (Em_EndAllStatus) and
+ * FAT_REACT_STATUS4 begins status 4.
+ */
 void EmFatalis_ChangeState(Em *em, u16 group, u16 state, u8 mode)
 {
     if (em->remote == 0) {
         Em_TargetPlayerInRange(em);
-        goto block_5;
-    }
-    if ((mode == 3) || (mode == 4)) {
+    } else if (mode == EM_SYNC_OWNER || mode == EM_SYNC_OWNER_FLAGGED) {
         return;
     }
-block_5:
     switch (group) {
-    case 0:
-        EmFatalis_SetGroup0State(em, state, mode);
+    case EM_GROUP_IDLE:
+        EmFatalis_SetIdleState(em, state, mode);
         return;
-    case 1:
-        EmFatalis_SetGroup1State(em, state, mode);
+    case EM_GROUP_MOVE:
+        EmFatalis_SetMoveState(em, state, mode);
         return;
-    case 2:
-        EmFatalis_SetGroup2State(em, state, mode);
+    case EM_GROUP_FLY:
+        EmFatalis_SetFlyState(em, state, mode);
         return;
-    case 3:
-        EmFatalis_SetGroup3State(em, state, mode);
+    case EM_GROUP_ATTACK:
+        EmFatalis_SetAttackState(em, state, mode);
         return;
-    case 6:
-    case 5:
+    case EM_GROUP_EVENT:
+    case EM_GROUP_DEFEAT:
         em->motionSpeed = 1.0f;
         Em_SetStateSync(em, group, state, mode);
         return;
-    case 4:
+    case EM_GROUP_REACT:
         switch (state) {
-        case 4:
+        case FAT_REACT_KNOCK_DOWN:
             Em_EndAllStatus(em);
             break;
-        case 5:
+        case FAT_REACT_STATUS4:
             Em_BeginStatus4(em);
             break;
         }
@@ -851,13 +873,17 @@ block_5:
     }
 }
 
+/*
+ * Sets velY from the curve EmFatalis_MoveVelYCurves[kind] at the motion
+ * frame (unblended motions only) and moves along rotY.
+ */
 void EmFatalis_MoveByVelYCurve(Em *em, s32 kind)
 {
     EmWork *work = (EmWork *) &em->work;
     EmCurveKey *tbl;
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyFrame;
     s32 i;
 
     tbl = EmFatalis_MoveVelYCurves[kind];
@@ -868,15 +894,15 @@ void EmFatalis_MoveByVelYCurve(Em *em, s32 kind)
         } else {
             i = 1;
             while (i != 0) {
-                p = &tbl[i];
-                t = p->t;
-                if (frame > t && t != 0.0f) {
+                key = &tbl[i];
+                keyFrame = key->t;
+                if (frame > keyFrame && keyFrame != 0.0f) {
                     i++;
-                } else if (t == 0.0f) {
+                } else if (keyFrame == 0.0f) {
                     break;
                 } else {
                     i = 0;
-                    em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                    em->velY = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
                 }
             }
         }
@@ -887,6 +913,11 @@ void EmFatalis_MoveByVelYCurve(Em *em, s32 kind)
     }
 }
 
+/*
+ * Starts the curves of a flight (velY, speed or both, by kind) at the frame
+ * the kind gives (134, 70, 60 or 0; the take-off's curves start at frame
+ * 134, where FAT_MOT_TAKE_OFF leaves the floor). Stops the monster.
+ */
 void EmFatalis_StartCurves(Em *em, u8 kind)
 {
     EmFatalisWork *w = (EmFatalisWork *)&em->work;
@@ -923,6 +954,7 @@ void EmFatalis_StartCurves(Em *em, u8 kind)
     Player_ClearVelocity(em);
 }
 
+/* The curve that does nothing. */
 static s32 EmFatalis_CurveNone(Em *em, EmWork *work)
 {
     return 0;
@@ -931,14 +963,18 @@ static s32 EmFatalis_CurveNone(Em *em, EmWork *work)
 
 extern EmCurveKey *EmFatalis_VelYCurves[];
 
-/* The value of curve work[0x4F] at the frame in the work area (a table of keys): sets
- * em->velY from the key pair around the frame, 2 at the table's end. */
+/*
+ * The velY curve of EmFatalisWork.curveKind (EmFatalis_VelYCurves): sets
+ * velY from the key pair around the curve frame. Returns 2 at the curve's
+ * end (a key at t 0: velY then falls 1 a frame down to -50; t below 0: velY
+ * 0 and the frame back to 0), else 0.
+ */
 static u8 EmFatalis_CurveVelY(Em *em, EmWork *work)
 {
     EmFatalisWork *w = (EmFatalisWork *) work;
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyFrame;
     s32 i;
     EmCurveKey *tbl;
     u8 ret;
@@ -952,24 +988,24 @@ static u8 EmFatalis_CurveVelY(Em *em, EmWork *work)
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t > 0.0f) {
+            key = &tbl[i];
+            keyFrame = key->t;
+            if (frame > keyFrame && keyFrame > 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
+            } else if (keyFrame == 0.0f) {
                 ret = 2;
                 if (em->velY > -50.0f) {
                     em->velY -= 1.0f;
                 }
                 break;
-            } else if (t < 0.0f) {
+            } else if (keyFrame < 0.0f) {
                 w->curveFrame = 0;
                 ret = 2;
                 em->velY = 0.0f;
                 break;
             } else {
                 i = 0;
-                em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velY = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
             }
         }
     }
@@ -978,14 +1014,17 @@ static u8 EmFatalis_CurveVelY(Em *em, EmWork *work)
 
 extern EmCurveKey *EmFatalis_SpeedCurves[];
 
-/* The value of curve work[0x4F] at the frame in the work area: sets em->velZ from the key
- * pair around the frame, 4 at the table's end. */
+/*
+ * The speed curve of EmFatalisWork.curveKind (EmFatalis_SpeedCurves): sets
+ * velZ from the key pair around the curve frame. Returns 4 at the curve's
+ * end, else 0.
+ */
 static u8 EmFatalis_CurveSpeed(Em *em, EmWork *work)
 {
     EmFatalisWork *w = (EmFatalisWork *) work;
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyFrame;
     s32 i;
     EmCurveKey *tbl;
     u8 ret;
@@ -999,24 +1038,27 @@ static u8 EmFatalis_CurveSpeed(Em *em, EmWork *work)
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
+            key = &tbl[i];
+            keyFrame = key->t;
+            if (frame > keyFrame && keyFrame != 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
+            } else if (keyFrame == 0.0f) {
                 ret = 4;
                 break;
             } else {
                 i = 0;
-                em->velZ = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velZ = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
             }
         }
     }
     return ret;
 }
 
-/* Runs the family's three curves when their flags in the work area (+0x438) are set, advances
- * the curve frame by the motion's step, and turns toward the target while unk390 is 2. */
+/*
+ * Runs the curves EmFatalis_StartCurves turned on, advances the curve frame
+ * by the motion's step, and moves the monster along rotY while airborne.
+ * Returns the ended curves' bits (2 velY, 4 speed), 0 while they run.
+ */
 u8 EmFatalis_UpdateCurves(Em *em)
 {
     EmFatalisWork *w = (EmFatalisWork *)&em->work;
@@ -1032,7 +1074,7 @@ u8 EmFatalis_UpdateCurves(Em *em)
         ret |= EmFatalis_CurveSpeed(em, (EmWork *) w);
     }
     w->curveFrame += (s16) em->motion[0].step;
-    if (em->stance == 2) {
+    if (em->stance == EM_STANCE_AIR) {
         w->moveAngX = 0;
         w->moveAngY = em->rotY;
         w->moveAngZ = 0;
@@ -1786,7 +1828,7 @@ void EmFxSpark_Move(StageObj *fx)
             k = idx;
             Key_LerpVec3(EmFxSpark_Curves[k], p->unk20, p->unk10);
             idx += 2;
-            Key_LerpF32(EmFxSpark_Curves[(s16) (k + 1)], &a, p->unk10);
+            Key_LerpFloat(EmFxSpark_Curves[(s16) (k + 1)], &a, p->unk10);
             p->alpha = 255.0f * a;
             if (p->kind == 0) {
                 ofs[0] = 0.0f;
@@ -1809,7 +1851,7 @@ void EmFxSpark_Move(StageObj *fx)
             k = idx;
             Key_LerpVec3(EmFxSpark_Curves[k], p->unk20, p->unk10);
             idx += 2;
-            Key_LerpF32(EmFxSpark_Curves[(s16) (k + 1)], &a, p->unk10);
+            Key_LerpFloat(EmFxSpark_Curves[(s16) (k + 1)], &a, p->unk10);
             p->alpha = 255.0f * a;
             p->pos[1] += fx->scale * (p->unk2F / (f32) end);
             break;
@@ -1885,7 +1927,7 @@ void EmFxSpark_Move(StageObj *fx)
             k = idx;
             Key_LerpVec3(EmFxSpark_Curves[k], p->unk20, p->unk10);
             idx += 2;
-            Key_LerpF32(EmFxSpark_Curves[(s16) (k + 1)], &a, p->unk10);
+            Key_LerpFloat(EmFxSpark_Curves[(s16) (k + 1)], &a, p->unk10);
             p->alpha = 255.0f * a;
             switch (p->kind) {
             case 0:
@@ -3704,9 +3746,9 @@ void StageObj_K09_Draw(DrawSlot *node)
             sk = *(f32 **) ((u8 *) em->model + 0x48);
             if (fx->type == 0) {
                 if ((em->type == 0x36 || em->type == 0x3C || (u32) (em->type - 0x40) <= 1 || em->type == 0x3B) && fx->var1 != 0) {
-                    Key_LerpF32((f32 *) StageObj_K09_OfsXKeys, (f32 *) &ofs[0], fx->var1);
-                    Key_LerpF32((f32 *) StageObj_K09_OfsYKeys, (f32 *) &ofs[1], fx->var1);
-                    Key_LerpF32((f32 *) StageObj_K09_OfsZKeys, (f32 *) &ofs[2], fx->var1);
+                    Key_LerpFloat((f32 *) StageObj_K09_OfsXKeys, (f32 *) &ofs[0], fx->var1);
+                    Key_LerpFloat((f32 *) StageObj_K09_OfsYKeys, (f32 *) &ofs[1], fx->var1);
+                    Key_LerpFloat((f32 *) StageObj_K09_OfsZKeys, (f32 *) &ofs[2], fx->var1);
                     ofs[0] *= em->scaleX;
                     ofs[1] *= em->scaleY;
                     ofs[2] *= em->scaleZ;
@@ -3908,7 +3950,7 @@ void StageObj_K0A_Run(StageObj *fx)
             }
             Vec_RotateY(v, (6.2831855f * fx->angle) / 65536.0f);
             idx += 3;
-            Key_LerpF32(StageObj_K0A_Keys0[(s16) (lim + 2)], &p->unk1C, p->unk28);
+            Key_LerpFloat(StageObj_K0A_Keys0[(s16) (lim + 2)], &p->unk1C, p->unk28);
             p->unk2A = p->unk2A + p->unk2C;
             break;
         }

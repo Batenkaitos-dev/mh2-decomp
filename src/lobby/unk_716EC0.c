@@ -366,7 +366,7 @@ void LobbyReply_6413(void)
                 p = LobbyMsg_GetU8(&v, LobbyMsg_GetBlob(id, 8, p));
                 for (k = 0; k < 10; k++) {
                     if (memcmp(id, gLobbyNet.users2[k].u.id, 8) == 0) {
-                        gLobbyNet.users2[k].unk11C[0] = v;
+                        gLobbyNet.users2[k].color[0] = v;
                     }
                 }
             }
@@ -391,7 +391,7 @@ void LobbyNotify_6414(void)
         }
         u = gLobbyNet.users2;
         gLobbyNet.nUsers2 = 1;
-        LobbyMsg_GetU8(u->unk11C, LobbyMsg_GetBlob(u->u.id, 8, p));
+        LobbyMsg_GetU8(u->color, LobbyMsg_GetBlob(u->u.id, 8, p));
     }
     Lobby_RouteMessage(0x27);
 }

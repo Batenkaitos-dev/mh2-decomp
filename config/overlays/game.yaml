@@ -52,7 +52,7 @@ segments:
       - [0x40, asm, text]
       - [0x80, c, unk_6AF280]         # 0x6AF280: starts with game_entry
       - [0xC7D0, c, unk_6BB9D0]
-      - [0x188E0, c, unk_6C7AE0]    # 0x6C7AE0: Eff06_* and EffEm07_*
+      - [0x188E0, c, unk_6C7AE0]    # 0x6C7AE0: BowgunShot_* and EffEm07_*
       - [0x1BBF0, c, unk_6CADF0]    # 0x6CADF0: EffEm08_*, level 4
       - [0x237F0, c, unk_6D29F0]    # 0x6D29F0: Eff09_* and Eff10_*
       - [0x24950, c, unk_6D3B50]

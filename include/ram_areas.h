@@ -26,5 +26,15 @@
 #define WORK_AREA_ADDR 0xC0A200    /* gSysSettings.workArea: the overlays' shared work area (0x18000 bytes) */
 #define ANIM_AREA_ADDR 0xC2C200    /* gSysSettings.unk74: animation sets are loaded here */
 #define LOAD_BUF_ADDR 0xD88000     /* gSysSettings.loadBuf (gLoadBuf): overlay files and sound banks are read here */
+#define MEM_AREAS_SIZE 0x55E000    /* bytes Mem_InitLayout clears from MEM_AREAS_ADDR */
+#define BONE_AREA_ADDR 0xB09200    /* gSysSettings.bones (gBones): the bone pool */
+#define MODEL_AREA_ADDR 0xBD1200   /* gSysSettings.models (gModels): the model headers */
+#define PRIM_AREA_ADDR 0xBD5200    /* gSysSettings.prims (gPrims) */
+#define EXTRA_BUF_ADDR 0xBDA200    /* gSysSettings.extraBuf: the extra save file */
+#define LOBBY_WORK_ADDR 0xBEE200   /* gSysSettings.lobbyWorkBuf (gLobbyWorkBuf) */
+#define STAGE_FILE_ADDR 0xC22200   /* gSysSettings.stageFile (gStageFile) */
+#define CAM_DATA_ADDR 0xC2A200     /* gSysSettings.camData: the area's camera data */
+#define SAVE_BUF_ADDR 0xD60200     /* gSysSettings.saveBuf (gSaveBuf); plsel.bin is loaded at the same address */
+#define READ_BUF_ADDR 0xF08000     /* gSysSettings.readBuf (gReadBuf): LoadCompressedFile's compressed input */
 
 #endif

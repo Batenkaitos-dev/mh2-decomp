@@ -6,7 +6,7 @@
 /* A paged list cursor (0xC bytes; sub_main's Menu_GridCursor moves it):
  * rows per column, the row and column, the columns and the rows of the last. */
 typedef struct Grid {
-    /* 0x00 */ s32 unk0;
+    /* 0x00 */ s32 filter;          /* the combination list's filter (CombineList_Setup: Recipe_IsListedFor's second argument) */
     /* 0x04 */ u16 index;           /* row + rows * column */
     /* 0x06 */ u8 rows;             /* rows per column (10) */
     /* 0x07 */ u8 row;

@@ -7,6 +7,7 @@
 #include "lobby_globals.h"
 #include "scene.h"
 #include "save.h"
+#include "area.h"
 
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
@@ -17,7 +18,7 @@ void AreaMenu_Close(void) {
     gTownMenuOpen = 0;
 }
 
-/* The area menu (gMenuWork): two destinations (areas 0x85, 0x86, 0x88). */
+/* The area menu (gMenuWork): two destinations (AREA_HUB_0x85, AREA_HUB_0x86, AREA_HUB_0x88). */
 typedef struct AreaMenu {
     /* 0x0 */ s8 step;
     /* 0x1 */ s8 sel;
@@ -138,9 +139,9 @@ void AreaMenu_GoTo(u16 area)
     u16 idx;
 
     switch (area) {
-    case 0x89:
+    case AREA_HUB_0x89:
         if (Game_IsOnline() == 1) {
-            area = 0x84;
+            area = AREA_HUB_0x84;
             switch (m->unk6) {
             case 0xAD:
             case 0xAE:
@@ -167,7 +168,7 @@ void AreaMenu_GoTo(u16 area)
             }
         }
         break;
-    case 0x57:
+    case AREA_HUB_0x57:
         gSave.unk36E8 = 1;
         s = &gAreaGoSpawn57;
         if (m->unk6 == 0x89) {
@@ -175,17 +176,17 @@ void AreaMenu_GoTo(u16 area)
             QuestList_Rebuild();
         }
         break;
-    case 0x86:
+    case AREA_HUB_0x86:
         if (m->unk6 == 0x85 || m->unk6 == 0x88) {
             s = &gAreaGoSpawn86;
         }
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         if (p->pos[2] < 3500.0f) {
             s = &gAreaGoSpawn87;
         }
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         switch (m->unk6) {
         case 0x85:
             s = &gAreaGoSpawn88From85;
@@ -195,20 +196,20 @@ void AreaMenu_GoTo(u16 area)
             break;
         }
         break;
-    case 0xAD:
+    case AREA_ONLINE_HOUSE_0:
         if (Game_IsOnline() == 0 || MyHouse_IsOwner() == 1) {
             area = (u8)Village_FacilityLevel(4) + 0xAD;
         }
         break;
-    case 0xAA:
+    case AREA_HUB_0xAA:
         area = (u8)Village_FacilityLevel(0) / 3 + 0xAA;
         break;
-    case 0x85:
+    case AREA_HUB_0x85:
         if (m->unk6 != 0x84) {
             s = &gAreaGoSpawn85;
         }
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         switch (m->unk6) {
         case 0x88:
             s = &gAreaGoSpawn84From88;

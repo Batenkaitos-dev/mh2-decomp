@@ -515,7 +515,7 @@ s32 func_849C20(Em *em);
 s32 Obj_SameArea(void *obj, Player *b);
 s32 Obj_InCurrentArea(void *obj);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
-void Player_BeginState(Player *p, s32 a, s32 b, s32 c);
+void Player_ReturnToIdle(Player *p, s32 a, s32 b, s32 c);
 void Player_StopMove(void *obj);
 extern f32 *gEmRideQuads[];
 
@@ -574,11 +574,11 @@ void Em_CarryRiders(Em *em)
                         p->rideDelta[2] = p->pos[2] - old[2];
                     }
                 }
-                if (p->stateGroup != 2U && p->stateGroup != 3U && p->stateGroup != 4U) {
+                if (p->stateGroup != PL_GROUP_REACT && p->stateGroup != PL_GROUP_FAINT && p->stateGroup != PL_GROUP_EVENT) {
                     if (skip) {
                         continue;
                     }
-                    if (p->vel[1] > 0.0f && p->stateGroup == 0 && p->state == 6 && (s32)p->motionTime < 0x15 && p->stateVar0 == 0) {
+                    if (p->vel[1] > 0.0f && p->stateGroup == PL_GROUP_ACTION && p->state == PL_ACT_LEAP_OFF_LEDGE && (s32)p->motionTime < 0x15 && p->stateVar0 == 0) {
                         continue;
                     }
                     if (p->vel[1] > 0.0f) {
@@ -630,12 +630,12 @@ void Em_CarryRiders(Em *em)
                         p->rideBone = k;
                         if (p->rideState != 1 && p->rideState != 3) {
                             p->action = 0;
-                            if (p->vel[1] > 0.0f && p->stateGroup == 0 && (p->state == 6 || p->state == 0x15)) {
+                            if (p->vel[1] > 0.0f && p->stateGroup == PL_GROUP_ACTION && (p->state == 6 || p->state == 0x15)) {
                                 p->rideState = 3;
-                                Player_SetState(p, 0, 0x11, 0);
+                                Player_SetState(p, PL_GROUP_ACTION, PL_ACT_LEDGE_HANG, 0);
                             } else {
                                 p->rideState = 1;
-                                Player_BeginState(p, 0, 0, 0);
+                                Player_ReturnToIdle(p, 0, 0, 0);
                             }
                             p->weaponOut = 0;
                             Player_StopMove(p);

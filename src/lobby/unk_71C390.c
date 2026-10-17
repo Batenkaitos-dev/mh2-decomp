@@ -9,6 +9,7 @@
 #include "quest.h"
 #include "lobby_menu.h"
 #include "lobby_vobj.h"
+#include "area.h"
 
 /* prototypes */
 s32 Monster_IsAvailableOffline(u16 em);
@@ -20,7 +21,7 @@ s32 Game_IsOnline(void);
 /* Lists of 60 quest ids (0 ends a list). */
 extern u16 gQuestLists[][60];
 QuestInfo *Quest_GetDiscInfo(u16 id);
-u16 Area_MapGroup(u16 id);
+u16 Map_Group(u16 id);
 void *memset(void *dst, s32 c, u32 n);
 
 u16 Rand_Next(s32);
@@ -133,7 +134,7 @@ s32 QuestList_CountKind(s32 kind, s8 list)
         if (gQuestLists[list][i] == 0) {
             break;
         }
-        k = Area_MapGroup(Quest_GetDiscInfo(gQuestLists[list][i])->map);
+        k = Map_Group(Quest_GetDiscInfo(gQuestLists[list][i])->map);
         if (k == kind) {
             n++;
         }
@@ -162,7 +163,7 @@ void QuestList_DropKind(s32 kind, s32 skip, s8 list)
             break;
         }
         info = Quest_GetDiscInfo(tbl[i]);
-        k = Area_MapGroup(info->map);
+        k = Map_Group(info->map);
         if (k == kind) {
             if (n != skip) {
                 if (info->goals[0].target == 0x35) {
@@ -536,7 +537,7 @@ void Quest_DrawDetails(s16 x, s16 y, QuestInfo *q)
     Font_SetPos(x + 0x5A, y += 0x34);
     Text_PrintfColored(D_00838B30, Quest_GetText(id, 6));
     Font_SetPos(x + 0x5A, y += 0x18);
-    Text_PrintfColored(gStageNames[Area_MapGroup(q->map)]);
+    Text_PrintfColored(gStageNames[Map_Group(q->map)]);
     Font_SetPos(x, y + 0x3C);
     Text_PrintfColored(D_00838B30, Quest_GetText(id, 7));
     Font_SetColor(0x80301010);
@@ -563,7 +564,7 @@ void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 h, s16 *offs, s16 sel, s8 kind
 void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
 void QuestBoard_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
 void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 extern u8 gMapGroupMapIds[][2];
 extern u16 gQuestStampRand;
 void QuestBoard_Draw(s16 x, s16 y)
@@ -593,12 +594,12 @@ void QuestBoard_Draw(s16 x, s16 y)
         if (id == 0) {
             break;
         }
-        offs[i] = Area_MapGroup(Quest_GetDiscInfo(id)->map);
+        offs[i] = Map_Group(Quest_GetDiscInfo(id)->map);
         if (i == m->sel) {
             offs[i] = -offs[i];
         }
     }
-    c = gMapGroupMapIds[Area_MapGroup(q->map)][0];
+    c = gMapGroupMapIds[Map_Group(q->map)][0];
     if ((q->flags & 0x200000) != 0 || (q->flags & 0x4000000) != 0) {
         Menu_DrawQuestSheet(x, y, 0x140, 0x168, offs, m->sel, c, -1);
     } else {
@@ -631,7 +632,7 @@ void QuestBoard_Draw(s16 x, s16 y)
         Quest_DrawDetails((s16)(x + 0x28) + 0xA, y + 4, q);
         break;
     }
-    if (Save_TestListBit(q->id) != 0) {
+    if (Save_IsQuestCleared(q->id) != 0) {
         Quest_DrawClearMark(x + 0x28, y);
     }
     if (m->quest != NULL) {
@@ -1010,7 +1011,7 @@ void QuestDesk_DrawFieldGuide(s16 x, s16 y)
     Font_SetColor(0x80301010);
     Font_SetPos(tx, cy2 += 0x1E);
     Text_PrintfColored(D_0080CDAC);
-    if (gScene.area == 0x88) {
+    if (gScene.area == AREA_HUB_0x88) {
         q = D_007ED8E8[m->sel];
     } else {
         q = gFieldGuideLists[m->sel];
@@ -1146,12 +1147,12 @@ void QuestDesk_Draw2(u8 *task)
         case 2:
         case 3:
             if ((u8 *)m->quest != NULL && QuestDesk_IsWanted((u8 *)m->quest) != 0) {
-                if (gScene.area == 0x88) {
+                if (gScene.area == AREA_HUB_0x88) {
                     list = t + k * 0x18 + 0x4C;
-                } else if (gScene.area == 0x86 || Game_IsOnline() == 0) {
+                } else if (gScene.area == AREA_HUB_0x86 || Game_IsOnline() == 0) {
                     list = t + k * 0x18 + 4;
                 }
-                /* the game reads a register it never set: list is s1, still the caller's, online outside areas 0x86 and 0x88 */
+                /* the game reads a register it never set: list is s1, still the caller's, online outside AREA_HUB_0x86 and AREA_HUB_0x88 */
                 PriceInfo_DrawDetails(m->panelX, 0x44, list, 0, 0);
             }
             break;

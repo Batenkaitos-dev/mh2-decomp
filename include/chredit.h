@@ -3,6 +3,8 @@
 
 #include "common.h"
 
+#define CHARA_NAME_LEN 0x12     /* a hunter's name, in bytes: ChrEdit.name and SaveData.name */
+
 /* The character being created (sub_main's gChrEdit, 0x60 bytes; set up by select_entry, drawn by
  * select_parts.c's panels; select_chara.c's pages edit it). */
 typedef struct ChrEdit {
@@ -17,11 +19,11 @@ typedef struct ChrEdit {
     u32 color;              /* 0x08: 0xRRGGBB */
     f32 camTarget[3];       /* 0x0C: the camera's target */
     f32 camPos[3];          /* 0x18: the camera's position */
-    s8 name[0x12];          /* 0x24 */
+    s8 name[CHARA_NAME_LEN]; /* 0x24: the hunter's name */
     u16 frameCount;         /* 0x36: +1 a frame while the creation or selection task runs (not read) */
     u16 timer;              /* 0x38: the pages' frame counter (to 0x3C, from 150 ...; the help's button blinks by timer / 15) */
     u8 presetColor;         /* 0x3A: the preset colour under the cursor (gPresetColors, 16) */
-    u8 sex;                 /* 0x3B: not the sex: the save menu's result after creation, 1 saved, 0 not (Chara_CreateTask); picks the message after it (Chara_DrawSaveMessage) */
+    u8 savedToCard;         /* 0x3B: the save menu's result after creation, 1 saved, 0 not (Chara_CreateTask); picks the message after it (Chara_DrawSaveMessage) */
     u8 sound;               /* 0x3C: the next of the 12 sounds the voice page plays (Sound_PlaySeFlat(2, sound)) */
     u8 soundWait;           /* 0x3D: frames before the next sound may play (5, counted down) */
     u16 padHoldRepeat;      /* 0x3E: the buttons newly pressed, and those held unchanged for 10 frames (the colour sliders' fast step) */
@@ -30,7 +32,7 @@ typedef struct ChrEdit {
     s8 inputDelay;          /* 0x43: frames left during which the pad is ignored (Chara_CreateTask) */
     u8 unk44[3];
     u8 type;                /* 0x47: the type panel's choice, 0-3 (Parts_DrawTypes) */
-    u16 flags;              /* 0x48: the buttons newly pressed this frame (gPadState[0].pressed), 0 while input is ignored */
+    u16 padPressed;         /* 0x48: the buttons newly pressed this frame (gPadState[0].pressed), 0 while input is ignored */
     u16 padPrevHeld;        /* 0x4A: gPadState[0].prevHeld */
     u16 padHeld;            /* 0x4C: gPadState[0].held */
     u16 padRepeat;          /* 0x4E: gPadState[0].repeat */

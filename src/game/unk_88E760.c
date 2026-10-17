@@ -111,8 +111,8 @@ extern u8 StageObj_K27_ScaleKeys5[];
 extern u8 StageObj_K27_ColorKeys5[];
 extern u8 StageObj_K27_ScaleKeys9[];
 extern u8 StageObj_K27_ColorKeys9[];
-void BowgunShot_FlightParams(s16 idx, s32 *pos, f32 *a2, s16 *a3);
-void Gfx_SetState63(s32);
+void BowArrow_FlightParams(s16 idx, s32 *pos, f32 *a2, s16 *a3);
+void Gfx_SetTexFilter(s32);
 void Mtx_Identity(f32 *m);
 void Mtx_RotateX(f32 *m, f32 a);
 void Mtx_RotateY(f32 *m, f32 a);
@@ -3634,11 +3634,11 @@ void StageObj_BowArc_Draw(DrawSlot *node)
         set = gStageModelSets[2];
         if (set != NULL && set->active != 0) {
             Gs_SetState(0x60, 0);
-            Gfx_SetState63(1);
+            Gfx_SetTexFilter(1);
             tex = set->mats;
             model = set->matSets;
             Mtx_Scale(sm, 1.75f, 1.75f, 1.0f);
-            BowgunShot_FlightParams(0, (s32 *) vel, &grav, &count);
+            BowArrow_FlightParams(0, (s32 *) vel, &grav, &count);
             Mtx_Identity(m);
             Mtx_RotateX(m, (6.2831855f * w->yaw) / 65536.0f);
             Mtx_RotateY(m, (6.2831855f * w->pitch) / 65536.0f);

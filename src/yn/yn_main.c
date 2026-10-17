@@ -76,9 +76,9 @@ void NetKbd_Draw(void);
 /* more of main and sub_main */
 s32 Gs_SetState(u8 reg, u32 v);
 void Font_DrawPage(s32 layer);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Text_Reset(void);
-void Text_DrawBoxes(s32 a);
+void Text_DrawIcons(s32 a);
 extern YnConfig D_5BE9E0;      /* sub_main: the settings in use */
 extern YnProxy D_5BE6C4;       /* sub_main: the proxy settings */
 extern YnProxy D_5BF400;
@@ -2229,14 +2229,14 @@ void Yn_DrawTextLayer(void) {
     Gs_SetState(0x5F, 5);
     Gs_SetState(0x60, 0);
     Gs_SetState(0x6C, 0);
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Font_DrawPage(4);
     Yn_DrawMessageWindow();
     if (gYnWork->quitAsked != 0) {
         Yn_DrawChoiceCursor();
     }
     Font_DrawPage(3);
-    Text_DrawBoxes(3);
+    Text_DrawIcons(3);
     Yn_SetGlyphSize(192.85714721679688f);
     NetKbd_Draw();
     Font_DrawPage(1);

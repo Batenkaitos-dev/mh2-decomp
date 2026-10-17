@@ -106,17 +106,74 @@ typedef char Model_size_check[(sizeof(Model) == 0x80) ? 1 : -1];
  * packets from it (sub_main unk_2E3940.c).
  */
 typedef struct MeshDesc {
-    u32 flags;          /* 0x00: 0x1000 indexed vertices, 0x100000 / 0x200000 per-strip material ids */
-    s32 count;          /* 0x04: strips (ModelChunk5_TotalItems) */
-    u16 *strips;        /* 0x08: per strip its length (low 14 bits), then the ids and indexes */
-    s32 format;         /* 0x0C: vertex format 0x25, 0x35 (| 0x10: texture coordinates) or 0x135 */
-    u8 *verts;          /* 0x10: 0x24 bytes each (Mesh_BuildRigid), 0x2C (Mesh_BuildSkinned) */
-    s32 vertCount;      /* 0x14: ModelChunk7_Count */
+    u32 flags;          /* 0x00: MESH_* */
+    s32 count;          /* 0x04: strips (ModelPart_StripCount) */
+    u16 *strips;        /* 0x08: per strip its length (MESH_STRIP_LEN), then the ids and indexes MESH_* says */
+    s32 format;         /* 0x0C: MESH_FORMAT_*: the vertices' layout */
+    u8 *verts;          /* 0x10: MeshVtxCol, MeshVtxTex or MeshVtxSkin by the format */
+    s32 vertCount;      /* 0x14: ModelPart_VertCount */
     s32 vertsSize;      /* 0x18: bytes at verts */
     s32 stripsSize;     /* 0x1C: bytes at strips */
     s16 matCount;       /* 0x20: ModelFile_PartMatCount */
 } MeshDesc;
+
+/* MeshDesc.flags: what follows each strip's length in strips. */
+#define MESH_INDEXED 0x1000         /* the strip's vertex indexes */
+#define MESH_BUILT 0x20000          /* set by both builders; nothing seen reads it */
+#define MESH_STRIP_MAT 0x100000     /* a material id (of the model's parts) */
+#define MESH_STRIP_SKIN 0x200000    /* a skin kind, MESH_SKIN_* */
+#define MESH_STRIP_LEN 0x3FFF       /* the mask of a strip's first word: its vertices */
+#define MESH_STRIP_FLAGGED 0x8000   /* ORed into the length when the file's strip has ModelStrip.flag set */
+#define MESH_STRIP_UNFLAGGED 0x4000 /* ORed in when not (the draw code masks both off: MESH_STRIP_LEN) */
+#define MESH_SKIN_ONE_BONE 0        /* the strip's vertices follow one bone at full weight */
+#define MESH_SKIN_FOUR_BONES 1      /* they follow four weighted bones */
 typedef char MeshDesc_size_check[(sizeof(MeshDesc) == 0x24) ? 1 : -1];
+
+/* MeshDesc.format: the three vertex layouts the builders make and
+ * Model_BuildVifPackets reads. */
+#define MESH_FORMAT_COLOR 0x25      /* MeshVtxCol: position, normal, colour */
+#define MESH_FORMAT_UV 0x10         /* with MESH_FORMAT_COLOR: MeshVtxTex, texture coordinates added */
+#define MESH_FORMAT_SKIN 0x100      /* with both: MeshVtxSkin, bones and weights added */
+
+/* The mesh keys Vu1_SelectProgram (unk_2EF020.c) picks a VU1 program by: ModelEntry.used
+ * (the MeshDesc flags) | ModelEntry.vtxFormat, for the meshes the builders make with
+ * texture coordinates. */
+#define MESH_KEY_RIGID (MESH_BUILT | MESH_INDEXED | MESH_FORMAT_COLOR | MESH_FORMAT_UV)
+#define MESH_KEY_RIGID_MATS (MESH_KEY_RIGID | MESH_STRIP_MAT)
+#define MESH_KEY_SKINNED (MESH_KEY_RIGID | MESH_STRIP_SKIN | MESH_FORMAT_SKIN)
+#define MESH_KEY_SKINNED_MATS (MESH_KEY_SKINNED | MESH_STRIP_MAT)
+
+/* A vertex of MESH_FORMAT_COLOR. The colour is a, r, g, b from the top byte down. */
+typedef struct MeshVtxCol {
+    f32 pos[3];                 /* 0x00 */
+    f32 nrm[3];                 /* 0x0C */
+    u32 col;                    /* 0x18 */
+} MeshVtxCol;
+
+/* A vertex of MESH_FORMAT_COLOR | MESH_FORMAT_UV. */
+typedef struct MeshVtxTex {
+    f32 pos[3];                 /* 0x00 */
+    f32 nrm[3];                 /* 0x0C */
+    u32 col;                    /* 0x18 */
+    f32 uv[2];                  /* 0x1C */
+} MeshVtxTex;
+
+/* A vertex of all three: four bone indexes and their weights (0-0xFF, summing to 0xFF),
+ * the first of each in the top byte. */
+typedef struct MeshVtxSkin {
+    f32 pos[3];                 /* 0x00 */
+    f32 nrm[3];                 /* 0x0C */
+    u32 col;                    /* 0x18 */
+    f32 uv[2];                  /* 0x1C */
+    u32 bones;                  /* 0x24 */
+    u32 weights;                /* 0x28 */
+} MeshVtxSkin;
+
+/* Angles: the game turns a model by 16-bit angles, 0x10000 to a full turn
+ * (Em.rot, the bones' rotations). Math_AngleToRad multiplies by
+ * ANGLE16_TO_RAD (2 pi / 0x10000); RAD_TO_ANGLE16 is its inverse. */
+#define ANGLE16_TO_RAD 0.0000958738f
+#define RAD_TO_ANGLE16 10430.378f
 
 /* The pools' sizes, in entries (Model_ResetAll frees them all): the models
  * (*gModels), the materials, the bones (EmBone), the material sets
@@ -153,7 +210,7 @@ extern Model *gCommonModels[5];
 
 /* sub_main 0x441170: per area (gScene.area), 16 material set indices into gAreaSubModels[0]'s
  * matSets, -1: none (unk_37B570.c; most rows are gm_sub's D_0092AD60): [0] the set
- * Player_GetAreaAmbModel checks and Eff12 draws (three from it), [1] AmbientSound_Draw's,
+ * Player_GetAreaAmbModel checks and PitfallTrap draws (three from it), [1] AmbientSound_Draw's,
  * [2..9] AreaObj_K09_DrawType1..8's. */
 extern s16 *gAreaAmbModels[200];
 
@@ -180,6 +237,108 @@ typedef struct SkelChunk {
     u32 count;                  /* 0x4: the parts chunk's: the parts (s32 root nodes from +0xC) */
     u32 size;                   /* 0x8: the whole chunk's: the next chunk follows */
 } SkelChunk;
+
+/*
+ * A model file (unk_2F6540.c's readers) is a tree of chunks in the same
+ * container as a skeleton file: each chunk is a 0xC-byte header, s32 type,
+ * u32 count (its child chunks, or its records) and u32 size (the whole
+ * chunk: the next one follows), then its data. The file is the root chunk.
+ * The chunk types:
+ */
+#define MODEL_CHUNK_ANY (-1)            /* ModelChunk_Get: a chunk of any type */
+#define MODEL_CHUNK_PARTS 2             /* the file's parts; each child's type is its kind */
+#define MODEL_PART_MESH 4               /* the kind of a mesh part, the only kind built */
+#define MODEL_CHUNK_STRIPS 5            /* a part's strip groups (each a chunk of strips) */
+#define MODEL_CHUNK_MATERIALS 9         /* the file's materials */
+#define MODEL_CHUNK_TEXTURES 0xA        /* the file's textures: each child's first word is its id */
+#define MODEL_CHUNK_PART_MATS 0x50000   /* a part's materials, s32 indexes into the file's */
+#define MODEL_CHUNK_STRIP_MATS 0x60000  /* a material per strip (MESH_STRIP_MAT) */
+#define MODEL_CHUNK_POSITIONS 0x70000   /* the vertices' positions, 3 f32 each */
+#define MODEL_CHUNK_NORMALS 0x80000     /* the vertices' normals, 3 f32 each */
+#define MODEL_CHUNK_UVS 0xA0000         /* texture coordinates, 2 f32 each */
+#define MODEL_CHUNK_COLORS 0xB0000      /* colours, 4 f32 each */
+#define MODEL_CHUNK_WEIGHTS 0xC0000     /* per vertex, a count and its bone weights: a skinned part */
+#define MODEL_CHUNK_DRAW_STATES 0xF0000 /* a part's draw states (0x48 bytes) */
+#define MODEL_CHUNK_MTX_LIST 0x100000   /* a part's matrix list */
+#define MODEL_CHUNK_STRIPS_RIGID 0x30000 /* a strip group whose strips follow one bone (MESH_SKIN_ONE_BONE) */
+#define MODEL_CHUNK_STRIPS_SKINNED 0x40000 /* a strip group of four weighted bones (MESH_SKIN_FOUR_BONES) */
+
+/* A model file chunk's header. */
+typedef struct ModelChunk {
+    s32 type;                   /* 0x0: MODEL_CHUNK_*, or a part's kind (MODEL_PART_MESH ...) */
+    u32 count;                  /* 0x4: its child chunks, or its records */
+    u32 size;                   /* 0x8: the whole chunk's bytes, this header included */
+} ModelChunk;
+
+/* The chunk's first child chunk, and its data when it holds records. */
+#define MODEL_CHUNK_FIRST(c) ((c) + 1)
+#define MODEL_CHUNK_DATA(c) ((void *)((c) + 1))
+/* The chunk after c, in the same parent. */
+#define MODEL_CHUNK_NEXT(c) ((ModelChunk *)((u8 *)(c) + (c)->size))
+
+/* A strip in a strip group (MODEL_CHUNK_STRIPS_*): this word, then
+ * `length` u32 vertex indexes. */
+typedef struct ModelStrip {
+    u32 length : 31;
+    u32 flag : 1;               /* the mesh keeps it as MESH_STRIP_FLAGGED (meaning unknown) */
+} ModelStrip;
+#define MODEL_STRIP_FLAG 0x80000000 /* ModelStrip.flag, as a mask of the word */
+
+/* The records of the vertex chunks: positions and normals (ModelVec3), texture
+ * coordinates (ModelVec2), colours (ModelVec4: r, g, b, a, each 0-255) and,
+ * per vertex in MODEL_CHUNK_WEIGHTS, an s32 count and that many ModelWeights. */
+typedef struct ModelVec2 {
+    f32 v[2];
+} ModelVec2;
+typedef struct ModelVec3 {
+    f32 v[3];
+} ModelVec3;
+typedef struct ModelVec4 {
+    f32 v[4];
+} ModelVec4;
+typedef struct ModelWeight {
+    u8 bone;                    /* 0x0: the bone's index */
+    u8 pad1[3];
+    f32 percent;                /* 0x4: the weight, 0-100 */
+} ModelWeight;
+
+/* A material record (MODEL_CHUNK_MATERIALS; ModelFile_ReadMat copies it to a ModelMat). */
+typedef struct ModelFileMat {
+    f32 unk00[4];               /* 0x000: to ModelMat.unk24 */
+    f32 rgb[3];                 /* 0x010 */
+    f32 alpha;                  /* 0x01C */
+    f32 unk20[4];               /* 0x020: to ModelMat.unk14 */
+    f32 size;                   /* 0x030: to ModelMat.size, as an integer */
+    s32 hasTexture;             /* 0x034: nonzero: texIdx is read */
+    u8 pad038[0x100 - 0x038];
+    u32 texIdx;                 /* 0x100: a child of MODEL_CHUNK_TEXTURES, whose first word is the texture's id */
+} ModelFileMat;
+
+/* A part's draw states (MODEL_CHUNK_DRAW_STATES, 0x48 bytes; ModelFile_GetDrawStates
+ * copies them out). Each field indexes a table of values for one render state
+ * (gDrawState15Values ...) or gives bits of a material set's packed flags
+ * (DrawStates_Apply, sub_main unk_335040.c). */
+typedef struct DrawStates {
+    s32 version;    /* 0x00: its high half must be 1 (ModelFile_GetDrawStates returns -2 otherwise) */
+    s32 s15;        /* 0x04: gDrawState15Values, state 0x15 */
+    s32 s02;        /* 0x08: gDrawState02Values, state 2 */
+    s32 s00;        /* 0x0C: gDrawState00Values, state 0 */
+    s32 s0C;        /* 0x10: gDrawState0CValues, state 0xC; flag bit 15 */
+    s32 s01;        /* 0x14: gDrawState01Values, state 1 */
+    s32 unk18;
+    s32 s62;        /* 0x1C: gDrawState62Values, state 0x62 */
+    s32 s12;        /* 0x20: gDrawState12Values, state 0x12 */
+    s32 s66;        /* 0x24: gDrawState66Values, state 0x66 (1: also 0x67); flag bit 1 */
+    s32 s5D;        /* 0x28: 5 or 6 sets state 0x5D to that << 24, else 0 */
+    s32 f2;         /* 0x2C: flag bits 2-5 */
+    s32 f6;         /* 0x30: flag bits 6-9 */
+    s32 f10;        /* 0x34: flag bits 10-11 */
+    s32 unk38[2];
+    s32 f12;        /* 0x40: flag bit 12 */
+    s32 f13;        /* 0x44: flag bits 13-14 */
+} DrawStates;
+#define DRAW_STATES_VERSION_MASK 0xFFFF0000
+#define DRAW_STATES_VERSION 0x10000 /* DrawStates.version & DRAW_STATES_VERSION_MASK */
 
 /* A node of a skeleton file (SkelFile_GetNode). */
 typedef struct SkelFileNode {
@@ -233,28 +392,28 @@ typedef struct BoneDef {
  * and its materials' textures.
  */
 typedef struct ModelEntry {
-    u32 flags;                  /* 0x00: 2 and 4 select how Model_Draw builds its packets */
-    s32 used;                   /* 0x04: from the file header, 0 free */
-    s32 unk08;                  /* 0x08 */
-    s32 frame;                  /* 0x0C: the frame its data was last set up */
+    u32 flags;                  /* 0x00: MODEL_* (Model_Create's flags) */
+    s32 used;                   /* 0x04: the file header's flags (MeshDesc.flags), 0 free */
+    s32 vtxFormat;              /* 0x08: the file header's vertex format; with used, the key of Vu1_SelectProgram */
+    s32 renderFlags;            /* 0x0C: gRenderFlags2 when the data was built; Model_Draw rebuilds it when they differ */
     s32 size;                   /* 0x10: of the copy at 0x14 */
     void *file;                 /* 0x14: a handle, the copied file */
-    s32 unk18;                  /* 0x18 */
-    void *data;                 /* 0x1C: a handle */
+    s32 vifSize;                /* 0x18: bytes of VIF data (Model_SetupEntry; Model_BuildVifPackets checks it) */
+    void *data;                 /* 0x1C: a handle: the VIF data, the chain table, the part packets */
     u8 *dataAddr;               /* 0x20 */
-    s32 unk24;                  /* 0x24 */
+    s32 pktOfs;                 /* 0x24: the part packets' offset in data */
     s32 pktSize;                /* 0x28 */
-    s32 unk2C;                  /* 0x2C */
-    s32 unk30;                  /* 0x30 */
+    s32 chainTblOfs;            /* 0x2C: the chain table's offset in data (vifSize rounded up to 16): per material, its VIF chain's offset */
+    s32 chainTblSize;           /* 0x30: the chain table's bytes (partCount words, rounded up to 16) */
     s32 partCount;              /* 0x34 */
     s32 texCount;               /* 0x38 */
-    s32 unk3C;                  /* 0x3C */
-    s32 unk40;                  /* 0x40 */
-    s32 unk44;                  /* 0x44 */
+    s32 triCount;               /* 0x3C: triangles of the strips */
+    s32 stripVtxCount;          /* 0x40: vertices of the strips */
+    s32 matRunCount;            /* 0x44: changes of material between strips */
     s32 prog;                   /* 0x48: VU1 program (Vu1_SelectProgram), -1 none */
     s32 *progInfo;              /* 0x4C */
-    s32 unk50;                  /* 0x50 */
-    s32 unk54;                  /* 0x54 */
+    s32 unk50;                  /* 0x50: only cleared (Model_Create) */
+    s32 boneMask;               /* 0x54: a bit per bone the skinned strips use (Model_BuildVifPackets); the VU1 packets copy those matrix slots */
     u8 pad58[0x60 - 0x58];
     u8 mat[0x20];               /* 0x60: per part, a material of gRsMaterials */
     s32 partTex[0x20];          /* 0x80: per part, its material's texture */
@@ -262,10 +421,18 @@ typedef struct ModelEntry {
 } ModelEntry;
 typedef char ModelEntry_size_check[(sizeof(ModelEntry) == 0x180) ? 1 : -1];
 
+#define DRAW_MODEL_COUNT 0x180      /* gModelPool's entries */
+
+/* ModelEntry.flags, Model_Create's flags (unk_335040.c's gMatSetModelKinds gives
+ * them per kind of model). */
+#define MODEL_PREBUILT 0x2          /* the part packets are built into data (pktOfs) once, not each frame */
+#define MODEL_NO_COPY 0x4           /* no copy of the file is kept, so the data is never rebuilt */
+#define MODEL_SCALE_UV 0x20         /* texture coordinates scaled by gDispTexScaleU and gDispTexScaleV */
+
 /* A 4x4 matrix as one object, so that it copies as a whole: a slot of the
  * matrix table gMtxSlots (MtxSlot_Store, MtxSlot_Load; EmBone.index). */
-typedef struct Mtx44Copy {
+typedef struct MtxSlot {
     f32 m[4][4];
-} Mtx44Copy;
+} MtxSlot;
 
 #endif /* MODEL_H */

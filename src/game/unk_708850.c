@@ -1,7 +1,10 @@
 /*
- * Monster helpers: area and player checks, hit points, per-kind values
- * scaled by the quest's settings, motion setup, and sound effects played at
- * a bone's position when the motion reaches a frame. See include/em.h.
+ * Monster helpers: area and player checks, hit points (Em_ComputeMaxHp,
+ * Em_RegenHp), the level's attack and damage factors, the trap hold time,
+ * motion rows, the per-area timers, and sound effects played at a bone when
+ * the motion reaches a frame. The .data holds each area's ground height
+ * (gAreaGroundY), the area point sets (gEmKindTables_68_0, gEmGoalPosSets,
+ * gEmKindTables_68_2), the route sets (D_008C30E0) and Em_PartEffectTbl.
  */
 
 #include "quest.h"
@@ -27,7 +30,7 @@ extern f32 *D_90DCE0[];
 extern f32 gEmSizeLevelFactors[];
 extern f32 gEmLowHpRatios[];
 extern EmMotionRow *gEmMotionRows[];
-extern EmIdPair *gEmAreaValues8A0[];
+extern EmIdPair *gEmAreaTimer2Values[];
 extern EmIdPair *gEmAreaTimer1Values[];
 extern s8 gSeVolumeByType[];
 
@@ -54,7 +57,7 @@ f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Player_BeginLayerMotion(Player *p, s32 frame, s32 n, s32 part);
 s32 Player_UpdateMotion(struct Player *em);
 void Em_UpdateMatrix(Em *em);
-s32 Player_PassedFrameScaled(void *em, f32 frame, u8 a); /* unit's own declaration: with the definition's s32 (Player *p, f32 frame, s32 layer) (sub_main/unk_2E3940.c), Em_PlaySeAtBoneOnFrame2 1 of 44 words, Em_PlaySeAtBoneVolOnFrame2 1 of 41 words differ */
+s32 EmMotion_PassedFrameScaled(void *em, f32 frame, u8 a); /* unit's own declaration: with the definition's s32 (Player *p, f32 frame, s32 layer) (sub_main/unk_2E3940.c), Em_PlaySeAtBoneOnLayerFrame 1 of 44 words, Em_PlaySeAtBoneVolOnLayerFrame 1 of 41 words differ */
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
 void Mtx_GetTrans(f32 *out, f32 *m);
 s32 Sound_PlayEmSe(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
@@ -76,13 +79,20 @@ void EmScript_Run(Em *em);
 void Em_RestartScript(Em *em);
 void StageObj_K09_Place(struct StageObj *fx);
 void Em_SetHitReactMode(Em *em, u8 a);
-f32 Em_RageScale1(Em *em);
-f32 Em_RageScale2(Em *em);
-void Em_SetAreaValue89E(Em *em, EmIdPair *pair);
-void Em_SetAreaValue8A0(Em *em, EmIdPair *pair);
+f32 Em_LevelAttackFactor(Em *em);
+f32 Em_LevelDamageFactor(Em *em);
+void Em_SetAreaTimer1(Em *em, EmIdPair *pair);
+void Em_SetAreaTimer2(Em *em, EmIdPair *pair);
 void Em_PlaySeAtBoneVol(Em *em, s32 se, s32 bone, s32 vol);
 
-void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b)
+/*
+ * Keeps a monster in combat in place while no hunter is in its area. Clears
+ * moveFrozen. Unless an event runs in the scene's area, or an active hunter
+ * in the quest shares its area (Obj_SameArea), it puts posX and posZ back to
+ * prevPosX and prevPosZ and sets moveFrozen. It does not do this while the
+ * monster is in state (`group`, `state`).
+ */
+void Em_HoldPosNoPlayers(Em *em, u16 exceptGroup, u16 exceptState)
 {
     s8 i;
 
@@ -98,13 +108,21 @@ void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b)
             return;
         }
     }
-    if (em->stateGroup != a || em->state != b) {
+    if (em->stateGroup != exceptGroup || em->state != exceptState) {
         em->moveFrozen = 1;
         em->posX = em->prevPosX;
         em->posZ = em->prevPosZ;
     }
 }
 
+/*
+ * For a local monster in combat: caps combatTimer at 900 while no player is
+ * noticed, and counts it down. At 0 the monster leaves combat (Em_SetCombat);
+ * in the air (EM_STANCE_AIR) it waits at 0 instead. On leaving, the drome
+ * leaders, Kirin, Daimyo Hermitaur, Blangonga, Congalala, Rajang, Shogun
+ * Ceanataur and Bulldrome restart their script (scriptPending) when no hunter
+ * in the quest is in their area. Returns 1 when the monster left combat.
+ */
 s32 Em_UpdateCombatTimer(Em *em)
 {
     s8 i;
@@ -156,6 +174,11 @@ void Em_AddHp(Em *em, s16 n)
     }
 }
 
+/*
+ * Returns 1 when every player is active and in the monster's area, and always
+ * for a remote monster. Returns 0 with no target (targetNo -1). Rathalos's
+ * and Kut-Ku's states end early when it is 0.
+ */
 u8 Em_AllPlayersHere(Em *em)
 {
     Player *player = gPlayers;
@@ -175,68 +198,93 @@ u8 Em_AllPlayersHere(Em *em)
     return 1;
 }
 
-void Em_SetHitReactMode(Em *em, u8 a)
+/* Sets hitReactMode (enum EmHitReactMode). */
+void Em_SetHitReactMode(Em *em, u8 mode)
 {
-    em->hitReactMode = a;
+    em->hitReactMode = mode;
 }
 
-s32 Em_ComputeSize(Em *em, s16 idx)
+/*
+ * Returns the monster's maximum hp: the kind's base hp D_90DB30[type][idx]
+ * times the hp scale of its level row (gEmScaleRows). In a versus quest it is
+ * instead 1700 times the kind's monster-note factor (D_90DCE0),
+ * gEmSizeLevelFactors[level] and its team's sizeScale percent; a kind with no
+ * note gets 1700. The families pass idx 0 and store the result in hpMax and
+ * hp.
+ */
+s32 Em_ComputeMaxHp(Em *em, s16 idx)
 {
     EmScaleRow *rows = gEmScaleRows[em->type];
-    s16 *base = D_90DB30[em->type];
-    f32 f;
+    s16 *baseHp = D_90DB30[em->type];
+    f32 hp;
 
     if (Quest_IsVersus() == 1) {
-        s32 k = MonsterNote_Index(em->type);
+        s32 noteIndex = MonsterNote_Index(em->type);
 
-        if (k != 0xFF) {
-            f = 1700.0f * *D_90DCE0[k] * gEmSizeLevelFactors[em->level];
-            f *= gQuest.teams[Versus_Team(em->side)].sizeScale / 100.0f;
+        if (noteIndex != 0xFF) {
+            hp = 1700.0f * *D_90DCE0[noteIndex] * gEmSizeLevelFactors[em->level];
+            hp *= gQuest.teams[Versus_Team(em->side)].sizeScale / 100.0f;
         } else {
-            f = 1700.0f;
+            hp = 1700.0f;
         }
     } else {
-        base += idx;
-        f = *base;
+        baseHp += idx;
+        hp = *baseHp;
         rows += em->level;
-        f *= rows->unk0;
+        hp *= rows->unk0;
     }
-    return f;
+    return hp;
 }
 
-f32 Em_RageScale1(Em *em)
+/*
+ * Returns the attack factor of the monster's level (its gEmScaleRows row),
+ * times its versus team's rageScale1 percent. Em_EndRage stores it in
+ * attackFactor.
+ */
+f32 Em_LevelAttackFactor(Em *em)
 {
     EmScaleRow *row;
-    f32 f;
+    f32 factor;
 
     row = gEmScaleRows[em->type];
     row += em->level;
-    f = row->unk4;
+    factor = row->unk4;
     if (Quest_IsVersus() == 1) {
-        f *= gQuest.teams[Versus_Team(em->side)].rageScale1 / 100.0f;
+        factor *= gQuest.teams[Versus_Team(em->side)].rageScale1 / 100.0f;
     }
-    return f;
+    return factor;
 }
 
-f32 Em_RageScale2(Em *em)
+/*
+ * Returns the damage factor of the monster's level, times its versus team's
+ * rageScale2 percent. Em_EndRage stores it in damageFactor.
+ */
+f32 Em_LevelDamageFactor(Em *em)
 {
     EmScaleRow *row;
-    f32 f;
+    f32 factor;
 
     row = gEmScaleRows[em->type];
     row += em->level;
-    f = row->unk8;
+    factor = row->unk8;
     if (Quest_IsVersus() == 1) {
-        f *= gQuest.teams[Versus_Team(em->side)].rageScale2 / 100.0f;
+        factor *= gQuest.teams[Versus_Team(em->side)].rageScale2 / 100.0f;
     }
-    return f;
+    return factor;
 }
 
-void Em_SetGoal12Dist(Em *em, u8 *p)
+/*
+ * Sets trapTimer, how long a trap holds the monster. EM_KIND_RAJANG gets 0x9C
+ * frames. Otherwise it is 0x340 when the monster was out of combat before the
+ * hit (*p is Em_UpdateDamage's out), 0x208 when calm, and 0x138 when enraged.
+ * The families call it on EM_DMG_ATTACK9 and EM_DMG_ATTACK6, before their
+ * trapped state.
+ */
+void Em_SetTrapTime(Em *em, u8 *wasInCombat)
 {
     if (em->type == 0x35) {
         em->trapTimer = 0x9C;
-    } else if (*p == 0) {
+    } else if (*wasInCombat == 0) {
         em->trapTimer = 0x340;
     } else if (em->rage == 0) {
         em->trapTimer = 0x208;
@@ -245,7 +293,12 @@ void Em_SetGoal12Dist(Em *em, u8 *p)
     }
 }
 
-void Em_SetGoal12(Em *em)
+/*
+ * For a local monster, sets goal kind 12 with trapTimer / 4 as goalNo
+ * (Em_ComputeGoal); Em_ComputeGoal2 sets trapTimer back from it. Likely this
+ * makes the remote copies hold for as long.
+ */
+void Em_SetTrapTimeGoal(Em *em)
 {
     if (em->remote == 0) {
         em->goalKind = 12;
@@ -255,21 +308,28 @@ void Em_SetGoal12(Em *em)
     }
 }
 
+/*
+ * Returns 1 when hp is at most hpMax times (the kind's gEmLowHpRatios ratio +
+ * 0.1).
+ */
 s32 Em_NearLowHp(Em *em)
 {
-    f32 t = gEmLowHpRatios[em->type];
+    f32 ratio = gEmLowHpRatios[em->type];
 
-    t += 0.1f;
-    return em->hp <= (s16)(em->hpMax * t);
+    ratio += 0.1f;
+    return em->hp <= (s16)(em->hpMax * ratio);
 }
 
-/* Is a monster of kind 7, 0x32 or 0x37 at half its hit points or below? */
+/*
+ * Returns 1 when an active EM_KIND_LAO_SHAN_LUNG, EM_KIND_ASHEN_LAO_SHAN_LUNG
+ * or EM_KIND_SHEN_GAOREN has at most half its hit points.
+ */
 s32 EmList_AnyBelowHalfHp(void)
 {
     Em *em = gEms;
     s8 i;
 
-    for (i = 0; i < 20; i++, em++) {
+    for (i = 0; i < EM_COUNT; i++, em++) {
         if (em->active != 0) {
             switch (em->type) {
             case 7:
@@ -307,20 +367,22 @@ s32 Em_RegenHp(Em *em, s16 n, s16 max, s16 interval)
 }
 
 /*
- * For each part selected by `mask`, the first effect of the table that
- * matches the kind, the part and its state: a particle effect at a bone,
- * then Em_BreakPart.
+ * For each part selected by `mask`, takes the first Em_PartEffectTbl row of
+ * the monster's family (Em_KindMatches) for that part and its state. In the
+ * current area it makes an effect (Effect02 type 10) at the row's bone and
+ * offset. It then breaks the row's breakPart (Em_BreakPart), and sets
+ * hitzoneSet to 1 for a row with flag 1.
  */
 void Em_SpawnPartEffects(Em *em, u8 mask)
 {
     f32 pos[4];
-    f32 vec[4];
+    f32 effectOfs[4];
     s16 *bone;
     f32 mtx[4][4];
     s16 i;
     s16 j;
     u8 bit = 1;
-    EmPartEffect *e;
+    EmPartEffect *partEffect;
 
     for (i = 0; i < 8; bit <<= 1, i++) {
         if (!(mask & bit)) {
@@ -329,21 +391,21 @@ void Em_SpawnPartEffects(Em *em, u8 mask)
         for (j = 0; j < 0x2A; j++) {
             if (Em_KindMatches(em->type, Em_PartEffectTbl[j].kind) && Em_PartEffectTbl[j].part == i
                 && em->parts[i].state == Em_PartEffectTbl[j].state) {
-                e = &Em_PartEffectTbl[j];
-                bone = &e->bone;
+                partEffect = &Em_PartEffectTbl[j];
+                bone = &partEffect->bone;
                 if (*bone != -1 && (u8)Player_InCurrentArea(em) != 0) {
                     Mtx_Copy((f32 *) mtx, (f32 *) (Em_Bone(em, *bone)));
-                    Vec_Copy(vec, e->offset);
-                    Vec_RotateSelf((f32 *) vec, (f32 *) mtx);
-                    pos[0] = mtx[3][0] + vec[0];
-                    pos[1] = mtx[3][1] + vec[1];
-                    pos[2] = mtx[3][2] + vec[2];
+                    Vec_Copy(effectOfs, partEffect->offset);
+                    Vec_RotateSelf((f32 *) effectOfs, (f32 *) mtx);
+                    pos[0] = mtx[3][0] + effectOfs[0];
+                    pos[1] = mtx[3][1] + effectOfs[1];
+                    pos[2] = mtx[3][2] + effectOfs[2];
                     Effect02_SpawnForOwner(em, 0, 10, 0, pos, 1.0f);
                 }
-                if (e->unk6 != 0xFFFF) {
-                    Em_BreakPart(em, e->unk6);
+                if (partEffect->unk6 != 0xFFFF) {
+                    Em_BreakPart(em, partEffect->unk6);
                 }
-                if (e->flag == 1) {
+                if (partEffect->flag == 1) {
                     em->hitzoneSet = 1;
                 }
                 break;
@@ -352,6 +414,13 @@ void Em_SpawnPartEffects(Em *em, u8 mask)
     }
 }
 
+/*
+ * Returns the monster to the ground pose: EM_STANCE_GROUND, fxFlags bit 1
+ * set, mesh 1 hidden. Unless layer 0 already plays it, it sets motion 0x53 on
+ * layers 0-2 and rebuilds the rotation matrix, the motion and the bone
+ * matrices. Then it places its kind 9 stage object (k09Obj,
+ * StageObj_K09_Place).
+ */
 void Em_ResetToBasePose(Em *em)
 {
     struct StageObj *p = em->k09Obj;
@@ -373,20 +442,29 @@ void Em_ResetToBasePose(Em *em)
     StageObj_K09_Place(p);
 }
 
-void Em_RequestSync(Em *em, u8 a)
+/*
+ * Asks for the monster's state to be sent (syncRequest; QSync_SendEm sends
+ * it): mode 1 always, mode 2 unless a mode 1 request is pending.
+ */
+void Em_RequestSync(Em *em, u8 mode)
 {
-    switch (a) {
+    switch (mode) {
     case 1:
-        em->syncRequest = a;
+        em->syncRequest = mode;
         break;
     case 2:
         if (em->syncRequest != 1) {
-            em->syncRequest = a;
+            em->syncRequest = mode;
         }
         break;
     }
 }
 
+/*
+ * The monster eats the area object its action goal names (Em_FindGoalAction):
+ * marks it done, applies its status (Em_ApplyActionStatus), and plain meat
+ * (kind 0) heals 1% of hpMax. Em_StartGoalAction calls it.
+ */
 void Em_UseGoalAction(Em *em)
 {
     EmAction *action = Em_FindGoalAction(em);
@@ -400,6 +478,12 @@ void Em_UseGoalAction(Em *em)
     }
 }
 
+/*
+ * Starts row `row` of the kind's motion table (gEmMotionRows) from frame 0
+ * with no blend, on the layers the row names: -1 all; 0-2 that one; 0x10,
+ * 0x11, 0x12 all but layer 2, 1, 0. Keeps the row's blend in rowBlend, after
+ * first rebuilding rotMtx. The last two arguments are unused.
+ */
 void Em_SetMotionRow(Em *em, s32 row, s32 unused2, s32 unused3)
 {
     s32 i;
@@ -441,15 +525,25 @@ void Em_SetMotionRow(Em *em, s32 row, s32 unused2, s32 unused3)
     em->rowBlend = rows[row].unk7;
 }
 
-s32 Em_KindMatches(u8 a, u8 b)
+/*
+ * Returns 1 when the two kinds belong to one family (the same
+ * MonsterGroup_First).
+ */
+s32 Em_KindMatches(u8 kindA, u8 kindB)
 {
-    u8 ka = MonsterGroup_First(a);
-    u8 kb = MonsterGroup_First(b);
+    u8 groupA = MonsterGroup_First(kindA);
+    u8 groupB = MonsterGroup_First(kindB);
 
-    return ka == kb;
+    return groupA == groupB;
 }
 
-void Em_SetAreaValue89E(Em *em, EmIdPair *pair)
+/*
+ * Sets areaTimer1 from a list of {area, value} pairs: the value for the
+ * monster's area (an id of 10000 or more matches area + 10000 exactly, a
+ * smaller one by Area_DayId). With no match it uses the value of the -1 entry
+ * that ends the list.
+ */
+void Em_SetAreaTimer1(Em *em, EmIdPair *pair)
 {
     s16 id = pair->id;
 
@@ -469,7 +563,8 @@ void Em_SetAreaValue89E(Em *em, EmIdPair *pair)
     em->areaTimer1 = pair->value;
 }
 
-void Em_SetAreaValue8A0(Em *em, EmIdPair *pair)
+/* As Em_SetAreaTimer1, for areaTimer2. */
+void Em_SetAreaTimer2(Em *em, EmIdPair *pair)
 {
     s16 id = pair->id;
 
@@ -489,12 +584,22 @@ void Em_SetAreaValue8A0(Em *em, EmIdPair *pair)
     em->areaTimer2 = pair->value;
 }
 
+/*
+ * Sets areaTimer2 and areaTimer1 from the kind's lists in gEmAreaTimer2Values
+ * and gEmAreaTimer1Values. gm_em.c and unk_701810.c call it.
+ */
 void Em_ApplyAreaValues(Em *em)
 {
-    Em_SetAreaValue8A0(em, gEmAreaValues8A0[em->type]);
-    Em_SetAreaValue89E(em, gEmAreaTimer1Values[em->type]);
+    Em_SetAreaTimer2(em, gEmAreaTimer2Values[em->type]);
+    Em_SetAreaTimer1(em, gEmAreaTimer1Values[em->type]);
 }
 
+/*
+ * Returns 1 for Yian Kut-Ku, Blue Yian Kut-Ku, Cephadrome, Gypceros, Purple
+ * Gypceros, Basarios, Khezu, Red Khezu and Yian Garuga. For these,
+ * Effect0D_InitForEm's type 7 effect with mode 2 makes RathalosAttack 0x2F
+ * instead of 0xE.
+ */
 s32 Em_TypeUsesK14(u8 type)
 {
     switch (type) {
@@ -512,18 +617,27 @@ s32 Em_TypeUsesK14(u8 type)
     return 0;
 }
 
+/*
+ * Ends the rage: clears rageTimer, rage, rageBuildup, ragePending and
+ * rageStarted. Sets attackFactor and damageFactor back to the level's values
+ * (Em_LevelAttackFactor, Em_LevelDamageFactor) and motionSpeed to 1.
+ */
 void Em_EndRage(Em *em)
 {
     em->rageTimer = 0;
     em->rage = 0;
     em->rageBuildup = 0;
-    em->attackFactor = Em_RageScale1(em);
-    em->damageFactor = Em_RageScale2(em);
+    em->attackFactor = Em_LevelAttackFactor(em);
+    em->damageFactor = Em_LevelDamageFactor(em);
     em->motionSpeed = 1.0f;
     em->ragePending = 0;
     em->rageStarted = 0;
 }
 
+/*
+ * Counts scriptDelay down. Once it is 0, runs the script once (EmScript_Run)
+ * if scriptPending is set, then clears scriptPending.
+ */
 void Em_UpdatePendingScript(Em *em)
 {
     if (em->scriptDelay <= 0) {
@@ -536,45 +650,64 @@ void Em_UpdatePendingScript(Em *em)
     }
 }
 
+/*
+ * The per-frame reset: hitReactMode to EM_HIT_REACT_FLINCH and stateArmor to
+ * 0.
+ */
 void Em_ClearHitReactMode(Em *em)
 {
     Em_SetHitReactMode(em, 0);
     em->stateArmor = 0;
 }
 
+/* Clears blindTimer (the flash blindness) and poisonDamage. */
 void Em_ClearPoison(Em *em)
 {
     em->blindTimer = 0;
     em->poisonDamage = 0;
 }
 
+/*
+ * Holds the monster in the second hold (holdTimer2 = 5, the hold
+ * PlacedItem_RunTrap checks).
+ */
 void Em_SetHold2(Em *em)
 {
     em->holdTimer2 = 5;
 }
 
-void Em_SetCaptured(Em *em, s32 a)
+/*
+ * Called each frame for a captured or held monster. Sets 5 frames unhittable
+ * and unpushable, EM_HIT_REACT_WAKE and blind 2, and sets holdTimer (`a` 0)
+ * or holdTimer2 (`a` 1) to 5.
+ */
+void Em_SetCaptured(Em *em, s32 useHold2)
 {
     em->noHitTimer = 5;
     em->noPushTimer = 5;
     Em_SetHitReactMode(em, 2);
     em->blind = 2;
-    if (a == 0) {
+    if (useHold2 == 0) {
         em->holdTimer = 5;
     } else {
         em->holdTimer2 = 5;
     }
 }
 
-void Em_PlaySe6AtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a)
+/*
+ * Plays sound `se` at bone `bone` through Em_PlaySeType when the motion
+ * passes `frame`. While layer `a`'s motion is between frame and frame2, it
+ * plays it again every 4 frames with last argument 1.
+ */
+void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 endFrame, s32 se, s32 bone, s32 vol, s32 layer)
 {
     f32 pos[4];
 
-    if (Player_PassedFrameScaled(em, frame, 0)) {
+    if (EmMotion_PassedFrameScaled(em, frame, 0)) {
         Mtx_GetTrans(pos, em->model->bones[bone].world);
         Em_PlaySeType(em, se, 0, pos, vol, 0);
     }
-    if (EmMotion_InFrameRange(em, a, frame, frame2) && gScene.frame % 4 == 0) {
+    if (EmMotion_InFrameRange(em, layer, frame, endFrame) && gScene.frame % 4 == 0) {
         Mtx_GetTrans(pos, em->model->bones[bone].world);
         Em_PlaySeType(em, se, 0, pos, vol, 1);
     }
@@ -593,16 +726,20 @@ void Em_PlaySeAtBone(Em *em, s32 se, s32 bone)
 /* Em_PlaySeAtBone when the motion reaches `frame`. */
 void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone)
 {
-    if (Player_PassedFrameScaled(em, frame, 0)) {
+    if (EmMotion_PassedFrameScaled(em, frame, 0)) {
         Em_PlaySeAtBone(em, se, bone);
     }
 }
 
-void Em_PlaySe6AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone)
+/*
+ * Plays sound `se` at bone `bone` through Em_PlaySeType, at the kind's volume
+ * (gSeVolumeByType), when the motion passes `frame`.
+ */
+void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone)
 {
     f32 pos[4];
 
-    if (Player_PassedFrameScaled(em, frame, 0)) {
+    if (EmMotion_PassedFrameScaled(em, frame, 0)) {
         s8 vol = gSeVolumeByType[em->type];
 
         Mtx_GetTrans(pos, em->model->bones[bone].world);
@@ -610,11 +747,12 @@ void Em_PlaySe6AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone)
     }
 }
 
-void Em_PlaySeAtBoneOnFrame2(Em *em, s32 frame, s32 se, s32 bone, s32 flag)
+/* Em_PlaySeAtBone when layer `flag`'s motion passes `frame`. */
+void Em_PlaySeAtBoneOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 layer)
 {
     f32 pos[4];
 
-    if (Player_PassedFrameScaled(em, frame, flag)) {
+    if (EmMotion_PassedFrameScaled(em, frame, layer)) {
         s8 vol = gSeVolumeByType[em->type];
 
         Mtx_GetTrans(pos, em->model->bones[bone].world);
@@ -622,11 +760,15 @@ void Em_PlaySeAtBoneOnFrame2(Em *em, s32 frame, s32 se, s32 bone, s32 flag)
     }
 }
 
-void Em_PlaySe1AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone)
+/*
+ * As Em_PlaySeAtBoneOnFrame, but through Sound_PlayEmSe (sound slot 1, bank
+ * 0).
+ */
+void Em_PlayCommonSeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone)
 {
     f32 pos[4];
 
-    if (Player_PassedFrameScaled(em, frame, 0)) {
+    if (EmMotion_PassedFrameScaled(em, frame, 0)) {
         s8 vol = gSeVolumeByType[em->type];
 
         Mtx_GetTrans(pos, em->model->bones[bone].world);
@@ -634,6 +776,7 @@ void Em_PlaySe1AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone)
     }
 }
 
+/* Em_PlaySeAtBone at volume vol instead of the kind's. */
 void Em_PlaySeAtBoneVol(Em *em, s32 se, s32 bone, s32 vol)
 {
     f32 pos[4];
@@ -642,18 +785,20 @@ void Em_PlaySeAtBoneVol(Em *em, s32 se, s32 bone, s32 vol)
     Em_PlaySeChecked(em, se, 0, pos, vol, 0);
 }
 
+/* Em_PlaySeAtBoneVol when the motion passes `frame`. */
 void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol)
 {
-    if (Player_PassedFrameScaled(em, frame, 0)) {
+    if (EmMotion_PassedFrameScaled(em, frame, 0)) {
         Em_PlaySeAtBoneVol(em, se, bone, vol);
     }
 }
 
-void Em_PlaySeAtBoneVolOnFrame2(Em *em, s32 frame, s32 se, s32 bone, s32 flag, s32 vol)
+/* Em_PlaySeAtBoneVol when layer `flag`'s motion passes `frame`. */
+void Em_PlaySeAtBoneVolOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 layer, s32 vol)
 {
     f32 pos[4];
 
-    if (Player_PassedFrameScaled(em, frame, flag)) {
+    if (EmMotion_PassedFrameScaled(em, frame, layer)) {
         Mtx_GetTrans(pos, em->model->bones[bone].world);
         Em_PlaySeChecked(em, se, 0, pos, vol, 0);
     }
@@ -665,24 +810,33 @@ void Em_PlaySe(Em *em, s32 se)
     Em_PlaySeChecked(em, se, 0, &em->posX, gSeVolumeByType[em->type], 0);
 }
 
+/* Em_PlaySe when the motion passes `frame`. */
 void Em_PlaySeOnFrame(Em *em, s32 frame, s32 se)
 {
-    if (Player_PassedFrameScaled(em, frame, 0)) {
+    if (EmMotion_PassedFrameScaled(em, frame, 0)) {
         Em_PlaySeChecked(em, se, 0, &em->posX, gSeVolumeByType[em->type], 0);
     }
 }
 
-s32 Em_IsSyncFree(Em *em, u8 a)
+/*
+ * Returns 1 when the monster is small (large 0), `a` is nonzero, or the
+ * monster is remote; returns 0 for a large local monster with `a` 0.
+ * em_blangonga.c counts its move actions only when it is 1.
+ */
+s32 Em_IsSyncFree(Em *em, u8 mode)
 {
-    if (em->large == 0 || a != 0 || em->remote != 0) {
+    if (em->large == 0 || mode != 0 || em->remote != 0) {
         return 1;
     }
     return 0;
 }
 
-/* unk_708850's .data (0x8BF9C0-0x8C3500): the map positions no code here
- * names (the em files' tables point to gAreaGroundY and EmCephadrome_VelYCurves_3), then
- * Em_PartEffectTbl */
+/*
+ * unk_708850's .data (0x8BF9C0-0x8C3500): the per-area tables the monsters'
+ * area lookups read (em->tables, Em_AreaEntryValue, Em_FindAreaEntry):
+ * ground heights, point sets, four-point sets and route sets; then
+ * Em_PartEffectTbl.
+ */
 typedef struct MapRoutePt {
     f32 x, y, z;
     f32 r;

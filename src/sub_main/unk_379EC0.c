@@ -87,7 +87,7 @@ extern s16 gAmbSePeriodsAreaA9[];
 extern s16 gAmbSeKindsAreaA9[];
 
 /* The area's ambient sounds: the spot sound of kind-2 action spots every 87 frames, a
- * sound in area 0x89 at a farm level, then the area's table of sound sources: each plays
+ * sound in AREA_HUB_0x89 at a farm level, then the area's table of sound sources: each plays
  * at its position when gScene.frame is a multiple of its period, unless its flags rule it out
  * (the time of day, facility levels). */
 void Area_UpdateAmbientSounds(AreaState *s)
@@ -127,75 +127,75 @@ void Area_UpdateAmbientSounds(AreaState *s)
     }
     on = 1;
     switch (gScene.area) {
-    case 1:
-    case 0x6E:
+    case AREA_JUNGLE_NIGHT_0:
+    case AREA_JUNGLE_0:
         srcPos = gAmbSePosArea01;
         n = 2;
         ids = gAmbSeIdsArea01;
         periods = gAmbSePeriodsArea01;
         kinds = gAmbSeKindsArea01;
         break;
-    case 2:
-    case 0x6F:
+    case AREA_JUNGLE_NIGHT_1:
+    case AREA_JUNGLE_1:
         srcPos = gAmbSePosArea02;
         n = 1;
         ids = gAmbSeIdsArea02;
         periods = gAmbSePeriodsArea02;
         kinds = gAmbSeKindsArea02;
         break;
-    case 5:
-    case 0x72:
+    case AREA_JUNGLE_NIGHT_4:
+    case AREA_JUNGLE_4:
         srcPos = gAmbSePosArea05;
         n = 1;
         ids = gAmbSeIdsArea05;
         periods = gAmbSePeriodsArea05;
         kinds = gAmbSeKindsArea05;
         break;
-    case 0x16:
-    case 0x75:
+    case AREA_JUNGLE_NIGHT_7:
+    case AREA_JUNGLE_7:
         srcPos = gAmbSePosArea16;
         n = 2;
         ids = gAmbSeIdsArea16;
         periods = gAmbSePeriodsArea16;
         kinds = gAmbSeKindsArea16;
         break;
-    case 0x17:
-    case 0x76:
+    case AREA_JUNGLE_NIGHT_8:
+    case AREA_JUNGLE_8:
         srcPos = gAmbSePosArea17;
         n = 1;
         ids = gAmbSeIdsArea17;
         periods = gAmbSePeriodsArea17;
         kinds = gAmbSeKindsArea17;
         break;
-    case 0x48:
+    case AREA_SWAMP_NIGHT_7:
         srcPos = gAmbSePosArea48;
         n = 2;
         ids = gAmbSeIdsArea48;
         periods = gAmbSePeriodsArea48;
         kinds = gAmbSeKindsArea48;
         break;
-    case 0x4B:
+    case AREA_SWAMP_NIGHT_9:
         srcPos = gAmbSePosArea4B;
         n = 3;
         ids = gAmbSeIdsArea4B;
         periods = gAmbSePeriodsArea4B;
         kinds = gAmbSeKindsArea4B;
         break;
-    case 0x79:
+    case AREA_TOWER_0:
         srcPos = gAmbSePosArea79;
         n = 1;
         ids = gAmbSeIdsArea79;
         periods = gAmbSePeriodsArea79;
         kinds = gAmbSeKindsArea79;
         break;
-    case 0x7A:
+    case AREA_TOWER_1:
         srcPos = gAmbSePosArea7A;
         n = 1;
         ids = gAmbSeIdsArea7A;
         periods = gAmbSePeriodsArea7A;
         kinds = gAmbSeKindsArea7A;
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         flags = gAmbSeFlagsArea84;
         srcPos = gAmbSePosArea84;
         n = 1;
@@ -204,7 +204,7 @@ void Area_UpdateAmbientSounds(AreaState *s)
         kinds = gAmbSeKindsArea84;
         slots = gAmbSeSlotsArea84;
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         flags = gAmbSeFlagsArea88;
         srcPos = gAmbSePosArea88;
         n = 2;
@@ -213,7 +213,7 @@ void Area_UpdateAmbientSounds(AreaState *s)
         kinds = gAmbSeKindsArea88;
         slots = gAmbSeSlotsArea88;
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         if ((2 << (u8)Village_FacilityLevel(1)) == 8 && gScene.online != 0 && Contest_IsOpen() == 0 &&
             (s->frame & 0xFF) == 0x10) {
             if ((s->frame & 0x100) == 0) {
@@ -235,15 +235,15 @@ void Area_UpdateAmbientSounds(AreaState *s)
         kinds = gAmbSeKindsArea89;
         slots = gAmbSeSlotsArea89;
         break;
-    case 0x41:
-    case 0xA8:
+    case AREA_VOLCANO_NIGHT_7:
+    case AREA_VOLCANO_7:
         srcPos = gAmbSePosArea41;
         n = 1;
         ids = gAmbSeIdsArea41;
         periods = gAmbSePeriodsArea41;
         kinds = gAmbSeKindsArea41;
         break;
-    case 0xA9:
+    case AREA_VOLCANO_8:
         srcPos = gAmbSePosAreaA9;
         n = 1;
         ids = gAmbSeIdsAreaA9;
@@ -295,7 +295,7 @@ void Area_UpdateAmbientSounds(AreaState *s)
 }
 
 /* The area's per-frame update: its counters, the screen fade (gAreaFade), the notice darkness,
- * the effects of areas 0x85 and 0x89, the sparkles of gathering points, then Area_UpdateAmbientSounds and
+ * the effects of AREA_HUB_0x85 and AREA_HUB_0x89, the sparkles of gathering points, then Area_UpdateAmbientSounds and
  * the action spots. */
 void Area_Update(AreaState *s)
 {
@@ -342,7 +342,7 @@ void Area_Update(AreaState *s)
             }
         }
         switch (gScene.area) {
-        case 0x85:
+        case AREA_HUB_0x85:
             flags = gScene.frame;
             b = (flags >> 5) & 0xF;
             a = (flags >> 7) & 0xF;
@@ -379,7 +379,7 @@ void Area_Update(AreaState *s)
                 break;
             }
             break;
-        case 0x89:
+        case AREA_HUB_0x89:
             if ((u8)Village_FacilityLevel(3) == 2) {
                 r = func_7BC280();
                 if (s->propState == 1 && s->propState != r) {

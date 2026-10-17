@@ -1622,7 +1622,7 @@ void Page_DrawThinFrame(s32 color, f32 x0, f32 y0, f32 x1, f32 y1)
     Prim_DrawRect(color, x0, y0, 1.0f + x0, y1);
 }
 
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Font_SetPal(s32 a);
 void Font_DrawAndClearPages(void);
 char *strchr(char *s, s32 c); /* main: strchr */
@@ -1636,7 +1636,7 @@ void Page_DrawTextLine(u8 a0, u32 color, u8 a2, u8 size, f32 x, f32 y, char *tex
     if (*(u8 *)text == 0 || text == D_00838E30) {
         return;
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Font_SetSpacing(size, size);
     Font_SetPal(0);
     color = ((color & 0xFF) >> 1 & 0xFF) | (((color & 0xFF0000) >> 1 & 0xFF0000) | ((color & 0xFF00) >> 1 & 0xFF00));
@@ -2266,7 +2266,7 @@ void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);
 void Text_Reset(void);
 void Font_SetHalfWidth(s32 a0);
 void LobbyMsg_DrawPage5(s32 msg);
-void Text_DrawBoxes(s32 i);
+void Text_DrawIcons(s32 i);
 void Font_DrawPage(s32 layer);
 void NetModeMsg_Flush(s8 which);
 
@@ -2393,7 +2393,7 @@ void BrowserDlg_DrawStatus(PageElem *o)
         Font_SetHalfWidth(1);
         LobbyMsg_DrawPage5(msg);
         for (k = 0; k < 7; k++) {
-            Text_DrawBoxes(k);
+            Text_DrawIcons(k);
             Font_DrawPage(k);
         }
         gTextOff = 1;

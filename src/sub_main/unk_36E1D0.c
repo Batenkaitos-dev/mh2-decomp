@@ -7,6 +7,8 @@
 #include "stageobj.h"
 #include "sprite.h"
 #include "chredit.h"
+#include "area.h"
+#include "pad.h"
 
 /* prototypes */
 extern s32 D_005BAD78;
@@ -37,7 +39,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
     s16 r = 2;
 
     switch (p->weaponType) {
-    case 2:
+    case WEAPON_HAMMER:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (Motion_ReachedFrame(p, 0, 6.0f)) r = 1;
@@ -57,7 +59,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 8:
+    case WEAPON_HUNTING_HORN:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (Motion_ReachedFrame(p, 0, 68.0f)) r = 1;
@@ -92,12 +94,12 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 3:
-    case 9:
+    case WEAPON_LANCE:
+    case WEAPON_GUNLANCE:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (p->motion[0].blend == 1) r = 2;
-            else if (p->weaponType == 3) r = 1;
+            else if (p->weaponType == WEAPON_LANCE) r = 1;
             else if (Motion_ReachedFrame(p, 0, 14.0f)) r = 1;
             break;
         case 0x3FA:
@@ -117,7 +119,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 4:
+    case WEAPON_SWORD_SHIELD:
         switch (p->motionId[0]) {
         case 0x3EA:
         case 0x3FA:
@@ -145,7 +147,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 6:
+    case WEAPON_DUAL_SWORDS:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (Motion_ReachedFrame(p, 0, alt == 0 ? 8.0f : 10.0f)) r = 1;
@@ -204,7 +206,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 7:
+    case WEAPON_LONG_SWORD:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (Motion_ReachedFrame(p, 0, 56.0f)) r = 1;
@@ -231,7 +233,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 10:
+    case WEAPON_BOW:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (Motion_ReachedFrame(p, 0, 18.0f)) r = 1;
@@ -258,7 +260,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 1:
+    case WEAPON_HEAVY_BOWGUN:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (Motion_ReachedFrame(p, 0, 2.0f)) r = 1;
@@ -276,7 +278,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
             break;
         }
         break;
-    case 5:
+    case WEAPON_LIGHT_BOWGUN:
         switch (p->motionId[0]) {
         case 0x3EA:
             if (Motion_ReachedFrame(p, 0, 28.0f)) r = 0; else r = 2;
@@ -313,7 +315,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
     case 0xCF:
     case 0xD8:
         if (p->weaponOut) {
-            if (p->stateGroup == 6) r = 2; else r = 1;
+            if (p->stateGroup == PL_GROUP_GESTURE) r = 2; else r = 1;
         }
         break;
     case 0x3C:
@@ -349,7 +351,7 @@ s16 Player_MotionPhase(Player *p, s32 alt, s32 flag)
         r = 2;
         break;
     case 0xD2:
-        if (p->stateGroup == 6) r = 2;
+        if (p->stateGroup == PL_GROUP_GESTURE) r = 2;
         break;
     case 0x19D:
         if (Motion_ReachedFrame(p, 0, 328.0f)) r = 2;
@@ -427,30 +429,30 @@ void Player_DrawPartLit(Player *p, ModelMatSet *part, f32 *m, u8 *lights, u8 mod
             break;
         case 2:
             switch (p->useItem) {
-            case 0x2F:
-            case 0x39:
+            case ITEM_ID_FOOD_STAMINA_75:
+            case ITEM_ID_FOOD_RESTORE:
                 col = 1;
                 break;
-            case 0x30:
-            case 0x3A:
-            case 0x3B:
-            case 0x3C:
-            case 0x3D:
+            case ITEM_ID_FOOD_STAMINA_150:
+            case ITEM_ID_FOOD_REGEN_SHORT:
+            case ITEM_ID_FOOD_REGEN:
+            case ITEM_ID_FOOD_REGEN_B:
+            case ITEM_ID_FOOD_REGEN_LONG:
                 col = 2;
                 break;
-            case 0x32:
-            case 0x3E:
+            case ITEM_ID_FOOD_STAMINA_GAMBLE:
+            case ITEM_ID_FOOD_RESTORE_B:
                 col = 3;
                 break;
-            case 0x31:
+            case ITEM_ID_FOOD_STAMINA_FULL:
                 col = 4;
                 break;
-            case 0x33:
-            case 0x34:
-            case 0x35:
-            case 0x36:
-            case 0x37:
-            case 0x38:
+            case ITEM_ID_FOOD_HOT:
+            case ITEM_ID_FOOD_HOT_STAMINA:
+            case ITEM_ID_FOOD_COOL:
+            case ITEM_ID_FOOD_COOL_STAMINA:
+            case ITEM_ID_FOOD_CURE:
+            case ITEM_ID_FOOD_CURE_STAMINA:
                 col = 4;
                 break;
             default:
@@ -631,7 +633,7 @@ void Player_DrawWeaponPart(void *obj)
         sy = sx;
         sz = sx;
         if (p->carry & 0xF) {
-            if (Player_IsState((u8 *)p, 5, 9) != 0 && p->motionId[0] == 0x33 && p->motion[0].blend != 0) {
+            if (Player_IsState((u8 *)p, PL_GROUP_CARRY, PL_CARRY_PICKED_UP) != 0 && p->motionId[0] == 0x33 && p->motion[0].blend != 0) {
                 return;
             }
             switch ((p->carry & 0xF0) >> 4) {
@@ -718,9 +720,9 @@ void Player_DrawWeaponPart(void *obj)
                     return;
                 }
                 switch (p->useItem) {
-                case 0xEB:
-                case 0xF7:
-                case 0xF8:
+                case ITEM_ID_FOOD_HEAL_20:
+                case ITEM_ID_FOOD_PRIZE_A:
+                case ITEM_ID_FOOD_PRIZE_B:
                     part = &set->matSets[114];
                     bone = 0x12;
                     rx = -1.2217306f;
@@ -731,12 +733,12 @@ void Player_DrawWeaponPart(void *obj)
                     off[1] = -3.0f;
                     off[2] = 0.0f;
                     break;
-                case 0x39:
-                case 0x3A:
-                case 0x3B:
-                case 0x3C:
-                case 0x3D:
-                case 0x3E:
+                case ITEM_ID_FOOD_RESTORE:
+                case ITEM_ID_FOOD_REGEN_SHORT:
+                case ITEM_ID_FOOD_REGEN:
+                case ITEM_ID_FOOD_REGEN_B:
+                case ITEM_ID_FOOD_REGEN_LONG:
+                case ITEM_ID_FOOD_RESTORE_B:
                     sx = 0.75f;
                     sy = sx;
                     part = &set->matSets[128];
@@ -978,7 +980,7 @@ void Player_DrawWeaponPart(void *obj)
             case 0x3F5:
             case 0x57D:
             case 0x58A:
-                if (p->weaponType == 10) {
+                if (p->weaponType == WEAPON_BOW) {
                     switch (p->motionId[0]) {
                     case 0x3F4:
                         t = 6.0f;
@@ -1019,7 +1021,7 @@ void Player_DrawWeaponPart(void *obj)
             case 0x583:
             case 0x585:
             case 0x586:
-                if (p->weaponType == 10) {
+                if (p->weaponType == WEAPON_BOW) {
                     switch (p->motionId[0]) {
                     case 0x3F6:
                         if (Motion_ReachedFrame(p, 0, 12.0f) == 0) {
@@ -1113,9 +1115,9 @@ void Key2_Eval(struct KeyClock *c, Key2 *k, f32 *a, f32 *b);
 void Key3_Eval(struct KeyClock *c, Key3 *k, f32 *out);
 void Key3_EvalByTimer(Player *p, Key3 *k, f32 *out);
 void Mtx_AddTrans(f32 *m, f32 *v);
-s32 Bowgun_HasOption20(Player *p);
+s32 Bowgun_HasBarrel(Player *p);
 s32 HeavyBowgun_HasShield(Player *p);
-s32 LightBowgun_HasOption10(Player *p);
+s32 LightBowgun_HasSilencer(Player *p);
 extern WpPose gWpPoseDrawnAlt[];
 extern WpPose gWpPoseDrawn[];
 extern WpPose gWpPoseSheathed[];
@@ -1258,24 +1260,24 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
         Vec_Rotate(v, off, p->partRecs[phase != 0 ? 0xE : 0x12]->m1);
         Mtx_AddTrans(m, v);
         Mtx_Identity(id);
-        if (p->weaponType == 3 || p->weaponType == 5) {
+        if (p->weaponType == WEAPON_LANCE || p->weaponType == WEAPON_LIGHT_BOWGUN) {
             Mtx_GetTrans(pos, b[2].local);
             Mtx_Scale(b[2].local, 1.0f, 1.0f, 1.0f);
             Mtx_SetTrans(b[2].local, pos[0], pos[1], pos[2]);
         }
     } else {
         switch (p->weaponType) {
-        case 4:
+        case WEAPON_SWORD_SHIELD:
             Mtx_Copy(m, p->partRecs[9]->m1);
             break;
-        case 6:
+        case WEAPON_DUAL_SWORDS:
             Mtx_Copy(m, p->partRecs[9]->m1);
             break;
         default:
             Mtx_Copy(m, p->partRecs[10]->m1);
             break;
         }
-        if ((s32)p->weaponType == 5
+        if ((s32)p->weaponType == WEAPON_LIGHT_BOWGUN
             && (p->motionId[0] == 0x58E || p->motionId[0] == 0x58F || p->motionId[0] == 0x3EA || p->motionId[0] == 0x3EB
                 || p->motionId[0] == 0x3F1 || p->motionId[0] == 0x3F2)
             && p->motion[0].blend == 0) {
@@ -1312,21 +1314,21 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             rot[1] = *src++;
             rot[2] = *src++;
         }
-        if (p->weaponType == 6) {
+        if (p->weaponType == WEAPON_DUAL_SWORDS) {
             Vec_Rotate(v, off, p->partRecs[9]->m1);
         } else {
             Vec_Rotate(v, off, p->partRecs[10]->m1);
         }
         Mtx_AddTrans(m, v);
         switch (p->weaponType) {
-        case 1:
-        case 10:
+        case WEAPON_HEAVY_BOWGUN:
+        case WEAPON_BOW:
             Mtx_GetTrans(pos, b[3].local);
             Mtx_Scale(b[3].local, 1.0f, 0.0f, 3.0f);
             Mtx_SetTrans(b[3].local, pos[0], pos[1], pos[2]);
             scale = 0.8f;
             break;
-        case 5:
+        case WEAPON_LIGHT_BOWGUN:
             Mtx_GetTrans(pos, b[3].local);
             Mtx_Scale(b[3].local, 1.0f, 0.0f, 3.0f);
             Mtx_SetTrans(b[3].local, pos[0], pos[1], pos[2]);
@@ -1335,15 +1337,15 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             Mtx_SetTrans(b[2].local, pos[0], pos[1], pos[2]);
             scale = 1.0f;
             break;
-        case 7:
+        case WEAPON_LONG_SWORD:
         default:
             scale = 0.8f;
             break;
-        case 4:
-        case 6:
+        case WEAPON_SWORD_SHIELD:
+        case WEAPON_DUAL_SWORDS:
             scale = 1.0f;
             break;
-        case 3:
+        case WEAPON_LANCE:
             scale = 0.9f;
             Mtx_GetTrans(pos, b[2].local);
             Mtx_Scale(b[2].local, 1.0f, 1.0f, 0.45f);
@@ -1356,7 +1358,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
     Mtx_Scale(sm, scale, scale, scale);
     Mtx_Concat3x3(b[0].local, sm);
     switch (p->weaponType) {
-    case 2:
+    case WEAPON_HAMMER:
         Mtx_GetTrans(pos, b[3].local);
         sc[0] = 1.0f;
         if (p->weaponTimer > 0 && p->weaponTimer / 30 >= 2) {
@@ -1381,7 +1383,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
         Mtx_Scale(b[3].local, sc[0], sc[0], sc[0]);
         Mtx_SetTrans(b[3].local, pos[0], pos[1], pos[2]);
         break;
-    case 8:
+    case WEAPON_HUNTING_HORN:
         Mtx_GetTrans(off, b[2].local);
         Mtx_GetTrans(pos, b[3].local);
         Vec_Set(rot, 0.0f, 0.0f, 0.0f);
@@ -1403,8 +1405,8 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
         Mtx_Scale(b[3].local, sc[0], sc[1], sc[2]);
         Mtx_SetTrans(b[3].local, pos[0], pos[1], pos[2]);
         break;
-    case 0:
-    case 7:
+    case WEAPON_GREAT_SWORD:
+    case WEAPON_LONG_SWORD:
         Mtx_GetTrans(pos, b[2].local);
         Mtx_GetTrans(off, b[3].local);
         if (p->weaponOut == 0 || phase == 2) {
@@ -1460,7 +1462,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             }
             break;
         }
-        if (p->weaponType == 7) {
+        if (p->weaponType == WEAPON_LONG_SWORD) {
             if (p->weaponOut == 0 || phase == 2) {
                 sc[2] = 0.73f;
             } else {
@@ -1472,7 +1474,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
         Mtx_Scale(b[3].local, sc2[0], sc2[1], sc2[2]);
         Mtx_SetTrans(b[3].local, off[0], off[1], off[2]);
         break;
-    case 3:
+    case WEAPON_LANCE:
         Mtx_GetTrans(pos, b[2].local);
         switch (p->motionId[0]) {
         case 0x19D:
@@ -1524,7 +1526,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
         Mtx_Scale(b[2].local, 1.0f, 1.0f, sc[2]);
         Mtx_SetTrans(b[2].local, pos[0], pos[1], pos[2]);
         break;
-    case 9:
+    case WEAPON_GUNLANCE:
         Mtx_GetTrans(pos, b[2].local);
         Vec_Set(rot, 0.0f, 0.0f, 0.0f);
         Mtx_GetTrans(pos, b[2].local);
@@ -1593,7 +1595,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
                       6.2831855f * rot[2] / 360.0f);
         Mtx_SetTrans(b[3].local, off[0], off[1], off[2]);
         break;
-    case 10:
+    case WEAPON_BOW:
         Mtx_GetTrans(pos, b[2].local);
         Mtx_GetTrans(off, b[3].local);
         Vec_Set(sc, 1.0f, 1.0f, 1.0f);
@@ -1666,9 +1668,9 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
         Mtx_Scale(b[3].local, sc[0], sc[1], sc[2]);
         Mtx_SetTrans(b[3].local, off[0], off[1], off[2]);
         break;
-    case 1:
-    case 5:
-        if (p->weaponType == 5) {
+    case WEAPON_HEAVY_BOWGUN:
+    case WEAPON_LIGHT_BOWGUN:
+        if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
             Mtx_GetTrans(off, b[3].local);
         } else {
             Mtx_GetTrans(off, b[3].local);
@@ -1680,7 +1682,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
         if (p->motion[0].blend == 0) {
             switch (p->motionId[0]) {
             case 0x579:
-                if (p->weaponType == 5) {
+                if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                     sc[2] = Key1_Eval((struct KeyClock *)p, gLbgKey579ScaleZ);
                     sc[1] = Key1_Eval((struct KeyClock *)p, gLbgKey579ScaleY);
                 } else {
@@ -1690,14 +1692,14 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
                 break;
             case 0x57D:
                 if (p->roundsLoaded == 0) {
-                    if (p->weaponType == 5) {
+                    if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                         sc[2] = Key1_Eval((struct KeyClock *)p, gLbgKey57DEmptyScaleZ);
                         sc[1] = Key1_Eval((struct KeyClock *)p, gLbgKey57DEmptyScaleY);
                     } else {
                         sc[2] = Key1_Eval((struct KeyClock *)p, gHbgKey57DEmptyScaleZ);
                         sc[0] = Key1_Eval((struct KeyClock *)p, gHbgKey57DEmptyScaleX);
                     }
-                } else if (p->weaponType == 5) {
+                } else if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                     sc[2] = Key1_Eval((struct KeyClock *)p, gLbgKey57DScaleZ);
                     sc[1] = Key1_Eval((struct KeyClock *)p, gLbgKey57DScaleY);
                 } else {
@@ -1707,14 +1709,14 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
                 break;
             case 0x580:
                 sc[2] = Key1_Eval((struct KeyClock *)p, gBowgunKey580ScaleZ);
-                if (p->weaponType == 5) {
+                if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                     sc[1] = Key1_Eval((struct KeyClock *)p, gBowgunKey580Scale2);
                 } else {
                     sc[0] = Key1_Eval((struct KeyClock *)p, gBowgunKey580Scale2);
                 }
                 break;
             case 0x57C:
-                if (p->weaponType == 5) {
+                if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                     sc[2] = Key1_Eval((struct KeyClock *)p, gLbgKey57CScaleZ);
                     sc[1] = Key1_Eval((struct KeyClock *)p, gLbgKey57CScaleY);
                 } else {
@@ -1725,20 +1727,20 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             case 0x3EA:
             case 0x58E:
             case 0x58F:
-                if (p->weaponType == 1) {
+                if (p->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(b[2].local, 6.2831855f * Key1_Eval((struct KeyClock *)p, gHbgKey3EARotX) / 360.0f, 0.0f, 0.0f);
                     sc[2] = Key1_Eval((struct KeyClock *)p, gHbgKey3EAScaleZ);
                     sc[0] = Key1_Eval((struct KeyClock *)p, gHbgKey3EAScaleX);
                 }
                 break;
             case 0x3EB:
-                if (p->weaponType == 1) {
+                if (p->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(b[2].local, 6.2831855f * Key1_Eval((struct KeyClock *)p, gHbgKey3EBRotX) / 360.0f, 0.0f, 0.0f);
                     sc[0] = Key1_Eval((struct KeyClock *)p, gHbgKey3EBScaleX);
                 }
                 break;
             case 0x3F1:
-                if (p->weaponType == 1) {
+                if (p->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(b[2].local, 6.2831855f * Key1_Eval((struct KeyClock *)p, gHbgKey3EBRotX) / 360.0f, 0.0f, 0.0f);
                     sc[2] = Key1_Eval((struct KeyClock *)p, gHbgKey3F1ScaleZ);
                     sc[0] = Key1_Eval((struct KeyClock *)p, gHbgKey3EBScaleX);
@@ -1747,11 +1749,11 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             default:
                 if (p->weaponOut == 0 || phase == 2) {
                     Mtx_SetRotXYZ(b[1].local, 0.0f, 0.0f, 0.0f);
-                    if (p->weaponType == 1) {
+                    if (p->weaponType == WEAPON_HEAVY_BOWGUN) {
                         Mtx_SetRotXYZ(b[2].local, 0.0f, 0.0f, 0.0f);
                     }
                     Mtx_SetRotXYZ(b[3].local, 0.0f, 0.0f, 0.0f);
-                    if (p->weaponType == 5) {
+                    if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                         sc[1] = 0.4f;
                         sc[2] = 2.2f;
                     } else {
@@ -1760,7 +1762,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
                     }
                 } else {
                     if (p->roundsLoaded != 0) {
-                        if (p->weaponType == 5) {
+                        if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                             sc[1] = 0.55f;
                             sc[2] = 2.0f;
                         } else {
@@ -1773,7 +1775,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             }
         } else {
             if ((p->roundsLoaded != 0 && p->motionId[0] != 0x57C) || p->motionId[0] == 0x579) {
-                if (p->weaponType == 5) {
+                if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                     sc[1] = 0.55f;
                     sc[2] = 2.0f;
                 } else {
@@ -1784,11 +1786,11 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             if ((p->motionId[0] != 0x3EB && p->motionId[0] != 0x3F1 && (p->weaponOut == 0 || phase == 2))
                 || p->motionId[0] == 0x3EA || p->motionId[0] == 0x58E || p->motionId[0] == 0x58F) {
                 Mtx_SetRotXYZ(b[1].local, 0.0f, 0.0f, 0.0f);
-                if (p->weaponType == 1) {
+                if (p->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(b[2].local, 0.0f, 0.0f, 0.0f);
                 }
                 Mtx_SetRotXYZ(b[3].local, 0.0f, 0.0f, 0.0f);
-                if (p->weaponType == 5) {
+                if (p->weaponType == WEAPON_LIGHT_BOWGUN) {
                     sc[1] = 0.4f;
                     sc[2] = 2.2f;
                 } else {
@@ -1806,24 +1808,24 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
     lights = p->weaponModel->mats;
     phase1 = Player_MotionPhase(p, 1, flag);
     for (i = 0; i < md->matSetCount; i++, part++) {
-        if (i != 0 && (p->weaponType == 3 || p->weaponType == 4 || p->weaponType == 6)) {
+        if (i != 0 && (p->weaponType == WEAPON_LANCE || p->weaponType == WEAPON_SWORD_SHIELD || p->weaponType == WEAPON_DUAL_SWORDS)) {
             b = md->partBones[1];
             Mtx_Copy(m, (void *)Em_GetBone(p, 0x11));
             Vec_Set(rot, 0.0f, 0.0f, 0.0f);
             switch (p->weaponType) {
-            case 4:
+            case WEAPON_SWORD_SHIELD:
                 Mtx_SetRotXYZ(b[0].local, -0.45378563f, -0.05235988f, 0.13962634f);
                 off[0] = -21.0f;
                 off[1] = 2.2f;
                 off[2] = 5.0f;
                 break;
-            case 3:
+            case WEAPON_LANCE:
                 Mtx_SetRotXYZ(b[0].local, 0.36651915f, -3.0019662f, -0.043633234f);
                 off[0] = -18.0f;
                 off[1] = 2.0f;
                 off[2] = -14.0f;
                 break;
-            case 6:
+            case WEAPON_DUAL_SWORDS:
                 if (phase1 != 2) {
                     Mtx_Copy(m, (void *)Em_GetBone(p, 0x12));
                     Mtx_SetRotXYZ(b[0].local, -0.45378563f, -0.05235988f, 0.13962634f);
@@ -1846,7 +1848,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             }
             Vec_Rotate(v, off, m);
             Mtx_AddTrans(m, v);
-            if (p->weaponType == 6) {
+            if (p->weaponType == WEAPON_DUAL_SWORDS) {
                 Mtx_Identity(md->partBones[1][0].local);
                 Mtx_SetRotXYZ(md->partBones[1][0].local, rot[0], rot[1], rot[2]);
             }
@@ -1857,20 +1859,20 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             for (j = 0; j < part->count; j++) {
                 light = &lights[part->mat[j]];
                 light->alpha = alpha;
-                if (p->weaponType == 1 || p->weaponType == 5) {
-                    if (j == 1 && Bowgun_HasOption20(p) == 0) {
+                if (p->weaponType == WEAPON_HEAVY_BOWGUN || p->weaponType == WEAPON_LIGHT_BOWGUN) {
+                    if (j == 1 && Bowgun_HasBarrel(p) == 0) {
                         light->alpha = 0.0f;
                     }
                     if (j == 2) {
-                        if (p->weaponType == 1 && HeavyBowgun_HasShield(p) == 0) {
+                        if (p->weaponType == WEAPON_HEAVY_BOWGUN && HeavyBowgun_HasShield(p) == 0) {
                             light->alpha = 0.0f;
-                        } else if (p->weaponType == 5 && LightBowgun_HasOption10(p) == 0) {
+                        } else if (p->weaponType == WEAPON_LIGHT_BOWGUN && LightBowgun_HasSilencer(p) == 0) {
                             light->alpha = 0.0f;
                         }
                     }
                 } else {
                     switch (p->weaponType) {
-                    case 7:
+                    case WEAPON_LONG_SWORD:
                         if (phase1 != 2) {
                             switch (j) {
                             case 0:
@@ -1895,14 +1897,14 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
                             }
                         }
                         break;
-                    case 10:
+                    case WEAPON_BOW:
                         if (j > 0) {
                             light->alpha = alpha;
                         } else {
                             light->alpha = 0.0f;
                         }
                         break;
-                    case 9:
+                    case WEAPON_GUNLANCE:
                         if (j > 0) {
                             light->alpha = alpha;
                         } else {
@@ -1915,7 +1917,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             }
         }
         Model_Draw(part->id, 0);
-        if (p->weaponType == 7 && phase1 != 2) {
+        if (p->weaponType == WEAPON_LONG_SWORD && phase1 != 2) {
             Mtx_Copy(m, p->partRecs[10]->m1);
             e = &gWpPoseSheathed[p->weaponType];
             src = e->off;
@@ -1959,7 +1961,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             }
             Model_Draw(part->id, 0);
         }
-        if (p->weaponType == 10) {
+        if (p->weaponType == WEAPON_BOW) {
             Mtx_Copy(m, p->partRecs[2]->m1);
             off[0] = 8.5f;
             off[1] = 0.5f;
@@ -2000,7 +2002,7 @@ void Player_DrawWeapon(Player *p, s32 flag, f32 alpha)
             }
             Model_Draw(part->id, 0);
         }
-        if (p->weaponType == 9) {
+        if (p->weaponType == WEAPON_GUNLANCE) {
             Mtx_Copy(m, p->partRecs[17]->m1);
             off[0] = -18.0f;
             off[1] = 2.0f;
@@ -2163,7 +2165,7 @@ s32 Model_Draw(u32 h, s32 flags);
 void Draw_SetDefaultState(void);
 void LightSet_ResetAmbient(s32 a);
 void LightSet_Apply(s32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Tex_Prepare(s32 n, s32 tex);
 s32 Debug_IsOn(s32 unused0);
 void Player_DrawWeapon(Player *p, s32 a, f32 alpha);
@@ -2209,7 +2211,7 @@ void Player_DrawLocal(Player *p, s32 unused /* a1: DrawCb_LocalPlayer passes 0 *
     LightSet_SetAmbient(p, 1);
     LightSet_FadeAmbient(p);
     Gs_SetState(0x67, -1);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     if (p->nearCamera != 0) {
         Gs_SetState(0x60, 0);
         alpha = 0.2f;
@@ -2249,7 +2251,7 @@ void Player_DrawLocal(Player *p, s32 unused /* a1: DrawCb_LocalPlayer passes 0 *
         Model_Draw(part->id, 0);
     }
     Draw_SetDefaultState();
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     if (p->weaponShown != 0) {
         Player_DrawWeapon(p, 0, alpha);
     }
@@ -2302,19 +2304,19 @@ void Player_DrawLocal(Player *p, s32 unused /* a1: DrawCb_LocalPlayer passes 0 *
     LightSet_ResetAmbient(1);
     LightSet_Apply(1);
     if (Player_IsLocal(p) != 0 && p->aimMode == 0) {
-        if (Player_IsState(p, 0, 0x36) != 0 || Player_IsState(p, 0, 0x7A) != 0) {
-            if (p->input.held & 8) {
+        if (Player_IsState(p, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_AIM) != 0 || Player_IsState(p, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_REAIM) != 0) {
+            if (p->input.held & PAD_L1) {
                 Hud_DrawObjMarker(p);
             }
-        } else if (p->weaponOut != 0 && p->stateGroup != 2 && p->stateGroup != 6) {
+        } else if (p->weaponOut != 0 && p->stateGroup != PL_GROUP_REACT && p->stateGroup != PL_GROUP_GESTURE) {
             switch (p->weaponType) {
-            case 1:
-            case 5:
-                if ((p->input.held & 8) && p->aimLockTimer == 0 && p->roundsLoaded != 0) {
+            case WEAPON_HEAVY_BOWGUN:
+            case WEAPON_LIGHT_BOWGUN:
+                if ((p->input.held & PAD_L1) && p->aimLockTimer == 0 && p->roundsLoaded != 0) {
                     Player_DrawBoneMarker(p, 0);
                 }
                 break;
-            case 10:
+            case WEAPON_BOW:
                 break;
             }
         }
@@ -2353,8 +2355,8 @@ void Player_DrawHeldItem(void *obj)
 
     other = 0;
     if (p->action == 1 && p->motionId[0] != 0x260 && p->motionId[0] != 0x296
-        && Player_IsState(p, 0, 0x80) == 0
-        && ((u32)(gScene.area - 0x86) <= 2 || gScene.area == 0x89)) {
+        && Player_IsState(p, PL_GROUP_ACTION, 0x80) == 0
+        && ((u32)(gScene.area - 0x86) <= 2 || gScene.area == AREA_HUB_0x89)) {
         other = 1;
         idx = 0x28;
         bone = 0x12;
@@ -2367,7 +2369,7 @@ void Player_DrawHeldItem(void *obj)
     } else {
         switch (p->motionId[0]) {
         case 0xFA:
-            if (gScene.area == 0xAC && Motion_InFrameRange(p, 0, 152.0f, 406.0f) != 0) {
+            if (gScene.area == AREA_HUB_0xAC && Motion_InFrameRange(p, 0, 152.0f, 406.0f) != 0) {
                 idx = 5;
                 bone = 0x12;
                 rx = 0.0f;
@@ -2392,7 +2394,7 @@ void Player_DrawHeldItem(void *obj)
             off[2] = 22.0f;
             break;
         case 0x287:
-            if (gScene.area == 0x57 && Motion_InFrameRange(p, 0, 232.0f, 578.0f) != 0) {
+            if (gScene.area == AREA_HUB_0x57 && Motion_InFrameRange(p, 0, 232.0f, 578.0f) != 0) {
                 idx = 0;
                 bone = 0x12;
                 rx = 0.0f;
@@ -2499,7 +2501,7 @@ void Player_Draw(Player *p, s32 unused /* a1: DrawCb_Player passes 0 */)
     LightSet_SetAmbient(p, 1);
     LightSet_FadeAmbient(p);
     Gs_SetState(0x67, -1);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     if (p->nearCamera != 0 && Debug_IsOn(0x7B) == 0) {
         Gs_SetState(0x60, 0);
         alpha = 0.2f;
@@ -2527,7 +2529,7 @@ void Player_Draw(Player *p, s32 unused /* a1: DrawCb_Player passes 0 */)
         Model_Draw(part->id, 0);
     }
     Draw_SetDefaultState();
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     if (p->weaponShown != 0 && p->motionId[0] != 0x349) {
         Player_DrawWeapon(p, 1, alpha);
     }
@@ -2591,7 +2593,7 @@ s32 Model_Draw(u32 h, s32 flags);
 void Draw_SetDefaultState(void);
 void LightSet_ResetAmbient(s32 a);
 void LightSet_Apply(s32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 
 /* Draws the hunter being made: its body part (by gFaceBodyTypeMale and unk47), face and hair (lit in the hair colour),
  * each part with its lights. */
@@ -2616,7 +2618,7 @@ void CharMake_DrawHunter(u8 *o, s32 unused /* a1: DrawCb_CharMake passes 0 */)
     Gs_SetState(0x60, 0xC0);
     Mtx_Copy(m, (f32 *)(o + 0x60));
     Bone_StoreMatrices(*(EmBone **)(md + 0x24));
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     k = 3 - gFaceBodyTypeMale[h->face];
     b = h->type * 4;
     k = k + b;
@@ -2798,8 +2800,8 @@ s32 Gs_ClearColor(u8 mode, u32 color);
 void Gfx_SetBlend(s32 a, s32 b);
 void Vec_Set(f32 *v, f32 x, f32 y, f32 z);
 void Mtx_LookAt(f32 *m, f32 *eye, f32 *at, f32 *up);
-struct Mtx44Copy;
-void MtxSlot_Load(struct Mtx44Copy *m, s32 i);
+struct MtxSlot;
+void MtxSlot_Load(struct MtxSlot *m, s32 i);
 void Mtx_Inverse(f32 *dst, f32 *src);
 void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
 void Effect_RunList(EquipFxSwing *a, struct EmBone *b3, struct EmBone *b1, struct EmBone *b0, u16 key, u8 alt, u8 kind);
@@ -2865,29 +2867,29 @@ void EquipPreview_Draw(void)
     }
     Gs_SetState(0x67, -1);
     if (Kbd_IsOpen() == 0 && st->mode != 0xFF) {
-        if (D_006AE0B4.held & 4) {
+        if (D_006AE0B4.held & PAD_L2) {
             if ((st->zoom -= 2.0f) <= -30.0f) {
                 st->zoom = -30.0f;
             }
-        } else if (D_006AE0B4.held & 8) {
+        } else if (D_006AE0B4.held & PAD_L1) {
             if ((st->zoom += 2.0f) >= 30.0f) {
                 st->zoom = 30.0f;
             }
         }
-        if (D_006AE0B4.held & 0x400) {
+        if (D_006AE0B4.held & PAD_RIGHT) {
             if ((st->panX -= 4.0f) <= -60.0f) {
                 st->panX = -60.0f;
             }
-        } else if (D_006AE0B4.held & 0x800) {
+        } else if (D_006AE0B4.held & PAD_LEFT) {
             if ((st->panX += 4.0f) >= 60.0f) {
                 st->panX = 60.0f;
             }
         }
-        if (D_006AE0B4.held & 0x2000) {
+        if (D_006AE0B4.held & PAD_UP) {
             if ((st->panY -= 2.0f) <= -30.0f) {
                 st->panY = -30.0f;
             }
-        } else if (D_006AE0B4.held & 0x1000) {
+        } else if (D_006AE0B4.held & PAD_DOWN) {
             if ((st->panY += 2.0f) >= 30.0f) {
                 st->panY = 30.0f;
             }
@@ -2932,7 +2934,7 @@ void EquipPreview_Draw(void)
     at[2] = 0.0f;
     Mtx_LookAt(m, eye, at, up);
     Gs_SetState(0x16, (u32)m);
-    MtxSlot_Load((struct Mtx44Copy *)inv, 0x21);
+    MtxSlot_Load((struct MtxSlot *)inv, 0x21);
     Mtx_Inverse(gCamMatrix, inv);
     if (st->mode == 0xFF) {
         LightSet_SetupSet(1);
@@ -3181,7 +3183,7 @@ done:
     EquipPreview_SetViewport(0);
     Mtx_LookAt(m, gCamera->eye, gCamera->at, gCamera->up);
     Gs_SetState(0x16, (u32)m);
-    MtxSlot_Load((struct Mtx44Copy *)gViewMatrix, 0x21);
+    MtxSlot_Load((struct MtxSlot *)gViewMatrix, 0x21);
     Mtx_Inverse(gCamMatrix, gViewMatrix);
     Camera_RestoreFov();
     LightSet_ResetAmbient(1);
@@ -3193,8 +3195,8 @@ void LightSet_FadeAmbient(void *obj);
 f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Mtx_Concat3x3(f32 *m, f32 *a);
 void Bone_StoreMatrices(struct EmBone *b);
-struct Mtx44Copy;
-void Bone_StoreMatricesTo(struct Mtx44Copy *tbl, struct EmBone *b);
+struct MtxSlot;
+void Bone_StoreMatricesTo(struct MtxSlot *tbl, struct EmBone *b);
 s32 EmBlangonga_RageTimerFull(Em *em);
 s32 GmEm_ApplyFx(Em *em, s32 i);
 struct EmMelynxMeshSet;    /* game em_cephadrome.c */
@@ -3204,13 +3206,13 @@ void EmMelynx_SetMeshSetAlpha(Em *em, s32 kind, struct EmMelynxMeshSet *sets);
 void EmKutku_SetMeshSetAlpha(Em *em, s32 kind, struct EmKutkuMeshSet *sets);
 void GmEm_SetMeshAlphas(Em *em, s32 mode, struct GmEmPartTbl *tbl);
 void Draw_ApplyStates(u32 a);
-void MtxSlot_LoadList(s16 *list, struct Mtx44Copy *tbl);
+void MtxSlot_LoadList(s16 *list, struct MtxSlot *tbl);
 s32 Model_Draw(u32 h, s32 flags);
 void Draw_SetDefaultState(void);
 void LightSet_ResetAmbient(s32 a);
 void LightSet_Apply(s32 a);
 void Tex_Prepare(s32 n, s32 tex);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Mtx_Identity(f32 *m);
 extern s16 *gObjPartSkipLists[];
 extern u8 gBoneMatrixBuf[];
@@ -3249,7 +3251,7 @@ void Obj_DrawParts(DrawSlot *a)
     Mtx_SetTrans(rm, o->posX, o->posY, o->posZ);
     Mtx_Concat3x3(rm, sm);
     Mtx_Copy(&o->worldMtx[0][0], rm);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     next = *(skip = gObjPartSkipLists[o->type]);
     if (o->type == 3 || o->type == 0x45) {
         n = 1;
@@ -3263,7 +3265,7 @@ void Obj_DrawParts(DrawSlot *a)
     if (big == 0) {
         Bone_StoreMatrices(bones);
     } else {
-        Bone_StoreMatricesTo((struct Mtx44Copy *) gBoneMatrixBuf, bones);
+        Bone_StoreMatricesTo((struct MtxSlot *) gBoneMatrixBuf, bones);
     }
     Mtx_Identity(im);
     Gs_SetState(0x19, (u32)im);
@@ -3308,7 +3310,7 @@ void Obj_DrawParts(DrawSlot *a)
         }
         Draw_ApplyStates(*(s32 *)(part + 0x88));
         if (big == 1) {
-            MtxSlot_LoadList((s16 *) (gModelPartLists[o->modelSlot] + i * 0x42), (struct Mtx44Copy *) gBoneMatrixBuf);
+            MtxSlot_LoadList((s16 *) (gModelPartLists[o->modelSlot] + i * 0x42), (struct MtxSlot *) gBoneMatrixBuf);
         }
         Model_Draw(*(u32 *)part, 0);
     }
@@ -3324,7 +3326,7 @@ typedef struct PlParts {
     u8 *parts[21];              /* 0xD0: +0x40 a matrix, +0x98 a scale */
 } PlParts;
 
-void Player_TwistBone_Unk(Player *p, s16 kind);
+void Player_TwistBoneToLook(Player *p, s16 kind);
 void Mtx_Mul(f32 *dst, f32 *a, f32 *b);
 void Bone_UpdateWorldScaledRoot(struct EmBone *b, f32 *m);
 void Bone_StoreMatrices(struct EmBone *b);
@@ -3339,7 +3341,7 @@ void Player_ScaleBones(u8 *o, EmBone *b, f32 *m)
     EmBone *bone;
 
     for (i = 0, bone = b; i < 21; i++, bone++) {
-        Player_TwistBone_Unk((Player *) o, bone->index);
+        Player_TwistBoneToLook((Player *) o, bone->index);
         Mtx_Scale(sm, *(f32 *)(((PlParts *)o)->parts[i] + 0x98), *(f32 *)(((PlParts *)o)->parts[i] + 0x9C), *(f32 *)(((PlParts *)o)->parts[i] + 0xA0));
         Mtx_Mul(tm, bone->local, sm);
         bone->local[12] = tm[12];

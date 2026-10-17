@@ -27,9 +27,9 @@ s32 Combine_KnowsMostRecipes(void);
 s32 Dojo_AllCleared101(void);
 s32 Dojo_AllCleared201(void);
 s32 ElderRaid_InState2(void);
-s32 SaveFlag_Test(s32);
+s32 Save_HasTitle(s32);
 s32 Cond_IsLatest(u16 id);
-s32 Save_TestListBit(u16 item);
+s32 Save_IsQuestCleared(u16 item);
 void LobbySe_Play(s32);
 void CamFocus_End(void);
 extern s32 gTownMode;
@@ -515,19 +515,19 @@ s32 Talk_Check01(u16 k)
         }
         break;
     case 15:
-        if (Cond_Check(0x19) == 1 && Save_TestListBit(0x138D) == 0 && Save_TestEventFlag(0x1CF) == 0) {
+        if (Cond_Check(0x19) == 1 && Save_IsQuestCleared(0x138D) == 0 && Save_TestEventFlag(0x1CF) == 0) {
             gTalkEventFlag = 0x1CF;
             return 1;
         }
         break;
     case 16:
-        if (Cond_Check(0x19) == 1 && Save_TestListBit(0x138D) == 1 && Save_TestListBit(0x138E) == 0 && Save_TestEventFlag(0x1D0) == 0) {
+        if (Cond_Check(0x19) == 1 && Save_IsQuestCleared(0x138D) == 1 && Save_IsQuestCleared(0x138E) == 0 && Save_TestEventFlag(0x1D0) == 0) {
             gTalkEventFlag = 0x1D0;
             return 1;
         }
         break;
     case 17:
-        if (Cond_Check(0x19) == 1 && Save_TestListBit(0x138D) == 1 && Save_TestListBit(0x138E) == 1 && Save_TestListBit(0x138F) == 0 && Save_TestEventFlag(0x1D1) == 0) {
+        if (Cond_Check(0x19) == 1 && Save_IsQuestCleared(0x138D) == 1 && Save_IsQuestCleared(0x138E) == 1 && Save_IsQuestCleared(0x138F) == 0 && Save_TestEventFlag(0x1D1) == 0) {
             gTalkEventFlag = 0x1D1;
             return 1;
         }
@@ -1261,7 +1261,7 @@ s32 Talk_Check0F(u16 k)
         }
         break;
     case 1:
-        if (Save_TestListBit(0x1772) != 0 && Save_TestEventFlag(0x1AB) == 0) {
+        if (Save_IsQuestCleared(0x1772) != 0 && Save_TestEventFlag(0x1AB) == 0) {
             gTalkEventFlag = 0x1AB;
             Save_SetEventFlag(4);
             return 1;
@@ -2231,13 +2231,13 @@ s32 Talk_Check41(u16 k)
         }
         break;
     case 3:
-        if (SaveFlag_Test(0x8D) == 1 && Save_TestEventFlag(0xC6) == 0) {
+        if (Save_HasTitle(0x8D) == 1 && Save_TestEventFlag(0xC6) == 0) {
             gTalkEventFlag = 0xC6;
             return 1;
         }
         break;
     case 4:
-        if (SaveFlag_Test(0x8E) == 1 && Save_TestEventFlag(0xC7) == 0) {
+        if (Save_HasTitle(0x8E) == 1 && Save_TestEventFlag(0xC7) == 0) {
             gTalkEventFlag = 0xC7;
             return 1;
         }

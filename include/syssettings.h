@@ -26,7 +26,7 @@ typedef struct SysSettings {
     /* 0x0C */ u8 unk0C[0x10 - 0x0C];
     /* 0x10 */ u8 online;               /* the network mode (Game_IsOnline; gm_main's mode select sets it) */
     /* 0x11 */ u8 unk11;
-    /* 0x12 */ u8 unk12;                /* NetMenu_Init clears it, 1 once the net menu is done and after a system reset */
+    /* 0x12 */ u8 cardMenuDone;          /* NetMenu_Open clears it, 1 once the net menu is done and after a system reset */
     /* 0x13 */ u8 unk13;
     /* 0x14 */ u8 unk14;
     /* 0x15 */ u8 unk15[2];
@@ -42,7 +42,7 @@ typedef struct SysSettings {
     /* 0x2A */ u16 boundTex;            /* the texture last bound (Tex_Bind; 0xFFFF after Gfx_ResetRenderStates) */
     /* 0x2C */ u8 blendA;               /* Gfx_SetBlend's cached first table index (render state 0x5E) */
     /* 0x2D */ u8 blendB;               /* ... and its second */
-    /* 0x2E */ u8 state63;              /* Gfx_SetState63's cached index (render state 0x63) */
+    /* 0x2E */ u8 texFilter;            /* Gfx_SetTexFilter's cached filter mode (render state 0x63) */
     /* 0x2F */ u8 cameraPreset;         /* gCameraPreset (0xFF after a reset) */
     /* 0x30 */ u8 blendOp;              /* Gfx_SetBlendOp's cached index (render state 0xD) */
     /* 0x31 */ u8 unk31;                /* Kbd_Draw's argument (unk_363550.c) */

@@ -19,7 +19,7 @@ void LobbyEnter_Begin(void) {
     gLobby->subStep = 0;
     LobbyScreen_ClearRequests();
     if (gLobby->unk3969 == 1) {
-        temp_v1 = D_5CA910;
+        temp_v1 = gQuestReturnArea;
         switch (temp_v1) {                          /* irregular */
         default:
             LobbyText_Open(6);

@@ -7,6 +7,7 @@
 #include "arena_em.h"
 #include "quest.h"             /* gQuest (QuestState) */
 #include "window.h"            /* ListPanel, ListWin, Panel, Frame */
+#include "chat_log.h"          /* ChatLine (PlselSelWork.log) */
 
 /* The player select overlay (plsel.bin, loaded at 0xD60200). */
 
@@ -27,8 +28,8 @@ typedef struct PlselList {
     s32 catReward[17];          /* 0x01C: per hunting category (17; Plsel_CategoryIsShared splits some) */
     s32 kill[0x4A];             /* 0x060: per monster group */
     s32 killTotal;              /* 0x188: the kill rewards' total */
-    s32 payout;                 /* 0x18C: (itemTotal + rewardTotal) * the rate percent (Save_AddZenny) */
-    s32 zenny;                  /* 0x190: the money (Save_GetZenny, + payout) */
+    s32 payout;                 /* 0x18C: (itemTotal + rewardTotal) * the rate percent (Save_AddPoints) */
+    s32 zenny;                  /* 0x190: the money (Save_GetPoints, + payout) */
     s32 payoutCopy;             /* 0x194: payout as computed (not read in the C) */
     s32 screen;                 /* 0x198: 0 the rewards, 1, 2 (Plsel_RewardListDraw) */
     s32 pageCount[3];           /* 0x19C: pages per screen */
@@ -121,7 +122,7 @@ typedef struct PlselWork {
     s32 subAMoney;              /* 0x708: sub goal A's reward (t[18]) */
     s32 subBMoney;              /* 0x70C: sub goal B's reward (t[19]) */
     s32 deaths;                 /* 0x710: the local player's deaths (t[47]) */
-    s32 hrpTotal;               /* 0x714: hunter rank points in all (t[48]; AddHrPoints) */
+    s32 hrpTotal;               /* 0x714: hunter rank points in all (t[48]; Hr_AddPoints) */
     s32 hrpDeaths;              /* 0x718: the deaths' points (deaths * -20) */
     s32 hrpMain;                /* 0x71C: the main goal's points (t[44]; t[53] must-order; t[51] failed) */
     s32 hrpSubA;                /* 0x720: sub goal A's points (t[45]) */
@@ -131,7 +132,7 @@ typedef struct PlselWork {
     s32 rankAfter;              /* 0x730: hunter rank after (t[50]) */
     s32 rankChange;             /* 0x734: 1: rank up, 2: down */
     s32 hrPoints;               /* 0x738: gSave.hrPoints after (t[49]) */
-    s32 hrpResult;              /* 0x73C: AddHrPoints' result (which note to show) */
+    s32 hrpResult;              /* 0x73C: Hr_AddPoints' result (which note to show) */
     u8 unk740[0x748 - 0x740];
     s32 unk0748;                /* 0x748 */
     s32 scroll;                 /* 0x74C: the first line shown on the scrolling pages */
@@ -160,18 +161,6 @@ typedef char PlselWork_size_check[(sizeof(PlselWork) == 0x3B88) ? 1 : -1];
 extern void *gOverlayWorkPtr; /* sub_main: the work pointer the overlays share */
 #define gPlselWork (*(PlselWork **)&gOverlayWorkPtr)
 
-/* A chat log entry (0x4F bytes, PlselSelWork.log): the message in up to two
- * lines and who sent it (Plsel_AddChatLog, Plsel_DrawChatLog). */
-typedef struct PlselChatEntry {
-    char lines[2][0x18];        /* 0x00: 22 bytes a line; a line whose byte 0x16 is set (a split two-byte character) is drawn narrower */
-    u8 lineCount;               /* 0x30 */
-    u8 who;                     /* 0x31: the sender's slot (the "%dP" tag) */
-    u8 color[4];                /* 0x32: the sender's colours: [2] the name tag's, [3] the text's (NetUserRec.unk11C; else 0, the slot's twice, the chat class's) */
-    char id[8];                 /* 0x36: the sender's user id; empty: no name tag */
-    char name[0x11];            /* 0x3E: the sender's name */
-} PlselChatEntry;
-typedef char PlselChatEntry_size_check[(sizeof(PlselChatEntry) == 0x4F) ? 1 : -1];
-
 /* plsel.c's view of the same work area (include/plsel_sel.spec). */
 typedef struct PlselSelWork {
     u8 kbdOpen;                 /* 0x000: 1 while the chat keyboard is open (Plsel_ChatOpenKbd, Plsel_ChatUpdate) */
@@ -181,7 +170,7 @@ typedef struct PlselSelWork {
     s32 sendWait;               /* 0x004: frames before the next message may be sent (0x3C after one; Kbd_SetSubmitWait) */
     u8 logScroll;               /* 0x008: counts messages added past 11 log lines (at most 0x3F) */
     u8 unk009[0x00B - 0x009];
-    PlselChatEntry log[64];     /* 0x00B: the chat log, a ring (logHead, logCount) */
+    ChatLine log[64];           /* 0x00B: the chat log, a ring (logHead, logCount) */
     u8 unk13CB[0x13D4 - 0x13CB];
     u8 newMsg;                  /* 0x13D4: 1: a message was sent or came in */
     u8 newMsgMine;              /* 0x13D5: 1: it was the local player's */
@@ -228,5 +217,136 @@ typedef struct PlselPresetPlayer {
     u8 unkD[0x10 - 0xD];
 } PlselPresetPlayer;
 typedef char PlselPresetPlayer_size_check[(sizeof(PlselPresetPlayer) == 0x10) ? 1 : -1];
+
+/* The select screen (plsel.c). */
+#define PLSEL_PREVIEW_PLAYER 5      /* gPlayers' slot of the select screen's preview hunter (Plsel_SetCamera aims at it) */
+#define PLSEL_SET_PRESETS 4         /* the preset hunters of a set (gPlselPresets[set], gQuestSync.pick 0-3) */
+#define PLSEL_PRESET_SETS 17        /* the sets: gPlselPresetStages' rows (Plsel_PresetSetForStage) */
+#define PLSEL_SET_NONE 0xFF         /* gQuestSync.builtSet: no preview players built yet */
+#define PLSEL_TEX_BG 0xA3           /* the texture handles of the overlay's pack: the background */
+#define PLSEL_TEX_PANEL 0xA4        /* the bottom panel */
+#define PLSEL_TEX_HEADER 0xA5       /* the header strips (Plsel_DrawHeader's rows) */
+#define PLSEL_TEX_ICONS 0x144       /* the system icons' pack */
+#define PLSEL_TEX_WEAPON_ICONS 0x155 /* the weapon-class and equipment icons */
+
+/* plsel_entry's steps (TaskSlot.mode). */
+enum PlselEntryMode {
+    PLSEL_ENTRY_SETUP = 0,      /* Plsel_Setup */
+    PLSEL_ENTRY_WAIT = 1,       /* Plsel_WaitPlayersReady */
+    PLSEL_ENTRY_FINISH = 2,     /* Plsel_Finish */
+    PLSEL_ENTRY_DEBUG = 3       /* Plsel_DebugMenu */
+};
+
+/* Plsel_SelectTask's steps (TaskSlot.mode). */
+enum PlselSelMode {
+    PLSEL_SEL_INIT = 0,         /* Plsel_SelectInit */
+    PLSEL_SEL_SOUNDS = 1,       /* Plsel_SelectWaitSound */
+    PLSEL_SEL_START_CHOOSE = 2, /* Plsel_SelectStartChoose */
+    PLSEL_SEL_SETUP_PLAYERS = 3, /* Plsel_SelectSetupPlayers */
+    PLSEL_SEL_CHOOSE = 4,       /* Plsel_StateChoose */
+    PLSEL_SEL_READY = 5         /* Plsel_StateReady */
+};
+
+/* Plsel_StateChoose's sub-steps (TaskSlot.step). */
+enum PlselChooseStep {
+    PLSEL_CHOOSE_BROWSE = 0,    /* left and right pick a preset hunter */
+    PLSEL_CHOOSE_RETURN = 1,    /* waits for the fade, then back to PLSEL_SEL_START_CHOOSE (no setter seen) */
+    PLSEL_CHOOSE_MENU = 2,      /* the player menu is open (Plsel_OpenPlayerMenu) */
+    PLSEL_CHOOSE_CONFIRM = 3,   /* the yes/no question (TaskSlot.flag: 0 yes, 1 no) */
+    PLSEL_CHOOSE_TAKEN = 5      /* set with PLSEL_SEL_READY once the preset is taken */
+};
+
+/* The player menu's entries (unk_D64560.c; HudState.fieldMenuCursor). */
+enum PlselMenuEntry {
+    PLSEL_MENU_POUCH,           /* 0: the pouch (sub_main's PouchMenu) */
+    PLSEL_MENU_STATUS,          /* 1: the personal status */
+    PLSEL_MENU_EQUIPMENT,       /* 2: the equipment status */
+    PLSEL_MENU_QUEST,           /* 3: the quest's information */
+    PLSEL_MENU_STAGE,           /* 4: the stage page (Plsel_DrawStagePage) */
+    PLSEL_MENU_COUNT
+};
+
+/* The gallery's scenes (unk_D74450.c). */
+#define GALEX_QUEST_ID 0x3AB1       /* gNextQuestId of an entry with no quest of its own: the gallery's own stage file (Galex_SetupQuest) */
+#define GALEX_PAIRS_END 0xFF        /* ends gGalexEntryPairs' first list */
+#define GALEX_TOUR_FACILITY_ROW 12  /* gGalexEntryPairs' row of the town tours' facility levels */
+
+/* gGalexQuests' records (0xD79370, 46): per gallery entry (its
+ * GAL_ENTRY_MASK value), the quest it plays and for how long. */
+typedef struct GalQuest {
+    u16 questId;                /* 0x0: -> gNextQuestId; 0: the gallery's own stage file (GALEX_QUEST_ID) */
+    u16 unk2;                   /* not read by plsel */
+    u8 season;                  /* 0x4: Season_Set's argument */
+    u8 unk5;                    /* not read by plsel */
+    u16 limit;                  /* 0x6: the time limit in frames (0: none) */
+} GalQuest;
+
+/* Galex_QuestTask's steps (TaskSlot.mode). */
+enum GalexQuestMode {
+    GALEX_QUEST_LOAD,           /* 0: loads the game overlay */
+    GALEX_QUEST_SETUP,          /* 1: the quest, its area, players and monsters */
+    GALEX_QUEST_SOUNDS,         /* 2: the sound banks (SceneState.subStep 0-20) */
+    GALEX_QUEST_START,          /* 3: the area, the scene event's camera, the fade-in */
+    GALEX_QUEST_FADE_IN,        /* 4 */
+    GALEX_QUEST_PLAY,           /* 5: until the time limit, PAD_CROSS or the event's end */
+    GALEX_QUEST_FADE_OUT,       /* 6 */
+    GALEX_QUEST_END             /* 7: back to select */
+};
+
+/* Galex_Task's steps (TaskSlot.mode). */
+enum GalexTourMode {
+    GALEX_TOUR_SETUP,           /* 0: loads the lobby overlay, sets up the save and the town */
+    GALEX_TOUR_ENTER,           /* 1: runs the lobby's screen steps until it is in the town */
+    GALEX_TOUR_PLAY,            /* 2: until the time limit, PAD_CROSS or the camera's end */
+    GALEX_TOUR_FADE_OUT,        /* 3 */
+    GALEX_TOUR_END              /* 4: back to select */
+};
+
+/* The ending (ending.c). */
+#define ENDING_OBJ_SLOTS 16         /* EndWork.slots: the objects at a time */
+#define ENDING_TEX_FIRST 0xA3       /* the ending's first texture handle in gTexHandles (gOvlTex) */
+#define ENDING_TEX_COUNT 26         /* the endtex partition's textures */
+#define ENDING_ROLL_PIC_TEX 0xBC    /* the handle of the roll pictures' texture */
+
+/* EndWork.state (Ending_Update). */
+enum EndingState {
+    ENDING_START,               /* 0: fades in and prepares the music stream */
+    ENDING_MUSIC,               /* 1: starts the music */
+    ENDING_ROLL,                /* 2: the roll (Ending_UpdateRoll) until its end, a skip or timeLeft */
+    ENDING_MESSAGE,             /* 3: the closing message, messageTimer frames */
+    ENDING_DONE,                /* 4: fading out after the message */
+    ENDING_SKIPPED,             /* 5: fading out after a skip or the time-out */
+    ENDING_RESTART = 99         /* fades in, then ENDING_MUSIC (nothing in plsel sets it) */
+};
+
+/* EndWork.fadePhase: the fading picture's. */
+enum EndingFadePhase {
+    ENDING_FADE_IN,             /* 0: alpha up by fadeStep */
+    ENDING_FADE_HOLD,           /* 1: until near the step's end */
+    ENDING_FADE_OUT             /* 2: alpha down, then the next step */
+};
+
+/* EndRoll.type. */
+enum EndingRollType {
+    ENDING_ROLL_TEXT,           /* 0: a line of text */
+    ENDING_ROLL_ICON,           /* 1: an animated icon */
+    ENDING_ROLL_TITLE,          /* 2: a title in the big letters */
+    ENDING_ROLL_PICTURE,        /* 3: a picture */
+    ENDING_ROLL_SPAWN           /* 4: objects started as it comes into view (Ending_SpawnObjects) */
+};
+
+/* EndObj.moveKind (Ending_MoveObjects). */
+enum EndingMove {
+    ENDING_MOVE_STAY,           /* 0: 300 frames in place */
+    ENDING_MOVE_RISE_WITH_ROLL, /* 1: up with the roll, until off the top */
+    ENDING_MOVE_BOB,            /* 2: down and up, 150 frames each */
+    ENDING_MOVE_WALK_LATE,      /* 3: walks after 180 frames, until off the left edge */
+    ENDING_MOVE_WALK,           /* 4: walks at once */
+    ENDING_MOVE_WALK_SOON,      /* 5: walks after 90 frames */
+    ENDING_MOVE_FALL,           /* 6: falls until below the screen */
+    ENDING_MOVE_FLY,            /* 7: flies across, bobbing every 30 frames */
+    ENDING_MOVE_SINK,           /* 8: down */
+    ENDING_MOVE_RISE            /* 9: up */
+};
 
 #endif /* PLSEL_H */

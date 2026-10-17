@@ -49,7 +49,7 @@ void EmSlot_LoadModel(s32 a, s32 b, s32 c);
 s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
 void DrawCb_Player(DrawSlot *r); /* sub_main: takes its draw slot */
-extern u8 D_44A190[];
+extern u8 gPlayerHandlerTable[];
 void Actor_SetIdle(void *obj, s32 a1, s32 n, s32 m);
 void Hit_ResetAll(void);
 void Effect1A_Spawn(Player *p);
@@ -286,7 +286,7 @@ void TownPc_Spawn(u8 pl, NetUser *u, char *name)
     }
     Actor_SetIdle(p, 0, 0, 0);
     p->state = 1;
-    p->handlers = (struct PlayerVt *)D_44A190;
+    p->handlers = (struct PlayerVt *)gPlayerHandlerTable;
     (*(void (**)(Player *))((u8 *)p->handlers + 0xC))(p);
 }
 

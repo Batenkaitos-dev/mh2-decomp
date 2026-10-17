@@ -35,7 +35,7 @@ void Em_ClearNeed2State(Em *em);
 void Em_RefillNeed3(Em *em);
 void Em_AddNeed1(Em *em, s32 n);
 void Em_AddNeed2(Em *em, s32 n);
-void Em_Add7F4(Em *em, s32 n);
+void Em_AddNeed3(Em *em, s32 n);
 void GmEm_Fx0F(Em *, s32);
 void GmEm_Fx15(Em *, s32);
 void GmEm_Fx3A(Em *, s32);
@@ -75,11 +75,11 @@ s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Vec_Set(f32 *v, f32 x, f32 y, f32 z);
 extern EmRageRow *gEmRageTbl[];
 void Em_EndRage(Em *em);
-u16 Area_BaseId(u16 area);
+u16 Map_DayId(u16 area);
 s32 Em_InBlockArea2(Em *em);
 void Em_ForceState19(Em *em);
 void Em_UpdateStatus(Em *em);
-u16 Side_ItemUseKind(u8 a);
+u16 Side_HornItemPlaying(u8 a);
 void EmMine_UpdateTimed(Em *);
 f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Em_UpdateBendTarget(Em *em);
@@ -93,8 +93,8 @@ void func_330E30(Em *);
 s32 Game_IsOnline(void);
 void EmScript_Init(Em *em);
 void Em_RestartScript(Em *em);
-f32 Em_RageScale1(Em *em);
-f32 Em_RageScale2(Em *em);
+f32 Em_LevelAttackFactor(Em *em);
+f32 Em_LevelDamageFactor(Em *em);
 void Em_ApplyAreaValues(Em *em);
 extern f32 gEmBodyScales[];
 extern u8 D_8B15D0[];
@@ -692,7 +692,7 @@ void GmEm_ResetSize(Em *em) {
     Em_RefillNeed3(em);
     Em_AddNeed2(em, em->need2Max);
     Em_AddNeed1(em, em->need1Max);
-    Em_Add7F4(em, em->need3Max);
+    Em_AddNeed3(em, em->need3Max);
 }
 
 void GmEm_ApplySize(Em *em) {
@@ -823,7 +823,7 @@ void GmEm_ResetState(Em *em) {
     em->tables = (void **) gEmKindTables[em->type];
     em->blindTimer = 0;
     em->part8Down = 0;
-    em->hit8Count = 0;
+    em->partBreakCount = 0;
     em->unk8AD = 0;
     em->trapTimer = 0;
     em->hideShadowHold = 0;
@@ -860,8 +860,8 @@ void GmEm_ResetState(Em *em) {
     em->hitReactMode = 0;
     em->blind = 0;
     em->hideShadow = 0;
-    em->attackFactor = Em_RageScale1(em);
-    em->damageFactor = Em_RageScale2(em);
+    em->attackFactor = Em_LevelAttackFactor(em);
+    em->damageFactor = Em_LevelDamageFactor(em);
     em->fieldCollide = 1;
     em->link = 0;
     em->enterDelay = 0;
@@ -885,7 +885,7 @@ void GmEm_Setup(Em *em) {
     EmSlot_SetupModel(em);
     em->taskPhase++;
     em->isEm = 1;
-    em->unk01E = 0;
+    em->ownTask = 0;
     em->hostNo = gScene.localPlayer;
     Versus_AssignEmTeam(em);
     GmEm_ResetState(em);
@@ -1220,7 +1220,7 @@ void GmEm_Update(Em *em) {
             Em_EndRage(em);
         }
     }
-    k = Area_BaseId(gScene.map);
+    k = Map_DayId(gScene.map);
     switch (em->type) {
     case 1:
     case 0x2A:
@@ -1292,7 +1292,7 @@ void GmEm_Update(Em *em) {
         if (em->rageStarted != 0) {
             em->itemUseKind = 0x88;
         } else {
-            v = Side_ItemUseKind(*(u8 *)&em->side);
+            v = Side_HornItemPlaying(*(u8 *)&em->side);
             if (v == 0) {
                 em->itemUseKind = 0;
             } else if (!(em->itemUseKind & 0x80)) {
@@ -1612,8 +1612,8 @@ typedef struct GmEm438 {
 void Color_RgbToFloat(f32 *rgb, u32 c);
 s32 Area_IsDay(u16 area);
 s32 Em_PartBroken(Em *em, s32 arg1);
-u8 func_80E400(Em *em);
-s32 EmBlangonga_PartFlagUnset(Em *em, u16 part);
+s32 EmBlangonga_EatPropMode(Em *em);
+s32 EmBlangonga_CarriedShown(Em *em, u16 part);
 u8 EmChameleos_CanTurnInvisible(Em *em); /* unit's own declaration: the definition (game) returns s32 (0, 1 or 2); GmEm_SetMeshAlphas masks the result with andi 0xFF */
 
 /* Sets the monster's meshes for a mode (a1; tbl holds each mode's list of
@@ -1661,14 +1661,14 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1770,7 +1770,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 0:
                 switch (i) {
                 case 5:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 6:
                     p->alpha = 0.0f;
@@ -1786,7 +1786,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     break;
                 case 2:
                 case 3:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1878,7 +1878,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 5:
                 case 6:
@@ -1889,7 +1889,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1971,7 +1971,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1998,7 +1998,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2117,7 +2117,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2127,7 +2127,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 7:
                     if (em->parts[6].state <= 0) p->alpha = 0.0f;
@@ -2149,7 +2149,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2166,7 +2166,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 5:
                     if (em->parts[0].state < 2) p->alpha = 0.0f;
@@ -2195,7 +2195,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2211,7 +2211,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 7:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2332,7 +2332,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 5:
                 case 6:
@@ -2343,7 +2343,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2381,7 +2381,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2394,7 +2394,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2461,7 +2461,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2471,7 +2471,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 6:
                     if (em->parts[6].state < 2) p->alpha = 0.0f;
@@ -2706,7 +2706,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 0:
                 switch (i) {
                 case 5:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 6:
                     p->alpha = 0.0f;
@@ -2725,7 +2725,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2778,7 +2778,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                         Color_RgbToFloat(p->rgb, 0xFF000000 | (b->unk41 << 16) | (b->unk42 << 8) | b->unk43);
                         break;
                     case 4:
-                        if (em->hit8Count > 0) p->alpha = 0.0f;
+                        if (em->partBreakCount > 0) p->alpha = 0.0f;
                         break;
                     case 5:
                         if (Em_PartBroken(em, 2) == 1) p->alpha = 0.0f;
@@ -2811,7 +2811,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
         break;
     case 0x34: case 0x3E:
         b = (GmEm438 *)&em->work;
-        flag = func_80E400(em);
+        flag = EmBlangonga_EatPropMode(em);
         for (i = 0; i < tbl[mode].num; i++) {
             p = &meshes[tbl[mode].idx[i]];
             p->alpha = em->alpha;
@@ -2845,21 +2845,21 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha = 0.0f;
                     break;
                 case 6:
-                    if (EmBlangonga_PartFlagUnset(em, 0) == 0 && EmBlangonga_PartFlagUnset(em, 1) == 0 && EmBlangonga_PartFlagUnset(em, 2) == 0 && flag != 1) p->alpha = 0.0f;
+                    if (EmBlangonga_CarriedShown(em, 0) == 0 && EmBlangonga_CarriedShown(em, 1) == 0 && EmBlangonga_CarriedShown(em, 2) == 0 && flag != 1) p->alpha = 0.0f;
                     break;
                 case 7:
-                    if (EmBlangonga_PartFlagUnset(em, 0) == 1 || EmBlangonga_PartFlagUnset(em, 1) == 1 || EmBlangonga_PartFlagUnset(em, 2) == 1 || flag == 1) p->alpha = 0.0f;
+                    if (EmBlangonga_CarriedShown(em, 0) == 1 || EmBlangonga_CarriedShown(em, 1) == 1 || EmBlangonga_CarriedShown(em, 2) == 1 || flag == 1) p->alpha = 0.0f;
                     break;
                 case 8:
                     switch (i) {
                     case 0:
-                        if (EmBlangonga_PartFlagUnset(em, 0) == 0 || flag != 0) p->alpha = 0.0f;
+                        if (EmBlangonga_CarriedShown(em, 0) == 0 || flag != 0) p->alpha = 0.0f;
                         break;
                     case 1:
-                        if (EmBlangonga_PartFlagUnset(em, 1) == 0 && flag != 1) p->alpha = 0.0f;
+                        if (EmBlangonga_CarriedShown(em, 1) == 0 && flag != 1) p->alpha = 0.0f;
                         break;
                     case 2:
-                        if (EmBlangonga_PartFlagUnset(em, 2) == 0 || flag != 0) p->alpha = 0.0f;
+                        if (EmBlangonga_CarriedShown(em, 2) == 0 || flag != 0) p->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -2919,15 +2919,15 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 }
                 break;
             case 2:
-                if (em->hit8Count > 0) p->alpha = 0.0f;
+                if (em->partBreakCount > 0) p->alpha = 0.0f;
                 break;
             case 3:
                 switch (i) {
                 case 0:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 1:
-                    if (em->hit8Count <= 0) {
+                    if (em->partBreakCount <= 0) {
                         p->alpha = 0.0f;
                     } else {
                         p->alpha *= b->unk38 / 15.0f;
@@ -2944,7 +2944,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     p->alpha *= b->unk38 / 15.0f;
                     break;
                 case 1:
-                    if (EmBlangonga_PartFlagUnset(em, 6) == 1) {
+                    if (EmBlangonga_CarriedShown(em, 6) == 1) {
                         p->alpha *= b->unk38 / 15.0f;
                     } else {
                         p->alpha = 0.0f;
@@ -3029,16 +3029,16 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 5:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count > 0) p->alpha = 0.0f;
+                    if (em->partBreakCount > 0) p->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->hit8Count >= 2) p->alpha = 0.0f;
+                    if (em->partBreakCount >= 2) p->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->hit8Count < 2) p->alpha = 0.0f;
+                    if (em->partBreakCount < 2) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -3097,7 +3097,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -3114,7 +3114,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 3:
                 switch (i) {
                 case 4:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 case 5:
                 case 6:
@@ -3144,7 +3144,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -3173,7 +3173,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     if (Em_PartBroken(em, 1) != 1) p->alpha = 0.0f;
                     break;
                 case 8:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -3189,7 +3189,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -3206,7 +3206,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
             case 4:
                 switch (i) {
                 case 0:
-                    if (em->hit8Count <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -3286,9 +3286,9 @@ void GmEm_QuestFx(Em *em, s16 id) {
  * GmEm_SetupKind (gGmEmCallbackTbl), GmEm_SetMeshAlphas (gGmEmKind24MeshTex) and gm_load.c
  * (the lists of gGmKindFileLists). Generated by tools/gen_data.py: u32 words,
  * pointers as C; give them types when their users are worked on. */
-void func_0090A9B0(void);
+void GmEm_Nop(void);
 void GmEm_SpawnEffect01(Em *em);
-s32 func_0090A9C0(void);
+s32 GmEm_ReturnZero(void);
 extern u32 gGmEmCallbackTbl_0[];
 
 u32 D_0090ACC0[8] = {
@@ -4191,8 +4191,8 @@ s16 gGmEmKind24MeshTex[40] = {
 #include "gm_sub/0090DF40.inc"
 };
 u32 gGmEmCallbackTbl_0[8] = {
-    (u32)GmEm_SpawnEffect01, (u32)GmEm_SpawnEffect01, (u32)func_0090A9B0, (u32)func_0090A9B0,
-    (u32)func_0090A9C0, 0x00000000, 0x00000000, 0x00000000,
+    (u32)GmEm_SpawnEffect01, (u32)GmEm_SpawnEffect01, (u32)GmEm_Nop, (u32)GmEm_Nop,
+    (u32)GmEm_ReturnZero, 0x00000000, 0x00000000, 0x00000000,
 };
 u32 D_0090DFB0[32] = {
 #include "gm_sub/0090DFB0.inc"

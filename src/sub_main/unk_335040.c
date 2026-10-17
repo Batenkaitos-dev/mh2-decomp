@@ -29,6 +29,7 @@
 #include "area.h"
 #include "texture.h"
 #include "render_state.h"
+#include "overlay.h"
 
 /* prototypes */
 void Bone_Release(s32 first, s32 n);
@@ -44,7 +45,7 @@ void CamData_Relocate(struct CamDataHdr *h);
 void Material_Release(s32 first, s32 n);
 void MatSet_Release(s32 first, s32 n);
 void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Gfx_SetBlendOp(s32 a);
 void * memset(void *p, s32 c, u32 n);
 extern s32 gAreaCamDataFiles[];
@@ -299,7 +300,7 @@ void Player_ApplyLook(Player *pl)
 {
     PlayerLook *look = &gLookPending[pl->index];
 
-    if (Overlay_IsLoaded(4) == 1) {
+    if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1) {
         Lobby_ReceiveWhileWaiting();
     }
     if (gLookDelay[pl->index] > 0) {
@@ -308,7 +309,7 @@ void Player_ApplyLook(Player *pl)
             return;
         }
     }
-    if (Overlay_IsLoaded(4) == 1 && ((s8)gLobbyState.lookPending[pl->index] >= 2 || pl->active == 0)) {
+    if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1 && ((s8)gLobbyState.lookPending[pl->index] >= 2 || pl->active == 0)) {
         gLobbyState.modelLoading[pl->index] = 0;
         gLobbyState.modelLoaded[pl->index] = 0;
         gLobbyState.pcLoaded[pl->index] = 0;
@@ -326,7 +327,7 @@ void Player_ApplyLook(Player *pl)
     Player_StartMotionLayer(pl, pl->motionId[1], 0, 0, 1);
     Player_InitRecords(pl);
     pl->visible = 1;
-    if (Overlay_IsLoaded(4) == 1) {
+    if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1) {
         gLobbyState.modelLoading[pl->index] = 0;
         gLobbyState.modelLoaded[pl->index] = 1;
         gLobbyState.pcLoaded[pl->index] = 1;
@@ -369,7 +370,7 @@ s32 Player_QueueLookFiles(Player *pl)
     s16 i;
     PlayerLook *look = &gLookPending[pl->index];
 
-    if (Overlay_IsLoaded(4) == 1) {
+    if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1) {
         if ((s8)gLobbyState.pcLoaded[pl->index] == 1) {
             return 0;
         }
@@ -377,7 +378,7 @@ s32 Player_QueueLookFiles(Player *pl)
             return 0;
         }
     }
-    if (Overlay_IsLoaded(4) == 1 && (s8)gLobbyState.lookPending[pl->index] == 0) {
+    if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1 && (s8)gLobbyState.lookPending[pl->index] == 0) {
         gLobbyState.lookPending[pl->index] = 1;
     }
     pl->weaponKind = Equip_GetKind(&pl->equip[6]);
@@ -764,7 +765,7 @@ void Tex_LoadCommon(void)
 /* A 16-bit angle (0x10000 a turn) in radians. */
 f32 Math_AngleToRad(s32 angle)
 {
-    return 0.0000958738f * (f32) (angle & 0xFFFF);
+    return ANGLE16_TO_RAD * (f32) (angle & 0xFFFF);
 }
 
 f32 Math_AngleToRad(s32 a);
@@ -1225,7 +1226,7 @@ f32 Math_CosAngle(s32 angle)
 /* atan2 as a 16-bit angle (0x10000 a turn). */
 s32 Math_Atan2Angle(f32 y, f32 x)
 {
-    return 10430.378f * Math_Atan2(y, x);
+    return RAD_TO_ANGLE16 * Math_Atan2(y, x);
 }
 
 /* out = vec * mtx plus the translation of mtx. */
@@ -1715,29 +1716,6 @@ void Model_ResetAll(void)
     Model_Release(0, MODEL_POOL_COUNT);
 }
 
-/* A model file part's draw states (ModelFile_GetDrawStates): each field
- * indexes a table of values for one render state (gDrawState15Values ...)
- * or gives bits of the set's packed flags (DrawStates_Apply). */
-typedef struct DrawStates {
-    s32 unk0;
-    s32 s15;        /* 0x04: gDrawState15Values, state 0x15 */
-    s32 s02;        /* 0x08: gDrawState02Values, state 2 */
-    s32 s00;        /* 0x0C: gDrawState00Values, state 0 */
-    s32 s0C;        /* 0x10: gDrawState0CValues, state 0xC; flag bit 15 */
-    s32 s01;        /* 0x14: gDrawState01Values, state 1 */
-    s32 unk18;
-    s32 s62;        /* 0x1C: gDrawState62Values, state 0x62 */
-    s32 s12;        /* 0x20: gDrawState12Values, state 0x12 */
-    s32 s66;        /* 0x24: gDrawState66Values, state 0x66 (1: also 0x67); flag bit 1 */
-    s32 s5D;        /* 0x28: 5 or 6 sets state 0x5D to that << 24, else 0 */
-    s32 f2;         /* 0x2C: flag bits 2-5 */
-    s32 f6;         /* 0x30: flag bits 6-9 */
-    s32 f10;        /* 0x34: flag bits 10-11 */
-    s32 unk38[2];
-    s32 f12;        /* 0x40: flag bit 12 */
-    s32 f13;        /* 0x44: flag bits 13-14 */
-} DrawStates;
-
 extern s32 gDrawState15Values[2];
 extern s32 gDrawState12Values[4];
 extern s32 gDrawState01Values[12];
@@ -1791,17 +1769,17 @@ extern s32 gDrawState63Values[2];
 extern s32 gDrawState64Values[4];
 void Gfx_SetBlend(s32 a, s32 b);
 void Gfx_SetBlendOp(s32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 
 /* Applies a material set's packed draw states (DrawStates_Apply) when bit 0
  * is set: bits 2-5 and 6-9 Gfx_SetBlend, 10-11 Gfx_SetBlendOp, 12
- * Gfx_SetState63, 13-14 render state 0x64, 15 RS_SCISSOR. */
+ * Gfx_SetTexFilter, 13-14 render state 0x64, 15 RS_SCISSOR. */
 void Draw_ApplyStates(u32 packed)
 {
     if (packed & 1) {
         Gfx_SetBlend(gDrawBlendFactors[(packed >> 2) & 0xF], gDrawBlendFactors[(packed >> 6) & 0xF]);
         Gfx_SetBlendOp(gDrawBlendOps[(packed >> 10) & 3]);
-        Gfx_SetState63(gDrawState63Values[(packed >> 12) & 1]);
+        Gfx_SetTexFilter(gDrawState63Values[(packed >> 12) & 1]);
         Gs_SetState(0x64, gDrawState64Values[(packed >> 13) & 3]);
         Gs_SetState(RS_SCISSOR, gDrawState0CValues[(packed >> 15) & 1]);
     }
@@ -1813,7 +1791,7 @@ void Draw_SetDefaultState(void)
 {
     Gfx_SetBlend(4, 5);
     Gfx_SetBlendOp(0);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
 }
 
 s32 SkelFile_BoneCount(void *f);
@@ -1912,7 +1890,7 @@ s32 ModelFile_PartCount(u8 *f);
 s32 MatSet_FindFree(s32 n);
 ModelMatSet *MatSet_Get(s32 i);
 void MatSet_Reserve(s32 i, s32 n);
-s32 ModelFile_GetDrawStates(void *ds, u8 *f, s32 i);
+s32 ModelFile_GetDrawStates(DrawStates *states, u8 *modelFile, s32 partIdx);
 s32 ModelFile_PartMatCount(u8 *f, u32 idx);
 s32 ModelFile_GetPartMats(u8 *f, u32 idx, s32 *out);
 s32 ModelFile_LoadMesh(MeshDesc *a, u8 *h, u32 idx);

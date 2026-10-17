@@ -85,7 +85,7 @@ QuestInfo *Quest_GetDiscInfo(u16 id);
 s32 LobbyWorld_GetSeason(void);
 s32 LobbyTime_IsPm(void);
 s32 Quest_MatchesSeasonTime(u16 quest, s32 a, s32 b);
-u16 Area_MapGroup(u16 area);
+u16 Map_Group(u16 area);
 void DrinkMug_End(VObj *o);
 void DrinkMug_Free(StageObj *o);
 void DrinkMug_Spawn(s32 arg0);
@@ -351,7 +351,7 @@ loop_1:
 s32 Game_IsOnline(void);
 s32 Save_TestEventFlag(s32 flag);
 s32 Cond_IsLatest(u16 id);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 s16 Village_GetTimerState(s32);
 s32 Offer_FindActive(u8 unused0);
 u16 Offer_GetQuest(u8 unused0);
@@ -393,11 +393,11 @@ s16 OfferMenu_BuildList(OfferTask *t, s32 b)
         } else if (Cond_IsLatest(0x17) == 1) {
             OfferMenu_AddEntry(m, 0, 0x10);
         } else if (Cond_IsLatest(0x19) == 1) {
-            if (Save_TestListBit(0x138D) == 0) {
+            if (Save_IsQuestCleared(0x138D) == 0) {
                 OfferMenu_AddQuest(m, 0, 0x138D);
-            } else if (Save_TestListBit(0x138E) == 0) {
+            } else if (Save_IsQuestCleared(0x138E) == 0) {
                 OfferMenu_AddQuest(m, 0, 0x138E);
-            } else if (Save_TestListBit(0x138F) == 0) {
+            } else if (Save_IsQuestCleared(0x138F) == 0) {
                 OfferMenu_AddQuest(m, 0, 0x138F);
             } else {
                 break;
@@ -532,7 +532,7 @@ void OfferMenu_AddQuest(OfferMenu *m, s16 a, u16 quest)
         if (Quest_MatchesSeasonTime(quest, x, y) != 0) {
             m->qarg[m->nq] = a;
             m->quest[m->nq] = quest;
-            m->qval[m->nq] = Area_MapGroup(q->map);
+            m->qval[m->nq] = Map_Group(q->map);
             if (a == 0) {
                 m->qflag[m->nq] = 0;
             } else {
@@ -1212,7 +1212,7 @@ void Quest_DrawOverview(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawTerms(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawDetails(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawClearMark(s16 x, s16 y);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 extern s8 gMapGroupMapIds[][2];
 extern char *gQuestOrderPromptTexts[];
 extern char *D_0080C434;
@@ -1280,7 +1280,7 @@ void OfferMenu_DrawQuest(s16 x, s16 y)
     if (m->unk38C != 0) {
         Menu_DrawStamp(x + 0x28, y + 0xE, 0x154, 0x168, m->unk38C, m->shake.timer);
     }
-    if (Save_TestListBit(info->id) != 0) {
+    if (Save_IsQuestCleared(info->id) != 0) {
         Quest_DrawClearMark((s16)(x + 0x28) + 0x1E, -0xD6);
     }
 }

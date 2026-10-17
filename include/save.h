@@ -4,13 +4,92 @@
 #include "common.h"
 #include "item.h"
 #include "arena_em.h"
+#include "chredit.h"            /* CHARA_NAME_LEN */
 
 /*
  * The character's save data (gSave, 0x5D4A60): the equipment box and the
  * equipped items, a pouch, the hunting records, the items obtained, and
- * the equipment flags. src/sub_main/unk_3BD380.c still reads some of its
- * values through separate symbols (D_005D73E4 ... D_005D80C0).
+ * the equipment flags. unk_3B4C80.c holds most of the functions that
+ * read and write it.
  */
+/* SaveData.equip and SaveData.equipIdx: the equipped items in the save's order: the weapon
+ * first, then the armour types (item.h's enum EquipType) EQUIP_LEGS, EQUIP_HEAD ... EQUIP_WAIST. */
+enum SaveEquipSlot {
+    SAVE_EQUIP_WEAPON = 0,
+    SAVE_EQUIP_LEGS = 1,
+    SAVE_EQUIP_HEAD = 2,
+    SAVE_EQUIP_BODY = 3,
+    SAVE_EQUIP_ARMS = 4,
+    SAVE_EQUIP_WAIST = 5,
+    SAVE_EQUIP_COUNT = 6
+};
+#define BOX_NONE    0xFFFF      /* no box slot (SaveData.equipIdx, Box_FindFreeSlot, Box_AddItem) */
+
+/* The ids of each equipment table, as many as its flag bytes in SaveData (Equip_IsValidId). */
+#define ARMOR_ID_COUNT  300
+#define BLADE_ID_COUNT  640
+#define GUN_ID_COUNT    200
+
+/* The bits of an item's flag byte (SaveData.armorFlags, bladeFlags, gunFlags), by bit number
+ * (Equip_SetFlag, Equip_TestFlag). */
+#define EQUIP_FLAG_OWNED    0   /* has been in the box (Box_AddItem, Box_SetSlot) */
+#define EQUIP_FLAG_MADE     1   /* has been made: the lobby's forge sets it with EQUIP_FLAG_NEW the
+                                 * first time */
+#define EQUIP_FLAG_NEW      2   /* the new mark, which blinks in the lists (Save_ClearNewMarks) */
+
+/* A gun's EquipItem.level: the upgrade level in bits 0-3 (Box_GunLevelUp, at most 4) and the
+ * options above it. The barrel excludes the silencer and the shield (Box_SetGunBarrel); the
+ * silencer is a light bowgun's, the shield a heavy bowgun's; the scope goes with either. */
+#define GUN_LEVEL_MASK      0x0F
+#define GUN_OPT_MASK        0xF0
+#define GUN_OPT_SILENCER    0x10    /* light bowguns: model part 2; changes the monster's hit
+                                     * reaction (LightBowgun_HasSilencer) */
+#define GUN_OPT_BARREL      0x20    /* model part 1 (Bowgun_HasBarrel) */
+#define GUN_OPT_SCOPE       0x40    /* the aim view zooms (Bowgun_HasScope) */
+#define GUN_OPT_SHIELD      0x80    /* heavy bowguns: model part 2; guards (HeavyBowgun_HasShield) */
+
+/* The stat kinds of EquipView_GetStat and Player_GetEquipStat (unk_3B4C80.c), over the set
+ * in gEquipShown. The resistances are summed over the five armour pieces, in Player.resist's
+ * order (the dragon resistance, Player.resist[4], is the last kind); the element and status
+ * values are the weapon's (a blade's only: Weapon_ElementValue, Weapon_StatusValue), by
+ * BladeData.elementType 1-4 and statusType 1-3. The weapon's dragon element has no kind
+ * here: Player_GetWeaponStat's WSTAT_* (player.h) reads it. */
+enum EquipStatKind {
+    EQUIP_STAT_ATTACK = 0,          /* a blade's attack, or a gun's with its level and options */
+    EQUIP_STAT_DEFENSE = 1,         /* the armour's (Armor_GetDefense) plus the weapon's */
+    EQUIP_STAT_RES_FIRE = 2,
+    EQUIP_STAT_RES_WATER = 3,
+    EQUIP_STAT_RES_THUNDER = 4,
+    EQUIP_STAT_RES_ICE = 5,
+    EQUIP_STAT_FIRE = 6,            /* element type 1 */
+    EQUIP_STAT_WATER = 7,           /* element type 2 */
+    EQUIP_STAT_THUNDER = 8,         /* element type 3 */
+    EQUIP_STAT_ICE = 9,             /* element type 4 */
+    EQUIP_STAT_POISON = 10,         /* status type 1 (WSTAT_POISON) */
+    EQUIP_STAT_STATUS_TYPE2 = 11,   /* status type 2 (WSTAT_STATUS_TYPE2) */
+    EQUIP_STAT_STATUS_TYPE3 = 12,   /* status type 3 (WSTAT_STATUS_TYPE3) */
+    EQUIP_STAT_RES_DRAGON = 13
+};
+
+/* The caps and gates of the save's counters. */
+#define MONEY_MAX           9999999 /* SaveData.money (Save_AddMoney) */
+#define HR_POINTS_MAX       9999999 /* SaveData.hrPoints (Save_AddHrPoints) */
+#define POINTS_MAX          9999999 /* SaveData.points (Save_AddPoints) */
+#define HR_MAX              999     /* the highest hunter rank (SaveData.hr) */
+#define HR_TABLE_MAX        50      /* gHrRankPoints lists ranks 0-50; gHrPointSteps the ranks above */
+#define HR_BAND_RANKS       50      /* the ranks of each gHrPointSteps band (one step per rank) */
+#define RECORD_COUNT_MAX    9999    /* a monster's hunted or captured count, and their group sums */
+
+#define BOX_PAGE_SLOTS      100     /* the slots of each page of the equipment box (Box_GetCapacity) */
+#define ITEM_BITS_WORDS     32      /* SaveData.itemBits: one bit per item id */
+#define EQUIP_LIST_END      9999    /* ends the id lists of the equipment collection awards */
+
+/* Save_BuildSummary's and Save_SummarySize's modes (unk_3B4C80.c; the lobby's unk_7C45D0.c
+ * calls them). */
+#define SAVE_SUMMARY_EQUIPPED   1   /* the equipped items (EquipSummary) */
+#define SAVE_SUMMARY_BOX        2   /* SUMMARY_BOX_SLOTS box slots from page * SUMMARY_BOX_SLOTS (BoxPage) */
+#define SUMMARY_BOX_SLOTS       25
+
 /* A monster that keeps its health between quests (SaveData.persistentEms). */
 typedef struct PersistentEm {
     s16 hp;                     /* 0: none saved (QuestEm_LoadPersistentHp starts it full) */
@@ -74,20 +153,20 @@ typedef struct SaveData {
     u8 face;                    /* 0x2: the face (ChrEdit.face, Chara_MakeSave); + 1 is Player.equip[1].id (plsel) */
     u8 hairStyle;               /* 0x3: the hair style (HairMenu_Apply, HairMenu_IsUnlocked; StageModels_LoadEquip(0xFF, style, gender)); Player +0x30E */
     s32 hairColor;              /* 0x4: the hair colour (HairMenu_Apply, HairMenu_ColorInput); Player +0x580 */
-    s8 name[18];                /* 0x8: the hunter's name (Player +0x82C) */
+    s8 name[CHARA_NAME_LEN];    /* 0x8: the hunter's name (Player +0x82C) */
     u8 pad1A[2];
-    PersistentEm persistentEms[16]; /* 0x1C: health and broken parts of the monsters that keep them between quests (QuestEm_SavePersistentHp, QuestEm_LoadPersistentHp, DrinkContest_HpStage), one per id of the table at 0x1BB9C8 (QuestEm_LoadPersistentHp) */
+    PersistentEm persistentEms[16]; /* 0x1C: health and broken parts of the monsters that keep them between quests (QuestEm_SavePersistentHp, QuestEm_LoadPersistentHp, DrinkContest_HpStage), one per kind of gPersistentEmKinds (0x1BB9C8; QuestEm_LoadPersistentHp) */
     u32 hrPoints;               /* 0x5C: hunter rank points, at most 9,999,999 */
     s32 money;                  /* 0x60: at most 9,999,999 (flag 0x1E at 2,000,000) */
     u16 flags[44];              /* 0x64: event flags, one bit each (Save_SetEventFlag) */
     EquipItem box[500];         /* 0xBC: the equipment box, 100 per box page owned */
     ItemStack itemBox[500];     /* 0x182C: the item box, as many slots */
-    u32 listBits[16];           /* 0x1FFC: a bit per entry (Save_TestListBit, Save_SetListBit) */
+    u32 clearedQuests[16];      /* 0x1FFC: a bit per quest of gClearListQuests, set when its main goal is done (Save_MarkQuestCleared, Save_IsQuestCleared: the clear marks) */
     u32 playTime;               /* 0x203C: seconds, at most 35999999 (Lobby_CountPlayTime; Save_BuildSummary, CardMenu_DrawSlots) */
     ItemStack pouch[20];        /* 0x2040 */
-    EquipItem equip[6];         /* 0x2090: weapon, then armor types 0, 2, 3, 4, 5 */
+    EquipItem equip[SAVE_EQUIP_COUNT]; /* 0x2090: the equipped items (enum SaveEquipSlot), copied from the box by Equip_Refresh */
     u8 voice;                   /* 0x20D8: Player.voice */
-    u8 unk20D9;                 /* 0x20D9: gm_sub sets it from GmWork +0x28 and tests it (gm_main.c) */
+    u8 modeSelChoice;           /* 0x20D9: mode select's last choice, where its cursor starts (gm_main.c, GMSUB_MODE_SEL_*); a new character starts offline (Chara_MakeSave) */
     u8 pad20DA;
     u8 recipeBits[30];          /* 0x20DB: combination recipes known, one bit per list bit (0xED; D_005D6B3B, combine.c) */
     u8 pad20F9[0x211B - 0x20F9];
@@ -95,7 +174,7 @@ typedef struct SaveData {
     u8 pad2122;
     u8 comment[0x62];           /* 0x2123: the hunter's comment, a text of up to 0x60 bytes (the profile page: Chat_OpenKbd, Kbd_Run, Chat_FilterWords; the lobby copies it) */
     u8 pad2185;
-    u16 equipIdx[6];            /* 0x2186: box index of each equipped item, 0xFFFF: none */
+    u16 equipIdx[SAVE_EQUIP_COUNT]; /* 0x2186: box index of each equipped item (enum SaveEquipSlot), BOX_NONE: none */
     u16 randSaved[32];          /* 0x2192: gRandSaved as saved (Rand_NextSaved); Save_LoadSlot sets random stream 2 (gRandSeeds[2]) from [0] */
     u16 sizeMax[0x80];          /* 0x21D2, per monster: largest size (percent, Monster_SizeFromPercent) */
     u16 sizeMin[0x80];          /* 0x22D2, per monster: smallest size (0: none yet) */
@@ -113,7 +192,7 @@ typedef struct SaveData {
     s32 time;                   /* 0x272C: the lobby clock (gLobbyTime) */
     u8 townDays;                /* 0x2730: copied to and from the lobby's save summary .days (unk_7D44B0.c) */
     u8 pad2731[0x2734 - 0x2731];
-    u32 itemBits[32];           /* 0x2734: items obtained, one bit per item id (0x399) */
+    u32 itemBits[ITEM_BITS_WORDS]; /* 0x2734: items obtained, one bit per item id (0x399) */
     /* 0x25DC: u8 D_005D703C[] (Village_FacilityLevel). */
     u16 rateFlags;              /* 0x27B4: the monster rates' flags (main unk_18DA50.c tests a bit per rate group); plsel sets it after a quest */
     u8 symbolColor;             /* 0x27B6: the symbol colour (gSymbolColorNames[it], StatusPage_DrawSymbolColor; Player_SetColorWord sets Player.style from it); gStyleSymbolColors[it] like styleFlag (Save_PickBestCounter) */
@@ -139,7 +218,7 @@ typedef struct SaveData {
     s32 questKills;             /* 0x2B5C: Records_AddQuestKills, at most 9999 */
     u32 monsterFlags;           /* 0x2B60: bits of gMonsterFlagBits, set by Records_UpdateMonsterFlags (the lobby's Monster_IsHunted) */
     s32 dojoScore[40];          /* 0x2B64: per course: the best score (Dojo_GetBestScore) */
-    u32 unk2C04;                /* 0x2C04: a counter, at most 9999 (Records_CountFlagged) */
+    u32 drillQuests;            /* 0x2C04: the drill quests played, cleared or not, at most 9999 (Records_CountFlagged) */
     s32 dojoTime[32];           /* 0x2C08: per course: the best time (Dojo_GetBestTime) */
     s32 pspLinkCount;           /* 0x2C88: links with MH Portable, at most 9,999,999 (PspLink_Count) */
     u32 pspLinkFlags;           /* 0x2C8C: what the MH Portable data had reached (PspLink_SetFlags, PspLink_HasFlag) */
@@ -153,10 +232,11 @@ typedef struct SaveData {
     u16 unk2D0C[24];            /* 0x2D0C: bits, one per id (n / 16, n % 16) (the lobby's unk_6E7100.c) */
     /* One flag byte per equipment id and type (Save_GetEquipFlags); bit 0 is set
      * when an item is put in the box, bit 2 marks it new (Save_ClearNewMarks). */
-    u8 armorFlags[5][300];      /* 0x2D3C: armour types 2, 3, 4, 5, 0 */
-    u8 bladeFlags[640];         /* 0x3318: type 6 */
-    u8 gunFlags[200];           /* 0x3598: type 7 */
-    u8 unk3660[0x20];           /* 0x3660: bits of unk_3BD380.c (SaveFlag_SetIn) */
+    u8 armorFlags[5][ARMOR_ID_COUNT]; /* 0x2D3C: EQUIP_FLAG_* by armour id, for the types EQUIP_HEAD, BODY, ARMS, WAIST and LEGS */
+    u8 bladeFlags[BLADE_ID_COUNT]; /* 0x3318: EQUIP_FLAG_* by blade weapon id */
+    u8 gunFlags[GUN_ID_COUNT];  /* 0x3598: EQUIP_FLAG_* by gun id */
+    u8 titles[0x20];            /* 0x3660: a bit per hunter title earned (gHunterTitles; Save_SetTitle, Save_HasTitle;
+                                 * the lobby sends it and tallies it, lobby_vobj.h's titleBits) */
     u8 pad3680[0x3688 - 0x3680];
     u8 unk3688[0x3695 - 0x3688]; /* 0x3688: 4 bits per entry of 0x1BB990 (main unk_18DA50.c, which indexes it as 0x20 bytes) */
     u8 title;                   /* 0x3695: the hunter's title (a gHunterTitles index; chosen in the lobby's unk_6B0570.c; compared with a quest entry byte in unk_7A44D0.c) */

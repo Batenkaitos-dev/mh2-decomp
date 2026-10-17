@@ -102,7 +102,7 @@ void CamReq_Cancel(void);
 void Bgm_StopEventFade(Player *p);
 void TownMsg_Send1D(Player *p);
 void TownMsg_SendStateNow(Player *p);
-s32 Player_PassedFrameScaled(void *obj, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *obj, f32 frame, s32 layer);
 void Contest_PadPress(void);
 void Contest_NpcPress(void);
 
@@ -217,7 +217,7 @@ s32 Contest_Play(void)
     case 4:
         switch (m->result) {
         case 0:
-            if (Player_PassedFrameScaled(m->who, 428.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(m->who, 428.0f, 0)) {
                 m->phase = 5;
             }
             break;

@@ -1,80 +1,97 @@
 /*
- * The ending (0xD64C80-0xD67530): the closing message, the staff roll
- * (the table at 0xD761A0 and its strings), "endtex".
+ * The ending (plsel 0xD64C80-0xD67530): the staff roll with the pictures
+ * and animated objects behind it, then the closing message. sub_main's
+ * scene steps (unk_3240E0.c) and select's gallery run it (Ending_Update
+ * each frame).
+ *
+ * The roll (gEndingRoll) is a page of entries (text, icons, titles,
+ * pictures, and spawn marks that start objects) that scrolls up; behind
+ * it, picture steps (gEndingSteps) fade one picture in and out and pan
+ * another; objects (EndObj, up to ENDING_OBJ_SLOTS) move and animate
+ * through tables of steps (gEndingObjDefs). The work area (EndWork) is
+ * sub_main's buffer behind gObjBufBlocks; the textures come from the AFS
+ * partition endtex. The structs and the states are this file's
+ * (EndWork ... EndObj below, ENDING_* in plsel.h).
  */
 #include "common.h"
 #include "sprite.h"
 #include "syssettings.h"
 #include "pad.h"
-#include "m2c_macros.h"
+#include "plsel.h"
+#include "render_state.h"
 #include "hw_regs.h"
-#include "plsel/ending.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "plsel/ending.h"   /* the texts this file uses */
 
-/* The game compiled this file at optimization level 4 (the build's -O3,p
- * plus MWCC's level-4 passes): Ending_DrawStaffRoll and Ending_DrawTitle
- * match only there, and every other function compiles the same at both
- * levels. */
+/* The game compiled this file at optimization level 4 (MWCC's level-4
+ * passes on top of the build's -O3,p): Ending_DrawStaffRoll and
+ * Ending_DrawTitle build as the game's only there. */
 #pragma optimization_level 4
 
 void Mem_Compact(void);
 void Tex_FreeRange(s32 first, s32 count);
 
-/* The ending's work area (0xA04 bytes), behind the pointer at 0x6ADFF0. */
+/* The ending's work area (0xA04 bytes), in sub_main's buffer behind
+ * gObjBufBlocks (0x6ADFF0). The roll scrolls up through a virtual page
+ * (scrollY is the screen's top on it); the pictures behind it come in
+ * steps (gEndingSteps), each a fading picture and a panning one. */
 typedef struct EndWork {
-    u8 unk00;                   /* 0x00: state (Ending_Update) */
+    u8 state;                   /* 0x00: ENDING_* (Ending_Update) */
     u8 unk01[0x04 - 0x01];
-    s32 unk04;                  /* 0x04: countdown of state 3 */
+    s32 messageTimer;           /* 0x04: frames of ENDING_MESSAGE left (210 when the roll ends) */
     u8 unk08[0x1C - 0x08];
-    f32 unk1C;                  /* 0x1C */
-    f32 unk20;                  /* 0x20 */
-    f32 unk24;                  /* 0x24 */
-    s32 unk28;                  /* 0x28: frame counter */
-    s32 unk2C;                  /* 0x2C */
-    s32 unk30;                  /* 0x30 */
-    s32 unk34;                  /* 0x34 */
-    s32 unk38;                  /* 0x38 */
-    s32 unk3C;                  /* 0x3C */
-    s32 unk40;                  /* 0x40 */
-    s32 unk44;                  /* 0x44 */
-    f32 unk48;                  /* 0x48 */
-    f32 unk4C;                  /* 0x4C */
-    f32 unk50;                  /* 0x50 */
-    f32 unk54;                  /* 0x54 */
-    f32 unk58;                  /* 0x58 */
-    f32 unk5C;                  /* 0x5C */
-    f32 unk60;                  /* 0x60 */
-    f32 unk64;                  /* 0x64 */
-    s32 unk68;                  /* 0x68: index into gEndingSteps */
-    u32 unk6C;                  /* 0x6C: color, alpha in the top byte */
-    s32 unk70;                  /* 0x70 */
-    s32 unk74;                  /* 0x74 */
-    u8 slots[16][0x98];         /* 0x78: allocated by Ending_AllocObject */
-    s32 unk9F8;                 /* 0x9F8 */
-    s32 unk9FC;                 /* 0x9FC: show the closing message */
-    f32 unkA00;                 /* 0xA00: its fade, 0..1 */
+    f32 scrollY;                /* 0x1C: the screen's top on the roll's page (starts a screen below) */
+    f32 scrollSpeed;            /* 0x20: added to scrollY each frame */
+    f32 scrollMax;              /* 0x24: scrollY's limit; Ending_DrawStaffRoll stops there */
+    s32 frameCount;             /* 0x28: frame counter (the icons' frame steps every 4) */
+    s32 iconFrame;              /* 0x2C: 0-2, the roll's icons' animation frame */
+    s32 picActive;              /* 0x30: 0 after the steps' end mark */
+    s32 picStarted;             /* 0x34: 1 once the screen's bottom reaches picStartY */
+    s32 fadePic;                /* 0x38: the fading picture (gEndingPics), -1: none */
+    s32 panPic;                 /* 0x3C: the panning picture, drawn opaque over the screen */
+    s32 picStartY;              /* 0x40: the step's start on the roll's page */
+    s32 picEndY;                /* 0x44: its end: the fade-out starts before it */
+    f32 fadeX;                  /* 0x48: the fading picture's position */
+    f32 fadeY;                  /* 0x4C */
+    f32 panX;                   /* 0x50: the panning picture's position */
+    f32 panY;                   /* 0x54 */
+    f32 fadeVx;                 /* 0x58: the fading picture's speed */
+    f32 fadeVy;                 /* 0x5C */
+    f32 panVx;                  /* 0x60: the panning picture's speed */
+    f32 panVy;                  /* 0x64 */
+    s32 stepIndex;              /* 0x68: the step of gEndingSteps */
+    u32 fadeColor;              /* 0x6C: the fading picture's colour, its alpha in the top byte */
+    s32 fadeStep;               /* 0x70: the alpha's change a frame */
+    s32 fadePhase;              /* 0x74: ENDING_FADE_* */
+    u8 slots[ENDING_OBJ_SLOTS][0x98]; /* 0x78: the objects (EndObj; Ending_AllocObject) */
+    s32 timeLeft;               /* 0x9F8: frames before the roll ends anyway */
+    s32 showMessage;            /* 0x9FC: show the closing message */
+    f32 messageFade;            /* 0xA00: its fade-in, 0..1 */
 } EndWork;
 
 extern EndWork *gObjBufBlocks;
 #define gEndWork (gObjBufBlocks)
 
-/* A step of the ending's sequence (gEndingSteps, 32 bytes each). */
+/* A step of the pictures behind the roll (gEndingSteps, 32 bytes each):
+ * copied to the work area by Ending_LoadPicStep. */
 typedef struct EndStep {
-    s8 unk00;                   /* 0x00: -1 ends the sequence */
-    s8 unk01;
-    s8 unk02;
-    u8 unk03;
-    s16 unk04;
-    s16 unk06;
-    s16 unk08;
-    s16 unk0A;
-    f32 unk0C;
-    f32 unk10;
-    s16 unk14;
-    s16 unk16;
-    f32 unk18;
-    f32 unk1C;
+    s8 endMark;                 /* 0x00: -1 ends the steps */
+    s8 fadePic;                 /* 0x01: -> EndWork.fadePic */
+    s8 panPic;                  /* 0x02: -> EndWork.panPic */
+    u8 unk03;                   /* not read */
+    s16 startY;                 /* 0x04: -> EndWork.picStartY */
+    s16 endY;                   /* 0x06: -> EndWork.picEndY */
+    s16 fadeX;                  /* 0x08 */
+    s16 fadeY;                  /* 0x0A */
+    f32 fadeVx;                 /* 0x0C */
+    f32 fadeVy;                 /* 0x10 */
+    s16 panX;                   /* 0x14 */
+    s16 panY;                   /* 0x16 */
+    f32 panVx;                  /* 0x18 */
+    f32 panVy;                  /* 0x1C */
 } EndStep;
 
+/* A pair of s16: a roll picture's width and height (gEndingPoints), or a
+ * cell's screen size (EndDef.cells). */
 typedef struct EndPt {
     s16 x;
     s16 y;
@@ -88,76 +105,77 @@ typedef struct EndPic {
     s16 dh;
 } EndPic;
 
-/* An entry of the staff roll D_00D761A0 (12 bytes). */
+/* An entry of the staff roll gEndingRoll (12 bytes), at (x, y) on the
+ * roll's page. */
 typedef struct EndRoll {
     s16 x;                      /* 0x0 */
     s16 y;                      /* 0x2 */
-    s8 type;                    /* 0x4: 0 text, 1 glyph, 2 title, 3 picture, 4 end */
-    u8 unk5;                    /* 0x5 */
-    s16 unk6;                   /* 0x6 */
-    char *unk8;                 /* 0x8 */
+    s8 type;                    /* 0x4: ENDING_ROLL_* */
+    u8 id;                      /* 0x5: text: the shadow colour; icon: the icon; picture: the picture (gEndingPoints, gEndingPictureUV); spawn: the spawn kind (Ending_SpawnObjects) */
+    s16 param;                  /* 0x6: text: the font size (and line height); icon: the tint (gEndingGlyphColors); spawn: the place (gEndingObjPlaces) */
+    char *text;                 /* 0x8: text and title */
 } EndRoll;
 
-/* An entry of gEndingGlyphs (10 bytes): a font glyph. */
+/* An entry of gEndingGlyphs (10 bytes): one frame of a roll icon. */
 typedef struct EndGlyph {
     u8 tex;
-    u8 unk1;
+    u8 filter;                  /* 0x1: Gfx_SetTexFilter's texture filter */
     UV uv0;
     UV uv1;
 } EndGlyph;
 
 /* A step of an object's animation: the tables gEndingObjDefs points to. */
 typedef struct EndDef {
-    s8 unk00;                   /* 0x00 */
-    s8 unk01;                   /* 0x01: -1: the end of a loop */
-    s8 unk02;                   /* 0x02: the next step, < 0: none */
-    s8 unk03;                   /* 0x03: kinds 8 and 13: the place in gEndingObjPlaces2 */
-    s16 unk04;                  /* 0x04: frames to wait */
-    s16 unk06;                  /* 0x06: drawing offset */
-    s16 unk08;                  /* 0x08 */
-    s16 unk0A;                  /* 0x0A: move */
-    s16 unk0C;                  /* 0x0C */
-    s16 unk0E;                  /* 0x0E: texture (gTexHandles + 0xA3) */
-    s16 unk10;                  /* 0x10: cell of unk14 */
+    s8 index;                   /* 0x00: the step's own number (not read) */
+    s8 loopMark;                /* 0x01: -1: the end of a loop */
+    s8 next;                    /* 0x02: the next step, < 0: none */
+    s8 place;                   /* 0x03: kinds 8 and 13: the place in gEndingObjPlaces2 */
+    s16 wait;                   /* 0x04: frames to wait */
+    s16 offX;                   /* 0x06: drawing offset */
+    s16 offY;                   /* 0x08 */
+    s16 moveX;                  /* 0x0A: added to the position on entering the step (x negated when flipped) */
+    s16 moveY;                  /* 0x0C */
+    s16 tex;                    /* 0x0E: texture (gTexHandles + ENDING_TEX_FIRST) */
+    s16 cell;                   /* 0x10: cell of cells */
     u8 unk12[2];
-    s16 *unk14;                 /* 0x14: cells: u, v, texture w, h, screen w, h */
+    s16 *cells;                 /* 0x14: cells: u, v, texture w, h, screen w, h */
 } EndDef;
 
 /* An animation state (0x3C bytes). */
 typedef struct EndAnim {
-    s32 unk00;                  /* 0x00 */
+    s32 active;                 /* 0x00: 1 while it runs (set and cleared, not read) */
     u8 unk04[0x04];
-    s32 unk08;                  /* 0x08 */
-    s32 unk0C;                  /* 0x0C */
-    s32 unk10;                  /* 0x10 */
-    s32 unk14;                  /* 0x14 */
-    f32 unk18;                  /* 0x18 */
-    f32 unk1C;                  /* 0x1C */
+    s32 wait;                   /* 0x08: frames left on the step */
+    s32 loopCount;              /* 0x0C: loops done */
+    s32 flip;                   /* 0x10: mirrored (the place's third value) */
+    s32 step;                   /* 0x14: the step of defs */
+    f32 moveSumX;               /* 0x18: the moves added up (not read: EndObj.x and y are the position) */
+    f32 moveSumY;               /* 0x1C */
     u8 unk20[0x28 - 0x20];
-    s32 unk28;                  /* 0x28 */
-    s32 unk2C;                  /* 0x2C */
+    s32 unk28;                  /* 0x28: only cleared */
+    s32 unk2C;                  /* 0x2C: only cleared */
     u8 unk30[0x34 - 0x30];
-    s32 unk34;                  /* 0x34 */
-    EndDef *unk38;              /* 0x38 */
+    s32 kind;                   /* 0x34: the animation kind, gEndingObjDefs' index */
+    EndDef *defs;               /* 0x38 */
 } EndAnim;
 
-/* One of the work area's 16 slots (0x98 bytes). */
+/* One of the work area's 16 objects (0x98 bytes). */
 typedef struct EndObj {
-    s32 unk00;                  /* 0x00 */
-    s32 unk04;                  /* 0x04: animated */
-    s32 unk08;                  /* 0x08: kind (Ending_UpdateObjects) */
+    s32 used;                   /* 0x00 */
+    s32 animating;              /* 0x04: 0 while a movement waits (Ending_AnimateObject returns) */
+    s32 moveKind;               /* 0x08: ENDING_MOVE_* (Ending_MoveObjects) */
     s8 step;                    /* 0x0C: step of the kind's movement */
     u8 unk0D[0x10 - 0x0D];
     s32 timer;                  /* 0x10 */
     u8 unk14[0x20 - 0x14];
     f32 speed;                  /* 0x20 */
-    f32 speed2;                 /* 0x24: kind 7's x speed */
+    f32 speedX;                 /* 0x24: ENDING_MOVE_FLY's x speed */
     u8 unk28[0x30 - 0x28];
-    f32 unk30;                  /* 0x30 */
-    f32 unk34;                  /* 0x34 */
+    f32 x;                      /* 0x30 */
+    f32 y;                      /* 0x34 */
     u8 unk38[0x40 - 0x38];
-    s16 unk40;                  /* 0x40 */
-    s16 unk42;                  /* 0x42 */
+    s16 w;                      /* 0x40: the first cell's screen size (the off-screen tests) */
+    s16 h;                      /* 0x42 */
     u8 unk44[0x5C - 0x44];
     EndAnim anim;               /* 0x5C */
 } EndObj;
@@ -167,13 +185,13 @@ void Loading_SetMessage(u32 mode);
 void Loading_Stop(void);
 void Tex_LoadSystemPackB(void);
 void Ending_LoadTextures(void);
-void Ending_SetStep(EndWork *w);
+void Ending_LoadPicStep(EndWork *w);
 void Afs_LoadPartition(s32 ptid, s32 flid, void *ptinfo, char *name);
 s32 Afs_ReadFileIdle(s32 flid, s32 ptid, void *buf);
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 extern s32 gOvlTex[];
 
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
 struct Sprite;
@@ -189,14 +207,14 @@ void Stream_Stop(s32);
 void Ending_FreeTextures(void);
 void Ending_Draw(EndWork *w);
 void Font_DrawAllPages(void);
-void Ending_Scroll(EndWork *w);
+void Ending_UpdateRoll(EndWork *w);
 
 char *strcpy(char *dst, const char *src);
 void strupr(char *);
 
 s32 Gs_GetState(u8 reg);
 s32 Gs_SetState(u8 reg, u32 v);
-void Ending_DrawPictures(EndWork *w);
+void Ending_DrawStepPictures(EndWork *w);
 void Ending_DrawObjects(void);
 void Ending_DrawStaffRoll(EndWork *w);
 s32 strlen(char *s);
@@ -207,13 +225,13 @@ void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
 void Ending_SpawnObjects(EndRoll *);
 void Ending_DrawTitle(s16 x, s16 y, char *str);
 
-void Ending_UpdateObjects(void);
+void Ending_MoveObjects(void);
 
 extern s32 gTexHandles[];
 s32 Tex_Use(s32 n, u32 *handles);
-void Ending_DrawSpriteF(TexRect *, f32, f32);
+void Ending_DrawRectF(TexRect *, f32, f32);
 
-/* .data (0xD76100-0xD78B10). D_00D761A0 is the staff roll: its strings
+/* .data (0xD76100-0xD78B10). gEndingRoll is the staff roll: its strings
  * are the file's first .rodata (0xD795D8). */
 u32 gEndingGlyphColors[8] = {
 #include "plsel/00D76100.inc"
@@ -224,7 +242,7 @@ u32 gEndingObjPlaces[24] = {
 u32 gEndingPoints[8] = {
 #include "plsel/00D76180.inc"
 };
-EndRoll D_00D761A0[345] = {
+EndRoll gEndingRoll[345] = {
 #include "plsel/00D761A0.inc"
 };
 EndPic gEndingPics[22] = {
@@ -236,13 +254,13 @@ u32 gEndingSteps[96] = {
 u32 gEndingGlyphs[152] = {
 #include "plsel/00D77400.inc"
 };
-u32 D_00D77660[48] = {
+u32 gEndingCells_2[48] = {
 #include "plsel/00D77660.inc"
 };
 u32 gEndingObjDefs_2[116] = {
 #include "plsel/00D77720.inc"
 };
-u32 D_00D778F0[48] = {
+u32 gEndingCells_0[48] = {
 #include "plsel/00D778F0.inc"
 };
 u32 gEndingObjDefs_0[188] = {
@@ -251,25 +269,25 @@ u32 gEndingObjDefs_0[188] = {
 u32 gEndingObjDefs_11[188] = {
 #include "plsel/00D77CA0.inc"
 };
-u32 D_00D77F90[24] = {
+u32 gEndingCells_1[24] = {
 #include "plsel/00D77F90.inc"
 };
 u32 gEndingObjDefs_1[48] = {
 #include "plsel/00D77FF0.inc"
 };
-u32 D_00D780B0[16] = {
+u32 gEndingCells_3[16] = {
 #include "plsel/00D780B0.inc"
 };
 u32 gEndingObjDefs_3[48] = {
 #include "plsel/00D780F0.inc"
 };
-u32 D_00D781B0[16] = {
+u32 gEndingCells_4[16] = {
 #include "plsel/00D781B0.inc"
 };
 u32 gEndingObjDefs_4[48] = {
 #include "plsel/00D781F0.inc"
 };
-u32 D_00D782B0[12] = {
+u32 gEndingCells_8[12] = {
 #include "plsel/00D782B0.inc"
 };
 u32 gEndingObjDefs_8[68] = {
@@ -278,16 +296,16 @@ u32 gEndingObjDefs_8[68] = {
 u32 gEndingObjDefs_13[32] = {
 #include "plsel/00D783F0.inc"
 };
-u32 D_00D78470[28] = {
+u32 gEndingCells_5A[28] = {
 #include "plsel/00D78470.inc"
 };
-u32 D_00D784E0[40] = {
+u32 gEndingCells_5B[40] = {
 #include "plsel/00D784E0.inc"
 };
 u32 gEndingObjDefs_5[140] = {
 #include "plsel/00D78580.inc"
 };
-u32 D_00D787B0[32] = {
+u32 gEndingCells_7[32] = {
 #include "plsel/00D787B0.inc"
 };
 u32 gEndingObjDefs_7[84] = {
@@ -318,68 +336,83 @@ u32 gEndingSpriteGif[20] = {
 #include "plsel/00D78AC0.inc"
 };
 
-void Ending_Init(void) {
-    EndWork *w;
+/*
+ * Sets up the ending: clears the work area, loads the textures, puts the
+ * roll's page a screen below the top at its speed and limit, loads the first
+ * picture step and the time-out. In the gallery the loading message shows
+ * meanwhile.
+ */
+void Ending_Init(void)
+{
+    EndWork *work;
 
-    w = gEndWork;
+    work = gEndWork;
     if (gSysSettings.galleryPlay != 0) {
         Loading_SetMessage(5);
     }
-    memset(w, 0, 0xA04);
+    memset(work, 0, sizeof(EndWork));
     Tex_LoadSystemPackB();
     Ending_LoadTextures();
-    w->unk1C = -448.0f;
-    w->unk20 = 1.2f;
-    w->unk24 = 13000.0f;
-    w->unk68 = 0;
-    w->unk70 = 0x10;
-    Ending_SetStep(w);
-    w->unk9F8 = 0x231E;
+    work->scrollY = -448.0f;
+    work->scrollSpeed = 1.2f;
+    work->scrollMax = 13000.0f;
+    work->stepIndex = 0;
+    work->fadeStep = 0x10;
+    Ending_LoadPicStep(work);
+    work->timeLeft = 8990; /* frames: about 5 minutes */
     if (gSysSettings.galleryPlay != 0) {
         Loading_Stop();
     }
 }
 
-s32 Ending_Update(void) {
-    EndWork *w;
+/*
+ * The ending each frame (select's gallery and sub_main's scene steps call
+ * it): runs the states (EndingState), then draws. In the roll, PAD_START
+ * (PAD_CROSS when played from the gallery) or the time-out skips to the
+ * fade-out once no fade runs. Returns 1 while it runs, 0 when it is over
+ * (the music stopped and the textures freed).
+ */
+s32 Ending_Update(void)
+{
+    EndWork *work;
 
-    w = gEndWork;
+    work = gEndWork;
     Text_SetDefaults();
-    switch (w->unk00) {
-    case 0:
+    switch (work->state) {
+    case ENDING_START:
         FadeA_Start(2);
         Stream_Prepare(0, 0x134, 0, 0);
-        w->unk00++;
-    case 1:
-        w->unk00++;
+        work->state++;
+    case ENDING_MUSIC:
+        work->state++;
         Stream_StartPrepared(0);
         FadeA_Start(2);
         break;
-    case 2:
-        w->unk9F8--;
+    case ENDING_ROLL:
+        work->timeLeft--;
         if (FadeA_GetState() != 1) {
             if (gSysSettings.galleryPlay != 0) {
-                if ((gPadState[0].pressed & 0x40) || w->unk9F8 == 0) {
-                    w->unk00 = 5;
+                if ((gPadState[0].pressed & PAD_CROSS) || work->timeLeft == 0) {
+                    work->state = ENDING_SKIPPED;
                     FadeA_Start(1);
                     break;
                 }
-            } else if ((gPadState[0].pressed & 0x8000) || w->unk9F8 == 0) {
-                w->unk00 = 5;
+            } else if ((gPadState[0].pressed & PAD_START) || work->timeLeft == 0) {
+                work->state = ENDING_SKIPPED;
                 FadeA_Start(1);
                 break;
             }
         }
-        Ending_Scroll(w);
+        Ending_UpdateRoll(work);
         break;
-    case 3:
-        if (--w->unk04 == 0) {
-            w->unk00 = 4;
+    case ENDING_MESSAGE:
+        if (--work->messageTimer == 0) {
+            work->state = ENDING_DONE;
             FadeA_Start(1);
         }
         break;
-    case 4:
-    case 5:
+    case ENDING_DONE:
+    case ENDING_SKIPPED:
         if (FadeA_GetState() != 1) {
             Movie_Stop();
             Stream_Stop(0);
@@ -387,916 +420,1000 @@ s32 Ending_Update(void) {
             return 0;
         }
         break;
-    case 99:
+    case ENDING_RESTART:
         FadeA_Start(2);
-        w->unk00 = 1;
+        work->state = ENDING_MUSIC;
         break;
     }
-    Ending_Draw(w);
+    Ending_Draw(work);
     Font_DrawAllPages();
     return 1;
 }
 
-void Ending_Scroll(EndWork *w) {
-    u32 a;
+/*
+ * ENDING_ROLL's frame: scrolls the roll, steps the icons' frame every 4
+ * frames, runs the picture step (waits for its start on the page, then
+ * fades the picture in, holds it and fades it out into the next step),
+ * moves the objects, and at the roll's end starts the closing message
+ * (ENDING_MESSAGE). While a step waits for its start it returns at once,
+ * so the objects and the end test wait too.
+ */
+void Ending_UpdateRoll(EndWork *work)
+{
+    u32 alpha;
 
-    w->unk1C += w->unk20;
-    if (w->unk1C >= w->unk24) {
-        w->unk1C = w->unk24;
+    work->scrollY += work->scrollSpeed;
+    if (work->scrollY >= work->scrollMax) {
+        work->scrollY = work->scrollMax;
     }
-    w->unk28++;
-    if ((w->unk28 & 3) == 0) {
-        w->unk2C++;
-        w->unk2C %= 3;
+    work->frameCount++;
+    if ((work->frameCount & 3) == 0) {
+        work->iconFrame++;
+        work->iconFrame %= 3;
     }
-    if (w->unk30 != 0) {
-        if (w->unk34 == 0) {
-            if (w->unk40 > (s32)(448.0f + w->unk1C)) {
+    if (work->picActive != 0) {
+        if (work->picStarted == 0) {
+            if (work->picStartY > (s32)(448.0f + work->scrollY)) {
                 return;
             }
-            w->unk34 = 1;
+            work->picStarted = 1;
         }
-        w->unk48 += w->unk58;
-        w->unk4C += w->unk5C;
-        w->unk50 += w->unk60;
-        w->unk54 += w->unk64;
-        switch (w->unk74) {
-        case 0:
-            a = ((w->unk6C & 0xFF000000) >> 24) + w->unk70;
-            if (a >= 0xFF) {
-                w->unk74 = 1;
-                a = 0xFF;
+        work->fadeX += work->fadeVx;
+        work->fadeY += work->fadeVy;
+        work->panX += work->panVx;
+        work->panY += work->panVy;
+        switch (work->fadePhase) {
+        case ENDING_FADE_IN:
+            alpha = ((work->fadeColor & 0xFF000000) >> 24) + work->fadeStep;
+            if (alpha >= 0xFF) {
+                work->fadePhase = ENDING_FADE_HOLD;
+                alpha = 0xFF;
             }
-            w->unk6C = (a << 24) | (w->unk6C & 0xFFFFFF);
+            work->fadeColor = (alpha << 24) | (work->fadeColor & 0xFFFFFF);
             break;
-        case 1:
-            if ((s32)w->unk1C >= w->unk44 - (s32)(32.0f * w->unk20)) {
-                w->unk74 = 2;
+        case ENDING_FADE_HOLD:
+            if ((s32)work->scrollY >= work->picEndY - (s32)(32.0f * work->scrollSpeed)) {
+                work->fadePhase = ENDING_FADE_OUT;
             }
             break;
-        case 2:
-            a = (w->unk6C & 0xFF000000) >> 24;
-            a -= w->unk70;
-            if (a >= 0xFF) {
-                w->unk74 = 0;
-                w->unk68++;
-                a = 0;
-                Ending_SetStep(w);
+        case ENDING_FADE_OUT:
+            alpha = (work->fadeColor & 0xFF000000) >> 24;
+            alpha -= work->fadeStep;
+            if (alpha >= 0xFF) {
+                work->fadePhase = ENDING_FADE_IN;
+                work->stepIndex++;
+                alpha = 0;
+                Ending_LoadPicStep(work);
             }
-            w->unk6C = (a << 24) | (w->unk6C & 0xFFFFFF);
+            work->fadeColor = (alpha << 24) | (work->fadeColor & 0xFFFFFF);
             break;
         }
     }
-    Ending_UpdateObjects();
-    if (w->unk1C >= 10110.0f) {
-        w->unk00 = 3;
-        w->unk04 = 0xD2;
-        w->unk9FC = 1;
-        w->unkA00 = 0.0f;
+    Ending_MoveObjects();
+    if (work->scrollY >= 10110.0f) {
+        work->state = ENDING_MESSAGE;
+        work->messageTimer = 210; /* frames: 7 s */
+        work->showMessage = 1;
+        work->messageFade = 0.0f;
     }
 }
 
-void Ending_DrawPicture(s16 x, s16 y, u8 idx) {
-    TexRect s;
+/*
+ * Draws roll picture `picture` of the roll pictures' texture at (x, y) with
+ * its size from gEndingPoints and its UVs from gEndingPictureUV; nothing
+ * when its UVs are all zero or it is off the screen.
+ */
+void Ending_DrawRollPicture(s16 x, s16 y, u8 picture)
+{
+    TexRect rect;
     UV *uv;
-    EndPt *r;
+    EndPt *size;
 
-    r = (EndPt *)gEndingPoints + idx;
-    uv = (UV *)gEndingPictureUV + idx * 2;
-    Gfx_SetState63(1);
-    Tex_Prepare(1, 0xBC);
-    Tex_Bind(0xBC);
-    s.x = x;
-    s.y = y;
-    s.w = r->x;
-    s.h = r->y;
-    s.color = -1;
-    s.uv0.u = uv->u;
-    s.uv0.v = uv->v;
-    s.uv1.u = (++uv)->u;
-    s.uv1.v = uv->v;
-    if ((s.uv0.u != 0 || s.uv0.v != 0 || s.uv1.u != 0 || s.uv1.v != 0) && s.y < 0x1C1 && s.y + s.h > 0) {
-        Sprite_Draw((struct Sprite *)&s);
+    size = (EndPt *)gEndingPoints + picture;
+    uv = (UV *)gEndingPictureUV + picture * 2;
+    Gfx_SetTexFilter(1);
+    Tex_Prepare(1, ENDING_ROLL_PIC_TEX);
+    Tex_Bind(ENDING_ROLL_PIC_TEX);
+    rect.x = x;
+    rect.y = y;
+    rect.w = size->x;
+    rect.h = size->y;
+    rect.color = -1;
+    rect.uv0.u = uv->u;
+    rect.uv0.v = uv->v;
+    rect.uv1.u = (++uv)->u;
+    rect.uv1.v = uv->v;
+    if ((rect.uv0.u != 0 || rect.uv0.v != 0 || rect.uv1.u != 0 || rect.uv1.v != 0) && rect.y < 0x1C1 && rect.y + rect.h > 0) {
+        Sprite_Draw((struct Sprite *)&rect);
     }
 }
 
-void Ending_DrawGlyph(s32 idx, s16 x, s16 y, s8 col, s32 sub) {
-    TexRect s;
-    EndGlyph g;
+/*
+ * Draws frame `frame` (0-2) of roll icon `icon` (gEndingGlyphs, three
+ * frames each) at (x, y), 38x32, tinted by gEndingGlyphColors[colorIdx].
+ */
+void Ending_DrawRollIcon(s32 icon, s16 x, s16 y, s8 colorIdx, s32 frame)
+{
+    TexRect rect;
+    EndGlyph glyph;
 
-    g = ((EndGlyph *)gEndingGlyphs)[sub + idx * 3];
-    Gfx_SetState63(g.unk1);
-    Tex_Prepare(1, g.tex);
-    Tex_Bind(g.tex);
-    s.x = x;
-    s.y = y - 8;
-    s.w = 0x26;
-    s.h = 0x20;
-    s.color = gEndingGlyphColors[col];
-    s.uv0.u = g.uv0.u;
-    s.uv0.v = g.uv0.v;
-    s.uv1.u = g.uv1.u;
-    s.uv1.v = g.uv1.v;
-    Sprite_Draw((struct Sprite *)&s);
+    glyph = ((EndGlyph *)gEndingGlyphs)[frame + icon * 3];
+    Gfx_SetTexFilter(glyph.filter);
+    Tex_Prepare(1, glyph.tex);
+    Tex_Bind(glyph.tex);
+    rect.x = x;
+    rect.y = y - 8;
+    rect.w = 0x26;
+    rect.h = 0x20;
+    rect.color = gEndingGlyphColors[colorIdx];
+    rect.uv0.u = glyph.uv0.u;
+    rect.uv0.v = glyph.uv0.v;
+    rect.uv1.u = glyph.uv1.u;
+    rect.uv1.v = glyph.uv1.v;
+    Sprite_Draw((struct Sprite *)&rect);
 }
 
-/* Draws an upper-cased title in the 20x20 letter cells of texture 8; a
- * space advances 14 pixels. The space width is a float converted to s16 at
- * each space (lui/mtc1/cvt.w.s inside the loop): a constant `(s32)14.0f` is
- * folded, and an s32 conversion of the float is hoisted out of the loop. */
-void Ending_DrawTitle(s16 x, s16 y, char *str) {
-    char buf[0x20];
-    TexRect s;
-    char *p;
-    s32 c;
+/*
+ * Draws `str` upper-cased in the 20x20 letter cells of texture 8; a space
+ * advances 14 pixels. The space's width is a float converted to s16 at each
+ * space: so the conversion stays in the loop, as in the game's code.
+ */
+void Ending_DrawTitle(s16 x, s16 y, char *str)
+{
+    char upper[0x20];
+    TexRect rect;
+    char *ch;
+    s32 letter;
     f32 space;
 
     space = 14.0f;
     Tex_Prepare(1, 8);
     Tex_Bind(8);
-    Gfx_SetState63(1);
-    s.w = s.h = 0x14;
-    buf[0] = 0;
-    strcpy(buf, str);
-    strupr(buf);
-    p = buf;
-    while (*p != 0) {
-        if (*p == ' ') {
-            p++;
+    Gfx_SetTexFilter(1);
+    rect.w = rect.h = 0x14;
+    upper[0] = 0;
+    strcpy(upper, str);
+    strupr(upper);
+    ch = upper;
+    while (*ch != 0) {
+        if (*ch == ' ') {
+            ch++;
             x += (s16)space;
         } else {
-            c = *p - 'A';
-            s.uv0.u = (c % 8) * 32;
-            s.uv0.v = (c / 8) * 32;
-            s.uv1.u = s.uv0.u + 0x1F;
-            s.uv1.v = s.uv0.v + 0x1F;
-            s.color = 0xFF2691A1;
-            s.x = x;
-            s.y = y;
-            Sprite_Draw((struct Sprite *)&s);
+            letter = *ch - 'A';
+            rect.uv0.u = (letter % 8) * 32;
+            rect.uv0.v = (letter / 8) * 32;
+            rect.uv1.u = rect.uv0.u + 0x1F;
+            rect.uv1.v = rect.uv0.v + 0x1F;
+            rect.color = 0xFF2691A1;
+            rect.x = x;
+            rect.y = y;
+            Sprite_Draw((struct Sprite *)&rect);
             x += 0x14;
-            p++;
+            ch++;
         }
     }
 }
 
-void Ending_SetStep(EndWork *w) {
-    EndStep *e;
+/*
+ * Loads picture step work->stepIndex of gEndingSteps into the work area
+ * (the two pictures, their positions, speeds and the step's span on the
+ * page) and starts its fade-in; at the steps' end mark it turns the
+ * pictures off.
+ */
+void Ending_LoadPicStep(EndWork *work)
+{
+    EndStep *step;
 
-    e = (EndStep *)gEndingSteps + w->unk68;
-    if (e->unk00 == -1) {
-        w->unk30 = 0;
+    step = (EndStep *)gEndingSteps + work->stepIndex;
+    if (step->endMark == -1) {
+        work->picActive = 0;
     } else {
-        w->unk30 = 1;
-        w->unk34 = 0;
-        w->unk6C = -1;
-        w->unk74 = 0;
-        w->unk38 = e->unk01;
-        w->unk3C = e->unk02;
-        w->unk40 = e->unk04;
-        w->unk44 = e->unk06;
-        w->unk48 = e->unk08;
-        w->unk4C = e->unk0A;
-        w->unk58 = e->unk0C;
-        w->unk5C = e->unk10;
-        w->unk50 = e->unk14;
-        w->unk54 = e->unk16;
-        w->unk60 = e->unk18;
-        w->unk64 = e->unk1C;
+        work->picActive = 1;
+        work->picStarted = 0;
+        work->fadeColor = -1;
+        work->fadePhase = ENDING_FADE_IN;
+        work->fadePic = step->fadePic;
+        work->panPic = step->panPic;
+        work->picStartY = step->startY;
+        work->picEndY = step->endY;
+        work->fadeX = step->fadeX;
+        work->fadeY = step->fadeY;
+        work->fadeVx = step->fadeVx;
+        work->fadeVy = step->fadeVy;
+        work->panX = step->panX;
+        work->panY = step->panY;
+        work->panVx = step->panVx;
+        work->panVy = step->panVy;
     }
 }
 
-void Ending_DrawPictures(EndWork *w) {
-    TexRect s;
-    s32 *h;
+/*
+ * Draws the step's pictures: the fading one in its colour, then the panning
+ * one opaque, kept over the whole screen (its position clamped, panX
+ * written back).
+ */
+void Ending_DrawStepPictures(EndWork *work)
+{
+    TexRect rect;
+    s32 *handle;
 
-    if (w->unk34 == 0) {
+    if (work->picStarted == 0) {
         return;
     }
     Gs_SetState(0x5E, 0x32);
-    Gs_SetState(0x63, 0);
-    if (w->unk38 != -1) {
-        h = &gTexHandles[w->unk38 + 0xA3];
-        Tex_Use(1, (u32 *)h);
-        Gs_SetState(4, *h);
-        s.uv0.u = 0;
-        s.uv0.v = 0;
-        s.uv1.u = gEndingPics[w->unk38].w - 1;
-        s.uv1.v = gEndingPics[w->unk38].h - 1;
-        s.w = gEndingPics[w->unk38].dw;
-        s.h = gEndingPics[w->unk38].dh;
-        s.color = w->unk6C;
-        s.x = w->unk48;
-        s.y = w->unk4C;
-        Ending_DrawSpriteF(&s, w->unk48, w->unk4C);
+    Gs_SetState(RS_TEX_FILTER, 0);
+    if (work->fadePic != -1) {
+        handle = &gTexHandles[work->fadePic + ENDING_TEX_FIRST];
+        Tex_Use(1, (u32 *)handle);
+        Gs_SetState(RS_TEXTURE, *handle);
+        rect.uv0.u = 0;
+        rect.uv0.v = 0;
+        rect.uv1.u = gEndingPics[work->fadePic].w - 1;
+        rect.uv1.v = gEndingPics[work->fadePic].h - 1;
+        rect.w = gEndingPics[work->fadePic].dw;
+        rect.h = gEndingPics[work->fadePic].dh;
+        rect.color = work->fadeColor;
+        rect.x = work->fadeX;
+        rect.y = work->fadeY;
+        Ending_DrawRectF(&rect, work->fadeX, work->fadeY);
     }
-    if (w->unk3C != -1) {
-        h = &gTexHandles[w->unk3C + 0xA3];
-        Tex_Use(1, (u32 *)h);
-        Gs_SetState(4, *h);
-        s.uv0.u = 0;
-        s.uv0.v = 0;
-        s.uv1.u = gEndingPics[w->unk3C].w - 1;
-        s.uv1.v = gEndingPics[w->unk3C].h - 1;
-        s.w = gEndingPics[w->unk3C].dw;
-        s.h = gEndingPics[w->unk3C].dh;
-        s.color = -1;
-        s.x = w->unk50;
-        s.y = w->unk54;
-        if (s.x > 0) {
-            s.x = 0;
+    if (work->panPic != -1) {
+        handle = &gTexHandles[work->panPic + ENDING_TEX_FIRST];
+        Tex_Use(1, (u32 *)handle);
+        Gs_SetState(RS_TEXTURE, *handle);
+        rect.uv0.u = 0;
+        rect.uv0.v = 0;
+        rect.uv1.u = gEndingPics[work->panPic].w - 1;
+        rect.uv1.v = gEndingPics[work->panPic].h - 1;
+        rect.w = gEndingPics[work->panPic].dw;
+        rect.h = gEndingPics[work->panPic].dh;
+        rect.color = -1;
+        rect.x = work->panX;
+        rect.y = work->panY;
+        if (rect.x > 0) {
+            rect.x = 0;
         }
-        if (s.x + s.w < 0x280) {
-            s.x = 0x280 - s.w;
+        if (rect.x + rect.w < 640) {
+            rect.x = 640 - rect.w;
         }
-        if (s.y > 0) {
-            s.y = 0;
+        if (rect.y > 0) {
+            rect.y = 0;
         }
-        if (s.y + s.h < 0x1C0) {
-            s.y = 0x1C0 - s.h;
+        if (rect.y + rect.h < 448) {
+            rect.y = 448 - rect.h;
         }
-        if (s.w < (s16)w->unk50 + 0x280) {
-            w->unk50 = s.w - 0x280;
+        if (rect.w < (s16)work->panX + 640) {
+            work->panX = rect.w - 640;
         }
-        Ending_DrawSpriteF(&s, w->unk50, w->unk54);
+        Ending_DrawRectF(&rect, work->panX, work->panY);
     }
 }
 
-void Ending_DrawStaffRoll(EndWork *w) {
-    EndRoll *e;
+/*
+ * Draws the roll's entries on the screen (text, icon, title, picture, by
+ * EndRoll.type), from the top of the page down to scrollMax, and starts the
+ * objects of the spawn entries whose y crosses the screen's bottom this
+ * frame.
+ */
+void Ending_DrawStaffRoll(EndWork *work)
+{
+    EndRoll *entry;
     s16 y;
-    f32 lim;
+    f32 spawnBottom;
     s16 top;
     s16 bottom;
 
-    e = D_00D761A0;
-    top = w->unk1C;
-    bottom = top + 0x1C0;
-    y = e->y;
-    while (y < w->unk24) {
+    entry = gEndingRoll;
+    top = work->scrollY;
+    bottom = top + 448;
+    y = entry->y;
+    while (y < work->scrollMax) {
         if (y < bottom) {
-            switch (e->type) {
-            case 0:
-                if (top < y + e->unk6) {
-                    Font_SetSpacing((u8)e->unk6, (u8)e->unk6);
-                    Text_DrawShadow(e->x, e->y - top, 1, e->unk5, e->unk8);
+            switch (entry->type) {
+            case ENDING_ROLL_TEXT:
+                if (top < y + entry->param) {
+                    Font_SetSpacing((u8)entry->param, (u8)entry->param);
+                    Text_DrawShadow(entry->x, entry->y - top, 1, entry->id, entry->text);
                 }
                 break;
-            case 1:
+            case ENDING_ROLL_ICON:
                 if (top < y + 0x20) {
-                    Ending_DrawGlyph(e->unk5, e->x, y - top, e->unk6, w->unk2C);
+                    Ending_DrawRollIcon(entry->id, entry->x, y - top, entry->param, work->iconFrame);
                 }
                 break;
-            case 2:
+            case ENDING_ROLL_TITLE:
                 if (top < y + 0x1A) {
-                    Ending_DrawTitle(e->x, y - top, e->unk8);
+                    Ending_DrawTitle(entry->x, y - top, entry->text);
                 }
                 break;
-            case 3:
-                if (top < y + ((EndPt *)gEndingPoints)[e->unk5].y) {
-                    Ending_DrawPicture(e->x, y - top, e->unk5);
+            case ENDING_ROLL_PICTURE:
+                if (top < y + ((EndPt *)gEndingPoints)[entry->id].y) {
+                    Ending_DrawRollPicture(entry->x, y - top, entry->id);
                 }
                 break;
             }
         }
-        if (e->type == 4) {
-            lim = 448.0f + w->unk1C + w->unk20;
-            if (e->y >= bottom && e->y < (s16)lim) {
-                Ending_SpawnObjects(e);
+        if (entry->type == ENDING_ROLL_SPAWN) {
+            spawnBottom = 448.0f + work->scrollY + work->scrollSpeed;
+            if (entry->y >= bottom && entry->y < (s16)spawnBottom) {
+                Ending_SpawnObjects(entry);
             }
         }
-        e++;
-        y = e->y;
+        entry++;
+        y = entry->y;
     }
 }
 
-void Ending_Draw(EndWork *w) {
-    s32 a;
-    s32 b;
-    s32 c;
+/*
+ * Draws the ending's frame: with the z-buffer off (render state 0x6C), the
+ * step's pictures, the objects, the roll and, once its timer allows, the
+ * closing message fading in; the render states it changes (0x6C,
+ * RS_TEX_FILTER and the alpha state 0x5E) are put back after.
+ */
+void Ending_Draw(EndWork *work)
+{
+    s32 savedZbuf;
+    s32 savedFilter;
+    s32 savedAlpha;
     u32 alpha;
     s32 len;
 
-    a = Gs_GetState(0x6C);
-    b = Gs_GetState(0x63);
-    c = Gs_GetState(0x5E);
+    savedZbuf = Gs_GetState(0x6C);
+    savedFilter = Gs_GetState(RS_TEX_FILTER);
+    savedAlpha = Gs_GetState(0x5E);
     Gs_SetState(0x6C, 0);
-    Ending_DrawPictures(w);
+    Ending_DrawStepPictures(work);
     Ending_DrawObjects();
-    Ending_DrawStaffRoll(w);
-    if (w->unk9FC != 0 && w->unk04 < 0x97) {
-        w->unkA00 += 0.05f;
-        if (w->unkA00 > 1.0f) {
-            w->unkA00 = 1.0f;
+    Ending_DrawStaffRoll(work);
+    if (work->showMessage != 0 && work->messageTimer < 151) {
+        work->messageFade += 0.05f;
+        if (work->messageFade > 1.0f) {
+            work->messageFade = 1.0f;
         }
-        alpha = 255.0f * w->unkA00;
+        alpha = 255.0f * work->messageFade;
         len = strlen(TXT(0x00D7BA50) /* the closing message */);
         Font_SetSpacing(0x12, 0x12);
-        Text_DrawShadowRgb((0x280 - len * 9) / 2, 0xFA, 0xFF000000, 0xFF000000 | ((u8)alpha << 16) | ((u8)alpha << 8) | (u8)alpha, TXT(0x00D7BA50) /* the closing message */);
+        Text_DrawShadowRgb((640 - len * 9) / 2, 0xFA, 0xFF000000, 0xFF000000 | ((u8)alpha << 16) | ((u8)alpha << 8) | (u8)alpha, TXT(0x00D7BA50) /* the closing message */);
     }
-    Gs_SetState(0x6C, a);
-    Gs_SetState(0x63, b);
-    Gs_SetState(0x5E, c);
+    Gs_SetState(0x6C, savedZbuf);
+    Gs_SetState(RS_TEX_FILTER, savedFilter);
+    Gs_SetState(0x5E, savedAlpha);
 }
 
-void Ending_LoadTextures(void) {
+/*
+ * Opens the endtex partition of the AFS (partition 5) and loads its
+ * ENDING_TEX_COUNT textures into the handles from ENDING_TEX_FIRST.
+ */
+void Ending_LoadTextures(void)
+{
     s32 i;
 
     Afs_LoadPartition(5, 0x19F3, gSysSettings.readBuf, "endtex");
-    for (i = 0; i < 0x1A; i++) {
+    for (i = 0; i < ENDING_TEX_COUNT; i++) {
         Afs_ReadFileIdle(i, 5, gSysSettings.loadBuf);
         gOvlTex[i] = Tex_CreateFromTim2(gSysSettings.loadBuf, 4);
     }
     Mem_Compact();
 }
 
-void Ending_FreeTextures(void) {
-    Tex_FreeRange(0xA3, 0x1A);
+/* Frees the ending's textures and compacts the memory. */
+void Ending_FreeTextures(void)
+{
+    Tex_FreeRange(ENDING_TEX_FIRST, ENDING_TEX_COUNT);
     Mem_Compact();
 }
 
-static void Ending_InitAnim(EndAnim *a, EndDef *d) {
+/*
+ * Starts animation `defTable` on `anim` at its first step, with the
+ * step's move added up.
+ */
+static void Ending_StartAnim(EndAnim *anim, EndDef *defTable)
+{
     s32 dx;
     s32 dy;
 
-    a->unk00 = 1;
-    a->unk08 = 0;
-    a->unk0C = 0;
-    a->unk28 = 0;
-    a->unk2C = 0;
-    a->unk38 = d;
-    a->unk14 = 0;
-    a->unk08 = d->unk04;
-    dx = d->unk0A;
-    if (a->unk10 != 0) {
+    anim->active = 1;
+    anim->wait = 0;
+    anim->loopCount = 0;
+    anim->unk28 = 0;
+    anim->unk2C = 0;
+    anim->defs = defTable;
+    anim->step = 0;
+    anim->wait = defTable->wait;
+    dx = defTable->moveX;
+    if (anim->flip != 0) {
         dx = -dx;
     }
-    dy = d->unk0C;
-    a->unk18 += dx;
-    a->unk1C += dy;
+    dy = defTable->moveY;
+    anim->moveSumX += dx;
+    anim->moveSumY += dy;
 }
 
-static void Ending_InitObject(EndObj *o, s32 kind, s32 x, s32 y, s32 n) {
-    s16 *p;
+/*
+ * Starts object `obj` at (x, y) with movement and animation `kind`, its size
+ * that of the animation's first cell. `order` is not read.
+ */
+static void Ending_StartObject(EndObj *obj, s32 kind, s32 x, s32 y, s32 order)
+{
+    s16 *firstCell;
 
-    o->unk00 = 1;
-    o->unk08 = kind;
-    o->unk30 = x;
-    o->unk34 = y;
-    Ending_InitAnim(&o->anim, (EndDef *)gEndingObjDefs[kind]);
-    o->anim.unk34 = kind;
-    p = o->anim.unk38->unk14;
-    o->unk40 = p[4];
-    o->unk42 = p[5];
+    obj->used = 1;
+    obj->moveKind = kind;
+    obj->x = x;
+    obj->y = y;
+    Ending_StartAnim(&obj->anim, (EndDef *)gEndingObjDefs[kind]);
+    obj->anim.kind = kind;
+    firstCell = obj->anim.defs->cells;
+    obj->w = firstCell[4];
+    obj->h = firstCell[5];
 }
 
-/* Steps an object's animation: waits, then moves to the next step (by the
- * step's own link, with loop counts per animation kind) and applies it. */
-static void Ending_AnimateObject(EndObj *o, s32 n) {
-    EndDef *d;
+/*
+ * Steps an object's animation: waits out the step, then goes to the next
+ * one (by the step's own link, with loop counts per animation kind: the
+ * gotos jump to a fixed step after the loops) and applies its move. `slot`
+ * is not read.
+ */
+static void Ending_AnimateObject(EndObj *obj, s32 slot)
+{
+    EndDef *def;
     s32 dx;
     s32 dy;
 
-    if (o->unk04 == 0) {
+    if (obj->animating == 0) {
         return;
     }
-    if (o->anim.unk08 > 0) {
-        o->anim.unk08--;
+    if (obj->anim.wait > 0) {
+        obj->anim.wait--;
         return;
     }
-    d = &o->anim.unk38[o->anim.unk14];
-    switch (o->anim.unk34) {
+    def = &obj->anim.defs[obj->anim.step];
+    switch (obj->anim.kind) {
     case 0:
-        if (d->unk01 == -1) {
-            if (d->unk02 < 0) {
-                o->unk00 = 0;
+        if (def->loopMark == -1) {
+            if (def->next < 0) {
+                obj->used = 0;
                 return;
             }
-            o->anim.unk0C++;
-            if (o->anim.unk0C == 2) {
-                o->anim.unk14 = 0x12;
-                o->anim.unk0C = 0;
+            obj->anim.loopCount++;
+            if (obj->anim.loopCount == 2) {
+                obj->anim.step = 0x12;
+                obj->anim.loopCount = 0;
                 goto apply;
             }
         }
         break;
     case 1:
-        if (d->unk01 == -1) {
-            if (d->unk02 < 0) {
-                o->unk00 = 0;
+        if (def->loopMark == -1) {
+            if (def->next < 0) {
+                obj->used = 0;
                 return;
             }
-            o->anim.unk0C++;
-            if (o->anim.unk0C == 4) {
-                o->anim.unk14 = 5;
-                o->anim.unk0C = 0;
+            obj->anim.loopCount++;
+            if (obj->anim.loopCount == 4) {
+                obj->anim.step = 5;
+                obj->anim.loopCount = 0;
                 goto apply;
             }
         }
         break;
     case 2:
-        if (d->unk01 == -1) {
-            o->unk00 = 0;
+        if (def->loopMark == -1) {
+            obj->used = 0;
             return;
         }
         break;
     case 8:
-        if (d->unk01 == -1) {
-            if (d->unk02 < 0) {
-                o->unk00 = 0;
+        if (def->loopMark == -1) {
+            if (def->next < 0) {
+                obj->used = 0;
                 return;
             }
-            o->anim.unk0C++;
-            if (o->anim.unk0C == 2) {
-                o->unk00 = 0;
+            obj->anim.loopCount++;
+            if (obj->anim.loopCount == 2) {
+                obj->used = 0;
                 return;
             }
         }
         break;
     case 11:
-        if (d->unk01 == -1) {
-            if (d->unk02 < 0) {
-                o->unk00 = 0;
+        if (def->loopMark == -1) {
+            if (def->next < 0) {
+                obj->used = 0;
                 return;
             }
-            o->anim.unk0C++;
-            if (o->anim.unk0C == 2) {
-                o->anim.unk14 = 0x12;
-                o->anim.unk0C = 0;
+            obj->anim.loopCount++;
+            if (obj->anim.loopCount == 2) {
+                obj->anim.step = 0x12;
+                obj->anim.loopCount = 0;
                 goto apply;
             }
         }
         break;
     case 13:
-        if (d->unk02 < 0) {
-            o->unk00 = 0;
+        if (def->next < 0) {
+            obj->used = 0;
             return;
         }
         break;
     }
-    d = &o->anim.unk38[o->anim.unk14];
-    if (d->unk02 < 0) {
-        o->anim.unk00 = 0;
+    def = &obj->anim.defs[obj->anim.step];
+    if (def->next < 0) {
+        obj->anim.active = 0;
         return;
     }
-    o->anim.unk14 = d->unk02;
+    obj->anim.step = def->next;
 apply:
-    d = &o->anim.unk38[o->anim.unk14];
-    o->anim.unk08 = d->unk04;
-    dx = d->unk0A;
-    if (o->anim.unk10 != 0) {
+    def = &obj->anim.defs[obj->anim.step];
+    obj->anim.wait = def->wait;
+    dx = def->moveX;
+    if (obj->anim.flip != 0) {
         dx = -dx;
     }
-    dy = d->unk0C;
-    o->unk30 += dx;
-    o->unk34 += dy;
+    dy = def->moveY;
+    obj->x += dx;
+    obj->y += dy;
 }
 
-static u8 *Ending_AllocObject(void) {
-    u8 *p;
+/* Returns a free object slot of the work area, cleared, or NULL. */
+static u8 *Ending_AllocObject(void)
+{
+    u8 *slot;
     s32 i;
 
-    p = gEndWork->slots[0];
-    for (i = 0; i < 0x10; i++, p += 0x98) {
-        if (*(s32 *)p == 0) {
-            memset(p, 0, 0x98);
-            return p;
+    slot = gEndWork->slots[0];
+    for (i = 0; i < 0x10; i++, slot += 0x98) {
+        if (*(s32 *)slot == 0) {
+            memset(slot, 0, 0x98);
+            return slot;
         }
     }
     return NULL;
 }
 
-/* Starts the animated objects of a staff roll entry of type 4 when it comes
- * into view: unk5 picks the animation kinds, unk6 the place in gEndingObjPlaces
- * (x, y, flipped). */
-void Ending_SpawnObjects(EndRoll *r) {
-    EndObj *o;
-    s32 n;
-    s16 *pl;
+/*
+ * Starts the objects of a spawn entry of the roll (ENDING_ROLL_SPAWN) as it
+ * comes into view: entry->id picks the animation and movement kinds,
+ * entry->param the place in gEndingObjPlaces (x, y, flipped).
+ */
+void Ending_SpawnObjects(EndRoll *entry)
+{
+    EndObj *obj;
+    s32 order;
+    s16 *place;
 
-    o = (EndObj *)Ending_AllocObject();
-    if (o != NULL) {
-        pl = (s16 *)gEndingObjPlaces + r->unk6 * 3;
-        n = 0;
-        switch (r->unk5) {
+    obj = (EndObj *)Ending_AllocObject();
+    if (obj != NULL) {
+        place = (s16 *)gEndingObjPlaces + entry->param * 3;
+        order = 0;
+        switch (entry->id) {
         case 0:
-            Ending_InitObject(o, 0, r->x, r->y, 0);
-            o->unk08 = 0;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 0, entry->x, entry->y, 0);
+            obj->moveKind = 0;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         case 1:
-            Ending_InitObject(o, 1, r->x, r->y, 0);
-            o->unk08 = 0;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 1, entry->x, entry->y, 0);
+            obj->moveKind = 0;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         case 2:
-            Ending_InitObject(o, 2, r->x, r->y, 0);
-            o->unk08 = 0;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 2, entry->x, entry->y, 0);
+            obj->moveKind = 0;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         case 3:
-            Ending_InitObject(o, 4, r->x, r->y, n++);
-            o->unk30 = 640.0f;
-            o->unk34 = pl[1];
-            o->anim.unk10 = pl[2];
-            o = (EndObj *)Ending_AllocObject();
-            if (o == NULL) {
+            Ending_StartObject(obj, 4, entry->x, entry->y, order++);
+            obj->x = 640.0f;
+            obj->y = place[1];
+            obj->anim.flip = place[2];
+            obj = (EndObj *)Ending_AllocObject();
+            if (obj == NULL) {
                 break;
             }
-            Ending_InitObject(o, 5, r->x, r->y, n++);
-            o->unk30 = 640.0f;
-            o->unk34 = pl[1];
-            o->anim.unk10 = pl[2];
-            o = (EndObj *)Ending_AllocObject();
-            if (o == NULL) {
+            Ending_StartObject(obj, 5, entry->x, entry->y, order++);
+            obj->x = 640.0f;
+            obj->y = place[1];
+            obj->anim.flip = place[2];
+            obj = (EndObj *)Ending_AllocObject();
+            if (obj == NULL) {
                 break;
             }
-            Ending_InitObject(o, 3, r->x, r->y, n++);
-            o->unk30 = 640.0f;
-            o->unk34 = pl[1];
-            o->anim.unk10 = pl[2];
+            Ending_StartObject(obj, 3, entry->x, entry->y, order++);
+            obj->x = 640.0f;
+            obj->y = place[1];
+            obj->anim.flip = place[2];
             break;
         case 4:
-            Ending_InitObject(o, 6, r->x, r->y, 0);
-            o->unk08 = 2;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 6, entry->x, entry->y, 0);
+            obj->moveKind = 2;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         case 5:
-            Ending_InitObject(o, 7, r->x, r->y, 0);
-            o->unk08 = 1;
-            o->unk30 = *pl++;
-            pl++;
-            o->anim.unk10 = *pl;
-            o->unk34 = 448.0f;
+            Ending_StartObject(obj, 7, entry->x, entry->y, 0);
+            obj->moveKind = 1;
+            obj->x = *place++;
+            place++;
+            obj->anim.flip = *place;
+            obj->y = 448.0f;
             break;
         case 6:
-            Ending_InitObject(o, 8, r->x, r->y, 0);
-            o->unk08 = 0;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 8, entry->x, entry->y, 0);
+            obj->moveKind = 0;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         case 7:
-            Ending_InitObject(o, 9, r->x, r->y, 0);
-            o->unk08 = 6;
-            o->unk30 = *pl++;
-            pl++;
-            o->anim.unk10 = *pl;
-            o->unk34 = -48.0f;
+            Ending_StartObject(obj, 9, entry->x, entry->y, 0);
+            obj->moveKind = 6;
+            obj->x = *place++;
+            place++;
+            obj->anim.flip = *place;
+            obj->y = -48.0f;
             break;
         case 8:
-            Ending_InitObject(o, 0xA, r->x, r->y, 0);
-            o->unk08 = 7;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
-            if (o->anim.unk10 == 0) {
-                o->unk30 = 640.0f;
+            Ending_StartObject(obj, 0xA, entry->x, entry->y, 0);
+            obj->moveKind = 7;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
+            if (obj->anim.flip == 0) {
+                obj->x = 640.0f;
             } else {
-                o->unk30 = -o->unk40;
+                obj->x = -obj->w;
             }
             break;
         case 9:
-            Ending_InitObject(o, 0xB, r->x, r->y, 0);
-            o->unk08 = 8;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 0xB, entry->x, entry->y, 0);
+            obj->moveKind = 8;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         case 10:
-            Ending_InitObject(o, 0xB, r->x, r->y, 0);
-            o->unk08 = 9;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 0xB, entry->x, entry->y, 0);
+            obj->moveKind = 9;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         case 11:
-            Ending_InitObject(o, 0xD, r->x, r->y, 0);
-            o->unk08 = 0;
-            o->unk30 = *pl++;
-            o->unk34 = *pl++;
-            o->anim.unk10 = *pl;
+            Ending_StartObject(obj, 0xD, entry->x, entry->y, 0);
+            obj->moveKind = 0;
+            obj->x = *place++;
+            obj->y = *place++;
+            obj->anim.flip = *place;
             break;
         }
     }
 }
 
-/* Moves the 16 objects by kind (the steps of each kind's movement, with a
+/*
+ * Moves the objects by their movement kind (each kind's steps, with a
  * countdown in timer), frees those that are done or off the screen, then
- * animates the others. */
-void Ending_UpdateObjects(void) {
-    EndWork *w = gEndWork;
-    EndObj *o;
+ * animates the others. Within each kind the later steps' case labels sit
+ * inside the earlier steps' tests: a step falls through into the next on
+ * the frame it ends, as the game's code does.
+ */
+void Ending_MoveObjects(void)
+{
+    EndWork *work = gEndWork;
+    EndObj *obj;
     s32 i;
 
-    for (i = 0, o = (EndObj *)w->slots[0]; i < 16; i++, o++) {
-        if (o->unk00 == 0) {
+    for (i = 0, obj = (EndObj *)work->slots[0]; i < ENDING_OBJ_SLOTS; i++, obj++) {
+        if (obj->used == 0) {
             continue;
         }
-        switch (o->unk08) {
-        case 0:
-            switch (o->step) {
+        switch (obj->moveKind) {
+        case ENDING_MOVE_STAY:
+            switch (obj->step) {
             case 0:
-                o->timer = 300;
-                o->unk04 = 1;
-                o->step++;
+                obj->timer = 300;
+                obj->animating = 1;
+                obj->step++;
             case 1:
-                if (--o->timer == 0) {
-                    o->unk04 = 0;
-                    o->unk00 = 0;
+                if (--obj->timer == 0) {
+                    obj->animating = 0;
+                    obj->used = 0;
                 }
                 break;
             }
             break;
-        case 1:
-            switch (o->step) {
+        case ENDING_MOVE_RISE_WITH_ROLL:
+            switch (obj->step) {
             case 0:
-                o->unk04 = 1;
-                o->step++;
+                obj->animating = 1;
+                obj->step++;
             case 1:
-                o->unk34 -= w->unk20;
-                if (o->unk34 + o->unk42 < 0.0f) {
-                    o->unk04 = 0;
-                    o->unk00 = 0;
+                obj->y -= work->scrollSpeed;
+                if (obj->y + obj->h < 0.0f) {
+                    obj->animating = 0;
+                    obj->used = 0;
                 }
                 break;
             }
             break;
-        case 2:
-            switch (o->step) {
+        case ENDING_MOVE_BOB:
+            switch (obj->step) {
             case 0:
-                o->timer = 150;
-                o->unk04 = 1;
-                o->step++;
-                o->speed = 0.2f;
+                obj->timer = 150;
+                obj->animating = 1;
+                obj->step++;
+                obj->speed = 0.2f;
             case 1:
-                o->unk34 += o->speed;
-                if (--o->timer == 0) {
-                    o->timer = 150;
-                    o->speed = -0.2f;
-                    o->step++;
+                obj->y += obj->speed;
+                if (--obj->timer == 0) {
+                    obj->timer = 150;
+                    obj->speed = -0.2f;
+                    obj->step++;
             case 2:
-                    o->unk34 += o->speed;
-                    if (--o->timer == 0) {
-                        o->unk04 = 0;
-                        o->unk00 = 0;
+                    obj->y += obj->speed;
+                    if (--obj->timer == 0) {
+                        obj->animating = 0;
+                        obj->used = 0;
                     }
                 }
                 break;
             }
             break;
-        case 3:
-            switch (o->step) {
+        case ENDING_MOVE_WALK_LATE:
+            switch (obj->step) {
             case 0:
-                o->timer = 180;
-                o->unk04 = 0;
-                o->step++;
+                obj->timer = 180;
+                obj->animating = 0;
+                obj->step++;
             case 1:
-                if (--o->timer == 0) {
-                    o->unk04 = 1;
-                    o->step++;
-                    if (o->anim.unk10 == 0) {
-                        o->speed = -4.0f;
+                if (--obj->timer == 0) {
+                    obj->animating = 1;
+                    obj->step++;
+                    if (obj->anim.flip == 0) {
+                        obj->speed = -4.0f;
                     } else {
-                        o->speed = 4.0f;
+                        obj->speed = 4.0f;
                     }
             case 2:
-                    o->unk30 += o->speed;
-                    if (o->unk30 + o->unk40 < 0.0f) {
-                        o->unk04 = 0;
-                        o->unk00 = 0;
+                    obj->x += obj->speed;
+                    if (obj->x + obj->w < 0.0f) {
+                        obj->animating = 0;
+                        obj->used = 0;
                     }
                 }
                 break;
             }
             break;
-        case 4:
-            switch (o->step) {
+        case ENDING_MOVE_WALK:
+            switch (obj->step) {
             case 0:
-                o->unk04 = 1;
-                o->step++;
-                if (o->anim.unk10 == 0) {
-                    o->speed = -4.0f;
+                obj->animating = 1;
+                obj->step++;
+                if (obj->anim.flip == 0) {
+                    obj->speed = -4.0f;
                 } else {
-                    o->speed = 4.0f;
+                    obj->speed = 4.0f;
                 }
             case 1:
-                o->unk30 += o->speed;
-                if (o->unk30 + o->unk40 < 0.0f) {
-                    o->unk04 = 0;
-                    o->unk00 = 0;
+                obj->x += obj->speed;
+                if (obj->x + obj->w < 0.0f) {
+                    obj->animating = 0;
+                    obj->used = 0;
                 }
                 break;
             }
             break;
-        case 5:
-            switch (o->step) {
+        case ENDING_MOVE_WALK_SOON:
+            switch (obj->step) {
             case 0:
-                o->timer = 90;
-                o->unk04 = 0;
-                o->step++;
+                obj->timer = 90;
+                obj->animating = 0;
+                obj->step++;
             case 1:
-                if (--o->timer == 0) {
-                    o->unk04 = 1;
-                    o->step++;
-                    if (o->anim.unk10 == 0) {
-                        o->speed = -4.0f;
+                if (--obj->timer == 0) {
+                    obj->animating = 1;
+                    obj->step++;
+                    if (obj->anim.flip == 0) {
+                        obj->speed = -4.0f;
                     } else {
-                        o->speed = 4.0f;
+                        obj->speed = 4.0f;
                     }
             case 2:
-                    o->unk30 += o->speed;
-                    if (o->unk30 + o->unk40 < 0.0f) {
-                        o->unk04 = 0;
-                        o->unk00 = 0;
+                    obj->x += obj->speed;
+                    if (obj->x + obj->w < 0.0f) {
+                        obj->animating = 0;
+                        obj->used = 0;
                     }
                 }
                 break;
             }
             break;
-        case 6:
-            switch (o->step) {
+        case ENDING_MOVE_FALL:
+            switch (obj->step) {
             case 0:
-                o->unk04 = 1;
-                o->step++;
-                o->speed = 8.0f;
+                obj->animating = 1;
+                obj->step++;
+                obj->speed = 8.0f;
             case 1:
-                o->unk34 += o->speed;
-                if (o->unk34 + o->unk42 > 480.0f) {
-                    o->unk04 = 0;
-                    o->unk00 = 0;
+                obj->y += obj->speed;
+                if (obj->y + obj->h > 480.0f) {
+                    obj->animating = 0;
+                    obj->used = 0;
                 }
                 break;
             }
             break;
-        case 7:
-            switch (o->step) {
+        case ENDING_MOVE_FLY:
+            switch (obj->step) {
             case 0:
-                o->timer = 30;
-                o->unk04 = 1;
-                o->step++;
-                o->speed = 0.4f;
-                if (o->anim.unk10 == 0) {
-                    o->speed2 = -2.0f;
+                obj->timer = 30;
+                obj->animating = 1;
+                obj->step++;
+                obj->speed = 0.4f;
+                if (obj->anim.flip == 0) {
+                    obj->speedX = -2.0f;
                 } else {
-                    o->speed2 = 2.0f;
+                    obj->speedX = 2.0f;
                 }
             case 1:
-                o->unk30 += o->speed2;
-                o->unk34 += o->speed;
-                if (--o->timer != 0) {
-                    if (o->anim.unk10 == 0) {
-                        if (o->unk30 < -(o->unk40 * 2)) {
-                            o->unk04 = 0;
-                            o->unk00 = 0;
+                obj->x += obj->speedX;
+                obj->y += obj->speed;
+                if (--obj->timer != 0) {
+                    if (obj->anim.flip == 0) {
+                        if (obj->x < -(obj->w * 2)) {
+                            obj->animating = 0;
+                            obj->used = 0;
                         }
-                    } else if (o->unk30 >= 640.0f) {
-                        o->unk04 = 0;
-                        o->unk00 = 0;
+                    } else if (obj->x >= 640.0f) {
+                        obj->animating = 0;
+                        obj->used = 0;
                     }
                     break;
                 }
-                o->timer = 30;
-                o->speed = -0.4f;
-                o->step++;
+                obj->timer = 30;
+                obj->speed = -0.4f;
+                obj->step++;
             case 2:
-                o->unk30 += o->speed2;
-                o->unk34 += o->speed;
-                if (--o->timer != 0) {
-                    if (o->anim.unk10 == 0) {
-                        if (o->unk30 < -(o->unk40 * 2)) {
-                            o->unk04 = 0;
-                            o->unk00 = 0;
+                obj->x += obj->speedX;
+                obj->y += obj->speed;
+                if (--obj->timer != 0) {
+                    if (obj->anim.flip == 0) {
+                        if (obj->x < -(obj->w * 2)) {
+                            obj->animating = 0;
+                            obj->used = 0;
                         }
-                    } else if (o->unk30 >= 640.0f) {
-                        o->unk04 = 0;
-                        o->unk00 = 0;
+                    } else if (obj->x >= 640.0f) {
+                        obj->animating = 0;
+                        obj->used = 0;
                     }
                     break;
                 }
-                o->timer = 30;
-                o->speed = 0.4f;
-                o->step--;
+                obj->timer = 30;
+                obj->speed = 0.4f;
+                obj->step--;
                 break;
             }
             break;
-        case 8:
-            switch (o->step) {
+        case ENDING_MOVE_SINK:
+            switch (obj->step) {
             case 0:
-                o->unk04 = 1;
-                o->step++;
+                obj->animating = 1;
+                obj->step++;
             case 1:
-                o->unk34 += 1.2f;
-                if (o->unk34 >= 450.0f) {
-                    o->unk04 = 0;
-                    o->unk00 = 0;
+                obj->y += 1.2f;
+                if (obj->y >= 450.0f) {
+                    obj->animating = 0;
+                    obj->used = 0;
                 }
                 break;
             }
             break;
-        case 9:
-            switch (o->step) {
+        case ENDING_MOVE_RISE:
+            switch (obj->step) {
             case 0:
-                o->unk04 = 1;
-                o->step++;
+                obj->animating = 1;
+                obj->step++;
             case 1:
-                o->unk34 -= 1.2f;
-                if (o->unk34 + o->unk42 < 0.0f) {
-                    o->unk04 = 0;
-                    o->unk00 = 0;
+                obj->y -= 1.2f;
+                if (obj->y + obj->h < 0.0f) {
+                    obj->animating = 0;
+                    obj->used = 0;
                 }
                 break;
             }
             break;
         }
-        if (o->unk00 != 0 && o->step != 0) {
-            Ending_AnimateObject(o, i);
+        if (obj->used != 0 && obj->step != 0) {
+            Ending_AnimateObject(obj, i);
         }
     }
 }
 
 void Gfx_SetBlend(s32, s32);
-void TexRect_DrawRotated(TexRect *r, u16 angle); /* unit's own declaration: with the definition's void (TexRect *r, s32 angle) (sub_main/unk_363550.c), Ending_DrawObjects 1 of 198 words differ */
+void TexRect_DrawRotated(TexRect *r, u16 angle); /* unit's own declaration: the angle as u16 here; with the definition's s32 (sub_main/unk_363550.c), Ending_DrawObjects' code differs */
 
-/* Draws the 16 objects: the current step's cell (texture rectangle and
- * size, mirrored when flipped); kinds 8 and 13 are drawn rotated at the
- * places of gEndingObjPlaces2. */
-void Ending_DrawObjects(void) {
-    TexRect s;
-    EndObj *o;
-    EndDef *d;
-    EndPt *c;
-    s16 *r;
+/*
+ * Draws the objects: the current step's cell (texture rectangle and size,
+ * mirrored when flipped); animation kinds 8 and 13 are drawn rotated at the
+ * places of gEndingObjPlaces2.
+ */
+void Ending_DrawObjects(void)
+{
+    TexRect rect;
+    EndObj *obj;
+    EndDef *def;
+    EndPt *cellPt;
+    s16 *placeRow;
     s32 i;
-    s16 u;
-    s16 v;
-    s16 tw;
-    s16 th;
+    s16 texU;
+    s16 texV;
+    s16 texW;
+    s16 texH;
     s16 w;
-    s16 h;
+    s16 handle;
 
-    o = (EndObj *)gEndWork->slots[0];
-    for (i = 0; i < 16; i++, o++) {
-        if (o->unk00 == 0) {
+    obj = (EndObj *)gEndWork->slots[0];
+    for (i = 0; i < ENDING_OBJ_SLOTS; i++, obj++) {
+        if (obj->used == 0) {
             continue;
         }
-        d = &o->anim.unk38[o->anim.unk14];
-        c = (EndPt *)(d->unk14 + d->unk10 * 6);
+        def = &obj->anim.defs[obj->anim.step];
+        cellPt = (EndPt *)(def->cells + def->cell * 6);
         Gfx_SetBlend(4, 5);
-        Tex_Prepare(1, d->unk0E + 0xA3);
-        Tex_Bind(d->unk0E + 0xA3);
-        Gs_SetState(0x63, 0);
-        u = c->x;
-        v = c->y;
-        tw = (++c)->x;
-        th = c->y;
-        w = (++c)->x;
-        h = c->y;
-        if (o->anim.unk34 == 8 || o->anim.unk34 == 13) {
-            s.w = w;
-            s.h = h;
-            s.color = -1;
-            if (o->anim.unk10 == 0) {
-                s.uv0.u = u;
-                s.uv1.u = s.uv0.u + tw - 1;
+        Tex_Prepare(1, def->tex + 0xA3);
+        Tex_Bind(def->tex + 0xA3);
+        Gs_SetState(RS_TEX_FILTER, 0);
+        texU = cellPt->x;
+        texV = cellPt->y;
+        texW = (++cellPt)->x;
+        texH = cellPt->y;
+        w = (++cellPt)->x;
+        handle = cellPt->y;
+        if (obj->anim.kind == 8 || obj->anim.kind == 13) {
+            rect.w = w;
+            rect.h = handle;
+            rect.color = -1;
+            if (obj->anim.flip == 0) {
+                rect.uv0.u = texU;
+                rect.uv1.u = rect.uv0.u + texW - 1;
             } else {
-                s.uv1.u = u;
-                s.uv0.u = s.uv1.u + tw - 1;
+                rect.uv1.u = texU;
+                rect.uv0.u = rect.uv1.u + texW - 1;
             }
-            s.uv0.v = v;
-            s.uv1.v = s.uv0.v + th - 1;
-            r = (s16 *)gEndingObjPlaces2 + d->unk03 * 3;
-            s.x = *r++;
-            s.y = *r++;
-            TexRect_DrawRotated(&s, *r);
+            rect.uv0.v = texV;
+            rect.uv1.v = rect.uv0.v + texH - 1;
+            placeRow = (s16 *)gEndingObjPlaces2 + def->place * 3;
+            rect.x = *placeRow++;
+            rect.y = *placeRow++;
+            TexRect_DrawRotated(&rect, *placeRow);
         } else {
-            if (o->anim.unk10 == 0) {
-                s.x = (s16)o->unk30 + d->unk06;
+            if (obj->anim.flip == 0) {
+                rect.x = (s16)obj->x + def->offX;
             } else {
-                s.x = (s16)o->unk30 - (w + d->unk06);
+                rect.x = (s16)obj->x - (w + def->offX);
             }
-            s.y = (s16)o->unk34 + d->unk08;
-            s.w = w;
-            s.h = h;
-            s.color = -1;
-            if (o->anim.unk10 == 0) {
-                s.uv0.u = u;
-                s.uv1.u = s.uv0.u + tw - 1;
+            rect.y = (s16)obj->y + def->offY;
+            rect.w = w;
+            rect.h = handle;
+            rect.color = -1;
+            if (obj->anim.flip == 0) {
+                rect.uv0.u = texU;
+                rect.uv1.u = rect.uv0.u + texW - 1;
             } else {
-                s.uv1.u = u;
-                s.uv0.u = s.uv1.u + tw - 1;
+                rect.uv1.u = texU;
+                rect.uv0.u = rect.uv1.u + texW - 1;
             }
-            s.uv0.v = v;
-            s.uv1.v = s.uv0.v + th - 1;
-            Sprite_Draw((struct Sprite *)&s);
+            rect.uv0.v = texV;
+            rect.uv1.v = rect.uv0.v + texH - 1;
+            Sprite_Draw((struct Sprite *)&rect);
         }
     }
 }
@@ -1312,62 +1429,66 @@ extern s32 gDispWidth;
 extern s32 gDispHeight;
 extern s32 gSysFrameMode;
 extern u32 gRenderFlags;
-extern f32 gSysZMax; /* read through `*(f32 *)&gSysZMax`: by name, Ending_DrawSpriteF changes */
+extern f32 gSysZMax; /* read through `*(f32 *)&gSysZMax`: by name, Ending_DrawRectF's code differs */
 
-/* Sprite_Draw with the position given in floats (scaled like the width). */
-void Ending_DrawSpriteF(TexRect *s, f32 fx, f32 fy)
+/*
+ * Draws a texture rectangle (as Sprite_Draw does) at a position given in
+ * floats: x and the width scaled to the display's width, y halved in field
+ * mode, half a texel added when the textures are not filtered.
+ */
+void Ending_DrawRectF(TexRect *rect, f32 posX, f32 posY)
 {
-    u64 *p;
+    u64 *pkt;
     s32 x0;
     s32 y0;
     s32 x1;
     s32 y1;
-    s32 w;
-    s32 h;
+    s32 width;
+    s32 height;
     s32 u1;
     s32 u0;
     s32 v0;
     s32 v1;
-    s32 ox;
-    s32 oy;
+    s32 offX;
+    s32 offY;
     f32 scale;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return;
     }
-    ox = ((0x1000 - gDispWidth) / 2) << 4;
-    oy = ((0x1000 - gDispHeight) / 2) << 4;
+    offX = ((0x1000 - gDispWidth) / 2) << 4;
+    offY = ((0x1000 - gDispHeight) / 2) << 4;
     scale = (f32)gDispWidth / 640.0f;
-    x0 = 16.0f * (fx * scale);
-    y0 = 16.0f * fy;
-    w = 16.0f * (s->w * scale);
-    h = s->h << 4;
+    x0 = 16.0f * (posX * scale);
+    y0 = 16.0f * posY;
+    width = 16.0f * (rect->w * scale);
+    height = rect->h << 4;
     if (gSysFrameMode == 0) {
         y0 >>= 1;
-        h >>= 1;
+        height >>= 1;
     }
-    x0 += ox;
-    x1 = x0 + w;
-    y0 += oy;
-    y1 = y0 + h;
+    x0 += offX;
+    x1 = x0 + width;
+    y0 += offY;
+    y1 = y0 + height;
     Mem_CopyQwords(gEndingSpriteGif, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(s->color, 0);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    u0 = s->uv0.u << 4;
-    u1 = s->uv1.u << 4;
-    v0 = s->uv0.v << 4;
-    v1 = s->uv1.v << 4;
+    pkt = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(rect->color, 0);
+    *pkt++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    u0 = rect->uv0.u << 4;
+    u1 = rect->uv1.u << 4;
+    v0 = rect->uv0.v << 4;
+    v1 = rect->uv1.v << 4;
     if (!(gRenderFlags & 0x10000)) {
         u0 += 8;
         v0 += 8;
         u1 += 8;
         v1 += 8;
     }
-    *p++ = GS_UV(u0, v0);
-    *p++ = GS_XYZ(x0, y0, (u32)*(f32 *)&gSysZMax);
-    *p++ = GS_UV(u1, v1);
-    *p++ = GS_XYZ(x1, y1, (u32)*(f32 *)&gSysZMax);
+    *pkt++ = GS_UV(u0, v0);
+    *pkt++ = GS_XYZ(x0, y0, (u32)*(f32 *)&gSysZMax);
+    *pkt++ = GS_UV(u1, v1);
+    *pkt++ = GS_XYZ(x1, y1, (u32)*(f32 *)&gSysZMax);
     Prim_SendPacket((u32 *)SCRATCHPAD);
 }

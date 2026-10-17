@@ -99,7 +99,7 @@ typedef struct RecordMenu {
     /* 0x000 */ WinSlide win;
     /* 0x008 */ u8 unk8[8];
     /* 0x010 */ u32 itemBits[0x20]; /* items obtained (gSave.itemBits, a member's from Records_RecvMsg2C; ItemBits_Test) */
-    /* 0x090 */ u32 titleBits[8];   /* a bit per gHunterTitles entry (gSave.unk3660, a member's from Records_RecvMsg2D; Bits32_Test, Records_TallyTitles) */
+    /* 0x090 */ u32 titleBits[8];   /* a bit per gHunterTitles entry (gSave.titles, a member's from Records_RecvMsg2D; Bits32_Test, Records_TallyTitles) */
     /* 0x0B0 */ u16 sizeMax[0x80];  /* per monster (gSave.sizeMax; a member's from Records_RecvMsg2E kind 0) */
     /* 0x1B0 */ u16 sizeMin[0x80];  /* per monster (gSave.sizeMin; Records_RecvMsg2E kind 1) */
     /* 0x2B0 */ u16 hunts[0x80];    /* per monster: gSave.hunted + captured (Records_RecvMsg2E kind 2) */

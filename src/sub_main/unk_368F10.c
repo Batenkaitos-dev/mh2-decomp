@@ -1,14 +1,16 @@
 /*
- * sub_main 0x368F10-0x36B5B0:
- * - render-state shortcuts over Gs_SetState that skip unchanged values;
- * - the text layer: printf-style drawing through the font library at
- *   0x2E5E50-0x2E6DE0 (Font_Printf is its printf, Str_Length strlen),
- *   control codes introduced by '~' (Text_ParseCode), the text renderer
- *   Text_PrintCodes, drop-shadow text, Shift-JIS aware scanning;
- * - key repeat, applying the options, and the game-state reset
- *   (Game_ResetSubsystems).
- * The libc used: sprintf sprintf, vsnprintf vsnprintf, strchr
- * strchr, strcpy strcpy, strncat strncat (probably).
+ * The render-state shortcuts and the text layer (sub_main 0x368F10-0x36B5B0):
+ * - Gfx_SetBlend, Gfx_SetTexFilter, Tex_Bind and Gfx_SetBlendOp set a render
+ *   state (render_state.h) from a table by index, and skip it when the index
+ *   cached in gSysSettings hasn't changed; Gfx_ResetRenderStates sets the
+ *   defaults;
+ * - the text layer over the font library of unk_2E3940.c (Font_Printf is
+ *   its printf): printf-style drawing, the '~' control codes (text.h:
+ *   colours, inserted numbers, icons queued per layer in gTextIcons, hidden
+ *   parts) read by Text_ParseCode and drawn by Text_PrintCodes, text with a
+ *   drop shadow, and Shift-JIS aware scanning (Text_NextChar);
+ * - the pads' key repeat, applying the options, and the reset of the game's
+ *   subsystems (Game_ResetSubsystems) with the motion table's frees.
  */
 #include "common.h"
 #include "model.h"
@@ -17,15 +19,12 @@
 #include "syssave.h"
 
 #include "ee_stdarg.h"
-
-/* A box queued on a text layer (8 bytes; Text_AddBox). */
-typedef struct TextBox {
-    s16 x;
-    s16 y;
-    s16 w;
-    u8 unk6;
-    u8 unk7;            /* 0xFF */
-} TextBox;
+#include "render_state.h"
+#include "overlay.h"
+#include "text.h"
+#include "net_menu.h"
+#include "motion.h"
+#include "pad.h"
 
 /* Key repeat state of a pad (Pad_KeyRepeat). */
 typedef struct KeyRepeat {
@@ -39,16 +38,14 @@ extern s16 gTexPrepLast;
 extern s32 gDrawFrameDepth;
 extern u32 gBlendModes[];
 extern u32 gBlendModes2[];
-extern u32 D_0043C978[];
+extern u32 gTexFilterModes[];
 extern u32 gBlendOps[];
 extern u32 gTextCodeColors[];
-extern u32 gTextColors[];       /* text colours 0x20..0x34 */
+extern u32 gTextColors[];       /* text colours TEXT_COLOR_RGB.. */
 extern u32 gTexHandles[];
 extern s32 gTextOff;          /* nonzero: text drawing is off */
-extern s16 gTextBoxCount[7];       /* boxes queued per text layer */
-extern TextBox gTextBoxes[7][8];
-extern s32 D_006AEFA8;
-extern s32 D_006AEFD8;
+extern s16 gTextIconCount[TEXT_LAYERS];
+extern Icon gTextIcons[TEXT_LAYERS][TEXT_LAYER_ICONS];
 extern KeyRepeat gKeyRepeat[2];
 extern s16 gKeyRepeatDelay[2];
 extern u8 gMemFileBuf[];
@@ -102,12 +99,12 @@ char *strchr(char *s, s32 c);
 char *strcpy(char *dst, char *src);
 s16 Font_GetCharH(void);
 s32 Font_GetHalfWidth(void);
-s32 FontCache_GetUnk5E(void);
+s32 Font_IsLineGapOn(void);
 /* unit's own declaration: s16 (the definition, unk_2E3940.c, returns s32: (s16) of a u8, 0-255); with s32, in every form tried, Text_PrintCodes sign-extends the value before y += (2 more words) */
-s16 FontCache_GetUnk5F(void);
+s16 Font_GetLineGap(void);
 void strncat(char *dst, u8 *src, s32 n);
-void FontCache_SetUnk5E(u8 v);
-void FontCache_SetUnk5F(s32 a);
+void Font_SetLineGapOn(u8 on);
+void Font_SetLineGap(s32 lineGap);
 s32 Str_Length(char *s);
 void Font_Printf(char *fmt, ...);
 void Font_DrawPage(s32 layer);
@@ -151,6 +148,8 @@ void Motion_FreeAll(void);
 s32 Text_CountChars(char *s);
 void Text_FormatVar(void *dst, s16 kind);
 
+/* Starts a frame's drawing: packets may be built, the texture preparation
+ * counters restart, and the nesting depth goes up. */
 void Draw_BeginFrame(void)
 {
     Packet_SetMode1Ok();
@@ -166,32 +165,36 @@ void Draw_EndFrame(void)
     gDrawFrameDepth--;
 }
 
-/* Sets render state 0x5E from two table entries, when either changes. */
-void Gfx_SetBlend(s32 a, s32 b)
+/* Sets RS_BLEND to the two tables' entries ORed (gBlendModes[mode],
+ * gBlendModes2[mode2]), when either index changes. */
+void Gfx_SetBlend(s32 modeA, s32 modeB)
 {
-    if (gSysSettings.blendA != a || gSysSettings.blendB != b) {
-        gSysSettings.blendA = a;
-        gSysSettings.blendB = b;
-        Gs_SetState(0x5E, gBlendModes[a] | gBlendModes2[b]);
+    if (gSysSettings.blendA != modeA || gSysSettings.blendB != modeB) {
+        gSysSettings.blendA = modeA;
+        gSysSettings.blendB = modeB;
+        Gs_SetState(RS_BLEND, gBlendModes[modeA] | gBlendModes2[modeB]);
     }
 }
 
-void Gfx_SetState63(s32 a)
+/* Sets RS_TEX_FILTER from gTexFilterModes (0 filtered, 1 not), when the
+ * index changes. */
+void Gfx_SetTexFilter(s32 mode)
 {
-    if (gSysSettings.state63 != a) {
-        gSysSettings.state63 = a;
-        Gs_SetState(0x63, D_0043C978[a]);
+    if (gSysSettings.texFilter != mode) {
+        gSysSettings.texFilter = mode;
+        Gs_SetState(RS_TEX_FILTER, gTexFilterModes[mode]);
     }
 }
 
-void Tex_Bind(s32 i)
+/* Binds texture slot `slot` (gTexHandles) and remembers it. */
+void Tex_Bind(s32 slot)
 {
-    gSysSettings.boundTex = i;
-    Gs_SetState(4, gTexHandles[i]);
+    gSysSettings.boundTex = slot;
+    Gs_SetState(RS_TEXTURE, gTexHandles[slot]);
 }
 
 /* Default render states (the fog ones only when partial is 0) and the
- * cached values of Gfx_SetBlend, Gfx_SetState63, Tex_Bind and
+ * cached values of Gfx_SetBlend, Gfx_SetTexFilter, Tex_Bind and
  * Gfx_SetBlendOp. */
 void Gfx_ResetRenderStates(s32 partial)
 {
@@ -199,35 +202,39 @@ void Gfx_ResetRenderStates(s32 partial)
     f32 fogFar = 30000.0f;
 
     if (partial == 0) {
-        Gs_SetState(0xE, 0);
+        Gs_SetState(RS_COLOR, 0);
         Gs_SetState(1, 0x200);
         Gs_SetState(0x15, 2);
-        Gs_SetState(0xF, 0x80FFFFFF);
-        Gs_SetState(0x10, *(u32 *)&fogNear);
-        Gs_SetState(0x11, *(u32 *)&fogFar);
-        Gs_SetState(0x5F, 4);
+        Gs_SetState(RS_FOG_COLOR, 0x80FFFFFF);
+        Gs_SetState(RS_FOG_NEAR, *(u32 *)&fogNear);
+        Gs_SetState(RS_FOG_FAR, *(u32 *)&fogFar);
+        Gs_SetState(RS_ALPHA_TEST, RS_CMP_GREATER);
     }
     gSysSettings.blendOp = 0;
     gSysSettings.blendA = 4;
     gSysSettings.blendB = 5;
-    gSysSettings.state63 = 1;
+    gSysSettings.texFilter = 1;
     gSysSettings.unk3D = 0x80;
-    gSysSettings.boundTex = 0xFFFF;
+    gSysSettings.boundTex = 0xFFFF; /* none */
     gSysSettings.unk3E = 1;
-    Gs_SetState(0x5E, 0x32);
-    Gs_SetState(0x63, 0);
+    Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
+    Gs_SetState(RS_TEX_FILTER, 0);
     Gs_SetState(0xD, 0);
-    Gs_SetState(0x60, 0);
+    Gs_SetState(RS_ALPHA_REF, 0);
 }
 
-void Gfx_SetBlendOp(s32 a)
+/* Sets render state 0xD (which of Gs_SetAlpha's tables RS_BLEND reads)
+ * from gBlendOps, when the index changes. */
+void Gfx_SetBlendOp(s32 opIndex)
 {
-    if (gSysSettings.blendOp != a) {
-        gSysSettings.blendOp = a;
-        Gs_SetState(0xD, gBlendOps[a]);
+    if (gSysSettings.blendOp != opIndex) {
+        gSysSettings.blendOp = opIndex;
+        Gs_SetState(0xD, gBlendOps[opIndex]);
     }
 }
 
+/* Empties the draw lists: the sorted ordering tables (64, 32, 16 and 8
+ * entries) and the single lists of the stage, the sky and the text. */
 void FreeList_InitAll(void)
 {
     FreeList_Init(0x40, gDrawOtSorted);
@@ -250,35 +257,39 @@ void Text_Init(void)
     Font_Init(0);
 }
 
+/* Turns text drawing back on and empties every layer's icon queue. */
 void Text_Reset(void)
 {
     TextObj_Reset();
     gTextOff = 0;
-    gTextBoxCount[0] = 0;
-    gTextBoxCount[1] = 0;
-    gTextBoxCount[2] = 0;
-    gTextBoxCount[3] = 0;
-    gTextBoxCount[4] = 0;
-    gTextBoxCount[5] = 0;
-    gTextBoxCount[6] = 0;
+    gTextIconCount[0] = 0;
+    gTextIconCount[1] = 0;
+    gTextIconCount[2] = 0;
+    gTextIconCount[3] = 0;
+    gTextIconCount[4] = 0;
+    gTextIconCount[5] = 0;
+    gTextIconCount[6] = 0;
 }
 
+/* Draws the font's pages up to the current one, then clears the current
+ * one. */
 void Text_FlushPages(void)
 {
-    s32 n = Font_GetPage();
+    s32 page = Font_GetPage();
     s32 i;
 
-    for (i = 0; i <= n; i++) {
+    for (i = 0; i <= page; i++) {
         Font_DrawPage(i);
     }
-    Font_ClearPage(n);
+    Font_ClearPage(page);
 }
 
+/* Draws every page, then turns text drawing off (gTextOff). */
 void Text_DrawAllAndStop(void)
 {
     s16 i;
 
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < TEXT_LAYERS; i++) {
         Font_DrawPage(i);
     }
     gTextOff = 1;
@@ -294,23 +305,24 @@ void Text_DrawCurrentPage(void)
     Font_DrawPage(Font_GetPage());
 }
 
-void Text_DrawBoxes(s32 layer)
+/* Draws the icons queued on a layer (Text_AddIcon). */
+void Text_DrawIcons(s32 layer)
 {
-    if (gTextBoxCount[layer] != 0) {
-        Draw_Icons((struct Icon *)gTextBoxes[layer], gTextBoxCount[layer]);
+    if (gTextIconCount[layer] != 0) {
+        Draw_Icons(gTextIcons[layer], gTextIconCount[layer]);
     }
 }
 
 /* printf to the screen (control codes allowed; Text_DrawColored). */
 void Text_PrintfColored(const char *fmt, ...)
 {
-    char buf[0x400];
-    va_list ap;
+    char buf[TEXT_BUF_SIZE];
+    va_list args;
 
     if (gTextOff == 0) {
-        va_start(ap, fmt);
-        vsnprintf(buf, 0x3FF, fmt, ap);
-        buf[0x3FF] = 0;
+        va_start(args, fmt);
+        vsnprintf(buf, TEXT_BUF_SIZE - 1, fmt, args);
+        buf[TEXT_BUF_SIZE - 1] = 0;
         Text_DrawColored(buf);
     }
 }
@@ -318,14 +330,14 @@ void Text_PrintfColored(const char *fmt, ...)
 /* printf at (x, y) in colour index color. */
 void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...)
 {
-    char buf[0x400];
-    va_list ap;
+    char buf[TEXT_BUF_SIZE];
+    va_list args;
 
     if (gTextOff == 0) {
         Font_SetPos(x, y);
         Text_SetColor(color);
-        va_start(ap, fmt);
-        vsnprintf(buf, 0x400, fmt, ap);
+        va_start(args, fmt);
+        vsnprintf(buf, TEXT_BUF_SIZE, fmt, args);
         Font_Printf("%s", buf);
     }
 }
@@ -341,6 +353,8 @@ void Text_DrawLines(s16 x, s16 y, char **lines, s16 dy)
     }
 }
 
+/* Draws a list of strings (ended by NULL) with colour codes, one per line
+ * of dy. */
 void Text_DrawLinesColored(s16 x, s16 y, char **lines, s16 dy)
 {
     while (*lines != NULL) {
@@ -351,35 +365,38 @@ void Text_DrawLinesColored(s16 x, s16 y, char **lines, s16 dy)
     }
 }
 
+/* Writes the number a ~A code inserts (TEXT_VAR_*) to dst, in full-width
+ * digits; dst is left alone for another kind. */
 void Text_FormatVar(void *dst, s16 kind)
 {
     char buf[0x80];
 
     switch (kind) {
-    case 0:
-        sprintf(buf, "%d", D_006AEFA8 + 1);
+    case TEXT_VAR_CARD_SLOT:
+        sprintf(buf, "%d", gCardMenu.slot + 1);
         Sjis_Widen(buf, dst);
         break;
-    case 1:
-        sprintf(buf, "%d", D_006AEFD8);
+    case TEXT_VAR_CARD_BLOCKS:
+        sprintf(buf, "%d", gCardMenu.fileBlocks);
         Sjis_Widen(buf, dst);
         break;
     }
 }
 
-/* Queues a box on the current text layer (at most 8). */
-void Text_AddBox(s16 x, s16 y, s16 w, s16 c)
+/* Queues icon `kind` of the given size at (x, y) on the current text
+ * layer, opaque; a layer takes at most TEXT_LAYER_ICONS. */
+void Text_AddIcon(s16 x, s16 y, s16 size, s16 kind)
 {
     s32 layer = Font_GetPage();
-    s16 n = gTextBoxCount[layer];
+    s16 count = gTextIconCount[layer];
 
-    if (n < 8) {
-        gTextBoxes[layer][n].x = x;
-        gTextBoxes[layer][n].y = y;
-        gTextBoxes[layer][n].w = w;
-        gTextBoxes[layer][n].unk6 = c;
-        gTextBoxes[layer][n].unk7 = 0xFF;
-        gTextBoxCount[layer]++;
+    if (count < TEXT_LAYER_ICONS) {
+        gTextIcons[layer][count].x = x;
+        gTextIcons[layer][count].y = y;
+        gTextIcons[layer][count].size = size;
+        gTextIcons[layer][count].kind = kind;
+        gTextIcons[layer][count].alpha = 0xFF;
+        gTextIconCount[layer]++;
     }
 }
 
@@ -394,91 +411,94 @@ void Text_AddBox(s16 x, s16 y, s16 w, s16 c)
     }
 
 /*
- * Parses the control code at s ('~' then a letter) and returns the text
- * after it. mode 0 gives the code: 0x100 | n for ~Cnn (colour), 0x200 | n for
- * ~Ann (a number inserted by Text_FormatVar), 0x400 | n for ~Bnn, 0x800 for
- * ~%; modes 1 and 2 give the code's width and character count instead.
+ * Parses the control code at s ('~' then a letter, text.h) and returns the
+ * text after it. Mode TEXT_PARSE_CODE gives the code: TEXT_CODE_COLOR | n
+ * for ~Cnn, TEXT_CODE_VAR | n for ~Ann, TEXT_CODE_ICON | n for ~Bnn,
+ * TEXT_CODE_HIDE for ~%, and 0 for ~~ or an unknown code. Modes
+ * TEXT_PARSE_WIDTH and TEXT_PARSE_CHARS give what the code adds to the
+ * string's displayed length and the characters it stands for.
  */
-char *Text_ParseCode(char *s, s16 *code, s16 mode)
+char *Text_ParseCode(char *text, s16 *code, s16 mode)
 {
     char buf[0x80];
-    s16 n;
+    s16 num;
 
     *code = 0;
-    s++;
-    switch (*s) {
+    text++;
+    switch (*text) {
     case '~':
         switch (mode) {
         case 0:
             *code = 0;
             break;
         case 1:
-            s++;
+            text++;
             *code = -1;
             break;
         case 2:
-            s++;
+            text++;
             *code = 1;
             break;
         }
         break;
-    /* the game reads a register it never set: n is a1, which holds code (the pointer) when no digit follows ~C, ~A or ~B */
+    /* n is left unset when no digit follows ~C, ~A or ~B: the game then
+     * uses whatever its register held (the code pointer) */
     case 'C':
-        s++;
+        text++;
         switch (mode) {
-        case 0:
-            READ_NUM(s, n);
-            *code = n | 0x100;
+        case TEXT_PARSE_CODE:
+            READ_NUM(text, num);
+            *code = num | TEXT_CODE_COLOR;
             break;
         case 1:
-            s += 2;
+            text += 2;
             *code = -4;
             break;
         case 2:
             *code = 0;
-            s += 2;
+            text += 2;
             break;
         }
         break;
     case 'A':
-        s++;
-        READ_NUM(s, n);
+        text++;
+        READ_NUM(text, num);
         switch (mode) {
-        case 0:
-            *code = n | 0x200;
+        case TEXT_PARSE_CODE:
+            *code = num | TEXT_CODE_VAR;
             break;
         case 1:
-            Text_FormatVar(buf, n);
+            Text_FormatVar(buf, num);
             *code = Str_Length(buf) - 4;
             break;
         case 2:
-            Text_FormatVar(buf, n);
+            Text_FormatVar(buf, num);
             *code = Text_CountChars(buf);
             break;
         }
         break;
     case 'B':
-        s++;
+        text++;
         switch (mode) {
-        case 0:
-            READ_NUM(s, n);
-            *code = n | 0x400;
+        case TEXT_PARSE_CODE:
+            READ_NUM(text, num);
+            *code = num | TEXT_CODE_ICON;
             break;
         case 1:
-            s += 2;
+            text += 2;
             *code = -2;
             break;
         case 2:
-            s += 2;
+            text += 2;
             *code = 1;
             break;
         }
         break;
     case '%':
-        s++;
+        text++;
         switch (mode) {
-        case 0:
-            *code = 0x800;
+        case TEXT_PARSE_CODE:
+            *code = TEXT_CODE_HIDE;
             break;
         case 1:
             *code = -2;
@@ -502,416 +522,425 @@ char *Text_ParseCode(char *s, s16 *code, s16 mode)
         }
         break;
     }
-    return s;
+    return text;
 }
 
 /* printf through the text renderer (Text_PrintCodes). */
 void Text_Printf(const char *fmt, ...)
 {
-    char buf[0x400];
-    va_list ap;
+    char buf[TEXT_BUF_SIZE];
+    va_list args;
 
     if (gTextOff == 0) {
-        va_start(ap, fmt);
-        vsnprintf(buf, 0x400, fmt, ap);
+        va_start(args, fmt);
+        vsnprintf(buf, TEXT_BUF_SIZE, fmt, args);
         Text_PrintCodes(-1, "%s", buf);
     }
 }
 
-void Text_PrintfStyled(s32 a, const char *fmt, ...)
+/* printf through the text renderer, with lineGap more between lines. */
+void Text_PrintfStyled(s32 lineGap, const char *fmt, ...)
 {
-    char buf[0x400];
-    va_list ap;
+    char buf[TEXT_BUF_SIZE];
+    va_list args;
 
     if (gTextOff == 0) {
-        va_start(ap, fmt);
-        vsnprintf(buf, 0x400, fmt, ap);
-        FontCache_SetUnk5E(1);
-        FontCache_SetUnk5F(a);
+        va_start(args, fmt);
+        vsnprintf(buf, TEXT_BUF_SIZE, fmt, args);
+        Font_SetLineGapOn(1);
+        Font_SetLineGap(lineGap);
         Text_PrintCodes(-1, "%s", buf);
-        FontCache_SetUnk5E(0);
+        Font_SetLineGapOn(0);
     }
 }
 
 /*
  * The text renderer: prints fmt with the control codes of Text_ParseCode
- * (~Cnn colour, ~Ann inserted number, ~Bnn box, ~% skip until the next ~%),
- * half-width characters, newlines, and at most max characters (-1: no limit).
- * The output alternates between two buffers so that ~A can splice text in.
+ * (~Cnn colour, ~Ann inserted number, ~Bnn icon, ~% hides the text until
+ * the next ~%), half-width characters, newlines, and at most max characters
+ * (-1: no limit). Each run of text between codes goes to Font_Printf; the
+ * runs alternate between two buffers so that ~A can splice its number in
+ * front of the rest of the string.
  */
 void Text_PrintCodes(s16 max, const char *fmt, ...)
 {
-    u8 *prev;
-    s32 c7;
-    s16 bi;
-    u8 *p;
+    u8 *codeStart;
+    s32 codeValue;
+    s16 bufIndex;
+    u8 *src;
     s16 count;
     s16 len;
     s16 x;
     s16 y;
-    s16 x0;
+    s16 lineX;
     s16 skip;
-    s16 kind;
-    s16 w;
+    s16 charKind;
+    s16 advance;
     s16 code;
-    u16 col;
-    u8 **t;
-    u8 *q;
-    u8 c;
-    va_list ap;
+    u16 color;
+    u8 **out;
+    u8 *after;
+    u8 byte;
+    va_list args;
     u8 *bufs[2] = {0};
-    u8 buf1[0x400];
-    u8 buf2[0x400];
+    u8 firstBuf[TEXT_BUF_SIZE];
+    u8 secondBuf[TEXT_BUF_SIZE];
 
-    p = buf1;
-    bufs[1] = buf2;
-    bi = 0;
-    bufs[0] = p;
+    src = firstBuf;
+    bufs[1] = secondBuf;
+    bufIndex = 0;
+    bufs[0] = src;
     skip = 0;
     if (gTextOff == 0) {
-        va_start(ap, fmt);
-        vsnprintf((char *)buf1, 0x400, fmt, ap);
-        buf1[0x3FF] = 0;
-        x0 = Font_GetX();
+        va_start(args, fmt);
+        vsnprintf((char *)firstBuf, TEXT_BUF_SIZE, fmt, args);
+        firstBuf[TEXT_BUF_SIZE - 1] = 0;
+        lineX = Font_GetX();
         x = Font_GetX();
         y = Font_GetY();
         count = 0;
         len = 0;
         do {
-            c = *p;
-            if (c == 0) {
+            byte = *src;
+            if (byte == 0) {
                 break;
             }
-            if (c == '~') {
+            if (byte == '~') {
                 if (skip) {
-                    q = (u8 *)Text_ParseCode((char *)p, &code, 0);
-                    switch (code & 0xFF00) {
-                    case 0x800:
-                        count += q - p;
-                        p = q;
+                    after = (u8 *)Text_ParseCode((char *)src, &code, TEXT_PARSE_CODE);
+                    switch (code & TEXT_CODE_KIND) {
+                    case TEXT_CODE_HIDE:
+                        count += after - src;
+                        src = after;
                         skip = 0;
                         continue;
                     }
                     goto normal;
                 }
-                bufs[bi ^ 1][len] = 0;
-                Font_Printf("%s", bufs[bi ^ 1]);
+                bufs[bufIndex ^ 1][len] = 0;
+                Font_Printf("%s", bufs[bufIndex ^ 1]);
                 len = 0;
                 Font_SetPos(x, y);
-                prev = p;
-                p = (u8 *)Text_ParseCode((char *)p, &code, 0);
-                c7 = code;
-                count += p - prev;
-                switch (c7 & 0xFF00) {
+                codeStart = src;
+                src = (u8 *)Text_ParseCode((char *)src, &code, TEXT_PARSE_CODE);
+                codeValue = code;
+                count += src - codeStart;
+                switch (codeValue & TEXT_CODE_KIND) {
                 case 0:
                     break;
-                case 0x100:
-                    col = (s16)(c7 & 0xFF);
-                    if (col >= 0x10) {
-                        col += 0x20;
+                case TEXT_CODE_COLOR:
+                    /* ~C00-~C15: the font's colours; ~C16 on: gTextColors from its 0x10th */
+                    color = (s16)(codeValue & TEXT_CODE_ARG);
+                    if (color >= 0x10) {
+                        color += TEXT_COLOR_RGB;
                     }
-                    Text_SetColor(col);
+                    Text_SetColor(color);
                     continue;
-                case 0x200:
-                    bi ^= 1;
-                    Text_FormatVar(bufs[bi], c7 & 0xFF);
-                    strncat((char *)bufs[bi], p, 0x400 - Str_Length((char *)bufs[bi]));
-                    p = bufs[bi];
+                case TEXT_CODE_VAR:
+                    bufIndex ^= 1;
+                    Text_FormatVar(bufs[bufIndex], codeValue & TEXT_CODE_ARG);
+                    strncat((char *)bufs[bufIndex], src, TEXT_BUF_SIZE - Str_Length((char *)bufs[bufIndex]));
+                    src = bufs[bufIndex];
                     count = 0;
                     continue;
-                case 0x400:
-                    Text_AddBox(x, y, Font_GetCharH(), c7 & 0xFF);
+                case TEXT_CODE_ICON:
+                    Text_AddIcon(x, y, Font_GetCharH(), codeValue & TEXT_CODE_ARG);
                     x += Font_GetAdvance();
                     Font_SetPos(x, y);
                     if (max > 0) {
                         max--;
                     }
                     if (max == 0) {
-                        if (count >= 0x400) {
-                            p = prev;
+                        if (count >= TEXT_BUF_SIZE) {
+                            src = codeStart;
                         }
-                        *p = 0;
+                        *src = 0;
                     }
                     continue;
-                case 0x800:
+                case TEXT_CODE_HIDE:
                     skip = 1;
                     continue;
                 }
-                if (*p == 0) {
+                if (*src == 0) {
                     break;
                 }
             }
         normal:
-            t = &bufs[bi ^ 1];
-            (*t)[len++] = *p;
-            prev = p;
-            c = *p;
-            if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFF)) {
-                p++;
-                (*t)[len++] = *p;
+            out = &bufs[bufIndex ^ 1];
+            (*out)[len++] = *src;
+            codeStart = src;
+            byte = *src;
+            /* charKind: 0 a two-byte character, 1 a one-byte one, 2 a newline */
+            if (SJIS_IS_LEAD(byte)) {
+                src++;
+                (*out)[len++] = *src;
                 count++;
-                kind = 0;
+                charKind = 0;
                 if (max > 0) {
                     max--;
                 }
-            } else if (c == '\n') {
-                kind = 2;
+            } else if (byte == '\n') {
+                charKind = 2;
             } else {
-                kind = 1;
+                charKind = 1;
                 if (max > 0) {
                     max--;
                 }
             }
             count++;
-            p++;
-            if (kind == 0) {
+            src++;
+            if (charKind == 0) {
                 x += Font_GetAdvance();
-            } else if (kind == 1) {
-                w = Font_GetAdvance();
+            } else if (charKind == 1) {
+                advance = Font_GetAdvance();
                 if (Font_GetHalfWidth() != 0) {
-                    x += w / 2;
+                    x += advance / 2;
                 } else {
-                    x += w * 2 / 3;
+                    x += advance * 2 / 3;
                 }
             } else {
-                x = x0;
+                x = lineX;
                 y += Font_GetCharH();
-                if (FontCache_GetUnk5E() != 0) {
-                    y += FontCache_GetUnk5F();
+                if (Font_IsLineGapOn() != 0) {
+                    y += Font_GetLineGap();
                 }
-                (*t)[len - 1] = 0;
+                (*out)[len - 1] = 0;
                 len = 0;
-                Font_Printf("%s", *t);
-                Font_SetPos(x0, y);
+                Font_Printf("%s", *out);
+                Font_SetPos(lineX, y);
             }
             if (max == 0) {
-                if (count >= 0x400) {
-                    p = prev;
+                if (count >= TEXT_BUF_SIZE) {
+                    src = codeStart;
                 }
-                *p = 0;
+                *src = 0;
             }
-        } while (count < 0x3FF);
-        bufs[bi ^ 1][len] = 0;
-        Font_Printf("%s", bufs[bi ^ 1]);
+        } while (count < TEXT_BUF_SIZE - 1);
+        bufs[bufIndex ^ 1][len] = 0;
+        Font_Printf("%s", bufs[bufIndex ^ 1]);
     }
 }
 
-/* Text with a drop shadow: colour c1 offset by the font size, then c2. */
-void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s)
+/* Text with a drop shadow: in colour shadowColor (Text_SetColor) offset by
+ * the font's size, then in color at (x, y). */
+void Text_DrawShadow(s16 x, s16 y, s16 shadowColor, s16 color, char *text)
 {
-    s16 dx;
-    s16 dy;
-    s32 w;
-    s32 h;
+    s16 shadowX;
+    s16 shadowY;
+    s32 width;
+    s32 height;
 
     if (gTextOff == 0) {
-        dx = 3;
-        dy = 2;
-        w = Font_GetAdvance();
-        h = Font_GetAdvance();
-        if (w >= 0x18) {
-            dx++;
+        shadowX = 3;
+        shadowY = 2;
+        width = Font_GetAdvance();
+        height = Font_GetAdvance();
+        if (width >= 0x18) {
+            shadowX++;
         }
-        if (h >= 0x18) {
-            dy += 2;
+        if (height >= 0x18) {
+            shadowY += 2;
         }
-        if (h > 0x14 && h < 0x18) {
-            dy++;
+        if (height > 0x14 && height < 0x18) {
+            shadowY++;
         }
-        Font_SetPos(x + dx, y + dy);
-        Text_SetColor(c1);
-        Font_Printf("%s", s);
+        Font_SetPos(x + shadowX, y + shadowY);
+        Text_SetColor(shadowColor);
+        Font_Printf("%s", text);
         Font_SetPos(x, y);
-        Text_SetColor(c2);
-        Font_Printf("%s", s);
+        Text_SetColor(color);
+        Font_Printf("%s", text);
     }
 }
 
-void Text_DrawShadow2(s16 x, s16 y, s32 c1, s32 c2, char *s)
+/* Text_DrawShadow with the font's colour indexes (Font_SetColorIndex) and
+ * a shadow offset of 2 to 4 each way by the font's size. */
+void Text_DrawShadow2(s16 x, s16 y, s32 shadowColor, s32 color, char *text)
 {
-    s16 dx;
-    s16 dy;
-    s32 w;
-    s32 h;
+    s16 shadowX;
+    s16 shadowY;
+    s32 width;
+    s32 height;
 
     if (gTextOff == 0) {
-        dy = dx = 2;
-        w = Font_GetAdvance();
-        h = Font_GetAdvance();
-        if (w >= 0x18) {
-            dx += 2;
+        shadowY = shadowX = 2;
+        width = Font_GetAdvance();
+        height = Font_GetAdvance();
+        if (width >= 0x18) {
+            shadowX += 2;
         }
-        if (w > 0x14 && w < 0x18) {
-            dx++;
+        if (width > 0x14 && width < 0x18) {
+            shadowX++;
         }
-        if (h >= 0x18) {
-            dy += 2;
+        if (height >= 0x18) {
+            shadowY += 2;
         }
-        if (h > 0x14 && h < 0x18) {
-            dy++;
+        if (height > 0x14 && height < 0x18) {
+            shadowY++;
         }
-        Font_SetPos(x + dx, y + dy);
+        Font_SetPos(x + shadowX, y + shadowY);
         Font_SetPal(0);
-        Font_SetColorIndex(c1);
-        Font_Printf("%s", s);
+        Font_SetColorIndex(shadowColor);
+        Font_Printf("%s", text);
         Font_SetPos(x, y);
-        Font_SetColorIndex(c2);
-        Font_Printf("%s", s);
+        Font_SetColorIndex(color);
+        Font_Printf("%s", text);
     }
 }
 
-void Text_DrawShadowRgb(s16 x, s16 y, u32 c1, u32 c2, char *s)
+/* Text with a drop shadow 2 below and right, both colours RGBA. */
+void Text_DrawShadowRgb(s16 x, s16 y, u32 shadowColor, u32 color, char *text)
 {
     if (gTextOff == 0) {
         Font_SetPos(x + 2, y + 2);
-        Font_SetColor(c1);
-        Font_Printf("%s", s);
+        Font_SetColor(shadowColor);
+        Font_Printf("%s", text);
         Font_SetPos(x, y);
-        Font_SetColor(c2);
-        Font_Printf("%s", s);
+        Font_SetColor(color);
+        Font_Printf("%s", text);
     }
 }
 
-void Text_Draw(char *s)
+/* Draws a string at the font's position, unless text drawing is off. */
+void Text_Draw(char *text)
 {
     if (gTextOff == 0) {
-        Font_Printf("%s", s);
+        Font_Printf("%s", text);
     }
 }
 
 /* The length of a string as displayed: strlen less the control codes
  * (Text_ParseCode mode 1), ~A numbers counted as inserted. */
-s32 Text_DisplayLength(char *s)
+s32 Text_DisplayLength(char *text)
 {
     s16 code;
-    s32 w;
+    s32 len;
     s16 skip;
-    s8 ch;
-    u8 c;
+    s8 character;
+    u8 byte;
 
     code = 0;
     skip = 0;
-    w = Str_Length(s);
-    while (*s != 0) {
-        ch = *s;
-        c = *s;
-        if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFF)) {
-            s += 2;
-        } else if (ch == '~') {
-            Text_ParseCode(s, &code, 0);
-            if ((code & 0xFF00) == 0x800) {
+    len = Str_Length(text);
+    while (*text != 0) {
+        character = *text;
+        byte = *text;
+        if (SJIS_IS_LEAD(byte)) {
+            text += 2;
+        } else if (character == '~') {
+            Text_ParseCode(text, &code, TEXT_PARSE_CODE);
+            if ((code & TEXT_CODE_KIND) == TEXT_CODE_HIDE) {
                 skip ^= 1;
-                s = Text_ParseCode(s, &code, 1);
-                w += code;
+                text = Text_ParseCode(text, &code, TEXT_PARSE_WIDTH);
+                len += code;
             } else if (skip == 0) {
-                s = Text_ParseCode(s, &code, 1);
-                w += code;
+                text = Text_ParseCode(text, &code, TEXT_PARSE_WIDTH);
+                len += code;
             } else {
                 goto next;
             }
         } else {
         next:
-            s++;
+            text++;
         }
     }
-    return w;
+    return len;
 }
 
 /* The number of characters of a string, not counting newlines. */
-s32 Text_CountChars(char *s)
+s32 Text_CountChars(char *text)
 {
-    s32 n = 0;
-    s32 ch;
-    u8 c;
+    s32 count = 0;
+    s32 character;
+    u8 byte;
 
-    while (*s != 0) {
-        ch = *s;
-        c = *s;
-        if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFF)) {
-            s++;
-        } else if ((char)ch == '\n') {
-            s++;
+    while (*text != 0) {
+        character = *text;
+        byte = *text;
+        if (SJIS_IS_LEAD(byte)) {
+            text++;
+        } else if ((char)character == '\n') {
+            text++;
             continue;
         }
-        s++;
-        n++;
+        text++;
+        count++;
     }
-    return n;
+    return count;
 }
 
 /*
- * Copies the next character (1 or 2 bytes) or control code of s into out
- * and returns its kind: 0 a 1-byte character, 1 a 2-byte one, 2 a ~B code,
- * 3 a ~A code, 4 the end of the string. Codes 0x100 and 0x800 are skipped;
- * *next is set after it and any following 0x800 codes.
+ * Copies the next character (1 or 2 bytes) or control code of text into out
+ * and returns what it was, TEXT_CHAR_*. Colour and hide codes are skipped;
+ * *next is set after it and any hide codes that follow.
  */
-s32 Text_NextChar(char *out, char *s, char **next)
+s32 Text_NextChar(char *out, char *text, char **next)
 {
     s16 code;
     s32 type;
-    s32 c;
+    s32 character;
 
-    if (*s == 0) {
-        *next = s;
+    if (*text == 0) {
+        *next = text;
         *out = 0;
-        return 4;
+        return TEXT_CHAR_END;
     }
     for (;;) {
-        c = *s;
-        if (c == '~') {
+        character = *text;
+        if (character == '~') {
             code = 0;
-            s = Text_ParseCode(s, &code, 0);
-            c = code;
-            switch (c & 0xFF00) {
+            text = Text_ParseCode(text, &code, TEXT_PARSE_CODE);
+            character = code;
+            switch (character & TEXT_CODE_KIND) {
             case 0:
-                s++;
+                text++;
                 out[0] = '~';
-                type = 0;
+                type = TEXT_CHAR_SINGLE;
                 out[1] = 0;
                 break;
-            case 0x100:
-            case 0x800:
+            case TEXT_CODE_COLOR:
+            case TEXT_CODE_HIDE:
                 continue;
-            case 0x200:
-                out[0] = c;
+            case TEXT_CODE_VAR:
+                out[0] = character;
                 out[1] = 0;
-                type = 3;
+                type = TEXT_CHAR_VAR;
                 break;
-            case 0x400:
-                out[0] = c;
+            case TEXT_CODE_ICON:
+                out[0] = character;
                 out[1] = 0;
-                type = 2;
+                type = TEXT_CHAR_ICON;
                 break;
             default:
                 continue;
             }
         } else {
-            if (((u8)c >= 0x80 && (u8)c <= 0x9F) || ((u8)c >= 0xE0 && (u8)c <= 0xFF)) {
-                *out = c;
-                s++;
+            if (SJIS_IS_LEAD((u8)character)) {
+                *out = character;
+                text++;
                 out++;
-                type = 1;
+                type = TEXT_CHAR_DOUBLE;
             } else {
-                type = 0;
+                type = TEXT_CHAR_SINGLE;
             }
-            *out = *s++;
+            *out = *text++;
             out[1] = 0;
         }
         break;
     }
     for (;;) {
-        *next = s;
-        if (*s != '~') {
+        *next = text;
+        if (*text != '~') {
             break;
         }
-        s = Text_ParseCode(s, &code, 0);
-        switch (code & 0xFF00) {
+        text = Text_ParseCode(text, &code, TEXT_PARSE_CODE);
+        switch (code & TEXT_CODE_KIND) {
         case 0:
-        case 0x200:
-        case 0x400:
-        case 0x100:
+        case TEXT_CODE_VAR:
+        case TEXT_CODE_ICON:
+        case TEXT_CODE_COLOR:
             goto end;
-        case 0x800:
+        case TEXT_CODE_HIDE:
             break;
         }
     }
@@ -931,12 +960,12 @@ void Text_SetSize(s32 size)
     Font_SetSize(1.0f + 1000.0f * size / 7.0f);
 }
 
-/* The text colour by index: 0x20..0x34 from gTextCodeColors, below 0x20 the
- * font's own colours. */
+/* The text colour by index: TEXT_COLOR_RGB up to TEXT_COLOR_RGB_END from
+ * gTextCodeColors, below it the font's own colours. */
 void Text_SetColor(s16 color)
 {
-    if (color >= 0x20) {
-        if (color < 0x35) {
+    if (color >= TEXT_COLOR_RGB) {
+        if (color < TEXT_COLOR_RGB_END) {
             Font_SetPal(0);
             Font_SetColor(gTextCodeColors[color]);
         }
@@ -950,6 +979,7 @@ void Text_DrawAllPages(void)
     Font_DrawAllPages();
 }
 
+/* The text's defaults: spacing 0x14 each way, size 0, colour 0. */
 void Text_SetDefaults(void)
 {
     Font_SetSpacing(0x14, 0x14);
@@ -968,16 +998,17 @@ void MemFile_Load(void)
     gSysSettings.memFileSize = LoadCompressedFile(gMemFileBuf, 0x19EB);
 }
 
-/* Key repeat for buttons 0x3000: a first delay of 10 frames, then every 4. */
+/* Key repeat for PAD_UP and PAD_DOWN: returns the buttons pressed, or the
+ * held ones after a first delay of 10 frames, then every 4. */
 u16 Pad_KeyRepeat(s32 pad, u16 held, u16 pressed)
 {
-    u16 r = pressed;
+    u16 result = pressed;
 
-    if (pressed & 0x3000) {
+    if (pressed & (PAD_UP | PAD_DOWN)) {
         gKeyRepeat[pad].repeating = 0;
         gKeyRepeat[pad].timer = 0;
-    } else if (held & 0x3000) {
-        r = 0;
+    } else if (held & (PAD_UP | PAD_DOWN)) {
+        result = 0;
         if (gKeyRepeat[pad].repeating != 0) {
             gKeyRepeatDelay[pad] = 4;
         } else {
@@ -985,32 +1016,36 @@ u16 Pad_KeyRepeat(s32 pad, u16 held, u16 pressed)
         }
         if (++gKeyRepeat[pad].timer > gKeyRepeatDelay[pad]) {
             gKeyRepeat[pad].timer = 0;
-            r = held;
+            result = held;
             gKeyRepeat[pad].repeating = 1;
         }
     } else {
         gKeyRepeat[pad].repeating = 0;
         gKeyRepeat[pad].timer = 0;
     }
-    return r;
+    return result;
 }
 
-/* Draws a string with "~Cnn" colour codes (0x20..0x34 through gTextCodeColors). */
-void Text_DrawColored(char *s)
+/*
+ * Draws a string with ~Cnn colour codes, each the colour TEXT_COLOR_RGB + nn
+ * of gTextColors (other codes are drawn as they are). The text before each
+ * code that changes the colour is drawn and cut off.
+ */
+void Text_DrawColored(char *text)
 {
-    char buf[0x400];
+    char buf[TEXT_BUF_SIZE];
     s16 size;
-    char *q;
-    char *p;
-    s32 w;
+    char *rest;
+    char *tilde;
+    s32 len;
     s16 x;
     s16 y;
     u32 color;
-    s32 idx;
+    s32 colorIndex;
 
-    strcpy(buf, s);
-    p = strchr(buf, '~');
-    if (p == NULL) {
+    strcpy(buf, text);
+    tilde = strchr(buf, '~');
+    if (tilde == NULL) {
         Font_Printf("%s", buf);
         return;
     }
@@ -1018,34 +1053,34 @@ void Text_DrawColored(char *s)
     x = Font_GetX();
     y = Font_GetY();
     do {
-        if (p[1] == 'C') {
-            idx = (u8)((p[3] - '0') + (p[2] - '0') * 10) + 0x20;
-            if (idx >= 0x35) {
-                strcpy(p, p + 4);
-                q = p;
+        if (tilde[1] == 'C') {
+            colorIndex = (u8)((tilde[3] - '0') + (tilde[2] - '0') * 10) + TEXT_COLOR_RGB;
+            if (colorIndex >= TEXT_COLOR_RGB_END) {
+                strcpy(tilde, tilde + 4);
+                rest = tilde;
             } else {
-                color = gTextColors[idx - 0x20];
+                color = gTextColors[colorIndex - TEXT_COLOR_RGB];
                 if (Font_GetPal() == 0 && color == Font_GetColor()) {
-                    strcpy(p, p + 4);
-                    q = p;
+                    strcpy(tilde, tilde + 4);
+                    rest = tilde;
                 } else {
-                    q = buf;
-                    *p = 0;
-                    w = Str_Length(q);
-                    if (w != 0) {
+                    rest = buf;
+                    *tilde = 0;
+                    len = Str_Length(rest);
+                    if (len != 0) {
                         Font_SetPos(x, y);
-                        Font_Printf(q);
-                        x += (s16)(w * (size / 2.0f));
+                        Font_Printf(rest);
+                        x += (s16)(len * (size / 2.0f));
                     }
-                    strcpy(q, p + 4);
+                    strcpy(rest, tilde + 4);
                     Font_SetColor(color);
                 }
             }
         } else {
-            q = p + 1;
+            rest = tilde + 1;
         }
-        p = strchr(q, '~');
-    } while (p != NULL);
+        tilde = strchr(rest, '~');
+    } while (tilde != NULL);
     if (Str_Length(buf) != 0) {
         Font_SetPos(x, y);
         Font_Printf(buf);
@@ -1070,13 +1105,17 @@ void Options_Apply(void)
     Display_SetOffset(gSysSave.options.screenX, gSysSave.options.screenY);
 }
 
-void Quest_SetCurrent(u16 a, void *b, s32 c)
+/* Records the quest to run: its id, its data and whether it came from the
+ * quest list. */
+void Quest_SetCurrent(u16 questId, void *questData, s32 fromList)
 {
-    gSysSettings.questData = b;
-    gSysSettings.questId = a;
-    gSysSettings.questFromList = c;
+    gSysSettings.questData = questData;
+    gSysSettings.questId = questId;
+    gSysSettings.questFromList = fromList;
 }
 
+/* Clears the model, material, bone and primitive pools, the work area,
+ * the camera data and the model load buffer. */
 void Gfx_ClearModelBuffers(void)
 {
     memset(gObjBufBlocks, 0, 0x20000);
@@ -1091,7 +1130,11 @@ void Gfx_ClearModelBuffers(void)
     memset(gModelLoadBuf, 0, 0x134000);
 }
 
-/* Resets the game state. */
+/*
+ * Resets the game's subsystems for a new scene: the camera, render states,
+ * motions, models, textures, objects, players, monsters, areas, draw lists,
+ * sound and text, and reloads the two common texture files (slots 4 and 5).
+ */
 void Game_ResetSubsystems(void)
 {
     s16 i;
@@ -1138,46 +1181,49 @@ void Game_ResetSubsystems(void)
     gSysBusy = 0;
     Text_Reset();
     gSoundLoading = 0;
-    gSysSettings.unk12 = 1;
-    if (Overlay_IsLoaded(1) == 1) {
+    gSysSettings.cardMenuDone = 1;
+    if (Overlay_IsLoaded(OVERLAY_SUB_MAIN) == 1) {
         Notice_ResetQueue();
     }
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < MOTIONS_EM_SLOTS; i++) {
         EmSlotModel_Clear(i, 2);
     }
 }
 
+/* Frees every loaded motion (gMotions) and clears its entry. */
 void Motion_FreeAll(void)
 {
     s32 i;
-    void **p = gMotions;
+    void **motion = gMotions;
 
-    for (i = 0; i < 0x10D6; i++, p++) {
-        if (*p != NULL && Mem_FreeRet1(*p) == 1) {
-            *p = NULL;
+    for (i = 0; i < MOTIONS_TOTAL; i++, motion++) {
+        if (*motion != NULL && Mem_FreeRet1(*motion) == 1) {
+            *motion = NULL;
         }
     }
 }
 
+/* Frees the common set's motions (those before the players'). */
 void Motion_FreeCommon(void)
 {
     s32 i;
-    void **p = gMotions;
+    void **motion = gMotions;
 
-    for (i = 0; i < 0x2C6; i++, p++) {
-        if (*p != NULL && Mem_FreeRet1(*p) == 1) {
-            *p = NULL;
+    for (i = 0; i < MOTIONS_PLAYER_FIRST; i++, motion++) {
+        if (*motion != NULL && Mem_FreeRet1(*motion) == 1) {
+            *motion = NULL;
         }
     }
 }
 
-void Motion_FreeEmSlot(s16 n)
+/* Clears monster slot `slot`'s model and frees its motions. */
+void Motion_FreeEmSlot(s16 slot)
 {
     s32 end;
     s16 i;
 
-    EmSlotModel_Clear(n, 1);
-    for (i = n * 600 + 0x776, end = i + 600; i < end; i++) {
+    EmSlotModel_Clear(slot, 1);
+    for (i = slot * MOTIONS_PER_EM + MOTIONS_EM_FIRST, end = i + MOTIONS_PER_EM; i < end; i++) {
         if (gMotions[i] != NULL && Mem_FreeRet1(gMotions[i]) == 1) {
             gMotions[i] = NULL;
         }
@@ -1194,7 +1240,7 @@ u32 gBlendModes[12] = {
 u32 gBlendModes2[10] = {
 #include "sub_main/0043C950.inc"
 };
-u32 D_0043C978[2] = {
+u32 gTexFilterModes[2] = {
 #include "sub_main/0043C978.inc"
 };
 u32 gBlendOps[4] = {

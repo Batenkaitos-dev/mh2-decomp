@@ -83,7 +83,7 @@ extern u8 D_5C34F0;
 extern u8 D_5C34F8;
 extern s8 gPortalExit;
 extern s8 gProxyMode;
-extern u16 D_5CA910;
+extern u16 gQuestReturnArea;
 extern u8 D_5CAA40;
 extern u8 gServerTriedCount;
 extern u8 gLobbyConnDone;
@@ -127,7 +127,7 @@ extern s32 D_6AEFA8;
 
 /*
  * The online town's lists at 0x8BECA0 (gTownQuestLists): per list three entries
- * of three nonzero s16 (func_006AF410 checks them); areas 0x86 and 0x88 use
+ * of three nonzero s16 (func_006AF410 checks them); AREA_HUB_0x86 and AREA_HUB_0x88 use
  * the first and the second set of three lists (LobbyWorld_GetSeason picks one).
  */
 typedef struct TownEntry {
@@ -141,8 +141,8 @@ typedef struct TownEntry {
  * past its 0xD0 bytes. */
 typedef struct TownQuestLists {
     /* 0x00 */ u8 unk0[4];
-    /* 0x04 */ TownEntry a[3][3];   /* area 0x86 */
-    /* 0x4C */ TownEntry b[3][3];   /* area 0x88 */
+    /* 0x04 */ TownEntry a[3][3];   /* AREA_HUB_0x86 */
+    /* 0x4C */ TownEntry b[3][3];   /* AREA_HUB_0x88 */
     /* 0x94 */ u16 quests[2][3][5]; /* quest ids, 5 per list: [0] below hunter rank 41, [1] from 41 on (ElderForecast_Load) */
 } TownQuestLists;
 typedef char TownQuestLists_size_check[(sizeof(TownQuestLists) == 0xD0) ? 1 : -1];

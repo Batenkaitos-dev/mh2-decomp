@@ -149,4 +149,8 @@ typedef struct TexPackHead {
  * Tex_LoadById, unk_335040.c): the player looks' texture sets. */
 #define TEX_ID_SLOTS 8
 
+/* gTexHandles (sub_main): the texture handles of the game's fixed texture
+ * slots, by slot (Mem_InitLayout clears them). */
+#define TEX_HANDLE_COUNT 371
+
 #endif /* TEXTURE_H */

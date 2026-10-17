@@ -1297,7 +1297,7 @@ void StageObj_K0E_Free(StageObj *o)
 }
 
 /* the area's fade (sub_main), named: its load in case 5 moves above the scale[0] stack store,
-   which the absolute *(s16 *) 0x5BACE0 doesn't */
+   which a read through its address doesn't */
 extern s16 gAreaFade;
 
 inline f32 Lerp(u32 a, u32 b, f32 t)

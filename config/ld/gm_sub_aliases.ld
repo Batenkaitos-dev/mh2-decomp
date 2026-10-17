@@ -1,6 +1,6 @@
 /* Names the code uses inside C-owned data objects, each defined relative to
  * the object that contains it. */
-D_00921AA4 = D_00921A20 + 0x84;
+EmBlangonga_AreaEntries = D_00921A20 + 0x84;
 D_0092A730 = D_009273D0 + 0x3360;
 D_0092A740 = D_009273D0 + 0x3370;
 D_0092A770 = D_009273D0 + 0x33A0;

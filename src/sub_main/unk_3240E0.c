@@ -71,7 +71,7 @@ void *Hud_Init(void);
 void Jingle_OnAreaChange(u16 area);
 void UnreadFlags_ClearAll(void);
 void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Gfx_SetBlendOp(s32 a);
 void QuestSync_Clear(void);
 s32 Game_IsOnline(void);
@@ -296,7 +296,7 @@ void Stream_FadeOut(s32 ch, s32 frames);
 void Stream_Stop(s32 ch);
 s32 ScreenTex_Reserve(u32 *pixels);
 s32 ScreenTex_Capture(s32 fromTex);
-void Map_DrawMain_Unk(void);
+void Map_DrawAreaChange(void);
 void Vib_StopAll(void);
 void Stream_Pause(s32 ch, s32 pause);
 void Area_FreeAll(void);
@@ -749,13 +749,13 @@ s32 Effect_DrawModelAdd(void *set, f32 *mtx, void *mats)
 
 /*
  * Sets the blending of the next draw from a model's draw flags: bit 4 calls
- * Gfx_SetState63(0); bits 1 to 3 pick the blend: 2 Gfx_SetBlend(4, 1),
+ * Gfx_SetTexFilter(0); bits 1 to 3 pick the blend: 2 Gfx_SetBlend(4, 1),
  * 4 Gfx_SetBlend(4, 5), 8 Gfx_SetBlend(1, 1) with Gfx_SetBlendOp(2).
  */
 void Draw_SetBlendFlags(u16 flags)
 {
     if (flags & 0x10) {
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
     }
     switch (flags & 0xE) {
     case 2:
@@ -833,7 +833,7 @@ s16 Player_DualSwordIndex(void *obj)
     s16 index;
     s32 kind;
 
-    if (pl->weaponType == 6) {
+    if (pl->weaponType == WEAPON_DUAL_SWORDS) {
         for (i = 0, index = 0; gDualSwordRanges[i].lo != -1; i++) {
             kind = pl->weaponKind;
             if (kind >= gDualSwordRanges[i].lo && kind <= gDualSwordRanges[i].hi) {
@@ -947,19 +947,19 @@ void ScreenFade_Task(u8 *task)
         slot->mode++;
     case 1:
         switch (fade->active) {
-        case 0:
+        case FADE_STATE_IDLE:
             if (fade->id == 0) {
                 break;
             }
         start:
-            fade->active = 1;
+            fade->active = FADE_STATE_RUNNING;
             fade->cur = fade->id;
             fade->alpha = gFadeKeys[fade->cur - 1].alphaFrom;
             fade->delay = gFadeKeys[fade->cur - 1].delay;
-        case 1:
-        case 2:
+        case FADE_STATE_RUNNING:
+        case FADE_STATE_HELD:
             if (fade->id == 0) {
-                fade->active = 0;
+                fade->active = FADE_STATE_IDLE;
                 fade->key = NULL;
                 break;
             }
@@ -979,13 +979,13 @@ void ScreenFade_Task(u8 *task)
             }
             fade->starting = 0;
             if (key->last != 0) {
-                fade->active = 0;
+                fade->active = FADE_STATE_IDLE;
                 fade->id = 0;
                 fade->key = NULL;
                 break;
             }
-            if (fade->active == 1) {
-                fade->active++;
+            if (fade->active == FADE_STATE_RUNNING) {
+                fade->active++; /* to FADE_STATE_HELD */
             }
             break;
         }
@@ -999,19 +999,19 @@ void ScreenFade_Task(u8 *task)
         slot->step++;
     case 1:
         switch (fade->active) {
-        case 0:
+        case FADE_STATE_IDLE:
             if (fade->id == 0) {
                 break;
             }
         start2:
-            fade->active = 1;
+            fade->active = FADE_STATE_RUNNING;
             fade->cur = fade->id;
             fade->alpha = gFadeKeys[fade->cur - 1].alphaFrom;
             fade->delay = gFadeKeys[fade->cur - 1].delay;
-        case 1:
-        case 2:
+        case FADE_STATE_RUNNING:
+        case FADE_STATE_HELD:
             if (fade->id == 0) {
-                fade->active = 0;
+                fade->active = FADE_STATE_IDLE;
                 fade->key = NULL;
                 break;
             }
@@ -1031,13 +1031,13 @@ void ScreenFade_Task(u8 *task)
             }
             fade->starting = 0;
             if (key->last != 0) {
-                fade->active = 0;
+                fade->active = FADE_STATE_IDLE;
                 fade->id = 0;
                 fade->key = NULL;
                 break;
             }
-            if (fade->active == 1) {
-                fade->active++;
+            if (fade->active == FADE_STATE_RUNNING) {
+                fade->active++; /* to FADE_STATE_HELD */
             }
             break;
         }
@@ -1052,23 +1052,24 @@ struct PrimLineF;
 s32 Prim_FillRectF(struct PrimLineF *q);
 
 /*
- * gFadeA's state: 0 idle, 1 while its alpha moves (or before the last key's
- * first pass ends), 2 when it holds its last alpha. The lobby and the game
- * wait for it to leave 1.
+ * gFadeA's state: FADE_STATE_IDLE, FADE_STATE_RUNNING while its alpha moves
+ * (or before a key that isn't the last ends its first pass), FADE_STATE_HELD
+ * when it holds its last alpha. The lobby and the game wait for it to leave
+ * FADE_STATE_RUNNING.
  */
 u8 FadeA_GetState(void)
 {
     FadeState *fade = &gFadeA;
     FadeKey *key;
 
-    if ((fade->active == 0 && fade->starting == 0) || fade->id == 0) {
-        return 0;
+    if ((fade->active == FADE_STATE_IDLE && fade->starting == 0) || fade->id == 0) {
+        return FADE_STATE_IDLE;
     }
     key = &gFadeKeys[fade->cur - 1];
-    if (fade->alpha != key->alphaTo || (key->last == 0 && fade->active == 1)) {
-        return 1;
+    if (fade->alpha != key->alphaTo || (key->last == 0 && fade->active == FADE_STATE_RUNNING)) {
+        return FADE_STATE_RUNNING;
     }
-    return 2;
+    return FADE_STATE_HELD;
 }
 
 /* The same for gFadeB. */
@@ -1077,14 +1078,14 @@ u8 FadeB_GetState(void)
     FadeState *fade = &gFadeB;
     FadeKey *key;
 
-    if ((fade->active == 0 && fade->starting == 0) || fade->id == 0) {
-        return 0;
+    if ((fade->active == FADE_STATE_IDLE && fade->starting == 0) || fade->id == 0) {
+        return FADE_STATE_IDLE;
     }
     key = &gFadeKeys[fade->cur - 1];
-    if (fade->alpha != key->alphaTo || (key->last == 0 && fade->active == 1)) {
-        return 1;
+    if (fade->alpha != key->alphaTo || (key->last == 0 && fade->active == FADE_STATE_RUNNING)) {
+        return FADE_STATE_RUNNING;
     }
-    return 2;
+    return FADE_STATE_HELD;
 }
 
 /* Draws gFadeA's current key: its rectangle in its colour (gFadeAColors) at
@@ -1183,7 +1184,7 @@ void FadeA_Start(s32 id)
 /* Stops gFadeA at once. */
 void FadeA_Reset(void)
 {
-    gFadeA.active = 0;
+    gFadeA.active = FADE_STATE_IDLE;
     gFadeA.starting = 0;
     gFadeA.id = 0;
     gFadeA.key = NULL;
@@ -1218,7 +1219,7 @@ void FadeB_Start(s32 id)
 /* Stops gFadeB at once. */
 void FadeB_Reset(void)
 {
-    gFadeB.active = 0;
+    gFadeB.active = FADE_STATE_IDLE;
     gFadeB.starting = 0;
     gFadeB.id = 0;
     gFadeB.key = NULL;
@@ -1742,7 +1743,7 @@ void Scene_UpdateQuest(void)
         }
         if (gScene.subStep != 0) {
             gScene.subStep--;
-            Map_DrawMain_Unk();
+            Map_DrawAreaChange();
             break;
         }
         QNetIf_Ready(1);
@@ -2067,7 +2068,7 @@ void Scene_Opening(void)
         status = Movie_GetStatus();
         if (status != 3) {
             sceneState->timer++;
-            if (status != 2 || !(gPadState[0].pressed & 0x8000)) {
+            if (status != 2 || !(gPadState[0].pressed & PAD_START)) {
                 break;
             }
         }
@@ -2078,7 +2079,7 @@ void Scene_Opening(void)
         break;
     case 2:
         Movie_Update();
-        if (FadeA_GetState() == 1) {
+        if (FadeA_GetState() == FADE_STATE_RUNNING) {
             break;
         }
         if (Movie_GetStatus() == 0) {
@@ -2117,7 +2118,7 @@ void Scene_Opening(void)
         break;
     case 4:
         if (--sceneState->timer != 0) {
-            if (sceneState->timer < 90 && (gPadState[0].pressed & 0x20)) {
+            if (sceneState->timer < 90 && (gPadState[0].pressed & PAD_CIRCLE)) {
                 sceneState->timer = 1;
             }
             lines = gAwardNoticeLines[5];
@@ -2182,7 +2183,7 @@ void Quest_Setup(void)
     Quest_InitPlayers();
     Players_UpdateSides();
     for (i = 0; i < gScene.playerCount; i++) {
-        if (gScene.inQuest[i] == 1) {
+        if (gScene.inQuest[i] == IN_QUEST_YES) {
             Player_SetupQuest(i);
         } else {
             gPlayers[i].active = 0;
@@ -2369,7 +2370,7 @@ void Quest_SpawnMonsters(s32 mode)
         }
         em->modelSlot = 0;
         em->type = gScene.emKind[em->modelSlot];
-        if ((em->type == 1 || em->type == 0x2A || em->type == 0x25) && gScene.area == 0xB) {
+        if ((em->type == 1 || em->type == 0x2A || em->type == 0x25) && gScene.area == AREA_FORTRESS_4) {
             em->variant = 1;
         } else {
             em->variant = 0;
@@ -2399,7 +2400,7 @@ void Quest_InitPlayers(void)
         if (i >= gScene.playerCount) {
             continue;
         }
-        if (gScene.inQuest[i] == 1) {
+        if (gScene.inQuest[i] == IN_QUEST_YES) {
             pl->active = 1;
         } else {
             pl->active = 0;
@@ -2411,7 +2412,7 @@ void Quest_InitPlayers(void)
         pl->startItemList = gScene.startItemList[i];
         Quest_SetStartArea(i);
         if (Game_IsOnline() == 0 && i > 0) {
-            pl->equip[6] = gScene.weapon[i];
+            pl->equip[EQUIP_SLOT_WEAPON] = gScene.weapon[i];
             pl->weaponKind = Equip_GetKind(&gScene.weapon[i]);
             sprintf((char *)pl->name, TXT(0x0046CE10) /* a default player name, with the number */, i + 1);
         } else if (gScene.presetEquip[i] == 0 || gSysSettings.useSavedEquip != 0) {
@@ -2422,7 +2423,7 @@ void Quest_InitPlayers(void)
                 Player_LoadPreset(gScene.preset[i], pl);
             }
         } else {
-            pl->equip[6] = gScene.weapon[i];
+            pl->equip[EQUIP_SLOT_WEAPON] = gScene.weapon[i];
             pl->weaponKind = Equip_GetKind(&gScene.weapon[i]);
             sprintf((char *)pl->name, TXT(0x0046CE10) /* a default player name, with the number */, i + 1);
         }
@@ -2435,7 +2436,7 @@ void Quest_InitPlayers(void)
         Player_CalcSkills(pl);
         pl->weaponType = gWeaponKindClass[pl->weaponKind];
         pl->isGunner = WeaponClass_IsGunner(pl->weaponType);
-        pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[6]);
+        pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[EQUIP_SLOT_WEAPON]);
         pl->weaponFlags = WeaponType_Flags(pl->weaponType);
         if (Player_IsLocal(pl) == 1) {
             Player_BackupPouch(pl, 0);
@@ -2463,23 +2464,23 @@ void Pad_ResetInput(void)
     gPadInput.buttons[0].prev = 0;
     gPadInput.stickDir[0].cur = 0;
     gPadInput.stickDir[0].prev = 0;
-    gPadInput.stickAngle[0].cur = 0;
-    gPadInput.stickAngle[0].prev = 0;
-    gPadInput.stickTilt[0].cur = 0;
-    gPadInput.stickTilt[0].prev = 0;
+    gPadInput.stickAngle[0].left = 0;
+    gPadInput.stickAngle[0].right = 0;
+    gPadInput.stickTilt[0].left = 0;
+    gPadInput.stickTilt[0].right = 0;
     gPadInput.buttons[1].cur = 0;
     gPadInput.buttons[1].prev = 0;
     gPadInput.stickDir[1].cur = 0;
     gPadInput.stickDir[1].prev = 0;
-    gPadInput.stickAngle[1].cur = 0;
-    gPadInput.stickAngle[1].prev = 0;
-    gPadInput.stickTilt[1].cur = 0;
-    gPadInput.stickTilt[1].prev = 0;
+    gPadInput.stickAngle[1].left = 0;
+    gPadInput.stickAngle[1].right = 0;
+    gPadInput.stickTilt[1].left = 0;
+    gPadInput.stickTilt[1].right = 0;
 }
 
 /*
  * Loads an area: its pack, its grids (Area_LoadTables), its model with its
- * texture file, its sub-models and its camera data. Areas 0x83 and 0x84 take
+ * texture file, its sub-models and its camera data. AREA_HUB_0x83 and AREA_HUB_0x84 take
  * a second texture file online while ElderRaid_InState1.
  */
 void Area_Load(s32 area)
@@ -2499,14 +2500,14 @@ void Area_Load(s32 area)
         areaState->model = Model_Get(slot);
         Model_Reserve(slot, 1);
         switch (gScene.area) {
-        case 0x83:
+        case AREA_HUB_0x83:
             if (gScene.online != 0 && ElderRaid_InState1() == 1) {
                 tex = gArea83TexFiles[1];
             } else {
                 tex = gArea83TexFiles[0];
             }
             break;
-        case 0x84:
+        case AREA_HUB_0x84:
             if (gScene.online != 0 && ElderRaid_InState1() == 1) {
                 tex = gArea84TexFiles[1];
             } else {

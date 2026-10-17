@@ -545,7 +545,7 @@ void Effect06_Run(StageObj *o)
             prev = o->var2;
             o->var2 = ((Player *)o->owner)->weaponTimer / 30;
             pl = o->owner;
-            if (pl->weaponType == 10 && pl->weaponTimer == 90) {
+            if (pl->weaponType == WEAPON_BOW && pl->weaponTimer == 90) {
                 Effect0D_SpawnForPlayerScaled(pl, 2, 0x23, 1.0f);
             }
             if (o->var2 > 2) {
@@ -595,11 +595,11 @@ void Effect06_Run(StageObj *o)
     if (o->type == 6) {
         if (o->var2 != 0xFF) {
             pl = o->owner;
-            if (pl->weaponType == 2) {
+            if (pl->weaponType == WEAPON_HAMMER) {
                 if (pl->motionId[0] != 0x3ED && pl->motionId[0] != 0x3EE && pl->motionId[0] != 0x3EF) {
                     o->var2 = 0xFF;
                 }
-            } else if (pl->weaponType == 10) {
+            } else if (pl->weaponType == WEAPON_BOW) {
                 if (pl->motionId[0] != 0x57D && pl->motionId[0] != 0x3F1 && pl->motionId[0] != 0x3F4 &&
                     pl->motionId[0] != 0x3F5 && pl->motionId[0] != 0x58A && pl->motionId[0] != 0x58B &&
                     pl->motionId[0] != 0x58C) {
@@ -1221,7 +1221,7 @@ StageObj *Effect06_New(Player *p, s16 type, u8 sub)
 {
     StageObj *o;
 
-    if (type != 7 && (p->isEm == 0 || p->unk01E == 0 || p->weaponType != 3) && (u8)Obj_InCurrentArea(p) == 0) {
+    if (type != 7 && (p->isEm == 0 || p->ownTask == 0 || p->weaponType != WEAPON_LANCE) && (u8)Obj_InCurrentArea(p) == 0) {
         return NULL;
     }
     o = StageObj_Alloc(1);

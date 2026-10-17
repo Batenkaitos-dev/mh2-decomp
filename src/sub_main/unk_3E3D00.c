@@ -11,6 +11,7 @@
 #include "sprite.h"
 #include "prim.h"
 #include "fxobj.h"
+#include "area.h"
 
 u16 Rand_Next(s32 a);
 void Text_SetSize(s32 size);
@@ -370,13 +371,13 @@ void Fish_StepBite(FxObj *o, FishWork *w)
 
     if (gScene.online != 1) {
         if (lure->kind != 0x16 || lure->active == 0 || lure->state >= 2
-            || Player_IsState(lure->owner, 0, 0x64) || Player_IsState(lure->owner, 0, 0x54)) {
+            || Player_IsState(lure->owner, PL_GROUP_ACTION, PL_ACT_FISH_REEL_BAITED) || Player_IsState(lure->owner, PL_GROUP_ACTION, PL_ACT_FISH_REEL_EMPTY)) {
             o->step = 1;
             o->phase = 0;
             o->timer = (Rand_Next(1) & 0x1F) + 10;
             return;
         }
-        if (lure->owner->gotItemId == 0 && Player_IsState(lure->owner, 0, 0x53)) {
+        if (lure->owner->gotItemId == 0 && Player_IsState(lure->owner, PL_GROUP_ACTION, PL_ACT_FISH_REEL)) {
             o->step = 3;
             o->phase = 0;
             lure->owner->gotItemId = k->item;
@@ -384,13 +385,13 @@ void Fish_StepBite(FxObj *o, FishWork *w)
         }
     } else {
         if (lure->kind != 0x16 || lure->active == 0 || lure->state >= 2
-            || Player_IsState(lure->owner, 0, 0x64) || Player_IsState(lure->owner, 0, 0x65)) {
+            || Player_IsState(lure->owner, PL_GROUP_ACTION, PL_ACT_FISH_REEL_BAITED) || Player_IsState(lure->owner, PL_GROUP_ACTION, 0x65)) {
             o->step = 1;
             o->phase = 0;
             o->timer = (Rand_Next(1) & 0x1F) + 10;
             return;
         }
-        if (lure->owner->gotItemId == 0 && Player_IsState(lure->owner, 0, 0x63)) {
+        if (lure->owner->gotItemId == 0 && Player_IsState(lure->owner, PL_GROUP_ACTION, 0x63)) {
             o->step = 3;
             o->phase = 0;
             lure->owner->gotItemId = k->item;
@@ -841,79 +842,79 @@ void Lure_Start(FxObj *o)
         break;
     }
     switch (Area_DayId(gScene.area)) {
-    case 1:
+    case AREA_JUNGLE_NIGHT_0:
         w->unk1C = -94.0f;
         break;
-    case 3:
+    case AREA_JUNGLE_NIGHT_2:
         w->unk1C = -131.0f;
         break;
-    case 0x15:
+    case AREA_FOREST_HILLS_0:
         w->unk1C = -10.0f;
         break;
-    case 0x2A:
+    case AREA_FOREST_HILLS_11:
         w->unk1C = -45.0f;
         break;
-    case 0x30:
+    case AREA_DESERT_NIGHT_2:
         w->unk1C = -20.0f;
         break;
-    case 0x3B:
+    case AREA_VOLCANO_NIGHT_1:
         w->unk1C = -222.0f;
         break;
-    case 0x3D:
+    case AREA_VOLCANO_NIGHT_3:
         w->unk1C = -41.0f;
         break;
-    case 0x43:
+    case AREA_SWAMP_NIGHT_2:
         w->unk1C = -20.0f;
         break;
-    case 0x4A:
+    case AREA_VOLCANO_9:
         w->unk1C = -10.0f;
         break;
-    case 0x4B:
+    case AREA_SWAMP_NIGHT_9:
         w->unk1C = -20.0f;
         break;
-    case 0x63:
+    case AREA_SNOWY_MOUNTAINS_7:
         w->unk1C = -50.0f;
         break;
-    case 0x6E:
+    case AREA_JUNGLE_0:
         w->unk1C = -57.0f;
         break;
-    case 0x71:
+    case AREA_JUNGLE_3:
         w->unk1C = -12.0f;
         break;
-    case 0x72:
+    case AREA_JUNGLE_4:
         w->unk1C = -64.0f;
         break;
-    case 0x74:
+    case AREA_JUNGLE_6:
         w->unk1C = -37.0f;
         break;
-    case 0x79:
+    case AREA_TOWER_0:
         w->unk1C = -447.0f;
         break;
-    case 0x82:
+    case AREA_TOWER_8:
         w->unk1C = -270.0f;
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         w->unk1C = 810.0f;
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         w->unk1C = -595.0f;
         break;
-    case 0x8E:
+    case AREA_DESERT_2:
         w->unk1C = 30.0f;
         break;
-    case 0x90:
+    case AREA_DESERT_4:
         w->unk1C = 0.0f;
         break;
-    case 0x92:
+    case AREA_DESERT_6:
         w->unk1C = 5.0f;
         break;
-    case 0x97:
+    case AREA_SWAMP_0:
         w->unk1C = -47.5f;
         break;
-    case 0x9A:
+    case AREA_SWAMP_3:
         w->unk1C = -10.0f;
         break;
-    case 0xB3:
+    case AREA_BATTLE_TOWN_0:
         w->unk1C = 810.0f;
         break;
     default:

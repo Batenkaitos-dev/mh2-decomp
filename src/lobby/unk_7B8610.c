@@ -7,6 +7,7 @@
 #include "window.h"
 #include "sprite.h"
 #include "lobby/unk_7B8610.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "area.h"
 char *strcpy(char *, const char *);
 
 /* prototypes */
@@ -14,7 +15,7 @@ void ChatLog_DrawFrame(s32, u8, u8);
 static s32 ChatLog_Lines(void);
 void ChatLog_DrawLines(u8 skip, s16 yoff, u8 fromTop, u8 size, u8 atEnd);
 void Chat_DrawWindow(u8);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 /* end of prototypes */
 void Chat_FilterWords(char *s);
 void ChatLog_Add(char *text, ChatMsg *from, s32 a);
@@ -122,7 +123,7 @@ void ChatLog_Receive(ChatMsg *msg)
         }
     }
     if (strcmp(msg->id, gMyUserId) != 0 && gChatLog.win.open == 0) {
-        if ((gScene.area != 0x83) && (gChatSendTo != 0)) {
+        if ((gScene.area != AREA_HUB_0x83) && (gChatSendTo != 0)) {
             if (gSysSave.options.chatBeep == 0) {
                 goto play;
             }
@@ -361,7 +362,7 @@ void LobbyChat_DrawHud(void)
         }
     }
     if (gChatLog.win.timer != 0) {
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         size = *(u8 *)&gSysSave.options.chatSize;
         ChatLog_DrawFrame(0x80, size, gChatLog.unk1848);
         ChatLog_DrawLines(0, 0, 0, size, gChatLog.unk1848);

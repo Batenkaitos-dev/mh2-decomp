@@ -9,6 +9,7 @@
 #include "lobby_state.h"
 #include "player.h"
 #include "lobby_menu.h"
+#include "area.h"
 
 u32 Equip_GetPrice(u8 type, u16 id);
 void CamFocus_End(void);
@@ -460,7 +461,7 @@ void WeaponForge_DrawPreview(u8 *o)
 s32 LobbyBgm_IsActive(void);
 s32 SongMenu_IsPlaying(void)
 {
-    if (gScene.area != 0x87) {
+    if (gScene.area != AREA_HUB_0x87) {
         return 0;
     }
     if (LobbyBgm_IsActive() != 0) {

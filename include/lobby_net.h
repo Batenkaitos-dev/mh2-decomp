@@ -101,10 +101,11 @@ typedef struct NetEntryVals {
 } NetEntryVals;
 
 /* a user as 630A's reply lists them (up to 10); the notifications
- * 6702/670C send one with one more byte */
+ * 6702/670C send one with one more byte. plsel's chat log takes its
+ * sender in this form (Plsel_AddChatLog). */
 typedef struct NetUserRec {
     /* 0x000 */ NetUser u;
-    /* 0x11C */ u8 unk11C[4];
+    /* 0x11C */ u8 color[4];    /* the chat colours, as ChatLine.color: plsel's log copies them (6702 sends them) */
 } NetUserRec;
 
 /* 6892's reply (LobbyReply_6892): five u32, as many u32 as the fifth says

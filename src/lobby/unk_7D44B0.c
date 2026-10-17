@@ -11,6 +11,7 @@
 #include "scene.h"
 #include "ram_areas.h"
 #include "obj.h"
+#include "area.h"
 
 /* a timed event (0x18 bytes; LobbyWorld.events, D_008FAD30):
  * LobbyWorld_RunEvents calls func once the world's time reaches the event's */
@@ -223,13 +224,13 @@ void Draw_SetDefaultState(void);
 s32 Gs_SetState(u8 reg, u32 v);
 void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_RotateY(f32 *m, f32 a);
-extern s16 gAreaAEModels[];                /* area 0xAE's 3 models: part, angle, position */
+extern s16 gAreaAEModels[];                /* AREA_ONLINE_HOUSE_1's 3 models: part, angle, position */
 extern u16 gAreaAEPropRot[];
 extern f32 gAreaAEPropPos[];
-extern s16 gAreaAFModels[];                /* area 0xAF's 5 */
+extern s16 gAreaAFModels[];                /* AREA_ONLINE_HOUSE_2's 5 */
 extern u16 gAreaAFPropRot[];
 extern f32 gAreaAFPropPos[];
-/* the props of lobby areas 0xAE and 0xAF (a sub_main object, Obj_Alloc(0);
+/* the props of lobby AREA_ONLINE_HOUSE_1 and AREA_ONLINE_HOUSE_2 (a sub_main object, Obj_Alloc(0);
  * LobbyProp_Run by state; a view of the Obj): they stand 120 frames, tip over (tilt to
  * -0x4000, faster each frame), raise effects at their places, then sink
  * (LobbyProp_Draw draws them) */
@@ -2257,7 +2258,7 @@ void LobbyBgm_Update(void)
         }
         break;
     case 3:
-        if (gScene.area == 0x87 && r == 1) {
+        if (gScene.area == AREA_HUB_0x87 && r == 1) {
             LobbyBgm_Play(s->track, s->unk84, 0);
         }
         break;
@@ -3054,10 +3055,10 @@ void LobbyProp_Init(LobbyProp *o)
     o->tilt = 0;
     o->timer = 0;
     switch (gScene.area) {
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         Vec_Copy(o->pos, gAreaAEPropPos);
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         Vec_Copy(o->pos, gAreaAFPropPos);
         break;
     default:
@@ -3096,11 +3097,11 @@ void LobbyProp_Update(LobbyProp *o)
             o->tilt = -0x4000;
             o->timer = 0;
             switch (gScene.area) {
-            case 0xAE:
+            case AREA_ONLINE_HOUSE_1:
                 n = 3;
                 pos = gAreaAEPropPos;
                 break;
-            case 0xAF:
+            case AREA_ONLINE_HOUSE_2:
                 n = 5;
                 pos = gAreaAFPropPos;
                 break;
@@ -3152,13 +3153,13 @@ void LobbyProp_Draw(DrawSlot *d)
     scene = gAreaSubModels[0];
     if (w->visible != 0 && scene != NULL && scene->active != 0) {
         switch (gScene.area) {
-        case 0xAE:
+        case AREA_ONLINE_HOUSE_1:
             n = 3;
             idx = gAreaAEModels;
             rot = gAreaAEPropRot;
             pos = gAreaAEPropPos;
             break;
-        case 0xAF:
+        case AREA_ONLINE_HOUSE_2:
             n = 5;
             idx = gAreaAFModels;
             rot = gAreaAFPropRot;

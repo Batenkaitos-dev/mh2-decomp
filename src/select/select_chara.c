@@ -160,7 +160,7 @@ void select_entry(s16 keep)
     edit->voice = 0;
     edit->hair = 0;
     edit->timer = 0;
-    edit->sex = 0;
+    edit->savedToCard = 0;
     edit->sound = 0;
     edit->soundWait = 0;
     edit->unk44[1] = 0;
@@ -194,7 +194,7 @@ void Save_SetEventFlag(s32);
 u16 Save_RankFromPoints(SaveData *s);
 void Rate_InitSave(SaveData *save);
 s32 sprintf(char *, const char *, ...);
-void SaveFlag_SetIn(SaveData *save, s32 n);
+void Save_SetTitleIn(SaveData *save, s32 n);
 
 extern char *gEquipSetNameFormat;
 /*
@@ -239,7 +239,7 @@ void Chara_MakeSave(ChrEdit *edit, u8 slot)
     newSave->equipIdx[3] = 0xFFFF;
     newSave->equipIdx[4] = 0xFFFF;
     newSave->equipIdx[5] = 0xFFFF;
-    newSave->unk20D9 = 1;
+    newSave->modeSelChoice = GMSUB_MODE_SEL_OFFLINE;
     newSave->hrPoints = 0;
     newSave->hr = 0;
     Equip_EquipSlot(newSave, (s16)Box_AddItem(newSave, 6, 0x9C, 0));
@@ -276,10 +276,10 @@ void Chara_MakeSave(ChrEdit *edit, u8 slot)
         walk->equipSets[0].idx[5] = 0xFFFF;
         sprintf((char *)walk->equipSets[0].name, gEquipSetNameFormat, j + 1);
     }
-    SaveFlag_SetIn(newSave, 0);
-    SaveFlag_SetIn(newSave, 1);
-    SaveFlag_SetIn(newSave, 2);
-    SaveFlag_SetIn(newSave, 3);
+    Save_SetTitleIn(newSave, 0);
+    Save_SetTitleIn(newSave, 1);
+    Save_SetTitleIn(newSave, 2);
+    Save_SetTitleIn(newSave, 3);
 }
 
 /* A record of sub_main's gStartPos: an area's start position (no shared
@@ -462,7 +462,7 @@ void Chara_DrawBackground(void)
 {
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0xA3);
     Tex_Bind(0xA3);
     Gs_SetState(0x6C, 0);
@@ -688,7 +688,7 @@ void Chara_DrawEditHelp(ChrEdit *edit, s32 mode)
 /*
  * Draws the window of the creation's save: showResult 0, the lines shown
  * while saving; otherwise the message for the save menu's result
- * (ChrEdit.sex: 1 saved, 0 not). Those two are gCardSavingTexts' last
+ * (ChrEdit.savedToCard: 1 saved, 0 not). Those two are gCardSavingTexts' last
  * entries, which the game reads as gRotateTexts[0x12] and [0x13].
  */
 void Chara_DrawSaveMessage(ChrEdit *edit, s32 showResult)
@@ -704,7 +704,7 @@ void Chara_DrawSaveMessage(ChrEdit *edit, s32 showResult)
         x = (0x280 - Str_Length(gCardSavingTexts[1]) * 10) / 2;
         Text_PrintfAt(x, 0x180, 2, gCardSavingTexts[1]);
     } else {
-        switch (edit->sex) {
+        switch (edit->savedToCard) {
         case 0:
             msgIndex = 0x13;
             break;
@@ -855,7 +855,7 @@ void Chara_MoveRowCursor(ChrEdit *edit, u8 rowCount, u16 pad)
  */
 void Chara_CancelToLast(ChrEdit *edit, u8 rowCount)
 {
-    if (edit->flags & 0x40) {
+    if (edit->padPressed & 0x40) {
         if (edit->cursor != rowCount - 1) {
             edit->cursor = rowCount - 1;
             Chara_PlayCancelSe();
@@ -900,7 +900,7 @@ s32 Chara_StepCondition(ChrEdit *edit, u16 pad, u8 condIndex, u8 bounceEntry)
  * on its page: a part fits when each condition is CHARA_COND_ANY, equal to
  * the part's value, or the part has none (0). Sets ChrEdit.mask (a bit per
  * part) and matchCount, and returns the count. The last hair style fits
- * only when gSysSave.unk458 is set. Static: its callers keep their first
+ * only when gSysSave.bonusUnlocked is set. Static: its callers keep their first
  * argument's register across the call.
  */
 static s8 Chara_FilterParts(ChrEdit *edit, u8 kind)
@@ -961,7 +961,7 @@ static s8 Chara_FilterParts(ChrEdit *edit, u8 kind)
             if (edit->cond[5] == 0 || edit->cond[5] == thirdValue || thirdValue == 0) {
                 misses--;
             }
-            if (i == CHARA_HAIR_SPECIAL && gSysSave.unk458 == 0) {
+            if (i == CHARA_HAIR_SPECIAL && gSysSave.bonusUnlocked == 0) {
                 misses = 0x63;
             }
             if (misses == 0) {
@@ -1034,8 +1034,8 @@ s32 Chara_FacePage(ChrEdit *edit)
 {
     u16 pad;
 
-    pad = edit->flags | edit->padRepeat;
-    if (edit->flags & 0x20) {
+    pad = edit->padPressed | edit->padRepeat;
+    if (edit->padPressed & 0x20) {
         if (edit->cursor == 4) {
             if (edit->matchCount > 0) {
                 return 1;
@@ -1047,7 +1047,7 @@ s32 Chara_FacePage(ChrEdit *edit)
     }
     Chara_MoveRowCursor(edit, 5, pad);
     Chara_CancelToLast(edit, 5);
-    if (edit->flags & 0x200) {
+    if (edit->padPressed & 0x200) {
         edit->cond[0] = 0;
         edit->cond[1] = 0;
         edit->cond[2] = 0;
@@ -1138,8 +1138,8 @@ s32 Chara_HairPage(ChrEdit *edit)
 {
     u16 pad;
 
-    pad = edit->flags | edit->padRepeat;
-    if (edit->flags & 0x20) {
+    pad = edit->padPressed | edit->padRepeat;
+    if (edit->padPressed & 0x20) {
         if (edit->cursor == 4) {
             if (edit->matchCount > 0) {
                 return 1;
@@ -1151,7 +1151,7 @@ s32 Chara_HairPage(ChrEdit *edit)
     }
     Chara_MoveRowCursor(edit, 5, pad);
     Chara_CancelToLast(edit, 5);
-    if (edit->flags & 0x200) {
+    if (edit->padPressed & 0x200) {
         edit->cond[3] = 0;
         edit->cond[4] = 0;
         edit->cond[5] = 0;
@@ -1244,8 +1244,8 @@ s32 Chara_VoicePage(ChrEdit *edit)
     u16 pad;
     u8 oldVoice;
 
-    pad = edit->flags | edit->padRepeat;
-    if (edit->flags & 0x20) {
+    pad = edit->padPressed | edit->padRepeat;
+    if (edit->padPressed & 0x20) {
         if (edit->cursor == 3) {
             if (edit->matchCount > 0) {
                 return 1;
@@ -1257,7 +1257,7 @@ s32 Chara_VoicePage(ChrEdit *edit)
     }
     Chara_MoveRowCursor(edit, 4, pad);
     Chara_CancelToLast(edit, 4);
-    if (edit->flags & 0x200) {
+    if (edit->padPressed & 0x200) {
         edit->cond[6] = 0;
         edit->cond[7] = 0;
         Chara_FilterParts(edit, CHARA_PARTS_VOICE);
@@ -1372,10 +1372,10 @@ s32 Chara_EditColor(ChrEdit *edit, Player *pl, u16 pad)
 {
     u8 rgb[3];
 
-    if (edit->choice == CHARA_COLOR_ROW_DONE && (edit->flags & 0x20)) {
+    if (edit->choice == CHARA_COLOR_ROW_DONE && (edit->padPressed & 0x20)) {
         return 1;
     }
-    if ((edit->flags & 0x40) && edit->choice != CHARA_COLOR_ROW_DONE) {
+    if ((edit->padPressed & 0x40) && edit->choice != CHARA_COLOR_ROW_DONE) {
         edit->choice = CHARA_COLOR_ROW_DONE;
         Chara_PlayCancelSe();
     }
@@ -1403,7 +1403,7 @@ s32 Chara_EditColor(ChrEdit *edit, Player *pl, u16 pad)
         edit->color = (rgb[0] << 16) | 0xFF000000 | (rgb[1] << 8) | rgb[2];
     } else if (edit->choice == CHARA_COLOR_ROW_PRESETS) {
         Chara_MoveCursorWrap(edit, pad, &edit->presetColor, CHARA_PRESET_COLOR_COUNT, 0x16, 0);
-        if (edit->flags & 0x20) {
+        if (edit->padPressed & 0x20) {
             edit->color = gPresetColors[edit->presetColor];
             Chara_PlayDecideSe();
         }
@@ -1609,12 +1609,12 @@ void Chara_CreateTask(TaskSlot *task)
     }
     if (edit->inputDelay != 0) {
         edit->inputDelay--;
-        edit->flags = 0;
+        edit->padPressed = 0;
         edit->padPrevHeld = 0;
         edit->padHeld = 0;
         edit->padRepeat = 0;
     } else {
-        edit->flags = gPadState[0].pressed;
+        edit->padPressed = gPadState[0].pressed;
         edit->padPrevHeld = gPadState[0].prevHeld;
         edit->padHeld = gPadState[0].held;
         edit->padRepeat = gPadState[0].repeat;
@@ -1629,14 +1629,14 @@ void Chara_CreateTask(TaskSlot *task)
     } else {
         edit->holdFrames = 0;
     }
-    edit->padHoldRepeat |= edit->flags;
-    trig = edit->flags | edit->padRepeat;
+    edit->padHoldRepeat |= edit->padPressed;
+    trig = edit->padPressed | edit->padRepeat;
     if (edit->noMatch != 0) {
-        if (edit->flags & 0x60) {
+        if (edit->padPressed & 0x60) {
             edit->noMatch = 0;
             Chara_PlayDecideSe();
         }
-        edit->flags = 0;
+        edit->padPressed = 0;
         edit->padPrevHeld = 0;
         edit->padHeld = 0;
         edit->padRepeat = 0;
@@ -1675,15 +1675,15 @@ void Chara_CreateTask(TaskSlot *task)
         }
         break;
     case CHARA_CREATE_GENDER:
-        if ((edit->flags & 0x800) && edit->gender == 1) {
+        if ((edit->padPressed & 0x800) && edit->gender == 1) {
             edit->gender = 0;
             edit->inputDelay = 3;
             Sound_PlaySeFlatPan(0, 0x12, 0, edit->gender * 100 - 50);
-        } else if ((edit->flags & 0x400) && edit->gender == 0) {
+        } else if ((edit->padPressed & 0x400) && edit->gender == 0) {
             edit->gender = 1;
             edit->inputDelay = 3;
             Sound_PlaySeFlatPan(0, 0x12, 0, edit->gender * 100 - 50);
-        } else if (edit->flags & 0x20) {
+        } else if (edit->padPressed & 0x20) {
             task->mode++;
             if (edit->loadedGender != edit->gender) {
                 select_entry(1);
@@ -1724,7 +1724,7 @@ void Chara_CreateTask(TaskSlot *task)
             Sound_PlaySeMusicVol(6, 0, 0);
             Sound_PlaySeMusicVol(6, 1, 0);
             Parts_SlideInPanels(0xFF);
-        } else if (edit->flags & 0x40) {
+        } else if (edit->padPressed & 0x40) {
             Sound_PlayCancel();
             task->mode = CHARA_CREATE_ASK_QUIT;
             edit->choice = CHARA_CHOICE_NO;
@@ -1732,7 +1732,7 @@ void Chara_CreateTask(TaskSlot *task)
         break;
     case CHARA_CREATE_PANELS:
         Chara_RotateByPad();
-        if (edit->flags & 0x20) {
+        if (edit->padPressed & 0x20) {
             if (edit->panel == CHARA_PANEL_FINISH) {
                 Chara_PlayDecideSe();
                 task->mode = CHARA_CREATE_CONFIRM;
@@ -1764,26 +1764,26 @@ void Chara_CreateTask(TaskSlot *task)
                     break;
                 }
             }
-        } else if (edit->flags & 0x40) {
+        } else if (edit->padPressed & 0x40) {
             Sound_PlayCancel();
             task->mode = CHARA_CREATE_ASK_GENDER;
             edit->choice = CHARA_CHOICE_NO;
-        } else if (edit->flags & 0x2000) {
+        } else if (edit->padPressed & 0x2000) {
             if (edit->panel == CHARA_PANEL_NAME) {
                 edit->panel = CHARA_PANEL_FINISH;
             } else {
                 edit->panel--;
             }
             Sound_PlaySeFlat(1, 0xC, 0);
-        } else if (edit->flags & 0x1000) {
+        } else if (edit->padPressed & 0x1000) {
             if (edit->panel >= CHARA_PANEL_FINISH) {
                 edit->panel = CHARA_PANEL_NAME;
             } else {
                 edit->panel++;
             }
             Sound_PlaySeFlat(1, 0xC, 0);
-        } else if (((edit->padHeld & 0x4000) && (edit->flags & 0x8000)) ||
-                   ((edit->flags & 0x4000) && (edit->padHeld & 0x8000))) {
+        } else if (((edit->padHeld & 0x4000) && (edit->padPressed & 0x8000)) ||
+                   ((edit->padPressed & 0x4000) && (edit->padHeld & 0x8000))) {
             edit->type = Rand_Next(1) & 3;
             edit->face = Rand_Next(1) % CHARA_FACE_COUNT;
             edit->color = gPresetColors[Rand_Next(1) & (CHARA_PRESET_COLOR_COUNT - 1)];
@@ -1820,13 +1820,13 @@ void Chara_CreateTask(TaskSlot *task)
         Chara_RotateByPad();
         switch (edit->panel) {
         case CHARA_PANEL_NAME:
-            if (Kbd_Run(edit->name, edit->padHeld, edit->flags) != 0) {
+            if (Kbd_Run(edit->name, edit->padHeld, edit->padPressed) != 0) {
                 Kbd_Cancel();
                 Chara_ClosePage(task, edit);
             }
             break;
         case CHARA_PANEL_TYPE:
-            if (edit->flags & 0x20) {
+            if (edit->padPressed & 0x20) {
                 Chara_PlayDecideSe();
                 Chara_ClosePage(task, edit);
             } else {
@@ -1855,7 +1855,7 @@ void Chara_CreateTask(TaskSlot *task)
             if (Chara_VoicePage(edit) == 1) {
                 Chara_PlayDecideSe();
                 Chara_ClosePage(task, edit);
-            } else if ((edit->flags & 0x100) && edit->soundWait == 0) {
+            } else if ((edit->padPressed & 0x100) && edit->soundWait == 0) {
                 edit->soundWait = 5;
                 Sound_PlaySeFlat(2, edit->sound, 0);
                 edit->sound++;
@@ -1869,16 +1869,16 @@ void Chara_CreateTask(TaskSlot *task)
     case CHARA_CREATE_CONFIRM:
         Chara_RotateByPad();
         if (Chara_NameHasText(edit) == 0 || Chara_CheckName(edit->name) == 0) {
-            if (edit->flags & 0x60) {
+            if (edit->padPressed & 0x60) {
                 task->mode = CHARA_CREATE_PANELS;
                 Chara_PlayCancelSe();
             }
-        } else if ((edit->flags & 0x20) && edit->choice == CHARA_CHOICE_YES) {
+        } else if ((edit->padPressed & 0x20) && edit->choice == CHARA_CHOICE_YES) {
             Sound_PlaySeFlat(1, 6, 0);
             edit->slot = 0;
             task->mode++;
             NetMenu_Open(3);
-        } else if (((edit->flags & 0x20) && edit->choice == CHARA_CHOICE_NO) || (edit->flags & 0x40)) {
+        } else if (((edit->padPressed & 0x20) && edit->choice == CHARA_CHOICE_NO) || (edit->padPressed & 0x40)) {
             task->mode = CHARA_CREATE_PANELS;
             Chara_PlayCancelSe();
         } else {
@@ -1897,10 +1897,10 @@ void Chara_CreateTask(TaskSlot *task)
         saveResult = NetMenu_Update();
         if (saveResult != 0) {
             if (saveResult == 2) {
-                edit->sex = 0;
+                edit->savedToCard = 0;
                 Sound_PlaySeFlat(1, 4, 0);
             } else {
-                edit->sex = 1;
+                edit->savedToCard = 1;
             }
             Chara_MakeSave(edit, CHARA_SLOT_NONE);
             task->mode++;
@@ -1986,13 +1986,13 @@ void Chara_CreateTask(TaskSlot *task)
         }
         break;
     case CHARA_CREATE_ASK_QUIT:
-        if ((edit->flags & 0x20) && edit->choice == CHARA_CHOICE_YES) {
+        if ((edit->padPressed & 0x20) && edit->choice == CHARA_CHOICE_YES) {
             task->mode++;
             Chara_PlayCancelSe();
             Sound_PlaySeMusicVol(1, 2, 0);
             Sound_PlaySeMusicVol(1, 3, 0);
             FadeA_Start(1);
-        } else if (((edit->flags & 0x20) && edit->choice == CHARA_CHOICE_NO) || (edit->flags & 0x40)) {
+        } else if (((edit->padPressed & 0x20) && edit->choice == CHARA_CHOICE_NO) || (edit->padPressed & 0x40)) {
             task->mode = CHARA_CREATE_GENDER;
             Chara_PlayCancelSe();
         } else {
@@ -2016,11 +2016,11 @@ void Chara_CreateTask(TaskSlot *task)
         break;
     case CHARA_CREATE_ASK_GENDER:
         Chara_RotateByPad();
-        if ((edit->flags & 0x20) && edit->choice == CHARA_CHOICE_YES) {
+        if ((edit->padPressed & 0x20) && edit->choice == CHARA_CHOICE_YES) {
             task->mode = CHARA_CREATE_GENDER;
             Sound_Silence();
             Chara_PlayCancelSe();
-        } else if (((edit->flags & 0x20) && edit->choice == CHARA_CHOICE_NO) || (edit->flags & 0x40)) {
+        } else if (((edit->padPressed & 0x20) && edit->choice == CHARA_CHOICE_NO) || (edit->padPressed & 0x40)) {
             task->mode = CHARA_CREATE_PANELS;
             Chara_PlayCancelSe();
         } else {
@@ -2089,7 +2089,7 @@ void Chara_DrawArmorIcon(s16 x, s16 y, s16 kind, s16 idx, s32 rarity)
 {
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 8);
     Tex_Bind(8);
     spr.x = x - 0x26;
@@ -2127,7 +2127,7 @@ void Chara_DrawEquipIcon(s16 x, s16 y, s16 kind, s16 idx, s32 rarity)
     } else {
         cell = gArmorIconCells[idx] + 0x4A;
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
     spr.x = x - 0x26;
@@ -2287,7 +2287,7 @@ void Loading_Start(void);
 void Anim_LoadCommon(s32);
 s32 Sound_LoadSelectBanks(void *task);
 void Loading_Stop(void);
-void Sound_PlaySe72(void);
+void Sound_PlaySlotChange(void);
 void CharaSel_Leave(void);
 void Save_LoadSlot(u8);
 s32 CharaSel_IsDone(void);
@@ -2503,7 +2503,7 @@ void Chara_SelectTask(TaskSlot *task)
         save += edit->slot;
             } while (Card_SlotReady(edit->slot) != 0 && save->used == 0);
             if (oldSlot != edit->slot) {
-                Sound_PlaySe72();
+                Sound_PlaySlotChange();
                 if (Chara_EquipViewOn() == 0) {
                     *(s32 *)((u8 *)&gPlayers[0].unk53C[4] + edit->slot * 0x970) = 0x01000000;
                     *(s32 *)((u8 *)&gPlayers[0].unk53C[8] + edit->slot * 0x970) = 0x01000000;
@@ -2522,7 +2522,7 @@ void Chara_SelectTask(TaskSlot *task)
         save += edit->slot;
             } while (Card_SlotReady(edit->slot) != 0 && save->used == 0);
             if (oldSlot != edit->slot) {
-                Sound_PlaySe72();
+                Sound_PlaySlotChange();
                 if (edit->slot != CHARA_SLOT_NONE && Chara_EquipViewOn() == 0) {
                     *(s32 *)((u8 *)&gPlayers[0].unk53C[4] + edit->slot * 0x970) = 0x01000000;
                     *(s32 *)((u8 *)&gPlayers[0].unk53C[8] + edit->slot * 0x970) = 0x01000000;

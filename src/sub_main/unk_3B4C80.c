@@ -1,14 +1,29 @@
 /*
- * The player and the save data: equipment kinds and classes, bowgun
- * options, the hunter rank (points and the rank gates), money, event flags,
- * the save pouch and the item box, loading the player from the save data,
- * and the new-equipment marks.
+ * The hunter's equipment and save data (gSave, SaveData in save.h): the
+ * equipment tables' accessors (Equip_GetData and the price, name, rarity,
+ * kind and class), the bowgun options (GUN_OPT_*), the players' versus
+ * sides, the long sword's gauge, loading a player from the save or a
+ * preset, the hunter rank (gHrRankPoints, gHrPointSteps and the rank
+ * gates), the save's pouch, the item box and the pouch backup, the event
+ * flags, the weapon and equipment stats, the equipment flags (EQUIP_FLAG_*),
+ * the equipment box and the equipped items (SaveData.box, equip,
+ * equipIdx), the forge's recipes and conditions, the hunting records by
+ * monster group, the quest requirements, the village facilities, the
+ * items obtained, the armour upgrade values, then the save's points,
+ * titles and MH Portable link, and the decorations. The middle of the
+ * file is data: the equipment tables (BladeData, GunData, ArmorData by
+ * type) and their names, and the tables this code reads.
+ *
+ * The menus that show all this are unk_361570.c (the equipment), unk_356380.c
+ * (the status pages) and the lobby's forge and box menus; the pouch itself
+ * is pouch.c's.
+ *
+ * 0x3B4C80-0x3BE060 is one of the game's units: Deco_FitsEquip matches only
+ * with Armor_GetData static, defined earlier in the same unit. The "----"
+ * lines mark where its last two parts begin. The code is compiled at
+ * optimization level 4 up to 0x3BD380 and at the default (3) from there
+ * (Equip_CompactDecorations needs 3).
  */
-/* 0x3B4C80-0x3BE060 is one of the game's units: Armor_GetData is static
- * (Deco_FitsEquip, in the 0x3BD5E0 part, matches only so), so round 19
- * merged unk_3BD380.c and unk_3BD5E0.c into this file; the "----" lines
- * mark where each began. The level changes inside the unit: 4 up to
- * 0x3BD380, 3 from there (Equip_CompactDecorations needs 3). */
 #include "common.h"
 #include "player.h"
 #include "item.h"
@@ -18,6 +33,7 @@
 #include "syssave.h"
 #include "syssettings.h"
 #include "lobby_state.h"
+#include "quest.h"
 
 #pragma optimization_level 4
 
@@ -46,7 +62,7 @@ char *strcpy(char *dst, char *src);    /* strcpy */
 s32 Award_Grant(s32 arg0);
 s32 Save_HrGateCleared(s32 n);
 f32 Math_Absf(f32 x);
-s32 Item_IsSpecial(u16 item);
+s32 Item_IsOnePerPouch(u16 item);
 s16 Box_GetCapacity(SaveData *save);
 void Save_MarkItemObtained(SaveData *save, u16 item);
 s32 Save_IsItemObtained(SaveData *save, u16 item);
@@ -58,29 +74,32 @@ s32 Save_AddHrPoints(SaveData *s, s32 n);
 s32 SavePouch_HasSpecial(SaveData *s);
 u32 ItemBox_AddTo(SaveData *s, u16 item, u32 count);
 
-/* Hunter rank points: D_0044C2CC for the ranks up to 50, then gHrPointSteps,
- * steps of 50 ranks up to limit, step points per rank, ended by 0xFFFF. */
+/* A band of hunter ranks above 50 (gHrPointSteps, Hr_PointsForRank): the band's last rank and
+ * the points each of its ranks adds. The list ends with a limit of 0xFFFF; the ranks up to 50
+ * have their points in gHrRankPoints. */
 typedef struct HrStep {
-    s32 limit;
-    s32 step;
+    s32 limit;                  /* the band's last rank */
+    s32 step;                   /* the points per rank */
 } HrStep;
 
-extern u32 D_0044C2CC[];
+extern u32 gHrRankPoints[];
 extern HrStep gHrPointSteps[];
 extern char gMyName[];
 
 
-/* A block at 0x6ADAD4 with four 6-byte ids at +0x42 (Players_UpdateSides). */
-typedef struct IdBlock {
-    u8 pad[0x42];
-    s8 ids[4][6];
-} IdBlock;
+/* gNextQuest seen from its teams (+4), for the user ids of the versus sides at NextQuest +0x46
+ * (unk46: the lobby copies 6 bytes per side there). Players_UpdateSides reads them from a base
+ * at +4 with the offset 0x42, so the view keeps that base for the match. */
+typedef struct SideIdsView {
+    u8 teams[0x42];             /* NextQuest.teams, teamItems, unk44 */
+    s8 ids[4][6];               /* NextQuest.unk46 */
+} SideIdsView;
 
 extern ItemStack gPouchBackup[20];
 extern UserText gPresetChars[];     /* the preset characters, picked by an id (Preset_Find) */
 extern char gMemberNames[][17];   /* the preset names */
 extern s8 gPlayerIds[][8];      /* the preset ids */
-extern IdBlock D_006ADAD4;
+extern NextQuest gNextQuest;
 extern s8 gMyUserId[8];
 /* gScene.preset as its own symbol: with gScene.preset[i] MWCC folds 0x276 into the stores. */
 extern s8 D_006ADF26[][8];
@@ -99,119 +118,121 @@ s32 Quest_IsTraining(void);
 s16 EquipView_GetStat(s32 kind);
 void EquipView_FromPlayer(Player *p);
 s32 QuestGoal_IsDone(s32 n);
-u16 ItemList_IndexOf(u16 item);
+u16 ClearList_IndexOf(u16 item);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
 f32 Vec_Distance(f32 *a, f32 *b);
 
-typedef struct ArmorModel {
-    u8 male;
-    u8 female;
-    u8 pad[38];
-} ArmorModel;
-
-extern ArmorModel *D_0045E898[];
 extern Em gEms[];
 
 extern u8 gAmmoLevels[][4];      /* per ammo kind: +0, +1 compared with the gun */
-extern EquipItem gEquipShown[7]; /* the equipment shown: weapon, then armour types 0-5 */
-extern s16 D_006AEE00;
-extern s16 D_0045EB20[];
-extern s16 D_0045EB00[];
-extern u16 D_0044C3A0[];        /* item ids, ended by 0xEA60 (bits in gSave unk1FFC) */
+extern EquipItem gEquipShown[7]; /* the equipment shown: [0] the weapon, [1 + type] each armour piece (EquipType 0-5) */
+extern s16 gSilencerBonus;
+extern s16 gBarrelBonusHeavy[];
+extern s16 gBarrelBonusLight[];
+extern u16 gClearListQuests[];        /* item ids, ended by 0xEA60 (bits in gSave unk1FFC) */
 
 
+/* The data record of a piece of equipment (its BladeData, GunData or ArmorData, by its type), NULL
+ * for an unknown type. */
 EquipData *Equip_GetData(EquipItem *item)
 {
     switch (item->type) {
-    case 0:
+    case EQUIP_LEGS:
         return (EquipData *)&gArmorLegsData[item->id];
-    case 2:
+    case EQUIP_HEAD:
         return (EquipData *)&gArmorHeadData[item->id];
-    case 3:
+    case EQUIP_BODY:
         return (EquipData *)&gArmorBodyData[item->id];
-    case 4:
+    case EQUIP_ARMS:
         return (EquipData *)&gArmorArmsData[item->id];
-    case 5:
+    case EQUIP_WAIST:
         return (EquipData *)&gArmorWaistData[item->id];
-    case 6:
+    case EQUIP_BLADE:
         return (EquipData *)&gBladeData[item->id];
-    case 7:
+    case EQUIP_GUN:
         return (EquipData *)&gGunData[item->id];
     }
     return NULL;
 }
 
-/* The kind of a weapon (a row of gWeaponKindClass), 0 for other equipment. */
-u16 Equip_GetKind(EquipItem *e)
+/* The weapon kind of a weapon (BladeData.kind or GunData.kind, a row of gWeaponKindClass); 0 for
+ * armour. */
+u16 Equip_GetKind(EquipItem *item)
 {
-    if (e->type == 6) {
-        return gBladeData[e->id].kind;
+    if (item->type == EQUIP_BLADE) {
+        return gBladeData[item->id].kind;
     }
-    if (e->type == 7) {
-        return gGunData[e->id].kind;
+    if (item->type == EQUIP_GUN) {
+        return gGunData[item->id].kind;
     }
     return 0;
 }
 
 /* The weapon class of a weapon. */
-u8 Equip_GetClass(EquipItem *e)
+u8 Equip_GetClass(EquipItem *item)
 {
-    return gWeaponKindClass[Equip_GetKind(e)];
+    return gWeaponKindClass[Equip_GetKind(item)];
 }
 
-u8 Equip_GetBladeSpecial(EquipItem *e)
+/* A blade weapon's special value (BladeData.special: a gunlance's shelling type, a horn's notes); 0
+ * for no item or a gun. */
+u8 Equip_GetBladeSpecial(EquipItem *item)
 {
-    if (e->id == 0) {
+    if (item->id == 0) {
         return 0;
     }
-    if (e->type == 6) {
-        return gBladeData[e->id].unk13;
+    if (item->type == EQUIP_BLADE) {
+        return gBladeData[item->id].special;
     }
     return 0;
 }
 
-/* The weapon class of a weapon type and id. */
+/* The weapon class (WEAPON_*) of a weapon by its type and id. Ids above 0x384 read the byte table
+ * D_0044BF3B (an alias 0xB bytes into gStageFileTbls_4) at the id: no weapon table goes that far.
+ */
 u8 Weapon_GetClass(u8 type, u16 id)
 {
     if (id > 0x384) {
         return D_0044BF3B[id];
     }
-    if (type == 6) {
+    if (type == EQUIP_BLADE) {
         return gWeaponKindClass[gBladeData[id].kind];
     }
-    if (type == 7) {
+    if (type == EQUIP_GUN) {
         return gWeaponKindClass[gGunData[id].kind];
     }
     return 0;
 }
 
-/* 1 for the gunner weapon classes. */
+/* 1 for the gunner weapon classes (gWeaponClassInfo[class][0]). */
 u8 WeaponClass_IsGunner(u8 cls)
 {
     return gWeaponClassInfo[cls][0];
 }
 
+/* The flags of a weapon class (gWeaponClassInfo[class][1]), kept in Player.weaponFlags. */
 u8 WeaponType_Flags(u8 cls)
 {
     return gWeaponClassInfo[cls][1];
 }
 
+/* The price of a piece of equipment by its type and id; 9,999,999 for an unknown type. */
 u32 Equip_GetPrice(u8 type, u16 id)
 {
     switch (type) {
-    case 0:
+    case EQUIP_LEGS:
         return gArmorLegsData[id].price;
-    case 2:
+    case EQUIP_HEAD:
         return gArmorHeadData[id].price;
-    case 3:
+    case EQUIP_BODY:
         return gArmorBodyData[id].price;
-    case 4:
+    case EQUIP_ARMS:
         return gArmorArmsData[id].price;
-    case 5:
+    case EQUIP_WAIST:
         return gArmorWaistData[id].price;
-    case 6:
+    case EQUIP_BLADE:
         return gBladeData[id].price;
-    case 7:
+    case EQUIP_GUN:
         return gGunData[id].price;
     }
     return 9999999;
@@ -225,56 +246,62 @@ extern char *gArmorWaistNames[];
 extern char *gBladeNames[];
 extern char *gGunNames[];
 
+/* The name of a piece of equipment by its type and id (the name tables at the end of this file);
+ * NULL for an unknown type. */
 char *Equip_GetName(u8 type, u16 id)
 {
     switch (type) {
-    case 0:
+    case EQUIP_LEGS:
         return gArmorLegsNames[id];
-    case 2:
+    case EQUIP_HEAD:
         return gArmorHeadNames[id];
-    case 3:
+    case EQUIP_BODY:
         return gArmorBodyNames[id];
-    case 4:
+    case EQUIP_ARMS:
         return gArmorArmsNames[id];
-    case 5:
+    case EQUIP_WAIST:
         return gArmorWaistNames[id];
-    case 6:
+    case EQUIP_BLADE:
         return gBladeNames[id];
-    case 7:
+    case EQUIP_GUN:
         return gGunNames[id];
     }
     return 0;
 }
 
+/* The rarity of a piece of equipment by its type and id (the low 4 bits of its rarity byte); 0 for
+ * an unknown type. */
 u8 Equip_GetRarity(u8 type, u16 id)
 {
     switch (type) {
-    case 0:
+    case EQUIP_LEGS:
         return gArmorLegsData[id].rarity & 0xF;
-    case 2:
+    case EQUIP_HEAD:
         return gArmorHeadData[id].rarity & 0xF;
-    case 3:
+    case EQUIP_BODY:
         return gArmorBodyData[id].rarity & 0xF;
-    case 4:
+    case EQUIP_ARMS:
         return gArmorArmsData[id].rarity & 0xF;
-    case 5:
+    case EQUIP_WAIST:
         return gArmorWaistData[id].rarity & 0xF;
-    case 6:
+    case EQUIP_BLADE:
         return gBladeData[id].rarity & 0xF;
-    case 7:
+    case EQUIP_GUN:
         return gGunData[id].rarity & 0xF;
     }
     return 0;
 }
 
-u16 Pouch_FindCarryItem(Player *p)
+/* The carried item in the player's pouch (one of the items 0x29C, 0x29E-0x2A3, which Item_CarryKind
+ * knows), 0xFFFF if none; with more than one, the last slot's. */
+u16 Pouch_FindCarryItem(Player *pl)
 {
     u16 found = 0xFFFF;
     s16 i;
 
-    for (i = 0; i < 20; i++) {
-        if (p->pouch[i].count != 0) {
-            switch (p->pouch[i].item) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        if (pl->pouch[i].count != 0) {
+            switch (pl->pouch[i].item) {
             case 0x29C:
             case 0x29E:
             case 0x29F:
@@ -282,7 +309,7 @@ u16 Pouch_FindCarryItem(Player *p)
             case 0x2A1:
             case 0x2A2:
             case 0x2A3:
-                found = p->pouch[i].item;
+                found = pl->pouch[i].item;
                 break;
             }
         }
@@ -290,6 +317,8 @@ u16 Pouch_FindCarryItem(Player *p)
     return found;
 }
 
+/* The kind of a carried item (Player.carry: 1-7 for the items 0x29C, 0x29E-0x2A3, in the order the
+ * switch gives), 0 for any other item. */
 u8 Item_CarryKind(u16 item)
 {
     switch (item) {
@@ -311,275 +340,301 @@ u8 Item_CarryKind(u16 item)
     return 0;
 }
 
-s32 func_003B5440(Player *p)
+/* 1 when the player carries well: with skill 0x5F, or carrying an item of kind 6 (Player.carry's
+ * high nibble). Seen: the carry walk takes a longer stride, and a fall must last longer before the
+ * item drops (unk_70A290.c, the carry states). */
+s32 Player_HasCarryBonus(Player *pl)
 {
-    if (Player_HasSkill(p, 0x5F) == 1) {
+    if (Player_HasSkill(pl, 0x5F) == 1) {
         return 1;
     }
-    if ((u8)Byte_HighNibble(p->carry) == 6) {
+    if ((u8)Byte_HighNibble(pl->carry) == 6) {
         return 1;
     }
     return 0;
 }
 
+/* The high 4 bits of a byte. */
 s32 Byte_HighNibble(u8 x)
 {
     return (u8)((x & 0xF0) >> 4);
 }
 
-/* Bowgun options (EquipItem.level bits 0x10-0x80). */
-s32 Bowgun_GetOptions(Player *p)
+/* 1 when the player's weapon is a gun with GUN_OPT_SCOPE (the aim camera then zooms). */
+s32 Bowgun_HasScope(Player *pl)
 {
-    if (p->equip[6].type != 7) {
+    if (pl->equip[EQUIP_SLOT_WEAPON].type != EQUIP_GUN) {
         return 0;
     }
-    if (p->equip[6].level & 0x40) {
+    if (pl->equip[EQUIP_SLOT_WEAPON].level & GUN_OPT_SCOPE) {
         return 1;
     }
     return 0;
 }
 
-s32 LightBowgun_HasOption10(Player *p)
+/* 1 when the player's weapon is a light bowgun with GUN_OPT_SILENCER. */
+s32 LightBowgun_HasSilencer(Player *pl)
 {
     s32 ret;
 
-    if (p->equip[6].type != 7) {
+    if (pl->equip[EQUIP_SLOT_WEAPON].type != EQUIP_GUN) {
         ret = 0;
-    } else if (p->weaponType != 5) {
+    } else if (pl->weaponType != WEAPON_LIGHT_BOWGUN) {
         ret = 0;
     } else {
-        ret = (p->equip[6].level & 0x10) != 0;
+        ret = (pl->equip[EQUIP_SLOT_WEAPON].level & GUN_OPT_SILENCER) != 0;
     }
     return ret;
 }
 
-s32 HeavyBowgun_HasShield(Player *p)
+/* 1 when the player's weapon is a heavy bowgun with GUN_OPT_SHIELD (it then guards as a shield
+ * skill would: unk_3BE060.c's hit tests). */
+s32 HeavyBowgun_HasShield(Player *pl)
 {
     s32 ret;
 
-    if (p->equip[6].type != 7) {
+    if (pl->equip[EQUIP_SLOT_WEAPON].type != EQUIP_GUN) {
         ret = 0;
-    } else if (p->weaponType != 1) {
+    } else if (pl->weaponType != WEAPON_HEAVY_BOWGUN) {
         ret = 0;
     } else {
-        ret = (p->equip[6].level & 0x80) != 0;
+        ret = (pl->equip[EQUIP_SLOT_WEAPON].level & GUN_OPT_SHIELD) != 0;
     }
     return ret;
 }
 
-s32 Bowgun_HasOption20(Player *p)
+/* 1 when the player's weapon is a gun with GUN_OPT_BARREL. */
+s32 Bowgun_HasBarrel(Player *pl)
 {
-    if (p->equip[6].type != 7) {
+    if (pl->equip[EQUIP_SLOT_WEAPON].type != EQUIP_GUN) {
         return 0;
     }
-    if (p->equip[6].level & 0x20) {
+    if (pl->equip[EQUIP_SLOT_WEAPON].level & GUN_OPT_BARREL) {
         return 1;
     }
     return 0;
 }
 
-u8 Bowgun_ReloadLevel(Player *p, u8 k)
+/* How slowly the gun reloads an ammo kind: 0, 1 or 2 (the reload text's row). The ammo's own value
+ * (gAmmoLevels[ammo][1]) less the gun's GunData.reload, less 1, 2 or 3 for the skills 0x2E-0x30 and
+ * plus 1 or 3 for 0x31 and 0x32; up to 4 gives 0, up to 7 gives 1. */
+u8 Bowgun_ReloadLevel(Player *pl, u8 ammo)
 {
-    s16 v = gAmmoLevels[k][1] - gGunData[p->equip[6].id].reload;
+    s16 level = gAmmoLevels[ammo][1] - gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].reload;
 
-    if (Player_HasSkill(p, 0x2E) == 1) {
-        v -= 1;
+    if (Player_HasSkill(pl, 0x2E) == 1) {
+        level -= 1;
     }
-    if (Player_HasSkill(p, 0x2F) == 1) {
-        v -= 2;
+    if (Player_HasSkill(pl, 0x2F) == 1) {
+        level -= 2;
     }
-    if (Player_HasSkill(p, 0x30) == 1) {
-        v -= 3;
+    if (Player_HasSkill(pl, 0x30) == 1) {
+        level -= 3;
     }
-    if (Player_HasSkill(p, 0x31) == 1) {
-        v += 1;
+    if (Player_HasSkill(pl, 0x31) == 1) {
+        level += 1;
     }
-    if (Player_HasSkill(p, 0x32) == 1) {
-        v += 3;
+    if (Player_HasSkill(pl, 0x32) == 1) {
+        level += 3;
     }
-    if (v <= 4) {
+    if (level <= 4) {
         return 0;
-    } else if (v <= 7) {
+    } else if (level <= 7) {
         return 1;
     }
     return 2;
 }
 
-s16 Bowgun_RecoilLevel(Player *p, u8 k)
+/* How hard an ammo kind kicks back with the player's gun: 0, 1 or 2 (the recoil text's row); 2
+ * without a gun. The ammo's own value (gAmmoLevels[ammo][0]), and unless skill 0x33 cancels it,
+ * less the gun's GunData.recoil and less 2 or 4 for the skills 0x34 or 0x35; up to 8 gives 0, up to
+ * 10 gives 1. */
+s16 Bowgun_RecoilLevel(Player *pl, u8 ammo)
 {
-    s16 v;
+    s16 level;
 
-    if (p->equip[6].type != 7) {
+    if (pl->equip[EQUIP_SLOT_WEAPON].type != EQUIP_GUN) {
         return 2;
     }
-    v = gAmmoLevels[k][0];
-    if (Player_HasSkill(p, 0x33) == 0) {
-        v -= gGunData[p->equip[6].id].recoil;
-        if (Player_HasSkill(p, 0x34) == 1) {
-            v -= 2;
-        } else if (Player_HasSkill(p, 0x35) == 1) {
-            v -= 4;
+    level = gAmmoLevels[ammo][0];
+    if (Player_HasSkill(pl, 0x33) == 0) {
+        level -= gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].recoil;
+        if (Player_HasSkill(pl, 0x34) == 1) {
+            level -= 2;
+        } else if (Player_HasSkill(pl, 0x35) == 1) {
+            level -= 4;
         }
     }
-    if (v <= 0) {
-        v = 0;
+    if (level <= 0) {
+        level = 0;
     }
-    if (v <= 8) {
+    if (level <= 8) {
         return 0;
-    } else if (v <= 10) {
+    } else if (level <= 10) {
         return 1;
     }
     return 2;
 }
 
-void Player_ResetAim(Player *p)
+/* Leaves the bowgun's aim: clears the aim mode, its lock timer and the pitch. */
+void Player_ResetAim(Player *pl)
 {
-    p->aimMode = 0;
-    p->aimLockTimer = 0;
-    p->aimPitch = 0;
+    pl->aimMode = 0;
+    pl->aimLockTimer = 0;
+    pl->aimPitch = 0;
 }
 
 s32 Side_Match(u8 a, u8 b, u8 none);
 
-u16 Side_ItemUseKind(u8 a)
+/* Which horn item a player on side sideWanted is playing: 1-7 for the items 0x2B0-0x2B6, from the
+ * first of the four players on that side (and not flagged by unk69E[0]) whose state is
+ * PL_ACT_HORN_ITEM_PLAY (the group isn't checked); 0 if none. Players with no side don't count. */
+u16 Side_HornItemPlaying(u8 sideWanted)
 {
-    u16 r = 0;
+    u16 played = 0;
     s16 i;
-    Player *p;
+    Player *pl;
 
-    for (i = 0, p = gPlayers; i < 4; i++, p++) {
-        if (p->active == 0) {
+    for (i = 0, pl = gPlayers; i < SCENE_PLAYERS; i++, pl++) {
+        if (pl->active == 0) {
             continue;
         }
-        if (Side_Match(p->side, a, 1) == 0) {
+        if (Side_Match(pl->side, sideWanted, 1) == 0) {
             continue;
         }
-        if (p->unk69E[0] != 0) {
+        if (pl->unk69E[0] != 0) {
             continue;
         }
-        switch (p->state) {
-        case 0x73:
-            switch (p->useItem) {
+        switch (pl->state) {
+        case PL_ACT_HORN_ITEM_PLAY:
+            switch (pl->useItem) {
             case 0x2B0:
-                r = 1;
+                played = 1;
                 break;
             case 0x2B1:
-                r = 2;
+                played = 2;
                 break;
             case 0x2B2:
-                r = 3;
+                played = 3;
                 break;
             case 0x2B3:
-                r = 4;
+                played = 4;
                 break;
             case 0x2B4:
-                r = 5;
+                played = 5;
                 break;
             case 0x2B5:
-                r = 6;
+                played = 6;
                 break;
             case 0x2B6:
-                r = 7;
+                played = 7;
                 break;
             }
-            return r;
+            return played;
         }
     }
     return 0;
 }
 
-/* Nonzero when b is on a's side (a with no side: any). */
-s32 Player_OnSameSide(Player *a, Player *b)
+/* 1 when b is on a's side: a has no side, or both have the same bit 0 of Player.side. */
+s32 Player_OnSameSide(Player *pl, Player *other)
 {
-    if (a->side == 0) {
+    if (pl->side == 0) {
         return 1;
     }
-    if ((a->side & 1) == (b->side & 1)) {
+    if ((pl->side & 1) == (other->side & 1)) {
         return 1;
     }
     return 0;
 }
 
-/* Nonzero when a player has a side (versus quests?). */
+/* 1 when one of the four players has a side (Player.side nonzero). */
 s32 Players_AnySide(void)
 {
-    Player *p = gPlayers;
+    Player *pl = gPlayers;
     s16 i;
 
-    for (i = 0; i < 4; i++, p++) {
-        if (p->side != 0) {
+    for (i = 0; i < SCENE_PLAYERS; i++, pl++) {
+        if (pl->side != 0) {
             return 1;
         }
     }
     return 0;
 }
 
-s32 Side_Match(u8 a, u8 b, u8 none)
+/* 1 when two sides match (the same bit 0). When either is 0 (no side), the result is noSideFails's
+ * opposite: 1 when it is 0, else 0. */
+s32 Side_Match(u8 sideA, u8 sideB, u8 noSideFails)
 {
     s32 ret;
 
-    if (a == 0 || b == 0) {
-        if (none == 0) {
+    if (sideA == 0 || sideB == 0) {
+        if (noSideFails == 0) {
             ret = 1;
         } else {
             ret = 0;
         }
     } else {
-        ret = (a & 1) == (b & 1);
+        ret = (sideA & 1) == (sideB & 1);
     }
     return ret;
 }
 
-/* Fills the gauge unk776 (weapon class 7) by n, within [0, 100]; full, it
- * starts an effect and the attack buff +25 for 900 frames. */
-void LongSword_AddGauge(Player *p, s16 n)
+/* A long sword's spirit gauge (Player.swordGauge): adds amount, within 0 to 100. Filling it starts
+ * the full gauge's effect at bone 10 (the local player only, once), keeps it full for 900 frames
+ * (swordGaugeTimer), and gives an attack buff of 25 for as long unless a larger one is on. */
+void LongSword_AddGauge(Player *pl, s16 amount)
 {
-    if (p->weaponType == 7) {
-        p->swordGauge += n;
-        if (n >= 0) {
-            if (p->swordGauge >= 100) {
-                p->swordGauge = 100;
-                if (Player_IsLocal(p) == 1 && p->swordGaugeTimer == 0) {
-                    Effect06_SpawnAtBone(p, 0, 2, 10, 4.0f);
+    if (pl->weaponType == WEAPON_LONG_SWORD) {
+        pl->swordGauge += amount;
+        if (amount >= 0) {
+            if (pl->swordGauge >= 100) {
+                pl->swordGauge = 100;
+                if (Player_IsLocal(pl) == 1 && pl->swordGaugeTimer == 0) {
+                    Effect06_SpawnAtBone(pl, 0, 2, 10, 4.0f);
                 }
-                p->swordGaugeTimer = 900;
-                if (p->attackBuff < 26) {
-                    p->attackBuff = 25;
-                    p->attackBuffTimer = p->swordGaugeTimer;
+                pl->swordGaugeTimer = 900;
+                if (pl->attackBuff < 26) {
+                    pl->attackBuff = 25;
+                    pl->attackBuffTimer = pl->swordGaugeTimer;
                 }
             }
-        } else if (p->swordGauge < 0) {
-            p->swordGauge = 0;
+        } else if (pl->swordGauge < 0) {
+            pl->swordGauge = 0;
         }
     }
 }
 
-s32 LongSword_GaugeAtLeast(Player *p, s16 n)
+/* 1 when the player wields a long sword whose spirit gauge is at least amount. */
+s32 LongSword_GaugeAtLeast(Player *pl, s16 amount)
 {
-    if (p->weaponType != 7) {
+    if (pl->weaponType != WEAPON_LONG_SWORD) {
         return 0;
     }
-    if (p->swordGauge >= n) {
+    if (pl->swordGauge >= amount) {
         return 1;
     }
     return 0;
 }
 
-void Player_ResetAttackPercent(Player *p)
+/* Sets the player's attack percent and its base from the weapon class (gWeaponClassAttack). */
+void Player_ResetAttackPercent(Player *pl)
 {
-    p->attackPercent = gWeaponClassAttack[p->weaponType][0];
-    p->attackPercentBase = gWeaponClassAttack[p->weaponType][1];
+    pl->attackPercent = gWeaponClassAttack[pl->weaponType][0];
+    pl->attackPercentBase = gWeaponClassAttack[pl->weaponType][1];
 }
 
-f32 Player_NameTagRaise(Player *p)
+/* How far to raise the player's name tag: 40 when the head armour's model (male or female, by the
+ * player's gender) is one of the tall ones the switch lists, else 0. */
+f32 Player_NameTagRaise(Player *pl)
 {
-    ArmorModel *e = D_0045E898[0];
-    f32 r = 0.0f;
+    ArmorData *head = gArmorTables[EQUIP_HEAD];
+    f32 raise = 0.0f;
 
-    e += p->equip[2].id;
+    head += pl->equip[EQUIP_HEAD].id;
 
-    if (p->gender == 0) {
-        switch (e->male) {
+    if (pl->gender == 0) {
+        switch (head->modelMale) {
         case 0x02:
         case 0x14:
         case 0x20:
@@ -600,11 +655,11 @@ f32 Player_NameTagRaise(Player *p)
         case 0xD8:
         case 0xD9:
         case 0xDA:
-            r = 40.0f;
+            raise = 40.0f;
             break;
         }
     } else {
-        switch (e->female) {
+        switch (head->modelFemale) {
         case 0x20:
         case 0x2A:
         case 0x6B:
@@ -621,40 +676,45 @@ f32 Player_NameTagRaise(Player *p)
         case 0xD8:
         case 0xD9:
         case 0xDA:
-            r = 40.0f;
+            raise = 40.0f;
             break;
         }
     }
-    return r;
+    return raise;
 }
 
-s32 Player_StaminaLocked(Player *p)
+/* 1 when the local player's stamina doesn't drain: an item's effect is on (staminaLockTimer), or
+ * the meal effect 5. Always 0 for the other players. */
+s32 Player_StaminaLocked(Player *pl)
 {
     s32 ret;
 
-    if (Player_IsLocal(p) == 0) {
+    if (Player_IsLocal(pl) == 0) {
         ret = 0;
-    } else if (p->staminaLockTimer > 0) {
+    } else if (pl->staminaLockTimer > 0) {
         ret = 1;
     } else {
-        ret = Player_HasMealEffect(p, 5) == 1;
+        ret = Player_HasMealEffect(pl, 5) == 1;
     }
     return ret;
 }
 
-s32 Player_NearEm40(Player *p)
+/* 1 when a Lunastra or Teostra in the player's area, visible, with its aura on (Em.windTimer), has
+ * its bone 2 within 750 times its scale of the player. The callers then count the player as in
+ * hazard 2 (Player.unk669). */
+s32 Player_InEmAura(Player *pl)
 {
     Em *em = gEms;
     s16 i;
-    f32 v[4];
+    f32 bonePos[4];
 
-    for (i = 0; i < 20; i++, em++) {
-        if (em->active != 0 && em->visible != 0 && em->area == p->area && em->windTimer != 0) {
+    for (i = 0; i < EM_COUNT; i++, em++) {
+        if (em->active != 0 && em->visible != 0 && em->area == pl->area && em->windTimer != 0) {
             switch (em->type) {
-            case 0x41:
-            case 0x40:
-                Em_BonePos(em, 2, v);
-                if (Vec_Distance(p->pos, v) <= 750.0f * em->scaleX) {
+            case EM_KIND_TEOSTRA:
+            case EM_KIND_LUNASTRA:
+                Em_BonePos(em, 2, bonePos);
+                if (Vec_Distance(pl->pos, bonePos) <= 750.0f * em->scaleX) {
                     return 1;
                 }
                 break;
@@ -664,22 +724,24 @@ s32 Player_NearEm40(Player *p)
     return 0;
 }
 
-s32 func_003B5F20(Player *p)
+/* 1 while the player is in a poisoning area (Player.inPoisonArea), offline only. The HUD shows the
+ * poison icon for it (unk_33E620.c). */
+s32 Player_InPoisonArea(Player *pl)
 {
     if (gScene.online != 0) {
         return 0;
     }
-    return p->inPoisonArea != 0;
+    return pl->inPoisonArea != 0;
 }
 
 /* Loads save slot `slot` into the copy gSysSave.save and the save data. */
 void Save_LoadSlot(u8 slot)
 {
-    SaveData *s;
+    SaveData *slotData;
 
-    s = gCardSlots;
-    s += slot;
-    gSysSave.save = *s;
+    slotData = gCardSlots;
+    slotData += slot;
+    gSysSave.save = *slotData;
     gSave = gSysSave.save;
     gRandSeeds[2] = gSave.randSaved[0];
     PspLink_ClearFlags();
@@ -687,80 +749,87 @@ void Save_LoadSlot(u8 slot)
 
 /* Sets up a player from save data: the equipment and what follows from
  * the weapon (class, gunner flag). */
-void Player_SetupFromSave(Player *p, SaveData *s)
+void Player_SetupFromSave(Player *pl, SaveData *save)
 {
-    Equip_Refresh(s);
-    p->gender = s->gender;
-    p->equip[1].id = s->face + 1;
-    p->hairStyle = s->hairStyle;
-    p->hairColor = s->hairColor;
-    Player_SetColorWord(p, s->symbolColor);
-    p->voice = s->voice;
-    p->charType = s->charType;
-    p->weaponKind = Equip_GetKind(&s->equip[0]);
-    p->equip[6] = s->equip[0];
-    p->weaponType = gWeaponKindClass[p->weaponKind];
-    p->isGunner = WeaponClass_IsGunner(p->weaponType);
-    p->weaponFlags = WeaponType_Flags(p->weaponType);
-    p->bladeSpecial = Equip_GetBladeSpecial(&p->equip[6]);
-    p->equip[0] = s->equip[1];
-    p->equip[2] = s->equip[2];
-    p->equip[3] = s->equip[3];
-    p->equip[4] = s->equip[4];
-    p->equip[5] = s->equip[5];
+    Equip_Refresh(save);
+    pl->gender = save->gender;
+    pl->equip[EQUIP_SLOT_FACE].id = save->face + 1;
+    pl->hairStyle = save->hairStyle;
+    pl->hairColor = save->hairColor;
+    Player_SetColorWord(pl, save->symbolColor);
+    pl->voice = save->voice;
+    pl->charType = save->charType;
+    pl->weaponKind = Equip_GetKind(&save->equip[SAVE_EQUIP_WEAPON]);
+    pl->equip[EQUIP_SLOT_WEAPON] = save->equip[SAVE_EQUIP_WEAPON];
+    pl->weaponType = gWeaponKindClass[pl->weaponKind];
+    pl->isGunner = WeaponClass_IsGunner(pl->weaponType);
+    pl->weaponFlags = WeaponType_Flags(pl->weaponType);
+    pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[EQUIP_SLOT_WEAPON]);
+    pl->equip[EQUIP_LEGS] = save->equip[SAVE_EQUIP_LEGS];
+    pl->equip[EQUIP_HEAD] = save->equip[SAVE_EQUIP_HEAD];
+    pl->equip[EQUIP_BODY] = save->equip[SAVE_EQUIP_BODY];
+    pl->equip[EQUIP_ARMS] = save->equip[SAVE_EQUIP_ARMS];
+    pl->equip[EQUIP_WAIST] = save->equip[SAVE_EQUIP_WAIST];
 }
 
-void Player_LoadFromSave(Player *p)
+/* Loads the local hunter from gSave: the name, the pouch (and its copy gPouchBackup, for the local
+ * player), the voice and the weapon, then Player_SetupFromSave. */
+void Player_LoadFromSave(Player *pl)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s16 i;
 
-    for (i = 0; i < 18; i++) {
-        p->name[i] = s->name[i];
+    for (i = 0; i < CHARA_NAME_LEN; i++) {
+        pl->name[i] = save->name[i];
     }
-    for (i = 0; i < 20; i++) {
-        p->pouch[i].item = s->pouch[i].item;
-        p->pouch[i].count = s->pouch[i].count;
-        if (Player_IsLocal(p) == 1) {
-            gPouchBackup[i].item = s->pouch[i].item;
-            gPouchBackup[i].count = s->pouch[i].count;
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        pl->pouch[i].item = save->pouch[i].item;
+        pl->pouch[i].count = save->pouch[i].count;
+        if (Player_IsLocal(pl) == 1) {
+            gPouchBackup[i].item = save->pouch[i].item;
+            gPouchBackup[i].count = save->pouch[i].count;
         }
     }
-    p->voice = s->voice;
-    p->weaponKind = Equip_GetKind(&s->equip[0]);
-    p->equip[6] = s->equip[0];
-    Player_SetupFromSave(p, s);
+    pl->voice = save->voice;
+    pl->weaponKind = Equip_GetKind(&save->equip[SAVE_EQUIP_WEAPON]);
+    pl->equip[EQUIP_SLOT_WEAPON] = save->equip[SAVE_EQUIP_WEAPON];
+    Player_SetupFromSave(pl, save);
 }
 
-void Player_LoadName(Player *p)
+/* Sets the player's name: the online name gMyName when online, else the save's. */
+void Player_LoadName(Player *pl)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s16 i;
 
     if (Game_IsOnline() == 1) {
-        strcpy((char *)p->name, gMyName);
+        strcpy((char *)pl->name, gMyName);
         return;
     }
-    for (i = 0; i < 18; i++) {
-        p->name[i] = s->name[i];
+    for (i = 0; i < CHARA_NAME_LEN; i++) {
+        pl->name[i] = save->name[i];
     }
 }
 
-void Save_StorePouch(Player *p)
+/* Copies the player's pouch into gSave. */
+void Save_StorePouch(Player *pl)
 {
-    memcpy(gSave.pouch, p->pouch, sizeof(gSave.pouch));
+    memcpy(gSave.pouch, pl->pouch, sizeof(gSave.pouch));
 }
 
-void Save_RestorePouch(Player *p)
+/* Copies gSave's pouch into the player's. */
+void Save_RestorePouch(Player *pl)
 {
-    memcpy(p->pouch, gSave.pouch, sizeof(gSave.pouch));
+    memcpy(pl->pouch, gSave.pouch, sizeof(gSave.pouch));
 }
 
+/* Adds money (or takes it, with a negative amount), within 0 to 9,999,999. Having 2,000,000 or more
+ * grants award 0x1E. */
 void Save_AddMoney(s32 n)
 {
     gSave.money += n;
-    if (gSave.money > 9999999) {
-        gSave.money = 9999999;
+    if (gSave.money > MONEY_MAX) {
+        gSave.money = MONEY_MAX;
     }
     if (gSave.money < 0) {
         gSave.money = 0;
@@ -769,175 +838,188 @@ void Save_AddMoney(s32 n)
     }
 }
 
-u32 Hr_PointsForRank(u16 hr)
+/* The hunter rank points at which a rank begins: from gHrRankPoints up to rank 50, then by
+ * gHrPointSteps (bands of 50 ranks, each with its points per rank); 10,000,000 above rank 999. */
+u32 Hr_PointsForRank(u16 rank)
 {
-    u32 pts;
-    u16 base;
-    HrStep *e;
-    u32 ret;
+    u32 points;
+    u16 bandStart;
+    HrStep *band;
+    u32 result;
 
-    if (hr == 0) {
+    if (rank == 0) {
         return 0;
     }
-    if (hr > 999) {
+    if (rank > HR_MAX) {
         return 10000000;
     }
-    pts = D_0044C2CC[50];
-    e = gHrPointSteps;
-    ret = 10000000;
-    if (hr <= 50) {
-        ret = D_0044C2CC[hr];
+    points = gHrRankPoints[HR_TABLE_MAX];
+    band = gHrPointSteps;
+    result = 10000000;
+    if (rank <= HR_TABLE_MAX) {
+        result = gHrRankPoints[rank];
     } else {
-        base = 50;
-        while (e->limit != 0xFFFF) {
-            if (hr <= (u16)e->limit) {
-                ret = pts + e->step * (hr - base);
+        bandStart = HR_TABLE_MAX;
+        while (band->limit != 0xFFFF) {
+            if (rank <= (u16)band->limit) {
+                result = points + band->step * (rank - bandStart);
                 break;
             }
-            pts += e->step * 50;
-            base += 50;
-            e++;
+            points += band->step * HR_BAND_RANKS;
+            bandStart += HR_BAND_RANKS;
+            band++;
         }
     }
-    return ret;
+    return result;
 }
 
-u16 Save_RankFromPoints(SaveData *s)
+/* The hunter rank the save's points reach (HR_MAX at most); 0 for a save whose rank is still 0. */
+u16 Save_RankFromPoints(SaveData *save)
 {
     s16 i;
-    u32 max;
+    u32 maxPoints;
 
-    if (s->hr == 0) {
+    if (save->hr == 0) {
         return 0;
     }
-    max = Hr_PointsForRank(999);
-    if (s->hrPoints >= max) {
-        return 999;
+    maxPoints = Hr_PointsForRank(HR_MAX);
+    if (save->hrPoints >= maxPoints) {
+        return HR_MAX;
     }
-    for (i = 0; i < 1000; i++) {
-        if (Hr_PointsForRank(i) > s->hrPoints) {
+    for (i = 0; i < HR_MAX + 1; i++) {
+        if (Hr_PointsForRank(i) > save->hrPoints) {
             return i - 1;
         }
     }
     return 0;
 }
 
-void Save_GetRankInfo(SaveData *s, u16 *hr, u32 *pts, u32 *next)
+/* Gives the save's rank, its points and the points of the next rank (0 at rank HR_MAX). A save whose
+ * rank is 0 reads as rank 1. */
+void Save_GetRankInfo(SaveData *save, u16 *rank, u32 *points, u32 *nextPoints)
 {
     s16 i;
-    u32 max;
+    u32 maxPoints;
 
-    if (s->hr == 0) {
-        *hr = 1;
-        *pts = s->hrPoints;
-        *next = 0;
+    if (save->hr == 0) {
+        *rank = 1;
+        *points = save->hrPoints;
+        *nextPoints = 0;
         return;
     }
-    *pts = s->hrPoints;
-    max = Hr_PointsForRank(999);
-    if (s->hrPoints >= max) {
-        *hr = 999;
-        *next = 0;
+    *points = save->hrPoints;
+    maxPoints = Hr_PointsForRank(HR_MAX);
+    if (save->hrPoints >= maxPoints) {
+        *rank = HR_MAX;
+        *nextPoints = 0;
         return;
     }
-    for (i = 0; i < 1000; i++) {
-        if (Hr_PointsForRank((u16)i) > *pts) {
-            *hr = (u16)i - 1;
-            *next = Hr_PointsForRank((u16)i);
+    for (i = 0; i < HR_MAX + 1; i++) {
+        if (Hr_PointsForRank((u16)i) > *points) {
+            *rank = (u16)i - 1;
+            *nextPoints = Hr_PointsForRank((u16)i);
             return;
         }
     }
 }
 
-void Save_SetRankCapPoints(SaveData *s, s32 hr)
+/* Sets the save's points to one short of the given rank: the rank gates stop there. */
+void Save_SetRankCapPoints(SaveData *save, s32 rank)
 {
-    s->hrPoints = Hr_PointsForRank(hr) - 1;
+    save->hrPoints = Hr_PointsForRank(rank) - 1;
 }
 
-s32 Save_AddHrPoints(SaveData *s, s32 n)
+/* Adds hunter rank points to a save (or takes them), within 0 and 9,999,999, and updates its rank.
+ * Ranks 11, 17, 31, 41 and 51 are gates (Save_HrGateCleared 0-4): until a gate's quest is cleared,
+ * the points stop one short of it. Returns 0, 1 when the points fell below the rank's start (or
+ * would have gone below 0), 2 at rank 999, or 3, 4, 5, 6 or 8 for the gate that stopped them. */
+s32 Save_AddHrPoints(SaveData *save, s32 points)
 {
-    u16 hr = s->hr;
-    u8 ret = 0;
-    u32 min;
+    u16 rank = save->hr;
+    u8 result = 0;
+    u32 minPoints;
 
-    if (n < 0 && s->hrPoints < (u32)Math_Absf(n)) {
-        s->hrPoints = 0;
-        ret = 1;
+    if (points < 0 && save->hrPoints < (u32)Math_Absf(points)) {
+        save->hrPoints = 0;
+        result = 1;
     } else {
-        s->hrPoints += n;
+        save->hrPoints += points;
     }
-    if (s->hrPoints > 9999999) {
-        s->hrPoints = 9999999;
+    if (save->hrPoints > HR_POINTS_MAX) {
+        save->hrPoints = HR_POINTS_MAX;
     }
-    min = Hr_PointsForRank(hr);
-    if (s->hrPoints < min) {
-        s->hrPoints = min;
-        s->hr = Save_RankFromPoints(&gSave);
+    minPoints = Hr_PointsForRank(rank);
+    if (save->hrPoints < minPoints) {
+        save->hrPoints = minPoints;
+        save->hr = Save_RankFromPoints(&gSave);
         return 1;
     }
-    if (hr >= 999) {
+    if (rank >= HR_MAX) {
         return 2;
     }
     do {
-        if (Hr_PointsForRank(hr + 1) > s->hrPoints) {
-            s->hr = Save_RankFromPoints(&gSave);
-            return ret;
+        if (Hr_PointsForRank(rank + 1) > save->hrPoints) {
+            save->hr = Save_RankFromPoints(&gSave);
+            return result;
         }
-        switch ((s32)hr + 1) {
+        switch ((s32)rank + 1) {
         case 11:
             if (Save_HrGateCleared(0) == 1) {
-                hr++;
+                rank++;
             } else {
-                Save_SetRankCapPoints(s, 11);
-                ret = 3;
+                Save_SetRankCapPoints(save, 11);
+                result = 3;
             }
             break;
         case 17:
             if (Save_HrGateCleared(1) == 1) {
-                hr++;
+                rank++;
             } else {
-                Save_SetRankCapPoints(s, 17);
-                ret = 4;
+                Save_SetRankCapPoints(save, 17);
+                result = 4;
             }
             break;
         case 31:
             if (Save_HrGateCleared(2) == 1) {
-                hr++;
+                rank++;
             } else {
-                Save_SetRankCapPoints(s, 31);
-                ret = 5;
+                Save_SetRankCapPoints(save, 31);
+                result = 5;
             }
             break;
         case 41:
             if (Save_HrGateCleared(3) == 1) {
-                hr++;
+                rank++;
             } else {
-                Save_SetRankCapPoints(s, 41);
-                ret = 6;
+                Save_SetRankCapPoints(save, 41);
+                result = 6;
             }
             break;
         case 51:
             if (Save_HrGateCleared(4) == 1) {
-                hr++;
+                rank++;
             } else {
-                Save_SetRankCapPoints(s, 51);
-                ret = 8;
+                Save_SetRankCapPoints(save, 51);
+                result = 8;
             }
             break;
         default:
-            hr++;
+            rank++;
             break;
         }
-    } while (ret == 0);
-    s->hr = Save_RankFromPoints(&gSave);
-    return ret;
+    } while (result == 0);
+    save->hr = Save_RankFromPoints(&gSave);
+    return result;
 }
 
-s32 AddHrPoints(s32 n)
+/* Save_AddHrPoints on gSave. */
+s32 Hr_AddPoints(s32 points)
 {
-    return Save_AddHrPoints(&gSave, n);
+    return Save_AddHrPoints(&gSave, points);
 }
 
+/* 1 for the items 0x271-0x28E, which are never carried: getting one only marks it obtained
+ * (SavePouch_Add). */
 s32 Item_IsRecordOnly(u16 item)
 {
     if (item >= 0x271 && item < 0x28F) {
@@ -946,17 +1028,22 @@ s32 Item_IsRecordOnly(u16 item)
     return 0;
 }
 
-u8 SavePouch_Add(u16 item, s16 n)
+/* Adds amount of an item to gSave's pouch (or takes it, with a negative amount), within the item's
+ * stack size. A record-only item is only marked obtained (with the monster notes, and a notice
+ * online). Returns 0 added to an empty slot (or a record-only item), 1 changed, 2 capped at the
+ * stack size, 3 the stack was already full (or a second special item), 4 the stack ran out and its
+ * slot was cleared, 5 no free slot. */
+u8 SavePouch_Add(u16 item, s16 amount)
 {
     s16 i;
-    u8 ret;
-    s16 m;
-    SaveData *s = &gSave;
+    u8 result;
+    s16 stackMax;
+    SaveData *save = &gSave;
 
     if (Item_IsRecordOnly(item) == 1) {
-        if (Save_IsItemObtained(s, item) == 0) {
+        if (Save_IsItemObtained(save, item) == 0) {
             MonsterNote_OnItemGet(item);
-            Save_MarkItemObtained(s, item);
+            Save_MarkItemObtained(save, item);
             if (gScene.online != 0) {
                 Menu_PushNoticeOnce(4);
             }
@@ -964,141 +1051,148 @@ u8 SavePouch_Add(u16 item, s16 n)
         return 0;
     }
     if (gItemData[item].max == 0xFF) {
-        n = 0xFF;
+        amount = 0xFF;
     }
     if (SavePouch_Count(item) == 0) {
-        ret = 5;
-        for (i = 0; i < 20; i++) {
-            if (s->pouch[i].item == 0 && n > 0) {
-                m = gItemData[item].max;
-                s->pouch[i].item = item;
-                if (n > m) {
-                    n = m;
+        result = 5;
+        for (i = 0; i < POUCH_SLOTS; i++) {
+            if (save->pouch[i].item == 0 && amount > 0) {
+                stackMax = gItemData[item].max;
+                save->pouch[i].item = item;
+                if (amount > stackMax) {
+                    amount = stackMax;
                 }
-                s->pouch[i].count = n;
-                Save_MarkItemObtained(s, item);
-                ret = 0;
+                save->pouch[i].count = amount;
+                Save_MarkItemObtained(save, item);
+                result = 0;
                 break;
             }
         }
-    } else if (n > 0 && Item_IsSpecial(item) == 1) {
-        ret = 3;
+    } else if (amount > 0 && Item_IsOnePerPouch(item) == 1) {
+        result = 3;
     } else {
-        for (i = 0; i < 20; i++) {
-            if (s->pouch[i].item == item) {
-                m = gItemData[item].max;
+        for (i = 0; i < POUCH_SLOTS; i++) {
+            if (save->pouch[i].item == item) {
+                stackMax = gItemData[item].max;
 
-                if (n > 0 && s->pouch[i].count >= m) {
-                    s->pouch[i].count = m;
-                    Save_MarkItemObtained(s, item);
-                    ret = 3;
+                if (amount > 0 && save->pouch[i].count >= stackMax) {
+                    save->pouch[i].count = stackMax;
+                    Save_MarkItemObtained(save, item);
+                    result = 3;
                     break;
                 }
-                if (n < 0 && gItemData[item].max == 0xFF) {
-                    ret = 1;
+                if (amount < 0 && gItemData[item].max == 0xFF) {
+                    result = 1;
                     break;
                 }
-                s->pouch[i].count += n;
-                if (s->pouch[i].count <= 0) {
+                save->pouch[i].count += amount;
+                if (save->pouch[i].count <= 0) {
                     SavePouch_ClearSlot(i);
-                    ret = 4;
-                    s->pouch[i].item = 0;
-                    s->pouch[i].count = 0;
+                    result = 4;
+                    save->pouch[i].item = 0;
+                    save->pouch[i].count = 0;
                     break;
                 }
-                if (m < s->pouch[i].count) {
-                    s->pouch[i].count = m;
-                    ret = 2;
+                if (stackMax < save->pouch[i].count) {
+                    save->pouch[i].count = stackMax;
+                    result = 2;
                 } else {
-                    ret = 1;
+                    result = 1;
                 }
-                Save_MarkItemObtained(s, item);
+                Save_MarkItemObtained(save, item);
                 break;
             }
         }
     }
-    /* the game reads a register it never set: when the second loop finds no slot holding item (SavePouch_Count said there is one), ret is s5, still the caller's */
-    return ret;
+    /* the game reads a register it never set: when the second loop finds no slot holding item (SavePouch_Count said there is one), result is s5, still the caller's */
+    return result;
 }
 
-s32 SavePouch_HasSpecial(SaveData *s)
+/* 1 when the save's pouch holds a special item (Item_IsOnePerPouch: only one may be carried). */
+s32 SavePouch_HasSpecial(SaveData *save)
 {
     s16 i;
 
-    for (i = 0; i < 20; i++) {
-        if (Item_IsSpecial(s->pouch[i].item) == 1) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        if (Item_IsOnePerPouch(save->pouch[i].item) == 1) {
             return 1;
         }
     }
     return 0;
 }
 
+/* How many of an item gSave's pouch holds; for a special item, 1 when the pouch holds any special
+ * item. */
 s32 SavePouch_Count(u16 item)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s32 i;
 
-    if (Item_IsSpecial(item) == 1) {
-        return SavePouch_HasSpecial(s) == 1;
+    if (Item_IsOnePerPouch(item) == 1) {
+        return SavePouch_HasSpecial(save) == 1;
     }
-    for (i = 0; i < 20; i++) {
-        if (s->pouch[i].item == item) {
-            return s->pouch[i].count;
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        if (save->pouch[i].item == item) {
+            return save->pouch[i].count;
         }
     }
     return 0;
 }
 
+/* How many more of an item fit in gSave's pouch's stack of it (the full stack size when there is
+ * none; 0xFF for an item with no limit); for a special item, 1 when the pouch holds none. */
 s32 SavePouch_Room(u16 item)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s32 i;
 
-    if (Item_IsSpecial(item) == 1) {
-        return SavePouch_HasSpecial(s) != 1;
+    if (Item_IsOnePerPouch(item) == 1) {
+        return SavePouch_HasSpecial(save) != 1;
     }
-    for (i = 0; i < 20; i++) {
-        if (s->pouch[i].item == item) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        if (save->pouch[i].item == item) {
             if (gItemData[item].max == 0xFF) {
                 return 0xFF;
             }
             /* A return in both branches, as the game has it (each jumps to the
              * epilogue): the first probably held a print compiled out. */
-            if (s->pouch[i].count > gItemData[item].max) {
-                return gItemData[item].max - s->pouch[i].count;
+            if (save->pouch[i].count > gItemData[item].max) {
+                return gItemData[item].max - save->pouch[i].count;
             }
-            return gItemData[item].max - s->pouch[i].count;
+            return gItemData[item].max - save->pouch[i].count;
         }
     }
     return gItemData[item].max;
 }
 
+/* As SavePouch_Room, and -1 when the pouch has neither a stack of the item nor a free slot; 0 for a
+ * special item when one is held, and for a record-only item 1 until it is obtained. */
 s32 SavePouch_Space(u16 item)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s32 i;
     s32 empty;
 
-    if (Item_IsSpecial(item) == 1 && SavePouch_HasSpecial(s) == 1) {
+    if (Item_IsOnePerPouch(item) == 1 && SavePouch_HasSpecial(save) == 1) {
         return 0;
     }
     if (Item_IsRecordOnly(item) == 1) {
-        return Save_IsItemObtained(s, item) == 0;
+        return Save_IsItemObtained(save, item) == 0;
     }
     empty = 0;
-    for (i = 0; i < 20; i++) {
-        if (s->pouch[i].item == item) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        if (save->pouch[i].item == item) {
             if (gItemData[item].max == 0xFF) {
                 return 0xFF;
             }
             /* A return in both branches, as the game has it (each jumps to the
              * epilogue): the first probably held a print compiled out. */
-            if (s->pouch[i].count > gItemData[item].max) {
-                return gItemData[item].max - s->pouch[i].count;
+            if (save->pouch[i].count > gItemData[item].max) {
+                return gItemData[item].max - save->pouch[i].count;
             }
-            return gItemData[item].max - s->pouch[i].count;
+            return gItemData[item].max - save->pouch[i].count;
         }
-        if (s->pouch[i].item == 0) {
+        if (save->pouch[i].item == 0) {
             empty++;
         }
     }
@@ -1108,137 +1202,150 @@ s32 SavePouch_Space(u16 item)
     return gItemData[item].max;
 }
 
+/* 1 when gSave's pouch has an empty slot. */
 s16 SavePouch_HasFreeSlot(void)
 {
     s16 i;
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
 
-    for (i = 0; i < 20; i++) {
-        if (s->pouch[i].item == 0) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        if (save->pouch[i].item == 0) {
             return 1;
         }
     }
     return 0;
 }
 
+/* The number of empty slots in gSave's pouch. */
 s16 SavePouch_CountFree(void)
 {
     s16 i;
-    s16 n = 0;
-    SaveData *s = &gSave;
+    s16 count = 0;
+    SaveData *save = &gSave;
 
-    for (i = 0; i < 20; i++) {
-        if (s->pouch[i].item == 0) {
-            n++;
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        if (save->pouch[i].item == 0) {
+            count++;
         }
     }
-    return n;
+    return count;
 }
 
+/* Empties a slot of gSave's pouch. Returns 1 when it held an item, 0 when it was empty, 2 for a
+ * slot out of range. */
 s32 SavePouch_ClearSlot(s16 slot)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
 
-    if (slot >= 20) {
+    if (slot >= POUCH_SLOTS) {
         return 2;
     }
-    s->pouch[slot].count = 0;
-    if (s->pouch[slot].item == 0) {
+    save->pouch[slot].count = 0;
+    if (save->pouch[slot].item == 0) {
         return 0;
     }
-    s->pouch[slot].item = 0;
+    save->pouch[slot].item = 0;
     return 1;
 }
 
+/* How many of an item the item box's first stack of it holds (999 for an item with no limit), 0 if
+ * none. */
 s32 ItemBox_Count(u16 item)
 {
-    SaveData *s = &gSave;
-    s16 n = Box_GetCapacity(s);
+    SaveData *save = &gSave;
+    s16 capacity = Box_GetCapacity(save);
     s32 i;
 
-    for (i = 0; i < n; i++) {
-        if (s->itemBox[i].item == item) {
-            return gItemData[item].max == 0xFF ? 999 : s->itemBox[i].count;
+    for (i = 0; i < capacity; i++) {
+        if (save->itemBox[i].item == item) {
+            return gItemData[item].max == 0xFF ? 999 : save->itemBox[i].count;
         }
     }
     return 0;
 }
 
+/* How many of an item the item box holds in all its stacks (999 for an item with no limit). */
 s32 ItemBox_Total(u16 item)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s16 i;
-    s16 n = Box_GetCapacity(s);
+    s16 capacity = Box_GetCapacity(save);
     s32 total = 0;
 
-    for (i = 0; i < n; i++) {
-        if (s->itemBox[i].item == item) {
+    for (i = 0; i < capacity; i++) {
+        if (save->itemBox[i].item == item) {
             if (gItemData[item].max == 0xFF) {
                 return 999;
             }
-            total += s->itemBox[i].count;
+            total += save->itemBox[i].count;
         }
     }
     return total;
 }
 
+/* How many more of an item the item box can take: the room left in its stacks and a full stack per
+ * empty slot. 0 for no item or an item with no limit. */
 s32 ItemBox_Room(u16 item)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s32 i;
-    s16 n;
+    s16 capacity;
     s32 room;
 
     if (item == 0 || gItemData[item].max == 0xFF) {
         return 0;
     }
-    n = Box_GetCapacity(s);
+    capacity = Box_GetCapacity(save);
     room = 0;
-    for (i = 0; i < n; i++) {
-        if (s->itemBox[i].item == item) {
-            room += (s16)gItemData[item].max - s->itemBox[i].count;
-        } else if (s->itemBox[i].item == 0) {
+    for (i = 0; i < capacity; i++) {
+        if (save->itemBox[i].item == item) {
+            room += (s16)gItemData[item].max - save->itemBox[i].count;
+        } else if (save->itemBox[i].item == 0) {
             room += (s16)gItemData[item].max;
         }
     }
     return room;
 }
 
+/* How much of a full stack of an item the item box can take: the full stack size when there is an
+ * empty slot or the room in its stacks reaches it, else the room found. -1 for no item. */
 s32 ItemBox_Fits(u16 item)
 {
-    SaveData *s = &gSave;
-    ItemStack *st;
-    s32 n;
+    SaveData *save = &gSave;
+    ItemStack *stack;
+    s32 left;
     s32 max;
-    s32 need;
+    s32 wanted;
 
     if (item == 0) {
         return -1;
     }
-    n = Box_GetCapacity(s);
-    st = s->itemBox;
+    left = Box_GetCapacity(save);
+    stack = save->itemBox;
     max = gItemData[item].max;
-    need = max;
-    for (; n > 0; n--, st++) {
-        if (st->item == 0) {
+    wanted = max;
+    for (; left > 0; left--, stack++) {
+        if (stack->item == 0) {
             return max;
         }
-        if (st->item == item && max != 0xFF) {
-            need -= max - st->count;
-            if (need <= 0) {
+        if (stack->item == item && max != 0xFF) {
+            wanted -= max - stack->count;
+            if (wanted <= 0) {
                 return max;
             }
         }
     }
-    return max - need;
+    return max - wanted;
 }
 
+/* Takes count of an item from the item box's stacks, first to last, clearing the stacks that run
+ * out. Returns how many could not be taken (0 when all were). */
 s16 ItemBox_Remove(u16 item, s16 count)
 {
     s16 left;
     s16 i;
-    s16 n;
-    SaveData *s = &gSave;
+    s16 capacity;
+    SaveData *save = &gSave;
 
     if (count < 0) {
         return 0;
@@ -1246,19 +1353,19 @@ s16 ItemBox_Remove(u16 item, s16 count)
     if (item == 0 || gItemData[item].max == 0xFF) {
         return 0;
     }
-    n = Box_GetCapacity(s);
+    capacity = Box_GetCapacity(save);
     left = count;
-    for (i = 0; i < n; i++) {
-        if (s->itemBox[i].item == item) {
-            if (s->itemBox[i].count >= left) {
-                s->itemBox[i].count -= left;
+    for (i = 0; i < capacity; i++) {
+        if (save->itemBox[i].item == item) {
+            if (save->itemBox[i].count >= left) {
+                save->itemBox[i].count -= left;
                 left = 0;
             } else {
-                left -= s->itemBox[i].count;
-                s->itemBox[i].count = 0;
+                left -= save->itemBox[i].count;
+                save->itemBox[i].count = 0;
             }
-            if (s->itemBox[i].count <= 0) {
-                s->itemBox[i].item = 0;
+            if (save->itemBox[i].count <= 0) {
+                save->itemBox[i].item = 0;
             }
             if (left <= 0) {
                 return 0;
@@ -1268,83 +1375,89 @@ s16 ItemBox_Remove(u16 item, s16 count)
     return left;
 }
 
-u32 ItemBox_AddTo(SaveData *s, u16 item, u32 count)
+/* Adds count of an item to a save's item box (at most a stack's worth): first onto its stacks that
+ * have room, then the rest into the first empty slot, marking the item obtained. Returns how many
+ * found no place (0 when all did). */
+u32 ItemBox_AddTo(SaveData *save, u16 item, u32 count)
 {
-    ItemStack *st;
+    ItemStack *stack;
     u32 i;
     u32 max;
     u32 room;
-    u32 n;
+    u32 capacity;
 
-    n = Box_GetCapacity(s);
+    capacity = Box_GetCapacity(save);
     max = gItemData[item].max;
     if (count > max) {
         count = max;
     }
     if (max != 0xFF) {
-        st = s->itemBox;
-        for (i = n; i != 0; i--, st++) {
-            if (st->item == item && st->count < max) {
-                room = max - st->count;
+        stack = save->itemBox;
+        for (i = capacity; i != 0; i--, stack++) {
+            if (stack->item == item && stack->count < max) {
+                room = max - stack->count;
                 if (room >= count) {
-                    st->count += count;
-                    Save_MarkItemObtained(s, item);
+                    stack->count += count;
+                    Save_MarkItemObtained(save, item);
                     return 0;
                 }
                 count -= room;
-                st->count = max;
+                stack->count = max;
             }
         }
     }
-    st = s->itemBox;
-    for (i = n; i != 0; i--, st++) {
-        if (st->item == 0) {
-            st->item = item;
-            st->count = count;
-            Save_MarkItemObtained(s, item);
+    stack = save->itemBox;
+    for (i = capacity; i != 0; i--, stack++) {
+        if (stack->item == 0) {
+            stack->item = item;
+            stack->count = count;
+            Save_MarkItemObtained(save, item);
             return 0;
         }
     }
     return count;
 }
 
+/* ItemBox_AddTo on gSave. */
 u32 ItemBox_Add(u16 item, u32 count)
 {
     return ItemBox_AddTo(&gSave, item, count);
 }
 
-u16 ItemList_Add(ItemStack *box, u16 item, u16 count)
+/* As ItemBox_AddTo, on the item list given (as many slots as gSave's item box has), marking the
+ * item obtained in gSave. Returns how many found no place. */
+u16 ItemList_Add(ItemStack *list, u16 item, u16 count)
 {
-    ItemStack *st;
+    ItemStack *stack;
     u32 i;
     u32 max;
     u32 room;
-    u32 n;
+    u32 capacity;
 
-    n = Box_GetCapacity(&gSave);
+    capacity = Box_GetCapacity(&gSave);
     max = gItemData[item].max;
     if (count > max) {
         count = max;
     }
     if (max != 0xFF) {
-        st = box;
-        for (i = n; i != 0; i--, st++) {
-            if (st->item == item && st->count < max) {
-                room = max - st->count;
+        stack = list;
+        for (i = capacity; i != 0; i--, stack++) {
+            if (stack->item == item && stack->count < max) {
+                room = max - stack->count;
                 if (room >= count) {
-                    st->count += count;
+                    stack->count += count;
                     Save_MarkItemObtained(&gSave, item);
                     return 0;
                 }
                 count -= room;
-                st->count = max;
+                stack->count = max;
             }
         }
     }
-    for (i = n; i != 0; i--, box++) {
-        if (box->item == 0) {
-            box->item = item;
-            box->count = count;
+    for (i = capacity; i != 0; i--, list++) {
+        if (list->item == 0) {
+            list->item = item;
+            list->count = count;
             Save_MarkItemObtained(&gSave, item);
             return 0;
         }
@@ -1352,66 +1465,70 @@ u16 ItemList_Add(ItemStack *box, u16 item, u16 count)
     return count;
 }
 
+/* Adds count of an item to gSave's item box: first onto its stacks that have room, then into the
+ * empty slots, a full stack each. An item with no limit takes one empty slot per unit, each with
+ * the count 0xFF. Returns how many found no place (0 when all did). */
 u32 ItemBox_AddStacks(u16 item, u32 count)
 {
-    SaveData *s = &gSave;
-    s16 max;
-    s16 n;
-    ItemStack *st;
+    SaveData *save = &gSave;
+    s16 stackMax;
+    s16 capacity;
+    ItemStack *stack;
     u32 i;
 
     if (count == 0) {
         return 0;
     }
-    max = gItemData[item].max;
-    n = Box_GetCapacity(s);
-    st = s->itemBox;
-    for (i = 0; i < n; i++, st++) {
-        if (st->item == item && st->count < max && max != 0xFF) {
-            u32 room = max - st->count;
+    stackMax = gItemData[item].max;
+    capacity = Box_GetCapacity(save);
+    stack = save->itemBox;
+    for (i = 0; i < capacity; i++, stack++) {
+        if (stack->item == item && stack->count < stackMax && stackMax != 0xFF) {
+            u32 room = stackMax - stack->count;
 
             if (room >= count) {
-                st->count += count;
-                Save_MarkItemObtained(s, item);
+                stack->count += count;
+                Save_MarkItemObtained(save, item);
                 return 0;
             }
             count -= room;
-            st->count = max;
+            stack->count = stackMax;
         }
     }
-    st = s->itemBox;
-    for (i = 0; i < n; i++, st++) {
-        if (st->item == 0) {
-            Save_MarkItemObtained(s, item);
-            st->item = item;
-            if (max == 0xFF) {
-                st->count = 0xFF;
+    stack = save->itemBox;
+    for (i = 0; i < capacity; i++, stack++) {
+        if (stack->item == 0) {
+            Save_MarkItemObtained(save, item);
+            stack->item = item;
+            if (stackMax == 0xFF) {
+                stack->count = 0xFF;
                 count--;
-            } else if (count <= max) {
-                st->count = count;
+            } else if (count <= stackMax) {
+                stack->count = count;
                 return 0;
             } else {
-                st->count = max;
-                count -= max;
+                stack->count = stackMax;
+                count -= stackMax;
             }
         }
     }
     return count;
 }
 
+/* As SavePouch_Count, on gPouchBackup (the pouch as the quest found it). */
 s16 PouchBackup_Count(u16 item)
 {
     s16 i;
 
-    if (Item_IsSpecial(item) == 1) {
-        for (i = 0; i < 20; i++) {
-            if (Item_IsSpecial(gPouchBackup[i].item) == 1) {
+    if (Item_IsOnePerPouch(item) == 1) {
+        for (i = 0; i < POUCH_SLOTS; i++) {
+            if (Item_IsOnePerPouch(gPouchBackup[i].item) == 1) {
                 return 1;
             }
         }
         return 0;
     }
-    for (i = 0; i < 20; i++) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
         if (item == gPouchBackup[i].item) {
             return gPouchBackup[i].count;
         }
@@ -1419,47 +1536,51 @@ s16 PouchBackup_Count(u16 item)
     return 0;
 }
 
-u8 PouchBackup_Use(Player *p, u16 item, s16 n)
+/* Takes amount (zero or less) of an item from gPouchBackup when the pouch uses it up. When the
+ * pouch holds more than the backup, that extra goes first: 5 when it covers it all. Returns 4 when
+ * the backup's stack ran out, 1 when some is left, and 0xFF for a positive amount, an item with no
+ * limit, or an item neither holds. */
+u8 PouchBackup_Use(Player *pl, u16 item, s16 amount)
 {
-    s16 bak;
-    s16 cnt;
+    s16 backupCount;
+    s16 pouchCount;
     s16 i;
-    u8 ret;
+    u8 result;
 
-    if (n > 0) {
+    if (amount > 0) {
         return 0xFF;
     }
     if (gItemData[item].max == 0xFF) {
         return 0xFF;
     }
-    bak = PouchBackup_Count(item);
-    cnt = Pouch_Count(p, item);
-    if (bak == 0 && cnt == 0) {
+    backupCount = PouchBackup_Count(item);
+    pouchCount = Pouch_Count(pl, item);
+    if (backupCount == 0 && pouchCount == 0) {
         return 0xFF;
     }
-    if (cnt > bak) {
-        s16 d = cnt - bak;
+    if (pouchCount > backupCount) {
+        s16 extra = pouchCount - backupCount;
 
-        if (d >= -n) {
+        if (extra >= -amount) {
             return 5;
         }
-        n += d;
+        amount += extra;
     }
-    for (i = 0; i < 20; i++) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
         if (item == gPouchBackup[i].item) {
-            gPouchBackup[i].count += n;
+            gPouchBackup[i].count += amount;
             if (gPouchBackup[i].count <= 0) {
-                ret = 4;
+                result = 4;
                 gPouchBackup[i].item = 0;
                 gPouchBackup[i].count = 0;
             } else {
-                ret = 1;
+                result = 1;
             }
             break;
         }
     }
-    /* the game reads a register it never set: when no backup slot holds item (bak 0, the pouch holding more than -n), ret is s1, still the caller's */
-    return ret;
+    /* the game reads a register it never set: when no backup slot holds item (backupCount 0, the pouch holding more than -amount), result is s1, still the caller's */
+    return result;
 }
 
 /* Sets event flag n. */
@@ -1486,37 +1607,40 @@ s32 Save_TestEventFlag(s32 n)
     return 0;
 }
 
-void Player_LoadPreset(s8 *id, Player *p)
+/* Sets up a player as a preset hunter (found by its id, Preset_Find): its hair, colour, gender,
+ * voice, equipment, name (gMemberNames) and character type, from gPresetChars. */
+void Player_LoadPreset(s8 *id, Player *pl)
 {
-    UserText *e;
-    s8 idx;
+    UserText *preset;
+    s8 presetIndex;
 
-    idx = Preset_Find(id);
-    e = &gPresetChars[idx];
+    presetIndex = Preset_Find(id);
+    preset = &gPresetChars[presetIndex];
 
-    p->hairColor = e->card.hairColor;
-    Player_SetColorWord(p, e->card.symbolColor);
-    p->gender = e->card.gender;
-    p->hairStyle = e->card.hairStyle;
-    p->equip[6] = e->card.weapon;
-    p->voice = e->card.voice;
-    p->weaponKind = Equip_GetKind(&e->card.weapon);
-    p->equip[0] = e->card.armour[0];
-    p->equip[1] = e->card.armour[1];
-    p->equip[2] = e->card.armour[2];
-    p->equip[3] = e->card.armour[3];
-    p->equip[4] = e->card.armour[4];
-    p->equip[5] = e->card.armour[5];
-    strcpy((char *)p->name, gMemberNames[idx]);
-    p->charType = e->card.charType;
+    pl->hairColor = preset->card.hairColor;
+    Player_SetColorWord(pl, preset->card.symbolColor);
+    pl->gender = preset->card.gender;
+    pl->hairStyle = preset->card.hairStyle;
+    pl->equip[EQUIP_SLOT_WEAPON] = preset->card.weapon;
+    pl->voice = preset->card.voice;
+    pl->weaponKind = Equip_GetKind(&preset->card.weapon);
+    pl->equip[EQUIP_LEGS] = preset->card.armour[0];
+    pl->equip[EQUIP_SLOT_FACE] = preset->card.armour[1];
+    pl->equip[EQUIP_HEAD] = preset->card.armour[2];
+    pl->equip[EQUIP_BODY] = preset->card.armour[3];
+    pl->equip[EQUIP_ARMS] = preset->card.armour[4];
+    pl->equip[EQUIP_WAIST] = preset->card.armour[5];
+    strcpy((char *)pl->name, gMemberNames[presetIndex]);
+    pl->charType = preset->card.charType;
 }
 
+/* The index of the preset hunter (of four) whose 6-byte id in gPlayerIds matches id; 0 if none. */
 s8 Preset_Find(s8 *id)
 {
     s8 j;
     s8 i;
 
-    for (j = 0; j < 4; j++) {
+    for (j = 0; j < SCENE_PLAYERS; j++) {
         for (i = 0; i < 6; i++) {
             if (gPlayerIds[j][i] != id[i]) {
                 break;
@@ -1529,40 +1653,43 @@ s8 Preset_Find(s8 *id)
     return 0;
 }
 
+/* Sets the four players' sides: in a versus quest, a player whose id (gPlayerIds) matches side j's
+ * user id in gNextQuest is on side j + 1; else, and outside versus quests, on none (0). */
 void Players_UpdateSides(void)
 {
     s16 i;
-    Player *p = gPlayers;
-    IdBlock *blk = &D_006ADAD4;
+    Player *pl = gPlayers;
+    SideIdsView *view = (SideIdsView *)gNextQuest.teams;
     s16 j;
     s16 k;
     s16 differ;
 
-    for (i = 0; i < 4; i++, p++) {
+    for (i = 0; i < SCENE_PLAYERS; i++, pl++) {
         if (Quest_IsVersus() == 1) {
-            p->side = 0;
-            for (j = 0; j < 4; j++) {
+            pl->side = 0;
+            for (j = 0; j < SCENE_PLAYERS; j++) {
                 differ = 0;
                 for (k = 0; k < 6; k++) {
-                    if (blk->ids[j][k] != gPlayerIds[i][k]) {
+                    if (view->ids[j][k] != gPlayerIds[i][k]) {
                         differ = 1;
                         break;
                     }
                 }
                 if (differ == 0) {
-                    p->side = j + 1;
+                    pl->side = j + 1;
                     break;
                 }
             }
         } else {
-            p->side = 0;
+            pl->side = 0;
         }
     }
 }
 
-void Player_SetMyUserId(u8 i)
+/* Copies the local user's id (gMyUserId) into gScene.preset[slot]. */
+void Player_SetMyUserId(u8 slot)
 {
-    s8 *dst = D_006ADF26[i];
+    s8 *dst = D_006ADF26[slot];
 
     dst[0] = gMyUserId[0];
     dst[1] = gMyUserId[1];
@@ -1574,11 +1701,13 @@ void Player_SetMyUserId(u8 i)
     dst[7] = gMyUserId[7];
 }
 
-s32 Weapon_ElementValue(u16 type, u16 id, u16 v)
+/* A blade weapon's element value when its element is the one given; 0 for another element or a gun.
+ */
+s32 Weapon_ElementValue(u16 type, u16 id, u16 element)
 {
     switch (type) {
-    case 6:
-        if (v == gBladeData[id].elementType) {
+    case EQUIP_BLADE:
+        if (element == gBladeData[id].elementType) {
             return gBladeData[id].elementValue;
         }
         break;
@@ -1586,11 +1715,12 @@ s32 Weapon_ElementValue(u16 type, u16 id, u16 v)
     return 0;
 }
 
-s32 Weapon_Element2Value(u16 type, u16 id, u16 v)
+/* A blade weapon's status value when its status is the one given; 0 for another status or a gun. */
+s32 Weapon_StatusValue(u16 type, u16 id, u16 status)
 {
     switch (type) {
-    case 6:
-        if (v == gBladeData[id].statusType) {
+    case EQUIP_BLADE:
+        if (status == gBladeData[id].statusType) {
             return gBladeData[id].statusValue;
         }
         break;
@@ -1598,310 +1728,324 @@ s32 Weapon_Element2Value(u16 type, u16 id, u16 v)
     return 0;
 }
 
-/* Player_GetWeaponStat: the weapon's element (kind 0-3, 7: its type 1-5), status (4-6, blades:
- * type 1-3) or affinity (8, with the skills 0x23-0x25 and the sharpness bonus); the
- * skill 0x47 raises elements and statuses by 1/8. */
-s16 Player_GetWeaponStat(Player *p, u8 kind)
+/* A stat of the player's weapon by kind (WSTAT_*): an element's value when the weapon has that
+ * element (BladeData/GunData.elementType 1-4 for WSTAT_FIRE to WSTAT_ICE, 5 for WSTAT_DRAGON), a
+ * status's when a blade has that status (statusType 1-3), else 0; or the affinity, plus 5, 10 or 15
+ * for the skills 0x23-0x25, and for a blade 5 at sharpness level 4 or 10 above it when positive.
+ * The skill 0x47 raises the statuses and the dragon element (WSTAT_POISON to WSTAT_DRAGON) by an
+ * eighth. */
+s16 Player_GetWeaponStat(Player *pl, u8 kind)
 {
-    s16 r;
+    s16 result;
     u8 etype;
     u8 stype;
     u8 eval;
     u8 sval;
     s8 aff;
-    u8 wtype;
+    u8 equipType;
 
-    r = 0;
-    wtype = p->equip[6].type;
-    if (wtype == 6) {
-        etype = gBladeData[p->equip[6].id].elementType;
-        stype = gBladeData[p->equip[6].id].statusType;
-        eval = gBladeData[p->equip[6].id].elementValue;
-        sval = gBladeData[p->equip[6].id].statusValue;
-        aff = gBladeData[p->equip[6].id].affinity;
+    result = 0;
+    equipType = pl->equip[EQUIP_SLOT_WEAPON].type;
+    if (equipType == EQUIP_BLADE) {
+        etype = gBladeData[pl->equip[EQUIP_SLOT_WEAPON].id].elementType;
+        stype = gBladeData[pl->equip[EQUIP_SLOT_WEAPON].id].statusType;
+        eval = gBladeData[pl->equip[EQUIP_SLOT_WEAPON].id].elementValue;
+        sval = gBladeData[pl->equip[EQUIP_SLOT_WEAPON].id].statusValue;
+        aff = gBladeData[pl->equip[EQUIP_SLOT_WEAPON].id].affinity;
     } else {
         stype = 0;
         sval = 0;
-        etype = gGunData[p->equip[6].id].elementType;
-        eval = gGunData[p->equip[6].id].elementValue;
-        aff = gGunData[p->equip[6].id].affinity;
+        etype = gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].elementType;
+        eval = gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].elementValue;
+        aff = gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].affinity;
     }
     switch (kind) {
-    case 0:
+    case WSTAT_FIRE:
         if (etype == 1) {
-            r = eval;
+            result = eval;
         }
         break;
-    case 1:
+    case WSTAT_WATER:
         if (etype == 2) {
-            r = eval;
+            result = eval;
         }
         break;
-    case 2:
+    case WSTAT_THUNDER:
         if (etype == 3) {
-            r = eval;
+            result = eval;
         }
         break;
-    case 3:
+    case WSTAT_ICE:
         if (etype == 4) {
-            r = eval;
+            result = eval;
         }
         break;
-    case 4:
-        if (wtype == 6 && stype == 1) {
-            r = sval;
+    case WSTAT_POISON:
+        if (equipType == EQUIP_BLADE && stype == 1) {
+            result = sval;
         }
         break;
-    case 5:
-        if (wtype == 6 && stype == 2) {
-            r = sval;
+    case WSTAT_STATUS_TYPE2:
+        if (equipType == EQUIP_BLADE && stype == 2) {
+            result = sval;
         }
         break;
-    case 6:
-        if (wtype == 6 && stype == 3) {
-            r = sval;
+    case WSTAT_STATUS_TYPE3:
+        if (equipType == EQUIP_BLADE && stype == 3) {
+            result = sval;
         }
         break;
-    case 7:
+    case WSTAT_DRAGON:
         if (etype == 5) {
-            r = eval;
+            result = eval;
         }
         break;
-    case 8:
-        r = aff;
-        if (Player_HasSkill(p, 0x23) == 1) {
-            r += 5;
-        } else if (Player_HasSkill(p, 0x24) == 1) {
-            r += 10;
-        } else if (Player_HasSkill(p, 0x25) == 1) {
-            r += 15;
+    case WSTAT_AFFINITY:
+        result = aff;
+        if (Player_HasSkill(pl, 0x23) == 1) {
+            result += 5;
+        } else if (Player_HasSkill(pl, 0x24) == 1) {
+            result += 10;
+        } else if (Player_HasSkill(pl, 0x25) == 1) {
+            result += 15;
         }
-        if (r > 0) {
-            if (p->equip[6].type == 6) {
-                switch (p->sharpnessLevel) {
+        if (result > 0) {
+            if (pl->equip[EQUIP_SLOT_WEAPON].type == EQUIP_BLADE) {
+                switch (pl->sharpnessLevel) {
                 case 0:
                 case 1:
                 case 2:
                 case 3:
                     break;
                 case 4:
-                    r += 5;
+                    result += 5;
                     break;
                 case 5:
                 default:
-                    r += 10;
+                    result += 10;
                     break;
                 }
             }
-            return r;
+            return result;
         }
-        return r;
+        return result;
     }
-    if (Player_HasSkill(p, 0x47) == 1 && r > 0 && kind >= 4 && kind < 8) {
-        r = 1.125f * r;
+    if (Player_HasSkill(pl, 0x47) == 1 && result > 0 && kind >= WSTAT_POISON && kind < WSTAT_AFFINITY) {
+        result = 1.125f * result;
     }
-    return r;
+    return result;
 }
 
 u32 Armor_GetDefense(EquipItem *item);
 
-/* A stat of the equipment shown (gEquipShown) by kind: 0 attack (a gun's base plus its level
- * row and options), 1 defense (the armour's plus the weapon's), 2-5 and 13 the summed
- * resistances, 6-9 Weapon_ElementValue and 10-12 Weapon_Element2Value of the weapon. */
+/* A stat of the equipment shown (gEquipShown) by kind (EQUIP_STAT_*, save.h): the attack (a gun's
+ * with its level row and options), the defense, a resistance summed over the armour, or the
+ * weapon's element or status value (Weapon_ElementValue, Weapon_StatusValue: element types 1-4,
+ * status types 1-3). */
 s16 EquipView_GetStat(s32 kind)
 {
-    EquipItem *e;
-    s16 v;
+    EquipItem *item;
+    s16 value;
 
-    e = gEquipShown;
-    v = 0;
+    item = gEquipShown;
+    value = 0;
     switch ((u8)kind) {
-    case 0:
-        if (e->type == 7) {
-            u16 lv = e->level;
+    case EQUIP_STAT_ATTACK:
+        if (item->type == EQUIP_GUN) {
+            u16 gunLevel = item->level;
 
-            v += gGunData[e->id].attack;
-            v += gGunLevelRows[gGunData[e->id].levelRow].levels[(lv & 0xF) * 12];
-            if (lv & 0x10) {
-                v += D_006AEE00;
+            value += gGunData[item->id].attack;
+            value += gGunLevelRows[gGunData[item->id].levelRow].levels[(gunLevel & GUN_LEVEL_MASK) * 12];
+            if (gunLevel & GUN_OPT_SILENCER) {
+                value += gSilencerBonus;
             }
-            if (lv & 0x20) {
-                if (Weapon_GetClass(7, e->id) == 1) {
-                    v += D_0045EB20[0];
+            if (gunLevel & GUN_OPT_BARREL) {
+                if (Weapon_GetClass(EQUIP_GUN, item->id) == WEAPON_HEAVY_BOWGUN) {
+                    value += gBarrelBonusHeavy[0];
                 } else {
-                    v += D_0045EB00[0];
+                    value += gBarrelBonusLight[0];
                 }
             }
         } else {
-            v = gBladeData[e->id].attack;
+            value = gBladeData[item->id].attack;
         }
         break;
-    case 1:
-        v += (u8)Armor_GetDefense(&e[3]);
-        v += (u8)Armor_GetDefense(&e[4]);
-        v += (u8)Armor_GetDefense(&e[5]);
-        v += (u8)Armor_GetDefense(&e[6]);
-        v += (u8)Armor_GetDefense(&e[1]);
-        if (e->type == 7) {
-            v += gGunData[e->id].defense;
+    case EQUIP_STAT_DEFENSE:
+        value += (u8)Armor_GetDefense(&item[1 + EQUIP_HEAD]);
+        value += (u8)Armor_GetDefense(&item[1 + EQUIP_BODY]);
+        value += (u8)Armor_GetDefense(&item[1 + EQUIP_ARMS]);
+        value += (u8)Armor_GetDefense(&item[1 + EQUIP_WAIST]);
+        value += (u8)Armor_GetDefense(&item[1 + EQUIP_LEGS]);
+        if (item->type == EQUIP_GUN) {
+            value += gGunData[item->id].defense;
         } else {
-            v += gBladeData[e->id].defense;
+            value += gBladeData[item->id].defense;
         }
         break;
-    case 2:
-        v += gArmorHeadData[e[3].id].resist[0];
-        v += gArmorBodyData[e[4].id].resist[0];
-        v += gArmorArmsData[e[5].id].resist[0];
-        v += gArmorWaistData[e[6].id].resist[0];
-        v += gArmorLegsData[e[1].id].resist[0];
+    case EQUIP_STAT_RES_FIRE:
+        value += gArmorHeadData[item[1 + EQUIP_HEAD].id].resist[0];
+        value += gArmorBodyData[item[1 + EQUIP_BODY].id].resist[0];
+        value += gArmorArmsData[item[1 + EQUIP_ARMS].id].resist[0];
+        value += gArmorWaistData[item[1 + EQUIP_WAIST].id].resist[0];
+        value += gArmorLegsData[item[1 + EQUIP_LEGS].id].resist[0];
         break;
-    case 3:
-        v += gArmorHeadData[e[3].id].resist[1];
-        v += gArmorBodyData[e[4].id].resist[1];
-        v += gArmorArmsData[e[5].id].resist[1];
-        v += gArmorWaistData[e[6].id].resist[1];
-        v += gArmorLegsData[e[1].id].resist[1];
+    case EQUIP_STAT_RES_WATER:
+        value += gArmorHeadData[item[1 + EQUIP_HEAD].id].resist[1];
+        value += gArmorBodyData[item[1 + EQUIP_BODY].id].resist[1];
+        value += gArmorArmsData[item[1 + EQUIP_ARMS].id].resist[1];
+        value += gArmorWaistData[item[1 + EQUIP_WAIST].id].resist[1];
+        value += gArmorLegsData[item[1 + EQUIP_LEGS].id].resist[1];
         break;
-    case 4:
-        v += gArmorHeadData[e[3].id].resist[2];
-        v += gArmorBodyData[e[4].id].resist[2];
-        v += gArmorArmsData[e[5].id].resist[2];
-        v += gArmorWaistData[e[6].id].resist[2];
-        v += gArmorLegsData[e[1].id].resist[2];
+    case EQUIP_STAT_RES_THUNDER:
+        value += gArmorHeadData[item[1 + EQUIP_HEAD].id].resist[2];
+        value += gArmorBodyData[item[1 + EQUIP_BODY].id].resist[2];
+        value += gArmorArmsData[item[1 + EQUIP_ARMS].id].resist[2];
+        value += gArmorWaistData[item[1 + EQUIP_WAIST].id].resist[2];
+        value += gArmorLegsData[item[1 + EQUIP_LEGS].id].resist[2];
         break;
-    case 5:
-        v += gArmorHeadData[e[3].id].resist[3];
-        v += gArmorBodyData[e[4].id].resist[3];
-        v += gArmorArmsData[e[5].id].resist[3];
-        v += gArmorWaistData[e[6].id].resist[3];
-        v += gArmorLegsData[e[1].id].resist[3];
+    case EQUIP_STAT_RES_ICE:
+        value += gArmorHeadData[item[1 + EQUIP_HEAD].id].resist[3];
+        value += gArmorBodyData[item[1 + EQUIP_BODY].id].resist[3];
+        value += gArmorArmsData[item[1 + EQUIP_ARMS].id].resist[3];
+        value += gArmorWaistData[item[1 + EQUIP_WAIST].id].resist[3];
+        value += gArmorLegsData[item[1 + EQUIP_LEGS].id].resist[3];
         break;
-    case 6:
-        v = Weapon_ElementValue(e->type, e->id, 1);
+    case EQUIP_STAT_FIRE:
+        value = Weapon_ElementValue(item->type, item->id, 1);
         break;
-    case 7:
-        v = Weapon_ElementValue(e->type, e->id, 2);
+    case EQUIP_STAT_WATER:
+        value = Weapon_ElementValue(item->type, item->id, 2);
         break;
-    case 8:
-        v = Weapon_ElementValue(e->type, e->id, 3);
+    case EQUIP_STAT_THUNDER:
+        value = Weapon_ElementValue(item->type, item->id, 3);
         break;
-    case 9:
-        v = Weapon_ElementValue(e->type, e->id, 4);
+    case EQUIP_STAT_ICE:
+        value = Weapon_ElementValue(item->type, item->id, 4);
         break;
-    case 10:
-        v = Weapon_Element2Value(e->type, e->id, 1);
+    case EQUIP_STAT_POISON:
+        value = Weapon_StatusValue(item->type, item->id, 1);
         break;
-    case 11:
-        v = Weapon_Element2Value(e->type, e->id, 2);
+    case EQUIP_STAT_STATUS_TYPE2:
+        value = Weapon_StatusValue(item->type, item->id, 2);
         break;
-    case 12:
-        v = Weapon_Element2Value(e->type, e->id, 3);
+    case EQUIP_STAT_STATUS_TYPE3:
+        value = Weapon_StatusValue(item->type, item->id, 3);
         break;
-    case 13:
-        v += gArmorHeadData[e[3].id].resist[4];
-        v += gArmorBodyData[e[4].id].resist[4];
-        v += gArmorArmsData[e[5].id].resist[4];
-        v += gArmorWaistData[e[6].id].resist[4];
-        v += gArmorLegsData[e[1].id].resist[4];
+    case EQUIP_STAT_RES_DRAGON:
+        value += gArmorHeadData[item[1 + EQUIP_HEAD].id].resist[4];
+        value += gArmorBodyData[item[1 + EQUIP_BODY].id].resist[4];
+        value += gArmorArmsData[item[1 + EQUIP_ARMS].id].resist[4];
+        value += gArmorWaistData[item[1 + EQUIP_WAIST].id].resist[4];
+        value += gArmorLegsData[item[1 + EQUIP_LEGS].id].resist[4];
         break;
     }
-    return v;
+    return value;
 }
 
-s16 Player_GetEquipStat(Player *p, s32 kind)
+/* A stat of a player's equipment (EQUIP_STAT_*, EquipView_GetStat): from the local hunter's save in a
+ * normal quest, else (a drill, the training, another player) from the player's own equipment. */
+s16 Player_GetEquipStat(Player *pl, s32 kind)
 {
-    EquipItem *dst = gEquipShown;
-    SaveData *s = &gSave;
+    EquipItem *shown = gEquipShown;
+    SaveData *save = &gSave;
 
-    if (Quest_IsDrill() == 1 || Quest_IsTraining() == 1 || Player_IsLocal(p) == 0) {
-        EquipView_FromPlayer(p);
+    if (Quest_IsDrill() == 1 || Quest_IsTraining() == 1 || Player_IsLocal(pl) == 0) {
+        EquipView_FromPlayer(pl);
     } else {
-        dst[0] = s->equip[0];
-        dst[3] = s->equip[2];
-        dst[4] = s->equip[3];
-        dst[5] = s->equip[4];
-        dst[6] = s->equip[5];
-        dst[1] = s->equip[1];
+        shown[0] = save->equip[SAVE_EQUIP_WEAPON];
+        shown[1 + EQUIP_HEAD] = save->equip[SAVE_EQUIP_HEAD];
+        shown[1 + EQUIP_BODY] = save->equip[SAVE_EQUIP_BODY];
+        shown[1 + EQUIP_ARMS] = save->equip[SAVE_EQUIP_ARMS];
+        shown[1 + EQUIP_WAIST] = save->equip[SAVE_EQUIP_WAIST];
+        shown[1 + EQUIP_LEGS] = save->equip[SAVE_EQUIP_LEGS];
     }
     return EquipView_GetStat(kind);
 }
 
-void EquipView_FromPlayer(Player *p)
+/* Fills gEquipShown from a player's equipment: the weapon first, then Player.equip[0-5]. */
+void EquipView_FromPlayer(Player *pl)
 {
-    EquipItem *dst = gEquipShown;
+    EquipItem *shown = gEquipShown;
     s32 i;
 
-    dst[0] = p->equip[6];
-    for (i = 0; i < 6; i++) {
-        dst[i + 1] = p->equip[i];
+    shown[0] = pl->equip[EQUIP_SLOT_WEAPON];
+    for (i = 0; i < EQUIP_SLOT_WEAPON; i++) {
+        shown[i + 1] = pl->equip[i];
     }
 }
 
-s16 Gun_GetAttack(EquipItem *e)
+/* A gun's attack: GunData.attack, plus for bowguns the level's attack (gGunLevelRows) and the
+ * options' (gSilencerBonus, and gBarrelBonusHeavy or gBarrelBonusLight); -1 for another item. */
+s16 Gun_GetAttack(EquipItem *item)
 {
-    s16 v;
-    u16 cls;
+    s16 total;
+    u16 weaponClass;
 
-    if (e->type != 7) {
+    if (item->type != EQUIP_GUN) {
         return -1;
     }
-    v = gGunData[e->id].attack;
-    cls = Equip_GetClass(e);
-    if (cls != 10) {
-        u16 lv = e->level;
+    total = gGunData[item->id].attack;
+    weaponClass = Equip_GetClass(item);
+    if (weaponClass != WEAPON_BOW) {
+        u16 gunLevel = item->level;
 
-        v += gGunLevelRows[gGunData[e->id].levelRow].levels[(lv & 0xF) * 12];
-        if (lv & 0x10) {
-            v += D_006AEE00;
+        total += gGunLevelRows[gGunData[item->id].levelRow].levels[(gunLevel & GUN_LEVEL_MASK) * 12];
+        if (gunLevel & GUN_OPT_SILENCER) {
+            total += gSilencerBonus;
         }
-        if (lv & 0x20) {
-            if (cls == 1) {
-                v += D_0045EB20[0];
+        if (gunLevel & GUN_OPT_BARREL) {
+            if (weaponClass == WEAPON_HEAVY_BOWGUN) {
+                total += gBarrelBonusHeavy[0];
             } else {
-                v += D_0045EB00[0];
+                total += gBarrelBonusLight[0];
             }
         }
     }
-    return v;
+    return total;
 }
 
-u16 ItemList_IndexOf(u16 item)
+/* The index of a quest id in gClearListQuests (its bit in SaveData.clearedQuests), 0xFFFF if it
+ * isn't listed. */
+u16 ClearList_IndexOf(u16 quest)
 {
     u16 i = 0;
-    u16 *p = D_0044C3A0;
-    u16 key = D_0044C3A0[0];
+    u16 *entry = gClearListQuests;
+    u16 key = gClearListQuests[0];
 
     while (key != 0xEA60) {
-        if (key == item) {
+        if (key == quest) {
             return i;
         }
-        p++;
+        entry++;
         i++;
-        key = *p;
+        key = *entry;
     }
     return 0xFFFF;
 }
 
-void Save_SetListBit(u16 item)
+/* Records a quest as cleared in gSave (its bit in clearedQuests) when the quest's main goal is done
+ * and the quest is listed. */
+void Save_MarkQuestCleared(u16 quest)
 {
-    SaveData *s = &gSave;
-    u16 idx;
+    SaveData *save = &gSave;
+    u16 index;
 
     if (QuestGoal_IsDone(0) != 0) {
-        idx = ItemList_IndexOf(item);
-        if (idx != 0xFFFF) {
-            s->listBits[(u16)(idx / 32)] |= 1LL << (u16)(idx % 32);
+        index = ClearList_IndexOf(quest);
+        if (index != 0xFFFF) {
+            save->clearedQuests[(u16)(index / 32)] |= 1LL << (u16)(index % 32);
         }
     }
 }
 
-s32 Save_TestListBit(u16 item)
+/* 1 when gSave records a listed quest as cleared (the menus draw its clear mark). */
+s32 Save_IsQuestCleared(u16 quest)
 {
-    SaveData *s = &gSave;
-    u16 idx = ItemList_IndexOf(item);
+    SaveData *save = &gSave;
+    u16 index = ClearList_IndexOf(quest);
 
-    if (idx != 0xFFFF) {
-        if (s->listBits[(u16)(idx / 32)] & (1LL << (u16)(idx % 32))) {
+    if (index != 0xFFFF) {
+        if (save->clearedQuests[(u16)(index / 32)] & (1LL << (u16)(index % 32))) {
             return 1;
         }
         return 0;
@@ -1917,25 +2061,25 @@ static u8 *Save_GetEquipFlags(SaveData *save, EquipItem *item)
     u8 *flags;
 
     switch (item->type) {
-    case 0:
+    case EQUIP_LEGS:
         flags = save->armorFlags[4];
         break;
-    case 2:
+    case EQUIP_HEAD:
         flags = save->armorFlags[0];
         break;
-    case 3:
+    case EQUIP_BODY:
         flags = save->armorFlags[1];
         break;
-    case 4:
+    case EQUIP_ARMS:
         flags = save->armorFlags[2];
         break;
-    case 5:
+    case EQUIP_WAIST:
         flags = save->armorFlags[3];
         break;
-    case 6:
+    case EQUIP_BLADE:
         flags = save->bladeFlags;
         break;
-    case 7:
+    case EQUIP_GUN:
         flags = save->gunFlags;
         break;
     }
@@ -1947,31 +2091,33 @@ static u8 *Save_GetEquipFlags(SaveData *save, EquipItem *item)
 void Save_ClearNewMarks(void)
 {
     s16 i;
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
 
     for (i = 0; i < 0x1E6; i++) {
-        s->bladeFlags[i] &= ~4;
+        save->bladeFlags[i] &= ~(1 << EQUIP_FLAG_NEW);
     }
     for (i = 0; i < 0x80; i++) {
-        s->gunFlags[i] &= ~4;
+        save->gunFlags[i] &= ~(1 << EQUIP_FLAG_NEW);
     }
     for (i = 0; i < 0xFD; i++) {
-        s->armorFlags[0][i] &= ~4;
+        save->armorFlags[0][i] &= ~(1 << EQUIP_FLAG_NEW);
     }
     for (i = 0; i < 0xF3; i++) {
-        s->armorFlags[1][i] &= ~4;
+        save->armorFlags[1][i] &= ~(1 << EQUIP_FLAG_NEW);
     }
     for (i = 0; i < 0xEE; i++) {
-        s->armorFlags[2][i] &= ~4;
+        save->armorFlags[2][i] &= ~(1 << EQUIP_FLAG_NEW);
     }
     for (i = 0; i < 0xED; i++) {
-        s->armorFlags[3][i] &= ~4;
+        save->armorFlags[3][i] &= ~(1 << EQUIP_FLAG_NEW);
     }
     for (i = 0; i < 0xEC; i++) {
-        s->armorFlags[4][i] &= ~4;
+        save->armorFlags[4][i] &= ~(1 << EQUIP_FLAG_NEW);
     }
 }
 
+/* 1 when an item of equipment has an id its type's flag bytes cover (1 to ARMOR_ID_COUNT,
+ * BLADE_ID_COUNT or GUN_ID_COUNT less one); 0 for id 0 or an unknown type. */
 static s32 Equip_IsValidId(EquipItem *item)
 {
     u16 max;
@@ -1980,18 +2126,18 @@ static s32 Equip_IsValidId(EquipItem *item)
         return 0;
     }
     switch (item->type) {
-    case 0:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
-        max = 300;
+    case EQUIP_LEGS:
+    case EQUIP_HEAD:
+    case EQUIP_BODY:
+    case EQUIP_ARMS:
+    case EQUIP_WAIST:
+        max = ARMOR_ID_COUNT;
         break;
-    case 6:
-        max = 640;
+    case EQUIP_BLADE:
+        max = BLADE_ID_COUNT;
         break;
-    case 7:
-        max = 200;
+    case EQUIP_GUN:
+        max = GUN_ID_COUNT;
         break;
     default:
         return 0;
@@ -1999,57 +2145,57 @@ static s32 Equip_IsValidId(EquipItem *item)
     return item->id < max;
 }
 
-/* 0x3BA040 */
 /*
- * The character's save data (gSave): the equipment box (12-byte
- * entries, 100 per box page owned) and the six equipped items, gun levels and
- * options, the per-monster hunting records (sizes, hunted, captured), the
- * items-obtained bits, and armor values computed from the armor tables
- * (defense, upgrade cost, sell price).
+ * From here: the equipment box (12-byte entries, 100 per box page owned)
+ * and the six equipped items, gun levels and options, the per-monster
+ * hunting records (sizes, hunted, captured), the items-obtained bits, and
+ * armour values computed from the armour tables (defense, upgrade cost,
+ * sell price).
  */
 
 /* Armor data (0x28 bytes), one table per armor type (gArmorTables). */
 
 /* A forging recipe (0x18 bytes): the tables gArmorRecipes and gWeaponRecipes are outside
- * sub_main (Forge_CheckRecipe). */
-typedef struct Recipe {
-    u8 type;                    /* 0x0: gWeaponRecipes: 6 blade weapon, 7 gun */
-    u8 unk1;
+ * sub_main (Forge_CheckRecipe). The lobby's forge menus view it as their own ForgeRecipe
+ * (unk_6E01D0.c). */
+typedef struct ForgeRecipe {
+    u8 type;                    /* 0x0: gWeaponRecipes: EQUIP_BLADE or EQUIP_GUN */
+    u8 alwaysShown;             /* 0x1: nonzero: Forge_CheckRecipe gives 1 even while locked */
     u16 id;
     ItemStack mat[4];           /* 0x4: materials */
-    u8 cond[4];                 /* 0x14: Forge_CheckCondition condition of each material */
-} Recipe;
+    u8 cond[4];                 /* 0x14: per material, the condition that unlocks the recipe (Forge_CheckRecipe) */
+} ForgeRecipe;
 
 /* One page of the box (25 entries), built by Save_BuildSummary (0x19C bytes). */
 typedef struct BoxPage {
-    u16 id[25];
-    u16 level[25];
-    u16 unk64[25];
-    u16 unk96[25];
-    u16 unkC8[25];
-    s32 unkFC;
-    u32 itemBits[32];
-    u16 unk180;
-    u8 type[25];
+    u16 id[SUMMARY_BOX_SLOTS];                 /* 0x000 */
+    u16 level[SUMMARY_BOX_SLOTS];              /* 0x032 */
+    u16 deco0[SUMMARY_BOX_SLOTS];              /* 0x064: EquipItem.deco[0] */
+    u16 deco1[SUMMARY_BOX_SLOTS];              /* 0x096 */
+    u16 deco2[SUMMARY_BOX_SLOTS];              /* 0x0C8 */
+    s32 hrPoints;               /* 0x0FC */
+    u32 itemBits[ITEM_BITS_WORDS];           /* 0x100: SaveData.itemBits */
+    u16 hr;                     /* 0x180 */
+    u8 type[SUMMARY_BOX_SLOTS];                /* 0x182: EquipItem.type, 0xFF for an empty slot */
 } BoxPage;
 
 /* The equipped items, built by Save_BuildSummary (0xC4 bytes). */
 typedef struct EquipSummary {
-    u8 weaponType;
-    u8 armorId2;
-    u16 weaponId;
-    u8 armorId3;
-    u8 armorId4;
-    u8 armorId5;
-    u8 armorId1;
-    u16 level[6];
-    u16 unk14[6];
-    u16 unk20[6];
-    u16 unk2C[6];
-    s32 unk38;
-    s32 unk3C;
-    u32 itemBits[32];
-    u16 unkC0;
+    u8 weaponType;              /* 0x00 */
+    u8 headId;                  /* 0x01 */
+    u16 weaponId;               /* 0x02 */
+    u8 bodyId;                  /* 0x04 */
+    u8 armsId;                  /* 0x05 */
+    u8 waistId;                 /* 0x06 */
+    u8 legsId;                  /* 0x07 */
+    u16 level[6];               /* 0x08: the weapon, head, body, arms, waist, legs */
+    u16 deco0[6];               /* 0x14: EquipItem.deco[0], in the same order */
+    u16 deco1[6];               /* 0x20 */
+    u16 deco2[6];               /* 0x2C */
+    s32 playTime;               /* 0x38 */
+    s32 hrPoints;               /* 0x3C */
+    u32 itemBits[ITEM_BITS_WORDS];           /* 0x40: SaveData.itemBits */
+    u16 hr;                     /* 0xC0 */
 } EquipSummary;
 
 extern ItemStack gPouchBackup[20];
@@ -2065,8 +2211,8 @@ extern f32 gArmorLevelDefense[];
 extern f32 gArmorLevelCost[];
 extern u8 gArmorLevelSlots[];
 extern s32 gWeaponClassMultipliers[];        /* per weapon class: attack multiplier x 100 */
-extern Recipe gArmorRecipes[];
-extern Recipe gWeaponRecipes[];
+extern ForgeRecipe gArmorRecipes[];
+extern ForgeRecipe gWeaponRecipes[];
 
 void *memcpy(void *dst, void *src, u32 n);
 s32 Award_Grant(s32 arg0);
@@ -2089,7 +2235,7 @@ s16 Box_GetPageCount(SaveData *save);
 s16 Box_GetCapacity(SaveData *save);
 void Save_SetItemObtained(SaveData *save, u16 item);
 s32 Save_IsItemObtained(SaveData *save, u16 item);
-s32 SaveFlag_Test(s32 n);
+s32 Save_HasTitle(s32 n);
 void EquipCollect_CheckWeapons(void);
 void EquipCollect_CheckArmor(void);
 
@@ -2106,6 +2252,7 @@ void Equip_SetFlag(EquipItem *item, s16 bit)
     }
 }
 
+/* As Equip_SetFlag, on the save given. */
 void Save_SetEquipFlag(SaveData *save, EquipItem *item, s16 bit)
 {
     u8 *flags;
@@ -2119,33 +2266,35 @@ void Save_SetEquipFlag(SaveData *save, EquipItem *item, s16 bit)
 }
 
 /* Packs bit 0 of n bytes into (n + 7) / 8 bytes. */
-void Bits_Pack(u8 *dst, u8 *src, s32 n)
+void Bits_Pack(u8 *dst, u8 *src, s32 bitCount)
 {
     s32 count;
     s32 i;
     s32 j;
-    u8 b;
+    u8 packed;
 
-    if (n % 8 != 0) {
-        count = n / 8 + 1;
+    if (bitCount % 8 != 0) {
+        count = bitCount / 8 + 1;
     } else {
-        count = n / 8;
+        count = bitCount / 8;
     }
     for (i = 0; i < count; i++) {
-        b = 0;
+        packed = 0;
         for (j = 0; j < 8; j++) {
-            b |= (u8)((*src++ & 1) << j);
+            packed |= (u8)((*src++ & 1) << j);
         }
-        *dst++ = b;
+        *dst++ = packed;
     }
 }
 
 /* Bit n of a byte array. */
-s32 Bits_Test(u8 *bits, u16 n)
+s32 Bits_Test(u8 *bits, u16 bit)
 {
-    return (bits[n / 8] & (1 << (n & 7))) != 0;
+    return (bits[bit / 8] & (1 << (bit & 7))) != 0;
 }
 
+/* 1 when bit `bit` (EQUIP_FLAG_*) of the item's byte in the flag bytes given is set; 0 for an
+ * invalid id. */
 s32 EquipFlags_Test(u8 *bits, EquipItem *item, s16 bit)
 {
     if (Equip_IsValidId(item) == 0) {
@@ -2174,23 +2323,23 @@ u16 Box_FindFreeSlot(void *unused0)
 {
     SaveData *save = &gSave;
     s16 i;
-    s16 n = Box_GetCapacity(save);
+    s16 capacity = Box_GetCapacity(save);
 
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < capacity; i++) {
         if (save->box[i].used == 0) {
             return i;
         }
     }
-    return 0xFFFF;
+    return BOX_NONE;
 }
 
 /* Puts an item in the first free box slot and flags it seen; its index or 0xFFFF. */
 u16 Box_AddItem(SaveData *save, u8 type, u16 id, u16 level)
 {
-    s16 n = Box_GetCapacity(save);
+    s16 capacity = Box_GetCapacity(save);
     s16 i;
 
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < capacity; i++) {
         if (save->box[i].used == 0) {
             save->box[i].used = 1;
             save->box[i].type = type;
@@ -2200,24 +2349,24 @@ u16 Box_AddItem(SaveData *save, u8 type, u16 id, u16 level)
             save->box[i].deco[1] = 0;
             save->box[i].deco[2] = 0;
             Save_PickBestCounter(&save->box[i], save->gender);
-            Save_SetEquipFlag(save, &save->box[i], 0);
+            Save_SetEquipFlag(save, &save->box[i], EQUIP_FLAG_OWNED);
             return i;
         }
     }
-    return 0xFFFF;
+    return BOX_NONE;
 }
 
 /* Puts a copy of item in box slot idx. */
 void Box_SetSlot(SaveData *save, u16 idx, EquipItem *item)
 {
-    s16 n = Box_GetCapacity(save);
+    s16 capacity = Box_GetCapacity(save);
 
-    if (idx < n) {
+    if (idx < capacity) {
         save->box[idx] = *item;
         save->box[idx].used = 1;
         item = &save->box[idx];
         Save_PickBestCounter(item, save->gender);
-        Save_SetEquipFlag(save, item, 0);
+        Save_SetEquipFlag(save, item, EQUIP_FLAG_OWNED);
     }
 }
 
@@ -2241,63 +2390,65 @@ s32 Box_ClearSlot(SaveData *save, u16 idx)
 static void Save_UnequipUnwearable(SaveData *save)
 {
     u8 mask = 0;
-    s32 m;
+    s32 wanted;
 
     if (save->gender == 0) {
         mask |= 1;
     } else {
         mask |= 2;
     }
-    if (save->equip[0].type == 7) {
+    if (save->equip[SAVE_EQUIP_WEAPON].type == EQUIP_GUN) {
         mask |= 8;
     } else {
         mask |= 4;
     }
-    m = mask;
-    if ((m & gArmorHeadData[save->equip[2].id].flags) != m) {
-        save->equipIdx[2] = 0xFFFF;
+    wanted = mask;
+    if ((wanted & gArmorHeadData[save->equip[SAVE_EQUIP_HEAD].id].flags) != wanted) {
+        save->equipIdx[SAVE_EQUIP_HEAD] = BOX_NONE;
     }
-    if ((m & gArmorBodyData[save->equip[3].id].flags) != m) {
-        save->equipIdx[3] = 0xFFFF;
+    if ((wanted & gArmorBodyData[save->equip[SAVE_EQUIP_BODY].id].flags) != wanted) {
+        save->equipIdx[SAVE_EQUIP_BODY] = BOX_NONE;
     }
-    if ((m & gArmorWaistData[save->equip[5].id].flags) != m) {
-        save->equipIdx[5] = 0xFFFF;
+    if ((wanted & gArmorWaistData[save->equip[SAVE_EQUIP_WAIST].id].flags) != wanted) {
+        save->equipIdx[SAVE_EQUIP_WAIST] = BOX_NONE;
     }
-    if ((m & gArmorArmsData[save->equip[4].id].flags) != m) {
-        save->equipIdx[4] = 0xFFFF;
+    if ((wanted & gArmorArmsData[save->equip[SAVE_EQUIP_ARMS].id].flags) != wanted) {
+        save->equipIdx[SAVE_EQUIP_ARMS] = BOX_NONE;
     }
-    if ((m & gArmorLegsData[save->equip[1].id].flags) != m) {
-        save->equipIdx[1] = 0xFFFF;
+    if ((wanted & gArmorLegsData[save->equip[SAVE_EQUIP_LEGS].id].flags) != wanted) {
+        save->equipIdx[SAVE_EQUIP_LEGS] = BOX_NONE;
     }
 }
 
+/* Equips box slot idx of the save in the place its type takes (SaveData.equipIdx). Returns 1, or 0
+ * for an empty slot, an unknown type, or a weapon with idx BOX_NONE. */
 s32 Equip_EquipSlot(SaveData *save, u16 idx)
 {
     if (save->box[idx].used == 0) {
         return 0;
     }
     switch (save->box[idx].type) {
-    case 0:
-        save->equipIdx[1] = idx;
+    case EQUIP_LEGS:
+        save->equipIdx[SAVE_EQUIP_LEGS] = idx;
         break;
-    case 2:
-        save->equipIdx[2] = idx;
+    case EQUIP_HEAD:
+        save->equipIdx[SAVE_EQUIP_HEAD] = idx;
         break;
-    case 3:
-        save->equipIdx[3] = idx;
+    case EQUIP_BODY:
+        save->equipIdx[SAVE_EQUIP_BODY] = idx;
         break;
-    case 4:
-        save->equipIdx[4] = idx;
+    case EQUIP_ARMS:
+        save->equipIdx[SAVE_EQUIP_ARMS] = idx;
         break;
-    case 5:
-        save->equipIdx[5] = idx;
+    case EQUIP_WAIST:
+        save->equipIdx[SAVE_EQUIP_WAIST] = idx;
         break;
-    case 6:
-    case 7:
-        if (idx == 0xFFFF) {
+    case EQUIP_BLADE:
+    case EQUIP_GUN:
+        if (idx == BOX_NONE) {
             return 0;
         }
-        save->equipIdx[0] = idx;
+        save->equipIdx[SAVE_EQUIP_WEAPON] = idx;
         break;
     default:
         return 0;
@@ -2305,26 +2456,28 @@ s32 Equip_EquipSlot(SaveData *save, u16 idx)
     return 1;
 }
 
+/* Takes off the save's armour piece of a type (its equipIdx to BOX_NONE). Returns 1, or 0 for a
+ * weapon type (one is always equipped) or an unknown type. */
 s32 Equip_UnequipType(SaveData *save, s32 type)
 {
     switch (type) {
-    case 0:
-        save->equipIdx[1] = 0xFFFF;
+    case EQUIP_LEGS:
+        save->equipIdx[SAVE_EQUIP_LEGS] = BOX_NONE;
         break;
-    case 2:
-        save->equipIdx[2] = 0xFFFF;
+    case EQUIP_HEAD:
+        save->equipIdx[SAVE_EQUIP_HEAD] = BOX_NONE;
         break;
-    case 3:
-        save->equipIdx[3] = 0xFFFF;
+    case EQUIP_BODY:
+        save->equipIdx[SAVE_EQUIP_BODY] = BOX_NONE;
         break;
-    case 4:
-        save->equipIdx[4] = 0xFFFF;
+    case EQUIP_ARMS:
+        save->equipIdx[SAVE_EQUIP_ARMS] = BOX_NONE;
         break;
-    case 5:
-        save->equipIdx[5] = 0xFFFF;
+    case EQUIP_WAIST:
+        save->equipIdx[SAVE_EQUIP_WAIST] = BOX_NONE;
         break;
-    case 6:
-    case 7:
+    case EQUIP_BLADE:
+    case EQUIP_GUN:
         return 0;
     default:
         return 0;
@@ -2333,13 +2486,13 @@ s32 Equip_UnequipType(SaveData *save, s32 type)
 }
 
 /* Box slot idx is used and holds an item of type type1 or type2. */
-static s32 Box_SlotHasType(SaveData *save, u16 idx, u8 type1, u8 type2)
+static s32 Box_SlotHasType(SaveData *save, u16 idx, u8 typeA, u8 typeB)
 {
-    if (idx == 0xFFFF) {
+    if (idx == BOX_NONE) {
         return 0;
     }
     if (save->box[idx].used == 0
-        || (save->box[idx].type != type1 && save->box[idx].type != type2)) {
+        || (save->box[idx].type != typeA && save->box[idx].type != typeB)) {
         return 0;
     }
     return 1;
@@ -2348,87 +2501,87 @@ static s32 Box_SlotHasType(SaveData *save, u16 idx, u8 type1, u8 type2)
 /* Copies the equipped box slots into save->equip (no weapon: blade weapon 0x9B). */
 void Equip_Refresh(SaveData *save)
 {
-    if (Box_SlotHasType(save, save->equipIdx[0], 6, 7) == 1) {
-        save->equip[0] = save->box[save->equipIdx[0]];
+    if (Box_SlotHasType(save, save->equipIdx[SAVE_EQUIP_WEAPON], EQUIP_BLADE, EQUIP_GUN) == 1) {
+        save->equip[SAVE_EQUIP_WEAPON] = save->box[save->equipIdx[SAVE_EQUIP_WEAPON]];
     } else {
-        save->equip[0].used = save->box[save->equipIdx[0]].used;
-        save->equip[0].type = 6;
-        save->equip[0].id = 0x9B;
-        save->equip[0].level = 0;
-        save->equip[0].deco[0] = 0;
-        save->equip[0].deco[1] = 0;
-        save->equip[0].deco[2] = 0;
+        save->equip[SAVE_EQUIP_WEAPON].used = save->box[save->equipIdx[SAVE_EQUIP_WEAPON]].used;
+        save->equip[SAVE_EQUIP_WEAPON].type = EQUIP_BLADE;
+        save->equip[SAVE_EQUIP_WEAPON].id = 0x9B;
+        save->equip[SAVE_EQUIP_WEAPON].level = 0;
+        save->equip[SAVE_EQUIP_WEAPON].deco[0] = 0;
+        save->equip[SAVE_EQUIP_WEAPON].deco[1] = 0;
+        save->equip[SAVE_EQUIP_WEAPON].deco[2] = 0;
     }
     Save_UnequipUnwearable(save);
-    if (Box_SlotHasType(save, save->equipIdx[1], 0, 0) == 1) {
-        save->equip[1] = save->box[save->equipIdx[1]];
+    if (Box_SlotHasType(save, save->equipIdx[SAVE_EQUIP_LEGS], EQUIP_LEGS, EQUIP_LEGS) == 1) {
+        save->equip[SAVE_EQUIP_LEGS] = save->box[save->equipIdx[SAVE_EQUIP_LEGS]];
     } else {
-        save->equip[1].id = 0;
-        save->equip[1].type = 0;
-        save->equip[1].level = 0;
-        save->equip[1].deco[0] = 0;
-        save->equip[1].deco[1] = 0;
-        save->equip[1].deco[2] = 0;
+        save->equip[SAVE_EQUIP_LEGS].id = 0;
+        save->equip[SAVE_EQUIP_LEGS].type = EQUIP_LEGS;
+        save->equip[SAVE_EQUIP_LEGS].level = 0;
+        save->equip[SAVE_EQUIP_LEGS].deco[0] = 0;
+        save->equip[SAVE_EQUIP_LEGS].deco[1] = 0;
+        save->equip[SAVE_EQUIP_LEGS].deco[2] = 0;
     }
-    if (Box_SlotHasType(save, save->equipIdx[2], 2, 2) == 1) {
-        save->equip[2] = save->box[save->equipIdx[2]];
+    if (Box_SlotHasType(save, save->equipIdx[SAVE_EQUIP_HEAD], EQUIP_HEAD, EQUIP_HEAD) == 1) {
+        save->equip[SAVE_EQUIP_HEAD] = save->box[save->equipIdx[SAVE_EQUIP_HEAD]];
     } else {
-        save->equip[2].id = 0;
-        save->equip[2].type = 2;
-        save->equip[2].level = 0;
-        save->equip[2].deco[0] = 0;
-        save->equip[2].deco[1] = 0;
-        save->equip[2].deco[2] = 0;
+        save->equip[SAVE_EQUIP_HEAD].id = 0;
+        save->equip[SAVE_EQUIP_HEAD].type = EQUIP_HEAD;
+        save->equip[SAVE_EQUIP_HEAD].level = 0;
+        save->equip[SAVE_EQUIP_HEAD].deco[0] = 0;
+        save->equip[SAVE_EQUIP_HEAD].deco[1] = 0;
+        save->equip[SAVE_EQUIP_HEAD].deco[2] = 0;
     }
-    if (Box_SlotHasType(save, save->equipIdx[3], 3, 3) == 1) {
-        save->equip[3] = save->box[save->equipIdx[3]];
+    if (Box_SlotHasType(save, save->equipIdx[SAVE_EQUIP_BODY], EQUIP_BODY, EQUIP_BODY) == 1) {
+        save->equip[SAVE_EQUIP_BODY] = save->box[save->equipIdx[SAVE_EQUIP_BODY]];
     } else {
-        save->equip[3].id = 0;
-        save->equip[3].type = 3;
-        save->equip[3].level = 0;
-        save->equip[3].deco[0] = 0;
-        save->equip[3].deco[1] = 0;
-        save->equip[3].deco[2] = 0;
+        save->equip[SAVE_EQUIP_BODY].id = 0;
+        save->equip[SAVE_EQUIP_BODY].type = EQUIP_BODY;
+        save->equip[SAVE_EQUIP_BODY].level = 0;
+        save->equip[SAVE_EQUIP_BODY].deco[0] = 0;
+        save->equip[SAVE_EQUIP_BODY].deco[1] = 0;
+        save->equip[SAVE_EQUIP_BODY].deco[2] = 0;
     }
-    if (Box_SlotHasType(save, save->equipIdx[4], 4, 4) == 1) {
-        save->equip[4] = save->box[save->equipIdx[4]];
+    if (Box_SlotHasType(save, save->equipIdx[SAVE_EQUIP_ARMS], EQUIP_ARMS, EQUIP_ARMS) == 1) {
+        save->equip[SAVE_EQUIP_ARMS] = save->box[save->equipIdx[SAVE_EQUIP_ARMS]];
     } else {
-        save->equip[4].id = 0;
-        save->equip[4].type = 4;
-        save->equip[4].level = 0;
-        save->equip[4].deco[0] = 0;
-        save->equip[4].deco[1] = 0;
-        save->equip[4].deco[2] = 0;
+        save->equip[SAVE_EQUIP_ARMS].id = 0;
+        save->equip[SAVE_EQUIP_ARMS].type = EQUIP_ARMS;
+        save->equip[SAVE_EQUIP_ARMS].level = 0;
+        save->equip[SAVE_EQUIP_ARMS].deco[0] = 0;
+        save->equip[SAVE_EQUIP_ARMS].deco[1] = 0;
+        save->equip[SAVE_EQUIP_ARMS].deco[2] = 0;
     }
-    if (Box_SlotHasType(save, save->equipIdx[5], 5, 5) == 1) {
-        save->equip[5] = save->box[save->equipIdx[5]];
+    if (Box_SlotHasType(save, save->equipIdx[SAVE_EQUIP_WAIST], EQUIP_WAIST, EQUIP_WAIST) == 1) {
+        save->equip[SAVE_EQUIP_WAIST] = save->box[save->equipIdx[SAVE_EQUIP_WAIST]];
     } else {
-        save->equip[5].id = 0;
-        save->equip[5].type = 5;
-        save->equip[5].level = 0;
-        save->equip[5].deco[0] = 0;
-        save->equip[5].deco[1] = 0;
-        save->equip[5].deco[2] = 0;
+        save->equip[SAVE_EQUIP_WAIST].id = 0;
+        save->equip[SAVE_EQUIP_WAIST].type = EQUIP_WAIST;
+        save->equip[SAVE_EQUIP_WAIST].level = 0;
+        save->equip[SAVE_EQUIP_WAIST].deco[0] = 0;
+        save->equip[SAVE_EQUIP_WAIST].deco[1] = 0;
+        save->equip[SAVE_EQUIP_WAIST].deco[2] = 0;
     }
 }
 
 /* One of six indices equals n. */
-s32 List6_Contains(u16 *idx, s32 n)
+s32 List6_Contains(u16 *list, s32 value)
 {
     s32 ret;
 
-    if (idx[0] == n) {
+    if (list[0] == value) {
         ret = 1;
-    } else if (idx[1] == n) {
+    } else if (list[1] == value) {
         ret = 1;
-    } else if (idx[2] == n) {
+    } else if (list[2] == value) {
         ret = 1;
-    } else if (idx[3] == n) {
+    } else if (list[3] == value) {
         ret = 1;
-    } else if (idx[4] == n) {
+    } else if (list[4] == value) {
         ret = 1;
     } else {
-        ret = idx[5] == n;
+        ret = list[5] == value;
     }
     return ret;
 }
@@ -2438,18 +2591,18 @@ s32 Equip_IsSlotEquipped(SaveData *save, s32 idx)
 {
     s32 ret;
 
-    if (save->equipIdx[0] == idx) {
+    if (save->equipIdx[SAVE_EQUIP_WEAPON] == idx) {
         ret = 1;
-    } else if (save->equipIdx[1] == idx) {
+    } else if (save->equipIdx[SAVE_EQUIP_LEGS] == idx) {
         ret = 1;
-    } else if (save->equipIdx[2] == idx) {
+    } else if (save->equipIdx[SAVE_EQUIP_HEAD] == idx) {
         ret = 1;
-    } else if (save->equipIdx[3] == idx) {
+    } else if (save->equipIdx[SAVE_EQUIP_BODY] == idx) {
         ret = 1;
-    } else if (save->equipIdx[4] == idx) {
+    } else if (save->equipIdx[SAVE_EQUIP_ARMS] == idx) {
         ret = 1;
     } else {
-        ret = save->equipIdx[5] == idx;
+        ret = save->equipIdx[SAVE_EQUIP_WAIST] == idx;
     }
     return ret;
 }
@@ -2460,6 +2613,9 @@ s32 Box_IsSlotFree(SaveData *save, s32 idx)
     return save->box[idx].used == 0;
 }
 
+/* 1 when a forging condition is met (BladeData.forgeCond, GunData.forgeCond; the same values as
+ * ForgeRecipe.cond): 0 and 1 always; 2 a hunter rank above 0; 3, 4 and 5 the event flags 0x7F, 0x82
+ * and 0x83; 6 a monster of group 0xB hunted or captured; 7 both 2 and 6. */
 s32 Forge_CheckCondition(s16 cond)
 {
     u8 ok = 0;
@@ -2508,50 +2664,57 @@ s32 Forge_CheckCondition(s16 cond)
     return ok != 0;
 }
 
-s32 Forge_CheckRecipe(u16 which, s16 idx, s32 mode)
+/* Whether a recipe can be forged: list 0 the armour recipes (gArmorRecipes), else the weapon
+ * recipes, entry idx. A weapon whose own condition fails (Forge_CheckCondition) gives 0. The recipe
+ * is unlocked when none of its materials has a condition, or one material's is met (as
+ * Forge_CheckCondition's, with 1, 2, 6 and 7 also needing the material obtained). The materials are
+ * counted where `where` says: 0 the pouch and the box, 1 the pouch, 2 the box's first stack.
+ * Returns 2 unlocked with every material at hand, 1 unlocked (or ForgeRecipe.alwaysShown), else 0.
+ */
+s32 Forge_CheckRecipe(u16 list, s16 idx, s32 where)
 {
     SaveData *save = &gSave;
     s32 total;
     u8 numCond;
-    Recipe *rec;
-    u8 weapon;
+    ForgeRecipe *recipe;
+    u8 isWeapon;
     s32 i;
     u8 okMask;
     u8 unlocked;
     u8 obtained;
-    s32 a;
-    s32 b;
+    s32 pouchCount;
+    s32 boxCount;
 
-    switch (which) {
+    switch (list) {
     case 0:
-        rec = &gArmorRecipes[idx];
-        weapon = 0;
+        recipe = &gArmorRecipes[idx];
+        isWeapon = 0;
         break;
     case 1:
     default:
-        rec = &gWeaponRecipes[idx];
-        weapon = 1;
+        recipe = &gWeaponRecipes[idx];
+        isWeapon = 1;
         break;
     }
     unlocked = 0;
     numCond = 0;
     okMask = 0;
-    if (weapon != 0) {
-        switch (rec->type) {
-        case 6:
-            if (rec->id < 900) {
-                BladeData *w = &gBladeData[rec->id];
+    if (isWeapon != 0) {
+        switch (recipe->type) {
+        case EQUIP_BLADE:
+            if (recipe->id < 900) {
+                BladeData *blade = &gBladeData[recipe->id];
 
-                if (Forge_CheckCondition(w->unk14) == 0) {
+                if (Forge_CheckCondition(blade->forgeCond) == 0) {
                     return 0;
                 }
             }
             break;
-        case 7:
-            if (rec->id < 900) {
-                GunData *w = &gGunData[rec->id];
+        case EQUIP_GUN:
+            if (recipe->id < 900) {
+                GunData *gun = &gGunData[recipe->id];
 
-                if (Forge_CheckCondition(w->unk13) == 0) {
+                if (Forge_CheckCondition(gun->forgeCond) == 0) {
                     return 0;
                 }
             }
@@ -2559,29 +2722,29 @@ s32 Forge_CheckRecipe(u16 which, s16 idx, s32 mode)
         }
     }
     for (i = 0; i < 4; i++) {
-        if (rec->mat[i].item == 0 || rec->mat[i].count == 0) {
+        if (recipe->mat[i].item == 0 || recipe->mat[i].count == 0) {
             okMask |= 1 << i;
             continue;
         }
-        obtained = Save_IsItemObtained(save, rec->mat[i].item) == 1;
-        switch (mode) {
+        obtained = Save_IsItemObtained(save, recipe->mat[i].item) == 1;
+        switch (where) {
         case 0:
-            a = SavePouch_Count(rec->mat[i].item);
-            b = ItemBox_Total(rec->mat[i].item);
+            pouchCount = SavePouch_Count(recipe->mat[i].item);
+            boxCount = ItemBox_Total(recipe->mat[i].item);
             break;
         case 1:
-            a = SavePouch_Count(rec->mat[i].item);
-            b = 0;
+            pouchCount = SavePouch_Count(recipe->mat[i].item);
+            boxCount = 0;
             break;
         case 2:
-            a = 0;
-            b = ItemBox_Count(rec->mat[i].item);
+            pouchCount = 0;
+            boxCount = ItemBox_Count(recipe->mat[i].item);
             break;
         }
-        total = a + b;
-        if (rec->cond[i] != 0) {
+        total = pouchCount + boxCount;
+        if (recipe->cond[i] != 0) {
             numCond++;
-            switch (rec->cond[i]) {
+            switch (recipe->cond[i]) {
             case 1:
                 if (obtained > 0) {
                     unlocked = 1;
@@ -2623,7 +2786,7 @@ s32 Forge_CheckRecipe(u16 which, s16 idx, s32 mode)
                 break;
             }
         }
-        if (total >= rec->mat[i].count) {
+        if (total >= recipe->mat[i].count) {
             okMask |= 1 << i;
         }
     }
@@ -2635,44 +2798,47 @@ s32 Forge_CheckRecipe(u16 which, s16 idx, s32 mode)
             return 1;
         }
     }
-    if (rec->unk1 != 0) {
+    if (recipe->alwaysShown != 0) {
         return 1;
     }
     return 0;
 }
 
-/* Box slot idx holds a gun (type 7). */
+/* 1 when box slot idx holds a gun. */
 static s32 Box_SlotIsGun(SaveData *save, s16 idx)
 {
-    return save->box[idx].type == 7;
+    return save->box[idx].type == EQUIP_GUN;
 }
 
 /* Guns: raises the level in bits 0-3 of box slot idx, up to 4. */
 void Box_GunLevelUp(SaveData *save, s16 idx)
 {
     u16 level;
-    u16 lv;
+    u16 gunLevel;
 
     if (Box_SlotIsGun(save, idx)) {
         level = save->box[idx].level;
-        lv = level & 0xF;
-        if (lv >= 4) {
-            lv = 4;
+        gunLevel = level & GUN_LEVEL_MASK;
+        if (gunLevel >= 4) {
+            gunLevel = 4;
         } else {
-            lv++;
+            gunLevel++;
         }
-        save->box[idx].level = (level & 0xF0) | lv;
+        save->box[idx].level = (level & GUN_OPT_MASK) | gunLevel;
     }
 }
 
+/* A gun's level in box slot idx (GUN_LEVEL_MASK); 0 when the slot holds no gun. */
 s32 Box_GetGunLevel(SaveData *save, s16 idx)
 {
     if (Box_SlotIsGun(save, idx) == 0) {
         return 0;
     }
-    return save->box[idx].level & 0xF;
+    return save->box[idx].level & GUN_LEVEL_MASK;
 }
 
+/* 1 when the gun in box slot idx has the option bits in mask (GUN_OPT_*), 0 when not; 0xFF when the
+ * slot holds no gun. */
 s32 Box_TestGunOption(SaveData *save, s16 idx, s32 mask)
 {
     if (Box_SlotIsGun(save, idx) == 0) {
@@ -2684,50 +2850,57 @@ s32 Box_TestGunOption(SaveData *save, s16 idx, s32 mask)
     return 0;
 }
 
-void Box_SetGunOption20(SaveData *save, s16 idx, s32 off)
+/* Fits the barrel to the gun in box slot idx, taking off the silencer and the shield (off 0), or
+ * takes the barrel off (off nonzero). */
+void Box_SetGunBarrel(SaveData *save, s16 idx, s32 off)
 {
     if (Box_SlotIsGun(save, idx)) {
         if (off == 0) {
-            save->box[idx].level |= 0x20;
-            save->box[idx].level &= ~0x10;
-            save->box[idx].level &= ~0x80;
+            save->box[idx].level |= GUN_OPT_BARREL;
+            save->box[idx].level &= ~GUN_OPT_SILENCER;
+            save->box[idx].level &= ~GUN_OPT_SHIELD;
         } else {
-            save->box[idx].level &= ~0x20;
+            save->box[idx].level &= ~GUN_OPT_BARREL;
         }
     }
 }
 
-void Box_SetGunOption10(SaveData *save, s16 idx, s32 off)
+/* Fits the silencer to the gun in box slot idx, taking off the barrel (off 0), or takes the
+ * silencer off (off nonzero). */
+void Box_SetGunSilencer(SaveData *save, s16 idx, s32 off)
 {
     if (Box_SlotIsGun(save, idx)) {
         if (off == 0) {
-            save->box[idx].level |= 0x10;
-            save->box[idx].level &= ~0x20;
+            save->box[idx].level |= GUN_OPT_SILENCER;
+            save->box[idx].level &= ~GUN_OPT_BARREL;
         } else {
-            save->box[idx].level &= ~0x10;
+            save->box[idx].level &= ~GUN_OPT_SILENCER;
         }
     }
 }
 
-void Box_SetGunOption40(SaveData *save, s16 idx, s32 off)
+/* Fits the scope to the gun in box slot idx (off 0), or takes it off (off nonzero). */
+void Box_SetGunScope(SaveData *save, s16 idx, s32 off)
 {
     if (Box_SlotIsGun(save, idx)) {
         if (off == 0) {
-            save->box[idx].level |= 0x40;
+            save->box[idx].level |= GUN_OPT_SCOPE;
         } else {
-            save->box[idx].level &= ~0x40;
+            save->box[idx].level &= ~GUN_OPT_SCOPE;
         }
     }
 }
 
+/* Fits the shield to the gun in box slot idx, taking off the barrel (off 0), or takes the shield
+ * off (off nonzero). */
 void Box_SetGunShield(SaveData *save, s16 idx, s32 off)
 {
     if (Box_SlotIsGun(save, idx)) {
         if (off == 0) {
-            save->box[idx].level |= 0x80;
-            save->box[idx].level &= ~0x20;
+            save->box[idx].level |= GUN_OPT_SHIELD;
+            save->box[idx].level &= ~GUN_OPT_BARREL;
         } else {
-            save->box[idx].level &= ~0x80;
+            save->box[idx].level &= ~GUN_OPT_SHIELD;
         }
     }
 }
@@ -2738,6 +2911,9 @@ static ArmorData *Armor_GetData(u8 type, s16 id)
     return gArmorTables[type] + id;
 }
 
+/* 1 when the save's hunter can wear an armour piece: its ArmorData.flags must hold the hunter's
+ * gender (1 male, 2 female) and the weapon's side (4 blademaster, 8 gunner). Always 1 for a weapon.
+ */
 s32 Equip_CanWear(SaveData *save, EquipItem *item)
 {
     u8 mask = 0;
@@ -2747,60 +2923,62 @@ s32 Equip_CanWear(SaveData *save, EquipItem *item)
     } else {
         mask |= 2;
     }
-    if (save->equip[0].type == 7) {
+    if (save->equip[SAVE_EQUIP_WEAPON].type == EQUIP_GUN) {
         mask |= 8;
     } else {
         mask |= 4;
     }
     switch (item->type) {
-    case 2:
+    case EQUIP_HEAD:
         if ((mask & gArmorHeadData[item->id].flags) != mask) {
             return 0;
         }
         break;
-    case 3:
+    case EQUIP_BODY:
         if ((mask & gArmorBodyData[item->id].flags) != mask) {
             return 0;
         }
         break;
-    case 5:
+    case EQUIP_WAIST:
         if ((mask & gArmorWaistData[item->id].flags) != mask) {
             return 0;
         }
         break;
-    case 4:
+    case EQUIP_ARMS:
         if ((mask & gArmorArmsData[item->id].flags) != mask) {
             return 0;
         }
         break;
-    case 0:
+    case EQUIP_LEGS:
         if ((mask & gArmorLegsData[item->id].flags) != mask) {
             return 0;
         }
         break;
     case 1:
-    case 6:
-    case 7:
+    case EQUIP_BLADE:
+    case EQUIP_GUN:
         break;
     }
     return 1;
 }
 
+/* Who can wear an item of equipment: its armour piece's ArmorData.flags (1 male, 2 female, 4
+ * blademaster, 8 gunner); 0xF for a weapon, 0 for an unknown type. */
 u8 Equip_GetWearMask(SaveData *save, EquipItem *item)
 {
     switch (item->type) {
-    case 2:
+    case EQUIP_HEAD:
         return gArmorHeadData[item->id].flags;
-    case 3:
+    case EQUIP_BODY:
         return gArmorBodyData[item->id].flags;
-    case 5:
+    case EQUIP_WAIST:
         return gArmorWaistData[item->id].flags;
-    case 4:
+    case EQUIP_ARMS:
         return gArmorArmsData[item->id].flags;
-    case 0:
+    case EQUIP_LEGS:
         return gArmorLegsData[item->id].flags;
-    case 6:
-    case 7:
+    case EQUIP_BLADE:
+    case EQUIP_GUN:
         return 0xF;
     }
     return 0;
@@ -2810,8 +2988,8 @@ u8 Equip_GetWearMask(SaveData *save, EquipItem *item)
 void Record_AddHunted(SaveData *save, u8 monster, u16 n)
 {
     save->hunted[monster] += n;
-    if (save->hunted[monster] > 9999) {
-        save->hunted[monster] = 9999;
+    if (save->hunted[monster] > RECORD_COUNT_MAX) {
+        save->hunted[monster] = RECORD_COUNT_MAX;
     }
 }
 
@@ -2832,21 +3010,25 @@ void Record_SetSmallest(SaveData *save, u16 monster, u16 size)
     }
 }
 
+/* How many of a monster the save has hunted. */
 u16 Record_GetHunted(SaveData *save, u8 monster)
 {
     return save->hunted[monster];
 }
 
+/* The largest size recorded for a monster. */
 u16 Record_GetLargest(SaveData *save, u16 monster)
 {
     return save->sizeMax[monster];
 }
 
+/* The smallest size recorded for a monster (0: none). */
 u16 Record_GetSmallest(SaveData *save, u16 monster)
 {
     return save->sizeMin[monster];
 }
 
+/* How many of a monster the save has captured. */
 u16 Record_GetCaptured(SaveData *save, u8 monster)
 {
     return save->captured[monster];
@@ -2865,33 +3047,34 @@ f32 Monster_SizeFromPercent(u8 kind, u16 x)
 u16 Record_GroupLargest(SaveData *save, u8 group, u8 *out)
 {
     u16 best = 0;
-    u8 *p = gMonsterGroups[group];
-    u16 v;
+    u8 *member = gMonsterGroups[group];
+    u16 size;
 
-    for (; *p != 0xFF; p++) {
-        v = Record_GetLargest(save, *p);
-        if (best < v) {
-            best = v;
+    for (; *member != 0xFF; member++) {
+        size = Record_GetLargest(save, *member);
+        if (best < size) {
+            best = size;
             if (out != NULL) {
-                *out = *p;
+                *out = *member;
             }
         }
     }
     return best;
 }
 
+/* As Record_GroupLargest, on the size list given (by monster kind) instead of a save. */
 u16 MonsterGroup_Max(u16 *sizes, u8 group, u8 *out)
 {
     u16 best = 0;
-    u8 *p = gMonsterGroups[group];
-    u16 v;
+    u8 *member = gMonsterGroups[group];
+    u16 size;
 
-    for (; *p != 0xFF; p++) {
-        v = sizes[*p];
-        if (best < v) {
-            best = v;
+    for (; *member != 0xFF; member++) {
+        size = sizes[*member];
+        if (best < size) {
+            best = size;
             if (out != NULL) {
-                *out = *p;
+                *out = *member;
             }
         }
     }
@@ -2902,26 +3085,26 @@ u16 MonsterGroup_Max(u16 *sizes, u8 group, u8 *out)
 u16 Record_GroupSmallest(SaveData *save, u8 group, u8 *out)
 {
     u16 best;
-    u8 *p;
-    u16 v;
+    u8 *member;
+    u16 size;
 
-    p = gMonsterGroups[group];
+    member = gMonsterGroups[group];
     best = Record_GroupLargest(save, group, out);
     if (best == 0) {
         return 0;
     }
-    for (; *p != 0xFF; p++) {
-        v = Record_GetSmallest(save, *p);
-        if (v != 0) {
+    for (; *member != 0xFF; member++) {
+        size = Record_GetSmallest(save, *member);
+        if (size != 0) {
             if (best == 0) {
-                best = v;
+                best = size;
                 if (out != NULL) {
-                    *out = *p;
+                    *out = *member;
                 }
-            } else if (v < best) {
-                best = v;
+            } else if (size < best) {
+                best = size;
                 if (out != NULL) {
-                    *out = *p;
+                    *out = *member;
                 }
             }
         }
@@ -2929,24 +3112,26 @@ u16 Record_GroupSmallest(SaveData *save, u8 group, u8 *out)
     return best;
 }
 
+/* As Record_GroupSmallest, on the size list given (by monster kind): the smallest nonzero size in
+ * the group, 0 when none; out gets which monster it was. */
 u16 MonsterGroup_MinNonzero(u16 *sizes, u8 group, u8 *out)
 {
     u16 best = 0;
-    u8 *p = gMonsterGroups[group];
-    u16 v;
+    u8 *member = gMonsterGroups[group];
+    u16 size;
 
-    for (; *p != 0xFF; p++) {
-        v = sizes[*p];
-        if (v != 0) {
+    for (; *member != 0xFF; member++) {
+        size = sizes[*member];
+        if (size != 0) {
             if (best == 0) {
-                best = v;
+                best = size;
                 if (out != NULL) {
-                    *out = *p;
+                    *out = *member;
                 }
-            } else if (v < best) {
-                best = v;
+            } else if (size < best) {
+                best = size;
                 if (out != NULL) {
-                    *out = *p;
+                    *out = *member;
                 }
             }
         }
@@ -2958,87 +3143,92 @@ u16 MonsterGroup_MinNonzero(u16 *sizes, u8 group, u8 *out)
 u16 MonsterGroup_Sum(u16 *counts, u8 group, s32 unused)
 {
     u16 sum = 0;
-    u8 *p = gMonsterGroups[group];
+    u8 *member = gMonsterGroups[group];
 
-    for (; *p != 0xFF; p++) {
-        sum += counts[*p];
+    for (; *member != 0xFF; member++) {
+        sum += counts[*member];
     }
-    if (sum > 9999) {
-        sum = 9999;
+    if (sum > RECORD_COUNT_MAX) {
+        sum = RECORD_COUNT_MAX;
     }
     return sum;
 }
 
-/* Hunted (and captured, when captured == 1) total of a monster group, at most 9999. */
+/* Hunted (and captured, when captured == 1) total of a monster group, at most RECORD_COUNT_MAX. */
 u16 Records_HuntedTotal(SaveData *save, u8 group, u8 captured)
 {
     u16 sum = 0;
-    u8 *p = gMonsterGroups[group];
+    u8 *member = gMonsterGroups[group];
 
-    for (; *p != 0xFF; p++) {
-        sum += save->hunted[*p];
+    for (; *member != 0xFF; member++) {
+        sum += save->hunted[*member];
         if (captured == 1) {
-            sum += save->captured[*p];
+            sum += save->captured[*member];
         }
     }
-    if (sum > 9999) {
-        sum = 9999;
+    if (sum > RECORD_COUNT_MAX) {
+        sum = RECORD_COUNT_MAX;
     }
     return sum;
 }
 
+/* How many of a monster group's monsters the save has hunted, at most RECORD_COUNT_MAX. */
 u16 Record_GroupHunted(SaveData *save, u8 group)
 {
     u16 sum = 0;
-    u8 *p = gMonsterGroups[group];
+    u8 *member = gMonsterGroups[group];
 
-    for (; *p != 0xFF; p++) {
-        sum += Record_GetHunted(save, *p);
+    for (; *member != 0xFF; member++) {
+        sum += Record_GetHunted(save, *member);
     }
-    if (sum > 9999) {
-        sum = 9999;
+    if (sum > RECORD_COUNT_MAX) {
+        sum = RECORD_COUNT_MAX;
     }
     return sum;
 }
 
+/* How many of a monster group's monsters the save has captured, at most RECORD_COUNT_MAX. */
 u16 Record_GroupCaptured(SaveData *save, u8 group)
 {
     u16 sum = 0;
-    u8 *p = gMonsterGroups[group];
+    u8 *member = gMonsterGroups[group];
 
-    for (; *p != 0xFF; p++) {
-        sum += Record_GetCaptured(save, *p);
+    for (; *member != 0xFF; member++) {
+        sum += Record_GetCaptured(save, *member);
     }
-    if (sum > 9999) {
-        sum = 9999;
+    if (sum > RECORD_COUNT_MAX) {
+        sum = RECORD_COUNT_MAX;
     }
     return sum;
 }
 
+/* The first monster kind of a monster group. */
 u8 MonsterGroup_First(u8 group)
 {
     return *gMonsterGroups[group];
 }
 
-/* The equipped gun (except gun kind 10) has no ammo it can load in save->pouch. */
+/* 1 when the save's weapon is a bowgun (a gun-type weapon of another class than the bow) and the
+ * save's pouch holds no ammo it loads (ItemData.flags 2, of an ammo kind in Bowgun_GetAmmoMask);
+ * else 0. */
 s32 Equip_GunHasNoAmmo(Player *pl, SaveData *save)
 {
     s32 mask;
     s16 i;
-    ItemData *it;
+    ItemData *itemData;
 
-    if (save->equip[0].type != 7) {
+    if (save->equip[SAVE_EQUIP_WEAPON].type != EQUIP_GUN) {
         return 0;
     }
-    if (gWeaponKindClass[gGunData[save->equip[0].id].kind] == 10) {
+    if (gWeaponKindClass[gGunData[save->equip[SAVE_EQUIP_WEAPON].id].kind] == WEAPON_BOW) {
         return 0;
     }
     Player_CalcSkills(pl);
     mask = Bowgun_GetAmmoMask(pl);
-    for (i = 0; i < 20; i++) {
+    for (i = 0; i < POUCH_SLOTS; i++) {
         if (save->pouch[i].item != 0 && save->pouch[i].count > 0) {
-            it = &gItemData[save->pouch[i].item];
-            if ((it->flags & 2) && (mask & (1 << it->ammoKind))) {
+            itemData = &gItemData[save->pouch[i].item];
+            if ((itemData->flags & 2) && (mask & (1 << itemData->ammoKind))) {
                 return 0;
             }
         }
@@ -3055,91 +3245,91 @@ void Save_MarkItemObtained(SaveData *save, u16 item)
 /* The size of the buffer Save_BuildSummary builds for a mode. */
 s32 Save_SummarySize(s32 mode)
 {
-    if (mode == 2) {
-        return 0x19C;
-    } else if (mode == 1) {
-        return 0xC4;
+    if (mode == SAVE_SUMMARY_BOX) {
+        return sizeof(BoxPage);
+    } else if (mode == SAVE_SUMMARY_EQUIPPED) {
+        return sizeof(EquipSummary);
     }
     return 0;
 }
 
-/*
- * Builds a summary of the save data: mode 2, one box page (25 slots from
- * page * 25); mode 1, the equipped items. Both carry the item bits.
- */
+/* Builds a summary of the save data for the lobby (unk_7C45D0.c) and returns it: in mode
+ * SAVE_SUMMARY_BOX, SUMMARY_BOX_SLOTS slots of the box from page * SUMMARY_BOX_SLOTS (type 0xFF for
+ * an empty one); in SAVE_SUMMARY_EQUIPPED, the equipped items and the play time. Both carry the item
+ * bits, the hunter rank and its points. NULL for another mode. */
 void *Save_BuildSummary(s32 mode, s32 page)
 {
-    s16 n;
+    s16 capacity;
     s16 i;
-    s16 k;
+    s16 slot;
     SaveData *save = &gSave;
-    BoxPage *bp = &gSaveSummaryBox;
-    EquipSummary *es = &gSaveSummaryEquip;
+    BoxPage *boxPage = &gSaveSummaryBox;
+    EquipSummary *equipSummary = &gSaveSummaryEquip;
 
-    n = Box_GetCapacity(save);
-    if (mode == 2) {
-        k = page * 25;
-        for (i = 0; i < 25; i++, k++) {
-            if (k >= n || save->box[k].used == 0) {
-                bp->type[i] = 0xFF;
-                bp->id[i] = 0;
-                bp->level[i] = 0;
-                bp->unk64[i] = 0;
-                bp->unk96[i] = 0;
-                bp->unkC8[i] = 0;
+    capacity = Box_GetCapacity(save);
+    if (mode == SAVE_SUMMARY_BOX) {
+        slot = page * SUMMARY_BOX_SLOTS;
+        for (i = 0; i < SUMMARY_BOX_SLOTS; i++, slot++) {
+            if (slot >= capacity || save->box[slot].used == 0) {
+                boxPage->type[i] = 0xFF;
+                boxPage->id[i] = 0;
+                boxPage->level[i] = 0;
+                boxPage->deco0[i] = 0;
+                boxPage->deco1[i] = 0;
+                boxPage->deco2[i] = 0;
             } else {
-                bp->type[i] = save->box[k].type;
-                bp->id[i] = save->box[k].id;
-                bp->level[i] = save->box[k].level;
-                bp->unk64[i] = save->box[k].deco[0];
-                bp->unk96[i] = save->box[k].deco[1];
-                bp->unkC8[i] = save->box[k].deco[2];
+                boxPage->type[i] = save->box[slot].type;
+                boxPage->id[i] = save->box[slot].id;
+                boxPage->level[i] = save->box[slot].level;
+                boxPage->deco0[i] = save->box[slot].deco[0];
+                boxPage->deco1[i] = save->box[slot].deco[1];
+                boxPage->deco2[i] = save->box[slot].deco[2];
             }
         }
-        for (i = 0; i < 32; i++) {
-            bp->itemBits[i] = save->itemBits[i];
+        for (i = 0; i < ITEM_BITS_WORDS; i++) {
+            boxPage->itemBits[i] = save->itemBits[i];
         }
-        bp->unkFC = save->hrPoints;
-        bp->unk180 = save->hr;
+        boxPage->hrPoints = save->hrPoints;
+        boxPage->hr = save->hr;
         return &gSaveSummaryBox;
     }
-    if (mode == 1) {
-        es->weaponType = save->equip[0].type;
-        es->weaponId = save->equip[0].id;
-        es->level[0] = save->equip[0].level;
-        es->unk14[0] = save->equip[0].deco[0];
-        es->unk20[0] = save->equip[0].deco[1];
-        es->unk2C[0] = save->equip[0].deco[2];
-        es->armorId2 = save->equip[2].id;
-        es->level[1] = save->equip[2].level;
-        es->unk14[1] = save->equip[2].deco[0];
-        es->unk20[1] = save->equip[2].deco[1];
-        es->unk2C[1] = save->equip[2].deco[2];
-        es->armorId3 = save->equip[3].id;
-        es->level[2] = save->equip[3].level;
-        es->unk14[2] = save->equip[3].deco[0];
-        es->unk20[2] = save->equip[3].deco[1];
-        es->unk2C[2] = save->equip[3].deco[2];
-        es->armorId4 = save->equip[4].id;
-        es->level[3] = save->equip[4].level;
-        es->unk14[3] = save->equip[4].deco[0];
-        es->unk20[3] = save->equip[4].deco[1];
-        es->unk2C[3] = save->equip[4].deco[2];
-        es->armorId5 = save->equip[5].id;
-        es->level[4] = save->equip[5].level;
-        es->unk14[4] = save->equip[5].deco[0];
-        es->unk20[4] = save->equip[5].deco[1];
-        es->unk2C[4] = save->equip[5].deco[2];
-        es->armorId1 = save->equip[1].id;
-        es->level[5] = save->equip[1].level;
-        es->unk14[5] = save->equip[1].deco[0];
-        es->unk20[5] = save->equip[1].deco[1];
-        es->unk2C[5] = save->equip[1].deco[2];
-        es->unk3C = save->hrPoints;
-        es->unkC0 = save->hr;
-        es->unk38 = save->playTime;
-        for (i = 0; i < 32; i++) {
-            es->itemBits[i] = save->itemBits[i];
+    if (mode == SAVE_SUMMARY_EQUIPPED) {
+        equipSummary->weaponType = save->equip[SAVE_EQUIP_WEAPON].type;
+        equipSummary->weaponId = save->equip[SAVE_EQUIP_WEAPON].id;
+        equipSummary->level[0] = save->equip[SAVE_EQUIP_WEAPON].level;
+        equipSummary->deco0[0] = save->equip[SAVE_EQUIP_WEAPON].deco[0];
+        equipSummary->deco1[0] = save->equip[SAVE_EQUIP_WEAPON].deco[1];
+        equipSummary->deco2[0] = save->equip[SAVE_EQUIP_WEAPON].deco[2];
+        equipSummary->headId = save->equip[SAVE_EQUIP_HEAD].id;
+        equipSummary->level[1] = save->equip[SAVE_EQUIP_HEAD].level;
+        equipSummary->deco0[1] = save->equip[SAVE_EQUIP_HEAD].deco[0];
+        equipSummary->deco1[1] = save->equip[SAVE_EQUIP_HEAD].deco[1];
+        equipSummary->deco2[1] = save->equip[SAVE_EQUIP_HEAD].deco[2];
+        equipSummary->bodyId = save->equip[SAVE_EQUIP_BODY].id;
+        equipSummary->level[2] = save->equip[SAVE_EQUIP_BODY].level;
+        equipSummary->deco0[2] = save->equip[SAVE_EQUIP_BODY].deco[0];
+        equipSummary->deco1[2] = save->equip[SAVE_EQUIP_BODY].deco[1];
+        equipSummary->deco2[2] = save->equip[SAVE_EQUIP_BODY].deco[2];
+        equipSummary->armsId = save->equip[SAVE_EQUIP_ARMS].id;
+        equipSummary->level[3] = save->equip[SAVE_EQUIP_ARMS].level;
+        equipSummary->deco0[3] = save->equip[SAVE_EQUIP_ARMS].deco[0];
+        equipSummary->deco1[3] = save->equip[SAVE_EQUIP_ARMS].deco[1];
+        equipSummary->deco2[3] = save->equip[SAVE_EQUIP_ARMS].deco[2];
+        equipSummary->waistId = save->equip[SAVE_EQUIP_WAIST].id;
+        equipSummary->level[4] = save->equip[SAVE_EQUIP_WAIST].level;
+        equipSummary->deco0[4] = save->equip[SAVE_EQUIP_WAIST].deco[0];
+        equipSummary->deco1[4] = save->equip[SAVE_EQUIP_WAIST].deco[1];
+        equipSummary->deco2[4] = save->equip[SAVE_EQUIP_WAIST].deco[2];
+        equipSummary->legsId = save->equip[SAVE_EQUIP_LEGS].id;
+        equipSummary->level[5] = save->equip[SAVE_EQUIP_LEGS].level;
+        equipSummary->deco0[5] = save->equip[SAVE_EQUIP_LEGS].deco[0];
+        equipSummary->deco1[5] = save->equip[SAVE_EQUIP_LEGS].deco[1];
+        equipSummary->deco2[5] = save->equip[SAVE_EQUIP_LEGS].deco[2];
+        equipSummary->hrPoints = save->hrPoints;
+        equipSummary->hr = save->hr;
+        equipSummary->playTime = save->playTime;
+        for (i = 0; i < ITEM_BITS_WORDS; i++) {
+            equipSummary->itemBits[i] = save->itemBits[i];
         }
         return &gSaveSummaryEquip;
     }
@@ -3150,9 +3340,9 @@ void *Save_BuildSummary(s32 mode, s32 page)
 void Player_BackupPouch(Player *pl, s32 load)
 {
     if (load == 0) {
-        memcpy(gPouchBackup, pl->pouch, 0x50);
+        memcpy(gPouchBackup, pl->pouch, sizeof(pl->pouch));
     } else {
-        memcpy(pl->pouch, gPouchBackup, 0x50);
+        memcpy(pl->pouch, gPouchBackup, sizeof(pl->pouch));
     }
 }
 
@@ -3170,13 +3360,13 @@ s16 Box_GetPageCount(SaveData *save)
     return n;
 }
 
-/* Box capacity: 100 slots per page. */
+/* Box capacity: BOX_PAGE_SLOTS slots per page. */
 s16 Box_GetCapacity(SaveData *save)
 {
-    return Box_GetPageCount(save) * 100;
+    return Box_GetPageCount(save) * BOX_PAGE_SLOTS;
 }
 
-/* Wraps a box index: negative ones up by pages of 100, others into the pages owned. */
+/* Wraps a box index: negative ones up by pages of BOX_PAGE_SLOTS, others into the pages owned. */
 s16 Box_WrapIndex(SaveData *save, s16 idx)
 {
     u8 last;
@@ -3184,21 +3374,26 @@ s16 Box_WrapIndex(SaveData *save, s16 idx)
 
     if (idx <= 0) {
         while (idx < 0) {
-            idx += 100;
+            idx += BOX_PAGE_SLOTS;
         }
         return idx;
     }
     last = Box_GetPageCount(save) - 1;
-    page = idx / 100;
+    page = idx / BOX_PAGE_SLOTS;
     if (last < page) {
         page = last;
     }
-    return idx % 100 + page * 100;
+    return idx % BOX_PAGE_SLOTS + page * BOX_PAGE_SLOTS;
 }
 
+/* Whether the player meets a quest requirement of a kind: 0 and 1 the attack (times the weapon
+ * class's multiplier) at least or at most value; 2 and 3 the defense; 4/5, 6/7, 8/9, 10/11 and
+ * 14/15 the resistances 0, 1, 2, 3 and 4 (the even kind: at least; the odd: at most); 12 no armour
+ * worn; 13 an empty pouch; 16 nothing in the pouch but items with ItemData.flags 2 or 4; 17 none of
+ * the items 0x27, 0x45, 0x50 and 0x82. Returns 1 when met, 0 when not or for another kind. */
 s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
 {
-    s32 v;
+    s32 stat;
     s32 i;
 
     Player_CalcSkills(pl);
@@ -3206,13 +3401,13 @@ s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
     case 0:
     case 1:
         Player_CalcAttack(pl);
-        v = pl->attack * gWeaponClassMultipliers[Weapon_GetClass(pl->equip[6].type, pl->equip[6].id)] / 100;
+        stat = pl->attack * gWeaponClassMultipliers[Weapon_GetClass(pl->equip[EQUIP_SLOT_WEAPON].type, pl->equip[EQUIP_SLOT_WEAPON].id)] / 100;
         if (kind == 0) {
-            if (v >= value) {
+            if (stat >= value) {
                 return 1;
             }
         } else {
-            if (v <= value) {
+            if (stat <= value) {
                 return 1;
             }
         }
@@ -3220,13 +3415,13 @@ s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
     case 2:
     case 3:
         Player_CalcDefense(pl);
-        v = pl->defense;
+        stat = pl->defense;
         if (kind == 2) {
-            if (v >= value) {
+            if (stat >= value) {
                 return 1;
             }
         } else {
-            if (v <= value) {
+            if (stat <= value) {
                 return 1;
             }
         }
@@ -3234,34 +3429,34 @@ s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
     case 4:
     case 5:
         Player_CalcResists(pl);
-        v = pl->resist[0];
+        stat = pl->resist[0];
         goto check;
     case 6:
     case 7:
         Player_CalcResists(pl);
-        v = pl->resist[1];
+        stat = pl->resist[1];
         goto check;
     case 8:
     case 9:
         Player_CalcResists(pl);
-        v = pl->resist[2];
+        stat = pl->resist[2];
         goto check;
     case 14:
     case 15:
         Player_CalcResists(pl);
-        v = pl->resist[4];
+        stat = pl->resist[4];
         goto check;
     case 10:
     case 11:
         Player_CalcResists(pl);
-        v = pl->resist[3];
+        stat = pl->resist[3];
     check:
         if ((kind == 4 || kind == 6 || kind == 8 || kind == 10 || kind == 14)) {
-            if (v >= value) {
+            if (stat >= value) {
                 return 1;
             }
         } else {
-            if (v <= value) {
+            if (stat <= value) {
                 return 1;
             }
         }
@@ -3274,14 +3469,14 @@ s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
         }
         return 1;
     case 13:
-        for (i = 0; i < 20; i++) {
+        for (i = 0; i < POUCH_SLOTS; i++) {
             if (pl->pouch[i].count > 0) {
                 return 0;
             }
         }
         return 1;
     case 16:
-        for (i = 0; i < 20; i++) {
+        for (i = 0; i < POUCH_SLOTS; i++) {
             if (pl->pouch[i].item != 0 && pl->pouch[i].count > 0
                 && (gItemData[pl->pouch[i].item].flags & 6) == 0) {
                 return 0;
@@ -3289,7 +3484,7 @@ s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
         }
         return 1;
     case 17:
-        for (i = 0; i < 20; i++) {
+        for (i = 0; i < POUCH_SLOTS; i++) {
             if (pl->pouch[i].item != 0 && pl->pouch[i].count > 0) {
                 switch (pl->pouch[i].item) {
                 case 0x50:
@@ -3307,6 +3502,7 @@ s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
 
 u8 Village_FacilityLevel(s32 k);
 
+/* The average level of the village facilities 1-3. */
 u8 Village_AverageLevel(void)
 {
     u8 sum = Village_FacilityLevel(1) + Village_FacilityLevel(2) + Village_FacilityLevel(3);
@@ -3314,49 +3510,56 @@ u8 Village_AverageLevel(void)
     return sum / 3;
 }
 
+/* The sum of the levels of the village facilities 1-3. */
 u8 Village_TotalLevel(void)
 {
     return Village_FacilityLevel(1) + Village_FacilityLevel(2) + Village_FacilityLevel(3);
 }
 
-u8 Village_FacilityLevel(s32 k)
+/* A village facility's level (SaveData.facilityLevel): facility 4 reads at most 2, and facility 5
+ * is the box pages bought (Box_GetPageCount less 1). */
+u8 Village_FacilityLevel(s32 facility)
 {
-    if (k == 5) {
+    if (facility == 5) {
         return Box_GetPageCount(&gSave) - 1;
     }
-    if (k == 4 && gSave.facilityLevel[k] > 2) {
+    if (facility == 4 && gSave.facilityLevel[facility] > 2) {
         return 2;
     }
-    return gSave.facilityLevel[k];
+    return gSave.facilityLevel[facility];
 }
 
-void Village_SetFacilityLevel(s32 k, u8 v)
+/* Sets a village facility's level. */
+void Village_SetFacilityLevel(s32 facility, u8 level)
 {
-    gSave.facilityLevel[k] = v;
+    gSave.facilityLevel[facility] = level;
 }
 
-void func_003BCC70(u8 v)
+/* Sets gSave's symbol colour. */
+void Save_SetSymbolColor(u8 color)
 {
-    gSave.symbolColor = v;
+    gSave.symbolColor = color;
 }
 
-/* Sets the player's entry of the table at 0x44AE60 (colour-like words). */
+/* Sets the player's style (the symbol colour) and its colour word from gPlayerColorWords. */
 void Player_SetColorWord(Player *pl, u8 idx)
 {
     pl->style = idx;
     pl->styleColor = gPlayerColorWords[idx];
 }
 
-/* Bit 0 of the per-type table entry of an armor piece (which: its unk0 or unk1). */
-s32 func_003BCCB0(EquipItem *item, u8 which)
+/* 1 when bit 0 of the part flags of an armour piece's model is set (gPlayerPartFlagTbls, by the
+ * armour type, for the male model (gender 0) or the female one); 0 for a weapon or no piece.
+ * Save_PickBestCounter goes on only for such pieces. */
+s32 Armor_HasPartFlag(EquipItem *item, u8 gender)
 {
     u8 type;
     u16 id;
     ArmorData *rec;
-    u8 v;
+    u8 model;
 
     type = item->type;
-    if (type == 6 || type == 7) {
+    if (type == EQUIP_BLADE || type == EQUIP_GUN) {
         return 0;
     }
     id = item->id;
@@ -3365,12 +3568,12 @@ s32 func_003BCCB0(EquipItem *item, u8 which)
     }
     rec = gArmorTables[type];
     rec += id;
-    if (which == 0) {
-        v = rec->modelMale;
+    if (gender == 0) {
+        model = rec->modelMale;
     } else {
-        v = rec->modelFemale;
+        model = rec->modelFemale;
     }
-    if (gPlayerPartFlagTbls[type + which * 6][v] & 1) {
+    if (gPlayerPartFlagTbls[type + gender * 6][model] & 1) {
         return 1;
     }
     return 0;
@@ -3379,20 +3582,20 @@ s32 func_003BCCB0(EquipItem *item, u8 which)
 /* Marks an item obtained; flag 0x27 once 15 of the items at gObtainFlagItems are. */
 void Save_SetItemObtained(SaveData *save, u16 item)
 {
-    u16 *p;
+    u16 *entry;
     s16 count = 0;
 
-    if (item != 0xFFFF && item < 0x399) {
+    if (item != 0xFFFF && item < ITEM_ID_COUNT) {
         save->itemBits[item / 32] |= 1 << (item & 0x1F);
     }
-    if (SaveFlag_Test(0x27) != 1) {
-        p = gObtainFlagItems;
+    if (Save_HasTitle(0x27) != 1) {
+        entry = gObtainFlagItems;
         if (gObtainFlagItems[0] != 0xFFFF) {
             do {
-                if (Save_IsItemObtained(save, *p++) == 1) {
+                if (Save_IsItemObtained(save, *entry++) == 1) {
                     count++;
                 }
-            } while (*p != 0xFFFF);
+            } while (*entry != 0xFFFF);
         }
         if (count >= 15) {
             Award_Grant(0x27);
@@ -3400,27 +3603,34 @@ void Save_SetItemObtained(SaveData *save, u16 item)
     }
 }
 
-s32 ItemBits_Test(u32 *bits, u16 n)
+/* 1 when item's bit is set in the bits given (one per item id), 0 when not; 0xFFFF for an id out of
+ * range (0xFFFF or ITEM_ID_COUNT and above). */
+s32 ItemBits_Test(u32 *bits, u16 item)
 {
-    if (n == 0xFFFF || n >= 0x399) {
+    if (item == 0xFFFF || item >= ITEM_ID_COUNT) {
         return 0xFFFF;
     }
-    return (bits[n / 32] & (1 << (n & 0x1F))) != 0;
+    return (bits[item / 32] & (1 << (item & 0x1F))) != 0;
 }
 
+/* 1 when the save has obtained an item (SaveData.itemBits); 0xFFFF for an id out of range. */
 s32 Save_IsItemObtained(SaveData *save, u16 item)
 {
-    if (item == 0xFFFF || item >= 0x399) {
+    if (item == 0xFFFF || item >= ITEM_ID_COUNT) {
         return 0xFFFF;
     }
     return ItemBits_Test(save->itemBits, item);
 }
 
+/* The defense factor of an armour upgrade level, by the armour's defense row (gArmorLevelDefense, 7
+ * levels a row). */
 f32 ArmorLevel_Defense(u8 row, u8 level)
 {
     return gArmorLevelDefense[row * 7 + level];
 }
 
+/* The cost factor of an armour upgrade level (at most 6), by the armour's cost row
+ * (gArmorLevelCost); type isn't read. */
 f32 ArmorLevel_CostFactor(u8 row, u8 level, u8 type)
 {
     if (level > 6) {
@@ -3429,6 +3639,8 @@ f32 ArmorLevel_CostFactor(u8 row, u8 level, u8 type)
     return gArmorLevelCost[row * 7 + level];
 }
 
+/* The decoration slots an armour upgrade level (at most 6) adds, by the armour's slot row
+ * (gArmorLevelSlots). */
 u8 ArmorLevel_SlotBonus(u8 row, u8 level)
 {
     if (level > 6) {
@@ -3465,10 +3677,10 @@ u32 Armor_GetDefense(EquipItem *item)
 u8 Equip_GetSlotCount(EquipItem *item)
 {
     ArmorData *rec;
-    u8 v;
+    u8 slotCount;
 
-    if (item->type == 6 || item->type == 7) {
-        if (item->type == 6) {
+    if (item->type == EQUIP_BLADE || item->type == EQUIP_GUN) {
+        if (item->type == EQUIP_BLADE) {
             return gBladeData[item->id].slots;
         } else {
             return gGunData[item->id].slots;
@@ -3476,11 +3688,11 @@ u8 Equip_GetSlotCount(EquipItem *item)
     }
     rec = gArmorTables[item->type];
     rec += item->id;
-    v = rec->slots + ArmorLevel_SlotBonus(rec->slotRow, item->level);
-    if (v >= rec->slotsMax) {
-        v = rec->slotsMax;
+    slotCount = rec->slots + ArmorLevel_SlotBonus(rec->slotRow, item->level);
+    if (slotCount >= rec->slotsMax) {
+        slotCount = rec->slotsMax;
     }
-    return v;
+    return slotCount;
 }
 
 /* Armor upgrade cost: price times the factor of the current level (0 at the maximum). */
@@ -6229,10 +6441,13 @@ u32 gPartBreakEffects[24] = {
 u32 gResistMealEffects[4] = {
 #include "sub_main/0044C2A0.inc"
 };
+/* gGestureStates holds two tables: its own bytes (0x1C), then the hunter rank points, read
+ * as gHrRankPoints (an alias at +0x1C). Defined as two arrays, they no longer match: sub_main
+ * grows by 16 bytes. */
 u32 gGestureStates[60] = {
 #include "sub_main/0044C2B0.inc"
 };
-u16 D_0044C3A0[328] = {
+u16 gClearListQuests[328] = {
 #include "sub_main/0044C3A0.inc"
 };
 u8 gMonsterGroups_0[8] = {
@@ -7028,10 +7243,10 @@ s16 D_0045EA70[64] = {
 GunLevelRow gGunLevelRows[4] = {
     {D_0045E8F0}, {D_0045E970}, {D_0045E9F0}, {D_0045EA70},
 };
-s16 D_0045EB00[16] = {
+s16 gBarrelBonusLight[16] = {
 #include "sub_main/0045EB00.inc"
 };
-s16 D_0045EB20[16] = {
+s16 gBarrelBonusHeavy[16] = {
 #include "sub_main/0045EB20.inc"
 };
 f32 gArmorLevelDefense[80] = {
@@ -12692,11 +12907,11 @@ char D_004AAFB0[0x20] = {
 
 #pragma optimization_level reset
 
-/* ---- 0x3BD380 (was unk_3BD380.c) ---- */
+/* ---- 0x3BD380: the unit's second part ---- */
 /*
- * Accessors for values in the save data block (0x5D4A60): a money-like
- * counter kept in 0..9,999,999, another counter, a flag word, and bit
- * arrays. Semantics not yet confirmed, so address names stay.
+ * gSave's points (the lobby's point shop), the training courses' best
+ * scores and times, the MH Portable link's count and flags, the hunter
+ * titles' bits, and the decorations' count.
  */
 
 
@@ -12705,40 +12920,47 @@ s32 Dojo_FindQuest(s32 a);
 void Save_ClearEventFlag(s32 a);
 s32 Bits32_Test(u32 *bits, s32 n);
 
-void Save_AddZenny(s32 n)
+/* Adds to gSave's points (SaveData.points, which the lobby's point shop spends), within 0 and
+ * 9,999,999. */
+void Save_AddPoints(s32 amount)
 {
-    gSave.points += n;
-    if (9999999 < gSave.points) {
-        gSave.points = 9999999;
+    gSave.points += amount;
+    if (POINTS_MAX < gSave.points) {
+        gSave.points = POINTS_MAX;
     }
     if (gSave.points < 0) {
         gSave.points = 0;
     }
 }
 
-s32 Save_GetZenny(void)
+/* gSave's points. */
+s32 Save_GetPoints(void)
 {
     return gSave.points;
 }
 
-void Dojo_SetBestScore(s32 a, s32 value)
+/* Records a score as the best for a training course (gSave.dojoScore), by the course's quest id
+ * (Dojo_FindQuest); nothing for a quest that isn't a course. */
+void Dojo_SetBestScore(s32 quest, s32 value)
 {
-    s32 i = Dojo_FindQuest(a);
+    s32 course = Dojo_FindQuest(quest);
 
-    if (i >= 0) {
-        gSave.dojoScore[i] = value;
+    if (course >= 0) {
+        gSave.dojoScore[course] = value;
     }
 }
 
-void Dojo_SetBestTime(s32 a, s32 value)
+/* Records a time as the best for a training course (gSave.dojoTime), as Dojo_SetBestScore. */
+void Dojo_SetBestTime(s32 quest, s32 value)
 {
-    s32 i = Dojo_FindQuest(a);
+    s32 course = Dojo_FindQuest(quest);
 
-    if (i >= 0) {
-        gSave.dojoTime[i] = value;
+    if (course >= 0) {
+        gSave.dojoTime[course] = value;
     }
 }
 
+/* Counts one more link with MH Portable (at most 9,999,999). */
 void PspLink_AddCount(void)
 {
     gSave.pspLinkCount++;
@@ -12747,78 +12969,79 @@ void PspLink_AddCount(void)
     }
 }
 
+/* How many times the save has linked with MH Portable. */
 s32 PspLink_Count(void)
 {
     return gSave.pspLinkCount;
 }
 
+/* Sets what the MH Portable data had reached (SaveData.pspLinkFlags). */
 void PspLink_SetFlags(u32 flags)
 {
     gSave.pspLinkFlags = flags;
 }
 
+/* Clears the MH Portable link flags and event flag 0x7E. */
 void PspLink_ClearFlags(void)
 {
     gSave.pspLinkFlags = 0;
     Save_ClearEventFlag(0x7E);
 }
 
+/* 1 when bit `bit` of the MH Portable link flags is set. */
 s32 PspLink_HasFlag(s32 bit)
 {
     return (gSave.pspLinkFlags & (1 << bit)) != 0;
 }
 
-void SaveFlag_SetIn(SaveData *save, s32 n)
+/* Marks a hunter title earned in the save given (SaveData.titles). */
+void Save_SetTitleIn(SaveData *save, s32 title)
 {
-    ((u32 *)((u8 *)save + 0x3660))[n / 32] |= 1 << (n & 0x1F);
+    ((u32 *)save->titles)[title / 32] |= 1 << (title & 0x1F);
 }
 
-void SaveFlag_Set(s32 n)
+/* Save_SetTitleIn on gSave. */
+void Save_SetTitle(s32 title)
 {
-    SaveFlag_SetIn(&gSave, n);
+    Save_SetTitleIn(&gSave, title);
 }
 
-s32 SaveFlag_Test(s32 n)
+/* 1 when gSave has earned a hunter title. */
+s32 Save_HasTitle(s32 title)
 {
-    return Bits32_Test((u32 *)gSave.unk3660, n);
+    return Bits32_Test((u32 *)gSave.titles, title);
 }
 
-s32 Bits32_Test(u32 *bits, s32 n)
+/* 1 when bit `bit` of a bit array of words is set. */
+s32 Bits32_Test(u32 *bits, s32 bit)
 {
-    return (bits[n / 32] & (1 << (n & 0x1F))) != 0;
+    return (bits[bit / 32] & (1 << (bit & 0x1F))) != 0;
 }
 
-s32 Equip_CountDecos(EquipItem *e)
+/* The number of decorations set in an item of equipment. */
+s32 Equip_CountDecos(EquipItem *item)
 {
     s32 count = 0;
     s32 i;
 
     for (i = 0; i < 3; i++) {
-        if (e->deco[i] != 0) {
+        if (item->deco[i] != 0) {
             count++;
         }
     }
     return count;
 }
 
-/* ---- 0x3BD5E0 (was unk_3BD5E0.c) ---- */
+/* ---- 0x3BD5E0: the unit's third part ---- */
 /*
- * Decorations in the equipment slots (EquipItem.deco), a bit array at
- * 0x6ADAB4, quest-condition helpers (hunting records, the equipment box).
- * The segment and sphere geometry after them is unk_3BE060.c's.
+ * Decorations in the equipment slots (EquipItem.deco), the system data's
+ * event flags (gSysSave.eventFlags), and quest-condition helpers (hunting
+ * records, the equipment box). The segment and sphere geometry after them
+ * is unk_3BE060.c's.
  */
-
-/* A decoration record (16 bytes, gDecoTable), by ItemData.deco. */
-typedef struct DecoData {
-    u8 size;                    /* 0x0: slots it takes (1-3) */
-    u8 flags;                   /* 0x1: 1 blades, 2 guns, 4/8 as ArmorData.flags */
-    u8 pad2[0xE];
-} DecoData;
 
 /* Only the flags byte of the armour records (unk_3BA040.c has the rest). */
 
-extern DecoData gDecoTable[];
-extern u32 D_006ADAB4[];
 
 u8 Equip_GetSlotCount(EquipItem *item);
 s32 Armor_LacksSexModel(s32 id, u8 female);
@@ -12837,16 +13060,16 @@ static void Equip_CompactDecorations(EquipItem *e);
  * pointer types is never propagated, so d stays e's own register (e->deco[i], or an
  * EquipItem * copy, numbers e first: 19 words; a u16 *d = e->deco walker adds the 6 before
  * the loop: 2 words). */
-s32 Equip_FreeSlots(EquipItem *e)
+s32 Equip_FreeSlots(EquipItem *item)
 {
     s32 i;
     s32 used;
     s32 n;
-    u16 *d;
+    u16 *deco;
     u8 slots;
 
-    d = (u16 *)&e->used;
-    slots = Equip_GetSlotCount(e);
+    deco = (u16 *)&item->used;
+    slots = Equip_GetSlotCount(item);
     if (slots <= 0) {
         return 0;
     }
@@ -12856,8 +13079,8 @@ s32 Equip_FreeSlots(EquipItem *e)
     n = slots;
     used = 0;
     for (i = 0; i < n; i++) {
-        if (d[i + 3] != 0) {
-            u8 n = Item_GetDecoration(d[i + 3])->size;
+        if (deco[i + 3] != 0) {
+            u8 n = Item_GetDecoration(deco[i + 3])->size;
 
             if (n == 0 || n > 3) {
                 n = 1;
@@ -12883,30 +13106,30 @@ DecoData *Item_GetDecoration(u16 item)
 }
 
 /* 1 if a decoration fits a piece of equipment. */
-/* Matches with Armor_GetData static (round 19: unk_3B4C80.c, unk_3BD380.c and unk_3BD5E0.c are one unit). */
-s32 Deco_FitsEquip(EquipItem *e, u16 item)
+/* Matches only with Armor_GetData static (this file's opening comment). */
+s32 Deco_FitsEquip(EquipItem *equip, u16 item)
 {
-    DecoData *d = Item_GetDecoration(item);
+    DecoData *deco = Item_GetDecoration(item);
 
-    if (d == NULL) {
+    if (deco == NULL) {
         return 0;
     }
-    switch (e->type) {
-    case 6:
-        if (d->flags & 1) {
+    switch (equip->type) {
+    case EQUIP_BLADE:
+        if (deco->flags & 1) {
             return 1;
         }
         break;
-    case 7:
-        if (d->flags & 2) {
+    case EQUIP_GUN:
+        if (deco->flags & 2) {
             return 1;
         }
         break;
     default:
-        if (e->type > 5) {
+        if (equip->type > EQUIP_WAIST) {
             return 0;
         }
-        if (d->flags & (u8)(Armor_GetData(e->type, e->id)->flags & 0xC)) {
+        if (deco->flags & (u8)(Armor_GetData(equip->type, equip->id)->flags & 0xC)) {
             return 1;
         }
         break;
@@ -12915,52 +13138,52 @@ s32 Deco_FitsEquip(EquipItem *e, u16 item)
 }
 
 /* Puts a decoration in the first empty slot. */
-void Equip_AddDecoration(EquipItem *e, u16 item)
+void Equip_AddDecoration(EquipItem *equip, u16 item)
 {
     s32 i;
 
     for (i = 0; i < 3; i++) {
-        if (e->deco[i] == 0) {
-            e->deco[i] = item;
+        if (equip->deco[i] == 0) {
+            equip->deco[i] = item;
             return;
         }
     }
 }
 
 /* Moves the decorations to the first slots. */
-static void Equip_CompactDecorations(EquipItem *e)
+static void Equip_CompactDecorations(EquipItem *item)
 {
-    u16 d1 = e->deco[1];
-    u16 d0 = e->deco[0];
-    u16 d2 = e->deco[2];
+    u16 secondDeco = item->deco[1];
+    u16 firstDeco = item->deco[0];
+    u16 thirdDeco = item->deco[2];
 
-    if (d0 + d1 + d2 == 0) {
+    if (firstDeco + secondDeco + thirdDeco == 0) {
         return;
     }
-    if (d0 == 0) {
-        if (d1 != 0) {
-            e->deco[0] = d1;
-            e->deco[1] = 0;
-        } else if (d2 != 0) {
-            e->deco[0] = d2;
-            e->deco[2] = 0;
+    if (firstDeco == 0) {
+        if (secondDeco != 0) {
+            item->deco[0] = secondDeco;
+            item->deco[1] = 0;
+        } else if (thirdDeco != 0) {
+            item->deco[0] = thirdDeco;
+            item->deco[2] = 0;
         }
     }
-    if (e->deco[1] == 0 && e->deco[2] != 0) {
-        e->deco[1] = e->deco[2];
-        e->deco[2] = 0;
+    if (item->deco[1] == 0 && item->deco[2] != 0) {
+        item->deco[1] = item->deco[2];
+        item->deco[2] = 0;
     }
 }
 
 /* Takes the decoration out of slot i. */
-void Equip_RemoveDecoration(EquipItem *e, s32 i)
+void Equip_RemoveDecoration(EquipItem *item, s32 i)
 {
-    e->deco[i] = 0;
-    Equip_CompactDecorations(e);
+    item->deco[i] = 0;
+    Equip_CompactDecorations(item);
 }
 
 /* The decoration in each slot it takes (3 entries, 0: empty). */
-void Equip_ListSlots(EquipItem *e, u16 *out)
+void Equip_ListSlots(EquipItem *item, u16 *out)
 {
     s32 i;
     s32 k;
@@ -12969,31 +13192,35 @@ void Equip_ListSlots(EquipItem *e, u16 *out)
     out[1] = 0;
     out[2] = 0;
     for (i = 0; i < 3; i++) {
-        if (e->deco[i] != 0) {
-            DecoData *d = Item_GetDecoration(e->deco[i]);
+        if (item->deco[i] != 0) {
+            DecoData *decoData = Item_GetDecoration(item->deco[i]);
 
-            for (k = 0; k < d->size; k++) {
-                *out++ = e->deco[i];
+            for (k = 0; k < decoData->size; k++) {
+                *out++ = item->deco[i];
             }
         }
     }
 }
 
+/* Sets event flag n of the system data (gSysSave.eventFlags), which every hunter shares. */
 void EventFlag_Set(s32 n)
 {
-    D_006ADAB4[n / 32] |= 1 << (n % 32);
+    ((u32 *)gSysSave.eventFlags)[n / 32] |= 1 << (n % 32);
 }
 
+/* 1 when event flag n of the system data (gSysSave.eventFlags) is set. */
 s32 EventFlag_Test(s32 n)
 {
-    u32 *p = &D_006ADAB4[n / 32];
+    u32 *word = &((u32 *)gSysSave.eventFlags)[n / 32];
 
-    return (*p & (1 << (n % 32))) != 0;
+    return (*word & (1 << (n % 32))) != 0;
 }
 
-void func_003BDA10(void)
+/* Sets gSysSave.bonusUnlocked (the character editor's last hair style, and what the lobby and the
+ * select overlay test with event flag 0x7C). */
+void SysSave_UnlockBonus(void)
 {
-    gSysSave.unk458 = 1;
+    gSysSave.bonusUnlocked = 1;
 }
 
 u8 Equip_GetClass(EquipItem *item);
@@ -13013,8 +13240,8 @@ void EquipCollect_CheckWeapons(void)
     s16 have;
     s16 all;
     u16 *id;
-    u16 v;
-    u8 c;
+    u16 weaponId;
+    u8 weaponClass;
     u8 *type;
 
     have = 0;
@@ -13027,33 +13254,33 @@ void EquipCollect_CheckWeapons(void)
     type = &item.type;
     item.used = 1;
     *type = 6;
-    v = *id;
-    while (v != 9999) {
-        item.id = v;
+    weaponId = *id;
+    while (weaponId != EQUIP_LIST_END) {
+        item.id = weaponId;
         id++;
-        c = Equip_GetClass(&item);
+        weaponClass = Equip_GetClass(&item);
         all++;
-        total[c]++;
+        total[weaponClass]++;
         if (Equip_TestFlag(&item, 0) == 1) {
             have++;
-            owned[c]++;
+            owned[weaponClass]++;
         }
-        v = *id;
+        weaponId = *id;
     }
     id = gEquipCollectType7;
     *type = 7;
-    v = *id;
-    while (v != 9999) {
-        item.id = v;
+    weaponId = *id;
+    while (weaponId != EQUIP_LIST_END) {
+        item.id = weaponId;
         id++;
-        c = Equip_GetClass(&item);
+        weaponClass = Equip_GetClass(&item);
         all++;
-        total[c]++;
+        total[weaponClass]++;
         if (Equip_TestFlag(&item, 0) == 1) {
             have++;
-            owned[c]++;
+            owned[weaponClass]++;
         }
-        v = *id;
+        weaponId = *id;
     }
     for (i = 0; i < 11; i++) {
         if (owned[i] == total[i]) {
@@ -13067,7 +13294,7 @@ void EquipCollect_CheckWeapons(void)
 }
 
 
-/* Counts the equipment of the five lists gEquipCollectLists (kind gEquipCollectKinds, ending 9999) the
+/* Counts the equipment of the five lists gEquipCollectLists (kind gEquipCollectKinds, ending EQUIP_LIST_END) the
  * player owns (Equip_TestFlag); with at least half of them, Award_Grant(0x79) and
  * RateFlag_SetAndNotify(6). */
 void EquipCollect_CheckArmor(void)
@@ -13075,16 +13302,16 @@ void EquipCollect_CheckArmor(void)
     EquipItem item;
     s16 owned;
     s16 total;
-    s16 g;
+    s16 list;
     u16 *id;
 
     item.used = 1;
     owned = 0;
     total = 0;
-    for (g = 0; g < 5; g++) {
-        id = gEquipCollectLists[g];
-        item.type = gEquipCollectKinds[g];
-        while (*id != 9999) {
+    for (list = 0; list < 5; list++) {
+        id = gEquipCollectLists[list];
+        item.type = gEquipCollectKinds[list];
+        while (*id != EQUIP_LIST_END) {
             item.id = *id;
             total++;
             id++;
@@ -13100,12 +13327,12 @@ void EquipCollect_CheckArmor(void)
 }
 
 /* 1 if both ids of an equipment item pass Armor_LacksSexModel (type 2 only). */
-s32 Equip_IsNoModelArmor(EquipItem *e)
+s32 Equip_IsNoModelArmor(EquipItem *item)
 {
-    if (e->type != 2 || e->id == 0) {
+    if (item->type != 2 || item->id == 0) {
         return 0;
     }
-    if (Armor_LacksSexModel(e->id, 0) == 1 && Armor_LacksSexModel(e->id, 1) == 1) {
+    if (Armor_LacksSexModel(item->id, 0) == 1 && Armor_LacksSexModel(item->id, 1) == 1) {
         return 1;
     }
     return 0;
@@ -13117,33 +13344,34 @@ s32 Save_PlayTimeReached(s16 n)
     return !(gSave.playTime / 3600 < n);
 }
 
-/* 1 if the monster (or group, f == 0) was hunted and captured n times in all. */
-s32 Records_HuntedAtLeast(f32 f, SaveData *save, u8 m, u16 n)
+/* 1 if the monster (or, with byMonster 0, the monster group) was hunted and captured count
+ * times in all. */
+s32 Records_HuntedAtLeast(f32 byMonster, SaveData *save, u8 monster, u16 count)
 {
     u16 total;
 
-    if (f == 0.0f) {
-        total = Record_GroupHunted(save, m);
-        total += Record_GroupCaptured(save, m);
+    if (byMonster == 0.0f) {
+        total = Record_GroupHunted(save, monster);
+        total += Record_GroupCaptured(save, monster);
     } else {
-        total = Record_GetHunted(save, m);
-        total += Record_GetCaptured(save, m);
+        total = Record_GetHunted(save, monster);
+        total += Record_GetCaptured(save, monster);
     }
-    if (total >= n) {
+    if (total >= count) {
         return 1;
     }
     return 0;
 }
 
 /* 1 if the equipment box holds a piece of that type and id. */
-s32 Box_HasEquip(EquipItem *e)
+s32 Box_HasEquip(EquipItem *item)
 {
-    SaveData *s = &gSave;
+    SaveData *save = &gSave;
     s16 i;
-    s16 n = Box_GetCapacity(s);
+    s16 n = Box_GetCapacity(save);
 
     for (i = 0; i < n; i++) {
-        if (s->box[i].used != 0 && s->box[i].type == e->type && s->box[i].id == e->id) {
+        if (save->box[i].used != 0 && save->box[i].type == item->type && save->box[i].id == item->id) {
             return 1;
         }
     }

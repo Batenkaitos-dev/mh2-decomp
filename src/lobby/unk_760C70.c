@@ -23,7 +23,7 @@ void SkillList_Build(struct Player *p, struct Player *q);
 u8 SkillList_PageCount(void);
 u8 Village_FacilityLevel(s32 k);
 s32 Save_TestEventFlag(s32 flag);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 u8 SavePouch_Add(u16 item, s16 n);
 u8 Equip_PreviewSkills(Player *player, EquipItem *e);
 u8 EquipSet_RemoveSlot(u16 slot, s32 check);
@@ -826,7 +826,7 @@ u16 BoxMenu_StoreFromPouch(u16 pad)
     return pad;
 }
 
-s32 Item_IsSpecial(u16 item);
+s32 Item_IsOnePerPouch(u16 item);
 s32 SavePouch_Room(u16 item);
 
 /* gBoxWork as the box-to-pouch screen reads it */
@@ -896,7 +896,7 @@ u16 BoxMenu_TakeToPouch(u16 pad)
         }
         gBoxWork->help = 0;
         gHelpColumn = 0;
-        if (Item_IsSpecial(save->itemBox[TV->slot].item) != 1) {
+        if (Item_IsOnePerPouch(save->itemBox[TV->slot].item) != 1) {
             TV->pouch = 0;
           { u8 *q;
             for (m = TV, q = &m->pouch; m->pouch < 20; m = TV, q = &m->pouch) {
@@ -908,7 +908,7 @@ u16 BoxMenu_TakeToPouch(u16 pad)
         } else {
             TV->pouch = 0;
             for (m = TV; m->pouch < 20; m = TV) {
-                if (Item_IsSpecial(save->pouch[m->pouch].item) == 1) {
+                if (Item_IsOnePerPouch(save->pouch[m->pouch].item) == 1) {
                     break;
                 }
                 TV->pouch++;
@@ -1103,7 +1103,7 @@ s32 Equip_EquipSlot(SaveData *save, u16 idx);
 s32 Box_YesNoInput(u16 *pad);
 s8 BoxList_Build(u8 kind, u8 sorted);
 u8 BoxMenu_ListStyles(u8 *out);
-void func_3BCC70(u8 a);
+void Save_SetSymbolColor(u8 a);
 void Player_SetColorWord(struct Player *pl, u8 idx);
 void EquipSet_RecalcStats(EquipIdx *in, s32 b);
 s32 EquipSet_RenameInput(u16 pad);
@@ -1715,7 +1715,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                     HELP_MSG = gBoxWork->list[gBoxWork->pick] + 0x3C;
                 }
                 if (pad & 0x20) {
-                    func_3BCC70(gBoxWork->list[gBoxWork->pick]);
+                    Save_SetSymbolColor(gBoxWork->list[gBoxWork->pick]);
                     Player_SetColorWord((struct Player *)gBoxWork->player, gBoxWork->list[gBoxWork->pick]);
                     Sound_PlaySeFlat(0, 0x13, 0);
                     gLobbyTextDirty = 1;

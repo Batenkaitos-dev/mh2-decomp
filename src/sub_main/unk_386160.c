@@ -28,6 +28,8 @@
 #include "capsule.h"
 #include "obj.h"
 #include "sub_main/unk_386160.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "render_state.h"
+#include "area.h"
 
 
 /* An entry of the 256 draw slots at 0x6A3AD0 (0x20 bytes). */
@@ -78,7 +80,7 @@ void Player_PlaySe(Player *pl, s32 id, s32 a, void *pos, s32 b, s32 c);
 
 /* sub_main. */
 s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame);
-s32 Player_PassedFrameScaled(void *obj, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *obj, f32 frame, s32 layer);
 void Font_SetSpacing(u8 a, u8 b);
 void Font_SetPal(s32 a);
 s32 Str_Length(char *s);
@@ -223,16 +225,16 @@ s16 Area_BoundaryZone(Player *p)
     u8 kind;
 
     switch (gScene.area) {
-    case 0x2F:
-    case 0x8D:
+    case AREA_DESERT_NIGHT_1:
+    case AREA_DESERT_1:
         c = 17800.0f;
         e = 2200.0f;
         b = 17200.0f;
         d = 2800.0f;
         kind = 1;
         break;
-    case 0x33:
-    case 0x91:
+    case AREA_DESERT_NIGHT_5:
+    case AREA_DESERT_5:
         g = 4500.0f;
         c = 18000.0f;
         a = 5100.0f;
@@ -308,27 +310,27 @@ void UvScroll_Update(UvScroll *h, s16 n, s16 *speed, u16 mode)
 f32 AmbientSound_AreaValue10(u8 a, s16 b)
 {
     switch (gScene.area) {
-    case 0x01:
-    case 0x02:
-    case 0x03:
-    case 0x04:
-    case 0x05:
-    case 0x09:
-    case 0x12:
-    case 0x13:
-    case 0x4D:
-    case 0x4E:
-    case 0x4F:
-    case 0x50:
-    case 0x51:
-    case 0x52:
-    case 0x97:
-    case 0x98:
-    case 0x99:
-    case 0x9C:
-    case 0x9D:
-    case 0x9E:
-    case 0xA0:
+    case AREA_JUNGLE_NIGHT_0:
+    case AREA_JUNGLE_NIGHT_1:
+    case AREA_JUNGLE_NIGHT_2:
+    case AREA_JUNGLE_NIGHT_3:
+    case AREA_JUNGLE_NIGHT_4:
+    case AREA_SWAMP_10:
+    case AREA_JUNGLE_NIGHT_5:
+    case AREA_JUNGLE_NIGHT_6:
+    case AREA_FORTRESS_NIGHT_4:
+    case AREA_FORTRESS_NIGHT_5:
+    case AREA_FORTRESS_NIGHT_1:
+    case AREA_FORTRESS_NIGHT_3:
+    case AREA_FORTRESS_NIGHT_2:
+    case AREA_FORTRESS_NIGHT_6:
+    case AREA_SWAMP_0:
+    case AREA_SWAMP_1:
+    case AREA_SWAMP_2:
+    case AREA_SWAMP_5:
+    case AREA_SWAMP_6:
+    case AREA_SWAMP_7:
+    case AREA_SWAMP_9:
         switch (b) {
         case 0:
             switch (a) {
@@ -353,12 +355,12 @@ f32 AmbientSound_AreaValue10(u8 a, s16 b)
             break;
         }
         break;
-    case 0x60:
-    case 0x61:
-    case 0x64:
-    case 0x69:
-    case 0x6A:
-    case 0x6D:
+    case AREA_SNOWY_MOUNTAINS_5:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_8:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
         switch (b) {
         case 0:
             switch (a) {
@@ -385,14 +387,14 @@ f32 AmbientSound_AreaValue10(u8 a, s16 b)
             break;
         }
         break;
-    case 0x10:
-    case 0x1D:
-    case 0x2C:
-    case 0x43:
-    case 0x46:
-    case 0x47:
-    case 0x48:
-    case 0x4B:
+    case AREA_SWAMP_NIGHT_0:
+    case AREA_SWAMP_NIGHT_10:
+    case AREA_SWAMP_NIGHT_1:
+    case AREA_SWAMP_NIGHT_2:
+    case AREA_SWAMP_NIGHT_5:
+    case AREA_SWAMP_NIGHT_6:
+    case AREA_SWAMP_NIGHT_7:
+    case AREA_SWAMP_NIGHT_9:
         switch (b) {
         case 0:
             switch (a) {
@@ -429,12 +431,12 @@ f32 AmbientSound_AreaValue10(u8 a, s16 b)
 f32 AmbientSound_AreaValue0C(u8 a, s16 b)
 {
     switch (gScene.area) {
-    case 0x60:
-    case 0x61:
-    case 0x64:
-    case 0x69:
-    case 0x6A:
-    case 0x6D:
+    case AREA_SNOWY_MOUNTAINS_5:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_8:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
         switch (b) {
         case 1:
             return D_00449EE0[a];
@@ -444,14 +446,14 @@ f32 AmbientSound_AreaValue0C(u8 a, s16 b)
         case 2:
             return D_00449EF0[a];
         }
-    case 0x10:
-    case 0x1D:
-    case 0x2C:
-    case 0x43:
-    case 0x46:
-    case 0x47:
-    case 0x48:
-    case 0x4B:
+    case AREA_SWAMP_NIGHT_0:
+    case AREA_SWAMP_NIGHT_10:
+    case AREA_SWAMP_NIGHT_1:
+    case AREA_SWAMP_NIGHT_2:
+    case AREA_SWAMP_NIGHT_5:
+    case AREA_SWAMP_NIGHT_6:
+    case AREA_SWAMP_NIGHT_7:
+    case AREA_SWAMP_NIGHT_9:
         switch (a) {
         case 0:
             return 0.0f;
@@ -738,17 +740,17 @@ void Obj_AreaPosition(Obj *o, f32 *out)
     switch (o->var4) {
     default:
         switch (gScene.area) {
-        case 0x56:
-        case 0x57:
+        case AREA_HOUSE:
+        case AREA_HUB_0x57:
             src = gThrownObjPos56[o->type];
             break;
-        case 0xAD:
+        case AREA_ONLINE_HOUSE_0:
             src = gThrownObjPosAD[o->type];
             break;
-        case 0xAE:
+        case AREA_ONLINE_HOUSE_1:
             src = gThrownObjPosAE[o->type];
             break;
-        case 0xAF:
+        case AREA_ONLINE_HOUSE_2:
             src = gThrownObjPosAF[o->type];
             break;
         }
@@ -775,17 +777,17 @@ void Obj_AreaAngle(Obj *o, s16 *angle)
     switch (o->var4) {
     default:
         switch (gScene.area) {
-        case 0x56:
-        case 0x57:
+        case AREA_HOUSE:
+        case AREA_HUB_0x57:
             *angle = gThrownObjAngle56[o->type];
             break;
-        case 0xAD:
+        case AREA_ONLINE_HOUSE_0:
             *angle = gThrownObjAngleAD[o->type];
             break;
-        case 0xAE:
+        case AREA_ONLINE_HOUSE_1:
             *angle = gThrownObjAngleAE[o->type];
             break;
-        case 0xAF:
+        case AREA_ONLINE_HOUSE_2:
             *angle = gThrownObjAngleAF[o->type];
             break;
         }
@@ -805,25 +807,25 @@ s16 ThrownObj_AreaModel(Obj *o)
         switch (gScene.area) {
         default:
             return 0;
-        case 0x56:
-        case 0x57:
+        case AREA_HOUSE:
+        case AREA_HUB_0x57:
             return gThrownObjModel56[o->var2];
-        case 0xAD:
+        case AREA_ONLINE_HOUSE_0:
             return gThrownObjModelAD[o->var2];
-        case 0xAE:
+        case AREA_ONLINE_HOUSE_1:
             return gThrownObjModelAE[o->var2];
-        case 0xAF:
+        case AREA_ONLINE_HOUSE_2:
             return gThrownObjModelAF[o->var2];
         }
     case 1:
         switch (gScene.area) {
         default:
             return 0;
-        case 0xAD:
+        case AREA_ONLINE_HOUSE_0:
             return gThrownObjModelK1AD;
-        case 0xAE:
+        case AREA_ONLINE_HOUSE_1:
             return gThrownObjModelK1AE;
-        case 0xAF:
+        case AREA_ONLINE_HOUSE_2:
             return gThrownObjModelK1AF;
         }
     }
@@ -910,7 +912,7 @@ void ThrownObj_Run(Obj *o)
             o->fvar = 1.0f;
         }
         Obj_PlaceBetweenBones(o, o->arg);
-        if (p->motionId[0] == 0x432 && Player_PassedFrameScaled(p, 48.0f, 0)) {
+        if (p->motionId[0] == 0x432 && EmMotion_PassedFrameScaled(p, 48.0f, 0)) {
             o->fvar = 1.0f;
             ThrownObj_Launch(o, pt);
             o->timer = 0;
@@ -973,8 +975,8 @@ void ThrownObj_Draw(DrawSlot *s)
         Mtx_Scale(m, o->fvar, o->fvar, o->fvar);
         Mtx_SetTrans(m, s->pos[0], s->pos[1], s->pos[2]);
         Mtx_RotateY(m, (6.2831855f * o->var3) / 65536.0f);
-        Gs_SetState(0x60, 0x80);
-        Gs_SetState(0x1A, (u32)m);
+        Gs_SetState(RS_ALPHA_REF, 0x80);
+        Gs_SetState(RS_MTX_SLOT(0), (u32)m);
         e = &set->matSets[ThrownObj_AreaModel(o)];
         if (e != NULL && e->id != -1) {
             Draw_ApplyStates(e->flags);

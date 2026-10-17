@@ -1,9 +1,10 @@
 /*
- * Monster family: the dromes: Velocidrome, Gendrome and Iodrome (kinds 0x1B, 0x1C, 0x1F).
- * The code from the family's setup function (0x7366B0, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: the dromes: Velocidrome, Gendrome and Iodrome
+ * (EM_KIND_VELOCIDROME, EM_KIND_GENDROME and EM_KIND_IODROME). The code from
+ * the family's setup function (EmDrome_Setup, called by the per-kind dispatch
+ * Em_TypeSetup) to the next family's. The state functions take the monster
+ * and the work area its state dispatcher passes on (EmWork); Em.step is the
+ * step within the current state. See include/em.h.
  */
 #include "common.h"
 #include "scene.h"
@@ -11,6 +12,7 @@
 #include "em.h"
 #include "player.h"
 #include "objattach.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
 void QuestEm_Hunted(Em *em);
 s8 EmMine_Create(Em *em, s32 idx);
@@ -33,22 +35,22 @@ u16 Math_AngleXZ(f32 *from, f32 *to);
 void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 void QuestEm_Captured(Em *em);
-ObjAttach *Eff02_Create(Em *em, s8 kind);
-void EffEm08_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void EffDrome15_Create(Em *, s8);
+ObjAttach *EmContactAttack_Create(Em *em, s8 kind);
+void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
+void DromeAttack_Create(Em *, s8);
 void Em_MoveRotatedAccel(Em *, void *);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 /* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmDrome_ChangeState: 47 of 148 words differ, EmDrome_SetGroup0State: 1 of 146 words differ ... */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_SetHitReactMode(Em *em, u8 a);
 void Em_UpdatePendingScript(Em *em);
 void Em_ClearHitReactMode(Em *em);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySe6AtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySe6AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
+void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
+void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
 u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
 void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
@@ -79,7 +81,7 @@ void EmFxSpark_SpawnTimed(Em *em, u8 k, s32 n, f32 f);
 void EmFxTri_Spawn(Em *em, s16 kind);
 void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
 void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
@@ -93,7 +95,7 @@ void Effect01_Spawn(void *obj, s16 type);
 extern EmTurnParams EmDrome_TurnParams[2];
 void Em_InitParts(Em *em);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 u16 Area_DayId(u16 id);
 void EmKirin_State4_02(Em *em, EmWork *work, s16 variant);
 void EmDrome_SetGroup0State(Em *em, u16 state, u8 mode);
@@ -143,12 +145,12 @@ typedef struct EmDromeVec {
 } EmDromeVec;
 extern EmDromeVec EmDrome_CarveThrowPt __attribute__((aligned(8)));
 void StageObj_K25_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 void Em_PlaySe(Em *em, s32 se);
 void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
 void Effect0D_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Eff09_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
+void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
 /* Per sub-kind (Em +0x1B) data of the Drome family. */
 typedef struct EmDromeKindEntry {
     s16 part;           /* 0x00: the part flag set at the start (Em +0x4C8 + part) */
@@ -161,7 +163,7 @@ void GmEm_ApplySize(Em *em);
 s32 Save_TestEventFlag(s32 flag);
 void GmEm_ResetSize(Em *em);
 s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaiseTrigger80(Em *em);
+void Em_RaisePlayerAreaTrigger(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
 void Em_SetStatus4Timer(Em *em);
 void Em_SetStatus2Timer(Em *em);
@@ -171,9 +173,9 @@ typedef struct EmDromeAppearPoint {
     f32 pos[3];
     f32 target[3];
 } EmDromeAppearPoint;
-extern EmDromeAppearPoint EmDrome_AppearPt22;
-extern EmDromeAppearPoint EmDrome_AppearPts26[2];
-extern EmDromeAppearPoint EmDrome_AppearPts27[4];
+extern EmDromeAppearPoint EmDrome_AppearPtForestHills10;
+extern EmDromeAppearPoint EmDrome_AppearPtsForestHills2[2];
+extern EmDromeAppearPoint EmDrome_AppearPtsForestHills1[4];
 void Effect0D_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
 u8 Em_SenseObjects(Em *em, EmObj *self);
 s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
@@ -230,7 +232,7 @@ void EmDrome_Reset(Em *em)
     if (gQuest.stage == 0) {
         dayId = Area_DayId(gScene.area) & 0xFFFF;
         switch (dayId) {
-        case 15:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 9500.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 9200.0f + (150.0f * (f32) (em->slotNo & 7));
@@ -240,7 +242,7 @@ void EmDrome_Reset(Em *em)
             em->posY = 0.0f;
             em->posZ = 9000.0f + (150.0f * (f32) (em->slotNo & 7));
             break;
-        case 34:
+        case AREA_FOREST_HILLS_10:
             em->posX = 9522.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 9559.0f + (150.0f * (f32) (em->slotNo & 7));
@@ -256,7 +258,7 @@ void EmDrome_Reset(Em *em)
     }
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = 0;
-    size = Em_ComputeSize(em, 0);
+    size = Em_ComputeMaxHp(em, 0);
     em->hp = size;
     em->hpMax = size;
     em->scriptPending = 1;
@@ -334,7 +336,7 @@ void EmDrome_State0_03(Em *em, EmWork *work)
         Em_SetMotion(em, 0x33, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             Vec_Set((f32 *) &work->moveAngBY, em->posX, em->posY, em->posZ);
             work->moveAngCY = 0x447A0000;
             ((EmDromeWork *)work)->sense.area = (s16) *(u8 *)&em->area;
@@ -404,7 +406,7 @@ void EmDrome_State0_06(Em *em)
 
 void EmDrome_State0_07(Em *em, EmWork *work, s32 variant)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -859,16 +861,16 @@ void EmDrome_State3_00(Em *em, EmWork *work)
         Em_SetMotion(em, 0x16, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             switch (em->type) {
             case 0x1B:
-                EffDrome15_Create(em, 1);
+                DromeAttack_Create(em, 1);
                 break;
             case 0x1C:
-                EffDrome15_Create(em, 0xD);
+                DromeAttack_Create(em, 0xD);
                 break;
             case 0x1F:
-                EffDrome15_Create(em, 7);
+                DromeAttack_Create(em, 7);
                 break;
             }
         }
@@ -942,16 +944,16 @@ void EmDrome_State3_02(Em *em, EmWork *work)
         cw->unk050 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             switch (em->type) {
             case 0x1B:
-                EffDrome15_Create(em, 3);
+                DromeAttack_Create(em, 3);
                 break;
             case 0x1C:
-                EffDrome15_Create(em, 8);
+                DromeAttack_Create(em, 8);
                 break;
             case 0x1F:
-                EffDrome15_Create(em, 9);
+                DromeAttack_Create(em, 9);
                 break;
             }
         }
@@ -997,16 +999,16 @@ void EmDrome_State3_03(Em *em, EmWork *work)
         Em_SetMotion(em, 0x19, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
             switch (em->type) {
             case 0x1B:
-                EffDrome15_Create(em, 5);
+                DromeAttack_Create(em, 5);
                 break;
             case 0x1C:
-                EffDrome15_Create(em, 0xA);
+                DromeAttack_Create(em, 0xA);
                 break;
             case 0x1F:
-                EffDrome15_Create(em, 0xB);
+                DromeAttack_Create(em, 0xB);
                 break;
             }
         }
@@ -1040,16 +1042,16 @@ void EmDrome_State3_04(Em *em, EmWork *work)
         cw->unk050 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             switch (em->type) {
             case 0x1B:
-                EffDrome15_Create(em, 3);
+                DromeAttack_Create(em, 3);
                 break;
             case 0x1C:
-                EffDrome15_Create(em, 8);
+                DromeAttack_Create(em, 8);
                 break;
             case 0x1F:
-                EffDrome15_Create(em, 9);
+                DromeAttack_Create(em, 9);
                 break;
             }
         }
@@ -1114,16 +1116,16 @@ void EmDrome_State3_05(Em *em, EmWork *work)
         cw->unk050 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             switch (em->type) {
             case 0x1B:
-                EffDrome15_Create(em, 3);
+                DromeAttack_Create(em, 3);
                 break;
             case 0x1C:
-                EffDrome15_Create(em, 8);
+                DromeAttack_Create(em, 8);
                 break;
             case 0x1F:
-                EffDrome15_Create(em, 9);
+                DromeAttack_Create(em, 9);
                 break;
             }
         }
@@ -1176,13 +1178,13 @@ void EmDrome_State3_06(Em *em, EmWork *work, s32 variant)
         switch (variant) {
         case 0:
         default:
-            if (Player_PassedFrameScaled(em, 80.0f, 0U) != 0) {
-                EffEm08_CreateAtBone(em, 0xF, 9, 1, 0xF8E5, 0);
+            if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0) {
+                EmRangedAttack_CreateAtBone(em, 0xF, 9, 1, 0xF8E5, 0);
             }
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 80.0f, 0U) != 0) {
-                EffEm08_CreateAtBone(em, 0xF, 9, 3, 0xF8E5, 0);
+            if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0) {
+                EmRangedAttack_CreateAtBone(em, 0xF, 9, 3, 0xF8E5, 0);
             }
             break;
         }
@@ -1201,8 +1203,8 @@ void EmDrome_State3_07(Em *em)
         Em_SetMotion(em, 0x16, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            EffDrome15_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+            DromeAttack_Create(em, 6);
         }
         if (em->hasGoal != 0) {
             Em_TurnToGoal(em, 0x80, 0);
@@ -1240,8 +1242,8 @@ void EmDrome_State3_08(Em *em, EmWork *work)
         cw->unk050 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            EffDrome15_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+            DromeAttack_Create(em, 3);
         }
         if (EmMotion_ReachedFrame(em, 0, 22.0f) != 0) {
             em->stance = 2;
@@ -1285,8 +1287,8 @@ void EmDrome_State3_09(Em *em)
         Em_SetMotion(em, 0x19, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            EffDrome15_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+            DromeAttack_Create(em, 5);
         }
         if (em->motion[0].playing == 0) {
             EmDrome_EndState(em, 0, 0);
@@ -1318,8 +1320,8 @@ void EmDrome_State3_0A(Em *em, EmWork *work)
         cw->unk050 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            EffDrome15_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+            DromeAttack_Create(em, 3);
         }
         if (EmMotion_ReachedFrame(em, 0, 22.0f) != 0) {
             em->stance = 2;
@@ -1382,8 +1384,8 @@ void EmDrome_State3_0B(Em *em, EmWork *work)
         cw->unk050 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            EffDrome15_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+            DromeAttack_Create(em, 3);
         }
         if (EmMotion_ReachedFrame(em, 0, 22.0f) != 0) {
             em->stance = 2;
@@ -1458,8 +1460,8 @@ void EmDrome_State3_0C(Em *em, EmWork *work)
         cw->unk050 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            EffDrome15_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+            DromeAttack_Create(em, 3);
         }
         if (EmMotion_ReachedFrame(em, 0, 22.0f) != 0) {
             em->stance = 2;
@@ -1503,8 +1505,8 @@ void EmDrome_State3_0D(Em *em)
         Em_SetMotion(em, 0x16, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            EffDrome15_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+            DromeAttack_Create(em, 0xC);
         }
         if (em->hasGoal != 0) {
             Em_TurnToGoal(em, 0x80, 0);
@@ -1756,7 +1758,7 @@ void EmDrome_State4_05(Em *em, EmWork *work)
 
 void EmDrome_State4_06(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1776,7 +1778,7 @@ void EmDrome_State4_06(Em *em, EmWork *work)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmDrome_State4_07(Em *em, EmWork *work)
@@ -1787,14 +1789,14 @@ void EmDrome_State4_07(Em *em, EmWork *work)
         em->step++;
         em->stance = 0;
         Em_SetMotion(em, 0x1E, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         Em_RestartScript(em);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 40.0f) != 0) {
             em->step++;
             Em_SetMotion(em, 0x2F, 4, 0);
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
@@ -2138,43 +2140,43 @@ void EmDrome_State5_04_Appear(Em *em, EmWork *work)
     case 0:
         if (QuestEm_CanAppear(em) == 1) {
             switch (Area_DayId(em->area)) {
-            case 0x22:
-                Vec_Set(&em->posX, EmDrome_AppearPt22.pos[0], EmDrome_AppearPt22.pos[1], EmDrome_AppearPt22.pos[2]);
-                Vec_Set(&em->prevPosX, EmDrome_AppearPt22.pos[0], EmDrome_AppearPt22.pos[1], EmDrome_AppearPt22.pos[2]);
-                Vec_Set(target, EmDrome_AppearPt22.target[0], EmDrome_AppearPt22.target[1], EmDrome_AppearPt22.target[2]);
+            case AREA_FOREST_HILLS_10:
+                Vec_Set(&em->posX, EmDrome_AppearPtForestHills10.pos[0], EmDrome_AppearPtForestHills10.pos[1], EmDrome_AppearPtForestHills10.pos[2]);
+                Vec_Set(&em->prevPosX, EmDrome_AppearPtForestHills10.pos[0], EmDrome_AppearPtForestHills10.pos[1], EmDrome_AppearPtForestHills10.pos[2]);
+                Vec_Set(target, EmDrome_AppearPtForestHills10.target[0], EmDrome_AppearPtForestHills10.target[1], EmDrome_AppearPtForestHills10.target[2]);
                 em->rotY = Math_AngleXZ(&em->posX, target) & 0xFFFF;
                 break;
-            case 0x26:
+            case AREA_FOREST_HILLS_2:
                 k = em->stateRand % 2;
-                Vec_Set(&em->posX, EmDrome_AppearPts26[k].pos[0], EmDrome_AppearPts26[k].pos[1], EmDrome_AppearPts26[k].pos[2]);
-                Vec_Set(&em->prevPosX, EmDrome_AppearPts26[k].pos[0], EmDrome_AppearPts26[k].pos[1], EmDrome_AppearPts26[k].pos[2]);
-                Vec_Set(target, EmDrome_AppearPts26[k].target[0], EmDrome_AppearPts26[k].target[1], EmDrome_AppearPts26[k].target[2]);
+                Vec_Set(&em->posX, EmDrome_AppearPtsForestHills2[k].pos[0], EmDrome_AppearPtsForestHills2[k].pos[1], EmDrome_AppearPtsForestHills2[k].pos[2]);
+                Vec_Set(&em->prevPosX, EmDrome_AppearPtsForestHills2[k].pos[0], EmDrome_AppearPtsForestHills2[k].pos[1], EmDrome_AppearPtsForestHills2[k].pos[2]);
+                Vec_Set(target, EmDrome_AppearPtsForestHills2[k].target[0], EmDrome_AppearPtsForestHills2[k].target[1], EmDrome_AppearPtsForestHills2[k].target[2]);
                 em->rotY = Math_AngleXZ(&em->posX, target) & 0xFFFF;
                 break;
-            case 0x27:
+            case AREA_FOREST_HILLS_1:
                 k = em->stateRand % 4;
-                Vec_Set(&em->posX, EmDrome_AppearPts27[k].pos[0], EmDrome_AppearPts27[k].pos[1], EmDrome_AppearPts27[k].pos[2]);
-                Vec_Set(&em->prevPosX, EmDrome_AppearPts27[k].pos[0], EmDrome_AppearPts27[k].pos[1], EmDrome_AppearPts27[k].pos[2]);
-                Vec_Set(target, EmDrome_AppearPts27[k].target[0], EmDrome_AppearPts27[k].target[1], EmDrome_AppearPts27[k].target[2]);
+                Vec_Set(&em->posX, EmDrome_AppearPtsForestHills1[k].pos[0], EmDrome_AppearPtsForestHills1[k].pos[1], EmDrome_AppearPtsForestHills1[k].pos[2]);
+                Vec_Set(&em->prevPosX, EmDrome_AppearPtsForestHills1[k].pos[0], EmDrome_AppearPtsForestHills1[k].pos[1], EmDrome_AppearPtsForestHills1[k].pos[2]);
+                Vec_Set(target, EmDrome_AppearPtsForestHills1[k].target[0], EmDrome_AppearPtsForestHills1[k].target[1], EmDrome_AppearPtsForestHills1[k].target[2]);
                 em->rotY = Math_AngleXZ(&em->posX, target) & 0xFFFF;
                 break;
-            case 0x75:
+            case AREA_JUNGLE_7:
                 em->posY += 1300.0f;
                 em->stance = 2;
                 em->rotY = 0;
                 break;
             }
             switch (Area_DayId(em->area)) {
-            case 0x22:
+            case AREA_FOREST_HILLS_10:
                 EmDrome_ChangeState(em, 7, 0, 0);
                 break;
-            case 0x26:
+            case AREA_FOREST_HILLS_2:
                 EmDrome_ChangeState(em, 7, 0, 0);
                 break;
-            case 0x27:
+            case AREA_FOREST_HILLS_1:
                 EmDrome_ChangeState(em, 7, 0, 0);
                 break;
-            case 0x75:
+            case AREA_JUNGLE_7:
                 EmDrome_ChangeState(em, 7, 1, 0);
                 break;
             default:
@@ -2479,7 +2481,7 @@ void EmDrome_State8_00_CarveStart(Em *em, EmWork *work)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             v = EmDrome_CarveThrowPt;
             StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
         }
@@ -2633,7 +2635,7 @@ void EmDrome_Update(Em *em)
         em->noHitTimer = 5;
     }
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80(em);
+    Em_RaisePlayerAreaTrigger(em);
     Em_HoldPosNoPlayers(em, 0, 1);
     seen = Em_SenseObjects(em, &w->sense) & 0xFF;
     if (em->senseDelay == 0 && em->combat == 0 && seen != 0 && Em_ScriptFlagsFrom(em, 4) == 0) {
@@ -2796,8 +2798,8 @@ void EmDrome_Update(Em *em)
     case 0x12:
     case 0x3EA:
     case 0x3EB:
-        if (em->type == 0x1B && Area_DayId(em->area) == 0x75 && Save_TestEventFlag(0x98) == 0) {
-            if (Area_DayId(gScene.area) == 0x75 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if (em->type == 0x1B && Area_DayId(em->area) == AREA_JUNGLE_7 && Save_TestEventFlag(0x98) == 0) {
+            if (Area_DayId(gScene.area) == AREA_JUNGLE_7 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmHermitaur_ChangeState(em, 6, 2, 1);
             }
             break;
@@ -2866,31 +2868,31 @@ void EmDrome_MotionEffects(Em *em, EmWork *work)
     EmDrome_MotionSounds(em, work);
     switch (work->prevMotion) {
     case 0x3EB:
-        if (Player_PassedFrameScaled(em, 18.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0U) != 0) {
             Effect0D_SpawnForEm(em, 1, 0);
         }
         break;
     case 0x3EC:
-        if (Player_PassedFrameScaled(em, 20.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0U) != 0) {
             Effect0D_SpawnForEm(em, 1, 0);
         }
         break;
     case 0x3F0:
-        if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
             Effect0D_SpawnForEm(em, 1, 0);
         }
         break;
     case 0x3F1:
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 14.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
             Effect0D_SpawnForEm(em, 1, 0);
         }
         break;
     case 0x3FF:
-        if (Player_PassedFrameScaled(em, 32.0f, 0U) != 0) {
-            EffDrome15_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 32.0f, 0U) != 0) {
+            DromeAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 22.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0U) != 0) {
             Effect0D_SpawnForEm(em, 0x1B, 0);
         }
         break;
@@ -2898,7 +2900,7 @@ void EmDrome_MotionEffects(Em *em, EmWork *work)
         pos[0] = 0.0f;
         pos[1] = 10.0f;
         pos[2] = 40.0f;
-        Em_SpawnEffect06Periodic(em, 0xF, pos, 1.0f);
+        Em_SpawnLyingPuffs(em, 0xF, pos, 1.0f);
         break;
     default:
         EmDrome_MotionEffectsDefault(em);
@@ -3281,7 +3283,7 @@ void EmKind1D_Init(Em *em)
     f32 f;
 
     if (gQuest.stage == 0) {
-        if (Area_DayId(gScene.area) == 0xF) {
+        if (Area_DayId(gScene.area) == AREA_SNOWY_MOUNTAINS_NIGHT_9) {
             em->posX = 9500.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 9200.0f + (150.0f * (f32) (em->slotNo & 7));
@@ -3415,7 +3417,7 @@ void EmKind1D_RunGroup5(Em *em)
             if (em->area == gScene.area) {
                 StageObj_K0E_CreateScaled(&em->posX, 0, 3.0f);
             }
-            Eff09_CreateAt(&em->posX, 0x10, em->area, 0);
+            Explosion_CreateAt(&em->posX, 0x10, em->area, 0);
         }
         break;
     case 1:
@@ -3697,22 +3699,22 @@ void EmKirin_Init(Em *em)
     if (gQuest.stage == 0) {
         area = gScene.area;
         switch (area) {
-        case 15:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 9500.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 9200.0f + (150.0f * (f32) (em->slotNo & 7));
             break;
-        case 16:
+        case AREA_SWAMP_NIGHT_0:
             em->posX = 6000.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 7000.0f + (150.0f * (f32) (em->slotNo & 7));
             break;
-        case 19:
+        case AREA_JUNGLE_NIGHT_6:
             em->posX = 11000.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 10000.0f + (150.0f * (f32) (em->slotNo & 7));
             break;
-        case 37:
+        case AREA_FOREST_HILLS_4:
             em->posX = 9500.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 10000.0f + (150.0f * (f32) (em->slotNo & 7));
@@ -3732,7 +3734,7 @@ void EmKirin_Init(Em *em)
     em->stance = 0;
     em->unk_InitFlag = 1;
     em->gender = 0;
-    size = Em_ComputeSize(em, 0);
+    size = Em_ComputeMaxHp(em, 0);
     em->hp = size;
     em->hpMax = size;
     em->motionSpeed = 1.0f;
@@ -3748,7 +3750,7 @@ void EmKirin_Update(Em *em)
     s32 d;
 
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80(em);
+    Em_RaisePlayerAreaTrigger(em);
     Em_HoldPosNoPlayers(em, 0, 1);
     switch (Em_UpdateDamage(em, buf) & 0xFF) {
     case 0:
@@ -3802,8 +3804,8 @@ void EmKirin_Update(Em *em)
     switch (gQuest.stage) {
     case 0x425:
     case 0x426:
-        if (Area_DayId(em->area) == 0x64 && Save_TestEventFlag(0xAC) == 0) {
-            if (Area_DayId(gScene.area) == 0x64 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if (Area_DayId(em->area) == AREA_SNOWY_MOUNTAINS_8 && Save_TestEventFlag(0xAC) == 0) {
+            if (Area_DayId(gScene.area) == AREA_SNOWY_MOUNTAINS_8 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmKirin_ChangeState(em, 6, 0, 1);
             }
             break;
@@ -3943,7 +3945,7 @@ void EmKirin_State0_07(Em *em, EmWork *work)
 
 void EmKirin_State0_08(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -4138,7 +4140,7 @@ void EmKirin_State1_02(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, 0xA, 0, 0);
-        Eff02_Create(em, 0x10);
+        EmContactAttack_Create(em, 0x10);
         break;
     case 1:
         if ((Em_StepToGoal(em, 0x40, 0) == 1) && (em->motion[0].playing == 0)) {
@@ -4161,7 +4163,7 @@ void EmKirin_State1_03(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, 0xB, 0, 0);
-        Eff02_Create(em, 0x10);
+        EmContactAttack_Create(em, 0x10);
         break;
     case 1:
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
@@ -4305,27 +4307,27 @@ void EmKirin_State1_0B(Em *em)
     case 0:
         em->step++;
         Em_SetMotion(em, 0xC, 0, 0);
-        Eff02_Create(em, 0xD);
+        EmContactAttack_Create(em, 0xD);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, 0xD, 0, 0);
-            Eff02_Create(em, 0xD);
+            EmContactAttack_Create(em, 0xD);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, 0xC, 0, 0);
-            Eff02_Create(em, 0xD);
+            EmContactAttack_Create(em, 0xD);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, 0xD, 0, 0);
-            Eff02_Create(em, 0xD);
+            EmContactAttack_Create(em, 0xD);
         }
         break;
     case 4:
@@ -4564,11 +4566,11 @@ void EmKirin_State3_03(Em *em, EmWork *work, s32 variant)
         Em_SetMotion(em, 0x18, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 22.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EffEm08_CreateAtBone(em, 0x17, 8, 0, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 0, 0, 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x17, 8, 6, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 6, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -4588,11 +4590,11 @@ void EmKirin_State3_04(Em *em, EmWork *work, s32 variant)
         EmFxSpark_SpawnTimed(em, 8, 0x5A, 1.0f);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 90.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EffEm08_CreateAtBone(em, 0x17, 8, 1, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 1, 0, 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x17, 8, 7, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 7, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -4612,11 +4614,11 @@ void EmKirin_State3_05(Em *em, EmWork *work, s32 variant)
         EmFxSpark_SpawnTimed(em, 8, 0x5A, 1.0f);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 90.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EffEm08_CreateAtBone(em, 0x17, 8, 2, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 2, 0, 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x17, 8, 8, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 8, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -4636,11 +4638,11 @@ void EmKirin_State3_06(Em *em, EmWork *work, s32 variant)
         EmFxSpark_SpawnTimed(em, 8, 0x5A, 1.0f);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 90.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EffEm08_CreateAtBone(em, 0x17, 8, 3, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 3, 0, 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x17, 8, 9, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 9, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -4660,11 +4662,11 @@ void EmKirin_State3_07(Em *em, EmWork *work, s32 variant)
         EmFxSpark_SpawnTimed(em, 8, 0x5A, 1.0f);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 90.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EffEm08_CreateAtBone(em, 0x17, 8, 4, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 4, 0, 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x17, 8, 0xA, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 0xA, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -4684,11 +4686,11 @@ void EmKirin_State3_08(Em *em, EmWork *work, s32 variant)
         EmFxSpark_SpawnTimed(em, 8, 0x5A, 1.0f);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 90.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EffEm08_CreateAtBone(em, 0x17, 8, 5, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 5, 0, 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x17, 8, 0xB, 0, 0);
+                EmRangedAttack_CreateAtBone(em, 0x17, 8, 0xB, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -4838,7 +4840,7 @@ void EmKirin_State4_02(Em *em, EmWork *work, s16 variant)
 
 void EmKirin_State4_03(Em *em)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4847,7 +4849,7 @@ void EmKirin_State4_03(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        Em_SpawnEffect06Bone(em, 2);
+        Em_SpawnStatus4Effect(em, 2);
         if (--em->timer <= 0) {
             em->step++;
             EmKirin_ChangeState(em, 0, 0xA, 4);
@@ -5064,8 +5066,8 @@ void EmKirin_State6_00(Em *em)
         }
         break;
     case 10:
-        if (Player_PassedFrameScaled(em, 90.0f, 0U) != 0) {
-            EffEm08_CreateAtBone(em, 0x17, 8, 4, 0, 0);
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
+            EmRangedAttack_CreateAtBone(em, 0x17, 8, 4, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -5237,75 +5239,75 @@ void EmKirin_MotionEffects(Em *em, EmWork *work)
     case 0x3F1:
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 4.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x15, 3, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 28.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x11, 3, 0.6f);
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x15, 3, 0.7f);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x11, 3, 0.7f);
         }
         break;
     case 0x3F4:
     case 0x3F5:
         if (work->fxMotion == 0x3F7) {
-            if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
                 Effect0D_SpawnForEmScaled(em, 0x15, 3, 0.9f);
             }
-        } else if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x11, 3, 0.9f);
         }
         break;
     case 0x3F6:
-        if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xB, 3, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 16.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xB, 3, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 12.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 7, 3, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 16.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 7, 3, 0.6f);
         }
         break;
     case 0x3F7:
     case 0x3FE:
         if (work->fxMotion == 0x3F7) {
-            if (Player_PassedFrameScaled(em, 34.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0) {
                 Effect0D_SpawnForEmScaled(em, 0x15, 3, 0.6f);
             }
-        } else if (Player_PassedFrameScaled(em, 34.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x11, 3, 0.6f);
         }
         break;
     case 0x3F8:
         break;
     case 0x3F9:
-        if (Player_PassedFrameScaled(em, 20.0f, 0U) != 0) {
-            Eff02_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0U) != 0) {
+            EmContactAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 24.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x16, 3, 0.9f);
         }
         break;
     case 0x3FA:
-        if (Player_PassedFrameScaled(em, 26.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x16, 3, 0.9f);
         }
         break;
     case 0x3FC:
         break;
     case 0x400:
-        if (Player_PassedFrameScaled(em, 14.0f, 0U) != 0) {
-            Eff02_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
+            EmContactAttack_Create(em, 0xC);
         }
         break;
     case 0x40E:
@@ -5315,7 +5317,7 @@ void EmKirin_MotionEffects(Em *em, EmWork *work)
     case 0x426:
         break;
     case 0x427:
-        if (Player_PassedFrameScaled(em, 44.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0U) != 0) {
             Effect0D_SpawnForEmScaled(em, 2, 6, 0.5f);
         }
         break;
@@ -5326,7 +5328,7 @@ void EmKirin_MotionEffects(Em *em, EmWork *work)
         pos[0] = 0.0f;
         pos[1] = 0.0f;
         pos[2] = 10.0f;
-        Em_SpawnEffect06Periodic(em, 0x17, pos, 1.0f);
+        Em_SpawnLyingPuffs(em, 0x17, pos, 1.0f);
         break;
     case 0x42C:
     case 0x42D:
@@ -5384,7 +5386,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
         break;
     case 0x3F2:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x59, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x59, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
@@ -5494,7 +5496,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0x16, 0);
         break;
     case 0x40A:
-        Em_PlaySe6AtBoneOnFrame(em, 0x24, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
         break;
     case 0x40B:
         Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x14);
@@ -5530,14 +5532,14 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
         break;
     case 0x40D:
-        Em_PlaySe6AtBoneOnFrame(em, 0x1E, 0x48, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x1E, 0x48, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
         break;
     case 0x40E:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
@@ -5545,13 +5547,13 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
         break;
     case 0x40F:
-        Em_PlaySe6AtBoneOnFrame(em, 2, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x57, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x66, 0x10, 0x1A);
         break;
     case 0x410:
-        Em_PlaySe6AtBoneInFrames(em, 0x34, 0xC8, 0x60, 0x23, 6, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x34, 0xC8, 0x60, 0x23, 6, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x96, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
@@ -5572,14 +5574,14 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x14, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x13, 0);
-        Em_PlaySe6AtBoneOnFrame(em, 0x54, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x54, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA0, 0xF, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 0xF, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0xD2, 0xC, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xD6, 0xC, 0xC);
         break;
     case 0x412:
-        Em_PlaySe6AtBoneOnFrame(em, 8, 0x4B, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 8, 0x4B, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x14);
@@ -5617,14 +5619,14 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
     case 0x41B:
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x58, 6, 0x1A);
-        Em_PlaySe6AtBoneOnFrame(em, 0x96, 0x5E, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x96, 0x5E, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x27, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x16, 0);
         break;
     case 0x41C:
         if ((em->stateGroup == 2) && (em->state == 0xC)) {
             Em_PlaySeAtBoneOnFrame(em, 0x16, 0x28, 0x23);
-            Em_PlaySe6AtBoneInFrames(em, 0x48, 0xB2, 0x60, 0x23, 6, 0);
+            Em_PlaySeTypeAtBoneInFrames(em, 0x48, 0xB2, 0x60, 0x23, 6, 0);
             Em_PlaySeAtBoneOnFrame(em, 6, 0x14, 0x22);
             Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
             Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xF, 6);
@@ -5635,7 +5637,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
             Em_PlaySeAtBoneOnFrame(em, 0xB0, 0xB, 0xC);
         }
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0x28, 0x23);
-        Em_PlaySe6AtBoneInFrames(em, 0x48, 0xB2, 0x4F, 0x23, 6, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x48, 0xB2, 0x4F, 0x23, 6, 0);
         Em_PlaySeAtBoneOnFrame(em, 6, 0x14, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xF, 6);
@@ -5654,7 +5656,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x108, 4, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0x36, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x7C, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x7C, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x84, 0x29, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 0xC, 6);
@@ -5672,7 +5674,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
         break;
     case 0x424:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 0x11, 0x14);
@@ -5684,7 +5686,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
         break;
     case 0x425:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
@@ -5693,7 +5695,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
         break;
     case 0x426:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
@@ -5702,19 +5704,19 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
         break;
     case 0x427:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1A);
         break;
     case 0x428:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x76, 0x20, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0x1A);
         break;
     case 0x429:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x2A, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x2C);
         Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x20, 0x23);
@@ -5735,7 +5737,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x122, 0xD, 0xC);
         break;
     case 0x42A:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         break;
     case 0x42B:
@@ -5751,7 +5753,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x108, 7, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x114, 0x17, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x180, 0x16, 0);
-        Em_PlaySe6AtBoneOnFrame(em, 0x18, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x18, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x28, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x2C, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x13A, 0x2F, 0x23);
@@ -5760,7 +5762,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x176, 0xE, 0xC);
         break;
     case 0x42D:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
@@ -5768,7 +5770,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
     case 0x42E:
     case 0x433:
         Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0);
-        Em_PlaySe6AtBoneOnFrame(em, 0x3A, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x3A, 0x52, 0x23);
         break;
     case 0x42F:
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
@@ -5783,16 +5785,16 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x14);
         break;
     case 0x432:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
         break;
     case 0x434:
-        Em_PlaySe6AtBoneOnFrame(em, 0x10, 0x5F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x5F, 0x23);
         break;
     case 0x435:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x53, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0xB, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x14, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1C, 0x22);
@@ -5803,7 +5805,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 7, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 0);
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
         break;
     case 0x437:
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x24, 0x23);
@@ -5841,7 +5843,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x80, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0xC6, 0, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0xA8, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xA8, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0xA6, 0xD, 0xC);
         break;
@@ -5893,7 +5895,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         break;
     case 0x448:
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
@@ -5909,7 +5911,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x23);
         break;
     case 0x44A:
@@ -5921,7 +5923,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         break;
     case 0x44C:
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x2E, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x2E, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0xD, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x92, 0x34, 0x23);
@@ -5937,7 +5939,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xFC, 0, 0x14);
         break;
     case 0x44D:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0x144, 0xD, 6);
@@ -5956,7 +5958,7 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x40, 1, 0x1A);
         break;
     case 0x450:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x5E, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5E, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x32, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x68, 0x33, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x14);
@@ -6008,13 +6010,13 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
 }
 
 /* em_drome's .data (0x8C3E50-0x8C41E0) */
-EmDromeAppearPoint EmDrome_AppearPt22 = {
+EmDromeAppearPoint EmDrome_AppearPtForestHills10 = {
 #include "game/008C3E50.inc"
 };
-EmDromeAppearPoint EmDrome_AppearPts26[2] = {
+EmDromeAppearPoint EmDrome_AppearPtsForestHills2[2] = {
 #include "game/008C3E70.inc"
 };
-EmDromeAppearPoint EmDrome_AppearPts27[4] = {
+EmDromeAppearPoint EmDrome_AppearPtsForestHills1[4] = {
 #include "game/008C3EA0.inc"
 };
 EmTurnParams EmDrome_TurnParams[2] = {
@@ -6023,10 +6025,10 @@ EmTurnParams EmDrome_TurnParams[2] = {
 EmDromeVec EmDrome_CarveThrowPt = {
 #include "game/008C3F38.inc"
 };
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmDrome_Callbacks[8] = {
     EmDrome_SpawnEffect01, EmDrome_SpawnEffect01, EmDrome_TableNop, EmDrome_UpdateMotionEffects,
-    func_0090A9C0, EmDrome_Reinit, NULL, NULL,
+    GmEm_ReturnZero, EmDrome_Reinit, NULL, NULL,
 };
 EmCurveKey EmDrome_VelYCurves_0[10] = {
 #include "game/008C3F70.inc"
@@ -6057,9 +6059,9 @@ EmDromeKindEntry EmKind1D_Variants[8] = {
 };
 void *EmKind1D_Callbacks[8] = {
     EmKind1D_TableNop, EmKind1D_TableNop, EmKind1D_TableNop, EmKind1D_UpdateMotionEffects,
-    func_0090A9C0, EmKind1D_TableNop, NULL, NULL,
+    GmEm_ReturnZero, EmKind1D_TableNop, NULL, NULL,
 };
 void *EmKirin_Callbacks[8] = {
     EmKirin_SpawnEffects, EmKirin_SpawnEffects, EmKirin_TableNop, EmKirin_UpdateMotionEffects,
-    func_0090A9C0, EmKirin_TableNop, NULL, NULL,
+    GmEm_ReturnZero, EmKirin_TableNop, NULL, NULL,
 };

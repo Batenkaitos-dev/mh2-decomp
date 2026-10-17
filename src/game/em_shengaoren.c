@@ -1,9 +1,9 @@
 /*
- * Monster family: Shen Gaoren (kind 0x37).
- * The code from the family's setup function (0x822F00, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: Shen Gaoren (EM_KIND_SHEN_GAOREN). The code from the
+ * family's setup function (EmShenGaoren_Setup, called by the per-kind
+ * dispatch Em_TypeSetup) to the next family's. The state functions take the
+ * monster and the work area its state dispatcher passes on (EmWork); Em.step
+ * is the step within the current state. See include/em.h.
  */
 #include "common.h"
 #include "scene.h"
@@ -12,6 +12,8 @@
 #include "em.h"
 #include "stageobj.h"
 #include "player.h"
+#include "area.h"
+#include "qsync.h"
 /* prototypes of callees (round 13) */
 void GmEm_ResetSize(Em *em);
 
@@ -23,9 +25,9 @@ void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
 void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
 void Player_ClearFlag(void *, u32 flag);
-void * EffEm33_Create(Em *, s32, s32, s32, s32);
-void Em_PlaySe6AtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySe6AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
+void * EmEffectAttack_Create(Em *, s32, s32, s32, s32);
+void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
+void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
 void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
 void Em_StartTurnAway(Em *em, EmTurnParams *t);
@@ -61,14 +63,14 @@ StageObj *StageObj_K1C_CreateOnEm(Em *em, u8 k, f32 scale);
 void Vec_RotateY(f32 *v, f32 angle);
 StageObj *StageObj_K1C_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 Debug_IsOn(s32);
 void MinePoint_SetArea(s32 slot, u16 area);
 void Effect01_Spawn(void *obj, s16 type);
 extern EmTurnParams EmShenGaoren_TurnParams[2];
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void EmShenGaoren_AddMinePoint(Em *, s32);
 u16 Area_DayId(u16 id);
 /* unit's own declaration: with the definition's void (void *obj, s16 bone, f32 *out) (sub_main/unk_3DDBA0.c), EmShenGaoren_SpawnFootEffect: 21 of 29 words differ, EmShenGaoren_SpawnGroundEffect: 18 of 98 words differ */
@@ -76,9 +78,9 @@ void Em_BonePos(void *obj, s32 bone, f32 *out);
 EmBone *Em_Bone(void *obj, s16 bone);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 u16 Area_IdForCurrentTime(u16);
-void EffEm33_CreateShengaoren(Em *em, s32 arg1, u16 arg2, s32 arg3, s32 arg4);
+void EmEffectAttack_CreateShengaoren(Em *em, s32 arg1, u16 arg2, s32 arg3, s32 arg4);
 void Quest_TriggerEvent(Em *em);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 void CamShake_ReqARange(Em *obj, s32 i, s32 flag);
 u8 Player_InCurrentArea(void *obj);
 s32 EmMine_Update(Em *em);
@@ -90,7 +92,7 @@ void Em_MotionDelta(Em *em, f32 *out);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 extern f32 D_008CA0C0[][4];
 void Effect0D_SpawnOnGround(f32 *pos, s32 a, f32 scale);
-void EffShengaoren31_Create(Em *em, s8 kind);
+void ShenGaorenAttack_Create(Em *em, s8 kind);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
 void Effect0D_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
@@ -156,7 +158,7 @@ void EmShenGaoren_AddMinePoint(Em *em, s32 unused)
         pt.table = 0x159;
         break;
     }
-    pt.unk14 = 2;
+    pt.action = MINE_ACTION_CARVE;
     pt.count = w->mineCount;
     pt.area = (u8) em->area;
     pt.flags = 1;
@@ -190,13 +192,13 @@ void EmShenGaoren_Init(Em *em)
     if (gQuest.stage == 0) {
         dayId = Area_DayId(gScene.area) & 0xFFFF;
         switch (dayId) {
-        case 11:
+        case AREA_FORTRESS_4:
             em->posX = 33000.0f;
             em->posY = 0.0f;
             em->posZ = 30200.0f;
             em->rotY = 0xC000;
             break;
-        case 12:
+        case AREA_FORTRESS_5:
             em->posX = 7400.0f;
             em->posY = 0.0f;
             em->posZ = 26300.0f;
@@ -208,25 +210,25 @@ void EmShenGaoren_Init(Em *em)
             em->posZ = 8000.0f;
             em->rotY = 0x8000;
             break;
-        case 14:
+        case AREA_FORTRESS_1:
             em->posX = 2400.0f;
             em->posY = 0.0f;
             em->posZ = 11000.0f;
             em->rotY = 0xE39;
             break;
-        case 15:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 7000.0f;
             em->posY = 580.0f;
             em->posZ = 7000.0f;
             em->rotY = 0;
             break;
-        case 28:
+        case AREA_FORTRESS_3:
             em->posX = 30800.0f;
             em->posY = 0.0f;
             em->posZ = 32600.0f;
             em->rotY = 0x6C00;
             break;
-        case 30:
+        case AREA_FORTRESS_2:
             em->posX = 23500.0f;
             em->posY = 0.0f;
             em->posZ = 3500.0f;
@@ -240,7 +242,7 @@ void EmShenGaoren_Init(Em *em)
             break;
         }
     }
-    size = Em_ComputeSize(em, 0);
+    size = Em_ComputeMaxHp(em, 0);
     em->hp = size;
     em->hpMax = size;
     em->scriptPending = 1;
@@ -248,7 +250,7 @@ void EmShenGaoren_Init(Em *em)
     em->unk_InitFlag = 1;
     em->combat = 1;
     em->combatPlayers = 0xF;
-    if ((Area_DayId(em->area) & 0xFFFF) == 0xB0) {
+    if ((Area_DayId(em->area) & 0xFFFF) == AREA_BATTLE_TOWN_1) {
         em->stance = 0;
         Em_SetMotionRow(em, 0x1E, 0, 0);
         Em_SetStateRand(em, 0, 2);
@@ -691,7 +693,7 @@ void EmShenGaoren_State1_04(Em *em)
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[1]) == 1) {
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmShenGaoren_EndState(em);
         }
         break;
@@ -709,7 +711,7 @@ void EmShenGaoren_State1_05(Em *em)
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[0]) == 1) {
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmShenGaoren_EndState(em);
         }
         break;
@@ -727,7 +729,7 @@ void EmShenGaoren_State1_06(Em *em)
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[0]) == 1) {
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmShenGaoren_EndState(em);
         }
         break;
@@ -745,7 +747,7 @@ void EmShenGaoren_State1_07(Em *em)
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[1]) == 1) {
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmShenGaoren_EndState(em);
         }
         break;
@@ -806,8 +808,8 @@ void EmShenGaoren_State3_00(Em *em)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 4.0f, 0U) != 0) {
-            EffEm33_Create(em, 3, 0, 0xF800, 0x8000);
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0U) != 0) {
+            EmEffectAttack_Create(em, 3, 0, 0xF800, 0x8000);
         }
         if (em->motion[0].playing == 0) {
             if (--em->timer <= 0) {
@@ -849,15 +851,15 @@ void EmShenGaoren_State3_01(Em *em, s32 variant)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 4.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0U) != 0) {
             switch (variant) {
             case 0:
                 area = em->area;
-                if (area != (Area_IdForCurrentTime(0xCU) & 0xFFFF)) {
-                    EffEm33_Create(em, 5, 0, 0xE800, 0x8000);
-                    EffEm33_CreateShengaoren(em, 8, 0xCU, 0x6000, 0);
+                if (area != (Area_IdForCurrentTime(AREA_FORTRESS_5) & 0xFFFF)) {
+                    EmEffectAttack_Create(em, 5, 0, 0xE800, 0x8000);
+                    EmEffectAttack_CreateShengaoren(em, 8, AREA_FORTRESS_5, 0x6000, 0);
                 } else {
-                    EffEm33_Create(em, 3, 0, 0xF800, 0x8000);
+                    EmEffectAttack_Create(em, 3, 0, 0xF800, 0x8000);
                 }
                 if (em->remote == 0) {
                     n = w->fortHits;
@@ -871,12 +873,12 @@ void EmShenGaoren_State3_01(Em *em, s32 variant)
                 }
                 break;
             case 1:
-                EffEm33_Create(em, 5, 0, 0xE800, 0x8000);
-                EffEm33_CreateShengaoren(em, 8, 0xB1U, 0x6000, 0);
+                EmEffectAttack_Create(em, 5, 0, 0xE800, 0x8000);
+                EmEffectAttack_CreateShengaoren(em, 8, AREA_BATTLE_TOWN_2, 0x6000, 0);
                 break;
             case 2:
-                EffEm33_Create(em, 5, 0, 0xE800, 0x8000);
-                EffEm33_CreateShengaoren(em, 8, 0xB2U, 0x6000, 0);
+                EmEffectAttack_Create(em, 5, 0, 0xE800, 0x8000);
+                EmEffectAttack_CreateShengaoren(em, 8, AREA_BATTLE_TOWN_3, 0x6000, 0);
                 break;
             }
         }
@@ -909,7 +911,7 @@ void EmShenGaoren_State3_02(Em *em)
         Em_SetMotion(em, 0x29, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 200.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 200.0f, 0)) {
             if (em->remote == 0 && w->fortHits <= 9) {
                 w->fortHits++;
                 if (w->fortHits >= 10) {
@@ -939,7 +941,7 @@ void EmShenGaoren_State3_03(Em *em, s32 variant)
         Em_SetMotion(em, 0x10, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 134.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0)) {
             if (variant != 0) {
                 if (em->remote == 0 && w->fortHits <= 9) {
                     w->fortHits++;
@@ -950,7 +952,7 @@ void EmShenGaoren_State3_03(Em *em, s32 variant)
                 }
                 EmShenGaoren_SpawnAreaImpactEffects(em, 0);
             } else {
-                if (em->remote == 0 && (Area_DayId(em->area) & 0xFFFF) == 0x1C && w->unk000 <= 7) {
+                if (em->remote == 0 && (Area_DayId(em->area) & 0xFFFF) == AREA_FORTRESS_3 && w->unk000 <= 7) {
                     w->unk000 = 8;
                 }
                 gScene.emEventFlags |= 1;
@@ -1435,7 +1437,7 @@ void EmShenGaoren_State6_00(Em *em)
     case 3:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             em->timer = 300;
             Em_SetMotion(em, 0xD, 0, 0);
         }
@@ -1447,8 +1449,8 @@ void EmShenGaoren_State6_00(Em *em)
         }
         break;
     case 5:
-        if (Player_PassedFrameScaled(em, 4.0f, 0)) {
-            EffEm33_Create(em, 3, 0, 0xE800, 0x8000);
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0)) {
+            EmEffectAttack_Create(em, 3, 0, 0xE800, 0x8000);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -1494,7 +1496,7 @@ void EmShenGaoren_State6_01(Em *em)
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             em->timer = 300;
             Em_SetMotion(em, 2, 0, 0);
         }
@@ -1572,7 +1574,7 @@ void EmShenGaoren_Update(Em *em)
     if (w->syncTimer != 0 && em->stateGroup != 6 && em->remote == 0) {
         if (--w->syncTimer <= 0) {
             w->syncTimer = 150;
-            QSync_SendEm(em, 2, 0);
+            QSync_SendEm(em, QSYNC_EMMSG_STATE_NO_PARTS, 0);
         }
     }
     switch (Em_UpdateDamage(em, buf) & 0xFF) {
@@ -1680,15 +1682,15 @@ void EmShenGaoren_Update(Em *em)
         em->fxFlags |= 8;
     }
     switch (Area_DayId(em->area)) {
-    case 0xE:
+    case AREA_FORTRESS_1:
         if (Save_TestEventFlag(0xAE) == 0) {
-            if (Area_DayId(gScene.area) == 0xE && gScene.eventRunning == 1 && em->stateGroup != 6) {
+            if (Area_DayId(gScene.area) == AREA_FORTRESS_1 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmShenGaoren_ChangeState(em, 6, 0, 0);
             }
             goto skip;
         }
         break;
-    case 0xC:
+    case AREA_FORTRESS_5:
         if (Quest_IsRunning(0) == 1 && em->stateGroup != 6 && em->stateGroup != 5) {
             em->scriptPending = 0;
             if (gScene.area == em->area) {
@@ -1798,25 +1800,25 @@ void EmShenGaoren_SpawnGroundEffect(Em *em, s32 bone, s32 kind, s32 flags, f32 s
             CamShake_ReqARange(em, 2, 2);
         }
         if (flags & 1) {
-            EffEm07_CreateAt(em, (f32 *) pos, 9);
+            EmImpactAttack_CreateAt(em, (f32 *) pos, 9);
             switch ((s16) bone) {
             case 0x1A:
-                EffShengaoren31_Create(em, 0x12);
+                ShenGaorenAttack_Create(em, 0x12);
                 break;
             case 0x16:
-                EffShengaoren31_Create(em, 0x13);
+                ShenGaorenAttack_Create(em, 0x13);
                 break;
             case 0x12:
-                EffShengaoren31_Create(em, 0x14);
+                ShenGaorenAttack_Create(em, 0x14);
                 break;
             case 0x1E:
-                EffShengaoren31_Create(em, 0x15);
+                ShenGaorenAttack_Create(em, 0x15);
                 break;
             case 6:
-                EffShengaoren31_Create(em, 0x16);
+                ShenGaorenAttack_Create(em, 0x16);
                 break;
             case 0xA:
-                EffShengaoren31_Create(em, 0x17);
+                ShenGaorenAttack_Create(em, 0x17);
                 break;
             }
         }
@@ -1830,7 +1832,7 @@ void EmShenGaoren_SpawnFootEffect(Em *em, s32 bone)
     if (Player_InCurrentArea(em)) {
         Em_BonePos(em, bone, pos);
         pos[1] = em->floorY;
-        EffEm07_CreateAt(em, (f32 *) pos, 9);
+        EmImpactAttack_CreateAt(em, (f32 *) pos, 9);
         CamShake_ReqARange(em, 2, 2);
     }
 }
@@ -1854,274 +1856,274 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
     switch (sw->fxMotion) {
     case 0x3EA:
     case 0x407:
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 148.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 256.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 256.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 358.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 358.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
             break;
         }
         break;
     case 0x3EB:
     case 0x408:
-        if (Player_PassedFrameScaled(em, 94.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 196.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 196.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 304.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 304.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 406.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 406.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
             break;
         }
         break;
     case 0x3EC:
     case 0x409:
-        if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 142.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 142.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 248.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 352.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 352.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
             break;
         }
         break;
     case 0x3ED:
     case 0x40A:
-        if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 142.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 142.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 248.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 352.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 352.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
             break;
         }
         break;
     case 0x3EE:
-        if (Player_PassedFrameScaled(em, 68.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 68.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 1, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 136.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 136.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 1, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 210.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 210.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 1, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 278.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 278.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 1, 2.0f);
             break;
         }
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 124.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 124.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 160.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0xB, 0x26, em->scaleX);
             break;
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 124.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 124.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 4);
         }
-        if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 160.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0xB, 0x27, em->scaleX);
             break;
         }
         break;
     case 0x3F4:
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 6);
         }
-        if (Player_PassedFrameScaled(em, 110.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 110.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 7);
         }
-        if (Player_PassedFrameScaled(em, 160.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 8);
         }
-        if (Player_PassedFrameScaled(em, 190.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 190.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 9);
         }
-        if (Player_PassedFrameScaled(em, 240.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 240.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0xA);
         }
-        if (Player_PassedFrameScaled(em, 334.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 334.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0xB);
         }
-        if ((Player_PassedFrameScaled(em, 64.0f, 0) != 0) || (Player_PassedFrameScaled(em, 206.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 206.0f, 0) != 0)) {
             EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 6);
         }
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 126.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 126.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0xA);
         }
-        if (Player_PassedFrameScaled(em, 176.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 176.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0x16);
         }
-        if (Player_PassedFrameScaled(em, 256.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 256.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0x12);
         }
-        if (Player_PassedFrameScaled(em, 346.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 346.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0x1E);
             break;
         }
         break;
     case 0x3F5:
-        if (Player_PassedFrameScaled(em, 88.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 88.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 140.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 140.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 240.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 240.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 380.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 380.0f, 0) != 0) {
             StageObj_K1C_CreateOnEm(em, 0x19, 1.0f);
             break;
         }
         break;
     case 0x3F6:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             StageObj_K1C_CreateOnEm(em, 0x1A, 1.0f);
             break;
         }
         break;
     case 0x3F7:
-        if (Player_PassedFrameScaled(em, 170.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 198.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 198.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 6, 4, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 270.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 270.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 292.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 292.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0xA, 4, 0, 2.0f);
             break;
         }
         break;
     case 0x3F8:
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 144.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 144.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0xB, 0x26, em->scaleX);
             break;
         }
         break;
     case 0x3FC:
-        if ((Player_PassedFrameScaled(em, 74.0f, 0) != 0) || (Player_PassedFrameScaled(em, 178.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 178.0f, 0) != 0)) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 122.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 236.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 236.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 288.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 288.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x3FE:
-        if (Player_PassedFrameScaled(em, 94.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0, em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0x18);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0x18);
             break;
         }
         break;
     case 0x400:
-        if (Player_PassedFrameScaled(em, 126.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 126.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 238.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 238.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 338.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 338.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x401:
-        if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 86.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 86.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 132.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 184.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 184.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x40B:
-        if (Player_PassedFrameScaled(em, 140.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 140.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 1, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 238.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 238.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 1, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 340.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 340.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 1, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 438.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 438.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 1, 2.0f);
             break;
         }
         break;
     case 0x411:
-        if (Player_PassedFrameScaled(em, 170.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 1);
         }
-        if ((Player_PassedFrameScaled(em, 204.0f, 0) != 0) && Player_InCurrentArea(em)) {
+        if ((EmMotion_PassedFrameScaled(em, 204.0f, 0) != 0) && Player_InCurrentArea(em)) {
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = 1100.0f * em->scaleZ;
@@ -2134,149 +2136,149 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
         }
         break;
     case 0x412:
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0xC);
         }
-        if (Player_PassedFrameScaled(em, 146.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 146.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 160.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0xE);
+        if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0xE);
         }
-        if (Player_PassedFrameScaled(em, 166.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0xF);
+        if (EmMotion_PassedFrameScaled(em, 166.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0xF);
         }
-        if (Player_PassedFrameScaled(em, 242.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0x10);
+        if (EmMotion_PassedFrameScaled(em, 242.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0x10);
         }
-        if (Player_PassedFrameScaled(em, 334.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 334.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0x11);
         }
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 160.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0x26, em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 176.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 176.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0x27, em->scaleX);
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 256.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 256.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0x12);
         }
-        if (Player_PassedFrameScaled(em, 346.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 346.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
             EmShenGaoren_SpawnFootEffect(em, 0x1E);
             break;
         }
         break;
     case 0x413:
-        if (Player_PassedFrameScaled(em, 88.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 88.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 148.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 248.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 380.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 380.0f, 0) != 0) {
             StageObj_K1C_CreateOnEm(em, 0x19, 1.0f);
             break;
         }
         break;
     case 0x414:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             StageObj_K1C_CreateOnEm(em, 0x1A, 1.0f);
             break;
         }
         break;
     case 0x415:
-        if (Player_PassedFrameScaled(em, 176.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 176.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 192.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 192.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 6, 4, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 270.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 270.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 278.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 278.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0xA, 4, 0, 2.0f);
             break;
         }
         break;
     case 0x41A:
-        if (Player_PassedFrameScaled(em, 122.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 178.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 178.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 236.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 236.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 288.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 288.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x41C:
-        if (Player_PassedFrameScaled(em, 116.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 116.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0, em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 90.0f, 0) != 0) {
-            EffShengaoren31_Create(em, 0x19);
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0) {
+            ShenGaorenAttack_Create(em, 0x19);
             break;
         }
         break;
     case 0x41E:
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 126.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 126.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 238.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 238.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 338.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 338.0f, 0) != 0) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x41F:
-        if ((Player_PassedFrameScaled(em, 62.0f, 0) != 0) || (Player_PassedFrameScaled(em, 188.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x420:
-        if ((Player_PassedFrameScaled(em, 62.0f, 0) != 0) || (Player_PassedFrameScaled(em, 188.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
             EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x421:
-        if ((Player_PassedFrameScaled(em, 62.0f, 0) != 0) || (Player_PassedFrameScaled(em, 188.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
             EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x422:
-        if ((Player_PassedFrameScaled(em, 62.0f, 0) != 0) || (Player_PassedFrameScaled(em, 188.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
             EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
             break;
         }
         break;
     case 0x423:
-        if (Player_PassedFrameScaled(em, 414.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 414.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0x28, em->scaleX);
             break;
         }
@@ -2306,7 +2308,7 @@ void EmShenGaoren_SpawnAreaImpactEffects(Em *em, s32 flag)
     f32 pos[3];
 
     switch (Area_DayId(em->area)) {
-    case 0xC:
+    case AREA_FORTRESS_5:
         pos[0] = 7300.0f;
         if (flag != 0) {
             pos[1] = 1500.0f;
@@ -2315,12 +2317,12 @@ void EmShenGaoren_SpawnAreaImpactEffects(Em *em, s32 flag)
         }
         pos[2] = 12400.0f;
         break;
-    case 0x1C:
+    case AREA_FORTRESS_3:
         pos[0] = 10900.0f;
         pos[1] = 500.0f;
         pos[2] = 20158.0f;
         break;
-    case 0xB0:
+    case AREA_BATTLE_TOWN_1:
         pos[0] = 10069.0f;
         pos[1] = 1630.0f;
         pos[2] = 16847.0f;
@@ -2436,7 +2438,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x41, 0x19, 0x2E);
         break;
     case 0x3F5:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 0x28, 0x4C, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x28, 0x4C, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xF, 0x2E);
         Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xF, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 0x1C, 0x25);
@@ -2569,7 +2571,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0xE, 0x32);
         break;
     case 0x407:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 0xA, 0x47, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0xA, 0x47, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 2, 0x1A);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 4, 0xD);
@@ -2578,7 +2580,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         break;
     case 0x408:
         Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x20, 0x26);
-        Em_PlaySe6AtBoneInFrames((Em *) em, 0x3C, 0xBE, 0x4A, 0x26, 7, 0);
+        Em_PlaySeTypeAtBoneInFrames((Em *) em, 0x3C, 0xBE, 0x4A, 0x26, 7, 0);
         Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xF, 0x2E);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0xF, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x60, 0xE, 0x2E);
@@ -2633,7 +2635,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x16, 2);
         break;
     case 0x40E:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x56, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x56, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, 0x3B, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 1, 0x1F);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 0x10, 0x1A);
@@ -2643,7 +2645,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0xE, 0x2E);
         break;
     case 0x40F:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x63, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x63, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0x32, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x6E, 1, 0x1F);
@@ -2656,7 +2658,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         break;
     case 0x416:
         Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x20, 0x26);
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 0x40, 0x4C, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x40, 0x4C, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, 0x18, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0xE, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, 0xE, 0x2E);
@@ -2675,12 +2677,12 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, 0xB, 0x2E);
         break;
     case 0x41A:
-        Em_PlaySe6AtBoneInFrames((Em *) em, 0x16, 0x11C, 0x49, 0x26, 7, 0);
+        Em_PlaySeTypeAtBoneInFrames((Em *) em, 0x16, 0x11C, 0x49, 0x26, 7, 0);
         Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xB, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 0x2E);
         break;
     case 0x41B:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 0x16, 0x4C, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x16, 0x4C, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x18, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xE, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0xE, 0x2E);
@@ -2714,7 +2716,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 9, 0x11);
         break;
     case 0x41E:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x47, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x47, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 0x23, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xA, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 0x2E);
@@ -2764,7 +2766,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x16, 2);
         break;
     case 0x425:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x23, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 2);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0, 0x1F);
@@ -2773,7 +2775,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 4, 8);
         break;
     case 0x426:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x54, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x54, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 7, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 2, 0x1A);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0, 0x1A);
@@ -2786,7 +2788,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 0x16, 2);
         break;
     case 0x427:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0xD, 0x2E);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0xD, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0xB, 0x2E);
@@ -2795,19 +2797,19 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x72, 0xB, 0x32);
         break;
     case 0x428:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 6, 0x54, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 6, 0x54, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xC, 0x2E);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0xC, 0x32);
         break;
     case 0x429:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 6, 0x53, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 6, 0x53, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 8, 9, 0x25);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 7, 2);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0xF, 0x32);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0x17, 2);
         break;
     case 0x42A:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 0x18, 0x57, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x18, 0x57, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0x10, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x17, 0x26);
         break;
@@ -2821,7 +2823,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 3, 0xD);
         break;
     case 0x42C:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x55, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x55, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xDA, 0x2F, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x11A, 0x2E, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x16E, 0x2C, 0x26);
@@ -2837,18 +2839,18 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1B6, 7, 0x25);
         break;
     case 0x42D:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 0xC, 0x58, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0xC, 0x58, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x16, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x12, 0x1A);
         break;
     case 0x42E:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 0x1E, 0x4F, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x1E, 0x4F, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0x16, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0xD, 0x2E);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0xD, 0x32);
         break;
     case 0x42F:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x56, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x56, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0x17, 2);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x10A, 0x3B, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0, 0x1A);
@@ -2860,7 +2862,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0xE, 0x32);
         break;
     case 0x431:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x55, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x55, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x2E, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 0x17, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0xD, 0x2E);
@@ -2874,7 +2876,7 @@ void EmKushala_MotionSounds(void *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x96, 5, 0x25);
         break;
     case 0x432:
-        Em_PlaySe6AtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0x16, 0x26);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 7, 2);
         Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 5, 0x25);
@@ -2967,7 +2969,7 @@ void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
         break;
     case 0x3F2:
         Em_PlaySeAtBoneOnFrame(em, 4, 0x3C, 0x26);
-        Em_PlaySe6AtBoneOnFrame(em, 0x26, 0x5B, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x26, 0x5B, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x14, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0x1F);
@@ -2991,7 +2993,7 @@ void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x41, 0x19, 0x2E);
         break;
     case 0x3F5:
-        Em_PlaySe6AtBoneOnFrame(em, 0x28, 0x4B, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x28, 0x4B, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 0x2E);
         Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0x32);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1C, 0x25);
@@ -2999,7 +3001,7 @@ void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x1D, 0x2E);
         break;
     case 0x3F6:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x51, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x51, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x2E);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x32);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0xB, 0x2E);
@@ -3038,7 +3040,7 @@ void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xB8, 4, 0xD);
         break;
     case 0x3FA:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x51, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x51, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x14, 0x25);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x2E);
         Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x32);
@@ -3112,7 +3114,7 @@ void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
         break;
     case 0x408:
         Em_PlaySeAtBoneOnFrame(em, 4, 0x25, 0x26);
-        Em_PlaySe6AtBoneInFrames(em, 0x38, 0xAA, 0x4A, 0x26, 7, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x38, 0xAA, 0x4A, 0x26, 7, 0);
         Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0x2E);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0xF, 0x32);
         Em_PlaySeAtBoneOnFrame(em, 0x60, 0xE, 0x2E);
@@ -3156,8 +3158,8 @@ void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x1A);
         break;
     case 0x40D:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x55, 0x26);
-        Em_PlaySe6AtBoneOnFrame(em, 0x54, 0x55, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x55, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x54, 0x55, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0x12, 0xD);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0xD);
         Em_PlaySeAtBoneOnFrame(em, 0x80, 0x12, 0xD);
@@ -3199,14 +3201,14 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0xE, 0x2E);
         break;
     case 0x411:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x5B, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 6, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1F);
         Em_PlaySeAtBoneOnFrame(em, 8, 3, 8);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0x14, 2);
         break;
     case 0x409:
-        Em_PlaySe6AtBoneOnFrame(em, 0xA, 0x51, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xA, 0x51, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0x25);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 9, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 7, 2);
@@ -3218,7 +3220,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x46, 4, 8);
         break;
     case 0x412:
-        Em_PlaySe6AtBoneOnFrame(em, 0xA, 0x4F, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xA, 0x4F, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x31, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 6, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x15, 0x1F);
@@ -3228,8 +3230,8 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x20, 0xE, 0x2E);
         break;
     case 0x413:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x4D, 0x26);
-        Em_PlaySe6AtBoneOnFrame(em, 0xB8, 0x5E, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4D, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xB8, 0x5E, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x15, 0x11);
         Em_PlaySeAtBoneOnFrame(em, 0x98, 0x15, 0x11);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1F);
@@ -3241,8 +3243,8 @@ block_49:
         break;
     case 0x417:
         Em_PlaySeAtBoneOnFrame(em, 4, 0x3C, 0x26);
-        Em_PlaySe6AtBoneOnFrame(em, 0x32, 0x48, 0x26);
-        Em_PlaySe6AtBoneOnFrame(em, 0x62, 0x49, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x32, 0x48, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x62, 0x49, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x41, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x36, 0x12, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 2, 0x1A);
@@ -3251,7 +3253,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0xD);
         break;
     case 0x418:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x51, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x51, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x33, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0xE, 0x32);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x2E);
@@ -3266,7 +3268,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x70, 0xB, 0x2E);
         break;
     case 0x41A:
-        Em_PlaySe6AtBoneInFrames(em, 0x16, 0x11C, 0x49, 0x26, 7, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x16, 0x11C, 0x49, 0x26, 7, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0x41, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 0x32);
         Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0x2E);
@@ -3280,7 +3282,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x110, 0xB, 0x2E);
         break;
     case 0x410:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x5B, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0xE, 0x32);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x2E);
         break;
@@ -3324,7 +3326,7 @@ block_49:
         break;
     case 0x423:
         Em_PlaySeAtBoneOnFrame(em, 2, 0x20, 0x26);
-        Em_PlaySe6AtBoneOnFrame(em, 2, 0x4D, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x4D, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 0x3E, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x32, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xB, 0x2E);
@@ -3369,7 +3371,7 @@ block_49:
         Em_PlaySeAtBoneVolOnFrame(em, 0x94, Sound_RandomSe(0x43, 3, 0x45, 4), 0x11, 4);
         break;
     case 0x424:
-        Em_PlaySe6AtBoneInFrames(em, 0x58, 0x104, 0x50, 0x26, 7, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x58, 0x104, 0x50, 0x26, 7, 0);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x33, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x3A, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x3F, 0x26);
@@ -3383,7 +3385,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0xE2, 1, 0x1F);
         break;
     case 0x425:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x53, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0x23, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1F);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x1A);
@@ -3391,7 +3393,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x58, 4, 8);
         break;
     case 0x426:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x29, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 7, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 2, 0x1A);
@@ -3404,7 +3406,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xE, 0x32);
         break;
     case 0x427:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x53, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0xD, 0x2E);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0xD, 0x32);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 0x2E);
@@ -3413,7 +3415,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x72, 0xB, 0x32);
         break;
     case 0x428:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 0x2E);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0x32);
         break;
@@ -3423,7 +3425,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xF, 0x32);
         break;
     case 0x42A:
-        Em_PlaySe6AtBoneOnFrame(em, 0x18, 0x57, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x18, 0x57, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x17, 0x26);
         break;
@@ -3437,7 +3439,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x62, 3, 0xD);
         break;
     case 0x42C:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x57, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x30, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0xAA, 0x3B, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x2D, 0x26);
@@ -3451,20 +3453,20 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x1B6, 7, 0x25);
         break;
     case 0x42D:
-        Em_PlaySe6AtBoneOnFrame(em, 0xC, 0x58, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xC, 0x58, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x12, 0x1A);
         break;
     case 0x42E:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x51, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x51, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x33, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0x3B, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 0x2E);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0x32);
         break;
     case 0x42F:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x55, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x55, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x3C, 0x26);
-        Em_PlaySe6AtBoneOnFrame(em, 0x3E, 0x4E, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x3E, 0x4E, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x10E, 0x36, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x9C, 0x12, 0x1A);
@@ -3475,7 +3477,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0xE, 0x32);
         break;
     case 0x431:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x26, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x2A, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x2E);
@@ -3489,7 +3491,7 @@ block_49:
         Em_PlaySeAtBoneOnFrame(em, 0x96, 9, 0x25);
         break;
     case 0x432:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x26);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x26);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 5, 2);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 9, 0x25);
         Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x2E);

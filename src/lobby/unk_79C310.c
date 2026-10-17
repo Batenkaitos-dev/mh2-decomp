@@ -8,6 +8,7 @@
 #include "pad.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
+#include "area.h"
 
 
 s32 Player_IsLocal(void *obj);
@@ -83,12 +84,12 @@ u8 Village_FacilityLevel(s32 k);
 s32 Town_AreaEventPending(void)
 {
     switch (gScene.area) {
-    case 0xAC:
+    case AREA_HUB_0xAC:
         if (Save_TestEventFlag(0x89) == 0 && (Village_FacilityLevel(0) & 0xFF) >= 6 && Monster_IsHunted(7U) == 1) {
             return 1;
         }
         break;
-    case 0x57:
+    case AREA_HUB_0x57:
         if (Save_TestEventFlag(0x8A) == 0 && Cond_Check(0x51U) == 1) {
             return 1;
         }
@@ -268,7 +269,7 @@ void TownPc_Action(Player *pc)
     if (pc->target != (u8 *)pc && pc->target != NULL && (pad & 0x20) && gTownMode != 0xB) {
         Notice_OpenTextN(0, 0, 3, 0, 0);
         npc = pc->target;
-        if (npc->unk01E == 0 && gTownMode == 0) {
+        if (npc->ownTask == 0 && gTownMode == 0) {
             gTownMenuOpen = 0;
             gTownMode = 3;
             PcCard_Open();
@@ -306,7 +307,7 @@ void TownPc_Action(Player *pc)
                         }
                         return;
                     }
-                    if (*(s8 *)save->poogieName != 0 && gScene.area == 0x89) {
+                    if (*(s8 *)save->poogieName != 0 && gScene.area == AREA_HUB_0x89) {
                         Menu31_Open(npc);
                         return;
                     }
@@ -444,9 +445,9 @@ void TownPc_Action(Player *pc)
             gPoogieDigTaken = 1;
             Actor_SetStateNow((Player *)((u8 *) pc), 0, 0x80, 0);
             gDigSpotUses[((TownSpot *)pc->spot)->id]++;
-            if (gScene.area == 0x89) {
+            if (gScene.area == AREA_HUB_0x89) {
                 n = 0;
-            } else if (gScene.area == 0x83) {
+            } else if (gScene.area == AREA_HUB_0x83) {
                 n = 1;
             } else {
                 return;
@@ -466,9 +467,9 @@ void TownPc_Action(Player *pc)
             break;
         case 17:
             switch (gScene.area) {
-            case 0x86:
-            case 0x87:
-            case 0x88:
+            case AREA_HUB_0x86:
+            case AREA_HUB_0x87:
+            case AREA_HUB_0x88:
                 if (gLobby->questTaken != 0) {
                     r = Quest_CheckOrder(gLobbyQuestId);
                     if (gLobby->questPaid == 1) {
@@ -535,8 +536,8 @@ void TownPc_Action(Player *pc)
                     gTownMenuOpen = 1;
                 }
                 return;
-            case 0x89:
-            case 0x57:
+            case AREA_HUB_0x89:
+            case AREA_HUB_0x57:
                 if (gLobby->questTaken != 0) {
                     if (Quest_CheckOrder(gLobbyQuestId) == 0) {
                         u8 *ql = (u8 *)&gTownQuestLists;
@@ -593,7 +594,7 @@ void TownPc_Action(Player *pc)
             TownSave_Open();
             break;
         case 8:
-            if (gScene.area != 0x57) {
+            if (gScene.area != AREA_HUB_0x57) {
                 pos[0] = 5075.0f;
                 pos[1] = 201.19f;
                 pos[2] = 6438.0f;
@@ -607,7 +608,7 @@ void TownPc_Action(Player *pc)
                     Menu_PushNoticeOnce(0xB);
                 } else {
                     Actor_SetStateNow((Player *)((u8 *) pc), 0, 0x1A, 0);
-                    if (gScene.area == 0x57) {
+                    if (gScene.area == AREA_HUB_0x57) {
                         CamReq_TownPc();
                         gFieldControl = 0;
                         Player_SetFlag((Player *)pc, 0x20000);
@@ -625,7 +626,7 @@ void TownPc_Action(Player *pc)
             } else {
                 Actor_SetStateNow((Player *)((u8 *) pc), 0, 0x19, 0);
                 gFieldControl = 0;
-                if (gScene.area == 0x57) {
+                if (gScene.area == AREA_HUB_0x57) {
                     Player_SetFlag((Player *)pc, 0x20000);
                 } else {
                     CamReq_Lobby44(0xB);

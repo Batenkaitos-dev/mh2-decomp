@@ -20,7 +20,7 @@ typedef struct McState {
     s32 busy;       /* 0xCC: nonzero while a card operation runs */
 } McState;
 extern McState gCardTask;
-extern s32 D_6AF134[2];     /* gCardTask.type */
+extern s32 gCardTaskTypes[2]; /* gCardTask.type, as its own symbol: YnCard_CheckCurrentSlot needs its own base */
 #define MC_BUSY gCardTask.busy
 #define MC_SLOT gCardTask.slot
 #define MC_TYPE gCardTask.type

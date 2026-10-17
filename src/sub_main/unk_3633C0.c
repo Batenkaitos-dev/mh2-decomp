@@ -72,7 +72,7 @@ void Kbd_EmptyInit(void)
 }
 
 /* Prepares and binds texture 0x148. */
-void Tex_Bind148(void)
+void Kbd_BindGlyphTex(void)
 {
     Tex_Prepare(1, 0x148);
     Tex_Bind(0x148);

@@ -32,7 +32,7 @@ typedef struct RecipeHit {
  * side, and an area's map is one half of it (the drawing in unk_33E620.c
  * takes u 0..0x78 for the left half, 0x78..0xF0 for the right). */
 #define MAP_HALF_WHOLE  0   /* a stage with one map */
-#define MAP_HALF_LEFT   1   /* areas 0x79 to 0x7B */
+#define MAP_HALF_LEFT   1   /* AREA_TOWER_0 to AREA_TOWER_2 */
 #define MAP_HALF_RIGHT  2   /* the stage's other areas */
 
 /* gMapIconKinds[monster kind]: how the map draws a monster
@@ -57,6 +57,12 @@ typedef struct RecipeHit {
 #define FIELD_MENU_ENTRIES          8
 #define FIELD_MENU_ENTRIES_ONLINE   7
 
+
+/* The status page's text colours (0x80BBGGRR, the font's half-scale colour). */
+#define STATUS_COLOR_LABEL  0x807F7F28  /* the labels */
+#define STATUS_COLOR_VALUE  0x807F7F7F  /* the values, and a stat the same as the other's */
+#define STATUS_COLOR_BETTER 0x802B7F7F  /* a stat higher than the compared one's */
+#define STATUS_COLOR_WORSE  0x807F212E  /* a stat lower than the compared one's */
 /* The status page's entries (StatusMenu_Update, by listCursor): offline
  * the first two, online all five (three in the lobby while not online). */
 #define STATUS_PERSONAL     0   /* the hunter's status (PersonalStatus_*) */
@@ -175,9 +181,118 @@ typedef struct SpriteWords {
 #define DPAD_REPEAT_DELAY   8   /* from a press to the first repeat */
 #define DPAD_REPEAT_RATE    3   /* between repeats */
 
+/* ItemList_Draw's and ItemList_DrawPouch's flags (the item lists of the
+ * pouch, combine and drop windows). */
+#define ITEM_LIST_TITLE2    0x01    /* the second title, gItemListTitles[1] */
+#define ITEM_LIST_SAVED     0x02    /* ItemList_DrawPouch: the saved pouch (gSave.pouch), not the player's */
+#define ITEM_LIST_COMBINE   0x04    /* colour the items by the combine menu's picks and recipes */
+#define ITEM_LIST_FRAME     0x08    /* draw the list's frame (Menu_DrawFrame) */
+#define ITEM_LIST_SORTED    0x10    /* ItemList_DrawPouch: pack and sort the stacks first */
+#define ITEM_LIST_SORT_HINT 0x20    /* the text box and the sort button's hint (dropped while the window slides) */
+#define ITEM_LIST_MOVING    0x40    /* dim the cursor's slot (HudState.slot), the stack being moved */
+#define ITEM_LIST_SLIDE     0x80    /* follow the pouch window's slide (SHAKE_POUCH_MENU) */
+
+/* HudState.pouchBarState (Hud_DrawPouchItem): the pouch bar opens while
+ * the player holds the item select (Player.itemSelect), with
+ * pouchBarTimer sliding from 6 down to 0 by 3 a frame; it slides back
+ * from 3 up to 9 as it closes. Closed, the HUD shows the selector box. */
+#define POUCH_BAR_CLOSED    0
+#define POUCH_BAR_OPENING   1
+#define POUCH_BAR_OPEN      2
+#define POUCH_BAR_CLOSING   3
+
+/* HudState.dropState: the pouch-full dialog (PouchDrop_Update), when an
+ * item is got with no room for it (HudState.dropItem). */
+#define DROP_NONE           0
+#define DROP_NOTICE         1   /* post the item's notice and wait for it */
+#define DROP_WAIT_BANNER    2   /* the pouch-full text, until the banner is gone; then the window slides in */
+#define DROP_CHOOSE         3   /* swap it for a pouch item, or leave it (dropChoice 0 or 1) */
+#define DROP_PICK_SLOT      4   /* pick the pouch slot to give up */
+#define DROP_CONFIRM        5   /* yes or no; yes swaps the item in */
+#define DROP_CLOSING        6   /* wait for the window to slide out */
+
+/* Hud_DrawBlinkIcon's icons (gBlinkIconDefs), the gunners' prompts. */
+#define BLINK_ICON_RELOAD       0   /* the clip is empty */
+#define BLINK_ICON_RELOADING    1   /* a reload runs (the gunlance's reload states, the bowgun's reload motion) */
+#define BLINK_ICON_NEXT_AMMO    2   /* the loaded ammo is used up and the pouch has another */
+
 /* HudState.aimFade while the player is not aiming (Player_IsAiming): it
  * counts down to 0 as the aim view comes in (Hud_DrawAimView). */
 #define AIM_FADE_IDLE 4
+
+/* A point on a stage's map (gMapPoints, read by Map_GetPoint): the map
+ * coordinates of an area's mark, z its dot's radius (0: none, the area's
+ * record gives the place). */
+typedef struct MapPoint {
+    s16 x, y, z;
+} MapPoint;
+
+/* A health or stamina gauge of the cockpit (Hud_DrawGaugeFrame,
+ * Hud_DrawGaugeFill): its place, its full length and its value. */
+typedef struct Gauge {
+    f32 x;              /* 0x00 */
+    f32 len;            /* 0x04: the full length */
+    s16 y;              /* 0x08 */
+    s16 cur;            /* 0x0A */
+    s16 max;            /* 0x0C */
+    u8 unkE[2];
+    u32 color;          /* 0x10 */
+} Gauge;
+
+/* The menus' fades (Hud_FadeStart, Fade_UpdateAll): each of the six
+ * gHudFades plays a FadeDef, a texture rectangle moved and faded by two
+ * key lists (a key time of 0 ends a list). */
+typedef struct AlphaKey {
+    s32 time;           /* frames from the fade's start */
+    f32 value;          /* 0 to 1 */
+} AlphaKey;
+
+typedef struct PosKey {
+    s32 time;           /* frames from the fade's start */
+    f32 x;              /* scales of the rectangle's corners */
+    f32 y;
+} PosKey;
+
+typedef struct FadeDef {
+    s16 angle;          /* 0x00 */
+    u16 tex;            /* 0x02 */
+    u32 color;          /* 0x04 */
+    s16 u;              /* 0x08 */
+    s16 v;              /* 0x0A */
+    s16 x1;             /* 0x0C */
+    s16 y1;             /* 0x0E */
+    s16 x0;             /* 0x10 */
+    s16 y0;             /* 0x12 */
+    PosKey *pos;        /* 0x14 */
+    AlphaKey *alpha;    /* 0x18 */
+    u8 unk1C[4];
+} FadeDef;
+
+typedef struct Fade {
+    u8 active;          /* 0x00 */
+    u8 visible;         /* 0x01: it has started */
+    u8 alpha;           /* 0x02 */
+    u8 start;           /* 0x03: the frame it starts at (HudState.fadeFrame) */
+    f32 x0;             /* 0x04 */
+    f32 x1;             /* 0x08 */
+    f32 y0;             /* 0x0C */
+    f32 y1;             /* 0x10 */
+    f32 bx;             /* 0x14: the base position */
+    s16 by;             /* 0x18 */
+    u8 unk1A[2];
+    FadeDef *def;       /* 0x1C */
+} Fade;
+
+/* A gunner's prompt (gBlinkIconDefs, Hud_DrawBlinkIcon): its size, its x
+ * in the weapon box and its texture corners (TEX_UV words). */
+typedef struct IconDef {
+    s16 unk0;
+    s16 w;              /* 0x2 */
+    s16 h;              /* 0x4 */
+    s16 x;              /* 0x6 */
+    s32 uv0;            /* 0x8 */
+    s32 uv1;            /* 0xC */
+} IconDef;
 
 typedef struct HudState {
     s8 started;                 /* 0x000: set to 1 by the first update (ItemHud_Update, Hud_Update); nothing reads it */
@@ -195,9 +310,9 @@ typedef struct HudState {
     s16 dpadRepeatDir;          /* 0x00C: the D-pad direction being repeated */
     s8 dpadRepeatTimer;         /* 0x00E: frames to the next repeat (DPAD_REPEAT_DELAY, then DPAD_REPEAT_RATE) */
     u8 yesNo;                   /* 0x00F: the yes/no choice (0 yes) */
-    s16 timer[4];               /* 0x010: per player (TIMER in unk_33E620.c) */
+    s16 statusTimer[4];         /* 0x010: per player: frames the status icon stays (20), -1 when no status shows (Hud_DrawStatusIcon) */
     u8 unk018[4];               /* 0x018 */
-    u8 statusIcon[4];           /* 0x01C: per player: the status icon shown (0..14, cycles through the set bits of the mask; SEL in unk_33E620.c) */
+    u8 statusIcon[4];           /* 0x01C: per player: the status icon shown (0..14, cycles through the set bits of the mask) */
     u8 unk020[0x022 - 0x020];
     u8 deliveryMenu;            /* 0x022: Player.deliveryMenu, copied by ItemHud_Update */
     u8 deliveryOpen;            /* 0x023: Player.deliveryOpen, copied each frame (ItemHud_Update) */

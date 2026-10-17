@@ -76,7 +76,7 @@ void Select_DrawPadWarning(void);
 void Select_DrawContentWarning(void);
 void Select_DrawSplash(void);
 s32 Select_ApplyBootArgs(void);
-void Sound_PlaySe73(void);
+void Sound_PlayConfirm(void);
 void Text_SetDefaults(void);
 /* Static, as Boot_UpdateScreens's code needs: it keeps v0 free across the
  * calls only when they go to local void functions. */
@@ -232,7 +232,7 @@ static void Boot_DrawPicture(void)
 {
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 2);
     Tex_Bind(2);
     spr.x = 0;
@@ -276,7 +276,7 @@ void Boot_DrawTitleScreen(s32 alpha)
 {
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 3);
     Tex_Bind(3);
     spr.x = 0;
@@ -411,7 +411,7 @@ void Boot_UpdateScreens(void)
         pad = gPadState[0].pressed;
         if ((pad & 0x8000) || (pad & 0x20)) {
             if (gBootWork->mode == BOOT_TITLE) {
-                Sound_PlaySe73();
+                Sound_PlayConfirm();
                 FadeA_Start(5);
                 gBootWork->waitFrames = 60;
             } else {
@@ -714,7 +714,7 @@ void Select_DrawContentWarning(void)
 
     Tex_Prepare(1, 6);
     Tex_Bind(6);
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     spr.w = 0x280;
     spr.u1 = 0xFF;
     spr.h = 0x1C0;
@@ -739,7 +739,7 @@ void Select_DrawSplash(void)
     s32 splash;
 
     splash = TaskSlot_Get(0)->splash;
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, splash + 2);
     Tex_Bind(splash + 2);
     if (splash == 7 || splash == 0) {

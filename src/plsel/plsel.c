@@ -1,6 +1,17 @@
 /*
- * plsel: the player select overlay's entry (plsel_entry, a task with four
- * states) and the character select flow (0xD60280-0xD64560).
+ * plsel: the player select overlay's two tasks.
+ *  - plsel_entry, the overlay's entry before a quest (PlselEntryMode): it
+ *    fills the players' slots in gQuestSync and waits until every player
+ *    in the quest is ready (QSYNC_STATE_SETUP), or sends the local player
+ *    to the results.
+ *  - Plsel_SelectTask, the training quest's select screen (PlselSelMode):
+ *    each player takes one of a set's four preset hunters (PlselPreset,
+ *    gPlselPresets' sets), shown as preview players, with the online chat
+ *    log (PlselSelWork's ring, Plsel_AddChatLog).
+ * The shared state is gQuestSync (qsync.h), kept in step with the other
+ * players by game message 10 (QSync_SendState). sub_main calls
+ * Plsel_ApplyPresetEquip and Plsel_ApplyStageEquip as it sets the players
+ * up; gm_sub's QSync_OnChat calls Plsel_LogChatFrom.
  */
 #include "common.h"
 #include "sprite.h"
@@ -17,6 +28,11 @@ extern s32 gTexHandles[];
 #include "scene.h"
 #include "save.h"
 #include "qsync.h"
+#include "sound.h"
+#include "render_state.h"
+#include "chat_log.h"
+#include "lobby_net.h"         /* NetUserRec: a chat sender */
+#include "window.h"
 #include "plsel/plsel.h"   /* the texts this file uses (tools/content_gen.py) */
 
 /* The game compiled this file at optimization level 4 (the build's -O3,p
@@ -49,9 +65,9 @@ s32 sprintf(char *, const char *, ...);
 char *strcat(char *dst, const char *src);
 void Sjis_Widen(char *src, char *dst);
 extern PlselPreset *gPlselPresets[];
-extern u16 D_896340[];
+extern u16 gPlselPresetStages[];
 
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
 s32 Sprite_Draw(Sprite *s);
@@ -63,7 +79,7 @@ void *memset(void *, s32, u32);
 extern s32 gItemColors[];
 extern char gMemberNames[][0x11];
 
-void func_901790(s32, s32);
+void QSync_SendState(u8 kind, u8 who);
 void TaskSlot_End(TaskSlot *t);
 void Player_SetColorWord(Player *pl, u8 idx);
 void Plsel_InitPlayer(Player *p, s16 id);
@@ -101,7 +117,7 @@ void Vec_Copy(f32 *dst, f32 *src);
 void Window_DrawText(void *p, s16 *pos, u8 *text);
 
 u16 Equip_GetKind(EquipItem *e);
-extern PlselPreset *D_896D90[];
+extern PlselPreset *gTrainingPresets[];
 
 s32 Tex_Use(s32 n, u32 *handles);
 void Plsel_Setup(TaskSlot *task);
@@ -111,7 +127,6 @@ void Plsel_DebugMenu(TaskSlot *task);
 void Loading_Stop(void);
 void Quest_Finish(void);
 void Frame_Draw(void);
-extern s32 D_6AE3D4;
 
 void QuestSync_Clear(void);
 void Plsel_InitSlots(void);
@@ -121,12 +136,12 @@ void Loading_SetMessage(u32 mode);
 s16 func_364BC0(void);
 
 void Chat_FilterWords(char *s);
-void Plsel_AddChatLog(u8 who, char *msg, u8 *pl, u8 flag);
+void Plsel_AddChatLog(u8 who, char *msg, NetUserRec *from, u8 flag);
 extern u8 gChatClassColors[];
 extern char gPlayerIds[][8];
 
 s32 Chat_FilterIfNotBlank(u8 *);
-void func_901E80(u8, s32, void *, u8);
+void QSync_SendChat(u8 who, u8 kind, char *text, u8 toPlayer);
 void Kbd_Cancel(void);
 u8 Plsel_ChatRunKbd(u8 *, s32, s16);
 
@@ -194,7 +209,7 @@ s32 Gs_ClearColor(u8 mode, u32 color);
 void Gfx_SetBlend(s32, s32);
 void Chat_DrawKbdBox(s32 text);
 void Text_FlushPages(void);
-void Plsel_OnChatMessage(s32 arg0, u8 n, s32 arg2);
+void Plsel_DrawChatWindow(s32 arg0, u8 n, s32 arg2);
 void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size);
 void Text_DrawAllPages(void);
 void Plsel_TickTimers(void);
@@ -233,103 +248,130 @@ Panel gPlselChatWin = {
 #include "plsel/00D76040.inc"
 };
 
-void plsel_entry(TaskSlot *task) {
+/*
+ * The overlay's entry task: runs its steps (PlselEntryMode: the setup, the
+ * wait for the other players, the finish, the debug menu). Online, a local
+ * player who is no longer in the quest goes to the results and the task
+ * ends; otherwise every 60 frames (gQuestSync.bumpLeft counts them) it sends
+ * QSYNC_STATE_IDLE.
+ */
+void plsel_entry(TaskSlot *task)
+{
     if (gTexHandles[1] != 0) {
-        Tex_Use(1, (u32 *) &D_6AE3D4);
+        Tex_Use(1, (u32 *) &gTexHandles[1]);
     }
     switch (task->mode) {
-    case 0:
+    case PLSEL_ENTRY_SETUP:
         Plsel_Setup(task);
         break;
-    case 1:
+    case PLSEL_ENTRY_WAIT:
         Plsel_WaitPlayersReady(task);
         break;
-    case 2:
+    case PLSEL_ENTRY_FINISH:
         Plsel_Finish(task);
         break;
-    case 3:
+    case PLSEL_ENTRY_DEBUG:
         Plsel_DebugMenu(task);
         break;
     }
-    if (Game_IsOnline() == 1 && gScene.inQuest[gScene.localPlayer] == 0xFF) {
+    if (Game_IsOnline() == 1 && gScene.inQuest[gScene.localPlayer] == IN_QUEST_NO_PLAYER) {
         Loading_Stop();
-        gScene.scene = 5;
+        gScene.scene = SCENE_RESULTS;
         Quest_Finish();
         FadeA_Reset();
         TaskSlot_End(task);
     } else {
         if (++gQuestSync.bumpLeft >= 60) {
             gQuestSync.bumpLeft = 0;
-            func_901790(8, gScene.localPlayer);
+            QSync_SendState(QSYNC_STATE_IDLE, gScene.localPlayer);
         }
         Frame_Draw();
     }
 }
 
-extern s32 D_0042F1D8;
-void Plsel_Setup(TaskSlot *task) {
+extern s32 gPlselTexPack;
+/*
+ * PLSEL_ENTRY_SETUP: resets the subsystems, the players, the area and the
+ * fade, loads the texture file and the overlay's pack (PLSEL_TEX_BG on), and
+ * moves on.
+ */
+void Plsel_Setup(TaskSlot *task)
+{
     Game_ResetSubsystems();
     Player_ClearAll();
     Area_ClearState();
     FadeA_Reset();
     Tex_LoadFile(0, 1, 0);
     Tex_LoadSystemPack(0);
-    Tex_LoadPack(D_0042F1D8, 0xA3, 0);
+    Tex_LoadPack(gPlselTexPack, PLSEL_TEX_BG, 0);
     task->unk14 = 0;
     task->mode++;
 }
 
-void Plsel_WaitPlayersReady(TaskSlot *task) {
-    QuestSync *st;
+/*
+ * PLSEL_ENTRY_WAIT. Step 0 clears gQuestSync, fills the slots
+ * (Plsel_InitSlots), marks the local player ready, starts a 3600-frame
+ * timeout and sends QSYNC_STATE_SETUP. Step 1 sends the local player to the
+ * results if it left the quest or the time ran out; once every slot is
+ * ready or empty it moves to PLSEL_ENTRY_FINISH.
+ */
+void Plsel_WaitPlayersReady(TaskSlot *task)
+{
+    QuestSync *sync;
     u16 self;
     s16 i;
 
-    st = &gQuestSync;
+    sync = &gQuestSync;
     self = gScene.localPlayer;
     switch (task->step) {
     case 0:
         task->step++;
         QuestSync_Clear();
         Plsel_InitSlots();
-        st->ready[self] = 1;
-        st->timer = 0xE10;
-        func_901790(2, gScene.localPlayer);
+        sync->ready[self] = 1;
+        sync->timer = 0xE10;
+        QSync_SendState(QSYNC_STATE_SETUP, gScene.localPlayer);
         break;
     case 1:
-        if (Game_IsOnline() == 1 && gScene.inQuest[gScene.localPlayer] == 0xFF) {
+        if (Game_IsOnline() == 1 && gScene.inQuest[gScene.localPlayer] == IN_QUEST_NO_PLAYER) {
             Loading_Stop();
-            gScene.scene = 5;
+            gScene.scene = SCENE_RESULTS;
             Quest_Finish();
             TaskSlot_End(task);
-        } else if (--st->timer <= 0) {
+        } else if (--sync->timer <= 0) {
             Loading_Stop();
-            gScene.scene = 5;
+            gScene.scene = SCENE_RESULTS;
             Quest_Finish();
             TaskSlot_End(task);
         } else {
             for (i = 0; i < 4; i++) {
-                if (st->ready[i] == 0 && gScene.inQuest[i] != 0xFF) {
+                if (sync->ready[i] == 0 && gScene.inQuest[i] != IN_QUEST_NO_PLAYER) {
                     return;
                 }
             }
             task->mode++;
-            st->step = 0;
+            sync->step = 0;
         }
         break;
     }
 }
 
-void Plsel_Finish(TaskSlot *task) {
-    QuestSync *st;
+/*
+ * PLSEL_ENTRY_FINISH: sends QSYNC_STATE_SETUP, waits 30 frames, then resets
+ * the subsystems, ends the task and clears gScene.allLocal.
+ */
+void Plsel_Finish(TaskSlot *task)
+{
+    QuestSync *sync;
 
-    st = &gQuestSync;
-    switch (st->step) {
+    sync = &gQuestSync;
+    switch (sync->step) {
     case 0:
-        st->step++;
-        st->timer = 0x1E;
-        func_901790(2, gScene.localPlayer);
+        sync->step++;
+        sync->timer = 0x1E;
+        QSync_SendState(QSYNC_STATE_SETUP, gScene.localPlayer);
     case 1:
-        if (--st->timer <= 0) {
+        if (--sync->timer <= 0) {
             gSysSettings.unk03 = 1;
             Game_ResetSubsystems();
             TaskSlot_End(task);
@@ -339,68 +381,79 @@ void Plsel_Finish(TaskSlot *task) {
     }
 }
 
-static void func_00D606D0(QuestSync *st, TaskSlot *task) {
+/*
+ * Empty: called last by Plsel_DebugMenu with its state and task (a debug
+ * display compiled out).
+ */
+static void Plsel_DrawDebugMenu(QuestSync *sync, TaskSlot *task)
+{
 
 }
 
-/* The raw pad and scene addresses stay here: gPadState[0] and gScene's fields
- * change the code (7 words). */
-void Plsel_DebugMenu(TaskSlot *task) {
-    QuestSync *st;
+/*
+ * PLSEL_ENTRY_DEBUG, a debug menu of the quest's monsters: up and down pick
+ * a monster group (0-3), right and left change its kind (0-0x49, wrapping),
+ * cross and circle its count (0-15); start ends the task when the four
+ * counts total under 16. The pad and the scene are read through raw
+ * addresses: their named forms change the code.
+ */
+void Plsel_DebugMenu(TaskSlot *task)
+{
+    QuestSync *sync;
     u16 pad;
     u16 sum;
     s32 i;
 
-    st = &gQuestSync;
+    sync = &gQuestSync;
     pad = gPadState[0].pressed | gPadState[0].repeat | gPadState[1].pressed | gPadState[1].repeat;
     switch (gQuestSync.step) {
     case 0:
-        st->step++;
-        st->cursor = 0;
+        sync->step++;
+        sync->cursor = 0;
         break;
     case 1:
-        if (pad & 0x2000) {
-            if (st->cursor <= 0) {
-                st->cursor = 3;
+        if (pad & PAD_UP) {
+            if (sync->cursor <= 0) {
+                sync->cursor = 3;
             } else {
-                st->cursor--;
+                sync->cursor--;
             }
         }
-        if (pad & 0x1000) {
-            if (st->cursor >= 3) {
-                st->cursor = 0;
+        if (pad & PAD_DOWN) {
+            if (sync->cursor >= 3) {
+                sync->cursor = 0;
             } else {
-                st->cursor++;
+                sync->cursor++;
             }
         }
-        if (pad & 0x400) {
-            if (st->emKind[st->cursor] >= 0x49) {
-                st->emKind[st->cursor] = 0;
+        if (pad & PAD_RIGHT) {
+            if (sync->emKind[sync->cursor] >= 0x49) {
+                sync->emKind[sync->cursor] = 0;
             } else {
-                st->emKind[st->cursor]++;
+                sync->emKind[sync->cursor]++;
             }
         }
-        if (pad & 0x800) {
-            if (st->emKind[st->cursor] <= 0) {
-                st->emKind[st->cursor] = 0x49;
+        if (pad & PAD_LEFT) {
+            if (sync->emKind[sync->cursor] <= 0) {
+                sync->emKind[sync->cursor] = 0x49;
             } else {
-                st->emKind[st->cursor]--;
+                sync->emKind[sync->cursor]--;
             }
         }
-        if (pad & 0x40) {
-            if (st->emCount[st->cursor] != 0) {
-                st->emCount[st->cursor]--;
+        if (pad & PAD_CROSS) {
+            if (sync->emCount[sync->cursor] != 0) {
+                sync->emCount[sync->cursor]--;
             }
         }
-        if (pad & 0x20) {
-            if (st->emCount[st->cursor] < 0xF) {
-                st->emCount[st->cursor]++;
+        if (pad & PAD_CIRCLE) {
+            if (sync->emCount[sync->cursor] < 0xF) {
+                sync->emCount[sync->cursor]++;
             }
         }
-        if (pad & 0x8000) {
+        if (pad & PAD_START) {
             sum = 0;
             for (i = 0; i < 4; i++) {
-                sum += st->emCount[i];
+                sum += sync->emCount[i];
             }
             if (sum < 0x10) {
                 Loading_SetMessage(4);
@@ -412,85 +465,98 @@ void Plsel_DebugMenu(TaskSlot *task) {
         }
         break;
     }
-    func_00D606D0(st, task);
+    Plsel_DrawDebugMenu(sync, task);
 }
 
-/* Resets the select state's ten slots: online, the connected players' slots
- * are active (0) and the others unused (-1); offline, slot 0 is active and
- * the others 1. The local player's slot (0x6ADCEC) takes the record at
- * gSave.equip[0] (the weapon) when gSave.unk0 is set. */
-void Plsel_InitSlots(void) {
-    QuestSync *st;
+/*
+ * Resets the select state's ten slots: online, the connected players' slots
+ * are ready 0 and the others -1 (not in the quest); offline, slot 0 is 0 and
+ * the others 1. The local player's slot (gScene.localPlayer) takes
+ * gSave.equip[0] as its weapon when gSave.used is set, else an empty blade
+ * weapon. The file is compiled at level 4 for this function.
+ */
+void Plsel_InitSlots(void)
+{
+    QuestSync *sync;
     s32 i;
 
-    st = &gQuestSync;
-    for (i = 0; i < 10; i++) {
+    sync = &gQuestSync;
+    for (i = 0; i < PLAYER_SLOTS; i++) {
         if (Game_IsOnline() == 1) {
             if (i < gScene.playerCount) {
-                st->ready[i] = 0;
+                sync->ready[i] = 0;
             } else {
-                st->ready[i] = -1;
+                sync->ready[i] = -1;
             }
         } else if (i == 0) {
-            st->ready[i] = 0;
+            sync->ready[i] = 0;
         } else {
-            st->ready[i] = 1;
+            sync->ready[i] = 1;
         }
-        st->gender[i] = (i & 1) != 0;
-        st->startItemList[i] = 0;
+        sync->gender[i] = (i & 1) != 0;
+        sync->startItemList[i] = 0;
         if (i == gScene.localPlayer) {
-            st->presetEquip[i] = 0;
+            sync->presetEquip[i] = 0;
             if (gSave.used != 0) {
-                st->weapon[i] = gSave.equip[0];
+                sync->weapon[i] = gSave.equip[0];
             } else {
-                st->weapon[i].type = 6;
-                st->weapon[i].id = 0;
-                st->weapon[i].level = 0;
+                sync->weapon[i].type = 6;
+                sync->weapon[i].id = 0;
+                sync->weapon[i].level = 0;
             }
         } else {
-            st->weapon[i].type = 6;
-            st->weapon[i].id = 0;
-            st->weapon[i].level = 0;
+            sync->weapon[i].type = 6;
+            sync->weapon[i].id = 0;
+            sync->weapon[i].level = 0;
         }
-        st->unk16[i] = 4;
+        sync->unk16[i] = 4;
     }
-    st->emKind[0] = func_364BC0();
-    st->emCount[0] = 1;
-    st->emKind[1] = 0;
-    st->emCount[1] = 0;
-    st->emKind[2] = 0;
-    st->emCount[2] = 0;
-    st->emKind[3] = 0;
-    st->emCount[3] = 0;
+    sync->emKind[0] = func_364BC0();
+    sync->emCount[0] = 1;
+    sync->emKind[1] = 0;
+    sync->emCount[1] = 0;
+    sync->emKind[2] = 0;
+    sync->emCount[2] = 0;
+    sync->emKind[3] = 0;
+    sync->emCount[3] = 0;
 }
 
 extern s32 gChatTitleText;
-void Plsel_SelectTask(TaskSlot *task) {
+/*
+ * The training quest's select task (sub_main starts it when Quest_IsDrill):
+ * runs its steps (PlselSelMode), updates the players, the lights and the
+ * camera and draws the frame; draws the keyboard's box with depth writes off
+ * while it is open, and the chat window and log while the keyboard is open
+ * or the log's timer runs. Online, it closes the overlay once the local
+ * player has left the quest.
+ */
+void Plsel_SelectTask(TaskSlot *task)
+{
     PlselSelWork *w;
-    s32 t;
-    u8 k;
+    s32 zwrite;
+    u8 slotState;
 
     w = gPlselSelWork;
-    if (D_6AE3D4 != 0) {
-        Tex_Use(1, (u32 *) &D_6AE3D4);
+    if (gTexHandles[1] != 0) {
+        Tex_Use(1, (u32 *) &gTexHandles[1]);
     }
     switch (task->mode) {
-    case 0:
+    case PLSEL_SEL_INIT:
         Plsel_SelectInit(task);
         break;
-    case 1:
+    case PLSEL_SEL_SOUNDS:
         Plsel_SelectWaitSound(task);
         break;
-    case 2:
+    case PLSEL_SEL_START_CHOOSE:
         Plsel_SelectStartChoose(task);
         break;
-    case 3:
+    case PLSEL_SEL_SETUP_PLAYERS:
         Plsel_SelectSetupPlayers(task);
         break;
-    case 4:
+    case PLSEL_SEL_CHOOSE:
         Plsel_StateChoose(task);
         break;
-    case 5:
+    case PLSEL_SEL_READY:
         Plsel_StateReady(task);
         break;
     }
@@ -500,24 +566,24 @@ void Plsel_SelectTask(TaskSlot *task) {
     Camera_Update();
     Frame_Draw();
     if ((s8)Kbd_IsOpen() != 0) {
-        t = Gs_GetState(0x6C);
-        Gs_SetState(0x6C, 1);
+        zwrite = Gs_GetState(RS_ZWRITE);
+        Gs_SetState(RS_ZWRITE, 1);
         Gs_ClearColor(0, 0);
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         Gfx_SetBlend(4, 5);
         Chat_DrawKbdBox(w->kbdOpen != 0 ? 0xBDB59F6C : 0xBD6C6CC5);
-        Gs_SetState(0x6C, t);
+        Gs_SetState(RS_ZWRITE, zwrite);
         Text_FlushPages();
     }
     if ((s8)Kbd_IsOpen() != 0 || w->logShowTimer != 0) {
-        Plsel_OnChatMessage(gChatTitleText, 0x12, 1);
+        Plsel_DrawChatWindow(gChatTitleText, 0x12, 1);
         Plsel_DrawChatLog(0, 0, 0, 0x12);
         Text_DrawAllPages();
     }
     Plsel_TickTimers();
     if (Game_IsOnline() != 0) {
-        k = gScene.inQuest[gScene.localPlayer];
-        if (k != 1) {
+        slotState = gScene.inQuest[gScene.localPlayer];
+        if (slotState != 1) {
             gSysSettings.unk03 = 1;
             gScene.plselOpen = 0;
             Game_ResetSubsystems();
@@ -528,60 +594,75 @@ void Plsel_SelectTask(TaskSlot *task) {
     }
 }
 
-void Plsel_DrawHeader(u16 row) {
-    Sprite s;
+/*
+ * Draws row `row` (32 pixels high) of the header strips (PLSEL_TEX_HEADER),
+ * 192 by 48.
+ */
+void Plsel_DrawHeader(u16 row)
+{
+    Sprite spr;
 
-    Gfx_SetState63(1);
-    Tex_Prepare(1, 0xA5);
-    Tex_Bind(0xA5);
-    s.x = -0xA;
-    s.u0 = 0;
-    s.y = 0xA;
-    s.w = 0xC0;
-    s.h = 0x30;
-    s.color = -1;
-    s.v0 = row << 5;
-    s.u1 = 0x7F;
-    s.v1 = s.v0 + 0x1F;
-    Sprite_Draw(&s);
+    Gfx_SetTexFilter(1);
+    Tex_Prepare(1, PLSEL_TEX_HEADER);
+    Tex_Bind(PLSEL_TEX_HEADER);
+    spr.x = -0xA;
+    spr.u0 = 0;
+    spr.y = 0xA;
+    spr.w = 0xC0;
+    spr.h = 0x30;
+    spr.color = -1;
+    spr.v0 = row << 5;
+    spr.u1 = 0x7F;
+    spr.v1 = spr.v0 + 0x1F;
+    Sprite_Draw(&spr);
 }
 
-void Plsel_DrawFrame(s32 unused) {
-    Sprite s;
+/*
+ * Draws the full-screen background (PLSEL_TEX_BG) and the bottom panel
+ * (PLSEL_TEX_PANEL) with depth writes off, then turns them back on.
+ */
+void Plsel_DrawFrame(s32 unused)
+{
+    Sprite spr;
 
-    Gs_SetState(0x6C, 0);
-    Gfx_SetState63(1);
-    Tex_Prepare(1, 0xA3);
-    Tex_Bind(0xA3);
-    s.x = 0;
-    s.y = 0;
-    s.w = 0x280;
-    s.h = 0x1C0;
-    s.color = -1;
-    s.v0 = 0;
-    s.u0 = 0;
-    s.u1 = 0x1FF;
-    s.v1 = 0x1BF;
-    Sprite_Draw(&s);
-    Tex_Prepare(1, 0xA4);
-    Tex_Bind(0xA4);
-    s.x = 0x20;
-    s.y = 0x174;
-    s.w = 0x100;
-    s.h = 0x46;
-    s.color = 0xE0202020;
-    s.v0 = 0;
-    s.u0 = 0;
-    s.u1 = 0xFF;
-    s.v1 = 0x45;
-    Sprite_Draw(&s);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 0);
+    Gfx_SetTexFilter(1);
+    Tex_Prepare(1, PLSEL_TEX_BG);
+    Tex_Bind(PLSEL_TEX_BG);
+    spr.x = 0;
+    spr.y = 0;
+    spr.w = 0x280;
+    spr.h = 0x1C0;
+    spr.color = -1;
+    spr.v0 = 0;
+    spr.u0 = 0;
+    spr.u1 = 0x1FF;
+    spr.v1 = 0x1BF;
+    Sprite_Draw(&spr);
+    Tex_Prepare(1, PLSEL_TEX_PANEL);
+    Tex_Bind(PLSEL_TEX_PANEL);
+    spr.x = 0x20;
+    spr.y = 0x174;
+    spr.w = 0x100;
+    spr.h = 0x46;
+    spr.color = 0xE0202020;
+    spr.v0 = 0;
+    spr.u0 = 0;
+    spr.u1 = 0xFF;
+    spr.v1 = 0x45;
+    Sprite_Draw(&spr);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
-void Plsel_SetCamera(void) {
+/*
+ * Aims the camera at the preview hunter (gPlayers[PLSEL_PREVIEW_PLAYER]):
+ * the target raised 125 and shifted 40, the eye 160 in front.
+ */
+void Plsel_SetCamera(void)
+{
     Player *pl;
 
-    pl = &gPlayers[5];
+    pl = &gPlayers[PLSEL_PREVIEW_PLAYER];
     Vec_Copy(gCamera->at, pl->pos);
     Vec_Copy(gCamera->eye, pl->pos);
     gCamera->at[0] += 40.0f;
@@ -593,7 +674,15 @@ void Plsel_SetCamera(void) {
 
 extern s32 gSystemTexFiles[];
 extern u16 gNextQuestId;
-void Plsel_SelectInit(TaskSlot *task) {
+/*
+ * PLSEL_SEL_INIT: resets, loads the system packs (PLSEL_TEX_ICONS and
+ * PLSEL_TEX_BG), fills the slots and picks the preset set for the stage,
+ * builds the preview hunter from the save's gender, gives gPlayers[0-5]
+ * their draw slots, starts the online countdown (3600 frames), marks the
+ * select screen open and clears the chat work.
+ */
+void Plsel_SelectInit(TaskSlot *task)
+{
     s16 i;
     Player *pl;
 
@@ -602,15 +691,15 @@ void Plsel_SelectInit(TaskSlot *task) {
     Player_ClearAll();
     Area_ClearState();
     Gs_SetTableColor(0);
-    Tex_LoadPack(gSystemTexFiles[1], 0x144, 0);
-    Tex_LoadPack(gSystemTexFiles[3], 0xA3, 0);
+    Tex_LoadPack(gSystemTexFiles[1], PLSEL_TEX_ICONS, 0);
+    Tex_LoadPack(gSystemTexFiles[3], PLSEL_TEX_BG, 0);
     task->mode++;
     task->unk14 = 0;
     task->unk15 = gSysSettings.unk45;
     Plsel_InitSlots();
     gNextQuestId = 0xFFFF;
     gQuestSync.presetSet = Plsel_PresetSetForStage();
-    gQuestSync.builtSet = 0xFF;
+    gQuestSync.builtSet = PLSEL_SET_NONE;
     gQuestSync.pick = 1;
     gQuestSync.unkD9 = 0;
     Anim_LoadCommon(5);
@@ -620,9 +709,9 @@ void Plsel_SelectInit(TaskSlot *task) {
     Light_InitAll(gScene.area);
     gCamera->fov = 0.87266463f;
     gCamera->roll = 0.0f;
-    Plsel_SetupPresetPlayer(&gPlayers[5], gSave.gender & 1);
+    Plsel_SetupPresetPlayer(&gPlayers[PLSEL_PREVIEW_PLAYER], gSave.gender & 1);
     Plsel_SetCamera();
-    FadeA_Start(2);
+    FadeA_Start(FADE_IN_BLACK);
     for (i = 0, pl = gPlayers; i < 6; i++, pl++) {
         pl->drawSlotId = DrawSlot_Alloc();
         pl->index = i;
@@ -640,7 +729,12 @@ void Plsel_SelectInit(TaskSlot *task) {
     gQuestSync.bumpRight = 0;
 }
 
-void Plsel_SelectWaitSound(TaskSlot *task) {
+/*
+ * PLSEL_SEL_SOUNDS: once the select screen's sound banks are loaded, moves on
+ * after 15 frames and plays the music bank's sounds 0 and 1.
+ */
+void Plsel_SelectWaitSound(TaskSlot *task)
+{
     if (Sound_LoadSelectBanks(task) != 0) {
         func_195A00();
         task->mode++;
@@ -651,315 +745,377 @@ void Plsel_SelectWaitSound(TaskSlot *task) {
     }
 }
 
-void Plsel_InitPlayer(Player *p, s16 id) {
-    p->active = 1;
-    p->visible = 1;
-    p->index = id;
-    p->isEm = 0;
-    p->alpha = 1.0f;
-    p->motionLayerCount = 2;
-    p->scale[0] = 1.0f;
-    p->scale[1] = 1.0f;
-    p->scale[2] = 1.0f;
-    p->motion[0].step = 2.0f;
-    p->motion[1].step = 2.0f;
-    p->motionSpeed = 1.0f;
-    p->weaponOut = 0;
-    p->pos[0] = gStartPos[gScene.area].x;
-    p->pos[1] = gStartPos[gScene.area].y;
-    p->pos[2] = gStartPos[gScene.area].z;
-    p->rot[1] = 0;
-    p->rot[1] = 0xC00;
-    p->rot[2] = 0;
-    Player_InitPartTable(p->index);
-    Player_LoadPartModels(p);
-    Player_ClearFxBlock(p);
-    Player_InitRecords(p);
+/*
+ * Readies a preview player: active, visible, slot index slotIndex, scale and
+ * alpha 1, two motion layers, at the area's start position, heading 0xC00;
+ * loads its parts and models.
+ */
+void Plsel_InitPlayer(Player *pl, s16 slotIndex)
+{
+    pl->active = 1;
+    pl->visible = 1;
+    pl->index = slotIndex;
+    pl->isEm = 0;
+    pl->alpha = 1.0f;
+    pl->motionLayerCount = 2;
+    pl->scale[0] = 1.0f;
+    pl->scale[1] = 1.0f;
+    pl->scale[2] = 1.0f;
+    pl->motion[0].step = 2.0f;
+    pl->motion[1].step = 2.0f;
+    pl->motionSpeed = 1.0f;
+    pl->weaponOut = 0;
+    pl->pos[0] = gStartPos[gScene.area].x;
+    pl->pos[1] = gStartPos[gScene.area].y;
+    pl->pos[2] = gStartPos[gScene.area].z;
+    pl->rot[1] = 0;
+    pl->rot[1] = 0xC00;
+    pl->rot[2] = 0;
+    Player_InitPartTable(pl->index);
+    Player_LoadPartModels(pl);
+    Player_ClearFxBlock(pl);
+    Player_InitRecords(pl);
 }
 
-void Plsel_SetupPresetPlayer(Player *p, s16 n) {
-    PlselPresetPlayer *e;
+/*
+ * Builds the preview hunter from gPlselPresetPlayers[gender]: its look and
+ * armour, no weapon, at PLSEL_PREVIEW_PLAYER, in motion 0x2B9.
+ */
+void Plsel_SetupPresetPlayer(Player *pl, s16 n)
+{
+    PlselPresetPlayer *look;
 
-    e = &gPlselPresetPlayers[n];
-    p->weaponShown = 0;
-    p->gender = e->gender;
-    p->hairStyle = e->hairStyle;
-    p->hairColor = e->hairColor;
-    p->charType = 0;
-    Player_SetColorWord(p, 2);
-    p->lookVariant = 0;
-    p->equip[2].id = e->head;
-    p->equip[3].id = e->body;
-    p->equip[4].id = e->arms;
-    p->equip[5].id = e->waist;
-    p->equip[0].id = e->legs;
-    p->equip[1].id = e->unk1;
-    p->weaponType = 0;
-    p->weaponKind = 0;
-    Plsel_InitPlayer(p, 5);
-    Player_SetMotionPair(p, 0x2B9, 0, 0);
-    Player_UpdateMotionStep(p);
+    look = &gPlselPresetPlayers[n];
+    pl->weaponShown = 0;
+    pl->gender = look->gender;
+    pl->hairStyle = look->hairStyle;
+    pl->hairColor = look->hairColor;
+    pl->charType = 0;
+    Player_SetColorWord(pl, 2);
+    pl->lookVariant = 0;
+    pl->equip[2].id = look->head;
+    pl->equip[3].id = look->body;
+    pl->equip[4].id = look->arms;
+    pl->equip[5].id = look->waist;
+    pl->equip[0].id = look->legs;
+    pl->equip[1].id = look->unk1;
+    pl->weaponType = 0;
+    pl->weaponKind = 0;
+    Plsel_InitPlayer(pl, 5);
+    Player_SetMotionPair(pl, 0x2B9, 0, 0);
+    Player_UpdateMotionStep(pl);
 }
 
-/* The compiled-out check after the call (of the saved gender; any two-test
- * condition gives the same code) keeps &gSave in s0 for save[2] (the reads
- * before the call stay absolute), as the game does. */
-void Plsel_SetupSavedPlayer(Player *p, s16 id) {
-    PlselPreset *t;
+/*
+ * Builds preview player slotIndex from the save's look with the current set's
+ * preset hunter's equipment (armour and weapon). The empty check after the
+ * call keeps &gSave in a register for the save's reads, as in the game (a
+ * compiled-out check of the gender; any two-test condition gives the same
+ * code).
+ */
+void Plsel_SetupSavedPlayer(Player *pl, s16 id)
+{
+    PlselPreset *preset;
     SaveData *save;
 
     save = &gSave;
-    t = gPlselPresets[gQuestSync.presetSet];
-    t += id;
-    p->weaponShown = 1;
-    p->gender = save->gender;
-    p->hairStyle = save->hairStyle;
-    p->hairColor = save->hairColor;
-    p->charType = save->charType;
-    Player_SetColorWord(p, save->symbolColor);
+    preset = gPlselPresets[gQuestSync.presetSet];
+    preset += id;
+    pl->weaponShown = 1;
+    pl->gender = save->gender;
+    pl->hairStyle = save->hairStyle;
+    pl->hairColor = save->hairColor;
+    pl->charType = save->charType;
+    Player_SetColorWord(pl, save->symbolColor);
     if (save == NULL || save->gender > 1) { /* compiled-out check */
     }
-    p->equip[0].used = 1;
-    p->equip[0].type = 0;
-    p->equip[0].level = 0;
-    p->equip[0].deco[0] = 0;
-    p->equip[0].deco[1] = 0;
-    p->equip[0].deco[2] = 0;
-    p->equip[1].used = 1;
-    p->equip[1].type = 1;
-    p->equip[1].level = 0;
-    p->equip[1].deco[0] = 0;
-    p->equip[1].deco[1] = 0;
-    p->equip[1].deco[2] = 0;
-    p->equip[2].used = 1;
-    p->equip[2].type = 2;
-    p->equip[2].level = 0;
-    p->equip[2].deco[0] = 0;
-    p->equip[2].deco[1] = 0;
-    p->equip[2].deco[2] = 0;
-    p->equip[3].used = 1;
-    p->equip[3].type = 3;
-    p->equip[3].level = 0;
-    p->equip[3].deco[0] = 0;
-    p->equip[3].deco[1] = 0;
-    p->equip[3].deco[2] = 0;
-    p->equip[4].used = 1;
-    p->equip[4].type = 4;
-    p->equip[4].level = 0;
-    p->equip[4].deco[0] = 0;
-    p->equip[4].deco[1] = 0;
-    p->equip[4].deco[2] = 0;
-    p->equip[5].used = 1;
-    p->equip[5].type = 5;
-    p->equip[5].level = 0;
-    p->equip[5].deco[0] = 0;
-    p->equip[5].deco[1] = 0;
-    p->equip[5].deco[2] = 0;
-    p->equip[2].id = t->head;
-    p->equip[3].id = t->body;
-    p->equip[4].id = t->arms;
-    p->equip[5].id = t->waist;
-    p->equip[0].id = t->legs;
-    p->equip[1].id = save->face + 1;
-    p->equip[6].used = 1;
-    p->equip[6].type = t->weaponType;
-    p->equip[6].level = t->weaponLevel;
-    p->equip[6].deco[0] = 0;
-    p->equip[6].deco[1] = 0;
-    p->equip[6].deco[2] = 0;
-    Plsel_SetupPresetPouch(p, t->startItems);
-    p->equip[6].id = t->weaponId;
-    p->weaponKind = Equip_GetKind(&p->equip[6]);
-    p->weaponType = Equip_GetClass(&p->equip[6]);
-    p->isGunner = WeaponClass_IsGunner(p->weaponType);
-    p->weaponFlags = WeaponType_Flags(p->weaponType);
-    p->bladeSpecial = Equip_GetBladeSpecial(&p->equip[6]);
-    Plsel_InitPlayer(p, id);
-    Player_LoadWeaponModel(p->weaponKind, p->index);
-    Player_SetMotionPair(p, 1, 0, 0);
-    Player_UpdateMotionStep(p);
+    pl->equip[0].used = 1;
+    pl->equip[0].type = 0;
+    pl->equip[0].level = 0;
+    pl->equip[0].deco[0] = 0;
+    pl->equip[0].deco[1] = 0;
+    pl->equip[0].deco[2] = 0;
+    pl->equip[1].used = 1;
+    pl->equip[1].type = 1;
+    pl->equip[1].level = 0;
+    pl->equip[1].deco[0] = 0;
+    pl->equip[1].deco[1] = 0;
+    pl->equip[1].deco[2] = 0;
+    pl->equip[2].used = 1;
+    pl->equip[2].type = 2;
+    pl->equip[2].level = 0;
+    pl->equip[2].deco[0] = 0;
+    pl->equip[2].deco[1] = 0;
+    pl->equip[2].deco[2] = 0;
+    pl->equip[3].used = 1;
+    pl->equip[3].type = 3;
+    pl->equip[3].level = 0;
+    pl->equip[3].deco[0] = 0;
+    pl->equip[3].deco[1] = 0;
+    pl->equip[3].deco[2] = 0;
+    pl->equip[4].used = 1;
+    pl->equip[4].type = 4;
+    pl->equip[4].level = 0;
+    pl->equip[4].deco[0] = 0;
+    pl->equip[4].deco[1] = 0;
+    pl->equip[4].deco[2] = 0;
+    pl->equip[5].used = 1;
+    pl->equip[5].type = 5;
+    pl->equip[5].level = 0;
+    pl->equip[5].deco[0] = 0;
+    pl->equip[5].deco[1] = 0;
+    pl->equip[5].deco[2] = 0;
+    pl->equip[2].id = preset->head;
+    pl->equip[3].id = preset->body;
+    pl->equip[4].id = preset->arms;
+    pl->equip[5].id = preset->waist;
+    pl->equip[0].id = preset->legs;
+    pl->equip[1].id = save->face + 1;
+    pl->equip[6].used = 1;
+    pl->equip[6].type = preset->weaponType;
+    pl->equip[6].level = preset->weaponLevel;
+    pl->equip[6].deco[0] = 0;
+    pl->equip[6].deco[1] = 0;
+    pl->equip[6].deco[2] = 0;
+    Plsel_SetupPresetPouch(pl, preset->startItems);
+    pl->equip[6].id = preset->weaponId;
+    pl->weaponKind = Equip_GetKind(&pl->equip[6]);
+    pl->weaponType = Equip_GetClass(&pl->equip[6]);
+    pl->isGunner = WeaponClass_IsGunner(pl->weaponType);
+    pl->weaponFlags = WeaponType_Flags(pl->weaponType);
+    pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[6]);
+    Plsel_InitPlayer(pl, id);
+    Player_LoadWeaponModel(pl->weaponKind, pl->index);
+    Player_SetMotionPair(pl, 1, 0, 0);
+    Player_UpdateMotionStep(pl);
 }
 
-PlselPreset *Plsel_CurPreset(void) {
-    PlselPreset *p;
+/*
+ * Returns the current set's preset hunter under the cursor
+ * (gQuestSync.pick, at most PLSEL_SET_PRESETS - 1).
+ */
+PlselPreset *Plsel_CurPreset(void)
+{
+    PlselPreset *presets;
     s32 n;
 
-    p = gPlselPresets[gQuestSync.presetSet];
+    presets = gPlselPresets[gQuestSync.presetSet];
     n = gQuestSync.pick;
     if (n >= 4) {
         n = 3;
     }
-    return p + n;
+    return presets + n;
 }
 
-u8 Plsel_PresetSetForStage(void) {
-    u16 *p;
+/*
+ * Returns the preset set whose two stages (gPlselPresetStages' row) hold
+ * gQuest.stage, else set 0.
+ */
+u8 Plsel_PresetSetForStage(void)
+{
+    u16 *stagePairs;
     s32 i;
     s32 n;
-    u16 v;
+    u16 stageId;
 
-    v = gQuest.stage;
-    p = D_896340;
+    stageId = gQuest.stage;
+    stagePairs = gPlselPresetStages;
     n = 0;
-    for (i = 0; i < 0x11; i++, p += 2, n++) {
-        if (p[0] == v) {
+    for (i = 0; i < 0x11; i++, stagePairs += 2, n++) {
+        if (stagePairs[0] == stageId) {
             return n;
         }
-        if (p[1] == v) {
+        if (stagePairs[1] == stageId) {
             return n;
         }
     }
     return 0;
 }
 
-static s32 Plsel_SlotCount(u8 set) {
+static s32 Plsel_SlotCount(u8 set)
+{
     return 4;
 }
 
-s32 Plsel_ViewedSlotNo(u8 set, u8 sel) {
+s32 Plsel_ViewedSlotNo(u8 set, u8 sel)
+{
     return (gQuestSync.pick + 1) & 0xFF;
 }
 
-void Plsel_SelectStartChoose(TaskSlot *task) {
+/* PLSEL_SEL_START_CHOOSE: moves on with the cursor on the first preset. */
+void Plsel_SelectStartChoose(TaskSlot *task)
+{
     task->mode++;
     task->step = 0;
     gQuestSync.unkD3 = 0;
     gQuestSync.pick = 0;
 }
 
-void Plsel_SelectSetupPlayers(TaskSlot *task) {
-    QuestSync *st;
+/*
+ * PLSEL_SEL_SETUP_PLAYERS: rebuilds preview players 0-3 when the set
+ * changed, turns them to face the camera, places the camera, fades in and
+ * starts the select music.
+ */
+void Plsel_SelectSetupPlayers(TaskSlot *task)
+{
+    QuestSync *sync;
     s16 i;
     Player *pl;
 
     task->mode++;
     task->step = 0;
-    st = &gQuestSync;
+    sync = &gQuestSync;
     if (gQuestSync.presetSet != gQuestSync.builtSet) {
-        st->builtSet = st->presetSet;
+        sync->builtSet = sync->presetSet;
         for (i = 0, pl = gPlayers; i < 4; i++, pl++) {
             Player_FreeModels(pl);
             Player_FreeWeaponModel(pl);
             Plsel_SetupSavedPlayer(pl, i);
         }
     }
-    st->yaw = 0x1000;
+    sync->yaw = 0x1000;
     gCamera->at[0] += 80.0f;
     gCamera->eye[0] = gCamera->at[0];
     gCamera->eye[2] += 190.0f;
     gCamera->at[1] -= 35.0f;
     gCamera->eye[1] -= 35.0f;
-    FadeA_Start(2);
+    FadeA_Start(FADE_IN_BLACK);
     QNetIf_Unready();
     Loading_Stop();
     Stream_Play(0, 0x125);
 }
 
-void Plsel_DrawEquipPanel(void) {
+/*
+ * Draws the equipment page's panel and sets the text colour, position and
+ * spacing for it.
+ */
+void Plsel_DrawEquipPanel(void)
+{
     ListPanel_Draw(&gPlselListPanel, 0, 0, -1);
     Text_SetColor(0);
     Font_SetPos(0x146, 0x14E);
     Font_SetSpacing(0x14, 0x14);
 }
 
-void Plsel_DrawWeaponIcon(s16 x, s16 y, s16 sz, s32 col, s32 idx) {
-    Sprite s;
+/*
+ * Draws weapon-class icon weaponClass (PLSEL_TEX_WEAPON_ICONS) at x, y in a
+ * size by size square, tinted with player slot's colour (slot & 3).
+ */
+void Plsel_DrawWeaponIcon(s16 x, s16 y, s16 size, s32 slot, s32 weaponClass)
+{
+    Sprite spr;
 
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
-    s.x = x + 4;
-    s.y = y + 2;
-    s.w = sz;
-    s.h = sz;
-    s.color = gPlselWeaponIconColors[col & 3];
-    *(Point16 *)&s.u0 = gPlselWeaponIconUVs[idx].a;
-    *(Point16 *)&s.u1 = gPlselWeaponIconUVs[idx].b;
-    Sprite_Draw(&s);
+    Tex_Prepare(1, PLSEL_TEX_WEAPON_ICONS);
+    Tex_Bind(PLSEL_TEX_WEAPON_ICONS);
+    spr.x = x + 4;
+    spr.y = y + 2;
+    spr.w = size;
+    spr.h = size;
+    spr.color = gPlselWeaponIconColors[slot & 3];
+    *(Point16 *)&spr.u0 = gPlselWeaponIconUVs[weaponClass].a;
+    *(Point16 *)&spr.u1 = gPlselWeaponIconUVs[weaponClass].b;
+    Sprite_Draw(&spr);
 }
 
-void Plsel_DrawItemIcon(u16 item, s16 x, s16 y) {
-    Sprite s;
-    ItemData *it;
+/*
+ * Draws an item's icon (its cell + 1 of an 8-column grid of 32-pixel cells)
+ * in the item's colour.
+ */
+void Plsel_DrawItemIcon(u16 item, s16 x, s16 y)
+{
+    Sprite spr;
+    ItemData *data;
     s32 n;
-    s32 u;
-    s32 v;
+    s32 cellU;
+    s32 cellV;
 
-    it = &gItemData[item];
-    n = it->icon + 1;
-    s.x = x;
-    s.y = y;
-    s.w = 0x1B;
-    s.h = 0x14;
-    u = (n & 7) * 32;
-    v = (n >> 3) * 32;
-    s.u0 = u + 1;
-    s.u1 = u + 0x1F;
-    s.v0 = v + 1;
-    s.v1 = v + 0x1F;
-    s.color = gItemColors[it->color];
-    Sprite_Draw(&s);
+    data = &gItemData[item];
+    n = data->icon + 1;
+    spr.x = x;
+    spr.y = y;
+    spr.w = 0x1B;
+    spr.h = 0x14;
+    cellU = (n & 7) * 32;
+    cellV = (n >> 3) * 32;
+    spr.u0 = cellU + 1;
+    spr.u1 = cellU + 0x1F;
+    spr.v0 = cellV + 1;
+    spr.v1 = cellV + 0x1F;
+    spr.color = gItemColors[data->color];
+    Sprite_Draw(&spr);
 }
 
-void Plsel_DrawEquipIcon(s16 x, s16 y, u8 flag, u8 n, s32 unused) {
-    Sprite s;
+/*
+ * Draws an equipment icon: flag 0 weapon class n's (icon n + 0x3F), flag 1
+ * armour piece n's (gPlselEquipIconIds' byte n + 0x4A).
+ */
+void Plsel_DrawEquipIcon(s16 x, s16 y, u8 flag, u8 n, s32 unused)
+{
+    Sprite spr;
     s32 id;
-    s32 u;
-    s32 v;
+    s32 cellU;
+    s32 cellV;
 
     if (flag == 0) {
         id = n + 0x3F;
     } else {
         id = ((u8 *)gPlselEquipIconIds)[n] + 0x4A;
     }
-    s.x = x;
-    s.y = y - 2;
-    s.w = 0x18;
-    s.h = 0x18;
-    u = (id & 7) * 32;
-    v = (id >> 3) * 32;
-    s.u0 = u + 1;
-    s.u1 = u + 0x1F;
-    s.v0 = v + 1;
-    s.v1 = v + 0x1F;
-    s.color = -1;
-    Sprite_Draw(&s);
+    spr.x = x;
+    spr.y = y - 2;
+    spr.w = 0x18;
+    spr.h = 0x18;
+    cellU = (id & 7) * 32;
+    cellV = (id >> 3) * 32;
+    spr.u0 = cellU + 1;
+    spr.u1 = cellU + 0x1F;
+    spr.v0 = cellV + 1;
+    spr.v1 = cellV + 0x1F;
+    spr.color = -1;
+    Sprite_Draw(&spr);
 }
 
-/* The left (flag 0) or right arrow beside the slot being chosen, pushed out
- * by its bump counter (gQuestSync.bumpLeft and bumpRight, set to 5 when the arrow is
- * pressed). The counters are read as named data: with absolute addresses
- * MWCC can't move their loads above the stores to the sprite (a local
- * whose address is passed on). */
-void Plsel_DrawArrow(s32 flag, s16 x, s16 y) {
-    Sprite s;
+/* Draws the left (flag 0) or right arrow beside the preset being chosen,
+ * pushed out by its bump counter (gQuestSync.bumpLeft and bumpRight, set to
+ * 5 when the arrow is pressed). The counters are read by name for the
+ * match. */
+void Plsel_DrawArrow(s32 flag, s16 x, s16 y)
+{
+    Sprite spr;
 
-    Gfx_SetState63(1);
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
-    s.w = 0x18;
-    s.x = x;
-    s.y = y;
-    s.h = 0x1E;
-    s.color = 0xFF32BC64;
+    Gfx_SetTexFilter(1);
+    Tex_Prepare(1, PLSEL_TEX_WEAPON_ICONS);
+    Tex_Bind(PLSEL_TEX_WEAPON_ICONS);
+    spr.w = 0x18;
+    spr.x = x;
+    spr.y = y;
+    spr.h = 0x1E;
+    spr.color = 0xFF32BC64;
     if (flag == 0) {
-        s.x -= gQuestSync.bumpLeft;
-        s.u0 = 0xFF;
-        s.u1 = 0xF0;
+        spr.x -= gQuestSync.bumpLeft;
+        spr.u0 = 0xFF;
+        spr.u1 = 0xF0;
     } else {
-        s.x += gQuestSync.bumpRight;
-        s.u0 = 0xF0;
-        s.u1 = 0xFF;
+        spr.x += gQuestSync.bumpRight;
+        spr.u0 = 0xF0;
+        spr.u1 = 0xFF;
     }
-    s.v0 = 0xEC;
-    s.v1 = 0xFF;
-    Sprite_Draw(&s);
+    spr.v0 = 0xEC;
+    spr.v1 = 0xFF;
+    Sprite_Draw(&spr);
 }
 
 INCLUDE_RODATA("asm/plsel/nonmatchings/plsel", D_00D79598);
 
-extern char *D_00446F60;
-extern char *D_00446F64;
-void Plsel_DrawPlayerList(void) {
+extern char *gPlayerNumFormat;
+extern char *gPlselReadyText;
+/*
+ * Draws the local player's panel (the weapon-class icon of the preset under
+ * its cursor and its player number), then a smaller panel for each other
+ * player in the quest, with the ready label once its pick is taken.
+ */
+void Plsel_DrawPlayerList(void)
+{
     ListPanel win;
     char buf[0x10];
     char txt[0x10];
@@ -978,7 +1134,7 @@ void Plsel_DrawPlayerList(void) {
     win.lines = 3;
     ListPanel_Draw(&win, 0, 0, -1);
     Plsel_DrawWeaponIcon(x, 0x50, 0x30, gScene.localPlayer, (s16)gPlayers[gQuestSync.pick].weaponType);
-    sprintf(buf, D_00446F60, gScene.localPlayer + 1);
+    sprintf(buf, gPlayerNumFormat, gScene.localPlayer + 1);
     Sjis_Widen(buf, txt);
     Font_SetPos(0x26, 0x38);
     Text_Printf("~C00%s", txt);
@@ -986,18 +1142,18 @@ void Plsel_DrawPlayerList(void) {
     x += 0x50;
     win.lines = 2;
     for (i = 0; i < gScene.playerCount; i++) {
-        if (i != gScene.localPlayer && gScene.inQuest[i] == 1) {
+        if (i != gScene.localPlayer && gScene.inQuest[i] == IN_QUEST_YES) {
             win.x = x;
             ListPanel_Draw(&win, 0, 0, -1);
-            Plsel_DrawWeaponIcon(x, 0x50, 0x20, i, (s16)gPlayers[gQuestSync.picks[i] & 0x7F].weaponType);
+            Plsel_DrawWeaponIcon(x, 0x50, 0x20, i, (s16)gPlayers[gQuestSync.picks[i] & QSYNC_PICK_INDEX].weaponType);
             Font_SetSpacing(0x10, 0x10);
-            sprintf(buf, D_00446F60, i + 1);
+            sprintf(buf, gPlayerNumFormat, i + 1);
             Sjis_Widen(buf, txt);
             Font_SetPos(x + 4, 0x3A);
             Text_Printf("~C00%s", txt);
             if (gQuestSync.picks[i] & 0x80) {
                 Font_SetPos(x - 8, 0x7C);
-                Text_Printf(D_00D795A8, D_00446F64);
+                Text_Printf(D_00D795A8, gPlselReadyText);
             }
             Font_SetSpacing(0x12, 0x12);
             x += 0x36;
@@ -1033,36 +1189,37 @@ extern char *gArmorWaistNames[];
 extern char *gArmorLegsNames[];
 extern char D_00D79598[];
 
-extern char *D_00446EF8;
-extern char *D_00446EFC;
-extern char *D_00446F3C;
-extern char *D_00446F48;
-extern char *D_00446F50;
-extern char *D_00446F54;
-extern char *D_00446F58;
-extern char *D_00446F68;
-extern char *D_00446F6C;
+extern char *gPlselHelpOffline;
+extern char *gPlselHelpOnline;
+extern char *gPlselEquipPrompt;
+extern char *gPlselStartPrompt;
+extern char *gPlselNoRechooseText;
+extern char *gPlselPointRateFormat;
+extern char *gPlselEquipTypeLabel;
+extern char *gPlselWaitLine1;
+extern char *gPlselWaitLine2;
 extern char*gPlselTexts[];
-/* The equipment page (a draw callback; `ot + 0x18` is the select task):
- * the equipment set's name and number, the weapon and the armour pieces,
- * the set's items, then the task state's prompt. */
-void Plsel_DrawEquipPage(u8 *ot) {
+/* The equipment page, a draw callback (hook is the draw slot, its owner
+ * word at +0x18 the select task): the preset's name and number, the weapon
+ * and the armour pieces, the items, then the prompt of the task's step. */
+void Plsel_DrawEquipPage(u8 *hook)
+{
     ListPanel win;
-    PlselRect r;
+    PlselRect rect;
     char buf[0x80];
     char txt[0x80];
     s16 x;
-    PlselPreset *eq;
+    PlselPreset *preset;
     TaskSlot *task;
     s16 sel;
-    QuestSync *st;
+    QuestSync *sync;
     s16 *list;
     s16 i;
     s32 y;
 
-    st = &gQuestSync;
-    task = *(TaskSlot **)(ot + 0x18);
-    if (task->step == 2) {
+    sync = &gQuestSync;
+    task = *(TaskSlot **)(hook + 0x18);
+    if (task->step == PLSEL_CHOOSE_MENU) {
         Plsel_DrawPlayerMenu();
         Plsel_DrawPlayerList();
         return;
@@ -1075,47 +1232,47 @@ void Plsel_DrawEquipPage(u8 *ot) {
     win.lines = 7;
     win.flags = 0;
     ListPanel_Draw(&win, 0, " ", -1);
-    sel = st->pick;
-    eq = Plsel_CurPreset();
+    sel = sync->pick;
+    preset = Plsel_CurPreset();
     Font_SetSpacing(0x10, 0x10);
-    Text_PrintfAt(0x15A, 0x22, 5, D_00D79598, D_00446F58, gWeaponTypeNames[(u8)Weapon_GetClass(eq->weaponType, eq->weaponId)]);
-    Text_PrintfAt(0x236, 0x22, 5, "%d/%d", (u8)Plsel_ViewedSlotNo(st->presetSet, sel), (u8)Plsel_SlotCount(st->presetSet));
+    Text_PrintfAt(0x15A, 0x22, 5, D_00D79598, gPlselEquipTypeLabel, gWeaponTypeNames[(u8)Weapon_GetClass(preset->weaponType, preset->weaponId)]);
+    Text_PrintfAt(0x236, 0x22, 5, "%d/%d", (u8)Plsel_ViewedSlotNo(sync->presetSet, sel), (u8)Plsel_SlotCount(sync->presetSet));
     Plsel_DrawArrow(0, 0x13A, 0x1A);
     Plsel_DrawArrow(1, 0x256, 0x1A);
     Font_SetSpacing(0x12, 0x12);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
-    Plsel_DrawEquipIcon(0x152, 0x3C, 0, Weapon_GetClass(eq->weaponType, eq->weaponId), 0);
-    if (*(u16 *)eq == 6) {
-        Text_PrintfAt(0x16A, 0x3C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gBladeNames[eq->weaponId]);
+    Plsel_DrawEquipIcon(0x152, 0x3C, 0, Weapon_GetClass(preset->weaponType, preset->weaponId), 0);
+    if (*(u16 *)preset == 6) {
+        Text_PrintfAt(0x16A, 0x3C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gBladeNames[preset->weaponId]);
     } else {
-        Text_PrintfAt(0x16A, 0x3C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gGunNames[eq->weaponId]);
+        Text_PrintfAt(0x16A, 0x3C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gGunNames[preset->weaponId]);
     }
     for (i = 0, y = 0x54; i < 5; i++, y += 0x18) {
         Plsel_DrawEquipIcon(0x152, y, 1, i, 0);
     }
-    Text_PrintfAt(0x16A, 0x54, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorHeadNames[eq->head]);
-    Text_PrintfAt(0x16A, 0x6C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorBodyNames[eq->body]);
-    Text_PrintfAt(0x16A, 0x84, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorArmsNames[eq->arms]);
-    Text_PrintfAt(0x16A, 0x9C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorWaistNames[eq->waist]);
-    Text_PrintfAt(0x16A, 0xB4, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorLegsNames[eq->legs]);
+    Text_PrintfAt(0x16A, 0x54, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorHeadNames[preset->head]);
+    Text_PrintfAt(0x16A, 0x6C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorBodyNames[preset->body]);
+    Text_PrintfAt(0x16A, 0x84, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorArmsNames[preset->arms]);
+    Text_PrintfAt(0x16A, 0x9C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorWaistNames[preset->waist]);
+    Text_PrintfAt(0x16A, 0xB4, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorLegsNames[preset->legs]);
     win.y = 0xDC;
     win.lines = 4;
     ListPanel_Draw(&win, 0, 0, -1);
-    r.x0 = win.x;
-    r.y0 = win.y + win.charH * 3 + 4;
-    r.x1 = r.x0 + win.charW * win.lineChars;
-    r.y1 = r.y0 + 1;
-    r.color = win.color;
-    Prim_FillRect((struct PrimLine *)&r);
-    r.y0 = win.y + win.charH * 3 + 6;
-    r.x1 = r.x0 + win.charW * win.lineChars;
-    r.y1 = r.y0 + 0x15;
-    r.color = (win.color & 0xFFFFFF) | 0x60000000;
-    Prim_FillRect((struct PrimLine *)&r);
+    rect.x0 = win.x;
+    rect.y0 = win.y + win.charH * 3 + 4;
+    rect.x1 = rect.x0 + win.charW * win.lineChars;
+    rect.y1 = rect.y0 + 1;
+    rect.color = win.color;
+    Prim_FillRect((struct PrimLine *)&rect);
+    rect.y0 = win.y + win.charH * 3 + 6;
+    rect.x1 = rect.x0 + win.charW * win.lineChars;
+    rect.y1 = rect.y0 + 0x15;
+    rect.color = (win.color & 0xFFFFFF) | 0x60000000;
+    Prim_FillRect((struct PrimLine *)&rect);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
-    list = gStartItemLists[eq->startItems + gQuestSync.presetSet * 4];
+    list = gStartItemLists[preset->startItems + gQuestSync.presetSet * 4];
     for (i = 0; *list != -1; i++) {
         list++;
         Plsel_DrawItemIcon(*list++, i % 10 * 28 + 0x149, i / 10 * 28 + 0xE2);
@@ -1128,31 +1285,31 @@ void Plsel_DrawEquipPage(u8 *ot) {
         Font_SetPos(0x14C, 0x11F);
         Font_SetSpacing(0x12, 0x12);
         if (gScene.playerCount < 2) {
-            Text_Printf(D_00D795A8, D_00446EF8);
+            Text_Printf(D_00D795A8, gPlselHelpOffline);
         } else {
-            Text_Printf(D_00D795A8, D_00446EFC);
+            Text_Printf(D_00D795A8, gPlselHelpOnline);
         }
         Plsel_DrawEquipPanel();
-        eq = Plsel_CurPreset();
+        preset = Plsel_CurPreset();
         Font_SetPos(0x146, 0x150);
-        sprintf(buf, TXT(0x00D795C8) /* the rate, then a full-width percent sign */, eq->pointRatePct);
+        sprintf(buf, TXT(0x00D795C8) /* the rate, then a full-width percent sign */, preset->pointRatePct);
         Sjis_Widen(buf, txt);
-        Text_Printf(D_00446F54, txt);
+        Text_Printf(gPlselPointRateFormat, txt);
         break;
     case 3:
     case 4:
         Font_SetPos(0x152, 0x11F);
         Font_SetSpacing(0x12, 0x12);
-        Text_Printf(D_00D795A8, D_00446F50);
+        Text_Printf(D_00D795A8, gPlselNoRechooseText);
         Plsel_DrawEquipPanel();
         if (gScene.playerCount < 2) {
-            x = (0x118 - Text_DisplayLength(D_00446F48) * 10) / 2.0f;
+            x = (0x118 - Text_DisplayLength(gPlselStartPrompt) * 10) / 2.0f;
             Font_SetPos(x + 0x146, 0x158);
-            Text_Printf(D_00D795A8, D_00446F48);
+            Text_Printf(D_00D795A8, gPlselStartPrompt);
         } else {
-            x = (0x118 - Text_DisplayLength(D_00446F3C) * 10) / 2.0f;
+            x = (0x118 - Text_DisplayLength(gPlselEquipPrompt) * 10) / 2.0f;
             Font_SetPos(x + 0x146, 0x158);
-            Text_Printf(D_00D795A8, D_00446F3C);
+            Text_Printf(D_00D795A8, gPlselEquipPrompt);
         }
         x = (0x118 - Text_DisplayLength(D_446F40[0]) * 10) / 2.0f;
         Font_SetPos(x + 0x146, 0x16C);
@@ -1161,21 +1318,21 @@ void Plsel_DrawEquipPage(u8 *ot) {
     case 5:
         Font_SetPos(0x152, 0x11F);
         Font_SetSpacing(0x12, 0x12);
-        Text_Printf(D_00D795A8, D_00446F50);
+        Text_Printf(D_00D795A8, gPlselNoRechooseText);
         Plsel_DrawEquipPanel();
         if (gScene.playerCount > 1 && !(gFrameTick & 0x10)) {
-            x = (0x118 - Text_DisplayLength(D_00446F68) * 10) / 2.0f;
+            x = (0x118 - Text_DisplayLength(gPlselWaitLine1) * 10) / 2.0f;
             Font_SetPos(x + 0x146, 0x158);
-            Text_Printf(D_00D795A8, D_00446F68);
-            x = (0x118 - Text_DisplayLength(D_00446F6C) * 10) / 2.0f;
+            Text_Printf(D_00D795A8, gPlselWaitLine1);
+            x = (0x118 - Text_DisplayLength(gPlselWaitLine2) * 10) / 2.0f;
             Font_SetPos(x + 0x146, 0x16C);
-            Text_Printf(D_00D795A8, D_00446F6C);
+            Text_Printf(D_00D795A8, gPlselWaitLine2);
         }
         break;
     }
     if (Game_IsOnline() != 0 && task->timeLeft != 0) {
         Text_SetColor(0);
-        if (task->step == 2) {
+        if (task->step == PLSEL_CHOOSE_MENU) {
             Font_SetPos(0x1CC, 0x1C);
         } else {
             Font_SetPos(0x1CC, 0x196);
@@ -1186,12 +1343,18 @@ void Plsel_DrawEquipPage(u8 *ot) {
 
 extern u8 *D_006A39E8;
 extern void *D_006A39E4;
-void Plsel_DrawChooseScreen(TaskSlot *task) {
-    QuestSync *st;
+/*
+ * Draws the frame and header row 3, hooks Plsel_DrawEquipPage into the draw
+ * list, poses preview players 0-3, queues the one under the cursor, and
+ * prints the online time left.
+ */
+void Plsel_DrawChooseScreen(TaskSlot *task)
+{
+    QuestSync *sync;
     s32 i;
     Player *pl;
 
-    st = &gQuestSync;
+    sync = &gQuestSync;
     Plsel_DrawFrame(0);
     Plsel_DrawHeader(3);
     D_006A39E8 = (u8 *) task;
@@ -1200,14 +1363,14 @@ void Plsel_DrawChooseScreen(TaskSlot *task) {
     for (i = 0, pl = gPlayers; i < 4; i++, pl++) {
         Player_UpdateMotionStep(pl);
         pl->pos[1] = -40.0f;
-        pl->rot[1] = st->yaw;
-        if (i == st->pick) {
+        pl->rot[1] = sync->yaw;
+        if (i == sync->pick) {
             OT_AddByDepth(gDrawOt32, pl->drawSlot, 0x20, 0);
         }
     }
     if (Game_IsOnline() == 1 && task->timeLeft != 0) {
         Text_SetColor(0);
-        if (task->step == 2) {
+        if (task->step == PLSEL_CHOOSE_MENU) {
             Font_SetPos(0x1CC, 0x1C);
         } else {
             Font_SetPos(0x1CC, 0x196);
@@ -1216,43 +1379,43 @@ void Plsel_DrawChooseScreen(TaskSlot *task) {
     }
 }
 
-/* Select state 4: choosing the slot. Left and right cycle the four slots
- * (their arrows bump), button 0x8000 opens Plsel_OpenPlayerMenu's screen
- * (sub-state 2), circle asks for confirmation (sub-state 3), and when the
- * online countdown runs out the current slot is taken. The pad is read as gPadState and the counter at
- * gQuestSync + 0xD4 through st: as named objects, MWCC schedules the pad
- * load before that store, as the game does. */
-void Plsel_StateChoose(TaskSlot *task) {
-    QuestSync *st;
+/* PLSEL_SEL_CHOOSE, choosing a preset hunter (PlselChooseStep): right and
+ * left cycle the set's four presets (their arrows bump), PAD_START opens
+ * the player menu (Plsel_OpenPlayerMenu), PAD_CIRCLE asks for the
+ * confirmation, and when the online countdown runs out the preset under
+ * the cursor is taken at once (the goto into the confirmation's branch). */
+void Plsel_StateChoose(TaskSlot *task)
+{
+    QuestSync *sync;
     u16 pad;
     s8 chat;
-    PlselPreset *e;
+    PlselPreset *preset;
 
     chat = Kbd_IsOpen();
     pad = gPadState[0].pressed | gPadState[0].repeat;
-    st = &gQuestSync;
-    st->yaw += 0x100;
-    if ((gPadState[0].dir & 8) && chat == 0) {
-        st->yaw -= 0x500;
+    sync = &gQuestSync;
+    sync->yaw += 0x100;
+    if ((gPadState[0].dir & PAD_RSTICK_LEFT) && chat == 0) {
+        sync->yaw -= 0x500;
     }
-    if ((gPadState[0].dir & 4) && chat == 0) {
-        st->yaw += 0x300;
+    if ((gPadState[0].dir & PAD_RSTICK_RIGHT) && chat == 0) {
+        sync->yaw += 0x300;
     }
-    if (st->timer > 0) {
-        st->timer--;
+    if (sync->timer > 0) {
+        sync->timer--;
     }
     if (Game_IsOnline() == 1 && --task->timeLeft == 0) {
         gScene.menuOpen = 0;
         goto start;
     }
     switch (task->step) {
-    case 0:
-        if (st->timer != 0) {
+    case PLSEL_CHOOSE_BROWSE:
+        if (sync->timer != 0) {
             break;
         }
-        if (chat == 0 && (gPadState[0].pressed & 0x8000)) {
-            Plsel_OpenPlayerMenu(st->pick);
-            task->step = 2;
+        if (chat == 0 && (gPadState[0].pressed & PAD_START)) {
+            Plsel_OpenPlayerMenu(sync->pick);
+            task->step = PLSEL_CHOOSE_MENU;
             task->flag = 0;
             break;
         }
@@ -1265,74 +1428,74 @@ void Plsel_StateChoose(TaskSlot *task) {
         if (Plsel_ChatUpdate() == 1) {
             break;
         }
-        if (pad & 0x400) {
+        if (pad & PAD_RIGHT) {
             gQuestSync.bumpRight = 5;
-            if (st->pick >= 3) {
-                st->pick = 0;
+            if (sync->pick >= 3) {
+                sync->pick = 0;
             } else {
-                st->pick++;
+                sync->pick++;
             }
             Plsel_PlayCursorSe();
-            func_901790(0xD, gScene.localPlayer);
-        } else if (pad & 0x800) {
+            QSync_SendState(QSYNC_STATE_PICK_CURSOR, gScene.localPlayer);
+        } else if (pad & PAD_LEFT) {
             gQuestSync.bumpLeft = 5;
-            if (st->pick == 0) {
-                st->pick = 3;
+            if (sync->pick == 0) {
+                sync->pick = 3;
             } else {
-                st->pick--;
+                sync->pick--;
             }
             Plsel_PlayCursorSe();
-            func_901790(0xD, gScene.localPlayer);
-        } else if (gPadState[0].pressed & 0x20) {
+            QSync_SendState(QSYNC_STATE_PICK_CURSOR, gScene.localPlayer);
+        } else if (gPadState[0].pressed & PAD_CIRCLE) {
             Plsel_PlayDecideSe();
-            task->step = 3;
+            task->step = PLSEL_CHOOSE_CONFIRM;
             task->flag = 1;
         }
         break;
-    case 1:
+    case PLSEL_CHOOSE_RETURN:
         if (FadeA_GetState() != 1) {
-            task->mode = 2;
-            task->step = 0;
+            task->mode = PLSEL_SEL_START_CHOOSE;
+            task->step = PLSEL_CHOOSE_BROWSE;
             Plsel_SetCamera();
-            FadeA_Start(2);
-            st->timer = 0xF;
+            FadeA_Start(FADE_IN_BLACK);
+            sync->timer = 0xF;
             return;
         }
         break;
-    case 2:
+    case PLSEL_CHOOSE_MENU:
         Plsel_PlayerMenuUpdate(pad);
         if (gScene.menuOpen == 0) {
-            task->step = 0;
+            task->step = PLSEL_CHOOSE_BROWSE;
         }
         break;
-    case 3:
-        if (gPadState[0].pressed & 0x20) {
+    case PLSEL_CHOOSE_CONFIRM:
+        if (gPadState[0].pressed & PAD_CIRCLE) {
             if (task->flag == 0) {
             start:
-                e = Plsel_CurPreset();
-                func_901790(0xC, gScene.localPlayer);
-                st->picks[gScene.localPlayer] = st->pick | 0x80;
-                st->pointRatePct = e->pointRatePct;
+                preset = Plsel_CurPreset();
+                QSync_SendState(QSYNC_STATE_PICK_TAKEN, gScene.localPlayer);
+                sync->picks[gScene.localPlayer] = sync->pick | 0x80;
+                sync->pointRatePct = preset->pointRatePct;
                 Plsel_PlayChooseSe();
                 task->mode++;
-                task->step = 5;
+                task->step = PLSEL_CHOOSE_TAKEN;
                 task->flag = 0;
                 task->count = 0;
             } else {
-                task->step = 0;
+                task->step = PLSEL_CHOOSE_BROWSE;
                 Sound_PlayCancel();
             }
-        } else if (gPadState[0].pressed & 0x40) {
+        } else if (gPadState[0].pressed & PAD_CROSS) {
             Sound_PlayCancel();
             if (task->flag == 1) {
-                task->step = 0;
+                task->step = PLSEL_CHOOSE_BROWSE;
             } else {
                 task->flag = 1;
             }
-        } else if ((gPadState[0].pressed & 0x800) && task->flag == 1) {
+        } else if ((gPadState[0].pressed & PAD_LEFT) && task->flag == 1) {
             Plsel_PlayCursorSe();
             task->flag = 0;
-        } else if ((gPadState[0].pressed & 0x400) && task->flag == 0) {
+        } else if ((gPadState[0].pressed & PAD_RIGHT) && task->flag == 0) {
             Plsel_PlayCursorSe();
             task->flag = 1;
         }
@@ -1341,11 +1504,19 @@ void Plsel_StateChoose(TaskSlot *task) {
     Plsel_DrawChooseScreen(task);
 }
 
-void Plsel_StateReady(TaskSlot *task) {
-    QuestSync *st;
+/*
+ * PLSEL_SEL_READY, by TaskSlot.flag: waits for every player in the quest to
+ * take a preset hunter (sending QSYNC_STATE_PICK_TAKEN again every 64
+ * frames), then stops the keyboard, fades the music out over 10 frames and
+ * the screen; then waits for the fade and 60 frames more, and closes the
+ * overlay.
+ */
+void Plsel_StateReady(TaskSlot *task)
+{
+    QuestSync *sync;
     s32 i;
 
-    st = &gQuestSync;
+    sync = &gQuestSync;
     gQuestSync.yaw += 0x100;
     if (Game_IsOnline() == 1 && task->timeLeft != 0) {
         task->timeLeft--;
@@ -1356,7 +1527,7 @@ void Plsel_StateReady(TaskSlot *task) {
     case 1:
         Plsel_ChatUpdate();
         for (i = 0; i < gScene.playerCount; i++) {
-            if (gScene.inQuest[i] == 1 && !(st->picks[i] & 0x80)) {
+            if (gScene.inQuest[i] == IN_QUEST_YES && !(sync->picks[i] & QSYNC_PICK_TAKEN)) {
                 break;
             }
         }
@@ -1365,12 +1536,12 @@ void Plsel_StateReady(TaskSlot *task) {
                 Kbd_Cancel();
             }
             Stream_FadeOut(0, 10);
-            FadeA_Start(5);
+            FadeA_Start(FADE_OUT_BLACK_SLOW);
             task->flag++;
         } else {
             task->count = (task->count + 1) & 0x3F;
             if (task->count == 0) {
-                func_901790(0xC, gScene.localPlayer);
+                QSync_SendState(QSYNC_STATE_PICK_TAKEN, gScene.localPlayer);
             }
         }
         break;
@@ -1397,214 +1568,255 @@ void Plsel_StateReady(TaskSlot *task) {
     }
 }
 
-void Plsel_ApplyPresetEquip(Player *p, s32 idx) {
-    s16 sel;
-    u8 v;
-    s16 k;
-    PlselPreset *t;
+/*
+ * Called by sub_main's player setup in a training quest: when player idx
+ * took a preset hunter, equips it with that preset's weapon and armour and
+ * sets its startItemList (set * 4 + preset + 1) and presetEquip.
+ */
+void Plsel_ApplyPresetEquip(Player *pl, s32 idx)
+{
+    s16 set;
+    u8 pick;
+    s16 presetIndex;
+    PlselPreset *preset;
 
-    sel = gQuestSync.presetSet;
-    v = gQuestSync.picks[idx];
-    if (v & 0x80) {
-        k = v & 0x7F;
-        t = gPlselPresets[sel];
-        t += k;
-        p->equip[6].used = 1;
-        p->equip[6].type = t->weaponType;
-        p->equip[6].level = t->weaponLevel;
-        p->equip[6].deco[0] = 0;
-        p->equip[6].deco[1] = 0;
-        p->equip[6].deco[2] = 0;
-        p->equip[0].used = 1;
-        p->equip[0].type = 0;
-        p->equip[0].level = 0;
-        p->equip[0].deco[0] = 0;
-        p->equip[0].deco[1] = 0;
-        p->equip[0].deco[2] = 0;
-        p->equip[1].used = 1;
-        p->equip[1].type = 1;
-        p->equip[1].level = 0;
-        p->equip[1].deco[0] = 0;
-        p->equip[1].deco[1] = 0;
-        p->equip[1].deco[2] = 0;
-        p->equip[2].used = 1;
-        p->equip[2].type = 2;
-        p->equip[2].level = 0;
-        p->equip[2].deco[0] = 0;
-        p->equip[2].deco[1] = 0;
-        p->equip[2].deco[2] = 0;
-        p->equip[3].used = 1;
-        p->equip[3].type = 3;
-        p->equip[3].level = 0;
-        p->equip[3].deco[0] = 0;
-        p->equip[3].deco[1] = 0;
-        p->equip[3].deco[2] = 0;
-        p->equip[4].used = 1;
-        p->equip[4].type = 4;
-        p->equip[4].level = 0;
-        p->equip[4].deco[0] = 0;
-        p->equip[4].deco[1] = 0;
-        p->equip[4].deco[2] = 0;
-        p->equip[5].used = 1;
-        p->equip[5].type = 5;
-        p->equip[5].level = 0;
-        p->equip[5].deco[0] = 0;
-        p->equip[5].deco[1] = 0;
-        p->equip[5].deco[2] = 0;
-        p->equip[6].id = t->weaponId;
-        p->equip[0].id = t->legs;
-        p->equip[2].id = t->head;
-        p->equip[3].id = t->body;
-        p->equip[4].id = t->arms;
-        p->equip[5].id = t->waist;
-        p->startItemList = t->startItems + gQuestSync.presetSet * 4 + 1;
-        p->presetEquip = 1;
-        p->weaponKind = Equip_GetKind(&p->equip[6]);
+    set = gQuestSync.presetSet;
+    pick = gQuestSync.picks[idx];
+    if (pick & 0x80) {
+        presetIndex = pick & QSYNC_PICK_INDEX;
+        preset = gPlselPresets[set];
+        preset += presetIndex;
+        pl->equip[6].used = 1;
+        pl->equip[6].type = preset->weaponType;
+        pl->equip[6].level = preset->weaponLevel;
+        pl->equip[6].deco[0] = 0;
+        pl->equip[6].deco[1] = 0;
+        pl->equip[6].deco[2] = 0;
+        pl->equip[0].used = 1;
+        pl->equip[0].type = 0;
+        pl->equip[0].level = 0;
+        pl->equip[0].deco[0] = 0;
+        pl->equip[0].deco[1] = 0;
+        pl->equip[0].deco[2] = 0;
+        pl->equip[1].used = 1;
+        pl->equip[1].type = 1;
+        pl->equip[1].level = 0;
+        pl->equip[1].deco[0] = 0;
+        pl->equip[1].deco[1] = 0;
+        pl->equip[1].deco[2] = 0;
+        pl->equip[2].used = 1;
+        pl->equip[2].type = 2;
+        pl->equip[2].level = 0;
+        pl->equip[2].deco[0] = 0;
+        pl->equip[2].deco[1] = 0;
+        pl->equip[2].deco[2] = 0;
+        pl->equip[3].used = 1;
+        pl->equip[3].type = 3;
+        pl->equip[3].level = 0;
+        pl->equip[3].deco[0] = 0;
+        pl->equip[3].deco[1] = 0;
+        pl->equip[3].deco[2] = 0;
+        pl->equip[4].used = 1;
+        pl->equip[4].type = 4;
+        pl->equip[4].level = 0;
+        pl->equip[4].deco[0] = 0;
+        pl->equip[4].deco[1] = 0;
+        pl->equip[4].deco[2] = 0;
+        pl->equip[5].used = 1;
+        pl->equip[5].type = 5;
+        pl->equip[5].level = 0;
+        pl->equip[5].deco[0] = 0;
+        pl->equip[5].deco[1] = 0;
+        pl->equip[5].deco[2] = 0;
+        pl->equip[6].id = preset->weaponId;
+        pl->equip[0].id = preset->legs;
+        pl->equip[2].id = preset->head;
+        pl->equip[3].id = preset->body;
+        pl->equip[4].id = preset->arms;
+        pl->equip[5].id = preset->waist;
+        pl->startItemList = preset->startItems + gQuestSync.presetSet * 4 + 1;
+        pl->presetEquip = 1;
+        pl->weaponKind = Equip_GetKind(&pl->equip[6]);
     }
 }
 
-void Plsel_SetupPresetPouch(Player *p, s32 n) {
+/*
+ * Clears the player's 20 pouch slots, then fills them from
+ * gStartItemLists[set * 4 + presetIndex]: (count, item) pairs ending at -1.
+ */
+void Plsel_SetupPresetPouch(Player *pl, s32 presetIndex)
+{
     s16 i;
-    s16 *t;
-    s16 v;
-    u16 k;
+    s16 *list;
+    s16 itemCount;
+    u16 itemId;
 
     for (i = 0; i < 20; i++) {
-        p->pouch[i].item = 0;
-        p->pouch[i].count = 0;
+        pl->pouch[i].item = 0;
+        pl->pouch[i].count = 0;
     }
-    p->startItemList = (u8)n + gQuestSync.presetSet * 4;
-    t = gStartItemLists[p->startItemList];
-    v = t[0];
-    while (v != -1) {
-        k = t[1];
-        t += 2;
-        Pouch_SetAtLeast(p, 0, k, v);
-        v = t[0];
+    pl->startItemList = (u8)presetIndex + gQuestSync.presetSet * 4;
+    list = gStartItemLists[pl->startItemList];
+    itemCount = list[0];
+    while (itemCount != -1) {
+        itemId = list[1];
+        list += 2;
+        Pouch_SetAtLeast(pl, 0, itemId, itemCount);
+        itemCount = list[0];
     }
 }
 
-void Plsel_ApplyStageEquip(Player *p) {
-    PlselPreset *t;
+/*
+ * In a training quest (Quest_IsTraining), equips the stage's own preset
+ * (gTrainingPresets by gQuest.stage) and sets startItemList to the stage + 1.
+ */
+void Plsel_ApplyStageEquip(Player *pl)
+{
+    PlselPreset *preset;
 
-    t = D_896D90[gQuest.stage];
-    p->equip[6].used = 1;
-    p->equip[6].type = t->weaponType;
-    p->equip[6].level = t->weaponLevel;
-    p->equip[6].deco[0] = 0;
-    p->equip[6].deco[1] = 0;
-    p->equip[6].deco[2] = 0;
-    p->equip[0].used = 1;
-    p->equip[0].type = 0;
-    p->equip[0].level = 0;
-    p->equip[0].deco[0] = 0;
-    p->equip[0].deco[1] = 0;
-    p->equip[0].deco[2] = 0;
-    p->equip[1].used = 1;
-    p->equip[1].type = 1;
-    p->equip[1].level = 0;
-    p->equip[1].deco[0] = 0;
-    p->equip[1].deco[1] = 0;
-    p->equip[1].deco[2] = 0;
-    p->equip[2].used = 1;
-    p->equip[2].type = 2;
-    p->equip[2].level = 0;
-    p->equip[2].deco[0] = 0;
-    p->equip[2].deco[1] = 0;
-    p->equip[2].deco[2] = 0;
-    p->equip[3].used = 1;
-    p->equip[3].type = 3;
-    p->equip[3].level = 0;
-    p->equip[3].deco[0] = 0;
-    p->equip[3].deco[1] = 0;
-    p->equip[3].deco[2] = 0;
-    p->equip[4].used = 1;
-    p->equip[4].type = 4;
-    p->equip[4].level = 0;
-    p->equip[4].deco[0] = 0;
-    p->equip[4].deco[1] = 0;
-    p->equip[4].deco[2] = 0;
-    p->equip[5].used = 1;
-    p->equip[5].type = 5;
-    p->equip[5].level = 0;
-    p->equip[5].deco[0] = 0;
-    p->equip[5].deco[1] = 0;
-    p->equip[5].deco[2] = 0;
-    p->equip[6].id = t->weaponId;
-    p->equip[0].id = t->legs;
-    p->equip[2].id = t->head;
-    p->equip[3].id = t->body;
-    p->equip[4].id = t->arms;
-    p->equip[5].id = t->waist;
-    p->presetEquip = 1;
-    p->weaponKind = Equip_GetKind(&p->equip[6]);
-    p->startItemList = gQuest.stage + 1;
+    preset = gTrainingPresets[gQuest.stage];
+    pl->equip[6].used = 1;
+    pl->equip[6].type = preset->weaponType;
+    pl->equip[6].level = preset->weaponLevel;
+    pl->equip[6].deco[0] = 0;
+    pl->equip[6].deco[1] = 0;
+    pl->equip[6].deco[2] = 0;
+    pl->equip[0].used = 1;
+    pl->equip[0].type = 0;
+    pl->equip[0].level = 0;
+    pl->equip[0].deco[0] = 0;
+    pl->equip[0].deco[1] = 0;
+    pl->equip[0].deco[2] = 0;
+    pl->equip[1].used = 1;
+    pl->equip[1].type = 1;
+    pl->equip[1].level = 0;
+    pl->equip[1].deco[0] = 0;
+    pl->equip[1].deco[1] = 0;
+    pl->equip[1].deco[2] = 0;
+    pl->equip[2].used = 1;
+    pl->equip[2].type = 2;
+    pl->equip[2].level = 0;
+    pl->equip[2].deco[0] = 0;
+    pl->equip[2].deco[1] = 0;
+    pl->equip[2].deco[2] = 0;
+    pl->equip[3].used = 1;
+    pl->equip[3].type = 3;
+    pl->equip[3].level = 0;
+    pl->equip[3].deco[0] = 0;
+    pl->equip[3].deco[1] = 0;
+    pl->equip[3].deco[2] = 0;
+    pl->equip[4].used = 1;
+    pl->equip[4].type = 4;
+    pl->equip[4].level = 0;
+    pl->equip[4].deco[0] = 0;
+    pl->equip[4].deco[1] = 0;
+    pl->equip[4].deco[2] = 0;
+    pl->equip[5].used = 1;
+    pl->equip[5].type = 5;
+    pl->equip[5].level = 0;
+    pl->equip[5].deco[0] = 0;
+    pl->equip[5].deco[1] = 0;
+    pl->equip[5].deco[2] = 0;
+    pl->equip[6].id = preset->weaponId;
+    pl->equip[0].id = preset->legs;
+    pl->equip[2].id = preset->head;
+    pl->equip[3].id = preset->body;
+    pl->equip[4].id = preset->arms;
+    pl->equip[5].id = preset->waist;
+    pl->presetEquip = 1;
+    pl->weaponKind = Equip_GetKind(&pl->equip[6]);
+    pl->startItemList = gQuest.stage + 1;
 }
 
-void Plsel_PlayDecideSe(void) {
-    Sound_PlaySeFlat(0, 0x13, 0);
+/* Plays SE_SYS_CONFIRM. */
+void Plsel_PlayDecideSe(void)
+{
+    Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
 }
 
-void Plsel_PlayCursorSe(void) {
-    Sound_PlaySeFlat(0, 0x12, 0);
+/* Plays SE_SYS_CURSOR. */
+void Plsel_PlayCursorSe(void)
+{
+    Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
 }
 
-void Plsel_PlayChooseSe(void) {
+/* Plays sound bank 1's sound 4 (select_chara.c plays it too). */
+void Plsel_PlayChooseSe(void)
+{
     Sound_PlaySeFlat(1, 4, 0);
 }
 
-s32 Plsel_ChatOpenRequested(void) {
+/*
+ * Returns 2 when a keyboard key asks for the chat, 1 for PAD_TRIANGLE, else 0.
+ */
+s32 Plsel_ChatOpenRequested(void)
+{
     u16 pad;
 
-    pad = gPadState[0].pressed | (gPadState[0].repeat & 0x3C00);
+    pad = gPadState[0].pressed | (gPadState[0].repeat & PAD_DPAD);
     if (Kbd_ActHotkeys() == 1) {
         return 2;
     }
-    if (pad & 0x100) {
+    if (pad & PAD_TRIANGLE) {
         return 1;
     }
     return 0;
 }
 
-void Plsel_GetPad(u16 *a, u16 *b) {
-    u16 v;
+/*
+ * Gives the held and pressed buttons for the keyboard: the pad's, plus the
+ * right stick's direction as one D-pad bit.
+ */
+void Plsel_GetPad(u16 *outHeld, u16 *outPressed)
+{
+    u16 stick;
 
-    *a = gPadState[0].held;
-    *b = gPadState[0].pressed;
-    v = gPadState[0].dir;
-    if (v & 0x20) {
-        *a |= 0x2000;
-    } else if (v & 0x10) {
-        *a |= 0x1000;
-    } else if (v & 8) {
-        *a |= 0x800;
-    } else if (v & 4) {
-        *a |= 0x400;
+    *outHeld = gPadState[0].held;
+    *outPressed = gPadState[0].pressed;
+    stick = gPadState[0].dir;
+    if (stick & PAD_RSTICK_UP) {
+        *outHeld |= PAD_UP;
+    } else if (stick & PAD_RSTICK_DOWN) {
+        *outHeld |= PAD_DOWN;
+    } else if (stick & PAD_RSTICK_LEFT) {
+        *outHeld |= PAD_LEFT;
+    } else if (stick & PAD_RSTICK_RIGHT) {
+        *outHeld |= PAD_RIGHT;
     }
-    v = gPadState[0].dirPressed;
-    if (v & 0x20) {
-        *b |= 0x2000;
-    } else if (v & 0x10) {
-        *b |= 0x1000;
-    } else if (v & 8) {
-        *b |= 0x800;
-    } else if (v & 4) {
-        *b |= 0x400;
+    stick = gPadState[0].dirPressed;
+    if (stick & PAD_RSTICK_UP) {
+        *outPressed |= PAD_UP;
+    } else if (stick & PAD_RSTICK_DOWN) {
+        *outPressed |= PAD_DOWN;
+    } else if (stick & PAD_RSTICK_LEFT) {
+        *outPressed |= PAD_LEFT;
+    } else if (stick & PAD_RSTICK_RIGHT) {
+        *outPressed |= PAD_RIGHT;
     }
 }
 
-void Plsel_InitSelWork(void) {
-    Player *p;
+/*
+ * Clears the select screen's work and copies each member's name into its
+ * player.
+ */
+void Plsel_InitSelWork(void)
+{
+    Player *pl;
     s32 i;
 
-    p = gPlayers;
-    memset(gPlselSelWork, 0, 0x13DC);
-    for (i = 0; i < gScene.playerCount; i++, p++) {
-        strcpy((char *)p + 0x82C, gMemberNames[i]);
+    pl = gPlayers;
+    memset(gPlselSelWork, 0, sizeof(PlselSelWork));
+    for (i = 0; i < gScene.playerCount; i++, pl++) {
+        strcpy((char *)pl->name, gMemberNames[i]);
     }
 }
 
-void Plsel_ChatOpenKbd(s32 mode) {
+/*
+ * Opens the chat keyboard when mode is nonzero (Plsel_ChatOpenRequested's
+ * result; 2 opens it without the focus), as sub_main's Chat_OpenInput does.
+ */
+void Plsel_ChatOpenKbd(s32 mode)
+{
     PlselSelWork *w;
     s32 flags;
 
@@ -1613,17 +1825,22 @@ void Plsel_ChatOpenKbd(s32 mode) {
         w->kbdOpen++;
         flags = 4;
         if (mode == 2) {
-            flags |= 0x40000000;
+            flags |= CHAT_KBD_INACTIVE;
         }
         Kbd_SetPos(0x6E, 80.0f);
-        Chat_OpenKbd(flags | 0x80000000, 0xE, 0x2C, 0);
+        Chat_OpenKbd(flags | CHAT_KBD_TARGETED, 0xE, 0x2C, 0);
         Kbd_SetSubmitWait(w->sendWait);
-        Sound_PlaySeFlat(0, 0x11, 0);
+        Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
         Plsel_ChatInput(0);
     }
 }
 
-s32 Plsel_ChatTargetPlayer(u8 *unused) {
+/*
+ * Returns the player slot the chat's target names when that player is in
+ * the quest and not the local one, else -1 (everyone).
+ */
+s32 Plsel_ChatTargetPlayer(u8 *unused)
+{
     s32 n;
     s32 i;
 
@@ -1635,7 +1852,7 @@ s32 Plsel_ChatTargetPlayer(u8 *unused) {
     for (i = 0; i < gScene.playerCount; i++) {
         if (i == gScene.localPlayer) {
             n--;
-        } else if (gScene.inQuest[i] != 1) {
+        } else if (gScene.inQuest[i] != IN_QUEST_YES) {
             n--;
         } else {
             n--;
@@ -1647,33 +1864,39 @@ s32 Plsel_ChatTargetPlayer(u8 *unused) {
     return -1;
 }
 
-void Plsel_ChatInput(u16 unused) {
-    s16 a;
-    s16 b;
-    u8 buf[0x4C];
+/*
+ * Runs the keyboard for a frame. A text sent that isn't blank after the
+ * filter is logged, sent to its target (or QSYNC_CHAT_TO_ALL) and shows the
+ * log for 300 frames; then the send waits 60 frames and the keyboard closes.
+ */
+void Plsel_ChatInput(u16 unused)
+{
+    s16 held;
+    s16 pressed;
+    u8 text[0x4C];
     u8 mask;
     Player *pl;
     PlselSelWork *w;
-    s8 r;
-    s8 k;
+    s8 result;
+    s8 target;
 
     w = gPlselSelWork;
-    Plsel_GetPad((u16 *)&a, (u16 *)&b);
-    buf[0] = 0;
-    r = Plsel_ChatRunKbd(buf, a, b);
-    if (r != 0) {
-        if ((s8)buf[0] != 0 && r > 0) {
-            if (Chat_FilterIfNotBlank(buf) != 0) {
-                k = Plsel_ChatTargetPlayer(buf);
-                if ((s8)buf[0] != 0) {
+    Plsel_GetPad((u16 *)&held, (u16 *)&pressed);
+    text[0] = 0;
+    result = Plsel_ChatRunKbd(text, held, pressed);
+    if (result != 0) {
+        if ((s8)text[0] != 0 && result > 0) {
+            if (Chat_FilterIfNotBlank(text) != 0) {
+                target = Plsel_ChatTargetPlayer(text);
+                if ((s8)text[0] != 0) {
                     pl = &gPlayers[gScene.localPlayer];
-                    if (k < 0) {
+                    if (target < 0) {
                         mask = 0xFF;
                     } else {
-                        mask = 1 << k;
+                        mask = 1 << target;
                     }
-                    Plsel_AddChatLog(pl->index, (char *)buf, 0, mask);
-                    func_901E80(pl->index, 1, buf, mask);
+                    Plsel_AddChatLog(pl->index, (char *)text, 0, mask);
+                    QSync_SendChat(pl->index, QSYNC_CHAT_TEXT, (char *)text, mask);
                     w->newMsg = 1;
                     w->newMsgMine = 1;
                     w->logShowTimer = 0x12C;
@@ -1688,7 +1911,9 @@ void Plsel_ChatInput(u16 unused) {
     }
 }
 
-void Plsel_TickTimers(void) {
+/* Counts down the chat's send wait and the log's display timer. */
+void Plsel_TickTimers(void)
+{
     PlselSelWork *w;
 
     w = gPlselSelWork;
@@ -1700,7 +1925,12 @@ void Plsel_TickTimers(void) {
     }
 }
 
-s32 Plsel_ChatUpdate(void) {
+/*
+ * Online: opens the keyboard when asked, or runs it while it is open.
+ * Returns 1 while the keyboard takes the input.
+ */
+s32 Plsel_ChatUpdate(void)
+{
     PlselSelWork *w;
 
     w = gPlselSelWork;
@@ -1712,54 +1942,65 @@ s32 Plsel_ChatUpdate(void) {
         Plsel_ChatOpenKbd(Plsel_ChatOpenRequested());
         break;
     case 1:
-        Plsel_ChatInput(gPadState[0].pressed | (gPadState[0].repeat & 0x3C00));
+        Plsel_ChatInput(gPadState[0].pressed | (gPadState[0].repeat & PAD_DPAD));
         return 1;
     }
     return 0;
 }
 
-u8 Plsel_ChatRunKbd(u8 *dst, s32 held, s16 pressed) {
-    if (pressed & 0x4000) {
+/*
+ * PAD_SELECT cancels (dst emptied, 0xFF returned); otherwise returns Kbd_Run's result.
+ */
+u8 Plsel_ChatRunKbd(u8 *dst, s32 held, s16 pressed)
+{
+    if (pressed & PAD_SELECT) {
         *dst = 0;
         return 0xFF;
     }
     return Kbd_Run((char *) dst, held, pressed);
 }
 
-void Plsel_AddChatLog(u8 who, char *msg, u8 *pl, u8 flag) {
+/*
+ * Adds msg to the 64-entry chat log ring. The colours, id and name come from
+ * the sender's record `from`, or for NULL the local player's (its slot
+ * colour, class colour 3 to everyone or 1 to one player). The text is split
+ * into two lines of 22 bytes without cutting a two-byte character.
+ */
+void Plsel_AddChatLog(u8 who, char *msg, NetUserRec *from, u8 flag)
+{
     PlselSelWork *w;
-    PlselChatEntry *e;
+    ChatLine *entry;
     s32 i;
-    s32 n;
-    u8 *p;
-    u8 *line;
+    s32 room;
+    char *dst;
+    char *line;
     s32 k;
-    u8 c;
+    u8 ch;
 
     w = gPlselSelWork;
     if (*msg == 0) {
         return;
     }
-    e = &w->log[w->logHead];
-    e->who = who;
-    if (pl != NULL) {
-        e->color[0] = pl[0x11C];
-        e->color[1] = pl[0x11D];
-        e->color[2] = pl[0x11E];
-        e->color[3] = pl[0x11F];
-        strcpy(e->id, (char *)pl);
-        strcpy(e->name, (char *)pl + 8);
+    entry = &w->log[w->logHead];
+    entry->who = who;
+    if (from != NULL) {
+        entry->color[0] = from->color[0];
+        entry->color[1] = from->color[1];
+        entry->color[2] = from->color[2];
+        entry->color[3] = from->color[3];
+        strcpy((char *)entry->id, from->u.id);
+        strcpy((char *)entry->name, from->u.name);
     } else {
         if (flag == 0xFF) {
             flag = 3;
         } else {
             flag = 1;
         }
-        e->color[0] = 0;
-        e->color[1] = e->color[2] = ((u8 *)gPlselSlotColors)[e->who];
-        e->color[3] = gChatClassColors[flag];
-        strcpy(e->id, gMyUserId);
-        strcpy(e->name, gMyName);
+        entry->color[0] = 0;
+        entry->color[1] = entry->color[2] = ((u8 *)gPlselSlotColors)[entry->who];
+        entry->color[3] = gChatClassColors[flag];
+        strcpy((char *)entry->id, gMyUserId);
+        strcpy((char *)entry->name, gMyName);
     }
     w->logHead++;
     w->logHead &= 0x3F;
@@ -1767,81 +2008,93 @@ void Plsel_AddChatLog(u8 who, char *msg, u8 *pl, u8 flag) {
     if (w->logCount > 0x40) {
         w->logCount = 0x40;
     }
-    e->lineCount = 0;
-    for (i = 0, line = (u8 *)e->lines; i < 2; i++, line += 0x18) {
-        p = line;
+    entry->rows = 0;
+    for (i = 0, line = (char *)entry->text; i < 2; i++, line += sizeof(entry->text[0])) {
+        dst = line;
         if (*msg == 0) {
             line[0] = 0;
             return;
         }
         line[0x16] = 0;
-        n = 0x16;
+        room = 0x16;
         do {
             if (*msg == 0) {
-                *p = 0;
-                e->lineCount++;
+                *dst = 0;
+                entry->rows++;
                 return;
             }
-            c = *msg;
-            if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFF)) {
-                p[0] = c;
-                p[1] = msg[1];
-                n -= 2;
+            ch = *msg;
+            if ((ch >= 0x80 && ch <= 0x9F) || (ch >= 0xE0 && ch <= 0xFF)) {
+                dst[0] = ch;
+                dst[1] = msg[1];
+                room -= 2;
                 msg += 2;
-                p += 2;
+                dst += 2;
             } else {
-                *p = c;
+                *dst = ch;
                 msg++;
-                p++;
-                n--;
+                dst++;
+                room--;
             }
-        } while (n > 0);
-        *p = 0;
-        e->lineCount++;
+        } while (room > 0);
+        *dst = 0;
+        entry->rows++;
     }
 }
 
-void Plsel_OnChatMessage(s32 text, u8 n, s32 color) {
+/*
+ * Draws the chat window (gPlselChatWin) with the title text, at character
+ * size n, in frame style color.
+ */
+void Plsel_DrawChatWindow(s32 text, u8 n, s32 color)
+{
     s16 pos[2];
     Panel w;
-    s32 q;
+    s32 lineH;
 
-    q = n * 18 / 21;
+    lineH = n * 18 / 21;
     pos[0] = 0;
-    pos[1] = 0x1A4 - (q + 1) * 12;
+    pos[1] = 0x1A4 - (lineH + 1) * 12;
     w = gPlselChatWin;
     w.charW = n;
-    w.charH = q - 1;
-    w.flags = ((color + 2) & 7) | 0x8000;
+    w.charH = lineH - 1;
+    w.flags = ((color + 2) & WINDOW_STYLE_MASK) | WINDOW_FILL;
     Window_DrawText(&w, (s16 *)pos, (u8 *)text);
 }
 
 extern char *gChatTypeTexts;
-void Plsel_FormatPlayerTag(char *buf, PlselChatEntry *p) {
+/*
+ * Writes a log entry's name tag: the name's format, then the sender's slot
+ * number.
+ */
+void Plsel_FormatPlayerTag(char *buf, ChatLine *entry)
+{
     char tag[0x40];
     char wide[0x40];
 
-    sprintf(buf, gChatTypeTexts, p->name);
-    sprintf(tag, "%dP", p->who + 1);
+    sprintf(buf, gChatTypeTexts, entry->name);
+    sprintf(tag, "%dP", entry->who + 1);
     Sjis_Widen(tag, wide);
     strcat(buf, wide);
 }
 
-s32 Plsel_ChatLogLineCount(void) {
+/* Returns the rows the log takes: each entry's lines, plus one per name tag. */
+s32 Plsel_ChatLogLineCount(void)
+{
     PlselSelWork *w;
     s32 idx;
     s32 n;
     s32 sum;
-    u8 *r;
+    ChatLine *entry;
 
     w = gPlselSelWork;
     sum = 0;
     n = w->logCount;
     idx = w->logHead - 1;
     for (; n > 0; n--, idx--) {
-        r = (u8 *)w + (idx & 0x3F) * 0x4F;
-        sum += r[0x3B];
-        if ((s8)r[0x41] != 0) {
+        entry = &w->log[idx & 0x3F];
+        sum += entry->rows;
+        if (entry->id[0] != 0) {
             sum++;
         }
     }
@@ -1852,24 +2105,25 @@ void Text_Draw(char *);
 void Text_DrawShadow2(s16 x, s16 y, s32 c1, s32 c2, char *s);
 
 /* Draws the chat log: newest first from the bottom when it is full (12
- * lines or more) and `all` is 0, else from the oldest down. Both line loops
- * index p = e->lines[i]; the upward branch has its own y offset (oy2) and
- * counts lines in the dead parameter all, the downward one keeps the message
- * count in all and counts lines in left. */
-void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size) {
+ * lines or more) and `all` is 0, else from the oldest down. The upward
+ * branch has its own y offset (yOffUp) and counts lines in the parameter
+ * all, which is dead there; the downward one keeps the message count in
+ * all and counts lines in left (the match's form). */
+void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
+{
     PlselSelWork *w;
     s32 idx;
     s32 left;
-    s32 oy;
-    s16 yo;
+    s32 yOffDown;
+    s16 yScaled;
     s16 lim;
     s16 small;
-    s16 lh;
+    s16 lineH;
     s16 fsz;
-    PlselChatEntry *e;
-    s16 ly;
-    u8 *p;
-    s32 oy2;
+    ChatLine *entry;
+    s16 lineY;
+    char *row;
+    s32 yOffUp;
     char buf[0x20];
 
     w = gPlselSelWork;
@@ -1879,41 +2133,41 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size) {
     small = (s16)size * 20 / 21;
     fsz = (s16)size * 18 / 21;
     Font_SetSpacing(size, fsz);
-    lh = fsz + 1;
-    yo = (s16)y * (u8)size / 21;
+    lineH = fsz + 1;
+    yScaled = (s16)y * (u8)size / 21;
     if ((u32)Plsel_ChatLogLineCount() > 11 && (u8)all == 0) {
-        ly = 0x1A4 - lh;
-        lim = 0x1A4 - lh * 11;
+        lineY = 0x1A4 - lineH;
+        lim = 0x1A4 - lineH * 11;
         idx = w->logHead - 1 - skip;
         left = w->logCount - skip;
         if (left == 0) {
             return;
         }
-        oy2 = yo;
+        yOffUp = yScaled;
         do {
             idx &= 0x3F;
-            e = &w->log[idx];
-            Text_SetColor(e->color[3]);
-            for (all = e->lineCount - 1; all >= 0; all--) {
-                p = (u8 *)e->lines[all];
-                Font_SetPos(0x18, ly + oy2);
-                if ((s8)p[0x16] != 0) {
+            entry = &w->log[idx];
+            Text_SetColor(entry->color[3]);
+            for (all = entry->rows - 1; all >= 0; all--) {
+                row = (char *)entry->text[all];
+                Font_SetPos(0x18, lineY + yOffUp);
+                if (row[0x16] != 0) {
                     Font_SetSpacing(small, fsz);
-                    Text_Draw((char *)p);
+                    Text_Draw(row);
                     Font_SetSpacing(size, fsz);
                 } else {
-                    Text_Draw((char *)p);
+                    Text_Draw(row);
                 }
-                ly -= lh;
-                if (ly < lim) {
+                lineY -= lineH;
+                if (lineY < lim) {
                     return;
                 }
             }
-            if ((s8)e->id[0] != 0) {
-                Plsel_FormatPlayerTag(buf, e);
-                Text_DrawShadow2(0x18, (s16)(ly + oy2), 1, e->color[2], buf);
-                ly -= lh;
-                if (ly < lim) {
+            if (entry->id[0] != 0) {
+                Plsel_FormatPlayerTag(buf, entry);
+                Text_DrawShadow2(0x18, (s16)(lineY + yOffUp), 1, entry->color[2], buf);
+                lineY -= lineH;
+                if (lineY < lim) {
                     return;
                 }
             }
@@ -1923,35 +2177,35 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size) {
     } else {
         all = w->logCount;
         idx = w->logHead - all;
-        ly = 0x1A4 - lh * 11;
+        lineY = 0x1A4 - lineH * 11;
         if (all == 0) {
             return;
         }
-        oy = yo;
+        yOffDown = yScaled;
         do {
             idx &= 0x3F;
-            e = &w->log[idx];
-            if ((s8)e->id[0] != 0) {
-                Plsel_FormatPlayerTag(buf, e);
-                Text_DrawShadow2(0x18, (s16)(ly + oy), 1, e->color[2], buf);
-                ly += lh;
-                if (ly >= 0x1A4) {
+            entry = &w->log[idx];
+            if (entry->id[0] != 0) {
+                Plsel_FormatPlayerTag(buf, entry);
+                Text_DrawShadow2(0x18, (s16)(lineY + yOffDown), 1, entry->color[2], buf);
+                lineY += lineH;
+                if (lineY >= 0x1A4) {
                     return;
                 }
             }
-            Text_SetColor(e->color[3]);
-            for (left = 0; left < e->lineCount; left++) {
-                p = (u8 *)e->lines[left];
-                Font_SetPos(0x18, ly + oy);
-                if ((s8)p[0x16] != 0) {
+            Text_SetColor(entry->color[3]);
+            for (left = 0; left < entry->rows; left++) {
+                row = (char *)entry->text[left];
+                Font_SetPos(0x18, lineY + yOffDown);
+                if (row[0x16] != 0) {
                     Font_SetSpacing(small, fsz);
-                    Text_Draw((char *)p);
+                    Text_Draw(row);
                     Font_SetSpacing(size, fsz);
                 } else {
-                    Text_Draw((char *)p);
+                    Text_Draw(row);
                 }
-                ly += lh;
-                if (ly >= 0x1A4) {
+                lineY += lineH;
+                if (lineY >= 0x1A4) {
                     return;
                 }
             }
@@ -1962,19 +2216,15 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size) {
 }
 
 /* Adds player `slot`'s chat message to the log (filtered, with the
- * player's name and colours), counts it and plays the chat sound. The
- * empty check is what gives the game's schedule of the colour stores:
- * only a compound condition there does (a debug message compiled out,
- * most likely). */
-void Plsel_LogChatFrom(u8 slot, u8 flag, char *text) {
+ * player's name and colours), counts it and plays the chat sound
+ * (QSync_OnChat calls it while the select screen is open). The empty
+ * compound check keeps the colour stores in the game's order, for the
+ * match. */
+void Plsel_LogChatFrom(u8 slot, u8 flag, char *text)
+{
     struct {
-        char id[8];
-        char name[0x114];
-        u8 b0;
-        u8 b1;
-        u8 b2;
-        u8 b3;
-        u8 pad[4];
+        NetUserRec r;
+        u8 pad[4];              /* unused: the game's frame holds 0x124 bytes here */
     } rec;
     PlselSelWork *w;
     u8 k;
@@ -1982,14 +2232,14 @@ void Plsel_LogChatFrom(u8 slot, u8 flag, char *text) {
     w = gPlselSelWork;
     Chat_FilterWords(text);
     k = (flag == 0xFF) ? 3 : 1;
-    rec.b0 = 0;
-    rec.b1 = rec.b2 = ((u8 *)gPlselSlotColors)[slot];
+    rec.r.color[0] = 0;
+    rec.r.color[1] = rec.r.color[2] = ((u8 *)gPlselSlotColors)[slot];
     if (slot >= 10 || flag > 1) { /* compiled-out check */
     }
-    rec.b3 = gChatClassColors[k];
-    strcpy(rec.name, gMemberNames[slot]);
-    strcpy(rec.id, gPlayerIds[slot]);
-    Plsel_AddChatLog(slot, (char *)text, (u8 *)rec.id, 0);
+    rec.r.color[3] = gChatClassColors[k];
+    strcpy(rec.r.u.name, gMemberNames[slot]);
+    strcpy(rec.r.u.id, gPlayerIds[slot]);
+    Plsel_AddChatLog(slot, (char *)text, &rec.r, 0);
     if ((u32)Plsel_ChatLogLineCount() > 11) {
         w->logScroll++;
         if (w->logScroll > 0x3F) {
@@ -2002,7 +2252,9 @@ void Plsel_LogChatFrom(u8 slot, u8 flag, char *text) {
     Sound_PlaySeFlat(0, 0x18, 0);
 }
 
-u8 Plsel_SlotColor(s32 slot) {
+/* Returns player slot's colour byte; slots above 3 take colour 4. */
+u8 Plsel_SlotColor(s32 slot)
+{
     if (slot > 3) {
         slot = 4;
     }

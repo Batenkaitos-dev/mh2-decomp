@@ -6014,7 +6014,7 @@ void AreaSky_Draw(void)
             }
             pc = ap->choices;
             switch (as->area) {
-            case 0x89: {
+            case AREA_HUB_0x89: {
                 u8 lvl = Village_FacilityLevel(i);
                 u16 mask;
 
@@ -6110,16 +6110,16 @@ static u32 Color_Lerp(u32 c0, u32 c1, f32 t)
 static s32 Sky_GetGradient(void)
 {
     switch (gScene.area) {
-    case 0x56:
-    case 0x88:
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_HOUSE:
+    case AREA_HUB_0x88:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         return (s32) gSkyDayTableAD;
-    case 0x84:
-    case 0x85:
-    case 0x86:
-    case 0x87:
+    case AREA_HUB_0x84:
+    case AREA_HUB_0x85:
+    case AREA_HUB_0x86:
+    case AREA_HUB_0x87:
         return (s32) gSkyDayTable84;
     default:
         return (s32) gSkyDayTable;
@@ -6361,9 +6361,9 @@ typedef struct FillRect {
     u32 color;
 } FillRect;
 
-/* Draws the area's sky: Sky_DrawGradient in areas 0x56, 0x57, 0x83-0x89 and 0xAD-0xAF, else the sky
- * band of the area state; then a full-screen fade by gAreaFade (1: black, 2: fading with
- * gAreaFadeTimer, else pulsing). */
+/* Draws the area's sky: Sky_DrawGradient in AREA_HOUSE, AREA_HUB_0x57, AREA_HUB_0x83 to
+ * AREA_HUB_0x89 and AREA_ONLINE_HOUSE_0 to _2, else the sky band of the area state; then a
+ * full-screen fade by gAreaFade (1: black, 2: fading with gAreaFadeTimer, else pulsing). */
 void Sky_Draw(void)
 {
     AreaState *as = &gAreaState;
@@ -6380,18 +6380,18 @@ void Sky_Draw(void)
     Gs_SetState(0x6C, 0);
     Gs_SetState(0x60, 0);
     switch (as->area) {
-    case 0x56:
-    case 0x57:
-    case 0x83:
-    case 0x84:
-    case 0x85:
-    case 0x86:
-    case 0x87:
-    case 0x88:
-    case 0x89:
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_HOUSE:
+    case AREA_HUB_0x57:
+    case AREA_HUB_0x83:
+    case AREA_HUB_0x84:
+    case AREA_HUB_0x85:
+    case AREA_HUB_0x86:
+    case AREA_HUB_0x87:
+    case AREA_HUB_0x88:
+    case AREA_HUB_0x89:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         Sky_DrawGradient();
         break;
     default:
@@ -6503,21 +6503,21 @@ void Area_DrawGlowProps(void)
         return;
     }
     switch (as->area) {
-    case 0x56:
-    case 0x57:
-    case 0x83:
-    case 0x84:
-    case 0x85:
-    case 0x86:
-    case 0x87:
-    case 0x88:
-    case 0x89:
-    case 0xAA:
-    case 0xAB:
-    case 0xAC:
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_HOUSE:
+    case AREA_HUB_0x57:
+    case AREA_HUB_0x83:
+    case AREA_HUB_0x84:
+    case AREA_HUB_0x85:
+    case AREA_HUB_0x86:
+    case AREA_HUB_0x87:
+    case AREA_HUB_0x88:
+    case AREA_HUB_0x89:
+    case AREA_HUB_0xAA:
+    case AREA_HUB_0xAB:
+    case AREA_HUB_0xAC:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         break;
     default:
         return;
@@ -6530,8 +6530,8 @@ void Area_DrawGlowProps(void)
     a += f * (f8 / 255.0f);
     set = gAreaSubModels[0];
     switch (as->area) {
-    case 0x56:
-    case 0x57:
+    case AREA_HOUSE:
+    case AREA_HUB_0x57:
         set2 = as->model;
         if (set2 != NULL && set2->active != 0) {
             lights = set2->mats;
@@ -6561,7 +6561,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0x83:
+    case AREA_HUB_0x83:
         set2 = as->model;
         if (set2 != NULL && set2->active != 0) {
             lights = set2->mats;
@@ -6587,7 +6587,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         set2 = as->model;
         if (set2 != NULL && set2->active != 0) {
             lights = set2->mats;
@@ -6614,7 +6614,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0x85:
+    case AREA_HUB_0x85:
         set2 = as->model;
         if (set2 != NULL && set2->active != 0) {
             lights = set2->mats;
@@ -6658,7 +6658,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0x86:
+    case AREA_HUB_0x86:
         if (set != NULL && set->active != 0) {
             for (i = 0; i < 9; i++) {
                 Mtx_Translation(m[0], gGlowPosArea86[i][0], gGlowPosArea86[i][1], gGlowPosArea86[i][2]);
@@ -6682,7 +6682,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         set2 = as->model;
         if (set2 != NULL && set2->active != 0) {
             lights = set2->mats;
@@ -6722,7 +6722,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         set2 = as->model;
         if (set2 != NULL && set2->active != 0) {
             lights = set2->mats;
@@ -6748,7 +6748,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         if (set != NULL && set->active != 0) {
             for (i = 0; i < 12; i++) {
                 Mtx_Scale(m[0], gGlowScaleArea89[i], gGlowScaleArea89[i], gGlowScaleArea89[i]);
@@ -6788,9 +6788,9 @@ void Area_DrawGlowProps(void)
         }
         }
         break;
-    case 0xAA:
-    case 0xAB:
-    case 0xAC:
+    case AREA_HUB_0xAA:
+    case AREA_HUB_0xAB:
+    case AREA_HUB_0xAC:
         for (i = 0; i < 4; i++) {
             e = &set->matSets[gGlowEntryAreaAA[i]];
             Mtx_Identity(m[0]);
@@ -6805,7 +6805,7 @@ void Area_DrawGlowProps(void)
             Draw_SetDefaultState();
         }
         break;
-    case 0xAD:
+    case AREA_ONLINE_HOUSE_0:
         if (set != NULL && set->active != 0) {
             Mtx_Translation(m[0], 2576.0f, 298.0f, 2452.0f);
             Mtx_Concat3x3(m[0], gCamMatrix);
@@ -6819,7 +6819,7 @@ void Area_DrawGlowProps(void)
             Area_DrawEntry(e, m[0], 0);
         }
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         if (set != NULL && set->active != 0) {
             for (i = 0; i < 12; i++) {
                 Mtx_Translation(m[0], gGlowPosAreaAE[i][0], gGlowPosAreaAE[i][1], gGlowPosAreaAE[i][2]);
@@ -6838,7 +6838,7 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         if (set != NULL && set->active != 0) {
             for (i = 0; i < 20; i++) {
                 Mtx_Translation(m[0], gGlowPosAreaAF[i][0], gGlowPosAreaAF[i][1], gGlowPosAreaAF[i][2]);
@@ -7319,13 +7319,13 @@ void AreaProp_Start(Obj *o)
     o->timer = 0;
     o->fvar = 1.0f;
     switch (gScene.area) {
-    case 0x56:
-    case 0x57:
+    case AREA_HOUSE:
+    case AREA_HUB_0x57:
         o->pos[0] = gAreaPropPosArea56[0];
         o->pos[1] = gAreaPropPosArea56[1];
         o->pos[2] = gAreaPropPosArea56[2];
         break;
-    case 0x83:
+    case AREA_HUB_0x83:
         Vec_Copy(o->pos, gAreaPropPosArea83[o->type]);
         switch (o->type) {
         case 6:
@@ -7336,34 +7336,34 @@ void AreaProp_Start(Obj *o)
             break;
         }
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         Vec_Copy(o->pos, gAreaPropPosArea84[o->type]);
         o->var3 = (Rand_Next(1) & 0x7F) + 200;
         break;
-    case 0x85:
+    case AREA_HUB_0x85:
         o->fvar = 0.99f;
         Vec_Copy(o->pos, gAreaPropPosArea85[o->type]);
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         o->fvar = 0.0f;
         o->var0 = 0;
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         Vec_Copy(o->pos, gAreaPropPosArea88[o->type]);
         o->var3 = (Rand_Next(1) & 0x7F) + 200;
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         Vec_Copy(o->pos, gAreaPropPosArea89[o->type]);
         break;
-    case 0xAA:
-    case 0xAB:
-    case 0xAC:
+    case AREA_HUB_0xAA:
+    case AREA_HUB_0xAB:
+    case AREA_HUB_0xAC:
         Vec_Copy(o->pos, &gAreaPropPosAreaAA[o->type]);
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         Vec_Copy(o->pos, &gAreaPropPosAreaAE[o->type]);
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         Vec_Copy(o->pos, &gAreaPropPosAreaAF[o->type]);
         break;
     default:
@@ -7390,7 +7390,7 @@ s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 extern f32 gCamMatrix[];
 
 /* The run state of a kind 6 object: by area, it hides at a frame of the local player's motion,
- * cycles its timers, or (area 0x87) fades in and out in front of the camera; then it is drawn in
+ * cycles its timers, or (AREA_HUB_0x87) fades in and out in front of the camera; then it is drawn in
  * the layer its +0x1E picks. */
 void AreaProp_Run(Obj *o)
 {
@@ -7401,13 +7401,13 @@ void AreaProp_Run(Obj *o)
     o->timer++;
     o->var4 = 1;
     switch (gScene.area) {
-    case 0x56:
-    case 0x57:
+    case AREA_HOUSE:
+    case AREA_HUB_0x57:
         if (p->motionId[0] == 0x287 && Motion_PassedFrame(p, 0, 232.0f)) {
             o->visible = 0;
         }
         break;
-    case 0x83:
+    case AREA_HUB_0x83:
         switch (o->type) {
         case 6:
             o->var4 = 2;
@@ -7418,7 +7418,7 @@ void AreaProp_Run(Obj *o)
             break;
         }
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         switch (o->type) {
         case 5:
             o->var4 = 2;
@@ -7433,10 +7433,10 @@ void AreaProp_Run(Obj *o)
             break;
         }
         break;
-    case 0x85:
+    case AREA_HUB_0x85:
         o->var4 = 0;
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         switch (o->var0) {
         case 0:
             if ((o->fvar += 0.022222223f) >= 1.0f) {
@@ -7467,15 +7467,15 @@ void AreaProp_Run(Obj *o)
         Vec_Add(o->pos, v, t);
         o->var4 = 3;
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         if (o->timer >= o->var3) {
             o->timer = 0;
         }
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         o->var4 = 2;
         break;
-    case 0xAC:
+    case AREA_HUB_0xAC:
         if (p->motionId[0] == 0xFA && Motion_PassedFrame(p, 0, 154.0f)) {
             o->visible = 0;
         }
@@ -7578,8 +7578,8 @@ void AreaProp_Draw(DrawSlot *slot)
     }
     Mtx_Identity(m);
     switch (gScene.area) {
-    case 0x56:
-    case 0x57:
+    case AREA_HOUSE:
+    case AREA_HUB_0x57:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7594,7 +7594,7 @@ void AreaProp_Draw(DrawSlot *slot)
         Mtx_RotateXYZ(m, gAreaPropRotArea56[0], gAreaPropRotArea56[1], gAreaPropRotArea56[2]);
         e = &set->matSets[o->type];
         break;
-    case 0x83:
+    case AREA_HUB_0x83:
         set = *(Model **)((u8 *)as + 0x3C);
         if (set == NULL || set->active == 0) {
             goto end;
@@ -7624,7 +7624,7 @@ void AreaProp_Draw(DrawSlot *slot)
             break;
         }
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         set = *(Model **)((u8 *)as + 0x3C);
         if (set == NULL || set->active == 0) {
             goto end;
@@ -7655,7 +7655,7 @@ void AreaProp_Draw(DrawSlot *slot)
             break;
         }
         break;
-    case 0x85:
+    case AREA_HUB_0x85:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7668,7 +7668,7 @@ void AreaProp_Draw(DrawSlot *slot)
         Gs_SetState(0x19, (s32)uv);
         Gs_SetState(0x6C, 0);
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7678,7 +7678,7 @@ void AreaProp_Draw(DrawSlot *slot)
         Gs_SetState(0x6D, 7);
         Gs_SetState(0x67, ((u8)(255.0f * o->fvar) << 24) | 0xFFFFFF);
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7687,7 +7687,7 @@ void AreaProp_Draw(DrawSlot *slot)
         Mtx_RotateY(m, DEG2RAD(360.0f * (1.0f - (f32)o->timer / (f32)o->var3)));
         Gs_SetState(0x67, Notice_GetColor());
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7725,9 +7725,9 @@ void AreaProp_Draw(DrawSlot *slot)
         }
         Draw_SetDefaultState();
         goto end;
-    case 0xAA:
-    case 0xAB:
-    case 0xAC:
+    case AREA_HUB_0xAA:
+    case AREA_HUB_0xAB:
+    case AREA_HUB_0xAC:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7736,7 +7736,7 @@ void AreaProp_Draw(DrawSlot *slot)
         Mtx_RotateY(m, 2.8274333f);
         Mtx_RotateZ(m, -1.2217306f);
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7744,7 +7744,7 @@ void AreaProp_Draw(DrawSlot *slot)
         Mtx_RotateX(m, -1.2566371f);
         Mtx_RotateZ(m, 1.5707964f);
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         if (set == NULL || set->active == 0) {
             goto end;
         }
@@ -7903,27 +7903,27 @@ void SoundObj_Run(Obj *o)
                 o->var3 = o->timer;
             }
             switch (Area_DayId(gScene.area)) {
-            case 0x48:
-            case 0x9E:
+            case AREA_SWAMP_NIGHT_7:
+            case AREA_SWAMP_7:
                 seg = gRiverPtsDay48;
                 break;
-            case 0x4B:
-            case 0xA0:
+            case AREA_SWAMP_NIGHT_9:
+            case AREA_SWAMP_9:
                 seg = gRiverPtsDay4B;
                 break;
-            case 0x6E:
+            case AREA_JUNGLE_0:
                 seg = gRiverPtsDay6E;
                 break;
-            case 0x71:
+            case AREA_JUNGLE_3:
                 seg = gRiverPtsDay71;
                 break;
-            case 0x72:
+            case AREA_JUNGLE_4:
                 seg = gRiverPtsDay72;
                 break;
-            case 0x78:
+            case AREA_JUNGLE_10:
                 seg = gRiverPtsDay78;
                 break;
-            case 0xA1:
+            case AREA_VOLCANO_0:
                 seg = gRiverPtsDayA1;
                 break;
             default:
@@ -8077,51 +8077,51 @@ void AmbientSound_Setup(Obj *o)
     o->timer = 0;
     o->var3 = 0;
     switch (gScene.area) {
-    case 0x30:
-    case 0x31:
-    case 0x49:
-    case 0x4B:
-    case 0x64:
-    case 0x6D:
-    case 0x77:
-    case 0x9F:
-    case 0xA8:
+    case AREA_DESERT_NIGHT_2:
+    case AREA_DESERT_NIGHT_3:
+    case AREA_SWAMP_NIGHT_8:
+    case AREA_SWAMP_NIGHT_9:
+    case AREA_SNOWY_MOUNTAINS_8:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
+    case AREA_JUNGLE_9:
+    case AREA_SWAMP_8:
+    case AREA_VOLCANO_7:
         o->fvar = 1.0f;
         break;
-    case 0x22:
-    case 0xBB:
+    case AREA_FOREST_HILLS_10:
+    case AREA_FOREST_HILLS_NIGHT_10:
         o->fvar = 0.1f;
         break;
-    case 0x23:
-    case 0xBC:
+    case AREA_FOREST_HILLS_8:
+    case AREA_FOREST_HILLS_NIGHT_8:
         o->fvar = 0.3f;
         break;
-    case 0x34:
+    case AREA_DESERT_NIGHT_6:
         if (p->pos[0] > 3000.0f && p->pos[0] < 15000.0f && p->pos[2] > 3000.0f && p->pos[2] < 8000.0f) {
             o->fvar = 0.0f;
         } else {
             o->fvar = 1.0f;
         }
         break;
-    case 0x37:
+    case AREA_DESERT_NIGHT_9:
         if (p->pos[0] > 0.0f && p->pos[0] < 6200.0f && p->pos[2] > 0.0f && p->pos[2] < 9300.0f) {
             o->fvar = 0.0f;
         } else {
             o->fvar = 1.0f;
         }
         break;
-    case 0x39:
+    case AREA_GREAT_ARENA_NIGHT_1:
         if (p->pos[2] > 100.0f && p->pos[2] < 10400.0f) {
             o->fvar = 1.0f;
         } else {
             o->fvar = 0.0f;
         }
         break;
-    case 0x1D:
-    case 0x2F:
-    case 0x33:
-    case 0x8D:
-    case 0x91:
+    case AREA_SWAMP_NIGHT_10:
+    case AREA_DESERT_NIGHT_1:
+    case AREA_DESERT_NIGHT_5:
+    case AREA_DESERT_1:
+    case AREA_DESERT_5:
         if (gScene.eventRunning == 1) {
             o->var1 = 2;
             o->fvar = 1.0f;
@@ -8141,34 +8141,34 @@ void AmbientSound_Setup(Obj *o)
                 o->fvar = 1.0f;
                 break;
             }
-            if (gScene.area == 0x91 && p->pos[2] < 2200.0f) {
+            if (gScene.area == AREA_DESERT_5 && p->pos[2] < 2200.0f) {
                 o->fvar = 0.0f;
             }
         }
         break;
-    case 0x59:
+    case AREA_ARENAS_0:
         if (p->pos[0] < 8832.0f || p->pos[2] > 10675.0f) {
             o->fvar = 0.0f;
         } else {
             o->fvar = 1.0f;
         }
         break;
-    case 0x5A:
+    case AREA_GREAT_ARENA_1:
         if (p->pos[2] > 11000.0f) {
             o->fvar = 0.0f;
         } else {
             o->fvar = 1.0f;
         }
         break;
-    case 0x5B:
+    case AREA_ARENA_1:
         if (p->pos[0] < 8437.0f || p->pos[2] > 11400.0f) {
             o->fvar = 0.0f;
         } else {
             o->fvar = 1.0f;
         }
         break;
-    case 0x36:
-    case 0x94:
+    case AREA_DESERT_NIGHT_8:
+    case AREA_DESERT_8:
         if (p->pos[0] > 6916.0f || p->pos[2] < 5555.0f) {
             o->fvar = 0.0f;
         } else {
@@ -8245,7 +8245,7 @@ extern s16 *D_00449F20[];
 
 /* Updates an ambient sound object (state 1): its volume (+0x30) by its type, the area and the
  * hunter's position, its position around the camera (the draw slot's), and adds the slot to the
- * ordering table. Type 1 reads its distances and limits unset outside areas 0x22 and 0xBB (as
+ * ordering table. Type 1 reads its distances and limits unset outside AREA_FOREST_HILLS_10 and AREA_FOREST_HILLS_NIGHT_10 (as
  * the original does); the 0x30/0x31 case of type 0 falls through into 0x77's. The zone
  * switches' `default: case 0:` keeps the original's second `li v0, 2`. */
 void AmbientSound_Update(Obj *o)
@@ -8283,38 +8283,38 @@ void AmbientSound_Update(Obj *o)
         blocked = Area_LineBlocked(s);
         Vec_Normalize(v);
         switch (gScene.area) {
-        case 0x34:
+        case AREA_DESERT_NIGHT_6:
             if (p->pos[0] > 3000.0f && p->pos[0] < 15000.0f && p->pos[2] > 3000.0f && p->pos[2] < 8000.0f) {
                 blocked = 1;
             }
             break;
-        case 0x37:
+        case AREA_DESERT_NIGHT_9:
             if (p->pos[0] > 0.0f && p->pos[0] < 6200.0f && p->pos[2] > 0.0f && p->pos[2] < 9300.0f) {
                 blocked = 1;
             }
             break;
-        case 0x39:
+        case AREA_GREAT_ARENA_NIGHT_1:
             if (p->pos[2] <= 100.0f || p->pos[2] >= 10400.0f) {
                 blocked = 1;
             }
             break;
-        case 0x59:
+        case AREA_ARENAS_0:
             if (p->pos[0] < 8832.0f || p->pos[2] > 10675.0f) {
                 blocked = 1;
             }
             break;
-        case 0x5A:
+        case AREA_GREAT_ARENA_1:
             if (p->pos[2] > 11000.0f) {
                 blocked = 1;
             }
             break;
-        case 0x5B:
+        case AREA_ARENA_1:
             if (p->pos[0] < 8437.0f || p->pos[2] > 11400.0f) {
                 blocked = 1;
             }
             break;
-        case 0x36:
-        case 0x94:
+        case AREA_DESERT_NIGHT_8:
+        case AREA_DESERT_8:
             if (p->pos[0] > 6916.0f || p->pos[2] < 5555.0f) {
                 blocked = 1;
             }
@@ -8331,25 +8331,25 @@ void AmbientSound_Update(Obj *o)
         }
         Vec_FromCamera(t, v, 100.0f);
         switch (gScene.area) {
-        case 0x30:
-        case 0x31:
+        case AREA_DESERT_NIGHT_2:
+        case AREA_DESERT_NIGHT_3:
             if (o->timer >= 400) {
                 o->timer = 0;
             }
             /* fallthrough */
-        case 0x77:
+        case AREA_JUNGLE_9:
             if (o->timer >= 200) {
                 o->timer = 0;
             }
             break;
-        case 0x35:
-        case 0x93:
+        case AREA_DESERT_NIGHT_7:
+        case AREA_DESERT_7:
             if (o->timer >= 100) {
                 o->timer = 0;
             }
             break;
-        case 0x38:
-        case 0x96:
+        case AREA_DESERT_NIGHT_10:
+        case AREA_DESERT_10:
             if (o->timer >= 100) {
                 o->timer = 0;
             }
@@ -8360,8 +8360,8 @@ void AmbientSound_Update(Obj *o)
         Vec_Copy(v, gCamDir);
         Vec_FromCamera(t, v, -50.0f);
         switch (gScene.area) {
-        case 0x22:
-        case 0xBB:
+        case AREA_FOREST_HILLS_10:
+        case AREA_FOREST_HILLS_NIGHT_10:
             lim = 500;
             mx = 0.4f;
             mn = 0.1f;
@@ -8377,7 +8377,7 @@ void AmbientSound_Update(Obj *o)
         if (o->timer >= lim) {
             o->timer = 0;
         }
-        /* the game reads registers it never set: dx, dz, rr, r, mx and mn are set only for areas 0x22 and 0xBB */
+        /* the game reads registers it never set: dx, dz, rr, r, mx and mn are set only for AREA_FOREST_HILLS_10 and AREA_FOREST_HILLS_NIGHT_10 */
         d2 = dx * dx + dz * dz;
         if (d2 <= rr) {
             o->var0 = 0;
@@ -8421,7 +8421,7 @@ void AmbientSound_Update(Obj *o)
     case 3:
         o->var3++;
         switch (gScene.area) {
-        case 0x36:
+        case AREA_DESERT_NIGHT_8:
             lim = 1600;
             k = 700;
             break;
@@ -8490,17 +8490,17 @@ void AmbientSound_Update(Obj *o)
         Vec_Copy(v, gCamDir);
         Vec_FromCamera(t, v, -50.0f);
         switch (gScene.area) {
-        case 0x23:
-        case 0xBC:
+        case AREA_FOREST_HILLS_8:
+        case AREA_FOREST_HILLS_NIGHT_8:
             lim = 400;
             break;
-        case 0x49:
+        case AREA_SWAMP_NIGHT_8:
             lim = 200;
             break;
-        case 0x4B:
+        case AREA_SWAMP_NIGHT_9:
             lim = 200;
             break;
-        case 0x9F:
+        case AREA_SWAMP_8:
             lim = 200;
             break;
         default:
@@ -8584,7 +8584,7 @@ void AmbientSound_Update(Obj *o)
             v[1] = s[1] - gCamPos[1];
             v[2] = s[2] - gCamPos[2];
             blocked = Area_LineBlocked(s);
-            if (gScene.area == 0x91 && p->pos[2] < 2200.0f) {
+            if (gScene.area == AREA_DESERT_5 && p->pos[2] < 2200.0f) {
                 blocked = 1;
             }
             Vec_Normalize(v);
@@ -8678,10 +8678,10 @@ void AmbientSound_Update(Obj *o)
     case 11:
         pts = o->buf;
         switch (gScene.area) {
-        case 0x9A:
+        case AREA_SWAMP_3:
             lim = 200;
             break;
-        case 0x9B:
+        case AREA_SWAMP_4:
         default:
             lim = 200;
             break;
@@ -8847,23 +8847,23 @@ void AmbientSound_Draw(DrawSlot *slot)
         Mtx_Identity(mtx[0]);
         u = 0.0f;
         switch (gScene.area) {
-        case 0x30:
-        case 0x31:
+        case AREA_DESERT_NIGHT_2:
+        case AREA_DESERT_NIGHT_3:
             u = 0.0025f * o->timer;
             break;
-        case 0x28:
-        case 0xC1:
+        case AREA_FOREST_HILLS_5:
+        case AREA_FOREST_HILLS_NIGHT_5:
             u = 0.0078125f * (o->timer & 0x7F);
             break;
-        case 0x77:
+        case AREA_JUNGLE_9:
             u = 0.005f * o->timer;
             break;
-        case 0x35:
-        case 0x93:
+        case AREA_DESERT_NIGHT_7:
+        case AREA_DESERT_7:
             u = 0.01f * o->timer;
             break;
-        case 0x38:
-        case 0x96:
+        case AREA_DESERT_NIGHT_10:
+        case AREA_DESERT_10:
             u = 0.01f * o->timer;
             break;
         default:
@@ -8896,9 +8896,9 @@ void AmbientSound_Draw(DrawSlot *slot)
     case 1:
         CamFov_Narrow(&fov);
         switch (gScene.area) {
-        case 0x18:
-        case 0x22:
-        case 0xBB:
+        case AREA_DESERT_NIGHT_11:
+        case AREA_FOREST_HILLS_10:
+        case AREA_FOREST_HILLS_NIGHT_10:
             div = 500;
             break;
         default:
@@ -8922,7 +8922,7 @@ void AmbientSound_Draw(DrawSlot *slot)
     case 3:
         CamFov_Narrow(&fov);
         switch (gScene.area) {
-        case 0x36:
+        case AREA_DESERT_NIGHT_8:
             div = 1600;
             div2 = 700;
             break;
@@ -8959,17 +8959,17 @@ void AmbientSound_Draw(DrawSlot *slot)
     case 6:
         CamFov_Narrow(&fov);
         switch (gScene.area) {
-        case 0x23:
-        case 0xBC:
+        case AREA_FOREST_HILLS_8:
+        case AREA_FOREST_HILLS_NIGHT_8:
             div = 400;
             break;
-        case 0x49:
+        case AREA_SWAMP_NIGHT_8:
             div = 200;
             break;
-        case 0x4B:
+        case AREA_SWAMP_NIGHT_9:
             div = 200;
             break;
-        case 0x9F:
+        case AREA_SWAMP_8:
             div = 200;
             break;
         default:
@@ -11389,13 +11389,13 @@ char *gNoticeMadeTexts[10] = {
 char *gSharpnessDownText[2] = {
     D_00497170, D_00497190,
 };
-char *D_00446B10[2] = {
+char *gSharpnessFullText[2] = {
     D_004971B0, NULL,
 };
-char *D_00446B18[2] = {
+char *gLoadingCaptions[2] = {
     D_004971D0, D_004971F0,
 };
-char *D_00446B20[4] = {
+char *gLoadingCaptionsAlt[4] = {
     D_00497210, D_00497230, NULL, NULL,
 };
 EmTraderMsg gEmTraderMsgs[106] = {

@@ -38,7 +38,7 @@ extern QuestFile gQuestFiles[3];
 extern char *gUnknownQuestTexts[];
 s8 Quest_DownloadedSlot(u16 id);
 QuestInfo *Quest_GetInfoAny(u16 id);
-extern u16 D_1BB3D0[];
+extern u16 gQuestGroupLastIds[];
 extern QuestInfo **gGuildQuestLists[];
 void Quest_SetCurrent(u16 id, void *p, s32 c);
 extern GiftEntry gGiftTable[];
@@ -59,11 +59,11 @@ void SkillList_Build(Player *p, Player *q);
 u8 SkillList_PageCount(void);
 u8 Village_FacilityLevel(s32 k);
 s32 Save_TestEventFlag(s32 flag);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 void Save_ClearEventFlag(s32 flag);
 s32 RateFlag_SetAndNotify(s32 a);
 s32 PspLink_HasFlag(s32);
-void func_3BDA10(void);
+void SysSave_UnlockBonus(void);
 extern u16 gStoryFlagList[];
 void Village_ProcessEventFlags(void);
 void Village_QuestTick(void);
@@ -179,9 +179,9 @@ void Village_UpdateStoryFlags(void)
     }
     if ((PspLink_HasFlag(4) != 0) && (Save_TestEventFlag(0x7C) == 0)) {
         Save_SetEventFlag(0x7C);
-        func_3BDA10();
+        SysSave_UnlockBonus();
     }
-    if ((gSysSave.unk458 != 0) && (Save_TestEventFlag(0x7C) == 0)) {
+    if ((gSysSave.bonusUnlocked != 0) && (Save_TestEventFlag(0x7C) == 0)) {
         Save_SetEventFlag(0x7C);
     }
     if ((PspLink_HasFlag(5) != 0) && (Save_TestEventFlag(0x7D) == 0)) {
@@ -276,10 +276,10 @@ void Village_UpdateProgress(s32 arg0)
     if ((Save_TestEventFlag(0x5E) == 0) && (Save_HrGateCleared(4) == 1)) {
         Save_SetEventFlag(0x5E);
     }
-    if ((Save_TestListBit(0x2775U) != 0) && (Save_TestListBit(0x2776U) != 0) && (Save_TestListBit(0x2777U) != 0) && (Save_TestEventFlag(0xC4) == 0)) {
+    if ((Save_IsQuestCleared(0x2775U) != 0) && (Save_IsQuestCleared(0x2776U) != 0) && (Save_IsQuestCleared(0x2777U) != 0) && (Save_TestEventFlag(0xC4) == 0)) {
         Save_SetEventFlag(0xC4);
     }
-    if ((Save_TestEventFlag(5) == 0) && ((Save_TestListBit(0x3E9U) != 0) || (Save_TestListBit(0x43EU) != 0) || (Save_TestListBit(0x43FU) != 0))) {
+    if ((Save_TestEventFlag(5) == 0) && ((Save_IsQuestCleared(0x3E9U) != 0) || (Save_IsQuestCleared(0x43EU) != 0) || (Save_IsQuestCleared(0x43FU) != 0))) {
         Save_SetEventFlag(5);
     }
     if ((Monster_IsHunted(0x1BU) == 1) && (Save_TestEventFlag(7) == 0) && (Cond_Check(3) == 1)) {
@@ -297,10 +297,10 @@ void Village_UpdateProgress(s32 arg0)
     if ((Monster_IsHunted(0x34U) == 1) && (Save_TestEventFlag(0x47) == 0) && (Cond_Check(0xB) == 1)) {
         Save_SetEventFlag(0x47);
     }
-    if ((Save_TestListBit(0x138AU) != 0) && (Save_TestEventFlag(0x4B) == 0)) {
+    if ((Save_IsQuestCleared(0x138AU) != 0) && (Save_TestEventFlag(0x4B) == 0)) {
         Save_SetEventFlag(0x4B);
     }
-    if ((Save_TestListBit(0x138BU) != 0) && (Save_TestEventFlag(0x4C) == 0)) {
+    if ((Save_IsQuestCleared(0x138BU) != 0) && (Save_TestEventFlag(0x4C) == 0)) {
         Save_SetEventFlag(0x4C);
     }
     if ((Monster_IsHunted(0x33U) == 1) && (Save_TestEventFlag(0x4E) == 0)) {
@@ -309,7 +309,7 @@ void Village_UpdateProgress(s32 arg0)
     if ((Monster_IsHunted(1U) == 1) && (Save_TestEventFlag(0x4F) == 0)) {
         Save_SetEventFlag(0x4F);
     }
-    if ((Save_TestListBit(0x138CU) != 0) && (Save_TestEventFlag(0x52) == 0)) {
+    if ((Save_IsQuestCleared(0x138CU) != 0) && (Save_TestEventFlag(0x52) == 0)) {
         Save_SetEventFlag(0x52);
     }
     if ((Monster_IsHunted(0x43U) == 1) && (Save_TestEventFlag(0x53) == 0)) {
@@ -318,7 +318,7 @@ void Village_UpdateProgress(s32 arg0)
     if ((Monster_IsHunted(0x11U) == 1) && (Save_TestEventFlag(0x54) == 0)) {
         Save_SetEventFlag(0x54);
     }
-    if ((Save_TestListBit(0x138FU) != 0) && (Save_TestEventFlag(0x58) == 0)) {
+    if ((Save_IsQuestCleared(0x138FU) != 0) && (Save_TestEventFlag(0x58) == 0)) {
         Save_SetEventFlag(0x58);
         if (gQuestOfferId == 1) {
             gQuestOfferId = 0U;
@@ -331,7 +331,7 @@ void Village_UpdateProgress(s32 arg0)
     if ((Monster_IsHunted(0xBU) == 1) && (Save_TestEventFlag(0x139) == 0)) {
         Save_SetEventFlag(0x139);
     }
-    if ((Save_TestListBit(0x1390U) != 0) && (Save_TestEventFlag(0x13A) == 0)) {
+    if ((Save_IsQuestCleared(0x1390U) != 0) && (Save_TestEventFlag(0x13A) == 0)) {
         Save_SetEventFlag(0x13A);
     }
     if ((Save_TestEventFlag(0x59) == 0) && (Monster_AllHuntedBut5() == 1)) {
@@ -358,7 +358,7 @@ void Village_UpdateProgress(s32 arg0)
         if (Save_PlayTimeReached(0x12C) == 1) {
             Award_Grant(0x1F);
         }
-        if ((Save_TestListBit(0x1389U) != 0) && (Save_TestEventFlag(0x12) == 0) && (Cond_Check(9) == 1)) {
+        if ((Save_IsQuestCleared(0x1389U) != 0) && (Save_TestEventFlag(0x12) == 0) && (Cond_Check(9) == 1)) {
             Save_SetEventFlag(0x12);
             Save_SetEventFlag(0x32);
             Save_SetEventFlag(0x3C);
@@ -405,7 +405,7 @@ void Village_UpdateProgress(s32 arg0)
 QuestInfo *Quest_GetDiscInfo(u16 id)
 {
     s32 i;
-    u16 *t = D_1BB3D0;
+    u16 *t = gQuestGroupLastIds;
     QuestInfo **p;
 
     if (id >= 50000) {

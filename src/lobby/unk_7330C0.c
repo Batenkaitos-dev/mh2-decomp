@@ -4,7 +4,7 @@
 #include "browser.h"
 
 void *memset(void *dst, s32 c, u32 n);
-void Gfx_SetState63(s32 on);                  /* sub_main */
+void Gfx_SetTexFilter(s32 on);                  /* sub_main */
 void Browser_SetRenderState(s32 state, u32 value);
 void Draw_Title(u8 *text);
 void Page_FreeObjs(void);                  /* Page_FreeObjs */
@@ -43,7 +43,7 @@ void Page_New(void)
     Browser_SetRenderState(0x60, 0xFF000001);
     Browser_SetRenderState(0x5F, 5);
     Browser_SetRenderState(0x5E, 1);
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
 }
 
 /* Browser_RunStart: the portal's mode 0, its step. */

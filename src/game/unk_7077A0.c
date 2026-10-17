@@ -1,7 +1,11 @@
 /*
- * Monster helpers: the status effects (begin, end, thresholds), per-kind
- * parameter lookups, lookups keyed by the monster's +0x680, and a few
- * resets and clamped counters. See include/em.h.
+ * Monster helpers: the status effects (Em_BeginStatus1/2/4/5, the
+ * Em_EndStatus functions and their thresholds; Em.status, Em.statusFlags),
+ * the per-kind parameter lookups (rage, collision mask, size flags, the pack
+ * leader link), the lookups keyed by the monster's area (Em.area:
+ * Em_FindAreaEntry, Em_AreaEntryValue, Em_NextAreas), the need gauges, and
+ * the player-area script trigger. The .data holds the per-kind tables these
+ * read. See include/em.h.
  */
 #include "em.h"
 
@@ -14,7 +18,7 @@ typedef struct EmIdEntry {
 typedef struct EmIdEntryU {
     u16 id;             /* 0x0: 0xFF ends the table */
     u16 pad;
-    s16 *value;         /* 0x4: the area list (Em_IdSetLookup, Em_IdSetHas) */
+    s16 *value;         /* 0x4: the area list (Em_NextAreas, Em_NextAreasFrom) */
 } EmIdEntryU;
 
 typedef struct EmIdSet {
@@ -31,13 +35,13 @@ extern EmStatusParam *gEmStatus5Params[];
 extern u16 gEmCollMasks[];
 extern u8 gEmIsLarge[];
 extern s16 *gEmRequestIds[];
-extern u8 gEmIsLarge2[];
+extern u8 gEmShowsOnMap[];
 extern EmIdSet **gEmIdSets[];
 extern u8 gEmStartsBattle[];
 extern f32 gEffect06Scales[];
 
 u16 Area_DayId(u16 id);
-void Effect06_SpawnAtBone(Em *em, s32 a, s32 b, u8 c, f32 f); /* unit's own declaration: with the definition's void (Player *p, s16 type, u8 sub, s16 bone, f32 scale) (sub_main/unk_3CA790.c), Em_SpawnEffect06Bone 11 of 23 words differ */
+void Effect06_SpawnAtBone(Em *em, s32 a, s32 b, u8 c, f32 f); /* unit's own declaration: with the definition's void (Player *p, s16 type, u8 sub, s16 bone, f32 scale) (sub_main/unk_3CA790.c), Em_SpawnStatus4Effect 11 of 23 words differ */
 void Effect06_SpawnAt(void *obj, s16 type, u8 bone, f32 *pos, f32 scale);
 void Em_AddPoison(Em *em, s32 arg);
 void Em_AddStatus4(Em *em, s32 arg);
@@ -47,6 +51,11 @@ void Em_EndStatus1(Em *em);
 void Em_EndStatus4(Em *em);
 void Em_EndStatus5(Em *em);
 
+/*
+ * Sets the monster's rage from its kind's EmRageRow (gEmRageTbl[type]).
+ * rageThreshold comes from the row, or is -1 for a kind that never enrages.
+ * Clears rageBuildup, rageTimer, rage, rageStep and ragePending.
+ */
 void Em_InitRage(Em *em)
 {
     EmRageRow *p = gEmRageTbl[em->type];
@@ -63,21 +72,33 @@ void Em_InitRage(Em *em)
     em->ragePending = 0;
 }
 
+/*
+ * Sets the five status thresholds (status 1, status 2, poison, status 4,
+ * stun) from the kind's rows of gEmStatus1Params, gEmStatus2Params,
+ * gEmStatusParams, gEmStatus4Params and gEmStatus5Params.
+ */
 void Em_InitStatusThresholds(Em *em)
 {
-    EmStatusParam *s1 = gEmStatus1Params[em->type];
-    EmStatusParam *s3 = gEmStatusParams[em->type];
-    EmStatusParam *s4 = gEmStatus4Params[em->type];
-    EmStatusParam *s2 = gEmStatus2Params[em->type];
-    EmStatusParam *s5 = gEmStatus5Params[em->type];
+    EmStatusParam *status1Param = gEmStatus1Params[em->type];
+    EmStatusParam *poisonParam = gEmStatusParams[em->type];
+    EmStatusParam *status4Param = gEmStatus4Params[em->type];
+    EmStatusParam *status2Param = gEmStatus2Params[em->type];
+    EmStatusParam *status5Param = gEmStatus5Params[em->type];
 
-    em->status1Threshold = s1->threshold;
-    em->status2Threshold = s2->threshold;
-    em->poisonThreshold = s3->threshold;
-    em->status4Threshold = s4->threshold;
-    em->status5Threshold = s5->threshold;
+    em->status1Threshold = status1Param->threshold;
+    em->status2Threshold = status2Param->threshold;
+    em->poisonThreshold = poisonParam->threshold;
+    em->status4Threshold = status4Param->threshold;
+    em->status5Threshold = status5Param->threshold;
 }
 
+/*
+ * Puts the monster under status 2. First it ends status 4, status 1 and the
+ * stun if they are flagged. It forgets the players (noticeCount,
+ * alertBuildup, Em_SetCombat off), clears need3 and the status 2 buildup, and
+ * refills need3Gauge. Then it sets status 2, flag 2, EM_HIT_REACT_WAKE,
+ * noReact, and a guardTimer of 30.
+ */
 void Em_BeginStatus2(Em *em)
 {
     s32 i;
@@ -107,6 +128,10 @@ void Em_BeginStatus2(Em *em)
     em->guardTimer = 30;
 }
 
+/*
+ * As Em_BeginStatus2 for status 1 (flag 1): ends status 4, status 2 and the
+ * stun, clears the status 1 buildup, and sets no guard frames.
+ */
 void Em_BeginStatus1(Em *em)
 {
     s32 i;
@@ -135,6 +160,12 @@ void Em_BeginStatus1(Em *em)
     Em_SetCombat(em, 0, 0);
 }
 
+/*
+ * Ends status 2 or 1: clears flags 1 and 2, noReact, need3 and the hit
+ * reaction mode, and sets EM_STATUS_NONE. When status was 2 and status2Count
+ * is under 4, it counts it and raises status2Threshold by the kind's
+ * increment (gEmStatus2Params).
+ */
 void Em_EndStatus2(Em *em)
 {
     EmStatusParam *param = gEmStatus2Params[em->type];
@@ -147,9 +178,13 @@ void Em_EndStatus2(Em *em)
         em->status2Count++;
         em->status2Threshold += param->increment;
     }
-    em->status = 0;
+    em->status = EM_STATUS_NONE;
 }
 
+/*
+ * As Em_EndStatus2 for status 1 (status1Count, status1Threshold,
+ * gEmStatus1Params). The test is status & 1, which is also true for the stun.
+ */
 void Em_EndStatus1(Em *em)
 {
     EmStatusParam *param = gEmStatus1Params[em->type];
@@ -162,9 +197,13 @@ void Em_EndStatus1(Em *em)
         em->status1Count++;
         em->status1Threshold += param->increment;
     }
-    em->status = 0;
+    em->status = EM_STATUS_NONE;
 }
 
+/*
+ * Puts the monster under status 4: EM_HIT_REACT_STATUS, status 4, flag 8,
+ * noReact.
+ */
 void Em_BeginStatus4(Em *em)
 {
     em->hitReactMode = 4;
@@ -173,6 +212,12 @@ void Em_BeginStatus4(Em *em)
     em->noReact = 1;
 }
 
+/*
+ * Ends status 4: clears its buildup, decay timer and flag, noReact and the
+ * hit reaction mode. When status & 4 is set (4 or the stun) and status4Count
+ * is under 4, it counts it and raises status4Threshold by gEmStatus4Params'
+ * increment. Sets EM_STATUS_NONE.
+ */
 void Em_EndStatus4(Em *em)
 {
     EmStatusParam *param = gEmStatus4Params[em->type];
@@ -186,9 +231,13 @@ void Em_EndStatus4(Em *em)
         em->status4Count++;
         em->status4Threshold += param->increment;
     }
-    em->status = 0;
+    em->status = EM_STATUS_NONE;
 }
 
+/*
+ * Ends whatever status is running: 1 or 2 by Em.status, status 4 and the stun
+ * by their flags.
+ */
 void Em_EndAllStatus(Em *em)
 {
     if (em->status == 1) {
@@ -205,6 +254,7 @@ void Em_EndAllStatus(Em *em)
     }
 }
 
+/* Ends status 1 or 2 if it is the current one. */
 void Em_EndStatus1And2(Em *em)
 {
     if (em->status == 1) {
@@ -215,14 +265,21 @@ void Em_EndStatus1And2(Em *em)
     }
 }
 
+/*
+ * Stuns the monster: EM_STATUS_STUN, EM_HIT_REACT_STATUS, flag 0x10, noReact.
+ */
 void Em_BeginStatus5(Em *em)
 {
     em->hitReactMode = 4;
-    em->status = 5;
+    em->status = EM_STATUS_STUN;
     em->statusFlags |= 0x10;
     em->noReact = 1;
 }
 
+/*
+ * Ends the stun as Em_EndStatus4 ends status 4, with status5Count,
+ * status5Threshold and gEmStatus5Params. The test is status & 5.
+ */
 void Em_EndStatus5(Em *em)
 {
     EmStatusParam *param = gEmStatus5Params[em->type];
@@ -236,10 +293,16 @@ void Em_EndStatus5(Em *em)
         em->status5Count++;
         em->status5Threshold += param->increment;
     }
-    em->status = 0;
+    em->status = EM_STATUS_NONE;
 }
 
-/* The entry for `id`: ids below 10000 match through Area_DayId. */
+/*
+ * Returns the entry of the area table `entry` for area `id`. An entry id of
+ * 10000 or more matches exactly id + 10000; a smaller one matches when
+ * Area_DayId gives the same day id. With no match it returns the -1 entry
+ * that ends the table (the default), and NULL past 197 entries. em is unused.
+ * The callers pass em->tables[1] and em->tables[6] (route sets).
+ */
 EmIdEntry *Em_FindAreaEntry(Em *em, EmIdEntry *entry, s16 id)
 {
     s16 i;
@@ -259,7 +322,11 @@ EmIdEntry *Em_FindAreaEntry(Em *em, EmIdEntry *entry, s16 id)
     return NULL;
 }
 
-/* As Em_FindAreaEntry for the monster's +0x680, returning the value. */
+/*
+ * As Em_FindAreaEntry for the monster's own area (Em.area), but returns the
+ * matched or default entry's points (value), or 0 past 197 entries. The
+ * callers pass em->tables[0], em->tables[2] and gEmGoalPosSets.
+ */
 f32 *Em_AreaEntryValue(Em *em, EmIdEntry *entry)
 {
     s16 i;
@@ -279,44 +346,55 @@ f32 *Em_AreaEntryValue(Em *em, EmIdEntry *entry)
     return 0;
 }
 
+/* Sets collMask from the kind's entry in gEmCollMasks. */
 void Em_InitCollMask(Em *em)
 {
     em->collMask = gEmCollMasks[em->type];
 }
 
-/* Links some kinds to the first active monster of a companion kind. */
+/*
+ * Sets link to the first active monster of the kind's pack leader:
+ * EM_KIND_VELOCIDROME for Velociprey and Giaprey, EM_KIND_GENDROME for
+ * Genprey, EM_KIND_IODROME for Ioprey, EM_KIND_BULLDROME for Bullfango. It is
+ * NULL for other kinds or when no leader is found.
+ */
 void Em_FindLink(Em *em)
 {
     s8 i;
     Em *other = gEms;
-    u8 kind;
+    u8 leaderKind;
 
     em->link = NULL;
     switch (em->type) {
     case 0x10:
     case 0x23:
-        kind = 0x1B;
+        leaderKind = 0x1B;
         break;
     case 0xD:
-        kind = 0x1C;
+        leaderKind = 0x1C;
         break;
     case 0x1E:
-        kind = 0x1F;
+        leaderKind = 0x1F;
         break;
     case 5:
-        kind = 0x44;
+        leaderKind = 0x44;
         break;
     default:
         return;
     }
     for (i = 0; i < 20; i++, other++) {
-        if (other->active != 0 && other->type == kind) {
+        if (other->active != 0 && other->type == leaderKind) {
             em->link = other;
             return;
         }
     }
 }
 
+/*
+ * Applies the status of the bait the monster eats (`action`, an area object):
+ * by action->kind, 1 poisons (Em_AddPoison), 2 adds to status 2 and 3 adds to
+ * status 4, each by action->arg. Kind 0, plain meat, does nothing here.
+ */
 void Em_ApplyActionStatus(Em *em, EmAction *action)
 {
     switch (action->kind) {
@@ -334,18 +412,30 @@ void Em_ApplyActionStatus(Em *em, EmAction *action)
     }
 }
 
+/*
+ * Sets large, showOnMap and startsBattle from the kind's entries in
+ * gEmIsLarge, gEmShowsOnMap and gEmStartsBattle.
+ */
 void Em_InitKindParams(Em *em)
 {
     em->large = gEmIsLarge[em->type];
-    em->showOnMap = gEmIsLarge2[em->type];
+    em->showOnMap = gEmShowsOnMap[em->type];
     em->startsBattle = gEmStartsBattle[em->type];
 }
 
+/* Clears lowHpNeed. */
 void Em_ClearLowHpNeed(Em *em)
 {
     em->lowHpNeed = 0;
 }
 
+/*
+ * Drops a pending low-hp request (gEmKindInfo.lowHpRequest). A kind without a
+ * gEmRequestIds list drops it at once; otherwise it is dropped in combat once
+ * the monster's area is one on the list (ids matched as in Em_FindAreaEntry).
+ * Dropping clears lowHpNeed, requested, requestId and requestPrio.
+ * Em_UpdateDamage calls it last.
+ */
 void Em_CheckKindRequest(Em *em)
 {
     s32 found = 0;
@@ -382,6 +472,7 @@ void Em_CheckKindRequest(Em *em)
     }
 }
 
+/* Clears need1, need1State and the hit reaction mode. */
 void Em_ClearNeed1State(Em *em)
 {
     em->need1 = 0;
@@ -389,6 +480,7 @@ void Em_ClearNeed1State(Em *em)
     em->hitReactMode = 0;
 }
 
+/* Clears need2, need2State and the hit reaction mode. */
 void Em_ClearNeed2State(Em *em)
 {
     em->need2 = 0;
@@ -396,6 +488,10 @@ void Em_ClearNeed2State(Em *em)
     em->hitReactMode = 0;
 }
 
+/*
+ * Refills need3Gauge to need3Max. Clears need3, the status 2 and status 1
+ * buildups and their decay timers, and the hit reaction mode.
+ */
 void Em_RefillNeed3(Em *em)
 {
     em->need3Gauge = em->need3Max;
@@ -407,6 +503,12 @@ void Em_RefillNeed3(Em *em)
     em->hitReactMode = 0;
 }
 
+/*
+ * Forgets the players as Em_BeginStatus2 does, without a status. Clears
+ * noticeCount, alertBuildup, need3 and the status 2 buildup, and refills
+ * need3Gauge. Sets EM_HIT_REACT_WAKE and noReact, and leaves combat
+ * (Em_SetCombat).
+ */
 void Em_ResetNotice(Em *em)
 {
     s32 i;
@@ -424,25 +526,41 @@ void Em_ResetNotice(Em *em)
     Em_SetCombat(em, 0, 0);
 }
 
-/* On frames 0, 10 and 20 of every 90: Effect06_SpawnAt (kind 4) at the bone, offset by pos, scaled. */
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale)
+/*
+ * Makes the puffs of a lying monster (Effect06 type 4, the effect of the
+ * player's PL_ACT_BED_SLEEP and PL_REACT_STATUS2) at bone `bone`, offset by
+ * pos and scaled. Three puffs come on frames 0, 10 and 20 of every 90. The
+ * families' status 1 and status 2 downed states call it.
+ */
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale)
 {
-    u16 t = gScene.frame % 90;
+    u16 cycleFrame = gScene.frame % 90;
 
-    if (t == 0 || t == 10 || t == 20) {
+    if (cycleFrame == 0 || cycleFrame == 10 || cycleFrame == 20) {
         Effect06_SpawnAt(em, 4, bone, pos, scale);
     }
 }
 
-/* Every 32 frames. */
-void Em_SpawnEffect06Bone(Em *em, s32 a)
+/*
+ * Every 32 frames, makes the status 4 effect (Effect06 type 5, as
+ * Player_StateStatus4 does) at bone `bone`, scaled by scaleX and the kind's
+ * gEffect06Scales. The families' status 4 states call it.
+ */
+void Em_SpawnStatus4Effect(Em *em, s32 bone)
 {
     if ((gScene.frame & 0x1F) == 0) {
-        Effect06_SpawnAtBone(em, 5, 0, a, em->scaleX * gEffect06Scales[em->type]);
+        Effect06_SpawnAtBone(em, 5, 0, bone, em->scaleX * gEffect06Scales[em->type]);
     }
 }
 
-s16 *Em_IdSetLookup(Em *em)
+/*
+ * Returns the list of areas the monster can move on to from its area
+ * (Em_PickRoutePoint and EmScript_GoalAreaToward pick from it). From the
+ * kind's gEmIdSets for the stage map it takes the set keyed by questKey (or
+ * the -1 default), then the entry for its area by Area_DayId. 0xFF ends the
+ * list and is the default. Returns NULL for a kind without sets.
+ */
+s16 *Em_NextAreas(Em *em)
 {
     EmIdSet **sets = gEmIdSets[em->type];
     EmIdSet *set;
@@ -468,7 +586,11 @@ s16 *Em_IdSetLookup(Em *em)
     return 0;
 }
 
-s16 *Em_IdSetHas(Em *em, u16 id)
+/*
+ * As Em_NextAreas, for area `id` instead of the monster's own area. It
+ * returns the list; it does not test anything.
+ */
+s16 *Em_NextAreasFrom(Em *em, u16 area)
 {
     EmIdSet **sets = gEmIdSets[em->type];
     EmIdSet *set;
@@ -487,38 +609,50 @@ s16 *Em_IdSetHas(Em *em, u16 id)
         set++;
     }
     for (i = 0; i < 0xC5; i++, entry++) {
-        if (entry->id == 0xFF || Area_DayId(entry->id) == Area_DayId(id)) {
+        if (entry->id == 0xFF || Area_DayId(entry->id) == Area_DayId(area)) {
             return entry->value;
         }
     }
     return 0;
 }
 
-void Em_AddNeed1(Em *em, s32 n)
+/* Adds n to need1Gauge, capped at need1Max. */
+void Em_AddNeed1(Em *em, s32 amount)
 {
-    em->need1Gauge += n;
+    em->need1Gauge += amount;
     if (em->need1Gauge > em->need1Max) {
         em->need1Gauge = em->need1Max;
     }
 }
 
-void Em_AddNeed2(Em *em, s32 n)
+/* Adds n to need2Gauge, capped at need2Max. */
+void Em_AddNeed2(Em *em, s32 amount)
 {
-    em->need2Gauge += n;
+    em->need2Gauge += amount;
     if (em->need2Gauge > em->need2Max) {
         em->need2Gauge = em->need2Max;
     }
 }
 
-void Em_Add7F4(Em *em, s32 n)
+/* Adds n to need3Gauge, capped at need3Max. */
+void Em_AddNeed3(Em *em, s32 amount)
 {
-    em->need3Gauge += n;
+    em->need3Gauge += amount;
     if (em->need3Gauge > em->need3Max) {
         em->need3Gauge = em->need3Max;
     }
 }
 
-void Em_RaiseTrigger80Lax(Em *em)
+/*
+ * Raises the script trigger EM_TRIGGER_PLAYER_AREA (with scriptRestart) for a
+ * local monster in the scene's area. It does nothing while it counts
+ * enterDelay down, in EM_STANCE_AIR or EM_STANCE_UNDER, or in groups
+ * EM_GROUP_DEFEAT to EM_GROUP_EVENT2. It also does nothing on a floor whose
+ * attribute is set without bit 0x8000, while that trigger's script runs
+ * (Em_ScriptFlagsFrom), or with noAlert or noReact. The Kut-Ku, Rathalos,
+ * Diablos and Kushala families call it.
+ */
+void Em_RaisePlayerAreaTriggerLax(Em *em)
 {
     if (em->remote == 0 && gScene.area == em->area) {
         if (em->enterDelay > 0) {
@@ -543,7 +677,11 @@ void Em_RaiseTrigger80Lax(Em *em)
     }
 }
 
-void Em_RaiseTrigger80(Em *em)
+/*
+ * As Em_RaisePlayerAreaTriggerLax, but any nonzero floor attribute stops it.
+ * Blangonga's update calls it.
+ */
+void Em_RaisePlayerAreaTrigger(Em *em)
 {
     if (em->remote == 0 && gScene.area == em->area) {
         if (em->enterDelay > 0) {
@@ -628,7 +766,7 @@ extern u32 D_008BCC68[];
 extern u32 D_008BCC78[];
 extern u32 D_008BCC88[];
 extern u32 gEmAreaTimer1Values_68[];
-extern u32 gEmAreaValues8A0_68[];
+extern u32 gEmAreaTimer2Values_68[];
 u32 gEmStatusParams_73[3] = {
 #include "game/008BCC98.inc"
 };
@@ -1415,10 +1553,10 @@ u32 gEmCombatInit[40] = {
 u32 gEmBlindTimes[38] = {
 #include "game/008BEAC0.inc"
 };
-u32 gEmAreaValues8A0_0[2] = {
+u32 gEmAreaTimer2Values_0[2] = {
 #include "game/008BEB58.inc"
 };
-u32 gEmAreaValues8A0[74] = {
+u32 gEmAreaTimer2Values[74] = {
 #include "game/008BEB60.inc"
 };
 u32 gEmAreaTimer1Values_0[2] = {
@@ -1487,7 +1625,7 @@ s16 *gEmRequestIds[76] = {
     gEmRequestIds_68, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL,
 };
-u8 gEmIsLarge2[80] = {
+u8 gEmShowsOnMap[80] = {
 #include "game/008BF2D0.inc"
 };
 EmIdSet* *gEmIdSets[76] = {

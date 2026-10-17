@@ -2,6 +2,7 @@
 #include "scene.h"
 #include "lobby_globals.h"
 #include "save.h"
+#include "area.h"
 
 s32 Cond_Check(u16 id);
 
@@ -486,19 +487,19 @@ void PriceInfo_Open(void)
     memcpy(w + 0x48, src + 0x4C, 0x48);
     gMenuInputLock = 9;
     switch (gScene.area) {
-    case 0x89:
+    case AREA_HUB_0x89:
         area = 0;
         break;
-    case 0x86:
+    case AREA_HUB_0x86:
         area = 1;
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         area = 2;
         break;
-    case 0x83:
+    case AREA_HUB_0x83:
         area = 3;
         break;
-    case 0x57:
+    case AREA_HUB_0x57:
         area = 4;
         break;
     default:

@@ -1,6 +1,7 @@
 #include "common.h"
 #include "em.h"
 #include "dma.h"
+#include "render_state.h"
 #pragma optimization_level 4
 
 /* prototypes */
@@ -519,9 +520,9 @@ void Loading_Draw(s32 dt)
 
     if (w != NULL && w->state != 0) {
         buf = w->buf;
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
         Gs_ClearColor(0, 0);
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         for (i = 0; i < 3; i++) {
             Tex_SelectPacket(w->sel[buf][i], i);
         }
@@ -558,7 +559,7 @@ void Loading_Draw(s32 dt)
         Prim_SendPacket((u32 *)*first);
         Loading_WriteSprite(w->spr[buf][3], r, -0x10);
         Prim_SendPacket((u32 *)w->spr[buf][3]);
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
         *(s32 *)w->unk4D0 += dt;
         Prim_SendPacket((u32 *)w->sel[buf][2]);
         if (w->unk4CC < 640.0f) {
@@ -579,7 +580,7 @@ void Loading_Draw(s32 dt)
             src++;
         }
         Gs_ClearColor(0, 0);
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         Prim_SendPacket((u32 *)*first);
         Prim_SendPacket((u32 *)w->spr[buf][9]);
         Loading_Animate();
@@ -612,6 +613,6 @@ void Loading_Draw(s32 dt)
             Text_DrawShadow((0x280 - Str_Length(s) * 12) / 2, 0xC8, 1, 0, s);
             Text_DrawPage(0);
         }
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
     }
 }

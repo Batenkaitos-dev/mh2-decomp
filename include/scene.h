@@ -44,7 +44,7 @@ typedef struct SceneState {
     u16 musicTimer;             /* 0x028: the BGM state machine's frame timer (unk_363550.c, compared with <= 0); the game sets 0x96 with musicState 5 (unk_70A290.c) */
     u8 emKind[4];               /* 0x02A: per monster slot, its kind (QuestEm_SpawnArea, Quest_SpawnMonsters from gQuestSync.emKind); 0 none */
     u16 questId;                /* 0x02E: the quest id (QuestDesk_Accept, Quest_Init; Tex_LoadStageFile(map, questId)) */
-    u8 map;                     /* 0x030: the stage map: Map_AreaIndex(map, area), Area_BaseId, Tex_LoadStageFile, the per-map tables (Quest_Init: stage data word 0) */
+    u8 map;                     /* 0x030: the stage map: Map_AreaIndex(map, area), Map_DayId, Tex_LoadStageFile, the per-map tables (Quest_Init: stage data word 0) */
     u8 campArea;                /* 0x031: the map's base camp: a fainted player goes back there (Player_StateThrowItem), the Felyne kind 0x12 spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1) */
     u8 playerGender[4];         /* 0x032: per player, from gQuestSync (Quest_InitPlayers: Player.gender) */
     u8 unk036[0x03C - 0x036];
@@ -76,7 +76,7 @@ typedef struct SceneState {
     u8 bannerNotice;            /* 0x133: the notice the banner shows, 0xFF none (NoticeBanner_Spawn*, compared with gHudState dropNotice) */
     u8 unk134[0x138 - 0x134];
     s16 mealStamina;            /* 0x138: the meal's stamina bonus (Meal_ApplyEffects): added to the local player's maximum stamina at the start (Player_Reset) */
-    s16 unk13A;                 /* 0x13A: compared with 0x1900-0x6400 for the quest goal kind 0xB (unk_3A1070.c) */
+    s16 unk13A;                 /* 0x13A: a health value: the rewards REWARD_HP_BELOW need it above their threshold and gQuest.savedEmHp at or below (Quest_RollRewards); no writer seen */
     u8 placed1;                 /* 0x13C: the local player placed objects of kind 1 (fewer than 2 allowed, Item_CanPlaceLargeBarrelBomb); the game decrements it when one disappears (game func_006D4920) */
     u8 placed3;                 /* 0x13D: the same for kind 3 (fewer than 3, Scene_CanPlaceKind3; game func_00868B00) */
     u8 placed2;                 /* 0x13E: the same for kind 2 (none allowed while set, Scene_CanPlaceKind2; game func_006D4920) */
@@ -85,12 +85,12 @@ typedef struct SceneState {
     u32 supplyTaken[2];         /* 0x200: one bit per supply box slot taken */
     u8 countdownOn;             /* 0x208: 1 while the countdown gQuest.countdown runs (Quest_StartCountdown, Quest_UpdateCountdown) */
     u8 emEventFlags;            /* 0x209: flags: bit 0 set by Shen Gaoren and Lao-Shan, bit 1 by Fatalis; area objects test them (unk_6EC680.c, unk_6F8A10.c) */
-    u8 unk20A;                  /* 0x20A: 0 for quest 0xBBC, else 1 (AreaObj_K14_Create); the kind 0x14 object runs while set */
+    u8 skipFlaggedTris;         /* 0x20A: set by AreaObj_K14_Create (0 in quest 0xBBC, else 1): the area collisions skip the triangles of attribute 0x4000 (their masks add 0x4000), the kind 0x14 area object runs, and EmScript op 0x60 branches on it */
     u8 unk20B[0x20C - 0x20B];
     s16 syncDelay;              /* 0x20C: frames before a queued sync applies: the peers' mean delay, 1 to 30, default 8 (QSync_Begin, QSync_QueuePlayerPos) */
     u16 bgmId;                  /* 0x20E: the BGM playing (the BGM functions in unk_363550.c) */
     u8 unk210[0x224 - 0x210];
-    u8 inQuest[4];              /* 0x224: per player: 1 in the quest, 0 left, 0xFF no player (NetScene_Run, QNetIf_FindHost, Player_Init) */
+    u8 inQuest[4];              /* 0x224: per player: IN_QUEST_YES in the quest, IN_QUEST_LEFT left it, IN_QUEST_NO_PLAYER none (NetScene_Run, QNetIf_FindHost, Player_Init) */
     u8 unk228[0x26A - 0x228];
     u16 supplyWho;              /* 0x26A: the player whose supply box request the host answers (QNet case 7; sent in message 10) */
     u16 supplySlot;             /* 0x26C: the supply slot granted to supplyWho, 0xFF: already taken (supplyTaken) */
@@ -138,6 +138,15 @@ extern SceneState gScene;
 /* The save's play time stops at 9999:59:59 (PlayTime_Tick: seconds). */
 #define PLAYTIME_MAX        35999999
 
+#define SCENE_PLAYERS       4   /* the quest's player slots (SceneState.inQuest, gQuest.hunterRank, the start areas) */
+#define SCENE_EM_KINDS      4   /* SceneState.emKind: the stage's monster slots */
+
+/* SceneState.inQuest's values, per player slot (set by the lobby's network
+ * code; the monsters only target and follow players IN_QUEST_YES). */
+#define IN_QUEST_LEFT       0       /* the player left the quest */
+#define IN_QUEST_YES        1       /* the player is in the quest */
+#define IN_QUEST_NO_PLAYER  0xFF    /* no player in the slot */
+
 /*
  * The screen fades (unk_3240E0.c): two players, gFadeA and gFadeB, each
  * running one key of gFadeKeys at a time (FadeA_Start(id), ids from 1). A key
@@ -162,7 +171,7 @@ typedef struct FadeKey {
 
 /* A fade player (gFadeA, gFadeB). */
 typedef struct FadeState {
-    u8 active;          /* 0x00: 0 idle, 1 moving, 2 holding the key's end */
+    u8 active;          /* 0x00: FADE_STATE_* */
     u8 starting;        /* 0x01: set by FadeX_Start, cleared when the alpha reaches the key's end */
     u8 unk02[2];
     s16 id;             /* 0x04: the key asked for (from 1), 0 none */
@@ -172,6 +181,11 @@ typedef struct FadeState {
     FadeKey *key;       /* 0x0C: the key running, NULL none */
     s16 delay;          /* 0x10: frames left before the alpha moves */
 } FadeState;
+
+/* FadeState.active, and what FadeA_GetState and FadeB_GetState return. */
+#define FADE_STATE_IDLE     0   /* no fade */
+#define FADE_STATE_RUNNING  1   /* the alpha moving */
+#define FADE_STATE_HELD     2   /* holding the key's end */
 
 /* The rectangle FadeA_Draw gives Prim_FillRectF: two corners (x, y, z, 1)
  * and a colour. */

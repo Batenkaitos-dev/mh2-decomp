@@ -18,6 +18,8 @@
 #include "scene.h"
 #include "model.h"
 #include "sub_main/unk_36BE70.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "render_state.h"
+#include "overlay.h"
 #pragma optimization_level 4
 
 /* Keyframes, ended by a time of -1: the value is used as is from there. */
@@ -86,7 +88,7 @@ void *memset(void *dst, s32 c, u32 n);
 void LoadOverlay(u8 id);
 void Tex_Prepare(s32 a, s32 b);
 void Tex_Bind(s32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Gfx_SetBlend(s32 a, s32 b);
 s32 Gs_SetState(u8 reg, u32 v);
 /* unit's own declaration: with the definition's void (s16 x, s16 y, s16 w, s16 h, s32 color) (sub_main/unk_363550.c), Gfx_DrawBlackLine: 17 of 37 words differ */
@@ -112,7 +114,7 @@ void ScreenCapture_Take(void);
 void Pause_CaptureScreen(void);
 void Prim_DrawAll(void);
 void Text_DrawPage(s32 layer);
-void Text_DrawBoxes(s32 layer);
+void Text_DrawIcons(s32 layer);
 void EquipPreview_Draw(void);
 void FadeB_Draw(void);
 void Text_Disable(void);
@@ -164,7 +166,7 @@ void Hud_DrawButtonIcon(s32 id, s32 x, s32 y, s32 depth, u32 color, f32 scale)
     } else if (i == 0x15) {
         id = 1;
     }
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
     i = id;
@@ -214,7 +216,7 @@ void Hud_DrawButtonIcon(s32 id, s32 x, s32 y, s32 depth, u32 color, f32 scale)
         Sprite_Draw(&s);
         break;
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
 }
 
 void Hud_DrawButtonIconWhite(s32 a, s32 b, s32 c, s32 d, f32 scale)
@@ -344,7 +346,7 @@ void Gfx_DrawBlackLineFixed(void)
 
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Gfx_DrawLine(r.x, r.y, r.w, r.h, 0xFF000000);
 }
@@ -353,7 +355,7 @@ void Gfx_DrawBlackLine(s32 a, s32 b, s32 c, s32 d)
 {
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Gfx_DrawLine(a, b, c, d, 0xFF000000);
 }
@@ -424,7 +426,7 @@ void Loading_DrawLetters(void)
     la = &gSysSettings;
     if (gSysSettings.loadAnimOn != 0) {
         if (gLoadLettersTex == 0) {
-            if (Overlay_IsLoaded(3) != 1) {
+            if (Overlay_IsLoaded(OVERLAY_GAME) != 1) {
                 Tex_LoadCommon();
             }
             la->loadAnimOn = 0;
@@ -436,14 +438,14 @@ void Loading_DrawLetters(void)
             if (la->loadAnimPhase > 11) {
                 la->loadAnimPhase -= 12;
             }
-            s6c = Gs_GetState(0x6C);
+            s6c = Gs_GetState(RS_ZWRITE);
             s63 = Gs_GetState(0x63);
-            s5e = Gs_GetState(0x5E);
-            Gs_SetState(0x6C, 0);
+            s5e = Gs_GetState(RS_BLEND);
+            Gs_SetState(RS_ZWRITE, 0);
             Tex_Use(1, (u32 *) &gLoadLettersTex);
             Gs_SetState(4, gLoadLettersTex);
             Gs_SetState(0x63, 0);
-            Gs_SetState(0x5E, 0x32);
+            Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
             spr.w = 0x1C;
             spr.h = 0x20;
             t = gLoadingLetterPos;
@@ -476,9 +478,9 @@ void Loading_DrawLetters(void)
                     ph -= 12;
                 }
             }
-            Gs_SetState(0x6C, s6c);
+            Gs_SetState(RS_ZWRITE, s6c);
             Gs_SetState(0x63, s63);
-            Gs_SetState(0x5E, s5e);
+            Gs_SetState(RS_BLEND, s5e);
             la->loadAnimOn = 0;
         }
     }
@@ -562,10 +564,10 @@ void Pad_UpdateInput(void)
     PadPairS *b1 = &gPadInput.buttons[1];
     PadPair *s1 = &gPadInput.stickDir[1];
 
-    gPadInput.stickAngle[0].cur = 0;
-    gPadInput.stickAngle[0].prev = 0;
-    gPadInput.stickTilt[0].cur = 0;
-    gPadInput.stickTilt[0].prev = 0;
+    gPadInput.stickAngle[0].left = 0;
+    gPadInput.stickAngle[0].right = 0;
+    gPadInput.stickTilt[0].left = 0;
+    gPadInput.stickTilt[0].right = 0;
     gPadInput.buttons[0].prev = gPadInput.buttons[0].cur;
     gPadInput.stickDir[0].prev = gPadInput.stickDir[0].cur;
     gPadInput.buttons[0].cur = 0;
@@ -574,10 +576,10 @@ void Pad_UpdateInput(void)
     b1->cur = 0;
     gPadInput.stickDir[1].prev = s1->cur;
     s1->cur = 0;
-    gPadInput.stickAngle[1].cur = 0;
-    gPadInput.stickAngle[1].prev = 0;
-    gPadInput.stickTilt[1].cur = 0;
-    gPadInput.stickTilt[1].prev = 0;
+    gPadInput.stickAngle[1].left = 0;
+    gPadInput.stickAngle[1].right = 0;
+    gPadInput.stickTilt[1].left = 0;
+    gPadInput.stickTilt[1].right = 0;
     if (gScene.padRead != 0) {
         b = gPadInput.buttons;
         for (i = 0; i < 2; i++, b++) {
@@ -628,10 +630,10 @@ u16 Pad_ReadButtons(s32 port)
 void Pad_CopyWords(s32 port)
 {
     gPadInput.stickDir[port].cur = gPadState[port].dir;
-    gPadInput.stickAngle[port].cur = gPadState[port].degL;
-    gPadInput.stickAngle[port].prev = gPadState[port].degR;
-    gPadInput.stickTilt[port].cur = gPadState[port].magL;
-    gPadInput.stickTilt[port].prev = gPadState[port].magR;
+    gPadInput.stickAngle[port].left = gPadState[port].degL;
+    gPadInput.stickAngle[port].right = gPadState[port].degR;
+    gPadInput.stickTilt[port].left = gPadState[port].magL;
+    gPadInput.stickTilt[port].right = gPadState[port].magR;
 }
 
 /* Runs the callbacks of one layer. */
@@ -681,10 +683,10 @@ void LayerCallbacks_Add(Callback fn, u8 layer)
 void Frame_Draw(void)
 {
     gFrameDrawing = 1;
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Gfx_SetBlend(4, 5);
     Gs_SetState(0x60, 0);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
     Font_SetHalfWidth(1);
     AreaSky_Draw();
     StageObj_DrawKind4();
@@ -706,40 +708,40 @@ void Frame_Draw(void)
         ScreenCapture_Take();
     }
     Pause_CaptureScreen();
-    Gs_SetState(0x6D, 7);
+    Gs_SetState(RS_ZTEST, RS_CMP_ALWAYS);
     Prim_DrawAll();
-    Gs_SetState(0x6D, 3);
+    Gs_SetState(RS_ZTEST, RS_CMP_LEQUAL);
     Task_RunList(gDrawListText6);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(6);
-    Text_DrawBoxes(6);
+    Text_DrawIcons(6);
     Task_RunList(gDrawListText0a);
     Task_RunList(gDrawListText0b);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(0);
-    Text_DrawBoxes(0);
+    Text_DrawIcons(0);
     Task_RunList(gDrawListText1);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(1);
-    Text_DrawBoxes(1);
+    Text_DrawIcons(1);
     EquipPreview_Draw();
     Task_RunList(gDrawListText2);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(2);
-    Text_DrawBoxes(2);
+    Text_DrawIcons(2);
     Task_RunList(gDrawListText4);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(4);
-    Text_DrawBoxes(4);
+    Text_DrawIcons(4);
     Task_RunList(gDrawOtText3);
     FadeB_Draw();
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(3);
-    Text_DrawBoxes(3);
+    Text_DrawIcons(3);
     Task_RunList(gDrawListText5);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(5);
-    Text_DrawBoxes(5);
+    Text_DrawIcons(5);
     Text_Disable();
     Gfx_ResetRenderStates(1);
     gFrameDrawing = 0;
@@ -751,43 +753,43 @@ void Frame_DrawOverCapture(void)
 {
     Pause_DrawCapture();
     gFrameDrawing = 1;
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Gfx_SetBlend(4, 5);
     Gs_SetState(0x60, 0);
-    Gs_SetState(0x6C, 1);
-    Gs_SetState(0x6D, 7);
+    Gs_SetState(RS_ZWRITE, 1);
+    Gs_SetState(RS_ZTEST, RS_CMP_ALWAYS);
     Prim_DrawAll();
-    Gs_SetState(0x6D, 3);
+    Gs_SetState(RS_ZTEST, RS_CMP_LEQUAL);
     Task_RunList(gDrawListText6);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(6);
-    Text_DrawBoxes(6);
+    Text_DrawIcons(6);
     Task_RunList(gDrawListText0a);
     Task_RunList(gDrawListText0b);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(0);
-    Text_DrawBoxes(0);
+    Text_DrawIcons(0);
     Task_RunList(gDrawListText1);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(1);
-    Text_DrawBoxes(1);
+    Text_DrawIcons(1);
     Task_RunList(gDrawListText2);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(2);
-    Text_DrawBoxes(2);
+    Text_DrawIcons(2);
     Task_RunList(gDrawListText4);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(4);
-    Text_DrawBoxes(4);
+    Text_DrawIcons(4);
     Task_RunList(gDrawOtText3);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(3);
-    Text_DrawBoxes(3);
+    Text_DrawIcons(3);
     Task_RunList(gDrawListText5);
     EquipPreview_Draw();
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_DrawPage(5);
-    Text_DrawBoxes(5);
+    Text_DrawIcons(5);
     Text_Disable();
     Gfx_ResetRenderStates(1);
     gFrameDrawing = 0;
@@ -847,9 +849,9 @@ void ScreenCapture_Draw(void)
             }
         }
         if (ScreenTex_Upload() != 0) {
-            Gfx_SetState63(0);
+            Gfx_SetTexFilter(0);
             Gfx_SetBlend(4, 5);
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             r.x = 0;
             r.y = 0;
             r.w = 0x280;
@@ -860,8 +862,8 @@ void ScreenCapture_Draw(void)
             r.u1 = 0x1FF;
             r.v1 = 0x1BF;
             Sprite_Draw(&r);
-            Gfx_SetState63(1);
-            Gs_SetState(0x6C, 1);
+            Gfx_SetTexFilter(1);
+            Gs_SetState(RS_ZWRITE, 1);
         }
     }
 }
@@ -905,9 +907,9 @@ void Pause_DrawCapture(void)
         gScene.pauseState = 3;
     }
     if (ScreenTex_Upload() != 0) {
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         Gfx_SetBlend(4, 5);
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         r.x = 0;
         r.y = -1;
         r.w = 0x280;
@@ -918,7 +920,7 @@ void Pause_DrawCapture(void)
         r.u1 = 0x200;
         r.v1 = 0x1C0;
         Sprite_Draw(&r);
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 

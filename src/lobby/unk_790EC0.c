@@ -30,7 +30,7 @@ typedef struct SprTex {
     SprUV uv1;
 } SprTex;
 extern SprTex gIconSprites[];
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 s32 Gs_SetState(u8, u32);
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32);
@@ -363,7 +363,7 @@ void Icon_DrawEquip(s32 x, s32 y, s32 w, s32 h, s32 color, s32 i)
     r.w = 1.25f * w;
     r.uv0 = t->uv0;
     r.uv1 = t->uv1;
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
@@ -462,7 +462,7 @@ void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i)
     r.color = color;
     r.uv0 = t->uv0;
     r.uv1 = t->uv1;
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, t->tex);
     Tex_Bind(t->tex);
@@ -484,7 +484,7 @@ void Icon_DrawRotated(s32 x, s32 y, s32 w, s32 h, s32 color, s32 angle, s32 i)
     r.color = color;
     r.uv0 = t->uv0;
     r.uv1 = t->uv1;
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, t->tex);
     Tex_Bind(t->tex);
@@ -506,7 +506,7 @@ void Icon_DrawRotatedAt(s16 x, s16 y, s16 w, s16 h, u32 color, s32 angle, s32 i,
     r.color = color;
     r.uv0 = t->uv0;
     r.uv1 = t->uv1;
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, t->tex);
     Tex_Bind(t->tex);
@@ -527,7 +527,7 @@ void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode)
     r.color = color;
     r.uv0 = t->uv0;
     r.uv1 = t->uv1;
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, t->tex);
     Tex_Bind(t->tex);

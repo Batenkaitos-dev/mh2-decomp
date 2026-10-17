@@ -39,7 +39,7 @@ void SkillList_Build(Player *p, Player *q);
 u8 SkillList_PageCount(void);
 u8 Village_FacilityLevel(s32 k);
 s32 Save_TestEventFlag(s32 flag);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 u8 SavePouch_Add(u16 item, s16 n);
 void *memset(void *, s32, u32);
 
@@ -56,7 +56,7 @@ struct PrimTri;
 s32 Prim_FillTri(struct PrimTri *t);
 s32 EntryPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
 u16 LobbyPad_Get(s32 a);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 s32 Gs_SetState(u8, u32);
 s32 Gs_GetState(u8 reg);
 void Text_SetSize(s32 size);
@@ -122,7 +122,7 @@ void Gallery_DrawShooting(GalDrawArg *arg)
     s32 top;
 
     pad = LobbyPad_Get(0);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Text_SetSize(arg->size);
     Text_SetColor(0);
@@ -207,7 +207,7 @@ void Gallery_DrawShooting(GalDrawArg *arg)
         Text_PrintfColored(gGalleryCourseTexts[m->course]);
         Menu_DrawRowBar(0xF5, top + 0x14, 0xA0, 0xBDB59F6C, 2, 1);
         y = top + 0x23;
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Gfx_SetBlend(4, 5);
         Tex_Prepare(1, 0x147);
         Tex_Bind(0x147);

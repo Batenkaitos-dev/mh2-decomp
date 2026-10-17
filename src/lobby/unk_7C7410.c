@@ -107,7 +107,6 @@ extern u8 gHouseAccess;
 extern u8 D_008BEB75;
 extern u8 gLobbyTextDirty;
 extern NetUser gNetUsers[];
-extern u16 gPlayerIds[];               /* sub_main; [0x10] is 0x5CA910 */
 /* end of prototypes */
 
 /* the entry to the town's screens (step its step): the menus
@@ -156,7 +155,7 @@ void LobbyTown_Enter(void)
     case 4:
         if (LobbyTown_MovieDone() == 1) {
             gLobby->movieState = 0;
-            gPlayerIds[0x10] = gScene.area;
+            gQuestReturnArea = gScene.area;
             memset(gLobby->pcLoaded, 0, 10);
             memset(&gLobby->roomName[0xF], 0, 10);
             gLobby->step++;

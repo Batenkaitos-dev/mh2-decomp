@@ -1,6 +1,21 @@
 #ifndef DMA_H
 #define DMA_H
 
+/* A DMA tag's first word (the source chain's tags): its ID in bits 28-30,
+ * its quadword count in bits 0-15, and the interrupt bit. */
+#define DMA_TAG_QWC_MASK 0xFFFF
+#define DMA_TAG_ID_MASK 0x70000000
+#define DMA_TAG_REFE 0x00000000
+#define DMA_TAG_CNT 0x10000000
+#define DMA_TAG_NEXT 0x20000000
+#define DMA_TAG_REF 0x30000000
+#define DMA_TAG_REFS 0x40000000
+#define DMA_TAG_CALL 0x50000000
+#define DMA_TAG_RET 0x60000000
+#define DMA_TAG_END 0x70000000
+#define DMA_TAG_IRQ 0x80000000
+
+
 /*
  * The boot ELF's DMA layer (src/main/dma.c): DMA tags and VIF codes, image
  * transfers to and from GS memory, and the double-buffered queue of DMA

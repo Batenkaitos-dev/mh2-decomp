@@ -53,7 +53,7 @@ typedef struct NetMenu {
     u8 charRead[3];             /* 0x9D: per character slot: 0 none, 1 read, 0x80 bad data, cleared (CardSave_ReadCharacters; SaveMenu_FreeCharSlots switches on it) */
     u8 padA0[2];
     u8 charIndex;               /* 0xA2: the character being read or saved */
-    u8 unkA3;
+    u8 saveStep;                /* 0xA3: the step of the SaveMenu_* load and save functions (unk_3DDBA0.c's SaveMenu.step); each state clears it before the first call */
     u8 padA4[4];
     s32 charId0;                /* 0xA8: the character read (SaveMenu_LoadCharacter): its id pair, stored to pairs[charIndex + 1] (SaveMenu_CharIdMatches) */
     s32 charId1;                /* 0xAC */

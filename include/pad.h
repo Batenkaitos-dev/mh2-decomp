@@ -51,6 +51,7 @@ extern PadState gPadState[2];
 #define PAD_SELECT 0x4000
 #define PAD_START 0x8000
 #define PAD_DPAD (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT) /* 0x3C00 */
+#define PAD_ALL 0xFFFF                                      /* every button */
 
 /*
  * PadState.dir: the sticks' directions as bits. The left stick uses the
@@ -61,7 +62,7 @@ extern PadState gPadState[2];
 #define PAD_RSTICK_LEFT 0x0008
 #define PAD_RSTICK_RIGHT 0x0004
 
-/* A pad value this frame and the frame before (PadPortInput). */
+/* A pad value this frame and the frame before (PadPortInput's buttons and direction). */
 typedef struct PadPair {
     u16 cur;
     u16 prev;
@@ -72,12 +73,19 @@ typedef struct PadPairS {
     s16 prev;
 } PadPairS;
 
-/* sub_main 0x6AE088: the pad input per controller port, current and previous frame (unk_36BE70.c
- * fills it from gPadState; Player_CopyPadInput copies it into a player's PlayerInput, whose
- * stick fields have the same names). */
+/* A stick value of both sticks, this frame only (PadPortInput's stickTilt and stickAngle). */
+typedef struct PadStickPair {
+    u16 left;   /* the left stick's (gPadState's magL or degL) */
+    u16 right;  /* the right stick's (magR or degR) */
+} PadStickPair;
+
+/* sub_main 0x6AE088: the pad input per controller port (unk_36BE70.c fills it from gPadState;
+ * Player_CopyPadInput copies it into a player's PlayerInput, whose stick fields have the same
+ * names). The buttons and the direction keep the previous frame's value; the sticks keep
+ * both sticks instead. */
 typedef struct PadPortInput {
-    PadPair stickTilt[2];   /* 0x00: gPadState's magL */
-    PadPair stickAngle[2];  /* 0x08: gPadState's degL */
+    PadStickPair stickTilt[2];  /* 0x00: gPadState's magL and magR */
+    PadStickPair stickAngle[2]; /* 0x08: gPadState's degL and degR */
     PadPair stickDir[2];    /* 0x10: gPadState's dir: pad bits 0x3C00, which survive the input locks */
     PadPairS buttons[2];    /* 0x18: the game's button bits */
 } PadPortInput;

@@ -10,11 +10,12 @@
 #include "lobby_vobj.h"
 #include "lobby_globals.h"
 #include "pad.h"
+#include "area.h"
 
 #pragma optimization_level 4
 void Font_SetSpacing(u8 a, u8 b);
 
-extern M2C_UNK D_1BB9C8;
+extern M2C_UNK gPersistentEmKinds;
 s32 LobbyMovie_Run(void);
 s32 LobbyBgm_GetTrack(void);
 extern s32 gTownMode;
@@ -28,7 +29,7 @@ void Actor_SetState(void *, s32, s32);
 void Game_ResetSubsystems(void);
 void LobbyMovie_Prepare(s32);
 void LobbyBgm_SetUnk11F(s32);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32 a);
 struct TexRect;
@@ -52,7 +53,7 @@ void LobbyTown_StartMovie(void)
         LobbyMovie_Prepare(1);
         gSave.unk3698 = *(s16 *)(e + 0x20);
     }
-    if (gScene.area == 0x87) {
+    if (gScene.area == AREA_HUB_0x87) {
         LobbyBgm_SetUnk11F(0);
     }
 }
@@ -83,12 +84,12 @@ s32 LobbyTown_WantsMovie(void)
     if (gLobby->questTaken != 0) {
         return 0;
     }
-    if (0 < LobbyBgm_GetTrack() && gScene.area == 0x87) {
+    if (0 < LobbyBgm_GetTrack() && gScene.area == AREA_HUB_0x87) {
         return 0;
     }
     switch (gScene.area) {
-    case 0x83:
-    case 0x84:
+    case AREA_HUB_0x83:
+    case AREA_HUB_0x84:
         return 1;
     }
     return 1;
@@ -172,7 +173,7 @@ void Minigame_DrawResult(s8 kind, s16 t, s8 flag)
         break;
     }
     Win_Draw(0x140 - w / 2, 0xCC, w, 0x28, 0xBDB59F6C, 0xA0000000, 3);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gfx_SetBlend(4, 1);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
@@ -385,7 +386,7 @@ void Contest_DrawBar(u32 color, f32 x, f32 y)
     Sprite r;
     u8 i;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x168);
     Tex_Bind(0x168);
     l.v0 = 0x80;
@@ -430,7 +431,7 @@ void Contest_DrawBarPiece(u32 color, f32 x, f32 y)
 {
     Sprite s;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x168);
     Tex_Bind(0x168);
     s.v0 = 0x60;
@@ -447,7 +448,7 @@ void Contest_DrawBarPiece(u32 color, f32 x, f32 y)
 
 u8 func_00700A50(void)
 {
-    return *(M2C_UNK *)((u8 *)&D_1BB9C8 + gSave.lastPersistentEm);
+    return *(M2C_UNK *)((u8 *)&gPersistentEmKinds + gSave.lastPersistentEm);
 }
 
 s32 DrinkContest_HpStage(void)

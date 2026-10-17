@@ -1,6 +1,7 @@
 #include "common.h"
 #include "scene.h"
 #include "lobby_vobj.h"
+#include "area.h"
 
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
@@ -27,14 +28,14 @@ s8 TownLists_Count(void)
     s8 j;
     s8 n = 0;
 
-    if (gScene.area != 0x88) {
+    if (gScene.area != AREA_HUB_0x88) {
         for (j = 0; j < 3; j++) {
             if (Wanted_IsSet(t->a[i][j].v) == 1) {
                 n++;
             }
         }
     }
-    if (gScene.area != 0x86 && Game_IsOnline() != 0) {
+    if (gScene.area != AREA_HUB_0x86 && Game_IsOnline() != 0) {
         for (j = 0; j < 3; j++) {
             if (Wanted_IsSet(t->b[i][j].v) == 1) {
                 n++;

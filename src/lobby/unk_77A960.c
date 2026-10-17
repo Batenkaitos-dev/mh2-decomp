@@ -11,6 +11,7 @@
 #include "pad.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
+#include "area.h"
 s32 Game_IsOnline(void);
 /* unit's own declaration: the definition (sub_main unk_3B4C80.c) returns u8; with it Npc_IsPresent and Npc_SetRouteByKind differ (477 of 511, 67 of 335 words) */
 s32 Village_FacilityLevel(s32);
@@ -457,7 +458,7 @@ void Npc_HidePart(Em *npc, ModelMat *p, s32 part)
             break;
         }
     }
-    if (w->id == 0x1A && gScene.area != 0x89 && part == 2) {
+    if (w->id == 0x1A && gScene.area != AREA_HUB_0x89 && part == 2) {
         p->alpha = 0.0f;
     }
     if (w->id == 6 &&
@@ -519,7 +520,7 @@ f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_Concat3x3(f32 *m, f32 *a);
 void Mtx_Copy(f32 *dst, f32 *src);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 s32 Gs_SetState(u8, u32);
 struct EmBone;
 void Bone_StoreMatrices(struct EmBone *b);
@@ -575,7 +576,7 @@ void Npc_Draw(DrawSlot *ds)
     Mtx_SetTrans(m, o->posX, o->posY, o->posZ);
     Mtx_Concat3x3(m, s);
     Mtx_Copy((f32 *) o->worldMtx, m);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     parts = set->matSets;
     mats = set->mats;
@@ -686,7 +687,7 @@ void Npc_Init(Em *npc)
     EmSlot_SetupModel(npc);
     npc->taskPhase++;
     npc->isEm = 0;
-    npc->unk01E = 1;
+    npc->ownTask = 1;
     npc->unk414 = 0;
     npc->visible = 1;
     npc->motion[0].step = 2.0f;
@@ -1044,7 +1045,7 @@ s32 Npc_IsPresent(u8 kind, s32 id, u8 force)
             }
             break;
         }
-        if (gScene.area != 0x89) {
+        if (gScene.area != AREA_HUB_0x89) {
             return 0;
         }
         if (Npc_IsPresent(0x12, gScene.area, 0) == 0) {
@@ -1281,7 +1282,7 @@ void Npc_SetRouteByKind(Em *npc)
             Npc_SetRouteByTime(npc, gNpc10Routes0);
             break;
         case 0x14:
-            if ((npc->state != 0xAC) && (gNpc14Follows == 1) && (gScene.area == 0x89)) {
+            if ((npc->state != 0xAC) && (gNpc14Follows == 1) && (gScene.area == AREA_HUB_0x89)) {
                 w->route = D_007F3E00;
                 gNpc14ByPlayer = 1;
             }
@@ -1617,7 +1618,7 @@ void Npc_FollowFloor(Em *npc)
         return;
     case 0x1A:
     case 0xA:
-        if (gScene.area == 0x89) {
+        if (gScene.area == AREA_HUB_0x89) {
             break;
         }
     default:

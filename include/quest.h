@@ -3,12 +3,81 @@
 
 #include "common.h"
 
-/* One quest objective (8 bytes; QuestState.goals). */
+/*
+ * One quest goal (8 bytes; QuestInfo.goals, QuestState.goals and goalsSet).
+ * Goal 0 is the main goal; goals 1 and 2 are the sub-quests, or more main
+ * goals, as the clear type says (QUEST_CLEAR_*).
+ */
 typedef struct QuestGoal {
-    s32 flags;                  /* 0x10: in use; 0x01/0x02: kind; 0x20: done (Records_AddQuestKills tests 0x30) */
-    u16 target;                 /* monster kind or item id */
-    s16 count;
+    s32 flags;                  /* QUEST_GOAL_* */
+    u16 target;                 /* the monster kind, or the item to deliver */
+    s16 count;                  /* the monsters or items still wanted; a part goal's part index; a damage goal's damage / 100 */
 } QuestGoal;
+
+#define QUEST_GOAL_COUNT        3       /* the goal slots */
+#define QUEST_REWARD_SLOTS      5       /* QuestState.rewards: the items Melynxes stole, given back at the end */
+#define DELIVERED_SLOTS         4       /* Player.delivered: the items a player delivered for the quest */
+
+/* Quest_CountDelivered's `who`: */
+#define DELIVERED_ALL           0       /* all the players */
+#define DELIVERED_LOCAL         1       /* the local player */
+#define DELIVERED_PLAYER0       2       /* + a player's index: that player */
+
+/*
+ * QuestGoal.flags (unk_3A1070.c's QuestGoal_*). The kind bits come from the
+ * quest's data; DONE, FAILED and FAIL_SEEN are set while it runs.
+ */
+#define QUEST_GOAL_HUNT         0x01    /* hunt `count` monsters of kind `target` (killed or captured) */
+#define QUEST_GOAL_DELIVER      0x02    /* deliver `count` of item `target` */
+#define QUEST_GOAL_EM           0x04    /* a goal on the monster `target` itself: with PART or DAMAGE */
+#define QUEST_GOAL_USED         0x10    /* the slot holds a goal (QuestGoal_Add) */
+#define QUEST_GOAL_DONE         0x20
+#define QUEST_GOAL_FAILED       0x40    /* a capture-only target was killed, or a kill-only one captured */
+#define QUEST_GOAL_LOCAL        0x80    /* the delivery counts the local player's items only (Quest_DeliveredCount) */
+#define QUEST_GOAL_CAPTURE      0x100   /* capture only: killing the target fails the goal */
+#define QUEST_GOAL_SLAY         0x200   /* kill only: capturing the target fails the goal */
+#define QUEST_GOAL_FAIL_SEEN    0x400   /* FAILED has sent the script to its end (Quest_CheckClear) */
+#define QUEST_GOAL_DELIVER_HOW  0x3000  /* how a delivery is made (QuestState.goalsSet flags): */
+#define QUEST_GOAL_DELIVER_BOX  0x0000  /* handed in at the delivery spot (Quest_GetDeliveryTarget) */
+#define QUEST_GOAL_DELIVER_SET  0x1000  /* set down where it is used (Quest_DeliverFromPouch mode 1, from the game's trap setting); QuestGoal_DeliveryDone */
+#define QUEST_GOAL_DELIVER_HOW2 0x2000  /* Quest_DeliverFromPouch mode 2: no caller seen */
+#define QUEST_GOAL_PART         0x4000  /* with EM: break the part `count` of the monster `target` */
+#define QUEST_GOAL_DAMAGE       0x8000  /* with EM: deal it `count` * 100 damage (since gQuest.savedEmHp) */
+#define QUEST_GOAL_HALF_TIME    0x10000 /* with DAMAGE: only once half the time is gone; the monster then leaves wounded */
+#define QUEST_GOAL_MONSTER      (QUEST_GOAL_HUNT | QUEST_GOAL_EM)  /* a goal on a monster (the lobby and the camera test it) */
+#define QUEST_GOAL_ENDED        (QUEST_GOAL_DONE | QUEST_GOAL_FAILED)
+
+/* The combinations the goal code tests. */
+#define QUEST_GOAL_HUNT_USED    (QUEST_GOAL_USED | QUEST_GOAL_HUNT)
+#define QUEST_GOAL_HUNT_DONE    (QUEST_GOAL_USED | QUEST_GOAL_DONE | QUEST_GOAL_HUNT)
+#define QUEST_GOAL_DELIVER_DONE (QUEST_GOAL_USED | QUEST_GOAL_DONE | QUEST_GOAL_DELIVER)
+#define QUEST_GOAL_USED_DONE    (QUEST_GOAL_USED | QUEST_GOAL_DONE)    /* any goal in use and met */
+#define QUEST_GOAL_EM_DONE      (QUEST_GOAL_USED | QUEST_GOAL_DONE | QUEST_GOAL_EM)
+#define QUEST_GOAL_DELIVER_USED (QUEST_GOAL_USED | QUEST_GOAL_DELIVER)
+#define QUEST_GOAL_PART_USED    (QUEST_GOAL_USED | QUEST_GOAL_EM | QUEST_GOAL_PART)
+#define QUEST_GOAL_DAMAGE_USED  (QUEST_GOAL_USED | QUEST_GOAL_EM | QUEST_GOAL_DAMAGE)
+
+#define QUEST_GOAL_NONE         0xFF    /* an empty QuestState.goalIdx entry */
+
+/*
+ * QuestGoal_Complete's reason: the flag of the way the goal was met, which
+ * also picks the message event (MsgEvent_Check).
+ */
+#define GOAL_MET_DELIVERED      QUEST_GOAL_DELIVER
+#define GOAL_MET_CAPTURED       QUEST_GOAL_CAPTURE
+#define GOAL_MET_KILLED         QUEST_GOAL_SLAY
+#define GOAL_MET_PART           QUEST_GOAL_PART
+#define GOAL_MET_DAMAGE         QUEST_GOAL_DAMAGE
+
+/*
+ * QuestState.clearType (QuestInfo.clearType, QUEST_OP_CLEAR_TYPE): which
+ * done goals clear the quest (Quest_CheckClear), and which are sub-quests
+ * (Quest_CheckSubClear).
+ */
+#define QUEST_CLEAR_ANY         1       /* any goal */
+#define QUEST_CLEAR_MAIN        2       /* goal 0; goals 1 and 2 are sub-quests */
+#define QUEST_CLEAR_FIRST_TWO   3       /* goals 0 and 1; goal 2 is a sub-quest */
+#define QUEST_CLEAR_ALL         4       /* every goal in use */
 
 /*
  * A quest's information block in the stage file (gStageFile + header word 0;
@@ -27,12 +96,12 @@ typedef struct QuestInfo {
     s32 rewardSubA;             /* 0x14: the reward for sub goal A (Quest_DrawTerms: gSubAPointsTexts) */
     s32 rewardSubB;             /* 0x18: the reward for sub goal B (gSubBPointsTexts) */
     s32 timeLimit;              /* 0x1C: frames */
-    u32 map;                    /* 0x20: the quest map (Area_MapGroup(map): ElderForecast_DrawPanel, QuestList_DropKind; gStartAreaTables[map]: Quest_SetStartArea); u16 readers load it with lhu */
+    u32 map;                    /* 0x20: the quest map (Map_Group(map): ElderForecast_DrawPanel, QuestList_DropKind; gStartAreaTables[map]: Quest_SetStartArea); u16 readers load it with lhu */
     u32 texts;                  /* 0x24: the texts (char **: the lobby's Quest_GetText; gQuest.texts); the stage file and a downloaded quest hold offsets in the file */
     u8 terms;                   /* 0x28: the order condition (Quest_CheckOrderTerms) */
     u8 unk29;
     u16 id;                     /* 0x2A: the quest id (Quest_FindDownloaded) */
-    QuestGoal goals[3];         /* 0x2C: goals[0].target is the main monster (Monster_IsAvailable) */
+    QuestGoal goals[QUEST_GOAL_COUNT]; /* 0x2C: goals[0].target is the main monster (Monster_IsAvailable) */
     u8 clearType;               /* 0x44: copied to gQuest.clearType (QuestGoal_InitFromDef) */
     u8 pad45[3];
     u32 unk48;
@@ -53,6 +122,7 @@ typedef struct QuestInfo {
 #define QUEST_FLAG_SET_BREEDING     0x800000    /* with QUEST_FLAGS_FIXED_SEASON: the breeding season, */
 #define QUEST_FLAG_SET_WARM         0x1000000   /* the warm season, or else the cold one (Quest_Init) */
 #define QUEST_FLAG_TRAINING         0x4000000   /* Quest_IsTraining */
+#define QUEST_FLAG_ADVICE           0x8000000   /* with TRAINING, Quest_HasAdvice: one more entry in the offline field menu (FieldMenu_Open) */
 /* A built-in quest with one of these flags has its season set by the flags
  * above instead of the current one (Quest_Init). */
 #define QUEST_FLAGS_FIXED_SEASON    (QUEST_FLAG_TRAINING | QUEST_FLAG_MUST_ORDER | QUEST_FLAG_DRILL)
@@ -92,6 +162,12 @@ typedef struct QuestTarget {
 #define TARGET_KILLS    1       /* counted by Quest_CountTarget */
 #define TARGET_ITEMS    2       /* checked by Quest_CheckItemTargets */
 
+/* A step of a timed supply event's table (gQuestTimedEventTbls[gQuest.timedEventSet], Quest_UpdateTimedEvent). */
+typedef struct TimedSupply {
+    u8 minutes;                 /* the time left, in minutes, the step rolls at; 0 ends the table */
+    u8 chance;                  /* out of 128: the supplies arrive */
+} TimedSupply;
+
 /* gQuest.timedEvent: how the supplies arrive (the supply box opens with them). */
 #define QUEST_EVENT_NONE    0   /* none, or they have arrived */
 #define QUEST_EVENT_TIMED   1   /* rolled at times of the time left (Quest_UpdateTimedEvent) */
@@ -126,7 +202,7 @@ typedef struct QuestEm {
     u16 size;                   /* 0x30: in percent (Em.sizePct) */
     s16 hp;                     /* 0x32: the health it comes back with; -1: the monster's own */
     s8 emIndex;                 /* 0x34: Em.index of its monster, -1: none (QuestEm_FindForEm) */
-    s8 large;                   /* 0x35: gEmIsLarge2[kind]: it counts in gQuest.emLeft */
+    s8 large;                   /* 0x35: gEmShowsOnMap[kind]: it counts in gQuest.emLeft */
     s8 level;                   /* 0x36: 0..16 */
     u8 unk37[0x3C - 0x37];
 } QuestEm;
@@ -156,7 +232,7 @@ typedef struct NextQuestTeam {
     u16 sizePct;                /* 0x0C: -> QuestTeam.sizePct */
     u8 name[0x17 - 0x0E];       /* 0x0E: drawn with the side's health bar (Hud_DrawVersusMonsterBars) */
     s8 gaugeLevel;              /* 0x17: -> QuestTeam.gaugeLevel */
-    s8 levelRoll;               /* 0x18: Versus_Init adds D_0044B448[levelRoll] to baseLevel */
+    s8 levelRoll;               /* 0x18: Versus_Init adds gVersusLevelOffsets[levelRoll] to baseLevel */
     s8 baseLevel;               /* 0x19: -> QuestTeam.baseLevel */
     u8 unk1A[0x1C - 0x1A];
 } NextQuestTeam;
@@ -171,9 +247,9 @@ typedef struct NextQuest {
     u32 flags;                  /* 0x00: the quest's QuestInfo.flags (QUEST_FLAG_*: the lobby copies them) */
     NextQuestTeam teams[2];     /* 0x04: versus: the two sides */
     u32 teamItems[2];           /* 0x3C: versus: per side, an item (QuestTeam.item) */
-    s16 unk44;                  /* 0x44: the lobby sets it from the arena role (-1: none) */
+    s16 arenaRecord;            /* 0x44: the arena record the versus quest uses (gSave.arenaEms index; Versus_ConsumeTeamItem, Versus_UpdateRecords); the lobby sets it from the arena role (-1: none) */
     u8 unk46[0x5E - 0x46];      /* 0x46: the lobby copies 6 bytes per arena role here */
-    s8 unk5E;                   /* 0x5E: versus: tested when the script checks for the end (op 0x33) */
+    s8 unk5E;                   /* 0x5E: versus (QUEST_OP_VERSUS_END): 0, a side wins with its hunt goal (goal 0 or 1); else when the other side has no monster left */
     u8 timeLimit;               /* 0x5F: versus: the time limit in minutes */
     QuestHuntGoal huntGoals[3]; /* 0x60: copied to gQuest.huntGoals (Quest_Init) */
     u16 stage;                  /* 0x78: the quest id (gNextQuestId) */
@@ -184,17 +260,25 @@ typedef struct NextQuest {
 
 /* Per side (Versus_Team of Player.side): QuestState.teams. */
 typedef struct QuestTeam {
-    u8 unk0;
-    s8 emLevel;                 /* 0x1: the level of the side's monsters: baseLevel + D_0044B448[...], 0 to 15 (Versus_Init; Versus_AssignEmTeam sets em->level) */
+    u8 pose;                    /* 0x0: the side's monster pose, 0-2 (Versus_RouteEmByTeam: versus state 1-3), from the side's item (Versus_Init: gTeamItemBits) */
+    s8 emLevel;                 /* 0x1: the level of the side's monsters: baseLevel + gVersusLevelOffsets[...], 0 to 15 (Versus_Init; Versus_AssignEmTeam sets em->level) */
     u8 gaugeLevel;              /* 0x2: the versus gauge gain level, 0 to 4 (from gNextQuest team unk1B; + 1 on most hits; +10, +15 ... to Em.versusGauge) */
     s8 baseLevel;               /* 0x3: from gNextQuest (Versus_Init) */
-    u16 rageScale1;             /* 0x4: percent, 100 = normal (Em_RageScale1; Versus_ApplyTeamBits) */
-    u16 rageScale2;             /* 0x6: percent (Em_RageScale2) */
-    u16 sizeScale;              /* 0x8: percent (Em_ComputeSize) */
+    u16 rageScale1;             /* 0x4: percent, 100 = normal (Em_LevelAttackFactor; Versus_ApplyTeamBits) */
+    u16 rageScale2;             /* 0x6: percent (Em_LevelDamageFactor) */
+    u16 sizeScale;              /* 0x8: percent (Em_ComputeMaxHp) */
     u16 sizePct;                /* 0xA: the side's monsters' em->sizePct (Versus_AssignEmTeam) */
     u16 flags;                  /* 0xC: bits 0x01-0x20 (Versus_TeamHasFlag) */
     u16 item;                   /* 0xE: an item (Versus_ConsumeTeamItem) */
 } QuestTeam;
+
+/* An entry of gTeamItemBits and of gMonsterNoteMarks' lists: what a side's item gives its
+ * QuestTeam (Versus_Init; the lobby's arena feed lists the items). */
+typedef struct TeamEntry {
+    u16 key;                    /* 0x0: an item; 0 ends the table */
+    u16 pose;                   /* 0x2: -> QuestTeam.pose */
+    u32 bits;                   /* 0x4: the team's bits (Versus_ApplyTeamBits) */
+} TeamEntry;
 
 /*
  * A stage file's header (gStageHeader = gQuest.header). In the file the u32
@@ -221,7 +305,7 @@ typedef struct StageHeader {
     u32 tables;                 /* 0x38: the gathering tables (s32 offsets; relocated to a pointer on load) */
     u32 dataTable;              /* 0x3C: id and offset pairs (gQuest.dataTable; Stage_FindData) */
     u32 seasonalData;           /* 0x40: by season and daytime (gQuest.seasonalData; Stage_GetSeasonalData) */
-    s16 emSize; /* 0x44: the monsters' base size (QuestEm spawns q->size; Galex scales it by a random percentage) */
+    s16 emSize; /* 0x44: the base size of the monsters that have a random size (Em_HasRandomSize): QuestEm.size is it times QuestEm_RollSize's percent, plus the season's step (plsel's gallery uses 100 percent: Galex_RollEmSize) */
     s16 sizeRange;              /* 0x46: the row of gEmSizeRanges the rolled monster sizes stay in (QuestEm_RollSize) */
     u32 emLevel;                /* 0x48: the monsters' starting level (gQuest.emLevel) */
     s32 hrpMain; /* 0x4C: the HR points for the main goal (Plsel_SumQuestRewards) */
@@ -293,7 +377,7 @@ typedef struct QuestState {
     void *gatherPoints;         /* 0x074: per area index, the gathering points (StageHeader.gatherPoints; Gather_GetPoints) */
     void *actionSpots; /* 0x078: per area index, its ActionSpot list (Stage_GetActionSpots; StageHeader.actionSpots relocated) */
     QuestInfo *info;            /* 0x07C: gQuestInfo */
-    StageFlag rewards[5];       /* 0x080: items to give at the end: id and count (Quest_AddReward, Quest_FindReward, Quest_GiveRewards) */
+    StageFlag rewards[QUEST_REWARD_SLOTS]; /* 0x080: items to give at the end: id and count (Quest_AddReward, Quest_FindReward, Quest_GiveRewards) */
     s8 rewardNext;              /* 0x094: next rewards slot to overwrite (Quest_AddReward, 0 to 4) */
     s8 rewardsPending;          /* 0x095: rewards holds items to give (Quest_DeductReward sets it, Quest_GiveRewards) */
     s8 unk096;                  /* 0x096 */
@@ -318,7 +402,7 @@ typedef struct QuestState {
     s8 eventCount;              /* 0x14B: the kills it still needs (StageHeader.eventCount; Quest_CountEventKill) */
     u8 unk14C[0x152 - 0x14C];
     s8 sideEmLeft[2];           /* 0x152: per side, the monsters left: 3 (Versus_Init, Versus_MonsterDown) */
-    u8 clearType;               /* 0x154: 1..4 (Records_AddQuestKills) */
+    u8 clearType;               /* 0x154: QUEST_CLEAR_* (Records_AddQuestKills) */
     u8 versusDefeat;            /* 0x155: bits 0/1: side 0/1 defeated (Versus_MarkDefeat, Versus_BothDefeated); bits 2, 3 (Versus_DefeatCamera); kept by Quest_Clear */
     s16 inputLock;              /* 0x156: frames the pad and the field menu stay locked: 60 at the start, 90 in versus (Quest_Update counts down; Player_CopyPadInput, FieldMenu_Requested) */
     u16 traderWantItem;         /* 0x158: the item the trader kind 0x0A asks for in this quest, 0: none yet (EmKind0A_Trade picks it, clears it when traded) */
@@ -326,8 +410,8 @@ typedef struct QuestState {
     u8 unk15B;                  /* 0x15B */
     s8 flyer;                   /* 0x15C: nonzero: the area's flyer object appears (StageObj_AreaFlyer_Create); from NextQuest.flyer (Quest_Init); kept in the quest record */
     u8 unk15D[0x160 - 0x15D];
-    QuestGoal goals[3];         /* 0x160 */
-    QuestGoal goals2[3];        /* 0x178: a copy with the sub-quest flags */
+    QuestGoal goals[QUEST_GOAL_COUNT]; /* 0x160: the goals as they stand: the counts still wanted, DONE and FAILED */
+    QuestGoal goalsSet[QUEST_GOAL_COUNT]; /* 0x178: the goals as set: the counts wanted at the start (QuestGoal_Add) */
     QuestTeam teams[2];         /* 0x190: per side (Versus_Team) */
     QuestTarget targets[2];     /* 0x1B0 */
     u16 specialMineArea;        /* 0x1C0: the special mining point's area (SpecialMine_Create: p->area) */
@@ -357,7 +441,7 @@ typedef struct QuestState {
     s16 capturedType;           /* 0x53C: the captured monster's kind (QuestEm_Captured) */
     u16 capturedSize;           /* 0x53E: its size (em->sizePct; plsel's record menu) */
     s8 capturedLevel;           /* 0x540: its level - 3, 1 to 12 (QuestEm_Captured; saved by Plsel_SaveRecordMenu) */
-    u8 goalIdx[3];              /* 0x541: per goal: its index, 0xFF none (QuestGoal_InitFromDef, QuestGoal_Complete, CamReq_QuestTarget) */
+    u8 goalIdx[3];              /* 0x541: the goals in the order they were done, 0xFF: none yet (QuestGoal_InitFromDef, QuestGoal_Complete, CamReq_QuestTarget) */
     s32 countdown;              /* 0x544: frames: 18000 (Quest_StartCountdown, Quest_UpdateCountdown; gScene.countdownOn) */
     s8 countdownMsg;            /* 0x548: the countdown's message counter (Quest_UpdateCountdown) */
     u8 unk549[0x54A - 0x549];
@@ -532,11 +616,82 @@ typedef struct QuestCmd {
  * already (Quest_Init). */
 #define QUEST_ID_DOWNLOADED 50000
 
+/* The versus quest's id (Quest_IsVersus: online only; the lobby's arena menu offers it). */
+#define QUEST_ID_VERSUS     25001
+
+/*
+ * Quests (gQuest.stage) whose first meeting with a monster plays a story
+ * scene (em_blangonga.c): in them the monster waits in its scene's area, by
+ * day AREA_JUNGLE_3 for the Congalala and AREA_SNOWY_MOUNTAINS_6 for the
+ * Blangonga, until the scene's event flag is set, and switches to its scene
+ * state while a scene runs there (gScene.eventRunning).
+ */
+#define QUEST_ID_CONGALALA_SCENE_1      0x3F3
+#define QUEST_ID_CONGALALA_SCENE_2      0x3F4
+#define QUEST_ID_BLANGONGA_SCENE_1      0x423
+#define QUEST_ID_BLANGONGA_SCENE_2      0x424
+
+/* The save's event flags (Save_TestEventFlag) those monsters test: while
+ * clear, they wait for their scene. No C code sets them (seen: no
+ * Save_SetEventFlag call with these numbers). */
+#define EVENT_FLAG_CONGALALA_SCENE      0x9B
+#define EVENT_FLAG_BLANGONGA_SCENE      0xA4
+
+/* The event flags the PSP link sets, for the link's bonuses 7, 8 and 9 (the lobby's
+ * unk_75E3B0.c sets them; select_psp.c lists the bonuses not yet given). Each lets equipment
+ * be forged (item.h's FORGE_COND_PSP_LINK_*). */
+#define EVENT_FLAG_PSP_LINK_7           0x7F
+#define EVENT_FLAG_PSP_LINK_8           0x82
+#define EVENT_FLAG_PSP_LINK_9           0x83
+
 /* Quest_SetStartArea's `who` for the scene's own area (the local player). */
 #define START_AREA_SCENE    0xFF
 
 /* The highest count of a monster kind hunted or captured in a quest. */
 #define QUEST_COUNT_MAX     9999
+
+/*
+ * The quest's reward entries (StageHeader.rewardTable, gQuest.rewardTable;
+ * Quest_RollRewards): four u16 each, the condition, then the offset in the
+ * stage file of an item list (u16 triples: weight, item, count; weight
+ * 0xFFFF ends). A list is drawn from again and again while the draw's
+ * chance holds (gRewardRateTables). The ranged conditions take only the
+ * first entry of their kind that is met.
+ */
+#define REWARD_HP_BELOW         0x0B    /* 0x0B..0x0F: the monster's health went from above a threshold to at most it */
+#define REWARD_DELIVER_BAND     0x15    /* 0x15..0x19: the delivered count is in band n of gRewardDeliverBands */
+#define REWARD_HUNT_BAND        0x1A    /* 0x1A..0x23: the hunted count (of 20) is in band n of gRewardHuntBands */
+#define REWARD_DRILL_PAYOUT     0x29    /* 0x29..0x2D: the drill's payout reaches gDrillPayoutThresholds[n] */
+#define REWARD_DOJO_PAR         0x2E    /* cleared within the dojo's par time */
+#define REWARD_ALL_HUNTED       0x2F    /* no monster left */
+#define REWARD_HUNTED_99        0x30    /* 0x30..0x93: at least n of the main goal's 99 hunted */
+#define REWARD_DELIVERED        0x94    /* 0x94..0xF7: at least n of the main goal's item delivered */
+#define REWARD_HUNTED_20        0xF8    /* 0xF8..0x10C: at least n of the main goal's 20 hunted */
+#define REWARD_ALWAYS           0x8000  /* the main rewards (the first draw always gives the list's first item) */
+#define REWARD_MAIN_GOAL        0x8001  /* goal 0 done (the first draw likewise) */
+#define REWARD_SUB_A            0x8002  /* goal 1 done: sub-quest A's rewards */
+#define REWARD_SUB_B            0x8003  /* goal 2 done: sub-quest B's rewards */
+#define REWARD_END              0xFFFF
+
+/*
+ * After the quest, gScene.supply holds the rewards (Quest_RollRewards): the
+ * main ones, sub-quest A's, sub-quest B's, then those of the broken parts
+ * and the captures, each group sorted by item.
+ */
+#define REWARD_SLOT_MAIN        0
+#define REWARD_SLOT_SUB_A       24
+#define REWARD_SLOT_SUB_B       28
+#define REWARD_SLOT_PARTS       32
+#define REWARD_SLOT_END         48
+
+/* A reward for a broken part or a capture (gm_sub's gPartRewardRecs, 8 bytes; kind 0xFF ends). */
+typedef struct PartReward {
+    u8 kind;                    /* the monster kind */
+    u8 part;                    /* the part (Quest_IsPartBroken), PART_REWARD_CAPTURE: the capture */
+    u16 table[3];               /* by the stage's tier: the gRewardItemTables list, 0xFFFF: none */
+} PartReward;
+
+#define PART_REWARD_CAPTURE     0x80
 
 /* gQuest.stats (QuestStats_Add), in a drill: the ids seen. */
 #define QSTAT_PART_BROKEN   1       /* a part broken (counted once) */
@@ -562,6 +717,7 @@ typedef struct QuestCmd {
  * the quest code (unk_3A1070.c); Quest_IsRunning gives 1 for RUNNING and
  * CLEARED, and -1 (when asked) for ENDED, FAILED and ABORTED.
  */
+#define QUEST_PHASE_NONE        0   /* no quest set up (the scene's cleared state); no code sets 1 */
 #define QUEST_PHASE_READY       2   /* set up (Quest_Init) */
 #define QUEST_PHASE_RUNNING     3   /* started (Quest_Start; the script's restart ops) */
 #define QUEST_PHASE_CLEARED     4   /* the goal met (gQuest.result 4) */
@@ -573,5 +729,68 @@ typedef struct QuestCmd {
 extern QuestState gQuest;
 extern StageHeader *gStageHeader;     /* gQuest.header */
 extern StageHeader gDefaultStageHeader;
+
+/* A player's start in the stage file (StageHeader.startAreas, one per player). */
+typedef struct StartArea {
+    s32 area;
+    u8 unk04[0x10 - 0x04];
+} StartArea;
+
+/* Where a monster can appear in an area (StageHeader.areaSpawns): count points at offset. */
+typedef struct AreaSpawns {
+    u16 area;                   /* 0xFFFF ends the list */
+    u16 count;
+    u32 offset;                 /* EmSpawnPoint[count], from gStageFile */
+} AreaSpawns;
+
+/* A monster's spawn point in an area (AreaSpawns; QuestEm_PlaceAtRandomPoint). */
+typedef struct EmSpawnPoint {
+    s32 rotY;
+    f32 x;
+    f32 y;
+    f32 z;
+} EmSpawnPoint;
+
+/* A range of monster sizes in percent (gEmSizeRanges, by StageHeader.sizeRange). */
+typedef struct EmSizeRange {
+    u8 min;
+    u8 max;
+} EmSizeRange;
+
+/* An effect shown when a monster part breaks (gPartBreakEffects, 0xFF-terminated). */
+typedef struct PartBreakEffect {
+    u8 kind;                    /* 0x0: Em_KindMatches(type, kind) */
+    s8 bone;                    /* 0x1 */
+    u16 part;                   /* 0x2 */
+    f32 offset[3];              /* 0x4: from the bone */
+} PartBreakEffect;
+
+/* A time-left notice (gQuestTimeNotices, Quest_StepScript). */
+typedef struct QuestTimeNotice {
+    s32 time;                   /* 1/30 s: the notice shows once the time left falls to it */
+    s32 unk4;                   /* not read by the code */
+} QuestTimeNotice;
+
+/* The number of quest ids gQuestRecordIds lists, and of monster kinds the
+ * record counts. */
+#define QUEST_RECORD_IDS 0x10
+#define QUEST_RECORD_KINDS 0x60
+
+/* The record of the last quest (sub_main 0x5D4920, 0xDC bytes): cleared by
+ * QuestRecord_Clear when a quest starts, filled by QuestRecord_Fill for the
+ * results; the lobby reads its phase and sends the whole record to the
+ * server. */
+typedef struct QuestRecord {
+    u16 questId;        /* 0x00: gQuest.stage */
+    u8 pad02[2];
+    u8 phase;           /* 0x04: gScene.questPhase at the end (QUEST_PHASE_*) */
+    s8 mapGroup;        /* 0x05: Map_Group of the quest's map */
+    s8 flyer;           /* 0x06: gQuest.flyer */
+    s8 tier;            /* 0x07: the stage's tier (gQuest.header->tier) */
+    s32 elapsed;        /* 0x08: the quest's time (gQuest.elapsed) */
+    u8 counts[QUEST_RECORD_IDS]; /* 0x0C: per id of gQuestRecordIds, its clears (QuestRecord_Count) */
+    u8 hunted[QUEST_RECORD_KINDS];   /* 0x1C: per monster kind (sub_main's QuestEm_CountHunted) */
+    u8 captured[QUEST_RECORD_KINDS]; /* 0x7C: per monster kind (QuestEm_CountCaptured) */
+} QuestRecord;
 
 #endif /* QUEST_H */

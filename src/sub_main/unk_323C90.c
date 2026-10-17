@@ -7,6 +7,7 @@
 #include "scene.h"
 #include "em.h"
 #include "net_menu.h"
+#include "area.h"
 
 extern u8 D_0041CEB0[];
 extern u8 gCamRequests[0xBC];
@@ -74,7 +75,7 @@ void CamReq_Mode0A(void)
 
 void CamReq_Mode01(void)
 {
-    if (gScene.map != 0xC && gScene.map != 0x16) {
+    if (gScene.map != MAP_BATTLE_TOWN && gScene.map != MAP_BATTLE_TOWN_NIGHT) {
         CamReq_Set(1, NULL);
     }
 }
@@ -84,13 +85,13 @@ void CamReq_AreaIntro(void)
     s32 state;
 
     switch (Area_DayId(gScene.area)) {
-    case 0xC:
+    case AREA_FORTRESS_5:
         state = 2;
         break;
-    case 0x19:
+    case AREA_CASTLE_1:
         state = 3;
         break;
-    case 0xB0:
+    case AREA_BATTLE_TOWN_1:
         state = 4;
         break;
     default:

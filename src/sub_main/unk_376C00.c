@@ -93,16 +93,16 @@ extern s8 gFlashObjCount;           /* ... in gFlashObjs */
 extern s8 gSightBlockObjCount;           /* ... in gSightBlockObjs */
 extern s8 gAreaObjCount;           /* ... in gAreaObjList */
 extern FogParam gFogDefault;     /* the default fog */
-extern FogParam gFogArea56;     /* the fog of area 0x56 */
+extern FogParam gFogArea56;     /* the fog of AREA_HOUSE */
 extern AreaInfo gAreaInfo[];
 extern s16 gAreaFade;
 extern s16 gAreaFadeTimer;
 extern s16 gAreaTemperatures[];
-extern u16 gAreaBaseIds[];
-extern s16 gAreaTimeOfDay[];        /* per area id: its time of day (0, 1) */
+extern u16 gMapDayIds[];           /* per map: its day map, 0xFFFF: itself */
+extern s16 gAreaTimeOfDay[];        /* per area id: its time of day (AREA_TIME_*) */
 extern u16 gAreaOtherTime[];        /* per area id: the other time's id, 0xFFFF: none */
-extern u16 gMapAreaCount[];        /* per map: number of areas */
-extern u16 *gMapAreas[];       /* per map: its area ids */
+extern u16 gMapAreaCount[];         /* per map: the number of its areas */
+extern u16 *gMapAreas[];            /* per map: its area ids, in order */
 
 void *memset(void *p, s32 c, u32 n);
 void *memcpy(void *dst, void *src, u32 n);
@@ -119,8 +119,8 @@ void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 void Vec4_Transform(f32 *out, f32 *v, f32 *m);
 f32 Vec_Distance(f32 *a, f32 *b);
 void Vec_Copy(f32 *dst, f32 *src);
-struct Mtx44Copy;
-void MtxSlot_Load(struct Mtx44Copy *m, s32 i);
+struct MtxSlot;
+void MtxSlot_Load(struct MtxSlot *m, s32 i);
 f32 Math_Atan2(f32 y, f32 x);
 f32 Math_Sqrtf(f32 x);
 void Quat_ToMatrix(f32 *q, f32 (*m)[4]);
@@ -156,7 +156,7 @@ u8 Village_FacilityLevel(s32 i);
 s32 Slab_Contains(f32 *pos, f32 *a, f32 *b, f32 height, f32 radius);
 void Obj_UpdateMatrix(u8 *o);
 void VFlock_Spawn(s8 arg0);
-void Eff10_Create(f32 *pos, u8 kind, u16 area, Player *pl);
+void PlacedItem_Create(f32 *pos, u8 kind, u16 area, Player *pl);
 void AreaObj_K00_Create(void);
 void AreaObj_K02_Create(u8 a);
 void AreaObj_K03_Create(void);
@@ -392,7 +392,7 @@ s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp)
     in[1] = node->pos[1];
     in[2] = node->pos[2];
     in[3] = 1.0f;
-    MtxSlot_Load((struct Mtx44Copy *) m, 0x21);
+    MtxSlot_Load((struct MtxSlot *) m, 0x21);
     Vec4_Transform((f32 *) out, (f32 *) in, (f32 *) m);
     z = &out[2];
     *z *= -1.0f;
@@ -550,7 +550,7 @@ void Camera_Update(void)
     Camera_ComputeUp(gCamera->up, gCamera->eye, gCamera->at, gCamera->roll);
     Mtx_LookAt((f32 *) m, (f32 *) gCamera->eye, (f32 *) gCamera->at, (f32 *) gCamera->up);
     Gs_SetState(0x16, (u32)m);
-    MtxSlot_Load((struct Mtx44Copy *) gViewMatrix, 0x21);
+    MtxSlot_Load((struct MtxSlot *) gViewMatrix, 0x21);
     Mtx_Inverse(gCamMatrix, (f32 *) gViewMatrix);
     angle = 6.2831855f * (s32)(u16)(Mtx_Heading(gCamMatrix) + 0x4000) / 65536.0f;
     Mtx_Identity((f32 *) gCamYawMtx);
@@ -957,7 +957,7 @@ void ObjListA70_Remove(EmObj *obj)
 /*
  * Enters an area: resets the area state and fetches its stage record. Online,
  * look[0] and look[1] (areas 0x83, 0xAD-0xAF) come from the lobby
- * overlay; area 0x89 takes look[1..3] from Village_FacilityLevel.
+ * overlay; AREA_HUB_0x89 takes look[1..3] from Village_FacilityLevel.
  * The first stores address gAreaState directly, the later ones through q:
  * that is what the original does.
  */
@@ -999,7 +999,7 @@ void Area_Enter(u16 area)
         }
     }
     switch (area) {
-    case 0x83:
+    case AREA_HUB_0x83:
         if (gScene.online != 0) {
             switch (LobbyWorld_GetSeason()) {
             default:
@@ -1017,14 +1017,14 @@ void Area_Enter(u16 area)
             q->look[1] = 2;
         }
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         for (i = 1; i < 4; i++) {
             q->look[i] = Village_FacilityLevel(i);
         }
         break;
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         if (gScene.online != 0) {
             q->look[1] = MyHouse_Level();
         } else {
@@ -1044,7 +1044,7 @@ void Area_ApplyFog(u16 area)
     case 0:
         p = &gFogDefault;
         break;
-    case 0x56:
+    case AREA_HOUSE:
         p = &gFogArea56;
         break;
     default:
@@ -1108,21 +1108,21 @@ void Area_StartObjects(u16 area)
         q->flyer = 0;
     }
     switch (area) {
-    case 0xA:
-    case 0x4C:
+    case AREA_FORTRESS_0:
+    case AREA_FORTRESS_NIGHT_0:
         AreaObj_K0A_Create();
         break;
-    case 0xB:
+    case AREA_FORTRESS_4:
         AreaObj_K05_Create(0);
         break;
-    case 0xC:
+    case AREA_FORTRESS_5:
         AreaObj_K05_Create(1);
         break;
-    case 0x4E:
+    case AREA_FORTRESS_NIGHT_5:
         AreaObj_K05_Create(6);
         break;
-    case 0xE:
-    case 0x4F:
+    case AREA_FORTRESS_1:
+    case AREA_FORTRESS_NIGHT_1:
         AreaObj_K04_Create();
         break;
     case 0x11:
@@ -1130,136 +1130,136 @@ void Area_StartObjects(u16 area)
             v[0] = 1400.0f + 300.0f * i;
             v[1] = 30.0f;
             v[2] = 2000.0f + 300.0f * i;
-            Eff10_Create(v, 0, area, 0);
+            PlacedItem_Create(v, 0, area, 0);
         }
         break;
-    case 0x14:
+    case AREA_CASTLE_0:
         AreaObj_K14_Create(0);
         break;
-    case 0x15:
-    case 0xB8:
+    case AREA_FOREST_HILLS_0:
+    case AREA_FOREST_HILLS_NIGHT_0:
         v[0] = 11250.0f;
         v[1] = 40.0f;
         v[2] = 9500.0f;
         StageObj_K0E_CreateAt(v, 2);
         StageObj_K0E_CreateAt(v, 3);
         break;
-    case 0x19:
+    case AREA_CASTLE_1:
         AreaObj_K05_Create(2);
         AreaObj_K14_Create(1);
         AreaObj_K16_Create();
         break;
-    case 0x1C:
-    case 0x50:
+    case AREA_FORTRESS_3:
+    case AREA_FORTRESS_NIGHT_3:
         AreaObj_K05_Create(3);
         AreaObj_K04_Create();
         AreaObj_K0B_Create();
         break;
-    case 0x1E:
+    case AREA_FORTRESS_2:
         AreaObj_K05_Create(4);
         break;
-    case 0x51:
+    case AREA_FORTRESS_NIGHT_2:
         AreaObj_K05_Create(7);
         break;
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         AreaObj_K00_Create();
         break;
-    case 0x2A:
-    case 0xC3:
+    case AREA_FOREST_HILLS_11:
+    case AREA_FOREST_HILLS_NIGHT_11:
         AreaObj_K00_Create();
         AreaObj_K07_Create();
         AreaObj_K0E_Create();
         break;
-    case 0x2B:
-    case 0xC4:
+    case AREA_FOREST_HILLS_12:
+    case AREA_FOREST_HILLS_NIGHT_12:
         AreaObj_K00_Create();
         break;
-    case 0x35:
+    case AREA_DESERT_NIGHT_7:
         AreaObj_K0E_Create();
         break;
-    case 0x48:
-    case 0x4B:
+    case AREA_SWAMP_NIGHT_7:
+    case AREA_SWAMP_NIGHT_9:
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 0.0f;
         SoundObj_Start(7, 0x51, 0x11, v, 0x3C, 3);
         break;
-    case 0x4D:
+    case AREA_FORTRESS_NIGHT_4:
         AreaObj_K05_Create(5);
         break;
-    case 0x56:
+    case AREA_HOUSE:
         break;
-    case 0x2E:
-    case 0x59:
+    case AREA_ARENAS_NIGHT_0:
+    case AREA_ARENAS_0:
         AreaObj_K04_Create();
         break;
-    case 0x39:
-    case 0x5A:
+    case AREA_GREAT_ARENA_NIGHT_1:
+    case AREA_GREAT_ARENA_1:
         AreaObj_K0E_Create();
         AreaObj_K04_Create();
         break;
-    case 0x42:
-    case 0x5B:
+    case AREA_ARENA_NIGHT_1:
+    case AREA_ARENA_1:
         AreaObj_K04_Create();
         break;
-    case 0x5C:
-    case 0x65:
+    case AREA_SNOWY_MOUNTAINS_1:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_1:
         AreaObj_K00_Create();
         break;
-    case 0x5E:
-    case 0x67:
+    case AREA_SNOWY_MOUNTAINS_3:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_3:
         AreaObj_K00_Create();
         break;
-    case 0x61:
-    case 0x6A:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
         AreaObj_K07_Create();
         AreaObj_K04_Create();
         break;
-    case 0x69:
-    case 0x6D:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
         AreaObj_K07_Create();
         break;
-    case 1:
-    case 0x6E:
+    case AREA_JUNGLE_NIGHT_0:
+    case AREA_JUNGLE_0:
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 0.0f;
         SoundObj_Start(7, 0x48, 0x11, v, 0xB4, 1);
         break;
-    case 2:
-    case 0x6F:
+    case AREA_JUNGLE_NIGHT_1:
+    case AREA_JUNGLE_1:
         AreaObj_K11_Create();
         break;
-    case 4:
-    case 0x71:
+    case AREA_JUNGLE_NIGHT_3:
+    case AREA_JUNGLE_3:
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 0.0f;
         SoundObj_Start(7, 0x48, 0x11, v, 0xB4, 1);
         break;
-    case 5:
-    case 0x72:
+    case AREA_JUNGLE_NIGHT_4:
+    case AREA_JUNGLE_4:
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 0.0f;
         SoundObj_Start(7, 0x48, 0x11, v, 0xB4, 1);
         break;
-    case 0x13:
-    case 0x74:
+    case AREA_JUNGLE_NIGHT_6:
+    case AREA_JUNGLE_6:
         AreaObj_K11_Create();
         break;
-    case 0x78:
+    case AREA_JUNGLE_10:
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 0.0f;
         SoundObj_Start(7, 0x48, 0x11, v, 0xB4, 1);
         break;
-    case 0x82:
+    case AREA_TOWER_8:
         AreaObj_K00_Create();
         AreaObj_K03_Create();
         break;
-    case 0x83:
+    case AREA_HUB_0x83:
         if (gScene.online != 0) {
             Effect06_StartOnline(7);
             if (q->look[1] != 0) {
@@ -1268,96 +1268,96 @@ void Area_StartObjects(u16 area)
             VFlock_Spawn(0);
         }
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         Effect06_StartOnline(6);
         break;
-    case 0x85:
+    case AREA_HUB_0x85:
         Effect06_StartOnline(2);
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
         Effect06_StartOnline(2);
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         Effect06_StartOnline(1);
         VFlock_Spawn(1);
         break;
-    case 0x30:
-    case 0x8E:
+    case AREA_DESERT_NIGHT_2:
+    case AREA_DESERT_2:
         AreaObj_K0E_Create();
         break;
-    case 0x31:
+    case AREA_DESERT_NIGHT_3:
         AreaObj_K02_Create(0);
-    case 0x8F:
+    case AREA_DESERT_3:
         AreaObj_K0E_Create();
         break;
-    case 0x32:
-    case 0x90:
+    case AREA_DESERT_NIGHT_4:
+    case AREA_DESERT_4:
         AreaObj_K00_Create();
         AreaObj_K03_Create();
         break;
-    case 0x37:
-    case 0x95:
+    case AREA_DESERT_NIGHT_9:
+    case AREA_DESERT_9:
         AreaObj_K0E_Create();
         break;
-    case 0x38:
-    case 0x96:
+    case AREA_DESERT_NIGHT_10:
+    case AREA_DESERT_10:
         AreaObj_K03_Create();
         AreaObj_K0E_Create();
         break;
-    case 0x44:
-    case 0x45:
-    case 0x9A:
-    case 0x9B:
+    case AREA_SWAMP_NIGHT_3:
+    case AREA_SWAMP_NIGHT_4:
+    case AREA_SWAMP_3:
+    case AREA_SWAMP_4:
         AreaObj_K00_Create();
         AreaObj_K03_Create();
         break;
-    case 0x46:
-    case 0x9C:
+    case AREA_SWAMP_NIGHT_5:
+    case AREA_SWAMP_5:
         AreaObj_K08_Create();
         break;
-    case 0x49:
-    case 0x9F:
+    case AREA_SWAMP_NIGHT_8:
+    case AREA_SWAMP_8:
         AreaObj_K03_Create();
         break;
-    case 0x3A:
-    case 0xA1:
+    case AREA_VOLCANO_NIGHT_0:
+    case AREA_VOLCANO_0:
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 0.0f;
         SoundObj_Start(7, 0x48, 0x11, v, 0xB4, 1);
         break;
-    case 0xA2:
-    case 0xA3:
-    case 0xA6:
-    case 0xA7:
+    case AREA_VOLCANO_1:
+    case AREA_VOLCANO_2:
+    case AREA_VOLCANO_5:
+    case AREA_VOLCANO_6:
         AreaObj_K19_Create();
         break;
-    case 0xAA:
+    case AREA_HUB_0xAA:
         Effect06_StartOnline(1);
         break;
-    case 0xAB:
+    case AREA_HUB_0xAB:
         Effect06_StartOnline(1);
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         Effect06_StartOnline(1);
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         Effect06_StartOnline(1);
         break;
-    case 0xB0:
-    case 0xB4:
+    case AREA_BATTLE_TOWN_1:
+    case AREA_BATTLE_TOWN_NIGHT_1:
         AreaObj_K05_Create(8);
         break;
-    case 0xB2:
-    case 0xB6:
+    case AREA_BATTLE_TOWN_3:
+    case AREA_BATTLE_TOWN_NIGHT_3:
         AreaObj_K05_Create(9);
         break;
-    case 0xB3:
+    case AREA_BATTLE_TOWN_0:
         AreaObj_K10_Create();
         break;
-    case 0xB7:
+    case AREA_BATTLE_TOWN_NIGHT_0:
         AreaObj_K10_Create();
         AreaObj_K07_Create();
         break;
@@ -1367,7 +1367,7 @@ void Area_StartObjects(u16 area)
 s16 Area_SubModelCount(u16 area)
 {
     switch (area) {
-    case 0x89:
+    case AREA_HUB_0x89:
         return 4;
     default:
         return 1;
@@ -1509,48 +1509,58 @@ s16 Area_Temperature(u16 area)
     return gAreaTemperatures[area];
 }
 
-u16 Area_BaseId(u16 area)
+/* The day map of a night map (gMapDayIds); any other map is its own. */
+u16 Map_DayId(u16 map)
 {
-    u16 v = gAreaBaseIds[area];
+    u16 v = gMapDayIds[map];
 
     if (v != 0xFFFF) {
         return v;
     }
-    return area;
+    return map;
 }
 
-u16 Area_MapGroup(u16 area)
+/*
+ * The group a map belongs to, as the quest lists, the quest sheets and the
+ * maps' names table sort them: its day map, with the two other tower maps
+ * counted as MAP_TOWER.
+ */
+u16 Map_Group(u16 map)
 {
-    u16 v = Area_BaseId(area);
+    u16 v = Map_DayId(map);
 
     switch (v) {
-    case 0xE:
-    case 0xF:
-        v = 0xD;
+    case MAP_TOWER_B:
+    case MAP_TOWER_C:
+        v = MAP_TOWER;
         break;
     }
     return v;
 }
 
-/* Area ids come in day/night pairs: gAreaTimeOfDay gives an id's time of day,
- * gAreaOtherTime the other one's id. */
+/*
+ * A zone has one area id by day and another by night: gAreaTimeOfDay gives
+ * an id's time (AREA_TIME_*), gAreaOtherTime the other one's id.
+ * Area_IsDay: 0 for a night area, 1 for any other and for AREA_NONE.
+ */
 s32 Area_IsDay(u16 area)
 {
-    if (area == 0xFFFF) {
+    if (area == AREA_NONE) {
         return 1;
-    } else if (gAreaTimeOfDay[area] == 1) {
+    } else if (gAreaTimeOfDay[area] == AREA_TIME_NIGHT) {
         return 0;
     } else {
         return 1;
     }
 }
 
+/* The same zone's id at the other time of day; an area without one is its own. */
 u16 Area_OtherTimeId(u16 area)
 {
     u16 v;
 
-    if (area == 0xFFFF) {
-        return 0xFFFF;
+    if (area == AREA_NONE) {
+        return AREA_NONE;
     }
     v = gAreaOtherTime[area];
     if (v != 0xFFFF) {
@@ -1559,10 +1569,11 @@ u16 Area_OtherTimeId(u16 area)
     return area;
 }
 
+/* The day id of an area: a night area's other id, else the area itself. */
 u16 Area_DayId(u16 area)
 {
-    if (area == 0xFFFF) {
-        return 0xFFFF;
+    if (area == AREA_NONE) {
+        return AREA_NONE;
     }
     if (Area_IsDay(area) == 0) {
         return Area_OtherTimeId(area);
@@ -1570,13 +1581,13 @@ u16 Area_DayId(u16 area)
     return area;
 }
 
-/* The id of the area for the current time of day (0 online). */
+/* The id of the area's zone at the current time of day (online always by day). */
 u16 Area_IdForCurrentTime(u16 area)
 {
     s16 v;
 
-    if (area == 0xFFFF) {
-        return 0xFFFF;
+    if (area == AREA_NONE) {
+        return AREA_NONE;
     }
     v = gScene.online == 0 ? Daytime_Get() : 0;
     if (v != gAreaTimeOfDay[area]) {
@@ -1585,7 +1596,7 @@ u16 Area_IdForCurrentTime(u16 area)
     return area;
 }
 
-/* The index of an area in its map's list; 0xFFFF when not there. */
+/* The index of an area in its map's list (the n of AREA_<map>_<n>); AREA_INDEX_NONE when not there. */
 u16 Map_AreaIndex(u16 map, u16 area)
 {
     s16 i;
@@ -1595,49 +1606,49 @@ u16 Map_AreaIndex(u16 map, u16 area)
             return i;
         }
     }
-    return 0xFFFF;
+    return AREA_INDEX_NONE;
 }
 
-/* The area id at index i of a map's list. */
+/* The area id at index i of a map's list; AREA_NONE for no map or no index. */
 u16 Map_AreaAt(u16 map, u16 i)
 {
-    if (map != 0xFFFF && i != 0xFFFF) {
+    if (map != 0xFFFF && i != AREA_INDEX_NONE) {
         return gMapAreas[map][i];
     }
-    return 0xFFFF;
+    return AREA_NONE;
 }
 
 s32 Area_NoBarrelBombs(u16 area)
 {
     switch (area) {
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
-    case 0x12:
-    case 0x13:
-    case 0x4D:
-    case 0x4E:
-    case 0x4F:
-    case 0x50:
-    case 0x51:
-    case 0x52:
-    case 9:
-    case 0x97:
-    case 0x98:
-    case 0x99:
-    case 0x9C:
-    case 0x9D:
-    case 0x9E:
-    case 0xA0:
+    case AREA_JUNGLE_NIGHT_0:
+    case AREA_JUNGLE_NIGHT_1:
+    case AREA_JUNGLE_NIGHT_2:
+    case AREA_JUNGLE_NIGHT_3:
+    case AREA_JUNGLE_NIGHT_4:
+    case AREA_JUNGLE_NIGHT_5:
+    case AREA_JUNGLE_NIGHT_6:
+    case AREA_FORTRESS_NIGHT_4:
+    case AREA_FORTRESS_NIGHT_5:
+    case AREA_FORTRESS_NIGHT_1:
+    case AREA_FORTRESS_NIGHT_3:
+    case AREA_FORTRESS_NIGHT_2:
+    case AREA_FORTRESS_NIGHT_6:
+    case AREA_SWAMP_10:
+    case AREA_SWAMP_0:
+    case AREA_SWAMP_1:
+    case AREA_SWAMP_2:
+    case AREA_SWAMP_5:
+    case AREA_SWAMP_6:
+    case AREA_SWAMP_7:
+    case AREA_SWAMP_9:
         return 1;
-    case 0x60:
-    case 0x61:
-    case 0x64:
-    case 0x69:
-    case 0x6A:
-    case 0x6D:
+    case AREA_SNOWY_MOUNTAINS_5:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_8:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
         return Area_MonsterState(area) == 2;
     default:
         return 0;
@@ -1647,8 +1658,8 @@ s32 Area_NoBarrelBombs(u16 area)
 f32 Area_GroundOffset(u16 area)
 {
     switch (area) {
-    case 0x48:
-    case 0x4B:
+    case AREA_SWAMP_NIGHT_7:
+    case AREA_SWAMP_NIGHT_9:
         return 0.0f;
     }
     return 0.0f;
@@ -1690,7 +1701,7 @@ f32 D_0043ED38[3] = {
 CamPreset gCameraPresets[3] = {
 #include "sub_main/0043ED50.inc"
 };
-u16 gAreaBaseIds[32] = {
+u16 gMapDayIds[32] = {
 #include "sub_main/0043ED80.inc"
 };
 u16 gMapAreaCount[40] = {

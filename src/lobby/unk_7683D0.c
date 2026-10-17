@@ -104,7 +104,7 @@ void BoxMenu_DrawPulseSprite(u8 *spr, s32 alpha)
 
 f32 Math_Sin(f32 x);
 void Tex_Prepare(s32, s32);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Bind(s32);
 extern u16 gFrameTick;
 
@@ -114,7 +114,7 @@ void BoxMenu_DrawGridCursor(void)
     s16 n;
     f32 v;
 
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
     n = gBoxWork->held % 100;
@@ -223,7 +223,7 @@ void BoxMenu_DrawItemList(s16 cur, u32 flags, f32 fx)
     }
     gBoxItemListWin.x = fx;
     Window_DrawTextAlpha((Window *)&gBoxItemListWin, NULL, alpha);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
     page = cur / 100;
@@ -461,7 +461,7 @@ void BoxMenu_DrawPageTabs(s16 x, s16 y, s16 page, u32 pad, s32 alpha, u8 kind)
         gBoxPageTabsWin.y = y + 2;
         Window_DrawTextAlpha((Window *)&gBoxPageTabsWin, NULL, alpha);
     } else {
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Gfx_SetBlend(4, 5);
         Tex_Prepare(1, 0x155);
         Tex_Bind(0x155);
@@ -545,7 +545,7 @@ void BoxMenu_DrawEquipGrid(f32 fx, s16 y, s16 cur, u32 flags)
     gBoxItemListWin.x = y;
     eq = save->equipIdx;
     Window_DrawTextAlpha((Window *)&gBoxEquipGridWin, NULL, alpha);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
     page = cur / 100;
@@ -764,7 +764,7 @@ u16 BoxList_GetPage(u16 **list, u8 page)
     return n;
 }
 
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
 void Menu_DrawArrow(s16, s16, s16, s16, u32, u8);
@@ -796,7 +796,7 @@ void EquipLine_DrawMark(s16 x, s16 y, u8 *e)
         x += 0xF9;
         break;
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
     s = Math_Sin(0.0000958738f * (u32)(u16)((gFrameTick & 0x1F) << 11));
@@ -1410,7 +1410,7 @@ u8 BoxMenu_DrawEquipList(u16 *slot, s32 kind, s32 flags)
         s.color = 0xFF00A3FF;
         Sprite_Draw((struct Sprite *)&s);
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
     s.x = 0x156;
@@ -1631,7 +1631,7 @@ void BoxMenu_DrawEquipPick(EquipIdx *cur, s8 page, u32 flags)
         p = list;
         save = &gSave;
         eqs = gSave.equipIdx;
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Tex_Prepare(1, 0x144);
         Tex_Bind(0x144);
         spr.x = 0x22;
@@ -1822,7 +1822,7 @@ void BoxMenu_DrawHelp(s32 arg0, s32 slot)
 
 void Tex_Prepare(s32, s32);
 void Menu_DrawArrow(s16, s16, s16, s16, u32, u8);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Bind(s32);
 
 /* The amount to move (1-99, two full-width digits) with its up and down
@@ -1842,7 +1842,7 @@ void BoxMenu_DrawAmount(void)
         buf[3] = gBoxWork->amount % 10 + 0x4F;
         buf[4] = 0;
         Text_Draw(buf);
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Tex_Prepare(1, 0x155);
         Tex_Bind(0x155);
         if (gBoxWork->atMax == 0) {

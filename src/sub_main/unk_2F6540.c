@@ -1,22 +1,33 @@
 /*
- * Readers for the chunked model data (see unk_2F61D0.c): chunks with an
- * s32 type at +0 and the size at +8, found by type and index; the chunk
- * readers after them keep registers across the static finders (one unit
- * with the old unk_2F7420.c). Then a BMP header check, the animation curve
- * and 2D vector helpers, frustum planes, a free list, and the USB keyboard
- * steps. ACCESS's kana-kanji engine starts after it, at 0x2F9D80.
+ * Model files and small helpers (sub_main 0x2F6540-0x2F9D80).
+ *
+ * First the skeleton builder SkelFile_BuildPart (skeleton files: unk_2F61D0.c).
+ * Then the model file's readers: a model file is a tree of chunks (ModelChunk,
+ * MODEL_CHUNK_* in model.h), found by type and index (ModelChunk_Get). The file
+ * has parts, materials and textures; a mesh part has strip groups of strips,
+ * vertex chunks (positions, normals, texture coordinates, colours, weights), its
+ * materials, draw states and matrix list. ModelFile_LoadMesh builds a part into a
+ * MeshDesc (Mesh_BuildRigid, Mesh_BuildSkinned), which Model_Create
+ * (unk_335040.c) copies and unk_2E3940.c's packet builders draw.
+ *
+ * Then a BMP header check, the animation curves' start and end times, 3-vector
+ * helpers, a camera frustum's planes, a free list and a tagged list, and the USB
+ * keyboard's set-up and poll. ACCESS's kana-kanji engine starts after it, at
+ * 0x2F9D80.
  */
 #include "common.h"
 #include "em.h"
 #include "model.h"
 #include "motion.h"
+#include "image.h"
+#include "kbd.h"
 
-static u8 *ModelFile_Header(u8 *h);
-static s32 ModelChunk_Check(u8 *h, s32 type);
-static u8 *ModelChunk_Get(u8 *h, s32 type, s32 idx);
-u8 *ModelFile_GetPart(u8 *h, u32 idx);
-u8 *ModelFile_GetMat(u8 *h, u32 idx);
-u8 *ModelFile_GetTex(u8 *h, u32 idx);
+static ModelChunk *ModelFile_Header(u8 *file);
+static s32 ModelChunk_Check(ModelChunk *parent, s32 type);
+static ModelChunk *ModelChunk_Get(ModelChunk *parent, s32 type, s32 idx);
+ModelChunk *ModelFile_GetPart(u8 *modelFile, u32 partIdx);
+ModelChunk *ModelFile_GetMat(u8 *modelFile, u32 matIdx);
+ModelChunk *ModelFile_GetTex(u8 *modelFile, u32 texIdx);
 
 /* prototypes */
 f32 AnimCurve_EndTime(AnimCurve *c);
@@ -32,706 +43,718 @@ s32 SkelFile_PartBoneCount(void *f, s32 i);
 s32 *SkelFile_GetNode(void *f, s32 node);
 s32 SkelFile_PartSize(void *f, s32 i);
 
-/* Builds skeleton part of file f in h (the bones follow the header), copies the header
- * to dst and links it; 0 for a bad part. */
-s32 SkelFile_BuildPart(SkelHeader *dst, SkelHeader *h, void *f, s32 part)
+/* Builds a part of skeleton file skelFile in built (the bones follow the header), copies the
+ * header to dst and links it; 0 for a bad part. */
+s32 SkelFile_BuildPart(SkelHeader *dst, SkelHeader *built, void *skelFile, s32 part)
 {
-    s32 n;
-    s32 i;
-    s32 k;
-    s32 base;
-    BoneDef *d;
-    BoneDef *b;
-    SkelFileNode *src;
+    s32 boneCount;
+    s32 boneIdx;
+    s32 comp;
+    s32 rootNode;
+    BoneDef *def;
+    BoneDef *clearDef;
+    SkelFileNode *srcNode;
 
-    if (part >= SkelFile_PartCount(f)) {
+    if (part >= SkelFile_PartCount(skelFile)) {
         return 0;
     }
-    h->size = SkelFile_PartSize(f, part);
-    h->count = n = SkelFile_PartBoneCount(f, part);
-    h->headerSize = sizeof(SkelHeader);
-    d = (BoneDef *)(h + 1);
-    h->block = NULL;
-    for (i = 0; i < n; i++) {
-        b = &d[i];
-        for (k = 0; k < 4; k++) {
-            b->scale[k] = 0.0f;
-            b->rot[k] = 0.0f;
-            b->trans[k] = 0.0f;
+    built->size = SkelFile_PartSize(skelFile, part);
+    built->count = boneCount = SkelFile_PartBoneCount(skelFile, part);
+    built->headerSize = sizeof(SkelHeader);
+    def = (BoneDef *)(built + 1);
+    built->block = NULL;
+    for (boneIdx = 0; boneIdx < boneCount; boneIdx++) {
+        clearDef = &def[boneIdx];
+        for (comp = 0; comp < 4; comp++) {
+            clearDef->scale[comp] = 0.0f;
+            clearDef->rot[comp] = 0.0f;
+            clearDef->trans[comp] = 0.0f;
         }
     }
-    base = SkelFile_PartRoot(f, part);
-    for (i = 0; i < n; i++, d++) {
-        src = (SkelFileNode *)SkelFile_GetNode(f, i + base);
-        d->index = src->index;
-        d->id = src->id;
-        d->child = src->child;
-        d->sibling = src->sibling;
-        if (d->child != -1) {
-            d->child -= (s16)base;
+    rootNode = SkelFile_PartRoot(skelFile, part);
+    for (boneIdx = 0; boneIdx < boneCount; boneIdx++, def++) {
+        srcNode = (SkelFileNode *)SkelFile_GetNode(skelFile, boneIdx + rootNode);
+        def->index = srcNode->index;
+        def->id = srcNode->id;
+        def->child = srcNode->child;
+        def->sibling = srcNode->sibling;
+        if (def->child != -1) {
+            def->child -= (s16)rootNode;
         }
-        if (d->sibling != -1) {
-            d->sibling -= (s16)base;
+        if (def->sibling != -1) {
+            def->sibling -= (s16)rootNode;
         }
-        d->unkA = src->unkA;
-        for (k = 0; k < 4; k++) {
-            d->scale[k] = src->scale[k];
-            d->rot[k] = src->rot[k];
-            d->trans[k] = src->trans[k];
+        def->unkA = srcNode->unkA;
+        for (comp = 0; comp < 4; comp++) {
+            def->scale[comp] = srcNode->scale[comp];
+            def->rot[comp] = srcNode->rot[comp];
+            def->trans[comp] = srcNode->trans[comp];
         }
     }
-    *dst = *h;
-    dst->block = h;
+    *dst = *built;
+    dst->block = built;
     return 1;
 }
 
-/* The list in chunk 0x100000 of part idx of file f (a part of kind 4) into out: the
+/* The list in MODEL_CHUNK_MTX_LIST of part partIdx of modelFile (a mesh part) into out: the
  * count, then the entries as s16. 0, or -1. */
-s32 ModelFile_GetPartList(s16 *out, u8 *f, s32 idx)
+s32 ModelFile_GetPartList(s16 *out, u8 *modelFile, s32 partIdx)
 {
-    u8 *p;
-    u8 *c;
-    s32 *src;
+    ModelChunk *part;
+    ModelChunk *listChunk;
+    s32 *entry;
     s32 i;
-    s32 n;
+    s32 entryCount;
 
-    p = ModelFile_GetPart(f, idx);
-    if (*(s32 *)p != 4) {
+    part = ModelFile_GetPart(modelFile, partIdx);
+    if (part->type != MODEL_PART_MESH) {
         return -1;
     }
-    c = ModelChunk_Get(p, 0x100000, 0);
-    if (c == NULL) {
+    listChunk = ModelChunk_Get(part, MODEL_CHUNK_MTX_LIST, 0);
+    if (listChunk == NULL) {
         return -1;
     }
-    n = *(s32 *)(c + 4);
-    src = (s32 *)(c + 0xC);
-    out[0] = n;
-    for (i = 0; i < n; i++) {
-        out[i + 1] = src[0];
-        src = &src[1];
+    entryCount = listChunk->count;
+    entry = MODEL_CHUNK_DATA(listChunk);
+    out[0] = entryCount;
+    for (i = 0; i < entryCount; i++) {
+        out[i + 1] = entry[0];
+        entry = &entry[1];
     }
     return 0;
 }
 
-
-s32 ModelFile_GetDrawStates(void *ds, u8 *f, s32 idx)
+/* Copies the draw states (MODEL_CHUNK_DRAW_STATES) of part partIdx of modelFile into
+ * states. 0; -1 when the part isn't a mesh or has none; -2 when their version isn't
+ * DRAW_STATES_VERSION. */
+s32 ModelFile_GetDrawStates(DrawStates *states, u8 *modelFile, s32 partIdx)
 {
-    u8 *h;
-    u8 *chunk;
-    u8 *src;
+    ModelChunk *part;
+    ModelChunk *statesChunk;
+    DrawStates *src;
 
-    h = ModelFile_GetPart((u8 *) f, (u32) idx);
-    if (*(s32 *)h != 4) {
+    part = ModelFile_GetPart(modelFile, partIdx);
+    if (part->type != MODEL_PART_MESH) {
         return -1;
     }
-    chunk = ModelChunk_Get((u8 *) h, 0xF0000, 0);
-    if (chunk == NULL) {
+    statesChunk = ModelChunk_Get(part, MODEL_CHUNK_DRAW_STATES, 0);
+    if (statesChunk == NULL) {
         return -1;
     }
-    src = chunk + 0xC;
-    *(s32 *)((u8 *)ds + 0) = (s32) *(s32 *)((u8 *)chunk + 0xC);
-    if ((*(s32 *)((u8 *)ds + 0) & 0xFFFF0000) != 0x10000) {
+    src = MODEL_CHUNK_DATA(statesChunk);
+    states->version = src->version;
+    if ((states->version & DRAW_STATES_VERSION_MASK) != DRAW_STATES_VERSION) {
         return -2;
     }
-    *(s32 *)((u8 *)ds + 0) = (s32) *(s32 *)((u8 *)chunk + 0xC);
-    *(s32 *)((u8 *)ds + 4) = (s32) *(s32 *)((u8 *)src + 4);
-    *(s32 *)((u8 *)ds + 8) = (s32) *(s32 *)((u8 *)src + 8);
-    *(s32 *)((u8 *)ds + 0xC) = (s32) *(s32 *)((u8 *)src + 0xC);
-    *(s32 *)((u8 *)ds + 0x10) = (s32) *(s32 *)((u8 *)src + 0x10);
-    *(s32 *)((u8 *)ds + 0x14) = (s32) *(s32 *)((u8 *)src + 0x14);
-    *(s32 *)((u8 *)ds + 0x18) = (s32) *(s32 *)((u8 *)src + 0x18);
-    *(s32 *)((u8 *)ds + 0x1C) = (s32) *(s32 *)((u8 *)src + 0x1C);
-    *(s32 *)((u8 *)ds + 0x20) = (s32) *(s32 *)((u8 *)src + 0x20);
-    *(s32 *)((u8 *)ds + 0x24) = (s32) *(s32 *)((u8 *)src + 0x24);
-    *(s32 *)((u8 *)ds + 0x28) = (s32) *(s32 *)((u8 *)src + 0x28);
-    *(s32 *)((u8 *)ds + 0x2C) = (s32) *(s32 *)((u8 *)src + 0x2C);
-    *(s32 *)((u8 *)ds + 0x30) = (s32) *(s32 *)((u8 *)src + 0x30);
-    *(s32 *)((u8 *)ds + 0x34) = (s32) *(s32 *)((u8 *)src + 0x34);
-    *(s32 *)((u8 *)ds + 0x38) = (s32) *(s32 *)((u8 *)src + 0x38);
-    *(s32 *)((u8 *)ds + 0x3C) = (s32) *(s32 *)((u8 *)src + 0x3C);
-    *(s32 *)((u8 *)ds + 0x40) = (s32) *(s32 *)((u8 *)src + 0x40);
-    *(s32 *)((u8 *)ds + 0x44) = (s32) *(s32 *)((u8 *)src + 0x44);
+    states->version = src->version;
+    states->s15 = src->s15;
+    states->s02 = src->s02;
+    states->s00 = src->s00;
+    states->s0C = src->s0C;
+    states->s01 = src->s01;
+    states->unk18 = src->unk18;
+    states->s62 = src->s62;
+    states->s12 = src->s12;
+    states->s66 = src->s66;
+    states->s5D = src->s5D;
+    states->f2 = src->f2;
+    states->f6 = src->f6;
+    states->f10 = src->f10;
+    states->unk38[0] = src->unk38[0];
+    states->unk38[1] = src->unk38[1];
+    states->f12 = src->f12;
+    states->f13 = src->f13;
     return 0;
 }
 
-s32 ModelFile_PartCount(u8 *f)
+/* The number of parts in modelFile (MODEL_CHUNK_PARTS), 0 when it has none. */
+s32 ModelFile_PartCount(u8 *modelFile)
 {
-    u8 *h = ModelFile_Header(f);
-    u8 *c;
+    ModelChunk *root = ModelFile_Header(modelFile);
+    ModelChunk *listChunk;
 
-    if (ModelChunk_Check(h, 2) != 0) {
+    if (ModelChunk_Check(root, MODEL_CHUNK_PARTS) != 0) {
         return 0;
     }
-    c = ModelChunk_Get(h, 2, 0);
-    return c == NULL ? 0 : *(s32 *)(c + 4);
+    listChunk = ModelChunk_Get(root, MODEL_CHUNK_PARTS, 0);
+    return listChunk == NULL ? 0 : listChunk->count;
 }
 
-u8 *ModelFile_GetPart(u8 *f, u32 idx)
+/* Part partIdx of modelFile, or NULL. The bound test lets partIdx equal the count. */
+ModelChunk *ModelFile_GetPart(u8 *modelFile, u32 partIdx)
 {
-    u8 *h = ModelFile_Header(f);
-    u8 *c;
+    ModelChunk *root = ModelFile_Header(modelFile);
+    ModelChunk *chunk;
 
-    if (ModelChunk_Check(h, 2) != 0) {
+    if (ModelChunk_Check(root, MODEL_CHUNK_PARTS) != 0) {
         return NULL;
     }
-    c = ModelChunk_Get(h, 2, 0);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(root, MODEL_CHUNK_PARTS, 0);
+    if (chunk == NULL) {
         return NULL;
     }
-    if (*(u32 *)(c + 4) < idx) {
+    if (chunk->count < partIdx) {
         return NULL;
     }
-    c = ModelChunk_Get(c, -1, idx);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(chunk, MODEL_CHUNK_ANY, partIdx);
+    if (chunk == NULL) {
         return NULL;
     }
-    return c;
+    return chunk;
 }
 
-s32 ModelFile_MatCount(u8 *f)
+/* The number of materials in modelFile (MODEL_CHUNK_MATERIALS), 0 when it has none. */
+s32 ModelFile_MatCount(u8 *modelFile)
 {
-    u8 *h = ModelFile_Header(f);
-    u8 *c;
+    ModelChunk *root = ModelFile_Header(modelFile);
+    ModelChunk *listChunk;
 
-    if (ModelChunk_Check(h, 9) != 0) {
+    if (ModelChunk_Check(root, MODEL_CHUNK_MATERIALS) != 0) {
         return 0;
     }
-    c = ModelChunk_Get(h, 9, 0);
-    return c == NULL ? 0 : *(s32 *)(c + 4);
+    listChunk = ModelChunk_Get(root, MODEL_CHUNK_MATERIALS, 0);
+    return listChunk == NULL ? 0 : listChunk->count;
 }
 
-u8 *ModelFile_GetMat(u8 *f, u32 idx)
+/* Material matIdx's chunk in modelFile, or NULL (as ModelFile_GetPart). */
+ModelChunk *ModelFile_GetMat(u8 *modelFile, u32 matIdx)
 {
-    u8 *h = ModelFile_Header(f);
-    u8 *c;
+    ModelChunk *root = ModelFile_Header(modelFile);
+    ModelChunk *chunk;
 
-    if (ModelChunk_Check(h, 9) != 0) {
+    if (ModelChunk_Check(root, MODEL_CHUNK_MATERIALS) != 0) {
         return NULL;
     }
-    c = ModelChunk_Get(h, 9, 0);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(root, MODEL_CHUNK_MATERIALS, 0);
+    if (chunk == NULL) {
         return NULL;
     }
-    if (*(u32 *)(c + 4) < idx) {
+    if (chunk->count < matIdx) {
         return NULL;
     }
-    c = ModelChunk_Get(c, -1, idx);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(chunk, MODEL_CHUNK_ANY, matIdx);
+    if (chunk == NULL) {
         return NULL;
     }
-    return c;
+    return chunk;
 }
 
-u8 *ModelFile_GetMatData(u8 *f, u32 idx)
+/* Material matIdx's record in modelFile, or NULL. */
+ModelFileMat *ModelFile_GetMatData(u8 *modelFile, u32 matIdx)
 {
-    u8 *c = ModelFile_GetMat(f, idx);
+    ModelChunk *matChunk = ModelFile_GetMat(modelFile, matIdx);
 
-    if (c == NULL) {
+    if (matChunk == NULL) {
         return NULL;
     }
-    return c + 0xC;
+    return MODEL_CHUNK_DATA(matChunk);
 }
 
-u8 * ModelFile_GetMatData(u8 *f, u32 idx);
-u8 * ModelFile_GetTexData(u8 *f, u32 idx);
+s32 *ModelFile_GetTexData(u8 *modelFile, u32 texIdx);
 void Heap_Fill(void *dst, u8 c, s32 n);
 
-s32 ModelFile_ReadMat(s32 f, s32 idx, ModelMat *dst)
+/* Fills outMat from material matIdx of modelFile: its colours, its size, and its
+ * texture's id from the file's texture list (0 when it has none). Returns 1. */
+s32 ModelFile_ReadMat(s32 modelFile, s32 matIdx, ModelMat *outMat)
 {
-    u8 *mat;
+    ModelFileMat *rec;
 
-    mat = ModelFile_GetMatData((u8 *) f, (u32) idx);
-    Heap_Fill(dst, 0, 0x4C);
-    if (*(s32 *)((u8 *)mat + 0x34) != 0) {
-        dst->tex = *(s32 *)ModelFile_GetTexData((u8 *) f, *(u32 *)((u8 *)mat + 0x100));
+    rec = ModelFile_GetMatData((u8 *)modelFile, matIdx);
+    Heap_Fill(outMat, 0, sizeof(ModelMat));
+    if (rec->hasTexture != 0) {
+        outMat->tex = *ModelFile_GetTexData((u8 *)modelFile, rec->texIdx);
     } else {
-        dst->tex = 0;
+        outMat->tex = 0;
     }
-    dst->rgb[0] = (f32) *(f32 *)((u8 *)mat + 0x10);
-    dst->rgb[1] = (f32) *(f32 *)((u8 *)mat + 0x14);
-    dst->rgb[2] = (f32) *(f32 *)((u8 *)mat + 0x18);
-    dst->alpha = (f32) *(f32 *)((u8 *)mat + 0x1C);
-    dst->unk24[0] = (f32) *(f32 *)((u8 *)mat + 0);
-    dst->unk24[1] = (f32) *(f32 *)((u8 *)mat + 4);
-    dst->unk24[2] = (f32) *(f32 *)((u8 *)mat + 8);
-    dst->unk24[3] = (f32) *(f32 *)((u8 *)mat + 0xC);
-    dst->unk14[0] = (f32) *(f32 *)((u8 *)mat + 0x20);
-    dst->unk14[1] = (f32) *(f32 *)((u8 *)mat + 0x24);
-    dst->unk14[2] = (f32) *(f32 *)((u8 *)mat + 0x28);
-    dst->unk14[3] = (f32) *(f32 *)((u8 *)mat + 0x2C);
-    dst->unk34[0] = 0;
-    dst->unk34[1] = 0;
-    dst->unk34[2] = 0;
-    dst->unk34[3] = 0;
-    dst->size = (s32) *(f32 *)((u8 *)mat + 0x30);
+    outMat->rgb[0] = rec->rgb[0];
+    outMat->rgb[1] = rec->rgb[1];
+    outMat->rgb[2] = rec->rgb[2];
+    outMat->alpha = rec->alpha;
+    outMat->unk24[0] = rec->unk00[0];
+    outMat->unk24[1] = rec->unk00[1];
+    outMat->unk24[2] = rec->unk00[2];
+    outMat->unk24[3] = rec->unk00[3];
+    outMat->unk14[0] = rec->unk20[0];
+    outMat->unk14[1] = rec->unk20[1];
+    outMat->unk14[2] = rec->unk20[2];
+    outMat->unk14[3] = rec->unk20[3];
+    outMat->unk34[0] = 0;
+    outMat->unk34[1] = 0;
+    outMat->unk34[2] = 0;
+    outMat->unk34[3] = 0;
+    outMat->size = rec->size;
     return 1;
 }
 
-u8 *ModelFile_GetTex(u8 *f, u32 idx)
+/* Texture texIdx's chunk in modelFile, or NULL (as ModelFile_GetPart). */
+ModelChunk *ModelFile_GetTex(u8 *modelFile, u32 texIdx)
 {
-    u8 *h = ModelFile_Header(f);
-    u8 *c;
+    ModelChunk *root = ModelFile_Header(modelFile);
+    ModelChunk *chunk;
 
-    if (ModelChunk_Check(h, 0xA) != 0) {
+    if (ModelChunk_Check(root, MODEL_CHUNK_TEXTURES) != 0) {
         return NULL;
     }
-    c = ModelChunk_Get(h, 0xA, 0);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(root, MODEL_CHUNK_TEXTURES, 0);
+    if (chunk == NULL) {
         return NULL;
     }
-    if (*(u32 *)(c + 4) < idx) {
+    if (chunk->count < texIdx) {
         return NULL;
     }
-    c = ModelChunk_Get(c, -1, idx);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(chunk, MODEL_CHUNK_ANY, texIdx);
+    if (chunk == NULL) {
         return NULL;
     }
-    return c;
+    return chunk;
 }
 
-u8 *ModelFile_GetTexData(u8 *f, u32 idx)
+/* Texture texIdx's data in modelFile (its first word is the texture's id), or NULL. */
+s32 *ModelFile_GetTexData(u8 *modelFile, u32 texIdx)
 {
-    u8 *c = ModelFile_GetTex(f, idx);
+    ModelChunk *texChunk = ModelFile_GetTex(modelFile, texIdx);
 
-    return c == NULL ? NULL : c + 0xC;
+    return texChunk == NULL ? NULL : MODEL_CHUNK_DATA(texChunk);
 }
 
-s32 ModelFile_PartMatCount(u8 *f, u32 idx)
+/* The number of materials part partIdx of modelFile uses (MODEL_CHUNK_PART_MATS), or 0. */
+s32 ModelFile_PartMatCount(u8 *modelFile, u32 partIdx)
 {
-    u8 *c = ModelFile_GetPart(f, idx);
+    ModelChunk *chunk = ModelFile_GetPart(modelFile, partIdx);
 
-    if (c == NULL) {
+    if (chunk == NULL) {
         return 0;
     }
-    c = ModelChunk_Get(c, 0x50000, 0);
-    return c == NULL ? 0 : *(s32 *)(c + 4);
+    chunk = ModelChunk_Get(chunk, MODEL_CHUNK_PART_MATS, 0);
+    return chunk == NULL ? 0 : chunk->count;
 }
 
-/* The words of chunk 0x50000 of part idx of file f into out; 1, or 0. */
-s32 ModelFile_GetPartMats(u8 *f, u32 idx, s32 *out)
+/* The words of MODEL_CHUNK_PART_MATS of part partIdx of modelFile into outMatIds; 1, or 0. */
+s32 ModelFile_GetPartMats(u8 *modelFile, u32 partIdx, s32 *outMatIds)
 {
-    u8 *p;
-    u8 *c;
+    ModelChunk *part;
+    ModelChunk *matsChunk;
     u32 i;
-    u32 n;
-    s32 *src;
+    u32 matCount;
+    s32 *matIds;
 
-    p = ModelFile_GetPart(f, idx);
-    if (p == NULL) {
+    part = ModelFile_GetPart(modelFile, partIdx);
+    if (part == NULL) {
         return 0;
     }
-    c = ModelChunk_Get(p, 0x50000, 0);
-    if (c == NULL) {
+    matsChunk = ModelChunk_Get(part, MODEL_CHUNK_PART_MATS, 0);
+    if (matsChunk == NULL) {
         return 0;
     }
-    n = *(u32 *)(c + 4);
-    src = (s32 *)(c + 0xC);
-    for (i = 0; i < n; i++) {
-        out[i] = *src++;
+    matCount = matsChunk->count;
+    matIds = MODEL_CHUNK_DATA(matsChunk);
+    for (i = 0; i < matCount; i++) {
+        outMatIds[i] = *matIds++;
     }
     return 1;
 }
 
-static u8 *ModelFile_Header(u8 *h)
+/* The file's root chunk: the file itself. */
+static ModelChunk *ModelFile_Header(u8 *file)
 {
-    return h;
+    return (ModelChunk *)file;
 }
 
-static s32 ModelChunk_Check(u8 *h, s32 type)
+/* 0 when parent has a child chunk of the type, else -1. */
+static s32 ModelChunk_Check(ModelChunk *parent, s32 type)
 {
-    u32 i = 0;
-    u32 n = *(u32 *)(h + 4);
+    u32 childIdx = 0;
+    u32 childCount = parent->count;
 
-    for (h += 0xC; i < n; i++) {
-        if (*(s32 *)h == type) {
+    for (parent = MODEL_CHUNK_FIRST(parent); childIdx < childCount; childIdx++) {
+        if (parent->type == type) {
             return 0;
         }
-        h += *(u32 *)(h + 8);
+        parent = MODEL_CHUNK_NEXT(parent);
     }
     return -1;
 }
 
-/* The idx-th chunk of a type, or the idx-th chunk of any type for -1. */
-static u8 *ModelChunk_Get(u8 *h, s32 type, s32 idx)
+/* Parent's idx-th child chunk of the type, or its idx-th child of any type for
+ * MODEL_CHUNK_ANY; NULL when there is none. */
+static ModelChunk *ModelChunk_Get(ModelChunk *parent, s32 type, s32 idx)
 {
-    s32 i;
-    s32 n;
+    s32 childIdx;
+    s32 childCount;
 
-    if (type != -1) {
-        n = *(s32 *)(h + 4);
-        i = 0;
-        for (h += 0xC; i < n; i++) {
-            if (*(s32 *)h == type) {
+    if (type != MODEL_CHUNK_ANY) {
+        childCount = parent->count;
+        childIdx = 0;
+        for (parent = MODEL_CHUNK_FIRST(parent); childIdx < childCount; childIdx++) {
+            if (parent->type == type) {
                 if (idx == 0) {
-                    return h;
+                    return parent;
                 }
                 idx--;
             }
-            h += *(u32 *)(h + 8);
+            parent = MODEL_CHUNK_NEXT(parent);
         }
-    } else if ((u32)idx < *(u32 *)(h + 4)) {
-        h += 0xC;
-        for (i = 0; i < idx; i++) {
-            h += *(u32 *)(h + 8);
+    } else if ((u32)idx < parent->count) {
+        parent = MODEL_CHUNK_FIRST(parent);
+        for (childIdx = 0; childIdx < idx; childIdx++) {
+            parent = MODEL_CHUNK_NEXT(parent);
         }
-        return h;
+        return parent;
     }
     return NULL;
 }
 
-static s32 ModelChunk5_Count(u8 *h)
+/* The number of strip groups in part (MODEL_CHUNK_STRIPS), or -1. */
+static s32 ModelPart_StripGroupCount(ModelChunk *part)
 {
-    u8 *c = ModelChunk_Get(h, 5, 0);
+    ModelChunk *chunk = ModelChunk_Get(part, MODEL_CHUNK_STRIPS, 0);
 
-    return c == NULL ? -1 : *(s32 *)(c + 4);
+    return chunk == NULL ? -1 : chunk->count;
 }
 
-/* The word at +0 of the i-th entry inside h's chunk 5, or -1. */
-static s32 ModelChunk5_Word0(u8 *h, s32 i)
+/* Strip group groupIdx's kind (MODEL_CHUNK_STRIPS_RIGID or _SKINNED), or -1. */
+static s32 ModelPart_StripGroupKind(ModelChunk *part, s32 groupIdx)
 {
-    u8 *c = ModelChunk_Get(h, 5, 0);
-    s32 k;
+    u8 *group = (u8 *)ModelChunk_Get(part, MODEL_CHUNK_STRIPS, 0);
+    s32 skip;
 
-    if (c == NULL) {
+    if (group == NULL) {
         return -1;
     }
-    if (*(u32 *)(c + 4) <= (u32)i) {
+    if (((ModelChunk *)group)->count <= (u32)groupIdx) {
         return -1;
     }
-    c += 0xC;
-    for (k = 0; k < i; k++) {
-        c += *(u32 *)(c + 8);
+    group += sizeof(ModelChunk);
+    for (skip = 0; skip < groupIdx; skip++) {
+        group += ((ModelChunk *)group)->size;
     }
-    return *(s32 *)c;
+    return ((ModelChunk *)group)->type;
 }
 
-static s32 ModelChunk5_ItemCount(u8 *h, s32 i)
+/* The number of strips in strip group groupIdx of part, or -1. */
+static s32 ModelPart_GroupStripCount(ModelChunk *part, s32 groupIdx)
 {
-    u8 *c = ModelChunk_Get(h, 5, 0);
-    s32 k;
+    u8 *group = (u8 *)ModelChunk_Get(part, MODEL_CHUNK_STRIPS, 0);
+    s32 skip;
 
-    if (c == NULL) {
+    if (group == NULL) {
         return -1;
     }
-    if (*(u32 *)(c + 4) <= (u32)i) {
+    if (((ModelChunk *)group)->count <= (u32)groupIdx) {
         return -1;
     }
-    c += 0xC;
-    for (k = 0; k < i; k++) {
-        c += *(u32 *)(c + 8);
+    group += sizeof(ModelChunk);
+    for (skip = 0; skip < groupIdx; skip++) {
+        group += ((ModelChunk *)group)->size;
     }
-    return *(s32 *)(c + 4);
+    return ((ModelChunk *)group)->count;
 }
 
-s32 ModelChunk5_TotalItems(u8 *h);
+s32 ModelPart_StripCount(ModelChunk *part);
 
-/* The sum of the words at +4 of the entries of h chunk 5 (ModelChunk5_ItemCount), or -1. */
-s32 ModelChunk5_TotalItems(u8 *h)
+/* The number of strips in all of part's strip groups, or -1. */
+s32 ModelPart_StripCount(ModelChunk *part)
 {
-    u32 n;
-    u32 i;
-    s32 sum;
+    u32 groupCount;
+    u32 groupIdx;
+    s32 total;
 
-    sum = 0;
-    if ((s32)(n = ModelChunk5_Count(h)) == -1) {
+    total = 0;
+    if ((s32)(groupCount = ModelPart_StripGroupCount(part)) == -1) {
         return -1;
     }
-    for (i = 0; i < n; i++) {
-        sum += ModelChunk5_ItemCount(h, i);
+    for (groupIdx = 0; groupIdx < groupCount; groupIdx++) {
+        total += ModelPart_GroupStripCount(part, groupIdx);
     }
-    return sum;
+    return total;
 }
 
-s32 ModelChunk7_Count(u8 *h)
+/* The number of vertices in part (MODEL_CHUNK_POSITIONS), or -1. */
+s32 ModelPart_VertCount(ModelChunk *part)
 {
-    u8 *c = ModelChunk_Get(h, 0x70000, 0);
+    ModelChunk *chunk = ModelChunk_Get(part, MODEL_CHUNK_POSITIONS, 0);
 
-    return c == NULL ? -1 : *(s32 *)(c + 4);
+    return chunk == NULL ? -1 : chunk->count;
 }
 
 /*
- * The chunk readers (ModelChunk6_EntryFor to ModelChunk6_Varies) keep argument registers
- * across calls to ModelChunk_Get (and ModelChunk_Check, ModelFile_Header,
- * ModelChunk5_Count): the chunk finders above are static.
+ * The part readers from ModelPart_StripMat to ModelPart_StripMatsVary keep their
+ * arguments in registers across the calls of ModelChunk_Get, ModelChunk_Check,
+ * ModelFile_Header and ModelPart_StripGroupCount: those are static, so the
+ * compiler knows which registers they use. The strip readers (and
+ * ModelPart_StripGroupKind and ModelPart_GroupStripCount above) step through the
+ * groups and strips with byte pointers, `group += size`: the game's code adds in
+ * place, which a ModelChunk pointer (MODEL_CHUNK_NEXT) doesn't give there.
  */
-typedef struct ChunkItem {
-    u32 n : 31;                 /* the words that follow */
-    u32 flag : 1;
-} ChunkItem;
-typedef struct ChunkRec8 { s32 a, b; } ChunkRec8;
-typedef struct ChunkRec12 { s32 a, b, c; } ChunkRec12;
-typedef struct ChunkRec16 { s32 a, b, c, d; } ChunkRec16;
-
-static s32 ModelChunk6_EntryFor(u8 *h, s32 i, s32 j);
-s32 Mesh_Build(MeshDesc *a, u8 *h);
-/* The mesh built by Mesh_BuildRigid from the chunks of h. */
+static s32 ModelPart_StripMat(ModelChunk *part, s32 groupIdx, s32 stripIdx);
+s32 Mesh_Build(MeshDesc *mesh, ModelChunk *part);
 /* main's allocator hook gSysAllocHook (SysHeap_Alloc, set in display.c): not a symbol main exports. */
 #define gSysAllocHook (*(void *(**)(s32 size))0x2491E0)
-s32 Mesh_BuildRigid(MeshDesc *a, u8 *h);
-s32 Mesh_BuildSkinned(MeshDesc *a, u8 *h);
+s32 Mesh_BuildRigid(MeshDesc *mesh, ModelChunk *part);
+s32 Mesh_BuildSkinned(MeshDesc *mesh, ModelChunk *part);
 
-/* Entry j of record i of h's chunk 5: word (the counts of records 0..i-1, plus j) of
- * chunk 0x60000, or -1. */
-static s32 ModelChunk6_EntryFor(u8 *h, s32 i, s32 j)
+/* The material of strip stripIdx of strip group groupIdx of part: entry (the strips of
+ * the groups before it, plus stripIdx) of MODEL_CHUNK_STRIP_MATS, or -1. */
+static s32 ModelPart_StripMat(ModelChunk *part, s32 groupIdx, s32 stripIdx)
 {
-    s32 sum = 0;
-    u8 *c;
-    u8 *p;
-    s32 k;
-    s32 r;
+    s32 flatIdx = 0;
+    ModelChunk *chunk;
+    u8 *group;
+    s32 skip;
+    s32 matId;
 
-    if (i > ModelChunk5_Count(h)) {
+    if (groupIdx > ModelPart_StripGroupCount(part)) {
         return -1;
     }
-    c = ModelChunk_Get(h, 5, 0);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(part, MODEL_CHUNK_STRIPS, 0);
+    if (chunk == NULL) {
         return -1;
     }
-    p = c + 0xC;
-    for (k = 0; k < i; k++) {
-        sum += *(s32 *)(p + 4);
-        p += *(s32 *)(p + 8);
+    group = (u8 *)MODEL_CHUNK_FIRST(chunk);
+    for (skip = 0; skip < groupIdx; skip++) {
+        flatIdx += ((ModelChunk *)group)->count;
+        group += ((ModelChunk *)group)->size;
     }
-    sum += j;
-    c = ModelChunk_Get(h, 0x60000, 0);
-    if (c == NULL) {
-        r = -1;
+    flatIdx += stripIdx;
+    chunk = ModelChunk_Get(part, MODEL_CHUNK_STRIP_MATS, 0);
+    if (chunk == NULL) {
+        matId = -1;
     } else {
-        r = ((s32 *)(c + 0xC))[sum];
+        matId = ((s32 *)MODEL_CHUNK_DATA(chunk))[flatIdx];
     }
-    return r;
+    return matId;
 }
 
-/* The size (31 bits) of item j of record i of h's chunk 5 (items: a header word, then
- * that many words), or -1. */
-static s32 ModelChunk5_ItemSize(u8 *h, s32 i, s32 j)
+/* The length (ModelStrip.length) of strip stripIdx of strip group groupIdx of part, or -1. */
+static s32 ModelPart_StripLength(ModelChunk *part, s32 groupIdx, s32 stripIdx)
 {
-    u8 *c;
-    u8 *p;
-    s32 k;
-    u32 n;
+    u8 *strip;
+    u8 *group;
+    s32 skip;
+    u32 stripLen;
 
-    if (i > ModelChunk5_Count(h)) {
+    if (groupIdx > ModelPart_StripGroupCount(part)) {
         return -1;
     }
-    c = ModelChunk_Get(h, 5, 0);
-    if (c == NULL) {
+    strip = (u8 *)ModelChunk_Get(part, MODEL_CHUNK_STRIPS, 0);
+    if (strip == NULL) {
         return -1;
     }
-    p = c + 0xC;
-    for (k = 0; k < i; k++) {
-        p += *(s32 *)(p + 8);
+    group = strip + sizeof(ModelChunk);
+    for (skip = 0; skip < groupIdx; skip++) {
+        group += ((ModelChunk *)group)->size;
     }
-    c = p + 0xC;
-    for (k = 0; k <= j; k++) {
-        n = ((ChunkItem *)c)->n;
-        c += n * 4 + 4;
+    strip = group + sizeof(ModelChunk);
+    for (skip = 0; skip <= stripIdx; skip++) {
+        stripLen = ((ModelStrip *)strip)->length;
+        strip += stripLen * sizeof(u32) + sizeof(ModelStrip);
     }
-    return n;
+    return stripLen;
 }
 
-/* The flag (bit 31) of item j of record i of h's chunk 5, or -1. */
-static s32 ModelChunk5_ItemFlag(u8 *h, s32 i, s32 j)
+/* The flag (ModelStrip.flag) of strip stripIdx of strip group groupIdx of part, or -1. */
+static s32 ModelPart_StripFlag(ModelChunk *part, s32 groupIdx, s32 stripIdx)
 {
-    u8 *c;
-    u8 *p;
-    s32 k;
-    u32 f;
+    u8 *strip;
+    u8 *group;
+    s32 skip;
+    u32 flagBit;
 
-    if (i > ModelChunk5_Count(h)) {
+    if (groupIdx > ModelPart_StripGroupCount(part)) {
         return -1;
     }
-    c = ModelChunk_Get(h, 5, 0);
-    if (c == NULL) {
+    strip = (u8 *)ModelChunk_Get(part, MODEL_CHUNK_STRIPS, 0);
+    if (strip == NULL) {
         return -1;
     }
-    p = c + 0xC;
-    for (k = 0; k < i; k++) {
-        p += *(s32 *)(p + 8);
+    group = strip + sizeof(ModelChunk);
+    for (skip = 0; skip < groupIdx; skip++) {
+        group += ((ModelChunk *)group)->size;
     }
-    c = p + 0xC;
-    for (k = 0; k <= j; k++) {
-        f = *(u32 *)c & 0x80000000;
-        c += ((ChunkItem *)c)->n * 4 + 4;
+    strip = group + sizeof(ModelChunk);
+    for (skip = 0; skip <= stripIdx; skip++) {
+        flagBit = *(u32 *)strip & MODEL_STRIP_FLAG;
+        strip += ((ModelStrip *)strip)->length * sizeof(u32) + sizeof(ModelStrip);
     }
-    return f != 0;
+    return flagBit != 0;
 }
 
-/* Word k of item j of record i of h's chunk 5, or -1. */
-static s32 ModelChunk5_ItemWord(u8 *h, s32 i, s32 j, s32 k)
+/* Vertex index wordIdx of strip stripIdx of strip group groupIdx of part, or -1. */
+static s32 ModelPart_StripIndex(ModelChunk *part, s32 groupIdx, s32 stripIdx, s32 wordIdx)
 {
-    u8 *c;
-    u8 *p;
-    s32 m;
+    u8 *strip;
+    u8 *group;
+    s32 skip;
 
-    if (i > ModelChunk5_Count(h)) {
+    if (groupIdx > ModelPart_StripGroupCount(part)) {
         return -1;
     }
-    c = ModelChunk_Get(h, 5, 0);
-    if (c == NULL) {
+    strip = (u8 *)ModelChunk_Get(part, MODEL_CHUNK_STRIPS, 0);
+    if (strip == NULL) {
         return -1;
     }
-    p = c + 0xC;
-    for (m = 0; m < i; m++) {
-        p += *(s32 *)(p + 8);
+    group = strip + sizeof(ModelChunk);
+    for (skip = 0; skip < groupIdx; skip++) {
+        group += ((ModelChunk *)group)->size;
     }
-    c = p + 0xC;
-    for (m = 0; m < j; m++) {
-        c += ((ChunkItem *)c)->n * 4 + 4;
+    strip = group + sizeof(ModelChunk);
+    for (skip = 0; skip < stripIdx; skip++) {
+        strip += ((ModelStrip *)strip)->length * sizeof(u32) + sizeof(ModelStrip);
     }
-    if (k >= (s32)((ChunkItem *)c)->n) {
+    if (wordIdx >= (s32)((ModelStrip *)strip)->length) {
         return -1;
     }
-    return ((s32 *)(c + 4))[k];
+    return ((s32 *)(strip + sizeof(ModelStrip)))[wordIdx];
 }
 
-/* Record idx (12 bytes) of h's chunk 0x70000, or NULL. */
-static ChunkRec12 *ModelChunk7_Rec(u8 *h, s32 idx)
+/* Vertex vertIdx's position in part's MODEL_CHUNK_POSITIONS, or NULL. */
+static ModelVec3 *ModelPart_VertPos(ModelChunk *part, s32 vertIdx)
 {
-    u8 *c = ModelChunk_Get(h, 0x70000, 0);
+    ModelChunk *chunk = ModelChunk_Get(part, MODEL_CHUNK_POSITIONS, 0);
 
-    if (c == NULL) {
+    if (chunk == NULL) {
         return NULL;
     }
-    return (ChunkRec12 *)(c + 0xC) + idx;
+    return (ModelVec3 *)MODEL_CHUNK_DATA(chunk) + vertIdx;
 }
 
-/* Record idx (12 bytes) of h's chunk 0x80000, or NULL. */
-static ChunkRec12 *ModelChunk8_Rec(u8 *h, s32 idx)
+/* Vertex vertIdx's normal in part's MODEL_CHUNK_NORMALS, or NULL. */
+static ModelVec3 *ModelPart_VertNormal(ModelChunk *part, s32 vertIdx)
 {
-    u8 *c = ModelChunk_Get(h, 0x80000, 0);
+    ModelChunk *chunk = ModelChunk_Get(part, MODEL_CHUNK_NORMALS, 0);
 
-    if (c == NULL) {
+    if (chunk == NULL) {
         return NULL;
     }
-    return (ChunkRec12 *)(c + 0xC) + idx;
+    return (ModelVec3 *)MODEL_CHUNK_DATA(chunk) + vertIdx;
 }
 
-/* Record idx (8 bytes) of h's chunk 0xA0000, or NULL. */
-static ChunkRec8 *ModelChunkA_Rec(u8 *h, s32 idx)
+/* Vertex vertIdx's texture coordinates in part's MODEL_CHUNK_UVS, or NULL. */
+static ModelVec2 *ModelPart_VertUv(ModelChunk *part, s32 vertIdx)
 {
-    u8 *c = ModelChunk_Get(h, 0xA0000, 0);
+    ModelChunk *chunk = ModelChunk_Get(part, MODEL_CHUNK_UVS, 0);
 
-    if (c == NULL) {
+    if (chunk == NULL) {
         return NULL;
     }
-    return (ChunkRec8 *)(c + 0xC) + idx;
+    return (ModelVec2 *)MODEL_CHUNK_DATA(chunk) + vertIdx;
 }
 
-/* Record idx (16 bytes) of h's chunk 0xB0000, or NULL. */
-static ChunkRec16 *ModelChunkB_Rec(u8 *h, s32 idx)
+/* Vertex vertIdx's colour in part's MODEL_CHUNK_COLORS, or NULL. */
+static ModelVec4 *ModelPart_VertColor(ModelChunk *part, s32 vertIdx)
 {
-    u8 *c = ModelChunk_Get(h, 0xB0000, 0);
+    ModelChunk *chunk = ModelChunk_Get(part, MODEL_CHUNK_COLORS, 0);
 
-    if (c == NULL) {
+    if (chunk == NULL) {
         return NULL;
     }
-    return (ChunkRec16 *)(c + 0xC) + idx;
+    return (ModelVec4 *)MODEL_CHUNK_DATA(chunk) + vertIdx;
 }
 
-/* The count of list idx of h's chunk 0xC0000 (lists of 8-byte records after their
- * count), or -1. */
-static s32 ModelChunkC_ListCount(u8 *h, s32 idx)
+/* The number of vertex vertIdx's weights in part's MODEL_CHUNK_WEIGHTS, or -1. Each
+ * vertex's list is an s32 count, then that many ModelWeights. */
+static s32 ModelPart_VertWeightCount(ModelChunk *part, s32 vertIdx)
 {
-    u8 *c;
-    u8 *p;
-    s32 i;
-    s32 n;
+    ModelChunk *chunk;
+    u8 *list;
+    s32 skip;
+    s32 listLen;
 
-    c = ModelChunk_Get(h, 0xC0000, 0);
-    if (c == NULL) {
+    chunk = ModelChunk_Get(part, MODEL_CHUNK_WEIGHTS, 0);
+    if (chunk == NULL) {
         return -1;
     }
-    p = c + 0xC;
-    for (i = 0; i < idx; i++) {
-        n = *(s32 *)p;
-        p += 4;
-        p += n * 8;
+    list = MODEL_CHUNK_DATA(chunk);
+    for (skip = 0; skip < vertIdx; skip++) {
+        listLen = *(s32 *)list;
+        list += sizeof(s32);
+        list += listLen * sizeof(ModelWeight);
     }
-    return *(s32 *)p;
+    return *(s32 *)list;
 }
 
-/* Record j of list i of h's chunk 0xC0000, or NULL. */
-static ChunkRec8 *ModelChunkC_Rec(u8 *h, s32 i, s32 j)
+/* Weight weightIdx of vertex vertIdx in part's MODEL_CHUNK_WEIGHTS, or NULL. */
+static ModelWeight *ModelPart_VertWeight(ModelChunk *part, s32 vertIdx, s32 weightIdx)
 {
-    u8 *p;
-    s32 k;
-    s32 n;
+    u8 *cursor;
+    s32 skip;
+    s32 listLen;
 
-    p = ModelChunk_Get(h, 0xC0000, 0);
-    if (p == NULL) {
+    cursor = (u8 *)ModelChunk_Get(part, MODEL_CHUNK_WEIGHTS, 0);
+    if (cursor == NULL) {
         return NULL;
     }
-    p += 0xC;
-    for (k = 0; k < i; k++) {
-        n = *(s32 *)p;
-        p += 4;
-        p += n * 8;
+    cursor += sizeof(ModelChunk);
+    for (skip = 0; skip < vertIdx; skip++) {
+        listLen = *(s32 *)cursor;
+        cursor += sizeof(s32);
+        cursor += listLen * sizeof(ModelWeight);
     }
-    if (j >= *(s32 *)p) {
-        p = NULL;
+    if (weightIdx >= *(s32 *)cursor) {
+        cursor = NULL;
     } else {
-        p += 4;
-        p += j * 8;
+        cursor += sizeof(s32);
+        cursor += weightIdx * sizeof(ModelWeight);
     }
-    return (ChunkRec8 *)p;
+    return (ModelWeight *)cursor;
 }
 
-/* Sets up a (its s16 at +0x20 from ModelFile_PartMatCount) from part idx of file h when the part
- * is of kind 4 (Mesh_Build); 0 for the other kinds or a bad index. */
-s32 ModelFile_LoadMesh(MeshDesc *a, u8 *h, u32 idx)
+/* Sets up mesh (mesh->matCount from ModelFile_PartMatCount) from part partIdx of modelFile when the part
+ * is of kind MODEL_PART_MESH (Mesh_Build); 0 for the other kinds or a bad index. */
+s32 ModelFile_LoadMesh(MeshDesc *mesh, u8 *modelFile, u32 partIdx)
 {
-    u8 *c;
-    u8 *rec;
+    ModelChunk *partsChunk;
+    ModelChunk *part;
 
-    ModelFile_Header(h);
-    c = ModelChunk_Get(h, 2, 0);
-    if (c == NULL) {
+    ModelFile_Header(modelFile);
+    partsChunk = ModelChunk_Get((ModelChunk *)modelFile, MODEL_CHUNK_PARTS, 0);
+    if (partsChunk == NULL) {
         return 0;
     }
-    if (*(u32 *)(c + 4) <= idx) {
+    if (partsChunk->count <= partIdx) {
         return 0;
     }
-    if ((rec = ModelFile_GetPart(h, idx)) == NULL) {
+    if ((part = ModelFile_GetPart(modelFile, partIdx)) == NULL) {
         return 0;
     }
-    switch (*(s32 *)rec) {
+    switch (part->type) {
     case 3:
     case 6:
     case 7:
     case 8:
         return 0;
-    case 4:
-        a->matCount = ModelFile_PartMatCount(h, idx);
-        return Mesh_Build(a, rec);
+    case MODEL_PART_MESH:
+        mesh->matCount = ModelFile_PartMatCount(modelFile, partIdx);
+        return Mesh_Build(mesh, part);
     }
     return 0;
 }
 
-/* Mesh_BuildSkinned when h has a chunk 0xC0000, else Mesh_BuildRigid. */
-s32 Mesh_Build(MeshDesc *a, u8 *h)
+/* Builds mesh from part: Mesh_BuildSkinned when the part has MODEL_CHUNK_WEIGHTS, else Mesh_BuildRigid. */
+s32 Mesh_Build(MeshDesc *mesh, ModelChunk *part)
 {
-    if (ModelChunk_Check(h, 0xC0000) != 0) {
-        return Mesh_BuildRigid(a, h);
+    if (ModelChunk_Check(part, MODEL_CHUNK_WEIGHTS) != 0) {
+        return Mesh_BuildRigid(mesh, part);
     }
-    return Mesh_BuildSkinned(a, h);
+    return Mesh_BuildSkinned(mesh, part);
 }
 
-/* 1 when some entry (ModelChunk6_EntryFor) differs from entry (0, 0), else 0. */
-s32 ModelChunk6_Varies(u8 *h)
+/* 1 when some strip of part has another material than the first strip's
+ * (ModelPart_StripMat), else 0. */
+s32 ModelPart_StripMatsVary(ModelChunk *part)
 {
-    s32 i;
-    s32 j;
-    s32 n;
-    s32 m;
-    s32 first;
+    s32 groupIdx;
+    s32 stripIdx;
+    s32 groupCount;
+    s32 groupStrips;
+    s32 firstMat;
 
-    first = ModelChunk6_EntryFor(h, 0, 0);
-    n = ModelChunk5_Count(h);
-    for (i = 0; i < n; i++) {
-        m = ModelChunk5_ItemCount(h, i);
-        for (j = 0; j < m; j++) {
-            if (ModelChunk6_EntryFor(h, i, j) != first) {
+    firstMat = ModelPart_StripMat(part, 0, 0);
+    groupCount = ModelPart_StripGroupCount(part);
+    for (groupIdx = 0; groupIdx < groupCount; groupIdx++) {
+        groupStrips = ModelPart_GroupStripCount(part, groupIdx);
+        for (stripIdx = 0; stripIdx < groupStrips; stripIdx++) {
+            if (ModelPart_StripMat(part, groupIdx, stripIdx) != firstMat) {
                 return 1;
             }
         }
@@ -739,449 +762,472 @@ s32 ModelChunk6_Varies(u8 *h)
     return 0;
 }
 
-/* Builds the mesh a from h: the index lists (each entry count | 0x8000 or 0x4000, the entry of
- * ModelChunk6_EntryFor when they differ, then the entries) and the vertices (position, normal, colour
- * from the four floats of chunk 0xB0000, texture coordinates when h has chunk 0xA0000). 0 when
- * an allocation fails. The chunk readers it calls are static: it keeps t registers across them. */
-s32 Mesh_BuildRigid(MeshDesc *a, u8 *h)
+/* Builds mesh from a part without weights: the strips (each its length with
+ * MESH_STRIP_FLAGGED or MESH_STRIP_UNFLAGGED, its material when the strips' materials
+ * differ, then its vertex indexes) and the vertices (MeshVtxTex when the part has
+ * MODEL_CHUNK_UVS, else MeshVtxCol), both allocated through gSysAllocHook.
+ * 1, or 0 when an allocation fails. The part readers it calls are static: it keeps
+ * t registers across them. */
+s32 Mesh_BuildRigid(MeshDesc *mesh, ModelChunk *part)
 {
-    s32 t;
+    s32 vertIdx;
     s32 size;
-    s32 n;
-    s32 i;
-    s32 j;
-    u16 *p;
-    s32 m;
-    s32 cnt;
-    s32 sum;
-    s32 uv;
-    s32 k;
-    u8 *v;
-    f32 *r;
+    s32 groupCount;
+    s32 groupIdx;
+    s32 stripIdx;
+    u16 *stripOut;
+    s32 groupStrips;
+    s32 stripLen;
+    s32 indexTotal;
+    s32 hasUv;
+    s32 wordIdx;
+    u8 *vertOut;
+    f32 *rec;
 
-    uv = 0;
-    if (ModelChunk_Check(h, 0xA0000) == 0) {
-        uv = 1;
+    hasUv = 0;
+    if (ModelChunk_Check(part, MODEL_CHUNK_UVS) == 0) {
+        hasUv = 1;
     }
-    a->flags = 0x21000;
-    n = ModelChunk5_Count(h);
-    a->count = ModelChunk5_TotalItems(h);
-    if (ModelChunk6_Varies(h) == 1) {
-        a->flags |= 0x100000;
+    mesh->flags = MESH_BUILT | MESH_INDEXED;
+    groupCount = ModelPart_StripGroupCount(part);
+    mesh->count = ModelPart_StripCount(part);
+    if (ModelPart_StripMatsVary(part) == 1) {
+        mesh->flags |= MESH_STRIP_MAT;
     }
-    sum = 0;
-    for (i = 0; i < n; i++) {
-        m = ModelChunk5_ItemCount(h, i);
-        for (j = 0; j < m; j++) {
-            sum += ModelChunk5_ItemSize(h, i, j);
+    indexTotal = 0;
+    for (groupIdx = 0; groupIdx < groupCount; groupIdx++) {
+        groupStrips = ModelPart_GroupStripCount(part, groupIdx);
+        for (stripIdx = 0; stripIdx < groupStrips; stripIdx++) {
+            indexTotal += ModelPart_StripLength(part, groupIdx, stripIdx);
         }
     }
-    size = (a->count + sum) * 2;
-    if (a->flags & 0x100000) {
-        size += a->count * 2;
+    size = (mesh->count + indexTotal) * 2;
+    if (mesh->flags & MESH_STRIP_MAT) {
+        size += mesh->count * 2;
     }
-    if ((a->strips = gSysAllocHook(size)) == NULL) {
+    if ((mesh->strips = gSysAllocHook(size)) == NULL) {
         return 0;
     }
-    a->stripsSize = size;
-    p = a->strips;
-    for (i = 0; i < n; i++) {
-        m = ModelChunk5_ItemCount(h, i);
-        for (j = 0; j < m; j++) {
-            cnt = ModelChunk5_ItemSize(h, i, j);
-            *p = cnt;
-            if (ModelChunk5_ItemFlag(h, i, j) != 0) {
-                *p |= 0x8000;
+    mesh->stripsSize = size;
+    stripOut = mesh->strips;
+    for (groupIdx = 0; groupIdx < groupCount; groupIdx++) {
+        groupStrips = ModelPart_GroupStripCount(part, groupIdx);
+        for (stripIdx = 0; stripIdx < groupStrips; stripIdx++) {
+            stripLen = ModelPart_StripLength(part, groupIdx, stripIdx);
+            *stripOut = stripLen;
+            if (ModelPart_StripFlag(part, groupIdx, stripIdx) != 0) {
+                *stripOut |= MESH_STRIP_FLAGGED;
             } else {
-                *p |= 0x4000;
+                *stripOut |= MESH_STRIP_UNFLAGGED;
             }
-            p++;
-            if (a->flags & 0x100000) {
-                *p++ = ModelChunk6_EntryFor(h, i, j);
+            stripOut++;
+            if (mesh->flags & MESH_STRIP_MAT) {
+                *stripOut++ = ModelPart_StripMat(part, groupIdx, stripIdx);
             }
-            if (a->flags & 0x1000) {
-                for (k = 0; k < cnt; k++) {
-                    *p++ = ModelChunk5_ItemWord(h, i, j, k);
+            if (mesh->flags & MESH_INDEXED) {
+                for (wordIdx = 0; wordIdx < stripLen; wordIdx++) {
+                    *stripOut++ = ModelPart_StripIndex(part, groupIdx, stripIdx, wordIdx);
                 }
             }
         }
     }
-    a->format = 0x25;
-    if (uv) {
-        a->format |= 0x10;
+    mesh->format = MESH_FORMAT_COLOR;
+    if (hasUv) {
+        mesh->format |= MESH_FORMAT_UV;
     }
-    a->vertCount = ModelChunk7_Count(h);
-    size = a->vertCount * 0x24;
-    if ((a->verts = gSysAllocHook(size)) == NULL) {
+    mesh->vertCount = ModelPart_VertCount(part);
+    size = mesh->vertCount * sizeof(MeshVtxTex);
+    if ((mesh->verts = gSysAllocHook(size)) == NULL) {
         return 0;
     }
-    a->vertsSize = size;
-    v = a->verts;
-    for (t = 0; t < a->vertCount; t++) {
-        if (uv) {
-            r = (f32 *)ModelChunk7_Rec(h, t);
-            ((f32 *)v)[0] = r[0];
-            ((f32 *)v)[1] = r[1];
-            ((f32 *)v)[2] = r[2];
-            r = (f32 *)ModelChunk8_Rec(h, t);
-            ((f32 *)v)[3] = r[0];
-            ((f32 *)v)[4] = r[1];
-            ((f32 *)v)[5] = r[2];
-            r = (f32 *)ModelChunkA_Rec(h, t);
-            ((f32 *)v)[7] = r[0];
-            ((f32 *)v)[8] = r[1];
-            r = (f32 *)ModelChunkB_Rec(h, t);
-            ((u32 *)v)[6] = (u32)r[3] << 24 | (u32)r[0] << 16 | (u32)r[1] << 8 | (u32)r[2];
-            v += 0x24;
+    mesh->vertsSize = size;
+    vertOut = mesh->verts;
+    for (vertIdx = 0; vertIdx < mesh->vertCount; vertIdx++) {
+        if (hasUv) {
+            rec = ModelPart_VertPos(part, vertIdx)->v;
+            ((MeshVtxTex *)vertOut)->pos[0] = rec[0];
+            ((MeshVtxTex *)vertOut)->pos[1] = rec[1];
+            ((MeshVtxTex *)vertOut)->pos[2] = rec[2];
+            rec = ModelPart_VertNormal(part, vertIdx)->v;
+            ((MeshVtxTex *)vertOut)->nrm[0] = rec[0];
+            ((MeshVtxTex *)vertOut)->nrm[1] = rec[1];
+            ((MeshVtxTex *)vertOut)->nrm[2] = rec[2];
+            rec = ModelPart_VertUv(part, vertIdx)->v;
+            ((MeshVtxTex *)vertOut)->uv[0] = rec[0];
+            ((MeshVtxTex *)vertOut)->uv[1] = rec[1];
+            rec = ModelPart_VertColor(part, vertIdx)->v;
+            ((MeshVtxTex *)vertOut)->col = (u32)rec[3] << 24 | (u32)rec[0] << 16 | (u32)rec[1] << 8 | (u32)rec[2];
+            vertOut += sizeof(MeshVtxTex);
         } else {
-            r = (f32 *)ModelChunk7_Rec(h, t);
-            ((f32 *)v)[0] = r[0];
-            ((f32 *)v)[1] = r[1];
-            ((f32 *)v)[2] = r[2];
-            r = (f32 *)ModelChunk8_Rec(h, t);
-            ((f32 *)v)[3] = r[0];
-            ((f32 *)v)[4] = r[1];
-            ((f32 *)v)[5] = r[2];
-            r = (f32 *)ModelChunkB_Rec(h, t);
-            ((u32 *)v)[6] = (u32)r[3] << 24 | (u32)r[0] << 16 | (u32)r[1] << 8 | (u32)r[2];
-            v += 0x1C;
+            rec = ModelPart_VertPos(part, vertIdx)->v;
+            ((MeshVtxCol *)vertOut)->pos[0] = rec[0];
+            ((MeshVtxCol *)vertOut)->pos[1] = rec[1];
+            ((MeshVtxCol *)vertOut)->pos[2] = rec[2];
+            rec = ModelPart_VertNormal(part, vertIdx)->v;
+            ((MeshVtxCol *)vertOut)->nrm[0] = rec[0];
+            ((MeshVtxCol *)vertOut)->nrm[1] = rec[1];
+            ((MeshVtxCol *)vertOut)->nrm[2] = rec[2];
+            rec = ModelPart_VertColor(part, vertIdx)->v;
+            ((MeshVtxCol *)vertOut)->col = (u32)rec[3] << 24 | (u32)rec[0] << 16 | (u32)rec[1] << 8 | (u32)rec[2];
+            vertOut += sizeof(MeshVtxCol);
         }
     }
     return 1;
 }
 
-/* Mesh_BuildRigid for skinned meshes (flags 0x200000: a word per list from ModelChunk5_Word0's kind;
- * vertices of 0x2C bytes with four bone indices at +0x24 and four weights at +0x28, the largest
- * weight taking the remainder of 0xFF, empty slots moved down). One byte cursor p writes the index
- * list and then the vertices, and j counts the weight records too: their vertex-loop webs are
- * later webs, numbered after the loop's created values, so p takes t3 and j t4 as in the game;
- * the record count nw is a local of its own (a first web, numbered before best: s5). */
-s32 Mesh_BuildSkinned(MeshDesc *a, u8 *h)
+/* Mesh_BuildRigid for a part with weights: each strip also gets its skin kind
+ * (MESH_STRIP_SKIN, from its group's kind), and the vertices are MeshVtxSkin. A
+ * vertex's weights become bytes; the remainder of 0xFF goes to the last nonzero
+ * one, and empty slots are moved down. One byte cursor writes the strips and then
+ * the vertices, and innerIdx counts both the strips and the weights: the game's
+ * register use needs those shared locals. */
+s32 Mesh_BuildSkinned(MeshDesc *mesh, ModelChunk *part)
 {
-    s32 i;
-    s32 j;
-    s32 k;
-    s32 m;
-    s32 nw;
-    u8 *p;
+    s32 outerIdx;
+    s32 innerIdx;
+    s32 wordIdx;
+    s32 groupStrips;
+    s32 weightCount;
+    u8 *cursor;
     s32 kind;
-    s32 sum;
+    s32 indexTotal;
     s32 size;
-    s32 best;
-    s32 cnt;
-    s32 w[4];
-    f32 *r;
-    u8 *e;
-    s32 b[4];
-    s32 n;
+    s32 lastWeighted;
+    s32 stripLen;
+    s32 weights[4];
+    f32 *rec;
+    ModelWeight *weightRec;
+    s32 boneIds[4];
+    s32 groupCount;
 
-    ModelChunk_Check(h, 0xA0000);
-    a->flags = 0x221000;
-    n = ModelChunk5_Count(h);
-    a->count = ModelChunk5_TotalItems(h);
-    if (ModelChunk6_Varies(h) == 1) {
-        a->flags |= 0x100000;
+    ModelChunk_Check(part, MODEL_CHUNK_UVS);
+    mesh->flags = MESH_BUILT | MESH_STRIP_SKIN | MESH_INDEXED;
+    groupCount = ModelPart_StripGroupCount(part);
+    mesh->count = ModelPart_StripCount(part);
+    if (ModelPart_StripMatsVary(part) == 1) {
+        mesh->flags |= MESH_STRIP_MAT;
     }
-    sum = 0;
-    for (i = 0; i < n; i++) {
-        m = ModelChunk5_ItemCount(h, i);
-        for (j = 0; j < m; j++) {
-            sum += ModelChunk5_ItemSize(h, i, j);
+    indexTotal = 0;
+    for (outerIdx = 0; outerIdx < groupCount; outerIdx++) {
+        groupStrips = ModelPart_GroupStripCount(part, outerIdx);
+        for (innerIdx = 0; innerIdx < groupStrips; innerIdx++) {
+            indexTotal += ModelPart_StripLength(part, outerIdx, innerIdx);
         }
     }
-    size = (a->count + sum) * 2;
-    if (a->flags & 0x100000) {
-        size += a->count * 2;
+    size = (mesh->count + indexTotal) * 2;
+    if (mesh->flags & MESH_STRIP_MAT) {
+        size += mesh->count * 2;
     }
-    if (a->flags & 0x200000) {
-        size += a->count * 2;
+    if (mesh->flags & MESH_STRIP_SKIN) {
+        size += mesh->count * 2;
     }
-    if ((a->strips = gSysAllocHook(size)) == NULL) {
+    if ((mesh->strips = gSysAllocHook(size)) == NULL) {
         return 0;
     }
-    a->stripsSize = size;
-    p = (u8 *)a->strips;
-    for (i = 0; i < n; i++) {
-        m = ModelChunk5_ItemCount(h, i);
-        kind = ModelChunk5_Word0(h, i);
-        for (j = 0; j < m; j++) {
-            cnt = ModelChunk5_ItemSize(h, i, j);
-            *(u16 *)p = cnt;
-            if (ModelChunk5_ItemFlag(h, i, j) != 0) {
-                *(u16 *)p |= 0x8000;
+    mesh->stripsSize = size;
+    cursor = (u8 *)mesh->strips;
+    for (outerIdx = 0; outerIdx < groupCount; outerIdx++) {
+        groupStrips = ModelPart_GroupStripCount(part, outerIdx);
+        kind = ModelPart_StripGroupKind(part, outerIdx);
+        for (innerIdx = 0; innerIdx < groupStrips; innerIdx++) {
+            stripLen = ModelPart_StripLength(part, outerIdx, innerIdx);
+            *(u16 *)cursor = stripLen;
+            if (ModelPart_StripFlag(part, outerIdx, innerIdx) != 0) {
+                *(u16 *)cursor |= MESH_STRIP_FLAGGED;
             } else {
-                *(u16 *)p |= 0x4000;
+                *(u16 *)cursor |= MESH_STRIP_UNFLAGGED;
             }
-            p += 2;
-            if (a->flags & 0x100000) {
-                *(u16 *)p = ModelChunk6_EntryFor(h, i, j);
-                p += 2;
+            cursor += 2;
+            if (mesh->flags & MESH_STRIP_MAT) {
+                *(u16 *)cursor = ModelPart_StripMat(part, outerIdx, innerIdx);
+                cursor += 2;
             }
-            if (a->flags & 0x200000) {
+            if (mesh->flags & MESH_STRIP_SKIN) {
                 switch (kind) {
-                case 0x30000:
-                    *(u16 *)p = 0;
+                case MODEL_CHUNK_STRIPS_RIGID:
+                    *(u16 *)cursor = MESH_SKIN_ONE_BONE;
                     break;
-                case 0x40000:
-                    *(u16 *)p = 1;
+                case MODEL_CHUNK_STRIPS_SKINNED:
+                    *(u16 *)cursor = MESH_SKIN_FOUR_BONES;
                     break;
                 }
-                p += 2;
+                cursor += 2;
             }
-            if (a->flags & 0x1000) {
-                for (k = 0; k < cnt; k++) {
-                    *(u16 *)p = ModelChunk5_ItemWord(h, i, j, k);
-                    p += 2;
+            if (mesh->flags & MESH_INDEXED) {
+                for (wordIdx = 0; wordIdx < stripLen; wordIdx++) {
+                    *(u16 *)cursor = ModelPart_StripIndex(part, outerIdx, innerIdx, wordIdx);
+                    cursor += 2;
                 }
             }
         }
     }
-    a->format = 0x35;
-    a->format |= 0x100;
-    a->vertCount = ModelChunk7_Count(h);
-    size = a->vertCount * 0x2C;
-    if ((a->verts = gSysAllocHook(size)) == NULL) {
+    mesh->format = MESH_FORMAT_COLOR | MESH_FORMAT_UV;
+    mesh->format |= MESH_FORMAT_SKIN;
+    mesh->vertCount = ModelPart_VertCount(part);
+    size = mesh->vertCount * sizeof(MeshVtxSkin);
+    if ((mesh->verts = gSysAllocHook(size)) == NULL) {
         return 0;
     }
-    a->vertsSize = size;
-    p = a->verts;
-    for (i = 0; i < a->vertCount; i++) {
-        r = (f32 *)ModelChunk7_Rec(h, i);
-        ((f32 *)p)[0] = r[0];
-        ((f32 *)p)[1] = r[1];
-        ((f32 *)p)[2] = r[2];
-        r = (f32 *)ModelChunk8_Rec(h, i);
-        ((f32 *)p)[3] = r[0];
-        ((f32 *)p)[4] = r[1];
-        ((f32 *)p)[5] = r[2];
-        r = (f32 *)ModelChunkA_Rec(h, i);
-        ((f32 *)p)[7] = r[0];
-        ((f32 *)p)[8] = r[1];
-        r = (f32 *)ModelChunkB_Rec(h, i);
-        ((u32 *)p)[6] = (u32)r[3] << 24 | (u32)r[0] << 16 | (u32)r[1] << 8 | (u32)r[2];
-        ((u32 *)p)[9] = 0;
-        ((u32 *)p)[10] = 0;
-        nw = ModelChunkC_ListCount(h, i);
-        w[0] = 0;
-        w[1] = 0;
-        w[2] = 0;
-        w[3] = 0;
-        best = 0;
-        b[0] = 0;
-        b[1] = 0;
-        b[2] = 0;
-        b[3] = 0;
-        for (j = 0; j < nw; j++) {
-            e = (u8 *)ModelChunkC_Rec(h, i, j);
-            w[j] = (s32)(255.0f * *(f32 *)(e + 4) / 100.0f) & 0xFF;
-            if (0 < w[j]) {
-                best = j;
+    mesh->vertsSize = size;
+    cursor = mesh->verts;
+    for (outerIdx = 0; outerIdx < mesh->vertCount; outerIdx++) {
+        rec = ModelPart_VertPos(part, outerIdx)->v;
+        ((MeshVtxSkin *)cursor)->pos[0] = rec[0];
+        ((MeshVtxSkin *)cursor)->pos[1] = rec[1];
+        ((MeshVtxSkin *)cursor)->pos[2] = rec[2];
+        rec = ModelPart_VertNormal(part, outerIdx)->v;
+        ((MeshVtxSkin *)cursor)->nrm[0] = rec[0];
+        ((MeshVtxSkin *)cursor)->nrm[1] = rec[1];
+        ((MeshVtxSkin *)cursor)->nrm[2] = rec[2];
+        rec = ModelPart_VertUv(part, outerIdx)->v;
+        ((MeshVtxSkin *)cursor)->uv[0] = rec[0];
+        ((MeshVtxSkin *)cursor)->uv[1] = rec[1];
+        rec = ModelPart_VertColor(part, outerIdx)->v;
+        ((MeshVtxSkin *)cursor)->col = (u32)rec[3] << 24 | (u32)rec[0] << 16 | (u32)rec[1] << 8 | (u32)rec[2];
+        ((MeshVtxSkin *)cursor)->bones = 0;
+        ((MeshVtxSkin *)cursor)->weights = 0;
+        weightCount = ModelPart_VertWeightCount(part, outerIdx);
+        weights[0] = 0;
+        weights[1] = 0;
+        weights[2] = 0;
+        weights[3] = 0;
+        lastWeighted = 0;
+        boneIds[0] = 0;
+        boneIds[1] = 0;
+        boneIds[2] = 0;
+        boneIds[3] = 0;
+        for (innerIdx = 0; innerIdx < weightCount; innerIdx++) {
+            weightRec = ModelPart_VertWeight(part, outerIdx, innerIdx);
+            weights[innerIdx] = (s32)(255.0f * weightRec->percent / 100.0f) & 0xFF;
+            if (0 < weights[innerIdx]) {
+                lastWeighted = innerIdx;
             }
-            b[j] = *e;
+            boneIds[innerIdx] = weightRec->bone;
         }
-        w[best] += 0xFF - w[0] - w[1] - w[2] - w[3];
-        for (j = 0; j < nw - 1; j++) {
-            if (w[j] == 0) {
-                w[j] = w[j + 1];
-                b[j] = b[j + 1];
-                w[j + 1] = 0;
+        weights[lastWeighted] += 0xFF - weights[0] - weights[1] - weights[2] - weights[3];
+        for (innerIdx = 0; innerIdx < weightCount - 1; innerIdx++) {
+            if (weights[innerIdx] == 0) {
+                weights[innerIdx] = weights[innerIdx + 1];
+                boneIds[innerIdx] = boneIds[innerIdx + 1];
+                weights[innerIdx + 1] = 0;
             }
         }
-        ((u32 *)p)[10] = w[0] << 24 | w[1] << 16 | w[2] << 8 | w[3];
-        ((u32 *)p)[9] = b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3];
-        p += 0x2C;
+        ((MeshVtxSkin *)cursor)->weights = weights[0] << 24 | weights[1] << 16 | weights[2] << 8 | weights[3];
+        ((MeshVtxSkin *)cursor)->bones = boneIds[0] << 24 | boneIds[1] << 16 | boneIds[2] << 8 | boneIds[3];
+        cursor += sizeof(MeshVtxSkin);
     }
     return 1;
 }
 
-u8 * Bmp_GetPixels(u8 *bmp)
+/* The pixels of BMP file bmp (its header's offBits on from its start), or NULL with a
+ * debug message when bmp has no BMP_SIGNATURE. The lobby calls it. */
+u8 *Bmp_GetPixels(u8 *bmp)
 {
-    if (*(u16 *)((u8 *)bmp + 0) != 0x4D42) {
+    BmpFileHeader *header = (BmpFileHeader *)bmp;
+
+    if (header->type != BMP_SIGNATURE) {
         Debug_Sprintf("This is not BMP image. @plCreateContextFromBMPImage");
         return NULL;
     }
-    return bmp + (*(u16 *)((u8 *)bmp + 0xA) | (*(u16 *)((u8 *)bmp + 0xC) << 0x10));
+    return bmp + (header->offBits[0] | (header->offBits[1] << 16));
 }
 
+/* Sets gAnimKeyBase, the address the curves' key offsets (AnimCurve.keys) count from. */
 void Anim_SetKeyBase(void *buf)
 {
     gAnimKeyBase = (s32) buf;
 }
 
-/* The cubic Hermite curve through (t0, p0) and (t1, p1) with the tangents m0 and m1, at t. */
-f32 Math_Hermite(f32 t, f32 p0, f32 t0, f32 m0, f32 p1, f32 t1, f32 m1)
+/* The cubic Hermite curve through (startTime, startValue) and (endTime, endValue), with the
+ * tangents startTangent and endTangent, at time. */
+f32 Math_Hermite(f32 time, f32 startValue, f32 startTime, f32 startTangent, f32 endValue, f32 endTime, f32 endTangent)
 {
-    f32 u, r, c, r2, ur, u2, d, a, b;
-    f32 h00, h10, h01, h11;
+    f32 elapsed;
+    f32 invSpan;
+    f32 cubeTerm;
+    f32 invSpanSq;
+    f32 sqTerm;
+    f32 elapsedSq;
+    f32 twoCube;
+    f32 threeSq;
+    f32 sqTermB;
+    f32 basisStart;
+    f32 basisStartTangent;
+    f32 basisEnd;
+    f32 basisEndTangent;
 
-    u = t - t0;
-    r = 1.0f / (t1 - t0);
-    u2 = u * u;
-    r2 = r * r;
-    ur = u2 * r;
-    c = r2 * (u2 * u);
-    d = 2.0f * c * r;
-    a = 3.0f * u2 * r2;
-    b = ur;
-    h00 = 1.0f + (d - a);
-    h10 = u + (c - b - b);
-    h01 = -d + a;
-    h11 = c - b;
-    return p0 * h00 + p1 * h01 + m0 * h10 + m1 * h11;
+    elapsed = time - startTime;
+    invSpan = 1.0f / (endTime - startTime);
+    elapsedSq = elapsed * elapsed;
+    invSpanSq = invSpan * invSpan;
+    sqTerm = elapsedSq * invSpan;
+    cubeTerm = invSpanSq * (elapsedSq * elapsed);
+    twoCube = 2.0f * cubeTerm * invSpan;
+    threeSq = 3.0f * elapsedSq * invSpanSq;
+    sqTermB = sqTerm;
+    basisStart = 1.0f + (twoCube - threeSq);
+    basisStartTangent = elapsed + (cubeTerm - sqTermB - sqTermB);
+    basisEnd = -twoCube + threeSq;
+    basisEndTangent = cubeTerm - sqTermB;
+    return startValue * basisStart + endValue * basisEnd + startTangent * basisStartTangent + endTangent * basisEndTangent;
 }
 
-/* The time of curve c's first key (0 for the constant formats 0x10 and 0x20). */
-f32 AnimCurve_StartTime(AnimCurve *c)
+/* The time of curve's first key (0 for ANIM_KEY_NONE and ANIM_KEY_S16_NONE). */
+f32 AnimCurve_StartTime(AnimCurve *curve)
 {
-    u8 *keys = (u8 *)(c->keys + gAnimKeyBase);
-    f32 t;
+    u8 *keys = (u8 *)(curve->keys + gAnimKeyBase);
+    f32 time;
 
-    switch (c->type) {
-    case 0x20:
-        t = 0.0f;
+    switch (curve->type) {
+    case ANIM_KEY_NONE:
+        time = 0.0f;
         break;
     case ANIM_KEY_F32_LINEAR:
-        t = ((KeyF2 *)keys)->t;
+        time = ((KeyF2 *)keys)->t;
         break;
     case ANIM_KEY_F32_CUBIC:
-        t = ((KeyF4 *)keys)->t;
+        time = ((KeyF4 *)keys)->t;
         break;
     case ANIM_KEY_F32_MIXED:
-        t = ((KeyFM *)keys)->t;
+        time = ((KeyFM *)keys)->t;
         break;
-    case 0x10:
-        t = 0.0f;
+    case ANIM_KEY_S16_NONE:
+        time = 0.0f;
         break;
     case ANIM_KEY_S16_LINEAR:
-        t = ((KeyS2 *)keys)->t;
+        time = ((KeyS2 *)keys)->t;
         break;
     case ANIM_KEY_S16_CUBIC:
-        t = ((KeyS4 *)keys)->t;
+        time = ((KeyS4 *)keys)->t;
         break;
     case ANIM_KEY_S16_MIXED:
-        t = ((KeySM *)keys)->t;
+        time = ((KeySM *)keys)->t;
         break;
     }
-    return t;
+    return time;
 }
 
-/* The time of curve c's last key. */
-f32 AnimCurve_GetEndTime(AnimCurve *c)
+/* The time of curve's last key. */
+f32 AnimCurve_GetEndTime(AnimCurve *curve)
 {
-    return AnimCurve_EndTime(c);
+    return AnimCurve_EndTime(curve);
 }
 
-/* The time of curve c's last key (0 for the constant formats 0x10 and 0x20). */
-f32 AnimCurve_EndTime(AnimCurve *c)
+/* The time of curve's last key (0 for ANIM_KEY_NONE and ANIM_KEY_S16_NONE). */
+f32 AnimCurve_EndTime(AnimCurve *curve)
 {
-    u8 *keys = (u8 *)(c->keys + gAnimKeyBase);
-    f32 t;
+    u8 *keys = (u8 *)(curve->keys + gAnimKeyBase);
+    f32 time;
 
-    switch (c->type) {
-    case 0x20:
-        t = 0.0f;
+    switch (curve->type) {
+    case ANIM_KEY_NONE:
+        time = 0.0f;
         break;
     case ANIM_KEY_F32_LINEAR:
-        t = ((KeyF2 *)keys)[c->count - 1].t;
+        time = ((KeyF2 *)keys)[curve->count - 1].t;
         break;
     case ANIM_KEY_F32_CUBIC:
-        t = ((KeyF4 *)keys)[c->count - 1].t;
+        time = ((KeyF4 *)keys)[curve->count - 1].t;
         break;
     case ANIM_KEY_F32_MIXED:
-        t = ((KeyFM *)keys)[c->count - 1].t;
+        time = ((KeyFM *)keys)[curve->count - 1].t;
         break;
-    case 0x10:
-        t = 0.0f;
+    case ANIM_KEY_S16_NONE:
+        time = 0.0f;
         break;
     case ANIM_KEY_S16_LINEAR:
-        t = ((KeyS2 *)keys)[c->count - 1].t;
+        time = ((KeyS2 *)keys)[curve->count - 1].t;
         break;
     case ANIM_KEY_S16_CUBIC:
-        t = ((KeyS4 *)keys)[c->count - 1].t;
+        time = ((KeyS4 *)keys)[curve->count - 1].t;
         break;
     case ANIM_KEY_S16_MIXED:
-        t = ((KeySM *)keys)[c->count - 1].t;
+        time = ((KeySM *)keys)[curve->count - 1].t;
         break;
     }
-    return t;
+    return time;
 }
 
-void Mtx_Copy3x3(f32 *m, f32 *a)
+/* Copies the 3x3 rotation part of the 4x4 matrix src (rows 0-2, columns 0-2) into dst,
+ * leaving the rest of dst as it is. */
+void Mtx_Copy3x3(f32 *dst, f32 *src)
 {
-    m[0] = a[0];
-    m[1] = a[1];
-    m[2] = a[2];
-    m[4] = a[4];
-    m[5] = a[5];
-    m[6] = a[6];
-    m[8] = a[8];
-    m[9] = a[9];
-    m[10] = a[10];
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+    dst[4] = src[4];
+    dst[5] = src[5];
+    dst[6] = src[6];
+    dst[8] = src[8];
+    dst[9] = src[9];
+    dst[10] = src[10];
 }
 
 f32 sqrtf(f32 x);
 
-/* |v| (the length of a 3-vector). */
-f32 Vec_Length2(f32 *v)
+/* |vec| (the length of a 3-vector). */
+f32 Vec_Length2(f32 *vec)
 {
-    return sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    return sqrtf(vec[0] * vec[0] + vec[1] * vec[1] + vec[2] * vec[2]);
 }
 
-void Vec_Normalize2(f32 *v)
+/* Scales the 3-vector vec to unit length (as Vec_Normalize); a zero vector stays zero. */
+void Vec_Normalize2(f32 *vec)
 {
     f32 len;
 
-    len = Vec_Length2(v);
+    len = Vec_Length2(vec);
     if (len == 0.0f) {
-        v[2] = 0.0f;
-        v[1] = 0.0f;
-        v[0] = 0.0f;
+        vec[2] = 0.0f;
+        vec[1] = 0.0f;
+        vec[0] = 0.0f;
         return;
     }
-    v[0] /= len;
-    v[1] = v[1] / len;
-    v[2] = v[2] / len;
+    vec[0] /= len;
+    vec[1] = vec[1] / len;
+    vec[2] = vec[2] / len;
 }
 
-/* a . b (as Vec_Dot). */
-f32 Vec_Dot2(f32 *a, f32 *b)
+/* lhs . rhs (as Vec_Dot). */
+f32 Vec_Dot2(f32 *lhs, f32 *rhs)
 {
-    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2];
 }
 
-/* dst = a x b. */
-void Vec_Cross2(f32 *dst, f32 *a, f32 *b)
+/* dst = lhs x rhs. */
+void Vec_Cross2(f32 *dst, f32 *lhs, f32 *rhs)
 {
-    dst[0] = a[1] * b[2] - b[1] * a[2];
-    dst[1] = a[2] * b[0] - b[2] * a[0];
-    dst[2] = a[0] * b[1] - b[0] * a[1];
+    dst[0] = lhs[1] * rhs[2] - rhs[1] * lhs[2];
+    dst[1] = lhs[2] * rhs[0] - rhs[2] * lhs[0];
+    dst[2] = lhs[0] * rhs[1] - rhs[0] * lhs[1];
 }
 
-/* The plane through a, b and c: the unit normal of (b - a) x (c - a), and in [3] minus its
- * dot product with b - a (sic: 0 for a true normal; a plane would use a). */
-void Plane_FromPoints(f32 *plane, f32 *a, f32 *b, f32 *c)
+/* The plane through pointA, pointB and pointC: the unit normal of edgeAB x edgeAC, and in
+ * [3] minus its dot product with edgeAB (as the game computes it: that is 0, where a
+ * plane's distance would use pointA). */
+void Plane_FromPoints(f32 *plane, f32 *pointA, f32 *pointB, f32 *pointC)
 {
-    f32 ab[3];
-    f32 ac[3];
-    f32 n[3];
+    f32 edgeAB[3];
+    f32 edgeAC[3];
+    f32 normal[3];
 
-    ab[0] = b[0] - a[0];
-    ab[1] = b[1] - a[1];
-    ab[2] = b[2] - a[2];
-    ac[0] = c[0] - a[0];
-    ac[1] = c[1] - a[1];
-    ac[2] = c[2] - a[2];
-    Vec_Cross2(n, ab, ac);
-    Vec_Normalize2(n);
-    plane[0] = n[0];
-    plane[1] = n[1];
-    plane[2] = n[2];
-    plane[3] = -Vec_Dot2(n, ab);
+    edgeAB[0] = pointB[0] - pointA[0];
+    edgeAB[1] = pointB[1] - pointA[1];
+    edgeAB[2] = pointB[2] - pointA[2];
+    edgeAC[0] = pointC[0] - pointA[0];
+    edgeAC[1] = pointC[1] - pointA[1];
+    edgeAC[2] = pointC[2] - pointA[2];
+    Vec_Cross2(normal, edgeAB, edgeAC);
+    Vec_Normalize2(normal);
+    plane[0] = normal[0];
+    plane[1] = normal[1];
+    plane[2] = normal[2];
+    plane[3] = -Vec_Dot2(normal, edgeAB);
 }
 
-f64 fptodp(f32 x);          /* float to double (main) */
-f64 tan(f64 x);          /* tan, probably (main) */
-f32 dptofp(f64 x);
+f64 fptodp(f32 x);           /* float to double (main) */
+f64 tan(f64 x);             /* the C library's tangent (main) */
+f32 dptofp(f64 x);           /* double to float (main) */
 
 /* (f32)tan(x), with main's double helpers named as they are. */
 #define TAN(x) dptofp(tan(fptodp(x)))
@@ -1190,54 +1236,56 @@ f32 dptofp(f64 x);
  * minus near and minus far. */
 void Frustum_BuildPlanes(f32 *planes, f32 fov, f32 aspect, f32 near, f32 far)
 {
-    f32 o[4];
-    f32 a[4];
-    f32 b[4];
-    f32 half;
-    f32 nf;
+    f32 eye[4];
+    f32 cornerA[4];
+    f32 cornerB[4];
+    f32 halfFov;
+    f32 negFar;
 
-    half = 0.5f * fov;
-    nf = -far;
-    o[0] = 0.0f;
-    o[1] = 0.0f;
-    o[2] = 0.0f;
-    b[2] = nf;
-    a[2] = nf;
-    a[0] = far * (TAN(half) / aspect);
-    a[1] = nf * TAN(half);
-    b[0] = a[0];
-    b[1] = -a[1];
-    Plane_FromPoints(planes, o, a, b);
-    a[0] = nf * (TAN(half) / aspect);
-    a[1] = far * TAN(half);
-    b[0] = a[0];
-    b[1] = -a[1];
-    Plane_FromPoints(planes + 4, o, a, b);
-    a[0] = far * (TAN(half) / aspect);
-    a[1] = far * TAN(half);
-    b[0] = -a[0];
-    b[1] = a[1];
-    Plane_FromPoints(planes + 8, o, a, b);
-    a[0] = nf * (TAN(half) / aspect);
-    a[1] = nf * TAN(half);
-    b[0] = -a[0];
-    b[1] = a[1];
-    Plane_FromPoints(planes + 12, o, a, b);
-    planes[17] = nf;
+    halfFov = 0.5f * fov;
+    negFar = -far;
+    eye[0] = 0.0f;
+    eye[1] = 0.0f;
+    eye[2] = 0.0f;
+    cornerB[2] = negFar;
+    cornerA[2] = negFar;
+    cornerA[0] = far * (TAN(halfFov) / aspect);
+    cornerA[1] = negFar * TAN(halfFov);
+    cornerB[0] = cornerA[0];
+    cornerB[1] = -cornerA[1];
+    Plane_FromPoints(planes, eye, cornerA, cornerB);
+    cornerA[0] = negFar * (TAN(halfFov) / aspect);
+    cornerA[1] = far * TAN(halfFov);
+    cornerB[0] = cornerA[0];
+    cornerB[1] = -cornerA[1];
+    Plane_FromPoints(planes + 4, eye, cornerA, cornerB);
+    cornerA[0] = far * (TAN(halfFov) / aspect);
+    cornerA[1] = far * TAN(halfFov);
+    cornerB[0] = -cornerA[0];
+    cornerB[1] = cornerA[1];
+    Plane_FromPoints(planes + 8, eye, cornerA, cornerB);
+    cornerA[0] = negFar * (TAN(halfFov) / aspect);
+    cornerA[1] = negFar * TAN(halfFov);
+    cornerB[0] = -cornerA[0];
+    cornerB[1] = cornerA[1];
+    Plane_FromPoints(planes + 12, eye, cornerA, cornerB);
+    planes[17] = negFar;
     planes[16] = -near;
 }
 
-/* Links the n words at p into a free list: each holds the address of the next, the last 0. */
-void FreeList_Init(s32 n, u32 *p)
+/* Links the nodeCount words at nodes into a free list: each holds the address of the next, the last 0. */
+void FreeList_Init(s32 nodeCount, u32 *nodes)
 {
-    s32 i;
+    s32 nodeIdx;
 
-    for (i = 0; i < n - 1; i++) {
-        p[i] = (u32)&p[i + 1];
+    for (nodeIdx = 0; nodeIdx < nodeCount - 1; nodeIdx++) {
+        nodes[nodeIdx] = (u32)&nodes[nodeIdx + 1];
     }
-    p[i] = 0;
+    nodes[nodeIdx] = 0;
 }
 
+/* Pushes node onto the list at *link: node takes the old head, and *link the node's
+ * address with bit 0 set (the tag TagList_Pop looks for). */
 void TagList_Push(u32 *node, u32 *link)
 {
     u32 next;
@@ -1250,33 +1298,40 @@ void TagList_Push(u32 *node, u32 *link)
 /* Pops the head of a list whose link word carries a flag in bit 0. */
 void *TagList_Pop(u32 *head)
 {
-    u32 v;
+    u32 nextWord;
 
     for (;;) {
         if (*head == 0) {
             return NULL;
         }
-        v = *(u32 *)*head;
-        if (v & 1) {
-            return (void *)(*head = v & ~1);
+        nextWord = *(u32 *)*head;
+        if (nextWord & 1) {
+            return (void *)(*head = nextWord & ~1);
         }
-        *head = v;
+        *head = nextWord;
     }
 }
 
 extern s8 gUsbKbStep;
 extern s32 (*jtbl_00403140[])(s8 *step);
 
-/* Runs step gUsbKbStep of the step table jtbl_00403140 (function pointers, each given the
- * step counter to advance, as UsbKb_StepNext does). */
+/*
+ * The USB keyboard (libusbkb, linked in main). Its set-up is a run of steps, each
+ * given the step counter gUsbKbStep: a step advances it on success, resets it to 0
+ * on failure, and returns 1 to go on (0 when it reset it, or at the end).
+ * jtbl_00403140 holds the whole run, UsbKb_StepNext to UsbKb_StepDone (it keeps
+ * splat's jump-table name: the port's recompiler finds tables by that name);
+ * gUsbKbSetupSteps the same steps from UsbKb_StepWaitConnect on, which UsbKb_Poll
+ * runs until gUsbKbReady is set.
+ */
+
+/* Runs step gUsbKbStep of jtbl_00403140. */
 s32 UsbKb_RunInitStep(void)
 {
     return jtbl_00403140[gUsbKbStep](&gUsbKbStep);
 }
 
-/* `(*step)++; return 1;`, a function of its own: jtbl_00403140 is a table of function
- * pointers that UsbKb_RunInitStep tail-calls through, and splat had merged this, its
- * first entry, into it (lead, after round 9). */
+/* The first step: only advances. */
 s32 UsbKb_StepNext(s8 *step)
 {
     (*step)++;
@@ -1288,21 +1343,20 @@ s32 sceUsbKbGetInfo(void *p);
 s32 sceUsbKbSync(s32 a, s32 *st);
 extern s8 gUsbKbLibInit;
 extern s32 gUsbKbSyncResult;
-extern u8 gUsbKbInfo[];
-extern s32 D_00581A64;
+extern UsbKbInfo gUsbKbInfo;
 
-/* The USB keyboard set-up steps (libusbkb in main; step: the caller's state counter,
- * advanced on success, reset on failure). Once (gUsbKbLibInit): sceUsbKbInit until its status is set. */
+/* Initialises libusbkb (sceUsbKbInit) once (gUsbKbLibInit), advancing when it
+ * reports a nonzero status. */
 s32 UsbKb_StepInit(s8 *step)
 {
-    s32 st;
+    s32 status;
 
     if (gUsbKbLibInit == 0) {
-        if (sceUsbKbInit(&st) != 0) {
+        if (sceUsbKbInit(&status) != 0) {
             *step = 0;
             return 0;
         }
-        if (st == 0) {
+        if (status == 0) {
             *step = 0;
             return 0;
         }
@@ -1316,19 +1370,20 @@ s32 UsbKb_StepInit(s8 *step)
     }
 }
 
-/* sceUsbKbGetInfo on gUsbKbInfo, then sceUsbKbSync; advances when D_00581A64 is set. */
+/* Reads the keyboards' state into gUsbKbInfo (sceUsbKbGetInfo, then sceUsbKbSync);
+ * advances when a keyboard is connected, resets when none is. */
 s32 UsbKb_StepWaitConnect(s8 *step)
 {
-    s32 st;
+    s32 status;
 
-    st = sceUsbKbGetInfo(gUsbKbInfo);
-    if (st != 0) {
+    status = sceUsbKbGetInfo(&gUsbKbInfo);
+    if (status != 0) {
         *step = 0;
         return 0;
     }
-    gUsbKbSyncResult = sceUsbKbSync(0, &st);
-    if (gUsbKbSyncResult == 0 && st == 0) {
-        if (D_00581A64 == 0) {
+    gUsbKbSyncResult = sceUsbKbSync(0, &status);
+    if (gUsbKbSyncResult == 0 && status == 0) {
+        if (gUsbKbInfo.connectedCount == 0) {
             *step = 0;
             return 0;
         }
@@ -1343,26 +1398,28 @@ s32 sceUsbKbSetArrangement(s32, u32);
 s32 sceUsbKbSetReadMode(s32, u32);
 extern s32 D_005819C0;
 extern s32 D_005819C8;
-extern u8 D_00581A68[];
 
+/* Sets keyboard 0 up (no key repeat, code type 0, arrangement 1, read mode 0) when it
+ * is connected, else resets; advances when every call succeeds. D_005819C8 and
+ * D_005819C0 are only written. */
 s32 UsbKb_StepSetup(s8 *step)
 {
-    s32 temp_s2;
-    s32 temp_s1;
-    s32 temp_s0;
-    s32 temp_v0;
+    s32 repeatErr;
+    s32 codeTypeErr;
+    s32 arrangeErr;
+    s32 readModeErr;
 
-    if (*D_00581A68 == 0) {
+    if (gUsbKbInfo.connected[0] == 0) {
         *step = 0;
         return 0;
     }
-    temp_s2 = sceUsbKbSetRepeat(0, 0, 0);
-    temp_s1 = sceUsbKbSetCodeType(0, 0U);
+    repeatErr = sceUsbKbSetRepeat(0, 0, 0);
+    codeTypeErr = sceUsbKbSetCodeType(0, 0U);
     D_005819C8 = 1;
-    temp_s0 = sceUsbKbSetArrangement(0, 1U);
+    arrangeErr = sceUsbKbSetArrangement(0, 1U);
     D_005819C0 = 0;
-    temp_v0 = sceUsbKbSetReadMode(0, 0U);
-    if ((temp_s2 == 0) && (temp_s1 == 0) && (temp_s0 == 0) && (temp_v0 == 0)) {
+    readModeErr = sceUsbKbSetReadMode(0, 0U);
+    if ((repeatErr == 0) && (codeTypeErr == 0) && (arrangeErr == 0) && (readModeErr == 0)) {
         *step += 1;
     }
     return 1;
@@ -1370,20 +1427,23 @@ s32 UsbKb_StepSetup(s8 *step)
 
 s32 sceUsbKbSetLEDMode(s32 a, s32 b);
 
-s32 UsbKb_StepSync(s8 *p)
+/* Sets keyboard 0's LED mode to 0 (sceUsbKbSetLEDMode) and waits for it (sceUsbKbSync);
+ * advances when both succeed. */
+s32 UsbKb_StepSetLed(s8 *step)
 {
-    s32 st;
+    s32 status;
 
-    st = sceUsbKbSetLEDMode(0, 0);
-    if (st == 0) {
-        gUsbKbSyncResult = sceUsbKbSync(0, &st);
-        if (gUsbKbSyncResult == 0 && st == 0) {
-            (*p)++;
+    status = sceUsbKbSetLEDMode(0, 0);
+    if (status == 0) {
+        gUsbKbSyncResult = sceUsbKbSync(0, &status);
+        if (gUsbKbSyncResult == 0 && status == 0) {
+            (*step)++;
         }
     }
     return 1;
 }
 
+/* The last step: sets gUsbKbReady and starts the run over. Returns 0. */
 s32 UsbKb_StepDone(s8 *step)
 {
     *step = 0;
@@ -1398,28 +1458,24 @@ s32 UsbKb_IsConnected(s32 i);
 extern s8 gUsbKbStep;
 extern s32 (*gUsbKbSetupSteps[])(s8 *step);
 extern u8 gKbdSettings[0x88];
-/* The keyboard data libusbkb returns (sceUsbKbRead), as its led, mkey, len, keycode[]. */
-typedef struct UsbKbData {
-    s32 led;                    /* 0x00 */
-    s32 mkey;                   /* 0x04: the modifier keys */
-    s32 len;                    /* 0x08: key codes */
-    u16 keycode[7];             /* 0x0C */
-} UsbKbData;
 extern UsbKbData gUsbKbData;
 extern u8 D_005819A0[];
 extern u8 gUsbKbReport[9];
-extern u8 *D_005819B0;          /* the game stores a pointer here, then byte 8 of gUsbKbReport */
+extern u8 *D_005819B0;          /* its first byte is gUsbKbReport[8] */
 
 /*
  * The USB keyboard poll: runs step gUsbKbStep of the set-up table at gUsbKbSetupSteps until
- * gUsbKbReady is set; then reads keyboard 0 (sceUsbKbRead) into gUsbKbData and, when it
- * has key codes, returns them as a 9-byte report in gUsbKbReport (else NULL).
+ * gUsbKbReady is set; then reads keyboard 0 (sceUsbKbRead) into gUsbKbData, copies
+ * sizeof(gKbdSettings) bytes from there into gKbdSettings (and then gKbdSettings onto
+ * itself, as the game does) and, when it has key codes, returns them as a 9-byte report
+ * in gUsbKbReport (else NULL). D_005819B0 is written with D_005819A0's address, and
+ * then its low byte with the last key code (gUsbKbReport[8] is the same byte).
  */
 u8 *UsbKb_Poll(void)
 {
-    s32 st;
+    s32 status;
 
-    memset(gKbdSettings, 0, 0x88);
+    memset(gKbdSettings, 0, sizeof(gKbdSettings));
     if (gUsbKbReady == 0) {
         gUsbKbSetupSteps[gUsbKbStep](&gUsbKbStep);
         return NULL;
@@ -1428,38 +1484,38 @@ u8 *UsbKb_Poll(void)
         return NULL;
     }
     sceUsbKbRead(0, &gUsbKbData);
-    memcpy(gKbdSettings, &gUsbKbData, 0x88);
-    sceUsbKbSync(0, &st);
-    memcpy(gKbdSettings, gKbdSettings, 0x88);
-    if (gUsbKbData.len == 0) {
+    memcpy(gKbdSettings, &gUsbKbData, sizeof(gKbdSettings));
+    sceUsbKbSync(0, &status);
+    memcpy(gKbdSettings, gKbdSettings, sizeof(gKbdSettings));
+    if (gUsbKbData.keyCount == 0) {
         return NULL;
     }
-    gUsbKbReport[0] = gUsbKbData.mkey;
+    gUsbKbReport[0] = gUsbKbData.modifiers;
     D_005819B0 = D_005819A0;
-    gUsbKbReport[1] = gUsbKbData.led;
-    gUsbKbReport[2] = gUsbKbData.keycode[0];
-    gUsbKbReport[3] = gUsbKbData.keycode[1];
-    gUsbKbReport[4] = gUsbKbData.keycode[2];
-    gUsbKbReport[5] = gUsbKbData.keycode[3];
-    gUsbKbReport[6] = gUsbKbData.keycode[4];
-    gUsbKbReport[7] = gUsbKbData.keycode[5];
-    gUsbKbReport[8] = gUsbKbData.keycode[6];
+    gUsbKbReport[1] = gUsbKbData.leds;
+    gUsbKbReport[2] = gUsbKbData.keys[0];
+    gUsbKbReport[3] = gUsbKbData.keys[1];
+    gUsbKbReport[4] = gUsbKbData.keys[2];
+    gUsbKbReport[5] = gUsbKbData.keys[3];
+    gUsbKbReport[6] = gUsbKbData.keys[4];
+    gUsbKbReport[7] = gUsbKbData.keys[5];
+    gUsbKbReport[8] = gUsbKbData.keys[6];
     return gUsbKbReport;
 }
 
-/* 0 when the query (sceUsbKbGetInfo, sceUsbKbSync) succeeds and flag i of D_00581A68 is set, else -1. */
-s32 UsbKb_IsConnected(s32 i)
+/* 0 when keyboard port is connected (gUsbKbInfo, read again), else -1. */
+s32 UsbKb_IsConnected(s32 port)
 {
-    s32 st;
+    s32 status;
 
-    if (sceUsbKbGetInfo(gUsbKbInfo) != 0) {
+    if (sceUsbKbGetInfo(&gUsbKbInfo) != 0) {
         return -1;
     }
-    sceUsbKbSync(0, &st);
-    if (st != 0) {
+    sceUsbKbSync(0, &status);
+    if (status != 0) {
         return -1;
     }
-    if (D_00581A68[i] == 0) {
+    if (gUsbKbInfo.connected[port] == 0) {
         return -1;
     }
     return 0;
@@ -1467,9 +1523,9 @@ s32 UsbKb_IsConnected(s32 i)
 
 /* unk_2F6540's .data (0x403140-0x403170) */
 s32 (*jtbl_00403140[8])(s8 *step) = {
-    UsbKb_StepNext, UsbKb_StepInit, UsbKb_StepWaitConnect, UsbKb_StepSync,
+    UsbKb_StepNext, UsbKb_StepInit, UsbKb_StepWaitConnect, UsbKb_StepSetLed,
     UsbKb_StepSetup, UsbKb_StepDone, NULL, NULL,
 };
 s32 (*gUsbKbSetupSteps[4])(s8 *step) = {
-    UsbKb_StepWaitConnect, UsbKb_StepSync, UsbKb_StepSetup, UsbKb_StepDone,
+    UsbKb_StepWaitConnect, UsbKb_StepSetLed, UsbKb_StepSetup, UsbKb_StepDone,
 };

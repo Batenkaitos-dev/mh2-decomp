@@ -12,6 +12,7 @@
 #include "lobby_vobj.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"
+#include "area.h"
 #pragma optimization_level 4
 void *memset(void *, s32, u32);
 
@@ -163,7 +164,7 @@ void PickMenu_Update(void)
             gFieldControl = 1;
             gTownMenuOpen = 0;
             gTownMode = 0;
-            AreaMenu_Open(0x57);
+            AreaMenu_Open(AREA_HUB_0x57);
         }
         break;
     case 5:

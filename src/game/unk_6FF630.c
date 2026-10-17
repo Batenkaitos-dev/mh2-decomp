@@ -82,7 +82,7 @@ extern f32 *gEmSenseLimits[];
 s8 Em_AngleSector(Em *em, s32 idx);
 void Em_AddAlertBuildup(Em *em, u8 player, u8 idx, s8 kind);
 extern s32 *gEmNoticeDecayRates[];
-s32 EmBlangonga_PartFlagUnset(Em *em, u16 part);
+s32 EmBlangonga_CarriedShown(Em *em, u16 part);
 s32 Em_PartBroken(Em *em, s32 arg1);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 void Effect0D_SpawnAt(f32 *pos, s32 kind, f32 scale);
@@ -135,7 +135,7 @@ extern s16 AreaObj_K0B_Spin[];
 void AreaObj_K0B_Draw(DrawSlot *s);
 u8 Quest_GetSeedByte(u8 i);
 void StageObj_K29_CreateAt(f32 *src, u8 k, u8 c, f32 scale);
-void Eff37_Create(f32 *pos, u8 k, u8 c);
+void VolcanoHazard_Create(f32 *pos, u8 k, u8 c);
 s32 AreaObj_K19_GetPoints(u16 arg0);
 s16 AreaObj_K19_PointCount(u16 arg0);
 extern f32 AreaObj_K09_Type8Pos[];
@@ -270,7 +270,7 @@ void EmKind38_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 s32 Sprite_Draw(Sprite *s);
 void Tex_Prepare(s32 n, s32 tex);
 void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Tex_Bind(s32 i);
 void DrawSlot_Free(s32 i);
 extern u8 AreaObj_K19_PointsA2[];
@@ -297,8 +297,8 @@ f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 extern EmAction *gAreaObjList[32];
 u32 Player_TestFlag(void *obj, u32 flag);
-f32 Em_RageScale1(Em *em);
-f32 Em_RageScale2(Em *em);
+f32 Em_LevelAttackFactor(Em *em);
+f32 Em_LevelDamageFactor(Em *em);
 extern EmRageRow *gEmRageTbl[];
 extern s16 AreaObj_K14_Models[];
 void Em_SyncState(Em *em, s32 kind, s32 b, s32 c);
@@ -420,7 +420,7 @@ void AreaObj_K17_Free(Obj *o)
 
 void AreaObj_K17_DrawTexRect(s16 *r, s32 angle)
 {
-    Gfx_SetState63(0U);
+    Gfx_SetTexFilter(0U);
     Gfx_SetBlend(4U, 5U);
     Tex_Prepare(1, 0x154);
     Tex_Bind(0x154);
@@ -437,7 +437,7 @@ void AreaObj_K17_DrawPart(s16 *p, u32 angle)
     u8 i;
     s32 d;
 
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Gfx_SetBlend(4, 5);
     Tex_Prepare(1, 0x154);
     Tex_Bind(0x154);
@@ -490,7 +490,7 @@ void AreaObj_K17_DrawSprite(Sprite *r)
     r->v0 = 0;
     r->u1 = r->u0 + 0xFF;
     r->v1 = r->v0 + 0xFF;
-    Gfx_SetState63(1U);
+    Gfx_SetTexFilter(1U);
     Gfx_SetBlend(4U, 5U);
     Tex_Prepare(1, 0x146);
     Tex_Bind(0x146);
@@ -717,7 +717,7 @@ void AreaObj_K19_Run(Obj *o)
                     }
                     p += (k % n) * 12;
                     StageObj_K29_CreateAt((f32 *) p, 0xF, 0x96, 0.7f);
-                    Eff37_Create((f32 *) p, 1, 0x82);
+                    VolcanoHazard_Create((f32 *) p, 1, 0x82);
                     o->timer = 300;
                 }
             } else {
@@ -925,7 +925,7 @@ s8 Em_SeePlayers(Em *em)
                     }
                     sight.unk04 = (s32) (e = eye);
                     if (em->type != 0x38) {
-                        if (gScene.unk20A != 0) {
+                        if (gScene.skipFlaggedTris != 0) {
                             t = AreaGrid_TestSegment(em, pos, e, hit, 0x4100);
                         } else {
                             t = AreaGrid_TestSegment(em, pos, e, hit, 0x100);
@@ -959,8 +959,8 @@ out:
 }
 
 extern s8 gFlashObjCount;
-/* Sets Em +0x810 when one of the stage objects of 0x5D8B70 in the monster area is within reach of s->pos
- * and inside the angle s->dir +- s->half (not for the kinds listed, nor at +0x390 == 4 for some). */
+/* Sets em->flashed when one of the flash objects (gFlashObjs) in the monster area is within reach of s->pos
+ * and inside the angle s->dir +- s->half (not for the kinds listed, nor in em->stance 4 for some). */
 void Em_CheckFlash(Em *em, u8 player, EmSight *s)
 {
     s32 t;

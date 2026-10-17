@@ -52,7 +52,7 @@ void NetModeMsg_Queue(s32 kind, s32 arg, s32 id);
 /* prototypes */
 void FreeList_Init(s32 n, u32 *p);
 void Gfx_ResetRenderStates(s32 partial);
-void Text_DrawBoxes(s32 layer);
+void Text_DrawIcons(s32 layer);
 void Text_Reset(void);
 void func_007CFF30(void);
 void NetMode_DrawPart(s32);
@@ -65,7 +65,7 @@ void LobbyMsg_DrawList(s32 a, s32 b);
 void LobbyMsg_DrawCountdown(u8 mode);
 void Font_SetSize(f32 scale);
 void Font_DrawPage(s32 layer);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Text_DrawPage(s32);
 void Task_RunList(u32 *list);
 /* end of prototypes */
@@ -245,7 +245,7 @@ void NetMode_DrawScreen(s32 arg0)
     if (gNetMode.boxes & 1) {
         NetMode_DrawPart(1);
     }
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     if (gNetMode.boxes & 2) {
         NetMode_DrawPart(2);
     }
@@ -268,9 +268,9 @@ void NetMode_DrawScreen(s32 arg0)
         v = Gs_GetState(0x6C);
         Gs_SetState(0x6C, 0);
         Task_RunList(gDrawListText4);
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Text_DrawPage(4);
-        Text_DrawBoxes(4);
+        Text_DrawIcons(4);
         Gs_SetState(0x6C, v);
         FreeList_Init(1, gDrawListText4);
     }
@@ -278,7 +278,7 @@ void NetMode_DrawScreen(s32 arg0)
     NetModeMsg_Flush(0);
     Gs_SetState(0x6C, 0);
     Font_DrawPage(4);
-    Text_DrawBoxes(4);
+    Text_DrawIcons(4);
     Gs_SetState(0x6C, 0);
     if (gNetMode.boxes & 0x20) {
         NetMode_DrawPart(0x20);
@@ -287,19 +287,19 @@ void NetMode_DrawScreen(s32 arg0)
         NetMode_DrawPart(0x40000);
     }
     if (gNetMode.boxes & 0x40) {
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         NetMode_DrawPart(0x40);
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
     }
     if (gNetMode.boxes & 0x800000) {
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         NetMode_DrawPart(0x800000);
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
     }
     if (gNetMode.boxes & 0x80) {
         NetMode_DrawPart(0x80);
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     if (gNetMode.boxes & 0x100) {
         NetMode_DrawPart(0x100);
     }
@@ -315,7 +315,7 @@ void NetMode_DrawScreen(s32 arg0)
     if (gNetMode.boxes & 0x400) {
         NetMode_DrawPart(0x400);
     }
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     if (gNetMode.boxes & 0x800) {
         NetMode_DrawPart(0x800);
     }
@@ -341,20 +341,20 @@ void NetMode_DrawScreen(s32 arg0)
     NetModeMsg_Flush(1);
     Gs_SetState(0x6C, 0);
     Font_DrawPage(3);
-    Text_DrawBoxes(3);
+    Text_DrawIcons(3);
     Gs_SetState(0x6C, 0);
     Font_DrawPage(2);
-    Text_DrawBoxes(2);
+    Text_DrawIcons(2);
     Font_DrawPage(1);
-    Text_DrawBoxes(1);
+    Text_DrawIcons(1);
     Font_DrawPage(0);
-    Text_DrawBoxes(0);
+    Text_DrawIcons(0);
     func_007CFF30();
     Gs_SetState(0x5F, 4);
     Gs_SetState(0x60, 0);
     Gs_SetState(0x5E, 0x32);
     Gs_SetState(0x6C, 1);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Text_Reset();
     Gfx_ResetRenderStates(1);
 }

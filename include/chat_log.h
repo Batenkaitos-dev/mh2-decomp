@@ -67,10 +67,45 @@ typedef struct ChatLine {
     s8 text[2][0x18];           /* 0x00: up to two rows of text */
     u8 rows;                    /* 0x30: text rows */
     u8 who;                     /* 0x31: the sender */
-    u8 color[4];                /* 0x32: from the message header (ChatHeader.unk11C..) */
+    u8 color[4];                /* 0x32: from the message (ChatMsg.cls, then its color[3]) */
     s8 id[8];                   /* 0x36: the sender's id; nonzero: one more row */
     s8 name[0x11];              /* 0x3E: the sender's name */
 } ChatLine;
+
+/* gChatSendTo: where Chat_SendInput sends the chat line (Chat_PickSendTarget sets it). */
+#define CHAT_SEND_LOBBY     0       /* the lobby's chat (its gChatLog window); online, in the town area */
+#define CHAT_SEND_TARGETS   1       /* Chat_SendToTargets, by gChatMsgClass; online, by gChatWindowSel */
+#define CHAT_SEND_PARTY     2       /* the quest's party (QSync_SendChat), logged here too */
+#define CHAT_SEND_LOCAL     3       /* offline: only logged here, as gChatSendRecord */
+
+/* Chat_OpenKbd's flags, over Kbd_Open's kind in the low byte. */
+#define CHAT_KBD_UNAVAILABLE 0x4            /* Kbd_Open's kind when chat is not available (Chat_IsAvailable) */
+#define CHAT_KBD_INACTIVE   0x40000000      /* the keyboard opens without the focus (Kbd_SetStartActive(0)) */
+#define CHAT_KBD_TARGETED   0x80000000      /* Chat_SetTarget(0), else -1 */
+
+/* ChatWindow.flags (gChatLines for the field chat's window): the log's scroll state. */
+#define CHAT_WIN_MORE_BEFORE 0x01   /* older rows above: the up arrow lit */
+#define CHAT_WIN_MORE_AFTER 0x02    /* scrolled back: the down arrow lit */
+#define CHAT_WIN_STEP_BACK  0x04    /* scrolled back this frame: the up arrow nudged */
+#define CHAT_WIN_STEP_ON    0x08    /* scrolled on this frame: the down arrow nudged */
+#define CHAT_WIN_SCROLLING  0x80    /* the log is open for scrolling (Chat_LogScroll) */
+
+/* gNoticeFlags: the notice window's state (Notice_OpenText sets it, Notice_Draw draws by it). */
+#define NOTICE_OPEN         0x01    /* a text is shown */
+#define NOTICE_PROMPT       0x02    /* a yes/no prompt under the text (NOTICE_MODE_PROMPT) */
+#define NOTICE_PROMPT_YES   0x04    /* the prompt's "yes" selected */
+#define NOTICE_NEXT         0x08    /* the mark that more text follows (NOTICE_MODE_NEXT) */
+#define NOTICE_CLOSED       0x10    /* nothing drawn (NOTICE_MODE_CLOSE) */
+#define NOTICE_LIST         0x20    /* gNoticeList under the text, gNoticeSel's entry in brackets */
+#define NOTICE_LIST_PICKED  0x40    /* only gNoticeList's selected entry */
+
+/* Notice_OpenText's modes: what follows the text once it is all shown. */
+#define NOTICE_MODE_TEXT    0       /* nothing */
+#define NOTICE_MODE_PROMPT  1       /* a yes/no prompt, "yes" selected when sel is 0 */
+#define NOTICE_MODE_NEXT    2       /* the more-text mark, with a sound the first time */
+#define NOTICE_MODE_CLOSE   3       /* closes the window */
+#define NOTICE_MODE_LIST    4       /* a list with entry sel selected */
+#define NOTICE_MODE_PICKED  5       /* a list's entry sel alone */
 
 /* The chat window state at 0x5BB080. Most of its scalar fields are also
  * accessed through their own symbols (gChatHidden .. gChatLines). */
@@ -81,7 +116,7 @@ typedef struct ChatState {
     u8 unk1A;                   /* 0x1A: gChatToAll */
     u8 unk1B;                   /* 0x1B: gChatMsgClass */
     u8 unk1C[0x2C - 0x1C];
-    u8 unk2C;                   /* 0x2C: gHelpShow */
+    u8 helpShow;                /* 0x2C: the help line is shown (also read as gHelpShow) */
     u8 unk2D[0x3A - 0x2D];
     ChatWindow win;             /* 0x3A: gChatWinTimer (timer), gChatWinOpen (open), gChatLogHead (head), gChatLogCount (count), gChatLogScroll (scroll), gChatLogAtEnd (atEnd), gChatLines (flags: scroll arrows and buttons shown) */
     ChatLine lines[64];         /* 0x42 */

@@ -102,7 +102,7 @@ typedef struct KbdEntry {
     u8 usbKey;                  /* 0x668: the key read (HID) */
     u8 usbPrevKey;              /* 0x669 */
     u8 usbNewKey;               /* 0x66A: usbKey when it changed */
-    u8 usbMods;                 /* 0x66B: the modifier bits (0x11 Ctrl, 0x22 Shift, 0x44 Alt) */
+    u8 usbMods;                 /* 0x66B: the modifier bits, USB_MOD_* */
     u8 usbPrevMods;             /* 0x66C */
     s8 usbModsDown;             /* 0x66D: the modifiers pressed this frame */
     u8 kanaInput;               /* 0x66E: Kbd_KanaInput */
@@ -114,6 +114,101 @@ typedef struct KbdEntry {
 typedef char KbdEntry_size_check[(sizeof(KbdEntry) == 0x674) ? 1 : -1];
 
 extern KbdEntry *gKbd;
+
+/*
+ * The USB keyboard's codes, as KbdEntry's usb fields hold them: the HID
+ * usage ids of the keys (usbKey, usbNewKey) and the modifier bits (usbMods;
+ * each name covers the left and the right key).
+ */
+#define USB_MOD_CTRL 0x11
+#define USB_MOD_SHIFT 0x22
+#define USB_MOD_ALT 0x44
+#define USB_KEY_NONE 0x00
+#define USB_KEY_ENTER 0x28
+#define USB_KEY_ESCAPE 0x29
+#define USB_KEY_BACKSPACE 0x2A
+#define USB_KEY_F1 0x3A             /* F1 to F12 are 0x3A to 0x45 */
+#define USB_KEY_F6 0x3F
+#define USB_KEY_F7 0x40
+#define USB_KEY_F9 0x42
+#define USB_KEY_F10 0x43
+#define USB_KEY_F11 0x44
+#define USB_KEY_F12 0x45
+#define USB_KEY_RIGHT 0x4F
+#define USB_KEY_LEFT 0x50
+#define USB_KEY_DOWN 0x51
+#define USB_KEY_UP 0x52
+#define USB_KEY_KP_ENTER 0x58       /* the keypad's Enter */
+#define USB_LED_CAPS_LOCK 0x02      /* UsbKbData.leds (gKbdSettings, its copy): Caps Lock is on */
+
+/*
+ * The keyboard's key sets (KbdEntry.keySet, an index of gKbdSetLayouts; seen
+ * from each layout's key table). KBD_SET_SHIFTED is the bit of a set's
+ * small-kana or lower-case pair (gKbdShiftSets); KBD_SET_BIT(set) is the
+ * set's bit in KbdEntry.flags, which bars it.
+ */
+#define KBD_SET_HIRA 0
+#define KBD_SET_KATA 1
+#define KBD_SET_WIDE_UPPER 2            /* full-width capitals */
+#define KBD_SET_SYMBOL 3
+#define KBD_SET_PHRASE1 4               /* the phrase pages */
+#define KBD_SET_PHRASE2 5
+#define KBD_SET_HALF_KATA 6             /* half-width katakana */
+#define KBD_SET_ASCII_UPPER 7
+#define KBD_SET_SMALL_HIRA 8
+#define KBD_SET_SMALL_KATA 9
+#define KBD_SET_WIDE_LOWER 0xA
+#define KBD_SET_HALF_SYMBOL 0xB
+#define KBD_SET_GESTURE 0xD             /* the gestures page */
+#define KBD_SET_HALF_SMALL_KATA 0xE
+#define KBD_SET_ASCII_LOWER 0xF
+#define KBD_SET_DIGIT 0x10
+#define KBD_SET_SHIFTED 8
+#define KBD_SET_BIT(set) (1 << (set))
+
+/* The layouts after the sets' own (gKbdSetLayouts; Kbd_PickLayout). */
+#define KBD_LAYOUT_ASCII_UPPER2 17      /* the ASCII capitals again: entry kind 7 */
+#define KBD_LAYOUT_WIDE_UPPER_NOSYM 18  /* the full-width capitals without symbols: kinds 8-10 */
+#define KBD_LAYOUT_WIDE_LOWER_NOSYM 19
+
+/* The character modes (KbdEntry.mode, gKbdSetModes[keySet]); a mode key's
+ * kind is its mode, and the mode's first set has the same number. */
+#define KBD_MODE_HIRAGANA 0
+#define KBD_MODE_KATAKANA 1
+#define KBD_MODE_ALNUM 2
+#define KBD_MODE_SYMBOL 3
+#define KBD_MODE_PHRASE1 4
+#define KBD_MODE_PHRASE2 5
+#define KBD_MODE_GESTURE 13
+
+/* The kinds of the switch keys after the modes (Kbd_PressKey, Kbd_FindKindEx). */
+#define KBD_SWITCH_TO_HALF 6            /* the full-width sets' width key */
+#define KBD_SWITCH_TO_FULL 7            /* the half-width sets' width key */
+#define KBD_SWITCH_SHIFT 8              /* to the set's KBD_SET_SHIFTED pair */
+#define KBD_SWITCH_UNSHIFT 9            /* back from it */
+
+/* KbdChar.b[0]: what a key does (see KbdChar). */
+#define KBD_ACT_SWITCH 1
+#define KBD_ACT_COMMAND 2
+#define KBD_ACT_PHRASE 3
+#define KBD_ACT_GESTURE 4
+
+/* KbdChar.b[1] of a KBD_ACT_COMMAND key (Kbd_PressCmdKey). */
+#define KBD_CMD_BACKSPACE 0
+#define KBD_CMD_CONVERT 1
+#define KBD_CMD_SUBMIT 3
+
+#define KBD_GESTURE_KANA 0xF            /* KbdEntry.gestureMode: the gestures page types kana */
+#define KBD_KEYF_CYCLING 2              /* KbdEntry.keyFlags: a phrase or gesture cycle runs (R2) */
+#define KBD_MARK_DAKUTEN 1              /* Kbd_DakutenKeyKind's results */
+#define KBD_MARK_HANDAKUTEN 2
+#define KBD_RESULT_SUBMIT 1             /* KbdEntry.result */
+#define KBD_RESULT_CANCEL (-1)
+#define KBD_SOUND_NONE (-1)             /* KbdEntry.state: no sound this frame */
+
+/* The buttons the keyboard repeats (Kbd_KeyRepeat): all but L3, TRIANGLE,
+ * SELECT and START. */
+#define KBD_REPEAT_BUTTONS 0x3EFD
 
 /* A romaji table entry (gRomajiKanaTbl, 240 of them; Kbd_RomajiToKana): the romaji and its kana
  * in three kinds (hiragana, katakana, half-width). */
@@ -131,5 +226,22 @@ extern RomajiEntry gRomajiKanaTbl[];
  * KBD_CAND_LINE_SIZE bytes. */
 #define KBD_CAND_PAGE 3
 #define KBD_CAND_LINE_SIZE 0x100
+
+/* The USB keyboard (libusbkb; sub_main unk_2F6540.c's UsbKb_* functions). */
+/* What sceUsbKbGetInfo fills in (gUsbKbInfo, 0x90 bytes). */
+typedef struct UsbKbInfo {
+    s32 unk0;                   /* not read */
+    s32 connectedCount;         /* 0x4: UsbKb_StepWaitConnect waits for nonzero */
+    u8 connected[0x88];         /* 0x8: per keyboard, nonzero when it is connected (UsbKb_IsConnected) */
+} UsbKbInfo;
+
+/* A keyboard's state as sceUsbKbRead returns it (gUsbKbData); UsbKb_Poll packs it into
+ * the 9-byte report gUsbKbReport. */
+typedef struct UsbKbData {
+    s32 leds;                   /* 0x00: the report's byte 1 */
+    s32 modifiers;              /* 0x04: the modifier keys, the report's byte 0 */
+    s32 keyCount;               /* 0x08: the key codes in keys; 0: no report */
+    u16 keys[7];                /* 0x0C: key codes, the report's bytes 2-8 */
+} UsbKbData;
 
 #endif

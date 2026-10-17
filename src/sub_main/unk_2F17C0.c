@@ -1493,19 +1493,6 @@ s32 Anim_ChunkKeySize(u8 *c)
     return size;
 }
 
-/* An animation set (0x20 bytes): the animations of one file, converted. */
-typedef struct AnimSet {
-    u16 flags;                  /* 0x00: 0x8000 when it has a loop time */
-    s16 count;                  /* 0x02: animations */
-    f32 start;                  /* 0x04: the earliest key */
-    f32 end;                    /* 0x08: the latest key */
-    f32 loop;                   /* 0x0C */
-    s32 anims;                  /* 0x10: AnimHeader pointers, as an offset from gAnimCurveBuf */
-    s32 base;                   /* 0x14: the buffer (gAnimCurveBuf) */
-    s32 size;                   /* 0x18: bytes used */
-    u8 pad1C[4];
-} AnimSet;
-
 void Anim_SetKeyBase(void *buf);
 struct LinearHeap;
 s32 LinearHeap_Init(struct LinearHeap *h, void *start, u32 size, s32 align);
@@ -1554,7 +1541,7 @@ s32 Anim_LoadSet(AnimSet *out, u8 *buf, void *f)
     set->start = min;
     set->end = max;
     if (AnimFile_GetLoopTime(f, &loop)) {
-        set->flags |= 0x8000;
+        set->flags |= ANIM_SET_LOOPS;
         set->loop = loop;
     } else {
         set->flags &= 0x7FFF;

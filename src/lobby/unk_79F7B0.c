@@ -251,7 +251,7 @@ void TownMsg_SendRecords(void *to, u8 kind)
         TownMsg_SendTo(0x80, 0x2C, (u8 *)gSave.itemBits, to);
         break;
     case 6:
-        TownMsg_SendTo(0x20, 0x2D, gSave.unk3660, to);
+        TownMsg_SendTo(0x20, 0x2D, gSave.titles, to);
         break;
     case 2:
         d = big;

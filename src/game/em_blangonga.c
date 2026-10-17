@@ -1,16 +1,40 @@
 /*
- * Monster family: Blangonga, Congalala and Rajang (kinds 0x33, 0x34, 0x35).
- * The code from the family's setup function (0x80CDF0, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * The Blangonga family (src/game/em_blangonga.c): Blangonga, Congalala and
+ * Rajang, and the small Blango and Conga (EM_KIND_BLANGONGA, _CONGALALA,
+ * _RAJANG, _BLANGO, _CONGA): the code from the family's setup function,
+ * EmBlangonga_Setup (0x80CDF0), to the next family's, and after it three
+ * pieces of the Shen Gaoren and Kushala Daora families' code.
+ *
+ * A monster of the family runs a state machine (include/em_blangonga.h
+ * names the states and motions; include/em.h the groups): EmBlangonga_Update
+ * reads the hits (Em_UpdateDamage) and picks the reactions, then
+ * EmBlangonga_RunState calls the group's dispatcher (EmBlangonga_RunIdleState
+ * ... RunVersusState), which calls one function per state with the monster,
+ * its work area (EmWork; the family's view is EmBlangongaWork) and, for the
+ * functions several states share, a variant. A state function switches on
+ * Em.step; EmBlangonga_ChangeState starts the next state and
+ * EmBlangonga_EndState hands the choice back to the monster script, which
+ * asks its questions through EmBlangonga_ScriptQuery. The family doesn't
+ * fly: its group 2 holds the jumps, the leaps between areas and the
+ * Blangonga kinds' burrowing under the snow. Congalala carries one of three
+ * items it can drop as a mine point, and eats to change its breath
+ * (EmBlangongaWork.carryHidden, eatenKind); Blangonga's and Congalala's
+ * story quests play scenes (group 6). EmBlangonga_MotionEffects adds each
+ * motion's hits and effects; the kinds' sounds are in em_rathalos.c.
+ *
+ * After the family: Shen Gaoren's Set*State and ChangeState
+ * (EmShenGaoren_*), Kushala Daora's wind, Set*State, ChangeState and curves
+ * (EmKushala_*), and Shen Gaoren's motion sounds; em_shengaoren.c and
+ * em_kushala.c hold the rest of those families.
  */
 #include "common.h"
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "em_blangonga.h"
 #include "player.h"
-/* prototypes of callees (round 13) */
+#include "area.h"
+/* prototypes of callees */
 s32 EmBlangonga_RageTimerFull(Em *em);
 
 /* prototypes */
@@ -20,7 +44,7 @@ s8 EmMine_CreateTimed(Em *em, f32 *pos, s32 idx);
 s8 EmMine_CreateTimed0(Em *em, f32 *pos);
 void EmMine_Remove(Em *em);
 s32 EmMine_Update(Em *em);
-/* unit's own declaration: with the definition's void (Em *em, s16 n) (game/unk_708850.c), EmBlangonga_State0_0B: 35 of 75 words differ */
+/* unit's own declaration: with the definition's void (Em *em, s16 n) (game/unk_708850.c), EmBlangonga_EatNeed2: 35 of 75 words differ */
 void Em_AddHp(Em *em, s32 n);
 void Em_BeginStatus1(Em *em);
 void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
@@ -34,11 +58,11 @@ void QuestEm_Captured(Em *em);
 void QuestEm_Hunted(Em *em);
 u16 Rand_Next(s32 stream);
 void Vib_Start(s32 port, s32 i);
-/* unit's own declaration: with the definition's void (Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d) (game/unk_6CADF0.c), EmBlangonga_State3_07: 30 of 89 words differ */
-void EffEm08_CreateAtBone(Em *, s32, s32, s32, u16, s32);
-void EffBlangonga27_Create(Em *em, s32 kind);
-/* unit's own declaration: with the definition's void *(Em *em, s32 kind, s32 c, s32 a, s32 b) (game/unk_6E3B00.c), EmBlangonga_State3_08: 24 of 73 words differ */
-void * EffEm33_Create(Em *, s16, s16, s32, s32);
+/* unit's own declaration: with the definition's void (Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d) (game/unk_6CADF0.c), EmBlangonga_DigThrow: 30 of 89 words differ */
+void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, u16, s32);
+void BlangongaAttack_Create(Em *em, s32 kind);
+/* unit's own declaration: with the definition's void *(Em *em, s32 kind, s32 c, s32 a, s32 b) (game/unk_6E3B00.c), EmBlangonga_CongalalaEatenEmission: 24 of 73 words differ */
+void * EmEffectAttack_Create(Em *, s16, s16, s32, s32);
 void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotatedAccel(Em *em, void *ang);
 /* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmBlangonga_ChangeState: 3 of 671 words differ, EmKushala_ChangeState: 27 of 217 words differ ... */
@@ -47,17 +71,17 @@ void Em_CheckRageByHp(Em *em, s16 n);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ClearLowHpNeed(Em *em);
 void Em_ClearNeed2State(Em *em);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_AddNeed2(Em *em, s32 n);
 void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetGoal12(Em *em);
-/* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmBlangonga_State0_03: 82 of 132 words differ */
+void Em_SetTrapTimeGoal(Em *em);
+/* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmBlangonga_Rest: 82 of 132 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_EndRage(Em *em);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySe6AtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
+void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
 void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
 u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
@@ -71,71 +95,66 @@ void Em_TargetPlayerInRange(Em *);
 void EmBlangonga_Init(Em *);
 s32 EmBlangonga_IsSmallKind(Em *em);
 void Em_SetPartScaled(Em *em, s32 bit);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void Em_InitParts(Em *em);
 s32 Quest_IsVersus(void);
 s32 Versus_TeamHasFlag(Em *em, s32 kind);
-void EmBlangonga_ClearPartFlag(Em *em, u16 part);
+void EmBlangonga_ShowCarried(Em *em, u16 part);
 f32 Math_Absf(f32 x);
 f32 Math_Sin(f32 x);
 void EmBlangonga_SpawnPeriodicEffect06(Em *em, s32 kind);
 /* unit's own declaration: with the definition's void (Em *em, s32 bone, f32 *pos, f32 scale) (game/unk_7077A0.c), EmBlangonga_SpawnPeriodicEffect06: 7 of 32 words differ */
-void Em_SpawnEffect06Periodic(Em *em, u8 bone, f32 *pos, f32 scale);
+void Em_SpawnLyingPuffs(Em *em, u8 bone, f32 *pos, f32 scale);
 void Em_ApplyPartBreaks(Em *em);
 void GmEm_ResetSize(Em *em);
 EmBone *Em_Bone(void *obj, s16 bone);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-typedef struct { f32 x, y, z; } EmBVec;
-extern EmBVec EmShenGaoren_SeOffsets[];
-typedef struct { u16 weight; u16 value; } EmBPick;
-u16 EmBlangonga_PickWeightedPart(EmBPick *p, u16 r);
-extern EmBPick D_008C9E08[];
-extern EmBPick D_008C9E18[];
-/* the turn parameters (D_008C9DD0, D_008C9DEC) and the two part-pick tables after them: one object */
-typedef struct { EmTurnParams turn[2]; EmBPick pick0[4]; EmBPick pick1[4]; } EmBlangongaTurnData;
-extern EmBVec EmBlangonga_CarveThrowPt __attribute__((aligned(8)));
+extern EmBlangongaVec EmShenGaoren_SeOffsets[];
+u16 EmBlangonga_PickCarried(EmBlangongaPickRow *p, u16 r);
+extern EmBlangongaTurnData EmBlangonga_TurnData;
+extern EmBlangongaVec EmBlangonga_CarveThrowPt __attribute__((aligned(8)));
 void StageObj_K25_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
 void Versus_RouteEmByTeam(Em *em);
 s32 Versus_DefeatCamera(Em *pl);
 void Em_FlagPartBreak(Em *em, s32 arg1);
 void EmBlangonga_StartCurves(Em *em, u8 kind);
-void EmBlangonga_RunGroup0(Em *em, EmWork *work);
-void EmBlangonga_State1_00(Em *, s32, s32);
-void EmBlangonga_State1_0B(Em *, s32, s32);
-void EmBlangonga_State2_00(Em *, EmWork *, u8);
-void EmBlangonga_State2_01(Em *, EmWork *, s32);
-void EmBlangonga_State2_04(Em *, EmWork *, s32);
-void EmBlangonga_State2_05(Em *);
-void EmBlangonga_State2_08(Em *, EmWork *);
-void EmBlangonga_State2_09(Em *, EmWork *);
-void EmBlangonga_State2_0B(Em *, EmWork *);
-void EmBlangonga_RunGroup3(Em *em, EmWork *work);
-void EmBlangonga_RunGroup4(Em *em, EmWork *work);
-void EmBlangonga_State5_00_Hunted(Em *, s32);
-void EmBlangonga_State5_01_Hunted(Em *, s32);
-void EmBlangonga_State5_03_HuntedFalling(Em *, s32);
-void EmBlangonga_State5_04(Em *em, s32 arg1);
-void EmBlangonga_RunGroup6(Em *em, EmWork *work);
-void EmBlangonga_State8_00_CarveStart(Em *, EmWork *);
-void EmBlangonga_State0_08(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State0_0C(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State3_01(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State3_02(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State3_07(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State3_11(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State3_12(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State3_13(Em *em, EmWork *work, s32 variant);
-void EmBlangonga_State4_02(Em *em, EmWork *work, u8 variant);
-/* unit's own declaration: with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale) (game/unk_874B90.c), EmBlangonga_State4_02: 116 of 165 words differ, EmBlangonga_State4_09: 109 of 175 words differ */
+void EmBlangonga_RunIdleState(Em *em, EmWork *work);
+void EmBlangonga_Turn(Em *, s32, s32);
+void EmBlangonga_Approach(Em *, s32, s32);
+void EmBlangonga_Jump(Em *, EmWork *, u8);
+void EmBlangonga_Hop(Em *, EmWork *, s32);
+void EmBlangonga_DigOut(Em *, EmWork *, s32);
+void EmBlangonga_BuriedTurn(Em *);
+void EmBlangonga_LeapOutOfArea(Em *, EmWork *);
+void EmBlangonga_DropIn(Em *, EmWork *);
+void EmBlangonga_CrossArea(Em *, EmWork *);
+void EmBlangonga_RunAttackState(Em *em, EmWork *work);
+void EmBlangonga_RunReactState(Em *em, EmWork *work);
+void EmBlangonga_Die(Em *, s32);
+void EmBlangonga_DieHeld(Em *, s32);
+void EmBlangonga_DieFalling(Em *, s32);
+void EmBlangonga_Reappear(Em *em, s32 arg1);
+void EmBlangonga_RunEventState(Em *em, EmWork *work);
+void EmBlangonga_VersusEatBait(Em *, EmWork *);
+void EmBlangonga_TurnAbout(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_EatNeed1(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_Slam(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_Strike(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_DigThrow(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_RajangComboSlam(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_RajangShot(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_RajangBeam(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_KnockDown(Em *em, EmWork *work, u8 variant);
+/* unit's own declaration: with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale) (game/unk_874B90.c), EmBlangonga_KnockDown: 116 of 165 words differ, EmBlangonga_HeldDowned: 109 of 175 words differ */
 void StageObj_Stun_CreateEm(Em *, s32, s32, s32, f32, f32);
-void EmBlangonga_State4_09(Em *em, EmWork *work, u8 variant);
-void EmBlangonga_State6_05(Em *em, EmWork *work, u8 variant);
-void EmBlangonga_State3_08(Em *em, EmWork *work);
-void EmBlangonga_State3_09(Em *em, EmWork *work);
-void EmBlangonga_State3_0E(Em *em, EmWork *work);
-void EmBlangonga_State6_02(Em *em, EmWork *work);
-void EmBlangonga_State6_03(Em *em, EmWork *work);
-void EmBlangonga_State6_04(Em *em, EmWork *work);
+void EmBlangonga_HeldDowned(Em *em, EmWork *work, u8 variant);
+void EmBlangonga_BlangoEmerge(Em *em, EmWork *work, u8 variant);
+void EmBlangonga_CongalalaEatenEmission(Em *em, EmWork *work);
+void EmBlangonga_CongalalaCombo(Em *em, EmWork *work);
+void EmBlangonga_EffectStrike(Em *em, EmWork *work);
+void EmBlangonga_CongalalaScene(Em *em, EmWork *work);
+void EmBlangonga_StartBlangongaScene(Em *em, EmWork *work);
+void EmBlangonga_BlangongaLeapDown(Em *em, EmWork *work);
 void EmBlangonga_MotionEffects(Em *, EmWork *);
 u8 EmBlangonga_ScriptQuery(Em *, u8);
 void EmShenGaoren_SetGroup1State(Em *em, u16 state, u8 mode);
@@ -144,7 +163,7 @@ void EmShenGaoren_PlaySeAtOffset(Em *em, s32 se, s32 idx, s32 vol);
 void StageObj_K0F_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
 void StageObj_K1C_CreateOnEmB(Em *em, u8 k, u16 w, s16 v, f32 scale);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 f32 Vec_Distance(f32 *a, f32 *b);
 void CamShake_ReqAIf(Em *obj, s32 i);
@@ -156,7 +175,6 @@ void Player_ClearVelocity(void *);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
 u8 Player_InCurrentArea(void *obj);
 void Effect01_Spawn(void *obj, s16 type);
-extern EmTurnParams D_008C9DEC;
 void Em_BeginStatus4(Em *em);
 void Em_BeginStatus5(Em *em);
 void Em_BreakPart(Em *em, s32 part);
@@ -186,11 +204,6 @@ void Em_StartGoalAction(Em *em, s32 arg1);
 void Em_AddNeed1(Em *em, s32 n);
 void Em_ClearNeed1State(Em *em);
 void Vec_Copy(f32 *out, f32 *in);
-typedef struct EmBEntry {
-    s16 id;
-    s16 pad;
-    f32 *pts;
-} EmBEntry;
 struct EmIdEntry;
 struct EmIdEntry *Em_FindAreaEntry(Em *em, struct EmIdEntry *entry, s16 id);
 extern f32 gStartPos[];
@@ -213,20 +226,19 @@ void MinePoint_Remove(s32);
 void EmKushala_SetGroup3State(Em *em, u16 state, u8 mode);
 void EmKushala_SetGroup4State(Em *em, u16 state, u8 mode);
 void EmKushala_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-extern EmTurnParams D_008C9DD0;
 static s32 EmBlangonga_IsBlangonga(Em *em);
 static s32 EmBlangonga_IsCongalala(Em *em);
 s32 Em_IsSyncFree(Em *em, u8 mode);
-u16 Area_BaseId(u16);
+u16 Map_DayId(u16);
 u16 Area_DayId(u16 id);
 void ObjListA70_Remove(EmObj *obj);
-void EmBlangonga_SetPartFlag(Em *em, u16 part);
+void EmBlangonga_HideCarried(Em *em, u16 part);
 u16 Quest_Random(void);
 u16 Area_IdForCurrentTime(u16);
 void StageObj_K1C_CreateOnEmC(Em *em, u8 k, u8 c, f32 scale);
 struct StageObj *StageObj_K1C_CreateOnEm(struct Em *em, u8 k, f32 scale);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
-void EffEm08_CreateAtBone2(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d, s32 e);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
+void EmRangedAttack_CreateAtBone2(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d, s32 e);
 void Vec_RotateSelf(f32 *v, f32 *m);
 void Mtx_GetTrans(f32 *out, f32 *m);
 void Vec_Add(f32 *, f32 *, f32 *);
@@ -234,10 +246,10 @@ s32 Area_ContainsPos(s32, f32 *);
 void Em_EnterNextArea(Em *);
 void Em_MoveRotated(Em *em, void *src);
 void EmBlangonga_EnterNewArea(Em *);
-void EmBlangonga_State3Pick(Em *em);
+void EmBlangonga_DropFallingObjects(Em *em);
 void StageObj_K11_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
 s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaiseTrigger80(Em *em);
+void Em_RaisePlayerAreaTrigger(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
 u8 Em_SenseObjects(Em *em, EmObj *self);
 s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
@@ -246,14 +258,14 @@ void Em_DecayNeed1(Em *em);
 void Em_DecayNeed1Only(Em *em);
 void Em_DecayNeed2(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetGoal12Dist(Em *em, u8 *p);
+void Em_SetTrapTime(Em *em, u8 *p);
 void Em_SetStatus1Timer(Em *em);
 void Em_SetStatus2Timer(Em *em);
 void Em_SetStatus4Timer(Em *em);
 void Em_SetStatus5Timer(Em *em);
 s32 Em_IsHeld(Em *em);
 void Em_ResetKindTimer(Em *em);
-s32 func_00725820(Em *em, s32 arg1);
+s32 Em_DamageResultIsReaction(Em *em, s32 arg1);
 s32 Save_TestEventFlag(s32 flag);
 void Em_UpdatePendingScript(Em *em);
 void Em_ClearHitReactMode(Em *em);
@@ -261,10 +273,19 @@ void EmBlangonga_RunState(Em *em, s32 arg1);
 void EmBlangonga_BreakParts(Em *em, s32 apply);
 /* end of prototypes */
 
+/*
+ * The family's setup (Em_TypeSetup's entry for the Blangonga kinds):
+ * nothing to do.
+ */
 void EmBlangonga_Setup(Em *em)
 {
 }
 
+/*
+ * Callback slots 0 and 1: creates the family's effect 01 (type 3 for the
+ * large kinds, 0 for the Blango and the Conga). The monster comes as an
+ * s32.
+ */
 void EmBlangonga_SpawnEffect01(s32 em)
 {
     if (EmBlangonga_IsSmallKind((Em *) em) == 0) {
@@ -274,16 +295,25 @@ void EmBlangonga_SpawnEffect01(s32 em)
     Effect01_Spawn((Player *) em, 0);
 }
 
+/*
+ * Sets a monster of the family up: the scaled parts (0-2 for the Blangonga
+ * kinds, 2-3 for the Congalala kinds); in the quest-less stage
+ * (gQuest.stage 0) a fixed start position per slot; the idle motion and
+ * full hp from the size (the Blango and the Conga are always run locally);
+ * the rage timer and work cleared; every carried item hidden, then the
+ * Congalala kinds show the one EmBlangonga_PickCarried picks; eatenKind
+ * from the versus team flags; the kind's body colour; the parts.
+ */
 void EmBlangonga_Init(Em *em)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
     u16 part;
 
-    if (em->type == 0x33) {
+    if (em->type == EM_KIND_BLANGONGA) {
         Em_SetPartScaled(em, 0);
         Em_SetPartScaled(em, 1);
         Em_SetPartScaled(em, 2);
-    } else if (em->type == 0x34) {
+    } else if (em->type == EM_KIND_CONGALALA) {
         Em_SetPartScaled(em, 2);
         Em_SetPartScaled(em, 3);
     }
@@ -292,9 +322,9 @@ void EmBlangonga_Init(Em *em)
         em->posY = 0.0f;
         em->posZ = 3600.0f;
     }
-    Em_SetMotionRow(em, 1, 0, 0);
-    em->stance = 0;
-    em->hpMax = em->hp = Em_ComputeSize(em, 0);
+    Em_SetMotionRow(em, BLANG_MOT_IDLE, 0, 0);
+    em->stance = EM_STANCE_GROUND;
+    em->hpMax = em->hp = Em_ComputeMaxHp(em, 0);
     em->scriptPending = 1;
     em->blind = 0;
     em->unk_InitFlag = 1;
@@ -303,48 +333,48 @@ void EmBlangonga_Init(Em *em)
     }
     w->rageTimer = 0;
     w->unk03A = 0;
-    w->unk019 = 0;
+    w->senseListed = 0;
     Em_BonePos(em, 0xF, &w->bonePos[0]);
-    w->unk018 = 0;
-    w->partSet[0] = 1;
-    w->partSet[1] = 1;
-    w->partSet[2] = 1;
-    if (em->type == 0x34) {
-        part = EmBlangonga_PickWeightedPart((EmBPick *) em, w->pickSeed);
+    w->moveCount = 0;
+    w->carryHidden[0] = 1;
+    w->carryHidden[1] = 1;
+    w->carryHidden[2] = 1;
+    if (em->type == EM_KIND_CONGALALA) {
+        part = EmBlangonga_PickCarried((EmBlangongaPickRow *) em, w->pickSeed);
         if (part != 0xFFFF) {
-            EmBlangonga_ClearPartFlag(em, part);
+            EmBlangonga_ShowCarried(em, part);
         }
     }
-    if (em->type == 0x34) {
+    if (em->type == EM_KIND_CONGALALA) {
         if (Quest_IsVersus() == 1) {
             if (Versus_TeamHasFlag(em, 3)) {
-                w->unk044 = 2;
+                w->eatenKind = 2;
             } else if (Versus_TeamHasFlag(em, 4)) {
-                w->unk044 = 1;
+                w->eatenKind = 1;
             } else if (Versus_TeamHasFlag(em, 5)) {
-                w->unk044 = 3;
+                w->eatenKind = 3;
             } else {
-                w->unk044 = 0;
+                w->eatenKind = 0;
             }
         } else {
-            w->unk044 = 0;
+            w->eatenKind = 0;
         }
     } else {
-        w->unk044 = 0;
+        w->eatenKind = 0;
     }
     switch (em->type) {
-    case 0x33:
+    case EM_KIND_BLANGONGA:
         w->tint[0] = 0x73;
         w->tint[1] = 0xEB;
         w->tint[2] = 0xFF;
         break;
-    case 0x3D:
+    case EM_KIND_BLANGO:
         w->tint[0] = 0xCD;
         w->tint[1] = 0x91;
         w->tint[2] = 0xC3;
         break;
-    case 0x34:
-    case 0x3E:
+    case EM_KIND_CONGALALA:
+    case EM_KIND_CONGA:
         w->tint[0] = 0x99;
         w->tint[1] = 0x80;
         w->tint[2] = 0x73;
@@ -355,24 +385,31 @@ void EmBlangonga_Init(Em *em)
         w->tint[2] = 0xFF;
         break;
     }
-    w->unk045 = 0;
+    w->hitSeCooldown = 0;
     Em_InitParts(em);
 }
 
+/*
+ * Starts a monster: the Congalala kinds first draw pickSeed so that Init
+ * and Reinit pick the same carried item; Init; in Congalala's two story
+ * quests, before event flag 0x9B, places it at a fixed point of AREA_JUNGLE_3;
+ * then BLANG_IDLE_BURIED for a Blango of variant 1, BLANG_IDLE for the
+ * others.
+ */
 void EmBlangonga_Start(Em *em)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
 
-    if (em->type == 0x34) {
+    if (em->type == EM_KIND_CONGALALA) {
         w->pickSeed = Quest_Random();
     }
     EmBlangonga_Init(em);
-    if (em->type == 0x34) {
+    if (em->type == EM_KIND_CONGALALA) {
         switch (gQuest.stage) {
         case 0x3F3:
         case 0x3F4:
             if (Save_TestEventFlag(0x9B) == 0) {
-                em->area = Area_IdForCurrentTime(0x71);
+                em->area = Area_IdForCurrentTime(AREA_JUNGLE_3);
                 em->posX = 11870.0f;
                 em->posY = 0.0f;
                 em->posZ = 10100.0f;
@@ -381,183 +418,196 @@ void EmBlangonga_Start(Em *em)
             break;
         }
     }
-    if (em->type == 0x3D && em->variant == 1) {
-        EmBlangonga_ChangeState(em, 0, 0x18, 0);
+    if (em->type == EM_KIND_BLANGO && em->variant == 1) {
+        EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_BURIED, EM_SYNC_LOCAL);
         return;
     }
-    EmBlangonga_ChangeState(em, 0, 1, 0);
+    EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE, EM_SYNC_LOCAL);
 }
 
+/*
+ * Callback slot 5: sets the monster up again (Init) without changing its
+ * state.
+ */
 void EmBlangonga_Reinit(Em *em)
 {
     EmBlangonga_Init(em);
 }
 
+/*
+ * Starts state `state` of group `group` (EM_SYNC_* `mode`, passed on to
+ * Em_SetStateSync): takes the roar's sensed object off the list, does what
+ * the state needs on entry (statuses begun or ended, speeds and stop
+ * distances, the move count, the low-hp limp variants below 30% (Blangonga
+ * kinds), 20% (Congalala kinds) or 15% (Rajang) of hpMax, the carried items
+ * shown again, the part break of BLANG_REACT_PART_BREAK), then sets it. A
+ * remote copy ignores the owner's modes.
+ */
 void EmBlangonga_ChangeState(Em *em, u16 group, u16 state, u8 mode)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
     u8 count = 0;
-    f32 f;
-    u16 v;
+    f32 lowHpRatio;
+    u16 area;
 
-    if (w->unk019 != 0) {
+    if (w->senseListed != 0) {
         ObjListA70_Remove((EmObj *)((&w->sense)));
-        w->unk019 = 0;
+        w->senseListed = 0;
     }
     if (em->remote == 0) {
         Em_TargetPlayerInRange(em);
-    } else if (mode == 3 || mode == 4) {
+    } else if (mode == EM_SYNC_OWNER || mode == EM_SYNC_OWNER_FLAGGED) {
         return;
     }
     if (EmBlangonga_IsBlangonga(em) == 1) {
-        f = 0.3f;
+        lowHpRatio = 0.3f;
     } else if (EmBlangonga_IsCongalala(em) == 1) {
-        f = 0.2f;
+        lowHpRatio = 0.2f;
     } else {
-        f = 0.15f;
+        lowHpRatio = 0.15f;
     }
     em->hitzoneSet = 0;
     switch (group) {
-    case 0:
+    case EM_GROUP_IDLE:
         switch (state) {
-        case 1:
-            if (mode == 0) {
-                count = w->unk018;
+        case BLANG_IDLE:
+            if (mode == EM_SYNC_LOCAL) {
+                count = w->moveCount;
             }
             if (em->combat != 0) {
-                state = 6;
+                state = BLANG_IDLE_ALERT;
             }
             break;
-        case 3:
+        case BLANG_IDLE_REST:
             Em_ResetNotice(em);
             break;
-        case 4:
+        case BLANG_IDLE_STATUS2_END:
             Em_EndStatus2(em);
             break;
-        case 5:
-        case 19:
+        case BLANG_IDLE_STATUS2_COLLAPSE:
+        case BLANG_IDLE_STATUS2_DOWNED:
             Em_BeginStatus2(em);
             break;
-        case 10:
+        case BLANG_IDLE_STATUS4_SHAKE_OFF:
             Em_EndStatus4(em);
             break;
-        case 24:
+        case BLANG_IDLE_BURIED:
             em->senseDelay = 5;
             em->stateArmor = 1;
             em->scriptPending = 0;
             break;
-        case 25:
+        case BLANG_IDLE_STUN_SHAKE_OFF:
             Em_EndStatus5(em);
             break;
-        case 26:
+        case BLANG_IDLE_REST_END:
             Em_RefillNeed3(em);
             break;
-        case 27:
+        case BLANG_IDLE_HOLD2_SHAKE_OFF:
             em->holdTimer2 = 0;
             break;
-        case 28:
-        case 29:
-        case 30:
-        case 31:
-        case 33:
+        case BLANG_IDLE_EAT_KIND_A:
+        case BLANG_IDLE_EAT_KIND_B:
+        case BLANG_IDLE_EAT_KIND_C:
+        case BLANG_IDLE_EAT_KIND_D:
+        case BLANG_IDLE_EAT_NEED1_B:
             switch (state) {
-            case 28:
-                w->unk044 = 1;
+            case BLANG_IDLE_EAT_KIND_A:
+                w->eatenKind = 1;
                 break;
-            case 29:
-                w->unk044 = 2;
+            case BLANG_IDLE_EAT_KIND_B:
+                w->eatenKind = 2;
                 break;
-            case 30:
-                w->unk044 = 3;
+            case BLANG_IDLE_EAT_KIND_C:
+                w->eatenKind = 3;
                 break;
-            case 31:
-                w->unk044 = 4;
+            case BLANG_IDLE_EAT_KIND_D:
+                w->eatenKind = 4;
                 break;
             }
-            if (em->type == 0x34) {
-                EmBlangonga_SetPartFlag(em, 0);
-                EmBlangonga_SetPartFlag(em, 1);
-                EmBlangonga_SetPartFlag(em, 2);
+            if (em->type == EM_KIND_CONGALALA) {
+                EmBlangonga_HideCarried(em, 0);
+                EmBlangonga_HideCarried(em, 1);
+                EmBlangonga_HideCarried(em, 2);
             }
             break;
-        case 34:
+        case BLANG_IDLE_EAT:
             Em_StartGoalAction(em, 10000);
             break;
-        case 36:
-        case 37:
+        case BLANG_IDLE_STATUS1_DOWNED:
+        case BLANG_IDLE_STATUS1_COLLAPSE:
             Em_BeginStatus1(em);
             break;
-        case 38:
+        case BLANG_IDLE_STATUS1_END:
             Em_EndStatus1(em);
             break;
-        case 40:
+        case BLANG_IDLE_ROAR_RAGE:
             Em_StartRage(em);
             break;
-        case 41:
+        case BLANG_IDLE_ROAR_PENDING_RAGE:
             Em_StartPendingRage(em);
             break;
         }
         break;
-    case 1:
+    case EM_GROUP_MOVE:
         switch (state) {
-        case 1:
-        case 14:
-            if (em->hp < (s16) (em->hpMax * f)) {
-                state = 2;
+        case BLANG_MOVE_WALK:
+        case BLANG_MOVE_START_AND_WALK:
+            if (em->hp < (s16) (em->hpMax * lowHpRatio)) {
+                state = BLANG_MOVE_LIMP;
             }
-        case 2:
-        walk:
+        case BLANG_MOVE_LIMP:
+        walk: /* BLANG_MOVE_ACTION_E at low hp joins the limp here */
             if (em->curGoalKind == 7) {
                 Em_SetSpeedScaled(em, 0, 1000.0f, 350.0f);
             } else {
                 Em_SetSpeedScaled(em, 0, 1000.0f, 100.0f);
             }
             break;
-        case 4:
-        case 5:
-        case 6:
-        case 7:
+        case BLANG_MOVE_ACTION_A:
+        case BLANG_MOVE_ACTION_B:
+        case BLANG_MOVE_ACTION_C:
+        case BLANG_MOVE_ACTION_D:
             if (Em_IsSyncFree(em, mode) != 0) {
-                w->unk018++;
+                w->moveCount++;
             }
-            count = w->unk018;
+            count = w->moveCount;
             break;
-        case 8:
+        case BLANG_MOVE_TURN_TO_EXIT:
             if (em->remote == 0 && em->curGoalKind != 3) {
-                EmBlangonga_ChangeState(em, 0, 1, 1);
+                EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE, EM_SYNC_SEND);
                 return;
             }
             break;
-        case 11:
-        case 13:
-            if (em->hp < (s16) (em->hpMax * f)) {
-                state = 12;
+        case BLANG_MOVE_START_AND_APPROACH:
+        case BLANG_MOVE_APPROACH:
+            if (em->hp < (s16) (em->hpMax * lowHpRatio)) {
+                state = BLANG_MOVE_LIMP_APPROACH;
             }
-        case 12:
+        case BLANG_MOVE_LIMP_APPROACH:
             if (em->curGoalKind == 0) {
                 em->hasGoal = 0;
             } else {
                 em->hasGoal = 1;
             }
             break;
-        case 15:
-            if (em->hp < (s16) (em->hpMax * f)) {
-                state = 2;
+        case BLANG_MOVE_ACTION_E:
+            if (em->hp < (s16) (em->hpMax * lowHpRatio)) {
+                state = BLANG_MOVE_LIMP;
                 goto walk;
             }
             break;
-        case 0:
-        case 3:
-        case 9:
-        case 10:
+        case BLANG_MOVE_TURN:
+        case BLANG_MOVE_TURN_QUICK:
+        case BLANG_MOVE_TURN_AWAY:
+        case BLANG_MOVE_TURN_AWAY_QUICK:
             break;
         }
         break;
-    case 2:
+    case EM_GROUP_FLY:
         switch (state) {
         case 2:
-            if ((EmBlangonga_ScriptQuery(em, 1) & 0xFF) == 0) {
-                EmBlangonga_ChangeState(em, 0, 0x12, 1);
+            if ((EmBlangonga_ScriptQuery(em, BLANG_QUERY_ON_SNOW) & 0xFF) == 0) {
+                EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_ALERT_BRIEF, EM_SYNC_SEND);
                 return;
             }
             break;
@@ -570,50 +620,50 @@ void EmBlangonga_ChangeState(Em *em, u16 group, u16 state, u8 mode)
         case 11:
             Em_TypeSetup(em);
             if (em->remote == 0 && em->curGoalKind != 3) {
-                switch (Area_BaseId(gScene.map)) {
-                case 11:
+                switch (Map_DayId(gScene.map)) {
+                case MAP_SNOWY_MOUNTAINS:
                 default:
-                    v = Area_DayId(0x64);
-                    em->destArea = v;
-                    em->nextArea = v;
-                    em->goalNo = v;
+                    area = Area_DayId(AREA_SNOWY_MOUNTAINS_8);
+                    em->destArea = area;
+                    em->nextArea = area;
+                    em->goalNo = area;
                     break;
-                case 6:
-                    v = Area_DayId(0x71);
-                    em->destArea = v;
-                    em->nextArea = v;
-                    em->goalNo = v;
+                case MAP_JUNGLE:
+                    area = Area_DayId(AREA_JUNGLE_3);
+                    em->destArea = area;
+                    em->nextArea = area;
+                    em->goalNo = area;
                     break;
-                case 4:
-                    v = Area_DayId(0xA0);
-                    em->destArea = v;
-                    em->nextArea = v;
-                    em->goalNo = v;
+                case MAP_SWAMP:
+                    area = Area_DayId(AREA_SWAMP_9);
+                    em->destArea = area;
+                    em->nextArea = area;
+                    em->goalNo = area;
                     break;
-                case 5:
-                    v = Area_DayId(0xA6);
-                    em->destArea = v;
-                    em->nextArea = v;
-                    em->goalNo = v;
+                case MAP_VOLCANO:
+                    area = Area_DayId(AREA_VOLCANO_5);
+                    em->destArea = area;
+                    em->nextArea = area;
+                    em->goalNo = area;
                     break;
                 }
                 em->goalKind = 3;
                 Em_ComputeGoal(em, em->goal);
-                EmBlangonga_ChangeState(em, 1, 8, 1);
+                EmBlangonga_ChangeState(em, EM_GROUP_MOVE, BLANG_MOVE_TURN_TO_EXIT, EM_SYNC_SEND);
                 return;
             }
             break;
         }
         break;
-    case 3:
+    case EM_GROUP_ATTACK:
         switch (state) {
-        case 6:
+        case BLANG_ATK_CHARGE:
             Em_SetSpeedScaled(em, 0, 1000.0f, 1100.0f);
             break;
-        case 22:
+        case BLANG_ATK_RAJANG_CHARGE:
             Em_SetSpeedScaled(em, 0, 1000.0f, 500.0f);
             break;
-        case 23:
+        case BLANG_ATK_CONGALALA_CHARGE:
             if (em->curGoalKind != 1) {
                 Em_SetSpeedScaled(em, 0, 1000.0f, 350.0f);
             } else {
@@ -622,207 +672,227 @@ void EmBlangonga_ChangeState(Em *em, u16 group, u16 state, u8 mode)
             break;
         }
         break;
-    case 4:
+    case EM_GROUP_REACT:
         switch (state) {
-        case 4:
-        case 9:
+        case BLANG_REACT_STATUS4:
+        case BLANG_REACT_STATUS4_DOWNED:
             Em_BeginStatus4(em);
             break;
-        case 5:
+        case BLANG_REACT_TRAPPED:
             Em_EndAllStatus(em);
             break;
-        case 10:
+        case BLANG_REACT_STATUS4_DOWNED_END:
             Em_EndStatus4(em);
             break;
-        case 11:
+        case BLANG_REACT_STATUS2_DOWNED_END:
             Em_EndStatus2(em);
             break;
-        case 19:
+        case BLANG_REACT_STATUS1_DOWNED_END:
             Em_EndStatus1(em);
             break;
-        case 12:
-        case 13:
-        case 14:
+        case BLANG_REACT_STUN:
+        case BLANG_REACT_STUN_B:
+        case BLANG_REACT_STUN_DOWNED:
             Em_BeginStatus5(em);
             break;
-        case 15:
+        case BLANG_REACT_STUN_DOWNED_END:
             Em_EndStatus5(em);
             break;
-        case 16:
+        case BLANG_REACT_HOLD2:
             Em_EndAllStatus(em);
             break;
-        case 17:
-        case 21:
-        case 22:
-        case 23:
-            if (em->type == 0x34) {
-                EmBlangonga_SetPartFlag(em, 0);
-                EmBlangonga_SetPartFlag(em, 1);
-                EmBlangonga_SetPartFlag(em, 2);
+        case BLANG_REACT_DROP_CARRIED:
+        case BLANG_REACT_DROP_CARRIED_A:
+        case BLANG_REACT_DROP_CARRIED_B:
+        case BLANG_REACT_DROP_CARRIED_C:
+            if (em->type == EM_KIND_CONGALALA) {
+                EmBlangonga_HideCarried(em, 0);
+                EmBlangonga_HideCarried(em, 1);
+                EmBlangonga_HideCarried(em, 2);
             }
             break;
-        case 20:
-            em->hit8Count++;
-            if (em->type == 0x33) {
+        case BLANG_REACT_PART_BREAK:
+            em->partBreakCount++;
+            if (em->type == EM_KIND_BLANGONGA) {
                 Em_BreakPart(em, 1);
-            } else if (em->type == 0x35) {
+            } else if (em->type == EM_KIND_RAJANG) {
                 Em_EndRage(em);
                 Em_BreakPart(em, 2);
             }
             break;
-        case 24:
+        case BLANG_REACT_TRAP_ESCAPE:
             Em_EndAllStatus(em);
             em->guardTimer = 2;
             break;
-        case 6:
-        case 7:
-        case 8:
-        case 18:
+        case BLANG_REACT_TRAPPED_STRUGGLE:
+        case BLANG_REACT_FALL:
+        case BLANG_REACT_NONE:
+        case BLANG_REACT_FLINCH_ATTACK:
             break;
         }
         break;
-    case 5:
+    case EM_GROUP_DEFEAT:
         switch (state) {
-        case 0:
-            if (EmBlangonga_IsSmallKind(em) == 1 && em->stance == 2) {
-                EmBlangonga_ChangeState(em, 5, 3, mode);
+        case BLANG_DEFEAT_DIE:
+            if (EmBlangonga_IsSmallKind(em) == 1 && em->stance == EM_STANCE_AIR) {
+                EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_DIE_FALLING, mode);
                 return;
             }
             break;
-        case 4:
+        case BLANG_DEFEAT_REAPPEAR:
             if (QuestEm_CanAppear(em) == 1) {
                 QuestEm_Appear(em);
             }
             break;
         }
         break;
-    case 8:
+    case EM_GROUP_VERSUS:
         if (state == 0x98) {
             Versus_MarkDefeat(em);
         }
         em->motionSpeed = 1.0f;
         break;
-    case 6:
-    case 7:
+    case EM_GROUP_EVENT:
+    case EM_GROUP_EVENT2:
         break;
     }
-    w->unk018 = count;
+    w->moveCount = count;
     Em_SetStateSync(em, group, state, mode);
 }
 
+/*
+ * Ends a state: back to BLANG_IDLE with the motion speed, stance and look
+ * reset, the script asked for the next state (scriptPending). Both
+ * arguments are unused.
+ */
 static void EmBlangonga_EndState(Em *em, s32 unused1, s32 unused2)
 {
     em->motionSpeed = 1.0f;
-    em->stance = 0;
+    em->stance = EM_STANCE_GROUND;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    EmBlangonga_ChangeState(em, 0, 1, 0);
+    EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE, EM_SYNC_LOCAL);
 }
 
-static void EmBlangonga_EndState2(Em *em)
+/*
+ * Ends a buried state: as EmBlangonga_EndState, but stays under the snow
+ * (stateArmor) and goes back to BLANG_LEAP_BURIED.
+ */
+static void EmBlangonga_EndBuriedState(Em *em)
 {
     em->motionSpeed = 1.0f;
-    em->stance = 0;
+    em->stance = EM_STANCE_GROUND;
     em->stateArmor = 1;
     em->noPushTimer = 2;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    EmBlangonga_ChangeState(em, 2, 3, 0);
+    EmBlangonga_ChangeState(em, EM_GROUP_FLY, BLANG_LEAP_BURIED, EM_SYNC_LOCAL);
 }
 
-/* p: the first argument (the caller passes em, unused here) reused as the
-   loop pointer; a local gives other registers. */
-u16 EmBlangonga_PickWeightedPart(EmBPick *p, u16 r)
+/*
+ * Picks the carried item for the current map (MAP_JUNGLE or MAP_SWAMP: the two
+ * weight tables of EmBlangonga_TurnData) from `seed`: the value of the row
+ * whose running weight passes seed modulo the total; 0xFFFF on other maps.
+ * The first argument is unused (its register is the loop pointer: a local
+ * of its own gives other registers).
+ */
+u16 EmBlangonga_PickCarried(EmBlangongaPickRow *row, u16 seed)
 {
     u16 sum;
     u16 acc;
-    EmBPick *t;
-    u16 v;
+    EmBlangongaPickRow *table;
+    u16 roll;
 
-    switch (Area_BaseId(gScene.map)) {
-    case 6:
-        t = D_008C9E08;
+    switch (Map_DayId(gScene.map)) {
+    case MAP_JUNGLE:
+        table = EmBlangonga_TurnData.pick0;
         break;
-    case 4:
-        t = D_008C9E18;
+    case MAP_SWAMP:
+        table = EmBlangonga_TurnData.pick1;
         break;
     default:
         return 0xFFFF;
     }
     sum = 0;
-    p = t;
-    if (t->weight != 0xFFFF) {
+    row = table;
+    if (table->weight != 0xFFFF) {
         do {
-            acc = p->weight;
+            acc = row->weight;
             sum += acc;
-            p++;
-        } while (p->weight != 0xFFFF);
+            row++;
+        } while (row->weight != 0xFFFF);
     }
     acc = 0;
-    v = r % sum;
-    if (t->weight != 0xFFFF) {
+    roll = seed % sum;
+    if (table->weight != 0xFFFF) {
         do {
-            acc += *(u16 *) t;
-            if (acc > v) {
-                return t->value;
+            acc += *(u16 *) table; /* the weight; read as a u16 the match needs (table->weight compiles differently) */
+            if (acc > roll) {
+                return table->value;
             }
-            t++;
-        } while (t->weight != 0xFFFF);
+            table++;
+        } while (table->weight != 0xFFFF);
     }
     return 0xFFFF;
 }
 
-void EmBlangonga_SetPartFlag(Em *em, u16 part)
+/* Hides carried item `part` (0-2): sets its carryHidden flag. */
+void EmBlangonga_HideCarried(Em *em, u16 part)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
 
     switch (part) {
     case 0:
-        w->partSet[0] = 1;
+        w->carryHidden[0] = 1;
         break;
     case 1:
-        w->partSet[1] = 1;
+        w->carryHidden[1] = 1;
         break;
     case 2:
-        w->partSet[2] = 1;
+        w->carryHidden[2] = 1;
         break;
     }
 }
 
-void EmBlangonga_ClearPartFlag(Em *em, u16 part)
+/* Shows carried item `part` (0-2): clears its carryHidden flag. */
+void EmBlangonga_ShowCarried(Em *em, u16 part)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
 
     switch (part) {
     case 0:
-        w->partSet[0] = 0;
+        w->carryHidden[0] = 0;
         break;
     case 1:
-        w->partSet[1] = 0;
+        w->carryHidden[1] = 0;
         break;
     case 2:
-        w->partSet[2] = 0;
+        w->carryHidden[2] = 0;
         break;
     }
 }
 
-s32 EmBlangonga_PartFlagUnset(Em *em, u16 part)
+/*
+ * Returns 1 when carried item `part` (0-2) is shown; for `part` 6, 1 while
+ * part 2 is unbroken (Em_CheckRageByHp and gm_em.c ask that).
+ */
+s32 EmBlangonga_CarriedShown(Em *em, u16 part)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
 
     switch (part) {
     case 0:
-        if (w->partSet[0]) {
+        if (w->carryHidden[0]) {
             return 0;
         }
         break;
     case 1:
-        if (w->partSet[1]) {
+        if (w->carryHidden[1]) {
             return 0;
         }
         break;
     case 2:
-        if (w->partSet[2]) {
+        if (w->carryHidden[2]) {
             return 0;
         }
         break;
@@ -835,6 +905,7 @@ s32 EmBlangonga_PartFlagUnset(Em *em, u16 part)
     return 1;
 }
 
+/* Returns 1 for the small kinds, the Blango and the Conga. */
 s32 EmBlangonga_IsSmallKind(Em *em)
 {
     u8 type;
@@ -846,6 +917,7 @@ s32 EmBlangonga_IsSmallKind(Em *em)
     return 0;
 }
 
+/* Returns 1 for Blangonga and the Blango. */
 static s32 EmBlangonga_IsBlangonga(Em *em)
 {
     u8 type;
@@ -857,6 +929,7 @@ static s32 EmBlangonga_IsBlangonga(Em *em)
     return 0;
 }
 
+/* Returns 1 for Congalala and the Conga. */
 static s32 EmBlangonga_IsCongalala(Em *em)
 {
     u8 type;
@@ -868,70 +941,87 @@ static s32 EmBlangonga_IsCongalala(Em *em)
     return 0;
 }
 
+/* Returns 1 for Rajang. */
 static u64 EmBlangonga_IsRajang(Em *em)
 {
-    return em->type == 0x35;
+    return em->type == EM_KIND_RAJANG;
 }
 
+/*
+ * Returns 1 in the states a flash doesn't affect (Em_ApplyFlash): while
+ * stateArmor, lying in a hold under status 1 or 2, and the trapped,
+ * status-4 and stun states of EM_GROUP_REACT.
+ */
 s32 EmBlangonga_IgnoresFlash(Em *em)
 {
     if (em->stateArmor == 1
-        || (em->stateGroup == 0 && em->state == 0x13)
-        || (em->stateGroup == 0 && em->state == 0x24)
-        || (em->stateGroup == 4 && em->state == 5)
-        || (em->stateGroup == 4 && em->state == 6)
-        || (em->stateGroup == 4 && em->state == 9)
-        || (em->stateGroup == 4 && em->state == 0xA)
-        || (em->stateGroup == 4 && em->state == 0xB)
-        || (em->stateGroup == 4 && em->state == 0xE)
-        || (em->stateGroup == 4 && em->state == 0xF)) {
+        || (em->stateGroup == EM_GROUP_IDLE && em->state == BLANG_IDLE_STATUS2_DOWNED)
+        || (em->stateGroup == EM_GROUP_IDLE && em->state == BLANG_IDLE_STATUS1_DOWNED)
+        || (em->stateGroup == EM_GROUP_REACT && em->state == BLANG_REACT_TRAPPED)
+        || (em->stateGroup == EM_GROUP_REACT && em->state == BLANG_REACT_TRAPPED_STRUGGLE)
+        || (em->stateGroup == EM_GROUP_REACT && em->state == BLANG_REACT_STATUS4_DOWNED)
+        || (em->stateGroup == EM_GROUP_REACT && em->state == BLANG_REACT_STATUS4_DOWNED_END)
+        || (em->stateGroup == EM_GROUP_REACT && em->state == BLANG_REACT_STATUS2_DOWNED_END)
+        || (em->stateGroup == EM_GROUP_REACT && em->state == BLANG_REACT_STUN_DOWNED)
+        || (em->stateGroup == EM_GROUP_REACT && em->state == BLANG_REACT_STUN_DOWNED_END)) {
         return 1;
     }
     return 0;
 }
 
+/* Returns 1 while Em.stateArmor is set (buried, or out of reach in a scene). */
 s32 EmBlangonga_InStateArmor(Em *em)
 {
     return em->stateArmor != 0;
 }
 
+/*
+ * The shadow's brightness (sub_main's Effect01_Draw): fades from 1 at 2000
+ * above the floor to 0 at 3500 during BLANG_LEAP_OUT_OF_AREA and _DROP_IN,
+ * 0 during BLANG_LEAP_CROSS_AREA, else 1.
+ */
 f32 EmBlangonga_ShadowFade(Em *em)
 {
-    f32 d;
-    f32 r;
+    f32 height;
+    f32 fade;
 
-    if (em->stateGroup == 2) {
+    if (em->stateGroup == EM_GROUP_FLY) {
         switch (em->state) {
-        case 8:
-        case 9:
-            d = em->posY - em->floorY;
-            if (d < 2000.0f) {
+        case BLANG_LEAP_OUT_OF_AREA:
+        case BLANG_LEAP_DROP_IN:
+            height = em->posY - em->floorY;
+            if (height < 2000.0f) {
                 return 1.0f;
             }
-            if (d < 3500.0f) {
-                r = 1.0f - ((d - 2000.0f) / 1500.0f);
+            if (height < 3500.0f) {
+                fade = 1.0f - ((height - 2000.0f) / 1500.0f);
             } else {
-                r = 0.0f;
+                fade = 0.0f;
             }
-            return r;
-        case 11:
+            return fade;
+        case BLANG_LEAP_CROSS_AREA:
             return 0.0f;
         }
     }
     return 1.0f;
 }
 
+/*
+ * Counts Em.rage's timer (EmBlangongaWork.rageTimer) up to its limit while
+ * enraged and down to 0 otherwise (the limit: 15 frames, Congalala 60
+ * enraged or 150); Rajang's rage begins with stage object 0x18.
+ */
 void EmBlangonga_UpdateRageTimer(Em *em)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
     s16 lim;
 
     switch (em->type) {
-    case 0x35:
+    case EM_KIND_RAJANG:
     default:
         lim = 0xF;
         break;
-    case 0x34:
+    case EM_KIND_CONGALALA:
         if (em->rage != 0) {
             lim = 0x3C;
         } else {
@@ -964,15 +1054,20 @@ void EmBlangonga_UpdateRageTimer(Em *em)
     }
 }
 
-s32 func_0080E400(Em *em)
+/*
+ * For gm_em.c's Congalala meshes: 1 while Congalala holds its food (frames
+ * 36-382 of BLANG_MOT_EAT, or in its story scene once it has picked it up),
+ * 2 in the scene before that, else 0.
+ */
+s32 EmBlangonga_EatPropMode(Em *em)
 {
-    u8 *w = &em->work;
+    EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
 
-    if (em->stateGroup == 6 && em->state == 2) {
-        return w[0x48] ? 1 : 2;
+    if (em->stateGroup == EM_GROUP_EVENT && em->state == BLANG_EVENT_CONGALALA_SCENE) {
+        return w->sceneEating ? 1 : 2;
     }
     switch (em->motionId[0]) {
-    case 0x421:
+    case EM_MOTION_ID(0, BLANG_MOT_EAT):
         if (EmMotion_InFrameRange(em, 0, 36.0f, 382.0f)) {
             return 1;
         }
@@ -981,29 +1076,36 @@ s32 func_0080E400(Em *em)
     return 0;
 }
 
+/*
+ * Steps the body colour (EmBlangongaWork.tint) toward the kind's target:
+ * the Blangonga kinds' rage colour, or Blangonga's own colour above 30% hp
+ * and a second one below; Congalala's pulsing rage colour or its calm one
+ * (at once when the rage timer is full). 12 per frame (Congalala calming:
+ * 6). Rajang and the Conga keep theirs.
+ */
 void EmBlangonga_UpdateTint(Em *em)
 {
-    u8 *w = &em->work;
+    EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
     u8 col[3];
     s16 i;
-    s16 d;
-    u8 *c;
-    u8 *p;
+    s16 diff;
+    u8 *target;
+    u8 *channel;
     u8 step;
-    f32 t;
-    u8 *c2;
-    u8 *p2;
-    s16 i2;
-    s16 d2;
+    f32 pulse;
+    u8 *target2;
+    u8 *channel2;
+    s16 j;
+    s16 diff2;
 
     switch (em->type) {
-    case 0x33:
-    case 0x3D:
+    case EM_KIND_BLANGONGA:
+    case EM_KIND_BLANGO:
         if (em->rage != 0) {
             col[0] = 0xFF;
             col[1] = 0x64;
             col[2] = 0x5A;
-        } else if (em->type == 0x33) {
+        } else if (em->type == EM_KIND_BLANGONGA) {
             if (em->hp > (s16) (0.3f * em->hpMax)) {
                 col[0] = 0x73;
                 col[1] = 0xEB;
@@ -1018,46 +1120,46 @@ void EmBlangonga_UpdateTint(Em *em)
             col[1] = 0x91;
             col[2] = 0xC3;
         }
-        for (i = 0, c = col; i < 3; i++, c++) {
-            p = w + i + 0x41;
-            d = *c - *p;
-            if (Math_Absf(d) <= 12.0f) {
-                *p = *c;
-            } else if (d < 0) {
-                *p -= 12;
+        for (i = 0, target = col; i < 3; i++, target++) {
+            channel = &w->tint[i];
+            diff = *target - *channel;
+            if (Math_Absf(diff) <= 12.0f) {
+                *channel = *target;
+            } else if (diff < 0) {
+                *channel -= 12;
             } else {
-                *p += 12;
+                *channel += 12;
             }
         }
         break;
-    case 0x34:
+    case EM_KIND_CONGALALA:
         if (em->rage != 0) {
-            t = 0.5f * (1.0f + Math_Sin((6.2831855f * (f32) (gScene.frame << 10)) / 65536.0f));
-            col[0] = 255.0f + -100.0f * t;
-            col[1] = 40.0f + 10.0f * t;
-            col[2] = 10.0f + 5.0f * t;
+            pulse = 0.5f * (1.0f + Math_Sin((6.2831855f * (f32) (gScene.frame << 10)) / 65536.0f));
+            col[0] = 255.0f + -100.0f * pulse;
+            col[1] = 40.0f + 10.0f * pulse;
+            col[2] = 10.0f + 5.0f * pulse;
         } else {
             col[0] = 0x99;
             col[1] = 0x80;
             col[2] = 0x73;
         }
-        for (i2 = 0, c2 = col; i2 < 3; i2++, c2++) {
+        for (j = 0, target2 = col; j < 3; j++, target2++) {
             if (EmBlangonga_RageTimerFull(em) == 1) {
-                w[i2 + 0x41] = *c2;
+                w->tint[j] = *target2;
             } else {
-                p2 = w + i2 + 0x41;
-                d2 = *c2 - *p2;
+                channel2 = &w->tint[j];
+                diff2 = *target2 - *channel2;
                 if (em->rage != 0) {
                     step = 12;
                 } else {
                     step = 6;
                 }
-                if (Math_Absf(d2) <= step) {
-                    *p2 = *c2;
-                } else if (d2 < 0) {
-                    *p2 -= step;
+                if (Math_Absf(diff2) <= step) {
+                    *channel2 = *target2;
+                } else if (diff2 < 0) {
+                    *channel2 -= step;
                 } else {
-                    *p2 += step;
+                    *channel2 += step;
                 }
             }
         }
@@ -1067,17 +1169,21 @@ void EmBlangonga_UpdateTint(Em *em)
     }
 }
 
+/*
+ * Returns 1 when the rage timer has reached its limit
+ * (EmBlangonga_UpdateRageTimer's); also read by sub_main for Rajang's mesh.
+ */
 s32 EmBlangonga_RageTimerFull(Em *em)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
     s16 k;
 
     switch (em->type) {
-    case 0x35:
+    case EM_KIND_RAJANG:
     default:
         k = 0xF;
         break;
-    case 0x34:
+    case EM_KIND_CONGALALA:
         if (em->rage != 0) {
             k = 0x3C;
         } else {
@@ -1088,6 +1194,10 @@ s32 EmBlangonga_RageTimerFull(Em *em)
     return w->rageTimer == k;
 }
 
+/*
+ * Creates the periodic effect 06 of a lying monster at scale 1.6: at bone 1
+ * for `kind` 1 (Congalala), at bone 0x12 for the others.
+ */
 void EmBlangonga_SpawnPeriodicEffect06(Em *em, s32 kind)
 {
     f32 pos[3];
@@ -1107,20 +1217,29 @@ void EmBlangonga_SpawnPeriodicEffect06(Em *em, s32 kind)
         pos[2] = 100.0f;
         break;
     }
-    Em_SpawnEffect06Periodic(em, bone, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, bone, pos, 1.6f);
 }
 
+/*
+ * Returns 1 when a monster under stateArmor in the player's area is off the
+ * snow (ScriptQuery 1 is 0): EmBlangonga_Update then ends its state.
+ */
 s32 EmBlangonga_ShouldEndState(Em *em)
 {
     if (!((s32)Player_InCurrentArea(em) & 0xFF)) {
         return 0;
     }
-    if ((em->stateArmor == 1) && !(EmBlangonga_ScriptQuery(em, 1) & 0xFF)) {
+    if ((em->stateArmor == 1) && !(EmBlangonga_ScriptQuery(em, BLANG_QUERY_ON_SNOW) & 0xFF)) {
         return 1;
     }
     return 0;
 }
 
+/*
+ * Starts the family's movement curves (EmBlangonga_VelYCurves and
+ * SpeedCurves) for `kind`: 0 the vertical speed from frame 0, 1 from frame
+ * 24, 2 both speeds; the velocity is cleared.
+ */
 void EmBlangonga_StartCurves(Em *em, u8 kind)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
@@ -1150,14 +1269,16 @@ void EmBlangonga_StartCurves(Em *em, u8 kind)
 
 extern EmCurveKey *EmBlangonga_VelYCurves[];
 
-/* The value of curve work[0x17] at the frame in the work area (a table of keys): sets
- * em->velY from the key pair around the frame, 2 at the table's end. */
+/*
+ * Sets Em.velY from the curve keys around the curve frame (curve
+ * curveKind); at the table's end applies gravity or stops, and returns 2.
+ */
 static u8 EmBlangonga_CurveVelY(Em *em, EmWork *work)
 {
     EmBlangongaWork *w = (EmBlangongaWork *) work;
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyFrame;
     s32 i;
     EmCurveKey *tbl;
     u8 ret;
@@ -1171,24 +1292,24 @@ static u8 EmBlangonga_CurveVelY(Em *em, EmWork *work)
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t > 0.0f) {
+            key = &tbl[i];
+            keyFrame = key->t;
+            if (frame > keyFrame && keyFrame > 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
+            } else if (keyFrame == 0.0f) {
                 ret = 2;
                 if (em->velY > -50.0f) {
                     em->velY -= 1.0f;
                 }
                 break;
-            } else if (t < 0.0f) {
+            } else if (keyFrame < 0.0f) {
                 w->curveFrame = 0;
                 ret = 2;
                 em->velY = 0.0f;
                 break;
             } else {
                 i = 0;
-                em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velY = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
             }
         }
     }
@@ -1197,14 +1318,16 @@ static u8 EmBlangonga_CurveVelY(Em *em, EmWork *work)
 
 extern EmCurveKey *EmBlangonga_SpeedCurves[];
 
-/* The value of curve work[0x17] at the frame in the work area: sets em->velZ from the key
- * pair around the frame, 4 at the table's end. */
+/*
+ * Sets Em.velZ from the speed curve keys around the curve frame; returns 4
+ * at the table's end.
+ */
 static u8 EmBlangonga_CurveSpeed(Em *em, EmWork *work)
 {
     EmBlangongaWork *w = (EmBlangongaWork *) work;
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyFrame;
     s32 i;
     EmCurveKey *tbl;
     u8 ret;
@@ -1218,24 +1341,27 @@ static u8 EmBlangonga_CurveSpeed(Em *em, EmWork *work)
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
+            key = &tbl[i];
+            keyFrame = key->t;
+            if (frame > keyFrame && keyFrame != 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
+            } else if (keyFrame == 0.0f) {
                 ret = 4;
                 break;
             } else {
                 i = 0;
-                em->velZ = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velZ = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
             }
         }
     }
     return ret;
 }
 
-/* Runs the family's two curves when their flags in the work area (+0x438) are set, advances
- * the curve frame by the motion's step, and turns toward the target while unk390 is 2. */
+/*
+ * Runs the started curves, advances the curve frame by the motion's step
+ * and, in the air, moves along rotY (Em_MoveRotatedAccel). Returns the
+ * ended curves' bits (2, 4).
+ */
 u8 EmBlangonga_UpdateCurves(Em *em)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
@@ -1248,7 +1374,7 @@ u8 EmBlangonga_UpdateCurves(Em *em)
         ret |= EmBlangonga_CurveSpeed(em, (EmWork *) w);
     }
     w->curveFrame += (s16) em->motion[0].step;
-    if (em->stance == 2) {
+    if (em->stance == EM_STANCE_AIR) {
         w->accelAngX = 0;
         w->accelAngY = em->rotY;
         w->accelAngZ = 0;
@@ -1257,182 +1383,195 @@ u8 EmBlangonga_UpdateCurves(Em *em)
     return ret;
 }
 
-extern EmBEntry *D_00921AA4;
+/* The family's entry points per area (an entry of gm_sub gm_em.c's D_00921A20). */
+extern EmBlangongaAreaEntry *EmBlangonga_AreaEntries;
+
+/*
+ * Moves the monster into Em.nextArea: from the area's entry list (gm_sub's
+ * per-area table) it picks the entry point and the point to face by the
+ * area it came from, or uses the start position; it starts 5000 above the
+ * floor.
+ */
 void EmBlangonga_EnterNewArea(Em *em)
 {
     f32 *pts;
-    s16 from;
-    s16 to;
+    s16 entryNo;
+    s16 faceNo;
 
     em->prevArea = em->area;
     em->area = em->nextArea;
-    pts = ((EmBEntry *)Em_FindAreaEntry(em, (struct EmIdEntry *)D_00921AA4, em->area))->pts;
+    pts = ((EmBlangongaAreaEntry *)Em_FindAreaEntry(em, (struct EmIdEntry *)EmBlangonga_AreaEntries, em->area))->pts;
     if (pts == NULL) {
         Vec_Copy(&em->posX, &gStartPos[em->area * 3]);
         em->rotY = 0;
     } else {
         switch (Area_DayId(em->area)) {
-        case 0x5E:
+        case AREA_SNOWY_MOUNTAINS_3:
         default:
-        case 0x5F:
-        case 0x60:
-        case 0x61:
-        case 0x63:
-        case 0x64:
-        case 0x77:
-        case 0xA2:
-        case 0xA5:
-        case 0xA6:
-        case 0xA8:
-            from = 0;
-            to = 1;
+        case AREA_SNOWY_MOUNTAINS_4:
+        case AREA_SNOWY_MOUNTAINS_5:
+        case AREA_SNOWY_MOUNTAINS_6:
+        case AREA_SNOWY_MOUNTAINS_7:
+        case AREA_SNOWY_MOUNTAINS_8:
+        case AREA_JUNGLE_9:
+        case AREA_VOLCANO_1:
+        case AREA_VOLCANO_4:
+        case AREA_VOLCANO_5:
+        case AREA_VOLCANO_7:
+            entryNo = 0;
+            faceNo = 1;
             break;
-        case 0x6F:
+        case AREA_JUNGLE_1:
             switch (Area_DayId(em->prevArea)) {
-            case 0x70:
-                from = 5;
-                to = 4;
+            case AREA_JUNGLE_2:
+                entryNo = 5;
+                faceNo = 4;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0x70:
+        case AREA_JUNGLE_2:
             switch (Area_DayId(em->prevArea)) {
-            case 0x71:
-                from = 4;
-                to = 3;
+            case AREA_JUNGLE_3:
+                entryNo = 4;
+                faceNo = 3;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0x71:
+        case AREA_JUNGLE_3:
             switch (Area_DayId(em->prevArea)) {
-            case 0x70:
-            case 0x74:
-                from = 4;
-                to = 3;
+            case AREA_JUNGLE_2:
+            case AREA_JUNGLE_6:
+                entryNo = 4;
+                faceNo = 3;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0x74:
+        case AREA_JUNGLE_6:
             switch (Area_DayId(em->prevArea)) {
-            case 0x6F:
-            case 0x77:
-                from = 8;
-                to = 7;
+            case AREA_JUNGLE_1:
+            case AREA_JUNGLE_9:
+                entryNo = 8;
+                faceNo = 7;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0x78:
-            from = 4;
-            to = 3;
+        case AREA_JUNGLE_10:
+            entryNo = 4;
+            faceNo = 3;
             break;
-        case 0x99:
-            from = 0;
-            to = 1;
+        case AREA_SWAMP_2:
+            entryNo = 0;
+            faceNo = 1;
             break;
-        case 0x9C:
+        case AREA_SWAMP_5:
             switch (Area_DayId(em->prevArea)) {
-            case 0x9D:
-                from = 5;
-                to = 4;
+            case AREA_SWAMP_6:
+                entryNo = 5;
+                faceNo = 4;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0x9D:
+        case AREA_SWAMP_6:
             switch (Area_DayId(em->prevArea)) {
-            case 0x9E:
-                from = 6;
-                to = 5;
+            case AREA_SWAMP_7:
+                entryNo = 6;
+                faceNo = 5;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0x9E:
+        case AREA_SWAMP_7:
             switch (Area_DayId(em->prevArea)) {
-            case 0xA0:
-                from = 2;
-                to = 1;
+            case AREA_SWAMP_9:
+                entryNo = 2;
+                faceNo = 1;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0x9F:
-            from = 0;
-            to = 1;
+        case AREA_SWAMP_8:
+            entryNo = 0;
+            faceNo = 1;
             break;
-        case 0xA0:
+        case AREA_SWAMP_9:
             switch (Area_DayId(em->prevArea)) {
-            case 0x99:
-                from = 4;
-                to = 3;
+            case AREA_SWAMP_2:
+                entryNo = 4;
+                faceNo = 3;
                 break;
-            case 0x9F:
-                from = 6;
-                to = 5;
+            case AREA_SWAMP_8:
+                entryNo = 6;
+                faceNo = 5;
                 break;
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
-        case 0xA7:
+        case AREA_VOLCANO_6:
             switch (Area_DayId(em->prevArea)) {
-            case 0xA6:
-                from = 4;
-                to = 3;
+            case AREA_VOLCANO_5:
+                entryNo = 4;
+                faceNo = 3;
                 break;
-            case 0xA8:
+            case AREA_VOLCANO_7:
             default:
-                from = 0;
-                to = 1;
+                entryNo = 0;
+                faceNo = 1;
                 break;
             }
             break;
         }
-        Vec_Copy(&em->posX, &pts[from * 3]);
-        em->rotY = Math_AngleXZ(&em->posX, &pts[to * 3]);
+        Vec_Copy(&em->posX, &pts[entryNo * 3]);
+        em->rotY = Math_AngleXZ(&em->posX, &pts[faceNo * 3]);
     }
     em->posY += 5000.0f;
     Vec_Copy(&em->prevPosX, &em->posX);
 }
 
-void EmBlangonga_State0_00(void)
+/* BLANG_IDLE_NONE: does nothing. */
+void EmBlangonga_IdleNone(void)
 {
 }
 
-void EmBlangonga_State0_01(Em *em)
+/*
+ * BLANG_IDLE: plays BLANG_MOT_IDLE once, then asks the script for the next
+ * state.
+ */
+void EmBlangonga_Idle(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1442,21 +1581,27 @@ void EmBlangonga_State0_01(Em *em)
     }
 }
 
-void EmBlangonga_State0_03(Em *em)
+/*
+ * BLANG_IDLE_REST: lies down and lies for 5400 frames, blind and without
+ * flinching, regaining hp (1 every 6 frames up to 40% of hpMax; the
+ * Congalala kinds every 8 frames and Rajang every 6, up to 50%) with the
+ * periodic effect; then BLANG_IDLE_REST_END.
+ */
+void EmBlangonga_Rest(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x22, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_LIE_DOWN, 0, 0);
         em->timer = 0x1518;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x1F, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_LIE, 0, 0);
         }
         break;
     case 2:
@@ -1471,24 +1616,28 @@ void EmBlangonga_State0_03(Em *em)
         if (--em->timer <= 0) {
             em->step++;
             Em_ClearLowHpNeed(em);
-            EmBlangonga_ChangeState(em, 0, 0x1A, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 0, 0x1A, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State0_04(Em *em)
+/*
+ * BLANG_IDLE_STATUS2_END, _STATUS1_END and _REST_END: gets up (blind
+ * meanwhile) and ends the state.
+ */
+void EmBlangonga_GetUp(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x20, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_GET_UP, 0, 0);
         em->blind = 2;
         break;
     case 1:
@@ -1502,20 +1651,25 @@ void EmBlangonga_State0_04(Em *em)
     }
 }
 
-void EmBlangonga_State0_05(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_IDLE_STATUS2_COLLAPSE (variant 0) and _STATUS1_COLLAPSE (1): falls
+ * over and lies, blind and without flinching, until the status timer runs
+ * out, then the status's _END state.
+ */
+void EmBlangonga_StatusCollapse(Em *em, EmWork *work, s32 variant)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x21, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_COLLAPSE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x1F, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_LIE, 0, 0);
         }
         break;
     case 2:
@@ -1523,31 +1677,32 @@ void EmBlangonga_State0_05(Em *em, EmWork *work, s32 variant)
         if (--em->timer <= 0) {
             em->step++;
             if (!(variant & 0xFF)) {
-                EmBlangonga_ChangeState(em, 0, 4, 4);
+                EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
-            EmBlangonga_ChangeState(em, 0, 0x26, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
             if (!(variant & 0xFF)) {
-                EmBlangonga_ChangeState(em, 0, 4, 4);
+                EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
-            EmBlangonga_ChangeState(em, 0, 0x26, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State0_06(Em *em)
+/* BLANG_IDLE_ALERT: plays BLANG_MOT_ALERT_IDLE once and ends the state. */
+void EmBlangonga_AlertIdle(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x33, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_ALERT_IDLE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1558,16 +1713,23 @@ void EmBlangonga_State0_06(Em *em)
     }
 }
 
-void EmBlangonga_State0_07(Em *em, EmWork *work, s32 variant)
+/*
+ * The roars: BLANG_IDLE_ROAR, _ROAR_SIGNAL, _ROAR_RAGE and
+ * _ROAR_PENDING_RAGE (variant 0), _ROAR_CALL (1: at frame 120 adds the
+ * sensed object of kind 3 other monsters react to, until the first part
+ * break), _ROAR_RAISE_RAGE (2: at frame 50 raises the rage by hp and cuts a
+ * flash's blindness short).
+ */
+void EmBlangonga_Roar(Em *em, EmWork *work, s32 variant)
 {
     s32 k;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x34, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
         break;
     case 1:
         k = variant & 0xFF;
@@ -1575,17 +1737,17 @@ void EmBlangonga_State0_07(Em *em, EmWork *work, s32 variant)
         case 0:
             break;
         case 1:
-            if (((s8) em->hit8Count <= 0) && (Player_PassedFrameScaled(em, 120.0f, 0U) != 0)) {
+            if (((s8) em->partBreakCount <= 0) && (EmMotion_PassedFrameScaled(em, 120.0f, 0U) != 0)) {
                 Vec_Set((f32 *) &work->moveAngBX, em->posX, em->posY, em->posZ);
                 work->moveAngCX = 0x453B8000;
                 ((EmBlangongaWork *)work)->sense.area = (s16) *(u8 *)&em->area;
                 ((EmBlangongaWork *)work)->sense.kind = 3;
                 ObjListA70_Add((EmObj *)&work->moveAngBX);
-                work->unk019 = 1;
+                ((EmBlangongaWork *)work)->senseListed = 1;
             }
             break;
         case 2:
-            if (Player_PassedFrameScaled(em, 50.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 50.0f, 0U) != 0) {
                 em->noReact = 1;
                 Em_CheckRageByHp(em, (s32) em->rageThreshold);
                 if (em->blindTimer > 0) {
@@ -1603,36 +1765,40 @@ void EmBlangonga_State0_07(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State0_08(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_IDLE_TURN_ABOUT (variant 0) and _B (1, the other way): turns half
+ * round over frames 102-202 and back over 402-452, then ends the state.
+ */
+void EmBlangonga_TurnAbout(Em *em, EmWork *work, s32 variant)
 {
-    u16 t = 0;
+    u16 turn = 0;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         switch (variant & 0xFF) {
         case 0:
         default:
-            Em_SetMotion(em, 0x35, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_TURN_ABOUT, 0, 0);
             break;
         case 1:
-            Em_SetMotion(em, 0x36, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_TURN_ABOUT_B, 0, 0);
             break;
         }
         break;
     case 1:
         if (EmMotion_InFrameRange(em, 0, 102.0f, 202.0f)) {
-            t = -327.68f * em->motionSpeed;
+            turn = -327.68f * em->motionSpeed;
         } else if (EmMotion_InFrameRange(em, 0, 402.0f, 452.0f)) {
-            t = 655.36f * em->motionSpeed;
+            turn = 655.36f * em->motionSpeed;
         }
         switch (variant & 0xFF) {
         case 1:
-            t = -t;
+            turn = -turn;
             break;
         }
-        em->rotY += t;
+        em->rotY += turn;
         if (em->motion[0].playing == 0) {
             em->step++;
             EmBlangonga_EndState(em, 0, 0);
@@ -1641,12 +1807,16 @@ void EmBlangonga_State0_08(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State0_0A(Em *em)
+/*
+ * BLANG_IDLE_STATUS4_SHAKE_OFF, _STUN_SHAKE_OFF and _HOLD2_SHAKE_OFF: plays
+ * BLANG_MOT_SHAKE_OFF once and ends the state.
+ */
+void EmBlangonga_ShakeOff(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x3E, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_SHAKE_OFF, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1657,21 +1827,25 @@ void EmBlangonga_State0_0A(Em *em)
     }
 }
 
-void EmBlangonga_State0_0B(Em *em)
+/*
+ * BLANG_IDLE_EAT_NEED2: eats without flinching for 300 frames, filling need
+ * 2, then regains 5% of hpMax and clears need 2's state.
+ */
+void EmBlangonga_EatNeed2(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x37, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_EAT_NEED2, 0, 0);
         em->timer = 0x12C;
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x38, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_EAT_NEED2_END, 0, 0);
             Em_AddHp(em, (s32) (0.05f * (f32) em->hpMax));
         }
         break;
@@ -1686,25 +1860,30 @@ void EmBlangonga_State0_0B(Em *em)
     Em_AddNeed2(em, 0xDE);
 }
 
-void EmBlangonga_State0_0C(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_IDLE_EAT_NEED1, _EAT_NEED1_B (variant 0) and _EAT_KIND_A..D (1):
+ * eats without flinching, turning in frames 4-26 and back in 370-418, then
+ * regains 5% (variant 1: 1%) of hpMax, refills need 1 and clears its state.
+ */
+void EmBlangonga_EatNeed1(Em *em, EmWork *work, s32 variant)
 {
-    u16 t = 0;
+    u16 turn = 0;
 
-    Em_SetHitReactMode(em, 3);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x39, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_EAT, 0, 0);
         em->timer = 0xF0;
         break;
     case 1:
         if (EmMotion_InFrameRange(em, 0, 4.0f, 26.0f)) {
-            t = 1638.4f * em->motionSpeed;
+            turn = 1638.4f * em->motionSpeed;
         } else if (EmMotion_InFrameRange(em, 0, 370.0f, 418.0f)) {
-            t = -712.34784f * em->motionSpeed;
+            turn = -712.34784f * em->motionSpeed;
         }
-        em->rotY += t;
+        em->rotY += turn;
         if (em->motion[0].playing == 0) {
             em->step++;
             if ((variant & 0xFF) == 0) {
@@ -1720,13 +1899,17 @@ void EmBlangonga_State0_0C(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State0_0D(Em *em)
+/*
+ * BLANG_IDLE_CLEAR_PAINT: plays its motion and clears the paint mark
+ * (Em.painted, paintTimer) when it ends.
+ */
+void EmBlangonga_ClearPaint(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x57, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_IDLE_ACTION_B_END, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1738,26 +1921,31 @@ void EmBlangonga_State0_0D(Em *em)
     }
 }
 
-void EmBlangonga_State0_0E(Em *em)
+/*
+ * BLANG_IDLE_LEAVE_TRAP: climbs out of the trap (the Blangonga kinds and
+ * Rajang with BLANG_MOT_EMERGE from frame 14, the Congalala kinds with
+ * their own motion), then ends the state.
+ */
+void EmBlangonga_LeaveTrap(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         switch (em->type) {
-        case 0x33:
+        case EM_KIND_BLANGONGA:
         default:
-        case 0x3D:
-            Em_SetMotion(em, 0x16, 6, 0xE);
+        case EM_KIND_BLANGO:
+            Em_SetMotion(em, BLANG_MOT_EMERGE, 6, 0xE);
             break;
-        case 0x34:
-        case 0x3E:
-            Em_SetMotion(em, 0x53, 0, 0);
+        case EM_KIND_CONGALALA:
+        case EM_KIND_CONGA:
+            Em_SetMotion(em, BLANG_MOT_CONGALALA_CLIMB_OUT, 0, 0);
             break;
         }
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->noReact = 1;
         break;
-    case 1:
+    case EM_KIND_RATHIAN:
         if (em->motion[0].playing == 0) {
             em->step++;
             EmBlangonga_EndState(em, 0, 0);
@@ -1766,24 +1954,29 @@ void EmBlangonga_State0_0E(Em *em)
     }
 }
 
-void EmBlangonga_State0_0F(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_IDLE_EAT_START (variant 0, BLANG_MOT_EAT to frame 300) and
+ * _EAT_START_B (1, Congalala's motion to frame 200): starts eating, then
+ * BLANG_IDLE_EAT while the motion plays on.
+ */
+void EmBlangonga_EatStart(Em *em, EmWork *work, s32 variant)
 {
     f32 frame;
     s32 k;
 
     k = variant & 0xFF;
     if (k == 0) {
-        Em_SetHitReactMode(em, 3U);
+        Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     }
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         if (k == 0) {
-            Em_SetMotion(em, 0x39, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_EAT, 0, 0);
             break;
         }
-        Em_SetMotion(em, 0x54, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_CONGALALA_EAT, 0, 0);
         break;
     case 1:
         if (k == 0) {
@@ -1791,26 +1984,27 @@ void EmBlangonga_State0_0F(Em *em, EmWork *work, s32 variant)
         } else {
             frame = 200.0f;
         }
-        if (Player_PassedFrameScaled(em, frame, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, frame, 0U) != 0) {
             em->step++;
-            EmBlangonga_ChangeState(em, 0, 0x22, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_EAT, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 0, 0x22, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_EAT, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State0_10(Em *em)
+/* BLANG_IDLE_ACTION_A: plays BLANG_MOT_BACK_STRIKE once and ends the state. */
+void EmBlangonga_IdleActionA(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x55, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_BACK_STRIKE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1821,22 +2015,26 @@ void EmBlangonga_State0_10(Em *em)
     }
 }
 
-void EmBlangonga_State0_11(Em *em)
+/*
+ * BLANG_IDLE_ACTION_B: plays BLANG_MOT_IDLE_ACTION_B (a hit and stage
+ * object 0x0F at frame 128), then its end, and ends the state.
+ */
+void EmBlangonga_IdleActionB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x56, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_IDLE_ACTION_B, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 128.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 128.0f, 0U) != 0) {
             StageObj_K0F_CreateOnEm(em, 5, 1, 0.4f * em->scaleX);
-            EffBlangonga27_Create(em, 0x22);
+            BlangongaAttack_Create(em, 0x22);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x57, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_IDLE_ACTION_B_END, 0, 0);
         }
         break;
     case 2:
@@ -1848,14 +2046,18 @@ void EmBlangonga_State0_11(Em *em)
     }
 }
 
-void EmBlangonga_State0_12(Em *em)
+/*
+ * BLANG_IDLE_ALERT_BRIEF: BLANG_MOT_ALERT_IDLE for 10 frames, then ends the
+ * state.
+ */
+void EmBlangonga_AlertBrief(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x33, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_ALERT_IDLE, 0, 0);
         em->timer = 0xA;
         break;
     case 1:
@@ -1867,24 +2069,31 @@ void EmBlangonga_State0_12(Em *em)
     }
 }
 
-void EmBlangonga_State0_13(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_IDLE_STATUS2_DOWNED (variant 0) and _STATUS1_DOWNED (1): lies in
+ * the hold (holdTimer kept at 5), blind and without flinching, with the
+ * periodic effect and a sound every 135 frames, until the status timer runs
+ * out; then BLANG_REACT_STATUS2_DOWNED_END or _STATUS1_DOWNED_END.
+ * Blangonga first comes up out of the pit (BLANG_MOT_EMERGE to frame 14).
+ */
+void EmBlangonga_StatusDowned(Em *em, EmWork *work, s32 variant)
 {
     u16 motion;
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->holdTimer = 5;
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        if ((em->type == 0x33) && (motion = em->motionId[0], (motion != 0x3FE)) && (motion != 0x432) && (motion != 0x433)) {
-            Em_SetMotion(em, 0x16, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        if ((em->type == EM_KIND_BLANGONGA) && (motion = em->motionId[0], (motion != EM_MOTION_ID(0, BLANG_MOT_EMERGE))) && (motion != EM_MOTION_ID(0, BLANG_MOT_STRUGGLE)) && (motion != EM_MOTION_ID(0, BLANG_MOT_DOWNED))) {
+            Em_SetMotion(em, BLANG_MOT_EMERGE, 0, 0);
             em->stateArmor = 1;
             em->noPushTimer = 5;
         } else {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
         }
         em->lookAtTarget = 0;
         Em_RestartScript(em);
@@ -1896,14 +2105,14 @@ void EmBlangonga_State0_13(Em *em, EmWork *work, s32 variant)
         }
         if (EmMotion_ReachedFrame(em, 0, 14.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
         }
         break;
     case 2:
         if (((s32) em->timer % 135) == 0) {
             Em_PlaySeAtBone(em, 0x52, 0x13);
         }
-        if (em->type == 0x34) {
+        if (em->type == EM_KIND_CONGALALA) {
             EmBlangonga_SpawnPeriodicEffect06(em, 1);
         } else {
             EmBlangonga_SpawnPeriodicEffect06(em, 0);
@@ -1911,41 +2120,45 @@ void EmBlangonga_State0_13(Em *em, EmWork *work, s32 variant)
         if (--em->timer <= 0) {
             em->step++;
             if (!(variant & 0xFF)) {
-                EmBlangonga_ChangeState(em, 4, 0xB, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS2_DOWNED_END, EM_SYNC_OWNER);
                 break;
             }
-            EmBlangonga_ChangeState(em, 4, 0x13, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS1_DOWNED_END, EM_SYNC_OWNER);
         }
         break;
     case 3:
-        if (em->type == 0x34) {
+        if (em->type == EM_KIND_CONGALALA) {
             EmBlangonga_SpawnPeriodicEffect06(em, 1);
         } else {
             EmBlangonga_SpawnPeriodicEffect06(em, 0);
         }
         if (em->remote == 0) {
             if (!(variant & 0xFF)) {
-                EmBlangonga_ChangeState(em, 4, 0xB, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS2_DOWNED_END, EM_SYNC_OWNER);
                 break;
             }
-            EmBlangonga_ChangeState(em, 4, 0x13, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS1_DOWNED_END, EM_SYNC_OWNER);
         }
         break;
     }
 }
 
-void EmBlangonga_State0_16(Em *em)
+/*
+ * BLANG_IDLE_ROAR_B: roars (Blangonga with BLANG_MOT_ROAR_B, the others
+ * BLANG_MOT_ROAR) and ends the state.
+ */
+void EmBlangonga_RoarB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        if (em->type == 0x33) {
-            Em_SetMotion(em, 0x3B, 0, 0);
+        if (em->type == EM_KIND_BLANGONGA) {
+            Em_SetMotion(em, BLANG_MOT_ROAR_B, 0, 0);
             break;
         }
-        Em_SetMotion(em, 0x34, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1955,14 +2168,18 @@ void EmBlangonga_State0_16(Em *em)
     }
 }
 
-void EmBlangonga_State0_17(Em *em)
+/*
+ * BLANG_IDLE_ACTION_C: plays BLANG_MOT_IDLE_ACTION_C once and ends the
+ * state.
+ */
+void EmBlangonga_IdleActionC(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x59, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_IDLE_ACTION_C, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1973,7 +2190,11 @@ void EmBlangonga_State0_17(Em *em)
     }
 }
 
-void EmBlangonga_State0_18(Em *em)
+/*
+ * BLANG_IDLE_BURIED: waits under the snow, unhittable, unpushable, sensing
+ * nothing and under stateArmor, until the script moves it on.
+ */
+void EmBlangonga_WaitBuried(Em *em)
 {
     em->senseDelay = 5;
     em->noPushTimer = 5;
@@ -1983,24 +2204,28 @@ void EmBlangonga_State0_18(Em *em)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotionRow(em, 4, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotionRow(em, BLANG_MOT_BURIED, 0, 0);
         break;
     case 1:
         break;
     }
 }
 
-void EmBlangonga_State0_20(Em *em)
+/*
+ * BLANG_IDLE_LEAVE_MINE_POINT: plays BLANG_MOT_IDLE_ACTION_B and at frame
+ * 184 leaves a timed mine point where it stands, then ends the state.
+ */
+void EmBlangonga_LeaveMinePoint(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x56, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_IDLE_ACTION_B, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 184.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 184.0f, 0U) != 0) {
             EmMine_CreateTimed0(em, &em->posX);
         }
         if (em->motion[0].playing == 0) {
@@ -2011,12 +2236,16 @@ void EmBlangonga_State0_20(Em *em)
     }
 }
 
-void EmBlangonga_State0_22(Em *em)
+/*
+ * BLANG_IDLE_EAT: selects sight row 0 and reaction set 0, waits for the
+ * eating motion to end, and ends the state.
+ */
+void EmBlangonga_Eat(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         Em_SelectSightRow(em, 0);
         Em_LoadReactionSet(em, 0);
         break;
@@ -2029,154 +2258,162 @@ void EmBlangonga_State0_22(Em *em)
     }
 }
 
-void EmBlangonga_RunGroup0(Em *em, EmWork *work)
+/*
+ * Runs the current EM_GROUP_IDLE state, passing the shared functions their
+ * variant.
+ */
+void EmBlangonga_RunIdleState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmBlangonga_State0_00();
+    case BLANG_IDLE_NONE:
+        EmBlangonga_IdleNone();
         break;
-    case 1:
-        EmBlangonga_State0_01(em);
+    case BLANG_IDLE:
+        EmBlangonga_Idle(em);
         break;
-    case 3:
-        EmBlangonga_State0_03(em);
+    case BLANG_IDLE_REST:
+        EmBlangonga_Rest(em);
         break;
-    case 4:
-        EmBlangonga_State0_04(em);
+    case BLANG_IDLE_STATUS2_END:
+        EmBlangonga_GetUp(em);
         break;
-    case 5:
-        EmBlangonga_State0_05(em, work, 0);
+    case BLANG_IDLE_STATUS2_COLLAPSE:
+        EmBlangonga_StatusCollapse(em, work, 0);
         break;
-    case 6:
-        EmBlangonga_State0_06(em);
+    case BLANG_IDLE_ALERT:
+        EmBlangonga_AlertIdle(em);
         break;
-    case 7:
-        EmBlangonga_State0_07(em, work, 0);
+    case BLANG_IDLE_ROAR:
+        EmBlangonga_Roar(em, work, 0);
         break;
-    case 8:
-        EmBlangonga_State0_08(em, work, 0);
+    case BLANG_IDLE_TURN_ABOUT:
+        EmBlangonga_TurnAbout(em, work, 0);
         break;
-    case 9:
-        EmBlangonga_State0_08(em, work, 1);
+    case BLANG_IDLE_TURN_ABOUT_B:
+        EmBlangonga_TurnAbout(em, work, 1);
         break;
-    case 0xA:
-        EmBlangonga_State0_0A(em);
+    case BLANG_IDLE_STATUS4_SHAKE_OFF:
+        EmBlangonga_ShakeOff(em);
         break;
-    case 0xB:
-        EmBlangonga_State0_0B(em);
+    case BLANG_IDLE_EAT_NEED2:
+        EmBlangonga_EatNeed2(em);
         break;
-    case 0xC:
-        EmBlangonga_State0_0C(em, work, 0);
+    case BLANG_IDLE_EAT_NEED1:
+        EmBlangonga_EatNeed1(em, work, 0);
         break;
-    case 0xD:
-        EmBlangonga_State0_0D(em);
+    case BLANG_IDLE_CLEAR_PAINT:
+        EmBlangonga_ClearPaint(em);
         break;
-    case 0xE:
-        EmBlangonga_State0_0E(em);
+    case BLANG_IDLE_LEAVE_TRAP:
+        EmBlangonga_LeaveTrap(em);
         break;
-    case 0xF:
-        EmBlangonga_State0_0F(em, work, 1);
+    case BLANG_IDLE_EAT_START_B:
+        EmBlangonga_EatStart(em, work, 1);
         break;
-    case 0x10:
-        EmBlangonga_State0_10(em);
+    case BLANG_IDLE_ACTION_A:
+        EmBlangonga_IdleActionA(em);
         break;
-    case 0x11:
-        EmBlangonga_State0_11(em);
+    case BLANG_IDLE_ACTION_B:
+        EmBlangonga_IdleActionB(em);
         break;
-    case 0x12:
-        EmBlangonga_State0_12(em);
+    case BLANG_IDLE_ALERT_BRIEF:
+        EmBlangonga_AlertBrief(em);
         break;
-    case 0x13:
-        EmBlangonga_State0_13(em, work, 0);
+    case BLANG_IDLE_STATUS2_DOWNED:
+        EmBlangonga_StatusDowned(em, work, 0);
         break;
-    case 0x14:
-        EmBlangonga_State0_07(em, work, 1);
+    case BLANG_IDLE_ROAR_CALL:
+        EmBlangonga_Roar(em, work, 1);
         break;
-    case 0x15:
-        EmBlangonga_State0_07(em, work, 2);
+    case BLANG_IDLE_ROAR_RAISE_RAGE:
+        EmBlangonga_Roar(em, work, 2);
         break;
-    case 0x16:
-        EmBlangonga_State0_16(em);
+    case BLANG_IDLE_ROAR_B:
+        EmBlangonga_RoarB(em);
         break;
-    case 0x17:
-        EmBlangonga_State0_17(em);
+    case BLANG_IDLE_ACTION_C:
+        EmBlangonga_IdleActionC(em);
         break;
-    case 0x18:
-        EmBlangonga_State0_18(em);
+    case BLANG_IDLE_BURIED:
+        EmBlangonga_WaitBuried(em);
         break;
-    case 0x19:
-        EmBlangonga_State0_0A(em);
+    case BLANG_IDLE_STUN_SHAKE_OFF:
+        EmBlangonga_ShakeOff(em);
         break;
-    case 0x1A:
-        EmBlangonga_State0_04(em);
+    case BLANG_IDLE_REST_END:
+        EmBlangonga_GetUp(em);
         break;
-    case 0x1B:
-        EmBlangonga_State0_0A(em);
+    case BLANG_IDLE_HOLD2_SHAKE_OFF:
+        EmBlangonga_ShakeOff(em);
         break;
-    case 0x1C:
-        EmBlangonga_State0_0C(em, work, 1);
+    case BLANG_IDLE_EAT_KIND_A:
+        EmBlangonga_EatNeed1(em, work, 1);
         break;
-    case 0x1D:
-        EmBlangonga_State0_0C(em, work, 1);
+    case BLANG_IDLE_EAT_KIND_B:
+        EmBlangonga_EatNeed1(em, work, 1);
         break;
-    case 0x1E:
-        EmBlangonga_State0_0C(em, work, 1);
+    case BLANG_IDLE_EAT_KIND_C:
+        EmBlangonga_EatNeed1(em, work, 1);
         break;
-    case 0x1F:
-        EmBlangonga_State0_0C(em, work, 1);
+    case BLANG_IDLE_EAT_KIND_D:
+        EmBlangonga_EatNeed1(em, work, 1);
         break;
-    case 0x20:
-        EmBlangonga_State0_20(em);
+    case BLANG_IDLE_LEAVE_MINE_POINT:
+        EmBlangonga_LeaveMinePoint(em);
         break;
-    case 0x21:
-        EmBlangonga_State0_0C(em, work, 0);
+    case BLANG_IDLE_EAT_NEED1_B:
+        EmBlangonga_EatNeed1(em, work, 0);
         break;
-    case 0x22:
-        EmBlangonga_State0_22(em);
+    case BLANG_IDLE_EAT:
+        EmBlangonga_Eat(em);
         break;
-    case 0x23:
-        EmBlangonga_State0_07(em, work, 0);
+    case BLANG_IDLE_ROAR_SIGNAL:
+        EmBlangonga_Roar(em, work, 0);
         break;
-    case 0x24:
-        EmBlangonga_State0_13(em, work, 1);
+    case BLANG_IDLE_STATUS1_DOWNED:
+        EmBlangonga_StatusDowned(em, work, 1);
         break;
-    case 0x25:
-        EmBlangonga_State0_05(em, work, 1);
+    case BLANG_IDLE_STATUS1_COLLAPSE:
+        EmBlangonga_StatusCollapse(em, work, 1);
         break;
-    case 0x26:
-        EmBlangonga_State0_04(em);
+    case BLANG_IDLE_STATUS1_END:
+        EmBlangonga_GetUp(em);
         break;
-    case 0x27:
-        EmBlangonga_State0_0F(em, work, 0);
+    case BLANG_IDLE_EAT_START:
+        EmBlangonga_EatStart(em, work, 0);
         break;
-    case 0x28:
-        EmBlangonga_State0_07(em, work, 0);
+    case BLANG_IDLE_ROAR_RAGE:
+        EmBlangonga_Roar(em, work, 0);
         break;
-    case 0x29:
-        EmBlangonga_State0_07(em, work, 0);
+    case BLANG_IDLE_ROAR_PENDING_RAGE:
+        EmBlangonga_Roar(em, work, 0);
         break;
     }
 }
 
-void EmBlangonga_State1_00(Em *em, s32 unused, s32 variant)
+/*
+ * BLANG_MOVE_TURN (variant 0: to the target) and _TURN_AWAY (1): turns with
+ * the slow turn parameters until the turn is done, then ends the state.
+ */
+void EmBlangonga_Turn(Em *em, s32 unused, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         switch (variant & 0xFF) {
         case 0:
         default:
-            Em_StartTurnToTarget(em, &D_008C9DD0);
+            Em_StartTurnToTarget(em, &EmBlangonga_TurnData.turn[0]);
             break;
         case 1:
-            Em_StartTurnAway(em, &D_008C9DD0);
+            Em_StartTurnAway(em, &EmBlangonga_TurnData.turn[0]);
             break;
         }
         break;
     case 1:
-        if (Em_TurnStep(em, &D_008C9DD0) == 1) {
+        if (Em_TurnStep(em, &EmBlangonga_TurnData.turn[0]) == 1) {
             em->step++;
             EmBlangonga_EndState(em, 0, 0);
         }
@@ -2184,23 +2421,27 @@ void EmBlangonga_State1_00(Em *em, s32 unused, s32 variant)
     }
 }
 
-void EmBlangonga_State1_01(Em *em, s32 unused, s32 variant)
+/*
+ * BLANG_MOVE_WALK (variant 0; the Blango walks faster) and _LIMP (1): steps
+ * to the goal (Em_StepToGoal), then ends the state.
+ */
+void EmBlangonga_WalkToGoal(Em *em, s32 unused, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         switch (variant & 0xFF) {
         case 0:
         default:
-            if (em->type == 0x3D) {
+            if (em->type == EM_KIND_BLANGO) {
                 em->speedBonus = 0x19;
             }
-            Em_SetMotion(em, 3, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_WALK, 0, 0);
             break;
         case 1:
-            Em_SetMotion(em, 9, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_LIMP, 0, 0);
             break;
         }
         break;
@@ -2213,33 +2454,39 @@ void EmBlangonga_State1_01(Em *em, s32 unused, s32 variant)
     }
 }
 
-void EmBlangonga_State1_03(Em *em, s32 unused, s32 variant)
+/*
+ * BLANG_MOVE_TURN_QUICK (variant 0), _TURN_TO_EXIT (1) and _TURN_AWAY_QUICK
+ * (2): turns with the quick turn parameters and ends the state;
+ * _TURN_TO_EXIT first takes the area's exit point as its goal and then
+ * leaps out (BLANG_LEAP_OUT_OF_AREA).
+ */
+void EmBlangonga_TurnQuick(Em *em, s32 unused, s32 variant)
 {
     s32 k;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         k = variant & 0xFF;
         em->lookAtTarget = 0;
         switch (k) {
         case 1:
             Em_AreaExitPoint(em, (f32 *) em->goal);
-            Em_StartTurnToTarget(em, &D_008C9DEC);
+            Em_StartTurnToTarget(em, &EmBlangonga_TurnData.turn[1]);
             break;
         case 2:
-            Em_StartTurnAway(em, &D_008C9DEC);
+            Em_StartTurnAway(em, &EmBlangonga_TurnData.turn[1]);
             break;
         default:
-            Em_StartTurnToTarget(em, &D_008C9DEC);
+            Em_StartTurnToTarget(em, &EmBlangonga_TurnData.turn[1]);
         }
         break;
     case 1:
-        if (Em_TurnStep(em, &D_008C9DEC) == 1) {
+        if (Em_TurnStep(em, &EmBlangonga_TurnData.turn[1]) == 1) {
             if ((variant & 0xFF) == 1) {
                 em->step++;
-                EmBlangonga_ChangeState(em, 2, 8, 4);
+                EmBlangonga_ChangeState(em, EM_GROUP_FLY, BLANG_LEAP_OUT_OF_AREA, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
             EmBlangonga_EndState(em, 0, 0);
@@ -2253,13 +2500,17 @@ void EmBlangonga_State1_03(Em *em, s32 unused, s32 variant)
     }
 }
 
-void EmBlangonga_State1_04(Em *em)
+/*
+ * BLANG_MOVE_ACTION_A: plays BLANG_MOT_MOVE_ACTION_A once and ends the
+ * state.
+ */
+void EmBlangonga_MoveActionA(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0xC, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_MOVE_ACTION_A, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2270,13 +2521,17 @@ void EmBlangonga_State1_04(Em *em)
     }
 }
 
-void EmBlangonga_State1_05(Em *em)
+/*
+ * BLANG_MOVE_ACTION_B: plays BLANG_MOT_MOVE_ACTION_B once and ends the
+ * state.
+ */
+void EmBlangonga_MoveActionB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0xE, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_MOVE_ACTION_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2287,13 +2542,17 @@ void EmBlangonga_State1_05(Em *em)
     }
 }
 
-void EmBlangonga_State1_06(Em *em)
+/*
+ * BLANG_MOVE_ACTION_C: plays BLANG_MOT_MOVE_ACTION_C once and ends the
+ * state.
+ */
+void EmBlangonga_MoveActionC(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x10, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_MOVE_ACTION_C, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2304,13 +2563,17 @@ void EmBlangonga_State1_06(Em *em)
     }
 }
 
-void EmBlangonga_State1_07(Em *em)
+/*
+ * BLANG_MOVE_ACTION_D and _ACTION_E: plays BLANG_MOT_MOVE_ACTION_D once and
+ * ends the state.
+ */
+void EmBlangonga_MoveActionD(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0xA, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_MOVE_ACTION_D, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2321,11 +2584,17 @@ void EmBlangonga_State1_07(Em *em)
     }
 }
 
-void EmBlangonga_State1_0B(Em *em, s32 unused, s32 variant)
+/*
+ * BLANG_MOVE_START_AND_APPROACH (variant 0), _LIMP_APPROACH (1), _APPROACH
+ * (2) and _START_AND_WALK (3): walks (0 and 3 start with
+ * BLANG_MOT_WALK_START); 0-2 turn to the goal and stop after 120 frames or
+ * within 700 (scaled) of it, 3 steps all the way to the goal.
+ */
+void EmBlangonga_Approach(Em *em, s32 unused, s32 variant)
 {
     switch (em->step) {
     case 0:
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         em->timer = 0x78;
         switch (variant & 0xFF) {
@@ -2333,22 +2602,22 @@ void EmBlangonga_State1_0B(Em *em, s32 unused, s32 variant)
         case 3:
         default:
             em->step++;
-            Em_SetMotion(em, 0x17, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_WALK_START, 0, 0);
             break;
         case 1:
             em->step = 2;
-            Em_SetMotion(em, 9, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_LIMP, 0, 0);
             break;
         case 2:
             em->step = 2;
-            Em_SetMotion(em, 3, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_WALK, 0, 0);
             break;
         }
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 3, 0, 0x44);
+            Em_SetMotion(em, BLANG_MOT_WALK, 0, 0x44);
         }
     case 2:
         switch (variant & 0xFF) {
@@ -2372,92 +2641,100 @@ void EmBlangonga_State1_0B(Em *em, s32 unused, s32 variant)
     }
 }
 
-void EmBlangonga_RunGroup1(Em *em, s32 work)
+/* Runs the current EM_GROUP_MOVE state. The work area comes as an s32. */
+void EmBlangonga_RunMoveState(Em *em, s32 work)
 {
     switch (em->state) {
-    case 0:
-        EmBlangonga_State1_00(em, work, 0);
+    case BLANG_MOVE_TURN:
+        EmBlangonga_Turn(em, work, 0);
         break;
-    case 1:
-        EmBlangonga_State1_01(em, work, 0);
+    case BLANG_MOVE_WALK:
+        EmBlangonga_WalkToGoal(em, work, 0);
         break;
-    case 2:
-        EmBlangonga_State1_01(em, work, 1);
+    case BLANG_MOVE_LIMP:
+        EmBlangonga_WalkToGoal(em, work, 1);
         break;
-    case 3:
-        EmBlangonga_State1_03(em, work, 0);
+    case BLANG_MOVE_TURN_QUICK:
+        EmBlangonga_TurnQuick(em, work, 0);
         break;
-    case 4:
-        EmBlangonga_State1_04(em);
+    case BLANG_MOVE_ACTION_A:
+        EmBlangonga_MoveActionA(em);
         break;
-    case 5:
-        EmBlangonga_State1_05(em);
+    case BLANG_MOVE_ACTION_B:
+        EmBlangonga_MoveActionB(em);
         break;
-    case 6:
-        EmBlangonga_State1_06(em);
+    case BLANG_MOVE_ACTION_C:
+        EmBlangonga_MoveActionC(em);
         break;
-    case 7:
-        EmBlangonga_State1_07(em);
+    case BLANG_MOVE_ACTION_D:
+        EmBlangonga_MoveActionD(em);
         break;
-    case 8:
-        EmBlangonga_State1_03(em, work, 1);
+    case BLANG_MOVE_TURN_TO_EXIT:
+        EmBlangonga_TurnQuick(em, work, 1);
         break;
-    case 9:
-        EmBlangonga_State1_00(em, work, 1);
+    case BLANG_MOVE_TURN_AWAY:
+        EmBlangonga_Turn(em, work, 1);
         break;
-    case 10:
-        EmBlangonga_State1_03(em, work, 2);
+    case BLANG_MOVE_TURN_AWAY_QUICK:
+        EmBlangonga_TurnQuick(em, work, 2);
         break;
-    case 11:
-        EmBlangonga_State1_0B(em, work, 0);
+    case BLANG_MOVE_START_AND_APPROACH:
+        EmBlangonga_Approach(em, work, 0);
         break;
-    case 12:
-        EmBlangonga_State1_0B(em, work, 1);
+    case BLANG_MOVE_LIMP_APPROACH:
+        EmBlangonga_Approach(em, work, 1);
         break;
-    case 13:
-        EmBlangonga_State1_0B(em, work, 2);
+    case BLANG_MOVE_APPROACH:
+        EmBlangonga_Approach(em, work, 2);
         break;
-    case 14:
-        EmBlangonga_State1_0B(em, work, 3);
+    case BLANG_MOVE_START_AND_WALK:
+        EmBlangonga_Approach(em, work, 3);
         break;
-    case 15:
-        EmBlangonga_State1_07(em);
+    case BLANG_MOVE_ACTION_E:
+        EmBlangonga_MoveActionD(em);
         
     default:
         break;
     }
 }
 
-void EmBlangonga_State2_00(Em *em, EmWork *work, u8 variant)
+/*
+ * BLANG_LEAP_JUMP (variant 0), _JUMP_HIGH (1) and _JUMP_TO_GOAL (2):
+ * crouches, takes off (frame 52, 56 or 48 by kind) on a curve, falls after
+ * the apex and lands with a camera shake. The variant gives the speeds (2:
+ * those that land on the goal in 60 frames); the Congalala kinds jump
+ * lower.
+ */
+void EmBlangonga_Jump(Em *em, EmWork *work, u8 variant)
 {
     f32 frame;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_JUMP, 0, 0);
         Player_ClearVelocity(em);
         break;
     case 1:
         switch (em->type) {
-        case 0x33:
+        case EM_KIND_BLANGONGA:
         default:
-        case 0x3D:
+        case EM_KIND_BLANGO:
             frame = 52.0f;
             break;
-        case 0x34:
-        case 0x3E:
+        case EM_KIND_CONGALALA:
+        case EM_KIND_CONGA:
             frame = 56.0f;
             break;
-        case 0x35:
+        case EM_KIND_RAJANG:
             frame = 48.0f;
             break;
         }
         if (EmMotion_ReachedFrame(em, 0, frame)) {
             em->noReact = 1;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             em->step++;
             if (variant == 2) {
                 em->accelY = -6.4f;
@@ -2465,10 +2742,10 @@ void EmBlangonga_State2_00(Em *em, EmWork *work, u8 variant)
                 em->velZ = Vec_DistanceXZ(em->goal, &em->posX) / 60.0f;
             } else {
                 switch (em->type) {
-                case 0x33:
+                case EM_KIND_BLANGONGA:
                 default:
-                case 0x3D:
-                case 0x35:
+                case EM_KIND_BLANGO:
+                case EM_KIND_RAJANG:
                     switch (variant) {
                     case 0:
                     default:
@@ -2499,7 +2776,7 @@ void EmBlangonga_State2_00(Em *em, EmWork *work, u8 variant)
     case 2:
         Em_MoveRotatedAccel(em, &work->accelAngX);
         if (em->velY <= 0.0f) {
-            Em_SetMotion(em, 0x12, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_JUMP_FALL, 0, 0);
             em->step++;
         }
         break;
@@ -2508,23 +2785,23 @@ void EmBlangonga_State2_00(Em *em, EmWork *work, u8 variant)
         if (em->posY <= em->floorY) {
             em->posY = em->floorY;
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             CamShake_ReqAIf(em, 5);
             switch (em->type) {
-            case 0x33:
+            case EM_KIND_BLANGONGA:
             default:
-            case 0x3D:
-            case 0x35:
-                Em_SetMotion(em, 0x14, 0, 0);
+            case EM_KIND_BLANGO:
+            case EM_KIND_RAJANG:
+                Em_SetMotion(em, BLANG_MOT_JUMP_LAND, 0, 0);
                 break;
-            case 0x34:
-            case 0x3E:
-                Em_SetMotion(em, 0x14, 8, 0);
+            case EM_KIND_CONGALALA:
+            case EM_KIND_CONGA:
+                Em_SetMotion(em, BLANG_MOT_JUMP_LAND, 8, 0);
                 break;
             }
         }
         break;
-    case 4:
+    case EM_KIND_MOSSWINE:
         if (em->motion[0].playing == 0) {
             em->noReact = 0;
             em->step++;
@@ -2534,7 +2811,12 @@ void EmBlangonga_State2_00(Em *em, EmWork *work, u8 variant)
     }
 }
 
-void EmBlangonga_State2_01(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_LEAP_HOP_SHORT (variant 0), _HOP (1) and _HOP_LONG (2), the
+ * Congalala kinds: takes off at frame 26 with a hit at frame 50, lands with
+ * a camera shake. The variant gives the forward speed.
+ */
+void EmBlangonga_Hop(Em *em, EmWork *work, s32 variant)
 {
     if (EmBlangonga_IsCongalala(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -2543,15 +2825,15 @@ void EmBlangonga_State2_01(Em *em, EmWork *work, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x30, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_CONGALALA_HOP, 0, 0);
         Player_ClearVelocity(em);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 26.0f)) {
             em->step++;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             switch (variant & 0xFF) {
             case 0:
                 em->velZ = 4.0f;
@@ -2578,20 +2860,20 @@ void EmBlangonga_State2_01(Em *em, EmWork *work, s32 variant)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 50.0f, 0)) {
-            EffBlangonga27_Create(em, 0x21);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0)) {
+            BlangongaAttack_Create(em, 0x21);
         }
         Em_MoveRotatedAccel(em, &work->accelAngX);
         if (em->posY <= em->floorY) {
             em->posY = em->floorY;
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             if (EmBlangonga_IsSmallKind(em) == 1) {
                 CamShake_ReqAIf(em, 2);
             } else {
                 CamShake_ReqAIf(em, 5);
             }
-            Em_SetMotion(em, 0x31, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_HOP_LAND, 0, 0);
         }
         break;
     case 3:
@@ -2603,7 +2885,11 @@ void EmBlangonga_State2_01(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State2_02(Em *em)
+/*
+ * BLANG_LEAP_DIG_IN (the Blangonga kinds): digs into the snow (the shadow
+ * goes from frame 80), then BLANG_LEAP_BURIED.
+ */
+void EmBlangonga_DigIn(Em *em)
 {
     if (EmBlangonga_IsBlangonga(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -2613,11 +2899,11 @@ void EmBlangonga_State2_02(Em *em)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        if (em->motionId[0] != 0x3FD) {
-            Em_SetMotion(em, 0x15, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_DIG_IN)) {
+            Em_SetMotion(em, BLANG_MOT_DIG_IN, 0, 0);
         }
         em->noReact = 1;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 80.0f) != 0) {
@@ -2628,14 +2914,19 @@ void EmBlangonga_State2_02(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->noReact = 0;
-            EmBlangonga_EndState2(em);
+            EmBlangonga_EndBuriedState(em);
         }
         break;
     }
     em->guardTimer = 2;
 }
 
-void EmBlangonga_State2_03(Em *em)
+/*
+ * BLANG_LEAP_BURIED: stays under the snow (stateArmor); when its motion
+ * ends the owner hands the choice back to the script
+ * (EmBlangonga_EndBuriedState).
+ */
+void EmBlangonga_Buried(Em *em)
 {
     if (EmBlangonga_IsBlangonga(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -2645,21 +2936,26 @@ void EmBlangonga_State2_03(Em *em)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 4, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_BURIED, 0, 0);
             break;
         case 1:
             if ((em->remote == 0) && (em->motion[0].playing == 0)) {
                 em->step++;
-                EmBlangonga_EndState2(em);
+                EmBlangonga_EndBuriedState(em);
             }
             break;
         }
     }
 }
 
-void EmBlangonga_State2_04(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_LEAP_DIG_OUT (variant 0) and _DIG_OUT_RAGE (1: the rage raised by
+ * hp on entry): comes up out of the snow with two hits (frames 2 and 52),
+ * the shadow back from frame 40, then ends the state.
+ */
+void EmBlangonga_DigOut(Em *em, EmWork *work, s32 variant)
 {
     if (EmBlangonga_IsBlangonga(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -2669,9 +2965,9 @@ void EmBlangonga_State2_04(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        if (em->motionId[0] != 0x3FE) {
-            Em_SetMotion(em, 0x16, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_EMERGE)) {
+            Em_SetMotion(em, BLANG_MOT_EMERGE, 0, 0);
             em->stateArmor = 1;
             em->noPushTimer = 2;
         } else if (em->motion[0].blend != 0) {
@@ -2690,11 +2986,11 @@ void EmBlangonga_State2_04(Em *em, EmWork *work, s32 variant)
             em->stateArmor = 1;
             em->noPushTimer = 2;
         } else {
-            if (Player_PassedFrameScaled(em, 2.0f, 0)) {
-                EffBlangonga27_Create(em, 6);
+            if (EmMotion_PassedFrameScaled(em, 2.0f, 0)) {
+                BlangongaAttack_Create(em, 6);
             }
-            if (Player_PassedFrameScaled(em, 52.0f, 0)) {
-                EffBlangonga27_Create(em, 7);
+            if (EmMotion_PassedFrameScaled(em, 52.0f, 0)) {
+                BlangongaAttack_Create(em, 7);
             }
             if (!EmMotion_ReachedFrame(em, 0, 40.0f)) {
                 em->hideShadowHold = 2;
@@ -2711,10 +3007,14 @@ void EmBlangonga_State2_04(Em *em, EmWork *work, s32 variant)
     em->guardTimer = 2;
 }
 
-void EmBlangonga_State2_05(Em *em)
+/*
+ * BLANG_LEAP_BURIED_TURN: turns toward the goal under the snow, checking
+ * every 40 frames whether it faces it.
+ */
+void EmBlangonga_BuriedTurn(Em *em)
 {
     u32 spd;
-    u32 d;
+    u32 angleDiff;
 
     if (EmBlangonga_IsBlangonga(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -2725,26 +3025,26 @@ void EmBlangonga_State2_05(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
-        Em_SetMotion(em, 4, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_BURIED, 0, 0);
         em->timer = 0x28;
         break;
     case 1:
         spd = 409.6f * em->motionSpeed;
-        d = (em->aimAngle - *(u16 *) &em->rotY) & 0xFFFF;
+        angleDiff = (em->aimAngle - *(u16 *) &em->rotY) & 0xFFFF;
         if (--em->timer <= 0) {
-            if (((d + spd) & 0xFFFF) < spd * 2) {
+            if (((angleDiff + spd) & 0xFFFF) < spd * 2) {
                 em->step++;
-                EmBlangonga_EndState2(em);
+                EmBlangonga_EndBuriedState(em);
             } else {
                 em->timer = 0x28;
             }
         } else {
-            if (((d + spd) & 0xFFFF) < spd * 2) {
+            if (((angleDiff + spd) & 0xFFFF) < spd * 2) {
                 em->rotY = em->aimAngle;
-            } else if (d < 0x8000) {
+            } else if (angleDiff < 0x8000) {
                 em->rotY = (em->rotY + spd) & 0xFFFF;
             } else {
                 em->rotY = (em->rotY - spd) & 0xFFFF;
@@ -2754,11 +3054,15 @@ void EmBlangonga_State2_05(Em *em)
     }
 }
 
-void EmBlangonga_State2_06(Em *em, EmWork *work)
+/*
+ * BLANG_LEAP_BURIED_MOVE: moves under the snow to the goal, rumbling the
+ * local player's pad when within 1000 of it.
+ */
+void EmBlangonga_BuriedMove(Em *em, EmWork *work)
 {
-    Player *p;
+    Player *player;
 
-    p = &gPlayers[gScene.localPlayer];
+    player = &gPlayers[gScene.localPlayer];
     if (EmBlangonga_IsBlangonga(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
     } else {
@@ -2767,9 +3071,9 @@ void EmBlangonga_State2_06(Em *em, EmWork *work)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 4, 0, 0x64);
+            Em_SetMotion(em, BLANG_MOT_BURIED, 0, 0x64);
             Player_ClearVelocity(em);
             em->velZ = 70.0f;
             work->accelAngX = em->rotX;
@@ -2779,19 +3083,23 @@ void EmBlangonga_State2_06(Em *em, EmWork *work)
         case 1:
             Em_MoveRotatedAccel(em, &work->accelAngX);
             Em_StepToGoal(em, 0x10, 2);
-            if (!(gScene.frame & 7) && (Obj_SameArea(em, p) != 0) && (Obj_InCurrentArea(p) != 0) && (Vec_Distance((f32 *) &em->posX, (f32 *) p->pos) < 1000.0f)) {
+            if (!(gScene.frame & 7) && (Obj_SameArea(em, player) != 0) && (Obj_InCurrentArea(player) != 0) && (Vec_Distance((f32 *) &em->posX, (f32 *) player->pos) < 1000.0f)) {
                 Vib_Start(0, 2);
             }
             if (em->goalDist <= 0.0f) {
                 em->step++;
-                EmBlangonga_EndState2(em);
+                EmBlangonga_EndBuriedState(em);
             }
             break;
         }
     }
 }
 
-void EmBlangonga_State2_07(Em *em)
+/*
+ * BLANG_LEAP_BURIED_WAIT: waits 90 frames under the snow, then
+ * BLANG_LEAP_BURIED.
+ */
+void EmBlangonga_BuriedWait(Em *em)
 {
     em->stateArmor = 1;
     em->noPushTimer = 2;
@@ -2801,52 +3109,57 @@ void EmBlangonga_State2_07(Em *em)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 4, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_BURIED, 0, 0);
             em->timer = 0x5A;
             break;
         case 1:
             if (--em->timer <= 0) {
                 em->step++;
-                EmBlangonga_EndState2(em);
+                EmBlangonga_EndBuriedState(em);
             }
             break;
         }
     }
 }
 
-void EmBlangonga_State2_08(Em *em, EmWork *work)
+/*
+ * BLANG_LEAP_OUT_OF_AREA: takes off and rises for 150 frames, then drops
+ * into the destination area (BLANG_LEAP_DROP_IN) or crosses to the next one
+ * (BLANG_LEAP_CROSS_AREA). A remote copy waits for the owner's change.
+ */
+void EmBlangonga_LeapOutOfArea(Em *em, EmWork *work)
 {
-    f32 f;
+    f32 takeOffFrame;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_JUMP, 0, 0);
         Player_ClearVelocity(em);
         break;
     case 1:
         switch (em->type) {
-        case 0x33:
+        case EM_KIND_BLANGONGA:
         default:
-        case 0x3D:
-            f = 52.0f;
+        case EM_KIND_BLANGO:
+            takeOffFrame = 52.0f;
             break;
-        case 0x34:
-        case 0x3E:
-            f = 56.0f;
+        case EM_KIND_CONGALALA:
+        case EM_KIND_CONGA:
+            takeOffFrame = 56.0f;
             break;
-        case 0x35:
-            f = 48.0f;
+        case EM_KIND_RAJANG:
+            takeOffFrame = 48.0f;
             break;
         }
-        if (EmMotion_ReachedFrame(em, 0, f)) {
+        if (EmMotion_ReachedFrame(em, 0, takeOffFrame)) {
             em->step++;
             em->noReact = 1;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             em->velY = 230.0f;
             em->velZ = 70.0f;
             em->accelY = -1.55f;
@@ -2856,13 +3169,13 @@ void EmBlangonga_State2_08(Em *em, EmWork *work)
             em->timer = 150;
         }
         break;
-    case 2:
+    case EM_KIND_FATALIS:
         Em_MoveRotatedAccel(em, &work->accelAngX);
         if (--em->timer <= 0) {
             em->step++;
-            if (em->nextArea == *(u16 *) &em->destArea || *(u16 *) &em->destArea == 0xFFFF) {
+            if (em->nextArea == *(u16 *) &em->destArea || *(u16 *) &em->destArea == AREA_NONE) {
                 EmBlangonga_EnterNewArea(em);
-                EmBlangonga_ChangeState(em, 2, 9, 1);
+                EmBlangonga_ChangeState(em, EM_GROUP_FLY, BLANG_LEAP_DROP_IN, EM_SYNC_SEND);
                 break;
             }
             Em_EnterNextArea(em);
@@ -2871,7 +3184,7 @@ void EmBlangonga_State2_08(Em *em, EmWork *work)
                 em->goalKind = 3;
                 Em_ComputeGoal(em, em->goal);
             }
-            EmBlangonga_ChangeState(em, 2, 0xB, 1);
+            EmBlangonga_ChangeState(em, EM_GROUP_FLY, BLANG_LEAP_CROSS_AREA, EM_SYNC_SEND);
         }
         break;
     case 3:
@@ -2883,17 +3196,21 @@ void EmBlangonga_State2_08(Em *em, EmWork *work)
     em->guardTimer = 2;
 }
 
-void EmBlangonga_State2_09(Em *em, EmWork *work)
+/*
+ * BLANG_LEAP_DROP_IN: falls into the area from above and lands with a
+ * camera shake; Blangonga and Rajang then restart their script.
+ */
+void EmBlangonga_DropIn(Em *em, EmWork *work)
 {
-    u16 t;
+    u16 leftArea;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         em->noReact = 1;
-        Em_SetMotionRow(em, 0x12, 0, 0);
+        Em_SetMotionRow(em, BLANG_MOT_JUMP_FALL, 0, 0);
         Player_ClearVelocity(em);
         em->velY = -30.0f;
         em->velZ = 0.0f;
@@ -2901,10 +3218,10 @@ void EmBlangonga_State2_09(Em *em, EmWork *work)
         work->accelAngX = em->rotX;
         work->accelAngY = em->rotY;
         work->accelAngZ = 0;
-        if (em->type == 0x33 || em->type == 0x35) {
-            t = em->prevArea;
+        if (em->type == EM_KIND_BLANGONGA || em->type == EM_KIND_RAJANG) {
+            leftArea = em->prevArea;
             Em_RestartScript(em);
-            em->prevArea = t;
+            em->prevArea = leftArea;
         }
         break;
     case 1:
@@ -2912,23 +3229,23 @@ void EmBlangonga_State2_09(Em *em, EmWork *work)
         if (em->posY <= em->floorY) {
             em->posY = em->floorY;
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             CamShake_ReqAIf(em, 5);
             switch (em->type) {
-            case 0x33:
+            case EM_KIND_BLANGONGA:
             default:
-            case 0x3D:
-            case 0x35:
-                Em_SetMotion(em, 0x14, 0, 0);
+            case EM_KIND_BLANGO:
+            case EM_KIND_RAJANG:
+                Em_SetMotion(em, BLANG_MOT_JUMP_LAND, 0, 0);
                 break;
-            case 0x34:
-            case 0x3E:
-                Em_SetMotion(em, 0x14, 8, 0);
+            case EM_KIND_CONGALALA:
+            case EM_KIND_CONGA:
+                Em_SetMotion(em, BLANG_MOT_JUMP_LAND, 8, 0);
                 break;
             }
         }
         break;
-    case 2:
+    case EM_KIND_FATALIS:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->noReact = 0;
@@ -2938,7 +3255,12 @@ void EmBlangonga_State2_09(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State2_0B(Em *em, EmWork *work)
+/*
+ * BLANG_LEAP_CROSS_AREA: unseen and unhittable, runs to the area's exit
+ * until it leaves (or 300 frames), then changes area as
+ * BLANG_LEAP_OUT_OF_AREA does.
+ */
+void EmBlangonga_CrossArea(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noPushTimer = 5;
@@ -2946,10 +3268,10 @@ void EmBlangonga_State2_0B(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         em->noReact = 1;
-        Em_SetMotion(em, 0x11, 0, 0x38);
+        Em_SetMotion(em, BLANG_MOT_JUMP, 0, 0x38);
         Player_ClearVelocity(em);
         em->velZ = 70.0f;
         Em_AreaExitPoint(em, (f32 *) em->goal);
@@ -2969,9 +3291,9 @@ void EmBlangonga_State2_0B(Em *em, EmWork *work)
     case 2:
         em->step++;
         em->timer = 600;
-        if (em->nextArea == (u16) em->destArea || (u16) em->destArea == 0xFFFF) {
+        if (em->nextArea == (u16) em->destArea || (u16) em->destArea == AREA_NONE) {
             EmBlangonga_EnterNewArea(em);
-            EmBlangonga_ChangeState(em, 2, 9, 1);
+            EmBlangonga_ChangeState(em, EM_GROUP_FLY, BLANG_LEAP_DROP_IN, EM_SYNC_SEND);
             break;
         }
         Em_EnterNextArea(em);
@@ -2980,7 +3302,7 @@ void EmBlangonga_State2_0B(Em *em, EmWork *work)
             em->goalKind = 3;
             Em_ComputeGoal(em, em->goal);
         }
-        EmBlangonga_ChangeState(em, 2, 0xB, 1);
+        EmBlangonga_ChangeState(em, EM_GROUP_FLY, BLANG_LEAP_CROSS_AREA, EM_SYNC_SEND);
         break;
     case 3:
         if (em->remote == 0) {
@@ -2990,7 +3312,8 @@ void EmBlangonga_State2_0B(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State2_0D(Em *em)
+/* BLANG_LEAP_BURIED_WAIT_RANDOM: waits 1-16 random frames under the snow. */
+void EmBlangonga_BuriedWaitRandom(Em *em)
 {
     em->stateArmor = 1;
     em->noPushTimer = 2;
@@ -3001,81 +3324,89 @@ void EmBlangonga_State2_0D(Em *em)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 4, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_BURIED, 0, 0);
             em->timer = (Rand_Next(1) & 0xFFFF & 0xF) + 1;
             break;
         case 1:
             if (--em->timer <= 0) {
                 em->step++;
-                EmBlangonga_EndState2(em);
+                EmBlangonga_EndBuriedState(em);
             }
             break;
         }
     }
 }
 
-void EmBlangonga_RunGroup2(Em *em, EmWork *work)
+/*
+ * Runs the current group-2 state (the family's EM_GROUP_FLY: jumps, leaps
+ * and burrowing).
+ */
+void EmBlangonga_RunLeapState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmBlangonga_State2_00(em, work, 0);
+    case BLANG_LEAP_JUMP:
+        EmBlangonga_Jump(em, work, 0);
         break;
-    case 1:
-        EmBlangonga_State2_01(em, work, 0);
+    case BLANG_LEAP_HOP_SHORT:
+        EmBlangonga_Hop(em, work, 0);
         break;
-    case 2:
-        EmBlangonga_State2_02(em);
+    case BLANG_LEAP_DIG_IN:
+        EmBlangonga_DigIn(em);
         break;
-    case 3:
-        EmBlangonga_State2_03(em);
+    case BLANG_LEAP_BURIED:
+        EmBlangonga_Buried(em);
         break;
-    case 4:
-        EmBlangonga_State2_04(em, work, 0);
+    case BLANG_LEAP_DIG_OUT:
+        EmBlangonga_DigOut(em, work, 0);
         break;
-    case 5:
-        EmBlangonga_State2_05(em);
+    case BLANG_LEAP_BURIED_TURN:
+        EmBlangonga_BuriedTurn(em);
         break;
-    case 6:
-        EmBlangonga_State2_06(em, work);
+    case BLANG_LEAP_BURIED_MOVE:
+        EmBlangonga_BuriedMove(em, work);
         break;
-    case 7:
-        EmBlangonga_State2_07(em);
+    case BLANG_LEAP_BURIED_WAIT:
+        EmBlangonga_BuriedWait(em);
         break;
-    case 8:
-        EmBlangonga_State2_08(em, work);
+    case BLANG_LEAP_OUT_OF_AREA:
+        EmBlangonga_LeapOutOfArea(em, work);
         break;
-    case 9:
-        EmBlangonga_State2_09(em, work);
+    case BLANG_LEAP_DROP_IN:
+        EmBlangonga_DropIn(em, work);
         break;
-    case 10:
-        EmBlangonga_State2_04(em, work, 1);
+    case BLANG_LEAP_DIG_OUT_RAGE:
+        EmBlangonga_DigOut(em, work, 1);
         break;
-    case 11:
-        EmBlangonga_State2_0B(em, work);
+    case BLANG_LEAP_CROSS_AREA:
+        EmBlangonga_CrossArea(em, work);
         break;
-    case 12:
-        EmBlangonga_State2_00(em, work, 1);
+    case BLANG_LEAP_JUMP_HIGH:
+        EmBlangonga_Jump(em, work, 1);
         break;
-    case 13:
-        EmBlangonga_State2_0D(em);
+    case BLANG_LEAP_BURIED_WAIT_RANDOM:
+        EmBlangonga_BuriedWaitRandom(em);
         break;
-    case 14:
-        EmBlangonga_State2_01(em, work, 1);
+    case BLANG_LEAP_HOP:
+        EmBlangonga_Hop(em, work, 1);
         break;
-    case 15:
-        EmBlangonga_State2_01(em, work, 2);
+    case BLANG_LEAP_HOP_LONG:
+        EmBlangonga_Hop(em, work, 2);
         break;
-    case 16:
-        EmBlangonga_State2_00(em, work, 2);
+    case BLANG_LEAP_JUMP_TO_GOAL:
+        EmBlangonga_Jump(em, work, 2);
         
     default:
         break;
     }
 }
 
-void EmBlangonga_State3_00(Em *em)
+/*
+ * BLANG_ATK_TRIPLE_HIT (the Blangonga kinds): turns to the goal for 40
+ * frames and hits three times (frames 36, 64 and 86; the first behind it).
+ */
+void EmBlangonga_TripleHit(Em *em)
 {
     if (EmBlangonga_IsBlangonga(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3083,25 +3414,25 @@ void EmBlangonga_State3_00(Em *em)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x28, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_TRIPLE_HIT, 0, 0);
             break;
         case 1:
             if (EmMotion_ReachedFrame(em, 0, 40.0f) == 0) {
                 Em_TurnToGoal(em, 0x60, 0);
             }
-            if (Player_PassedFrameScaled(em, 36.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 0x12);
+            if (EmMotion_PassedFrameScaled(em, 36.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 0x12);
             }
-            if (Player_PassedFrameScaled(em, 64.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 0x18);
+            if (EmMotion_PassedFrameScaled(em, 64.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 0x18);
             }
-            if (Player_PassedFrameScaled(em, 86.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 1);
+            if (EmMotion_PassedFrameScaled(em, 86.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 1);
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
-                Em_SetMotion(em, 0x29, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_TRIPLE_HIT_END, 0, 0);
             }
             break;
         case 2:
@@ -3114,13 +3445,19 @@ void EmBlangonga_State3_00(Em *em)
     }
 }
 
-void EmBlangonga_State3_01(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_SLAM (variant 0) and _SLAM_HEAVY (1): winds up for 20 or 40
+ * frames and slams (a hit at frame 20); at frame 30 the large kinds add a
+ * heavier hit and a camera shake, and the heavy slam also brings down the
+ * area's falling objects (Blangonga and Rajang).
+ */
+void EmBlangonga_Slam(Em *em, EmWork *work, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x2A, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_SLAM_WINDUP, 0, 0);
         switch (variant & 0xFF) {
         case 0:
         default:
@@ -3134,25 +3471,25 @@ void EmBlangonga_State3_01(Em *em, EmWork *work, s32 variant)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x58, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_SLAM, 0, 0);
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 20.0f, 0)) {
-            EffBlangonga27_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0)) {
+            BlangongaAttack_Create(em, 2);
         }
-        if (EmBlangonga_IsSmallKind(em) == 0 && Player_PassedFrameScaled(em, 30.0f, 0)) {
+        if (EmBlangonga_IsSmallKind(em) == 0 && EmMotion_PassedFrameScaled(em, 30.0f, 0)) {
             switch (variant & 0xFF) {
             case 1:
-                EffBlangonga27_Create(em, 8);
+                BlangongaAttack_Create(em, 8);
                 CamShake_ReqAIf(em, 5);
                 if (EmBlangonga_IsBlangonga(em) == 1 || EmBlangonga_IsRajang(em) == 1) {
-                    EmBlangonga_State3Pick(em);
+                    EmBlangonga_DropFallingObjects(em);
                 }
                 break;
             default:
                 CamShake_ReqAIf(em, 3);
-                EffBlangonga27_Create(em, 0x19);
+                BlangongaAttack_Create(em, 0x19);
                 break;
             }
         }
@@ -3164,19 +3501,23 @@ void EmBlangonga_State3_01(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_02(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_STRIKE_A (variant 0) and _B (1), any kind: one blow with a hit
+ * at frame 14 (the small kinds' weaker hit).
+ */
+void EmBlangonga_Strike(Em *em, EmWork *work, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         switch (variant & 0xFF) {
         case 0:
         default:
-            Em_SetMotion(em, 0x2B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_STRIKE_A, 0, 0);
             break;
         case 1:
-            Em_SetMotion(em, 0x2C, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_STRIKE_B, 0, 0);
             break;
         }
         break;
@@ -3184,20 +3525,20 @@ void EmBlangonga_State3_02(Em *em, EmWork *work, s32 variant)
         switch (variant & 0xFF) {
         case 0:
         default:
-            if (Player_PassedFrameScaled(em, 14.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
                 if (EmBlangonga_IsSmallKind(em) == 0) {
-                    EffBlangonga27_Create(em, 3);
+                    BlangongaAttack_Create(em, 3);
                 } else {
-                    EffBlangonga27_Create(em, 0x15);
+                    BlangongaAttack_Create(em, 0x15);
                 }
             }
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 14.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
                 if (EmBlangonga_IsSmallKind(em) == 0) {
-                    EffBlangonga27_Create(em, 4);
+                    BlangongaAttack_Create(em, 4);
                 } else {
-                    EffBlangonga27_Create(em, 0x16);
+                    BlangongaAttack_Create(em, 0x16);
                 }
             }
             break;
@@ -3210,7 +3551,11 @@ void EmBlangonga_State3_02(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_04(Em *em)
+/*
+ * BLANG_ATK_CONGALALA_EMISSION (the Congalala kinds): plays its motion and
+ * at frame 110 creates effect 33 of kind 6 at bone 0x1C.
+ */
+void EmBlangonga_CongalalaEmission(Em *em)
 {
     if (EmBlangonga_IsCongalala(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3218,12 +3563,12 @@ void EmBlangonga_State3_04(Em *em)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x2D, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_CONGALALA_EMISSION, 0, 0);
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 110.0f, 0U) != 0) {
-                EffEm33_Create(em, 6, 0, 0, 0);
+            if (EmMotion_PassedFrameScaled(em, 110.0f, 0U) != 0) {
+                EmEffectAttack_Create(em, 6, 0, 0, 0);
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
@@ -3234,20 +3579,24 @@ void EmBlangonga_State3_04(Em *em)
     }
 }
 
-void EmBlangonga_State3_05(Em *em)
+/*
+ * BLANG_ATK_BLANGO_THROW (the Blango): throws a projectile (EmRangedAttack type
+ * 0x11) from bone 0xE at frame 74.
+ */
+void EmBlangonga_BlangoThrow(Em *em)
 {
-    if (em->type != 0x3D) {
+    if (em->type != EM_KIND_BLANGO) {
         EmBlangonga_EndState(em, 0, 0);
     } else {
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x2E, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_THROW, 0, 0);
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 74.0f, 0U) != 0) {
-                EffEm08_CreateAtBone(em, 0xE, 0x11, 0, 0xFC00, 0);
+            if (EmMotion_PassedFrameScaled(em, 74.0f, 0U) != 0) {
+                EmRangedAttack_CreateAtBone(em, 0xE, 0x11, 0, 0xFC00, 0);
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
@@ -3258,7 +3607,11 @@ void EmBlangonga_State3_05(Em *em)
     }
 }
 
-void EmBlangonga_State3_06(Em *em)
+/*
+ * BLANG_ATK_CHARGE (not the Congalala kinds): runs at the goal with a hit
+ * along, then finishes with BLANG_MOT_CHARGE_END and its hits.
+ */
+void EmBlangonga_Charge(Em *em)
 {
     if (EmBlangonga_IsCongalala(em) == 1) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3267,33 +3620,33 @@ void EmBlangonga_State3_06(Em *em)
         case 0:
             em->step++;
             em->stateVar0 = 0;
-            em->stance = 0;
-            Em_SetMotion(em, 0x13, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_CHARGE, 0, 0);
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 6.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 0xF);
+            if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 0xF);
             }
             if ((em->stateVar0 == 0) && (Em_StepToGoal(em, 0x80, 0) == 1)) {
                 em->step++;
                 em->stateVar0++;
-                Em_SetMotion(em, 0x30, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_CHARGE_END, 0, 0);
             }
             break;
         case 2:
             if (EmBlangonga_IsBlangonga(em) == 1) {
-                if (Player_PassedFrameScaled(em, 10.0f, 0U) != 0) {
-                    EffBlangonga27_Create(em, 0x11);
+                if (EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) {
+                    BlangongaAttack_Create(em, 0x11);
                 }
-                if (Player_PassedFrameScaled(em, 20.0f, 0U) != 0) {
+                if (EmMotion_PassedFrameScaled(em, 20.0f, 0U) != 0) {
                     if (EmBlangonga_IsSmallKind(em) == 1) {
-                        EffBlangonga27_Create(em, 0x1A);
+                        BlangongaAttack_Create(em, 0x1A);
                     } else {
-                        EffBlangonga27_Create(em, 5);
+                        BlangongaAttack_Create(em, 5);
                     }
                 }
-            } else if (Player_PassedFrameScaled(em, 22.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 0x25);
+            } else if (EmMotion_PassedFrameScaled(em, 22.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 0x25);
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
@@ -3304,25 +3657,30 @@ void EmBlangonga_State3_06(Em *em)
     }
 }
 
-void EmBlangonga_State3_07(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_DIG_THROW_A, _B and _C (variants 0-2; Blangonga): digs up a
+ * lump with a hit at frame 98 and throws it (EmRangedAttack type 0xF from bone
+ * 0xD) at frame 102; the variant sets the throw's pitch.
+ */
+void EmBlangonga_DigThrow(Em *em, EmWork *work, s32 variant)
 {
     u16 ang;
 
-    if (em->type != 0x33) {
+    if (em->type != EM_KIND_BLANGONGA) {
         EmBlangonga_EndState(em, 0, 0);
         return;
     }
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x2F, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_DIG_THROW, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 98.0f, 0)) {
-            EffBlangonga27_Create(em, 0x13);
+        if (EmMotion_PassedFrameScaled(em, 98.0f, 0)) {
+            BlangongaAttack_Create(em, 0x13);
         }
-        if (Player_PassedFrameScaled(em, 102.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0)) {
             switch (variant & 0xFF) {
             default:
                 ang = 0xC300;
@@ -3334,7 +3692,7 @@ void EmBlangonga_State3_07(Em *em, EmWork *work, s32 variant)
                 ang = 0xC900;
                 break;
             }
-            EffEm08_CreateAtBone(em, 0xD, 0xF, 0, ang, 0);
+            EmRangedAttack_CreateAtBone(em, 0xD, 0xF, 0, ang, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -3344,24 +3702,29 @@ void EmBlangonga_State3_07(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_08(Em *em, EmWork *work)
+/*
+ * BLANG_ATK_CONGALALA_EATEN_EMISSION (Congalala): at frame 100, when it has
+ * eaten (eatenKind), creates stage object 0x17 and effect 33 of kind 1 by
+ * what it ate.
+ */
+void EmBlangonga_CongalalaEatenEmission(Em *em, EmWork *work)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)work;
 
-    if (em->type != 0x34) {
+    if (em->type != EM_KIND_CONGALALA) {
         EmBlangonga_EndState(em, 0, 0);
         return;
     }
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x28, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_CONGALALA_EATEN_EMISSION, 0, 0);
         break;
     case 1:
-        if (w->unk044 != 0 && Player_PassedFrameScaled(em, 100.0f, 0)) {
-            StageObj_K1C_CreateOnEmC(em, 0x17, w->unk044 - 1, 1.0f);
-            EffEm33_Create(em, 1, w->unk044 - 1, 0, 0);
+        if (w->eatenKind != 0 && EmMotion_PassedFrameScaled(em, 100.0f, 0)) {
+            StageObj_K1C_CreateOnEmC(em, 0x17, w->eatenKind - 1, 1.0f);
+            EmEffectAttack_Create(em, 1, w->eatenKind - 1, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -3371,7 +3734,12 @@ void EmBlangonga_State3_08(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State3_09(Em *em, EmWork *work)
+/*
+ * BLANG_ATK_CONGALALA_COMBO (the Congalala kinds): a long combo with a hit
+ * from frame 26, half a turn over frames 170-180 and an impact at frame 200
+ * (the large kind), then BLANG_MOT_CONGALALA_COMBO_END.
+ */
+void EmBlangonga_CongalalaCombo(Em *em, EmWork *work)
 {
     if (EmBlangonga_IsCongalala(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3380,23 +3748,23 @@ void EmBlangonga_State3_09(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x29, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_CONGALALA_COMBO, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 26.0f, 0)) {
-            EffBlangonga27_Create(em, 0x1F);
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0)) {
+            BlangongaAttack_Create(em, 0x1F);
         }
         if (EmMotion_InFrameRange(em, 0, 170.0f, 180.0f)) {
             em->rotY += 0xCCC;
         }
-        if (EmBlangonga_IsSmallKind(em) == 0 && Player_PassedFrameScaled(em, 200.0f, 0)) {
-            EffEm07_CreateAt(em, &em->posX, 0x10);
+        if (EmBlangonga_IsSmallKind(em) == 0 && EmMotion_PassedFrameScaled(em, 200.0f, 0)) {
+            EmImpactAttack_CreateAt(em, &em->posX, 0x10);
             CamShake_ReqAIf(em, 5);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x50, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_CONGALALA_COMBO_END, 0, 0);
         }
         break;
     case 2:
@@ -3408,31 +3776,36 @@ void EmBlangonga_State3_09(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State3_0A(Em *em)
+/*
+ * BLANG_ATK_CONGALALA_HITZONE_COMBO (Congalala): a hit from frame 40 with
+ * the second damage table (hitzoneSet 1) until the first motion ends, then
+ * a second blow with a hit at frame 88.
+ */
+void EmBlangonga_CongalalaHitzoneCombo(Em *em)
 {
-    if (em->type != 0x34) {
+    if (em->type != EM_KIND_CONGALALA) {
         EmBlangonga_EndState(em, 0, 0);
     } else {
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x51, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_CONGALALA_HITZONE_COMBO, 0, 0);
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 0x20);
+            if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 0x20);
                 em->hitzoneSet = 1;
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
-                Em_SetMotion(em, 0x52, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_CONGALALA_HITZONE_COMBO_END, 0, 0);
                 em->hitzoneSet = 0;
             }
             break;
         case 2:
-            if (Player_PassedFrameScaled(em, 88.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 0x29);
+            if (EmMotion_PassedFrameScaled(em, 88.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 0x29);
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
@@ -3443,7 +3816,12 @@ void EmBlangonga_State3_0A(Em *em)
     }
 }
 
-void EmBlangonga_State3_0B(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_CONGALALA_THROW_A (variant 0) and _B (1), the Congalala kinds:
+ * throws a projectile (EmRangedAttack type 0x13) from bone 0x21 at frame 66; the
+ * variant sets its pitch.
+ */
+void EmBlangonga_CongalalaThrow(Em *em, EmWork *work, s32 variant)
 {
     if (EmBlangonga_IsCongalala(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3451,16 +3829,16 @@ void EmBlangonga_State3_0B(Em *em, EmWork *work, s32 variant)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x2E, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_THROW, 0, 0);
             break;
         case 1:
             if (!(variant & 0xFF)) {
-                if (Player_PassedFrameScaled(em, 66.0f, 0U) != 0) {
-                    EffEm08_CreateAtBone(em, 0x21, 0x13, 0, 0x93F, 0);
+                if (EmMotion_PassedFrameScaled(em, 66.0f, 0U) != 0) {
+                    EmRangedAttack_CreateAtBone(em, 0x21, 0x13, 0, 0x93F, 0);
                 }
-            } else if (Player_PassedFrameScaled(em, 66.0f, 0U) != 0) {
-                EffEm08_CreateAtBone(em, 0x21, 0x13, 0, 0x2000, 0);
+            } else if (EmMotion_PassedFrameScaled(em, 66.0f, 0U) != 0) {
+                EmRangedAttack_CreateAtBone(em, 0x21, 0x13, 0, 0x2000, 0);
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
@@ -3471,13 +3849,17 @@ void EmBlangonga_State3_0B(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_0C(Em *em)
+/*
+ * BLANG_ATK_BACK_STRIKE: plays BLANG_MOT_BACK_STRIKE to its end; its hits
+ * come from EmBlangonga_MotionEffects.
+ */
+void EmBlangonga_BackStrike(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x55, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_BACK_STRIKE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -3488,7 +3870,12 @@ void EmBlangonga_State3_0C(Em *em)
     }
 }
 
-void EmBlangonga_State3_0E(Em *em, EmWork *work)
+/*
+ * BLANG_ATK_EFFECT_STRIKE (the Blangonga kinds): at frame 98 creates stage
+ * object 8 on itself and a hit, then plays the end motion. It also works
+ * out a point in front of bone 1 that nothing reads.
+ */
+void EmBlangonga_EffectStrike(Em *em, EmWork *work)
 {
     f32 pos[3];
     f32 ofs[3];
@@ -3502,13 +3889,13 @@ void EmBlangonga_State3_0E(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->stateVar1 = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x50, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_EFFECT_STRIKE, 0, 0);
         break;
     case 1:
-        if (em->stateVar1 == 0 && Player_PassedFrameScaled(em, 98.0f, 0)) {
+        if (em->stateVar1 == 0 && EmMotion_PassedFrameScaled(em, 98.0f, 0)) {
             StageObj_K1C_CreateOnEm(em, 8, 0.75f * em->scaleX);
-            EffBlangonga27_Create(em, 0xA);
+            BlangongaAttack_Create(em, 0xA);
             if (Player_InCurrentArea(em)) {
                 ofs[1] = 145.0f;
                 ofs[0] = 0.0f;
@@ -3522,7 +3909,7 @@ void EmBlangonga_State3_0E(Em *em, EmWork *work)
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x51, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_EFFECT_STRIKE_END, 0, 0);
         }
         break;
     case 2:
@@ -3534,7 +3921,12 @@ void EmBlangonga_State3_0E(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State3_11(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_RAJANG_COMBO_SLAM_A (variant 0) and _B (1): a blow with a hit,
+ * then 3 (or 1) frames after its end a slam whose impact at frame 26 shakes
+ * the camera and brings down the area's falling objects.
+ */
+void EmBlangonga_RajangComboSlam(Em *em, EmWork *work, s32 variant)
 {
     f32 pos[3];
 
@@ -3546,8 +3938,8 @@ void EmBlangonga_State3_11(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         em->stateVar0 = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x2B, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_STRIKE_A, 0, 0);
         if ((variant & 0xFF) == 0) {
             em->timer = 3;
         } else {
@@ -3555,24 +3947,24 @@ void EmBlangonga_State3_11(Em *em, EmWork *work, s32 variant)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 16.0f, 0) && em->stateVar0 == 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0) && em->stateVar0 == 0) {
             em->stateVar0++;
-            EffBlangonga27_Create(em, 0x24);
+            BlangongaAttack_Create(em, 0x24);
         }
         if (em->motion[0].playing == 0 && --em->timer <= 0) {
             em->step++;
             em->stateVar0 = 0;
-            Em_SetMotion(em, 0x2C, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_STRIKE_B, 0, 0);
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 26.0f, 0) && em->stateVar0 == 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) && em->stateVar0 == 0) {
             em->stateVar0++;
             Em_BonePos(em, 0xD, pos);
             pos[1] = em->floorY;
-            EffEm07_CreateAt(em, pos, 0xF);
+            EmImpactAttack_CreateAt(em, pos, 0xF);
             CamShake_ReqAIf(em, 5);
-            EmBlangonga_State3Pick(em);
+            EmBlangonga_DropFallingObjects(em);
             if ((s32)Player_InCurrentArea(em) & 0xFF) {
                 StageObj_K11_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 0.4f * em->scaleX);
             }
@@ -3585,7 +3977,12 @@ void EmBlangonga_State3_11(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_12(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_RAJANG_SHOT_A (variant 0) and _B (1): aims and at frame 84
+ * fires effect 33 of kind 2 with stage object 0x25; the variant sets the
+ * pitch.
+ */
+void EmBlangonga_RajangShot(Em *em, EmWork *work, s32 variant)
 {
     if (EmBlangonga_IsRajang(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3594,24 +3991,24 @@ void EmBlangonga_State3_12(Em *em, EmWork *work, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x50, 2, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_RAJANG_AIM, 2, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 84.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
             em->step++;
             switch (variant & 0xFF) {
             case 0:
             default:
-                EffEm33_Create(em, 2, 0, 0x71C, 0);
+                EmEffectAttack_Create(em, 2, 0, 0x71C, 0);
                 StageObj_K1C_CreateOnEmB(em, 0x25, 0x71C, 0, 1.0f);
                 break;
             case 1:
-                EffEm33_Create(em, 2, 0, 0xF8E5, 0);
+                EmEffectAttack_Create(em, 2, 0, 0xF8E5, 0);
                 StageObj_K1C_CreateOnEmB(em, 0x25, 0xF8E5, 0, 1.0f);
                 break;
             }
-            Em_SetMotion(em, 0x51, 2, 0);
+            Em_SetMotion(em, BLANG_MOT_RAJANG_AIM_END, 2, 0);
         }
         break;
     case 2:
@@ -3623,7 +4020,12 @@ void EmBlangonga_State3_12(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_13(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_RAJANG_BEAM_A (variant 0) and _B (1): aims and at frame 80
+ * fires the beam (EmRangedAttack type 0x15, the variant passed on) from bone 1 for
+ * 0x28 frames.
+ */
+void EmBlangonga_RajangBeam(Em *em, EmWork *work, s32 variant)
 {
     if (EmBlangonga_IsRajang(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3632,19 +4034,19 @@ void EmBlangonga_State3_13(Em *em, EmWork *work, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x50, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_RAJANG_AIM, 0, 0);
         em->timer = 2;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 80.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0)) {
             switch (variant & 0xFF) {
             case 0:
             default:
-                EffEm08_CreateAtBone2(em, 1, 0x15, 0, 0, 0, 0x28);
+                EmRangedAttack_CreateAtBone2(em, 1, 0x15, 0, 0, 0, 0x28);
                 break;
             case 1:
-                EffEm08_CreateAtBone2(em, 1, 0x15, 1, 0, 0, 0x28);
+                EmRangedAttack_CreateAtBone2(em, 1, 0x15, 1, 0, 0, 0x28);
                 break;
             }
         }
@@ -3653,7 +4055,7 @@ void EmBlangonga_State3_13(Em *em, EmWork *work, s32 variant)
         }
         if (em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x51, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_RAJANG_AIM_END, 0, 0);
         }
         break;
     case 2:
@@ -3665,7 +4067,13 @@ void EmBlangonga_State3_13(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_14(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_ATK_RAJANG_JUMP_SHOT (variant 0) and BLANG_REACT_TRAP_ESCAPE (1:
+ * unguarded hits and the trap's hold set): jumps, fires a shot downward
+ * from the air (frame 22) while held above the floor, and lands when the
+ * curves end.
+ */
+void EmBlangonga_RajangJumpShot(Em *em, EmWork *work, s32 variant)
 {
     f32 posY;
     s32 ended;
@@ -3681,31 +4089,31 @@ void EmBlangonga_State3_14(Em *em, EmWork *work, s32 variant)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x52, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_RAJANG_JUMP, 0, 0);
             if (k == 1) {
                 em->holdTimer = 0x32;
             }
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 24.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 24.0f, 0U) != 0) {
                 em->step++;
-                em->stance = 2;
+                em->stance = EM_STANCE_AIR;
                 em->posY += 170.0f;
                 EmBlangonga_StartCurves(em, 1U);
             }
             break;
         case 2:
             EmBlangonga_UpdateCurves(em);
-            if (Player_PassedFrameScaled(em, 30.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 30.0f, 0U) != 0) {
                 em->step++;
-                Em_SetMotion(em, 0x53, 6, 0);
+                Em_SetMotion(em, BLANG_MOT_RAJANG_JUMP_SHOT, 6, 0);
                 EmBlangonga_StartCurves(em, 2U);
             }
             break;
         case 3:
-            if (Player_PassedFrameScaled(em, 22.0f, 0U) != 0) {
-                EffEm33_Create(em, 2, 1, 0x31C7, 0);
+            if (EmMotion_PassedFrameScaled(em, 22.0f, 0U) != 0) {
+                EmEffectAttack_Create(em, 2, 1, 0x31C7, 0);
                 StageObj_K1C_CreateOnEmB(em, 0x25, 0x31C7, 0, 1.0f);
             }
             ended = EmBlangonga_UpdateCurves(em) & 0xFF;
@@ -3718,8 +4126,8 @@ void EmBlangonga_State3_14(Em *em, EmWork *work, s32 variant)
             } else if ((ended != 0) && (em->posY <= posY)) {
                 em->step++;
                 em->posY = em->floorY;
-                em->stance = 0;
-                Em_SetMotion(em, 0x54, 0, 0);
+                em->stance = EM_STANCE_GROUND;
+                Em_SetMotion(em, BLANG_MOT_RAJANG_JUMP_SHOT_LAND, 0, 0);
                 Player_ClearVelocity(em);
             }
             break;
@@ -3733,7 +4141,8 @@ void EmBlangonga_State3_14(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State3_15(Em *em)
+/* BLANG_ATK_RAJANG_STRIKE: one blow with a hit at frame 56. */
+void EmBlangonga_RajangStrike(Em *em)
 {
     if (EmBlangonga_IsRajang(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3741,12 +4150,12 @@ void EmBlangonga_State3_15(Em *em)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x56, 2, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_RAJANG_STRIKE, 2, 0);
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 56.0f, 0U) != 0) {
-                EffBlangonga27_Create(em, 0x26);
+            if (EmMotion_PassedFrameScaled(em, 56.0f, 0U) != 0) {
+                BlangongaAttack_Create(em, 0x26);
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
@@ -3757,7 +4166,11 @@ void EmBlangonga_State3_15(Em *em)
     }
 }
 
-void EmBlangonga_State3_16(Em *em)
+/*
+ * BLANG_ATK_RAJANG_CHARGE: runs at the goal with a hit that lasts into the
+ * end motion.
+ */
+void EmBlangonga_RajangCharge(Em *em)
 {
     u8 stateVar0;
 
@@ -3768,20 +4181,20 @@ void EmBlangonga_State3_16(Em *em)
         case 0:
             em->step++;
             em->stateVar0 = 0;
-            em->stance = 0;
-            Em_SetMotion(em, 0x57, 2, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_RAJANG_CHARGE, 2, 0);
             break;
         case 1:
-            if (Player_PassedFrameScaled(em, 6.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
                 stateVar0 = em->stateVar0;
                 if (stateVar0 == 0) {
                     em->stateVar0 = stateVar0 + 1;
-                    EffBlangonga27_Create(em, 0x27);
+                    BlangongaAttack_Create(em, 0x27);
                 }
             }
             if (Em_StepToGoal(em, 0x80, 0) == 1) {
                 em->step++;
-                Em_SetMotion(em, 0x5A, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_RAJANG_CHARGE_END, 0, 0);
             }
             break;
         case 2:
@@ -3794,7 +4207,11 @@ void EmBlangonga_State3_16(Em *em)
     }
 }
 
-void EmBlangonga_State3_17(Em *em)
+/*
+ * BLANG_ATK_CONGALALA_CHARGE (the Congalala kinds): runs at the goal with a
+ * hit along (the small kind's weaker), then ends the state.
+ */
+void EmBlangonga_CongalalaCharge(Em *em)
 {
     if (EmBlangonga_IsCongalala(em) == 0) {
         EmBlangonga_EndState(em, 0, 0);
@@ -3802,13 +4219,13 @@ void EmBlangonga_State3_17(Em *em)
         switch (em->step) {
         case 0:
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x13, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_CHARGE, 0, 0);
             if (EmBlangonga_IsSmallKind(em) == 1) {
-                EffBlangonga27_Create(em, 0x23);
+                BlangongaAttack_Create(em, 0x23);
                 break;
             }
-            EffBlangonga27_Create(em, 0x1D);
+            BlangongaAttack_Create(em, 0x1D);
             break;
         case 1:
             if (Em_StepToGoal(em, 0x40, 0) == 1) {
@@ -3820,103 +4237,108 @@ void EmBlangonga_State3_17(Em *em)
     }
 }
 
-void EmBlangonga_RunGroup3(Em *em, EmWork *work)
+/*
+ * Runs the current EM_GROUP_ATTACK state, passing the shared functions
+ * their variant.
+ */
+void EmBlangonga_RunAttackState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmBlangonga_State3_00(em);
+    case BLANG_ATK_TRIPLE_HIT:
+        EmBlangonga_TripleHit(em);
         break;
-    case 1:
-        EmBlangonga_State3_01(em, work, 0);
+    case BLANG_ATK_SLAM:
+        EmBlangonga_Slam(em, work, 0);
         break;
-    case 2:
-        EmBlangonga_State3_02(em, work, 0);
+    case BLANG_ATK_STRIKE_A:
+        EmBlangonga_Strike(em, work, 0);
         break;
-    case 3:
-        EmBlangonga_State3_02(em, work, 1);
+    case BLANG_ATK_STRIKE_B:
+        EmBlangonga_Strike(em, work, 1);
         break;
-    case 4:
-        EmBlangonga_State3_04(em);
+    case BLANG_ATK_CONGALALA_EMISSION:
+        EmBlangonga_CongalalaEmission(em);
         break;
-    case 5:
-        EmBlangonga_State3_05(em);
+    case BLANG_ATK_BLANGO_THROW:
+        EmBlangonga_BlangoThrow(em);
         break;
-    case 6:
-        EmBlangonga_State3_06(em);
+    case BLANG_ATK_CHARGE:
+        EmBlangonga_Charge(em);
         break;
-    case 7:
-        EmBlangonga_State3_07(em, work, 0);
+    case BLANG_ATK_DIG_THROW_A:
+        EmBlangonga_DigThrow(em, work, 0);
         break;
-    case 8:
-        EmBlangonga_State3_08(em, work);
+    case BLANG_ATK_CONGALALA_EATEN_EMISSION:
+        EmBlangonga_CongalalaEatenEmission(em, work);
         break;
-    case 9:
-        EmBlangonga_State3_09(em, work);
+    case BLANG_ATK_CONGALALA_COMBO:
+        EmBlangonga_CongalalaCombo(em, work);
         break;
-    case 0xA:
-        EmBlangonga_State3_0A(em);
+    case BLANG_ATK_CONGALALA_HITZONE_COMBO:
+        EmBlangonga_CongalalaHitzoneCombo(em);
         break;
-    case 0xB:
-        EmBlangonga_State3_0B(em, work, 0);
+    case BLANG_ATK_CONGALALA_THROW_A:
+        EmBlangonga_CongalalaThrow(em, work, 0);
         break;
-    case 0xC:
-        EmBlangonga_State3_0C(em);
+    case BLANG_ATK_BACK_STRIKE:
+        EmBlangonga_BackStrike(em);
         break;
-    case 0xD:
-        EmBlangonga_State3_01(em, work, 1);
+    case BLANG_ATK_SLAM_HEAVY:
+        EmBlangonga_Slam(em, work, 1);
         break;
-    case 0xE:
-        EmBlangonga_State3_0E(em, work);
+    case BLANG_ATK_EFFECT_STRIKE:
+        EmBlangonga_EffectStrike(em, work);
         break;
-    case 0xF:
-        EmBlangonga_State3_07(em, work, 1);
+    case BLANG_ATK_DIG_THROW_B:
+        EmBlangonga_DigThrow(em, work, 1);
         break;
-    case 0x10:
-        EmBlangonga_State3_07(em, work, 2);
+    case BLANG_ATK_DIG_THROW_C:
+        EmBlangonga_DigThrow(em, work, 2);
         break;
-    case 0x11:
-        EmBlangonga_State3_11(em, work, 0);
+    case BLANG_ATK_RAJANG_COMBO_SLAM_A:
+        EmBlangonga_RajangComboSlam(em, work, 0);
         break;
-    case 0x12:
-        EmBlangonga_State3_12(em, work, 0);
+    case BLANG_ATK_RAJANG_SHOT_A:
+        EmBlangonga_RajangShot(em, work, 0);
         break;
-    case 0x13:
-        EmBlangonga_State3_13(em, work, 0);
+    case BLANG_ATK_RAJANG_BEAM_A:
+        EmBlangonga_RajangBeam(em, work, 0);
         break;
-    case 0x14:
-        EmBlangonga_State3_14(em, work, 0);
+    case BLANG_ATK_RAJANG_JUMP_SHOT:
+        EmBlangonga_RajangJumpShot(em, work, 0);
         break;
-    case 0x15:
-        EmBlangonga_State3_15(em);
+    case BLANG_ATK_RAJANG_STRIKE:
+        EmBlangonga_RajangStrike(em);
         break;
-    case 0x16:
-        EmBlangonga_State3_16(em);
+    case BLANG_ATK_RAJANG_CHARGE:
+        EmBlangonga_RajangCharge(em);
         break;
-    case 0x17:
-        EmBlangonga_State3_17(em);
+    case BLANG_ATK_CONGALALA_CHARGE:
+        EmBlangonga_CongalalaCharge(em);
         break;
-    case 0x18:
-        EmBlangonga_State3_13(em, work, 1);
+    case BLANG_ATK_RAJANG_BEAM_B:
+        EmBlangonga_RajangBeam(em, work, 1);
         break;
-    case 0x19:
-        EmBlangonga_State3_0B(em, work, 1);
+    case BLANG_ATK_CONGALALA_THROW_B:
+        EmBlangonga_CongalalaThrow(em, work, 1);
         break;
-    case 0x1A:
-        EmBlangonga_State3_11(em, work, 1);
+    case BLANG_ATK_RAJANG_COMBO_SLAM_B:
+        EmBlangonga_RajangComboSlam(em, work, 1);
         break;
-    case 0x1B:
-        EmBlangonga_State3_12(em, work, 1);
+    case BLANG_ATK_RAJANG_SHOT_B:
+        EmBlangonga_RajangShot(em, work, 1);
         break;
     }
 }
 
-void EmBlangonga_State4_00(Em *em)
+/* BLANG_REACT_FLINCH: flinches (BLANG_MOT_FLINCH) and ends the state. */
+void EmBlangonga_Flinch(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3D, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_FLINCH, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
@@ -3928,13 +4350,17 @@ void EmBlangonga_State4_00(Em *em)
     }
 }
 
-void EmBlangonga_State4_01(Em *em)
+/*
+ * BLANG_REACT_FLINCH_B and _PART_BREAK: flinches (BLANG_MOT_FLINCH_B) and
+ * ends the state.
+ */
+void EmBlangonga_FlinchB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3C, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_FLINCH_B, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
@@ -3946,16 +4372,23 @@ void EmBlangonga_State4_01(Em *em)
     }
 }
 
-void EmBlangonga_State4_02(Em *em, EmWork *work, u8 variant)
+/*
+ * BLANG_REACT_KNOCK_DOWN (variant 0), _KNOCK_DOWN_B (1), _STUN (2) and
+ * _STUN_B (3): is knocked down (the odd variants from the other side), lies
+ * and gets up. The knock-downs lie 90 frames; the stuns add the stun's
+ * stage object, lie until the status-5 timer runs out and then shake it off
+ * (BLANG_IDLE_STUN_SHAKE_OFF).
+ */
+void EmBlangonga_KnockDown(Em *em, EmWork *work, u8 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         if (!(variant & 1)) {
-            Em_SetMotion(em, 0x45, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_KNOCK_DOWN, 0, 0);
         } else {
-            Em_SetMotion(em, 0x46, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_KNOCK_DOWN_B, 0, 0);
         }
         switch (variant) {
         case 2:
@@ -3969,9 +4402,9 @@ void EmBlangonga_State4_02(Em *em, EmWork *work, u8 variant)
         if (em->motion[0].playing == 0) {
             em->step++;
             if (!(variant & 1)) {
-                Em_SetMotion(em, 0x3F, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_DOWN, 0, 0);
             } else {
-                Em_SetMotion(em, 0x4D, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_DOWN_B, 0, 0);
             }
             switch (variant) {
             case 0:
@@ -3989,9 +4422,9 @@ void EmBlangonga_State4_02(Em *em, EmWork *work, u8 variant)
         if (--em->timer <= 0) {
             em->step++;
             if (!(variant & 1)) {
-                Em_SetMotion(em, 0x40, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_DOWN_GET_UP, 0, 0);
             } else {
-                Em_SetMotion(em, 0x4E, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_DOWN_GET_UP_B, 0, 0);
             }
         }
         break;
@@ -4006,54 +4439,62 @@ void EmBlangonga_State4_02(Em *em, EmWork *work, u8 variant)
             case 2:
             case 3:
                 em->step++;
-                EmBlangonga_ChangeState(em, 0, 0x19, 4);
+                EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         }
         break;
     case 4:
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 0, 0x19, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State4_04(Em *em)
+/*
+ * BLANG_REACT_STATUS4: hit-react mode 4 with the periodic effect at bone 2
+ * until the status-4 timer runs out, then BLANG_IDLE_STATUS4_SHAKE_OFF.
+ */
+void EmBlangonga_Status4(Em *em)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x41, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_STATUS4, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmBlangonga_ChangeState(em, 0, 0xA, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 0, 0xA, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
-void EmBlangonga_State4_05(Em *em)
+/*
+ * BLANG_REACT_TRAPPED: caught in a trap (hit-react mode 3, holdTimer 50)
+ * while BLANG_MOT_TRAPPED plays, then BLANG_REACT_TRAPPED_STRUGGLE.
+ */
+void EmBlangonga_Trapped(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x49, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_TRAPPED, 0, 0);
         em->noReact = 1;
         em->holdTimer = 0x32;
         break;
@@ -4063,7 +4504,7 @@ void EmBlangonga_State4_05(Em *em)
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmBlangonga_ChangeState(em, 4, 6, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_TRAPPED_STRUGGLE, EM_SYNC_OWNER);
         }
         break;
     case 2:
@@ -4071,13 +4512,19 @@ void EmBlangonga_State4_05(Em *em)
             em->holdTimer = 5;
         }
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 4, 6, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_TRAPPED_STRUGGLE, EM_SYNC_OWNER);
         }
         break;
     }
 }
 
-void EmBlangonga_State4_06(Em *em)
+/*
+ * BLANG_REACT_TRAPPED_STRUGGLE, _STATUS4_DOWNED_END and _STUN_DOWNED_END:
+ * struggles in the hold (holdTimer kept at 5) until the trap's timer runs
+ * out, then BLANG_IDLE_LEAVE_TRAP. An enraged Congalala makes effect 33 of
+ * kind 7 in some loops.
+ */
+void EmBlangonga_TrappedStruggle(Em *em)
 {
     u8 stateVar1;
 
@@ -4085,48 +4532,52 @@ void EmBlangonga_State4_06(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x4A, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_STRUGGLE, 0, 0);
         em->noReact = 1;
         em->stateVar1 = 0;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x4A, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_STRUGGLE, 0, 0);
             em->stateVar1++;
         }
-        if ((em->type == 0x34) && (em->rage != 0) && (Motion_PassedFrame(em, 0, 104.0f) != 0)) {
+        if ((em->type == EM_KIND_CONGALALA) && (em->rage != 0) && (Motion_PassedFrame(em, 0, 104.0f) != 0)) {
             stateVar1 = em->stateVar1;
             if ((stateVar1 & 7) == (((s32) em->stateRand >> (stateVar1 & 3)) & 7)) {
-                EffEm33_Create(em, 7, 0, 0, 0);
+                EmEffectAttack_Create(em, 7, 0, 0, 0);
             }
         }
         if (--em->trapTimer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x4A, 0, 0);
-            EmBlangonga_ChangeState(em, 0, 0xE, 4);
+            Em_SetMotion(em, BLANG_MOT_STRUGGLE, 0, 0);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_LEAVE_TRAP, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 0, 0xE, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_LEAVE_TRAP, EM_SYNC_OWNER_FLAGGED);
         }
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x4A, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_STRUGGLE, 0, 0);
         }
         break;
     }
 }
 
-void EmBlangonga_State4_07(Em *em)
+/*
+ * BLANG_REACT_FALL: falls out of the air on curve 0 and lands within 180
+ * (scaled) of the floor, lies 60 frames, gets up and ends the state.
+ */
+void EmBlangonga_Fall(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x42, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_FALL, 0, 0);
         EmBlangonga_StartCurves(em, 0U);
         break;
     case 1:
@@ -4134,8 +4585,8 @@ void EmBlangonga_State4_07(Em *em)
         if (em->posY <= (em->floorY + (180.0f * em->scaleX))) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 0;
-            Em_SetMotion(em, 0x43, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
         }
         break;
@@ -4143,13 +4594,13 @@ void EmBlangonga_State4_07(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 0x3C;
-            Em_SetMotion(em, 0x3F, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWN, 0, 0);
         }
         break;
     case 3:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x40, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWN_GET_UP, 0, 0);
         }
         break;
     case 4:
@@ -4162,26 +4613,34 @@ void EmBlangonga_State4_07(Em *em)
     }
 }
 
-void EmBlangonga_State4_08(void)
+/* BLANG_REACT_NONE: does nothing. */
+void EmBlangonga_ReactNop(void)
 {
 }
 
-void EmBlangonga_State4_09(Em *em, EmWork *work, u8 variant)
+/*
+ * BLANG_REACT_STATUS4_DOWNED (variant 0) and _STUN_DOWNED (1): lies in the
+ * hold until the status timer runs out, then the matching _DOWNED_END
+ * state; variant 0 adds the periodic effect, variant 1 the stun's stage
+ * object. Blangonga first comes up out of the pit (BLANG_MOT_EMERGE to
+ * frame 14).
+ */
+void EmBlangonga_HeldDowned(Em *em, EmWork *work, u8 variant)
 {
-    u16 m;
+    u16 curMotion;
 
     em->holdTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        if (em->type == 0x33 && (m = em->motionId[0], m != 0x3FE) && m != 0x432 && m != 0x433) {
-            Em_SetMotion(em, 0x16, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        if (em->type == EM_KIND_BLANGONGA && (curMotion = em->motionId[0], curMotion != EM_MOTION_ID(0, BLANG_MOT_EMERGE)) && curMotion != EM_MOTION_ID(0, BLANG_MOT_STRUGGLE) && curMotion != EM_MOTION_ID(0, BLANG_MOT_DOWNED)) {
+            Em_SetMotion(em, BLANG_MOT_EMERGE, 0, 0);
             em->stateArmor = 1;
             em->noPushTimer = 5;
         } else {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
         }
         em->lookAtTarget = 0;
         Em_RestartScript(em);
@@ -4201,20 +4660,20 @@ void EmBlangonga_State4_09(Em *em, EmWork *work, u8 variant)
         }
         if (EmMotion_ReachedFrame(em, 0, 14.0f)) {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             switch (variant) {
             case 0:
             default:
-                EmBlangonga_ChangeState(em, 4, 0xA, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS4_DOWNED_END, EM_SYNC_OWNER);
                 break;
             case 1:
-                EmBlangonga_ChangeState(em, 4, 0xF, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STUN_DOWNED_END, EM_SYNC_OWNER);
                 break;
             }
         }
@@ -4224,29 +4683,33 @@ void EmBlangonga_State4_09(Em *em, EmWork *work, u8 variant)
             switch (variant) {
             case 0:
             default:
-                EmBlangonga_ChangeState(em, 4, 0xA, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS4_DOWNED_END, EM_SYNC_OWNER);
                 break;
             case 1:
-                EmBlangonga_ChangeState(em, 4, 0xF, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STUN_DOWNED_END, EM_SYNC_OWNER);
                 break;
             }
         }
         break;
     }
     if (variant != 1) {
-        Em_SpawnEffect06Bone(em, 2);
+        Em_SpawnStatus4Effect(em, 2);
     }
 }
 
-void EmBlangonga_State4_0B(Em *em)
+/*
+ * BLANG_REACT_STATUS2_DOWNED_END and _STATUS1_DOWNED_END: blinded briefly,
+ * struggles once, then BLANG_REACT_TRAPPED_STRUGGLE.
+ */
+void EmBlangonga_HeldStatusEnd(Em *em)
 {
     em->holdTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x4A, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_STRUGGLE, 0, 0);
         em->noReact = 1;
         em->blind = 2;
         break;
@@ -4254,54 +4717,64 @@ void EmBlangonga_State4_0B(Em *em)
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->blind = 0;
-            EmBlangonga_ChangeState(em, 4, 6, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_TRAPPED_STRUGGLE, EM_SYNC_OWNER);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 4, 6, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_TRAPPED_STRUGGLE, EM_SYNC_OWNER);
         }
         break;
     }
 }
 
-void EmBlangonga_State4_10(Em *em)
+/*
+ * BLANG_REACT_HOLD2: held by the second hold (Em_SetHold2 every frame, root
+ * motion off) until the kind timer runs out, then
+ * BLANG_IDLE_HOLD2_SHAKE_OFF.
+ */
+void EmBlangonga_Hold2(Em *em)
 {
     Em_SetHold2(em);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x41, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Em_SetMotion(em, BLANG_MOT_STATUS4, 0, 0);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmBlangonga_ChangeState(em, 0, 0x1B, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_HOLD2_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmBlangonga_ChangeState(em, 0, 0x1B, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_HOLD2_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State4_11(Em *em, EmWork *work, s32 variant)
+/*
+ * BLANG_REACT_DROP_CARRIED (variant 0) and _DROP_CARRIED_A..C (1-3):
+ * Congalala drops its carried item; variants 1-3 leave it as timed mine
+ * point variant - 1.
+ */
+void EmBlangonga_DropCarried(Em *em, EmWork *work, s32 variant)
 {
     s32 k;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x4F, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_DROP_CARRIED, 0, 0);
         Em_RestartScript(em);
         k = variant & 0xFF;
         if (k > 0) {
@@ -4317,35 +4790,39 @@ void EmBlangonga_State4_11(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmBlangonga_State4_12(Em *em)
+/*
+ * BLANG_REACT_FLINCH_ATTACK (Congalala): flinches and at frame 94 turns it
+ * into the hitzone combo's two blows.
+ */
+void EmBlangonga_FlinchAttack(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3C, 0, 0x32);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_FLINCH_B, 0, 0x32);
         Em_RestartScript(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 94.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x51, 0xC, 0x14);
+            Em_SetMotion(em, BLANG_MOT_CONGALALA_HITZONE_COMBO, 0xC, 0x14);
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            EffBlangonga27_Create(em, 0x20);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+            BlangongaAttack_Create(em, 0x20);
             em->hitzoneSet = 1;
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x52, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_CONGALALA_HITZONE_COMBO_END, 0, 0);
             em->hitzoneSet = 0;
         }
         break;
     case 3:
-        if (Player_PassedFrameScaled(em, 88.0f, 0U) != 0) {
-            EffBlangonga27_Create(em, 0x29);
+        if (EmMotion_PassedFrameScaled(em, 88.0f, 0U) != 0) {
+            BlangongaAttack_Create(em, 0x29);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4355,93 +4832,108 @@ void EmBlangonga_State4_12(Em *em)
     }
 }
 
-void EmBlangonga_State4_18(Em *em, EmWork *work)
+/*
+ * BLANG_REACT_TRAP_ESCAPE: Rajang leaps out of the trap
+ * (EmBlangonga_RajangJumpShot, variant 1); the other kinds just end the
+ * state.
+ */
+void EmBlangonga_TrapEscape(Em *em, EmWork *work)
 {
-    EmBlangonga_State3_14(em, work, 0x1);
+    EmBlangonga_RajangJumpShot(em, work, 0x1);
 }
 
-void EmBlangonga_RunGroup4(Em *em, EmWork *work)
+/*
+ * Runs the current EM_GROUP_REACT state, passing the shared functions their
+ * variant.
+ */
+void EmBlangonga_RunReactState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmBlangonga_State4_00(em);
+    case BLANG_REACT_FLINCH:
+        EmBlangonga_Flinch(em);
         break;
-    case 1:
-        EmBlangonga_State4_01(em);
+    case BLANG_REACT_FLINCH_B:
+        EmBlangonga_FlinchB(em);
         break;
-    case 2:
-        EmBlangonga_State4_02(em, work, 0);
+    case BLANG_REACT_KNOCK_DOWN:
+        EmBlangonga_KnockDown(em, work, 0);
         break;
-    case 3:
-        EmBlangonga_State4_02(em, work, 1);
+    case BLANG_REACT_KNOCK_DOWN_B:
+        EmBlangonga_KnockDown(em, work, 1);
         break;
-    case 4:
-        EmBlangonga_State4_04(em);
+    case BLANG_REACT_STATUS4:
+        EmBlangonga_Status4(em);
         break;
-    case 5:
-        EmBlangonga_State4_05(em);
+    case BLANG_REACT_TRAPPED:
+        EmBlangonga_Trapped(em);
         break;
-    case 6:
-        EmBlangonga_State4_06(em);
+    case BLANG_REACT_TRAPPED_STRUGGLE:
+        EmBlangonga_TrappedStruggle(em);
         break;
-    case 7:
-        EmBlangonga_State4_07(em);
+    case BLANG_REACT_FALL:
+        EmBlangonga_Fall(em);
         break;
-    case 8:
-        EmBlangonga_State4_08();
+    case BLANG_REACT_NONE:
+        EmBlangonga_ReactNop();
         break;
-    case 9:
-        EmBlangonga_State4_09(em, work, 0);
+    case BLANG_REACT_STATUS4_DOWNED:
+        EmBlangonga_HeldDowned(em, work, 0);
         break;
-    case 0xA:
-        EmBlangonga_State4_06(em);
+    case BLANG_REACT_STATUS4_DOWNED_END:
+        EmBlangonga_TrappedStruggle(em);
         break;
-    case 0xB:
-        EmBlangonga_State4_0B(em);
+    case BLANG_REACT_STATUS2_DOWNED_END:
+        EmBlangonga_HeldStatusEnd(em);
         break;
-    case 0xC:
-        EmBlangonga_State4_02(em, work, 2);
+    case BLANG_REACT_STUN:
+        EmBlangonga_KnockDown(em, work, 2);
         break;
-    case 0xD:
-        EmBlangonga_State4_02(em, work, 3);
+    case BLANG_REACT_STUN_B:
+        EmBlangonga_KnockDown(em, work, 3);
         break;
-    case 0xE:
-        EmBlangonga_State4_09(em, work, 1);
+    case BLANG_REACT_STUN_DOWNED:
+        EmBlangonga_HeldDowned(em, work, 1);
         break;
-    case 0xF:
-        EmBlangonga_State4_06(em);
+    case BLANG_REACT_STUN_DOWNED_END:
+        EmBlangonga_TrappedStruggle(em);
         break;
-    case 0x10:
-        EmBlangonga_State4_10(em);
+    case BLANG_REACT_HOLD2:
+        EmBlangonga_Hold2(em);
         break;
-    case 0x11:
-        EmBlangonga_State4_11(em, work, 0);
+    case BLANG_REACT_DROP_CARRIED:
+        EmBlangonga_DropCarried(em, work, 0);
         break;
-    case 0x12:
-        EmBlangonga_State4_12(em);
+    case BLANG_REACT_FLINCH_ATTACK:
+        EmBlangonga_FlinchAttack(em);
         break;
-    case 0x13:
-        EmBlangonga_State4_0B(em);
+    case BLANG_REACT_STATUS1_DOWNED_END:
+        EmBlangonga_HeldStatusEnd(em);
         break;
-    case 0x14:
-        EmBlangonga_State4_01(em);
+    case BLANG_REACT_PART_BREAK:
+        EmBlangonga_FlinchB(em);
         break;
-    case 0x15:
-        EmBlangonga_State4_11(em, work, 1);
+    case BLANG_REACT_DROP_CARRIED_A:
+        EmBlangonga_DropCarried(em, work, 1);
         break;
-    case 0x16:
-        EmBlangonga_State4_11(em, work, 2);
+    case BLANG_REACT_DROP_CARRIED_B:
+        EmBlangonga_DropCarried(em, work, 2);
         break;
-    case 0x17:
-        EmBlangonga_State4_11(em, work, 3);
+    case BLANG_REACT_DROP_CARRIED_C:
+        EmBlangonga_DropCarried(em, work, 3);
         break;
-    case 0x18:
-        EmBlangonga_State4_18(em, work);
+    case BLANG_REACT_TRAP_ESCAPE:
+        EmBlangonga_TrapEscape(em, work);
         break;
     }
 }
 
-void EmBlangonga_State5_00_Hunted(Em *em, s32 unused)
+/*
+ * BLANG_DEFEAT_DIE: hunted (QuestEm_Hunted, the rage ended): falls dead and
+ * leaves a carcass mine point (the large kinds for 1800 frames once the
+ * quest lets them appear again, the small ones for 1350 frames or until
+ * carved), fades out over 60 frames, then BLANG_DEFEAT_REAPPEAR.
+ */
+void EmBlangonga_Die(Em *em, s32 unused)
 {
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
@@ -4453,12 +4945,12 @@ void EmBlangonga_State5_00_Hunted(Em *em, s32 unused)
         }
         QuestEm_Hunted(em);
         Em_EndRage(em);
-        Em_SetMotion(em, 0x44, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_DIE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x47, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DIE_END, 0, 0);
         }
         break;
     case 2:
@@ -4496,21 +4988,25 @@ void EmBlangonga_State5_00_Hunted(Em *em, s32 unused)
     case 5:
         if (em->remote == 0) {
             em->visible = 0;
-            EmBlangonga_ChangeState(em, 5, 4, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State5_01_Hunted(Em *em, s32 unused)
+/*
+ * BLANG_DEFEAT_DIE_HELD: as EmBlangonga_Die, lying in the hold (holdTimer
+ * kept at 5).
+ */
+void EmBlangonga_DieHeld(Em *em, s32 unused)
 {
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x4B, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
         em->lookAtTarget = 0;
-        em->stance = 3;
+        em->stance = EM_STANCE_DEAD;
         QuestEm_Hunted(em);
         Em_EndRage(em);
         em->holdTimer = 5;
@@ -4546,25 +5042,29 @@ void EmBlangonga_State5_01_Hunted(Em *em, s32 unused)
     case 4:
         if (em->remote == 0) {
             em->visible = 0;
-            EmBlangonga_ChangeState(em, 5, 4, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State5_02_Hunted(Em *em, s32 unused)
+/*
+ * BLANG_DEFEAT_DIE_ARMORED: as EmBlangonga_Die for a monster under
+ * stateArmor: comes up (BLANG_MOT_EMERGE to frame 14) and lies down.
+ */
+void EmBlangonga_DieArmored(Em *em, s32 unused)
 {
     f32 alpha;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->stateArmor = 1;
         em->noPushTimer = 5;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x16, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_EMERGE, 0, 0);
         QuestEm_Hunted(em);
         Em_EndRage(em);
         em->noReact = 1;
@@ -4574,9 +5074,9 @@ void EmBlangonga_State5_02_Hunted(Em *em, s32 unused)
             em->stateArmor = 1;
             em->noPushTimer = 5;
         }
-        if (Player_PassedFrameScaled(em, 14.0f, 0U) != 0) {
-            em->stance = 0;
-            Em_SetMotion(em, 0x4B, 0, 0);
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
             em->step++;
             break;
         }
@@ -4616,21 +5116,25 @@ void EmBlangonga_State5_02_Hunted(Em *em, s32 unused)
     case 5:
         if (em->remote == 0) {
             em->visible = 0;
-            EmBlangonga_ChangeState(em, 5, 4, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State5_03_HuntedFalling(Em *em, s32 unused)
+/*
+ * BLANG_DEFEAT_DIE_FALLING: as EmBlangonga_Die for a monster in the air:
+ * falls on curve 0 and lands dead within 180 of the floor.
+ */
+void EmBlangonga_DieFalling(Em *em, s32 unused)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x42, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_FALL, 0, 0);
         QuestEm_Hunted(em);
         Em_EndRage(em);
         EmBlangonga_StartCurves(em, 0);
@@ -4640,8 +5144,8 @@ void EmBlangonga_State5_03_HuntedFalling(Em *em, s32 unused)
         if (em->posY <= 180.0f + em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 3;
-            Em_SetMotion(em, 0x43, 0, 0);
+            em->stance = EM_STANCE_DEAD;
+            Em_SetMotion(em, BLANG_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
         }
         break;
@@ -4674,30 +5178,39 @@ void EmBlangonga_State5_03_HuntedFalling(Em *em, s32 unused)
     case 5:
         if (em->remote == 0) {
             em->visible = 0;
-            EmBlangonga_ChangeState(em, 5, 4, 4);
+            EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmBlangonga_State5_04(Em *em, s32 unused)
+/*
+ * BLANG_DEFEAT_REAPPEAR: when the quest lets the monster appear again, a
+ * Blango of spawnParam 1 hides under the snow again, the other small kinds
+ * go to BLANG_IDLE and the large ones drop in from above
+ * (BLANG_LEAP_DROP_IN); otherwise the monster's task is finished
+ * (taskPhase). EmBlangonga_Start tests Em.variant for the same hidden
+ * start: QuestEm_Spawn copies the two from different fields of the quest's
+ * monster entry, so the two tests are the game's own.
+ */
+void EmBlangonga_Reappear(Em *em, s32 unused)
 {
     switch (em->step) {
     case 0:
         if (QuestEm_CanAppear(em) == 1) {
             if (EmBlangonga_IsSmallKind(em) == 1) {
-                if ((em->type == 0x3D) && (em->spawnParam == 1)) {
-                    em->stance = 0;
-                    Em_SetMotionRow(em, 4, 0, 0);
-                    EmBlangonga_ChangeState(em, 0, 0x18, 0);
+                if ((em->type == EM_KIND_BLANGO) && (em->spawnParam == 1)) {
+                    em->stance = EM_STANCE_GROUND;
+                    Em_SetMotionRow(em, BLANG_MOT_BURIED, 0, 0);
+                    EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_BURIED, EM_SYNC_LOCAL);
                     break;
                 }
-                EmBlangonga_ChangeState(em, 0, 1, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE, EM_SYNC_LOCAL);
                 break;
             }
             em->posY = gAreaGroundY[em->area];
-            em->stance = 2;
-            EmBlangonga_ChangeState(em, 2, 9, 0);
+            em->stance = EM_STANCE_AIR;
+            EmBlangonga_ChangeState(em, EM_GROUP_FLY, BLANG_LEAP_DROP_IN, EM_SYNC_LOCAL);
             break;
         }
         em->taskPhase++;
@@ -4705,49 +5218,60 @@ void EmBlangonga_State5_04(Em *em, s32 unused)
     }
 }
 
-void EmBlangonga_RunGroup5(Em *em, s32 work)
+/*
+ * Runs the current EM_GROUP_DEFEAT state, unpushable (and the small kinds
+ * unhittable) meanwhile.
+ */
+void EmBlangonga_RunDefeatState(Em *em, s32 work)
 {
     if (EmBlangonga_IsSmallKind(em) == 1) {
         em->noHitTimer = 0xA;
     }
     em->noPushTimer = 0xA;
     switch (em->state) {
-    case 0:
-        EmBlangonga_State5_00_Hunted(em, work);
+    case BLANG_DEFEAT_DIE:
+        EmBlangonga_Die(em, work);
         break;
-    case 1:
-        EmBlangonga_State5_01_Hunted(em, work);
+    case BLANG_DEFEAT_DIE_HELD:
+        EmBlangonga_DieHeld(em, work);
         break;
-    case 2:
-        EmBlangonga_State5_02_Hunted(em, work);
+    case BLANG_DEFEAT_DIE_ARMORED:
+        EmBlangonga_DieArmored(em, work);
         break;
-    case 3:
-        EmBlangonga_State5_03_HuntedFalling(em, work);
+    case BLANG_DEFEAT_DIE_FALLING:
+        EmBlangonga_DieFalling(em, work);
         break;
-    case 4:
-        EmBlangonga_State5_04(em, work);
+    case BLANG_DEFEAT_REAPPEAR:
+        EmBlangonga_Reappear(em, work);
         break;
     }
 }
 
-void EmBlangonga_State6_00_Captured(Em *em)
+/*
+ * BLANG_EVENT_CAPTURED: captured in holdTimer's hold (Em_SetCaptured 0,
+ * status 1, poison ended): lies downed (Blangonga first comes up out of the
+ * pit), QuestEm_Captured, a sound every 135 frames and the periodic effect;
+ * 1800 frames once the quest lets it appear again, then a 150-frame fade
+ * and BLANG_DEFEAT_REAPPEAR.
+ */
+void EmBlangonga_Captured(Em *em)
 {
     s32 timer;
-    s32 t;
+    s32 prevTimer;
     u16 motion;
 
     Em_SetCaptured(em, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        if ((em->type == 0x33) && (motion = em->motionId[0], (motion != 0x3FE)) && (motion != 0x432) && (motion != 0x433)) {
-            Em_SetMotion(em, 0x16, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        if ((em->type == EM_KIND_BLANGONGA) && (motion = em->motionId[0], (motion != EM_MOTION_ID(0, BLANG_MOT_EMERGE))) && (motion != EM_MOTION_ID(0, BLANG_MOT_STRUGGLE)) && (motion != EM_MOTION_ID(0, BLANG_MOT_DOWNED))) {
+            Em_SetMotion(em, BLANG_MOT_EMERGE, 0, 0);
             em->stateArmor = 1;
             em->noPushTimer = 5;
         } else {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
             QuestEm_Captured(em);
             em->timer = 0x708;
         }
@@ -4762,7 +5286,7 @@ void EmBlangonga_State6_00_Captured(Em *em)
         }
         if (EmMotion_ReachedFrame(em, 0, 14.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_DOWNED, 0, 0);
             QuestEm_Captured(em);
             em->timer = 0x708;
         }
@@ -4771,7 +5295,7 @@ void EmBlangonga_State6_00_Captured(Em *em)
         if (((s32) em->timer % 135) == 0) {
             Em_PlaySeAtBone(em, 0x52, 0x13);
         }
-        if (em->type == 0x34) {
+        if (em->type == EM_KIND_CONGALALA) {
             EmBlangonga_SpawnPeriodicEffect06(em, 1);
         } else {
             EmBlangonga_SpawnPeriodicEffect06(em, 0);
@@ -4785,14 +5309,14 @@ void EmBlangonga_State6_00_Captured(Em *em)
         }
         break;
     case 3:
-        t = em->timer;
-        if (t > 0) {
-            em->timer = t - 1;
+        prevTimer = em->timer;
+        if (prevTimer > 0) {
+            em->timer = prevTimer - 1;
         }
         timer = em->timer;
         if (timer <= 0) {
             if (em->remote == 0) {
-                EmBlangonga_ChangeState(em, 5, 4, 4);
+                EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         } else {
@@ -4802,24 +5326,28 @@ void EmBlangonga_State6_00_Captured(Em *em)
     }
 }
 
-void EmBlangonga_State6_01_Captured(Em *em)
+/*
+ * BLANG_EVENT_CAPTURED_HOLD2: as EmBlangonga_Captured in the second hold
+ * (Em_SetCaptured 1), collapsing and lying instead, without the sound.
+ */
+void EmBlangonga_CapturedHold2(Em *em)
 {
     s32 timer;
-    s32 t;
+    s32 prevTimer;
 
     Em_SetCaptured(em, 1);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x21, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_COLLAPSE, 0, 0);
         Em_BeginStatus1(em);
         Em_ClearPoison(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x1F, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_LIE, 0, 0);
             QuestEm_Captured(em);
             em->timer = 0x708;
         }
@@ -4835,14 +5363,14 @@ void EmBlangonga_State6_01_Captured(Em *em)
         }
         break;
     case 3:
-        t = em->timer;
-        if (t > 0) {
-            em->timer = t - 1;
+        prevTimer = em->timer;
+        if (prevTimer > 0) {
+            em->timer = prevTimer - 1;
         }
         timer = em->timer;
         if (timer <= 0) {
             if (em->remote == 0) {
-                EmBlangonga_ChangeState(em, 5, 4, 4);
+                EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         } else {
@@ -4852,9 +5380,14 @@ void EmBlangonga_State6_01_Captured(Em *em)
     }
 }
 
-void EmBlangonga_State6_02(Em *em, EmWork *work)
+/*
+ * BLANG_EVENT_CONGALALA_SCENE: Congalala's story scene at a fixed point:
+ * idles 180 frames, eats twice and roars, then idles until event flag 0x9B
+ * is set; senseDelay and noHitTimer are kept up meanwhile.
+ */
+void EmBlangonga_CongalalaScene(Em *em, EmWork *work)
 {
-    EmBlangongaWork *cw = (EmBlangongaWork *)work;
+    EmBlangongaWork *w = (EmBlangongaWork *)work;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -4862,52 +5395,52 @@ void EmBlangonga_State6_02(Em *em, EmWork *work)
     case 0:
         GmEm_ResetSize(em);
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->posX = 12212.0f;
         em->posY = 0.0f;
         em->posZ = 9484.0f;
         em->rotX = 0;
         em->rotY = 0x4000;
         em->rotZ = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         em->timer = 180;
-        cw->unk048 = 0;
+        w->sceneEating = 0;
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x39, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_EAT, 0, 0);
         }
         break;
     case 2:
         if (EmMotion_InFrameRange(em, 0, 4.0f, 26.0f)) {
             em->rotY += (u32) (1638.4f * em->motionSpeed);
         }
-        if (cw->unk048 == 0 && EmMotion_ReachedFrame(em, 0, 34.0f)) {
-            cw->unk048 = 1;
+        if (w->sceneEating == 0 && EmMotion_ReachedFrame(em, 0, 34.0f)) {
+            w->sceneEating = 1;
         }
-        if (Player_PassedFrameScaled(em, 300.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 300.0f, 0)) {
             em->step++;
-            Em_SetMotion(em, 0x39, 0, 0x96);
+            Em_SetMotion(em, BLANG_MOT_EAT, 0, 0x96);
         }
         break;
     case 3:
-        if (Player_PassedFrameScaled(em, 250.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 250.0f, 0)) {
             em->step++;
-            Em_SetMotion(em, 0x55, 0, 0);
-            cw->unk048 = 0;
+            Em_SetMotion(em, BLANG_MOT_BACK_STRIKE, 0, 0);
+            w->sceneEating = 0;
         }
         break;
     case 4:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x34, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
         }
         break;
     case 5:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         }
         break;
     case 6:
@@ -4919,31 +5452,37 @@ void EmBlangonga_State6_02(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State6_03(Em *em, EmWork *work)
+/*
+ * BLANG_EVENT_BLANGONGA_SCENE: hands each monster its part of Blangonga's
+ * story scene: Blangonga leaps down (BLANG_EVENT_BLANGONGA_LEAP_DOWN), the
+ * first three Blangos in gEms emerge (_EMERGE_A..C) and the rest stay
+ * hidden.
+ */
+void EmBlangonga_StartBlangongaScene(Em *em, EmWork *work)
 {
     s16 i;
     u8 n = 0;
-    Em *m;
+    Em *other;
 
-    if (em->type == 0x33) {
-        EmBlangonga_ChangeState(em, 6, 4, 0);
+    if (em->type == EM_KIND_BLANGONGA) {
+        EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_BLANGONGA_LEAP_DOWN, EM_SYNC_LOCAL);
         return;
     }
-    for (i = 0, m = gEms; i < 20; i++, m++) {
-        if (m->type == 0x3D) {
-            if (em->slotNo == m->slotNo) {
+    for (i = 0, other = gEms; i < 20; i++, other++) {
+        if (other->type == 0x3D) {
+            if (em->slotNo == other->slotNo) {
                 switch (n) {
                 case 0:
-                    EmBlangonga_ChangeState(em, 6, 5, 0);
+                    EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_BLANGO_EMERGE_A, EM_SYNC_LOCAL);
                     return;
                 case 1:
-                    EmBlangonga_ChangeState(em, 6, 6, 0);
+                    EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_BLANGO_EMERGE_B, EM_SYNC_LOCAL);
                     return;
                 case 2:
-                    EmBlangonga_ChangeState(em, 6, 7, 0);
+                    EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_BLANGO_EMERGE_C, EM_SYNC_LOCAL);
                     return;
                 default:
-                    EmBlangonga_ChangeState(em, 6, 8, 0);
+                    EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_BLANGO_HIDDEN, EM_SYNC_LOCAL);
                     return;
                 }
             }
@@ -4952,9 +5491,14 @@ void EmBlangonga_State6_03(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State6_04(Em *em, EmWork *work)
+/*
+ * BLANG_EVENT_BLANGONGA_LEAP_DOWN: waits on a high point, roars, jumps down
+ * and lands on the floor (frame 70 of the fall), walks to its goal (1200
+ * frames or within 100), then idles until event flag 0xA4.
+ */
+void EmBlangonga_BlangongaLeapDown(Em *em, EmWork *work)
 {
-    f32 d;
+    f32 goalDist;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -4962,7 +5506,7 @@ void EmBlangonga_State6_04(Em *em, EmWork *work)
     case 0:
         GmEm_ResetSize(em);
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->posX = 10747.0f;
         em->posY = 2468.0f;
         em->posZ = 8181.0f;
@@ -4970,40 +5514,40 @@ void EmBlangonga_State6_04(Em *em, EmWork *work)
         em->rotX = 0;
         em->rotY = 0xFC00;
         em->rotZ = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         em->timer = 300;
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x3B, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_ROAR_B, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 190;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         }
         break;
     case 3:
         if (--em->timer <= 0) {
             em->step++;
-            em->stance = 2;
-            Em_SetMotion(em, 0xA, 0, 0);
+            em->stance = EM_STANCE_AIR;
+            Em_SetMotion(em, BLANG_MOT_MOVE_ACTION_D, 0, 0);
         }
         break;
     case 4:
-        if (Player_PassedFrameScaled(em, 26.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0)) {
             em->step++;
             Player_ClearVelocity(em);
-            Em_SetMotion(em, 0x12, 0, 0x32);
+            Em_SetMotion(em, BLANG_MOT_JUMP_FALL, 0, 0x32);
         }
         break;
     case 5:
-        if (Player_PassedFrameScaled(em, 70.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0)) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->posX = 10682.0f;
             em->posY = 288.0f;
             em->posZ = 9620.0f;
@@ -5013,21 +5557,21 @@ void EmBlangonga_State6_04(Em *em, EmWork *work)
             em->rotX = 0;
             em->rotY = Math_AngleXZ(&em->posX, em->goal);
             em->rotZ = 0;
-            Em_SetMotion(em, 0x14, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_JUMP_LAND, 0, 0);
         }
         break;
     case 6:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 1200;
-            Em_SetMotion(em, 3, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_WALK, 0, 0);
         }
         break;
     case 7:
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || d <= 100.0f) {
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || goalDist <= 100.0f) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         }
         break;
     case 8:
@@ -5039,7 +5583,12 @@ void EmBlangonga_State6_04(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State6_05(Em *em, EmWork *work, u8 variant)
+/*
+ * BLANG_EVENT_BLANGO_EMERGE_A..C (variants 0-2): waits buried (stateArmor)
+ * at the variant's place and facing for 440, 480 or 510 frames, comes out,
+ * then idles and roars in turn until event flag 0xA4.
+ */
+void EmBlangonga_BlangoEmerge(Em *em, EmWork *work, u8 variant)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -5047,9 +5596,9 @@ void EmBlangonga_State6_05(Em *em, EmWork *work, u8 variant)
     case 0:
         GmEm_ResetSize(em);
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->stateArmor = 1;
-        Em_SetMotion(em, 4, 0, 0);
+        Em_SetMotion(em, BLANG_MOT_BURIED, 0, 0);
         switch (variant) {
         default:
             em->posX = 11000.0f;
@@ -5084,30 +5633,30 @@ void EmBlangonga_State6_05(Em *em, EmWork *work, u8 variant)
         em->stateArmor = 1;
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x16, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_EMERGE, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x33, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_ALERT_IDLE, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->stateVar1 = 0;
-            Em_SetMotion(em, 0x34, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
         }
         break;
     case 4:
         if (em->motion[0].playing == 0) {
             if (em->stateVar1 == 0) {
                 em->stateVar1 = 1;
-                Em_SetMotion(em, 0x33, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_ALERT_IDLE, 0, 0);
             } else {
                 em->stateVar1 = 0;
-                Em_SetMotion(em, 0x34, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
             }
         }
         if (Save_TestEventFlag(0xA4) == 1) {
@@ -5118,15 +5667,19 @@ void EmBlangonga_State6_05(Em *em, EmWork *work, u8 variant)
     }
 }
 
-void EmBlangonga_State6_08(Em *em)
+/*
+ * BLANG_EVENT_BLANGO_HIDDEN: stays invisible until event flag 0xA4, then
+ * shows itself and ends the state.
+ */
+void EmBlangonga_BlangoHidden(Em *em)
 {
     switch (em->step) {
     case 0:
         GmEm_ResetSize(em);
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         em->visible = 0;
         em->scriptPending = 0;
         break;
@@ -5140,63 +5693,69 @@ void EmBlangonga_State6_08(Em *em)
     }
 }
 
-void EmBlangonga_RunGroup6(Em *em, EmWork *work)
+/* Runs the current EM_GROUP_EVENT (or EVENT2) state. */
+void EmBlangonga_RunEventState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmBlangonga_State6_00_Captured(em);
+    case BLANG_EVENT_CAPTURED:
+        EmBlangonga_Captured(em);
         break;
-    case 1:
-        EmBlangonga_State6_01_Captured(em);
+    case BLANG_EVENT_CAPTURED_HOLD2:
+        EmBlangonga_CapturedHold2(em);
         break;
-    case 2:
-        EmBlangonga_State6_02(em, work);
+    case BLANG_EVENT_CONGALALA_SCENE:
+        EmBlangonga_CongalalaScene(em, work);
         break;
-    case 3:
-        EmBlangonga_State6_03(em, work);
+    case BLANG_EVENT_BLANGONGA_SCENE:
+        EmBlangonga_StartBlangongaScene(em, work);
         break;
-    case 4:
-        EmBlangonga_State6_04(em, work);
+    case BLANG_EVENT_BLANGONGA_LEAP_DOWN:
+        EmBlangonga_BlangongaLeapDown(em, work);
         break;
-    case 5:
-        EmBlangonga_State6_05(em, work, 0);
+    case BLANG_EVENT_BLANGO_EMERGE_A:
+        EmBlangonga_BlangoEmerge(em, work, 0);
         break;
-    case 6:
-        EmBlangonga_State6_05(em, work, 1);
+    case BLANG_EVENT_BLANGO_EMERGE_B:
+        EmBlangonga_BlangoEmerge(em, work, 1);
         break;
-    case 7:
-        EmBlangonga_State6_05(em, work, 2);
+    case BLANG_EVENT_BLANGO_EMERGE_C:
+        EmBlangonga_BlangoEmerge(em, work, 2);
         break;
-    case 8:
-        EmBlangonga_State6_08(em);
+    case BLANG_EVENT_BLANGO_HIDDEN:
+        EmBlangonga_BlangoHidden(em);
         break;
     }
 }
 
-void EmBlangonga_State8_00_CarveStart(Em *em, EmWork *work)
+/*
+ * BLANG_VS_EAT_BAIT: after the defeat camera (Versus_DefeatCamera) the bait
+ * comes from the winner's side (stage object 0x25) and the monster eats it
+ * (Congalala with its own motion), then Versus_RouteEmByTeam.
+ */
+void EmBlangonga_VersusEatBait(Em *em, EmWork *work)
 {
-    EmBVec v;
+    EmBlangongaVec throwPoint;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         if (Versus_DefeatCamera(em) == 1) {
-            v = EmBlangonga_CarveThrowPt;
-            StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
+            throwPoint = EmBlangonga_CarveThrowPt;
+            StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &throwPoint.x);
             em->step++;
-            if (em->type == 0x34) {
+            if (em->type == EM_KIND_CONGALALA) {
                 em->step++;
-                Em_SetMotion(em, 0x54, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_CONGALALA_EAT, 0, 0);
             } else {
-                Em_SetMotion(em, 0x39, 0, 0);
+                Em_SetMotion(em, BLANG_MOT_EAT, 0, 0);
             }
         }
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x3A, 0, 0);
+            Em_SetMotion(em, BLANG_MOT_EAT_END, 0, 0);
         }
         break;
     case 2:
@@ -5207,210 +5766,228 @@ void EmBlangonga_State8_00_CarveStart(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_State8_01(Em *em, EmWork *work)
+/*
+ * BLANG_VS_POSE_A: one pose by kind (Blangonga, Congalala, the others),
+ * then idles and BLANG_VS_WAIT_BOTH.
+ */
+void EmBlangonga_VersusPoseA(Em *em, EmWork *work)
 {
-    u8 step;
-    u8 step2;
-    u8 step3;
+    u8 blangongaStep;
+    u8 congalalaStep;
+    u8 otherStep;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->type) {
-    case 0x33:
-        step = em->step;
-        switch (step) {
+    case EM_KIND_BLANGONGA:
+        blangongaStep = em->step;
+        switch (blangongaStep) {
         case 0:
-            em->step = step + 1;
-            Em_SetMotion(em, 0x59, 0, 0);
+            em->step = blangongaStep + 1;
+            Em_SetMotion(em, BLANG_MOT_IDLE_ACTION_C, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = blangongaStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
             break;
         }
         break;
     case 0x34:
-        step2 = em->step;
-        switch (step2) {
+        congalalaStep = em->step;
+        switch (congalalaStep) {
         case 0:
-            em->step = step2 + 1;
-            Em_SetMotion(em, 0x3C, 0, 0);
+            em->step = congalalaStep + 1;
+            Em_SetMotion(em, BLANG_MOT_FLINCH_B, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step2 + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = congalalaStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
             break;
         }
         break;
     default:
-        step3 = em->step;
-        switch (step3) {
+        otherStep = em->step;
+        switch (otherStep) {
         case 0:
-            em->step = step3 + 1;
-            Em_SetMotion(em, 0x3D, 0, 0);
+            em->step = otherStep + 1;
+            Em_SetMotion(em, BLANG_MOT_FLINCH, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step3 + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = otherStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
         }
         break;
     }
 }
 
-void EmBlangonga_State8_02(Em *em, EmWork *work)
+/* BLANG_VS_POSE_B: as BLANG_VS_POSE_A with the second poses. */
+void EmBlangonga_VersusPoseB(Em *em, EmWork *work)
 {
-    u8 step;
-    u8 step3;
-    u8 step2;
+    u8 blangongaStep;
+    u8 otherStep;
+    u8 congalalaStep;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->type) {
-    case 0x33:
-        step = em->step;
-        switch (step) {
+    case EM_KIND_BLANGONGA:
+        blangongaStep = em->step;
+        switch (blangongaStep) {
         case 0:
-            em->step = step + 1;
-            Em_SetMotion(em, 0x3B, 0, 0);
+            em->step = blangongaStep + 1;
+            Em_SetMotion(em, BLANG_MOT_ROAR_B, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = blangongaStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
             break;
         }
         break;
     case 0x34:
-        step2 = em->step;
-        switch (step2) {
+        congalalaStep = em->step;
+        switch (congalalaStep) {
         case 0:
-            em->step = step2 + 1;
-            Em_SetMotion(em, 0x34, 0, 0);
+            em->step = congalalaStep + 1;
+            Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step2 + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = congalalaStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
             break;
         }
         break;
     default:
-        step3 = em->step;
-        switch (step3) {
+        otherStep = em->step;
+        switch (otherStep) {
         case 0:
-            em->step = step3 + 1;
-            Em_SetMotion(em, 0x3B, 0, 0);
+            em->step = otherStep + 1;
+            Em_SetMotion(em, BLANG_MOT_ROAR_B, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step3 + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = otherStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
         }
         break;
     }
 }
 
-void EmBlangonga_State8_03(Em *em, EmWork *work)
+/*
+ * BLANG_VS_POSE_C: as BLANG_VS_POSE_A with the third poses (Congalala's in
+ * two motions).
+ */
+void EmBlangonga_VersusPoseC(Em *em, EmWork *work)
 {
-    u8 step;
-    u8 step2;
-    u8 step3;
+    u8 congalalaStep;
+    u8 blangongaStep;
+    u8 otherStep;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->type) {
-    case 0x33:
-        step2 = em->step;
-        switch (step2) {
+    case EM_KIND_BLANGONGA:
+        blangongaStep = em->step;
+        switch (blangongaStep) {
         case 0:
-            em->step = step2 + 1;
-            Em_SetMotion(em, 0x34, 0, 0);
+            em->step = blangongaStep + 1;
+            Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step2 + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = blangongaStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
             break;
         }
         break;
     case 0x34:
-        step = em->step;
-        switch (step) {
+        congalalaStep = em->step;
+        switch (congalalaStep) {
         case 0:
-            em->step = step + 1;
-            Em_SetMotion(em, 0x51, 0, 0);
+            em->step = congalalaStep + 1;
+            Em_SetMotion(em, BLANG_MOT_CONGALALA_HITZONE_COMBO, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step + 1;
-                Em_SetMotion(em, 0x52, 0, 0);
+                em->step = congalalaStep + 1;
+                Em_SetMotion(em, BLANG_MOT_CONGALALA_HITZONE_COMBO_END, 0, 0);
             }
             break;
         case 2:
             if (em->motion[0].playing == 0) {
-                em->step = step + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = congalalaStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
             break;
         }
         break;
     default:
-        step3 = em->step;
-        switch (step3) {
+        otherStep = em->step;
+        switch (otherStep) {
         case 0:
-            em->step = step3 + 1;
-            Em_SetMotion(em, 0x34, 0, 0);
+            em->step = otherStep + 1;
+            Em_SetMotion(em, BLANG_MOT_ROAR, 0, 0);
             break;
         case 1:
             if (em->motion[0].playing == 0) {
-                em->step = step3 + 1;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBlangonga_ChangeState(em, 8, 0x98, 1);
+                em->step = otherStep + 1;
+                Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
+                EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_WAIT_BOTH, EM_SYNC_SEND);
             }
         }
         break;
     }
 }
 
-void EmBlangonga_State8_98(Em *em, EmWork *work)
+/*
+ * BLANG_VS_WAIT_BOTH: idles until both sides are defeated
+ * (Versus_BothDefeated), then BLANG_VS_END. Step 0 falls into step 1 to
+ * test on the same frame.
+ */
+void EmBlangonga_VersusWaitBoth(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_IDLE)) {
+            Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         }
         
     case 1:
         if (Versus_BothDefeated() == 1) {
             em->step++;
-            EmBlangonga_ChangeState(em, 8, 0x99, 1);
+            EmBlangonga_ChangeState(em, EM_GROUP_VERSUS, BLANG_VS_END, EM_SYNC_SEND);
         }
         break;
     }
 }
 
-void EmBlangonga_State8_99(Em *em, EmWork *work)
+/*
+ * BLANG_VS_END: idles 90 frames, lets the monster be sensed and hit again,
+ * and ends the state.
+ */
+void EmBlangonga_VersusEnd(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -5418,8 +5995,8 @@ void EmBlangonga_State8_99(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->timer = 0x5A;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_IDLE)) {
+            Em_SetMotion(em, BLANG_MOT_IDLE, 0, 0);
         }
         break;
     case 1:
@@ -5433,348 +6010,358 @@ void EmBlangonga_State8_99(Em *em, EmWork *work)
     }
 }
 
-void EmBlangonga_RunGroup8(Em *em, EmWork *work)
+/* Runs the current EM_GROUP_VERSUS state. */
+void EmBlangonga_RunVersusState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0x0:
-        EmBlangonga_State8_00_CarveStart(em, work);
+    case BLANG_VS_EAT_BAIT:
+        EmBlangonga_VersusEatBait(em, work);
         break;
-    case 0x1:
-        EmBlangonga_State8_01(em, work);
+    case BLANG_VS_POSE_A:
+        EmBlangonga_VersusPoseA(em, work);
         break;
-    case 0x2:
-        EmBlangonga_State8_02(em, work);
+    case BLANG_VS_POSE_B:
+        EmBlangonga_VersusPoseB(em, work);
         break;
-    case 0x3:
-        EmBlangonga_State8_03(em, work);
+    case BLANG_VS_POSE_C:
+        EmBlangonga_VersusPoseC(em, work);
         break;
-    case 0x98:
-        EmBlangonga_State8_98(em, work);
+    case BLANG_VS_WAIT_BOTH:
+        EmBlangonga_VersusWaitBoth(em, work);
         break;
-    case 0x99:
-        EmBlangonga_State8_99(em, work);
+    case BLANG_VS_END:
+        EmBlangonga_VersusEnd(em, work);
         break;
     }
 }
 
+/*
+ * The family's frame: the rage timer, visibility and combat timer; the
+ * Blango's sensing under the snow (EM_TRIGGER_SENSED); the needs' decay by
+ * map and kind; then Em_UpdateDamage's result picks a reaction
+ * (EM_GROUP_REACT), a death or a capture, or a status state; Congalala's
+ * and Blangonga's story quests start their scenes; then the state runs
+ * (twice when stateRequest is set), and stateArmor keeps the shadow hidden
+ * and the guard up.
+ */
 void EmBlangonga_Update(Em *em)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
-    u8 saved;
-    s16 sum;
-    s32 ev;
-    u8 k;
-    s32 hit;
+    u8 savedSenseDelay;
+    s16 partStateSum;
+    s32 result;
+    u8 mapBase;
+    s32 sensed;
     s32 i;
-    u8 buf[4];
+    u8 damageOut[4];
 
     EmBlangonga_UpdateRageTimer(em);
-    if (em->stateGroup <= 4) {
+    if (em->stateGroup <= EM_GROUP_REACT) {
         em->alpha = 1.0f;
         em->visible = 1;
     }
-    if (*(s8 *) &em->senseDelay != 0) {
+    if (em->senseDelay != 0) {
         em->noHitTimer = 5;
     }
-    if (w->unk045 > 0) {
-        w->unk045--;
+    if (w->hitSeCooldown > 0) {
+        w->hitSeCooldown--;
     }
     Em_UpdateCombatTimer(em);
     if (EmBlangonga_IsSmallKind(em) == 0) {
-        Em_RaiseTrigger80(em);
+        Em_RaisePlayerAreaTrigger(em);
     }
-    if ((em->stateGroup != 2 || em->state != 8) && (em->stateGroup != 2 || em->state != 9) &&
-        (em->stateGroup != 2 || em->state != 0xB)) {
+    if ((em->stateGroup != EM_GROUP_FLY || em->state != BLANG_LEAP_OUT_OF_AREA) && (em->stateGroup != EM_GROUP_FLY || em->state != BLANG_LEAP_DROP_IN) &&
+        (em->stateGroup != EM_GROUP_FLY || em->state != BLANG_LEAP_CROSS_AREA)) {
         Em_HoldPosNoPlayers(em, 0, 1);
     }
     if (EmBlangonga_ShouldEndState(em) == 1) {
         EmBlangonga_EndState(em, 0, 0);
     }
-    if ((s16) Player_IsState(em, 0, 0x18)) {
-        saved = em->senseDelay;
+    if ((s16) Player_IsState(em, EM_GROUP_IDLE, BLANG_IDLE_BURIED)) {
+        savedSenseDelay = em->senseDelay;
         em->senseDelay = 0;
     }
-    if (em->type == 0x3D) {
-        hit = Em_SenseObjects(em, &w->sense) & 0xFF;
-        if (*(s8 *) &em->senseDelay == 0 && em->noReact == 0 && hit != 0 && Em_ScriptFlagsFrom(em, 4) == 0) {
-            em->triggers |= 4;
+    if (em->type == EM_KIND_BLANGO) {
+        sensed = Em_SenseObjects(em, &w->sense) & 0xFF;
+        if (em->senseDelay == 0 && em->noReact == 0 && sensed != 0 && Em_ScriptFlagsFrom(em, 4) == 0) {
+            em->triggers |= EM_TRIGGER_SENSED;
             em->scriptPending = 1;
-        } else if ((s16) Player_IsState(em, 0, 0x18)) {
-            em->senseDelay = saved;
+        } else if ((s16) Player_IsState(em, EM_GROUP_IDLE, BLANG_IDLE_BURIED)) {
+            em->senseDelay = savedSenseDelay;
         }
     }
     if (em->noAlert != 1 && em->rage == 0) {
-        k = Area_BaseId(gScene.map);
+        mapBase = Map_DayId(gScene.map);
         switch (em->type) {
-        case 0x33:
-            switch (k) {
-            case 0xB:
+        case EM_KIND_BLANGONGA:
+            switch (mapBase) {
+            case MAP_SNOWY_MOUNTAINS:
                 Em_DecayNeed1Only(em);
                 Em_CheckLowHp(em, 0.3f);
                 break;
             }
             break;
         case 0x34:
-            switch (k) {
-            case 6:
+            switch (mapBase) {
+            case MAP_JUNGLE:
                 Em_DecayNeed1(em);
                 Em_DecayNeed2(em);
                 Em_CheckLowHp(em, 0.2f);
                 break;
-            case 4:
+            case MAP_SWAMP:
                 Em_DecayNeed1(em);
                 Em_CheckLowHp(em, 0.2f);
                 break;
-            case 9:
-            case 0xA:
+            case MAP_GREAT_ARENA:
+            case MAP_ARENA:
                 Em_DecayNeed1Only(em);
                 break;
             }
             break;
         }
     }
-    ev = Em_UpdateDamage(em, buf) & 0xFF;
-    switch (ev) {
-    case 0:
-    case 9:
-    case 13:
-    case 15:
-    case 16:
+    result = Em_UpdateDamage(em, damageOut) & 0xFF;
+    switch (result) {
+    case EM_DMG_NONE:
+    case EM_DMG_FLASH:
+    case EM_DMG_HIT_MODE3:
+    case EM_DMG_ATTACK5:
+    case EM_DMG_ATTACK5_FLINCH:
         break;
-    case 1:
-    case 2:
-        if (*(s8 *) &em->holdTimer != 0) {
-            EmBlangonga_ChangeState(em, 5, 1, 3);
+    case EM_DMG_KILLED:
+    case EM_DMG_DEAD:
+        if ((s8) em->holdTimer != 0) {
+            EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_DIE_HELD, EM_SYNC_OWNER);
         } else if (EmBlangonga_InStateArmor(em) == 1) {
-            EmBlangonga_ChangeState(em, 5, 2, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_DIE_ARMORED, EM_SYNC_OWNER);
         } else {
             switch (em->stance) {
-            case 2:
-                EmBlangonga_ChangeState(em, 5, 3, 3);
+            case EM_STANCE_AIR:
+                EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_DIE_FALLING, EM_SYNC_OWNER);
                 break;
             default:
-                EmBlangonga_ChangeState(em, 5, 0, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_DEFEAT, BLANG_DEFEAT_DIE, EM_SYNC_OWNER);
                 break;
             }
         }
         break;
-    case 3:
-    case 4:
-        if (*(s8 *) &em->holdTimer == 0) {
-            if (EmBlangonga_IsRajang(em) == 1 && em->rage == 0 && em->status == 0) {
-                EmBlangonga_ChangeState(em, 4, 0x18, 3);
+    case EM_DMG_ATTACK9:
+    case EM_DMG_ATTACK6:
+        if ((s8) em->holdTimer == 0) {
+            if (EmBlangonga_IsRajang(em) == 1 && em->rage == 0 && em->status == EM_STATUS_NONE) {
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_TRAP_ESCAPE, EM_SYNC_OWNER);
             } else {
-                Em_SetGoal12Dist(em, buf);
-                Em_SetGoal12(em);
-                EmBlangonga_ChangeState(em, 4, 5, 3);
+                Em_SetTrapTime(em, damageOut);
+                Em_SetTrapTimeGoal(em);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_TRAPPED, EM_SYNC_OWNER);
             }
         }
         break;
-    case 5:
-        if (em->stateGroup != 4 || em->state != 7) {
-            EmBlangonga_ChangeState(em, 4, 7, 3);
+    case EM_DMG_STATUS_IN_AIR:
+        if (em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_FALL) {
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FALL, EM_SYNC_OWNER);
         }
         break;
-    case 6:
-        if (em->stateGroup != 4 || em->state != 9) {
-            if (*(s8 *) &em->holdTimer != 0) {
+    case EM_DMG_STATUS4:
+        if (em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_STATUS4_DOWNED) {
+            if ((s8) em->holdTimer != 0) {
                 Em_SetStatus4Timer(em);
-                EmBlangonga_ChangeState(em, 4, 9, 3);
-            } else if ((em->stateGroup != 4 || em->state != 4) && (em->stateGroup != 4 || em->state != 7)) {
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS4_DOWNED, EM_SYNC_OWNER);
+            } else if ((em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_STATUS4) && (em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_FALL)) {
                 Em_SetStatus4Timer(em);
-                EmBlangonga_ChangeState(em, 4, 4, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS4, EM_SYNC_OWNER);
             }
         }
         break;
-    case 7:
+    case EM_DMG_CAPTURED:
         if (Em_IsHeld(em) == 1) {
             Em_SetStatus1Timer(em);
             if (EmBlangonga_IsBlangonga(em) != 1) {
                 EmBlangonga_IsCongalala(em);
             }
-            if (*(s8 *) &em->holdTimer != 0) {
-                EmBlangonga_ChangeState(em, 6, 0, 3);
+            if ((s8) em->holdTimer != 0) {
+                EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_CAPTURED, EM_SYNC_OWNER);
                 break;
             }
-            if (*(s8 *) &em->holdTimer2 != 0) {
-                EmBlangonga_ChangeState(em, 6, 1, 3);
+            if ((s8) em->holdTimer2 != 0) {
+                EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_CAPTURED_HOLD2, EM_SYNC_OWNER);
                 break;
             }
         }
-        if ((em->stateGroup != 0 || em->state != 0x25) && (em->stateGroup != 4 || em->state != 7)) {
+        if ((em->stateGroup != EM_GROUP_IDLE || em->state != BLANG_IDLE_STATUS1_COLLAPSE) && (em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_FALL)) {
             Em_SetStatus1Timer(em);
-            EmBlangonga_ChangeState(em, 0, 0x25, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS1_COLLAPSE, EM_SYNC_OWNER);
         }
         break;
-    case 8:
-        if (*(s8 *) &em->holdTimer != 0) {
+    case EM_DMG_STATUS2:
+        if ((s8) em->holdTimer != 0) {
             Em_SetStatus2Timer(em);
-            EmBlangonga_ChangeState(em, 0, 0x13, 3);
-        } else if ((em->stateGroup != 0 || em->state != 5) && (em->stateGroup != 4 || em->state != 7)) {
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS2_DOWNED, EM_SYNC_OWNER);
+        } else if ((em->stateGroup != EM_GROUP_IDLE || em->state != BLANG_IDLE_STATUS2_COLLAPSE) && (em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_FALL)) {
             Em_SetStatus2Timer(em);
-            EmBlangonga_ChangeState(em, 0, 5, 3);
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS2_COLLAPSE, EM_SYNC_OWNER);
         }
         break;
-    case 10:
+    case EM_DMG_HIT_LYING:
         Em_RestartScript(em);
-        switch (em->state) {
-        case 3:
-            EmBlangonga_ChangeState(em, 0, 0x1A, 3);
+        switch (em->state) { /* the lying states that set hitReactMode 2 are all in EM_GROUP_IDLE */
+        case BLANG_IDLE_REST:
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_REST_END, EM_SYNC_OWNER);
             break;
-        case 5:
-            EmBlangonga_ChangeState(em, 0, 4, 3);
+        case BLANG_IDLE_STATUS2_COLLAPSE:
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS2_END, EM_SYNC_OWNER);
             break;
-        case 0x25:
-            EmBlangonga_ChangeState(em, 0, 0x26, 3);
+        case BLANG_IDLE_STATUS1_COLLAPSE:
+            EmBlangonga_ChangeState(em, EM_GROUP_IDLE, BLANG_IDLE_STATUS1_END, EM_SYNC_OWNER);
             break;
-        case 0x13:
-            EmBlangonga_ChangeState(em, 4, 0xB, 3);
+        case BLANG_IDLE_STATUS2_DOWNED:
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS2_DOWNED_END, EM_SYNC_OWNER);
             break;
-        case 0x24:
-            EmBlangonga_ChangeState(em, 4, 0x13, 3);
+        case BLANG_IDLE_STATUS1_DOWNED:
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STATUS1_DOWNED_END, EM_SYNC_OWNER);
             break;
         }
         break;
-    case 11:
-        EmBlangonga_ChangeState(em, 4, 0x14, 3);
+    case EM_DMG_PART8_DOWN:
+        EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_PART_BREAK, EM_SYNC_OWNER);
         break;
-    case 12:
+    case EM_DMG_PART_FLINCH:
         EmBlangonga_BreakParts(em, 1);
         switch (em->stance) {
-        case 2:
-            EmBlangonga_ChangeState(em, 4, 7, 3);
+        case EM_STANCE_AIR:
+            EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FALL, EM_SYNC_OWNER);
             break;
         default:
-            sum = 0;
+            partStateSum = 0;
             if (EmBlangonga_IsCongalala(em) == 1) {
-                if (em->type == 0x34) {
+                if (em->type == EM_KIND_CONGALALA) {
                     switch (em->flinchPart) {
                     case 4:
                         if (em->parts[em->flinchPart].state >= 2) {
-                            if (EmBlangonga_PartFlagUnset(em, 1) == 1) {
-                                EmBlangonga_ChangeState(em, 4, 0x16, 3);
+                            if (EmBlangonga_CarriedShown(em, 1) == 1) {
+                                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_DROP_CARRIED_B, EM_SYNC_OWNER);
                                 goto done;
                             }
-                            if (EmBlangonga_PartFlagUnset(em, 2) == 1) {
-                                EmBlangonga_ChangeState(em, 4, 0x17, 3);
+                            if (EmBlangonga_CarriedShown(em, 2) == 1) {
+                                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_DROP_CARRIED_C, EM_SYNC_OWNER);
                                 goto done;
                             }
-                            if (EmBlangonga_PartFlagUnset(em, 0) == 1) {
-                                EmBlangonga_ChangeState(em, 4, 0x15, 3);
+                            if (EmBlangonga_CarriedShown(em, 0) == 1) {
+                                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_DROP_CARRIED_A, EM_SYNC_OWNER);
                                 goto done;
                             }
                         }
                     }
                 }
                 for (i = 0; i < 8; i++) {
-                    sum += em->parts[i].state;
+                    partStateSum += em->parts[i].state;
                 }
-                if (sum <= 3) {
-                    EmBlangonga_ChangeState(em, 4, 0, 3);
+                if (partStateSum <= 3) {
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FLINCH, EM_SYNC_OWNER);
                     break;
                 }
                 switch (em->flinchPart) {
                 case 0:
                     if (EmBlangonga_IsSmallKind(em) == 0) {
-                        EmBlangonga_ChangeState(em, 4, 0x12, 3);
+                        EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FLINCH_ATTACK, EM_SYNC_OWNER);
                     } else {
-                        EmBlangonga_ChangeState(em, 4, 1, 3);
+                        EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FLINCH_B, EM_SYNC_OWNER);
                     }
                     break;
                 case 2:
-                    EmBlangonga_ChangeState(em, 4, 2, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_KNOCK_DOWN, EM_SYNC_OWNER);
                     break;
                 case 3:
-                    EmBlangonga_ChangeState(em, 4, 3, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_KNOCK_DOWN_B, EM_SYNC_OWNER);
                     break;
                 case 4:
                 default:
-                    EmBlangonga_ChangeState(em, 4, 1, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FLINCH_B, EM_SYNC_OWNER);
                     break;
                 }
             } else {
                 if (EmBlangonga_IsSmallKind(em) == 0) {
                     for (i = 0; i < 8; i++) {
-                        sum += em->parts[i].state;
+                        partStateSum += em->parts[i].state;
                     }
-                    if (sum <= 3) {
-                        EmBlangonga_ChangeState(em, 4, 0, 3);
+                    if (partStateSum <= 3) {
+                        EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FLINCH, EM_SYNC_OWNER);
                         break;
                     }
                 }
                 switch (em->flinchPart) {
                 case 1:
-                    EmBlangonga_ChangeState(em, 4, 3, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_KNOCK_DOWN_B, EM_SYNC_OWNER);
                     break;
                 case 2:
-                    EmBlangonga_ChangeState(em, 4, 2, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_KNOCK_DOWN, EM_SYNC_OWNER);
                     break;
                 default:
-                    EmBlangonga_ChangeState(em, 4, 1, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FLINCH_B, EM_SYNC_OWNER);
                     break;
                 }
             }
             break;
         }
         break;
-    case 14:
-        if (em->type == 0x3D) {
-            if (em->stance == 0) {
+    case EM_DMG_HIT:
+        if (em->type == EM_KIND_BLANGO) {
+            if (em->stance == EM_STANCE_GROUND) {
                 em->scriptPending = 0;
-                EmBlangonga_ChangeState(em, 4, 0, 3);
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_FLINCH, EM_SYNC_OWNER);
             }
-        } else if (em->type == 0x34 && em->stateGroup == 3 && em->state == 0xA && *(s8 *) &em->hitzoneSet == 1 &&
-                   w->unk045 == 0) {
+        } else if (em->type == EM_KIND_CONGALALA && em->stateGroup == EM_GROUP_ATTACK && em->state == BLANG_ATK_CONGALALA_HITZONE_COMBO && (s8) em->hitzoneSet == 1 &&
+                   w->hitSeCooldown == 0) {
             Em_PlaySeChecked(em, 0x1B, 0, &em->posX, 6, 0);
-            w->unk045 = 30;
+            w->hitSeCooldown = 30;
         }
         break;
-    case 18:
+    case EM_DMG_ATTACK13:
         Em_ResetKindTimer(em);
-        EmBlangonga_ChangeState(em, 4, 0x10, 3);
+        EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_HOLD2, EM_SYNC_OWNER);
         break;
-    case 17:
-        if ((em->stateGroup != 4 || em->state != 7) && (em->stateGroup != 4 || em->state != 0xE)) {
-            if (*(s8 *) &em->holdTimer != 0) {
+    case EM_DMG_STATUS5:
+        if ((em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_FALL) && (em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_STUN_DOWNED)) {
+            if ((s8) em->holdTimer != 0) {
                 Em_SetStatus5Timer(em);
-                EmBlangonga_ChangeState(em, 4, 0xE, 3);
-            } else if ((em->stateGroup != 4 || em->state != 0xC) && (em->stateGroup != 4 || em->state != 0xD)) {
+                EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STUN_DOWNED, EM_SYNC_OWNER);
+            } else if ((em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_STUN) && (em->stateGroup != EM_GROUP_REACT || em->state != BLANG_REACT_STUN_B)) {
                 Em_SetStatus5Timer(em);
                 if (((em->hitAngle - em->rotY) & 0xFFFF) > 0x8000) {
-                    EmBlangonga_ChangeState(em, 4, 0xC, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STUN, EM_SYNC_OWNER);
                 } else {
-                    EmBlangonga_ChangeState(em, 4, 0xD, 3);
+                    EmBlangonga_ChangeState(em, EM_GROUP_REACT, BLANG_REACT_STUN_B, EM_SYNC_OWNER);
                 }
             }
         }
         break;
     }
-done:
-    if (func_00725820(em, ev) == 1) {
+done: /* the Congalala drops leave the result switch from inside the part switch */
+    if (Em_DamageResultIsReaction(em, result) == 1) {
         EmBlangonga_BreakParts(em, 0);
     }
     switch (gQuest.stage) {
     case 0x3F3:
     case 0x3F4:
-        if (em->type == 0x34 && Area_DayId(em->area) == 0x71 && Save_TestEventFlag(0x9B) == 0) {
-            if (Area_DayId(gScene.area) == 0x71 && gScene.eventRunning == 1 && em->stateGroup != 6) {
-                EmBlangonga_ChangeState(em, 6, 2, 1);
+        if (em->type == EM_KIND_CONGALALA && Area_DayId(em->area) == AREA_JUNGLE_3 && Save_TestEventFlag(0x9B) == 0) {
+            if (Area_DayId(gScene.area) == AREA_JUNGLE_3 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+                EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_CONGALALA_SCENE, EM_SYNC_SEND);
             }
             goto skip;
         }
         break;
     case 0x423:
     case 0x424:
-        if ((em->type == 0x33 || em->type == 0x3D) && Area_DayId(em->area) == 0x61 && Save_TestEventFlag(0xA4) == 0) {
-            if (Area_DayId(gScene.area) == 0x61 && gScene.eventRunning == 1 && em->stateGroup != 6) {
-                EmBlangonga_ChangeState(em, 6, 3, 1);
+        if ((em->type == EM_KIND_BLANGONGA || em->type == EM_KIND_BLANGO) && Area_DayId(em->area) == AREA_SNOWY_MOUNTAINS_6 && Save_TestEventFlag(0xA4) == 0) {
+            if (Area_DayId(gScene.area) == AREA_SNOWY_MOUNTAINS_6 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+                EmBlangonga_ChangeState(em, EM_GROUP_EVENT, BLANG_EVENT_BLANGONGA_SCENE, EM_SYNC_SEND);
             }
             goto skip;
         }
         break;
     }
     Em_UpdatePendingScript(em);
-skip:
+skip: /* a story scene keeps the pending script from starting */
     Em_ClearHitReactMode(em);
     EmBlangonga_RunState(em, (s32) w);
     if (em->stateRequest != 0) {
@@ -5789,48 +6376,58 @@ skip:
     EmBlangonga_UpdateTint(em);
 }
 
+/*
+ * Runs the current state through its group's dispatcher (EM_GROUP_EVENT2
+ * uses EM_GROUP_EVENT's) after keeping the group and state as the previous
+ * ones.
+ */
 void EmBlangonga_RunState(Em *em, s32 work)
 {
     em->prevStateGroup = em->stateGroup;
     em->prevState = em->state;
     switch (em->stateGroup) {
-    case 0:
-        EmBlangonga_RunGroup0(em, (EmWork *) work);
+    case EM_GROUP_IDLE:
+        EmBlangonga_RunIdleState(em, (EmWork *) work);
         break;
-    case 1:
-        EmBlangonga_RunGroup1(em, work);
+    case EM_GROUP_MOVE:
+        EmBlangonga_RunMoveState(em, work);
         break;
-    case 2:
-        EmBlangonga_RunGroup2(em, (EmWork *) work);
+    case EM_GROUP_FLY:
+        EmBlangonga_RunLeapState(em, (EmWork *) work);
         break;
-    case 3:
-        EmBlangonga_RunGroup3(em, (EmWork *) work);
+    case EM_GROUP_ATTACK:
+        EmBlangonga_RunAttackState(em, (EmWork *) work);
         break;
-    case 4:
-        EmBlangonga_RunGroup4(em, (EmWork *) work);
+    case EM_GROUP_REACT:
+        EmBlangonga_RunReactState(em, (EmWork *) work);
         break;
-    case 5:
-        EmBlangonga_RunGroup5(em, work);
+    case EM_GROUP_DEFEAT:
+        EmBlangonga_RunDefeatState(em, work);
         break;
-    case 6:
-        EmBlangonga_RunGroup6(em, (EmWork *) work);
+    case EM_GROUP_EVENT:
+        EmBlangonga_RunEventState(em, (EmWork *) work);
         break;
-    case 7:
-        EmBlangonga_RunGroup6(em, (EmWork *) work);
+    case EM_GROUP_EVENT2:
+        EmBlangonga_RunEventState(em, (EmWork *) work);
         break;
-    case 8:
-        EmBlangonga_RunGroup8(em, (EmWork *) work);
+    case EM_GROUP_VERSUS:
+        EmBlangonga_RunVersusState(em, (EmWork *) work);
         
     default:
         break;
     }
 }
 
+/*
+ * Blangonga: a flinch of the damaged part 4 whose flags have bit 2 flags
+ * part 2's break (Em_FlagPartBreak); then, when `apply`, applies the part
+ * breaks (Em_ApplyPartBreaks).
+ */
 void EmBlangonga_BreakParts(Em *em, s32 apply)
 {
     u8 k;
 
-    if (em->type == 0x33) {
+    if (em->type == EM_KIND_BLANGONGA) {
         k = em->flinchPart;
         switch (k) {
         case 4:
@@ -5845,36 +6442,45 @@ void EmBlangonga_BreakParts(Em *em, s32 apply)
     }
 }
 
-void EmBlangonga_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale)
+/*
+ * In the player's area, creates the ground effect (Effect0D) of `kind` at
+ * bone `bone` dropped to the floor, scaled by the monster's size.
+ */
+void EmBlangonga_SpawnGroundEffect(Em *em, s32 bone, s32 kind, f32 scale)
 {
     f32 pos[3];
 
     if (Player_InCurrentArea(em)) {
-        Em_BonePos(em, a1, pos);
+        Em_BonePos(em, bone, pos);
         pos[1] = em->floorY;
-        Effect0D_SpawnOnGround(pos, a2, scale * em->scaleX);
+        Effect0D_SpawnOnGround(pos, kind, scale * em->scaleX);
     }
 }
 
+/*
+ * While enraged, in the motions of its list: Rajang creates stage object
+ * 0x27 every 16 frames, the others stage object 7 every 45 frames
+ * (staggered by the monster's slot).
+ */
 void EmBlangonga_SpawnK1CInMotions(Em *em, s16 motion)
 {
     switch (motion) {
-    case 0x3E9:
-    case 0x3EB:
-    case 0x3ED:
-    case 0x3EE:
-    case 0x3EF:
-    case 0x3F0:
-    case 0x3F1:
-    case 0x412:
-    case 0x413:
-    case 0x414:
-    case 0x41B:
-    case 0x41C:
-    case 0x41D:
-    case 0x41E:
-    case 0x426:
-    case 0x43F:
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE):
+    case EM_MOTION_ID(0, BLANG_MOT_WALK):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT_QUICK):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT_QUICK):
+    case EM_MOTION_ID(0, BLANG_MOT_LIMP):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM_WINDUP):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_A):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_B):
+    case EM_MOTION_ID(0, BLANG_MOT_ALERT_IDLE):
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT_B):
+    case EM_MOTION_ID(0, BLANG_MOT_SHAKE_OFF):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_B_END):
         if (em->rage != 0) {
             if (EmBlangonga_IsRajang(em) == 1) {
                 if ((gScene.frame & 0xF) == em->index * 2) {
@@ -5888,13 +6494,18 @@ void EmBlangonga_SpawnK1CInMotions(Em *em, s16 motion)
     }
 }
 
-void EmBlangonga_RequestOnFrame(s32 em, s32 frame, s32 i)
+/*
+ * Shakes the camera (CamShake_ReqAIf level `level`) when the layer-0 motion
+ * passes `frame`.
+ */
+void EmBlangonga_CamShakeOnFrame(s32 em, s32 frame, s32 i)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         CamShake_ReqAIf((void *) em, i);
     }
 }
 
+/* Does nothing. */
 void EmBlangonga_MotionEffectsDefault(Em *em)
 {
 }
@@ -5906,6 +6517,13 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work);
 void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work);
 void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work);
 
+/*
+ * The motions' effects: keeps the layer-0 motion id (EmWork.prevMotion),
+ * plays the kind's sounds (EmBlangonga_MotionSounds, ...Congalala,
+ * ...Rajang in em_rathalos.c) and the rage's stage objects, then per motion
+ * and frame the hits (BlangongaAttack), ground effects, stage objects and
+ * camera shakes.
+ */
 void EmBlangonga_MotionEffects(Em *em, EmWork *work)
 {
     f32 ofs[3];
@@ -5915,208 +6533,208 @@ void EmBlangonga_MotionEffects(Em *em, EmWork *work)
         work->prevMotion = em->motionId[0];
     }
     switch (em->type) {
-    case 0x33:
+    case EM_KIND_BLANGONGA:
     default:
-    case 0x3D:
+    case EM_KIND_BLANGO:
         EmBlangonga_MotionSounds(em, work);
         break;
-    case 0x34:
-    case 0x3E:
+    case EM_KIND_CONGALALA:
+    case EM_KIND_CONGA:
         EmBlangonga_MotionSoundsCongalala(em, work);
         break;
-    case 0x35:
+    case EM_KIND_RAJANG:
         EmBlangonga_MotionSoundsRajang(em, work);
         break;
     }
     EmBlangonga_SpawnK1CInMotions(em, work->prevMotion);
     switch (work->prevMotion) {
-    case 0x3EF:
-        if ((EmBlangonga_IsSmallKind(em) == 0) && (Player_PassedFrameScaled(em, 10.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0xE);
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT_QUICK):
+        if ((EmBlangonga_IsSmallKind(em) == 0) && (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0xE);
         }
         break;
-    case 0x3F0:
-        if ((EmBlangonga_IsSmallKind(em) == 0) && (Player_PassedFrameScaled(em, 10.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0x10);
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT_QUICK):
+        if ((EmBlangonga_IsSmallKind(em) == 0) && (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0x10);
         }
         break;
-    case 0x3F2:
-        if ((EmBlangonga_IsSmallKind(em) == 0) && (Player_PassedFrameScaled(em, 10.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0xB);
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_D):
+        if ((EmBlangonga_IsSmallKind(em) == 0) && (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 14.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
         }
         break;
-    case 0x3F3:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+    case EM_MOTION_ID(0, 0xB):
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x3F4:
-        if ((EmBlangonga_IsSmallKind(em) == 0) && (Player_PassedFrameScaled(em, 18.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0xC);
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_A):
+        if ((EmBlangonga_IsSmallKind(em) == 0) && (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0xC);
         }
-        if (Player_PassedFrameScaled(em, 14.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
         }
         break;
-    case 0x3F5:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+    case EM_MOTION_ID(0, 0xD):
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x3F6:
-        if ((EmBlangonga_IsSmallKind(em) == 0) && (Player_PassedFrameScaled(em, 18.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0xD);
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_B):
+        if ((EmBlangonga_IsSmallKind(em) == 0) && (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 14.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0x10, em->scaleX);
         }
         break;
-    case 0x3F7:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+    case EM_MOTION_ID(0, 0xF):
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x3F8:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_C):
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0x11, em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 22.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0x12, em->scaleX);
         }
         break;
-    case 0x3F9:
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP):
         if (EmBlangonga_IsRajang(em) == 1) {
-            if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 0x13, 0, em->scaleX);
                 break;
             }
         } else if (EmBlangonga_IsCongalala(em) == 1) {
-            if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 0x13, 0, em->scaleX);
                 break;
             }
-        } else if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0x13, 0, em->scaleX);
         }
         break;
-    case 0x3FB:
+    case EM_MOTION_ID(0, BLANG_MOT_CHARGE):
         if (EmBlangonga_IsCongalala(em) == 1) {
-            if (Player_PassedFrameScaled(em, 14.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 3, 0x10, em->scaleX);
                 break;
             }
         } else {
-            if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 3, 0x10, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0x11, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 3, 0x10, em->scaleX);
                 break;
             }
         }
         break;
-    case 0x3FC:
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP_LAND):
         if (EmBlangonga_IsRajang(em) == 1) {
-            if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 0xB, 0, 0.6f * em->scaleX);
                 break;
             }
-        } else if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x3FD:
-        if (Player_PassedFrameScaled(em, 22.0f, 0) || Player_PassedFrameScaled(em, 92.0f, 0) || Player_PassedFrameScaled(em, 160.0f, 0) || Player_PassedFrameScaled(em, 210.0f, 0) || Player_PassedFrameScaled(em, 246.0f, 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_DIG_IN):
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0) || EmMotion_PassedFrameScaled(em, 92.0f, 0) || EmMotion_PassedFrameScaled(em, 160.0f, 0) || EmMotion_PassedFrameScaled(em, 210.0f, 0) || EmMotion_PassedFrameScaled(em, 246.0f, 0)) {
             StageObj_K14_Create((Em *) em, 2, 0x11, em->scaleX);
         }
-        if ((Player_PassedFrameScaled(em, 64.0f, 0) != 0) || (Player_PassedFrameScaled(em, 134.0f, 0) != 0) || (Player_PassedFrameScaled(em, 170.0f, 0) != 0) || (Player_PassedFrameScaled(em, 200.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 134.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 200.0f, 0) != 0)) {
             StageObj_K14_Create((Em *) em, 3, 0x12, em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 254.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 254.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0, em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EffBlangonga27_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            BlangongaAttack_Create(em, 0x1B);
         }
         break;
-    case 0x3FE:
+    case EM_MOTION_ID(0, BLANG_MOT_EMERGE):
         if (EmBlangonga_IsSmallKind(em) == 0) {
-            EmBlangonga_RequestOnFrame((s32) em, 4, 5);
+            EmBlangonga_CamShakeOnFrame((s32) em, 4, 5);
         }
-        if ((Player_PassedFrameScaled(em, 8.0f, 0) != 0) && Player_InCurrentArea(em)) {
+        if ((EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) && Player_InCurrentArea(em)) {
             Em_BonePos(em, 1, pos);
             pos[1] = em->floorY;
             StageObj_K1C_CreateAt(pos, 6, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x409:
-        if (Player_PassedFrameScaled(em, 84.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_COLLAPSE):
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x40A:
-        if (Player_PassedFrameScaled(em, 170.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_LIE_DOWN):
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 0x10, 7, 3.5f);
         }
         break;
-    case 0x410:
+    case EM_MOTION_ID(0, BLANG_MOT_TRIPLE_HIT):
         if (EmBlangonga_IsBlangonga(em) == 1) {
-            if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 92.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0x11, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 104.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 0x10, 7, 3.5f);
                 break;
             }
         }
         break;
-    case 0x411:
+    case EM_MOTION_ID(0, BLANG_MOT_TRIPLE_HIT_END):
         if (EmBlangonga_IsCongalala(em) == 1) {
-            if ((Player_PassedFrameScaled(em, 38.0f, 0) != 0) || (Player_PassedFrameScaled(em, 124.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 124.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 3, 0x22, em->scaleX);
             }
-            if ((Player_PassedFrameScaled(em, 76.0f, 0) != 0) || (Player_PassedFrameScaled(em, 172.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 172.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 2, 0x21, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 200.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 200.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
                 break;
             }
         }
         break;
-    case 0x413:
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_A):
         if (EmBlangonga_IsRajang(em) == 1) {
-            if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 3, 0x22, em->scaleX);
             }
-            if ((Player_PassedFrameScaled(em, 22.0f, 0) != 0) || (Player_PassedFrameScaled(em, 74.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 2, 0x21, em->scaleX);
                 break;
             }
         }
         break;
-    case 0x414:
-        if ((EmBlangonga_IsRajang(em) == 1) && (Player_PassedFrameScaled(em, 30.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_B):
+        if ((EmBlangonga_IsRajang(em) == 1) && (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x417:
-        if ((Player_PassedFrameScaled(em, 102.0f, 0) != 0) && Player_InCurrentArea(em)) {
+    case EM_MOTION_ID(0, BLANG_MOT_DIG_THROW):
+        if ((EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) && Player_InCurrentArea(em)) {
             Em_BonePos(em, 1, pos);
             pos[1] = em->floorY;
             ofs[0] = 0.0f;
@@ -6129,32 +6747,32 @@ void EmBlangonga_MotionEffects(Em *em, EmWork *work)
             StageObj_K1C_CreateAt(pos, 6, 0.8f);
         }
         break;
-    case 0x418:
+    case EM_MOTION_ID(0, BLANG_MOT_CHARGE_END):
         if (EmBlangonga_IsCongalala(em) == 1) {
-            if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 3, 0x10, em->scaleX);
                 break;
             }
         } else if (EmBlangonga_IsRajang(em) != 0) {
-            if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
                 break;
             }
         } else {
-            if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 0x10, 7, 3.5f);
                 break;
             }
         }
         break;
-    case 0x419:
-        if ((EmBlangonga_IsCongalala(em) == 1) && (Player_PassedFrameScaled(em, 10.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_HOP_LAND):
+        if ((EmBlangonga_IsCongalala(em) == 1) && (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 1, 0x28, 1.0f);
             if ((s32)Player_InCurrentArea(em) & 0xFF) {
                 StageObj_K11_CreateAtScaled(&em->posX, (u16) em->rotY, 0xAU, 0.4f * em->scaleX);
@@ -6162,236 +6780,240 @@ void EmBlangonga_MotionEffects(Em *em, EmWork *work)
             }
         }
         break;
-    case 0x41C:
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR):
         if (EmBlangonga_IsBlangonga(em) == 1) {
-            if (em->type == 0x33) {
-                if ((em->hit8Count <= 0) && (Player_PassedFrameScaled(em, 38.0f, 0) != 0)) {
-                    EffBlangonga27_Create(em, 0x17);
+            if (em->type == EM_KIND_BLANGONGA) {
+                if ((em->partBreakCount <= 0) && (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0)) {
+                    BlangongaAttack_Create(em, 0x17);
                     StageObj_K0F_CreateOnEm(em, 5, 2, 0.4f * em->scaleX);
                     break;
                 }
-            } else if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            } else if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
                 break;
             }
-        } else if (em->type == 0x34) {
-            if ((gScene.eventRunning == 0) && (Player_PassedFrameScaled(em, 70.0f, 0) != 0)) {
-                EffEm33_Create(em, 7, 0, 0, 0);
+        } else if (em->type == EM_KIND_CONGALALA) {
+            if ((gScene.eventRunning == 0) && (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0)) {
+                EmEffectAttack_Create(em, 7, 0, 0, 0);
                 break;
             }
-        } else if ((EmBlangonga_IsRajang(em) == 1) && (Player_PassedFrameScaled(em, 38.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0x17);
+        } else if ((EmBlangonga_IsRajang(em) == 1) && (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0x17);
             StageObj_K0F_CreateOnEm(em, 5, 2, 0.4f * em->scaleX);
         }
         break;
-    case 0x421:
-        if ((EmBlangonga_IsCongalala(em) == 1) && (Player_PassedFrameScaled(em, 66.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_EAT):
+        if ((EmBlangonga_IsCongalala(em) == 1) && (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 2, 7, 3.5f);
         }
         break;
-    case 0x423:
-        if ((EmBlangonga_IsSmallKind(em) == 0) && (Player_PassedFrameScaled(em, 64.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0x17);
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR_B):
+        if ((EmBlangonga_IsSmallKind(em) == 0) && (EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0x17);
             StageObj_K0F_CreateOnEm(em, 5, 2, 0.4f * em->scaleX);
         }
         break;
-    case 0x427:
-        if (Player_PassedFrameScaled(em, 108.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN):
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x42B:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_FALL_LAND):
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x42C:
-        if (Player_PassedFrameScaled(em, 180.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_DIE):
+        if (EmMotion_PassedFrameScaled(em, 180.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 0x10, 7, 3.5f);
         }
         break;
-    case 0x42D:
-        if ((Player_PassedFrameScaled(em, 28.0f, 0) != 0) || (Player_PassedFrameScaled(em, 78.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN):
+        if ((EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 4, 7, 3.5f);
         }
         break;
-    case 0x42E:
-        if ((Player_PassedFrameScaled(em, 28.0f, 0) != 0) || (Player_PassedFrameScaled(em, 78.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN_B):
+        if ((EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 4, 7, 3.5f);
         }
         break;
-    case 0x42F:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffBlangonga27_Create(em, 0x1C);
+    case EM_MOTION_ID(0, BLANG_MOT_DIE_END):
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            BlangongaAttack_Create(em, 0x1C);
         }
         break;
-    case 0x431:
+    case EM_MOTION_ID(0, BLANG_MOT_TRAPPED):
         if (EmBlangonga_IsCongalala(em) == 1) {
-            if (Player_PassedFrameScaled(em, 16.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
                 break;
             }
-        } else if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x432:
-        if ((EmBlangonga_IsCongalala(em) == 1) && (em->rage != 0) && ((Player_PassedFrameScaled(em, 2.0f, 0) != 0) || (Player_PassedFrameScaled(em, 40.0f, 0) != 0) || (Player_PassedFrameScaled(em, 80.0f, 0) != 0))) {
+    case EM_MOTION_ID(0, BLANG_MOT_STRUGGLE):
+        if ((EmBlangonga_IsCongalala(em) == 1) && (em->rage != 0) && ((EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0))) {
             StageObj_K1C_CreateOnEm(em, 0x14, 1.0f);
         }
         break;
-    case 0x433:
-        if (Player_PassedFrameScaled(em, 92.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_DOWNED):
+        if (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 4, 7, 3.5f);
         }
         break;
-    case 0x435:
-        if (Player_PassedFrameScaled(em, 108.0f, 0) != 0) {
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_B):
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x437:
-        if ((EmBlangonga_IsCongalala(em) == 1) && (Player_PassedFrameScaled(em, 30.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_DROP_CARRIED):
+        if ((EmBlangonga_IsCongalala(em) == 1) && (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 0x10, 7, 3.5f);
         }
         break;
-    case 0x438:
-        if ((EmBlangonga_IsRajang(em) == 1) && (Player_PassedFrameScaled(em, 74.0f, 0) != 0)) {
-            EffBlangonga27_Create(em, 0x28);
+    case EM_MOTION_ID(0, BLANG_MOT_EFFECT_STRIKE):
+        if ((EmBlangonga_IsRajang(em) == 1) && (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0)) {
+            BlangongaAttack_Create(em, 0x28);
         }
         break;
-    case 0x439:
-        if ((EmBlangonga_IsCongalala(em) == 1) && (Player_PassedFrameScaled(em, 44.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_EFFECT_STRIKE_END):
+        if ((EmBlangonga_IsCongalala(em) == 1) && (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
-    case 0x43A:
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_HITZONE_COMBO_END):
         if (EmBlangonga_IsCongalala(em) == 1) {
-            if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 0x10, 7, 3.5f);
                 break;
             }
         } else {
-            if ((EmBlangonga_IsRajang(em) == 1) && (Player_PassedFrameScaled(em, 26.0f, 0) != 0)) {
+            if ((EmBlangonga_IsRajang(em) == 1) && (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 0x13, 0, em->scaleX);
                 break;
             }
         }
         break;
-    case 0x43B:
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_JUMP_SHOT):
         if (EmBlangonga_IsCongalala(em) == 1) {
-            if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 0x10, 7, 3.5f);
             }
-            if (Player_PassedFrameScaled(em, 90.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 2, 7, 3.5f);
                 break;
             }
         }
         break;
-    case 0x43C:
-        if ((EmBlangonga_IsRajang(em) == 1) && (Player_PassedFrameScaled(em, 2.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_JUMP_SHOT_LAND):
+        if ((EmBlangonga_IsRajang(em) == 1) && (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0)) {
             StageObj_K14_Create((Em *) em, 0xB, 0, 0.6f * em->scaleX);
         }
         break;
-    case 0x43D:
+    case EM_MOTION_ID(0, BLANG_MOT_BACK_STRIKE):
         if (EmBlangonga_IsBlangonga(em) == 1 || EmBlangonga_IsRajang(em) == 1) {
-            if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
-                EffBlangonga27_Create(em, 9);
+            if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
+                BlangongaAttack_Create(em, 9);
             }
-            if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-                EffBlangonga27_Create(em, 0x14);
+            if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+                BlangongaAttack_Create(em, 0x14);
             }
-            if ((Player_PassedFrameScaled(em, 48.0f, 0) != 0) || (Player_PassedFrameScaled(em, 78.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0)) {
                 EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
                 break;
             }
         }
         break;
-    case 0x43E:
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_B):
         if (EmBlangonga_IsBlangonga(em) == 1) {
-            if ((Player_PassedFrameScaled(em, 60.0f, 0) != 0) || (Player_PassedFrameScaled(em, 94.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 3, 0x12, em->scaleX);
                 break;
             }
         } else {
             if (EmBlangonga_IsRajang(em) == 1) {
-                if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+                if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
                     StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
                 }
-                if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
+                if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
                     StageObj_K14_Create((Em *) em, 3, 0x10, em->scaleX);
                 }
-                if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
+                if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
                     EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
                     break;
                 }
             }
         }
         break;
-    case 0x43F:
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_B_END):
         if (EmBlangonga_IsRajang(em) == 1) {
-            if (Player_PassedFrameScaled(em, 16.0f, 0) || Player_PassedFrameScaled(em, 52.0f, 0) || Player_PassedFrameScaled(em, 84.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 16.0f, 0) || EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
                 StageObj_K14_Create((Em *) em, 2, 0xF, em->scaleX);
             }
-            if ((Player_PassedFrameScaled(em, 46.0f, 0) != 0) || (Player_PassedFrameScaled(em, 90.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 3, 0x10, em->scaleX);
                 break;
             }
         }
         break;
-    case 0x440:
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM):
         if (EmBlangonga_IsCongalala(em) == 1) {
-            if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 0x10, 0x13, 1.0f);
             }
         } else {
-            if (Player_PassedFrameScaled(em, 22.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
                 EmBlangonga_SpawnGroundEffect(em, 0x10, 0x13, 1.0f);
             }
-            if ((Player_PassedFrameScaled(em, 24.0f, 0) != 0) && Player_InCurrentArea(em)) {
+            if ((EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) && Player_InCurrentArea(em)) {
                 Em_BonePos(em, 0x10, pos);
                 pos[1] = em->floorY += 20.0f;
                 StageObj_K11_CreateAtScaled(pos, (u16) em->rotY, 0xAU, 0.6f * em->scaleX);
             }
         }
-    case 0x442:
-        if ((EmBlangonga_IsRajang(em) == 1) && (Player_PassedFrameScaled(em, 36.0f, 0) != 0)) {
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_CHARGE_END):
+        if ((EmBlangonga_IsRajang(em) == 1) && (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0)) {
             EmBlangonga_SpawnGroundEffect(em, 1, 7, 3.5f);
         }
         break;
     default:
         EmBlangonga_MotionEffectsDefault(em);
         break;
-    case 0x3E9:
-    case 0x3EA:
-    case 0x3EB:
-    case 0x3ED:
-    case 0x3EE:
-    case 0x3F1:
-    case 0x3FA:
-    case 0x407:
-    case 0x408:
-    case 0x412:
-    case 0x416:
-    case 0x41B:
-    case 0x41D:
-    case 0x41E:
-    case 0x41F:
-    case 0x420:
-    case 0x422:
-    case 0x424:
-    case 0x425:
-    case 0x426:
-    case 0x428:
-    case 0x429:
-    case 0x42A:
-    case 0x434:
-    case 0x436:
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE):
+    case EM_MOTION_ID(0, 0x2):
+    case EM_MOTION_ID(0, BLANG_MOT_WALK):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT):
+    case EM_MOTION_ID(0, BLANG_MOT_LIMP):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP_FALL):
+    case EM_MOTION_ID(0, BLANG_MOT_LIE):
+    case EM_MOTION_ID(0, BLANG_MOT_GET_UP):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM_WINDUP):
+    case EM_MOTION_ID(0, BLANG_MOT_THROW):
+    case EM_MOTION_ID(0, BLANG_MOT_ALERT_IDLE):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT_B):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2_END):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_END):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH_B):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH):
+    case EM_MOTION_ID(0, BLANG_MOT_SHAKE_OFF):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP):
+    case EM_MOTION_ID(0, BLANG_MOT_STATUS4):
+    case EM_MOTION_ID(0, BLANG_MOT_FALL):
+    case EM_MOTION_ID(0, 0x4C):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP_B):
         break;
     }
 }
 
+/*
+ * Callback slot 3: the first frame only marks the effects started (fxStep);
+ * from then on runs EmBlangonga_MotionEffects every frame.
+ */
 void EmBlangonga_UpdateMotionEffects(Em *em)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
@@ -6406,24 +7028,34 @@ void EmBlangonga_UpdateMotionEffects(Em *em)
     }
 }
 
+/* Callback slot 2: does nothing. */
 void EmBlangonga_TableNop(void)
 {
 }
 
-u8 EmBlangonga_ScriptQuery(Em *em, u8 kind)
+/*
+ * Callback slot 4, the monster script's questions (`kind`): 0 whether
+ * moveCount reached 4; 1 whether it stands on snow (floor attribute 1 in
+ * AREA_SNOWY_MOUNTAINS_5, AREA_SNOWY_MOUNTAINS_6 and AREA_SNOWY_MOUNTAINS_8,
+ * while in the player's area); 2 stateArmor; 3 eatenKind; 4 whether a visible Blangonga in its area is in
+ * BLANG_IDLE_ROAR_SIGNAL; 5 the destination area's index among the family's
+ * twelve areas (0xFF if none); 6 the first carried item shown (item 0 gives
+ * 1, item 2 gives 2, item 1 gives 3; 0 if none).
+ */
+u8 EmBlangonga_ScriptQuery(Em *em, u8 query)
 {
     EmBlangongaWork *w = (EmBlangongaWork *)&em->work;
-    Em *m;
+    Em *other;
     s16 i;
 
-    switch (kind) {
-    case 0:
-        return w->unk018 >= 4;
-    case 1:
+    switch (query) {
+    case BLANG_QUERY_MOVE_COUNT:
+        return w->moveCount >= 4;
+    case BLANG_QUERY_ON_SNOW:
         switch (Area_DayId(em->area)) {
-        case 0x60:
-        case 0x61:
-        case 0x64:
+        case AREA_SNOWY_MOUNTAINS_5:
+        case AREA_SNOWY_MOUNTAINS_6:
+        case AREA_SNOWY_MOUNTAINS_8:
             if (Player_InCurrentArea(em)) {
                 if (*(u8 *) &em->floorAttr == 1) {
                     return 1;
@@ -6433,54 +7065,54 @@ u8 EmBlangonga_ScriptQuery(Em *em, u8 kind)
             return 0;
         }
         return 0;
-    case 2:
+    case BLANG_QUERY_ARMOR:
         return EmBlangonga_InStateArmor(em) == 1;
-    case 3:
-        return w->unk044;
-    case 4:
-        for (m = gEms, i = 0; i < 20; i++, m++) {
-            if (m->active != 0 && m->visible != 0 && (Obj_SameArea(em, (Player *) m) & 0xFF) && m->type == 0x33 && Player_IsState(m, 0, 0x23)) {
+    case BLANG_QUERY_EATEN_KIND:
+        return w->eatenKind;
+    case BLANG_QUERY_ROAR_SIGNAL:
+        for (other = gEms, i = 0; i < EM_COUNT; i++, other++) {
+            if (other->active != 0 && other->visible != 0 && (Obj_SameArea(em, (Player *) other) & 0xFF) && other->type == EM_KIND_BLANGONGA && Player_IsState(other, EM_GROUP_IDLE, BLANG_IDLE_ROAR_SIGNAL)) {
                 return 1;
             }
         }
         return 0;
-    case 5:
+    case BLANG_QUERY_DEST_AREA:
         switch (Area_DayId(*(u16 *) &em->destArea)) {
-        case 0x6F:
+        case AREA_JUNGLE_1:
             return 0;
-        case 0x70:
+        case AREA_JUNGLE_2:
             return 1;
-        case 0x71:
+        case AREA_JUNGLE_3:
             return 2;
-        case 0x74:
+        case AREA_JUNGLE_6:
             return 3;
-        case 0x77:
+        case AREA_JUNGLE_9:
             return 4;
-        case 0x78:
+        case AREA_JUNGLE_10:
             return 5;
-        case 0x99:
+        case AREA_SWAMP_2:
             return 6;
-        case 0x9C:
+        case AREA_SWAMP_5:
             return 7;
-        case 0x9D:
+        case AREA_SWAMP_6:
             return 8;
-        case 0x9E:
+        case AREA_SWAMP_7:
             return 9;
-        case 0x9F:
+        case AREA_SWAMP_8:
             return 10;
-        case 0xA0:
+        case AREA_SWAMP_9:
             return 11;
         default:
             return 0xFF;
         }
-    case 6:
-        if (EmBlangonga_PartFlagUnset(em, 0) == 1) {
+    case BLANG_QUERY_CARRIED:
+        if (EmBlangonga_CarriedShown(em, 0) == 1) {
             return 1;
         }
-        if (EmBlangonga_PartFlagUnset(em, 2) == 1) {
+        if (EmBlangonga_CarriedShown(em, 2) == 1) {
             return 2;
         }
-        if (EmBlangonga_PartFlagUnset(em, 1) == 1) {
+        if (EmBlangonga_CarriedShown(em, 1) == 1) {
             return 3;
         }
         return 0;
@@ -6489,16 +7121,21 @@ u8 EmBlangonga_ScriptQuery(Em *em, u8 kind)
     }
 }
 
-s32 EmBlangonga_AllowHit8(Em *em)
+/*
+ * Callback slot 6: returns 1 while no part break has happened (Em.partBreakCount
+ * 0) and Blangonga is on the ground, or Rajang enraged on the ground: the
+ * condition for BLANG_REACT_PART_BREAK.
+ */
+s32 EmBlangonga_AllowPartBreak(Em *em)
 {
-    if ((s8) em->hit8Count != 0) {
+    if ((s8) em->partBreakCount != 0) {
         return 0;
     }
-    if (em->type == 0x33) {
-        if (em->stance == 0) {
+    if (em->type == EM_KIND_BLANGONGA) {
+        if (em->stance == EM_STANCE_GROUND) {
             return 1;
         }
-    } else if (em->type == 0x35 && em->rage != 0 && em->stance == 0) {
+    } else if (em->type == EM_KIND_RAJANG && em->rage != 0 && em->stance == EM_STANCE_GROUND) {
         return 1;
     }
     return 0;
@@ -6670,7 +7307,7 @@ s32 EmKushala_WindActive(Em *em)
 {
     EmKushalaWork *w = (EmKushalaWork *)&em->work;
 
-    if ((em->blindTimer > 0) || (em->poisonDamage > 0) || (em->hitReactMode == 4) || ((em->stateGroup == 4) && (em->state == 0xC))) {
+    if ((em->blindTimer > 0) || (em->poisonDamage > 0) || (em->hitReactMode == EM_HIT_REACT_STATUS) || ((em->stateGroup == 4) && (em->state == 0xC))) {
         return 0;
     }
     if (Em_PartBroken(em, 2) == 1) {
@@ -6686,7 +7323,7 @@ s32 EmKushala_WindActive2(Em *em)
 {
     EmKushalaWork *w = (EmKushalaWork *)&em->work;
 
-    if ((em->blindTimer > 0) || (em->poisonDamage > 0) || (em->hitReactMode == 4) || ((em->stateGroup == 4) && (em->state == 0xC))) {
+    if ((em->blindTimer > 0) || (em->poisonDamage > 0) || (em->hitReactMode == EM_HIT_REACT_STATUS) || ((em->stateGroup == 4) && (em->state == 0xC))) {
         return 0;
     }
     if (Em_PartBroken(em, 2) == 1) {
@@ -6980,7 +7617,7 @@ void EmKushala_SetGroup4State(Em *em, u16 state, u8 mode)
     case 6:
         EmKushala_SetWind(em, (s32) w, 0);
         em->fxFlags |= 1;
-        em->hit8Count = (s8) em->hit8Count + 1;
+        em->partBreakCount = (s8) em->partBreakCount + 1;
         em->meshShown[1] = 0;
         Em_EndAllStatus();
         Em_BreakPart(em, 2U);
@@ -6998,7 +7635,7 @@ void EmKushala_SetGroup4State(Em *em, u16 state, u8 mode)
         Em_EndAllStatus(em);
         break;
     case 15:
-        em->hit8Count = (s8) em->hit8Count + 1;
+        em->partBreakCount = (s8) em->partBreakCount + 1;
         break;
     }
     Em_SetStateSync(em, 4, state, mode);
@@ -7277,7 +7914,7 @@ void EmShenGaoren_PlaySeAtOffset(Em *em, s32 se, s32 idx, s32 vol)
 
 void EmShenGaoren_PlaySeOnFrame(s32 em, s32 frame, s32 se, s32 idx, s32 vol)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         EmShenGaoren_PlaySeAtOffset((Em *) em, se, idx, vol);
     }
 }
@@ -7378,7 +8015,7 @@ void EmShenGaoren_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneVolOnFrame(em, 0x17C, 0x53, 0x1F, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x11, 2);
         Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x13, 2);
-        Em_PlaySe6AtBoneInFrames(em, 0xA, 0x168, 0x14, 2, 8, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 0xA, 0x168, 0x14, 2, 8, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x152, 0xC, 0x18);
         Em_PlaySeAtBoneOnFrame(em, 0x152, 0xF, 0x10);
         Em_PlaySeAtBoneOnFrame(em, 0x168, 9, 0x1C);
@@ -7753,7 +8390,7 @@ void EmShenGaoren_MotionSounds(Em *em, EmWork *work)
     case 0x40B:
         Em_PlaySeAtBoneVolOnFrame(em, 4, 0x52, 0x1F, 9);
         Em_PlaySeAtBoneVolOnFrame(em, 0x11C, 0x2B, 0x1F, 9);
-        Em_PlaySe6AtBoneInFrames(em, 4, 0x164, 0x14, 2, 8, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 4, 0x164, 0x14, 2, 8, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x94, 0x11, 2);
         Em_PlaySeAtBoneOnFrame(em, 0x100, 0x12, 2);
         Em_PlaySeAtBoneOnFrame(em, 0x8A, Sound_RandomSe(0, 4, 1, 4), 0x12);
@@ -8204,12 +8841,12 @@ EmCurveKey *EmBlangonga_SpeedCurves[3] = {
 EmBlangongaTurnData EmBlangonga_TurnData = {
 #include "game/008C9DD0.inc"
 };
-EmBVec EmBlangonga_CarveThrowPt = {
+EmBlangongaVec EmBlangonga_CarveThrowPt = {
 #include "game/008C9E28.inc"
 };
 void *EmBlangonga_Callbacks[8] = {
     EmBlangonga_SpawnEffect01, EmBlangonga_SpawnEffect01, EmBlangonga_TableNop, EmBlangonga_UpdateMotionEffects,
-    EmBlangonga_ScriptQuery, EmBlangonga_Reinit, EmBlangonga_AllowHit8, NULL,
+    EmBlangonga_ScriptQuery, EmBlangonga_Reinit, EmBlangonga_AllowPartBreak, NULL,
 };
 EmCurveKey EmKushala_VelYCurves_0[6] = {
 #include "game/008C9E60.inc"
@@ -8232,6 +8869,6 @@ EmCurveKey *EmKushala_VelYCurves[4] = {
 EmCurveKey *EmKushala_SpeedCurves[4] = {
     NULL, EmKushala_SpeedCurves_1, EmKushala_SpeedCurves_2, NULL,
 };
-EmBVec EmShenGaoren_SeOffsets[4] = {
+EmBlangongaVec EmShenGaoren_SeOffsets[4] = {
 #include "game/008CA050.inc"
 };

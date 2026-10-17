@@ -1,12 +1,18 @@
-/* NETWORK: the in-quest protocol (preserve byte for byte for online play).
+/*
+ * NETWORK: the in-quest protocol (preserve byte for byte for online play).
  *
- * One session, gQNet (QNet, 0xD0 bytes), over one TCP connection
- * (NetTcp_*). Packets are a 4-byte header {len, flags, sender, seq} and
- * sub-messages of the same layout; the bytes after the header are
- * scrambled with a running XOR. Queues (QNetBuf): gQNetSysSend system
- * messages to send, gQNetSysRecv system messages received, gQNetGameSend game
- * messages to send, gQNetGameRecv game messages received, gQNetRecv the raw
- * receive buffer. */
+ * One session, gQNet (QNet, qnet.h), over one TCP connection (NetTcp_*),
+ * stepped each frame by QuestNet_Tick. The session joins its players
+ * (alive and time messages measure each peer's ping), then runs: the
+ * game's messages (qnet_sync.c, through qnet_if.c's QuestNet_Post,
+ * QuestNet_Flush and QuestNet_Receive) travel on the game channel, the
+ * session's own (ready, leave, time) on the system channel. A packet is a
+ * QNetHdr, optionally the sender's view of the peer states, then messages
+ * that each start with a QNetHdr; the bytes after the packet's header are
+ * scrambled with a running XOR. The queues (QNetBuf): gQNetSysSend and
+ * gQNetGameSend to send, gQNetSysRecv and gQNetGameRecv received,
+ * gQNetRecv the raw receive buffer.
+ */
 #include "common.h"
 #include "qnet.h"
 
@@ -29,14 +35,13 @@ u8 gQNetPingCounts[4];
 
 void *memcpy(void *dst, const void *src, u32 n);
 void *memset(void *dst, s32 c, u32 n);
-struct NetTcpStatus;
-s32 NetTcp_Status(s32 sock, struct NetTcpStatus *);
+s32 NetTcp_Status(s32 sock, NetTcpStatus *st);
 s32 NetTcp_Recv(s32, void *, s16);
 s32 NetTcp_Send(s32, void *, s16);
 void *memmove(void *dst, const void *src, u32 n);
 s64 GetTimerSystemTime(void);
 void TimerBusClock2USec(s64, u32 *, u32 *);
-/* unit's own declaration: with the definition's u16 (s32 x) (sub_main/unk_30E420.c), QuestNet_Parse: 45 of 124 words differ */
+/* unit's own declaration: the definition (sub_main/unk_30E420.c) is u16 Swap16(s32 x); QuestNet_Parse matches only with this one */
 u16 Swap16(u16);
 s32 rand(void);
 s32 NetIf_GetError(void);
@@ -50,99 +55,138 @@ void QuestNet_Update(QNet *);
 s32 QuestNet_GetError(void);
 s32 QuestNet_CanSend(void);
 
-void QuestNet_Clock(f32 *t, s64 *last) {
+/*
+ * Advances the clock *time (seconds) by the time since the system timer
+ * reading *lastClock, and stores the new reading. The first call (no
+ * reading yet) starts the clock at 0.
+ */
+void QuestNet_Clock(f32 *time, s64 *lastClock)
+{
     u32 sec;
     u32 usec;
     s64 now;
 
-    if (*last == 0) {
-        *last = GetTimerSystemTime();
-        *t = 0.0f;
+    if (*lastClock == 0) {
+        *lastClock = GetTimerSystemTime();
+        *time = 0.0f;
     } else {
         now = GetTimerSystemTime();
-        if (now - *last != 0) {
-            TimerBusClock2USec(now - *last, &sec, &usec);
-            *t += (f32)sec + 0.000001f * (f32)usec;
-            *last = now;
+        if (now - *lastClock != 0) {
+            TimerBusClock2USec(now - *lastClock, &sec, &usec);
+            *time += (f32)sec + 0.000001f * (f32)usec;
+            *lastClock = now;
         }
     }
 }
 
-s32 QuestNet_SendError(QNet *q, s32 err, s32 detail) {
-    q->err98 = err;
-    q->errDetail = detail;
+/*
+ * Records a send-side error (QNET_ERR_*) and its detail (a result or a
+ * length) in the session; returns the error negated.
+ */
+s32 QuestNet_SendError(QNet *net, s32 err, s32 detail)
+{
+    net->sendError = err;
+    net->errDetail = detail;
     return -err;
 }
 
-s32 QuestNet_RecvError(QNet *q, s32 err, s32 detail) {
-    q->err94 = err;
-    q->errDetail = detail;
+/*
+ * Records a receive-side error and its detail, and empties both receive
+ * queues; returns the error negated.
+ */
+s32 QuestNet_RecvError(QNet *net, s32 err, s32 detail)
+{
+    net->recvError = err;
+    net->errDetail = detail;
     gQNetGameRecv.len = 0;
     gQNetSysRecv.len = 0;
     return -err;
 }
 
-s32 QuestNet_LinkError(QNet *q, s32 err, s32 detail) {
-    q->err9C = err;
-    q->errDetail = detail;
+/*
+ * Records a link error (a stalled send) and its detail; returns the error
+ * negated.
+ */
+s32 QuestNet_LinkError(QNet *net, s32 err, s32 detail)
+{
+    net->linkError = err;
+    net->errDetail = detail;
     return -err;
 }
 
-s32 QuestNet_Loopback(QNet *q, u8 *data, s32 len, u8 type) {
+/*
+ * Appends a copy of the local player's own sent game messages (len bytes
+ * of data) to the game receive queue, under a header from the local
+ * player, so the game handles its own messages as the others do. type is
+ * the channel. Returns 0, or the error when the queue is full.
+ */
+s32 QuestNet_Loopback(QNet *net, u8 *data, s32 len, u8 type)
+{
     QNetHdr hdr;
     QNetBuf *buf = &gQNetGameRecv;
 
-    if (buf->cap < buf->len + 4 + len) {
-        return QuestNet_SendError(q, 4, buf->len + 4 + len);
+    if (buf->cap < buf->len + QNET_HDR_LEN + len) {
+        return QuestNet_SendError(net, QNET_ERR_RECV_FULL, buf->len + QNET_HDR_LEN + len);
     }
-    hdr.len = (len + 4 == 0x28) ? len + 5 : len + 4;
+    hdr.len = (len + QNET_HDR_LEN == QNET_TEXT_MARK) ? len + QNET_HDR_LEN + 1 : len + QNET_HDR_LEN;
     hdr.flags = type;
-    hdr.from = q->self;
-    hdr.seq = 0xFF;
-    memcpy(buf->data + buf->len, &hdr, 4);
-    memcpy(buf->data + (buf->len + 4), data, len);
+    hdr.from = net->self;
+    hdr.seq = QNET_SEQ_NONE;
+    memcpy(buf->data + buf->len, &hdr, sizeof(QNetHdr));
+    memcpy(buf->data + (buf->len + QNET_HDR_LEN), data, len);
     buf->len += hdr.len;
     return 0;
 }
 
-/* Sends what fits of a queue (1 system, 2 game) as one packet: the header,
- * the peer states every second (flag 0x10), then whole messages; drops
- * messages flagged 1 when the socket has less than 0x2000 bytes free.
- * The `switch` on the send result, with `default:` first (-1: try again
- * later), is what leaves the delay slots of every conditional branch of the
- * function empty, as in the original: with an `if` there, MWCC fills them
- * from the fall-through blocks. */
-s32 QuestNet_Send(QNet *q, QNetBuf *queue, u8 type) {
+/*
+ * Sends what fits of a queue (the channel type: QNET_CHAN_SYS or
+ * QNET_CHAN_GAME) as one packet: the header, the peer states every second
+ * (every two when the queue is empty: QNET_FLAG_STATES), then whole
+ * messages. Droppable messages are dropped while the socket's send space is
+ * under QNET_SEND_SPACE_LOW, and a packet leaves QNET_SEND_RESERVE bytes of
+ * the space free. The bytes after the header are scrambled with a running
+ * XOR before sending. A game packet goes out only while another player is
+ * still in the session (or with the peer states), and what it took from the
+ * queue is looped back to the local player. Returns the bytes
+ * taken from the queue, or an error. The header is written as bytes of
+ * gQNetMsg: the field forms change the stack frame. The `switch` on the
+ * send result, with `default:` first (-1: try again later), is what leaves
+ * the delay slots of every conditional branch of the function empty, as in
+ * the original: with an `if` there, MWCC fills them from the fall-through
+ * blocks.
+ */
+s32 QuestNet_Send(QNet *net, QNetBuf *queue, u8 type)
+{
     s32 pos;
     s32 space;
     s32 len;
     u8 *msg;
-    u8 *p;
+    u8 *out;
     s32 send;
     s32 drop;
-    s32 t;
-    s32 r;
+    s32 chan;
+    s32 result;
     s32 j;
     s32 i;
-    s32 n;
+    s32 size;
     QNetHdr hdr;
 
-    r = NetTcp_Status(q->sock, (struct NetTcpStatus *)&q->tcpState);
-    if (r < 0) {
-        return QuestNet_SendError(q, 10, r);
+    result = NetTcp_Status(net->sock, &net->tcp);
+    if (result < 0) {
+        return QuestNet_SendError(net, QNET_ERR_STATUS, result);
     }
-    if (q->tcpState != 4) {
-        return QuestNet_SendError(q, 6, q->tcpState);
+    if (net->tcp.state != 4) {
+        return QuestNet_SendError(net, QNET_ERR_NOT_CONNECTED, net->tcp.state);
     }
     drop = 0;
-    if (q->sendSpace < 0x2000) {
+    if (net->tcp.sendSpace < QNET_SEND_SPACE_LOW) {
         drop = 1;
     }
-    t = type;
-    if (t == 2) {
+    chan = type;
+    if (chan == QNET_CHAN_GAME) {
         send = 0;
-        for (i = 0; i < q->count; i++) {
-            if (i != q->self && q->peer[i] != 6 && q->peer[i] != 5 && q->peer[i] != 0) {
+        for (i = 0; i < net->count; i++) {
+            if (i != net->self && net->peerState[i] != QNET_PEER_LOST && net->peerState[i] != QNET_PEER_LEFT && net->peerState[i] != QNET_PEER_NONE) {
                 send = 1;
                 break;
             }
@@ -150,231 +194,275 @@ s32 QuestNet_Send(QNet *q, QNetBuf *queue, u8 type) {
     } else {
         send = 1;
     }
-    space = 0xFF;
-    if (q->sendSpace - 0xFF < 0x1E2B) {
-        space = q->sendSpace - 0x1E2A;
+    space = QNET_PACKET_MAX;
+    if (net->tcp.sendSpace - QNET_PACKET_MAX < QNET_SEND_RESERVE + 1) {
+        space = net->tcp.sendSpace - QNET_SEND_RESERVE;
     }
-    if (space < 4) {
+    if (space < QNET_HDR_LEN) {
         return 0;
     }
-    space -= 4;
-    len = 4;
+    space -= QNET_HDR_LEN;
+    len = QNET_HDR_LEN;
     msg = (u8 *)&gQNetMsg;
-    p = gQNetMsg + 4;
-    msg[1] = t & 0xF;
-    msg[2] = q->self;
-    if ((1.0f + q->unk1C < q->now && 0 < queue->len) || 2.0f + q->unk1C < q->now) {
-        if (space < 4) {
+    out = gQNetMsg + QNET_HDR_LEN;
+    msg[1] = chan & QNET_CHAN_MASK;
+    msg[2] = net->self;
+    if ((1.0f + net->lastStatesTime < net->now && 0 < queue->len) || 2.0f + net->lastStatesTime < net->now) {
+        if (space < QNET_PEERS) {
             return 0;
         }
-        space -= 4;
-        for (i = 0; i < q->count; i++) {
-            p[i] = q->peer[i];
+        space -= QNET_PEERS;
+        for (i = 0; i < net->count; i++) {
+            out[i] = net->peerState[i];
         }
-        len += 4;
-        p += 4;
-        msg[1] |= 0x10;
+        len += QNET_PEERS;
+        out += QNET_PEERS;
+        msg[1] |= QNET_FLAG_STATES;
     }
     pos = 0;
     while (0 < space && pos < queue->len) {
-        memcpy(&hdr, queue->data + pos, 4);
+        memcpy(&hdr, queue->data + pos, sizeof(QNetHdr));
         if (space < hdr.len) {
             break;
         }
-        if (drop && hdr.flags == 1) {
+        if (drop && hdr.flags == QNET_MSG_DROPPABLE) {
             pos += hdr.len;
         } else {
-            memcpy(p, queue->data + pos, hdr.len);
+            memcpy(out, queue->data + pos, hdr.len);
             space -= hdr.len;
             len += hdr.len;
-            p += hdr.len;
+            out += hdr.len;
             pos += hdr.len;
         }
     }
-    if (len == 4) {
+    if (len == QNET_HDR_LEN) {
         return 0;
     }
-    msg[3] = ++q->seq[q->self];
-    msg[0] = (len == 0x28) ? len + 1 : len;
-    n = msg[0];
-    for (j = 0; j < n - 4; j++) {
+    msg[3] = ++net->seq[net->self];
+    msg[0] = (len == QNET_TEXT_MARK) ? len + 1 : len;
+    size = msg[0];
+    for (j = 0; j < size - QNET_HDR_LEN; j++) {
         if (j == 0) {
-            msg[4] ^= (u8)(((QNetHdr *)msg)->seq ^ (((QNetHdr *)msg)->len ^ ((QNetHdr *)msg)->from));
+            msg[QNET_HDR_LEN] ^= (u8)(((QNetHdr *)msg)->seq ^ (((QNetHdr *)msg)->len ^ ((QNetHdr *)msg)->from));
         } else {
-            *(u8 *)(j + (u32)msg + 4) ^= (u8)(j ^ *(u8 *)(j + (u32)msg + 3));
+            *(u8 *)(j + (u32)msg + QNET_HDR_LEN) ^= (u8)(j ^ *(u8 *)(j + (u32)msg + QNET_HDR_LEN - 1));
         }
     }
-    if (send == 1 || (msg[1] & 0xF0)) {
-        r = NetTcp_Send(q->sock, msg, n);
-        switch (r) {
+    if (send == 1 || (msg[1] & QNET_FLAG_MASK)) {
+        result = NetTcp_Send(net->sock, msg, size);
+        switch (result) {
         default:
-            if (r < 0) {
-                return QuestNet_SendError(q, 1, r);
+            if (result < 0) {
+                return QuestNet_SendError(net, QNET_ERR_SEND, result);
             }
             break;
         case -1:
             break;
         }
-        q->sent += n;
-        q->unk58 = q->now;
-        if (msg[1] & 0x10) {
-            q->unk1C = q->now;
+        net->sent += size;
+        net->lastSendTime = net->now;
+        if (msg[1] & QNET_FLAG_STATES) {
+            net->lastStatesTime = net->now;
         }
     }
     if (pos != 0) {
-        if (t == 2) {
-            QuestNet_Loopback(q, queue->data, pos, type);
+        if (chan == QNET_CHAN_GAME) {
+            QuestNet_Loopback(net, queue->data, pos, type);
         }
-        n = queue->len - pos;
-        if (0 < n) {
-            memmove(queue->data, queue->data + pos, n);
+        size = queue->len - pos;
+        if (0 < size) {
+            memmove(queue->data, queue->data + pos, size);
         }
-        queue->len = n;
+        queue->len = size;
     }
     return pos;
 }
 
-void QuestNet_SetPeerState(QNet *q, u8 peer, u8 state) {
-    s32 old = q->peer[peer];
+/*
+ * Sets a player's state, calling onLeave when another player becomes
+ * QNET_PEER_LEFT and onLost when one becomes QNET_PEER_LOST.
+ */
+void QuestNet_SetPeerState(QNet *net, u8 peer, u8 state)
+{
+    s32 old = net->peerState[peer];
 
-    q->peer[peer] = state;
-    if (old != 5 && state == 5) {
-        if (peer != q->self) {
-            q->onLeave(peer, q->onLeaveArg, state);
+    net->peerState[peer] = state;
+    if (old != QNET_PEER_LEFT && state == QNET_PEER_LEFT) {
+        if (peer != net->self) {
+            net->onLeave(peer, net->onLeaveArg, state);
         }
-    } else if (old != 6 && state == 6 && peer != q->self) {
-        q->onLost(peer, q->onLostArg, state);
+    } else if (old != QNET_PEER_LOST && state == QNET_PEER_LOST && peer != net->self) {
+        net->onLost(peer, net->onLostArg, state);
     }
 }
 
-void QuestNet_DropPeers(QNet *q, u8 *states) {
+/*
+ * Marks lost every player a peer's packet reports as lost (states: the
+ * sender's view of the QNET_PEERS states).
+ */
+void QuestNet_DropPeers(QNet *net, u8 *states)
+{
     s32 i;
 
-    for (i = 0; i < q->count; i++) {
-        if (q->peer[i] != 6 && states[i] == 6) {
-            QuestNet_SetPeerState(q, i, 6);
+    for (i = 0; i < net->count; i++) {
+        if (net->peerState[i] != QNET_PEER_LOST && states[i] == QNET_PEER_LOST) {
+            QuestNet_SetPeerState(net, i, QNET_PEER_LOST);
         }
     }
 }
 
-s32 QuestNet_Queue(QNet *q, QNetBuf *buf, void *msg) {
-    QNetHdr *h = msg;
+/*
+ * Appends a message (its length in its header) to a send queue. Returns
+ * the length, or the error when the queue is full.
+ */
+s32 QuestNet_Queue(QNet *net, QNetBuf *buf, void *msg)
+{
+    QNetHdr *hdr = msg;
 
-    if (buf->cap < buf->len + h->len) {
-        return QuestNet_SendError(q, 2, buf->len + h->len);
+    if (buf->cap < buf->len + hdr->len) {
+        return QuestNet_SendError(net, QNET_ERR_QUEUE_FULL, buf->len + hdr->len);
     }
-    memcpy(buf->data + buf->len, msg, h->len);
-    buf->len += h->len;
-    return h->len;
+    memcpy(buf->data + buf->len, msg, hdr->len);
+    buf->len += hdr->len;
+    return hdr->len;
 }
 
-s32 QuestNet_SysAlive(QNet *q) {
+/* Queues the join's alive message. */
+s32 QuestNet_SysAlive(QNet *net)
+{
     QNetSysMsg *msg = (QNetSysMsg *)gQNetMsg;
 
-    msg->len = 4;
+    msg->len = QNET_HDR_LEN;
     msg->flags = 0;
-    msg->cmd = 1;
-    msg->seq = 0xFF;
-    return QuestNet_Queue(q, &gQNetSysSend, msg);
+    msg->cmd = QNET_SYS_ALIVE;
+    msg->seq = QNET_SEQ_NONE;
+    return QuestNet_Queue(net, &gQNetSysSend, msg);
 }
 
-s32 QuestNet_SysReady(QNet *q, u8 arg) {
+/*
+ * Queues the ready message, with the seconds the local player may stay
+ * ready (timeout).
+ */
+s32 QuestNet_SysReady(QNet *net, u8 timeout)
+{
     QNetSysMsg *msg = (QNetSysMsg *)gQNetMsg;
 
-    msg->len = 5;
+    msg->len = QNET_HDR_LEN + 1;
     msg->flags = 0;
-    msg->cmd = 2;
-    msg->seq = 0xFF;
-    msg->u.ready = arg;
-    return QuestNet_Queue(q, &gQNetSysSend, msg);
+    msg->cmd = QNET_SYS_READY;
+    msg->seq = QNET_SEQ_NONE;
+    msg->u.ready = timeout;
+    return QuestNet_Queue(net, &gQNetSysSend, msg);
 }
 
-s32 QuestNet_SysUnready(QNet *q) {
+/* Queues the unready message. */
+s32 QuestNet_SysUnready(QNet *net)
+{
     QNetSysMsg *msg = (QNetSysMsg *)gQNetMsg;
 
-    msg->len = 4;
+    msg->len = QNET_HDR_LEN;
     msg->flags = 0;
-    msg->cmd = 3;
-    msg->seq = 0xFF;
-    return QuestNet_Queue(q, &gQNetSysSend, msg);
+    msg->cmd = QNET_SYS_UNREADY;
+    msg->seq = QNET_SEQ_NONE;
+    return QuestNet_Queue(net, &gQNetSysSend, msg);
 }
 
-s32 QuestNet_SysLeave(QNet *q) {
+/* Queues the leave message. */
+s32 QuestNet_SysLeave(QNet *net)
+{
     QNetSysMsg *msg = (QNetSysMsg *)gQNetMsg;
 
-    msg->len = 4;
+    msg->len = QNET_HDR_LEN;
     msg->flags = 0;
-    msg->cmd = 4;
-    msg->seq = 0xFF;
-    return QuestNet_Queue(q, &gQNetSysSend, msg);
+    msg->cmd = QNET_SYS_LEAVE;
+    msg->seq = QNET_SEQ_NONE;
+    return QuestNet_Queue(net, &gQNetSysSend, msg);
 }
 
-s32 QuestNet_SysTime(QNet *q) {
+/*
+ * Queues the time message: the session's clock, for the peers to send
+ * back.
+ */
+s32 QuestNet_SysTime(QNet *net)
+{
     QNetSysMsg *msg = (QNetSysMsg *)gQNetMsg;
 
-    msg->len = 8;
+    msg->len = QNET_HDR_LEN + 4;
     msg->flags = 0;
-    msg->cmd = 5;
-    msg->seq = 0xFF;
-    msg->u.t.time = q->now;
-    return QuestNet_Queue(q, &gQNetSysSend, msg);
+    msg->cmd = QNET_SYS_TIME;
+    msg->seq = QNET_SEQ_NONE;
+    msg->u.t.time = net->now;
+    return QuestNet_Queue(net, &gQNetSysSend, msg);
 }
 
-s32 QuestNet_SysTimeReply(QNet *q, f32 time, u8 arg) {
+/*
+ * Queues the answer to a peer's time message: its clock (time) sent back
+ * to the player that asked (asker).
+ */
+s32 QuestNet_SysTimeReply(QNet *net, f32 time, u8 asker)
+{
     QNetSysMsg *msg = (QNetSysMsg *)gQNetMsg;
 
-    msg->len = 9;
+    msg->len = QNET_HDR_LEN + 5;
     msg->flags = 0;
-    msg->cmd = 6;
-    msg->seq = 0xFF;
+    msg->cmd = QNET_SYS_TIME_REPLY;
+    msg->seq = QNET_SEQ_NONE;
     msg->u.t.time = time;
-    msg->u.t.to = arg;
-    return QuestNet_Queue(q, &gQNetSysSend, msg);
+    msg->u.t.to = asker;
+    return QuestNet_Queue(net, &gQNetSysSend, msg);
 }
 
-s32 QuestNet_OnSysMsg(QNet *q, u8 from, QNetSysMsg *msg) {
+/*
+ * Handles a system message from a peer: an alive answered once (the peer
+ * becomes QNET_PEER_ALIVE), ready and unready with the ready timeout, leave,
+ * the time (answered), and the time reply, whose QNET_PING_SAMPLES-th one
+ * sets the peer's ping. Each message refreshes the peer's last-heard time.
+ * Returns 0.
+ */
+s32 QuestNet_OnSysMsg(QNet *net, u8 from, QNetSysMsg *msg)
+{
     s32 i;
-    f32 *t;
+    f32 *sentTime;
 
     switch (msg->cmd) {
-    case 1:
-        if (q->peer[q->self] == 1 && q->peer[from] == 1) {
-            QuestNet_SetPeerState(q, from, 2);
-            QuestNet_SysAlive(q);
-            q->unk14 |= 1 << from;
+    case QNET_SYS_ALIVE:
+        if (net->peerState[net->self] == QNET_PEER_JOINING && net->peerState[from] == QNET_PEER_JOINING) {
+            QuestNet_SetPeerState(net, from, QNET_PEER_ALIVE);
+            QuestNet_SysAlive(net);
+            net->aliveMask |= 1 << from;
         }
         break;
-    case 2:
+    case QNET_SYS_READY:
         i = from;
-        if (q->peer[i] == 3) {
-            QuestNet_SetPeerState(q, from, 4);
-            q->unk78[i] = q->now;
-            q->unkAC[i] = msg->u.ready;
+        if (net->peerState[i] == QNET_PEER_JOINED) {
+            QuestNet_SetPeerState(net, from, QNET_PEER_READY);
+            net->readyTime[i] = net->now;
+            net->readyTimeout[i] = msg->u.ready;
         }
         break;
-    case 3:
+    case QNET_SYS_UNREADY:
         i = from;
-        if (q->peer[i] == 4) {
-            QuestNet_SetPeerState(q, from, 3);
-            q->unk78[i] = 0.0f;
-            q->unkAC[i] = 0;
+        if (net->peerState[i] == QNET_PEER_READY) {
+            QuestNet_SetPeerState(net, from, QNET_PEER_JOINED);
+            net->readyTime[i] = 0.0f;
+            net->readyTimeout[i] = 0;
         }
         break;
-    case 4:
-        if (q->peer[from] == 3) {
-            QuestNet_SetPeerState(q, from, 5);
+    case QNET_SYS_LEAVE:
+        if (net->peerState[from] == QNET_PEER_JOINED) {
+            QuestNet_SetPeerState(net, from, QNET_PEER_LEFT);
         }
         break;
-    case 5:
-        QuestNet_SysTimeReply(q, msg->u.t.time, from);
+    case QNET_SYS_TIME:
+        QuestNet_SysTimeReply(net, msg->u.t.time, from);
         break;
-    case 6:
-        t = &msg->u.t.time;
-        if (msg->u.t.to == q->self) {
+    case QNET_SYS_TIME_REPLY:
+        sentTime = &msg->u.t.time;
+        if (msg->u.t.to == net->self) {
             if (gQNetPing[from] == 0.0f) {
                 gQNetPingCounts[from]++;
-                if (gQNetPingCounts[from] >= 3) {
-                    gQNetPing[from] = q->now - *t;
+                if (gQNetPingCounts[from] >= QNET_PING_SAMPLES) {
+                    gQNetPing[from] = net->now - *sentTime;
                 }
             }
         }
@@ -382,160 +470,191 @@ s32 QuestNet_OnSysMsg(QNet *q, u8 from, QNetSysMsg *msg) {
     default:
         return 0;
     }
-    q->peerTime[from] = q->now;
+    net->peerTime[from] = net->now;
     return 0;
 }
 
-s32 QuestNet_OnGameMsg(QNet *q, u8 from, u8 *msg) {
-    return q->onMsg(from, msg, q->onMsgArg);
+/*
+ * Passes a game message to the session's handler (onMsg); returns its
+ * result.
+ */
+s32 QuestNet_OnGameMsg(QNet *net, u8 from, u8 *msg)
+{
+    return net->onMsg(from, msg, net->onMsgArg);
 }
 
-s32 QuestNet_OnPacket(QNet *q, u8 peer, u8 flags, u8 *states) {
-    u8 st;
+/*
+ * Notes a packet from peer: a packet with the peer states refreshes the
+ * peer's last-heard time, and from a joined or ready peer marks lost the
+ * players it reports lost. Returns 0.
+ */
+s32 QuestNet_OnPacket(QNet *net, u8 peer, u8 flags, u8 *states)
+{
+    u8 state;
 
-    if (q->count <= peer) {
+    if (net->count <= peer) {
         return 0;
     }
-    st = q->peer[peer];
-    switch (st) {
-    case 0:
-    case 6:
+    state = net->peerState[peer];
+    switch (state) {
+    case QNET_PEER_NONE:
+    case QNET_PEER_LOST:
         return 0;
     }
-    if (flags & 0x10) {
-        if (st == 3 || st == 4) {
-            QuestNet_DropPeers(q, states);
+    if (flags & QNET_FLAG_STATES) {
+        if (state == QNET_PEER_JOINED || state == QNET_PEER_READY) {
+            QuestNet_DropPeers(net, states);
         }
-        q->peerTime[peer] = q->now;
+        net->peerTime[peer] = net->now;
     }
     return 0;
 }
 
-s32 QuestNet_Dispatch(QNet *q, u8 from, u8 flags, u8 *data, u8 len) {
+/*
+ * Hands each message of a received packet (len bytes of data, past the
+ * peer states when flags has them) to its channel's handler. Ignores
+ * packets from a player that is gone or left. Returns 0, or the error of a
+ * bad message or a failed handler.
+ */
+s32 QuestNet_Dispatch(QNet *net, u8 from, u8 flags, u8 *data, u8 len)
+{
     u8 *msg = (u8 *)&gQNetMsg;
     s32 pos = 0;
-    s32 r;
+    s32 result;
     QNetHdr hdr;
 
-    if (q->count <= from) {
+    if (net->count <= from) {
         return 0;
     }
-    switch (q->peer[from]) {
-    case 0:
-    case 5:
-    case 6:
+    switch (net->peerState[from]) {
+    case QNET_PEER_NONE:
+    case QNET_PEER_LEFT:
+    case QNET_PEER_LOST:
         return 0;
     }
-    if (flags & 0xF0) {
-        if (len == 4) {
+    if (flags & QNET_FLAG_MASK) {
+        if (len == QNET_PEERS) {
             return 0;
         }
-        data += 4;
-        len -= 4;
+        data += QNET_PEERS;
+        len -= QNET_PEERS;
     }
     while (pos < len) {
-        if (len - pos < 4) {
+        if (len - pos < QNET_HDR_LEN) {
             break;
         }
-        memcpy(&hdr, data + pos, 4);
-        if (hdr.len < 4) {
-            return QuestNet_RecvError(q, 5, hdr.len);
+        memcpy(&hdr, data + pos, sizeof(QNetHdr));
+        if (hdr.len < QNET_HDR_LEN) {
+            return QuestNet_RecvError(net, QNET_ERR_BAD_MSG, hdr.len);
         }
         memcpy(msg, data + pos, hdr.len);
-        switch (flags & 0xF) {
+        switch (flags & QNET_CHAN_MASK) {
         case 0:
             break;
-        case 1:
-            r = QuestNet_OnSysMsg(q, from, (QNetSysMsg *)msg);
-            if (r < 0) {
-                return QuestNet_RecvError(q, 12, r);
+        case QNET_CHAN_SYS:
+            result = QuestNet_OnSysMsg(net, from, (QNetSysMsg *)msg);
+            if (result < 0) {
+                return QuestNet_RecvError(net, QNET_ERR_HANDLER, result);
             }
             break;
-        case 2:
-            r = QuestNet_OnGameMsg(q, from, msg);
-            if (r < 0) {
-                return QuestNet_RecvError(q, 12, r);
+        case QNET_CHAN_GAME:
+            result = QuestNet_OnGameMsg(net, from, msg);
+            if (result < 0) {
+                return QuestNet_RecvError(net, QNET_ERR_HANDLER, result);
             }
             break;
         default:
-            return QuestNet_RecvError(q, 5, flags);
+            return QuestNet_RecvError(net, QNET_ERR_BAD_MSG, flags);
         }
         pos += hdr.len;
     }
     return 0;
 }
 
-s32 QuestNet_CheckSeq(QNet *q, QNetHdr *h) {
-    if (q->count <= h->from) {
+/*
+ * Records a peer's sequence number from a packet's header, and the first
+ * one seen. Returns 0.
+ */
+s32 QuestNet_CheckSeq(QNet *net, QNetHdr *hdr)
+{
+    if (net->count <= hdr->from) {
         return 0;
     }
-    if (q->self == h->from) {
+    if (net->self == hdr->from) {
         return 0;
     }
-    if (q->unk8C[h->from] == 0) {
-        q->unk8C[h->from] = h->seq;
+    if (net->firstSeq[hdr->from] == 0) {
+        net->firstSeq[hdr->from] = hdr->seq;
     } else {
-        q->seq[h->from]++;
+        net->seq[hdr->from]++;
     }
-    q->seq[h->from] = h->seq;
+    net->seq[hdr->from] = hdr->seq;
     return 0;
 }
 
-s32 QuestNet_Parse(QNet *q, u8 *data, s32 len, QNetHdr *out) {
+/*
+ * Finds the next packet in len bytes of a stream (enum QNetParseState): a
+ * text header (QNET_TEXT_MARK, 12 bytes with its body's length at 4) is
+ * skipped with its body, an empty message is skipped. Returns the packet's
+ * length (and copies its header to out), a negative count of bytes to
+ * skip, or 0 when the packet is not whole yet.
+ */
+s32 QuestNet_Parse(QNet *net, u8 *data, s32 len, QNetHdr *out)
+{
     QNetHdr hdr;
     u8 text[12];
-    s32 state = 0;
-    s32 n;
+    s32 state = QNET_PARSE_START;
+    s32 bodyLen;
 
     while (0 < len) {
         switch (state) {
-        case 0:
+        case QNET_PARSE_START:
             if (len <= 0) {
                 return 0;
             }
             len--;
-            if (*data == '(') {
-                state = 1;
+            if (*data == QNET_TEXT_MARK) {
+                state = QNET_PARSE_TEXT_HEAD;
             } else {
-                state = 3;
+                state = QNET_PARSE_HEAD;
             }
             break;
-        case 1:
+        case QNET_PARSE_TEXT_HEAD:
             if (len < sizeof(text) - 1) {
                 return 0;
             }
             len -= 11;
-            memcpy(text, data, 12);
-            n = Swap16(*(u16 *)&text[4]);
-            if (n == 0) {
+            memcpy(text, data, sizeof(text));
+            bodyLen = Swap16(*(u16 *)&text[4]);
+            if (bodyLen == 0) {
                 return -12;
             }
-            state = 2;
+            state = QNET_PARSE_TEXT_BODY;
             break;
-        case 2:
-            return (len < n) ? 0 : (n + sizeof(text)) * -1;
-        case 3:
-            if (len < 3) {
+        case QNET_PARSE_TEXT_BODY:
+            return (len < bodyLen) ? 0 : (bodyLen + sizeof(text)) * -1;
+        case QNET_PARSE_HEAD:
+            if (len < QNET_HDR_LEN - 1) {
                 return 0;
             }
-            len -= 3;
-            memcpy(&hdr, data, 4);
-            if (hdr.len < 4) {
-                QuestNet_RecvError(q, 5, hdr.len);
+            len -= QNET_HDR_LEN - 1;
+            memcpy(&hdr, data, sizeof(QNetHdr));
+            if (hdr.len < QNET_HDR_LEN) {
+                QuestNet_RecvError(net, QNET_ERR_BAD_MSG, hdr.len);
                 return 0;
             }
-            n = hdr.len - 4;
-            if (n == 0) {
-                return -4;
+            bodyLen = hdr.len - QNET_HDR_LEN;
+            if (bodyLen == 0) {
+                return -QNET_HDR_LEN;
             }
-            state = 4;
+            state = QNET_PARSE_BODY;
             break;
-        case 4:
-            if (len < n) {
+        case QNET_PARSE_BODY:
+            if (len < bodyLen) {
                 return 0;
             }
             if (out != NULL) {
-                memcpy(out, &hdr, 4);
+                memcpy(out, &hdr, sizeof(QNetHdr));
             }
             return hdr.len;
         }
@@ -543,26 +662,31 @@ s32 QuestNet_Parse(QNet *q, u8 *data, s32 len, QNetHdr *out) {
     return 0;
 }
 
-s32 QuestNet_ProcessQueue(QNet *q, QNetBuf *buf) {
+/*
+ * Dispatches every whole packet of a receive queue, then drops them from
+ * it. Returns 0, or -1 when a handler failed.
+ */
+s32 QuestNet_ProcessQueue(QNet *net, QNetBuf *buf)
+{
     s32 pos = 0;
-    u32 n;
-    s32 r;
+    u32 size;
+    s32 result;
     QNetHdr hdr;
 
     for (;;) {
-        r = QuestNet_Parse(q, buf->data + pos, buf->len - pos, &hdr);
-        if (r < 0) {
-            pos -= r;
+        result = QuestNet_Parse(net, buf->data + pos, buf->len - pos, &hdr);
+        if (result < 0) {
+            pos -= result;
             continue;
         }
-        if (r == 0) {
+        if (result == 0) {
             break;
         }
-        n = r;
-        if (QuestNet_Dispatch(q, hdr.from, hdr.flags, buf->data + (pos + 4), r - 4) < 0) {
+        size = result;
+        if (QuestNet_Dispatch(net, hdr.from, hdr.flags, buf->data + (pos + QNET_HDR_LEN), result - QNET_HDR_LEN) < 0) {
             return -1;
         }
-        pos += n;
+        pos += size;
     }
     buf->len -= pos;
     if (0 < buf->len) {
@@ -571,83 +695,91 @@ s32 QuestNet_ProcessQueue(QNet *q, QNetBuf *buf) {
     return 0;
 }
 
-s32 QuestNet_Recv(QNet *q) {
+/*
+ * Reads what the socket holds (up to QNET_RECV_MAX bytes), then moves each
+ * whole packet into the system or the game receive queue, unscrambling the
+ * bytes after its header, and notes it (QuestNet_OnPacket). Returns 0 or
+ * an error. The unscrambling reads the header as bytes: the field forms
+ * change the code.
+ */
+s32 QuestNet_Recv(QNet *net)
+{
     QNetBuf *raw;
     QNetBuf *queue;
-    s32 r;
-    u8 *fl;
-    s32 n;
+    s32 result;
+    u8 *hdrFlags;
+    s32 size;
     s32 len;
-    u8 *hp;
+    u8 *head;
     u8 *body;
     s32 i;
     s32 pos;
-    u8 *fr;
+    u8 *hdrFrom;
     QNetHdr hdr;
 
-    r = NetTcp_Status(q->sock, (struct NetTcpStatus *)&q->tcpState);
-    if (r < 0) {
-        return QuestNet_RecvError(q, 10, r);
+    result = NetTcp_Status(net->sock, &net->tcp);
+    if (result < 0) {
+        return QuestNet_RecvError(net, QNET_ERR_STATUS, result);
     }
-    if (q->tcpState != 4) {
-        return QuestNet_RecvError(q, 6, q->tcpState);
+    if (net->tcp.state != 4) {
+        return QuestNet_RecvError(net, QNET_ERR_NOT_CONNECTED, net->tcp.state);
     }
-    len = q->recvLen;
+    len = net->tcp.recvLen;
     if (len == 0) {
         return 0;
     }
     raw = &gQNetRecv;
-    len = (len > 0x384) ? 0x384 : len;
+    len = (len > QNET_RECV_MAX) ? QNET_RECV_MAX : len;
     if (raw->cap < raw->len + len) {
         len = raw->cap - raw->len;
     }
     if (len == 0) {
         return 0;
     }
-    r = NetTcp_Recv(q->sock, raw->data + raw->len, len);
-    if (r != len) {
-        return QuestNet_RecvError(q, 3, r);
+    result = NetTcp_Recv(net->sock, raw->data + raw->len, len);
+    if (result != len) {
+        return QuestNet_RecvError(net, QNET_ERR_RECV, result);
     }
     pos = 0;
-    fl = &hdr.flags;
-    fr = &hdr.from;
+    hdrFlags = &hdr.flags;
+    hdrFrom = &hdr.from;
     raw->len += len;
-    q->received += len;
-    q->peerTime[q->self] = q->now;
+    net->received += len;
+    net->peerTime[net->self] = net->now;
     for (;;) {
-        n = QuestNet_Parse(q, raw->data + pos, raw->len - pos, &hdr);
-        if (n < 0) {
-            pos -= n;
+        size = QuestNet_Parse(net, raw->data + pos, raw->len - pos, &hdr);
+        if (size < 0) {
+            pos -= size;
             continue;
         }
-        if (n == 0) {
+        if (size == 0) {
             break;
         }
-        if (QuestNet_CheckSeq(q, &hdr) < 0) {
-            pos += n;
+        if (QuestNet_CheckSeq(net, &hdr) < 0) {
+            pos += size;
             continue;
         }
-        if ((*fl & 0xF) == 2) {
+        if ((*hdrFlags & QNET_CHAN_MASK) == QNET_CHAN_GAME) {
             queue = &gQNetGameRecv;
         } else {
             queue = &gQNetSysRecv;
         }
-        if (queue->cap < queue->len + n) {
-            return QuestNet_RecvError(q, 4, queue->len + n);
+        if (queue->cap < queue->len + size) {
+            return QuestNet_RecvError(net, QNET_ERR_RECV_FULL, queue->len + size);
         }
-        memcpy(queue->data + queue->len, raw->data + pos, n);
-        body = queue->data + (queue->len + 4);
-        hp = queue->data + queue->len;
-        for (i = n - 5; i >= 0; i--) {
+        memcpy(queue->data + queue->len, raw->data + pos, size);
+        body = queue->data + (queue->len + QNET_HDR_LEN);
+        head = queue->data + queue->len;
+        for (i = size - (QNET_HDR_LEN + 1); i >= 0; i--) {
             if (i == 0) {
-                body[0] ^= (u8)(hp[3] ^ (hp[0] ^ hp[2]));
+                body[0] ^= (u8)(head[3] ^ (head[0] ^ head[2]));
             } else {
                 body[i] ^= (u8)(i ^ body[i - 1]);
             }
         }
-        QuestNet_OnPacket(q, *fr, *fl, queue->data + (queue->len + 4));
-        pos += n;
-        queue->len += n;
+        QuestNet_OnPacket(net, *hdrFrom, *hdrFlags, queue->data + (queue->len + QNET_HDR_LEN));
+        pos += size;
+        queue->len += size;
     }
     raw->len -= pos;
     if (0 < raw->len) {
@@ -656,77 +788,92 @@ s32 QuestNet_Recv(QNet *q) {
     return 0;
 }
 
-s32 QuestNet_EverySecond(QNet *q) {
-    s32 r;
+/*
+ * Once a second: counts the seconds the send space stays short (each
+ * such second also gives the active peers a second more before their
+ * timeout), ending the session with QNET_ERR_STALLED after maxStall of
+ * them, and moves this second's byte counts to the last second's and the
+ * totals. Returns 0 or an error.
+ */
+s32 QuestNet_EverySecond(QNet *net)
+{
+    s32 result;
     s32 i;
-    u16 n;
-    u16 prev;
+    u16 stallSecs;
+    u16 prevSpace;
 
-    r = NetTcp_Status(q->sock, (struct NetTcpStatus *)&q->tcpState);
-    if (r < 0) {
-        return QuestNet_RecvError(q, 10, r);
+    result = NetTcp_Status(net->sock, &net->tcp);
+    if (result < 0) {
+        return QuestNet_RecvError(net, QNET_ERR_STATUS, result);
     }
-    if (q->tcpState != 4) {
-        return QuestNet_RecvError(q, 6, q->tcpState);
+    if (net->tcp.state != 4) {
+        return QuestNet_RecvError(net, QNET_ERR_NOT_CONNECTED, net->tcp.state);
     }
-    prev = q->unk88;
-    n = q->unk8A;
-    if (q->sendSpace >= 0x1FFC) {
-        n = 0;
-    } else if (prev - q->sent < q->sendSpace) {
-        if (0 < n) {
-            n--;
+    prevSpace = net->prevSendSpace;
+    stallSecs = net->stallSecs;
+    if (net->tcp.sendSpace >= QNET_SEND_SPACE_IDLE) {
+        stallSecs = 0;
+    } else if (prevSpace - net->sent < net->tcp.sendSpace) {
+        if (0 < stallSecs) {
+            stallSecs--;
         }
-    } else if (n < 0xFFFF) {
-        n++;
-        for (i = 0; i < q->count; i++) {
-            if (i != q->self) {
-                switch (q->peer[i]) {
-                case 1:
-                case 2:
-                case 3:
-                case 4:
-                    q->peerTime[i] += 1.0f;
+    } else if (stallSecs < 0xFFFF) {
+        stallSecs++;
+        for (i = 0; i < net->count; i++) {
+            if (i != net->self) {
+                switch (net->peerState[i]) {
+                case QNET_PEER_JOINING:
+                case QNET_PEER_ALIVE:
+                case QNET_PEER_JOINED:
+                case QNET_PEER_READY:
+                    net->peerTime[i] += 1.0f;
                     break;
                 }
             }
         }
     }
-    q->unk88 = q->sendSpace;
-    q->unk8A = n;
-    if (q->unkB0 <= n) {
-        return QuestNet_LinkError(q, 9, q->sendSpace);
+    net->prevSendSpace = net->tcp.sendSpace;
+    net->stallSecs = stallSecs;
+    if (net->maxStall <= stallSecs) {
+        return QuestNet_LinkError(net, QNET_ERR_STALLED, net->tcp.sendSpace);
     }
-    q->unk4C += q->sent;
-    q->unk50 += q->received;
-    q->unk44 = q->sent;
-    q->unk48 = q->received;
-    q->sent = 0;
-    q->received = 0;
+    net->sentTotal += net->sent;
+    net->receivedTotal += net->received;
+    net->sentLastSec = net->sent;
+    net->receivedLastSec = net->received;
+    net->sent = 0;
+    net->received = 0;
     return 0;
 }
 
-static s32 QuestNet_ResetTotals(QNet *q) {
-    q->unk4C = 0;
-    q->unk50 = 0;
+/* Clears the byte totals (each minute). Returns 0. */
+static s32 QuestNet_ResetTotals(QNet *net)
+{
+    net->sentTotal = 0;
+    net->receivedTotal = 0;
     return 0;
 }
 
-s32 QuestNet_CheckTimeouts(QNet *q) {
+/*
+ * Marks lost each peer that stayed ready past its ready timeout, or that
+ * has been silent for peerTimeout seconds. Returns 0.
+ */
+s32 QuestNet_CheckTimeouts(QNet *net)
+{
     s32 i;
 
-    for (i = 0; i < q->count; i++) {
-        if (i != q->self) {
-            switch (q->peer[i]) {
-            case 4:
-                if (q->unk78[i] + q->unkAC[i] <= q->now) {
-                    QuestNet_SetPeerState(q, i, 6);
+    for (i = 0; i < net->count; i++) {
+        if (i != net->self) {
+            switch (net->peerState[i]) {
+            case QNET_PEER_READY:
+                if (net->readyTime[i] + net->readyTimeout[i] <= net->now) {
+                    QuestNet_SetPeerState(net, i, QNET_PEER_LOST);
                 }
-            case 1:
-            case 2:
-            case 3:
-                if (q->peerTime[i] + q->unkA4 <= q->now) {
-                    QuestNet_SetPeerState(q, i, 6);
+            case QNET_PEER_JOINING:
+            case QNET_PEER_ALIVE:
+            case QNET_PEER_JOINED:
+                if (net->peerTime[i] + net->peerTimeout <= net->now) {
+                    QuestNet_SetPeerState(net, i, QNET_PEER_LOST);
                 }
                 break;
             }
@@ -735,177 +882,205 @@ s32 QuestNet_CheckTimeouts(QNet *q) {
     return 0;
 }
 
-void QuestNet_UnreadyAll(QNet *q) {
+/*
+ * Sends every joined player back to joining and forgets the answered
+ * alives (QNET_STATE_UNREADY).
+ */
+void QuestNet_UnreadyAll(QNet *net)
+{
     s32 i;
 
-    q->unk14 = 0;
-    for (i = 0; i < q->count; i++) {
-        if (q->peer[i] == 3) {
-            QuestNet_SetPeerState(q, i, 1);
+    net->aliveMask = 0;
+    for (i = 0; i < net->count; i++) {
+        if (net->peerState[i] == QNET_PEER_JOINED) {
+            QuestNet_SetPeerState(net, i, QNET_PEER_JOINING);
         }
     }
 }
 
-s32 QuestNet_UpdateJoin(QNet *q) {
+/*
+ * The join, a frame: the time message every half second, the alive (and
+ * QuestNet_EverySecond) every second. The local player is alive once every
+ * joining peer has answered; when every alive player has a ping, they all
+ * join. After joinTimeout seconds the join ends anyway: the alive peers
+ * join, the joining ones are lost. Returns 1 when the join is over (the
+ * join's counters cleared), else 0. A session of one joins at once.
+ */
+s32 QuestNet_UpdateJoin(QNet *net)
+{
     s32 i;
 
-    if (q->count == 1) {
-        QuestNet_SetPeerState(q, q->self, 3);
-        memset(q, 0, 8);
+    if (net->count == 1) {
+        QuestNet_SetPeerState(net, net->self, QNET_PEER_JOINED);
+        memset(net, 0, QNET_JOIN_COUNTERS);
         return 1;
     }
-    if (q->lastTime + 0.5f * q->unk6 < q->now) {
-        q->unk6++;
-        QuestNet_SysTime(q);
+    if (net->lastTime + 0.5f * net->joinHalfSecond < net->now) {
+        net->joinHalfSecond++;
+        QuestNet_SysTime(net);
     }
-    if (q->lastTime + q->unk0 < q->now) {
-        q->unk0++;
-        QuestNet_EverySecond(q);
-        QuestNet_SysAlive(q);
+    if (net->lastTime + net->joinSecond < net->now) {
+        net->joinSecond++;
+        QuestNet_EverySecond(net);
+        QuestNet_SysAlive(net);
     }
-    q->nPeersUp = 0;
-    for (i = 0; i < q->count; i++) {
-        if (i != q->self) {
-            switch (q->peer[i]) {
-            case 0:
-            case 6:
+    net->nPeersUp = 0;
+    for (i = 0; i < net->count; i++) {
+        if (i != net->self) {
+            switch (net->peerState[i]) {
+            case QNET_PEER_NONE:
+            case QNET_PEER_LOST:
                 break;
-            case 1:
-            case 2:
-                if (!(q->unk14 & (1 << i))) {
-                    q->nPeersUp++;
+            case QNET_PEER_JOINING:
+            case QNET_PEER_ALIVE:
+                if (!(net->aliveMask & (1 << i))) {
+                    net->nPeersUp++;
                 }
                 break;
             }
         }
     }
-    if (q->nPeersUp == 0) {
-        QuestNet_SetPeerState(q, q->self, 2);
+    if (net->nPeersUp == 0) {
+        QuestNet_SetPeerState(net, net->self, QNET_PEER_ALIVE);
     }
-    q->nPeersUp = 0;
-    q->nPeersPinged = 0;
-    for (i = 0; i < q->count; i++) {
-        switch (q->peer[i]) {
-        case 2:
+    net->nPeersUp = 0;
+    net->nPeersPinged = 0;
+    for (i = 0; i < net->count; i++) {
+        switch (net->peerState[i]) {
+        case QNET_PEER_ALIVE:
             if (gQNetPing[i]) {
-                q->nPeersPinged++;
+                net->nPeersPinged++;
             }
-        case 1:
-            q->nPeersUp++;
+        case QNET_PEER_JOINING:
+            net->nPeersUp++;
             break;
         }
     }
-    if (q->nPeersUp == q->nPeersPinged) {
-        for (i = 0; i < q->count; i++) {
-            if (q->peer[i] == 2) {
-                QuestNet_SetPeerState(q, i, 3);
+    if (net->nPeersUp == net->nPeersPinged) {
+        for (i = 0; i < net->count; i++) {
+            if (net->peerState[i] == QNET_PEER_ALIVE) {
+                QuestNet_SetPeerState(net, i, QNET_PEER_JOINED);
             }
         }
-        memset(q, 0, 8);
+        memset(net, 0, QNET_JOIN_COUNTERS);
         return 1;
     }
-    if (q->lastTime + q->unkA8 < q->now) {
-        for (i = 0; i < q->count; i++) {
-            if (i == q->self) {
-                QuestNet_SetPeerState(q, i, 3);
+    if (net->lastTime + net->joinTimeout < net->now) {
+        for (i = 0; i < net->count; i++) {
+            if (i == net->self) {
+                QuestNet_SetPeerState(net, i, QNET_PEER_JOINED);
             } else {
-                switch (q->peer[i]) {
-                case 1:
-                    QuestNet_SetPeerState(q, i, 6);
+                switch (net->peerState[i]) {
+                case QNET_PEER_JOINING:
+                    QuestNet_SetPeerState(net, i, QNET_PEER_LOST);
                     break;
-                case 2:
-                    QuestNet_SetPeerState(q, i, 3);
+                case QNET_PEER_ALIVE:
+                    QuestNet_SetPeerState(net, i, QNET_PEER_JOINED);
                     break;
                 }
             }
         }
-        memset(q, 0, 8);
+        memset(net, 0, QNET_JOIN_COUNTERS);
         return 1;
     }
     return 0;
 }
 
-void QuestNet_Update(QNet *q) {
-    QuestNet_Clock(&q->now, &q->clock);
-    switch (q->state) {
-    case 0:
-        q->state = 1;
+/*
+ * Steps the session a frame (QNet.state, enum QNetState): the clock, then
+ * the opening, the join, and the running session (receiving, the timeouts,
+ * the per-second and per-minute counts, the system messages sent and
+ * handled). A socket error ends it (QNET_STATE_ERROR).
+ */
+void QuestNet_Update(QNet *net)
+{
+    QuestNet_Clock(&net->now, &net->clock);
+    switch (net->state) {
+    case QNET_STATE_INIT:
+        net->state = QNET_STATE_INIT2;
         break;
-    case 1:
-        q->state = 2;
+    case QNET_STATE_INIT2:
+        net->state = QNET_STATE_OPEN;
         break;
-    case 2:
-        q->state = 3;
-        q->lastTime = q->now;
-        for (q->unk0 = 0; q->unk0 < q->count; q->unk0++) {
-            q->peerTime[q->unk0] = q->now;
+    case QNET_STATE_OPEN:
+        net->state = QNET_STATE_JOIN;
+        net->lastTime = net->now;
+        for (net->joinSecond = 0; net->joinSecond < net->count; net->joinSecond++) {
+            net->peerTime[net->joinSecond] = net->now;
         }
-        memset(q, 0, 8);
-        gQNetPing[q->self] = 0.034f;
+        memset(net, 0, QNET_JOIN_COUNTERS);
+        gQNetPing[net->self] = 0.034f;
         break;
-    case 3:
+    case QNET_STATE_JOIN:
         if (QuestNet_GetError() != 0) {
-            q->state = 7;
+            net->state = QNET_STATE_ERROR;
             break;
         }
-        QuestNet_Recv(q);
+        QuestNet_Recv(net);
         if (QuestNet_GetError() != 0) {
-            q->state = 7;
+            net->state = QNET_STATE_ERROR;
             break;
         }
-        if (QuestNet_UpdateJoin(q) != 0) {
-            q->state = 4;
-            q->lastTime = q->now;
-            q->unk30 = q->now;
+        if (QuestNet_UpdateJoin(net) != 0) {
+            net->state = QNET_STATE_RUN;
+            net->lastTime = net->now;
+            net->lastTotalsTime = net->now;
         }
-        QuestNet_Send(q, &gQNetSysSend, 1);
-        QuestNet_ProcessQueue(q, &gQNetSysRecv);
+        QuestNet_Send(net, &gQNetSysSend, QNET_CHAN_SYS);
+        QuestNet_ProcessQueue(net, &gQNetSysRecv);
         break;
-    case 4:
+    case QNET_STATE_RUN:
         if (QuestNet_GetError() != 0) {
-            q->state = 7;
+            net->state = QNET_STATE_ERROR;
             break;
         }
-        QuestNet_Recv(q);
-        QuestNet_CheckTimeouts(q);
+        QuestNet_Recv(net);
+        QuestNet_CheckTimeouts(net);
         if (QuestNet_GetError() != 0) {
-            q->state = 7;
+            net->state = QNET_STATE_ERROR;
             break;
         }
-        if (1.0f + q->lastTime <= q->now) {
-            q->lastTime = q->now;
-            QuestNet_EverySecond(q);
+        if (1.0f + net->lastTime <= net->now) {
+            net->lastTime = net->now;
+            QuestNet_EverySecond(net);
         }
-        if (60.0f + q->unk30 <= q->now) {
-            q->unk30 = q->now;
-            QuestNet_ResetTotals(q);
+        if (60.0f + net->lastTotalsTime <= net->now) {
+            net->lastTotalsTime = net->now;
+            QuestNet_ResetTotals(net);
         }
-        QuestNet_Send(q, &gQNetSysSend, 1);
-        QuestNet_ProcessQueue(q, &gQNetSysRecv);
+        QuestNet_Send(net, &gQNetSysSend, QNET_CHAN_SYS);
+        QuestNet_ProcessQueue(net, &gQNetSysRecv);
         break;
-    case 5:
-        QuestNet_UnreadyAll(q);
-        q->state = 3;
+    case QNET_STATE_UNREADY:
+        QuestNet_UnreadyAll(net);
+        net->state = QNET_STATE_JOIN;
         break;
-    case 6:
+    case QNET_STATE_LEAVE:
         if (QuestNet_GetError() == 0) {
-            QuestNet_Recv(q);
-            QuestNet_Send(q, &gQNetSysSend, 1);
-            QuestNet_ProcessQueue(q, &gQNetSysRecv);
+            QuestNet_Recv(net);
+            QuestNet_Send(net, &gQNetSysSend, QNET_CHAN_SYS);
+            QuestNet_ProcessQueue(net, &gQNetSysRecv);
         }
         break;
-    case 7:
-    case 8:
+    case QNET_STATE_ERROR:
+    case QNET_STATE_CLOSED:
         break;
     }
 }
 
-void QuestNet_Init(QNetConfig *cfg) {
+/*
+ * Starts a session from cfg: clears the session and its queues, sets
+ * every player joining, gives the queues their buffers and each player a
+ * random first sequence number (the top bit set), and copies the settings
+ * and the callbacks.
+ */
+void QuestNet_Init(QNetConfig *cfg)
+{
     u8 count = cfg->count;
     s32 i;
 
-    if (count > 4) {
-        count = 4;
+    if (count > QNET_PEERS) {
+        count = QNET_PEERS;
     }
     memset(&gQNet, 0, sizeof(QNet));
     memset(&gQNetRecv, 0, sizeof(QNetBuf));
@@ -917,17 +1092,17 @@ void QuestNet_Init(QNetConfig *cfg) {
     memset(&gQNetPingCounts, 0, sizeof(gQNetPingCounts));
     gQNet.active = 1;
     for (i = 0; i < count; i++) {
-        QuestNet_SetPeerState(&gQNet, i, 1);
+        QuestNet_SetPeerState(&gQNet, i, QNET_PEER_JOINING);
     }
-    gQNetRecv.cap = 0x3FC;
+    gQNetRecv.cap = sizeof(gQNetRecvData) - 4;
     gQNetRecv.data = gQNetRecvData;
-    gQNetGameRecv.cap = 0x4000;
+    gQNetGameRecv.cap = sizeof(gQNetGameRecvData);
     gQNetGameRecv.data = gQNetGameRecvData;
-    gQNetGameSend.cap = 0x1000;
+    gQNetGameSend.cap = sizeof(gQNetGameSendData);
     gQNetGameSend.data = gQNetGameSendData;
-    gQNetSysRecv.cap = 0x400;
+    gQNetSysRecv.cap = sizeof(gQNetSysRecvData);
     gQNetSysRecv.data = gQNetSysRecvData;
-    gQNetSysSend.cap = 0x400;
+    gQNetSysSend.cap = sizeof(gQNetSysSendData);
     gQNetSysSend.data = gQNetSysSendData;
     for (i = 0; i < count; i++) {
         gQNet.seq[i] = rand() | 0x80;
@@ -936,11 +1111,11 @@ void QuestNet_Init(QNetConfig *cfg) {
     gQNet.count = count;
     gQNet.self = cfg->self;
     gQNet.sock = cfg->sock;
-    gQNet.unk54 = cfg->unk8;
-    gQNet.unk5C = cfg->unkC;
-    gQNet.unkA4 = cfg->unk10;
-    gQNet.unkA8 = cfg->unk18;
-    gQNet.unkB0 = cfg->unk14;
+    gQNet.sendInterval = cfg->sendInterval;
+    gQNet.sendBudget = cfg->sendBudget;
+    gQNet.peerTimeout = cfg->peerTimeout;
+    gQNet.joinTimeout = cfg->joinTimeout;
+    gQNet.maxStall = cfg->maxStall;
     gQNet.onMsg = cfg->onMsg;
     gQNet.onMsgArg = cfg->onMsgArg;
     gQNet.onLeave = cfg->onLeave;
@@ -949,57 +1124,82 @@ void QuestNet_Init(QNetConfig *cfg) {
     gQNet.onLostArg = cfg->onLostArg;
 }
 
-s32 QuestNet_IsActive(void) {
+/* 1 from QuestNet_Init until QuestNet_Close. */
+s32 QuestNet_IsActive(void)
+{
     return gQNet.active;
 }
 
-s32 QuestNet_GetState(void) {
+/* The session's state (enum QNetState). */
+s32 QuestNet_GetState(void)
+{
     return gQNet.state;
 }
 
-s32 QuestNet_IsRunning(void) {
-    return gQNet.state == 4;
+/* 1 while the session runs (QNET_STATE_RUN). */
+s32 QuestNet_IsRunning(void)
+{
+    return gQNet.state == QNET_STATE_RUN;
 }
 
-u8 QuestNet_GetCount(void) {
+/* The session's players. */
+u8 QuestNet_GetCount(void)
+{
     return gQNet.count;
 }
 
-s32 QuestNet_GetError(void) {
-    QNet *q = &gQNet;
+/*
+ * The session's error (enum QNetError): the receive, send and link errors
+ * first, then QNET_ERR_LOST when the local player is lost, then the network
+ * interface's. 0 when there is none.
+ */
+s32 QuestNet_GetError(void)
+{
+    QNet *net = &gQNet;
 
-    if (q->err94 != 0) {
-        return q->err94;
+    if (net->recvError != 0) {
+        return net->recvError;
     }
-    if (q->err98 != 0) {
-        return q->err98;
+    if (net->sendError != 0) {
+        return net->sendError;
     }
-    if (q->err9C != 0) {
-        return q->err9C;
+    if (net->linkError != 0) {
+        return net->linkError;
     }
-    if (q->peer[q->self] == 6) {
-        return 7;
+    if (net->peerState[net->self] == QNET_PEER_LOST) {
+        return QNET_ERR_LOST;
     }
-    return (NetIf_GetError() != 0) ? 0xB : 0;
+    return (NetIf_GetError() != 0) ? QNET_ERR_NETIF : QNET_ERR_NONE;
 }
 
-s32 QuestNet_CanSend(void) {
-    u8 st = gQNet.peer[gQNet.self];
+/*
+ * Whether a game packet may go now (enum QNetSendBlock): the local player
+ * must be joined or ready, under the second's byte budget, and
+ * sendInterval past the last send.
+ */
+s32 QuestNet_CanSend(void)
+{
+    u8 state = gQNet.peerState[gQNet.self];
 
-    if (st != 3 && st != 4) {
-        return 1;
+    if (state != QNET_PEER_JOINED && state != QNET_PEER_READY) {
+        return QNET_SEND_NOT_JOINED;
     }
-    if (gQNet.unk5C <= gQNet.sent) {
-        return 2;
+    if (gQNet.sendBudget <= gQNet.sent) {
+        return QNET_SEND_OVER_BUDGET;
     }
-    if (gQNet.now < gQNet.unk58 + gQNet.unk54) {
-        return 3;
+    if (gQNet.now < gQNet.lastSendTime + gQNet.sendInterval) {
+        return QNET_SEND_TOO_SOON;
     }
-    return 0;
+    return QNET_CAN_SEND;
 }
 
-s32 QuestNet_GetPing(u8 peer) {
-    s32 n;
+/*
+ * A joined or ready peer's ping, in units of 1/15 second (66.7 ms), at
+ * least 1; 0 for the local player or a peer with no ping.
+ */
+s32 QuestNet_GetPing(u8 peer)
+{
+    s32 ping;
 
     if (gQNet.count <= peer) {
         return 0;
@@ -1007,89 +1207,122 @@ s32 QuestNet_GetPing(u8 peer) {
     if (gQNet.self == peer) {
         return 0;
     }
-    if (gQNet.peer[peer] != 3 && gQNet.peer[peer] != 4) {
+    if (gQNet.peerState[peer] != QNET_PEER_JOINED && gQNet.peerState[peer] != QNET_PEER_READY) {
         return 0;
     }
     if (gQNetPing[peer] <= 0.0f) {
         return 0;
     }
-    n = 1000.0f * gQNetPing[peer] / 66.6667f;
-    if (n == 0) {
-        n = 1;
+    ping = 1000.0f * gQNetPing[peer] / 66.6667f;
+    if (ping == 0) {
+        ping = 1;
     }
-    return n;
+    return ping;
 }
 
-s32 QuestNet_NoPeerReady(void) {
+/* 1 when no player is ready. */
+s32 QuestNet_NoPeerReady(void)
+{
     s32 i;
 
     for (i = 0; i < gQNet.count; i++) {
-        if (gQNet.peer[i] == 4) {
+        if (gQNet.peerState[i] == QNET_PEER_READY) {
             break;
         }
     }
     return i == gQNet.count;
 }
 
-void QuestNet_Post(void *msg) {
+/*
+ * Queues a game message (its length in its header) while the session is
+ * active.
+ */
+void QuestNet_Post(void *msg)
+{
     if (gQNet.active != 0) {
         QuestNet_Queue(&gQNet, &gQNetGameSend, msg);
     }
 }
 
-void QuestNet_Flush(void) {
-    if ((gQNet.active != 0) && (QuestNet_GetError() == 0) && (QuestNet_CanSend() == 0)) {
-        QuestNet_Send(&gQNet, &gQNetGameSend, 2);
+/*
+ * Sends the queued game messages when the session has no error and a
+ * send may go now.
+ */
+void QuestNet_Flush(void)
+{
+    if ((gQNet.active != 0) && (QuestNet_GetError() == 0) && (QuestNet_CanSend() == QNET_CAN_SEND)) {
+        QuestNet_Send(&gQNet, &gQNetGameSend, QNET_CHAN_GAME);
     }
 }
 
-void QuestNet_Receive(void) {
+/* Handles the game messages received, while the session is active. */
+void QuestNet_Receive(void)
+{
     if (gQNet.active != 0) {
         QuestNet_ProcessQueue(&gQNet, &gQNetGameRecv);
     }
 }
 
-void QuestNet_Tick(void) {
+/* Steps the session a frame while it is active (QNET_MODE_STEPPED). */
+void QuestNet_Tick(void)
+{
     if (gQNet.active != 0) {
         switch (gQNet.mode) {
-        case 1:
+        case QNET_MODE_STEPPED:
             QuestNet_Update(&gQNet);
             break;
         }
     }
 }
 
-void QuestNet_Ready(u8 arg) {
-    if (gQNet.peer[gQNet.self] == 3) {
-        if (arg == 0) {
-            arg = gQNet.unkA8;
+/*
+ * Marks the local player ready and tells the peers, with the seconds it may
+ * stay so (timeout, 0: joinTimeout's). Only while joined.
+ */
+void QuestNet_Ready(u8 timeout)
+{
+    if (gQNet.peerState[gQNet.self] == QNET_PEER_JOINED) {
+        if (timeout == 0) {
+            timeout = gQNet.joinTimeout;
         }
-        QuestNet_SysReady(&gQNet, arg);
-        QuestNet_SetPeerState(&gQNet, gQNet.self, 4);
+        QuestNet_SysReady(&gQNet, timeout);
+        QuestNet_SetPeerState(&gQNet, gQNet.self, QNET_PEER_READY);
     }
 }
 
-void QuestNet_Unready(void) {
-    if (gQNet.peer[gQNet.self] == 4) {
+/*
+ * Marks the local player joined again and tells the peers. Only while
+ * ready.
+ */
+void QuestNet_Unready(void)
+{
+    if (gQNet.peerState[gQNet.self] == QNET_PEER_READY) {
         QuestNet_SysUnready(&gQNet);
-        QuestNet_SetPeerState(&gQNet, gQNet.self, 3);
+        QuestNet_SetPeerState(&gQNet, gQNet.self, QNET_PEER_JOINED);
     }
 }
 
-void QuestNet_Leave(void) {
-    if (gQNet.peer[gQNet.self] == 3) {
+/*
+ * The local player leaves: tells the peers and stops the session's steps
+ * but receiving and sending (QNET_STATE_LEAVE). Only while joined.
+ */
+void QuestNet_Leave(void)
+{
+    if (gQNet.peerState[gQNet.self] == QNET_PEER_JOINED) {
         QuestNet_SysLeave(&gQNet);
-        QuestNet_SetPeerState(&gQNet, gQNet.self, 5);
-        gQNet.state = 6;
+        QuestNet_SetPeerState(&gQNet, gQNet.self, QNET_PEER_LEFT);
+        gQNet.state = QNET_STATE_LEAVE;
     }
 }
 
-void QuestNet_Close(void) {
+/* Ends the session: inactive, QNET_STATE_CLOSED, every player gone. */
+void QuestNet_Close(void)
+{
     s32 i;
 
     gQNet.active = 0;
-    gQNet.state = 8;
+    gQNet.state = QNET_STATE_CLOSED;
     for (i = 0; i < gQNet.count; i++) {
-        QuestNet_SetPeerState(&gQNet, i, 0);
+        QuestNet_SetPeerState(&gQNet, i, QNET_PEER_NONE);
     }
 }

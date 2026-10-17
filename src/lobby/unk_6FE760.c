@@ -306,7 +306,7 @@ void Font_SetPos(s16, s16);
 void Font_SetColor(s32 color);
 void Font_SetSpacing(u8 a, u8 b);
 s32 Monster_IsAvailable(u16 arg0);
-u16 Area_MapGroup(u16 a);
+u16 Map_Group(u16 a);
 
 /* The monster list panel of the quest board: the list's title, then one row
  * per monster (Game_IsOnline picks the table) with its quest's state.
@@ -370,7 +370,7 @@ void ElderForecast_DrawPanel(u16 *ids, s16 x, s16 y, s32 list, s32 b)
         Font_SetPos(sx + 0x28, cy += 0x34);
         if (*ids != 0) {
             info = Quest_GetDiscInfo(*ids);
-            k = Area_MapGroup(info->map);
+            k = Map_Group(info->map);
             if ((info->flags & 0x80000) && (info->flags & 0x100000)) {
                 Text_PrintfColored(D_00838470, gStageNames[k], D_0080C054, D_0080C2FC);
             } else if (info->flags & 0x80000) {
@@ -386,8 +386,8 @@ void ElderForecast_DrawPanel(u16 *ids, s16 x, s16 y, s32 list, s32 b)
     }
 }
 
-s32 Save_TestListBit(u16 id);
-u16 Area_MapGroup(u16 a);
+s32 Save_IsQuestCleared(u16 id);
+u16 Map_Group(u16 a);
 extern s8 gMapGroupMapIds[][2];
 void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 h, s16 *offs, s16 sel, s8 kind, s32 b);
 void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
@@ -410,7 +410,7 @@ static inline void func_006FF330_page(QuestBoard *m, s16 x, s16 y, QuestInfo *q)
         Quest_DrawDetails(x - 0x14, y, q);
         break;
     }
-    if (Save_TestListBit(q->id)) {
+    if (Save_IsQuestCleared(q->id)) {
         Quest_DrawClearMark(x, y);
     }
 }
@@ -427,12 +427,12 @@ void ElderForecast_DrawQuest(QuestBoard *m, s16 x, s16 y)
         if (m->ids[i] == 0) {
             break;
         }
-        marks[i] = Area_MapGroup(Quest_GetDiscInfo(m->ids[i])->map);
+        marks[i] = Map_Group(Quest_GetDiscInfo(m->ids[i])->map);
         if (i == m->sel) {
             marks[i] = -marks[i];
         }
     }
-    k = gMapGroupMapIds[Area_MapGroup(q->map)][0];
+    k = gMapGroupMapIds[Map_Group(q->map)][0];
     Menu_DrawQuestSheet(x - 0x14, y - 0xE, 0x140, 0x168, marks, m->sel, k, m->list);
     Font_SetColor(0x80101010);
     Menu_DrawPageNum(x + 0xD2, y += 5, m->page, 3, 1);

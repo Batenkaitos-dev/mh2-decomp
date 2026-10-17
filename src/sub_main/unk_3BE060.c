@@ -2392,7 +2392,7 @@ void ObjAttach_HitAll(void)
         if (o->active == 0) {
             continue;
         }
-        o->unk01E = 0;
+        o->didHit = 0;
         if (o->hitPhase == 2) {
             ObjAttach_HitObjects(o);
         }
@@ -2594,7 +2594,7 @@ void ObjAttach_DamageEm(ObjAttach *o, Player *p, Em *t, HitShape *list, HitShape
             o->state = 3;
         }
         o->step = 0;
-        o->unk01E = 1;
+        o->didHit = 1;
     } else {
         ObjAttach_StepHitTimer_Unk(o);
     }
@@ -2612,7 +2612,7 @@ void ObjAttach_DamageEm(ObjAttach *o, Player *p, Em *t, HitShape *list, HitShape
             p->hitStopAdd = o->hitStop;
             p->contact = t;
             p->contactAttach = o;
-            p->attackHit800 = 1;
+            p->contactHit = 1;
         }
         if (ObjAttach_HitFlags(t, elist) & 2) {
             p->hitPending |= 0x80;
@@ -3781,7 +3781,7 @@ void ObjAttach_DamagePlayer(ObjAttach *o, Player *p, Player *t, f32 *pos)
     if (!(o->multiHit & 0xF)) {
         o->state = 3;
         o->step = 0;
-        o->unk01E = 1;
+        o->didHit = 1;
     } else {
         ObjAttach_StepHitTimer_Unk(o);
     }
@@ -3796,7 +3796,7 @@ void ObjAttach_DamagePlayer(ObjAttach *o, Player *p, Player *t, f32 *pos)
             p->hitStopAdd = o->hitStop;
         }
         if (Player_TestFlags(o, 0x800) != 0) {
-            p->attackHit800 = 1;
+            p->contactHit = 1;
         }
         p->hitKind = 0;
         p->contact = t;
@@ -4204,7 +4204,7 @@ f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_Concat3x3(f32 *m, f32 *a);
 void Mtx_Copy(f32 *dst, f32 *src);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 struct EmBone;
 void Bone_StoreMatrices(struct EmBone *b);
 void Mtx_Identity(f32 *m);
@@ -4240,7 +4240,7 @@ void Em_Draw(DrawSlot *slot)
     Mtx_SetTrans(m[0], em->posX, em->posY, em->posZ);
     Mtx_Concat3x3(m[0], scale[0]);
     Mtx_Copy((f32 *)em->worldMtx, m[0]);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     part = *(EmModelPart **)((u8 *)model + 0x30);
     n = *(s16 *)((u8 *)model + 0x2C);
@@ -4726,7 +4726,7 @@ void Effect01_Run(StageObj *o)
         Em_BonePos(p, 2, o->pos);
         o->pos[1] = p->floorY;
     draw:
-        if (gScene.online == 0 || p->unk01E != 1 || p->weaponType != 3) {
+        if (gScene.online == 0 || p->ownTask != 1 || p->weaponType != WEAPON_LANCE) {
             if ((u8)Obj_InCurrentArea(p) == 0) {
                 return;
             }
@@ -4904,7 +4904,7 @@ void Effect01_Draw(DrawSlot *s)
     } else {
         tbl = &gEffect01Sizes;
     }
-    if (gScene.online == 0 || p->unk01E != 1 || p->weaponType != 3) {
+    if (gScene.online == 0 || p->ownTask != 1 || p->weaponType != WEAPON_LANCE) {
         if (gScene.area != p->area) {
             return;
         }
@@ -4917,7 +4917,7 @@ void Effect01_Draw(DrawSlot *s)
     }
     Gs_SetState(0x60, 0);
     Gs_SetState(0x6C, 0);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     mats = set->mats;
     switch (o->type) {
     case 0:
@@ -4931,13 +4931,13 @@ void Effect01_Draw(DrawSlot *s)
             sx = p->scale[0] * tbl[p->weaponType * 2];
             sz = p->scale[2] * tbl[p->weaponType * 2 + 1];
             switch (p->weaponType) {
-            case 7:
+            case WEAPON_LONG_SWORD:
             case 0x32:
             case 0x37:
             case 0x3A:
             case 0x48:
                 switch (p->weaponType) {
-                case 7:
+                case WEAPON_LONG_SWORD:
                 case 0x32:
                     bones = gShadowBonesEm07;
                     break;
@@ -5336,7 +5336,7 @@ void Effect02_Draw(DrawSlot *s)
     switch (o->type) {
     case 0:
     case 1:
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         flags |= 0x10;
         Gs_SetState(0x60, 0x80);
         v[0] = 1.0f;
@@ -5359,7 +5359,7 @@ void Effect02_Draw(DrawSlot *s)
         Mtx_SetTrans(m1, 0.0f, 0.125f * t, 0.0f);
         break;
     case 2:
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         flags |= 0x10;
         Gs_SetState(0x60, 0x80);
         Mtx_Scale(m2, 0.1f, 0.1f, 0.7f);
@@ -5524,7 +5524,7 @@ void Effect02_Draw(DrawSlot *s)
             Model_Draw(mdl->id, 0);
         }
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Draw_SetDefaultState();
     if (o->type == 6) {
         Gs_SetState(0x60, 0);

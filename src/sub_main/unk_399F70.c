@@ -1,3 +1,23 @@
+/*
+ * The player system: setting the hunters up and their per-frame upkeep
+ * (sub_main 0x399F70-0x3A1070).
+ *
+ * gPlayers holds the hunters (Player, player.h); gPlayerSys is the system's
+ * own state, which PlayerSys_Update steps: the first frame sets every
+ * active hunter up (Player_InitAll), then each frame updates them
+ * (Game_UpdatePlayers). A hunter's set-up (Player_Init) gives it its
+ * handlers (gPlayerHandlers: Player_MotionFxStep, unk_3885D0.c) and resets
+ * it (Player_Reset): at its start point or where it entered the area, with
+ * its health, stamina, sharpness and ammo from its equipment and skills.
+ * Each frame Player_TickTimers counts its timers down and Player_UpdateStatus
+ * runs its status: stamina and health regeneration, the drinks and foods'
+ * timed effects, the heat and the cold, the statuses' ends.
+ * Player_UpdateMotionStep sets the speed of its motion layers.
+ *
+ * The data at the end: the player handler table, the equipment id bounds,
+ * the preset equipment of the training quests, the start points and the
+ * start item lists.
+ */
 #include "common.h"
 #include "player.h"
 #include "scene.h"
@@ -5,40 +25,32 @@
 #include "objhead.h"
 #include "sprite.h"
 
-/* An entry of a start item list: n of item; n == -1 ends the list. */
+/* An entry of a start item list (gStartItemLists, gStartItemsByClass): n of item; n == -1 ends
+ * the list. */
 typedef struct StartItem {
     s16 n;
     u16 item;
 } StartItem;
 
-/* The player system's state (0x10 bytes). */
+/* The player system's state (gPlayerSys, 0x10 bytes). */
 typedef struct PlayerSys {
-    s8 state;                   /* 0x0 */
-    s8 unk1;                    /* 0x1 */
+    s8 state;                   /* 0x0: 0 set the hunters up, 1 run them; 2 and 3 idle */
+    s8 unk1;                    /* 0x1: cleared by Player_InitAll; nothing reads it */
     u8 unk2[0x10 - 0x2];
 } PlayerSys;
 
-typedef struct Offset2 {
+/* A hunter's offset from the start point (gPlayerSpawnOffset, by player index). */
+typedef struct SpawnOffset {
     f32 x;
     f32 z;
-} Offset2;
+} SpawnOffset;
 
+/* A start position (gVersusStartPos ...). */
 typedef struct Vec3f {
     f32 x;
     f32 y;
     f32 z;
 } Vec3f;
-
-/* This file's view of Player's rotation: the angles as integers at 0xA0
- * (Mtx_FromAnglesXYZ), and 0xE a 16-bit copy of the Y angle. */
-typedef struct PlayerRot {
-    u8 pad00[0xE];
-    s16 angle;                  /* 0x0E */
-    u8 pad10[0xA0 - 0x10];
-    s32 rx;                     /* 0xA0 */
-    s32 ry;                     /* 0xA4 */
-    s32 rz;                     /* 0xA8 */
-} PlayerRot;
 
 extern Vec3f gStartPos[];
 extern u16 gStartAngle[];
@@ -54,7 +66,7 @@ extern u16 gPartIdMax[];
 extern u32 gPresetHairColors[];
 extern s8 gPresetEquipIds[];
 extern PlayerVt *gPlayerHandlers;
-extern Offset2 gPlayerSpawnOffset[];
+extern SpawnOffset gPlayerSpawnOffset[];
 extern PlayerSys gPlayerSys;
 extern BladeData gBladeData[];
 
@@ -89,7 +101,9 @@ void Game_UpdatePlayers(void);
 f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 s32 Debug_IsOn(s32 unused0);
-/* unit's own declaration: with the definition's void (Player *p, s32 frame, s32 n, s32 part) (sub_main/unk_2E3940.c), Player_Reset: 2 of 678 words differ, Player_UpdateMotionStep: 2 of 110 words differ */
+/* The definition (unk_2E3940.c) takes (Player *, s32 frame, s32 n, s32 part); Player_Reset and
+ * Player_UpdateMotionStep need these u16 and s16 parameters. */
+/* unit's own declaration: kept for the match */
 void Player_BeginLayerMotion(Player *p, u16 motion, s16 a, s32 layer);
 s32 Player_UpdateMotion(Player *p);
 void Player_InitAll(s16 mode);
@@ -114,7 +128,7 @@ void Player_ClearActionState(Player *p);
 void Player_ResetAim(Player *p);
 void Vec_Copy(f32 *dst, f32 *src);
 void Player_CalcResists(Player *p);
-void Player_ClearUnk540(Player *p);
+void Player_ClearLightColors(Player *p);
 void Player_UpdateAreaPos(void *obj);
 void Player_CheckAreaMsgEvent(Player *p);
 s32 Quest_PhaseIsOver(s32 a);
@@ -125,8 +139,9 @@ void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 void Player_AddStamina(Player *p, s16 n);
 void Player_UseStamina(Player *p, s32 n);
 void Player_UpdateHunger(Player *p);
-s32 Player_NearEm40(Player *p);
-/* unit's own declaration: with the definition's u8 (Player *p, u8 group) (sub_main/unk_3AC9C0.c), Player_UpdateStatus: 10 of 745 words differ */
+s32 Player_InEmAura(Player *p);
+/* The definition (unk_3AC9C0.c) returns u8; Player_UpdateStatus needs the s32 return. */
+/* unit's own declaration: kept for the match */
 s32 Player_GetSkill(Player *p, u8 group);
 void Player_AddHp(Player *p, s16 n);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
@@ -135,71 +150,77 @@ void Jingle_CarryLost(Player *p);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
 extern s16 D_005B396C;
 
-void Pouch_SetStartItems(Player *p)
+/* Fills the pouch from a start item list when Player.startItemList is set (list + 1; cleared
+ * here): the drill quests' list, the training quests' list, or the weapon type's. */
+void Pouch_SetStartItems(Player *pl)
 {
-    StartItem *e;
+    StartItem *entry;
     s16 i;
     u16 item;
     s16 n;
 
-    if (p->startItemList != 0) {
-        p->startItemList--;
+    if (pl->startItemList != 0) {
+        pl->startItemList--;
         for (i = 0; i < 20; i++) {
-            p->pouch[i].item = 0;
-            p->pouch[i].count = 0;
+            pl->pouch[i].item = 0;
+            pl->pouch[i].count = 0;
         }
         if (Quest_IsDrill() == 1) {
-            e = gStartItemLists[p->startItemList];
+            entry = gStartItemLists[pl->startItemList];
         } else if (Quest_IsTraining() == 1) {
-            e = D_896C20[p->startItemList];
+            entry = D_896C20[pl->startItemList];
         } else {
-            e = gStartItemsByClass[p->weaponType];
+            entry = gStartItemsByClass[pl->weaponType];
         }
-        while ((n = e->n) != -1) {
-            item = e->item;
-            e++;
-            Pouch_SetAtLeast(p, 0, item, n);
+        while ((n = entry->n) != -1) {
+            item = entry->item;
+            entry++;
+            Pouch_SetAtLeast(pl, 0, item, n);
         }
     }
 }
 
-void Player_InitForQuest(Player *p)
+/* Gets a hunter ready for the quest: a slot with no player that isn't the local one is turned
+ * off; otherwise the motion layers, the preset equipment of the training quests (an id below 0
+ * picks a random part, up to gPartIdMax), the hair colour and the skills, then the models. */
+void Player_InitForQuest(Player *pl)
 {
     s32 max;
     u32 i;
-    s8 *tbl;
+    s8 *presetIds;
 
-    if (gScene.inQuest[p->index] == 0xFF && Player_IsLocal(p) == 0) {
-        p->active = 0;
-        p->visible = 0;
+    if (gScene.inQuest[pl->index] == IN_QUEST_NO_PLAYER && Player_IsLocal(pl) == 0) {
+        pl->active = 0;
+        pl->visible = 0;
         return;
     }
-    p->isEm = 0;
-    p->unk01E = 0;
-    p->motionLayerCount = 2;
-    p->unk310 = 0;
-    p->unk311 = -1;
-    if (p->presetEquip != 0) {
+    pl->isEm = 0;
+    pl->ownTask = 0;
+    pl->motionLayerCount = 2;
+    pl->unk310 = 0;
+    pl->unk311 = -1;
+    if (pl->presetEquip != 0) {
         if (Quest_IsDrill() == 0 && Quest_IsTraining() == 0) {
-            tbl = &gPresetEquipIds[p->presetEquip * 6 + p->gender * 36];
-            for (i = 0; i < 6; i++, tbl++) {
-                if (*tbl < 0) {
-                    max = gPartIdMax[i + p->gender * 7];
-                    p->equip[i].id = Rand_Next(1) % max + 1;
+            presetIds = &gPresetEquipIds[pl->presetEquip * 6 + pl->gender * 36];
+            for (i = 0; i < 6; i++, presetIds++) {
+                if (*presetIds < 0) {
+                    max = gPartIdMax[i + pl->gender * 7];
+                    pl->equip[i].id = Rand_Next(1) % max + 1;
                 } else {
-                    p->equip[i].id = *tbl;
+                    pl->equip[i].id = *presetIds;
                 }
             }
-            p->hairColor = gPresetHairColors[p->presetEquip + p->gender * 6] | 0xFF000000;
-            Player_SetColorWord(p, 2);
+            pl->hairColor = gPresetHairColors[pl->presetEquip + pl->gender * 6] | 0xFF000000;
+            Player_SetColorWord(pl, 2);
         }
-        Player_CalcSkills(p);
+        Player_CalcSkills(pl);
     }
-    Player_LoadWeaponModel(p->weaponKind, p->index);
-    Player_LoadPartModels(p);
-    Player_ClearFxBlock(p);
+    Player_LoadWeaponModel(pl->weaponKind, pl->index);
+    Player_LoadPartModels(pl);
+    Player_ClearFxBlock(pl);
 }
 
+/* Clears the ten Player records and the player system. */
 void Player_ClearAll(void)
 {
     s32 i;
@@ -210,6 +231,8 @@ void Player_ClearAll(void)
     memset(&gPlayerSys, 0, sizeof(gPlayerSys));
 }
 
+/* The player system's frame: sets every hunter up the first time (Player_InitAll), then runs
+ * them (Game_UpdatePlayers). */
 void PlayerSys_Update(void)
 {
     switch (gPlayerSys.state) {
@@ -224,45 +247,49 @@ void PlayerSys_Update(void)
     }
 }
 
+/* Sets up the four hunters: a draw slot each, and with mode 0 (the quest's start) every one,
+ * with mode 1 those moving between areas (Player.areaMoveState). At the start the local one
+ * keeps its start point and sends it (QSync_SendPlayer), and each gets its spawn effects and
+ * its weapon's objects (the dual swords' trail, the bow's arc, the horn's). */
 void Player_InitAll(s16 mode)
 {
     s32 i;
-    Player *p;
+    Player *pl;
 
     gPlayerSys.unk1 = 0;
     gPlayerSys.state = 1;
-    for (i = 0, p = gPlayers; i < 4; i++, p++) {
-        if (p->active) {
-            p->drawSlotId = DrawSlot_Alloc();
-            if (p->drawSlotId != -1) {
-                p->drawSlot = DrawSlot_Get(p->drawSlotId);
-                p->drawSlot->player = p->index;
-                p->drawSlot->draw = DrawCb_LocalPlayer;
+    for (i = 0, pl = gPlayers; i < 4; i++, pl++) {
+        if (pl->active) {
+            pl->drawSlotId = DrawSlot_Alloc();
+            if (pl->drawSlotId != -1) {
+                pl->drawSlot = DrawSlot_Get(pl->drawSlotId);
+                pl->drawSlot->player = pl->index;
+                pl->drawSlot->draw = DrawCb_LocalPlayer;
             }
-            if (mode == 0 || (mode == 1 && p->areaMoveState != 0)) {
-                Player_Init(p, i, gPlayerHandlers);
+            if (mode == 0 || (mode == 1 && pl->areaMoveState != 0)) {
+                Player_Init(pl, i, gPlayerHandlers);
             }
             if (mode == 0) {
-                if (Player_IsLocal(p) == 1) {
-                    p->nextArea = p->area;
-                    p->startPos[0] = p->pos[0];
-                    p->startPos[1] = p->pos[1];
-                    p->startPos[2] = p->pos[2];
-                    p->startAngle = p->rot[1];
-                    QSync_SendPlayer(p, 3, 0);
+                if (Player_IsLocal(pl) == 1) {
+                    pl->nextArea = pl->area;
+                    pl->startPos[0] = pl->pos[0];
+                    pl->startPos[1] = pl->pos[1];
+                    pl->startPos[2] = pl->pos[2];
+                    pl->startAngle = pl->rot[1];
+                    QSync_SendPlayer(pl, 3, 0);
                 }
-                Effect01_Spawn(p, 1);
-                Effect06_SpawnAtBone(p, 7, 0, 1, 1.0f);
-                switch (p->weaponType) {
-                case 6:
-                    StageObj_K05_Create(p, -1, 3);
-                    EmFxSeg_Spawn((struct Em *)p, 0);
+                Effect01_Spawn(pl, 1);
+                Effect06_SpawnAtBone(pl, 7, 0, 1, 1.0f);
+                switch (pl->weaponType) {
+                case WEAPON_DUAL_SWORDS:
+                    StageObj_K05_Create(pl, -1, 3);
+                    EmFxSeg_Spawn((struct Em *)pl, 0);
                     break;
-                case 10:
-                    StageObj_BowArc_Create(p);
+                case WEAPON_BOW:
+                    StageObj_BowArc_Create(pl);
                     break;
-                case 8:
-                    StageObj_K29_CreateOnPlayerDefault(p, 7, 1.0f);
+                case WEAPON_HUNTING_HORN:
+                    StageObj_K29_CreateOnPlayerDefault(pl, 7, 1.0f);
                     break;
                 }
             }
@@ -271,565 +298,580 @@ void Player_InitAll(s16 mode)
     Hit_ResetAll();
 }
 
-void Player_Init(Player *p, u8 idx, PlayerVt *vt)
+/* Sets hunter idx up: visible if it is in the quest or the local one, its handler table, reset
+ * (Player_Reset); then runs its first and last handlers. */
+void Player_Init(Player *pl, u8 idx, PlayerVt *table)
 {
-    p->index = idx;
-    if (gScene.inQuest[p->index] == 1 || Player_IsLocal(p) == 1) {
-        p->visible = 1;
+    pl->index = idx;
+    if (gScene.inQuest[pl->index] == IN_QUEST_YES || Player_IsLocal(pl) == 1) {
+        pl->visible = 1;
     } else {
-        p->visible = 0;
+        pl->visible = 0;
     }
-    p->handlers = vt;
-    Player_Reset(p);
-    p->motion[0].unk04 = idx + 1;
-    p->handlers->unk0(p);
-    p->handlers->unkC(p);
+    pl->handlers = table;
+    Player_Reset(pl);
+    pl->motion[0].unk04 = idx + 1;
+    pl->handlers->unk0(pl);
+    pl->handlers->unkC(pl);
 }
 
-void Player_AddSpawnOffset(Player *p, f32 *pos, u16 angle)
+/* Offline, moves pos by the hunter's spawn offset (gPlayerSpawnOffset by player index), turned by
+ * angle, so that the hunters don't start on one spot. */
+void Player_AddSpawnOffset(Player *pl, f32 *pos, u16 angle)
 {
     s32 rot[3];
-    f32 v[3];
+    f32 offset[3];
     f32 out[3];
-    f32 m[4][4];
+    f32 mtx[4][4];
     u8 idx;
 
     if (gScene.online == 0) {
-        idx = p->index;
+        idx = pl->index;
         rot[1] = angle;
         rot[0] = 0;
         rot[2] = 0;
-        Mtx_FromAnglesXYZ(rot, (f32 *) m);
-        v[0] = gPlayerSpawnOffset[idx].x;
-        v[1] = 0.0f;
-        v[2] = gPlayerSpawnOffset[idx].z;
-        Vec_Rotate((f32 *) out, (f32 *) v, (f32 *) m);
+        Mtx_FromAnglesXYZ(rot, (f32 *) mtx);
+        offset[0] = gPlayerSpawnOffset[idx].x;
+        offset[1] = 0.0f;
+        offset[2] = gPlayerSpawnOffset[idx].z;
+        Vec_Rotate((f32 *) out, (f32 *) offset, (f32 *) mtx);
         pos[0] += out[0];
         pos[2] += out[2];
     }
 }
 
-s32 Player_GetHpSkillBonus(Player *p)
+/* The maximum health the health skills add: +10, +20, +30, -10, -20 or -30 (the first skill held,
+ * in that order), else 0. */
+s32 Player_GetHpSkillBonus(Player *pl)
 {
-    if (Player_HasSkill(p, 0x15) == 1) {
+    if (Player_HasSkill(pl, SKILL_HEALTH_PLUS10) == 1) {
         return 10;
     }
-    if (Player_HasSkill(p, 0x16) == 1) {
+    if (Player_HasSkill(pl, SKILL_HEALTH_PLUS20) == 1) {
         return 20;
     }
-    if (Player_HasSkill(p, 0x17) == 1) {
+    if (Player_HasSkill(pl, SKILL_HEALTH_PLUS30) == 1) {
         return 30;
     }
-    if (Player_HasSkill(p, 0x18) == 1) {
+    if (Player_HasSkill(pl, SKILL_HEALTH_MINUS10) == 1) {
         return -10;
     }
-    if (Player_HasSkill(p, 0x19) == 1) {
+    if (Player_HasSkill(pl, SKILL_HEALTH_MINUS20) == 1) {
         return -20;
     }
-    if (Player_HasSkill(p, 0x1A) == 1) {
+    if (Player_HasSkill(pl, SKILL_HEALTH_MINUS30) == 1) {
         return -30;
     }
     return 0;
 }
 
-void Player_CalcSharpnessMax(Player *p)
+/* Player.sharpnessMax from the blade's sharpMax (150 + 50 a step), with the sharpness skills'
+ * +50 (to at most 400) or -50 (to at least 150). */
+void Player_CalcSharpnessMax(Player *pl)
 {
-    p->sharpnessMax = gBladeData[p->equip[6].id].sharpMax * 50 + 150;
-    if (Player_HasSkill(p, 0x21) == 1) {
-        p->sharpnessMax += 50;
-        if (p->sharpnessMax > 400) {
-            p->sharpnessMax = 400;
+    pl->sharpnessMax = gBladeData[pl->equip[EQUIP_SLOT_WEAPON].id].sharpMax * 50 + 150;
+    if (Player_HasSkill(pl, SKILL_SHARPNESS_PLUS50) == 1) {
+        pl->sharpnessMax += 50;
+        if (pl->sharpnessMax > 400) {
+            pl->sharpnessMax = 400;
         }
-    } else if (Player_HasSkill(p, 0x22) == 1) {
-        p->sharpnessMax -= 50;
-        if (p->sharpnessMax < 150) {
-            p->sharpnessMax = 150;
+    } else if (Player_HasSkill(pl, SKILL_SHARPNESS_MINUS50) == 1) {
+        pl->sharpnessMax -= 50;
+        if (pl->sharpnessMax < 150) {
+            pl->sharpnessMax = 150;
         }
     }
 }
 
-void Player_Reset(Player *p)
+/*
+ * Resets a hunter by Player.areaMoveState. 0, the quest's start: at its start point (the
+ * versus side's, or the area's with Player_AddSpawnOffset), its health and stamina maxima
+ * from the meal and the skills, sharpness, the pouch and the ammo, then idle. 1, entering
+ * another area: at the point it entered, keeping its carried item or its status. 2 and 3:
+ * back in the area (2 into an event state). Then clears the per-state fields.
+ */
+void Player_Reset(Player *pl)
 {
-    f32 v[3];
+    f32 offset[3];
     f32 out[3];
     s32 rot[3];
-    f32 m[4][4];
+    f32 mtx[4][4];
     s32 side;
     u8 flags;
     s32 i;
-    PlayerRot *r = (PlayerRot *)p;
 
-    *(u32 *)&p->unk004 = 0;
-    p->unk2B4 = 0;
-    *(u16 *)p->motionStarted = 0;
-    p->scale[0] = 1.0f;
-    p->scale[1] = 1.0f;
-    p->scale[2] = 1.0f;
-    switch (p->areaMoveState) {
+    *(u32 *)&pl->unk004 = 0;
+    pl->unk2B4 = 0;
+    *(u16 *)pl->motionStarted = 0;
+    pl->scale[0] = 1.0f;
+    pl->scale[1] = 1.0f;
+    pl->scale[2] = 1.0f;
+    switch (pl->areaMoveState) {
     case 0:
         if (Quest_IsVersus() == 1) {
-            side = (u8)((p->side > 0) ? (u8)(p->side - 1) : 0) & 1;
-            p->pos[0] = gVersusStartPos[side].x;
-            p->pos[1] = gVersusStartPos[side].y;
-            p->pos[2] = gVersusStartPos[side].z;
-            r->ry = gVersusStartAngle[side];
-            r->rx = 0;
-            r->rz = 0;
-            Mtx_FromAnglesXYZ(p->rot, p->rotMtx);
-            if (p->side >= 3) {
+            side = (u8)((pl->side > 0) ? (u8)(pl->side - 1) : 0) & 1;
+            pl->pos[0] = gVersusStartPos[side].x;
+            pl->pos[1] = gVersusStartPos[side].y;
+            pl->pos[2] = gVersusStartPos[side].z;
+            pl->rot[1] = gVersusStartAngle[side];
+            pl->rot[0] = 0;
+            pl->rot[2] = 0;
+            Mtx_FromAnglesXYZ(pl->rot, pl->rotMtx);
+            if (pl->side >= 3) {
                 rot[0] = 0;
-                rot[1] = r->ry;
+                rot[1] = pl->rot[1];
                 rot[2] = 0;
-                Mtx_FromAnglesXYZ(rot, (f32 *) m);
-                v[0] = 80.0f;
-                v[1] = 0.0f;
-                v[2] = 80.0f;
-                Vec_Rotate((f32 *) out, (f32 *) v, (f32 *) m);
-                p->pos[0] += out[0];
-                p->pos[2] += out[2];
+                Mtx_FromAnglesXYZ(rot, (f32 *) mtx);
+                offset[0] = 80.0f;
+                offset[1] = 0.0f;
+                offset[2] = 80.0f;
+                Vec_Rotate((f32 *) out, (f32 *) offset, (f32 *) mtx);
+                pl->pos[0] += out[0];
+                pl->pos[2] += out[2];
             }
         } else {
-            p->pos[0] = gStartPos[gScene.area].x;
-            p->pos[1] = gStartPos[gScene.area].y;
-            p->pos[2] = gStartPos[gScene.area].z;
-            r->ry = gStartAngle[gScene.area];
-            r->rx = 0;
-            r->rz = 0;
-            Mtx_FromAnglesXYZ(p->rot, p->rotMtx);
-            Player_AddSpawnOffset(p, p->pos, r->ry);
+            pl->pos[0] = gStartPos[gScene.area].x;
+            pl->pos[1] = gStartPos[gScene.area].y;
+            pl->pos[2] = gStartPos[gScene.area].z;
+            pl->rot[1] = gStartAngle[gScene.area];
+            pl->rot[0] = 0;
+            pl->rot[2] = 0;
+            Mtx_FromAnglesXYZ(pl->rot, pl->rotMtx);
+            Player_AddSpawnOffset(pl, pl->pos, pl->rot[1]);
         }
-        if (Player_IsLocal(p) == 1) {
-            Player_CheckTeamCombo(p);
+        if (Player_IsLocal(pl) == 1) {
+            Player_CheckTeamCombo(pl);
         } else {
-            p->mealSkill = 0;
-            p->mealSkillGroup = 0;
+            pl->mealSkill = 0;
+            pl->mealSkillGroup = 0;
         }
-        p->hpMax = 100;
-        p->staminaMax = 300;
-        p->attackDrug = 0;
-        p->defenseDrug = 0;
-        p->attackBuff = 0;
-        p->defenseBuff = 0;
-        p->attackBuffTimer = 0;
-        p->defenseBuffTimer = 0;
-        if (Player_IsLocal(p) == 1) {
-            p->hpMax += gScene.mealHealth;
-            p->hpMax = p->hpMax + Player_GetHpSkillBonus(p);
-            if (p->hpMax > 150) {
-                p->hpMax = 150;
+        pl->hpMax = 100;
+        pl->staminaMax = 300;
+        pl->attackDrug = 0;
+        pl->defenseDrug = 0;
+        pl->attackBuff = 0;
+        pl->defenseBuff = 0;
+        pl->attackBuffTimer = 0;
+        pl->defenseBuffTimer = 0;
+        if (Player_IsLocal(pl) == 1) {
+            pl->hpMax += gScene.mealHealth;
+            pl->hpMax = pl->hpMax + Player_GetHpSkillBonus(pl);
+            if (pl->hpMax > 150) {
+                pl->hpMax = 150;
             }
-            Player_AddMaxStamina(p, gScene.mealStamina);
-            p->attackDrug = gScene.mealAttack;
-            p->defenseDrug = gScene.mealDefense;
+            Player_AddMaxStamina(pl, gScene.mealStamina);
+            pl->attackDrug = gScene.mealAttack;
+            pl->defenseDrug = gScene.mealDefense;
         }
-        p->hp = p->hpMax;
-        p->hpRecoverable = p->hpMax;
-        p->hpMaxBase = p->hpMax;
-        p->staminaTimer = 10800;
-        p->stamina = p->staminaMax;
-        Player_CalcSharpnessMax(p);
-        p->sharpness = p->sharpnessMax;
-        p->sharpnessLevel = Player_GetSharpnessLevel(p);
-        p->staminaLockTimer = 0;
-        p->coolDrinkTimer = 0;
-        p->hotDrinkTimer = 0;
-        p->detectTimer = 0;
-        p->actDetectTimer = 0;
-        p->regenTimer = 0;
-        p->status5Delay = 0;
-        p->status5Buildup = 0;
-        p->poison = 0;
-        p->mashLeft = 0;
-        p->mashBuildup = 0;
-        p->status6Timer = 0;
-        p->status7Timer = 0;
-        p->status2Buildup = 0;
-        p->status4Buildup = 0;
-        p->recoverTimer = 0;
-        p->unk7E5 = 0;
-        p->swordGaugeTimer = 0;
-        p->swordGauge = 0;
-        p->attackFactor = 1.0f;
-        p->defenseFactor = 1.0f;
-        p->unk8FE = 0;
-        Pouch_SelectFirst(p);
-        p->faints = 0;
-        p->weaponSeMute = 0;
-        p->tradeCount = 0;
-        p->tradeCooldown = 0;
-        p->weaponOut = 0;
-        p->roundsLoaded = 0;
-        p->clipSize = 0;
-        p->spotCheckDelay = 0;
-        p->unk8B3 = 0;
-        Player_InitRecords(p);
-        if (gScene.inQuest[p->index] == 1 || Player_IsLocal(p) == 1) {
-            p->stateGroup = 0;
-            p->state = 0;
+        pl->hp = pl->hpMax;
+        pl->hpRecoverable = pl->hpMax;
+        pl->hpMaxBase = pl->hpMax;
+        pl->staminaTimer = 10800;
+        pl->stamina = pl->staminaMax;
+        Player_CalcSharpnessMax(pl);
+        pl->sharpness = pl->sharpnessMax;
+        pl->sharpnessLevel = Player_GetSharpnessLevel(pl);
+        pl->staminaLockTimer = 0;
+        pl->coolDrinkTimer = 0;
+        pl->hotDrinkTimer = 0;
+        pl->detectTimer = 0;
+        pl->actDetectTimer = 0;
+        pl->regenTimer = 0;
+        pl->status5Delay = 0;
+        pl->status5Buildup = 0;
+        pl->poison = 0;
+        pl->mashLeft = 0;
+        pl->mashBuildup = 0;
+        pl->status6Timer = 0;
+        pl->status7Timer = 0;
+        pl->status2Buildup = 0;
+        pl->status4Buildup = 0;
+        pl->recoverTimer = 0;
+        pl->questStartDone = 0;
+        pl->swordGaugeTimer = 0;
+        pl->swordGauge = 0;
+        pl->attackFactor = 1.0f;
+        pl->defenseFactor = 1.0f;
+        pl->scoutSpotted = 0;
+        Pouch_SelectFirst(pl);
+        pl->faints = 0;
+        pl->weaponSeMute = 0;
+        pl->tradeCount = 0;
+        pl->tradeCooldown = 0;
+        pl->weaponOut = 0;
+        pl->roundsLoaded = 0;
+        pl->clipSize = 0;
+        pl->spotCheckDelay = 0;
+        pl->unk8B3 = 0;
+        Player_InitRecords(pl);
+        if (gScene.inQuest[pl->index] == IN_QUEST_YES || Player_IsLocal(pl) == 1) {
+            pl->stateGroup = 0;
+            pl->state = 0;
         } else {
-            Player_SetState(p, 4, 5, 2);
+            Player_SetState(pl, PL_GROUP_EVENT, PL_EVENT_LEAVE, 2);
         }
-        p->syncTimer = 0;
-        p->useItem = 0;
-        p->fieldCollide = 1;
-        p->supplyTaken = 0;
-        Pouch_SetStartItems(p);
-        Player_ResetAttackPercent(p);
-        switch (p->weaponType) {
-        case 9:
-            switch (p->bladeSpecial % 3) {
+        pl->syncTimer = 0;
+        pl->useItem = 0;
+        pl->fieldCollide = 1;
+        pl->supplyTaken = 0;
+        Pouch_SetStartItems(pl);
+        Player_ResetAttackPercent(pl);
+        switch (pl->weaponType) {
+        case WEAPON_GUNLANCE:
+            switch (pl->bladeSpecial % 3) {
             case 0:
-                p->ammoCount = 5;
+                pl->ammoCount = 5;
                 break;
             case 1:
-                p->ammoCount = 2;
+                pl->ammoCount = 2;
                 break;
             case 2:
-                p->ammoCount = 3;
+                pl->ammoCount = 3;
                 break;
             }
-            p->clipSize = p->ammoCount;
+            pl->clipSize = pl->ammoCount;
             break;
-        case 10:
-            p->unk7CC = 0x87;
-            p->unk7CE = 0xFF;
-            p->sharpnessLevel = 3;
+        case WEAPON_BOW:
+            pl->unk7CC = 0x87;
+            pl->unk7CE = 0xFF;
+            pl->sharpnessLevel = 3;
             break;
         }
-        p->ammoSlot = Bowgun_NextAmmoSlot(p, 0, 2);
-        p->ammoCount = p->pouch[p->ammoSlot].count;
-        Bowgun_LoadAmmo(p, 0);
-        p->coatingSlot = 0xFF;
-        HuntingHorn_ClearNotes(p);
-        Player_ClearMealEffects(p);
-        Player_StartIdleMotion(p, 0, 0);
+        pl->ammoSlot = Bowgun_NextAmmoSlot(pl, 0, 2);
+        pl->ammoCount = pl->pouch[pl->ammoSlot].count;
+        Bowgun_LoadAmmo(pl, 0);
+        pl->coatingSlot = POUCH_SLOT_NONE;
+        HuntingHorn_ClearNotes(pl);
+        Player_ClearMealEffects(pl);
+        Player_StartIdleMotion(pl, 0, 0);
         break;
     case 1:
-        p->pos[0] = p->startPos[0];
-        p->pos[1] = p->startPos[1];
-        p->pos[2] = p->startPos[2];
-        r->ry = p->startAngle;
-        Mtx_FromAnglesXYZ(p->rot, p->rotMtx);
-        p->areaMoveState = 0;
-        p->spotCheckDelay = 0;
-        if (gScene.inQuest[p->index] == 1 || Player_IsLocal(p) == 1) {
-            p->stateGroup = 0;
-            p->state = 0;
+        pl->pos[0] = pl->startPos[0];
+        pl->pos[1] = pl->startPos[1];
+        pl->pos[2] = pl->startPos[2];
+        pl->rot[1] = pl->startAngle;
+        Mtx_FromAnglesXYZ(pl->rot, pl->rotMtx);
+        pl->areaMoveState = 0;
+        pl->spotCheckDelay = 0;
+        if (gScene.inQuest[pl->index] == IN_QUEST_YES || Player_IsLocal(pl) == 1) {
+            pl->stateGroup = 0;
+            pl->state = 0;
         } else {
-            Player_SetState(p, 4, 5, 2);
+            Player_SetState(pl, PL_GROUP_EVENT, PL_EVENT_LEAVE, 2);
         }
-        p->syncTimer = 0;
-        flags = p->carry;
+        pl->syncTimer = 0;
+        flags = pl->carry;
         if (flags & 0xF) {
-            Player_ClearActionState(p);
-            p->carry = (u8)(flags & 0xF0) | 5;
-            Player_SetState(p, 5, 0, 0);
-        } else if (p->mashLeft > 0) {
-            Player_SetState(p, 2, 0x1E, 0xC);
+            Player_ClearActionState(pl);
+            pl->carry = (u8)(flags & 0xF0) | 5;
+            Player_SetState(pl, PL_GROUP_CARRY, PL_CARRY_IDLE, 0);
+        } else if (pl->mashLeft > 0) {
+            Player_SetState(pl, PL_GROUP_REACT, PL_REACT_MASH_IDLE, 0xC);
         } else {
-            Player_ClearActionState(p);
-            Player_StartIdleMotion(p, 0, 0);
+            Player_ClearActionState(pl);
+            Player_StartIdleMotion(pl, 0, 0);
         }
         break;
     case 2:
     case 3:
-        if (p->areaMoveState == 2) {
-            p->pos[0] = gPlayerResetPos[gScene.map].x;
-            p->pos[1] = gPlayerResetPos[gScene.map].y;
-            p->pos[2] = gPlayerResetPos[gScene.map].z;
-            r->ry = gPlayerResetRotY[gScene.map];
+        if (pl->areaMoveState == 2) {
+            pl->pos[0] = gPlayerResetPos[gScene.map].x;
+            pl->pos[1] = gPlayerResetPos[gScene.map].y;
+            pl->pos[2] = gPlayerResetPos[gScene.map].z;
+            pl->rot[1] = gPlayerResetRotY[gScene.map];
         } else {
-            p->pos[0] = p->startPos[0];
-            p->pos[1] = p->startPos[1];
-            p->pos[2] = p->startPos[2];
-            r->ry = p->startAngle;
+            pl->pos[0] = pl->startPos[0];
+            pl->pos[1] = pl->startPos[1];
+            pl->pos[2] = pl->startPos[2];
+            pl->rot[1] = pl->startAngle;
         }
-        Player_AddSpawnOffset(p, p->pos, r->ry);
-        Mtx_FromAnglesXYZ(p->rot, p->rotMtx);
-        p->floorY = p->pos[1];
-        r->angle = r->ry;
-        Player_CalcSharpnessMax(p);
-        p->hpMax = 100;
-        if (Player_IsLocal(p) == 1) {
-            p->hpMax = p->hpMax + Player_GetHpSkillBonus(p);
-            if (p->hpMax > 150) {
-                p->hpMax = 150;
+        Player_AddSpawnOffset(pl, pl->pos, pl->rot[1]);
+        Mtx_FromAnglesXYZ(pl->rot, pl->rotMtx);
+        pl->floorY = pl->pos[1];
+        pl->targetYaw = pl->rot[1];
+        Player_CalcSharpnessMax(pl);
+        pl->hpMax = 100;
+        if (Player_IsLocal(pl) == 1) {
+            pl->hpMax = pl->hpMax + Player_GetHpSkillBonus(pl);
+            if (pl->hpMax > 150) {
+                pl->hpMax = 150;
             }
         }
-        p->hp = p->hpMax;
-        p->hpRecoverable = p->hpMax;
-        p->hpMaxBase = p->hpMax;
-        p->staminaMax = 300;
-        p->staminaTimer = 10800;
-        p->stamina = p->staminaMax;
-        p->staminaLockTimer = 0;
-        p->coolDrinkTimer = 0;
-        p->hotDrinkTimer = 0;
-        p->regenTimer = 0;
-        p->detectTimer = 0;
-        p->actDetectTimer = 0;
-        p->status5Delay = 0;
-        p->status5Buildup = 0;
-        p->poison = 0;
-        p->status6Timer = 0;
-        p->status7Timer = 0;
-        p->mashLeft = 0;
-        p->mashBuildup = 0;
-        p->status2Buildup = 0;
-        p->status4Buildup = 0;
-        p->recoverTimer = 0;
-        p->spotCheckDelay = 20;
-        p->visible = 0;
-        p->attackDrug = 0;
-        p->defenseDrug = 0;
-        p->attackBuff = 0;
-        p->defenseBuff = 0;
-        p->attackBuffTimer = 0;
-        p->defenseBuffTimer = 0;
-        p->weaponSeMute = 0;
-        p->weaponOut = 0;
-        HuntingHorn_ClearNotes(p);
-        Player_ClearMealEffects(p);
-        if (p->areaMoveState == 2) {
-            Player_SetState(p, 4, 0, 0xC);
+        pl->hp = pl->hpMax;
+        pl->hpRecoverable = pl->hpMax;
+        pl->hpMaxBase = pl->hpMax;
+        pl->staminaMax = 300;
+        pl->staminaTimer = 10800;
+        pl->stamina = pl->staminaMax;
+        pl->staminaLockTimer = 0;
+        pl->coolDrinkTimer = 0;
+        pl->hotDrinkTimer = 0;
+        pl->regenTimer = 0;
+        pl->detectTimer = 0;
+        pl->actDetectTimer = 0;
+        pl->status5Delay = 0;
+        pl->status5Buildup = 0;
+        pl->poison = 0;
+        pl->status6Timer = 0;
+        pl->status7Timer = 0;
+        pl->mashLeft = 0;
+        pl->mashBuildup = 0;
+        pl->status2Buildup = 0;
+        pl->status4Buildup = 0;
+        pl->recoverTimer = 0;
+        pl->spotCheckDelay = 20;
+        pl->visible = 0;
+        pl->attackDrug = 0;
+        pl->defenseDrug = 0;
+        pl->attackBuff = 0;
+        pl->defenseBuff = 0;
+        pl->attackBuffTimer = 0;
+        pl->defenseBuffTimer = 0;
+        pl->weaponSeMute = 0;
+        pl->weaponOut = 0;
+        HuntingHorn_ClearNotes(pl);
+        Player_ClearMealEffects(pl);
+        if (pl->areaMoveState == 2) {
+            Player_SetState(pl, PL_GROUP_EVENT, PL_EVENT_CART, 0xC);
         } else {
-            p->visible = 1;
-            p->stateGroup = 0;
-            p->state = 0;
-            Player_SetState(p, 0, 0, 0xC);
-            Player_ClearActionState(p);
-            Player_StartIdleMotion(p, 0, 0);
+            pl->visible = 1;
+            pl->stateGroup = 0;
+            pl->state = 0;
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_IDLE, 0xC);
+            Player_ClearActionState(pl);
+            Player_StartIdleMotion(pl, 0, 0);
         }
-        p->areaMoveState = 0;
+        pl->areaMoveState = 0;
         break;
     }
-    p->lookFound = 0;
-    r->angle = r->ry;
-    p->lean = 0;
-    p->lookYaw = 0;
-    p->hitTimers = &p->hitDelay;
-    p->action = 0;
-    p->ammoMenuOpen = 0;
-    p->unk4C4 = 0;
-    p->rideState = 0;
-    p->unk58C = -1;
-    p->unk58E = -1;
-    p->unk3F8 = 0;
-    p->painted = 0xFF;
-    p->alpha = 1.0f;
-    p->fadeAlpha = 1.0f;
-    p->weaponShown = 1;
-    p->supplyBoxOpen = 0;
-    p->deliveryMenu = 0;
-    p->menuPage = 0;
-    p->deliveryOpen = 0;
-    p->menuDelay = 0;
-    p->menuCursor = 0;
-    p->actRequest = 0;
-    p->offerRequest = 0;
-    p->teamItemMask = 0;
-    p->tradeMsgTimer = 0;
-    p->offerNoticeTimer = 0;
-    p->demonMode = 0;
-    p->noFlinchTimer = 0;
-    p->noFlinchItemTimer = 0;
-    p->motionTime = 0;
-    p->noHitTimer = 30;
-    p->motion[0].step = 2.0f;
-    p->motion[1].step = 2.0f;
-    p->bowgunReady = 0;
-    p->freeState = 0;
-    p->prevFreeState = 0;
-    p->pouchHudFlags = 0;
-    p->itemSelect = 0;
-    p->pushPriority = 1;
-    p->unk417 = 0;
-    p->dashDelay = 0;
-    p->itemUseDelay = 0;
-    p->unk816 = 0;
-    p->hideShadow = 0;
-    p->envTimer = 90;
-    p->motionSpeed = 1.0f;
-    p->inPoisonArea = 0;
-    Player_ResetAim(p);
-    p->moveTo[0] = 0.0f;
-    p->moveTo[1] = 0.0f;
-    p->moveTo[2] = 0.0f;
-    Vec_Copy(p->moveToStep, p->moveTo);
-    p->moveToFrames = 0;
+    pl->lookFound = 0;
+    pl->targetYaw = pl->rot[1];
+    pl->lean = 0;
+    pl->lookYaw = 0;
+    pl->hitTimers = &pl->hitDelay;
+    pl->action = 0;
+    pl->ammoMenuOpen = 0;
+    pl->unk4C4 = 0;
+    pl->rideState = 0;
+    pl->unk58C = -1;
+    pl->unk58E = -1;
+    pl->unk3F8 = 0;
+    pl->painted = 0xFF;
+    pl->alpha = 1.0f;
+    pl->fadeAlpha = 1.0f;
+    pl->weaponShown = 1;
+    pl->supplyBoxOpen = 0;
+    pl->deliveryMenu = 0;
+    pl->menuPage = 0;
+    pl->deliveryOpen = 0;
+    pl->menuDelay = 0;
+    pl->menuCursor = 0;
+    pl->actRequest = 0;
+    pl->offerRequest = 0;
+    pl->teamItemMask = 0;
+    pl->tradeMsgTimer = 0;
+    pl->offerNoticeTimer = 0;
+    pl->demonMode = 0;
+    pl->noFlinchTimer = 0;
+    pl->noFlinchItemTimer = 0;
+    pl->motionTime = 0;
+    pl->noHitTimer = 30;
+    pl->motion[0].step = 2.0f;
+    pl->motion[1].step = 2.0f;
+    pl->bowgunReady = 0;
+    pl->freeState = 0;
+    pl->prevFreeState = 0;
+    pl->pouchHudFlags = 0;
+    pl->itemSelect = 0;
+    pl->pushPriority = 1;
+    pl->unk417 = 0;
+    pl->dashDelay = 0;
+    pl->itemUseDelay = 0;
+    pl->ammoMenuLock = 0;
+    pl->hideShadow = 0;
+    pl->envTimer = 90;
+    pl->motionSpeed = 1.0f;
+    pl->inPoisonArea = 0;
+    Player_ResetAim(pl);
+    pl->moveTo[0] = 0.0f;
+    pl->moveTo[1] = 0.0f;
+    pl->moveTo[2] = 0.0f;
+    Vec_Copy(pl->moveToStep, pl->moveTo);
+    pl->moveToFrames = 0;
     for (i = 0; i < 4; i++) {
-        p->partAnimOn[i] = 0;
-        p->partAnimMotion[i] = 0;
-        p->partAnimWeight[i] = 0;
+        pl->partAnimOn[i] = 0;
+        pl->partAnimMotion[i] = 0;
+        pl->partAnimWeight[i] = 0;
     }
-    p->aimWeight = 0;
-    Player_BeginLayerMotion(p, p->motionFrame[0], p->motionBlend[0], 0);
-    Player_BeginLayerMotion(p, p->motionFrame[1], p->motionBlend[1], 1);
-    Player_UpdateMotion(p);
-    Player_CalcResists(p);
-    Player_ClearUnk540(p);
-    Player_UpdateAreaPos(p);
-    Player_CheckAreaMsgEvent(p);
+    pl->aimWeight = 0;
+    Player_BeginLayerMotion(pl, pl->motionFrame[0], pl->motionBlend[0], 0);
+    Player_BeginLayerMotion(pl, pl->motionFrame[1], pl->motionBlend[1], 1);
+    Player_UpdateMotion(pl);
+    Player_CalcResists(pl);
+    Player_ClearLightColors(pl);
+    Player_UpdateAreaPos(pl);
+    Player_CheckAreaMsgEvent(pl);
 }
 
-/* Player fields that Player_UpdateStatus reads as u16 (the spec has them as s16). */
+/* Three Player timers as Player_UpdateStatus reads them, as u16 (Player has them as s16):
+ * kept for the match, which needs the unsigned loads. */
 typedef struct PlayerTimers {
     u8 pad000[0x62A];
-    u16 unk62A;                 /* 0x62A */
+    u16 attackBuffTimer;        /* 0x62A: Player.attackBuffTimer */
     u8 pad62C[0x88C - 0x62C];
-    u16 unk88C;                 /* 0x88C */
+    u16 detectTimer;            /* 0x88C: Player.detectTimer */
     u8 pad88E[0x8BA - 0x88E];
-    u16 unk8BA;                 /* 0x8BA */
+    u16 actDetectTimer;         /* 0x8BA: Player.actDetectTimer */
 } PlayerTimers;
 
 /* Counts the player's timers down each frame, regenerates stamina and health,
  * and ends timed effects. Case 2's test of the state is a switch with its
  * default first: that leaves every conditional branch delay slot of the
  * function empty, as in the original. */
-void Player_UpdateStatus(Player *p)
+void Player_UpdateStatus(Player *pl)
 {
-    PlayerTimers *t = (PlayerTimers *)p;
+    PlayerTimers *timers = (PlayerTimers *)pl;
     u8 rate;
     s16 interval;
     s16 amount;
     s16 diff;
     u16 item;
     u8 flags;
-    u8 lo;
+    u8 carryKind;
     s16 i;
 
-    if (p->noFlinchItemTimer != 0) {
-        p->noFlinchItemTimer--;
+    if (pl->noFlinchItemTimer != 0) {
+        pl->noFlinchItemTimer--;
     }
-    if (p->offerNoticeTimer != 0) {
-        p->offerNoticeTimer--;
+    if (pl->offerNoticeTimer != 0) {
+        pl->offerNoticeTimer--;
     }
-    if (p->weaponSeMute != 0) {
-        p->weaponSeMute--;
+    if (pl->weaponSeMute != 0) {
+        pl->weaponSeMute--;
     }
-    if (p->unk4C1 != 0) {
-        p->unk4C1--;
+    if (pl->unk4C1 != 0) {
+        pl->unk4C1--;
     }
-    if (p->tradeMsgTimer != 0) {
-        p->tradeMsgTimer--;
+    if (pl->tradeMsgTimer != 0) {
+        pl->tradeMsgTimer--;
     }
-    if (p->tradeCooldown > 0) {
-        p->tradeCooldown--;
-        if (p->tradeCooldown <= 0) {
-            p->tradeCooldown = 0;
-            p->tradeCount = 0;
+    if (pl->tradeCooldown > 0) {
+        pl->tradeCooldown--;
+        if (pl->tradeCooldown <= 0) {
+            pl->tradeCooldown = 0;
+            pl->tradeCount = 0;
         }
     }
-    if (p->dashDelay != 0) {
-        p->dashDelay--;
+    if (pl->dashDelay != 0) {
+        pl->dashDelay--;
     }
-    if (p->staminaLockTimer != 0) {
-        p->staminaLockTimer--;
-        if (p->staminaLockTimer == 0 && Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
+    if (pl->staminaLockTimer != 0) {
+        pl->staminaLockTimer--;
+        if (pl->staminaLockTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
             Notice_Push(0, 0x15, 0);
         }
     }
-    if (p->coolDrinkTimer != 0) {
-        if (Area_Temperature(p->area) == 3) {
-            if (p->coolDrinkTimer < 2) {
-                p->coolDrinkTimer = 0;
+    if (pl->coolDrinkTimer != 0) {
+        if (Area_Temperature(pl->area) == 3) {
+            if (pl->coolDrinkTimer < 2) {
+                pl->coolDrinkTimer = 0;
             } else {
-                p->coolDrinkTimer -= 2;
+                pl->coolDrinkTimer -= 2;
             }
         } else {
-            p->coolDrinkTimer--;
+            pl->coolDrinkTimer--;
         }
-        if (p->coolDrinkTimer == 0 && Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
+        if (pl->coolDrinkTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
             Notice_Push(0, 0x12, 0);
         }
     }
-    if (p->hotDrinkTimer != 0) {
-        if (Area_Temperature(p->area) == 4) {
-            if (p->hotDrinkTimer < 2) {
-                p->hotDrinkTimer = 0;
+    if (pl->hotDrinkTimer != 0) {
+        if (Area_Temperature(pl->area) == 4) {
+            if (pl->hotDrinkTimer < 2) {
+                pl->hotDrinkTimer = 0;
             } else {
-                p->hotDrinkTimer -= 2;
+                pl->hotDrinkTimer -= 2;
             }
         } else {
-            p->hotDrinkTimer--;
+            pl->hotDrinkTimer--;
         }
-        if (p->hotDrinkTimer == 0 && Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
+        if (pl->hotDrinkTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
             Notice_Push(0, 0x13, 0);
         }
     }
-    if (p->regenTimer != 0) {
-        p->regenTimer--;
-        if (p->regenTimer == 0 && Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
+    if (pl->regenTimer != 0) {
+        pl->regenTimer--;
+        if (pl->regenTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
             Notice_Push(0, 0x16, 0);
         }
     }
-    if (t->unk88C != 0) {
-        t->unk88C--;
+    if (timers->detectTimer != 0) {
+        timers->detectTimer--;
     }
-    if (t->unk8BA != 0) {
-        t->unk8BA--;
+    if (timers->actDetectTimer != 0) {
+        timers->actDetectTimer--;
     }
-    if (t->unk62A != 0) {
-        t->unk62A--;
-        if (t->unk62A == 0) {
-            p->attackBuff = 0;
+    if (timers->attackBuffTimer != 0) {
+        timers->attackBuffTimer--;
+        if (timers->attackBuffTimer == 0) {
+            pl->attackBuff = 0;
         }
     }
-    if (p->defenseBuffTimer != 0) {
-        p->defenseBuffTimer--;
-        if (p->defenseBuffTimer == 0) {
-            p->defenseBuff = 0;
+    if (pl->defenseBuffTimer != 0) {
+        pl->defenseBuffTimer--;
+        if (pl->defenseBuffTimer == 0) {
+            pl->defenseBuff = 0;
         }
     }
-    if (p->mashLeft != 0) {
-        p->mashLeft--;
+    if (pl->mashLeft != 0) {
+        pl->mashLeft--;
     }
-    if (p->swordGaugeTimer != 0) {
-        p->swordGaugeTimer--;
+    if (pl->swordGaugeTimer != 0) {
+        pl->swordGaugeTimer--;
     }
-    if (p->status6Timer > 0) {
-        p->status6Timer--;
-        if (p->status6Timer < 0) {
-            p->status6Timer = 0;
+    if (pl->status6Timer > 0) {
+        pl->status6Timer--;
+        if (pl->status6Timer < 0) {
+            pl->status6Timer = 0;
         }
     }
-    if (p->status7Timer > 0) {
-        p->status7Timer--;
-        if (p->status7Timer < 0) {
-            p->status7Timer = 0;
+    if (pl->status7Timer > 0) {
+        pl->status7Timer--;
+        if (pl->status7Timer < 0) {
+            pl->status7Timer = 0;
         }
     }
-    if (p->weaponType == 7 && p->swordGaugeTimer == 0 && p->swordGauge != 0 && !(gScene.frame & 7)) {
-        p->swordGauge--;
+    if (pl->weaponType == WEAPON_LONG_SWORD && pl->swordGaugeTimer == 0 && pl->swordGauge != 0 && !(gScene.frame & 7)) {
+        pl->swordGauge--;
     }
-    if (p->weaponType == 9 && p->weaponTimer > 0) {
-        p->weaponTimer--;
-        if (p->weaponTimer == 0) {
-            p->unk8B3 = 0;
-            Player_PlaySe(p, 0x15, 0, p->pos, 1, 0);
-            if (Player_IsLocal(p) == 1) {
+    if (pl->weaponType == WEAPON_GUNLANCE && pl->weaponTimer > 0) {
+        pl->weaponTimer--;
+        if (pl->weaponTimer == 0) {
+            pl->unk8B3 = 0;
+            Player_PlaySe(pl, 0x15, 0, pl->pos, 1, 0);
+            if (Player_IsLocal(pl) == 1) {
                 Sound_PlaySeFlat(0, 0x21, 0);
             }
-            p->swordGaugeTimer = 10;
+            pl->swordGaugeTimer = 10;
         } else {
-            p->unk8B3 = 1;
+            pl->unk8B3 = 1;
         }
     }
-    if (Player_TestFlag(p, 0x200) == 0 && p->demonMode == 0) {
-        switch (p->stateGroup) {
+    if (Player_TestFlag(pl, 0x200) == 0 && pl->demonMode == 0) {
+        switch (pl->stateGroup) {
         case 0:
-            if (p->state != 0x6E && p->state != 0x6D && p->state != 0x6C && p->state != 0x6B &&
-                p->state != 0x44 && p->state != 0x32 && p->state != 0x31 && p->state != 0x2D &&
-                p->state != 0x1C && p->state != 0x78 && p->state != 0x77) {
-                Player_AddStamina(p, 2);
+            if (pl->state != 0x6E && pl->state != 0x6D && pl->state != 0x6C && pl->state != 0x6B &&
+                pl->state != 0x44 && pl->state != 0x32 && pl->state != 0x31 && pl->state != 0x2D &&
+                pl->state != 0x1C && pl->state != 0x78 && pl->state != 0x77) {
+                Player_AddStamina(pl, 2);
             }
             break;
         case 1:
-            switch (p->weaponType) {
-            case 2:
-                switch (p->state) {
+            switch (pl->weaponType) {
+            case WEAPON_HAMMER:
+                switch (pl->state) {
                 default:
-                    Player_AddStamina(p, 2);
+                    Player_AddStamina(pl, 2);
                     break;
                 case 3:
                 case 0xC:
@@ -839,18 +881,18 @@ void Player_UpdateStatus(Player *p)
                     break;
                 }
                 break;
-            case 3:
-                if (p->state != 0x10 && p->state != 5 && p->state != 0xE && p->state != 3) {
-                    Player_AddStamina(p, 2);
+            case WEAPON_LANCE:
+                if (pl->state != 0x10 && pl->state != 5 && pl->state != 0xE && pl->state != 3) {
+                    Player_AddStamina(pl, 2);
                 }
                 break;
-            case 10:
-                if (p->state != 0xA && p->state != 8 && p->weaponTimer == 0) {
-                    Player_AddStamina(p, 2);
+            case WEAPON_BOW:
+                if (pl->state != 0xA && pl->state != 8 && pl->weaponTimer == 0) {
+                    Player_AddStamina(pl, 2);
                 }
                 break;
             default:
-                Player_AddStamina(p, 2);
+                Player_AddStamina(pl, 2);
                 break;
             }
             break;
@@ -858,205 +900,214 @@ void Player_UpdateStatus(Player *p)
         case 3:
             break;
         default:
-            Player_AddStamina(p, 2);
+            Player_AddStamina(pl, 2);
             break;
         }
     }
-    if (p->demonMode != 0) {
-        Player_UseStamina(p, -1);
-        if (p->stamina <= 0 && p->stateGroup != 1) {
-            p->demonMode = 0;
+    if (pl->demonMode != 0) {
+        Player_UseStamina(pl, -1);
+        if (pl->stamina <= 0 && pl->stateGroup != PL_GROUP_WEAPON) {
+            pl->demonMode = 0;
         }
     }
-    Player_UpdateHunger(p);
-    if (p->stateGroup != 2 && p->stateGroup != 3) {
-        if (p->coolDrinkTimer == 0) {
-            switch (Area_Temperature(p->area)) {
+    Player_UpdateHunger(pl);
+    if (pl->stateGroup != PL_GROUP_REACT && pl->stateGroup != PL_GROUP_FAINT) {
+        if (pl->coolDrinkTimer == 0) {
+            switch (Area_Temperature(pl->area)) {
             case 1:
-                if (Player_HasSkill(p, 0x85) == 0 && Player_HasSkill(p, 0x86) == 0) {
-                    goto no_regen;
+                if (Player_HasSkill(pl, SKILL_HEAT_RES) == 0 && Player_HasSkill(pl, SKILL_HEAT_RES2) == 0) {
+                    goto no_regen; /* the heat stops the regeneration without the skill */
                 }
                 break;
             case 3:
-                if (Player_HasSkill(p, 0x86) == 0) {
+                if (Player_HasSkill(pl, SKILL_HEAT_RES2) == 0) {
                     goto no_regen;
                 }
                 break;
             }
         }
-        rate = p->unk669;
-        if (rate == 0 && Player_NearEm40(p) == 1) {
+        rate = pl->floorHazard;
+        if (rate == 0 && Player_InEmAura(pl) == 1) {
             rate = 2;
         }
-        if (rate == 1 && Player_HasSkill(p, 0xB) == 1) {
+        if (rate == 1 && Player_HasSkill(pl, SKILL_POISON_IMMUNE) == 1) {
             rate = 0;
         }
-        if (p->poison == 0 && rate == 0) {
+        if (pl->poison == 0 && rate == 0) {
             interval = 60;
-            if ((u8)Player_GetSkill(p, 7)) {
-                if (Player_HasSkill(p, 0x1B) == 1) {
+            if ((u8)Player_GetSkill(pl, 7)) {
+                if (Player_HasSkill(pl, 0x1B) == 1) {
                     interval = 20;
                 }
-                if (Player_HasSkill(p, 0x1C) == 1) {
+                if (Player_HasSkill(pl, 0x1C) == 1) {
                     interval = 15;
                 }
-                if (Player_HasSkill(p, 0x1D) == 1) {
+                if (Player_HasSkill(pl, 0x1D) == 1) {
                     interval = 180;
                 }
-                if (Player_HasSkill(p, 0x1E) == 1) {
+                if (Player_HasSkill(pl, 0x1E) == 1) {
                     interval = 240;
                 }
             }
-            amount = (p->regenTimer != 0) ? 2 : 1;
-            if (gScene.frame % interval == 0 && p->hp < p->hpRecoverable) {
-                diff = p->hpRecoverable - p->hp;
+            amount = (pl->regenTimer != 0) ? 2 : 1;
+            if (gScene.frame % interval == 0 && pl->hp < pl->hpRecoverable) {
+                diff = pl->hpRecoverable - pl->hp;
                 if (diff >= amount) {
-                    Player_AddHp(p, amount);
+                    Player_AddHp(pl, amount);
                 } else {
-                    Player_AddHp(p, diff);
+                    Player_AddHp(pl, diff);
                 }
             }
         }
 no_regen:
-        if (p->status5Delay > 0) {
-            p->status5Delay--;
+        if (pl->status5Delay > 0) {
+            pl->status5Delay--;
         } else {
-            p->status5Delay = 0;
-            if (p->status5Buildup != 0) {
-                p->status5Buildup--;
+            pl->status5Delay = 0;
+            if (pl->status5Buildup != 0) {
+                pl->status5Buildup--;
             }
         }
     }
-    if (p->aimLockTimer != 0) {
-        p->aimLockTimer--;
+    if (pl->aimLockTimer != 0) {
+        pl->aimLockTimer--;
     }
-    if (p->unk816 != 0) {
-        p->unk816--;
+    if (pl->ammoMenuLock != 0) {
+        pl->ammoMenuLock--;
     }
-    if (p->itemUseDelay != 0) {
-        p->itemUseDelay--;
+    if (pl->itemUseDelay != 0) {
+        pl->itemUseDelay--;
     }
-    flags = p->carry;
-    lo = flags & 0xF;
-    if (lo != 0 && p->stateGroup == 5) {
-        p->carry = lo;
-        p->carry--;
-        p->carry |= (u8)(flags & 0xF0);
-    } else if (Player_IsState(p, 0, 0x47) == 0 && Player_IsState(p, 0, 0x4A) == 0 &&
-               Player_IsState(p, 0, 0x51) == 0 && Player_IsState(p, 0, 0x5D) == 0 &&
-               Player_IsState(p, 0, 0x60) == 0) {
-        item = Pouch_FindCarryItem(p);
+    flags = pl->carry;
+    carryKind = flags & 0xF;
+    if (carryKind != 0 && pl->stateGroup == PL_GROUP_CARRY) {
+        pl->carry = carryKind;
+        pl->carry--;
+        pl->carry |= (u8)(flags & 0xF0);
+    } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_GATHER) == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_CARVE) == 0 &&
+               Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MINE) == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_CROUCHED) == 0 &&
+               Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_CARVE_CROUCHED) == 0) {
+        item = Pouch_FindCarryItem(pl);
         if (item != 0xFFFF) {
-            if (Player_IsLocal(p) == 1 && Quest_PhaseIsOver(1) == 0) {
-                Jingle_CarryLost(p);
+            if (Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
+                Jingle_CarryLost(pl);
                 Notice_Push(1, 5, item);
             }
-            Pouch_Add(p, item, -10);
+            Pouch_Add(pl, item, -10);
         }
     }
     for (i = 0; i < 12; i++) {
-        if (p->mealEffectTimer[i] > 0) {
-            p->mealEffectTimer[i]--;
-            if (p->mealEffectTimer[i] <= 0) {
-                p->mealEffectTimer[i] = 0;
+        if (pl->mealEffectTimer[i] > 0) {
+            pl->mealEffectTimer[i]--;
+            if (pl->mealEffectTimer[i] <= 0) {
+                pl->mealEffectTimer[i] = 0;
                 if (i == 3) {
-                    p->hpMax = p->hpMaxBase;
-                    if (p->hp >= p->hpMax) {
-                        p->hp = p->hpMax;
-                        D_005B396C = p->hp;
+                    pl->hpMax = pl->hpMaxBase;
+                    if (pl->hp >= pl->hpMax) {
+                        pl->hp = pl->hpMax;
+                        D_005B396C = pl->hp;
                     }
-                    if (p->hpRecoverable >= p->hpMax) {
-                        p->hpRecoverable = p->hpMax;
+                    if (pl->hpRecoverable >= pl->hpMax) {
+                        pl->hpRecoverable = pl->hpMax;
                     }
                 }
             }
         }
     }
-    if (p->spotCheckDelay != 0) {
-        p->spotCheckDelay--;
+    if (pl->spotCheckDelay != 0) {
+        pl->spotCheckDelay--;
     }
-    if (p->fishTimer != 0) {
-        p->fishTimer--;
-    }
-}
-
-void Player_TickPaint(Player *p)
-{
-    if (p->startItemList == 0 && p->painted != 0xFF && p->painted != 0) {
-        if (p->paintTimer != 0) {
-            p->paintTimer--;
-        } else {
-            p->painted = 0;
-        }
+    if (pl->fishTimer != 0) {
+        pl->fishTimer--;
     }
 }
 
-void Player_TickTimers(Player *p)
+/* For a record with isEm set, instead of Player_UpdateStatus: counts the paintball's timer
+ * down, then clears the paint (Player.painted 0xFF stays). */
+void Player_TickPaint(Player *pl)
 {
-    if (p->hitStop == 0) {
-        if (Player_TestFlag(p, 0x400001)) {
-            p->unk3A0 += 2;
+    if (pl->startItemList == 0 && pl->painted != 0xFF && pl->painted != 0) {
+        if (pl->paintTimer != 0) {
+            pl->paintTimer--;
         } else {
-            p->unk3A0 = 0;
-        }
-        p->motionTime += 2;
-        if ((s32)p->motionTime >= 100000) {
-            p->motionTime = 10000;
-        }
-        if (p->noHitTimer != 0) {
-            p->noHitTimer--;
-        }
-        if (p->unk434 != 0) {
-            p->unk434--;
-        }
-        if (p->noFlinchTimer != 0) {
-            p->noFlinchTimer--;
-        }
-        if (p->noPushTimer != 0) {
-            p->noPushTimer--;
-        }
-        if (p->hideShadow != 0) {
-            p->hideShadow--;
-        }
-        if (p->isEm == 0) {
-            Player_UpdateStatus(p);
-        } else {
-            Player_TickPaint(p);
+            pl->painted = 0;
         }
     }
-    Player_ClearFlag(p, 0x800);
-    if (Player_TestFlag(p, 1)) {
-        Player_SetFlag(p, 0x2000);
+}
+
+/* Each frame, unless in hit stop: counts the hunter's timers down and runs its status
+ * (Player_UpdateStatus); then updates the flag bits 0x800 and 0x2000 (0x2000 follows bit 1). */
+void Player_TickTimers(Player *pl)
+{
+    if (pl->hitStop == 0) {
+        if (Player_TestFlag(pl, 0x400001)) {
+            pl->unk3A0 += 2;
+        } else {
+            pl->unk3A0 = 0;
+        }
+        pl->motionTime += 2;
+        if ((s32)pl->motionTime >= 100000) {
+            pl->motionTime = 10000;
+        }
+        if (pl->noHitTimer != 0) {
+            pl->noHitTimer--;
+        }
+        if (pl->unk434 != 0) {
+            pl->unk434--;
+        }
+        if (pl->noFlinchTimer != 0) {
+            pl->noFlinchTimer--;
+        }
+        if (pl->noPushTimer != 0) {
+            pl->noPushTimer--;
+        }
+        if (pl->hideShadow != 0) {
+            pl->hideShadow--;
+        }
+        if (pl->isEm == 0) {
+            Player_UpdateStatus(pl);
+        } else {
+            Player_TickPaint(pl);
+        }
+    }
+    Player_ClearFlag(pl, 0x800);
+    if (Player_TestFlag(pl, 1)) {
+        Player_SetFlag(pl, 0x2000);
     } else {
-        Player_ClearFlag(p, 0x2000);
+        Player_ClearFlag(pl, 0x2000);
     }
 }
 
+/* Adds the pending hit stop of a hunter or monster (ObjHead.hitStopAdd) to its hit stop, else
+ * counts the hit stop down. */
 void Player_UpdateHitStop(void *obj)
 {
-    ObjHead *o = obj;
-    if (o->hitStopAdd != 0) {
-        o->hitStop += o->hitStopAdd;
-        o->hitStopAdd = 0;
-    } else if (o->hitStop != 0) {
-        o->hitStop--;
+    ObjHead *head = obj;
+    if (head->hitStopAdd != 0) {
+        head->hitStop += head->hitStopAdd;
+        head->hitStopAdd = 0;
+    } else if (head->hitStop != 0) {
+        head->hitStop--;
     }
 }
 
-void Player_UpdateMotionStep(Player *p)
+/* Sets the step of the hunter's two motion layers: 0 in hit stop, 0.2 while slowed by a hit, else
+ * by the motion (some at least 2, three kept, the rest 2 times Player.motionSpeed); starts the
+ * layers' new motions and steps them (unless the debug switch 0x18 is on). */
+void Player_UpdateMotionStep(Player *pl)
 {
     if (Debug_IsOn(0x18) == 0) {
-        Mtx_FromAnglesXYZ(p->rot, p->rotMtx);
-        if (p->hitStop != 0) {
-            p->motion[0].step = 0.0f;
-            p->motion[1].step = 0.0f;
-        } else if (p->hitSlowTimer > 0) {
-            p->hitSlowTimer--;
-            p->motion[0].step = 0.2f;
-            p->motion[1].step = 0.2f;
+        Mtx_FromAnglesXYZ(pl->rot, pl->rotMtx);
+        if (pl->hitStop != 0) {
+            pl->motion[0].step = 0.0f;
+            pl->motion[1].step = 0.0f;
+        } else if (pl->hitSlowTimer > 0) {
+            pl->hitSlowTimer--;
+            pl->motion[0].step = 0.2f;
+            pl->motion[1].step = 0.2f;
         } else {
-            p->hitSlowTimer = 0;
-            switch (p->motionId[0]) {
+            pl->hitSlowTimer = 0;
+            switch (pl->motionId[0]) {
             case 0x195:
             case 0x19B:
             case 0x19C:
@@ -1067,9 +1118,9 @@ void Player_UpdateMotionStep(Player *p)
             case 0x1A3:
             case 0x1A6:
             case 0x1A7:
-                if (p->motion[0].step <= 2.0f) {
-                    p->motion[0].step = 2.0f;
-                    p->motion[1].step = 2.0f;
+                if (pl->motion[0].step <= 2.0f) {
+                    pl->motion[0].step = 2.0f;
+                    pl->motion[1].step = 2.0f;
                 }
                 break;
             case 3:
@@ -1077,28 +1128,28 @@ void Player_UpdateMotionStep(Player *p)
             case 0x23:
                 break;
             default:
-                p->motion[0].step = 2.0f * p->motionSpeed;
-                p->motion[1].step = 2.0f * p->motionSpeed;
+                pl->motion[0].step = 2.0f * pl->motionSpeed;
+                pl->motion[1].step = 2.0f * pl->motionSpeed;
                 break;
             }
         }
-        if (p->motionStarted[0] == 0) {
-            p->motionStarted[0]++;
-            Player_BeginLayerMotion(p, p->motionFrame[0], p->motionBlend[0], 0);
+        if (pl->motionStarted[0] == 0) {
+            pl->motionStarted[0]++;
+            Player_BeginLayerMotion(pl, pl->motionFrame[0], pl->motionBlend[0], 0);
         }
-        if (p->motionStarted[1] == 0) {
-            p->motionStarted[1]++;
-            Player_BeginLayerMotion(p, p->motionFrame[1], p->motionBlend[1], 1);
+        if (pl->motionStarted[1] == 0) {
+            pl->motionStarted[1]++;
+            Player_BeginLayerMotion(pl, pl->motionFrame[1], pl->motionBlend[1], 1);
         }
-        Player_UpdateMotion(p);
+        Player_UpdateMotion(pl);
     }
 }
 
 /* unk_399F70's .data (0x44A190-0x44AF80) */
-void func_00395CF0(Player *p);
+void Player_NoHandler(Player *p);
 void Player_MotionFxStep(Player *p);
-PlayerVt D_0044A190[2] = {
-    {func_00395CF0, func_00395CF0, func_00395CF0, Player_MotionFxStep},
+PlayerVt gPlayerHandlerTable[2] = {
+    {Player_NoHandler, Player_NoHandler, Player_NoHandler, Player_MotionFxStep},
     {NULL, NULL, NULL, NULL},
 };
 u16 gPartIdMax[16] = {
@@ -1301,14 +1352,14 @@ u32 gBladeSpecialMarks[12] = {
 u32 gPlayerColorWords[12] = {
 #include "sub_main/0044AE60.inc"
 };
-PlayerVt *gPlayerHandlers = D_0044A190;
+PlayerVt *gPlayerHandlers = gPlayerHandlerTable;
 u32 gPresetHairColors[12] = {
 #include "sub_main/0044AEA0.inc"
 };
 s8 gPresetEquipIds[80] = {
 #include "sub_main/0044AED0.inc"
 };
-Offset2 gPlayerSpawnOffset[8] = {
+SpawnOffset gPlayerSpawnOffset[8] = {
 #include "sub_main/0044AF20.inc"
 };
 Vec3f gVersusStartPos[2] = {

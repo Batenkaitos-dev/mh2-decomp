@@ -17,6 +17,7 @@ extern s32 gVSyncCount; /* main: +1 every VBlank */
 extern s32 gLoadLastVSync; /* sub_main: gVSyncCount when the loader last ran a frame */
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "pad.h"
+#include "render_state.h"
 #include "m2c_macros.h"
 #include "select.h"
 #include "syssettings.h"
@@ -29,48 +30,12 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #pragma optimization_level 4
 
 
-/* gGalleryEntries's records: the gallery's entries. */
-typedef struct GalEntry {
-    char *title;            /* 0x00 */
-    void *unk4;             /* 0x04 */
-    u8 unk8;
-    u8 kind;                /* 0x09 */
-    u8 movie;               /* 0x0A: kind 3: its index in gGalleryMovieIds */
-    u8 needsUnlock;         /* 0x0B: listed only once its event flag (the entry number) is set */
-} GalEntry;
-
-/* gGalleryArrowSprites's records: the list's scroll arrows. */
-typedef struct GalIcon {
-    s32 tex;                /* 0x00: index into gTexHandles */
-    s32 unk4;
-    s16 w, h;               /* 0x08 */
-    s16 u0, v0, u1, v1;     /* 0x0C */
-    u32 color;              /* 0x14 */
-    s32 unk18;
-    f32 unk1C;              /* 0x1C */
-} GalIcon;
-
-/* gGalleryRecs's records (Gallery_DrawRecords draws them). */
-typedef struct GalRec {
-    s32 tex;                /* 0x00: > 100: gTexHandles, else the gallery's own */
-    s16 x, y, w, h;         /* 0x04 */
-    s16 u0, v0, u1, v1;     /* 0x0C */
-    u32 color;              /* 0x14 */
-    u16 angle;              /* 0x18 */
-    u8 unk1A[2];
-} GalRec;
-
-/* A filled screen rectangle (Prim_FillRect). */
-typedef struct GalRect {
-    s16 x, y, w, h;
-    u32 color;
-} GalRect;
 
 /* The gallery's work in the shared work area. */
 #define GAL (&((SelWork *)gSysSettings.workArea)->gallery)
 
 s32 Gallery_PictureMoving(s32 i);
-extern s32 D_6ADABC[];      /* sub_main: flags of what the gallery shows */
+extern s32 gGallerySeen[];      /* sub_main: flags of what the gallery shows */
 extern s32 gGalleryTex[];
 
 void Gallery_Init(TaskSlot *t);
@@ -80,7 +45,7 @@ void Gallery_Exit(TaskSlot *t);
 void Sel_FreeTextures(void);
 void Afs_LoadPartition(s32 ptid, s32 flid, void *ptinfo, char *name);
 s32 Afs_ReadFileIdle(s32 flid, s32 ptid, void *buf);
-s32 func_36BDF0(s32, s32);
+void Load_AdvanceFrames(s32 frames, s32 unused);
 s32 Sys_FlipFrame(s32 unused0);
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 void LoadOverlay(s32 id);
@@ -112,207 +77,216 @@ void Mem_Compact(void);
 void Tex_FreeRange(s32 first, s32 count);
 
 /* .data */
-u32 gGalleryCategoryNames[3] = {
+char *gGalleryCategoryNames[3] = {
 #include "select/006CB758.inc"
 };
-u32 gGalleryPlayHelp[2] = {
+char *gGalleryPlayHelp[2] = {
 #include "select/006CB768.inc"
 };
-u32 gGalleryNewText[2] = {
+char *gGalleryNewText[2] = {
 #include "select/006CB770.inc"
 };
-u32 gGalleryTitleTexts[2] = {
+char *gGalleryTimeTexts[2] = {
 #include "select/006CB778.inc"
 };
-u32 gGalleryEntries_1[4] = {
+char *gGalleryEntries_1[4] = {
 #include "select/006CB780.inc"
 };
-u32 gGalleryEntries_4[4] = {
+char *gGalleryEntries_4[4] = {
 #include "select/006CB790.inc"
 };
-u32 gGalleryEntries_7[4] = {
+char *gGalleryEntries_7[4] = {
 #include "select/006CB7A0.inc"
 };
-u32 gGalleryEntries_10[4] = {
+char *gGalleryEntries_10[4] = {
 #include "select/006CB7B0.inc"
 };
-u32 gGalleryEntries_13[4] = {
+char *gGalleryEntries_13[4] = {
 #include "select/006CB7C0.inc"
 };
-u32 gGalleryEntries_16[4] = {
+char *gGalleryEntries_16[4] = {
 #include "select/006CB7D0.inc"
 };
-u32 gGalleryEntries_19[4] = {
+char *gGalleryEntries_19[4] = {
 #include "select/006CB7E0.inc"
 };
-u32 gGalleryEntries_22[4] = {
+char *gGalleryEntries_22[4] = {
 #include "select/006CB7F0.inc"
 };
-u32 gGalleryEntries_25[4] = {
+char *gGalleryEntries_25[4] = {
 #include "select/006CB800.inc"
 };
-u32 gGalleryEntries_28[4] = {
+char *gGalleryEntries_28[4] = {
 #include "select/006CB810.inc"
 };
-u32 gGalleryEntries_31[4] = {
+char *gGalleryEntries_31[4] = {
 #include "select/006CB820.inc"
 };
-u32 gGalleryEntries_34[4] = {
+char *gGalleryEntries_34[4] = {
 #include "select/006CB830.inc"
 };
-u32 gGalleryEntries_37[4] = {
+char *gGalleryEntries_37[4] = {
 #include "select/006CB840.inc"
 };
-u32 gGalleryEntries_40[4] = {
+char *gGalleryEntries_40[4] = {
 #include "select/006CB850.inc"
 };
-u32 gGalleryEntries_43[4] = {
+char *gGalleryEntries_43[4] = {
 #include "select/006CB860.inc"
 };
-u32 gGalleryEntries_46[4] = {
+char *gGalleryEntries_46[4] = {
 #include "select/006CB870.inc"
 };
-u32 gGalleryEntries_49[4] = {
+char *gGalleryEntries_49[4] = {
 #include "select/006CB880.inc"
 };
-u32 gGalleryEntries_52[4] = {
+char *gGalleryEntries_52[4] = {
 #include "select/006CB890.inc"
 };
-u32 gGalleryEntries_55[4] = {
+char *gGalleryEntries_55[4] = {
 #include "select/006CB8A0.inc"
 };
-u32 gGalleryEntries_58[4] = {
+char *gGalleryEntries_58[4] = {
 #include "select/006CB8B0.inc"
 };
-u32 gGalleryEntries_61[4] = {
+char *gGalleryEntries_61[4] = {
 #include "select/006CB8C0.inc"
 };
-u32 gGalleryEntries_64[4] = {
+char *gGalleryEntries_64[4] = {
 #include "select/006CB8D0.inc"
 };
-u32 gGalleryEntries_67[4] = {
+char *gGalleryEntries_67[4] = {
 #include "select/006CB8E0.inc"
 };
-u32 gGalleryEntries_70[4] = {
+char *gGalleryEntries_70[4] = {
 #include "select/006CB8F0.inc"
 };
-u32 gGalleryEntries_73[4] = {
+char *gGalleryEntries_73[4] = {
 #include "select/006CB900.inc"
 };
-u32 gGalleryEntries_76[4] = {
+char *gGalleryEntries_76[4] = {
 #include "select/006CB910.inc"
 };
-u32 gGalleryEntries_79[4] = {
+char *gGalleryEntries_79[4] = {
 #include "select/006CB920.inc"
 };
-u32 gGalleryEntries_82[4] = {
+char *gGalleryEntries_82[4] = {
 #include "select/006CB930.inc"
 };
-u32 gGalleryEntries_85[4] = {
+char *gGalleryEntries_85[4] = {
 #include "select/006CB940.inc"
 };
-u32 gGalleryEntries_88[4] = {
+char *gGalleryEntries_88[4] = {
 #include "select/006CB950.inc"
 };
-u32 gGalleryEntries_91[4] = {
+char *gGalleryEntries_91[4] = {
 #include "select/006CB960.inc"
 };
-u32 gGalleryEntries_94[4] = {
+char *gGalleryEntries_94[4] = {
 #include "select/006CB970.inc"
 };
-u32 gGalleryEntries_97[4] = {
+char *gGalleryEntries_97[4] = {
 #include "select/006CB980.inc"
 };
-u32 gGalleryEntries_100[4] = {
+char *gGalleryEntries_100[4] = {
 #include "select/006CB990.inc"
 };
-u32 gGalleryEntries_103[4] = {
+char *gGalleryEntries_103[4] = {
 #include "select/006CB9A0.inc"
 };
-u32 gGalleryEntries_106[4] = {
+char *gGalleryEntries_106[4] = {
 #include "select/006CB9B0.inc"
 };
-u32 gGalleryEntries_109[4] = {
+char *gGalleryEntries_109[4] = {
 #include "select/006CB9C0.inc"
 };
-u32 gGalleryEntries_112[4] = {
+char *gGalleryEntries_112[4] = {
 #include "select/006CB9D0.inc"
 };
-u32 gGalleryEntries_115[4] = {
+char *gGalleryEntries_115[4] = {
 #include "select/006CB9E0.inc"
 };
-u32 gGalleryEntries_118[4] = {
+char *gGalleryEntries_118[4] = {
 #include "select/006CB9F0.inc"
 };
-u32 gGalleryEntries_121[4] = {
+char *gGalleryEntries_121[4] = {
 #include "select/006CBA00.inc"
 };
-u32 gGalleryEntries_124[4] = {
+char *gGalleryEntries_124[4] = {
 #include "select/006CBA10.inc"
 };
-u32 gGalleryEntries_127[4] = {
+char *gGalleryEntries_127[4] = {
 #include "select/006CBA20.inc"
 };
-u32 gGalleryEntries_130[4] = {
+char *gGalleryEntries_130[4] = {
 #include "select/006CBA30.inc"
 };
-u32 gGalleryEntries_133[4] = {
+char *gGalleryEntries_133[4] = {
 #include "select/006CBA40.inc"
 };
-u32 gGalleryEntries_136[4] = {
+char *gGalleryEntries_136[4] = {
 #include "select/006CBA50.inc"
 };
-u32 gGalleryEntries_139[4] = {
+char *gGalleryEntries_139[4] = {
 #include "select/006CBA60.inc"
 };
-u32 gGalleryEntries_142[4] = {
+char *gGalleryEntries_142[4] = {
 #include "select/006CBA70.inc"
 };
-u32 gGalleryEntries_145[4] = {
+char *gGalleryEntries_145[4] = {
 #include "select/006CBA80.inc"
 };
-u32 gGalleryEntries_148[4] = {
+char *gGalleryEntries_148[4] = {
 #include "select/006CBA90.inc"
 };
-u32 gGalleryEntries_151[4] = {
+char *gGalleryEntries_151[4] = {
 #include "select/006CBAA0.inc"
 };
-u32 gGalleryEntries_154[4] = {
+char *gGalleryEntries_154[4] = {
 #include "select/006CBAB0.inc"
 };
-u32 gGalleryEntries_160[4] = {
+char *gGalleryEntries_160[4] = {
 #include "select/006CBAC0.inc"
 };
-u32 gGalleryEntries_157[4] = {
+char *gGalleryEntries_157[4] = {
 #include "select/006CBAD0.inc"
 };
-u32 gGalleryEntries[164] = {
+/* The gallery's entries, by number (an entry's event flag is its number). */
+GalEntry gGalleryEntries[GAL_ENTRY_COUNT] = {
 #include "select/006CBAE0.inc"
 };
-u32 gGalleryMovieIds[8] = {
+/* The movies of the movie entries, by GalEntry.kindIndex (0xFFFF: none).
+ * 16-aligned: the 8 zero bytes before it are padding. */
+u16 gGalleryMovieIds[16] __attribute__((aligned(16))) = {
 #include "select/006CBD70.inc"
 };
-u32 gGalleryLayout[72] = {
+/* The menu's records, by id: the pictures (GalWork.pictures) and the
+ * category names' places (2, 4 and 6). */
+GalRec gGalleryLayout[10] = {
 #include "select/006CBD90.inc"
 };
-/* The list: frame, cursor, scroll bar (Gallery_DrawScrollBar, Gallery_DrawCursor). */
-GalRec gGalleryRecs[4] = {
+/* The list: frame, cursor, scroll bar (Gallery_DrawScrollBar, Gallery_DrawCursor).
+ * 16-aligned: the 8 zero bytes before it are padding. */
+GalRec gGalleryRecs[4] __attribute__((aligned(16))) = {
 #include "select/006CBEB0.inc"
 };
-u32 gGalleryScrollBar[8] = {
+/* The scroll bar's lower end (Gallery_DrawScrollBar). */
+GalRec gGalleryScrollBar = {
 #include "select/006CBF20.inc"
 };
 /* The scroll arrow (Gallery_DrawScrollBar) and a second record
  * (Gallery_DrawEntryPage indexes the table). As a GalRec array MWCC knows [0] is
- * 16-aligned and copies it with lq/sq, as the game does. */
-GalRec gGalleryScrollRecs[2] = {
+ * 16-aligned and copies it with lq/sq, as the game does (the 4 zero
+ * bytes before it are padding). */
+GalRec gGalleryScrollRecs[2] __attribute__((aligned(16))) = {
 #include "select/006CBF40.inc"
 };
 /* 16-aligned: the 8 zero bytes before it (0x6CBF78) are padding. */
-u32 gGalleryEntryPagePos[16] __attribute__((aligned(16))) = {
+s16 gGalleryEntryPagePos[32] __attribute__((aligned(16))) = {
 #include "select/006CBF80.inc"
 };
-u32 gGalleryInitBytes[4] = {
+/* The six pictures' two layout ids each at the start (0xFF: none). */
+u8 gGalleryStartPictures[16] = {
 #include "select/006CBFC0.inc"
 };
 /* The six pictures' target positions, per layout (gGalleryLayoutPos). */
@@ -340,7 +314,7 @@ s32 gGalleryLayoutBackSteps[8] = {
 f32 gGalleryLayoutSpeeds[6] = {
 #include "select/006CC0A0.inc"
 };
-u32 gGalleryCategoryOfs[3] = {
+s16 gGalleryCategoryOfs[3][2] = {
 #include "select/006CC0B8.inc"
 };
 u8 gGalleryCategoryFirst[8] = {
@@ -349,7 +323,9 @@ u8 gGalleryCategoryFirst[8] = {
 u8 gGalleryCategoryEnd[16] = {
 #include "select/006CC0D0.inc"
 };
-u32 gGalleryEntryList[12] = {
+/* The entries that ask day or night, as bytes ending in 0xFF. Declared as
+ * words: as a u8 array, Gallery_EntryInList's scan compiles differently. */
+u32 gGalleryTimedEntries[12] = {
 #include "select/006CC0E0.inc"
 };
 ListWin gGalleryListPanel = {
@@ -370,11 +346,11 @@ s16 gGalleryArrowPosB[4][2] = {
 
 
 /*
- * Marks entry n as seen (a bit of sub_main's D_6ADABC), which ends its new mark.
+ * Marks entry n as seen (a bit of sub_main's gGallerySeen), which ends its new mark.
  */
 void Gallery_SetSeen(s32 n)
 {
-    D_6ADABC[n / 32] |= 1 << (n % 32);
+    gGallerySeen[n / 32] |= 1 << (n % 32);
 }
 
 /* Whether entry n is unlocked: its event flag is set. */
@@ -389,7 +365,7 @@ s32 Gallery_IsNew(s32 n)
     s32 w;
 
     if (EventFlag_Test(n) == 1) {
-        w = D_6ADABC[n / 32];
+        w = gGallerySeen[n / 32];
         if (!(w & (1 << (n % 32)))) {
             return 1;
         }
@@ -475,11 +451,11 @@ void Gallery_LoadTextures(void)
     s32 prev;
 
     Afs_LoadPartition(5, 0x19F4, gSysSettings.readBuf, "galex");
-    for (i = 0, handle = gGalleryTex; i < 0x37; i++, handle++) {
+    for (i = 0, handle = gGalleryTex; i < GAL_TEX_COUNT; i++, handle++) {
         cur = gVSyncCount;
         prev = gLoadLastVSync;
         if (prev != cur) {
-            func_36BDF0(cur - prev, 0);
+            Load_AdvanceFrames(cur - prev, 0);
             gLoadLastVSync = gVSyncCount;
             Sys_FlipFrame(0);
         }
@@ -491,7 +467,7 @@ void Gallery_LoadTextures(void)
 
 void Gallery_FreeTextures(void)
 {
-    Tex_FreeRange(0x2B, 0x37);
+    Tex_FreeRange(GAL_TEX_FIRST, GAL_TEX_COUNT);
     Mem_Compact();
 }
 
@@ -525,26 +501,28 @@ void Gallery_Init(TaskSlot *task)
         gal->texHandles[i] = gTexHandles[j];
     }
     Gallery_LoadTextures();
-    for (i = 0, initBytes = (u8 *)gGalleryInitBytes; i < 6; i++) {
+    for (i = 0, initBytes = gGalleryStartPictures; i < GAL_PICTURE_COUNT; i++) {
         gal->pictures[i][0] = *initBytes++;
         gal->pictures[i][1] = *initBytes++;
     }
-    for (i = 0, layoutPos = (s16 *)gGalleryLayoutPos[0]; i < 6; i++) {
+    for (i = 0, layoutPos = (s16 *)gGalleryLayoutPos[0]; i < GAL_PICTURE_COUNT; i++) {
         gal->pos[i][0] = *layoutPos++;
         gal->pos[i][1] = *layoutPos++;
         gal->moveState[i] = 1;
         gal->drawOrder[i] = i;
         gal->pictureCount++;
     }
-    for (rec = (GalRec *)gGalleryLayout, i = 0, nameWalk = gal; i < 10; i++, rec++) {
+    for (rec = gGalleryLayout, i = 0, nameWalk = gal; i < 10; i++, rec++) {
         if (i == 2 || i == 4 || i == 6) {
             nameWalk->categoryPos[0][0] = rec->x;
             nameWalk->categoryPos[0][1] = rec->y;
-            nameWalk = (GalWork *)((u8 *)nameWalk + 8);
+            /* a GalWork pointer stepped one position (the match keeps the
+             * work's base in the register, categoryPos's offset in the stores) */
+            nameWalk = (GalWork *)((u8 *)nameWalk + sizeof(gal->categoryPos[0]));
         }
     }
     EventFlag_Set(0x30);
-    gal->categoryCount = 3;
+    gal->categoryCount = GAL_CATEGORY_COUNT;
     gal->entryCounts[0] = Gallery_BuildList(0);
     gal->entryCounts[1] = Gallery_BuildList(1);
     gal->entryCounts[2] = Gallery_BuildList(2);
@@ -561,30 +539,31 @@ void Gallery_Init(TaskSlot *task)
  */
 static void Gallery_ApplyLayout(GalWork *gal, s32 k)
 {
-    s16 *tbl = (s16 *)gGalleryLayout;
+    GalRec *layout = gGalleryLayout;
 
     switch (k) {
     case 0:
-        gal->categoryPos[0][1] = tbl[0x3E / 2];
-        gal->categoryPos[1][1] = tbl[0x76 / 2];
-        gal->categoryPos[2][1] = tbl[0xAE / 2];
+        gal->categoryPos[0][1] = layout[2].y;
+        gal->categoryPos[1][1] = layout[4].y;
+        gal->categoryPos[2][1] = layout[6].y;
         break;
     case 1:
-        gal->categoryPos[2][1] = tbl[0xAE / 2];
+        gal->categoryPos[2][1] = layout[6].y;
         break;
     case 2:
-        gal->categoryPos[1][1] = tbl[0xAE / 2];
+        gal->categoryPos[1][1] = layout[6].y;
         break;
     case 3:
-        gal->categoryPos[0][1] = tbl[0xAE / 2];
+        gal->categoryPos[0][1] = layout[6].y;
         break;
     }
 }
 
 /*
  * Whether the chosen entry is a quest or an area (kinds 0-2) listed in
- * gGalleryEntryList: those ask day or night before they start. The scan
- * matches only at optimization level 4 (the file's pragma).
+ * gGalleryTimedEntries: those ask day or night before they start. The scan
+ * matches only at optimization level 4 (the file's pragma), and the entry
+ * is read through a GalEntry cast (see Gallery_Update).
  */
 s32 Gallery_EntryInList(GalWork *gal)
 {
@@ -594,11 +573,11 @@ s32 Gallery_EntryInList(GalWork *gal)
 
     idx = gal->selected;
     switch (((GalEntry *)gGalleryEntries)[gal->entries[idx]].kind) {
-    case 0:
-    case 1:
-    case 2:
-        entryId = *(u8 *)gGalleryEntryList;
-        listed = (u8 *)gGalleryEntryList;
+    case GAL_KIND_MONSTER_QUEST:
+    case GAL_KIND_WORLD_QUEST:
+    case GAL_KIND_AREA_TOUR:
+        entryId = *(u8 *)gGalleryTimedEntries;
+        listed = (u8 *)gGalleryTimedEntries;
         if (entryId != 0xFF) {
             do {
                 if (entryId == gal->entries[idx]) {
@@ -636,7 +615,7 @@ void Galex_QuestTask(TaskSlot *t); /* plsel (overlay 0xB) */
 extern char gGalleryTitle[];     /* the title of what is shown */
 void Galex_Task(TaskSlot *t); /* plsel */
 void Ending_Init(void);
-s32 func_D64D40(void);
+s32 Ending_Update(void);
 void Gallery_GetTextures(GalWork *g);
 void Movie_PrePlay(void);
 s32 Movie_Play(s32 id);
@@ -644,22 +623,32 @@ s32 Movie_Update(void);
 s32 Movie_GetStatus(void);
 void Movie_RequestStop(void);
 void Movie_Stop(void);
-/* unit's own declaration: with the definition's u8 (void) (sub_main/unk_3D54B0.c), Gallery_Update: 77 of 791 words differ */
+/* unit's own declaration: s32, though sub_main/unk_3D54B0.c defines it u8; Gallery_Update's code needs the s32 return */
 s32 NetMenu_Update(void);
 
-/* The gallery's frame (GalState): the category menu (1), the lists of the
- * three categories (2-4), a picture shown by the game (5), a movie (6),
- * the network menu (7) and the fade out (8, 9: done). */
+/*
+ * The gallery's frame, by GalState: the fade in (0), the category menu (1),
+ * the three categories' lists (2-4), the ending (5), a movie (6), the card
+ * menu (7) and the fade out (8; 9 done). A quest or a tour ends the task
+ * here, after setting gSysSettings' gallery fields and starting plsel's
+ * task. Returns 1 when the gallery is done. Back from one of those, the
+ * menu opens the same category's list at once: it jumps into the confirm
+ * button's code (the goto, as the game's code does).
+ *
+ * gGalleryEntries is read through a GalEntry cast where the game's code
+ * adds the field's offset at run time: indexed directly, MWCC folds the
+ * offset into the address.
+ */
 s32 Gallery_Update(TaskSlot *task)
 {
     GalWork *gal;
     GalEntry *entry;
-    u16 trig;
-    u16 rep;
+    u16 pressedNow;
+    u16 pressRepeat;
     s32 i;
 
-    trig = gPadState[0].pressed;
-    rep = trig | gPadState[0].repeat;
+    pressedNow = gPadState[0].pressed;
+    pressRepeat = pressedNow | gPadState[0].repeat;
     gal = GAL;
     switch (gal->state) {
     case GAL_OPEN:
@@ -690,26 +679,26 @@ s32 Gallery_Update(TaskSlot *task)
                 gal->category = gSysSettings.gallerySel;
                 goto open;
             }
-            if (rep & 0x2000) {
+            if (pressRepeat & PAD_UP) {
                 gal->category--;
                 if (gal->category < 0) {
                     gal->category += gal->categoryCount;
                 }
                 Gallery_PlayCursorSe();
-            } else if (rep & 0x1000) {
+            } else if (pressRepeat & PAD_DOWN) {
                 gal->category++;
                 if (gal->category >= gal->categoryCount) {
                     gal->category -= gal->categoryCount;
                 }
                 Gallery_PlayCursorSe();
-            } else if (trig & 0x20) {
+            } else if (pressedNow & PAD_CIRCLE) {
                 Gallery_PlayOpenSe();
             open:
                 Gallery_FillNames(gal);
                 Gallery_SetLayout(gal->category + 1);
                 gal->step++;
                 Gallery_StartPanel(gal, 0);
-            } else if (trig & 0x40) {
+            } else if (pressedNow & PAD_CROSS) {
                 NetMenu_Open(1);
                 gal->state = GAL_NET_MENU;
                 gal->step = 0;
@@ -762,19 +751,19 @@ s32 Gallery_Update(TaskSlot *task)
         switch (gal->step) {
         case 0:
             gal->pageShown = 1;
-            if (Gallery_ListInput(gal, rep) == 1) {
+            if (Gallery_ListInput(gal, pressRepeat) == 1) {
                 break;
             }
             if ((u8)FadeA_GetState() == 1) {
                 break;
             }
-            if (trig & 0x40) {
+            if (pressedNow & PAD_CROSS) {
                 Gallery_PlayCloseSe();
                 gal->pageShown = 0;
                 Gallery_SetLayoutBack(0);
                 Gallery_StartPanel(gal, 1);
                 gal->step++;
-            } else if (trig & 0x20) {
+            } else if (pressedNow & PAD_CIRCLE) {
                 if (Gallery_IsUnlocked(gal->entries[gal->selected]) == 1) {
                     Gallery_SetSeen(gal->entries[gal->selected]);
                     Gallery_PlayDecideSe();
@@ -808,9 +797,9 @@ s32 Gallery_Update(TaskSlot *task)
             if ((u8)FadeA_GetState() == 1) {
                 break;
             }
-            entry = &((GalEntry *)gGalleryEntries)[gal->entries[gal->selected]];
+            entry = &gGalleryEntries[gal->entries[gal->selected]];
             switch (entry->kind) {
-            case 4:
+            case GAL_KIND_ENDING:
                 gSysSettings.galleryPlay = 1;
                 gSysSettings.gallerySel = gal->state - GAL_LIST_MONSTERS;
                 gSysSettings.galleryEntry = gal->entries[gal->selected];
@@ -820,24 +809,24 @@ s32 Gallery_Update(TaskSlot *task)
                 gal->step = 0;
                 strcpy(gGalleryTitle, gal->names[gal->listTop + gal->listRow]);
                 break;
-            case 3:
+            case GAL_KIND_MOVIE:
                 gSysSettings.gallerySel = gal->state - GAL_LIST_MONSTERS;
                 gSysSettings.galleryEntry = gal->entries[gal->selected];
                 gSysSettings.galleryKeep[0] = gal->listTop;
                 gSysSettings.galleryKeep[1] = gal->listRow;
-                if (((u16 *)gGalleryMovieIds)[entry->movie] != 0xFFFF) {
+                if (gGalleryMovieIds[entry->kindIndex] != 0xFFFF) {
                     gal->state = GAL_MOVIE;
                     gal->step = 0;
                 }
                 break;
-            case 0:
-            case 1:
+            case GAL_KIND_MONSTER_QUEST:
+            case GAL_KIND_WORLD_QUEST:
                 Game_ResetSubsystems();
                 FadeA_Reset();
                 gSysSettings.gallerySel = gal->state - GAL_LIST_MONSTERS;
                 gSysSettings.galleryEntry = gal->entries[gal->selected];
                 if (gal->night != 0) {
-                    gSysSettings.galleryEntry = (gSysSettings.galleryEntry & 0x7F) | 0x80;
+                    gSysSettings.galleryEntry = (gSysSettings.galleryEntry & GAL_ENTRY_MASK) | GAL_ENTRY_NIGHT;
                 }
                 gSysSettings.galleryKeep[0] = gal->listTop;
                 gSysSettings.galleryKeep[1] = gal->listRow;
@@ -848,13 +837,13 @@ s32 Gallery_Update(TaskSlot *task)
                 TaskSlot_Set(Galex_QuestTask, 6);
                 TaskSlot_End(task);
                 return 0;
-            case 2:
+            case GAL_KIND_AREA_TOUR:
                 Game_ResetSubsystems();
                 FadeA_Reset();
                 gSysSettings.gallerySel = gal->state - GAL_LIST_MONSTERS;
                 gSysSettings.galleryEntry = gal->entries[gal->selected];
                 if (gal->night != 0) {
-                    gSysSettings.galleryEntry = (gSysSettings.galleryEntry & 0x7F) | 0x80;
+                    gSysSettings.galleryEntry = (gSysSettings.galleryEntry & GAL_ENTRY_MASK) | GAL_ENTRY_NIGHT;
                 }
                 gSysSettings.galleryKeep[0] = gal->listTop;
                 gSysSettings.galleryKeep[1] = gal->listRow;
@@ -868,14 +857,14 @@ s32 Gallery_Update(TaskSlot *task)
             }
             break;
         case 3:
-            if ((trig & 0x400) || (trig & 0x800)) {
+            if ((pressedNow & PAD_RIGHT) || (pressedNow & PAD_LEFT)) {
                 Gallery_PlayPageSe();
                 gal->night ^= 1;
-            } else if (trig & 0x40) {
+            } else if (pressedNow & PAD_CROSS) {
                 gal->askTime = 0;
                 Gallery_PlayCancelSe();
                 gal->step = 0;
-            } else if (trig & 0x20) {
+            } else if (pressedNow & PAD_CIRCLE) {
                 gal->askTime = 0;
                 Gallery_PlayDecideSe();
                 gal->step = 2;
@@ -895,7 +884,7 @@ s32 Gallery_Update(TaskSlot *task)
             gal->step++;
             return 0;
         case 1:
-            if (func_D64D40() == 0) {
+            if (Ending_Update() == 0) {
                 gal->step++;
                 FadeA_Start(2);
             }
@@ -926,11 +915,11 @@ s32 Gallery_Update(TaskSlot *task)
             Sel_FreeTextures();
             Gallery_FreeTextures();
             Movie_PrePlay();
-            Movie_Play(((u16 *)gGalleryMovieIds)[((GalEntry *)gGalleryEntries)[gal->entries[gal->selected]].movie]);
+            Movie_Play(gGalleryMovieIds[((GalEntry *)gGalleryEntries)[gal->entries[gal->selected]].kindIndex]);
             gal->step++;
         case 1:
             Movie_Update();
-            if (Movie_GetStatus() == 3 || (gPadState[0].pressed & 0x40)) {
+            if (Movie_GetStatus() == 3 || (gPadState[0].pressed & PAD_CROSS)) {
                 Movie_RequestStop();
                 gal->step++;
                 FadeA_Start(2);
@@ -985,7 +974,7 @@ void Gallery_UpdateNewFlags(void)
     GalWork *gal;
 
     gal = GAL;
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < GAL_CATEGORY_COUNT; i++) {
         j = gGalleryCategoryFirst[i];
         end = gGalleryCategoryEnd[i];
         gal->categoryNew[i] = 0;
@@ -1015,7 +1004,7 @@ s32 Gallery_BuildList(s32 cat)
     gal = GAL;
     start = gGalleryCategoryFirst[cat];
     end = gGalleryCategoryEnd[cat];
-    entry = (GalEntry *)gGalleryEntries + start;
+    entry = gGalleryEntries + start;
     n = 0;
     for (i = start; i < end; i++, entry++) {
         if (entry->needsUnlock == 0) {
@@ -1079,15 +1068,15 @@ void Gallery_Draw(void)
 {
     GalWork *gal;
     s32 i;
-    s32 m6C;
-    s32 m63;
-    s32 m5E;
+    s32 savedZbuf;
+    s32 savedTexFilter;
+    s32 savedAlpha;
     s32 k;
 
     gal = GAL;
-    m6C = Gs_GetState(0x6C);
-    m63 = Gs_GetState(0x63);
-    m5E = Gs_GetState(0x5E);
+    savedZbuf = Gs_GetState(0x6C);
+    savedTexFilter = Gs_GetState(RS_TEX_FILTER);
+    savedAlpha = Gs_GetState(0x5E);
     Gs_SetState(0x6C, 0);
     for (i = 0; i < gal->pictureCount; i++) {
         k = gal->drawOrder[i];
@@ -1103,15 +1092,15 @@ void Gallery_Draw(void)
     if (gal->pageShown != 0) {
         Gallery_DrawEntryPage(gal);
     }
-    Gs_SetState(0x6C, m6C);
-    Gs_SetState(0x63, m63);
-    Gs_SetState(0x5E, m5E);
+    Gs_SetState(0x6C, savedZbuf);
+    Gs_SetState(RS_TEX_FILTER, savedTexFilter);
+    Gs_SetState(0x5E, savedAlpha);
     if (gal->askTime == 1) {
         ListPanel_DrawAlpha(&gGalleryListPanel, 0, -1, 0x80);
         Text_SetColor(0);
         Font_SetSpacing(0x12, 0x12);
         Font_SetPos(0x101, 0xD7);
-        Text_Printf((char *)gGalleryTitleTexts[gal->night]);
+        Text_Printf(gGalleryTimeTexts[gal->night]);
     }
     Font_GetPage();
 }
@@ -1163,11 +1152,11 @@ void Gallery_DrawNew(s32 size, s16 x, s16 y, s32 small)
     if (small == 0) {
         Font_SetPos(x + 2, y + 2);
         Font_SetColor(0x80000000);
-        Font_Printf((char *)gGalleryNewText[0]);
+        Font_Printf(gGalleryNewText[0]);
     }
     Font_SetPos(x, y);
     Font_SetColor(color);
-    Font_Printf((char *)gGalleryNewText[0]);
+    Font_Printf(gGalleryNewText[0]);
 }
 
 void Gallery_DrawArrow(s32 k);
@@ -1189,8 +1178,8 @@ void Gallery_DrawCategories(GalWork *gal)
         if (Gallery_PictureMoving(j + 1) != 0 && gal->category != i) {
             continue;
         }
-        x = gal->categoryPos[j][0] + ((s16 (*)[2])gGalleryCategoryOfs)[i][0];
-        y = gal->categoryPos[j][1] + ((s16 (*)[2])gGalleryCategoryOfs)[i][1];
+        x = gal->categoryPos[j][0] + gGalleryCategoryOfs[i][0];
+        y = gal->categoryPos[j][1] + gGalleryCategoryOfs[i][1];
         x += (s32)gal->pos[j + 1][0];
         y += (s32)gal->pos[j + 1][1];
         if (i == gal->category) {
@@ -1205,7 +1194,7 @@ void Gallery_DrawCategories(GalWork *gal)
         Font_SetSpacing(fontSize, fontSize);
         Font_SetPos(x, y);
         Font_SetColor(color);
-        Font_Printf((char *)gGalleryCategoryNames[i]);
+        Font_Printf(gGalleryCategoryNames[i]);
         if (gal->categoryNew[i] == 1) {
             if (i == gal->category) {
                 Gallery_DrawNew((s32)gal, x, y, 0);
@@ -1242,7 +1231,7 @@ void Gallery_DrawScrollBar(GalWork *gal)
     rec.y = y + 0x14;
     Gallery_DrawRecords(&rec, 1);
     n = gal->entryCounts[gal->category];
-    if (n > 4) {
+    if (n > GAL_LIST_ROWS) {
         step = 184.0f / n;
         len = 4.0f * step;
         pos = (f32)gal->listTop * step;
@@ -1251,7 +1240,9 @@ void Gallery_DrawScrollBar(GalWork *gal)
         top = y + 0x2E + pos;
         rec.y = top;
         Gallery_DrawRecords(&rec, 1);
-        rec = *(GalRec *)((u8 *)gGalleryScrollBar + 0);
+        /* through a byte pointer: the game copies it as words, not as the
+         * 16-aligned object MWCC knows it is */
+        rec = *(GalRec *)(u8 *)&gGalleryScrollBar;
         rec.x = x + 0x2C;
         rec.y = len + top;
         Gallery_DrawRecords(&rec, 1);
@@ -1271,7 +1262,7 @@ void Gallery_DrawScrollBar(GalWork *gal)
             rec.angle = 0x4000;
             Gallery_DrawRecords(&rec, 1);
         }
-        if (gal->listTop + 4 < gal->entryCounts[gal->category]) {
+        if (gal->listTop + GAL_LIST_ROWS < gal->entryCounts[gal->category]) {
             rec = gGalleryScrollRecs[0];
             rec.x = x + 0xA8;
             rec.y = y + 0xF4 + gal->downArrowOfs;
@@ -1298,7 +1289,7 @@ void Gallery_DrawCursor(GalWork *gal)
     s16 y;
     x = 72.0f + gal->pos[5][0];
     y = (s32)(18.0f + (42.0f + (40.0f + gal->pos[5][1]))) + gal->listRow * 42;
-    rec = *(GalRec *)((u8 *)gGalleryRecs + 0x38);
+    rec = gGalleryRecs[2];
     rec.x = x;
     rec.y = y;
     rec.w = 224.0f * Math_Sin(6.2831855f * gal->cursorPhase / 65536.0f);
@@ -1318,17 +1309,17 @@ void Gallery_DrawNewBlink(s32 unused, s16 x, s16 y, s32 blink)
     if (blink == 1) {
         Font_SetPos((s16)(x - 2) + 2, (s16)(y - 0xE) + 2);
         Font_SetColor(0x80000000);
-        Font_Printf((char *)gGalleryNewText[0]);
+        Font_Printf(gGalleryNewText[0]);
     }
     Font_SetPos(x - 2, y - 0xE);
     Font_SetColor(0x807F7F28);
-    Font_Printf((char *)gGalleryNewText[0]);
+    Font_Printf(gGalleryNewText[0]);
 }
 
 s32 sprintf(char *, const char *, ...);    /* sprintf */
 char *strchr(char *, s32);                  /* strchr */
 s32 Str_Length(char *);                         /* a message's width */
-/* unit's own declaration: with the definition's void (s32 id, s32 x, s32 y, s32 depth, u32 color, f32 scale) (sub_main/unk_36BE70.c), Gallery_DrawEntryPage: 104 of 276 words differ, Gallery_DrawList: 38 of 137 words differ */
+/* unit's own declaration: x and y as s16, though sub_main/unk_36BE70.c takes s32; Gallery_DrawEntryPage and Gallery_DrawList need the s16 */
 void Hud_DrawButtonIcon(s32, s16, s16, s32, u32, f32);  /* a button icon */
 void Gallery_DrawScrollBar(GalWork *g);
 
@@ -1353,7 +1344,7 @@ void Gallery_DrawList(GalWork *gal)
 
     x = 72.0f + gal->pos[5][0];
     y = (s32)(40.0f + gal->pos[5][1]) + 0x2A;
-    for (i = 0, bufStart = buf; i < 4; i++) {
+    for (i = 0, bufStart = buf; i < GAL_LIST_ROWS; i++) {
         sel = i == gal->listRow;
         if (gal->isNew[gal->listTop + i] == 1) {
             Gallery_DrawNewBlink((s32)gal, x, y, sel);
@@ -1417,17 +1408,17 @@ void Gallery_DrawEntryPage(GalWork *gal)
     s32 centredX;
     char *text;
 
-    pagePos = (s16 *)gGalleryEntryPagePos;
-    entry = (GalEntry *)gGalleryEntries + gal->entries[gal->selected];
+    pagePos = gGalleryEntryPagePos;
+    entry = gGalleryEntries + gal->entries[gal->selected];
     if (Gallery_IsUnlocked(gal->entries[gal->selected]) == 1) {
-        tex = entry->unk8 + 0x2B;
+        tex = entry->picture + GAL_TEX_FIRST;
     } else {
-        tex = 0x61;
+        tex = GAL_TEX_LOCKED;
     }
     Gs_SetState(0x5E, 0x32);
-    Gs_SetState(0x63, 0);
+    Gs_SetState(RS_TEX_FILTER, 0);
     Tex_Use(1, (u32 *)&gTexHandles[tex]);
-    Gs_SetState(4, gTexHandles[tex]);
+    Gs_SetState(RS_TEXTURE, gTexHandles[tex]);
     spr.x = pagePos[1];
     spr.y = *(pagePos += 2);
     spr.w = pagePos[1];
@@ -1452,7 +1443,7 @@ void Gallery_DrawEntryPage(GalWork *gal)
     if (Gallery_IsUnlocked(gal->entries[gal->selected]) != 0) {
         Font_SetColor(0xFF65645A);
         Font_SetSpacing(0x10, 0x10);
-        line = (char **)entry->unk4;
+        line = entry->lines;
         bufStart = buf;
         y = 0x132;
         for (i = 0; i < 4; i++) {
@@ -1500,9 +1491,9 @@ void Gallery_DrawEntryPage(GalWork *gal)
     Font_SetColor(0xFF808080);
     Font_SetSpacing(0xE, 0xE);
     Font_SetPos(0x1A6, 0x18A);
-    Text_Printf((char *)gGalleryPlayHelp[0]);
+    Text_Printf(gGalleryPlayHelp[0]);
     Font_SetPos(0x1A6, 0x19C);
-    Text_Printf((char *)gGalleryPlayHelp[1]);
+    Text_Printf(gGalleryPlayHelp[1]);
 }
 
 struct TexRect;
@@ -1525,7 +1516,7 @@ void Gallery_DrawPicture(s32 *ids, f32 *pos)
         if (*ids == 0xFF) {
             continue;
         }
-        *(recPtr = &rec) = *(GalRec *)((u8 *)gGalleryLayout + *ids * sizeof(GalRec));
+        *(recPtr = &rec) = gGalleryLayout[*ids];
         k = -1;
         if (*ids == 2) {
             k = 0;
@@ -1556,9 +1547,9 @@ void Gallery_DrawPicture(s32 *ids, f32 *pos)
         spr.color = recPtr->color;
         if (spr.x < 0x280 && spr.x + spr.w >= 0 && spr.y < 0x1C0 && spr.y + spr.h >= 0) {
             Gs_SetState(0x5E, 0x32);
-            Gs_SetState(0x63, 0);
+            Gs_SetState(RS_TEX_FILTER, 0);
             Tex_Use(1, (u32 *)&gal->texHandles[recPtr->tex]);
-            Gs_SetState(4, gal->texHandles[recPtr->tex]);
+            Gs_SetState(RS_TEXTURE, gal->texHandles[recPtr->tex]);
             if (recPtr->angle != 0) {
                 TexRect_DrawRotated((struct TexRect *)&spr, recPtr->angle);
             } else {
@@ -1588,13 +1579,13 @@ void Gallery_DrawRecords(GalRec *rec, s32 n)
         spr.color = rec->color;
         if (spr.x < 0x280 && spr.x + spr.w >= 0 && spr.y < 0x1C0 && spr.y + spr.h >= 0) {
             Gs_SetState(0x5E, 0x32);
-            Gs_SetState(0x63, 0);
+            Gs_SetState(RS_TEX_FILTER, 0);
             if (rec->tex > 100) {
                 Tex_Use(1, (u32 *)&gTexHandles[rec->tex]);
-                Gs_SetState(4, gTexHandles[rec->tex]);
+                Gs_SetState(RS_TEXTURE, gTexHandles[rec->tex]);
             } else {
                 Tex_Use(1, (u32 *)&gal->texHandles[rec->tex]);
-                Gs_SetState(4, gal->texHandles[rec->tex]);
+                Gs_SetState(RS_TEXTURE, gal->texHandles[rec->tex]);
             }
             if (rec->angle != 0) {
                 TexRect_DrawRotated((struct TexRect *)&spr, rec->angle);
@@ -1613,7 +1604,7 @@ void Gallery_UpdatePictures(void)
     s32 i;
 
     gal = GAL;
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < GAL_PICTURE_COUNT; i++) {
         if (gal->moveState[i] >= 2) {
             if (gal->moveState[i] == 2) {
                 if (gal->moveDelay[i] > 0) {
@@ -1659,7 +1650,8 @@ void Gallery_UpdatePictures(void)
 /*
  * Starts the pictures moving to layout k (gGalleryLayoutPos): each waits
  * its delay, then moves at its speed (gGalleryLayoutSteps,
- * gGalleryLayoutSpeeds).
+ * gGalleryLayoutSpeeds). A picture already in place is skipped through
+ * the same step as a picture that stays (the goto, as the game's code).
  */
 void Gallery_SetLayout(s32 k)
 {
@@ -1673,7 +1665,7 @@ void Gallery_SetLayout(s32 k)
     pos = gGalleryLayoutPos[k];
     steps = gGalleryLayoutSteps;
     speeds = gGalleryLayoutSpeeds;
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < GAL_PICTURE_COUNT; i++) {
         if (*steps == -1) {
         skip:
             pos++;
@@ -1697,7 +1689,7 @@ void Gallery_SetLayout(s32 k)
 
 /*
  * Starts the pictures moving back to the menu's layout, at the reversed
- * speeds (gGalleryLayoutBackSteps).
+ * speeds (gGalleryLayoutBackSteps); the goto as in Gallery_SetLayout.
  */
 void Gallery_SetLayoutBack(s32 unused)
 {
@@ -1711,7 +1703,7 @@ void Gallery_SetLayoutBack(s32 unused)
     pos = gGalleryLayoutPos[0];
     steps = gGalleryLayoutBackSteps;
     speeds = gGalleryLayoutSpeeds;
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < GAL_PICTURE_COUNT; i++) {
         if (*steps == -1) {
         skip:
             pos++;
@@ -1764,7 +1756,7 @@ s32 Gallery_Settled(void)
     } else if (gal->settleTimer == 8) {
         Gallery_ApplyLayout(gal, 0);
     }
-    for (i = 0; i < 6; i++) {
+    for (i = 0; i < GAL_PICTURE_COUNT; i++) {
         if (gal->moveState[i] >= 2) {
             return 0;
         }
@@ -1787,7 +1779,7 @@ void Gallery_FillNames(GalWork *gal)
         if (Gallery_IsUnlocked(gal->entries[idx]) == 0) {
             strcpy(gal->names[i], TXT(0x006D0700) /* a row of full-width question marks (an entry not unlocked yet) */);
         } else {
-            strcpy(gal->names[i], ((GalEntry *)gGalleryEntries)[gal->entries[idx]].title);
+            strcpy(gal->names[i], gGalleryEntries[gal->entries[idx]].title);
         }
         if (Gallery_IsNew(gal->entries[idx]) == 1) {
             gal->isNew[i] = 1;
@@ -1803,11 +1795,12 @@ void Gallery_FillNames(GalWork *gal)
 /*
  * The list's input: up and down move the cursor's row, scrolling the list
  * at its ends with its arrow bouncing; opens the cursor. Returns 1 when
- * the list scrolled.
+ * the list scrolled. The two moves end in shared tails (the gotos), as the
+ * game's code does.
  */
 s32 Gallery_ListInput(GalWork *gal, u16 pad)
 {
-    u16 b;
+    u16 buttons;
 
     gal->cursorPhase += 0x1000;
     if (gal->cursorPhase >= 0x4000) {
@@ -1841,8 +1834,8 @@ s32 Gallery_ListInput(GalWork *gal, u16 pad)
             }
         }
     }
-    b = pad;
-    if (b & 0x2000) {
+    buttons = pad;
+    if (buttons & PAD_UP) {
         if (gal->listRow == 0) {
             if (gal->listTop > 0) {
                 gal->listTop--;
@@ -1853,9 +1846,9 @@ s32 Gallery_ListInput(GalWork *gal, u16 pad)
             goto up;
         }
     }
-    if (b & 0x1000) {
-        if (gal->listRow >= 3) {
-            if (gal->listTop + 4 < gal->entryCounts[gal->category]) {
+    if (buttons & PAD_DOWN) {
+        if (gal->listRow >= GAL_LIST_ROWS - 1) {
+            if (gal->listTop + GAL_LIST_ROWS < gal->entryCounts[gal->category]) {
                 gal->listTop++;
                 goto down;
             }
@@ -1904,10 +1897,10 @@ void Gallery_DrawArrow(s32 k)
 
     gal = GAL;
     Gs_SetState(0x5E, 0x32);
-    Gs_SetState(0x63, 0);
+    Gs_SetState(RS_TEX_FILTER, 0);
     Tex_Use(1, (u32 *)&gTexHandles[gGalleryArrowSprites[0].tex]);
-    Gs_SetState(4, gTexHandles[gGalleryArrowSprites[0].tex]);
-    if (gal->state >= 2 && gal->state < 5) {
+    Gs_SetState(RS_TEXTURE, gTexHandles[gGalleryArrowSprites[0].tex]);
+    if (gal->state >= GAL_LIST_MONSTERS && gal->state <= GAL_LIST_BONUS) {
         pos = &gGalleryArrowPosB[k];
     } else {
         pos = &gGalleryArrowPosA[k];

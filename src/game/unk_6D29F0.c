@@ -1,34 +1,43 @@
 /*
- * Game overlay code at 0x6D29F0-0x6D3B50: Eff09_* and Eff10_*.
+ * The Explosion attack objects (ATTACH_EXPLOSION) are the hit zones left
+ * where a bomb, a bowgun shot, or a monster's fireball or breath bursts.
+ * Explosion_Create, Explosion_CreateOwned, Explosion_CreateInArea and
+ * Explosion_CreateAt each make an explosion of a given type. The type picks
+ * its row of Explosion_Rows and its hit shapes in Explosion_HitShapes. The
+ * bombs bring a second explosion that hits monsters only, and the fireballs
+ * bring a follow-up burst (Explosion_Spawn). Then come PlacedItem_Create and
+ * PlacedItem_Update, for the items set on the ground (enum PlacedItemType);
+ * PlacedItem's other functions are in unk_6D3B50.c.
  */
 #include "common.h"
 #include "em.h"
 #include "player.h"
 #include "objattach.h"
 #include "stageobj.h"
+#include "item.h"
 #include "sprite.h"
 #include "capsule.h"
 
-void Eff09_CreateInArea(Player *owner, f32 *pos, s32 kind, u16 area);
-void Eff09_CreateOwned(Player *owner, f32 *pos, s32 kind);
+void Explosion_CreateInArea(Player *owner, f32 *pos, s32 kind, u16 area);
+void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
 s32 Player_IsLocal(void *obj);
 s32 Em_HitQuadsVertical(f32 *p, Em **hitEm, s16 *hitBone, f32 *hit);
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Eff10_Update(ObjAttach *o);
+void PlacedItem_Update(ObjAttach *o);
 void Vec_RotateY(f32 *v, f32 angle);
 void ObjAttach_Free(ObjAttach *p);
 s32 Player_HasSkill(Player *p, u8 skill);
 u16 Rand_Next(s32 stream);
-void Eff09_Setup(ObjAttach *o);
-void Eff09_Run(ObjAttach *);
-void Eff09_Hit(ObjAttach *o);
-void Eff09_End(ObjAttach *o);
-void Eff09_Free(ObjAttach *o);
-void Eff10_Setup(struct ObjAttach *o);
-void Eff10_Run(struct ObjAttach *o);
-void Eff10_Hit(struct ObjAttach *);
-void Eff10_End(ObjAttach *o);
-void Eff10_Free(ObjAttach *o);
+void Explosion_Setup(ObjAttach *o);
+void Explosion_Run(ObjAttach *);
+void Explosion_Hit(ObjAttach *o);
+void Explosion_End(ObjAttach *o);
+void Explosion_Free(ObjAttach *o);
+void PlacedItem_Setup(struct ObjAttach *o);
+void PlacedItem_Run(struct ObjAttach *o);
+void PlacedItem_Hit(struct ObjAttach *);
+void PlacedItem_End(ObjAttach *o);
+void PlacedItem_Free(ObjAttach *o);
 s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
 void Vec_Copy(f32 *out, f32 *in);
 void DrawSlot_Free(s32);
@@ -39,18 +48,23 @@ void MoveObj_StartMotionEntry(struct MoveObj *, s32 a, void *b);
 s32 Player_TestSetFlags(void *obj, s32 mask);
 struct MoveObj;
 void MoveObj_StartMotionOwned(struct MoveObj *o, s32 a, s32 b, void *c);
-extern HitShape *gEff09HitLists[];
-extern void *Eff09_MotionDesc38;
-extern u8 Eff09_KindFlags[];
-void Eff09_Init(ObjAttach *);
-void Eff09_BoostPower(ObjAttach *);
-void Eff09_Spawn(ObjAttach *);
-void Eff09_Update(ObjAttach *);
+extern HitShape *Explosion_HitShapes[];
+extern void *Explosion_RowsPtr;
+extern u8 Explosion_TakesOwnerSide[];
+void Explosion_Init(ObjAttach *);
+void Explosion_BoostPower(ObjAttach *);
+void Explosion_Spawn(ObjAttach *);
+void Explosion_Update(ObjAttach *);
 
-void Eff09_Init(ObjAttach *o)
+/*
+ * Makes o an Explosion (ATTACH_EXPLOSION, updated by Explosion_Update) and
+ * clears stateVar0. The bomb and shot types 0, 2, 7, 8, 14, 15, 16, 20, 22
+ * and 38 make their second explosion at once (Explosion_Spawn).
+ */
+void Explosion_Init(ObjAttach *o)
 {
-    o->kind = 9;
-    o->update = Eff09_Update;
+    o->kind = ATTACH_EXPLOSION;
+    o->update = Explosion_Update;
     switch (o->type) {
     case 0:
     case 2:
@@ -62,41 +76,53 @@ void Eff09_Init(ObjAttach *o)
     case 20:
     case 22:
     case 38:
-        Eff09_Spawn(o);
+        Explosion_Spawn(o);
         break;
     }
     o->stateVar0 = 0;
 }
 
-void Eff09_CreateAt(f32 *pos, s32 kind, u16 area, u8 stateVar0)
+/*
+ * Makes an explosion of `type` at pos in `area` with no owner. stateVar0 is
+ * the placer's bomb boost: 1 raises the power by half (Explosion_BoostPower).
+ * The bombs' fuses pass theirs (ItemAttack_RunPlaced, PlacedItem_Run); the
+ * monsters' bombs pass 0.
+ */
+void Explosion_CreateAt(f32 *pos, s32 explType, u16 area, u8 bombBoost)
 {
     ObjAttach *o;
 
     if ((o = ObjAttach_Alloc(0)) != NULL) {
-        o->type = kind;
+        o->type = explType;
         Vec_Copy(o->pos, pos);
         o->idx = 0;
         o->isEm = 0;
         o->area = area;
-        Eff09_Init(o);
-        o->stateVar0 = stateVar0;
+        Explosion_Init(o);
+        o->stateVar0 = bombBoost;
     }
 }
 
-void Eff09_Create(Player *owner, f32 *pos, s32 kind)
+/*
+ * Makes an explosion of `type` at pos for owner. It takes the owner's index,
+ * isEm, yaw and area, and also its side when Explosion_TakesOwnerSide[type]
+ * is set. Types 2, 22 and 35 are made ownerless in the scene's area instead.
+ * The thrown items' bursts use it (ItemAttack_RunThrown).
+ */
+void Explosion_Create(Player *owner, f32 *pos, s32 explType)
 {
     ObjAttach *o;
 
     if ((o = ObjAttach_Alloc(0)) != NULL) {
-        o->type = kind;
+        o->type = explType;
         Vec_Copy(o->pos, pos);
-        if (kind != 2 && kind != 22 && kind != 35) {
+        if (explType != 2 && explType != 22 && explType != 35) {
             o->idx = owner->index;
             o->isEm = owner->isEm;
             o->owner = owner;
             o->yaw = owner->rot[1];
             o->area = owner->area;
-            if (Eff09_KindFlags[kind] != 0) {
+            if (Explosion_TakesOwnerSide[explType] != 0) {
                 o->side = owner->side;
             }
         } else {
@@ -104,52 +130,69 @@ void Eff09_Create(Player *owner, f32 *pos, s32 kind)
             o->isEm = 0;
             o->area = gScene.area;
         }
-        Eff09_Init(o);
+        Explosion_Init(o);
     }
 }
 
-void Eff09_CreateOwned(Player *owner, f32 *pos, s32 kind)
+/*
+ * As Explosion_Create, but every type takes the owner's index, isEm, yaw and
+ * area. The monsters' shots and breaths use it (EmRangedAttack_Impact,
+ * KushalaBreath_Impact, EmEffectAttack_Impact).
+ */
+void Explosion_CreateOwned(Player *owner, f32 *pos, s32 explType)
 {
     ObjAttach *o;
 
     if ((o = ObjAttach_Alloc(0)) != NULL) {
-        o->type = kind;
+        o->type = explType;
         o->idx = owner->index;
         o->isEm = owner->isEm;
         o->owner = owner;
         o->yaw = owner->rot[1];
         Vec_Copy(o->pos, pos);
         o->area = owner->area;
-        if (Eff09_KindFlags[kind] != 0) {
+        if (Explosion_TakesOwnerSide[explType] != 0) {
             o->side = owner->side;
         }
-        Eff09_Init(o);
+        Explosion_Init(o);
     }
 }
 
-void Eff09_CreateInArea(Player *owner, f32 *pos, s32 kind, u16 area)
+/*
+ * As Explosion_CreateOwned, but in the given area. The bowgun's shots use it
+ * (BowgunShot_Fly).
+ */
+void Explosion_CreateInArea(Player *owner, f32 *pos, s32 explType, u16 area)
 {
     ObjAttach *o;
 
     if ((o = ObjAttach_Alloc(0)) != NULL) {
-        o->type = kind;
+        o->type = explType;
         Vec_Copy(o->pos, pos);
         o->idx = owner->index;
         o->isEm = owner->isEm;
         o->owner = owner;
         o->yaw = owner->rot[1];
         o->area = area;
-        if (Eff09_KindFlags[kind] != 0) {
+        if (Explosion_TakesOwnerSide[explType] != 0) {
             o->side = owner->side;
         }
-        Eff09_Init(o);
+        Explosion_Init(o);
     }
 }
 
-void Eff09_Spawn(ObjAttach *src)
+/*
+ * Makes the explosion that follows src, at its position, with its owner, yaw
+ * and area, and its side when Explosion_TakesOwnerSide says so. After 0, 7,
+ * 8, 14, 15, 16 and 38 it makes type 9; after 2, 10; after 20, 21; after 22,
+ * 23. These are the parts that hit no player (ATKF_NO_PLAYER). After 1 it
+ * makes 3 and after 4 it makes 5: the fireballs' second burst. Other types
+ * make nothing.
+ */
+void Explosion_Spawn(ObjAttach *src)
 {
     ObjAttach *o;
-    s16 kind;
+    s16 followType;
 
     switch (src->type) {
     case 0:
@@ -159,30 +202,30 @@ void Eff09_Spawn(ObjAttach *src)
     case 15:
     case 16:
     case 38:
-        kind = 9;
+        followType = 9;
         break;
     case 1:
-        kind = 3;
+        followType = 3;
         break;
     case 2:
-        kind = 10;
+        followType = 10;
         break;
     case 4:
-        kind = 5;
+        followType = 5;
         break;
     case 20:
-        kind = 21;
+        followType = 21;
         break;
     case 22:
-        kind = 23;
+        followType = 23;
         break;
     default:
         return;
     }
     if ((o = ObjAttach_Alloc(0)) != NULL) {
-        o->kind = 9;
-        o->type = kind;
-        o->update = Eff09_Update;
+        o->kind = ATTACH_EXPLOSION;
+        o->type = followType;
+        o->update = Explosion_Update;
         o->idx = src->idx;
         o->isEm = src->isEm;
         o->owner = src->owner;
@@ -190,7 +233,7 @@ void Eff09_Spawn(ObjAttach *src)
         Vec_Copy(o->pos, src->pos);
         o->area = src->area;
         o->stateVar0 = 0;
-        if (Eff09_KindFlags[kind] != 0) {
+        if (Explosion_TakesOwnerSide[followType] != 0) {
             o->side = src->side;
         } else {
             o->side = 0;
@@ -198,42 +241,54 @@ void Eff09_Spawn(ObjAttach *src)
     }
 }
 
-void Eff09_Update(ObjAttach *o)
+/*
+ * An explosion's update: switches on o->state to Explosion_Setup, Run, Hit,
+ * End or Free. States 4 and 7 (no setter) and the deflections end it.
+ */
+void Explosion_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        Eff09_Setup(o);
+    case ATTACH_SETUP:
+        Explosion_Setup(o);
         break;
-    case 1:
-        Eff09_Run(o);
+    case ATTACH_RUN:
+        Explosion_Run(o);
         break;
-    case 2:
-        Eff09_End(o);
+    case ATTACH_END:
+        Explosion_End(o);
         break;
-    case 3:
-        Eff09_Hit(o);
+    case ATTACH_HIT:
+        Explosion_Hit(o);
         break;
     case 4:
-        Eff09_End(o);
+        Explosion_End(o);
         break;
-    case 5:
-        Eff09_End(o);
+    case ATTACH_DEFLECTED:
+        Explosion_End(o);
         break;
-    case 9:
-        Eff09_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        Explosion_End(o);
         break;
     case 7:
-        Eff09_End(o);
+        Explosion_End(o);
         break;
-    case 6:
-        Eff09_Free(o);
+    case ATTACH_FREE:
+        Explosion_Free(o);
         
     default:
         break;
     }
 }
 
-void Eff09_PlaySound(Em *em)
+/*
+ * In the scene's area, plays the burst's sound at the explosion's position.
+ * The bombs (types 0, 16, 20, 34, 38) share one sound and the large barrel
+ * bombs (2, 22) another. The bowgun's (8, 14, 15) have a third, which type 7
+ * plays one time in two. The parameter is the explosion typed as Em:
+ * Em.subType, the u16 at +0xCE and rotMtx[1] are ObjAttach's type, area and
+ * pos.
+ */
+void Explosion_PlaySound(Em *em)
 {
     if (*(u16 *)((u8 *)em + 0xCE) == gScene.area) {
         switch (em->subType) {
@@ -262,13 +317,23 @@ void Eff09_PlaySound(Em *em)
     }
 }
 
-void Eff09_Setup(ObjAttach *o)
+/*
+ * Sets up the explosion and moves it to ATTACH_RUN: shown, no draw, plus its
+ * sound. By type it sets the ATKF_* flags and starts its row (type + 1) of
+ * Explosion_Rows, either free or tied to the owner's motion
+ * (MoveObj_StartMotionOwned). Bombs can hit their owner, the second parts hit
+ * no player, the monsters' fireballs and breath bursts pierce, and type 27
+ * hits no monster. Then it calls Explosion_BoostPower, takes the hit shapes
+ * Explosion_HitShapes[hitListNo] and sets ownerMotion to 0 as its frame
+ * count.
+ */
+void Explosion_Setup(ObjAttach *o)
 {
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Eff09_PlaySound((Em *)o);
+    Explosion_PlaySound((Em *)o);
     switch (o->type) {
     case 0:
     case 2:
@@ -279,12 +344,12 @@ void Eff09_Setup(ObjAttach *o)
     case 34:
     case 35:
     case 38:
-        Player_TestSetFlags(o, 4);
-        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Eff09_MotionDesc38);
+        Player_TestSetFlags(o, ATKF_HITS_OWNER);
+        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Explosion_RowsPtr);
         break;
     case 6:
         Player_TestSetFlags(o, 0);
-        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Eff09_MotionDesc38);
+        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Explosion_RowsPtr);
         break;
     case 1:
     case 4:
@@ -295,73 +360,80 @@ void Eff09_Setup(ObjAttach *o)
     case 32:
     case 39:
     case 40:
-        Player_TestSetFlags(o, 0x200);
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Eff09_MotionDesc38);
+        Player_TestSetFlags(o, ATKF_PIERCES);
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Explosion_RowsPtr);
         break;
     case 7:
     case 8:
     case 14:
     case 15:
-        Player_TestSetFlags(o, 4);
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Eff09_MotionDesc38);
+        Player_TestSetFlags(o, ATKF_HITS_OWNER);
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Explosion_RowsPtr);
         break;
     case 9:
     case 10:
     case 21:
     case 23:
-        Player_TestSetFlags(o, 0x400);
-        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Eff09_MotionDesc38);
+        Player_TestSetFlags(o, ATKF_NO_PLAYER);
+        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Explosion_RowsPtr);
         break;
     case 13:
-        Player_TestSetFlags(o, 0x400);
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Eff09_MotionDesc38);
+        Player_TestSetFlags(o, ATKF_NO_PLAYER);
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Explosion_RowsPtr);
         break;
     case 27:
-        Player_TestSetFlags(o, 0x80);
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Eff09_MotionDesc38);
+        Player_TestSetFlags(o, ATKF_NO_EM);
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Explosion_RowsPtr);
         break;
     case 36:
-        Player_TestSetFlags(o, 0x84);
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Eff09_MotionDesc38);
+        Player_TestSetFlags(o, ATKF_HITS_OWNER | ATKF_NO_EM);
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Explosion_RowsPtr);
         break;
     default:
         Player_TestSetFlags(o, 0);
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Eff09_MotionDesc38);
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, (void *) &Explosion_RowsPtr);
         break;
     }
-    Eff09_BoostPower(o);
-    o->hitList = gEff09HitLists[o->hitListNo];
+    Explosion_BoostPower(o);
+    o->hitList = Explosion_HitShapes[o->hitListNo];
     o->hurtList = 0;
     o->ownerMotion = 0;
     o->drawSlotBuf = NULL;
 }
 
-void Eff09_Run(ObjAttach *o)
+/*
+ * Counts frames in ownerMotion and ends the explosion after 40 (80 for types
+ * 19, 26 and 36, the lingering bursts). The fireball types 1, 4, 18 and 24
+ * end as soon as their hit window has closed (hitFrames 0), making their
+ * follow-up (Explosion_Spawn). Queues the draw slot, if any, at the
+ * explosion's position.
+ */
+void Explosion_Run(ObjAttach *o)
 {
-    u8 kind = o->type;
-    s16 n;
+    u8 explType = o->type;
+    s16 lifeFrames;
 
-    if (kind == 1 || kind == 4 || kind == 18 || kind == 24) {
+    if (explType == 1 || explType == 4 || explType == 18 || explType == 24) {
         if (o->hitFrames <= 0) {
-            Eff09_Spawn(o);
+            Explosion_Spawn(o);
             o->hitFrames = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
     }
-    switch (kind) {
+    switch (explType) {
     default:
-        n = 40;
+        lifeFrames = 40;
         break;
     case 19:
     case 26:
     case 36:
-        n = 80;
+        lifeFrames = 80;
         break;
     }
-    if (++o->ownerMotion > n) {
+    if (++o->ownerMotion > lifeFrames) {
         o->hitFrames = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
     if (o->drawSlotBuf != NULL) {
@@ -370,41 +442,57 @@ void Eff09_Run(ObjAttach *o)
     }
 }
 
-void Eff09_Hit(ObjAttach *o)
+/*
+ * After a hit, the lingering bursts (types 0x13, 0x1A, 0x24) keep running
+ * (Explosion_Run); every other type ends.
+ */
+void Explosion_Hit(ObjAttach *o)
 {
     switch (o->type) {
     case 0x13:
     case 0x1A:
     case 0x24:
-        Eff09_Run(o);
+        Explosion_Run(o);
         break;
     default:
-        Eff09_End(o);
+        Explosion_End(o);
         break;
     }
 }
 
-void Eff09_End(ObjAttach *o)
+/*
+ * Ends the explosion. When fireball types 1, 4 or 0x12 end from a hit
+ * (ATTACH_HIT), it first makes their follow-up (Explosion_Spawn). Then it
+ * closes the hit window, hides the explosion, frees its draw slot and moves
+ * it to ATTACH_FREE.
+ */
+void Explosion_End(ObjAttach *o)
 {
-    if ((o->type == 1 || o->type == 4 || o->type == 0x12) && o->state == 3) {
-        Eff09_Spawn(o);
+    if ((o->type == 1 || o->type == 4 || o->type == 0x12) && o->state == ATTACH_HIT) {
+        Explosion_Spawn(o);
     }
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free(o->drawSlot);
     }
 }
 
-void Eff09_Free(ObjAttach *o)
+/* Frees the explosion (ObjAttach_Free). */
+void Explosion_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void Eff09_BoostPower(ObjAttach *o)
+/*
+ * With stateVar0 1 (the placer has SKILL_COMBINE_SURE: PlacedItem_Create,
+ * ItemAttack's setups), the bomb types 0, 2, 20, 22 and 38 get half again
+ * their power, capped at 255.
+ */
+void Explosion_BoostPower(ObjAttach *o)
 {
-    u16 v;
+    u16 boosted;
 
     switch (o->stateVar0) {
     case 1:
@@ -414,36 +502,49 @@ void Eff09_BoostPower(ObjAttach *o)
         case 20:
         case 22:
         case 38:
-            v = 1.5f * o->power;
-            if (v > 0xFF) {
-                v = 0xFF;
+            boosted = 1.5f * o->power;
+            if (boosted > 0xFF) {
+                boosted = 0xFF;
             }
-            o->power = v;
+            o->power = boosted;
             break;
         }
         break;
     }
 }
 
-void Eff10_Create(f32 *pos, u8 kind, u16 area, Player *pl)
+/*
+ * Makes a PlacedItem of `type` (enum PlacedItemType) that pl sets down at pos
+ * in `area`, kept (keep) and facing pl's yaw. PLACED_TRAP and
+ * PLACED_MONSTER_BOMB take the second pool. The barrel bombs and PLACED_BOMB
+ * sit 50, 75 or 35 above pos, with the set-down sound. Types 2-4 move 80
+ * ahead of the player, and 2 and 3 take its side. The monster bomb sticks to
+ * the monster Em_HitQuadsVertical finds (the buffer keeps the monster at +4,
+ * the hit point at +8 and the bone at +0x14), with powerPct 250 and two
+ * sounds. With no monster found it is freed, with a puff in the scene's area.
+ * The local player's items count in gScene.placed1 (stateVar1 1), or for a
+ * trap in gScene.placed2 (stateVar1 2). SKILL_COMBINE_SURE sets stateVar0 1,
+ * which Explosion_BoostPower reads.
+ */
+void PlacedItem_Create(f32 *pos, u8 placedType, u16 area, Player *pl)
 {
     ObjAttach *o;
-    f32 v[3];
-    s16 n;
+    f32 offset[3];
+    s16 pool;
 
-    switch (kind) {
+    switch (placedType) {
     case 4:
     case 5:
-        n = 1;
+        pool = 1;
         break;
     default:
-        n = 0;
+        pool = 0;
         break;
     }
-    if ((o = ObjAttach_Alloc(n)) != NULL) {
-        o->kind = 10;
-        o->type = kind;
-        o->update = Eff10_Update;
+    if ((o = ObjAttach_Alloc(pool)) != NULL) {
+        o->kind = ATTACH_PLACED_ITEM;
+        o->type = placedType;
+        o->update = PlacedItem_Update;
         o->isEm = 0;
         o->owner = pl;
         o->idx = pl->index;
@@ -471,13 +572,13 @@ void Eff10_Create(f32 *pos, u8 kind, u16 area, Player *pl)
         case 3:
             o->side = pl->side;
         case 4:
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = 80.0f;
-            Vec_RotateY(v, (6.2831855f * pl->rot[1]) / 65536.0f);
-            o->pos[0] += v[0];
-            o->pos[1] += v[1];
-            o->pos[2] += v[2];
+            offset[0] = 0.0f;
+            offset[1] = 0.0f;
+            offset[2] = 80.0f;
+            Vec_RotateY(offset, (6.2831855f * pl->rot[1]) / 65536.0f);
+            o->pos[0] += offset[0];
+            o->pos[1] += offset[1];
+            o->pos[2] += offset[2];
             break;
         case 5:
             if (!Em_HitQuadsVertical((f32 *) pos, (Em **) (o->buf + 4), (s16 *) (o->buf + 0x14), (f32 *) (o->buf + 8))) {
@@ -521,42 +622,46 @@ void Eff10_Create(f32 *pos, u8 kind, u16 area, Player *pl)
                     break;
                 }
             }
-            if (Player_HasSkill(pl, 0x48) == 1) {
+            if (Player_HasSkill(pl, SKILL_COMBINE_SURE) == 1) {
                 o->stateVar0 = 1;
             }
         }
     }
 }
 
-void Eff10_Update(ObjAttach *o)
+/*
+ * A placed item's update: switches on o->state to PlacedItem_Setup, Run, Hit,
+ * End or Free (unk_6D3B50.c). Every other state ends it.
+ */
+void PlacedItem_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        Eff10_Setup(o);
+    case ATTACH_SETUP:
+        PlacedItem_Setup(o);
         break;
-    case 1:
-        Eff10_Run(o);
+    case ATTACH_RUN:
+        PlacedItem_Run(o);
         break;
-    case 2:
-        Eff10_End(o);
+    case ATTACH_END:
+        PlacedItem_End(o);
         break;
-    case 3:
-        Eff10_Hit(o);
+    case ATTACH_HIT:
+        PlacedItem_Hit(o);
         break;
     case 4:
-        Eff10_End(o);
+        PlacedItem_End(o);
         break;
-    case 5:
-        Eff10_End(o);
+    case ATTACH_DEFLECTED:
+        PlacedItem_End(o);
         break;
-    case 9:
-        Eff10_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        PlacedItem_End(o);
         break;
     case 7:
-        Eff10_End(o);
+        PlacedItem_End(o);
         break;
-    case 6:
-        Eff10_Free(o);
+    case ATTACH_FREE:
+        PlacedItem_Free(o);
         
     default:
         break;
@@ -564,110 +669,110 @@ void Eff10_Update(ObjAttach *o)
 }
 
 /* unk_6D29F0's .data (0x89DE10-0x89EC80) */
-HitShape gEff09HitLists_0[2] = {
+HitShape Explosion_HitShapes_0[2] = {
 #include "game/0089DE10.inc"
 };
-HitShape gEff09HitLists_1[2] = {
+HitShape Explosion_HitShapes_1[2] = {
 #include "game/0089DE60.inc"
 };
-HitShape gEff09HitLists_2[2] = {
+HitShape Explosion_HitShapes_2[2] = {
 #include "game/0089DEB0.inc"
 };
-HitShape gEff09HitLists_3[2] = {
+HitShape Explosion_HitShapes_3[2] = {
 #include "game/0089DF00.inc"
 };
-HitShape gEff09HitLists_4[2] = {
+HitShape Explosion_HitShapes_4[2] = {
 #include "game/0089DF50.inc"
 };
-HitShape gEff09HitLists_5[2] = {
+HitShape Explosion_HitShapes_5[2] = {
 #include "game/0089DFA0.inc"
 };
-HitShape gEff09HitLists_6[2] = {
+HitShape Explosion_HitShapes_6[2] = {
 #include "game/0089DFF0.inc"
 };
-HitShape gEff09HitLists_7[2] = {
+HitShape Explosion_HitShapes_7[2] = {
 #include "game/0089E040.inc"
 };
-HitShape gEff09HitLists_8[2] = {
+HitShape Explosion_HitShapes_8[2] = {
 #include "game/0089E090.inc"
 };
-HitShape gEff09HitLists_9[2] = {
+HitShape Explosion_HitShapes_9[2] = {
 #include "game/0089E0E0.inc"
 };
-HitShape gEff09HitLists_10[2] = {
+HitShape Explosion_HitShapes_10[2] = {
 #include "game/0089E130.inc"
 };
-HitShape gEff09HitLists_11[2] = {
+HitShape Explosion_HitShapes_11[2] = {
 #include "game/0089E180.inc"
 };
-HitShape gEff09HitLists_12[2] = {
+HitShape Explosion_HitShapes_12[2] = {
 #include "game/0089E1D0.inc"
 };
-HitShape gEff09HitLists_13[2] = {
+HitShape Explosion_HitShapes_13[2] = {
 #include "game/0089E220.inc"
 };
-HitShape gEff09HitLists_14[2] = {
+HitShape Explosion_HitShapes_14[2] = {
 #include "game/0089E270.inc"
 };
-HitShape gEff09HitLists_15[2] = {
+HitShape Explosion_HitShapes_15[2] = {
 #include "game/0089E2C0.inc"
 };
-HitShape gEff09HitLists_16[2] = {
+HitShape Explosion_HitShapes_16[2] = {
 #include "game/0089E310.inc"
 };
-HitShape gEff09HitLists_17[2] = {
+HitShape Explosion_HitShapes_17[2] = {
 #include "game/0089E360.inc"
 };
-HitShape gEff09HitLists_18[2] = {
+HitShape Explosion_HitShapes_18[2] = {
 #include "game/0089E3B0.inc"
 };
-HitShape gEff09HitLists_19[2] = {
+HitShape Explosion_HitShapes_19[2] = {
 #include "game/0089E400.inc"
 };
-HitShape gEff09HitLists_20[2] = {
+HitShape Explosion_HitShapes_20[2] = {
 #include "game/0089E450.inc"
 };
-HitShape gEff09HitLists_21[2] = {
+HitShape Explosion_HitShapes_21[2] = {
 #include "game/0089E4A0.inc"
 };
-HitShape gEff09HitLists_22[2] = {
+HitShape Explosion_HitShapes_22[2] = {
 #include "game/0089E4F0.inc"
 };
-HitShape gEff09HitLists_23[2] = {
+HitShape Explosion_HitShapes_23[2] = {
 #include "game/0089E540.inc"
 };
-HitShape gEff09HitLists_24[2] = {
+HitShape Explosion_HitShapes_24[2] = {
 #include "game/0089E590.inc"
 };
-HitShape gEff09HitLists_25[3] = {
+HitShape Explosion_HitShapes_25[3] = {
 #include "game/0089E5E0.inc"
 };
-HitShape gEff09HitLists_26[3] = {
+HitShape Explosion_HitShapes_26[3] = {
 #include "game/0089E660.inc"
 };
-HitShape gEff09HitLists_27[2] = {
+HitShape Explosion_HitShapes_27[2] = {
 #include "game/0089E6E0.inc"
 };
-HitShape gEff09HitLists_28[2] = {
+HitShape Explosion_HitShapes_28[2] = {
 #include "game/0089E730.inc"
 };
-HitShape gEff09HitLists_29[2] = {
+HitShape Explosion_HitShapes_29[2] = {
 #include "game/0089E780.inc"
 };
-HitShape *gEff09HitLists[32] = {
-    gEff09HitLists_0, gEff09HitLists_1, gEff09HitLists_2, gEff09HitLists_3,
-    gEff09HitLists_4, gEff09HitLists_5, gEff09HitLists_6, gEff09HitLists_7,
-    gEff09HitLists_8, gEff09HitLists_9, gEff09HitLists_10, gEff09HitLists_11,
-    gEff09HitLists_12, gEff09HitLists_13, gEff09HitLists_14, gEff09HitLists_15,
-    gEff09HitLists_16, gEff09HitLists_17, gEff09HitLists_18, gEff09HitLists_19,
-    gEff09HitLists_20, gEff09HitLists_21, gEff09HitLists_22, gEff09HitLists_23,
-    gEff09HitLists_24, gEff09HitLists_25, gEff09HitLists_26, gEff09HitLists_27,
-    gEff09HitLists_28, gEff09HitLists_29, 0, 0,
+HitShape *Explosion_HitShapes[32] = {
+    Explosion_HitShapes_0, Explosion_HitShapes_1, Explosion_HitShapes_2, Explosion_HitShapes_3,
+    Explosion_HitShapes_4, Explosion_HitShapes_5, Explosion_HitShapes_6, Explosion_HitShapes_7,
+    Explosion_HitShapes_8, Explosion_HitShapes_9, Explosion_HitShapes_10, Explosion_HitShapes_11,
+    Explosion_HitShapes_12, Explosion_HitShapes_13, Explosion_HitShapes_14, Explosion_HitShapes_15,
+    Explosion_HitShapes_16, Explosion_HitShapes_17, Explosion_HitShapes_18, Explosion_HitShapes_19,
+    Explosion_HitShapes_20, Explosion_HitShapes_21, Explosion_HitShapes_22, Explosion_HitShapes_23,
+    Explosion_HitShapes_24, Explosion_HitShapes_25, Explosion_HitShapes_26, Explosion_HitShapes_27,
+    Explosion_HitShapes_28, Explosion_HitShapes_29, 0, 0,
 };
-u32 D_0089E850[252] = {
+u32 Explosion_Rows[252] = {
 #include "game/0089E850.inc"
 };
-void *Eff09_MotionDesc38 = (void *)D_0089E850;
-u8 Eff09_KindFlags[48] = {
+void *Explosion_RowsPtr = (void *)Explosion_Rows;
+u8 Explosion_TakesOwnerSide[48] = {
 #include "game/0089EC50.inc"
 };

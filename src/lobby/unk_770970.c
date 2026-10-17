@@ -9,6 +9,7 @@
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "window.h"
+#include "area.h"
 
 /* prototypes */
 void Shake_Start(u8 id, u8 flags, f32 amp);
@@ -97,7 +98,7 @@ void GameMenu_Start(void)
     if (Game_IsOnline() != 1) {
         gSubMenuWork->kind = 0;
         gSubMenuWork->count = 9;
-    } else if (gScene.area == 0x83) {
+    } else if (gScene.area == AREA_HUB_0x83) {
         gSubMenuWork->kind = 1;
         gSubMenuWork->count = 9;
     } else {
@@ -287,7 +288,7 @@ extern VCondFunc gGameMenuDraw1[];
 extern VCondFunc gGameMenuDraw2[];
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 s32 Gs_SetState(u8, u32);
 s32 Shake_Value(u8);
 void HelpWindow_DrawCurrent(void);
@@ -302,7 +303,7 @@ void GameMenu_Draw(void)
     }
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     switch (gSubMenuWork->step) {
     case 0:

@@ -5,6 +5,7 @@
 #include "scene.h"
 #include "lobby_globals.h"
 #include "player.h"
+#include "area.h"
 
 void TownMsg_Send(u8 len, u8 cmd, void *data);
 extern u8 gSongRequesterId[];
@@ -97,7 +98,7 @@ void TownMsg_SendStatus(void)
     Season_Set(k);
     gLobbyLastSeason = k;
     gLobbyLastPm = LobbyTime_IsPm();
-    if (gScene.area == 0x86) {
+    if (gScene.area == AREA_HUB_0x86) {
         memcpy(m.data, tbl + k * 0x18 + 4, 0x18);
     } else {
         memcpy(m.data, tbl + k * 0x18 + 0x4C, 0x18);

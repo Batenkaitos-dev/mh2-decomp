@@ -12,6 +12,7 @@
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "syssave.h"
+#include "area.h"
 void *memset(void *, s32, u32);
 void Text_SetSize(s32);
 
@@ -115,7 +116,7 @@ u16 ChatLog_Scroll(u16 pad)
     return pad;
 }
 
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void ChatLog_DrawFrame(s32 a, u8 b, u8 c);
 void ChatLog_DrawLines(u8 scroll, s32 dy, u8 atEnd, s32 size, u8 e); /* unit's own declaration: with the definition's void (u8 skip, s16 yoff, u8 fromTop, u8 size, u8 atEnd) (lobby/unk_7B8610.c), ChatLog_Draw 3 of 129 words differ */
 f32 Math_Sin(f32 x);
@@ -133,7 +134,7 @@ void ChatLog_Draw(void)
     u32 c;
     s8 a;
 
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     size = gChatTextSizes[gSysSave.options.chatSize];
     ChatLog_DrawFrame(1, gSysSave.options.chatSize, 0);
     ChatLog_DrawLines(gChatLog.win.scroll, -10, gChatLog.win.atEnd, *(u8 *)&gSysSave.options.chatSize, 0);
@@ -624,19 +625,19 @@ s32 LobbyScreen_EnterSeq(s32 mode)
         case 5:
             gTownSpawnSet = 0;
             if (gLobby->groupJoin != 0) {
-                gPlayers[gScene.localPlayer].nextArea = 0x84;
-            } else if (D_5CA910 == 0) {
-                gPlayers[gScene.localPlayer].nextArea = 0x84;
+                gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x84;
+            } else if (gQuestReturnArea == 0) {
+                gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x84;
             } else {
-                gPlayers[gScene.localPlayer].nextArea = D_5CA910;
+                gPlayers[gScene.localPlayer].nextArea = gQuestReturnArea;
             }
             break;
         case 0:
             gTownSpawnSet = 0;
             if (gSave.unk36E8 != 0) {
-                gPlayers[gScene.localPlayer].nextArea = 0x57;
+                gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x57;
             } else {
-                gPlayers[gScene.localPlayer].nextArea = 0x89;
+                gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x89;
             }
             break;
         case 3: {
@@ -646,22 +647,22 @@ s32 LobbyScreen_EnterSeq(s32 mode)
             gPlayers[k].startPos[1] = -30.0f;
             gPlayers[k].startPos[2] = 10434.0f;
             gPlayers[k].startAngle = 0;
-            gPlayers[k].nextArea = 0x83;
+            gPlayers[k].nextArea = AREA_HUB_0x83;
             gTownSpawnSet = 1;
             break;
         }
         case 1:
         case 2:
             gTownSpawnSet = 0;
-            gPlayers[gScene.localPlayer].nextArea = 0x83;
+            gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x83;
             break;
         case 4:
             gTownSpawnSet = 0;
-            gPlayers[gScene.localPlayer].nextArea = 0x84;
+            gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x84;
             break;
         default:
             gTownSpawnSet = 0;
-            gPlayers[gScene.localPlayer].nextArea = 0x83;
+            gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x83;
             break;
         }
         switch (mode) {
@@ -788,7 +789,7 @@ s32 LobbyArea_StartEvent(void)
     Player *p = &gPlayers[gScene.localPlayer];
 
     switch (gScene.area) {
-    case 0x57:
+    case AREA_HUB_0x57:
         if (gLobbyStartPosIdx == -1) {
             Player_SetStart(p, 10615.0f, 0.0f, 14774.0f, 0x8000);
         }
@@ -798,7 +799,7 @@ s32 LobbyArea_StartEvent(void)
             return 1;
         }
         break;
-    case 0xAA:
+    case AREA_HUB_0xAA:
         if (Save_TestEventFlag(0x12B) == 0) {
             Save_SetEventFlag(0x12B);
             gLobbyStartPosIdx = 0;
@@ -807,7 +808,7 @@ s32 LobbyArea_StartEvent(void)
             return 1;
         }
         break;
-    case 0xAB:
+    case AREA_HUB_0xAB:
         if (Save_TestEventFlag(0x12C) == 0) {
             Save_SetEventFlag(0x12C);
             gLobbyStartPosIdx = 0;
@@ -816,7 +817,7 @@ s32 LobbyArea_StartEvent(void)
             return 1;
         }
         break;
-    case 0xAC:
+    case AREA_HUB_0xAC:
         if (Save_TestEventFlag(0x12D) == 0) {
             Save_SetEventFlag(0x12D);
             gLobbyStartPosIdx = 0;
@@ -825,7 +826,7 @@ s32 LobbyArea_StartEvent(void)
             return 1;
         }
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         if (gLobbyStartPosIdx == -1) {
             Player_SetStart(p, 7623.0f, -56.0f, 10173.9f, 0x40B6);
         }
@@ -893,7 +894,7 @@ s32 LobbyArea_StartEvent(void)
             }
         }
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         if (MyHouse_IsOwner() == 1 && Save_TestEventFlag(0x13B) == 0) {
             Save_SetEventFlag(0x13B);
             gLobbyStartPosIdx = 0;
@@ -902,7 +903,7 @@ s32 LobbyArea_StartEvent(void)
             return 1;
         }
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         if (MyHouse_IsOwner() == 1 && Save_TestEventFlag(0x13C) == 0) {
             Save_SetEventFlag(0x13C);
             gLobbyStartPosIdx = 0;
@@ -1048,7 +1049,7 @@ s32 LobbyScreen_LoadBanks(void)
         Loading_Request();
         gLobbyScreenSubStep++;
         Sound_StopBank(6);
-        if (gScene.area == 0x56 || gScene.area == 0x57) {
+        if (gScene.area == AREA_HOUSE || gScene.area == AREA_HUB_0x57) {
             bank = 0x10006;
         } else if (Game_IsOnline() == 1) {
             bank = 0x10005;
@@ -1218,13 +1219,13 @@ void LobbyScreen_EnterArea(void)
         FadeA_Start(0xA);
         gSoundLoading = 0;
         Loading_Stop();
-        if (p->nextArea == 0x57 && r == 0) {
+        if (p->nextArea == AREA_HUB_0x57 && r == 0) {
             gLobbyScreenStep++;
         } else {
             gLobbyScreenStep += 2;
             Bgm_PlayAreaMusic(p->nextArea);
         }
-        if (gScene.area == 0x87 && LobbyBgm_GetTrack() != -1) {
+        if (gScene.area == AREA_HUB_0x87 && LobbyBgm_GetTrack() != -1) {
             LobbyBgm_Replay();
         }
         break;
@@ -1288,7 +1289,7 @@ void LobbyScreen_LeaveArea(void)
         Actor_SetAction(p, 0, 0, 0);
         Actor_SetState(p, 0, 1U);
         gTownMenuOpen = 1;
-        if ((Game_IsOnline() == 1) && ((area = gScene.area, (area == 0x85)) || (Area_IsOnlineHouse(area) == 1)) && (gLobbyTextDirty != 0)) {
+        if ((Game_IsOnline() == 1) && ((area = gScene.area, (area == AREA_HUB_0x85)) || (Area_IsOnlineHouse(area) == 1)) && (gLobbyTextDirty != 0)) {
             LobbyText_Update();
         }
         gLobbyScreenStep += 1;
@@ -1297,7 +1298,7 @@ void LobbyScreen_LeaveArea(void)
         Stream_FadeOut(0, 0x10);
         if (func_367690() == 1) {
             Bgm_StopEvent(p);
-        } else if (gScene.area == 0x87) {
+        } else if (gScene.area == AREA_HUB_0x87) {
             Bgm_StopEventFade(p);
         }
         gLobbyScreenStep += 1;
@@ -1340,8 +1341,8 @@ void LobbyScreen_CamIntro(void)
         gTownMode = 0x22;
         gLobbyScreenStep++;
         switch (gScene.area) {
-        case 0xAE:
-        case 0xAF:
+        case AREA_ONLINE_HOUSE_1:
+        case AREA_ONLINE_HOUSE_2:
             gLobbyMenu->timer = 0x1E0;
             break;
         }
@@ -1349,8 +1350,8 @@ void LobbyScreen_CamIntro(void)
     case 1:
         p->visible = 0;
         switch (gScene.area) {
-        case 0xAE:
-        case 0xAF:
+        case AREA_ONLINE_HOUSE_1:
+        case AREA_ONLINE_HOUSE_2:
             if (--gLobbyMenu->timer == 1) {
                 Jingle_Play(&gPlayers[gScene.localPlayer], 0xB);
             }

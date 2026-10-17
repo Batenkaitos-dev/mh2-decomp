@@ -10,6 +10,8 @@
 #include "objattach.h"
 #include "obj.h"
 #include "window.h"
+#include "render_state.h"
+#include "area.h"
 
 /* A window: position and size, then text. */
 
@@ -145,7 +147,7 @@ s32 Player_IsLocal(void *obj);
 s32 Quest_IsRunning(s32 ending);
 void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback);
 s32 Quest_IsVersus(void);
-u16 Area_BaseId(u16 area);
+u16 Map_DayId(u16 area);
 void Bgm_PlayField(s32 type, s32 i);
 void Bgm_PlayAreaMusic(u16 area);
 void Jingle_Play(void *obj, s32 id);
@@ -213,8 +215,8 @@ extern u16 gFrameTick;
 void Camera_SetPreset(s32 a);
 void Gfx_ResetRenderStates(s32 a);
 void Mtx_Identity(f32 *m);
-struct Mtx44Copy;
-void MtxSlot_Store(s32 i, struct Mtx44Copy *m);
+struct MtxSlot;
+void MtxSlot_Store(s32 i, struct MtxSlot *m);
 s32 Gs_SetState(u8 reg, u32 v);
 void Prim_Draw(Prim *p);
 /* A textured rectangle, drawn rotated by TexRect_DrawRotatedAt. */
@@ -237,7 +239,7 @@ void TexRect_DrawRotatedAt(TexRect *r, s16 cx, s16 cy, u32 angle);
 void Vec_RotateZ(f32 *v, f32 a);
 struct PrimTexTri;
 s32 Prim_DrawTexTri(struct PrimTexTri *t);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Gfx_SetBlend(s32 a, s32 b);
 void Tex_Bind(s32 i);
 void Tex_Prepare(s32 n, s32 tex);
@@ -816,7 +818,7 @@ void ObjAttach_Free(ObjAttach *p)
     *--gObjAttachFreeList = p;
     ObjBuf_MarkFree(p->blk, p->nblk);
     memset(p, 0, 0xC);
-    p->unk078 = 0;
+    p->attackFlags = 0;
     p->hitList = 0;
     p->hurtList = 0;
     p->drawSlot = 0;
@@ -891,7 +893,7 @@ s32 Item_CanUseSmallBarrelBomb(void)
 s32 Scene_CanPlaceKind2(void)
 {
     if (gScene.placed2 <= 0) {
-        if (Area_DayId(gScene.area) == 0x5E && gPlayers[gScene.localPlayer].pos[1] > 100.0f) {
+        if (Area_DayId(gScene.area) == AREA_SNOWY_MOUNTAINS_3 && gPlayers[gScene.localPlayer].pos[1] > 100.0f) {
             return 0;
         }
         return 1;
@@ -1216,10 +1218,10 @@ void Prim_DrawAll(void)
     f32 m[4][4];
 
     Camera_SetPreset(0);
-    MtxSlot_Store(0x21, (struct Mtx44Copy *) gViewMatrix);
+    MtxSlot_Store(0x21, (struct MtxSlot *) gViewMatrix);
     Mtx_Identity((f32 *) m);
-    Gs_SetState(0x1A, (u32)m);
-    Gs_SetState(0x60, 0);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)m);
+    Gs_SetState(RS_ALPHA_REF, 0);
     for (i = 0; i < gPrimCount; i++, p++) {
         Prim_Draw(p);
     }
@@ -1228,7 +1230,7 @@ void Prim_DrawAll(void)
 
 void Prim_Draw(Prim *p)
 {
-    Gfx_SetState63((p->flags & 8) / 8);
+    Gfx_SetTexFilter((p->flags & 8) / 8);
     if (p->unk1 != 0) {
         Gfx_SetBlend(4, 1);
     } else {
@@ -1757,7 +1759,7 @@ void Bgm_Update(void)
         if (func_003676D0() != 1) {
             switch (gScene.musicState) {
             case 0:
-                if (gScene.area == 0x86) {
+                if (gScene.area == AREA_HUB_0x86) {
                     if (gScene.musicTimer <= 0) {
                         gScene.musicState++;
                         Stream_FadeOut(0, 0xF);
@@ -1772,7 +1774,7 @@ void Bgm_Update(void)
                 break;
             case 1:
                 if (gScene.musicTimer <= 0) {
-                    if (gScene.area == 0x86) {
+                    if (gScene.area == AREA_HUB_0x86) {
                         gScene.musicState = 0;
                         r = Rand_Next(0) % 6;
                         if (r == gBgmIndex) {
@@ -1796,7 +1798,7 @@ void Bgm_Update(void)
                 break;
             case 2:
                 if (gScene.musicTimer <= 0) {
-                    if (gScene.area == 0x87 && gBgmFieldPm == 0) {
+                    if (gScene.area == AREA_HUB_0x87 && gBgmFieldPm == 0) {
                         gScene.musicState = 0;
                         Bgm_PlayAreaMusic(gScene.area);
                     } else {
@@ -2027,7 +2029,7 @@ void Bgm_PlayAreaMusic(u16 area)
     gBgmFieldPm = variant;
     gBgmFieldSeason = tod;
     switch (area) {
-    case 0x83:
+    case AREA_HUB_0x83:
         gBgmId = 0;
         if (ElderRaid_InState1() == 1) {
             id = 0xA2;
@@ -2041,7 +2043,7 @@ void Bgm_PlayAreaMusic(u16 area)
             vol = gBgmArea83[k + 1];
         }
         break;
-    case 0x84:
+    case AREA_HUB_0x84:
         gBgmId = 0;
         if (ElderRaid_InState1() == 1) {
             id = 0xA1;
@@ -2055,11 +2057,11 @@ void Bgm_PlayAreaMusic(u16 area)
             vol = gBgmArea84[k + 1];
         }
         break;
-    case 0x85:
+    case AREA_HUB_0x85:
         id = 0x37;
         vol = 0x46;
         break;
-    case 0x86:
+    case AREA_HUB_0x86:
         id = gAreaBgm[gBgmIndex].id;
         if (gBgmId == id) {
             Stream_Pause(0, 0);
@@ -2076,7 +2078,7 @@ void Bgm_PlayAreaMusic(u16 area)
         gBgmId = id;
         gBgmVolume = vol;
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         if (variant == 0) {
             id = gBgmArea83[tod * 4 + variant * 2];
             vol = 0x1E;
@@ -2091,52 +2093,52 @@ void Bgm_PlayAreaMusic(u16 area)
             vol = 100;
         }
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
     default:
         id = 0x132;
         vol = 0x5A;
         break;
-    case 0xAD:
+    case AREA_ONLINE_HOUSE_0:
         k = variant * 2;
         id = gBgmAreasADtoAF[k];
         vol = gBgmAreasADtoAF[k + 1];
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         k = variant * 2 + 4;
         id = gBgmAreasADtoAF[k];
         vol = gBgmAreasADtoAF[k + 1];
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         k = variant * 2 + 8;
         id = gBgmAreasADtoAF[k];
         vol = gBgmAreasADtoAF[k + 1];
         break;
-    case 0x89:
+    case AREA_HUB_0x89:
         k = (u8)Village_AverageLevel();
         k = k * 4 + variant * 2;
         id = gBgmFarm[k];
         vol = gBgmFarm[k + 1];
         break;
-    case 0xAA:
-    case 0xAB:
-    case 0xAC:
+    case AREA_HUB_0xAA:
+    case AREA_HUB_0xAB:
+    case AREA_HUB_0xAC:
         k = (u8)Village_AverageLevel();
         k = k * 4 + variant * 2;
         id = gBgmFarm[k];
         vol = (u32)gBgmFarm[k + 1] >> 1;
         break;
-    case 0x57:
+    case AREA_HUB_0x57:
         k = variant * 3;
         id = gBgmAreas56and57[k];
         vol = gBgmAreas56and57[k + 1];
         break;
-    case 0x56:
+    case AREA_HOUSE:
         k = variant * 3;
         id = gBgmAreas56and57[k];
         vol = gBgmAreas56and57[k + 2];
         break;
     }
-    if (area != 0x86) {
+    if (area != AREA_HUB_0x86) {
         if (gBgmId == id) {
             Stream_Pause(0, 0);
             Stream_SetVol(0, 0);
@@ -2178,7 +2180,7 @@ void Bgm_PlayBattle(void)
 
     if (Quest_IsVersus() == 1) {
         id = 0xC4;
-    } else if (Area_BaseId(gScene.map) != 1) {
+    } else if (Map_DayId(gScene.map) != MAP_FORTRESS) {
         id = 0xFFFF;
         for (i = 0; i < 20; i++, em++) {
             if (em->active != 0) {
@@ -2206,19 +2208,19 @@ void Bgm_PlayBattle(void)
         }
         if (found == 0) {
             switch (Area_DayId(gScene.area)) {
-            case 14:
+            case AREA_FORTRESS_1:
                 id = 0xBC;
                 break;
-            case 30:
+            case AREA_FORTRESS_2:
                 id = 0xB9;
                 break;
-            case 28:
+            case AREA_FORTRESS_3:
                 id = 0xBA;
                 break;
-            case 11:
+            case AREA_FORTRESS_4:
                 id = 0xBB;
                 break;
-            case 12:
+            case AREA_FORTRESS_5:
                 id = 0xB4;
                 break;
             default:
@@ -2227,7 +2229,7 @@ void Bgm_PlayBattle(void)
             }
         } else {
             switch (Area_DayId(gScene.area)) {
-            case 12:
+            case AREA_FORTRESS_5:
                 id = 0xD1;
                 break;
             default:
@@ -2310,17 +2312,17 @@ void Bgm_Play(s32 id)
 void Jingle_OnAreaChange(u16 area)
 {
     if (gQuest.stage != 0 && gStageHeader->randomStart != 0 && !(gScene.musicFlags & 1)) {
-        switch (Area_BaseId(gScene.map)) {
-        case 2:
-        case 3:
-        case 4:
-        case 5:
-        case 6:
-        case 0xB:
-        case 0xC:
-        case 0xD:
-        case 0xE:
-        case 0xF:
+        switch (Map_DayId(gScene.map)) {
+        case MAP_FOREST_HILLS:
+        case MAP_DESERT:
+        case MAP_SWAMP:
+        case MAP_VOLCANO:
+        case MAP_JUNGLE:
+        case MAP_SNOWY_MOUNTAINS:
+        case MAP_BATTLE_TOWN:
+        case MAP_TOWER:
+        case MAP_TOWER_B:
+        case MAP_TOWER_C:
             if (gScene.campArea != area) {
                 Jingle_Play(&gPlayers[gScene.localPlayer], 0x30);
             }

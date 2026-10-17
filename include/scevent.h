@@ -13,7 +13,8 @@ typedef s32 (*ScEventFn)(struct ScEvent *e);
  * ScEvent_Seq* and ScEvent_DemoCam* tables of game unk_70A290.c, listed in gGalleryScEvents)
  * start with it. ScEvent_Set and ScEvent_StartFrom read the camera and the two callbacks and keep
  * a pointer to the record as the running event's data (ScEvent.data); ScEvent_SetupB sets the
- * callbacks to the B pair. plsel (unk_D74450.c) copies a record's head into a local (its GalView). */
+ * callbacks to the B pair. plsel's gallery (Galex_QuestTask) copies a record's head into a local
+ * ScEventHead. */
 typedef struct ScEventHead {
     u16 area;                   /* 0x00: the area the event plays in (ScEvent_CheckDay: by Area_DayId) */
     u16 doneFlag;               /* 0x02: an event flag: when it is set, ScEvent_Set does not start the event (0: none); ScEvent_RunA sets it at the end; ScEvent_CurId returns it */

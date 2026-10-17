@@ -34,7 +34,7 @@ typedef struct NetMenuWork {
 extern u8 gMenuWork[];
 extern LobbyMenu *gLobbyMenu;
 s32 Game_IsOnline(void);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 s32 Gs_SetState(u8, u32);
 void Text_SetSize(s32 size);
 void Menu_DrawMoney(s16 x, s16 y, s8 flag);
@@ -215,7 +215,7 @@ void TownSave_Draw(TextBox *t)
         return;
     }
     if (w->kind == 0 || w->kind == 4) {
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Gs_SetState(0x60, 0);
         Text_SetSize(t->size);
         Menu_DrawMoney(0x1E0, 0x10, 0);

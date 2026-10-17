@@ -1,166 +1,28 @@
 /*
- * select: CONNECT, the link with MONSTER HUNTER PORTABLE on a PSP over USB
- * (USBPSPCM.IRX, the usbpspcm: device, a thread of its own)
- * (0x6C2DB0-0x6C7D80), the last unit with code. The file owns its .data
- * (0x6CC1E0-0x6CD7F8), .rodata (0x6D0720-0x6D0980) and .bss
- * (0x6D21A8-0x6D3280).
+ * select: the PSP link, which connects to Monster Hunter Portable on a
+ * PSP over USB (0x6C2DB0-0x6C7D80, the overlay's last unit with code; its
+ * .data 0x6CC1E0-0x6CD7F8, .rodata 0x6D0720-0x6D0980, .bss
+ * 0x6D21A8-0x6D3280).
+ *
+ * Psp_ConnectTask runs the screens after the character selection: it
+ * loads the IOP module for the PSP's USB link and starts Psp_Thread, which
+ * talks to the device through sceDevctl. The PSP's answers pick what the
+ * link offers (Psp_SelectFeatures), and the player moves a cursor over the
+ * offered icons (gPspCursorGrid). The screens are drawn from PspWork
+ * (select.h, in the select work area at 0x100): 32 actors (the sliding and
+ * swinging screens, Psp_UpdateActor and Psp_DrawActor) and 32 animated
+ * objects (PspObj, gPspObjAnims), then the step's text lines (Psp_DrawTexts).
  */
 #include "common.h"
 #include "window.h"
 #include "syssettings.h"
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "pad.h"
+#include "render_state.h"
 #include "m2c_macros.h"
 #include "select.h"
 #include "syssave.h"
 #include "save.h"
-
-/* An animation's start (gPspObjAnims points to them). */
-typedef struct PspAnim {
-    u8 unk0;
-    s8 unk1;                /* 0x01: 1 at a loop point */
-    s8 next;                /* 0x02: the next frame (< 0: the end) */
-    s8 se;                  /* 0x03: a sound (1 + its number) */
-    s16 unk4;               /* 0x04 */
-    s16 ox;                 /* 0x06: drawing offset */
-    s16 oy;                 /* 0x08 */
-    s16 dx;                 /* 0x0A */
-    s16 dy;                 /* 0x0C */
-    s16 tex;                /* 0x0E: file (gPspWork->unk100) */
-    s16 cell;               /* 0x10 */
-    u8 unk12[2];
-    s16 *cells;             /* 0x14: u, v, texture w, h, screen w, h */
-} PspAnim;
-
-/* A moving picture of the CONNECT screens. */
-typedef struct PspObj {
-    s32 active;             /* 0x00 */
-    s32 unk4;               /* 0x04 */
-    s32 unk8;               /* 0x08 */
-    s32 flip;               /* 0x0C */
-    s32 unk10;              /* 0x10 */
-    s32 x;                  /* 0x14 */
-    s32 y;                  /* 0x18 */
-    s32 unk1C;              /* 0x1C */
-    s32 unk20;              /* 0x20 */
-    s32 unk24;              /* 0x24 */
-    s32 type;               /* 0x28 */
-    PspAnim *anim;          /* 0x2C */
-} PspObj;
-
-/* An actor of the CONNECT screens (32 of them in PspWork). */
-typedef struct PspActor {
-    s32 unk0;               /* 0x00 */
-    s32 unk4;               /* 0x04 */
-    s32 unk8;               /* 0x08 */
-    s8 unkC;                /* 0x0C: state */
-    u8 unkD[0x20 - 0xD];
-    f32 unk20;              /* 0x20: speed */
-    u8 unk24[0x30 - 0x24];
-    f32 unk30;              /* 0x30: position */
-    f32 unk34;              /* 0x34 */
-    s32 unk38;              /* 0x38: mirrored horizontally */
-    s32 unk3C;              /* 0x3C: mirrored vertically */
-    s16 unk40;              /* 0x40: size */
-    s16 unk42;              /* 0x42 */
-    u8 unk44[4];
-    s32 unk48;              /* 0x48 */
-    f32 unk4C;              /* 0x4C: scale */
-    f32 unk50;              /* 0x50 */
-    s32 unk54;              /* 0x54: dimmed */
-    void *unk58;            /* 0x58: its part (PspPart) */
-    s32 unk5C;              /* 0x5C */
-    void *unk60;            /* 0x60 */
-} PspActor;
-
-/* A part an actor draws (gPspActorAnims, 16 bytes each). */
-typedef struct PspPart {
-    s16 tex;                /* 0x0: file (gPspWork->unk100) */
-    s8 kind;                /* 0x2: 0: a filled rectangle */
-    s8 blend;               /* 0x3 */
-    u32 color;              /* 0x4 */
-    s16 u;                  /* 0x8: texture rectangle */
-    s16 v;                  /* 0xA */
-    s16 uw;                 /* 0xC */
-    s16 vh;                 /* 0xE */
-} PspPart;
-
-/* A filled rectangle (Prim_FillRect). */
-typedef struct PspRect {
-    s16 x0, y0, x1, y1;     /* 0x0 */
-    u32 color;              /* 0x8 */
-} PspRect;
-
-/* A textured triangle (Prim_DrawTexTri, main). */
-typedef struct PspTri {
-    s16 x0, y0, x1, y1, x2, y2;     /* 0x00 */
-    u32 color;                      /* 0x0C */
-    s16 u0, v0, u1, v1, u2, v2;     /* 0x10 */
-} PspTri;
-
-/* A screen of CONNECT's (Psp_UpdateActor's): its window rectangle. */
-typedef struct PspView {
-    u8 unk0[0x30];
-    f32 x;                  /* 0x30 */
-    f32 y;                  /* 0x34 */
-    u8 unk38[8];
-    s16 w;                  /* 0x40 */
-    s16 h;                  /* 0x42 */
-    u8 unk44[0x50];
-    f32 x2;                 /* 0x94 */
-    f32 y2;                 /* 0x98 */
-    u8 unk9C[8];
-    s16 w2;                 /* 0xA4 */
-    s16 h2;                 /* 0xA6 */
-} PspView;
-
-/* CONNECT's work: 0x1490 bytes at 0x100 in the area gSysSettings.unk60
- * points to (gPspWork). */
-typedef struct PspWork {
-    s32 unk0;               /* 0x000 */
-    s32 unk4;               /* 0x004 */
-    u8 unk8[8];
-    s32 unk10;              /* 0x010: USBPSPCM.IRX's module id */
-    u8 unk14[8];
-    s32 unk1C;              /* 0x01C */
-    s32 unk20;              /* 0x020: the PSP's answer (devctl) */
-    s32 *unk24;             /* 0x024 */
-    s32 *unk28;             /* 0x028 */
-    s32 *unk2C;             /* 0x02C */
-    s32 unk30;              /* 0x030 */
-    u8 unk34[0x40 - 0x34];
-    s32 unk40;              /* 0x040: the features offered this time (bits) */
-    s32 unk44;              /* 0x044 */
-    u8 unk48[0x54 - 0x48];
-    s32 unk54;              /* 0x054 */
-    s32 unk58;              /* 0x058: the CONNECT step whose lines show */
-    u8 unk5C[0xA4 - 0x5C];
-    u8 unkA4[16];           /* 0x0A4: per feature: offered */
-    u8 unkB4[16];           /* 0x0B4: per menu: what it shows */
-    u8 unkC4[16];           /* 0x0C4: a copy of unkB4 */
-    s32 unkD4;              /* 0x0D4: menus with something */
-    s8 unkD8[6];            /* 0x0D8: per icon: the entry of its list found */
-    s8 unkDE[6];            /* 0x0DE: per icon: one found */
-    s8 unkE4;               /* 0x0E4: the last icon with one */
-    s8 unkE5;               /* 0x0E5 */
-    s8 unkE6;               /* 0x0E6 */
-    s8 unkE7;               /* 0x0E7: its column in gPspCursorGrid */
-    s8 unkE8;               /* 0x0E8: its row */
-    u8 unkE9[0xFC - 0xE9];
-    s32 unkFC;              /* 0x0FC */
-    s32 unk100[13];         /* 0x100: loaded files */
-    s32 unk134;             /* 0x134 */
-    PspActor actors[32];    /* 0x138 */
-    s32 unkDB8;             /* 0xDB8: actors in use */
-    PspView *unkDBC[32];    /* 0xDBC: the screens */
-    PspObj objs[32];        /* 0xE3C */
-    s32 unk143C[6];         /* 0x143C */
-    u16 unk1454[6];         /* 0x1454: the screens' swing phases */
-    u16 unk1460[6];         /* 0x1460 */
-    u16 unk146C[6];         /* 0x146C */
-    s16 unk1478[6];         /* 0x1478: the screens' centres, x */
-    s16 unk1484[6];         /* 0x1484: ... and y */
-} PspWork;
 
 /* Sony's kernel thread parameters */
 struct ThreadParam {
@@ -184,7 +46,7 @@ s32 DeleteThread(s32);
 s32 func_114C60(s32, void *);       /* StartThread */
 void Sys_EmptyHook(void);
 s32 Save_TestEventFlag(s32);
-s32 Save_TestListBit(u16 item);
+s32 Save_IsQuestCleared(u16 item);
 s32 LoadCompressedFile(u8 *dst, s32 id);
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 extern s32 gOvlTex[];
@@ -193,10 +55,6 @@ void Psp_ResetSceneActors(void);
 void Psp_MarkIcons(void);
 void Psp_UpdateObj(PspObj *o);
 void Psp_UpdateActor(s32 i, PspActor *a);
-typedef struct PspFileEnt {
-    s32 offset;
-    s32 size;
-} PspFileEnt;
 void Psp_InitActors(void);
 void Psp_FreeTextures(void);
 void Psp_Thread(void *);
@@ -225,7 +83,7 @@ Frame gPspFrameA = {
 Frame gPspFrameB = {
 #include "select/006CC200.inc"
 };
-u32 D_006CC220[156] = {
+u32 gPspAnimCells0[156] = {
 #include "select/006CC220.inc"
 };
 u32 gPspObjAnims_0[300] = {
@@ -237,13 +95,13 @@ u32 gPspObjAnims_8[36] = {
 u32 gPspObjAnims_9[8] = {
 #include "select/006CC9D0.inc"
 };
-u32 D_006CC9F0[20] = {
+u32 gPspAnimCells1[20] = {
 #include "select/006CC9F0.inc"
 };
 u32 gPspObjAnims_1[60] = {
 #include "select/006CCA40.inc"
 };
-u32 D_006CCB30[56] = {
+u32 gPspAnimCells2[56] = {
 #include "select/006CCB30.inc"
 };
 u32 gPspObjAnims_2[132] = {
@@ -252,7 +110,7 @@ u32 gPspObjAnims_2[132] = {
 u32 gPspObjAnims_3[48] = {
 #include "select/006CCE20.inc"
 };
-u32 D_006CCEE0[24] = {
+u32 gPspAnimCells4[24] = {
 #include "select/006CCEE0.inc"
 };
 u32 gPspObjAnims_4[36] = {
@@ -261,13 +119,13 @@ u32 gPspObjAnims_4[36] = {
 u32 gPspObjAnims_5[36] = {
 #include "select/006CCFD0.inc"
 };
-u32 D_006CD060[36] = {
+u32 gPspAnimCells6[36] = {
 #include "select/006CD060.inc"
 };
 u32 gPspObjAnims_6[84] = {
 #include "select/006CD0F0.inc"
 };
-u32 D_006CD240[56] = {
+u32 gPspAnimCells7[56] = {
 #include "select/006CD240.inc"
 };
 u32 gPspObjAnims_7[108] = {
@@ -278,19 +136,19 @@ PspAnim *gPspObjAnims[12] = {
     (PspAnim *)gPspObjAnims_4, (PspAnim *)gPspObjAnims_5, (PspAnim *)gPspObjAnims_6, (PspAnim *)gPspObjAnims_7,
     (PspAnim *)gPspObjAnims_8, (PspAnim *)gPspObjAnims_9, NULL, NULL,
 };
-u32 gPspObjParams[28] = {
+s16 gPspObjParams[56] = {
 #include "select/006CD500.inc"
 };
-u32 gPspFrameRects[16] = {
+s16 gPspFrameRects[8][4] = {
 #include "select/006CD570.inc"
 };
 u32 gPspFrameColors[8] = {
 #include "select/006CD5B0.inc"
 };
-u32 gPspMarkKind[2] = {
+s8 gPspMarkKind[8] = {
 #include "select/006CD5D0.inc"
 };
-u32 gPspIconIndex[2] = {
+s8 gPspIconIndex[8] = {
 #include "select/006CD5D8.inc"
 };
 s8 gPspCursorGrid[4][4] = {
@@ -305,22 +163,22 @@ s16 gPspStepTextPos[12][2] = {
 s16 gPspLinePos[4][2] = {
 #include "select/006CD630.inc"
 };
-u32 gPspActorAnims[48] = {
+PspPart gPspActorAnims[12] = {
 #include "select/006CD640.inc"
 };
-u32 gPspActorInit[20] = {
+s8 gPspActorInit[80] = {
 #include "select/006CD700.inc"
 };
-u32 gPspIconPos[6] = {
+s16 gPspIconPos[12] = {
 #include "select/006CD750.inc"
 };
-u32 gPspIconActors[2] = {
+s8 gPspIconActors[8] = {
 #include "select/006CD768.inc"
 };
-u32 gPspIconLists[8] = {
+s8 gPspIconLists[32] = {
 #include "select/006CD770.inc"
 };
-u32 gPspViewRects[24] = {
+s16 gPspViewRects[48] = {
 #include "select/006CD790.inc"
 };
 /* Psp_UpdateActor: the flying screens' speeds */
@@ -329,34 +187,41 @@ s16 gPspActorSpeeds[4] = {
 };
 
 
-void Psp_PlayDecideSe(void) {
+void Psp_PlayDecideSe(void)
+{
     Sound_PlaySeFlat(0, 0x13, 0);
 }
 
-void Psp_PlayCancelSe(void) {
+void Psp_PlayCancelSe(void)
+{
     Sound_PlaySeFlat(0, 0x14, 0);
 }
 
-void Psp_PlayMoveSe(void) {
+void Psp_PlayMoveSe(void)
+{
     Sound_PlaySeFlat(7, 0x26, 0);
 }
 
-void Psp_PlayStopSe(void) {
+void Psp_PlayStopSe(void)
+{
     Sound_PlaySeFlat(7, 0x25, 0);
 }
 
-void Psp_PlayConfirmSe(void) {
+void Psp_PlayConfirmSe(void)
+{
     Sound_PlaySeFlat(1, 0x73, 0);
 }
 
-void Psp_ResetSlotAnim(s32 i) {
-    gPspWork->unk143C[i] = 0x1800;
-    gPspWork->unk1454[i] = 0;
-    gPspWork->unk1460[i] = 0x4000;
-    gPspWork->unk146C[i] = 0x800;
+/* Starts icon screen i's swing: its amplitude, phase, speed and decay. */
+void Psp_StartIconSwing(s32 icon)
+{
+    gPspWork->swingAmp[icon] = 0x1800;
+    gPspWork->swingPhase[icon] = 0;
+    gPspWork->swingSpeed[icon] = 0x4000;
+    gPspWork->swingDecay[icon] = 0x800;
 }
 
-const char D_006D0720[10] = {
+const char gPspDevName[10] = {
 #include "select/006D0720.inc"
 };
 
@@ -394,209 +259,223 @@ void Task_StartBootToGmSubKeep(void);
  * connects to the PSP (step 4, by gPspWork->unk0: the link, the features,
  * the objects sent and the icon grid), then leaves to the game (5) or
  * back (6, 8). */
-/* Each column search is an empty-then if around a do-while that takes the
- * column's table row in r (the game's out-of-line preheader with the row
- * hoisted; a while reloads the row); the right search has its own row and
- * counter (j, n); the up/down searches and the loops after a left move
- * index the tables instead of walking them, and those loops count the
- * column in a variable of their own (i). */
-void Psp_ConnectTask(TaskSlot *t) {
-    s32 last;
-    s32 c;
+/*
+ * The PSP link's task, every frame (PspMode): starts the character
+ * selection and waits for its end, asks to connect, runs the link
+ * (PspStep: wait for a PSP, the thread's exchange, the features picked,
+ * the show of the objects sent and the icon screen), then leaves to
+ * gm_sub's menu (PSP_MODE_EXIT_TO_MENU) or on with the character
+ * (PSP_MODE_EXIT).
+ * The cursor's moves on the icon screen search the columns or rows of
+ * gPspCursorGrid for an icon with something found; the gotos leave a
+ * search when it finds one or runs out, and go on to the next button's
+ * test, as the game's code does; cancel during the show jumps into
+ * PSP_SHOW_WAIT's end (goto stop). Forms the match needs: each column search
+ * is an empty-then if around a do-while that takes the column's table row
+ * in colCells (the game's out-of-line preheader with the row hoisted; a
+ * while reloads the row); the right search has its own row and counter
+ * (j, rowsTried); the up and down searches and the loops after a left move
+ * index the tables instead of walking them, with the column in a variable
+ * of their own (i).
+ */
+void Psp_ConnectTask(TaskSlot *task)
+{
+    s32 prevIcon;
+    s32 icon;
     s32 col;
     s32 row;
     s32 k;
     s32 i;
-    s32 n;
+    s32 rowsTried;
     u16 trig;
     s32 j;
-    s8 *r;
+    s8 *colCells;
 
     trig = gPadState[0].pressed;
-    switch (t->mode) {
-    case 0:
+    switch (task->mode) {
+    case PSP_MODE_START:
         FadeA_Reset();
         gSysSettings.galleryPlay = 2;
         gSysSettings.pspCharaWait = 1;
         TaskSlot_Set(Chara_SelectTask, 4);
-        t->mode++;
-    case 1:
+        task->mode++;
+    case PSP_MODE_WAIT_CHARA:
         if (gSysSettings.pspCharaWait != 0) {
             return;
         }
         Game_ResetSubsystems();
         Sound_LoadPspBank();
         Tex_LoadSystemPack(0);
-        t->mode++;
-    case 2:
+        task->mode++;
+    case PSP_MODE_INIT:
         Psp_Init();
-        t->mode++;
+        task->mode++;
         FadeA_Start(2);
         break;
-    case 3:
+    case PSP_MODE_PROMPT:
         if ((u8)FadeA_GetState() != 1) {
-            gPspWork->unk58 = 6;
-            if (trig & 0x40) {
+            gPspWork->textStep = PSP_TEXT_PROMPT;
+            if (trig & PAD_CROSS) {
                 Psp_PlayCancelSe();
                 Psp_Shutdown(gPspWork);
-                t->mode = 9;
-            } else if (trig & 0x20) {
+                task->mode = PSP_MODE_CANCELLED;
+            } else if (trig & PAD_CIRCLE) {
                 Psp_PlayDecideSe();
                 Psp_StartThread(gPspWork);
                 Psp_InitItemMask();
-                t->mode++;
-                gPspWork->unk30 = 0x1E;
+                task->mode++;
+                gPspWork->timer = 0x1E;
             }
         }
         break;
-    case 4:
-        switch (gPspWork->unk0) {
-        case 0:
-            gPspWork->unk58 = 2;
-            if (gPspState == 4
-                || sceDevctl(D_006D0720, 0x55504301, NULL, 0, &gPspWork->unk20, 4) != 0
-                || gPspWork->unk20 == 0) {
-                if (trig & 0x40) {
+    case PSP_MODE_CONNECT:
+        switch (gPspWork->step) {
+        case PSP_STEP_WAIT_PSP:
+            gPspWork->textStep = PSP_TEXT_CONNECTING;
+            if (gPspState == PSP_THREAD_CLOSE
+                || sceDevctl(gPspDevName, PSP_DEVCTL_PRESENT, NULL, 0, &gPspWork->pspPresent, 4) != 0
+                || gPspWork->pspPresent == 0) {
+                if (trig & PAD_CROSS) {
                     Psp_PlayCancelSe();
                     Psp_Shutdown(gPspWork);
-                    t->mode = 9;
+                    task->mode = PSP_MODE_CANCELLED;
                 }
             } else {
-                gPspWork->unk0++;
-                gPspState = 1;
+                gPspWork->step++;
+                gPspState = PSP_THREAD_EXCHANGE;
             }
             break;
-        case 1:
-            gPspWork->unk58 = 2;
-            if (gPspState == 1) {
-                if (trig & 0x40) {
+        case PSP_STEP_EXCHANGE:
+            gPspWork->textStep = PSP_TEXT_CONNECTING;
+            if (gPspState == PSP_THREAD_EXCHANGE) {
+                if (trig & PAD_CROSS) {
                     Psp_PlayCancelSe();
-                    gPspWork->unk58 = 8;
-                    gPspWork->unk0 = 5;
-                    gPspState = 0;
+                    gPspWork->textStep = PSP_TEXT_EXCHANGE_CANCELLED;
+                    gPspWork->step = PSP_STEP_ERROR;
+                    gPspState = PSP_THREAD_IDLE;
                     Psp_Shutdown(gPspWork);
                 }
                 break;
             }
-            if (gPspState == 5) {
-                gPspWork->unk58 = 7;
-                gPspWork->unk0 = 5;
-                gPspState = 0;
+            if (gPspState == PSP_THREAD_ERROR) {
+                gPspWork->textStep = PSP_TEXT_LINK_ERROR;
+                gPspWork->step = PSP_STEP_ERROR;
+                gPspState = PSP_THREAD_IDLE;
                 Psp_Shutdown(gPspWork);
                 break;
             }
-            gPspWork->unk0++;
+            gPspWork->step++;
         case 2:
-            gPspWork->unk0++;
+            gPspWork->step++;
         case 3:
-            gPspWork->unk0++;
-        case 4:
-            gPspWork->unk58 = 4;
+            gPspWork->step++;
+        case PSP_STEP_DONE:
+            gPspWork->textStep = PSP_TEXT_EXCHANGED;
             Psp_Shutdown(gPspWork);
             Psp_SelectFeatures();
-            gPspWork->unk0 = 10;
-            gPspWork->unk30 = 1;
+            gPspWork->step = PSP_STEP_RESULT;
+            gPspWork->timer = 1;
             break;
-        case 5:
-            if (trig & 0x20) {
+        case PSP_STEP_ERROR:
+            if (trig & PAD_CIRCLE) {
                 Psp_PlayDecideSe();
                 Psp_Shutdown(gPspWork);
-                t->mode = 3;
+                task->mode = PSP_MODE_PROMPT;
                 gPspWork->unk44 = 0;
             }
             break;
-        case 10:
-            if (trig & 0x20) {
+        case PSP_STEP_RESULT:
+            if (trig & PAD_CIRCLE) {
                 Psp_PlayDecideSe();
-                gPspWork->unk58 = 0;
-                if (gPspWork->unkD4 == 0) {
+                gPspWork->textStep = PSP_TEXT_NONE;
+                if (gPspWork->spawnLeft == 0) {
                     FadeA_Start(0xB);
                     Stream_Reset();
-                    t->mode = 6;
+                    task->mode = PSP_MODE_FADE_DONE;
                 } else {
                     Stream_Play(0, 0x2E);
-                    gPspWork->unk0++;
-                    gPspWork->unk4 = 0;
-                    gPspWork->unk30 = 1;
-                    gPspWork->unk54 = 0;
+                    gPspWork->step++;
+                    gPspWork->subStep = PSP_SHOW_SPAWN;
+                    gPspWork->timer = 1;
+                    gPspWork->headerKind = 0;
                 }
             }
             break;
-        case 11:
-            switch (gPspWork->unk4) {
-            case 0:
-                gPspWork->unk58 = 9;
-                if (--gPspWork->unk30 == 0) {
+        case PSP_STEP_SHOW:
+            switch (gPspWork->subStep) {
+            case PSP_SHOW_SPAWN:
+                gPspWork->textStep = PSP_TEXT_SHOW;
+                if (--gPspWork->timer == 0) {
                     for (row = 0; row < 16; row++) {
-                        if (gPspWork->unkC4[row] != 0) {
+                        if (gPspWork->spawnQueue[row] != 0) {
                             break;
                         }
                     }
                     if (row == 16) {
-                        gPspWork->unkD4 = 0;
-                        gPspWork->unk4++;
+                        gPspWork->spawnLeft = 0;
+                        gPspWork->subStep++;
                         break;
                     }
-                    Psp_SpawnObject(gPspWork->unkC4[row], 1);
-                    gPspWork->unkC4[row] = 0;
-                    gPspWork->unkD4--;
-                    if (gPspWork->unkD4 == 0) {
-                        gPspWork->unk4++;
+                    Psp_SpawnObject(gPspWork->spawnQueue[row], 1);
+                    gPspWork->spawnQueue[row] = 0;
+                    gPspWork->spawnLeft--;
+                    if (gPspWork->spawnLeft == 0) {
+                        gPspWork->subStep++;
                         break;
                     }
-                    gPspWork->unk30 = 0x5A;
+                    gPspWork->timer = 0x5A;
                 }
-                if (trig & 0x40) {
+                if (trig & PAD_CROSS) {
                     Psp_PlayCancelSe();
-                    gPspWork->unk4++;
+                    gPspWork->subStep++;
                     goto stop;
                 }
                 break;
-            case 1:
-                gPspWork->unk58 = 9;
-                if (Psp_AnyObjectActive() == 0 || (trig & 0x40)) {
+            case PSP_SHOW_WAIT:
+                gPspWork->textStep = PSP_TEXT_SHOW;
+                if (Psp_AnyObjectActive() == 0 || (trig & PAD_CROSS)) {
                     Psp_PlayDecideSe();
                 stop:
                     Psp_PlayStopSe();
-                    gPspWork->unk58 = 0;
+                    gPspWork->textStep = PSP_TEXT_NONE;
                     Stream_FadeOut(0, 0xA);
-                    memset(gPspWork->objs, 0, 0x600);
-                    gPspWork->unk4++;
-                    gPspWork->unk30 = 0x1E;
+                    memset(gPspWork->objs, 0, sizeof(gPspWork->objs));
+                    gPspWork->subStep++;
+                    gPspWork->timer = 0x1E;
                 }
                 break;
-            case 2:
-                if (gPspWork->unk30 != 0) {
-                    gPspWork->unk30--;
+            case PSP_SHOW_ICONS:
+                if (gPspWork->timer != 0) {
+                    gPspWork->timer--;
                 } else {
-                    gPspWork->unk58 = 10;
+                    gPspWork->textStep = PSP_TEXT_ICONS;
                 }
-                for (k = 0; k < 6; k++) {
-                    if (gPspWork->unk143C[k] != 0) {
-                        gPspWork->unk1454[k] += gPspWork->unk1460[k];
-                        if (gPspWork->unk1454[k] == 0) {
-                            gPspWork->unk1454[k] = 0;
-                            gPspWork->unk143C[k] -= gPspWork->unk146C[k];
-                            if (gPspWork->unk143C[k] < 0) {
-                                gPspWork->unk143C[k] = 0;
+                for (k = 0; k < PSP_ICON_COUNT; k++) {
+                    if (gPspWork->swingAmp[k] != 0) {
+                        gPspWork->swingPhase[k] += gPspWork->swingSpeed[k];
+                        if (gPspWork->swingPhase[k] == 0) {
+                            gPspWork->swingPhase[k] = 0;
+                            gPspWork->swingAmp[k] -= gPspWork->swingDecay[k];
+                            if (gPspWork->swingAmp[k] < 0) {
+                                gPspWork->swingAmp[k] = 0;
                             }
                         }
                     }
                 }
-                if (trig & 0x400) {
-                    col = gPspWork->unkE7;
-                    last = gPspWork->unkE4;
+                if (trig & PAD_RIGHT) {
+                    col = gPspWork->cursorCol;
+                    prevIcon = gPspWork->cursorIcon;
 
                     if (col == 3) { /* compiled-out check */
                     } else {
                         do {
 
                             col++;
-                            j = gPspWork->unkE8;
-                            r = gPspCursorCols[col];
-                            for (n = 0; n < 3; n++) {
-                                c = r[j];
-                                if (c != -1 && gPspWork->unkDE[((s8 *)gPspIconIndex)[c]] != 0) {
+                            j = gPspWork->cursorRow;
+                            colCells = gPspCursorCols[col];
+                            for (rowsTried = 0; rowsTried < 3; rowsTried++) {
+                                icon = colCells[j];
+                                if (icon != -1 && gPspWork->iconFound[gPspIconIndex[icon]] != 0) {
                                     break;
                                 }
                                 j++;
@@ -604,45 +483,45 @@ void Psp_ConnectTask(TaskSlot *t) {
                                     j = 0;
                                 }
                             }
-                            if (n < 3) {
+                            if (rowsTried < 3) {
                                 goto found_r;
                             }
                         } while (col != 3);
                     }
                     goto try_left;
                 found_r:
-                        gPspWork->unkE8 = j;
-                        c = gPspCursorGrid[gPspWork->unkE8][col];
-                        if (c == 2) {
-                            gPspWork->unkE5 = gPspWork->unkE4;
-                            gPspWork->unkE4 = gPspCursorGrid[gPspWork->unkE8][col];
-                            gPspWork->unkE7 = col;
-                        } else if (c == 4) {
-                            gPspWork->unkE6 = gPspWork->unkE4;
-                            gPspWork->unkE4 = gPspCursorGrid[gPspWork->unkE8][col];
-                            gPspWork->unkE7 = col;
+                        gPspWork->cursorRow = j;
+                        icon = gPspCursorGrid[gPspWork->cursorRow][col];
+                        if (icon == 2) {
+                            gPspWork->cameFrom2 = gPspWork->cursorIcon;
+                            gPspWork->cursorIcon = gPspCursorGrid[gPspWork->cursorRow][col];
+                            gPspWork->cursorCol = col;
+                        } else if (icon == 4) {
+                            gPspWork->cameFrom4 = gPspWork->cursorIcon;
+                            gPspWork->cursorIcon = gPspCursorGrid[gPspWork->cursorRow][col];
+                            gPspWork->cursorCol = col;
                         } else {
-                            gPspWork->unkE4 = c;
-                            gPspWork->unkE7 = col;
+                            gPspWork->cursorIcon = icon;
+                            gPspWork->cursorCol = col;
                         }
                         Psp_PlayMoveSe();
-                        Psp_ResetSlotAnim(gPspCursorGrid[gPspWork->unkE8][gPspWork->unkE7]);
+                        Psp_StartIconSwing(gPspCursorGrid[gPspWork->cursorRow][gPspWork->cursorCol]);
                         goto done;
                 }
             try_left:
-                if (trig & 0x800) {
-                    col = gPspWork->unkE7;
+                if (trig & PAD_LEFT) {
+                    col = gPspWork->cursorCol;
 
                     if (col == 0) { /* compiled-out check */
                     } else {
                         do {
 
                             col--;
-                            row = gPspWork->unkE8;
-                            r = gPspCursorCols[col];
+                            row = gPspWork->cursorRow;
+                            colCells = gPspCursorCols[col];
                             for (k = 0; k < 3; k++) {
-                                c = r[row];
-                                if (c != -1 && gPspWork->unkDE[((s8 *)gPspIconIndex)[c]] != 0) {
+                                icon = colCells[row];
+                                if (icon != -1 && gPspWork->iconFound[gPspIconIndex[icon]] != 0) {
                                     break;
                                 }
                                 row++;
@@ -655,100 +534,100 @@ void Psp_ConnectTask(TaskSlot *t) {
                             }
                         } while (col != 0);
                     }
-                    goto try_up;
+                    goto try_down;
                 found_l:
-                        gPspWork->unkE8 = row;
-                        if (last == 2 && gPspWork->unkE5 != -1) {
-                            gPspWork->unkE4 = gPspWork->unkE5;
+                        gPspWork->cursorRow = row;
+                        if (prevIcon == 2 && gPspWork->cameFrom2 != -1) {
+                            gPspWork->cursorIcon = gPspWork->cameFrom2;
                             for (row = 0; row < 3; row++) {
                                 for (i = 0; i < 4; i++) {
-                                    if (gPspWork->unkE4 == gPspCursorGrid[row][i]) {
-                                        gPspWork->unkE7 = i;
-                                        gPspWork->unkE8 = row;
-                                        gPspWork->unkE4 = gPspCursorGrid[gPspWork->unkE8][gPspWork->unkE7];
+                                    if (gPspWork->cursorIcon == gPspCursorGrid[row][i]) {
+                                        gPspWork->cursorCol = i;
+                                        gPspWork->cursorRow = row;
+                                        gPspWork->cursorIcon = gPspCursorGrid[gPspWork->cursorRow][gPspWork->cursorCol];
                                         break;
                                     }
                                 }
                             }
                         }
-                        if (last == 4 && gPspWork->unkE6 != -1) {
-                            gPspWork->unkE4 = gPspWork->unkE6;
+                        if (prevIcon == 4 && gPspWork->cameFrom4 != -1) {
+                            gPspWork->cursorIcon = gPspWork->cameFrom4;
                             for (row = 0; row < 3; row++) {
                                 for (i = 0; i < 4; i++) {
-                                    if (gPspWork->unkE4 == gPspCursorGrid[row][i]) {
-                                        gPspWork->unkE7 = i;
-                                        gPspWork->unkE8 = row;
-                                        gPspWork->unkE4 = gPspCursorGrid[gPspWork->unkE8][gPspWork->unkE7];
+                                    if (gPspWork->cursorIcon == gPspCursorGrid[row][i]) {
+                                        gPspWork->cursorCol = i;
+                                        gPspWork->cursorRow = row;
+                                        gPspWork->cursorIcon = gPspCursorGrid[gPspWork->cursorRow][gPspWork->cursorCol];
                                         break;
                                     }
                                 }
                             }
                         }
-                        gPspWork->unkE4 = gPspCursorGrid[gPspWork->unkE8][col];
-                        gPspWork->unkE7 = col;
+                        gPspWork->cursorIcon = gPspCursorGrid[gPspWork->cursorRow][col];
+                        gPspWork->cursorCol = col;
                         Psp_PlayMoveSe();
-                        Psp_ResetSlotAnim(gPspCursorGrid[gPspWork->unkE8][gPspWork->unkE7]);
+                        Psp_StartIconSwing(gPspCursorGrid[gPspWork->cursorRow][gPspWork->cursorCol]);
                         goto done;
                 }
-            try_up:
-                if (trig & 0x1000) {
-                    row = gPspWork->unkE8;
-                    col = gPspWork->unkE7;
-                    c = gPspCursorGrid[row][col];
-                    if (c != 2 && c != 4) {
+            try_down:
+                if (trig & PAD_DOWN) {
+                    row = gPspWork->cursorRow;
+                    col = gPspWork->cursorCol;
+                    icon = gPspCursorGrid[row][col];
+                    if (icon != 2 && icon != 4) {
                         for (;;) {
                             if (row == 2) {
-                                goto nav_up;
+                                goto try_up;
                             }
                             row++;
-                            c = gPspCursorGrid[row][gPspWork->unkE7];
-                            if (c == -1) {
+                            icon = gPspCursorGrid[row][gPspWork->cursorCol];
+                            if (icon == -1) {
                                 continue;
                             }
-                            if (gPspWork->unkDE[((s8 *)gPspIconIndex)[c]] != 0) {
+                            if (gPspWork->iconFound[gPspIconIndex[icon]] != 0) {
                                 break;
                             }
                         }
-                        gPspWork->unkE4 = gPspCursorGrid[row][col];
-                        gPspWork->unkE8 = row;
+                        gPspWork->cursorIcon = gPspCursorGrid[row][col];
+                        gPspWork->cursorRow = row;
                         Psp_PlayMoveSe();
-                        Psp_ResetSlotAnim(gPspCursorGrid[gPspWork->unkE8][gPspWork->unkE7]);
+                        Psp_StartIconSwing(gPspCursorGrid[gPspWork->cursorRow][gPspWork->cursorCol]);
                         break;
                     }
                 }
-            nav_up:
-                if (trig & 0x2000) {
-                    row = gPspWork->unkE8;
-                    col = gPspWork->unkE7;
-                    c = gPspCursorGrid[row][col];
-                    if (c != 2 && c != 4) {
+            try_up:
+                if (trig & PAD_UP) {
+                    row = gPspWork->cursorRow;
+                    col = gPspWork->cursorCol;
+                    icon = gPspCursorGrid[row][col];
+                    if (icon != 2 && icon != 4) {
                         for (;;) {
                             if (row == 0) {
-                                goto nav_ok;
+                                goto try_confirm;
                             }
                             row--;
-                            c = gPspCursorGrid[row][gPspWork->unkE7];
-                            if (c == -1) {
+                            icon = gPspCursorGrid[row][gPspWork->cursorCol];
+                            if (icon == -1) {
                                 continue;
                             }
-                            if (gPspWork->unkDE[((s8 *)gPspIconIndex)[c]] != 0) {
+                            if (gPspWork->iconFound[gPspIconIndex[icon]] != 0) {
                                 break;
                             }
                         }
-                        gPspWork->unkE4 = gPspCursorGrid[row][col];
-                        gPspWork->unkE8 = row;
+                        gPspWork->cursorIcon = gPspCursorGrid[row][col];
+                        gPspWork->cursorRow = row;
                         Psp_PlayMoveSe();
-                        Psp_ResetSlotAnim(gPspCursorGrid[gPspWork->unkE8][gPspWork->unkE7]);
+                        Psp_StartIconSwing(gPspCursorGrid[gPspWork->cursorRow][gPspWork->cursorCol]);
                         break;
                     }
                 }
-            nav_ok:
-                if (trig & 0x20) {
+            try_confirm:
+                if (trig & PAD_CIRCLE) {
                     Psp_PlayConfirmSe();
-                    gPspWork->unk58 = 0;
+                    gPspWork->textStep = PSP_TEXT_NONE;
                     FadeA_Start(0xB);
                     Stream_Reset();
-                    t->mode = 6;
+                    task->mode = PSP_MODE_FADE_DONE;
                 }
             done:
                 break;
@@ -756,46 +635,46 @@ void Psp_ConnectTask(TaskSlot *t) {
             break;
         }
         break;
-    case 5:
+    case PSP_MODE_EXIT_TO_MENU:
         if ((u8)FadeA_GetState() != 1) {
             Psp_Release();
             Stream_Stop(0);
-            TaskSlot_End(t);
+            TaskSlot_End(task);
             gSysSettings.systemSaved = 0;
             Task_StartBootToGmSub();
             FadeA_Start(0xC);
             return;
         }
         break;
-    case 6:
+    case PSP_MODE_FADE_DONE:
         if ((u8)FadeA_GetState() != 1) {
             FadeA_Reset();
             Stream_Reset();
-            t->mode = 8;
+            task->mode = PSP_MODE_EXIT;
             return;
         }
         break;
-    case 7:
+    case PSP_MODE_NET_MENU:
         if ((u8)NetMenu_Update()) {
-            t->mode++;
+            task->mode++;
             FadeA_Start(7);
         }
         Gfx_DrawBlackLineFixed();
         Frame_Draw();
         return;
-    case 8:
+    case PSP_MODE_EXIT:
         Psp_Release();
         Stream_Stop(0);
-        TaskSlot_End(t);
+        TaskSlot_End(task);
         Task_StartBootToGmSubKeep();
         FadeA_Start(0xC);
         return;
-    case 9:
-        gPspWork->unk58 = 0xD;
-        if (trig & 0x20) {
+    case PSP_MODE_CANCELLED:
+        gPspWork->textStep = PSP_TEXT_CANCELLED;
+        if (trig & PAD_CIRCLE) {
             Psp_PlayDecideSe();
             FadeA_Start(0xB);
-            t->mode = 5;
+            task->mode = PSP_MODE_EXIT_TO_MENU;
         }
         break;
     }
@@ -804,36 +683,50 @@ void Psp_ConnectTask(TaskSlot *t) {
     Callbacks_Add(Psp_DrawTexts);
 }
 
-void Psp_Init(void) {
+/*
+ * Sets up the link's work at 0x100 in the select work area: clears it,
+ * places the three exchange buffers after it, loads the files and sets up
+ * the actors. No module is loaded and the thread is idle.
+ */
+void Psp_Init(void)
+{
     u8 *base;
 
     base = gSysSettings.selWork;
     gPspWork = (PspWork *)(base + 0x100);
     memset(gPspWork, 0, sizeof(PspWork));
-    memset(gPspWork->unk24 = (s32 *)(base + 0x15C0), 0, 0x40);
-    memset(gPspWork->unk28 = (s32 *)(base + 0x1600), 0, 0x40);
-    memset(gPspWork->unk2C = (s32 *)(base + 0x1640), 0, 0x40);
-    Psp_LoadFiles(gPspWork->unk100);
+    memset(gPspWork->recvBuf = (s32 *)(base + 0x15C0), 0, PSP_BUF_SIZE);
+    memset(gPspWork->sendBuf = (s32 *)(base + 0x1600), 0, PSP_BUF_SIZE);
+    memset(gPspWork->spareBuf = (s32 *)(base + 0x1640), 0, PSP_BUF_SIZE);
+    Psp_LoadFiles(gPspWork->tex);
     Psp_InitActors();
-    gPspWork->unk54 = 0xB;
-    gPspWork->unk10 = -1;
-    gPspState = 0;
+    gPspWork->headerKind = 0xB;
+    gPspWork->modId = -1;
+    gPspState = PSP_THREAD_IDLE;
 }
 
-void Psp_Release(void) {
+/* Forgets the work and frees the link's textures. */
+void Psp_Release(void)
+{
     gPspWork = NULL;
     Psp_FreeTextures();
 }
 
-void Psp_InitItemMask(void) {
+/*
+ * Resets the link for a new exchange (device closed, first step, both
+ * buffers cleared) and writes into sendBuf the bits of the 14 items the
+ * player has unlocked (Psp_IsItemUnlocked).
+ */
+void Psp_InitItemMask(void)
+{
     s32 *mask;
     s32 i;
 
-    gPspWork->unk1C = -1;
-    gPspWork->unk0 = 0;
-    memset(gPspWork->unk28, 0, 0x40);
-    memset(gPspWork->unk24, 0, 0x40);
-    mask = gPspWork->unk28;
+    gPspWork->fd = -1;
+    gPspWork->step = 0;
+    memset(gPspWork->sendBuf, 0, PSP_BUF_SIZE);
+    memset(gPspWork->recvBuf, 0, PSP_BUF_SIZE);
+    mask = gPspWork->sendBuf;
     for (i = 0; i < 0xE; i++) {
         if (i == 9) {
             if (Save_TestEventFlag(0x81) == 0) {
@@ -841,7 +734,7 @@ void Psp_InitItemMask(void) {
             }
         }
         if (i == 0xA) {
-            if (Save_TestListBit(0x138C) == 0) {
+            if (Save_IsQuestCleared(0x138C) == 0) {
                 continue;
             }
         }
@@ -849,51 +742,61 @@ void Psp_InitItemMask(void) {
     }
 }
 
-s32 Psp_LoadModule(char *path, s32 argc, char *argv) {
-    s32 res;
+/*
+ * Loads and starts an IOP module, retrying until the load succeeds.
+ * Returns its id, or -1 when the module did not stay resident.
+ */
+s32 Psp_LoadModule(char *path, s32 argc, char *argv)
+{
+    s32 modResult;
     s32 ret;
 
     do {
-        ret = sceSifLoadStartModule(path, argc, argv, &res);
+        ret = sceSifLoadStartModule(path, argc, argv, &modResult);
     } while (ret < 0);
-    if (res == 1) {
+    if (modResult == 1) {
         ret = -1;
     }
     return ret;
 }
 
-void Psp_UnloadModule(s32 id) {
-    s32 res;
+/* Stops IOP module id and unloads it, retrying each until it succeeds. */
+void Psp_UnloadModule(s32 id)
+{
+    s32 modResult;
 
     do {
 
-    } while (sceSifStopModule(id, 0, 0, &res) < 0);
+    } while (sceSifStopModule(id, 0, 0, &modResult) < 0);
     do {
 
     } while (sceSifUnloadModule(id) < 0);
 }
 
-/* The thread's gp is read with an asm statement written just before the
- * initPriority store, which puts `sw gp` in CreateThread's delay slot. */
-void Psp_StartThread(PspWork *w) {
-    struct ThreadParam tp;
+/*
+ * Loads the USB module for the PSP if it isn't loaded and, once it is,
+ * creates and starts the link thread (Psp_Thread) unless it exists.
+ */
+void Psp_StartThread(PspWork *work)
+{
+    struct ThreadParam param;
     s32 id;
-    void *g;
+    void *gpValue;
 
-    if (w->unk10 < 0) {
+    if (work->modId < 0) {
         id = Psp_LoadModule("cdrom0:\\IOP\\MODULES\\USBPSPCM.IRX;1", 0x20, "-psp=1\0-unit=1\0-title=ULJM05066");
         if (id >= 0) {
-            w->unk10 = id;
+            work->modId = id;
             Sys_EmptyHook();
             if (gPspThreadId == 0) {
-                gPspState = 0;
-                tp.entry = Psp_Thread;
-                tp.stack = gPspThreadStack;
-                tp.stackSize = 0x1000;
-                __asm__ volatile ("move %0, $gp" : "=r"(g));
-                tp.gpReg = g;
-                tp.initPriority = 0x28;
-                gPspThreadId = CreateThread(&tp);
+                gPspState = PSP_THREAD_IDLE;
+                param.entry = Psp_Thread;
+                param.stack = gPspThreadStack;
+                param.stackSize = 0x1000;
+                __asm__ volatile ("move %0, $gp" : "=r"(gpValue));
+                param.gpReg = gpValue;
+                param.initPriority = 0x28;
+                gPspThreadId = CreateThread(&param);
                 func_114C60(gPspThreadId, 0);
             }
         }
@@ -902,15 +805,20 @@ void Psp_StartThread(PspWork *w) {
 
 
 
-void Psp_Shutdown(PspWork *w) {
-    gPspState = 3;
-    if (w->unk10 >= 0) {
+/*
+ * Stops the link thread; when the module is loaded, ends and deletes the
+ * thread and unloads the module.
+ */
+void Psp_Shutdown(PspWork *work)
+{
+    gPspState = PSP_THREAD_STOP;
+    if (work->modId >= 0) {
         if (gPspThreadId != 0) {
             TerminateThread(gPspThreadId);
             DeleteThread(gPspThreadId);
         }
-        Psp_UnloadModule(w->unk10);
-        w->unk10 = -1;
+        Psp_UnloadModule(work->modId);
+        work->modId = -1;
         gPspThreadId = 0;
         Sys_EmptyHook();
     }
@@ -923,25 +831,28 @@ void PspLink_SetFlags(u32 flags);
 u16 Rand_Next(s32 stream);
 s32 Psp_IsItemUnlocked(u16 id);
 
-/* Picks what CONNECT offers this time: the features of *unk24 whose event
- * flag isn't set yet (and whose conditions hold), then the menus they
- * appear in, some at random. */
-void Psp_SelectFeatures(void) {
-    s32 *p;
+/*
+ * Picks what the link offers this time: the features of recvBuf's first
+ * word whose event flag isn't set yet (and whose conditions hold), then the
+ * menus they appear in, some at random.
+ */
+void Psp_SelectFeatures(void)
+{
+    s32 *recv;
     s32 mask;
     s32 i;
     s32 bit;
 
-    p = gPspWork->unk24;
-    *p |= 2;
-    *p |= 0x800;
+    recv = gPspWork->recvBuf;
+    *recv |= 2;
+    *recv |= 0x800;
     PspLink_AddCount();
     EventFlag_Set(0x35);
     Save_ClearEventFlag(0x31);
     mask = 0;
     for (i = 0; i < 12; i++) {
         bit = 1 << i;
-        if (*p & bit) {
+        if (*recv & bit) {
             switch (i) {
             case 0:
                 if (Save_TestEventFlag(0x78) == 0) {
@@ -963,7 +874,7 @@ void Psp_SelectFeatures(void) {
                 mask |= bit;
                 break;
             case 4:
-                if (gSysSave.unk458 == 0 && Save_TestEventFlag(0x7C) == 0) {
+                if (gSysSave.bonusUnlocked == 0 && Save_TestEventFlag(0x7C) == 0) {
                     mask |= bit;
                 }
                 break;
@@ -1006,106 +917,114 @@ void Psp_SelectFeatures(void) {
     PspLink_SetFlags(mask);
     for (i = 0; i < 11; i++) {
         if (mask & (1 << i)) {
-            gPspWork->unkA4[i] = 1;
+            gPspWork->featureOn[i] = 1;
             switch (i) {
             case 0:
             case 3:
             case 6:
             case 10:
-                gPspWork->unkB4[1] = 6;
+                gPspWork->menuObjType[1] = 6;
                 break;
             case 2:
             case 7:
             case 8:
             case 9:
-                gPspWork->unkB4[4] = Rand_Next(1) % 2 + 4;
+                gPspWork->menuObjType[4] = Rand_Next(1) % 2 + 4;
                 break;
             case 1:
-                gPspWork->unkB4[3] = 1;
+                gPspWork->menuObjType[3] = 1;
                 break;
             case 5:
-                gPspWork->unkB4[2] = Rand_Next(1) % 2 + 2;
+                gPspWork->menuObjType[2] = Rand_Next(1) % 2 + 2;
                 break;
             case 4:
-                gPspWork->unkB4[6] = 7;
+                gPspWork->menuObjType[6] = 7;
                 break;
             }
         }
     }
-    gPspWork->unkD4 = 0;
+    gPspWork->spawnLeft = 0;
     for (i = 0; i < 16; i++) {
-        gPspWork->unkC4[i] = gPspWork->unkB4[i];
-        if (gPspWork->unkC4[i] != 0) {
-            gPspWork->unkD4++;
+        gPspWork->spawnQueue[i] = gPspWork->menuObjType[i];
+        if (gPspWork->spawnQueue[i] != 0) {
+            gPspWork->spawnLeft++;
         }
     }
-    gPspWork->unk40 = mask;
+    gPspWork->offerMask = mask;
 }
 
 /* Loads archive 0x27 and passes up to 13 of its files to Tex_CreateFromTim2; the
    results go to gOvlTex and out. The loop keeps the original's shape: i is
    set before the test, p after it. */
-void Psp_LoadFiles(s32 *out) {
+void Psp_LoadFiles(s32 *out)
+{
     PspFileEnt *ent;
     u8 *buf;
-    s32 n;
-    s32 *p;
+    s32 count;
+    s32 *texSlot;
     s32 i;
 
     buf = gSysSettings.loadBuf;
     if (LoadCompressedFile(buf, 0x27) > 0) {
-        n = *(s32 *)(buf + 4);
+        count = *(s32 *)(buf + 4);
         ent = (PspFileEnt *)(buf + 8);
-        if (n > 0xD) {
-            n = 0xD;
+        if (count > 0xD) {
+            count = 0xD;
         }
         i = 0;
-        if (i < n) {
-            p = gOvlTex;
+        if (i < count) {
+            texSlot = gOvlTex;
             do {
-                *p = Tex_CreateFromTim2(buf + (ent++)->offset, 4);
-                out[i] = *p;
-                p++;
+                *texSlot = Tex_CreateFromTim2(buf + (ent++)->offset, 4);
+                out[i] = *texSlot;
+                texSlot++;
                 i++;
-            } while (i < n);
+            } while (i < count);
         }
         Mem_Compact();
     }
 }
 
-void Psp_FreeTextures(void) {
-    Tex_FreeRange(0xA3, 0xD);
+/* Frees the link's texture handles and compacts the memory. */
+void Psp_FreeTextures(void)
+{
+    Tex_FreeRange(PSP_TEX_FIRST, PSP_FILE_COUNT);
     Mem_Compact();
 }
 
-void Psp_InitActors(void) {
+/*
+ * Sets up the actors from gPspActorInit (per actor: its index, visible,
+ * part or -1, kind, large), all at scale 1, and clears the objects.
+ */
+void Psp_InitActors(void)
+{
     s32 i;
-    s8 *p;
-    PspActor *a;
+    s8 *init;
+    PspActor *actor;
 
-    p = (s8 *)gPspActorInit;
+    init = gPspActorInit;
     for (i = 0; i < 16; i++) {
-        a = &gPspWork->actors[*p++];
-        a->unk0 = 1;
-        a->unk4C = 1.0f;
-        a->unk50 = 1.0f;
-        a->unk4 = *p++;
-        if (*p >= 0) {
-            a->unk58 = (u8 *)gPspActorAnims + *p++ * 16;
+        actor = &gPspWork->actors[*init++];
+        actor->exists = 1;
+        actor->scaleX = 1.0f;
+        actor->scaleY = 1.0f;
+        actor->visible = *init++;
+        if (*init >= 0) {
+            actor->part = &gPspActorAnims[*init++];
         } else {
-            a->unk58 = NULL;
-            p++;
+            actor->part = NULL;
+            init++;
         }
-        a->unk8 = *p++;
-        if (a->unk8 != 0) {
-            a->unk5C = 1;
-            a->unk60 = &gPspWork->actors[1];
+        actor->kind = *init++;
+        if (actor->kind != 0) {
+            actor->relative = 1;
+            actor->parent = &gPspWork->actors[1];
         }
-        a->unk48 = *p++;
+        actor->large = *init++;
     }
-    gPspWork->unkDB8 = 0x16;
-    gPspWork->unk134 = 0;
-    memset(gPspWork->objs, 0, 0x600);
+    gPspWork->actorCount = PSP_ACTORS_USED;
+    gPspWork->sceneState = 0;
+    memset(gPspWork->objs, 0, sizeof(gPspWork->objs));
 }
 
 s32 PspLink_HasFlag(s32 item);
@@ -1115,68 +1034,69 @@ s32 PspLink_HasFlag(s32 item);
  * PspLink_HasFlag accepts; its actor and the next one get their place and
  * scale. Then the last icon with one is looked up in gPspCursorGrid (3 rows
  * of 4). */
-void Psp_MarkIcons(void) {
+void Psp_MarkIcons(void)
+{
     s8 *row;
-    PspActor *a;
+    PspActor *actor;
     s32 i;
-    s8 c;
+    s8 item;
     s32 j;
-    s8 *p;
+    s8 *entry;
     s8 *icon;
     s16 *pos;
     s8 *act;
     s8 *kind;
     s8 *lists;
 
-    for (i = 0, act = (s8 *)gPspIconActors, lists = (s8 *)gPspIconLists, icon = (s8 *)gPspIconIndex, pos = (s16 *)gPspIconPos, kind = (s8 *)gPspMarkKind; i < 6; i++, act++, lists += 4, icon++, pos += 2, kind++) {
-        p = lists;
-        a = &gPspWork->actors[*act];
+    for (i = 0, act = gPspIconActors, lists = gPspIconLists, icon = gPspIconIndex, pos = gPspIconPos, kind = gPspMarkKind; i < 6; i++, act++, lists += 4, icon++, pos += 2, kind++) {
+        entry = lists;
+        actor = &gPspWork->actors[*act];
         for (j = 0; j < 4; j++) {
-            c = *p++;
-            if (c != -1 && PspLink_HasFlag(c) != 0) {
+            item = *entry++;
+            if (item != -1 && PspLink_HasFlag(item) != 0) {
                 break;
             }
         }
         if (j == 4) {
             continue;
         }
-        gPspWork->unkDE[*icon] = 1;
-        gPspWork->unkD8[*icon] = j;
-        a->unk4 = 1;
-        a->unkC++;
-        if (a->unk48 == 0) {
-            a->unk4C = 1.0f;
-            a->unk50 = 1.2f;
+        gPspWork->iconFound[*icon] = 1;
+        gPspWork->iconEntry[*icon] = j;
+        actor->visible = 1;
+        actor->state++;
+        if (actor->large == 0) {
+            actor->scaleX = 1.0f;
+            actor->scaleY = 1.2f;
         } else {
-            a->unk4C = 1.2f;
-            a->unk50 = 1.4f;
+            actor->scaleX = 1.2f;
+            actor->scaleY = 1.4f;
         }
-        a->unk30 = pos[0];
-        a->unk34 = pos[1];
-        a[1].unk0 = 1;
-        a[1].unk4 = 1;
-        a[1].unk8 = *kind;
-        a[1].unk48 = a->unk48;
-        a[1].unk4C = a->unk4C;
-        a[1].unk50 = a->unk50;
-        a[1].unk30 = a->unk30;
-        a[1].unk34 = a->unk34;
-        a[1].unk5C = a->unk5C;
-        a[1].unk60 = a->unk60;
+        actor->x = pos[0];
+        actor->y = pos[1];
+        actor[1].exists = 1;
+        actor[1].visible = 1;
+        actor[1].kind = *kind;
+        actor[1].large = actor->large;
+        actor[1].scaleX = actor->scaleX;
+        actor[1].scaleY = actor->scaleY;
+        actor[1].x = actor->x;
+        actor[1].y = actor->y;
+        actor[1].relative = actor->relative;
+        actor[1].parent = actor->parent;
     }
-    gPspWork->unkE4 = -1;
-    gPspWork->unkE5 = -1;
-    gPspWork->unkE6 = -1;
-    for (i = 0; i < 6; i++) {
-        if (gPspWork->unkDE[((s8 *)gPspIconIndex)[i]] != 0) {
-            gPspWork->unkE4 = i;
+    gPspWork->cursorIcon = -1;
+    gPspWork->cameFrom2 = -1;
+    gPspWork->cameFrom4 = -1;
+    for (i = 0; i < PSP_ICON_COUNT; i++) {
+        if (gPspWork->iconFound[gPspIconIndex[i]] != 0) {
+            gPspWork->cursorIcon = i;
         }
     }
     for (i = 0, row = (s8 *)gPspCursorGrid; i < 3; i++, row += 4) {
         for (j = 0; j < 4; j++) {
-            if (gPspWork->unkE4 == row[j]) {
-                gPspWork->unkE7 = j;
-                gPspWork->unkE8 = i;
+            if (gPspWork->cursorIcon == row[j]) {
+                gPspWork->cursorCol = j;
+                gPspWork->cursorRow = i;
                 return;
             }
         }
@@ -1187,191 +1107,200 @@ void Psp_MarkIcons(void) {
  * marks the icons again. MWCC reloads gPspWork after every store through
  * it; the element pointers a and o, each taken from gPspWork once, give
  * the game's loads (the 2-7 loop is unrolled fully). */
-void Psp_ResetSceneActors(void) {
+void Psp_ResetSceneActors(void)
+{
     s32 i;
-    PspActor *a;
-    PspObj *o;
+    PspActor *actor;
+    PspObj *obj;
 
-    gPspWork->actors[0].unkC++;
-    a = &gPspWork->actors[1];
-    a->unk4 = 1;
-    a->unkC++;
-    gPspWork->actors[20].unkC++;
-    gPspWork->actors[22].unkC++;
+    gPspWork->actors[0].state++;
+    actor = &gPspWork->actors[1];
+    actor->visible = 1;
+    actor->state++;
+    gPspWork->actors[20].state++;
+    gPspWork->actors[22].state++;
     for (i = 2; i < 8; i++) {
-        a = &gPspWork->actors[i];
-        a->unkC = 0;
-        a->unk4 = 0;
+        actor = &gPspWork->actors[i];
+        actor->state = PSP_ACTOR_INIT;
+        actor->visible = 0;
     }
-    o = gPspWork->objs;
-    for (i = 0; i < 0x20; i++, o++) {
-        o->active = 0;
+    obj = gPspWork->objs;
+    for (i = 0; i < PSP_ACTOR_COUNT; i++, obj++) {
+        obj->active = 0;
     }
     Psp_MarkIcons();
 }
 
-static void Psp_SetAnim(PspObj *o, PspAnim *a) {
+/*
+ * Starts object obj on animation first: active, its first frame and that
+ * frame's time, the frame's step applied (mirrored when flipped).
+ */
+static void Psp_SetAnim(PspObj *obj, PspAnim *first)
+{
     s32 dx;
     s32 dy;
 
-    o->active = 1;
-    o->unk4 = 0;
-    o->unk8 = 0;
-    o->unk1C = 0;
-    o->unk20 = 0;
-    o->anim = a;
-    o->unk10 = 0;
-    o->unk4 = a->unk4;
-    dx = a->dx;
-    if (o->flip != 0) {
+    obj->active = 1;
+    obj->wait = 0;
+    obj->count = 0;
+    obj->unk1C = 0;
+    obj->unk20 = 0;
+    obj->anim = first;
+    obj->frame = 0;
+    obj->wait = first->wait;
+    dx = first->dx;
+    if (obj->flip != 0) {
         dx = -dx;
     }
-    dy = a->dy;
-    o->x += dx;
-    o->y += dy;
+    dy = first->dy;
+    obj->x += dx;
+    obj->y += dy;
 }
 
 void Sound_PlaySeFlatPan(u32 slot, u32 id, s32 prog, s32 pan);
 void Psp_SpawnChild(PspObj *src, s32 type, s32 x, s32 y);
 
-/* Moves a CONNECT picture: its walk by type, then at the end of a frame's
- * time the next frame (random turns for types 2 and 6), the frame's step
- * and sound (panned by x), and the end of a type 0 ends its type 9 child.
- * `d *= -1` keeps the game's run-time negu (`d = -d` is folded), and
- * `pan = K * pan` on the int gives the pan's operand order (constant in
- * f1, x in f0). */
-void Psp_UpdateObj(PspObj *o) {
-    PspAnim *f;
-    s32 d;
-    s32 e;
+/*
+ * Moves an object of the show: its walk by type, then at the end of a
+ * frame's time the next frame (random turns for types 2 and 6), the
+ * frame's step and sound (panned by x); the end of a type 0 ends its type 9
+ * child. Forms the match needs: `stepX *= -1` keeps the game's run-time
+ * negation (`stepX = -stepX` is folded), and `pan = K * pan` on the int
+ * gives the pan's operand order.
+ */
+void Psp_UpdateObj(PspObj *obj)
+{
+    PspAnim *cur;
+    s32 stepX;
+    s32 stepY;
     s32 pan;
     s32 snd;
-    PspObj *p;
+    PspObj *other;
     s32 i;
 
-    switch (o->type) {
+    switch (obj->type) {
     case 1:
-        d = -4;
-        if (o->flip != 0) {
-            d *= -1;
+        stepX = -4;
+        if (obj->flip != 0) {
+            stepX *= -1;
         }
-        o->x += d;
+        obj->x += stepX;
         break;
     case 2:
-        if (o->unk10 < 4) {
-            d = -1;
-            if (o->flip != 0) {
-                d *= -1;
+        if (obj->frame < 4) {
+            stepX = -1;
+            if (obj->flip != 0) {
+                stepX *= -1;
             }
-            o->x += d;
+            obj->x += stepX;
         }
         break;
     case 3:
-        d = -1;
-        if (o->flip != 0) {
-            d *= -1;
+        stepX = -1;
+        if (obj->flip != 0) {
+            stepX *= -1;
         }
-        o->x += d;
+        obj->x += stepX;
         break;
     case 4:
-        d = -1;
-        if (o->flip != 0) {
-            d *= -1;
+        stepX = -1;
+        if (obj->flip != 0) {
+            stepX *= -1;
         }
-        o->x += d;
+        obj->x += stepX;
         break;
     case 5:
-        d = -2;
-        if (o->flip != 0) {
-            d *= -2;
+        stepX = -2;
+        if (obj->flip != 0) {
+            stepX *= -2;
         }
-        o->x += d;
+        obj->x += stepX;
         break;
     case 6:
-        if (o->unk10 < 6) {
-            d = -1;
-            if (o->flip != 0) {
-                d *= -1;
+        if (obj->frame < 6) {
+            stepX = -1;
+            if (obj->flip != 0) {
+                stepX *= -1;
             }
-            o->x += d;
+            obj->x += stepX;
         }
         break;
     case 9:
         return;
     }
-    if (o->unk4 > 0) {
-        o->unk4--;
+    if (obj->wait > 0) {
+        obj->wait--;
         return;
     }
-    f = &o->anim[o->unk10];
-    switch (o->type) {
+    cur = &obj->anim[obj->frame];
+    switch (obj->type) {
     case 0:
-        if (f->unk1 == 1) {
-            o->unk8++;
-            if (o->unk8 >= 8) {
-                o->unk8 = 0;
-                o->unk10 = 7;
-                if (o->flip == 0) {
-                    Psp_SpawnChild(o, 8, 0x14, -0x62);
+        if (cur->loopPoint == 1) {
+            obj->count++;
+            if (obj->count >= 8) {
+                obj->count = 0;
+                obj->frame = 7;
+                if (obj->flip == 0) {
+                    Psp_SpawnChild(obj, 8, 0x14, -0x62);
                 } else {
-                    Psp_SpawnChild(o, 8, -0x14, -0x62);
+                    Psp_SpawnChild(obj, 8, -0x14, -0x62);
                 }
             } else {
-                o->unk10 = f->next;
+                obj->frame = cur->next;
             }
         } else {
-            o->unk10 = f->next;
+            obj->frame = cur->next;
         }
         break;
     case 2:
-        if (f->unk1 == 1) {
+        if (cur->loopPoint == 1) {
             if ((Rand_Next(1) % 10) < 2) {
-                o->unk10 = 4;
+                obj->frame = 4;
             } else {
-                o->unk10 = f->next;
+                obj->frame = cur->next;
             }
         } else {
-            o->unk10 = f->next;
+            obj->frame = cur->next;
         }
         break;
     case 6:
-        if (f->unk1 == 1) {
+        if (cur->loopPoint == 1) {
             if ((Rand_Next(1) % 10) < 2) {
-                o->unk10 = 6;
+                obj->frame = 6;
             } else {
-                o->unk10 = f->next;
+                obj->frame = cur->next;
             }
         } else {
-            o->unk10 = f->next;
+            obj->frame = cur->next;
         }
         break;
     default:
-        if (f->next < 0) {
-            o->active = 0;
+        if (cur->next < 0) {
+            obj->active = 0;
             return;
         }
-        o->unk10 = f->next;
+        obj->frame = cur->next;
         break;
     }
-    f = &o->anim[o->unk10];
-    o->unk4 = f->unk4;
-    d = f->dx;
-    if (o->flip != 0) {
-        d *= -1;
+    cur = &obj->anim[obj->frame];
+    obj->wait = cur->wait;
+    stepX = cur->dx;
+    if (obj->flip != 0) {
+        stepX *= -1;
     }
-    e = f->dy;
-    o->x += d;
-    o->y += e;
-    if (o->flip != 0) {
-        if (o->x > o->unk24) {
-            o->active = 0;
+    stepY = cur->dy;
+    obj->x += stepX;
+    obj->y += stepY;
+    if (obj->flip != 0) {
+        if (obj->x > obj->endX) {
+            obj->active = 0;
         }
-    } else if (o->x < o->unk24) {
-        o->active = 0;
+    } else if (obj->x < obj->endX) {
+        obj->active = 0;
     }
-    snd = f->se;
+    snd = cur->se;
     if (snd != 0) {
-        pan = o->x - 0x140;
+        pan = obj->x - 0x140;
         pan = 0.15625f * pan;
         if (pan < 0) {
             if (pan < -0x32) {
@@ -1381,21 +1310,21 @@ void Psp_UpdateObj(PspObj *o) {
             pan = 0x32;
         }
         if (snd == 10) {
-            o->unk8++;
-            if ((o->unk8 & 3) == 0) {
+            obj->count++;
+            if ((obj->count & 3) == 0) {
                 Sound_PlaySeFlatPan(6, 7, 0, pan);
             } else {
-                Sound_PlaySeFlatPan(6, f->se - 1, 0, pan);
+                Sound_PlaySeFlatPan(6, cur->se - 1, 0, pan);
             }
         } else {
             Sound_PlaySeFlatPan(6, snd - 1, 0, pan);
         }
     }
-    if (o->active == 0 && o->type == 0) {
-        p = gPspWork->objs;
-        for (i = 0; i < 0x20; i++, p++) {
-            if (p->active != 0 && p->type == 9 && o->flip == p->flip) {
-                p->active = 0;
+    if (obj->active == 0 && obj->type == 0) {
+        other = gPspWork->objs;
+        for (i = 0; i < PSP_OBJ_COUNT; i++, other++) {
+            if (other->active != 0 && other->type == 9 && obj->flip == other->flip) {
+                other->active = 0;
                 return;
             }
         }
@@ -1404,58 +1333,65 @@ void Psp_UpdateObj(PspObj *o) {
 
 void Gfx_SetBlend(s32 a, s32 b);
 
-void Psp_DrawObject(PspObj *o) {
-    PspAnim *f;
-    s16 *c;
+/*
+ * Draws object obj's current frame: its cell (u, v, texture and screen
+ * sizes) as a sprite, mirrored when flipped.
+ */
+void Psp_DrawObject(PspObj *obj)
+{
+    PspAnim *cur;
+    s16 *cellUV;
     Sprite spr;
-    s16 u;
-    s16 v;
-    s16 tw;
-    s16 th;
-    s16 sw;
-    s16 sh;
+    s16 texU;
+    s16 texV;
+    s16 texW;
+    s16 texH;
+    s16 scrW;
+    s16 scrH;
 
-    f = &o->anim[o->unk10];
-    c = f->cells + f->cell * 6;
-    if (gPspWork->unk100[f->tex] != 0) {
+    cur = &obj->anim[obj->frame];
+    cellUV = cur->cells + cur->cell * 6;
+    if (gPspWork->tex[cur->tex] != 0) {
         Gfx_SetBlend(4, 5);
-        Tex_Prepare(1, f->tex + 0xA3);
-        Tex_Bind(f->tex + 0xA3);
-        Gs_SetState(0x63, 0);
-        u = *c++;
-        v = *c++;
-        tw = *c++;
-        th = *c++;
-        sw = *c++;
-        sh = *c;
-        if (o->flip == 0) {
-            spr.x = (s16)o->x + f->ox;
+        Tex_Prepare(1, cur->tex + PSP_TEX_FIRST);
+        Tex_Bind(cur->tex + PSP_TEX_FIRST);
+        Gs_SetState(RS_TEX_FILTER, 0);
+        texU = *cellUV++;
+        texV = *cellUV++;
+        texW = *cellUV++;
+        texH = *cellUV++;
+        scrW = *cellUV++;
+        scrH = *cellUV;
+        if (obj->flip == 0) {
+            spr.x = (s16)obj->x + cur->ox;
         } else {
-            spr.x = (s16)o->x - (sw + f->ox);
+            spr.x = (s16)obj->x - (scrW + cur->ox);
         }
-        spr.y = (s16)o->y + f->oy;
-        spr.w = sw;
-        spr.h = sh;
+        spr.y = (s16)obj->y + cur->oy;
+        spr.w = scrW;
+        spr.h = scrH;
         spr.color = -1;
-        if (o->flip == 0) {
-            spr.u0 = u;
-            spr.u1 = spr.u0 + tw - 1;
+        if (obj->flip == 0) {
+            spr.u0 = texU;
+            spr.u1 = spr.u0 + texW - 1;
         } else {
-            spr.u1 = u;
-            spr.u0 = spr.u1 + tw - 1;
+            spr.u1 = texU;
+            spr.u0 = spr.u1 + texW - 1;
         }
-        spr.v0 = v;
-        spr.v1 = spr.v0 + th - 1;
+        spr.v0 = texV;
+        spr.v1 = spr.v0 + texH - 1;
         Sprite_Draw(&spr);
     }
 }
 
-s32 Psp_AnyObjectActive(void) {
-    PspObj *o;
+/* Returns 1 while any object of the show is active, else 0. */
+s32 Psp_AnyObjectActive(void)
+{
+    PspObj *obj;
     s32 i;
 
-    for (i = 0, o = gPspWork->objs; i < 0x20; i++, o++) {
-        if (o->active != 0) {
+    for (i = 0, obj = gPspWork->objs; i < PSP_OBJ_COUNT; i++, obj++) {
+        if (obj->active != 0) {
             return 1;
         }
     }
@@ -1463,68 +1399,85 @@ s32 Psp_AnyObjectActive(void) {
 }
 
 
-void Psp_SpawnObject(s32 type, s32 flip) {
-    PspObj *o;
+/*
+ * Starts an object of the given type in the first free slot, at its start
+ * and end from gPspObjParams (the side by flip). Type 0 brings a type 9
+ * child with it.
+ */
+void Psp_SpawnObject(s32 type, s32 flip)
+{
+    PspObj *obj;
     s32 i;
-    s16 *p;
+    s16 *params;
 
-    for (i = 0, o = gPspWork->objs; i < 0x20; i++, o++) {
-        if (o->active == 0) {
+    for (i = 0, obj = gPspWork->objs; i < PSP_OBJ_COUNT; i++, obj++) {
+        if (obj->active == 0) {
             break;
         }
     }
-    if (i < 0x20) {
-        o->type = type;
-        o->flip = flip;
-        p = (s16 *)gPspObjParams + type * 5;
+    if (i < PSP_OBJ_COUNT) {
+        obj->type = type;
+        obj->flip = flip;
+        params = gPspObjParams + type * 5;
         if (flip != 0) {
-            o->x = p[0];
-            o->unk24 = p[4];
+            obj->x = params[0];
+            obj->endX = params[4];
         } else {
-            o->x = p[1];
-            o->unk24 = p[3];
+            obj->x = params[1];
+            obj->endX = params[3];
         }
-        o->y = p[2];
-        Psp_SetAnim(o, gPspObjAnims[type]);
+        obj->y = params[2];
+        Psp_SetAnim(obj, gPspObjAnims[type]);
         if (type == 0) {
-            if (o->flip == 0) {
-                Psp_SpawnChild(o, 9, 0x1D6, o->y);
+            if (obj->flip == 0) {
+                Psp_SpawnChild(obj, 9, 0x1D6, obj->y);
             } else {
-                Psp_SpawnChild(o, 9, 0xAA, o->y);
+                Psp_SpawnChild(obj, 9, 0xAA, obj->y);
             }
         }
     }
 }
 
-void Psp_SpawnChild(PspObj *src, s32 type, s32 x, s32 y) {
-    PspObj *o;
+/*
+ * Starts a child object of src: type 9 at x, y on the screen, the others
+ * relative to src; it takes src's direction and end.
+ */
+void Psp_SpawnChild(PspObj *src, s32 type, s32 x, s32 y)
+{
+    PspObj *obj;
     s32 i;
 
-    for (i = 0, o = gPspWork->objs; i < 0x20; i++, o++) {
-        if (o->active == 0) {
+    for (i = 0, obj = gPspWork->objs; i < PSP_OBJ_COUNT; i++, obj++) {
+        if (obj->active == 0) {
             break;
         }
     }
-    if (i < 0x20) {
-        o->type = type;
-        o->flip = src->flip;
+    if (i < PSP_OBJ_COUNT) {
+        obj->type = type;
+        obj->flip = src->flip;
         if (type == 9) {
-            o->x = x;
-            o->y = y;
-            o->unk24 = src->unk24;
+            obj->x = x;
+            obj->y = y;
+            obj->endX = src->endX;
         } else {
-            o->x = src->x + x;
-            o->y = src->y + y;
-            o->unk24 = src->unk24;
+            obj->x = src->x + x;
+            obj->y = src->y + y;
+            obj->endX = src->endX;
         }
-        Psp_SetAnim(o, gPspObjAnims[type]);
+        Psp_SetAnim(obj, gPspObjAnims[type]);
     }
 }
 
-void Psp_SetViewRect(u32 kind, PspView *v) {
-    s16 *p;
+/*
+ * Gives actor `kind` its rectangle from gPspViewRects. The icon screens
+ * (even actors 8-18) and actor 22 copy it to the next actor, their frame;
+ * the frames (odd 9-19) and actor 21 keep theirs.
+ */
+void Psp_SetViewRect(u32 kind, PspActor *actor)
+{
+    s16 *rect;
 
-    p = (s16 *)gPspViewRects;
+    rect = gPspViewRects;
     switch (kind) {
     case 2:
     case 3:
@@ -1532,8 +1485,8 @@ void Psp_SetViewRect(u32 kind, PspView *v) {
     case 5:
     case 6:
     case 7:
-        p += 0x14;
-        p += (kind - 2) * 4;
+        rect += 0x14;
+        rect += (kind - 2) * 4;
         break;
     case 8:
     case 10:
@@ -1541,12 +1494,12 @@ void Psp_SetViewRect(u32 kind, PspView *v) {
     case 14:
     case 16:
     case 18:
-        p += 0x10;
+        rect += 0x10;
         break;
     case 21:
         return;
     case 20:
-        p += 4;
+        rect += 4;
         break;
     case 9:
     case 11:
@@ -1556,13 +1509,13 @@ void Psp_SetViewRect(u32 kind, PspView *v) {
     case 19:
         return;
     case 22:
-        p += 0x2C;
+        rect += 0x2C;
         break;
     }
-    v->x = *p++;
-    v->y = *p++;
-    v->w = *p++;
-    v->h = *p;
+    actor->x = *rect++;
+    actor->y = *rect++;
+    actor->w = *rect++;
+    actor->h = *rect;
     switch (kind) {
     case 8:
     case 10:
@@ -1571,100 +1524,103 @@ void Psp_SetViewRect(u32 kind, PspView *v) {
     case 16:
     case 18:
     case 22:
-        v->x2 = v->x;
-        v->y2 = v->y;
-        v->w2 = v->w;
-        v->h2 = v->h;
+        actor[1].x = actor->x;
+        actor[1].y = actor->y;
+        actor[1].w = actor->w;
+        actor[1].h = actor->h;
         break;
     }
 }
 
 f32 Math_Sin(f32);
 
-/* Moves CONNECT's screen i (a state machine in a->unkC): the two that slide
- * in, the six that fly across at a random speed and height, and the menu
- * screens, dimmed unless theirs is the icon chosen. A screen in use
- * (a->unk4) goes into the frame's list. */
-void Psp_UpdateActor(s32 i, PspActor *a) {
-    s32 r;
-    PspView **views;
+/*
+ * Moves screen i by its state (PspActorState): the two that slide in, the
+ * six that fly across at a random speed and height, and the icon screens,
+ * dimmed unless theirs is the icon chosen. A visible actor goes into the
+ * frame's draw list.
+ */
+void Psp_UpdateActor(s32 i, PspActor *actor)
+{
+    s32 rnd;
+    PspActor **views;
     s16 spd;
-    s32 k;
-    PspWork *w;
-    s32 e;
+    s32 speedIdx;
+    PspWork *work;
+    s32 icon;
 
-    views = gPspWork->unkDBC;
+    views = gPspWork->drawList;
     switch (i) {
     case 0:
-        switch (a->unkC) {
-        case 0:
-            Psp_SetViewRect(i, (PspView *)a);
-            a->unk30 = 0.0f;
-            a->unk34 = 0.0f;
-            a->unk40 = 0x280;
-            a->unk20 = 30.0f;
-            a->unkC++;
+        switch (actor->state) {
+        case PSP_ACTOR_INIT:
+            Psp_SetViewRect(i, actor);
+            actor->x = 0.0f;
+            actor->y = 0.0f;
+            actor->w = 0x280;
+            actor->speed = 30.0f;
+            actor->state++;
             break;
-        case 1:
+        case PSP_ACTOR_WAIT:
             break;
-        case 2:
-            a->unk30 += a->unk20;
-            a->unk40 -= (s32)(s16)a->unk20;
-            if (a->unk30 >= 640.0f) {
-                a->unk30 = 640.0f;
-                a->unkC++;
-                a->unk4 = 0;
+        case PSP_ACTOR_RUN:
+            actor->x += actor->speed;
+            actor->w -= (s32)(s16)actor->speed;
+            if (actor->x >= 640.0f) {
+                actor->x = 640.0f;
+                actor->state++;
+                actor->visible = 0;
             }
             break;
-        case 3:
+        case PSP_ACTOR_DONE:
             break;
         }
         break;
     case 1:
-        switch (a->unkC) {
-        case 0:
-            Psp_SetViewRect(i, (PspView *)a);
-            a->unk20 = 30.0f;
-            a->unk30 = -640.0f;
-            a->unk34 = 0.0f;
-            a->unkC++;
+        switch (actor->state) {
+        case PSP_ACTOR_INIT:
+            Psp_SetViewRect(i, actor);
+            actor->speed = 30.0f;
+            actor->x = -640.0f;
+            actor->y = 0.0f;
+            actor->state++;
             break;
-        case 1:
+        case PSP_ACTOR_WAIT:
             break;
-        case 2:
-            a->unk30 += a->unk20;
-            if (a->unk30 >= 0.0f) {
-                a->unk30 = 0.0f;
-                a->unkC++;
+        case PSP_ACTOR_RUN:
+            actor->x += actor->speed;
+            if (actor->x >= 0.0f) {
+                actor->x = 0.0f;
+                actor->state++;
             }
             break;
-        case 3:
+        case PSP_ACTOR_DONE:
             break;
         }
         break;
     case 20:
-        switch (a->unkC) {
-        case 0:
-            Psp_SetViewRect(i, (PspView *)a);
-            a->unkC++;
+        switch (actor->state) {
+        case PSP_ACTOR_INIT:
+            Psp_SetViewRect(i, actor);
+            actor->state++;
             break;
-        case 1:
+        case PSP_ACTOR_WAIT:
             break;
-        case 2:
-            a->unk4 = 0;
-            a->unkC++;
+        case PSP_ACTOR_RUN:
+            actor->visible = 0;
+            actor->state++;
             break;
-        case 3:
+        case PSP_ACTOR_DONE:
             break;
         }
         break;
     case 21:
-        switch (a->unkC) {
-        case 0:
-            Psp_SetViewRect(i, (PspView *)a);
-            a->unkC++;
+        switch (actor->state) {
+        case PSP_ACTOR_INIT:
+            Psp_SetViewRect(i, actor);
+            actor->state++;
             break;
-        case 1:
+        case PSP_ACTOR_WAIT:
             break;
         }
         break;
@@ -1674,36 +1630,36 @@ void Psp_UpdateActor(s32 i, PspActor *a) {
     case 5:
     case 6:
     case 7:
-        switch (a->unkC) {
-        case 0:
+        switch (actor->state) {
+        case PSP_ACTOR_INIT:
             break;
-        case 1:
-            Psp_SetViewRect(i, (PspView *)a);
-            r = Rand_Next(1) & 1;
-            k = Rand_Next(1) % 4;
-            spd = gPspActorSpeeds[k];
-            a->unk8 = r;
-            if (r == 0) {
-                a->unk20 = -1.0f * spd;
-                a->unk30 = 700.0f;
-                a->unk38 = 0;
+        case PSP_ACTOR_WAIT:
+            Psp_SetViewRect(i, actor);
+            rnd = Rand_Next(1) & 1;
+            speedIdx = Rand_Next(1) % 4;
+            spd = gPspActorSpeeds[speedIdx];
+            actor->kind = rnd;
+            if (rnd == 0) {
+                actor->speed = -1.0f * spd;
+                actor->x = 700.0f;
+                actor->flipX = 0;
             } else {
-                a->unk20 = spd;
-                a->unk30 = -200.0f;
-                a->unk38 = 1;
+                actor->speed = spd;
+                actor->x = -200.0f;
+                actor->flipX = 1;
             }
-            r = Rand_Next(1) & 0x7FFF;
-            a->unk34 = 100.0f + 100.0f * Math_Sin(6.2831855f * r / 65536.0f);
-            a->unkC++;
+            rnd = Rand_Next(1) & 0x7FFF;
+            actor->y = 100.0f + 100.0f * Math_Sin(6.2831855f * rnd / 65536.0f);
+            actor->state++;
             break;
-        case 2:
-            a->unk30 += a->unk20;
-            if (a->unk8 == 0) {
-                if (a->unk30 <= -200.0f) {
-                    a->unkC = 1;
+        case PSP_ACTOR_RUN:
+            actor->x += actor->speed;
+            if (actor->kind == 0) {
+                if (actor->x <= -200.0f) {
+                    actor->state = PSP_ACTOR_WAIT;
                 }
-            } else if (a->unk30 >= 700.0f) {
-                a->unkC = 1;
+            } else if (actor->x >= 700.0f) {
+                actor->state = PSP_ACTOR_WAIT;
             }
             break;
         }
@@ -1715,55 +1671,61 @@ void Psp_UpdateActor(s32 i, PspActor *a) {
     case 16:
     case 18:
     case 22:
-        switch (a->unkC) {
-        case 0:
-            Psp_SetViewRect(i, (PspView *)a);
-            a->unkC++;
+        switch (actor->state) {
+        case PSP_ACTOR_INIT:
+            Psp_SetViewRect(i, actor);
+            actor->state++;
             break;
-        case 1:
+        case PSP_ACTOR_WAIT:
             break;
-        case 2:
-            a->unk54 = 1;
-            w = gPspWork;
-            e = w->unkE4;
-            if ((i - 8) / 2 == e && w->unkDE[((s8 *)gPspIconIndex)[e]] != 0) {
-                a->unk54 = 0;
+        case PSP_ACTOR_RUN:
+            actor->dim = 1;
+            work = gPspWork;
+            icon = work->cursorIcon;
+            if ((i - 8) / 2 == icon && work->iconFound[gPspIconIndex[icon]] != 0) {
+                actor->dim = 0;
             }
             break;
         }
         break;
     }
-    if (a->unk4 != 0) {
-        views[i] = (PspView *)a;
+    if (actor->visible != 0) {
+        views[i] = actor;
     }
 }
 
-void Psp_UpdateScene(void) {
-    s32 *st;
-    PspActor *a;
+/*
+ * Clears the draw list; once the show reaches its icons, sets the icon
+ * screen's actors up (Psp_ResetSceneActors); then moves the actors in use
+ * and the active objects.
+ */
+void Psp_UpdateScene(void)
+{
+    s32 *state;
+    PspActor *actor;
     s32 i;
-    s32 n;
-    PspObj *o;
+    s32 count;
+    PspObj *obj;
 
-    memset(gPspWork->unkDBC, 0, 0x80);
-    st = &gPspWork->unk134;
-    switch (*st) {
+    memset(gPspWork->drawList, 0, sizeof(gPspWork->drawList));
+    state = &gPspWork->sceneState;
+    switch (*state) {
     case 0:
-        if (gPspWork->unk0 == 0xB && gPspWork->unk4 == 2) {
-            (*st)++;
+        if (gPspWork->step == 0xB && gPspWork->subStep == 2) {
+            (*state)++;
             Psp_ResetSceneActors();
         }
         break;
     case 1:
         break;
     }
-    n = gPspWork->unkDB8;
-    for (i = 0, a = gPspWork->actors; i < n; i++, a++) {
-        Psp_UpdateActor(i, a);
+    count = gPspWork->actorCount;
+    for (i = 0, actor = gPspWork->actors; i < count; i++, actor++) {
+        Psp_UpdateActor(i, actor);
     }
-    for (i = 0, o = gPspWork->objs; i < 0x20; i++, o++) {
-        if (o->active != 0) {
-            Psp_UpdateObj(o);
+    for (i = 0, obj = gPspWork->objs; i < PSP_OBJ_COUNT; i++, obj++) {
+        if (obj->active != 0) {
+            Psp_UpdateObj(obj);
         }
     }
 }
@@ -1771,79 +1733,82 @@ void Psp_UpdateScene(void) {
 struct PrimLine;
 s32 Prim_FillRect(struct PrimLine *r);
 
-/* Draws an actor: its part as a filled rectangle (kind 0) or a sprite,
- * placed relative to its parent (unk60) when unk5C is set, scaled,
- * mirrored and dimmed as the actor says. */
-void Psp_DrawActor(PspActor *a) {
-    PspRect r;
+/*
+ * Draws an actor: its part as a filled rectangle (kind 0) or a sprite,
+ * placed relative to its parent when it is relative, scaled, mirrored and
+ * dimmed as the actor says.
+ */
+void Psp_DrawActor(PspActor *actor)
+{
+    PspRect rect;
     Sprite spr;
-    PspPart *pt;
-    s16 px;
-    s16 py;
-    s16 w;
-    s16 h;
-    u32 c;
+    PspPart *draw;
+    s16 parentX;
+    s16 parentY;
+    s16 width;
+    s16 height;
+    u32 tint;
 
-    if (a->unk0 == 0) {
+    if (actor->exists == 0) {
         return;
     }
-    if (a->unk4 == 0) {
+    if (actor->visible == 0) {
         return;
     }
-    if ((pt = (PspPart *)a->unk58) == NULL) {
+    if ((draw = actor->part) == NULL) {
         return;
     }
-    px = py = 0;
-    if (a->unk5C != 0 && a->unk60 != NULL) {
-        px = ((PspActor *)a->unk60)->unk30;
-        py = ((PspActor *)a->unk60)->unk34;
+    parentX = parentY = 0;
+    if (actor->relative != 0 && actor->parent != NULL) {
+        parentX = actor->parent->x;
+        parentY = actor->parent->y;
     }
-    w = a->unk40 * a->unk4C;
-    h = a->unk42 * a->unk50;
-    if (pt->kind == 0) {
+    width = actor->w * actor->scaleX;
+    height = actor->h * actor->scaleY;
+    if (draw->kind == 0) {
         Gfx_SetBlend(4, 5);
-        r.x0 = px + (s16)a->unk30;
-        r.y0 = py + (s16)a->unk34;
-        r.x1 = r.x0 + w;
-        r.y1 = r.y0 + h;
-        r.color = pt->color;
-        Prim_FillRect((struct PrimLine *)&r);
+        rect.x0 = parentX + (s16)actor->x;
+        rect.y0 = parentY + (s16)actor->y;
+        rect.x1 = rect.x0 + width;
+        rect.y1 = rect.y0 + height;
+        rect.color = draw->color;
+        Prim_FillRect((struct PrimLine *)&rect);
         return;
     }
     Gfx_SetBlend(4, 5);
-    if (gPspWork->unk100[pt->tex] == 0) {
+    if (gPspWork->tex[draw->tex] == 0) {
         return;
     }
-    Tex_Prepare(1, pt->tex + 0xA3);
-    Tex_Bind(pt->tex + 0xA3);
-    if (pt->blend == 0) {
-        Gs_SetState(0x63, 0x10000);
+    Tex_Prepare(1, draw->tex + PSP_TEX_FIRST);
+    Tex_Bind(draw->tex + PSP_TEX_FIRST);
+    if (draw->blend == 0) {
+        Gs_SetState(RS_TEX_FILTER, 0x10000);
     } else {
-        Gs_SetState(0x63, 0);
+        Gs_SetState(RS_TEX_FILTER, 0);
     }
-    spr.x = px + (s16)a->unk30;
-    spr.y = py + (s16)a->unk34;
-    spr.w = w;
-    spr.h = h;
-    if (a->unk54 == 0) {
-        spr.color = pt->color;
+    spr.x = parentX + (s16)actor->x;
+    spr.y = parentY + (s16)actor->y;
+    spr.w = width;
+    spr.h = height;
+    if (actor->dim == 0) {
+        spr.color = draw->color;
     } else {
-        c = pt->color;
-        spr.color = ((c & 0xFF) >> 1 & 0xFF) | (((c & 0xFF00) >> 1 & 0xFF00) | ((c & 0xFF000000) | ((c & 0xFF0000) >> 1 & 0xFF0000)));
+        tint = draw->color;
+        spr.color = ((tint & 0xFF) >> 1 & 0xFF) | (((tint & 0xFF00) >> 1 & 0xFF00) | ((tint & 0xFF000000) | ((tint & 0xFF0000) >> 1 & 0xFF0000)));
     }
-    if (a->unk38 == 0) {
-        spr.u0 = pt->u;
-        spr.u1 = spr.u0 + pt->uw - 1;
+    if (actor->flipX == 0) {
+        spr.u0 = draw->u;
+        spr.u1 = spr.u0 + draw->uw - 1;
     } else {
-        spr.u1 = pt->u;
-        spr.u0 = spr.u1 + pt->uw - 1;
+        spr.u1 = draw->u;
+        spr.u0 = spr.u1 + draw->uw - 1;
     }
-    if (a->unk3C == 0) {
-        spr.v0 = pt->v;
-        spr.v1 = spr.v0 + pt->vh - 1;
+    if (actor->flipY == 0) {
+        spr.v0 = draw->v;
+        spr.v1 = spr.v0 + draw->vh - 1;
     } else {
-        spr.v1 = pt->v;
-        spr.v0 = spr.v1 + pt->vh - 1;
+        spr.v1 = draw->v;
+        spr.v0 = spr.v1 + draw->vh - 1;
     }
     Sprite_Draw(&spr);
 }
@@ -1852,246 +1817,258 @@ void Vec_RotateZ(f32 *v, f32 a);
 struct PrimTexTri;
 s32 Prim_DrawTexTri(struct PrimTexTri *t);
 
-/* An actor on a CONNECT screen drawn as two textured triangles, turned by
- * its screen swing (unk143C/unk1454 per screen k); the centre goes to
- * unk1478/unk1484 for Psp_DrawSwingFrame.
- * FAKEMATCH: q01/q30/q31 point at p[0][1], p[3][0] and p[3][1] only so
- * that those three addresses are declared values. The address of a p
- * element that is stored and read back is one value across the calls; the
- * game keeps these three in saved registers and rematerialises the others,
- * as MWCC does when they have one reference more or are numbered first
- * (a duplicate store to each also gives it, at 3 extra words). The natural
- * form behind it is not known. */
-void Psp_DrawSwingActor(PspActor *a, s32 k) {
-    PspTri t[2];
-    f32 p[4][3];
-    PspPart *pt;
-    s16 px;
-    s16 py;
-    s16 w;
-    s16 h;
-    s16 cy;
-    s16 cx;
-    f32 hw;
-    u16 r;
+/*
+ * Draws an icon screen's actor as two textured triangles, turned by icon
+ * k's swing (swingAmp, swingPhase); its centre goes to centerX/centerY
+ * for Psp_DrawSwingFrame.
+ * FAKEMATCH: corner0Y, corner3X and corner3Y point at corners[0][1],
+ * corners[3][0] and corners[3][1] only so that those three addresses are
+ * declared values. The address of an element that is stored and read back
+ * is one value across the calls; the game keeps these three in saved
+ * registers and rematerialises the others, as MWCC does when they have one
+ * reference more or are numbered first (a duplicate store to each also
+ * gives it, at 3 extra words). The natural form behind it is not known.
+ */
+void Psp_DrawSwingActor(PspActor *actor, s32 icon)
+{
+    PspTri tris[2];
+    f32 corners[4][3];
+    PspPart *draw;
+    s16 parentX;
+    s16 parentY;
+    s16 width;
+    s16 height;
+    s16 centreY;
+    s16 centreX;
+    f32 halfW;
+    u16 angle;
     s32 i;
-    u32 c;
-    f32 *q01;
-    f32 *q30;
-    f32 *q31;
+    u32 tint;
+    f32 *corner0Y;
+    f32 *corner3X;
+    f32 *corner3Y;
     s16 x1;
     s16 y1;
     s16 x2;
     s16 y2;
 
-    if (a->unk0 == 0) {
+    if (actor->exists == 0) {
         return;
     }
-    if (a->unk4 == 0) {
+    if (actor->visible == 0) {
         return;
     }
-    if ((pt = (PspPart *)a->unk58) == NULL) {
+    if ((draw = actor->part) == NULL) {
         return;
     }
-    px = py = 0;
-    if (a->unk5C != 0 && a->unk60 != NULL) {
-        px = ((PspActor *)a->unk60)->unk30;
-        py = ((PspActor *)a->unk60)->unk34;
+    parentX = parentY = 0;
+    if (actor->relative != 0 && actor->parent != NULL) {
+        parentX = actor->parent->x;
+        parentY = actor->parent->y;
     }
-    w = a->unk40 * a->unk4C;
-    h = a->unk42 * a->unk50;
+    width = actor->w * actor->scaleX;
+    height = actor->h * actor->scaleY;
     Gfx_SetBlend(4, 5);
-    if (gPspWork->unk100[pt->tex] == 0) {
+    if (gPspWork->tex[draw->tex] == 0) {
         return;
     }
-    Tex_Prepare(1, pt->tex + 0xA3);
-    Tex_Bind(pt->tex + 0xA3);
-    if (pt->blend == 0) {
-        Gs_SetState(0x63, 0x10000);
+    Tex_Prepare(1, draw->tex + PSP_TEX_FIRST);
+    Tex_Bind(draw->tex + PSP_TEX_FIRST);
+    if (draw->blend == 0) {
+        Gs_SetState(RS_TEX_FILTER, 0x10000);
     } else {
-        Gs_SetState(0x63, 0);
+        Gs_SetState(RS_TEX_FILTER, 0);
     }
-    cx = w / 2 + (px + (s16)a->unk30);
-    cy = py + (s16)a->unk34;
-    gPspWork->unk1478[k] = cx;
-    gPspWork->unk1484[k] = cy;
-    hw = w / 2.0f;
-    q01 = &p[0][1];
-    q30 = &p[3][0];
-    q31 = &p[3][1];
-    p[0][0] = -hw;
-    *q01 = 0.0f;
-    p[0][2] = 0.0f;
-    p[1][0] = -hw;
-    p[1][1] = h;
-    p[1][2] = 0.0f;
-    p[2][0] = hw;
-    p[2][1] = 0.0f;
-    p[2][2] = 0.0f;
-    *q30 = hw;
-    *q31 = h;
-    p[3][2] = 0.0f;
-    r = gPspWork->unk143C[k] * Math_Sin(6.2831855f * gPspWork->unk1454[k] / 65536.0f);
+    centreX = width / 2 + (parentX + (s16)actor->x);
+    centreY = parentY + (s16)actor->y;
+    gPspWork->centerX[icon] = centreX;
+    gPspWork->centerY[icon] = centreY;
+    halfW = width / 2.0f;
+    corner0Y = &corners[0][1];
+    corner3X = &corners[3][0];
+    corner3Y = &corners[3][1];
+    corners[0][0] = -halfW;
+    *corner0Y = 0.0f;
+    corners[0][2] = 0.0f;
+    corners[1][0] = -halfW;
+    corners[1][1] = height;
+    corners[1][2] = 0.0f;
+    corners[2][0] = halfW;
+    corners[2][1] = 0.0f;
+    corners[2][2] = 0.0f;
+    *corner3X = halfW;
+    *corner3Y = height;
+    corners[3][2] = 0.0f;
+    angle = gPspWork->swingAmp[icon] * Math_Sin(6.2831855f * gPspWork->swingPhase[icon] / 65536.0f);
     for (i = 0; i < 4; i++) {
-        Vec_RotateZ(p[i], 6.2831855f * r / 65536.0f);
+        Vec_RotateZ(corners[i], 6.2831855f * angle / 65536.0f);
     }
-    if (a->unk54 == 0) {
-        c = pt->color;
+    if (actor->dim == 0) {
+        tint = draw->color;
     } else {
-        c = pt->color;
-        c = ((c & 0xFF) >> 1 & 0xFF) | (((c & 0xFF00) >> 1 & 0xFF00) | ((c & 0xFF000000) | ((c & 0xFF0000) >> 1 & 0xFF0000)));
+        tint = draw->color;
+        tint = ((tint & 0xFF) >> 1 & 0xFF) | (((tint & 0xFF00) >> 1 & 0xFF00) | ((tint & 0xFF000000) | ((tint & 0xFF0000) >> 1 & 0xFF0000)));
     }
-    t[0].color = c;
-    t[1].color = c;
-    t[0].x0 = cx + (s16)p[0][0];
-    t[0].y0 = cy + (s16)*q01;
-    t[0].x1 = x1 = cx + (s16)p[1][0];
-    t[0].y1 = y1 = cy + (s16)p[1][1];
-    t[0].x2 = x2 = cx + (s16)p[2][0];
-    t[0].y2 = y2 = cy + (s16)p[2][1];
-    t[0].u0 = pt->u;
-    t[0].v0 = pt->v;
-    t[0].u1 = pt->u;
-    t[0].v1 = pt->v + pt->vh - 1;
-    t[0].u2 = pt->u + pt->uw - 1;
-    t[0].v2 = pt->v;
-    t[1].x0 = x1;
-    t[1].y0 = y1;
-    t[1].x1 = x2;
-    t[1].y1 = y2;
-    t[1].x2 = cx + (s16)*q30;
-    t[1].y2 = cy + (s16)*q31;
-    t[1].u0 = pt->u;
-    t[1].v0 = pt->v + pt->vh - 1;
-    t[1].u1 = pt->u + pt->uw - 1;
-    t[1].v1 = pt->v;
-    t[1].u2 = pt->u + pt->uw - 1;
-    t[1].v2 = pt->v + pt->vh - 1;
-    Prim_DrawTexTri((struct PrimTexTri *)&t[0]);
-    Prim_DrawTexTri((struct PrimTexTri *)&t[1]);
+    tris[0].color = tint;
+    tris[1].color = tint;
+    tris[0].x0 = centreX + (s16)corners[0][0];
+    tris[0].y0 = centreY + (s16)*corner0Y;
+    tris[0].x1 = x1 = centreX + (s16)corners[1][0];
+    tris[0].y1 = y1 = centreY + (s16)corners[1][1];
+    tris[0].x2 = x2 = centreX + (s16)corners[2][0];
+    tris[0].y2 = y2 = centreY + (s16)corners[2][1];
+    tris[0].u0 = draw->u;
+    tris[0].v0 = draw->v;
+    tris[0].u1 = draw->u;
+    tris[0].v1 = draw->v + draw->vh - 1;
+    tris[0].u2 = draw->u + draw->uw - 1;
+    tris[0].v2 = draw->v;
+    tris[1].x0 = x1;
+    tris[1].y0 = y1;
+    tris[1].x1 = x2;
+    tris[1].y1 = y2;
+    tris[1].x2 = centreX + (s16)*corner3X;
+    tris[1].y2 = centreY + (s16)*corner3Y;
+    tris[1].u0 = draw->u;
+    tris[1].v0 = draw->v + draw->vh - 1;
+    tris[1].u1 = draw->u + draw->uw - 1;
+    tris[1].v1 = draw->v;
+    tris[1].u2 = draw->u + draw->uw - 1;
+    tris[1].v2 = draw->v + draw->vh - 1;
+    Prim_DrawTexTri((struct PrimTexTri *)&tris[0]);
+    Prim_DrawTexTri((struct PrimTexTri *)&tris[1]);
 }
 
-/* A frame on CONNECT screen k (texture 0xAF, rectangle gPspFrameRects[unk8])
- * drawn as two triangles turned by the screen's swing around the centre
- * Psp_DrawSwingActor left in unk1478/unk1484; dimmed unless unk8 is the
- * selected kind.
- * FAKEMATCH: q01/q30/q31 point at p[0][1], p[3][0] and p[3][1], as in
- * Psp_DrawSwingActor (the game keeps those three addresses in saved
- * registers); the natural form is not known. The empty range check of k
- * between the two centre reads is not contrived: it is a compiled-out
- * check (docs/mwcc-matching.md, "Statements scheduled as if a check were still
- * there"). It splits the tail into blocks, so MWCC reuses the k * 2 it
- * made before the rotation loop (s0) for both reads, as the game does. */
-void Psp_DrawSwingFrame(PspActor *a, s32 k) {
+/*
+ * Draws the frame of icon screen k (texture 0xAF, its rectangle
+ * gPspFrameRects[kind]) as two triangles turned by the screen's swing
+ * around the centre Psp_DrawSwingActor left in centerX/centerY; dimmed
+ * unless kind is the chosen icon's.
+ * FAKEMATCH: corner0Y, corner3X and corner3Y point at corners[0][1],
+ * corners[3][0] and corners[3][1], as in Psp_DrawSwingActor (the game keeps
+ * those three addresses in saved registers); the natural form is not
+ * known. The empty range check of k between the two centre reads is a
+ * compiled-out check (docs/mwcc-matching.md, "Statements scheduled as if a
+ * check were still there"): it splits the tail into blocks, so MWCC reuses
+ * the k * 2 it made before the rotation loop for both reads, as the game
+ * does.
+ */
+void Psp_DrawSwingFrame(PspActor *actor, s32 icon)
+{
     s32 i;
-    PspTri t[2];
-    f32 p[4][3];
-    s16 *rec;
-    u32 c;
-    s16 h;
-    s16 cx;
-    s16 cy;
-    s16 u;
-    s16 v;
-    s16 u2;
-    s16 v2;
+    PspTri tris[2];
+    f32 corners[4][3];
+    s16 *frameRect;
+    u32 tint;
+    s16 height;
+    s16 centreX;
+    s16 centreY;
+    s16 texU;
+    s16 texV;
+    s16 uEnd;
+    s16 vEnd;
     s16 x1;
     s16 y1;
     s16 x2;
     s16 y2;
-    f32 hw;
-    u16 r;
-    s16 w;
-    f32 *q01;
-    f32 *q30;
-    f32 *q31;
+    f32 halfW;
+    u16 angle;
+    s16 width;
+    f32 *corner0Y;
+    f32 *corner3X;
+    f32 *corner3Y;
 
-    if (a->unk0 == 0) {
+    if (actor->exists == 0) {
         return;
     }
-    if (a->unk4 == 0) {
+    if (actor->visible == 0) {
         return;
     }
-    rec = (s16 *)&gPspFrameRects[a->unk8 * 2];
-    w = rec[2] * a->unk4C;
-    h = rec[3] * a->unk4C;
+    frameRect = gPspFrameRects[actor->kind];
+    width = frameRect[2] * actor->scaleX;
+    height = frameRect[3] * actor->scaleX;
     Gfx_SetBlend(4, 5);
-    if (gPspWork->unk100[12] == 0) {
+    if (gPspWork->tex[12] == 0) {
         return;
     }
     Tex_Prepare(1, 0xAF);
     Tex_Bind(0xAF);
-    Gs_SetState(0x63, 0);
-    c = gPspFrameColors[a->unk8];
-    if (a->unk8 != ((s8 *)gPspMarkKind)[gPspWork->unkE4]) {
-        c = ((c & 0xFF) >> 1 & 0xFF) | (((c & 0xFF00) >> 1 & 0xFF00) | ((c & 0xFF000000) | ((c & 0xFF0000) >> 1 & 0xFF0000)));
+    Gs_SetState(RS_TEX_FILTER, 0);
+    tint = gPspFrameColors[actor->kind];
+    if (actor->kind != gPspMarkKind[gPspWork->cursorIcon]) {
+        tint = ((tint & 0xFF) >> 1 & 0xFF) | (((tint & 0xFF00) >> 1 & 0xFF00) | ((tint & 0xFF000000) | ((tint & 0xFF0000) >> 1 & 0xFF0000)));
     }
-    hw = w / 2.0f;
-    q01 = &p[0][1];
-    q30 = &p[3][0];
-    q31 = &p[3][1];
-    p[0][0] = -hw;
-    p[0][1] = 30.0f;
-    p[0][2] = 0.0f;
-    p[1][0] = -hw;
-    p[1][1] = 30.0f + h;
-    p[1][2] = 0.0f;
-    p[2][0] = hw;
-    p[2][1] = 30.0f;
-    p[2][2] = 0.0f;
-    p[3][0] = hw;
-    p[3][1] = 30.0f + h;
-    p[3][2] = 0.0f;
-    r = gPspWork->unk143C[k] * Math_Sin(6.2831855f * gPspWork->unk1454[k] / 65536.0f);
+    halfW = width / 2.0f;
+    corner0Y = &corners[0][1];
+    corner3X = &corners[3][0];
+    corner3Y = &corners[3][1];
+    corners[0][0] = -halfW;
+    corners[0][1] = 30.0f;
+    corners[0][2] = 0.0f;
+    corners[1][0] = -halfW;
+    corners[1][1] = 30.0f + height;
+    corners[1][2] = 0.0f;
+    corners[2][0] = halfW;
+    corners[2][1] = 30.0f;
+    corners[2][2] = 0.0f;
+    corners[3][0] = halfW;
+    corners[3][1] = 30.0f + height;
+    corners[3][2] = 0.0f;
+    angle = gPspWork->swingAmp[icon] * Math_Sin(6.2831855f * gPspWork->swingPhase[icon] / 65536.0f);
     for (i = 0; i < 4; i++) {
-        Vec_RotateZ(p[i], 6.2831855f * r / 65536.0f);
+        Vec_RotateZ(corners[i], 6.2831855f * angle / 65536.0f);
     }
-    t[0].color = c;
-    t[1].color = c;
-    u = rec[0];
-    u2 = u + rec[2] - 1;
-    v = rec[1];
-    v2 = v + rec[3] - 1;
-    cy = gPspWork->unk1484[k];
-    if (k < 0 || k >= 6) { /* compiled-out check */
+    tris[0].color = tint;
+    tris[1].color = tint;
+    texU = frameRect[0];
+    uEnd = texU + frameRect[2] - 1;
+    texV = frameRect[1];
+    vEnd = texV + frameRect[3] - 1;
+    centreY = gPspWork->centerY[icon];
+    if (icon < 0 || icon >= 6) { /* compiled-out check */
     }
-    cx = gPspWork->unk1478[k];
-    t[0].x0 = cx + (s16)p[0][0];
-    t[0].y0 = cy + (s16)*q01;
-    t[0].x1 = x1 = cx + (s16)p[1][0];
-    t[0].y1 = y1 = cy + (s16)p[1][1];
-    t[0].x2 = x2 = cx + (s16)p[2][0];
-    t[0].y2 = y2 = cy + (s16)p[2][1];
-    t[0].u0 = u;
-    t[0].v0 = v;
-    t[0].u1 = u;
-    t[0].v1 = v2;
-    t[0].u2 = u2;
-    t[0].v2 = v;
-    t[1].x0 = x1;
-    t[1].y0 = y1;
-    t[1].x1 = x2;
-    t[1].y1 = y2;
-    t[1].x2 = cx + (s16)*q30;
-    t[1].y2 = cy + (s16)*q31;
-    t[1].u0 = u;
-    t[1].v0 = v2;
-    t[1].u1 = u2;
-    t[1].v1 = v;
-    t[1].u2 = u2;
-    t[1].v2 = v2;
-    Prim_DrawTexTri((struct PrimTexTri *)&t[0]);
-    Prim_DrawTexTri((struct PrimTexTri *)&t[1]);
+    centreX = gPspWork->centerX[icon];
+    tris[0].x0 = centreX + (s16)corners[0][0];
+    tris[0].y0 = centreY + (s16)*corner0Y;
+    tris[0].x1 = x1 = centreX + (s16)corners[1][0];
+    tris[0].y1 = y1 = centreY + (s16)corners[1][1];
+    tris[0].x2 = x2 = centreX + (s16)corners[2][0];
+    tris[0].y2 = y2 = centreY + (s16)corners[2][1];
+    tris[0].u0 = texU;
+    tris[0].v0 = texV;
+    tris[0].u1 = texU;
+    tris[0].v1 = vEnd;
+    tris[0].u2 = uEnd;
+    tris[0].v2 = texV;
+    tris[1].x0 = x1;
+    tris[1].y0 = y1;
+    tris[1].x1 = x2;
+    tris[1].y1 = y2;
+    tris[1].x2 = centreX + (s16)*corner3X;
+    tris[1].y2 = centreY + (s16)*corner3Y;
+    tris[1].u0 = texU;
+    tris[1].v0 = vEnd;
+    tris[1].u1 = uEnd;
+    tris[1].v1 = texV;
+    tris[1].u2 = uEnd;
+    tris[1].v2 = vEnd;
+    Prim_DrawTexTri((struct PrimTexTri *)&tris[0]);
+    Prim_DrawTexTri((struct PrimTexTri *)&tris[1]);
 }
 
-void Psp_DrawBackground(void) {
+/*
+ * Draws the background picture (the link's second file) over the whole
+ * screen.
+ */
+void Psp_DrawBackground(void)
+{
     Sprite spr;
 
-    if (gPspWork->unk100[1] != 0) {
+    if (gPspWork->tex[1] != 0) {
         Gfx_SetBlend(4, 5);
         Tex_Prepare(1, 0xA4);
         Tex_Bind(0xA4);
-        Gs_SetState(0x63, 0);
+        Gs_SetState(RS_TEX_FILTER, 0);
         spr.x = 0;
         spr.y = 0;
         spr.w = 0x280;
@@ -2111,14 +2088,20 @@ void Psp_DrawSwingFrame(PspActor *a, s32 k);
 void Psp_DrawObject(PspObj *o);
 void Sel_DrawHeader(s16);
 
-void Psp_Draw(void) {
-    PspView **v;
-    PspObj *o;
+/*
+ * Draws the frame: the listed actors (the odd 9-19 as swing frames, the
+ * even 8-18 as swing actors, the rest plain), the active objects, the
+ * header when there is one, then the background.
+ */
+void Psp_Draw(void)
+{
+    PspActor **entry;
+    PspObj *obj;
     s32 i;
 
     Gs_SetState(0x6C, 0);
-    for (i = 0, v = gPspWork->unkDBC; i < 0x20; i++, v++) {
-        if (*v != NULL) {
+    for (i = 0, entry = gPspWork->drawList; i < PSP_ACTOR_COUNT; i++, entry++) {
+        if (*entry != NULL) {
             switch (i) {
             case 9:
             case 11:
@@ -2126,7 +2109,7 @@ void Psp_Draw(void) {
             case 15:
             case 17:
             case 19:
-                Psp_DrawSwingFrame((PspActor *)*v, (i - 9) / 2);
+                Psp_DrawSwingFrame(*entry, (i - 9) / 2);
                 break;
             case 8:
             case 10:
@@ -2134,21 +2117,21 @@ void Psp_Draw(void) {
             case 14:
             case 16:
             case 18:
-                Psp_DrawSwingActor((PspActor *)*v, (i - 8) / 2);
+                Psp_DrawSwingActor(*entry, (i - 8) / 2);
                 break;
             default:
-                Psp_DrawActor((PspActor *)*v);
+                Psp_DrawActor(*entry);
                 break;
             }
         }
     }
-    for (i = 0, o = gPspWork->objs; i < 0x20; i++, o++) {
-        if (o->active != 0) {
-            Psp_DrawObject(o);
+    for (i = 0, obj = gPspWork->objs; i < PSP_OBJ_COUNT; i++, obj++) {
+        if (obj->active != 0) {
+            Psp_DrawObject(obj);
         }
     }
-    if (gPspWork->unk54 != 0) {
-        Sel_DrawHeader(gPspWork->unk54);
+    if (gPspWork->headerKind != 0) {
+        Sel_DrawHeader(gPspWork->headerKind);
     }
     Psp_DrawBackground();
     Gs_SetState(0x6C, 1);
@@ -2169,310 +2152,319 @@ void Font_SetPal(s32);
 void Text_Printf(const char *fmt, ...);
 void Text_PrintfColored(const char *fmt, ...);
 s32 Font_GetPage(void);
-void Text_DrawBoxes(s32);
+void Text_DrawIcons(s32);
 void Font_DrawAllPages(void);
 
-/* The CONNECT screen's texts: the found item's message (gPspValueNames) and
- * the lines of the current step (gPspStepTexts[unk58]), "%a"/"%b" lines
- * replaced by the centred gPspPromptTexts prompts, "%r" drawn as a button.
- * The three loops are copies that differ in where the position is set
- * (the centred cases share one marking loop through a goto).
- * What gave the game's registers: `s = buf;` inside each loop (the
- * out-of-line preheader with buf hoisted), no guards around the loops, the
- * position tables as s16 pairs (gPspStepTextPos + 2 as its own base), the width
- * as `w = Str_Length(..); w = (640.0f - 10.0f * w) / 2.0f;` (w reused as the
- * x), lines loaded before x and y, Hud_DrawButtonIcon's s16 x, y, and
- * an early return when there are no lines (the branch goes to the epilogue).
- * FAKEMATCH: the dead `lines = NULL;` after the help text's lookup (found by
- * the permuter as `lines++; lines--;`) gives lines a web there, which puts
- * lines in s4 and q in s3 in the second and third loops as in the game;
- * without it the two swap (22 words). */
-void Psp_DrawTexts(void) {
+/*
+ * The link's texts: the found item's message (gPspValueNames) and the lines
+ * of the current step (gPspStepTexts[textStep]); `%a` and `%b` lines are
+ * replaced by the centred gPspPromptTexts prompts, and `%r` is drawn as a
+ * button. The three loops are copies that differ in where the position is
+ * set (the centred cases share one marking loop through a goto).
+ * PSP_TEXT_CANCELLED (13) reads past gPspStepTexts and gPspStepTextPos into
+ * gPspLines and gPspLinePos, which follow them, as the game does.
+ * Forms the match needs: `str = buf;` inside each loop, no guards around
+ * the loops, the position tables as s16 pairs (gPspStepTextPos + 2 as its
+ * own base), the width as `textX = Str_Length(..); textX = (640.0f - 10.0f
+ * * textX) / 2.0f;` (reused as the x), lines loaded before x and y,
+ * Hud_DrawButtonIcon's s16 x and y, and an early return when there are no
+ * lines.
+ * FAKEMATCH: the dead `lines = NULL;` after the help text's lookup gives
+ * lines a web there, which puts lines in s4 and esc in s3 in the second and
+ * third loops as in the game; without it the two swap.
+ */
+void Psp_DrawTexts(void)
+{
     char buf[256];
     char **lines;
-    char *s;
-    char *q;
+    char *str;
+    char *esc;
     s32 x;
     s32 y;
-    char **m;
-    s32 w;
-    s8 e;
+    char **prompt;
+    s32 textX;
+    s8 icon;
     s8 kind;
 
-    if (gPspWork->unk0 == 0xB && gPspWork->unk4 == 2 && gPspWork->unk30 == 0) {
-        if (gPspWork->unkFC == 0) {
+    if (gPspWork->step == 0xB && gPspWork->subStep == 2 && gPspWork->timer == 0) {
+        if (gPspWork->hideFrames == 0) {
             WindowFrame_Draw(&gPspFrameB, 0);
         }
-        e = gPspWork->unkE4;
-        if (e != -1) {
-            kind = ((s8 *)gPspIconIndex)[e];
-            s = ((char **)gPspValueNames[kind])[gPspWork->unkD8[kind]];
+        icon = gPspWork->cursorIcon;
+        if (icon != -1) {
+            kind = gPspIconIndex[icon];
+            str = ((char **)gPspValueNames[kind])[gPspWork->iconEntry[kind]];
         } else {
-            s = ((char **)gPspStepTexts[11])[0];
+            str = ((char **)gPspStepTexts[11])[0];
         }
         lines = NULL;
-        if (s != NULL) {
+        if (str != NULL) {
             Font_SetPos(0x32, 0x172);
             Font_SetSpacing(0x14, 0x14);
             Font_SetPal(0);
             Font_SetColor(0x80808080);
             for (;;) {
-                q = strchr(s, '%');
-                if (!q != 0) {
+                esc = strchr(str, '%');
+                if (!esc != 0) {
                     break;
                 }
-                if (q[1] == 'r') {
-                    Hud_DrawButtonIcon(0x19, (q - s) * 10 + 0x32, 0x172, 0x155, -1, 1.0f);
-                    q[0] = ' ';
-                    q[1] = ' ';
+                if (esc[1] == 'r') {
+                    Hud_DrawButtonIcon(0x19, (esc - str) * 10 + 0x32, 0x172, 0x155, -1, 1.0f);
+                    esc[0] = ' ';
+                    esc[1] = ' ';
                 }
             }
-            Text_PrintfColored(s);
+            Text_PrintfColored(str);
         }
     }
-    if (gPspWork->unk0 < 0xB && gPspWork->unkFC == 0) {
+    if (gPspWork->step < 0xB && gPspWork->hideFrames == 0) {
         WindowFrame_Draw(&gPspFrameA, 0);
     }
-    if (gPspWork->unk58 == 0) {
+    if (gPspWork->textStep == 0) {
         return;
     }
     Font_SetSpacing(0x14, 0x14);
     Font_SetPal(0);
     Font_SetColor(0x80808080);
-    lines = (char **)gPspStepTexts[gPspWork->unk58];
-    x = gPspStepTextPos[gPspWork->unk58][0];
-    y = gPspStepTextPos[gPspWork->unk58][1];
+    lines = (char **)gPspStepTexts[gPspWork->textStep];
+    x = gPspStepTextPos[gPspWork->textStep][0];
+    y = gPspStepTextPos[gPspWork->textStep][1];
     for (; *lines != NULL; lines++, y += 0x18) {
-        s = buf;
+        str = buf;
         strcpy(buf, *lines);
         if (buf[0] == '%' && buf[1] == 'a') {
             if (gFrameTick & 0x10) {
                 continue;
             }
-            m = (char **)gPspPromptTexts[1];
-            strcpy(buf, *m);
-            w = Str_Length(*m);
-            w = (640.0f - 10.0f * w) / 2.0f;
-            Font_SetPos(w, y);
+            prompt = (char **)gPspPromptTexts[1];
+            strcpy(buf, *prompt);
+            textX = Str_Length(*prompt);
+            textX = (640.0f - 10.0f * textX) / 2.0f;
+            Font_SetPos(textX, y);
             goto mark1;
         } else if (buf[0] == '%' && buf[1] == 'b') {
             if (gFrameTick & 0x10) {
                 continue;
             }
-            m = (char **)gPspPromptTexts[0];
-            strcpy(buf, *m);
-            w = Str_Length(*m);
-            w = (640.0f - 10.0f * w) / 2.0f;
-            Font_SetPos(w, y);
+            prompt = (char **)gPspPromptTexts[0];
+            strcpy(buf, *prompt);
+            textX = Str_Length(*prompt);
+            textX = (640.0f - 10.0f * textX) / 2.0f;
+            Font_SetPos(textX, y);
             goto mark1;
         } else if (x == -1) {
-            w = Str_Length(*lines);
-            w = (640.0f - 10.0f * w) / 2.0f;
-            Font_SetPos(w, y);
+            textX = Str_Length(*lines);
+            textX = (640.0f - 10.0f * textX) / 2.0f;
+            Font_SetPos(textX, y);
     mark1:
             for (;;) {
-                q = strchr(s, '%');
-                if (!q != 0) {
+                esc = strchr(str, '%');
+                if (!esc != 0) {
                     break;
                 }
-                if (q[1] == 'r') {
-                    Hud_DrawButtonIcon(0x19, w + (q - s) * 10, y, 0x155, -1, 1.0f);
-                    q[0] = ' ';
-                    q[1] = ' ';
+                if (esc[1] == 'r') {
+                    Hud_DrawButtonIcon(0x19, textX + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                    esc[0] = ' ';
+                    esc[1] = ' ';
                 }
             }
         } else {
             Font_SetPos(x, y);
             for (;;) {
-                q = strchr(s, '%');
-                if (!q != 0) {
+                esc = strchr(str, '%');
+                if (!esc != 0) {
                     break;
                 }
-                if (q[1] == 'r') {
-                    Hud_DrawButtonIcon(0x19, x + (q - s) * 10, y, 0x155, -1, 1.0f);
-                    q[0] = ' ';
-                    q[1] = ' ';
+                if (esc[1] == 'r') {
+                    Hud_DrawButtonIcon(0x19, x + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                    esc[0] = ' ';
+                    esc[1] = ' ';
                 }
             }
         }
-        Text_Printf(s);
+        Text_Printf(str);
     }
-    if (gPspWork->unk58 == 2 && (gFrameTick & 0x10)) {
+    if (gPspWork->textStep == 2 && (gFrameTick & 0x10)) {
         lines = (char **)gPspStepTexts[3];
         x = gPspStepTextPos[3][0];
         y = gPspStepTextPos[3][1];
         for (; *lines != NULL; lines++, y += 0x18) {
-            s = buf;
+            str = buf;
             strcpy(buf, *lines);
             if (buf[0] == '%' && buf[1] == 'a') {
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                m = (char **)gPspPromptTexts[1];
-                strcpy(buf, *m);
-                w = Str_Length(*m);
-                w = (640.0f - 10.0f * w) / 2.0f;
-                Font_SetPos(w, y);
+                prompt = (char **)gPspPromptTexts[1];
+                strcpy(buf, *prompt);
+                textX = Str_Length(*prompt);
+                textX = (640.0f - 10.0f * textX) / 2.0f;
+                Font_SetPos(textX, y);
                 goto mark2;
             } else if (buf[0] == '%' && buf[1] == 'b') {
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                m = (char **)gPspPromptTexts[0];
-                strcpy(buf, *m);
-                w = Str_Length(*m);
-                w = (640.0f - 10.0f * w) / 2.0f;
-                Font_SetPos(w, y);
+                prompt = (char **)gPspPromptTexts[0];
+                strcpy(buf, *prompt);
+                textX = Str_Length(*prompt);
+                textX = (640.0f - 10.0f * textX) / 2.0f;
+                Font_SetPos(textX, y);
                 goto mark2;
             } else if (x == -1) {
-                w = Str_Length(*lines);
-                w = (640.0f - 10.0f * w) / 2.0f;
+                textX = Str_Length(*lines);
+                textX = (640.0f - 10.0f * textX) / 2.0f;
         mark2:
                 for (;;) {
-                    q = strchr(s, '%');
-                    if (!q != 0) {
+                    esc = strchr(str, '%');
+                    if (!esc != 0) {
                         break;
                     }
-                    if (q[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, w + (q - s) * 10, y, 0x155, -1, 1.0f);
-                        q[0] = ' ';
-                        q[1] = ' ';
+                    if (esc[1] == 'r') {
+                        Hud_DrawButtonIcon(0x19, textX + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        esc[0] = ' ';
+                        esc[1] = ' ';
                     }
                 }
-                Font_SetPos(w, y);
+                Font_SetPos(textX, y);
             } else {
                 for (;;) {
-                    q = strchr(s, '%');
-                    if (!q != 0) {
+                    esc = strchr(str, '%');
+                    if (!esc != 0) {
                         break;
                     }
-                    if (q[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, x + (q - s) * 10, y, 0x155, -1, 1.0f);
-                        q[0] = ' ';
-                        q[1] = ' ';
+                    if (esc[1] == 'r') {
+                        Hud_DrawButtonIcon(0x19, x + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        esc[0] = ' ';
+                        esc[1] = ' ';
                     }
                 }
                 Font_SetPos(x, y);
             }
-            Text_Printf(s);
+            Text_Printf(str);
         }
     }
-    if (gPspWork->unk58 == 6 || gPspWork->unk58 == 2) {
+    if (gPspWork->textStep == 6 || gPspWork->textStep == 2) {
         lines = (char **)gPspLines[0];
         x = gPspLinePos[0][0];
         y = gPspLinePos[0][1];
         for (; *lines != NULL; lines++, y += 0x18) {
-            s = buf;
+            str = buf;
             strcpy(buf, *lines);
             if (buf[0] == '%' && buf[1] == 'a') {
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                m = (char **)gPspPromptTexts[1];
-                strcpy(buf, *m);
-                w = Str_Length(*m);
-                w = (640.0f - 10.0f * w) / 2.0f;
-                Font_SetPos(w, y);
+                prompt = (char **)gPspPromptTexts[1];
+                strcpy(buf, *prompt);
+                textX = Str_Length(*prompt);
+                textX = (640.0f - 10.0f * textX) / 2.0f;
+                Font_SetPos(textX, y);
                 goto mark3;
             } else if (buf[0] == '%' && buf[1] == 'b') {
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                m = (char **)gPspPromptTexts[0];
-                strcpy(buf, *m);
-                w = Str_Length(*m);
-                w = (640.0f - 10.0f * w) / 2.0f;
-                Font_SetPos(w, y);
+                prompt = (char **)gPspPromptTexts[0];
+                strcpy(buf, *prompt);
+                textX = Str_Length(*prompt);
+                textX = (640.0f - 10.0f * textX) / 2.0f;
+                Font_SetPos(textX, y);
                 goto mark3;
             } else if (x == -1) {
-                w = Str_Length(*lines);
-                w = (640.0f - 10.0f * w) / 2.0f;
-                Font_SetPos(w, y);
+                textX = Str_Length(*lines);
+                textX = (640.0f - 10.0f * textX) / 2.0f;
+                Font_SetPos(textX, y);
         mark3:
                 for (;;) {
-                    q = strchr(s, '%');
-                    if (!q != 0) {
+                    esc = strchr(str, '%');
+                    if (!esc != 0) {
                         break;
                     }
-                    if (q[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, w + (q - s) * 10, y, 0x155, -1, 1.0f);
-                        q[0] = ' ';
-                        q[1] = ' ';
+                    if (esc[1] == 'r') {
+                        Hud_DrawButtonIcon(0x19, textX + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        esc[0] = ' ';
+                        esc[1] = ' ';
                     }
                 }
             } else {
                 for (;;) {
-                    q = strchr(s, '%');
-                    if (!q != 0) {
+                    esc = strchr(str, '%');
+                    if (!esc != 0) {
                         break;
                     }
-                    if (q[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, x + (q - s) * 10, y, 0x155, -1, 1.0f);
-                        q[0] = ' ';
-                        q[1] = ' ';
+                    if (esc[1] == 'r') {
+                        Hud_DrawButtonIcon(0x19, x + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        esc[0] = ' ';
+                        esc[1] = ' ';
                     }
                 }
                 Font_SetPos(x, y);
             }
-            Text_Printf(s);
+            Text_Printf(str);
         }
     }
-    Text_DrawBoxes(Font_GetPage());
+    Text_DrawIcons(Font_GetPage());
     Font_DrawAllPages();
 }
 
 s32 sceDevctl(const char *, s32, void *, s32, void *, s32);  /* devctl */
 s32 sceOpen(void *, s32, s32);                              /* open */
-s32 sceWrite(s32, void *, s32);                              /* read */
-s32 sceRead(s32, void *, s32);                              /* write */
+s32 sceWrite(s32, void *, s32);
+s32 sceRead(s32, void *, s32);
 s32 sceClose(s32);                                           /* close */
 s32 DelayThread(s32);
 
-/* CONNECT's thread: opens the usbpspcm: device and exchanges one block. */
-void Psp_Thread(void *arg) {
+/*
+ * The link's thread (PspThreadState): idle, or one exchange (the device's
+ * path, open, send sendBuf, read recvBuf, close), done or failed;
+ * between polls it waits DelayThread(100).
+ */
+void Psp_Thread(void *arg)
+{
     for (;;) {
         switch (gPspState) {
-        case 0:
-            gPspState = 0;
-            gPspWork->unk1C = -1;
+        case PSP_THREAD_IDLE:
+            gPspState = PSP_THREAD_IDLE;
+            gPspWork->fd = -1;
             break;
-        case 1:
+        case PSP_THREAD_EXCHANGE:
             *(s32 *)gPspDevctlArg = 0;
-            if (sceDevctl(D_006D0720, 0x55504302, gPspDevctlArg, 8, gPspDevPath, 0x10) < 0) {
-                gPspState = 5;
+            if (sceDevctl(gPspDevName, PSP_DEVCTL_GET_PATH, gPspDevctlArg, 8, gPspDevPath, 0x10) < 0) {
+                gPspState = PSP_THREAD_ERROR;
                 break;
             }
-            gPspWork->unk1C = sceOpen(gPspDevPath, 3, 0);
-            if (gPspWork->unk1C < 0) {
-                gPspState = 5;
+            gPspWork->fd = sceOpen(gPspDevPath, 3, 0);
+            if (gPspWork->fd < 0) {
+                gPspState = PSP_THREAD_ERROR;
                 break;
             }
-            if (sceWrite(gPspWork->unk1C, gPspWork->unk28, 0x40) < 0) {
-                if (gPspWork->unk1C >= 0) {
-                    sceClose(gPspWork->unk1C);
+            if (sceWrite(gPspWork->fd, gPspWork->sendBuf, PSP_BUF_SIZE) < 0) {
+                if (gPspWork->fd >= 0) {
+                    sceClose(gPspWork->fd);
                 }
-                gPspState = 5;
+                gPspState = PSP_THREAD_ERROR;
                 break;
             }
-            if (sceRead(gPspWork->unk1C, gPspWork->unk24, 0x40) < 0) {
-                if (gPspWork->unk1C >= 0) {
-                    sceClose(gPspWork->unk1C);
+            if (sceRead(gPspWork->fd, gPspWork->recvBuf, PSP_BUF_SIZE) < 0) {
+                if (gPspWork->fd >= 0) {
+                    sceClose(gPspWork->fd);
                 }
-                gPspState = 5;
+                gPspState = PSP_THREAD_ERROR;
                 break;
             }
-            sceClose(gPspWork->unk1C);
-            gPspState = 2;
+            sceClose(gPspWork->fd);
+            gPspState = PSP_THREAD_DONE;
             break;
-        case 4:
-            if (gPspWork->unk1C >= 0) {
-                sceClose(gPspWork->unk1C);
+        case PSP_THREAD_CLOSE:
+            if (gPspWork->fd >= 0) {
+                sceClose(gPspWork->fd);
             }
-            gPspState = 0;
+            gPspState = PSP_THREAD_IDLE;
             break;
-        case 2:
-        case 3:
-        case 5:
+        case PSP_THREAD_DONE:
+        case PSP_THREAD_STOP:
+        case PSP_THREAD_ERROR:
             break;
         }
         DelayThread(100);
@@ -2481,7 +2473,8 @@ void Psp_Thread(void *arg) {
 
 /* Whether an item of the exchange is unlocked (event flags; the sets are
  * unlocked when one of their items is). */
-s32 Psp_IsItemUnlocked(u16 id) {
+s32 Psp_IsItemUnlocked(u16 id)
+{
     switch (id) {
     case 0xA:
         if (Save_TestEventFlag(0x12) == 1) {

@@ -14,7 +14,7 @@ Recipe *Combine_FindRecipe3(s32, s32, s32); /* unit's own declaration: the K&R d
 s32 Recipe_CanUse(Player *player, Recipe *r);
 s32 Gs_SetState(u8 reg, u32 v);
 extern u8 gLightSets;
-s32 SaveFlag_Test(s32 n);
+s32 Save_HasTitle(s32 n);
 s32 Recipe_MatchesFlags(Recipe *o, s32 flags);
 s32 Award_Grant(s32 n);
 /* end of prototypes */
@@ -227,7 +227,7 @@ s16 Combine_Do3(u8 *count, Player *player, s32 a, s32 b, s32 c, s32 mode)
     result = (s8)Combine_RecipeRate3(a, b, c, mode);
     if ((u16)Rand_Next(1) % 100 < result) {
         result = ((Recipe *)r)->result;
-        if (Player_HasSkill(player, 0xAA) == 1) {
+        if (Player_HasSkill(player, SKILL_COMBINE_AMMO_FIXED) == 1) {
             *count = gRecipeYieldBase[((Recipe *)r)->yieldClass];
         } else {
             r = gRecipeYieldChances[((Recipe *)r)->yieldClass];
@@ -320,7 +320,7 @@ s32 Recipe_CheckAllKnown(void)
     s32 i;
     u16 n;
 
-    if (SaveFlag_Test(0x20) == 1) {
+    if (Save_HasTitle(0x20) == 1) {
         return 0;
     }
     n = 0;
@@ -706,7 +706,7 @@ void Light_InitAll(s32 unused0)
          * out (docs/mwcc-matching.md, "Statements scheduled as if a check were still there"): it
          * loads gSceneArea before the pos stores, as the original does; a one-term test, a
          * (void) read or a local read first leave the load after them. */
-        if (gSceneArea != 0 && gSceneArea != 0x56) { /* compiled-out check */
+        if (gSceneArea != 0 && gSceneArea != AREA_HOUSE) { /* compiled-out check */
         }
         l->pos[0] = 0.0f;
         l->pos[1] = 0.0f;
@@ -808,7 +808,7 @@ void LightSet_UpdateFade(LightSet *set)
 
 extern f32 gLightFixedAmbs[3][4];
 
-/* Sets the ambient colours of the three lights of light set n (gLightSets) for object o: in areas 0x1E,
+/* Sets the ambient colours of the three lights of light set n (gLightSets) for object o: in AREA_FORTRESS_2,
  * 0x1C, 0xE, 0xD and 0xC the fixed gLightFixedAmbs ones while o[0x597] is set, else o's own (+0x664, the
  * first two lights) or the area's (Light_SetDefault). */
 void LightSet_SetAmbient(void *obj, s32 n)
@@ -823,11 +823,11 @@ void LightSet_SetAmbient(void *obj, s32 n)
     for (i = 0; i < 3; i++) {
         l = (Light *)(p + i * 0x68 + 8);
         switch (gScene.area) {
-        case 0xC:
+        case AREA_FORTRESS_5:
         case 0xD:
-        case 0xE:
-        case 0x1C:
-        case 0x1E:
+        case AREA_FORTRESS_1:
+        case AREA_FORTRESS_3:
+        case AREA_FORTRESS_2:
             if (o[0x597] != 0) {
                 l->amb[0] = gLightFixedAmbs[i][0];
                 l->amb[1] = gLightFixedAmbs[i][1];
@@ -869,7 +869,7 @@ void LightSet_Apply(s32 a)
     Gs_SetState(1, 1);
 }
 
-void Player_ClearUnk540(Player *p)
+void Player_ClearLightColors(Player *p)
 {
     *(s32 *)((u8 *)p + 0x540) = 0;
     *(s32 *)((u8 *)p + 0x544) = 0;

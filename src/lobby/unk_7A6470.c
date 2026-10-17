@@ -12,6 +12,7 @@
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "lobby_npc.h"
+#include "area.h"
 void *memset(void *, s32, u32);
 
 void Bgm_ForgetCurrent(void);
@@ -41,23 +42,23 @@ void Effect17_SpawnArea(s32);
 void Town_AreaEffects(u16 area)
 {
     switch (area) {
-    case 0xAC:
+    case AREA_HUB_0xAC:
         if (Save_TestEventFlag(0x89) == 0) {
             Effect06_Start(0);
         }
         break;
-    case 0x57:
+    case AREA_HUB_0x57:
         if (Save_TestEventFlag(0x8A) == 0) {
             Effect06_Start(0);
         }
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         if ((MyHouse_IsOwner() == 1) && (Save_TestEventFlag(0xB3) == 0)) {
             LobbyProp_Spawn();
             Save_SetEventFlag(0xB3);
         }
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         if ((MyHouse_IsOwner() == 1) && (Save_TestEventFlag(0xB4) == 0)) {
             LobbyProp_Spawn();
             Save_SetEventFlag(0xB4);
@@ -77,7 +78,7 @@ void Town_StartAreaMusic(s32 mode)
 
     played = 0;
     Bgm_ForgetCurrent();
-    if (gScene.area == 0x87) {
+    if (gScene.area == AREA_HUB_0x87) {
         if (gTownMode == 0) {
             season = LobbyWorld_GetSeason() & 0xFF;
             SeasonBanner_CreateOnline(season, LobbyTime_IsPm() & 0xFF);
@@ -178,11 +179,11 @@ u8 Town_EnterArea(u16 area, s32 v)
     u8 c;
     Player *p;
 
-    if (gScene.area == 0x57) {
-        if (gPlayers[gScene.localPlayer].nextArea == 0x56) {
+    if (gScene.area == AREA_HUB_0x57) {
+        if (gPlayers[gScene.localPlayer].nextArea == AREA_HOUSE) {
             same = 1;
         }
-    } else if (gScene.area == 0x56 && gPlayers[gScene.localPlayer].nextArea == 0x57) {
+    } else if (gScene.area == AREA_HOUSE && gPlayers[gScene.localPlayer].nextArea == AREA_HUB_0x57) {
         same = 1;
     }
     me->area = area;
@@ -199,8 +200,8 @@ u8 Town_EnterArea(u16 area, s32 v)
                 Anim_LoadCommon(2);
             } else {
                 switch (area) {
-                case 0x57:
-                case 0x56:
+                case AREA_HUB_0x57:
+                case AREA_HOUSE:
                     Anim_LoadCommon(3);
                     break;
                 default:
@@ -316,7 +317,7 @@ void Town_SpawnNpcs(u16 area)
         }
     }
     if (Game_IsOnline() == 0 && Area_IsHouse(gScene.area) == 1) {
-        k = Area_GetSetIndex(0x89);
+        k = Area_GetSetIndex(AREA_HUB_0x89);
         ent = gAreaNpcTables[k];
         if (ent == NULL) {
             return;
@@ -330,7 +331,7 @@ void Town_SpawnNpcs(u16 area)
                     e->modelSlot = 0;
                     e->index = j;
                     e->area = gScene.area;
-                    Npc_SetupFromArea((Em *)((u8 *) e), 0, 0x89);
+                    Npc_SetupFromArea((Em *)((u8 *) e), 0, AREA_HUB_0x89);
                 }
                 break;
             }
@@ -354,21 +355,21 @@ void Town_FreeArea(void)
     if (Area_HasTownPcs(gScene.area) == 1) {
         Notice_ResetQueue();
     }
-    if (gScene.area == 0x57) {
+    if (gScene.area == AREA_HUB_0x57) {
         switch (gPlayers[gScene.localPlayer].nextArea) {
-        case 0x56:
+        case AREA_HOUSE:
             return;
-        case 0x89:
+        case AREA_HUB_0x89:
             Motion_FreeCommon();
             gLobby->areaLoaded = 0;
             break;
         }
-    } else if (gScene.area == 0x56) {
-        if (gPlayers[gScene.localPlayer].nextArea == 0x57) {
+    } else if (gScene.area == AREA_HOUSE) {
+        if (gPlayers[gScene.localPlayer].nextArea == AREA_HUB_0x57) {
             return;
         }
-    } else if (gScene.area == 0x89) {
-        if (gPlayers[gScene.localPlayer].nextArea == 0x57) {
+    } else if (gScene.area == AREA_HUB_0x89) {
+        if (gPlayers[gScene.localPlayer].nextArea == AREA_HUB_0x57) {
             Motion_FreeCommon();
             gLobby->areaLoaded = 0;
         }

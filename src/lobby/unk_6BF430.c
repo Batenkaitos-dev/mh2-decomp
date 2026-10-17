@@ -61,11 +61,11 @@ s32 WeaponForge_CheckWeapon(s32 kind, s32 id)
     switch (kind) {
     case 6:
         b = &gBladeData[id];
-        c = b->unk14;
+        c = b->forgeCond;
         break;
     case 7:
         g = &gGunData[id];
-        c = g->unk13;
+        c = g->forgeCond;
         break;
     }
     return Forge_CheckCondition(c);

@@ -593,6 +593,7 @@ QuestRecord_Fill = 0x0018D770; // type:func
 QuestRecord_Count = 0x0018D900; // type:func
 gRateGroups = 0x001BB2A0; // size:0xDC
 gRateListsInit = 0x001BB380; // size:0x50
+gQuestGroupLastIds = 0x001BB3D0; // size:0x20 the last quest id of each group of quest ids, 0 ends the list (Quest_Init picks the group of gStageFileTbls, the lobby Quest_GetDiscInfo the group of gGuildQuestLists)
 
 // Sound helpers (src/main/unk_194830.c): flat SE at the SE volume setting (0x6ADFC7), random picks, player and monster SE (round 13)
 Sound_PlaySeFlat = 0x00194830; // type:func
@@ -931,13 +932,14 @@ gRsLights = 0x0020CBD0; // size:0x138 the render state lights (RsLight, Gs_SetSt
 gClutCsm1Order = 0x001BA150; // size:0x20 per palette index in a block of 32 its CSM1 position, 8-15 and 16-23 swapped (Tex_ConvertPixels)
 gSwizzle4BlockOrder = 0x001BA270; // size:0x80 the block order of a PSMT4 page (Tex_Swizzle4Block)
 gSwizzle8BlockOrder = 0x001BA2F0; // size:0x80 the block order of a PSMT8 page (Tex_Swizzle8Block)
-gTeamItemBits = 0x001BB3F0; // size:0x50 per item (0 ends) a value and the team bits (Versus_Init for Versus_ApplyTeamBits, the lobby ArenaFeed_Open and ArenaFeed_LoadPage), inside the C object D_001BB3D0, size to its end
+gTeamItemBits = 0x001BB3F0; // size:0x50 per item (0 ends) a value and the team bits (Versus_Init for Versus_ApplyTeamBits, the lobby ArenaFeed_Open and ArenaFeed_LoadPage)
 gGsFba = 0x001E8B70; // size:0x4 the FBA register value Gs_ClearFrame puts back into FBA_1 and FBA_2 (its packet, beside gGsTest1 and gGsZbuf1), 0 at Gs_ResetState
 gPowerOffStat = 0x00249A80; // size:0x4 PowerOff_Thread, the hdd devctl 0x4807 result, then the status sceCdPowerOff writes
 gDebugFileFirst = 0x001BAA10; // size:0x4 Debug_Printf, 1 until the debug file has been created
 gClearColorPacket = 0x001BAA20; // size:0x80 Gs_ClearColors A+D packet (test, rgbaq, two xyz, gGsTest1 put back), sent by Prim_SendPacket
 gQuestRecordIds = 0x001BB280; // size:0x20 QuestRecord_Count, the quest ids (0 ends, 16 at most) whose clears gQuestRecord.counts counts
 gArenaGaugeUpChances = 0x001BB920; // size:0x70 Versus_UpdateRecords, by MonsterNote_Index a row set of 5 by 4 bytes (minutes trained over 30, 60, 120, 180, by gauge level), the chance in 128 that the gauge level rises, inside the C object D_001BB900, size to its end
+gPersistentEmKinds = 0x001BB9C8; // size:0x8 Quest_FindSpecialMonster, the monster kinds that keep their health and broken parts between quests, ended by 0
 gPersistentEmHp = 0x001BB9D0; // size:0x10 QuestEm_LoadPersistentHp, by Quest_FindSpecialMonster index, the hp (and hpMax) a persistent monster starts with
 gSndForwardAxis = 0x001BCC70; // size:0xC Sound_PlaySePos, the listener forward axis (0, 0, 1)
 Sys_InitCard = 0x00183C80; // type:func the memory card set up Sys_Init ends with, sceMcInit (again while it returns -0x65), then clears D_00249A10 (0x64 bytes) and two 0xC-byte records at D_002499F0

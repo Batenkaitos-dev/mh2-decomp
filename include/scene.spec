@@ -5,11 +5,11 @@ size 0x2BC
 0x000 u8 scene
 0x014 u16 area // the current area (compared with Em.unk680 and Player.unk680; Quest_SetStartArea)
 0x020 u16 frame // +1 every field update (sub_main 0x3275F0)
-0x030 u8 map // the stage map: Map_AreaIndex(map, area), Area_BaseId, Tex_LoadStageFile, the per-map tables (Quest_Init: stage data word 0)
+0x030 u8 map // the stage map: Map_AreaIndex(map, area), Map_DayId, Tex_LoadStageFile, the per-map tables (Quest_Init: stage data word 0)
 0x03E u8 playerCount // players in the quest
 0x140 ItemStack{4} supply[48] // the supply box, from the stage data (Scene_InitSupplyBox clears 48, the field draws 40, plsel counts 48)
 0x200 u32 supplyTaken[2] // one bit per supply box slot taken
-0x224 u8 inQuest[4] // per player: 1 in the quest, 0 left, 0xFF no player (NetScene_Run, QNetIf_FindHost, Player_Init)
+0x224 u8 inQuest[4] // per player: IN_QUEST_YES in the quest, IN_QUEST_LEFT left it, IN_QUEST_NO_PLAYER none (NetScene_Run, QNetIf_FindHost, Player_Init)
 0x275 u8 eventRunning // a scripted event (ScEvent_*) is running: monsters, HUD and Field_UpdateAll wait
 0x0D0 void * models[4] // model headers (0x80 bytes), copied per monster (EmSlot_SetupModel, Em +0x30F)
 0x011 u8 musicState // the BGM state machine step (unk_363550.c; the game sets 5 with musicTimer 0x96; was gSceneMusicState)
@@ -43,7 +43,7 @@ size 0x2BC
 0x028 u16 musicTimer // the BGM state machine's frame timer (unk_363550.c, compared with <= 0); the game sets 0x96 with musicState 5 (unk_70A290.c)
 0x131 u8 aimReverse // the bowgun aim reversal option: 0 none, 1 up/down, 2 up/down and left/right (Player_BowgunAim)
 0x209 u8 emEventFlags // flags: bit 0 set by Shen Gaoren and Lao-Shan, bit 1 by Fatalis; area objects test them (unk_6EC680.c, unk_6F8A10.c)
-0x20A u8 unk20A // 0 for quest 0xBBC, else 1 (AreaObj_K14_Create); the kind 0x14 object runs while set
+0x20A u8 skipFlaggedTris // set by AreaObj_K14_Create (0 in quest 0xBBC, else 1): the area collisions skip the triangles of attribute 0x4000 (their masks add 0x4000), the kind 0x14 area object runs, and EmScript op 0x60 branches on it
 0x001 u8 step // the scene's step (Scene_StartQuest, NetScene_Run, ...)
 0x00D u8 padRead // the pads are read each frame while set (Pad_Update; set by the scene start, and by the lobby)
 0x00E u8 menuOpen // the field or player menu is open (FieldMenu_Open, Plsel_OpenPlayerMenu); blocks the HUD input (Hud_InputBlocked)
@@ -76,5 +76,5 @@ size 0x2BC
 0x027 u8 camFollow // the camera follow option (option byte 3, copied with D_006A9E5A): 0 the camera swings behind the hunter (CamMode1 in unk_314E00.c)
 0x132 u8 noticeId // the last notice id, 0-0x7F (Notice_ResetQueue, the Notice_Push functions in unk_37B570.c)
 0x133 u8 bannerNotice // the notice the banner shows, 0xFF none (NoticeBanner_Spawn*, compared with gHudState dropNotice)
-0x13A s16 unk13A // compared with 0x1900-0x6400 for the quest goal kind 0xB (unk_3A1070.c)
+0x13A s16 unk13A // a health value: the rewards REWARD_HP_BELOW need it above their threshold and gQuest.savedEmHp at or below (Quest_RollRewards); no writer seen
 0x20E u16 bgmId // the BGM playing (the BGM functions in unk_363550.c)

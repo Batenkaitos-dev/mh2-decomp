@@ -42,7 +42,9 @@ typedef char MotionLayer_size_check[(sizeof(MotionLayer) == 0x50) ? 1 : -1];
  * gAnimData for the curves, gAnimCurveKeys, gAnimKeyBase or gAnimCurveBuf
  * for the keys.
  */
-#define ANIM_TYPE_MASK 0xF000           /* AnimHeader.flags: the motion file's type 1 (0x1000) or 2 (0x2000) */
+#define ANIM_TYPE_MASK 0xF000           /* AnimHeader.flags: the motion file's type, ANIM_TYPE_* */
+#define ANIM_TYPE_FLOAT 0x1000          /* type 1: the curves give the pose values as they are */
+#define ANIM_TYPE_FIXED 0x2000          /* type 2: fixed point, angles in 0x4000ths of a turn, the rest in 16ths (Anim_EvalPose) */
 
 typedef struct AnimHeader {
     u16 flags;                  /* 0x0: ANIM_TYPE_MASK; 0x8000 */
@@ -58,6 +60,7 @@ typedef struct AnimCurve {
 } AnimCurve;
 
 /* AnimCurve.type: the key format (Anim_EvalCurve's switch, Anim_ConvertKeys'). */
+#define ANIM_KEY_S16_NONE 0x10          /* read as ANIM_KEY_NONE (AnimCurve_StartTime, AnimCurve_EndTime); nothing seen sets it */
 #define ANIM_KEY_S16_LINEAR 0x11        /* KeyS2 */
 #define ANIM_KEY_S16_CUBIC 0x12         /* KeyS4 */
 #define ANIM_KEY_S16_MIXED 0x13         /* KeySM: linear or cubic per key */
@@ -78,5 +81,45 @@ typedef struct KeyFM { u32 mode; f32 v, t, in, out; } KeyFM;
 typedef struct KeyS2 { s16 v, t; } KeyS2;
 typedef struct KeyS4 { s16 v, t, in, out; } KeyS4;
 typedef struct KeySM { u32 mode; s16 v, t, in, out; } KeySM;
+
+/*
+ * An animation set (0x20 bytes): the animations of one file, converted by
+ * Anim_LoadSet (unk_2F17C0.c) into a buffer that starts with the set
+ * itself. The Anim_Setup* loaders (unk_2E3940.c) copy that block into a
+ * memory handle of its own (AnimSet_CopyToHandle): gMotions[] holds them.
+ */
+typedef struct AnimSet {
+    u16 flags;                  /* 0x00: ANIM_SET_LOOPS */
+    s16 count;                  /* 0x02: animations */
+    f32 start;                  /* 0x04: the earliest key */
+    f32 end;                    /* 0x08: the latest key */
+    f32 loop;                   /* 0x0C: the loop time */
+    s32 anims;                  /* 0x10: AnimHeader pointers, as an offset from gAnimCurveBuf */
+    s32 base;                   /* 0x14: the buffer (gAnimCurveBuf), whose first object is the set */
+    s32 size;                   /* 0x18: bytes used in the buffer */
+    u8 pad1C[4];
+} AnimSet;
+typedef char AnimSet_size_check[(sizeof(AnimSet) == 0x20) ? 1 : -1];
+
+#define ANIM_SET_LOOPS 0x8000   /* AnimSet.flags: the file gives a loop time */
+
+/*
+ * Motion ids and the table of loaded motions (gMotions, filled by the Anim_Setup*
+ * loaders of unk_2E3940.c). A motion id is set * MOTION_ID_SET + group *
+ * MOTION_GROUP_SIZE + entry: set 0 is the common set, any other the object's own
+ * (Player_SetPartAnim). gMotions holds the common set's motions, then
+ * MOTIONS_PER_PLAYER for each player slot from MOTIONS_PLAYER_FIRST, then
+ * MOTIONS_PER_EM for each monster slot from MOTIONS_EM_FIRST.
+ */
+#define MOTION_ID_SET 1000
+#define MOTION_GROUP_SIZE 100
+#define MOTIONS_COMMON_GROUPS 10
+#define MOTIONS_PLAYER_GROUPS 6
+#define MOTIONS_PLAYER_FIRST 710
+#define MOTIONS_PER_PLAYER 300
+#define MOTIONS_EM_FIRST 1910
+#define MOTIONS_PER_EM 600
+#define MOTIONS_EM_SLOTS 4
+#define MOTIONS_TOTAL (MOTIONS_EM_FIRST + MOTIONS_EM_SLOTS * MOTIONS_PER_EM) /* gMotions' entries */
 
 #endif /* MOTION_H */

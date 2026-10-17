@@ -5,7 +5,7 @@
 
 void *memset(void *dst, s32 c, u32 n);
 s32 Gs_SetState(u8, u32); /* main: flSetRenderState? */
-void Gfx_SetState63(s32 on);               /* sub_main */
+void Gfx_SetTexFilter(s32 on);               /* sub_main */
 void Prim_Sprite(Sprite *s);   /* Prim_Sprite */
 void Prim_Rect(PrimLine *r);     /* Prim_Rect */
 s32 Prim_Tri(PrimTri *); /* Prim_Tri */
@@ -71,7 +71,7 @@ void Prim_DrawSprite(u32 color, u32 tex, s16 x, s16 y, s16 w, s16 h, s16 u1, s16
     Sprite s;
 
     Gs_SetState(0x6C, 0);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Browser_SetRenderState(4, tex);
     s.color = color;
     s.x = x;
@@ -83,7 +83,7 @@ void Prim_DrawSprite(u32 color, u32 tex, s16 x, s16 y, s16 w, s16 h, s16 u1, s16
     s.u0 = u1;
     s.v0 = v1;
     Prim_Sprite(&s);
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
 }
 
 /* Html_ResetLoad */

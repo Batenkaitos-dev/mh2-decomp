@@ -1,3 +1,29 @@
+/*
+ * sub_main's menu windows, the notice window, chat and the status pages.
+ *
+ * - The menu text's tables come first (.rodata, generated from the game by
+ *   tools/content_gen.py: only their names are in this file).
+ * - The windows (window.h): WindowFrame_Draw draws a Frame in one of six
+ *   styles from the window texture; ListPanel_Draw, Window_DrawText and the
+ *   alpha variants draw a Panel, ListWin or Window with its lines; the menu
+ *   arrows, stretched sprites and the target marker follow.
+ * - Small helpers for the HUD's menus (unk_33E620.c): the combine list's
+ *   grid, the monster notes' known bits (SaveData.noteKnown), the pictures'
+ *   texture cells and the help window.
+ * - The notice window (chat_log.h's NOTICE_*): Notice_OpenText types a text
+ *   out with time and sets up its prompt or list; Notice_Draw draws it.
+ * - Chat: the software keyboard's input line (Chat_OpenInput,
+ *   Chat_SendInput, sent by gChatSendTo, CHAT_SEND_*), the act tags that
+ *   play gestures, the log ring gChat.lines and its windows; the lobby's
+ *   own log is gChatLog.
+ * - The status pages (PersonalStatus_DrawPage): the profile, the stats
+ *   compared with another set of equipment, the equipment and the skill
+ *   list (gSkillRecords).
+ * - The equipment windows (EquipWindow_*): a piece of equipment's details
+ *   page by page, its ammo, decorations and marks, previewed on the player
+ *   (Player_PreviewWith).
+ * - The file's data tables close it.
+ */
 #include "common.h"
 #include "grid.h"
 #include "window.h"
@@ -10,9 +36,15 @@
 #include "syssave.h"
 #include "save.h"
 #include "sub_main/unk_356380.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "render_state.h"
+#include "hud.h"
+#include "prim.h"
+#include "sound.h"
+#include "area.h"
 
-/* A record of the list at gSkillRecords (0x12 bytes, 0x36 of them, sorted by key, largest first). */
-typedef struct Record {
+/* A line of the status page's skill list (gSkillRecords, 0x36 of them sorted by key, largest
+ * first; gSkillCompareRecords holds the compared player's). */
+typedef struct SkillRecord {
     u16 key;                    /* 0x0 */
     u8 used;                    /* 0x2: nonzero in use; 1 highlighted, 2 a heading line */
     u8 skill;                   /* 0x3 */
@@ -20,17 +52,12 @@ typedef struct Record {
     s8 total;                   /* 0xA */
     s8 mark[6];                 /* 0xB: compared with the other player's record: 4 more points, 2 fewer */
     s8 totalMark;               /* 0x11: the same for the total */
-} Record;
+} SkillRecord;
 
-extern Record gSkillRecords[];
+extern SkillRecord gSkillRecords[];
 
 
 
-/* A filled screen rectangle (Prim_FillRect). */
-typedef struct Rect {
-    s16 x0, y0, x1, y1;
-    u32 color;
-} Rect;
 
 struct PrimLine;
 s32 Prim_FillRect(struct PrimLine *r);
@@ -47,9 +74,9 @@ s32 Chat_StripActTags(s8 *);
 void Chat_DrawLogLines(u8, s16, u8, u8);
 void Chat_DrawWindow(u8);
 void Box_Draw(s32 type, u8 idx, s32 text);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 s32 Game_IsOnline(void);
-void Player_RequestAct(u8 a);
+void Player_RequestGesture(u8 a);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 void ChatLog_ResetScroll(void);
 extern u8 gEntryPictureIndex[];
@@ -76,13 +103,11 @@ void Text_Draw(char *s);
 void Text_PrintfStyled(s32 a, const char *fmt, ...);
 void Text_PrintfColored(const char *fmt, ...);
 void Chat_FilterWords(char *s);
-void Chat_LogAdd(u8, s8 *, s8 *, u8);
+void Chat_LogAdd(u8, s8 *, ChatMsg *, u8);
 void Sprite_DrawStretch3(Sprite *src, s16 w, s16 du);
 void Menu_GridCursor(Grid *g, u16 buttons);
 s32 Recipe_IsListedFor(s16 n, s32 a);
 extern Panel gEquipWindowBox;
-extern u8 D_0043AE9F[];
-extern u8 D_0043AEA3;
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32 tex);
 extern u8 gChatLogHead;
@@ -99,9 +124,9 @@ extern u8 gChatTextSizes[];
 extern u8 gChatLines;
 extern u16 gFrameTick;
 s32 Equip_CountDecos(EquipItem *e);
-extern char D_004908A8[];
+extern char gWindowFmtString[];
 void WindowFrame_Draw(Frame *f, s16 *off);
-void StatusPage_DrawWeaponClass(u8 *p);
+void StatusPage_DrawWeaponClass(Player *pl);
 /* end of prototypes */
 
 /* A frame style of gFrameStyles (styles 0-3): tiled edges and corners from texture 0x155. */
@@ -10921,274 +10946,276 @@ char D_00490880[0x20] = {
 };
 #pragma rodata off
 
-/* Draws the window frame f, moved by off[0], off[1] when off is given. Styles 0-3: the edges
- * of gFrameStyles[style] tiled along the sides (bit 30 of f->style first shrinks the box by
- * the corners' size), then the four corners. Styles 4-5: the four corners of
- * gFrameStyles2[style - 4], each with a shadow when the style has one. Then the background:
- * a filled rectangle in f->color2 when bit 31 is set, else tiles of about 17 pixels; and for
- * styles 4-5 the four border lines. Built at optimization level 4 (at the file's level 3 it
- * is 934 of 990 words off). */
 #pragma optimization_level 4
-void WindowFrame_Draw(Frame *f, s16 *off) {
+/* Draws a window frame, moved by off[0], off[1] when off is given, from the window texture
+ * (0x155). Styles 0-3: the edges of gFrameStyles[style] tiled along the sides (FRAME_INSET
+ * first shrinks the box by the corners' size), then the four corners, each piece drawn twice
+ * (piece, and mirror flipped for the opposite side). Styles 4-5: the four corners of
+ * gFrameStyles2[style - FRAME_STYLE_CORNERS], each over a shadow when the style has one.
+ * Then the background: a rectangle in color2 with FRAME_FILL, else tiles of about 17
+ * pixels; and for styles 4-5 the four border lines between the corners. Built at
+ * optimization level 4: the file's level 3 does not give this function's code. */
+void WindowFrame_Draw(Frame *frame, s16 *off)
+{
     u8 style;
-    Rect r;
-    Rect l;
-    Sprite a;
-    Sprite b;
+    PrimLine fill;
+    PrimLine border;
+    Sprite piece;
+    Sprite mirror;
     s16 x;
-    u16 u1;
+    u16 uEnd;
     s16 y;
-    s16 w;
-    s16 h;
-    FrameStyle *s;
-    FrameStyle2 *t;
-    u32 n;
-    u32 m;
-    u16 v1;
-    f32 fx;
-    f32 fy;
+    s16 width;
+    s16 height;
+    FrameStyle *tiles;
+    FrameStyle2 *corners;
+    u32 rows;
+    u32 cols;
+    u16 vEnd;
+    f32 nextX;
+    f32 nextY;
     f32 step;
-    f32 stepx;
+    f32 stepX;
     s32 end;
-    s16 dw;
-    s16 dh;
-    s32 endy;
-    s32 endx;
+    s16 cornerDx;
+    s16 cornerDy;
+    s32 endY;
+    s32 endX;
     u32 i;
-    s16 dx;
-    s16 dy;
+    s16 lineInsetX;
+    s16 lineInsetY;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gfx_SetBlend(4, 5);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    x = f->x;
-    y = f->y;
-    w = f->w;
-    h = f->h;
+    x = frame->x;
+    y = frame->y;
+    width = frame->w;
+    height = frame->h;
     if (off != NULL) {
         x += off[0];
         y += off[1];
     }
-    style = f->style & 7;
-    if (style < 4) {
-        s = &gFrameStyles[style];
-        if (f->style & 0x40000000) {
-            x += s->cw;
-            y += s->ch;
-            w -= (s16)(s->cw + s->cw);
-            h -= (s16)(s->ch + s->ch);
+    style = frame->style & FRAME_STYLE_MASK;
+    if (style < FRAME_STYLE_CORNERS) {
+        tiles = &gFrameStyles[style];
+        if (frame->style & FRAME_INSET) {
+            x += tiles->cw;
+            y += tiles->ch;
+            width -= (s16)(tiles->cw + tiles->cw);
+            height -= (s16)(tiles->ch + tiles->ch);
         }
-        a.color = b.color = f->color;
-        a.u0 = b.u0 = s->tu;
-        a.u1 = b.u1 = s->tu + s->tw;
-        a.v0 = s->tv;
-        a.v1 = s->tv + s->th;
-        b.v0 = s->tv + s->th - 1;
-        b.v1 = s->tv - 1;
-        a.y = y - s->th;
-        b.y = y + h;
-        a.h = b.h = s->th;
-        if (s->tw > 2) {
-            i = w / s->tw;
-            if (w % s->tw > s->tw >> 1) {
+        piece.color = mirror.color = frame->color;
+        piece.u0 = mirror.u0 = tiles->tu;
+        piece.u1 = mirror.u1 = tiles->tu + tiles->tw;
+        piece.v0 = tiles->tv;
+        piece.v1 = tiles->tv + tiles->th;
+        mirror.v0 = tiles->tv + tiles->th - 1;
+        mirror.v1 = tiles->tv - 1;
+        piece.y = y - tiles->th;
+        mirror.y = y + height;
+        piece.h = mirror.h = tiles->th;
+        if (tiles->tw > 2) {
+            i = width / tiles->tw;
+            if (width % tiles->tw > tiles->tw >> 1) {
                 i++;
             }
-            fx = x;
-            step = (f32)w / i;
-            end = fx + w;
+            nextX = x;
+            step = (f32)width / i;
+            end = nextX + width;
             while (i != 0) {
                 i--;
-                a.x = b.x = fx;
-                fx = end - step * i;
-                a.w = b.w = (s16)fx - a.x;
-                Sprite_Draw(&a);
-                Sprite_Draw(&b);
+                piece.x = mirror.x = nextX;
+                nextX = end - step * i;
+                piece.w = mirror.w = (s16)nextX - piece.x;
+                Sprite_Draw(&piece);
+                Sprite_Draw(&mirror);
             }
         } else {
-            a.x = b.x = x;
-            a.w = b.w = w;
-            Sprite_Draw(&a);
-            Sprite_Draw(&b);
+            piece.x = mirror.x = x;
+            piece.w = mirror.w = width;
+            Sprite_Draw(&piece);
+            Sprite_Draw(&mirror);
         }
-        a.u0 = s->su;
-        a.u1 = s->su + s->sw;
-        b.u0 = s->su + s->sw - 1;
-        b.u1 = s->su - 1;
-        a.v0 = b.v0 = s->sv;
-        a.v1 = b.v1 = s->sv + s->sh;
-        a.x = x - s->sw;
-        b.x = x + w;
-        a.w = b.w = s->sw;
-        if (s->sh > 2) {
-            i = h / s->sh;
-            if (s->sh >> 1 < h % s->sh) {
+        piece.u0 = tiles->su;
+        piece.u1 = tiles->su + tiles->sw;
+        mirror.u0 = tiles->su + tiles->sw - 1;
+        mirror.u1 = tiles->su - 1;
+        piece.v0 = mirror.v0 = tiles->sv;
+        piece.v1 = mirror.v1 = tiles->sv + tiles->sh;
+        piece.x = x - tiles->sw;
+        mirror.x = x + width;
+        piece.w = mirror.w = tiles->sw;
+        if (tiles->sh > 2) {
+            i = height / tiles->sh;
+            if (tiles->sh >> 1 < height % tiles->sh) {
                 i++;
             }
-            fy = y;
-            step = (f32)h / i;
-            end = fy + h;
+            nextY = y;
+            step = (f32)height / i;
+            end = nextY + height;
             while (i != 0) {
                 i--;
-                a.y = b.y = fy;
-                fy = end - step * i;
-                a.h = b.h = (s16)fy - a.y;
-                Sprite_Draw(&a);
-                Sprite_Draw(&b);
+                piece.y = mirror.y = nextY;
+                nextY = end - step * i;
+                piece.h = mirror.h = (s16)nextY - piece.y;
+                Sprite_Draw(&piece);
+                Sprite_Draw(&mirror);
             }
-            h = a.y + a.h - y;
+            height = piece.y + piece.h - y;
         } else {
-            a.y = b.y = y;
-            a.h = b.h = h;
-            Sprite_Draw(&a);
-            Sprite_Draw(&b);
+            piece.y = mirror.y = y;
+            piece.h = mirror.h = height;
+            Sprite_Draw(&piece);
+            Sprite_Draw(&mirror);
         }
-        a.w = s->cw;
-        a.h = s->ch;
-        a.u0 = s->cu;
-        a.u1 = s->cu + s->cw;
-        a.v0 = s->cv;
-        a.v1 = s->cv + s->ch;
-        a.x = x - s->cw;
-        a.y = y - s->ch;
-        Sprite_Draw(&a);
-        a.u0 = s->cu + s->cw - 1;
-        a.u1 = s->cu - 1;
-        a.x = x + w;
-        Sprite_Draw(&a);
-        a.v0 = s->cv + s->ch - 1;
-        a.v1 = s->cv - 1;
-        a.y = y + h;
-        Sprite_Draw(&a);
-        a.u0 = s->cu;
-        a.u1 = s->cu + s->cw;
-        a.x = x - s->cw;
-        Sprite_Draw(&a);
+        piece.w = tiles->cw;
+        piece.h = tiles->ch;
+        piece.u0 = tiles->cu;
+        piece.u1 = tiles->cu + tiles->cw;
+        piece.v0 = tiles->cv;
+        piece.v1 = tiles->cv + tiles->ch;
+        piece.x = x - tiles->cw;
+        piece.y = y - tiles->ch;
+        Sprite_Draw(&piece);
+        piece.u0 = tiles->cu + tiles->cw - 1;
+        piece.u1 = tiles->cu - 1;
+        piece.x = x + width;
+        Sprite_Draw(&piece);
+        piece.v0 = tiles->cv + tiles->ch - 1;
+        piece.v1 = tiles->cv - 1;
+        piece.y = y + height;
+        Sprite_Draw(&piece);
+        piece.u0 = tiles->cu;
+        piece.u1 = tiles->cu + tiles->cw;
+        piece.x = x - tiles->cw;
+        Sprite_Draw(&piece);
     } else {
-        t = &gFrameStyles2[style - 4];
-        x -= t->ox;
-        y -= t->oy;
-        w += (s16)(t->ox + t->ox);
-        h += (s16)(t->oy + t->oy);
-        if (f->style & 0x40000000) {
-            x += t->ix;
-            y += t->iy;
-            w -= (s16)(t->ix + t->ix);
-            h -= (s16)(t->iy + t->iy);
+        corners = &gFrameStyles2[style - FRAME_STYLE_CORNERS];
+        x -= corners->ox;
+        y -= corners->oy;
+        width += (s16)(corners->ox + corners->ox);
+        height += (s16)(corners->oy + corners->oy);
+        if (frame->style & FRAME_INSET) {
+            x += corners->ix;
+            y += corners->iy;
+            width -= (s16)(corners->ix + corners->ix);
+            height -= (s16)(corners->iy + corners->iy);
         }
-        dw = w - (t->w - t->ix);
-        dh = h - (t->h - t->iy);
-        a.w = t->w;
-        a.h = t->h;
-        u1 = t->u + t->w;
-        v1 = t->v + t->h;
-        a.u0 = t->u;
-        a.v0 = t->v;
-        a.u1 = u1;
-        a.v1 = v1;
-        if (t->shadow != 0) {
-            a.x = t->shadow + (x - t->ix);
-            a.y = t->shadow + (y - t->iy);
-            a.color = 0xE8000000;
-            Sprite_Draw(&a);
+        cornerDx = width - (corners->w - corners->ix);
+        cornerDy = height - (corners->h - corners->iy);
+        piece.w = corners->w;
+        piece.h = corners->h;
+        uEnd = corners->u + corners->w;
+        vEnd = corners->v + corners->h;
+        piece.u0 = corners->u;
+        piece.v0 = corners->v;
+        piece.u1 = uEnd;
+        piece.v1 = vEnd;
+        if (corners->shadow != 0) {
+            piece.x = corners->shadow + (x - corners->ix);
+            piece.y = corners->shadow + (y - corners->iy);
+            piece.color = 0xE8000000;
+            Sprite_Draw(&piece);
         }
-        a.x = x - t->ix;
-        a.y = y - t->iy;
-        a.color = f->color;
-        Sprite_Draw(&a);
-        a.u0 = u1 - 1;
-        a.u1 = t->u - 1;
-        if (t->shadow != 0) {
-            a.x = t->shadow + (x + dw);
-            a.y = t->shadow + (y - t->iy);
-            a.color = 0xE8000000;
-            Sprite_Draw(&a);
+        piece.x = x - corners->ix;
+        piece.y = y - corners->iy;
+        piece.color = frame->color;
+        Sprite_Draw(&piece);
+        piece.u0 = uEnd - 1;
+        piece.u1 = corners->u - 1;
+        if (corners->shadow != 0) {
+            piece.x = corners->shadow + (x + cornerDx);
+            piece.y = corners->shadow + (y - corners->iy);
+            piece.color = 0xE8000000;
+            Sprite_Draw(&piece);
         }
-        a.x = x + dw;
-        a.y = y - t->iy;
-        a.color = f->color;
-        Sprite_Draw(&a);
-        a.v0 = v1 - 1;
-        a.v1 = t->v - 1;
-        if (t->shadow != 0) {
-            a.x = t->shadow + (x + dw);
-            a.y = t->shadow + (y + dh);
-            a.color = 0xE8000000;
-            Sprite_Draw(&a);
+        piece.x = x + cornerDx;
+        piece.y = y - corners->iy;
+        piece.color = frame->color;
+        Sprite_Draw(&piece);
+        piece.v0 = vEnd - 1;
+        piece.v1 = corners->v - 1;
+        if (corners->shadow != 0) {
+            piece.x = corners->shadow + (x + cornerDx);
+            piece.y = corners->shadow + (y + cornerDy);
+            piece.color = 0xE8000000;
+            Sprite_Draw(&piece);
         }
-        a.x = x + dw;
-        a.y = y + dh;
-        a.color = f->color;
-        Sprite_Draw(&a);
-        a.u0 = t->u;
-        a.u1 = u1;
-        if (t->shadow != 0) {
-            a.x = t->shadow + (x - t->ix);
-            a.y = t->shadow + (y + dh);
-            a.color = 0xE8000000;
-            Sprite_Draw(&a);
+        piece.x = x + cornerDx;
+        piece.y = y + cornerDy;
+        piece.color = frame->color;
+        Sprite_Draw(&piece);
+        piece.u0 = corners->u;
+        piece.u1 = uEnd;
+        if (corners->shadow != 0) {
+            piece.x = corners->shadow + (x - corners->ix);
+            piece.y = corners->shadow + (y + cornerDy);
+            piece.color = 0xE8000000;
+            Sprite_Draw(&piece);
         }
-        a.x = x - t->ix;
-        a.y = y + dh;
-        a.color = f->color;
-        Sprite_Draw(&a);
+        piece.x = x - corners->ix;
+        piece.y = y + cornerDy;
+        piece.color = frame->color;
+        Sprite_Draw(&piece);
     }
-    if (f->style & 0x80000000) {
-        r.x0 = x;
-        r.x1 = x + w;
-        r.y1 = y + h;
-        r.y0 = y;
-        r.color = f->color2;
-        Prim_FillRect((struct PrimLine *)&r);
+    if (frame->style & FRAME_FILL) {
+        fill.x0 = x;
+        fill.x1 = x + width;
+        fill.y1 = y + height;
+        fill.y0 = y;
+        fill.color = frame->color2;
+        Prim_FillRect(&fill);
     } else {
-        *(u32 *)&a.u0 = 0xBC00EC;
-        *(u32 *)&a.u1 = 0xCD00FD;
-        a.color = f->color2;
-        m = w / 17;
-        if (w % 17 > 8) {
-            m++;
+        *(u32 *)&piece.u0 = TEX_UV(0xEC, 0xBC);
+        *(u32 *)&piece.u1 = TEX_UV(0xFD, 0xCD);
+        piece.color = frame->color2;
+        cols = width / 17;
+        if (width % 17 > 8) {
+            cols++;
         }
-        stepx = (f32)w / m;
-        n = h / 17;
-        endx = (f32)x + (f32)w;
-        if (h % 17 > 8) {
-            n++;
+        stepX = (f32)width / cols;
+        rows = height / 17;
+        endX = (f32)x + (f32)width;
+        if (height % 17 > 8) {
+            rows++;
         }
-        fy = y;
-        step = (f32)h / n;
-        endy = fy + h;
-        while (n != 0) {
-            n--;
-            a.y = fy;
-            fy = endy - step * n;
-            a.h = (s16)fy - a.y;
-            i = m;
-            fx = x;
+        nextY = y;
+        step = (f32)height / rows;
+        endY = nextY + height;
+        while (rows != 0) {
+            rows--;
+            piece.y = nextY;
+            nextY = endY - step * rows;
+            piece.h = (s16)nextY - piece.y;
+            i = cols;
+            nextX = x;
             while (i != 0) {
                 i--;
-                a.x = fx;
-                fx = endx - stepx * i;
-                a.w = (s16)fx - a.x;
-                Sprite_Draw(&a);
+                piece.x = nextX;
+                nextX = endX - stepX * i;
+                piece.w = (s16)nextX - piece.x;
+                Sprite_Draw(&piece);
             }
         }
     }
     if (style == 4 || style == 5) {
-        dy = D_0043ABAA[0] - D_0043ABAE[0];
-        l.color = f->color;
-        dx = D_0043ABA8[0] - D_0043ABAC[0];
-        l.x0 = x + dx;
-        l.x1 = x + w - dx;
-        l.y0 = l.y1 = y;
-        Prim_DrawLine((struct PrimLine *)&l);
-        l.y0 = l.y1 = y + h;
-        Prim_DrawLine((struct PrimLine *)&l);
-        l.x0 = l.x1 = x;
-        l.y0 = y + dy;
-        l.y1 = y + h - dy;
-        Prim_DrawLine((struct PrimLine *)&l);
-        l.x0 = l.x1 = x + w;
-        Prim_DrawLine((struct PrimLine *)&l);
+        lineInsetY = gFrameStyles2[0].h - gFrameStyles2[0].iy;
+        border.color = frame->color;
+        lineInsetX = gFrameStyles2[0].w - gFrameStyles2[0].ix;
+        border.x0 = x + lineInsetX;
+        border.x1 = x + width - lineInsetX;
+        border.y0 = border.y1 = y;
+        Prim_DrawLine(&border);
+        border.y0 = border.y1 = y + height;
+        Prim_DrawLine(&border);
+        border.x0 = border.x1 = x;
+        border.y0 = y + lineInsetY;
+        border.y1 = y + height - lineInsetY;
+        Prim_DrawLine(&border);
+        border.x0 = border.x1 = x + width;
+        Prim_DrawLine(&border);
     }
 }
 #pragma optimization_level reset
@@ -11198,236 +11225,239 @@ void ListPanel_DrawCursorBar(s32 x0, s32 x1, s16 y, s16 lh, s32 sel, s32 kind);
 s32 Prim_DrawLine(struct PrimLine *r);
 void Font_SetPal(s32 a);
 
-/* One s16 local k serves as the panel y, the copy of lh and the line counter, and ly is both the text line y
- * and the separator lines y (a separate ty: 17 words off, ty and p in each other registers). */
-/* Draws a list panel moved by pos: its frame, a title line on a band when title is set, the cursor on entry
- * sel (none when negative), the entries and (flags 0x2000) lines between them. */
-void ListPanel_Draw(ListPanel *b, s16 *pos, char *title, s16 sel)
+/* Draws a list panel moved by pos: its frame, a title line on a band when title is set, the
+ * cursor on entry sel (none when negative), the entries and, with WINDOW_RULED, rules between
+ * them. For the match one local, k, is the panel's y, then the line height, then the rules'
+ * counter, and lineY is both the text lines' y and the rules' y. */
+void ListPanel_Draw(ListPanel *panel, s16 *pos, char *title, s16 sel)
 {
-    Frame f;
-    Rect r;
-    Rect ln;
-    s32 sx;
-    s32 sy;
+    Frame frame;
+    PrimLine band;
+    PrimLine rule;
+    s32 left;
+    s32 top;
     u8 style;
-    s16 ly;
+    s16 lineY;
     s16 k;
-    s16 lh;
-    s16 n;
-    char **p;
+    s16 lineH;
+    s16 rows;
+    char **item;
     s16 x;
 
-    x = b->x;
-    k = b->y;
+    x = panel->x;
+    k = panel->y;
     if (pos != NULL) {
         x += pos[0];
         k += pos[1];
     }
-    style = b->flags & 7;
-    if (style > 5) {
-        style = 5;
+    style = panel->flags & WINDOW_STYLE_MASK;
+    if (style > WINDOW_STYLE_MAX) {
+        style = WINDOW_STYLE_MAX;
     }
-    f.style = style & 7;
-    if (b->flags & 0x4000) {
-        f.style |= 0x40000000;
+    frame.style = style & FRAME_STYLE_MASK;
+    if (panel->flags & WINDOW_INSET) {
+        frame.style |= FRAME_INSET;
     }
-    if (b->flags & 0x8000) {
-        f.style |= 0x80000000;
+    if (panel->flags & WINDOW_FILL) {
+        frame.style |= FRAME_FILL;
     }
-    lh = b->charH + 2;
-    if (b->flags & 0x2000) {
-        lh += 2;
+    lineH = panel->charH + 2;
+    if (panel->flags & WINDOW_RULED) {
+        lineH += 2;
     }
-    n = b->lines;
+    rows = panel->lines;
     if (title != NULL) {
-        n++;
+        rows++;
     }
-    f.x = (sx = x) - b->padX;
-    f.y = (sy = k) - b->padY;
-    f.w = b->padX + b->padX + b->charW * b->lineChars;
-    k = lh;
-    f.h = b->padY + b->padY + k * n;
-    f.color = b->color;
-    f.color2 = b->color2;
-    WindowFrame_Draw(&f, 0);
+    frame.x = (left = x) - panel->padX;
+    frame.y = (top = k) - panel->padY;
+    frame.w = panel->padX + panel->padX + panel->charW * panel->lineChars;
+    k = lineH;
+    frame.h = panel->padY + panel->padY + k * rows;
+    frame.color = panel->color;
+    frame.color2 = panel->color2;
+    WindowFrame_Draw(&frame, 0);
     if (sel >= 0) {
         if (title != NULL) {
             sel++;
         }
-        ListPanel_DrawCursorBar((sx - 2) - (f32)b->padX, (f32)b->padX + (sx + b->charW * b->lineChars + 1), sy + 1, lh, sel, b->cursorColor);
+        ListPanel_DrawCursorBar((left - 2) - (f32)panel->padX, (f32)panel->padX + (left + panel->charW * panel->lineChars + 1), top + 1, lineH, sel, panel->cursorColor);
     }
-    if (b->items != NULL || title != NULL) {
-        Font_SetSpacing(b->charW, b->charH);
-        if (b->rgbText == 0) {
-            Text_SetColor(b->textColor);
+    if (panel->items != NULL || title != NULL) {
+        Font_SetSpacing(panel->charW, panel->charH);
+        if (panel->rgbText == 0) {
+            Text_SetColor(panel->textColor);
         } else {
             Font_SetPal(0);
-            Font_SetColor(*(u32 *)&b->textColor);
+            Font_SetColor(*(u32 *)&panel->textColor);
         }
-        ly = sy + 1;
+        lineY = top + 1;
         if (title != NULL) {
-            r.x0 = sx - b->padX;
-            r.x1 = sx + b->charW * b->lineChars + b->padX;
-            r.y0 = ly;
-            r.y1 = ly + k - 1;
-            r.color = (b->color & 0xFFFFFF) | 0x58000000;
-            Prim_FillRect((struct PrimLine *)&r);
-            Font_SetPos(x, ly);
+            band.x0 = left - panel->padX;
+            band.x1 = left + panel->charW * panel->lineChars + panel->padX;
+            band.y0 = lineY;
+            band.y1 = lineY + k - 1;
+            band.color = (panel->color & 0xFFFFFF) | 0x58000000;
+            Prim_FillRect(&band);
+            Font_SetPos(x, lineY);
             Text_Printf(title);
-            ly += lh;
-            n--;
+            lineY += lineH;
+            rows--;
         }
-        p = b->items;
-        if (p != NULL && n > 0) {
+        item = panel->items;
+        if (item != NULL && rows > 0) {
             do {
-                if (*p == NULL) {
+                if (*item == NULL) {
                     break;
                 }
-                Font_SetPos(x, ly);
-                Text_Printf(D_004908A8, *p);
-                n--;
-                p++;
-                ly += lh;
-            } while (n > 0);
+                Font_SetPos(x, lineY);
+                Text_Printf(gWindowFmtString, *item);
+                rows--;
+                item++;
+                lineY += lineH;
+            } while (rows > 0);
         }
     }
-    if (b->flags & 0x2000) {
-        ln.x0 = sx + 1;
-        ly = sy + k - 1;
-        ln.x1 = sx + b->charW * b->lineChars;
-        ln.color = b->color;
+    if (panel->flags & WINDOW_RULED) {
+        rule.x0 = left + 1;
+        lineY = top + k - 1;
+        rule.x1 = left + panel->charW * panel->lineChars;
+        rule.color = panel->color;
         if (title != NULL) {
-            ly += lh;
+            lineY += lineH;
         }
-        for (k = b->lines - 1; k > 0; k--, ly += lh) {
-            ln.y1 = ly;
-            ln.y0 = ly;
-            Prim_DrawLine((struct PrimLine *)&ln);
+        for (k = panel->lines - 1; k > 0; k--, lineY += lineH) {
+            rule.y1 = lineY;
+            rule.y0 = lineY;
+            Prim_DrawLine(&rule);
         }
     }
 }
 
 void Window_DrawSides(Window *b, s16 *pos, u32 color);
 
-void Menu_DrawFrame(void *b, s16 *pos)
+/* Draws a window's two side pieces in a fixed colour (0xF020DF20; the green byte is worked
+ * out from a float local, as the match needs). */
+void Menu_DrawFrame(void *win, s16 *pos)
 {
     f32 alpha = 48.0f;
 
-    Window_DrawSides(b, pos, (((s8)alpha + 0xAF) << 8) | 0xF0200020);
+    Window_DrawSides(win, pos, (((s8)alpha + 0xAF) << 8) | 0xF0200020);
 }
 
 /* Draws the two side pieces of a window's frame (with shadows), at its position moved by pos; they blink with gFrameTick. */
-void Window_DrawSides(Window *b, s16 *pos, u32 color)
+void Window_DrawSides(Window *win, s16 *pos, u32 color)
 {
-    Sprite s;
+    Sprite piece;
     s16 x;
     s16 y;
-    s16 k;
+    s16 blink;
 
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    x = b->x;
-    y = b->y;
-    k = (gFrameTick & 0x10) == 0 ? 3 : 8;
+    x = win->x;
+    y = win->y;
+    blink = (gFrameTick & 0x10) == 0 ? 3 : 8;
     if (pos != NULL) {
         x += pos[0];
         y += pos[1];
     }
-    s.w = b->charW;
-    s.h = b->charH + 4;
-    *(u32 *)&s.u0 = 0x6E0071;
-    *(u32 *)&s.u1 = 0x7D007D;
-    s.x = x - k + 1;
-    s.y = y;
-    s.color = color & 0xFF000000;
-    Sprite_Draw(&s);
-    s.x -= 2;
-    s.y -= 1;
-    s.color = color;
-    Sprite_Draw(&s);
-    s.u0 = 0x7C;
-    s.u1 = 0x70;
-    s.x = k + (x + b->charW * b->lineChars) - b->charW + 1;
-    s.y = y;
-    s.color = color & 0xFF000000;
-    Sprite_Draw(&s);
-    s.x -= 2;
-    s.y -= 1;
-    s.color = color;
-    Sprite_Draw(&s);
+    piece.w = win->charW;
+    piece.h = win->charH + 4;
+    *(u32 *)&piece.u0 = TEX_UV(0x71, 0x6E);
+    *(u32 *)&piece.u1 = TEX_UV(0x7D, 0x7D);
+    piece.x = x - blink + 1;
+    piece.y = y;
+    piece.color = color & 0xFF000000;
+    Sprite_Draw(&piece);
+    piece.x -= 2;
+    piece.y -= 1;
+    piece.color = color;
+    Sprite_Draw(&piece);
+    piece.u0 = 0x7C;
+    piece.u1 = 0x70;
+    piece.x = blink + (x + win->charW * win->lineChars) - win->charW + 1;
+    piece.y = y;
+    piece.color = color & 0xFF000000;
+    Sprite_Draw(&piece);
+    piece.x -= 2;
+    piece.y -= 1;
+    piece.color = color;
+    Sprite_Draw(&piece);
 }
 
 void Font_SetPal(s32 a);
 
 /* Draws a menu window (its frame, moved by pos) and its text line by line. */
-void Window_DrawText(void *p, s16 *pos, u8 *text)
+void Window_DrawText(void *window, s16 *pos, u8 *text)
 {
-    Panel *w = p;
-    char *s = (char *)text;
-    Frame f;
+    Panel *panel = window;
+    char *src = (char *)text;
+    Frame frame;
     char buf[128];
-    s16 n;
-    s16 lh;
+    s16 linesLeft;
+    s16 lineH;
     s16 x;
     s16 y;
     u8 style;
-    char *b;
-    s16 ty;
+    char *dst;
+    s16 lineY;
 
-    x = w->x;
-    y = w->y;
+    x = panel->x;
+    y = panel->y;
     if (pos != NULL) {
         x += pos[0];
         y += pos[1];
     }
-    style = w->flags & 7;
-    if (style > 5) {
-        style = 5;
+    style = panel->flags & WINDOW_STYLE_MASK;
+    if (style > WINDOW_STYLE_MAX) {
+        style = WINDOW_STYLE_MAX;
     }
-    f.style = style & 7;
-    if (w->flags & 0x4000) {
-        f.style |= 0x40000000;
+    frame.style = style & FRAME_STYLE_MASK;
+    if (panel->flags & WINDOW_INSET) {
+        frame.style |= FRAME_INSET;
     }
-    if (w->flags & 0x8000) {
-        f.style |= 0x80000000;
+    if (panel->flags & WINDOW_FILL) {
+        frame.style |= FRAME_FILL;
     }
-    lh = w->charH + 2;
-    f.x = x - w->padX;
-    f.y = y - w->padY;
-    f.w = w->padX + w->padX + w->charW * w->lineChars;
-    f.h = w->padY + w->padY + lh * w->lines;
-    f.color = w->color;
-    f.color2 = w->color2;
-    WindowFrame_Draw(&f, 0);
-    if (s != NULL) {
-        Font_SetSpacing(w->charW, w->charH);
-        if (w->rgbText == 0) {
-            Text_SetColor(w->textColor);
+    lineH = panel->charH + 2;
+    frame.x = x - panel->padX;
+    frame.y = y - panel->padY;
+    frame.w = panel->padX + panel->padX + panel->charW * panel->lineChars;
+    frame.h = panel->padY + panel->padY + lineH * panel->lines;
+    frame.color = panel->color;
+    frame.color2 = panel->color2;
+    WindowFrame_Draw(&frame, 0);
+    if (src != NULL) {
+        Font_SetSpacing(panel->charW, panel->charH);
+        if (panel->rgbText == 0) {
+            Text_SetColor(panel->textColor);
         } else {
             Font_SetPal(0);
-            Font_SetColor(*(u32 *)&w->textColor);
+            Font_SetColor(*(u32 *)&panel->textColor);
         }
-        ty = y;
-        for (n = w->lines; n > 0; n--) {
-            for (b = buf;; s++, b++) {
-                if (*s == '\n') {
-                    *b = 0;
-                    s++;
+        lineY = y;
+        for (linesLeft = panel->lines; linesLeft > 0; linesLeft--) {
+            for (dst = buf;; src++, dst++) {
+                if (*src == '\n') {
+                    *dst = 0;
+                    src++;
                     break;
                 }
-                *b = *s;
-                if (*s == 0) {
-                    n = 0;
+                *dst = *src;
+                if (*src == 0) {
+                    linesLeft = 0;
                     break;
                 }
             }
-            Font_SetPos(x, ty);
-            Text_Printf(D_004908A8, buf);
-            ty += lh;
+            Font_SetPos(x, lineY);
+            Text_Printf(gWindowFmtString, buf);
+            lineY += lineH;
         }
     }
 }
 
+/* ListPanel_DrawAlpha with alpha 0xB2. */
 void ListPanel_DrawDim(struct ListWin *win, char *title, s32 sel)
 {
     ListPanel_DrawAlpha(win, title, sel, 0xB2);
@@ -11439,91 +11469,91 @@ extern u32 gPanelFrameColor;
 
 /* Draws a list window with alpha: its frame, a title line (highlighted) when title is set, the cursor on
  * entry sel (none when negative) and the entries. A K&R definition: its callers see it without a prototype. */
-void ListPanel_DrawAlpha(w, title, sel, alpha)
-    ListWin *w;
+void ListPanel_DrawAlpha(win, title, sel, alpha)
+    ListWin *win;
     char *title;
     s32 sel;
     u8 alpha;
 {
-    Frame f;
-    Rect r;
+    Frame frame;
+    PrimLine band;
     f32 x;
-    f32 cw;
+    f32 cellW;
     s16 top;
-    s16 lh;
+    s16 lineH;
     u8 style;
-    s16 n;
-    char **p;
+    s16 rows;
+    char **item;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gfx_SetBlend(4, 5);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    x = w->x;
-    cw = w->charW;
-    style = w->flags & 7;
-    if (style > 5) {
-        style = 5;
+    x = win->x;
+    cellW = win->charW;
+    style = win->flags & WINDOW_STYLE_MASK;
+    if (style > WINDOW_STYLE_MAX) {
+        style = WINDOW_STYLE_MAX;
     }
-    if (w->flags & 0x2000) {
-        top = w->y - 2;
-        lh = w->charH + 4;
+    if (win->flags & WINDOW_RULED) {
+        top = win->y - 2;
+        lineH = win->charH + 4;
     } else {
-        top = w->y - 1;
-        lh = w->charH + 2;
+        top = win->y - 1;
+        lineH = win->charH + 2;
     }
-    f.x = w->x;
-    f.y = top;
-    f.w = w->charW * w->lineChars;
-    f.h = lh * w->lines;
-    f.color = (gPanelFrameColor & 0xFFFFFF) | (alpha << 24);
-    f.color2 = (alpha << 24) | 0x305040;
-    f.style = style & 7;
-    if (w->flags & 0x8000) {
-        f.style |= 0x80000000;
-        f.color2 = w->color2;
+    frame.x = win->x;
+    frame.y = top;
+    frame.w = win->charW * win->lineChars;
+    frame.h = lineH * win->lines;
+    frame.color = (gPanelFrameColor & 0xFFFFFF) | (alpha << 24);
+    frame.color2 = (alpha << 24) | 0x305040;
+    frame.style = style & FRAME_STYLE_MASK;
+    if (win->flags & WINDOW_FILL) {
+        frame.style |= FRAME_FILL;
+        frame.color2 = win->color2;
     }
     if (title != NULL) {
-        f.h += lh;
+        frame.h += lineH;
     }
-    WindowFrame_Draw(&f, 0);
+    WindowFrame_Draw(&frame, 0);
     if (title != NULL) {
-        r.x0 = x;
-        r.x1 = x + cw * w->lineChars;
-        r.y1 = top + lh;
-        r.color = 0x30FFFFFF;
-        r.y0 = top;
-        Prim_FillRect((struct PrimLine *)&r);
+        band.x0 = x;
+        band.x1 = x + cellW * win->lineChars;
+        band.y1 = top + lineH;
+        band.color = 0x30FFFFFF;
+        band.y0 = top;
+        Prim_FillRect(&band);
     }
     if (sel >= 0) {
         if (title != NULL) {
             sel++;
         }
-        ListPanel_DrawCursorBar(x - 2.0f, 2.0f + (x + cw * w->lineChars), w->y, lh, sel, w->cursorColor);
+        ListPanel_DrawCursorBar(x - 2.0f, 2.0f + (x + cellW * win->lineChars), win->y, lineH, sel, win->cursorColor);
     }
-    if (w->items != NULL) {
-        top = w->y;
+    if (win->items != NULL) {
+        top = win->y;
         Gfx_SetBlend(4, 5);
-        Font_SetSpacing(w->charW, w->charH);
-        Text_SetColor(w->color);
+        Font_SetSpacing(win->charW, win->charH);
+        Text_SetColor(win->color);
         if (title != NULL) {
-            Font_SetPos(w->x, top);
+            Font_SetPos(win->x, top);
             Text_Printf(title);
-            top += lh;
+            top += lineH;
         }
-        for (n = w->lines, p = w->items; n > 0; p++, n--) {
-            if (*p == NULL) {
+        for (rows = win->lines, item = win->items; rows > 0; item++, rows--) {
+            if (*item == NULL) {
                 break;
             }
-            Font_SetPos(w->x, top);
-            Text_Printf(D_004908A8, *p);
-            top += lh;
+            Font_SetPos(win->x, top);
+            Text_Printf(gWindowFmtString, *item);
+            top += lineH;
         }
     } else if (title != NULL) {
         Gfx_SetBlend(4, 5);
-        Font_SetSpacing(w->charW, w->charH);
-        Text_SetColor(w->color);
-        Font_SetPos(w->x, w->y);
+        Font_SetSpacing(win->charW, win->charH);
+        Text_SetColor(win->color);
+        Font_SetPos(win->x, win->y);
         Text_Printf(title);
     }
 }
@@ -11537,166 +11567,172 @@ void Window_DrawTextB2(Window *w, u8 *text)
 extern u32 gPanelFrameColor;
 
 /* Draws a window (its frame in style flags & 7, at most 5) with alpha, and its text line by line. */
-void Window_DrawTextAlpha(Window *w, u8 *text, u8 alpha)
+void Window_DrawTextAlpha(Window *win, u8 *text, u8 alpha)
 {
-    Frame f;
+    Frame frame;
     u8 buf[128];
-    s16 n;
-    s16 lh;
+    s16 linesLeft;
+    s16 lineH;
     s16 y;
     u8 style;
-    u8 *p;
-    s16 px;
-    s16 py;
+    u8 *dst;
+    s16 left;
+    s16 top;
 
-    style = w->flags & 7;
-    if (style > 5) {
-        style = 5;
+    style = win->flags & WINDOW_STYLE_MASK;
+    if (style > WINDOW_STYLE_MAX) {
+        style = WINDOW_STYLE_MAX;
     }
-    py = w->y - 1;
-    lh = w->charH + 2;
-    px = w->x;
-    f.x = px;
-    f.y = py;
-    f.w = w->charW * w->lineChars;
-    f.h = lh * w->lines;
-    f.color = (gPanelFrameColor & 0xFFFFFF) | (alpha << 24);
-    f.color2 = (alpha << 24) | 0x305040;
-    f.style = style & 7;
-    if (w->flags & 0x8000) {
-        f.style |= 0x80000000;
-        f.color2 = w->frameColor;
+    top = win->y - 1;
+    lineH = win->charH + 2;
+    left = win->x;
+    frame.x = left;
+    frame.y = top;
+    frame.w = win->charW * win->lineChars;
+    frame.h = lineH * win->lines;
+    frame.color = (gPanelFrameColor & 0xFFFFFF) | (alpha << 24);
+    frame.color2 = (alpha << 24) | 0x305040;
+    frame.style = style & FRAME_STYLE_MASK;
+    if (win->flags & WINDOW_FILL) {
+        frame.style |= FRAME_FILL;
+        frame.color2 = win->frameColor;
     }
-    WindowFrame_Draw(&f, 0);
+    WindowFrame_Draw(&frame, 0);
     if (text != NULL) {
-        y = w->y;
+        y = win->y;
         Gfx_SetBlend(4, 5);
-        Font_SetSpacing(w->charW, w->charH);
-        Text_SetColor(w->color);
-        for (n = w->lines; n > 0; n--) {
-            for (p = buf;; text++, p++) {
+        Font_SetSpacing(win->charW, win->charH);
+        Text_SetColor(win->color);
+        for (linesLeft = win->lines; linesLeft > 0; linesLeft--) {
+            for (dst = buf;; text++, dst++) {
                 if (*text == '\n') {
-                    *p = 0;
+                    *dst = 0;
                     text++;
                     break;
                 }
-                *p = *text;
+                *dst = *text;
                 if (*text == 0) {
-                    n = 0;
+                    linesLeft = 0;
                     break;
                 }
             }
-            Font_SetPos(w->x, y);
-            Text_Printf(D_004908A8, buf);
-            y += lh;
+            Font_SetPos(win->x, y);
+            Text_Printf(gWindowFmtString, buf);
+            y += lineH;
         }
     }
 }
 
 /* Draws a sprite stretched across in three parts: caps w wide showing du texels at each end, and the middle. */
-void Sprite_DrawStretch3(Sprite *src, s16 w, s16 du)
+void Sprite_DrawStretch3(Sprite *src, s16 capW, s16 capU)
 {
-    Sprite s;
+    Sprite part;
 
-    s = *src;
-    s.w = w;
-    s.u1 = s.u0 + du;
-    Sprite_Draw(&s);
-    s.x += s.w;
-    s.w = src->w - (w + w);
-    s.u0 = src->u0 + du;
-    s.u1 = src->u1 - du;
-    Sprite_Draw(&s);
-    s.x += s.w;
-    s.w = w;
-    s.u0 = src->u1 - du;
-    s.u1 = src->u1;
-    Sprite_Draw(&s);
+    part = *src;
+    part.w = capW;
+    part.u1 = part.u0 + capU;
+    Sprite_Draw(&part);
+    part.x += part.w;
+    part.w = src->w - (capW + capW);
+    part.u0 = src->u0 + capU;
+    part.u1 = src->u1 - capU;
+    Sprite_Draw(&part);
+    part.x += part.w;
+    part.w = capW;
+    part.u0 = src->u1 - capU;
+    part.u1 = src->u1;
+    Sprite_Draw(&part);
 }
 
 /* Draws a sprite stretched in both directions in nine parts: rows h high showing dv texels at the top and
  * bottom, and the middle row, each drawn by Sprite_DrawStretch3 (caps w wide showing du texels). */
-void Sprite_DrawStretch9(Sprite *src, s16 w, s16 h, s16 du, s16 dv)
+void Sprite_DrawStretch9(Sprite *src, s16 capW, s16 capH, s16 capU, s16 capV)
 {
-    Sprite s;
+    Sprite row;
 
-    s = *src;
-    s.h = h;
-    s.v1 = s.v0 + dv;
-    Sprite_DrawStretch3(&s, w, du);
-    s.y += s.h;
-    s.h = src->h - (h + h);
-    s.v0 = src->v0 + dv;
-    s.v1 = src->v1 - dv;
-    Sprite_DrawStretch3(&s, w, du);
-    s.y += s.h;
-    s.h = h;
-    s.v0 = src->v1 - dv;
-    s.v1 = src->v1;
-    Sprite_DrawStretch3(&s, w, du);
+    row = *src;
+    row.h = capH;
+    row.v1 = row.v0 + capV;
+    Sprite_DrawStretch3(&row, capW, capU);
+    row.y += row.h;
+    row.h = src->h - (capH + capH);
+    row.v0 = src->v0 + capV;
+    row.v1 = src->v1 - capV;
+    Sprite_DrawStretch3(&row, capW, capU);
+    row.y += row.h;
+    row.h = capH;
+    row.v0 = src->v1 - capV;
+    row.v1 = src->v1;
+    Sprite_DrawStretch3(&row, capW, capU);
 }
 
-/* Draws n sprites (20 bytes each). */
-void Sprite_DrawList(u8 *s, s32 n)
+/* Draws count sprites from an array. */
+void Sprite_DrawList(Sprite *sprites, s32 count)
 {
-    while (n != 0) {
-        Sprite_Draw((Sprite *)s);
-        n--;
-        s += 20;
-    }
-}
-
-void Menu_DrawArrow(s16 x, s16 y, s16 w, s16 h, u32 color, u8 flags)
-{
-    Sprite s;
-
-    s.v0 = 0x1A;
-    s.y = y;
-    s.v1 = 0x2E;
-    s.h = h;
-    s.color = color;
-    if (flags & 1) {
-        s.u0 = 0xA6;
-        s.u1 = 0x94;
-    } else {
-        s.u0 = 0x94;
-        s.u1 = 0xA6;
-    }
-    if (flags & 2) {
-        s.x = x;
-        s.w = w;
-        TexRect_Draw((struct TexRect *)&s, 2);
-    } else {
-        s.x = x;
-        s.w = w;
-        Sprite_Draw(&s);
+    while (count != 0) {
+        Sprite_Draw(sprites);
+        count--;
+        sprites++;
     }
 }
 
-void Chat_DrawArrow(s16 x, s16 y, s16 w, s16 h, u32 color, u8 flags)
+/* Draws a menu arrow (texels 0x94-0xA6, 0x1A-0x2E of the bound texture) in the box x, y, w, h.
+ * flags: ARROW_MIRROR points it the other way, ARROW_TEXRECT draws it with TexRect_Draw's
+ * mode 2 instead of as a sprite. */
+void Menu_DrawArrow(s16 x, s16 y, s16 width, s16 height, u32 color, u8 flags)
 {
-    Sprite s;
+    Sprite arrow;
 
-    s.v0 = 0x6E;
-    s.y = y;
-    s.v1 = 0x7D;
-    s.h = h;
-    s.color = color;
-    if (flags & 1) {
-        s.u0 = 0x71;
-        s.u1 = 0x7D;
+    arrow.v0 = 0x1A;
+    arrow.y = y;
+    arrow.v1 = 0x2E;
+    arrow.h = height;
+    arrow.color = color;
+    if (flags & ARROW_MIRROR) {
+        arrow.u0 = 0xA6;
+        arrow.u1 = 0x94;
     } else {
-        s.u0 = 0x7D;
-        s.u1 = 0x71;
+        arrow.u0 = 0x94;
+        arrow.u1 = 0xA6;
     }
-    if (flags & 2) {
-        s.x = x;
-        s.w = w;
-        TexRect_Draw((struct TexRect *)&s, 2);
+    if (flags & ARROW_TEXRECT) {
+        arrow.x = x;
+        arrow.w = width;
+        TexRect_Draw((struct TexRect *)&arrow, 2);
     } else {
-        s.x = x;
-        s.w = w;
-        Sprite_Draw(&s);
+        arrow.x = x;
+        arrow.w = width;
+        Sprite_Draw(&arrow);
+    }
+}
+
+/* Draws the chat window's arrow (the side piece of Window_DrawSides, texels 0x71-0x7D,
+ * 0x6E-0x7D) in the box x, y, w, h; flags as for Menu_DrawArrow. The lobby draws its
+ * scroll arrows with it. */
+void Chat_DrawArrow(s16 x, s16 y, s16 width, s16 height, u32 color, u8 flags)
+{
+    Sprite arrow;
+
+    arrow.v0 = 0x6E;
+    arrow.y = y;
+    arrow.v1 = 0x7D;
+    arrow.h = height;
+    arrow.color = color;
+    if (flags & ARROW_MIRROR) {
+        arrow.u0 = 0x71;
+        arrow.u1 = 0x7D;
+    } else {
+        arrow.u0 = 0x7D;
+        arrow.u1 = 0x71;
+    }
+    if (flags & ARROW_TEXRECT) {
+        arrow.x = x;
+        arrow.w = width;
+        TexRect_Draw((struct TexRect *)&arrow, 2);
+    } else {
+        arrow.x = x;
+        arrow.w = width;
+        Sprite_Draw(&arrow);
     }
 }
 
@@ -11718,118 +11754,120 @@ void Camera_ProjectPoint(f32 *out, f32 *v);
 void Hud_DrawTargetMarker(f32 *pos)
 {
     u32 i;
-    MarkPiece *pc;
+    MarkPiece *piece;
     s16 x;
     s16 y;
-    f32 m[16];
-    f32 v[4];
-    Sprite s;
+    f32 mtx[16];
+    f32 screen[4];
+    Sprite spr;
 
-    Mtx_Identity(m);
-    Gs_SetState(0x1A, (u32)m);
-    Camera_ProjectPoint(v, pos);
-    if (v[3] <= 0.0f) {
+    Mtx_Identity(mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
+    Camera_ProjectPoint(screen, pos);
+    if (screen[3] <= 0.0f) {
         return;
     }
-    x = 1.25f * v[0];
+    x = 1.25f * screen[0];
     if (x < -0x1C || x > 0x29C) {
         return;
     }
-    y = v[1];
+    y = screen[1];
     if (y < -0x14 || y > 0x1D4) {
         return;
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x146);
     Tex_Bind(0x146);
-    s.color = 0xE4FF0000;
-    s.x = x - 1;
-    s.y = y - 1;
-    s.w = 3;
-    s.h = 3;
-    *(u32 *)&s.u0 = 0x920070;
-    *(u32 *)&s.u1 = 0x940072;
-    Sprite_Draw(&s);
-    *(u32 *)&s.u0 = 0x8F006D;
-    *(u32 *)&s.u1 = 0x9A00C0;
-    pc = gTargetMarkerPieces;
+    spr.color = 0xE4FF0000;
+    spr.x = x - 1;
+    spr.y = y - 1;
+    spr.w = 3;
+    spr.h = 3;
+    *(u32 *)&spr.u0 = TEX_UV(0x70, 0x92);
+    *(u32 *)&spr.u1 = TEX_UV(0x72, 0x94);
+    Sprite_Draw(&spr);
+    *(u32 *)&spr.u0 = TEX_UV(0x6D, 0x8F);
+    *(u32 *)&spr.u1 = TEX_UV(0xC0, 0x9A);
+    piece = gTargetMarkerPieces;
     for (i = 4; i != 0; i--) {
-        s.x = x + pc->dx;
-        s.y = y + pc->dy;
-        s.w = pc->w;
-        s.h = pc->h;
-        TexRect_Draw((struct TexRect *)&s, pc->mode);
-        pc++;
+        spr.x = x + piece->dx;
+        spr.y = y + piece->dy;
+        spr.w = piece->w;
+        spr.h = piece->h;
+        TexRect_Draw((struct TexRect *)&spr, piece->mode);
+        piece++;
     }
 }
 
-/* Sets up a grid of the known recipes (Recipe_IsListedFor with v) for the cursor at g->index, and lists its column's in out;
- * 0 if there are none or the cursor is past them. */
-s32 CombineList_Setup(Grid *g, s16 *out, s32 v)
+/* Sets up a grid over the items Recipe_IsListedFor lists for filter (items 1 to 0x398), for
+ * the cursor at grid->index, and writes the items of the cursor's column to out (zeros after
+ * them). Returns 0 when there are none or the cursor is past them, else 1. */
+s32 CombineList_Setup(Grid *grid, s16 *out, s32 filter)
 {
     s32 i;
-    s32 k;
+    s32 listed;
     s32 start;
     s32 end;
     s32 col;
-    s32 n;
+    s32 item;
     s32 rows;
 
-    g->unk0 = v;
-    for (i = 0; i < (s32)g->rows; i++) {
+    grid->filter = filter;
+    for (i = 0; i < (s32)grid->rows; i++) {
         out[i] = 0;
     }
-    rows = g->rows;
-    col = g->index / rows;
+    rows = grid->rows;
+    col = grid->index / rows;
     start = rows * col;
     end = start + rows;
-    for (n = 1, k = 0; n < 0x399; n++) {
-        if (Recipe_IsListedFor(n, v) == 1) {
-            if (k >= start && k < end) {
-                *out++ = n;
+    for (item = 1, listed = 0; item < 0x399; item++) {
+        if (Recipe_IsListedFor(item, filter) == 1) {
+            if (listed >= start && listed < end) {
+                *out++ = item;
             }
-            k++;
+            listed++;
         }
     }
-    if (k == 0) {
+    if (listed == 0) {
         return 0;
     }
-    if (k <= g->index) {
+    if (listed <= grid->index) {
         return 0;
     }
-    g->cols = (k + (g->rows - 1)) / g->rows;
-    g->lastRows = k - g->rows * (g->cols - 1);
-    g->col = col;
-    g->row = g->index % g->rows;
+    grid->cols = (listed + (grid->rows - 1)) / grid->rows;
+    grid->lastRows = listed - grid->rows * (grid->cols - 1);
+    grid->col = col;
+    grid->row = grid->index % grid->rows;
     return 1;
 }
 
-/* Moves a grid's cursor and lists in out the numbers of the known recipes (Recipe_IsListedFor) of its current column. */
-void CombineList_MoveCursor(Grid *g, s16 *out, u16 buttons)
+/* Moves a grid's cursor by the buttons and writes the items of its column (as
+ * CombineList_Setup lists them, with the grid's filter) to out. */
+void CombineList_MoveCursor(Grid *grid, s16 *out, u16 buttons)
 {
     s32 i;
     s32 start;
     s32 end;
-    s16 k;
-    s32 n;
+    s16 listed;
+    s32 item;
 
-    Menu_GridCursor(g, buttons);
-    for (i = 0; i < g->rows; i++) {
+    Menu_GridCursor(grid, buttons);
+    for (i = 0; i < grid->rows; i++) {
         out[i] = 0;
     }
-    start = g->rows * g->col;
-    end = start + (g->col < g->cols - 1 ? g->rows : g->lastRows);
-    for (n = 1, k = 0; k < end; n++) {
-        if (Recipe_IsListedFor(n, g->unk0) == 1) {
-            if (k >= start && k < end) {
-                *out++ = n;
+    start = grid->rows * grid->col;
+    end = start + (grid->col < grid->cols - 1 ? grid->rows : grid->lastRows);
+    for (item = 1, listed = 0; listed < end; item++) {
+        if (Recipe_IsListedFor(item, grid->filter) == 1) {
+            if (listed >= start && listed < end) {
+                *out++ = item;
             }
-            k++;
+            listed++;
         }
     }
 }
 
-/* 1 if any of the first 0x34 flags at gSave+0x211B is set. */
+/* 1 if any monster note is known (gSave.noteKnown). */
 s32 MonsterNote_AnyKnown(void)
 {
     s32 i;
@@ -11839,42 +11877,42 @@ s32 MonsterNote_AnyKnown(void)
             return 1;
         }
     }
-    return (gSave.noteKnown[i] & 0xF) != 0;
+    return (gSave.noteKnown[i] & 0xF) != 0;   /* the last 4 of MONSTER_NOTE_COUNT */
 }
 
-/* gSave.noteKnown as its own symbol: &gSave.noteKnown[k] folds 0x211B
- * into the load and store. */
-
+/* Marks monster note `kind` known; returns 0 for a number past MONSTER_NOTE_COUNT, else 1.
+ * The byte's address is worked out first, so that the load and store share it. */
 s32 MonsterNote_SetKnown(s32 kind)
 {
-    s32 k;
+    s32 note;
     u8 *bits;
 
-    k = kind & 0xFF;
-    if (k >= 0x34) {
+    note = kind & 0xFF;
+    if (note >= MONSTER_NOTE_COUNT) {
         return 0;
     }
-    bits = (u8 *)gSave.noteKnown + (k >> 3);
-    *bits |= (1 << (k & 7)) & 0xFF;
+    bits = (u8 *)gSave.noteKnown + (note >> 3);
+    *bits |= (1 << (note & 7)) & 0xFF;
     return 1;
 }
 
-/* The number of set flags among the 0x34 at gSave+0x211B. */
+/* The number of monster notes known. */
 s32 MonsterNote_CountKnown(void)
 {
     u32 i;
-    s32 c;
+    s32 count;
 
-    c = 0;
-    for (i = 0; i < 0x34; i++) {
+    count = 0;
+    for (i = 0; i < MONSTER_NOTE_COUNT; i++) {
         if (gSave.noteKnown[i >> 3] & (1 << (i & 7))) {
-            c++;
+            count++;
         }
     }
-    return c;
+    return count;
 }
 
-/* From cur moved by dir (wrapping in 0..0x33), the next set flag of gSave's 0x211B bits in that direction; -1 if none. */
+/* The next known monster note from cur in the direction dir (wrapping round), cur itself
+ * when it is negative (from note 0); -1 when none is known. */
 s8 MonsterNote_NextKnown(s8 cur, s8 dir)
 {
     s32 i;
@@ -11884,24 +11922,24 @@ s8 MonsterNote_NextKnown(s8 cur, s8 dir)
             cur = 0;
         } else {
             cur += dir;
-            if (cur > 0x33) {
+            if (cur > MONSTER_NOTE_COUNT - 1) {
                 cur = 0;
             }
             if (cur < 0) {
-                cur = 0x33;
+                cur = MONSTER_NOTE_COUNT - 1;
             }
         }
-        for (i = 0x34; i != 0; i--) {
+        for (i = MONSTER_NOTE_COUNT; i != 0; i--) {
             if (!!(gSave.noteKnown[cur >> 3] & (1 << (cur & 7)))) {
                 return cur;
             }
             if (dir >= 0) {
                 cur++;
-                if (cur > 0x33) {
+                if (cur > MONSTER_NOTE_COUNT - 1) {
                     cur = 0;
                 }
             } else if (cur <= 0) {
-                cur = 0x33;
+                cur = MONSTER_NOTE_COUNT - 1;
             } else {
                 cur--;
             }
@@ -11910,86 +11948,93 @@ s8 MonsterNote_NextKnown(s8 cur, s8 dir)
     return -1;
 }
 
-/* 1 + the number of set bits among the first n (at most 0x34) of gSave's flags at 0x211B. */
-u8 MonsterNote_Number(u8 n)
+/* The number shown for monster note `limit`: 1 plus the known notes before it. */
+u8 MonsterNote_Number(u8 limit)
 {
     s32 i;
-    s32 c;
+    s32 number;
 
-    if (n > 0x34) {
-        n = 0x34;
+    if (limit > MONSTER_NOTE_COUNT) {
+        limit = MONSTER_NOTE_COUNT;
     }
-    c = 1;
-    for (i = 0; i < n; i++) {
+    number = 1;
+    for (i = 0; i < limit; i++) {
         if (gSave.noteKnown[i >> 3] & (1 << (i & 7))) {
-            c++;
+            number++;
         }
     }
-    return c;
+    return number;
 }
 
+/* The texture coordinates (0 to 1) of picture id's cell in the pictures' texture, a grid of
+ * 42-pixel cells six across (gEntryPictureIndex gives the cell). For a picture without a
+ * cell (0xFF), the stand-in's and 0; else 1. */
 s32 EntryPicture_GetUVf(f32 *uv0, f32 *uv1, u16 id)
 {
-    u8 k;
+    u8 cell;
     s32 x;
     s32 y;
 
-    k = gEntryPictureIndex[id];
-    if (k == 0xFF) {
+    cell = gEntryPictureIndex[id];
+    if (cell == 0xFF) {
         uv0[0] = 43.0f / 256;
         uv0[1] = 211.0f / 256;
         uv1[0] = 83.0f / 256;
         uv1[1] = 251.0f / 256;
         return 0;
     }
-    x = k % 6 * 42;
+    x = cell % 6 * 42;
     uv0[0] = (1.0f / 256) * (x + 1);
-    y = k / 6 * 42;
+    y = cell / 6 * 42;
     uv0[1] = (1.0f / 256) * (y + 1);
     uv1[0] = (1.0f / 256) * (x + 41);
     uv1[1] = (1.0f / 256) * (y + 41);
     return 1;
 }
 
+/* EntryPicture_GetUVf in texels: the cell's corners as TEX_UV words (a Sprite's u0, v0 and
+ * u1, v1). The monster notes and the lobby draw their pictures with it. */
 s32 EntryPicture_GetUV(s32 *uv0, s32 *uv1, u16 id)
 {
-    s32 v;
-    s32 u;
-    u8 *ent;
-    u8 idx;
+    s32 texV;
+    s32 texU;
+    u8 *entry;
+    u8 cell;
 
-    ent = &gEntryPictureIndex[id];
-    idx = *ent;
-    if (idx == 0xFF) {
-        *uv0 = 0xD3002B;
-        *uv1 = 0xFB0053;
+    entry = &gEntryPictureIndex[id];
+    cell = *entry;
+    if (cell == 0xFF) {
+        *uv0 = TEX_UV(0x2B, 0xD3);
+        *uv1 = TEX_UV(0x53, 0xFB);
         return 0;
     }
-    u = ((s32) idx % 6) * 0x2A;
-    v = ((*ent / 6) + (idx >> 0x1F)) * 0x2A;
-    *uv0 = ((v + 1) << 0x10) + (u + 1);
-    *uv1 = ((v + 0x29) << 0x10) + (u + 0x29);
+    texU = ((s32) cell % 6) * 0x2A;
+    texV = ((*entry / 6) + (cell >> 0x1F)) * 0x2A;
+    *uv0 = ((texV + 1) << 0x10) + (texU + 1);
+    *uv1 = ((texV + 0x29) << 0x10) + (texU + 0x29);
     return 1;
 }
 
+/* EntryPicture_GetUV for texture 0x147's cells, through gTex147Cells: the lobby draws its
+ * entries' pictures with it (id 0 the locked picture). */
 s32 Tex147_GetCellUv(s32 *uv0, s32 *uv1, u16 id)
 {
-    s32 v;
-    s32 u;
-    u8 *ent;
-    u8 idx;
+    s32 texV;
+    s32 texU;
+    u8 *entry;
+    u8 cell;
 
-    ent = &gTex147Cells[id];
-    idx = *ent;
-    if (idx == 0xFF) {
-        *uv0 = 0xD3002B;
-        *uv1 = 0xFB0053;
+    entry = &gTex147Cells[id];
+    cell = *entry;
+    if (cell == 0xFF) {
+        *uv0 = TEX_UV(0x2B, 0xD3);
+        *uv1 = TEX_UV(0x53, 0xFB);
         return 0;
     }
-    u = ((s32) idx % 6) * 0x2A;
-    v = ((*ent / 6) + (idx >> 0x1F)) * 0x2A;
-    *uv0 = ((v + 1) << 0x10) + (u + 1);
-    *uv1 = ((v + 0x29) << 0x10) + (u + 0x29);
+    texU = ((s32) cell % 6) * 0x2A;
+    texV = ((*entry / 6) + (cell >> 0x1F)) * 0x2A;
+    *uv0 = ((texV + 1) << 0x10) + (texU + 1);
+    *uv1 = ((texV + 0x29) << 0x10) + (texU + 0x29);
     return 1;
 }
 
@@ -11998,6 +12043,7 @@ extern u8 gHelpPage;
 extern u16 gHelpLine;
 extern s8 gHelpColumn;
 
+/* Draws the help window at the page, line and column it is on. */
 void HelpWindow_DrawCurrent(void)
 {
     HelpWindow_Draw(gHelpPage, gHelpLine, gHelpColumn);
@@ -12005,9 +12051,10 @@ void HelpWindow_DrawCurrent(void)
 
 void HelpWindow_Draw(u8 a, u16 b, s8 c);
 
-void HelpWindow_DrawLine(u8 a, u16 b)
+/* Draws the help window's page and line without a column cursor. */
+void HelpWindow_DrawLine(u8 page, u16 line)
 {
-    HelpWindow_Draw(a, b, -1);
+    HelpWindow_Draw(page, line, -1);
 }
 
 extern Panel gHelpWindowBox;
@@ -12017,64 +12064,58 @@ extern char *gRarityFmt[];
 void Deco_DrawDetails(u16 item, s16 x, s16 y, s8 c, u8 pal);
 s16 Rarity_Color(u8 i);
 
-/* The help window: text idx of page (0xFFFF: none); on page 1 from 0x18, item idx - 0x18 with its icon and rarity. */
-void HelpWindow_Draw(u8 page, u16 idx, s8 c)
+/* Draws the help window with line `line` of help page `page` (HELP_LINE_NONE: empty). An
+ * item's line on HELP_PAGE_ITEMS (HELP_ITEM_LINE(item)) shows instead the item's
+ * decoration details (Deco_DrawDetails, in view `column`), its icon (with the mark that
+ * ItemData.flags2 bit 0 asks for) and its rarity. */
+void HelpWindow_Draw(u8 page, u16 line, s8 column)
 {
-    Sprite s;
-    ItemData *d;
+    Sprite spr;
+    ItemData *data;
     char *text;
     s32 item;
 
-    if (page > 12) {
+    if (page > HELP_PAGE_OPTIONS) {
         return;
     }
-    if (page == 1 && idx >= 0x18) {
+    if (page == HELP_PAGE_ITEMS && line >= HELP_ITEM_LINE(0)) {
         Window_DrawText(&gHelpWindowBox, 0, (u8 *)0);
-        if (idx > 0x18) {
-            item = idx - 0x18;
-            Deco_DrawDetails(item, 0x168, 0x167, c, 0);
-            d = &gItemData[item];
+        if (line > HELP_ITEM_LINE(0)) {
+            item = line - HELP_ITEM_LINE(0);
+            Deco_DrawDetails(item, 0x168, 0x167, column, 0);
+            data = &gItemData[item];
             Tex_Prepare(1, 0x144);
             Tex_Bind(0x144);
-            s.x = 0x132;
-            s.y = 0x166;
-            s.w = 0x32;
-            s.h = 0x28;
-            s.u0 = ((d->icon + 1) & 7) * 32 + 1;
-            s.v0 = ((d->icon + 1) >> 3) * 32 + 1;
-            s.u1 = s.u0 + 0x1E;
-            s.v1 = s.v0 + 0x1E;
-            s.color = gItemColors[d->color];
-            Sprite_Draw(&s);
-            if (d->flags2 & 1) {
-                *(u32 *)&s.u0 = 0xE00080;
-                *(u32 *)&s.u1 = 0x10000A0;
-                s.color = 0xFFFFFFFF;
-                Sprite_Draw(&s);
+            spr.x = 0x132;
+            spr.y = 0x166;
+            spr.w = 0x32;
+            spr.h = 0x28;
+            spr.u0 = ((data->icon + 1) & 7) * 32 + 1;
+            spr.v0 = ((data->icon + 1) >> 3) * 32 + 1;
+            spr.u1 = spr.u0 + 0x1E;
+            spr.v1 = spr.v0 + 0x1E;
+            spr.color = gItemColors[data->color];
+            Sprite_Draw(&spr);
+            if (data->flags2 & 1) {
+                *(u32 *)&spr.u0 = TEX_UV(0x80, 0xE0);
+                *(u32 *)&spr.u1 = TEX_UV(0xA0, 0x100);
+                spr.color = 0xFFFFFFFF;
+                Sprite_Draw(&spr);
             }
             Font_SetSpacing(0x10, 0x10);
             Font_SetPos(0x132, 0x192);
-            Text_SetColor(Rarity_Color(d->rarity));
-            Text_PrintfColored(gRarityFmt[0], d->rarity + 1);
+            Text_SetColor(Rarity_Color(data->rarity));
+            Text_PrintfColored(gRarityFmt[0], data->rarity + 1);
         }
     } else {
         text = NULL;
-        if (idx != 0xFFFF) {
-            text = gHelpTexts[page][idx];
+        if (line != HELP_LINE_NONE) {
+            text = gHelpTexts[page][line];
         }
         Window_DrawText(&gHelpWindowBox, 0, (u8 *)text);
     }
 }
 
-/* A decoration record (16 bytes, gDecoTable), by ItemData.deco. */
-typedef struct DecoData {
-    u8 size;                    /* 0x0: slots it takes (1-3) */
-    u8 flags;                   /* 0x1: 1 blades, 2 guns, 4 male, 8 female */
-    u8 pad2[6];
-    u8 skills[4][2];            /* 0x8: {skill, points (s8)} */
-} DecoData;
-
-extern DecoData gDecoTable[];
 extern u32 gDecoDetailColors[][3];
 extern Icon gDecoDetailIcon;
 extern char *gDecoModeFmt[];
@@ -12090,119 +12131,126 @@ void Text_DrawLinesColored(s16 x, s16 y, char **lines, s16 dy);
 void Text_DrawDigit(u8 n);
 void Hud_DrawTab(s16 x, s16 y, u8 flags, u8 lvl, u32 color);
 
-/* The details of the decoration item (mode c & 3, none when c is negative, c & 0x10 its level mark): 0 its
- * name, 1 who can use it and its size, 2 its skills (colours gDecoDetailColors[pal]). */
-void Deco_DrawDetails(u16 item, s16 x, s16 y, s8 c, u8 pal)
+/* Draws one page of an item's decoration details at x, y, in the colours
+ * gDecoDetailColors[pal]. view & 3 is the page: 0 the item's description, 1 who can use it
+ * (the hunter class from DecoData.flags 4 and 8, the range class from 1 and 2) and its size,
+ * 2 its skills and points (skills 0x29-0x2B show no points). view & 0x10 draws the page
+ * number with an icon instead of a tab. A negative view, or an item that is not a
+ * decoration, gives the description. */
+void Deco_DrawDetails(u16 item, s16 x, s16 y, s8 view, u8 pal)
 {
-    DecoData *dc;
-    u32 *col;
-    u8 mode;
-    u8 *sk;
+    DecoData *record;
+    u32 *colors;
+    u8 page;
+    u8 *skill;
     u32 i;
-    s16 *p;
-    s32 sy;
-    s32 ty;
-    s32 sx;
-    s32 tx;
-    u8 k;
-    ItemData *d;
+    s16 *pos;
+    s32 top;
+    s32 textY;
+    s32 left;
+    s32 textX;
+    u8 kind;
+    ItemData *data;
 
-    col = gDecoDetailColors[pal];
-    d = &gItemData[item];
-    if (d->deco == 0 || c < 0) {
-        mode = 0;
+    colors = gDecoDetailColors[pal];
+    data = &gItemData[item];
+    if (data->deco == 0 || view < 0) {
+        page = 0;
     } else {
-        dc = &gDecoTable[d->deco];
-        mode = c & 3;
+        record = &gDecoTable[data->deco];
+        page = view & 3;
         Tex_Prepare(1, 0x155);
         Tex_Bind(0x155);
-        if (c & 0x10) {
-            Font_SetColor(col[0]);
+        if (view & 0x10) {
+            Font_SetColor(colors[0]);
             Font_SetPos(x + 0xAB, y + 0x29);
-            Text_Printf(gDecoModeFmt[0], mode + 1);
+            Text_Printf(gDecoModeFmt[0], page + 1);
             gDecoDetailIcon.x = x + 0x93;
             gDecoDetailIcon.y = y + 0x28;
             Draw_Icons(&gDecoDetailIcon, 1);
         } else {
-            Hud_DrawTab(x - 0x34, y - 0x3B, (mode | 0x40) + 1, 3, col[0]);
+            Hud_DrawTab(x - 0x34, y - 0x3B, (page | 0x40) + 1, 3, colors[0]);
         }
         Font_SetSpacing(0xF, 0x12);
     }
-    switch (mode) {
+    switch (page) {
     case 0:
         Font_SetSpacing(0x12, 0x12);
         Font_SetPos(x, y);
-        Font_SetColor(col[0]);
-        Text_Printf(gHelpTexts[1][item + 0x18]);
+        Font_SetColor(colors[0]);
+        Text_Printf(gHelpTexts[HELP_PAGE_ITEMS][HELP_ITEM_LINE(item)]);
         break;
     case 1:
-        Font_SetColor(col[1]);
+        Font_SetColor(colors[1]);
         Text_DrawLinesColored(x, y, gDecoDetailLabels, 0x14);
-        Font_SetColor(col[2]);
-        tx = x + 0x69;
-        ty = y;
-        Font_SetPos(tx, ty);
-        if ((dc->flags & 0xC) == 0xC) {
-            k = 2;
-        } else if (dc->flags & 4) {
-            k = 0;
-        } else if (dc->flags & 8) {
-            k = 1;
+        Font_SetColor(colors[2]);
+        textX = x + 0x69;
+        textY = y;
+        Font_SetPos(textX, textY);
+        if ((record->flags & 0xC) == 0xC) {
+            kind = 2;
+        } else if (record->flags & 4) {
+            kind = 0;
+        } else if (record->flags & 8) {
+            kind = 1;
         } else {
-            k = 3;
+            kind = 3;
         }
-        Text_Draw(gHunterClassTexts[k]);
-        Font_SetPos(tx, ty + 0x13);
-        if ((dc->flags & 3) == 3) {
-            k = 2;
-        } else if (dc->flags & 1) {
-            k = 0;
-        } else if (dc->flags & 2) {
-            k = 1;
+        Text_Draw(gHunterClassTexts[kind]);
+        Font_SetPos(textX, textY + 0x13);
+        if ((record->flags & 3) == 3) {
+            kind = 2;
+        } else if (record->flags & 1) {
+            kind = 0;
+        } else if (record->flags & 2) {
+            kind = 1;
         } else {
-            k = 3;
+            kind = 3;
         }
-        Text_Draw(gRangeClassTexts[k]);
-        Font_SetPos(tx, ty + 0x26);
-        Text_DrawDigit(dc->size);
+        Text_Draw(gRangeClassTexts[kind]);
+        Font_SetPos(textX, textY + 0x26);
+        Text_DrawDigit(record->size);
         break;
     case 2:
-        Font_SetColor(col[0]);
-        sk = dc->skills[0];
-        sy = y;
-        sx = x;
-        for (i = 0, p = gDecoDetailPos[0]; i < 4; i++, p += 2, sk += 2) {
-            Font_SetPos(sx + p[0], sy + p[1]);
-            if (sk[0] == 0) {
+        Font_SetColor(colors[0]);
+        skill = record->skills[0];
+        top = y;
+        left = x;
+        for (i = 0, pos = gDecoDetailPos[0]; i < 4; i++, pos += 2, skill += 2) {
+            Font_SetPos(left + pos[0], top + pos[1]);
+            if (skill[0] == 0) {
                 if (i == 0) {
                     Text_Draw(gNoSkillText[0]);
                 }
                 break;
             }
-            Text_Draw(gSkillNames[sk[0]]);
-            if (sk[0] != 0x29 && sk[0] != 0x2A && sk[0] != 0x2B) {
-                Font_SetPos(sx + p[0] + 0x4B, sy + p[1]);
-                Text_PrintfColored(gDecoSkillPtsFmt[0], (s8)sk[1]);
+            Text_Draw(gSkillNames[skill[0]]);
+            if (skill[0] != 0x29 && skill[0] != 0x2A && skill[0] != 0x2B) {
+                Font_SetPos(left + pos[0] + 0x4B, top + pos[1]);
+                Text_PrintfColored(gDecoSkillPtsFmt[0], (s8)skill[1]);
             }
         }
         break;
     }
 }
 
+/* Notice_OpenText with the conversation's title (gTalkEventTitle) and no list. */
 s32 Notice_OpenTalk(char *text, u32 width, s32 mode, s32 sel)
 {
-    if (mode > 3) {
+    if (mode > NOTICE_MODE_CLOSE) {
         return -1;
     }
     return Notice_OpenText(text, width, mode, sel, gTalkEventTitle, NULL);
 }
 
-s32 Notice_OpenTextN(char *text, u32 width, s32 mode, s32 sel, s32 arg4)
+/* Notice_OpenText with no list; the lobby's and the game overlay's conversations open their
+ * texts with it, an NPC's name as the title. */
+s32 Notice_OpenTextN(char *text, u32 width, s32 mode, s32 sel, s32 title)
 {
-    if (mode > 3) {
+    if (mode > NOTICE_MODE_CLOSE) {
         return -1;
     }
-    return Notice_OpenText(text, width, mode, sel, arg4, NULL);
+    return Notice_OpenText(text, width, mode, sel, title, NULL);
 }
 
 extern u8 gChatInputMode;
@@ -12211,94 +12259,97 @@ extern s8 gNoticeFlags;
 extern s8 gNoticeNextSePlayed;
 extern u32 gNoticeWidth;
 extern char **gNoticeList;
-extern s32 gNoticeBoxStyle;
+extern s32 gNoticeTitle;
 extern u8 gNoticeSel;
 extern s8 D_0043C73A;
 s32 Text_NextChar(char *out, char *s, char **next);
 
-/* Opens the notice window (Notice_Draw) with text, shown up to width half-width units (a full stop or
- * question mark counts 15, a comma 8, other characters 3); returns 1 while text remains, then sets up the
- * mode's extras (1 a prompt, 2 a mark, 4 and 5 the list with its selected entry); mode 3 closes the window. */
-s32 Notice_OpenText(char *text, u32 width, s32 mode, s32 sel, s32 arg4, char **list)
+/* Opens the notice window (Notice_Draw) on text under the title (a char pointer, 0 none),
+ * and shows as much of it as width allows. The callers raise width with time, so the text
+ * types out: each character costs 3, a full stop or question mark 15 and a comma 8 (a pause
+ * after them). A sound plays for each new character. Returns 1 while text remains; once it
+ * is all shown, sets up what mode asks for (NOTICE_MODE_*) and returns 0. -1 while the chat
+ * keyboard is open, or for a list mode without a list. */
+s32 Notice_OpenText(char *text, u32 width, s32 mode, s32 sel, s32 title, char **list)
 {
-    char c[4];
-    s16 r;
-    u32 left;
-    u32 n;
-    u32 w;
-    u16 k;
+    char ch[4];
+    s16 kind;
+    u32 budget;
+    u32 chars;
+    u32 cost;
+    u16 code;
 
     if (gChatInputMode != 0) {
         return -1;
     }
-    if (mode == 3) {
-        gNoticeFlags = 0x10;
+    if (mode == NOTICE_MODE_CLOSE) {
+        gNoticeFlags = NOTICE_CLOSED;
         return 0;
     }
-    gNoticeBoxStyle = arg4;
+    gNoticeTitle = title;
     if (gNoticeWidth > width || gChat.notice != text) {
         gNoticeShownChars = 0;
         gNoticeNextSePlayed = 0;
     }
     gNoticeWidth = width;
-    gNoticeFlags = 1;
-    left = width;
-    n = 0;
+    gNoticeFlags = NOTICE_OPEN;
+    budget = width;
+    chars = 0;
     gChat.notice = text;
     for (;;) {
-        r = Text_NextChar(c, text, &text);
-        if (r == 4) {
+        kind = Text_NextChar(ch, text, &text);
+        if (kind == 4) {
             break;
         }
-        if (c[0] == '\n') {
+        if (ch[0] == '\n') {
             continue;
         }
-        n++;
-        w = 3;
-        if (r == 1) {
-            k = (c[0] << 8) + (u8)c[1];
-            if (k == 0x8142 || k == 0x8148) {
-                w = 15;
-            } else if (k == 0x8141) {
-                w = 8;
+        chars++;
+        cost = 3;
+        if (kind == 1) {
+            code = (ch[0] << 8) + (u8)ch[1];
+            if (code == 0x8142 || code == 0x8148) {
+                cost = 15;
+            } else if (code == 0x8141) {
+                cost = 8;
             }
-        } else if (r == 0) {
-            if (c[0] == '.' || c[0] == '?') {
-                w = 15;
+        } else if (kind == 0) {
+            if (ch[0] == '.' || ch[0] == '?') {
+                cost = 15;
             }
         }
-        if (w > left) {
-            if (n > gNoticeShownChars) {
+        if (cost > budget) {
+            if (chars > gNoticeShownChars) {
                 if (gScene.online == 0) {
                     Sound_PlaySeFlat(6, 0x1D, D_0043C73A);
                 } else {
                     Sound_PlaySeFlat(1, 0x84, 0);
                 }
             }
-            gNoticeShownChars = n;
+            gNoticeShownChars = chars;
             return 1;
         }
-        left -= w;
+        budget -= cost;
     }
-    if (n > gNoticeShownChars) {
+    if (chars > gNoticeShownChars) {
         if (gScene.online == 0) {
             Sound_PlaySeFlat(6, 0x1D, D_0043C73A);
         } else {
             Sound_PlaySeFlat(1, 0x84, 0);
         }
     }
-    gNoticeShownChars = n;
+    gNoticeShownChars = chars;
     switch (mode) {
-    case 1:
-        gNoticeFlags |= 2;
+    case NOTICE_MODE_PROMPT:
+        gNoticeFlags |= NOTICE_PROMPT;
         if (sel == 0) {
-            gNoticeFlags |= 4;
+            gNoticeFlags |= NOTICE_PROMPT_YES;
         }
         gNoticeSel = sel;
         gNoticeList = NULL;
         break;
-    case 2:
-        gNoticeFlags |= 8;
+    case NOTICE_MODE_NEXT:
+        gNoticeFlags |= NOTICE_NEXT;
         if (gNoticeNextSePlayed == 0) {
             gNoticeNextSePlayed++;
             if (gScene.online == 0) {
@@ -12308,60 +12359,63 @@ s32 Notice_OpenText(char *text, u32 width, s32 mode, s32 sel, s32 arg4, char **l
             }
         }
         break;
-    case 4:
+    case NOTICE_MODE_LIST:
         if (list == NULL) {
             return -1;
         }
         gNoticeList = list;
         gNoticeSel = sel;
-        gNoticeFlags |= 0x20;
+        gNoticeFlags |= NOTICE_LIST;
         break;
-    case 5:
+    case NOTICE_MODE_PICKED:
         if (list == NULL) {
             return -1;
         }
         gNoticeList = list;
         gNoticeSel = sel;
-        gNoticeFlags |= 0x40;
+        gNoticeFlags |= NOTICE_LIST_PICKED;
         break;
     }
     return 0;
 }
 
-/* The first pad's held and pressed buttons, with the right stick's directions (0x08/0x0C bits 0x20-0x04) as D-pad bits. */
+/* The first pad's held and pressed buttons for the menus, with the right stick's directions
+ * added as the D-pad's buttons (one direction each). */
 void Pad_GetMenuButtons(u16 *held, u16 *pressed)
 {
     *held = gPadState[0].held;
     *pressed = gPadState[0].pressed;
-    if (gPadState[0].dir & 0x20) {
-        *held |= 0x2000;
-    } else if (gPadState[0].dir & 0x10) {
-        *held |= 0x1000;
-    } else if (gPadState[0].dir & 8) {
-        *held |= 0x800;
-    } else if (gPadState[0].dir & 4) {
-        *held |= 0x400;
+    if (gPadState[0].dir & PAD_RSTICK_UP) {
+        *held |= PAD_UP;
+    } else if (gPadState[0].dir & PAD_RSTICK_DOWN) {
+        *held |= PAD_DOWN;
+    } else if (gPadState[0].dir & PAD_RSTICK_LEFT) {
+        *held |= PAD_LEFT;
+    } else if (gPadState[0].dir & PAD_RSTICK_RIGHT) {
+        *held |= PAD_RIGHT;
     }
-    if (gPadState[0].dirPressed & 0x20) {
-        *pressed |= 0x2000;
-    } else if (gPadState[0].dirPressed & 0x10) {
-        *pressed |= 0x1000;
-    } else if (gPadState[0].dirPressed & 8) {
-        *pressed |= 0x800;
-    } else if (gPadState[0].dirPressed & 4) {
-        *pressed |= 0x400;
+    if (gPadState[0].dirPressed & PAD_RSTICK_UP) {
+        *pressed |= PAD_UP;
+    } else if (gPadState[0].dirPressed & PAD_RSTICK_DOWN) {
+        *pressed |= PAD_DOWN;
+    } else if (gPadState[0].dirPressed & PAD_RSTICK_LEFT) {
+        *pressed |= PAD_LEFT;
+    } else if (gPadState[0].dirPressed & PAD_RSTICK_RIGHT) {
+        *pressed |= PAD_RIGHT;
     }
 }
 
-s8 Kbd_Run(char *out, s32 b, s16 flags); /* unit's own declaration: with the definition's s8 (char *dst, s16 held, s16 pressed) (sub_main/unk_314E00.c), Kbd_RunUnlessLocked 4 of 17 words differ */
+s8 Kbd_Run(char *out, s32 b, s16 flags); /* unit's own declaration: with the definition's s8 (char *dst, s16 held, s16 pressed) (sub_main/unk_314E00.c), Chat_RunKbd 4 of 17 words differ */
 
-u8 Kbd_RunUnlessLocked(char *out, s32 b, s16 flags)
+/* Runs the chat keyboard for a frame (Kbd_Run): its result, or 0xFF (cancelled) with an
+ * empty line when SELECT is pressed. */
+u8 Chat_RunKbd(char *out, s32 held, s16 pressed)
 {
-    if (flags & 0x4000) {
+    if (pressed & PAD_SELECT) {
         *out = 0;
         return 0xFF;
     }
-    return Kbd_Run(out, b, flags);
+    return Kbd_Run(out, held, pressed);
 }
 
 void Kbd_SetStartActive(u8 v);
@@ -12369,11 +12423,14 @@ void Kbd_SetStartActive(u8 v);
 void Kbd_Open(u8 a, s32 b, u16 c, char *text);
 void Chat_SetTarget(s8 target);
 
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d)
+/* Opens the software keyboard for chat: Kbd_Open's kind is flags' low byte, and
+ * CHAT_KBD_INACTIVE and CHAT_KBD_TARGETED set its focus and the chat target. The lobby
+ * opens its text fields with it too. */
+void Chat_OpenKbd(s32 flags, s32 layout, u16 maxChars, void *text)
 {
-    Kbd_SetStartActive(!(flags & 0x40000000));
-    Kbd_Open(flags, b, c, d);
-    if (flags & 0x80000000) {
+    Kbd_SetStartActive(!(flags & CHAT_KBD_INACTIVE));
+    Kbd_Open(flags, layout, maxChars, text);
+    if (flags & CHAT_KBD_TARGETED) {
         Chat_SetTarget(0);
     } else {
         Chat_SetTarget(-1);
@@ -12387,15 +12444,17 @@ s32 Hud_SupplyBoxOpen(void);
 s32 Hud_SupplyBoxActive(void);
 s32 Hud_DeliveryOpen(void);
 
+/* 1 if the local player may chat now: online, not while seated at the town's PC, a camera
+ * focus or the bait menu; offline, not while the supply box or the delivery menu is open. */
 s32 Chat_IsAvailable(void)
 {
-    Player *p = &gPlayers[gScene.localPlayer];
+    Player *pl = &gPlayers[gScene.localPlayer];
 
     if (gScene.online != 0) {
         if (Game_IsOnline() == 0) {
             return 0;
         }
-        if (TownPc_IsSeatedState(p->stateGroup, p->state) == 1 || CamFocus_IsOn() == 1) {
+        if (TownPc_IsSeatedState(pl->stateGroup, pl->state) == 1 || CamFocus_IsOn() == 1) {
             return 0;
         }
         if (BaitMenu_IsOpen() == 1) {
@@ -12407,21 +12466,23 @@ s32 Chat_IsAvailable(void)
     return 1;
 }
 
-void Chat_InitMode(void)
+/* Sets gChatSendTo: offline CHAT_SEND_LOCAL. Online, CHAT_SEND_PARTY while gScene.online
+ * is 0; else the chat window's choice (gChatWindowSel), or CHAT_SEND_LOBBY in AREA_HUB_0x83. */
+void Chat_PickSendTarget(void)
 {
     if (Game_IsOnline() == 1) {
         if (gScene.online != 0) {
-            if (gScene.area == 0x83) {
-                gChatSendTo = 0;
+            if (gScene.area == AREA_HUB_0x83) {
+                gChatSendTo = CHAT_SEND_LOBBY;
                 return;
             }
             gChatSendTo = gChatWindowSel;
             return;
         }
-        gChatSendTo = 2;
+        gChatSendTo = CHAT_SEND_PARTY;
         return;
     }
-    gChatSendTo = 3;
+    gChatSendTo = CHAT_SEND_LOCAL;
 }
 
 extern s32 gChatSendWait;
@@ -12430,36 +12491,39 @@ void Kbd_SetPos(s32 n, f32 f);
 void Kbd_SetSubmitWait(s32 arg0);
 void Chat_SendInput(u16 a);
 
-void Chat_Update(u8 a)
+/* Opens the chat input line on the software keyboard, sized for the target's window (0x2C
+ * characters, the lobby's 0x3C), and runs its first frame. active 0 opens it without the
+ * focus. */
+void Chat_OpenInput(u8 active)
 {
     u32 flags;
-    s32 n;
+    s32 maxChars;
 
     flags = 0;
     if (Chat_IsAvailable() != 1) {
-        flags = 4;
+        flags = CHAT_KBD_UNAVAILABLE;
     }
     switch (gChatSendTo) {
-    case 1:
-    case 2:
-        flags |= 0x80000000;
-    case 3:
+    case CHAT_SEND_TARGETS:
+    case CHAT_SEND_PARTY:
+        flags |= CHAT_KBD_TARGETED;
+    case CHAT_SEND_LOCAL:
         gChatWinOpen = gChatWinTimer = 0;
-        n = 0x2C;
+        maxChars = 0x2C;
         break;
-    case 0:
+    case CHAT_SEND_LOBBY:
         gChatLog.win.open = gChatLog.win.timer = 0;
-        n = 0x3C;
+        maxChars = 0x3C;
         break;
     }
-    if (a == 0) {
-        flags |= 0x40000000;
+    if (active == 0) {
+        flags |= CHAT_KBD_INACTIVE;
     }
     Kbd_SetPos(0x4B, 80.0f);
-    Chat_OpenKbd(flags, 0xE, n, 0);
+    Chat_OpenKbd(flags, 0xE, maxChars, 0);
     Kbd_SetSubmitWait(gChatSendWait);
     gChatInputMode++;
-    Sound_PlaySeFlat(0, 0x11, 0);
+    Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
     Chat_SendInput(0);
 }
 
@@ -12474,49 +12538,48 @@ void func_792A50(u8 who, s8 *msg, s32 c);
 void Chat_SendToTargets(u8 who, s8 *msg, u8 to); /* unit's own declaration: the definition (lobby) is void Chat_SendToTargets(s32 arg0, void *arg1, s32 arg2); the calls here match only with this one */
 void QSync_SendChat(u8 who, s32 a, s8 *msg, u8 to);
 void Kbd_Cancel(void);
-extern char D_0043274C[];
 extern s8 gChatSystemRecord[];
 extern char *gChatTargetTexts[];
-extern u8 gChatSendRecord[];
-extern u8 D_005B3A58;
-extern char D_005B3A6C[];
+extern ChatMsg gChatSendRecord;    /* the record of a line sent offline (CHAT_SEND_LOCAL) */
 extern u8 gChatMsgClass;
 extern u16 gChatRecipients;
 
-/* Reads the chat input line and sends it: to the lobby, the party or everyone by gChatSendTo (3: a local
- * message), or shows why it can't be sent; closes the input either way. */
-void Chat_SendInput(u16 a)
+/* Runs the chat input for a frame. When it ends with a line, sends it by gChatSendTo
+ * (CHAT_SEND_*) after the word filter, plays an act tag's gesture, or logs why the
+ * recipients are wrong (gChatSystemRecord); then closes the input. While it runs the chat
+ * windows stay closed. */
+void Chat_SendInput(u16 unused)
 {
-    s8 buf[0x40];
+    s8 text[0x40];
     s16 held;
     s16 pressed;
-    Player *p;
-    s8 r;
-    s8 k;
+    Player *pl;
+    s8 result;
+    s8 recipients;
     u8 to;
 
     Pad_GetMenuButtons((u16 *)&held, (u16 *)&pressed);
-    buf[0] = 0;
-    r = (s8)Kbd_RunUnlessLocked((char *)buf, held, pressed);
-    if (r != 0) {
-        if (buf[0] != 0 && r > 0 && Chat_FilterIfNotBlank((u8 *)buf) != 0) {
-            k = Chat_SetRecipients(buf);
-            if (k < 0) {
-                strcpy(D_0043274C, gChatTargetTexts[(s8)(1 - k)]);
+    text[0] = 0;
+    result = (s8)Chat_RunKbd((char *)text, held, pressed);
+    if (result != 0) {
+        if (text[0] != 0 && result > 0 && Chat_FilterIfNotBlank((u8 *)text) != 0) {
+            recipients = Chat_SetRecipients(text);
+            if (recipients < 0) {
+                strcpy(((ChatMsg *)gChatSystemRecord)->text, gChatTargetTexts[(s8)(1 - recipients)]);
                 Chat_AddReceived(0xFF, gChatSystemRecord);
             } else {
-                Chat_PlayAct((s32)buf);
-                if (buf[0] != 0) {
+                Chat_PlayAct((s32)text);
+                if (text[0] != 0) {
                     gChatSendWait = 0x3C;
-                    p = &gPlayers[gScene.localPlayer];
+                    pl = &gPlayers[gScene.localPlayer];
                     switch (gChatSendTo) {
-                    case 0:
-                        func_792A50(p->index, buf, 0);
+                    case CHAT_SEND_LOBBY:
+                        func_792A50(pl->index, text, 0);
                         break;
-                    case 1:
-                        Chat_SendToTargets(p->index, buf, gChatMsgClass);
+                    case CHAT_SEND_TARGETS:
+                        Chat_SendToTargets(pl->index, text, gChatMsgClass);
                         break;
-                    case 2:
+                    case CHAT_SEND_PARTY:
                         switch (gChatMsgClass) {
                         default:
                             to = 0xFF;
@@ -12525,16 +12588,16 @@ void Chat_SendInput(u16 a)
                             to = gChatRecipients & 0xF;
                             break;
                         }
-                        Chat_LogAdd(p->index, buf, NULL, 0);
-                        QSync_SendChat(p->index, 1, buf, to);
+                        Chat_LogAdd(pl->index, text, NULL, 0);
+                        QSync_SendChat(pl->index, 1, text, to);
                         gChatWinOpen = 1;
                         gChatWinTimer = 0x12C;
                         break;
-                    case 3:
-                        D_005B3A58 = 0;
-                        strcpy(D_005B3A6C, (char *)buf);
+                    case CHAT_SEND_LOCAL:
+                        gChatSendRecord.name[0] = 0;
+                        strcpy(gChatSendRecord.text, (char *)text);
                         Chat_ClearLog();
-                        Chat_AddReceived(gScene.localPlayer, (s8 *)gChatSendRecord);
+                        Chat_AddReceived(gScene.localPlayer, (s8 *)&gChatSendRecord);
                         gChatSendWait = 0;
                         break;
                     }
@@ -12544,68 +12607,70 @@ void Chat_SendInput(u16 a)
         Kbd_Cancel();
         gChatInputMode = 0;
         Chat_ResetScroll();
-    } else if (gChatSendTo == 0) {
+    } else if (gChatSendTo == CHAT_SEND_LOBBY) {
         gChatLog.win.open = gChatLog.win.timer = 0;
     } else {
         gChatWinOpen = gChatWinTimer = 0;
     }
 }
 
-void Chat_PlayAct(s32 s)
+/* Strips the act tags from a chat line, and has the local player play the first one's
+ * gesture (1-12; Player_RequestGesture) when the scene allows it. */
+void Chat_PlayAct(s32 text)
 {
     s32 tags;
     u32 act;
 
-    tags = Chat_StripActTags((s8 *) s);
+    tags = Chat_StripActTags((s8 *) text);
     act = tags & 0xF;
     if ((tags != 0) && (act != 0) && (act < 0xDU) && ((Game_IsOnline() == 1) || (gScene.online == 0))) {
-        Player_RequestAct(act & 0xFF);
+        Player_RequestGesture(act & 0xFF);
         Hud_SetCancel();
     }
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", D_004908A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", D_004908A8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", gStatusFmtInt);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", gWindowFmtString);
 
 s8 *Str_Find(s8 *s, s8 *t);
 s8 Chat_ParseActTag(s8 *s);
 
 /* Blanks the "<actNN>" tags of a chat message (Chat_ParseActTag) and closes the gaps; returns the first tag's number, 0 if none. */
-s32 Chat_StripActTags(s8 *s)
+s32 Chat_StripActTags(s8 *src)
 {
-    s8 *q = s;
+    s8 *dst = src;
     s32 found = 0;
-    s8 *t;
-    s8 n;
-    s8 *p;
+    s8 *tag;
+    s8 act;
+    s8 *scan;
 
-    while (*s != 0) {
-        if ((t = Str_Find(s, (s8 *)"<act")) == NULL) {
+    while (*src != 0) {
+        if ((tag = Str_Find(src, (s8 *)"<act")) == NULL) {
             break;
         }
-        n = Chat_ParseActTag(t);
-        if (n >= 0) {
+        act = Chat_ParseActTag(tag);
+        if (act >= 0) {
             if (found == 0) {
-                found = n;
+                found = act;
             }
-            t += 3;
+            tag += 3;
         }
-        s = t + 4;
+        src = tag + 4;
     }
     if (found != 0) {
-        for (p = q; ; p++) {
-            if (*p == 1) {
-                if (p >= q) {
-                    q = p + 1;
+        for (scan = dst; ; scan++) {
+            if (*scan == 1) {
+                if (scan >= dst) {
+                    dst = scan + 1;
                 }
-                while (*q == 1) {
-                    q++;
+                while (*dst == 1) {
+                    dst++;
                 }
-                *p = *q;
-                *q = 1;
-                q++;
+                *scan = *dst;
+                *dst = 1;
+                dst++;
             }
-            if (*p == 0) {
+            if (*scan == 0) {
                 break;
             }
         }
@@ -12613,42 +12678,44 @@ s32 Chat_StripActTags(s8 *s)
     return found;
 }
 
-/* Reads the number 1-12 of a tag "....NN>" (NN at 4-5) and blanks the tag with 1s; -1 if it isn't one. */
-s8 Chat_ParseActTag(s8 *s)
+/* Reads the gesture number 1-12 of an act tag at tag (two digits at 4-5, then '>'), and
+ * blanks the tag with 1s for Chat_StripActTags; -1 if it isn't one. */
+s8 Chat_ParseActTag(s8 *tag)
 {
-    s8 n;
+    s8 act;
 
-    if (s[6] == '>' && s[4] >= '0' && s[4] <= '1') {
-        n = (s[4] - '0') * 10;
-        if (s[5] >= '0' && s[5] <= '9') {
-            n += (s8)(s[5] - '0');
-            if (n > 0 && n <= 12) {
-                s[0] = s[1] = s[2] = s[3] = s[4] = s[5] = s[6] = 1;
-                return n;
+    if (tag[6] == '>' && tag[4] >= '0' && tag[4] <= '1') {
+        act = (tag[4] - '0') * 10;
+        if (tag[5] >= '0' && tag[5] <= '9') {
+            act += (s8)(tag[5] - '0');
+            if (act > 0 && act <= 12) {
+                tag[0] = tag[1] = tag[2] = tag[3] = tag[4] = tag[5] = tag[6] = 1;
+                return act;
             }
         }
     }
     return -1;
 }
 
-static s32 Str_HasPrefix(s8 *s, s8 *prefix)
+/* 1 if str starts with prefix. The gotos are m2c's form, which the match keeps. */
+static s32 Str_HasPrefix(s8 *str, s8 *prefix)
 {
-    s8 *p;
-    s8 *q;
-    s8 c;
+    s8 *scan;
+    s8 *rest;
+    s8 ch;
 
-    p = s;
-    q = prefix;
-    c = *q;
-    if (c != 0) {
+    scan = str;
+    rest = prefix;
+    ch = *rest;
+    if (ch != 0) {
 loop_2:
-        if (*p != c) {
+        if (*scan != ch) {
             return 0;
         }
-        q += 1;
-        c = *q;
-        p += 1;
-        if (c == 0) {
+        rest += 1;
+        ch = *rest;
+        scan += 1;
+        if (ch == 0) {
             goto block_6;
         }
         goto loop_2;
@@ -12658,11 +12725,11 @@ block_6:
 }
 
 /* The first place in s where t starts (Str_HasPrefix compares the rest). */
-s8 *Str_Find(s8 *s, s8 *t)
+s8 *Str_Find(s8 *str, s8 *sub)
 {
-    for (; *s != 0; s++) {
-        if (*s == *t && Str_HasPrefix(s + 1, t + 1) == 1) {
-            return s;
+    for (; *str != 0; str++) {
+        if (*str == *sub && Str_HasPrefix(str + 1, sub + 1) == 1) {
+            return str;
         }
     }
     return NULL;
@@ -12672,43 +12739,35 @@ char *strcpy(char *dst, char *src);
 extern u8 gChatWhoColors[];
 extern u8 gChatClassColors[];
 
-/* The header of a chat message: the sender's id and name, then its colours. */
-typedef struct ChatHeader {
-    s8 id[8];                   /* 0x000 */
-    s8 name[0x114];             /* 0x008 */
-    u8 unk11C;                  /* 0x11C */
-    u8 unk11D;                  /* 0x11D */
-    u8 unk11E;                  /* 0x11E */
-    u8 unk11F;                  /* 0x11F */
-    s32 unk120;
-} ChatHeader;
 
 extern u8 gChatMsgClass;
 extern char gMyUserId[];
 
-/* Adds a message to the chat log ring, with its header h (without one: the local system's), wrapped into two rows. */
-void Chat_LogAdd(u8 who, s8 *msg, s8 *h, u8 wide)
+/* Adds a message from player `who` to the chat ring (gChat.lines), with the sender and
+ * colours from header (without one, the local player's), wrapped into at most two rows of
+ * 0x16 bytes (0x1E when wide), a Shift-JIS pair never split. */
+void Chat_LogAdd(u8 who, s8 *msg, ChatMsg *header, u8 wide)
 {
     ChatLine *line;
     s32 i;
-    s32 n;
+    s32 left;
     s32 width;
-    s8 *p;
+    s8 *dst;
     s8 *row;
-    s32 c;
+    s32 ch;
 
     if (*msg == 0) {
         return;
     }
     line = &gChat.lines[gChatLogHead];
     line->who = who;
-    if (h != NULL) {
-        line->color[0] = ((ChatHeader *)h)->unk11C;
-        line->color[1] = ((ChatHeader *)h)->unk11D;
-        line->color[2] = ((ChatHeader *)h)->unk11E;
-        line->color[3] = ((ChatHeader *)h)->unk11F;
-        strcpy((char *)line->id, (char *)((ChatHeader *)h)->id);
-        strcpy((char *)line->name, (char *)((ChatHeader *)h)->name);
+    if (header != NULL) {
+        line->color[0] = header->cls;
+        line->color[1] = header->color[0];
+        line->color[2] = header->color[1];
+        line->color[3] = header->color[2];
+        strcpy((char *)line->id, header->id);
+        strcpy((char *)line->name, header->name);
     } else {
         line->color[0] = 0;
         line->color[1] = line->color[2] = gChatWhoColors[line->who];
@@ -12725,44 +12784,48 @@ void Chat_LogAdd(u8 who, s8 *msg, s8 *h, u8 wide)
     line->rows = 0;
     width = wide == 0 ? 0x16 : 0x1E;
     for (i = 0, row = line->text[0]; i < 2; i++, row += 0x18) {
-        p = row;
+        dst = row;
         if (*msg == 0) {
             *row = 0;
             return;
         }
-        n = width;
+        left = width;
         row[width] = 0;
         do {
             if (*msg == 0) {
-                *p = 0;
+                *dst = 0;
                 line->rows++;
                 return;
             }
-            c = *msg & 0xFF;
-            if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFF)) {
-                *p = c;
-                p[1] = msg[1];
-                n -= 2;
+            ch = *msg & 0xFF;
+            if ((ch >= 0x80 && ch <= 0x9F) || (ch >= 0xE0 && ch <= 0xFF)) {
+                *dst = ch;
+                dst[1] = msg[1];
+                left -= 2;
                 msg += 2;
-                p += 2;
+                dst += 2;
             } else {
-                *p = c;
+                *dst = ch;
                 msg++;
-                p++;
-                n--;
+                dst++;
+                left--;
             }
-        } while (n > 0);
-        *p = 0;
+        } while (left > 0);
+        *dst = 0;
         line->rows++;
     }
 }
 
 void Chat_Beep(void);
 
-void Chat_AddReceived(u8 who, s8 *h)
+/* Logs a received ChatMsg (after the word filter), scrolls the log on when it is full, and
+ * opens the chat window for 0x12C frames (beeping when the line is another player's). The
+ * text is reached as msg + 0x1C (ChatMsg.text): through the member, MWCC keeps the address
+ * in a register and the code differs. */
+void Chat_AddReceived(u8 who, s8 *msg)
 {
-    Chat_FilterWords((char *) (h + 0x1C));
-    Chat_LogAdd(who, (s8 *) (h + 0x1C), (s8 *) h, 0);
+    Chat_FilterWords((char *) (msg + 0x1C));    /* ChatMsg.text; see above */
+    Chat_LogAdd(who, (s8 *) (msg + 0x1C), (ChatMsg *) msg, 0);
     if (Chat_CountLogRows() > 11U) {
         gChatLogScroll += 1;
         if ((s32) gChatLogScroll > 0x3F) {
@@ -12776,11 +12839,13 @@ void Chat_AddReceived(u8 who, s8 *h)
     gChatWinTimer = 0x12C;
 }
 
+/* Lets the next message beep again. */
 void Chat_ClearBeep(void)
 {
     gChatBeeped = 0;
 }
 
+/* Plays the chat's beep (sound 0x18), once until Chat_ClearBeep. */
 void Chat_Beep(void)
 {
     if (gChatBeeped == 0) {
@@ -12791,24 +12856,25 @@ void Chat_Beep(void)
 
 extern s8 gPlayerIds[][8];
 
-/* Adds a message of a local player to the chat log (kind 0xFF: a system message). */
+/* Logs a line from a player of this console (the party's messages, through qnet_sync.c)
+ * with a beep; kind 0xFF gives it the system class colour. */
 void Chat_LogAddLocal(u8 who, u8 kind, char *msg)
 {
-    ChatHeader h;
-    u8 c;
+    ChatMsg header;
+    u8 cls;
 
     Chat_FilterWords(msg);
     if (kind == 0xFF) {
-        c = 3;
+        cls = 3;
     } else {
-        c = 1;
+        cls = 1;
     }
-    h.unk11C = 0;
-    h.unk11D = h.unk11E = gChatWhoColors[who];
-    h.unk11F = gChatClassColors[c];
-    strcpy((char *)h.name, (char *)gPlayers[who].name);
-    strcpy((char *)h.id, (char *)gPlayerIds[who]);
-    Chat_LogAdd(who, (s8 *)msg, (s8 *)&h, 0);
+    header.cls = 0;
+    header.color[0] = header.color[1] = gChatWhoColors[who];
+    header.color[2] = gChatClassColors[cls];
+    strcpy(header.name, (char *)gPlayers[who].name);
+    strcpy(header.id, (char *)gPlayerIds[who]);
+    Chat_LogAdd(who, (s8 *)msg, &header, 0);
     if (Chat_CountLogRows() > 11U) {
         gChatLogScroll++;
         if (gChatLogScroll > 0x3F) {
@@ -12820,9 +12886,10 @@ void Chat_LogAddLocal(u8 who, u8 kind, char *msg)
     Sound_PlaySeFlat(0, 0x18, 0);
 }
 
+/* Scrolls the chat log to its newest lines (the lobby's log for CHAT_SEND_LOBBY). */
 void Chat_ResetScroll(void)
 {
-    if (gChatSendTo == 0) {
+    if (gChatSendTo == CHAT_SEND_LOBBY) {
         ChatLog_ResetScroll();
         return;
     }
@@ -12834,6 +12901,8 @@ void Chat_ResetScroll(void)
     gChatLogAtEnd = 0;
 }
 
+/* Online, hides the help line and scrolls the chat log to its end for the chat window the
+ * lobby opens; returns 0. Offline returns 1 and does nothing. */
 s32 Chat_OpenWindow(void)
 {
     if (Game_IsOnline() == 0) {
@@ -12846,26 +12915,28 @@ s32 Chat_OpenWindow(void)
 
 s32 Chat_LogRowsBefore(u8 skip);
 
-/* The chat log's scrolling: 0x2000 scrolls back, 0x1000 forward (sounds 0x17); 0x8000 closes it (0x8000 returned). */
+/* Scrolls the field chat's log by the buttons while it is open for scrolling: PAD_UP goes
+ * back a line, PAD_DOWN on (sets the CHAT_WIN_* arrows); PAD_START closes it and is
+ * returned alone. Returns the buttons otherwise. */
 u16 Chat_LogScroll(u16 buttons)
 {
-    if (buttons & 0x8000) {
-        Sound_PlaySeFlat(0, 0x14, 0);
-        return 0x8000;
+    if (buttons & PAD_START) {
+        Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
+        return PAD_START;
     }
-    gChat.unk2C = 0;
-    gChat.win.flags = 0x80;
+    gChat.helpShow = 0;
+    gChat.win.flags = CHAT_WIN_SCROLLING;
     if (Chat_CountLogRows() > 11U) {
         if (gChat.win.scroll != 0) {
-            gChat.win.flags |= 2;
+            gChat.win.flags |= CHAT_WIN_MORE_AFTER;
         }
         if (Chat_LogRowsBefore(gChat.win.scroll) > 11U) {
-            gChat.win.flags |= 1;
-            if ((buttons & 0x2000) && gChat.win.scroll < gChat.win.count - 1) {
+            gChat.win.flags |= CHAT_WIN_MORE_BEFORE;
+            if ((buttons & PAD_UP) && gChat.win.scroll < gChat.win.count - 1) {
                 gChat.win.atEnd = 0;
                 gChat.win.scroll++;
-                gChat.win.flags |= 4;
-                Sound_PlaySeFlat(0, 0x17, 0);
+                gChat.win.flags |= CHAT_WIN_STEP_BACK;
+                Sound_PlaySeFlat(0, SE_SYS_SCROLL, 0);
                 if (Chat_LogRowsBefore(gChat.win.scroll) < 12U) {
                     gChat.win.atEnd = 1;
                 }
@@ -12873,10 +12944,10 @@ u16 Chat_LogScroll(u16 buttons)
         } else {
             gChat.win.atEnd = 1;
         }
-        if ((buttons & 0x1000) && gChat.win.scroll > 0) {
+        if ((buttons & PAD_DOWN) && gChat.win.scroll > 0) {
             gChat.win.scroll--;
-            gChat.win.flags |= 8;
-            Sound_PlaySeFlat(0, 0x17, 0);
+            gChat.win.flags |= CHAT_WIN_STEP_ON;
+            Sound_PlaySeFlat(0, SE_SYS_SCROLL, 0);
             gChat.win.atEnd = 0;
         }
     }
@@ -12894,15 +12965,17 @@ s32 Chat_LogRowsBefore(u8 skip)
     s32 n = gChatLogCount - skip;
 
     for (; n != 0; n--, i--) {
-        ChatLine *l = &gChat.lines[i & 0x3F];
-        rows += l->rows;
-        if (l->id[0] != 0) {
+        ChatLine *line = &gChat.lines[i & 0x3F];
+        rows += line->rows;
+        if (line->id[0] != 0) {
             rows++;
         }
     }
     return rows;
 }
 
+/* Draws the chat box of the send target and the newest log lines, and stops the window's
+ * timer. */
 void Chat_DrawHudLog(void)
 {
     u8 chatSize;
@@ -12916,18 +12989,18 @@ void Chat_DrawHudLog(void)
 extern Panel gChatFrameBox;
 
 /* Draws the window gChatFrameBox w wide, as tall as w * 18 / 21 lines, at the bottom of the screen; then restores its size. */
-void Chat_DrawFrame(s32 c, u8 w, s32 color)
+void Chat_DrawFrame(s32 text, u8 size, s32 color)
 {
     s16 pos[2];
-    s32 n;
+    s32 cellH;
 
-    gChatFrameBox.charW = w;
-    n = w * 18 / 21;
+    gChatFrameBox.charW = size;
+    cellH = size * 18 / 21;
     pos[0] = 0;
-    pos[1] = 0x1A4 - (n + 1) * 12;
-    gChatFrameBox.flags = ((color + 2) & 7) | 0x8000;
-    gChatFrameBox.charH = n - 1;
-    Window_DrawText(&gChatFrameBox, pos, (u8 *)c);
+    pos[1] = 0x1A4 - (cellH + 1) * 12;
+    gChatFrameBox.flags = ((color + 2) & WINDOW_STYLE_MASK) | WINDOW_FILL;
+    gChatFrameBox.charH = cellH - 1;
+    Window_DrawText(&gChatFrameBox, pos, (u8 *)text);
     gChatFrameBox.charW = 0x15;
     gChatFrameBox.charH = 0x11;
 }
@@ -12935,12 +13008,13 @@ void Chat_DrawFrame(s32 c, u8 w, s32 color)
 extern u8 gChatHideNames;
 extern char *gChatTypeTexts;
 
-void Chat_FormatSender(char *buf, u8 *p)
+/* Formats a log line's sender row into buf: the name, or the id when gChatHideNames is set. */
+void Chat_FormatSender(char *buf, ChatLine *line)
 {
     if (gChatHideNames == 0) {
-        sprintf(buf, gChatTypeTexts, p + 0x3E);
+        sprintf(buf, gChatTypeTexts, line->name);
     } else {
-        sprintf(buf, gChatTypeTexts, p + 0x36);
+        sprintf(buf, gChatTypeTexts, line->id);
     }
 }
 
@@ -12952,101 +13026,101 @@ void Text_DrawShadow2(s16 x, s16 y, s32 c1, s32 c2, char *s);
 void Chat_DrawLogLines(u8 scroll, s16 dy, u8 atEnd, u8 size)
 {
     s32 k;
-    char buf[0x20];
+    char sender[0x20];
     s32 i;
-    s32 n;
+    s32 left;
     s16 top;
-    ChatLine *cl;
-    s16 wide;
-    s16 lh;
-    s16 h;
+    ChatLine *entry;
+    s16 narrowW;
+    s16 lineH;
+    s16 charH;
     ChatLine *line;
-    s8 *p;
-    s32 j;
+    s8 *fwdRow;
+    s32 count;
     s16 y;
     s8 *row;
-    s16 off;
+    s16 offY;
 
     if (gChatLogCount == 0) {
         return;
     }
     size = gChatTextSizes[size];
-    wide = (s16)size * 20 / 21;
-    h = (s16)size * 18 / 21;
-    Font_SetSpacing(size, h);
-    lh = h + 1;
-    off = dy * size / 21;
+    narrowW = (s16)size * 20 / 21;
+    charH = (s16)size * 18 / 21;
+    Font_SetSpacing(size, charH);
+    lineH = charH + 1;
+    offY = dy * size / 21;
     if (Chat_CountLogRows() > 11U && atEnd == 0) {
-        y = 0x1A4 - lh;
-        top = 0x1A4 - lh * 11;
+        y = 0x1A4 - lineH;
+        top = 0x1A4 - lineH * 11;
         i = gChatLogHead - 1 - scroll;
-        n = gChatLogCount - scroll;
-        for (; n != 0; n--, i--) {
+        left = gChatLogCount - scroll;
+        for (; left != 0; left--, i--) {
             line = &gChat.lines[i &= 0x3F];
             Text_SetColor(line->color[3]);
             k = line->rows - 1;
             if (k >= 0) {
                 row = line->text[k];
                 do {
-                Font_SetPos(0x18, y + off);
-                if (row[0x16] != 0) {
-                    Font_SetSpacing(wide, h);
-                    Text_Draw((char *)row);
-                    Font_SetSpacing(size, h);
-                } else {
-                    Text_Draw((char *)row);
-                }
-                y -= lh;
+                    Font_SetPos(0x18, y + offY);
+                    if (row[0x16] != 0) {
+                        Font_SetSpacing(narrowW, charH);
+                        Text_Draw((char *)row);
+                        Font_SetSpacing(size, charH);
+                    } else {
+                        Text_Draw((char *)row);
+                    }
+                    y -= lineH;
+                    if (y < top) {
+                        return;
+                    }
+                    k--;
+                    row -= 0x18;
+                } while (k >= 0);
+            }
+            if (line->id[0] != 0) {
+                Chat_FormatSender(sender, line);
+                Text_DrawShadow2(0x18, y + offY, 1, line->color[2], sender);
+                y -= lineH;
                 if (y < top) {
                     return;
                 }
-                k--;
-                row -= 0x18;
-            } while (k >= 0);
-        }
-        if (line->id[0] != 0) {
-            Chat_FormatSender(buf, (u8 *)line);
-            Text_DrawShadow2(0x18, y + off, 1, line->color[2], buf);
-            y -= lh;
-            if (y < top) {
-                return;
             }
         }
-    }
-} else {
-    j = gChatLogCount;
-    i = gChatLogHead - j;
-    y = 0x1A4 - lh * 11;
-    for (; j != 0; j--, i++) {
-        cl = &gChat.lines[i &= 0x3F];
-        if (cl->id[0] != 0) {
-            Chat_FormatSender(buf, (u8 *)cl);
-            Text_DrawShadow2(0x18, y + off, 1, cl->color[2], buf);
-            y += lh;
-            if (y >= 0x1A4) {
-                return;
+    } else {
+        count = gChatLogCount;
+        i = gChatLogHead - count;
+        y = 0x1A4 - lineH * 11;
+        for (; count != 0; count--, i++) {
+            entry = &gChat.lines[i &= 0x3F];
+            if (entry->id[0] != 0) {
+                Chat_FormatSender(sender, entry);
+                Text_DrawShadow2(0x18, y + offY, 1, entry->color[2], sender);
+                y += lineH;
+                if (y >= 0x1A4) {
+                    return;
+                }
             }
-        }
-        Text_SetColor(cl->color[3]);
-        k = 0;
-        if (k < cl->rows) {
-            p = cl->text[0];
-            do {
-                    Font_SetPos(0x18, y + off);
-                    if (p[0x16] != 0) {
-                        Font_SetSpacing(wide, h);
-                        Text_Draw((char *)p);
-                        Font_SetSpacing(size, h);
+            Text_SetColor(entry->color[3]);
+            k = 0;
+            if (k < entry->rows) {
+                fwdRow = entry->text[0];
+                do {
+                    Font_SetPos(0x18, y + offY);
+                    if (fwdRow[0x16] != 0) {
+                        Font_SetSpacing(narrowW, charH);
+                        Text_Draw((char *)fwdRow);
+                        Font_SetSpacing(size, charH);
                     } else {
-                        Text_Draw((char *)p);
+                        Text_Draw((char *)fwdRow);
                     }
-                    y += lh;
+                    y += lineH;
                     if (y >= 0x1A4) {
                         return;
                     }
                     k++;
-                    p += 0x18;
-                } while (k < cl->rows);
+                    fwdRow += 0x18;
+                } while (k < entry->rows);
             }
         }
     }
@@ -13057,38 +13131,38 @@ f32 Math_Sin(f32 x);
 /* The chat log window (as wide as gChatTextSizes[gSysSave.options.chatSize]), its blinking scroll arrows (gChatLines flags) and its lines. */
 void Chat_DrawLog(void)
 {
-    u8 w;
+    u8 size;
     s16 x;
-    u32 color;
-    u16 t;
-    u32 c;
+    u32 pulse;
+    u16 phase;
+    u32 upColor;
     s16 y;
 
-    Gfx_SetState63(0);
-    w = gChatTextSizes[(s8)gSysSave.options.chatSize];
-    Chat_DrawFrame(0, w, 1);
-    t = (gFrameTick & 0x1F) << 11;
-    color = ((s8)(48.0f * Math_Sin((6.2831855f / 65536.0f) * t)) + 0xCF) << 24 | 0x1ACC8E;
-    x = 7.0f + (w * 11) / 2;
-    y = 0x194 - (w * 18 / 21 + 1) * 12;
-    if (gChatLines & 1) {
-        c = color;
-        if (gChatLines & 4) {
+    Gfx_SetTexFilter(0);
+    size = gChatTextSizes[(s8)gSysSave.options.chatSize];
+    Chat_DrawFrame(0, size, 1);
+    phase = (gFrameTick & 0x1F) << 11;
+    pulse = ((s8)(48.0f * Math_Sin((6.2831855f / 65536.0f) * phase)) + 0xCF) << 24 | 0x1ACC8E;
+    x = 7.0f + (size * 11) / 2;
+    y = 0x194 - (size * 18 / 21 + 1) * 12;
+    if (gChatLines & CHAT_WIN_MORE_BEFORE) {
+        upColor = pulse;
+        if (gChatLines & CHAT_WIN_STEP_BACK) {
             y -= 2;
         }
     } else {
-        c = 0xD8707070;
+        upColor = 0xD8707070;
     }
-    Chat_DrawArrow(x, y, 0x1E, 0x18, c, 2);
+    Chat_DrawArrow(x, y, 0x1E, 0x18, upColor, ARROW_TEXRECT);
     y = 0x19E;
-    if (gChatLines & 2) {
-        if (gChatLines & 8) {
+    if (gChatLines & CHAT_WIN_MORE_AFTER) {
+        if (gChatLines & CHAT_WIN_STEP_ON) {
             y += 2;
         }
     } else {
-        color = 0xD8707070;
+        pulse = 0xD8707070;
     }
-    Chat_DrawArrow(x, y, 0x1E, 0x18, color, 3);
+    Chat_DrawArrow(x, y, 0x1E, 0x18, pulse, ARROW_MIRROR | ARROW_TEXRECT);
     Chat_DrawLogLines(gChatLogScroll, -10, gChatLogAtEnd, (s8)gSysSave.options.chatSize);
 }
 
@@ -13096,7 +13170,9 @@ s8 Kbd_IsOpen(void);
 s32 Town_IsPlayerHeld(void);
 s32 Kbd_IsModArrow(void);
 
-s32 Chat_ToggleRequested(u16 b)
+/* 1 when the player asks to switch chat windows: PAD_L1, or the keyboard's arrow key
+ * (Kbd_IsModArrow); never while the keyboard is open or the town holds the player. */
+s32 Chat_ToggleRequested(u16 buttons)
 {
     if (Kbd_IsOpen() != 0) {
         return 0;
@@ -13104,7 +13180,7 @@ s32 Chat_ToggleRequested(u16 b)
     if (Town_IsPlayerHeld() == 1) {
         return 0;
     }
-    if (b & 8) {
+    if (buttons & PAD_L1) {
         return 1;
     }
     return Kbd_IsModArrow();
@@ -13114,13 +13190,13 @@ s32 ChatLog_Close(void);
 
 /* Online: opens the current chat window (gChatWindowSel: 0 the gChatLog one, 1 the gChatWinTimer one) for 0x12C frames,
  * or if it is open, closes it and switches to the other. */
-void Chat_ToggleWindow(u16 b)
+void Chat_ToggleWindow(u16 buttons)
 {
-    ChatWindow *t;
+    ChatWindow *window;
     s32 closed;
     s16 timer;
 
-    if (Game_IsOnline() == 1 && gScene.online != 0 && gScene.area != 0x83 && Chat_ToggleRequested(b) == 1) {
+    if (Game_IsOnline() == 1 && gScene.online != 0 && gScene.area != AREA_HUB_0x83 && Chat_ToggleRequested(buttons) == 1) {
         if (gChatWinHold > 0) {
             switch (gChatWinState) {
             case 2:
@@ -13131,57 +13207,59 @@ void Chat_ToggleWindow(u16 b)
         closed = 0;
         timer = 0x12C;
         if (gChatWindowSel == 0) {
-            t = &gChatLog.win;
-            if (gChatLog.win.timer != 0 || (t->flags & 0x80)) {
-                t->timer = 0;
-                if (t->flags & 0x80) {
-                    t->flags = 0;
+            window = &gChatLog.win;
+            if (gChatLog.win.timer != 0 || (window->flags & CHAT_WIN_SCROLLING)) {
+                window->timer = 0;
+                if (window->flags & CHAT_WIN_SCROLLING) {
+                    window->flags = 0;
                     closed = 1;
                     timer = 0;
                 }
                 gChatWindowSel = 1;
-                t = &gChat.win;
-                gChatSendTo = 1;
+                window = &gChat.win;
+                gChatSendTo = CHAT_SEND_TARGETS;
                 if (closed) {
                     Chat_OpenWindow();
-                    t->flags = 0x80;
-                    t->open = 0;
+                    window->flags = CHAT_WIN_SCROLLING;
+                    window->open = 0;
                 }
             }
         } else {
-            t = &gChat.win;
-            if (t->timer != 0 || (t->flags & 0x80)) {
-                t->timer = 0;
-                if (t->flags & 0x80) {
-                    t->flags = 0;
+            window = &gChat.win;
+            if (window->timer != 0 || (window->flags & CHAT_WIN_SCROLLING)) {
+                window->timer = 0;
+                if (window->flags & CHAT_WIN_SCROLLING) {
+                    window->flags = 0;
                     closed = 1;
                     timer = 0;
                 }
                 gChatWindowSel = 0;
-                t = &gChatLog.win;
-                gChatSendTo = 0;
+                window = &gChatLog.win;
+                gChatSendTo = CHAT_SEND_LOBBY;
                 if (closed) {
                     ChatLog_Close();
-                    t->flags = 0x80;
-                    t->open = 0;
+                    window->flags = CHAT_WIN_SCROLLING;
+                    window->open = 0;
                 }
             }
         }
-        t->timer = timer;
-        Sound_PlaySeFlat(0, 0x11, 0);
+        window->timer = timer;
+        Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
     }
 }
 
 extern s8 gNoticeFlags;
 
-/* Online: updates the chat windows' state (gChatWinState) with the buttons b (4: open or close the gChatLog
- * window, Chat_ToggleWindow switches windows) and counts the current window's timer down. */
-void Chat_UpdateWindowsOnline(u16 b)
+/* Online: updates the chat windows by the buttons (PAD_L2 opens the lobby's log window or
+ * flips gChatLog.unk1848 while it is open; Chat_ToggleWindow switches windows) and counts
+ * the current window's timer down. While chat is hidden, a notice is up or the log is
+ * scrolled, gChatWinState is 3. */
+void Chat_UpdateWindowsOnline(u16 buttons)
 {
-    ChatWindow *t;
+    ChatWindow *window;
     u8 pressed;
 
-    if (gChatHidden != 0 || (gNoticeFlags != 0 && gNoticeFlags != 0x10)) {
+    if (gChatHidden != 0 || (gNoticeFlags != 0 && gNoticeFlags != NOTICE_CLOSED)) {
         if (gChatWinOpen == 0) {
             gChatWinTimer = 0;
         }
@@ -13191,18 +13269,18 @@ void Chat_UpdateWindowsOnline(u16 b)
         gChatWinState = 3;
         return;
     }
-    Chat_ToggleWindow(b);
-    if (gChatSendTo == 0) {
-        t = &gChatLog.win;
+    Chat_ToggleWindow(buttons);
+    if (gChatSendTo == CHAT_SEND_LOBBY) {
+        window = &gChatLog.win;
     } else {
-        t = &gChat.win;
+        window = &gChat.win;
     }
-    if (t->flags & 0x80) {
+    if (window->flags & CHAT_WIN_SCROLLING) {
         gChatWinState = 3;
         return;
     }
     pressed = 0;
-    if (Town_IsPlayerHeld() != 1 && (b & 4)) {
+    if (Town_IsPlayerHeld() != 1 && (buttons & PAD_L2)) {
         pressed = 1;
     }
     if (gChatWinHold > 0) {
@@ -13216,7 +13294,7 @@ void Chat_UpdateWindowsOnline(u16 b)
             }
             return;
         }
-        if (gChatSendTo == 0) {
+        if (gChatSendTo == CHAT_SEND_LOBBY) {
             switch (gChatWinState) {
             case 0:
                 if (pressed != 0) {
@@ -13224,59 +13302,59 @@ void Chat_UpdateWindowsOnline(u16 b)
                         gChatLog.unk1848 ^= 1;
                     }
                     gChatLog.win.timer = 0x12C;
-                    Sound_PlaySeFlat(0, 0x11, 0);
+                    Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
                 }
                 break;
             case 1:
                 if (gChatLog.win.open == 0) {
                     if (pressed != 0 && gChatLog.win.timer > 0 && gChatLog.win.timer != 0) {
                         gChatLog.win.timer = 0;
-                        Sound_PlaySeFlat(0, 0x14, 0);
+                        Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
                     }
                     break;
                 }
                 if (pressed != 0) {
                     gChatLog.win.timer = 0x12C;
-                    Sound_PlaySeFlat(0, 0x11, 0);
+                    Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
                     break;
                 }
             case 2:
                 if (gChatLog.win.open == 0 && gChatLog.win.timer != 0) {
                     gChatLog.win.timer = 0;
-                    Sound_PlaySeFlat(0, 0x14, 0);
+                    Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
                 }
             default:
                 return;
             }
         }
-    } else if (gChatSendTo == 0 && pressed != 0) {
+    } else if (gChatSendTo == CHAT_SEND_LOBBY && pressed != 0) {
         if (gChatLog.win.timer != 0) {
             gChatLog.unk1848 ^= 1;
         }
         gChatLog.win.timer = 0x12C;
-        Sound_PlaySeFlat(0, 0x11, 0);
+        Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
     }
     gChatWinState = 0;
-    t->open = 0;
-    if (t->timer > 0) {
-        t->timer--;
+    window->open = 0;
+    if (window->timer > 0) {
+        window->timer--;
     }
 }
 
 /* Updates the chat window's state (gChatWinState) and counts its timer down. */
 void Chat_UpdateWindow(u16 unused0)
 {
-    ChatWindow *t;
+    ChatWindow *window;
 
-    if (gChatHidden != 0 || (gNoticeFlags != 0 && gNoticeFlags != 0x10)) {
+    if (gChatHidden != 0 || (gNoticeFlags != 0 && gNoticeFlags != NOTICE_CLOSED)) {
         if (gChatWinOpen == 0) {
             gChatWinTimer = 0;
         }
         gChatWinState = 3;
         return;
     }
-    t = &gChat.win;
-    if (t->flags & 0x80) {
+    window = &gChat.win;
+    if (window->flags & CHAT_WIN_SCROLLING) {
         gChatWinState = 3;
         return;
     }
@@ -13290,15 +13368,18 @@ void Chat_UpdateWindow(u16 unused0)
         }
     }
     gChatWinState = 0;
-    t->open = 0;
-    if (t->timer > 0) {
-        t->timer--;
+    window->open = 0;
+    if (window->timer > 0) {
+        window->timer--;
     }
 }
 
+/* Draws the chat on the HUD: the chat window for gChatWinState 3 and up while it is open,
+ * else, while its timer runs, the box and newest lines in the HUD's chat size
+ * (gChatHudColor's low bits, when set, override the option). */
 void Chat_DrawHud(void)
 {
-    u8 sz;
+    u8 sizeIndex;
     u8 size;
 
     if ((gChatWinOpen != 0) && ((s32) gChatWinState >= 3)) {
@@ -13306,21 +13387,22 @@ void Chat_DrawHud(void)
         return;
     }
     if (gChatWinTimer != 0) {
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         if (gChatHudColor == 0) {
             size = gSysSave.options.chatSize;
         } else {
             size = gChatHudColor & 0x7F;
         }
-        sz = size & 0xFF;
-        Box_Draw((s32) gChatSendTo, sz, 0);
-        Chat_DrawLogLines(0U, 0, 0U, sz);
+        sizeIndex = size & 0xFF;
+        Box_Draw((s32) gChatSendTo, sizeIndex, 0);
+        Chat_DrawLogLines(0U, 0, 0U, sizeIndex);
     }
 }
 
 s8 Kbd_IsOpen(void);
 s32 Town_IsPlayerHeld(void);
 
+/* 0 while the keyboard is open, or online while the town holds the player; else 1. */
 s32 Chat_CanDraw(void)
 {
     if (Kbd_IsOpen() != 0) {
@@ -13341,49 +13423,51 @@ void Gfx_DrawGauge(s16 x, s16 y, s16 w, s16 h, s32 flags);
 /* Draws a chat window (kind 1: the log, 2 and 3: the input line, 3 as wide as gChatTextSizes[gSysSave.options.chatSize]) and its gauge. */
 void Chat_DrawWindow(u8 kind)
 {
-    Panel *w;
-    u8 n;
-    s32 k;
+    Panel *win;
+    u8 size;
+    s32 gaugeKind;
     char *text;
 
     if (kind != 0) {
-        n = (kind == 3) ? gChatTextSizes[(s8)gSysSave.options.chatSize] : 0x15;
+        size = (kind == 3) ? gChatTextSizes[(s8)gSysSave.options.chatSize] : 0x15;
         if (kind == 1) {
-            w = &gChatRecvWindow;
+            win = &gChatRecvWindow;
             if (Chat_CanDraw() == 1) {
                 text = gChatOpenText;
             } else {
                 text = gChatRecvText[0];
             }
         } else {
-            w = gChatLogWindow;
-            w->y = (kind == 2) ? 0x190 : 0x192 - (n * 18 / 21 + 1) * 13;
-            w->charW = n;
-            w->charH = n * 18 / 21;
+            win = gChatLogWindow;
+            win->y = (kind == 2) ? 0x190 : 0x192 - (size * 18 / 21 + 1) * 13;
+            win->charW = size;
+            win->charH = size * 18 / 21;
             text = gChatRecvText[0];
         }
-        if (gChatSendTo == 0) {
-            k = 4;
-            w->color = 0xBD6CC56C;
+        if (gChatSendTo == CHAT_SEND_LOBBY) {
+            gaugeKind = 4;
+            win->color = 0xBD6CC56C;
         } else {
-            w->color = 0xBDB59F6C;
-            k = 5;
+            win->color = 0xBDB59F6C;
+            gaugeKind = 5;
         }
-        Window_DrawText(w, 0, (u8 *)((s32)text));
-        Gfx_DrawGauge(w->x, w->y, n, n * 18 / 21, k);
+        Window_DrawText(win, 0, (u8 *)((s32)text));
+        Gfx_DrawGauge(win->x, win->y, size, size * 18 / 21, gaugeKind);
     }
 }
 
+/* Hides the chat windows (gChatHidden) and stops the current one's timer. */
 void Chat_HideWindows(void)
 {
     gChatHidden = 1;
-    if (gChatSendTo == 0) {
+    if (gChatSendTo == CHAT_SEND_LOBBY) {
         gChatLog.win.timer = 0;
         return;
     }
     gChatWinTimer = 0;
 }
 
+/* Lets the chat windows show again. */
 void Chat_ShowWindows(void)
 {
     gChatHidden = 0;
@@ -13419,7 +13503,7 @@ void Players_UpdatePresent(void)
 
 extern s16 gNoticeShownChars;
 extern char **gNoticeList;
-extern s32 gNoticeBoxStyle;
+extern s32 gNoticeTitle;
 extern u8 gNoticeSel;
 extern u8 gChatSizeLineGaps[];
 extern char *gNoticeYesSelText;
@@ -13428,76 +13512,77 @@ extern char *gNoticeNextText;
 s32 Text_NextChar(char *out, char *s, char **next);
 void Text_PrintCodes(s16 max, const char *fmt, ...);
 
-/* The notice window (gNoticeFlags flags, 0x10: none): its text gChat.notice wrapped at 0x16 half-width
- * characters, then (by the flags) a prompt, a mark, the list gNoticeList with its selected entry gNoticeSel
- * in brackets, or that entry alone. */
+/* Draws the notice window (nothing with NOTICE_CLOSED): the part of gChat.notice shown so
+ * far, wrapped at 0x16 half-width characters, then by gNoticeFlags the yes/no prompt, the
+ * more-text mark, the list gNoticeList with its selected entry gNoticeSel in brackets, or
+ * that entry alone. */
 void Notice_Draw(void)
 {
     s32 i;
-    char c[4];
-    char *s;
-    s16 r;
-    s16 lh;
-    s32 h;
+    char ch[4];
+    char *src;
+    s16 kind;
+    s16 lineH;
+    s32 charH;
     u8 size;
-    s32 left;
-    s32 w;
-    s32 n;
+    s32 charsLeft;
+    s32 widthLeft;
+    s32 chars;
     s16 y;
     s16 step;
     char *line;
 
-    if (gNoticeFlags & 0x10) {
+    if (gNoticeFlags & NOTICE_CLOSED) {
         return;
     }
     size = gChatTextSizes[gSysSave.options.chatSize];
-    Box_Draw(0, gSysSave.options.chatSize, gNoticeBoxStyle);
-    h = size * 18 / 21;
-    Font_SetSpacing(size, h);
+    Box_Draw(0, gSysSave.options.chatSize, gNoticeTitle);
+    charH = size * 18 / 21;
+    Font_SetSpacing(size, charH);
     Text_SetColor(0);
-    lh = h + 1;
-    y = 0x1A4 - lh * 11U; /* 11 lines up from the bottom; unsigned, probably a count macro */
+    lineH = charH + 1;
+    y = 0x1A4 - lineH * 11U;    /* 11 lines up from the bottom; the count is unsigned for the match */
     i = gSysSave.options.chatSize;
-    step = lh + gChatSizeLineGaps[i];
-    left = gNoticeShownChars;
-    s = gChat.notice;
-    if (left > 0) {
+    step = lineH + gChatSizeLineGaps[i];
+    charsLeft = gNoticeShownChars;
+    src = gChat.notice;
+    if (charsLeft > 0) {
         do {
-            line = s;
-            w = 0x16;
-            n = 0;
-            while (left > 0 && w > 0) {
-                r = Text_NextChar(c, s, &s);
-                if (c[0] == '\n') {
+            line = src;
+            widthLeft = 0x16;
+            chars = 0;
+            while (charsLeft > 0 && widthLeft > 0) {
+                kind = Text_NextChar(ch, src, &src);
+                if (ch[0] == '\n') {
                     break;
                 }
-                left--;
-                n++;
-                if (r == 1 || r == 2) {
-                    w--;
+                charsLeft--;
+                chars++;
+                if (kind == 1 || kind == 2) {
+                    widthLeft--;
                 }
-                w--;
+                widthLeft--;
             }
             Font_SetPos(0x18, y);
-            Text_PrintCodes(n, line);
+            Text_PrintCodes(chars, line);
             y += step;
-        } while (left > 0);
+        } while (charsLeft > 0);
     }
     y += step;
-    if (gNoticeFlags & 2) {
+    if (gNoticeFlags & NOTICE_PROMPT) {
         Font_SetPos(0x18, y);
-        if (gNoticeFlags & 4) {
+        if (gNoticeFlags & NOTICE_PROMPT_YES) {
             Text_Printf(gNoticeYesSelText);
         } else {
             Text_Printf(gNoticeNoSelText[0]);
         }
     }
-    if (gNoticeFlags & 8) {
+    if (gNoticeFlags & NOTICE_NEXT) {
         Text_SetColor(2);
         Font_SetPos(size * 132 / 21 + 0x18, y);
         Text_Draw(gNoticeNextText);
     }
-    if (gNoticeFlags & 0x20) {
+    if (gNoticeFlags & NOTICE_LIST) {
         Font_SetPos(0x18, y);
         for (i = 0; i < 11; i++) {
             if (gNoticeList[i] == NULL) {
@@ -13512,7 +13597,7 @@ void Notice_Draw(void)
             y += step;
         }
     }
-    if (gNoticeFlags & 0x40) {
+    if (gNoticeFlags & NOTICE_LIST_PICKED) {
         Font_SetPos(0x18, y);
         Text_Printf(gNoticeList[gNoticeSel]);
     }
@@ -13531,39 +13616,42 @@ void Menu_DrawFrame(void *b, s16 *pos);
 s16 StatusPage_DrawHeader(struct Player *p, s16 x, s16 y);
 s16 StatusPage_DrawSymbolColor(s16 x, s16 y);
 s16 StatusPage_DrawRank(s16 x, s16 y);
-s16 StatusPage_DrawHunterRank(s16 x, s16 y);
+s16 StatusPage_DrawArenaRecord(s16 x, s16 y);
 s16 StatusPage_DrawOnline(s16 x, s16 y);
 void Text_DrawWrapped33(s16 x, s16 y, s16 lineh, char *s);
 void StatusPage_DrawStats(Player *p, Player *q, s32 x, s32 y);
 u8 Player_ArmorHasTorsoUp(Player *p);
 void SkillList_DrawPage(s16 x, s16 y, u8 page, u8 mark);
-void PersonalStatus_DrawEquipment(u8 *p);
+void PersonalStatus_DrawEquipment(Player *pl);
 void Player_DrawSkillsPlain(Player *a, s32 b, s16 c); /* unit's own declaration: with the definition's void (Player *a, s32 b, s16 c) (sub_main/unk_356380.c), EquipWindow_DrawDetails 420 of 1462 words differ */
 
-void PersonalStatus_DrawPage(struct Player *p, u8 b)
+/* Draws page `page` of the status menu for pl, its title showing the page and the page
+ * count: 0 the profile (name, ranks, the hunter's comment), 1 the equipment and the stats,
+ * 2-7 the skill list's pages with the skills in effect. */
+void PersonalStatus_DrawPage(struct Player *pl, u8 page)
 {
     char buf[64];
     s16 y;
-    u8 n;
+    u8 pages;
 
-    n = SkillList_PageCount() + 2;
-    sprintf(buf, gStatusPageFmt[0], b + 1, n);
-    ListPanel_Draw(&gPersonalStatusPanels[b], NULL, buf, -1);
-    Menu_DrawFrame(&gPersonalStatusPanels[b], 0);
-    Window_DrawText(&gPersonalStatusBoxes[b], 0, (u8 *)gStatusBoxTitles[b]);
+    pages = SkillList_PageCount() + 2;
+    sprintf(buf, gStatusPageFmt[0], page + 1, pages);
+    ListPanel_Draw(&gPersonalStatusPanels[page], NULL, buf, -1);
+    Menu_DrawFrame(&gPersonalStatusPanels[page], 0);
+    Window_DrawText(&gPersonalStatusBoxes[page], 0, (u8 *)gStatusBoxTitles[page]);
     Font_SetSpacing(0x12, 0x12);
-    switch (b) {
+    switch (page) {
     case 0:
-        y = StatusPage_DrawHeader(p, 0x132, 0x52);
+        y = StatusPage_DrawHeader(pl, 0x132, 0x52);
         y = StatusPage_DrawSymbolColor(0x132, y);
         y = StatusPage_DrawRank(0x132, y);
-        y = StatusPage_DrawHunterRank(0x132, y);
+        y = StatusPage_DrawArenaRecord(0x132, y);
         StatusPage_DrawOnline(0x132, y);
         Text_DrawWrapped33(0x136, 0x165, 0x14, (char *)gSave.comment);
         break;
     case 1:
-        PersonalStatus_DrawEquipment((u8 *)p);
-        StatusPage_DrawStats(p, 0, 0x132, 0x126);
+        PersonalStatus_DrawEquipment(pl);
+        StatusPage_DrawStats(pl, 0, 0x132, 0x126);
         break;
     case 2:
     case 3:
@@ -13571,8 +13659,8 @@ void PersonalStatus_DrawPage(struct Player *p, u8 b)
     case 5:
     case 6:
     case 7:
-        SkillList_DrawPage(0x132, 0x3E, b - 2, Player_ArmorHasTorsoUp(p));
-        Player_DrawSkillsPlain(p, 0x132, 0x126);
+        SkillList_DrawPage(0x132, 0x3E, page - 2, Player_ArmorHasTorsoUp(pl));
+        Player_DrawSkillsPlain(pl, 0x132, 0x126);
         break;
     }
 }
@@ -13582,54 +13670,55 @@ extern char *gStatusHeadLabels[];
 extern char *gPointsFmt[];
 extern char *gMoneyFmt;
 
-/* The first lines of the status page: a heading by Game_IsOnline/Quest_IsDrill (gStatusHeadLabels), the hunter's name,
- * an id line when Game_IsOnline, the money (gSave.points, the zenny total of unk_3BD380.c) or gSave.money, the text
- * gHunterTitles[gSave.title] and the weapon class; returns the next line's y. The last lines' x + 0x48U (unsigned)
- * keeps MWCC from reusing tx there. */
-s16 StatusPage_DrawHeader(struct Player *p, s16 x, s16 y)
+/* The first lines of the status page: a heading picked by Game_IsOnline and Quest_IsDrill
+ * (gStatusHeadLabels), the hunter's name, online an id line (the user id, or offline-scene
+ * the player's preset id), the drill's points or the money, the hunter's title and the
+ * weapon class; returns the next line's y. The last lines' x + 0x48U is unsigned so that
+ * MWCC doesn't reuse valueX there (the match needs it). */
+s16 StatusPage_DrawHeader(struct Player *pl, s16 x, s16 y)
 {
-    s32 k;
-    s32 tx;
-    s32 lx;
+    s32 label;
+    s32 valueX;
+    s32 left;
 
-    Font_SetColor(0x807F7F28);
+    Font_SetColor(STATUS_COLOR_LABEL);
     Font_SetPos(x, y);
-    k = 0;
+    label = 0;
     if (Game_IsOnline() == 1) {
-        k++;
+        label++;
     }
     if (Quest_IsDrill() == 1) {
-        k += 2;
+        label += 2;
     }
-    Text_PrintfStyled(2, gStatusHeadLabels[k]);
-    Font_SetColor(0x807F7F7F);
-    lx = x;
-    tx = lx + 0x48;
-    Font_SetPos(tx, y);
-    Text_Draw((char *)p->name);
+    Text_PrintfStyled(2, gStatusHeadLabels[label]);
+    Font_SetColor(STATUS_COLOR_VALUE);
+    left = x;
+    valueX = left + 0x48;
+    Font_SetPos(valueX, y);
+    Text_Draw((char *)pl->name);
     y += 0x14;
     if (Game_IsOnline() == 1) {
-        Font_SetPos(tx, y);
+        Font_SetPos(valueX, y);
         if (Quest_IsDrill() == 1 && gScene.allLocal != 0) {
             Text_Draw(gMyUserId);
         } else if (gScene.online == 0) {
-            Text_Draw((char *)&gScene + p->index * 8 + 0x276);
+            Text_Draw((char *)gScene.preset[pl->index]);
         } else {
             Text_Draw(gMyUserId);
         }
         y += 0x14;
     }
     if (Quest_IsDrill() == 1) {
-        Font_SetPos(lx + 0x7E, y);
+        Font_SetPos(left + 0x7E, y);
         Text_PrintfColored(gPointsFmt[0], gSave.points);
     } else {
-        Font_SetPos(tx, y);
+        Font_SetPos(valueX, y);
         Text_PrintfColored(gMoneyFmt, gSave.money);
     }
-    Font_SetPos(lx + 0x48U, y + 0x14);
+    Font_SetPos(left + 0x48U, y + 0x14);
     Text_Draw(gHunterTitles[gSave.title].text);
-    Font_SetPos(lx + 0x48U, y + 0x28);
-    StatusPage_DrawWeaponClass((u8 *)p);
+    Font_SetPos(left + 0x48U, y + 0x28);
+    StatusPage_DrawWeaponClass(pl);
     return y + 0x3C;
 }
 
@@ -13639,14 +13728,15 @@ void Font_SetPos(s16 x, s16 y);
 extern char *gSymbolColorLabel[];
 extern char *gSymbolColorNames[];
 
-/* A line of the status page (when StatusPage_HasSymbolColor): a label and the text for gSave's 0x27B6; returns the next line's y. */
+/* A line of the status page, when StatusPage_HasSymbolColor: the label and the name of
+ * gSave.symbolColor; returns the next line's y. */
 s16 StatusPage_DrawSymbolColor(s16 x, s16 y)
 {
     if (StatusPage_HasSymbolColor() == 1) {
-        Font_SetColor(0x807F7F28);
+        Font_SetColor(STATUS_COLOR_LABEL);
         Font_SetPos(x, y);
         Text_Draw(gSymbolColorLabel[0]);
-        Font_SetColor(0x807F7F7F);
+        Font_SetColor(STATUS_COLOR_VALUE);
         Font_SetPos(x + 0x90, y);
         Text_Draw(gSymbolColorNames[gSave.symbolColor]);
         y += 0x14;
@@ -13658,28 +13748,30 @@ void Save_GetRankInfo(SaveData *s, u16 *hr, u32 *pts, u32 *next);
 void Text_PrintfColored(const char *fmt, ...);
 extern char *gHunterRankLabels;
 extern char *gRankPointsFmt[];
-extern char D_004908A0[];
+extern char gStatusFmtInt[];
 
-/* The hunter rank lines of the status page; returns the next line's y. */
+/* The hunter rank lines of the status page, once the hunter has a rank: the rank, then the
+ * rank points and the points to the next rank (the points alone at rank 999); returns the
+ * next line's y. */
 s16 StatusPage_DrawRank(s16 x, s16 y)
 {
     u16 hr;
-    u32 pts;
-    u32 next;
+    u32 points;
+    u32 nextPoints;
 
     if (gSave.hr > 0) {
-        Font_SetColor(0x807F7F28);
+        Font_SetColor(STATUS_COLOR_LABEL);
         Font_SetPos(x, y);
         Text_PrintfStyled(2, gHunterRankLabels);
-        Save_GetRankInfo(&gSave, &hr, &pts, &next);
-        Font_SetColor(0x807F7F7F);
+        Save_GetRankInfo(&gSave, &hr, &points, &nextPoints);
+        Font_SetColor(STATUS_COLOR_VALUE);
         Font_SetPos(x + 0x48, y);
-        Text_PrintfColored(D_004908A0, hr);
+        Text_PrintfColored(gStatusFmtInt, hr);
         Font_SetPos(x + 0x48, y + 0x14);
         if (hr < 999) {
-            Text_PrintfColored(gRankPointsFmt[0], pts, next);
+            Text_PrintfColored(gRankPointsFmt[0], points, nextPoints);
         } else {
-            Text_PrintfColored(D_004908A0, pts);
+            Text_PrintfColored(gStatusFmtInt, points);
         }
         y += 0x28;
     }
@@ -13692,14 +13784,15 @@ extern char *gArenaRecordLabels[];
 extern char *gArenaRecordFmt[];
 extern char *gArenaTimeFmt;
 
-/* Two lines of the status page after event flag 0xC4: a sum of two counts and a time in minutes and seconds; returns the next line's y. */
-s16 StatusPage_DrawHunterRank(s16 x, s16 y)
+/* The arena record lines of the status page, once event flag 0xC4 is set: the fights, wins
+ * and losses, and the total time in minutes and seconds; returns the next line's y. */
+s16 StatusPage_DrawArenaRecord(s16 x, s16 y)
 {
     if (Save_TestEventFlag(0xC4) == 1) {
-        Font_SetColor(0x807F7F28);
+        Font_SetColor(STATUS_COLOR_LABEL);
         Font_SetPos(x, y);
         Text_PrintfStyled(2, gArenaRecordLabels[0]);
-        Font_SetColor(0x807F7F7F);
+        Font_SetColor(STATUS_COLOR_VALUE);
         Font_SetPos(x + 0x5A, y);
         Text_PrintfColored(gArenaRecordFmt[0], gSave.versusWins + gSave.versusLosses, gSave.versusWins, gSave.versusLosses);
         Font_SetPos(x + 0xA2, y + 0x14);
@@ -13713,14 +13806,15 @@ void Profile_DrawStatus(s16 x, s16 y); /* unit's own declaration: the definition
 void Profile_DrawRestrict(s16 x, s16 y);
 extern char *gOnlineCardLabels;
 
-/* The online lines of the status page; returns the next line's y. */
+/* The online lines of the status page (online, in the online scene): the profile's status
+ * and restriction (the lobby's Profile_Draw*); returns the next line's y. */
 s16 StatusPage_DrawOnline(s16 x, s16 y)
 {
     if (Game_IsOnline() == 1 && gScene.online != 0) {
-        Font_SetColor(0x807F7F28);
+        Font_SetColor(STATUS_COLOR_LABEL);
         Font_SetPos(x, y);
         Text_PrintfStyled(2, gOnlineCardLabels);
-        Font_SetColor(0x807F7F7F);
+        Font_SetColor(STATUS_COLOR_VALUE);
         Profile_DrawStatus(x + 0x48, y);
         Profile_DrawRestrict(x + 0xA2, y + 0x14);
         y += 0x28;
@@ -13728,145 +13822,144 @@ s16 StatusPage_DrawOnline(s16 x, s16 y)
     return y;
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", D_00490900);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", D_00490908);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", gStatusFmtInt4);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_356380", gStatusFmtInt3);
 
-extern char D_00490900[];
-extern char D_00490908[];
+extern char gStatusFmtInt4[];
+extern char gStatusFmtInt3[];
 extern char *gStatusStatLabels[];
 u32 Player_ShownAttack(Player *p);
 
-#define STAT_SAME   0x807F7F7F
-#define STAT_BETTER 0x802B7F7F
-#define STAT_WORSE  0x807F212E
 
-/* The stats page: labels, then p's health, stamina / 3, attack, defense and the five resistances, each coloured
- * against q's (better, worse or the same; all the same without q). The positions are ints holding u16
- * values (ty, tx), and the three row offsets used by both columns are locals (y1..y3). */
-void StatusPage_DrawStats(Player *p, Player *q, s32 x, s32 y)
+/* The stats block of the status page: the labels, then pl's health, stamina / 3, attack,
+ * defense and five resistances, each coloured against other's (STATUS_COLOR_BETTER, _WORSE,
+ * or _VALUE; all _VALUE without other). For the match the positions are ints holding u16
+ * values, and the three row offsets that both columns use are locals. */
+void StatusPage_DrawStats(Player *pl, Player *other, s32 x, s32 y)
 {
-    u32 c0;
-    u32 c1;
-    u32 c2;
-    s32 rx;
-    u32 atk;
-    u32 c8;
-    s32 ty;
-    s32 tx;
-    s16 lx;
-    s32 y1;
-    s32 y2;
-    s32 y3;
-    u32 qatk;
-    u32 c7;
-    u32 c6;
-    u32 c5;
-    u32 c4;
-    u32 c3;
+    u32 hpColor;
+    u32 staminaColor;
+    u32 attackColor;
+    s32 rightX;
+    u32 attack;
+    u32 resist4Color;
+    s32 top;
+    s32 left;
+    s16 leftX;
+    s32 row1Y;
+    s32 row2Y;
+    s32 row3Y;
+    u32 otherAttack;
+    u32 resist3Color;
+    u32 resist2Color;
+    u32 resist1Color;
+    u32 resist0Color;
+    u32 defenseColor;
 
     Font_SetSpacing(0x12, 0x12);
-    Font_SetColor(0x807F7F28);
+    Font_SetColor(STATUS_COLOR_LABEL);
     Text_DrawLinesColored(x, y, gStatusStatLabels, 0x14);
-    atk = Player_ShownAttack(p);
-    c0 = c1 = c2 = c3 = c4 = c5 = c6 = c7 = c8 = STAT_SAME;
-    if (q != NULL) {
-        if (q->hpMax < p->hpMax) {
-            c0 = STAT_BETTER;
-        } else if (q->hpMax > p->hpMax) {
-            c0 = STAT_WORSE;
+    attack = Player_ShownAttack(pl);
+    hpColor = staminaColor = attackColor = defenseColor = resist0Color = resist1Color = resist2Color = resist3Color = resist4Color = STATUS_COLOR_VALUE;
+    if (other != NULL) {
+        if (other->hpMax < pl->hpMax) {
+            hpColor = STATUS_COLOR_BETTER;
+        } else if (other->hpMax > pl->hpMax) {
+            hpColor = STATUS_COLOR_WORSE;
         }
-        if (q->staminaMax < p->staminaMax) {
-            c1 = STAT_BETTER;
-        } else if (q->staminaMax > p->staminaMax) {
-            c1 = STAT_WORSE;
+        if (other->staminaMax < pl->staminaMax) {
+            staminaColor = STATUS_COLOR_BETTER;
+        } else if (other->staminaMax > pl->staminaMax) {
+            staminaColor = STATUS_COLOR_WORSE;
         }
-        qatk = Player_ShownAttack(q);
-        if (atk > qatk) {
-            c2 = STAT_BETTER;
-        } else if (atk < qatk) {
-            c2 = STAT_WORSE;
+        otherAttack = Player_ShownAttack(other);
+        if (attack > otherAttack) {
+            attackColor = STATUS_COLOR_BETTER;
+        } else if (attack < otherAttack) {
+            attackColor = STATUS_COLOR_WORSE;
         }
-        if (q->defense < p->defense) {
-            c3 = STAT_BETTER;
-        } else if (q->defense > p->defense) {
-            c3 = STAT_WORSE;
+        if (other->defense < pl->defense) {
+            defenseColor = STATUS_COLOR_BETTER;
+        } else if (other->defense > pl->defense) {
+            defenseColor = STATUS_COLOR_WORSE;
         }
-        if (q->resist[0] < p->resist[0]) {
-            c4 = STAT_BETTER;
-        } else if (q->resist[0] > p->resist[0]) {
-            c4 = STAT_WORSE;
+        if (other->resist[0] < pl->resist[0]) {
+            resist0Color = STATUS_COLOR_BETTER;
+        } else if (other->resist[0] > pl->resist[0]) {
+            resist0Color = STATUS_COLOR_WORSE;
         }
-        if (q->resist[1] < p->resist[1]) {
-            c5 = STAT_BETTER;
-        } else if (q->resist[1] > p->resist[1]) {
-            c5 = STAT_WORSE;
+        if (other->resist[1] < pl->resist[1]) {
+            resist1Color = STATUS_COLOR_BETTER;
+        } else if (other->resist[1] > pl->resist[1]) {
+            resist1Color = STATUS_COLOR_WORSE;
         }
-        if (q->resist[2] < p->resist[2]) {
-            c6 = STAT_BETTER;
-        } else if (q->resist[2] > p->resist[2]) {
-            c6 = STAT_WORSE;
+        if (other->resist[2] < pl->resist[2]) {
+            resist2Color = STATUS_COLOR_BETTER;
+        } else if (other->resist[2] > pl->resist[2]) {
+            resist2Color = STATUS_COLOR_WORSE;
         }
-        if (q->resist[3] < p->resist[3]) {
-            c7 = STAT_BETTER;
-        } else if (q->resist[3] > p->resist[3]) {
-            c7 = STAT_WORSE;
+        if (other->resist[3] < pl->resist[3]) {
+            resist3Color = STATUS_COLOR_BETTER;
+        } else if (other->resist[3] > pl->resist[3]) {
+            resist3Color = STATUS_COLOR_WORSE;
         }
-        if (q->resist[4] < p->resist[4]) {
-            c8 = STAT_BETTER;
-        } else if (q->resist[4] > p->resist[4]) {
-            c8 = STAT_WORSE;
+        if (other->resist[4] < pl->resist[4]) {
+            resist4Color = STATUS_COLOR_BETTER;
+        } else if (other->resist[4] > pl->resist[4]) {
+            resist4Color = STATUS_COLOR_WORSE;
         }
     }
-    Font_SetColor(c0);
-    ty = (u16)y;
-    tx = (u16)x;
-    lx = (u16)(tx + 0x5A);
-    Font_SetPos(lx, ty);
-    Text_PrintfColored(D_00490900, p->hpMax);
-    Font_SetColor(c1);
-    y1 = ty + 0x14;
-    Font_SetPos(lx, y1);
-    Text_PrintfColored(D_00490900, p->staminaMax / 3);
-    Font_SetColor(c2);
-    y2 = ty + 0x28;
-    Font_SetPos(lx, y2);
-    Text_PrintfColored(D_00490900, atk);
-    Font_SetColor(c3);
-    y3 = ty + 0x3C;
-    Font_SetPos(lx, y3);
-    Text_PrintfColored(D_00490900, p->defense);
-    Font_SetColor(c4);
-    rx = (u16)(tx + 0x5A) + 0x90;
-    Font_SetPos(rx, ty);
-    Text_PrintfColored(D_00490908, (s16)p->resist[0]);
-    Font_SetColor(c5);
-    Font_SetPos(rx, y1);
-    Text_PrintfColored(D_00490908, (s16)p->resist[1]);
-    Font_SetColor(c6);
-    Font_SetPos(rx, y2);
-    Text_PrintfColored(D_00490908, (s16)p->resist[2]);
-    Font_SetColor(c7);
-    Font_SetPos(rx, y3);
-    Text_PrintfColored(D_00490908, (s16)p->resist[3]);
-    Font_SetColor(c8);
-    Font_SetPos(rx, ty + 0x50);
-    Text_PrintfColored(D_00490908, (s16)p->resist[4]);
+    Font_SetColor(hpColor);
+    top = (u16)y;
+    left = (u16)x;
+    leftX = (u16)(left + 0x5A);
+    Font_SetPos(leftX, top);
+    Text_PrintfColored(gStatusFmtInt4, pl->hpMax);
+    Font_SetColor(staminaColor);
+    row1Y = top + 0x14;
+    Font_SetPos(leftX, row1Y);
+    Text_PrintfColored(gStatusFmtInt4, pl->staminaMax / 3);
+    Font_SetColor(attackColor);
+    row2Y = top + 0x28;
+    Font_SetPos(leftX, row2Y);
+    Text_PrintfColored(gStatusFmtInt4, attack);
+    Font_SetColor(defenseColor);
+    row3Y = top + 0x3C;
+    Font_SetPos(leftX, row3Y);
+    Text_PrintfColored(gStatusFmtInt4, pl->defense);
+    Font_SetColor(resist0Color);
+    rightX = (u16)(left + 0x5A) + 0x90;
+    Font_SetPos(rightX, top);
+    Text_PrintfColored(gStatusFmtInt3, (s16)pl->resist[0]);
+    Font_SetColor(resist1Color);
+    Font_SetPos(rightX, row1Y);
+    Text_PrintfColored(gStatusFmtInt3, (s16)pl->resist[1]);
+    Font_SetColor(resist2Color);
+    Font_SetPos(rightX, row2Y);
+    Text_PrintfColored(gStatusFmtInt3, (s16)pl->resist[2]);
+    Font_SetColor(resist3Color);
+    Font_SetPos(rightX, row3Y);
+    Text_PrintfColored(gStatusFmtInt3, (s16)pl->resist[3]);
+    Font_SetColor(resist4Color);
+    Font_SetPos(rightX, top + 0x50);
+    Text_PrintfColored(gStatusFmtInt3, (s16)pl->resist[4]);
 }
 
 extern s32 gWeaponClassMultipliers[];
 u8 Weapon_GetClass(u8 a, u16 weapon);
 
 /* The attack power shown for a player: attack times the weapon class's multiplier / 100. */
-u32 Player_ShownAttack(Player *p)
+u32 Player_ShownAttack(Player *pl)
 {
-    return (u16)(p->attack * gWeaponClassMultipliers[Weapon_GetClass(p->equip[6].type, p->equip[6].id)] / 100);
+    return (u16)(pl->attack * gWeaponClassMultipliers[Weapon_GetClass(pl->equip[6].type, pl->equip[6].id)] / 100);
 }
 
 void StatusPage_DrawEquipment(EquipItem *weapon, EquipItem *eq);
 
-void PersonalStatus_DrawEquipment(u8 *p)
+/* The equipment page's icons and names for a player. */
+void PersonalStatus_DrawEquipment(Player *pl)
 {
-    StatusPage_DrawEquipment((EquipItem *)(p + 0x35A), (EquipItem *)(p + 0x312));
+    StatusPage_DrawEquipment(&pl->equip[EQUIP_SLOT_WEAPON], pl->equip);
 }
 
 
@@ -13882,46 +13975,46 @@ extern char **gArmorNameTables[];
 
 /* The equipment page of the status screen: the weapon's and the armour pieces' icons in their colours,
  * the weapon's value (Equip_GetName) and a text per armour piece. */
-void StatusPage_DrawEquipment(EquipItem *weapon, EquipItem *eq)
+void StatusPage_DrawEquipment(EquipItem *weapon, EquipItem *equip)
 {
-    Sprite s;
+    Sprite spr;
     ArmorData *armor[5];
     u16 ids[5];
     u32 i;
     s16 y;
-    s32 ty;
+    s32 textY;
 
-    armor[0] = &gArmorHeadData[ids[0] = eq[2].id];
-    armor[1] = &gArmorBodyData[ids[1] = eq[3].id];
-    armor[2] = &gArmorArmsData[ids[2] = eq[4].id];
-    armor[3] = &gArmorWaistData[ids[3] = eq[5].id];
-    armor[4] = &gArmorLegsData[ids[4] = eq[0].id];
-    Gfx_SetState63(1);
+    armor[0] = &gArmorHeadData[ids[0] = equip[2].id];
+    armor[1] = &gArmorBodyData[ids[1] = equip[3].id];
+    armor[2] = &gArmorArmsData[ids[2] = equip[4].id];
+    armor[3] = &gArmorWaistData[ids[3] = equip[5].id];
+    armor[4] = &gArmorLegsData[ids[4] = equip[0].id];
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
-    s.x = 0x137;
-    s.w = 0x28;
-    s.h = 0x20;
+    spr.x = 0x137;
+    spr.w = 0x28;
+    spr.h = 0x20;
     y = 0x55;
-    s.y = y;
-    Equip_GetIconUV(weapon, (struct Pt *)&s.u0, (struct Pt *)&s.u1);
-    s.color = Equip_Color(Equip_GetRarity(weapon->type, weapon->id), 0xFF, 0);
-    Sprite_Draw(&s);
-    s.v0 = 0x121;
-    s.v1 = 0x13F;
+    spr.y = y;
+    Equip_GetIconUV(weapon, (struct Pt *)&spr.u0, (struct Pt *)&spr.u1);
+    spr.color = Equip_Color(Equip_GetRarity(weapon->type, weapon->id), 0xFF, 0);
+    Sprite_Draw(&spr);
+    spr.v0 = 0x121;
+    spr.v1 = 0x13F;
     for (i = 0; i < 5; i++) {
         y += 0x20;
-        s.y = y;
-        s.u0 = gStatusEquipIconU[i];
-        s.u1 = s.u0 + 0x20;
-        s.color = Equip_Color(armor[i]->rarity, 0xFF, 0);
-        Sprite_Draw(&s);
+        spr.y = y;
+        spr.u0 = gStatusEquipIconU[i];
+        spr.u1 = spr.u0 + 0x20;
+        spr.color = Equip_Color(armor[i]->rarity, 0xFF, 0);
+        Sprite_Draw(&spr);
     }
     Font_SetSpacing(0x12, 0x12);
     Font_SetPos(0x168, 0x5C);
     Text_Printf(gEquipWeaponFmt[0], Equip_GetName(weapon->type, weapon->id));
-    for (i = 0, ty = 0x7C; i < 5; ty += 0x20, i++) {
-        Font_SetPos(0x168, ty);
+    for (i = 0, textY = 0x7C; i < 5; textY += 0x20, i++) {
+        Font_SetPos(0x168, textY);
         Text_Printf(gEquipArmorFmt, gArmorNameTables[i][ids[i]]);
     }
 }
@@ -13929,67 +14022,71 @@ void StatusPage_DrawEquipment(EquipItem *weapon, EquipItem *eq)
 u8 Weapon_GetClass(u8 a, u16 weapon);
 extern char *gWeaponTypeNames[];
 
-void StatusPage_DrawWeaponClass(u8 *p)
+/* Draws the name of a player's weapon class. */
+void StatusPage_DrawWeaponClass(Player *pl)
 {
-    Text_Draw(gWeaponTypeNames[Weapon_GetClass(p[0x35B], *(u16 *)(p + 0x35C))]);
+    Text_Draw(gWeaponTypeNames[Weapon_GetClass(pl->equip[EQUIP_SLOT_WEAPON].type, pl->equip[EQUIP_SLOT_WEAPON].id)]);
 }
 
 void Player_DrawSkills(Player *p, s32 x, s16 y, s16 *colors);
 
 /* Player_DrawSkills with all skills in colour 0. */
-void Player_DrawSkillsPlain(Player *a, s32 b, s16 c)
+void Player_DrawSkillsPlain(Player *pl, s32 x, s16 y)
 {
-    s16 d[5];
+    s16 colors[5];
 
-    d[4] = 0;
-    d[3] = 0;
-    d[2] = 0;
-    d[1] = 0;
-    d[0] = 0;
-    Player_DrawSkills(a, b, c, d);
+    colors[4] = 0;
+    colors[3] = 0;
+    colors[2] = 0;
+    colors[1] = 0;
+    colors[0] = 0;
+    Player_DrawSkills(pl, x, y, colors);
 }
 
 extern char *gSkillEffectNames[];
 s32 Player_SkillApplies(Player *p, u8 slot);
 
-/* A player's skills, one per line from (x, y + 0x14) in colors[slot] (9 for Player_SkillApplies != 1),
- * with a mark before colours 0xE and 2; the "none" text if there are none. */
-void Player_DrawSkills(Player *p, s32 x, s16 y, s16 *colors)
+/* Draws a player's five skill effects, one per line from (x, y + 0x14), in colors[slot] (text
+ * colour 9 for a skill that doesn't apply to the equipment, Player_SkillApplies), with an
+ * arrow before colours 0xE and 2 (the equipment preview's gained and lost skills); the
+ * no-skill text when there are none. */
+void Player_DrawSkills(Player *pl, s32 x, s16 y, s16 *colors)
 {
     u32 i;
-    s16 ty;
-    s32 tx;
-    s32 mx;
+    s16 lineY;
+    s32 textX;
+    s32 markX;
 
     Font_SetSpacing(0x12, 0x12);
-    if ((p->skills[0] | p->skills[1] | p->skills[2] | p->skills[3] | p->skills[4]) == 0) {
+    if ((pl->skills[0] | pl->skills[1] | pl->skills[2] | pl->skills[3] | pl->skills[4]) == 0) {
         Text_SetColor(0);
         Font_SetPos(x, y + 0x14);
         Text_Draw(gSkillEffectNames[0]);
         return;
     }
-    ty = y + 0x14;
-    tx = (s16)x;
-    for (i = 0, mx = tx - 8; i < 5; i++, colors++) {
-        if (p->skills[i] != 0) {
-            if (Player_SkillApplies(p, i) == 1) {
+    lineY = y + 0x14;
+    textX = (s16)x;
+    for (i = 0, markX = textX - 8; i < 5; i++, colors++) {
+        if (pl->skills[i] != 0) {
+            if (Player_SkillApplies(pl, i) == 1) {
                 Text_SetColor(*colors);
             } else {
                 Text_SetColor(9);
             }
-            Font_SetPos(tx, ty);
-            Text_Draw(gSkillEffectNames[p->skills[i]]);
+            Font_SetPos(textX, lineY);
+            Text_Draw(gSkillEffectNames[pl->skills[i]]);
             if (*colors == 0xE || *colors == 2) {
-                Menu_DrawArrow(mx, ty, 8, 0x12, 0xC0D0D0D0, 0);
+                Menu_DrawArrow(markX, lineY, 8, 0x12, 0xC0D0D0D0, 0);
             }
-            ty += 0x14;
+            lineY += 0x14;
         }
     }
 }
 
-s32 BladeData_StatusValue(BladeData *p)
+/* A blade's status value (poison, paralysis, sleep or an element), -1 when it has none. */
+s32 BladeData_StatusValue(BladeData *blade)
 {
-    return p->statusType != 0 ? p->statusValue : -1;
+    return blade->statusType != 0 ? blade->statusValue : -1;
 }
 
 s32 Player_GetSkillAmmoMask(Player *p);
@@ -13997,82 +14094,85 @@ extern u8 gGunnerNoSkillGroups[];
 extern u8 gBowNoSkillGroups[];
 extern u8 gBladeNoSkillGroups[];
 
-/* 1 if the skill group of a player's skill slot applies to the player's equipment: gunners (0x774 & 2)
- * don't get the groups gGunnerNoSkillGroups (gBowNoSkillGroups with a bowgun of class 10) or ammo groups their gun can't load,
- * blademasters (& 1) the groups gBladeNoSkillGroups; groups 4 and 5 need 0x774 & 4 (4 also: class 1 with level bit 0x80). */
-s32 Player_SkillApplies(Player *p, u8 slot)
+/* 1 if the skill tree of a player's skill slot applies to the player's weapon: gunners
+ * (Player.weaponFlags 2) don't get the trees in gGunnerNoSkillGroups (gBowNoSkillGroups for
+ * a bow, weapon class 10), nor the ammo trees (0x26, 0xB, 0x17, 0x2F) for ammo their gun
+ * can't load, and tree 0x34 not with skill 0x33 nor for a bow; blademasters (weaponFlags 1)
+ * don't get gBladeNoSkillGroups', nor 0x2F without a status on the blade. Trees 4 and 5
+ * need weaponFlags 4 (tree 4 also a class-1 weapon with level bit 0x80). */
+s32 Player_SkillApplies(Player *pl, u8 slot)
 {
-    u8 g;
-    u8 *t;
-    EquipData *d;
+    u8 group;
+    u8 *list;
+    EquipData *data;
     s32 mask;
 
-    g = p->skillGroups[slot];
-    if (p->weaponFlags & 2) {
-        if (g == 0x34) {
-            if (Player_HasSkill(p, 0x33) == 1) {
+    group = pl->skillGroups[slot];
+    if (pl->weaponFlags & 2) {
+        if (group == 0x34) {
+            if (Player_HasSkill(pl, 0x33) == 1) {
                 return 0;
             }
-            if (Weapon_GetClass(p->equip[6].type, p->equip[6].id) != 10) {
+            if (Weapon_GetClass(pl->equip[6].type, pl->equip[6].id) != 10) {
                 return 1;
             }
             return 0;
         }
-        t = gGunnerNoSkillGroups;
+        list = gGunnerNoSkillGroups;
         do {
-            if (*t == g) {
+            if (*list == group) {
                 return 0;
             }
-            t++;
-        } while (*t != 0);
-        if (Weapon_GetClass(p->equip[6].type, p->equip[6].id) != 10) {
-            d = Equip_GetData(&p->equip[6]);
-            mask = d->gun.ammoMask | Player_GetSkillAmmoMask(p);
-            if (g == 0x26) {
+            list++;
+        } while (*list != 0);
+        if (Weapon_GetClass(pl->equip[6].type, pl->equip[6].id) != 10) {
+            data = Equip_GetData(&pl->equip[6]);
+            mask = data->gun.ammoMask | Player_GetSkillAmmoMask(pl);
+            if (group == 0x26) {
                 if (!(mask & 7)) {
                     return 0;
                 }
-            } else if (g == 0xB) {
+            } else if (group == 0xB) {
                 if (!(mask & 0x38)) {
                     return 0;
                 }
-            } else if (g == 0x17) {
+            } else if (group == 0x17) {
                 if (!(mask & 0x1C0)) {
                     return 0;
                 }
-            } else if (g == 0x2F) {
+            } else if (group == 0x2F) {
                 if (!(mask & 0xFC00000)) {
                     return 0;
                 }
             }
         } else {
-            t = gBowNoSkillGroups;
+            list = gBowNoSkillGroups;
             do {
-                if (*t == g) {
+                if (*list == group) {
                     return 0;
                 }
-                t++;
-            } while (*t != 0);
+                list++;
+            } while (*list != 0);
         }
     }
-    if (p->weaponFlags & 1) {
-        if (g == 0x2F) {
-            return (s16)BladeData_StatusValue(&Equip_GetData(&p->equip[6])->blade) > 0;
+    if (pl->weaponFlags & 1) {
+        if (group == 0x2F) {
+            return (s16)BladeData_StatusValue(&Equip_GetData(&pl->equip[6])->blade) > 0;
         }
-        t = gBladeNoSkillGroups;
+        list = gBladeNoSkillGroups;
         do {
-            if (*t == g) {
+            if (*list == group) {
                 return 0;
             }
-            t++;
-        } while (*t != 0);
+            list++;
+        } while (*list != 0);
     }
-    if (!(p->weaponFlags & 4)) {
-        switch (g) {
+    if (!(pl->weaponFlags & 4)) {
+        switch (group) {
         case 5:
             return 0;
         case 4:
-            if (Weapon_GetClass(p->equip[6].type, p->equip[6].id) == 1 && (p->equip[6].level & 0x80)) {
+            if (Weapon_GetClass(pl->equip[6].type, pl->equip[6].id) == 1 && (pl->equip[6].level & 0x80)) {
                 break;
             }
             return 0;
@@ -14084,25 +14184,26 @@ s32 Player_SkillApplies(Player *p, u8 slot)
 extern ArmorData *gArmorTables[];
 extern u16 gArmorEquipSlots[];
 
-/* 1 if a piece of the player's armour has skill tree 0x29, 0x2A or 0x2B (the torso up skills, gSkillNames). */
-u8 Player_ArmorHasTorsoUp(Player *p)
+/* 1 if a piece of the player's armour has skill tree 0x29, 0x2A or 0x2B (the torso up
+ * trees, which double the torso's points; gSkillNames). */
+u8 Player_ArmorHasTorsoUp(Player *pl)
 {
     s32 i;
     s32 j;
-    u8 *s;
-    ArmorData *a;
+    u8 *tree;
+    ArmorData *armor;
 
     for (i = 0; i < 5; i++) {
         u16 k = gArmorEquipSlots[i];
 
-        a = gArmorTables[k];
-        a += p->equip[k].id;
-        s = &a->skills[0].skill;
+        armor = gArmorTables[k];
+        armor += pl->equip[k].id;
+        tree = &armor->skills[0].skill;
         for (j = 5; j > 0; j--) {
-            if ((u32)(*s - 0x29) <= 1 || *s == 0x2B) {
+            if ((u32)(*tree - 0x29) <= 1 || *tree == 0x2B) {
                 return 1;
             }
-            s += 2;
+            tree += 2;
         }
     }
     return 0;
@@ -14117,142 +14218,146 @@ extern char *gSkillRowFmt[];
 extern char *gSkillPartMarks[];
 extern char *gSkillNames[];
 
-/* A page of 9 skill records (gSkillRecords) from (x, y): per skill its name and its points per piece
- * (a heading line for records with used & 2); with mark, a box behind the lines when there are any. */
+/* Draws page `page` of the skill list (nine gSkillRecords) from (x, y): per skill its name,
+ * its points per piece with the comparison marks, and its total (a heading line for a
+ * record with used & 2); with mark, a box behind the torso column (torso up). */
 void SkillList_DrawPage(s16 x, s16 y, u8 page, u8 mark)
 {
-    Record *r;
+    SkillRecord *rec;
     char buf[128];
-    Rect box;
+    PrimLine box;
     u32 i;
-    s16 c;
+    s16 textColor;
     u32 j;
-    s16 ly;
-    s16 n;
-    s32 ty;
+    s16 lineY;
+    s16 shown;
+    s32 top;
 
     Font_SetSpacing(0x10, 0x12);
-    ty = y;
-    Font_SetPos(x, ty + 0x14);
-    Font_SetColor(0x807F7F28);
+    top = y;
+    Font_SetPos(x, top + 0x14);
+    Font_SetColor(STATUS_COLOR_LABEL);
     Text_PrintfColored(gSkillListHeader[0]);
-    ly = ty + 0x28;
-    n = 0;
-    for (r = &gSkillRecords[page * 9], i = 9; i != 0; ly += 0x14, i--, r++) {
-        if (r->used == 0) {
+    lineY = top + 0x28;
+    shown = 0;
+    for (rec = &gSkillRecords[page * 9], i = 9; i != 0; lineY += 0x14, i--, rec++) {
+        if (rec->used == 0) {
             break;
         }
-        if (!(r->used & 2)) {
-            n++;
-            c = (r->used & 1) ? 3 : 0;
-            sprintf(buf, gSkillNameFmt[0], gSkillNames[r->skill]);
+        if (!(rec->used & 2)) {
+            shown++;
+            textColor = (rec->used & 1) ? 3 : 0;
+            sprintf(buf, gSkillNameFmt[0], gSkillNames[rec->skill]);
             for (j = 0; j < 6; j++) {
-                if (r->pts[j] == 0) {
-                    sprintf(buf, gSkillColFmt, buf, c);
+                if (rec->pts[j] == 0) {
+                    sprintf(buf, gSkillColFmt, buf, textColor);
                 } else {
-                    sprintf(buf, gSkillPartPtsFmt[0], buf, c, r->mark[j], r->pts[j]);
+                    sprintf(buf, gSkillPartPtsFmt[0], buf, textColor, rec->mark[j], rec->pts[j]);
                 }
             }
-            Text_SetColor(c);
-            Font_SetPos(x, ly);
-            Text_Printf(gSkillTotalFmt, buf, c, r->totalMark, r->total);
+            Text_SetColor(textColor);
+            Font_SetPos(x, lineY);
+            Text_Printf(gSkillTotalFmt, buf, textColor, rec->totalMark, rec->total);
         } else {
             Text_SetColor(-1);
-            Font_SetPos(x, ly);
-            Text_Printf(gSkillRowFmt[0], gSkillNames[r->skill], gSkillPartMarks[r->pts[0]], gSkillPartMarks[r->pts[1]],
-                        gSkillPartMarks[r->pts[2]], gSkillPartMarks[r->pts[3]], gSkillPartMarks[r->pts[4]], gSkillPartMarks[r->pts[5]]);
+            Font_SetPos(x, lineY);
+            Text_Printf(gSkillRowFmt[0], gSkillNames[rec->skill], gSkillPartMarks[rec->pts[0]], gSkillPartMarks[rec->pts[1]],
+                        gSkillPartMarks[rec->pts[2]], gSkillPartMarks[rec->pts[3]], gSkillPartMarks[rec->pts[4]], gSkillPartMarks[rec->pts[5]]);
         }
     }
-    if (n > 0 && mark != 0) {
+    if (shown > 0 && mark != 0) {
         box.color = 0xB2003E74;
         box.x0 = x + 0x98;
         box.x1 = x + 0xB1;
-        box.y0 = ty + 0x29;
-        box.y1 = ty + 0x27 + n * 0x14;
-        Prim_FillRect((struct PrimLine *)&box);
+        box.y0 = top + 0x29;
+        box.y1 = top + 0x27 + shown * 0x14;
+        Prim_FillRect(&box);
     }
 }
 
-/* Pages of 9 for the records of gSkillRecords in use (0x12 bytes each, +2 set, at most 0x2E); at least 1. */
+/* The skill list's page count: nine records a page (at most 0x2E records counted), at least 1. */
 u8 SkillList_PageCount(void)
 {
-    u32 n;
-    u8 *p;
+    u32 count;
+    SkillRecord *rec;
 
-    for (n = 0, p = (u8 *)gSkillRecords; n < 0x2E; n++, p += 0x12) {
-        if (p[2] == 0) {
+    for (count = 0, rec = gSkillRecords; count < 0x2E; count++, rec++) {
+        if (rec->used == 0) {
             break;
         }
     }
-    if (n == 0) {
+    if (count == 0) {
         return 1;
     }
-    return (n - 1) / 9 + 1;
+    return (count - 1) / 9 + 1;
 }
 
-extern Record gSkillCompareRecords[];
-s32 SkillList_MakeRecord(Player *p, Record *r, Player *q);
+extern SkillRecord gSkillCompareRecords[];
+s32 SkillList_MakeRecord(Player *p, SkillRecord *r, Player *q);
 void SkillList_Insert(Player *a, u8 b, Player *q);
 
-/* Builds the skill lists: q's skills in gSkillCompareRecords (when q is set), then p's (compared with q) sorted in gSkillRecords. */
-void SkillList_Build(Player *p, Player *q)
+/* Builds the skill lists over the skill trees 1-0x51: other's records in
+ * gSkillCompareRecords (when other is set; not the torso up trees), then pl's, compared
+ * with other's, sorted into gSkillRecords. */
+void SkillList_Build(Player *pl, Player *other)
 {
-    Record *r;
-    s32 n;
-    s8 k;
+    SkillRecord *rec;
+    s32 left;
+    s8 tree;
 
-    if (q != NULL) {
-        r = gSkillCompareRecords;
-        n = 0x36;
-        for (k = 1; k < 0x52; k++) {
-            if (k == 0x29 || k == 0x2A || k == 0x2B) {
+    if (other != NULL) {
+        rec = gSkillCompareRecords;
+        left = 0x36;
+        for (tree = 1; tree < 0x52; tree++) {
+            if (tree == 0x29 || tree == 0x2A || tree == 0x2B) {
                 continue;
             }
-            r->skill = k;
-            if (SkillList_MakeRecord(q, r, NULL) == 1) {
-                n--;
-                r++;
-                if (n <= 0) {
+            rec->skill = tree;
+            if (SkillList_MakeRecord(other, rec, NULL) == 1) {
+                left--;
+                rec++;
+                if (left <= 0) {
                     break;
                 }
             }
         }
-        while (n > 0) {
-            r->used = 0;
-            n--;
-            r++;
+        while (left > 0) {
+            rec->used = 0;
+            left--;
+            rec++;
         }
     }
-    for (r = gSkillRecords, n = 0x36; n > 0; n--, r++) {
-        r->used = 0;
+    for (rec = gSkillRecords, left = 0x36; left > 0; left--, rec++) {
+        rec->used = 0;
     }
-    for (k = 1; k < 0x52; k++) {
-        SkillList_Insert(p, k, q);
+    for (tree = 1; tree < 0x52; tree++) {
+        SkillList_Insert(pl, tree, other);
     }
 }
 
-s32 SkillList_MakeRecord(Player *p, Record *r, Player *q);
+s32 SkillList_MakeRecord(Player *p, SkillRecord *r, Player *q);
 
-/* Makes the record of skill b for p (SkillList_MakeRecord, q for comparison) and inserts it in the list by its key, if there is room. */
-void SkillList_Insert(Player *a, u8 b, Player *q)
+/* Makes pl's record of skill tree `tree` (SkillList_MakeRecord, compared with other) and
+ * inserts it into gSkillRecords by its key, when it has points and there is room. */
+void SkillList_Insert(Player *pl, u8 tree, Player *other)
 {
-    Record r;
-    Record *p;
-    Record *free;
-    Record *src;
+    SkillRecord rec;
+    SkillRecord *slot;
+    SkillRecord *free;
+    SkillRecord *src;
     s32 i;
     s32 j;
 
-    r.skill = b;
-    if (SkillList_MakeRecord(a, &r, q) != 1) {
+    rec.skill = tree;
+    if (SkillList_MakeRecord(pl, &rec, other) != 1) {
         return;
     }
     for (i = 0x36, free = gSkillRecords; i > 0; i--, free++) {
         if (free->used == 0) {
             free++;
-            for (p = gSkillRecords, j = 0x36; j > 0; j--, p++) {
-                if (p->used != 0) {
-                    if (p->key > r.key) {
+            for (slot = gSkillRecords, j = 0x36; j > 0; j--, slot++) {
+                if (slot->used != 0) {
+                    if (slot->key > rec.key) {
                         continue;
                     }
                     src = free - 1;
@@ -14260,9 +14365,9 @@ void SkillList_Insert(Player *a, u8 b, Player *q)
                         free--;
                         src--;
                         *free = *src;
-                    } while (src > p);
+                    } while (src > slot);
                 }
-                *p = r;
+                *slot = rec;
                 return;
             }
             return;
@@ -14270,81 +14375,82 @@ void SkillList_Insert(Player *a, u8 b, Player *q)
     }
 }
 
-s32 SkillList_FillPieces(Player *p, Record *r, Player *q);
+s32 SkillList_FillPieces(Player *p, SkillRecord *r, Player *q);
 s8 Equip_GetSkillPoints(EquipItem *e, u8 kind);
 s8 Player_GetTorsoSkillPoints(Player *p, u8 kind);
 u8 Player_GetSkill(Player *p, u8 kind);
 
-/* Makes the record of skill r->skill for p: its points per piece and in total, and its sort key (active skills
- * first, then by total); with q, marks each against q's record of the skill (gSkillCompareRecords). 0 if no piece gives
- * points. The skills 0x29-0x2B are SkillList_FillPieces's. */
-s32 SkillList_MakeRecord(Player *p, Record *r, Player *q)
+/* Makes pl's record of skill tree rec->skill: its points per piece (weapon, head, torso,
+ * arms, waist, legs) and in total, and its sort key (active skills first, then by total);
+ * with other, marks each against other's record (gSkillCompareRecords). 0 when no piece
+ * gives points. The torso up trees (0x29-0x2B) are SkillList_FillPieces's. */
+s32 SkillList_MakeRecord(Player *pl, SkillRecord *rec, Player *other)
 {
-    Record *o;
+    SkillRecord *cmp;
     u32 n;
     u32 i;
 
-    if ((u32)(r->skill - 0x29) <= 1 || r->skill == 0x2B) {
-        return SkillList_FillPieces(p, r, q);
+    if ((u32)(rec->skill - 0x29) <= 1 || rec->skill == 0x2B) {
+        return SkillList_FillPieces(pl, rec, other);
     }
-    r->pts[0] = Equip_GetSkillPoints(&p->equip[6], r->skill);
-    r->pts[1] = Equip_GetSkillPoints(&p->equip[2], r->skill);
-    r->pts[2] = Player_GetTorsoSkillPoints(p, r->skill);
-    r->pts[3] = Equip_GetSkillPoints(&p->equip[4], r->skill);
-    r->pts[4] = Equip_GetSkillPoints(&p->equip[5], r->skill);
-    r->pts[5] = Equip_GetSkillPoints(&p->equip[0], r->skill);
-    if ((r->pts[0] | r->pts[1] | r->pts[2] | r->pts[3] | r->pts[4] | r->pts[5]) == 0) {
+    rec->pts[0] = Equip_GetSkillPoints(&pl->equip[6], rec->skill);
+    rec->pts[1] = Equip_GetSkillPoints(&pl->equip[2], rec->skill);
+    rec->pts[2] = Player_GetTorsoSkillPoints(pl, rec->skill);
+    rec->pts[3] = Equip_GetSkillPoints(&pl->equip[4], rec->skill);
+    rec->pts[4] = Equip_GetSkillPoints(&pl->equip[5], rec->skill);
+    rec->pts[5] = Equip_GetSkillPoints(&pl->equip[0], rec->skill);
+    if ((rec->pts[0] | rec->pts[1] | rec->pts[2] | rec->pts[3] | rec->pts[4] | rec->pts[5]) == 0) {
         return 0;
     }
-    r->used = 0x80;
-    r->total = r->pts[0] + r->pts[1] + r->pts[2] + r->pts[3] + r->pts[4] + r->pts[5];
-    r->key = 0;
-    if (Player_GetSkill(p, r->skill) != 0) {
-        r->used |= 1;
-        r->key += 0x8000;
-        r->mark[0] = r->mark[1] = r->mark[2] = r->mark[3] = r->mark[4] = r->mark[5] = r->totalMark = 3;
+    rec->used = 0x80;
+    rec->total = rec->pts[0] + rec->pts[1] + rec->pts[2] + rec->pts[3] + rec->pts[4] + rec->pts[5];
+    rec->key = 0;
+    if (Player_GetSkill(pl, rec->skill) != 0) {
+        rec->used |= 1;
+        rec->key += 0x8000;
+        rec->mark[0] = rec->mark[1] = rec->mark[2] = rec->mark[3] = rec->mark[4] = rec->mark[5] = rec->totalMark = 3;
     } else {
-        r->mark[0] = r->mark[1] = r->mark[2] = r->mark[3] = r->mark[4] = r->mark[5] = 0;
-        r->totalMark = 6;
+        rec->mark[0] = rec->mark[1] = rec->mark[2] = rec->mark[3] = rec->mark[4] = rec->mark[5] = 0;
+        rec->totalMark = 6;
     }
-    if (r->total >= 0) {
-        r->key += (r->total << 7) + 0x4000;
+    if (rec->total >= 0) {
+        rec->key += (rec->total << 7) + 0x4000;
     } else {
-        r->key += -r->total << 7;
+        rec->key += -rec->total << 7;
     }
-    r->key += r->skill;
-    if (q != NULL) {
-        for (o = gSkillCompareRecords, n = 0x36; n != 0; n--, o++) {
-            if (o->used == 0) {
+    rec->key += rec->skill;
+    if (other != NULL) {
+        for (cmp = gSkillCompareRecords, n = 0x36; n != 0; n--, cmp++) {
+            if (cmp->used == 0) {
                 break;
             }
-            if (r->skill == o->skill) {
+            if (rec->skill == cmp->skill) {
                 for (i = 0; i < 6; i++) {
-                    if (r->pts[i] > o->pts[i]) {
-                        r->mark[i] = 4;
-                    } else if (o->pts[i] > r->pts[i]) {
-                        r->mark[i] = 2;
+                    if (rec->pts[i] > cmp->pts[i]) {
+                        rec->mark[i] = 4;
+                    } else if (cmp->pts[i] > rec->pts[i]) {
+                        rec->mark[i] = 2;
                     }
                 }
-                if (r->total > o->total) {
-                    r->totalMark = 4;
-                } else if (o->total > r->total) {
-                    r->totalMark = 2;
+                if (rec->total > cmp->total) {
+                    rec->totalMark = 4;
+                } else if (cmp->total > rec->total) {
+                    rec->totalMark = 2;
                 }
                 return 1;
             }
         }
         for (i = 0; i < 6; i++) {
-            if (r->pts[i] > 0) {
-                r->mark[i] = 4;
-            } else if (r->pts[i] < 0) {
-                r->mark[i] = 2;
+            if (rec->pts[i] > 0) {
+                rec->mark[i] = 4;
+            } else if (rec->pts[i] < 0) {
+                rec->mark[i] = 2;
             }
         }
-        if (r->total > 0) {
-            r->totalMark = 4;
-        } else if (r->total < 0) {
-            r->totalMark = 2;
+        if (rec->total > 0) {
+            rec->totalMark = 4;
+        } else if (rec->total < 0) {
+            rec->totalMark = 2;
         }
     }
     return 1;
@@ -14353,20 +14459,20 @@ s32 SkillList_MakeRecord(Player *p, Record *r, Player *q)
 s8 Equip_GetSkillPoints(EquipItem *e, u8 kind);
 
 /* Fills r with the pieces of equipment giving points to skill r->skill; 0 if none does. */
-s32 SkillList_FillPieces(Player *p, Record *r, Player *q)
+s32 SkillList_FillPieces(Player *pl, SkillRecord *rec, Player *other)
 {
-    r->pts[0] = Equip_GetSkillPoints(&p->equip[6], r->skill) > 0;
-    r->pts[1] = Equip_GetSkillPoints(&p->equip[2], r->skill) > 0;
-    r->pts[2] = Equip_GetSkillPoints(&p->equip[3], r->skill) > 0;
-    r->pts[3] = Equip_GetSkillPoints(&p->equip[4], r->skill) > 0;
-    r->pts[4] = Equip_GetSkillPoints(&p->equip[5], r->skill) > 0;
-    r->pts[5] = Equip_GetSkillPoints(&p->equip[0], r->skill) > 0;
-    if ((r->pts[0] | r->pts[1] | r->pts[2] | r->pts[3] | r->pts[4] | r->pts[5]) == 0) {
+    rec->pts[0] = Equip_GetSkillPoints(&pl->equip[6], rec->skill) > 0;
+    rec->pts[1] = Equip_GetSkillPoints(&pl->equip[2], rec->skill) > 0;
+    rec->pts[2] = Equip_GetSkillPoints(&pl->equip[3], rec->skill) > 0;
+    rec->pts[3] = Equip_GetSkillPoints(&pl->equip[4], rec->skill) > 0;
+    rec->pts[4] = Equip_GetSkillPoints(&pl->equip[5], rec->skill) > 0;
+    rec->pts[5] = Equip_GetSkillPoints(&pl->equip[0], rec->skill) > 0;
+    if ((rec->pts[0] | rec->pts[1] | rec->pts[2] | rec->pts[3] | rec->pts[4] | rec->pts[5]) == 0) {
         return 0;
     }
-    r->used = 0x82;
-    r->total = 0;
-    r->key = 0;
+    rec->used = 0x82;
+    rec->total = 0;
+    rec->key = 0;
     return 1;
 }
 
@@ -14378,97 +14484,97 @@ void Player_CalcDefense(Player *p);
 void Player_CalcResists(Player *p);
 
 /* Recomputes a player's skills, maximum health and stamina, and attack, defense and resistances. */
-void Player_RecomputeStats(Player *p)
+void Player_RecomputeStats(Player *pl)
 {
-    s16 hp;
+    s16 health;
 
-    Player_CalcSkills(p);
-    hp = gScene.mealHealth + 100 + (s16)Player_GetHpSkillBonus(p);
-    if (hp > 150) {
-        hp = 150;
+    Player_CalcSkills(pl);
+    health = gScene.mealHealth + 100 + (s16)Player_GetHpSkillBonus(pl);
+    if (health > 150) {
+        health = 150;
     }
-    p->hpMax = hp;
-    p->hp = hp;
-    p->staminaMax = gScene.mealStamina + 300;
-    if (p->staminaMax <= 75) {
-        p->staminaMax = 75;
-    } else if (p->staminaMax > 450) {
-        p->staminaMax = 450;
+    pl->hpMax = health;
+    pl->hp = health;
+    pl->staminaMax = gScene.mealStamina + 300;
+    if (pl->staminaMax <= 75) {
+        pl->staminaMax = 75;
+    } else if (pl->staminaMax > 450) {
+        pl->staminaMax = 450;
     }
-    p->attackDrug = gScene.mealAttack;
-    p->attackBuff = 0;
-    Player_CalcAttack(p);
-    p->defenseDrug = gScene.mealDefense;
-    p->defenseBuff = 0;
-    Player_CalcDefense(p);
-    Player_CalcResists(p);
+    pl->attackDrug = gScene.mealAttack;
+    pl->attackBuff = 0;
+    Player_CalcAttack(pl);
+    pl->defenseDrug = gScene.mealDefense;
+    pl->defenseBuff = 0;
+    Player_CalcDefense(pl);
+    Player_CalcResists(pl);
 }
 
 /* A code for a piece of equipment (compared with other): 0 none, 1 an id from 900, else 2 blade / 4 gun / 0x8003 armour,
  * +3 | 0x8000 for weapons (+2 for armour) when either has decorations. */
-u16 Equip_Code(EquipItem *e, EquipItem *other)
+u16 Equip_Code(EquipItem *item, EquipItem *other)
 {
     u16 deco;
-    u16 r;
+    u16 code;
 
-    if (e == NULL) {
+    if (item == NULL) {
         return 0;
     }
-    if (e->id == 0) {
+    if (item->id == 0) {
         return 0;
     }
-    if (e->id >= 900) {
+    if (item->id >= 900) {
         return 1;
     }
     deco = 0;
-    if (Equip_CountDecos(e) != 0) {
+    if (Equip_CountDecos(item) != 0) {
         deco = 1;
     } else if (other != NULL && other->id != 0 && Equip_CountDecos(other) != 0) {
         deco = 1;
     }
-    switch (e->type) {
+    switch (item->type) {
     case 7:
-        r = 4;
+        code = 4;
         break;
     case 6:
-        r = 2;
+        code = 2;
         break;
     default:
-        r = 0x8003;
+        code = 0x8003;
         if (deco & 0xFFFF) {
-            r += 2;
+            code += 2;
         }
-        return r;
+        return code;
     }
     if (deco & 0xFFFF) {
-        r += 3;
-        r |= 0x8000;
+        code += 3;
+        code |= 0x8000;
     }
-    return r;
+    return code;
 }
 
 /* The level (low 3 bits of Equip_Code's code) of a piece of equipment, or the higher of two (a and b),
  * plus one when one has decorations (without b: with flags 0x10, or 0x20 and decorations). */
-u8 Equip_LevelMark(EquipItem *a, u8 flags, EquipItem *b)
+u8 Equip_LevelMark(EquipItem *item, u8 flags, EquipItem *other)
 {
     u16 lvl;
     u16 bit;
-    u16 r;
+    u16 mark;
 
-    if (a != NULL && a->id == 0) {
-        a = NULL;
+    if (item != NULL && item->id == 0) {
+        item = NULL;
     }
-    if (b != NULL && b->id == 0) {
-        b = NULL;
+    if (other != NULL && other->id == 0) {
+        other = NULL;
     }
-    lvl = Equip_Code(a, b);
+    lvl = Equip_Code(item, other);
     bit = lvl & 0x8000;
     lvl &= 7;
-    if (b != NULL) {
-        r = Equip_Code(b, a);
-        bit |= r & 0x8000;
-        if ((u16)(r & 7) > lvl) {
-            lvl = (u16)(r & 7);
+    if (other != NULL) {
+        mark = Equip_Code(other, item);
+        bit |= mark & 0x8000;
+        if ((u16)(mark & 7) > lvl) {
+            lvl = (u16)(mark & 7);
         }
         if (bit & 0xFFFF) {
             lvl++;
@@ -14502,18 +14608,18 @@ extern u8 gEqDetailOnlyArmorDeco[];
 
 /* Picks the list of detail lines to show for a piece of equipment a (a blade, a gun, a bowgun of class 10 or armour),
  * compared with b; lists with decoration lines when either has decorations. */
-u8 *EquipWindow_PickDetails(EquipItem *a, u8 flags, EquipItem *b)
+u8 *EquipWindow_PickDetails(EquipItem *item, u8 flags, EquipItem *other)
 {
-    u8 *r;
+    u8 *details;
     s32 deco;
     s32 type;
 
-    if (a == NULL) {
-        if (b == NULL) {
+    if (item == NULL) {
+        if (other == NULL) {
             return gEqDetailOnlyGun;
         }
-        deco = Equip_CountDecos(b);
-        switch (b->type) {
+        deco = Equip_CountDecos(other);
+        switch (other->type) {
         case 6:
             return deco == 0 ? gEqDetailOnlyBlade : gEqDetailOnlyBladeDeco;
         case 7:
@@ -14522,47 +14628,47 @@ u8 *EquipWindow_PickDetails(EquipItem *a, u8 flags, EquipItem *b)
             return deco == 0 ? gEqDetailOnlyArmor : gEqDetailOnlyArmorDeco;
         }
     }
-    deco = Equip_CountDecos(a);
-    if (b != NULL) {
-        deco |= Equip_CountDecos(b);
-        type = b->type;
+    deco = Equip_CountDecos(item);
+    if (other != NULL) {
+        deco |= Equip_CountDecos(other);
+        type = other->type;
     } else {
         type = -1;
     }
-    switch (a->type) {
+    switch (item->type) {
     case 6:
         switch (type) {
         default:
-            r = deco == 0 ? gEqDetailBlade : gEqDetailBladeDeco;
+            details = deco == 0 ? gEqDetailBlade : gEqDetailBladeDeco;
             break;
         case 7:
-            r = deco == 0 ? gEqDetailBladeVsGun : gEqDetailBladeVsGunDeco;
+            details = deco == 0 ? gEqDetailBladeVsGun : gEqDetailBladeVsGunDeco;
             break;
         }
         break;
     case 7:
-        switch (Equip_GetClass(a)) {
+        switch (Equip_GetClass(item)) {
         default:
-            r = deco == 0 ? gEqDetailGun : gEqDetailGunDeco;
+            details = deco == 0 ? gEqDetailGun : gEqDetailGunDeco;
             break;
         case 10:
-            r = deco == 0 ? gEqDetailBow : gEqDetailBowDeco;
+            details = deco == 0 ? gEqDetailBow : gEqDetailBowDeco;
             break;
         }
         break;
     default:
-        r = deco == 0 ? gEqDetailArmor : gEqDetailArmorDeco;
+        details = deco == 0 ? gEqDetailArmor : gEqDetailArmorDeco;
         break;
     }
-    return r;
+    return details;
 }
 
 void EquipWindow_Draw(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other, u8 c);
 
 /* EquipWindow_Draw for the local player, in window colour 0xB2. */
-void EquipWindow_DrawLocal(EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other)
+void EquipWindow_DrawLocal(EquipItem *item, s16 x, s16 y, u8 flags, EquipItem *other)
 {
-    EquipWindow_Draw(&gPlayers[gScene.localPlayer], e, x, y, flags, other, 0xB2);
+    EquipWindow_Draw(&gPlayers[gScene.localPlayer], item, x, y, flags, other, 0xB2);
 }
 
 void Hud_DrawTab(s16 x, s16 y, u8 flags, u8 lvl, u32 color);
@@ -14570,73 +14676,77 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
 u8 Equip_LevelMark(EquipItem *a, u8 flags, EquipItem *b);
 extern char *gUnknownEquipText[];
 
-/* The window of a piece of equipment in the equipment menus (in window colour c), with its level mark and details. */
-void EquipWindow_Draw(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other, u8 c)
+/* The window of a piece of equipment in the equipment menus, its frame at alpha `alpha`
+ * (the background at half), with its level mark and details. */
+void EquipWindow_Draw(Player *pl, EquipItem *item, s16 x, s16 y, u8 flags, EquipItem *other, u8 alpha)
 {
     s16 pos[2];
-    u8 f;
+    u8 frame;
     u8 lvl;
     u8 col;
-    u8 r;
+    u8 band;
 
-    if (e != NULL && e->id == 0) {
-        e = NULL;
+    if (item != NULL && item->id == 0) {
+        item = NULL;
     }
     if (other != NULL && other->id == 0) {
         other = NULL;
     }
-    D_0043AE9F[0] = c;
-    D_0043AEA3 = c >> 1;
-    f = flags;
-    col = (f & 8) == 0 ? 0 : 10;
+    ((u8 *)&gEquipWindowBox.color)[3] = alpha;
+    ((u8 *)&gEquipWindowBox.color2)[3] = alpha >> 1;
+    frame = flags;
+    col = (frame & 8) == 0 ? 0 : 10;
     pos[0] = x;
     pos[1] = y;
-    lvl = f & 7;
+    lvl = frame & 7;
     Window_DrawText(&gEquipWindowBox, pos, (u8 *)0);
-    if (e != NULL && e->id >= 900) {
+    if (item != NULL && item->id >= 900) {
         Text_SetColor(col);
         Font_SetPos(x + 0x36, y + 10);
         Text_Draw(gUnknownEquipText[0]);
         return;
     }
-    if (!(f & 0x80)) {
-        r = Equip_LevelMark(e, flags, other);
-        if (r > 0) {
-            Hud_DrawTab(x, y, (f & 0x40) | (lvl + 1), r, 0x807F7F7F);
+    if (!(frame & 0x80)) {
+        band = Equip_LevelMark(item, flags, other);
+        if (band > 0) {
+            Hud_DrawTab(x, y, (frame & 0x40) | (lvl + 1), band, 0x807F7F7F);
         }
     }
-    EquipWindow_DrawDetails(p, e, x, y, flags, other);
+    EquipWindow_DrawDetails(pl, item, x, y, flags, other);
 }
 
-void StatusPage_DrawBox(s32 x, s16 y, s32 c)
+/* Draws the equipment window's empty box at x, y, its frame at alpha `alpha` and its
+ * background at half; the alphas are the top bytes of the Panel's colours. */
+void StatusPage_DrawBox(s32 x, s16 y, s32 alpha)
 {
     s16 pos[2];
 
-    D_0043AE9F[0] = c;
+    ((u8 *)&gEquipWindowBox.color)[3] = alpha;          /* the frame colour's alpha */
     pos[0] = x;
     pos[1] = y;
-    D_0043AEA3 = (u8)c >> 1;
+    ((u8 *)&gEquipWindowBox.color2)[3] = (u8)alpha >> 1;  /* the background's, half */
     Window_DrawText(&gEquipWindowBox, pos, (u8 *)0);
 }
 
-static s32 EquipItem_Equal(EquipItem *a, EquipItem *e)
+/* 1 if two pieces of equipment are the same: type, id, level and decorations. */
+static s32 EquipItem_Equal(EquipItem *left, EquipItem *right)
 {
-    if (a->type != e->type) {
+    if (left->type != right->type) {
         return 0;
     }
-    if (a->id != e->id) {
+    if (left->id != right->id) {
         return 0;
     }
-    if (a->level != e->level) {
+    if (left->level != right->level) {
         return 0;
     }
-    if (a->deco[0] != e->deco[0]) {
+    if (left->deco[0] != right->deco[0]) {
         return 0;
     }
-    if (a->deco[1] != e->deco[1]) {
+    if (left->deco[1] != right->deco[1]) {
         return 0;
     }
-    return a->deco[2] == e->deco[2];
+    return left->deco[2] == right->deco[2];
 }
 
 extern u8 gWeaponKindClass[];
@@ -14646,14 +14756,14 @@ u8 WeaponType_Flags(u8 cls);
 u8 Equip_GetBladeSpecial(EquipItem *e);
 
 /* Puts a weapon in a player's weapon slot and updates what depends on it. */
-void Player_SetWeapon(Player *p, EquipItem *e)
+void Player_SetWeapon(Player *pl, EquipItem *item)
 {
-    p->equip[6] = *e;
-    p->weaponKind = Equip_GetKind(&p->equip[6]);
-    p->weaponType = gWeaponKindClass[p->weaponKind];
-    p->isGunner = WeaponClass_IsGunner(p->weaponType);
-    p->weaponFlags = WeaponType_Flags(p->weaponType);
-    p->bladeSpecial = Equip_GetBladeSpecial(&p->equip[6]);
+    pl->equip[6] = *item;
+    pl->weaponKind = Equip_GetKind(&pl->equip[6]);
+    pl->weaponType = gWeaponKindClass[pl->weaponKind];
+    pl->isGunner = WeaponClass_IsGunner(pl->weaponType);
+    pl->weaponFlags = WeaponType_Flags(pl->weaponType);
+    pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[6]);
 }
 
 typedef struct PlayerQ {
@@ -14665,21 +14775,21 @@ void Player_CalcSharpnessMax(Player *p);
 u8 Player_GetSharpnessLevel(Player *p);
 
 /* A copy of a player (gPlayerPreview) with a piece of equipment in place, for the equipment menus' previews. */
-Player *Player_PreviewWith(Player *p, EquipItem *e)
+Player *Player_PreviewWith(Player *pl, EquipItem *item)
 {
-    *(PlayerQ *)&gPlayerPreview = *(PlayerQ *)p;
+    *(PlayerQ *)&gPlayerPreview = *(PlayerQ *)pl;
     if (gScene.online != 0) {
-        if (e->type == 7 || e->type == 6) {
-            if (EquipItem_Equal(&p->equip[6], e) == 0) {
-                Player_SetWeapon(&gPlayerPreview, e);
-                if (p->equip[6].type != e->type) {
+        if (item->type == 7 || item->type == 6) {
+            if (EquipItem_Equal(&pl->equip[6], item) == 0) {
+                Player_SetWeapon(&gPlayerPreview, item);
+                if (pl->equip[6].type != item->type) {
                     Player_RemoveUnwearable(&gPlayerPreview);
                 }
             }
         }
         Player_CalcSkills(&gPlayerPreview);
     }
-    if (e->type == 6) {
+    if (item->type == 6) {
         Player_CalcSharpnessMax(&gPlayerPreview);
         gPlayerPreview.sharpness = gPlayerPreview.sharpnessMax;
         gPlayerPreview.sharpnessLevel = Player_GetSharpnessLevel(&gPlayerPreview);
@@ -14708,50 +14818,50 @@ u8 Bowgun_ClipSize(GunData *gun, u8 kind);
  * line when not in `have` stay colour 10. */
 void Bowgun_DrawAmmoLine(GunData *gun, u32 have, u32 loaded, u8 line, u8 extra)
 {
-    AmmoLine *t;
-    u8 c0;
-    u8 l0;
-    u8 c1;
-    u8 n[4];
-    u8 l2;
-    u8 l3;
-    u8 c3;
-    u8 c2;
+    AmmoLine *row;
+    u8 nameColor;
+    u8 sepColor;
+    u8 level1Color;
+    u8 clips[4];
+    u8 sep2Color;
+    u8 sep3Color;
+    u8 level3Color;
+    u8 level2Color;
     char buf[0x2C];
 
-    t = &gAmmoLines[line];
-    *(s32 *)n = 0;
-    c1 = l2 = c2 = c3 = l3 = c0 = l0 = 10;
-    if (have & t->lineMask) {
-        c0 = (loaded & t->lineMask) ? 4 : 5;
-        l0 = 5;
+    row = &gAmmoLines[line];
+    *(s32 *)clips = 0;
+    level1Color = sep2Color = level2Color = level3Color = sep3Color = nameColor = sepColor = 10;
+    if (have & row->lineMask) {
+        nameColor = (loaded & row->lineMask) ? 4 : 5;
+        sepColor = 5;
     }
-    if (have & t->mask[0]) {
-        n[0] = extra + Bowgun_ClipSize(gun, t->ammo[0]);
-        c1 = (loaded & t->mask[0]) || extra != 0 ? 4 : 5;
+    if (have & row->mask[0]) {
+        clips[0] = extra + Bowgun_ClipSize(gun, row->ammo[0]);
+        level1Color = (loaded & row->mask[0]) || extra != 0 ? 4 : 5;
     }
-    if (have & t->mask[1]) {
-        n[1] = extra + Bowgun_ClipSize(gun, t->ammo[1]);
-        c2 = (loaded & t->mask[1]) || extra != 0 ? 4 : 5;
-        l2 = 5;
+    if (have & row->mask[1]) {
+        clips[1] = extra + Bowgun_ClipSize(gun, row->ammo[1]);
+        level2Color = (loaded & row->mask[1]) || extra != 0 ? 4 : 5;
+        sep2Color = 5;
     }
-    if (have & t->mask[2]) {
-        n[2] = extra + Bowgun_ClipSize(gun, t->ammo[2]);
-        c3 = (loaded & t->mask[2]) || extra != 0 ? 4 : 5;
-        l3 = 5;
+    if (have & row->mask[2]) {
+        clips[2] = extra + Bowgun_ClipSize(gun, row->ammo[2]);
+        level3Color = (loaded & row->mask[2]) || extra != 0 ? 4 : 5;
+        sep3Color = 5;
     }
-    switch (t->kind) {
+    switch (row->kind) {
     case 3:
-        sprintf(buf, gAmmoCount3Fmt, c1, n[0], l2, c2, n[1], l3, c3, n[2]);
+        sprintf(buf, gAmmoCount3Fmt, level1Color, clips[0], sep2Color, level2Color, clips[1], sep3Color, level3Color, clips[2]);
         break;
     case 2:
-        sprintf(buf, gAmmoLineFormats[0], c1, n[0], l2, c2, n[1]);
+        sprintf(buf, gAmmoLineFormats[0], level1Color, clips[0], sep2Color, level2Color, clips[1]);
         break;
     default:
-        sprintf(buf, gAmmoCount1Fmt, c1, n[0]);
+        sprintf(buf, gAmmoCount1Fmt, level1Color, clips[0]);
         break;
     }
-    Text_PrintfColored(gAmmoNameFmt[0], c0, gAmmoNames[line], l0, buf);
+    Text_PrintfColored(gAmmoNameFmt[0], nameColor, gAmmoNames[line], sepColor, buf);
 }
 
 void Equip_GetIconUV(EquipItem *e, struct Pt *uv0, struct Pt *uv1);
@@ -14760,21 +14870,21 @@ u8 Equip_GetRarity(u8 type, u16 id);
 u32 Equip_Color(u8 idx, u8 alpha, s32 alt);
 
 /* Draws the icon of a piece of equipment at (x + 5, y), in its colour (grey with flags 8). */
-void Equip_DrawIcon(EquipItem *e, s16 x, s16 y, u8 flags)
+void Equip_DrawIcon(EquipItem *item, s16 x, s16 y, u8 flags)
 {
-    Sprite s;
+    Sprite spr;
 
-    s.x = x + 5;
-    s.y = y;
-    s.w = 0x28;
-    s.h = 0x20;
-    Equip_GetIconUV(e, (struct Pt *)&s.u0, (struct Pt *)&s.u1);
+    spr.x = x + 5;
+    spr.y = y;
+    spr.w = 0x28;
+    spr.h = 0x20;
+    Equip_GetIconUV(item, (struct Pt *)&spr.u0, (struct Pt *)&spr.u1);
     if (!(flags & 8)) {
-        s.color = Equip_Color(Equip_GetRarity(e->type, e->id), 0xFF, 0);
+        spr.color = Equip_Color(Equip_GetRarity(item->type, item->id), 0xFF, 0);
     } else {
-        s.color = 0xFF808080;
+        spr.color = 0xFF808080;
     }
-    Sprite_Draw(&s);
+    Sprite_Draw(&spr);
 }
 
 void Text_DrawLines(s16 x, s16 y, char **lines, s16 dy);
@@ -14826,69 +14936,78 @@ extern char *gDecoDetailTitle[];
  * The bowgun case takes the preview player into p before drawing the ammo. Built at optimization level 4 (at the
  * file's level 3 it is 1352 of 1484 words off). Notes: docs/notes/nm/EquipWindow_DrawDetails.md. */
 #pragma optimization_level 4
-static inline void EquipWindow_DrawAmmo(Player *p, EquipItem *e, s32 x, s32 y, u8 kind, u8 col)
+/* Draws a bowgun's ammo lines in text colour `color`: the ammo it loads, with what pl's
+ * skills add (Player_GetSkillAmmoMask) marked, and one more round per clip with skill 0xB8.
+ * kind picks the page (4 the first lines and their heading). */
+static inline void EquipWindow_DrawAmmo(Player *pl, EquipItem *item, s32 x, s32 y, u8 kind, u8 color)
 {
     u32 extra;
-    u32 has;
+    u32 have;
     u8 plus;
-    GunData *d;
+    GunData *data;
 
-    d = &Equip_GetData(e)->gun;
-    has = d->ammoMask;
-    extra = ~has & Player_GetSkillAmmoMask(p);
+    data = &Equip_GetData(item)->gun;
+    have = data->ammoMask;
+    extra = ~have & Player_GetSkillAmmoMask(pl);
     plus = 0;
-    has |= extra;
-    if (Player_HasSkill(p, 0xB8) == 1) {
+    have |= extra;
+    if (Player_HasSkill(pl, 0xB8) == 1) {
         plus = 1;
     }
-    Text_SetColor(col);
+    Text_SetColor(color);
     Font_SetPos(x, y);
     if (kind == 4) {
         Text_Printf(gAmmoHeaderText[0]);
         Font_SetPos(x, y + 0x14);
-        Bowgun_DrawAmmoLine(d, has, extra, 0, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 0, plus);
         Font_SetPos(x, y + 0x28);
-        Bowgun_DrawAmmoLine(d, has, extra, 1, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 1, plus);
         Font_SetPos(x, y + 0x3C);
-        Bowgun_DrawAmmoLine(d, has, extra, 2, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 2, plus);
         Font_SetPos(x, y + 0x50);
-        Bowgun_DrawAmmoLine(d, has, extra, 3, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 3, plus);
         Font_SetPos(x, y + 0x64);
-        Bowgun_DrawAmmoLine(d, has, extra, 4, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 4, plus);
         Font_SetPos(x + 0xB4, y + 0x14);
-        Bowgun_DrawAmmoLine(d, has, extra, 5, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 5, plus);
         Font_SetPos(x + 0xB4, y + 0x28);
-        Bowgun_DrawAmmoLine(d, has, extra, 6, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 6, plus);
         Font_SetPos(x + 0xB4, y + 0x3C);
-        Bowgun_DrawAmmoLine(d, has, extra, 7, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 7, plus);
         Font_SetPos(x + 0xB4, y + 0x50);
-        Bowgun_DrawAmmoLine(d, has, extra, 8, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 8, plus);
     } else {
         Text_Printf(gAmmoClipLabel);
         Font_SetPos(x, y + 0x14);
-        Bowgun_DrawAmmoLine(d, has, extra, 9, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 9, plus);
         Font_SetPos(x, y + 0x28);
-        Bowgun_DrawAmmoLine(d, has, extra, 10, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 10, plus);
         Font_SetPos(x, y + 0x3C);
-        Bowgun_DrawAmmoLine(d, has, extra, 11, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 11, plus);
         Font_SetPos(x, y + 0x50);
-        Bowgun_DrawAmmoLine(d, has, extra, 12, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 12, plus);
         Font_SetPos(x, y + 0x64);
-        Bowgun_DrawAmmoLine(d, has, extra, 13, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 13, plus);
         Font_SetPos(x + 0x99, y + 0x14);
-        Bowgun_DrawAmmoLine(d, has, extra, 14, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 14, plus);
         Font_SetPos(x + 0x99, y + 0x28);
-        Bowgun_DrawAmmoLine(d, has, extra, 15, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 15, plus);
         Font_SetPos(x + 0x99, y + 0x3C);
-        Bowgun_DrawAmmoLine(d, has, extra, 16, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 16, plus);
         Font_SetPos(x + 0x99, y + 0x50);
-        Bowgun_DrawAmmoLine(d, has, extra, 17, plus);
+        Bowgun_DrawAmmoLine(data, have, extra, 17, plus);
     }
 }
 
-void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other)
+/* Draws one page of a piece of equipment's details at x, y; the page's kind comes from
+ * EquipWindow_PickDetails's table for the item, at flags & 7: 0 its name, kind, marks and
+ * (a bowgun) its parts; 1 who can use it, its values (compared with other) and its slots;
+ * 2 its skill points (EquipMenu_DrawSkills); 3 the skills in effect; 4-5 the ammo pages;
+ * 6-7 the weapon's own rows and item list; 8-9 its decorations; 10 the no-equipment text.
+ * flags 8 greys the page without a comparison, flags 0x20 drops the comparison. */
+void EquipWindow_DrawDetails(Player *pl, EquipItem *item, s16 x, s16 y, u8 flags, EquipItem *other)
 {
-    EquipData *d;
+    EquipData *data;
     u32 atk;
     u16 def;
     char **names;
@@ -14903,24 +15022,24 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
     u8 cLvl;
     u8 cAff;
     u8 cOpt;
-    EquipData *od;
+    EquipData *otherData;
     u8 cAtk;
     u8 cRng;
     char **lines;
     char buf[32];
-    EquipItem t;
-    EquipItem t2;
+    EquipItem itemCopy;
+    EquipItem otherCopy;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
-    details = EquipWindow_PickDetails(e, flags, other);
+    details = EquipWindow_PickDetails(item, flags, other);
     if (flags & 0x20) {
         other = NULL;
     }
-    if (e != NULL) {
-        rank = Equip_GetRarity(e->type, e->id);
-        cls = Equip_GetClass(e);
+    if (item != NULL) {
+        rank = Equip_GetRarity(item->type, item->id);
+        cls = Equip_GetClass(item);
     } else {
         rank = 0;
         cls = 0;
@@ -14939,23 +15058,23 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
     kind = details[flags & 7];
     switch (kind) {
     case 0:
-        Equip_DrawIcon(e, x, y, flags);
+        Equip_DrawIcon(item, x, y, flags);
         Font_SetPos(x + 0x2D, y + 0xA);
-        Text_Printf(gEquipNameFmt[0], rankCol, Equip_GetName(e->type, e->id));
-        switch (e->type) {
+        Text_Printf(gEquipNameFmt[0], rankCol, Equip_GetName(item->type, item->id));
+        switch (item->type) {
         case 6: {
             u32 oatk;
 
-            d = Equip_GetData(e);
-            atk = (u16)((u16)d->blade.attack * gWeaponClassMultipliers[cls] / 100);
+            data = Equip_GetData(item);
+            atk = (u16)((u16)data->blade.attack * gWeaponClassMultipliers[cls] / 100);
             cAtk = cOpt = cAff = cLvl = cSil = cRng = 0;
             if (other != NULL) {
-                if (e->type == other->type) {
-                    od = Equip_GetData(other);
-                    oatk = (u16)((u16)od->blade.attack * gWeaponClassMultipliers[Equip_GetClass(other)] / 100);
-                    if (od->blade.sharpMax < d->blade.sharpMax) {
+                if (item->type == other->type) {
+                    otherData = Equip_GetData(other);
+                    oatk = (u16)((u16)otherData->blade.attack * gWeaponClassMultipliers[Equip_GetClass(other)] / 100);
+                    if (otherData->blade.sharpMax < data->blade.sharpMax) {
                         cAff = 4;
-                    } else if (d->blade.sharpMax < od->blade.sharpMax) {
+                    } else if (data->blade.sharpMax < otherData->blade.sharpMax) {
                         cAff = 2;
                     }
                 } else {
@@ -14969,65 +15088,65 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
             }
             Text_SetColor(cAtk);
             Font_SetPos(x + 0x48, y + 0x28);
-            Text_PrintfColored(D_00490900, atk);
-            EquipMenu_DrawSharpness(p, e, x + 0x9D, y + 0x3E);
-            EquipMenu_DrawElement(e, x, y + 0x50, other);
+            Text_PrintfColored(gStatusFmtInt4, atk);
+            EquipMenu_DrawSharpness(pl, item, x + 0x9D, y + 0x3E);
+            EquipMenu_DrawElement(item, x, y + 0x50, other);
             switch (cls) {
             case 9:
-                EquipWindow_DrawWeaponKind(e, x, y);
+                EquipWindow_DrawWeaponKind(item, x, y);
                 break;
             case 8:
-                EquipWindow_DrawMarks(e, x, y);
+                EquipWindow_DrawMarks(item, x, y);
                 break;
             }
             lines = gBladeDetailLabels;
             break;
         }
         case 7: {
-            EquipData *od;
+            EquipData *otherData;
             u32 oatk;
 
-            d = Equip_GetData(e);
-            atk = (u16)(gWeaponClassMultipliers[cls] * Gun_GetAttack(e) / 100);
+            data = Equip_GetData(item);
+            atk = (u16)(gWeaponClassMultipliers[cls] * Gun_GetAttack(item) / 100);
             cAtk = cAff = cLvl = cSil = cOpt = cRng = 0;
             if (other != NULL) {
-                if (e->type == other->type) {
-                    od = Equip_GetData(other);
+                if (item->type == other->type) {
+                    otherData = Equip_GetData(other);
                     oatk = (u16)(gWeaponClassMultipliers[Equip_GetClass(other)] * Gun_GetAttack(other) / 100);
-                    if (od->gun.reload < d->gun.reload) {
+                    if (otherData->gun.reload < data->gun.reload) {
                         cAff = 4;
-                    } else if (d->gun.reload < od->gun.reload) {
+                    } else if (data->gun.reload < otherData->gun.reload) {
                         cAff = 2;
                     }
                     buf[0] = other->level & 0xF;
-                    buf[1] = e->level & 0xF;
+                    buf[1] = item->level & 0xF;
                     if (buf[0] < buf[1]) {
                         cLvl = 4;
                     } else if (buf[1] < buf[0]) {
                         cLvl = 2;
                     }
                     if (other->level & 0x40) {
-                        if (!(e->level & 0x40)) {
+                        if (!(item->level & 0x40)) {
                             cSil = 2;
                         }
-                    } else if (e->level & 0x40) {
+                    } else if (item->level & 0x40) {
                         cSil = 4;
                     }
                     if (other->level & 0xB0) {
-                        if (!(e->level & 0xB0)) {
+                        if (!(item->level & 0xB0)) {
                             cOpt = 2;
                         }
-                    } else if (e->level & 0xB0) {
+                    } else if (item->level & 0xB0) {
                         cOpt = 4;
                     }
-                    if (od->gun.recoil < d->gun.recoil) {
+                    if (otherData->gun.recoil < data->gun.recoil) {
                         cRng = 4;
-                    } else if (d->gun.recoil < od->gun.recoil) {
+                    } else if (data->gun.recoil < otherData->gun.recoil) {
                         cRng = 2;
                     }
                 } else {
-                    od = Equip_GetData(other);
-                    oatk = (u16)((u16)od->blade.attack * gWeaponClassMultipliers[Equip_GetClass(other)] / 100);
+                    otherData = Equip_GetData(other);
+                    oatk = (u16)((u16)otherData->blade.attack * gWeaponClassMultipliers[Equip_GetClass(other)] / 100);
                 }
                 if (oatk < atk) {
                     cAtk = 4;
@@ -15037,24 +15156,24 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
             }
             Text_SetColor(cAtk);
             Font_SetPos(x + 0x48, y + 0x28);
-            Text_PrintfColored(D_00490900, atk);
+            Text_PrintfColored(gStatusFmtInt4, atk);
             if (cls != 10) {
                 Text_SetColor(cAff);
                 Font_SetPos(x + 0x5A, y + 0x3C);
-                Text_Draw(gGunReloadTexts[d->gun.reload]);
+                Text_Draw(gGunReloadTexts[data->gun.reload]);
                 Text_SetColor(cRng);
                 Font_SetPos(x + 0x5A, y + 0x50);
-                Text_Draw(gGunRecoilTexts[d->gun.recoil]);
+                Text_Draw(gGunRecoilTexts[data->gun.recoil]);
                 Text_SetColor(cLvl);
                 Font_SetPos(x + 0x6C, y + 0x64);
                 buf[0] = 0x82;
-                buf[1] = (e->level & 0xF) + 0x50;
+                buf[1] = (item->level & 0xF) + 0x50;
                 buf[2] = 0;
                 Text_Draw(buf);
                 Font_SetSpacing(0x10, 0x12);
                 Text_SetColor(cSil);
                 Font_SetPos(x + 0xAF, y + 0x28);
-                if (e->level & 0x40) {
+                if (item->level & 0x40) {
                     Text_Draw(gScopeVariableText);
                 } else {
                     Text_Draw(gScopeFixedText[0]);
@@ -15063,92 +15182,92 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
                 Text_SetColor(cOpt);
                 Font_SetPos(x + 0xC4, y + 0x3C);
                 if (cls == 1) {
-                    if (e->level & 0x20) {
+                    if (item->level & 0x20) {
                         Text_Draw(gPowerBarrelText[0]);
-                    } else if (e->level & 0x80) {
+                    } else if (item->level & 0x80) {
                         Text_Draw(gShieldText[0]);
                     }
                 } else {
-                    if (e->level & 0x20) {
+                    if (item->level & 0x20) {
                         Text_Draw(gLongBarrelText);
-                    } else if (e->level & 0x10) {
+                    } else if (item->level & 0x10) {
                         Text_Draw(gSilencerText);
                     }
                 }
-                EquipMenu_DrawElement(e, x + 0xC6, y + 0x50, other);
+                EquipMenu_DrawElement(item, x + 0xC6, y + 0x50, other);
                 lines = gBowgunDetailLabels;
             } else {
                 /* FAKEMATCH: x + 0. The game passes an int x here, re-extended from the case's (s32)x copy (the
                  * other calls pass the s16 x as it is); a zero layout offset beside x + 0xC6 above is the one form
                  * found. Plain x: 10 words off, (s32)x: 15. */
-                EquipMenu_DrawElement(e, x + 0, y + 0x3C, other);
+                EquipMenu_DrawElement(item, x + 0, y + 0x3C, other);
                 lines = gBowDetailLabels;
             }
             break;
         }
         default: {
-            ArmorData *d;
-            ArmorData *od;
+            ArmorData *data;
+            ArmorData *otherData;
             s32 odef;
 
-            d = &Equip_GetData(e)->armor;
-            def = (u8)Armor_GetDefense(e);
+            data = &Equip_GetData(item)->armor;
+            def = (u8)Armor_GetDefense(item);
             cAtk = cOpt = cAff = cLvl = cSil = cRng = col;
-            if (other != NULL && e->type == other->type) {
-                od = &Equip_GetData(other)->armor;
+            if (other != NULL && item->type == other->type) {
+                otherData = &Equip_GetData(other)->armor;
                 odef = (u8)Armor_GetDefense(other);
                 if (odef < def) {
                     cAtk = 4;
                 } else if (def < odef) {
                     cAtk = 2;
                 }
-                if (od->resist[0] < d->resist[0]) {
+                if (otherData->resist[0] < data->resist[0]) {
                     cOpt = 4;
-                } else if (d->resist[0] < od->resist[0]) {
+                } else if (data->resist[0] < otherData->resist[0]) {
                     cOpt = 2;
                 }
-                if (od->resist[1] < d->resist[1]) {
+                if (otherData->resist[1] < data->resist[1]) {
                     cAff = 4;
-                } else if (d->resist[1] < od->resist[1]) {
+                } else if (data->resist[1] < otherData->resist[1]) {
                     cAff = 2;
                 }
-                if (od->resist[2] < d->resist[2]) {
+                if (otherData->resist[2] < data->resist[2]) {
                     cLvl = 4;
-                } else if (d->resist[2] < od->resist[2]) {
+                } else if (data->resist[2] < otherData->resist[2]) {
                     cLvl = 2;
                 }
-                if (od->resist[3] < d->resist[3]) {
+                if (otherData->resist[3] < data->resist[3]) {
                     cSil = 4;
-                } else if (d->resist[3] < od->resist[3]) {
+                } else if (data->resist[3] < otherData->resist[3]) {
                     cSil = 2;
                 }
-                if (od->resist[4] < d->resist[4]) {
+                if (otherData->resist[4] < data->resist[4]) {
                     cRng = 4;
-                } else if (d->resist[4] < od->resist[4]) {
+                } else if (data->resist[4] < otherData->resist[4]) {
                     cRng = 2;
                 }
             }
             Text_SetColor(col);
             Font_SetPos(x + 0x48, y + 0x28);
-            Text_PrintfColored(D_00490908, e->level + 1);
+            Text_PrintfColored(gStatusFmtInt3, item->level + 1);
             Text_SetColor(cAtk);
             Font_SetPos(x + 0xD8, y + 0x28);
-            Text_PrintfColored(D_00490908, def);
+            Text_PrintfColored(gStatusFmtInt3, def);
             Text_SetColor(cOpt);
             Font_SetPos(x + 0x48, y + 0x3C);
-            Text_PrintfColored(D_00490908, d->resist[0]);
+            Text_PrintfColored(gStatusFmtInt3, data->resist[0]);
             Text_SetColor(cAff);
             Font_SetPos(x + 0xD8, y + 0x3C);
-            Text_PrintfColored(D_00490908, d->resist[1]);
+            Text_PrintfColored(gStatusFmtInt3, data->resist[1]);
             Text_SetColor(cLvl);
             Font_SetPos(x + 0x48, y + 0x50);
-            Text_PrintfColored(D_00490908, d->resist[2]);
+            Text_PrintfColored(gStatusFmtInt3, data->resist[2]);
             Text_SetColor(cSil);
             Font_SetPos(x + 0xD8, y + 0x50);
-            Text_PrintfColored(D_00490908, d->resist[3]);
+            Text_PrintfColored(gStatusFmtInt3, data->resist[3]);
             Text_SetColor(cRng);
             Font_SetPos(x + 0x48, y + 0x64);
-            Text_PrintfColored(D_00490908, d->resist[4]);
+            Text_PrintfColored(gStatusFmtInt3, data->resist[4]);
             lines = gArmorStatLabels;
             break;
         }
@@ -15159,11 +15278,11 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
     case 1: {
         s32 id;
         u8 k;
-        u8 f;
+        u8 armorFlags;
 
-        Equip_DrawIcon(e, x, y + 0xE, flags);
-        id = e->id;
-        switch (e->type) {
+        Equip_DrawIcon(item, x, y + 0xE, flags);
+        id = item->id;
+        switch (item->type) {
         case 7:
             Text_DrawLines(x, y + 0x3C, gHunterTypeLabels, 0x14);
             names = gGunDescTexts[id];
@@ -15188,17 +15307,17 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
         Text_SetColor(col);
         Text_DrawLines(x + 0x36, y, names, 0x14);
         Font_SetPos(x + 0x90, y + 0x3C);
-        if (e->id != 0) {
-            switch (e->type) {
+        if (item->id != 0) {
+            switch (item->type) {
             case 6:
             case 7:
-                k = e->type - 6;
+                k = item->type - 6;
                 break;
             default:
-                f = Equip_GetData(e)->armor.flags;
-                if ((f & 0xC) == 0xC) {
+                armorFlags = Equip_GetData(item)->armor.flags;
+                if ((armorFlags & 0xC) == 0xC) {
                     k = 2;
-                } else if (f & 4) {
+                } else if (armorFlags & 4) {
                     k = 0;
                 } else {
                     k = 1;
@@ -15210,7 +15329,7 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
             Text_Draw(gDashText);
         }
         Font_SetPos(x + 0x48, y + 0x50);
-        if (e->id != 0) {
+        if (item->id != 0) {
             Text_SetColor(rankCol);
             buf[0] = 0x82;
             buf[2] = 0;
@@ -15219,83 +15338,83 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
         } else {
             Text_Draw(gDashText);
         }
-        EquipWindow_DrawWeaponValue(p, e, x + 0x90, y + 0x50, other);
-        EquipWindow_DrawSlots(e, x + 0x5A, y + 0x64, (flags & 8) != 0);
+        EquipWindow_DrawWeaponValue(pl, item, x + 0x90, y + 0x50, other);
+        EquipWindow_DrawSlots(item, x + 0x5A, y + 0x64, (flags & 8) != 0);
         break;
     }
     case 2: {
         /* unit's own declaration: the game passes y unextended; with the definition's void (EquipItem
          * *e, s16 x, s32 y, EquipItem *cmp, u8 flags) (sub_main/unk_361570.c), EquipWindow_DrawDetails: 470 of 1460 words
          * differ */
-        void EquipMenu_DrawSkills(EquipItem *e, s16 x, s16 y, EquipItem *cmp, u8 flags); /* unit's own declaration: with the definition's void (EquipItem *e, s16 x, s32 y, EquipItem *cmp, u8 flags) (sub_main/unk_361570.c), EquipWindow_DrawDetails 470 of 1460 words differ */
+        void EquipMenu_DrawSkills(EquipItem *item, s16 x, s16 y, EquipItem *cmp, u8 flags); /* unit's own declaration: with the definition's void (EquipItem *e, s16 x, s32 y, EquipItem *cmp, u8 flags) (sub_main/unk_361570.c), EquipWindow_DrawDetails 470 of 1460 words differ */
 
-        EquipMenu_DrawSkills(e, x, y, other, flags);
+        EquipMenu_DrawSkills(item, x, y, other, flags);
         break;
     }
     case 3: {
         /* unit's own declaration: the game passes x unextended; with the definition's void (Player
          * *a, s32 b, s16 c) (this file), EquipWindow_DrawDetails: 420 of 1462 words differ */
         void Player_DrawSkillsPlain(Player *a, s16 b, s16 c); /* unit's own declaration: with the definition's void (Player *a, s32 b, s16 c) (sub_main/unk_356380.c), EquipWindow_DrawDetails 420 of 1462 words differ */
-        u32 ty;
-        u32 tx;
+        u32 textY;
+        u32 textX;
 
-        ty = y;
-        tx = x;
-        Font_SetPos(tx, ty);
+        textY = y;
+        textX = x;
+        Font_SetPos(textX, textY);
         Text_Draw(gActiveSkillsTitle);
-        if (e != NULL) {
-            if (e->type != 7 && e->type != 6 && !(u8)Equip_DataWearable(p, e)) {
+        if (item != NULL) {
+            if (item->type != 7 && item->type != 6 && !(u8)Equip_DataWearable(pl, item)) {
                 Font_SetColor(0x80404040);
                 flags |= 8;
             }
             if (!(flags & 8)) {
-                if (!EquipItem_Equal(&p->equip[e->type], e)) {
+                if (!EquipItem_Equal(&pl->equip[item->type], item)) {
                     if (gScene.online) {
-                        SkillList_DrawWithEquip(p, e, x, y);
+                        SkillList_DrawWithEquip(pl, item, x, y);
                     }
                 } else {
-                    Player_DrawSkillsPlain(p, x, y);
+                    Player_DrawSkillsPlain(pl, x, y);
                 }
             } else if (gScene.online) {
-                t = *e;
-                t.id = 0;
-                t.deco[2] = 0;
-                t.deco[1] = 0;
-                t.deco[0] = 0;
-                SkillList_DrawWithEquip(p, &t, x, y);
+                itemCopy = *item;
+                itemCopy.id = 0;
+                itemCopy.deco[2] = 0;
+                itemCopy.deco[1] = 0;
+                itemCopy.deco[0] = 0;
+                SkillList_DrawWithEquip(pl, &itemCopy, x, y);
             } else {
-                Font_SetPos(tx, ty + 0x14);
+                Font_SetPos(textX, textY + 0x14);
                 Text_Draw(gSkillEffectNames[0]);
             }
         } else if (other != NULL && gScene.online) {
-            t2 = *other;
-            t2.id = 0;
-            t2.deco[2] = 0;
-            t2.deco[1] = 0;
-            t2.deco[0] = 0;
-            SkillList_DrawWithEquip(p, &t2, x, y);
+            otherCopy = *other;
+            otherCopy.id = 0;
+            otherCopy.deco[2] = 0;
+            otherCopy.deco[1] = 0;
+            otherCopy.deco[0] = 0;
+            SkillList_DrawWithEquip(pl, &otherCopy, x, y);
         } else {
-            Player_DrawSkillsPlain(p, x, y);
+            Player_DrawSkillsPlain(pl, x, y);
         }
         break;
     }
     case 4:
     case 5:
-        p = Player_PreviewWith(p, e);
-        EquipWindow_DrawAmmo(p, e, x, y, kind, col);
+        pl = Player_PreviewWith(pl, item);
+        EquipWindow_DrawAmmo(pl, item, x, y, kind, col);
         break;
     case 6:
     case 7: {
-        GunData *d;
+        GunData *data;
 
         Text_SetColor(col);
         Font_SetPos(x, y);
         Text_Draw(gAttackPerfText);
-        d = &Equip_GetData(e)->gun;
+        data = &Equip_GetData(item)->gun;
         if (kind == 6) {
-            EquipWindow_DrawRow(p, e, x, y);
+            EquipWindow_DrawRow(pl, item, x, y);
         } else {
-            EquipWindow_DrawItemList(d, x, y);
+            EquipWindow_DrawItemList(data, x, y);
         }
         break;
     }
@@ -15305,7 +15424,7 @@ void EquipWindow_DrawDetails(Player *p, EquipItem *e, s16 x, s16 y, u8 flags, Eq
         Font_SetPos(x, y);
         Text_Draw(gDecoDetailTitle[0]);
         Text_SetColor(col);
-        EquipWindow_DrawDecorations(e, x, y + 0x14, kind - 8);
+        EquipWindow_DrawDecorations(item, x, y + 0x14, kind - 8);
         break;
     case 10:
         Text_SetColor(col);
@@ -15323,44 +15442,44 @@ extern char *gPercentFmt;
 
 /* The weapon's value 8 (Player_GetWeaponStat; only for guns or from sharpness 3) for the player with it, coloured
  * against the one of other (higher: 0x802B7F7F, lower: 0x807F212E) or when a skill 0x23-0x25 applies. */
-void EquipWindow_DrawWeaponValue(Player *p, EquipItem *e, s16 x, s16 y, EquipItem *other)
+void EquipWindow_DrawWeaponValue(Player *pl, EquipItem *item, s16 x, s16 y, EquipItem *other)
 {
     char out[24];
     char buf[8];
-    Player *q;
+    Player *preview;
     u32 color;
-    s16 v;
-    s16 w;
+    s16 value;
+    s16 otherValue;
 
-    if (e->type == 7 || e->type == 6) {
+    if (item->type == 7 || item->type == 6) {
         color = 0x807F7F7F;
-        q = Player_PreviewWith(p, e);
-        v = 0;
-        if (e->type == 7 || q->sharpnessLevel >= 3) {
-            v = Player_GetWeaponStat(q, 8);
-            if (Player_HasSkill(q, 0x23) == 1 || Player_HasSkill(q, 0x24) == 1 || Player_HasSkill(q, 0x25) == 1) {
+        preview = Player_PreviewWith(pl, item);
+        value = 0;
+        if (item->type == 7 || preview->sharpnessLevel >= 3) {
+            value = Player_GetWeaponStat(preview, WSTAT_AFFINITY);
+            if (Player_HasSkill(preview, 0x23) == 1 || Player_HasSkill(preview, 0x24) == 1 || Player_HasSkill(preview, 0x25) == 1) {
                 color = 0x802B7F7F;
             }
         }
         if (other != NULL) {
-            q = Player_PreviewWith(p, other);
-            w = 0;
-            if (other->type == 7 || q->sharpnessLevel >= 3) {
-                w = Player_GetWeaponStat(q, 8);
+            preview = Player_PreviewWith(pl, other);
+            otherValue = 0;
+            if (other->type == 7 || preview->sharpnessLevel >= 3) {
+                otherValue = Player_GetWeaponStat(preview, WSTAT_AFFINITY);
             }
             color = 0x807F7F7F;
-            if (v > w) {
+            if (value > otherValue) {
                 color = 0x802B7F7F;
-            } else if (w > v) {
+            } else if (otherValue > value) {
                 color = 0x807F212E;
             }
         }
-        Font_SetColor(0x807F7F28);
+        Font_SetColor(STATUS_COLOR_LABEL);
         Font_SetPos(x, y);
         Text_PrintfColored(gAffinityLabel[0]);
         Font_SetColor(color);
         Font_SetPos(x + 0x48, y);
-        sprintf(buf, gPercentFmt, v);
+        sprintf(buf, gPercentFmt, value);
         Sjis_Widen(buf, out);
         Text_PrintfColored(out);
     }
@@ -15373,16 +15492,16 @@ extern u32 gItemFontColors[];
 
 /* The decoration slots of a piece of equipment from (x, y): a filled mark per decoration (in its colour unless plain),
  * a hollow one per free slot, a dash for the rest of the 3. */
-void EquipWindow_DrawSlots(EquipItem *e, s16 x, s16 y, u8 plain)
+void EquipWindow_DrawSlots(EquipItem *item, s16 x, s16 y, u8 plain)
 {
     u16 deco[3];
     s32 i;
     u8 slots;
     s32 used;
 
-    slots = Equip_GetSlotCount(e);
-    used = slots - Equip_FreeSlots(e);
-    Equip_ListSlots(e, deco);
+    slots = Equip_GetSlotCount(item);
+    used = slots - Equip_FreeSlots(item);
+    Equip_ListSlots(item, deco);
     Font_SetColor(0x80505050);
     for (i = 0; i < used; i++) {
         if (!(plain & 0xFF)) {
@@ -15407,22 +15526,24 @@ void EquipWindow_DrawSlots(EquipItem *e, s16 x, s16 y, u8 plain)
 
 DecoData *Item_GetDecoration(u16 item);
 
+/* The lines a decoration's skills take in the equipment window, two skills a line; 0 for no
+ * decoration. */
 s32 Decoration_SkillRows(u16 item)
 {
-    u8 *p;
+    u8 *skill;
     s32 i;
     s32 n;
 
     if (item == 0) {
         return 0;
     }
-    p = (u8 *)Item_GetDecoration(item) + 8;
+    skill = Item_GetDecoration(item)->skills[0];
     for (i = n = 0; i < 4; i++) {
-        if (*p == 0) {
+        if (*skill == 0) {
             break;
         }
         n++;
-        p += 2;
+        skill += 2;
     }
     return (n + 1) >> 1;
 }
@@ -15436,68 +15557,68 @@ extern char *gDecoSkillFmt[];
 /* The decorations of a piece of equipment and their skills: the combination of its decoration sizes
  * (Decoration_SkillRows, base 3) picks the entries of gDecoRowLayouts (low bits: how many to list; with flag, the high
  * nibble: one slot); each with its name and up to four skills, two per line. */
-void EquipWindow_DrawDecorations(EquipItem *e, s16 x, s16 y, u8 flag)
+void EquipWindow_DrawDecorations(EquipItem *item, s16 x, s16 y, u8 flag)
 {
     u8 *data[2];
     char *name[2];
     s32 i;
-    u8 *s;
+    u8 *skill;
     s32 k;
     s32 n;
-    u8 **dp;
-    char **np;
-    s32 lx;
-    s32 c;
-    s32 m;
+    u8 **dataPtr;
+    char **namePtr;
+    s32 left;
+    s32 slot;
+    s32 scale;
     s32 j;
     s32 id;
 
-    for (i = 0, k = 0, m = 1; i < 3; i++) {
-        if (e->deco[i] != 0) {
-            k += m * Decoration_SkillRows(e->deco[i]);
+    for (i = 0, k = 0, scale = 1; i < 3; i++) {
+        if (item->deco[i] != 0) {
+            k += scale * Decoration_SkillRows(item->deco[i]);
         }
-        m *= 3;
+        scale *= 3;
     }
     data[0] = data[1] = NULL;
     if (flag == 0) {
         switch (gDecoRowLayouts[k] & 3) {
         case 2:
-            data[1] = (u8 *)Item_GetDecoration(e->deco[1]);
-            name[1] = gItemNames[e->deco[1]];
+            data[1] = (u8 *)Item_GetDecoration(item->deco[1]);
+            name[1] = gItemNames[item->deco[1]];
             /* fall through */
         case 1:
-            data[0] = (u8 *)Item_GetDecoration(e->deco[0]);
-            name[0] = gItemNames[e->deco[0]];
+            data[0] = (u8 *)Item_GetDecoration(item->deco[0]);
+            name[0] = gItemNames[item->deco[0]];
             break;
         }
     } else {
         j = gDecoRowLayouts[k] >> 4;
         if (j != 0) {
-            id = e->deco[j];
+            id = item->deco[j];
             data[0] = (u8 *)Item_GetDecoration(id);
             name[0] = gItemNames[id];
         }
     }
-    for (n = 0, dp = data, np = name, lx = x; n < 2; n++, dp++, np++) {
-        if (*dp == NULL) {
+    for (n = 0, dataPtr = data, namePtr = name, left = x; n < 2; n++, dataPtr++, namePtr++) {
+        if (*dataPtr == NULL) {
             break;
         }
         Font_SetPos(x, y);
-        Text_PrintfColored(gDecoNameFmt, *np);
+        Text_PrintfColored(gDecoNameFmt, *namePtr);
         y += 0x14;
-        s = *dp + 8;
-        for (c = 0; c < 4; c++, s += 2) {
-            if (*s == 0) {
+        skill = *dataPtr + 8;
+        for (slot = 0; slot < 4; slot++, skill += 2) {
+            if (*skill == 0) {
                 break;
             }
-            Font_SetPos(lx + (c & 1) * 0xA2, y + (c >> 1) * 0x14);
-            if (*s != 0x29 && *s != 0x2A && *s != 0x2B) {
-                Text_PrintfColored(gDecoSkillFmt[0], gSkillNames[*s], (s8)s[1]);
+            Font_SetPos(left + (slot & 1) * 0xA2, y + (slot >> 1) * 0x14);
+            if (*skill != 0x29 && *skill != 0x2A && *skill != 0x2B) {
+                Text_PrintfColored(gDecoSkillFmt[0], gSkillNames[*skill], (s8)skill[1]);
             } else {
-                Text_Draw(gSkillNames[*s]);
+                Text_Draw(gSkillNames[*skill]);
             }
         }
-        y += ((c + 1) >> 1) * 0x14;
+        y += ((slot + 1) >> 1) * 0x14;
     }
 }
 
@@ -15506,11 +15627,11 @@ extern u8 gShellTypeOfSpecial[];
 extern char *gShellTypeTexts[];
 
 /* Draws the name of a weapon's (Equip_GetBladeSpecial) kind at (x + 0x7E, y + 0x28). */
-void EquipWindow_DrawWeaponKind(EquipItem *e, s16 x, s16 y)
+void EquipWindow_DrawWeaponKind(EquipItem *item, s16 x, s16 y)
 {
-    Font_SetColor(0x807F7F7F);
+    Font_SetColor(STATUS_COLOR_VALUE);
     Font_SetPos(x + 0x7E, y + 0x28);
-    Text_Draw(gShellTypeTexts[gShellTypeOfSpecial[Equip_GetBladeSpecial(e)]]);
+    Text_Draw(gShellTypeTexts[gShellTypeOfSpecial[Equip_GetBladeSpecial(item)]]);
 }
 
 u8 Equip_GetBladeSpecial(EquipItem *e);
@@ -15519,29 +15640,29 @@ extern u8 gBladeSpecialMarks[][3];
 extern u32 gHornNoteColors[];
 
 /* A label and three coloured marks (gBladeSpecialMarks by Equip_GetBladeSpecial's kind) for a weapon. */
-void EquipWindow_DrawMarks(EquipItem *e, s16 x, s16 y)
+void EquipWindow_DrawMarks(EquipItem *item, s16 x, s16 y)
 {
-    Sprite s;
+    Sprite spr;
     s32 i;
-    u8 *c;
+    u8 *marks;
 
-    Font_SetColor(0x807F7F7F);
+    Font_SetColor(STATUS_COLOR_VALUE);
     Font_SetPos(x + 0x6C, y + 0x28);
     Text_Draw(gHornNotesLabel);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    s.x = x + 0xB4;
-    s.y = y + 0x29;
-    s.w = 0x14;
-    s.h = 0x10;
-    *(u32 *)&s.u0 = 0xB400AC;
-    *(u32 *)&s.u1 = 0xC400BC;
-    c = gBladeSpecialMarks[Equip_GetBladeSpecial(e)];
+    spr.x = x + 0xB4;
+    spr.y = y + 0x29;
+    spr.w = 0x14;
+    spr.h = 0x10;
+    *(u32 *)&spr.u0 = 0xB400AC;
+    *(u32 *)&spr.u1 = 0xC400BC;
+    marks = gBladeSpecialMarks[Equip_GetBladeSpecial(item)];
     for (i = 3; i > 0; i--) {
-        s.color = gHornNoteColors[*c];
-        Sprite_Draw(&s);
-        c++;
-        s.x += 0x1A;
+        spr.color = gHornNoteColors[*marks];
+        Sprite_Draw(&spr);
+        marks++;
+        spr.x += 0x1A;
     }
 }
 
@@ -15551,28 +15672,28 @@ extern char *gBowShotTexts[];
 
 /* A heading and the three (four with skill 0xB8) entries gBowgunClipShots of a piece of equipment's row 0xF,
  * for the player as it would be with it (Player_PreviewWith). */
-void EquipWindow_DrawRow(Player *p, EquipItem *e, s16 x, s16 y)
+void EquipWindow_DrawRow(Player *pl, EquipItem *item, s16 x, s16 y)
 {
-    GunData *d;
+    GunData *data;
     s32 i;
     s32 n;
     s32 k;
 
-    p = Player_PreviewWith(p, e);
-    d = &Equip_GetData(e)->gun;
+    pl = Player_PreviewWith(pl, item);
+    data = &Equip_GetData(item)->gun;
     n = 3;
     k = 0x14;
-    if (Player_HasSkill(p, 0xB8) == 1) {
+    if (Player_HasSkill(pl, 0xB8) == 1) {
         n++;
         k = 0x15;
     }
     Font_SetPos(x, y + 0x18);
     Font_SetColor(0x807F5230);
     Text_PrintfStyled(3, gEquipNameFmt[k]);
-    Font_SetColor(0x807F7F28);
+    Font_SetColor(STATUS_COLOR_LABEL);
     for (i = 0; i < n; i++, x += 0x48) {
         Font_SetPos(x, y + 0x44);
-        Text_PrintfColored(gBowShotTexts[gBowgunClipShots[d->clipRow][i]]);
+        Text_PrintfColored(gBowShotTexts[gBowgunClipShots[data->clipRow][i]]);
     }
 }
 
@@ -15589,7 +15710,7 @@ void EquipWindow_DrawItemList(GunData *gun, s16 x, s16 y)
     Font_SetColor(0x807F5230);
     Font_SetPos(x, y + 0x14);
     Text_Draw(gBowCoatingsLabel);
-    Font_SetColor(0x807F7F28);
+    Font_SetColor(STATUS_COLOR_LABEL);
     y += 0x28;
     for (i = 0; i < 4; i++) {
         if (gun->ammoMask & gEquipListItemBits[i]) {

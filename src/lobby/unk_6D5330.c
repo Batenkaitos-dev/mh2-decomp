@@ -4401,9 +4401,9 @@ s32 WeaponForge_Confirm(u8 *task, u16 pad)
 }
 
 void Box_GunLevelUp(SaveData *save, s16 idx);
-void Box_SetGunOption20(SaveData *save, s16 idx, s32 off);
-void Box_SetGunOption10(SaveData *save, s16 idx, s32 off);
-void Box_SetGunOption40(SaveData *save, s16 idx, s32 off);
+void Box_SetGunBarrel(SaveData *save, s16 idx, s32 off);
+void Box_SetGunSilencer(SaveData *save, s16 idx, s32 off);
+void Box_SetGunScope(SaveData *save, s16 idx, s32 off);
 void Box_SetGunShield(SaveData *save, s16 idx, s32 off);
 void WeaponForge_LoadGunMods(WeaponMenu *m, s32 idx);
 /* Raw addresses kept here: the named form changes the code. */
@@ -4433,24 +4433,24 @@ void WeaponForge_Upgrade(WeaponMenu *m)
             Box_GunLevelUp(&gSave, idx);
             break;
         case 20:
-            Box_SetGunOption10(&gSave, idx, 0);
+            Box_SetGunSilencer(&gSave, idx, 0);
             break;
         case 21:
-            Box_SetGunOption10(&gSave, idx, 1);
+            Box_SetGunSilencer(&gSave, idx, 1);
             break;
         case 22:
         case 28:
-            Box_SetGunOption20(&gSave, idx, 0);
+            Box_SetGunBarrel(&gSave, idx, 0);
             break;
         case 23:
         case 29:
-            Box_SetGunOption20(&gSave, idx, 1);
+            Box_SetGunBarrel(&gSave, idx, 1);
             break;
         case 24:
-            Box_SetGunOption40(&gSave, idx, 0);
+            Box_SetGunScope(&gSave, idx, 0);
             break;
         case 25:
-            Box_SetGunOption40(&gSave, idx, 1);
+            Box_SetGunScope(&gSave, idx, 1);
             break;
         case 26:
             Box_SetGunShield(&gSave, idx, 0);

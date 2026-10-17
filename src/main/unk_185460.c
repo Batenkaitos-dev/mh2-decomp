@@ -8,6 +8,7 @@
 #include "common.h"
 #include "dma.h"
 #include "texture.h"
+#include "hw_regs.h"
 
 extern DmaQueue gDmaQueue;
 extern s32 gSysZPsm;
@@ -83,7 +84,7 @@ s32 Gs_SetScissor(s32 x, s32 y, s32 w, s32 h, s32 ctx)
         gScissor1Y1 = y1;
         gGsScissor1 = (u64)x | ((u64)x1 << 16) | ((u64)y << 32) | ((u64)y1 << 48);
         p[0] = gGsScissor1;
-        p[1] = 0x40;
+        p[1] = GS_REG_SCISSOR_1;
         break;
     case 1:
         gScissor2X0 = x;
@@ -92,7 +93,7 @@ s32 Gs_SetScissor(s32 x, s32 y, s32 w, s32 h, s32 ctx)
         gScissor2Y1 = y1;
         gGsScissor2 = (u64)x | ((u64)x1 << 16) | ((u64)y << 32) | ((u64)y1 << 48);
         p[0] = gGsScissor2;
-        p[1] = 0x41;
+        p[1] = GS_REG_SCISSOR_2;
         break;
     case 2:
         gScissor1X0 = x;
@@ -107,9 +108,9 @@ s32 Gs_SetScissor(s32 x, s32 y, s32 w, s32 h, s32 ctx)
         gGsScissor1 = v;
         gGsScissor2 = v;
         p[0] = v;
-        p[1] = 0x40;
+        p[1] = GS_REG_SCISSOR_1;
         p[2] = v;
-        p[3] = 0x41;
+        p[3] = GS_REG_SCISSOR_2;
         break;
     }
     DmaQueue_AddChain(0, (u32)pkt & 0x0FFFFFFF, (u32 *)pkt, &gDmaQueue);
@@ -144,20 +145,20 @@ s32 Gs_SetZbuf(u32 flags, s32 ctx)
     case 0:
         gGsZbuf1 = zbuf;
         p[0] = zbuf;
-        p[1] = 0x4E;
+        p[1] = GS_REG_ZBUF_1;
         break;
     case 1:
         gGsZbuf2 = zbuf;
         p[0] = zbuf;
-        p[1] = 0x4F;
+        p[1] = GS_REG_ZBUF_2;
         break;
     case 2:
         gGsZbuf1 = zbuf;
         gGsZbuf2 = zbuf;
         p[0] = zbuf;
-        p[1] = 0x4E;
+        p[1] = GS_REG_ZBUF_1;
         p[2] = zbuf;
-        p[3] = 0x4F;
+        p[3] = GS_REG_ZBUF_2;
         break;
     }
     DmaQueue_AddChain(0, (u32)pkt & 0x0FFFFFFF, (u32 *)pkt, &gDmaQueue);
@@ -248,20 +249,20 @@ s32 Gs_SetTest(u32 flags, s32 ctx)
     case 0:
         gGsTest1 = test;
         p[0] = test;
-        p[1] = 0x47;
+        p[1] = GS_REG_TEST_1;
         break;
     case 1:
         gGsTest2 = test;
         p[0] = test;
-        p[1] = 0x48;
+        p[1] = GS_REG_TEST_2;
         break;
     case 2:
         gGsTest1 = test;
         gGsTest2 = test;
         p[0] = test;
-        p[1] = 0x47;
+        p[1] = GS_REG_TEST_1;
         p[2] = test;
-        p[3] = 0x48;
+        p[3] = GS_REG_TEST_2;
         break;
     }
     DmaQueue_AddChain(0, (u32)pkt & 0x0FFFFFFF, (u32 *)pkt, &gDmaQueue);
@@ -559,17 +560,17 @@ s32 Gs_SetAlpha(u32 flags, s32 ctx)
     switch (ctx) {
     case 0:
         p[0] = alpha;
-        p[1] = 0x42;
+        p[1] = GS_REG_ALPHA_1;
         break;
     case 1:
         p[0] = alpha;
-        p[1] = 0x43;
+        p[1] = GS_REG_ALPHA_2;
         break;
     case 2:
         p[0] = alpha;
-        p[1] = 0x42;
+        p[1] = GS_REG_ALPHA_1;
         p[2] = alpha;
-        p[3] = 0x43;
+        p[3] = GS_REG_ALPHA_2;
         break;
     }
     DmaQueue_AddChain(0, (u32)pkt & 0x0FFFFFFF, (u32 *)pkt, &gDmaQueue);
@@ -590,7 +591,7 @@ s32 Gs_SetFogColor(u32 color)
     p += 4;
     p[0] = (u64)((color >> 16) & 0xFF) | ((u64)((color >> 8) & 0xFF) << 8) |
            ((u64)(color & 0xFF) << 16);
-    p[1] = 0x3D;
+    p[1] = GS_REG_FOGCOL;
     DmaQueue_AddChain(0, (u32)pkt & 0x0FFFFFFF, (u32 *)pkt, &gDmaQueue);
     return 1;
 }
@@ -613,9 +614,9 @@ s32 Gs_SetTexFilter(u32 flags, s32 ctx)
         p[0] = 0x60;
     }
     if (ctx == 0) {
-        p[1] = 0x14;
+        p[1] = GS_REG_TEX1_1;
     } else {
-        p[1] = 0x15;
+        p[1] = GS_REG_TEX1_2;
     }
     DmaQueue_AddChain(0, (u32)pkt & 0x0FFFFFFF, (u32 *)pkt, &gDmaQueue);
     return 1;

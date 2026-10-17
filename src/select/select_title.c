@@ -6,7 +6,7 @@
  * draws them and animates their pieces:
  *  - the title menu: the logo (Title_DrawLogo), the six entries with their
  *    big numbers and the chosen entry's help lines (Title_DrawMenu), over
- *    gm_sub's work read as TitleBg;
+ *    gm_sub's work area (GmWork);
  *  - mode select: two buttons that slide out and back in on the other side
  *    when the choice changes (ModeWork, at 0x1000 in the shared work area);
  *  - the character selection: the three save slots' characters sliding in
@@ -154,7 +154,7 @@ u32 gTitleLogoScales[4] = {
 };
 
 
-extern TitleBg *gGmWork;
+extern GmWork *gGmWork;
 /* Restarts the title menu's frame counters. */
 void Title_ResetBgAnim(void)
 {
@@ -165,7 +165,7 @@ void Title_ResetBgAnim(void)
 /* Steps the title menu's frame counter (0-3) and, every fourth frame, count. */
 void Title_StepBgAnim(void)
 {
-    TitleBg *work;
+    GmWork *work;
 
     work = gGmWork;
     work->frame = (work->frame + 1) & 3;
@@ -220,7 +220,7 @@ void Sel_DrawParts(SelPart *part, s32 n, u32 color)
     s32 i;
 
     for (i = 0; i < n; i++, part++) {
-        Gfx_SetState63(part->flag);
+        Gfx_SetTexFilter(part->flag);
         Tex_Prepare(1, part->tex);
         Tex_Bind(part->tex);
         spr.x = part->x;
@@ -246,7 +246,7 @@ void Sel_DrawPartsRotated(SelPart *part, s32 n, u32 color, s32 angle)
     s32 i;
 
     for (i = 0; i < n; i++, part++) {
-        Gfx_SetState63(part->flag);
+        Gfx_SetTexFilter(part->flag);
         Tex_Prepare(1, part->tex);
         Tex_Bind(part->tex);
         spr.x = part->x;
@@ -301,14 +301,14 @@ void Title_DrawLogo(void)
     s16 fullHeight;
     u32 baseColor;
     u32 color;
-    TitleBg *work;
+    GmWork *work;
     s16 *partX;
     s16 *partY;
     s16 *partW;
     s16 *partH;
 
     work = gGmWork;
-    if (work->unk20 != 0) {
+    if (work->logoFull != 0) {
         k = 2;
     } else {
         k = work->logoAnim;
@@ -487,7 +487,7 @@ void Text_SetDefaults(void);
  * Draws mode select with the help lines of its entry and the two button
  * icons of the bottom line.
  */
-void Title_DrawHelp(void)
+void ModeSel_DrawScreen(void)
 {
     s32 sel;
     char **texts;
@@ -526,7 +526,7 @@ void Sel_DrawBackground(u8 gray)
 {
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 7);
     Tex_Bind(7);
     Gs_SetState(0x6C, 0);
@@ -572,7 +572,7 @@ void Sel_DrawHeader(s16 kind)
     s32 n;
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     text = ((char **)gSelHeaderTexts)[kind];
     size = gSelHeaderLayout[kind][0];
     y = gSelHeaderLayout[kind][1];

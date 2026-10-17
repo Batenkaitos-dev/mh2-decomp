@@ -47,12 +47,12 @@ extern s16 gLobbyMsgLayout[][3][2];          /* per part of page 5, the same */
 /* an icon of the network screen (gNetScreenIcons, 10 bytes; three frames each) */
 typedef struct NetIcon {
     /* 0x0 */ u8 tex;               /* the texture (Tex_Prepare, Tex_Bind) */
-    /* 0x1 */ u8 layer;             /* Gfx_SetState63 */
+    /* 0x1 */ u8 layer;             /* Gfx_SetTexFilter */
     /* 0x2 */ s16 u0, v0, u1, v1;
 } NetIcon;
 
 extern NetIcon gNetScreenIcons[];
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32 tex);
 s32 Sprite_Draw(Sprite *);
@@ -931,7 +931,7 @@ void LobbyMsg_DrawIcon(s32 kind, s16 x, s16 y, s32 big)
         s.w = 0x2B;
         s.h = 0x24;
     }
-    Gfx_SetState63(e->layer);
+    Gfx_SetTexFilter(e->layer);
     Tex_Prepare(1, e->tex);
     Tex_Bind(e->tex);
     s.x = x;

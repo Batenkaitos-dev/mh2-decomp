@@ -19,7 +19,7 @@ typedef struct ChatSpeaker {
  */
 typedef struct GameMenu {
     /* 0x00 */ u8 open;             /* GameMenu_Open sets it; 0 closes the menu */
-    /* 0x01 */ u8 kind;             /* the list: 0 offline, 1 online in area 0x83, 2 online (gGameMenuOpen0..2) */
+    /* 0x01 */ u8 kind;             /* the list: 0 offline, 1 online in AREA_HUB_0x83, 2 online (gGameMenuOpen0..2) */
     /* 0x02 */ u8 count;            /* the list's entries (9 or 10) */
     /* 0x03 */ u8 entry;            /* the list's cursor */
     /* 0x04 */ union {

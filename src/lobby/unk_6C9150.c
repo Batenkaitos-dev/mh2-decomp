@@ -24,7 +24,7 @@ void SkillList_Build(struct Player *p, struct Player *q);
 u8 SkillList_PageCount(void);
 u8 Village_FacilityLevel(s32 k);
 s32 Save_TestEventFlag(s32 flag);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 u8 SavePouch_Add(u16 item, s16 n);
 void KitchenGuest_Close(void);
 struct Em *Npc_Find(u8 kind);
@@ -127,7 +127,7 @@ void OfficialDesk_NextTest(u8 *m, s32 idx)
     u16 *p = gHrGateQuests[idx];
 
     while (*p != 0) {
-        if (Save_TestListBit(*p) == 0) {
+        if (Save_IsQuestCleared(*p) == 0) {
             *(u16 *)(m + 0x54) = *p;
             return;
         }

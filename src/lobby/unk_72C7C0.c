@@ -41,7 +41,7 @@ void Page_DrawObjBack(struct PageElem *o);
 void Page_DrawObj(struct PageElem *o);
 void Page_DrawDropList(s32 sel);
 void Browser_SetRenderState(s32 state, u32 value);
-void Gfx_SetState63(s32 a);                    /* sub_main */
+void Gfx_SetTexFilter(s32 a);                    /* sub_main */
 u32 PageTex_Get(s8 i);
 s32 func_007D21E0(void);                    /* the lobby: nonzero while ... */
 void LobbyLogin_DrawWaveTitle(s32 unused0);   /* the lobby's; its definition takes no argument */
@@ -604,7 +604,7 @@ void DlgHScroll_Draw(BrowserObj *o)
         return;
     }
     if (gBrowserState->plain == 0 && ((gBrowserState->style & 2) >> 1) != 0) {
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         if (o->state != 2) {
             h = 16.0f;
             Page_DrawWidget(0xC, o->x, o->y, h, h, 0);

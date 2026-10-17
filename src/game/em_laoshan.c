@@ -1,9 +1,10 @@
 /*
- * Monster family: Lao-Shan Lung and Ashen Lao-Shan Lung (kinds 7, 0x32).
- * The code from the family's setup function (0x7CB2D0, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: Lao-Shan Lung and Ashen Lao-Shan Lung
+ * (EM_KIND_LAO_SHAN_LUNG and EM_KIND_ASHEN_LAO_SHAN_LUNG). The code from the
+ * family's setup function (EmLaoshan_Setup, called by the per-kind dispatch
+ * Em_TypeSetup) to the next family's. The state functions take the monster
+ * and the work area its state dispatcher passes on (EmWork); Em.step is the
+ * step within the current state. See include/em.h.
  */
 #include "common.h"
 #include "scene.h"
@@ -11,6 +12,8 @@
 #include "mine_point.h"
 #include "em.h"
 #include "player.h"
+#include "area.h"
+#include "qsync.h"
 /* prototypes of callees (round 13) */
 void Em_TargetPlayerInRange(Em *);
 
@@ -25,15 +28,15 @@ void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
 u16 Math_AngleXZ(f32 *from, f32 *to);
 void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
-void Eff05_Create(Em *, s8);
-void Eff05_CreateEx(Em *, s32, s32);
-void Eff22_CreateAtSpot(Em *, s32, s32);
+void LaoShanAttack_Create(Em *, s8);
+void LaoShanAttack_CreateSpan(Em *, s32, s32);
+void StageShot_CreateAtSpot(Em *, s32, s32);
 void StageObj_K0A_Create(Em *em, u8 k, u8 c, f32 f);
-void Eff05_CreateAt(Em *em, f32 *pos, s8 kind);
+void LaoShanAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 /* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmLaoshan_ChangeState: 23 of 73 words differ, EmLaoshan_SetGroup0State: 1 of 6 words differ ... */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_PlaySe6AtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySe6AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
+void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
+void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
 void Em_RestartScript(Em *em);
 void EmLaoshan_GetMinePointPos(Em *em, f32 *out);
@@ -54,7 +57,7 @@ void EmLaoshan_MotionEffects(Em *, EmLaoshanWork *);
 void EmLaoshan_SpawnAreaImpactEffects(Em *em);
 void EmLaoshan_SpawnAreaImpactEffects2(Em *);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 void CamShake_ReqAIf(Em *obj, s32 i);
 void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
@@ -66,7 +69,7 @@ void Effect01_Spawn(void *obj, s16 type);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 void Em_SetPartScaled(Em *em, s32 bit);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void EmLaoshan_AddMinePoint(Em *em);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
 EmBone *Em_Bone(void *obj, s16 bone);
@@ -89,7 +92,7 @@ void EmLaoshan_UpdateMinePoints(Em *em);
 s32 MinePoint_Count(s32);
 extern s8 EmLaoshan_MinePtBones[][2];
 extern f32 EmLaoshan_MinePtRadius[];
-void func_3A6120(MinePoint *pt);
+void MinePoint_PrepareStub(MinePoint *pt);
 void Em_MoveRotated(Em *em, void *src);
 void QSync_SendEm(Em *em, u8 kind, u8 arg);
 void CamReq_ForMonster(Em *em);
@@ -179,7 +182,7 @@ void EmLaoshan_AddMinePoint(Em *em)
             break;
         }
     }
-    pt.unk14 = 2;
+    pt.action = MINE_ACTION_CARVE;
     pt.count = w->mineCount;
     pt.area = (u8) em->area;
     pt.flags = 1;
@@ -233,9 +236,9 @@ void EmLaoshan_AddMinePoints(Em *em)
         pt.flags = 1;
         Em_BonePos(em, EmLaoshan_MinePtBones[i][0], pos);
         pos[1] = em->floorY;
-        pt.unk14 = 2;
+        pt.action = MINE_ACTION_CARVE;
         pt.count = EmLaoshan_MinePtBones[i][1];
-        func_3A6120(&pt);
+        MinePoint_PrepareStub(&pt);
         w->minePts[i] = MinePoint_AddUntimed(&pt, pos, 0);
     }
 }
@@ -293,13 +296,13 @@ void EmLaoshan_Init(Em *em)
     if (gQuest.stage == 0) {
         dayId = Area_DayId(gScene.area) & 0xFFFF;
         switch (dayId) {
-        case 11:
+        case AREA_FORTRESS_4:
             em->posX = 33000.0f;
             em->posY = 0.0f;
             em->posZ = 30200.0f;
             em->rotY = 0xC000;
             break;
-        case 12:
+        case AREA_FORTRESS_5:
             em->posX = 7400.0f;
             em->posY = 0.0f;
             em->posZ = 26300.0f;
@@ -311,25 +314,25 @@ void EmLaoshan_Init(Em *em)
             em->posZ = 8000.0f;
             em->rotY = 0x8000;
             break;
-        case 14:
+        case AREA_FORTRESS_1:
             em->posX = 2400.0f;
             em->posY = 0.0f;
             em->posZ = 11000.0f;
             em->rotY = 0xE39;
             break;
-        case 15:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 7000.0f;
             em->posY = 580.0f;
             em->posZ = 7000.0f;
             em->rotY = 0;
             break;
-        case 28:
+        case AREA_FORTRESS_3:
             em->posX = 30800.0f;
             em->posY = 0.0f;
             em->posZ = 32600.0f;
             em->rotY = 0x6C00;
             break;
-        case 30:
+        case AREA_FORTRESS_2:
             em->posX = 23500.0f;
             em->posY = 0.0f;
             em->posZ = 3500.0f;
@@ -343,7 +346,7 @@ void EmLaoshan_Init(Em *em)
             break;
         }
     }
-    size = Em_ComputeSize(em, 0);
+    size = Em_ComputeMaxHp(em, 0);
     em->hp = size;
     em->hpMax = size;
     em->scriptPending = 1;
@@ -618,13 +621,13 @@ void EmLaoshan_State1_00(Em *em)
     case 1:
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
             em->step++;
-            Player_SetFlag(em, 0x20000);
+            Player_SetFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmLaoshan_EndState(em);
         }
         break;
@@ -666,7 +669,7 @@ void EmLaoshan_State1_02(Em *em)
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         d = (em->aimAngle - em->rotY) & 0xFFFF;
         if (d <= 0x11C7 || d >= 0xEE39) {
-            Player_SetFlag(em, 0x20000);
+            Player_SetFlag(em, EM_FLAG_NO_ROOT_MOTION);
             Em_SetMotion(em, 3, 0, 0);
         } else if (d >= 0x8000) {
             Em_SetMotion(em, 5, 0, 0);
@@ -680,13 +683,13 @@ void EmLaoshan_State1_02(Em *em)
             if (em->motion[0].playing == 0) {
                 if (((d + 0x22) & 0xFFFF) <= 0x43) {
                     em->step++;
-                    Player_ClearFlag(em, 0x20000);
+                    Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
                     EmLaoshan_EndState(em);
                 } else if (d <= 0x11C7 || d >= 0xEE39) {
-                    Player_SetFlag(em, 0x20000);
+                    Player_SetFlag(em, EM_FLAG_NO_ROOT_MOTION);
                     Em_SetMotion(em, 3, 0, 0);
                 } else {
-                    Player_ClearFlag(em, 0x20000);
+                    Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
                     if (d >= 0x8000) {
                         Em_SetMotion(em, 5, 0, 0);
                     } else {
@@ -1024,11 +1027,11 @@ void EmLaoshan_State1_11(Em *em)
         Em_SetMotion(em, 0x42, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 34.0f, 0U) != 0) {
-            Eff05_Create(em, 0x42);
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0) {
+            LaoShanAttack_Create(em, 0x42);
         }
-        if (Player_PassedFrameScaled(em, 410.0f, 0U) != 0) {
-            Eff05_Create(em, 0x43);
+        if (EmMotion_PassedFrameScaled(em, 410.0f, 0U) != 0) {
+            LaoShanAttack_Create(em, 0x43);
         }
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
             em->step++;
@@ -1041,7 +1044,7 @@ void EmLaoshan_State1_11(Em *em)
         }
         break;
     }
-    Em_PlaySe6AtBoneInFrames(em, 0xAA, 0x168, 0x4F, 0x25, 9, 1);
+    Em_PlaySeTypeAtBoneInFrames(em, 0xAA, 0x168, 0x4F, 0x25, 9, 1);
 }
 
 void EmLaoshan_State1_12(Em *em)
@@ -1214,20 +1217,20 @@ void EmLaoshan_State3_01(Em *em)
             em->step++;
             EmLaoshan_EndState(em);
         }
-        if (Player_PassedFrameScaled(em, 160.0f, 0U) != 0) {
-            if ((Area_DayId(em->area) & 0xFFFF) == 0xB) {
+        if (EmMotion_PassedFrameScaled(em, 160.0f, 0U) != 0) {
+            if ((Area_DayId(em->area) & 0xFFFF) == AREA_FORTRESS_4) {
                 Vec_Set(pos, 13300.0f, 1700.0f, 20100.0f);
-                Eff05_CreateAt(em, (f32 *) pos, 0x44);
+                LaoShanAttack_CreateAt(em, (f32 *) pos, 0x44);
                 EmLaoshan_SpawnAreaImpactEffects(em);
             }
-            if ((Area_DayId(em->area) & 0xFFFF) == 0xC) {
+            if ((Area_DayId(em->area) & 0xFFFF) == AREA_FORTRESS_5) {
                 Vec_Set(pos, 7300.0f, 1700.0f, 11700.0f);
-                Eff05_CreateAt(em, (f32 *) pos, 0x45);
+                LaoShanAttack_CreateAt(em, (f32 *) pos, 0x45);
                 EmLaoshan_SpawnAreaImpactEffects(em);
             }
-            if ((Area_DayId(em->area) & 0xFFFF) == 0x1E) {
+            if ((Area_DayId(em->area) & 0xFFFF) == AREA_FORTRESS_2) {
                 Vec_Set(pos, 14600.0f, 1700.0f, 23700.0f);
-                Eff05_CreateAt(em, (f32 *) pos, 0x46);
+                LaoShanAttack_CreateAt(em, (f32 *) pos, 0x46);
                 EmLaoshan_SpawnAreaImpactEffects(em);
             }
         }
@@ -1247,7 +1250,7 @@ void EmLaoshan_State3_02(Em *em)
         Em_SetMotion(em, 0xA, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 210.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 210.0f, 0U) != 0) {
             EmLaoshan_SpawnAreaImpactEffects2(em);
             if (em->remote == 0) {
                 if (w->fortHits < 0xA) {
@@ -1285,7 +1288,7 @@ void EmLaoshan_State3_03(Em *em)
             em->timer = 0x26;
             em->rotY -= (0x13E9 / (s32) em->timer) & 0xFFFF;
         }
-        if (Player_PassedFrameScaled(em, 510.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 510.0f, 0U) != 0) {
             em->rotY += 0xA;
         }
         if (em->motion[0].playing == 0) {
@@ -1308,7 +1311,7 @@ void EmLaoshan_State3_04(Em *em)
         Em_SetMotion(em, 0xA, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 210.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 210.0f, 0U) != 0) {
             if (em->remote == 0) {
                 w->unk000 = 2;
             }
@@ -1334,7 +1337,7 @@ void EmLaoshan_State3_05(Em *em)
         Em_SetMotion(em, 0xA, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 210.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 210.0f, 0U) != 0) {
             if (em->remote == 0) {
                 w->unk000 = 3;
             }
@@ -1386,7 +1389,7 @@ void EmLaoshan_State4_00(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 28.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, 0x3C, 0, 0);
         }
@@ -1534,7 +1537,7 @@ void EmLaoshan_State4_06(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 28.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, 0x3C, 0, 0);
         }
@@ -1604,7 +1607,7 @@ void EmLaoshan_State5_00_Hunted(Em *em)
         CamReq_BossHunted();
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 450.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 450.0f, 0) != 0) {
             em->step++;
             em->stance = 0;
             Em_SetMotion(em, 0x43, 0, 0);
@@ -1867,7 +1870,7 @@ void EmLaoshan_Update(Em *em)
     if (w->syncTimer != 0 && em->stateGroup != 6 && em->remote == 0) {
         if (--w->syncTimer <= 0) {
             w->syncTimer = 150;
-            QSync_SendEm(em, 2, 0);
+            QSync_SendEm(em, QSYNC_EMMSG_STATE_NO_PARTS, 0);
         }
     }
     switch (Em_UpdateDamage(em, buf) & 0xFF) {
@@ -1932,7 +1935,7 @@ void EmLaoshan_Update(Em *em)
         break;
     }
     switch (Area_DayId(em->area)) {
-    case 0xE:
+    case AREA_FORTRESS_1:
         if (em->type == 7) {
             if (Save_TestEventFlag(0xAD) != 0) {
                 goto normal;
@@ -1949,7 +1952,7 @@ void EmLaoshan_Update(Em *em)
             }
         }
         break;
-    case 0xC:
+    case AREA_FORTRESS_5:
         if (Quest_IsRunning(0) == 1 && em->stateGroup != 6 && em->stateGroup != 5) {
             em->scriptPending = 0;
             if (gScene.area == em->area) {
@@ -2004,7 +2007,7 @@ void EmLaoshan_RunState(Em *em)
 
 void EmLaoshan_RequestOnFrame(s32 *em, s32 frame, s32 i)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         CamShake_ReqAIf((Em *) em, i);
     }
 }
@@ -2022,107 +2025,107 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     EmLaoshan_MotionSounds(em, (struct EmWork *)work);
     switch (work->fxMotion) {
     case 0x3E9:
-        if (Player_PassedFrameScaled(em, 4.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x26);
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x26);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x38);
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x38);
         }
-        if (Player_PassedFrameScaled(em, 172.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x94);
+        if (EmMotion_PassedFrameScaled(em, 172.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x94);
             break;
         }
         break;
     case 0x3EA:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x92, 2);
-        if (Player_PassedFrameScaled(em, 146.0f, 0) != 0) {
-            Eff22_CreateAtSpot(em, 4, work->fxSpot);
+        if (EmMotion_PassedFrameScaled(em, 146.0f, 0) != 0) {
+            StageShot_CreateAtSpot(em, 4, work->fxSpot);
             work->fxSpot += 1;
             work->fxSpot &= 3;
         }
         EmLaoshan_RequestOnFrame((s32 *) em, 0xB2, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x122, 2);
-        if (Player_PassedFrameScaled(em, 290.0f, 0) != 0) {
-            Eff22_CreateAtSpot(em, 4, work->fxSpot);
+        if (EmMotion_PassedFrameScaled(em, 290.0f, 0) != 0) {
+            StageShot_CreateAtSpot(em, 4, work->fxSpot);
             work->fxSpot += 1;
             work->fxSpot &= 3;
         }
         EmLaoshan_RequestOnFrame((s32 *) em, 0x17E, 2);
-        if (Player_PassedFrameScaled(em, 68.0f, 0) != 0) {
-            Eff05_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 68.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 246.0f, 0) != 0) {
-            Eff05_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 246.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 6);
         }
-        if (Player_PassedFrameScaled(em, 350.0f, 0) != 0) {
-            Eff05_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 350.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 7);
         }
-        if (Player_PassedFrameScaled(em, 144.0f, 0) != 0) {
-            Eff05_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 144.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 8);
         }
-        if (Player_PassedFrameScaled(em, 176.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 176.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 380.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 380.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 284.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 284.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 136.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 136.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
         break;
     case 0x3EB:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x2C, 2);
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            Eff22_CreateAtSpot(em, 4, work->fxSpot);
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
+            StageShot_CreateAtSpot(em, 4, work->fxSpot);
             work->fxSpot += 1;
             work->fxSpot &= 3;
         }
         EmLaoshan_RequestOnFrame((s32 *) em, 0x9A, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xF8, 2);
-        if (Player_PassedFrameScaled(em, 248.0f, 0) != 0) {
-            Eff22_CreateAtSpot(em, 4, work->fxSpot);
+        if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
+            StageShot_CreateAtSpot(em, 4, work->fxSpot);
             work->fxSpot += 1;
             work->fxSpot &= 3;
         }
         EmLaoshan_RequestOnFrame((s32 *) em, 0x16E, 2);
-        if (Player_PassedFrameScaled(em, 130.0f, 0) != 0) {
-            Eff05_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 130.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 314.0f, 0) != 0) {
-            Eff05_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 314.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 222.0f, 0) != 0) {
-            Eff05_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 222.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            Eff05_Create(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 4);
         }
-        if (Player_PassedFrameScaled(em, 108.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x42);
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x42);
         }
-        if (Player_PassedFrameScaled(em, 250.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x22);
+        if (EmMotion_PassedFrameScaled(em, 250.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x22);
         }
-        if (Player_PassedFrameScaled(em, 346.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x3E);
+        if (EmMotion_PassedFrameScaled(em, 346.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x3E);
         }
-        if (Player_PassedFrameScaled(em, 442.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x14);
+        if (EmMotion_PassedFrameScaled(em, 442.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x14);
         }
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 254.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 254.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 360.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 360.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 152.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 152.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2132,40 +2135,40 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xC4, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x13A, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1AA, 2);
-        if (Player_PassedFrameScaled(em, 380.0f, 0) != 0) {
-            Eff05_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 380.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 9);
         }
-        if (Player_PassedFrameScaled(em, 170.0f, 0) != 0) {
-            Eff05_Create(em, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0xA);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff05_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 276.0f, 0) != 0) {
-            Eff05_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 276.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0xC);
         }
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x3C);
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x3C);
         }
-        if (Player_PassedFrameScaled(em, 352.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 352.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 394.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x38);
+        if (EmMotion_PassedFrameScaled(em, 394.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x38);
         }
-        if (Player_PassedFrameScaled(em, 310.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 310.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 192.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 192.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 424.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 424.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2175,40 +2178,40 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xC4, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x13A, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1AA, 2);
-        if (Player_PassedFrameScaled(em, 170.0f, 0) != 0) {
-            Eff05_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 380.0f, 0) != 0) {
-            Eff05_Create(em, 0xE);
+        if (EmMotion_PassedFrameScaled(em, 380.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0xE);
         }
-        if (Player_PassedFrameScaled(em, 276.0f, 0) != 0) {
-            Eff05_Create(em, 0xF);
+        if (EmMotion_PassedFrameScaled(em, 276.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0xF);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff05_Create(em, 0x10);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x10);
         }
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x3C);
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x3C);
         }
-        if (Player_PassedFrameScaled(em, 352.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 352.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 394.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x38);
+        if (EmMotion_PassedFrameScaled(em, 394.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x38);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 310.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 310.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 424.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 424.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 192.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 192.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2216,16 +2219,16 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     case 0x3EE:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x52, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xAA, 2);
-        if (Player_PassedFrameScaled(em, 40.0f, 0) != 0) {
-            Eff05_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x11);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x64);
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x64);
         }
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2233,30 +2236,30 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     case 0x3EF:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x17C, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1CC, 2);
-        if (Player_PassedFrameScaled(em, 326.0f, 0) != 0) {
-            Eff05_Create(em, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 326.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x12);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0xC8);
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0xC8);
         }
-        if (Player_PassedFrameScaled(em, 450.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 450.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 368.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 368.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff05_Create(em, 0x51);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x51);
             StageObj_K0F_CreateOnEm(em, 5, 0x14, 1.5f);
             break;
         }
         break;
     case 0x3F0:
-        if (Player_PassedFrameScaled(em, 326.0f, 0) != 0) {
-            Eff05_Create(em, 0x13);
+        if (EmMotion_PassedFrameScaled(em, 326.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x13);
         }
-        if (Player_PassedFrameScaled(em, 326.0f, 0) != 0) {
-            Eff05_Create(em, 0x14);
+        if (EmMotion_PassedFrameScaled(em, 326.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x14);
             break;
         }
         break;
@@ -2269,78 +2272,78 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1DC, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1FE, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x222, 2);
-        if (Player_PassedFrameScaled(em, 150.0f, 0) != 0) {
-            Eff05_Create(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 150.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x15);
         }
-        if (Player_PassedFrameScaled(em, 102.0f, 0) != 0) {
-            Eff05_Create(em, 0x16);
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x16);
         }
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            Eff05_Create(em, 0x17);
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x17);
         }
-        if (Player_PassedFrameScaled(em, 64.0f, 0) != 0) {
-            Eff05_Create(em, 0x18);
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x18);
         }
-        if (Player_PassedFrameScaled(em, 184.0f, 0) != 0) {
-            Eff05_Create(em, 0x19);
+        if (EmMotion_PassedFrameScaled(em, 184.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x19);
         }
-        if (Player_PassedFrameScaled(em, 322.0f, 0) != 0) {
-            Eff05_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 322.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 434.0f, 0) != 0) {
-            Eff05_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 434.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 210.0f, 0) != 0) {
-            Eff05_Create(em, 0x55);
+        if (EmMotion_PassedFrameScaled(em, 210.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x55);
         }
-        if (Player_PassedFrameScaled(em, 98.0f, 0) || Player_PassedFrameScaled(em, 424.0f, 0) || Player_PassedFrameScaled(em, 540.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 98.0f, 0) || EmMotion_PassedFrameScaled(em, 424.0f, 0) || EmMotion_PassedFrameScaled(em, 540.0f, 0)) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if ((Player_PassedFrameScaled(em, 58.0f, 0) != 0) || (Player_PassedFrameScaled(em, 468.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 468.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if ((Player_PassedFrameScaled(em, 136.0f, 0) != 0) || (Player_PassedFrameScaled(em, 504.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 136.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 504.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if ((Player_PassedFrameScaled(em, 192.0f, 0) != 0) || (Player_PassedFrameScaled(em, 404.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 192.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 404.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
         break;
     case 0x3F4:
-        if (Player_PassedFrameScaled(em, 130.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x4C);
+        if (EmMotion_PassedFrameScaled(em, 130.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x4C);
         }
-        if (Player_PassedFrameScaled(em, 320.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x42);
+        if (EmMotion_PassedFrameScaled(em, 320.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x42);
             break;
         }
         break;
     case 0x3F5:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x4C, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1FA, 2);
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
-            Eff05_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x1B);
         }
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            Eff05_Create(em, 0x1C);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x1C);
         }
-        if (Player_PassedFrameScaled(em, 442.0f, 0) != 0) {
-            Eff05_Create(em, 0x1D);
+        if (EmMotion_PassedFrameScaled(em, 442.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x1D);
         }
-        if (Player_PassedFrameScaled(em, 152.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 152.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0xA);
         }
-        if (Player_PassedFrameScaled(em, 364.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x4C);
+        if (EmMotion_PassedFrameScaled(em, 364.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x4C);
         }
-        if (Player_PassedFrameScaled(em, 500.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x3A);
+        if (EmMotion_PassedFrameScaled(em, 500.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x3A);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 494.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 494.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2349,25 +2352,25 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0x56, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x9A, 5);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x106, 2);
-        if (Player_PassedFrameScaled(em, 134.0f, 0) != 0) {
-            Eff05_Create(em, 0x1E);
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x1E);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Eff05_Create(em, 0x1F);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x1F);
         }
-        if (Player_PassedFrameScaled(em, 216.0f, 0) != 0) {
-            Eff05_Create(em, 0x20);
+        if (EmMotion_PassedFrameScaled(em, 216.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x20);
         }
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x2C);
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x2C);
         }
-        if (Player_PassedFrameScaled(em, 252.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x1C);
+        if (EmMotion_PassedFrameScaled(em, 252.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x1C);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 258.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 258.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.5f);
             break;
         }
@@ -2376,43 +2379,43 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0x84, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x11C, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1DA, 5);
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            Eff05_Create(em, 0x21);
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x21);
         }
-        if (Player_PassedFrameScaled(em, 348.0f, 0) != 0) {
-            Eff05_Create(em, 0x22);
+        if (EmMotion_PassedFrameScaled(em, 348.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x22);
         }
-        if (Player_PassedFrameScaled(em, 204.0f, 0) != 0) {
-            Eff05_Create(em, 0x23);
+        if (EmMotion_PassedFrameScaled(em, 204.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x23);
         }
-        if (Player_PassedFrameScaled(em, 458.0f, 0) != 0) {
-            Eff05_Create(em, 0x24);
+        if (EmMotion_PassedFrameScaled(em, 458.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x24);
         }
-        if (Player_PassedFrameScaled(em, 458.0f, 0) != 0) {
-            Eff05_Create(em, 0x25);
+        if (EmMotion_PassedFrameScaled(em, 458.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x25);
         }
-        if (Player_PassedFrameScaled(em, 64.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x2A);
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x2A);
         }
-        if (Player_PassedFrameScaled(em, 250.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x32);
+        if (EmMotion_PassedFrameScaled(em, 250.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x32);
         }
-        if (Player_PassedFrameScaled(em, 370.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x32);
+        if (EmMotion_PassedFrameScaled(em, 370.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x32);
         }
-        if (Player_PassedFrameScaled(em, 464.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 464.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x12);
         }
-        if (Player_PassedFrameScaled(em, 472.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 472.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.8f);
         }
-        if (Player_PassedFrameScaled(em, 470.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 470.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.8f);
         }
-        if (Player_PassedFrameScaled(em, 274.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 274.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if ((Player_PassedFrameScaled(em, 114.0f, 0) != 0) || (Player_PassedFrameScaled(em, 394.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 114.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 394.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2420,84 +2423,84 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     case 0x3F8:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1E, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xA8, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 164.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            Eff05_Create(em, 0x48);
+        if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x48);
         }
-        if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
-            Eff05_Create(em, 0x49);
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x49);
         }
-        if (Player_PassedFrameScaled(em, 182.0f, 0) != 0) {
-            Eff05_Create(em, 0x4A);
+        if (EmMotion_PassedFrameScaled(em, 182.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x4A);
         }
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            Eff05_Create(em, 0x4B);
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x4B);
         }
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x24);
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x24);
         }
-        if (Player_PassedFrameScaled(em, 170.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x28);
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x28);
             break;
         }
         break;
     case 0x3FC:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x52, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xA6, 2);
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Eff05_Create(em, 0x26);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x26);
         }
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
-            Eff05_Create(em, 0x27);
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x27);
         }
-        if (Player_PassedFrameScaled(em, 100.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x24);
+        if (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x24);
         }
-        if (Player_PassedFrameScaled(em, 154.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x2E);
+        if (EmMotion_PassedFrameScaled(em, 154.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x2E);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 76.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
             break;
         }
         break;
     case 0x3FD:
     case 0x403:
-        if (Player_PassedFrameScaled(em, 28.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x34);
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x34);
         }
-        if (Player_PassedFrameScaled(em, 154.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x32);
+        if (EmMotion_PassedFrameScaled(em, 154.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x32);
             break;
         }
         break;
     case 0x3FE:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x50, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x8C, 2);
-        if (Player_PassedFrameScaled(em, 104.0f, 0) != 0) {
-            Eff05_Create(em, 0x28);
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x28);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff05_Create(em, 0x29);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x29);
         }
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x2C);
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x2C);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x48);
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x48);
         }
-        if (Player_PassedFrameScaled(em, 78.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 138.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 138.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
             break;
         }
@@ -2505,22 +2508,22 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     case 0x3FF:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x4A, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x9E, 2);
-        if (Player_PassedFrameScaled(em, 132.0f, 0) != 0) {
-            Eff05_Create(em, 0x2A);
+        if (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x2A);
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            Eff05_Create(em, 0x2B);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x2B);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x1E);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x1E);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x4E);
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x4E);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 154.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 154.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2530,37 +2533,37 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xA6, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xFC, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x150, 2);
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            Eff05_Create(em, 0x2C);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x2C);
         }
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            Eff05_Create(em, 0x2D);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x2D);
         }
-        if (Player_PassedFrameScaled(em, 216.0f, 0) != 0) {
-            Eff05_Create(em, 0x2E);
+        if (EmMotion_PassedFrameScaled(em, 216.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x2E);
         }
-        if (Player_PassedFrameScaled(em, 306.0f, 0) != 0) {
-            Eff05_Create(em, 0x2F);
+        if (EmMotion_PassedFrameScaled(em, 306.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x2F);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x26);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x26);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x7A);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x7A);
         }
-        if (Player_PassedFrameScaled(em, 266.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x40);
+        if (EmMotion_PassedFrameScaled(em, 266.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x40);
         }
-        if (Player_PassedFrameScaled(em, 334.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 334.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 248.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 78.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2571,40 +2574,40 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xCE, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x11C, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x16A, 2);
-        if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
-            Eff05_Create(em, 0x30);
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x30);
         }
-        if (Player_PassedFrameScaled(em, 208.0f, 0) != 0) {
-            Eff05_Create(em, 0x31);
+        if (EmMotion_PassedFrameScaled(em, 208.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x31);
         }
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
-            Eff05_Create(em, 0x32);
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x32);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
-            Eff05_Create(em, 0x33);
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x33);
         }
-        if (Player_PassedFrameScaled(em, 300.0f, 0) != 0) {
-            Eff05_Create(em, 0x4C);
+        if (EmMotion_PassedFrameScaled(em, 300.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x4C);
         }
-        if (Player_PassedFrameScaled(em, 368.0f, 0) != 0) {
-            Eff05_Create(em, 0x4D);
+        if (EmMotion_PassedFrameScaled(em, 368.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x4D);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x56);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x56);
         }
-        if (Player_PassedFrameScaled(em, 280.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x8C);
+        if (EmMotion_PassedFrameScaled(em, 280.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x8C);
         }
-        if (Player_PassedFrameScaled(em, 204.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 204.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 280.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 280.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if ((Player_PassedFrameScaled(em, 76.0f, 0) != 0) || (Player_PassedFrameScaled(em, 358.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 358.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2612,22 +2615,22 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     case 0x402:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x52, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xA6, 2);
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
-            Eff05_Create(em, 0x34);
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x34);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Eff05_Create(em, 0x35);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x35);
         }
-        if (Player_PassedFrameScaled(em, 100.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x24);
+        if (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x24);
         }
-        if (Player_PassedFrameScaled(em, 154.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x2E);
+        if (EmMotion_PassedFrameScaled(em, 154.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x2E);
         }
-        if (Player_PassedFrameScaled(em, 76.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
             break;
         }
@@ -2635,22 +2638,22 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     case 0x404:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x50, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x8C, 2);
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff05_Create(em, 0x36);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x36);
         }
-        if (Player_PassedFrameScaled(em, 104.0f, 0) != 0) {
-            Eff05_Create(em, 0x37);
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x37);
         }
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x2C);
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x2C);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x48);
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x48);
         }
-        if (Player_PassedFrameScaled(em, 138.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 138.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 78.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
             break;
         }
@@ -2658,22 +2661,22 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
     case 0x405:
         EmLaoshan_RequestOnFrame((s32 *) em, 0x4A, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x9E, 2);
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            Eff05_Create(em, 0x38);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x38);
         }
-        if (Player_PassedFrameScaled(em, 132.0f, 0) != 0) {
-            Eff05_Create(em, 0x39);
+        if (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x39);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x1E);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x1E);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x4E);
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x4E);
         }
-        if (Player_PassedFrameScaled(em, 154.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 154.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2683,37 +2686,37 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xA6, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xFC, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x150, 2);
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            Eff05_Create(em, 0x3A);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x3A);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            Eff05_Create(em, 0x3B);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x3B);
         }
-        if (Player_PassedFrameScaled(em, 306.0f, 0) != 0) {
-            Eff05_Create(em, 0x3C);
+        if (EmMotion_PassedFrameScaled(em, 306.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x3C);
         }
-        if (Player_PassedFrameScaled(em, 216.0f, 0) != 0) {
-            Eff05_Create(em, 0x3D);
+        if (EmMotion_PassedFrameScaled(em, 216.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x3D);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x26);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x26);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x7A);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x7A);
         }
-        if (Player_PassedFrameScaled(em, 286.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x40);
+        if (EmMotion_PassedFrameScaled(em, 286.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x40);
         }
-        if (Player_PassedFrameScaled(em, 248.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 334.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 334.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 78.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2724,40 +2727,40 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xCE, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x11C, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x16A, 2);
-        if (Player_PassedFrameScaled(em, 208.0f, 0) != 0) {
-            Eff05_Create(em, 0x3E);
+        if (EmMotion_PassedFrameScaled(em, 208.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x3E);
         }
-        if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
-            Eff05_Create(em, 0x3F);
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x3F);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
-            Eff05_Create(em, 0x40);
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x40);
         }
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
-            Eff05_Create(em, 0x41);
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x41);
         }
-        if (Player_PassedFrameScaled(em, 368.0f, 0) != 0) {
-            Eff05_Create(em, 0x4E);
+        if (EmMotion_PassedFrameScaled(em, 368.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x4E);
         }
-        if (Player_PassedFrameScaled(em, 300.0f, 0) != 0) {
-            Eff05_Create(em, 0x4F);
+        if (EmMotion_PassedFrameScaled(em, 300.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x4F);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x56);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x56);
         }
-        if (Player_PassedFrameScaled(em, 280.0f, 0) != 0) {
-            Eff05_CreateEx(em, 0x47, 0x8C);
+        if (EmMotion_PassedFrameScaled(em, 280.0f, 0) != 0) {
+            LaoShanAttack_CreateSpan(em, 0x47, 0x8C);
         }
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 204.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 204.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if ((Player_PassedFrameScaled(em, 76.0f, 0) != 0) || (Player_PassedFrameScaled(em, 358.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 358.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 280.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 280.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2768,25 +2771,25 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0x90, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xAA, 5);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xDA, 2);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff05_Create(em, 0x52);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x52);
         }
-        if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
-            Eff05_Create(em, 0x53);
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x53);
         }
-        if (Player_PassedFrameScaled(em, 110.0f, 0) != 0) {
-            Eff05_Create(em, 0x54);
+        if (EmMotion_PassedFrameScaled(em, 110.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x54);
         }
-        if (Player_PassedFrameScaled(em, 150.0f, 0) != 0) {
-            Eff05_Create(em, 0x56);
+        if (EmMotion_PassedFrameScaled(em, 150.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x56);
         }
-        if (Player_PassedFrameScaled(em, 130.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 130.0f, 0) != 0) {
             StageObj_K0A_Create(em, 0, 3, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 128.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) {
             StageObj_K0A_Create(em, 0, 1, 1.4f);
         }
-        if (Player_PassedFrameScaled(em, 146.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 146.0f, 0) != 0) {
             StageObj_K0A_Create(em, 0, 4, 1.2f);
             break;
         }
@@ -2796,16 +2799,16 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xAE, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xF0, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x146, 2);
-        if (Player_PassedFrameScaled(em, 94.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 310.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 310.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 230.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 230.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2819,16 +2822,16 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0x68, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xB4, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xD6, 2);
-        if (Player_PassedFrameScaled(em, 186.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 186.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
         }
-        if ((Player_PassedFrameScaled(em, 58.0f, 0) != 0) || (Player_PassedFrameScaled(em, 158.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.5f);
         }
-        if ((Player_PassedFrameScaled(em, 32.0f, 0) != 0) || (Player_PassedFrameScaled(em, 210.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 210.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 100.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x17, 0x13, 0.6f);
             break;
         }
@@ -2840,13 +2843,13 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0xA4, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xBC, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x124, 2);
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.8f);
         }
-        if (Player_PassedFrameScaled(em, 180.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 180.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 8, 0x13, 0.8f);
         }
-        if (Player_PassedFrameScaled(em, 288.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 288.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1D, 0x13, 0.6f);
             break;
         }
@@ -2859,13 +2862,13 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0x180, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1A6, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x1D8, 2);
-        if (Player_PassedFrameScaled(em, 338.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 338.0f, 0) != 0) {
             StageObj_K0A_Create(em, 0, 0, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 400.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 400.0f, 0) != 0) {
             StageObj_K0A_Create(em, 0, 1, 1.4f);
         }
-        if (Player_PassedFrameScaled(em, 406.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 406.0f, 0) != 0) {
             StageObj_K0A_Create(em, 0, 2, 1.2f);
             break;
         }
@@ -2874,13 +2877,13 @@ void EmLaoshan_MotionEffects(Em *em, EmLaoshanWork *work)
         EmLaoshan_RequestOnFrame((s32 *) em, 0x5A, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0x6A, 2);
         EmLaoshan_RequestOnFrame((s32 *) em, 0xB4, 2);
-        if (Player_PassedFrameScaled(em, 94.0f, 0) != 0) {
-            Eff05_Create(em, 0x57);
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
+            LaoShanAttack_Create(em, 0x57);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.8f);
         }
-        if (Player_PassedFrameScaled(em, 236.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 236.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xE, 0x13, 0.5f);
             break;
         }
@@ -2910,17 +2913,17 @@ void EmLaoshan_SpawnAreaImpactEffects(Em *em)
     f32 pos[3];
 
     switch (Area_DayId(em->area) & 0xFFFF) {
-    case 11:
+    case AREA_FORTRESS_4:
         pos[0] = 14000.0f;
         pos[1] = 1700.0f;
         pos[2] = 20500.0f;
         break;
-    case 12:
+    case AREA_FORTRESS_5:
         pos[0] = 7300.0f;
         pos[1] = 1500.0f;
         pos[2] = 12400.0f;
         break;
-    case 30:
+    case AREA_FORTRESS_2:
         pos[0] = 15000.0f;
         pos[1] = 1700.0f;
         pos[2] = 23000.0f;
@@ -2941,12 +2944,12 @@ void EmLaoshan_SpawnAreaImpactEffects2(Em *em)
     f32 pos[3];
 
     switch (Area_DayId(em->area) & 0xFFFF) {
-    case 12:
+    case AREA_FORTRESS_5:
         pos[0] = 7300.0f;
         pos[1] = 500.0f;
         pos[2] = 12400.0f;
         break;
-    case 28:
+    case AREA_FORTRESS_3:
         pos[0] = 10900.0f;
         pos[1] = 500.0f;
         pos[2] = 20158.0f;
@@ -3070,7 +3073,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
         break;
     case 0x3EC:
-        Em_PlaySe6AtBoneOnFrame(em, 0xA, 0x56, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xA, 0x56, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 6, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x14);
@@ -3087,7 +3090,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
         break;
     case 0x3F2:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x59, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x59, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
@@ -3102,7 +3105,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
         break;
     case 0x3F9:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
         break;
@@ -3132,12 +3135,12 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x114, 0x27, 0x23);
         break;
     case 0x407:
-        Em_PlaySe6AtBoneOnFrame(em, 2, 0x55, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0xB6, 0x55, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x16C, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xB6, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x16C, 0x55, 0x23);
         break;
     case 0x408:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0);
@@ -3145,13 +3148,13 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         break;
     case 0x409:
         Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x46, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x46, 0x55, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0xB6, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1D, 0);
         break;
     case 0x40A:
-        Em_PlaySe6AtBoneOnFrame(em, 0x24, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
         break;
     case 0x40C:
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x24, 0x23);
@@ -3170,7 +3173,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
         break;
     case 0x40E:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
@@ -3188,7 +3191,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0x28, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x4A, 0x51, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x4A, 0x51, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xD, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0xD, 0xC);
         Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x13, 6);
@@ -3208,7 +3211,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
         break;
     case 0x424:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x94, 0x22, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
@@ -3221,7 +3224,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
         break;
     case 0x425:
-        Em_PlaySe6AtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
@@ -3230,7 +3233,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xAC, 3, 0x1A);
         break;
     case 0x426:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x4F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
         Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
@@ -3238,7 +3241,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
         break;
     case 0x427:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
@@ -3250,21 +3253,21 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1A);
         break;
     case 0x42A:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
         break;
     case 0x42B:
-        Em_PlaySe6AtBoneOnFrame(em, 0x46, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x46, 0x55, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1E, 0);
         break;
     case 0x42C:
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x30, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0);
-        Em_PlaySe6AtBoneOnFrame(em, 0x1A, 0x56, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x1A, 0x56, 0x23);
         break;
     case 0x42D:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
@@ -3272,7 +3275,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
     case 0x42E:
         Em_PlaySeAtBoneOnFrame(em, 0x14, 8, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 4, 0x22);
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 8, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x12, 0);
         break;
@@ -3283,7 +3286,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0);
         break;
     case 0x432:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
@@ -3296,7 +3299,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x12, 0);
         break;
     case 0x434:
-        Em_PlaySe6AtBoneOnFrame(em, 0x10, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x66, 0x2B, 0x23);
         break;
     case 0x437:
@@ -3326,7 +3329,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0x2A);
         break;
     case 0x450:
-        Em_PlaySe6AtBoneInFrames(em, 0x14, 0x8C, 0x56, 0x23, 6, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x14, 0x8C, 0x56, 0x23, 6, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x30, 0x2A);
         break;
@@ -3343,7 +3346,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
         break;
     case 0x454:
-        Em_PlaySe6AtBoneInFrames(em, 4, 0x7C, 0x56, 0x23, 6, 0);
+        Em_PlaySeTypeAtBoneInFrames(em, 4, 0x7C, 0x56, 0x23, 6, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 0x30, 0x2A);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x22);
@@ -3351,14 +3354,14 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
     case 0x457:
         break;
     case 0x458:
-        Em_PlaySe6AtBoneOnFrame(em, 0x34, 0x51, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x34, 0x51, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0x18, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x19, 0);
         break;
     case 0x459:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x5B, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x2A);
         break;
     case 0x45A:
@@ -3374,7 +3377,7 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x19, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x1A, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x7A, 0x51, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x7A, 0x51, 0x23);
         break;
     case 0x45D:
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x18, 0x23);
@@ -3383,10 +3386,10 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x19, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x1A, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x7A, 0x51, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x7A, 0x51, 0x23);
         break;
     case 0x45E:
-        Em_PlaySe6AtBoneOnFrame(em, 0x26, 0x4C, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x26, 0x4C, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x14);
         break;
     case 0x45F:
@@ -3425,23 +3428,23 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
         break;
     case 0x466:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x53, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x30, 0x2A);
         break;
     case 0x467:
-        Em_PlaySe6AtBoneOnFrame(em, 0x1A, 0x54, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x1A, 0x54, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2E, 0x23);
         break;
     case 0x468:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x54, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 9, 0);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0);
         break;
     case 0x469:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 9, 0x23);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
@@ -3485,13 +3488,13 @@ void EmCephadrome_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x54, 0x1D, 0);
         break;
     case 0x471:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x122, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x122, 0x55, 0x23);
         break;
     case 0x472:
-        Em_PlaySe6AtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x50, 0x51, 0x23);
-        Em_PlaySe6AtBoneOnFrame(em, 0x9E, 0x54, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x50, 0x51, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x9E, 0x54, 0x23);
         
         break;
     }
@@ -3504,8 +3507,8 @@ s8 EmLaoshan_MinePtBones[4][2] = {
 f32 EmLaoshan_MinePtRadius[3] = {
 #include "game/008C8BD8.inc"
 };
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmLaoshan_Callbacks[8] = {
     EmLaoshan_SpawnEffect01, EmLaoshan_SpawnEffect01, EmLaoshan_TableNop, EmLaoshan_UpdateMotionEffects,
-    func_0090A9C0, EmLaoshan_TableNop, NULL, NULL,
+    GmEm_ReturnZero, EmLaoshan_TableNop, NULL, NULL,
 };

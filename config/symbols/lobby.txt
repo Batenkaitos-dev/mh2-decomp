@@ -752,7 +752,6 @@ D_5BAE0C = 0x005BAE0C; // size:0x4
 D_5BFA68 = 0x005BFA68; // size:0x2
 D_5C34F0 = 0x005C34F0; // size:0x1
 D_5C34F8 = 0x005C34F8; // size:0x1
-D_5CA910 = 0x005CA910; // size:0x2
 D_5CAA40 = 0x005CAA40; // size:0x1
 // fields of sub_main gNetMode (0x5D46A0) still named by label (NON_MATCHING blocks); the C uses include/net_mode.h:
 D_5D46A1 = 0x005D46A1; // size:0x1

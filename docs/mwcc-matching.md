@@ -1185,7 +1185,7 @@ schedule off` turns both off and shows the creation order.
   local for `HasSkill ? 60 : 30` and a later call's result (v0/v1 of a
   `%`), a running total also used as the first loop's temporary. Seen in:
   func_007209A0, LobbyText_UpdateByte2 and Form_Submit (lobby),
-  func_0070D360 and EmBlangonga_PickWeightedPart (game); func_00702830
+  func_0070D360 and EmBlangonga_PickCarried (game); func_00702830
   (game, a count then a found flag) is still open.
 - **Parameters in each other's saved registers.** Cause: three parameters kept
   across calls get s2, s1, s0 in parameter order, but a switch on one of them,
@@ -1377,7 +1377,7 @@ temporary still live where another is made pushes it up.
   + j)`, a FIN_S16 macro) so that j stays one live value; a dead first
   parameter as the loop pointer (`u16 f(EmBPick *p, u16 r)`, the callers
   cast em). Seen in: EmPlesioth_UpdateFinWave and
-  EmBlangonga_PickWeightedPart (game).
+  EmBlangonga_PickCarried (game).
 - **The temporaries or float registers of a function in another order.**
   Cause: they follow the declaration order too: the last declared local gets
   the lowest free register (`f32 ax, ay, by, bx` gives bx f3 up to ax f6),
@@ -1932,7 +1932,7 @@ temporary still live where another is made pushes it up.
   ...; t.unk8 = k; f(0, k)`); a narrow copy masked into a saved register
   in the `jal`'s slot while the raw value is passed is assigned from an
   int before the call (`alpha = x; f(.., x)`). Seen in: Plsel_ItemBoxMenu
-  (plsel), StageObj_K12_CreateOnEm, EmBlangonga_State3_07, Bow_UpdateAim,
+  (plsel), StageObj_K12_CreateOnEm, EmBlangonga_DigThrow, Bow_UpdateAim,
   func_006C6E40 and func_00720340 (game), QuestNet_OnGameMsg (gm_sub),
   Layout_Input, Html_ParseLength, Deco_DrawRemovePanel, LobbyStep_6310,
   func_0071F8A0, MailMenu_Update, func_007A1A50 and func_00766A50 (lobby).
@@ -2295,7 +2295,7 @@ temporary still live where another is made pushes it up.
   nop (`default:` alone left 2 words). `beq x, 1, L; nop; b join; move v1,
   zero` then `L:` setting 1 is `switch (x) { default: f = 0; break; case
   1: f = 1; break; }` (an if/else or a ternary folds into `xori`/`sltiu`).
-  Seen in: StageObj_K11_Draw, EmBlangonga_State1_00, EmDrome_State3_06,
+  Seen in: StageObj_K11_Draw, EmBlangonga_Turn, EmDrome_State3_06,
   Player_State2_21, Player_State5_05 and Player_State3_00 (game),
   QSync_OnPlayer (gm_sub), LobbyStep_670F and HunterInfo_DrawActions
   (lobby). Round 9: `beqz s1, A; b B` with A before B is `switch (k) { case 0:
@@ -2333,7 +2333,7 @@ temporary still live where another is made pushes it up.
   `default: case 4: case 0x10:` (or `case 4: default: case 0x10:`) leaves
   `li v1, 4` dead where `case 0x10: case 4: default:` misses by two; a chain
   ending in a bare `li v0, 0x33` is `case 0x33: default: case 0x3D:`. Seen
-  in: func_00889030, EmDiablos_State4_05, EmBlangonga_State4_02,
+  in: func_00889030, EmDiablos_State4_05, EmBlangonga_KnockDown,
   func_0078A2E0, DualSwords_State04 (`case 0: default: case 2:`),
   Player_State2_08, EmGravios_SetGroup1State, func_006C4FF0,
   HuntingHorn_PlaySong, func_006EFDE0 and EmBlangonga_MotionEffects
@@ -3116,7 +3116,7 @@ temporary still live where another is made pushes it up.
   Byte offsets as declared locals (`o8 = k * 8;`, then `D->unk26[0][o8]`)
   keep a table row's address computation in the game's registers. Seen in:
   func_006C6D40, EmScript_Op14, EmKushala_State3_0F and
-  EmVelociprey_State5_04_Appear (game), Ending_DrawPictures (plsel),
+  EmVelociprey_Reappear (game), Ending_DrawPictures (plsel),
   Pad_SetVibration (main), LobbyLevel2_EnterFree, TownMsg_Recv,
   LobbyScreen_EnterArea and func_007C33B0 (lobby). Round 9: a table read at
   each use with the byte offset in a local, `k = item * 0x18;` then
@@ -3174,7 +3174,7 @@ temporary still live where another is made pushes it up.
   keeps `&v[2]` in a register. For the lobby menus, a pointer local to the
   field (`cur = &m[0xA]`) declared before the base pointer local, with the
   base reloaded from the global after the call. Seen in: EmHermitaur_Setup,
-  EmYamaTsukami_State3_07, EmKutku_SetEscapePoint, EmKhezu_NextAreaPoint,
+  EmYamaTsukami_State3_07, EmKutku_SetEscapePoint, EmKhezu_NearestCeilingPoint,
   func_006ED8A0 and func_0070B4F0 (game), SrvMenu_Quit, LobbyStep_6504,
   Layout_Rule, func_007B5DE0, func_00771A60 and func_00774D10 (lobby).
 - **An array base in a register (`addiu a0, w, 0x5EC; addu a0, a0, i*4; lw

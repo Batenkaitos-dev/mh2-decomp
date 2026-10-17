@@ -4,6 +4,7 @@
 #include "m2c_macros.h"
 #include "scene.h"
 #include "quest.h"
+#include "area.h"
 
 void CamFocus_SetAside(s8 arg0);
 void Talk_Say(s32, s8);
@@ -30,7 +31,7 @@ extern u16 gQuestDeskShown[12];
 void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, void *src, u32 n);
 QuestInfo *Quest_GetDiscInfo(u16 id);
-u16 Area_MapGroup(u16 id);
+u16 Map_Group(u16 id);
 s32 QuestDesk_CountRanks(void);
 s32 Game_IsOnline(void);
 s32 Cond_Check(u16 id);
@@ -70,7 +71,7 @@ void QuestDesk_BuildLists(void)
             kind = gQuestMapGroups[i];
             n = 0;
             for (p = gQuestLists[m->unk76]; *p != 0; p++) {
-                if (kind == Area_MapGroup(Quest_GetDiscInfo(*p)->map)) {
+                if (kind == Map_Group(Quest_GetDiscInfo(*p)->map)) {
                     m->lists[i][n++] = *p;
                     if (n >= 12) {
                         break;
@@ -83,7 +84,7 @@ void QuestDesk_BuildLists(void)
     case 2:
         m->list = 0;
         switch (gScene.area) {
-        case 0x88:
+        case AREA_HUB_0x88:
             memcpy(m->lists[m->list], D_5BFA68, 0x18);
             break;
         default:
@@ -100,7 +101,7 @@ s32 QuestDesk_CountRanks(void)
 {
     if (Game_IsOnline() == 0) {
         if (Cond_Check(0x4F) == 1) {
-            return gScene.area == 0x57 ? 7 : 6;
+            return gScene.area == AREA_HUB_0x57 ? 7 : 6;
         }
         if (Cond_Check(0x1A) == 1) {
             return 6;

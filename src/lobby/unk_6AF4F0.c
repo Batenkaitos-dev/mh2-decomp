@@ -10,6 +10,7 @@
 #include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"
+#include "area.h"
 void *memset(void *, s32, u32);
 void *memcpy(void *, const void *, u32);
 s32 WinSlide_Step(WinSlide *, s16 from, s16 to);
@@ -25,11 +26,11 @@ s32 QuestDesk_IsWanted(u8 *p)
     TownQuestLists *t = &gTownQuestLists;
     s32 i = LobbyWorld_GetSeason();
 
-    if (gScene.area == 0x88) {
+    if (gScene.area == AREA_HUB_0x88) {
         if (Wanted_MatchesQuest((struct QuestGoal *)(p + 0x2C), t->b[i]) == 1) {
             return 1;
         }
-    } else if (gScene.area == 0x86 || Game_IsOnline() == 0) {
+    } else if (gScene.area == AREA_HUB_0x86 || Game_IsOnline() == 0) {
         if (Wanted_MatchesQuest((struct QuestGoal *)(p + 0x2C), t->a[i]) == 1) {
             return 1;
         }
@@ -46,9 +47,9 @@ s16 Wanted_GetValue(void)
     }
     area = gScene.area;
     switch (area) {
-    case 0x86:
+    case AREA_HUB_0x86:
         return *(s16 *)((u8 *)(gLobbyWorkBuf) + 0x7AAA);
-    case 0x88:
+    case AREA_HUB_0x88:
         return *(s16 *)((u8 *)(gLobbyWorkBuf) + 0x7AAC);
     default:
         return 0;

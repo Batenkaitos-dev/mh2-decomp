@@ -55,8 +55,8 @@ typedef struct Sub6ADB1C {
     u8 b13;
 } Sub6ADB1C;
 extern Sub6ADB1C D_6ADB1C;
-extern u8 gPlayerIds[10][8];              /* the players' ids (sub_main) */
-extern u8 gMemberNames[10][0x11];           /* their names */
+extern u8 gPlayerIds[SCENE_PLAYERS][8];   /* the players' ids (sub_main) */
+extern u8 gMemberNames[SCENE_PLAYERS][0x11]; /* their names */
 extern u8 gPresetChars[10][0x100];          /* their texts */
 
 /* the screen's step (gLobbyRoomSteps[mode]) while no message box is up */

@@ -12,6 +12,7 @@
 #include "lobby_globals.h"
 #include "objhead.h"
 #include "lobby_npc.h"
+#include "area.h"
 
 /* Built at optimization level 4: TownPc_UpdateAll matches only at 4, the others at 4 too
  * (TownPc_State20 too). One unit: the functions share the helpers
@@ -54,11 +55,11 @@ void TownPc_ReadPad(s32 pl)
     in->prevStickDir = gPadInput.stickDir[0].prev;
     in->prevStickDirPressed = in->stickDirPressed;
     in->stickDirPressed = in->stickDir & ~in->prevStickDir;
-    in->stickAngle = gPadInput.stickAngle[0].cur;
-    in->rightStickAngle = gPadInput.stickAngle[0].prev;
+    in->stickAngle = gPadInput.stickAngle[0].left;
+    in->rightStickAngle = gPadInput.stickAngle[0].right;
     if (Hud_TownMenuOpen() == 0) {
-        in->stickTilt = gPadInput.stickTilt[0].cur;
-        in->rightStickTilt = gPadInput.stickTilt[0].prev;
+        in->stickTilt = gPadInput.stickTilt[0].left;
+        in->rightStickTilt = gPadInput.stickTilt[0].right;
     } else {
         in->stickTilt = 0;
         in->rightStickTilt = 0;
@@ -234,7 +235,7 @@ s32 Actor_NeedsStateSend(void *obj)
     for (i = 0; i < 10; i++) {
         gPlayers[i].index = i;
     }
-    if ((o->index == gScene.localPlayer) && (o->unk01E == 0)) {
+    if ((o->index == gScene.localPlayer) && (o->ownTask == 0)) {
         return Area_HasTownPcs(gScene.area, i);
     }
     return 0;
@@ -621,12 +622,12 @@ s32 Save_TestEventFlag(s32 flag);
 s32 ActSpot_AreaEventUnseen(void)
 {
     switch (gScene.area) {
-    case 0xAC:
+    case AREA_HUB_0xAC:
         if (Save_TestEventFlag(0x89) == 0) {
             return 1;
         }
         break;
-    case 0x57:
+    case AREA_HUB_0x57:
         if (Save_TestEventFlag(0x8A) == 0) {
             return 1;
         }
@@ -730,9 +731,9 @@ s32 ActSpot_IsUsable(Player *pl, ActSpot *s)
         }
         break;
     case 0xD:
-        if (gScene.area == 0x89) {
+        if (gScene.area == AREA_HUB_0x89) {
             npc = (u8 *)Npc_Find(0x14);
-        } else if (gScene.area == 0x83) {
+        } else if (gScene.area == AREA_HUB_0x83) {
             npc = (u8 *)Npc_Find(0x22);
         } else {
             return 0;
@@ -882,7 +883,7 @@ void Actor_SetState(void *obj, s32 group, s32 state)
     o->stateFlags = 0;
     o->motion[0].step = 2.0f;
     o->motion[1].step = 2.0f;
-    if (o->unk01E == 0 && o->index != gScene.localPlayer) {
+    if (o->ownTask == 0 && o->index != gScene.localPlayer) {
         if (Actor_IsState(o, 0, 0) == 0) {
             return;
         }
@@ -1184,11 +1185,11 @@ s32 MyHouse_IsOwner(void)
 s32 MyHouse_InOwnHouse(void)
 {
     switch (gScene.area) {
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         break;
-    case 0x56:
+    case AREA_HOUSE:
         if (Game_IsOnline() == 0) {
             return 1;
         }
@@ -1202,9 +1203,10 @@ s32 MyHouse_InOwnHouse(void)
     return MyHouse_IsOwner() != 0;
 }
 
-/* The local player's slot (0-9, from LobbyState +0x1538's '0'-'9') while
- * in the areas 0x56 and 0xAD-0xAF, else -1. The address is an integer sum
- * (the original adds the index first) and `0 <= slot` gives its slt. */
+/* The local player's slot (0-9, from LobbyState.memberSlot's '0'-'9') while
+ * in a house area (AREA_HOUSE, AREA_ONLINE_HOUSE_0 to _2), else -1. For the
+ * match, memberSlot's address is an integer sum (the game adds the index
+ * first) and the test is written `0 <= slot`. */
 s8 MyHouse_LocalSlot(void)
 {
     s32 i = gScene.localPlayer;
@@ -1212,10 +1214,10 @@ s8 MyHouse_LocalSlot(void)
     s8 slot;
 
     switch (area) {
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
-    case 0x56:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
+    case AREA_HOUSE:
         break;
     default:
         return -1;
@@ -1230,12 +1232,14 @@ s8 MyHouse_LocalSlot(void)
     return -1;
 }
 
+/* 1 when the area is one of the online house's areas (one per house
+ * level, AREA_ONLINE_HOUSE_0 to _2), else 0. */
 s32 Area_IsOnlineHouse(s32 area)
 {
     switch (area & 0xFFFF) {
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         return 1;
     }
     return 0;
@@ -1339,7 +1343,7 @@ void TownPc_Update(Player *pl)
     if (pl->index == gScene.localPlayer) {
         Em_CollideField((Em *) pl, 0);
     }
-    if ((pl->state != 0x1A && pl->state != 0x19) || gScene.area == 0x57) {
+    if ((pl->state != 0x1A && pl->state != 0x19) || gScene.area == AREA_HUB_0x57) {
         if (Em_GetFloorInfo((Em *) pl, pl->pos, (struct TriHdr *) &pl->floorKind, &y, (s32 *) &pl->surfaceY) == 1) {
             pl->floorY = y;
         }
@@ -2123,7 +2127,7 @@ void TownPc_State14(Player *pl, s32 k)
             if (pl->index == gScene.localPlayer) {
                 gFieldControl = 0;
                 D_008BEB63 = 1;
-                if (gScene.area == 0x87) {
+                if (gScene.area == AREA_HUB_0x87) {
                     LobbyBgm_SetUnk11F(1);
                 }
             }
@@ -2141,7 +2145,7 @@ void TownPc_State14(Player *pl, s32 k)
                     gFieldControl = 1;
                 }
                 if ((Game_IsOnline() == 1 && MyHouse_IsOwner() == 1) ||
-                    (Game_IsOnline() == 0 && gScene.area != 0x89)) {
+                    (Game_IsOnline() == 0 && gScene.area != AREA_HUB_0x89)) {
                     if (gTownMode == 0 && gLobby->mealEaten == 0) {
                         Kitchen_Open();
                     }
@@ -2154,7 +2158,7 @@ void TownPc_State14(Player *pl, s32 k)
             if ((pl->input.pressed & 0x20) && gTownMode == 0) {
                 Actor_SetStateEx(pl, 0, 0x15, 0);
                 CamFocus_End();
-                if (gScene.area == 0x87) {
+                if (gScene.area == AREA_HUB_0x87) {
                     LobbyBgm_SetUnk11F(0);
                 }
             } else if (Area_Is86to88(gScene.area) == 1 && gTownMode == 0) {
@@ -2171,7 +2175,7 @@ void TownPc_State14(Player *pl, s32 k)
                     Actor_SetState(pl, 0, 0x24);
                 } else if (pad & 0x400) {
                     Actor_SetState(pl, 0, 0x1C);
-                } else if (gScene.area == 0x87 && LobbyBgm_GetTrack() != -1 && func_007D98B0() == 0) {
+                } else if (gScene.area == AREA_HUB_0x87 && LobbyBgm_GetTrack() != -1 && func_007D98B0() == 0) {
                     LobbyBgm_SetUnk11F(1);
                 }
             }
@@ -2252,12 +2256,12 @@ extern u8 gOffersRefreshPending;
 
 /* Sleeping (k 0 goes to bed, k 1 wakes up in it): the motions, the saved
  * bed position (+0x438 +0x14, angle +0x22), the jingle, then back to state
- * 0 at the bed (in area 0x57, turned around). Other players only idle. */
-/* A lobby player's block at Player +0x438 (the gap unk438), as TownPc_State19 (the bed) reads it. */
+ * 0 at the bed (in AREA_HUB_0x57, turned around). Other players only idle. */
+/* A lobby player's block at Player +0x438 (Player.work, whose PlayerWork it extends), as TownPc_State19 (the bed) reads it. */
 typedef struct TownPcWork {
     u8 unk00[0x14];
     Vec3f bedPos;               /* 0x14: the position kept while the player sleeps: saved at frames 166 and 260 of the sleep motion, put back at frame 198 and in step 3 */
-    s16 jingleTimer;            /* 0x20: step 4 in area 0x57: frames until the jingle (0xA0) */
+    s16 jingleTimer;            /* 0x20: step 4 in AREA_HUB_0x57: frames until the jingle (0xA0) */
     u16 bedYaw;                 /* 0x22: the yaw kept with bedPos */
     u8 unk24[0x80 - 0x24];
 } TownPcWork;
@@ -2265,7 +2269,7 @@ typedef char TownPcWork_size_check[(sizeof(TownPcWork) == 0x80) ? 1 : -1];
 
 void TownPc_State19(Player *pl, s8 k)
 {
-    TownPcWork *w = (TownPcWork *)pl->unk438;
+    TownPcWork *w = (TownPcWork *)&pl->work;
 
     if (pl->index != gScene.localPlayer) {
         Actor_SetState(pl, 0, 1);
@@ -2276,7 +2280,7 @@ void TownPc_State19(Player *pl, s8 k)
         pl->fieldCollide = 0;
         pl->step++;
         w->jingleTimer = 0;
-        if (gScene.area == 0x57) {
+        if (gScene.area == AREA_HUB_0x57) {
             pl->step = 4;
             if (k == 0) {
                 Actor_SetMotion(pl, 0x287, 0, 0);
@@ -2327,7 +2331,7 @@ void TownPc_State19(Player *pl, s8 k)
         }
         break;
     case 4:
-        if (k == 0 && gScene.area == 0x57) {
+        if (k == 0 && gScene.area == AREA_HUB_0x57) {
             w->jingleTimer++;
             if (w->jingleTimer == 0xA0) {
                 Jingle_Play(pl, 9);
@@ -2341,7 +2345,7 @@ void TownPc_State19(Player *pl, s8 k)
             if (pl->index == gScene.localPlayer) {
                 gTownMode = 0;
             }
-            if (gScene.area == 0x57) {
+            if (gScene.area == AREA_HUB_0x57) {
                 Player_ClearFlag(pl, 0x20000);
                 pl->rot[1] = pl->targetYaw = pl->rot[1] + 0x8000;
             } else if (k == 0) {
@@ -2852,7 +2856,7 @@ void TownMsg_Send1D(Player *arg0);
 void TownMsg_Send02(Player *obj);
 extern u8 gTownSpotId;
 
-/* In area 0x86 (the action 0x36): the local player walks to the spot of
+/* In AREA_HUB_0x86 (the action 0x36): the local player walks to the spot of
  * kind 0xE for gTownSpotId and takes state 0x70 or 0x71 there; without the
  * action it is cancelled. */
 void Contest_TakeSeat(void)
@@ -2863,7 +2867,7 @@ void Contest_TakeSeat(void)
     f32 v[3];
     u16 ang;
 
-    if (gScene.area != 0x86) {
+    if (gScene.area != AREA_HUB_0x86) {
         return;
     }
     if (gTownMode != 0x36) {

@@ -1,16 +1,20 @@
 /*
- * The memory card menu, NetMenu (0x3D54B0-0x3DDBA0, one translation unit): its helpers,
- * the patch area (0xAA6780..0xAC67C0), save slot checks, the state setter
- * NetMenu_SetState and the states themselves.
+ * The memory card menus (NetMenu, net_menu.h; gCardMenu): one state machine per mode
+ * (enum NetMenuMode, card.h), run by NetMenu_Update: the boot load, the settings' save, a new
+ * character's save, the load, the town's and the lobby's saves, the in-game save, and the
+ * NET file's login id. Each state (card.h's CARD_*_ enums) draws a message (enum NetMenuMsg)
+ * and moves on by the card task's result (unk_3DDBA0.c: CardTask_*, SaveMenu_*). Also here:
+ * the patch loader (PATCH_DATA, PATCH_HEADER, PATCH_RECS), the save files' encryption, and the
+ * character slots' windows. The select overlay and the lobby open the menu (NetMenu_Open).
  *
- * NetMenu_SetState is static, as in the original: MWCC then knows it leaves
- * a0/a1 alone, and its callers use them after the call (CardSys_Start stores
- * the state number from a1; NetMenu_StartCardRead(m) needs no reload of m). Its
- * callers still in assembly link against it because tools/mwcc_cc.py makes
- * the symbol global in the object.
+ * NetMenu_SetState is static, as in the original: MWCC then knows it leaves a0/a1 alone, and
+ * its callers use them after the call (CardSys_Start stores the state number from a1;
+ * NetMenu_StartCardRead(menu) needs no reload of menu). Its callers still in assembly link
+ * against it because tools/mwcc_cc.py makes the symbol global in the object.
  */
 #include "common.h"
 #include "save.h"
+#include "card.h"
 #include "chredit.h"
 #include "net_menu.h"
 #include "window.h"
@@ -22,6 +26,8 @@
 #include "syssettings.h"
 #include "qsync.h"
 #include "sub_main/unk_3D54B0.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "render_state.h"
+#include "sound.h"
 
 extern f32 gLobbyDayFrac;
 extern SaveData *gCardSlots;
@@ -38,7 +44,7 @@ s32 SaveBuf_Offset(s32 a, s32 b, s32 c);
 struct SaveMenu;
 void SaveMenu_CopyCharacter(struct SaveMenu *m, s32 data, s32 save, s32 slot);
 void FlushCache(s32 op);
-void SaveFile_Decrypt(NetMenu *m, u16 *p);
+void SaveFile_Decrypt(NetMenu *menu, u16 *p);
 
 /* The patch loader state (Patch_BeginLoad, Patch_LoadStep). */
 extern s8 gPatchStep;
@@ -66,12 +72,12 @@ s32 LoadCompressedFile(u8 *dst, s32 id);
 s32 CardOp_SetFiles(s32 *data);
 s32 CardTask_Result(void);
 void CardTask_StartCheck(void);
-void CardNew_ChooseCharSlot(NetMenu *m);
-void CardGame_AskQuit(NetMenu *m);
-void CardSave_PrepareSave(NetMenu *m);
+void CardNew_ChooseCharSlot(NetMenu *menu);
+void CardGame_AskQuit(NetMenu *menu);
+void CardSave_PrepareSave(NetMenu *menu);
 void CardTask_StartReadClear(s32 slot, u8 *buf, s32 size);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void CardMenu_InitBuffers(NetMenu *m);
+void CardMenu_InitBuffers(NetMenu *menu);
 extern u8 gOldGameKind;
 s32 SaveMenu_LoadSystem(struct SaveMenu *m, s32 mode);
 s32 SaveMenu_CheckCharacter(struct SaveMenu *m);
@@ -112,17 +118,17 @@ extern char D_004B02B8[];
 
 /* Its copy in the card buffer, at +0x50. */
 typedef struct SysBody {
-    u8 unk0[0x10];              /* 0x00 */
+    u8 options[0x10];           /* 0x00: SysSave.options */
     u8 pad10[0x20 - 0x10];
-    s32 unk20;
-    u8 unk24;
-    u8 unk25;
-    u8 unk26;
-    u8 unk27;
-    u8 unk28;
-    u8 unk29;
+    s32 bonusUnlocked;          /* 0x20: SysSave.bonusUnlocked (ORed in on a load) */
+    u8 lastSlot;                /* 0x24: SysSave.lastSlot */
+    u8 charSaved;               /* 0x25: SysSave.charSaved */
+    u8 unk45E;                  /* 0x26-0x29: SysSave.unk45E-unk461 (ORed in on a load) */
+    u8 unk45F;
+    u8 unk460;
+    u8 unk461;
     u8 pad2A[0x30 - 0x2A];
-    s32 unk30[2][2];            /* 0x30 */
+    s32 eventFlags[2][2];       /* 0x30: SysSave.eventFlags (ORed in on a load) */
 } SysBody;
 
 void SysSettings_Reset(void);
@@ -593,24 +599,31 @@ char D_004B0210[0x28] = {
 };
 #pragma rodata off
 
+/* Does nothing. Loading_SetMessage calls it for its mode 0. */
 void func_003D54B0(s32 unused) /* unused: the caller passes 0 */
 {
 }
 
+/* Returns 0. The lobby's Town_ReloadLocalPlayer calls it (with an argument it doesn't read); 1
+ * would make that call func_003D54D0(1) instead of Loading_Reset. */
 s32 func_003D54C0(void)
 {
     return 0;
 }
 
+/* Does nothing. The lobby's Town_ReloadLocalPlayer calls it with 1 and with 0. */
 void func_003D54D0(void)
 {
 }
 
+/* Sets the lobby's time of day, gLobbyDayFrac, to noon (0.5). select_boot.c calls it. */
 void LobbyDay_SetNoon(void)
 {
     gLobbyDayFrac = 0.5f;
 }
 
+/* Clears PATCH_DATA and PATCH_RECS (0x10000 bytes each) and PATCH_HEADER (0x40 bytes), then writes
+ * gVersionString (10 bytes) and a 4-digit number at +0xA into the header. */
 void Patch_Init(void)
 {
     memset((void *)PATCH_DATA, 0, 0x10000);
@@ -679,6 +692,9 @@ void PatchExecCS(u8 mode, u8 sub)
     }
 }
 
+/* Sets up Patch_LoadStep: resets gPatchStep, the transfer state (gPatchXferA, gPatchXferB) and
+ * gPatchResult, keeps the patch header, its data and where the records go, and clears the records'
+ * buffer (0x10000 bytes). */
 void Patch_BeginLoad(u8 *hdr, u8 *src, u8 *dst)
 {
     gPatchStep = 0;
@@ -691,6 +707,8 @@ void Patch_BeginLoad(u8 *hdr, u8 *src, u8 *dst)
     memset(dst, 0, 0x10000);
 }
 
+/* Applies the patch records of each loaded part (PatchExecCS by mode and sub): (0, 0) always, (1,
+ * 1) sub_main, (2, 1)-(2, 3) the overlays 2-4 when loaded, (3, 2) gm_sub and (6, 1) plsel. */
 void Patch_ExecAll(void)
 {
     PatchExecCS(0, 0);
@@ -714,20 +732,24 @@ void Patch_ExecAll(void)
     }
 }
 
+/* Runs one step of the load Patch_BeginLoad set up: copies the data, loads overlay 8, then runs
+ * NetXfer_Step2 on the records. Returns gPatchResult: 0 running, 2 loaded, -1 failed, 1 nothing to
+ * load (no records size, a version not newer than gVersionString, or records without the D_004B0240
+ * magic). */
 s32 Patch_LoadStep(void)
 {
     u8 *hdr;
     u8 *dst;
     u8 *src;
-    s32 r;
-    s32 st;
+    s32 xferResult;
+    s32 loadResult;
 
     hdr = gPatchHdr;
     src = gPatchSrc;
     dst = gPatchDst;
-    st = gPatchResult;
-    if (st != 0) {
-        return (s8)st;
+    loadResult = gPatchResult;
+    if (loadResult != 0) {
+        return (s8)loadResult;
     }
     switch (gPatchStep) {
     case 0:
@@ -750,8 +772,8 @@ s32 Patch_LoadStep(void)
     case 2:
         gPatchStep++;
     case 3:
-        r = NetXfer_Step2(&gPatchXferA, (s16 *)&gPatchXferB, dst, *(s32 *)(hdr + 0x14), 0x10000);
-        if (r > 0) {
+        xferResult = NetXfer_Step2(&gPatchXferA, (s16 *)&gPatchXferB, dst, *(s32 *)(hdr + 0x14), 0x10000);
+        if (xferResult > 0) {
             if (strncmp((char *)dst, D_004B0240, 8) != 0) {
                 gPatchResult = 1;
             } else {
@@ -760,7 +782,7 @@ s32 Patch_LoadStep(void)
                 gPatchResult = 2;
                 gPatchXferB = 0;
             }
-        } else if (r < 0) {
+        } else if (xferResult < 0) {
             gPatchStep = 0;
             gPatchResult = -1;
             gPatchXferA = 0;
@@ -771,6 +793,7 @@ s32 Patch_LoadStep(void)
     return gPatchResult;
 }
 
+/* Does nothing. NetMenu_Open calls it for the modes of CardMenu_RunGameSaveNet. */
 void func_003D5B70(void)
 {
 }
@@ -791,7 +814,7 @@ s32 Card_SlotReady(s32 slot);
  * slots n), else at the positions of gCardSlotPos in the selection's colours; an empty slot shows
  * the empty-slot text (or a card message, D_00468394[0]), a used one the name, play time, sex and money.
  */
-void CardMenu_DrawSlots(NetMenu *m, s32 mode, u8 n, s32 unused, s32 flag)
+void CardMenu_DrawSlots(NetMenu *menu, s32 mode, u8 selectMode, s32 unused, s32 flag)
 {
     NetWin win;
     s16 i;
@@ -829,7 +852,7 @@ void CardMenu_DrawSlots(NetMenu *m, s32 mode, u8 n, s32 unused, s32 flag)
     }
     save = *(SaveData **)((u8 *)sys + 0x3C60);
     for (i = 0; i < 3; i++) {
-        if (i == m->sub) {
+        if (i == menu->sub) {
             if (flag == 0) {
                 color = 5;
             } else {
@@ -837,7 +860,7 @@ void CardMenu_DrawSlots(NetMenu *m, s32 mode, u8 n, s32 unused, s32 flag)
                 size = 0x18;
                 col = 0x807F7F7F;
             }
-            if (mode == 0 || mode == 2 || n >= 2) {
+            if (mode == 0 || mode == 2 || selectMode >= 2) {
                 if (flag == 0) {
                     Menu_DrawGlowBar(win.x + 0x73, win.y - 3, 0x118, 0x46, 0xFF20C0C0);
                 }
@@ -847,7 +870,7 @@ void CardMenu_DrawSlots(NetMenu *m, s32 mode, u8 n, s32 unused, s32 flag)
         } else {
             size = 0x12;
             col = 0x80101010;
-            if (i == 1 && m->sub == 2) {
+            if (i == 1 && menu->sub == 2) {
                 pos = D_00468848;
             } else {
                 pos = &gCardSlotPos[i * 4 + 2];
@@ -912,15 +935,19 @@ INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_3D54B0", D_004B02A0);
 INCLUDE_RODATA("asm/sub_main/nonmatchings/unk_3D54B0", D_004B02B8);
 
 
+/* 1 when character slot i of gCardSlots is used, else 0. select_title.c calls it. */
 s32 SaveMenu_SlotUsed(s32 i)
 {
-    SaveData *p = gCardSlots;
+    SaveData *save = gCardSlots;
 
-    p += i;
-    return p->used != 0;
+    save += i;
+    return save->used != 0;
 }
 
-void CardMenu_DrawSlotFrames(ChrEdit *e, s32 mode, u8 n, s8 sel)
+/* Draws the three character slots' windows (window flags 2 in slotMode 2, else 4); slot sel gets
+ * the glow bar when slotMode is 0 or 2 or selectMode is 2 or more. edit is unused (NetMenu_Draw
+ * passes gChrEdit). */
+void CardMenu_DrawSlotFrames(ChrEdit *edit, s32 mode, u8 selectMode, s8 sel)
 {
     NetWin win;
     s16 i;
@@ -940,7 +967,7 @@ void CardMenu_DrawSlotFrames(ChrEdit *e, s32 mode, u8 n, s8 sel)
         win.flags = 4;
     }
     for (i = 0; i < 3; i++) {
-        if (i == sel && (mode == 0 || mode == 2 || n >= 2)) {
+        if (i == sel && (mode == 0 || mode == 2 || selectMode >= 2)) {
             Menu_DrawGlowBar(win.x + 0x73, win.y - 3, 0x118, 0x46, 0xFF20C0C0);
         }
         Window_DrawTextAlpha((Window *)&win, 0, 0x80);
@@ -948,7 +975,11 @@ void CardMenu_DrawSlotFrames(ChrEdit *e, s32 mode, u8 n, s8 sel)
     }
 }
 
-void CardMenu_DrawCharacters(ChrEdit *e, s32 b, s32 c, s32 d, s8 sel)
+/* Draws the characters of gCardMenu.slots (D_006AF028) in the slot windows, sel in colour 5: the
+ * bad slot's label when charRead is 0x80, the empty slot's label when the slot is unused, else the
+ * number and name, the play time and sex, and the money. edit, slotMode, selectMode and unused are
+ * not read. */
+void CardMenu_DrawCharacters(ChrEdit *edit, s32 slotMode, s32 selectMode, s32 unused, s8 sel)
 {
     s16 i;
     s16 y;
@@ -991,25 +1022,23 @@ void CardMenu_DrawCharacters(ChrEdit *e, s32 b, s32 c, s32 d, s8 sel)
     } while (i < 3);
 }
 
-/*
- * Encrypts a save file in place: 0x40 random bytes, then the header words (the version, the
- * key taken from the random bytes, the sum of the plain data) and the data xor-ed with a key
- * stream. Round 29: the data walker is the parameter reused after the random bytes (the game
- * copies p into a0), the sum is kept through a pointer (t2), and the version and the key are
- * two locals (the key's first web, numbered before the sum pointer).
- */
+/* Encrypts a save file in place (buf, of fileKind's size): 0x40 random bytes, then the header
+ * words (the version, the key taken from the random bytes, the sum of the plain data) and the
+ * data XORed with a key stream (the key steps as key * 0xB0 % 0xFF53). Kept for the match: the
+ * data walker is the parameter reused after the random bytes, the sum is kept through a
+ * pointer, and the version and the key are two locals. */
 void SaveFile_Encrypt(u8 *buf)
 {
     s32 i;
     u16 ver;
     s32 size;
-    u8 *p;
-    u16 *h;
+    u8 *pos;
+    u16 *header;
     u16 key;
     u16 *sum;
 
-    h = (u16 *)buf;
-    p = buf;
+    header = (u16 *)buf;
+    pos = buf;
     switch (gCardFileKind) {
     case 1:
         size = 0x550;
@@ -1029,15 +1058,15 @@ void SaveFile_Encrypt(u8 *buf)
         return;
     }
     for (i = 0; i < 0x40; i++) {
-        *p = Rand_Next(0) & 0xFFFF;
+        *pos = Rand_Next(0) & 0xFFFF;
         size--;
-        p++;
+        pos++;
     }
-    h[0] = ver;
-    buf = p;
-    h[2] = 0;
-    sum = &h[2];
-    key = h[1];
+    header[0] = ver;
+    buf = pos;
+    header[2] = 0;
+    sum = &header[2];
+    key = header[1];
     for (i = 0; i < size / 2; i++) {
         *sum += *(u16 *)buf;
         *(u16 *)buf ^= key;
@@ -1052,7 +1081,7 @@ void SaveFile_Encrypt(u8 *buf)
 /* Decrypts a save file read from the card and checks it: badVersion if its version word is wrong, badSum if
  * the sum of its decrypted words is. The walker is the parameter itself (a1), with the header read through a
  * byte-pointer copy made after the switch (as a u16 * copy, the walker start was folded onto the parameter). */
-void SaveFile_Decrypt(NetMenu *m, u16 *p)
+void SaveFile_Decrypt(NetMenu *menu, u16 *words)
 {
     s32 size;
     u16 ver;
@@ -1061,7 +1090,7 @@ void SaveFile_Decrypt(NetMenu *m, u16 *p)
     u8 *buf;
     u16 key;
 
-    switch (m->fileKind) {
+    switch (menu->fileKind) {
     case 1:
         size = 0x550;
         ver = 0x100;
@@ -1077,129 +1106,144 @@ void SaveFile_Decrypt(NetMenu *m, u16 *p)
         ver = 1;
         break;
     default:
-        m->badVersion = 1;
-        m->badSum = 1;
+        menu->badVersion = 1;
+        menu->badSum = 1;
         return;
     }
-    buf = (u8 *)p;
-    m->badVersion = 0;
+    buf = (u8 *)words;
+    menu->badVersion = 0;
     size -= 0x40;
     sum = 0;
-    m->badVersion = ((u16 *)buf)[0] != ver;
+    menu->badVersion = ((u16 *)buf)[0] != ver;
     key = ((u16 *)buf)[1];
-    p = (u16 *)(buf + 0x40);
+    words = (u16 *)(buf + 0x40);
     for (i = 0; i < size / 2; i++) {
-        *p ^= key;
-        sum += *p;
-        p++;
+        *words ^= key;
+        sum += *words;
+        words++;
         if (key == 0) {
             key = 1;
         }
         key = (key * 0xB0) % 0xFF53;
     }
-    m->badSum = ((u16 *)buf)[2] != sum;
+    menu->badSum = ((u16 *)buf)[2] != sum;
 }
 
-s32 SaveMenu_SystemIdMatches(NetMenu *m)
+/* 1 when the date stamp at readBuf + 0x40 (a Card_GetDate pair) equals pairs[0], the system file's;
+ * 0 when not, or when fileKind is not a system or character file. The lobby's unk_7D2C80.c calls
+ * it. */
+s32 SaveMenu_SystemIdMatches(NetMenu *menu)
 {
-    s32 *p;
-    u8 *buf = m->readBuf;
+    s32 *stamp;
+    u8 *buf = menu->readBuf;
 
-    switch (m->fileKind) {
+    switch (menu->fileKind) {
     case 1:
-        p = (s32 *)(buf + 0x40);
+        stamp = (s32 *)(buf + 0x40);
         break;
     case 2:
     case 4:
     case 8:
-        p = (s32 *)(buf + 0x40);
+        stamp = (s32 *)(buf + 0x40);
         break;
     default:
         return 0;
     }
-    if (m->pairs[0][0] != p[0] || m->pairs[0][1] != p[1]) {
+    if (menu->pairs[0][0] != stamp[0] || menu->pairs[0][1] != stamp[1]) {
         return 0;
     }
     return 1;
 }
 
-static s32 SaveMenu_CharIdMatches(NetMenu *m, s32 k)
+/* 1 when pairs[k] (k: the character slot + 1) equals the date stamp of the character file just read
+ * (charId0, charId1), else 0. */
+static s32 SaveMenu_CharIdMatches(NetMenu *menu, s32 k)
 {
-    if (m->pairs[k][0] != m->charId0 || m->pairs[k][1] != m->charId1) {
+    if (menu->pairs[k][0] != menu->charId0 || menu->pairs[k][1] != menu->charId1) {
         return 0;
     }
     return 1;
 }
 
-s32 SaveMenu_ReadBad(NetMenu *m)
+/* Flushes the cache and decrypts readBuf as fileKind (SaveFile_Decrypt). 1 when its version or sum
+ * is wrong, else 0. */
+s32 SaveMenu_ReadBad(NetMenu *menu)
 {
     FlushCache(0);
-    SaveFile_Decrypt(m, (u16 *)m->readBuf);
-    if (m->badVersion != 0 || m->badSum != 0) {
+    SaveFile_Decrypt(menu, (u16 *)menu->readBuf);
+    if (menu->badVersion != 0 || menu->badSum != 0) {
         return 1;
     }
     return 0;
 }
 
+/* Copies the system data between gSysSave and a system file's body (buf + 0x50). dir 0 loads: the
+ * options, lastSlot and charSaved are copied, bonusUnlocked, unk45E-unk461 and eventFlags are ORed
+ * in, then SysSettings_Reset. Any other dir saves them into the body. Returns 1. */
 s32 SysSave_Exchange(s32 dir, u8 *buf)
 {
-    SysBody *b = (SysBody *)(buf + 0x50);
+    SysBody *body = (SysBody *)(buf + 0x50);
     SysSave *sys = &gSysSave;
     s32 i;
 
     if (dir == 0) {
-        memcpy(sys, b, 0x10);
-        sys->unk458 |= b->unk20;
-        sys->lastSlot = b->unk24;
-        sys->unk45D = b->unk25;
-        sys->unk45E |= b->unk26;
-        sys->unk45F |= b->unk27;
-        sys->unk460 |= b->unk28;
-        sys->unk461 |= b->unk29;
+        memcpy(sys, body, 0x10);
+        sys->bonusUnlocked |= body->bonusUnlocked;
+        sys->lastSlot = body->lastSlot;
+        sys->charSaved = body->charSaved;
+        sys->unk45E |= body->unk45E;
+        sys->unk45F |= body->unk45F;
+        sys->unk460 |= body->unk460;
+        sys->unk461 |= body->unk461;
         i = 0;
         do {
-            sys->unk3C64[i][0] |= b->unk30[i][0];
-            sys->unk3C64[i][1] |= b->unk30[i][1];
+            sys->eventFlags[i][0] |= body->eventFlags[i][0];
+            sys->eventFlags[i][1] |= body->eventFlags[i][1];
             i++;
         } while (i < 2);
         SysSettings_Reset();
     } else {
-        memcpy(b, sys, 0x10);
-        b->unk20 = sys->unk458;
-        b->unk24 = sys->lastSlot;
-        b->unk25 = sys->unk45D;
-        b->unk26 = sys->unk45E;
-        b->unk27 = sys->unk45F;
-        b->unk28 = sys->unk460;
-        b->unk29 = sys->unk461;
+        memcpy(body, sys, 0x10);
+        body->bonusUnlocked = sys->bonusUnlocked;
+        body->lastSlot = sys->lastSlot;
+        body->charSaved = sys->charSaved;
+        body->unk45E = sys->unk45E;
+        body->unk45F = sys->unk45F;
+        body->unk460 = sys->unk460;
+        body->unk461 = sys->unk461;
         i = 0;
         do {
-            b->unk30[i][0] = sys->unk3C64[i][0];
-            b->unk30[i][1] = sys->unk3C64[i][1];
+            body->eventFlags[i][0] = sys->eventFlags[i][0];
+            body->eventFlags[i][1] = sys->eventFlags[i][1];
             i++;
         } while (i < 2);
     }
     return 1;
 }
 
+/* ORs a system file's bonusUnlocked, unk45E-unk461 and eventFlags (its body at buf + 0x50) into
+ * gSysSave, leaving the rest. */
 void SysSave_MergeFlags(u8 *buf)
 {
-    SysBody *b = (SysBody *)(buf + 0x50);
+    SysBody *body = (SysBody *)(buf + 0x50);
     s32 i;
 
-    gSysSave.unk458 |= b->unk20;
-    gSysSave.unk45E |= b->unk26;
-    gSysSave.unk45F |= b->unk27;
-    gSysSave.unk460 |= b->unk28;
-    gSysSave.unk461 |= b->unk29;
+    gSysSave.bonusUnlocked |= body->bonusUnlocked;
+    gSysSave.unk45E |= body->unk45E;
+    gSysSave.unk45F |= body->unk45F;
+    gSysSave.unk460 |= body->unk460;
+    gSysSave.unk461 |= body->unk461;
     i = 0;
     do {
-        gSysSave.unk3C64[i][0] |= b->unk30[i][0];
-        gSysSave.unk3C64[i][1] |= b->unk30[i][1];
+        gSysSave.eventFlags[i][0] |= body->eventFlags[i][0];
+        gSysSave.eventFlags[i][1] |= body->eventFlags[i][1];
         i++;
     } while (i < 2);
 }
 
+/* When the patch file in buf has records (the size at buf + 0x54), copies its data (+0x80), header
+ * (+0x40) and records (+0x10080) into PATCH_DATA, PATCH_HEADER and PATCH_RECS, and applies them
+ * (Patch_ExecAll). */
 void Patch_InstallFile(u8 *buf)
 {
     u8 *hdr = buf + 0x40;
@@ -1212,6 +1256,9 @@ void Patch_InstallFile(u8 *buf)
     }
 }
 
+/* mode 0: copies the file at addr into PATCH_DATA and PATCH_HEADER, as Patch_CopyFile does.
+ * Otherwise fills the file from gSysSettings.extraBuf (the data, then the header from extraBuf +
+ * 0x20000) and encrypts it (SaveMenu_SaveExtra passes 1). */
 void SaveExtra_CopyFile(s32 mode, s32 addr)
 {
     u8 *hdr;
@@ -1230,6 +1277,8 @@ void SaveExtra_CopyFile(s32 mode, s32 addr)
     SaveFile_Encrypt(buf);
 }
 
+/* mode 0: copies the patch file at addr (header +0x40, data +0x80) into PATCH_HEADER and
+ * PATCH_DATA. Otherwise fills the file from them and encrypts it (SaveMenu_CopyAll passes 1). */
 void Patch_CopyFile(s32 mode, s32 addr)
 {
     u8 *hdr;
@@ -1246,11 +1295,14 @@ void Patch_CopyFile(s32 mode, s32 addr)
     SaveFile_Encrypt(buf);
 }
 
+/* 1 when the patch file in buf has a records size (header + 0x14, buf + 0x54), else 0. */
 s32 Patch_FileHasPatch(u8 *buf)
 {
     return *(s32 *)(buf + 0x54) != 0;
 }
 
+/* Starts Patch_LoadStep on the patch file in buf: the header at +0x40, the data at +0x80, the
+ * records to +0x10080. */
 void Patch_BeginFile(u8 *buf)
 {
     u8 *hdr = buf + 0x40;
@@ -1258,77 +1310,89 @@ void Patch_BeginFile(u8 *buf)
     Patch_BeginLoad(hdr, hdr + 0x40, (u8 *)((s32)buf + 0x10080)); /* integer sum, as in Patch_InstallFile */
 }
 
+/* Clears gSysSave.save, the copy of the loaded character. */
 void Save_ClearCopy(void)
 {
     memset(&gSysSave.save, 0, sizeof(SaveData));
 }
 
-void SaveMenu_CopyAll(NetMenu *m)
+/* Builds a whole card image at imageBuf: the system file, three character files (from gCardSlots,
+ * cleared first, so the characters are empty) and the patch file, setting fileKind for each and
+ * restoring it after. */
+void SaveMenu_CopyAll(NetMenu *menu)
 {
     s32 i;
-    s32 saved = m->fileKind;
+    s32 saved = menu->fileKind;
 
     memset(gCardSlots, 0, sizeof(SaveData) * 3);
-    m->fileKind = 1;
-    SaveMenu_CopySystem((struct SaveMenu *)m, (u8 *)SaveBuf_Offset(m->imageBuf, 0, 0), 1);
+    menu->fileKind = 1;
+    SaveMenu_CopySystem((struct SaveMenu *)menu, (u8 *)SaveBuf_Offset(menu->imageBuf, 0, 0), 1);
     for (i = 0; i < 3; i++) {
-        m->fileKind = 2 << i;
-        SaveMenu_CopyCharacter((struct SaveMenu *)m, SaveBuf_Offset(m->imageBuf, 1, i), 1, i);
+        menu->fileKind = 2 << i;
+        SaveMenu_CopyCharacter((struct SaveMenu *)menu, SaveBuf_Offset(menu->imageBuf, 1, i), 1, i);
     }
-    m->fileKind = 0x10;
-    Patch_CopyFile(1, SaveBuf_Offset(m->imageBuf, 2, 0));
-    m->fileKind = saved;
+    menu->fileKind = 0x10;
+    Patch_CopyFile(1, SaveBuf_Offset(menu->imageBuf, 2, 0));
+    menu->fileKind = saved;
 }
 
-void SaveMenu_ClearCharacter(NetMenu *m)
+/* Clears gCardSlots[charIndex]. The load functions call it on bad data. */
+void SaveMenu_ClearCharacter(NetMenu *menu)
 {
-    SaveData *s = gCardSlots;
+    SaveData *save = gCardSlots;
 
-    s += m->charIndex;
-    memset(s, 0, sizeof(SaveData));
+    save += menu->charIndex;
+    memset(save, 0, sizeof(SaveData));
 }
 
-void SaveMenu_CopyCharacterSlot(NetMenu *m, s32 i)
+/* Stores gCardSlots[i] as character file i of imageBuf, stamped and encrypted. */
+void SaveMenu_CopyCharacterSlot(NetMenu *menu, s32 i)
 {
-    SaveMenu_CopyCharacter((struct SaveMenu *)m, SaveBuf_Offset(m->imageBuf, 1, i), 1, i);
+    SaveMenu_CopyCharacter((struct SaveMenu *)menu, SaveBuf_Offset(menu->imageBuf, 1, i), 1, i);
 }
 
-/* The callers in this file pass the menu m they already hold in a0 (the game's code sets no
- * argument register). */
-void CardMenu_InitBuffers(NetMenu *m)
+/* Sets up the card buffers for the save data: card operation 0, the save icons (file 0x1714)
+ * and gLoadBuf split into the menu's buffers (readBuf at +0x40400); clears charRead and
+ * D_006ADAAC; gCardSlots is gLobbySaveBuf when overlay 4 is loaded, else gSaveBuf. The callers
+ * in this file pass the menu they already hold in a0 (the game's code sets no argument
+ * register). */
+void CardMenu_InitBuffers(NetMenu *menu)
 {
     s32 buf;
 
     CardTask_Begin(0);
     buf = gLoadBuf;
     memset((void *)buf, 0, 0x6AFE8);
-    m->iconBuf = (u8 *)buf;
-    m->imageBuf = buf + 0x20000;
-    m->readBuf = (u8 *)(buf + 0x40400);
-    m->slots = (SaveData *)(buf + 0x60800);
-    LoadCompressedFile(m->iconBuf, 0x1714);
-    m->fileBlocks = CardOp_SetFiles((s32 *)m->iconBuf);
-    m->charRead[0] = 0;
-    m->charRead[1] = 0;
-    m->charRead[2] = 0;
-    gCardSlots = m->slots;
+    menu->iconBuf = (u8 *)buf;
+    menu->imageBuf = buf + 0x20000;
+    menu->readBuf = (u8 *)(buf + 0x40400);
+    menu->slots = (SaveData *)(buf + 0x60800);
+    LoadCompressedFile(menu->iconBuf, 0x1714);
+    menu->fileBlocks = CardOp_SetFiles((s32 *)menu->iconBuf);
+    menu->charRead[0] = 0;
+    menu->charRead[1] = 0;
+    menu->charRead[2] = 0;
+    gCardSlots = menu->slots;
     D_006ADAAC = 0;
 }
 
-void CardMenu_InitLoadBuffers(NetMenu *m)
+/* CardMenu_InitBuffers without the icon file: card operation 0, gLoadBuf split into the menu's
+ * buffers, charRead and D_006ADAAC cleared. gCardSlots is gLobbySaveBuf when overlay 4 is loaded,
+ * else gSaveBuf. */
+void CardMenu_InitLoadBuffers(NetMenu *menu)
 {
     s32 buf;
 
     CardTask_Begin(0);
     buf = gLoadBuf;
     memset((void *)buf, 0, 0x6AFE8);
-    m->iconBuf = (u8 *)buf;
-    m->imageBuf = buf + 0x20000;
-    m->readBuf = (u8 *)(buf + 0x40400);
-    m->slots = (SaveData *)(buf + 0x60800);
-    m->charRead[0] = 0;
-    m->charRead[1] = 0;
-    m->charRead[2] = 0;
+    menu->iconBuf = (u8 *)buf;
+    menu->imageBuf = buf + 0x20000;
+    menu->readBuf = (u8 *)(buf + 0x40400);
+    menu->slots = (SaveData *)(buf + 0x60800);
+    menu->charRead[0] = 0;
+    menu->charRead[1] = 0;
+    menu->charRead[2] = 0;
     if (Overlay_IsLoaded(4) == 1) {
         gCardSlots = (SaveData *)gLobbySaveBuf;
     } else {
@@ -1337,72 +1401,78 @@ void CardMenu_InitLoadBuffers(NetMenu *m)
     D_006ADAAC = 0;
 }
 
+/* Draws message id from y (NetMenu_DrawMessage) and returns the y of its last line. */
 s16 NetMenu_DrawMessageY(s16 y, s32 id)
 {
     return NetMenu_DrawMessage(0, y, id);
 }
 
+/* Draws the lines of message id (enum NetMenuMsg), 0x12 apart from y and centred on x 0x140 (x is
+ * unused); ids from 0x40 on read on into gNetMenuMsgLines40. In NETMENU_MSG_OLD_DATA_FOUND and
+ * NETMENU_MSG_ASK_DELETE_LOGIN_ID it fills in %t, %p, %i and %q (the old game's title, oldSlot + 1,
+ * the login id at readBuf + 0x960 and the masked password at readBuf + 0x96B). Returns the y of the
+ * last line. */
 s16 NetMenu_DrawMessage(s32 x, s16 y, s32 id)
 {
     char num[4];
-    char sj[4];
+    char wideNum[4];
     char line[100];
     char name[16];
     char wide[64];
     NetMenu *menu = &gCardMenu;
     u8 **lines;
-    s32 special;
-    char *p;
-    s32 n;
+    s32 hasArgs;
+    char *pct;
+    s32 len;
     s32 i;
-    u8 *s;
+    u8 *text;
 
     Font_SetSpacing(0x12, 0x12);
     Text_SetColor(0);
     lines = gNetMenuMsgLines[id];
-    special = 0;
+    hasArgs = 0;
     if (id == 0x3F) {
-        special = 1;
+        hasArgs = 1;
     }
     if (id == 0x48) {
-        special = 1;
+        hasArgs = 1;
     }
-    while ((s = *lines) != NULL) {
-        if (*s != 0) {
-            if (special == 1) {
-                strcpy(line, (char *)s);
-                p = strchr(line, '%');
-                if (p != NULL) {
-                    switch (p[1]) {
+    while ((text = *lines) != NULL) {
+        if (*text != 0) {
+            if (hasArgs == 1) {
+                strcpy(line, (char *)text);
+                pct = strchr(line, '%');
+                if (pct != NULL) {
+                    switch (pct[1]) {
                     case 't':
-                        *p = 0;
+                        *pct = 0;
                         strcat(line, gNetMenuMsgLines40[0][gOldGameKind - 1U]);
-                        strcat(line, strchr((char *)s, '%') + 2);
+                        strcat(line, strchr((char *)text, '%') + 2);
                         break;
                     case 'p':
                         sprintf(num, "%d", menu->oldSlot + 1);
-                        Sjis_Widen(num, sj);
-                        p[0] = sj[0];
-                        p[1] = sj[1];
+                        Sjis_Widen(num, wideNum);
+                        pct[0] = wideNum[0];
+                        pct[1] = wideNum[1];
                         break;
                     case 'i':
-                        *p = 0;
+                        *pct = 0;
                         sprintf(name, "%s", menu->readBuf + 0x960);
-                        if ((n = strlen(name)) < 10) {
+                        if ((len = strlen(name)) < 10) {
                             do {
                                 strcat(name, " ");
-                                n++;
-                            } while (n < 10);
+                                len++;
+                            } while (len < 10);
                         }
                         Sjis_Widen(name, wide);
                         strcat(line, wide);
-                        strcat(line, strchr((char *)s, '%') + 2);
+                        strcat(line, strchr((char *)text, '%') + 2);
                         break;
                     case 'q':
-                        *p = 0;
-                        n = strlen((char *)menu->readBuf + 0x96B);
-                        if (n != 0) {
-                            for (i = 0; i < n; i++) {
+                        *pct = 0;
+                        len = strlen((char *)menu->readBuf + 0x96B);
+                        if (len != 0) {
+                            for (i = 0; i < len; i++) {
                                 strcat(line, TXT(0x004B02E0) /* a full-width asterisk */);
                             }
                             for (; i < 10; i++) {
@@ -1413,15 +1483,15 @@ s16 NetMenu_DrawMessage(s32 x, s16 y, s32 id)
                                 strcat(line, TXT(0x004B02E8) /* a full-width space */);
                             }
                         }
-                        strcat(line, strchr((char *)s, '%') + 2);
+                        strcat(line, strchr((char *)text, '%') + 2);
                         break;
                     }
                 }
                 Font_SetPos(0x140 - Text_DisplayLength(line) * 18 / 4, y);
                 Text_Printf(line);
             } else {
-                Font_SetPos(0x140 - Text_DisplayLength((char *)s) * 18 / 4, y);
-                Text_Printf((char *)s);
+                Font_SetPos(0x140 - Text_DisplayLength((char *)text) * 18 / 4, y);
+                Text_Printf((char *)text);
             }
         }
         y += 0x12;
@@ -1430,138 +1500,149 @@ s16 NetMenu_DrawMessage(s32 x, s16 y, s32 id)
     return y - 0x12;
 }
 
-static void NetMenu_SetState(NetMenu *m, u8 state)
+/* Sets the state, resets sub to 0 and restarts the button's blink (blinkTimer 15, blinkPhase 1). */
+static void NetMenu_SetState(NetMenu *menu, u8 state)
 {
-    m->state = state;
-    m->sub = 0;
-    m->blinkTimer = 0xF;
-    m->blinkPhase = 1;
+    menu->state = state;
+    menu->sub = 0;
+    menu->blinkTimer = 0xF;
+    menu->blinkPhase = 1;
 }
 
-s32 NetMenu_YesNo(NetMenu *m, s32 x, s16 y, u8 *cursor)
+/* Draws the yes and no labels at y (x is unused); left and right move *cursor (0 yes, 1 no) and the
+ * cursor box. Returns 0 for circle on yes, 1 for circle on no or for cross, else -1. */
+s32 NetMenu_YesNo(NetMenu *menu, s32 x, s16 y, u8 *cursor)
 {
     s32 i;
-    s32 px;
-    char **lbl;
+    s32 labelX;
+    char **labels;
 
     if (*cursor == 0) {
-        if (m->buttons & 0x400) {
+        if (menu->buttons & PAD_RIGHT) {
             *cursor ^= 1;
-            Sound_PlaySeFlat(0, 0x12, 0);
+            Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
         }
-    } else if (m->buttons & 0x800) {
+    } else if (menu->buttons & PAD_LEFT) {
         *cursor ^= 1;
-        Sound_PlaySeFlat(0, 0x12, 0);
+        Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
     }
     Font_SetSpacing(0x12, 0x12);
-    for (i = 0, px = 0xF8, lbl = gNetMenuYesNoLabels; i < 2; i++, px += 0x5A, lbl++) {
+    for (i = 0, labelX = 0xF8, labels = gNetMenuYesNoLabels; i < 2; i++, labelX += 0x5A, labels++) {
         if (*cursor == i) {
             Text_SetColor(5);
         } else {
             Text_SetColor(0);
         }
-        Font_SetPos(px, y);
-        Text_Printf("%s", *lbl);
+        Font_SetPos(labelX, y);
+        Text_Printf("%s", *labels);
     }
-    m->showCursor = 1;
+    menu->showCursor = 1;
     if (*cursor == 0) {
-        m->boxX = 0x10A;
+        menu->boxX = 0x10A;
     } else {
-        m->boxX = 0x16D;
+        menu->boxX = 0x16D;
     }
-    m->boxY = y - 2;
-    m->boxW = 0x6C;
-    m->boxH = 0x16;
-    if (m->buttons & 0x20) {
+    menu->boxY = y - 2;
+    menu->boxW = 0x6C;
+    menu->boxH = 0x16;
+    if (menu->buttons & PAD_CIRCLE) {
         if (*cursor == 0) {
-            Sound_PlaySeFlat(0, 0x13, 0);
+            Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
             return 0;
         }
-        Sound_PlaySeFlat(0, 0x14, 0);
+        Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
         return 1;
     }
-    if (m->buttons & 0x40) {
-        Sound_PlaySeFlat(0, 0x14, 0);
+    if (menu->buttons & PAD_CROSS) {
+        Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
         return 1;
     }
     return -1;
 }
 
-s32 NetMenu_ChooseSlot(NetMenu *m, s16 x, s16 y, u8 *slot, s32 flag)
+/* Draws the two slots' labels (NETMENU_MSG_SLOT_LABELS' lines 0 and 2) below y. displayOnly 0: up
+ * and down toggle *slot and the cursor box follows; returns *slot on circle, 2 on cross, else -1.
+ * Otherwise it only draws and returns -1. */
+s32 NetMenu_ChooseSlot(NetMenu *menu, s16 x, s16 y, u8 *slot, s32 displayOnly)
 {
     s32 i;
-    char **lbl = D_004682AC[0];
-    s32 y2;
+    char **labels = D_004682AC[0];
+    s32 firstY;
     s32 top;
-    s32 py;
+    s32 lineY;
 
-    if (flag == 0 && (m->buttons & 0x3000)) {
+    if (displayOnly == 0 && (menu->buttons & (PAD_UP | PAD_DOWN))) {
         *slot ^= 1;
-        Sound_PlaySeFlat(0, 0x12, 0);
+        Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
     }
     Font_SetSpacing(0x12, 0x12);
-    y2 = y + 0x12;
-    top = (s16)y2;
-    py = top;
-    for (i = 0; i < 2; i++, py += 0x24, lbl += 2) {
+    firstY = y + 0x12;
+    top = (s16)firstY;
+    lineY = top;
+    for (i = 0; i < 2; i++, lineY += 0x24, labels += 2) {
         if (*slot == i) {
             Text_SetColor(5);
         } else {
             Text_SetColor(0);
         }
-        Font_SetPos(x, py);
-        Text_Printf(*lbl);
+        Font_SetPos(x, lineY);
+        Text_Printf(*labels);
     }
-    if (flag == 0) {
-        m->showCursor = 1;
-        m->boxX = x + 0x63;
+    if (displayOnly == 0) {
+        menu->showCursor = 1;
+        menu->boxX = x + 0x63;
         if (*slot == 0) {
-            m->boxY = y2;
+            menu->boxY = firstY;
         } else {
-            m->boxY = top + 0x24;
+            menu->boxY = top + 0x24;
         }
-        m->boxY -= 2;
-        m->boxW = 0x132;
-        m->boxH = 0x16;
-        if (m->buttons & 0x20) {
-            Sound_PlaySeFlat(0, 0x13, 0);
+        menu->boxY -= 2;
+        menu->boxW = 0x132;
+        menu->boxH = 0x16;
+        if (menu->buttons & PAD_CIRCLE) {
+            Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
             return *slot;
         }
-        if (m->buttons & 0x40) {
-            Sound_PlaySeFlat(0, 0x14, 0);
+        if (menu->buttons & PAD_CROSS) {
+            Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
             return 2;
         }
     }
     return -1;
 }
 
-s32 NetMenu_WaitButton(NetMenu *m, s16 x, s16 y, s32 mode)
+/* Places the blinking button icon at x, y (hidden in mode 2). Returns 1 once circle is pressed,
+ * else 0. mode picks the sound: SE_SYS_CONFIRM for 0 and 2, sound 4 of bank 1 for 3, SE_SYS_CANCEL
+ * for 1. */
+s32 NetMenu_WaitButton(NetMenu *menu, s16 x, s16 y, s32 mode)
 {
-    m->buttonX = x;
-    m->buttonY = y;
-    m->blinkTimer--;
-    if (m->blinkTimer <= 0) {
-        m->blinkTimer = 0xF;
-        m->blinkPhase ^= 1;
+    menu->buttonX = x;
+    menu->buttonY = y;
+    menu->blinkTimer--;
+    if (menu->blinkTimer <= 0) {
+        menu->blinkTimer = 0xF;
+        menu->blinkPhase ^= 1;
     }
     if (mode != 2) {
-        m->showButton = m->blinkPhase;
+        menu->showButton = menu->blinkPhase;
     } else {
-        m->showButton = 0;
+        menu->showButton = 0;
     }
-    if (m->buttons & 0x20) {
+    if (menu->buttons & PAD_CIRCLE) {
         if (mode == 0 || mode == 2) {
-            Sound_PlaySeFlat(0, 0x13, 0);
+            Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
         } else if (mode == 3) {
             Sound_PlaySeFlat(1, 4, 0);
         } else {
-            Sound_PlaySeFlat(0, 0x14, 0);
+            Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
         }
         return 1;
     }
     return 0;
 }
 
+/* 1 when the card in port slot was changed (Card_IsChanged) or is gone (Card_PortState 0), else 0.
+ */
 s32 NetMenu_CardChanged(s32 slot)
 {
     if (Card_IsChanged(slot)) {
@@ -1573,6 +1654,10 @@ s32 NetMenu_CardChanged(s32 slot)
     return 0;
 }
 
+/* Opens the card menu in a mode (enum NetMenuMode); NetMenu_Update then runs the mode's
+ * CardMenu_Run*. Loads gCardMenuTex for the boot, logout, save-asking and login-id modes;
+ * NETMENU_MODE_SAVE_B runs as NETMENU_MODE_SAVE with openMode set. Resets the state, done and
+ * result[] (CARD_NOT_TRIED), clears gNetMenuDrawHooks and makes NetMenu_Draw hook 0's draw. */
 void NetMenu_Open(u8 mode)
 {
     NetMenu *menu = &gCardMenu;
@@ -1581,10 +1666,10 @@ void NetMenu_Open(u8 mode)
 
     D_006AF044 = 0;
     switch (mode) {
-    case 0:
-    case 9:
-    case 8:
-    case 0x12:
+    case NETMENU_MODE_BOOT:
+    case NETMENU_MODE_SAVE_ASK:
+    case NETMENU_MODE_GAME_SAVE_LOGOUT:
+    case NETMENU_MODE_DELETE_LOGIN_ID:
         menu->menuTexOn = 1;
         if (gCardMenuTex == 0) {
             buf = gLoadBuf;
@@ -1595,27 +1680,27 @@ void NetMenu_Open(u8 mode)
     default:
         menu->menuTexOn = 0;
         break;
-    case 0x10:
+    case NETMENU_MODE_SAVE_B:
         menu->openMode = mode;
         menu->menuTexOn = 0;
-        mode = 5;
+        mode = NETMENU_MODE_SAVE;
         break;
     }
     menu->state = 0;
     menu->sub = 0;
     menu->mode = mode;
     menu->done = 0;
-    menu->result[0] = -100;
-    menu->result[1] = -100;
+    menu->result[0] = CARD_NOT_TRIED;
+    menu->result[1] = CARD_NOT_TRIED;
     for (i = 0; i < 2; i++) {
         memset(gNetMenuDrawHooks[i], 0, 0x20);
     }
-    gSysSettings.unk12 = 0;
+    gSysSettings.cardMenuDone = 0;
     D_006A3A24 = NetMenu_Draw;
     switch (mode) {
-    case 6:
-    case 7:
-    case 8:
+    case NETMENU_MODE_GAME_SAVE_TOWN:
+    case NETMENU_MODE_GAME_SAVE_ENTRY:
+    case NETMENU_MODE_GAME_SAVE_LOGOUT:
         func_003D5B70();
         break;
     }
@@ -1633,48 +1718,52 @@ extern u8 D_006AF040;
 void Text_SetSize(s32 size);
 extern ListWin *gNetMenuPanels[];
 
+/* Draws the card menu: the gCardMenuTex backdrop when menuTexOn (D_006AF040) is 1, the four layers
+ * (a gNetMenuPanels panel, opaque in the settings modes; 5, 6 and 8 the slot frames:
+ * CardMenu_DrawSlotFrames), the cursor box and the blinking button icon. Saves and restores the
+ * z-write, blend and texture filter states. */
 void NetMenu_Draw(void)
 {
-    NetMenu *m = &gCardMenu;
-    s32 a;
-    s32 b;
-    s32 c;
+    NetMenu *menu = &gCardMenu;
+    s32 savedZwrite;
+    s32 savedBlend;
+    s32 savedTexFilter;
     s32 i;
     u8 k;
-    Sprite s;
+    Sprite sprite;
 
-    Gs_SetState(0x60, 0);
+    Gs_SetState(RS_ALPHA_REF, 0);
     Gfx_SetBlend(4, 5);
     if (D_006AF040 == 1 && gCardMenuTex != 0) {
-        a = Gs_GetState(0x6C);
-        b = Gs_GetState(0x5E);
-        c = Gs_GetState(0x63);
+        savedZwrite = Gs_GetState(0x6C);
+        savedBlend = Gs_GetState(0x5E);
+        savedTexFilter = Gs_GetState(0x63);
         Gs_GetState(4);
         Gs_SetState(0x6C, 0);
         Gs_SetState(0x5E, 0x32);
-        Gs_SetState(0x63, 0);
+        Gs_SetState(RS_TEX_FILTER, 0);
         Tex_Use(1, (u32 *)&gCardMenuTex);
-        Gs_SetState(4, gCardMenuTex);
-        s.w = 0x280;
-        s.u1 = 0xFF;
-        s.h = 0x1C0;
-        s.v1 = 0xFF;
-        s.color = -1;
-        s.x = 0;
-        s.y = 0;
-        s.u0 = 0;
-        s.v0 = 0;
-        Sprite_Draw(&s);
-        Gs_SetState(0x63, c);
-        Gs_SetState(0x5E, b);
-        Gs_SetState(0x6C, a);
+        Gs_SetState(RS_TEXTURE, gCardMenuTex);
+        sprite.w = 0x280;
+        sprite.u1 = 0xFF;
+        sprite.h = 0x1C0;
+        sprite.v1 = 0xFF;
+        sprite.color = -1;
+        sprite.x = 0;
+        sprite.y = 0;
+        sprite.u0 = 0;
+        sprite.v0 = 0;
+        Sprite_Draw(&sprite);
+        Gs_SetState(RS_TEX_FILTER, savedTexFilter);
+        Gs_SetState(0x5E, savedBlend);
+        Gs_SetState(0x6C, savedZwrite);
     }
     Text_SetSize(4);
     for (i = 0; i < 4; i++) {
-        k = m->layers[i];
+        k = menu->layers[i];
         switch (k) {
         default:
-            if (m->mode == 1 || m->mode == 14) {
+            if (menu->mode == NETMENU_MODE_SAVE_SYSTEM || menu->mode == NETMENU_MODE_SAVE_GALLERY) {
                 ListPanel_DrawAlpha(gNetMenuPanels[k], 0, -1, 0xFF);
             } else {
                 ListPanel_DrawAlpha(gNetMenuPanels[k], 0, -1, 0x80);
@@ -1687,244 +1776,256 @@ void NetMenu_Draw(void)
             CardMenu_DrawSlotFrames(&gChrEdit, 2, 0, (s8)gChrEdit.slot);
             break;
         case 8:
-            CardMenu_DrawSlotFrames(&gChrEdit, 0, 0, m->slotSel);
+            CardMenu_DrawSlotFrames(&gChrEdit, 0, 0, menu->slotSel);
             break;
         case 0:
             break;
         }
     }
-    if (m->showCursor != 0) {
-        Menu_DrawGlowBar(m->boxX, m->boxY, m->boxW, m->boxH, 0xFF20C0C0);
+    if (menu->showCursor != 0) {
+        Menu_DrawGlowBar(menu->boxX, menu->boxY, menu->boxW, menu->boxH, 0xFF20C0C0);
     }
-    if (m->showButton != 0) {
-        switch (m->mode) {
+    if (menu->showButton != 0) {
+        switch (menu->mode) {
         case 5:
         case 6:
         case 7:
         case 8:
         case 9:
         case 10:
-            Hud_DrawButtonIconWhite(0x14, m->buttonX, m->buttonY, 0x146, 1.0f);
+            Hud_DrawButtonIconWhite(0x14, menu->buttonX, menu->buttonY, 0x146, 1.0f);
             break;
         default:
-            Hud_DrawButtonIconWhite(0x14, m->buttonX, m->buttonY, 8, 1.0f);
+            Hud_DrawButtonIconWhite(0x14, menu->buttonX, menu->buttonY, 8, 1.0f);
             break;
         }
     }
     Text_SetSize(0);
 }
 
-void NetMenu_StartCardRead(NetMenu *m)
+/* Starts reading the patch file (file 8) of port menu->slot into readBuf, as fileKind 0x10. */
+void NetMenu_StartCardRead(NetMenu *menu)
 {
-    CardTask_StartRead(m->slot, (u8 *)m->readBuf);
+    CardTask_StartRead(menu->slot, (u8 *)menu->readBuf);
     CardTask_SelectFile(8, 0);
     CardState_SetFlags(0x10);
 }
 
-void CardBoot_Start(NetMenu *m)
+/* Selects the first old game's card operation (CardTask_Begin(2)), clears gOldGameKind and oldSlot
+ * and starts a save check on port 0; then CardBoot_FindMH. */
+void CardBoot_Start(NetMenu *menu)
 {
     CardTask_Begin(2);
-    NetMenu_SetState(m, 1);
-    m->slot = 0;
-    m->timer = 0;
-    CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 0);
+    NetMenu_SetState(menu, CARD_BOOT_FIND_MH);
+    menu->slot = 0;
+    menu->timer = 0;
+    CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 0);
     CardTask_SelectFile(4, 0);
     gOldGameKind = 0;
-    m->oldSlot = -1;
+    menu->oldSlot = -1;
 }
 
-void CardBoot_FindMH(NetMenu *m)
+/* Waits for the old game's save check. Found: gOldGameKind 1 and oldSlot, then CardBoot_AutoLoad.
+ * Missing on port 0: tries port 1. Missing on both: checks port 0 for the G version's save
+ * (CardTask_Begin(3)) and goes to CardBoot_FindMHG. */
+void CardBoot_FindMH(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x64, 0x88, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_CHECKING_BOTH);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
         gOldGameKind = 1;
-        m->oldSlot = m->slot;
-        NetMenu_SetState(m, 4);
-        m->slot = 0;
-        m->timer = 0;
-        CardMenu_InitBuffers(m);
-        m->unkA3 = 0;
-        m->sub = 0;
-        CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 0);
+        menu->oldSlot = menu->slot;
+        NetMenu_SetState(menu, CARD_BOOT_AUTO_LOAD);
+        menu->slot = 0;
+        menu->timer = 0;
+        CardMenu_InitBuffers(menu);
+        menu->saveStep = 0;
+        menu->sub = 0;
+        CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 0);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
     default:
-        if (m->slot == 0) {
-            m->slot = 1;
-            CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 0);
+        if (menu->slot == 0) {
+            menu->slot = 1;
+            CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 0);
             CardTask_SelectFile(4, 0);
             break;
         }
         CardTask_Begin(3);
-        NetMenu_SetState(m, 2);
-        m->result[1] = 0;
-        m->result[0] = 0;
-        m->slot = 0;
-        m->timer = 0;
-        CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 0);
+        NetMenu_SetState(menu, CARD_BOOT_FIND_MHG);
+        menu->result[1] = 0;
+        menu->result[0] = 0;
+        menu->slot = 0;
+        menu->timer = 0;
+        CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 0);
         CardTask_SelectFile(4, 0);
         break;
     }
 }
 
-void CardBoot_FindMHG(NetMenu *m)
+/* Waits for the G version's save check. Found: gOldGameKind 2 and oldSlot. After that, or when port
+ * 1 has none either: clears cardHasChara, CardMenu_InitBuffers, then CardBoot_AutoLoad. */
+void CardBoot_FindMHG(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x64, 0x88, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_CHECKING_BOTH);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
         gOldGameKind = 2;
-        m->oldSlot = m->slot;
+        menu->oldSlot = menu->slot;
     next:
-        NetMenu_SetState(m, 4);
+        NetMenu_SetState(menu, CARD_BOOT_AUTO_LOAD);
         gSysSettings.cardHasChara = 0;
-        m->slot = 0;
-        m->timer = 0;
-        CardMenu_InitBuffers(m);
-        m->unkA3 = 0;
-        m->sub = 0;
+        menu->slot = 0;
+        menu->timer = 0;
+        CardMenu_InitBuffers(menu);
+        menu->saveStep = 0;
+        menu->sub = 0;
         break;
-    case -1:
+    case CARD_BUSY:
         break;
     default:
-        if (m->slot != 0) {
+        if (menu->slot != 0) {
             goto next;
         }
-        m->slot = 1;
-        CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 0);
+        menu->slot = 1;
+        CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 0);
         CardTask_SelectFile(4, 0);
         break;
     }
 }
 
-void CardBoot_AutoLoad(NetMenu *m)
+/* sub 0 loads the system file from port 0, then port 1 (SaveMenu_LoadSystem); by the two results it
+ * goes to CardBoot_ShowOldData (no save or unformatted) or asks whether to start anyway
+ * (CardBoot_AskStart, with the message for bad data, no card or no space). sub 1 checks the
+ * character files until one reads (cardHasChara 1), then CardBoot_Loaded. */
+void CardBoot_AutoLoad(NetMenu *menu)
 {
-    s32 r;
-    s32 r0;
-    s32 r1;
+    s32 cardResult;
+    s32 port0Result;
+    s32 port1Result;
 
-    switch (m->sub) {
+    switch (menu->sub) {
     case 0:
-        NetMenu_DrawMessage(0x64, 0x88, 1);
-        switch (SaveMenu_LoadSystem((struct SaveMenu *)m, 1)) {
+        NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_CHECKING_BOTH);
+        switch (SaveMenu_LoadSystem((struct SaveMenu *)menu, 1)) {
         case 0:
             break;
         case 1:
-            m->charIndex = 0;
-            m->sub++;
-            m->unkA3 = 0;
+            menu->charIndex = 0;
+            menu->sub++;
+            menu->saveStep = 0;
             break;
         case -1:
-            switch (m->result[m->slot]) {
+            switch (menu->result[menu->slot]) {
             case -0xFD:
             case -0xFE:
-                if (m->slot == 1) {
-                    NetMenu_SetState(m, 7);
+                if (menu->slot == 1) {
+                    NetMenu_SetState(menu, CARD_BOOT_SHOW_OLD_DATA);
                     break;
                 }
             case -0xFC:
             case -0xFF:
             default:
-                if (m->slot == 0) {
-                    m->slot = 1;
-                    m->sub = 0;
-                    m->unkA3 = 0;
+                if (menu->slot == 0) {
+                    menu->slot = 1;
+                    menu->sub = 0;
+                    menu->saveStep = 0;
                     break;
                 }
-                r0 = m->result[0];
-                if (r0 == -0x100 && m->result[1] != 0) {
-                    m->slot = 0;
-                    NetMenu_SetState(m, 8);
-                    m->msg = 0x42;
-                    m->cursor = 1;
+                port0Result = menu->result[0];
+                if (port0Result == -0x100 && menu->result[1] != 0) {
+                    menu->slot = 0;
+                    NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                    menu->msg = NETMENU_MSG_ASK_START_LOAD_FAILED;
+                    menu->cursor = 1;
                     break;
                 }
-                if (r0 == -0xFF && m->result[1] == -0x100) {
-                    m->slot = 1;
-                    NetMenu_SetState(m, 8);
-                    m->msg = 0x42;
-                    m->cursor = 1;
+                if (port0Result == -0xFF && menu->result[1] == -0x100) {
+                    menu->slot = 1;
+                    NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                    menu->msg = NETMENU_MSG_ASK_START_LOAD_FAILED;
+                    menu->cursor = 1;
                     break;
                 }
-                if (r0 == -0xFB && m->result[1] != 0) {
-                    m->slot = 0;
-                    NetMenu_SetState(m, 8);
-                    m->msg = 3;
-                    m->cursor = 1;
+                if (port0Result == -0xFB && menu->result[1] != 0) {
+                    menu->slot = 0;
+                    NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                    menu->msg = NETMENU_MSG_ASK_START_BAD_DATA;
+                    menu->cursor = 1;
                     break;
                 }
-                r1 = m->result[1];
-                if (r1 == -0xFB && r0 != 0) {
-                    m->slot = 1;
-                    NetMenu_SetState(m, 8);
-                    m->msg = 3;
-                    m->cursor = 1;
+                port1Result = menu->result[1];
+                if (port1Result == -0xFB && port0Result != 0) {
+                    menu->slot = 1;
+                    NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                    menu->msg = NETMENU_MSG_ASK_START_BAD_DATA;
+                    menu->cursor = 1;
                     break;
                 }
-                if (r0 == -0xFD || r0 == -0xFE) {
-                    NetMenu_SetState(m, 7);
+                if (port0Result == -0xFD || port0Result == -0xFE) {
+                    NetMenu_SetState(menu, CARD_BOOT_SHOW_OLD_DATA);
                     break;
                 }
-                if (r1 == -0xFD || r1 == -0xFE) {
-                    NetMenu_SetState(m, 7);
+                if (port1Result == -0xFD || port1Result == -0xFE) {
+                    NetMenu_SetState(menu, CARD_BOOT_SHOW_OLD_DATA);
                     break;
                 }
-                m->cursor = 1;
-                if (m->result[0] == -0xFC && m->result[1] == -0xFC) {
-                    m->slot = 0;
-                    NetMenu_SetState(m, 8);
-                    m->msg = 0x2F;
+                menu->cursor = 1;
+                if (menu->result[0] == -0xFC && menu->result[1] == -0xFC) {
+                    menu->slot = 0;
+                    NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                    menu->msg = NETMENU_MSG_ASK_START_NO_SPACE_BOTH;
                     break;
                 }
-                if (m->result[0] == -0xFC) {
-                    m->slot = 0;
-                    NetMenu_SetState(m, 8);
-                    m->msg = 6;
+                if (menu->result[0] == -0xFC) {
+                    menu->slot = 0;
+                    NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                    menu->msg = NETMENU_MSG_ASK_START_NO_SPACE;
                     break;
                 }
-                if (m->result[1] == -0xFC) {
-                    m->slot = 1;
-                    NetMenu_SetState(m, 8);
-                    m->msg = 6;
+                if (menu->result[1] == -0xFC) {
+                    menu->slot = 1;
+                    NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                    menu->msg = NETMENU_MSG_ASK_START_NO_SPACE;
                     break;
                 }
-                NetMenu_SetState(m, 8);
-                m->msg = 5;
+                NetMenu_SetState(menu, CARD_BOOT_ASK_START);
+                menu->msg = NETMENU_MSG_ASK_START_NO_CARD;
                 break;
             }
             break;
         }
         break;
     case 1:
-        NetMenu_DrawMessage(0x64, 0x88, 2);
-        SaveMenu_CheckCharacter((struct SaveMenu *)m);
-        r = CardTask_Result();
-        m->result[m->slot] = r;
-        switch (r) {
-        case 0:
+        NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_AUTOLOADING);
+        SaveMenu_CheckCharacter((struct SaveMenu *)menu);
+        cardResult = CardTask_Result();
+        menu->result[menu->slot] = cardResult;
+        switch (cardResult) {
+        case CARD_OK:
             gSysSettings.cardHasChara = 1;
         done:
-            NetMenu_SetState(m, 5);
-            m->timer = 0x78;
+            NetMenu_SetState(menu, CARD_BOOT_LOADED);
+            menu->timer = 0x78;
             break;
-        case -1:
+        case CARD_BUSY:
             break;
         default:
-            m->charIndex++;
-            if (m->charIndex >= 3) {
-                m->charIndex = 0;
+            menu->charIndex++;
+            if (menu->charIndex >= 3) {
+                menu->charIndex = 0;
                 goto done;
             }
-            m->unkA3 = 0;
+            menu->saveStep = 0;
             break;
         }
         break;
@@ -1933,16 +2034,16 @@ void CardBoot_AutoLoad(NetMenu *m)
 
 /* 0x3D8510: states of the network menu */
 
-s32 NetMenu_YesNo(NetMenu *m, s32 x, s16 y, u8 *cursor);
+s32 NetMenu_YesNo(NetMenu *menu, s32 x, s16 y, u8 *cursor);
 s32 NetMenu_CardChanged(s32 slot);
 void Patch_InstallFile(u8 *buf);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void CardMenu_InitBuffers(NetMenu *m);
-void SaveMenu_CopyAll(NetMenu *m);
+void CardMenu_InitBuffers(NetMenu *menu);
+void SaveMenu_CopyAll(NetMenu *menu);
 s32 SaveMenu_SaveSystem(struct SaveMenu *m);
 void CardTask_StartDelete(s32 slot);
 s32 CardTask_Result(void);
-s32 SaveMenu_ReadBad(NetMenu *m);
+s32 SaveMenu_ReadBad(NetMenu *menu);
 void Patch_BeginFile(u8 *buf);
 void SysSave_MergeFlags(u8 *buf);
 void CardTask_StartCheck(void);
@@ -1956,672 +2057,731 @@ void Card_ClearChanged(void);
 void SaveMenu_CopySystem(struct SaveMenu *m, u8 *data, s32 save);
 void func_6AF3D0(void *a, s32 b);
 void Save_CopyToSlot(s32 i);
-void SaveMenu_CopyCharacterSlot(NetMenu *m, s32 i);
+void SaveMenu_CopyCharacterSlot(NetMenu *menu, s32 i);
 extern s8 D_006ADAAE;
 extern u8 gOldGameKind;
 extern SaveData *gCardSlots;
 
-void CardBoot_Loaded(NetMenu *m)
+/* Shows the loading notice for one frame, then CardBoot_ReadPatch. */
+void CardBoot_Loaded(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, 2);
-    NetMenu_SetState(m, 9);
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_AUTOLOADING);
+    NetMenu_SetState(menu, CARD_BOOT_READ_PATCH);
 }
 
-void CardBoot_ShowLoaded(NetMenu *m)
+/* Shows that the load finished until circle or the timer's end, then CardBoot_ShowOldData. */
+void CardBoot_ShowLoaded(NetMenu *menu)
 {
-    if (NetMenu_WaitButton(m, 0x1DE, NetMenu_DrawMessage(0x64, 0x88, 4) + 0x12, 2) != 0 || m->timer <= 0) {
-        NetMenu_SetState(m, 7);
+    if (NetMenu_WaitButton(menu, 0x1DE, NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_AUTOLOADED) + 0x12, 2) != 0 || menu->timer <= 0) {
+        NetMenu_SetState(menu, CARD_BOOT_SHOW_OLD_DATA);
         return;
     }
 }
 
-void CardBoot_ShowOldData(NetMenu *m)
+/* When an old game's save was found (gOldGameKind) and the system data records none yet
+ * (gSysSave.oldGameKind, read as D_006ADAAE), shows NETMENU_MSG_OLD_DATA_FOUND for 120 frames or
+ * until circle. Then CARD_BOOT_DONE. */
+void CardBoot_ShowOldData(NetMenu *menu)
 {
-    switch (m->sub) {
+    switch (menu->sub) {
     case 0:
         if (D_006ADAAE != 0 || gOldGameKind == 0) {
-            NetMenu_SetState(m, 0xC);
+            NetMenu_SetState(menu, CARD_BOOT_DONE);
             break;
         }
-        m->timer = 0x78;
-        m->sub++;
+        menu->timer = 0x78;
+        menu->sub++;
     case 1:
-        if (NetMenu_WaitButton(m, 0x1DE, NetMenu_DrawMessage(0x64, 0x88, 0x3F) + 0x12, 2) != 0 || m->timer <= 0) {
-            NetMenu_SetState(m, 0xC);
+        if (NetMenu_WaitButton(menu, 0x1DE, NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_OLD_DATA_FOUND) + 0x12, 2) != 0 || menu->timer <= 0) {
+            NetMenu_SetState(menu, CARD_BOOT_DONE);
         }
         break;
     }
 }
 
-void CardBoot_AskStart(NetMenu *m)
+/* Asks menu->msg's start-anyway prompt. Yes: CardBoot_ShowOldData. No: back to CARD_BOOT_START,
+ * which checks the cards again. */
+void CardBoot_AskStart(NetMenu *menu)
 {
-    s32 msg = m->msg;
+    s32 msg = menu->msg;
 
-    switch (NetMenu_YesNo(m, 0x52, NetMenu_DrawMessage(0x64, 0x88, msg) + 0x12, &m->cursor)) {
-    case 1:
-        m->state = 0;
+    switch (NetMenu_YesNo(menu, 0x52, NetMenu_DrawMessage(0x64, 0x88, msg) + 0x12, &menu->cursor)) {
+    case NETMENU_NO:
+        menu->state = 0;
         break;
-    case 0:
-        NetMenu_SetState(m, 7);
+    case NETMENU_YES:
+        NetMenu_SetState(menu, CARD_BOOT_SHOW_OLD_DATA);
         break;
     }
 }
 
-void CardBoot_ReadPatch(NetMenu *m)
+/* Shows the loading notice and starts reading the patch file (NetMenu_StartCardRead); then
+ * CardBoot_CheckPatch. */
+void CardBoot_ReadPatch(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, 2);
-    NetMenu_SetState(m, 0xA);
-    NetMenu_StartCardRead(m);
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_AUTOLOADING);
+    NetMenu_SetState(menu, CARD_BOOT_CHECK_PATCH);
+    NetMenu_StartCardRead(menu);
 }
 
-void CardBoot_CheckPatch(NetMenu *m)
+/* Waits for the patch file. A good one with records: Patch_BeginFile, then CardBoot_LoadPatch. Bad,
+ * without records, or a card error: the success sound, then CardBoot_ShowLoaded (timer 120 frames).
+ */
+void CardBoot_CheckPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x64, 0x88, 2);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) != 0) {
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_AUTOLOADING);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) != 0) {
         fail:
-            m->timer = 0x78;
-            NetMenu_SetState(m, 6);
+            menu->timer = 0x78;
+            NetMenu_SetState(menu, CARD_BOOT_SHOW_LOADED);
             Sound_PlaySeFlat(0, 0x19, 0);
             break;
         }
-        if (Patch_FileHasPatch(m->readBuf) == 0) {
+        if (Patch_FileHasPatch(menu->readBuf) == 0) {
             goto fail;
         }
-        m->timer = 0x78;
-        NetMenu_SetState(m, 0xB);
-        Patch_BeginFile(m->readBuf);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_BOOT_LOAD_PATCH);
+        Patch_BeginFile(menu->readBuf);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        m->timer = 0x78;
-        NetMenu_SetState(m, 6);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_BOOT_SHOW_LOADED);
         Sound_PlaySeFlat(0, 0x19, 0);
         break;
     }
 }
 
-void CardBoot_LoadPatch(NetMenu *m)
+/* Runs Patch_LoadStep until it ends, installs the patch when it returned 2 (Patch_InstallFile),
+ * plays the success sound and goes to CardBoot_ShowLoaded. */
+void CardBoot_LoadPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 patchResult;
 
-    NetMenu_DrawMessage(0x64, 0x88, 4);
-    r = Patch_LoadStep();
-    if (r != 0) {
-        if (r == 2) {
-            Patch_InstallFile(m->readBuf);
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_AUTOLOADED);
+    patchResult = Patch_LoadStep();
+    if (patchResult != 0) {
+        if (patchResult == 2) {
+            Patch_InstallFile(menu->readBuf);
         }
-        NetMenu_SetState(m, 6);
+        NetMenu_SetState(menu, CARD_BOOT_SHOW_LOADED);
         Sound_PlaySeFlat(0, 0x19, 0);
     }
 }
 
-void CardMenu_RunBoot(NetMenu *m)
+/* NETMENU_MODE_BOOT: runs the CardBoot_* function of menu->state (enum CardBootState): finds an old
+ * game's save, loads the system and character files and a newer patch. CARD_BOOT_DONE sets done 1.
+ */
+void CardMenu_RunBoot(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardBoot_Start(m);
+    switch (menu->state) {
+    case CARD_BOOT_START:
+        CardBoot_Start(menu);
         break;
-    case 1:
-        CardBoot_FindMH(m);
+    case CARD_BOOT_FIND_MH:
+        CardBoot_FindMH(menu);
         break;
-    case 2:
-        CardBoot_FindMHG(m);
+    case CARD_BOOT_FIND_MHG:
+        CardBoot_FindMHG(menu);
         break;
-    case 3:
-        CardBoot_FindMHG(m);
+    case CARD_BOOT_FIND_MHG2:
+        CardBoot_FindMHG(menu);
         break;
-    case 4:
-        CardBoot_AutoLoad(m);
+    case CARD_BOOT_AUTO_LOAD:
+        CardBoot_AutoLoad(menu);
         break;
-    case 5:
-        CardBoot_Loaded(m);
+    case CARD_BOOT_LOADED:
+        CardBoot_Loaded(menu);
         break;
-    case 6:
-        CardBoot_ShowLoaded(m);
+    case CARD_BOOT_SHOW_LOADED:
+        CardBoot_ShowLoaded(menu);
         break;
-    case 7:
-        CardBoot_ShowOldData(m);
+    case CARD_BOOT_SHOW_OLD_DATA:
+        CardBoot_ShowOldData(menu);
         break;
-    case 8:
-        CardBoot_AskStart(m);
+    case CARD_BOOT_ASK_START:
+        CardBoot_AskStart(menu);
         break;
-    case 9:
-        CardBoot_ReadPatch(m);
+    case CARD_BOOT_READ_PATCH:
+        CardBoot_ReadPatch(menu);
         break;
-    case 10:
-        CardBoot_CheckPatch(m);
+    case CARD_BOOT_CHECK_PATCH:
+        CardBoot_CheckPatch(menu);
         break;
-    case 11:
-        CardBoot_LoadPatch(m);
+    case CARD_BOOT_LOAD_PATCH:
+        CardBoot_LoadPatch(menu);
         break;
-    case 12:
-        m->done = 1;
+    case CARD_BOOT_DONE:
+        menu->done = 1;
         break;
     }
 }
 
-void CardSys_Start(NetMenu *m)
+/* Puts the cursor on no and the port at 0; then CardSys_AskSave. */
+void CardSys_Start(NetMenu *menu)
 {
-    NetMenu_SetState(m, 1);
-    m->cursor = 1;
-    m->slot = 0;
+    NetMenu_SetState(menu, CARD_SYS_ASK_SAVE);
+    menu->cursor = 1;
+    menu->slot = 0;
 }
 
-void CardSys_AskSave(NetMenu *m)
+/* Asks whether to save the settings (the gallery's prompt in NETMENU_MODE_SAVE_GALLERY). Yes:
+ * CardSys_ChooseSlot (port 0). No: CARD_SYS_DONE. */
+void CardSys_AskSave(NetMenu *menu)
 {
-    s16 h;
+    s16 lastY;
 
-    if (m->mode == 1) {
-        h = NetMenu_DrawMessage(0xDD, 0x88, 9);
+    if (menu->mode == NETMENU_MODE_SAVE_SYSTEM) {
+        lastY = NetMenu_DrawMessage(0xDD, 0x88, NETMENU_MSG_ASK_SAVE_SETTINGS);
     } else {
-        h = NetMenu_DrawMessage(0xDD, 0x88, 0x3D);
+        lastY = NetMenu_DrawMessage(0xDD, 0x88, NETMENU_MSG_ASK_SAVE_GALLERY);
     }
-    switch (NetMenu_YesNo(m, 0xCB, h + 0x24, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 0xF);
+    switch (NetMenu_YesNo(menu, 0xCB, lastY + 0x24, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_SYS_DONE);
         break;
-    case 0:
-        NetMenu_SetState(m, 2);
-        m->sub = 0;
-        m->slot = 0;
+    case NETMENU_YES:
+        NetMenu_SetState(menu, CARD_SYS_CHOOSE_SLOT);
+        menu->sub = 0;
+        menu->slot = 0;
         break;
     }
 }
 
-void CardSys_ChooseSlot(NetMenu *m)
+/* Asks for the port. After a choice it waits 4 frames, calls CardMenu_InitBuffers and goes to
+ * CardSys_ReadCharacters; cross goes back to CardSys_AskSave. */
+void CardSys_ChooseSlot(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 8);
-    switch (m->sub) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_SAVE_SLOT);
+    switch (menu->sub) {
     case 0:
-        switch (NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 0)) {
+        switch (NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 0)) {
         case 0:
         case 1:
-            m->sub++;
-            m->timer = 4;
+            menu->sub++;
+            menu->timer = 4;
             break;
-        case 2:
-            NetMenu_SetState(m, 1);
+        case NETMENU_SLOT_CANCEL:
+            NetMenu_SetState(menu, CARD_SYS_ASK_SAVE);
             break;
         }
         break;
     case 1:
-        NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-        if (--m->timer <= 0) {
-            NetMenu_SetState(m, 3);
-            m->timer = 0x1E;
-            CardMenu_InitBuffers(m);
-            m->charIndex = 0;
-            m->unkA3 = 0;
+        NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+        if (--menu->timer <= 0) {
+            NetMenu_SetState(menu, CARD_SYS_READ_CHARACTERS);
+            menu->timer = 0x1E;
+            CardMenu_InitBuffers(menu);
+            menu->charIndex = 0;
+            menu->saveStep = 0;
         }
         break;
     }
 }
 
-void CardSys_ReadCharacters(NetMenu *m)
+/* Reads the three character files (SaveMenu_LoadCharacter), keeping each one's date stamp in
+ * pairs[charIndex + 1], then starts reading the system file (fileKind 1) and goes to
+ * CardSys_CheckSystem. */
+void CardSys_ReadCharacters(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    switch (SaveMenu_LoadCharacter((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    switch (SaveMenu_LoadCharacter((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        m->pairs[m->charIndex + 1][0] = m->charId0;
-        m->pairs[m->charIndex + 1][1] = m->charId1;
+        menu->pairs[menu->charIndex + 1][0] = menu->charId0;
+        menu->pairs[menu->charIndex + 1][1] = menu->charId1;
     case -1:
-        m->charIndex++;
-        if (m->charIndex == 3) {
-            NetMenu_SetState(m, 4);
-            CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 1);
+        menu->charIndex++;
+        if (menu->charIndex == 3) {
+            NetMenu_SetState(menu, CARD_SYS_CHECK_SYSTEM);
+            CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 1);
             CardTask_SelectFile(4, 0);
             CardState_SetFlags(1);
             break;
         }
-        m->unkA3 = 0;
+        menu->saveStep = 0;
         break;
     }
 }
 
-void CardSys_CheckSystem(NetMenu *m)
+/* Waits for the system file. Read: SysSave_MergeFlags, then CardSys_AskOverwrite (the cursor on
+ * no). Bad data: CardSys_PrepareSave. No file: every file marked for writing
+ * (CardState_SetFlag(0x1F)), then CardSys_PrepareSave. Unformatted: CardSys_AskFormat. Other
+ * errors: CardSys_ShowError. */
+void CardSys_CheckSystem(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
         Card_ClearChanged();
-        if (SaveMenu_ReadBad(m) != 0) {
+        if (SaveMenu_ReadBad(menu) != 0) {
             goto retry;
         }
-        SysSave_MergeFlags(m->readBuf);
-        NetMenu_SetState(m, 0xA);
+        SysSave_MergeFlags(menu->readBuf);
+        NetMenu_SetState(menu, CARD_SYS_ASK_OVERWRITE);
         CardTask_StartCheck();
-        m->cursor = 1;
+        menu->cursor = 1;
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
+    case CARD_ERR_NO_FILE:
         CardState_SetFlag(0x1F);
     retry:
-        NetMenu_SetState(m, 0xB);
+        NetMenu_SetState(menu, CARD_SYS_PREPARE_SAVE);
         break;
-    case -252:
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0xC;
+    case CARD_ERR_NO_SPACE:
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_SPACE;
         break;
-    case -255:
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0xB;
+    case CARD_ERR_NO_CARD:
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_CARD;
         break;
-    case -254:
-        NetMenu_SetState(m, 5);
-        m->cursor = 1;
+    case CARD_ERR_UNFORMATTED:
+        NetMenu_SetState(menu, CARD_SYS_ASK_FORMAT);
+        menu->cursor = 1;
         Card_ClearChanged();
         CardTask_StartCheck();
         break;
     default:
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0x14;
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_BAD_DATA;
         break;
     }
 }
 
-void CardSys_AskFormat(NetMenu *m)
+/* Asks to format the card. Yes: starts the format (CardTask_StartDelete) and goes to
+ * CardSys_Format. No: CardSys_ChooseSlot. A changed or removed card: CardSys_ShowError. */
+void CardSys_AskFormat(NetMenu *menu)
 {
-    s16 h;
+    s16 lastY;
 
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    h = NetMenu_DrawMessage(0x28, 0x160, 0xD);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0x26;
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    lastY = NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_ASK_FORMAT);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    switch (NetMenu_YesNo(m, 0x16, h + 0x12, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 2);
+    switch (NetMenu_YesNo(menu, 0x16, lastY + 0x12, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_SYS_CHOOSE_SLOT);
         break;
-    case 0:
-        NetMenu_SetState(m, 6);
-        m->timer = 0x1E;
-        CardTask_StartDelete(m->slot);
+    case NETMENU_YES:
+        NetMenu_SetState(menu, CARD_SYS_FORMAT);
+        menu->timer = 0x1E;
+        CardTask_StartDelete(menu->slot);
         break;
     }
 }
 
-void CardSys_Format(NetMenu *m)
+/* Waits for the format. Done: every file marked for writing (CardState_SetFlag(0x1F)), then
+ * CardSys_PrepareSave. Failed: CardSys_ShowError. */
+void CardSys_Format(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0xE);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_FORMATTING);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
         CardState_SetFlag(0x1F);
-        NetMenu_SetState(m, 0xB);
+        NetMenu_SetState(menu, CARD_SYS_PREPARE_SAVE);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -256:
+    case CARD_ERR_FAILED:
     default:
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0xF;
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_FORMAT_FAILED;
         break;
     }
 }
 
-void CardSys_CheckSystemReadPatch(NetMenu *m)
+/* Unused (no state sets CARD_SYS_CHECK_SYSTEM_READ_PATCH). Waits for the system file: a good one
+ * merges its flags, starts reading the patch file and goes to CardSys_CheckPatch; bad data or an
+ * error goes to CardSys_ShowError. */
+void CardSys_CheckSystemReadPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) != 0) {
-            NetMenu_SetState(m, 0xE);
-            m->msg = 0x14;
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) != 0) {
+            NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_BAD_DATA;
             break;
         }
-        SysSave_MergeFlags(m->readBuf);
-        NetMenu_SetState(m, 8);
-        NetMenu_StartCardRead(m);
+        SysSave_MergeFlags(menu->readBuf);
+        NetMenu_SetState(menu, CARD_SYS_CHECK_PATCH);
+        NetMenu_StartCardRead(menu);
         CardTask_StartCheck();
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0x14;
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_BAD_DATA;
         break;
     }
 }
 
-void CardSys_CheckPatch(NetMenu *m)
+/* Reached only from CardSys_CheckSystemReadPatch. Waits for the patch file: with records,
+ * Patch_BeginFile and CardSys_LoadPatch; bad or none, CardSys_AskOverwrite; a card error,
+ * CardSys_AskFormat. */
+void CardSys_CheckPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) != 0) {
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) != 0) {
         fail:
-            m->timer = 0x78;
-            NetMenu_SetState(m, 0xA);
+            menu->timer = 0x78;
+            NetMenu_SetState(menu, CARD_SYS_ASK_OVERWRITE);
             break;
         }
-        if (Patch_FileHasPatch(m->readBuf) == 0) {
+        if (Patch_FileHasPatch(menu->readBuf) == 0) {
             goto fail;
         }
-        m->timer = 0x78;
-        NetMenu_SetState(m, 9);
-        Patch_BeginFile(m->readBuf);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_SYS_LOAD_PATCH);
+        Patch_BeginFile(menu->readBuf);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        m->timer = 0x78;
-        NetMenu_SetState(m, 5);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_SYS_ASK_FORMAT);
         break;
     }
 }
 
-void CardSys_LoadPatch(NetMenu *m)
+/* Runs Patch_LoadStep until it ends, installs the patch when it returned 2, then goes to
+ * CardSys_AskOverwrite with the cursor on no. */
+void CardSys_LoadPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 patchResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    r = Patch_LoadStep();
-    if (r != 0) {
-        if (r == 2) {
-            Patch_InstallFile(m->readBuf);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    patchResult = Patch_LoadStep();
+    if (patchResult != 0) {
+        if (patchResult == 2) {
+            Patch_InstallFile(menu->readBuf);
         }
-        NetMenu_SetState(m, 0xA);
-        m->cursor = 1;
+        NetMenu_SetState(menu, CARD_SYS_ASK_OVERWRITE);
+        menu->cursor = 1;
     }
 }
 
-void CardSys_AskOverwrite(NetMenu *m)
+/* Asks to overwrite the save. Yes: marks only the system file for writing (CardState_SetFlag(1)),
+ * then CardSys_PrepareSave. No: CardSys_ChooseSlot. A changed card: CardSys_ShowError. */
+void CardSys_AskOverwrite(NetMenu *menu)
 {
-    s16 h;
+    s16 lastY;
 
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    h = NetMenu_DrawMessage(0x28, 0x160, 0x10);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0x26;
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    lastY = NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_ASK_OVERWRITE);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    switch (NetMenu_YesNo(m, 0x16, h + 0x12, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 2);
+    switch (NetMenu_YesNo(menu, 0x16, lastY + 0x12, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_SYS_CHOOSE_SLOT);
         break;
-    case 0:
+    case NETMENU_YES:
         CardState_SetFlag(1);
-        NetMenu_SetState(m, 0xB);
+        NetMenu_SetState(menu, CARD_SYS_PREPARE_SAVE);
         break;
     }
 }
 
-void CardSys_PrepareSave(NetMenu *m)
+/* Rebuilds the buffers and the card image (CardMenu_InitBuffers, SaveMenu_CopyAll), shows the
+ * saving notice and goes to CardSys_Save. */
+void CardSys_PrepareSave(NetMenu *menu)
 {
-    CardMenu_InitBuffers(m);
-    SaveMenu_CopyAll(m);
-    NetMenu_SetState(m, 0xC);
-    m->timer = 0x1E;
-    m->unkA3 = 0;
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
+    CardMenu_InitBuffers(menu);
+    SaveMenu_CopyAll(menu);
+    NetMenu_SetState(menu, CARD_SYS_SAVE);
+    menu->timer = 0x1E;
+    menu->saveStep = 0;
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
 }
 
-void CardSys_Save(NetMenu *m)
+/* Saves the system file (SaveMenu_SaveSystem). Done: the success sound, then CARD_SYS_DONE. Failed:
+ * CardSys_ShowError. */
+void CardSys_Save(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    switch (SaveMenu_SaveSystem((struct SaveMenu *)m)) {
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    switch (SaveMenu_SaveSystem((struct SaveMenu *)menu)) {
     case 1:
-        NetMenu_SetState(m, 0xF);
+        NetMenu_SetState(menu, CARD_SYS_DONE);
         Sound_PlaySeFlat(0, 0x19, 0);
         break;
     case 0:
         break;
     case -1:
-        NetMenu_SetState(m, 0xE);
-        m->msg = 0x13;
+        NetMenu_SetState(menu, CARD_SYS_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
         break;
     }
 }
 
-void CardSys_ShowSaved(NetMenu *m)
+/* Unused (CardSys_Save goes to CARD_SYS_DONE). Shows the saved notice until circle, then
+ * CARD_SYS_DONE. */
+void CardSys_ShowSaved(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0x12);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 0) != 0) {
-        NetMenu_SetState(m, 0xF);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVED);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 0) != 0) {
+        NetMenu_SetState(menu, CARD_SYS_DONE);
     }
 }
 
-void CardSys_ShowError(NetMenu *m)
+/* Shows menu->msg until circle, then goes back to CardSys_ChooseSlot. */
+void CardSys_ShowError(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, m->msg);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 1) != 0) {
-        NetMenu_SetState(m, 2);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, menu->msg);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 1) != 0) {
+        NetMenu_SetState(menu, CARD_SYS_CHOOSE_SLOT);
     }
 }
 
-void CardMenu_RunSaveSystem(NetMenu *m)
+/* NETMENU_MODE_SAVE_SYSTEM and NETMENU_MODE_SAVE_GALLERY: saves the system data. Asks first, picks
+ * a port, reads the three character files and the system file, offers a format or an overwrite,
+ * then writes the system file. Ends with done 1 (CARD_SYS_DONE); CARD_SYS_CHECK_SYSTEM_READ_PATCH,
+ * CARD_SYS_CHECK_PATCH, CARD_SYS_LOAD_PATCH and CARD_SYS_SHOW_SAVED are not reached. */
+void CardMenu_RunSaveSystem(NetMenu *menu)
 {
-    switch (m->state) {
+    switch (menu->state) {
+    case CARD_SYS_START:
+        CardSys_Start(menu);
+        break;
+    case CARD_SYS_ASK_SAVE:
+        CardSys_AskSave(menu);
+        break;
+    case CARD_SYS_CHOOSE_SLOT:
+        CardSys_ChooseSlot(menu);
+        break;
+    case CARD_SYS_READ_CHARACTERS:
+        CardSys_ReadCharacters(menu);
+        break;
+    case CARD_SYS_CHECK_SYSTEM:
+        CardSys_CheckSystem(menu);
+        break;
+    case CARD_SYS_ASK_FORMAT:
+        CardSys_AskFormat(menu);
+        break;
+    case CARD_SYS_FORMAT:
+        CardSys_Format(menu);
+        break;
+    case CARD_SYS_CHECK_SYSTEM_READ_PATCH:
+        CardSys_CheckSystemReadPatch(menu);
+        break;
+    case CARD_SYS_CHECK_PATCH:
+        CardSys_CheckPatch(menu);
+        break;
+    case CARD_SYS_LOAD_PATCH:
+        CardSys_LoadPatch(menu);
+        break;
+    case CARD_SYS_ASK_OVERWRITE:
+        CardSys_AskOverwrite(menu);
+        break;
+    case CARD_SYS_PREPARE_SAVE:
+        CardSys_PrepareSave(menu);
+        break;
+    case CARD_SYS_SAVE:
+        CardSys_Save(menu);
+        break;
+    case CARD_SYS_SHOW_SAVED:
+        CardSys_ShowSaved(menu);
+        break;
+    case CARD_SYS_SHOW_ERROR:
+        CardSys_ShowError(menu);
+        break;
+    case CARD_SYS_DONE:
+        menu->done = 1;
+        break;
+    }
+}
+
+/* Clears hasSave, the port and the cursor, then CardNew_AskSave. */
+void CardNew_Start(NetMenu *menu)
+{
+    NetMenu_SetState(menu, CARD_NEW_ASK_SAVE);
+    menu->cursor = 0;
+    menu->slot = 0;
+    menu->hasSave = 0;
+}
+
+/* Asks whether to save the new character. Yes: CardNew_ChooseSlot. No: CARD_NEW_QUIT (done 2). */
+void CardNew_AskSave(NetMenu *menu)
+{
+    switch (NetMenu_YesNo(menu, 0x52, NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_ASK_SAVE_NEW_CHARA) + 0x12, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_NEW_QUIT);
+        break;
+    case NETMENU_YES:
+        NetMenu_SetState(menu, CARD_NEW_CHOOSE_SLOT);
+        break;
+    }
+}
+
+/* sub 0 picks the port (cross goes back to CardNew_AskSave); sub 1 reads the system file and merges
+ * its flags; sub 2 loads the three character files, then CardNew_ChooseCharSlot. No save file or an
+ * unformatted card goes there with charLoaded 0; other errors go to CardNew_ShowError. */
+void CardNew_ChooseSlot(NetMenu *menu)
+{
+    s32 cardResult;
+
+    switch (menu->sub) {
     case 0:
-        CardSys_Start(m);
-        break;
-    case 1:
-        CardSys_AskSave(m);
-        break;
-    case 2:
-        CardSys_ChooseSlot(m);
-        break;
-    case 3:
-        CardSys_ReadCharacters(m);
-        break;
-    case 4:
-        CardSys_CheckSystem(m);
-        break;
-    case 5:
-        CardSys_AskFormat(m);
-        break;
-    case 6:
-        CardSys_Format(m);
-        break;
-    case 7:
-        CardSys_CheckSystemReadPatch(m);
-        break;
-    case 8:
-        CardSys_CheckPatch(m);
-        break;
-    case 9:
-        CardSys_LoadPatch(m);
-        break;
-    case 10:
-        CardSys_AskOverwrite(m);
-        break;
-    case 11:
-        CardSys_PrepareSave(m);
-        break;
-    case 12:
-        CardSys_Save(m);
-        break;
-    case 13:
-        CardSys_ShowSaved(m);
-        break;
-    case 14:
-        CardSys_ShowError(m);
-        break;
-    case 15:
-        m->done = 1;
-        break;
-    }
-}
-
-void CardNew_Start(NetMenu *m)
-{
-    NetMenu_SetState(m, 2);
-    m->cursor = 0;
-    m->slot = 0;
-    m->hasSave = 0;
-}
-
-void CardNew_AskSave(NetMenu *m)
-{
-    switch (NetMenu_YesNo(m, 0x52, NetMenu_DrawMessage(0x28, 0x160, 0x2C) + 0x12, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 0xF);
-        break;
-    case 0:
-        NetMenu_SetState(m, 1);
-        break;
-    }
-}
-
-void CardNew_ChooseSlot(NetMenu *m)
-{
-    s32 r;
-
-    switch (m->sub) {
-    case 0:
-        NetMenu_DrawMessage(0x28, 0x160, 8);
-        switch (NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 0)) {
+        NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_SAVE_SLOT);
+        switch (NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 0)) {
         case 0:
         case 1:
-            m->sub++;
-            m->timer = 4;
-            m->charNo = 0;
-            CardMenu_InitBuffers(m);
-            SaveMenu_CopyAll(m);
-            CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 1);
+            menu->sub++;
+            menu->timer = 4;
+            menu->charNo = 0;
+            CardMenu_InitBuffers(menu);
+            SaveMenu_CopyAll(menu);
+            CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 1);
             CardTask_SelectFile(4, 0);
             CardState_SetFlags(1);
-            m->timer = 0x1E;
+            menu->timer = 0x1E;
             break;
-        case 2:
-            NetMenu_SetState(m, 2);
-            m->cursor = 0;
+        case NETMENU_SLOT_CANCEL:
+            NetMenu_SetState(menu, CARD_NEW_ASK_SAVE);
+            menu->cursor = 0;
             break;
         }
         break;
     case 1:
-        NetMenu_DrawMessage(0x28, 0x160, 0xA);
-        NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-        r = CardTask_Result();
-        m->result[m->slot] = r;
-        switch (r) {
-        case 0:
-            if (SaveMenu_ReadBad(m) == 0) {
-                SysSave_MergeFlags(m->readBuf);
+        NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+        NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+        cardResult = CardTask_Result();
+        menu->result[menu->slot] = cardResult;
+        switch (cardResult) {
+        case CARD_OK:
+            if (SaveMenu_ReadBad(menu) == 0) {
+                SysSave_MergeFlags(menu->readBuf);
             }
-            m->timer = 0x1E;
-            m->sub++;
-            m->charLoaded = 0;
+            menu->timer = 0x1E;
+            menu->sub++;
+            menu->charLoaded = 0;
             Card_ClearChanged();
             D_006ADAAC = 0;
-            m->charIndex = m->charNo;
-            m->unkA3 = 0;
+            menu->charIndex = menu->charNo;
+            menu->saveStep = 0;
             break;
-        case -1:
+        case CARD_BUSY:
             break;
-        case -253:
-        case -254:
-            NetMenu_SetState(m, 5);
-            m->charLoaded = 0;
+        case CARD_ERR_NO_FILE:
+        case CARD_ERR_UNFORMATTED:
+            NetMenu_SetState(menu, CARD_NEW_CHOOSE_CHAR_SLOT);
+            menu->charLoaded = 0;
             gChrEdit.slot = 0;
             Card_ClearChanged();
             CardTask_StartCheck();
             break;
-        case -252:
-            NetMenu_SetState(m, 0xD);
-            m->msg = 0xC;
+        case CARD_ERR_NO_SPACE:
+            NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_NO_SPACE;
             break;
-        case -255:
-            NetMenu_SetState(m, 0xD);
-            m->msg = 0xB;
+        case CARD_ERR_NO_CARD:
+            NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_NO_CARD;
             break;
         default:
-            NetMenu_SetState(m, 0xD);
-            m->msg = 0x14;
+            NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_BAD_DATA;
             break;
         }
         break;
     case 2:
-        NetMenu_DrawMessage(0x28, 0x160, 0xA);
-        NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-        switch (SaveMenu_LoadCharacter((struct SaveMenu *)m)) {
+        NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+        NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+        switch (SaveMenu_LoadCharacter((struct SaveMenu *)menu)) {
         case 0:
             break;
         case 1:
-            m->pairs[m->charIndex + 1][0] = m->charId0;
-            m->pairs[m->charIndex + 1][1] = m->charId1;
-            m->charLoaded |= 1;
+            menu->pairs[menu->charIndex + 1][0] = menu->charId0;
+            menu->pairs[menu->charIndex + 1][1] = menu->charId1;
+            menu->charLoaded |= 1;
             D_006ADAAC++;
         next:
-            m->charNo++;
-            if (m->charNo == 3) {
+            menu->charNo++;
+            if (menu->charNo == 3) {
                 CardTask_StartCheck();
-                m->timer = 0x78;
-                NetMenu_SetState(m, 5);
-                m->charNo = 0;
+                menu->timer = 0x78;
+                NetMenu_SetState(menu, CARD_NEW_CHOOSE_CHAR_SLOT);
+                menu->charNo = 0;
             } else {
-                m->charIndex = m->charNo;
-                m->unkA3 = 0;
+                menu->charIndex = menu->charNo;
+                menu->saveStep = 0;
             }
             break;
         case -1:
-            switch (m->result[m->slot]) {
-            case -255:
-                NetMenu_SetState(m, 0xD);
-                m->msg = 0xB;
-                m->charNo = 0;
+            switch (menu->result[menu->slot]) {
+            case CARD_ERR_NO_CARD:
+                NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+                menu->msg = NETMENU_MSG_NO_CARD;
+                menu->charNo = 0;
                 break;
-            case -253:
-            case -252:
-            case -251:
+            case CARD_ERR_NO_FILE:
+            case CARD_ERR_NO_SPACE:
+            case CARD_ERR_BAD_DATA:
                 goto next;
-            case -254:
-                NetMenu_SetState(m, 5);
-                m->charLoaded = 0;
+            case CARD_ERR_UNFORMATTED:
+                NetMenu_SetState(menu, CARD_NEW_CHOOSE_CHAR_SLOT);
+                menu->charLoaded = 0;
                 gChrEdit.slot = 0;
-                m->charIndex = 0;
+                menu->charIndex = 0;
                 CardTask_StartCheck();
                 break;
             default:
-                NetMenu_SetState(m, 0xD);
-                m->msg = 0x14;
-                m->charNo = 0;
+                NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+                menu->msg = NETMENU_MSG_BAD_DATA;
+                menu->charNo = 0;
                 break;
             }
             break;
@@ -2630,620 +2790,666 @@ void CardNew_ChooseSlot(NetMenu *m)
     }
 }
 
-void CardNew_ChooseCharSlot(NetMenu *m)
+/* Picks one of the three character slots (gChrEdit.slot, up and down). Confirm goes to
+ * CardNew_ConfirmCharSlot with the cursor on no and the prompt for a used slot, an empty slot, or a
+ * card without a save (charLoaded not 1). Cross goes back to CardNew_ChooseSlot; a changed card to
+ * CardNew_ShowError. */
+void CardNew_ChooseCharSlot(NetMenu *menu)
 {
     SaveData *saves;
 
-    if (m->buttons & 0x2000) {
-        Sound_PlaySeFlat(0, 0x12, 0);
+    if (menu->buttons & PAD_UP) {
+        Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
         gChrEdit.slot--;
         if ((s8)gChrEdit.slot < 0) {
             gChrEdit.slot = 2;
         }
     }
-    if (m->buttons & 0x1000) {
-        Sound_PlaySeFlat(0, 0x12, 0);
+    if (menu->buttons & PAD_DOWN) {
+        Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
         gChrEdit.slot++;
         if (gChrEdit.slot > 2) {
             gChrEdit.slot = 0;
         }
     }
-    NetMenu_DrawMessage(0x28, 0x160, 0x2A);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x26;
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_CHARA_SLOT);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    if (m->buttons & 0x20) {
-        Sound_PlaySeFlat(0, 0x13, 0);
-        NetMenu_SetState(m, 6);
-        m->cursor = 1;
-        saves = m->slots;
-        if (m->charLoaded == 1) {
+    if (menu->buttons & PAD_CIRCLE) {
+        Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
+        NetMenu_SetState(menu, CARD_NEW_CONFIRM_CHAR_SLOT);
+        menu->cursor = 1;
+        saves = menu->slots;
+        if (menu->charLoaded == 1) {
             if (saves[gChrEdit.slot].used == 0) {
-                m->msg = 0x17;
+                menu->msg = NETMENU_MSG_ASK_SAVE_HERE;
             } else {
-                m->msg = 0x16;
+                menu->msg = NETMENU_MSG_ASK_OVERWRITE_CHARA;
             }
         } else {
-            m->msg = 0x2B;
+            menu->msg = NETMENU_MSG_ASK_CREATE_DATA;
         }
-    } else if (m->buttons & 0x40) {
-        Sound_PlaySeFlat(0, 0x14, 0);
-        NetMenu_SetState(m, 1);
+    } else if (menu->buttons & PAD_CROSS) {
+        Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
+        NetMenu_SetState(menu, CARD_NEW_CHOOSE_SLOT);
     }
-    m->layers[1] = 5;
+    menu->layers[1] = 5;
     CardMenu_DrawCharacters(&gChrEdit, 0, 0, 0, (s8)gChrEdit.slot);
 }
 
-void CardNew_ConfirmCharSlot(NetMenu *m)
+/* Shows menu->msg over a yes/no box. Yes, by the port's result: CardNew_PrepareSave (done, no file,
+ * bad data), CardNew_AskFormat (unformatted), else CardNew_ShowError. No goes back to
+ * CardNew_ChooseCharSlot; a changed card to CardNew_ShowError. */
+void CardNew_ConfirmCharSlot(NetMenu *menu)
 {
-    s16 h = NetMenu_DrawMessage(0xDD, 0x88, m->msg);
+    s16 lastY = NetMenu_DrawMessage(0xDD, 0x88, menu->msg);
 
-    NetMenu_DrawMessage(0x28, 0x160, 0x2A);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x26;
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_CHARA_SLOT);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    switch (NetMenu_YesNo(m, 0xCB, h + 0x24, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 5);
+    switch (NetMenu_YesNo(menu, 0xCB, lastY + 0x24, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_NEW_CHOOSE_CHAR_SLOT);
         break;
-    case 0:
+    case NETMENU_YES:
         Sound_PlaySeFlat(1, 6, 0);
-        switch (m->result[m->slot]) {
+        switch (menu->result[menu->slot]) {
         case 0:
-        case -253:
-        case -251:
-            NetMenu_SetState(m, 9);
+        case CARD_ERR_NO_FILE:
+        case CARD_ERR_BAD_DATA:
+            NetMenu_SetState(menu, CARD_NEW_PREPARE_SAVE);
             break;
-        case -254:
-            NetMenu_SetState(m, 7);
-            m->cursor = 1;
+        case CARD_ERR_UNFORMATTED:
+            NetMenu_SetState(menu, CARD_NEW_ASK_FORMAT);
+            menu->cursor = 1;
             break;
         default:
-            NetMenu_SetState(m, 0xD);
-            m->msg = 0x13;
+            NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_SAVE_FAILED;
             break;
         }
         break;
     }
 }
 
-void CardNew_AskFormat(NetMenu *m)
+/* Asks to format the card. Yes: starts the format (CardTask_StartDelete), then CardNew_Format. No:
+ * CardNew_ChooseSlot. A changed card: CardNew_ShowError. */
+void CardNew_AskFormat(NetMenu *menu)
 {
-    s16 h = NetMenu_DrawMessage(0x28, 0x160, 0xD);
+    s16 lastY = NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_ASK_FORMAT);
 
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x26;
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    switch (NetMenu_YesNo(m, 0x16, h + 0x12, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 1);
+    switch (NetMenu_YesNo(menu, 0x16, lastY + 0x12, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_NEW_CHOOSE_SLOT);
         break;
-    case 0:
-        NetMenu_SetState(m, 8);
-        m->timer = 0x1E;
-        CardTask_StartDelete(m->slot);
+    case NETMENU_YES:
+        NetMenu_SetState(menu, CARD_NEW_FORMAT);
+        menu->timer = 0x1E;
+        CardTask_StartDelete(menu->slot);
         break;
     }
 }
 
-void CardNew_Format(NetMenu *m)
+/* Waits for the format. Done: CardNew_PrepareSave. Failed: CardNew_ShowError. */
+void CardNew_Format(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xE);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        NetMenu_SetState(m, 9);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_FORMATTING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        NetMenu_SetState(menu, CARD_NEW_PREPARE_SAVE);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -256:
+    case CARD_ERR_FAILED:
     default:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0xF;
+        NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_FORMAT_FAILED;
         break;
     }
 }
 
-void CardNew_PrepareSave(NetMenu *m)
+/* Builds the new character from gChrEdit into gSysSave.save (Chara_MakeSave, through func_6AF3D0),
+ * copies it to gCardSlots[gChrEdit.slot] and into the card image, sets gSysSave.lastSlot, charSaved
+ * and fileKind, then CardNew_SaveCharacter. */
+void CardNew_PrepareSave(NetMenu *menu)
 {
     s32 i = gChrEdit.slot;
 
-    m->charIndex = i;
-    NetMenu_SetState(m, 0xA);
-    m->timer = 0x1E;
+    menu->charIndex = i;
+    NetMenu_SetState(menu, CARD_NEW_SAVE_CHARACTER);
+    menu->timer = 0x1E;
     func_6AF3D0(&gChrEdit, 0);
     Save_CopyToSlot(i);
     gSysSave.lastSlot = gChrEdit.slot;
-    gSysSave.unk45D = 3;
-    SaveMenu_CopyCharacterSlot(m, i);
-    m->fileKind = 2 << i;
+    gSysSave.charSaved = 3;
+    SaveMenu_CopyCharacterSlot(menu, i);
+    menu->fileKind = 2 << i;
     Card_ClearChanged();
-    m->charIndex = gChrEdit.slot;
-    m->unkA3 = 0;
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
+    menu->charIndex = gChrEdit.slot;
+    menu->saveStep = 0;
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
 }
 
-void CardNew_SaveCharacter(NetMenu *m)
+/* Writes the character file. Done: sets hasSave and gSysSettings.cardHasChara, then
+ * CardNew_SaveSystem. Failed: CardNew_ShowError. */
+void CardNew_SaveCharacter(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    switch (SaveMenu_SaveCharacter((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    switch (SaveMenu_SaveCharacter((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        NetMenu_SetState(m, 0xB);
-        m->hasSave = 1;
+        NetMenu_SetState(menu, CARD_NEW_SAVE_SYSTEM);
+        menu->hasSave = 1;
         gSysSettings.cardHasChara = 1;
-        m->unkA3 = 0;
+        menu->saveStep = 0;
         break;
     case -1:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x13;
+        NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
         break;
     }
 }
 
-void CardNew_SaveSystem(NetMenu *m)
+/* Writes the system file. Done: the success sound, gSysSettings.systemSaved, then
+ * CardNew_ShowSaved. Failed: CardNew_ShowError. */
+void CardNew_SaveSystem(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    switch (SaveMenu_SaveSystem((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    switch (SaveMenu_SaveSystem((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        NetMenu_SetState(m, 0xC);
+        NetMenu_SetState(menu, CARD_NEW_SHOW_SAVED);
         Sound_PlaySeFlat(0, 0x19, 0);
         gSysSettings.systemSaved = 1;
         break;
     case -1:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x13;
+        NetMenu_SetState(menu, CARD_NEW_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
         break;
     }
 }
 
-void CardNew_ShowSaved(NetMenu *m)
+/* Shows the saved notice until a button press, then CARD_NEW_DONE (done 1). */
+void CardNew_ShowSaved(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0x18);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 3) != 0) {
-        NetMenu_SetState(m, 0xE);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVED_KEEP_CARD);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 3) != 0) {
+        NetMenu_SetState(menu, CARD_NEW_DONE);
     }
 }
 
-void CardNew_ShowError(NetMenu *m)
+/* Shows menu->msg until a button press, then goes back to CardNew_ChooseSlot. */
+void CardNew_ShowError(NetMenu *menu)
 {
-    s32 msg = m->msg;
+    s32 msg = menu->msg;
 
     NetMenu_DrawMessage(0x28, 0x160, msg);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 1) != 0) {
-        NetMenu_SetState(m, 1);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 1) != 0) {
+        NetMenu_SetState(menu, CARD_NEW_CHOOSE_SLOT);
     }
 }
 
-void CardNew_CheckPatch(NetMenu *m)
+/* Unused (no state sets CARD_NEW_CHECK_PATCH). A good file with a patch starts it (Patch_BeginFile)
+ * and goes to CardNew_LoadPatch; anything else goes to CardNew_ChooseCharSlot. */
+void CardNew_CheckPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) != 0) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) != 0) {
         fail:
-            m->timer = 0x78;
-            NetMenu_SetState(m, 5);
+            menu->timer = 0x78;
+            NetMenu_SetState(menu, CARD_NEW_CHOOSE_CHAR_SLOT);
             break;
         }
-        if (Patch_FileHasPatch(m->readBuf) == 0) {
+        if (Patch_FileHasPatch(menu->readBuf) == 0) {
             goto fail;
         }
-        m->timer = 0x78;
-        NetMenu_SetState(m, 4);
-        Patch_BeginFile(m->readBuf);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_NEW_LOAD_PATCH);
+        Patch_BeginFile(menu->readBuf);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        m->timer = 0x78;
-        NetMenu_SetState(m, 5);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_NEW_CHOOSE_CHAR_SLOT);
         break;
     }
 }
 
-void CardNew_LoadPatch(NetMenu *m)
+/* Runs Patch_LoadStep until it ends, installs the patch when it returned 2, then
+ * CardNew_ChooseCharSlot. */
+void CardNew_LoadPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 patchResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = Patch_LoadStep();
-    if (r != 0) {
-        if (r == 2) {
-            Patch_InstallFile(m->readBuf);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    patchResult = Patch_LoadStep();
+    if (patchResult != 0) {
+        if (patchResult == 2) {
+            Patch_InstallFile(menu->readBuf);
         }
-        m->timer = 0x78;
-        NetMenu_SetState(m, 5);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_NEW_CHOOSE_CHAR_SLOT);
     }
 }
 
-void CardMenu_RunSaveNew(NetMenu *m)
+/* NETMENU_MODE_SAVE_NEW (Chara_CreateTask): saves a newly made character. Asks, picks a port, reads
+ * its system and character files, picks a character slot, formats when needed, then writes the
+ * character file and the system file. done 1 once saved, 2 when the player declines. */
+void CardMenu_RunSaveNew(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardNew_Start(m);
+    switch (menu->state) {
+    case CARD_NEW_START:
+        CardNew_Start(menu);
         break;
-    case 2:
-        CardNew_AskSave(m);
+    case CARD_NEW_ASK_SAVE:
+        CardNew_AskSave(menu);
         break;
-    case 1:
-        CardNew_ChooseSlot(m);
-        m->layers[1] = 2;
+    case CARD_NEW_CHOOSE_SLOT:
+        CardNew_ChooseSlot(menu);
+        menu->layers[1] = 2;
         break;
-    case 3:
-        CardNew_CheckPatch(m);
-        m->layers[1] = 2;
+    case CARD_NEW_CHECK_PATCH:
+        CardNew_CheckPatch(menu);
+        menu->layers[1] = 2;
         break;
-    case 4:
-        CardNew_LoadPatch(m);
-        m->layers[1] = 2;
+    case CARD_NEW_LOAD_PATCH:
+        CardNew_LoadPatch(menu);
+        menu->layers[1] = 2;
         break;
-    case 5:
-        CardNew_ChooseCharSlot(m);
+    case CARD_NEW_CHOOSE_CHAR_SLOT:
+        CardNew_ChooseCharSlot(menu);
         break;
-    case 6:
-        CardNew_ConfirmCharSlot(m);
-        m->layers[1] = 2;
+    case CARD_NEW_CONFIRM_CHAR_SLOT:
+        CardNew_ConfirmCharSlot(menu);
+        menu->layers[1] = 2;
         break;
-    case 7:
-        CardNew_AskFormat(m);
-        m->layers[1] = 2;
+    case CARD_NEW_ASK_FORMAT:
+        CardNew_AskFormat(menu);
+        menu->layers[1] = 2;
         break;
-    case 8:
-        CardNew_Format(m);
-        m->layers[1] = 2;
+    case CARD_NEW_FORMAT:
+        CardNew_Format(menu);
+        menu->layers[1] = 2;
         break;
-    case 9:
-        CardNew_PrepareSave(m);
-        m->layers[1] = 2;
+    case CARD_NEW_PREPARE_SAVE:
+        CardNew_PrepareSave(menu);
+        menu->layers[1] = 2;
         break;
-    case 10:
-        CardNew_SaveCharacter(m);
-        m->layers[1] = 2;
+    case CARD_NEW_SAVE_CHARACTER:
+        CardNew_SaveCharacter(menu);
+        menu->layers[1] = 2;
         break;
-    case 11:
-        CardNew_SaveSystem(m);
-        m->layers[1] = 2;
+    case CARD_NEW_SAVE_SYSTEM:
+        CardNew_SaveSystem(menu);
+        menu->layers[1] = 2;
         break;
-    case 12:
-        CardNew_ShowSaved(m);
-        m->layers[1] = 2;
+    case CARD_NEW_SHOW_SAVED:
+        CardNew_ShowSaved(menu);
+        menu->layers[1] = 2;
         break;
-    case 13:
-        CardNew_ShowError(m);
-        m->layers[1] = 2;
+    case CARD_NEW_SHOW_ERROR:
+        CardNew_ShowError(menu);
+        menu->layers[1] = 2;
         break;
-    case 14:
-        m->done = 1;
+    case CARD_NEW_DONE:
+        menu->done = 1;
         break;
-    case 15:
+    case CARD_NEW_QUIT:
     default:
-        m->done = 2;
+        menu->done = 2;
         break;
     }
 }
 
-void CardLoad_Start(NetMenu *m)
+/* Clears hasSave and the port, then CardLoad_ChooseSlot. */
+void CardLoad_Start(NetMenu *menu)
 {
-    NetMenu_SetState(m, 1);
-    m->slot = 0;
-    m->hasSave = 0;
+    NetMenu_SetState(menu, CARD_LOAD_CHOOSE_SLOT);
+    menu->slot = 0;
+    menu->hasSave = 0;
 }
 
-void CardLoad_ChooseSlot(NetMenu *m)
+/* Picks the port to load from (cross: CARD_LOAD_QUIT, done 2). After the pick it sets up the load
+ * buffers, starts reading the system file and goes to CardLoad_CheckSystem. */
+void CardLoad_ChooseSlot(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0x15);
-    switch (m->sub) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_LOAD_SLOT);
+    switch (menu->sub) {
     case 0:
-        switch (NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 0)) {
+        switch (NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 0)) {
         case 0:
         case 1:
-            m->sub++;
-            m->timer = 4;
+            menu->sub++;
+            menu->timer = 4;
             break;
-        case 2:
-            NetMenu_SetState(m, 0xA);
+        case NETMENU_SLOT_CANCEL:
+            NetMenu_SetState(menu, CARD_LOAD_QUIT);
             break;
         }
         break;
     case 1:
-        NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-        if (m->timer <= 0) {
-            NetMenu_SetState(m, 2);
-            m->timer = 0x1E;
-            CardMenu_InitLoadBuffers(m);
-            m->fileKind = 1;
-            CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 1);
+        NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+        if (menu->timer <= 0) {
+            NetMenu_SetState(menu, CARD_LOAD_CHECK_SYSTEM);
+            menu->timer = 0x1E;
+            CardMenu_InitLoadBuffers(menu);
+            menu->fileKind = 1;
+            CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 1);
             CardTask_SelectFile(4, 0);
         }
         break;
     }
 }
 
-void CardLoad_CheckSystem(NetMenu *m)
+/* Checks the system file read. A good one is copied in (SaveMenu_CopySystem), the patch file's read
+ * starts, then CardLoad_CheckPatch. Otherwise CardLoad_ShowError, with the message for bad data
+ * (result set to CARD_ERR_BAD_DATA), no save, or no card. */
+void CardLoad_CheckSystem(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) != 0) {
-            m->result[m->slot] = -0xFB;
-            NetMenu_SetState(m, 7);
-            m->msg = 0x14;
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) != 0) {
+            menu->result[menu->slot] = -0xFB;
+            NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_BAD_DATA;
             break;
         }
-        SaveMenu_CopySystem((struct SaveMenu *)m, (u8 *)m->readBuf, 0);
+        SaveMenu_CopySystem((struct SaveMenu *)menu, (u8 *)menu->readBuf, 0);
         Card_ClearChanged();
-        NetMenu_SetState(m, 4);
-        NetMenu_StartCardRead(m);
+        NetMenu_SetState(menu, CARD_LOAD_CHECK_PATCH);
+        NetMenu_StartCardRead(menu);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x19;
+    case CARD_ERR_NO_FILE:
+        NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_GAME_DATA;
         break;
-    case -254:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x19;
+    case CARD_ERR_UNFORMATTED:
+        NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_GAME_DATA;
         break;
-    case -252:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x19;
+    case CARD_ERR_NO_SPACE:
+        NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_GAME_DATA;
         break;
-    case -255:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x23;
+    case CARD_ERR_NO_CARD:
+        NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_CARD_LOAD;
         break;
     default:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x14;
+        NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_BAD_DATA;
         break;
     }
 }
 
-static s32 SaveMenu_FreeCharSlots(NetMenu *m)
+/* A mask with bit i set when character slot i is free: not read (charRead 0), or read with an
+ * unused gCardSlots entry; bad slots (0x80) are not free. 7: all three free. */
+static s32 SaveMenu_FreeCharSlots(NetMenu *menu)
 {
-    s32 bits = 0;
+    s32 freeMask = 0;
     s32 i;
-    SaveData *s = gCardSlots;
+    SaveData *save = gCardSlots;
 
-    for (i = 0; i < 3; i++, s++) {
-        switch (m->charRead[i]) {
+    for (i = 0; i < 3; i++, save++) {
+        switch (menu->charRead[i]) {
         case 0:
-            bits |= 1 << i;
+            freeMask |= 1 << i;
             break;
         case 1:
-            if (s->used == 0) {
-                bits |= 1 << i;
+            if (save->used == 0) {
+                freeMask |= 1 << i;
             }
             break;
         case 0x80:
             break;
         }
     }
-    return bits;
+    return freeMask;
 }
 
-void CardLoad_LoadCharacters(NetMenu *m)
+/* Loads the three character files one by one, skipping the missing ones. After the third: when
+ * every slot is free, CardLoad_ShowError and cardHasChara 0; else hasSave and cardHasChara set, the
+ * success sound, then CardLoad_Wait. Other errors: CardLoad_ShowError. */
+void CardLoad_LoadCharacters(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0x1C);
-    switch (SaveMenu_LoadCharacter((struct SaveMenu *)m)) {
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_LOADING);
+    switch (SaveMenu_LoadCharacter((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        m->pairs[m->charIndex + 1][0] = m->charId0;
-        m->pairs[m->charIndex + 1][1] = m->charId1;
+        menu->pairs[menu->charIndex + 1][0] = menu->charId0;
+        menu->pairs[menu->charIndex + 1][1] = menu->charId1;
         D_006ADAAC++;
     next:
-        m->charNo++;
-        if (m->charNo == 3) {
+        menu->charNo++;
+        if (menu->charNo == 3) {
             CardTask_StartCheck();
-            if (SaveMenu_FreeCharSlots(m) == 7) {
-                NetMenu_SetState(m, 7);
-                m->msg = 0x1A;
+            if (SaveMenu_FreeCharSlots(menu) == 7) {
+                NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+                menu->msg = NETMENU_MSG_NO_CHARA;
                 gSysSettings.cardHasChara = 0;
                 break;
             }
-            m->timer = 0x1E;
-            NetMenu_SetState(m, 8);
-            m->hasSave = 1;
+            menu->timer = 0x1E;
+            NetMenu_SetState(menu, CARD_LOAD_WAIT);
+            menu->hasSave = 1;
             gSysSettings.cardHasChara = 1;
             Sound_PlaySeFlat(0, 0x19, 0);
             break;
         }
-        m->charIndex = m->charNo;
-        m->unkA3 = 0;
+        menu->charIndex = menu->charNo;
+        menu->saveStep = 0;
         break;
     case -1:
-        switch (m->result[m->slot]) {
+        switch (menu->result[menu->slot]) {
         case -0xFD:
         case -0xFC:
         case -0xFB:
             goto next;
         case -0xFF:
         default:
-            NetMenu_SetState(m, 7);
-            m->msg = 0x14;
+            NetMenu_SetState(menu, CARD_LOAD_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_BAD_DATA;
             break;
         }
         break;
     }
 }
 
-void CardLoad_ShowError(NetMenu *m)
+/* Shows menu->msg until a button press, then goes back to CardLoad_ChooseSlot. */
+void CardLoad_ShowError(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, m->msg);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 1) != 0) {
-        NetMenu_SetState(m, 1);
-        m->sub = 0;
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, menu->msg);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 1) != 0) {
+        NetMenu_SetState(menu, CARD_LOAD_CHOOSE_SLOT);
+        menu->sub = 0;
     }
 }
 
-void CardLoad_Wait(NetMenu *m)
+/* Counts menu->timer down (NetMenu_Update counts it too), then CARD_LOAD_DONE (done 1). */
+void CardLoad_Wait(NetMenu *menu)
 {
-    if (--m->timer <= 0) {
-        NetMenu_SetState(m, 9);
+    if (--menu->timer <= 0) {
+        NetMenu_SetState(menu, CARD_LOAD_DONE);
     }
 }
 
-void CardLoad_CheckPatch(NetMenu *m)
+/* Checks the patch file read. A good one with a patch starts it (Patch_BeginFile) and goes to
+ * CardLoad_LoadPatch; anything else goes to CardLoad_LoadCharacters from character 0. */
+void CardLoad_CheckPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) != 0) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) != 0) {
         fail:
-            m->timer = 0x78;
-            m->charNo = 0;
-            m->charIndex = m->charNo;
-            m->unkA3 = 0;
-            NetMenu_SetState(m, 6);
+            menu->timer = 0x78;
+            menu->charNo = 0;
+            menu->charIndex = menu->charNo;
+            menu->saveStep = 0;
+            NetMenu_SetState(menu, CARD_LOAD_LOAD_CHARACTERS);
             break;
         }
-        if (Patch_FileHasPatch(m->readBuf) == 0) {
+        if (Patch_FileHasPatch(menu->readBuf) == 0) {
             goto fail;
         }
-        m->timer = 0x78;
-        NetMenu_SetState(m, 5);
-        Patch_BeginFile(m->readBuf);
+        menu->timer = 0x78;
+        NetMenu_SetState(menu, CARD_LOAD_LOAD_PATCH);
+        Patch_BeginFile(menu->readBuf);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        m->timer = 0x78;
-        m->charNo = 0;
-        m->charIndex = m->charNo;
-        m->unkA3 = 0;
-        NetMenu_SetState(m, 6);
+        menu->timer = 0x78;
+        menu->charNo = 0;
+        menu->charIndex = menu->charNo;
+        menu->saveStep = 0;
+        NetMenu_SetState(menu, CARD_LOAD_LOAD_CHARACTERS);
         break;
     }
 }
 
-void CardLoad_LoadPatch(NetMenu *m)
+/* Runs Patch_LoadStep until it ends, installs the patch when it returned 2, then
+ * CardLoad_LoadCharacters from character 0. */
+void CardLoad_LoadPatch(NetMenu *menu)
 {
-    s32 r;
+    s32 patchResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = Patch_LoadStep();
-    if (r != 0) {
-        if (r == 2) {
-            Patch_InstallFile(m->readBuf);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    patchResult = Patch_LoadStep();
+    if (patchResult != 0) {
+        if (patchResult == 2) {
+            Patch_InstallFile(menu->readBuf);
         }
-        NetMenu_SetState(m, 6);
-        m->charNo = 0;
-        m->charIndex = m->charNo;
-        m->unkA3 = 0;
+        NetMenu_SetState(menu, CARD_LOAD_LOAD_CHARACTERS);
+        menu->charNo = 0;
+        menu->charIndex = menu->charNo;
+        menu->saveStep = 0;
     }
 }
 
-void CardMenu_RunLoad(NetMenu *m)
+/* NETMENU_MODE_LOAD (Chara_SelectTask): loads the save from a chosen port: the system file, then
+ * the patch file (installing a newer patch), then the three character files. done 1 once loaded, 2
+ * when the port choice is cancelled. */
+void CardMenu_RunLoad(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardLoad_Start(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    switch (menu->state) {
+    case CARD_LOAD_START:
+        CardLoad_Start(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 1:
-        CardLoad_ChooseSlot(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOAD_CHOOSE_SLOT:
+        CardLoad_ChooseSlot(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 2:
-        CardLoad_CheckSystem(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOAD_CHECK_SYSTEM:
+        CardLoad_CheckSystem(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 4:
-        CardLoad_CheckPatch(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOAD_CHECK_PATCH:
+        CardLoad_CheckPatch(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 5:
-        CardLoad_LoadPatch(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOAD_LOAD_PATCH:
+        CardLoad_LoadPatch(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 6:
-        CardLoad_LoadCharacters(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOAD_LOAD_CHARACTERS:
+        CardLoad_LoadCharacters(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 7:
-        CardLoad_ShowError(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOAD_SHOW_ERROR:
+        CardLoad_ShowError(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 8:
-        CardLoad_Wait(m);
+    case CARD_LOAD_WAIT:
+        CardLoad_Wait(menu);
         break;
-    case 3:
-    case 9:
+    case CARD_LOAD_DONE_B:
+    case CARD_LOAD_DONE:
     default:
-        m->done = 1;
+        menu->done = 1;
         break;
-    case 10:
-        m->done = 2;
+    case CARD_LOAD_QUIT:
+        menu->done = 2;
         break;
     }
 }
 
 /* 0x3DB040: more states of the network menu */
 
-s32 NetMenu_YesNo(NetMenu *m, s32 x, s16 y, u8 *cursor);
+s32 NetMenu_YesNo(NetMenu *menu, s32 x, s16 y, u8 *cursor);
 s32 NetMenu_CardChanged(s32 slot);
 void Patch_InstallFile(u8 *buf);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void CardMenu_InitBuffers(NetMenu *m);
-void SaveMenu_CopyAll(NetMenu *m);
+void CardMenu_InitBuffers(NetMenu *menu);
+void SaveMenu_CopyAll(NetMenu *menu);
 s32 SaveMenu_SaveSystem(struct SaveMenu *m);
 void CardTask_StartDelete(s32 slot);
 s32 CardTask_Result(void);
-s32 SaveMenu_ReadBad(NetMenu *m);
+s32 SaveMenu_ReadBad(NetMenu *menu);
 void Patch_BeginFile(u8 *buf);
 void SysSave_MergeFlags(u8 *buf);
 void CardTask_StartCheck(void);
@@ -3257,7 +3463,7 @@ void Card_ClearChanged(void);
 void SaveMenu_CopySystem(struct SaveMenu *m, u8 *data, s32 save);
 void func_6AF3D0(void *a, s32 b);
 void Save_CopyToSlot(s32 i);
-void SaveMenu_CopyCharacterSlot(NetMenu *m, s32 i);
+void SaveMenu_CopyCharacterSlot(NetMenu *menu, s32 i);
 extern s8 D_006ADAAE;
 extern u8 gOldGameKind;
 extern SaveData *gCardSlots;
@@ -3265,8 +3471,8 @@ extern u8 gBootMode;
 void *memcpy(void *dst, const void *src, u32 n);
 s32 Card_IsChanged(s32 slot);
 s32 SaveMenu_SaveExtra(struct SaveMenu *m);
-void CardMenu_InitNetBuffers(NetMenu *m);
-void CardSetup_Start(NetMenu *m);
+void CardMenu_InitNetBuffers(NetMenu *menu);
+void CardSetup_Start(NetMenu *menu);
 void CardTask_StartRead(s32 slot, u8 *buf);
 void CardTask_StartSave(s32 a, u8 *buf);
 void CardTask_Begin(s32 a);
@@ -3276,76 +3482,82 @@ s32 CardOp_SetFiles(s32 *data);
 s32 Card_PortState(s32 slot);
 extern s32 gLoadBuf;
 
-void CardGame_Start(NetMenu *m)
+/* Prepares the card image (CardMenu_InitBuffers, SaveMenu_CopyAll), starts reading the system file
+ * of the card in use (menu->slot), then CardGame_CheckSystem. */
+void CardGame_Start(NetMenu *menu)
 {
-    NetMenu_SetState(m, 1);
-    m->timer = 0x1E;
-    CardMenu_InitBuffers(m);
-    SaveMenu_CopyAll(m);
-    CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 1);
+    NetMenu_SetState(menu, CARD_GAME_CHECK_SYSTEM);
+    menu->timer = 0x1E;
+    CardMenu_InitBuffers(menu);
+    SaveMenu_CopyAll(menu);
+    CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 1);
     CardTask_SelectFile(4, 0);
     CardState_SetFlags(1);
 }
 
-void CardGame_CheckSystem(NetMenu *m)
+/* Checks the card in use and merges its system file's flags. When the card was changed since the
+ * last access, CardGame_CheckCharacter (slot gQuestSync.charIndex), else CardGame_PrepareSave.
+ * Errors: CardGame_ShowError. */
+void CardGame_CheckSystem(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x64, 0x88, 0x24);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) == 0) {
-            SysSave_MergeFlags(m->readBuf);
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_GAME_SAVE_CHECKING);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) == 0) {
+            SysSave_MergeFlags(menu->readBuf);
         }
-        if (Card_IsChanged(m->slot) != 0) {
-            NetMenu_SetState(m, 2);
-            m->charIndex = gQuestSync.charIndex;
-            m->unkA3 = 0;
+        if (Card_IsChanged(menu->slot) != 0) {
+            NetMenu_SetState(menu, CARD_GAME_CHECK_CHARACTER);
+            menu->charIndex = gQuestSync.charIndex;
+            menu->saveStep = 0;
             break;
         }
-        NetMenu_SetState(m, 3);
+        NetMenu_SetState(menu, CARD_GAME_PREPARE_SAVE);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -251:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x1B;
-        m->timer = 0x3C;
+    case CARD_ERR_BAD_DATA:
+        NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_BAD_DATA;
+        menu->timer = 0x3C;
         break;
-    case -253:
-    case -254:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_UNFORMATTED:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x25;
-        m->timer = 0x3C;
+        NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_GAME_CARD_MISSING;
+        menu->timer = 0x3C;
         break;
     }
 }
 
-/* Loads the character being checked: on to state 3 when it is the one expected,
- * else (or on a card error) state 7 with message 0x25; 0x1B for error -251. */
-void CardGame_CheckCharacter(NetMenu *m)
+/* Loads the character being checked: on to CardGame_PrepareSave when it is the one expected (the
+ * date stamps match), else (or on a card error) CardGame_ShowError with the missing-card error, or
+ * the bad-data one for CARD_ERR_BAD_DATA. */
+void CardGame_CheckCharacter(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, 0x24);
-    switch (SaveMenu_LoadCharacter((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_GAME_SAVE_CHECKING);
+    switch (SaveMenu_LoadCharacter((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        if (SaveMenu_CharIdMatches(m, m->charIndex + 1) != 0) {
-            NetMenu_SetState(m, 3);
+        if (SaveMenu_CharIdMatches(menu, menu->charIndex + 1) != 0) {
+            NetMenu_SetState(menu, CARD_GAME_PREPARE_SAVE);
             break;
         }
         goto fail;
     case -1:
-        switch (m->result[m->slot]) {
+        switch (menu->result[menu->slot]) {
         case -0xFB:
-            NetMenu_SetState(m, 7);
-            m->msg = 0x1B;
-            m->timer = 0x3C;
+            NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_SAVE_BAD_DATA;
+            menu->timer = 0x3C;
             break;
         case -0xFD:
         case -0xFE:
@@ -3353,156 +3565,167 @@ void CardGame_CheckCharacter(NetMenu *m)
         case -0xFF:
         default:
         fail:
-            NetMenu_SetState(m, 7);
-            m->msg = 0x25;
-            m->timer = 0x3C;
+            NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_GAME_CARD_MISSING;
+            menu->timer = 0x3C;
             break;
         }
         break;
     }
 }
 
-/* Copies the save into slot gQuestSync.charIndex of the menu's save list (the address as int arithmetic
- * gives the original registers) and shows message 0x64. */
-void CardGame_PrepareSave(NetMenu *m)
+/* Copies the save into character slot gQuestSync.charIndex of the menu's slots and the card image,
+ * shows the in-game saving notice and goes to CardGame_SaveCharacter. The slot's address is
+ * computed as an integer: the match needs that form. */
+void CardGame_PrepareSave(NetMenu *menu)
 {
     s32 i;
 
-    NetMenu_SetState(m, 4);
+    NetMenu_SetState(menu, CARD_GAME_SAVE_CHARACTER);
     i = gQuestSync.charIndex;
-    memcpy((void *)((s32)m->slots + i * (s32)sizeof(SaveData)), &gSave, sizeof(SaveData)); /* an integer sum: &m->slots[i] changes the registers */
-    gSysSave.unk45D = 3;
-    SaveMenu_CopyCharacterSlot(m, i);
-    m->charIndex = i;
-    m->unkA3 = 0;
-    NetMenu_DrawMessage(0x64, 0x88, 0x1F);
+    memcpy((void *)((s32)menu->slots + i * (s32)sizeof(SaveData)), &gSave, sizeof(SaveData)); /* an integer sum: &m->slots[i] changes the registers */
+    gSysSave.charSaved = 3;
+    SaveMenu_CopyCharacterSlot(menu, i);
+    menu->charIndex = i;
+    menu->saveStep = 0;
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_SAVING_TO_SLOT);
 }
 
-void CardGame_SaveCharacter(NetMenu *m)
+/* Writes the character file. Done: hasSave and cardHasChara set, then CardGame_SaveSystem. Failed:
+ * CardGame_ShowError. */
+void CardGame_SaveCharacter(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, 0x1F);
-    switch (SaveMenu_SaveCharacter((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_SAVING_TO_SLOT);
+    switch (SaveMenu_SaveCharacter((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        m->hasSave = 1;
-        m->unkA3 = 0;
+        menu->hasSave = 1;
+        menu->saveStep = 0;
         gSysSettings.cardHasChara = 1;
-        NetMenu_SetState(m, 5);
+        NetMenu_SetState(menu, CARD_GAME_SAVE_SYSTEM);
         break;
     case -1:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x13;
-        m->timer = 0x3C;
+        NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
+        menu->timer = 0x3C;
         break;
     }
 }
 
-void CardGame_SaveCharacterExtra(NetMenu *m)
+/* CardGame_SaveCharacter for NETMENU_MODE_GAME_SAVE_EXTRA: done goes to CardGame_SaveExtra. */
+void CardGame_SaveCharacterExtra(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, 0x1F);
-    switch (SaveMenu_SaveCharacter((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_SAVING_TO_SLOT);
+    switch (SaveMenu_SaveCharacter((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        m->hasSave = 1;
-        m->unkA3 = 0;
+        menu->hasSave = 1;
+        menu->saveStep = 0;
         gSysSettings.cardHasChara = 1;
-        NetMenu_SetState(m, 0xC);
+        NetMenu_SetState(menu, CARD_GAME_SAVE_EXTRA);
         break;
     case -1:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x13;
-        m->timer = 0x3C;
+        NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
+        menu->timer = 0x3C;
         break;
     }
 }
 
-void CardGame_SaveSystem(NetMenu *m)
+/* Writes the system file. Done: clears the changed-card bits, the success sound,
+ * gSysSettings.systemSaved, then CARD_GAME_DONE. Failed: CardGame_ShowError. */
+void CardGame_SaveSystem(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, 0x1F);
-    switch (SaveMenu_SaveSystem((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_SAVING_TO_SLOT);
+    switch (SaveMenu_SaveSystem((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
         Card_ClearChanged();
-        NetMenu_SetState(m, 0xA);
+        NetMenu_SetState(menu, CARD_GAME_DONE);
         Sound_PlaySeFlat(0, 0x19, 0);
         gSysSettings.systemSaved = 1;
         break;
     case -1:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x13;
-        m->timer = 0x3C;
+        NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
+        menu->timer = 0x3C;
         break;
     }
 }
 
-void CardGame_ShowResult(NetMenu *m)
+/* Unused (no state sets CARD_GAME_SHOW_RESULT). Shows menu->msg until a button press, then
+ * CARD_GAME_DONE. */
+void CardGame_ShowResult(NetMenu *menu)
 {
-    s32 msg = m->msg;
+    s32 msg = menu->msg;
     NetMenu_DrawMessage(0x64, 0x88, msg);
-    if (NetMenu_WaitButton(m, 0x1F4, 0xF4, 0) != 0) {
-        NetMenu_SetState(m, 0xA);
+    if (NetMenu_WaitButton(menu, 0x1F4, 0xF4, 0) != 0) {
+        NetMenu_SetState(menu, CARD_GAME_DONE);
     }
 }
 
-void CardGame_ShowError(NetMenu *m)
+/* Shows menu->msg until a button press, then CardGame_AskRetry, with the cursor on yes in
+ * NETMENU_MODE_GAME_SAVE and on no in the other modes. */
+void CardGame_ShowError(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, m->msg);
-    if (NetMenu_WaitButton(m, 0x1F4, 0xF4, 1) != 0) {
-        if (m->mode == 0xA) {
-            NetMenu_SetState(m, 8);
-            m->cursor = 0;
+    NetMenu_DrawMessage(0x64, 0x88, menu->msg);
+    if (NetMenu_WaitButton(menu, 0x1F4, 0xF4, 1) != 0) {
+        if (menu->mode == NETMENU_MODE_GAME_SAVE) {
+            NetMenu_SetState(menu, CARD_GAME_ASK_RETRY);
+            menu->cursor = 0;
             return;
         }
-        NetMenu_SetState(m, 8);
-        m->cursor = 1;
+        NetMenu_SetState(menu, CARD_GAME_ASK_RETRY);
+        menu->cursor = 1;
     }
 }
 
-/* After an error. Mode 10 asks whether to save the game so far (0x2E): yes starts
- * again from state 1; no goes on to state 0xB (or 9 when +0xB4 is 0x10 and the mode
- * is not 0x11). The other modes ask whether to go on without saving (0x2D, 0x27). */
-void CardGame_AskRetry(NetMenu *m)
+/* After an error. NETMENU_MODE_GAME_SAVE asks whether to save the game so far: yes starts again
+ * from CardGame_CheckSystem; no goes to CARD_GAME_QUIT, or to CardGame_AskQuit when openMode is
+ * NETMENU_MODE_SAVE_B (its test for NETMENU_MODE_GAME_SAVE_EXTRA there can't hold). The other modes
+ * ask whether to go on without saving. */
+void CardGame_AskRetry(NetMenu *menu)
 {
-    s32 mode = m->mode;
-    s16 h;
+    s32 mode = menu->mode;
+    s16 lastY;
 
     if (mode == 10) {
-        switch (NetMenu_YesNo(m, 0xCB, NetMenu_DrawMessage(0x64, 0x88, 0x2E) + 0x24, &m->cursor)) {
-        case 1:
-            if (m->openMode != 0x10) {
-                NetMenu_SetState(m, 0xB);
+        switch (NetMenu_YesNo(menu, 0xCB, NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_ASK_SAVE_PROGRESS) + 0x24, &menu->cursor)) {
+        case NETMENU_NO:
+            if (menu->openMode != 0x10) {
+                NetMenu_SetState(menu, CARD_GAME_QUIT);
                 break;
             }
-            if (m->mode == 0x11) {
-                NetMenu_SetState(m, 0xB);
+            if (menu->mode == NETMENU_MODE_GAME_SAVE_EXTRA) {
+                NetMenu_SetState(menu, CARD_GAME_QUIT);
                 break;
             }
-            NetMenu_SetState(m, 9);
+            NetMenu_SetState(menu, CARD_GAME_ASK_QUIT);
             break;
-        case 0:
+        case NETMENU_YES:
         load:
-            NetMenu_SetState(m, 1);
-            CardMenu_InitBuffers(m);
-            SaveMenu_CopyAll(m);
-            CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 1);
+            NetMenu_SetState(menu, CARD_GAME_CHECK_SYSTEM);
+            CardMenu_InitBuffers(menu);
+            SaveMenu_CopyAll(menu);
+            CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 1);
             CardTask_SelectFile(4, 0);
             CardState_SetFlags(1);
             break;
         }
     } else {
         if (mode == 6 || mode == 7 || mode == 0x11) {
-            h = NetMenu_DrawMessage(0x64, 0x88, 0x2D);
+            lastY = NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_ASK_CONTINUE_UNSAVED);
         } else {
-            h = NetMenu_DrawMessage(0x64, 0x88, 0x27);
+            lastY = NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_ASK_QUIT_UNSAVED);
         }
-        switch (NetMenu_YesNo(m, 0xCB, h + 0x24, &m->cursor)) {
-        case 1:
+        switch (NetMenu_YesNo(menu, 0xCB, lastY + 0x24, &menu->cursor)) {
+        case NETMENU_NO:
             goto load;
-        case 0:
-            NetMenu_SetState(m, 0xB);
+        case NETMENU_YES:
+            NetMenu_SetState(menu, CARD_GAME_QUIT);
             break;
         }
     }
@@ -3510,97 +3733,105 @@ void CardGame_AskRetry(NetMenu *m)
 
 extern u8 *gSubMenuWork;
 
-/* The menu work is read by its name (round 25): through its raw address
- * (0x8B43F0) the constant 1 for gBootMode went to v0, not a1 as in the game. */
-void CardGame_AskQuit(NetMenu *m)
+/* Asks whether to quit to the menu without saving (NETMENU_MODE_SAVE_B's path): yes sets gBootMode
+ * 1, clears byte 0xA of gSubMenuWork and ends with CARD_GAME_QUIT; no goes back to
+ * CardGame_AskRetry. The menu work is read through its name: through its raw address the constant 1
+ * for gBootMode went to another register than the game's. */
+void CardGame_AskQuit(NetMenu *menu)
 {
-    u8 *p;
+    u8 *work;
 
-    switch (NetMenu_YesNo(m, 0xCB, NetMenu_DrawMessage(0x64, 0x88, 0x43) + 0x24, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 8);
+    switch (NetMenu_YesNo(menu, 0xCB, NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_ASK_QUIT_TO_MENU) + 0x24, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_GAME_ASK_RETRY);
         break;
-    case 0:
-        p = gSubMenuWork;
+    case NETMENU_YES:
+        work = gSubMenuWork;
         gBootMode = 1;
-        p[0xA] = 0;
-        NetMenu_SetState(m, 0xB);
+        work[0xA] = 0;
+        NetMenu_SetState(menu, CARD_GAME_QUIT);
         break;
     }
 }
 
-void CardGame_SaveExtra(NetMenu *m)
+/* Writes the extra file (SaveMenu_SaveExtra, file 8). Done: CardGame_SaveSystem. Failed:
+ * CardGame_ShowError. */
+void CardGame_SaveExtra(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x64, 0x88, 0x1F);
-    switch (SaveMenu_SaveExtra((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_SAVING_TO_SLOT);
+    switch (SaveMenu_SaveExtra((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
         Card_ClearChanged();
-        m->unkA3 = 0;
-        NetMenu_SetState(m, 5);
+        menu->saveStep = 0;
+        NetMenu_SetState(menu, CARD_GAME_SAVE_SYSTEM);
         break;
     case -1:
-        NetMenu_SetState(m, 7);
-        m->msg = 0x13;
-        m->timer = 0x3C;
+        NetMenu_SetState(menu, CARD_GAME_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
+        menu->timer = 0x3C;
         break;
     }
 }
 
 extern u8 gSysBusy;
 
-void CardMenu_RunGameSave(NetMenu *m)
+/* NETMENU_MODE_GAME_SAVE, which CardSave_Start and CardSave_AskSave switch to when a card is in use
+ * (hasSave): checks the card the game uses again, then saves the character and the system data to
+ * it. gSysBusy is 1 in the card states and 0 at the prompts. done 1 once saved, 2 when the player
+ * gives up. */
+void CardMenu_RunGameSave(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardGame_Start(m);
+    switch (menu->state) {
+    case CARD_GAME_START:
+        CardGame_Start(menu);
         gSysBusy = 1;
         break;
-    case 1:
-        CardGame_CheckSystem(m);
+    case CARD_GAME_CHECK_SYSTEM:
+        CardGame_CheckSystem(menu);
         gSysBusy = 1;
         break;
-    case 2:
-        CardGame_CheckCharacter(m);
+    case CARD_GAME_CHECK_CHARACTER:
+        CardGame_CheckCharacter(menu);
         gSysBusy = 1;
         break;
-    case 3:
-        CardGame_PrepareSave(m);
+    case CARD_GAME_PREPARE_SAVE:
+        CardGame_PrepareSave(menu);
         gSysBusy = 1;
         break;
-    case 4:
-        CardGame_SaveCharacter(m);
+    case CARD_GAME_SAVE_CHARACTER:
+        CardGame_SaveCharacter(menu);
         gSysBusy = 1;
         break;
-    case 5:
-        CardGame_SaveSystem(m);
+    case CARD_GAME_SAVE_SYSTEM:
+        CardGame_SaveSystem(menu);
         gSysBusy = 1;
         break;
-    case 6:
-        CardGame_ShowResult(m);
+    case CARD_GAME_SHOW_RESULT:
+        CardGame_ShowResult(menu);
         gSysBusy = 0;
         break;
-    case 7:
-        CardGame_ShowError(m);
+    case CARD_GAME_SHOW_ERROR:
+        CardGame_ShowError(menu);
         gSysBusy = 0;
         break;
-    case 8:
-        CardGame_AskRetry(m);
+    case CARD_GAME_ASK_RETRY:
+        CardGame_AskRetry(menu);
         gSysBusy = 0;
         break;
-    case 9:
-        CardGame_AskQuit(m);
+    case CARD_GAME_ASK_QUIT:
+        CardGame_AskQuit(menu);
         gSysBusy = 0;
         break;
-    case 10:
+    case CARD_GAME_DONE:
     default:
         gSysBusy = 0;
-        m->done = 1;
+        menu->done = 1;
         break;
-    case 11:
+    case CARD_GAME_QUIT:
         gSysBusy = 0;
-        m->done = 2;
+        menu->done = 2;
         break;
     }
 }
@@ -3608,194 +3839,206 @@ void CardMenu_RunGameSave(NetMenu *m)
 void NetMode_Begin(DrawSlot *ds);
 s32 LobbyCard_SaveNetFile(void);
 
-void CardMenu_RunGameSaveNet(NetMenu *m)
+/* The online in-game save (NETMENU_MODE_GAME_SAVE_TOWN, _ENTRY and _LOGOUT): CardMenu_RunGameSave's
+ * states, but the end states keep 1 or 2 in quitResult, call NetMode_Begin and go to
+ * CARD_GAME_SAVE_EXTRA, which runs LobbyCard_SaveNetFile until it returns 1 or -1 and then sets
+ * done. */
+void CardMenu_RunGameSaveNet(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardGame_Start(m);
+    switch (menu->state) {
+    case CARD_GAME_START:
+        CardGame_Start(menu);
         gSysBusy = 1;
         break;
-    case 1:
-        CardGame_CheckSystem(m);
+    case CARD_GAME_CHECK_SYSTEM:
+        CardGame_CheckSystem(menu);
         gSysBusy = 1;
         break;
-    case 2:
-        CardGame_CheckCharacter(m);
+    case CARD_GAME_CHECK_CHARACTER:
+        CardGame_CheckCharacter(menu);
         gSysBusy = 1;
         break;
-    case 3:
-        CardGame_PrepareSave(m);
+    case CARD_GAME_PREPARE_SAVE:
+        CardGame_PrepareSave(menu);
         gSysBusy = 1;
         break;
-    case 4:
-        CardGame_SaveCharacter(m);
+    case CARD_GAME_SAVE_CHARACTER:
+        CardGame_SaveCharacter(menu);
         gSysBusy = 1;
         break;
-    case 5:
-        CardGame_SaveSystem(m);
+    case CARD_GAME_SAVE_SYSTEM:
+        CardGame_SaveSystem(menu);
         gSysBusy = 1;
         break;
-    case 6:
-        CardGame_ShowResult(m);
+    case CARD_GAME_SHOW_RESULT:
+        CardGame_ShowResult(menu);
         gSysBusy = 0;
         break;
-    case 7:
-        CardGame_ShowError(m);
+    case CARD_GAME_SHOW_ERROR:
+        CardGame_ShowError(menu);
         gSysBusy = 0;
         break;
-    case 8:
-        CardGame_AskRetry(m);
+    case CARD_GAME_ASK_RETRY:
+        CardGame_AskRetry(menu);
         gSysBusy = 0;
         break;
-    case 9:
-        CardGame_AskQuit(m);
+    case CARD_GAME_ASK_QUIT:
+        CardGame_AskQuit(menu);
         gSysBusy = 0;
         break;
-    case 10:
+    case CARD_GAME_DONE:
     default:
-        m->quitResult = 1;
+        menu->quitResult = 1;
         goto quit;
-    case 11:
-        m->quitResult = 2;
+    case CARD_GAME_QUIT:
+        menu->quitResult = 2;
     quit:
-        NetMenu_SetState(m, 0xC);
+        NetMenu_SetState(menu, CARD_GAME_SAVE_EXTRA);
         NetMode_Begin((DrawSlot *)gNetMenuDrawHooks);
         break;
-    case 12:
+    case CARD_GAME_SAVE_EXTRA:
         switch (LobbyCard_SaveNetFile()) {
         case 0:
             break;
         case 1:
         case -1:
             gSysBusy = 0;
-            m->done = m->quitResult;
+            menu->done = menu->quitResult;
             break;
         }
         break;
     }
 }
 
-void CardMenu_RunGameSaveExtra(NetMenu *m)
+/* NETMENU_MODE_GAME_SAVE_EXTRA (LobbyNetXfer_Run): CardMenu_RunGameSave, also writing the extra
+ * file: CardGame_SaveCharacterExtra, CardGame_SaveExtra, then CardGame_SaveSystem. */
+void CardMenu_RunGameSaveExtra(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardGame_Start(m);
+    switch (menu->state) {
+    case CARD_GAME_START:
+        CardGame_Start(menu);
         gSysBusy = 1;
         break;
-    case 1:
-        CardGame_CheckSystem(m);
+    case CARD_GAME_CHECK_SYSTEM:
+        CardGame_CheckSystem(menu);
         gSysBusy = 1;
         break;
-    case 2:
-        CardGame_CheckCharacter(m);
+    case CARD_GAME_CHECK_CHARACTER:
+        CardGame_CheckCharacter(menu);
         gSysBusy = 1;
         break;
-    case 3:
-        CardGame_PrepareSave(m);
+    case CARD_GAME_PREPARE_SAVE:
+        CardGame_PrepareSave(menu);
         gSysBusy = 1;
         break;
-    case 4:
-        CardGame_SaveCharacterExtra(m);
+    case CARD_GAME_SAVE_CHARACTER:
+        CardGame_SaveCharacterExtra(menu);
         gSysBusy = 1;
         break;
-    case 5:
-        CardGame_SaveSystem(m);
+    case CARD_GAME_SAVE_SYSTEM:
+        CardGame_SaveSystem(menu);
         gSysBusy = 1;
         break;
-    case 6:
-        CardGame_ShowResult(m);
+    case CARD_GAME_SHOW_RESULT:
+        CardGame_ShowResult(menu);
         gSysBusy = 0;
         break;
-    case 7:
-        CardGame_ShowError(m);
+    case CARD_GAME_SHOW_ERROR:
+        CardGame_ShowError(menu);
         gSysBusy = 0;
         break;
-    case 8:
-        CardGame_AskRetry(m);
+    case CARD_GAME_ASK_RETRY:
+        CardGame_AskRetry(menu);
         gSysBusy = 0;
         break;
-    case 9:
-        CardGame_AskQuit(m);
+    case CARD_GAME_ASK_QUIT:
+        CardGame_AskQuit(menu);
         gSysBusy = 0;
         break;
-    case 10:
+    case CARD_GAME_DONE:
     default:
         gSysBusy = 0;
-        m->done = 1;
+        menu->done = 1;
         break;
-    case 11:
+    case CARD_GAME_QUIT:
         gSysBusy = 0;
-        m->done = 2;
+        menu->done = 2;
         break;
-    case 12:
-        CardGame_SaveExtra(m);
+    case CARD_GAME_SAVE_EXTRA:
+        CardGame_SaveExtra(menu);
         gSysBusy = 1;
         break;
     }
 }
 
-void CardSave_Start(NetMenu *m)
+/* NETMENU_MODE_SAVE_ASK goes to CardSave_AskSave first. Otherwise, with no card in use (hasSave 0),
+ * CardSave_ChooseSlot; with one, the menu switches to NETMENU_MODE_GAME_SAVE. */
+void CardSave_Start(NetMenu *menu)
 {
-    if (m->mode == 9) {
-        NetMenu_SetState(m, 2);
-        m->cursor = 0;
-        if (m->hasSave == 0) {
-            m->slot = 0;
+    if (menu->mode == NETMENU_MODE_SAVE_ASK) {
+        NetMenu_SetState(menu, CARD_SAVE_ASK_SAVE);
+        menu->cursor = 0;
+        if (menu->hasSave == 0) {
+            menu->slot = 0;
         }
-    } else if (m->hasSave == 0) {
-        NetMenu_SetState(m, 1);
-        m->cursor = 0;
-        m->slot = 0;
+    } else if (menu->hasSave == 0) {
+        NetMenu_SetState(menu, CARD_SAVE_CHOOSE_SLOT);
+        menu->cursor = 0;
+        menu->slot = 0;
     } else {
-        m->mode = 10;
-        m->state = 0;
+        menu->mode = 10;
+        menu->state = 0;
     }
 }
 
-void CardSave_AskSave(NetMenu *m)
+/* Asks whether to save. Yes: CardSave_ChooseSlot, or NETMENU_MODE_GAME_SAVE when a card is in use
+ * (hasSave). No: CARD_SAVE_QUIT (done 2). */
+void CardSave_AskSave(NetMenu *menu)
 {
-    switch (NetMenu_YesNo(m, 0x52, NetMenu_DrawMessage(0x64, 0x88, 0x1D) + 0x24, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 0xF);
+    switch (NetMenu_YesNo(menu, 0x52, NetMenu_DrawMessage(0x64, 0x88, NETMENU_MSG_ASK_SAVE) + 0x24, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_SAVE_QUIT);
         break;
-    case 0:
-        if (m->hasSave == 0) {
-            NetMenu_SetState(m, 1);
-            m->cursor = 0;
+    case NETMENU_YES:
+        if (menu->hasSave == 0) {
+            NetMenu_SetState(menu, CARD_SAVE_CHOOSE_SLOT);
+            menu->cursor = 0;
             break;
         }
-        m->mode = 0xA;
-        m->state = 0;
+        menu->mode = 0xA;
+        menu->state = 0;
         break;
     }
 }
 
-void CardSave_ChooseSlot(NetMenu *m)
+/* Picks the port (cross: CardSave_AskSave). After the pick it prepares the buffers and the card
+ * image, starts reading the system file and goes to CardSave_CheckSystem. */
+void CardSave_ChooseSlot(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 8);
-    switch (m->sub) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_SAVE_SLOT);
+    switch (menu->sub) {
     case 0:
-        switch (NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 0)) {
+        switch (NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 0)) {
         case 0:
         case 1:
-            m->sub++;
-            m->timer = 4;
+            menu->sub++;
+            menu->timer = 4;
             break;
-        case 2:
-            NetMenu_SetState(m, 2);
-            m->cursor = 0;
+        case NETMENU_SLOT_CANCEL:
+            NetMenu_SetState(menu, CARD_SAVE_ASK_SAVE);
+            menu->cursor = 0;
             break;
         }
         break;
     case 1:
-        NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-        if (--m->timer <= 0) {
-            NetMenu_SetState(m, 3);
-            m->timer = 0x1E;
-            CardMenu_InitBuffers(m);
-            CardMenu_InitLoadBuffers(m);
-            SaveMenu_CopyAll(m);
-            CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 1);
+        NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+        if (--menu->timer <= 0) {
+            NetMenu_SetState(menu, CARD_SAVE_CHECK_SYSTEM);
+            menu->timer = 0x1E;
+            CardMenu_InitBuffers(menu);
+            CardMenu_InitLoadBuffers(menu);
+            SaveMenu_CopyAll(menu);
+            CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 1);
             CardTask_SelectFile(4, 0);
             CardState_SetFlags(1);
         }
@@ -3803,700 +4046,744 @@ void CardSave_ChooseSlot(NetMenu *m)
     }
 }
 
-void CardSave_CheckSystem(NetMenu *m)
+/* Checks the system file read. A good one (its flags merged) or none (CARD_ERR_NO_FILE) starts
+ * reading character file 0 and goes to CardSave_ReadCharacters. Unformatted:
+ * CardSave_ChooseCharSlot with charLoaded 0. Other errors: CardSave_ShowError. */
+void CardSave_CheckSystem(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        if (SaveMenu_ReadBad(m) == 0) {
-            SysSave_MergeFlags(m->readBuf);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        if (SaveMenu_ReadBad(menu) == 0) {
+            SysSave_MergeFlags(menu->readBuf);
         }
-        m->timer = 0x1E;
+        menu->timer = 0x1E;
     start:
         Card_ClearChanged();
-        NetMenu_SetState(m, 4);
-        m->charNo = 0;
-        m->fileKind = 2 << m->charNo;
-        CardTask_StartRead(m->slot, (u8 *)m->readBuf);
-        CardTask_SelectFile(m->charNo + 5, 0);
+        NetMenu_SetState(menu, CARD_SAVE_READ_CHARACTERS);
+        menu->charNo = 0;
+        menu->fileKind = 2 << menu->charNo;
+        CardTask_StartRead(menu->slot, (u8 *)menu->readBuf);
+        CardTask_SelectFile(menu->charNo + 5, 0);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-        m->charLoaded = 0;
+    case CARD_ERR_NO_FILE:
+        menu->charLoaded = 0;
         goto start;
-    case -254:
-        NetMenu_SetState(m, 5);
-        m->charLoaded = 0;
+    case CARD_ERR_UNFORMATTED:
+        NetMenu_SetState(menu, CARD_SAVE_CHOOSE_CHAR_SLOT);
+        menu->charLoaded = 0;
         gChrEdit.slot = 0;
         Card_ClearChanged();
         CardTask_StartCheck();
         break;
-    case -252:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0xC;
+    case CARD_ERR_NO_SPACE:
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_SPACE;
         break;
-    case -255:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0xB;
+    case CARD_ERR_NO_CARD:
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_CARD;
         break;
     default:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x14;
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_BAD_DATA;
         break;
     }
 }
 
-/* Reads the three characters' save files one after the other (m->charNo): a good one
- * is copied into its SaveData (a bad one cleared), then the next is read; after the
- * third, state 5. */
-void CardSave_ReadCharacters(NetMenu *m)
+/* Reads the three characters' save files one after another (menu->charNo): a good one is copied
+ * into its SaveData (a bad one cleared), then the next is read; after the third,
+ * CardSave_ChooseCharSlot. */
+void CardSave_ReadCharacters(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
         {
-            u8 *buf = m->readBuf;
-            u8 *save = (u8 *)&m->slots[m->charNo];
+            u8 *buf = menu->readBuf;
+            u8 *save = (u8 *)&menu->slots[menu->charNo];
 
-            if (SaveMenu_ReadBad(m) != 0) {
-                m->charRead[m->charNo] = 0x80;
+            if (SaveMenu_ReadBad(menu) != 0) {
+                menu->charRead[menu->charNo] = 0x80;
                 memset(save, 0, 0x37F8);
             } else {
-                m->charRead[m->charNo] = 1;
+                menu->charRead[menu->charNo] = 1;
                 memcpy(save, buf + 0x50, 0x37F8);
             }
-            m->charLoaded = 2;
+            menu->charLoaded = 2;
         }
         goto next;
-    case -1:
+    case CARD_BUSY:
         break;
     case -0xFF:
         goto err; /* the compare chain wants this label before -0xFD */
     case -0xFD:
     case -0xFC:
     next:
-        m->charNo++;
-        if (m->charNo == 3) {
-            m->charNo = 0;
+        menu->charNo++;
+        if (menu->charNo == 3) {
+            menu->charNo = 0;
             CardTask_StartCheck();
-            NetMenu_SetState(m, 5);
-            m->cursor = 1;
+            NetMenu_SetState(menu, CARD_SAVE_CHOOSE_CHAR_SLOT);
+            menu->cursor = 1;
             gChrEdit.slot = 0;
             break;
         }
-        m->fileKind = 2 << m->charNo;
-        CardTask_StartRead(m->slot, (u8 *)m->readBuf);
-        CardTask_SelectFile(m->charNo + 5, 0);
+        menu->fileKind = 2 << menu->charNo;
+        CardTask_StartRead(menu->slot, (u8 *)menu->readBuf);
+        CardTask_SelectFile(menu->charNo + 5, 0);
         break;
     err:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0xB;
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_CARD;
         break;
     default:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x14;
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_BAD_DATA;
         break;
     }
 }
 
-/* Chooses one of the three characters (gChrEdit.slot, left and right): confirm goes to
- * state 6 with the message for an empty or used slot (0x2B when the files are not
- * read), cancel back to state 1; a card change to state 0xD. */
-void CardSave_ChooseCharSlot(NetMenu *m)
+/* Picks one of the three character slots (gChrEdit.slot, up and down). Confirm goes to
+ * CardSave_ConfirmCharSlot with the prompt for an empty or used slot (or for a card without a save,
+ * when the files were not read); cross goes back to CardSave_ChooseSlot; a changed card to
+ * CardSave_ShowError. */
+void CardSave_ChooseCharSlot(NetMenu *menu)
 {
     u8 *saves;
 
-    if (m->buttons & 0x2000) {
-        Sound_PlaySeFlat(0, 0x12, 0);
+    if (menu->buttons & PAD_UP) {
+        Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
         gChrEdit.slot--;
         if ((s8)gChrEdit.slot < 0) {
             gChrEdit.slot = 2;
         }
-    } else if (m->buttons & 0x1000) {
-        Sound_PlaySeFlat(0, 0x12, 0);
+    } else if (menu->buttons & PAD_DOWN) {
+        Sound_PlaySeFlat(0, SE_SYS_CURSOR, 0);
         gChrEdit.slot++;
         if (gChrEdit.slot > 2) {
             gChrEdit.slot = 0;
         }
     }
-    NetMenu_DrawMessage(0x28, 0x160, 0x2A);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x26;
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_CHARA_SLOT);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    if (m->buttons & 0x20) {
-        Sound_PlaySeFlat(0, 0x13, 0);
-        NetMenu_SetState(m, 6);
-        m->charIndex = gChrEdit.slot;
-        m->cursor = 1;
-        saves = (u8 *)m->slots;
-        if (m->charLoaded != 0) {
+    if (menu->buttons & PAD_CIRCLE) {
+        Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
+        NetMenu_SetState(menu, CARD_SAVE_CONFIRM_CHAR_SLOT);
+        menu->charIndex = gChrEdit.slot;
+        menu->cursor = 1;
+        saves = (u8 *)menu->slots;
+        if (menu->charLoaded != 0) {
             if (saves[gChrEdit.slot * 0x37F8] == 0) {
-                m->msg = 0x17;
+                menu->msg = NETMENU_MSG_ASK_SAVE_HERE;
             } else {
-                m->msg = 0x16;
+                menu->msg = NETMENU_MSG_ASK_OVERWRITE_CHARA;
             }
         } else {
-            m->msg = 0x2B;
+            menu->msg = NETMENU_MSG_ASK_CREATE_DATA;
         }
-    } else if (m->buttons & 0x40) {
-        Sound_PlaySeFlat(0, 0x14, 0);
-        NetMenu_SetState(m, 1);
+    } else if (menu->buttons & PAD_CROSS) {
+        Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
+        NetMenu_SetState(menu, CARD_SAVE_CHOOSE_SLOT);
     }
-    m->layers[1] = 6;
+    menu->layers[1] = 6;
     CardMenu_DrawCharacters(&gChrEdit, 2, 0, 0, (s8)gChrEdit.slot);
 }
 
-/* The message with a yes/no choice under it: yes goes to state 5; no to state 9 (or 7
- * with the cursor on 1 for a full card, 0xD with message 0x13 on other errors); a card
- * change to state 0xD with message 0x26. */
-void CardSave_ConfirmCharSlot(NetMenu *m)
+/* Shows menu->msg over a yes/no box. Yes: CardSave_PrepareSave, or CardSave_AskFormat (the cursor
+ * on no) for an unformatted card, or CardSave_ShowError on other errors. No: back to
+ * CardSave_ChooseCharSlot. A changed card: CardSave_ShowError. */
+void CardSave_ConfirmCharSlot(NetMenu *menu)
 {
-    s16 h;
+    s16 lastY;
 
-    h = NetMenu_DrawMessage(0xDD, 0x88, m->msg);
-    NetMenu_DrawMessage(0x28, 0x160, 0x2A);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x26;
+    lastY = NetMenu_DrawMessage(0xDD, 0x88, menu->msg);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_CHARA_SLOT);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    switch (NetMenu_YesNo(m, 0xCB, h + 0x24, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 5);
+    switch (NetMenu_YesNo(menu, 0xCB, lastY + 0x24, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_SAVE_CHOOSE_CHAR_SLOT);
         break;
-    case 0:
-        switch (m->result[m->slot]) {
+    case NETMENU_YES:
+        switch (menu->result[menu->slot]) {
         case 0:
         case -0xFD:
-            NetMenu_SetState(m, 9);
+            NetMenu_SetState(menu, CARD_SAVE_PREPARE_SAVE);
             break;
         case -0xFE:
-            NetMenu_SetState(m, 7);
-            m->cursor = 1;
+            NetMenu_SetState(menu, CARD_SAVE_ASK_FORMAT);
+            menu->cursor = 1;
             break;
         default:
-            NetMenu_SetState(m, 0xD);
-            m->msg = 0x13;
+            NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_SAVE_FAILED;
             break;
         }
         break;
     }
 }
 
-void CardSave_AskFormat(NetMenu *m)
+/* Asks to format the card. Yes: starts the format, then CardSave_Format. No: CardSave_ChooseSlot. A
+ * changed card: CardSave_ShowError. */
+void CardSave_AskFormat(NetMenu *menu)
 {
-    s16 h = NetMenu_DrawMessage(0x28, 0x160, 0xD);
+    s16 lastY = NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_ASK_FORMAT);
 
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    if (NetMenu_CardChanged(m->slot) != 0) {
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x26;
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    if (NetMenu_CardChanged(menu->slot) != 0) {
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_CARD_CHANGED;
         return;
     }
-    switch (NetMenu_YesNo(m, 0x16, h + 0x12, &m->cursor)) {
-    case 1:
-        NetMenu_SetState(m, 1);
+    switch (NetMenu_YesNo(menu, 0x16, lastY + 0x12, &menu->cursor)) {
+    case NETMENU_NO:
+        NetMenu_SetState(menu, CARD_SAVE_CHOOSE_SLOT);
         break;
-    case 0:
-        NetMenu_SetState(m, 8);
-        m->timer = 0x1E;
-        CardTask_StartDelete(m->slot);
+    case NETMENU_YES:
+        NetMenu_SetState(menu, CARD_SAVE_FORMAT);
+        menu->timer = 0x1E;
+        CardTask_StartDelete(menu->slot);
         break;
     }
 }
 
-void CardSave_Format(NetMenu *m)
+/* Waits for the format. Done: CardSave_PrepareSave. Failed: CardSave_ShowError. */
+void CardSave_Format(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xE);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        NetMenu_SetState(m, 9);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_FORMATTING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        NetMenu_SetState(menu, CARD_SAVE_PREPARE_SAVE);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -256:
+    case CARD_ERR_FAILED:
     default:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0xF;
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_FORMAT_FAILED;
         break;
     }
 }
 
-void CardSave_PrepareSave(NetMenu *m)
+/* Loads the save icons (file 0x1714) and copies gSave into slots[gChrEdit.slot] and the card image;
+ * records the slot in gSysSave.lastSlot and gQuestSync.charIndex, sets charSaved and fileKind, then
+ * CardSave_SaveCharacter. */
+void CardSave_PrepareSave(NetMenu *menu)
 {
     s32 i;
 
-    NetMenu_SetState(m, 0xA);
-    m->timer = 0x1E;
-    LoadCompressedFile(m->iconBuf, 0x1714);
-    gCardSlots = m->slots;
+    NetMenu_SetState(menu, CARD_SAVE_SAVE_CHARACTER);
+    menu->timer = 0x1E;
+    LoadCompressedFile(menu->iconBuf, 0x1714);
+    gCardSlots = menu->slots;
     i = gChrEdit.slot;
-    m->charIndex = i;
-    memcpy((void *)((s32)m->slots + i * (s32)sizeof(SaveData)), &gSave, sizeof(SaveData)); /* an integer sum: &m->slots[i] changes the registers */
-    gSysSave.unk45D = 3;
+    menu->charIndex = i;
+    memcpy((void *)((s32)menu->slots + i * (s32)sizeof(SaveData)), &gSave, sizeof(SaveData)); /* an integer sum: &m->slots[i] changes the registers */
+    gSysSave.charSaved = 3;
     gSysSave.lastSlot = gChrEdit.slot;
     gQuestSync.charIndex = gChrEdit.slot;
-    SaveMenu_CopyCharacterSlot(m, i);
-    m->fileKind = 2 << i;
-    m->unkA3 = 0;
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
+    SaveMenu_CopyCharacterSlot(menu, i);
+    menu->fileKind = 2 << i;
+    menu->saveStep = 0;
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
 }
 
-void CardSave_SaveCharacter(NetMenu *m)
+/* Writes the character file. Done: hasSave and cardHasChara set, then CardSave_SaveSystem. Failed:
+ * CardSave_ShowError. */
+void CardSave_SaveCharacter(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    switch (SaveMenu_SaveCharacter((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    switch (SaveMenu_SaveCharacter((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
-        NetMenu_SetState(m, 0xB);
-        m->hasSave = 1;
-        m->unkA3 = 0;
+        NetMenu_SetState(menu, CARD_SAVE_SAVE_SYSTEM);
+        menu->hasSave = 1;
+        menu->saveStep = 0;
         gSysSettings.cardHasChara = 1;
         break;
     case -1:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x13;
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
         break;
     }
 }
 
-void CardSave_SaveSystem(NetMenu *m)
+/* Writes the system file. Done: clears the changed-card bits, the success sound,
+ * gSysSettings.systemSaved, then CARD_SAVE_DONE (done 1). Failed: CardSave_ShowError. */
+void CardSave_SaveSystem(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    switch (SaveMenu_SaveSystem((struct SaveMenu *)m)) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    switch (SaveMenu_SaveSystem((struct SaveMenu *)menu)) {
     case 0:
         break;
     case 1:
         Card_ClearChanged();
-        NetMenu_SetState(m, 0xE);
+        NetMenu_SetState(menu, CARD_SAVE_DONE);
         Sound_PlaySeFlat(0, 0x19, 0);
         gSysSettings.systemSaved = 1;
         break;
     case -1:
-        NetMenu_SetState(m, 0xD);
-        m->msg = 0x13;
+        NetMenu_SetState(menu, CARD_SAVE_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
         break;
     }
 }
 
-void CardSave_ShowSaved(NetMenu *m)
+/* Unused (no state sets CARD_SAVE_SHOW_SAVED). Shows the saved notice until a button press, then
+ * CARD_SAVE_DONE. */
+void CardSave_ShowSaved(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, 0x18);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 0) != 0) {
-        NetMenu_SetState(m, 0xE);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVED_KEEP_CARD);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 0) != 0) {
+        NetMenu_SetState(menu, CARD_SAVE_DONE);
     }
 }
 
-void CardSave_ShowError(NetMenu *m)
+/* Shows menu->msg until a button press, then goes back to CardSave_ChooseSlot. */
+void CardSave_ShowError(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, m->msg);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 1) != 0) {
-        NetMenu_SetState(m, 1);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, menu->msg);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 1) != 0) {
+        NetMenu_SetState(menu, CARD_SAVE_CHOOSE_SLOT);
     }
 }
 
-void CardMenu_RunSave(NetMenu *m)
+/* NETMENU_MODE_SAVE and NETMENU_MODE_SAVE_ASK (the town offline, LobbyScreen_LoadBanks): saves the
+ * character to a chosen port and character slot after reading the card's system and character
+ * files, formatting when needed; with a card already in use it switches to NETMENU_MODE_GAME_SAVE.
+ * done 1 once saved, 2 when declined. */
+void CardMenu_RunSave(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardSave_Start(m);
+    switch (menu->state) {
+    case CARD_SAVE_START:
+        CardSave_Start(menu);
         break;
-    case 2:
-        CardSave_AskSave(m);
-        m->layers[1] = 3;
+    case CARD_SAVE_ASK_SAVE:
+        CardSave_AskSave(menu);
+        menu->layers[1] = 3;
         break;
-    case 1:
-        CardSave_ChooseSlot(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_CHOOSE_SLOT:
+        CardSave_ChooseSlot(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 3:
-        CardSave_CheckSystem(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_CHECK_SYSTEM:
+        CardSave_CheckSystem(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 4:
-        CardSave_ReadCharacters(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_READ_CHARACTERS:
+        CardSave_ReadCharacters(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 5:
-        CardSave_ChooseCharSlot(m);
-        m->layers[0] = 4;
+    case CARD_SAVE_CHOOSE_CHAR_SLOT:
+        CardSave_ChooseCharSlot(menu);
+        menu->layers[0] = 4;
         break;
-    case 6:
-        CardSave_ConfirmCharSlot(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_CONFIRM_CHAR_SLOT:
+        CardSave_ConfirmCharSlot(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 7:
-        CardSave_AskFormat(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_ASK_FORMAT:
+        CardSave_AskFormat(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 8:
-        CardSave_Format(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_FORMAT:
+        CardSave_Format(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 9:
-        CardSave_PrepareSave(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_PREPARE_SAVE:
+        CardSave_PrepareSave(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 10:
-        CardSave_SaveCharacter(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_SAVE_CHARACTER:
+        CardSave_SaveCharacter(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 11:
-        CardSave_SaveSystem(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_SAVE_SYSTEM:
+        CardSave_SaveSystem(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 12:
-        CardSave_ShowSaved(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_SHOW_SAVED:
+        CardSave_ShowSaved(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 13:
-        CardSave_ShowError(m);
-        m->layers[0] = 4;
-        m->layers[1] = 3;
+    case CARD_SAVE_SHOW_ERROR:
+        CardSave_ShowError(menu);
+        menu->layers[0] = 4;
+        menu->layers[1] = 3;
         break;
-    case 14:
-        m->done = 1;
+    case CARD_SAVE_DONE:
+        menu->done = 1;
         break;
-    case 15:
+    case CARD_SAVE_QUIT:
     default:
-        m->done = 2;
+        menu->done = 2;
         break;
     }
 }
 
-void CardSetup_Start(NetMenu *m)
+/* Sets up the card buffers, starts reading the system file of port 0, then CardSetup_Read. */
+void CardSetup_Start(NetMenu *menu)
 {
-    NetMenu_SetState(m, 1);
-    m->slot = 0;
-    CardMenu_InitBuffers(m);
-    CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 0);
+    NetMenu_SetState(menu, CARD_SETUP_READ);
+    menu->slot = 0;
+    CardMenu_InitBuffers(menu);
+    CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 0);
 }
 
-void CardSetup_Read(NetMenu *m)
+/* Waits for the read. Done: writes the current system data into the file read (SysSave_Exchange),
+ * encrypts gLoadBuf, starts saving it and goes to CardSetup_Save. An error: CardSetup_ShowResult
+ * with the failure. */
+void CardSetup_Read(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        NetMenu_SetState(m, 2);
-        SysSave_Exchange(1, m->readBuf);
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        NetMenu_SetState(menu, CARD_SETUP_SAVE);
+        SysSave_Exchange(1, menu->readBuf);
         SaveFile_Encrypt((u8 *)gLoadBuf);
-        CardTask_StartSave(m->slot, (u8 *) gLoadBuf);
+        CardTask_StartSave(menu->slot, (u8 *) gLoadBuf);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-    case -254:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_UNFORMATTED:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        NetMenu_SetState(m, 3);
-        m->msg = 0x13;
-        m->timer = 0x78;
+        NetMenu_SetState(menu, CARD_SETUP_SHOW_RESULT);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
+        menu->timer = 0x78;
         break;
     }
 }
 
-void CardSetup_Save(NetMenu *m)
+/* Waits for the save, then CardSetup_ShowResult with the saved notice or the failure. */
+void CardSetup_Save(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0x11);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        NetMenu_SetState(m, 3);
-        m->msg = 0x12;
-        m->timer = 0x78;
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_SAVING);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        NetMenu_SetState(menu, CARD_SETUP_SHOW_RESULT);
+        menu->msg = NETMENU_MSG_SAVED;
+        menu->timer = 0x78;
         break;
-    case -1:
+    case CARD_BUSY:
         break;
     default:
-        NetMenu_SetState(m, 3);
-        m->msg = 0x13;
-        m->timer = 0x78;
+        NetMenu_SetState(menu, CARD_SETUP_SHOW_RESULT);
+        menu->msg = NETMENU_MSG_SAVE_FAILED;
+        menu->timer = 0x78;
         break;
     }
 }
 
-void CardSetup_ShowResult(NetMenu *m)
+/* Shows menu->msg until a button press or the timer's end, then CARD_SETUP_DONE. */
+void CardSetup_ShowResult(NetMenu *menu)
 {
-    s32 msg = m->msg;
+    s32 msg = menu->msg;
     NetMenu_DrawMessage(0x28, 0x160, msg);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 0) != 0 || m->timer <= 0) {
-        NetMenu_SetState(m, 4);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 0) != 0 || menu->timer <= 0) {
+        NetMenu_SetState(menu, CARD_SETUP_DONE);
     }
 }
 
-/* Runs the current step of the menu setup. */
-void CardMenu_RunSetup(NetMenu *m)
+/* NETMENU_MODE_SETUP: rewrites the system file of port 0 with the current system data
+ * (CardSetup_*); no NetMenu_Open caller is seen. Its draw hooks are not queued. */
+void CardMenu_RunSetup(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardSetup_Start(m);
-        m->layers[1] = 2;
+    switch (menu->state) {
+    case CARD_SETUP_START:
+        CardSetup_Start(menu);
+        menu->layers[1] = 2;
         break;
-    case 1:
-        CardSetup_Read(m);
+    case CARD_SETUP_READ:
+        CardSetup_Read(menu);
         break;
-    case 2:
-        CardSetup_Save(m);
+    case CARD_SETUP_SAVE:
+        CardSetup_Save(menu);
         break;
-    case 3:
-        CardSetup_ShowResult(m);
+    case CARD_SETUP_SHOW_RESULT:
+        CardSetup_ShowResult(menu);
         break;
-    case 4:
+    case CARD_SETUP_DONE:
     default:
-        m->done = 1;
+        menu->done = 1;
         break;
     }
 }
 
-/* CardLogin_ChooseSlot passes m, already in a0. */
-void CardMenu_InitNetBuffers(NetMenu *m)
+/* CardMenu_InitBuffers for the NET file: card operation 1, the NET file's icons (0x1715) and the
+ * menu's buffers in gLoadBuf. CardLogin_ChooseSlot passes menu, already in a0. */
+void CardMenu_InitNetBuffers(NetMenu *menu)
 {
     s32 buf;
 
     CardTask_Begin(1);
     buf = gLoadBuf;
     memset((void *)buf, 0, 0x6AFE8);
-    m->iconBuf = (u8 *)buf;
-    m->imageBuf = buf + 0x20000;
-    m->readBuf = (u8 *)(buf + 0x40400);
-    LoadCompressedFile(m->iconBuf, 0x1715);
-    m->fileBlocks = CardOp_SetFiles((s32 *)m->iconBuf);
+    menu->iconBuf = (u8 *)buf;
+    menu->imageBuf = buf + 0x20000;
+    menu->readBuf = (u8 *)(buf + 0x40400);
+    LoadCompressedFile(menu->iconBuf, 0x1715);
+    menu->fileBlocks = CardOp_SetFiles((s32 *)menu->iconBuf);
 }
 
-void CardLogin_Start(NetMenu *m)
+/* Sets port 0, then CardLogin_ChooseSlot. */
+void CardLogin_Start(NetMenu *menu)
 {
-    NetMenu_SetState(m, 1);
-    m->slot = 0;
+    NetMenu_SetState(menu, CARD_LOGIN_CHOOSE_SLOT);
+    menu->slot = 0;
 }
 
-void CardLogin_ChooseSlot(NetMenu *m)
+/* Picks the port holding the NET file (cross: CARD_LOGIN_QUIT, done 2). After the pick it sets up
+ * the NET file's buffers, starts the read and goes to CardLogin_ReadNetFile. */
+void CardLogin_ChooseSlot(NetMenu *menu)
 {
-    NetMenu_DrawMessage(0x28, 0x160, 0x44);
-    switch (m->sub) {
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHOOSE_NET_SLOT);
+    switch (menu->sub) {
     case 0:
-        switch (NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 0)) {
+        switch (NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 0)) {
         case 0:
         case 1:
-            m->sub++;
-            m->timer = 4;
+            menu->sub++;
+            menu->timer = 4;
             break;
-        case 2:
-            NetMenu_SetState(m, 8);
+        case NETMENU_SLOT_CANCEL:
+            NetMenu_SetState(menu, CARD_LOGIN_QUIT);
             break;
         }
         break;
     case 1:
-        NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-        if (m->timer <= 0) {
-            NetMenu_SetState(m, 2);
-            m->timer = 0x1E;
-            CardMenu_InitNetBuffers(m);
-            CardTask_StartReadClear(m->slot, (u8 *)m->readBuf, 1);
+        NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+        if (menu->timer <= 0) {
+            NetMenu_SetState(menu, CARD_LOGIN_READ_NET_FILE);
+            menu->timer = 0x1E;
+            CardMenu_InitNetBuffers(menu);
+            CardTask_StartReadClear(menu->slot, (u8 *)menu->readBuf, 1);
         }
         break;
     }
 }
 
-void CardLogin_ReadNetFile(NetMenu *m)
+/* Checks the NET file read. With a login id saved (readBuf + 0x960 nonzero): CardLogin_AskDelete
+ * with the cursor on no; without one, CardLogin_ShowError. Errors (no file, no card, others) go to
+ * CardLogin_ShowError too. */
+void CardLogin_ReadNetFile(NetMenu *menu)
 {
-    s32 r;
+    s32 cardResult;
 
-    NetMenu_DrawMessage(0x28, 0x160, 0xA);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
+    NetMenu_DrawMessage(0x28, 0x160, NETMENU_MSG_CHECKING);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
         Card_ClearChanged();
         CardTask_StartCheck();
-        if (((s8 *)m->readBuf)[0x960] == 0) {
-            NetMenu_SetState(m, 5);
-            m->msg = 0x4B;
+        if (((s8 *)menu->readBuf)[0x960] == 0) {
+            NetMenu_SetState(menu, CARD_LOGIN_SHOW_ERROR);
+            menu->msg = NETMENU_MSG_NO_LOGIN_ID;
         } else {
-            NetMenu_SetState(m, 3);
-            m->msg = 0x48;
-            m->cursor = 1;
+            NetMenu_SetState(menu, CARD_LOGIN_ASK_DELETE);
+            menu->msg = NETMENU_MSG_ASK_DELETE_LOGIN_ID;
+            menu->cursor = 1;
         }
-        m->charNo = 0;
+        menu->charNo = 0;
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-        NetMenu_SetState(m, 5);
-        m->msg = 0x45;
+    case CARD_ERR_NO_FILE:
+        NetMenu_SetState(menu, CARD_LOGIN_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_NET_FILE;
         break;
-    case -254:
-        NetMenu_SetState(m, 5);
-        m->msg = 0x45;
+    case CARD_ERR_UNFORMATTED:
+        NetMenu_SetState(menu, CARD_LOGIN_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_NET_FILE;
         break;
-    case -252:
-        NetMenu_SetState(m, 5);
-        m->msg = 0x45;
+    case CARD_ERR_NO_SPACE:
+        NetMenu_SetState(menu, CARD_LOGIN_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NO_NET_FILE;
         break;
-    case -255:
-        NetMenu_SetState(m, 5);
-        m->msg = 0x47;
+    case CARD_ERR_NO_CARD:
+        NetMenu_SetState(menu, CARD_LOGIN_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NET_NO_CARD;
         break;
     default:
-        NetMenu_SetState(m, 5);
-        m->msg = 0x46;
+        NetMenu_SetState(menu, CARD_LOGIN_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NET_LOAD_FAILED;
         break;
     }
 }
 
-void CardLogin_AskDelete(NetMenu *m)
+/* Asks to delete the login id. Yes: clears the id (readBuf + 0x960, 11 bytes) and the password
+ * (+0x96B, 9 bytes), starts saving the file and goes to CardLogin_Save. No: back to
+ * CardLogin_Start. A removed card: CardLogin_ShowError. */
+void CardLogin_AskDelete(NetMenu *menu)
 {
-    u8 *p;
+    u8 *netFile;
 
-    if (Card_PortState(m->slot) == 0) {
-        NetMenu_SetState(m, 5);
-        m->msg = 0x4A;
+    if (Card_PortState(menu->slot) == 0) {
+        NetMenu_SetState(menu, CARD_LOGIN_SHOW_ERROR);
+        menu->msg = NETMENU_MSG_NET_CARD_REMOVED;
         return;
     }
-    switch (NetMenu_YesNo(m, 0x52, NetMenu_DrawMessage(0x64, 0x88, m->msg) + 0x24, &m->cursor)) {
-    case 1:
-        m->state = 0;
+    switch (NetMenu_YesNo(menu, 0x52, NetMenu_DrawMessage(0x64, 0x88, menu->msg) + 0x24, &menu->cursor)) {
+    case NETMENU_NO:
+        menu->state = 0;
         break;
-    case 0:
-        NetMenu_SetState(m, 4);
-        m->msg = 0x11;
-        p = m->readBuf;
-        memset(p + 0x960, 0, 0xB);
-        memset(p + 0x96B, 0, 9);
-        CardTask_StartSave(m->slot, m->readBuf);
+    case NETMENU_YES:
+        NetMenu_SetState(menu, CARD_LOGIN_SAVE);
+        menu->msg = NETMENU_MSG_SAVING;
+        netFile = menu->readBuf;
+        memset(netFile + 0x960, 0, 0xB);
+        memset(netFile + 0x96B, 0, 9);
+        CardTask_StartSave(menu->slot, menu->readBuf);
         break;
     }
 }
 
-void CardLogin_Save(NetMenu *m)
+/* Waits for the NET file's save. Done: CARD_LOGIN_DONE (done 1). Failed: CardLogin_ShowResult. */
+void CardLogin_Save(NetMenu *menu)
 {
-    s32 msg = m->msg;
-    s32 r;
+    s32 msg = menu->msg;
+    s32 cardResult;
 
     NetMenu_DrawMessage(0x28, 0x160, msg);
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    r = CardTask_Result();
-    m->result[m->slot] = r;
-    switch (r) {
-    case 0:
-        NetMenu_SetState(m, 7);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    cardResult = CardTask_Result();
+    menu->result[menu->slot] = cardResult;
+    switch (cardResult) {
+    case CARD_OK:
+        NetMenu_SetState(menu, CARD_LOGIN_DONE);
         break;
-    case -1:
+    case CARD_BUSY:
         break;
-    case -253:
-    case -252:
-    case -255:
+    case CARD_ERR_NO_FILE:
+    case CARD_ERR_NO_SPACE:
+    case CARD_ERR_NO_CARD:
     default:
-        NetMenu_SetState(m, 6);
-        m->msg = 0x49;
+        NetMenu_SetState(menu, CARD_LOGIN_SHOW_RESULT);
+        menu->msg = NETMENU_MSG_NET_SAVE_FAILED;
         break;
     }
 }
 
-void CardLogin_ShowError(NetMenu *m)
+/* Shows menu->msg until a button press, then goes back to CardLogin_ChooseSlot. */
+void CardLogin_ShowError(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, m->msg);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 1) != 0) {
-        NetMenu_SetState(m, 1);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, menu->msg);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 1) != 0) {
+        NetMenu_SetState(menu, CARD_LOGIN_CHOOSE_SLOT);
     }
 }
 
-void CardLogin_ShowResult(NetMenu *m)
+/* Shows menu->msg (the failed save) until a button press, then CARD_LOGIN_QUIT. */
+void CardLogin_ShowResult(NetMenu *menu)
 {
-    NetMenu_ChooseSlot(m, 0xDD, 0x88, (u8 *)&m->slot, 1);
-    NetMenu_DrawMessage(0x28, 0x160, m->msg);
-    if (NetMenu_WaitButton(m, 0x232, 0x184, 1) != 0) {
-        NetMenu_SetState(m, 8);
+    NetMenu_ChooseSlot(menu, 0xDD, 0x88, (u8 *)&menu->slot, 1);
+    NetMenu_DrawMessage(0x28, 0x160, menu->msg);
+    if (NetMenu_WaitButton(menu, 0x232, 0x184, 1) != 0) {
+        NetMenu_SetState(menu, CARD_LOGIN_QUIT);
     }
 }
 
-void CardMenu_RunDeleteLoginId(NetMenu *m)
+/* NETMENU_MODE_DELETE_LOGIN_ID (NetOption_Update): deletes the saved login id and password from the
+ * NET file on a chosen card. done 1 once deleted, 2 when cancelled at the port choice or after a
+ * failed save. */
+void CardMenu_RunDeleteLoginId(NetMenu *menu)
 {
-    switch (m->state) {
-    case 0:
-        CardLogin_Start(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    switch (menu->state) {
+    case CARD_LOGIN_START:
+        CardLogin_Start(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 1:
-        CardLogin_ChooseSlot(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOGIN_CHOOSE_SLOT:
+        CardLogin_ChooseSlot(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 2:
-        CardLogin_ReadNetFile(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOGIN_READ_NET_FILE:
+        CardLogin_ReadNetFile(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 3:
-        CardLogin_AskDelete(m);
-        m->layers[0] = 0;
-        m->layers[1] = 0;
+    case CARD_LOGIN_ASK_DELETE:
+        CardLogin_AskDelete(menu);
+        menu->layers[0] = 0;
+        menu->layers[1] = 0;
         break;
-    case 4:
-        CardLogin_Save(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOGIN_SAVE:
+        CardLogin_Save(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 5:
-        CardLogin_ShowError(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOGIN_SHOW_ERROR:
+        CardLogin_ShowError(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 6:
-        CardLogin_ShowResult(m);
-        m->layers[0] = 1;
-        m->layers[1] = 2;
+    case CARD_LOGIN_SHOW_RESULT:
+        CardLogin_ShowResult(menu);
+        menu->layers[0] = 1;
+        menu->layers[1] = 2;
         break;
-    case 7:
+    case CARD_LOGIN_DONE:
     default:
-        m->done = 1;
+        menu->done = 1;
         break;
-    case 8:
-        m->done = 2;
+    case CARD_LOGIN_QUIT:
+        menu->done = 2;
         break;
     }
 }
@@ -4506,91 +4793,95 @@ void CardTask_Update(void);
 s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
 s32 Game_IsOnline(void);
 void LobbyWorld_HoldClock(void);
-void CardMenu_RunSetup(NetMenu *m);
+void CardMenu_RunSetup(NetMenu *menu);
 
+/* Runs one frame of the card menu: reads the pad, counts menu->timer down, runs the state machine
+ * of menu->mode (CardMenu_Run*; the modes without one end at once), queues the draw hooks (not in
+ * NETMENU_MODE_SETUP), then CardTask_Update. Sets gSysSettings.cardMenuDone when done. Returns
+ * menu->done: 0 running, 1 done, 2 left without saving. */
 u8 NetMenu_Update(void)
 {
-    NetMenu *m = &gCardMenu;
+    NetMenu *menu = &gCardMenu;
 
     Text_SetSize(4);
-    *(s32 *)(m->layers) = 0;
-    m->showCursor = 0;
-    m->showButton = 0;
-    m->buttons = gPadState[0].pressed;
-    m->held = gPadState[0].held;
-    if (m->timer > 0) {
-        m->timer--;
+    *(s32 *)(menu->layers) = 0;
+    menu->showCursor = 0;
+    menu->showButton = 0;
+    menu->buttons = gPadState[0].pressed;
+    menu->held = gPadState[0].held;
+    if (menu->timer > 0) {
+        menu->timer--;
     }
-    switch (m->mode) {
-    case 3:
-        CardMenu_RunSaveNew(m);
-        m->layers[0] = 1;
+    switch (menu->mode) {
+    case NETMENU_MODE_SAVE_NEW:
+        CardMenu_RunSaveNew(menu);
+        menu->layers[0] = 1;
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 0:
-        CardMenu_RunBoot(m);
+    case NETMENU_MODE_BOOT:
+        CardMenu_RunBoot(menu);
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 1:
-    case 14:
-        CardMenu_RunSaveSystem(m);
-        if (m->state > 1 && m->state != 15) {
-            m->layers[0] = 1;
+    case NETMENU_MODE_SAVE_SYSTEM:
+    case NETMENU_MODE_SAVE_GALLERY:
+        CardMenu_RunSaveSystem(menu);
+        if (menu->state > 1 && menu->state != 15) {
+            menu->layers[0] = 1;
         }
-        m->layers[1] = 2;
+        menu->layers[1] = 2;
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 10:
-        CardMenu_RunGameSave(m);
-        m->layers[0] = 3;
+    case NETMENU_MODE_GAME_SAVE:
+        CardMenu_RunGameSave(menu);
+        menu->layers[0] = 3;
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 6:
-    case 7:
-    case 8:
-        CardMenu_RunGameSaveNet(m);
-        m->layers[0] = 3;
+    case NETMENU_MODE_GAME_SAVE_TOWN:
+    case NETMENU_MODE_GAME_SAVE_ENTRY:
+    case NETMENU_MODE_GAME_SAVE_LOGOUT:
+        CardMenu_RunGameSaveNet(menu);
+        menu->layers[0] = 3;
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 17:
-        CardMenu_RunGameSaveExtra(m);
-        m->layers[0] = 3;
+    case NETMENU_MODE_GAME_SAVE_EXTRA:
+        CardMenu_RunGameSaveExtra(menu);
+        menu->layers[0] = 3;
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 2:
-        CardMenu_RunSetup(m);
+    case NETMENU_MODE_SETUP:
+        CardMenu_RunSetup(menu);
         break;
-    case 5:
-    case 9:
-        CardMenu_RunSave(m);
+    case NETMENU_MODE_SAVE:
+    case NETMENU_MODE_SAVE_ASK:
+        CardMenu_RunSave(menu);
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 4:
-        CardMenu_RunLoad(m);
+    case NETMENU_MODE_LOAD:
+        CardMenu_RunLoad(menu);
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
-    case 18:
-        CardMenu_RunDeleteLoginId(m);
+    case NETMENU_MODE_DELETE_LOGIN_ID:
+        CardMenu_RunDeleteLoginId(menu);
         OT_AddAt(gDrawListText4, gNetMenuDrawHooks, 0, 1);
         break;
     case 11:
     case 12:
     case 13:
     case 15:
-    case 16:
+    case NETMENU_MODE_SAVE_B:
     default:
-        m->done = 1;
+        menu->done = 1;
         break;
     }
     Text_SetSize(0);
     CardTask_Update();
-    if (m->done != 0) {
-        gSysSettings.unk12 = 1;
+    if (menu->done != 0) {
+        gSysSettings.cardMenuDone = 1;
     }
     if (Game_IsOnline() == 0 && Overlay_IsLoaded(4) == 1 && gScene.online == 1) {
         LobbyWorld_HoldClock();
     }
-    return m->done;
+    return menu->done;
 }
 
 /* unk_3D54B0's .data (0x467C78-0x468850) */

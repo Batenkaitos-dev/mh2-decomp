@@ -20,13 +20,14 @@
 #include "em.h"
 #include "player.h"
 #include "objattach.h"
+#include "item.h"
 
 /* prototypes */
 void Player_AddStamina(Player *p, s16 n);
 void Player_AddSharpness(Player *p, s16 n);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
 extern u16 **D_008BF840[];
-u16 Area_BaseId(u16);
+u16 Map_DayId(u16);
 u16 Area_DayId(u16 area);
 void *EmScript_Trigger10Script(Em *em, u8 i);
 void *EmScript_Trigger20Script(Em *em, u8 i);
@@ -195,7 +196,7 @@ s32 Em_CanEnterArea(Em *em, u16 area)
     if (kindAreas == NULL) {
         return 0;
     }
-    kindAreas += Area_BaseId(gScene.map);
+    kindAreas += Map_DayId(gScene.map);
     entry = *kindAreas;
     if (entry == NULL) {
         return 0;
@@ -259,29 +260,31 @@ void Player_EndMash(Player *pl)
 }
 
 /*
- * Adds `amount` to the player's poison, as the skills allow: skill
- * 0xB makes the player immune (the poison is cleared), 0xA halves the
- * amount, 0xC doubles it, 0xD or 0xE halve it again. The poison then ticks
- * every 60 frames with skill 0xA, every 15 with 0xC, else every 30.
+ * Adds `amount` to the player's poison, as the skills allow:
+ * SKILL_POISON_IMMUNE clears it instead, SKILL_POISON_HALF halves the
+ * amount, SKILL_POISON_DOUBLE doubles it, and SKILL_STATUS6_HALF or
+ * SKILL_STATUS6_IMMUNE halve it again. The poison then ticks every 60
+ * frames with SKILL_POISON_HALF, every 15 with SKILL_POISON_DOUBLE, else
+ * every 30.
  */
 void Player_AddPoison(Player *pl, s16 amount)
 {
-    if (Player_HasSkill(pl, 0xB) == 1) {
+    if (Player_HasSkill(pl, SKILL_POISON_IMMUNE) == 1) {
         pl->poison = 0;
         return;
     }
-    if (Player_HasSkill(pl, 0xA) == 1) {
+    if (Player_HasSkill(pl, SKILL_POISON_HALF) == 1) {
         amount /= 2;
-    } else if (Player_HasSkill(pl, 0xC) == 1) {
+    } else if (Player_HasSkill(pl, SKILL_POISON_DOUBLE) == 1) {
         amount *= 2;
     }
-    if (Player_HasSkill(pl, 0xD) == 1 || Player_HasSkill(pl, 0xE) == 1) {
+    if (Player_HasSkill(pl, SKILL_STATUS6_HALF) == 1 || Player_HasSkill(pl, SKILL_STATUS6_IMMUNE) == 1) {
         amount /= 2;
     }
     pl->poison += amount;
-    if (Player_HasSkill(pl, 0xA) == 1) {
+    if (Player_HasSkill(pl, SKILL_POISON_HALF) == 1) {
         pl->poisonTimer = 60;
-    } else if (Player_HasSkill(pl, 0xC) == 1) {
+    } else if (Player_HasSkill(pl, SKILL_POISON_DOUBLE) == 1) {
         pl->poisonTimer = 15;
     } else {
         pl->poisonTimer = 30;
@@ -533,10 +536,10 @@ void Player_ReactToHit(Player *pl)
                         return;
                     }
                 }
-                if (pl->status6Hit > 0 && Player_HasSkill(pl, 0xE) == 0) {
-                    if (Player_HasSkill(pl, 0xD) == 1) {
+                if (pl->status6Hit > 0 && Player_HasSkill(pl, SKILL_STATUS6_IMMUNE) == 0) {
+                    if (Player_HasSkill(pl, SKILL_STATUS6_HALF) == 1) {
                         pl->status6Timer = 900;
-                    } else if (Player_HasSkill(pl, 0xF) == 1) {
+                    } else if (Player_HasSkill(pl, SKILL_STATUS6_DOUBLE) == 1) {
                         pl->status6Timer = 3600;
                     } else {
                         pl->status6Timer = 1800;
@@ -599,24 +602,24 @@ void Player_ReactToHit(Player *pl)
                 if (pl->poisonHit > 0) {
                     Player_AddPoison(pl, pl->poisonHit);
                 }
-                if (pl->status6Hit > 0 && Player_HasSkill(pl, 0xE) == 0) {
-                    if (Player_HasSkill(pl, 0xD) == 1) {
+                if (pl->status6Hit > 0 && Player_HasSkill(pl, SKILL_STATUS6_IMMUNE) == 0) {
+                    if (Player_HasSkill(pl, SKILL_STATUS6_HALF) == 1) {
                         pl->status6Timer = 900;
-                    } else if (Player_HasSkill(pl, 0xF) == 1) {
+                    } else if (Player_HasSkill(pl, SKILL_STATUS6_DOUBLE) == 1) {
                         pl->status6Timer = 3600;
                     } else {
                         pl->status6Timer = 1800;
                     }
                 }
-                if ((s16) pl->status7Hit > 0 && Player_HasSkill(pl, 0xC5) == 0) {
-                    if (Player_HasSkill(pl, 0xC4) == 1) {
+                if ((s16) pl->status7Hit > 0 && Player_HasSkill(pl, SKILL_STATUS7_IMMUNE) == 0) {
+                    if (Player_HasSkill(pl, SKILL_STATUS7_HALF) == 1) {
                         pl->status7Timer = 900;
                     } else {
                         pl->status7Timer = 1800;
                     }
                 }
-                if (pl->status8Hit > 0 && Player_HasSkill(pl, 0xC5) == 0) {
-                    if (Player_HasSkill(pl, 0xC4) == 1) {
+                if (pl->status8Hit > 0 && Player_HasSkill(pl, SKILL_STATUS7_IMMUNE) == 0) {
+                    if (Player_HasSkill(pl, SKILL_STATUS7_HALF) == 1) {
                         if (pl->staminaMax > 75) {
                             Player_AddMaxStamina(pl, pl->staminaMax / 75 / 2 * -75);
                         }

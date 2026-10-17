@@ -4,6 +4,7 @@
 #include "player.h"
 #include "stageobj.h"
 #include "sprite.h"
+#include "area.h"
 
 /* prototypes */
 u16 Rand_Next(s32 a);
@@ -637,7 +638,7 @@ void Effect0D_Delete(StageObj *o)
 void Effect_GetColor(s32 arg0, u8 *arg1, u8 *arg2, u8 *arg3, u8 *arg4);
 s32 Model_DrawFade(void *mdl, f32 *a1, u16 flags, void *a3, f32 alpha);
 void Mtx_TurnZ(f32 *m, f32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 extern f32 gCamYawMtx[];
 extern u8 gEff0DPlayerColors[][3];
 /* Draws a part of a kind 0xD effect object (its draw slot): a model of set 0 by the object type, tinted by the area light. */
@@ -924,7 +925,7 @@ void Effect0D_DrawPart(DrawSlot *s)
                 Effect_DrawModel(mdl, m, ((u8)(u32)(255.0f * bright * part->unk20) << 24) | (r << 16) | (g << 8) | b, flags, base);
             }
         }
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Gs_SetState(0x6C, 1);
     }
 }
@@ -942,7 +943,7 @@ void Effect0D_PlaySound(StageObj *o)
         break;
     case 35:
         p = o->owner;
-        if (p->weaponType == 7) {
+        if (p->weaponType == WEAPON_LONG_SWORD) {
             Player_PlaySe(p, 0xC, 0, p->pos, 1, 0);
         }
         break;
@@ -972,7 +973,7 @@ s32 Effect0D_GroundHeight(Player *p, f32 *pos, s32 type)
         return *k;
     }
     area = gAreaKinds[gScene.area];
-    if (area == 10 || area == 14) {
+    if (area == AREA_FORTRESS_0 || area == AREA_FORTRESS_1) {
         pos[1] += 5.0f;
         pos[1] += Area_GroundOffset(gScene.area);
         return *k;
@@ -1136,34 +1137,34 @@ s32 Effect0D_PlayerPos(f32 *pos, Player *p, s16 arg, s32 type)
     case 21:
         Mtx_Copy((f32 *) m[0], (f32 *) (Em_GetBone(p, arg)));
         switch (p->weaponType) {
-        case 0:
-        case 7:
+        case WEAPON_GREAT_SWORD:
+        case WEAPON_LONG_SWORD:
             v[0] = 10.0f;
             v[1] = -2.0f;
             v[2] = 190.0f;
             break;
-        case 4:
+        case WEAPON_SWORD_SHIELD:
             v[0] = -4.9f;
             v[1] = -0.7f;
             v[2] = 90.0f;
             break;
-        case 3:
-        case 9:
+        case WEAPON_LANCE:
+        case WEAPON_GUNLANCE:
             v[0] = -7.8f;
             v[1] = -10.0f;
             v[2] = 220.0f;
             break;
-        case 2:
+        case WEAPON_HAMMER:
             v[0] = -5.0f;
             v[1] = -20.0f;
             v[2] = 155.0f;
             break;
-        case 8:
+        case WEAPON_HUNTING_HORN:
             v[0] = 0.0f;
             v[1] = -50.0f;
             v[2] = 180.0f;
             break;
-        case 6:
+        case WEAPON_DUAL_SWORDS:
             v[0] = -4.9f;
             v[1] = -0.7f;
             v[2] = 90.0f;
@@ -1304,8 +1305,8 @@ void Effect0D_SpawnForPlayerScaled(Player *p, s16 arg, s32 type, f32 scale)
 /* unit's own declaration: with the definition's EmBone *(void *obj, s16 bone) (sub_main/unk_3DDBA0.c), Effect0D_EmPos: 157 of 534 words differ, Effect0D_InitForEm: 57 of 479 words differ */
 EmBone *Em_Bone(void *obj, s32 a);
 u8 Em_TypeUsesK14(u8 type); /* unit's own declaration: the definition (game) is s32 Em_TypeUsesK14(u8 type); the calls here match only with this one */
-void Eff01_CreateOnObj(StageObj *s, s8 kind);
-void Eff05_CreateOnObj(StageObj *s, s8 kind);
+void RathalosAttack_CreateOnObj(StageObj *s, s8 kind);
+void LaoShanAttack_CreateOnObj(StageObj *s, s8 kind);
 /* The monster twin of Effect0D_Init. */
 void Effect0D_InitForEm(Em *em, s32 a, s32 type, StageObj *o)
 {
@@ -1447,9 +1448,9 @@ void Effect0D_InitForEm(Em *em, s32 a, s32 type, StageObj *o)
             o->scale = em->scaleX;
             if ((s16)a == 2) {
                 if (Em_TypeUsesK14(em->type) == 0) {
-                    Eff01_CreateOnObj(o, 0xE);
+                    RathalosAttack_CreateOnObj(o, 0xE);
                 } else {
-                    Eff01_CreateOnObj(o, 0x2F);
+                    RathalosAttack_CreateOnObj(o, 0x2F);
                 }
             }
             break;
@@ -1471,7 +1472,7 @@ void Effect0D_InitForEm(Em *em, s32 a, s32 type, StageObj *o)
             break;
         case 7:
         case 0x32:
-            Eff05_CreateOnObj(o, 0x50);
+            LaoShanAttack_CreateOnObj(o, 0x50);
             break;
         }
     case 20:

@@ -2,7 +2,7 @@
  * The Rathalos family: Rathian, Rathalos and their subspecies (Pink and
  * Gold Rathian, Silver and Azure Rathalos), then Fatalis, then the sound
  * tables of the Blangonga family (the code from Rathalos's setup function,
- * 0x7E7240, to Blangonga's).
+ * EmRathalos_Setup (0x7E7240), to EmBlangonga_Setup).
  *
  * A Rathalos runs a state machine (include/em_rathalos.h names the states
  * and motions; include/em.h the groups): EmRathalos_Update reads the hits
@@ -31,9 +31,11 @@
 #include "mine_point.h"
 #include "em.h"
 #include "em_rathalos.h"
+#include "em_blangonga.h"
 #include "em_fatalis.h"
 #include "player.h"
 #include "stageobj.h"
+#include "area.h"
 /* prototypes of callees */
 void Em_SetPartScaled(Em *em, s32 bit);
 void StageObj_K09_Create(Em *);
@@ -59,10 +61,10 @@ u16 Math_AngleXZ(f32 *from, f32 *to);
 void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 void QuestEm_Captured(Em *em);
-void Eff01_Create(Em *, s8);
-void Eff04_Create(Em *, s8);
-void EffEm08_CreateAtBone(Em *em, s32 a, s32 b, s32 c, s32 d, s32 e);
-void *EffEm33_Create(Em *em, s32 kind, s32 c, s32 a, s32 b);
+void RathalosAttack_Create(Em *, s8);
+void FatalisAttack_Create(Em *, s8);
+void EmRangedAttack_CreateAtBone(Em *em, s32 a, s32 b, s32 c, s32 d, s32 e);
+void *EmEffectAttack_Create(Em *em, s32 kind, s32 c, s32 a, s32 b);
 void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
@@ -73,17 +75,17 @@ void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Em_ClearNeed1State(Em *em);
 void Em_ClearNeed2State(Em *em);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_AddNeed1(Em *em, s32 n);
 void Em_AddNeed2(Em *em, s32 n);
 void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetGoal12(Em *em);
+void Em_SetTrapTimeGoal(Em *em);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySe1AtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
+void Em_PlayCommonSeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
-void Em_PlaySeAtBoneVolOnFrame2(Em *em, s32 frame, s32 se, s32 bone, s32 flag, s32 vol);
+void Em_PlaySeAtBoneVolOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 flag, s32 vol);
 void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p);
 s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
@@ -154,7 +156,7 @@ void StageObj_Stun_CreateEm(Em *, s32, s32, s32, f32, f32);
 /* unit's own declaration: with the definition's void (Em *em, u8 k, u16 w, s16 v, f32 scale) (game/unk_880D50.c), EmFatalis_SpawnFireball: 29 of 32 words differ */
 void StageObj_K1C_CreateOnEmB(Em *em, s32, s32, s32, f32);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
 f32 Vec_Distance(f32 *a, f32 *b);
@@ -180,7 +182,7 @@ s32 MinePoint_Count(s32);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
 extern s8 EmFatalis_MinePtBones[][2];
 extern f32 EmFatalis_MinePtRadius[];
-void func_3A6120(MinePoint *pt);
+void MinePoint_PrepareStub(MinePoint *pt);
 void EmRathalos_SetIdleState(Em *em, u16 state, u8 mode);
 void EmRathalos_SetMoveState(Em *em, u16 state, u8 mode);
 void EmRathalos_SetFlyState(Em *em, u16 state, u8 mode);
@@ -218,7 +220,7 @@ s16 Player_IsState(void *obj, u8 state, u8 sub);
 void StageObj_K25_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
 void Versus_RouteEmByTeam(Em *em);
 s32 Versus_DefeatCamera(Em *pl);
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 extern EmCurveKey *EmRathalos_MoveVelYCurves[];
 s8 EmMine_Create(Em *em, s32 idx);
 s32 EmMine_Update(Em *em);
@@ -230,7 +232,7 @@ typedef struct EmRathalosVec {
 extern EmRathalosVec EmRathalos_CarveThrowPt __attribute__((aligned(8)));
 u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 StageObj *StageObj_K1C_CreateOnEm(Em *em, u8 k, f32 scale);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmRathalos_Rest: 64 of 138 words differ, EmRathalos_Status2LieDown: 64 of 138 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
@@ -247,11 +249,11 @@ extern s8 *EmFatalis_SweepSpots[];
 s8 Em_NearestActionToBone(Em *em, s32 bone, f32 *pos);
 void GmEm_ResetSize(Em *em);
 void CamShake_ReqC(Em *em, s32 a);
-void *EffEm33_CreatePlus18(Em *em, s16 a, s16 b, s32 c, s32 d);
+void *EmEffectAttack_CreateDescentBlast(Em *em, s16 a, s16 b, s32 c, s32 d);
 void Em_AimAtTarget(Em *em);
 void Em_GetPitchToTarget(Em *em, s32 *out, f32 a, f32 b);
 f32 Math_Sqrtf(f32 x);
-void Em_RaiseTrigger80Lax(Em *em);
+void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
 u16 Area_DayId(u16 id);
 s32 Quest_IsRunning(s32 ending);
@@ -267,12 +269,12 @@ void Em_DecayNeed3(Em *em);
 void Em_CheckCarryRequest(Em *em);
 void EmRathalos_RunState(Em *em, s32 arg1);
 s32 Em_UpdateCombatTimer(Em *em);
-void Em_SetGoal12Dist(Em *em, u8 *p);
+void Em_SetTrapTime(Em *em, u8 *p);
 void Em_SetStatus1Timer(Em *em);
 void Em_SetStatus5Timer(Em *em);
 void Em_ResetKindTimer(Em *em);
 s32 Em_IsHeld(Em *em);
-u16 Area_BaseId(u16);
+u16 Map_DayId(u16);
 void Em_CheckLowHp(Em *em, f32 ratio);
 void Em_DecayNeed2(Em *em);
 void Em_DecayNeed1Only(Em *em);
@@ -332,38 +334,38 @@ void EmRathalos_Init(Em *em)
             em->posY = 0.0f;
             em->posZ = 6000.0f;
             break;
-        case 0xF:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 7900.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 1050.0f;
             em->posZ = 13900.0f;
             break;
-        case 0x12:
+        case AREA_JUNGLE_NIGHT_5:
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 200.0f;
             em->posZ = 8000.0f;
             break;
-        case 0x16:
+        case AREA_JUNGLE_NIGHT_7:
             em->posX = 9900.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 300.0f;
             em->posZ = 10350.0f;
             break;
-        case 0x18:
+        case AREA_DESERT_NIGHT_11:
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 5700.0f;
             em->rotY = 0x4000;
             break;
-        case 0x1B:
+        case AREA_VOLCANO_NIGHT_9:
             em->posX = 14300.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 7100.0f;
             break;
-        case 0x25:
+        case AREA_FOREST_HILLS_4:
             em->posX = 9750.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 300.0f;
             em->posZ = 7750.0f;
             break;
-        case 0x28:
+        case AREA_FOREST_HILLS_5:
             em->posX = 10500.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 9500.0f;
@@ -378,7 +380,7 @@ void EmRathalos_Init(Em *em)
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = EM_STANCE_GROUND;
     w->fxMotion = 0;
-    maxHp = Em_ComputeSize(em, 0);
+    maxHp = Em_ComputeMaxHp(em, 0);
     em->hp = maxHp;
     em->hpMax = maxHp;
     em->scriptPending = 1;
@@ -418,7 +420,7 @@ void EmRathalos_Start(Em *em)
     case 0x436:
         if (em->type == EM_KIND_RATHALOS || em->type == EM_KIND_SILVER_RATHALOS || em->type == EM_KIND_AZURE_RATHALOS) {
             if (Save_TestEventFlag(0xAB) == 0) {
-                em->area = Area_IdForCurrentTime(0x21);
+                em->area = Area_IdForCurrentTime(AREA_FOREST_HILLS_3);
                 em->posX = 20000.0f;
                 em->posY = 2000.0f;
                 em->posZ = 12000.0f;
@@ -429,7 +431,7 @@ void EmRathalos_Start(Em *em)
     case 0x3F8:
         if (em->type == EM_KIND_RATHIAN || em->type == EM_KIND_GOLD_RATHIAN || em->type == EM_KIND_PINK_RATHIAN) {
             if (Save_TestEventFlag(0x9C) == 0) {
-                em->area = Area_IdForCurrentTime(0x71);
+                em->area = Area_IdForCurrentTime(AREA_JUNGLE_3);
                 em->posX = 14350.0f;
                 em->posY = 0.0f;
                 em->posZ = 9830.0f;
@@ -644,7 +646,7 @@ void EmRathalos_IdleActionB(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 1);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0x4E, 0x17, 0x2A, 2, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x4E, 0x17, 0x2A, 2, 0xD);
 }
 
 /*
@@ -697,7 +699,7 @@ void EmRathalos_IdleActionD(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0x20, 0x2F, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x20, 0x2F, 0x23, 1, 0xD);
 }
 
 /* RATH_IDLE_ACTION_E: motion 0x19 with a sound. */
@@ -721,8 +723,8 @@ void EmRathalos_IdleActionE(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0x20, 0x20, 0x23, 1, 0xD);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0xA0, 0x17, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x20, 0x20, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0xA0, 0x17, 0x23, 1, 0xD);
 }
 
 /* RATH_IDLE_ACTION_F: motion 0x1A with a sound. */
@@ -746,7 +748,7 @@ void EmRathalos_IdleActionF(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnFrame2(em, 4, 0x2D, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 4, 0x2D, 0x23, 1, 0xD);
 }
 
 /*
@@ -765,11 +767,11 @@ void EmRathalos_IdleActionG(Em *em)
         EmRathalos_LayerMotionToIdle(em, 1);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 26.0f, 2U) != 0) {
-            Eff01_Create(em, 0x29);
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 2U) != 0) {
+            RathalosAttack_Create(em, 0x29);
         }
-        if (Player_PassedFrameScaled(em, 90.0f, 2U) != 0) {
-            Eff01_Create(em, 0x29);
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 2U) != 0) {
+            RathalosAttack_Create(em, 0x29);
         }
         if (em->motion[2].playing == 0) {
             em->step++;
@@ -779,7 +781,7 @@ void EmRathalos_IdleActionG(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 1);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0x10, 0x16, 0x2A, 2, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x10, 0x16, 0x2A, 2, 0xD);
 }
 
 /* RATH_IDLE_PAIR_A: motion 0x50 or 0x51 (stateRand's bit 0) once. */
@@ -859,8 +861,8 @@ void EmRathalos_IdleActionH(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0x10, 0x21, 0x23, 1, 0xD);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0x72, 0x1F, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x10, 0x21, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x72, 0x1F, 0x23, 1, 0xD);
 }
 
 /* RATH_IDLE_ACTION_I: motion 0x1D once. */
@@ -903,8 +905,8 @@ void EmRathalos_IdleActionJ(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnFrame2(em, 2, 0x20, 0x23, 1, 0xD);
-    Em_PlaySeAtBoneVolOnFrame2(em, 0x32, 0x1F, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 2, 0x20, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x32, 0x1F, 0x23, 1, 0xD);
 }
 
 /*
@@ -916,7 +918,7 @@ void EmRathalos_EatNeed2(Em *em)
 {
     u8 kind;
 
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -927,27 +929,27 @@ void EmRathalos_EatNeed2(Em *em)
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 56.0f, 0U) || Player_PassedFrameScaled(em, 108.0f, 0U) || Player_PassedFrameScaled(em, 126.0f, 0U)
-            || Player_PassedFrameScaled(em, 138.0f, 0U) || Player_PassedFrameScaled(em, 170.0f, 0U)) {
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0U) || EmMotion_PassedFrameScaled(em, 108.0f, 0U) || EmMotion_PassedFrameScaled(em, 126.0f, 0U)
+            || EmMotion_PassedFrameScaled(em, 138.0f, 0U) || EmMotion_PassedFrameScaled(em, 170.0f, 0U)) {
             Em_PlaySeAtBone(em, 0x26, 0x23);
             StageObj_K14_Create(em, 7, 0, 5.0f);
         }
-        if ((Player_PassedFrameScaled(em, 210.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 218.0f, 0U) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 210.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 218.0f, 0U) != 0)) {
             StageObj_K14_Create(em, 7, 0, 2.5f);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0U) != 0) {
             StageObj_K14_Create(em, 8, 0, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 106.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 130.0f, 0U) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 106.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 130.0f, 0U) != 0)) {
             StageObj_K14_Create(em, 6, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 124.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 124.0f, 0U) != 0) {
             StageObj_K14_Create(em, 6, 1, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 170.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
             StageObj_K14_Create(em, 0xF, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 192.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 192.0f, 0U) != 0) {
             StageObj_K14_Create(em, 0x10, 0, 1.0f);
         }
         if ((em->motion[0].playing == 0) && ((em->step += 1, Em_SetMotion(em, RATH_MOT_FEED, 0, 0), Em_AddHp(em, (s32) (0.05f * (f32) em->hpMax)), kind = em->type, (kind == EM_KIND_RATHIAN)) || (kind == EM_KIND_GOLD_RATHIAN) || (kind == EM_KIND_PINK_RATHIAN))) {
@@ -1065,12 +1067,12 @@ void EmRathalos_AlertIdle(Em *em)
 
 /*
  * RATH_IDLE_REST: lies down and rests, regaining hp (Em_RegenHp) until
- * Em_UpdateDamage's result 10 ends it (RATH_IDLE_REST_END); a hit wakes it
+ * EM_DMG_HIT_LYING ends it (RATH_IDLE_REST_END); a hit wakes it
  * too.
  */
 void EmRathalos_Rest(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1114,7 +1116,7 @@ void EmRathalos_Rest(Em *em, EmWork *work)
 /* RATH_IDLE_EAT_START: lowers its head, then goes on with RATH_IDLE_EAT. */
 void EmRathalos_EatStart(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1125,7 +1127,7 @@ void EmRathalos_EatStart(Em *em)
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 200.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0) {
             em->step++;
             EmRathalos_ChangeState(em, EM_GROUP_IDLE, RATH_IDLE_EAT, 4);
         }
@@ -1168,7 +1170,7 @@ void EmRathalos_Eat(Em *em)
  */
 void EmRathalos_Status2Collapse(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1204,7 +1206,7 @@ void EmRathalos_Status2Collapse(Em *em)
  */
 void EmRathalos_Status2LieDown(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1348,7 +1350,7 @@ void EmRathalos_ShakeOff(Em *em)
  */
 void EmRathalos_EatNeed1(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1384,7 +1386,7 @@ void EmRathalos_EatNeed1(Em *em)
  */
 void EmRathalos_Status1Collapse(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1450,7 +1452,7 @@ void EmRathalos_Status2Downed(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1475,7 +1477,7 @@ void EmRathalos_Status2Downed(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
@@ -1487,7 +1489,7 @@ void EmRathalos_Status1Downed(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1512,7 +1514,7 @@ void EmRathalos_Status1Downed(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
@@ -1586,7 +1588,7 @@ void EmRathalos_Turn(Em *em, EmWork *work)
     case 1:
         if (Em_TurnStep(em, &EmRathalos_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmRathalos_EndState(em, 0, 0);
         }
         break;
@@ -1625,7 +1627,7 @@ void EmRathalos_TurnInCombat(Em *em, EmWork *work)
     case 1:
         if (Em_TurnStep(em, &EmRathalos_TurnParams[1]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmRathalos_EndState(em, 0, 0);
         }
         break;
@@ -1716,7 +1718,7 @@ void EmRathalos_TakeOff(Em *em, EmWork *work)
         work->flyGuard = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 38.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0U) != 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
             EmRathalos_UpdateCurves(em);
@@ -1767,7 +1769,7 @@ void EmRathalos_Land(Em *em, EmWork *work)
         if (em->velY < -10.0f) {
             em->velY += 0.75f;
         }
-        if (!((630.0f + em->floorY) <= em->posY) && ((Player_PassedFrameScaled(em, 10.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 86.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
+        if (!((630.0f + em->floorY) <= em->posY) && ((EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 86.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_DESCEND, 0, 0);
             em->velY = (em->floorY - em->posY) / 30.0f;
@@ -2166,7 +2168,7 @@ void EmRathalos_FlyOutOfArea(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_TO_GOAL_AND_LAND, 1);
         } else {
@@ -2207,7 +2209,7 @@ void EmRathalos_FlyToGoalAndLand(Em *em, EmWork *work)
         em->velZ = 80.0f;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->rotY = (s32) em->aimAngle;
-        *(u16 *)&em->destArea = 0xFFFF;
+        *(u16 *)&em->destArea = AREA_NONE;
         work->flyGuard = 1;
         break;
     case 1:
@@ -2239,8 +2241,11 @@ void EmRathalos_FlyToGoalAndLand(Em *em, EmWork *work)
 }
 
 /*
- * RATH_FLY_OUT_OF_AREA_ALT: as RATH_FLY_OUT_OF_AREA, but it moves between
- * areas 0xF and 0x13 directly.
+ * RATH_FLY_OUT_OF_AREA_ALT: as RATH_FLY_OUT_OF_AREA, but once it has
+ * entered the next area (Em_EnterNextArea) the area id is overwritten:
+ * AREA_JUNGLE_NIGHT_6 if the area entered is AREA_SNOWY_MOUNTAINS_NIGHT_9,
+ * else AREA_SNOWY_MOUNTAINS_NIGHT_9. Seen: no code in this file enters
+ * this state.
  */
 void EmRathalos_FlyOutOfAreaAlt(Em *em, EmWork *work)
 {
@@ -2287,10 +2292,10 @@ void EmRathalos_FlyOutOfAreaAlt(Em *em, EmWork *work)
         em->step++;
         Em_EnterNextArea(em);
         Hud_TriggerGlow(em);
-        if (em->area == 0xF) {
-            em->area = 0x13;
+        if (em->area == AREA_SNOWY_MOUNTAINS_NIGHT_9) {
+            em->area = AREA_JUNGLE_NIGHT_6;
         } else {
-            em->area = 0xF;
+            em->area = AREA_SNOWY_MOUNTAINS_NIGHT_9;
         }
         EmRathalos_EndAirState(em, 1U);
         break;
@@ -2472,7 +2477,7 @@ void EmRathalos_FlyIntoArea(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_TO_GOAL_AND_LAND, 1);
         } else {
@@ -3103,10 +3108,10 @@ void EmRathalos_Fireball(Em *em, EmWork *work)
             if (!(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-        } else if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3133,7 +3138,7 @@ void EmRathalos_Roar(Em *em)
         Em_SetMotion(em, RATH_MOT_ROAR, 0, 0);
         Motion_InitTime(em, 0);
         em->lookAtTarget = 1;
-        Eff01_Create(em, 1);
+        RathalosAttack_Create(em, 1);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -3460,7 +3465,7 @@ void EmRathalos_AirFireball(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         EmRathalos_UpdateCurves(em);
-        if (Player_PassedFrameScaled(em, 60.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
             EmRathalos_StartCurves(em, 0x10);
@@ -3470,12 +3475,12 @@ void EmRathalos_AirFireball(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         EmRathalos_UpdateCurves(em);
-        if (Player_PassedFrameScaled(em, 6.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 1, 0x1E94, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 1, 0x1E94, 0);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
         }
@@ -3514,7 +3519,7 @@ void EmRathalos_AirFireballB(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         EmRathalos_UpdateCurves(em);
-        if (Player_PassedFrameScaled(em, 60.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
@@ -3525,12 +3530,12 @@ void EmRathalos_AirFireballB(Em *em, EmWork *work)
     case 3:
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 6.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
         }
@@ -3825,10 +3830,10 @@ void EmRathalos_BackHopFireball(Em *em, EmWork *work, s32 variant)
                 break;
             }
         }
-        if (Player_PassedFrameScaled(em, 90.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x2222, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x2222, 0);
         }
         if (EmMotion_ReachedFrame(em, 0, 76.0f) != 0) {
             em->stance = EM_STANCE_AIR;
@@ -3873,7 +3878,7 @@ void EmRathalos_AirFireballDouble(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 60.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
@@ -3884,10 +3889,10 @@ void EmRathalos_AirFireballDouble(Em *em, EmWork *work)
     case 2:
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 6.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -3897,12 +3902,12 @@ void EmRathalos_AirFireballDouble(Em *em, EmWork *work)
     case 4:
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 6.0f, 1U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
         }
@@ -3942,7 +3947,7 @@ void EmRathalos_ChargeTrip(Em *em)
         if (--em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_CHARGE_TRIP, 0, 0);
-            Eff01_Create(em, 0x24);
+            RathalosAttack_Create(em, 0x24);
         }
         break;
     case 2:
@@ -4256,7 +4261,7 @@ void EmRathalos_AirFireballDoubleB(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 60.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
@@ -4268,10 +4273,10 @@ void EmRathalos_AirFireballDoubleB(Em *em, EmWork *work)
     case 2:
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 6.0f, 1U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4281,12 +4286,12 @@ void EmRathalos_AirFireballDoubleB(Em *em, EmWork *work)
     case 5:
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 6.0f, 1U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
         }
@@ -4327,20 +4332,20 @@ void EmRathalos_FireballB(Em *em)
         if ((EmMotion_ReachedFrame(em, 0, 256.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 316.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create((Em *) em, 0x1A, 1, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
         }
-        if (Player_PassedFrameScaled(em, 164.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4371,10 +4376,10 @@ void EmRathalos_FireballLow(Em *em, EmWork *work)
             if (!(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-        } else if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0xE39, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xE39, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -4410,10 +4415,10 @@ void EmRathalos_FireballHigh(Em *em, EmWork *work)
             if (!(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-        } else if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0xF1C8, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xF1C8, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -4527,7 +4532,7 @@ void EmRathalos_AirFireballForward(Em *em, s32 work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
-        if (Player_PassedFrameScaled(em, 60.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
             EmRathalos_StartCurves(em, 0x10);
@@ -4537,12 +4542,12 @@ void EmRathalos_AirFireballForward(Em *em, s32 work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
-        if (Player_PassedFrameScaled(em, 6.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 1, 0x2D83, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 1, 0x2D83, 0);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
         }
@@ -4581,7 +4586,7 @@ void EmRathalos_AirFireballDoubleForward(Em *em, s32 work)
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
-        if (Player_PassedFrameScaled(em, 60.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
@@ -4593,10 +4598,10 @@ void EmRathalos_AirFireballDoubleForward(Em *em, s32 work)
     case 2:
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
-        if (Player_PassedFrameScaled(em, 6.0f, 1U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x2D83, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x2D83, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4606,12 +4611,12 @@ void EmRathalos_AirFireballDoubleForward(Em *em, s32 work)
     case 5:
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
-        if (Player_PassedFrameScaled(em, 6.0f, 1U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 2, 0x2D83, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x2D83, 0);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
         }
@@ -4816,7 +4821,7 @@ void EmRathalos_PartBreak(Em *em, EmWork *work)
         Em_SetMotion(em, 0x41, 0, 0);
         break;
     case 1:
-        if ((Player_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
             em->meshShown[1] = 0;
         }
         if ((EmMotion_ReachedFrame(em, 0, 52.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 122.0f) == 0)) {
@@ -5002,7 +5007,7 @@ void EmRathalos_FlinchE(Em *em, EmWork *work)
 /* RATH_REACT_STATUS4: status 4 (motion 0x4C, no flinch), then shakes it off. */
 void EmRathalos_Status4(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -5023,13 +5028,13 @@ void EmRathalos_Status4(Em *em, EmWork *work)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 /* RATH_REACT_TRAPPED: caught (RATH_MOT_TRAPPED, no flinch), then struggles. */
 void EmRathalos_Trapped(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -5101,7 +5106,7 @@ void EmRathalos_TrappedStruggle(Em *em, EmWork *work)
 void EmRathalos_Status4Downed(Em *em, EmWork *work)
 {
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -5113,7 +5118,7 @@ void EmRathalos_Status4Downed(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             EmRathalos_ChangeState(em, EM_GROUP_REACT, RATH_REACT_STATUS4_DOWNED_END, 3);
         }
         break;
@@ -5123,7 +5128,7 @@ void EmRathalos_Status4Downed(Em *em, EmWork *work)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 /* RATH_REACT_PART_BREAK_END: ends the state. */
@@ -5229,7 +5234,7 @@ void EmRathalos_Status2DownedEnd(Em *em, EmWork *work)
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->blind = 0;
             EmRathalos_ChangeState(em, EM_GROUP_REACT, RATH_REACT_TRAPPED_STRUGGLE, 3);
         }
@@ -5261,7 +5266,7 @@ void EmRathalos_Status1DownedEnd(Em *em, EmWork *work)
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->blind = 0;
             EmRathalos_ChangeState(em, EM_GROUP_REACT, RATH_REACT_TRAPPED_STRUGGLE, 3);
         }
@@ -5276,7 +5281,8 @@ void EmRathalos_Status1DownedEnd(Em *em, EmWork *work)
 
 /*
  * RATH_REACT_STUN: knocked down with the stun's stage object
- * (StageObj_Stun_CreateEm) until status 5 ends, then the shake-off.
+ * (StageObj_Stun_CreateEm) until the stun (EM_STATUS_STUN) ends, then the
+ * shake-off.
  */
 void EmRathalos_Stun(Em *em, EmWork *work)
 {
@@ -5334,7 +5340,7 @@ void EmRathalos_StunDowned(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             EmRathalos_ChangeState(em, EM_GROUP_REACT, RATH_REACT_STUN_DOWNED_END, 3);
         }
         break;
@@ -5388,13 +5394,13 @@ void EmRathalos_Hold2(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, 0x3C, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
             Em_SetMotion(em, 0x4C, 0xC, 0);
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
@@ -5589,10 +5595,10 @@ found:
         }
         break;
     case 7:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) || Player_PassedFrameScaled(em, 202.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) || EmMotion_PassedFrameScaled(em, 202.0f, 0)) {
             Effect0D_SpawnForEm(em, 0x1C, 6);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0) || Player_PassedFrameScaled(em, 208.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 208.0f, 0)) {
             Effect0D_SpawnForEm(em, 0x16, 6);
         }
         if (em->motion[0].playing == 0) {
@@ -5682,7 +5688,7 @@ void EmRathalos_Captured(Em *em)
         pos[0] = 0.0f;
         pos[1] = 10.0f;
         pos[2] = 140.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
         if (++em->stateVar0 % 135 == 0) {
             Em_PlaySeAtBone(em, 0x57, 0x23);
         }
@@ -5792,9 +5798,9 @@ void EmRathalos_StoryEvent(Em *em)
             em->posY = 0.0f;
             em->posZ = 9386.0f;
             em->rotY = 0xB000;
-        } else if (Player_PassedFrameScaled(em, 32.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 32.0f, 0U) != 0) {
             CamShake_ReqC(em, 2);
-        } else if (Player_PassedFrameScaled(em, 88.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 88.0f, 0U) != 0) {
             CamShake_ReqC(em, 2);
         }
         break;
@@ -5876,7 +5882,7 @@ void EmRathalos_VersusEatBait(Em *em, EmWork *work)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             throwPoint = EmRathalos_CarveThrowPt;
             StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &throwPoint.x);
         }
@@ -6085,7 +6091,7 @@ void EmRathalos_Die(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 212.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 212.0f, 0) != 0) {
             CamShake_ReqAIf(em, 2);
         }
         if (em->motion[0].playing == 0) {
@@ -6219,7 +6225,7 @@ void EmRathalos_DieFalling(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             em->step++;
             em->timer = 0;
             Em_SetMotion(em, RATH_MOT_DIE_FALLING, 0, 0);
@@ -6787,15 +6793,15 @@ void EmRathalos_Update(Em *em)
     f32 ratio;
 
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80Lax(em);
+    Em_RaisePlayerAreaTriggerLax(em);
     if (em->type == EM_KIND_RATHIAN || em->type == EM_KIND_GOLD_RATHIAN || em->type == EM_KIND_PINK_RATHIAN) {
         ratio = 0.1f;
     } else {
         ratio = 0.3f;
     }
     if (em->noAlert != 1 && em->rage == 0) {
-        switch (Area_BaseId(gScene.map)) {
-        case 2:
+        switch (Map_DayId(gScene.map)) {
+        case MAP_FOREST_HILLS:
             if (em->questKey == 1) {
                 if (em->type == EM_KIND_RATHIAN || em->type == EM_KIND_GOLD_RATHIAN || em->type == EM_KIND_PINK_RATHIAN) {
                     Em_CheckLowHp(em, ratio);
@@ -6811,16 +6817,16 @@ void EmRathalos_Update(Em *em)
                 Em_DecayNeed3(em);
             }
             break;
-        case 6:
+        case MAP_JUNGLE:
             Em_CheckLowHp(em, ratio);
             Em_DecayNeed2(em);
             Em_DecayNeed1(em);
             Em_DecayNeed3(em);
             Em_CheckCarryRequest(em);
             break;
-        case 3:
+        case MAP_DESERT:
             Em_CheckCarryRequest(em);
-        case 4:
+        case MAP_SWAMP:
             Em_CheckLowHp(em, ratio);
             Em_DecayNeed2(em);
             Em_DecayNeed1Only(em);
@@ -6850,8 +6856,8 @@ void EmRathalos_Update(Em *em)
     case EM_DMG_ATTACK9:
     case EM_DMG_ATTACK6:
         if ((s8) em->holdTimer == 0) {
-            Em_SetGoal12Dist(em, buf);
-            Em_SetGoal12(em);
+            Em_SetTrapTime(em, buf);
+            Em_SetTrapTimeGoal(em);
             EmRathalos_ChangeState(em, EM_GROUP_REACT, RATH_REACT_TRAPPED, 3);
         }
         break;
@@ -6982,8 +6988,8 @@ void EmRathalos_Update(Em *em)
     switch (gQuest.stage) {
     case 0x434:
     case 0x436:
-        if ((em->type == EM_KIND_RATHALOS || em->type == EM_KIND_SILVER_RATHALOS || em->type == EM_KIND_AZURE_RATHALOS) && Area_DayId(em->area) == 0x21 && Save_TestEventFlag(0xAB) == 0) {
-            if (Area_DayId(gScene.area) == 0x21 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+        if ((em->type == EM_KIND_RATHALOS || em->type == EM_KIND_SILVER_RATHALOS || em->type == EM_KIND_AZURE_RATHALOS) && Area_DayId(em->area) == AREA_FOREST_HILLS_3 && Save_TestEventFlag(0xAB) == 0) {
+            if (Area_DayId(gScene.area) == AREA_FOREST_HILLS_3 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
                 EmRathalos_ChangeState(em, EM_GROUP_EVENT, RATH_EVENT_INTRO, 1);
             }
             break;
@@ -6991,8 +6997,8 @@ void EmRathalos_Update(Em *em)
         goto normal;
     case 0x3F6:
     case 0x3F8:
-        if ((em->type == EM_KIND_RATHIAN || em->type == EM_KIND_GOLD_RATHIAN || em->type == EM_KIND_PINK_RATHIAN) && Area_DayId(em->area) == 0x71 && Save_TestEventFlag(0x9C) == 0) {
-            if (Area_DayId(gScene.area) == 0x71 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+        if ((em->type == EM_KIND_RATHIAN || em->type == EM_KIND_GOLD_RATHIAN || em->type == EM_KIND_PINK_RATHIAN) && Area_DayId(em->area) == AREA_JUNGLE_3 && Save_TestEventFlag(0x9C) == 0) {
+            if (Area_DayId(gScene.area) == AREA_JUNGLE_3 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
                 EmHermitaur_ChangeState(em, 6, 6, 1);
             }
             break;
@@ -7057,7 +7063,7 @@ void EmRathalos_RunState(Em *em, s32 work)
 /* Requests camera shake `level` when the motion passes frame `frame`. */
 void EmRathalos_CamShakeOnFrame(void *em, s32 frame, s32 i)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         CamShake_ReqAIf(em, i);
     }
 }
@@ -7084,34 +7090,34 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
     case EM_MOTION_ID(0, RATH_MOT_WALK):
         EmRathalos_CamShakeOnFrame(em, 0x34, 1);
         EmRathalos_CamShakeOnFrame(em, 0x74, 1);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff01_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            RathalosAttack_Create(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            Eff01_Create(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            RathalosAttack_Create(em, 4);
         }
         break;
     case EM_MOTION_ID(0, 0x4):
-        if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 92.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TURN_RIGHT):
         EmRathalos_CamShakeOnFrame(em, 0x3C, 1);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            Eff01_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            RathalosAttack_Create(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 78.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 1, 1.0f);
@@ -7119,22 +7125,22 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, RATH_MOT_TURN_LEFT):
         EmRathalos_CamShakeOnFrame(em, 0x3C, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            Eff01_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            RathalosAttack_Create(em, 7);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 78.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, 0x7):
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            Eff01_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            RathalosAttack_Create(em, 9);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0xA);
         }
         if (em->rage != 0) {
             if ((EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 18.0f) == 0) && !(gScene.frame & 3)) {
@@ -7147,11 +7153,11 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, 0x8):
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            Eff01_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0xC);
         }
         if (em->rage != 0) {
             if ((EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 18.0f) == 0) && !(gScene.frame & 3)) {
@@ -7164,18 +7170,18 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_LIMP):
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            Eff01_Create(em, 0x19);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x19);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            Eff01_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1A);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_DESCEND):
-        if (Player_PassedFrameScaled(em, 52.0f, 0) || Player_PassedFrameScaled(em, 104.0f, 0) || Player_PassedFrameScaled(em, 162.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 Effect0D_SpawnForEmScaled(em, 2, 7, 5.0f);
                 break;
@@ -7183,7 +7189,7 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, 0xD):
-        if (((Player_PassedFrameScaled(em, 26.0f, 0) != 0) || (Player_PassedFrameScaled(em, 52.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
+        if (((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
             Effect0D_SpawnForEmScaled(em, 1, 7, 5.0f);
         }
         break;
@@ -7197,13 +7203,13 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_HOVER):
-        if (Player_PassedFrameScaled(em, 8.0f, 0) || Player_PassedFrameScaled(em, 86.0f, 0) || Player_PassedFrameScaled(em, 160.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) || EmMotion_PassedFrameScaled(em, 86.0f, 0) || EmMotion_PassedFrameScaled(em, 160.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 1, 0, 1.0f);
             }
         }
         if (em->rage != 0) {
-            if (((EmMotion_ReachedFrame(em, 0, 70.0f) != 0) && (Player_PassedFrameScaled(em, 84.0f, 0) == 0)) || ((EmMotion_ReachedFrame(em, 0, 146.0f) != 0) && (Player_PassedFrameScaled(em, 156.0f, 0) == 0)) || ((EmMotion_ReachedFrame(em, 0, 220.0f) != 0) && (Player_PassedFrameScaled(em, 234.0f, 0) == 0))) {
+            if (((EmMotion_ReachedFrame(em, 0, 70.0f) != 0) && (EmMotion_PassedFrameScaled(em, 84.0f, 0) == 0)) || ((EmMotion_ReachedFrame(em, 0, 146.0f) != 0) && (EmMotion_PassedFrameScaled(em, 156.0f, 0) == 0)) || ((EmMotion_ReachedFrame(em, 0, 220.0f) != 0) && (EmMotion_PassedFrameScaled(em, 234.0f, 0) == 0))) {
                 if (!(gScene.frame & 3)) {
                     StageObj_K14_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
@@ -7212,35 +7218,35 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_RUN):
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0x18);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x18);
         }
         if ((em->rage != 0) && (((s32) gScene.frame % 10) == 0)) {
             StageObj_K14_Create(em, 0x19, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 12.0f, 0) != 0) || (Player_PassedFrameScaled(em, 78.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0)) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TAKE_OFF):
-        if (Player_PassedFrameScaled(em, 42.0f, 0) || Player_PassedFrameScaled(em, 102.0f, 0) || Player_PassedFrameScaled(em, 156.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0) || EmMotion_PassedFrameScaled(em, 156.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 1, 0, 1.0f);
             }
         }
-        if ((em->rage != 0) && (Player_PassedFrameScaled(em, 62.0f, 0) != 0)) {
+        if ((em->rage != 0) && (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0)) {
             StageObj_K14_Create(em, 0x19, 4, 1.0f);
             StageObj_K14_Create(em, 0x19, 5, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TOUCH_DOWN):
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 16.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             EmRathalos_SpawnK14Type0B(em);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 18.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 44.0f) == 0) && !(gScene.frame & 3)) {
@@ -7252,46 +7258,46 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         boneOffset[1] = 10.0f;
         boneOffset[2] = 140.0f;
         boneOffset[0] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, boneOffset, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, boneOffset, 1.6f);
         break;
     case EM_MOTION_ID(0, 0x24):
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Eff01_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            RathalosAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            Eff01_Create(em, 0x29);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x29);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_COLLAPSE):
-        if (Player_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            Eff01_Create(em, 0xF);
+        if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0xF);
         }
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEAP):
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Eff01_Create(em, 0x22);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x22);
         }
-        if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 142.0f) != 0) && (Player_PassedFrameScaled(em, 236.0f, 0) == 0) && !(gScene.frame & 3)) {
+        if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 142.0f) != 0) && (EmMotion_PassedFrameScaled(em, 236.0f, 0) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEAP_LAND):
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0x23);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x23);
         }
         if ((EmMotion_ReachedFrame(em, 0, 20.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 50.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 102.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
         if ((EmMotion_ReachedFrame(em, 0, 22.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 38.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 46.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 134.0f) == 0) && !(gScene.frame & 3)) {
@@ -7301,8 +7307,8 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
     case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN_B):
         EmRathalos_CamShakeOnFrame(em, 0x2C, 1);
         EmRathalos_CamShakeOnFrame(em, 0x49, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            Eff01_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x11);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 6.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 38.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 0, 1.0f);
@@ -7311,19 +7317,19 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
     case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN):
         EmRathalos_CamShakeOnFrame(em, 0x2C, 1);
         EmRathalos_CamShakeOnFrame(em, 0x49, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            Eff01_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x11);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 6.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 38.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_SWOOP_CLAW):
-        if (Player_PassedFrameScaled(em, 22.0f, 0) != 0) {
-            Eff01_Create(em, 0x14);
-            Eff01_Create(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x14);
+            RathalosAttack_Create(em, 0x15);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) || Player_PassedFrameScaled(em, 68.0f, 0) || Player_PassedFrameScaled(em, 114.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 68.0f, 0) || EmMotion_PassedFrameScaled(em, 114.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 9, 0, 1.0f);
                 StageObj_K14_Create(em, 0xE, 0, 1.0f);
@@ -7334,7 +7340,7 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL_RISE):
-        if ((Player_PassedFrameScaled(em, 92.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 60.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 132.0f) == 0) && !(gScene.frame & 3)) {
@@ -7342,16 +7348,16 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_ALERT_IDLE):
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1B);
         }
-        if (Player_PassedFrameScaled(em, 168.0f, 0) != 0) {
-            Eff01_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 168.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1B);
         }
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            Eff01_Create(em, 0x1C);
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1C);
         }
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 2, 0.8f);
         }
         if (em->rage != 0) {
@@ -7364,30 +7370,30 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_BACK_HOP):
-        if (Player_PassedFrameScaled(em, 72.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) {
             StageObj_K14_Create(em, 4, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 84.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0) != 0) {
             StageObj_K14_Create(em, 4, 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_AIR_DIVE):
-        if (Player_PassedFrameScaled(em, 90.0f, 0) != 0) {
-            Eff01_Create(em, 0x16);
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x16);
         }
-        if (Player_PassedFrameScaled(em, 108.0f, 0) != 0) {
-            Eff01_Create(em, 0x17);
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x17);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TURN_IN_PLACE):
-        if (Player_PassedFrameScaled(em, 102.0f, 0) != 0) {
-            Eff01_Create(em, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x12);
         }
-        if (Player_PassedFrameScaled(em, 110.0f, 0) != 0) {
-            Eff01_Create(em, 0x13);
+        if (EmMotion_PassedFrameScaled(em, 110.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x13);
             StageObj_K0F_CreateOnEm(em, 5, 4, 1.0f);
         }
         if (em->rage != 0) {
@@ -7400,57 +7406,57 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_BACK_HOP_LAND):
-        if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
             StageObj_K14_Create(em, 4, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             StageObj_K14_Create(em, 5, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 28.0f, 0) != 0) {
-            Eff01_Create(em, 0x1D);
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1D);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0x25);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x25);
         }
-        if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
-            Eff01_Create(em, 0x28);
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x28);
         }
         break;
     case EM_MOTION_ID(0, 0x3C):
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0x80, 0.5f);
         }
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x16, 7, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, 0x3D):
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, 0x41):
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0x80, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 128.0f, 0) != 0) || (Player_PassedFrameScaled(em, 164.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
             StageObj_K14_Create(em, 3, 0x80, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0x80, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_DIE):
-        if (Player_PassedFrameScaled(em, 268.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 268.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_KNOCK_DOWN):
         EmRathalos_CamShakeOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x12, 0x80, 1.0f);
         }
         break;
@@ -7462,40 +7468,40 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, 0x4A):
         EmRathalos_CamShakeOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x12, 0x81, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_FALL_LAND):
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             StageObj_K14_Create(em, 0xB, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_HEAD_DOWN):
-        if (Player_PassedFrameScaled(em, 48.0f, 0) || Player_PassedFrameScaled(em, 106.0f, 0) || Player_PassedFrameScaled(em, 174.0f, 0)) {
-            Eff01_Create(em, 0x10);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) || EmMotion_PassedFrameScaled(em, 106.0f, 0) || EmMotion_PassedFrameScaled(em, 174.0f, 0)) {
+            RathalosAttack_Create(em, 0x10);
         }
         break;
     case EM_MOTION_ID(0, 0x54):
-        if (Player_PassedFrameScaled(em, 38.0f, 0) || Player_PassedFrameScaled(em, 60.0f, 0) || Player_PassedFrameScaled(em, 78.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0) || EmMotion_PassedFrameScaled(em, 60.0f, 0) || EmMotion_PassedFrameScaled(em, 78.0f, 0)) {
             Effect0D_SpawnForEmScaled(em, 2, 7, 5.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEVEL_OUT):
-        if ((Player_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 9, 0, 1.0f);
             StageObj_K14_Create(em, 0xE, 0, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 9, 0, 1.0f);
             StageObj_K14_Create(em, 0xE, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_CHARGE_TRIP):
-        if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
         if ((EmMotion_ReachedFrame(em, 0, 96.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 120.0f) == 0) && (((s32) gScene.frame % 6) == 0)) {
@@ -7506,23 +7512,23 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLIP):
-        if (Player_PassedFrameScaled(em, 108.0f, 0) != 0) {
-            Eff01_Create(em, 0x1E);
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1E);
         }
-        if (Player_PassedFrameScaled(em, 104.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 200.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 200.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLIP_LAND):
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff01_Create(em, 0x1F);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            RathalosAttack_Create(em, 0x1F);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TRAPPED):
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             StageObj_K14_Create(em, 0xB, 0x80, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 4.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 60.0f) == 0) && !(gScene.frame & 3)) {
@@ -7682,7 +7688,7 @@ s32 EmRathalos_AllowPartBreak(Em *em)
         && (stateGroup != EM_GROUP_REACT || em->state != RATH_REACT_STATUS4_DOWNED_END)
         && (stateGroup != EM_GROUP_REACT || em->state != RATH_REACT_STATUS2_DOWNED_END)
         && (stateGroup != EM_GROUP_REACT || em->state != RATH_REACT_STATUS1_DOWNED_END)
-        && em->stance != EM_STANCE_AIR && (s8) em->hit8Count == 0) {
+        && em->stance != EM_STANCE_AIR && (s8) em->partBreakCount == 0) {
         return 1;
     }
     return 0;
@@ -8167,7 +8173,7 @@ void EmRathalos_ChangeState(Em *em, u16 group, u16 state, u8 mode)
         case RATH_REACT_PART_BREAK:
             Em_EndAllStatus(em);
             em->fxFlags |= 1;
-            em->hit8Count++;
+            em->partBreakCount++;
             break;
         case RATH_REACT_STATUS4:
             Em_BeginStatus4(em);
@@ -9026,8 +9032,8 @@ void EmFatalis_MotionSounds(Em *em, EmWork *work)
 
 /*
  * Sets a Fatalis up (gm_em.c calls it for the three kinds): on stage 0 of
- * area 0x19 it stands at a point set by its slot number; its hp comes from
- * Em_ComputeSize; it starts in FAT_IDLE, in combat with every player, with
+ * AREA_CASTLE_1 it stands at a point set by its slot number; its hp comes from
+ * Em_ComputeMaxHp; it starts in FAT_IDLE, in combat with every player, with
  * the rage timer off.
  */
 void EmFatalis_Init(Em *em)
@@ -9042,7 +9048,7 @@ void EmFatalis_Init(Em *em)
 
     if (gQuest.stage == 0) {
         switch (gScene.area) {
-        case 0x19:
+        case AREA_CASTLE_1:
             slotNo = em->slotNo;
             fslot = (f32) (u32) slotNo;
             em->posX = 12000.0f - (300.0f * fslot);
@@ -9053,7 +9059,7 @@ void EmFatalis_Init(Em *em)
             break;
         }
     }
-    size = Em_ComputeSize(em, 0);
+    size = Em_ComputeMaxHp(em, 0);
     em->hp = size;
     em->hpMax = size;
     w->initHp = em->hp;
@@ -9175,9 +9181,9 @@ void EmFatalis_AddMinePoints(Em *em)
         point.flags = 1;
         Em_BonePos(em, EmFatalis_MinePtBones[i][0], pos);
         pos[1] = em->floorY;
-        point.unk14 = 2;
+        point.action = MINE_ACTION_CARVE;
         point.count = EmFatalis_MinePtBones[i][1];
-        func_3A6120(&point);
+        MinePoint_PrepareStub(&point);
         w->minePoints[i] = MinePoint_AddUntimed(&point, pos, 0);
     }
 }
@@ -9245,29 +9251,29 @@ void EmFatalis_SpawnFireball(Em *em, s32 angleB, s32 angle)
 }
 
 /*
- * A fireball's effect, pitched and turned by the arguments: EffEm33 kind
- * 0xD for EM_KIND_FATALIS_C, EffEm08 type 0xB at bone 0x33 for the others.
+ * A fireball's effect, pitched and turned by the arguments: EmEffectAttack kind
+ * 0xD for EM_KIND_FATALIS_C, EmRangedAttack type 0xB at bone 0x33 for the others.
  */
 void EmFatalis_SpawnFireballEffect(Em *em, s32 pitch, s32 yaw)
 {
     if (em->type == EM_KIND_FATALIS_C) {
-        EffEm33_Create(em, 0xD, 0, pitch, yaw);
+        EmEffectAttack_Create(em, 0xD, 0, pitch, yaw);
         return;
     }
-    EffEm08_CreateAtBone(em, 0x33, 0xB, 0, pitch, yaw);
+    EmRangedAttack_CreateAtBone(em, 0x33, 0xB, 0, pitch, yaw);
 }
 
 /*
  * One of a sweep's effects, at the spot the argument names (a value of an
- * EmFatalis_SweepSpots row): EffEm33 kind 0xC for EM_KIND_FATALIS_C,
- * EffEm08 type 0xC from bone 0 pitched 0x4000 for the others.
+ * EmFatalis_SweepSpots row): EmEffectAttack kind 0xC for EM_KIND_FATALIS_C,
+ * EmRangedAttack type 0xC from bone 0 pitched 0x4000 for the others.
  */
 void EmFatalis_SpawnSweepEffect(Em *em, s32 spot)
 {
     if (em->type == EM_KIND_FATALIS_C) {
-        EffEm33_Create(em, 0xC, spot, 0, 0);
+        EmEffectAttack_Create(em, 0xC, spot, 0, 0);
     } else {
-        EffEm08_CreateAtBone(em, 0, 0xC, spot, 0x4000, 0);
+        EmRangedAttack_CreateAtBone(em, 0, 0xC, spot, 0x4000, 0);
     }
 }
 
@@ -9312,7 +9318,7 @@ void EmFatalis_Update(Em *em)
     EmFatalis_UpdateRageTimer(em);
     em->painted = 0;
     em->paintTimer = 0;
-    Em_RaiseTrigger80Lax(em);
+    Em_RaisePlayerAreaTriggerLax(em);
     Em_HoldPosNoPlayers(em, 0, 1);
     if (em->stateGroup != EM_GROUP_DEFEAT) {
         if (em->hp <= (s16) (0.65f * em->hpMax)) {
@@ -9385,7 +9391,7 @@ void EmFatalis_Update(Em *em)
         EmFatalis_ChangeState(em, EM_GROUP_REACT, FAT_REACT_KNOCK_DOWN, EM_SYNC_OWNER);
         break;
     case EM_DMG_PART_FLINCH:
-        Player_ClearFlag((Player *) em, 0x20000);
+        Player_ClearFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         if (em->stance == EM_STANCE_AIR) {
             EmFatalis_ChangeState(em, EM_GROUP_REACT, FAT_REACT_FALL, EM_SYNC_OWNER);
         } else {
@@ -9427,7 +9433,7 @@ void EmFatalis_Update(Em *em)
      * script; the gotos share that call.
      */
     if (em->type == EM_KIND_FATALIS) {
-        if (Area_DayId(em->area) == 0x19) {
+        if (Area_DayId(em->area) == AREA_CASTLE_1) {
             if (Save_TestEventFlag(0xB0) == 0) {
                 if (gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
                     EmFatalis_ChangeState(em, EM_GROUP_EVENT, FAT_EVENT_FLY_IN, EM_SYNC_LOCAL);
@@ -9451,14 +9457,14 @@ void EmFatalis_Update(Em *em)
             goto runScript;
         }
     } else if (em->type == EM_KIND_FATALIS_B) {
-        if (Area_DayId(em->area) == 0x58 && Save_TestEventFlag(0xB1) == 0) {
+        if (Area_DayId(em->area) == AREA_BATTLEFIELD_1 && Save_TestEventFlag(0xB1) == 0) {
             if (gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
                 EmFatalis_ChangeState(em, EM_GROUP_EVENT, FAT_EVENT_GET_UP, EM_SYNC_LOCAL);
             }
         } else {
             goto runScript;
         }
-    } else if (Area_DayId(em->area) == 0x7C && em->type == EM_KIND_FATALIS_C && Save_TestEventFlag(0xB2) == 0) {
+    } else if (Area_DayId(em->area) == AREA_TOWER_0x7C && em->type == EM_KIND_FATALIS_C && Save_TestEventFlag(0xB2) == 0) {
         if (gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
             EmFatalis_ChangeState(em, EM_GROUP_EVENT, FAT_EVENT_DESCEND, EM_SYNC_LOCAL);
         }
@@ -9568,7 +9574,7 @@ void EmFatalis_Status2Lie(Em *em, EmWork *work)
 {
     f32 pos[3];
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -9593,7 +9599,7 @@ void EmFatalis_Status2Lie(Em *em, EmWork *work)
         pos[0] = 0.0f;
         pos[1] = 100.0f;
         pos[2] = 200.0f;
-        Em_SpawnEffect06Periodic(em, 0x33, pos, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x33, pos, 1.6f);
     }
 }
 
@@ -9672,7 +9678,7 @@ void EmFatalis_TurnToTarget(Em *em, EmWork *work)
     case 1:
         if (Em_TurnStep(em, &EmFatalis_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmFatalis_EndState(em);
         }
         break;
@@ -9710,7 +9716,7 @@ void EmFatalis_TurnToGoal(Em *em, EmWork *work)
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Player_ClearFlag((Player *) em, 0x20000);
+            Player_ClearFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
             EmFatalis_EndState(em);
             break;
         }
@@ -9753,7 +9759,7 @@ void EmFatalis_TakeOff(Em *em, EmWork *work, s32 variant)
             em->stance = EM_STANCE_GROUND;
         } else {
             em->stance = EM_STANCE_AIR;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         em->lookAtTarget = 0;
         Em_SetMotion(em, FAT_MOT_TAKE_OFF, 0, 0);
@@ -9761,7 +9767,7 @@ void EmFatalis_TakeOff(Em *em, EmWork *work, s32 variant)
         work->flyGuard = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 134.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0U) != 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
             EmFatalis_UpdateCurves(em);
@@ -10231,7 +10237,7 @@ void EmFatalis_TakeOffAndRise(Em *em, EmWork *work)
         work->flyGuard = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 134.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0U) != 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
             EmFatalis_UpdateCurves(em);
@@ -10275,7 +10281,7 @@ void EmFatalis_LandAtHeight(Em *em, EmWork *work)
         Player_ClearVelocity(em);
         em->velY = -10.0f;
         work->flyGuard = 0;
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         work->moveAngX = 0;
         work->moveAngZ = 0;
         break;
@@ -10379,7 +10385,7 @@ void EmFatalis_Fireball(Em *em)
         Em_SetMotion(em, FAT_MOT_FIREBALL, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 102.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0U) != 0) {
             EmFatalis_SpawnFireball(em, 0, 0);
             EmFatalis_SpawnFireballEffect(em, 0, 0);
         }
@@ -10402,7 +10408,7 @@ void EmFatalis_FireballB(Em *em)
         Em_SetMotion(em, FAT_MOT_FIREBALL_B, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 98.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 98.0f, 0U) != 0) {
             EmFatalis_SpawnFireball(em, 0, 0);
             EmFatalis_SpawnFireballEffect(em, 0, 0);
         }
@@ -10434,8 +10440,8 @@ void EmFatalis_Sweep(Em *em, EmWork *work, s32 variant)
     case 1:
         k = variant & 0xFF;
         if (k != 0) {
-            if (Player_PassedFrameScaled(em, 80.0f, 0U) != 0 || Player_PassedFrameScaled(em, 140.0f, 0U) != 0 || Player_PassedFrameScaled(em, 200.0f, 0U) != 0 ||
-                Player_PassedFrameScaled(em, 260.0f, 0U) != 0 || Player_PassedFrameScaled(em, 320.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 140.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0 ||
+                EmMotion_PassedFrameScaled(em, 260.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 320.0f, 0U) != 0) {
                 EmFatalis_SpawnSweepEffect(em, EmFatalis_SweepSpots[k][em->stateVar0]);
                 em->stateVar0++;
             }
@@ -10477,7 +10483,7 @@ void EmFatalis_AirFireball(Em *em, EmWork *work, s32 variant)
         break;
     case 2:
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 30.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0U) != 0) {
             EmFatalis_SpawnFireball(em, 0, 0);
             k = variant & 0xFF;
             switch (k) {
@@ -10493,7 +10499,7 @@ void EmFatalis_AirFireball(Em *em, EmWork *work, s32 variant)
             }
             work->countdown = (s8) work->countdown - 1;
         }
-        if (((s8) work->countdown <= 0) && (Player_PassedFrameScaled(em, 76.0f, 0U) != 0)) {
+        if (((s8) work->countdown <= 0) && (EmMotion_PassedFrameScaled(em, 76.0f, 0U) != 0)) {
             em->step++;
             Em_SetMotion(em, FAT_MOT_FLY, 0xA, 0x1E);
         }
@@ -10532,7 +10538,7 @@ void EmFatalis_Charge(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, FAT_MOT_CHARGE, 0, 0);
-            Eff04_Create(em, 2);
+            FatalisAttack_Create(em, 2);
         }
         break;
     case 2:
@@ -10567,14 +10573,14 @@ void EmFatalis_HopFireball(Em *em)
         EmFatalis_StartCurves(em, 3);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 70.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0U) != 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
             EmFatalis_UpdateCurves(em);
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 94.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0U) != 0) {
             EmFatalis_SpawnFireball(em, 0, 0);
             EmFatalis_SpawnFireballEffect(em, 0x38E4, 0);
         }
@@ -10644,7 +10650,7 @@ void EmFatalis_AirFireballTriple(Em *em, EmWork *work)
         break;
     case 2:
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 2);
-        if (Player_PassedFrameScaled(em, 30.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0U) != 0) {
             EmFatalis_SpawnFireball(em, 0, 0);
             work->countdown = (s8) work->countdown - 1;
             countdown = (s8) work->countdown;
@@ -10660,7 +10666,7 @@ void EmFatalis_AirFireballTriple(Em *em, EmWork *work)
                 break;
             }
         }
-        if (((s8) work->countdown <= 0) && (Player_PassedFrameScaled(em, 76.0f, 0U) != 0)) {
+        if (((s8) work->countdown <= 0) && (EmMotion_PassedFrameScaled(em, 76.0f, 0U) != 0)) {
             em->step++;
             Em_SetMotion(em, FAT_MOT_FLY, 0xA, 0x1E);
         }
@@ -10765,7 +10771,7 @@ void EmFatalis_Dive(Em *em, EmWork *work)
             em->accelX = 0.0f;
             em->accelY = 0.0f;
             em->accelZ = 9.0f;
-            Eff04_Create(em, 0x1E);
+            FatalisAttack_Create(em, 0x1E);
         }
         break;
     case 2:
@@ -10844,8 +10850,8 @@ void EmFatalis_SweepDouble(Em *em, EmWork *work, s32 variant)
     case 1:
         k = variant & 0xFF;
         if (k != 0) {
-            if (Player_PassedFrameScaled(em, 80.0f, 0U) != 0 || Player_PassedFrameScaled(em, 140.0f, 0U) != 0 || Player_PassedFrameScaled(em, 200.0f, 0U) != 0 ||
-                Player_PassedFrameScaled(em, 260.0f, 0U) != 0 || Player_PassedFrameScaled(em, 320.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 140.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0 ||
+                EmMotion_PassedFrameScaled(em, 260.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 320.0f, 0U) != 0) {
                 EmFatalis_SpawnSweepEffect(em, EmFatalis_SweepSpots[5][em->stateVar0]);
                 em->stateVar0++;
             }
@@ -10858,8 +10864,8 @@ void EmFatalis_SweepDouble(Em *em, EmWork *work, s32 variant)
     case 2:
         k = variant & 0xFF;
         if (k != 0) {
-            if (Player_PassedFrameScaled(em, 80.0f, 0U) != 0 || Player_PassedFrameScaled(em, 140.0f, 0U) != 0 || Player_PassedFrameScaled(em, 200.0f, 0U) != 0 ||
-                Player_PassedFrameScaled(em, 260.0f, 0U) != 0 || Player_PassedFrameScaled(em, 320.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 140.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0 ||
+                EmMotion_PassedFrameScaled(em, 260.0f, 0U) != 0 || EmMotion_PassedFrameScaled(em, 320.0f, 0U) != 0) {
                 EmFatalis_SpawnSweepEffect(em, EmFatalis_SweepSpots[5][em->stateVar0]);
                 em->stateVar0++;
             }
@@ -10901,7 +10907,7 @@ void EmFatalis_DiveB(Em *em, EmWork *work)
             em->accelX = 0.0f;
             em->accelY = 0.0f;
             em->accelZ = 9.0f;
-            Eff04_Create(em, 0x1E);
+            FatalisAttack_Create(em, 0x1E);
         }
         break;
     case 2:
@@ -10964,7 +10970,7 @@ void EmFatalis_DiveB(Em *em, EmWork *work)
 
 /*
  * FAT_ATK_BLASTS: roars three times on the raised floor of
- * FAT_FLY_LAND_AT_HEIGHT, with an effect (EffEm33 kind 0xE) every 10 frames
+ * FAT_FLY_LAND_AT_HEIGHT, with an effect (EmEffectAttack kind 0xE) every 10 frames
  * at the next spot of row 6 or 7 (picked by Em.stateRand) of
  * EmFatalis_SweepSpots, 24 in all; then takes off (FAT_FLY_TAKE_OFF_HIGH).
  */
@@ -10976,13 +10982,13 @@ void EmFatalis_Blasts(Em *em)
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_SetMotion(em, FAT_MOT_ROAR, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         em->timer = 10;
         break;
     case 1:
         if (em->stateVar0 < 8) {
             if (--em->timer <= 0) {
-                EffEm33_Create(em, 0xE, EmFatalis_SweepSpots[6 + (em->stateRand & 1)][em->stateVar0], 0, 0);
+                EmEffectAttack_Create(em, 0xE, EmFatalis_SweepSpots[6 + (em->stateRand & 1)][em->stateVar0], 0, 0);
                 em->stateVar0++;
                 em->timer = 10;
             }
@@ -10996,7 +11002,7 @@ void EmFatalis_Blasts(Em *em)
     case 2:
         if (em->stateVar0 < 16) {
             if (--em->timer <= 0) {
-                EffEm33_Create(em, 0xE, EmFatalis_SweepSpots[6 + (em->stateRand & 1)][em->stateVar0], 0, 0);
+                EmEffectAttack_Create(em, 0xE, EmFatalis_SweepSpots[6 + (em->stateRand & 1)][em->stateVar0], 0, 0);
                 em->stateVar0++;
                 em->timer = 10;
             }
@@ -11010,7 +11016,7 @@ void EmFatalis_Blasts(Em *em)
     case 3:
         if (em->stateVar0 < 24) {
             if (--em->timer <= 0) {
-                EffEm33_Create(em, 0xE, EmFatalis_SweepSpots[6 + (em->stateRand & 1)][em->stateVar0], 0, 0);
+                EmEffectAttack_Create(em, 0xE, EmFatalis_SweepSpots[6 + (em->stateRand & 1)][em->stateVar0], 0, 0);
                 em->stateVar0++;
                 em->timer = 10;
             }
@@ -11179,7 +11185,7 @@ void EmFatalis_KnockDown(Em *em, EmWork *work)
 
 /*
  * FAT_REACT_STATUS4: collapses and lies under status 4
- * (Em_SpawnEffect06Bone each frame once lying) until the timer runs out,
+ * (Em_SpawnStatus4Effect each frame once lying) until the timer runs out,
  * then FAT_IDLE_STATUS4_END.
  */
 void EmFatalis_Status4(Em *em, EmWork *work)
@@ -11194,13 +11200,13 @@ void EmFatalis_Status4(Em *em, EmWork *work)
         Em_RestartScript(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 296.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 296.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, FAT_MOT_DOWN, 0xC, 0x124);
         }
         break;
     case 2:
-        Em_SpawnEffect06Bone(em, 2);
+        Em_SpawnStatus4Effect(em, 2);
         if (--em->timer <= 0) {
             em->step++;
             EmFatalis_ChangeState(em, EM_GROUP_IDLE, FAT_IDLE_STATUS4_END, EM_SYNC_OWNER_FLAGGED);
@@ -11437,7 +11443,7 @@ void EmFatalis_DieFalling(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 100.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) {
             em->step++;
             em->motionSpeed = 0.0f;
             em->timer = 0;
@@ -11745,7 +11751,7 @@ void EmFatalis_EventLeave(Em *em, EmWork *work)
         }
         break;
     case 3:
-        if (Player_PassedFrameScaled(em, 134.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0U) != 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
             EmFatalis_UpdateCurves(em);
@@ -11769,7 +11775,7 @@ void EmFatalis_EventLeave(Em *em, EmWork *work)
 }
 
 /*
- * FAT_EVENT_FLY_IN, EM_KIND_FATALIS's scene in area 0x19: from a fixed spot
+ * FAT_EVENT_FLY_IN, EM_KIND_FATALIS's scene in AREA_CASTLE_1: from a fixed spot
  * it takes off, climbs to the height 5860, flies to a second point, lands
  * with a camera shake, roars and breathes a fireball, then idles until
  * event flag 0xB0 is set.
@@ -11808,7 +11814,7 @@ void EmFatalis_EventFlyIn(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 134.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0U) != 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
             EmFatalis_UpdateCurves(em);
@@ -11888,7 +11894,7 @@ void EmFatalis_EventFlyIn(Em *em, EmWork *work)
         }
         break;
     case 11:
-        if (Player_PassedFrameScaled(em, 102.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0U) != 0) {
             EmFatalis_SpawnFireball(em, 0, 0);
             EmFatalis_SpawnFireballEffect(em, 0, 0);
         }
@@ -11929,11 +11935,11 @@ void EmFatalis_EventLeaveFromAir(Em *em)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 30.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0U) != 0) {
             EmFatalis_SpawnFireball(em, 0, 0);
             EmFatalis_SpawnFireballEffect(em, 0x38E4, 0);
         }
-        if (Player_PassedFrameScaled(em, 76.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 76.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, FAT_MOT_FLY, 0xA, 0x1E);
         }
@@ -11949,7 +11955,7 @@ void EmFatalis_EventLeaveFromAir(Em *em)
 }
 
 /*
- * FAT_EVENT_GET_UP, EM_KIND_FATALIS_B's scene in area 0x58: lying at a
+ * FAT_EVENT_GET_UP, EM_KIND_FATALIS_B's scene in AREA_BATTLEFIELD_1: lying at a
  * fixed spot (FAT_MOT_DIE_B from frame 638), it gets up, idles, roars
  * (enraged meanwhile), glides to a second point and lands, then idles until
  * event flag 0xB1 is set.
@@ -12068,9 +12074,9 @@ void EmFatalis_EventGetUp(Em *em, EmWork *work)
 }
 
 /*
- * FAT_EVENT_DESCEND, EM_KIND_FATALIS_C's scene in area 0x7C: glides in high
+ * FAT_EVENT_DESCEND, EM_KIND_FATALIS_C's scene in AREA_TOWER_0x7C: glides in high
  * (hidden for its first 150 frames), comes down at a fixed spot, lands,
- * roars enraged with 15 effects (EffEm33 kind 0xC), one every 10 frames,
+ * roars enraged with 15 effects (EmEffectAttack kind 0xC), one every 10 frames,
  * then idles until event flag 0xB2 is set.
  */
 void EmFatalis_EventDescend(Em *em, EmWork *work)
@@ -12169,7 +12175,7 @@ void EmFatalis_EventDescend(Em *em, EmWork *work)
     case 8:
         if ((em->motionId[0] == EM_MOTION_ID(0, FAT_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 60.0f) != 0) || em->motionId[0] != EM_MOTION_ID(0, FAT_MOT_ROAR)) {
             if (em->stateVar1++ % 10 == 0) {
-                EffEm33_CreatePlus18(em, 0xC, em->stateVar0++, 0, 0);
+                EmEffectAttack_CreateDescentBlast(em, 0xC, em->stateVar0++, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -12331,19 +12337,19 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
     case EM_MOTION_ID(0, FAT_MOT_WALK):
         EmFatalis_ShakeOnFrame(em, 0xE, 2);
         EmFatalis_ShakeOnFrame(em, 0x54, 2);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff04_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            FatalisAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            Eff04_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
+            FatalisAttack_Create(em, 6);
         }
-        if (Player_PassedFrameScaled(em, 130.0f, 0) != 0) {
-            Eff04_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 130.0f, 0) != 0) {
+            FatalisAttack_Create(em, 7);
         }
-        if (Player_PassedFrameScaled(em, 116.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 116.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xA, 0x14, 5.0f);
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 6, 0x14, 5.0f);
         }
         if (EmMotion_InFrameRange(em, 0, 34.0f, 52.0f) || EmMotion_InFrameRange(em, 0, 108.0f, 130.0f)) {
@@ -12353,19 +12359,19 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
     case EM_MOTION_ID(0, FAT_MOT_TURN_LEFT):
         EmFatalis_ShakeOnFrame(em, 0x1A, 2);
         EmFatalis_ShakeOnFrame(em, 0x60, 2);
-        if (Player_PassedFrameScaled(em, 4.0f, 0) != 0) {
-            Eff04_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0) {
+            FatalisAttack_Create(em, 8);
         }
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            Eff04_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            FatalisAttack_Create(em, 9);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Eff04_Create(em, 0x17);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x17);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 6, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 94.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xA, 7, 1.2f);
         }
         if (EmMotion_InFrameRange(em, 0, 6.0f, 24.0f) != 0) {
@@ -12378,19 +12384,19 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
     case EM_MOTION_ID(0, FAT_MOT_TURN_RIGHT):
         EmFatalis_ShakeOnFrame(em, 0x20, 2);
         EmFatalis_ShakeOnFrame(em, 0x5E, 2);
-        if (Player_PassedFrameScaled(em, 4.0f, 0) != 0) {
-            Eff04_Create(em, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0xA);
         }
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            Eff04_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Eff04_Create(em, 0x17);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x17);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xA, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 94.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 6, 7, 1.2f);
         }
         if (EmMotion_InFrameRange(em, 0, 6.0f, 24.0f) != 0) {
@@ -12405,17 +12411,17 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x1C, 2);
         EmFatalis_ShakeOnFrame(em, 0x2C, 2);
         EmFatalis_ShakeOnFrame(em, 0x70, 5);
-        if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
             if (em->type == EM_KIND_FATALIS_C) {
-                Eff04_Create(em, 0x23);
+                FatalisAttack_Create(em, 0x23);
             } else {
-                Eff04_Create(em, 0xC);
+                FatalisAttack_Create(em, 0xC);
             }
         }
-        if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1E, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x19, 7, 1.2f);
         }
         if (EmMotion_InFrameRange(em, 0, 66.0f, 112.0f) != 0) {
@@ -12429,16 +12435,16 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x58, 2);
         EmFatalis_ShakeOnFrame(em, 0x7E, 2);
         EmFatalis_ShakeOnFrame(em, 0x84, 2);
-        if ((Player_PassedFrameScaled(em, 24.0f, 0) != 0) || (Player_PassedFrameScaled(em, 28.0f, 0) != 0) || (Player_PassedFrameScaled(em, 86.0f, 0) != 0) || (Player_PassedFrameScaled(em, 90.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 86.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x19, 3, 2.2f);
         }
-        if ((Player_PassedFrameScaled(em, 36.0f, 0) != 0) || (Player_PassedFrameScaled(em, 40.0f, 0) != 0) || (Player_PassedFrameScaled(em, 96.0f, 0) != 0) || (Player_PassedFrameScaled(em, 100.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0xA, 3, 2.2f);
         }
-        if ((Player_PassedFrameScaled(em, 58.0f, 0) != 0) || (Player_PassedFrameScaled(em, 62.0f, 0) != 0) || (Player_PassedFrameScaled(em, 126.0f, 0) != 0) || (Player_PassedFrameScaled(em, 130.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 126.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 130.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x1E, 3, 2.2f);
         }
-        if ((Player_PassedFrameScaled(em, 66.0f, 0) != 0) || (Player_PassedFrameScaled(em, 70.0f, 0) != 0) || (Player_PassedFrameScaled(em, 130.0f, 0) != 0) || (Player_PassedFrameScaled(em, 134.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 130.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 134.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 6, 3, 2.2f);
         }
         if (EmMotion_InFrameRange(em, 0, 12.0f, 40.0f) || EmMotion_InFrameRange(em, 0, 76.0f, 106.0f)) {
@@ -12446,11 +12452,11 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_TURN_SMALL):
-        if (Player_PassedFrameScaled(em, 32.0f, 0) != 0) {
-            Eff04_Create(em, 0x21);
+        if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x21);
         }
-        if (Player_PassedFrameScaled(em, 114.0f, 0) != 0) {
-            Eff04_Create(em, 0x22);
+        if (EmMotion_PassedFrameScaled(em, 114.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x22);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_RECOVER):
@@ -12460,13 +12466,13 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_TAKE_OFF):
-        if (Player_PassedFrameScaled(em, 196.0f, 0) || Player_PassedFrameScaled(em, 250.0f, 0) || Player_PassedFrameScaled(em, 316.0f, 0)) {
-            Eff04_Create(em, 0x18);
+        if (EmMotion_PassedFrameScaled(em, 196.0f, 0) || EmMotion_PassedFrameScaled(em, 250.0f, 0) || EmMotion_PassedFrameScaled(em, 316.0f, 0)) {
+            FatalisAttack_Create(em, 0x18);
         }
-        if (((Player_PassedFrameScaled(em, 38.0f, 0) != 0) || (Player_PassedFrameScaled(em, 90.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
+        if (((EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 138.0f, 0) || Player_PassedFrameScaled(em, 196.0f, 0) || Player_PassedFrameScaled(em, 256.0f, 0) || Player_PassedFrameScaled(em, 322.0f, 0) || Player_PassedFrameScaled(em, 394.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 138.0f, 0) || EmMotion_PassedFrameScaled(em, 196.0f, 0) || EmMotion_PassedFrameScaled(em, 256.0f, 0) || EmMotion_PassedFrameScaled(em, 322.0f, 0) || EmMotion_PassedFrameScaled(em, 394.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 1, 0, 1.2f);
             }
@@ -12476,10 +12482,10 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_FLY):
-        if (Player_PassedFrameScaled(em, 32.0f, 0) != 0) {
-            Eff04_Create(em, 0x19);
+        if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x19);
         }
-        if (((Player_PassedFrameScaled(em, 40.0f, 0) != 0) || (Player_PassedFrameScaled(em, 110.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
+        if (((EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 110.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 1, 0, 1.2f);
         }
         if (EmMotion_InFrameRange(em, 0, 44.0f, 68.0f) != 0) {
@@ -12487,10 +12493,10 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_DESCEND):
-        if ((Player_PassedFrameScaled(em, 122.0f, 0) != 0) || (Player_PassedFrameScaled(em, 164.0f, 0) != 0)) {
-            Eff04_Create(em, 0x1A);
+        if ((EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
+            FatalisAttack_Create(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 42.0f, 0) || Player_PassedFrameScaled(em, 102.0f, 0) || Player_PassedFrameScaled(em, 156.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0) || EmMotion_PassedFrameScaled(em, 156.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 1, 0, 1.2f);
                 break;
@@ -12501,16 +12507,16 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x12, 2);
         EmFatalis_ShakeOnFrame(em, 0x28, 2);
         EmFatalis_ShakeOnFrame(em, 0x86, 5);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            Eff04_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0) != 0) {
-            Eff04_Create(em, 0xE);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0xE);
         }
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 190.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 190.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x19, 7, 1.2f);
         }
         if (EmMotion_InFrameRange(em, 0, 68.0f, 118.0f) || EmMotion_InFrameRange(em, 0, 160.0f, 252.0f) || EmMotion_InFrameRange(em, 0, 298.0f, 330.0f)) {
@@ -12523,8 +12529,8 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
                 StageObj_K14_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            Eff04_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x11);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_FIREBALL_B):
@@ -12533,8 +12539,8 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
                 StageObj_K14_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            Eff04_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x11);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_SWEEP):
@@ -12542,49 +12548,49 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x56, 2);
         EmFatalis_ShakeOnFrame(em, 0xF4, 2);
         EmFatalis_ShakeOnFrame(em, 0x124, 2);
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            Eff04_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
+            FatalisAttack_Create(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            Eff04_Create(em, 0x16);
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x16);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_AIR_FIREBALL):
         if ((EmMotion_InFrameRange(em, 0, 98.0f, 130.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            Eff04_Create(em, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x12);
         }
-        if ((Player_PassedFrameScaled(em, 34.0f, 0) != 0) || (Player_PassedFrameScaled(em, 112.0f, 0) != 0)) {
-            Eff04_Create(em, 0x14);
+        if ((EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 112.0f, 0) != 0)) {
+            FatalisAttack_Create(em, 0x14);
         }
         break;
     case EM_MOTION_ID(0, 0x12):
         EmFatalis_ShakeOnFrame(em, 0x14, 2);
         EmFatalis_ShakeOnFrame(em, 0x92, 2);
         if (em->type == EM_KIND_FATALIS) {
-            if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-                Eff04_Create(em, 4);
+            if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+                FatalisAttack_Create(em, 4);
                 break;
             }
         } else {
-            if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
-                Eff04_Create(em, 0x1C);
+            if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
+                FatalisAttack_Create(em, 0x1C);
             }
-            if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
-                Eff04_Create(em, 0x1D);
+            if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
+                FatalisAttack_Create(em, 0x1D);
             }
-            if ((em->type == EM_KIND_FATALIS_C) && (Player_PassedFrameScaled(em, 34.0f, 0) != 0)) {
+            if ((em->type == EM_KIND_FATALIS_C) && (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0)) {
                 StageObj_K1C_CreateOnEmC(em, 0x28, 1, 0.4f);
             }
-            if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0xA, 0x8B, 0.3f);
             }
-            if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0xA, 0x8B, 0.3f);
             }
-            if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0xA, 0x8B, 0.3f);
                 break;
             }
@@ -12595,36 +12601,36 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x92, 2);
         type = em->type;
         if (type == 2) {
-            if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-                Eff04_Create(em, 4);
+            if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+                FatalisAttack_Create(em, 4);
                 break;
             }
         } else {
             if (type == 0x24) {
-                if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
-                    Eff04_Create(em, 0x1C);
+                if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
+                    FatalisAttack_Create(em, 0x1C);
                 }
-                if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
-                    Eff04_Create(em, 0x1D);
+                if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
+                    FatalisAttack_Create(em, 0x1D);
                 }
             } else {
-                if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
-                    Eff04_Create(em, 0x1F);
+                if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
+                    FatalisAttack_Create(em, 0x1F);
                 }
-                if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
-                    Eff04_Create(em, 0x20);
+                if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
+                    FatalisAttack_Create(em, 0x20);
                 }
             }
-            if ((em->type == EM_KIND_FATALIS_C) && (Player_PassedFrameScaled(em, 34.0f, 0) != 0)) {
+            if ((em->type == EM_KIND_FATALIS_C) && (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0)) {
                 StageObj_K1C_CreateOnEmC(em, 0x28, 2, 0.4f);
             }
-            if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0xA, 0xB0, 0.3f);
             }
-            if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0xA, 0xB0, 0.3f);
             }
-            if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0xA, 0xB0, 0.3f);
                 break;
             }
@@ -12633,8 +12639,8 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
     case EM_MOTION_ID(0, 0x13):
         EmFatalis_ShakeOnFrame(em, 0x44, 2);
         EmFatalis_ShakeOnFrame(em, 0x118, 2);
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Eff04_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            FatalisAttack_Create(em, 1);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_FLINCH):
@@ -12647,10 +12653,10 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x42, 2);
         EmFatalis_ShakeOnFrame(em, 0xC2, 2);
         EmFatalis_ShakeOnFrame(em, 0x120, 2);
-        if (Player_PassedFrameScaled(em, 64.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1E, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 66.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x19, 7, 1.2f);
         }
         break;
@@ -12658,13 +12664,13 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x20, 2);
         EmFatalis_ShakeOnFrame(em, 0x3A, 2);
         EmFatalis_ShakeOnFrame(em, 0xAA, 2);
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x19, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1E, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0xA, 7, 1.2f);
         }
         break;
@@ -12672,13 +12678,13 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x20, 2);
         EmFatalis_ShakeOnFrame(em, 0x44, 2);
         EmFatalis_ShakeOnFrame(em, 0xA0, 2);
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1E, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x19, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 6, 7, 1.2f);
         }
         break;
@@ -12690,29 +12696,29 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         EmFatalis_ShakeOnFrame(em, 0x15E, 2);
         EmFatalis_ShakeOnFrame(em, 0x238, 2);
         EmFatalis_ShakeOnFrame(em, 0x2AC, 2);
-        if (Player_PassedFrameScaled(em, 314.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 314.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 418.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 418.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_FALL_LAND):
         EmFatalis_ShakeOnFrame(em, 0xC, 2);
         EmFatalis_ShakeOnFrame(em, 0x20, 2);
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 1, 1.2f);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_DOWN):
         EmFatalis_ShakeOnFrame(em, 0x2E, 5);
-        if (Player_PassedFrameScaled(em, 46.0f, 0) || Player_PassedFrameScaled(em, 112.0f, 0) || Player_PassedFrameScaled(em, 320.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) || EmMotion_PassedFrameScaled(em, 112.0f, 0) || EmMotion_PassedFrameScaled(em, 320.0f, 0)) {
             StageObj_K14_Create(em, 1, 0x80, 0.6f);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_DOWN_GET_UP):
         EmFatalis_ShakeOnFrame(em, 0xDC, 2);
-        if (Player_PassedFrameScaled(em, 216.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 216.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1E, 7, 1.2f);
             Effect0D_SpawnForEmScaled(em, 0x19, 7, 1.2f);
         }
@@ -12726,8 +12732,8 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
         if (EmMotion_InFrameRange(em, 0, 10.0f, 70.0f) || EmMotion_InFrameRange(em, 0, 114.0f, 122.0f)) {
             EmFatalis_SpawnRageObject(em);
         }
-        if ((Player_PassedFrameScaled(em, 36.0f, 0) != 0) || (Player_PassedFrameScaled(em, 122.0f, 0) != 0)) {
-            Eff04_Create(em, 0x13);
+        if ((EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0)) {
+            FatalisAttack_Create(em, 0x13);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_ROAR):
@@ -12741,8 +12747,8 @@ void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work)
                 }
             } else {
 roarEffect:
-                if (Player_PassedFrameScaled(em, 66.0f, 0) != 0) {
-                    Eff04_Create(em, 0x10);
+                if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
+                    FatalisAttack_Create(em, 0x10);
                     StageObj_K0F_CreateOnEm(em, 5, 3, 1.0f);
                     break;
                 }
@@ -12750,11 +12756,11 @@ roarEffect:
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_HOP_FIREBALL):
-        if (Player_PassedFrameScaled(em, 66.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1F, 7, 8.0f);
         }
-        if ((Player_PassedFrameScaled(em, 76.0f, 0) != 0) || (Player_PassedFrameScaled(em, 252.0f, 0) != 0)) {
-            Eff04_Create(em, 0x1B);
+        if ((EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 252.0f, 0) != 0)) {
+            FatalisAttack_Create(em, 0x1B);
         }
         if (EmMotion_InFrameRange(em, 0, 124.0f, 132.0f) || EmMotion_InFrameRange(em, 0, 154.0f, 170.0f)) {
             if (!(gScene.frame & 3)) {
@@ -12765,18 +12771,18 @@ roarEffect:
         break;
     case EM_MOTION_ID(0, FAT_MOT_LIE_DOWN):
         EmFatalis_ShakeOnFrame(em, 0xF2, 2);
-        if (Player_PassedFrameScaled(em, 242.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 242.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1E, 7, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 244.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 244.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x19, 7, 1.2f);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_GLIDE_START):
-        if (Player_PassedFrameScaled(em, 68.0f, 0) != 0) {
-            Eff04_Create(em, 0x1E);
+        if (EmMotion_PassedFrameScaled(em, 68.0f, 0) != 0) {
+            FatalisAttack_Create(em, 0x1E);
         }
-        if ((Player_PassedFrameScaled(em, 34.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 0x13, 0, 3.0f);
         }
         break;
@@ -12784,12 +12790,12 @@ roarEffect:
         if ((EmMotion_InFrameRange(em, 0, 30.0f, 70.0f) != 0) && (em->posY <= (1000.0f + em->floorY)) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0xA, 0x80, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 96.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 0xB, 0, 2.0f);
         }
         break;
     case EM_MOTION_ID(0, FAT_MOT_DIVE_RISE):
-        if ((Player_PassedFrameScaled(em, 52.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 1, 0, 1.5f);
         }
         break;
@@ -12815,7 +12821,7 @@ roarEffect:
  */
 void EmFatalis_ShakeOnFrame(void *em, s32 frame, s32 strength)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         CamShake_ReqAIf(em, strength);
     }
 }
@@ -12863,7 +12869,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
 
     prevMotion = work->prevMotion;
     switch (prevMotion) {
-    case EM_MOTION_ID(0, 0x03):
+    case EM_MOTION_ID(0, BLANG_MOT_WALK):
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x9E, 0, 9);
@@ -12871,7 +12877,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x05):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT):
         Em_PlaySeAtBoneOnFrame(em, 0x16, Sound_RandomSe(0x19, 2, 0x19, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 0xE);
@@ -12880,7 +12886,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x32, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x06):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT):
         Em_PlaySeAtBoneOnFrame(em, 0x16, Sound_RandomSe(0x19, 2, 0x19, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 9);
@@ -12889,7 +12895,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x32, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x07):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT_QUICK):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x2C, 1, 0x2C, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 9);
@@ -12897,7 +12903,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x08):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT_QUICK):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x2C, 1, 0x2C, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 0xE);
@@ -12905,7 +12911,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x09):
+    case EM_MOTION_ID(0, BLANG_MOT_LIMP):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x2D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 1, 9);
@@ -12919,7 +12925,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x0A):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_D):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x17);
@@ -12934,7 +12940,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x52, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x60, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x0C):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_A):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x1D, 1, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x17);
@@ -12942,7 +12948,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 5, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x0E):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_B):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x1D, 1, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x1B);
@@ -12950,7 +12956,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 5, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x10):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_C):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x1D, 1, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x17);
@@ -12961,7 +12967,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 4, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x11):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP):
         if (em->type == 0x3D) {
             Em_PlaySeAtBoneVolOnFrame(em, 0x16, 0x36, 0x13, 7);
             Em_PlaySeAtBoneOnFrame(em, 4, 6, 9);
@@ -12983,7 +12989,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x34, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0x14, 3);
         break;
-    case EM_MOTION_ID(0, 0x13):
+    case EM_MOTION_ID(0, BLANG_MOT_CHARGE):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x1E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x1D, 3, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 9);
@@ -12995,7 +13001,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 8, 5, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 5, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x14):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP_LAND):
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x37, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 8, 3);
         Em_PlaySeAtBoneOnFrame(em, 6, 2, 9);
@@ -13003,7 +13009,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x15):
+    case EM_MOTION_ID(0, BLANG_MOT_DIG_IN):
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0x10, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0x10, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x11, 9);
@@ -13013,7 +13019,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x92, 0x12, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x12, 9);
         break;
-    case EM_MOTION_ID(0, 0x16):
+    case EM_MOTION_ID(0, BLANG_MOT_EMERGE):
         if (em->type == 0x3D) {
             Em_PlaySeAtBoneVolOnFrame(em, 4, 0xD, 0x12, 6);
             Em_PlaySeAtBoneVolOnFrame(em, 4, 0x1A, 0x13, 6);
@@ -13059,17 +13065,17 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 8, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x17):
+    case EM_MOTION_ID(0, BLANG_MOT_WALK_START):
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x1F):
+    case EM_MOTION_ID(0, BLANG_MOT_LIE):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x2A, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x29, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x2A, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x104, 0x29, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x20):
+    case EM_MOTION_ID(0, BLANG_MOT_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x10, 3);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x2B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x82, 0x35, 0x13);
@@ -13080,7 +13086,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x21):
+    case EM_MOTION_ID(0, BLANG_MOT_COLLAPSE):
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x33, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x29, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x2A, 0x13);
@@ -13092,7 +13098,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x94, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x22):
+    case EM_MOTION_ID(0, BLANG_MOT_LIE_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x32, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x33, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 0x1B);
@@ -13100,7 +13106,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x10, 0xB);
         Em_PlaySeAtBoneOnFrame(em, 0xB4, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x28):
+    case EM_MOTION_ID(0, BLANG_MOT_TRIPLE_HIT):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x1C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x61, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
@@ -13113,7 +13119,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 8, 0xB);
         Em_PlaySeAtBoneOnFrame(em, 0x72, 0x11, 0xB);
         break;
-    case EM_MOTION_ID(0, 0x29):
+    case EM_MOTION_ID(0, BLANG_MOT_TRIPLE_HIT_END):
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0x38, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 2, 9);
         Em_PlaySeAtBoneOnFrame(em, 4, 5, 0x1B);
@@ -13122,11 +13128,11 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x2A):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM_WINDUP):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x5C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x2B):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_A):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x36, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x15, 0xE);
@@ -13138,7 +13144,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x58, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x2C):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_B):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x36, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x15, 9);
@@ -13150,7 +13156,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x58, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x2E):
+    case EM_MOTION_ID(0, BLANG_MOT_THROW):
         Em_PlaySeAtBoneOnFrame(em, 0x37, 0x39, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x13, 0xE);
@@ -13162,7 +13168,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x60, 6, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x2F):
+    case EM_MOTION_ID(0, BLANG_MOT_DIG_THROW):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x58, 0x2E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xBA, 0x2C, 0x13);
@@ -13179,7 +13185,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 4, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xBA, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x30):
+    case EM_MOTION_ID(0, BLANG_MOT_CHARGE_END):
         Em_PlaySeAtBoneOnFrame(em, 8, 0x1B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 6, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 9);
@@ -13191,7 +13197,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x28, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x33):
+    case EM_MOTION_ID(0, BLANG_MOT_ALERT_IDLE):
         if (em->type == 0x3D) {
             Em_PlaySeAtBoneOnFrame(em, 0x18, 0x37, 0x13);
             Em_PlaySeAtBoneOnFrame(em, 0x48, 0x38, 0x13);
@@ -13218,7 +13224,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xC0, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x34):
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR):
         if (em->type == 0x3D) {
             Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0x13);
             Em_PlaySeAtBoneOnFrame(em, 0x32, 0x3C, 0x13);
@@ -13239,7 +13245,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x35):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x100, 0x19, 0x13);
@@ -13254,7 +13260,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1CA, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x36):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT_B):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x100, 0x19, 0x13);
@@ -13269,26 +13275,26 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x1CA, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x37):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2):
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x23, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x78, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x17);
-        Em_PlaySe1AtBoneOnFrame(em, 0x36, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0x7C, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0xA2, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0xC6, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0x36, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0x7C, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0xA2, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0xC6, 0x2E, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x38):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2_END):
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x39):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x3E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x36, 0x3D, 0x13);
@@ -13305,14 +13311,14 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x3A):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_END):
         Em_PlaySeAtBoneOnFrame(em, 0x36, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x7C, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3B):
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR_B):
         Em_PlaySeAtBoneVolOnFrame(em, 0x3A, 0x4C, 0x13, 7);
         Em_PlaySeAtBoneVolOnFrame(em, 0xAA, 0x3F, 0x13, 7);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 6, 9);
@@ -13321,7 +13327,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x94, 1, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3C):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH_B):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x56, 9, 9);
@@ -13335,7 +13341,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8A, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xA6, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3D):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x48, 4, 0x47, 4), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x23, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 9);
@@ -13345,7 +13351,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x16, 4, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3E):
+    case EM_MOTION_ID(0, BLANG_MOT_SHAKE_OFF):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x26, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 0x23, 0x13);
@@ -13359,7 +13365,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x3F):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x51, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x20, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x11, 6);
@@ -13368,7 +13374,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x74, 4, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x12, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x40):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x54, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 2, 0xE);
@@ -13378,7 +13384,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x41):
+    case EM_MOTION_ID(0, BLANG_MOT_STATUS4):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x4E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x25, 0x13);
@@ -13387,15 +13393,15 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xB4, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x42):
+    case EM_MOTION_ID(0, BLANG_MOT_FALL):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x43):
+    case EM_MOTION_ID(0, BLANG_MOT_FALL_LAND):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 8, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x44):
+    case EM_MOTION_ID(0, BLANG_MOT_DIE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 0x21, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 6, 9);
@@ -13408,7 +13414,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xB0, 8, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xBC, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x45):
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 3);
@@ -13416,7 +13422,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x46):
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN_B):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 3);
@@ -13424,7 +13430,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 9);
         break;
-    case EM_MOTION_ID(0, 0x47):
+    case EM_MOTION_ID(0, BLANG_MOT_DIE_END):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x49, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 2, 0xE);
@@ -13432,14 +13438,14 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x88, 1, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x12, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x49):
+    case EM_MOTION_ID(0, BLANG_MOT_TRAPPED):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x10, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x12, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 9, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 7, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x4A):
+    case EM_MOTION_ID(0, BLANG_MOT_STRUGGLE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x58, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x31, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 6, 2, 0xE);
@@ -13447,7 +13453,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 2, 9);
         break;
-    case EM_MOTION_ID(0, 0x4B):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWNED):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x60, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0xE);
@@ -13461,7 +13467,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x28, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x68, 1, 9);
         break;
-    case EM_MOTION_ID(0, 0x4D):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_B):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x51, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x20, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x11, 6);
@@ -13470,7 +13476,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x74, 4, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x12, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x4E):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP_B):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x54, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 2, 9);
@@ -13480,7 +13486,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x50):
+    case EM_MOTION_ID(0, BLANG_MOT_EFFECT_STRIKE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x5C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x61, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x18, 0x13);
@@ -13489,14 +13495,14 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 2, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x51):
+    case EM_MOTION_ID(0, BLANG_MOT_EFFECT_STRIKE_END):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x58, 1, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x5C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x55):
+    case EM_MOTION_ID(0, BLANG_MOT_BACK_STRIKE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x37, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 2, 9);
@@ -13512,7 +13518,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x70, 6, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x56):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_B):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x19, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x86, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0xE);
@@ -13525,7 +13531,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xCC, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xE2, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x57):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_B_END):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x23, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0xE);
@@ -13533,7 +13539,7 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xC, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x96, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x58):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x61, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x88, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 9, 0xE);
@@ -13545,14 +13551,14 @@ void EmBlangonga_MotionSounds(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x76, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x59):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_C):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x36, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x42, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x39, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x92, 2, 0xE);
         
-    case EM_MOTION_ID(0, 0x01):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE):
     default:
         break;
     }
@@ -13565,12 +13571,12 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
 
     prevMotion = work->prevMotion;
     switch (prevMotion) {
-    case EM_MOTION_ID(0, 0x01):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE):
         Em_PlaySeAtBoneOnFrame(em, 0x30, 0x53, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x3F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x11E, 0x40, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x03):
+    case EM_MOTION_ID(0, BLANG_MOT_WALK):
         Em_PlaySeAtBoneOnFrame(em, 0x34, Sound_RandomSe(0x3F, 2, 0x3F, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 1, 0xE);
@@ -13578,7 +13584,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x76, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x05):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT):
         Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(0x40, 2, 0x41, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 0xE);
@@ -13587,7 +13593,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x32, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x06):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT):
         Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(0x40, 2, 0x41, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 9);
@@ -13596,7 +13602,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x32, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x07):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT_QUICK):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3C, 1, 0x3D, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x36, Sound_RandomSe(0x41, 1, 0x41, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0xE);
@@ -13605,7 +13611,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x08):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT_QUICK):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3C, 1, 0x3D, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x36, Sound_RandomSe(0x41, 1, 0x41, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 9);
@@ -13614,7 +13620,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x09):
+    case EM_MOTION_ID(0, BLANG_MOT_LIMP):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x4F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0xE);
@@ -13627,7 +13633,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x0A):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_D):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x2D, 6, 0x2E, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x17);
@@ -13642,7 +13648,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x66, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x72, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x10):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_C):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x2D, 6, 0x2E, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x5C, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
@@ -13655,7 +13661,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 4, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x74, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x11):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0x13);
         Em_PlaySeAtBoneVolOnFrame(em, 0x36, 0x58, 0x13, 6);
         Em_PlaySeAtBoneVolOnFrame(em, 0x4E, 0xF, 0x13, 8);
@@ -13666,10 +13672,10 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x34, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0x14, 3);
         break;
-    case EM_MOTION_ID(0, 0x12):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP_FALL):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x60, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x13):
+    case EM_MOTION_ID(0, BLANG_MOT_CHARGE):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x3D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x3C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x3D, 0x13);
@@ -13684,7 +13690,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x40, 5, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 5, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x14):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP_LAND):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x42, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x2E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 8, 3);
@@ -13693,7 +13699,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x80, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x1F):
+    case EM_MOTION_ID(0, BLANG_MOT_LIE):
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x51, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x52, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xAA, 0x51, 0x13);
@@ -13703,7 +13709,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xFA, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x110, 6, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x20):
+    case EM_MOTION_ID(0, BLANG_MOT_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x10, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x3D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 2, 9);
@@ -13713,7 +13719,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x21):
+    case EM_MOTION_ID(0, BLANG_MOT_COLLAPSE):
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x53, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x29, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0xE);
@@ -13724,7 +13730,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x94, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x22):
+    case EM_MOTION_ID(0, BLANG_MOT_LIE_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x53, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 9);
@@ -13732,7 +13738,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x11, 0xB);
         Em_PlaySeAtBoneOnFrame(em, 0xB4, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x28):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_EATEN_EMISSION):
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x5C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x58, 0x13);
@@ -13742,7 +13748,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x12A, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x19, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x29):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_COMBO):
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0x2D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x42, 0x2E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x70, 0x2D, 0x13);
@@ -13764,11 +13770,11 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x12, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x12, 9);
         break;
-    case EM_MOTION_ID(0, 0x2A):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM_WINDUP):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x23, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x2B):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_A):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x21, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 6, 0xE);
@@ -13777,7 +13783,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x5C, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x2C):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_B):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x21, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 6, 9);
@@ -13786,7 +13792,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x5C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x2D):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_EMISSION):
         if (em->type == 0x3E) {
             Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x13);
             Em_PlaySeAtBoneOnFrame(em, 0x20, 0x23, 0x13);
@@ -13816,7 +13822,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x2E):
+    case EM_MOTION_ID(0, BLANG_MOT_THROW):
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x39, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0x2D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x41, 0x13);
@@ -13829,7 +13835,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x36, 0xC, 0x1F);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 0x15, 0x1F);
         break;
-    case EM_MOTION_ID(0, 0x30):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_HOP):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x39, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x42, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x60, 0x13);
@@ -13838,7 +13844,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xC, 1, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x31):
+    case EM_MOTION_ID(0, BLANG_MOT_HOP_LAND):
         Em_PlaySeAtBoneOnFrame(em, 0xE, 0x24, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x40, 0x13);
@@ -13852,7 +13858,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x90, 4, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x76, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x33):
+    case EM_MOTION_ID(0, BLANG_MOT_ALERT_IDLE):
         Em_PlaySeAtBoneOnFrame(em, 0x20, 0x41, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0x2D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x2E, 0x13);
@@ -13865,7 +13871,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x10A, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x34):
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR):
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0x31, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x5A, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x33, 0x13);
@@ -13878,7 +13884,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xE0, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x35):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x40, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x13E, 0x41, 0x13);
@@ -13893,7 +13899,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1CA, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x36):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT_B):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x40, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x13E, 0x41, 0x13);
@@ -13908,7 +13914,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x1CA, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x37):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2):
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x23, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0xE);
@@ -13916,20 +13922,20 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x3F, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0x78, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0x7C, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0x78, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0x7C, 0x2E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x3F, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0xA2, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0xC6, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0xA2, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0xC6, 0x2E, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x38):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2_END):
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x43, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x39):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x43, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x2D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x80, 0x3E, 0x13);
@@ -13961,7 +13967,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x18A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1D0, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x3C):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH_B):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x3C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x3D, 0x13);
@@ -13977,14 +13983,14 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x88, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xA6, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3D):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x46, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3E):
+    case EM_MOTION_ID(0, BLANG_MOT_SHAKE_OFF):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x43, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x30, 0x3D, 0x13);
@@ -14001,7 +14007,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x3F):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x4F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x11, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 2, 0xE);
@@ -14009,7 +14015,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x74, 4, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x12, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x4D):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_B):
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x4F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x11, 6);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 2, 9);
@@ -14017,7 +14023,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x74, 4, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x12, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x40):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x4E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 2, 0xE);
@@ -14027,7 +14033,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x4E):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP_B):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x4E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 2, 9);
@@ -14037,7 +14043,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x41):
+    case EM_MOTION_ID(0, BLANG_MOT_STATUS4):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x46, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 0x50, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 9);
@@ -14045,15 +14051,15 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xB8, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x42):
+    case EM_MOTION_ID(0, BLANG_MOT_FALL):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x60, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x43):
+    case EM_MOTION_ID(0, BLANG_MOT_FALL_LAND):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 8, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x44):
+    case EM_MOTION_ID(0, BLANG_MOT_DIE):
         if (em->type == 0x3E) {
             Em_PlaySeAtBoneOnFrame(em, 4, 0x47, 0x13);
             Em_PlaySeAtBoneOnFrame(em, 0x60, 0x33, 0x13);
@@ -14083,7 +14089,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xB0, 8, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xBC, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x45):
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 3);
@@ -14091,7 +14097,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x46):
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN_B):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 3);
@@ -14099,7 +14105,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 9);
         break;
-    case EM_MOTION_ID(0, 0x47):
+    case EM_MOTION_ID(0, BLANG_MOT_DIE_END):
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x41, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 9);
@@ -14108,7 +14114,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x88, 1, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x12, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x49):
+    case EM_MOTION_ID(0, BLANG_MOT_TRAPPED):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 6, 0x12, 0x1B);
@@ -14117,7 +14123,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x34, 5, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x4A):
+    case EM_MOTION_ID(0, BLANG_MOT_STRUGGLE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x5E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 5, 0x1B);
@@ -14126,7 +14132,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x70, 5, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x4B):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWNED):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x68, 7, 0x13);
         break;
@@ -14135,7 +14141,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x4F):
+    case EM_MOTION_ID(0, BLANG_MOT_DROP_CARRIED):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 0x31, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 8, 0x13);
@@ -14150,7 +14156,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x88, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xA0, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x50):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_COMBO_END):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x10, 3);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 0x43, 0x13);
@@ -14160,14 +14166,14 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x46, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x5C, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x51):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_HITZONE_COMBO):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x5C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 9);
         break;
-    case EM_MOTION_ID(0, 0x52):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_HITZONE_COMBO_END):
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0x57, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x62, 2, 9);
@@ -14175,7 +14181,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x53):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_CLIMB_OUT):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x24, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x2D, 0x13);
@@ -14194,7 +14200,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xFC, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x10C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x54):
+    case EM_MOTION_ID(0, BLANG_MOT_CONGALALA_EAT):
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x54, 0x3E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x3E, 0x13);
@@ -14211,7 +14217,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xE4, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xFA, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x55):
+    case EM_MOTION_ID(0, BLANG_MOT_BACK_STRIKE):
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x9C, 0x40, 0x13);
@@ -14224,7 +14230,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xBA, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0xE4, 0, 9);
         break;
-    case EM_MOTION_ID(0, 0x56):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_B):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x43, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x31, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x5A, 0x13);
@@ -14235,7 +14241,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xC, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x57):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE_ACTION_B_END):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x43, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0xE);
@@ -14243,7 +14249,7 @@ void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xC, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x96, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x58):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x21, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 0x43, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 9, 0xE);
@@ -14268,7 +14274,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
 
     prevMotion = work->prevMotion;
     switch (prevMotion) {
-    case EM_MOTION_ID(0, 0x03):
+    case EM_MOTION_ID(0, BLANG_MOT_WALK):
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x9E, 0, 9);
@@ -14276,7 +14282,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x05):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT):
         Em_PlaySeAtBoneOnFrame(em, 0x16, Sound_RandomSe(0x2C, 2, 0x2C, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 0xE);
@@ -14285,7 +14291,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x32, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x06):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT):
         Em_PlaySeAtBoneOnFrame(em, 0x16, Sound_RandomSe(0x2C, 2, 0x2C, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 9);
@@ -14294,7 +14300,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x32, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x07):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_LEFT_QUICK):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x39, 1, 0x39, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 9);
@@ -14302,7 +14308,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x08):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_RIGHT_QUICK):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x39, 1, 0x39, 2), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 0xE);
@@ -14310,7 +14316,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x26, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x09):
+    case EM_MOTION_ID(0, BLANG_MOT_LIMP):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x55, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0x55, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 1, 9);
@@ -14324,7 +14330,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x0A):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_D):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xB, 0x12);
@@ -14340,7 +14346,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x52, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x60, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x0C):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_A):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x1D, 1, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x17);
@@ -14348,7 +14354,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 5, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x0E):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_B):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x1D, 1, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x1B);
@@ -14356,7 +14362,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x1E, 5, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x10):
+    case EM_MOTION_ID(0, BLANG_MOT_MOVE_ACTION_C):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x1D, 1, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x14, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x17);
@@ -14367,7 +14373,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 4, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x11):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP):
         Em_PlaySeAtBoneVolOnFrame(em, 0x16, 0x36, 0x13, 7);
         Em_PlaySeAtBoneVolOnFrame(em, 0x36, 0x24, 0x13, 7);
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 9);
@@ -14377,10 +14383,10 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x34, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0x14, 3);
         break;
-    case EM_MOTION_ID(0, 0x12):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP_FALL):
         Em_PlaySeAtBoneOnFrame(em, 0x22, 0x14, 3);
         break;
-    case EM_MOTION_ID(0, 0x13):
+    case EM_MOTION_ID(0, BLANG_MOT_CHARGE):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x1E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x1D, 3, 0x1E, 1), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 9);
@@ -14394,7 +14400,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x15, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x15, 3);
         break;
-    case EM_MOTION_ID(0, 0x14):
+    case EM_MOTION_ID(0, BLANG_MOT_JUMP_LAND):
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x37, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x39, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 9, 3);
@@ -14404,7 +14410,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x84, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x16):
+    case EM_MOTION_ID(0, BLANG_MOT_EMERGE):
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0x14, 0x12);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 7, 0x12);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0x1A, 0x13);
@@ -14419,17 +14425,17 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x38, 8, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x17):
+    case EM_MOTION_ID(0, BLANG_MOT_WALK_START):
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x1F):
+    case EM_MOTION_ID(0, BLANG_MOT_LIE):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x2A, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0x29, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x2A, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x104, 0x29, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x20):
+    case EM_MOTION_ID(0, BLANG_MOT_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x10, 3);
         Em_PlaySeAtBoneOnFrame(em, 2, 0x2B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x82, 0x35, 0x13);
@@ -14440,7 +14446,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x21):
+    case EM_MOTION_ID(0, BLANG_MOT_COLLAPSE):
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x33, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x29, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x2A, 0x13);
@@ -14452,7 +14458,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x94, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 4, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x22):
+    case EM_MOTION_ID(0, BLANG_MOT_LIE_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x33, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 0x1B);
@@ -14460,7 +14466,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x10, 0xB);
         Em_PlaySeAtBoneOnFrame(em, 0xB4, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x28):
+    case EM_MOTION_ID(0, BLANG_MOT_TRIPLE_HIT):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x1C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x19, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
@@ -14473,7 +14479,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x5E, 9, 0xB);
         Em_PlaySeAtBoneOnFrame(em, 0x60, 7, 0xB);
         break;
-    case EM_MOTION_ID(0, 0x29):
+    case EM_MOTION_ID(0, BLANG_MOT_TRIPLE_HIT_END):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x60, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 2, 9);
         Em_PlaySeAtBoneOnFrame(em, 4, 5, 0x1B);
@@ -14482,11 +14488,11 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x2A):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM_WINDUP):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x34, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x2B):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_A):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x1C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x1E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1D, 0x13);
@@ -14498,7 +14504,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 5, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x52, 5, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x2C):
+    case EM_MOTION_ID(0, BLANG_MOT_STRIKE_B):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 2, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 5, 0x17);
@@ -14510,7 +14516,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x42, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 6, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x30):
+    case EM_MOTION_ID(0, BLANG_MOT_CHARGE_END):
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 0x37, 0x13);
@@ -14525,7 +14531,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x96, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0x12);
         break;
-    case EM_MOTION_ID(0, 0x33):
+    case EM_MOTION_ID(0, BLANG_MOT_ALERT_IDLE):
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x5F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x48, 0x38, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x68, 0x36, 0x13);
@@ -14538,7 +14544,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xC0, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x34):
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR):
         Em_PlaySeAtBoneVolOnFrame(em, 0x1E, 0x63, 0x13, 7);
         Em_PlaySeAtBoneOnFrame(em, 0x78, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 6, 9);
@@ -14550,7 +14556,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x35):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x100, 0x2C, 0x13);
@@ -14565,7 +14571,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1CA, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x36):
+    case EM_MOTION_ID(0, BLANG_MOT_TURN_ABOUT_B):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x35, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x100, 0x2C, 0x13);
@@ -14580,26 +14586,26 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x1CA, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x37):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2):
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x4B, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x78, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x17);
-        Em_PlaySe1AtBoneOnFrame(em, 0x36, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0x7C, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0xA2, 0x2E, 0x13);
-        Em_PlaySe1AtBoneOnFrame(em, 0xC6, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0x36, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0x7C, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0xA2, 0x2E, 0x13);
+        Em_PlayCommonSeAtBoneOnFrame(em, 0xC6, 0x2E, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x38):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_NEED2_END):
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x39):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x18, 0x3E, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x36, 0x3D, 0x13);
@@ -14616,14 +14622,14 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x3A):
+    case EM_MOTION_ID(0, BLANG_MOT_EAT_END):
         Em_PlaySeAtBoneOnFrame(em, 0x36, 0x54, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x3C, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x64, 0, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x7C, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3B):
+    case EM_MOTION_ID(0, BLANG_MOT_ROAR_B):
         Em_PlaySeAtBoneVolOnFrame(em, 0x3A, 0x4C, 0x13, 7);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x94, 1, 9);
@@ -14631,7 +14637,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x94, 1, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xA2, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3C):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH_B):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x8E, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x56, 9, 9);
@@ -14645,7 +14651,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x8A, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xA6, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3D):
+    case EM_MOTION_ID(0, BLANG_MOT_FLINCH):
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x48, 4, 0x47, 4), 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x23, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 9);
@@ -14655,7 +14661,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x16, 4, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x3E):
+    case EM_MOTION_ID(0, BLANG_MOT_SHAKE_OFF):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x28, 0x26, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 0x23, 0x13);
@@ -14669,7 +14675,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x3F):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x51, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x20, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x11, 6);
@@ -14678,7 +14684,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x74, 4, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x12, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x40):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x61, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 2, 0xE);
@@ -14688,7 +14694,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x41):
+    case EM_MOTION_ID(0, BLANG_MOT_STATUS4):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x26, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x25, 0x13);
@@ -14697,15 +14703,15 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xB4, 3, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x42):
+    case EM_MOTION_ID(0, BLANG_MOT_FALL):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x13);
         break;
-    case EM_MOTION_ID(0, 0x43):
+    case EM_MOTION_ID(0, BLANG_MOT_FALL_LAND):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 8, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x14, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x44):
+    case EM_MOTION_ID(0, BLANG_MOT_DIE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x50, 0x21, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xA, 6, 9);
@@ -14718,7 +14724,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0xB0, 8, 3);
         Em_PlaySeAtBoneOnFrame(em, 0xBC, 7, 3);
         break;
-    case EM_MOTION_ID(0, 0x45):
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 3);
@@ -14726,7 +14732,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x46):
+    case EM_MOTION_ID(0, BLANG_MOT_KNOCK_DOWN_B):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x47, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 3);
@@ -14734,7 +14740,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 7, 3);
         Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 9);
         break;
-    case EM_MOTION_ID(0, 0x47):
+    case EM_MOTION_ID(0, BLANG_MOT_DIE_END):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x49, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x34, 2, 0xE);
@@ -14742,14 +14748,14 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x88, 1, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x12, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x49):
+    case EM_MOTION_ID(0, BLANG_MOT_TRAPPED):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x10, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x12, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x1C, 9, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 7, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x4A):
+    case EM_MOTION_ID(0, BLANG_MOT_STRUGGLE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x58, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x59, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 6, 2, 0xE);
@@ -14757,7 +14763,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x40, 2, 9);
         break;
-    case EM_MOTION_ID(0, 0x4B):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWNED):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x60, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0xE);
@@ -14771,7 +14777,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x28, 6, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x68, 1, 9);
         break;
-    case EM_MOTION_ID(0, 0x4D):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_B):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x51, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x20, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x44, 0x11, 6);
@@ -14780,7 +14786,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x74, 4, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 0x12, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x4E):
+    case EM_MOTION_ID(0, BLANG_MOT_DOWN_GET_UP_B):
         Em_PlaySeAtBoneOnFrame(em, 6, 0x61, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x2A, 2, 9);
@@ -14790,7 +14796,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x38, 3, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x50):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_AIM):
         stateGroup = em->stateGroup;
         if ((stateGroup == 3) && (em->state == 0x13)) {
             Em_PlaySeAtBoneOnFrame(em, 0x66, 0x16, 0x13);
@@ -14819,12 +14825,12 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x52, 1, 9);
         break;
-    case EM_MOTION_ID(0, 0x51):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_AIM_END):
         Em_PlaySeAtBoneOnFrame(em, 0x34, 0x22, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x66, 2, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x84, 2, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x52):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_JUMP):
         Em_PlaySeAtBoneOnFrame(em, 0x16, 0x1A, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x12, 9);
@@ -14833,11 +14839,11 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x18, 4, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x14, 3);
         break;
-    case EM_MOTION_ID(0, 0x53):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_JUMP_SHOT):
         Em_PlaySeAtBoneOnFrame(em, 0x12, 0x16, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x13, 3);
         break;
-    case EM_MOTION_ID(0, 0x54):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_JUMP_SHOT_LAND):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x37, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x39, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 8, 8, 3);
@@ -14847,7 +14853,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 5, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x1B);
         break;
-    case EM_MOTION_ID(0, 0x55):
+    case EM_MOTION_ID(0, BLANG_MOT_BACK_STRIKE):
         Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x32, 0x37, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 2, 9);
@@ -14863,7 +14869,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x6A, 0, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x70, 6, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x56):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_STRIKE):
         Em_PlaySeAtBoneOnFrame(em, 4, 6, 9);
         Em_PlaySeAtBoneOnFrame(em, 8, 0x37, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x74, 0x2C, 0x13);
@@ -14881,7 +14887,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x14, 0xE);
         break;
-    case EM_MOTION_ID(0, 0x57):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_CHARGE):
         Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 5, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x12, 5, 0x1B);
@@ -14905,7 +14911,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x64, 2, 0xE);
         Em_PlaySeAtBoneOnFrame(em, 0x66, 1, 9);
         break;
-    case EM_MOTION_ID(0, 0x58):
+    case EM_MOTION_ID(0, BLANG_MOT_SLAM):
         Em_PlaySeAtBoneOnFrame(em, 2, 0x19, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x88, 0x2C, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0x16, 9, 0xE);
@@ -14917,7 +14923,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x76, 3, 0x1B);
         Em_PlaySeAtBoneOnFrame(em, 0xA4, 3, 0x17);
         break;
-    case EM_MOTION_ID(0, 0x5A):
+    case EM_MOTION_ID(0, BLANG_MOT_RAJANG_CHARGE_END):
         Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1D, 0x13);
         Em_PlaySeAtBoneOnFrame(em, 0xE, 5, 0x17);
         Em_PlaySeAtBoneOnFrame(em, 0x10, 5, 0x1B);
@@ -14927,7 +14933,7 @@ void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work)
         Em_PlaySeAtBoneOnFrame(em, 0x22, 1, 9);
         Em_PlaySeAtBoneOnFrame(em, 0x24, 8, 3);
         
-    case EM_MOTION_ID(0, 0x01):
+    case EM_MOTION_ID(0, BLANG_MOT_IDLE):
     default:
         break;
     }
@@ -14947,10 +14953,10 @@ EmTurnParams EmRathalos_TurnParams[2] = {
 EmRathalosVec EmRathalos_CarveThrowPt = {
 #include "game/008C91F8.inc"
 };
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmRathalos_Callbacks[8] = {
     EmRathalos_SpawnEffects, EmRathalos_SpawnEffects, EmRathalos_TableNop, EmRathalos_UpdateMotionEffects,
-    func_0090A9C0, EmRathalos_Reinit, EmRathalos_AllowPartBreak, NULL,
+    GmEm_ReturnZero, EmRathalos_Reinit, EmRathalos_AllowPartBreak, NULL,
 };
 EmCurveKey EmRathalos_MoveVelYCurves_0[8] = {
 #include "game/008C9230.inc"
@@ -15073,5 +15079,5 @@ f32 EmFatalis_MinePtRadius[3] = {
 };
 void *EmFatalis_Callbacks[8] = {
     EmFatalis_SpawnEffect01, EmFatalis_SpawnEffect01, EmFatalis_TableNop, EmFatalis_UpdateMotionEffects,
-    func_0090A9C0, EmFatalis_TableNop, NULL, NULL,
+    GmEm_ReturnZero, EmFatalis_TableNop, NULL, NULL,
 };

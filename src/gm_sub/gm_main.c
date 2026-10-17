@@ -1,6 +1,14 @@
-/* The quest sub-module's main: a small state machine over a work area
- * (gGmWork, 0xB0 bytes, allocated by the caller) that shows the
- * quest-start screens through the lobby overlay's menu code (0x6B9B10..). */
+/*
+ * gm_sub's main: the title screen and its menu. GmSub_Task runs in
+ * TASK_SLOT_GMSUB over gGmWork (select.h's GmWork, in
+ * gSysSettings.workArea), which select's title drawing (select_title.c)
+ * reads. Each of the menu's six entries (enum GmSubMenuEntry) starts one
+ * of select's tasks while this task is held, and the title screen comes
+ * back when it ends. The load entry goes on to mode select (online or
+ * offline), and the game then starts in the lobby's network setup or its
+ * scene (GmSub_StartGame). Cancelling the menu goes back to the boot
+ * screens.
+ */
 #include "common.h"
 #include "syssettings.h"
 #include "pad.h"
@@ -8,32 +16,16 @@
 #include "save.h"
 #include "task.h"
 #include "qsync.h"
+#include "select.h"
 
-typedef struct GmWork {
-    s32 unk0;                   /* 0x00: the mode */
-    s32 unk4;                   /* 0x04: the step within the mode */
-    u8 unk8[0x20 - 0x08];
-    s32 unk20;                  /* 0x20 */
-    s32 unk24;                  /* 0x24: the entry chosen */
-    s32 unk28;                  /* 0x28 */
-    s32 unk2C;                  /* 0x2C */
-    s32 unk30;                  /* 0x30 */
-    void *unk34;                /* 0x34 */
-    void *unk38;                /* 0x38 */
-    u8 unk3C[0x4C - 0x3C];
-    s32 unk4C;                  /* 0x4C */
-    s32 unk50;                  /* 0x50 */
-    u8 unk54[0xB0 - 0x54];
-} GmWork;
 
-/* The caller's task (GmSub_Task's argument). */
-
+/* The title screen's state: gSysSettings.workArea, set by GmSub_Task. */
 GmWork *gGmWork;
 
-void D_6B5230(TaskSlot *t); /* select Boot_Task */
-extern u8 D_6BA0C0[];
-extern u8 D_6BA810[];
-extern u8 D_6BF5A0[];
+void Boot_Task(TaskSlot *task);
+void Title_DrawLogo(void);
+void ModeSel_DrawScreen(void);
+void Gallery_Task(TaskSlot *task);
 
 void Sound_ReverbOn(void);
 void Stream_Play(s32, s32);
@@ -62,219 +54,263 @@ void *memset(void *dst, s32 c, u32 n);
 void gm_sub_entry(void);
 s32 GmSub_Setup(void);
 s32 GmSub_UpdateMenu(u16, u16);
-s32 GmSub_StepLaunch(TaskSlot *, u16, u16);
-s32 GmSub_StepExit(TaskSlot *, u16, u16);
+s32 GmSub_StartGame(TaskSlot *, u16, u16);
+s32 GmSub_ExitToBoot(TaskSlot *, u16, u16);
 void Callbacks_Add(void (*fn)(void));
 void LayerCallbacks_Add(void (*fn)(void), u8 layer);
 void Camera_Update(void);
 void Frame_Draw(void);
-extern u8 D_6B1EA0[];
-extern u8 D_6B3B50[];
-extern u8 D_6B6840[];
-extern u8 D_6B8C50[];
-extern u8 D_6C2E60[];
-extern u8 D_6B9CF0[];
+void Chara_CreateTask(TaskSlot *task);
+void Chara_SelectTask(TaskSlot *task);
+void Option_Task(TaskSlot *task);
+void NetOption_Task(TaskSlot *task);
+void Psp_ConnectTask(TaskSlot *task);
+void Title_Draw(void);
 void Title_RandomView(void);
-void Sound_PlaySe73(void);
+void Sound_PlayConfirm(void);
 void Sound_PlayCancel(void);
 void Stream_Stop(s32);
 TaskSlot *TaskSlot_Get(s16 slot);
 void Task_StartBootScreens(void);
 void GmSub_InitMenu(void);
 void GmSub_MoveCursorV(u16, u16, u8 *, u8);
-s32 GmSub_UpdateYesNo(u16, u16);
-void GmSub_OpenYesNo(void);
+s32 GmSub_UpdateModeSelect(u16, u16);
+void GmSub_OpenModeSelect(void);
 
-void gm_sub_entry(void) {
-    gGmWork->unk0 = 1;
-    gGmWork->unk4 = 0xB;
-    gGmWork->unk20 = 1;
-    gGmWork->unk24 = 2;
-    gGmWork->unk28 = 0;
-    gGmWork->unk2C = 2;
-    gGmWork->unk30 = -1;
+/*
+ * The overlay's entry, at its first address. GmSub_Task calls it after a
+ * gallery scene (gSysSettings.galleryPlay 1): the title menu is set on
+ * GMSUB_MENU_GALLERY and Gallery_Task starts again in TASK_SLOT_MENU while
+ * this task is held; the title screen comes back as GMSUB_STEP_RESET.
+ */
+void gm_sub_entry(void)
+{
+    gGmWork->mode = GMSUB_MODE_MENU;
+    gGmWork->step = GMSUB_STEP_RESET;
+    gGmWork->logoFull = 1;
+    gGmWork->menuSel = GMSUB_MENU_GALLERY;
+    gGmWork->sel = GMSUB_MODE_SEL_ONLINE;
+    gGmWork->menuChoice = GMSUB_MENU_GALLERY;
+    gGmWork->modeChoice = -1;
     gGmWork->unk4C = 0;
-    gGmWork->unk50 = 4;
+    gGmWork->logoAnim = GMSUB_LOGO_ANIM_END;
     Game_ResetSubsystems();
     Tex_LoadSystemPack(0);
     Sel_LoadCommonTextures();
-    TaskSlot_Set(D_6BF5A0, 4);
-    TaskSlot_Hold(2);
+    TaskSlot_Set(Gallery_Task, TASK_SLOT_MENU);
+    TaskSlot_Hold(TASK_SLOT_GMSUB);
 }
 
-void GmSub_OpenYesNo(void) {
+/*
+ * Opens mode select over the title screen, its cursor on the choice saved
+ * last time (SaveData.modeSelChoice) for GMSUB_MENU_LOAD_CHARA, else on
+ * online, and sets GMSUB_STEP_REOPEN_MODE_SELECT. Only that step calls it,
+ * and only it sets the step: no code seen reaches it.
+ */
+void GmSub_OpenModeSelect(void)
+{
     if (gGmWork != NULL) {
-        gGmWork->unk38 = D_6BA810;
+        gGmWork->layerCallback = ModeSel_DrawScreen;
         Title_ResetBgAnim();
-        if ((gGmWork->unk24 == 1) && (gSave.unk20D9 != 0)) {
-            gGmWork->unk28 = 1;
+        if ((gGmWork->menuSel == GMSUB_MENU_LOAD_CHARA) && (gSave.modeSelChoice != 0)) {
+            gGmWork->sel = GMSUB_MODE_SEL_OFFLINE;
         } else {
-            gGmWork->unk28 = 0;
+            gGmWork->sel = GMSUB_MODE_SEL_ONLINE;
         }
-        ModeSel_Start(gGmWork->unk28);
-        gGmWork->unk4 = 0xC;
+        ModeSel_Start(gGmWork->sel);
+        gGmWork->step = GMSUB_STEP_REOPEN_MODE_SELECT;
     }
 }
 
-void GmSub_Task(TaskSlot *t) {
-    u16 a = gPadState[0].held;
-    u16 b = gPadState[0].pressed;
+/*
+ * gm_sub's task, in TASK_SLOT_GMSUB: the title screen. The first frame
+ * clears gGmWork, or goes straight back to the gallery after a gallery
+ * scene (gm_sub_entry). Then each frame runs GmWork.mode's phase: the
+ * set-up, the menus (GmSub_UpdateMenu), or the start of the chosen entry,
+ * whose select task runs while this one is held (TaskSlot_Hold). The frame
+ * ends by queueing the logo (unless mode select is drawn) and the screen's
+ * layer drawing, updating the camera and drawing the frame. The two gotos
+ * are the game's shared tails.
+ */
+void GmSub_Task(TaskSlot *task)
+{
+    u16 padHeld = gPadState[0].held;
+    u16 padPressed = gPadState[0].pressed;
 
-    switch (t->mode) {
-    case 0:
+    switch (task->mode) {
+    case GMSUB_TASK_INIT:
         gGmWork = (GmWork *)gSysSettings.workArea;
-        memset(gGmWork, 0, 0xB0);
+        memset(gGmWork, 0, sizeof(GmWork));
         if (gSysSettings.galleryPlay == 1) {
             gm_sub_entry();
             return;
         }
-        t->mode++;
-    case 1:
-        switch (gGmWork->unk0) {
-        case 0:
+        task->mode++; /* GMSUB_TASK_RUN */
+    case GMSUB_TASK_RUN:
+        switch (gGmWork->mode) {
+        case GMSUB_MODE_SETUP:
             if (GmSub_Setup() != 0) {
-                gGmWork->unk0++;
-                gGmWork->unk4 = 0;
+                gGmWork->mode++; /* GMSUB_MODE_MENU */
+                gGmWork->step = GMSUB_STEP_INIT;
             }
             break;
-        case 1:
-            GmSub_UpdateMenu(a, b);
+        case GMSUB_MODE_MENU:
+            GmSub_UpdateMenu(padHeld, padPressed);
             break;
-        case 2:
-            switch (gGmWork->unk24) {
-            case 0:
+        case GMSUB_MODE_START_CHARA:
+            switch (gGmWork->menuSel) {
+            case GMSUB_MENU_NEW_CHARA:
                 gSysSettings.systemSaved = 0;
-                TaskSlot_Set(D_6B1EA0, 4);
-                TaskSlot_Hold(2);
-                gGmWork->unk0 = 1;
-                gGmWork->unk4 = 0xB;
+                TaskSlot_Set(Chara_CreateTask, TASK_SLOT_MENU);
+                TaskSlot_Hold(TASK_SLOT_GMSUB);
+                gGmWork->mode = GMSUB_MODE_MENU;
+                gGmWork->step = GMSUB_STEP_RESET;
                 break;
-            case 1:
-                if (gGmWork->unk30 >= 0) {
-                    t->mode = 3;
+            case GMSUB_MENU_LOAD_CHARA:
+                if (gGmWork->modeChoice >= 0) {
+                    task->mode = GMSUB_TASK_LAUNCH;
                 } else {
                     gSysSettings.systemSaved = 0;
-                    TaskSlot_Set(D_6B3B50, 4);
-                    TaskSlot_Hold(2);
-                    gGmWork->unk0 = 1;
-                    gGmWork->unk4 = 0xB;
+                    TaskSlot_Set(Chara_SelectTask, TASK_SLOT_MENU);
+                    TaskSlot_Hold(TASK_SLOT_GMSUB);
+                    gGmWork->mode = GMSUB_MODE_MENU;
+                    gGmWork->step = GMSUB_STEP_RESET;
                 }
                 break;
             }
             break;
-        case 3:
-            switch (gGmWork->unk24) {
-            case 3:
-                TaskSlot_Set(D_6B6840, 4);
-            common3:
-                TaskSlot_Hold(2);
-                gGmWork->unk0 = 1;
-                gGmWork->unk4 = 0xA;
+        case GMSUB_MODE_START_ENTRY:
+            switch (gGmWork->menuSel) {
+            case GMSUB_MENU_OPTIONS:
+                TaskSlot_Set(Option_Task, TASK_SLOT_MENU);
+            entry_started:
+                TaskSlot_Hold(TASK_SLOT_GMSUB);
+                gGmWork->mode = GMSUB_MODE_MENU;
+                gGmWork->step = GMSUB_STEP_BACK;
                 break;
-            case 4:
-                TaskSlot_Set(D_6B8C50, 4);
-                goto common3;
-            case 2:
-                TaskSlot_Set(D_6BF5A0, 4);
-                TaskSlot_Hold(2);
-                gGmWork->unk0 = 1;
-                gGmWork->unk4 = 0xB;
+            case GMSUB_MENU_NET_OPTIONS:
+                TaskSlot_Set(NetOption_Task, TASK_SLOT_MENU);
+                goto entry_started;
+            case GMSUB_MENU_GALLERY:
+                TaskSlot_Set(Gallery_Task, TASK_SLOT_MENU);
+                TaskSlot_Hold(TASK_SLOT_GMSUB);
+                gGmWork->mode = GMSUB_MODE_MENU;
+                gGmWork->step = GMSUB_STEP_RESET;
                 break;
-            case 5:
-                TaskSlot_Set(D_6C2E60, 5);
-                TaskSlot_Hold(2);
-                gGmWork->unk0 = 1;
-                gGmWork->unk4 = 0xA;
+            case GMSUB_MENU_PSP_LINK:
+                TaskSlot_Set(Psp_ConnectTask, TASK_SLOT_SCENE);
+                TaskSlot_Hold(TASK_SLOT_GMSUB);
+                gGmWork->mode = GMSUB_MODE_MENU;
+                gGmWork->step = GMSUB_STEP_BACK;
                 break;
             }
             break;
         }
-    common:
-        if (gGmWork->unk38 != D_6BA810 && gGmWork->unk34 != NULL) {
-            Callbacks_Add(gGmWork->unk34);
+    queue_draw:
+        if (gGmWork->layerCallback != ModeSel_DrawScreen && gGmWork->frameCallback != NULL) {
+            Callbacks_Add(gGmWork->frameCallback);
         }
-        if (gGmWork->unk38 != NULL) {
-            LayerCallbacks_Add(gGmWork->unk38, 1);
+        if (gGmWork->layerCallback != NULL) {
+            LayerCallbacks_Add(gGmWork->layerCallback, 1);
         }
         break;
-    case 3:
-        if (GmSub_StepLaunch(t, a, b) == 1) {
+    case GMSUB_TASK_LAUNCH:
+        if (GmSub_StartGame(task, padHeld, padPressed) == 1) {
             return;
         }
-        goto common;
-    case 4:
-        if (GmSub_StepExit(t, a, b) == 1) {
+        goto queue_draw;
+    case GMSUB_TASK_EXIT:
+        if (GmSub_ExitToBoot(task, padHeld, padPressed) == 1) {
             return;
         }
-        if (t->count <= 1) {
-            goto common;
+        if (task->count <= 1) {
+            goto queue_draw;
         }
         break;
     }
-    if (t->mode != 0) {
+    if (task->mode != GMSUB_TASK_INIT) {
         Camera_Update();
         Callbacks_Add(Frame_Draw);
     }
 }
 
-/* Mode 0: resets the game subsystems and turns the reverb on. */
-s32 GmSub_Setup(void) {
+/*
+ * GMSUB_MODE_SETUP: sets the GS table colour, turns the reverb on and
+ * resets the game's subsystems. Returns 1: done.
+ */
+s32 GmSub_Setup(void)
+{
     Gs_SetTableColor(0);
     Sound_ReverbOn();
     Game_ResetSubsystems();
     return 1;
 }
 
-void GmSub_InitMenu(void) {
+/*
+ * Sets the title menu up (GMSUB_STEP_INIT): resets the subsystems, loads
+ * the system and common textures and gm_sub's sound banks. The cursor
+ * starts on GMSUB_MENU_LOAD_CHARA when the memory card holds a character,
+ * and on GMSUB_MENU_PSP_LINK back from the PSP link (galleryPlay 2). When
+ * select's boot asked for gm_sub (gSysSettings.bootMode), mode select opens
+ * at once; otherwise the title screen's stream starts.
+ */
+void GmSub_InitMenu(void)
+{
     Game_ResetSubsystems();
     Tex_LoadSystemPack(0);
     Sel_LoadCommonTextures();
     Sound_LoadGmSubBanks();
     Gs_SetTableColor(0);
     if (gSysSettings.cardHasChara != 0) {
-        gGmWork->unk24 = 1;
+        gGmWork->menuSel = GMSUB_MENU_LOAD_CHARA;
     }
     if (gSysSettings.galleryPlay == 2) {
-        gGmWork->unk24 = 5;
+        gGmWork->menuSel = GMSUB_MENU_PSP_LINK;
     }
     gSysSettings.galleryPlay = 0;
-    gGmWork->unk34 = D_6BA0C0;
-    gGmWork->unk38 = NULL;
-    gGmWork->unk2C = -1;
-    gGmWork->unk30 = -1;
-    if (gSysSettings.bootMode != 0) {
-        gSysSettings.bootMode = 0;
-        gGmWork->unk24 = 1;
-        gGmWork->unk20 = 1;
-        gGmWork->unk50 = 4;
-        gGmWork->unk4 = 5;
-        gGmWork->unk30 = -1;
-        if (gSave.unk20D9 != 0) {
-            gGmWork->unk28 = 1;
+    gGmWork->frameCallback = Title_DrawLogo;
+    gGmWork->layerCallback = NULL;
+    gGmWork->menuChoice = -1;
+    gGmWork->modeChoice = -1;
+    if (gSysSettings.bootMode != BOOT_MODE_SCREENS) {
+        gSysSettings.bootMode = BOOT_MODE_SCREENS;
+        gGmWork->menuSel = GMSUB_MENU_LOAD_CHARA;
+        gGmWork->logoFull = 1;
+        gGmWork->logoAnim = GMSUB_LOGO_ANIM_END;
+        gGmWork->step = GMSUB_STEP_MODE_SELECT;
+        gGmWork->modeChoice = -1;
+        if (gSave.modeSelChoice != 0) {
+            gGmWork->sel = GMSUB_MODE_SEL_OFFLINE;
         } else {
-            gGmWork->unk28 = 0;
+            gGmWork->sel = GMSUB_MODE_SEL_ONLINE;
         }
-        ModeSel_Start(gGmWork->unk28);
-        gGmWork->unk38 = D_6BA810;
+        ModeSel_Start(gGmWork->sel);
+        gGmWork->layerCallback = ModeSel_DrawScreen;
         return;
     }
-    Stream_Play(0, 0x2F);
+    Stream_Play(0, GMSUB_TITLE_STREAM);
 }
 
-void GmSub_MoveCursorV(u16 a, u16 b, u8 *sel, u8 n) {
-    u16 key = Pad_KeyRepeat(0, a, b);
+/*
+ * Moves a vertical menu's cursor *sel up or down among count entries on
+ * the pad's key repeat, wrapping round, with the cursor sound. held and
+ * pressed are the pad's buttons.
+ */
+void GmSub_MoveCursorV(u16 held, u16 pressed, u8 *sel, u8 count)
+{
+    u16 key = Pad_KeyRepeat(0, held, pressed);
 
     switch (key) {
-    case 0x2000:
+    case PAD_UP:
         if (*sel == 0) {
-            *sel = n - 1;
+            *sel = count - 1;
         } else {
             *sel = *sel - 1;
         }
         Sound_PlayCursorMove();
         break;
-    case 0x1000:
-        if (*sel == n - 1) {
+    case PAD_DOWN:
+        if (*sel == count - 1) {
             *sel = 0;
         } else {
             *sel = *sel + 1;
@@ -284,19 +320,26 @@ void GmSub_MoveCursorV(u16 a, u16 b, u8 *sel, u8 n) {
     }
 }
 
-void GmSub_MoveCursorH(u16 a, u16 b, u8 *sel, u8 n) {
-    u16 key = Pad_KeyRepeat(0, a, b);
+/*
+ * Moves mode select's cursor *sel among count entries on the pad's key
+ * repeat, without wrapping: PAD_RIGHT to the entry before, PAD_LEFT to the
+ * one after. Each move plays the cursor sound and slides the entries
+ * (ModeSel_StartSlide).
+ */
+void GmSub_MoveCursorH(u16 held, u16 pressed, u8 *sel, u8 count)
+{
+    u16 key = Pad_KeyRepeat(0, held, pressed);
 
     switch (key) {
-    case 0x400:
+    case PAD_RIGHT:
         if (*sel != 0) {
             *sel = *sel - 1;
             Sound_PlayCursorMove();
             ModeSel_StartSlide();
         }
         break;
-    case 0x800:
-        if (*sel != n - 1) {
+    case PAD_LEFT:
+        if (*sel != count - 1) {
             *sel = *sel + 1;
             Sound_PlayCursorMove();
             ModeSel_StartSlide();
@@ -306,83 +349,92 @@ void GmSub_MoveCursorH(u16 a, u16 b, u8 *sel, u8 n) {
 }
 
 extern u8 gOnlineBonusState;
-s32 GmSub_UpdateMenu(u16 a, u16 b) {
-    s32 old;
+/*
+ * The title screen's steps (GmWork.step, enum GmSubStep): the fade-in and
+ * the logo's animation, the title menu, mode select, and the ways back
+ * from the entries' tasks. Choosing an entry fades out and sets GmWork.mode
+ * to start it; PAD_CROSS on the title menu goes back to the boot screens.
+ * FadeA_GetState returns 1 while the fade runs. held and pressed are the
+ * pad's buttons. Returns 0.
+ */
+s32 GmSub_UpdateMenu(u16 held, u16 pressed)
+{
+    s32 prevSel;
 
-    switch (gGmWork->unk4) {
-    case 0:
-        gGmWork->unk4++;
+    switch (gGmWork->step) {
+    case GMSUB_STEP_INIT:
+        gGmWork->step++; /* GMSUB_STEP_FADE_IN */
         GmSub_InitMenu();
-        FadeA_Start(0xC);
+        FadeA_Start(FADE_IN_BLACK_FAST);
         break;
-    case 1:
+    case GMSUB_STEP_FADE_IN:
         if ((u8)FadeA_GetState() != 1) {
-            gGmWork->unk4 = 2;
-            if (gGmWork->unk20 != 0) {
-                if (gGmWork->unk2C == 1) {
-                    gGmWork->unk4 = 5;
-                    gGmWork->unk30 = -1;
-                    gGmWork->unk38 = D_6BA810;
+            gGmWork->step = GMSUB_STEP_LOGO;
+            if (gGmWork->logoFull != 0) {
+                if (gGmWork->menuChoice == GMSUB_MENU_LOAD_CHARA) {
+                    gGmWork->step = GMSUB_STEP_MODE_SELECT;
+                    gGmWork->modeChoice = -1;
+                    gGmWork->layerCallback = ModeSel_DrawScreen;
                 } else {
-                    gGmWork->unk4 = 3;
-                    gGmWork->unk38 = D_6B9CF0;
+                    gGmWork->step = GMSUB_STEP_MENU;
+                    gGmWork->layerCallback = Title_Draw;
                     Title_ResetBgAnim();
                 }
-                gGmWork->unk2C = -1;
+                gGmWork->menuChoice = -1;
             } else {
-                gGmWork->unk50 = 0;
+                gGmWork->logoAnim = 0;
                 Title_RandomView();
             }
         }
         break;
-    case 2:
-        if (gGmWork->unk50 >= 4) {
-            if (gGmWork->unk2C == 1) {
+    case GMSUB_STEP_LOGO:
+        if (gGmWork->logoAnim >= GMSUB_LOGO_ANIM_END) {
+            if (gGmWork->menuChoice == GMSUB_MENU_LOAD_CHARA) {
                 ModeSel_Start(0);
-                gGmWork->unk4 = 5;
-                gGmWork->unk30 = -1;
-                gGmWork->unk38 = D_6BA810;
+                gGmWork->step = GMSUB_STEP_MODE_SELECT;
+                gGmWork->modeChoice = -1;
+                gGmWork->layerCallback = ModeSel_DrawScreen;
             } else {
-                gGmWork->unk4 = 3;
-                gGmWork->unk38 = D_6B9CF0;
+                gGmWork->step = GMSUB_STEP_MENU;
+                gGmWork->layerCallback = Title_Draw;
                 Title_ResetBgAnim();
             }
-            gGmWork->unk20 = 1;
-            gGmWork->unk2C = -1;
+            gGmWork->logoFull = 1;
+            gGmWork->menuChoice = -1;
         } else {
-            gGmWork->unk50++;
+            gGmWork->logoAnim++;
         }
         break;
-    case 3:
-        switch (b) {
-        case 0x20:
-        case 0x8000:
-            gGmWork->unk4++;
-            Sound_PlaySe73();
-            gGmWork->unk2C = gGmWork->unk24;
-            switch (gGmWork->unk24) {
-            case 0:
-                FadeA_Start(0xB);
+    case GMSUB_STEP_MENU:
+        switch (pressed) {
+        case PAD_CIRCLE:
+        case PAD_START:
+            gGmWork->step++; /* GMSUB_STEP_CHOSEN */
+            Sound_PlayConfirm();
+            gGmWork->menuChoice = gGmWork->menuSel;
+            switch (gGmWork->menuSel) {
+            case GMSUB_MENU_NEW_CHARA:
+                FadeA_Start(FADE_OUT_BLACK_FAST);
                 break;
-            case 1:
-                FadeA_Start(0xB);
+            case GMSUB_MENU_LOAD_CHARA:
+                FadeA_Start(FADE_OUT_BLACK_FAST);
                 break;
-            case 2:
-            case 3:
-            case 4:
-                FadeA_Start(0xB);
+            case GMSUB_MENU_GALLERY:
+            case GMSUB_MENU_OPTIONS:
+            case GMSUB_MENU_NET_OPTIONS:
+                FadeA_Start(FADE_OUT_BLACK_FAST);
                 break;
             }
             break;
-        case 0x40:
+        case PAD_CROSS:
             Sound_PlayCancel();
-            gGmWork->unk4 = 0x14;
-            FadeA_Start(0xB);
+            gGmWork->step = GMSUB_STEP_QUIT;
+            FadeA_Start(FADE_OUT_BLACK_FAST);
             break;
         default:
-            old = gGmWork->unk24;
-            GmSub_MoveCursorV(a, b, (u8 *)&gGmWork->unk24, 6);
-            if (old != gGmWork->unk24) {
+            prevSel = gGmWork->menuSel;
+            GmSub_MoveCursorV(held, pressed, (u8 *)&gGmWork->menuSel, GMSUB_MENU_COUNT);
+            if (prevSel != gGmWork->menuSel) {
                 Title_ResetBgAnim();
             } else {
                 Title_StepBgAnim();
@@ -390,91 +442,91 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
             break;
         }
         break;
-    case 4:
+    case GMSUB_STEP_CHOSEN:
         if ((u8)FadeA_GetState() != 1) {
             Stream_Stop(0);
-            switch (gGmWork->unk24) {
-            case 0:
-                gGmWork->unk0 = 2;
-                if (gGmWork->unk30 < 0) {
+            switch (gGmWork->menuSel) {
+            case GMSUB_MENU_NEW_CHARA:
+                gGmWork->mode = GMSUB_MODE_START_CHARA;
+                if (gGmWork->modeChoice < 0) {
                     gQuestSync.charIndex = 0;
                 }
                 break;
-            case 1:
-                gGmWork->unk0 = 2;
-                if (gGmWork->unk30 < 0) {
+            case GMSUB_MENU_LOAD_CHARA:
+                gGmWork->mode = GMSUB_MODE_START_CHARA;
+                if (gGmWork->modeChoice < 0) {
                     gQuestSync.charIndex = 0;
                 }
                 break;
-            case 2:
-            case 3:
-            case 4:
+            case GMSUB_MENU_GALLERY:
+            case GMSUB_MENU_OPTIONS:
+            case GMSUB_MENU_NET_OPTIONS:
             default:
-                gGmWork->unk0 = 3;
+                gGmWork->mode = GMSUB_MODE_START_ENTRY;
                 break;
             }
         }
         break;
-    case 5:
+    case GMSUB_STEP_MODE_SELECT:
         if ((u8)FadeA_GetState() != 1) {
-            switch (GmSub_UpdateYesNo(a, b)) {
+            switch (GmSub_UpdateModeSelect(held, pressed)) {
             case 1:
-                gGmWork->unk30 = gGmWork->unk28;
-                gSave.unk20D9 = gGmWork->unk28;
-                Sound_PlaySe73();
+                gGmWork->modeChoice = gGmWork->sel;
+                gSave.modeSelChoice = gGmWork->sel;
+                Sound_PlayConfirm();
                 gOnlineBonusState = 0;
-                gGmWork->unk4 = 4;
-                FadeA_Start(5);
+                gGmWork->step = GMSUB_STEP_CHOSEN;
+                FadeA_Start(FADE_OUT_BLACK_SLOW);
                 break;
             case -1:
                 Sound_PlayCancel();
-                gGmWork->unk4 = 6;
-                FadeA_Start(5);
+                gGmWork->step = GMSUB_STEP_MODE_CANCEL;
+                FadeA_Start(FADE_OUT_BLACK_SLOW);
                 break;
             }
         }
         break;
-    case 6:
+    case GMSUB_STEP_MODE_CANCEL:
         if ((u8)FadeA_GetState() != 1) {
-            gGmWork->unk4 = 0xB;
-            gGmWork->unk38 = D_6B9CF0;
+            gGmWork->step = GMSUB_STEP_RESET;
+            gGmWork->layerCallback = Title_Draw;
             Title_ResetBgAnim();
-            gSysSettings.bootMode = 1;
-            Stream_Play(0, 0x2F);
+            gSysSettings.bootMode = BOOT_MODE_GMSUB;
+            Stream_Play(0, GMSUB_TITLE_STREAM);
         }
         break;
-    case 10:
-        FadeA_Start(0xC);
-        gGmWork->unk4 = 1;
-        gGmWork->unk20 = 1;
-        gGmWork->unk50 = 4;
-        Stream_Play(0, 0x2F);
+    case GMSUB_STEP_BACK:
+        FadeA_Start(FADE_IN_BLACK_FAST);
+        gGmWork->step = GMSUB_STEP_FADE_IN;
+        gGmWork->logoFull = 1;
+        gGmWork->logoAnim = GMSUB_LOGO_ANIM_END;
+        Stream_Play(0, GMSUB_TITLE_STREAM);
         break;
-    case 12:
-        GmSub_OpenYesNo();
+    case GMSUB_STEP_REOPEN_MODE_SELECT:
+        GmSub_OpenModeSelect();
         Game_ResetSubsystems();
         Tex_LoadSystemPack(0);
-        FadeA_Start(0xC);
-        gGmWork->unk4 = 1;
-        gGmWork->unk20 = 1;
-        gGmWork->unk50 = 4;
-    case 11:
+        FadeA_Start(FADE_IN_BLACK_FAST);
+        gGmWork->step = GMSUB_STEP_FADE_IN;
+        gGmWork->logoFull = 1;
+        gGmWork->logoAnim = GMSUB_LOGO_ANIM_END;
+    case GMSUB_STEP_RESET:
         gSysSettings.systemSaved = 0;
-        gGmWork->unk2C = -1;
-        gGmWork->unk30 = -1;
+        gGmWork->menuChoice = -1;
+        gGmWork->modeChoice = -1;
         Game_ResetSubsystems();
         Tex_LoadSystemPack(0);
-        FadeA_Start(0xC);
-        gGmWork->unk4 = 1;
-        gGmWork->unk20 = 1;
-        gGmWork->unk50 = 4;
+        FadeA_Start(FADE_IN_BLACK_FAST);
+        gGmWork->step = GMSUB_STEP_FADE_IN;
+        gGmWork->logoFull = 1;
+        gGmWork->logoAnim = GMSUB_LOGO_ANIM_END;
         Title_RandomView();
-        Stream_Play(0, 0x2F);
-        gGmWork->unk34 = D_6BA0C0;
+        Stream_Play(0, GMSUB_TITLE_STREAM);
+        gGmWork->frameCallback = Title_DrawLogo;
         break;
-    case 20:
+    case GMSUB_STEP_QUIT:
         if ((u8)FadeA_GetState() != 1) {
-            TaskSlot_End(TaskSlot_Get(2));
+            TaskSlot_End(TaskSlot_Get(TASK_SLOT_GMSUB));
             Task_StartBootScreens();
         }
         break;
@@ -482,24 +534,31 @@ s32 GmSub_UpdateMenu(u16 a, u16 b) {
     return 0;
 }
 
-/* Phase 3: once the fade is over, sets the game flags from the yes/no answer and ends the task. */
-s32 GmSub_StepLaunch(TaskSlot *t, u16 a, u16 b) {
-    switch (gGmWork->unk24) {
-    case 0:
-    case 1:
+/*
+ * GMSUB_TASK_LAUNCH: for the character entries, once the fade is over,
+ * sets the game's settings from mode select's choice (online, offline, or
+ * offline with the save's equipment), ends this task and asks for the
+ * lobby's network setup (online) or its scene (offline). Returns 1 for the
+ * character entries (GmSub_Task's frame ends there), else 0.
+ */
+s32 GmSub_StartGame(TaskSlot *task, u16 held, u16 pressed)
+{
+    switch (gGmWork->menuSel) {
+    case GMSUB_MENU_NEW_CHARA:
+    case GMSUB_MENU_LOAD_CHARA:
         if ((u8)FadeA_GetState() != 1) {
             gSysSettings.galleryPlay = 0;
             gSysSettings.unk45 = 0;
-            switch (gGmWork->unk28) {
-            case 0:
+            switch (gGmWork->sel) {
+            case GMSUB_MODE_SEL_ONLINE:
                 gSysSettings.online = 1;
                 gSysSettings.useSavedEquip = 0;
                 break;
-            case 1:
+            case GMSUB_MODE_SEL_OFFLINE:
                 gSysSettings.online = 0;
                 gSysSettings.useSavedEquip = 0;
                 break;
-            case 2:
+            case GMSUB_MODE_SEL_SAVED_EQUIP:
                 gSysSettings.useSavedEquip = 1;
                 gSysSettings.online = 0;
                 break;
@@ -507,7 +566,7 @@ s32 GmSub_StepLaunch(TaskSlot *t, u16 a, u16 b) {
             gSysSettings.unk02 = 0;
             gSysSettings.unk03 = 1;
             gSysSettings.unk05 = 0;
-            TaskSlot_End(t);
+            TaskSlot_End(task);
             if (gSysSettings.online == 0) {
                 Task_EndGmSubForNetScene();
             } else {
@@ -519,42 +578,55 @@ s32 GmSub_StepLaunch(TaskSlot *t, u16 a, u16 b) {
     return 0;
 }
 
-/* Phase 4: fades out, then ends the task and starts the task D_6B5230 in slot 3 (0x6ADF94 = 1). */
-s32 GmSub_StepExit(TaskSlot *t, u16 a, u16 b) {
-    switch (t->count) {
+/*
+ * GMSUB_TASK_EXIT, in task->count's steps: fades out, waits for the fade,
+ * then resets the subsystems, ends this task and starts select's Boot_Task
+ * in TASK_SLOT_BOOT (gSysSettings.bootFrom BOOT_FROM_GMSUB). Returns 1 once
+ * the task has ended.
+ */
+s32 GmSub_ExitToBoot(TaskSlot *task, u16 held, u16 pressed)
+{
+    switch (task->count) {
     case 0:
-        t->count++;
-        FadeA_Start(0xB);
+        task->count++;
+        FadeA_Start(FADE_OUT_BLACK_FAST);
         break;
     case 1:
         if ((u8)FadeA_GetState() != 1) {
-            t->count++;
+            task->count++;
         }
         break;
     case 2:
         Game_ResetSubsystems();
-        TaskSlot_End(t);
-        gSysSettings.bootFrom = 1;
-        TaskSlot_Set(D_6B5230, 3);
+        TaskSlot_End(task);
+        gSysSettings.bootFrom = BOOT_FROM_GMSUB;
+        TaskSlot_Set(Boot_Task, TASK_SLOT_BOOT);
         return 1;
     }
     return 0;
 }
 
-s32 GmSub_UpdateYesNo(u16 a, u16 b) {
-    s32 old = gGmWork->unk28;
+/*
+ * Runs mode select for a frame: slides its entries, and once they rest
+ * reads the pad. Returns 1 when PAD_CIRCLE confirms, -1 when PAD_CROSS
+ * cancels, else 0. The background's animation restarts when the cursor
+ * moves.
+ */
+s32 GmSub_UpdateModeSelect(u16 held, u16 pressed)
+{
+    s32 prevSel = gGmWork->sel;
 
     ModeSel_UpdateSlide();
     if (ModeSel_IsIdle() != 0) {
-        if (b & 0x40) {
+        if (pressed & PAD_CROSS) {
             return -1;
         }
-        if (b & 0x20) {
+        if (pressed & PAD_CIRCLE) {
             return 1;
         }
-        GmSub_MoveCursorH(a, b, (u8 *)&gGmWork->unk28, 2);
+        GmSub_MoveCursorH(held, pressed, (u8 *)&gGmWork->sel, GMSUB_MODE_SEL_COUNT);
     }
-    if (old != gGmWork->unk28) {
+    if (prevSel != gGmWork->sel) {
         Title_ResetBgAnim();
     } else {
         Title_StepBgAnim();
@@ -562,12 +634,17 @@ s32 GmSub_UpdateYesNo(u16 a, u16 b) {
     return 0;
 }
 
-/* 1 when the scene flag 0x6ADFD8 is 1 or the entry chosen is 1 (select's character screens test it). */
-s32 GmSub_IsCharaSelectMenu(void) {
+/*
+ * 1 when the character select runs for the title menu: the PSP link waits
+ * for it (gSysSettings.pspCharaWait) or the menu's entry is
+ * GMSUB_MENU_LOAD_CHARA. select's character screens test it.
+ */
+s32 GmSub_IsCharaSelectMenu(void)
+{
     if (gSysSettings.pspCharaWait == 1) {
         return 1;
     }
-    if (gGmWork->unk24 == 1) {
+    if (gGmWork->menuSel == GMSUB_MENU_LOAD_CHARA) {
         return 1;
     }
     return 0;

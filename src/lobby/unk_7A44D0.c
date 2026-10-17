@@ -309,9 +309,9 @@ void MyHouse_CheckHost(void)
         return;
     }
     switch (gScene.area) {
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         if (MyHouse_InOwnHouse() == 1) {
             MyHouse_RefreshGuests();
             return;
@@ -352,7 +352,7 @@ void MyHouse_CheckHost(void)
         gMenuOffsetY = 0;
         gFieldControl = 1;
         gMenuOffsetX = 0;
-        AreaMenu_Open(0x89);
+        AreaMenu_Open(AREA_HUB_0x89);
         return;
     }
 }
@@ -1080,12 +1080,12 @@ void Town_PlaceLocalPlayer(s32 area)
             *(Vec3f *)p->pos = gSpawnPoints[k].pos;
             p->rot[1] = (&p->index)[1] = gSpawnPoints[k].angle + 0x4000;
             break;
-        case 0x84:
+        case AREA_HUB_0x84:
             sp = &gTownSpawns84[(u16)Rand_Next(1) % 5];
             *(Vec3f *)p->pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case 0x89:
+        case AREA_HUB_0x89:
             if (Cond_Check(1) == 0) {
                 ((Em **)p)[0x3B4 / 4] = gEms;
                 sp = &gTownSpawn89Early;
@@ -1099,27 +1099,27 @@ void Town_PlaceLocalPlayer(s32 area)
             *(Vec3f *)p->pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case 0x83:
+        case AREA_HUB_0x83:
             sp = (SpawnPt *)gTownSpawn83;
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case 0x86:
+        case AREA_HUB_0x86:
             sp = (SpawnPt *)gTownSpawn86;
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case 0x87:
+        case AREA_HUB_0x87:
             sp = (SpawnPt *)gTownSpawn87;
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case 0x88:
+        case AREA_HUB_0x88:
             sp = (SpawnPt *)gTownSpawn88;
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case 0x57:
+        case AREA_HUB_0x57:
             if (gSysSettings.offline == 1) {
                 sp = &gTownSpawn57Alt;
             } else {

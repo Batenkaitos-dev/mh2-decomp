@@ -14,6 +14,7 @@
 #include "plsel.h"
 #include "lobby_globals.h"
 #include "syssave.h"
+#include "area.h"
 
 /* prototypes */
 void Gfx_DrawGauge(s32 x, s32 y, s32 w, s32 h, s32 flags); /* unit's own declaration: with the definition's void (s16 x, s16 y, s16 w, s16 h, s32 flags) (sub_main/unk_363550.c), VillageClock_DrawChatMark 17 of 58 words differ */
@@ -90,7 +91,7 @@ void VillageClock_DrawChatMark(s32 x, s32 y)
     s32 flags;
 
     flags = 0;
-    if ((gScene.online == 0) || (gScene.area != 0x83)) {
+    if ((gScene.online == 0) || (gScene.area != AREA_HUB_0x83)) {
         if (gChatSendTo == 0) {
             if (gChatWinOpen != 0) {
                 flags = 5;
@@ -164,8 +165,8 @@ void Text_SetColor(s16 color);
 void Font_SetPos(s16 x, s16 y);
 void Text_Draw(char *s);
 void Text_PrintfColored(char *fmt, ...);
-void StatusPage_DrawWeaponClass(u8 *p);
-void PersonalStatus_DrawEquipment(u8 *p);
+void StatusPage_DrawWeaponClass(Player *pl);
+void PersonalStatus_DrawEquipment(Player *pl);
 void Player_DrawSkillsPlain(Player *a, s32 b, s16 c);
 void Sjis_Widen(char *src, char *dst);
 struct V00793350_0;
@@ -213,7 +214,7 @@ s32 MemberCard_Draw(u8 pl, u8 page)
         Font_SetPos(0x17A, 0x7A);
         Text_PrintfColored(D_447754[card->title][0]);
         Font_SetPos(0x17A, 0x8E);
-        StatusPage_DrawWeaponClass((u8 *) p);
+        StatusPage_DrawWeaponClass(p);
         Font_SetPos(0x132, 0xA2);
         if (card->symbolColor != 0xFF) {
             Text_PrintfColored("~C05%s~C00%s", gSymbolColorTexts[0], gSymbolColorNames[card->symbolColor]);
@@ -235,7 +236,7 @@ s32 MemberCard_Draw(u8 pl, u8 page)
         Text_DrawWrapped33(0x132, 0x13A, 0x14, (char *)card->comment);
         break;
     case 1:
-        PersonalStatus_DrawEquipment((u8 *) p);
+        PersonalStatus_DrawEquipment(p);
         Player_DrawSkillsPlain(p, 0x132, 0x126);
         break;
     }

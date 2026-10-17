@@ -39,9 +39,9 @@ typedef struct ObjHead {
     u8 hitKind;                     /* 0x018 */
     u8 hitPending;                  /* 0x019 */
     u8 pad01A[0x01E - 0x01A];
-    u8 unk01E;                      /* 0x01E: Em: unnamed */
+    u8 ownTask;                     /* 0x01E: as Em.ownTask and Player.ownTask: 0 when the game overlay runs the object, 1 when another runner does (the lobby NPCs) */
     u8 pad01F[0x078 - 0x01F];
-    u16 unk078;                     /* 0x078: Em: unnamed */
+    u16 attackFlags;                /* 0x078: ATKF_* bits (objattach.h), as ObjAttach.attackFlags (Player_TestFlags, Player_TestSetFlags) */
     u8 pad07A[0x0A0 - 0x07A];
     s32 rot[3];                     /* 0x0A0: Em.rotX..rotZ */
     f32 pos[3];                     /* 0x0AC: Em.posX..posZ */

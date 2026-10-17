@@ -1,8 +1,9 @@
 /*
- * Monster family: Kushala Daora, Lunastra and Teostra (kinds 0x36, 0x3C, 0x40, 0x41).
- * The code from the family's setup function (0x82CEE0, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
+ * Monster family: Kushala Daora, Lunastra and Teostra (EM_KIND_KUSHALA_DAORA,
+ * EM_KIND_RUSTED_KUSHALA_DAORA, EM_KIND_LUNASTRA and EM_KIND_TEOSTRA). The
+ * code from the family's setup function (EmKushala_Setup, called by the
+ * per-kind dispatch Em_TypeSetup) to the next family's. The state functions
+ * take the monster and the work area its state dispatcher passes on (EmWork);
  * Em.step is the step within the current state. See include/em.h.
  */
 #include "common.h"
@@ -12,6 +13,7 @@
 #include "player.h"
 #include "stageobj.h"
 #include "objattach.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
 void EmKushala_MotionSounds(void *arg0, EmWork *work);
 void EmKushala_MotionSoundsTesca(Em *em, EmWork *work);
@@ -54,17 +56,17 @@ f32 Math_Sin(f32 x);
 void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 s8 QuestEm_Appear(Em *em);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
-void EffEm14_Create(Em *, s8);
-/* unit's own declaration: with the definition's void (Em *em, s32 bone, u8 kind, u8 c, u16 a, u16 b) (game/unk_6E0650.c), EmKushala_SpawnEffect29AtBone: 3 of 27 words differ */
-void EffKushala29_CreateAtBone(Em *, s32, u8, u8, s32, s32);
-void EffKushala30_Create(Em *, s32);
-void EffEm33_CreateB(Em *, s32, s32, s32, s32);
-void EffShakalaka34_Create(Em *, s8);
-void EffKushala30b_Create(Em *, s32);
-ObjAttach *EffEm02_Create(Em *em, s8 kind);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
+void EmBomb_Create(Em *, s8);
+/* unit's own declaration: with the definition's void (Em *em, s32 bone, u8 kind, u8 c, u16 a, u16 b) (game/unk_6E0650.c), EmKushala_CreateBreathAtBone: 3 of 27 words differ */
+void KushalaBreath_CreateAtBone(Em *, s32, u8, u8, s32, s32);
+void KushalaAttack_Create(Em *, s32);
+void EmEffectAttack_CreateChain(Em *, s32, s32, s32, s32);
+void ShakalakaAttack_Create(Em *, s8);
+void TeostraAttack_Create(Em *, s32);
+ObjAttach *BulldromeAttack_Create(Em *em, s8 kind);
 /* unit's own declaration: with the definition's void (Em *em, u8 kind) (game/unk_6EB590.c), EmKushala_State3_05: 1 of 79 words differ */
-void EffKushala39_Create(Em *, s32);
+void TeostraBlastRing_Create(Em *, s32);
 void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
@@ -73,7 +75,7 @@ void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmKushala_State0_09: 61 of 104 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
@@ -110,7 +112,7 @@ void EmKushala_State5_00_Hunted(Em *, EmWork *);
 void EmKushala_State5_02_HuntedFalling(Em *, EmWork *);
 s32 EmKushala_GroundEffectStateInWind(Em *);
 void EmKushala_MotionEffects(Em *, EmWork *);
-void EmKushala_SpawnEffect30(Em *em, s32 arg1);
+void EmKushala_CreateAttack(Em *em, s32 arg1);
 void EmKushala_SpawnEffect02AtBone27(Em *);
 void EmKind38_UpdateLoopSe(Em *em, EmWork *work);
 void EmKind38_Init(Em *);
@@ -142,7 +144,7 @@ void EmShakalaka_State5_02(Em *);
 void EmShakalaka_MotionEffects(Em *, EmWork *);
 void EmFxTri_Spawn(Em *em, s16 kind);
 void StageObj_K13_Create(void *arg, s16 v, u8 k);
-void EffEm08_CreateAtBone2(Em *, s32, s32, s32, s32, s32, s32);
+void EmRangedAttack_CreateAtBone2(Em *, s32, s32, s32, s32, s32, s32);
 /* unit's own declaration: with the definition's void (Em *em, s16 k, s16 c, f32 scale) (game/unk_874B90.c), EmKushala_SpawnK14NearGround: 21 of 50 words differ */
 void StageObj_K14_Create(Em *em, s32, s32, f32);
 /* unit's own declaration: with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale) (game/unk_874B90.c), EmKushala_State4_0C: 66 of 98 words differ */
@@ -152,7 +154,7 @@ StageObj *StageObj_K1C_CreateOnEm(Em *em, u8 k, f32 scale);
 void StageObj_K1C_CreateOnEmB(Em *em, s8, s16, u16, f32);
 void StageObj_K27_Create(Em *em);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
 void Vec_RotateY(f32 *v, f32 angle);
@@ -181,7 +183,7 @@ void Em_ClearPoison(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
 void Em_BeginStatus1(Em *em);
 void QuestEm_Captured(Em *em);
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 EmBone *Em_Bone(void *obj, s16 bone);
 void Mtx_GetTrans(f32 *out, f32 *m);
 void Vec_RotateSelf(f32 *v, f32 *m);
@@ -220,7 +222,7 @@ void CamShake_ReqAIf(Em *obj, s32 i);
 void Em_ApplyPartBreaks(Em *em);
 void Em_FlagPartBreak(Em *em, s32 arg1);
 void Em_InitParts(Em *em);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void EmKind38_InitHover(Em *em, EmWork *work);
 extern f32 gStartPos[];
 extern f32 D_43F0A4[];
@@ -229,11 +231,11 @@ typedef struct { f32 x, y; } EmKPair;
 extern EmKPair EmKind38_State3Pts[][2];
 extern s32 EmKushala_State3_0FTimers[][2];
 extern s32 D_008CA214[][2];
-void *EmKind38_SpawnEffect02(Em *em);
+void *EmKind38_CreateAttack(Em *em);
 void Vec_RotateX(f32 *v, f32 angle);
 void Vec_Scale(f32 *out, f32 *in, f32 s);
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Eff09_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
+void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
 void StageObj_K15_Create(Em *em, u8 k);
 void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
 void Effect0D_SpawnAt(f32 *pos, s32 a, f32 scale);
@@ -274,15 +276,15 @@ void Em_EndStatus5(Em *em);
 s32 EmKushala_WindActive2(Em *);
 void EmKushala_BreakParts(Em *em, s32 apply);
 void EmKushala_RunState(Em *em, s32 arg1);
-void Em_RaiseTrigger80Lax(Em *em);
-u16 Area_BaseId(u16);
+void Em_RaisePlayerAreaTriggerLax(Em *em);
+u16 Map_DayId(u16);
 void Em_CheckLowHp(Em *em, f32 ratio);
 void Em_DecayNeed2(Em *em);
 void Em_DecayNeed1(Em *em);
 void Em_DecayNeed3(Em *em);
 void Em_SetStatus1Timer(Em *em);
 void Em_CheckRageByHp(Em *em, s16 n);
-s32 func_00725820(Em *em, s32 arg1);
+s32 Em_DamageResultIsReaction(Em *em, s32 arg1);
 void CamReq_ForMonster(Em *em);
 s32 Quest_IsRunning(s32 ending);
 /* end of prototypes */
@@ -316,39 +318,39 @@ void EmKushala_Init(Em *em)
             em->posY = 0.0f;
             em->posZ = 6000.0f;
             break;
-        case 0xF:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 7900.0f + 1500.0f * (u32) em->slotNo;
             em->posY = 1050.0f;
             em->posZ = 13900.0f;
             break;
-        case 0x12:
+        case AREA_JUNGLE_NIGHT_5:
             em->posX = 10000.0f + 1500.0f * (u32) em->slotNo;
             em->posY = 200.0f;
             em->posZ = 8000.0f;
             break;
-        case 0x16:
+        case AREA_JUNGLE_NIGHT_7:
             em->posX = 9900.0f + 1500.0f * (u32) em->slotNo;
             em->posY = 300.0f;
             em->posZ = 10350.0f;
             break;
-        case 0x18:
+        case AREA_DESERT_NIGHT_11:
             em->posX = 10000.0f + 1500.0f * (u32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 5700.0f;
             em->rotY = 0x4000;
             break;
-        case 0x1B:
+        case AREA_VOLCANO_NIGHT_9:
             em->posX = 14300.0f + 1500.0f * (u32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 7100.0f;
             break;
-        case 0x25:
+        case AREA_FOREST_HILLS_4:
             em->posX = 8500.0f;
             em->posY = 0.0f;
             em->posZ = 10000.0f;
             em->rotY = 0x5000;
             break;
-        case 0x28:
+        case AREA_FOREST_HILLS_5:
             em->posX = 10500.0f + 1500.0f * (u32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 9500.0f;
@@ -371,7 +373,7 @@ void EmKushala_Init(Em *em)
             em->hpMax = 4000;
             break;
         default:
-            em->hpMax = em->hp = Em_ComputeSize(em, 0);
+            em->hpMax = em->hp = Em_ComputeMaxHp(em, 0);
             break;
         }
     } else {
@@ -395,9 +397,9 @@ void EmKushala_Init(Em *em)
     } else {
         em->fxFlags |= 1;
         if (em->type == 0x36 || em->type == 0x3C) {
-            em->hit8Count = 1;
+            em->partBreakCount = 1;
         } else {
-            em->hit8Count = 2;
+            em->partBreakCount = 2;
         }
     }
 }
@@ -409,7 +411,7 @@ void EmKushala_Start(Em *em)
         switch (gQuest.stage) {
         case 0x138A:
             if (Save_TestEventFlag(0x9D) == 0) {
-                em->area = Area_IdForCurrentTime(0x71);
+                em->area = Area_IdForCurrentTime(AREA_JUNGLE_3);
                 em->posX = 7146.0f;
                 em->posY = 200.0f;
                 em->posZ = 11034.0f;
@@ -421,7 +423,7 @@ void EmKushala_Start(Em *em)
         switch (gQuest.stage) {
         case 0x138F:
             if (Save_TestEventFlag(0xA0) == 0) {
-                em->area = Area_IdForCurrentTime(0x7C);
+                em->area = Area_IdForCurrentTime(AREA_TOWER_0x7C);
                 em->posX = 11600.0f;
                 em->posY = -20.0f;
                 em->posZ = 13000.0f;
@@ -431,7 +433,7 @@ void EmKushala_Start(Em *em)
         case 0x430:
         case 0x431:
             if (Save_TestEventFlag(0xA3) == 0) {
-                em->area = Area_IdForCurrentTime(0xA8);
+                em->area = Area_IdForCurrentTime(AREA_VOLCANO_7);
                 em->posX = 9329.0f;
                 em->posY = 3000.0f;
                 em->posZ = 9973.0f;
@@ -559,9 +561,9 @@ void EmKushala_BreakParts(Em *em, s32 apply)
     }
 }
 
-void EmKushala_SpawnEffect29AtBone(Em *em, s32 bone, u8 kind, u8 arg3, s32 arg4, s32 arg5)
+void EmKushala_CreateBreathAtBone(Em *em, s32 bone, u8 kind, u8 arg3, s32 arg4, s32 arg5)
 {
-    if (gScene.map == 0xB || gScene.map == 0x15) {
+    if (gScene.map == MAP_SNOWY_MOUNTAINS || gScene.map == MAP_SNOWY_MOUNTAINS_NIGHT) {
         switch (kind) {
         case 0:
         case 2:
@@ -572,7 +574,7 @@ void EmKushala_SpawnEffect29AtBone(Em *em, s32 bone, u8 kind, u8 arg3, s32 arg4,
             break;
         }
     }
-    EffKushala29_CreateAtBone(em, bone, kind, arg3, arg4, arg5);
+    KushalaBreath_CreateAtBone(em, bone, kind, arg3, arg4, arg5);
 }
 
 void EmKushala_State0_00(Em *em)
@@ -663,7 +665,7 @@ void EmKushala_State0_04(Em *em, EmWork *work, s32 variant)
     f32 ofs[3];
     f32 m[16];
 
-    Em_SetHitReactMode(em, 3);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -673,7 +675,7 @@ void EmKushala_State0_04(Em *em, EmWork *work, s32 variant)
         em->timer = 3;
         break;
     case 1:
-        if ((Player_PassedFrameScaled(em, 56.0f, 0) || Player_PassedFrameScaled(em, 102.0f, 0)) && variant == 0 && ((s32)Player_InCurrentArea(em) & 0xFF)) {
+        if ((EmMotion_PassedFrameScaled(em, 56.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0)) && variant == 0 && ((s32)Player_InCurrentArea(em) & 0xFF)) {
             StageObj_K15_Create(em, 1);
             Mtx_Copy(m, (f32 *)Em_Bone(em, 0x25));
             ofs[0] = 0.0f;
@@ -787,7 +789,7 @@ void EmKushala_State0_09(Em *em)
 {
     u8 type;
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -857,7 +859,7 @@ void EmKushala_State0_0A(Em *em)
 
 void EmKushala_State0_0B(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -925,7 +927,7 @@ void EmKushala_State0_0C(Em *em)
 
 void EmKushala_State0_0D(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1051,7 +1053,7 @@ void EmKushala_State0_13(Em *em)
 
 void EmKushala_State0_15(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1236,7 +1238,7 @@ void EmKushala_State1_02(Em *em)
     case 1:
         if (Em_TurnStep(em, &EmKushala_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmKushala_EndState(em, 0, 0);
         }
         break;
@@ -1340,8 +1342,8 @@ void EmKushala_State1_05(Em *em, EmWork *work, s32 variant)
             Em_SetMotion(em, 0x18, 0, 0);
             break;
         }
-        if (em->motionId[0] == 0x3FD && Player_PassedFrameScaled(em, 12.0f, 0)) {
-            EmKushala_SpawnEffect30(em, 8);
+        if (em->motionId[0] == 0x3FD && EmMotion_PassedFrameScaled(em, 12.0f, 0)) {
+            EmKushala_CreateAttack(em, 8);
         }
         if (em->motion[0].playing == 0) {
             if (em->motionId[0] == 0x3FD) {
@@ -1580,9 +1582,9 @@ void EmKushala_State1_18(Em *em, EmWork *work)
     case 1:
         EmKushala_UpdateCurves(em);
         em->goalDist -= em->velZ;
-        if ((em->motionId[0] == 0x3F5) && (Player_PassedFrameScaled(em, 58.0f, 0U) != 0)) {
-            EmKushala_SpawnEffect30(em, 9);
-            EmKushala_SpawnEffect30(em, 0x1A);
+        if ((em->motionId[0] == 0x3F5) && (EmMotion_PassedFrameScaled(em, 58.0f, 0U) != 0)) {
+            EmKushala_CreateAttack(em, 9);
+            EmKushala_CreateAttack(em, 0x1A);
         }
         if (em->motion[0].playing == 0) {
             if (em->goalDist <= 0.0f) {
@@ -1741,7 +1743,7 @@ void EmKushala_State2_00(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 48.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0U) != 0) {
             em->step++;
             em->stance = 2;
             EmKushala_UpdateCurves(em);
@@ -2057,7 +2059,7 @@ void EmKushala_State2_08(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         t = *(u16 *) &em->destArea;
-        if (em->nextArea == t || t == 0xFFFF) {
+        if (em->nextArea == t || t == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmKushala_ChangeState(em, 2, 9, 1);
         } else {
@@ -2097,7 +2099,7 @@ void EmKushala_State2_09(Em *em, EmWork *work)
         em->velZ = 80.0f;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->rotY = em->aimAngle;
-        *(u16 *) &em->destArea = 0xFFFF;
+        *(u16 *) &em->destArea = AREA_NONE;
         work->flyGuard = 1;
         break;
     case 1:
@@ -2213,7 +2215,7 @@ void EmKushala_State2_0A(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmKushala_ChangeState(em, 2, 9, 1);
         } else {
@@ -2427,13 +2429,13 @@ void EmKushala_State2_0F(Em *em, EmWork *work, s32 variant)
             break;
         case 1:
             switch (Area_DayId(em->area)) {
-            case 0xB0:
+            case AREA_BATTLE_TOWN_1:
                 if (!(em->posY < 2200.0f)) {
                     go = 1;
                 }
                 break;
-            case 0x5E:
-            case 0x61:
+            case AREA_SNOWY_MOUNTAINS_3:
+            case AREA_SNOWY_MOUNTAINS_6:
             default:
                 if (!(em->posY < 4500.0f)) {
                     go = 1;
@@ -2520,12 +2522,12 @@ void EmKushala_State3_02(Em *em)
     case 1:
         type = em->type;
         if ((type == 0x36) || (type == 0x3C)) {
-            if (Player_PassedFrameScaled(em, 74.0f, 0U) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 74.0f, 0U) != 0) {
                 StageObj_K1C_CreateOnEmB(em, 0xA, 0, 0, 1.0f);
-                EmKushala_SpawnEffect30(em, 0x1B);
+                EmKushala_CreateAttack(em, 0x1B);
             }
-            if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-                EmKushala_SpawnEffect29AtBone(em, 0x25, 0, 0, 0, 0);
+            if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+                EmKushala_CreateBreathAtBone(em, 0x25, 0, 0, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -2547,8 +2549,8 @@ void EmKushala_State3_03(Em *em)
         Em_SetMotion(em, 0x2F, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 104.0f, 0U) != 0) {
-            EffEm33_CreateB(em, 0xF, 0, 0, 0);
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0U) != 0) {
+            EmEffectAttack_CreateChain(em, 0xF, 0, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             if (--em->timer <= 0) {
@@ -2597,7 +2599,7 @@ void EmKushala_State3_05(Em *em, EmWork *work, s32 variant)
         em->timer = 0x5A;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 56.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0U) != 0) {
             StageObj_K27_Create(em);
         }
         if (--em->timer <= 0) {
@@ -2606,9 +2608,9 @@ void EmKushala_State3_05(Em *em, EmWork *work, s32 variant)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 36.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0U) != 0) {
             EmKushala_SpawnEffect02AtBone27(em);
-            EffKushala39_Create(em, variant);
+            TeostraBlastRing_Create(em, variant);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -2711,7 +2713,7 @@ void EmKushala_State3_0A(Em *em, EmWork *work, s32 variant)
         em->stance = 1;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
                 em->timer = 1;
@@ -2855,43 +2857,43 @@ void EmKushala_State3_0F(Em *em, EmWork *work, s32 variant)
     case 1:
         k = variant & 0xF;
         if (k == 0) {
-            if (Player_PassedFrameScaled(em, 40.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 40.0f, 0)) {
                 em->step++;
                 em->timer = D_008CA214[k][0];
                 Em_SetMotion(em, 0x33, 0, 0);
             }
-        } else if (Player_PassedFrameScaled(em, 106.0f, 0) && --em->timer <= 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 106.0f, 0) && --em->timer <= 0) {
             em->step++;
             em->timer = D_008CA214[k][0];
             Em_SetMotion(em, 0x33, 0, 0);
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) && (em->type == 0x36 || em->type == 0x3C)) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) && (em->type == 0x36 || em->type == 0x3C)) {
             switch (variant & 0xF) {
             case 0:
                 StageObj_K1C_CreateOnEmB(em, 0xA, 0x2000, 0, 1.0f);
-                EmKushala_SpawnEffect29AtBone(em, 0x25, 2, 1, 0x2000, 0);
+                EmKushala_CreateBreathAtBone(em, 0x25, 2, 1, 0x2000, 0);
                 break;
             case 1:
                 switch (em->timer) {
                 case 3:
                     StageObj_K1C_CreateOnEmB(em, 0x12, 0x1555, 0xF1C8, 1.0f);
-                    EmKushala_SpawnEffect29AtBone(em, 0x25, 1, 0, 0x1555, 0xF1C8);
+                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x1555, 0xF1C8);
                     break;
                 case 2:
                     StageObj_K1C_CreateOnEmB(em, 0x12, 0x11C7, 0, 1.0f);
-                    EmKushala_SpawnEffect29AtBone(em, 0x25, 1, 0, 0x11C7, 0);
+                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x11C7, 0);
                     break;
                 case 1:
                     StageObj_K1C_CreateOnEmB(em, 0x12, 0x1555, 0xE39, 1.0f);
-                    EmKushala_SpawnEffect29AtBone(em, 0x25, 1, 0, 0x1555, 0xE39);
+                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x1555, 0xE39);
                     break;
                 }
                 break;
             case 2:
                 StageObj_K1C_CreateOnEmB(em, 0xA, 0x2000, 0, 1.0f);
-                EmKushala_SpawnEffect29AtBone(em, 0x25, 2, 2, 0x2000, 0);
+                EmKushala_CreateBreathAtBone(em, 0x25, 2, 2, 0x2000, 0);
                 break;
             case 3:
                 switch (em->timer) {
@@ -2907,17 +2909,17 @@ void EmKushala_State3_0F(Em *em, EmWork *work, s32 variant)
                 case 1:
                 case 2:
                     StageObj_K1C_CreateOnEmB(em, 0xA, 0x11C7, 0, 1.0f);
-                    EmKushala_SpawnEffect29AtBone(em, 0x25, 1, 0, 0x11C7, 0);
+                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x11C7, 0);
                     break;
                 }
                 break;
             case 4:
                 StageObj_K1C_CreateOnEmB(em, 0xA, 0x11C7, 0, 1.0f);
-                EmKushala_SpawnEffect29AtBone(em, 0x25, 1, 0, 0x11C7, 0);
+                EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x11C7, 0);
                 break;
             }
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0) && --em->timer <= 0) {
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) && --em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, 0x2D, 0, 0);
         }
@@ -2963,7 +2965,7 @@ void EmKushala_State3_18(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 56.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0)) {
             StageObj_K27_Create(em);
         }
         if (--em->timer <= 0) {
@@ -2972,9 +2974,9 @@ void EmKushala_State3_18(Em *em, EmWork *work)
         }
         break;
     case 3:
-        if (Player_PassedFrameScaled(em, 36.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0)) {
             EmKushala_SpawnEffect02AtBone27(em);
-            EffKushala39_Create(em, 3);
+            TeostraBlastRing_Create(em, 3);
             if (em->remote == 0 && w->fortHits <= 9) {
                 w->fortHits++;
                 if (w->fortHits >= 10) {
@@ -3031,7 +3033,7 @@ void EmKushala_State4_01(Em *em)
         Em_SetMotion(em, 0x49, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 104.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, 0x3E, 0, 0);
         }
@@ -3156,7 +3158,7 @@ void EmKushala_State4_04(Em *em, EmWork *work)
 
 void EmKushala_State4_05(Em *em)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3177,7 +3179,7 @@ void EmKushala_State4_05(Em *em)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmKushala_State4_06(Em *em)
@@ -3500,7 +3502,7 @@ void EmKushala_State6_00(Em *em, EmWork *work)
         work->flyGuard = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 104.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0)) {
             em->step++;
             Em_SetMotion(em, 0x3E, 0, 0);
         }
@@ -3513,7 +3515,7 @@ void EmKushala_State6_00(Em *em, EmWork *work)
         }
         break;
     case 3:
-        if (Player_PassedFrameScaled(em, 48.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0)) {
             em->step++;
             em->stance = 2;
             EmKushala_UpdateCurves(em);
@@ -3767,7 +3769,7 @@ void EmKushala_State6_04_Captured(Em *em)
     pos[1] = 10.0f;
     pos[2] = 140.0f;
     pos[0] = 0.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
 }
 
 void EmKushala_State6_05(Em *em, EmWork *work)
@@ -3827,7 +3829,7 @@ void EmKushala_State6_05(Em *em, EmWork *work)
         }
         break;
     case 5:
-        if (Player_PassedFrameScaled(em, 36.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0)) {
             EmKushala_SpawnEffect02AtBone27(em);
         }
         if (EmMotion_ReachedFrame(em, 0, 200.0f)) {
@@ -3836,8 +3838,8 @@ void EmKushala_State6_05(Em *em, EmWork *work)
         }
         break;
     case 6:
-        if (Player_PassedFrameScaled(em, 104.0f, 0)) {
-            EffEm33_CreateB(em, 0xF, 0, 0, 0);
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0)) {
+            EmEffectAttack_CreateChain(em, 0xF, 0, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4031,7 +4033,7 @@ void EmKushala_State6_07(Em *em)
         }
         break;
     case 4:
-        if (Player_PassedFrameScaled(em, 56.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0)) {
             StageObj_K27_Create(em);
         }
         if (em->motion[0].playing == 0 && --em->timer <= 0) {
@@ -4069,7 +4071,7 @@ void EmKushala_State5_00_Hunted(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 414.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 414.0f, 0)) {
             CamShake_ReqAIf(em, 2);
         }
         if (em->motion[0].playing == 0) {
@@ -4626,7 +4628,7 @@ void EmKushala_Update(Em *em)
     u16 k;
 
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80Lax(em);
+    Em_RaisePlayerAreaTriggerLax(em);
     if (em->type == 0x36 || em->type == 0x3C) {
         ratio = 0.12f;
         em->hitzoneSet = 0;
@@ -4648,34 +4650,34 @@ void EmKushala_Update(Em *em)
             em->windTimer = 2;
         }
     }
-    k = Area_BaseId(gScene.map);
+    k = Map_DayId(gScene.map);
     if (em->noAlert != 1 && em->rage == 0 && k != 8 && k != 9 && k != 0xA) {
         if (em->type == 0x36 || em->type == 0x3C) {
             switch (k) {
-            case 6:
+            case MAP_JUNGLE:
                 Em_CheckLowHp(em, ratio);
                 Em_DecayNeed2(em);
                 Em_DecayNeed1(em);
                 Em_DecayNeed3(em);
                 break;
-            case 3:
+            case MAP_DESERT:
                 Em_DecayNeed2(em);
                 Em_CheckLowHp(em, ratio);
                 break;
-            case 0xB:
+            case MAP_SNOWY_MOUNTAINS:
                 Em_CheckLowHp(em, ratio);
                 break;
             }
         } else {
             switch (k) {
-            case 3:
+            case MAP_DESERT:
                 Em_CheckLowHp(em, ratio);
                 break;
-            case 5:
+            case MAP_VOLCANO:
                 Em_CheckLowHp(em, ratio);
                 Em_DecayNeed1(em);
                 break;
-            case 4:
+            case MAP_SWAMP:
                 Em_CheckLowHp(em, ratio);
                 break;
             }
@@ -4782,7 +4784,7 @@ void EmKushala_Update(Em *em)
     case 11:
         if (em->type == 0x36 || em->type == 0x3C) {
             EmKushala_ChangeState(em, 4, 6, 3);
-        } else if (em->hit8Count > 0) {
+        } else if (em->partBreakCount > 0) {
             EmKushala_ChangeState(em, 4, 6, 3);
         } else {
             EmKushala_ChangeState(em, 4, 0xF, 3);
@@ -4836,46 +4838,46 @@ void EmKushala_Update(Em *em)
         }
         break;
     }
-    if (func_00725820(em, ev) == 1) {
+    if (Em_DamageResultIsReaction(em, ev) == 1) {
         EmKushala_BreakParts(em, 0);
     }
     switch (gQuest.stage) {
     case 0x430:
     case 0x431:
-        if ((em->type == 0x40 || em->type == 0x41) && Area_DayId(em->area) == 0xA8 && Save_TestEventFlag(0xA3) == 0) {
-            if (Area_DayId(gScene.area) == 0xA8 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if ((em->type == 0x40 || em->type == 0x41) && Area_DayId(em->area) == AREA_VOLCANO_7 && Save_TestEventFlag(0xA3) == 0) {
+            if (Area_DayId(gScene.area) == AREA_VOLCANO_7 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmKushala_ChangeState(em, 6, 5, 1);
             }
             break;
         }
         goto normal;
     case 0x138A:
-        if ((em->type == 0x36 || em->type == 0x3C) && Area_DayId(em->area) == 0x71 && Save_TestEventFlag(0x9D) == 0) {
-            if (Area_DayId(gScene.area) == 0x71 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if ((em->type == 0x36 || em->type == 0x3C) && Area_DayId(em->area) == AREA_JUNGLE_3 && Save_TestEventFlag(0x9D) == 0) {
+            if (Area_DayId(gScene.area) == AREA_JUNGLE_3 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmKushala_ChangeState(em, 6, 6, 1);
             }
             break;
         }
         goto normal;
     case 0x138C:
-        if ((em->type == 0x36 || em->type == 0x3C) && Area_DayId(em->area) == 0x61 && Save_TestEventFlag(0x9E) == 0) {
-            if (Area_DayId(gScene.area) == 0x61 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if ((em->type == 0x36 || em->type == 0x3C) && Area_DayId(em->area) == AREA_SNOWY_MOUNTAINS_6 && Save_TestEventFlag(0x9E) == 0) {
+            if (Area_DayId(gScene.area) == AREA_SNOWY_MOUNTAINS_6 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmKushala_ChangeState(em, 6, 2, 1);
             }
             break;
         }
         goto normal;
     case 0x138D:
-        if ((em->type == 0x40 || em->type == 0x41) && Area_DayId(em->area) == 0xA9 && Save_TestEventFlag(0x9F) == 0) {
-            if (Area_DayId(gScene.area) == 0xA9 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if ((em->type == 0x40 || em->type == 0x41) && Area_DayId(em->area) == AREA_VOLCANO_8 && Save_TestEventFlag(0x9F) == 0) {
+            if (Area_DayId(gScene.area) == AREA_VOLCANO_8 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmKushala_ChangeState(em, 6, 3, 1);
             }
             break;
         }
         goto normal;
     case 0x138F:
-        if ((em->type == 0x40 || em->type == 0x41) && Area_DayId(em->area) == 0x7C && Save_TestEventFlag(0xA0) == 0) {
-            if (Area_DayId(gScene.area) == 0x7C && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if ((em->type == 0x40 || em->type == 0x41) && Area_DayId(em->area) == AREA_TOWER_0x7C && Save_TestEventFlag(0xA0) == 0) {
+            if (Area_DayId(gScene.area) == AREA_TOWER_0x7C && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmKushala_ChangeState(em, 6, 7, 1);
             }
             break;
@@ -5000,7 +5002,7 @@ block_3:
         if (em->posY <= (1000.0f + em->floorY)) {
             EmKushala_SpawnGroundEffect(em, arg1, arg2, scale);
             if (flag != 0) {
-                EffEm07_CreateAt(em, (f32 *) &em->posX, 1U);
+                EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 1U);
             }
         }
     }
@@ -5017,7 +5019,7 @@ block_3:
         if (em->posY <= (1000.0f + em->floorY)) {
             StageObj_K14_Create((Em *) em, k, c, scale);
             if (flag != 0) {
-                EffEm07_CreateAt(em, (f32 *) &em->posX, 1U);
+                EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 1U);
             }
         }
     }
@@ -5054,7 +5056,7 @@ void EmKushala_SpawnK1CInMotions(Em *em, s16 motion)
     }
 }
 
-void Eff09_CreateOwned(Player *owner, f32 *pos, s32 kind);
+void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
 void EmKushala_MotionEffects(Em *em, EmWork *work)
 {
     f32 v3[3];
@@ -5073,144 +5075,144 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
     EmKushala_SpawnK1CInMotions(em, (s32) work->fxMotion);
     switch (work->fxMotion) {
     case 0x3F0:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 0x1F, 3, 8.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 25.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 25.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 0x19, 3, 8.0f * em->scaleX);
             break;
         }
         break;
     case 0x3F1:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 0x19, 3, 8.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 25.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 25.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 0x1F, 3, 8.0f * em->scaleX);
             break;
         }
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x3F5:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x3F6:
-        if ((Player_PassedFrameScaled(em, 26.0f, 0) != 0) || (Player_PassedFrameScaled(em, 76.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0)) {
             EmKushala_SpawnK14NearGround(em, 9, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x3F9:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             EmKushala_SpawnGroundEffectNearGround(em, 1, 7, 0, 10.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 66.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
             EmKushala_SpawnGroundEffectNearGround(em, 1, 0xC, 0, 12.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            EffEm07_CreateAt(em, (f32 *) &em->posX, 2);
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
+            EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 2);
             break;
         }
         break;
     case 0x3FA:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x3FB:
-        if (Player_PassedFrameScaled(em, 4.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x3FC:
-        if (Player_PassedFrameScaled(em, 4.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0) {
             EmKushala_SpawnGroundEffectNearGround(em, 1, 7, 0, 10.0f * em->scaleX);
             break;
         }
         break;
     case 0x3FD:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 8, 3, 8.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 0xD, 3, 8.0f * em->scaleX);
             break;
         }
         break;
     case 0x3FE:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0x1A, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x3FF:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0x1A, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x401:
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0x1B, 2.0f * em->scaleX);
             break;
         }
         break;
     case 0x402:
-        if (Player_PassedFrameScaled(em, 16.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 1, 7, 10.0f * em->scaleX);
             break;
         }
         break;
     case 0x403:
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 1, 0, em->scaleX);
             break;
         }
         break;
     case 0x408:
         if ((em->type == 0x36) || (em->type == 0x3C)) {
-            if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
-                EmKushala_SpawnEffect30(em, 0x1C);
+            if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
+                EmKushala_CreateAttack(em, 0x1C);
                 StageObj_K0F_CreateOnEm(em, 5, 3, 1.0f);
             }
-            if ((EmKushala_WindActive(em) == 1) && (Player_PassedFrameScaled(em, 186.0f, 0) != 0)) {
+            if ((EmKushala_WindActive(em) == 1) && (EmMotion_PassedFrameScaled(em, 186.0f, 0) != 0)) {
                 StageObj_K1C_CreateOnEm(em, 0x10, em->scaleX);
-                EffEm07_CreateAt(em, (f32 *) &em->posX, 4);
+                EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 4);
                 break;
             }
         } else {
-            if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
-                EmKushala_SpawnEffect30(em, 0x1C);
+            if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
+                EmKushala_CreateAttack(em, 0x1C);
                 StageObj_K0F_CreateOnEm(em, 5, 3, 1.0f);
             }
-            if ((EmKushala_WindActive2(em) == 1) && (Player_PassedFrameScaled(em, 186.0f, 0) != 0)) {
+            if ((EmKushala_WindActive2(em) == 1) && (EmMotion_PassedFrameScaled(em, 186.0f, 0) != 0)) {
                 StageObj_K1C_CreateOnEm(em, 0x10, em->scaleX);
-                EffEm07_CreateAt(em, (f32 *) &em->posX, 4);
+                EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 4);
                 break;
             }
         }
         break;
     case 0x409:
-        if (((em->type == 0x40) || (em->type == 0x41)) && (Player_PassedFrameScaled(em, 16.0f, 0) != 0)) {
+        if (((em->type == 0x40) || (em->type == 0x41)) && (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0)) {
             EmKushala_SpawnGroundEffect(em, 1, 7, 10.0f * em->scaleX);
             break;
         }
@@ -5222,108 +5224,108 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             v1[0] = 30.0f;
             v1[1] = 30.0f;
             v1[2] = 200.0f;
-            Em_SpawnEffect06Periodic(em, 0x25, v1, 1.6f);
+            Em_SpawnLyingPuffs(em, 0x25, v1, 1.6f);
             break;
         }
         break;
     case 0x410:
-        if (((em->type == 0x40) || (em->type == 0x41)) && (Player_PassedFrameScaled(em, 2.0f, 0) != 0)) {
+        if (((em->type == 0x40) || (em->type == 0x41)) && (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0)) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x411:
         if ((em->type == 0x40) || (em->type == 0x41)) {
-            if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
                 EmKushala_SpawnK14NearGround(em, 1, 0x1D, 0, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
                 EmKushala_SpawnK14NearGround(em, 1, 0x19, 0, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-                EmKushala_SpawnEffect30(em, 0x1D);
+            if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+                EmKushala_CreateAttack(em, 0x1D);
                 break;
             }
         }
         break;
     case 0x412:
         if ((em->type == 0x40) || (em->type == 0x41)) {
-            if (Player_PassedFrameScaled(em, 40.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0x1E, 1.5f * em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 32.0f, 0) != 0) {
-                EmKushala_SpawnEffect30(em, 0x1E);
+            if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
+                EmKushala_CreateAttack(em, 0x1E);
                 break;
             }
         }
         break;
     case 0x413:
         if ((em->type == 0x40) || (em->type == 0x41)) {
-            if (Player_PassedFrameScaled(em, 122.0f, 0) != 0) {
-                EmKushala_SpawnEffect30(em, 5);
+            if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
+                EmKushala_CreateAttack(em, 5);
             }
-            if (Player_PassedFrameScaled(em, 124.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 124.0f, 0) != 0) {
                 StageObj_K14_Create((Em *) em, 2, 0x20, 2.0f * em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 162.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
                 EmKushala_SpawnGroundEffect(em, 0x12, 0xC, 8.0f * em->scaleX);
                 break;
             }
         }
         break;
     case 0x414:
-        if (Player_PassedFrameScaled(em, 32.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 5);
             break;
         }
         break;
     case 0x415:
-        if (Player_PassedFrameScaled(em, 32.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 6);
             break;
         }
         break;
     case 0x416:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0xC);
             break;
         }
         break;
     case 0x417:
-        if (Player_PassedFrameScaled(em, 90.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x11);
             break;
         }
         break;
     case 0x419:
-        if ((Player_PassedFrameScaled(em, 2.0f, 0) != 0) || (Player_PassedFrameScaled(em, 60.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0)) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x41A:
         if ((em->type == 0x36) || (em->type == 0x3C)) {
-            if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
                 u8 area = gScene.map;
 
-                if (area == 0xB || area == 0x15) {
-                    EffEm08_CreateAtBone2(em, 0x25, 0x12, 1, 0x2000, 0, (s32) (131.0f * em->motionSpeed));
+                if (area == AREA_FORTRESS_4 || area == AREA_FOREST_HILLS_0) {
+                    EmRangedAttack_CreateAtBone2(em, 0x25, 0x12, 1, 0x2000, 0, (s32) (131.0f * em->motionSpeed));
                 } else {
-                    EffEm08_CreateAtBone2(em, 0x25, 0x12, 0, 0x2000, 0, (s32) (131.0f * em->motionSpeed));
+                    EmRangedAttack_CreateAtBone2(em, 0x25, 0x12, 0, 0x2000, 0, (s32) (131.0f * em->motionSpeed));
                 }
             }
-        } else if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            EffEm33_CreateB(em, 0xF, 0, 0x2000, 0);
+        } else if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
+            EmEffectAttack_CreateChain(em, 0xF, 0, 0x2000, 0);
             break;
         }
         break;
     case 0x41B:
         break;
     case 0x41C:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmKushala_SpawnGroundEffectNearGround(em, 1, 7, 0, 10.0f * em->scaleX);
         }
-        if ((Player_PassedFrameScaled(em, 52.0f, 0) != 0) && Player_InCurrentArea(em) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) && Player_InCurrentArea(em) && (em->posY <= (1000.0f + em->floorY))) {
             v2[0] = 0.0f;
             v2[1] = 0.0f;
             v2[2] = 400.0f * em->scaleZ;
@@ -5332,147 +5334,147 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             v3[1] = em->floorY;
             v3[2] = em->posZ + v2[2];
             StageObj_K1C_CreateAtYaw(v3, (u16) em->rotY, 0x11, 1.2f);
-            Eff09_CreateOwned((Player *)em, v3, 0x1E);
+            Explosion_CreateOwned((Player *)em, v3, 0x1E);
             break;
         }
         break;
     case 0x41D:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 1, 0xC, 8.0f * em->scaleX);
             break;
         }
         break;
     case 0x41E:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x12);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 64.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) {
             EmKushala_SpawnGroundEffectNearGround(em, 1, 7, 0, 10.0f * em->scaleX);
             break;
         }
         break;
     case 0x41F:
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 8, 4, 6.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0x1E, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x420:
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 4);
         }
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0xF);
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0xF);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 0xD, 4, 6.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0x1C, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x421:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x13);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x13);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x14);
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x14);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x15);
         }
-        if (Player_PassedFrameScaled(em, 6.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 1, 7, 10.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0x1F, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x422:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x16);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x16);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x17);
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x17);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            EmKushala_SpawnEffect30(em, 0x18);
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
+            EmKushala_CreateAttack(em, 0x18);
         }
-        if (Player_PassedFrameScaled(em, 6.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
             EmKushala_SpawnGroundEffectNearGround(em, 1, 7, 0, 10.0f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0x1F, 1.5f * em->scaleX);
             break;
         }
         break;
     case 0x426:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 1, 7, 8.0f * em->scaleX);
             break;
         }
         break;
     case 0x427:
-        if ((Player_PassedFrameScaled(em, 22.0f, 0) != 0) || (Player_PassedFrameScaled(em, 70.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0)) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x429:
-        if (Player_PassedFrameScaled(em, 16.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 0xB, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x42A:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 1, 0xC, 8.0f * em->scaleX);
             break;
         }
         break;
     case 0x42C:
-        if (Player_PassedFrameScaled(em, 420.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 420.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x42F:
-        if (Player_PassedFrameScaled(em, 190.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 190.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0, em->scaleX);
         }
         if (EmMotion_ReachedFrame(em, 0, 228.0f) != 0) {
             v0[0] = -30.0f;
             v0[1] = 30.0f;
             v0[2] = 200.0f;
-            Em_SpawnEffect06Periodic(em, 0x25, v0, 1.6f);
+            Em_SpawnLyingPuffs(em, 0x25, v0, 1.6f);
             break;
         }
         break;
     case 0x431:
-        if (Player_PassedFrameScaled(em, 134.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0, em->scaleX);
             break;
         }
         break;
     case 0x432:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0, em->scaleX);
             break;
         }
@@ -5497,16 +5499,16 @@ void EmKushala_UpdateMotionEffects(Em *em)
     }
 }
 
-void EmKushala_SpawnEffect30(Em *em, s32 kind)
+void EmKushala_CreateAttack(Em *em, s32 kind)
 {
     u8 type;
 
     type = em->type;
     if ((type == 0x36) || (type == 0x3C)) {
-        EffKushala30_Create(em, kind);
+        KushalaAttack_Create(em, kind);
         return;
     }
-    EffKushala30b_Create(em, kind);
+    TeostraAttack_Create(em, kind);
 }
 
 void EmKushala_SpawnEffect02AtBone27(Em *em)
@@ -5538,11 +5540,11 @@ s32 EmKushala_AllowHit8(Em *em)
 {
     if (em->stance != 2 && em->stance != 1) {
         if (em->type == 0x36 || em->type == 0x3C) {
-            if (em->hp <= (s16) (0.3f * em->hpMax) && em->hit8Count == 0) {
+            if (em->hp <= (s16) (0.3f * em->hpMax) && em->partBreakCount == 0) {
                 return 1;
             }
         } else {
-            if (em->hp <= (s16) (0.4f * em->hpMax) && em->hit8Count <= 1) {
+            if (em->hp <= (s16) (0.4f * em->hpMax) && em->partBreakCount <= 1) {
                 return 1;
             }
         }
@@ -5608,7 +5610,7 @@ void EmKind38_Init(Em *em)
     s16 hp;
 
     if (gQuest.stage == 0 && !(em->spawnParam & 1)) {
-        if (gScene.area == 0xF) {
+        if (gScene.area == AREA_SNOWY_MOUNTAINS_NIGHT_9) {
             em->posX = 9500.0f + 150.0f * (em->slotNo / 8);
             em->posY = 0.0f;
             em->posZ = 9200.0f + 150.0f * (em->slotNo & 7);
@@ -5620,7 +5622,7 @@ void EmKind38_Init(Em *em)
     }
     Em_SetMotionRow(em, 1, 0, 0);
     Player_ClearVelocity(em);
-    hp = Em_ComputeSize(em, 0);
+    hp = Em_ComputeMaxHp(em, 0);
     em->hp = hp;
     em->hpMax = hp;
     w->baseScale = em->bodyScale;
@@ -6120,7 +6122,7 @@ void EmKind38_State3_00(Em *em, u8 k)
         if (--em->timer <= 0) {
             em->step++;
             w->unk03B = 1;
-            EmKind38_SpawnEffect02(em);
+            EmKind38_CreateAttack(em);
             em->rotY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
             em->accelY = 0.0f;
             p = &EmKind38_State3Pts[em->variant][k];
@@ -6155,7 +6157,7 @@ void EmKind38_State3_00(Em *em, u8 k)
     EmKind38_MoveByVelocity(em);
 }
 
-void * EmKind38_SpawnEffect02(Em *em)
+void * EmKind38_CreateAttack(Em *em)
 {
     s8 kind;
 
@@ -6163,7 +6165,7 @@ void * EmKind38_SpawnEffect02(Em *em)
     if ((em->stateRand & 0x1F) < (s32) EmKind38_Effect02Chance[em->variant]) {
         kind = 2;
     }
-    return EffEm02_Create(em, kind);
+    return BulldromeAttack_Create(em, kind);
 }
 
 void EmKind38_State3_02(Em *em)
@@ -6205,7 +6207,7 @@ void EmKind38_State3_02(Em *em)
             if ((s32)Player_InCurrentArea(em) & 0xFF) {
                 Mtx_GetTrans(pos, em->model->bones[2].world);
                 StageObj_K0E_CreateScaled(pos, 0, 1.0f);
-                Eff09_CreateAt(pos, 0x22, em->area, 0);
+                Explosion_CreateAt(pos, 0x22, em->area, 0);
             }
             EmKind38_ChangeState(em, 5, 1, 3);
             return;
@@ -7075,7 +7077,7 @@ void EmShakalaka_Init(Em *em)
     f32 p;
 
     if (gQuest.stage == 0) {
-        if (gScene.area == 0xF || gScene.area == 0x25) {
+        if (gScene.area == AREA_SNOWY_MOUNTAINS_NIGHT_9 || gScene.area == AREA_FOREST_HILLS_4) {
             em->posX = 9500.0f + 150.0f * (em->slotNo / 8);
             em->posY = 0.0f;
             em->posZ = 9200.0f + 150.0f * (em->slotNo & 7);
@@ -7089,7 +7091,7 @@ void EmShakalaka_Init(Em *em)
     em->remote = 0;
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = 0;
-    em->hpMax = em->hp = Em_ComputeSize(em, 0);
+    em->hpMax = em->hp = Em_ComputeMaxHp(em, 0);
     w->unk00E = 0;
     w->unk00C = 0;
     w->home[0] = em->posX;
@@ -7160,7 +7162,7 @@ void EmShakalaka_Reinit(Em *em)
     EmShakalaka_Init(em);
 }
 
-s32 EmKushala_EffEm14State(Em *em)
+s32 EmShakalaka_BombState(Em *em)
 {
     EmKushalaWork *w = (EmKushalaWork *)&em->work;
 
@@ -7416,7 +7418,7 @@ void EmShakalaka_State0_09(Em *em)
 {
     f32 pos[3];
 
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -7434,7 +7436,7 @@ void EmShakalaka_State0_09(Em *em)
         pos[2] = 10.0f;
         pos[0] = 0.0f;
         pos[1] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0xA, pos, 0.6f);
+        Em_SpawnLyingPuffs(em, 0xA, pos, 0.6f);
         if (--em->timer <= 0) {
             em->step++;
             EmShakalaka_ChangeState(em, 0, 0xA, 4);
@@ -7628,11 +7630,11 @@ void EmShakalaka_State1_05(Em *em)
         em->step++;
         em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
         Em_SetMotion(em, 0xC, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (Angle_StepToward(&em->rotY, &em->targetAngle, 0x800) < 0x800) {
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmShakalaka_EndState(em);
         }
         break;
@@ -7878,18 +7880,18 @@ void EmShakalaka_State3_01(Em *em, s32 variant)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 45.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 45.0f, 0U) != 0) {
             em->step++;
             w->unk00E = 1;
             if (!(variant & 0xFF)) {
-                EffEm14_Create(em, 4);
+                EmBomb_Create(em, 4);
                 break;
             }
-            EffEm14_Create(em, 5);
+            EmBomb_Create(em, 5);
         }
         break;
     case 3:
-        if (Player_PassedFrameScaled(em, 94.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0U) != 0) {
             em->step++;
             w->unk00E = 0;
         }
@@ -7928,7 +7930,7 @@ void EmShakalaka_State3_02(Em *em)
             em->velY = 30.0f;
             em->accelY = -2.5f;
             em->velZ = 6.0f;
-            EffShakalaka34_Create(em, 4);
+            ShakalakaAttack_Create(em, 4);
         }
         break;
     case 3:
@@ -7975,7 +7977,7 @@ void EmShakalaka_State3_03(Em *em, s32 variant)
             em->velY = EmShakalaka_State3_03Vel[variant & 0xFF].x;
             em->accelY = D_008CA324[variant & 0xFF].x;
             em->velZ = D_008CA328[variant & 0xFF].x;
-            EffShakalaka34_Create(em, 2);
+            ShakalakaAttack_Create(em, 2);
         }
         break;
     case 2:
@@ -8120,8 +8122,8 @@ void EmShakalaka_State4_03(Em *em)
     timer = em->timer;
     if (timer > 0) {
         em->timer = timer - 1;
-        Em_SpawnEffect06Bone(em, 2);
-        Em_SetHitReactMode(em, 4U);
+        Em_SpawnStatus4Effect(em, 2);
+        Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     }
     switch (em->step) {
     case 0:
@@ -8603,41 +8605,41 @@ void EmShakalaka_MotionEffects(Em *em, EmWork *work)
     switch (work->fxMotion) {
     case 0x3EF:
     case 0x3F0:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 1, 0x14, 2.0f);
         }
         break;
     case 0x3FD:
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            EffShakalaka34_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
+            ShakalakaAttack_Create(em, 1);
         }
         break;
     case 0x3F5:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffShakalaka34_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            ShakalakaAttack_Create(em, 3);
         }
         break;
     case 0x3F6:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffShakalaka34_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            ShakalakaAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 1, 0x14, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 1, 4, 2.0f);
         }
         break;
     case 0x400:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 0xA, 0x14, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 0xA, 4, 2.0f);
         }
         break;
     case 0x405:
-        if ((Player_PassedFrameScaled(em, 4.0f, 0) != 0) && Player_InCurrentArea(em)) {
+        if ((EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0) && Player_InCurrentArea(em)) {
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = 55.0f * em->scaleZ;
@@ -8650,43 +8652,43 @@ void EmShakalaka_MotionEffects(Em *em, EmWork *work)
             pos[1] += v[1];
             pos[2] += v[2];
             StageObj_K11_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 0.2f * em->scaleX);
-            EffEm07_CreateAt(em, (f32 *) pos, 0xD);
+            EmImpactAttack_CreateAt(em, (f32 *) pos, 0xD);
         }
         break;
     case 0x425:
-        if ((Player_PassedFrameScaled(em, 28.0f, 0) != 0) || (Player_PassedFrameScaled(em, 60.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0)) {
             EmShakalaka_SpawnGroundEffect(em, 1, 0x14, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 1, 4, 2.0f);
         }
         break;
     case 0x42A:
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 0xA, 4, 2.0f);
         }
         break;
     case 0x42B:
-        if (Player_PassedFrameScaled(em, 206.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 206.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 0xA, 4, 2.0f);
         }
         break;
     case 0x42C:
-        if ((Player_PassedFrameScaled(em, 16.0f, 0) != 0) || (Player_PassedFrameScaled(em, 46.0f, 0) != 0) || (Player_PassedFrameScaled(em, 76.0f, 0) != 0) || (Player_PassedFrameScaled(em, 106.0f, 0) != 0) || (Player_PassedFrameScaled(em, 132.0f, 0) != 0) || (Player_PassedFrameScaled(em, 152.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 106.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 152.0f, 0) != 0)) {
             v[0] = 0.0f;
             v[1] = 0.0f;
             v[2] = 55.0f * em->scaleZ;
             EmShakalaka_SpawnGroundEffectOffset(em, 1, 4, v, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 218.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 218.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 0xA, 7, 0.5f);
         }
         break;
     case 0x42E:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 3, 4, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
             EmShakalaka_SpawnGroundEffect(em, 3, 7, 0.5f);
         }
         break;
@@ -9664,13 +9666,13 @@ u16 EmKushala_IdleTbl[24] = {
 EmTurnParams EmKushala_TurnParams[1] = {
 #include "game/008CA1F0.inc"
 };
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 s32 EmKushala_State3_0FTimers[6][2] = {
 #include "game/008CA210.inc"
 };
 void *EmKushala_Callbacks[8] = {
     EmKushala_SpawnEffects, EmKushala_SpawnEffects, EmKushala_TableNop, EmKushala_UpdateMotionEffects,
-    func_0090A9C0, EmKushala_Reinit, EmKushala_AllowHit8, NULL,
+    GmEm_ReturnZero, EmKushala_Reinit, EmKushala_AllowHit8, NULL,
 };
 f32 EmKind38_VelLimits[6] = {
 #include "game/008CA260.inc"
@@ -9686,7 +9688,7 @@ EmKVec EmKind38_State2_08Accel[4] = {
 };
 void *EmKind38_Callbacks[8] = {
     EmKind38_SpawnEffects, EmKind38_SpawnEffects, EmKind38_TableNop, EmKind38_UpdateMotionEffects,
-    func_0090A9C0, EmKind38_Reinit, NULL, NULL,
+    GmEm_ReturnZero, EmKind38_Reinit, NULL, NULL,
 };
 f32 EmKind38_HeightRange[2][2] = {
 #include "game/008CA2F0.inc"

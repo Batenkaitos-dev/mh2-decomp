@@ -115,12 +115,12 @@ s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
 void Mtx_Concat3x3(f32 *m, f32 *a);
 extern f32 gCamMatrix[];
 void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-extern u8 EffKushala39_KeysA[];
-extern u8 EffKushala39_ColorsA[];
-extern u8 EffKushala39_KeysB[];
-extern u8 EffKushala39_ColorsB[];
-extern u8 EffKushala39_KeysC[];
-extern u8 EffKushala39_ColorsC[];
+extern u8 TeostraBlastRing_ScaleKeysStart[];
+extern u8 TeostraBlastRing_ColorKeysStart[];
+extern u8 TeostraBlastRing_ScaleKeysMiddle[];
+extern u8 TeostraBlastRing_ColorKeysMiddle[];
+extern u8 TeostraBlastRing_ScaleKeysEnd[];
+extern u8 TeostraBlastRing_ColorKeysEnd[];
 extern f32 AreaObj_K00_PosArea29[];
 extern f32 AreaObj_K00_PosArea2A[];
 extern f32 AreaObj_K00_PosArea2B[];
@@ -147,7 +147,7 @@ typedef struct ObjSlots2 {
     DrawSlot *ds[2];
 } ObjSlots2;
 f32 Math_Floor(f32 x);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 extern f32 AreaObj_K08_Steps[];
 s32 QuestGoal_DeliveryDone(void);
 s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
@@ -204,7 +204,7 @@ extern f32 D_43F0A4[];
 extern f32 D_43F0A8[];
 void Mtx_Identity(f32 *m);
 void AreaObj_K05_Update(Obj *o);
-void EffChameleos40_Update(ObjAttach *o);
+void ChameleosAttack_Update(ObjAttach *o);
 void AreaObj_K03_Draw(DrawSlot *ds);
 s16 AreaObj_K09_FindFreeChild(Obj *o);
 typedef struct ObjList32 {
@@ -261,7 +261,7 @@ typedef struct QuestMsgWin {
 } QuestMsgWin;
 extern QuestMsgWin gQuestMsgWindowBuf;
 u8 MsgEvent_SetCount(u8 arg0);
-void EffRemobra26_Update(ObjAttach *o);
+void RemobraAttack_Update(ObjAttach *o);
 u8 Player_InCurrentArea(void *obj);
 ObjAttach *ObjAttach_Alloc(s32 n);
 s32 MsgEvent_CheckDay(s32 arg0, s32 arg1, s8 arg2);
@@ -274,12 +274,12 @@ extern MsgEvent gMsgEventCheck12[];
 extern MsgEvent gMsgEventCheck14[];
 extern MsgEvent gMsgEventCheck5[];
 extern MsgEvent gMsgEventCheck8[];
-extern HitShape *EffChameleos40_Vals088[];
-extern void *EffChameleos40_MotionRef;
+extern HitShape *ChameleosAttack_HitShapes[];
+extern void *ChameleosAttack_RowsPtr;
 f32 Math_Absf(f32 x);
-extern HitShape *EffRemobra26_Vals088[];
-extern void *EffRemobra26_MotionRef;
-extern u8 EffKushala39_ModelSets[];
+extern HitShape *RemobraAttack_HitShapes[];
+extern void *RemobraAttack_RowsPtr;
+extern u8 TeostraBlastRing_ModelKinds[];
 s16 EmSlot_FindKind(s16 id);
 s32 Model_Draw(u32 h, s32 flags);
 void ObjAttach_Free(ObjAttach *p);
@@ -289,14 +289,14 @@ void Save_SetEventFlag(s32 n);
 s32 Save_TestEventFlag(s32);
 void Shake_Start(u8 id, u8 flags, f32 amp);
 s32 Shake_Update(u8 id);
-void EffChameleos40_Setup(ObjAttach *o);
-void EffChameleos40_Run(ObjAttach *o);
-void EffChameleos40_End(ObjAttach *o);
-void EffChameleos40_Free(ObjAttach *o);
-void EffRemobra26_Setup(ObjAttach *o);
-void EffRemobra26_Run(ObjAttach *o);
-void EffRemobra26_End(ObjAttach *o);
-void EffRemobra26_Free(ObjAttach *o);
+void ChameleosAttack_Setup(ObjAttach *o);
+void ChameleosAttack_Run(ObjAttach *o);
+void ChameleosAttack_End(ObjAttach *o);
+void ChameleosAttack_Free(ObjAttach *o);
+void RemobraAttack_Setup(ObjAttach *o);
+void RemobraAttack_Run(ObjAttach *o);
+void RemobraAttack_End(ObjAttach *o);
+void RemobraAttack_Free(ObjAttach *o);
 void MsgEvent_DrawList(void);
 u8 MsgEvent_Kind(u8, u8);
 void AreaObj_K00_Setup(Obj *o);
@@ -395,125 +395,140 @@ s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
 /* end of prototypes */
 
-void EffKushala39_Free(ObjAttach *o)
+/* Frees the burst (ObjAttach_Free). */
+void TeostraBlastRing_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-s16 EffKushala39_FindModelSet(void)
+/*
+ * Returns the slot (EmSlot_FindKind) of the first kind of
+ * TeostraBlastRing_ModelKinds (Lunastra, then Teostra) that is loaded, or -1.
+ */
+s16 TeostraBlastRing_FindModelSlot(void)
 {
-    u8 *p = EffKushala39_ModelSets;
-    u8 id;
-    s16 r;
+    u8 *kinds = TeostraBlastRing_ModelKinds;
+    u8 kind;
+    s16 slot;
 
-    for (id = *p; id != 0xFF; id = *++p) {
-        r = EmSlot_FindKind(id);
-        if (r != -1) {
-            return r;
+    for (kind = *kinds; kind != 0xFF; kind = *++kinds) {
+        slot = EmSlot_FindKind(kind);
+        if (slot != -1) {
+            return slot;
         }
     }
     return -1;
 }
 
-/* draws a stage model of the common set (or of the bank EffKushala39_FindModelSet finds, kind 2) at a draw node
+/* draws a stage model of the common set (or of the bank TeostraBlastRing_FindModelSlot finds, kind 2) at a draw node
  * (d), for the object at +0x18 when it is in the current area */
-void EffKushala39_Draw(DrawSlot *d)
+void TeostraBlastRing_Draw(DrawSlot *drawSlot)
 {
     u32 col;
     f32 scale[3];
     f32 rot[3];
-    f32 m[16];
-    f32 mt[16];
+    f32 mtx[16];
+    f32 uvMtx[16];
     ObjAttach *o;
-    EffKushala39Buf *w;
-    Model *set;
-    u8 *mdl;
-    u8 *key;
-    u8 *cc;
+    TeostraBlastRingBuf *ringBuf;
+    Model *bank;
+    u8 *matSet;
+    u8 *scaleKeys;
+    u8 *colorKeys;
     u16 flags;
     s16 i;
-    s8 f;
+    s8 frame;
 
-    set = gStageModelSet;
-    o = d->owner;
-    w = (EffKushala39Buf *) o->buf;
+    bank = gStageModelSet;
+    o = drawSlot->owner;
+    ringBuf = (TeostraBlastRingBuf *) o->buf;
     flags = 0;
     if (o->area != gScene.area) {
         return;
     }
-    switch (w->phase) {
+    switch (ringBuf->phase) {
     case 0:
-        mdl = (u8 *) &set->matSets[81];
+        matSet = (u8 *) &bank->matSets[81];
         flags |= 2;
-        key = EffKushala39_KeysA;
-        cc = EffKushala39_ColorsA;
+        scaleKeys = TeostraBlastRing_ScaleKeysStart;
+        colorKeys = TeostraBlastRing_ColorKeysStart;
         break;
     case 1:
-        mdl = (u8 *) &set->matSets[78];
-        f = o->ownerMotion;
+        matSet = (u8 *) &bank->matSets[78];
+        frame = o->ownerMotion;
         flags |= 2;
-        key = EffKushala39_KeysB;
-        cc = EffKushala39_ColorsB;
-        Mtx_Translation(mt, 0.25f * (f & 3), 0.25f * (f / 4), 0.0f);
-        Gs_SetState(0x19, (s32) mt);
+        scaleKeys = TeostraBlastRing_ScaleKeysMiddle;
+        colorKeys = TeostraBlastRing_ColorKeysMiddle;
+        Mtx_Translation(uvMtx, 0.25f * (frame & 3), 0.25f * (frame / 4), 0.0f);
+        Gs_SetState(0x19, (s32) uvMtx);
         break;
     case 2:
-        i = EffKushala39_FindModelSet();
+        i = TeostraBlastRing_FindModelSlot();
         if (i == -1) {
             return;
         }
-        set = gScene.partModels[i];
+        bank = gScene.partModels[i];
         flags |= 4;
-        key = EffKushala39_KeysC;
-        cc = EffKushala39_ColorsC;
-        mdl = (u8 *) &set->matSets[1];
+        scaleKeys = TeostraBlastRing_ScaleKeysEnd;
+        colorKeys = TeostraBlastRing_ColorKeysEnd;
+        matSet = (u8 *) &bank->matSets[1];
         break;
     }
-    if (set != NULL && set->active != 0) {
-        set = (Model *) set->mats;
+    if (bank != NULL && bank->active != 0) {
+        bank = (Model *) bank->mats;
         rot[0] = 0.0f;
         rot[1] = 0.0f;
-        rot[2] = 6.2831855f * w->rotZ / 65536.0f;
-        Key_LerpVec3((f32 *) key, (f32 *) scale, o->ownerMotion);
-        scale[0] *= w->scale;
-        scale[1] *= w->scale;
-        Mtx_FromScaleRotTrans(scale, rot, d->pos, 3, m);
-        Mtx_Concat3x3(m, gCamMatrix);
-        Color_EvalKeys((s32 *) cc, o->ownerMotion, &col);
-        Gs_SetState(0x1A, (s32) m);
+        rot[2] = 6.2831855f * ringBuf->rotZ / 65536.0f;
+        Key_LerpVec3((f32 *) scaleKeys, (f32 *) scale, o->ownerMotion);
+        scale[0] *= ringBuf->scale;
+        scale[1] *= ringBuf->scale;
+        Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
+        Mtx_Concat3x3(mtx, gCamMatrix);
+        Color_EvalKeys((s32 *) colorKeys, o->ownerMotion, &col);
+        Gs_SetState(0x1A, (s32) mtx);
         Gs_SetState(0x67, col);
         Gs_SetState(0x6C, 0);
-        Effect_DrawModel(mdl, m, col, flags, set);
+        Effect_DrawModel(matSet, mtx, col, flags, bank);
         Gs_SetState(0x6C, 1);
     }
 }
 
-f32 EffKushala39_UnpackFloat(u16 a, u16 b)
+/*
+ * Returns a scatter value from bits: the low 16 - |16 - bitPos| bits, shifted
+ * up by |16 - bitPos| and divided by 64000 (0 to about 1.02), negated when
+ * the shift is even. TeostraBlastRing_Setup passes randBits times the burst's
+ * number.
+ */
+f32 TeostraBlastRing_ScatterFromBits(u16 bits, u16 bitPos)
 {
     s32 sign = -1;
-    u16 sh = Math_Absf(16 - b);
-    u16 mask = 0xFFFF >> sh;
+    u16 shift = Math_Absf(16 - bitPos);
+    u16 mask = 0xFFFF >> shift;
 
-    if (sh & 1) {
+    if (shift & 1) {
         sign = 1;
     }
-    return 0.000015625f * sign * ((a & mask) << sh);
+    return 0.000015625f * sign * ((bits & mask) << shift);
 }
 
-void EffChameleos40_Create(Em *em, s32 k)
+/*
+ * Makes a ChameleosAttack of type for em, if a player is in em's area. Types
+ * 4 and 7 face backward (yaw + 0x8000).
+ */
+void ChameleosAttack_Create(Em *em, s32 attackType)
 {
     ObjAttach *o;
 
     if ((u8) Player_InCurrentArea(em) != 0 && (o = ObjAttach_Alloc(0)) != NULL) {
-        o->kind = 0x28;
-        o->type = k;
-        o->update = EffChameleos40_Update;
+        o->kind = ATTACH_CHAMELEOS_ATTACK;
+        o->type = attackType;
+        o->update = ChameleosAttack_Update;
         o->idx = em->index;
         o->isEm = em->isEm;
         o->ownerMotion = em->motionId[0];
         o->owner = em;
         o->yaw = em->rotY;
-        switch (k) {
+        switch (attackType) {
         case 4:
         case 7:
             *(u16 *) &o->yaw += 0x8000;
@@ -524,68 +539,77 @@ void EffChameleos40_Create(Em *em, s32 k)
         o->rotZ = em->rotZ;
         o->side = *(u8 *) &em->side;
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
     }
 }
 
-void EffChameleos40_Update(ObjAttach *o)
+/*
+ * The ChameleosAttack's per-frame update, by ObjAttach.state: a hit keeps it
+ * running; states 4, 5, 7 and 9 end it.
+ */
+void ChameleosAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffChameleos40_Setup(o);
+    case ATTACH_SETUP:
+        ChameleosAttack_Setup(o);
         break;
-    case 1:
-        EffChameleos40_Run(o);
+    case ATTACH_RUN:
+        ChameleosAttack_Run(o);
         break;
-    case 2:
-        EffChameleos40_End(o);
+    case ATTACH_END:
+        ChameleosAttack_End(o);
         break;
-    case 3:
-        EffChameleos40_Run(o);
+    case ATTACH_HIT:
+        ChameleosAttack_Run(o);
         break;
     case 4:
-        EffChameleos40_End(o);
+        ChameleosAttack_End(o);
         break;
-    case 5:
-        EffChameleos40_End(o);
+    case ATTACH_DEFLECTED:
+        ChameleosAttack_End(o);
         break;
-    case 9:
-        EffChameleos40_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        ChameleosAttack_End(o);
         break;
     case 7:
-        EffChameleos40_End(o);
+        ChameleosAttack_End(o);
         break;
-    case 6:
-        EffChameleos40_Free(o);
+    case ATTACH_FREE:
+        ChameleosAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffChameleos40_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from attack row type: its hit shapes,
+ * ATKF_OWNER_CONTACT, and hitDelay counted from the monster's motion (layer 1
+ * for type 3, else layer 0).
+ */
+void ChameleosAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
-    s32 b;
+    Em *em = &gEms[o->idx];
+    s32 blend;
+    s32 frame;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffChameleos40_MotionRef);
-    o->hitList = EffChameleos40_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &ChameleosAttack_RowsPtr);
+    o->hitList = ChameleosAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
         if (o->type == 3) {
-            a = Math_Absf((s16) m->motionBlend[1] % 100);
-            b = Math_Absf(m->motionFrame[1]);
+            blend = Math_Absf((s16) em->motionBlend[1] % 100);
+            frame = Math_Absf(em->motionFrame[1]);
         } else {
-            a = Math_Absf((s16) m->motionBlend[0] % 100);
-            b = Math_Absf(m->motionFrame[0]);
+            blend = Math_Absf((s16) em->motionBlend[0] % 100);
+            frame = Math_Absf(em->motionFrame[0]);
         }
-        o->hitDelay += a - b - 1;
+        o->hitDelay += blend - frame - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -593,9 +617,13 @@ void EffChameleos40_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffChameleos40_Run(ObjAttach *o)
+/*
+ * Type 6 keeps the window open. Type 9 also survives motions 0x413 and 0x41D.
+ * Otherwise the attack ends when the motion changes or the window closes.
+ */
+void ChameleosAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 6:
@@ -604,15 +632,15 @@ void EffChameleos40_Run(ObjAttach *o)
     }
     switch (o->type) {
     case 9:
-        if ((m->motionId[0] != 0x413 && m->motionId[0] != 0x41D && m->motionId[0] != o->ownerMotion) || o->hitPhase == 0) {
+        if ((em->motionId[0] != 0x413 && em->motionId[0] != 0x41D && em->motionId[0] != o->ownerMotion) || o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     default:
-        if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+        if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     }
@@ -622,29 +650,38 @@ void EffChameleos40_Run(ObjAttach *o)
     }
 }
 
-void EffChameleos40_End(ObjAttach *o)
+/*
+ * Ends the attack: closes its hit window, hides it and frees its draw slot.
+ * It is freed on the next update.
+ */
+void ChameleosAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffChameleos40_Free(ObjAttach *o)
+/* Frees the attack (ObjAttach_Free). */
+void ChameleosAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffRemobra26_Create(Em *em, u8 k)
+/*
+ * Makes a RemobraAttack of type for em, if a player is in em's area: 1 from
+ * EmRemobra_State3_00, 2 and 3 from EmRemobra_State3_05.
+ */
+void RemobraAttack_Create(Em *em, u8 attackType)
 {
     ObjAttach *o;
 
     if ((u8) Player_InCurrentArea(em) != 0 && (o = ObjAttach_Alloc(0)) != NULL) {
-        o->kind = 0x1A;
-        o->type = k;
-        o->update = EffRemobra26_Update;
+        o->kind = ATTACH_HERMITAUR_ATTACK;
+        o->type = attackType;
+        o->update = RemobraAttack_Update;
         o->idx = em->index;
         o->isEm = em->isEm;
         o->ownerMotion = em->motionId[0];
@@ -655,61 +692,70 @@ void EffRemobra26_Create(Em *em, u8 k)
         o->rotZ = em->rotZ;
         o->side = *(u8 *) &em->side;
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
     }
 }
 
-void EffRemobra26_Update(ObjAttach *o)
+/*
+ * The RemobraAttack's per-frame update, by ObjAttach.state: a hit keeps it
+ * running; states 4, 5, 7 and 9 end it.
+ */
+void RemobraAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffRemobra26_Setup(o);
+    case ATTACH_SETUP:
+        RemobraAttack_Setup(o);
         break;
-    case 1:
-        EffRemobra26_Run(o);
+    case ATTACH_RUN:
+        RemobraAttack_Run(o);
         break;
-    case 2:
-        EffRemobra26_End(o);
+    case ATTACH_END:
+        RemobraAttack_End(o);
         break;
-    case 3:
-        EffRemobra26_Run(o);
+    case ATTACH_HIT:
+        RemobraAttack_Run(o);
         break;
     case 4:
-        EffRemobra26_End(o);
+        RemobraAttack_End(o);
         break;
-    case 5:
-        EffRemobra26_End(o);
+    case ATTACH_DEFLECTED:
+        RemobraAttack_End(o);
         break;
-    case 9:
-        EffRemobra26_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        RemobraAttack_End(o);
         break;
     case 7:
-        EffRemobra26_End(o);
+        RemobraAttack_End(o);
         break;
-    case 6:
-        EffRemobra26_Free(o);
+    case ATTACH_FREE:
+        RemobraAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffRemobra26_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from attack row type at the monster's position (hitScale
+ * 1.0): its hit shapes, ATKF_OWNER_CONTACT, and hitDelay counted from the
+ * monster's motion.
+ */
+void RemobraAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffRemobra26_MotionRef);
-    o->hitList = EffRemobra26_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &RemobraAttack_RowsPtr);
+    o->hitList = RemobraAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
-    Vec_Copy(o->pos, (f32 *)&m->posX);
+    o->area = em->area;
+    Vec_Copy(o->pos, (f32 *)&em->posX);
     o->hitScale = 1.0f;
     if (o->hitDelay != 0) {
-        o->hitDelay += (s32) Math_Absf((s16) m->motionBlend[0] % 100) - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        o->hitDelay += (s32) Math_Absf((s16) em->motionBlend[0] % 100) - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -717,13 +763,16 @@ void EffRemobra26_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffRemobra26_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or its hit window closes.
+ */
+void RemobraAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -731,17 +780,22 @@ void EffRemobra26_Run(ObjAttach *o)
     }
 }
 
-void EffRemobra26_End(ObjAttach *o)
+/*
+ * Ends the attack: closes its hit window, hides it and frees its draw slot.
+ * It is freed on the next update.
+ */
+void RemobraAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffRemobra26_Free(ObjAttach *o)
+/* Frees the attack (ObjAttach_Free). */
+void RemobraAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
@@ -950,7 +1004,7 @@ void MsgEvent_DrawPopup(void)
 }
 
 /* The message strings of this unit (0x8DE300-0x8EC0A0), which only .data points to (e.g. the
- * table at 0x8AF3F0); they sit between EffRemobra26_Update's jump table and MsgEvent_DrawList's data. */
+ * table at 0x8AF3F0); they sit between RemobraAttack_Update's jump table and MsgEvent_DrawList's data. */
 INCLUDE_RODATA("asm/game/nonmatchings/unk_6EC680", D_008DE300);
 INCLUDE_RODATA("asm/game/nonmatchings/unk_6EC680", D_008DE320);
 INCLUDE_RODATA("asm/game/nonmatchings/unk_6EC680", D_008DE340);
@@ -1754,47 +1808,47 @@ void AreaObj_K00_Setup(Obj *o)
     o->draw = NULL;
     o->timer = 0;
     switch (gScene.area) {
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         n = 1;
         pos = AreaObj_K00_PosArea29;
         break;
-    case 0x2A:
-    case 0xC3:
+    case AREA_FOREST_HILLS_11:
+    case AREA_FOREST_HILLS_NIGHT_11:
         n = 2;
         pos = AreaObj_K00_PosArea2A;
         break;
-    case 0x2B:
-    case 0xC4:
+    case AREA_FOREST_HILLS_12:
+    case AREA_FOREST_HILLS_NIGHT_12:
         n = 1;
         pos = AreaObj_K00_PosArea2B;
         break;
-    case 0x5C:
-    case 0x65:
+    case AREA_SNOWY_MOUNTAINS_1:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_1:
         n = 1;
         pos = AreaObj_K00_PosArea5C;
         break;
-    case 0x5E:
-    case 0x67:
+    case AREA_SNOWY_MOUNTAINS_3:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_3:
         n = 1;
         pos = AreaObj_K00_PosArea5E;
         break;
-    case 0x82:
+    case AREA_TOWER_8:
         n = 2;
         pos = AreaObj_K00_PosArea82;
         break;
-    case 0x32:
-    case 0x90:
+    case AREA_DESERT_NIGHT_4:
+    case AREA_DESERT_4:
         n = 2;
         pos = AreaObj_K00_PosArea32;
         break;
-    case 0x44:
-    case 0x9A:
+    case AREA_SWAMP_NIGHT_3:
+    case AREA_SWAMP_3:
         n = 2;
         pos = AreaObj_K00_PosArea44;
         break;
-    case 0x45:
-    case 0x9B:
+    case AREA_SWAMP_NIGHT_4:
+    case AREA_SWAMP_4:
         n = 2;
         pos = AreaObj_K00_PosArea45;
         break;
@@ -1832,10 +1886,10 @@ void AreaObj_K00_Run(Obj *o)
 
     o->timer++;
     switch (gScene.area) {
-    case 0x5C:
-    case 0x5E:
-    case 0x65:
-    case 0x67:
+    case AREA_SNOWY_MOUNTAINS_1:
+    case AREA_SNOWY_MOUNTAINS_3:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_1:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_3:
         lim = 0x200;
         break;
     default:
@@ -1881,49 +1935,49 @@ void AreaObj_K00_Draw(DrawSlot *ds)
         Mtx_Copy(m, gCamYawMtx);
         n = 100;
         switch (gScene.area) {
-        case 0x29:
-        case 0xC2:
+        case AREA_FOREST_HILLS_7:
+        case AREA_FOREST_HILLS_NIGHT_7:
             Mtx_ScaleBy(m, AreaObj_K00_Scale[ds->part * 3], D_008B00D4[ds->part * 3], D_008B00D8[ds->part * 3]);
             rz = D_008B00CA[ds->part * 2];
             mdl = stage->matSets + 1;
             Mtx_RotateX(m, 6.2831855f * AreaObj_K00_RotX[ds->part * 2] / 360.0f);
             Mtx_RotateZ(m, 6.2831855f * rz / 360.0f);
             break;
-        case 0x2A:
-        case 0xC3:
+        case AREA_FOREST_HILLS_11:
+        case AREA_FOREST_HILLS_NIGHT_11:
             f = AreaObj_K00_DrawF[ds->part];
             Mtx_ScaleBy(m, f, 1.0f, f);
             mdl = stage->matSets;
             Mtx_RotateZ(m, 6.2831855f * AreaObj_K00_RotZA[ds->part] / 360.0f);
             break;
-        case 0x2B:
-        case 0xC4:
+        case AREA_FOREST_HILLS_12:
+        case AREA_FOREST_HILLS_NIGHT_12:
             mdl = stage->matSets;
             Mtx_RotateZ(m, 6.2831855f * AreaObj_K00_RotZB[ds->part] / 360.0f);
             break;
-        case 0x5C:
-        case 0x65:
+        case AREA_SNOWY_MOUNTAINS_1:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_1:
             Mtx_Identity(m);
             n = 0x200;
             mdl = stage->matSets + 3;
             break;
-        case 0x5E:
-        case 0x67:
+        case AREA_SNOWY_MOUNTAINS_3:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_3:
             Mtx_Identity(m);
             n = 0x200;
             mdl = stage->matSets + 3;
             break;
-        case 0x82:
+        case AREA_TOWER_8:
             mdl = stage->matSets + ds->part + 2;
             break;
-        case 0x32:
-        case 0x90:
+        case AREA_DESERT_NIGHT_4:
+        case AREA_DESERT_4:
             mdl = stage->matSets + AreaObj_K00_Models[ds->part];
             break;
-        case 0x44:
-        case 0x45:
-        case 0x9A:
-        case 0x9B:
+        case AREA_SWAMP_NIGHT_3:
+        case AREA_SWAMP_NIGHT_4:
+        case AREA_SWAMP_3:
+        case AREA_SWAMP_4:
             mdl = stage->matSets;
             break;
         }
@@ -2162,25 +2216,25 @@ void AreaObj_K03_Run(Obj *o)
     f32 pos[3];
 
     switch (gScene.area) {
-    case 0x38:
-    case 0x96:
+    case AREA_DESERT_NIGHT_10:
+    case AREA_DESERT_10:
         tbl = (f32 (*)[3]) AreaObj_K03_Points;
         break;
-    case 0x32:
-    case 0x44:
-    case 0x49:
-    case 0x82:
-    case 0x90:
-    case 0x9A:
-    case 0x9B:
-    case 0x9F:
+    case AREA_DESERT_NIGHT_4:
+    case AREA_SWAMP_NIGHT_3:
+    case AREA_SWAMP_NIGHT_8:
+    case AREA_TOWER_8:
+    case AREA_DESERT_4:
+    case AREA_SWAMP_3:
+    case AREA_SWAMP_4:
+    case AREA_SWAMP_8:
         AreaObj_K03_RunA(o);
         return;
-    case 0x0C:
-    case 0x19:
-    case 0x4E:
-    case 0xB0:
-    case 0xB4:
+    case AREA_FORTRESS_5:
+    case AREA_CASTLE_1:
+    case AREA_FORTRESS_NIGHT_5:
+    case AREA_BATTLE_TOWN_1:
+    case AREA_BATTLE_TOWN_NIGHT_1:
         AreaObj_K03_RunB(o);
         return;
     default:
@@ -2250,49 +2304,49 @@ void AreaObj_K03_RunA(Obj *o)
             *pz += q[2];
             switch (gScene.area) {
             default:
-            case 0x82:
+            case AREA_TOWER_8:
                 o->var2 = 5;
                 n = 1;
                 sc = AreaObj_K03_Sc82;
                 r = AreaObj_K03_R82;
                 break;
-            case 0x32:
+            case AREA_DESERT_NIGHT_4:
                 o->var2 = 8;
                 n = 1;
                 sc = AreaObj_K03_Sc32;
                 r = AreaObj_K03_R32;
                 break;
-            case 0x44:
+            case AREA_SWAMP_NIGHT_3:
                 n = 2;
                 o->var2 = 2;
                 sc = AreaObj_K03_Sc44;
                 r = AreaObj_K03_R44;
                 break;
-            case 0x49:
+            case AREA_SWAMP_NIGHT_8:
                 o->var2 = 1;
                 n = 2;
                 sc = AreaObj_K03_Sc49;
                 r = AreaObj_K03_R49;
                 break;
-            case 0x90:
+            case AREA_DESERT_4:
                 o->var2 = 8;
                 n = 1;
                 sc = AreaObj_K03_Sc90;
                 r = AreaObj_K03_R90;
                 break;
-            case 0x9A:
+            case AREA_SWAMP_3:
                 n = 2;
                 o->var2 = 2;
                 sc = AreaObj_K03_Sc44;
                 r = AreaObj_K03_R44;
                 break;
-            case 0x9B:
+            case AREA_SWAMP_4:
                 n = 2;
                 o->var2 = 2;
                 sc = AreaObj_K03_Sc9B;
                 r = AreaObj_K03_R9B;
                 break;
-            case 0x9F:
+            case AREA_SWAMP_8:
                 o->var2 = 1;
                 n = 2;
                 sc = AreaObj_K03_Sc49;
@@ -2315,22 +2369,22 @@ void AreaObj_K03_RunA(Obj *o)
         if (++o->timer >= 30) {
             switch (gScene.area) {
             default:
-            case 0x82:
+            case AREA_TOWER_8:
                 o->var2 = 4;
                 break;
-            case 0x32:
-            case 0x90:
+            case AREA_DESERT_NIGHT_4:
+            case AREA_DESERT_4:
                 o->var2 = 5;
                 break;
-            case 0x44:
-            case 0x9A:
+            case AREA_SWAMP_NIGHT_3:
+            case AREA_SWAMP_3:
                 o->var2 = 1;
                 break;
-            case 0x9B:
+            case AREA_SWAMP_4:
                 o->var2 = 1;
                 break;
-            case 0x49:
-            case 0x9F:
+            case AREA_SWAMP_NIGHT_8:
+            case AREA_SWAMP_8:
                 o->var2 = 0;
                 break;
             }
@@ -2410,19 +2464,19 @@ void AreaObj_K03_Draw(DrawSlot *ds)
         Gs_SetState(0x67, -1);
         Mtx_Translation(m, ds->pos[0], ds->pos[1], ds->pos[2]);
         switch (gScene.area) {
-        case 0x38:
-        case 0x96:
+        case AREA_DESERT_NIGHT_10:
+        case AREA_DESERT_10:
             mdl = stage->matSets + 1;
             Mtx_Translation(m2, 0.0f, 1.0f - o->timer / 100.0f, 0.0f);
             break;
-        case 0x32:
-        case 0x44:
-        case 0x49:
-        case 0x82:
-        case 0x90:
-        case 0x9A:
-        case 0x9B:
-        case 0x9F:
+        case AREA_DESERT_NIGHT_4:
+        case AREA_SWAMP_NIGHT_3:
+        case AREA_SWAMP_NIGHT_8:
+        case AREA_TOWER_8:
+        case AREA_DESERT_4:
+        case AREA_SWAMP_3:
+        case AREA_SWAMP_4:
+        case AREA_SWAMP_8:
             mdl = stage->matSets + o->var2;
             if (o->var0 == 1) {
                 a = 8.5f * o->timer;
@@ -2435,29 +2489,29 @@ void AreaObj_K03_Draw(DrawSlot *ds)
             }
             Gs_SetState(0x67, (a << 24) | 0xFFFFFF);
             break;
-        case 0xB0:
-        case 0xB4:
+        case AREA_BATTLE_TOWN_1:
+        case AREA_BATTLE_TOWN_NIGHT_1:
             Mtx_Translation(m2, 0.0f, o->fvar, 0.0f);
             flat = 1;
             mdl = stage->matSets + 5;
             Gs_SetState(0x6C, 0);
             Gs_SetState(0x67, ((u8) (0xFF - (u8) (12.75f * o->timer)) << 24) | 0xFFFFFF);
             break;
-        case 0x0C:
+        case AREA_FORTRESS_5:
             Mtx_Translation(m2, 0.0f, o->fvar, 0.0f);
             flat = 1;
             mdl = stage->matSets + 7;
             Gs_SetState(0x6C, 0);
             Gs_SetState(0x67, ((u8) (0xFF - (u8) (12.75f * o->timer)) << 24) | 0xFFFFFF);
             break;
-        case 0x4E:
+        case AREA_FORTRESS_NIGHT_5:
             Mtx_Translation(m2, 0.0f, o->fvar, 0.0f);
             flat = 1;
             mdl = stage->matSets + 8;
             Gs_SetState(0x6C, 0);
             Gs_SetState(0x67, ((u8) (0xFF - (u8) (12.75f * o->timer)) << 24) | 0xFFFFFF);
             break;
-        case 0x19:
+        case AREA_CASTLE_1:
             Mtx_RotateY(m, 0.45378563f);
             Mtx_Translation(m2, 0.0f, o->fvar, 0.0f);
             flat = 1;
@@ -2484,7 +2538,7 @@ void AreaObj_K04_Create(void)
 {
     Obj *obj;
 
-    if ((gScene.area == 0x1C || gScene.area == 0x50) && (gScene.emEventFlags & 1)) {
+    if ((gScene.area == AREA_FORTRESS_3 || gScene.area == AREA_FORTRESS_NIGHT_3) && (gScene.emEventFlags & 1)) {
         return;
     }
     obj = Obj_Alloc(0);
@@ -2522,38 +2576,38 @@ void AreaObj_K04_Setup(Obj *o)
     o->timer = 0;
     o->var3 = 0;
     switch (gScene.area) {
-    case 0xE:
-    case 0x4F:
+    case AREA_FORTRESS_1:
+    case AREA_FORTRESS_NIGHT_1:
         o->pos[0] = 12680.0f;
         o->pos[1] = 696.0f;
         o->pos[2] = 12756.0f;
         break;
-    case 0x1C:
-    case 0x50:
+    case AREA_FORTRESS_3:
+    case AREA_FORTRESS_NIGHT_3:
         o->pos[0] = 10400.0f;
         o->pos[1] = 1300.0f;
         o->pos[2] = 20570.0f;
         break;
-    case 0x2E:
-    case 0x59:
+    case AREA_ARENAS_NIGHT_0:
+    case AREA_ARENAS_0:
         o->pos[0] = 10007.0f;
         o->pos[1] = 200.0f;
         o->pos[2] = 9377.0f;
         break;
-    case 0x39:
-    case 0x5A:
+    case AREA_GREAT_ARENA_NIGHT_1:
+    case AREA_GREAT_ARENA_1:
         o->pos[0] = 5129.0f;
         o->pos[1] = 1513.0f;
         o->pos[2] = 10935.0f;
         break;
-    case 0x42:
-    case 0x5B:
+    case AREA_ARENA_NIGHT_1:
+    case AREA_ARENA_1:
         o->pos[0] = 9908.0f;
         o->pos[1] = 2957.0f;
         o->pos[2] = 15082.0f;
         break;
-    case 0x61:
-    case 0x6A:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
         o->pos[0] = 11600.0f;
         o->pos[1] = 4460.0f;
         o->pos[2] = 7610.0f;
@@ -2581,39 +2635,39 @@ void AreaObj_K04_Run(Obj *o)
 
     o->var3++;
     switch (gScene.area) {
-    case 0xE:
+    case AREA_FORTRESS_1:
         lo = 2;
         hi = 0x11;
         break;
-    case 0x4F:
+    case AREA_FORTRESS_NIGHT_1:
         lo = 3;
         hi = 0x12;
         break;
-    case 0x1C:
-    case 0x50:
+    case AREA_FORTRESS_3:
+    case AREA_FORTRESS_NIGHT_3:
         if (gScene.emEventFlags & 1) {
             return;
         }
         lo = 4;
         hi = 0x13;
         break;
-    case 0x2E:
-    case 0x59:
+    case AREA_ARENAS_NIGHT_0:
+    case AREA_ARENAS_0:
         lo = 1;
         hi = 0x10;
         break;
-    case 0x39:
-    case 0x5A:
+    case AREA_GREAT_ARENA_NIGHT_1:
+    case AREA_GREAT_ARENA_1:
         lo = 6;
         hi = 0x15;
         break;
-    case 0x42:
-    case 0x5B:
+    case AREA_ARENA_NIGHT_1:
+    case AREA_ARENA_1:
         lo = 1;
         hi = 0x10;
         break;
-    case 0x61:
-    case 0x6A:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
         switch (QuestGoal_DeliveryDone()) {
         case 0:
             return;
@@ -2668,35 +2722,35 @@ void AreaObj_K04_Draw(DrawSlot *ds)
     if (stage != NULL && stage->active != 0) {
         Mtx_Translation(m, ds->pos[0], ds->pos[1], ds->pos[2]);
         switch (gScene.area) {
-        case 0x0E:
+        case AREA_FORTRESS_1:
             Mtx_RotateY(m, 6.2831855f * (30.0f * Math_Sin(6.2831855f * (o->var3 << 8) / 65536.0f)) / 360.0f);
             k = 2;
             break;
-        case 0x4F:
+        case AREA_FORTRESS_NIGHT_1:
             Mtx_RotateY(m, 6.2831855f * (30.0f * Math_Sin(6.2831855f * (o->var3 << 8) / 65536.0f)) / 360.0f);
             k = 3;
             break;
-        case 0x1C:
-        case 0x50:
+        case AREA_FORTRESS_3:
+        case AREA_FORTRESS_NIGHT_3:
             k = 4;
             break;
-        case 0x2E:
-        case 0x59:
+        case AREA_ARENAS_NIGHT_0:
+        case AREA_ARENAS_0:
             Mtx_RotateY(m, 6.2831855f * (30.0f * Math_Sin(6.2831855f * (o->var3 << 8) / 65536.0f)) / 360.0f);
             k = 1;
             break;
-        case 0x39:
-        case 0x5A:
+        case AREA_GREAT_ARENA_NIGHT_1:
+        case AREA_GREAT_ARENA_1:
             Mtx_RotateY(m, 6.2831855f * (30.0f * Math_Sin(6.2831855f * (o->var3 << 8) / 65536.0f)) / 360.0f);
             k = 6;
             break;
-        case 0x42:
-        case 0x5B:
+        case AREA_ARENA_NIGHT_1:
+        case AREA_ARENA_1:
             Mtx_RotateY(m, 6.2831855f * (30.0f * Math_Sin(6.2831855f * (o->var3 << 8) / 65536.0f)) / 360.0f);
             k = 1;
             break;
-        case 0x61:
-        case 0x6A:
+        case AREA_SNOWY_MOUNTAINS_6:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_6:
             Mtx_RotateY(m, 6.2831855f * (30.0f * Math_Sin(6.2831855f * (o->var3 << 8) / 65536.0f)) / 360.0f);
             k = 13;
             break;
@@ -2826,7 +2880,7 @@ s32 Obj_InCurrentArea(void *obj);
 s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
 s32 Player_IsLocal(void *obj);
 /* unit's own declaration: with the definition's void (f32 *pos, u8 kind, u8 area, s32 ang) (game/unk_6D3B50.c), AreaObj_K05_Run: 3 of 681 words differ */
-void Eff22_CreateAt(f32 *pos, u8 code, u8 area, u16 ang);
+void StageShot_CreateAt(f32 *pos, u8 code, u8 area, u16 ang);
 void Vec_Add(f32 *out, f32 *a, f32 *b);
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
 extern u16 AreaObj_K05_Sounds[];
@@ -2840,7 +2894,7 @@ extern f32 AreaObj_K05_SpawnPos8[];
 extern f32 D_008B04BC[];
 extern s32 gQuestCountdown;
 /* K05 area object: in state 2 it counts up and, by step (unk005), creates
- * the K03 objects and K0E effects of its type (8; 1 and 6; 2) and an Eff22
+ * the K03 objects and K0E effects of its type (8; 1 and 6; 2) and an StageShot
  * effect; in state 1 it follows the players on it (motion 0x19E) with its
  * sound. The gScene.countdownOn test is a default-first switch: MWCC then leaves
  * the compare branches' slots empty in the whole function. */
@@ -2949,10 +3003,10 @@ void AreaObj_K05_Run(Obj *o)
                 if (code != 0xFF) {
                     switch (o->type) {
                     case 8:
-                        Eff22_CreateAt(o->ds->pos, code, gScene.area, ang);
+                        StageShot_CreateAt(o->ds->pos, code, gScene.area, ang);
                         break;
                     default:
-                        Eff22_CreateAt(o->pos, code, gScene.area, ang);
+                        StageShot_CreateAt(o->pos, code, gScene.area, ang);
                         break;
                     }
                 }
@@ -3268,7 +3322,7 @@ static s32 AreaObj_K07_Select3(s16 k, s32 a, s32 b, s32 c)
     }
 }
 
-/* The set-up state of the parts object of areas 0x2A, 0x61, 0x69, 0x6A, 0x6D, 0xB3 and 0xB7 (its
+/* The set-up state of the parts object of AREA_FOREST_HILLS_11, AREA_SNOWY_MOUNTAINS_6, AREA_SNOWY_MOUNTAINS_NIGHT_5, AREA_SNOWY_MOUNTAINS_NIGHT_6, AREA_SNOWY_MOUNTAINS_NIGHT_8, AREA_BATTLE_TOWN_0 and AREA_BATTLE_TOWN_NIGHT_0 (its
  * update, AreaObj_K07_Run, runs them): n parts placed from the area table, each with its state and
  * level, and draw slots (AreaObj_K07_Draw) for up to m of them. */
 /* Its object as a void * beside the Obj view: the object kept on the stack is the view, as in the original. */
@@ -3291,37 +3345,37 @@ void AreaObj_K07_Setup(void *arg)
     o->var3 = 0;
     cnt = 0;
     switch (gScene.area) {
-    case 0x2A:
-    case 0xC3:
+    case AREA_FOREST_HILLS_11:
+    case AREA_FOREST_HILLS_NIGHT_11:
         n = m = 8;
         pos = AreaObj_K07_PosArea2A;
         break;
-    case 0x61:
+    case AREA_SNOWY_MOUNTAINS_6:
         n = 6;
         m = 2;
         pos = AreaObj_K07_PosArea61;
         lv = Area_MonsterState(gScene.area);
         break;
-    case 0x69:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
         m = 1;
         n = 4;
         pos = AreaObj_K07_PosArea69;
         lv = Area_MonsterState(gScene.area);
         break;
-    case 0x6A:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
         n = 7;
         m = 2;
         pos = AreaObj_K07_PosArea6A;
         lv = Area_MonsterState(gScene.area);
         break;
-    case 0x6D:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
         m = 1;
         n = 3;
         pos = AreaObj_K07_PosArea6D;
         lv = Area_MonsterState(gScene.area);
         break;
-    case 0xB3:
-    case 0xB7:
+    case AREA_BATTLE_TOWN_0:
+    case AREA_BATTLE_TOWN_NIGHT_0:
         n = 13;
         m = n;
         pos = AreaObj_K07_PosAreaB3;
@@ -3335,7 +3389,7 @@ void AreaObj_K07_Setup(void *arg)
         if (i < n) {
             skip = 0;
             switch (gScene.area) {
-            case 0x61:
+            case AREA_SNOWY_MOUNTAINS_6:
                 switch (i) {
                 case 0:
                     l->state[i] = 1;
@@ -3356,7 +3410,7 @@ void AreaObj_K07_Setup(void *arg)
                     break;
                 }
                 break;
-            case 0x69:
+            case AREA_SNOWY_MOUNTAINS_NIGHT_5:
                 switch (i) {
                 case 0:
                     l->state[i] = 0;
@@ -3374,7 +3428,7 @@ void AreaObj_K07_Setup(void *arg)
                     break;
                 }
                 break;
-            case 0x6A:
+            case AREA_SNOWY_MOUNTAINS_NIGHT_6:
                 switch (i) {
                 case 0:
                     l->state[i] = 0;
@@ -3396,7 +3450,7 @@ void AreaObj_K07_Setup(void *arg)
                     break;
                 }
                 break;
-            case 0x6D:
+            case AREA_SNOWY_MOUNTAINS_NIGHT_8:
                 switch (i) {
                 case 0:
                     l->state[i] = 0;
@@ -3414,8 +3468,8 @@ void AreaObj_K07_Setup(void *arg)
                     break;
                 }
                 break;
-            case 0xB3:
-            case 0xB7:
+            case AREA_BATTLE_TOWN_0:
+            case AREA_BATTLE_TOWN_NIGHT_0:
                 switch (i) {
                 case 0:
                 case 1:
@@ -3486,7 +3540,7 @@ void AreaObj_K07_Run(Obj *o)
     for (i = 0; i < 13; i++) {
         mode = 0;
         switch (gScene.area) {
-        case 0x61:
+        case AREA_SNOWY_MOUNTAINS_6:
             switch (l->state[i]) {
             default:
                 l->rot[i] += AreaObj_K07_SpinDef[i];
@@ -3520,7 +3574,7 @@ void AreaObj_K07_Run(Obj *o)
                 break;
             }
             break;
-        case 0x69:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_5:
             switch (l->state[i]) {
             case 0:
             case 3:
@@ -3541,7 +3595,7 @@ void AreaObj_K07_Run(Obj *o)
                 break;
             }
             break;
-        case 0x6A:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_6:
             switch (l->state[i]) {
             case 0:
             case 3:
@@ -3575,7 +3629,7 @@ void AreaObj_K07_Run(Obj *o)
                 break;
             }
             break;
-        case 0x6D:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_8:
             switch (l->state[i]) {
             case 0:
             case 3:
@@ -3596,8 +3650,8 @@ void AreaObj_K07_Run(Obj *o)
                 break;
             }
             break;
-        case 0xB3:
-        case 0xB7:
+        case AREA_BATTLE_TOWN_0:
+        case AREA_BATTLE_TOWN_NIGHT_0:
             switch (l->state[i]) {
             case 1:
                 l->level[i] = (u8) (24.0f * (1.0f + Math_Sin(6.2831855f * (as->frame << 12) / 65536.0f))) + 0xCF;
@@ -3646,7 +3700,7 @@ extern s16 D_008B07F8[];
 extern s16 AreaObj_K07_Models6D[];
 extern s16 AreaObj_K07_ModelsB7[];
 
-/* Draws the stage objects of areas 0x2A/0xC3, 0x61, 0x69, 0x6A, 0x6D and 0xB3/0xB7. */
+/* Draws the stage objects of AREA_FOREST_HILLS_11/AREA_FOREST_HILLS_NIGHT_11, AREA_SNOWY_MOUNTAINS_6, AREA_SNOWY_MOUNTAINS_NIGHT_5, AREA_SNOWY_MOUNTAINS_NIGHT_6, AREA_SNOWY_MOUNTAINS_NIGHT_8 and AREA_BATTLE_TOWN_0/AREA_BATTLE_TOWN_NIGHT_0. */
 void AreaObj_K07_Draw(DrawSlot *ds)
 {
     Model *stage = gAreaSubModels[0];
@@ -3660,8 +3714,8 @@ void AreaObj_K07_Draw(DrawSlot *ds)
     f32 uv[16];
 
     switch (gScene.area) {
-    case 0xB3:
-    case 0xB7:
+    case AREA_BATTLE_TOWN_0:
+    case AREA_BATTLE_TOWN_NIGHT_0:
         stage = *(Model **) ((u8 *) as + 0x3C);
         break;
     default:
@@ -3674,8 +3728,8 @@ void AreaObj_K07_Draw(DrawSlot *ds)
         break;
     }
     switch (gScene.area) {
-    case 0x2A:
-    case 0xC3:
+    case AREA_FOREST_HILLS_11:
+    case AREA_FOREST_HILLS_NIGHT_11:
         mdl = stage->matSets + 4;
         Mtx_Translation(uv, 0.25f * ((o->timer >> 1) & 3), 0.25f * ((o->timer >> 3) & 3), 0.0f);
         Gs_SetState(0x19, (s32) uv);
@@ -3683,7 +3737,7 @@ void AreaObj_K07_Draw(DrawSlot *ds)
         Mtx_Scale(m, AreaObj_K07_Scale[ds->part * 3], AreaObj_K07_Scale[ds->part * 3 + 1], AreaObj_K07_Scale[ds->part * 3 + 2]);
         Mtx_Concat3x3(m, gCamYawMtx);
         goto draw;
-    case 0x61:
+    case AREA_SNOWY_MOUNTAINS_6:
         Gs_SetState(0x60, 0);
         switch (b->kind[ds->part]) {
         case 0:
@@ -3718,7 +3772,7 @@ void AreaObj_K07_Draw(DrawSlot *ds)
             goto draw;
         }
         break;
-    case 0x69:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
         Gs_SetState(0x60, 0);
         for (i = 0; i < 4; i++) {
             mdl = stage->matSets + AreaObj_K07_Models69[i];
@@ -3749,7 +3803,7 @@ void AreaObj_K07_Draw(DrawSlot *ds)
         }
         Draw_SetDefaultState();
         return;
-    case 0x6A:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
         Gs_SetState(0x60, 0);
         switch (b->kind[ds->part]) {
         case 0:
@@ -3790,7 +3844,7 @@ void AreaObj_K07_Draw(DrawSlot *ds)
             goto draw;
         }
         break;
-    case 0x6D:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
         Gs_SetState(0x60, 0);
         for (i = 0; i < 3; i++) {
             mdl = stage->matSets + AreaObj_K07_Models6D[i];
@@ -3816,8 +3870,8 @@ void AreaObj_K07_Draw(DrawSlot *ds)
         }
         Draw_SetDefaultState();
         return;
-    case 0xB3:
-    case 0xB7:
+    case AREA_BATTLE_TOWN_0:
+    case AREA_BATTLE_TOWN_NIGHT_0:
         mdl = stage->matSets + AreaObj_K07_ModelsB7[ds->part];
         Gs_SetLightList(stage->mats, mdl);
         Mtx_Translation(m, ds->pos[0], ds->pos[1], ds->pos[2]);
@@ -3966,13 +4020,13 @@ void AreaObj_K08_Draw(DrawSlot *s)
                     Gs_SetState(0x1A, (s32) m2);
                     if (mdl->id != -1) {
                         Draw_ApplyStates(mdl->flags);
-                        Gfx_SetState63(1);
+                        Gfx_SetTexFilter(1);
                         Model_Draw(mdl->id, 0);
                     }
                 }
             }
         }
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         Gs_SetState(0x60, 0);
         Draw_SetDefaultState();
     }
@@ -4291,11 +4345,11 @@ void AreaObj_K09_SetupType0(Obj *o)
         l->count[i + 1] = 0;
     }
     switch (gScene.area) {
-    case 0x20:
-    case 0x5A:
-    case 0x8E:
-    case 0x94:
-    case 0x95:
+    case AREA_FOREST_HILLS_6:
+    case AREA_GREAT_ARENA_1:
+    case AREA_DESERT_2:
+    case AREA_DESERT_8:
+    case AREA_DESERT_9:
         if (l->count[0] < 32) {
             for (i = 0; i < 4; i++) {
                 if (l->count[7] < 4) {
@@ -4304,13 +4358,13 @@ void AreaObj_K09_SetupType0(Obj *o)
             }
         }
         break;
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         if (l->count[0] < 32 && l->count[6] <= 0) {
             AreaObj_K09_Spawn(o, 6, 0);
         }
         break;
-    case 0x82:
+    case AREA_TOWER_8:
         if (l->count[0] < 32) {
             for (i = 0; i < 10; i++) {
                 AreaObj_K09_Spawn(o, 8, i);
@@ -4329,13 +4383,13 @@ void AreaObj_K09_RunType0(Obj *o)
 
     o->timer++;
     switch (gScene.area) {
-    case 0x6:
+    case AREA_SNOWY_MOUNTAINS_9:
         if (l->count[0] < 32 && l->count[5] < 2) {
             AreaObj_K09_Spawn(o, 5, 0);
         }
         break;
-    case 0x21:
-    case 0xBA:
+    case AREA_FOREST_HILLS_3:
+    case AREA_FOREST_HILLS_NIGHT_3:
         if (*(u8 *) &o->timer == 0 && l->count[0] < 32 && l->count[11] < 2) {
             n = (s16) (Rand_Next(1) & 1) + 1;
             for (i = 0; i < n; i++) {
@@ -4346,20 +4400,20 @@ void AreaObj_K09_RunType0(Obj *o)
             }
         }
         break;
-    case 0x24:
-    case 0xBD:
+    case AREA_FOREST_HILLS_9:
+    case AREA_FOREST_HILLS_NIGHT_9:
         if (l->count[0] < 32 && l->count[8] < 2) {
             AreaObj_K09_Spawn(o, 8, 0);
         }
         break;
-    case 0x28:
-    case 0xC1:
+    case AREA_FOREST_HILLS_5:
+    case AREA_FOREST_HILLS_NIGHT_5:
         if (l->count[0] < 32 && l->count[4] < 2) {
             AreaObj_K09_Spawn(o, 4, 0);
         }
         break;
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         if (o->timer >= 60 && l->count[0] < 32) {
             AreaObj_K09_Spawn(o, 1, 0);
             o->timer = 0;
@@ -4391,8 +4445,8 @@ void AreaObj_K09_SetupType1(Obj *o)
 
     o->var0 = Rand_Next(1) & 3;
     switch (gScene.area) {
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         o->pos[0] = 9773.0f + (f32) (Rand_Next(1) & 0x7FF);
         o->pos[1] = 3000.0f;
         o->pos[2] = 9173.0f + (f32) (Rand_Next(1) & 0x3FF);
@@ -4609,8 +4663,8 @@ void AreaObj_K09_SetupType3(Obj *o)
     o->var2 = 0;
     o->timer = 0;
     switch (gScene.area) {
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         o->pos[0] = 9773.0f + (f32) (Rand_Next(1) & 0x7FF);
         o->pos[1] = 300.0f;
         o->pos[2] = 9173.0f + (f32) (Rand_Next(1) & 0x3FF);
@@ -4624,7 +4678,7 @@ void AreaObj_K09_SetupType3(Obj *o)
     t->spinZ = 0;
 }
 
-/* The run state of the wandering objects that AreaObj_K09_SetupType3 places (areas 0x29 and 0xC2, where it
+/* The run state of the wandering objects that AreaObj_K09_SetupType3 places (AREA_FOREST_HILLS_7 and AREA_FOREST_HILLS_NIGHT_7, where it
  * ends once out of its box): random bursts of speed (unk005), turns (unk006) and climbs (unk007). */
 void AreaObj_K09_RunType3(Obj *o)
 {
@@ -4632,8 +4686,8 @@ void AreaObj_K09_RunType3(Obj *o)
     f32 d[3];
 
     switch (gScene.area) {
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         if (!(o->pos[0] >= 9773.0f && o->pos[0] <= 11174.0f && o->pos[1] <= 2000.0f && o->pos[2] >= 9173.0f &&
               o->pos[2] <= 10576.0f)) {
             o->state++;
@@ -4790,14 +4844,14 @@ void AreaObj_K09_SetupType4(Obj *o)
     o->timer = 0;
     area = gScene.area;
     switch (area) {
-    case 0x28:
-    case 0xC1:
+    case AREA_FOREST_HILLS_5:
+    case AREA_FOREST_HILLS_NIGHT_5:
         o->pos[0] = 10750.0f + (f32) (Rand_Next(1) & 0xFF);
         o->pos[1] = 450.0f;
         o->pos[2] = 11700.0f + (f32) (Rand_Next(1) & 0xFF);
         break;
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         o->pos[0] = 9773.0f + (f32) (Rand_Next(1) & 0xFFFF & 0x7FF);
         o->pos[1] = 150.0f;
         o->pos[2] = 9173.0f + (f32) (Rand_Next(1) & 0xFFFF & 0x3FF);
@@ -4814,16 +4868,16 @@ void AreaObj_K09_RunType4(Obj *o)
     f32 d[3];
 
     switch (gScene.area) {
-    case 0x28:
-    case 0xC1:
+    case AREA_FOREST_HILLS_5:
+    case AREA_FOREST_HILLS_NIGHT_5:
         if (o->pos[0] < 10450.0f || o->pos[0] > 11850.0f || o->pos[1] > 1500.0f || o->pos[2] < 11400.0f ||
             o->pos[2] > 12500.0f) {
             o->state++;
             return;
         }
         break;
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         if (o->pos[0] < 9773.0f || o->pos[0] > 11174.0f || o->pos[1] > 2000.0f || o->pos[2] < 9173.0f ||
             o->pos[2] > 10576.0f) {
             o->state++;
@@ -4921,13 +4975,13 @@ void AreaObj_K09_SetupType5(Obj *o)
     o->var0 = 0;
     o->var1 = 0;
     switch (gScene.area) {
-    case 6:
+    case AREA_SNOWY_MOUNTAINS_9:
         o->pos[0] = 6500.0f + (f32) (Rand_Next(1) & 0x7FF);
         o->pos[1] = 150.0f;
         o->pos[2] = 12750.0f + (f32) (Rand_Next(1) & 0x7FF);
         break;
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         o->pos[0] = 9773.0f + (f32) (Rand_Next(1) & 0x7FF);
         o->pos[1] = 150.0f;
         o->pos[2] = 9173.0f + (f32) (Rand_Next(1) & 0x3FF);
@@ -4972,7 +5026,7 @@ void AreaObj_K09_RunType5(Obj *o)
     f32 d[3];
 
     switch (gScene.area) {
-    case 6:
+    case AREA_SNOWY_MOUNTAINS_9:
         if (!(o->pos[0] >= 6500.0f && o->pos[0] <= 9000.0f && o->pos[1] <= 2000.0f && o->pos[1] >= -100.0f &&
               o->pos[2] >= 12750.0f && o->pos[2] <= 15000.0f)) {
             o->state++;
@@ -4980,8 +5034,8 @@ void AreaObj_K09_RunType5(Obj *o)
         }
         sc = 1.0f;
         break;
-    case 0x29:
-    case 0xC2:
+    case AREA_FOREST_HILLS_7:
+    case AREA_FOREST_HILLS_NIGHT_7:
         if (!(o->pos[0] >= 9773.0f && o->pos[0] <= 11174.0f && o->pos[1] <= 2000.0f && o->pos[1] >= -100.0f &&
               o->pos[2] >= 9173.0f && o->pos[2] <= 10576.0f)) {
             o->state++;
@@ -5199,7 +5253,7 @@ void AreaObj_K09_SetupType7(Obj *o)
     f32 e;
 
     switch (gScene.area) {
-    case 0x0F:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_9:
         o->pos[0] = 2000.0f + (Rand_Next(1) & 0x3FFF);
         o->pos[1] = 2000.0f;
         o->pos[2] = 2000.0f + (Rand_Next(1) & 0x3FFF);
@@ -5222,31 +5276,31 @@ void AreaObj_K09_SetupType7(Obj *o)
             r = 6000.0f;
         }
         break;
-    case 0x20:
+    case AREA_FOREST_HILLS_6:
         o->pos[0] = 9737.0f + ((Rand_Next(1) & 0x3FF) - 0x200);
         o->pos[1] = 8412.0f + (Rand_Next(1) & 0x3FF);
         o->pos[2] = 6057.0f + ((Rand_Next(1) & 0x3FF) - 0x200);
         r = 2000.0f + (Rand_Next(1) & 0x3FF);
         break;
-    case 0x5A:
+    case AREA_GREAT_ARENA_1:
         o->pos[0] = 10500.0f + ((Rand_Next(1) & 0x7FF) - 0x400);
         o->pos[1] = 3000.0f + (Rand_Next(1) & 0x3FF);
         o->pos[2] = 9500.0f + ((Rand_Next(1) & 0x7FF) - 0x400);
         r = 2000.0f + (Rand_Next(1) & 0xFF);
         break;
-    case 0x8E:
+    case AREA_DESERT_2:
         o->pos[0] = 10500.0f + ((Rand_Next(1) & 0x7FF) - 0x400);
         o->pos[1] = 3000.0f + (Rand_Next(1) & 0x7FF);
         o->pos[2] = 10000.0f + ((Rand_Next(1) & 0x7FF) - 0x400);
         r = 2000.0f + (Rand_Next(1) & 0x1FF);
         break;
-    case 0x94:
+    case AREA_DESERT_8:
         o->pos[0] = 6286.0f + ((Rand_Next(1) & 0x3FF) - 0x200);
         o->pos[1] = 1500.0f + (Rand_Next(1) & 0x3FF);
         o->pos[2] = 5300.0f + ((Rand_Next(1) & 0x3FF) - 0x200);
         r = 1000.0f + (Rand_Next(1) & 0xFF);
         break;
-    case 0x95:
+    case AREA_DESERT_9:
         o->pos[0] = 10000.0f + ((Rand_Next(1) & 0x7FF) - 0x400);
         o->pos[1] = 2800.0f + (Rand_Next(1) & 0x7FF);
         o->pos[2] = 9500.0f + ((Rand_Next(1) & 0x7FF) - 0x400);
@@ -5634,69 +5688,69 @@ extern u32 D_008EBDD0[];
 extern u32 D_008EBE90[];
 extern u32 D_008EBF50[];
 extern u32 D_008EC020[];
-u8 EffKushala39_KeysA[64] = {
+u8 TeostraBlastRing_ScaleKeysStart[64] = {
 #include "game/008AEC50.inc"
 };
-u8 EffKushala39_ColorsA[32] = {
+u8 TeostraBlastRing_ColorKeysStart[32] = {
 #include "game/008AEC90.inc"
 };
-u8 EffKushala39_KeysB[48] = {
+u8 TeostraBlastRing_ScaleKeysMiddle[48] = {
 #include "game/008AECB0.inc"
 };
-u8 EffKushala39_ColorsB[32] = {
+u8 TeostraBlastRing_ColorKeysMiddle[32] = {
 #include "game/008AECE0.inc"
 };
-u8 EffKushala39_KeysC[48] = {
+u8 TeostraBlastRing_ScaleKeysEnd[48] = {
 #include "game/008AED00.inc"
 };
-u8 EffKushala39_ColorsC[40] = {
+u8 TeostraBlastRing_ColorKeysEnd[40] = {
 #include "game/008AED30.inc"
 };
-u8 EffKushala39_ModelSets[8] = {
+u8 TeostraBlastRing_ModelKinds[8] = {
 #include "game/008AED58.inc"
 };
-HitShape EffChameleos40_Vals088_0[2] = {
+HitShape ChameleosAttack_HitShapes_0[2] = {
 #include "game/008AED60.inc"
 };
-HitShape EffChameleos40_Vals088_1[3] = {
+HitShape ChameleosAttack_HitShapes_1[3] = {
 #include "game/008AEDB0.inc"
 };
-HitShape EffChameleos40_Vals088_2[3] = {
+HitShape ChameleosAttack_HitShapes_2[3] = {
 #include "game/008AEE30.inc"
 };
-HitShape EffChameleos40_Vals088_3[7] = {
+HitShape ChameleosAttack_HitShapes_3[7] = {
 #include "game/008AEEB0.inc"
 };
-HitShape EffChameleos40_Vals088_4[3] = {
+HitShape ChameleosAttack_HitShapes_4[3] = {
 #include "game/008AEFD0.inc"
 };
-HitShape EffChameleos40_Vals088_5[2] = {
+HitShape ChameleosAttack_HitShapes_5[2] = {
 #include "game/008AF050.inc"
 };
-HitShape EffChameleos40_Vals088_6[4] = {
+HitShape ChameleosAttack_HitShapes_6[4] = {
 #include "game/008AF0A0.inc"
 };
-HitShape *EffChameleos40_Vals088[8] = {
-    EffChameleos40_Vals088_0, EffChameleos40_Vals088_1, EffChameleos40_Vals088_2, EffChameleos40_Vals088_3,
-    EffChameleos40_Vals088_4, EffChameleos40_Vals088_5, EffChameleos40_Vals088_6, 0,
+HitShape *ChameleosAttack_HitShapes[8] = {
+    ChameleosAttack_HitShapes_0, ChameleosAttack_HitShapes_1, ChameleosAttack_HitShapes_2, ChameleosAttack_HitShapes_3,
+    ChameleosAttack_HitShapes_4, ChameleosAttack_HitShapes_5, ChameleosAttack_HitShapes_6, 0,
 };
-u32 D_008AF160[60] = {
+u32 ChameleosAttack_Rows[60] = {
 #include "game/008AF160.inc"
 };
-void *EffChameleos40_MotionRef = (void *)D_008AF160;
-HitShape EffRemobra26_Vals088_0[4] = {
+void *ChameleosAttack_RowsPtr = (void *)ChameleosAttack_Rows;
+HitShape RemobraAttack_HitShapes_0[4] = {
 #include "game/008AF260.inc"
 };
-HitShape EffRemobra26_Vals088_1[3] = {
+HitShape RemobraAttack_HitShapes_1[3] = {
 #include "game/008AF300.inc"
 };
-HitShape *EffRemobra26_Vals088[2] = {
-    EffRemobra26_Vals088_0, EffRemobra26_Vals088_1,
+HitShape *RemobraAttack_HitShapes[2] = {
+    RemobraAttack_HitShapes_0, RemobraAttack_HitShapes_1,
 };
-u32 D_008AF380[24] = {
+u32 RemobraAttack_Rows[24] = {
 #include "game/008AF380.inc"
 };
-void *EffRemobra26_MotionRef = (void *)D_008AF380;
+void *RemobraAttack_RowsPtr = (void *)RemobraAttack_Rows;
 char *gMsgEventTitles[80] = {
     (char *)D_008DE300, (char *)D_008DE320, (char *)D_008DE340, (char *)D_008DE360,
     (char *)D_008DE390, (char *)D_008DE3C0, (char *)D_008DE3E0, (char *)D_008DE3F8,

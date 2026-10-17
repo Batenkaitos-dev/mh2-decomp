@@ -1,17 +1,19 @@
 /*
- * Monster family: Daimyo Hermitaur and Shogun Ceanataur (kinds 0x30, 0x43).
- * The code from the family's setup function (0x758450, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: Daimyo Hermitaur and Shogun Ceanataur
+ * (EM_KIND_DAIMYO_HERMITAUR and EM_KIND_SHOGUN_CEANATAUR). The code from the
+ * family's setup function (EmHermitaur_Setup, called by the per-kind dispatch
+ * Em_TypeSetup) to the next family's. The state functions take the monster
+ * and the work area its state dispatcher passes on (EmWork); Em.step is the
+ * step within the current state. See include/em.h.
  */
 #include "common.h"
 #include "quest.h"
 #include "em.h"
 #include "player.h"
 #include "scene.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
-void EffEm08_CreateAtBone(Em *em, s32 a, s32 b, s32 c, s32 d, s32 e);
+void EmRangedAttack_CreateAtBone(Em *em, s32 a, s32 b, s32 c, s32 d, s32 e);
 u8 Player_InCurrentArea(void *obj);
 
 /* prototypes */
@@ -27,14 +29,14 @@ void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 void QuestEm_Captured(Em *em);
 void QuestEm_Leave(Em *em);
-void EffHermitaur26_Create(Em *em, s32 kind);
-void EffEm33_CreateV(Em *em, s32 a1, s32 a2, s32 a3, s32 a4, s16 v);
+void HermitaurAttack_Create(Em *em, s32 kind);
+void EmEffectAttack_CreateTimed(Em *em, s32 a1, s32 a2, s32 a3, s32 a4, s16 v);
 void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotatedAccel(Em *em, void *ang);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ClearLowHpNeed(Em *em);
 void Em_ClearNeed1State(Em *em);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_AddNeed1(Em *em, s32 n);
 void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmHermitaur_State0_08: 99 of 149 words differ */
@@ -68,7 +70,7 @@ void EmHermitaur_MotionEffects(Em *, EmWork *);
 /* unit's own declaration: with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale) (game/unk_874B90.c), EmHermitaur_State4_09: 77 of 123 words differ */
 void StageObj_Stun_CreateEm(Em *, s32, s32, s32, f32, f32);
 void StageObj_Gun_CreateType5(void *owner);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 Motion_ReachedFrame(void *, s32, f32);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
@@ -137,9 +139,9 @@ s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 struct AreaTri;
 u8 AreaGrid2_GetCeiling(f32 *pos, f32 *y, struct AreaTri *info);
 s32 EmHermitaur_InSpecialArea(u16 arg0);
-void Em_RaiseTrigger80Lax(Em *em);
+void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
-u16 Area_BaseId(u16 area);
+u16 Map_DayId(u16 area);
 void Em_CheckLowHp(Em *em, f32 ratio);
 void Em_DecayNeed1Only(Em *em);
 void Em_DecayNeed1(Em *em);
@@ -154,20 +156,20 @@ void Em_UpdatePendingScript(Em *em);
 void Em_ClearHitReactMode(Em *em);
 void EmHermitaur_RunState(Em *em);
 void StageObj_K1C_CreateOnEmC(Em *em, u8 k, u8 c, f32 scale);
-void *EffEm33_Create(Em *em, s32 kind, s32 c, s32 a, s32 b);
+void *EmEffectAttack_Create(Em *em, s32 kind, s32 c, s32 a, s32 b);
 f32 Vec_Distance(f32 *a, f32 *b);
 void Em_MotionDelta(Em *em, f32 *out);
 f32 Math_Absf(f32 x);
 void Vec_Copy(f32 *out, f32 *in);
 extern f32 EmHermitaur_State3_12Ofs[];
 void GmEm_ResetSize(Em *em);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void Em_InitParts(Em *em);
 u16 Area_IdForCurrentTime(u16);
 void EmHermitaur_MotionSounds(Em *em, EmWork *work);
 void StageObj_K14_Create(Em *em, s16 k, s16 c, f32 scale);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 void EmHermitaur_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale);
 void EmHermitaur_MotionEffectsDefault(Em *em);
 /* end of prototypes */
@@ -208,7 +210,7 @@ void EmHermitaur_Init(Em *em, s16 kind)
 
     if (gQuest.stage == 0) {
         switch (gScene.area) {
-        case 0x25:
+        case AREA_FOREST_HILLS_4:
             em->posX = 9500.0f + 150.0f * (f32) (em->slotNo / 8);
             em->posY = 0.0f;
             em->posZ = 10000.0f + 150.0f * (f32) (em->slotNo & 7);
@@ -224,7 +226,7 @@ void EmHermitaur_Init(Em *em, s16 kind)
     em->stance = 0;
     em->unk_InitFlag = 1;
     em->gender = 0;
-    hp = Em_ComputeSize(em, 0);
+    hp = Em_ComputeMaxHp(em, 0);
     em->hp = hp;
     em->hpMax = hp;
     w->unk039 = 0;
@@ -241,7 +243,7 @@ void EmHermitaur_Init(Em *em, s16 kind)
         case 0x42E:
         case 0x42F:
             if (Save_TestEventFlag(0xA5) == 0) {
-                em->area = Area_IdForCurrentTime(0xA6);
+                em->area = Area_IdForCurrentTime(AREA_VOLCANO_5);
                 em->posX = 10100.0f;
                 em->posY = 1500.0f;
                 em->posZ = 6580.0f;
@@ -349,28 +351,28 @@ void EmHermitaur_Update(Em *em)
         } else {
             em->hasCeiling = 0;
         }
-        Em_RaiseTrigger80Lax(em);
+        Em_RaisePlayerAreaTriggerLax(em);
         Em_HoldPosNoPlayers(em, 0, 1);
         if (em->noAlert != 1 && em->rage == 0) {
-            switch ((u16) Area_BaseId(gScene.map)) {
-            case 3:
+            switch ((u16) Map_DayId(gScene.map)) {
+            case MAP_DESERT:
                 if (em->type == 0x30) {
                     Em_CheckLowHp(em, 0.2f);
                     Em_DecayNeed1Only(em);
                 }
                 break;
-            case 6:
+            case MAP_JUNGLE:
                 if (em->type == 0x30) {
                     Em_CheckLowHp(em, 0.2f);
                     Em_DecayNeed1(em);
                 }
                 break;
-            case 4:
+            case MAP_SWAMP:
                 if (em->type == 0x43) {
                     Em_DecayNeed1(em);
                 }
                 break;
-            case 5:
+            case MAP_VOLCANO:
                 break;
             }
         }
@@ -458,7 +460,7 @@ void EmHermitaur_Update(Em *em)
             break;
         }
     case 12:
-        Player_ClearFlag(em, 0x20000);
+        Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         switch (em->flinchPart) {
         default:
         case 0:
@@ -599,8 +601,8 @@ void EmHermitaur_Update(Em *em)
     switch (gQuest.stage) {
     case 0x400:
     case 0x1389:
-        if (em->type == 0x30 && Area_DayId(em->area) == 0x95 && Save_TestEventFlag(0x9A) == 0) {
-            if (Area_DayId(gScene.area) == 0x95 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if (em->type == 0x30 && Area_DayId(em->area) == AREA_DESERT_9 && Save_TestEventFlag(0x9A) == 0) {
+            if (Area_DayId(gScene.area) == AREA_DESERT_9 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmHermitaur_ChangeState(em, 6, 2, 1);
             }
             break;
@@ -608,8 +610,8 @@ void EmHermitaur_Update(Em *em)
         goto other;
     case 0x42E:
     case 0x42F:
-        if (em->type == 0x43 && Area_DayId(em->area) == 0xA6 && Save_TestEventFlag(0xA5) == 0) {
-            if (Area_DayId(gScene.area) == 0xA6 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if (em->type == 0x43 && Area_DayId(em->area) == AREA_VOLCANO_5 && Save_TestEventFlag(0xA5) == 0) {
+            if (Area_DayId(gScene.area) == AREA_VOLCANO_5 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmHermitaur_ChangeState(em, 6, 3, 1);
             }
             break;
@@ -702,7 +704,7 @@ void EmHermitaur_State0_03(Em *em, s32 unused, s32 variant)
     if (em->type == 0x49) {
         EmHermitaur_EndState(em);
     }
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -802,7 +804,7 @@ void EmHermitaur_State0_07(Em *em)
 
 void EmHermitaur_State0_08(Em *em, s32 unused, s32 variant)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -933,7 +935,7 @@ void EmHermitaur_State0_14(Em *em)
 
 void EmHermitaur_State0_15(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -944,7 +946,7 @@ void EmHermitaur_State0_15(Em *em)
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 476.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 476.0f, 0U) != 0) {
             em->step++;
             EmHermitaur_ChangeState(em, 0, 0x16, 4);
         }
@@ -1092,10 +1094,10 @@ void EmHermitaur_State1_00(Em *em, EmWork *work, s32 variant)
             if (em->motion[0].playing == 0 || EmMotion_ReachedFrame(em, 0, 88.0f)) {
                 if ((u16) (d + speed) < speed * 2) {
                     em->step++;
-                    Player_ClearFlag(em, 0x20000);
+                    Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
                     EmHermitaur_EndState(em);
                 } else {
-                    Player_ClearFlag(em, 0x20000);
+                    Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
                     if (d >= 0x8000) {
                         Em_SetMotion(em, 5, 6, 0);
                     } else {
@@ -1187,11 +1189,11 @@ void EmHermitaur_State1_02(Em *em, EmWork *work, s32 kind, s32 mode)
             break;
         case 1:
             Em_SetMotion(em, 0x2E, 0, 0);
-            EffHermitaur26_Create(em, 9);
+            HermitaurAttack_Create(em, 9);
             break;
         case 2:
             Em_SetMotion(em, 0x25, 0, 0);
-            EffHermitaur26_Create(em, 0x1B);
+            HermitaurAttack_Create(em, 0x1B);
             break;
         }
         if (mode == 1) {
@@ -1358,10 +1360,10 @@ void EmHermitaur_State1_14(Em *em, EmWork *work, s32 variant)
             if (em->motion[0].playing == 0 || EmMotion_ReachedFrame(em, 0, 64.0f)) {
                 if ((u16) (d + speed) < speed * 2) {
                     em->step++;
-                    Player_ClearFlag(em, 0x20000);
+                    Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
                     EmHermitaur_EndState(em);
                 } else {
-                    Player_ClearFlag(em, 0x20000);
+                    Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
                     if (d >= 0x8000) {
                         Em_SetMotion(em, 7, 4, 0);
                     } else {
@@ -1517,7 +1519,7 @@ void EmHermitaur_State2_01(Em *em, EmWork *work, s32 unused)
         if ((u32) ((diff + 0x400) & 0xFFFF) < 0x800U) {
             em->rotY = (s32) ang;
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmHermitaur_EndState2(em);
         } else if (diff < 0x8000U) {
             em->rotY = (rotY + 0x400) & 0xFFFF;
@@ -1620,7 +1622,7 @@ void EmHermitaur_State2_04(Em *em, s32 unused1, s32 unused2)
         em->stance = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 114.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 114.0f, 0U) != 0) {
             em->step++;
             em->stance = 2;
             em->posY += 200.0f;
@@ -1690,11 +1692,11 @@ void EmHermitaur_State2_06(Em *em, s32 unused1, s32 unused2)
         break;
     case 1:
         em->ceilingTimer = 5;
-        if (Player_PassedFrameScaled(em, 108.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0U) != 0) {
             em->step++;
             em->posY -= 400.0f;
             em->ceilingTimer = 0;
-            EffHermitaur26_Create(em, 0x21);
+            HermitaurAttack_Create(em, 0x21);
         }
         break;
     case 2:
@@ -1733,7 +1735,7 @@ void EmHermitaur_State2_07(Em *em, s32 unused1, s32 unused2)
         case 2:
             if (Em_TurnStep(em, &EmHermitaur_TurnParams[0]) == 1) {
                 em->step++;
-                Player_ClearFlag(em, 0x20000);
+                Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
                 EmHermitaur_EndState2To2_05(em);
             }
         }
@@ -1755,7 +1757,7 @@ void EmHermitaur_State2_08(Em *em, s32 unused, s32 variant)
             em->motionSpeed = 50.0f;
         }
         if ((em->variant == 0) && ((s32) em->parts[2].state < 2)) {
-            EffEm33_CreateV(em, 0xA, 0, 0, 0x8000, 0x64);
+            EmEffectAttack_CreateTimed(em, 0xA, 0, 0, 0x8000, 0x64);
         }
         break;
     case 1:
@@ -1920,18 +1922,18 @@ void EmHermitaur_State3_03(Em *em, EmWork *work)
             if (Motion_ReachedFrame(em, 0, 82.0f) != 0) {
                 em->step++;
                 if (em->type == 0x30) {
-                    EffEm33_Create(em, 4, 0, 0x38E, 0);
+                    EmEffectAttack_Create(em, 4, 0, 0x38E, 0);
                     break;
                 }
-                EffEm08_CreateAtBone(em, 0x1F, 0x16, 0, 0xF8E5, 0);
+                EmRangedAttack_CreateAtBone(em, 0x1F, 0x16, 0, 0xF8E5, 0);
             }
             break;
         case 2:
             if (Motion_PassedFrame(em, 0, 86.0f) != 0) {
                 if (em->type == 0x30) {
-                    EffHermitaur26_Create(em, 0xC);
+                    HermitaurAttack_Create(em, 0xC);
                 } else {
-                    EffHermitaur26_Create(em, 0x20);
+                    HermitaurAttack_Create(em, 0x20);
                 }
             }
             if (em->motion[0].playing == 0) {
@@ -2067,7 +2069,7 @@ void EmHermitaur_State3_08(Em *em, s32 unused, s32 variant)
         em->step++;
         Em_SetMotion(em, 0x30, 0, 0);
         if (em->type != 0x43) {
-            EffHermitaur26_Create(em, 0xA);
+            HermitaurAttack_Create(em, 0xA);
         }
         em->hideShadowHold = 2;
         em->hideShadow = 2;
@@ -2187,14 +2189,14 @@ void EmHermitaur_State3_0A(Em *em, s32 unused, s32 variant)
                 stateVar0 = em->stateVar0;
                 if (stateVar0 == 0) {
                     em->stateVar0 = stateVar0 + 1;
-                    EffHermitaur26_Create(em, 0xB);
+                    HermitaurAttack_Create(em, 0xB);
                     break;
                 }
-            } else if (Player_PassedFrameScaled(em, 154.0f, 0U) != 0) {
+            } else if (EmMotion_PassedFrameScaled(em, 154.0f, 0U) != 0) {
                 temp_v1_2 = em->stateVar0;
                 if (temp_v1_2 == 0) {
                     em->stateVar0 = temp_v1_2 + 1;
-                    EffHermitaur26_Create(em, 0xB);
+                    HermitaurAttack_Create(em, 0xB);
                     break;
                 }
             }
@@ -2318,7 +2320,7 @@ void EmHermitaur_State3_12(Em *em, EmWork *work, s32 variant)
         Vec_Copy((f32 *) &work->pitchStep, &em->posX);
         Em_SetMotion(em, 0x30, 0, 0);
         if (em->type != 0x43) {
-            EffHermitaur26_Create(em, 0xA);
+            HermitaurAttack_Create(em, 0xA);
         }
         em->hideShadowHold = 2;
         em->hideShadow = 2;
@@ -2363,7 +2365,7 @@ void EmHermitaur_State3_12(Em *em, EmWork *work, s32 variant)
             em->step = 1;
             Em_SetMotion(em, 0x30, 0, 0);
             if (em->type != 0x43) {
-                EffHermitaur26_Create(em, 0xA);
+                HermitaurAttack_Create(em, 0xA);
             }
             em->hideShadowHold = 2;
             em->hideShadow = 2;
@@ -2396,8 +2398,8 @@ void EmHermitaur_State3_16(Em *em, EmWork *work, s32 variant)
                 StageObj_K1C_CreateOnEmC(em, 0x22, 1, 1.0f);
             }
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) && em->variant == 0 && em->parts[2].state < 2) {
-            EffEm33_Create(em, 0xA, 0, 0, 0x8000);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) && em->variant == 0 && em->parts[2].state < 2) {
+            EmEffectAttack_Create(em, 0xA, 0, 0, 0x8000);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -2670,7 +2672,7 @@ void EmHermitaur_State4_02(Em *em, EmWork *work, s16 variant)
 
 void EmHermitaur_State4_04(Em *em)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2680,7 +2682,7 @@ void EmHermitaur_State4_04(Em *em)
         em->stance = 0;
         break;
     case 1:
-        Em_SpawnEffect06Bone(em, 2);
+        Em_SpawnStatus4Effect(em, 2);
         if (--em->timer <= 0) {
             em->step++;
             EmHermitaur_ChangeState(em, 0, 0xA, 4);
@@ -2778,13 +2780,13 @@ void EmHermitaur_State4_08(Em *em)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, 0x3C, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 40.0f) != 0) {
             em->step++;
             Em_SetMotion(em, 0x41, 0xC, 0);
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
@@ -3008,10 +3010,10 @@ void EmHermitaur_State5_00_Hunted(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 212.0f, 0) != 0 && em->type == 0x30) {
+        if (EmMotion_PassedFrameScaled(em, 212.0f, 0) != 0 && em->type == 0x30) {
             CamShake_ReqAIf(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 290.0f, 0) != 0 && em->stateVar0 == 0) {
+        if (EmMotion_PassedFrameScaled(em, 290.0f, 0) != 0 && em->stateVar0 == 0) {
             em->stateVar0 = 1;
             EmMine_Create(em, 0);
         }
@@ -3234,7 +3236,7 @@ void EmHermitaur_State6_03_ShogunEntrance(Em *em)
         break;
     case 2:
         em->ceilingTimer = 5;
-        if (Player_PassedFrameScaled(em, 108.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0)) {
             em->step++;
             em->posY -= 400.0f;
             em->ceilingTimer = 0;
@@ -3257,13 +3259,13 @@ void EmHermitaur_State6_03_ShogunEntrance(Em *em)
         }
         break;
     case 5:
-        if (Player_PassedFrameScaled(em, 40.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0)) {
             em->step++;
             Em_SetMotion(em, 0x34, 0, 0);
         }
         break;
     case 6:
-        if (Player_PassedFrameScaled(em, 170.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0)) {
             em->step++;
             Em_SetMotion(em, 0x2A, 0, 0);
         }
@@ -3417,7 +3419,7 @@ void EmHermitaur_State8_00(Em *em, EmWork *work)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             v = EmHermitaur_CarveThrowPt;
             StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
         }
@@ -3921,7 +3923,7 @@ void EmHermitaur_ChangeState(Em *em, u16 group, u16 state, u8 mode)
             break;
         case 8:
         case 11:
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             Em_SetSpeedScaled(em, 2, 1000.0f, 400.0f);
             break;
         case 9:
@@ -4017,8 +4019,8 @@ void EmHermitaur_ChangeState(Em *em, u16 group, u16 state, u8 mode)
             Em_BeginStatus5(em);
             break;
         case 13:
-            em->hit8Count++;
-            if (em->hit8Count >= 2) {
+            em->partBreakCount++;
+            if (em->partBreakCount >= 2) {
                 em->fxFlags |= 1;
                 if (em->type == 0x30) {
                     Em_BreakPart(em, 1);
@@ -4137,20 +4139,20 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         break;
     case 0x3F2:
         if (em->type == 0x43) {
-            if (Player_PassedFrameScaled(em, 112.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 112.0f, 0)) {
                 StageObj_K14_Create(em, 0xB, 0x15, em->scaleX);
             }
-        } else if (Player_PassedFrameScaled(em, 98.0f, 0)) {
+        } else if (EmMotion_PassedFrameScaled(em, 98.0f, 0)) {
             StageObj_K14_Create(em, 0x13, 0x15, em->scaleX);
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 8.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 1, 0x28, 2.0f * em->scaleX);
-            EffEm07_CreateAt(em, &em->posX, 5);
-            EffEm07_CreateAt(em, &em->posX, 6);
+            EmImpactAttack_CreateAt(em, &em->posX, 5);
+            EmImpactAttack_CreateAt(em, &em->posX, 6);
         }
-        if (em->type == 0x43 && Player_PassedFrameScaled(em, 190.0f, 0)) {
+        if (em->type == 0x43 && EmMotion_PassedFrameScaled(em, 190.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 6, 4, 6.0f);
             EmHermitaur_SpawnGroundEffect(em, 0xA, 4, 6.0f);
         }
@@ -4160,84 +4162,84 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
     case 0x3FA:
         break;
     case 0x3FB:
-        if (Player_PassedFrameScaled(em, 14.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
             switch (em->type) {
             case 0x49:
             case 0x42:
-                EffHermitaur26_Create(em, 4);
+                HermitaurAttack_Create(em, 4);
                 break;
             case 0x43:
-                EffHermitaur26_Create(em, 0x17);
+                HermitaurAttack_Create(em, 0x17);
                 break;
             case 0x30:
-                EffHermitaur26_Create(em, 0xD);
+                HermitaurAttack_Create(em, 0xD);
                 break;
             }
         }
-        if (Player_PassedFrameScaled(em, 22.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
             StageObj_K14_Create(em, 2, 0x23, em->scaleX);
         }
         break;
     case 0x3FC:
         break;
     case 0x3FD:
-        if (Player_PassedFrameScaled(em, 14.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
             switch (em->type) {
             case 0x49:
             case 0x42:
-                EffHermitaur26_Create(em, 6);
+                HermitaurAttack_Create(em, 6);
                 break;
             case 0x43:
-                EffHermitaur26_Create(em, 0x15);
+                HermitaurAttack_Create(em, 0x15);
                 break;
             case 0x30:
-                EffHermitaur26_Create(em, 0xF);
+                HermitaurAttack_Create(em, 0xF);
                 break;
             }
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0)) {
             StageObj_K14_Create(em, 2, 0x23, em->scaleX);
         }
         break;
     case 0x3FE:
         break;
     case 0x3FF:
-        if (Player_PassedFrameScaled(em, 14.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
             switch (em->type) {
             case 0x49:
             case 0x42:
-                EffHermitaur26_Create(em, 7);
+                HermitaurAttack_Create(em, 7);
                 break;
             case 0x43:
-                EffHermitaur26_Create(em, 0x16);
+                HermitaurAttack_Create(em, 0x16);
                 break;
             case 0x30:
-                EffHermitaur26_Create(em, 0x10);
+                HermitaurAttack_Create(em, 0x10);
                 break;
             }
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0)) {
             StageObj_K14_Create(em, 3, 0x24, em->scaleX);
         }
         break;
     case 0x400:
         break;
     case 0x401:
-        if (Player_PassedFrameScaled(em, 14.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
             switch (em->type) {
             case 0x49:
             case 0x42:
-                EffHermitaur26_Create(em, 5);
+                HermitaurAttack_Create(em, 5);
                 break;
             case 0x43:
-                EffHermitaur26_Create(em, 0x18);
+                HermitaurAttack_Create(em, 0x18);
                 break;
             case 0x30:
-                EffHermitaur26_Create(em, 0xE);
+                HermitaurAttack_Create(em, 0xE);
                 break;
             }
         }
-        if (Player_PassedFrameScaled(em, 22.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
             StageObj_K14_Create(em, 3, 0x24, em->scaleX);
         }
         break;
@@ -4245,15 +4247,15 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         v[0] = 0.0f;
         v[1] = 20.0f;
         v[2] = 50.0f;
-        Em_SpawnEffect06Periodic(em, 0x1F, v, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x1F, v, 1.6f);
         break;
     case 0x40A:
         if (em->type == 0x42 || em->type == 0x49) {
-            if (Player_PassedFrameScaled(em, 20.0f, 0) || Player_PassedFrameScaled(em, 92.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 92.0f, 0)) {
                 EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
             }
-            if (Player_PassedFrameScaled(em, 16.0f, 0)) {
-                EffHermitaur26_Create(em, 8);
+            if (EmMotion_PassedFrameScaled(em, 16.0f, 0)) {
+                HermitaurAttack_Create(em, 8);
             }
             if (!EmMotion_ReachedFrame(em, 0, 120.0f)) {
                 em->hideShadowHold = 2;
@@ -4262,23 +4264,23 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
             break;
         }
         if (em->type == 0x43) {
-            if (Player_PassedFrameScaled(em, 18.0f, 0)) {
-                EffHermitaur26_Create(em, 0x13);
+            if (EmMotion_PassedFrameScaled(em, 18.0f, 0)) {
+                HermitaurAttack_Create(em, 0x13);
             }
-            if (Player_PassedFrameScaled(em, 22.0f, 0)) {
-                EffHermitaur26_Create(em, 0x14);
+            if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
+                HermitaurAttack_Create(em, 0x14);
             }
-            if (Player_PassedFrameScaled(em, 110.0f, 0)) {
-                EffHermitaur26_Create(em, 0x1C);
+            if (EmMotion_PassedFrameScaled(em, 110.0f, 0)) {
+                HermitaurAttack_Create(em, 0x1C);
             }
-            if (Player_PassedFrameScaled(em, 128.0f, 0)) {
-                EffHermitaur26_Create(em, 0x1D);
+            if (EmMotion_PassedFrameScaled(em, 128.0f, 0)) {
+                HermitaurAttack_Create(em, 0x1D);
             }
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
         }
-        if (Player_PassedFrameScaled(em, 84.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
             StageObj_K14_Create(em, 0xB, 0x18, em->scaleX);
         }
         break;
@@ -4293,57 +4295,57 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         break;
     case 0x410:
         if (em->type == 0x43) {
-            if (Player_PassedFrameScaled(em, 72.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 72.0f, 0)) {
                 StageObj_K14_Create(em, 2, 0x23, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 66.0f, 0)) {
-                EffHermitaur26_Create(em, 0x19);
+            if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
+                HermitaurAttack_Create(em, 0x19);
             }
         }
         break;
     case 0x411:
         if (em->type == 0x43) {
-            if (Player_PassedFrameScaled(em, 72.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 72.0f, 0)) {
                 StageObj_K14_Create(em, 3, 0x24, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 66.0f, 0)) {
-                EffHermitaur26_Create(em, 0x1A);
+            if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
+                HermitaurAttack_Create(em, 0x1A);
             }
         }
         break;
     case 0x412:
-        if (Player_PassedFrameScaled(em, 44.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0)) {
             if (em->type == 0x43) {
-                EffHermitaur26_Create(em, 0x11);
+                HermitaurAttack_Create(em, 0x11);
             } else {
-                EffHermitaur26_Create(em, 1);
+                HermitaurAttack_Create(em, 1);
             }
         }
         if (em->type == 0x43) {
-            if (Player_PassedFrameScaled(em, 48.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 48.0f, 0)) {
                 StageObj_K14_Create(em, 2, 0x16, em->scaleX);
             }
-            if (Player_PassedFrameScaled(em, 56.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 56.0f, 0)) {
                 StageObj_K14_Create(em, 3, 0x17, em->scaleX);
             }
         }
         break;
     case 0x413:
-        if (Player_PassedFrameScaled(em, 18.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0)) {
             switch (em->type) {
             case 0x49:
             case 0x42:
-                EffHermitaur26_Create(em, 2);
+                HermitaurAttack_Create(em, 2);
                 break;
             case 0x43:
-                EffHermitaur26_Create(em, 0x12);
+                HermitaurAttack_Create(em, 0x12);
                 break;
             case 0x30:
-                EffHermitaur26_Create(em, 3);
+                HermitaurAttack_Create(em, 3);
                 break;
             }
         }
-        if (Player_PassedFrameScaled(em, 32.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 32.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
         }
         break;
@@ -4352,15 +4354,15 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
     case 0x416:
         break;
     case 0x417:
-        if (Player_PassedFrameScaled(em, 76.0f, 0)) {
-            EffHermitaur26_Create(em, 0x1E);
+        if (EmMotion_PassedFrameScaled(em, 76.0f, 0)) {
+            HermitaurAttack_Create(em, 0x1E);
         }
-        if (Player_PassedFrameScaled(em, 84.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
             StageObj_K14_Create(em, 3, 0x24, em->scaleX);
         }
         break;
     case 0x418:
-        if (Player_PassedFrameScaled(em, 14.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
         }
         if (!EmMotion_ReachedFrame(em, 0, 16.0f)) {
@@ -4371,24 +4373,24 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
             em->hideShadow = 2;
         }
         if (em->type == 0x43) {
-            if (Player_PassedFrameScaled(em, 18.0f, 0)) {
-                EffHermitaur26_Create(em, 0x13);
+            if (EmMotion_PassedFrameScaled(em, 18.0f, 0)) {
+                HermitaurAttack_Create(em, 0x13);
             }
-            if (Player_PassedFrameScaled(em, 22.0f, 0)) {
-                EffHermitaur26_Create(em, 0x14);
+            if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
+                HermitaurAttack_Create(em, 0x14);
             }
         }
         break;
     case 0x419:
-        if (Player_PassedFrameScaled(em, 76.0f, 0)) {
-            EffHermitaur26_Create(em, 0x1F);
+        if (EmMotion_PassedFrameScaled(em, 76.0f, 0)) {
+            HermitaurAttack_Create(em, 0x1F);
         }
-        if (Player_PassedFrameScaled(em, 84.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
             StageObj_K14_Create(em, 2, 0x23, em->scaleX);
         }
         break;
     case 0x41A:
-        if (em->type == 0x43 && Player_PassedFrameScaled(em, 50.0f, 0)) {
+        if (em->type == 0x43 && EmMotion_PassedFrameScaled(em, 50.0f, 0)) {
             StageObj_K14_Create(em, 0xB, 0x25, 0.5f * em->scaleX);
         }
         break;
@@ -4396,10 +4398,10 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
     case 0x41C:
         break;
     case 0x421:
-        if (Player_PassedFrameScaled(em, 34.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
         }
-        if (Player_PassedFrameScaled(em, 64.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0)) {
             StageObj_K14_Create(em, 0xB, 0x15, em->scaleX);
         }
         if (EmMotion_ReachedFrame(em, 0, 130.0f)) {
@@ -4412,33 +4414,33 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
     case 0x425:
         break;
     case 0x427:
-        if (Player_PassedFrameScaled(em, 28.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
         }
         break;
     case 0x42B:
-        if (Player_PassedFrameScaled(em, 2.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0)) {
             StageObj_K14_Create(em, 0xB, 0x15, em->scaleX);
         }
         break;
     case 0x42C:
-        if (Player_PassedFrameScaled(em, 158.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0)) {
             StageObj_K14_Create(em, 0, 0, 0.9f * em->scaleX);
         }
         break;
     case 0x42D:
-        if (Player_PassedFrameScaled(em, 66.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
         }
         break;
     case 0x42F:
-        if (Player_PassedFrameScaled(em, 28.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
             EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
         }
         break;
     case 0x432:
         if (em->type == 0x30 || em->type == 0x42 || em->type == 0x49) {
-            if (Player_PassedFrameScaled(em, 122.0f, 0)) {
+            if (EmMotion_PassedFrameScaled(em, 122.0f, 0)) {
                 EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
             }
         }
@@ -4501,10 +4503,10 @@ s32 func_00761C70(Em *em)
 s32 EmHermitaur_InSpecialArea(u16 area)
 {
     switch (Area_DayId(area) & 0xFFFF) {
-    case 0x9A:
-    case 0x9B:
-    case 0x9F:
-    case 0xA6:
+    case AREA_SWAMP_3:
+    case AREA_SWAMP_4:
+    case AREA_SWAMP_8:
+    case AREA_VOLCANO_5:
         return 1;
     }
     return 0;
@@ -4515,7 +4517,7 @@ s32 EmHermitaur_AllowHit8(Em *em)
     if (em->type != 0x30) {
         return 0;
     }
-    if ((em->stance != 2) && (em->stateArmor == 0) && ((s8) em->hit8Count < 2)) {
+    if ((em->stance != 2) && (em->stateArmor == 0) && ((s8) em->partBreakCount < 2)) {
         return 1;
     }
     return 0;
@@ -4526,7 +4528,7 @@ void EmGravios_PlaySeOnFrame(Em *em, s32 frame, s32 se, s32 bone)
     s32 seOfs;
 
     seOfs = 0;
-    if (Player_PassedFrameScaled(em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled(em, (f32) frame, 0U) != 0) {
         if (*(u8 *)((u8 *)em + 0x453) == 1) {
             if (bone != 0x14) {
                 if (bone == 0x1A) {

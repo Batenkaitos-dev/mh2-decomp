@@ -66,7 +66,7 @@ s32 Model_Draw(u32 h, s32 flags);
 void Draw_ApplyStates(u32);
 void Draw_SetDefaultState(void);
 s32 Gs_SetState(u8 reg, u32 v);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void LightSet_SetAmbient(void *obj, s32 n);
 void LightSet_FadeAmbient(void *obj);
 void Vec_AnglesToRad(s32 *in, f32 *out);
@@ -218,7 +218,7 @@ void LobbyActor_Draw(DrawSlot *ds /* unused: the draw-slot walk passes it */)
     Mtx_SetTrans(m, o->posX, o->posY, o->posZ);
     Mtx_Concat3x3(m, s);
     Mtx_Copy((f32 *) o->worldMtx, m);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     p = w->matSets;
     n = w->matSetCount;

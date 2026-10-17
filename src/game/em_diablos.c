@@ -1,8 +1,9 @@
 /*
- * Monster family: Diablos, Monoblos and their subspecies (kinds 0xE, 0x2B, 0x1A, 0x2C).
- * The code from the family's setup function (0x7A1650, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
+ * Monster family: Diablos, Monoblos and their subspecies (EM_KIND_DIABLOS,
+ * EM_KIND_BLACK_DIABLOS, EM_KIND_MONOBLOS and EM_KIND_WHITE_MONOBLOS). The
+ * code from the family's setup function (EmDiablos_Setup, called by the
+ * per-kind dispatch Em_TypeSetup) to the next family's. The state functions
+ * take the monster and the work area its state dispatcher passes on (EmWork);
  * Em.step is the step within the current state. See include/em.h.
  */
 #include "common.h"
@@ -10,6 +11,7 @@
 #include "quest.h"
 #include "em.h"
 #include "player.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
 s32 EmDiablos_InMotion448To44A(Em *em);
 void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
@@ -21,7 +23,7 @@ void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f
 void Effect0D_SpawnAt(f32 *pos, s32 kind, f32 scale);
 void Effect0D_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
 void Vec_Add(f32 *out, f32 *a, f32 *b);
-void EffDiablos18_Create(Em *em, s8 kind);
+void DiablosAttack_Create(Em *em, s8 kind);
 void StageObj_K11_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
 void StageObj_K15_Create(Em *em, u8 k);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
@@ -55,14 +57,14 @@ void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
 void Em_RefillNeed3(Em *em);
 void Em_ResetNotice(Em *em);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_SetGoal12(Em *em);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
+void Em_SetTrapTimeGoal(Em *em);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySeAtBoneOnFrame2(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
+void Em_PlaySeAtBoneOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
 s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
 u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
@@ -98,7 +100,7 @@ u8 EmDiablos_UpdateCurves(Em *em);
 s32 EmDiablos_ChargeHitWall(Em *em);
 s32 EmDiablos_InSandState(Em *em);
 void StageObj_K13_Create(void *owner, s16 v, u8 k);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 void CamShake_ReqAIf(Em *obj, s32 i);
 f32 Vec_DistanceXZ(f32 *a, f32 *b);
@@ -144,7 +146,7 @@ void EmDiablos_SetGroup3State(Em *em, u16 state, u8 mode);
 void EmDiablos_SetGroup0State(Em *em, u16 state, u8 mode);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 void Em_SetPartScaled(Em *em, s32 bit);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void StageObj_K09_Create(Em *);
 void StageObj_K25_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
 void Versus_RouteEmByTeam(Em *em);
@@ -169,13 +171,13 @@ void Em_MotionDelta(Em *em, f32 *out);
 EmBone *Em_Bone(void *obj, s16 bone);
 void Vec_RotateSelf(f32 *v, f32 *m);
 void Mtx_GetTrans(f32 *out, f32 *m);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 s8 EmMine_CreateTimed0(Em *em, f32 *pos);
 s32 Save_TestEventFlag(s32 flag);
 void GmEm_ResetSize(Em *em);
 void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
 s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaiseTrigger80Lax(Em *em);
+void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_SetStatus1Timer(Em *em);
@@ -250,7 +252,7 @@ void EmDiablos_Init(Em *em)
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = 4;
     w->fxMotion = 0;
-    size = Em_ComputeSize(em, 0);
+    size = Em_ComputeMaxHp(em, 0);
     em->hp = size;
     em->hpMax = size;
     em->scriptPending = 1;
@@ -405,7 +407,7 @@ void EmDiablos_State0_02(Em *em, EmWork *work)
         pos[0] += v[0];
         pos[1] += v[1];
         pos[2] += v[2];
-        EffEm07_CreateAt(em, pos, 8);
+        EmImpactAttack_CreateAt(em, pos, 8);
         v[0] = 0.0f;
         v[1] = 0.0f;
         v[2] = 320.0f;
@@ -491,7 +493,7 @@ void EmDiablos_State0_05(Em *em, EmWork *work)
     }
     EmDiablos_RestartLayerMotion(em, 0);
     EmDiablos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 0x24, 0x2F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x24, 0x2F, 0x23, 1);
 }
 
 void EmDiablos_State0_06(Em *em, EmWork *work)
@@ -512,8 +514,8 @@ void EmDiablos_State0_06(Em *em, EmWork *work)
     }
     EmDiablos_RestartLayerMotion(em, 0);
     EmDiablos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 0x3E, 0x1F, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 4, 0x17, 0, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x3E, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 4, 0x17, 0, 1);
 }
 
 void EmDiablos_State0_07(Em *em, EmWork *work)
@@ -609,8 +611,8 @@ void EmDiablos_State0_0B(Em *em, EmWork *work)
     }
     EmDiablos_RestartLayerMotion(em, 0);
     EmDiablos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 2, 0x21, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 0x6E, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 2, 0x21, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x6E, 0x1F, 0x23, 1);
 }
 
 void EmDiablos_State0_0C(void)
@@ -635,8 +637,8 @@ void EmDiablos_State0_0D(Em *em, EmWork *work)
     }
     EmDiablos_RestartLayerMotion(em, 0);
     EmDiablos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 2, 0x20, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 0x4A, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 2, 0x20, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x4A, 0x1F, 0x23, 1);
 }
 
 void EmDiablos_State0_0E(void)
@@ -737,7 +739,7 @@ void EmDiablos_State0_12(Em *em, EmWork *work)
 {
     s16 n;
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -782,7 +784,7 @@ void EmDiablos_State0_13(void)
 
 void EmDiablos_State0_14(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -816,7 +818,7 @@ void EmDiablos_State0_15(Em *em, EmWork *work)
 {
     s16 n;
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -948,7 +950,7 @@ void EmDiablos_State0_1A(void)
 
 void EmDiablos_State0_1B(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -982,7 +984,7 @@ void EmDiablos_State0_1D(Em *em, EmWork *work)
 {
     f32 pos[3];
 
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1027,7 +1029,7 @@ void EmDiablos_State0_1D(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
@@ -1106,7 +1108,7 @@ void EmDiablos_State1_03(Em *em, EmWork *work)
     case 1:
         if (Em_TurnStep(em, &EmDiablos_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmDiablos_EndState(em, 0, 0);
         }
         break;
@@ -1162,7 +1164,7 @@ void EmDiablos_State1_05(Em *em, EmWork *work)
     case 1:
         if (Em_TurnStep(em, &EmDiablos_TurnParams[1]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmDiablos_EndState(em, 0, 0);
         }
         break;
@@ -1411,7 +1413,7 @@ void EmDiablos_State2_06(Em *em, EmWork *work)
         work->flyGuard = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 70.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0U) != 0) {
             em->step++;
             em->stance = 2;
             EmDiablos_UpdateCurves(em);
@@ -1613,7 +1615,7 @@ void EmDiablos_State2_0C(Em *em, EmWork *work)
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
         Em_MoveRotated(em, &work->moveAngX);
-        if (!((630.0f + em->floorY) <= em->posY) && ((Player_PassedFrameScaled(em, 10.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 86.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
+        if (!((630.0f + em->floorY) <= em->posY) && ((EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 86.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
             em->step++;
             Em_SetMotion(em, 0xB, 0, 0);
             velY = (em->floorY - em->posY) / 30.0f;
@@ -2105,7 +2107,7 @@ void EmDiablos_State4_04(Em *em)
         Em_SetMotion(em, 0x41, 0, 0);
         break;
     case 1:
-        if ((Player_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
             type = em->type;
             if ((type != 0x14) && (type != 0x27)) {
                 em->meshShown[1] = 0;
@@ -2224,7 +2226,7 @@ void EmDiablos_State4_06(Em *em)
             em->stance = 0;
             Em_SetMotion(em, 0x60, 0, 0);
             em->trapTimer = 0xD0;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->step++;
         }
         break;
@@ -2390,7 +2392,7 @@ void EmDiablos_State4_0B(Em *em)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmDiablos_State4_0D(Em *em)
@@ -2431,7 +2433,7 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
     s32 k = variant;
 
     if (k == 0) {
-        Em_SetHitReactMode(em, 4);
+        Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     }
     switch (em->step) {
     case 0:
@@ -2471,7 +2473,7 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             switch (k) {
             default:
                 EmDiablos_ChangeState(em, 4, 0x11, 3);
@@ -2498,7 +2500,7 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
     }
     switch (k) {
     default:
-        Em_SpawnEffect06Bone(em, 2);
+        Em_SpawnStatus4Effect(em, 2);
         break;
     case 1:
         break;
@@ -2566,7 +2568,7 @@ void EmDiablos_State4_12(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->blind = 0;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             EmDiablos_ChangeState(em, 4, 0xD, 3);
         }
         break;
@@ -2588,13 +2590,13 @@ void EmDiablos_State4_13(Em *em)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, 0x3C, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
             Em_SetMotion(em, 0x4C, 0xC, 0);
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
@@ -2967,7 +2969,7 @@ void EmDiablos_State5_00_Hunted(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 212.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 212.0f, 0) != 0) {
             CamShake_ReqAIf(em, 2);
         }
         if (em->motion[0].playing == 0) {
@@ -3102,7 +3104,7 @@ void EmDiablos_State5_02_HuntedFalling(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             em->step++;
             em->timer = 0;
             Em_SetMotion(em, 0x52, 6, 0);
@@ -3557,7 +3559,7 @@ void EmDiablos_Update(Em *em)
         }
     }
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80Lax(em);
+    Em_RaisePlayerAreaTriggerLax(em);
     if (em->stance == 4) {
         Em_HoldPosNoPlayers(em, 0, 3);
     } else {
@@ -3678,7 +3680,7 @@ void EmDiablos_Update(Em *em)
             break;
         }
     case 12:
-        Player_ClearFlag(em, 0x20000);
+        Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         if (em->stance == 2) {
             EmDiablos_ChangeState(em, 4, 8, 3);
         } else if (em->stance == 4) {
@@ -3734,16 +3736,16 @@ void EmDiablos_Update(Em *em)
     }
     switch (gQuest.stage) {
     case 0x406:
-        if ((em->type == 0xE || em->type == 0x2B) && Area_DayId(em->area) == 0x8E && Save_TestEventFlag(0xA8) == 0) {
-            if (Area_DayId(gScene.area) == 0x8E && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if ((em->type == 0xE || em->type == 0x2B) && Area_DayId(em->area) == AREA_DESERT_2 && Save_TestEventFlag(0xA8) == 0) {
+            if (Area_DayId(gScene.area) == AREA_DESERT_2 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmDiablos_ChangeState(em, 6, 0, 1);
             }
             break;
         }
         goto normal;
     case 0x1390:
-        if ((em->type == 0x1A || em->type == 0x2C) && Area_DayId(em->area) == 0x8E && Save_TestEventFlag(0xAA) == 0) {
-            if (Area_DayId(gScene.area) == 0x8E && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if ((em->type == 0x1A || em->type == 0x2C) && Area_DayId(em->area) == AREA_DESERT_2 && Save_TestEventFlag(0xAA) == 0) {
+            if (Area_DayId(gScene.area) == AREA_DESERT_2 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmDiablos_ChangeState(em, 6, 1, 1);
             }
             break;
@@ -3821,7 +3823,7 @@ void EmDiablos_RunState(Em *em, EmWork *work)
 
 void EmDiablos_RequestOnFrame(void *em, s32 frame, s32 i)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         CamShake_ReqAIf(em, i);
     }
 }
@@ -3848,14 +3850,14 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         if (em->stance != 4) {
             EmDiablos_RequestOnFrame(em, 0x34, 1);
             EmDiablos_RequestOnFrame(em, 0x74, 1);
-            if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-                EffDiablos18_Create(em, 2);
+            if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+                DiablosAttack_Create(em, 2);
             }
-            if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-                EffDiablos18_Create(em, 3);
+            if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+                DiablosAttack_Create(em, 3);
             }
-            if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-                EffDiablos18_Create(em, 4);
+            if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+                DiablosAttack_Create(em, 4);
                 break;
             }
         } else {
@@ -3865,11 +3867,11 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x3ED:
         if (em->stance != 4) {
             EmDiablos_RequestOnFrame(em, 0x3C, 1);
-            if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-                EffDiablos18_Create(em, 5);
+            if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+                DiablosAttack_Create(em, 5);
             }
-            if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-                EffDiablos18_Create(em, 6);
+            if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+                DiablosAttack_Create(em, 6);
             }
             if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
                 StageObj_K14_Create(em, 0x1A, 1, 1.0f);
@@ -3880,11 +3882,11 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x3EE:
         if (em->stance != 4) {
             EmDiablos_RequestOnFrame(em, 0x3C, 1);
-            if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-                EffDiablos18_Create(em, 7);
+            if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+                DiablosAttack_Create(em, 7);
             }
-            if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-                EffDiablos18_Create(em, 8);
+            if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+                DiablosAttack_Create(em, 8);
             }
             if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
                 StageObj_K14_Create(em, 0x1A, 0, 1.0f);
@@ -3893,11 +3895,11 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x3EF:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffDiablos18_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            DiablosAttack_Create(em, 9);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0xA);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
@@ -3910,11 +3912,11 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x3F0:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0xC);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
@@ -3927,19 +3929,19 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x19);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x19);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1A);
             break;
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 52.0f, 0) || Player_PassedFrameScaled(em, 104.0f, 0) || Player_PassedFrameScaled(em, 162.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
             Effect0D_SpawnForEmScaled(em, 2, 7, 5.0f);
             break;
         }
@@ -3947,13 +3949,13 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x3F4:
         break;
     case 0x3F5:
-        if ((Player_PassedFrameScaled(em, 26.0f, 0) != 0) || (Player_PassedFrameScaled(em, 52.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 1, 7, 5.0f);
             break;
         }
         break;
     case 0x3F7:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) || Player_PassedFrameScaled(em, 86.0f, 0) || Player_PassedFrameScaled(em, 160.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) || EmMotion_PassedFrameScaled(em, 86.0f, 0) || EmMotion_PassedFrameScaled(em, 160.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 1, 0, 1.0f);
             }
@@ -3978,17 +3980,17 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
                 }
             }
         } else {
-            if (Player_PassedFrameScaled(em, 106.0f, 0) != 0) {
-                EffDiablos18_Create(em, 0xE);
+            if (EmMotion_PassedFrameScaled(em, 106.0f, 0) != 0) {
+                DiablosAttack_Create(em, 0xE);
             }
-            if ((Player_PassedFrameScaled(em, 100.0f, 0) != 0) || (Player_PassedFrameScaled(em, 154.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 154.0f, 0) != 0)) {
                 StageObj_K14_Create(em, 2, 0, 1.0f);
             }
-            if ((Player_PassedFrameScaled(em, 88.0f, 0) != 0) || (Player_PassedFrameScaled(em, 132.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 88.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0)) {
                 StageObj_K14_Create(em, 3, 0, 1.0f);
             }
             if (em->rage != 0) {
-                if ((Player_PassedFrameScaled(em, 106.0f, 0) != 0) || (Player_PassedFrameScaled(em, 132.0f, 0) != 0) || (Player_PassedFrameScaled(em, 158.0f, 0) != 0)) {
+                if ((EmMotion_PassedFrameScaled(em, 106.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0)) {
                     StageObj_K14_Create(em, 0x19, (Rand_Next(1) & 1) + 2, 1.0f);
                 }
                 if ((EmMotion_InFrameRange(em, 0, 4.0f, 50.0f) != 0) && !(gScene.frame & 3)) {
@@ -3999,7 +4001,7 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x3FA:
-        if (((Player_PassedFrameScaled(em, 74.0f, 0) != 0) || (Player_PassedFrameScaled(em, 140.0f, 0) != 0) || (Player_PassedFrameScaled(em, 194.0f, 0) != 0) || (Player_PassedFrameScaled(em, 240.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
+        if (((EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 140.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 194.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 240.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
         if (em->rage != 0) {
@@ -4013,14 +4015,14 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x3FB:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 16.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             StageObj_K14_Create(em, 0xB, 0, 1.0f);
         }
         if (em->rage != 0) {
-            if (Player_PassedFrameScaled(em, 14.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0x19, 2, 1.0f);
                 StageObj_K14_Create(em, 0x19, 3, 1.0f);
             }
@@ -4036,7 +4038,7 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         v1[1] = 10.0f;
         v1[2] = 140.0f;
         v1[0] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, v1, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, v1, 1.6f);
         break;
     case 0x408:
     case 0x409:
@@ -4045,24 +4047,24 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         v0[1] = 10.0f;
         v0[2] = 140.0f;
         v0[0] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, v0, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, v0, 1.6f);
         break;
     case 0x40C:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffDiablos18_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            DiablosAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1F);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1F);
             break;
         }
         break;
     case 0x40D:
         break;
     case 0x40E:
-        if (Player_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0xF);
+        if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0xF);
         }
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 1.0f);
             break;
         }
@@ -4072,8 +4074,8 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x412:
         EmDiablos_RequestOnFrame(em, 0x2C, 1);
         EmDiablos_RequestOnFrame(em, 0x49, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x11);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 0, 1.0f);
@@ -4081,17 +4083,17 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x41B:
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 2, 0.8f);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1B);
         }
-        if (Player_PassedFrameScaled(em, 168.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 168.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1B);
         }
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1C);
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1C);
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 156.0f, 248.0f) || EmMotion_InFrameRange(em, 0, 276.0f, 346.0f)) {
@@ -4101,8 +4103,8 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x41E:
-        if (Player_PassedFrameScaled(em, 102.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x12);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 16.0f, 26.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
@@ -4110,19 +4112,19 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x424:
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x16, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0x80, 0.6f);
             break;
         }
         break;
     case 0x425:
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
             break;
         }
@@ -4132,13 +4134,13 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x428:
         break;
     case 0x429:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0x80, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 128.0f, 0) != 0) || (Player_PassedFrameScaled(em, 164.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
             StageObj_K14_Create(em, 3, 0x80, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0x80, 1.0f);
             break;
         }
@@ -4147,14 +4149,14 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x42B:
         break;
     case 0x42C:
-        if (Player_PassedFrameScaled(em, 268.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 268.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 0.9f);
             break;
         }
         break;
     case 0x42D:
         EmDiablos_RequestOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x12, 0x80, 1.0f);
             break;
         }
@@ -4173,7 +4175,7 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         break;
     case 0x432:
         EmDiablos_RequestOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x12, 0x81, 1.0f);
             break;
         }
@@ -4182,7 +4184,7 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x435:
         break;
     case 0x436:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             StageObj_K14_Create(em, 0xB, 0, 1.0f);
             break;
         }
@@ -4207,17 +4209,17 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x44A:
         break;
     case 0x44C:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x16);
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x16);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 6, 1.8f);
         }
         if ((EmMotion_InFrameRange(em, 0, 40.0f, 80.0f) != 0) && !(gScene.frame & 3)) {
             Effect0D_SpawnForEmScaled(em, 2, 3, 7.0f);
         }
         if (em->rage != 0) {
-            if (Player_PassedFrameScaled(em, 22.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
                 StageObj_K14_Create(em, 0x19, 2, 1.0f);
                 StageObj_K14_Create(em, 0x19, 3, 1.0f);
             }
@@ -4229,41 +4231,41 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         break;
     case 0x44F:
         EmDiablos_RequestOnFrame(em, 0x68, 4);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x20);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x20);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 82.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.2f);
         }
-        if (Player_PassedFrameScaled(em, 104.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
         if ((EmMotion_InFrameRange(em, 0, 40.0f, 62.0f) != 0) && !(gScene.frame & 3)) {
             Effect0D_SpawnForEmScaled(em, 0xF, 3, 5.0f);
         }
-        if ((Player_PassedFrameScaled(em, 18.0f, 0) != 0) || (Player_PassedFrameScaled(em, 22.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 9, 3, 5.0f);
         }
-        if ((Player_PassedFrameScaled(em, 148.0f, 0) != 0) || (Player_PassedFrameScaled(em, 160.0f, 0) != 0) || (Player_PassedFrameScaled(em, 172.0f, 0) != 0) || (Player_PassedFrameScaled(em, 184.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 172.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 184.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x29, 3, 6.0f);
         }
-        if (!(em->fxFlags & 1) && (Player_PassedFrameScaled(em, 180.0f, 0) != 0)) {
+        if (!(em->fxFlags & 1) && (EmMotion_PassedFrameScaled(em, 180.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x2A, 0x13, 0.7f);
             break;
         }
         break;
     case 0x450:
         EmDiablos_RequestOnFrame(em, 2, 5);
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x15);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x21);
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x21);
         }
-        if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x22, 0x13, 1.4f);
             if (Player_InCurrentArea(em)) {
                 Em_BonePos(em, 0x22, v3);
@@ -4282,7 +4284,7 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         break;
     case 0x451:
         EmDiablos_RequestOnFrame(em, 0xC, 3);
-        if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 2, 0x13, 1.4f);
             if (Player_InCurrentArea(em)) {
                 Em_BonePos(em, 2, v3);
@@ -4293,13 +4295,13 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x452:
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x18);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x18);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x14, 3, 5.0f);
         }
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x14, 3, 5.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 86.0f, 152.0f) != 0) && !(gScene.frame & 3)) {
@@ -4308,13 +4310,13 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x453:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x10);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x10);
         }
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x14, 3, 5.0f);
         }
         if (em->rage != 0) {
@@ -4327,40 +4329,40 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x454:
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x14);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x14);
         }
-        if (Player_PassedFrameScaled(em, 94.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1D);
+        if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1D);
         }
         if (!(em->fxFlags & 1)) {
-            if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
                 Effect0D_SpawnForEmScaled(em, 0x2B, 7, 2.0f);
             }
-            if (Player_PassedFrameScaled(em, 104.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
                 Effect0D_SpawnForEmScaled(em, 0x2B, 7, 3.0f);
                 break;
             }
         }
         break;
     case 0x455:
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x1E);
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x1E);
         }
-        if (Player_PassedFrameScaled(em, 54.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x14, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x14, 3, 2.0f);
             break;
         }
         break;
     case 0x457:
-        if (Player_PassedFrameScaled(em, 112.0f, 0) != 0) {
-            EffDiablos18_Create(em, 0x13);
+        if (EmMotion_PassedFrameScaled(em, 112.0f, 0) != 0) {
+            DiablosAttack_Create(em, 0x13);
             StageObj_K0F_CreateOnEm(em, 5, 6, 1.0f);
             break;
         }
@@ -4370,7 +4372,7 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     case 0x45A:
         EmDiablos_RequestOnFrame(em, 4, 3);
         EmDiablos_RequestOnFrame(em, 0x68, 0);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             v2[1] = 30.0f;
             v2[0] = 0.0f;
             v2[2] = 100.0f;
@@ -4387,7 +4389,7 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         break;
     case 0x45B:
-        if (Player_PassedFrameScaled(em, 68.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 68.0f, 0) != 0) {
             StageObj_K15_Create(em, 2);
             break;
         }
@@ -4423,7 +4425,7 @@ void EmDiablos_TableNop(void)
 
 s32 EmDiablos_AllowHit8(Em *em)
 {
-    if ((EmDiablos_InSandState(em) == 0) && (em->stance != 2) && ((s8) em->hit8Count == 0)) {
+    if ((EmDiablos_InSandState(em) == 0) && (em->stance != 2) && ((s8) em->partBreakCount == 0)) {
         return 1;
     }
     return 0;
@@ -4663,7 +4665,7 @@ void EmDiablos_ChangeState(Em *em, u16 group, u16 state, u8 mode)
         switch (state) {
         case 4:
             em->fxFlags |= 1;
-            em->hit8Count++;
+            em->partBreakCount++;
             Em_EndAllStatus(em);
             break;
         case 19:
@@ -5490,10 +5492,10 @@ EmTurnParams EmDiablos_TurnParams[3] = {
 EmDiablosVec EmDiablos_CarveThrowPt = {
 #include "game/008C7398.inc"
 };
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmDiablos_Callbacks[8] = {
     EmDiablos_SpawnEffects, EmDiablos_SpawnEffects, EmDiablos_TableNop, EmDiablos_UpdateMotionEffects,
-    func_0090A9C0, EmDiablos_Reinit, EmDiablos_AllowHit8, NULL,
+    GmEm_ReturnZero, EmDiablos_Reinit, EmDiablos_AllowHit8, NULL,
 };
 EmCurveKey EmDiablos_MoveVelYCurves_0[8] = {
 #include "game/008C73D0.inc"

@@ -10,6 +10,23 @@
  * style in flags & 7 and colours. Window_DrawTextAlpha and the list windows read a text colour at
  * +8; Window_DrawText and the list panels read padX, padY there.
  */
+/* The flags word of Window, Panel, ListWin and ListPanel. */
+#define WINDOW_STYLE_MASK   0x0007  /* the frame style (Frame.style); above WINDOW_STYLE_MAX draws that */
+#define WINDOW_STYLE_MAX    5
+#define WINDOW_RULED        0x2000  /* ListPanel: rules between the entries, lines 2 pixels taller; ListWin: taller lines */
+#define WINDOW_INSET        0x4000  /* the frame drawn inside the box (FRAME_INSET) */
+#define WINDOW_FILL         0x8000  /* the background filled in color2 (FRAME_FILL), not tiled */
+
+/* Frame.style: the style in the low bits, then two flags. */
+#define FRAME_STYLE_MASK    0x7
+#define FRAME_STYLE_CORNERS 4           /* styles 4 and 5: gFrameStyles2's corner pieces; 0-3 tile gFrameStyles' edges */
+#define FRAME_INSET         0x40000000  /* the box shrunk by the corners' size, so the frame lies inside it */
+#define FRAME_FILL          0x80000000  /* the background a rectangle in color2; else tiles of the window texture */
+
+/* Menu_DrawArrow's and Chat_DrawArrow's flags. */
+#define ARROW_MIRROR        0x1     /* pointing the other way (the texels swapped) */
+#define ARROW_TEXRECT       0x2     /* drawn by TexRect_Draw, mode 2, not as a sprite */
+
 /* A menu window (gChatFrameBox, gPersonalStatusPanels[], gEquipWindowBox...): position, size in cells, colour and flags. */
 typedef struct Window {
     s16 x;                      /* 0x0 */

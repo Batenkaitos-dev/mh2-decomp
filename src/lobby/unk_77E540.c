@@ -12,7 +12,7 @@ Em *EmSlot_Alloc(void);
 
 s32 SongMenu_IsPlaying(void);
 void Em_PlaySeSlot1(Em *em, s32 id, void *pos, s32 b);
-s32 Player_PassedFrameScaled(void *obj, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *obj, f32 frame, s32 layer);
 extern s32 gTownMode;
 void Em_PlaySeSlot6(Em *em, s32 id, void *pos, s32 b);
 void Npc_MotionSounds(Em *, NpcWork *);
@@ -25,14 +25,14 @@ extern u8 *gAreaNpcSpawns[];
 
 void Npc_SeOnFrame(Em *npc, s32 frame, s32 id)
 {
-    if ((SongMenu_IsPlaying() != 1) && (gTownMode != 0x2F) && (Player_PassedFrameScaled((Player *) npc, (f32) frame, 0) != 0)) {
+    if ((SongMenu_IsPlaying() != 1) && (gTownMode != 0x2F) && (EmMotion_PassedFrameScaled((Player *) npc, (f32) frame, 0) != 0)) {
         Em_PlaySeSlot6(npc, id, &npc->posX, 2);
     }
 }
 
 void Npc_SeOnFrameB(Em *npc, s32 frame, s32 id)
 {
-    if ((SongMenu_IsPlaying() != 1) && (gTownMode != 0x2F) && (Player_PassedFrameScaled((Player *) npc, (f32) frame, 0) != 0)) {
+    if ((SongMenu_IsPlaying() != 1) && (gTownMode != 0x2F) && (EmMotion_PassedFrameScaled((Player *) npc, (f32) frame, 0) != 0)) {
         Em_PlaySeSlot1(npc, id, &npc->posX, 2);
     }
 }
@@ -45,7 +45,7 @@ void Npc_PlayVoice(Em *npc, f32 dist)
     if (SongMenu_IsPlaying() == 1 && pl->stateGroup == 0 && pl->state == 0x25) {
         return;
     }
-    if (gTownMode != 0x2F && Player_PassedFrameScaled((Player *) npc, dist, 0) != 0) {
+    if (gTownMode != 0x2F && EmMotion_PassedFrameScaled((Player *) npc, dist, 0) != 0) {
         Em_PlaySeSlot6(npc, (s8)m->voice + ((u16)Rand_Next(1) & 1), &npc->posX, 2);
     }
 }
@@ -98,7 +98,7 @@ void Npc_MotionSounds(Em *npc, NpcWork *m)
         Npc_PlayVoice(npc, 92.0f);
         Npc_PlayVoice(npc, 136.0f);
         Npc_PlayVoice(npc, 162.0f);
-        if ((Player_PassedFrameScaled((Player *) npc, 50.0f, 0) != 0) && ((Player_InCurrentArea((Player *) npc) & 0xFF) == 1)) {
+        if ((EmMotion_PassedFrameScaled((Player *) npc, 50.0f, 0) != 0) && ((Player_InCurrentArea((Player *) npc) & 0xFF) == 1)) {
             Vec_Set(v, 0.0f, 0.0f, 120.0f);
             Vec_RotateSelf((f32 *) v, &npc->worldMtx[0][0]);
             v[0] += npc->posX;
@@ -191,7 +191,7 @@ void Npc_MotionSounds(Em *npc, NpcWork *m)
         Npc_SeOnFrame(npc, 0x6E, 0x63);
         Npc_SeOnFrame(npc, 0xC6, 0x64);
         Npc_SeOnFrame(npc, 0xDA, 0x5C);
-        if ((Player_PassedFrameScaled((Player *) npc, 220.0f, 0) != 0) && ((Player_InCurrentArea((Player *) npc) & 0xFF) == 1)) {
+        if ((EmMotion_PassedFrameScaled((Player *) npc, 220.0f, 0) != 0) && ((Player_InCurrentArea((Player *) npc) & 0xFF) == 1)) {
             Vec_Set(v, 5.0f, 20.0f, 166.0f);
             Vec_RotateSelf((f32 *) v, &npc->worldMtx[0][0]);
             v[0] += npc->posX;
@@ -328,7 +328,7 @@ void Npc_MotionSounds(Em *npc, NpcWork *m)
         Npc_SeOnFrameB(npc, 0x2E2, 0x3A);
         Npc_SeOnFrameB(npc, 0x302, 0x3A);
         Npc_SeOnFrameB(npc, 0x342, 0x2D);
-        if ((Player_PassedFrameScaled((Player *) npc, 290.0f, 0) != 0) && (Player_InCurrentArea((Player *) npc) & 0xFF)) {
+        if ((EmMotion_PassedFrameScaled((Player *) npc, 290.0f, 0) != 0) && (Player_InCurrentArea((Player *) npc) & 0xFF)) {
             Em_BonePos(npc, 2, v);
             v[1] = npc->floorY;
             Effect0D_SpawnAt(v, 7, 1.0f);
@@ -372,7 +372,7 @@ void Npc_Spawn(s32 kind)
         if (kind == e->f0) {
             em = EmSlot_Alloc();
             if (em != NULL) {
-                em->unk01E = 1;
+                em->ownTask = 1;
                 em->modelSlot = 0;
                 em->index = i;
                 em->area = gScene.area;

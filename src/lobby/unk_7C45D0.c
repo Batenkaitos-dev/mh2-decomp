@@ -34,7 +34,7 @@ void LobbyMsg_Draw(void);
 void LobbyEntry_DrawSprites(void);
 s32 Gs_SetState(u8, u32);
 void Tex_Prepare(s32 n, s32 tex);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Bind(s32);
 void Text_SetSize(s32);
 extern u8 gNetEntryMode;
@@ -305,7 +305,7 @@ void LobbyEntry_Draw(MenuTask *task) {
     u8 mode;
 
     Text_SetSize(task->textSize);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     if (((s32) gLobby->mode < 6) && (gNetEntryMode == 0)) {
         Icon_DrawPreset(2);
@@ -316,7 +316,7 @@ void LobbyEntry_Draw(MenuTask *task) {
     Tex_Bind(0x155);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     mode = gLobby->mode;
     if ((mode == 4) && (mode == 3)) {

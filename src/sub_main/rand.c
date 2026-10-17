@@ -18,6 +18,8 @@
 #include "common.h"
 #include "scene.h"
 #include "save.h"
+#include "sound.h"
+#include "area.h"
 
 extern u8 gSoundEffectSet[2];        /* per SPU core: effect already set */
 extern u16 gBgmId;
@@ -71,14 +73,14 @@ void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback)
     }
 }
 
-/* In area 0x87, clears the BGM id (0xFF: none); the lobby calls it.
+/* In AREA_HUB_0x87, clears gBgmId to BGM_NONE; the lobby calls it.
  * Returns 0. */
 s32 Bgm_StopInArea87(void)
 {
-    if (gScene.area != 0x87) {
+    if (gScene.area != AREA_HUB_0x87) {
         return 0;
     }
-    gBgmId = 0xFF;
+    gBgmId = BGM_NONE;
     return 0;
 }
 

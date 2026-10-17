@@ -1,10 +1,10 @@
 /*
  * 0x6EB060-0x6EB590: two kinds of objects of sub_main's object list
  * (ObjAttach_Alloc allocates them; +0x20 is the update function), each tied to
- * a monster (+0xA: index into gEms). Eff37_Update is kind 0x25's
+ * a monster (+0xA: index into gEms). VolcanoHazard_Update is kind 0x25's
  * update: a switch on the object's state (+0x4), one handler per state.
- * The file owns its .rodata: the jump tables of EffEm02_Run and
- * Eff37_Update (0x8DE1F0-0x8DE240).
+ * The file owns its .rodata: the jump tables of BulldromeAttack_Run and
+ * VolcanoHazard_Update (0x8DE1F0-0x8DE240).
  */
 #include "common.h"
 #include "scene.h"
@@ -15,24 +15,32 @@
 #include "capsule.h"
 /* prototypes of callees (round 13) */
 ObjAttach *ObjAttach_Alloc(s32 n);
-void EffGunlance38_Update(ObjAttach *o);
+void GunlanceBlast_Update(ObjAttach *o);
 void Vec_Copy(f32 *out, f32 *in);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 
 void DrawSlot_Free(s32 i);
 void ObjAttach_Free(ObjAttach *p);
 
-void Eff37_Setup(ObjAttach *o);
-void Eff37_Run(ObjAttach *o);
-void Eff37_End(ObjAttach *o);
-void Eff37_Free(ObjAttach *o);
+void VolcanoHazard_Setup(ObjAttach *o);
+void VolcanoHazard_Run(ObjAttach *o);
+void VolcanoHazard_End(ObjAttach *o);
+void VolcanoHazard_Free(ObjAttach *o);
 
 s32 Player_TestSetFlags(void *, s32 mask);
 struct MoveObj;
 void MoveObj_StartMotionEntry(struct MoveObj *, s32 a, void *b);
-extern void *Eff37_MotionDesc[];
-extern HitShape *gEff37HitLists[];
-void EffEm02_Run(ObjAttach *o)
+extern void *VolcanoHazard_RowsPtr[];
+extern HitShape *VolcanoHazard_HitShapes[];
+/*
+ * Types 3-5 keep the window open. Types 0 and 2 also keep it open, closing it
+ * once the monster leaves EM_GROUP_ATTACK or Em.unk473 is 0
+ * (EmKind38_ChangeState clears it). Type 1 follows the monster's yaw, its
+ * power 35 while more than 99 or 43-50 window frames are left, else 25. The
+ * attack ends when the motion changes, the window closes or the monster's
+ * task leaves its run phase.
+ */
+void BulldromeAttack_Run(ObjAttach *o)
 {
     Em *em = &gEms[o->idx];
 
@@ -40,7 +48,7 @@ void EffEm02_Run(ObjAttach *o)
     case 0:
     case 2:
         o->hitFrames = 99;
-        if (em->stateGroup != 3) {
+        if (em->stateGroup != EM_GROUP_ATTACK) {
             o->hitPhase = 0;
         }
         if (em->unk473 == 0) {
@@ -67,40 +75,51 @@ void EffEm02_Run(ObjAttach *o)
     }
     if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0 || em->taskPhase >= 2) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
 }
 
-void EffEm02_End(ObjAttach *o)
+/*
+ * Ends the attack: closes its hit window, hides it and frees its draw slot.
+ * It is freed on the next update.
+ */
+void BulldromeAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != 0) {
         DrawSlot_Free(o->drawSlot);
     }
 }
 
-void EffEm02_Free(ObjAttach *o)
+/* Frees the attack (ObjAttach_Free). */
+void BulldromeAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffEm02_Draw(ObjAttach *o)
+/* Draws nothing. */
+void BulldromeAttack_Draw(ObjAttach *o)
 {
 }
 
-void Eff37_Update(ObjAttach *o);
+void VolcanoHazard_Update(ObjAttach *o);
 
-void Eff37_Create(f32 *pos, u8 k, u8 c)
+/*
+ * Makes a VolcanoHazard of type at pos in the current area, with no owner,
+ * lasting life frames (stateVar1). AreaObj_K19_Run makes type 1 for 130
+ * frames at a point of volcano areas 1, 2, 5 and 6.
+ */
+void VolcanoHazard_Create(f32 *pos, u8 attackType, u8 life)
 {
     ObjAttach *obj = ObjAttach_Alloc(0);
 
     if (obj != NULL) {
-        obj->kind = 0x25;
-        obj->type = k;
-        obj->update = Eff37_Update;
+        obj->kind = ATTACH_VOLCANO_HAZARD;
+        obj->type = attackType;
+        obj->update = VolcanoHazard_Update;
         obj->idx = 0;
         obj->isEm = 0;
         obj->ownerMotion = 0;
@@ -108,62 +127,74 @@ void Eff37_Create(f32 *pos, u8 k, u8 c)
         obj->pos[0] = pos[0];
         obj->pos[1] = pos[1];
         obj->pos[2] = pos[2];
-        obj->stateVar1 = c;
+        obj->stateVar1 = life;
         obj->area = gScene.area;
     }
 }
 
-void Eff37_Update(ObjAttach *o)
+/*
+ * The VolcanoHazard's per-frame update, by ObjAttach.state: a hit keeps it
+ * running; states 4, 5, 7 and 9 end it.
+ */
+void VolcanoHazard_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        Eff37_Setup(o);
+    case ATTACH_SETUP:
+        VolcanoHazard_Setup(o);
         break;
-    case 1:
-        Eff37_Run(o);
+    case ATTACH_RUN:
+        VolcanoHazard_Run(o);
         break;
-    case 2:
-        Eff37_End(o);
+    case ATTACH_END:
+        VolcanoHazard_End(o);
         break;
-    case 3:
-        Eff37_Run(o);
+    case ATTACH_HIT:
+        VolcanoHazard_Run(o);
         break;
     case 4:
-        Eff37_End(o);
+        VolcanoHazard_End(o);
         break;
-    case 5:
-        Eff37_End(o);
+    case ATTACH_DEFLECTED:
+        VolcanoHazard_End(o);
         break;
-    case 9:
-        Eff37_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        VolcanoHazard_End(o);
         break;
     case 7:
-        Eff37_End(o);
+        VolcanoHazard_End(o);
         break;
-    case 6:
-        Eff37_Free(o);
+    case ATTACH_FREE:
+        VolcanoHazard_Free(o);
         break;
     }
 }
 
-void Eff37_Setup(ObjAttach *o)
+/*
+ * Sets the hazard up from attack row type (MoveObj_StartMotionEntry; it has
+ * no owner): its hit shapes. It hits players only (ATKF_NO_EM).
+ */
+void VolcanoHazard_Setup(ObjAttach *o)
 {
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x80);
-    MoveObj_StartMotionEntry((struct MoveObj *)o, o->type, Eff37_MotionDesc);
-    o->hitList = gEff37HitLists[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_NO_EM);
+    MoveObj_StartMotionEntry((struct MoveObj *)o, o->type, VolcanoHazard_RowsPtr);
+    o->hitList = VolcanoHazard_HitShapes[o->hitListNo];
     o->hurtList = 0;
     o->drawSlotBuf = NULL;
 }
 
-void Eff37_Run(ObjAttach *o)
+/*
+ * Keeps the hit window open and counts the hazard's frames in ownerMotion.
+ * Past stateVar1 frames it ends.
+ */
+void VolcanoHazard_Run(ObjAttach *o)
 {
     o->hitFrames = 99;
     if (++o->ownerMotion > o->stateVar1) {
         o->hitFrames = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
     if (o->drawSlotBuf != NULL) {
@@ -172,58 +203,69 @@ void Eff37_Run(ObjAttach *o)
     }
 }
 
-void Eff37_End(ObjAttach *o)
+/*
+ * Ends the hazard: closes its hit window, hides it and frees its draw slot.
+ * It is freed on the next update.
+ */
+void VolcanoHazard_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != 0) {
         DrawSlot_Free(o->drawSlot);
     }
 }
 
-void Eff37_Free(ObjAttach *o)
+/* Frees the hazard (ObjAttach_Free). */
+void VolcanoHazard_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffGunlance38_Create(Player *p, s8 kind)
+/*
+ * Makes a GunlanceBlast of type for player pl: 1-3 the shell blast by
+ * shelling type (Gunlance_ShellEffect), 4 the wyvern fire
+ * (Gunlance_StateWyvernFire). It starts at pl's position with pl's angles,
+ * motion and stateRand, and clears pl's hitPending and contactHit.
+ */
+void GunlanceBlast_Create(Player *pl, s8 attackType)
 {
     ObjAttach *o;
 
     if ((o = ObjAttach_Alloc(1)) != NULL) {
-        o->kind = 38;
-        o->type = kind;
-        o->update = EffGunlance38_Update;
-        o->idx = p->index;
-        o->isEm = p->isEm;
-        o->ownerMotion = p->motionId[0];
-        o->owner = p;
-        o->yaw = p->rot[1];
-        o->randBits = p->stateRand;
+        o->kind = ATTACH_GUNLANCE_BLAST;
+        o->type = attackType;
+        o->update = GunlanceBlast_Update;
+        o->idx = pl->index;
+        o->isEm = pl->isEm;
+        o->ownerMotion = pl->motionId[0];
+        o->owner = pl;
+        o->yaw = pl->rot[1];
+        o->randBits = pl->stateRand;
         o->stateVar0 = 0;
         o->stateVar1 = 0;
-        o->rotX = p->rot[0];
-        o->rotY = p->rot[1];
-        o->rotZ = p->rot[2];
-        Vec_Copy(o->pos, p->pos);
-        o->side = p->side;
+        o->rotX = pl->rot[0];
+        o->rotY = pl->rot[1];
+        o->rotZ = pl->rot[2];
+        Vec_Copy(o->pos, pl->pos);
+        o->side = pl->side;
         o->unk080 = 0;
-        p->hitPending = 0;
-        p->attackHit800 = 0;
+        pl->hitPending = 0;
+        pl->contactHit = 0;
     }
 }
 
 /* unk_6EB060's .data (0x8AE7D0-0x8AE870) */
-HitShape gEff37HitLists_0[2] = {
+HitShape VolcanoHazard_HitShapes_0[2] = {
 #include "game/008AE7D0.inc"
 };
-HitShape *gEff37HitLists[4] = {
-    gEff37HitLists_0, 0, 0, 0,
+HitShape *VolcanoHazard_HitShapes[4] = {
+    VolcanoHazard_HitShapes_0, 0, 0, 0,
 };
-u32 Eff37_MotionDesc_0[12] = {
+u32 VolcanoHazard_Rows[12] = {
 #include "game/008AE830.inc"
 };
-void *Eff37_MotionDesc[1] = {
-    (void *)Eff37_MotionDesc_0,
+void *VolcanoHazard_RowsPtr[1] = {
+    (void *)VolcanoHazard_Rows,
 };

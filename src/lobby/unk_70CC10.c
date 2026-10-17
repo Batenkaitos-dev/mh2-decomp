@@ -277,7 +277,7 @@ void Gallery_Aim(void)
         w->yaw = 0xAAB;
     }
 
-    if (!(pl->input.stickDir & 0x3C00) || (mag = gPadInput.stickTilt[0].cur) < 0x28) {
+    if (!(pl->input.stickDir & 0x3C00) || (mag = gPadInput.stickTilt[0].left) < 0x28) {
         return;
     }
     if (mag >= 0x78) {

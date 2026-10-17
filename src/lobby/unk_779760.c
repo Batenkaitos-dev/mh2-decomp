@@ -6,6 +6,7 @@
 #include "lobby_globals.h"
 #include "scene.h"
 #include "chat_log.h"
+#include "area.h"
 
 typedef struct Delivery {
     /* 0x0 */ u16 item;
@@ -403,7 +404,7 @@ void TownMsg_OnArea(u8 pl, u8 *msg)
         }
         p->unk844 = 0;
         p->unk867 = 0;
-        if (me->target != NULL && ((Player *)me->target)->index == pl && ((Player *)me->target)->unk01E == 0) {
+        if (me->target != NULL && ((Player *)me->target)->index == pl && ((Player *)me->target)->ownTask == 0) {
             me->target = NULL;
         }
         if (area == 0 && Lobby_GetPlace3928() != 0 && gNetUsers[pl].name[0] != 0) {
@@ -469,7 +470,7 @@ void TownMsg_On1C(s8 idx, u8 *msg)
     gTownSeats[(u8)k] = Lobby_FindMember(msg + 2) + 0x30;
     me = gScene.localPlayer;
     if (me == Lobby_FindMember(msg + 2)) {
-        if (gScene.area == 0x86 && gTownMode == 0x36) {
+        if (gScene.area == AREA_HUB_0x86 && gTownMode == 0x36) {
             Contest_TakeSeat();
             return;
         }

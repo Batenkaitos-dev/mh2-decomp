@@ -20,6 +20,8 @@
 #include "syssave.h"
 #include "save.h"
 #include "hud.h"
+#include "shake.h"
+#include "sound.h"
 /* The whole file is compiled at optimization level 4: its functions match only so. */
 #pragma optimization_level 4
 
@@ -65,7 +67,7 @@ extern char *gSortHintText[];
 extern char *gSelectText[];
 extern char *gChatNgWordsA[];
 extern char *gChatNgWordsB[];
-extern Pt gShakeOffset;
+extern ShakeOffset gShakeOffset;
 extern f32 gShakeAmp;
 extern u8 gShakeId;
 extern u8 gShakeFlags;
@@ -108,7 +110,7 @@ s32 Sjis_IsSymbolOrDigit(u8 *s);
 f32 Math_Sin(f32 a);
 s32 sprintf(char *buf, const char *fmt, ...);
 void Text_Printf(const char *fmt, ...);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Tex_Prepare(s32 a, s32 b);
 void Tex_Bind(s32 a);
 void Menu_DrawArrow(s16 x, s16 y, s16 w, s16 h, u32 color, u8 flags);
@@ -386,7 +388,7 @@ void StatusPage_DrawArrow(s32 x, s16 y)
     s8 red, green, blue;
     u8 blueByte;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
     pulse = Math_Sin(0.0000958738f * (f32)(u32)(u16)((gFrameTick & 0x1F) << 11));
@@ -803,7 +805,7 @@ s32 PhraseMenu_OpenKbd(u8 index)
     }
     Kbd_SetPos(0x50, 80.0f);
     Chat_OpenKbd(2, 0xE, PHRASE_LEN - 1, gPhraseEntries[index].text);
-    Sound_PlaySeFlat(0, 0x11, 0);
+    Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
     return 1;
 }
 
@@ -815,7 +817,7 @@ s8 PhraseMenu_KbdUpdate(u8 index)
     char buf[0x30];
     s8 result;
 
-    if (gPadState[0].pressed & 0x4000) {
+    if (gPadState[0].pressed & PAD_SELECT) {
         Kbd_Cancel();
         return 1;
     }
@@ -930,7 +932,7 @@ void Hud_AmmoIconSprite(u8 *equip, Sprite *spr)
 void Shake_Start(u8 id, u8 flags, f32 amp)
 {
     gShakeId = id;
-    *(s32 *)&gShakeOffset = 0;
+    *(s32 *)&gShakeOffset = 0; /* both halves as one word, as the game clears it */
     gShakeOn = 1;
     gShakeTimer = SHAKE_FRAMES;
     gShakeFlags = flags;
@@ -984,7 +986,7 @@ s32 Shake_Update(u8 id)
                     break;
                 }
             } else {
-                gShakeId = 0xFF;
+                gShakeId = SHAKE_NONE;
             }
             gShakeOn = 0;
         }

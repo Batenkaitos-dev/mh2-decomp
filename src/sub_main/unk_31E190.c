@@ -8,6 +8,8 @@
 #include "player.h"
 #include "objhead.h"
 #include "capsule.h"
+#include "model.h"
+#include "area.h"
 
 /* prototypes */
 u32 Player_TestFlag(void *obj, u32 flag);
@@ -66,8 +68,8 @@ s32 CamScript_Run(CamCtl *cam, CamView *obj)
         obj->fov = cam->out.fov;
         Vec_Copy(w->eye[0], obj->eye);
         Vec_Copy(w->at[0], obj->at);
-        w->roll[0] = 10430.378f * obj->roll;
-        w->fov[0] = 10430.378f * obj->fov;
+        w->roll[0] = RAD_TO_ANGLE16 * obj->roll;
+        w->fov[0] = RAD_TO_ANGLE16 * obj->fov;
         w->swing[3].speed = 0;
         w->swing[2].speed = 0;
         w->swing[1].speed = 0;
@@ -282,7 +284,7 @@ void CamScript_Place(CamCtl *cam, CamView *obj, CamScript *w)
     case 0:
         CamScript_OrbitAngles(ang, cam);
         Mtx_Identity(mtx);
-        Mtx_RotateXYZ(mtx, 0.0000958738f * ang[0], 0.0000958738f * ang[1], 0.0f);
+        Mtx_RotateXYZ(mtx, ANGLE16_TO_RAD * ang[0], ANGLE16_TO_RAD * ang[1], 0.0f);
         off[0] = 0.0f;
         off[1] = 0.0f;
         off[2] = 500.0f;
@@ -348,8 +350,8 @@ void CamScript_Place(CamCtl *cam, CamView *obj, CamScript *w)
             obj->eye[1] = y;
         }
     }
-    obj->roll = 0.0000958738f * w->roll[0] * t + 0.0000958738f * w->roll[1] * it;
-    obj->fov = 0.0000958738f * w->fov[0] * t + 0.0000958738f * w->fov[1] * it;
+    obj->roll = ANGLE16_TO_RAD * w->roll[0] * t + ANGLE16_TO_RAD * w->roll[1] * it;
+    obj->fov = ANGLE16_TO_RAD * w->fov[0] * t + ANGLE16_TO_RAD * w->fov[1] * it;
     if (w->swing[2].speed != 0) {
         a = (f32)w->swing[2].amp[0] * t + (f32)w->swing[2].amp[1] * it;
         a *= Math_CosAngle(w->swing[2].phase);
@@ -357,7 +359,7 @@ void CamScript_Place(CamCtl *cam, CamView *obj, CamScript *w)
         if (w->swingRand[2] != 0) {
             a += 3.0637257e-5f * (a * w->swingRand[2] * (f32)((Rand_Next(1) & 0xFF) - 0x80));
         }
-        obj->roll += 0.0000958738f * a;
+        obj->roll += ANGLE16_TO_RAD * a;
     }
     if (w->swing[3].speed != 0) {
         a = (f32)w->swing[3].amp[0] * t + (f32)w->swing[3].amp[1] * it;
@@ -366,7 +368,7 @@ void CamScript_Place(CamCtl *cam, CamView *obj, CamScript *w)
         if (w->swingRand[3] != 0) {
             a += 3.0637257e-5f * (a * w->swingRand[3] * (f32)((Rand_Next(1) & 0xFF) - 0x80));
         }
-        obj->fov += 0.0000958738f * a;
+        obj->fov += ANGLE16_TO_RAD * a;
     }
     sway[1] = 0.0f;
     sway[0] = 0.0f;
@@ -1112,12 +1114,12 @@ void CamCtl_ReadPad(void *cam)
     ((CamCtl *)cam)->padMagR = (u16) gPadState->magR;
 }
 
-extern CamDistSet gCamMode1Defaults;
+extern CamDistSet gCamFollowDefaults;
 
-/* dst = the default follow settings gCamMode1Defaults. */
+/* dst = the default follow settings gCamFollowDefaults. */
 void Cam_CopyDefaults(CamDistSet *dst)
 {
-    *dst = gCamMode1Defaults;
+    *dst = gCamFollowDefaults;
 }
 
 void CamCtl_InitDefaultParams(CamCtl *c)
@@ -1393,7 +1395,7 @@ f32 Math_Atan2(f32 y, f32 x);
 /* Angle (0x10000 per turn) of the direction from b to a in the x-z plane. */
 s16 Vec_AngleXZ16(f32 *a, f32 *b)
 {
-    return (u16)(s32)(10430.378f * Math_Atan2(a[0] - b[0], a[2] - b[2]));
+    return (u16)(s32)(RAD_TO_ANGLE16 * Math_Atan2(a[0] - b[0], a[2] - b[2]));
 }
 
 /* A bump over the 16-bit angle a: 0 outside lo..hi, amp * ((a - lo)(hi - a) / 65536)^2 inside, and the same mirrored (negative) over 0x10000 - hi .. 0x10000 - lo. */
@@ -1558,8 +1560,8 @@ s32 Player_LocalAreaOk_Unk(void)
     Player *p = &gPlayers[gScene.localPlayer];
 
     switch (p->area) {
-    case 0xB3:
-    case 0xB7:
+    case AREA_BATTLE_TOWN_0:
+    case AREA_BATTLE_TOWN_NIGHT_0:
         return 0;
     }
     return 1;
@@ -2490,7 +2492,7 @@ void CamReq_QuestTarget(s32 flag)
     switch (e->type) {
     case 7:
     case 0x32:
-        if (Area_DayId(gScene.area) != 0xC) {
+        if (Area_DayId(gScene.area) != AREA_FORTRESS_5) {
             return;
         }
         if (gQuest.emLeft == 0) {
@@ -2777,13 +2779,13 @@ s16 gCamShakeLengths[8] = {
 f32 gCamShakeRanges[4] = {
 #include "sub_main/0041C820.inc"
 };
-CamDistSet gCamMode1Defaults = {
+CamDistSet gCamFollowDefaults = {
 #include "sub_main/0041C830.inc"
 };
-CamDist D_0041C930[2] = {
+CamDist gCamBlockedDists[2] = {
 #include "sub_main/0041C930.inc"
 };
-CamDist D_0041C970 = {
+CamDist gCamFallDist = {
 #include "sub_main/0041C970.inc"
 };
 u32 gCamMode3Offsets[24] = {
@@ -2806,13 +2808,13 @@ CamEntFn gCamModeUpdate[6] = {
     CamFollow_Update, CamOrbit_Update, CamRail_Update, CamAim_Update,
     CamFixed_Update, CamScript_Update,
 };
-u32 D_0041CDC8[2] = {
+u32 gCamOrbitExitBlend[2] = {
 #include "sub_main/0041CDC8.inc"
 };
-u32 D_0041CDD0[4] = {
+u32 gCamOrbitEyeOfs[4] = {
 #include "sub_main/0041CDD0.inc"
 };
-u32 D_0041CDE0[4] = {
+u32 gCamOrbitAimOfs[4] = {
 #include "sub_main/0041CDE0.inc"
 };
 f32 gQuinticStart0[2] = {

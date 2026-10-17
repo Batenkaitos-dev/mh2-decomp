@@ -578,8 +578,8 @@ void Quest_DrawOverview(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawTerms(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawDetails(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawClearMark(s16 x, s16 y);
-s32 Save_TestListBit(u16 id);
-u16 Area_MapGroup(u16 id);
+s32 Save_IsQuestCleared(u16 id);
+u16 Map_Group(u16 id);
 extern s8 gMapGroupMapIds[][2];
 extern u16 gQuestStampRand;
 extern char *D_0080CD24;
@@ -602,12 +602,12 @@ void OfficialDesk_DrawQuest(SlotMenu *m, s16 x, s16 y)
         if (list[i] == 0) {
             break;
         }
-        offs[i] = Area_MapGroup(((QuestInfo *)Quest_GetDiscInfo(list[i]))->map);
+        offs[i] = Map_Group(((QuestInfo *)Quest_GetDiscInfo(list[i]))->map);
         if (i == m->listCursor) {
             offs[i] = -offs[i];
         }
     }
-    Menu_DrawQuestSheet(x, y, 0x140, 0x168, offs, m->listCursor, gMapGroupMapIds[Area_MapGroup(q->map)][0], -1);
+    Menu_DrawQuestSheet(x, y, 0x140, 0x168, offs, m->listCursor, gMapGroupMapIds[Map_Group(q->map)][0], -1);
     Font_SetColor(0x80101010);
     if (m->state == 3 && m->subStep == 0) {
         Menu_DrawPageNum(0x21C, y + 0xE, m->unk7C, 3, 1);
@@ -638,7 +638,7 @@ void OfficialDesk_DrawQuest(SlotMenu *m, s16 x, s16 y)
             break;
         }
     }
-    if (Save_TestListBit(q->id)) {
+    if (Save_IsQuestCleared(q->id)) {
         Quest_DrawClearMark(x + 0x28, y + 0xE);
     }
     if (m->quest != NULL) {

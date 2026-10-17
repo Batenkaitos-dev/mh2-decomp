@@ -8,6 +8,7 @@
 #include "stream.h"
 #include "scene.h"
 #include "lobby_state.h"
+#include "overlay.h"
 extern s32 gLoadLastVSync;      /* sub_main 0x5D4A50 */
 
 #define FILEREQ_AFS 0       /* file (id >> 16) of partition (id & 0xFFFF) */
@@ -44,7 +45,7 @@ extern LobbyState gLobbyState;
 
 void *memset(void *dst, s32 c, u32 n);
 s32 Overlay_IsLoaded(s32 id);
-void func_36BDF0(s32 frames, s32);
+void Load_AdvanceFrames(s32 frames, s32 unused);
 void Vib_Stop(s32 port);
 s32 Game_IsOnline(void);
 void func_8FC650(void);
@@ -70,17 +71,17 @@ void Load_Idle(void)
     s32 now = gVSyncCount;
 
     if (gLoadLastVSync != now) {
-        func_36BDF0(now - gLoadLastVSync, 0);
+        Load_AdvanceFrames(now - gLoadLastVSync, 0);
         Vib_Stop(0);
         gLoadLastVSync = gVSyncCount;
         if (Game_IsOnline() == 1 && gSysSettings.gmSubLoaded != 0) {
             func_8FC650();
         }
-        if (Overlay_IsLoaded(4) == 1 && Game_IsOnline() == 1 && gScene.online != 0 && D_008EE27E != 0
+        if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1 && Game_IsOnline() == 1 && gScene.online != 0 && D_008EE27E != 0
             && gLobbyState.modelLoading == NULL) {
             Lobby_ReceiveAll(gNetSock);
         }
-        if (Overlay_IsLoaded(1) == 1) {
+        if (Overlay_IsLoaded(OVERLAY_SUB_MAIN) == 1) {
             Quest_UpdateTimers(1);
         }
     }
@@ -203,7 +204,7 @@ void FileQueue_Cancel(void)
     }
     FileQueue_Init();
     PlayerLook_ResetLoaded();
-    if (Overlay_IsLoaded(4) == 1) {
+    if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1) {
         for (i = 0; i < 10; i++) {
             gLobbyState.modelLoading[i] = 0;
             gLobbyState.lookPending[i] = 0;

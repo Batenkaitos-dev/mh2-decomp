@@ -1,6 +1,6 @@
 /*
- * Game overlay code at 0x6CADF0-0x6D29F0: the EffEm08_* effect objects.
- * Built at optimization level 4: EffEm08_Run and EffEm08_DrawParts match only
+ * Game overlay code at 0x6CADF0-0x6D29F0: the EmRangedAttack_* effect objects.
+ * Built at optimization level 4: EmRangedAttack_Run and EmRangedAttack_DrawParts match only
  * there, every other function at both levels.
  */
 #include "common.h"
@@ -15,27 +15,27 @@
 
 #pragma optimization_level 4
 
-void Eff09_CreateOwned(Player *owner, f32 *pos, s32 kind);
+void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
 void CamShake_SetA(s32 kind, f32 *pos);
-/* unit's own declaration: with the definition's void (f32 *pos, s32 v, s16 k, f32 scale) (game/unk_874B90.c), EffEm08_Impact: 6 of 515 words differ */
+/* unit's own declaration: with the definition's void (f32 *pos, s32 v, s16 k, f32 scale) (game/unk_874B90.c), EmRangedAttack_Impact: 6 of 515 words differ */
 void StageObj_K11_CreateAtScaled(f32 *pos, u16 r, s32 kind, f32 scale);
 void StageObj_K11_CreateAt(f32 *pos, s16 k, u8 c, f32 scale);
-/* unit's own declaration: with the definition's void (f32 *pos, s16 k, u8 c, s32 v, f32 scale) (game/unk_874B90.c), EffEm08_Impact: 3 of 515 words differ, EffEm08_Run: 4 of 2976 words differ */
+/* unit's own declaration: with the definition's void (f32 *pos, s16 k, u8 c, s32 v, f32 scale) (game/unk_874B90.c), EmRangedAttack_Impact: 3 of 515 words differ, EmRangedAttack_Run: 4 of 2976 words differ */
 void StageObj_K11_CreateAtYaw(f32 *pos, s32 kind, u8 type, u16 ang, f32 scale);
 void StageObj_K12_CreateAtScaled(f32 *pos, s32 k, u8 c, f32 scale);
 void StageObj_K0E_CreateScaledB(f32 *pos, s16 k, f32 scale);
 void StageObj_K1C_CreateAt(f32 *src, u8 k, f32 f);
 StageObj *StageObj_K1C_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
-extern f32 EffEm08_K12Scales[];
+extern f32 EmRangedAttack_K12Scales[];
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
 typedef struct { s32 frame; u32 color; } ColorKey;
 void Mtx_RotateZ(f32 *m, f32 a);
-void EffEm08_CopyRespawnPos(u8 *a, u8 *b);
+void EmRangedAttack_CopyRespawnPos(u8 *a, u8 *b);
 void EmFxSpark_SpawnAt(void *src, u8 k, u8 c, f32 f);
 void Vec_Add(f32 *, f32 *, f32 *);
-extern f32 (*EffEm08_RespawnTbls[])[2];
+extern f32 (*EmRangedAttack_RespawnTbls[])[2];
 void Vec_RotateSelf(f32 *v, f32 *m);
-extern f32 EffEm08_BoneOfs[];
+extern f32 EmRangedAttack_BoneOfs[];
 extern f32 D_0089DA54[];
 extern f32 D_0089DA58[];
 EmBone *Em_GetBone(void *obj, s16 bone);
@@ -61,15 +61,15 @@ f32 Math_Absf(f32 x);
 s32 Model_Draw(u32 h, s32 flags);
 void ObjAttach_Free(ObjAttach *p);
 u16 Rand_Next(s32 stream);
-void EffEm08_Setup(ObjAttach *o);
-void EffEm08_Run(ObjAttach *o);
-void EffEm08_Hit(ObjAttach *);
-void EffEm08_End(ObjAttach *o);
-void EffEm08_Free(ObjAttach *o);
+void EmRangedAttack_Setup(ObjAttach *o);
+void EmRangedAttack_Run(ObjAttach *o);
+void EmRangedAttack_Hit(ObjAttach *);
+void EmRangedAttack_End(ObjAttach *o);
+void EmRangedAttack_Free(ObjAttach *o);
 s32 Gs_SetState(u8 reg, u32 v);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 void Vec_Copy(f32 *out, f32 *in);
-/* unit's own declaration: with the definition's void (u16 flags) (sub_main/unk_3240E0.c), EffEm08_DrawModel: 1 of 39 words differ */
+/* unit's own declaration: with the definition's void (u16 flags) (sub_main/unk_3240E0.c), EmRangedAttack_DrawModel: 1 of 39 words differ */
 void Draw_SetBlendFlags(s32);
 f32 AreaGrid2_GetFloorYFiltered(f32 *);
 void Draw_ApplyStates(u32);
@@ -78,7 +78,7 @@ void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
 void DrawSlot_Free(s32);
 struct MoveObj;
 void MoveObj_Integrate(struct MoveObj *);
-void EffEm08_Update(ObjAttach *o);
+void EmRangedAttack_Update(ObjAttach *o);
 void Vec_Normalize(f32 *);
 f32 Vec_Dot(f32 *a, f32 *b);
 void Vec_Cross(f32 *, f32 *, f32 *);
@@ -90,17 +90,17 @@ void Em_BonePos(void *obj, s16 bone, f32 *out);
 u8 Player_InCurrentArea(void *obj);
 s32 Player_TestSetFlags(void *, s32 mask);
 void MoveObj_StartMotionOwned(struct MoveObj *, s32 a, s32 b, void *c);
-extern s16 EffEm08_MotionBase[];
-extern void *EffEm08_MotionDesc;
-void EffEm08_InitByKind(ObjAttach *, s32);
-void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos);
+extern s16 EmRangedAttack_MotionBase[];
+extern void *EmRangedAttack_RowsPtr;
+void EmRangedAttack_InitByKind(ObjAttach *, s32);
+void EmRangedAttack_Impact(ObjAttach *o, s16 n, f32 *pos);
 
-void EffEm08_Init(ObjAttach *o, ObjHead *owner, u8 type, u8 var1)
+void EmRangedAttack_Init(ObjAttach *o, ObjHead *owner, u8 type, u8 var1)
 {
-    o->kind = 8;
+    o->kind = ATTACH_EM_RANGED_ATTACK;
     o->type = type;
     o->stateVar1 = var1;
-    o->update = EffEm08_Update;
+    o->update = EmRangedAttack_Update;
     o->owner = owner;
     o->isEm = owner->isEm;
     o->idx = owner->index;
@@ -108,13 +108,13 @@ void EffEm08_Init(ObjAttach *o, ObjHead *owner, u8 type, u8 var1)
     o->yaw = owner->rot[1];
 }
 
-void EffEm08_CreateAtBone(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d)
+void EmRangedAttack_CreateAtBone(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(1)) != NULL) {
-            EffEm08_Init(o, (ObjHead *) em, a, b);
+            EmRangedAttack_Init(o, (ObjHead *) em, a, b);
             Em_BonePos(em, bone, o->pos);
             o->ownerMotion = bone;
             o->aux = em->type;
@@ -126,13 +126,13 @@ void EffEm08_CreateAtBone(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d)
     }
 }
 
-void EffEm08_CreateAtBone2(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d, s32 e)
+void EmRangedAttack_CreateAtBone2(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d, s32 e)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(1)) != NULL) {
-            EffEm08_Init(o, (ObjHead *) em, a, b);
+            EmRangedAttack_Init(o, (ObjHead *) em, a, b);
             Em_BonePos(em, bone, o->pos);
             o->ownerMotion = bone;
             o->aux = em->type;
@@ -144,13 +144,13 @@ void EffEm08_CreateAtBone2(Em *em, s32 bone, s32 a, s32 b, s32 c, s32 d, s32 e)
     }
 }
 
-void EffEm08_CreateAt(void *owner, s32 arg1, s32 arg2, ObjAttach *parent, f32 *src)
+void EmRangedAttack_CreateAt(void *owner, s32 arg1, s32 arg2, ObjAttach *parent, f32 *src)
 {
     ObjAttach *o;
 
     if (parent->area == gScene.area) {
         if ((o = ObjAttach_Alloc(1)) != NULL) {
-            EffEm08_Init(o, owner, arg1 & 0xFF, arg2 & 0xFF);
+            EmRangedAttack_Init(o, owner, arg1 & 0xFF, arg2 & 0xFF);
             o->yaw = parent->yaw;
             Vec_Copy(o->pos, src);
             o->aux = parent->aux;
@@ -163,13 +163,13 @@ void EffEm08_CreateAt(void *owner, s32 arg1, s32 arg2, ObjAttach *parent, f32 *s
     }
 }
 
-void EffEm08_CreateAt2(void *owner, s32 arg1, s32 arg2, ObjAttach *parent, f32 *src, s32 arg5, u16 rotY)
+void EmRangedAttack_CreateAt2(void *owner, s32 arg1, s32 arg2, ObjAttach *parent, f32 *src, s32 arg5, u16 rotY)
 {
     ObjAttach *o;
 
     if (parent->area == gScene.area) {
         if ((o = ObjAttach_Alloc(1)) != NULL) {
-            EffEm08_Init(o, owner, arg1 & 0xFF, arg2 & 0xFF);
+            EmRangedAttack_Init(o, owner, arg1 & 0xFF, arg2 & 0xFF);
             o->yaw = rotY;
             Vec_Copy(o->pos, src);
             o->aux = parent->aux;
@@ -182,42 +182,42 @@ void EffEm08_CreateAt2(void *owner, s32 arg1, s32 arg2, ObjAttach *parent, f32 *
     }
 }
 
-void EffEm08_Update(ObjAttach *o)
+void EmRangedAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffEm08_Setup(o);
+    case ATTACH_SETUP:
+        EmRangedAttack_Setup(o);
         break;
-    case 1:
-        EffEm08_Run(o);
+    case ATTACH_RUN:
+        EmRangedAttack_Run(o);
         break;
-    case 2:
-        EffEm08_End(o);
+    case ATTACH_END:
+        EmRangedAttack_End(o);
         break;
-    case 3:
-        EffEm08_Hit(o);
+    case ATTACH_HIT:
+        EmRangedAttack_Hit(o);
         break;
     case 4:
-        EffEm08_End(o);
+        EmRangedAttack_End(o);
         break;
-    case 5:
-        EffEm08_End(o);
+    case ATTACH_DEFLECTED:
+        EmRangedAttack_End(o);
         break;
-    case 9:
-        EffEm08_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        EmRangedAttack_End(o);
         break;
     case 7:
-        EffEm08_End(o);
+        EmRangedAttack_End(o);
         break;
-    case 6:
-        EffEm08_Free(o);
+    case ATTACH_FREE:
+        EmRangedAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffEm08_InitByKind(ObjAttach *o, s32 owner)
+void EmRangedAttack_InitByKind(ObjAttach *o, s32 owner)
 {
     s16 n;
     u8 kind = o->type;
@@ -231,10 +231,10 @@ void EffEm08_InitByKind(ObjAttach *o, s32 owner)
         n = o->stateVar1;
         break;
     }
-    MoveObj_StartMotionOwned((struct MoveObj *)o, owner, n + EffEm08_MotionBase[kind], &EffEm08_MotionDesc);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, owner, n + EmRangedAttack_MotionBase[kind], &EmRangedAttack_RowsPtr);
 }
 
-/* EffEm08's object buffer (o->buf): a header, then one Em08Part per particle (EffEm08_PartCounts[type]). */
+/* EmRangedAttack's object buffer (o->buf): a header, then one Em08Part per particle (EmRangedAttack_PartCounts[type]). */
 typedef struct Em08Part {
     s8 idx;                     /* 0x00 */
     u8 unk01;
@@ -266,25 +266,25 @@ typedef struct Em08Buf {
     Em08Part part[1];           /* 0x3C */
 } Em08Buf;
 
-extern f32 EffEm08_Val050ByType[];
-extern f32 EffEm08_Val058ByType[];
-extern s16 EffEm08_PartCounts[];
-extern f32 EffEm08_StartPos[];
-extern s16 EffEm08_SpinX[];
-extern s16 EffEm08_SpinY[];
-extern s16 EffEm08_BoneIdx[];
-extern HitShape *EffEm08_Vals088[];
+extern f32 EmRangedAttack_Val050ByType[];
+extern f32 EmRangedAttack_Val058ByType[];
+extern s16 EmRangedAttack_PartCounts[];
+extern f32 EmRangedAttack_StartPos[];
+extern s16 EmRangedAttack_SpinX[];
+extern s16 EmRangedAttack_SpinY[];
+extern s16 EmRangedAttack_BoneIdx[];
+extern HitShape *EmRangedAttack_HitShapes[];
 EmBone *Em_Bone(void *obj, s16 bone);
 f32 AreaGrid2_GetFloorY(f32 *pos);
-void EffEm08_DrawParts(DrawSlot *ds);
-void EffEm08_AttachToBone(ObjAttach *o, u8 *b);
-void EffEm08_Respawn(ObjAttach *o, u8 *b);
+void EmRangedAttack_DrawParts(DrawSlot *ds);
+void EmRangedAttack_AttachToBone(ObjAttach *o, u8 *b);
+void EmRangedAttack_Respawn(ObjAttach *o, u8 *b);
 
-/* EffEm08's first frame (state 0): places the effect at its owner's bone (unless unk005 is 1), sets
- * its velocity from rotX/rotY, takes a draw slot for itself (EffEm08_DrawParts, part 0), resets the
+/* EmRangedAttack's first frame (state 0): places the effect at its owner's bone (unless unk005 is 1), sets
+ * its velocity from rotX/rotY, takes a draw slot for itself (EmRangedAttack_DrawParts, part 0), resets the
  * particles, then per type: a second draw slot (part 1) and the particles' spins, scales and
- * random angles; the sound of types 6, 22 and 24; then the motion and EffEm08_Run. */
-void EffEm08_Setup(ObjAttach *o)
+ * random angles; the sound of types 6, 22 and 24; then the motion and EmRangedAttack_Run. */
+void EmRangedAttack_Setup(ObjAttach *o)
 {
     f32 m[16];
     f32 v[3];
@@ -296,11 +296,11 @@ void EffEm08_Setup(ObjAttach *o)
 
     em = &gEms[o->idx];
     b = (Em08Buf *) o->buf;
-    o->state = 1;
+    o->state = ATTACH_RUN;
     p = b->part;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x200);
+    Player_TestSetFlags(o, ATKF_PIERCES);
     o->wasHit = 0;
     o->area = em->area;
     b->unk00 = 0;
@@ -312,10 +312,10 @@ void EffEm08_Setup(ObjAttach *o)
     o->ownerMotion = 0;
     o->velX = 0.0f;
     o->velY = 0.0f;
-    o->velZ = EffEm08_Val050ByType[o->type];
+    o->velZ = EmRangedAttack_Val050ByType[o->type];
     if (o->step != 1) {
         Mtx_Copy((f32 *) m, (f32 *) (Em_Bone(em, b->bone)));
-        v[0] = EffEm08_BoneOfs[o->type * 3];
+        v[0] = EmRangedAttack_BoneOfs[o->type * 3];
         v[1] = D_0089DA54[o->type * 3];
         v[2] = D_0089DA58[o->type * 3];
         Vec_RotateSelf(v, m);
@@ -325,7 +325,7 @@ void EffEm08_Setup(ObjAttach *o)
     Vec_RotateX(&o->velX, 6.2831855f * o->rotX / 65536.0f);
     Vec_RotateY(&o->velX, 6.2831855f * o->rotY / 65536.0f);
     o->homingTurn = 0;
-    o->gravity = EffEm08_Val058ByType[o->type];
+    o->gravity = EmRangedAttack_Val058ByType[o->type];
     o->homingSpeed = 0;
     o->step = 0;
     o->drawSlot = DrawSlot_Alloc();
@@ -333,12 +333,12 @@ void EffEm08_Setup(ObjAttach *o)
         o->drawSlotBuf = DrawSlot_Get(o->drawSlot);
         o->drawSlotBuf->owner = o;
         o->drawSlotBuf->part = 0;
-        o->drawSlotBuf->draw = EffEm08_DrawParts;
+        o->drawSlotBuf->draw = EmRangedAttack_DrawParts;
     } else {
         o->drawSlotBuf = NULL;
     }
     b->ds = NULL;
-    n = EffEm08_PartCounts[o->type];
+    n = EmRangedAttack_PartCounts[o->type];
     for (i = 0; i < n; i++) {
         p->idx = i;
         p->unk02 = 0;
@@ -360,7 +360,7 @@ void EffEm08_Setup(ObjAttach *o)
     p = b->part;
     switch (o->type) {
     case 12:
-        Vec_Copy(v, &EffEm08_StartPos[o->stateVar1 * 3]);
+        Vec_Copy(v, &EmRangedAttack_StartPos[o->stateVar1 * 3]);
         Vec_RotateY(v, 6.2831855f * o->rotY / 65536.0f);
         o->pos[0] += v[0];
         o->pos[1] += v[1];
@@ -373,7 +373,7 @@ void EffEm08_Setup(ObjAttach *o)
             b->ds = DrawSlot_Get(b->slot);
             b->ds->owner = o;
             b->ds->part = 1;
-            b->ds->draw = EffEm08_DrawParts;
+            b->ds->draw = EmRangedAttack_DrawParts;
         } else {
             b->ds = NULL;
         }
@@ -382,8 +382,8 @@ void EffEm08_Setup(ObjAttach *o)
                 if (i == 0) {
                     p->rot[2] = Rand_Next(1);
                 } else {
-                    p->spin[0] = EffEm08_SpinX[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 0x10)) / 360.0f);
-                    p->spin[1] = EffEm08_SpinY[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 0x10)) / 360.0f);
+                    p->spin[0] = EmRangedAttack_SpinX[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 0x10)) / 360.0f);
+                    p->spin[1] = EmRangedAttack_SpinY[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 0x10)) / 360.0f);
                 }
             } else {
                 p->rot[0] = 0xC000;
@@ -395,14 +395,14 @@ void EffEm08_Setup(ObjAttach *o)
         b->unk01 = o->rotX >> 8;
         b->unk3B = (o->rotY - em->rotY) >> 8;
         b->unk38 = *(u16 *) ((u8 *) o->owner + 0x29C);
-        EffEm08_AttachToBone(o, (u8 *) b);
+        EmRangedAttack_AttachToBone(o, (u8 *) b);
         p->spin[2] = 0x71C;
         break;
     case 22:
         Em_PlaySeChecked(o->owner, 0x1C, 0, o->pos, 1, 0);
         goto grow;
     case 24:
-        o->hitScale = EffEm08_K12Scales[o->stateVar1];
+        o->hitScale = EmRangedAttack_K12Scales[o->stateVar1];
         switch (o->stateVar1) {
         default:
         case 0:
@@ -428,7 +428,7 @@ void EffEm08_Setup(ObjAttach *o)
             b->ds = DrawSlot_Get(b->slot);
             b->ds->owner = o;
             b->ds->part = 1;
-            b->ds->draw = EffEm08_DrawParts;
+            b->ds->draw = EmRangedAttack_DrawParts;
         } else {
             b->ds = NULL;
         }
@@ -445,7 +445,7 @@ void EffEm08_Setup(ObjAttach *o)
         b->unk01 = o->rotX >> 8;
         b->unk3B = (o->rotY - em->rotY) >> 8;
         b->unk38 = *(u16 *) ((u8 *) o->owner + 0x29C);
-        EffEm08_AttachToBone(o, (u8 *) b);
+        EmRangedAttack_AttachToBone(o, (u8 *) b);
         b->unk3A = o->stateVar0;
         o->stateVar0 = 0;
         for (i = 0; i < n; i++) {
@@ -464,7 +464,7 @@ void EffEm08_Setup(ObjAttach *o)
             b->ds = DrawSlot_Get(b->slot);
             b->ds->owner = o;
             b->ds->part = 1;
-            b->ds->draw = EffEm08_DrawParts;
+            b->ds->draw = EmRangedAttack_DrawParts;
         } else {
             b->ds = NULL;
         }
@@ -481,7 +481,7 @@ void EffEm08_Setup(ObjAttach *o)
         }
         break;
     case 8:
-        b->unk00 = EffEm08_BoneIdx[o->stateVar1 % 6] + 1;
+        b->unk00 = EmRangedAttack_BoneIdx[o->stateVar1 % 6] + 1;
         Vec_Copy(b->pos, (f32 *) ((u8 *) o->owner + 0xAC));
         p->unk02 = -7;
         break;
@@ -502,7 +502,7 @@ void EffEm08_Setup(ObjAttach *o)
             b->ds = DrawSlot_Get(b->slot);
             b->ds->owner = o;
             b->ds->part = 1;
-            b->ds->draw = EffEm08_DrawParts;
+            b->ds->draw = EmRangedAttack_DrawParts;
         } else {
             b->ds = NULL;
         }
@@ -549,23 +549,23 @@ void EffEm08_Setup(ObjAttach *o)
         break;
     }
     if (o->type == 8) {
-        EffEm08_Respawn(o, (u8 *) b);
+        EmRangedAttack_Respawn(o, (u8 *) b);
     } else {
-        EffEm08_InitByKind(o, (s32) em);
+        EmRangedAttack_InitByKind(o, (s32) em);
     }
-    o->hitList = EffEm08_Vals088[o->hitListNo];
+    o->hitList = EmRangedAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    EffEm08_Run(o);
+    EmRangedAttack_Run(o);
 }
 
-extern s16 EffEm08_Limits[];
-extern s16 EffEm08_Lives[];
-extern s16 EffEm08_LimitsByIdx[];
-void EffEm08_LerpPos(ObjAttach *o, ObjAttach *ref, f32 *out);
-void EffEm08_PickDirection(ObjAttach *o, Em08Part *p);
-extern s16 EffEm08_KeyIdx[];
-extern s16 EffEm08_Steps[];
-extern u32 EffEm08_Curves[];
+extern s16 EmRangedAttack_Limits[];
+extern s16 EmRangedAttack_Lives[];
+extern s16 EmRangedAttack_LimitsByIdx[];
+void EmRangedAttack_LerpPos(ObjAttach *o, ObjAttach *ref, f32 *out);
+void EmRangedAttack_PickDirection(ObjAttach *o, Em08Part *p);
+extern s16 EmRangedAttack_KeyIdx[];
+extern s16 EmRangedAttack_Steps[];
+extern u32 EmRangedAttack_Curves[];
 extern f32 gCamDir[3];
 void Key_LerpVec3(f32 *k, f32 *out, f32 t);
 void CamShake_SetAEverywhere(s32);
@@ -573,13 +573,13 @@ void StageObj_K11_CreateAtBone(Em *em, s16 bone, s16 k, u16 c);
 void StageObj_K11_CreateType3(f32 *pos, u16 v, u16 w, u8 a, u8 b);
 void StageObj_K1C_CreateAtAngled(f32 *pos, u16 w, u16 v, u8 k, f32 scale);
 f32 AreaGrid2_GetFloorY(f32 *pos);
-/* EffEm08's update (state 1): counts its life (o->unk07C against EffEm08_Lives[type], or the
+/* EmRangedAttack's update (state 1): counts its life (o->unk07C against EmRangedAttack_Lives[type], or the
  * owner-tied lengths of types 1, 4, 18 and 21), moves it per type (MoveObj_Integrate, the
  * owner-following phases of types 1/4/18/21 with their stage objects), steps every particle's
- * key animation (EffEm08_Curves curves through Key_LerpVec3, spins, scales), then per type checks
- * the floor (EffEm08_Impact, camera shake, sparks, stage objects) and queues its draw slots. */
-/* EffEm08_Run needs optimization level 4 (the rest of the file matches at 3). */
-void EffEm08_Run(ObjAttach *o)
+ * key animation (EmRangedAttack_Curves curves through Key_LerpVec3, spins, scales), then per type checks
+ * the floor (EmRangedAttack_Impact, camera shake, sparks, stage objects) and queues its draw slots. */
+/* EmRangedAttack_Run needs optimization level 4 (the rest of the file matches at 3). */
+void EmRangedAttack_Run(ObjAttach *o)
 {
     f32 v[3];
     f32 pos[3];
@@ -611,11 +611,11 @@ void EffEm08_Run(ObjAttach *o)
     type = o->type;
     p = b->part;
     spark = 0;
-    n = EffEm08_PartCounts[type];
-    life = EffEm08_Lives[type];
-    key = EffEm08_KeyIdx[type];
-    step = EffEm08_Steps[type];
-    lim = EffEm08_Limits[type];
+    n = EmRangedAttack_PartCounts[type];
+    life = EmRangedAttack_Lives[type];
+    key = EmRangedAttack_KeyIdx[type];
+    step = EmRangedAttack_Steps[type];
+    lim = EmRangedAttack_Limits[type];
     top = p;
     if (!((type == 8 || (type == 15 && o->hitPhase == 1)) && type == 16 && o->hitPhase == 1)) {
         o->hitFrames = 0x63;
@@ -661,7 +661,7 @@ void EffEm08_Run(ObjAttach *o)
     }
     if (life < ++o->ownerMotion) {
         o->hitFrames = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
     switch (o->type) {
@@ -711,10 +711,10 @@ void EffEm08_Run(ObjAttach *o)
         if (!owner->active || owner->taskPhase == 3 || b->unk38 != owner->motionId[0]) {
             o->hitPhase = 0;
             o->hitFrames = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
-        EffEm08_AttachToBone(o, (u8 *) b);
+        EmRangedAttack_AttachToBone(o, (u8 *) b);
         switch (b->unk02) {
         case 0:
             lim = 10;
@@ -748,7 +748,7 @@ void EffEm08_Run(ObjAttach *o)
             if (++b->unk32 > lim) {
                 o->hitPhase = 0;
                 o->hitFrames = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
             break;
@@ -776,7 +776,7 @@ void EffEm08_Run(ObjAttach *o)
             }
         }
         if (o->stateVar0 != 0xFF) {
-            EffEm08_AttachToBone(o, (u8 *) b);
+            EmRangedAttack_AttachToBone(o, (u8 *) b);
         }
         switch (b->unk02) {
         case 0:
@@ -839,14 +839,14 @@ void EffEm08_Run(ObjAttach *o)
             lim = 13;
             if (++b->unk32 > lim) {
                 o->hitFrames = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
             break;
         default:
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         switch (b->unk02) {
@@ -909,13 +909,13 @@ void EffEm08_Run(ObjAttach *o)
         if (!owner->active || owner->taskPhase == 3) {
             o->hitPhase = 0;
             o->hitFrames = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
-        if (owner->stateGroup == 4 || owner->stateGroup == 5) {
+        if (owner->stateGroup == EM_GROUP_REACT || owner->stateGroup == EM_GROUP_DEFEAT) {
             o->hitPhase = 0;
             o->hitFrames = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         o->pos2[0] = o->pos[0];
@@ -927,10 +927,10 @@ void EffEm08_Run(ObjAttach *o)
         if (!owner->active || owner->taskPhase == 3 || b->unk38 != owner->motionId[0]) {
             o->hitPhase = 0;
             o->hitFrames = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
-        EffEm08_AttachToBone(o, (u8 *) b);
+        EmRangedAttack_AttachToBone(o, (u8 *) b);
         switch (b->unk02) {
         case 0:
             lim = 10;
@@ -964,7 +964,7 @@ void EffEm08_Run(ObjAttach *o)
             if (++b->unk32 > lim) {
                 o->hitPhase = 0;
                 o->hitFrames = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
             break;
@@ -986,7 +986,7 @@ void EffEm08_Run(ObjAttach *o)
             }
         }
         if (o->stateVar0 != 0xFF) {
-            EffEm08_AttachToBone(o, (u8 *) b);
+            EmRangedAttack_AttachToBone(o, (u8 *) b);
         }
         switch (b->unk02) {
         case 0:
@@ -1043,14 +1043,14 @@ void EffEm08_Run(ObjAttach *o)
             lim = 13;
             if (++b->unk32 > lim) {
                 o->hitFrames = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
             break;
         default:
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         x = b->unk02;
@@ -1101,7 +1101,7 @@ void EffEm08_Run(ObjAttach *o)
             }
             break;
         case 6:
-            lim = EffEm08_LimitsByIdx[p->idx];
+            lim = EmRangedAttack_LimitsByIdx[p->idx];
             break;
         case 8:
             if (p->unk02 == 0) {
@@ -1109,7 +1109,7 @@ void EffEm08_Run(ObjAttach *o)
                     p->unk02 = -80;
                     o->hitPhase = 0;
                 } else {
-                    EffEm08_Respawn(o, (u8 *) b);
+                    EmRangedAttack_Respawn(o, (u8 *) b);
                 }
             }
             break;
@@ -1147,7 +1147,7 @@ void EffEm08_Run(ObjAttach *o)
                 p->unk02 = 1;
                 break;
             case 6:
-                EffEm08_PickDirection(o, p);
+                EmRangedAttack_PickDirection(o, p);
                 if (p->unk02 <= 0) {
                     key += step;
                     continue;
@@ -1175,7 +1175,7 @@ void EffEm08_Run(ObjAttach *o)
         case 0:
         case 11:
         case 12:
-            c = EffEm08_Curves[key++];
+            c = EmRangedAttack_Curves[key++];
             Key_LerpVec3((void *) c, p->scale, p->unk02);
             if (p->idx == 0) {
                 if (!(o->ownerMotion & 1)) {
@@ -1202,7 +1202,7 @@ void EffEm08_Run(ObjAttach *o)
         case 1:
             switch (b->unk02) {
             case 0:
-                c = EffEm08_Curves[key++];
+                c = EmRangedAttack_Curves[key++];
             Key_LerpVec3((void *) c, p->scale, p->unk02);
                 break;
             case 1:
@@ -1221,7 +1221,7 @@ void EffEm08_Run(ObjAttach *o)
         case 23:
         case 24:
             p->rot[2] += p->spin[2];
-            Key_LerpVec3((void *) EffEm08_Curves[key], p->scale, p->unk02);
+            Key_LerpVec3((void *) EmRangedAttack_Curves[key], p->scale, p->unk02);
             if (o->type == 13) {
                 p->scale[0] *= 2.0f;
                 p->scale[1] *= 2.0f;
@@ -1235,7 +1235,7 @@ void EffEm08_Run(ObjAttach *o)
                 switch (p->idx) {
                 case 0:
                     p->unk1F = 1;
-                    c = EffEm08_Curves[key++];
+                    c = EmRangedAttack_Curves[key++];
                     Key_LerpVec3((void *) c, p->scale, p->unk02);
                     break;
                 default:
@@ -1249,7 +1249,7 @@ void EffEm08_Run(ObjAttach *o)
                 switch (p->idx) {
                 case 0:
                 case 1:
-                    c = EffEm08_Curves[key++];
+                    c = EmRangedAttack_Curves[key++];
             Key_LerpVec3((void *) c, p->scale, p->unk02);
                     break;
                 case 2:
@@ -1294,12 +1294,12 @@ void EffEm08_Run(ObjAttach *o)
                     break;
                 case 1:
                     p->unk1F = 1;
-                    c = EffEm08_Curves[key++];
+                    c = EmRangedAttack_Curves[key++];
             Key_LerpVec3((void *) c, p->scale, p->unk02);
                     break;
                 case 2:
                     p->unk1F = 1;
-                    c = EffEm08_Curves[key++];
+                    c = EmRangedAttack_Curves[key++];
             Key_LerpVec3((void *) c, p->scale, p->unk02);
                     if (o->type == 21 && o->stateVar1 == 1) {
                         p->unk1F = 0;
@@ -1311,7 +1311,7 @@ void EffEm08_Run(ObjAttach *o)
             p->rot[2] += p->spin[2];
             break;
         case 6:
-            c = EffEm08_Curves[key++];
+            c = EmRangedAttack_Curves[key++];
             Key_LerpVec3((void *) c, p->scale, p->unk02);
             p->scale[0] *= 1.5f;
             p->scale[1] *= 1.5f;
@@ -1331,7 +1331,7 @@ void EffEm08_Run(ObjAttach *o)
             }
             break;
         case 8:
-            Key_LerpVec3((void *) EffEm08_Curves[key], p->scale, p->unk02);
+            Key_LerpVec3((void *) EmRangedAttack_Curves[key], p->scale, p->unk02);
             break;
         case 15:
         case 16:
@@ -1347,7 +1347,7 @@ void EffEm08_Run(ObjAttach *o)
                 p->scale[2] = 0.7f * (p->unk02 / (f32) lim);
                 break;
             case 1:
-                c = EffEm08_Curves[key++];
+                c = EmRangedAttack_Curves[key++];
             Key_LerpVec3((void *) c, p->scale, p->unk02);
                 p->scale[2] *= 0.7f;
                 break;
@@ -1378,16 +1378,16 @@ void EffEm08_Run(ObjAttach *o)
             floorY = AreaGrid2_GetFloorYFiltered(o->pos);
             if (o->pos[1] <= floorY) {
                 if (o->type != 12 && floorY - o->pos[1] > 100.0f) {
-                    EffEm08_Impact(o, 2, o->pos);
+                    EmRangedAttack_Impact(o, 2, o->pos);
                 } else {
                     pos[0] = o->pos[0];
                     pos[1] = floorY;
                     pos[2] = o->pos[2];
-                    EffEm08_Impact(o, 0, pos);
+                    EmRangedAttack_Impact(o, 0, pos);
                 }
                 o->hitFrames = 0;
                 o->hitPhase = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
             }
             if (o->area == gScene.area) {
                 Mtx_GetTrans(v, gCamMatrix);
@@ -1431,15 +1431,15 @@ void EffEm08_Run(ObjAttach *o)
                 pos[2] = o->pos[2];
                 b->floorY = pos[1];
                 if (o->stateVar1 == 1) {
-                    EffEm08_LerpPos(o, (ObjAttach *) b, pos);
-                    EffEm08_CreateAt(em, 10, 0, o, pos);
+                    EmRangedAttack_LerpPos(o, (ObjAttach *) b, pos);
+                    EmRangedAttack_CreateAt(em, 10, 0, o, pos);
                 }
             }
             break;
         case 1:
             if (o->stateVar1 != 1 && !(o->ownerMotion & 1)) {
-                EffEm08_LerpPos(o, (ObjAttach *) b, pos);
-                EffEm08_Impact(o, 0, pos);
+                EmRangedAttack_LerpPos(o, (ObjAttach *) b, pos);
+                EmRangedAttack_Impact(o, 0, pos);
             }
             if (b->unk02 > 2) {
                 b->unk00++;
@@ -1463,16 +1463,16 @@ void EffEm08_Run(ObjAttach *o)
         floorY = AreaGrid2_GetFloorYFiltered(o->pos);
         if (o->pos[1] <= floorY) {
             if (floorY - o->pos[1] > 100.0f) {
-                EffEm08_Impact(o, 2, o->pos);
+                EmRangedAttack_Impact(o, 2, o->pos);
             } else {
                 pos[0] = o->pos[0];
                 pos[1] = floorY;
                 pos[2] = o->pos[2];
-                EffEm08_Impact(o, 0, pos);
+                EmRangedAttack_Impact(o, 0, pos);
             }
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     case 15:
@@ -1487,10 +1487,10 @@ void EffEm08_Run(ObjAttach *o)
             pos[0] = o->pos[0];
             pos[1] = floorY;
             pos[2] = o->pos[2];
-            EffEm08_Impact(o, 0, pos);
+            EmRangedAttack_Impact(o, 0, pos);
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         b->floorY = floorY;
         break;
@@ -1508,16 +1508,16 @@ void EffEm08_Run(ObjAttach *o)
         floorY = AreaGrid2_GetFloorYFiltered(o->pos);
         if (o->pos[1] <= floorY) {
             if (floorY - o->pos[1] > 200.0f) {
-                EffEm08_Impact(o, 2, o->pos);
+                EmRangedAttack_Impact(o, 2, o->pos);
             } else {
                 pos[0] = o->pos[0];
                 pos[1] = floorY;
                 pos[2] = o->pos[2];
-                EffEm08_Impact(o, 0, pos);
+                EmRangedAttack_Impact(o, 0, pos);
             }
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     case 6:
@@ -1525,7 +1525,7 @@ void EffEm08_Run(ObjAttach *o)
         if (Math_Absf(floorY - o->pos[1]) > 100.0f) {
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         } else {
             o->pos[1] = floorY;
         }
@@ -1539,16 +1539,16 @@ void EffEm08_Run(ObjAttach *o)
         floorY = AreaGrid2_GetFloorYFiltered(o->pos);
         if (o->pos[1] <= floorY) {
             if (floorY - o->pos[1] > 100.0f) {
-                EffEm08_Impact(o, 2, o->pos);
+                EmRangedAttack_Impact(o, 2, o->pos);
             } else {
                 pos[0] = o->pos[0];
                 pos[1] = floorY;
                 pos[2] = o->pos[2];
-                EffEm08_Impact(o, 0, pos);
+                EmRangedAttack_Impact(o, 0, pos);
             }
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     case 10:
@@ -1556,7 +1556,7 @@ void EffEm08_Run(ObjAttach *o)
         if (Math_Absf(floorY - o->pos[1]) > 100.0f) {
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         } else {
             o->pos[1] = floorY;
         }
@@ -1598,7 +1598,7 @@ void EffEm08_Run(ObjAttach *o)
                 pos[1] = floorY;
                 pos[2] = o->pos[2];
                 b->floorY = pos[1];
-                EffEm08_Impact(o, 0, pos);
+                EmRangedAttack_Impact(o, 0, pos);
             } else if (o->pos[1] < floorY && o->pos2[1] > floorY) {
                 f = (floorY - o->pos2[1]) / (o->pos[1] - o->pos2[1]);
                 v[0] = f * (o->pos[0] - o->pos2[0]);
@@ -1610,7 +1610,7 @@ void EffEm08_Run(ObjAttach *o)
                 if (pos[1] > floorY - 50.0f || pos[1] < 50.0f + floorY) {
                     pos[1] = floorY;
                 }
-                EffEm08_Impact(o, 0, pos);
+                EmRangedAttack_Impact(o, 0, pos);
             }
         }
         break;
@@ -1681,7 +1681,7 @@ void EffEm08_Run(ObjAttach *o)
     }
 }
 
-void EffEm08_Hit(ObjAttach *o)
+void EmRangedAttack_Hit(ObjAttach *o)
 {
     f32 pos[3];
 
@@ -1696,8 +1696,8 @@ void EffEm08_Hit(ObjAttach *o)
         pos[1] = o->pos[1];
         pos[2] = o->pos[2];
         o->hitFrames = 0;
-        o->state = 2;
-        EffEm08_Impact(o, 1, pos);
+        o->state = ATTACH_END;
+        EmRangedAttack_Impact(o, 1, pos);
         break;
     case 2:
     case 3:
@@ -1711,15 +1711,15 @@ void EffEm08_Hit(ObjAttach *o)
     case 23:
     case 24:
         o->hitFrames = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         break;
     default:
-        EffEm08_Run(o);
+        EmRangedAttack_Run(o);
         break;
     }
 }
 
-void EffEm08_End(ObjAttach *o)
+void EmRangedAttack_End(ObjAttach *o)
 {
     u8 *w;
 
@@ -1731,16 +1731,16 @@ void EffEm08_End(ObjAttach *o)
         DrawSlot_Free(*(s16 *)(w + 4));
     }
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
 }
 
-void EffEm08_Free(ObjAttach *o)
+void EmRangedAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffEm08_DrawModel(ModelMatSet *set, f32 *v, u32 color, s32 flags, ModelMat *mats)
+void EmRangedAttack_DrawModel(ModelMatSet *set, f32 *v, u32 color, s32 flags, ModelMat *mats)
 {
     if ((set != NULL) && (set->id != -1)) {
         Gs_SetState(0x1A, (s32) v);
@@ -1757,29 +1757,29 @@ s16 EmSlot_FindKind(s16 id);
 void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_RotateZXY(f32 *m, f32 x, f32 y, f32 z);
 void Eff_ColorKeyLerp(ColorKey *k, s32 t, u32 *out);
-void EffEm08_Billboard(f32 *arg0, void *arg1);
+void EmRangedAttack_Billboard(f32 *arg0, void *arg1);
 extern f32 gCamYawMtx[];
-extern s16 EffEm08_Models[];
-extern s16 EffEm08_Lives[];
-extern ColorKey *EffEm08_KeysP12[];
-extern ColorKey *EffEm08_KeysP12B[];
-extern ColorKey EffEm08_Keys2[];
-extern ColorKey EffEm08_Keys13[];
-extern ColorKey EffEm08_Keys23[];
-extern ColorKey EffEm08_KeysDef[];
-extern ColorKey EffEm08_ColorKeysA[];
-extern ColorKey EffEm08_ColorKeysB[];
-extern ColorKey EffEm08_ColorKeysC[];
-extern ColorKey EffEm08_ColorKeysD[];
-extern s16 EffEm08_LimitsByIdx[];
-extern ColorKey *EffEm08_ColorKeysByIdx[];
-extern s16 EffEm08_KeysByIdx[];
-extern s16 EffEm08_ModelIdx[];
+extern s16 EmRangedAttack_Models[];
+extern s16 EmRangedAttack_Lives[];
+extern ColorKey *EmRangedAttack_KeysP12[];
+extern ColorKey *EmRangedAttack_KeysP12B[];
+extern ColorKey EmRangedAttack_Keys2[];
+extern ColorKey EmRangedAttack_Keys13[];
+extern ColorKey EmRangedAttack_Keys23[];
+extern ColorKey EmRangedAttack_KeysDef[];
+extern ColorKey EmRangedAttack_ColorKeysA[];
+extern ColorKey EmRangedAttack_ColorKeysB[];
+extern ColorKey EmRangedAttack_ColorKeysC[];
+extern ColorKey EmRangedAttack_ColorKeysD[];
+extern s16 EmRangedAttack_LimitsByIdx[];
+extern ColorKey *EmRangedAttack_ColorKeysByIdx[];
+extern s16 EmRangedAttack_KeysByIdx[];
+extern s16 EmRangedAttack_ModelIdx[];
 
 /* Draws an Em08 effect slot ds: per effect type (o->type, 25 kinds) the part models of the
  * monster set (em) or the stage set with their scale, rotation, colour keys and texture scroll
- * (Gs_SetState 0x19). Needs optimization level 4, like EffEm08_Run. */
-void EffEm08_DrawParts(DrawSlot *ds)
+ * (Gs_SetState 0x19). Needs optimization level 4, like EmRangedAttack_Run. */
+void EmRangedAttack_DrawParts(DrawSlot *ds)
 {
     u8 flat2;
     u8 flat;
@@ -1857,12 +1857,12 @@ void EffEm08_DrawParts(DrawSlot *ds)
     }
     mats = set->mats;
     Gs_SetState(0x60, 0);
-    model = EffEm08_Models[o->type];
+    model = EmRangedAttack_Models[o->type];
     switch (o->type) {
     case 0:
     case 11:
     case 12:
-        last = EffEm08_Lives[o->type];
+        last = EmRangedAttack_Lives[o->type];
         if (o->type == 0) {
             div = 6;
             thr = 30;
@@ -1870,7 +1870,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
             r = 0xFF;
             n = 3;
             g = 0xCB;
-            keysp = EffEm08_KeysP12;
+            keysp = EmRangedAttack_KeysP12;
             bl = 0x79;
         } else if (o->type == 11) {
             div = 6;
@@ -1879,7 +1879,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
             r = 0xFF;
             n = 3;
             g = 0xF3;
-            keysp = EffEm08_KeysP12B;
+            keysp = EmRangedAttack_KeysP12B;
             bl = 0xDF;
         } else {
             div = 1000;
@@ -1888,7 +1888,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
             r = 0xFF;
             n = 3;
             g = 0xF3;
-            keysp = EffEm08_KeysP12B;
+            keysp = EmRangedAttack_KeysP12B;
             bl = 0xDF;
         }
         if (o->ownerMotion < thr) {
@@ -1933,7 +1933,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                 }
                 mdl = &em->matSets[k0];
                 color = (alpha << 24) | (((color >> 16) & 0xFF) << 16) | (((color >> 8) & 0xFF) << 8) | (color & 0xFF);
-                EffEm08_DrawModel(mdl, m, color, mode, emMats);
+                EmRangedAttack_DrawModel(mdl, m, color, mode, emMats);
                 mode = 0;
                 p++;
                 keysp++;
@@ -1950,7 +1950,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                 Mtx_Scale(m, v[0], v[1], v[2]);
                 Mtx_RotateX(m, (6.2831855f * p->rot[0]) / 65536.0f);
                 Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
-                EffEm08_DrawModel(mdl, m, ((u8) (0.3f * alpha) << 24) | (r << 16) | (g << 8) | bl, mode, mats);
+                EmRangedAttack_DrawModel(mdl, m, ((u8) (0.3f * alpha) << 24) | (r << 16) | (g << 8) | bl, mode, mats);
                 mode = 0;
                 p++;
             }
@@ -1961,7 +1961,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
     case 1:
         Mtx_Identity(m);
         Mtx_RotateXYZ(m, (6.2831855f * o->rotX) / 65536.0f, (6.2831855f * o->rotY) / 65536.0f, 0.0f);
-        EffEm08_Billboard(m, o->pos2);
+        EmRangedAttack_Billboard(m, o->pos2);
         m[0] *= p->scale[0];
         m[1] *= p->scale[0];
         m[2] *= p->scale[0];
@@ -1976,7 +1976,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
         Gs_SetState(0x6C, 0);
         Mtx_Translation(tm, 0.0f, 0.1f * (o->ownerMotion % 10), 0.0f);
         Gs_SetState(0x19, (s32) tm);
-        EffEm08_DrawModel(mdl, m, -1, 2, emMats);
+        EmRangedAttack_DrawModel(mdl, m, -1, 2, emMats);
         break;
     case 2:
     case 3:
@@ -1996,9 +1996,9 @@ void EffEm08_DrawParts(DrawSlot *ds)
             Vec_Copy(v, p->scale);
             switch (o->type) {
             case 24:
-                v[0] *= EffEm08_K12Scales[o->stateVar1];
-                v[1] *= EffEm08_K12Scales[o->stateVar1];
-                v[2] *= EffEm08_K12Scales[o->stateVar1];
+                v[0] *= EmRangedAttack_K12Scales[o->stateVar1];
+                v[1] *= EmRangedAttack_K12Scales[o->stateVar1];
+                v[2] *= EmRangedAttack_K12Scales[o->stateVar1];
             case 9:
             case 22:
             case 23:
@@ -2014,17 +2014,17 @@ void EffEm08_DrawParts(DrawSlot *ds)
             }
             switch (o->type) {
             case 2:
-                keys = EffEm08_Keys2;
+                keys = EmRangedAttack_Keys2;
                 break;
             case 3:
             case 13:
-                keys = EffEm08_Keys13;
+                keys = EmRangedAttack_Keys13;
                 break;
             case 23:
-                keys = EffEm08_Keys23;
+                keys = EmRangedAttack_Keys23;
                 break;
             default:
-                keys = EffEm08_KeysDef;
+                keys = EmRangedAttack_KeysDef;
                 break;
             }
             Eff_ColorKeyLerp(keys, p->unk02, &color);
@@ -2032,7 +2032,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
             Mtx_RotateZ(m, (6.2831855f * p->rot[2]) / 65536.0f);
             Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
             Mtx_Concat3x3(m, gCamMatrix);
-            EffEm08_DrawModel(mdl, m, color, 0, mats);
+            EmRangedAttack_DrawModel(mdl, m, color, 0, mats);
         }
         break;
     case 4:
@@ -2051,7 +2051,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                     k = 0;
                     Mtx_Translation(tm, 0.0f, 1.0f - 0.125f * (o->ownerMotion & 7), 0.0f);
                     Gs_SetState(0x19, (s32) tm);
-                    Eff_ColorKeyLerp(EffEm08_ColorKeysA, p->unk02, &color);
+                    Eff_ColorKeyLerp(EmRangedAttack_ColorKeysA, p->unk02, &color);
                     break;
                 default:
                     continue;
@@ -2098,7 +2098,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                 }
                 Gs_SetState(0x19, (s32) tm);
                 if (flag) {
-                    Eff_ColorKeyLerp(EffEm08_ColorKeysB, p->unk02, &color);
+                    Eff_ColorKeyLerp(EmRangedAttack_ColorKeysB, p->unk02, &color);
                 } else {
                     color = (p->unk01 << 24) | 0xFFFFFF;
                 }
@@ -2113,7 +2113,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                               (6.2831855f * p->rot[2]) / 65536.0f);
             }
             Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
-            EffEm08_DrawModel(&em->matSets[k], m, color, 2, emMats);
+            EmRangedAttack_DrawModel(&em->matSets[k], m, color, 2, emMats);
         }
         break;
     case 5:
@@ -2121,7 +2121,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
         Mtx_Identity(m);
         Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
         Mtx_Concat3x3(m, gCamYawMtx);
-        EffEm08_DrawModel(mdl, m, -1, 0, emMats);
+        EmRangedAttack_DrawModel(mdl, m, -1, 0, emMats);
         break;
     case 6:
         switch (ds->part) {
@@ -2135,15 +2135,15 @@ void EffEm08_DrawParts(DrawSlot *ds)
         }
         Gs_SetState(0x6C, 0);
         for (i = 0; i < cnt2; i++) {
-            lim = EffEm08_LimitsByIdx[p->idx];
+            lim = EmRangedAttack_LimitsByIdx[p->idx];
             if (p->unk02 > 0 && p->unk02 <= lim) {
-                Eff_ColorKeyLerp(EffEm08_ColorKeysByIdx[p->idx], p->unk02, &color);
-                k = EffEm08_KeysByIdx[p->idx];
+                Eff_ColorKeyLerp(EmRangedAttack_ColorKeysByIdx[p->idx], p->unk02, &color);
+                k = EmRangedAttack_KeysByIdx[p->idx];
                 switch (ds->part) {
                 case 0:
                     Mtx_Identity(m);
                     Mtx_RotateXYZ(m, (6.2831855f * o->rotX) / 65536.0f, (6.2831855f * o->rotY) / 65536.0f, 0.0f);
-                    EffEm08_Billboard(m, o->pos);
+                    EmRangedAttack_Billboard(m, o->pos);
                     m[0] *= p->scale[0];
                     m[1] *= p->scale[0];
                     m[2] *= p->scale[0];
@@ -2180,7 +2180,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                     Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
                     break;
                 }
-                EffEm08_DrawModel(&em->matSets[k], m, color, mode, emMats);
+                EmRangedAttack_DrawModel(&em->matSets[k], m, color, mode, emMats);
             }
             p++;
         }
@@ -2192,7 +2192,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
             case 0:
                 Mtx_Identity(m);
                 Mtx_RotateXYZ(m, (6.2831855f * o->rotX) / 65536.0f, (6.2831855f * o->rotY) / 65536.0f, 0.0f);
-                EffEm08_Billboard(m, o->pos);
+                EmRangedAttack_Billboard(m, o->pos);
                 m[0] *= p->scale[0];
                 m[1] *= p->scale[0];
                 m[2] *= p->scale[0];
@@ -2205,7 +2205,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                 Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
                 mdl = &em->matSets[model];
                 color = 0xFFD8B68A;
-                EffEm08_DrawModel(mdl, m, color, 0, emMats);
+                EmRangedAttack_DrawModel(mdl, m, color, 0, emMats);
                 p++;
                 break;
             case 1:
@@ -2216,17 +2216,17 @@ void EffEm08_DrawParts(DrawSlot *ds)
     case 8:
         if (p->unk02 > 0 && p->unk02 < 9) {
             Gs_SetState(0x6C, 0);
-            mdl = &em->matSets[EffEm08_ModelIdx[(u8) b->unk03]];
+            mdl = &em->matSets[EmRangedAttack_ModelIdx[(u8) b->unk03]];
             Mtx_Scale(m, p->scale[0], p->scale[1], p->scale[2]);
             if (o->stateVar0 & 1) {
                 Mtx_RotateY(m, 3.1415927f);
             }
             Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
-            Eff_ColorKeyLerp(EffEm08_ColorKeysC, p->unk02, &color);
+            Eff_ColorKeyLerp(EmRangedAttack_ColorKeysC, p->unk02, &color);
             Mtx_Translation(tm, 0.25f * (u8) b->unk02, 0.125f - 0.015625f * p->unk02, 0.0f);
             Gs_SetState(0x19, (s32) tm);
             Mtx_Concat3x3(m, gCamMatrix);
-            EffEm08_DrawModel(mdl, m, color, 2, emMats);
+            EmRangedAttack_DrawModel(mdl, m, color, 2, emMats);
         }
         break;
     case 14:
@@ -2238,7 +2238,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
         color = -1;
         Mtx_Translation(tm, (o->ownerMotion & 0xF) / 16.0f, 1.0f, 0.0f);
         Gs_SetState(0x19, (s32) tm);
-        EffEm08_DrawModel(mdl, m, color, 2, emMats);
+        EmRangedAttack_DrawModel(mdl, m, color, 2, emMats);
         break;
     case 16:
     case 20:
@@ -2252,7 +2252,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
             mdl = &set->matSets[model];
         }
         color = -1;
-        EffEm08_DrawModel(mdl, m, color, 0, mats);
+        EmRangedAttack_DrawModel(mdl, m, color, 0, mats);
         break;
     case 15:
     case 17:
@@ -2263,7 +2263,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
             Mtx_RotateXYZ(m, (6.2831855f * p->rot[0]) / 65536.0f, (6.2831855f * p->rot[1]) / 65536.0f,
                           (6.2831855f * p->rot[2]) / 65536.0f);
             Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
-            EffEm08_DrawModel(&em->matSets[model], m, color, 0, emMats);
+            EmRangedAttack_DrawModel(&em->matSets[model], m, color, 0, emMats);
             break;
         case 1:
             Mtx_Scale(m, p->scale[0], p->scale[1], p->scale[2]);
@@ -2283,7 +2283,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                 }
                 Gs_SetState((u8) (j + 0x3A), (s32) mat);
             }
-            EffEm08_DrawModel(mdl, m, color, 0, mats);
+            EmRangedAttack_DrawModel(mdl, m, color, 0, mats);
             break;
         }
         break;
@@ -2296,7 +2296,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
         Gs_SetState(0x6C, 0);
         Mtx_Translation(tm, 0.0f, 0.1f * (o->ownerMotion % 10), 0.0f);
         Gs_SetState(0x19, (s32) tm);
-        EffEm08_DrawModel(mdl, m, -1, 2, emMats);
+        EmRangedAttack_DrawModel(mdl, m, -1, 2, emMats);
         break;
     case 19:
         Mtx_Scale(m, p->scale[0], p->scale[1], p->scale[2]);
@@ -2305,7 +2305,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
         Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
         mdl = &em->matSets[model];
         color = 0xFF808080;
-        EffEm08_DrawModel(mdl, m, color, 0, emMats);
+        EmRangedAttack_DrawModel(mdl, m, color, 0, emMats);
         break;
     case 21:
         Gs_SetState(0x6C, 0);
@@ -2323,7 +2323,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                     k = 0;
                     Mtx_Translation(tm, 0.0f, 1.0f - 0.125f * (o->ownerMotion & 7), 0.0f);
                     Gs_SetState(0x19, (s32) tm);
-                    Eff_ColorKeyLerp(EffEm08_ColorKeysD, p->unk02, &color);
+                    Eff_ColorKeyLerp(EmRangedAttack_ColorKeysD, p->unk02, &color);
                     break;
                 default:
                     continue;
@@ -2370,7 +2370,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                 }
                 Gs_SetState(0x19, (s32) tm);
                 if (flag) {
-                    Eff_ColorKeyLerp(EffEm08_ColorKeysB, p->unk02, &color);
+                    Eff_ColorKeyLerp(EmRangedAttack_ColorKeysB, p->unk02, &color);
                 } else {
                     color = (p->unk01 << 24) | 0xFFFFFF;
                 }
@@ -2393,7 +2393,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
                               (6.2831855f * p->rot[2]) / 65536.0f);
             }
             Mtx_SetTrans(m, ds->pos[0], ds->pos[1], ds->pos[2]);
-            EffEm08_DrawModel(&em->matSets[k], m, color, 2, emMats);
+            EmRangedAttack_DrawModel(&em->matSets[k], m, color, 2, emMats);
         }
         break;
     }
@@ -2403,7 +2403,7 @@ void EffEm08_DrawParts(DrawSlot *ds)
 end:;
 }
 
-void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
+void EmRangedAttack_Impact(ObjAttach *o, s16 n, f32 *pos)
 {
     f32 scale;
     f32 s;
@@ -2437,10 +2437,10 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
                 StageObj_K11_CreateAtScaled(pos, o->rotY, 0xB, scale);
                 CamShake_SetA(2, pos);
             }
-            Eff09_CreateOwned(o->owner, pos, k);
+            Explosion_CreateOwned(o->owner, pos, k);
             break;
         case 2:
-            Eff09_CreateOwned(o->owner, pos, k);
+            Explosion_CreateOwned(o->owner, pos, k);
             break;
         }
         break;
@@ -2461,9 +2461,9 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
             StageObj_K11_CreateAtYaw(pos, 0xF, ((Em *) o->owner)->type, o->rotY, 1.4f);
         }
         if (o->stateVar1 == 1) {
-            Eff09_CreateOwned(o->owner, pos, 0x18);
+            Explosion_CreateOwned(o->owner, pos, 0x18);
         } else {
-            Eff09_CreateOwned(o->owner, pos, 0xB);
+            Explosion_CreateOwned(o->owner, pos, 0xB);
         }
         break;
     case 3:
@@ -2474,7 +2474,7 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
             StageObj_K11_CreateAtScaled(pos, o->rotY, 0x10, 1.0f);
             StageObj_K11_CreateAtYaw(pos, 0xF, ((Em *) o->owner)->type, o->rotY, 1.2f);
         }
-        Eff09_CreateOwned(o->owner, pos, 0xC);
+        Explosion_CreateOwned(o->owner, pos, 0xC);
         break;
     case 5:
         if (o->area == gScene.area) {
@@ -2489,7 +2489,7 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
             if (o->area == gScene.area) {
                 StageObj_K11_CreateAt(pos, 0x14, ((Em *) o->owner)->type, 1.0f);
             }
-            Eff09_CreateOwned(o->owner, pos, 0x11);
+            Explosion_CreateOwned(o->owner, pos, 0x11);
             break;
         case 1:
         case 2:
@@ -2512,7 +2512,7 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
         break;
     case 0x18:
         if (o->area == gScene.area) {
-            StageObj_K12_CreateAtScaled(pos, 9, 1, EffEm08_K12Scales[o->stateVar1]);
+            StageObj_K12_CreateAtScaled(pos, 9, 1, EmRangedAttack_K12Scales[o->stateVar1]);
         }
         break;
     case 0xD:
@@ -2524,7 +2524,7 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
             StageObj_K0E_CreateScaledB(o->pos, 0, 1.5f);
             StageObj_K11_CreateAtYaw(pos, 0xF, ((Em *) o->owner)->type, o->rotY, 1.8000001f);
         }
-        Eff09_CreateOwned(o->owner, pos, 0x19);
+        Explosion_CreateOwned(o->owner, pos, 0x19);
         break;
     case 0xF:
         if (o->area == gScene.area) {
@@ -2532,9 +2532,9 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
             StageObj_K1C_CreateAt(pos, 5, 1.0f);
             Em_PlaySeChecked(o->owner, 0x17, 0, pos, 15, 0);
         }
-        EffEm08_CreateAt2(o->owner, 0x10, 0, o, pos, 0xE000, o->rotY);
-        EffEm08_CreateAt2(o->owner, 0x10, 0, o, pos, 0xE000, o->rotY + 0x6000);
-        EffEm08_CreateAt2(o->owner, 0x10, 0, o, pos, 0xE000, o->rotY + 0xA000);
+        EmRangedAttack_CreateAt2(o->owner, 0x10, 0, o, pos, 0xE000, o->rotY);
+        EmRangedAttack_CreateAt2(o->owner, 0x10, 0, o, pos, 0xE000, o->rotY + 0x6000);
+        EmRangedAttack_CreateAt2(o->owner, 0x10, 0, o, pos, 0xE000, o->rotY + 0xA000);
         break;
     case 0x12:
         if (o->area == gScene.area) {
@@ -2553,7 +2553,7 @@ void EffEm08_Impact(ObjAttach *o, s16 n, f32 *pos)
     }
 }
 
-void EffEm08_AttachToBone(ObjAttach *o, u8 *b)
+void EmRangedAttack_AttachToBone(ObjAttach *o, u8 *b)
 {
     f32 v[3];
     f32 m[16];
@@ -2561,7 +2561,7 @@ void EffEm08_AttachToBone(ObjAttach *o, u8 *b)
     f32 x;
 
     Mtx_Copy((f32 *) m, (f32 *) (Em_GetBone(o->owner, *(s16 *) (b + 0x30))));
-    v[0] = EffEm08_BoneOfs[o->type * 3];
+    v[0] = EmRangedAttack_BoneOfs[o->type * 3];
     v[1] = D_0089DA54[o->type * 3];
     v[2] = D_0089DA58[o->type * 3];
     Vec_RotateSelf(v, m);
@@ -2579,7 +2579,7 @@ void EffEm08_AttachToBone(ObjAttach *o, u8 *b)
     }
 }
 
-void EffEm08_LerpPos(ObjAttach *o, ObjAttach *ref, f32 *out)
+void EmRangedAttack_LerpPos(ObjAttach *o, ObjAttach *ref, f32 *out)
 {
     f32 t;
     f32 x0;
@@ -2611,7 +2611,7 @@ void EffEm08_LerpPos(ObjAttach *o, ObjAttach *ref, f32 *out)
     }
 }
 
-void EffEm08_Billboard(f32 *dst, void *pos)
+void EmRangedAttack_Billboard(f32 *dst, void *pos)
 {
     f32 a[4];
     f32 b[4];
@@ -2668,7 +2668,7 @@ void Eff_ColorKeyLerp(ColorKey *k, s32 t, u32 *out)
     }
 }
 
-void EffEm08_PickDirection(ObjAttach *o, Em08Part *p)
+void EmRangedAttack_PickDirection(ObjAttach *o, Em08Part *p)
 {
     s8 temp_a1;
 
@@ -2696,7 +2696,7 @@ void EffEm08_PickDirection(ObjAttach *o, Em08Part *p)
     }
 }
 
-void EffEm08_Respawn(ObjAttach *o, u8 *b)
+void EmRangedAttack_Respawn(ObjAttach *o, u8 *b)
 {
     f32 v[3];
     f32 p[3];
@@ -2709,7 +2709,7 @@ void EffEm08_Respawn(ObjAttach *o, u8 *b)
     b[2] = (r >> 1) % 3;
     b[3] = (r >> 3) % 3;
     if (b[1] != 0) {
-        EffEm08_CopyRespawnPos((u8 *) o, b);
+        EmRangedAttack_CopyRespawnPos((u8 *) o, b);
         if (gScene.area == o->area) {
             Em_PlaySeChecked(o->owner, 0x18, 0, o->pos, 1, 0);
         }
@@ -2717,8 +2717,8 @@ void EffEm08_Respawn(ObjAttach *o, u8 *b)
             return;
         }
     }
-    EffEm08_InitByKind(o, (s32) o->owner);
-    tbl = EffEm08_RespawnTbls[o->stateVar1 % 6];
+    EmRangedAttack_InitByKind(o, (s32) o->owner);
+    tbl = EmRangedAttack_RespawnTbls[o->stateVar1 % 6];
     v[0] = tbl[b[1]][0];
     v[1] = 0.0f;
     v[2] = tbl[b[1]][1];
@@ -2735,225 +2735,225 @@ void EffEm08_Respawn(ObjAttach *o, u8 *b)
     b[1]++;
 }
 
-void EffEm08_CopyRespawnPos(u8 *a, u8 *b)
+void EmRangedAttack_CopyRespawnPos(u8 *a, u8 *b)
 {
     Vec_Copy((f32 *) (b + 0x18), (f32 *) (a + 0x30));
 }
 
 /* unk_6CADF0's .data (0x89C6F0-0x89DE10) */
-HitShape EffEm08_Vals088_0[2] = {
+HitShape EmRangedAttack_HitShapes_0[2] = {
 #include "game/0089C6F0.inc"
 };
-HitShape EffEm08_Vals088_1[2] = {
+HitShape EmRangedAttack_HitShapes_1[2] = {
 #include "game/0089C740.inc"
 };
-HitShape EffEm08_Vals088_2[2] = {
+HitShape EmRangedAttack_HitShapes_2[2] = {
 #include "game/0089C790.inc"
 };
-HitShape EffEm08_Vals088_3[3] = {
+HitShape EmRangedAttack_HitShapes_3[3] = {
 #include "game/0089C7E0.inc"
 };
-HitShape EffEm08_Vals088_4[2] = {
+HitShape EmRangedAttack_HitShapes_4[2] = {
 #include "game/0089C860.inc"
 };
-HitShape EffEm08_Vals088_5[2] = {
+HitShape EmRangedAttack_HitShapes_5[2] = {
 #include "game/0089C8B0.inc"
 };
-HitShape EffEm08_Vals088_6[2] = {
+HitShape EmRangedAttack_HitShapes_6[2] = {
 #include "game/0089C900.inc"
 };
-HitShape EffEm08_Vals088_7[2] = {
+HitShape EmRangedAttack_HitShapes_7[2] = {
 #include "game/0089C950.inc"
 };
-HitShape EffEm08_Vals088_8[2] = {
+HitShape EmRangedAttack_HitShapes_8[2] = {
 #include "game/0089C9A0.inc"
 };
-HitShape EffEm08_Vals088_9[2] = {
+HitShape EmRangedAttack_HitShapes_9[2] = {
 #include "game/0089C9F0.inc"
 };
-HitShape EffEm08_Vals088_10[2] = {
+HitShape EmRangedAttack_HitShapes_10[2] = {
 #include "game/0089CA40.inc"
 };
-HitShape EffEm08_Vals088_11[2] = {
+HitShape EmRangedAttack_HitShapes_11[2] = {
 #include "game/0089CA90.inc"
 };
-HitShape *EffEm08_Vals088[12] = {
-    EffEm08_Vals088_0, EffEm08_Vals088_1, EffEm08_Vals088_2, EffEm08_Vals088_3,
-    EffEm08_Vals088_4, EffEm08_Vals088_5, EffEm08_Vals088_6, EffEm08_Vals088_7,
-    EffEm08_Vals088_8, EffEm08_Vals088_9, EffEm08_Vals088_10, EffEm08_Vals088_11,
+HitShape *EmRangedAttack_HitShapes[12] = {
+    EmRangedAttack_HitShapes_0, EmRangedAttack_HitShapes_1, EmRangedAttack_HitShapes_2, EmRangedAttack_HitShapes_3,
+    EmRangedAttack_HitShapes_4, EmRangedAttack_HitShapes_5, EmRangedAttack_HitShapes_6, EmRangedAttack_HitShapes_7,
+    EmRangedAttack_HitShapes_8, EmRangedAttack_HitShapes_9, EmRangedAttack_HitShapes_10, EmRangedAttack_HitShapes_11,
 };
-u32 D_0089CB10[300] = {
+u32 EmRangedAttack_Rows[300] = {
 #include "game/0089CB10.inc"
 };
-void *EffEm08_MotionDesc = (void *)D_0089CB10;
-u32 EffEm08_Curves_0[20] = {
+void *EmRangedAttack_RowsPtr = (void *)EmRangedAttack_Rows;
+u32 EmRangedAttack_Curves_0[20] = {
 #include "game/0089CFD0.inc"
 };
-u32 EffEm08_Curves_1[20] = {
+u32 EmRangedAttack_Curves_1[20] = {
 #include "game/0089D020.inc"
 };
-u32 EffEm08_Curves_2[14] = {
+u32 EmRangedAttack_Curves_2[14] = {
 #include "game/0089D070.inc"
 };
-s16 EffEm08_SpinX[4] = {
+s16 EmRangedAttack_SpinX[4] = {
 #include "game/0089D0A8.inc"
 };
-s16 EffEm08_SpinY[8] = {
+s16 EmRangedAttack_SpinY[8] = {
 #include "game/0089D0B0.inc"
 };
-ColorKey EffEm08_KeysP12_0[4] = {
+ColorKey EmRangedAttack_KeysP12_0[4] = {
 #include "game/0089D0C0.inc"
 };
-ColorKey EffEm08_KeysP12_1[4] = {
+ColorKey EmRangedAttack_KeysP12_1[4] = {
 #include "game/0089D0E0.inc"
 };
-ColorKey EffEm08_KeysP12_2[4] = {
+ColorKey EmRangedAttack_KeysP12_2[4] = {
 #include "game/0089D100.inc"
 };
-ColorKey *EffEm08_KeysP12[4] = {
-    EffEm08_KeysP12_0, EffEm08_KeysP12_1, EffEm08_KeysP12_2, NULL,
+ColorKey *EmRangedAttack_KeysP12[4] = {
+    EmRangedAttack_KeysP12_0, EmRangedAttack_KeysP12_1, EmRangedAttack_KeysP12_2, NULL,
 };
-u32 EffEm08_Curves_3[16] = {
+u32 EmRangedAttack_Curves_3[16] = {
 #include "game/0089D130.inc"
 };
-u32 EffEm08_Curves_4[20] = {
+u32 EmRangedAttack_Curves_4[20] = {
 #include "game/0089D170.inc"
 };
-ColorKey EffEm08_Keys2[4] = {
+ColorKey EmRangedAttack_Keys2[4] = {
 #include "game/0089D1C0.inc"
 };
-ColorKey EffEm08_Keys13[4] = {
+ColorKey EmRangedAttack_Keys13[4] = {
 #include "game/0089D1E0.inc"
 };
-u32 EffEm08_Curves_5[16] = {
+u32 EmRangedAttack_Curves_5[16] = {
 #include "game/0089D200.inc"
 };
-ColorKey EffEm08_ColorKeysA[4] = {
+ColorKey EmRangedAttack_ColorKeysA[4] = {
 #include "game/0089D240.inc"
 };
-u32 EffEm08_Curves_6[20] = {
+u32 EmRangedAttack_Curves_6[20] = {
 #include "game/0089D260.inc"
 };
-u32 EffEm08_Curves_7[20] = {
+u32 EmRangedAttack_Curves_7[20] = {
 #include "game/0089D2B0.inc"
 };
-u32 EffEm08_Curves_8[20] = {
+u32 EmRangedAttack_Curves_8[20] = {
 #include "game/0089D300.inc"
 };
-ColorKey EffEm08_ColorKeysB[4] = {
+ColorKey EmRangedAttack_ColorKeysB[4] = {
 #include "game/0089D350.inc"
 };
-u32 EffEm08_Curves_9[20] = {
+u32 EmRangedAttack_Curves_9[20] = {
 #include "game/0089D370.inc"
 };
-u32 EffEm08_Curves_10[24] = {
+u32 EmRangedAttack_Curves_10[24] = {
 #include "game/0089D3C0.inc"
 };
-u32 EffEm08_Curves_11[20] = {
+u32 EmRangedAttack_Curves_11[20] = {
 #include "game/0089D420.inc"
 };
-u32 EffEm08_Curves_12[12] = {
+u32 EmRangedAttack_Curves_12[12] = {
 #include "game/0089D470.inc"
 };
-u32 EffEm08_Curves_13[12] = {
+u32 EmRangedAttack_Curves_13[12] = {
 #include "game/0089D4A0.inc"
 };
-u32 EffEm08_Curves_14[12] = {
+u32 EmRangedAttack_Curves_14[12] = {
 #include "game/0089D4D0.inc"
 };
-ColorKey EffEm08_ColorKeysByIdx_0[4] = {
+ColorKey EmRangedAttack_ColorKeysByIdx_0[4] = {
 #include "game/0089D500.inc"
 };
-ColorKey EffEm08_ColorKeysByIdx_1[4] = {
+ColorKey EmRangedAttack_ColorKeysByIdx_1[4] = {
 #include "game/0089D520.inc"
 };
-ColorKey EffEm08_ColorKeysByIdx_2[4] = {
+ColorKey EmRangedAttack_ColorKeysByIdx_2[4] = {
 #include "game/0089D540.inc"
 };
-ColorKey EffEm08_ColorKeysByIdx_3[4] = {
+ColorKey EmRangedAttack_ColorKeysByIdx_3[4] = {
 #include "game/0089D560.inc"
 };
-ColorKey EffEm08_ColorKeysByIdx_4[4] = {
+ColorKey EmRangedAttack_ColorKeysByIdx_4[4] = {
 #include "game/0089D580.inc"
 };
-ColorKey *EffEm08_ColorKeysByIdx[6] = {
-    EffEm08_ColorKeysByIdx_0, EffEm08_ColorKeysByIdx_1, EffEm08_ColorKeysByIdx_2, EffEm08_ColorKeysByIdx_3,
-    EffEm08_ColorKeysByIdx_4, NULL,
+ColorKey *EmRangedAttack_ColorKeysByIdx[6] = {
+    EmRangedAttack_ColorKeysByIdx_0, EmRangedAttack_ColorKeysByIdx_1, EmRangedAttack_ColorKeysByIdx_2, EmRangedAttack_ColorKeysByIdx_3,
+    EmRangedAttack_ColorKeysByIdx_4, NULL,
 };
-s16 EffEm08_LimitsByIdx[6] = {
+s16 EmRangedAttack_LimitsByIdx[6] = {
 #include "game/0089D5B8.inc"
 };
-s16 EffEm08_KeysByIdx[6] = {
+s16 EmRangedAttack_KeysByIdx[6] = {
 #include "game/0089D5C8.inc"
 };
-u32 EffEm08_Curves_16[20] = {
+u32 EmRangedAttack_Curves_16[20] = {
 #include "game/0089D5E0.inc"
 };
-ColorKey EffEm08_ColorKeysC[6] = {
+ColorKey EmRangedAttack_ColorKeysC[6] = {
 #include "game/0089D630.inc"
 };
-ColorKey EffEm08_KeysDef[4] = {
+ColorKey EmRangedAttack_KeysDef[4] = {
 #include "game/0089D660.inc"
 };
-ColorKey EffEm08_Keys23[4] = {
+ColorKey EmRangedAttack_Keys23[4] = {
 #include "game/0089D680.inc"
 };
-ColorKey EffEm08_KeysP12B_0[4] = {
+ColorKey EmRangedAttack_KeysP12B_0[4] = {
 #include "game/0089D6A0.inc"
 };
-ColorKey EffEm08_KeysP12B_1[4] = {
+ColorKey EmRangedAttack_KeysP12B_1[4] = {
 #include "game/0089D6C0.inc"
 };
-ColorKey EffEm08_KeysP12B_2[4] = {
+ColorKey EmRangedAttack_KeysP12B_2[4] = {
 #include "game/0089D6E0.inc"
 };
-ColorKey *EffEm08_KeysP12B[4] = {
-    EffEm08_KeysP12B_0, EffEm08_KeysP12B_1, EffEm08_KeysP12B_2, NULL,
+ColorKey *EmRangedAttack_KeysP12B[4] = {
+    EmRangedAttack_KeysP12B_0, EmRangedAttack_KeysP12B_1, EmRangedAttack_KeysP12B_2, NULL,
 };
-u32 EffEm08_Curves_17[12] = {
+u32 EmRangedAttack_Curves_17[12] = {
 #include "game/0089D710.inc"
 };
-ColorKey EffEm08_ColorKeysD[4] = {
+ColorKey EmRangedAttack_ColorKeysD[4] = {
 #include "game/0089D740.inc"
 };
-u32 EffEm08_Curves[20] = {
-    (u32)EffEm08_Curves_0, (u32)EffEm08_Curves_1, (u32)EffEm08_Curves_2, (u32)EffEm08_Curves_3,
-    (u32)EffEm08_Curves_4, (u32)EffEm08_Curves_5, (u32)EffEm08_Curves_6, (u32)EffEm08_Curves_7,
-    (u32)EffEm08_Curves_8, (u32)EffEm08_Curves_9, (u32)EffEm08_Curves_10, (u32)EffEm08_Curves_11,
-    (u32)EffEm08_Curves_12, (u32)EffEm08_Curves_13, (u32)EffEm08_Curves_14, (u32)EffEm08_Curves_14,
-    (u32)EffEm08_Curves_16, (u32)EffEm08_Curves_17, 0, 0,
+u32 EmRangedAttack_Curves[20] = {
+    (u32)EmRangedAttack_Curves_0, (u32)EmRangedAttack_Curves_1, (u32)EmRangedAttack_Curves_2, (u32)EmRangedAttack_Curves_3,
+    (u32)EmRangedAttack_Curves_4, (u32)EmRangedAttack_Curves_5, (u32)EmRangedAttack_Curves_6, (u32)EmRangedAttack_Curves_7,
+    (u32)EmRangedAttack_Curves_8, (u32)EmRangedAttack_Curves_9, (u32)EmRangedAttack_Curves_10, (u32)EmRangedAttack_Curves_11,
+    (u32)EmRangedAttack_Curves_12, (u32)EmRangedAttack_Curves_13, (u32)EmRangedAttack_Curves_14, (u32)EmRangedAttack_Curves_14,
+    (u32)EmRangedAttack_Curves_16, (u32)EmRangedAttack_Curves_17, 0, 0,
 };
-s16 EffEm08_PartCounts[32] = {
+s16 EmRangedAttack_PartCounts[32] = {
 #include "game/0089D7B0.inc"
 };
-s16 EffEm08_Limits[32] = {
+s16 EmRangedAttack_Limits[32] = {
 #include "game/0089D7F0.inc"
 };
-s16 EffEm08_Lives[32] = {
+s16 EmRangedAttack_Lives[32] = {
 #include "game/0089D830.inc"
 };
-s16 EffEm08_KeyIdx[32] = {
+s16 EmRangedAttack_KeyIdx[32] = {
 #include "game/0089D870.inc"
 };
-s16 EffEm08_Steps[32] = {
+s16 EmRangedAttack_Steps[32] = {
 #include "game/0089D8B0.inc"
 };
-s16 EffEm08_Models[32] = {
+s16 EmRangedAttack_Models[32] = {
 #include "game/0089D8F0.inc"
 };
-s16 EffEm08_MotionBase[32] = {
+s16 EmRangedAttack_MotionBase[32] = {
 #include "game/0089D930.inc"
 };
-f32 EffEm08_Val050ByType[28] = {
+f32 EmRangedAttack_Val050ByType[28] = {
 #include "game/0089D970.inc"
 };
-f32 EffEm08_Val058ByType[28] = {
+f32 EmRangedAttack_Val058ByType[28] = {
 #include "game/0089D9E0.inc"
 };
-f32 EffEm08_BoneOfs[76] = {
+f32 EmRangedAttack_BoneOfs[76] = {
 #include "game/0089DA50.inc"
 };
-s16 EffEm08_BoneIdx[8] = {
+s16 EmRangedAttack_BoneIdx[8] = {
 #include "game/0089DB80.inc"
 };
 u32 D_0089DB90[8] = {
@@ -2974,16 +2974,16 @@ u32 D_0089DC50[16] = {
 u32 D_0089DC90[12] = {
 #include "game/0089DC90.inc"
 };
-f32 (*EffEm08_RespawnTbls[6])[2] = {
+f32 (*EmRangedAttack_RespawnTbls[6])[2] = {
     (void *)D_0089DB90, (void *)D_0089DBB0, (void *)D_0089DBE0, (void *)D_0089DC20,
     (void *)D_0089DC50, (void *)D_0089DC90,
 };
-s16 EffEm08_ModelIdx[4] = {
+s16 EmRangedAttack_ModelIdx[4] = {
 #include "game/0089DCD8.inc"
 };
-f32 EffEm08_StartPos[72] = {
+f32 EmRangedAttack_StartPos[72] = {
 #include "game/0089DCE0.inc"
 };
-f32 EffEm08_K12Scales[4] = {
+f32 EmRangedAttack_K12Scales[4] = {
 #include "game/0089DE00.inc"
 };

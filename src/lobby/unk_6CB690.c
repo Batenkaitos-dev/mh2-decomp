@@ -16,6 +16,7 @@
 #include "save.h"
 #include "lobby_text.h"
 #include "lobby/unk_6CB690.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "area.h"
 s32 PoogieMenu_Feed(void);
 typedef struct PoogieTbl {
     u16 id;
@@ -163,7 +164,7 @@ extern u16 gSeasonItems2[];
 extern ListPanel gOutfitListBox;
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 s32 Gs_SetState(u8, u32);
 void Gfx_SetBlend(s32 a, s32 b);
 s32 Shake_Update(u8);
@@ -204,7 +205,7 @@ void Equip_Refresh(SaveData *save);
 void Player_CalcSkills(Player *p);
 void SkillList_Build(Player *p, Player *q);
 u8 SkillList_PageCount(void);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 u8 SavePouch_Add(u16 item, s16 n);
 s16 VillageGather_RollValue(u8 kind);
 extern s16 gDojoRulesPagesOn[];
@@ -910,7 +911,7 @@ s32 Dojo_AllCleared101(void)
 
     id = 0x65;
 loop_1:
-    if (Save_TestListBit(id & 0xFFFF) == 0) {
+    if (Save_IsQuestCleared(id & 0xFFFF) == 0) {
         return 0;
     }
     id += 1;
@@ -926,7 +927,7 @@ s32 Dojo_AllCleared201(void)
 
     id = 0xC9;
 loop_1:
-    if (Save_TestListBit(id & 0xFFFF) == 0) {
+    if (Save_IsQuestCleared(id & 0xFFFF) == 0) {
         return 0;
     }
     id += 1;
@@ -953,7 +954,7 @@ s32 Dojo_AllCleared10001(void)
 
     id = 0x2711;
 loop_1:
-    if (Save_TestListBit(id & 0xFFFF) == 0) {
+    if (Save_IsQuestCleared(id & 0xFFFF) == 0) {
         return 0;
     }
     id += 1;
@@ -969,7 +970,7 @@ s32 Dojo_AllCleared10101(void)
 
     id = 0x2775;
 loop_1:
-    if (Save_TestListBit(id & 0xFFFF) == 0) {
+    if (Save_IsQuestCleared(id & 0xFFFF) == 0) {
         return 0;
     }
     id += 1;
@@ -1510,19 +1511,19 @@ s32 DojoMenu_QuestAvailable(u16 id)
         }
         break;
     case 0xCD:
-        if (Save_TestListBit(0xCC) == 0) {
+        if (Save_IsQuestCleared(0xCC) == 0) {
             return 0;
         }
     case 0xCC:
-        if (Save_TestListBit(0xCB) == 0) {
+        if (Save_IsQuestCleared(0xCB) == 0) {
             return 0;
         }
     case 0xCB:
-        if (Save_TestListBit(0xCA) == 0) {
+        if (Save_IsQuestCleared(0xCA) == 0) {
             return 0;
         }
     case 0xCA:
-        if (Save_TestListBit(0xC9) == 0) {
+        if (Save_IsQuestCleared(0xC9) == 0) {
             return 0;
         }
     case 0xC9:
@@ -1545,19 +1546,19 @@ s32 DojoMenu_QuestAvailable(u16 id)
         }
         break;
     case 0x2779:
-        if (Save_TestListBit(0x2778) == 0) {
+        if (Save_IsQuestCleared(0x2778) == 0) {
             return 0;
         }
     case 0x2778:
-        if (Save_TestListBit(0x2777) == 0) {
+        if (Save_IsQuestCleared(0x2777) == 0) {
             return 0;
         }
     case 0x2777:
-        if (Save_TestListBit(0x2776) == 0) {
+        if (Save_IsQuestCleared(0x2776) == 0) {
             return 0;
         }
     case 0x2776:
-        if (Save_TestListBit(0x2775) == 0) {
+        if (Save_IsQuestCleared(0x2775) == 0) {
             return 0;
         }
     case 0x2775:
@@ -1757,7 +1758,7 @@ typedef struct QuestView {
     /* 0x2A */ u16 id;
 } QuestView;
 char *Quest_GetText(u16 id, s32 k);
-u16 Area_MapGroup(u16 id);
+u16 Map_Group(u16 id);
 extern char *gStageNames[];
 s32 Dojo_GetBestScore(u16 id);
 s32 Dojo_GetBestTime(u16 id);
@@ -1785,9 +1786,9 @@ void Quest_DrawDojoDetails(s16 x, s16 y, QuestView *q)
     Font_SetPos(x + 0x7E, y += 0x2A);
     Text_PrintfColored(D_0082C798, Quest_GetText(id, 6));
     Font_SetPos(x + 0x7E, y += 0x18);
-    Text_PrintfColored(gStageNames[Area_MapGroup(q->target)]);
+    Text_PrintfColored(gStageNames[Map_Group(q->target)]);
     Font_SetPos(x + 0x7E, y += 0x18);
-    if (Save_TestListBit(id) == 0 || Dojo_GetBestScore(id) == 0) {
+    if (Save_IsQuestCleared(id) == 0 || Dojo_GetBestScore(id) == 0) {
         sprintf(buf, D_0082C798, gNoValueDashTexts[0]);
     } else {
         sprintf(tmp, "%d%s", Dojo_GetBestScore(id), gPointMarkTexts[0]);
@@ -1795,7 +1796,7 @@ void Quest_DrawDojoDetails(s16 x, s16 y, QuestView *q)
     }
     Text_PrintfColored(D_0082C798, buf);
     Font_SetPos(x + 0x7E, y += 0x18);
-    if (Save_TestListBit(id) == 0 || Dojo_GetBestTime(id) / 30 == 0) {
+    if (Save_IsQuestCleared(id) == 0 || Dojo_GetBestTime(id) / 30 == 0) {
         sprintf(buf, D_0082C798, gNoValueDashTexts[0]);
     } else {
         sprintf(tmp, D_0082C798, Time_FormatMinSecInHour(Dojo_GetBestTime(id) / 30), gPointMarkTexts[0]);
@@ -1898,7 +1899,7 @@ void Quest_DrawTerms(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawDetails(s16 x, s16 y, QuestInfo *q);
 void Quest_DrawClearMark(s16 x, s16 y);
 void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
-u16 Area_MapGroup(u16 id);
+u16 Map_Group(u16 id);
 
 void DojoMenu_DrawQuestPage(s16 x, s16 y)
 {
@@ -1918,12 +1919,12 @@ void DojoMenu_DrawQuestPage(s16 x, s16 y)
         if (m->list[i] == 0) {
             break;
         }
-        offs[i] = Area_MapGroup(Quest_GetDiscInfo(m->list[i])->map);
+        offs[i] = Map_Group(Quest_GetDiscInfo(m->list[i])->map);
         if (i == m->unkA6) {
             offs[i] = -offs[i];
         }
     }
-    Menu_DrawQuestSheet(x, y, 0x154, 0x168, offs, m->unkA6, gMapGroupMapIds[Area_MapGroup(*(u16 *)&q->map)][0], -1);
+    Menu_DrawQuestSheet(x, y, 0x154, 0x168, offs, m->unkA6, gMapGroupMapIds[Map_Group(*(u16 *)&q->map)][0], -1);
     Font_SetColor(0x80101010);
     if (m->unkB7 == 0) {
         Menu_DrawPageNum(0x21C, y + 0xE, m->unk9C, 3, 1);
@@ -1944,7 +1945,7 @@ void DojoMenu_DrawQuestPage(s16 x, s16 y)
         }
         break;
     }
-    if (Save_TestListBit(*(u16 *)((u8 *)q + 0x2A))) {
+    if (Save_IsQuestCleared(*(u16 *)((u8 *)q + 0x2A))) {
         Quest_DrawClearMark(x + 0x28, y + 0xE);
     }
     if (m->unkB4) {
@@ -3769,7 +3770,7 @@ void PoogieMenu_OpenOutfitList(void)
 
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     Gfx_SetBlend(4, 5);
     Shake_Update(0);
@@ -3880,7 +3881,7 @@ s32 PoogieMenu_MotionDone(void)
     Em *npc;
     s8 kind;
 
-    if (gScene.area == 0x57 || gScene.area == 0x56) {
+    if (gScene.area == AREA_HUB_0x57 || gScene.area == AREA_HOUSE) {
         kind = m->unkE4;
         npc = m->task2;
     } else {

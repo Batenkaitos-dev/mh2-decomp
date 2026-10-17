@@ -601,7 +601,7 @@ extern char *gNetStatusTexts[];
 void Gfx_DrawBlackLineFixed(void);
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 s32 Gs_SetState(u8, u32);
 void TagText_Print(char *text, f32 x, f32 y);
 void Lobby_DrawPressButton(void);
@@ -650,7 +650,7 @@ void LobbyDialog_Draw(void)
     }
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     b.col[0] = gMsgBoxGradient[0];
     b.col[1] = gMsgBoxGradient[1];

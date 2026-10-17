@@ -89,108 +89,108 @@ s32 Player_HasSkill(Player *p, u8 skill);
 /* +0x597: 1 when the player is near a large monster (its +0x596 at least 3: within
  * 300, or 500 above 3, horizontally and less than 300 below), unless +0x588 is set or
  * the player is more than 100 above its start height. */
-void Player_UpdateNearMonster(Player *p)
+void Player_UpdateNearMonster(Player *pl)
 {
     s32 i;
-    Em *e;
+    Em *em;
     f32 dx;
     f32 dz;
-    f32 d;
-    f32 r;
-    f32 lim;
+    f32 dist;
+    f32 range;
+    f32 maxDrop;
 
-    if (p->rideState != 0 || !(p->pos[1] - p->floorY <= 100.0f)) {
-        p->unk597[0] = 0;
+    if (pl->rideState != 0 || !(pl->pos[1] - pl->floorY <= 100.0f)) {
+        pl->unk597[0] = 0;
         return;
     }
-    for (e = gEms, i = 0; i < 20; i++, e++) {
-        if (e->active == 0 || e->visible == 0 || e->pushPriority < 3) {
+    for (em = gEms, i = 0; i < 20; i++, em++) {
+        if (em->active == 0 || em->visible == 0 || em->pushPriority < 3) {
             continue;
         }
-        dx = p->pos[0] - e->posX;
-        dz = p->pos[2] - e->posZ;
-        d = Math_Sqrtf(dx * dx + dz * dz);
-        if (e->pushPriority == 3) {
-            lim = r = 300.0f;
+        dx = pl->pos[0] - em->posX;
+        dz = pl->pos[2] - em->posZ;
+        dist = Math_Sqrtf(dx * dx + dz * dz);
+        if (em->pushPriority == 3) {
+            maxDrop = range = 300.0f;
         } else {
-            r = 500.0f;
-            lim = 300.0f;
+            range = 500.0f;
+            maxDrop = 300.0f;
         }
-        if (d <= r && p->pos[1] - e->posY < lim) {
-            p->unk597[0] = 1;
+        if (dist <= range && pl->pos[1] - em->posY < maxDrop) {
+            pl->unk597[0] = 1;
             return;
         }
     }
-    p->unk597[0] = 0;
+    pl->unk597[0] = 0;
 }
 
 /* A capsule of radius r along the player's body: from the middle of records 5 and 8
  * of +0xD0 to record 20, both ends moved by r across the axis. */
-void Player_BodyCapsule(Player *p, HitCapsule *cap, f32 r)
+void Player_BodyCapsule(Player *pl, HitCapsule *cap, f32 capRadius)
 {
-    f32 m[16];
-    f32 a[3];
-    f32 b[3];
-    f32 d[3];
-    f32 off[3];
-    f32 *dy;
-    f32 *dz;
+    f32 mtx[16];
+    f32 part5[3];
+    f32 part8[3];
+    f32 axis[3];
+    f32 offset[3];
+    f32 *axisY;
+    f32 *axisZ;
 
-    Mtx_GetTrans(a, p->partRecs[5]->m1);
-    Mtx_GetTrans(b, p->partRecs[8]->m1);
-    cap->a[0] = (a[0] + b[0]) / 2.0f;
-    cap->a[1] = (a[1] + b[1]) / 2.0f;
-    cap->a[2] = (a[2] + b[2]) / 2.0f;
-    Mtx_GetTrans(cap->b, p->partRecs[20]->m1);
-    dy = &d[1];
-    dz = &d[2];
-    d[0] = cap->b[0] - cap->a[0];
-    *dy = cap->b[1] - cap->a[1];
-    *dz = cap->b[2] - cap->a[2];
-    Mtx_FromDirection(d, m, 1);
-    d[0] = 0.0f;
-    *dy = r;
-    *dz = 0.0f;
-    Vec_Rotate(off, d, m);
-    cap->a[0] += off[0];
-    cap->a[1] += off[1];
-    cap->a[2] += off[2];
-    cap->b[0] -= off[0];
-    cap->b[1] -= off[1];
-    cap->b[2] -= off[2];
-    cap->radius = r;
+    Mtx_GetTrans(part5, pl->partRecs[5]->m1);
+    Mtx_GetTrans(part8, pl->partRecs[8]->m1);
+    cap->a[0] = (part5[0] + part8[0]) / 2.0f;
+    cap->a[1] = (part5[1] + part8[1]) / 2.0f;
+    cap->a[2] = (part5[2] + part8[2]) / 2.0f;
+    Mtx_GetTrans(cap->b, pl->partRecs[20]->m1);
+    axisY = &axis[1];
+    axisZ = &axis[2];
+    axis[0] = cap->b[0] - cap->a[0];
+    *axisY = cap->b[1] - cap->a[1];
+    *axisZ = cap->b[2] - cap->a[2];
+    Mtx_FromDirection(axis, mtx, 1);
+    axis[0] = 0.0f;
+    *axisY = capRadius;
+    *axisZ = 0.0f;
+    Vec_Rotate(offset, axis, mtx);
+    cap->a[0] += offset[0];
+    cap->a[1] += offset[1];
+    cap->a[2] += offset[2];
+    cap->b[0] -= offset[0];
+    cap->b[1] -= offset[1];
+    cap->b[2] -= offset[2];
+    cap->radius = capRadius;
 }
 
 /* Sets the movement mode (+0x390: 0, 1 or 2) and the flags 8, 1 and 2. */
-void Player_SetMoveMode(Player *p, u16 mode, s16 flag1, s16 flag2)
+void Player_SetMoveMode(Player *pl, u16 mode, s16 setFlag1, s16 setFlag2)
 {
-    s32 m = mode;
+    s32 modeBits = mode;
 
-    switch ((u8)m) {
+    switch ((u8)modeBits) {
     default:
-        p->action = 0;
+        pl->action = 0;
         break;
     case 1:
-        p->action = 1;
+        pl->action = 1;
         break;
     case 2:
-        p->action = 2;
+        pl->action = 2;
         break;
     }
-    if (m & 0x8000) {
-        Player_ClearFlag(p, 8);
+    if (modeBits & 0x8000) {
+        Player_ClearFlag(pl, 8);
     } else {
-        Player_SetFlag(p, 8);
+        Player_SetFlag(pl, 8);
     }
-    if (flag1 == 0) {
-        Player_ClearFlag(p, 1);
+    if (setFlag1 == 0) {
+        Player_ClearFlag(pl, 1);
     } else {
-        Player_SetFlag(p, 1);
+        Player_SetFlag(pl, 1);
     }
-    if (flag2 == 0) {
-        Player_ClearFlag(p, 2);
+    if (setFlag2 == 0) {
+        Player_ClearFlag(pl, 2);
     } else {
-        Player_SetFlag(p, 2);
+        Player_SetFlag(pl, 2);
     }
 }
 
@@ -198,88 +198,88 @@ void Player_SetMoveMode(Player *p, u16 mode, s16 flag1, s16 flag2)
  * one (gScene.localPlayer), or everyone counts as local (gScene.allLocal, offline). */
 s32 Player_IsLocal(void *obj)
 {
-    ObjHead *o = obj;
+    ObjHead *head = obj;
     if (Quest_IsDrill() == 1 && gScene.allLocal != 0) {
         return 1;
     }
-    if (o->index == gScene.localPlayer) {
+    if (head->index == gScene.localPlayer) {
         return 1;
     }
     return 0;
 }
 
-s32 func_003ACE10(Player *p)
+s32 Player_OnMountedGun(Player *pl)
 {
-    if (Player_IsState(p, 0, 0x36) != 0 || Player_IsState(p, 0, 0x48) != 0 || Player_IsState(p, 0, 0x7A) != 0) {
+    if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_AIM) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_FIRE) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_REAIM) != 0) {
         return 1;
     }
     return 0;
 }
 
-/* The HUD's status icons (+0x4B8) of the local player. */
-void Player_UpdateStatusIcons(Player *p)
+/* Sets the local player's HUD status icons (Player.statusIcons, PL_STATUS_ICON_*) from its state. */
+void Player_UpdateStatusIcons(Player *pl)
 {
     u16 flags = 0;
     s16 i;
 
-    if (Player_IsLocal(p) != 0) {
-        if (p->poison != 0) {
-            flags |= 1;
+    if (Player_IsLocal(pl) != 0) {
+        if (pl->poison != 0) {
+            flags |= PL_STATUS_ICON_POISON;
         }
-        if (Player_IsState(p, 2, 0x15) != 0) {
-            flags |= 2;
+        if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STATUS2) != 0) {
+            flags |= PL_STATUS_ICON_STATUS2;
         }
-        if (Player_IsState(p, 2, 0x16) != 0 || Player_IsState(p, 2, 0x18) != 0) {
-            flags |= 4;
+        if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STATUS4) != 0 || Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STATUS4_HIT) != 0) {
+            flags |= PL_STATUS_ICON_STATUS4;
         }
-        if (Player_IsState(p, 2, 0x13) != 0) {
-            flags |= 8;
+        if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STUN) != 0) {
+            flags |= PL_STATUS_ICON_STUN;
         }
-        if (Player_InMashStatus(p) == 1) {
-            flags |= 0x40;
+        if (Player_InMashStatus(pl) == 1) {
+            flags |= PL_STATUS_ICON_MASH;
         }
-        if ((s16)(p->attackDrug + p->attackBuff) > 0) {
-            flags |= 0x10;
+        if ((s16)(pl->attackDrug + pl->attackBuff) > 0) {
+            flags |= PL_STATUS_ICON_ATTACK_UP;
         }
-        if (Player_HasMealEffect(p, 1) == 1) {
-            flags |= 0x10;
+        if (Player_HasMealEffect(pl, 1) == 1) {
+            flags |= PL_STATUS_ICON_ATTACK_UP;
         }
-        if ((s16)(p->defenseDrug + p->defenseBuff) > 0) {
-            flags |= 0x20;
+        if ((s16)(pl->defenseDrug + pl->defenseBuff) > 0) {
+            flags |= PL_STATUS_ICON_DEFENSE_UP;
         }
-        if (Player_HasMealEffect(p, 2) == 1) {
-            flags |= 0x20;
+        if (Player_HasMealEffect(pl, 2) == 1) {
+            flags |= PL_STATUS_ICON_DEFENSE_UP;
         }
-        if (p->coolDrinkTimer > 0) {
-            flags |= 0x80;
+        if (pl->coolDrinkTimer > 0) {
+            flags |= PL_STATUS_ICON_COOL_DRINK;
         }
-        if (p->hotDrinkTimer > 0) {
-            flags |= 0x100;
+        if (pl->hotDrinkTimer > 0) {
+            flags |= PL_STATUS_ICON_HOT_DRINK;
         }
         if (Quest_DrillHasCharm() == 1) {
-            flags |= 0x200;
+            flags |= PL_STATUS_ICON_DRILL_CHARM;
         }
-        if (p->status6Timer > 0) {
-            flags |= 0x400;
+        if (pl->status6Timer > 0) {
+            flags |= PL_STATUS_ICON_STATUS6;
         }
-        if (p->status7Timer > 0) {
-            flags |= 0x800;
+        if (pl->status7Timer > 0) {
+            flags |= PL_STATUS_ICON_STATUS7;
         }
-        if (p->regenTimer > 0) {
-            flags |= 0x1000;
+        if (pl->regenTimer > 0) {
+            flags |= PL_STATUS_ICON_REGEN;
         }
-        if (p->weaponType == 6 && p->demonMode != 0) {
-            flags |= 0x8000;
+        if (pl->weaponType == WEAPON_DUAL_SWORDS && pl->demonMode != 0) {
+            flags |= PL_STATUS_ICON_DEMON;
         }
         for (i = 0; i < 12; i++) {
-            if (p->mealEffectTimer[i] > 0) {
-                flags |= 0x2000;
+            if (pl->mealEffectTimer[i] > 0) {
+                flags |= PL_STATUS_ICON_MEAL;
             }
         }
-        if (Quest_IsVersus() == 1 && p->stateGroup == 3) {
-            flags |= 0x4000;
+        if (Quest_IsVersus() == 1 && pl->stateGroup == PL_GROUP_FAINT) {
+            flags |= PL_STATUS_ICON_VERSUS_FAINT;
         }
-        p->statusIcons = flags;
+        pl->statusIcons = flags;
     }
 }
 
@@ -290,29 +290,29 @@ void Player_UpdateStatusIcons(Player *p)
  * (+3, +5, +10), a meal effect (+0x8D7) offline, and the skills 0xB3 (x0.7)
  * and 0xB2 (x1.5) at 40% health or less.
  */
-void Player_CalcAttack(Player *p)
+void Player_CalcAttack(Player *pl)
 {
     s32 atk = 0;
 
-    if (Player_IsLocal(p) == 1) {
-        atk += Player_GetEquipStat(p, 0);
-        if (Pouch_Count(p, 0x23) != 0) {
+    if (Player_IsLocal(pl) == 1) {
+        atk += Player_GetEquipStat(pl, 0);
+        if (Pouch_Count(pl, 0x23) != 0) {
             atk += 6;
         }
-        if (Pouch_Count(p, 0x24) != 0) {
+        if (Pouch_Count(pl, 0x24) != 0) {
             atk += 9;
         }
-        atk += p->attackDrug;
-        atk += p->attackBuff;
-        if (Player_HasSkill(p, 0x4F) == 1) {
+        atk += pl->attackDrug;
+        atk += pl->attackBuff;
+        if (Player_HasSkill(pl, 0x4F) == 1) {
             atk += 3;
-        } else if (Player_HasSkill(p, 0x50) == 1) {
+        } else if (Player_HasSkill(pl, 0x50) == 1) {
             atk += 5;
-        } else if (Player_HasSkill(p, 0x51) == 1) {
+        } else if (Player_HasSkill(pl, 0x51) == 1) {
             atk += 10;
         }
-        if (gScene.online == 0 && Player_HasMealEffect(p, 1) == 1) {
-            switch (p->mealEffect[1]) {
+        if (gScene.online == 0 && Player_HasMealEffect(pl, 1) == 1) {
+            switch (pl->mealEffect[1]) {
             case 1:
                 atk = 1.1f * atk;
                 break;
@@ -325,56 +325,56 @@ void Player_CalcAttack(Player *p)
                 break;
             }
         }
-        if (Player_HasSkill(p, 0xB3) == 1) {
-            if ((f32)p->hp / (f32)p->hpMax <= 0.4f) {
+        if (Player_HasSkill(pl, 0xB3) == 1) {
+            if ((f32)pl->hp / (f32)pl->hpMax <= 0.4f) {
                 atk = 0.7f * atk;
             }
-        } else if (Player_HasSkill(p, 0xB2) == 1) {
-            if ((f32)p->hp / (f32)p->hpMax <= 0.4f) {
+        } else if (Player_HasSkill(pl, 0xB2) == 1) {
+            if ((f32)pl->hp / (f32)pl->hpMax <= 0.4f) {
                 atk = 1.5f * atk;
             }
         }
         if (atk < 0) {
             atk = 1;
         }
-        p->attack = atk;
-        if (p->attack >= 800) {
-            p->attack = 800;
+        pl->attack = atk;
+        if (pl->attack >= 800) {
+            pl->attack = 800;
         }
     }
-    p->attackFactor = p->attack / 100.0f;
+    pl->attackFactor = pl->attack / 100.0f;
 }
 
 /* Player_CalcAttack for another player, from the equipment data received. */
-void Player_CalcAttackRemote(Player *p)
+void Player_CalcAttackRemote(Player *pl)
 {
     s32 atk = 0;
 
-    EquipView_FromPlayer(p);
+    EquipView_FromPlayer(pl);
     atk += EquipView_GetStat(0);
-    if (Pouch_Count(p, 0x23) != 0) {
+    if (Pouch_Count(pl, 0x23) != 0) {
         atk += 6;
     }
-    if (Pouch_Count(p, 0x24) != 0) {
+    if (Pouch_Count(pl, 0x24) != 0) {
         atk += 9;
     }
-    atk += p->attackDrug;
-    atk += p->attackBuff;
-    if (Player_HasSkill(p, 0x4F) == 1) {
+    atk += pl->attackDrug;
+    atk += pl->attackBuff;
+    if (Player_HasSkill(pl, 0x4F) == 1) {
         atk += 3;
-    } else if (Player_HasSkill(p, 0x50) == 1) {
+    } else if (Player_HasSkill(pl, 0x50) == 1) {
         atk += 5;
-    } else if (Player_HasSkill(p, 0x51) == 1) {
+    } else if (Player_HasSkill(pl, 0x51) == 1) {
         atk += 10;
     }
     if (atk < 0) {
         atk = 1;
     }
-    p->attack = atk;
-    if (p->attack >= 800) {
-        p->attack = 800;
+    pl->attack = atk;
+    if (pl->attack >= 800) {
+        pl->attack = 800;
     }
-    p->attackFactor = p->attack / 100.0f;
+    pl->attackFactor = pl->attack / 100.0f;
 }
 
 /*
@@ -384,46 +384,46 @@ void Player_CalcAttackRemote(Player *p)
  * 40% health or less (skill 0xB3: +42, 0xB1 or 0xB2: +90, else +60), and a
  * meal effect (+0x8D8) offline.
  */
-void Player_CalcDefense(Player *p)
+void Player_CalcDefense(Player *pl)
 {
     s32 def = 1;
 
-    def += Player_GetEquipStat(p, 1);
-    if (Pouch_Count(p, 0x25) != 0) {
+    def += Player_GetEquipStat(pl, 1);
+    if (Pouch_Count(pl, 0x25) != 0) {
         def += 16;
     }
-    if (Pouch_Count(p, 0x26) != 0) {
+    if (Pouch_Count(pl, 0x26) != 0) {
         def += 24;
     }
-    def += p->defenseDrug;
-    def += p->defenseBuff;
-    if (Player_HasSkill(p, 0x52) == 1) {
+    def += pl->defenseDrug;
+    def += pl->defenseBuff;
+    if (Player_HasSkill(pl, 0x52) == 1) {
         def += 20;
-    } else if (Player_HasSkill(p, 0x53) == 1) {
+    } else if (Player_HasSkill(pl, 0x53) == 1) {
         def += 30;
-    } else if (Player_HasSkill(p, 0x54) == 1) {
+    } else if (Player_HasSkill(pl, 0x54) == 1) {
         def += 40;
-    } else if (Player_HasSkill(p, 0x55) == 1) {
+    } else if (Player_HasSkill(pl, 0x55) == 1) {
         def -= 20;
-    } else if (Player_HasSkill(p, 0x56) == 1) {
+    } else if (Player_HasSkill(pl, 0x56) == 1) {
         def -= 30;
-    } else if (Player_HasSkill(p, 0x57) == 1) {
+    } else if (Player_HasSkill(pl, 0x57) == 1) {
         def -= 40;
     }
     if (def <= 0) {
         def = 1;
     }
-    if ((f32)p->hp / (f32)p->hpMax <= 0.4f) {
-        if (Player_HasSkill(p, 0xB3) == 1) {
+    if ((f32)pl->hp / (f32)pl->hpMax <= 0.4f) {
+        if (Player_HasSkill(pl, 0xB3) == 1) {
             def += 42;
-        } else if (Player_HasSkill(p, 0xB1) == 1 || Player_HasSkill(p, 0xB2) == 1) {
+        } else if (Player_HasSkill(pl, 0xB1) == 1 || Player_HasSkill(pl, 0xB2) == 1) {
             def += 90;
         } else {
             def += 60;
         }
     }
-    if (gScene.online == 0 && Player_HasMealEffect(p, 2) == 1) {
-        switch (p->mealEffect[2]) {
+    if (gScene.online == 0 && Player_HasMealEffect(pl, 2) == 1) {
+        switch (pl->mealEffect[2]) {
         case 1:
             def = 1.1f * def;
             break;
@@ -436,228 +436,228 @@ void Player_CalcDefense(Player *p)
             break;
         }
     }
-    p->defense = def;
-    p->defenseFactor = p->defense / 2.0f;
-    if (p->defenseFactor < 1.0f) {
-        p->defenseFactor = 1.0f;
+    pl->defense = def;
+    pl->defenseFactor = pl->defense / 2.0f;
+    if (pl->defenseFactor < 1.0f) {
+        pl->defenseFactor = 1.0f;
     }
 }
 
 /* Player_CalcDefense for another player, from the equipment data received. */
-void Player_CalcDefenseRemote(Player *p)
+void Player_CalcDefenseRemote(Player *pl)
 {
     s32 def = 1;
 
-    EquipView_FromPlayer(p);
+    EquipView_FromPlayer(pl);
     def += EquipView_GetStat(1);
-    if (Pouch_Count(p, 0x25) != 0) {
+    if (Pouch_Count(pl, 0x25) != 0) {
         def += 16;
     }
-    if (Pouch_Count(p, 0x26) != 0) {
+    if (Pouch_Count(pl, 0x26) != 0) {
         def += 24;
     }
-    def += p->defenseDrug;
-    def += p->defenseBuff;
-    if (Player_HasSkill(p, 0x52) == 1) {
+    def += pl->defenseDrug;
+    def += pl->defenseBuff;
+    if (Player_HasSkill(pl, 0x52) == 1) {
         def += 20;
-    } else if (Player_HasSkill(p, 0x53) == 1) {
+    } else if (Player_HasSkill(pl, 0x53) == 1) {
         def += 30;
-    } else if (Player_HasSkill(p, 0x54) == 1) {
+    } else if (Player_HasSkill(pl, 0x54) == 1) {
         def += 40;
-    } else if (Player_HasSkill(p, 0x55) == 1) {
+    } else if (Player_HasSkill(pl, 0x55) == 1) {
         def -= 20;
-    } else if (Player_HasSkill(p, 0x56) == 1) {
+    } else if (Player_HasSkill(pl, 0x56) == 1) {
         def -= 30;
-    } else if (Player_HasSkill(p, 0x57) == 1) {
+    } else if (Player_HasSkill(pl, 0x57) == 1) {
         def -= 40;
     }
     if (def <= 0) {
         def = 1;
     }
-    p->defense = def;
-    p->defenseFactor = p->defense / 2.0f;
-    if (p->defenseFactor < 1.0f) {
-        p->defenseFactor = 1.0f;
+    pl->defense = def;
+    pl->defenseFactor = pl->defense / 2.0f;
+    if (pl->defenseFactor < 1.0f) {
+        pl->defenseFactor = 1.0f;
     }
 }
 
 /* Adds v to the five resistances, `bonus` instead for the element `elem`
  * (6 fire, 7 water, 8 thunder, 9 dragon, 10 ice). */
-static void Player_AddResists(f32 bonus, Player *p, s16 elem, f32 v)
+static void Player_AddResists(f32 bonus, Player *pl, s16 elem, f32 others)
 {
     if (elem == 6) {
-        p->resist[0] += bonus;
+        pl->resist[0] += bonus;
     } else {
-        p->resist[0] += v;
+        pl->resist[0] += others;
     }
     if (elem == 7) {
-        p->resist[1] += bonus;
+        pl->resist[1] += bonus;
     } else {
-        p->resist[1] += v;
+        pl->resist[1] += others;
     }
     if (elem == 8) {
-        p->resist[2] += bonus;
+        pl->resist[2] += bonus;
     } else {
-        p->resist[2] += v;
+        pl->resist[2] += others;
     }
     if (elem == 9) {
-        p->resist[4] += bonus;
+        pl->resist[4] += bonus;
     } else {
-        p->resist[4] += v;
+        pl->resist[4] += others;
     }
     if (elem == 10) {
-        p->resist[3] += bonus;
+        pl->resist[3] += bonus;
     } else {
-        p->resist[3] += v;
+        pl->resist[3] += others;
     }
 }
 
 /* The resistance skills: +10/+5/+3 or -10/-5/-3 to one element, or to all
  * (0x60-0x65). */
-static void Player_ApplyResistSkills(Player *p)
+static void Player_ApplyResistSkills(Player *pl)
 {
-    if (Player_HasSkill(p, 0x68) == 1) {
-        p->resist[0] += 10.0f;
-    } else if (Player_HasSkill(p, 0x67) == 1) {
-        p->resist[0] += 5.0f;
-    } else if (Player_HasSkill(p, 0x66) == 1) {
-        p->resist[0] += 3.0f;
+    if (Player_HasSkill(pl, 0x68) == 1) {
+        pl->resist[0] += 10.0f;
+    } else if (Player_HasSkill(pl, 0x67) == 1) {
+        pl->resist[0] += 5.0f;
+    } else if (Player_HasSkill(pl, 0x66) == 1) {
+        pl->resist[0] += 3.0f;
     }
-    if (Player_HasSkill(p, 0x6B) == 1) {
-        p->resist[0] -= 10.0f;
-    } else if (Player_HasSkill(p, 0x6A) == 1) {
-        p->resist[0] -= 5.0f;
-    } else if (Player_HasSkill(p, 0x69) == 1) {
-        p->resist[0] -= 3.0f;
+    if (Player_HasSkill(pl, 0x6B) == 1) {
+        pl->resist[0] -= 10.0f;
+    } else if (Player_HasSkill(pl, 0x6A) == 1) {
+        pl->resist[0] -= 5.0f;
+    } else if (Player_HasSkill(pl, 0x69) == 1) {
+        pl->resist[0] -= 3.0f;
     }
-    if (Player_HasSkill(p, 0x6E) == 1) {
-        p->resist[1] += 10.0f;
-    } else if (Player_HasSkill(p, 0x6D) == 1) {
-        p->resist[1] += 5.0f;
-    } else if (Player_HasSkill(p, 0x6C) == 1) {
-        p->resist[1] += 3.0f;
+    if (Player_HasSkill(pl, 0x6E) == 1) {
+        pl->resist[1] += 10.0f;
+    } else if (Player_HasSkill(pl, 0x6D) == 1) {
+        pl->resist[1] += 5.0f;
+    } else if (Player_HasSkill(pl, 0x6C) == 1) {
+        pl->resist[1] += 3.0f;
     }
-    if (Player_HasSkill(p, 0x71) == 1) {
-        p->resist[1] -= 10.0f;
-    } else if (Player_HasSkill(p, 0x70) == 1) {
-        p->resist[1] -= 5.0f;
-    } else if (Player_HasSkill(p, 0x6F) == 1) {
-        p->resist[1] -= 3.0f;
+    if (Player_HasSkill(pl, 0x71) == 1) {
+        pl->resist[1] -= 10.0f;
+    } else if (Player_HasSkill(pl, 0x70) == 1) {
+        pl->resist[1] -= 5.0f;
+    } else if (Player_HasSkill(pl, 0x6F) == 1) {
+        pl->resist[1] -= 3.0f;
     }
-    if (Player_HasSkill(p, 0x7A) == 1) {
-        p->resist[2] += 10.0f;
-    } else if (Player_HasSkill(p, 0x79) == 1) {
-        p->resist[2] += 5.0f;
-    } else if (Player_HasSkill(p, 0x78) == 1) {
-        p->resist[2] += 3.0f;
+    if (Player_HasSkill(pl, 0x7A) == 1) {
+        pl->resist[2] += 10.0f;
+    } else if (Player_HasSkill(pl, 0x79) == 1) {
+        pl->resist[2] += 5.0f;
+    } else if (Player_HasSkill(pl, 0x78) == 1) {
+        pl->resist[2] += 3.0f;
     }
-    if (Player_HasSkill(p, 0x7D) == 1) {
-        p->resist[2] -= 10.0f;
-    } else if (Player_HasSkill(p, 0x7C) == 1) {
-        p->resist[2] -= 5.0f;
-    } else if (Player_HasSkill(p, 0x7B) == 1) {
-        p->resist[2] -= 3.0f;
+    if (Player_HasSkill(pl, 0x7D) == 1) {
+        pl->resist[2] -= 10.0f;
+    } else if (Player_HasSkill(pl, 0x7C) == 1) {
+        pl->resist[2] -= 5.0f;
+    } else if (Player_HasSkill(pl, 0x7B) == 1) {
+        pl->resist[2] -= 3.0f;
     }
-    if (Player_HasSkill(p, 0x80) == 1) {
-        p->resist[3] += 10.0f;
-    } else if (Player_HasSkill(p, 0x7F) == 1) {
-        p->resist[3] += 5.0f;
-    } else if (Player_HasSkill(p, 0x7E) == 1) {
-        p->resist[3] += 3.0f;
+    if (Player_HasSkill(pl, 0x80) == 1) {
+        pl->resist[3] += 10.0f;
+    } else if (Player_HasSkill(pl, 0x7F) == 1) {
+        pl->resist[3] += 5.0f;
+    } else if (Player_HasSkill(pl, 0x7E) == 1) {
+        pl->resist[3] += 3.0f;
     }
-    if (Player_HasSkill(p, 0x83) == 1) {
-        p->resist[3] -= 10.0f;
-    } else if (Player_HasSkill(p, 0x82) == 1) {
-        p->resist[3] -= 5.0f;
-    } else if (Player_HasSkill(p, 0x81) == 1) {
-        p->resist[3] -= 3.0f;
+    if (Player_HasSkill(pl, 0x83) == 1) {
+        pl->resist[3] -= 10.0f;
+    } else if (Player_HasSkill(pl, 0x82) == 1) {
+        pl->resist[3] -= 5.0f;
+    } else if (Player_HasSkill(pl, 0x81) == 1) {
+        pl->resist[3] -= 3.0f;
     }
-    if (Player_HasSkill(p, 0x74) == 1) {
-        p->resist[4] += 10.0f;
-    } else if (Player_HasSkill(p, 0x73) == 1) {
-        p->resist[4] += 5.0f;
-    } else if (Player_HasSkill(p, 0x72) == 1) {
-        p->resist[4] += 3.0f;
+    if (Player_HasSkill(pl, 0x74) == 1) {
+        pl->resist[4] += 10.0f;
+    } else if (Player_HasSkill(pl, 0x73) == 1) {
+        pl->resist[4] += 5.0f;
+    } else if (Player_HasSkill(pl, 0x72) == 1) {
+        pl->resist[4] += 3.0f;
     }
-    if (Player_HasSkill(p, 0x77) == 1) {
-        p->resist[4] -= 10.0f;
-    } else if (Player_HasSkill(p, 0x76) == 1) {
-        p->resist[4] -= 5.0f;
-    } else if (Player_HasSkill(p, 0x75) == 1) {
-        p->resist[4] -= 3.0f;
+    if (Player_HasSkill(pl, 0x77) == 1) {
+        pl->resist[4] -= 10.0f;
+    } else if (Player_HasSkill(pl, 0x76) == 1) {
+        pl->resist[4] -= 5.0f;
+    } else if (Player_HasSkill(pl, 0x75) == 1) {
+        pl->resist[4] -= 3.0f;
     }
-    if (Player_HasSkill(p, 0x60) == 1) {
-        p->resist[0] += 3.0f;
-        p->resist[1] += 3.0f;
-        p->resist[2] += 3.0f;
-        p->resist[3] += 3.0f;
-        p->resist[4] += 3.0f;
-    } else if (Player_HasSkill(p, 0x61) == 1) {
-        p->resist[0] += 5.0f;
-        p->resist[1] += 5.0f;
-        p->resist[2] += 5.0f;
-        p->resist[3] += 5.0f;
-        p->resist[4] += 5.0f;
-    } else if (Player_HasSkill(p, 0x62) == 1) {
-        p->resist[0] += 10.0f;
-        p->resist[1] += 10.0f;
-        p->resist[2] += 10.0f;
-        p->resist[3] += 10.0f;
-        p->resist[4] += 10.0f;
+    if (Player_HasSkill(pl, 0x60) == 1) {
+        pl->resist[0] += 3.0f;
+        pl->resist[1] += 3.0f;
+        pl->resist[2] += 3.0f;
+        pl->resist[3] += 3.0f;
+        pl->resist[4] += 3.0f;
+    } else if (Player_HasSkill(pl, 0x61) == 1) {
+        pl->resist[0] += 5.0f;
+        pl->resist[1] += 5.0f;
+        pl->resist[2] += 5.0f;
+        pl->resist[3] += 5.0f;
+        pl->resist[4] += 5.0f;
+    } else if (Player_HasSkill(pl, 0x62) == 1) {
+        pl->resist[0] += 10.0f;
+        pl->resist[1] += 10.0f;
+        pl->resist[2] += 10.0f;
+        pl->resist[3] += 10.0f;
+        pl->resist[4] += 10.0f;
     }
-    if (Player_HasSkill(p, 0x63) == 1) {
-        p->resist[0] -= 3.0f;
-        p->resist[1] -= 3.0f;
-        p->resist[2] -= 3.0f;
-        p->resist[3] -= 3.0f;
-        p->resist[4] -= 3.0f;
-    } else if (Player_HasSkill(p, 0x64) == 1) {
-        p->resist[0] -= 5.0f;
-        p->resist[1] -= 5.0f;
-        p->resist[2] -= 5.0f;
-        p->resist[3] -= 5.0f;
-        p->resist[4] -= 5.0f;
-    } else if (Player_HasSkill(p, 0x65) == 1) {
-        p->resist[0] -= 10.0f;
-        p->resist[1] -= 10.0f;
-        p->resist[2] -= 10.0f;
-        p->resist[3] -= 10.0f;
-        p->resist[4] -= 10.0f;
+    if (Player_HasSkill(pl, 0x63) == 1) {
+        pl->resist[0] -= 3.0f;
+        pl->resist[1] -= 3.0f;
+        pl->resist[2] -= 3.0f;
+        pl->resist[3] -= 3.0f;
+        pl->resist[4] -= 3.0f;
+    } else if (Player_HasSkill(pl, 0x64) == 1) {
+        pl->resist[0] -= 5.0f;
+        pl->resist[1] -= 5.0f;
+        pl->resist[2] -= 5.0f;
+        pl->resist[3] -= 5.0f;
+        pl->resist[4] -= 5.0f;
+    } else if (Player_HasSkill(pl, 0x65) == 1) {
+        pl->resist[0] -= 10.0f;
+        pl->resist[1] -= 10.0f;
+        pl->resist[2] -= 10.0f;
+        pl->resist[3] -= 10.0f;
+        pl->resist[4] -= 10.0f;
     }
 }
 
 /* Clamps the resistances to [-100, 100]. */
-static void Player_ClampResists(Player *p)
+static void Player_ClampResists(Player *pl)
 {
-    if (p->resist[0] < -100.0f) {
-        p->resist[0] = -100.0f;
+    if (pl->resist[0] < -100.0f) {
+        pl->resist[0] = -100.0f;
     }
-    if (p->resist[1] < -100.0f) {
-        p->resist[1] = -100.0f;
+    if (pl->resist[1] < -100.0f) {
+        pl->resist[1] = -100.0f;
     }
-    if (p->resist[2] < -100.0f) {
-        p->resist[2] = -100.0f;
+    if (pl->resist[2] < -100.0f) {
+        pl->resist[2] = -100.0f;
     }
-    if (p->resist[3] < -100.0f) {
-        p->resist[3] = -100.0f;
+    if (pl->resist[3] < -100.0f) {
+        pl->resist[3] = -100.0f;
     }
-    if (p->resist[4] < -100.0f) {
-        p->resist[4] = -100.0f;
+    if (pl->resist[4] < -100.0f) {
+        pl->resist[4] = -100.0f;
     }
-    if (p->resist[0] > 100.0f) {
-        p->resist[0] = 100.0f;
+    if (pl->resist[0] > 100.0f) {
+        pl->resist[0] = 100.0f;
     }
-    if (p->resist[1] > 100.0f) {
-        p->resist[1] = 100.0f;
+    if (pl->resist[1] > 100.0f) {
+        pl->resist[1] = 100.0f;
     }
-    if (p->resist[2] > 100.0f) {
-        p->resist[2] = 100.0f;
+    if (pl->resist[2] > 100.0f) {
+        pl->resist[2] = 100.0f;
     }
-    if (p->resist[3] > 100.0f) {
-        p->resist[3] = 100.0f;
+    if (pl->resist[3] > 100.0f) {
+        pl->resist[3] = 100.0f;
     }
-    if (p->resist[4] > 100.0f) {
-        p->resist[4] = 100.0f;
+    if (pl->resist[4] > 100.0f) {
+        pl->resist[4] = 100.0f;
     }
 }
 
@@ -665,69 +665,69 @@ static void Player_ClampResists(Player *p)
  * the meal effects (+10 to one element and -5 to the others, or 15/-8,
  * 20/-10). */
 /* Matches with its three callees static (Player_ClampResists alone: 15 words off). */
-void Player_CalcResists(Player *p)
+void Player_CalcResists(Player *pl)
 {
     s16 i;
-    s16 e;
-    s16 *elem;
+    s16 kind;
+    s16 *kindPtr;
 
-    p->resist[0] = Player_GetEquipStat(p, 2);
-    p->resist[1] = Player_GetEquipStat(p, 3);
-    p->resist[2] = Player_GetEquipStat(p, 4);
-    p->resist[3] = Player_GetEquipStat(p, 5);
-    p->resist[4] = Player_GetEquipStat(p, 13);
-    Player_ApplyResistSkills(p);
-    for (i = 0, elem = gResistMealEffects; i < 5; i++, elem++) {
-        e = *elem;
-        if (Player_HasMealEffect(p, e) == 1) {
-            switch (p->mealEffect[e]) {
+    pl->resist[0] = Player_GetEquipStat(pl, 2);
+    pl->resist[1] = Player_GetEquipStat(pl, 3);
+    pl->resist[2] = Player_GetEquipStat(pl, 4);
+    pl->resist[3] = Player_GetEquipStat(pl, 5);
+    pl->resist[4] = Player_GetEquipStat(pl, 13);
+    Player_ApplyResistSkills(pl);
+    for (i = 0, kindPtr = gResistMealEffects; i < 5; i++, kindPtr++) {
+        kind = *kindPtr;
+        if (Player_HasMealEffect(pl, kind) == 1) {
+            switch (pl->mealEffect[kind]) {
             case 1:
-                Player_AddResists(10.0f, p, e, -5.0f);
+                Player_AddResists(10.0f, pl, kind, -5.0f);
                 break;
             case 2:
             case 3:
-                Player_AddResists(15.0f, p, e, -8.0f);
+                Player_AddResists(15.0f, pl, kind, -8.0f);
                 break;
             case 4:
-                Player_AddResists(20.0f, p, e, -10.0f);
+                Player_AddResists(20.0f, pl, kind, -10.0f);
                 break;
             }
         }
     }
-    Player_ClampResists(p);
+    Player_ClampResists(pl);
 }
 
 /* Player_CalcResists for another player, from the equipment data received. */
-void Player_CalcResistsRemote(Player *p)
+void Player_CalcResistsRemote(Player *pl)
 {
-    EquipView_FromPlayer(p);
-    p->resist[0] = EquipView_GetStat(2);
-    p->resist[1] = EquipView_GetStat(3);
-    p->resist[2] = EquipView_GetStat(4);
-    p->resist[3] = EquipView_GetStat(5);
-    p->resist[4] = EquipView_GetStat(13);
-    Player_ApplyResistSkills(p);
-    Player_ClampResists(p);
+    EquipView_FromPlayer(pl);
+    pl->resist[0] = EquipView_GetStat(2);
+    pl->resist[1] = EquipView_GetStat(3);
+    pl->resist[2] = EquipView_GetStat(4);
+    pl->resist[3] = EquipView_GetStat(5);
+    pl->resist[4] = EquipView_GetStat(13);
+    Player_ApplyResistSkills(pl);
+    Player_ClampResists(pl);
 }
 
 /* The sum of the modifiers of `kind` in the current equipment record. */
-s8 Equip_SumModifiers(u16 item, u8 kind)
+s8 Equip_SumModifiers(u16 item, u8 group)
 {
     s8 sum = 0;
-    StatMods *m = (StatMods *)Item_GetDecoration(item);
+    StatMods *mods = (StatMods *)Item_GetDecoration(item);
 
-    if (m != NULL) {
-        if (m->kind0 == kind) {
-            sum += m->value0;
+    if (mods != NULL) {
+        if (mods->kind0 == group) {
+            sum += mods->value0;
         }
-        if (m->kind1 == kind) {
-            sum += m->value1;
+        if (mods->kind1 == group) {
+            sum += mods->value1;
         }
-        if (m->kind2 == kind) {
-            sum += m->value2;
+        if (mods->kind2 == group) {
+            sum += mods->value2;
         }
-        if (m->kind3 == kind) {
-            sum += m->value3;
+        if (mods->kind3 == group) {
+            sum += mods->value3;
         }
     }
     return sum;
@@ -737,49 +737,49 @@ extern ArmorData *gArmorTables[];
 
 /* The points of skill `kind` an equipment item gives: an armour piece's own
  * five {skill, points}, then its decorations (weapons: the decorations only). */
-s8 Equip_GetSkillPoints(EquipItem *e, u8 kind)
+s8 Equip_GetSkillPoints(EquipItem *piece, u8 group)
 {
     s8 sum = 0;
-    ArmorData *a;
+    ArmorData *armor;
     s16 i;
 
-    if (e->id == 0) {
+    if (piece->id == 0) {
         return 0;
     }
-    switch (e->type) {
+    switch (piece->type) {
     case 0:
     case 2:
     case 3:
     case 4:
     case 5:
-        a = gArmorTables[e->type];
-        a += e->id;
-        if (a->skills[0].skill == kind) {
-            sum += a->skills[0].points;
+        armor = gArmorTables[piece->type];
+        armor += piece->id;
+        if (armor->skills[0].skill == group) {
+            sum += armor->skills[0].points;
         }
-        if (a->skills[1].skill == kind) {
-            sum += a->skills[1].points;
+        if (armor->skills[1].skill == group) {
+            sum += armor->skills[1].points;
         }
-        if (a->skills[2].skill == kind) {
-            sum += a->skills[2].points;
+        if (armor->skills[2].skill == group) {
+            sum += armor->skills[2].points;
         }
-        if (a->skills[3].skill == kind) {
-            sum += a->skills[3].points;
+        if (armor->skills[3].skill == group) {
+            sum += armor->skills[3].points;
         }
-        if (a->skills[4].skill == kind) {
-            sum += a->skills[4].points;
+        if (armor->skills[4].skill == group) {
+            sum += armor->skills[4].points;
         }
         for (i = 0; i < 3; i++) {
-            if (e->deco[i] != 0) {
-                sum += Equip_SumModifiers(e->deco[i], kind);
+            if (piece->deco[i] != 0) {
+                sum += Equip_SumModifiers(piece->deco[i], group);
             }
         }
         break;
     case 6:
     case 7:
         for (i = 0; i < 3; i++) {
-            if (e->deco[i] != 0) {
-                sum += Equip_SumModifiers(e->deco[i], kind);
+            if (piece->deco[i] != 0) {
+                sum += Equip_SumModifiers(piece->deco[i], group);
             }
         }
         break;
@@ -789,82 +789,82 @@ s8 Equip_GetSkillPoints(EquipItem *e, u8 kind)
 
 /* 1 for a piece with points of kind 0x29, +2 with kind 0x2A (0 for no
  * piece). */
-s8 Equip_TorsoUpBonus(EquipItem *e)
+s8 Equip_TorsoUpBonus(EquipItem *piece)
 {
-    s8 n = 0;
+    s8 bonus = 0;
 
-    if (e->id == 0) {
+    if (piece->id == 0) {
         return 0;
     }
-    if (Equip_GetSkillPoints(e, 0x29) > 0) {
-        n++;
+    if (Equip_GetSkillPoints(piece, 0x29) > 0) {
+        bonus++;
     }
-    if (Equip_GetSkillPoints(e, 0x2A) > 0) {
-        n += 2;
+    if (Equip_GetSkillPoints(piece, 0x2A) > 0) {
+        bonus += 2;
     }
-    return n;
+    return bonus;
 }
 
 /* The torso's points of a skill kind, multiplied by 1 + the pieces with
  * kind 0x2B (torso up), plus Equip_TorsoUpBonus of each piece. */
-s8 Player_GetTorsoSkillPoints(Player *p, u8 kind)
+s8 Player_GetTorsoSkillPoints(Player *pl, u8 group)
 {
-    s8 pts = Equip_GetSkillPoints(&p->equip[3], kind);
-    s8 mul;
+    s8 points = Equip_GetSkillPoints(&pl->equip[3], group);
+    s8 factor;
 
-    if (pts != 0) {
-        mul = 1;
-        if (Equip_GetSkillPoints(&p->equip[2], 0x2B)) {
-            mul++;
+    if (points != 0) {
+        factor = 1;
+        if (Equip_GetSkillPoints(&pl->equip[2], 0x2B)) {
+            factor++;
         }
-        if (Equip_GetSkillPoints(&p->equip[3], 0x2B)) {
-            mul++;
+        if (Equip_GetSkillPoints(&pl->equip[3], 0x2B)) {
+            factor++;
         }
-        if (Equip_GetSkillPoints(&p->equip[4], 0x2B)) {
-            mul++;
+        if (Equip_GetSkillPoints(&pl->equip[4], 0x2B)) {
+            factor++;
         }
-        if (Equip_GetSkillPoints(&p->equip[5], 0x2B)) {
-            mul++;
+        if (Equip_GetSkillPoints(&pl->equip[5], 0x2B)) {
+            factor++;
         }
-        if (Equip_GetSkillPoints(&p->equip[0], 0x2B)) {
-            mul++;
+        if (Equip_GetSkillPoints(&pl->equip[0], 0x2B)) {
+            factor++;
         }
-        if (Equip_GetSkillPoints(&p->equip[6], 0x2B)) {
-            mul++;
+        if (Equip_GetSkillPoints(&pl->equip[EQUIP_SLOT_WEAPON], 0x2B)) {
+            factor++;
         }
-        pts *= mul;
-        pts += Equip_TorsoUpBonus(&p->equip[2]);
-        pts += Equip_TorsoUpBonus(&p->equip[3]);
-        pts += Equip_TorsoUpBonus(&p->equip[4]);
-        pts += Equip_TorsoUpBonus(&p->equip[5]);
-        pts += Equip_TorsoUpBonus(&p->equip[0]);
-        pts += Equip_TorsoUpBonus(&p->equip[6]);
+        points *= factor;
+        points += Equip_TorsoUpBonus(&pl->equip[2]);
+        points += Equip_TorsoUpBonus(&pl->equip[3]);
+        points += Equip_TorsoUpBonus(&pl->equip[4]);
+        points += Equip_TorsoUpBonus(&pl->equip[5]);
+        points += Equip_TorsoUpBonus(&pl->equip[0]);
+        points += Equip_TorsoUpBonus(&pl->equip[EQUIP_SLOT_WEAPON]);
     }
-    return pts;
+    return points;
 }
 
 /* The player's total points of a skill kind over the equipment. */
-s8 Player_GetSkillPoints(Player *p, u8 kind)
+s8 Player_GetSkillPoints(Player *pl, u8 group)
 {
-    s8 pts = 0;
+    s8 points = 0;
 
-    pts += Equip_GetSkillPoints(&p->equip[2], kind);
-    pts += Equip_GetSkillPoints(&p->equip[4], kind);
-    pts += Equip_GetSkillPoints(&p->equip[5], kind);
-    pts += Equip_GetSkillPoints(&p->equip[0], kind);
-    pts += Equip_GetSkillPoints(&p->equip[6], kind);
-    pts += Player_GetTorsoSkillPoints(p, kind);
-    return pts;
+    points += Equip_GetSkillPoints(&pl->equip[2], group);
+    points += Equip_GetSkillPoints(&pl->equip[4], group);
+    points += Equip_GetSkillPoints(&pl->equip[5], group);
+    points += Equip_GetSkillPoints(&pl->equip[0], group);
+    points += Equip_GetSkillPoints(&pl->equip[EQUIP_SLOT_WEAPON], group);
+    points += Player_GetTorsoSkillPoints(pl, group);
+    return points;
 }
 
 /* Adds a skill to the next free slot (at most 5). */
-void Player_AddSkill(Player *p, u8 skill, u8 *n, u16 group, s8 points)
+void Player_AddSkill(Player *pl, u8 skill, u8 *count, u16 group, s8 points)
 {
-    if (*n < 5) {
-        p->skills[*n] = skill;
-        p->skillGroups[*n] = group;
-        p->skillPoints[*n] = points;
-        (*n)++;
+    if (*count < 5) {
+        pl->skills[*count] = skill;
+        pl->skillGroups[*count] = group;
+        pl->skillPoints[*count] = points;
+        (*count)++;
     }
 }
 
@@ -878,86 +878,86 @@ typedef struct SkillDef {
 
 extern SkillDef D_0044A9A0[];
 
-void Player_CalcSkills(Player *p)
+void Player_CalcSkills(Player *pl)
 {
-    s16 key[5];
-    u8 grp[5];
-    u8 id[5];
-    u8 n;
-    SkillDef *e;
-    s8 pts;
+    s16 sortKey[5];
+    u8 groups[5];
+    u8 ids[5];
+    u8 count;
+    SkillDef *def;
+    s8 points;
     s32 i;
     s32 j;
-    s16 ks;
-    u8 t;
+    s16 keyTmp;
+    u8 swap;
 
-    e = D_0044A9A0;
-    n = 0;
+    def = D_0044A9A0;
+    count = 0;
     for (i = 0; i < 5; i++) {
-        p->skills[i] = 0;
-        p->skillGroups[i] = 0;
-        p->skillPoints[i] = 0;
+        pl->skills[i] = 0;
+        pl->skillGroups[i] = 0;
+        pl->skillPoints[i] = 0;
     }
-    while (e->kind != 0xFFFF) {
-        pts = Player_GetSkillPoints(p, e->kind);
-        if (pts <= e->neg[0][0]) {
-            Player_AddSkill(p, e->neg[0][1], &n, e->kind, pts);
-        } else if (pts <= e->neg[1][0]) {
-            Player_AddSkill(p, e->neg[1][1], &n, e->kind, pts);
-        } else if (pts <= e->neg[2][0]) {
-            Player_AddSkill(p, e->neg[2][1], &n, e->kind, pts);
-        } else if (pts >= e->pos[2][0]) {
-            Player_AddSkill(p, e->pos[2][1], &n, e->kind, pts);
-        } else if (pts >= e->pos[1][0]) {
-            Player_AddSkill(p, e->pos[1][1], &n, e->kind, pts);
-        } else if (pts >= e->pos[0][0]) {
-            Player_AddSkill(p, e->pos[0][1], &n, e->kind, pts);
+    while (def->kind != 0xFFFF) {
+        points = Player_GetSkillPoints(pl, def->kind);
+        if (points <= def->neg[0][0]) {
+            Player_AddSkill(pl, def->neg[0][1], &count, def->kind, points);
+        } else if (points <= def->neg[1][0]) {
+            Player_AddSkill(pl, def->neg[1][1], &count, def->kind, points);
+        } else if (points <= def->neg[2][0]) {
+            Player_AddSkill(pl, def->neg[2][1], &count, def->kind, points);
+        } else if (points >= def->pos[2][0]) {
+            Player_AddSkill(pl, def->pos[2][1], &count, def->kind, points);
+        } else if (points >= def->pos[1][0]) {
+            Player_AddSkill(pl, def->pos[1][1], &count, def->kind, points);
+        } else if (points >= def->pos[0][0]) {
+            Player_AddSkill(pl, def->pos[0][1], &count, def->kind, points);
         }
-        e++;
+        def++;
     }
     for (i = 0; i < 5; i++) {
-        if (p->skillPoints[i] != 0) {
-            if (p->skillPoints[i] > 0) {
-                key[i] = (s16)p->skillPoints[i] + 200;
-                grp[i] = p->skillGroups[i];
-                id[i] = p->skills[i];
+        if (pl->skillPoints[i] != 0) {
+            if (pl->skillPoints[i] > 0) {
+                sortKey[i] = (s16)pl->skillPoints[i] + 200;
+                groups[i] = pl->skillGroups[i];
+                ids[i] = pl->skills[i];
             } else {
-                key[i] = (s16)-p->skillPoints[i] + 100;
-                grp[i] = p->skillGroups[i];
-                id[i] = p->skills[i];
+                sortKey[i] = (s16)-pl->skillPoints[i] + 100;
+                groups[i] = pl->skillGroups[i];
+                ids[i] = pl->skills[i];
             }
         } else {
-            key[i] = 0;
-            grp[i] = 0;
-            id[i] = 0;
+            sortKey[i] = 0;
+            groups[i] = 0;
+            ids[i] = 0;
         }
     }
     for (i = 0; i < 4; i++) {
         for (j = i + 1; j < 5; j++) {
-            if (key[i] < key[j] || (key[i] == key[j] && grp[i] < grp[j])) {
-                ks = key[i];
-                t = grp[i];
-                key[i] = key[j];
-                grp[i] = grp[j];
-                key[j] = ks;
-                grp[j] = t;
-                t = id[i];
-                id[i] = id[j];
-                id[j] = t;
+            if (sortKey[i] < sortKey[j] || (sortKey[i] == sortKey[j] && groups[i] < groups[j])) {
+                keyTmp = sortKey[i];
+                swap = groups[i];
+                sortKey[i] = sortKey[j];
+                groups[i] = groups[j];
+                sortKey[j] = keyTmp;
+                groups[j] = swap;
+                swap = ids[i];
+                ids[i] = ids[j];
+                ids[j] = swap;
             }
         }
     }
     for (i = 0; i < 5; i++) {
-        p->skillPoints[i] = key[i];
-        p->skillGroups[i] = grp[i];
-        p->skills[i] = id[i];
+        pl->skillPoints[i] = sortKey[i];
+        pl->skillGroups[i] = groups[i];
+        pl->skills[i] = ids[i];
     }
 }
 
 /* Nonzero when the player has the skill: in one of the 5 slots, or, offline,
  * the local player's meal skill (+0x8C9). None while Town_InMode46 says so
  * online. */
-s32 Player_HasSkill(Player *p, u8 skill)
+s32 Player_HasSkill(Player *pl, u8 skill)
 {
     Player *local = &gPlayers[gScene.localPlayer];
     s16 i;
@@ -966,7 +966,7 @@ s32 Player_HasSkill(Player *p, u8 skill)
         return 0;
     }
     for (i = 0; i < 5; i++) {
-        if (p->skills[i] == skill) {
+        if (pl->skills[i] == skill) {
             return 1;
         }
     }
@@ -977,7 +977,7 @@ s32 Player_HasSkill(Player *p, u8 skill)
 }
 
 /* The player's skill of a skill group (0 if none). */
-u8 Player_GetSkill(Player *p, u8 group)
+u8 Player_GetSkill(Player *pl, u8 group)
 {
     Player *local = &gPlayers[gScene.localPlayer];
     s16 i;
@@ -986,8 +986,8 @@ u8 Player_GetSkill(Player *p, u8 group)
         return 0;
     }
     for (i = 0; i < 5; i++) {
-        if (p->skillGroups[i] == group) {
-            return p->skills[i];
+        if (pl->skillGroups[i] == group) {
+            return pl->skills[i];
         }
     }
     if (gScene.online == 0 && local->mealSkillGroup == group) {
@@ -996,16 +996,16 @@ u8 Player_GetSkill(Player *p, u8 group)
     return 0;
 }
 
-s32 Player_CanGuard(Player *p)
+s32 Player_CanGuard(Player *pl)
 {
-    switch (p->weaponType) {
-    case 0:
-    case 4:
-    case 3:
-    case 9:
+    switch (pl->weaponType) {
+    case WEAPON_GREAT_SWORD:
+    case WEAPON_SWORD_SHIELD:
+    case WEAPON_LANCE:
+    case WEAPON_GUNLANCE:
         return 1;
-    case 1:
-        if (HeavyBowgun_HasShield(p) == 1) {
+    case WEAPON_HEAVY_BOWGUN:
+        if (HeavyBowgun_HasShield(pl) == 1) {
             return 1;
         }
     default:
@@ -1027,111 +1027,111 @@ extern HitShape *D_7F1950[];
  * pushes summed at the longest length (no height unless a->action is 2, nor upwards while a
  * rises in states 2/3); the lower +0x596 moves (both halfway when equal), +0x738 set on it.
  * Then a stays between its start height +0x574 and 480 above it (when it started below). */
-void PlayerEm_PushApart(Player *a, Player *b)
+void PlayerEm_PushApart(Player *pl, Player *em)
 {
-    HitShape *c;
-    f32 len[2];
-    Capsule work;
-    Capsule work2;
-    HitCapsule own;
-    HitCapsule cap;
-    HitSphere sph;
+    HitShape *shape;
+    f32 pushLen[2];
+    Capsule bodyCap;
+    Capsule shapeCap;
+    HitCapsule bodyHit;
+    HitCapsule shapeHit;
+    HitSphere shapeSphere;
     f32 push[2][3];
-    f32 y;
-    s16 n;
+    f32 startY;
+    s16 count;
     s16 i;
-    s32 k;
-    s16 r;
+    s32 boneNo;
+    s16 shapeKind;
     s32 hit;
 
-    y = a->pos[1];
-    n = 0;
-    Player_BodyCapsule(a, &own, 40.0f);
-    Capsule_Copy(&own, &work);
+    startY = pl->pos[1];
+    count = 0;
+    Player_BodyCapsule(pl, &bodyHit, 40.0f);
+    Capsule_Copy(&bodyHit, &bodyCap);
     if (gScene.online == 0) {
-        c = gEmBoneHits[b->weaponType];
+        shape = gEmBoneHits[em->weaponType];
     } else {
-        c = D_7F1950[b->weaponType];
+        shape = D_7F1950[em->weaponType];
     }
-    while ((k = c->bone) != -1) {
-        if ((c->atkFlags & 4) || (c->atkFlags2 & 2) || (c->openFlags & 8) || (c->openFlags & 2)
-            || (c->offFlags & 4) || (c->offFlags & 1)) {
-            c++;
+    while ((boneNo = shape->bone) != -1) {
+        if ((shape->atkFlags & 4) || (shape->atkFlags2 & 2) || (shape->openFlags & 8) || (shape->openFlags & 2)
+            || (shape->offFlags & 4) || (shape->offFlags & 1)) {
+            shape++;
             continue;
         }
-        switch (k) {
+        switch (boneNo) {
         case 0x7F:
         case 0x7E:
-            r = HitShape_Place(b->pos, c, &cap, &sph, 1.0f);
+            shapeKind = HitShape_Place(em->pos, shape, &shapeHit, &shapeSphere, 1.0f);
             break;
         case 0x7D:
-            HitList_Next((Em *)b, &c);
+            HitList_Next((Em *)em, &shape);
             continue;
         default:
-            r = BoneHit_Place((ObjHead *)b, c, &cap, &sph);
+            shapeKind = BoneHit_Place((ObjHead *)em, shape, &shapeHit, &shapeSphere);
             break;
         }
-        if (r == 0) {
-            hit = (u8)Capsule_PushSphere(&work, sph.pos, push[n], sph.radius);
+        if (shapeKind == 0) {
+            hit = (u8)Capsule_PushSphere(&bodyCap, shapeSphere.pos, push[count], shapeSphere.radius);
         } else {
-            Capsule_Copy(&cap, &work2);
-            hit = (u8)Capsule_PushCapsule(&work2, &work, push[n]);
+            Capsule_Copy(&shapeHit, &shapeCap);
+            hit = (u8)Capsule_PushCapsule(&shapeCap, &bodyCap, push[count]);
         }
         if ((u8)hit) {
-            len[n] = Vec_Length(push[n]);
-            if (a->action != 2) {
-                push[n][1] = 0.0f;
+            pushLen[count] = Vec_Length(push[count]);
+            if (pl->action != 2) {
+                push[count][1] = 0.0f;
             }
-            n++;
+            count++;
         }
-        if (n >= 2) {
+        if (count >= 2) {
             break;
         }
-        c++;
+        shape++;
     }
-    if (n != 0) {
-        for (i = 1; i < n; i++) {
+    if (count != 0) {
+        for (i = 1; i < count; i++) {
             push[0][0] += push[i][0];
             push[0][1] += push[i][1];
             push[0][2] += push[i][2];
-            if (len[0] < len[i]) {
-                len[0] = len[i];
+            if (pushLen[0] < pushLen[i]) {
+                pushLen[0] = pushLen[i];
             }
         }
         Vec_Normalize(push[0]);
-        push[0][0] *= len[0];
-        push[0][1] *= len[0];
-        push[0][2] *= len[0];
-        if ((a->stateGroup == 2 || a->stateGroup == 3) && a->vel[1] > 0.0f && push[0][1] > 0.0f) {
+        push[0][0] *= pushLen[0];
+        push[0][1] *= pushLen[0];
+        push[0][2] *= pushLen[0];
+        if ((pl->stateGroup == 2 || pl->stateGroup == 3) && pl->vel[1] > 0.0f && push[0][1] > 0.0f) {
             push[0][1] = 0.0f;
         }
-        if (b->pushPriority < a->pushPriority) {
-            b->pos[0] -= push[0][0];
-            b->pos[1] -= push[0][1];
-            b->pos[2] -= push[0][2];
-            ((u8 *)b)[0x738] = 1;
-        } else if (b->pushPriority == a->pushPriority) {
-            a->pos[0] += 0.5f * push[0][0];
-            a->pos[1] += 0.5f * push[0][1];
-            a->pos[2] += 0.5f * push[0][2];
+        if (em->pushPriority < pl->pushPriority) {
+            em->pos[0] -= push[0][0];
+            em->pos[1] -= push[0][1];
+            em->pos[2] -= push[0][2];
+            ((u8 *)em)[0x738] = 1;
+        } else if (em->pushPriority == pl->pushPriority) {
+            pl->pos[0] += 0.5f * push[0][0];
+            pl->pos[1] += 0.5f * push[0][1];
+            pl->pos[2] += 0.5f * push[0][2];
             /* a height check compiled out (an empty compound if: the schedule needs it) */
-            if (a->pos[1] < a->floorY || a->pos[1] > a->floorY + 480.0f) { /* compiled-out check */
+            if (pl->pos[1] < pl->floorY || pl->pos[1] > pl->floorY + 480.0f) { /* compiled-out check */
             }
-            b->pos[0] += -0.5f * push[0][0];
-            b->pos[1] += -0.5f * push[0][1];
-            b->pos[2] += -0.5f * push[0][2];
-            ((u8 *)a)[0x738] = 1;
-            ((u8 *)b)[0x738] = 1;
+            em->pos[0] += -0.5f * push[0][0];
+            em->pos[1] += -0.5f * push[0][1];
+            em->pos[2] += -0.5f * push[0][2];
+            ((u8 *)pl)[0x738] = 1;
+            ((u8 *)em)[0x738] = 1;
         } else {
-            a->pos[0] += push[0][0];
-            a->pos[1] += push[0][1];
-            a->pos[2] += push[0][2];
-            ((u8 *)a)[0x738] = 1;
+            pl->pos[0] += push[0][0];
+            pl->pos[1] += push[0][1];
+            pl->pos[2] += push[0][2];
+            ((u8 *)pl)[0x738] = 1;
         }
-        if (a->pos[1] < a->floorY) {
-            a->pos[1] = a->floorY;
-        } else if (y < a->floorY + 480.0f && a->pos[1] > a->floorY + 480.0f) {
-            a->pos[1] = a->floorY + 480.0f;
+        if (pl->pos[1] < pl->floorY) {
+            pl->pos[1] = pl->floorY;
+        } else if (startY < pl->floorY + 480.0f && pl->pos[1] > pl->floorY + 480.0f) {
+            pl->pos[1] = pl->floorY + 480.0f;
         }
     }
 }
@@ -1144,121 +1144,121 @@ extern f32 *D_7F1980[];
  * per kind: x, y, z, radius, ending with radius -1, scaled by a->scaleX) touch: sums up to two
  * pushes, keeps the longest length, and moves both halfway when their +0x596 are equal, else
  * the one with the lower +0x596; the height only when +0x390 is 2. Sets +0x738 on the moved ones. */
-void EmEm_PushApart(Player *a, Player *b)
+void EmEm_PushApart(Player *emA, Player *emB)
 {
-    f32 pa[3];
-    f32 pb[3];
-    f32 len[2];
+    f32 centerA[3];
+    f32 centerB[3];
+    f32 pushLen[2];
     f32 push[2][3];
-    f32 *ha;
-    f32 *hb;
-    f32 r;
-    s16 n;
+    f32 *spheresA;
+    f32 *spheresB;
+    f32 radiusA;
+    s16 count;
     s16 i;
 
-    n = 0;
+    count = 0;
     if (gScene.online == 0) {
-        ha = D_8BA130[a->weaponType];
-        hb = D_8BA130[b->weaponType];
+        spheresA = D_8BA130[emA->weaponType];
+        spheresB = D_8BA130[emB->weaponType];
     } else {
-        ha = D_7F1980[a->weaponType];
-        hb = D_7F1980[b->weaponType];
+        spheresA = D_7F1980[emA->weaponType];
+        spheresB = D_7F1980[emB->weaponType];
     }
-    for (; ha[3] != -1.0f; ha += 4) {
-        pa[0] = a->pos[0] + ha[0] * a->scale[0];
-        pa[1] = a->pos[1] + ha[1] * a->scale[1];
-        pa[2] = a->pos[2] + ha[2] * a->scale[2];
-        r = ha[3] * a->scale[0];
-        for (; hb[3] != -1.0f; hb += 4) {
-            pb[0] = b->pos[0] + hb[0] * a->scale[0];
-            pb[1] = b->pos[1] + hb[1] * a->scale[1];
-            pb[2] = b->pos[2] + hb[2] * a->scale[2];
-            if (Sphere_PushOut(r, hb[3] * b->scale[0], pa, pb, push[n]) != 0) {
-                len[n] = Vec_Length(push[n]);
-                n++;
+    for (; spheresA[3] != -1.0f; spheresA += 4) {
+        centerA[0] = emA->pos[0] + spheresA[0] * emA->scale[0];
+        centerA[1] = emA->pos[1] + spheresA[1] * emA->scale[1];
+        centerA[2] = emA->pos[2] + spheresA[2] * emA->scale[2];
+        radiusA = spheresA[3] * emA->scale[0];
+        for (; spheresB[3] != -1.0f; spheresB += 4) {
+            centerB[0] = emB->pos[0] + spheresB[0] * emA->scale[0];
+            centerB[1] = emB->pos[1] + spheresB[1] * emA->scale[1];
+            centerB[2] = emB->pos[2] + spheresB[2] * emA->scale[2];
+            if (Sphere_PushOut(radiusA, spheresB[3] * emB->scale[0], centerA, centerB, push[count]) != 0) {
+                pushLen[count] = Vec_Length(push[count]);
+                count++;
             }
-            if (n >= 2) {
+            if (count >= 2) {
                 goto done;
             }
         }
     }
 done:
-    if (n != 0) {
-        for (i = 1; i < n; i++) {
+    if (count != 0) {
+        for (i = 1; i < count; i++) {
             push[0][0] += push[i][0];
             push[0][1] += push[i][1];
             push[0][2] += push[i][2];
-            if (len[0] < len[i]) {
-                len[0] = len[i];
+            if (pushLen[0] < pushLen[i]) {
+                pushLen[0] = pushLen[i];
             }
         }
-        if (a->action != 2) {
+        if (emA->action != 2) {
             push[0][1] = 0.0f;
         }
         Vec_Normalize(push[0]);
-        push[0][0] *= len[0];
-        push[0][1] *= len[0];
-        push[0][2] *= len[0];
-        if (a->pushPriority == b->pushPriority) {
-            a->pos[0] += 0.5f * push[0][0];
-            if (a->action == 2) {
-                a->pos[1] += 0.5f * push[0][1];
+        push[0][0] *= pushLen[0];
+        push[0][1] *= pushLen[0];
+        push[0][2] *= pushLen[0];
+        if (emA->pushPriority == emB->pushPriority) {
+            emA->pos[0] += 0.5f * push[0][0];
+            if (emA->action == 2) {
+                emA->pos[1] += 0.5f * push[0][1];
             }
-            a->pos[2] += 0.5f * push[0][2];
-            b->pos[0] += -0.5f * push[0][0];
-            if (b->action == 2) {
-                b->pos[1] += -0.5f * push[0][1];
+            emA->pos[2] += 0.5f * push[0][2];
+            emB->pos[0] += -0.5f * push[0][0];
+            if (emB->action == 2) {
+                emB->pos[1] += -0.5f * push[0][1];
             }
-            b->pos[2] += -0.5f * push[0][2];
-            ((u8 *)a)[0x738] = 1;
-            ((u8 *)b)[0x738] = 1;
-        } else if (a->pushPriority < b->pushPriority) {
-            a->pos[0] += push[0][0];
-            if (a->action == 2) {
-                a->pos[1] += push[0][1];
+            emB->pos[2] += -0.5f * push[0][2];
+            ((u8 *)emA)[0x738] = 1;
+            ((u8 *)emB)[0x738] = 1;
+        } else if (emA->pushPriority < emB->pushPriority) {
+            emA->pos[0] += push[0][0];
+            if (emA->action == 2) {
+                emA->pos[1] += push[0][1];
             }
-            a->pos[2] += push[0][2];
-            ((u8 *)a)[0x738] = 1;
+            emA->pos[2] += push[0][2];
+            ((u8 *)emA)[0x738] = 1;
         } else {
-            b->pos[0] -= push[0][0];
-            if (b->action == 2) {
-                b->pos[1] -= push[0][1];
+            emB->pos[0] -= push[0][0];
+            if (emB->action == 2) {
+                emB->pos[1] -= push[0][1];
             }
-            b->pos[2] -= push[0][2];
-            ((u8 *)b)[0x738] = 1;
+            emB->pos[2] -= push[0][2];
+            ((u8 *)emB)[0x738] = 1;
         }
     }
 }
 
 /* Pushes two players apart when their body capsules (Player_BodyCapsule, radius 40) meet:
  * half the push each, the height too for those in the air (action 2), and marks both. */
-void Players_PushApart(Player *a, Player *b)
+void Players_PushApart(Player *plA, Player *plB)
 {
-    Capsule ca;
-    Capsule cb;
-    HitCapsule sa;
-    HitCapsule sb;
+    Capsule capA;
+    Capsule capB;
+    HitCapsule hitA;
+    HitCapsule hitB;
     f32 push[3];
 
-    Player_BodyCapsule(a, &sa, 40.0f);
-    Capsule_Copy(&sa, &ca);
-    Player_BodyCapsule(b, &sb, 40.0f);
-    Capsule_Copy(&sb, &cb);
-    if (Capsule_PushCapsule(&cb, &ca, push) != 0) {
-        a->pos[0] += 0.5f * push[0];
-        a->pos[2] += 0.5f * push[2];
-        b->pos[0] += -0.5f * push[0];
-        b->pos[2] += -0.5f * push[2];
-        if (a->action == 2 && b->action == 2) {
-            a->pos[1] += 0.5f * push[1];
-            b->pos[1] += -0.5f * push[1];
-        } else if (a->action == 2) {
-            a->pos[1] += push[1];
-        } else if (b->action == 2) {
-            b->pos[1] -= push[1];
+    Player_BodyCapsule(plA, &hitA, 40.0f);
+    Capsule_Copy(&hitA, &capA);
+    Player_BodyCapsule(plB, &hitB, 40.0f);
+    Capsule_Copy(&hitB, &capB);
+    if (Capsule_PushCapsule(&capB, &capA, push) != 0) {
+        plA->pos[0] += 0.5f * push[0];
+        plA->pos[2] += 0.5f * push[2];
+        plB->pos[0] += -0.5f * push[0];
+        plB->pos[2] += -0.5f * push[2];
+        if (plA->action == 2 && plB->action == 2) {
+            plA->pos[1] += 0.5f * push[1];
+            plB->pos[1] += -0.5f * push[1];
+        } else if (plA->action == 2) {
+            plA->pos[1] += push[1];
+        } else if (plB->action == 2) {
+            plB->pos[1] -= push[1];
         }
-        a->unk72C[0x738 - 0x72C] = 1;
-        b->unk72C[0x738 - 0x72C] = 1;
+        plA->unk72C[0x738 - 0x72C] = 1;
+        plB->unk72C[0x738 - 0x72C] = 1;
     }
 }
 
@@ -1278,58 +1278,58 @@ void Players_PushApart(Player *a, Player *b);
  * The pointers to v[1] and v[2] stay in saved registers (set with the first loop). */
 void Field_PushApart(void)
 {
-    Em *m;
-    Player *q;
-    Player *e;
+    Em *em;
+    Player *other;
+    Player *emA;
     s32 i;
     s32 j;
-    f32 *vy;
-    f32 *vz;
-    f32 v[3];
-    s16 flag;
-    f32 d;
-    Player *p;
+    f32 *diffY;
+    f32 *diffZ;
+    f32 diff[3];
+    s16 wallFlag;
+    f32 dist;
+    Player *pl;
 
-    for (i = 0, q = gPlayers; i < 4; i++, q++) {
-        ((u8 *)q)[0x738] = 0;
+    for (i = 0, other = gPlayers; i < 4; i++, other++) {
+        ((u8 *)other)[0x738] = 0;
     }
-    for (m = gEms, j = 0; j < 20; j++, m++) {
-        m->pushed = 0;
+    for (em = gEms, j = 0; j < 20; j++, em++) {
+        em->pushed = 0;
     }
-    for (i = 0, p = gPlayers, vy = &v[1], vz = &v[2]; i < 4; i++, p++) {
-        if (p->active != 0 && p->visible != 0 && Player_IsLocal(p) != 0 && p->noPushTimer == 0
-            && (u8)Obj_InCurrentArea(p)) {
+    for (i = 0, pl = gPlayers, diffY = &diff[1], diffZ = &diff[2]; i < 4; i++, pl++) {
+        if (pl->active != 0 && pl->visible != 0 && Player_IsLocal(pl) != 0 && pl->noPushTimer == 0
+            && (u8)Obj_InCurrentArea(pl)) {
             if (Debug_IsOn(0xA9) != 0) {
-                for (j = 0, q = gPlayers; j < 4; j++, q++) {
-                    if (q->active != 0 && q->visible != 0 && q->noPushTimer == 0 && (u8)Obj_SameArea(p, q)) {
-                        Players_PushApart(p, q);
+                for (j = 0, other = gPlayers; j < 4; j++, other++) {
+                    if (other->active != 0 && other->visible != 0 && other->noPushTimer == 0 && (u8)Obj_SameArea(pl, other)) {
+                        Players_PushApart(pl, other);
                     }
                 }
             }
-            for (q = (Player *)gEms, j = 0; j < 20; j++, q = (Player *)((u8 *)q + sizeof(Em))) {
-                if (q->active != 0 && q->visible != 0 && q->noPushTimer == 0 && (u8)Obj_SameArea(p, q)) {
-                    PlayerEm_PushApart(p, q);
-                    v[0] = p->pos[0] - q->pos[0];
-                    *vy = p->pos[1] - q->pos[1];
-                    *vz = p->pos[2] - q->pos[2];
-                    d = Vec_Length(v);
-                    *(f32 *)p->unk3B0 = d;
+            for (other = (Player *)gEms, j = 0; j < 20; j++, other = (Player *)((u8 *)other + sizeof(Em))) {
+                if (other->active != 0 && other->visible != 0 && other->noPushTimer == 0 && (u8)Obj_SameArea(pl, other)) {
+                    PlayerEm_PushApart(pl, other);
+                    diff[0] = pl->pos[0] - other->pos[0];
+                    *diffY = pl->pos[1] - other->pos[1];
+                    *diffZ = pl->pos[2] - other->pos[2];
+                    dist = Vec_Length(diff);
+                    *(f32 *)pl->unk3B0 = dist;
                 }
             }
         }
     }
-    for (i = 0, e = (Player *)gEms; i < 19; i++, e = (Player *)((u8 *)e + sizeof(Em))) {
-        if (e->active != 0 && e->visible != 0 && e->noPushTimer == 0 && (u8)Obj_InCurrentArea(e)) {
-            flag = *(u16 *)((u8 *)e + 0x736) != 0;
-            for (j = i + 1, q = (Player *)&gEms[i + 1]; j < 20; j++, q = (Player *)((u8 *)q + sizeof(Em))) {
-                if (q->active != 0 && q->visible != 0) {
-                    if (e->weaponType == 0x1D && q->weaponType == 0x1D) {
+    for (i = 0, emA = (Player *)gEms; i < 19; i++, emA = (Player *)((u8 *)emA + sizeof(Em))) {
+        if (emA->active != 0 && emA->visible != 0 && emA->noPushTimer == 0 && (u8)Obj_InCurrentArea(emA)) {
+            wallFlag = *(u16 *)((u8 *)emA + 0x736) != 0;
+            for (j = i + 1, other = (Player *)&gEms[i + 1]; j < 20; j++, other = (Player *)((u8 *)other + sizeof(Em))) {
+                if (other->active != 0 && other->visible != 0) {
+                    if (emA->weaponType == 0x1D && other->weaponType == 0x1D) {
                         continue;
                     }
-                    if ((e->weaponType == 0x1D || q->weaponType == 0x1D || (e->startItemList == 0 && q->startItemList == 0))
-                        && q->noPushTimer == 0 && (u8)Obj_SameArea(e, q)) {
-                        if ((flag == 0 && *(u16 *)((u8 *)q + 0x736) == 0) || e->weaponType == 0x1D || q->weaponType == 0x1D) {
-                            EmEm_PushApart(e, q);
+                    if ((emA->weaponType == 0x1D || other->weaponType == 0x1D || (emA->startItemList == 0 && other->startItemList == 0))
+                        && other->noPushTimer == 0 && (u8)Obj_SameArea(emA, other)) {
+                        if ((wallFlag == 0 && *(u16 *)((u8 *)other + 0x736) == 0) || emA->weaponType == 0x1D || other->weaponType == 0x1D) {
+                            EmEm_PushApart(emA, other);
                         }
                     }
                 }
@@ -1339,63 +1339,63 @@ void Field_PushApart(void)
 }
 
 /* Sets motion layer `layer`: the motion, half of `a` and b. */
-static void Player_SetLayerMotion(Player *p, s32 motion, s32 a, s16 b, s32 layer)
+static void Player_SetLayerMotion(Player *pl, s32 motion, s32 blend, s16 frame, s32 layer)
 {
-    p->motionId[layer] = motion;
-    p->motionBlend[layer] = a / 2;
-    p->motionFrame[layer] = b;
-    p->motionStarted[layer] = 0;
+    pl->motionId[layer] = motion;
+    pl->motionBlend[layer] = blend / 2;
+    pl->motionFrame[layer] = frame;
+    pl->motionStarted[layer] = 0;
 }
 
-void Player_SetMotion(Player *p, s32 motion, s32 a, s16 b, s32 layer)
+void Player_SetMotion(Player *pl, s32 motion, s32 blend, s16 frame, s32 layer)
 {
-    p->unk771 = 0;
-    Player_SetLayerMotion(p, motion, a, b, layer);
+    pl->unk771 = 0;
+    Player_SetLayerMotion(pl, motion, blend, frame, layer);
 }
 
 /* Starts a motion on layers 0 and 1 (motion + 100). */
-void Player_SetMotionPair(Player *p, s32 motion, s32 a, s16 b)
+void Player_SetMotionPair(Player *pl, s32 motion, s32 blend, s16 frame)
 {
-    p->unk771 = 0;
-    Player_SetLayerMotion(p, motion, a, b, 0);
-    Player_SetLayerMotion(p, motion + 100, a, b, 1);
+    pl->unk771 = 0;
+    Player_SetLayerMotion(pl, motion, blend, frame, 0);
+    Player_SetLayerMotion(pl, motion + 100, blend, frame, 1);
 }
 
-void Player_StartMotionLayer(Player *p, u16 motion, s32 a, s16 b, s32 layer)
+void Player_StartMotionLayer(Player *pl, u16 motion, s32 blend, s16 frame, s32 layer)
 {
-    if (layer < p->motionLayerCount) {
-        Mtx_FromAnglesXYZ(p->rot, p->rotMtx);
-        p->motionId[layer] = motion;
-        p->motionBlend[layer] = a / 2;
-        p->motionFrame[layer] = b;
-        Player_BeginLayerMotion(p, p->motionFrame[layer], p->motionBlend[layer], layer);
+    if (layer < pl->motionLayerCount) {
+        Mtx_FromAnglesXYZ(pl->rot, pl->rotMtx);
+        pl->motionId[layer] = motion;
+        pl->motionBlend[layer] = blend / 2;
+        pl->motionFrame[layer] = frame;
+        Player_BeginLayerMotion(pl, pl->motionFrame[layer], pl->motionBlend[layer], layer);
     }
 }
 
-void func_003B0510(Player *p, u16 buttons)
+void func_003B0510(Player *pl, u16 buttons)
 {
 }
 
-void func_003B0520(Player *p)
+void func_003B0520(Player *pl)
 {
-    func_003B0510(p, ~p->input.held);
+    func_003B0510(pl, ~pl->input.held);
 }
 
 /* Starts a jump of `frames` frames: the vertical acceleration that stops
  * the rise halfway. */
 s32 Player_StartJump(void *obj, s16 frames)
 {
-    ObjHead *o = obj;
-    f32 a;
+    ObjHead *head = obj;
+    f32 riseAccel;
 
     frames = frames / 2;
-    a = -1.0f * o->vel[1];
-    if (frames <= 1 || o->vel[1] < 0.0f) {
-        o->accel[1] = a;
+    riseAccel = -1.0f * head->vel[1];
+    if (frames <= 1 || head->vel[1] < 0.0f) {
+        head->accel[1] = riseAccel;
         return 1;
     }
-    a /= frames;
-    o->accel[1] = a;
+    riseAccel /= frames;
+    head->accel[1] = riseAccel;
     return 0;
 }
 
@@ -1453,47 +1453,47 @@ void Obj_StartMotionEntry(MoveObj *o, s32 i);
 
 void Player_Move(void *obj)
 {
-    ObjHead *o = obj;
-    o->pos[0] += o->vel[0];
-    o->pos[1] += o->vel[1];
-    o->pos[2] += o->vel[2];
+    ObjHead *head = obj;
+    head->pos[0] += head->vel[0];
+    head->pos[1] += head->vel[1];
+    head->pos[2] += head->vel[2];
 }
 
-void Player_MoveAccel(Player *p)
+void Player_MoveAccel(Player *pl)
 {
-    p->vel[0] += p->accel[0];
-    p->vel[1] += p->accel[1];
-    p->vel[2] += p->accel[2];
-    p->pos[0] += p->vel[0];
-    p->pos[1] += p->vel[1];
-    p->pos[2] += p->vel[2];
+    pl->vel[0] += pl->accel[0];
+    pl->vel[1] += pl->accel[1];
+    pl->vel[2] += pl->accel[2];
+    pl->pos[0] += pl->vel[0];
+    pl->pos[1] += pl->vel[1];
+    pl->pos[2] += pl->vel[2];
 }
 
 void Player_Integrate(void *obj)
 {
-    ObjHead *o = obj;
-    o->vel[0] += o->accel[0];
-    o->vel[1] += o->accel[1];
-    o->vel[2] += o->accel[2];
-    o->pos[0] += o->vel[0];
-    o->pos[1] += o->vel[1];
-    o->pos[2] += o->vel[2];
+    ObjHead *head = obj;
+    head->vel[0] += head->accel[0];
+    head->vel[1] += head->accel[1];
+    head->vel[2] += head->accel[2];
+    head->pos[0] += head->vel[0];
+    head->pos[1] += head->vel[1];
+    head->pos[2] += head->vel[2];
 }
 
 /* Moves, and stops on the ground (AreaGrid2_GetFloorY: its height here). */
-s32 Player_MoveFall(Player *p)
+s32 Player_MoveFall(Player *pl)
 {
     f32 ground;
 
-    p->vel[0] += p->accel[0];
-    p->vel[1] += p->accel[1];
-    p->vel[2] += p->accel[2];
-    p->pos[0] += p->vel[0];
-    p->pos[1] += p->vel[1];
-    p->pos[2] += p->vel[2];
-    ground = AreaGrid2_GetFloorY(p->pos);
-    if (p->pos[1] <= ground) {
-        p->pos[1] = ground;
+    pl->vel[0] += pl->accel[0];
+    pl->vel[1] += pl->accel[1];
+    pl->vel[2] += pl->accel[2];
+    pl->pos[0] += pl->vel[0];
+    pl->pos[1] += pl->vel[1];
+    pl->pos[2] += pl->vel[2];
+    ground = AreaGrid2_GetFloorY(pl->pos);
+    if (pl->pos[1] <= ground) {
+        pl->pos[1] = ground;
         return 1;
     }
     return 0;
@@ -1501,94 +1501,94 @@ s32 Player_MoveFall(Player *p)
 
 void Player_StopMove(void *obj)
 {
-    ObjHead *o = obj;
-    o->accel[2] = 0.0f;
-    o->accel[1] = 0.0f;
-    o->accel[0] = 0.0f;
-    o->vel[2] = 0.0f;
-    o->vel[1] = 0.0f;
-    o->vel[0] = 0.0f;
+    ObjHead *head = obj;
+    head->accel[2] = 0.0f;
+    head->accel[1] = 0.0f;
+    head->accel[0] = 0.0f;
+    head->vel[2] = 0.0f;
+    head->vel[1] = 0.0f;
+    head->vel[0] = 0.0f;
 }
 
 void Player_ClearVelocity(void *obj)
 {
-    ObjHead *o = obj;
-    o->accel[2] = 0.0f;
-    o->accel[1] = 0.0f;
-    o->accel[0] = 0.0f;
-    o->vel[2] = 0.0f;
-    o->vel[1] = 0.0f;
-    o->vel[0] = 0.0f;
+    ObjHead *head = obj;
+    head->accel[2] = 0.0f;
+    head->accel[1] = 0.0f;
+    head->accel[0] = 0.0f;
+    head->vel[2] = 0.0f;
+    head->vel[1] = 0.0f;
+    head->vel[0] = 0.0f;
 }
 
-void Player_ClearAccel(Player *p)
+void Player_ClearAccel(Player *pl)
 {
-    p->accel[2] = 0.0f;
-    p->accel[1] = 0.0f;
-    p->accel[0] = 0.0f;
+    pl->accel[2] = 0.0f;
+    pl->accel[1] = 0.0f;
+    pl->accel[0] = 0.0f;
 }
 
 void Player_ClearAccel2(void *obj)
 {
-    ObjHead *o = obj;
-    o->accel[2] = 0.0f;
-    o->accel[1] = 0.0f;
-    o->accel[0] = 0.0f;
+    ObjHead *head = obj;
+    head->accel[2] = 0.0f;
+    head->accel[1] = 0.0f;
+    head->accel[0] = 0.0f;
 }
 
-void MoveObj_AddVelocity(MoveObj *o)
+void MoveObj_AddVelocity(MoveObj *obj)
 {
-    o->pos[0] += o->vel[0];
-    o->pos[1] += o->vel[1];
-    o->pos[2] += o->vel[2];
+    obj->pos[0] += obj->vel[0];
+    obj->pos[1] += obj->vel[1];
+    obj->pos[2] += obj->vel[2];
 }
 
-void MoveObj_Integrate(MoveObj *o)
+void MoveObj_Integrate(MoveObj *obj)
 {
-    o->vel[0] += o->accel[0];
-    o->vel[1] += o->accel[1];
-    o->vel[2] += o->accel[2];
-    o->pos[0] += o->vel[0];
-    o->pos[1] += o->vel[1];
-    o->pos[2] += o->vel[2];
+    obj->vel[0] += obj->accel[0];
+    obj->vel[1] += obj->accel[1];
+    obj->vel[2] += obj->accel[2];
+    obj->pos[0] += obj->vel[0];
+    obj->pos[1] += obj->vel[1];
+    obj->pos[2] += obj->vel[2];
 }
 
 /* The motion's remaining frames (+0x3A4) from layer 0; with `step`, the
  * frame counter +0x3D4 advances too. */
-void Player_UpdateMotionTime(Player *p, s16 step)
+void Player_UpdateMotionTime(Player *pl, s16 step)
 {
-    s16 blend = p->motionBlend[0];
-    s16 len = p->motionFrame[0];
+    s16 blend = pl->motionBlend[0];
+    s16 len = pl->motionFrame[0];
 
-    p->motionTime = 0;
+    pl->motionTime = 0;
     if (blend < 0) {
         blend = -blend;
     }
-    p->motionTime += len - blend;
+    pl->motionTime += len - blend;
     if (step != 0) {
         if (blend != 0) {
             blend--;
         }
-        p->hitDelay += (u8)(blend - len);
+        pl->hitDelay += (u8)(blend - len);
     }
 }
 
 void Motion_InitTime(void *obj, s16 step)
 {
-    Player *p = obj;
-    s16 blend = p->motionBlend[0];
-    s16 len = p->motionFrame[0];
+    Player *pl = obj;
+    s16 blend = pl->motionBlend[0];
+    s16 len = pl->motionFrame[0];
 
-    p->motionTime = 0;
+    pl->motionTime = 0;
     if (blend < 0) {
         blend = -blend;
     }
-    p->motionTime += len - blend;
+    pl->motionTime += len - blend;
     if (step != 0) {
         if (blend != 0) {
             blend--;
         }
-        p->hitDelay += (u8)(blend - len);
+        pl->hitDelay += (u8)(blend - len);
     }
 }
 
@@ -1598,88 +1598,88 @@ void func_003B09B0(Player *unused0, u8 unused1)
 
 /* As Obj_StartMotionEntry for motion entry i with the owner's +0xC as +8, keeping the bits
  * of +0x6C other than 8 and the byte +0x6E. */
-void Obj_StartMotionOwned(MoveObj *o, void *owner, s32 i)
+void Obj_StartMotionOwned(MoveObj *obj, void *owner, s32 row)
 {
-    ObjHead *h = owner;
+    ObjHead *ownerHead = owner;
     s32 *src;
-    s32 *d;
+    s32 *dst;
     s32 k;
-    u8 bits;
-    u8 keep;
+    u8 keepFlags;
+    u8 keepPower;
 
-    bits = o->motion.unkC & 0xF7;
-    keep = bits == 0 ? 0 : o->motion.unkE;
-    src = (s32 *)*o->unk90;
-    src += i * 6;
-    d = (s32 *)&o->motion;
+    keepFlags = obj->motion.unkC & 0xF7;
+    keepPower = keepFlags == 0 ? 0 : obj->motion.unkE;
+    src = (s32 *)*obj->unk90;
+    src += row * 6;
+    dst = (s32 *)&obj->motion;
     for (k = 0; k < 6; k++) {
-        *d++ = *src++;
+        *dst++ = *src++;
     }
-    o->unk8 = h->index;
-    o->unkB = 1;
-    o->unk1E = 0;
-    o->unk9C = 0;
-    o->unkA0 = 0;
-    if (keep != 0) {
-        o->motion.unkC |= bits;
-        o->motion.unkE = keep;
+    obj->unk8 = ownerHead->index;
+    obj->unkB = 1;
+    obj->unk1E = 0;
+    obj->unk9C = 0;
+    obj->unkA0 = 0;
+    if (keepPower != 0) {
+        obj->motion.unkC |= keepFlags;
+        obj->motion.unkE = keepPower;
     }
-    o->motion.unk0 >>= 1;
-    o->motion.unk1 >>= 1;
-    if (o->motion.unk15 != 0xFF) {
-        o->motion.unk15 >>= 1;
+    obj->motion.unk0 >>= 1;
+    obj->motion.unk1 >>= 1;
+    if (obj->motion.unk15 != 0xFF) {
+        obj->motion.unk15 >>= 1;
     }
-    o->motion.unk16 >>= 1;
-    o->unkB5 = HitId_Next();
+    obj->motion.unk16 >>= 1;
+    obj->unkB5 = HitId_Next();
 }
 
-void MoveObj_StartMotionOwned(MoveObj *o, s32 a, s32 b, void *c)
+void MoveObj_StartMotionOwned(MoveObj *obj, s32 owner, s32 row, void *rows)
 {
-    o->unk90 = (MotionDef **)c;
-    o->motion.unkE = 0;
-    o->motion.unkC = 0;
-    Obj_StartMotionOwned(o, (void *) a, b);
+    obj->unk90 = (MotionDef **)rows;
+    obj->motion.unkE = 0;
+    obj->motion.unkC = 0;
+    Obj_StartMotionOwned(obj, (void *) owner, row);
 }
 
 /* Starts motion entry i of the object table: the entry copied word by word, the first
  * values halved, a new hit id. */
-void Obj_StartMotionEntry(MoveObj *o, s32 i)
+void Obj_StartMotionEntry(MoveObj *obj, s32 row)
 {
     s32 *src;
-    s32 *d;
+    s32 *dst;
     s32 k;
 
-    src = (s32 *)*o->unk90;
-    src += i * 6;
-    d = (s32 *)&o->motion;
+    src = (s32 *)*obj->unk90;
+    src += row * 6;
+    dst = (s32 *)&obj->motion;
 
     for (k = 0; k < 6; k++) {
-        *d++ = *src++;
+        *dst++ = *src++;
     }
-    o->unk8 = 0xFF;
-    o->unkB = 1;
-    o->unk1E = 0;
-    o->unk9C = 0;
-    o->unkA0 = 0;
-    o->motion.unk0 >>= 1;
-    o->motion.unk1 >>= 1;
-    if (o->motion.unk15 != 0xFF) {
-        o->motion.unk15 >>= 1;
+    obj->unk8 = 0xFF;
+    obj->unkB = 1;
+    obj->unk1E = 0;
+    obj->unk9C = 0;
+    obj->unkA0 = 0;
+    obj->motion.unk0 >>= 1;
+    obj->motion.unk1 >>= 1;
+    if (obj->motion.unk15 != 0xFF) {
+        obj->motion.unk15 >>= 1;
     }
-    o->motion.unk16 >>= 1;
-    o->unkB5 = HitId_Next();
+    obj->motion.unk16 >>= 1;
+    obj->unkB5 = HitId_Next();
 }
 
-void MoveObj_StartMotionEntry(MoveObj *o, s32 a, void *b)
+void MoveObj_StartMotionEntry(MoveObj *obj, s32 row, void *rows)
 {
-    o->unk90 = (MotionDef **)b;
-    Obj_StartMotionEntry(o, a);
+    obj->unk90 = (MotionDef **)rows;
+    Obj_StartMotionEntry(obj, row);
 }
 
 
 /* Places the hit shape def in the world by its owner's bone: a sphere into s (0), a
  * capsule into c (1), -1 for none. */
-s32 BoneHit_Place(ObjHead *o, HitShape *def, HitCapsule *c, HitSphere *s)
+s32 BoneHit_Place(ObjHead *owner, HitShape *def, HitCapsule *cap, HitSphere *sph)
 {
     f32 off[3];
     f32 pos[3];
@@ -1688,26 +1688,26 @@ s32 BoneHit_Place(ObjHead *o, HitShape *def, HitCapsule *c, HitSphere *s)
     if (def->bone == 0x7F) {
         return -1;
     }
-    bones = o->model->bones;
+    bones = owner->model->bones;
     Mtx_GetTrans(pos, bones[def->bone].world);
     switch (def->kind) {
     case 0:
-        s->radius = def->radius * o->scale[0];
+        sph->radius = def->radius * owner->scale[0];
         Vec_Rotate(off, def->a, (f32 *)&bones[def->bone]);
-        s->pos[0] = pos[0] + off[0];
-        s->pos[1] = pos[1] + off[1];
-        s->pos[2] = pos[2] + off[2];
+        sph->pos[0] = pos[0] + off[0];
+        sph->pos[1] = pos[1] + off[1];
+        sph->pos[2] = pos[2] + off[2];
         return 0;
     case 1:
-        c->radius = def->radius * o->scale[0];
+        cap->radius = def->radius * owner->scale[0];
         Vec_Rotate(off, def->a, (f32 *)&bones[def->bone]);
-        c->a[0] = pos[0] + off[0];
-        c->a[1] = pos[1] + off[1];
-        c->a[2] = pos[2] + off[2];
+        cap->a[0] = pos[0] + off[0];
+        cap->a[1] = pos[1] + off[1];
+        cap->a[2] = pos[2] + off[2];
         Vec_Rotate(off, def->b, (f32 *)&bones[def->bone]);
-        c->b[0] = pos[0] + off[0];
-        c->b[1] = pos[1] + off[1];
-        c->b[2] = pos[2] + off[2];
+        cap->b[0] = pos[0] + off[0];
+        cap->b[1] = pos[1] + off[1];
+        cap->b[2] = pos[2] + off[2];
         return 1;
     }
     return -1;
@@ -1715,72 +1715,72 @@ s32 BoneHit_Place(ObjHead *o, HitShape *def, HitCapsule *c, HitSphere *s)
 
 /* A sphere (type 0: x, y, z, r) or a capsule (type 1: two points and r)
  * from a hit record placed at pos, the radius scaled by s. */
-s32 HitShape_Place(f32 *pos, HitShape *e, HitCapsule *cap, HitSphere *sph, f32 s)
+s32 HitShape_Place(f32 *pos, HitShape *shape, HitCapsule *cap, HitSphere *sph, f32 scale)
 {
-    switch (e->kind) {
+    switch (shape->kind) {
     case 0:
-        sph->radius = e->radius * s;
-        sph->pos[0] = pos[0] + e->a[0];
-        sph->pos[1] = pos[1] + e->a[1];
-        sph->pos[2] = pos[2] + e->a[2];
+        sph->radius = shape->radius * scale;
+        sph->pos[0] = pos[0] + shape->a[0];
+        sph->pos[1] = pos[1] + shape->a[1];
+        sph->pos[2] = pos[2] + shape->a[2];
         return 0;
     case 1:
-        cap->radius = e->radius * s;
-        cap->a[0] = pos[0] + e->a[0];
-        cap->a[1] = pos[1] + e->a[1];
-        cap->a[2] = pos[2] + e->a[2];
-        cap->b[0] = pos[0] + e->b[0];
-        cap->b[1] = pos[1] + e->b[1];
-        cap->b[2] = pos[2] + e->b[2];
+        cap->radius = shape->radius * scale;
+        cap->a[0] = pos[0] + shape->a[0];
+        cap->a[1] = pos[1] + shape->a[1];
+        cap->a[2] = pos[2] + shape->a[2];
+        cap->b[0] = pos[0] + shape->b[0];
+        cap->b[1] = pos[1] + shape->b[1];
+        cap->b[2] = pos[2] + shape->b[2];
         return 1;
     }
     return -1;
 }
 
-s32 Capsule_FromPoints(f32 *a, f32 *b, HitShape *c, HitCapsule *out, f32 s)
+s32 Capsule_FromPoints(f32 *start, f32 *end, HitShape *shape, HitCapsule *out, f32 scale)
 {
-    out->radius = c->radius * s;
-    out->a[0] = a[0];
-    out->a[1] = a[1];
-    out->a[2] = a[2];
-    out->b[0] = b[0];
-    out->b[1] = b[1];
-    out->b[2] = b[2];
+    out->radius = shape->radius * scale;
+    out->a[0] = start[0];
+    out->a[1] = start[1];
+    out->a[2] = start[2];
+    out->b[0] = end[0];
+    out->b[1] = end[1];
+    out->b[2] = end[2];
     return 1;
 }
 
 /* The floor fwd ahead of the player (along its heading): 1 with its height in *out when
  * it lies from up to up + range above the player's height, 0 when not, 1 with none found. */
-s32 Player_FloorAheadAbove(Player *p, f32 *out, f32 fwd, f32 up, f32 range)
+s32 Player_FloorAheadAbove(Player *pl, f32 *out, f32 fwd, f32 up, f32 range)
 {
-    f32 m[16];
-    f32 v[3];
-    f32 off[3];
-    s32 ang[3];
-    f32 y;
-    f32 *vy;
-    f32 *vz;
-    f32 h;
+    f32 mtx[16];
+    f32 point[3];
+    f32 offset[3];
+    s32 angles[3];
+    f32 floorY;
+    f32 *pointY;
+    f32 *pointZ;
+    f32 minY;
 
-    vy = &v[1];
-    vz = &v[2];
-    v[0] = 0.0f;
-    *vy = 0.0f;
-    *vz = fwd;
-    ang[0] = 0;
-    ang[1] = p->rot[1];
-    ang[2] = 0;
-    Mtx_FromAnglesXYZ(ang, m);
-    Vec_Rotate(off, v, m);
-    v[0] = p->pos[0] + off[0];
-    *vy = p->pos[1] + off[1];
-    *vz = p->pos[2] + off[2];
-    h = *vy + up;
-    if (Em_GetFloorYAbove((struct Em *)p, v, &y) != 1) {
+    pointY = &point[1];
+    pointZ = &point[2];
+    point[0] = 0.0f;
+    *pointY = 0.0f;
+    *pointZ = fwd;
+    angles[0] = 0;
+    angles[1] = pl->rot[1];
+    angles[2] = 0;
+    Mtx_FromAnglesXYZ(angles, mtx);
+    Vec_Rotate(offset, point, mtx);
+    point[0] = pl->pos[0] + offset[0];
+    *pointY = pl->pos[1] + offset[1];
+    *pointZ = pl->pos[2] + offset[2];
+    minY = *pointY + up;
+    if (Em_GetFloorYAbove((struct Em *)pl, point, &floorY) != 1) {
         return 1;
     }
-    if (!(y < h) && y <= h + range) {
-        *out = y;
+    if (!(floorY < minY) && floorY <= minY + range) {
+        *out = floorY;
         return 1;
     }
     return 0;
@@ -1788,39 +1788,39 @@ s32 Player_FloorAheadAbove(Player *p, f32 *out, f32 fwd, f32 up, f32 range)
 
 /* The floor fwd ahead of the player (along its heading) against the player's height plus
  * up: 1 when it is below that (above it with `above`), 0 when not or with no floor. */
-s32 Player_FloorAheadBelow(Player *p, u16 above, f32 fwd, f32 up)
+s32 Player_FloorAheadBelow(Player *pl, u16 above, f32 fwd, f32 up)
 {
-    f32 m[16];
-    f32 v[3];
-    f32 off[3];
-    s32 ang[3];
-    f32 y;
-    f32 *vy;
-    f32 *vz;
-    f32 h;
+    f32 mtx[16];
+    f32 point[3];
+    f32 offset[3];
+    s32 angles[3];
+    f32 floorY;
+    f32 *pointY;
+    f32 *pointZ;
+    f32 refY;
 
-    vy = &v[1];
-    vz = &v[2];
-    v[0] = 0.0f;
-    *vy = 0.0f;
-    *vz = fwd;
-    ang[0] = 0;
-    ang[1] = p->rot[1];
-    ang[2] = 0;
-    Mtx_FromAnglesXYZ(ang, m);
-    Vec_Rotate(off, v, m);
-    v[0] = p->pos[0] + off[0];
-    *vy = p->pos[1] + off[1];
-    *vz = p->pos[2] + off[2];
-    h = p->pos[1] + up;
-    if (Em_GetFloorYAbove((struct Em *)p, v, &y) != 1) {
+    pointY = &point[1];
+    pointZ = &point[2];
+    point[0] = 0.0f;
+    *pointY = 0.0f;
+    *pointZ = fwd;
+    angles[0] = 0;
+    angles[1] = pl->rot[1];
+    angles[2] = 0;
+    Mtx_FromAnglesXYZ(angles, mtx);
+    Vec_Rotate(offset, point, mtx);
+    point[0] = pl->pos[0] + offset[0];
+    *pointY = pl->pos[1] + offset[1];
+    *pointZ = pl->pos[2] + offset[2];
+    refY = pl->pos[1] + up;
+    if (Em_GetFloorYAbove((struct Em *)pl, point, &floorY) != 1) {
         return 0;
     }
     if (above == 0) {
-        if (y < h) {
+        if (floorY < refY) {
             return 1;
         }
-    } else if (!(y <= h)) {
+    } else if (!(floorY <= refY)) {
         return 1;
     }
     return 0;
@@ -1829,72 +1829,72 @@ s32 Player_FloorAheadBelow(Player *p, u16 above, f32 fwd, f32 up)
 /* Nonzero when the player is in the current area (SceneState.area). */
 s32 Obj_InCurrentArea(void *obj)
 {
-    ObjHead *o = obj;
-    return o->area == gScene.area;
+    ObjHead *head = obj;
+    return head->area == gScene.area;
 }
 
 u8 Player_InCurrentArea(void *obj)
 {
-    ObjHead *o = obj;
-    return o->area == gScene.area;
+    ObjHead *head = obj;
+    return head->area == gScene.area;
 }
 
 /* Nonzero when two players (or a player and a monster) are in the same area. */
-s32 Obj_SameArea(void *obj, Player *b)
+s32 Obj_SameArea(void *obj, Player *other)
 {
-    ObjHead *o = obj;
-    return o->area == b->area;
+    ObjHead *head = obj;
+    return head->area == other->area;
 }
 
 void Player_UpdateAreaPos(void *obj)
 {
-    ObjHead *o = obj;
-    AreaRecord *a = Stage_GetAreaRecord(o->area);
+    ObjHead *head = obj;
+    AreaRecord *rec = Stage_GetAreaRecord(head->area);
 
-    o->mapPos[0] = o->pos[0] + a->originX;
-    o->mapPos[1] = o->pos[1] + (a->bottom + a->top) / 2.0f;
-    o->mapPos[2] = o->pos[2] + a->originZ;
+    head->mapPos[0] = head->pos[0] + rec->originX;
+    head->mapPos[1] = head->pos[1] + (rec->bottom + rec->top) / 2.0f;
+    head->mapPos[2] = head->pos[2] + rec->originZ;
 }
 
 void Area_ToWorld(s32 area, f32 *pos, f32 *out)
 {
-    AreaRecord *a = Stage_GetAreaRecord(area);
+    AreaRecord *rec = Stage_GetAreaRecord(area);
 
-    out[0] = pos[0] + a->originX;
-    out[1] = pos[1] + (a->bottom + a->top) / 2.0f;
-    out[2] = pos[2] + a->originZ;
+    out[0] = pos[0] + rec->originX;
+    out[1] = pos[1] + (rec->bottom + rec->top) / 2.0f;
+    out[2] = pos[2] + rec->originZ;
 }
 
 /* The gathering point the player stands at (as Gather_AtPoint): its item table, with
  * its +0x14 in *id and its position in pos; 0xFFFF for none. */
-u16 Player_GetGatherPoint(Player *p, u16 *id, f32 *pos)
+u16 Player_GetGatherPoint(Player *pl, u16 *kind, f32 *pos)
 {
-    GatherPt *pt;
+    GatherPt *point;
     f32 dx;
     f32 dz;
     u16 table;
 
-    pt = Gather_GetPoints(p->area);
-    if (pt == NULL) {
+    point = Gather_GetPoints(pl->area);
+    if (point == NULL) {
         return 0xFFFF;
     }
-    for (; pt->x != -1.0f; pt++) {
-        if (p->pos[1] < pt->y - 200.0f) {
+    for (; point->x != -1.0f; point++) {
+        if (pl->pos[1] < point->y - 200.0f) {
             continue;
         }
-        if (!(p->pos[1] < pt->y + 100.0f)) {
+        if (!(pl->pos[1] < point->y + 100.0f)) {
             continue;
         }
-        dx = p->pos[0] - pt->x;
-        dz = p->pos[2] - pt->z;
-        if (!(Math_Sqrtf(dx * dx + dz * dz) <= pt->radius)) {
+        dx = pl->pos[0] - point->x;
+        dz = pl->pos[2] - point->z;
+        if (!(Math_Sqrtf(dx * dx + dz * dz) <= point->radius)) {
             continue;
         }
-        table = pt->table;
-        *id = pt->unk14;
-        pos[0] = pt->x;
-        pos[1] = pt->y;
-        pos[2] = pt->z;
+        table = point->table;
+        *kind = point->unk14;
+        pos[0] = point->x;
+        pos[1] = point->y;
+        pos[2] = point->z;
         return table;
     }
     return 0xFFFF;

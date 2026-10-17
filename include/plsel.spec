@@ -61,7 +61,7 @@ size 0x3B88
 0x0708 s32 subAMoney // sub goal A's reward (t[18])
 0x070C s32 subBMoney // sub goal B's reward (t[19])
 0x0710 s32 deaths // the local player's deaths (t[47])
-0x0714 s32 hrpTotal // hunter rank points in all (t[48]; AddHrPoints)
+0x0714 s32 hrpTotal // hunter rank points in all (t[48]; Hr_AddPoints)
 0x0718 s32 hrpDeaths // the deaths' points (deaths * -20)
 0x071C s32 hrpMain // the main goal's points (t[44]; t[53] must-order; t[51] failed)
 0x0720 s32 hrpSubA // sub goal A's points (t[45])
@@ -70,7 +70,7 @@ size 0x3B88
 0x0730 s32 rankAfter // hunter rank after (t[50])
 0x0734 s32 rankChange // 1: rank up, 2: down
 0x0738 s32 hrPoints // gSave.hrPoints after (t[49])
-0x073C s32 hrpResult // AddHrPoints' result (which note to show)
+0x073C s32 hrpResult // Hr_AddPoints' result (which note to show)
 0x0748 s32 unk0748
 0x074C s32 scroll // the first line shown on the scrolling pages
 0x0750 s32 lineCount // text lines written

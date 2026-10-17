@@ -933,7 +933,7 @@ void SaveRecords_DrawPanel(s16 x, s16 y, s8 rec, s8 mode)
         e = &gSave.arenaEms[i];
         if (e->emKind != 0) {
             Font_SetPos(sx + 0x16, ty);
-            Text_PrintfColored(gArenaEmCondNames[(s8)e->unk18]);
+            Text_PrintfColored(gArenaEmCondNames[(s8)e->condition]);
             Font_SetPos(sx + 0x5A, ty);
             if ((s8)e->name[0] == 0) {
                 Text_PrintfColored(D_0080C61C);
@@ -1046,7 +1046,7 @@ void Arena_DrawMonsterInfo(s16 x, s16 y, ArenaEm *r)
     Font_SetPos(x + 0x82, ty += 0x14);
     Text_PrintfColored(gArenaEmTameNames[r->gaugeLevel]);
     Font_SetPos(x + 0x82, ty += 0x14);
-    Text_PrintfColored(D_00838C60, gArenaEmCondNames[(s8)r->unk18]);
+    Text_PrintfColored(D_00838C60, gArenaEmCondNames[(s8)r->condition]);
     Font_SetPos(x + 0x82, ty += 0x14);
     Text_PrintfColored(D_00838C60, gArenaEmRankNames[SaveRecord_KindIndex_Unk((u8 *)r)]);
     Font_SetPos(x + 0x82, ty += 0x14);
@@ -1080,8 +1080,8 @@ void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
 void Quest_DrawClearMark(s16 x, s16 y);
 void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room);
 void Quest_DrawOverview(s16 x, s16 y, QuestInfo *q);
-u16 Area_MapGroup(u16 id);
-s32 Save_TestListBit(u16 id);
+u16 Map_Group(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 extern s8 gMapGroupMapIds[];
 
 void Quest_DrawInfoPanel(ArenaCupMenu *m, s16 x, s16 y)
@@ -1100,11 +1100,11 @@ void Quest_DrawInfoPanel(ArenaCupMenu *m, s16 x, s16 y)
         Quest_DrawArenaTeams(x - 0x14, y + 6, gLobby->players, gLobbyLevel2Sel - 1);
     } else {
         memset(offs, 0, 6);
-        c = gMapGroupMapIds[Area_MapGroup(q->map) * 2];
+        c = gMapGroupMapIds[Map_Group(q->map) * 2];
         Menu_DrawQuestSheet(x - 0x28, y - 10, 0x140, 0x168, offs, 0, c, -1);
         Quest_DrawOverview(x, y, q);
     }
-    if (Save_TestListBit(q->id) != 0) {
+    if (Save_IsQuestCleared(q->id) != 0) {
         Quest_DrawClearMark(x, y);
     }
     Menu_DrawStamp(x, y, 0x140, 0x168, gQuestStampRand, 0);

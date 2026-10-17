@@ -1,9 +1,11 @@
 /*
- * Monster family: Yian Kut-Ku, Gypceros and their subspecies (kinds 6, 0x26, 0x14, 0x27).
- * The code from the family's setup function (0x777C30, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: Yian Kut-Ku, Gypceros and their subspecies
+ * (EM_KIND_YIAN_KUT_KU, EM_KIND_BLUE_YIAN_KUT_KU, EM_KIND_GYPCEROS and
+ * EM_KIND_PURPLE_GYPCEROS). The code from the family's setup function
+ * (EmKutku_Setup, called by the per-kind dispatch Em_TypeSetup) to the next
+ * family's. The state functions take the monster and the work area its state
+ * dispatcher passes on (EmWork); Em.step is the step within the current
+ * state. See include/em.h.
  */
 #include "common.h"
 #include "scene.h"
@@ -13,9 +15,10 @@
 #include "objattach.h"
 #include "player.h"
 #include "item.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
 void GmEm_ResetSize(Em *em);
-void EffKutku17_Create2(Em *em, s8 kind);
+void KutkuAttack_CreateFlash(Em *em, s8 kind);
 void Em_EndStatus4(Em *em);
 void Em_EndStatus5(Em *em);
 void Em_StartGoalAction(Em *em, s32 arg1);
@@ -34,7 +37,7 @@ void EmKutku_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 void Effect0D_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
 u16 Rand_Next(s32 stream);
-void EffEm08_CreateAtBone(Em *, s32, s32, s32, s32, s32);
+void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
 s8 EmMine_CreateTimed0(Em *em, f32 *pos);
 /* unit's own declaration: with the definition's void (Em *em, s16 n) (game/unk_708850.c), EmKutku_State0_0E: 46 of 234 words differ, EmKutku_State0_1A: 40 of 84 words differ */
 void Em_AddHp(Em *em, s32 n);
@@ -47,7 +50,7 @@ u16 Math_AngleXZ(f32 *from, f32 *to);
 void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 void QuestEm_Captured(Em *em);
-void EffKutku17_Create(Em *, s8);
+void KutkuAttack_Create(Em *, s8);
 void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
@@ -57,15 +60,15 @@ void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetGoal12(Em *em);
+void Em_SetTrapTimeGoal(Em *em);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmKutku_State0_12: 66 of 130 words differ, EmKutku_State0_15: 64 of 128 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySeAtBoneOnFrame2(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
+void Em_PlaySeAtBoneOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
 void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p);
 s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
@@ -118,7 +121,7 @@ void StageObj_K0E_CreateOwned(f32 *pos, s16 k, f32 scale, void *owner);
 /* unit's own declaration: with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale) (game/unk_874B90.c), EmKutku_State4_15: 66 of 98 words differ, EmKutku_State4_16: 43 of 74 words differ */
 void StageObj_Stun_CreateEm(Em *, s32, s32, s32, f32, f32);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 f32 Vec_Distance(f32 *a, f32 *b);
 void CamShake_ReqAIf(Em *obj, s32 i);
@@ -148,7 +151,7 @@ void EmKutku_SetGroup1State(Em *em, u16 state, u8 mode);
 void EmKutku_SetGroup2State(Em *em, u16 state, u8 mode);
 void EmKutku_SetGroup3State(Em *em, u16 state, u8 mode);
 void EmKutku_SetGroup4State(Em *em, u16 state, u8 mode);
-u16 Area_BaseId(u16);
+u16 Map_DayId(u16);
 void EmKutku_SetEscapePoint(Em *em);
 void Em_TargetPlayerInRange(Em *);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
@@ -162,7 +165,7 @@ typedef struct EmKutkuVec {
 } EmKutkuVec;
 extern EmKutkuVec EmKutku_CarveThrowPt __attribute__((aligned(8)));
 extern EmCurveKey *EmKutku_MoveVelYCurves[];
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 void QuestEm_Hunted(Em *em);
 s8 EmMine_Create(Em *em, s32 idx);
 s32 EmMine_Update(Em *em);
@@ -201,18 +204,18 @@ u16 Area_DayId(u16 id);
 void StageObj_K09_Create(Em *);
 void Em_SetPartScaled(Em *em, s32 bit);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void Em_CheckCarryRequest(Em *em);
 void EmKutku_RunState(Em *em, s32 arg1);
 s32 func_00786E50(Em *em);
 s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaiseTrigger80Lax(Em *em);
+void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_CheckLowHp(Em *em, f32 ratio);
 void Em_DecayNeed2(Em *em);
 void Em_DecayNeed1Only(Em *em);
 void Em_DecayNeed1(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetGoal12Dist(Em *em, u8 *p);
+void Em_SetTrapTime(Em *em, u8 *p);
 void Em_SetStatus1Timer(Em *em);
 void Em_SetStatus2Timer(Em *em);
 void Em_SetStatus4Timer(Em *em);
@@ -257,43 +260,43 @@ void EmKutku_Init(Em *em)
             em->posY = 0.0f;
             em->posZ = 6000.0f;
             break;
-        case 0xF:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 7900.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 1050.0f;
             em->posZ = 13900.0f;
             break;
-        case 0x12:
+        case AREA_JUNGLE_NIGHT_5:
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 200.0f;
             em->posZ = 8000.0f;
             break;
-        case 0x16:
+        case AREA_JUNGLE_NIGHT_7:
             em->posX = 9900.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 300.0f;
             em->posZ = 10350.0f;
             break;
-        case 0x18:
+        case AREA_DESERT_NIGHT_11:
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 5700.0f;
             em->rotY = 0x4000;
             break;
-        case 0x1B:
+        case AREA_VOLCANO_NIGHT_9:
             em->posX = 14300.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 7100.0f;
             break;
-        case 0x21:
+        case AREA_FOREST_HILLS_3:
             em->posX = 17300.0f;
             em->posY = 0.0f;
             em->posZ = 18000.0f;
             break;
-        case 0x25:
+        case AREA_FOREST_HILLS_4:
             em->posX = 9750.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 300.0f;
             em->posZ = 7750.0f;
             break;
-        case 0x28:
+        case AREA_FOREST_HILLS_5:
             em->posX = 10500.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 9500.0f;
@@ -311,7 +314,7 @@ void EmKutku_Init(Em *em)
     w->partWhole = 1;
     w->unk008 = 0;
     w->minePoint = -1;
-    hp = Em_ComputeSize(em, 0);
+    hp = Em_ComputeMaxHp(em, 0);
     em->hp = hp;
     em->hpMax = hp;
     em->scriptPending = 1;
@@ -414,7 +417,7 @@ void EmKutku_AddMinePoint(Em *em)
     pt.radius = 333.0f;
     pt.table = 0x175;
     pt.count = 3;
-    pt.unk14 = 2;
+    pt.action = MINE_ACTION_CARVE;
     pt.area = (u8) em->area;
     pt.flags = 1;
     pt.timer = 0;
@@ -612,7 +615,7 @@ void EmKutku_State0_05(Em *em)
     }
     EmKutku_RestartLayerMotion(em, 0);
     EmKutku_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 0x20, 0x2F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x20, 0x2F, 0x23, 1);
 }
 
 void EmKutku_State0_06(Em *em)
@@ -633,8 +636,8 @@ void EmKutku_State0_06(Em *em)
     }
     EmKutku_RestartLayerMotion(em, 0);
     EmKutku_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 0x20, 0x20, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 0xA0, 0x17, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x20, 0x20, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0xA0, 0x17, 0x23, 1);
 }
 
 void EmKutku_State0_07(Em *em)
@@ -726,8 +729,8 @@ void EmKutku_State0_0B(Em *em)
     }
     EmKutku_RestartLayerMotion(em, 0);
     EmKutku_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 0x38, 0x21, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 0x68, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x38, 0x21, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x68, 0x1F, 0x23, 1);
 }
 
 void EmKutku_State0_0C(Em *em)
@@ -766,15 +769,15 @@ void EmKutku_State0_0D(Em *em)
     }
     EmKutku_RestartLayerMotion(em, 0);
     EmKutku_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 2, 0x20, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 0x4A, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 2, 0x20, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x4A, 0x1F, 0x23, 1);
 }
 
 void EmKutku_State0_0E(Em *em)
 {
     s32 need2Max;
 
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -785,8 +788,8 @@ void EmKutku_State0_0E(Em *em)
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        if ((Player_PassedFrameScaled(em, 56.0f, 0U) == 0) && (Player_PassedFrameScaled(em, 108.0f, 0U) == 0) && (Player_PassedFrameScaled(em, 126.0f, 0U) == 0) && (Player_PassedFrameScaled(em, 138.0f, 0U) == 0)) {
-            if (Player_PassedFrameScaled(em, 170.0f, 0U) != 0) {
+        if ((EmMotion_PassedFrameScaled(em, 56.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 108.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 126.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 138.0f, 0U) == 0)) {
+            if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
                 goto block_12;
             }
         } else {
@@ -794,22 +797,22 @@ block_12:
             Em_PlaySeAtBone(em, 0x26, 0x23);
             StageObj_K14_Create(em, 7, 0, 5.0f);
         }
-        if ((Player_PassedFrameScaled(em, 210.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 218.0f, 0U) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 210.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 218.0f, 0U) != 0)) {
             StageObj_K14_Create(em, 7, 0, 2.5f);
         }
-        if (Player_PassedFrameScaled(em, 52.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0U) != 0) {
             StageObj_K14_Create(em, 8, 0, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 106.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 130.0f, 0U) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 106.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 130.0f, 0U) != 0)) {
             StageObj_K14_Create(em, 6, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 124.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 124.0f, 0U) != 0) {
             StageObj_K14_Create(em, 6, 1, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 170.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
             StageObj_K14_Create(em, 0xF, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 192.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 192.0f, 0U) != 0) {
             StageObj_K14_Create(em, 0x10, 0, 1.0f);
         }
         if (em->motion[0].playing == 0) {
@@ -930,7 +933,7 @@ void EmKutku_State0_12(Em *em)
     u8 type;
     u8 emType;
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -975,7 +978,7 @@ void EmKutku_State0_12(Em *em)
 
 void EmKutku_State0_13(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -986,7 +989,7 @@ void EmKutku_State0_13(Em *em)
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 200.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0) {
             em->step++;
             EmKutku_ChangeState(em, 0, 0x28, 4);
         }
@@ -1025,7 +1028,7 @@ void EmKutku_State0_28(Em *em)
 
 void EmKutku_State0_14(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1060,7 +1063,7 @@ void EmKutku_State0_15(Em *em)
     u8 type;
     u8 emType;
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1191,7 +1194,7 @@ void EmKutku_State0_19(Em *em)
 
 void EmKutku_State0_1A(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -1223,7 +1226,7 @@ void EmKutku_State0_1A(Em *em)
 
 void EmKutku_State0_1B(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1284,7 +1287,7 @@ void EmKutku_State0_1D(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1309,7 +1312,7 @@ void EmKutku_State0_1D(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
@@ -1320,7 +1323,7 @@ void EmKutku_State0_1F(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1345,7 +1348,7 @@ void EmKutku_State0_1F(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
@@ -1456,7 +1459,7 @@ void EmKutku_State1_03(Em *em)
     case 1:
         if (Em_TurnStep(em, &EmKutku_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmKutku_EndState(em, 0, 0);
         }
         break;
@@ -1501,7 +1504,7 @@ void EmKutku_State1_05(Em *em)
     case 1:
         if (Em_TurnStep(em, &EmKutku_TurnParams[1]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmKutku_EndState(em, 0, 0);
         }
         break;
@@ -1610,7 +1613,7 @@ void EmKutku_State2_00(Em *em, EmWork *work)
         work->flyGuard = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 38.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0U) != 0) {
             em->step++;
             em->stance = 2;
             EmKutku_UpdateCurves(em);
@@ -1657,7 +1660,7 @@ void EmKutku_State2_01_FlyInLand(Em *em, EmWork *work)
         if (em->velY < -10.0f) {
             em->velY += 0.75f;
         }
-        if (!((em->floorY + 630.0f * em->scaleY) <= em->posY) && ((Player_PassedFrameScaled(em, 10.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 86.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
+        if (!((em->floorY + 630.0f * em->scaleY) <= em->posY) && ((EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 86.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
             em->step++;
             Em_SetMotion(em, 0xB, 0, 0);
             em->velY = (em->floorY - em->posY) / 30.0f;
@@ -2031,7 +2034,7 @@ void EmKutku_State2_08(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmKutku_ChangeState(em, 2, 9, 1);
         } else {
@@ -2073,7 +2076,7 @@ void EmKutku_State2_09(Em *em, EmWork *work)
         em->velZ = 80.0f;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->rotY = em->aimAngle;
-        *(u16 *) &em->destArea = 0xFFFF;
+        *(u16 *) &em->destArea = AREA_NONE;
         work->flyGuard = 1;
         break;
     case 1:
@@ -2270,7 +2273,7 @@ void EmKutku_State2_0D(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmKutku_ChangeState(em, 2, 9, 1);
         } else {
@@ -2910,7 +2913,7 @@ void EmKutku_State3_04(Em *em)
         break;
     case 1:
         em->noHitTimer = 5;
-        if (Player_PassedFrameScaled(em, 350.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 350.0f, 0U) != 0) {
             em->step++;
         }
         break;
@@ -3282,7 +3285,7 @@ void EmKutku_State3_12(Em *em)
         if (--em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, 0x5B, 0, 0);
-            EffKutku17_Create(em, 0x24);
+            KutkuAttack_Create(em, 0x24);
         }
         break;
     case 2:
@@ -3505,13 +3508,13 @@ void EmKutku_State3_17(Em *em, EmWork *work, s32 variant)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, EmKutku_FxFrameBone[variant][0], 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, EmKutku_FxFrameBone[variant][0], 0U) != 0) {
             if (em->type == 6 || em->type == 0x26) {
-                EffEm08_CreateAtBone(em, 0x22, 3, 0, EmKutku_FxFrameBone[variant][1], 0);
+                EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, EmKutku_FxFrameBone[variant][1], 0);
             } else if (em->type == 0x27) {
-                EffEm08_CreateAtBone(em, 0x22, 2, 1, EmKutku_FxFrameBone[variant][1], 0);
+                EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, EmKutku_FxFrameBone[variant][1], 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x22, 2, 0, EmKutku_FxFrameBone[variant][1], 0);
+                EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, EmKutku_FxFrameBone[variant][1], 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -3602,13 +3605,13 @@ void EmKutku_State3_1E(Em *em, EmWork *work)
         Em_SetMotion(em, 0x2F, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, EmKutku_FxFrameBone[0][0], 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, EmKutku_FxFrameBone[0][0], 0U) != 0) {
             if (em->type == 6 || em->type == 0x26) {
-                EffEm08_CreateAtBone(em, 0x22, 3, 0, EmKutku_FxFrameBone[0][1], 0);
+                EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, EmKutku_FxFrameBone[0][1], 0);
             } else if (em->type == 0x27) {
-                EffEm08_CreateAtBone(em, 0x22, 2, 1, EmKutku_FxFrameBone[0][1], 0);
+                EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, EmKutku_FxFrameBone[0][1], 0);
             } else {
-                EffEm08_CreateAtBone(em, 0x22, 2, 0, EmKutku_FxFrameBone[0][1], 0);
+                EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, EmKutku_FxFrameBone[0][1], 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -3803,7 +3806,7 @@ void EmKutku_State4_07(Em *em, EmWork *work)
         Em_RestartScript(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 14.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
             em->step++;
             EmKutku_EndState2(em, 1);
             em->velY = 0.0f;
@@ -3920,7 +3923,7 @@ void EmKutku_State4_0A(Em *em, EmWork *work)
 
 void EmKutku_State4_0B(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3943,12 +3946,12 @@ void EmKutku_State4_0B(Em *em, EmWork *work)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmKutku_State4_0C(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4011,7 +4014,7 @@ void EmKutku_State4_0D(Em *em, EmWork *work)
 void EmKutku_State4_0E(Em *em, EmWork *work)
 {
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4023,7 +4026,7 @@ void EmKutku_State4_0E(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             EmKutku_ChangeState(em, 4, 0x11, 3);
         }
         break;
@@ -4033,7 +4036,7 @@ void EmKutku_State4_0E(Em *em, EmWork *work)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmKutku_State4_0F(Em *em, EmWork *work)
@@ -4075,7 +4078,7 @@ void EmKutku_State4_10(Em *em, EmWork *work)
         break;
     case 1:
         em->noHitTimer = 5;
-        if (Player_PassedFrameScaled(em, 350.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 350.0f, 0U) != 0) {
             em->step++;
         }
         break;
@@ -4132,7 +4135,7 @@ void EmKutku_State4_12(Em *em, EmWork *work)
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->blind = 0;
             EmKutku_ChangeState(em, 4, 0xD, 3);
         }
@@ -4160,7 +4163,7 @@ void EmKutku_State4_13(Em *em, EmWork *work)
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->blind = 0;
             EmKutku_ChangeState(em, 4, 0xD, 3);
         }
@@ -4257,7 +4260,7 @@ void EmKutku_State4_16(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             EmKutku_ChangeState(em, 4, 0x17, 3);
         }
         break;
@@ -4306,13 +4309,13 @@ void EmKutku_State4_18(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, 0x3C, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
             Em_SetMotion(em, 0x4C, 0xC, 0);
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
@@ -4345,7 +4348,7 @@ void EmKutku_State4_19_FeignDeath(Em *em, EmWork *work)
         break;
     case 1:
         em->noHitTimer = 5;
-        if (Player_PassedFrameScaled(em, 212.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 212.0f, 0) != 0) {
             CamShake_ReqAIf(em, 2);
         }
         if (em->motion[0].playing == 0) {
@@ -4565,7 +4568,7 @@ void EmKutku_State6_04_Captured(Em *em)
         pos[0] = 0.0f;
         pos[1] = 10.0f;
         pos[2] = 140.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
         if (++em->stateVar0 % 135 == 0) {
             Em_PlaySeAtBone(em, 0x57, 0x23);
         }
@@ -4640,7 +4643,7 @@ void EmKutku_State8_00_CarveStart(Em *em, EmWork *work)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             v = EmKutku_CarveThrowPt;
             StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
         }
@@ -4837,7 +4840,7 @@ void EmKutku_State5_00_Hunted(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 212.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 212.0f, 0) != 0) {
             CamShake_ReqAIf(em, 2);
         }
         if (em->motion[0].playing == 0) {
@@ -4966,7 +4969,7 @@ void EmKutku_State5_02_HuntedFalling(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             em->step++;
             em->timer = 0;
             Em_SetMotion(em, 0x52, 6, 0);
@@ -5020,9 +5023,9 @@ void EmKutku_State5_03_Appear(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         if (QuestEm_CanAppear(em) == 1) {
-            switch (Area_BaseId(gScene.map)) {
-            case 9:
-                em->area = Area_IdForCurrentTime(0x5A);
+            switch (Map_DayId(gScene.map)) {
+            case MAP_GREAT_ARENA:
+                em->area = Area_IdForCurrentTime(AREA_GREAT_ARENA_1);
                 if (em->variant == 0) {
                     em->rotY = 0x8A76;
                     em->posX = 11948.9f;
@@ -5512,7 +5515,7 @@ void EmKutku_Update(Em *em)
     EmFlyerWork *w = (EmFlyerWork *)&em->work;
 
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80Lax(em);
+    Em_RaisePlayerAreaTriggerLax(em);
     if (em->stateGroup != 5) {
         if (func_00786E50(em) == 1) {
             w->unk008 = 0;
@@ -5525,22 +5528,22 @@ void EmKutku_Update(Em *em)
         w->unk008 = 0;
     }
     if (em->noAlert != 1 && em->rage == 0) {
-        switch (Area_BaseId(gScene.map)) {
-        case 9:
-        case 0xA:
+        switch (Map_DayId(gScene.map)) {
+        case MAP_GREAT_ARENA:
+        case MAP_ARENA:
             break;
-        case 4:
+        case MAP_SWAMP:
             Em_CheckLowHp(em, 0.2f);
             Em_DecayNeed2(em);
             Em_CheckCarryRequest(em);
             Em_DecayNeed1Only(em);
             break;
-        case 2:
+        case MAP_FOREST_HILLS:
             Em_CheckLowHp(em, 0.2f);
             Em_DecayNeed2(em);
             Em_DecayNeed1(em);
             break;
-        case 6:
+        case MAP_JUNGLE:
             Em_CheckLowHp(em, 0.2f);
             Em_DecayNeed2(em);
             Em_DecayNeed1Only(em);
@@ -5571,8 +5574,8 @@ void EmKutku_Update(Em *em)
     case 3:
     case 4:
         if ((s8) em->holdTimer == 0) {
-            Em_SetGoal12Dist(em, buf);
-            Em_SetGoal12(em);
+            Em_SetTrapTime(em, buf);
+            Em_SetTrapTimeGoal(em);
             EmKutku_ChangeState(em, 4, 0xC, 3);
         }
         break;
@@ -5700,7 +5703,7 @@ void EmKutku_Update(Em *em)
             break;
         }
     case 12:
-        Player_ClearFlag(em, 0x20000);
+        Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         if (em->stance == 2) {
             EmKutku_ChangeState(em, 4, 8, 3);
             break;
@@ -5771,8 +5774,8 @@ void EmKutku_Update(Em *em)
     switch (gQuest.stage) {
     case 0x3EE:
     case 0x3F0:
-        if (Area_DayId(em->area) == 0x77 && Save_TestEventFlag(0xA6) == 0) {
-            if (Area_DayId(gScene.area) == 0x77 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if (Area_DayId(em->area) == AREA_JUNGLE_9 && Save_TestEventFlag(0xA6) == 0) {
+            if (Area_DayId(gScene.area) == AREA_JUNGLE_9 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmKutku_ChangeState(em, 6, 0, 1);
             }
             break;
@@ -5831,7 +5834,7 @@ void EmKutku_RunState(Em *em, s32 work)
 
 void EmKutku_RequestOnFrame(void *em, s32 frame, s32 i)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         CamShake_ReqAIf(em, i);
     }
 }
@@ -5854,33 +5857,33 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
     case 0x3EB:
         EmKutku_RequestOnFrame(em, 0x34, 1);
         EmKutku_RequestOnFrame(em, 0x74, 1);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffKutku17_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            KutkuAttack_Create(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            EffKutku17_Create(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            KutkuAttack_Create(em, 4);
             break;
         }
         break;
     case 0x3EC:
-        if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
             break;
         }
         break;
     case 0x3ED:
         EmKutku_RequestOnFrame(em, 0x3C, 1);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffKutku17_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            KutkuAttack_Create(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 1, 1.0f);
@@ -5889,11 +5892,11 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         break;
     case 0x3EE:
         EmKutku_RequestOnFrame(em, 0x3C, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffKutku17_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            KutkuAttack_Create(em, 7);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 0, 1.0f);
@@ -5901,11 +5904,11 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x3EF:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffKutku17_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            KutkuAttack_Create(em, 9);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0xA);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
@@ -5918,11 +5921,11 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x3F0:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffKutku17_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0xC);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
@@ -5935,25 +5938,25 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x19);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x19);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x1A);
             break;
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 52.0f, 0) || Player_PassedFrameScaled(em, 104.0f, 0) || Player_PassedFrameScaled(em, 162.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
             Effect0D_SpawnForEmScaled(em, 2, 7, 5.0f);
             break;
         }
         break;
     case 0x3F5:
-        if ((Player_PassedFrameScaled(em, 26.0f, 0) != 0) || (Player_PassedFrameScaled(em, 52.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 1, 7, 5.0f);
             break;
         }
@@ -5969,7 +5972,7 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x3F7:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) || Player_PassedFrameScaled(em, 86.0f, 0) || Player_PassedFrameScaled(em, 160.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) || EmMotion_PassedFrameScaled(em, 86.0f, 0) || EmMotion_PassedFrameScaled(em, 160.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 1, 0, 1.0f);
             }
@@ -5984,52 +5987,52 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x3F9:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x13);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x13);
         }
-        if (Player_PassedFrameScaled(em, 48.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
             if (em->type == 6 || em->type == 38) {
-            EffEm08_CreateAtBone(em, 0x22, 3, 0, 0x222, 0x2CCD);
+            EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, 0x222, 0x2CCD);
             } else if (em->type == 39) {
-            EffEm08_CreateAtBone(em, 0x22, 2, 1, 0x222, 0x2CCD);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, 0x222, 0x2CCD);
             } else {
-            EffEm08_CreateAtBone(em, 0x22, 2, 0, 0x222, 0x2CCD);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, 0x222, 0x2CCD);
             }
         }
-        if (Player_PassedFrameScaled(em, 86.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 86.0f, 0) != 0) {
             if (em->type == 6 || em->type == 38) {
-            EffEm08_CreateAtBone(em, 0x22, 3, 0, 0x444, 0xD112);
+            EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, 0x444, 0xD112);
             } else if (em->type == 39) {
-            EffEm08_CreateAtBone(em, 0x22, 2, 1, 0x444, 0xD112);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, 0x444, 0xD112);
             } else {
-            EffEm08_CreateAtBone(em, 0x22, 2, 0, 0x444, 0xD112);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, 0x444, 0xD112);
             }
         }
-        if ((Player_PassedFrameScaled(em, 12.0f, 0) != 0) || (Player_PassedFrameScaled(em, 72.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0)) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
             break;
         }
         break;
     case 0x3FA:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) || Player_PassedFrameScaled(em, 102.0f, 0) || Player_PassedFrameScaled(em, 156.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0) || EmMotion_PassedFrameScaled(em, 156.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 1, 0, 1.0f);
             }
         }
-        if ((em->rage != 0) && (Player_PassedFrameScaled(em, 38.0f, 0) != 0)) {
+        if ((em->rage != 0) && (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0)) {
             StageObj_K14_Create(em, 0x19, 5, 1.0f);
             StageObj_K14_Create(em, 0x19, 4, 1.0f);
             break;
         }
         break;
     case 0x3FB:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 16.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             EmKutku_SpawnK14Type0B(em);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 18.0f, 44.0f) != 0) && !(gScene.frame & 3)) {
@@ -6041,52 +6044,52 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         v2[1] = 10.0f;
         v2[2] = 140.0f;
         v2[0] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, v2, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, v2, 1.6f);
         break;
     case 0x40A:
         v1[1] = 10.0f;
         v1[2] = 140.0f;
         v1[0] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, v1, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, v1, 1.6f);
         break;
     case 0x40C:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffKutku17_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            KutkuAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x21);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x21);
             break;
         }
         break;
     case 0x40E:
-        if (Player_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            EffKutku17_Create(em, 0xF);
+        if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0xF);
         }
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 1.0f);
             break;
         }
         break;
     case 0x410:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x1C);
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x1C);
             break;
         }
         break;
     case 0x411:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x1D);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x1D);
         }
         if ((EmMotion_ReachedFrame(em, 0, 20.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 50.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 102.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
         if ((EmMotion_ReachedFrame(em, 0, 22.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 38.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
             break;
         }
@@ -6094,8 +6097,8 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
     case 0x412:
         EmKutku_RequestOnFrame(em, 0x2C, 1);
         EmKutku_RequestOnFrame(em, 0x49, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x11);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 0, 1.0f);
@@ -6105,8 +6108,8 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
     case 0x413:
         EmKutku_RequestOnFrame(em, 0x2C, 1);
         EmKutku_RequestOnFrame(em, 0x49, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x11);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x11);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create(em, 0x1A, 1, 1.0f);
@@ -6114,11 +6117,11 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x415:
-        if (Player_PassedFrameScaled(em, 22.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x14);
-            EffKutku17_Create(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x14);
+            KutkuAttack_Create(em, 0x15);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) || Player_PassedFrameScaled(em, 68.0f, 0) || Player_PassedFrameScaled(em, 114.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 68.0f, 0) || EmMotion_PassedFrameScaled(em, 114.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create(em, 9, 0, 1.0f);
                 StageObj_K14_Create(em, 0xE, 0, 1.0f);
@@ -6127,8 +6130,8 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x417:
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x22);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x22);
             break;
         }
         break;
@@ -6139,7 +6142,7 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
                     StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                 }
             }
-            if ((work->unk01B != 0) && ((Player_PassedFrameScaled(em, 88.0f, 0) != 0) || (Player_PassedFrameScaled(em, 146.0f, 0) != 0) || (Player_PassedFrameScaled(em, 198.0f, 0) != 0))) {
+            if ((work->unk01B != 0) && ((EmMotion_PassedFrameScaled(em, 88.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 146.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 198.0f, 0) != 0))) {
                 *(s8 *) ((u8 *) work + 8) = 1;
                 break;
             }
@@ -6151,119 +6154,119 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x41C:
-        if (Player_PassedFrameScaled(em, 72.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) {
             StageObj_K14_Create(em, 4, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 84.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0) != 0) {
             StageObj_K14_Create(em, 4, 1, 1.0f);
             break;
         }
         break;
     case 0x421:
-        if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
             StageObj_K14_Create(em, 4, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             StageObj_K14_Create(em, 5, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 28.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x1B);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x1F);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x1F);
         }
-        if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x20);
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x20);
             break;
         }
         break;
     case 0x424:
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x16, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0x80, 0.5f);
             break;
         }
         break;
     case 0x425:
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
             break;
         }
         break;
     case 0x429:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0x80, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 128.0f, 0) != 0) || (Player_PassedFrameScaled(em, 164.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
             StageObj_K14_Create(em, 3, 0x80, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0x80, 1.0f);
             break;
         }
         break;
     case 0x42C:
-        if (Player_PassedFrameScaled(em, 270.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 270.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x12, 0x80, 0.9f);
             break;
         }
         break;
     case 0x42D:
         EmKutku_RequestOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x12, 0x80, 1.0f);
             break;
         }
         break;
     case 0x432:
         EmKutku_RequestOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x12, 0x81, 1.0f);
             break;
         }
         break;
     case 0x436:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             StageObj_K14_Create(em, 0xB, 0, 1.0f);
             break;
         }
         break;
     case 0x437:
-        if (Player_PassedFrameScaled(em, 48.0f, 0) || Player_PassedFrameScaled(em, 106.0f, 0) || Player_PassedFrameScaled(em, 174.0f, 0)) {
-            EffKutku17_Create(em, 0x10);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) || EmMotion_PassedFrameScaled(em, 106.0f, 0) || EmMotion_PassedFrameScaled(em, 174.0f, 0)) {
+            KutkuAttack_Create(em, 0x10);
             break;
         }
         break;
     case 0x43C:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) || Player_PassedFrameScaled(em, 60.0f, 0) || Player_PassedFrameScaled(em, 80.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 60.0f, 0) || EmMotion_PassedFrameScaled(em, 80.0f, 0)) {
             StageObj_K14_Create(em, 1, 0, 1.0f);
             break;
         }
         break;
     case 0x442:
-        if ((Player_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 9, 0, 1.0f);
             StageObj_K14_Create(em, 0xE, 0, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create(em, 9, 0, 1.0f);
             StageObj_K14_Create(em, 0xE, 0, 1.0f);
             break;
         }
         break;
     case 0x443:
-        if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             StageObj_K14_Create(em, 2, 0, 1.0f);
         }
         if ((EmMotion_ReachedFrame(em, 0, 96.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 120.0f) == 0) && ((gScene.frame % 6) == 0)) {
@@ -6275,7 +6278,7 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x447:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             StageObj_K14_Create(em, 0xB, 0x80, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 4.0f, 60.0f) != 0) && !(gScene.frame & 3)) {
@@ -6294,8 +6297,8 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x44C:
-        if (Player_PassedFrameScaled(em, 118.0f, 0) || Player_PassedFrameScaled(em, 164.0f, 0) || Player_PassedFrameScaled(em, 204.0f, 0)) {
-            EffKutku17_Create(em, 0x23);
+        if (EmMotion_PassedFrameScaled(em, 118.0f, 0) || EmMotion_PassedFrameScaled(em, 164.0f, 0) || EmMotion_PassedFrameScaled(em, 204.0f, 0)) {
+            KutkuAttack_Create(em, 0x23);
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 54.0f, 250.0f) || EmMotion_InFrameRange(em, 0, 282.0f, 296.0f)) {
@@ -6307,7 +6310,7 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x44D:
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
             StageObj_K14_Create(em, 1, 0x80, 1.0f);
         }
         if (em->rage != 0) {
@@ -6320,27 +6323,27 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x44E:
-        if ((Player_PassedFrameScaled(em, 32.0f, 0) != 0) || (Player_PassedFrameScaled(em, 54.0f, 0) != 0) || (Player_PassedFrameScaled(em, 74.0f, 0) != 0) || (Player_PassedFrameScaled(em, 92.0f, 0) != 0)) {
-            EffKutku17_Create(em, 0x18);
+        if ((EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0)) {
+            KutkuAttack_Create(em, 0x18);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 10.0f, 20.0f) != 0) && !(gScene.frame & 3)) {
                 StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
             }
-            if ((Player_PassedFrameScaled(em, 30.0f, 0) != 0) || (Player_PassedFrameScaled(em, 54.0f, 0) != 0) || (Player_PassedFrameScaled(em, 72.0f, 0) != 0) || (Player_PassedFrameScaled(em, 92.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0)) {
                 StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                 break;
             }
         }
         break;
     case 0x450:
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x17);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x17);
         }
-        if ((Player_PassedFrameScaled(em, 18.0f, 0) != 0) || (Player_PassedFrameScaled(em, 60.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 3, 4.0f);
         }
-        if ((Player_PassedFrameScaled(em, 38.0f, 0) != 0) || (Player_PassedFrameScaled(em, 80.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x14, 3, 4.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 54.0f, 112.0f) != 0) && !(gScene.frame & 3)) {
@@ -6349,58 +6352,58 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
         }
         break;
     case 0x451:
-        if (Player_PassedFrameScaled(em, 78.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0) {
             if (em->type == 6 || em->type == 38) {
-            EffEm08_CreateAtBone(em, 0x22, 3, 0, 0xF556, 0xEF4B);
+            EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, 0xF556, 0xEF4B);
             } else if (em->type == 39) {
-            EffEm08_CreateAtBone(em, 0x22, 2, 1, 0xF556, 0xEF4B);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, 0xF556, 0xEF4B);
             } else {
-            EffEm08_CreateAtBone(em, 0x22, 2, 0, 0xF556, 0xEF4B);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, 0xF556, 0xEF4B);
             }
         }
-        if (Player_PassedFrameScaled(em, 150.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 150.0f, 0) != 0) {
             if (em->type == 6 || em->type == 38) {
-            EffEm08_CreateAtBone(em, 0x22, 3, 0, 0xF556, 0x199A);
+            EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, 0xF556, 0x199A);
             } else if (em->type == 39) {
-            EffEm08_CreateAtBone(em, 0x22, 2, 1, 0xF556, 0x199A);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, 0xF556, 0x199A);
             } else {
-            EffEm08_CreateAtBone(em, 0x22, 2, 0, 0xF556, 0x199A);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, 0xF556, 0x199A);
             }
         }
-        if (Player_PassedFrameScaled(em, 240.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 240.0f, 0) != 0) {
             if (em->type == 6 || em->type == 38) {
-            EffEm08_CreateAtBone(em, 0x22, 3, 0, 0xF1C8, 0xDC73);
+            EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, 0xF1C8, 0xDC73);
             } else if (em->type == 39) {
-            EffEm08_CreateAtBone(em, 0x22, 2, 1, 0xF1C8, 0xDC73);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, 0xF1C8, 0xDC73);
             } else {
-            EffEm08_CreateAtBone(em, 0x22, 2, 0, 0xF1C8, 0xDC73);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, 0xF1C8, 0xDC73);
             }
         }
-        if (Player_PassedFrameScaled(em, 296.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 296.0f, 0) != 0) {
             if (em->type == 6 || em->type == 38) {
-            EffEm08_CreateAtBone(em, 0x22, 3, 0, 0xF940, 0x1C72);
+            EmRangedAttack_CreateAtBone(em, 0x22, 3, 0, 0xF940, 0x1C72);
             } else if (em->type == 39) {
-            EffEm08_CreateAtBone(em, 0x22, 2, 1, 0xF940, 0x1C72);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 1, 0xF940, 0x1C72);
             } else {
-            EffEm08_CreateAtBone(em, 0x22, 2, 0, 0xF940, 0x1C72);
+            EmRangedAttack_CreateAtBone(em, 0x22, 2, 0, 0xF940, 0x1C72);
             }
         }
         break;
     case 0x452:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            EffKutku17_Create(em, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
+            KutkuAttack_Create(em, 0x12);
         }
-        if ((Player_PassedFrameScaled(em, 50.0f, 0) != 0) || (Player_PassedFrameScaled(em, 76.0f, 0) != 0) || (Player_PassedFrameScaled(em, 96.0f, 0) != 0) || (Player_PassedFrameScaled(em, 116.0f, 0) != 0)) {
-            EffKutku17_Create(em, 0x18);
+        if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 116.0f, 0) != 0)) {
+            KutkuAttack_Create(em, 0x18);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             StageObj_K14_Create(em, 3, 0, 1.0f);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 24.0f, 42.0f) != 0) && !(gScene.frame & 3)) {
                 StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
             }
-            if ((Player_PassedFrameScaled(em, 54.0f, 0) != 0) || (Player_PassedFrameScaled(em, 80.0f, 0) != 0) || (Player_PassedFrameScaled(em, 100.0f, 0) != 0) || (Player_PassedFrameScaled(em, 122.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0)) {
                 StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                 break;
             }
@@ -6409,23 +6412,23 @@ void EmKutku_MotionEffects(Em *em, EmKutkuFxWork *work)
     case 0x453:
         if (work->unk01B != 0) {
             *(s8 *) ((u8 *) work + 8) = 1;
-            if (Player_PassedFrameScaled(em, 40.0f, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
                 Mtx_GetTrans(v0, em->model->bones[35].world);
                 StageObj_K0E_CreateOwned(v0, 5, 1.0f, em);
-                EffKutku17_Create2(em, 0x16);
+                KutkuAttack_CreateFlash(em, 0x16);
                 break;
             }
         }
         break;
     case 0x455:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             if (em->state == 0x20) {
-                EffKutku17_Create(em, 0x25);
+                KutkuAttack_Create(em, 0x25);
             } else {
-                EffKutku17_Create(em, 0xE);
+                KutkuAttack_Create(em, 0xE);
             }
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) || Player_PassedFrameScaled(em, 92.0f, 0) || Player_PassedFrameScaled(em, 152.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 92.0f, 0) || EmMotion_PassedFrameScaled(em, 152.0f, 0)) {
             Effect0D_SpawnForEmScaled(em, 2, 7, 3.0f);
             break;
         }
@@ -6786,7 +6789,7 @@ void EmKutku_SetGroup2State(Em *em, u16 state, u8 mode)
             em->goalKind = 2;
             if (em->areaSeqActive != 0) {
                 em->goalArg = 3;
-                if (Area_BaseId(gScene.map) == 6) {
+                if (Map_DayId(gScene.map) == MAP_JUNGLE) {
                     if (em->type == 6 || em->type == 0x26) {
                         em->goalNo = 1;
                     } else {
@@ -7797,10 +7800,10 @@ u16 EmKutku_FxFrameBone[4][2] = {
 EmKutkuVec EmKutku_CarveThrowPt = {
 #include "game/008C58C0.inc"
 };
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmKutku_Callbacks[8] = {
     EmKutku_SpawnEffects, EmKutku_SpawnEffects, EmKutku_TableNop, EmKutku_UpdateMotionEffects,
-    func_0090A9C0, EmKutku_Reinit, NULL, NULL,
+    GmEm_ReturnZero, EmKutku_Reinit, NULL, NULL,
 };
 EmCurveKey EmKutku_MoveVelYCurves_0[8] = {
 #include "game/008C58F0.inc"

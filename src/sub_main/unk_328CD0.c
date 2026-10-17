@@ -109,7 +109,7 @@ typedef struct SweepCap {
 } SweepCap;
 extern f32 gAreaQuadOffsets[][2];
 f32 Vec_DistanceXZ(f32 *a, f32 *b);
-extern f32 D_0041D2D0[];
+extern f32 gPlayerBodySpheres[];
 extern f32 *D_8B9FC0[];
 extern f32 *D_7F1980[];
 f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
@@ -391,7 +391,7 @@ s32 AreaGrid_SweepCells(f32 *from, f32 *to, f32 *out, u16 mask, f32 r)
     if (AreaGrid_ClampSegment((f32 *)&end, to, from) < 0) {
         return -1;
     }
-    if (gScene.unk20A) {
+    if (gScene.skipFlaggedTris) {
         mask |= 0x4000;
     }
     gAreaHitCount = 0;
@@ -2214,7 +2214,7 @@ u8 AreaHit_Raycast(f32 *a, f32 *b, f32 *out, u16 mask)
         Vec_Set(out, b[0], b[1], b[2]);
         return 1;
     }
-    if (gScene.unk20A) {
+    if (gScene.skipFlaggedTris) {
         mask |= 0x4000;
     }
     cx0 = a[0] / (f32)gAreaGrid2CellX;
@@ -2729,7 +2729,7 @@ s32 Capsule_HitTri(f32 *cap, AreaTri *t, f32 *out)
 
 /* Sweeps the sphere of radius r from from to to against the area grid cells
  * around it (the triangles not masked by mask; 0x4000 added while
- * gScene.unk20A is set): the hits go to gAreaHits.. (Capsule_TestTri), the
+ * gScene.skipFlaggedTris is set): the hits go to gAreaHits.. (Capsule_TestTri), the
  * triangles hit to gAreaHitTris; out gets the last contact. 1 when there was
  * a hit. */
 s32 AreaGrid_SweepSphere(f32 *from, f32 *to, f32 *out, u16 mask, f32 r)
@@ -2751,7 +2751,7 @@ s32 AreaGrid_SweepSphere(f32 *from, f32 *to, f32 *out, u16 mask, f32 r)
     if (AreaGrid_ClampSegment((f32 *)&end, to, from) < 0) {
         return 0;
     }
-    if (gScene.unk20A) {
+    if (gScene.skipFlaggedTris) {
         mask |= 0x4000;
     }
     gAreaHitCount = 0;
@@ -2914,7 +2914,7 @@ u8 func_00330E80(void *obj)
  * loop set-up after the loop, entered at its test, as the game does; a plain
  * em->collMask gives a direct lhu (146 words off). */
 /* Collides the body spheres of em (records {x, y, z, r} ended by r == -1:
- * D_0041D2D0, or per monster kind from the game overlay) with the area,
+ * gPlayerBodySpheres, or per monster kind from the game overlay) with the area,
  * sweeping each from the last position (+0x568) to the current one. */
 void Em_CollideField(Em *em, u8 keep)
 {
@@ -2942,7 +2942,7 @@ void Em_CollideField(Em *em, u8 keep)
     sx = em->scaleX;
     sy = em->scaleY;
     sz = em->scaleZ;
-    sph = D_0041D2D0;
+    sph = gPlayerBodySpheres;
     if (em->isEm) {
         if (gScene.online == 0) {
             sph = D_8B9FC0[em->type];
@@ -2982,11 +2982,11 @@ void Em_CollideField(Em *em, u8 keep)
             if (em->stance == 2) {
                 mask |= 0x200;
             }
-            if (gScene.unk20A) {
+            if (gScene.skipFlaggedTris) {
                 mask |= 0x4000;
             }
             AreaHit_CollideSweep((SweepCap *)cap, mask, (s32)em, r);
-        } else if (gScene.unk20A) {
+        } else if (gScene.skipFlaggedTris) {
             AreaHit_CollideCapsule((SweepCap *)cap, 0xC004, em, r);
         } else {
             AreaHit_CollideCapsule((SweepCap *)cap, 0x8004, em, r);
@@ -3004,6 +3004,6 @@ u8 D_0041D210[16] = {
 f32 D_0041D220[44] = {
 #include "sub_main/0041D220.inc"
 };
-f32 D_0041D2D0[8] = {
+f32 gPlayerBodySpheres[8] = {
 #include "sub_main/0041D2D0.inc"
 };

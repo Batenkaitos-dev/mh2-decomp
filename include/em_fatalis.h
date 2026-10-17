@@ -20,7 +20,7 @@ enum EmFatalisMotion {
     FAT_MOT_TURN_RIGHT = 0x04,          /* turning to the goal, rotY rising 372 a frame up to frame 89 */
     FAT_MOT_CHARGE_START = 0x05,        /* before a charge */
     FAT_MOT_TURN_SMALL = 0x06,          /* turning to a goal less than 0x2000 away, 91 a frame */
-    FAT_MOT_CHARGE = 0x07,              /* running at the goal (Em_StepToGoal), with Eff04 2 */
+    FAT_MOT_CHARGE = 0x07,              /* running at the goal (Em_StepToGoal), with FatalisAttack 2 */
     FAT_MOT_RECOVER = 0x08,             /* back to standing after a landing, an attack, a status or a reaction */
     FAT_MOT_TAKE_OFF = 0x09,            /* airborne (stance 2) from frame 134, along curve 0 or 6 */
     FAT_MOT_FLY = 0x0A,                 /* flying and hovering; layers 0-2 hover with EM_MOTION_ID(layer, 0xA) */
@@ -58,7 +58,7 @@ enum EmFatalisIdleState {
     FAT_IDLE = 0x01,                    /* EmFatalis_SetIdleState picks FAT_IDLE or FAT_IDLE_ACTION at random for either */
     FAT_IDLE_ACTION = 0x02,
     FAT_IDLE_ROAR = 0x03,
-    FAT_IDLE_STATUS2 = 0x04,            /* lying under status 2 (Em_UpdateDamage's result 8) until result 10 */
+    FAT_IDLE_STATUS2 = 0x04,            /* lying under status 2 (EM_DMG_STATUS2) until EM_DMG_HIT_LYING */
     FAT_IDLE_STATUS2_END = 0x05,
     FAT_IDLE_STATUS4_END = 0x06         /* after FAT_REACT_STATUS4 */
 };
@@ -118,18 +118,18 @@ enum EmFatalisAttackState {
 
 /* Group 4, EM_GROUP_REACT (EmFatalis_RunReactState): what EmFatalis_Update picks from Em_UpdateDamage's result. */
 enum EmFatalisReactState {
-    FAT_REACT_FLINCH = 0x00,            /* a flinch of parts 0, 1, 4 and 5 (result 12), or result 13 */
+    FAT_REACT_FLINCH = 0x00,            /* a flinch of parts 0, 1, 4 and 5 (EM_DMG_PART_FLINCH), or EM_DMG_HIT_MODE3 */
     FAT_REACT_FLINCH_B = 0x01,          /* a flinch of part 6 */
     FAT_REACT_FLINCH_TURN_RIGHT = 0x02, /* a flinch of the other parts but 3 */
-    FAT_REACT_FALL = 0x03,              /* result 5, or a flinch in the air */
-    FAT_REACT_KNOCK_DOWN = 0x04,        /* results 3 and 11 */
-    FAT_REACT_STATUS4 = 0x05,           /* result 6 */
+    FAT_REACT_FALL = 0x03,              /* EM_DMG_STATUS_IN_AIR, or a flinch in the air */
+    FAT_REACT_KNOCK_DOWN = 0x04,        /* EM_DMG_ATTACK9 and EM_DMG_PART8_DOWN */
+    FAT_REACT_STATUS4 = 0x05,           /* EM_DMG_STATUS4 */
     FAT_REACT_FLINCH_TURN_LEFT = 0x06,  /* a flinch of part 3 */
     FAT_REACT_FLINCH_C = 0x07,
     FAT_REACT_FALL_B = 0x08
 };
 
-/* Group 5, EM_GROUP_DEFEAT (EmFatalis_RunDefeatState): result 1. */
+/* Group 5, EM_GROUP_DEFEAT (EmFatalis_RunDefeatState): EM_DMG_KILLED. */
 enum EmFatalisDefeatState {
     FAT_DEFEAT_DIE = 0x00,
     FAT_DEFEAT_DIE_B = 0x01,            /* the last hit an attack of kind 9 (Em.lastAttackKind) */
@@ -142,11 +142,11 @@ enum EmFatalisDefeatState {
  * event runs and until the kind's event flag is set.
  */
 enum EmFatalisEventState {
-    FAT_EVENT_LEAVE = 0x00,             /* EM_KIND_FATALIS in area 0x19 once the quest runs: flies up and away */
-    FAT_EVENT_FLY_IN = 0x01,            /* EM_KIND_FATALIS's scene in area 0x19 (event flag 0xB0) */
+    FAT_EVENT_LEAVE = 0x00,             /* EM_KIND_FATALIS in AREA_CASTLE_1 once the quest runs: flies up and away */
+    FAT_EVENT_FLY_IN = 0x01,            /* EM_KIND_FATALIS's scene in AREA_CASTLE_1 (event flag 0xB0) */
     FAT_EVENT_LEAVE_FROM_AIR = 0x02,    /* FAT_EVENT_LEAVE from the hover */
-    FAT_EVENT_GET_UP = 0x03,            /* EM_KIND_FATALIS_B's scene in area 0x58 (event flag 0xB1) */
-    FAT_EVENT_DESCEND = 0x04            /* EM_KIND_FATALIS_C's scene in area 0x7C (event flag 0xB2) */
+    FAT_EVENT_GET_UP = 0x03,            /* EM_KIND_FATALIS_B's scene in AREA_BATTLEFIELD_1 (event flag 0xB1) */
+    FAT_EVENT_DESCEND = 0x04            /* EM_KIND_FATALIS_C's scene in AREA_TOWER_0x7C (event flag 0xB2) */
 };
 
 #endif /* EM_FATALIS_H */

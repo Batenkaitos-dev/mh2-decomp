@@ -7,6 +7,7 @@
 #include "lobby_globals.h"
 #include "quest.h"
 #include "lobby_menu.h"
+#include "area.h"
 u16 Rand_Next(s32);
 
 
@@ -96,7 +97,7 @@ s16 QuestDesk_CountOpenGroups(void *m)
 
     for (i = 0; i < 7; i++, p++) {
         if (MapGroup_IsOpen(*p) == 1) {
-            if (*p == 2 && (gScene.area == 0x86 || gScene.area == 0x89)) {
+            if (*p == 2 && (gScene.area == AREA_HUB_0x86 || gScene.area == AREA_HUB_0x89)) {
                 continue;
             }
             if (*p != 0xD) {
@@ -383,7 +384,7 @@ void QuestDesk_Accept(u16 id, s16 money, s32 pay)
     Quest_ClearVersusDefeat();
     gRewardMoney = money;
     if (Game_IsOnline() == 1) {
-        D_5CA910 = gScene.area;
+        gQuestReturnArea = gScene.area;
     }
     gQuestIsOfficial = 0;
     gLobbyQuestId = id;
@@ -467,7 +468,7 @@ s32 QuestDesk_TopMenu(u16 pad)
             break;
         case 2:
             switch (gScene.area) {
-            case 0x88:
+            case AREA_HUB_0x88:
                 if (D_5BFA68 == 0) {
                     LobbySe_Play(9);
                 } else {

@@ -19,9 +19,9 @@ s32 Save_TestEventFlag(s32);
 s32 Cond_CheckEvent(u16 id);
 s32 Cond_CheckRank(u16 id);
 s32 Cond_Check(u16 id);
-s32 Save_TestListBit(u16 id);
+s32 Save_IsQuestCleared(u16 id);
 s32 Monster_AllHunted(void);
-s32 Player_PassedFrameScaled(void *obj, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *obj, f32 frame, s32 layer);
 u8 Player_InCurrentArea(void *obj);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 void Effect02_SpawnAt(f32 *pos, s32 a, u16 b);
@@ -79,7 +79,7 @@ void NpcSetA_MotionFx(u8 *task, NpcWork *m)
     case 0x3F6:
         Npc_SeOnFrame((Em *)task, 0x1E, 6);
         Npc_SeOnFrame((Em *)task, 0x16, 6);
-        if (Player_PassedFrameScaled((Player *) task, 66.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled((Player *) task, 66.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled((Em *) task, 6, 3, 0.7f);
         }
         break;
@@ -88,10 +88,10 @@ void NpcSetA_MotionFx(u8 *task, NpcWork *m)
         Npc_SeOnFrame((Em *)task, 0x18, 2);
         Npc_SeOnFrame((Em *)task, 0x1C, 2);
         Npc_SeOnFrame((Em *)task, 0x24, 2);
-        if (Player_PassedFrameScaled((Player *) task, 16.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled((Player *) task, 16.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled((Em *) task, 4, 3, 2.0f);
         }
-        if (Player_PassedFrameScaled((Player *) task, 30.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled((Player *) task, 30.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled((Em *) task, 0x11, 3, 3.5f);
         }
         break;
@@ -402,14 +402,14 @@ void NpcSetB_MotionFx(u8 *task, NpcWork *m)
         Npc_SeOnFrame((Em *)task, 0x8C, 0x53);
         Npc_SeOnFrame((Em *)task, 0xAA, 0x52);
         Npc_SeOnFrame((Em *)task, 0xCA, 0x53);
-        if (Player_PassedFrameScaled((Player *) task, 32.0f, 0) != 0 || Player_PassedFrameScaled((Player *) task, 92.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled((Player *) task, 32.0f, 0) != 0 || EmMotion_PassedFrameScaled((Player *) task, 92.0f, 0) != 0) {
             Em_BonePos(task, 9, v);
             v[1] = *(f32 *)(task + 0x574);
             if (Player_InCurrentArea((Player *) task) != 0) {
                 Effect0D_SpawnAt(v, 0x14, 1.5f);
             }
         }
-        if (Player_PassedFrameScaled((Player *) task, 146.0f, 0) != 0 || Player_PassedFrameScaled((Player *) task, 174.0f, 0) != 0 || Player_PassedFrameScaled((Player *) task, 208.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled((Player *) task, 146.0f, 0) != 0 || EmMotion_PassedFrameScaled((Player *) task, 174.0f, 0) != 0 || EmMotion_PassedFrameScaled((Player *) task, 208.0f, 0) != 0) {
             Em_BonePos(task, 9, v);
             v[1] = *(f32 *)(task + 0x574);
             if (Player_InCurrentArea((Player *) task) != 0) {
@@ -454,7 +454,7 @@ void NpcSetC_SpawnModelAt(u8 *obj, f32 frame, f32 *ofs)
     f32 p[3];
     f32 v[3];
 
-    if (Player_PassedFrameScaled((Player *) obj, frame, 0) != 0 && Player_InCurrentArea((Player *) obj) == 1) {
+    if (EmMotion_PassedFrameScaled((Player *) obj, frame, 0) != 0 && Player_InCurrentArea((Player *) obj) == 1) {
         Vec_Rotate((f32 *) v, (f32 *) ofs, (f32 *) (obj + 0x60));
         p[0] = *(f32 *)(obj + 0xAC) + v[0];
         p[1] = *(f32 *)(obj + 0xB0) + v[1];
@@ -544,7 +544,7 @@ void NpcSetC_MotionFx(u8 *task, NpcWork *m)
         Npc_SeOnFrame((Em *)task, 0x162, Sound_RandomSe(0x2A, 1, 0x2C, 3));
         break;
     case 0x400:
-        if (Player_PassedFrameScaled((Player *) task, 84.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled((Player *) task, 84.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled((Em *) task, 0xD, 0x1C, 1.0f);
         }
         if (EmMotion_InFrameRange(task, 0, 38.0f, 198.0f) != 0 && gScene.frame % 10 == 0) {
@@ -1104,7 +1104,7 @@ s32 Cond_CheckRank(u16 id)
         }
         break;
     case 0x69:
-        if (Save_TestListBit(0x3AAE) && Save_TestListBit(0x3AAF) && Save_TestListBit(0x3AB0)) {
+        if (Save_IsQuestCleared(0x3AAE) && Save_IsQuestCleared(0x3AAF) && Save_IsQuestCleared(0x3AB0)) {
             return 1;
         }
         break;

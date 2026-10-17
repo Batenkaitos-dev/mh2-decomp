@@ -1266,140 +1266,140 @@ EmKhezu_Init = 0x007AE450; // type:func
 EmKhezu_Start = 0x007AE5B0; // type:func
 EmKhezu_Reinit = 0x007AE6A0; // type:func
 EmKhezu_EndState = 0x007AE6B0; // type:func
-EmKhezu_EndState2To2_19 = 0x007AE6E0; // type:func
-EmKhezu_EndState2 = 0x007AE710; // type:func
+EmKhezu_EndCeilingState = 0x007AE6E0; // type:func
+EmKhezu_EndFlyState = 0x007AE710; // type:func
 EmKhezu_RestartLayerMotion = 0x007AE740; // type:func
-EmKhezu_State0_00 = 0x007AE7E0; // type:func
-EmKhezu_State0_01 = 0x007AE890; // type:func
-EmKhezu_State0_02 = 0x007AE920; // type:func
-EmKhezu_State0_03 = 0x007AE9D0; // type:func
-EmKhezu_State0_04 = 0x007AEA80; // type:func
-EmKhezu_State0_05 = 0x007AEB00; // type:func
-EmKhezu_State0_06 = 0x007AEBD0; // type:func
-EmKhezu_State0_07 = 0x007AEC50; // type:func
-EmKhezu_State0_08 = 0x007AECE0; // type:func
-EmKhezu_State0_0A = 0x007AED70; // type:func
-EmKhezu_State0_0D = 0x007AEE70; // type:func
-EmKhezu_State0_0E = 0x007AEF80; // type:func
+EmKhezu_Stand = 0x007AE7E0; // type:func
+EmKhezu_Idle = 0x007AE890; // type:func
+EmKhezu_IdleLoopStart = 0x007AE920; // type:func
+EmKhezu_IdleLoop = 0x007AE9D0; // type:func
+EmKhezu_IdleActionA = 0x007AEA80; // type:func
+EmKhezu_IdleActionB = 0x007AEB00; // type:func
+EmKhezu_IdleActionC = 0x007AEBD0; // type:func
+EmKhezu_Wait = 0x007AEC50; // type:func
+EmKhezu_WaitAlert = 0x007AECE0; // type:func
+EmKhezu_IdleTurnToGoal = 0x007AED70; // type:func
+EmKhezu_IdleActionD = 0x007AEE70; // type:func
+EmKhezu_EatNeed2 = 0x007AEF80; // type:func
 // states 0:11, 0:29, 0:2A
-EmKhezu_State0_11 = 0x007AF300; // type:func
-EmKhezu_State0_13 = 0x007AF380; // type:func
-EmKhezu_State0_28 = 0x007AF480; // type:func
-EmKhezu_State0_12 = 0x007AF540; // type:func
-EmKhezu_State0_14 = 0x007AF6B0; // type:func
-EmKhezu_State0_15 = 0x007AF7D0; // type:func
+EmKhezu_AlertIdle = 0x007AF300; // type:func
+EmKhezu_EatStart = 0x007AF380; // type:func
+EmKhezu_Eat = 0x007AF480; // type:func
+EmKhezu_Rest = 0x007AF540; // type:func
+EmKhezu_Status2Collapse = 0x007AF6B0; // type:func
+EmKhezu_Status2LieDown = 0x007AF7D0; // type:func
 // states 0:16, 0:19, 0:21, 0:22
-EmKhezu_State0_16 = 0x007AF930; // type:func
-EmKhezu_State0_17 = 0x007AF9B0; // type:func
+EmKhezu_ShakeOff = 0x007AF930; // type:func
+EmKhezu_RestEnd = 0x007AF9B0; // type:func
 // states 0:18, 0:1C
-EmKhezu_State0_18 = 0x007AFA80; // type:func
-EmKhezu_State0_1A = 0x007AFB50; // type:func
-EmKhezu_State0_1B = 0x007AFCA0; // type:func
-EmKhezu_State0_1D = 0x007AFDC0; // type:func
-EmKhezu_State0_1F = 0x007AFF10; // type:func
-EmKhezu_State1_00 = 0x007B0060; // type:func
-EmKhezu_State1_03 = 0x007B0110; // type:func
-EmKhezu_State1_05 = 0x007B01B0; // type:func
-EmKhezu_State1_06 = 0x007B0250; // type:func
-EmKhezu_State1_07 = 0x007B0300; // type:func
-EmKhezu_State2_00 = 0x007B0440; // type:func
-EmKhezu_State2_01_FlyInLand = 0x007B0530; // type:func
-EmKhezu_State2_02 = 0x007B07F0; // type:func
-EmKhezu_State2_03 = 0x007B0910; // type:func
-EmKhezu_State2_04 = 0x007B0BA0; // type:func
-EmKhezu_State2_05 = 0x007B0CF0; // type:func
-EmKhezu_State2_06 = 0x007B0E40; // type:func
-EmKhezu_State2_07 = 0x007B0F50; // type:func
-EmKhezu_State2_08 = 0x007B1090; // type:func
-EmKhezu_State2_09 = 0x007B1290; // type:func
-EmKhezu_State2_0B = 0x007B1410; // type:func
-EmKhezu_State2_0C = 0x007B1610; // type:func
-EmKhezu_State2_0D = 0x007B1760; // type:func
-EmKhezu_State2_0E = 0x007B1A20; // type:func
-EmKhezu_State2_0F = 0x007B1AD0; // type:func
-EmKhezu_State2_10 = 0x007B1BF0; // type:func
-EmKhezu_State2_11 = 0x007B1D00; // type:func
-EmKhezu_State2_12 = 0x007B1D10; // type:func
-EmKhezu_State2_13 = 0x007B1D20; // type:func
-EmKhezu_State2_14 = 0x007B1D30; // type:func
-EmKhezu_State2_15 = 0x007B1E70; // type:func
-EmKhezu_State2_16 = 0x007B1FB0; // type:func
-EmKhezu_State2_17 = 0x007B1FC0; // type:func
-EmKhezu_State2_18 = 0x007B21F0; // type:func
-EmKhezu_State2_19 = 0x007B2370; // type:func
-EmKhezu_State2_1A = 0x007B2410; // type:func
-EmKhezu_State2_1B = 0x007B2570; // type:func
-EmKhezu_State2_1C = 0x007B2660; // type:func
-EmKhezu_State2_1D = 0x007B2710; // type:func
-EmKhezu_State2_1E = 0x007B2860; // type:func
-EmKhezu_State2_1F = 0x007B29B0; // type:func
-EmKhezu_State2_20 = 0x007B2AF0; // type:func
-EmKhezu_State2_21 = 0x007B2C20; // type:func
-EmKhezu_State2_22 = 0x007B2D60; // type:func
-EmKhezu_State3_00 = 0x007B2EA0; // type:func
-EmKhezu_State3_01 = 0x007B2FF0; // type:func
-EmKhezu_State3_02 = 0x007B30E0; // type:func
-EmKhezu_State3_03 = 0x007B3160; // type:func
-EmKhezu_State3_04 = 0x007B31E0; // type:func
-EmKhezu_State3_05 = 0x007B3260; // type:func
-EmKhezu_State3_06 = 0x007B33F0; // type:func
-EmKhezu_State3_07 = 0x007B34C0; // type:func
-EmKhezu_State3_08 = 0x007B3570; // type:func
-EmKhezu_State4_00 = 0x007B36C0; // type:func
-EmKhezu_State4_01 = 0x007B3750; // type:func
-EmKhezu_State4_02 = 0x007B38C0; // type:func
-EmKhezu_State4_03 = 0x007B3950; // type:func
+EmKhezu_GetUpAfterStatus = 0x007AFA80; // type:func
+EmKhezu_EatNeed1 = 0x007AFB50; // type:func
+EmKhezu_Status1Collapse = 0x007AFCA0; // type:func
+EmKhezu_Status2Downed = 0x007AFDC0; // type:func
+EmKhezu_Status1Downed = 0x007AFF10; // type:func
+EmKhezu_Walk = 0x007B0060; // type:func
+EmKhezu_Turn = 0x007B0110; // type:func
+EmKhezu_TurnAlert = 0x007B01B0; // type:func
+EmKhezu_Limp = 0x007B0250; // type:func
+EmKhezu_TurnToGoal = 0x007B0300; // type:func
+EmKhezu_TakeOff = 0x007B0440; // type:func
+EmKhezu_Land = 0x007B0530; // type:func
+EmKhezu_Hover = 0x007B07F0; // type:func
+EmKhezu_HopTurn = 0x007B0910; // type:func
+EmKhezu_HopForward = 0x007B0BA0; // type:func
+EmKhezu_HopBack = 0x007B0CF0; // type:func
+EmKhezu_FlyToGoal = 0x007B0E40; // type:func
+EmKhezu_FlyToGoalPitched = 0x007B0F50; // type:func
+EmKhezu_FlyOutOfArea = 0x007B1090; // type:func
+EmKhezu_FlyToGoalAndLand = 0x007B1290; // type:func
+EmKhezu_FlyToGoalAndLandB = 0x007B1410; // type:func
+EmKhezu_RiseToAreaHeight = 0x007B1610; // type:func
+EmKhezu_FlyIntoArea = 0x007B1760; // type:func
+EmKhezu_HoverOnce = 0x007B1A20; // type:func
+EmKhezu_RiseAboveGoal = 0x007B1AD0; // type:func
+EmKhezu_HoverTurn = 0x007B1BF0; // type:func
+EmKhezu_FlyEmptyA = 0x007B1D00; // type:func
+EmKhezu_FlyEmptyB = 0x007B1D10; // type:func
+EmKhezu_FlyEmptyC = 0x007B1D20; // type:func
+EmKhezu_HopSlam = 0x007B1D30; // type:func
+EmKhezu_FlyToGoalDirect = 0x007B1E70; // type:func
+EmKhezu_FlyEmptyD = 0x007B1FB0; // type:func
+EmKhezu_EscapeTrap = 0x007B1FC0; // type:func
+EmKhezu_LeapToCeiling = 0x007B21F0; // type:func
+EmKhezu_HangFromCeiling = 0x007B2370; // type:func
+EmKhezu_DropFromCeiling = 0x007B2410; // type:func
+EmKhezu_TurnOnCeiling = 0x007B2570; // type:func
+EmKhezu_CrawlOnCeiling = 0x007B2660; // type:func
+EmKhezu_CrawlCircuit = 0x007B2710; // type:func
+EmKhezu_CrawlCircuitReverse = 0x007B2860; // type:func
+EmKhezu_TurnToCircuit = 0x007B29B0; // type:func
+EmKhezu_CrawlToTargetZone = 0x007B2AF0; // type:func
+EmKhezu_TurnToTargetZone = 0x007B2C20; // type:func
+EmKhezu_TurnToCrawl = 0x007B2D60; // type:func
+EmKhezu_Leap = 0x007B2EA0; // type:func
+EmKhezu_CeilingShots = 0x007B2FF0; // type:func
+EmKhezu_AttackActionA = 0x007B30E0; // type:func
+EmKhezu_AttackActionB = 0x007B3160; // type:func
+EmKhezu_AttackActionC = 0x007B31E0; // type:func
+EmKhezu_ShotFan = 0x007B3260; // type:func
+EmKhezu_Spin = 0x007B33F0; // type:func
+EmKhezu_AttackActionD = 0x007B34C0; // type:func
+EmKhezu_LeapQuick = 0x007B3570; // type:func
+EmKhezu_Flinch = 0x007B36C0; // type:func
+EmKhezu_CeilingFall = 0x007B3750; // type:func
+EmKhezu_FlinchB = 0x007B38C0; // type:func
+EmKhezu_FlinchC = 0x007B3950; // type:func
 // states 4:04, 4:05, 4:12, 4:13
-EmKhezu_State4_04 = 0x007B39E0; // type:func
-EmKhezu_State4_08 = 0x007B3C90; // type:func
+EmKhezu_KnockDown = 0x007B39E0; // type:func
+EmKhezu_Fall = 0x007B3C90; // type:func
 // states 4:0A, 4:0D, 4:15
-EmKhezu_State4_0A = 0x007B3E00; // type:func
-EmKhezu_State4_0B = 0x007B3F30; // type:func
-EmKhezu_State4_0C = 0x007B4020; // type:func
+EmKhezu_Struggle = 0x007B3E00; // type:func
+EmKhezu_Status4 = 0x007B3F30; // type:func
+EmKhezu_Trapped = 0x007B4020; // type:func
 // states 4:0E, 4:14
-EmKhezu_State4_0E = 0x007B4150; // type:func
+EmKhezu_HeldDowned = 0x007B4150; // type:func
 // states 4:0F, 4:10
-EmKhezu_State4_0F = 0x007B4330; // type:func
-EmKhezu_State4_11 = 0x007B4410; // type:func
+EmKhezu_DownedGetUp = 0x007B4330; // type:func
+EmKhezu_Hold2 = 0x007B4410; // type:func
 // states 6:00, 7:00
-EmKhezu_State6_00 = 0x007B4550; // type:func
+EmKhezu_StoryScene = 0x007B4550; // type:func
 // states 6:01, 6:02, 6:03, 6:04, 7:01, 7:02, 7:03, 7:04
-EmKhezu_State6_01_Captured = 0x007B48B0; // type:func
+EmKhezu_Captured = 0x007B48B0; // type:func
 // states 6:05, 7:05
-EmKhezu_State6_05_Captured = 0x007B4A90; // type:func
-EmKhezu_State8_00_CarveStart = 0x007B4C20; // type:func
-EmKhezu_State8_01 = 0x007B4D80; // type:func
-EmKhezu_State8_02 = 0x007B4E20; // type:func
-EmKhezu_State8_03 = 0x007B4EC0; // type:func
-EmKhezu_State8_98 = 0x007B4FA0; // type:func
-EmKhezu_State8_99 = 0x007B5040; // type:func
-EmKhezu_State5_00_Hunted = 0x007B50E0; // type:func
-EmKhezu_State5_01_Hunted = 0x007B52D0; // type:func
-EmKhezu_State5_02_HuntedFalling = 0x007B54B0; // type:func
-EmKhezu_State5_03_Appear = 0x007B5770; // type:func
-EmKhezu_RunGroup0 = 0x007B5800; // type:func
-EmKhezu_RunGroup1 = 0x007B5A30; // type:func
-EmKhezu_RunGroup2 = 0x007B5AD0; // type:func
-EmKhezu_RunGroup3 = 0x007B5D30; // type:func
-EmKhezu_RunGroup4 = 0x007B5E00; // type:func
-EmKhezu_RunGroup5 = 0x007B5F70; // type:func
-EmKhezu_RunGroup6 = 0x007B6000; // type:func
-EmKhezu_RunGroup8 = 0x007B60A0; // type:func
-EmKhezu_RequestOnFrame = 0x007B6C80; // type:func
+EmKhezu_CapturedHold2 = 0x007B4A90; // type:func
+EmKhezu_VersusEatBait = 0x007B4C20; // type:func
+EmKhezu_VersusPoseA = 0x007B4D80; // type:func
+EmKhezu_VersusPoseB = 0x007B4E20; // type:func
+EmKhezu_VersusPoseC = 0x007B4EC0; // type:func
+EmKhezu_VersusWaitBoth = 0x007B4FA0; // type:func
+EmKhezu_VersusEnd = 0x007B5040; // type:func
+EmKhezu_Die = 0x007B50E0; // type:func
+EmKhezu_DieHeld = 0x007B52D0; // type:func
+EmKhezu_DieFalling = 0x007B54B0; // type:func
+EmKhezu_Reappear = 0x007B5770; // type:func
+EmKhezu_RunIdleState = 0x007B5800; // type:func
+EmKhezu_RunMoveState = 0x007B5A30; // type:func
+EmKhezu_RunFlyState = 0x007B5AD0; // type:func
+EmKhezu_RunAttackState = 0x007B5D30; // type:func
+EmKhezu_RunReactState = 0x007B5E00; // type:func
+EmKhezu_RunDefeatState = 0x007B5F70; // type:func
+EmKhezu_RunEventState = 0x007B6000; // type:func
+EmKhezu_RunVersusState = 0x007B60A0; // type:func
+EmKhezu_CamShakeOnFrame = 0x007B6C80; // type:func
 // empty: the default case of EmKhezu_MotionEffects
 EmKhezu_MotionEffectsDefault = 0x007B6CD0; // type:func
 EmKhezu_MotionEffects = 0x007B6CE0; // type:func
 EmKhezu_UpdateMotionEffects = 0x007B8690; // type:func
-EmKhezu_SpawnK14Type0B = 0x007B86E0; // type:func
+EmKhezu_SpawnLandingImpact = 0x007B86E0; // type:func
 EmKhezu_TableNop = 0x007B8700; // type:func
 EmKhezu_ScriptQuery = 0x007B8710; // type:func
-EmKhezu_SetGroup0State = 0x007B8780; // type:func
-EmKhezu_SetGroup1State = 0x007B89E0; // type:func
-EmKhezu_SetGroup2State = 0x007B8C50; // type:func
-EmKhezu_SetGroup3State = 0x007B9140; // type:func
+EmKhezu_SetIdleState = 0x007B8780; // type:func
+EmKhezu_SetMoveState = 0x007B89E0; // type:func
+EmKhezu_SetFlyState = 0x007B8C50; // type:func
+EmKhezu_SetAttackState = 0x007B9140; // type:func
 EmKhezu_MoveByVelYCurve = 0x007B9520; // type:func
 EmKhezu_StartCurves = 0x007B9630; // type:func
-EmKhezu_NextAreaPoint = 0x007B9A60; // type:func
+EmKhezu_NearestCeilingPoint = 0x007B9A60; // type:func
 EmVelociprey_MotionSounds = 0x007B9C00; // type:func
 EmVelociprey_SpawnEffect01 = 0x007BA470; // type:func
 EmVelociprey_Init = 0x007BA480; // type:func
@@ -1407,92 +1407,92 @@ EmVelociprey_Start = 0x007BA830; // type:func
 EmVelociprey_Reinit = 0x007BA8A0; // type:func
 EmVelociprey_Respawn = 0x007BA8B0; // type:func
 EmVelociprey_EndState = 0x007BA9C0; // type:func
-EmVelociprey_State0_00 = 0x007BAA50; // type:func
+EmVelociprey_IdleStand = 0x007BAA50; // type:func
 // states 0:01, 0:0D
-EmVelociprey_State0_01 = 0x007BAB00; // type:func
-EmVelociprey_State0_02 = 0x007BAB80; // type:func
-EmVelociprey_State0_03 = 0x007BABF0; // type:func
-EmVelociprey_State0_04 = 0x007BACF0; // type:func
-EmVelociprey_State0_05 = 0x007BAD60; // type:func
-EmVelociprey_State0_06 = 0x007BADD0; // type:func
-EmVelociprey_State0_07 = 0x007BAE40; // type:func
-EmVelociprey_State0_08 = 0x007BAF20; // type:func
-EmVelociprey_State0_09 = 0x007BAFB0; // type:func
-EmVelociprey_State0_0A = 0x007BB030; // type:func
-EmVelociprey_State0_0B = 0x007BB0C0; // type:func
-EmVelociprey_State0_0C = 0x007BB140; // type:func
-EmVelociprey_State0_10 = 0x007BB1D0; // type:func
-EmVelociprey_RunGroup0 = 0x007BB250; // type:func
-EmVelociprey_State1_00 = 0x007BB380; // type:func
-EmVelociprey_State1_01 = 0x007BB410; // type:func
-EmVelociprey_State1_02 = 0x007BB560; // type:func
-EmVelociprey_State1_03 = 0x007BB5D0; // type:func
-EmVelociprey_State1_04 = 0x007BB640; // type:func
-EmVelociprey_State1_05 = 0x007BB6B0; // type:func
-EmVelociprey_RunGroup1 = 0x007BB740; // type:func
-EmVelociprey_State2_00 = 0x007BB7E0; // type:func
-EmVelociprey_State2_01 = 0x007BB900; // type:func
-EmVelociprey_State2_02 = 0x007BBA20; // type:func
-EmVelociprey_RunGroup2 = 0x007BBBE0; // type:func
-EmVelociprey_State3_00 = 0x007BBC50; // type:func
-EmVelociprey_State3_01 = 0x007BBD50; // type:func
-EmVelociprey_State3_02 = 0x007BBD60; // type:func
-EmVelociprey_State3_03 = 0x007BBFF0; // type:func
+EmVelociprey_Idle = 0x007BAB00; // type:func
+EmVelociprey_IdleActionA = 0x007BAB80; // type:func
+EmVelociprey_PackCall = 0x007BABF0; // type:func
+EmVelociprey_ShakeOff = 0x007BACF0; // type:func
+EmVelociprey_IdleAlert = 0x007BAD60; // type:func
+EmVelociprey_GetUp = 0x007BADD0; // type:func
+EmVelociprey_Status2Collapse = 0x007BAE40; // type:func
+EmVelociprey_Status2End = 0x007BAF20; // type:func
+EmVelociprey_Blinded = 0x007BAFB0; // type:func
+EmVelociprey_PackWait = 0x007BB030; // type:func
+EmVelociprey_Status4End = 0x007BB0C0; // type:func
+EmVelociprey_IdleSpawn = 0x007BB140; // type:func
+EmVelociprey_StunEnd = 0x007BB1D0; // type:func
+EmVelociprey_RunIdleState = 0x007BB250; // type:func
+EmVelociprey_TurnToTarget = 0x007BB380; // type:func
+EmVelociprey_Walk = 0x007BB410; // type:func
+EmVelociprey_MoveActionA = 0x007BB560; // type:func
+EmVelociprey_MoveActionB = 0x007BB5D0; // type:func
+EmVelociprey_MoveActionC = 0x007BB640; // type:func
+EmVelociprey_TurnToTargetAlert = 0x007BB6B0; // type:func
+EmVelociprey_RunMoveState = 0x007BB740; // type:func
+EmVelociprey_HopForward = 0x007BB7E0; // type:func
+EmVelociprey_HopUp = 0x007BB900; // type:func
+EmVelociprey_HopArc = 0x007BBA20; // type:func
+EmVelociprey_RunHopState = 0x007BBBE0; // type:func
+EmVelociprey_AttackStrikeA = 0x007BBC50; // type:func
+EmVelociprey_AttackNone = 0x007BBD50; // type:func
+EmVelociprey_AttackLeapMediumA = 0x007BBD60; // type:func
+EmVelociprey_AttackQuickStrikeA = 0x007BBFF0; // type:func
 // states 3:04, 3:0D
-EmVelociprey_State3_04 = 0x007BC100; // type:func
-EmVelociprey_State3_05 = 0x007BC200; // type:func
-EmVelociprey_State3_06 = 0x007BC490; // type:func
-EmVelociprey_State3_07 = 0x007BC720; // type:func
-EmVelociprey_State3_08 = 0x007BC7D0; // type:func
-EmVelociprey_State3_09 = 0x007BC9F0; // type:func
-EmVelociprey_State3_0A = 0x007BCA90; // type:func
-EmVelociprey_State3_0B = 0x007BCCB0; // type:func
-EmVelociprey_State3_0C = 0x007BCED0; // type:func
+EmVelociprey_AttackShotA = 0x007BC100; // type:func
+EmVelociprey_AttackLeapLongA = 0x007BC200; // type:func
+EmVelociprey_AttackLeapHighA = 0x007BC490; // type:func
+EmVelociprey_AttackStrikeB = 0x007BC720; // type:func
+EmVelociprey_AttackLeapMediumB = 0x007BC7D0; // type:func
+EmVelociprey_AttackQuickStrikeB = 0x007BC9F0; // type:func
+EmVelociprey_AttackLeapLongB = 0x007BCA90; // type:func
+EmVelociprey_AttackLeapHighB = 0x007BCCB0; // type:func
+EmVelociprey_AttackStrikeC = 0x007BCED0; // type:func
 // states 3:0E, 3:0F
-EmVelociprey_State3_0E = 0x007BCFA0; // type:func
-EmVelociprey_RunGroup3 = 0x007BD0A0; // type:func
-EmVelociprey_State4_00 = 0x007BD1E0; // type:func
-EmVelociprey_State4_01 = 0x007BD260; // type:func
-EmVelociprey_State4_02 = 0x007BD3A0; // type:func
-EmVelociprey_State4_03 = 0x007BD520; // type:func
-EmVelociprey_State4_04 = 0x007BD6A0; // type:func
-EmVelociprey_State4_05 = 0x007BD820; // type:func
-EmVelociprey_State4_06 = 0x007BD8A0; // type:func
-EmVelociprey_State4_08 = 0x007BD960; // type:func
-EmVelociprey_RunGroup4 = 0x007BDA20; // type:func
-EmVelociprey_State5_00_Hunted = 0x007BDAE0; // type:func
-EmVelociprey_State5_01_Hunted = 0x007BDD00; // type:func
-EmVelociprey_State5_02_Hunted = 0x007BDF20; // type:func
-EmVelociprey_State5_03_Hunted = 0x007BE140; // type:func
-EmVelociprey_State5_04_Appear = 0x007BE360; // type:func
-EmVelociprey_State5_05 = 0x007BEB30; // type:func
-EmVelociprey_State5_06_Hunted = 0x007BEBD0; // type:func
-EmVelociprey_State5_07_Hunted = 0x007BED00; // type:func
-EmVelociprey_State5_08_Hunted = 0x007BEE40; // type:func
-EmVelociprey_State5_09_Hunted = 0x007BEF80; // type:func
-EmVelociprey_RunGroup5 = 0x007BF0C0; // type:func
-EmVelociprey_State6_00 = 0x007BF1B0; // type:func
-EmVelociprey_State6_01 = 0x007BF4E0; // type:func
-EmVelociprey_State6_02 = 0x007BF6A0; // type:func
-EmVelociprey_State6_03 = 0x007BF8A0; // type:func
-EmVelociprey_State6_04 = 0x007BF930; // type:func
-EmVelociprey_State6_05 = 0x007BF9C0; // type:func
-EmVelociprey_State6_06 = 0x007BFA50; // type:func
-EmVelociprey_RunGroup6 = 0x007BFAE0; // type:func
-EmVelociprey_State7_00 = 0x007BFB90; // type:func
-EmVelociprey_State7_01 = 0x007BFD50; // type:func
-EmVelociprey_State7_02 = 0x007BFF10; // type:func
-EmVelociprey_RunGroup7 = 0x007C00D0; // type:func
+EmVelociprey_AttackShotB = 0x007BCFA0; // type:func
+EmVelociprey_RunAttackState = 0x007BD0A0; // type:func
+EmVelociprey_Flinch = 0x007BD1E0; // type:func
+EmVelociprey_KnockedBack = 0x007BD260; // type:func
+EmVelociprey_KnockedForward = 0x007BD3A0; // type:func
+EmVelociprey_KnockedSideA = 0x007BD520; // type:func
+EmVelociprey_KnockedSideB = 0x007BD6A0; // type:func
+EmVelociprey_Daze = 0x007BD820; // type:func
+EmVelociprey_Status4 = 0x007BD8A0; // type:func
+EmVelociprey_Stun = 0x007BD960; // type:func
+EmVelociprey_RunReactState = 0x007BDA20; // type:func
+EmVelociprey_DieBack = 0x007BDAE0; // type:func
+EmVelociprey_DieForward = 0x007BDD00; // type:func
+EmVelociprey_DieSideA = 0x007BDF20; // type:func
+EmVelociprey_DieSideB = 0x007BE140; // type:func
+EmVelociprey_Reappear = 0x007BE360; // type:func
+EmVelociprey_FadeAndRespawn = 0x007BEB30; // type:func
+EmVelociprey_DieInAirBack = 0x007BEBD0; // type:func
+EmVelociprey_DieInAirForward = 0x007BED00; // type:func
+EmVelociprey_DieInAirSideA = 0x007BEE40; // type:func
+EmVelociprey_DieInAirSideB = 0x007BEF80; // type:func
+EmVelociprey_RunDefeatState = 0x007BF0C0; // type:func
+EmVelociprey_EventLookAround = 0x007BF1B0; // type:func
+EmVelociprey_EventWalkToGoalA = 0x007BF4E0; // type:func
+EmVelociprey_EventWalkToGoalB = 0x007BF6A0; // type:func
+EmVelociprey_EventByVariant = 0x007BF8A0; // type:func
+EmVelociprey_EventHideA = 0x007BF930; // type:func
+EmVelociprey_EventHideB = 0x007BF9C0; // type:func
+EmVelociprey_EventHideC = 0x007BFA50; // type:func
+EmVelociprey_RunEventState = 0x007BFAE0; // type:func
+EmVelociprey_HopIn = 0x007BFB90; // type:func
+EmVelociprey_HopInLow = 0x007BFD50; // type:func
+EmVelociprey_HopInHigh = 0x007BFF10; // type:func
+EmVelociprey_RunEvent2State = 0x007C00D0; // type:func
 // empty: the default case of EmVelociprey_MotionEffects
 EmVelociprey_MotionEffectsDefault = 0x007C08C0; // type:func
 EmVelociprey_MotionEffects = 0x007C08D0; // type:func
 EmVelociprey_UpdateMotionEffects = 0x007C0AA0; // type:func
 EmVelociprey_ScriptQuery = 0x007C0AF0; // type:func
 EmVelociprey_TableNop = 0x007C0B50; // type:func
-EmVelociprey_SetGroup0State = 0x007C0B60; // type:func
-EmVelociprey_SetGroup1State = 0x007C0CC0; // type:func
-EmVelociprey_SetGroup2State = 0x007C0D60; // type:func
-EmVelociprey_SetGroup3State = 0x007C0D80; // type:func
+EmVelociprey_SetIdleState = 0x007C0B60; // type:func
+EmVelociprey_SetMoveState = 0x007C0CC0; // type:func
+EmVelociprey_SetHopState = 0x007C0D60; // type:func
+EmVelociprey_SetAttackState = 0x007C0D80; // type:func
 EmVelociprey_CurveNone = 0x007C1050; // type:func
 EmVelociprey_CurveVelY = 0x007C1060; // type:func
 EmVelociprey_CurveSpeed = 0x007C1180; // type:func
@@ -1502,73 +1502,73 @@ EmAnteka_Init = 0x007C1D70; // type:func
 EmAnteka_Start = 0x007C2020; // type:func
 EmAnteka_Reinit = 0x007C2060; // type:func
 // states 0:00, 2:00
-EmAnteka_State0_00 = 0x007C2440; // type:func
+EmAnteka_IdleNone = 0x007C2440; // type:func
 // states 0:01, 2:01
-EmAnteka_State0_01 = 0x007C2450; // type:func
+EmAnteka_Idle = 0x007C2450; // type:func
 // states 0:02, 2:02
-EmAnteka_State0_02 = 0x007C24C0; // type:func
+EmAnteka_IdleActionA = 0x007C24C0; // type:func
 // states 0:03, 2:03
-EmAnteka_State0_03 = 0x007C2530; // type:func
+EmAnteka_IdleActionB = 0x007C2530; // type:func
 // states 0:04, 2:04
-EmAnteka_State0_04 = 0x007C25A0; // type:func
+EmAnteka_IdleActionC = 0x007C25A0; // type:func
 // states 0:05, 2:05
-EmAnteka_State0_05 = 0x007C2610; // type:func
+EmAnteka_IdleActionD = 0x007C2610; // type:func
 // states 0:06, 2:06
-EmAnteka_State0_06 = 0x007C2680; // type:func
+EmAnteka_IdleActionE = 0x007C2680; // type:func
 // states 0:07, 2:07
-EmAnteka_State0_07 = 0x007C26F0; // type:func
+EmAnteka_FaceGoal = 0x007C26F0; // type:func
 // states 0:08, 2:08
-EmAnteka_State0_08 = 0x007C27C0; // type:func
+EmAnteka_Status2Collapse = 0x007C27C0; // type:func
 // states 0:09, 2:09
-EmAnteka_State0_09 = 0x007C28B0; // type:func
+EmAnteka_Status2End = 0x007C28B0; // type:func
 // states 0:0A, 2:0A
-EmAnteka_State0_0A = 0x007C2940; // type:func
+EmAnteka_Status4End = 0x007C2940; // type:func
 // states 0:0B, 2:0B
-EmAnteka_State0_0B = 0x007C29D0; // type:func
-EmAnteka_RunGroup0 = 0x007C2A40; // type:func
-EmAnteka_State1_00 = 0x007C2B50; // type:func
-EmAnteka_State1_01 = 0x007C2C10; // type:func
+EmAnteka_IdleActionF = 0x007C29D0; // type:func
+EmAnteka_RunIdleState = 0x007C2A40; // type:func
+EmAnteka_WalkTurn = 0x007C2B50; // type:func
+EmAnteka_Walk = 0x007C2C10; // type:func
 // states 1:02, 1:09
-EmAnteka_State1_02 = 0x007C2CA0; // type:func
+EmAnteka_Run = 0x007C2CA0; // type:func
 // states 1:03, 1:0A
-EmAnteka_State1_03 = 0x007C2D70; // type:func
-EmAnteka_State1_04 = 0x007C2E90; // type:func
-EmAnteka_State1_05 = 0x007C2F40; // type:func
-EmAnteka_State1_06 = 0x007C2FF0; // type:func
-EmAnteka_State1_07 = 0x007C30C0; // type:func
-EmAnteka_State1_08 = 0x007C3190; // type:func
-EmAnteka_State1_0B = 0x007C3200; // type:func
-EmAnteka_State1_0C = 0x007C3320; // type:func
-EmAnteka_State1_0D = 0x007C36D0; // type:func
-EmAnteka_RunGroup1 = 0x007C3880; // type:func
-EmAnteka_State3_00 = 0x007C39B0; // type:func
-EmAnteka_State3_01 = 0x007C3A50; // type:func
-EmAnteka_State3_02 = 0x007C3B00; // type:func
-EmAnteka_State3_03 = 0x007C3BB0; // type:func
-EmAnteka_State3_04 = 0x007C3BC0; // type:func
-EmAnteka_State3_05 = 0x007C3BD0; // type:func
-EmAnteka_State3_06 = 0x007C3BE0; // type:func
-EmAnteka_State3_07 = 0x007C3BF0; // type:func
-EmAnteka_State3_08 = 0x007C3C00; // type:func
-EmAnteka_RunGroup3 = 0x007C3C10; // type:func
-EmAnteka_State4_00 = 0x007C3CF0; // type:func
-EmAnteka_State4_01 = 0x007C3D70; // type:func
+EmAnteka_Charge = 0x007C2D70; // type:func
+EmAnteka_MoveActionA = 0x007C2E90; // type:func
+EmAnteka_MoveActionB = 0x007C2F40; // type:func
+EmAnteka_TurnAroundRight = 0x007C2FF0; // type:func
+EmAnteka_TurnAroundLeft = 0x007C30C0; // type:func
+EmAnteka_TurnQuick = 0x007C3190; // type:func
+EmAnteka_MoveActionSeries = 0x007C3200; // type:func
+EmAnteka_TurnToGoal = 0x007C3320; // type:func
+EmAnteka_Leap = 0x007C36D0; // type:func
+EmAnteka_RunMoveState = 0x007C3880; // type:func
+EmAnteka_AttackCombo = 0x007C39B0; // type:func
+EmAnteka_AttackSlam = 0x007C3A50; // type:func
+EmAnteka_AttackStrike = 0x007C3B00; // type:func
+EmAnteka_AttackNoneA = 0x007C3BB0; // type:func
+EmAnteka_AttackNoneB = 0x007C3BC0; // type:func
+EmAnteka_AttackNoneC = 0x007C3BD0; // type:func
+EmAnteka_AttackNoneD = 0x007C3BE0; // type:func
+EmAnteka_AttackNoneE = 0x007C3BF0; // type:func
+EmAnteka_AttackNoneF = 0x007C3C00; // type:func
+EmAnteka_RunAttackState = 0x007C3C10; // type:func
+EmAnteka_FlinchA = 0x007C3CF0; // type:func
+EmAnteka_FlinchB = 0x007C3D70; // type:func
 // states 4:02, 4:05
-EmAnteka_State4_02 = 0x007C3DF0; // type:func
-EmAnteka_State4_03 = 0x007C3FF0; // type:func
-EmAnteka_State4_04 = 0x007C40C0; // type:func
-EmAnteka_RunGroup4 = 0x007C4180; // type:func
-EmAnteka_State5_00_Hunted = 0x007C4220; // type:func
-EmAnteka_State5_04 = 0x007C4470; // type:func
-EmAnteka_State5_05 = 0x007C44E0; // type:func
-EmAnteka_RunGroup5 = 0x007C4590; // type:func
+EmAnteka_BlownBack = 0x007C3DF0; // type:func
+EmAnteka_Status4 = 0x007C3FF0; // type:func
+EmAnteka_CollapseAndGetUp = 0x007C40C0; // type:func
+EmAnteka_RunReactState = 0x007C4180; // type:func
+EmAnteka_Die = 0x007C4220; // type:func
+EmAnteka_Reappear = 0x007C4470; // type:func
+EmAnteka_FadeAndLeave = 0x007C44E0; // type:func
+EmAnteka_RunDefeatState = 0x007C4590; // type:func
 // states 6:00, 7:00
-EmAnteka_State6_00 = 0x007C4600; // type:func
+EmAnteka_EventFadeAndLeave = 0x007C4600; // type:func
 // states 6:01, 7:01
-EmAnteka_State6_01 = 0x007C4690; // type:func
+EmAnteka_EventScene = 0x007C4690; // type:func
 // states 6:02, 7:02
-EmAnteka_State6_02 = 0x007C47B0; // type:func
-EmAnteka_RunGroup6 = 0x007C4830; // type:func
+EmAnteka_EventIdle = 0x007C47B0; // type:func
+EmAnteka_RunEventState = 0x007C4830; // type:func
 EmAnteka_EndState = 0x007C4AD0; // type:func
 EmAnteka_SetMotion = 0x007C4B00; // type:func
 EmAnteka_SpawnEffect01 = 0x007C4C00; // type:func
@@ -1582,61 +1582,61 @@ EmMosswine_Start = 0x007C5560; // type:func
 EmMosswine_Reinit = 0x007C55A0; // type:func
 EmMosswine_EndState = 0x007C5880; // type:func
 // states 0:00, 2:00
-EmMosswine_State0_00 = 0x007C58A0; // type:func
+EmMosswine_IdleNone = 0x007C58A0; // type:func
 // states 0:01, 2:01
-EmMosswine_State0_01 = 0x007C58B0; // type:func
+EmMosswine_Idle = 0x007C58B0; // type:func
 // states 0:02, 2:02
-EmMosswine_State0_02 = 0x007C5920; // type:func
+EmMosswine_IdleActionA = 0x007C5920; // type:func
 // states 0:03, 2:03
-EmMosswine_State0_03 = 0x007C5A00; // type:func
+EmMosswine_IdleActionB = 0x007C5A00; // type:func
 // states 0:04, 0:07, 0:08, 2:04, 2:07, 2:08
-EmMosswine_State0_04 = 0x007C5A90; // type:func
+EmMosswine_IdleActionC = 0x007C5A90; // type:func
 // states 0:05, 2:05
-EmMosswine_State0_05 = 0x007C5B50; // type:func
+EmMosswine_IdleActionD = 0x007C5B50; // type:func
 // states 0:06, 2:06
-EmMosswine_State0_06 = 0x007C5BD0; // type:func
+EmMosswine_IdleAlertBullfango = 0x007C5BD0; // type:func
 // states 0:0A, 2:0A
-EmMosswine_State0_0A = 0x007C5C50; // type:func
+EmMosswine_Status2Lie = 0x007C5C50; // type:func
 // states 0:0B, 2:0B
-EmMosswine_State0_0B = 0x007C5D10; // type:func
+EmMosswine_Status2End = 0x007C5D10; // type:func
 // states 0:09, 2:09
-EmMosswine_State0_09 = 0x007C5DB0; // type:func
+EmMosswine_Recover = 0x007C5DB0; // type:func
 // states 0:0C, 2:0C
-EmMosswine_State0_0C = 0x007C5E30; // type:func
+EmMosswine_IdleAlertMosswine = 0x007C5E30; // type:func
 // states 0:0D, 2:0D
-EmMosswine_State0_0D = 0x007C5EB0; // type:func
-EmMosswine_RunGroup0 = 0x007C5F50; // type:func
+EmMosswine_StunEnd = 0x007C5EB0; // type:func
+EmMosswine_RunIdleState = 0x007C5F50; // type:func
 // states 1:00, 1:06
-EmMosswine_State1_00 = 0x007C6080; // type:func
-EmMosswine_State1_01 = 0x007C61B0; // type:func
-EmMosswine_State1_02 = 0x007C6290; // type:func
-EmMosswine_State1_03 = 0x007C6370; // type:func
-EmMosswine_State1_04 = 0x007C6450; // type:func
-EmMosswine_State1_05 = 0x007C6540; // type:func
-EmMosswine_RunGroup1 = 0x007C6620; // type:func
+EmMosswine_Turn = 0x007C6080; // type:func
+EmMosswine_Walk = 0x007C61B0; // type:func
+EmMosswine_Run = 0x007C6290; // type:func
+EmMosswine_WalkB = 0x007C6370; // type:func
+EmMosswine_WalkScripted = 0x007C6450; // type:func
+EmMosswine_WanderHome = 0x007C6540; // type:func
+EmMosswine_RunMoveState = 0x007C6620; // type:func
 // states 3:00, 3:01, 3:02, 3:03, 3:04, 3:05
-EmMosswine_State3_00_Charge = 0x007C66D0; // type:func
-EmMosswine_RunGroup3 = 0x007C6960; // type:func
+EmMosswine_Charge = 0x007C66D0; // type:func
+EmMosswine_RunAttackState = 0x007C6960; // type:func
 // states 4:00, 7:00
-EmMosswine_State4_00 = 0x007C6A00; // type:func
+EmMosswine_Flinch = 0x007C6A00; // type:func
 // states 4:01, 7:01
-EmMosswine_State4_01 = 0x007C6AF0; // type:func
+EmMosswine_BlownAway = 0x007C6AF0; // type:func
 // states 4:02, 7:02
-EmMosswine_State4_02 = 0x007C6D30; // type:func
+EmMosswine_BlownAwayQuick = 0x007C6D30; // type:func
 // states 4:03, 7:03
-EmMosswine_State4_03 = 0x007C6F30; // type:func
+EmMosswine_Status4 = 0x007C6F30; // type:func
 // states 4:04, 7:04
-EmMosswine_State4_04 = 0x007C7060; // type:func
+EmMosswine_Down = 0x007C7060; // type:func
 // states 4:05, 7:05
-EmMosswine_State4_05 = 0x007C7130; // type:func
-EmMosswine_RunGroup4 = 0x007C7220; // type:func
-EmMosswine_State5_00_Hunted = 0x007C72C0; // type:func
-EmMosswine_State5_01_Hunted = 0x007C7630; // type:func
-EmMosswine_State5_02 = 0x007C7910; // type:func
-EmMosswine_RunGroup5 = 0x007C7990; // type:func
-EmMosswine_State6_00 = 0x007C7A00; // type:func
-EmMosswine_State6_01 = 0x007C7A80; // type:func
-EmMosswine_RunGroup6 = 0x007C7B00; // type:func
+EmMosswine_Stun = 0x007C7130; // type:func
+EmMosswine_RunReactState = 0x007C7220; // type:func
+EmMosswine_Die = 0x007C72C0; // type:func
+EmMosswine_DieQuick = 0x007C7630; // type:func
+EmMosswine_Reappear = 0x007C7910; // type:func
+EmMosswine_RunDefeatState = 0x007C7990; // type:func
+EmMosswine_EventHideA = 0x007C7A00; // type:func
+EmMosswine_EventHideB = 0x007C7A80; // type:func
+EmMosswine_RunEventState = 0x007C7B00; // type:func
 EmMosswine_SpawnEffect01 = 0x007C8010; // type:func
 EmMosswine_TableNop = 0x007C8020; // type:func
 EmMosswine_ScriptQuery = 0x007C8030; // type:func
@@ -1833,8 +1833,8 @@ EmCephadrome_SetFinMode = 0x007DDF00; // type:func
 EmCephadrome_SpawnK14Type0B = 0x007DDFC0; // type:func
 EmCephadrome_SpawnSurfaceEffect2 = 0x007DDFE0; // type:func
 EmCephadrome_SpawnSurfaceEffect5 = 0x007DE090; // type:func
-// EffCephadrome21_Create for kind 8, EffCephadrome23_Create for the others
-EmCephadrome_SpawnEffect21 = 0x007DE110; // type:func
+// CephadromeAttack_Create for kind 8, CephalosAttack_Create for the others
+EmCephadrome_CreateAttack = 0x007DE110; // type:func
 // pad vibration 3 for the local player when in the same area within 1000 units
 EmCephadrome_VibrateNearby = 0x007DE150; // type:func
 EmCephadrome_SetGroup0State = 0x007DE240; // type:func
@@ -2116,9 +2116,9 @@ EmFatalis_UpdateMinePoints = 0x007FBFB0; // type:func
 EmFatalis_RemoveMinePoints = 0x007FC080; // type:func
 // kind 0x47: StageObj K1C 0x26 on the monster; others: StageObj K11 0x33 at bones 1 and 2
 EmFatalis_SpawnFireball = 0x007FC0F0; // type:func
-// kind 0x47: EffEm33 0x0D; others: EffEm08 at bone 0x33
+// kind 0x47: EmEffectAttack 0x0D; others: EmRangedAttack at bone 0x33
 EmFatalis_SpawnFireballEffect = 0x007FC170; // type:func
-// kind 0x47: EffEm33 0x0C; others: EffEm08 0x0C at bone 0
+// kind 0x47: EmEffectAttack 0x0C; others: EmRangedAttack 0x0C at bone 0
 EmFatalis_SpawnSweepEffect = 0x007FC1D0; // type:func
 EmFatalis_EndState = 0x007FC230; // type:func
 EmFatalis_EndAirState = 0x007FC250; // type:func
@@ -2216,172 +2216,173 @@ EmBlangonga_Init = 0x0080CE50; // type:func
 EmBlangonga_Start = 0x0080D150; // type:func
 EmBlangonga_Reinit = 0x0080D260; // type:func
 EmBlangonga_EndState = 0x0080DCF0; // type:func
-EmBlangonga_EndState2 = 0x0080DD20; // type:func
-EmBlangonga_PickWeightedPart = 0x0080DD50; // type:func
+EmBlangonga_EndBuriedState = 0x0080DD20; // type:func
+EmBlangonga_PickCarried = 0x0080DD50; // type:func
 // 1 unless the part flag (EmBlangonga_SetPartFlag) is set; part 6: unless func_007257E0(em, 2) is 1
-EmBlangonga_PartFlagUnset = 0x0080DF10; // type:func
+EmBlangonga_CarriedShown = 0x0080DF10; // type:func
 EmBlangonga_IsSmallKind = 0x0080DFD0; // type:func
 EmBlangonga_IsBlangonga = 0x0080E000; // type:func
 EmBlangonga_IsCongalala = 0x0080E030; // type:func
 EmBlangonga_IsRajang = 0x0080E060; // type:func
 EmBlangonga_UpdateRageTimer = 0x0080E2B0; // type:func
 EmBlangonga_UpdateTint = 0x0080E490; // type:func
+EmBlangonga_EatPropMode = 0x0080E400; // type:func
 EmBlangonga_RageTimerFull = 0x0080E950; // type:func
 // Effect06 kind 4 at a bone on frames 0, 10, 20 of every 90 (func_007082E0)
 EmBlangonga_SpawnPeriodicEffect06 = 0x0080E9B0; // type:func
 EmBlangonga_ShouldEndState = 0x0080EA30; // type:func
 // unk680 = unk684; position from the old area (unk882)
 EmBlangonga_EnterNewArea = 0x0080EDE0; // type:func
-EmBlangonga_State0_00 = 0x0080F2C0; // type:func
-EmBlangonga_State0_01 = 0x0080F2D0; // type:func
-EmBlangonga_State0_03 = 0x0080F340; // type:func
+EmBlangonga_IdleNone = 0x0080F2C0; // type:func
+EmBlangonga_Idle = 0x0080F2D0; // type:func
+EmBlangonga_Rest = 0x0080F340; // type:func
 // states 0:04, 0:1A, 0:26
-EmBlangonga_State0_04 = 0x0080F540; // type:func
+EmBlangonga_GetUp = 0x0080F540; // type:func
 // states 0:05, 0:25
-EmBlangonga_State0_05 = 0x0080F5E0; // type:func
-EmBlangonga_State0_06 = 0x0080F760; // type:func
+EmBlangonga_StatusCollapse = 0x0080F5E0; // type:func
+EmBlangonga_AlertIdle = 0x0080F760; // type:func
 // states 0:07, 0:14, 0:15, 0:23, 0:28, 0:29
-EmBlangonga_State0_07 = 0x0080F7E0; // type:func
+EmBlangonga_Roar = 0x0080F7E0; // type:func
 // states 0:08, 0:09
-EmBlangonga_State0_08 = 0x0080F960; // type:func
+EmBlangonga_TurnAbout = 0x0080F960; // type:func
 // states 0:0A, 0:19, 0:1B
-EmBlangonga_State0_0A = 0x0080FB70; // type:func
-EmBlangonga_State0_0B = 0x0080FBF0; // type:func
+EmBlangonga_ShakeOff = 0x0080FB70; // type:func
+EmBlangonga_EatNeed2 = 0x0080FBF0; // type:func
 // states 0:0C, 0:1C, 0:1D, 0:1E, 0:1F, 0:21
-EmBlangonga_State0_0C = 0x0080FD10; // type:func
-EmBlangonga_State0_0D = 0x0080FF70; // type:func
-EmBlangonga_State0_0E = 0x0080FFF0; // type:func
+EmBlangonga_EatNeed1 = 0x0080FD10; // type:func
+EmBlangonga_ClearPaint = 0x0080FF70; // type:func
+EmBlangonga_LeaveTrap = 0x0080FFF0; // type:func
 // states 0:0F, 0:27
-EmBlangonga_State0_0F = 0x008100D0; // type:func
-EmBlangonga_State0_10 = 0x00810200; // type:func
-EmBlangonga_State0_11 = 0x00810280; // type:func
-EmBlangonga_State0_12 = 0x00810390; // type:func
+EmBlangonga_EatStart = 0x008100D0; // type:func
+EmBlangonga_IdleActionA = 0x00810200; // type:func
+EmBlangonga_IdleActionB = 0x00810280; // type:func
+EmBlangonga_AlertBrief = 0x00810390; // type:func
 // states 0:13, 0:24
-EmBlangonga_State0_13 = 0x00810430; // type:func
-EmBlangonga_State0_16 = 0x008106E0; // type:func
-EmBlangonga_State0_17 = 0x00810780; // type:func
-EmBlangonga_State0_18 = 0x00810800; // type:func
-EmBlangonga_State0_20 = 0x00810870; // type:func
-EmBlangonga_State0_22 = 0x00810920; // type:func
-EmBlangonga_RunGroup0 = 0x008109B0; // type:func
+EmBlangonga_StatusDowned = 0x00810430; // type:func
+EmBlangonga_RoarB = 0x008106E0; // type:func
+EmBlangonga_IdleActionC = 0x00810780; // type:func
+EmBlangonga_WaitBuried = 0x00810800; // type:func
+EmBlangonga_LeaveMinePoint = 0x00810870; // type:func
+EmBlangonga_Eat = 0x00810920; // type:func
+EmBlangonga_RunIdleState = 0x008109B0; // type:func
 // states 1:00, 1:09
-EmBlangonga_State1_00 = 0x00810C80; // type:func
+EmBlangonga_Turn = 0x00810C80; // type:func
 // states 1:01, 1:02
-EmBlangonga_State1_01 = 0x00810D40; // type:func
+EmBlangonga_WalkToGoal = 0x00810D40; // type:func
 // states 1:03, 1:08, 1:0A
-EmBlangonga_State1_03 = 0x00810E20; // type:func
-EmBlangonga_State1_04 = 0x00810F70; // type:func
-EmBlangonga_State1_05 = 0x00810FF0; // type:func
-EmBlangonga_State1_06 = 0x00811070; // type:func
+EmBlangonga_TurnQuick = 0x00810E20; // type:func
+EmBlangonga_MoveActionA = 0x00810F70; // type:func
+EmBlangonga_MoveActionB = 0x00810FF0; // type:func
+EmBlangonga_MoveActionC = 0x00811070; // type:func
 // states 1:07, 1:0F
-EmBlangonga_State1_07 = 0x008110F0; // type:func
+EmBlangonga_MoveActionD = 0x008110F0; // type:func
 // states 1:0B, 1:0C, 1:0D, 1:0E
-EmBlangonga_State1_0B = 0x00811170; // type:func
-EmBlangonga_RunGroup1 = 0x00811370; // type:func
+EmBlangonga_Approach = 0x00811170; // type:func
+EmBlangonga_RunMoveState = 0x00811370; // type:func
 // states 2:00, 2:0C, 2:10
-EmBlangonga_State2_00 = 0x008114B0; // type:func
+EmBlangonga_Jump = 0x008114B0; // type:func
 // states 2:01, 2:0E, 2:0F
-EmBlangonga_State2_01 = 0x00811840; // type:func
-EmBlangonga_State2_02 = 0x00811AC0; // type:func
-EmBlangonga_State2_03 = 0x00811BC0; // type:func
+EmBlangonga_Hop = 0x00811840; // type:func
+EmBlangonga_DigIn = 0x00811AC0; // type:func
+EmBlangonga_Buried = 0x00811BC0; // type:func
 // states 2:04, 2:0A
-EmBlangonga_State2_04 = 0x00811C80; // type:func
-EmBlangonga_State2_05 = 0x00811E40; // type:func
-EmBlangonga_State2_06 = 0x00812010; // type:func
-EmBlangonga_State2_07 = 0x008121A0; // type:func
-EmBlangonga_State2_08 = 0x00812260; // type:func
-EmBlangonga_State2_09 = 0x008124B0; // type:func
-EmBlangonga_State2_0B = 0x00812680; // type:func
-EmBlangonga_State2_0D = 0x00812860; // type:func
-EmBlangonga_RunGroup2 = 0x00812930; // type:func
-EmBlangonga_State3_00 = 0x00812A80; // type:func
+EmBlangonga_DigOut = 0x00811C80; // type:func
+EmBlangonga_BuriedTurn = 0x00811E40; // type:func
+EmBlangonga_BuriedMove = 0x00812010; // type:func
+EmBlangonga_BuriedWait = 0x008121A0; // type:func
+EmBlangonga_LeapOutOfArea = 0x00812260; // type:func
+EmBlangonga_DropIn = 0x008124B0; // type:func
+EmBlangonga_CrossArea = 0x00812680; // type:func
+EmBlangonga_BuriedWaitRandom = 0x00812860; // type:func
+EmBlangonga_RunLeapState = 0x00812930; // type:func
+EmBlangonga_TripleHit = 0x00812A80; // type:func
 // states 3:01, 3:0D
-EmBlangonga_State3_01 = 0x00812C10; // type:func
+EmBlangonga_Slam = 0x00812C10; // type:func
 // states 3:02, 3:03
-EmBlangonga_State3_02 = 0x00812DF0; // type:func
-EmBlangonga_State3_04 = 0x00812F60; // type:func
-EmBlangonga_State3_05 = 0x00813040; // type:func
-EmBlangonga_State3_06 = 0x00813120; // type:func
+EmBlangonga_Strike = 0x00812DF0; // type:func
+EmBlangonga_CongalalaEmission = 0x00812F60; // type:func
+EmBlangonga_BlangoThrow = 0x00813040; // type:func
+EmBlangonga_Charge = 0x00813120; // type:func
 // states 3:07, 3:0F, 3:10
-EmBlangonga_State3_07 = 0x00813300; // type:func
-EmBlangonga_State3_08 = 0x00813460; // type:func
-EmBlangonga_State3_09 = 0x00813590; // type:func
-EmBlangonga_State3_0A = 0x00813710; // type:func
+EmBlangonga_DigThrow = 0x00813300; // type:func
+EmBlangonga_CongalalaEatenEmission = 0x00813460; // type:func
+EmBlangonga_CongalalaCombo = 0x00813590; // type:func
+EmBlangonga_CongalalaHitzoneCombo = 0x00813710; // type:func
 // states 3:0B, 3:19
-EmBlangonga_State3_0B = 0x00813850; // type:func
-EmBlangonga_State3_0C = 0x00813970; // type:func
-EmBlangonga_State3_0E = 0x008139F0; // type:func
+EmBlangonga_CongalalaThrow = 0x00813850; // type:func
+EmBlangonga_BackStrike = 0x00813970; // type:func
+EmBlangonga_EffectStrike = 0x008139F0; // type:func
 // states 3:11, 3:1A
-EmBlangonga_State3_11 = 0x00813BA0; // type:func
+EmBlangonga_RajangComboSlam = 0x00813BA0; // type:func
 // states 3:12, 3:1B
-EmBlangonga_State3_12 = 0x00813DB0; // type:func
+EmBlangonga_RajangShot = 0x00813DB0; // type:func
 // states 3:13, 3:18
-EmBlangonga_State3_13 = 0x00813F40; // type:func
-EmBlangonga_State3_14 = 0x008140D0; // type:func
-EmBlangonga_State3_15 = 0x00814370; // type:func
-EmBlangonga_State3_16 = 0x00814440; // type:func
-EmBlangonga_State3_17 = 0x00814570; // type:func
-EmBlangonga_RunGroup3 = 0x00814660; // type:func
-EmBlangonga_State4_00 = 0x00814860; // type:func
+EmBlangonga_RajangBeam = 0x00813F40; // type:func
+EmBlangonga_RajangJumpShot = 0x008140D0; // type:func
+EmBlangonga_RajangStrike = 0x00814370; // type:func
+EmBlangonga_RajangCharge = 0x00814440; // type:func
+EmBlangonga_CongalalaCharge = 0x00814570; // type:func
+EmBlangonga_RunAttackState = 0x00814660; // type:func
+EmBlangonga_Flinch = 0x00814860; // type:func
 // states 4:01, 4:14
-EmBlangonga_State4_01 = 0x008148F0; // type:func
+EmBlangonga_FlinchB = 0x008148F0; // type:func
 // states 4:02, 4:03, 4:0C, 4:0D
-EmBlangonga_State4_02 = 0x00814980; // type:func
-EmBlangonga_State4_04 = 0x00814C10; // type:func
-EmBlangonga_State4_05 = 0x00814D00; // type:func
+EmBlangonga_KnockDown = 0x00814980; // type:func
+EmBlangonga_Status4 = 0x00814C10; // type:func
+EmBlangonga_Trapped = 0x00814D00; // type:func
 // states 4:06, 4:0A, 4:0F
-EmBlangonga_State4_06 = 0x00814E20; // type:func
-EmBlangonga_State4_07 = 0x00814FD0; // type:func
-EmBlangonga_State4_08 = 0x00815170; // type:func
+EmBlangonga_TrappedStruggle = 0x00814E20; // type:func
+EmBlangonga_Fall = 0x00814FD0; // type:func
+EmBlangonga_ReactNop = 0x00815170; // type:func
 // states 4:09, 4:0E
-EmBlangonga_State4_09 = 0x00815180; // type:func
+EmBlangonga_HeldDowned = 0x00815180; // type:func
 // states 4:0B, 4:13
-EmBlangonga_State4_0B = 0x00815440; // type:func
-EmBlangonga_State4_10 = 0x00815520; // type:func
+EmBlangonga_HeldStatusEnd = 0x00815440; // type:func
+EmBlangonga_Hold2 = 0x00815520; // type:func
 // states 4:11, 4:15, 4:16, 4:17
-EmBlangonga_State4_11 = 0x00815610; // type:func
-EmBlangonga_State4_12 = 0x008156D0; // type:func
-EmBlangonga_State4_18 = 0x00815840; // type:func
-EmBlangonga_RunGroup4 = 0x00815850; // type:func
-EmBlangonga_State5_00_Hunted = 0x00815A20; // type:func
-EmBlangonga_State5_01_Hunted = 0x00815C70; // type:func
-EmBlangonga_State5_02_Hunted = 0x00815E40; // type:func
-EmBlangonga_State5_03_HuntedFalling = 0x00816040; // type:func
-EmBlangonga_State5_04 = 0x00816250; // type:func
-EmBlangonga_RunGroup5 = 0x00816370; // type:func
+EmBlangonga_DropCarried = 0x00815610; // type:func
+EmBlangonga_FlinchAttack = 0x008156D0; // type:func
+EmBlangonga_TrapEscape = 0x00815840; // type:func
+EmBlangonga_RunReactState = 0x00815850; // type:func
+EmBlangonga_Die = 0x00815A20; // type:func
+EmBlangonga_DieHeld = 0x00815C70; // type:func
+EmBlangonga_DieArmored = 0x00815E40; // type:func
+EmBlangonga_DieFalling = 0x00816040; // type:func
+EmBlangonga_Reappear = 0x00816250; // type:func
+EmBlangonga_RunDefeatState = 0x00816370; // type:func
 // states 6:00, 7:00
-EmBlangonga_State6_00_Captured = 0x00816470; // type:func
+EmBlangonga_Captured = 0x00816470; // type:func
 // states 6:01, 7:01
-EmBlangonga_State6_01_Captured = 0x008166F0; // type:func
+EmBlangonga_CapturedHold2 = 0x008166F0; // type:func
 // states 6:02, 7:02
-EmBlangonga_State6_02 = 0x00816880; // type:func
+EmBlangonga_CongalalaScene = 0x00816880; // type:func
 // states 6:03, 7:03
-EmBlangonga_State6_03 = 0x00816B50; // type:func
+EmBlangonga_StartBlangongaScene = 0x00816B50; // type:func
 // states 6:04, 7:04
-EmBlangonga_State6_04 = 0x00816C60; // type:func
+EmBlangonga_BlangongaLeapDown = 0x00816C60; // type:func
 // states 6:05, 6:06, 6:07, 7:05, 7:06, 7:07
-EmBlangonga_State6_05 = 0x00816F80; // type:func
+EmBlangonga_BlangoEmerge = 0x00816F80; // type:func
 // states 6:08, 7:08
-EmBlangonga_State6_08 = 0x00817230; // type:func
-EmBlangonga_RunGroup6 = 0x008172F0; // type:func
-EmBlangonga_State8_00_CarveStart = 0x008173C0; // type:func
-EmBlangonga_State8_01 = 0x00817520; // type:func
-EmBlangonga_State8_02 = 0x008176F0; // type:func
-EmBlangonga_State8_03 = 0x008178C0; // type:func
-EmBlangonga_State8_98 = 0x00817AC0; // type:func
-EmBlangonga_State8_99 = 0x00817B60; // type:func
-EmBlangonga_RunGroup8 = 0x00817C10; // type:func
+EmBlangonga_BlangoHidden = 0x00817230; // type:func
+EmBlangonga_RunEventState = 0x008172F0; // type:func
+EmBlangonga_VersusEatBait = 0x008173C0; // type:func
+EmBlangonga_VersusPoseA = 0x00817520; // type:func
+EmBlangonga_VersusPoseB = 0x008176F0; // type:func
+EmBlangonga_VersusPoseC = 0x008178C0; // type:func
+EmBlangonga_VersusWaitBoth = 0x00817AC0; // type:func
+EmBlangonga_VersusEnd = 0x00817B60; // type:func
+EmBlangonga_RunVersusState = 0x00817C10; // type:func
 EmBlangonga_BreakParts = 0x00818D10; // type:func
 EmBlangonga_SpawnGroundEffect = 0x00818DB0; // type:func
 EmBlangonga_SpawnK1CInMotions = 0x00818E30; // type:func
-EmBlangonga_RequestOnFrame = 0x00818F80; // type:func
+EmBlangonga_CamShakeOnFrame = 0x00818F80; // type:func
 // empty: the default case of EmBlangonga_MotionEffects
 EmBlangonga_MotionEffectsDefault = 0x00818FD0; // type:func
 EmBlangonga_MotionEffects = 0x00818FE0; // type:func
 EmBlangonga_UpdateMotionEffects = 0x0081AA30; // type:func
 EmBlangonga_TableNop = 0x0081AA80; // type:func
 EmBlangonga_ScriptQuery = 0x0081AA90; // type:func
-EmBlangonga_AllowHit8 = 0x0081AD80; // type:func
+EmBlangonga_AllowPartBreak = 0x0081AD80; // type:func
 EmShenGaoren_SetGroup0State = 0x0081AE00; // type:func
 EmShenGaoren_SetGroup1State = 0x0081AE50; // type:func
 EmShenGaoren_SetGroup2State = 0x0081B040; // type:func
@@ -2474,8 +2475,8 @@ EmKushala_ToIdle = 0x0082D740; // type:func
 EmKushala_EndState = 0x0082D860; // type:func
 EmKushala_EndState2 = 0x0082D870; // type:func
 EmKushala_BreakParts = 0x0082D8E0; // type:func
-// EffKushala29_CreateAtBone, with the bone moved on when D_006ADCB0.unk030 is 0x0B or 0x15
-EmKushala_SpawnEffect29AtBone = 0x0082DAB0; // type:func
+// KushalaBreath_CreateAtBone, with the bone moved on when D_006ADCB0.unk030 is 0x0B or 0x15
+EmKushala_CreateBreathAtBone = 0x0082DAB0; // type:func
 EmKushala_State0_00 = 0x0082DB20; // type:func
 EmKushala_State0_01 = 0x0082DBF0; // type:func
 EmKushala_State0_02 = 0x0082DC90; // type:func
@@ -2613,8 +2614,8 @@ EmKushala_MotionEffectsDefault = 0x008375D0; // type:func
 EmKushala_SpawnK1CInMotions = 0x008375E0; // type:func
 EmKushala_MotionEffects = 0x00837700; // type:func
 EmKushala_UpdateMotionEffects = 0x00838E10; // type:func
-// EffKushala30_Create for kinds 0x36 and 0x3C, EffKushala30b_Create for the others
-EmKushala_SpawnEffect30 = 0x00838E60; // type:func
+// KushalaAttack_Create for kinds 0x36 and 0x3C, TeostraAttack_Create for the others
+EmKushala_CreateAttack = 0x00838E60; // type:func
 EmKushala_SpawnEffect02AtBone27 = 0x00838EB0; // type:func
 EmKushala_TableNop = 0x00838F90; // type:func
 EmKushala_AllowHit8 = 0x00838FA0; // type:func
@@ -2643,8 +2644,8 @@ EmKind38_State2_0A = 0x0083A040; // type:func
 EmKind38_RunGroup2 = 0x0083A270; // type:func
 // states 3:00, 3:01
 EmKind38_State3_00 = 0x0083A360; // type:func
-// EffEm02_Create, variant 2 when the state random byte is under D_008CA278[unk01B]
-EmKind38_SpawnEffect02 = 0x0083A570; // type:func
+// BulldromeAttack_Create, variant 2 when the state random byte is under D_008CA278[unk01B]
+EmKind38_CreateAttack = 0x0083A570; // type:func
 EmKind38_State3_02 = 0x0083A5B0; // type:func
 EmKind38_RunGroup3 = 0x0083A800; // type:func
 // states 4:00, 4:01
@@ -3218,6 +3219,6 @@ EmKind0A_ToIdle = 0x00798110; // type:func picks state 0/0, 0/0xA or 0/6 by Em +
 EmApceros_CheckHerdHurt = 0x0079A650; // type:func type 0x46 not variant 2, work +0x3D = 1 when another type 0x46 of variant 2 in its area is in state group 4 or 5
 
 // Round 27 (names)
-EmCephadrome_EffEm14State = 0x007E0950; // type:func the state EffEm14 follows, -1 inactive, -2 hit, 1 when work 0xE is set
-EmKushala_EffEm14State = 0x0083CD00; // type:func the state EffEm14 follows, -1 inactive, 1 when work 0xE is set
+EmMelynx_BombState = 0x007E0950; // type:func the state EmBomb follows, -1 inactive, -2 hit, 1 when work 0xE is set
+EmShakalaka_BombState = 0x0083CD00; // type:func the state EmBomb follows, -1 inactive, 1 when work 0xE is set
 EmYamaTsukami_EaseToTarget = 0x00849640; // type:func eases work 0x20-0x28 toward EmYamatsukami_EaseTargets entry work 0x34 while work 0x35 is 0

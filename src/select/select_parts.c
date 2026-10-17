@@ -129,7 +129,7 @@ void Parts_DrawSwatches(s16 kind, s16 alt)
     s16 *pos;
     s16 *tex;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 8);
     Tex_Bind(8);
     if (kind == 0) {

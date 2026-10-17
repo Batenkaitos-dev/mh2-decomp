@@ -98,7 +98,7 @@ enum CharaPartKind {
 #define CHARA_FACE_COUNT  27
 #define CHARA_HAIR_COUNT  18
 #define CHARA_VOICE_COUNT 15
-#define CHARA_HAIR_SPECIAL 0x11 /* the last hair style: offered only when gSysSave.unk458 is set; saved as style 0x13 */
+#define CHARA_HAIR_SPECIAL 0x11 /* the last hair style: offered only when gSysSave.bonusUnlocked is set; saved as style 0x13 */
 #define CHARA_COND_ANY 0        /* a condition that any part fits */
 #define CHARA_COND_NONE 99      /* in the condition tables: no value (the random look uses CHARA_COND_ANY instead) */
 
@@ -257,18 +257,81 @@ typedef struct SelIcon {
     f32 scale;              /* 0x1C */
 } SelIcon;
 
-/* gm_sub's work (gGmWork, gm_main.c's GmWork) as the title menu's drawing
- * reads it (select_title.c). */
-typedef struct TitleBg {
-    u8 unk0[0x20];
-    s32 unk20;              /* 0x20: gm_main sets 1; nonzero: the logo at its full size */
-    s32 menuSel;            /* 0x24: the title menu's entry under the cursor */
-    s32 sel;                /* 0x28: mode select's entry */
-    u8 unk2C[0x10];
+/* GmSub_Task's own modes (its TaskSlot.mode). */
+enum GmSubTaskMode {
+    GMSUB_TASK_INIT = 0,        /* clears gGmWork, or goes back to the gallery after a gallery scene */
+    GMSUB_TASK_RUN = 1,         /* the title screen: GmWork.mode's phases */
+    GMSUB_TASK_LAUNCH = 3,      /* mode select chose: GmSub_StartGame ends the task into the lobby */
+    GMSUB_TASK_EXIT = 4         /* GmSub_ExitToBoot: back to select's Boot_Task (no code seen sets it) */
+};
+
+/* GmWork.mode: the title screen's phase (GmSub_Task, GMSUB_TASK_RUN). */
+enum GmSubMode {
+    GMSUB_MODE_SETUP = 0,       /* GmSub_Setup */
+    GMSUB_MODE_MENU = 1,        /* the title menu and mode select (GmSub_UpdateMenu) */
+    GMSUB_MODE_START_CHARA = 2, /* the character entries: start their select task, or the game once mode select chose */
+    GMSUB_MODE_START_ENTRY = 3  /* the other entries: start the entry's select task */
+};
+
+/* GmWork.step: GmSub_UpdateMenu's steps. */
+enum GmSubStep {
+    GMSUB_STEP_INIT = 0,                /* sets the menu up (GmSub_InitMenu) and fades in */
+    GMSUB_STEP_FADE_IN = 1,             /* the fade-in; then the logo, the title menu or mode select */
+    GMSUB_STEP_LOGO = 2,                /* the logo's animation (GmWork.logoAnim up to GMSUB_LOGO_ANIM_END) */
+    GMSUB_STEP_MENU = 3,                /* the title menu */
+    GMSUB_STEP_CHOSEN = 4,              /* an entry chosen: after the fade-out, GmWork.mode starts it */
+    GMSUB_STEP_MODE_SELECT = 5,         /* mode select: online or offline */
+    GMSUB_STEP_MODE_CANCEL = 6,         /* mode select cancelled: back to the title menu after the fade */
+    GMSUB_STEP_BACK = 10,               /* back from options, network options or the PSP link: fades in */
+    GMSUB_STEP_RESET = 11,              /* back from the character screens or the gallery: reloads, fades in */
+    GMSUB_STEP_REOPEN_MODE_SELECT = 12, /* GmSub_OpenModeSelect's step, then as GMSUB_STEP_RESET (no other code sets it) */
+    GMSUB_STEP_QUIT = 20                /* the title menu cancelled: the boot screens after the fade */
+};
+
+/* The title menu's entries (GmWork.menuSel, menuChoice): each starts one of
+ * select's tasks in TASK_SLOT_MENU (the PSP link in TASK_SLOT_SCENE). */
+enum GmSubMenuEntry {
+    GMSUB_MENU_NEW_CHARA = 0,   /* Chara_CreateTask */
+    GMSUB_MENU_LOAD_CHARA = 1,  /* Chara_SelectTask, then mode select */
+    GMSUB_MENU_GALLERY = 2,     /* Gallery_Task */
+    GMSUB_MENU_OPTIONS = 3,     /* Option_Task */
+    GMSUB_MENU_NET_OPTIONS = 4, /* NetOption_Task */
+    GMSUB_MENU_PSP_LINK = 5,    /* Psp_ConnectTask */
+    GMSUB_MENU_COUNT = 6
+};
+
+/* Mode select's entries (GmWork.sel, modeChoice; SaveData.modeSelChoice):
+ * GmSub_StartGame sets gSysSettings.online and useSavedEquip from them. */
+#define GMSUB_MODE_SEL_ONLINE 0
+#define GMSUB_MODE_SEL_OFFLINE 1
+#define GMSUB_MODE_SEL_SAVED_EQUIP 2    /* offline with the save's equipment: handled, but the cursor reaches only the first two */
+#define GMSUB_MODE_SEL_COUNT 2
+
+/* The title screen's stream (Stream_Play's file id, on channel 0). */
+#define GMSUB_TITLE_STREAM 0x2F
+
+/* GmWork.logoAnim's last value: the logo's animation is over (GMSUB_STEP_LOGO). */
+#define GMSUB_LOGO_ANIM_END 4
+
+/* gm_sub's work area (gGmWork, 0xB0 bytes in gSysSettings.workArea): the
+ * title menu's and mode select's state. gm_main.c runs the menus
+ * (GmSub_Task, GmSub_UpdateMenu); select_title.c draws them from it. */
+typedef struct GmWork {
+    s32 mode;               /* 0x00: enum GmSubMode */
+    s32 step;               /* 0x04: enum GmSubStep (GmSub_UpdateMenu) */
+    u8 unk08[0x20 - 0x08];
+    s32 logoFull;           /* 0x20: gm_main sets 1; nonzero: the logo at its full size */
+    s32 menuSel;            /* 0x24: the title menu's entry under the cursor (enum GmSubMenuEntry) */
+    s32 sel;                /* 0x28: mode select's entry under the cursor (GMSUB_MODE_SEL_*, ModeSel_Start) */
+    s32 menuChoice;         /* 0x2C: the title menu's entry chosen (menuSel), -1: none */
+    s32 modeChoice;         /* 0x30: mode select's entry chosen (sel), -1: none; >= 0 starts it (GmSub_Task) */
+    void (*frameCallback)(void); /* 0x34: added each frame (Callbacks_Add) unless mode select draws: Title_DrawLogo */
+    void (*layerCallback)(void); /* 0x38: the screen's drawing, on layer 1 (LayerCallbacks_Add): Title_Draw or ModeSel_DrawScreen */
     s32 frame;              /* 0x3C: 0-3, +1 a frame (Title_StepBgAnim) */
     s32 count;              /* 0x40: +1 each 4 frames: animates the chosen entry's number */
-    u8 unk44[0xC];
-    s32 logoAnim;           /* 0x50: the logo's state: 0 at full size, 1-3 its scale steps (gTitleLogoScales) */
+    u8 unk44[0x4C - 0x44];
+    s32 unk4C;              /* 0x4C: only cleared (gm_sub_entry) */
+    s32 logoAnim;           /* 0x50: the logo's animation, +1 a frame from 0 to GMSUB_LOGO_ANIM_END: 1 and 2 pick the smaller scales of gTitleLogoScales, the rest the full size (Title_DrawLogo) */
     u32 menuSelColor;       /* 0x54: the chosen entry's text colour */
     u32 menuColor;          /* 0x58: the other entries' */
     f32 logoScale;          /* 0x5C */
@@ -276,7 +339,9 @@ typedef struct TitleBg {
     s32 logoY;              /* 0x64 */
     s32 logoAngle;          /* 0x68: 0x10000 a turn */
     s32 logoColor;          /* 0x6C */
-} TitleBg;
+    u8 unk70[0xB0 - 0x70];
+} GmWork;
+typedef char GmWork_size_check[(sizeof(GmWork) == 0xB0) ? 1 : -1];
 
 /* An entry of the character selection or of mode select: its two pictures
  * (0xFF: none), indices into gCharaSelEntryIcons or gModeSelIcons. */
@@ -416,6 +481,67 @@ enum GalState {
     GAL_DONE                    /* 9: back to gm_sub */
 };
 
+/* GalEntry.kind: what an entry opens. Seen: kinds 0 and 1 run plsel's
+ * Galex_QuestTask (kind 0 is listed under the monsters, kind 1 under the
+ * world), kind 2 its Galex_Task, kind 3 a movie, kind 4 the ending. */
+enum GalEntryKind {
+    GAL_KIND_MONSTER_QUEST,     /* 0: a monster's quest */
+    GAL_KIND_WORLD_QUEST,       /* 1: a quest of the world category */
+    GAL_KIND_AREA_TOUR,         /* 2: an area's tour */
+    GAL_KIND_MOVIE,             /* 3: a movie (gGalleryMovieIds) */
+    GAL_KIND_ENDING             /* 4: the ending */
+};
+
+#define GAL_ENTRY_COUNT 54      /* gGalleryEntries */
+#define GAL_CATEGORY_COUNT 3    /* monsters, the world, bonus */
+#define GAL_PICTURE_COUNT 6     /* the menu's moving pictures */
+#define GAL_TEX_COUNT 0x37      /* the gallery's own textures (the galex partition) */
+#define GAL_TEX_FIRST 0x2B      /* their first handle in gTexHandles */
+#define GAL_TEX_LOCKED 0x61     /* the picture of a locked entry's page */
+#define GAL_LIST_ROWS 4         /* the list's rows on screen */
+/* gSysSettings.galleryEntry: the entry being played (its low 7 bits) and, for
+ * an entry that asks, the night bit (plsel's Galex tasks read it). */
+#define GAL_ENTRY_MASK 0x7F
+#define GAL_ENTRY_NIGHT 0x80
+
+/* gGalleryEntries's records: the gallery's entries. */
+typedef struct GalEntry {
+    char *title;            /* 0x00 */
+    char **lines;           /* 0x04: the page's four description lines */
+    u8 picture;             /* 0x08: the page's picture, GAL_TEX_FIRST + picture in gTexHandles */
+    u8 kind;                /* 0x09: GalEntryKind */
+    u8 kindIndex;           /* 0x0A: its number among the entries of its kind (a movie's index in gGalleryMovieIds) */
+    u8 needsUnlock;         /* 0x0B: listed only once its event flag (the entry number) is set */
+} GalEntry;
+
+/* gGalleryArrowSprites's records: the arrows beside a category. */
+typedef struct GalIcon {
+    s32 tex;                /* 0x00: index into gTexHandles */
+    s32 unk4;               /* not read by the gallery's code */
+    s16 w, h;               /* 0x08 */
+    s16 u0, v0, u1, v1;     /* 0x0C */
+    u32 color;              /* 0x14 */
+    s32 unk18;              /* not read */
+    f32 unk1C;              /* 0x1C: not read */
+} GalIcon;
+
+/* The gallery's drawn records (Gallery_DrawRecords): the pictures'
+ * layouts (gGalleryLayout), the list's frame, cursor and scroll bar. */
+typedef struct GalRec {
+    s32 tex;                /* 0x00: > 100: gTexHandles, else the gallery's own */
+    s16 x, y, w, h;         /* 0x04 */
+    s16 u0, v0, u1, v1;     /* 0x0C */
+    u32 color;              /* 0x14 */
+    u16 angle;              /* 0x18 */
+    u8 pad1A[2];
+} GalRec;
+
+/* A filled screen rectangle (Prim_FillRect). */
+typedef struct GalRect {
+    s16 x, y, w, h;
+    u32 color;
+} GalRect;
+
 /* The work area the units share, gSysSettings.workArea (sub_main's
  * gWorkArea): the boot's work at its start, then one screen's work at
  * 0x1000. */
@@ -434,17 +560,17 @@ s32 Gs_SetState(u8, u32);          /* (0x6C, 0) before drawing, (0x6C, 1) after 
 s32 Sprite_Draw(Sprite *s);          /* draws a sprite */
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);  /* a sound effect */
 
-/* sub_main: select a texture for the sprites (Gfx_SetState63(1);
+/* sub_main: select a texture for the sprites (Gfx_SetTexFilter(1);
  * Tex_Prepare(1, tex); Tex_Bind(tex)) */
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
 
 /* sub_main's task slots (TaskSlot, include/task.h): a task function gets
- * its slot; +8 is the task's state, +9 the state's step. */
+ * its slot, with the task's state in TaskSlot.mode and its step in .step. */
 
 void *memset(void *, s32, u32);
-void *memcpy(void *, void *, u32);
+void *memcpy(void *, const void *, u32);
 
 /* sub_main */
 void TaskSlot_Set(void *func, s16 slot);     /* starts a task in a slot */
@@ -458,5 +584,217 @@ void Font_Printf(const char *fmt, ...);                    /* prints a string */
 void Text_DrawShadow2(s16, s16, s32, s32, char *);  /* draws a message */
 
 #include "chredit.h"            /* ChrEdit, gChrEdit */
+
+/* ---- The PSP link (select_psp.c) ---- */
+
+/* A frame of an object's animation (gPspObjAnims points to each set's
+ * first frame). */
+typedef struct PspAnim {
+    u8 unk0;                /* 0x00: not read */
+    s8 loopPoint;           /* 0x01: 1 at a loop point (type 0 counts its loops there; types 2 and 6 may jump) */
+    s8 next;                /* 0x02: the next frame (< 0: the end) */
+    s8 se;                  /* 0x03: a sound (1 + its number), 0 none */
+    s16 wait;               /* 0x04: the frame's time, in frames */
+    s16 ox;                 /* 0x06: drawing offset */
+    s16 oy;                 /* 0x08 */
+    s16 dx;                 /* 0x0A: the step applied at the frame's start */
+    s16 dy;                 /* 0x0C */
+    s16 tex;                /* 0x0E: the file (PspWork.tex) */
+    s16 cell;               /* 0x10 */
+    u8 pad12[2];
+    s16 *cells;             /* 0x14: u, v, texture w, h, screen w, h */
+} PspAnim;
+
+/* An animated object of the link's show (32 in PspWork). */
+typedef struct PspObj {
+    s32 active;             /* 0x00 */
+    s32 wait;               /* 0x04: frames left of the current frame */
+    s32 count;              /* 0x08: type 0: its loops; sound 10: its steps */
+    s32 flip;               /* 0x0C: mirrored, walking right to left */
+    s32 frame;              /* 0x10: the index of the current frame in anim */
+    s32 x;                  /* 0x14 */
+    s32 y;                  /* 0x18 */
+    s32 unk1C;              /* 0x1C: only cleared (Psp_SetAnim) */
+    s32 unk20;              /* 0x20: only cleared */
+    s32 endX;               /* 0x24: past it the object ends (gPspObjParams) */
+    s32 type;               /* 0x28: PSP_OBJ_* (its walk and gPspObjAnims set) */
+    PspAnim *anim;          /* 0x2C */
+} PspObj;
+
+/* A part an actor draws (gPspActorAnims, 16 bytes each). */
+typedef struct PspPart {
+    s16 tex;                /* 0x0: the file (PspWork.tex) */
+    s8 kind;                /* 0x2: 0 a filled rectangle, else a sprite */
+    s8 blend;               /* 0x3: 0: the texture filtered */
+    u32 color;              /* 0x4 */
+    s16 u;                  /* 0x8: texture rectangle */
+    s16 v;                  /* 0xA */
+    s16 uw;                 /* 0xC */
+    s16 vh;                 /* 0xE */
+} PspPart;
+
+/* An actor of the link's screens (32 in PspWork; PSP_ACTOR_* below). */
+typedef struct PspActor {
+    s32 exists;             /* 0x00: set up by Psp_InitActors; not drawn while 0 */
+    s32 visible;            /* 0x04: in the frame's draw list */
+    s32 kind;               /* 0x08: a frame's index in gPspFrameRects; a flying screen's direction (0 left) */
+    s8 state;               /* 0x0C: PSP_ACTOR_INIT ... */
+    u8 unkD[0x20 - 0xD];
+    f32 speed;              /* 0x20: added to x each frame */
+    u8 unk24[0x30 - 0x24];
+    f32 x;                  /* 0x30 */
+    f32 y;                  /* 0x34 */
+    s32 flipX;              /* 0x38: mirrored horizontally */
+    s32 flipY;              /* 0x3C: mirrored vertically */
+    s16 w;                  /* 0x40 */
+    s16 h;                  /* 0x42 */
+    u8 unk44[4];
+    s32 large;              /* 0x48: an icon screen drawn larger (Psp_MarkIcons) */
+    f32 scaleX;             /* 0x4C */
+    f32 scaleY;             /* 0x50 */
+    s32 dim;                /* 0x54: drawn at half brightness */
+    PspPart *part;          /* 0x58 */
+    s32 relative;           /* 0x5C: placed relative to its parent */
+    struct PspActor *parent; /* 0x60: always actor 1 */
+} PspActor;
+
+/* A filled rectangle (Prim_FillRect). */
+typedef struct PspRect {
+    s16 x0, y0, x1, y1;     /* 0x0 */
+    u32 color;              /* 0x8 */
+} PspRect;
+
+/* A textured triangle (Prim_DrawTexTri, main). */
+typedef struct PspTri {
+    s16 x0, y0, x1, y1, x2, y2;     /* 0x00 */
+    u32 color;                      /* 0x0C */
+    s16 u0, v0, u1, v1, u2, v2;     /* 0x10 */
+} PspTri;
+
+/* A file's place in the link's archive (Psp_LoadFiles). */
+typedef struct PspFileEnt {
+    s32 offset;
+    s32 size;
+} PspFileEnt;
+
+/* Psp_ConnectTask's modes (TaskSlot.mode). */
+enum PspMode {
+    PSP_MODE_START,             /* 0: starts the character selection */
+    PSP_MODE_WAIT_CHARA,        /* 1: waits for its end, loads the sounds and textures */
+    PSP_MODE_INIT,              /* 2: Psp_Init, the fade in */
+    PSP_MODE_PROMPT,            /* 3: asks to connect: confirm starts the thread, cancel leaves */
+    PSP_MODE_CONNECT,           /* 4: runs PspWork.step */
+    PSP_MODE_EXIT_TO_MENU,      /* 5: after the fade: back to gm_sub's menu */
+    PSP_MODE_FADE_DONE,         /* 6: after the fade, on to PSP_MODE_EXIT */
+    PSP_MODE_NET_MENU,          /* 7: the card menu (not entered by this file) */
+    PSP_MODE_EXIT,              /* 8: leaves for gm_sub, keeping the character */
+    PSP_MODE_CANCELLED          /* 9: the cancelled message, then PSP_MODE_EXIT_TO_MENU */
+};
+
+/* PspWork.step, in PSP_MODE_CONNECT. Steps 2 and 3 only pass on. */
+enum PspStep {
+    PSP_STEP_WAIT_PSP = 0,      /* polls the device until a PSP answers */
+    PSP_STEP_EXCHANGE = 1,      /* waits for the thread's exchange */
+    PSP_STEP_DONE = 4,          /* shuts the link down, picks the features */
+    PSP_STEP_ERROR = 5,         /* an error or cancel message; confirm goes back to the prompt */
+    PSP_STEP_RESULT = 10,       /* what came: nothing leaves, else the show */
+    PSP_STEP_SHOW = 11          /* runs PspWork.subStep */
+};
+
+/* PspWork.subStep, in PSP_STEP_SHOW. */
+enum PspShowStep {
+    PSP_SHOW_SPAWN,             /* 0: spawns the queued objects, one each 90 frames */
+    PSP_SHOW_WAIT,              /* 1: until the objects are gone (or cancel) */
+    PSP_SHOW_ICONS              /* 2: the icons and their cursor */
+};
+
+/* gPspState: the link thread's state (Psp_Thread). */
+enum PspThreadState {
+    PSP_THREAD_IDLE,            /* 0 */
+    PSP_THREAD_EXCHANGE,        /* 1: gets the device path, opens it, sends sendBuf, reads recvBuf */
+    PSP_THREAD_DONE,            /* 2 */
+    PSP_THREAD_STOP,            /* 3: set by Psp_Shutdown */
+    PSP_THREAD_CLOSE,           /* 4: closes the device, then idle (not set by this file) */
+    PSP_THREAD_ERROR            /* 5 */
+};
+
+/* PspWork.textStep: the lines Psp_DrawTexts shows (gPspStepTexts). */
+#define PSP_TEXT_NONE 0
+#define PSP_TEXT_CONNECTING 2
+#define PSP_TEXT_EXCHANGED 4
+#define PSP_TEXT_PROMPT 6
+#define PSP_TEXT_LINK_ERROR 7
+#define PSP_TEXT_EXCHANGE_CANCELLED 8
+#define PSP_TEXT_SHOW 9
+#define PSP_TEXT_ICONS 10
+#define PSP_TEXT_CANCELLED 13   /* reads past gPspStepTexts into gPspLines (said in Psp_DrawTexts) */
+
+/* PspActor.state. */
+enum PspActorState {
+    PSP_ACTOR_INIT,             /* 0: takes its rectangle */
+    PSP_ACTOR_WAIT,             /* 1 */
+    PSP_ACTOR_RUN,              /* 2: slides, flies or dims */
+    PSP_ACTOR_DONE              /* 3 */
+};
+
+/* The device's commands (sceDevctl): 'UPC' and a number. */
+#define PSP_DEVCTL_PRESENT 0x55504301   /* whether a PSP is there (into PspWork.pspPresent) */
+#define PSP_DEVCTL_GET_PATH 0x55504302  /* the path to open */
+
+#define PSP_ACTOR_COUNT 32
+#define PSP_ACTORS_USED 22      /* PspWork.actorCount */
+#define PSP_OBJ_COUNT 32
+#define PSP_ICON_COUNT 6
+#define PSP_FILE_COUNT 13
+#define PSP_TEX_FIRST 0xA3      /* the files' first handle in gTexHandles */
+#define PSP_BUF_SIZE 0x40       /* each exchange buffer */
+
+/* The link's work: 0x1490 bytes at 0x100 in the select work area
+ * (gSysSettings.selWork; gPspWork). */
+typedef struct PspWork {
+    s32 step;               /* 0x000: PspStep, while the task's mode is PSP_MODE_CONNECT */
+    s32 subStep;            /* 0x004: PspShowStep, in PSP_STEP_SHOW */
+    u8 unk8[8];
+    s32 modId;              /* 0x010: the USB module's id (-1 none) */
+    u8 unk14[8];
+    s32 fd;                 /* 0x01C: the device, open (-1 closed) */
+    s32 pspPresent;         /* 0x020: the PSP's answer to the first devctl (0: none yet) */
+    s32 *recvBuf;           /* 0x024: PSP_BUF_SIZE bytes read from the PSP; word 0: the features */
+    s32 *sendBuf;           /* 0x028: PSP_BUF_SIZE bytes sent: the items unlocked (Psp_InitItemMask) */
+    s32 *spareBuf;          /* 0x02C: a third buffer, only cleared */
+    s32 timer;              /* 0x030: frames left before the next action */
+    u8 unk34[0x40 - 0x34];
+    s32 offerMask;          /* 0x040: the features offered this time (bits) */
+    s32 unk44;              /* 0x044: only cleared */
+    u8 unk48[0x54 - 0x48];
+    s32 headerKind;         /* 0x054: Sel_DrawHeader's kind (0: none) */
+    s32 textStep;           /* 0x058: the text lines shown (gPspStepTexts) */
+    u8 unk5C[0xA4 - 0x5C];
+    u8 featureOn[16];       /* 0x0A4: per feature: offered */
+    u8 menuObjType[16];     /* 0x0B4: per menu: the object type its show spawns (0 none) */
+    u8 spawnQueue[16];      /* 0x0C4: a copy of menuObjType, emptied by the show */
+    s32 spawnLeft;          /* 0x0D4: the queue's entries left */
+    s8 iconEntry[6];        /* 0x0D8: per icon: the entry of its list found */
+    s8 iconFound[6];        /* 0x0DE: per icon: one found */
+    s8 cursorIcon;          /* 0x0E4: the icon under the cursor (-1 none) */
+    s8 cameFrom2;           /* 0x0E5: the icon the cursor left for the tall icon 2 */
+    s8 cameFrom4;           /* 0x0E6: the same for the tall icon 4 */
+    s8 cursorCol;           /* 0x0E7: its column in gPspCursorGrid */
+    s8 cursorRow;           /* 0x0E8: its row */
+    u8 unkE9[0xFC - 0xE9];
+    s32 hideFrames;         /* 0x0FC: the window frames are drawn while 0 (never set) */
+    s32 tex[PSP_FILE_COUNT]; /* 0x100: the loaded files' texture handles */
+    s32 sceneState;         /* 0x134: 0 the opening, 1 the icons */
+    PspActor actors[PSP_ACTOR_COUNT]; /* 0x138 */
+    s32 actorCount;         /* 0xDB8: actors updated */
+    PspActor *drawList[PSP_ACTOR_COUNT]; /* 0xDBC: this frame's visible actors */
+    PspObj objs[PSP_OBJ_COUNT]; /* 0xE3C */
+    s32 swingAmp[6];        /* 0x143C: per icon: its swing's amplitude, decaying to 0 */
+    u16 swingPhase[6];      /* 0x1454 */
+    u16 swingSpeed[6];      /* 0x1460: added to the phase each frame */
+    u16 swingDecay[6];      /* 0x146C: taken from the amplitude each time the phase wraps */
+    s16 centerX[6];         /* 0x1478: the icon screens' centres */
+    s16 centerY[6];         /* 0x1484 */
+} PspWork;
 
 #endif /* SELECT_H */

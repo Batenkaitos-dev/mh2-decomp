@@ -3,20 +3,21 @@
 // sub_main data that gm_sub's C reads by name. MWCC keeps a load from an
 // absolute address behind a store, but not a load from a named object
 // (QNetIf_OnPlayerLeft needs it); a better name belongs in sub_main.txt.
-D_004476FC = 0x004476FC; // size:0x4
+gQNetLeftText = 0x004476FC; // size:0x4 the text put after a leaving player's name (QNetIf_OnPlayerLost and Left)
+gSceneInQuest = 0x006ADED4; // size:0x4 gScene.inQuest as its own name (QNetIf_OnPlayerLost and Left)
 
 // First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
 gm_sub_entry = 0x008FAE80; // type:func
 
 // gm_main.c (the module's task and its menu) and gm_em.c (monster setup and
 // update), named in round 2; sorted by address.
-GmSub_OpenYesNo = 0x008FAF40; // type:func
+GmSub_OpenModeSelect = 0x008FAF40; // type:func
 GmSub_Task = 0x008FAFD0; // type:func
 GmSub_InitMenu = 0x008FB3E0; // type:func
 GmSub_MoveCursorV = 0x008FB570; // type:func
 GmSub_MoveCursorH = 0x008FB640; // type:func
 GmSub_UpdateMenu = 0x008FB700; // type:func
-GmSub_UpdateYesNo = 0x008FBFA0; // type:func
+GmSub_UpdateModeSelect = 0x008FBFA0; // type:func
 GmSub_IsCharaSelectMenu = 0x008FC080; // type:func 1 when the character selection runs as the menu screen (the main menu entry 1 or the PSP link waiting for a character)
 GmEm_SetQuestSounds = 0x00902AD0; // type:func
 GmEm_SetupKind = 0x00903EE0; // type:func
@@ -220,8 +221,8 @@ D_008C30E0 = 0x008C30E0; // game unk_708850.c
 gGmWork = 0x00933380; // size:0x4
 
 // Round 18 (ngame)
-GmSub_StepLaunch = 0x008FBD90; // type:func case 3 - sets online/offline and starts the mode when the sequence ends
-GmSub_StepExit = 0x008FBED0; // type:func case 4 - fade, then task D_6B5230
+GmSub_StartGame = 0x008FBD90; // type:func sets online or offline from mode select, then ends into the lobby
+GmSub_ExitToBoot = 0x008FBED0; // type:func fades out, then starts Boot_Task
 
 // Round 19 (ndata)
 gGmLoadSlots = 0x00939450; // size:0x12C
@@ -246,7 +247,7 @@ gGmEmKind24MeshTex = 0x0090DF40; // size:0x50 kind 0x24 the texture index of eac
 GmEm_SetMeshAlphas = 0x00906210; // type:func each mesh of a monster kind gets the monster alpha, 0 for broken or hidden parts (by kind, mode and the part table)
 
 // Round 31 (names)
-gEmScaleRows = 0x0090D470; // size:0x128 per monster type its EmScaleRow table (Em_ComputeSize, Em_RageScale1, Em_RageScale2), inside the C object D_0090D330, size to its end
+gEmScaleRows = 0x0090D470; // size:0x128 per monster type its EmScaleRow table (Em_ComputeMaxHp, Em_LevelAttackFactor, Em_LevelDamageFactor), inside the C object D_0090D330, size to its end
 gEmMinePoints = 0x0092E8B0; // size:0x128 EmMine_Create and EmHolder_CreateMine, the carcass mine point of a monster kind (16 bytes, by em type), inside the C object D_0092E8A0, size to its end
 gEmMinePoints2 = 0x0092EB10; // size:0x130 EmMine_CreateTimed and EmMine_Drop, a second mine point of a monster kind (8 bytes, by em type), inside the C object D_0092EB00, size to its end
 gEmPartHpTables = 0x0090B3C0; // size:0x130 Em_InitParts and Em_ResetPartHp, by em type a table of the hp of its 9 parts (s16), inside the C object D_0090B3A0, size to its end
@@ -308,3 +309,8 @@ gPlayerResetRotY = 0x0092A4C0;
 gEmLowHpRatios = 0x0090CD00;
 gEmSizeLevelFactors = 0x0090DD50;
 gEmMotionGroupCounts = 0x0090DDC0;
+GmEm_NoMotionEffect = 0x0090A390; // type:func empty, static (the motion effects default case)
+GmEm_Nop = 0x0090A9B0; // type:func empty
+GmEm_ReturnZero = 0x0090A9C0; // type:func a callback of the monster tables that returns 0
+Plsel_LogChatFrom = 0x00D643F0; // plsel, its chat line while the select screen is open (QSync_OnChat)
+gSceneUserIds = 0x006ADF26; // size:0x20 gScene.preset as its own name, the players user ids (QSync_OnState)

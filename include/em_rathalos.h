@@ -26,7 +26,7 @@ enum EmRathalosMotion {
     RATH_MOT_TAKE_OFF = 0x12,           /* airborne (stance 2) from frame 30 or 38 */
     RATH_MOT_TOUCH_DOWN = 0x13,         /* on the floor again (stance 0), with a camera shake */
     RATH_MOT_LIE = 0x22,                /* lying under a status or resting (a periodic effect at bone 0x22) */
-    RATH_MOT_ROAR = 0x23,               /* with attached effect 1 (Eff01_Create); the quest's opening landing ends with it */
+    RATH_MOT_ROAR = 0x23,               /* with attached effect 1 (RathalosAttack_Create); the quest's opening landing ends with it */
     RATH_MOT_GET_UP = 0x25,             /* after resting or a status */
     RATH_MOT_COLLAPSE = 0x26,           /* falling over when a status starts */
     RATH_MOT_LIE_DOWN = 0x27,           /* lying down to rest */
@@ -189,19 +189,19 @@ enum EmRathalosAttackState {
 
 /* Group 4, EM_GROUP_REACT (EmRathalos_RunReactState): what EmRathalos_Update picks from Em_UpdateDamage's result. */
 enum EmRathalosReactState {
-    RATH_REACT_FLINCH = 0x00,           /* a flinch of parts 0 and 7 (result 12), or result 13 */
+    RATH_REACT_FLINCH = 0x00,           /* a flinch of parts 0 and 7 (EM_DMG_PART_FLINCH), or EM_DMG_HIT_MODE3 */
     RATH_REACT_FLINCH_B = 0x01,         /* a flinch of an unbroken part 3 or 4 */
     RATH_REACT_FLINCH_C = 0x02,         /* a flinch of parts 5 and 6 */
     RATH_REACT_FLINCH_D = 0x03,         /* a flinch of parts 1 and 2 */
-    RATH_REACT_PART_BREAK = 0x04,       /* result 11, once (Em.hit8Count) */
+    RATH_REACT_PART_BREAK = 0x04,       /* EM_DMG_PART8_DOWN, once (Em.partBreakCount) */
     RATH_REACT_KNOCK_DOWN = 0x05,       /* a flinch of a broken part other than 3 */
     RATH_REACT_END_AIR = 0x06,
     RATH_REACT_END_AIR_B = 0x07,
-    RATH_REACT_FALL = 0x08,             /* result 5, or a flinch in the air */
+    RATH_REACT_FALL = 0x08,             /* EM_DMG_STATUS_IN_AIR, or a flinch in the air */
     RATH_REACT_FALL_B = 0x09,
     RATH_REACT_FLINCH_E = 0x0A,
     RATH_REACT_STATUS4 = 0x0B,
-    RATH_REACT_TRAPPED = 0x0C,          /* results 3 and 4 outside a hold */
+    RATH_REACT_TRAPPED = 0x0C,          /* EM_DMG_ATTACK9 and EM_DMG_ATTACK6 outside a hold */
     RATH_REACT_TRAPPED_STRUGGLE = 0x0D,
     RATH_REACT_STATUS4_DOWNED = 0x0E,
     RATH_REACT_PART_BREAK_END = 0x0F,   /* EmRathalos_ChangeState breaks part 3 on entry */
@@ -212,7 +212,7 @@ enum EmRathalosReactState {
     RATH_REACT_STUN = 0x14,
     RATH_REACT_STUN_DOWNED = 0x15,
     RATH_REACT_STUN_DOWNED_END = 0x16,
-    RATH_REACT_HOLD2 = 0x17             /* result 18 */
+    RATH_REACT_HOLD2 = 0x17             /* EM_DMG_ATTACK13 */
 };
 
 /* Group 5, EM_GROUP_DEFEAT (EmRathalos_RunDefeatState). */

@@ -10,6 +10,7 @@
 #include "player.h"
 #include "lobby_menu.h"
 #include "combine.h"
+#include "area.h"
 
 /* prototypes */
 s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
@@ -67,7 +68,7 @@ typedef struct V00777940_0 {
 } V00777940_0;
 
 s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-s32 Item_IsSpecial(u16 item);
+s32 Item_IsOnePerPouch(u16 item);
 s32 Recipe_IsListedFor(s16 item, s32 arg1);
 void Text_SetSize(s32 size);
 void CombShop_DrawWindow(CombMenu *m, s16 x, s16 y);
@@ -470,7 +471,7 @@ s32 CombShop_InputPage(CombMenu *m, u16 pad)
 
 s32 Item_IsCombinable(u16 item)
 {
-    if (Item_IsSpecial(item) == 1) {
+    if (Item_IsOnePerPouch(item) == 1) {
         return 0;
     } else if (Recipe_IsListedFor(item, 0) != 0) {
         return 1;
@@ -1155,7 +1156,7 @@ void TownMsg_Recv(void *from, u8 *pkt)
     case 35:
         if (!LobbyBgm_IsActive()) {
             memcpy(bgm, data, 8);
-            if (gScene.area == 0x87) {
+            if (gScene.area == AREA_HUB_0x87) {
                 LobbyBgm_Play(bgm[0], bgm[1], 0);
             } else {
                 LobbyBgm_Play(bgm[0], bgm[1], 1);
@@ -1165,7 +1166,7 @@ void TownMsg_Recv(void *from, u8 *pkt)
     case 38:
         if (!LobbyBgm_IsActive()) {
             memcpy(&pos, data, 4);
-            if (gScene.area == 0x87) {
+            if (gScene.area == AREA_HUB_0x87) {
                 LobbyBgm_Play(0, pos, 0);
             } else {
                 LobbyBgm_Play(0, pos, 1);

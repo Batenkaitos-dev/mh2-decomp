@@ -1,9 +1,40 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
-/* The camera mode that runs the scripts (CamCtl.modes[CAM_MODE_SCRIPT],
- * gCamModeInit's handler CamScript_Init; unk_31DF70.c). */
+/*
+ * The camera modes: CamCtl.modes' index, in the order of the handler tables
+ * gCamModeInit and gCamModeUpdate (unk_31E190.c); CamCtl.areaMode holds the
+ * one the area picks. CAM_MODE_SCRIPT runs the scripts (CamScript_Init;
+ * unk_31DF70.c).
+ */
+#define CAM_MODE_FOLLOW 0       /* behind the player (CamFollow_*) */
+#define CAM_MODE_ORBIT 1        /* over the shoulder (CamOrbit_*) */
+#define CAM_MODE_RAIL 2         /* the area's rail */
+#define CAM_MODE_AIM 3
+#define CAM_MODE_FIXED 4
 #define CAM_MODE_SCRIPT 5
+#define CAM_MODE_COUNT 6
+
+/* CamArea.kind: the follow camera's areas, and the rail's kinds 1-3. */
+#define CAM_AREA_FOLLOW 0
+#define CAM_AREA_FIXED 1
+#define CAM_AREA_PATH 2
+#define CAM_AREA_OFFSET 3
+
+#define CAM_AREA_ID_NONE 0xFF   /* CamCtl.areaId, prevAreaId: no area yet */
+#define CAM_YAW_FROM_NONE 0xFF  /* CamView.yawFrom: take no yaw from another mode */
+
+/* The follow camera's distance settings (CamFollow.distNo, CamDistSet.dist[]). */
+#define CAM_DIST_DEFAULT 2
+#define CAM_DIST_MAX 3          /* the highest the pad steps to */
+#define CAM_DIST_CROUCH 4       /* at CAM_DIST_DEFAULT while the player crouches */
+#define CAM_DIST_BLOCKED 6      /* the blocked view (CamFollow_UpdateBlocked) */
+#define CAM_DIST_FALL 7         /* the fall view (CamFollow_UpdateFallView) */
+
+#define CAM_HEIGHT_NORMAL 0     /* CamFollow.heightState */
+#define CAM_HEIGHT_FALL 1
+#define CAM_BLOCKED_HOLD 15     /* frames: CamFollow.blockedTimer's start, held while blown away */
+#define CAM_SWEEP_MASK 0x8009   /* the triangle flags the camera's sweeps skip (AreaGrid_SweepSphere) */
 
 /* CamView.flags in the script mode. */
 #define CAM_SCRIPT_ENDED 0x01   /* the script ended */
@@ -101,7 +132,7 @@ typedef struct CamDist {
 typedef char CamDist_size_check[(sizeof(CamDist) == 0x20) ? 1 : -1];
 
 /* The follow camera's settings (0x100 bytes): a kind 0 camera area's (CamArea.follow) or
- * gCamMode1Defaults (Cam_CopyDefaults copies it into the default area). */
+ * gCamFollowDefaults (Cam_CopyDefaults copies it into the default area). */
 typedef struct CamDistSet {
     f32 fov;                    /* 0x00 */
     f32 roll;                   /* 0x04 */
@@ -125,7 +156,7 @@ typedef struct CamFollow {
     f32 roll;                   /* 0x4C */
     f32 floorY;                 /* 0x50: the floor under the target */
     s8 unk54;                   /* 0x54 */
-    u8 heightState;             /* 0x55: CamFollow_PlayerHeightKind's state */
+    u8 heightState;             /* 0x55: CamFollow_UpdateFallView's state */
     s16 heightTimer;            /* 0x56: its frame count */
     s32 unk58;                  /* 0x58 */
     f32 hitDist;                /* 0x5C: Cam_LineHitDist's distance from the eye */
@@ -373,7 +404,7 @@ typedef struct CamArea {
     u8 *trans;                  /* 0x1C: the same, when set: 16 {area id, frames} pairs, the length of the
                                    transition from that area (CamView_SetTransition) */
     union {
-        CamDistSet follow;      /* 0x20: kind 0 (CamFollow.set; gCamMode1Defaults in the default) */
+        CamDistSet follow;      /* 0x20: kind 0 (CamFollow.set; gCamFollowDefaults in the default) */
         CamAreaFixed fixed;     /* 0x20: kinds 1 and 3 */
         CamAreaPath path;       /* 0x20: kind 2 */
         u8 pad20[0x2E0];

@@ -9,6 +9,7 @@
 #include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "window.h"
+#include "area.h"
 
 void Shake_Start(u8 id, u8 flags, f32 amp);
 s32 ChatMenu_CanSetState(void);
@@ -27,7 +28,7 @@ s32 ChatPage_OpenState(void)
     gSubMenuWork->windowSel = gChatWindowSel;
     gHelpPage = 0xB;
     gHelpShow = 0;
-    if (gScene.area != 0x83) {
+    if (gScene.area != AREA_HUB_0x83) {
         gHelpLine = gSubMenuWork->windowSel + 5;
     } else {
         gHelpLine = 5;
@@ -60,7 +61,7 @@ s32 ChatPage_UpdateState(s32 btn)
         gHelpShow = 0;
         btn = (u16)(btn & 0xC3BF);
     }
-    if (gScene.area != 0x83) {
+    if (gScene.area != AREA_HUB_0x83) {
         Menu_CursorUpDown(&gSubMenuWork->windowSel, btn, 2);
         cur = &gSubMenuWork->windowSel;
         gHelpLine = *cur + 5;
@@ -91,7 +92,7 @@ extern char *D_0080CFAC;
 extern char *gChatStateTexts[];
 extern char *D_0080CFEC;
 
-/* The window of the yes/no choice (sub_main's 0x5BC49A; area 0x83: a single
+/* The window of the yes/no choice (sub_main's 0x5BC49A; AREA_HUB_0x83: a single
  * answer). */
 void Chat_DrawState(void)
 {
@@ -100,7 +101,7 @@ void Chat_DrawState(void)
     s32 b;
 
     Shake_CopyOffset(0x10, (struct ShakeOffset *) x);
-    if (gScene.area != 0x83) {
+    if (gScene.area != AREA_HUB_0x83) {
         ListPanel_Draw(&gChatStatePanel, x, D_0080CFAC, gSubMenuWork->windowSel);
         Font_SetPos(x[0] + 0x1A9, 0x55);
         if (gChatWindowSel == 0) {

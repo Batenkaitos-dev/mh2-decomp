@@ -48,4 +48,36 @@
 /* The scratchpad RAM (16 KB) */
 #define SCRATCHPAD ((u8 *)0x70000000)
 
+/* GS registers, by their addresses in an A+D packet (the GS's register numbers). */
+#define GS_REG_PRIM 0x00
+#define GS_REG_RGBAQ 0x01
+#define GS_REG_ST 0x02
+#define GS_REG_UV 0x03
+#define GS_REG_XYZF2 0x04
+#define GS_REG_XYZ2 0x05
+#define GS_REG_TEX0_1 0x06
+#define GS_REG_TEX0_2 0x07
+#define GS_REG_CLAMP_1 0x08
+#define GS_REG_CLAMP_2 0x09
+#define GS_REG_FOG 0x0A
+#define GS_REG_TEX1_1 0x14
+#define GS_REG_TEX1_2 0x15
+#define GS_REG_MIPTBP1_1 0x34
+#define GS_REG_MIPTBP1_2 0x35
+#define GS_REG_MIPTBP2_1 0x36
+#define GS_REG_MIPTBP2_2 0x37
+#define GS_REG_TEXA 0x3B
+#define GS_REG_FOGCOL 0x3D
+#define GS_REG_TEXFLUSH 0x3F
+#define GS_REG_SCISSOR_1 0x40
+#define GS_REG_SCISSOR_2 0x41
+#define GS_REG_ALPHA_1 0x42
+#define GS_REG_ALPHA_2 0x43
+#define GS_REG_TEST_1 0x47
+#define GS_REG_TEST_2 0x48
+#define GS_REG_FRAME_1 0x4C
+#define GS_REG_FRAME_2 0x4D
+#define GS_REG_ZBUF_1 0x4E
+#define GS_REG_ZBUF_2 0x4F
+
 #endif

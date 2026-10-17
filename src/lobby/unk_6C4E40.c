@@ -9,6 +9,7 @@
 #include "player.h"
 #include "lobby_menu.h"
 #include "lobby_npc.h"
+#include "area.h"
 s32 Village_MealPointsReady(void);
 u16 LobbyPad_Get(s32);
 int abs(int);
@@ -120,7 +121,7 @@ void Workshop_Update(void)
     case 2:
         m->state++;
         if (Game_IsOnline() == 0) {
-            if (gScene.area == 0x57) {
+            if (gScene.area == AREA_HUB_0x57) {
                 break;
             }
             if (st->id == 0xF) {
@@ -140,7 +141,7 @@ void Workshop_Update(void)
         break;
     case 3:
         if (Game_IsOnline() == 0) {
-            if (gScene.area == 0x57) {
+            if (gScene.area == AREA_HUB_0x57) {
                 m->state++;
                 break;
             }
@@ -358,7 +359,7 @@ void Kitchen_Open(void)
     Actor_SetState(m->player, 0, 0x1E);
     Talk_Start(m->npc, 1);
     m->rand = Rand_Next(1);
-    if (gScene.area == 0x57) {
+    if (gScene.area == AREA_HUB_0x57) {
         m->unk91 = 3;
     } else if (gTakeSpotId <= 1) {
         m->unk91 = 0;

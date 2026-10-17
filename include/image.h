@@ -100,6 +100,16 @@ s32 Image_Convert(Image *dst, Image *src);
     (img)->b.shift = 16
 #define IMAGE_SET_PITCH(img) (img)->pitch = (img)->width * (img)->bpp
 
+/* A BMP file's header, as Bmp_GetPixels (sub_main unk_2F6540.c) reads it: the
+ * signature, then 32-bit fields at 2-byte alignment, read as halves. */
+typedef struct BmpFileHeader {
+    u16 type;                   /* 0x0: BMP_SIGNATURE */
+    u16 size[2];                /* 0x2: the file's bytes */
+    u16 reserved[2];            /* 0x6 */
+    u16 offBits[2];             /* 0xA: the pixels' offset from the file's start, low half first */
+} BmpFileHeader;
+#define BMP_SIGNATURE 0x4D42    /* 'BM' */
+
 /*
  * TIM2 pictures, as main's Tim2_* helpers (src/main/unk_18AFE0.c) read them
  * for Tex_CreateFromTim2: a 16-byte file header, then per picture a

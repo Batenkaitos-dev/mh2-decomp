@@ -1,9 +1,10 @@
 /*
- * Monster family: Yama Tsukami (kinds 0x3A, 0x48).
- * The code from the family's setup function (0x844710, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: Yama Tsukami (EM_KIND_YAMA_TSUKAMI and
+ * EM_KIND_YAMA_TSUKAMI_B). The code from the family's setup function
+ * (EmYamaTsukami_Setup, called by the per-kind dispatch Em_TypeSetup) to the
+ * next family's. The state functions take the monster and the work area its
+ * state dispatcher passes on (EmWork); Em.step is the step within the current
+ * state. See include/em.h.
  */
 #include "common.h"
 #include "scene.h"
@@ -11,6 +12,8 @@
 #include "mine_point.h"
 #include "em.h"
 #include "player.h"
+#include "area.h"
+#include "qsync.h"
 
 /* The work area at Em +0x438 as EmYamaTsukami_InitBoneFloorFlags sees it. */
 typedef struct EmYamaWork {
@@ -31,8 +34,8 @@ void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
 u16 Math_AngleXZ(f32 *from, f32 *to);
 s32 Save_TestEventFlag(s32);
-void EffYamatsukami31_Create(Em *, s8);
-void * EffEm33_Create(Em *, s32, s32, s32, s32);
+void YamaTsukamiAttack_Create(Em *, s8);
+void * EmEffectAttack_Create(Em *, s32, s32, s32, s32);
 void Em_MoveRotated(Em *, void *);
 void Em_RestartScript(Em *em);
 void EmYamaTsukami_StartCurves(Em *em, u8 kind);
@@ -92,7 +95,7 @@ extern f32 D_008CAAD0;
 u16 Area_DayId(u16 id);
 f32 Math_Sin(f32 x);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 void StageObj_K14_Create(Em *em, s16 k, s16 c, f32 scale);
 void StageObj_K14_CreateAt(f32 *pos, u8 k, u8 c, f32 scale);
 u8 Player_InCurrentArea(void *obj);
@@ -101,7 +104,7 @@ static void EmYamaTsukami_MotionEffectsDefault(Em *em);
 EmBone *Em_Bone(void *obj, s16 bone);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 void EmYamaTsukami_SpawnAreaImpactEffects(Em *);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 void Quest_TriggerEvent(Em *em);
 void Em_BreakPart(Em *em, s32 part);
 void Em_EndStatus5(Em *em);
@@ -124,7 +127,7 @@ void CamShake_ReqARange(Em *obj, s32 i, s32 flag);
 void Em_MotionDelta(Em *em, f32 *out);
 void EmKind38_SpawnAtEm(Em *em);
 void Effect0D_SpawnAt(f32 *pos, s32 a, f32 scale);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 extern f32 D_008CA9A8;
@@ -198,7 +201,7 @@ void EmYamaTsukami_AddMinePoint(Em *em)
         pt.table = 0x15C;
         break;
     }
-    pt.unk14 = 2;
+    pt.action = MINE_ACTION_CARVE;
     pt.count = w->mineCount;
     pt.area = (u8) em->area;
     pt.flags = 1;
@@ -259,7 +262,7 @@ void EmYamaTsukami_Start(Em *em)
         w->mineCount = 3;
         EmYamaTsukami_AddMinePoint(em);
     }
-    hp = Em_ComputeSize(em, 0);
+    hp = Em_ComputeMaxHp(em, 0);
     em->hp = hp;
     em->hpMax = hp;
     em->scriptPending = 1;
@@ -1160,7 +1163,7 @@ void EmYamaTsukami_State3_01(Em *em, s32 variant)
             if (variant == 0) {
                 em->velY = (em->goal[1] - em->posY) / 160.0f;
             }
-            EffYamatsukami31_Create(em, 0);
+            YamaTsukamiAttack_Create(em, 0);
         }
         break;
     case 2:
@@ -1337,7 +1340,7 @@ void EmYamaTsukami_State3_07(Em *em, s32 variant)
         break;
     case 1:
         EmYamaTsukami_SpawnBoneFloorEffects(em);
-        if ((variant == 1) && (Player_PassedFrameScaled(em, 170.0f, 0U) != 0)) {
+        if ((variant == 1) && (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0)) {
             if (em->remote == 0) {
                 n = w->unk1;
                 if (n < 0xA) {
@@ -1487,8 +1490,8 @@ void EmYamaTsukami_State3_0C(Em *em)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 100.0f) != 0) {
             em->step++;
-            EffYamatsukami31_Create(em, 0x10);
-            EffEm33_Create(em, 0, 0, 0, 0);
+            YamaTsukamiAttack_Create(em, 0x10);
+            EmEffectAttack_Create(em, 0, 0, 0, 0);
         }
         break;
     case 3:
@@ -2114,7 +2117,7 @@ block_19:
         break;
     case 4:
         if (Save_TestEventFlag(0xAF) == 1) {
-            em->area = Area_IdForCurrentTime(0x7DU);
+            em->area = Area_IdForCurrentTime(AREA_TOWER_3);
             em->rotY = 0x4FE0;
             em->posX = 4510.0f;
             em->posY = -2619.0f;
@@ -2251,7 +2254,7 @@ void EmYamaTsukami_Update(Em *em)
     } else if (w->syncTimer != 0 && em->stateGroup != 6 && em->remote == 0) {
         if (--w->syncTimer <= 0) {
             w->syncTimer = 150;
-            QSync_SendEm(em, 2, 0);
+            QSync_SendEm(em, QSYNC_EMMSG_STATE_NO_PARTS, 0);
         }
     }
     if (*(s8 *) &em->quakeTimer != 0) {
@@ -2348,8 +2351,8 @@ void EmYamaTsukami_Update(Em *em)
     if (em->parts[6].state >= 8) {
         Em_BreakPart(em, 0);
     }
-    if (em->type == 0x3A && Area_DayId(em->area) == 0x79 && Save_TestEventFlag(0xAF) == 0) {
-        if (Area_DayId(gScene.area) == 0x79 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+    if (em->type == 0x3A && Area_DayId(em->area) == AREA_TOWER_0 && Save_TestEventFlag(0xAF) == 0) {
+        if (Area_DayId(gScene.area) == AREA_TOWER_0 && gScene.eventRunning == 1 && em->stateGroup != 6) {
             EmYamaTsukami_ChangeState(em, 6, 0, 0);
         }
     } else {
@@ -2419,115 +2422,115 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
     EmYamaTsukami_MotionSounds(em, (EmWork *) w);
     switch (w->unk08) {
     case 0x3EE:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffEm07_CreateAt(em, &em->posX, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            EmImpactAttack_CreateAt(em, &em->posX, 0xA);
         }
-        if (Player_PassedFrameScaled(em, 100.0f, 0) != 0) {
-            EffEm07_CreateAt(em, &em->posX, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) {
+            EmImpactAttack_CreateAt(em, &em->posX, 0xA);
         }
         break;
     case 0x3F1:
-        if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 4.0f * em->scaleX);
-            EffYamatsukami31_Create(em, 0x14);
+            YamaTsukamiAttack_Create(em, 0x14);
         }
         break;
     case 0x3F2:
         break;
     case 0x3FD:
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x13, 0, 4.0f * em->scaleX);
         }
         break;
     case 0x406:
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 134.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 3);
         }
         break;
     case 0x407:
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 4);
         }
-        if (Player_PassedFrameScaled(em, 134.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 134.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 5);
         }
         break;
     case 0x40A:
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 6);
         }
-        if (Player_PassedFrameScaled(em, 124.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 124.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 7);
         }
         break;
     case 0x40B:
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 8);
         }
-        if (Player_PassedFrameScaled(em, 124.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 124.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 9);
         }
         break;
     case 0x40C:
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 0xA);
-            EffYamatsukami31_Create(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 0xA);
+            YamaTsukamiAttack_Create(em, 0x15);
         }
         break;
     case 0x41C:
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 0x16);
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 0x16);
         }
-        if ((Player_PassedFrameScaled(em, 156.0f, 0) != 0) && (Player_InCurrentArea(em) & 0xFF)) {
+        if ((EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) && (Player_InCurrentArea(em) & 0xFF)) {
             Em_BonePos(em, 2, pos);
             pos[1] -= 300.0f * em->scaleY;
             StageObj_K14_CreateAt(pos, 0x15, 0, 4.3f * em->scaleX);
             StageObj_K14_CreateAt(pos, 0xD, 0, 4.3f * em->scaleX);
-            EffEm07_CreateAt(em, pos, 0xB);
+            EmImpactAttack_CreateAt(em, pos, 0xB);
         }
         break;
     case 0x41D:
-        if (Player_PassedFrameScaled(em, 86.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 86.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 122.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
             StageObj_K14_Create(em, 0xB, 0, 4.0f * em->scaleX);
-            EffYamatsukami31_Create(em, 0x13);
+            YamaTsukamiAttack_Create(em, 0x13);
         }
         break;
     case 0x41E:
-        if (Player_PassedFrameScaled(em, 84.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0) != 0) {
             StageObj_K14_Create(em, 0x13, 0, 4.0f * em->scaleX);
         }
         break;
     case 0x427:
-        if (Player_PassedFrameScaled(em, 182.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 182.0f, 0) != 0) {
             StageObj_K14_Create(em, 0, 0, 4.0f * em->scaleX);
         }
         break;
     case 0x408:
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 0xC);
         }
         break;
     case 0x409:
-        if (Player_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 0xD);
         }
         break;
     case 0x412:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 0xE);
-            EffYamatsukami31_Create(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 0xE);
+            YamaTsukamiAttack_Create(em, 0x15);
         }
         break;
     case 0x413:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EffYamatsukami31_Create(em, 0xF);
-            EffYamatsukami31_Create(em, 0x15);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            YamaTsukamiAttack_Create(em, 0xF);
+            YamaTsukamiAttack_Create(em, 0x15);
         }
         break;
     default:
@@ -2586,7 +2589,7 @@ void EmYamaTsukami_SpawnAreaImpactEffects(Em *em)
     f32 pos[3];
 
     switch (Area_DayId(em->area)) {
-    case 0xB0:
+    case AREA_BATTLE_TOWN_1:
         pos[0] = 10069.0f;
         pos[1] = 1630.0f;
         pos[2] = 16847.0f;
@@ -2696,8 +2699,8 @@ u8 EmYamaTsukami_ScriptQuery(Em *em, s32 kind)
         return (u8)w->unk000;
     }
     switch (Area_DayId(em->area) & 0xFFFF) {
-    case 0x53:
-    case 0x7D:
+    case AREA_TOWER_0x53:
+    case AREA_TOWER_3:
         return 1U;
     }
     return 0U;

@@ -1,30 +1,32 @@
 /*
- * 0x18CC20: main, the file systems, file loading by id, LoadOverlay, save-data accessors
+ * 0x18CC20: the boot executable's main and the services every overlay uses.
+ * - main: sets up the display, the sound and CRI's file systems, loads
+ *   sub_main (include/overlay.h) and runs it; sub_main_entry never returns.
+ * - Afs_ReadId: reads one file of the disc's AFS archives, by an id that
+ *   holds the archive and the file, while the loading screen goes on.
+ * - LoadOverlay and its helpers: read an overlay into its window
+ *   (gOverlayWindow, gOverlayWindowBase), relocate it, and record what each
+ *   window holds in gSysSettings.
+ * - Small accessors for sub_main's and the lobby's state that main keeps:
+ *   the HR gates, the training quests' par times and records, the monster
+ *   rates' snapshot, the quest record (gQuestRecord, sent to the lobby
+ *   server after a quest) and the season.
  */
 #include "common.h"
 #include "save.h"
 #include "syssettings.h"
 #include "quest.h"
 #include "scene.h"
-/* The MWo3 header of an overlay file. */
-typedef struct OverlayHeader {
-    u32 magic;          /* "MWo" and the overlay id */
-    u32 id;
-    u32 load;           /* 0x08 load address (the header is loaded too) */
-    u32 textSize;
-    u32 dataSize;
-    u32 bssSize;        /* 0x14 */
-    u32 end;            /* 0x18 load + file size */
-    u32 end2;
-    char name[0x20];
-} OverlayHeader;
+#include "overlay.h"
 
-typedef struct IdPair {
-    u16 id;
-    u16 val;
-} IdPair;
+/* gDojoParTimes' entry: a training quest and its target time. */
+typedef struct DojoParTime {
+    u16 questId;        /* 0 ends the table */
+    u16 minutes;
+} DojoParTime;
 
-/* CRI ADX: the CD/DVD file system and its cache (0flist.dir) setup. */
+/* CRI ADX's parameter blocks for the CD/DVD file system and its cache
+ * (0flist.dir) set-up; only Adx_InitFileSystems fills them. */
 typedef struct AdxDvdFsParam {
     char *root;
     s32 unk4[4];
@@ -37,21 +39,9 @@ typedef struct AdxCacheParam {
     s32 nsct;
 } AdxCacheParam;
 
-/* The record of the last quest (sub_main 0x5D4920, 0xDC bytes): cleared by
- * QuestRecord_Clear when a quest starts or ends, filled by QuestRecord_Fill
- * for the results. */
-typedef struct QuestRecord {
-    u16 questId;        /* 0x00 (0x5D8268) */
-    u8 pad02[2];
-    u8 unk04;           /* 0x04 (0x6ADCF0) */
-    s8 unk05;           /* 0x05: Area_MapGroup of the quest's target */
-    s8 unk06;           /* 0x06 (0x5D83BC) */
-    s8 unk07;           /* 0x07 */
-    s32 unk08;          /* 0x08 (0x5D878C) */
-    u8 counts[0x10];    /* 0x0C: per id of gQuestRecordIds (QuestRecord_Count) */
-    u8 kindA[0x60];     /* 0x1C: per monster kind */
-    u8 kindB[0x60];     /* 0x7C: per monster kind */
-} QuestRecord;
+/* The monster rates main copies out (Rate_TakeSnapshot): the first of
+ * SaveData.rateBase. */
+#define RATE_SNAPSHOT_COUNT 0x4A
 
 extern u8 gSeasonFlags;         /* sub_main 0x5D4910 */
 extern s32 gLoadLastVSync;      /* sub_main 0x5D4A50: gVSyncCount when the loader last ran a frame */
@@ -59,15 +49,16 @@ extern u8 gQuestSeasonFlags;    /* sub_main 0x5D87A9: the quest's season (Quest_
 extern u8 gOverlayWindow[];
 extern u32 gOverlayWindowBase[];
 extern u16 *gHrGateQuests[];
-extern IdPair gDojoParTimes[];
-extern char gArgv[3][0x40];
+extern DojoParTime gDojoParTimes[];
+#define ARGV_KEPT 3 /* the command-line arguments main keeps */
+extern char gArgv[ARGV_KEPT][0x40];
 extern u8 gAdxCacheWork[];
 extern s32 gVSyncCount;
 extern s32 gLoadingScreenOn;
 extern QuestRecord gQuestRecord;
 extern u8 gLobbyRateStates[];
 extern u16 gQuestRecordIds[];
-u16 Area_MapGroup(u16, s32); /* unit's own declaration: the definition (sub_main) is u16 Area_MapGroup(u16 area), which ignores a1; QuestRecord_Fill passes a1 = v, and without it changes by 8 of 98 words */
+u16 Map_Group(u16, s32); /* unit's own declaration: the definition (sub_main) is u16 Map_Group(u16 map), which ignores a1; QuestRecord_Fill passes a1 = v, and without it changes by 8 of 98 words */
 s32 Quest_IsRunning(s32 ending); /* the definition (sub_main) is s32 Quest_IsRunning(s32 ending): the call here passes a second argument */
 extern s32 gRateSnapshot[];
 
@@ -103,15 +94,17 @@ s32 Overlay_Relocate(void *data, s32 *bss);
 void Sys_EnableGameVSync(void);
 void Overlay_LoadGmSub(void);
 void PatchExecCS(u8 mode, u8 sub);
-s32 Save_TestListBit(u16 item);
+s32 Save_IsQuestCleared(u16 item);
 
+/* Keeps the first three arguments in gArgv, sets up the display (512 x 448),
+ * the sound and the file systems, then loads and runs sub_main. */
 s32 main(s32 argc, char **argv)
 {
     s32 i;
 
     if (argc > 0) {
         for (i = 0; i < argc; i++) {
-            if (i >= 3) {
+            if (i >= ARGV_KEPT) {
                 break;
             }
             strcpy(gArgv[i], argv[i]);
@@ -122,12 +115,14 @@ s32 main(s32 argc, char **argv)
     Sound_Init();
     Adx_InitFileSystems();
     Sound_Boot();
-    LoadOverlay(1);
+    LoadOverlay(OVERLAY_SUB_MAIN);
     Sys_EmptyHook();
     sub_main_entry();
     return 0;
 }
 
+/* Sets up CRI's host and CD/DVD file systems, the CD/DVD cache of the
+ * file list (32 files, 0x215 sectors) and Sofdec. */
 void Adx_InitFileSystems(void)
 {
     AdxDvdFsParam dvd;
@@ -150,6 +145,14 @@ void Adx_InitFileSystems(void)
     Movie_InitSfd(0);
 }
 
+/*
+ * Reads a whole file of the disc's AFS archives to dst: id's high half is
+ * the archive (CRI's partition id), its low half the file. Waits for
+ * sub_main's file queue first. Retries the open until it succeeds, and the
+ * read until ADXF reports it complete (status 3; 2 while it reads); while
+ * it reads, calls sub_main's Load_Idle and flips a frame of the loading
+ * screen once per vsync. Returns the size read in bytes (whole sectors).
+ */
 s32 Afs_ReadId(u32 id, void *dst)
 {
     void *adxf;
@@ -158,7 +161,7 @@ s32 Afs_ReadId(u32 id, void *dst)
     s32 nsct;
     s32 stat;
 
-    if (Overlay_IsLoaded(1) == 1) {
+    if (Overlay_IsLoaded(OVERLAY_SUB_MAIN) == 1) {
         FileQueue_Flush();
     }
     ptid = (id >> 16) & 0xFFFF;
@@ -174,7 +177,7 @@ s32 Afs_ReadId(u32 id, void *dst)
             if (stat != 2) {
                 break;
             }
-            if (Overlay_IsLoaded(1) == 1) {
+            if (Overlay_IsLoaded(OVERLAY_SUB_MAIN) == 1) {
                 Load_Idle();
             }
             if (gLoadLastVSync != gVSyncCount) {
@@ -202,7 +205,7 @@ s32 Overlay_Relocate(void *data, s32 *bss)
 
     *bss = 0;
     hdr = data;
-    if ((hdr->magic & 0xFFFFFF) != 0x6F574D) {
+    if ((hdr->magic & OVERLAY_MAGIC_MASK) != OVERLAY_MAGIC) {
         return 0;
     }
     size = hdr->end - hdr->load;
@@ -222,7 +225,7 @@ s32 Overlay_ReadFile(s32 flid, s32 unused, s32 buf)
     return buf + Afs_ReadOverlay(flid, (void *)buf);
 }
 
-/* Loads gm_sub (overlay 6) into its window unless it is already there. */
+/* Loads gm_sub into its window unless it is already there. */
 void Overlay_LoadGmSub(void)
 {
     u32 addr;
@@ -230,8 +233,8 @@ void Overlay_LoadGmSub(void)
 
     if (gSysSettings.gmSubLoaded == 0) {
         FileQueue_Flush();
-        addr = gOverlayWindowBase[gOverlayWindow[5]];
-        Overlay_ReadFile(5, (s32)gSysSettings.loadBuf, addr);
+        addr = gOverlayWindowBase[gOverlayWindow[OVERLAY_GM_SUB - 1]];
+        Overlay_ReadFile(OVERLAY_GM_SUB - 1, (s32)gSysSettings.loadBuf, addr);
         Overlay_Relocate((OverlayHeader *)addr, &bss);
         gSysSettings.gmSubAddr = addr;
         gSysSettings.gmSubLoaded = 1;
@@ -239,74 +242,83 @@ void Overlay_LoadGmSub(void)
     }
 }
 
+/*
+ * Loads overlay id (an OverlayId) into its window and relocates it. The
+ * scene window's overlays (select and game, not the lobby) need gm_sub,
+ * which is loaded first; an overlay already in the scene window is not
+ * read again. Every load but sub_main's waits for sub_main's file queue.
+ * Then records what the window holds (gSysSettings.loaded, or the flags of
+ * sub_main, gm_sub and plsel) and runs the overlay's patch hook
+ * (PatchExecCS) where it has one.
+ */
 void LoadOverlay(s32 id)
 {
-    s32 region;
+    s32 window;
     s32 idx;
-    SysSettings *st;
+    SysSettings *settings;
     u32 addr;
     s32 bss;
 
-    st = &gSysSettings;
-    if (id > 0) {
+    settings = &gSysSettings;
+    if (id > OVERLAY_MAIN) {
         idx = id - 1;
-        region = gOverlayWindow[idx];
-        if (region == 2) {
-            if (id != 4) {
+        window = gOverlayWindow[idx];
+        if (window == OVERLAY_WINDOW_SCENE) {
+            if (id != OVERLAY_LOBBY) {
                 Overlay_LoadGmSub();
             }
-            if (st->loaded[region - 2] == id) {
+            if (settings->loaded[window - OVERLAY_WINDOW_SCENE] == id) {
                 return;
             }
         }
-        if (id != 1) {
+        if (id != OVERLAY_SUB_MAIN) {
             FileQueue_Flush();
         }
-        addr = gOverlayWindowBase[region];
-        if (id == 10) {
+        addr = gOverlayWindowBase[window];
+        if (id == OVERLAY_LBGUILD) {
             gSysSettings.lbguildFree = addr;
             gSysSettings.lbguildFree += 0x30000;
             gSysSettings.lbguildFreeSize = gSysSettings.patchArea;
             gSysSettings.lbguildFreeSize -= gSysSettings.lbguildFree;
         }
-        if (id == 1) {
+        if (id == OVERLAY_SUB_MAIN) {
             Overlay_ReadFile(idx, 0x800000, addr);
         } else {
             Overlay_ReadFile(idx, (s32)gSysSettings.loadBuf, addr);
         }
         Overlay_Relocate((OverlayHeader *)addr, &bss);
-        if (region == 3 || region == 5) {
-            st->gmSubLoaded = 0;
+        if (window == OVERLAY_WINDOW_GM_SUB || window == OVERLAY_WINDOW_LBGUILD) {
+            settings->gmSubLoaded = 0;
         }
-        if (id != 1 && id != 10 && id != 11) {
-            st->loaded[region - 2] = id;
+        if (id != OVERLAY_SUB_MAIN && id != OVERLAY_LBGUILD && id != OVERLAY_PLSEL) {
+            settings->loaded[window - OVERLAY_WINDOW_SCENE] = id;
         } else {
-            if (id == 1) {
-                st->subMainLoaded = 1;
+            if (id == OVERLAY_SUB_MAIN) {
+                settings->subMainLoaded = 1;
                 return;
             }
-            if (id == 10 || id == 5) {
+            if (id == OVERLAY_LBGUILD || id == OVERLAY_NETHTTP) {
                 gSysSettings.gmSubLoaded = 0;
             }
-            if (id == 11) {
+            if (id == OVERLAY_PLSEL) {
                 gSysSettings.plselLoaded = 1;
             }
         }
         switch (id) {
-        case 2:
+        case OVERLAY_SELECT:
             PatchExecCS(2, 1);
             break;
-        case 3:
+        case OVERLAY_GAME:
             PatchExecCS(2, 2);
             break;
-        case 4:
+        case OVERLAY_LOBBY:
             PatchExecCS(2, 3);
             break;
-        case 11:
+        case OVERLAY_PLSEL:
             PatchExecCS(6, 1);
             break;
-        case 8:
-        case 7:
+        case OVERLAY_DNAS_INS:
+        case OVERLAY_DNAS_NET:
             return;
         }
         if (gSysSettings.gmSubLoaded == 1) {
@@ -315,31 +327,32 @@ void LoadOverlay(s32 id)
     }
 }
 
+/* 1 when overlay id (an OverlayId) is in its window, else 0; main always is. */
 s32 Overlay_IsLoaded(s32 id)
 {
     if (id < 0) {
         return 0U;
     }
     switch (id) {
-    case 0:
+    case OVERLAY_MAIN:
         return 1U;
-    case 1:
+    case OVERLAY_SUB_MAIN:
         return gSysSettings.subMainLoaded;
     default:
-        return gSysSettings.loaded[gOverlayWindow[id - 1] - 2] == id;
+        return gSysSettings.loaded[gOverlayWindow[id - 1] - OVERLAY_WINDOW_SCENE] == id;
     }
 }
 
 /* 1 when every quest of HR gate n (0-2: HR 11, 17 and 31) is cleared. */
 s32 Save_HrGateCleared(s32 n)
 {
-    u16 *p = gHrGateQuests[n];
+    u16 *questId = gHrGateQuests[n];
 
-    while (*p != 0) {
-        if (Save_TestListBit(*p) == 0) {
+    while (*questId != 0) {
+        if (Save_IsQuestCleared(*questId) == 0) {
             return 0;
         }
-        p++;
+        questId++;
     }
     return 1;
 }
@@ -352,55 +365,59 @@ u16 Dojo_GetParMinutes(u16 id)
 {
     s16 i;
 
-    for (i = 0; gDojoParTimes[i].id != 0; i++) {
-        if (id == gDojoParTimes[i].id) {
-            return gDojoParTimes[i].val;
+    for (i = 0; gDojoParTimes[i].questId != 0; i++) {
+        if (id == gDojoParTimes[i].questId) {
+            return gDojoParTimes[i].minutes;
         }
     }
     return 0;
 }
 
+/* The index of training quest id in gDojoParTimes, or -1. */
 s32 Dojo_FindQuest(u16 id)
 {
     s16 i;
 
-    for (i = 0; gDojoParTimes[i].id != 0; i++) {
-        if (id == gDojoParTimes[i].id) {
+    for (i = 0; gDojoParTimes[i].questId != 0; i++) {
+        if (id == gDojoParTimes[i].questId) {
             return i;
         }
     }
     return -1;
 }
 
+/* The best score of training quest id, 0 if it isn't one. */
 s32 Dojo_GetBestScore(u16 id)
 {
     s16 i;
 
-    for (i = 0; gDojoParTimes[i].id != 0; i++) {
-        if (id == gDojoParTimes[i].id) {
+    for (i = 0; gDojoParTimes[i].questId != 0; i++) {
+        if (id == gDojoParTimes[i].questId) {
             return gSave.dojoScore[i];
         }
     }
     return 0;
 }
 
+/* The best time of training quest id in frames, 0 if it isn't one. */
 s32 Dojo_GetBestTime(u16 id)
 {
     s16 i;
 
-    for (i = 0; gDojoParTimes[i].id != 0; i++) {
-        if (id == gDojoParTimes[i].id) {
+    for (i = 0; gDojoParTimes[i].questId != 0; i++) {
+        if (id == gDojoParTimes[i].questId) {
             return gSave.dojoTime[i];
         }
     }
     return 0;
 }
 
+/* Clears the monster rates' snapshot and the season flags. */
 void Rate_ClearSnapshot(void)
 {
     s32 i;
 
-    for (i = 0; i < 0x4A; i++) {
+    for (i = 0; i < RATE_SNAPSHOT_COUNT; i++) {
         gRateSnapshot[i] = 0;
     }
     gSeasonFlags = 0;
@@ -416,90 +433,98 @@ s32 Rate_Get(s32 i)
     return gSave.rateBase[i];
 }
 
-/* Copies the monster rates of the save data out: the first 0x4A values
- * (as s32) and the trend and level bytes. */
+/* Copies the monster rates of the save data out: the first
+ * RATE_SNAPSHOT_COUNT values (as s32) and every kind's trend and level
+ * bits. */
 void Rate_TakeSnapshot(void)
 {
     SaveData *save = &gSave;
     s32 i;
 
-    for (i = 0; i < 0x4A; i++) {
+    for (i = 0; i < RATE_SNAPSHOT_COUNT; i++) {
         gRateSnapshot[i] = save->rateBase[i];
     }
-    memcpy(gLobbyRateStates, save->rateState, 0x60);
+    memcpy(gLobbyRateStates, save->rateState, sizeof(save->rateState));
 }
 
+/* Clears gQuestRecord; returns it (memset's result). */
 void *QuestRecord_Clear(void)
 {
     return memset(&gQuestRecord, 0, sizeof(QuestRecord));
 }
 
-/* Fills the record at gQuestRecord (0xDC bytes, cleared by QuestRecord_Clear)
- * from sub_main's state; its three tables are cleared unless the player's
- * slot and Quest_IsRunning agree. */
-/* The pointer to the u16 at q + 0x20 taken before the stores and the
- * compiled-out check of the tier (0 to 3; any two-test condition gives the
- * same code) give the game's registers and load order (found by the
- * permuter, as `c && d`). The record's s32 is stored
- * through a cast of the field (`*(s32 *)&gQuestRecord.unk08`, which aliases
- * like a raw address): stored as the field, the stores are scheduled
- * differently. */
+/*
+ * Fills gQuestRecord for the results from sub_main's state: the quest, its
+ * phase, map group, flyer, tier and time. The counts and the hunted and
+ * captured tables (kept up during the quest) are cleared unless the first
+ * player in the quest is the local one and the quest is still running.
+ * Kept for the match:
+ * - the pointer to the quest's map (info + 0x20, QuestInfo.map read as
+ *   a u16) taken before the stores, and the empty check of the tier (0 to
+ *   3; any two-test condition gives the same code), give the game's
+ *   registers and load order;
+ * - the time is stored through a cast of the field (`*(s32 *)&...elapsed`,
+ *   which aliases like a raw address): stored as the field, the stores are
+ *   scheduled differently.
+ */
 void QuestRecord_Fill(void)
 {
     QuestRecord *rec = &gQuestRecord;
-    s32 v;
-    u16 a;
-    u8 b;
-    u8 * q;
-    s8 c;
-    s8 d;
-    u8 *qs;
-    u8 n;
+    s32 elapsed;
+    u16 questId;
+    u8 phase;
+    u8 *info;
+    s8 tier;
+    s8 flyer;
+    u8 *map;
+    u8 playerCount;
     s32 i;
     s32 j;
 
-    v = gQuest.elapsed;
-    a = gQuest.stage;
-    b = gScene.questPhase;
-    q = (u8 *)gQuest.info;
-    qs = q + 0x20;
-    *(s32 *)&gQuestRecord.unk08 = v;
-    gQuestRecord.questId = a;
-    gQuestRecord.unk04 = b;
-    gQuestRecord.unk05 = Area_MapGroup(*(u16 *)qs, v);
-    c = gQuest.header->tier;
-    d = gQuest.flyer;
-    if (c < 0 || c > 3) { /* compiled-out check */
+    elapsed = gQuest.elapsed;
+    questId = gQuest.stage;
+    phase = gScene.questPhase;
+    info = (u8 *)gQuest.info;
+    map = info + 0x20;
+    *(s32 *)&gQuestRecord.elapsed = elapsed;
+    gQuestRecord.questId = questId;
+    gQuestRecord.phase = phase;
+    gQuestRecord.mapGroup = Map_Group(*(u16 *)map, elapsed);
+    tier = gQuest.header->tier;
+    flyer = gQuest.flyer;
+    if (tier < 0 || tier > 3) { /* empty: for the match */
     }
-    n = gScene.playerCount;
-    gQuestRecord.unk07 = c;
-    gQuestRecord.unk06 = d;
-    for (i = 0; i < n; i++) {
+    playerCount = gScene.playerCount;
+    gQuestRecord.tier = tier;
+    gQuestRecord.flyer = flyer;
+    for (i = 0; i < playerCount; i++) {
         if (gScene.inQuest[i] == 1) {
             break;
         }
     }
     if (i != gScene.localPlayer || Quest_IsRunning(1) != 1) {
-        for (j = 0; j < 0x10; j++) {
+        for (j = 0; j < QUEST_RECORD_IDS; j++) {
             rec->counts[j] = 0;
         }
-        for (i = 0; i < 0x60; i++) {
-            rec->kindA[i] = 0;
-            rec->kindB[i] = 0;
+        for (i = 0; i < QUEST_RECORD_KINDS; i++) {
+            rec->hunted[i] = 0;
+            rec->captured[i] = 0;
         }
     }
 }
 
+/* Counts a clear of quest id in gQuestRecord.counts, if gQuestRecordIds
+ * lists it (the count stops at 255). */
 void QuestRecord_Count(u16 id)
 {
     s32 i;
-    u16 *p = gQuestRecordIds;
+    u16 *listed = gQuestRecordIds;
 
-    for (i = 0; i < 0x10; i++, p++) {
-        if (*p == 0) {
+    for (i = 0; i < QUEST_RECORD_IDS; i++, listed++) {
+        if (*listed == 0) {
             break;
         }
-        if (*p == id) {
+        if (*listed == id) {
             if (gQuestRecord.counts[i] < 0xFF) {
                 gQuestRecord.counts[i]++;
             }
@@ -508,42 +533,43 @@ void QuestRecord_Count(u16 id)
     }
 }
 
-/* The season, 0-2, from sub_main's season bits (Season_Set sets one). */
+/* The season (SEASON_*), from sub_main's season bits (Season_Set sets one). */
 s32 Season_Get(void)
 {
-    u8 f = gSeasonFlags;
-    s32 r;
+    u8 flags = gSeasonFlags;
+    s32 season;
 
-    if (f & 1) {
-        r = 0;
-    } else if (f & 2) {
-        r = 1;
+    if (flags & (1 << SEASON_WARM)) {
+        season = SEASON_WARM;
+    } else if (flags & (1 << SEASON_COLD)) {
+        season = SEASON_COLD;
     } else {
-        r = 2;
+        season = SEASON_BREEDING;
     }
-    return r;
+    return season;
 }
 
+/* Sets the season bits to season (SEASON_*): bit season of the low three. */
 void Season_Set(s32 season)
 {
     gSeasonFlags = (u8) (gSeasonFlags & ~7);
     gSeasonFlags = (u8) (gSeasonFlags | ((1 << (season & 0xFF)) & 0xFF));
 }
 
-/* The current quest's season, 0-2 (the same bits in the quest's data). */
+/* The current quest's season (SEASON_*; the same bits in the quest's data). */
 s32 Quest_GetSeason(void)
 {
-    u8 f = gQuestSeasonFlags;
-    s32 r;
+    u8 flags = gQuestSeasonFlags;
+    s32 season;
 
-    if (f & 1) {
-        r = 0;
-    } else if (f & 2) {
-        r = 1;
+    if (flags & (1 << SEASON_WARM)) {
+        season = SEASON_WARM;
+    } else if (flags & (1 << SEASON_COLD)) {
+        season = SEASON_COLD;
     } else {
-        r = 2;
+        season = SEASON_BREEDING;
     }
-    return r;
+    return season;
 }
 
 /* main's .data (0x1BB130-0x1BB2A0) */
@@ -580,7 +606,7 @@ u32 D_001BB1F8[2] = {
     0, 0,
 };
 #pragma explicit_zero_data reset
-IdPair gDojoParTimes[24] = {
+DojoParTime gDojoParTimes[24] = {
 #include "main/001BB200.inc"
 };
 u32 D_001BB260[8] = {

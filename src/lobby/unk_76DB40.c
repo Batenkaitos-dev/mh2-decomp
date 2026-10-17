@@ -10,6 +10,7 @@
 #include "pad.h"
 #include "quest.h"
 #include "player.h"
+#include "area.h"
 
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
@@ -829,13 +830,13 @@ s32 QuestCounter_DrawRecruitInfo(s16 x, s16 y, s16 i)
     x += 0x40;
     Font_SetPos(x, y);
     switch (q->area) {
-    case 0x86:
+    case AREA_HUB_0x86:
         s = gQuestHallNameTexts[0];
         break;
-    case 0x87:
+    case AREA_HUB_0x87:
         s = gQuestHallNameTexts[1];
         break;
-    case 0x88:
+    case AREA_HUB_0x88:
     default:
         s = gQuestHallNameTexts[2];
         break;

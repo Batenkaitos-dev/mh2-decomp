@@ -9,6 +9,7 @@
 #include "pad.h"
 #include "lobby_globals.h"
 #include "lobby_state.h"
+#include "area.h"
 
 /* The NPCs' state machines, 0x780580-0x78E4D0: one of the game's units.
  * Npc_StartTurnBack is static (Npc_StateA1 matches only so) and is called
@@ -147,7 +148,7 @@ s32 Npc2_NearNpc1(Em *npc)
     NpcWork *m = (NpcWork *)&npc->work;
     Em *em;
 
-    if (gScene.area != 0x89) {
+    if (gScene.area != AREA_HUB_0x89) {
         return 0;
     }
     switch (m->id) {
@@ -969,7 +970,7 @@ void Npc_State43(Em *a, s8 variant)
             }
             break;
         }
-        if (gScene.area == 0x89 || gScene.area == 0x57) {
+        if (gScene.area == AREA_HUB_0x89 || gScene.area == AREA_HUB_0x57) {
             if (Npc_IsFreeAct2Bto30(a) == 1 && a->motion[0].playing == 0 && a->motionId[0] == 0x28B) {
                 Actor_SetMotion(a, 0x28C, 2, 0);
             }
@@ -5261,7 +5262,7 @@ void Npc4F_State56(Em *obj)
     NpcRouteEnt *r;
     f32 p[3];
 
-    if (gScene.area == 0x89) {
+    if (gScene.area == AREA_HUB_0x89) {
         obj->motionSpeed *= 2.0f;
         if ((u8)Pos_InArea(&obj->posX, gNpc4FArea0) == 1) {
             r = gNpc4FRoute0;
@@ -5481,7 +5482,7 @@ void Npc4F_State58(Em *obj)
             return;
         }
     }
-    if (w->id == 0x6D && gScene.area == 0x56) {
+    if (w->id == 0x6D && gScene.area == AREA_HOUSE) {
         obj->unk3EB = 1;
         Actor_SetState(obj, 0, 0x5D);
         return;
@@ -5511,7 +5512,7 @@ void Npc4F_State58(Em *obj)
         break;
     case 1:
         if (Game_IsOnline() == 0) {
-            if (gScene.area == 0x89 || gScene.area == 0x57) {
+            if (gScene.area == AREA_HUB_0x89 || gScene.area == AREA_HUB_0x57) {
                 obj->motionSpeed = 2.5f;
             } else {
                 obj->motionSpeed = 1.0f;
@@ -5757,7 +5758,7 @@ void Npc4F_State5D(Em *obj, Em *other)
             if (obj->step == 1) {
                 if (*(s8 *)(save + 0x2C98) != 0) {
                     Actor_SetState(obj, 0, 0x58);
-                    if (gScene.area == 0xAF) {
+                    if (gScene.area == AREA_ONLINE_HOUSE_2) {
                         w->unk44 = 0;
                     }
                 } else {
@@ -5772,7 +5773,7 @@ void Npc4F_State5D(Em *obj, Em *other)
     } else {
         if (obj->motion[0].playing <= 0) {
             if (w->id == 0x6D) {
-                if (gScene.area == 0x57) {
+                if (gScene.area == AREA_HUB_0x57) {
                     Actor_SetState(obj, 0, 0x58);
                     return;
                 }
@@ -6072,7 +6073,7 @@ s32 Npc4F_RunState(Em *obj)
     case 0x60:
         break;
     }
-    if (gScene.area == 0x56 || gScene.area == 0x57) {
+    if (gScene.area == AREA_HOUSE || gScene.area == AREA_HUB_0x57) {
         obj->area = gScene.area;
     }
     if (w->unk44 != 0 || (*(s8 *)(save + 0x2C98) == 0 && gPoogieFollowing != 1)) {

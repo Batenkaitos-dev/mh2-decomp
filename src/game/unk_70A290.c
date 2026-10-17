@@ -15,8 +15,12 @@
 #include "quest.h"
 #include "scevent.h"
 #include "em.h"
+#include "pad.h"
 #include "player.h"
 #include "item.h"
+#include "area.h"
+#include "objattach.h"
+#include "qsync.h"
 /* prototypes of callees (round 13) */
 s32 ScEvent_LoadDemoCams(ScEventList *h);
 s32 ScEvent_LoadCamera(ScEventList *h);
@@ -25,9 +29,9 @@ s32 Player_TakeOfferedItem(Player *p);
 s32 Quest_IsVersus(void);
 s32 SpecialMine_IsFree(Player *unused0);
 
-/* sub_main 0x5B1DD0: per player (Em +0xC), 11 records of 12 bytes, ended by flags 0: flags, and a pointer
+/* gEmWallContacts (sub_main, 0x5B1DD0): per player (Player.index), 11 records of 12 bytes, ended by flags 0: flags, and a pointer
  * to a position (x at [0], z at [2]). Player_TurnAlongWall and Player_TurnAlongWallSide turn the player to face a quarter
- * turn off the direction of the first one. Player +0x698 (0xE0000007) also picks the voice with it
+ * turn off the direction of the first one. Player.wallHitDirs (0xE0000007) also picks the voice with it
  * (sub_main Motion_VoiceAtFrame). */
 typedef struct NoiseSrc {
     u16 flags;
@@ -48,7 +52,7 @@ s32 Item_CanPlaceLargeBarrelBomb(void);
 s32 Item_CanPlaceKind1(void);
 s32 Item_CanPlaceKind2(void);
 s16 Player_GetAreaAmbModel(Player *p);
-s32 Pouch_HasItem28(Player *p);
+s32 Pouch_HasMeat(Player *p);
 s32 Player_LocalAreaOk_Unk(void);
 
 /* Prototypes shared by the parts of this unit. */
@@ -62,7 +66,7 @@ void Player_ClearFlag(void *obj, u32 flag);
 void Player_FaceStick(Player *em);
 s32 Player_InSceneEvent(void);
 void Player_SetFlag(void *obj, u32 flag);
-void Player_StartAct(Player *p);
+void Player_StartGesture(Player *p);
 void Player_StateMove(Player *em, s32 variant);
 void Player_StateWallHold(Player *em, s32 arg1);
 void Player_StateWallClimbUp(Player *player, s32 arg1);
@@ -70,9 +74,9 @@ u32 Player_TestFlag(void *obj, u32 flag);
 void Player_HoldSpecialInput(Player *em, u8 mode);
 void Player_UpdateMotionTime(Player *p, s16 step);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
-AreaRecord *Stage_GetAreaRecord(s32 area); /* unit's own declaration: the definition (sub_main) is AreaRecord *(u16 x); u16 here adds masks in two functions */ /* unit's own declaration: with the definition's AreaRecord *(u16 x) (sub_main/stage_data.c), EmScript_Op1A 246 of 276 words, Em_PickRoutePoint 3 of 226 words differ */
+AreaRecord *Stage_GetAreaRecord(s32 area); /* unit's own declaration: the definition (sub_main) is AreaRecord *(u16 x); u16 here adds masks in two functions */ /* unit's own declaration: with the definition's AreaRecord *(u16 x) (sub_main/stage_data.c), EmScript_GoalAreaToward 246 of 276 words, Em_PickRoutePoint 3 of 226 words differ */
 s32 Player_TurnAlongWallSide(Player *em, s16 side);
-s32 func_00723BC0(Em *em);
+s32 Player_Status6Active(Player *pl);
 void QSync_SendPlayer(Player *p, s32 kind, u16 mode);
 extern f32 gAreaGroundY[];
 s32 Player_Status5Full(Player *em);
@@ -94,39 +98,39 @@ void Player_GuardInput(Player *p);
 s32 Player_Damage(Player *p, s16 damage, s16 lose);
 s16 Player_CountSpecialItems(Player *p);
 s16 Area_Temperature(u16 area);
-s32 Player_NearEm40(Player *p);
+s32 Player_InEmAura(Player *p);
 /* unit's own declaration: with the definition's void (Player *p, s32 flag) (game/unk_88E760.c), Player_UpdateEnvironment: 2 of 405 words differ */
 void StageObj_K29_TickType6(Player *p, u8 flag);
-void Eff03_Create(void *obj, s32 kind, s8 arg2);
-void Eff28_Create(Em *em, u8 kind, u8 n);
+void ItemAttack_Create(void *obj, s32 kind, s8 arg2);
+void Boomerang_Create(Em *em, u8 kind, u8 n);
 u16 Rand_Next(s32 stream);
 void Player_AddSpawnOffset(Player *p, f32 *pos, u16 angle);
 extern f32 gStartPos[][3];
 extern f32 D_43F0A4[][3];
 extern f32 D_43F0A8[][3];
 extern u16 gStartAngle[];
-extern ScEventRec ScEvent_Seq61A9;
-extern ScEventRec ScEvent_Seq3EB;
-extern ScEventRec ScEvent_Seq3ED;
-extern ScEventRec ScEvent_Seq1389;
-extern ScEventRec ScEvent_Seq3F4;
-extern ScEventRec ScEvent_Seq3F8;
-extern ScEventRec ScEvent_Seq138A;
-extern ScEventRec ScEvent_Seq138C;
-extern ScEventRec ScEvent_Seq138D;
-extern ScEventRec ScEvent_Seq138F;
-extern ScEventRec ScEvent_Seq1771;
-extern ScEventRec ScEvent_Seq438;
-extern ScEventRec ScEvent_Seq431;
-extern ScEventRec ScEvent_Seq424;
-extern ScEventRec ScEvent_Seq42F;
-extern ScEventRec ScEvent_Seq3F0;
-extern ScEventRec ScEvent_Seq422;
-extern ScEventRec ScEvent_Seq406;
-extern ScEventRec ScEvent_Seq42C;
-extern ScEventRec ScEvent_Seq1390;
-extern ScEventRec ScEvent_Seq436;
-extern ScEventRec ScEvent_Seq426;
+extern ScEventRec ScEvent_VersusEnd;
+extern ScEventRec ScEvent_VelocidromeSighting;
+extern ScEventRec ScEvent_BulldromeSighting;
+extern ScEventRec ScEvent_DaimyoHermitaurSighting;
+extern ScEventRec ScEvent_CongalalaSighting;
+extern ScEventRec ScEvent_RathianSighting;
+extern ScEventRec ScEvent_KushalaJungleSighting;
+extern ScEventRec ScEvent_KushalaSnowSighting;
+extern ScEventRec ScEvent_LunastraTeostraVolcano8Sighting;
+extern ScEventRec ScEvent_LunastraTeostraTowerSighting;
+extern ScEventRec ScEvent_GarugaSighting;
+extern ScEventRec ScEvent_ChameleosSighting;
+extern ScEventRec ScEvent_LunastraTeostraVolcano7Sighting;
+extern ScEventRec ScEvent_BlangongaSighting;
+extern ScEventRec ScEvent_ShogunCeanataurSighting;
+extern ScEventRec ScEvent_KutkuSighting;
+extern ScEventRec ScEvent_KhezuSighting;
+extern ScEventRec ScEvent_DiablosSighting;
+extern ScEventRec ScEvent_GraviosSighting;
+extern ScEventRec ScEvent_MonoblosSighting;
+extern ScEventRec ScEvent_RathalosSighting;
+extern ScEventRec ScEvent_KirinSighting;
 extern ScEventRec ScEvent_Seq1;
 extern ScEventRec ScEvent_Seq5;
 extern ScEventRec ScEvent_Seq3;
@@ -152,7 +156,7 @@ void Bow_DrawToAim(Player *em);
 void Player_ResetAim(Player *p);
 void Hammer_ChargeFromRoll(Player *em);
 u16 Player_FindActionSpot(Player *, f32 *, u16 *arg, u8 *);
-s32 Player_NearEmKind10(void *obj);
+s32 Player_NearTrader(void *obj);
 void Player_StartMoveTo(Player *em, s16 frames);
 void Vec_Copy(f32 *out, f32 *in);
 void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
@@ -248,9 +252,9 @@ void CamShake_ReqA(void *, s32 i);
 s32 Game_IsOnline(void);
 s32 Quest_PhaseIsOver(s32);
 void Vib_StartLocal(void *port, s32 i);
-u16 Area_BaseId(u16);
+u16 Map_DayId(u16);
 u8 Notice_Push(u8, s16, s16);
-void Player_BeginState(Player *p, s32 action, s32 a2, s32 a3);
+void Player_ReturnToIdle(Player *p, s32 action, s32 a2, s32 a3);
 s32 Player_FloorAheadAbove(Player *p, f32 *out, f32 fwd, f32 up, f32 range);
 extern ScEventRec ScEvent_CamF;
 extern ScEventRec ScEvent_Cam6;
@@ -280,101 +284,102 @@ s32 Motion_InFrameRange(void *, s32, f32, f32);
 s8 Player_TurnAlongWall(Player *, s16);
 /* end of prototypes */
 
-/* Flight steering (em_chameleos calls it with EmChameleos_FlyParam): banks (unkA8) toward the angle unk98E
- * and turns the yaw (unkA4) by the bank, keeps the height over the ground (Stage_GetAreaRecord) and
- * picks the flight motions from p by the bank. Flag bits skip parts: 2 the bank-scaled turn,
- * 4 the height, 8 the motions, 0x10 the roll (unkA0) return. */
-void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p)
+/* Flight steering (em_chameleos calls it with EmChameleos_FlyParam): banks (em->rotZ) toward the
+ * angle em->aimAngle (copied to em->flightTurn) and turns the heading (em->rotY) by the bank, keeps
+ * the height over the ground (Stage_GetAreaRecord) and picks the flight motions from fly by the
+ * bank. Flag bits skip parts: 2 the bank-scaled turn, 4 the height, 8 the motions, 0x10 the
+ * return of em->rotX to 0 (by fly->roll a frame). */
+void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *fly)
 {
     AreaRecord *ground;
     s32 k;
     s32 sel;
-    s32 d;
-    s32 a;
+    s32 turnSize;
+    s32 bank;
     s32 step;
-    s32 hi;
-    s32 lo;
-    f32 f;
-    f32 h;
+    s32 bankHigh;
+    s32 bankLow;
+    f32 sink;
+    f32 minHeight;
 
     ground = Stage_GetAreaRecord(em->area);
     em->flightTurn = em->aimAngle;
     k = !(flags & 0x20);
-    d = em->flightTurn;
-    if (d >= 0x8000) {
-        d = 0x10000 - d;
+    turnSize = em->flightTurn;
+    if (turnSize >= 0x8000) {
+        turnSize = 0x10000 - turnSize;
     }
     switch (k) {
     case 0:
-        if (d <= p->lim0) {
-            sel = p->a0;
-        } else if (d <= p->lim1) {
-            sel = p->a1;
-        } else if (d <= p->lim2) {
-            sel = p->a2;
-        } else if (d <= p->lim3) {
-            sel = p->a3;
+        if (turnSize <= fly->lim0) {
+            sel = fly->a0;
+        } else if (turnSize <= fly->lim1) {
+            sel = fly->a1;
+        } else if (turnSize <= fly->lim2) {
+            sel = fly->a2;
+        } else if (turnSize <= fly->lim3) {
+            sel = fly->a3;
         }
         if (em->velZ <= 130.0f) {
             break;
         }
     case 1:
-        if (d <= p->lim0) {
-            sel = p->b0;
-        } else if (d <= p->lim1) {
-            sel = p->b1;
-        } else if (d <= p->lim2) {
-            sel = p->b2;
-        } else if (d <= p->lim3) {
-            sel = p->b3;
+        if (turnSize <= fly->lim0) {
+            sel = fly->b0;
+        } else if (turnSize <= fly->lim1) {
+            sel = fly->b1;
+        } else if (turnSize <= fly->lim2) {
+            sel = fly->b2;
+        } else if (turnSize <= fly->lim3) {
+            sel = fly->b3;
         }
         break;
     }
     if (em->flightTurn != 0) {
         if (em->flightTurn <= 0x8000) {
             if (em->rotZ <= 0x4000) {
-                em->rotZ = em->rotZ - p->pitch * 2;
+                em->rotZ = em->rotZ - fly->pitch * 2;
             } else if (em->rotZ <= sel || em->rotZ > 0x10000 - sel) {
-                em->rotZ = em->rotZ - p->pitch;
+                em->rotZ = em->rotZ - fly->pitch;
             } else if (em->rotZ != 0x10000 - sel) {
-                em->rotZ = em->rotZ + p->pitch;
+                em->rotZ = em->rotZ + fly->pitch;
             }
         } else {
             if (em->rotZ >= 0xC000) {
-                em->rotZ = em->rotZ + p->pitch * 2;
+                em->rotZ = em->rotZ + fly->pitch * 2;
             } else if (em->rotZ < sel || em->rotZ >= 0x10000 - sel) {
-                em->rotZ = em->rotZ + p->pitch;
+                em->rotZ = em->rotZ + fly->pitch;
             } else if (em->rotZ != sel) {
-                em->rotZ = em->rotZ - p->pitch;
+                em->rotZ = em->rotZ - fly->pitch;
             }
         }
     } else if (em->rotZ != 0) {
         if (em->rotZ <= sel) {
-            em->rotZ = em->rotZ - p->pitch;
+            em->rotZ = em->rotZ - fly->pitch;
         } else if (em->rotZ >= 0x10000 - sel) {
-            em->rotZ = em->rotZ + p->pitch;
+            em->rotZ = em->rotZ + fly->pitch;
         }
     }
     if (!(flags & 2)) {
-        a = em->rotZ;
-        a = a < 0x8000 ? a : (u16) (0x10000 - a);
-        if (a <= 0x1000) {
-            step = p->turn;
+        bank = em->rotZ;
+        bank = bank < 0x8000 ? bank : (u16) (0x10000 - bank);
+        if (bank <= 0x1000) {
+            step = fly->turn;
         } else {
-            step = p->turn + (a - 0x1000) / 16;
+            step = fly->turn + (bank - 0x1000) / 16;
         }
     } else {
-        step = p->turn;
+        step = fly->turn;
     }
     if (em->rotZ != 0) {
         if (flags & 0x100) {
-            hi = 0x10000;
-            lo = 0;
+            bankHigh = 0x10000;
+            bankLow = 0;
         } else {
-            hi = 0xF000;
-            lo = 0x1000;
+            bankHigh = 0xF000;
+            bankLow = 0x1000;
         }
-        if (em->rotZ <= hi && em->rotZ >= 0xC000) {
+        if (em->rotZ <= bankHigh && em->rotZ >= 0xC000) {
             if (em->flightTurn <= step) {
                 em->rotY = em->rotY + em->flightTurn;
                 em->flightTurn = 0;
@@ -382,7 +387,7 @@ void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p)
                 em->rotY = em->rotY + step;
                 em->flightTurn = em->flightTurn - step;
             }
-        } else if (em->rotZ >= lo && em->rotZ <= 0x4000) {
+        } else if (em->rotZ >= bankLow && em->rotZ <= 0x4000) {
             if (em->flightTurn >= 0x10000 - step) {
                 em->rotY = em->rotY - (0x10000 - em->flightTurn);
                 em->flightTurn += 0x10000 - em->flightTurn;
@@ -395,19 +400,19 @@ void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p)
     em->rotY = (u16) em->rotY;
     em->flightTurn = (u16) em->flightTurn;
     if (flags & 0x40) {
-        a = em->rotZ;
-        if (a >= 0x8000) {
-            a = 0x10000 - a;
+        bank = em->rotZ;
+        if (bank >= 0x8000) {
+            bank = 0x10000 - bank;
         }
-        if (a < 0x1000) {
-            f = 0.1f;
+        if (bank < 0x1000) {
+            sink = 0.1f;
         } else {
-            f = 6.2831855f * a / 65536.0f;
+            sink = 6.2831855f * bank / 65536.0f;
         }
         if (!(flags & 4)) {
-            em->posY = em->posY - f;
-            if (em->velZ >= 50.0f && f != 0.1f) {
-                em->velZ = em->velZ - f;
+            em->posY = em->posY - sink;
+            if (em->velZ >= 50.0f && sink != 0.1f) {
+                em->velZ = em->velZ - sink;
             }
         }
         if (em->posY < em->floorY) {
@@ -416,126 +421,126 @@ void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p)
     }
     if (!(flags & 4)) {
         if (flags & 0x400) {
-            h = gAreaGroundY[em->area] - 2000.0f;
-            if (h < ground->bottom) {
-                h = ground->bottom;
+            minHeight = gAreaGroundY[em->area] - 2000.0f;
+            if (minHeight < ground->bottom) {
+                minHeight = ground->bottom;
             }
         } else {
-            h = ground->bottom;
+            minHeight = ground->bottom;
         }
         if (flags & 0x80) {
-            if (p->mot[0] + 1000 == em->motionId[0]) {
+            if (fly->mot[0] + 1000 == em->motionId[0]) {
                 if (em->motion[0].playing == 0) {
-                    Em_SetMotion(em, p->mot[1], 0, 0);
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
                 }
-                if (1000.0f + h >= em->posY) {
+                if (1000.0f + minHeight >= em->posY) {
                     em->posY = em->posY + 5.0f;
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 1.0f;
                     }
-                } else if (1500.0f + h >= em->posY) {
+                } else if (1500.0f + minHeight >= em->posY) {
                     em->posY = em->posY + 3.0f;
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 0.5f;
                     }
-                } else if (2000.0f + h >= em->posY) {
+                } else if (2000.0f + minHeight >= em->posY) {
                     em->posY = em->posY + 2.0f;
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 0.5f;
                     }
                 } else {
-                    if (2100.0f + h >= em->posY) {
+                    if (2100.0f + minHeight >= em->posY) {
                         em->posY = em->posY + 1.0f;
                     }
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 1.0f;
                     }
                 }
-            } else if (2000.0f + h >= em->posY || em->velZ <= p->speedMin) {
-                Em_SetMotion(em, p->mot[0], 0, 0);
+            } else if (2000.0f + minHeight >= em->posY || em->velZ <= fly->speedMin) {
+                Em_SetMotion(em, fly->mot[0], 0, 0);
             }
         } else if (flags & 0x200) {
-            if (p->mot[0] + 1000 == em->motionId[0]) {
+            if (fly->mot[0] + 1000 == em->motionId[0]) {
                 if (em->motion[0].playing == 0) {
-                    Em_SetMotion(em, p->mot[1], 0, 0);
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
                 }
                 if (em->goal[1] >= em->posY) {
                     em->posY = em->posY + 5.0f;
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 1.0f;
                     }
-                } else if (1500.0f + h >= em->posY) {
+                } else if (1500.0f + minHeight >= em->posY) {
                     em->posY = em->posY + 3.0f;
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 0.5f;
                     }
-                } else if (2000.0f + h >= em->posY) {
+                } else if (2000.0f + minHeight >= em->posY) {
                     em->posY = em->posY + 2.0f;
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 0.5f;
                     }
                 } else {
-                    if (2100.0f + h >= em->posY) {
+                    if (2100.0f + minHeight >= em->posY) {
                         em->posY = em->posY + 1.0f;
                     }
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 1.0f;
                     }
                 }
-            } else if (2000.0f + h >= em->posY || em->velZ <= p->speedMin) {
-                Em_SetMotion(em, p->mot[0], 0, 0);
+            } else if (2000.0f + minHeight >= em->posY || em->velZ <= fly->speedMin) {
+                Em_SetMotion(em, fly->mot[0], 0, 0);
             }
         } else {
-            if (p->mot[0] + 1000 == em->motionId[0]) {
+            if (fly->mot[0] + 1000 == em->motionId[0]) {
                 if (em->motion[0].playing == 0) {
-                    Em_SetMotion(em, p->mot[1], 0, 0);
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
                 }
                 if (em->goal[1] >= em->posY) {
                     em->posY = em->posY + 5.0f;
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 1.0f;
                     }
                 } else {
                     if (em->goal[1] >= em->posY) {
                         em->posY = em->posY + 1.0f;
                     }
-                    if (em->velZ < p->speedMax) {
+                    if (em->velZ < fly->speedMax) {
                         em->velZ = em->velZ + 1.0f;
                     }
                 }
-            } else if (em->goal[1] >= em->posY || em->velZ <= p->speedMin) {
-                Em_SetMotion(em, p->mot[0], 0, 0);
+            } else if (em->goal[1] >= em->posY || em->velZ <= fly->speedMin) {
+                Em_SetMotion(em, fly->mot[0], 0, 0);
             }
         }
     }
     if (!(flags & 8)) {
-        if (p->mot[0] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
-            a = em->rotZ;
-            if (a < 0x8000) {
-                if (a > p->up0) {
-                    if (p->mot[2] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
-                        Em_SetMotion(em, p->mot[2], 0, 0);
+        if (fly->mot[0] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+            bank = em->rotZ;
+            if (bank < 0x8000) {
+                if (bank > fly->up0) {
+                    if (fly->mot[2] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                        Em_SetMotion(em, fly->mot[2], 0, 0);
                     }
-                } else if (a > p->up1) {
-                    if (p->mot[3] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
-                        Em_SetMotion(em, p->mot[3], 0, 0);
+                } else if (bank > fly->up1) {
+                    if (fly->mot[3] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                        Em_SetMotion(em, fly->mot[3], 0, 0);
                     }
                 } else {
-                    if (p->mot[1] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
-                        Em_SetMotion(em, p->mot[1], 0, 0);
+                    if (fly->mot[1] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                        Em_SetMotion(em, fly->mot[1], 0, 0);
                     }
                 }
-            } else if (a < p->down0) {
-                if (p->mot[4] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
-                    Em_SetMotion(em, p->mot[4], 0, 0);
+            } else if (bank < fly->down0) {
+                if (fly->mot[4] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[4], 0, 0);
                 }
-            } else if (a < p->down1) {
-                if (p->mot[5] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
-                    Em_SetMotion(em, p->mot[5], 0, 0);
+            } else if (bank < fly->down1) {
+                if (fly->mot[5] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[5], 0, 0);
                 }
             } else {
-                if (p->mot[1] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
-                    Em_SetMotion(em, p->mot[1], 0, 0);
+                if (fly->mot[1] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
                 }
             }
         }
@@ -543,31 +548,38 @@ void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p)
     if (!(flags & 0x10)) {
         if (em->rotX != 0) {
             if (em->rotX < 0x8000) {
-                em->rotX = em->rotX - p->roll;
+                em->rotX = em->rotX - fly->roll;
             } else {
-                em->rotX = em->rotX + p->roll;
+                em->rotX = em->rotX + fly->roll;
             }
             em->rotX = (u16) em->rotX;
         }
     }
 }
 
+/*
+ * Returns 1 when some active monster in em's area, not in the air (stance 2),
+ * lies within dist of em on the ground plane (Vec_DistanceXZ), else 0. With
+ * mode 1 only a monster of exactly type kind counts (it must also pass
+ * Em_KindMatches); with any other mode every kind counts. em itself is not
+ * skipped.
+ */
 s32 EmList_FindKindNear(Em *em, u16 kind, s32 mode, f32 dist)
 {
     s32 i;
-    Em *m;
+    Em *other;
 
-    for (i = 0, m = gEms; i < 20; i++, m++) {
-        if (m->active != 0) {
+    for (i = 0, other = gEms; i < 20; i++, other++) {
+        if (other->active != 0) {
             if (mode == 1) {
-                if (Em_KindMatches(m->type, kind) == 0) {
+                if (Em_KindMatches(other->type, kind) == 0) {
                     continue;
                 }
-                if (kind != m->type) {
+                if (kind != other->type) {
                     continue;
                 }
             }
-            if ((u8)Obj_SameArea(em, (Player *)m) != 0 && m->stance != 2 && Vec_DistanceXZ(&em->posX, &m->posX) <= dist) {
+            if ((u8)Obj_SameArea(em, (Player *)other) != 0 && other->stance != 2 && Vec_DistanceXZ(&em->posX, &other->posX) <= dist) {
                 return 1;
             }
         }
@@ -575,6 +587,12 @@ s32 EmList_FindKindNear(Em *em, u16 kind, s32 mode, f32 dist)
     return 0;
 }
 
+/*
+ * Sets em->aimAngle to the turn still needed to face the target player
+ * (em->targetNo): the angle from em->mapPos to the target's point in map
+ * coordinates, minus the heading rotY. Does nothing with no target (targetNo
+ * -1).
+ */
 void Em_AimAtTarget(Em *em)
 {
     f32 pos[3];
@@ -590,10 +608,16 @@ void Em_AimAtTarget(Em *em)
     }
 }
 
+/*
+ * Prepares a turn toward the target: clears em->turnStep, then sets
+ * em->targetAngle to the angle from em->mapPos to the target player's point
+ * in map coordinates (and em->target to that player), or to em->stateRand
+ * when there is no target (targetNo -1).
+ */
 void Em_SetTargetAngle(Em *em)
 {
     f32 pos[3];
-    f32 pos2[3];
+    f32 targetWorld[3];
     Player *pl;
     s8 i;
 
@@ -605,53 +629,63 @@ void Em_SetTargetAngle(Em *em)
         pl = &gPlayers[i];
         em->target = pl;
         Em_GetTargetPos(em, (u8) em->targetNo, pos);
-        Area_ToWorld((s32) pl->area, pos, pos2);
-        em->targetAngle = (u16) Math_AngleXZ(em->mapPos, pos2);
+        Area_ToWorld((s32) pl->area, pos, targetWorld);
+        em->targetAngle = (u16) Math_AngleXZ(em->mapPos, targetWorld);
     }
 }
 
+/*
+ * Turns the monster to em->targetAngle with turning motions, one call per
+ * frame; returns 1 when the turn is done (at once if targetAngle is within
+ * 0x200 of 0), else 0. Step 0 (em->turnStep) sets lookAtTarget and aimAngle
+ * and plays motFront (setting PLF_NO_ROOT_MOVE) when the angle left is within
+ * range, else motLeft when it is 0x8000 or more, else motRight. Step 1 turns
+ * rotY by 0x200 a frame toward aimAngle and repeats the choice when the
+ * motion ends or reaches frame 110. Within 0x200 of aimAngle it snaps rotY to
+ * it, clears lookAtTarget and PLF_NO_ROOT_MOVE and returns 1.
+ */
 s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight)
 {
-    u32 d;
+    u32 angleDelta;
 
     switch (em->turnStep) {
     case 0:
         em->turnStep++;
         em->lookAtTarget = 1;
         em->aimAngle = em->targetAngle;
-        d = (u16) (em->targetAngle - em->rotY);
+        angleDelta = (u16) (em->targetAngle - em->rotY);
         if ((u16) (em->targetAngle + 0x200) <= 0x400) {
             return 1;
         }
-        if ((u16) d <= range || (u16) d >= 0x10000 - range) {
-            Player_SetFlag((Player *) em, 0x20000);
+        if ((u16) angleDelta <= range || (u16) angleDelta >= 0x10000 - range) {
+            Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
             Em_SetMotion(em, motFront, 0, 0);
-        } else if ((u16) d >= 0x8000) {
+        } else if ((u16) angleDelta >= 0x8000) {
             Em_SetMotion(em, motLeft, 0, 0);
         } else {
             Em_SetMotion(em, motRight, 0, 0);
         }
         break;
     case 1:
-        d = (u16) (em->aimAngle - (u16) em->rotY);
+        angleDelta = (u16) (em->aimAngle - (u16) em->rotY);
         if (em->motion[0].playing == 0 || EmMotion_ReachedFrame(em, 0, 110.0f)) {
-            if (d <= range || d >= 0x10000 - range) {
-                Player_SetFlag((Player *) em, 0x20000);
+            if (angleDelta <= range || angleDelta >= 0x10000 - range) {
+                Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
                 Em_SetMotion(em, motFront, 0, 0);
             } else {
-                Player_ClearFlag((Player *) em, 0x20000);
-                if (d >= 0x8000) {
+                Player_ClearFlag((Player *) em, PLF_NO_ROOT_MOVE);
+                if (angleDelta >= 0x8000) {
                     Em_SetMotion(em, motLeft, 0, 0);
                 } else {
                     Em_SetMotion(em, motRight, 0, 0);
                 }
             }
-        } else if (((d + 0x200) & 0xFFFF) < 0x400) {
-            Player_ClearFlag((Player *) em, 0x20000);
+        } else if (((angleDelta + 0x200) & 0xFFFF) < 0x400) {
+            Player_ClearFlag((Player *) em, PLF_NO_ROOT_MOVE);
             em->rotY = em->aimAngle;
             em->lookAtTarget = 0;
             return 1;
-        } else if (d < 0x8000) {
+        } else if (angleDelta < 0x8000) {
             em->rotY = (u16) (em->rotY + 0x200);
         } else {
             em->rotY = (u16) (em->rotY - 0x200);
@@ -664,14 +698,14 @@ s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motR
 //---
 void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y)
 {
-    f32 a;
-    f32 b;
+    f32 noGoalDist;
+    f32 stopMargin;
 
-    a = GmEm_ScaleBySize(em, x);
-    b = GmEm_ScaleBySize(em, y);
+    noGoalDist = GmEm_ScaleBySize(em, x);
+    stopMargin = GmEm_ScaleBySize(em, y);
     if (em->curGoalKind == 0) {
         em->hasGoal = 0;
-        em->goalDist = a;
+        em->goalDist = noGoalDist;
         return;
     }
     em->hasGoal = 1;
@@ -683,26 +717,35 @@ void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y)
     if ((flags & 4) != 4 && em->curGoalKind == 1 && em->curGoalArg == 0) {
         if (em->targetNo == -1) {
             em->hasGoal = 0;
-            em->goalDist = a;
+            em->goalDist = noGoalDist;
             return;
         }
-        em->goalDist -= b;
+        em->goalDist -= stopMargin;
         if (em->goalDist <= 0.0f) {
             em->goalDist = 0.0f;
         }
     }
     if ((flags & 2) != 2 && em->curGoalKind == 7) {
-        em->goalDist -= b;
+        em->goalDist -= stopMargin;
         if (em->goalDist <= 0.0f) {
             em->goalDist = 0.0f;
         }
     }
 }
 
+/*
+ * Moves the monster toward its goal for one frame: when em->hasGoal is set it
+ * first turns toward the goal by up to step (Em_TurnToGoal), then takes this
+ * frame's forward movement off em->goalDist. flags bit 0: count the movement
+ * only when hasGoal is set; bit 1: the movement is em->velZ, else the
+ * motion's own (Em_MotionDelta); bit 2: count its size, so moving backward
+ * also shortens the distance. Returns 1 once goalDist is 0 or less (the goal
+ * is reached), else 0.
+ */
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags)
 {
-    f32 v[4];
-    f32 d;
+    f32 motionDelta[4];
+    f32 forwardMove;
 
     if (em->hasGoal != 0) {
         Em_TurnToGoal(em, step, 0);
@@ -717,15 +760,15 @@ s32 Em_StepToGoal(Em *em, u16 step, u8 flags)
                 em->goalDist += em->velZ;
             }
         } else {
-            Em_MotionDelta(em, v);
+            Em_MotionDelta(em, motionDelta);
             if ((flags & 4) != 4) {
-                em->goalDist = em->goalDist - v[2];
+                em->goalDist = em->goalDist - motionDelta[2];
             } else {
-                d = v[2];
-                if (d >= 0.0f) {
-                    em->goalDist -= d;
+                forwardMove = motionDelta[2];
+                if (forwardMove >= 0.0f) {
+                    em->goalDist -= forwardMove;
                 } else {
-                    em->goalDist += d;
+                    em->goalDist += forwardMove;
                 }
             }
         }
@@ -733,14 +776,22 @@ s32 Em_StepToGoal(Em *em, u16 step, u8 flags)
     return em->goalDist <= 0.0f;
 }
 
+/*
+ * Turns em->rotY toward an angle by at most step; returns 1 once it faces it
+ * (the angle left is within step, and rotY is set to it), else 0. The angle
+ * is the one to em->goal, or with flags bit 1 the one to the target player's
+ * point (returning 1 with no target); bit 2 turns away instead (the angle
+ * plus 0x8000), and bit 0 returns 1 at once when the monster has no goal
+ * (curGoalKind 0).
+ */
 u8 Em_TurnToGoal(Em *em, u16 step, u8 flags)
 {
     f32 pos[4];
-    f32 pos2[4];
+    f32 targetWorld[4];
     u8 done = 0;
     s8 i;
     u16 ang;
-    u16 d;
+    u16 angleDelta;
 
     if ((flags & 1) && em->curGoalKind == 0) {
         return 1;
@@ -751,24 +802,24 @@ u8 Em_TurnToGoal(Em *em, u16 step, u8 flags)
             return 1;
         }
         Em_GetTargetPos(em, i, pos);
-        Area_ToWorld((s32) ((Player *) &gPlayers[i])->area, pos, pos2);
-        ang = Math_AngleXZ(em->mapPos, pos2);
+        Area_ToWorld((s32) ((Player *) &gPlayers[i])->area, pos, targetWorld);
+        ang = Math_AngleXZ(em->mapPos, targetWorld);
     } else {
         ang = Math_AngleXZ(&em->posX, em->goal);
     }
     if (flags & 4) {
         ang += 0x8000;
     }
-    d = ang - em->rotY;
-    if (d <= 0x8000) {
-        if (d < step) {
-            em->rotY += d;
+    angleDelta = ang - em->rotY;
+    if (angleDelta <= 0x8000) {
+        if (angleDelta < step) {
+            em->rotY += angleDelta;
             done = 1;
         } else {
             em->rotY += step;
         }
-    } else if (0x10000 - step < d) {
-        em->rotY += d;
+    } else if (0x10000 - step < angleDelta) {
+        em->rotY += angleDelta;
         done = 1;
     } else {
         em->rotY -= step;
@@ -777,41 +828,58 @@ u8 Em_TurnToGoal(Em *em, u16 step, u8 flags)
     return done;
 }
 
-void Em_StartTurn(Em *em, EmTurnParams *t, s32 back)
+/*
+ * Starts a turning motion toward em->goal (away from it when back is
+ * nonzero): sets em->aimAngle to that angle, then plays row turn's motFront
+ * (setting PLF_NO_ROOT_MOVE) when turn->range is nonzero and the angle left is
+ * within it, else motLeft when the angle left is 0x8000 or more, else
+ * motRight. Em_TurnStep carries the turn on.
+ */
+void Em_StartTurn(Em *em, EmTurnParams *turn, s32 back)
 {
-    u32 d;
+    u32 angleDelta;
 
     if (back == 0) {
         em->aimAngle = Math_AngleXZ((f32 *) &em->posX, em->goal);
     } else {
         em->aimAngle = (u16) Math_AngleXZ((f32 *) &em->posX, em->goal) - 0x8000;
     }
-    d = (u16) (em->aimAngle - em->rotY);
-    if (t->range != 0 && (d <= t->range || d >= 0x10000 - t->range)) {
-        Player_SetFlag((Player *) em, 0x20000);
-        Em_SetMotion(em, t->motFront, 0, 0);
-    } else if (d >= 0x8000) {
-        Em_SetMotion(em, t->motLeft, 0, 0);
+    angleDelta = (u16) (em->aimAngle - em->rotY);
+    if (turn->range != 0 && (angleDelta <= turn->range || angleDelta >= 0x10000 - turn->range)) {
+        Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
+        Em_SetMotion(em, turn->motFront, 0, 0);
+    } else if (angleDelta >= 0x8000) {
+        Em_SetMotion(em, turn->motLeft, 0, 0);
     } else {
-        Em_SetMotion(em, t->motRight, 0, 0);
+        Em_SetMotion(em, turn->motRight, 0, 0);
     }
 }
 
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t)
+void Em_StartTurnToTarget(Em *em, EmTurnParams *turn)
 {
-    Em_StartTurn(em, t, 0);
+    Em_StartTurn(em, turn, 0);
 }
 
-void Em_StartTurnAway(Em *em, EmTurnParams *t)
+void Em_StartTurnAway(Em *em, EmTurnParams *turn)
 {
-    Em_StartTurn(em, t, 0x1);
+    Em_StartTurn(em, turn, 0x1);
 }
 
+/*
+ * Carries on a turn begun by Em_StartTurn, once a frame; returns 1 when the
+ * turn is finished, else 0 (always 0 while the motion blends). Each frame it
+ * turns em->rotY toward em->aimAngle by a step worked out from row w
+ * (w->angle spread over half the motion's frames, or over half of w->from to
+ * w->to, scaled by speedBonus and motionSpeed), only within the frames from
+ * to when those are set. When the motion has ended or reached frame w->frame
+ * (if above 0) it returns 1 if the angle left is within one step, else starts
+ * the next turn motion as Em_StartTurn does.
+ */
 s32 Em_TurnStep(Em *em, EmTurnParams *w)
 {
     u32 step;
-    u32 d;
-    s32 r;
+    u32 angleDelta;
+    s32 reachedFrame;
 
     if (em->motion[0].blend != 0) {
         return 0;
@@ -821,31 +889,31 @@ s32 Em_TurnStep(Em *em, EmTurnParams *w)
     } else {
         step = (em->speedBonus + 100) * (em->motionSpeed * (w->angle / ((w->to - w->from) / 2.0f))) / 100.0f;
     }
-    d = (u16) (em->aimAngle - (u16) em->rotY);
+    angleDelta = (u16) (em->aimAngle - (u16) em->rotY);
     if (w->frame <= 0.0f) {
-        r = 0;
+        reachedFrame = 0;
     } else {
-        r = EmMotion_ReachedFrame(em, 0, w->frame);
+        reachedFrame = EmMotion_ReachedFrame(em, 0, w->frame);
     }
-    if (em->motion[0].playing == 0 || r != 0) {
-        if (((d + step) & 0xFFFF) < step * 2) {
+    if (em->motion[0].playing == 0 || reachedFrame != 0) {
+        if (((angleDelta + step) & 0xFFFF) < step * 2) {
             return 1;
         }
-        if (w->range != 0 && (d <= w->range || d >= 0x10000 - w->range)) {
-            Player_SetFlag((Player *) em, 0x20000);
+        if (w->range != 0 && (angleDelta <= w->range || angleDelta >= 0x10000 - w->range)) {
+            Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
             Em_SetMotion(em, w->motFront, 0, 0);
         } else {
-            Player_ClearFlag((Player *) em, 0x20000);
-            if (d >= 0x8000) {
+            Player_ClearFlag((Player *) em, PLF_NO_ROOT_MOVE);
+            if (angleDelta >= 0x8000) {
                 Em_SetMotion(em, w->motLeft, 0, 0);
             } else {
                 Em_SetMotion(em, w->motRight, 0, 0);
             }
         }
     } else if ((w->from == 0.0f && w->to == 0.0f) || EmMotion_InFrameRange(em, 0, w->from, w->to) == 1) {
-        if (((d + step) & 0xFFFF) < step * 2) {
+        if (((angleDelta + step) & 0xFFFF) < step * 2) {
             em->rotY = em->aimAngle;
-        } else if (d < 0x8000) {
+        } else if (angleDelta < 0x8000) {
             em->rotY = (u16) (em->rotY + step);
         } else {
             em->rotY = (u16) (em->rotY - step);
@@ -860,9 +928,17 @@ void Em_ClearTilt(Em *em, s32 unused)
     em->rotZ = 0;
 }
 
+/*
+ * Sets up the scene events of the quest being started: empties gSceneEvents
+ * and the running flag, then runs ScEvent_LoadDemoCams and stops if that
+ * started a monster's introduction event. Otherwise it loads the area camera
+ * event (ScEvent_LoadCamera) and, by gScene.questId, starts the quest's own
+ * event record in slot 0 with ScEvent_Set (one quest fills slot 1 too, and
+ * one also sets gScene.eventRunning at once).
+ */
 void ScEvent_Init(void)
 {
-    ScEventList *h = &gSceneEvents;
+    ScEventList *list = &gSceneEvents;
 
     gScene.eventRunning = 0;
     gSceneEvents.active = 0;
@@ -870,109 +946,116 @@ void ScEvent_Init(void)
     *(s32 *) &gSceneEvents.ev[1] = 0;
     *(s32 *) &gSceneEvents.ev[0] = 0;
     gSceneEvents.ended = 0;
-    if (ScEvent_LoadDemoCams(h) & 0xFFFF) {
+    if (ScEvent_LoadDemoCams(list) & 0xFFFF) {
         return;
     }
     Dmcam_Init(gSysSettings.readBuf, 1);
-    ScEvent_LoadCamera(h);
+    ScEvent_LoadCamera(list);
     switch (gScene.questId) {
     case 0x61A9:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq61A9.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_VersusEnd.head);
         gScene.eventRunning = 1;
         break;
     case 0x12:
     case 0x3EA:
     case 0x3EB:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq3EB.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_VelocidromeSighting.head);
         break;
     case 0x3EC:
     case 0x3ED:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq3ED.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_BulldromeSighting.head);
         break;
     case 0x400:
     case 0x1389:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq1389.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_DaimyoHermitaurSighting.head);
         break;
     case 0x3F3:
     case 0x3F4:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq3F4.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_CongalalaSighting.head);
         break;
     case 0x3F6:
     case 0x3F8:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq3F8.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_RathianSighting.head);
         break;
     case 0x138A:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq138A.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_KushalaJungleSighting.head);
         break;
     case 0x138F:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq138F.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_LunastraTeostraTowerSighting.head);
         break;
     case 0x138C:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq138C.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_KushalaSnowSighting.head);
         break;
     case 0x138D:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq138D.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_LunastraTeostraVolcano8Sighting.head);
         break;
     case 0x1771:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq1771.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_GarugaSighting.head);
         break;
     case 0x437:
     case 0x438:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq438.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_ChameleosSighting.head);
         break;
     case 0x430:
     case 0x431:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq431.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_LunastraTeostraVolcano7Sighting.head);
         break;
     case 0x423:
     case 0x424:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq424.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_BlangongaSighting.head);
         break;
     case 0x42E:
     case 0x42F:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq42F.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_ShogunCeanataurSighting.head);
         break;
     case 0x3EE:
     case 0x3F0:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq3F0.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_KutkuSighting.head);
         break;
     case 0x422:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq422.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_KhezuSighting.head);
         break;
     case 0x406:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq406.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_DiablosSighting.head);
         break;
     case 0x42C:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq42C.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_GraviosSighting.head);
         break;
     case 0x1390:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq1390.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_MonoblosSighting.head);
         break;
     case 0x434:
     case 0x436:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq436.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_RathalosSighting.head);
         break;
     case 0x425:
     case 0x426:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq426.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_KirinSighting.head);
         break;
     case 1:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq1.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_Seq1.head);
         break;
     case 3:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq3.head);
-        ScEvent_Set(&h->ev[1], &ScEvent_Seq3B.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_Seq3.head);
+        ScEvent_Set(&list->ev[1], &ScEvent_Seq3B.head);
         break;
     case 5:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq5.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_Seq5.head);
         break;
     case 0x11:
-        ScEvent_Set(&h->ev[0], &ScEvent_Seq11.head);
+        ScEvent_Set(&list->ev[0], &ScEvent_Seq11.head);
         break;
     }
 }
 
-s32 ScEvent_Set(ScEvent *e, ScEventHead *rec)
+/*
+ * Starts the event record rec in slot: returns -1 and does nothing when the
+ * record's doneFlag is nonzero and already set in the save
+ * (Save_TestEventFlag). Otherwise loads the record's camera (Dmcam_Load),
+ * switches the slot on with the record's check and run callbacks and a
+ * pointer to the record, and returns 0.
+ */
+s32 ScEvent_Set(ScEvent *slot, ScEventHead *rec)
 {
     u16 n;
 
@@ -981,14 +1064,25 @@ s32 ScEvent_Set(ScEvent *e, ScEventHead *rec)
         return -1;
     }
     Dmcam_Load((s32) rec->camera, 0);
-    e->on = 1;
-    e->check = rec->check;
-    e->run = rec->run;
-    e->data = rec;
+    slot->on = 1;
+    slot->check = rec->check;
+    slot->run = rec->run;
+    slot->data = rec;
     return 0;
 }
 
-s32 ScEvent_LoadDemoCams(ScEventList *h)
+/*
+ * Prepares the monsters' introduction events of the stage: clears seven save
+ * event flags and the demo cameras, then walks the stage's monster kinds
+ * (Quest_GetStageEmKinds). The first of EM_KIND_LAO_SHAN_LUNG,
+ * EM_KIND_ASHEN_LAO_SHAN_LUNG, EM_KIND_FATALIS, EM_KIND_FATALIS_B,
+ * EM_KIND_FATALIS_C, EM_KIND_SHEN_GAOREN or EM_KIND_YAMA_TSUKAMI puts its
+ * record (ScEvent_DemoCam*) in slot 0 of list, loads that kind's demo cameras
+ * and is returned. The Kushala kinds and Chameleos, and Lunastra and Teostra,
+ * only load a camera and the walk goes on. Returns 0 when no introduction was
+ * started.
+ */
+s32 ScEvent_LoadDemoCams(ScEventList *list)
 {
     u8 ids[4];
     s32 i;
@@ -1006,40 +1100,40 @@ s32 ScEvent_LoadDemoCams(ScEventList *h)
     for (i = 0; i < n; i++) {
         switch (ids[i]) {
         case 7:
-            ScEvent_Set(&h->ev[0], &ScEvent_DemoCam7.head);
+            ScEvent_Set(&list->ev[0], &ScEvent_DemoCam7.head);
             Dmcam_Load(0x7C, 0);
             Dmcam_Load(0x86, 0);
             return 7;
         case 0x32:
-            ScEvent_Set(&h->ev[0], &ScEvent_DemoCam32.head);
+            ScEvent_Set(&list->ev[0], &ScEvent_DemoCam32.head);
             Dmcam_Load(0x7C, 0);
             Dmcam_Load(0x86, 0);
             return 0x32;
         case 2:
-            ScEvent_Set(&h->ev[0], &ScEvent_DemoCam2.head);
+            ScEvent_Set(&list->ev[0], &ScEvent_DemoCam2.head);
             Dmcam_Load(0x83, 0);
             Dmcam_Load(0x89, 0);
             Dmcam_Load(0x8A, 0);
             return 2;
         case 0x24:
-            ScEvent_Set(&h->ev[0], &ScEvent_DemoCam24.head);
+            ScEvent_Set(&list->ev[0], &ScEvent_DemoCam24.head);
             Dmcam_Load(0x83, 0);
             Dmcam_Load(0x89, 0);
             Dmcam_Load(0x8A, 0);
             return 0x24;
         case 0x47:
-            ScEvent_Set(&h->ev[0], &ScEvent_DemoCam47.head);
+            ScEvent_Set(&list->ev[0], &ScEvent_DemoCam47.head);
             Dmcam_Load(0x83, 0);
             Dmcam_Load(0x89, 0);
             Dmcam_Load(0x8A, 0);
             return 0x47;
         case 0x37:
-            ScEvent_Set(&h->ev[0], &ScEvent_DemoCam37.head);
+            ScEvent_Set(&list->ev[0], &ScEvent_DemoCam37.head);
             Dmcam_Load(0x7E, 0);
             Dmcam_Load(0x87, 0);
             return 0x37;
         case 0x3A:
-            ScEvent_Set(&h->ev[0], &ScEvent_DemoCam3A.head);
+            ScEvent_Set(&list->ev[0], &ScEvent_DemoCam3A.head);
             Dmcam_Load(0x88, 0);
             return 0x3A;
         case 0x36:
@@ -1056,36 +1150,42 @@ s32 ScEvent_LoadDemoCams(ScEventList *h)
     return 0;
 }
 
-s32 ScEvent_LoadCamera(ScEventList *h)
+/*
+ * In an offline game, reinitializes the demo cameras (Dmcam_Init) and, by the
+ * area's base id (Map_DayId of gScene.map), puts the area's camera event
+ * record (ScEvent_Cam2 to ScEvent_CamF) into slot 2 of list; areas without one
+ * get none. Always returns 0.
+ */
+s32 ScEvent_LoadCamera(ScEventList *list)
 {
     s32 base;
 
     if (Game_IsOnline() != 1) {
         Dmcam_Init(gSysSettings.readBuf, 1);
-        base = Area_BaseId((u16) gScene.map) & 0xFFFF;
+        base = Map_DayId((u16) gScene.map) & 0xFFFF;
         switch (base) {
         case 2:
-            ScEvent_Set(&h->ev[2], &ScEvent_Cam2.head);
+            ScEvent_Set(&list->ev[2], &ScEvent_Cam2.head);
             break;
         case 3:
-            ScEvent_Set(&h->ev[2], &ScEvent_Cam3.head);
+            ScEvent_Set(&list->ev[2], &ScEvent_Cam3.head);
             break;
         case 4:
-            ScEvent_Set(&h->ev[2], &ScEvent_Cam4.head);
+            ScEvent_Set(&list->ev[2], &ScEvent_Cam4.head);
             break;
         case 5:
-            ScEvent_Set(&h->ev[2], &ScEvent_Cam5.head);
+            ScEvent_Set(&list->ev[2], &ScEvent_Cam5.head);
             break;
         case 6:
-            ScEvent_Set(&h->ev[2], &ScEvent_Cam6.head);
+            ScEvent_Set(&list->ev[2], &ScEvent_Cam6.head);
             break;
         case 11:
-            ScEvent_Set(&h->ev[2], &ScEvent_CamB.head);
+            ScEvent_Set(&list->ev[2], &ScEvent_CamB.head);
             break;
         case 13:
         case 14:
         case 15:
-            ScEvent_Set(&h->ev[2], &ScEvent_CamF.head);
+            ScEvent_Set(&list->ev[2], &ScEvent_CamF.head);
             break;
         }
     }
@@ -1097,7 +1197,7 @@ void ScEvent_Update(void)
 {
     ScEventList *w = &gSceneEvents;
     s32 i;
-    ScEvent *e;
+    ScEvent *slot;
 
     gSceneEvents.ended = 0;
     switch (gSceneEvents.active) {
@@ -1108,11 +1208,11 @@ void ScEvent_Update(void)
         gScene.eventRunning = 0;
         w->active = 0;
     case 0:
-        for (e = w->ev, i = 0; i < 3; i++, e++) {
-            if (e->on != 0 && e->check(e) > 0) {
+        for (slot = w->ev, i = 0; i < 3; i++, slot++) {
+            if (slot->on != 0 && slot->check(slot) > 0) {
                 w->active = 1;
                 w->cur = i;
-                e->run(e);
+                slot->run(slot);
                 return;
             }
         }
@@ -1121,75 +1221,94 @@ void ScEvent_Update(void)
     }
 }
 
-s32 ScEvent_CheckDay(ScEvent *e)
+/*
+ * Check callback of an event tied to an area: if the record's doneFlag is
+ * already set in the save it clears the slot and returns -1 (drop the event);
+ * otherwise returns 1 (start it) when the record's area is the scene's
+ * current area by day id (Area_DayId(gScene.area)), else 0.
+ */
+s32 ScEvent_CheckDay(ScEvent *event)
 {
-    if (Save_TestEventFlag(e->data->doneFlag) == 1) {
-        *(s32 *) e = 0;
+    if (Save_TestEventFlag(event->data->doneFlag) == 1) {
+        *(s32 *) event = 0;
         return -1;
     }
-    return e->data->area == Area_DayId(gScene.area);
+    return event->data->area == Area_DayId(gScene.area);
 }
 
-s32 ScEvent_RunA(ScEvent *ev)
+/*
+ * Run callback of an event record, one step of event->step per call; returns 1
+ * when the event is over, else 0. Step 0 sets gScene.eventRunning, points the
+ * camera (ScEvent_SetCamera), sets ev->timer and pauses the stream
+ * (Stream_Pause) by the record's music value (the timer for 2 to 10, the
+ * pause for 1 to 3 and 8 to 10), and plays the record's day or night jingle
+ * if it has one. Step 1 counts the timer down and at 0 plays the music for
+ * the value; when the camera request ends (CamReq_State() <= 0) it clears
+ * eventRunning, sets the record's doneFlag in the save, restores the music
+ * (1: Bgm_EnterArea; 2, 3, 8 to 10: gScene.musicState 5, musicTimer 150),
+ * cancels the camera and sets gSceneEvents.ended. Step 2 clears the slot's
+ * first word and returns 1.
+ */
+s32 ScEvent_RunA(ScEvent *event)
 {
     Player *pl = &gPlayers[gScene.localPlayer];
-    ScEventList *d = &gSceneEvents;
+    ScEventList *list = &gSceneEvents;
 
-    switch (ev->step) {
+    switch (event->step) {
     case 0:
         gScene.eventRunning = 1;
-        ScEvent_SetCamera(ev->data->camera, ev->data->camGroup);
-        switch (ev->data->music) {
+        ScEvent_SetCamera(event->data->camera, event->data->camGroup);
+        switch (event->data->music) {
         case 4:
-            ev->timer = 0xCD;
+            event->timer = 0xCD;
             break;
         case 5:
-            ev->timer = 0xC0;
+            event->timer = 0xC0;
             break;
         case 6:
-            ev->timer = 0xEF;
+            event->timer = 0xEF;
             break;
         case 7:
-            ev->timer = 0xC4;
+            event->timer = 0xC4;
             break;
         case 8:
-            ev->timer = 4;
+            event->timer = 4;
             Stream_Pause(0, 1);
             break;
         case 9:
-            ev->timer = 0x15E;
+            event->timer = 0x15E;
             Stream_Pause(0, 1);
             break;
         case 10:
-            ev->timer = 0x350;
+            event->timer = 0x350;
             Stream_Pause(0, 1);
             break;
         case 3:
-            ev->timer = 0x10E;
+            event->timer = 0x10E;
             Stream_Pause(0, 1);
             break;
         case 2:
-            ev->timer = 0x15E;
+            event->timer = 0x15E;
         case 1:
             Stream_Pause(0, 1);
             break;
         case 0:
             break;
         }
-        if (ev->data->jingleDay != 0) {
+        if (event->data->jingleDay != 0) {
             if (Area_IsDay(gScene.area) == 1) {
-                Jingle_Play(pl, ev->data->jingleDay);
+                Jingle_Play(pl, event->data->jingleDay);
             } else {
-                Jingle_Play(pl, ev->data->jingleNight);
+                Jingle_Play(pl, event->data->jingleNight);
             }
         }
-        ev->step++;
+        event->step++;
         break;
     case 1:
-        if (ev->timer != 0) {
-            ev->timer--;
-            if (ev->timer == 0) {
-                switch (ev->data->music) {
+        if (event->timer != 0) {
+            event->timer--;
+            if (event->timer == 0) {
+                switch (event->data->music) {
                 case 0:
                 case 1:
                     break;
@@ -1224,10 +1343,10 @@ s32 ScEvent_RunA(ScEvent *ev)
             }
         }
         if (CamReq_State() <= 0) {
-            ev->step++;
+            event->step++;
             gScene.eventRunning = 0;
-            Save_SetEventFlag(ev->data->doneFlag);
-            switch (ev->data->music) {
+            Save_SetEventFlag(event->data->doneFlag);
+            switch (event->data->music) {
             case 1:
                 Bgm_EnterArea(gScene.area);
                 break;
@@ -1243,57 +1362,73 @@ s32 ScEvent_RunA(ScEvent *ev)
                 break;
             }
             CamReq_Cancel();
-            d->ended = 1;
+            list->ended = 1;
         }
         break;
     case 2:
-        *(s32 *) ev = 0;
+        *(s32 *) event = 0;
         return 1;
     }
     return 0;
 }
 
-s32 ScEvent_CheckAlwaysA(ScEvent *e)
+s32 ScEvent_CheckAlwaysA(ScEvent *event)
 {
     return 1;
 }
 
-s32 ScEvent_RunVersusEnd(ScEvent *e)
+/*
+ * Run callback of the ending event of a versus match, one step of event->step per
+ * call; returns 1 when it is over, else 0. Every frame it sets
+ * gQuest.inputLock to 90 and noHitTimer to 2 on every player. Step 0 sets
+ * gScene.eventRunning; step 1 waits for a defeat bit in gQuest.versusDefeat
+ * (mask 3) and starts a fade (FadeA_Start); step 2 waits for
+ * Versus_BothDefeated(), then clears eventRunning and spawns an effect
+ * (Effect2C_Spawn); step 3 cancels the camera request, sets
+ * gSceneEvents.ended, clears the slot and returns 1.
+ */
+s32 ScEvent_RunVersusEnd(ScEvent *event)
 {
-    ScEventList *d = &gSceneEvents;
+    ScEventList *list = &gSceneEvents;
     s32 i;
 
     gQuest.inputLock = 90;
     for (i = 0; i < gScene.playerCount; i++) {
         gPlayers[i].noHitTimer = 2;
     }
-    switch (e->step) {
+    switch (event->step) {
     case 0:
         gScene.eventRunning = 1;
-        e->step++;
+        event->step++;
         break;
     case 1:
         if (gQuest.versusDefeat & 3) {
-            e->step++;
+            event->step++;
             FadeA_Start(6);
         }
         break;
     case 2:
         if (Versus_BothDefeated() == 1) {
-            e->step++;
+            event->step++;
             gScene.eventRunning = 0;
             Effect2C_Spawn(90);
         }
         break;
     case 3:
         CamReq_Cancel();
-        d->ended = 1;
-        *(s32 *) e = 0;
+        list->ended = 1;
+        *(s32 *) event = 0;
         return 1;
     }
     return 0;
 }
 
+/*
+ * Requests the demo camera req (CamReq_Set). With kind 0 the camera has no
+ * target; otherwise it follows the first active monster whose group's first
+ * kind (MonsterGroup_First of its type) is kind, and no request is made when
+ * there is none.
+ */
 void ScEvent_SetCamera(u8 req, u8 kind)
 {
     Em *em;
@@ -1313,33 +1448,48 @@ void ScEvent_SetCamera(u8 req, u8 kind)
     }
 }
 
+/*
+ * Returns the doneFlag (the event flag id) of the record of the event now
+ * running in gSceneEvents, or -1 when none runs.
+ */
 s32 ScEvent_CurId(void)
 {
-    ScEventList *p = &gSceneEvents;
-    ScEvent *e;
+    ScEventList *list = &gSceneEvents;
+    ScEvent *event;
 
-    if (p->active == 0) {
+    if (list->active == 0) {
         return -1;
     }
-    e = &p->ev[p->cur];
-    return e->data->doneFlag;
+    event = &list->ev[list->cur];
+    return event->data->doneFlag;
 }
 
+/*
+ * Returns 1 when an event is running and its record's flags bit 0 is set (the
+ * monsters hold still while it runs), else 0.
+ */
 s32 ScEvent_CurFlag1(void)
 {
-    ScEventList *p = &gSceneEvents;
-    ScEvent *e;
+    ScEventList *list = &gSceneEvents;
+    ScEvent *event;
 
-    if (p->active != 0) {
-        e = &p->ev[p->cur];
-        return (e->data->flags & 1) != 0;
+    if (list->active != 0) {
+        event = &list->ev[list->cur];
+        return (event->data->flags & 1) != 0;
     }
     return 0;
 }
 
+/*
+ * Starts the record rec at once in slot 0: empties gSceneEvents and clears
+ * gScene.eventRunning, reinitializes the demo cameras (Dmcam_Init), loads the
+ * record's camera and switches the slot on with the record's callbacks.
+ * Unlike ScEvent_Set it does not look at doneFlag; plsel starts a record it
+ * picked this way.
+ */
 void ScEvent_StartFrom(ScEventHead *rec)
 {
-    ScEvent *d;
+    ScEvent *slot;
 
     gScene.eventRunning = 0;
     gSceneEvents.active = 0;
@@ -1347,67 +1497,76 @@ void ScEvent_StartFrom(ScEventHead *rec)
     *(s32 *) &gSceneEvents.ev[1] = 0;
     *(s32 *) &gSceneEvents.ev[0] = 0;
     Dmcam_Init(gSysSettings.readBuf, 0);
-    d = &gSceneEvents.ev[0];
+    slot = &gSceneEvents.ev[0];
     Dmcam_Load(rec->camera, 0);
-    d->on = 1;
-    d->check = rec->check;
-    d->run = rec->run;
-    d->data = rec;
+    slot->on = 1;
+    slot->check = rec->check;
+    slot->run = rec->run;
+    slot->data = rec;
 }
 
-s32 ScEvent_CheckAlwaysB(ScEvent *e)
+s32 ScEvent_CheckAlwaysB(ScEvent *event)
 {
     return 1;
 }
 
-s32 ScEvent_RunB(ScEvent *ev)
+/*
+ * Run callback of a record whose callbacks ScEvent_SetupB set (plsel's
+ * viewer), one step of event->step per call; returns 1 when the event is over,
+ * else 0. Step 0 is ScEvent_RunA's, with its own waits by the music value.
+ * Step 1 counts the timer down and plays the music at 0; when the camera
+ * request ends it clears eventRunning, cancels the camera and sets
+ * gSceneEvents.ended, but sets no save flag and restores no music. Step 2
+ * clears the slot's first word and returns 1.
+ */
+s32 ScEvent_RunB(ScEvent *event)
 {
     Player *pl = &gPlayers[gScene.localPlayer];
-    ScEventList *d = &gSceneEvents;
+    ScEventList *list = &gSceneEvents;
 
-    switch (ev->step) {
+    switch (event->step) {
     case 0:
         gScene.eventRunning = 1;
-        ScEvent_SetCamera(ev->data->camera, ev->data->camGroup);
-        switch (ev->data->music) {
+        ScEvent_SetCamera(event->data->camera, event->data->camGroup);
+        switch (event->data->music) {
         case 8:
-            ev->timer = 4;
+            event->timer = 4;
             Stream_Pause(0, 1);
             break;
         case 9:
-            ev->timer = 350;
+            event->timer = 350;
             Stream_Pause(0, 1);
             break;
         case 10:
-            ev->timer = 900;
+            event->timer = 900;
             Stream_Pause(0, 1);
             break;
         case 3:
-            ev->timer = 270;
+            event->timer = 270;
             Stream_Pause(0, 1);
             break;
         case 2:
-            ev->timer = 350;
+            event->timer = 350;
         case 1:
             Stream_Pause(0, 1);
             break;
         case 0:
             break;
         }
-        if (ev->data->jingleDay != 0) {
+        if (event->data->jingleDay != 0) {
             if (Area_IsDay(gScene.area) == 1) {
-                Jingle_Play(pl, ev->data->jingleDay);
+                Jingle_Play(pl, event->data->jingleDay);
             } else {
-                Jingle_Play(pl, ev->data->jingleNight);
+                Jingle_Play(pl, event->data->jingleNight);
             }
         }
-        ev->step++;
+        event->step++;
         break;
     case 1:
-        if (ev->timer != 0) {
-            ev->timer--;
-            if (ev->timer == 0) {
-                switch (ev->data->music) {
+        if (event->timer != 0) {
+            event->timer--;
+            if (event->timer == 0) {
+                switch (event->data->music) {
                 case 2:
                     Bgm_Play(0xBC);
                     break;
@@ -1427,14 +1586,14 @@ s32 ScEvent_RunB(ScEvent *ev)
             }
         }
         if (CamReq_State() <= 0) {
-            ev->step++;
+            event->step++;
             gScene.eventRunning = 0;
             CamReq_Cancel();
-            d->ended = 1;
+            list->ended = 1;
         }
         break;
     case 2:
-        *(s32 *) ev = 0;
+        *(s32 *) event = 0;
         return 1;
     }
     return 0;
@@ -1451,6 +1610,13 @@ s32 Player_InSceneEvent(void)
     return gSceneEvents.ended != 0;
 }
 
+/*
+ * Sets the part motion overrides 0 and 1 (partAnimOn, partAnimMotion,
+ * partAnimWeight) from pl->aimWeight: both off at weight 0. A positive weight
+ * uses motion motA on part 0 and motA + 100 on part 1, a negative weight motB
+ * the same way, with the weight's size (at most 100) as the override weight;
+ * a motA of 0x581 or a motB of 0x582 becomes 0x580 with part 0 left off.
+ */
 static void Player_SetAimLayers(Player *pl, u16 motA, u16 motB)
 {
 
@@ -1490,6 +1656,7 @@ static void Player_SetAimLayers(Player *pl, u16 motA, u16 motB)
     }
 }
 
+/* Adds delta to pl->aimWeight, keeping it within -100 to 100. */
 static void Bowgun_AddAimWeight(Player *pl, s8 delta)
 {
 
@@ -1502,13 +1669,30 @@ static void Bowgun_AddAimWeight(Player *pl, s8 delta)
     }
 }
 
+/*
+ * The per-frame damage the player takes from poison and the surroundings;
+ * does nothing for a fainted player, and stops early when Player_Damage
+ * returns 1. It clears pl->inPoisonArea and ticks the poison (every
+ * pl->poisonTimer frames: poison down by 1, 1 damage, the poison effect;
+ * another player's copy only shows the effect while PL_STATUS_ICON_POISON is
+ * set). For the local player it takes 1 damage per special item carried
+ * (Player_CountSpecialItems) every 30 frames, and in a hot area
+ * (Area_Temperature 1 or 3) 1 damage every pl->envTimer frames (set from the
+ * area kind and the skills 0x84 to 0x88) unless coolDrinkTimer runs or skill
+ * 0x85 or 0x86 protects it. Then, outside the reactions other than the
+ * guard's, the faint, the quest events and noHitTimer, it applies the ground
+ * hazard pl->floorHazard, or 2 when a Lunastra or Teostra with wind is close
+ * (Player_InEmAura): hazard 1 raises poison to at least 10 (and sets
+ * inPoisonArea) unless SKILL_POISON_IMMUNE; hazard 2 deals 1 damage every
+ * damageInterval frames (8, changed by the skills 0xBF to 0xC2).
+ */
 void Player_UpdateEnvironment(Player *pl)
 {
-    f32 v[3];
+    f32 effectPos[3];
     s16 n;
     s16 k;
-    u8 f;
-    u16 iv;
+    u8 hazard;
+    u16 damageInterval;
 
     if (pl->stateGroup == PL_GROUP_FAINT) {
         return;
@@ -1517,19 +1701,19 @@ void Player_UpdateEnvironment(Player *pl)
     if (pl->poison > 0) {
         if (--pl->poisonTimer <= 0) {
             pl->poison--;
-            if (Player_HasSkill(pl, 0xA) == 1) {
+            if (Player_HasSkill(pl, SKILL_POISON_HALF) == 1) {
                 k = 60;
-            } else if (Player_HasSkill(pl, 0xC) == 1) {
+            } else if (Player_HasSkill(pl, SKILL_POISON_DOUBLE) == 1) {
                 k = 15;
             } else {
                 k = 30;
             }
             pl->poisonTimer = k;
             if (Player_IsLocal(pl) == 1) {
-                v[0] = 0.0f;
-                v[1] = 20.0f;
-                v[2] = 0.0f;
-                Effect06_SpawnAt(pl, 3, 0x14, v, 1.0f);
+                effectPos[0] = 0.0f;
+                effectPos[1] = 20.0f;
+                effectPos[2] = 0.0f;
+                Effect06_SpawnAt(pl, 3, 0x14, effectPos, 1.0f);
             }
             if (Player_Damage(pl, 1, 0) == 1) {
                 return;
@@ -1537,12 +1721,12 @@ void Player_UpdateEnvironment(Player *pl)
         }
     }
     if (Player_IsLocal(pl) == 0 && (pl->statusIcons & 1)) {
-        k = Player_HasSkill(pl, 0xA) ? 60 : 30;
+        k = Player_HasSkill(pl, SKILL_POISON_HALF) ? 60 : 30;
         if (gScene.frame % k == 0) {
-            v[0] = 0.0f;
-            v[1] = 20.0f;
-            v[2] = 0.0f;
-            Effect06_SpawnAt(pl, 3, 0x14, v, 1.0f);
+            effectPos[0] = 0.0f;
+            effectPos[1] = 20.0f;
+            effectPos[2] = 0.0f;
+            Effect06_SpawnAt(pl, 3, 0x14, effectPos, 1.0f);
         }
     }
     if (Player_IsLocal(pl) == 1) {
@@ -1563,10 +1747,10 @@ void Player_UpdateEnvironment(Player *pl)
         if (pl->coolDrinkTimer != 0) {
             break;
         }
-        if (k == 1 && (Player_HasSkill(pl, 0x85) == 1 || Player_HasSkill(pl, 0x86) == 1)) {
+        if (k == 1 && (Player_HasSkill(pl, SKILL_HEAT_RES) == 1 || Player_HasSkill(pl, SKILL_HEAT_RES2) == 1)) {
             break;
         }
-        if (k == 3 && Player_HasSkill(pl, 0x86) == 1) {
+        if (k == 3 && Player_HasSkill(pl, SKILL_HEAT_RES2) == 1) {
             break;
         }
         if (--pl->envTimer > 0) {
@@ -1589,7 +1773,7 @@ void Player_UpdateEnvironment(Player *pl)
                 pl->envTimer = 30;
             } else if (Player_HasSkill(pl, 0x84) == 1) {
                 pl->envTimer = 120;
-            } else if (Player_HasSkill(pl, 0x85) == 1) {
+            } else if (Player_HasSkill(pl, SKILL_HEAT_RES) == 1) {
                 pl->envTimer = 180;
             }
         }
@@ -1627,16 +1811,16 @@ void Player_UpdateEnvironment(Player *pl)
     if (pl->noHitTimer > 0) {
         return;
     }
-    f = pl->unk669;
-    if (f == 0 && Player_NearEm40(pl) == 1) {
-        f = 2;
+    hazard = pl->floorHazard;
+    if (hazard == 0 && Player_InEmAura(pl) == 1) {
+        hazard = 2;
     }
-    StageObj_K29_TickType6(pl, f);
-    switch (f) {
+    StageObj_K29_TickType6(pl, hazard);
+    switch (hazard) {
     case 0:
         break;
     case 1:
-        if (Player_HasSkill(pl, 0xB) == 0) {
+        if (Player_HasSkill(pl, SKILL_POISON_IMMUNE) == 0) {
             pl->inPoisonArea = 1;
             if (pl->poison < 10) {
                 pl->poison = 10;
@@ -1645,17 +1829,17 @@ void Player_UpdateEnvironment(Player *pl)
         break;
     case 2:
         pl->inPoisonArea = 1;
-        iv = 8;
+        damageInterval = 8;
         if (Player_HasSkill(pl, 0xBF) == 1) {
-            iv = 12;
+            damageInterval = 12;
         } else if (Player_HasSkill(pl, 0xC0) == 1) {
-            iv = 24;
+            damageInterval = 24;
         } else if (Player_HasSkill(pl, 0xC1) == 1) {
-            iv = 6;
+            damageInterval = 6;
         } else if (Player_HasSkill(pl, 0xC2) == 1) {
-            iv = 4;
+            damageInterval = 4;
         }
-        if (gScene.frame % iv == 0) {
+        if (gScene.frame % damageInterval == 0) {
             if (Player_Damage(pl, 1, 0) == 1) {
                 return;
             }
@@ -1664,6 +1848,11 @@ void Player_UpdateEnvironment(Player *pl)
     }
 }
 
+/*
+ * Returns 1 when one of the 20 pouch slots holds an item with a count above 0
+ * whose item data flags have bit 0 set (usable from the item selector), else
+ * 0.
+ */
 s32 Player_PouchHasSelectable(Player *pl)
 {
     s16 i;
@@ -1676,24 +1865,33 @@ s32 Player_PouchHasSelectable(Player *pl)
     return 0;
 }
 
+/*
+ * Runs the item selector of the local player. Unless the player is stunned,
+ * fainted, in a quest event or the quest is over, holding PAD_L2 opens it
+ * (pl->itemSelect = 1, with a sound) and, when the pouch has a selectable
+ * item (Player_PouchHasSelectable), PAD_CIRCLE moves pl->pouchCursor to the
+ * next selectable item (pouchHudFlags |= 2) and PAD_SQUARE to the one before
+ * (|= 4); releasing PAD_L2 closes it with a sound. In the excluded states it
+ * just clears itemSelect.
+ */
 void Player_UpdateItemSelect(Player *pl)
 {
-    u16 b;
+    u16 pressed;
 
     if (Player_IsLocal(pl) != 0) {
         if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_STUN) == 0 && (u32) (pl->stateGroup - 3) > 1 && Quest_PhaseIsOver(1) != 1) {
-            if (pl->input.held2 & 4) {
+            if (pl->input.held2 & PAD_L2) {
                 if (pl->itemSelect == 0) {
                     Sound_PlaySeFlat(0, 0x11, 0);
                 }
                 pl->itemSelect = 1;
                 if (Player_PouchHasSelectable(pl) != 0) {
-                    b = pl->input.pressed2;
-                    if (b & 0x20) {
+                    pressed = pl->input.pressed2;
+                    if (pressed & 0x20) {
                         Sound_PlaySeFlat(0, 0x12, 0);
                         pl->pouchCursor = Pouch_NextSelectable(pl, pl->pouchCursor, 0);
                         pl->pouchHudFlags |= 2;
-                    } else if (b & 0x200) {
+                    } else if (pressed & 0x200) {
                         Sound_PlaySeFlat(0, 0x12, 0);
                         pl->pouchCursor = Pouch_NextSelectable(pl, pl->pouchCursor, 1);
                         pl->pouchHudFlags |= 4;
@@ -1709,12 +1907,18 @@ void Player_UpdateItemSelect(Player *pl)
     }
 }
 
+/*
+ * Returns 1 when the loaded ammo type differs from savedAmmoType (saved when
+ * the ammo menu opened) while the ammo menu is closed, PAD_L2 is not held and
+ * the weapon is drawn; else 0 (also for a player who is not a gunner).
+ * Player_IdleActions skips the weapon's attack input while it returns 1.
+ */
 static s32 Player_AmmoTypeChanged(Player *pl)
 {
     if ((pl->isGunner != 1) && ((u16) pl->ammoSlot == 0xFF)) {
         return 0;
     }
-    if (pl->input.held2 & 4) {
+    if (pl->input.held2 & PAD_L2) {
         return 0;
     }
     if ((pl->ammoMenuOpen == 0) && (pl->savedAmmoType != pl->ammoType) && (pl->weaponOut != 0)) {
@@ -1723,6 +1927,20 @@ static s32 Player_AmmoTypeChanged(Player *pl)
     return 0;
 }
 
+/*
+ * The ammo menu of a gunner (the bow's coatings). Does nothing for a non-
+ * local player, a non-gunner, a stunned or fainted player, a quest event,
+ * after the quest's end (Quest_PhaseIsOver(1)), with pl->ammoMenuLock set, and in
+ * the shooting and stabbing steps of the weapon states (BOW_FIRE and
+ * BOW_FIRE_QUICK before step 2; BOW_STAB, BOW_STAB_2, BOW_DRAW_STAB;
+ * BOWGUN_FIRE_RECOIL_0 to _2 before step 2 and BOWGUN_RAPID_FIRE before step
+ * 3). Holding PAD_L2 opens the menu (ammoMenuOpen; the ammo state goes to the
+ * saved* fields) and PAD_CROSS or PAD_TRIANGLE steps the ammo slot either way
+ * (Bowgun_NextAmmoSlot, then Bowgun_LoadAmmo, with a sound and a
+ * pouchHudFlags bit). Releasing it closes the menu: a changed ammo type is
+ * loaded, an unchanged one gets its saved count, clip size and rounds back.
+ * Always returns 0.
+ */
 s32 Player_BowgunAmmoSwitch(Player *pl)
 {
 
@@ -1741,7 +1959,7 @@ s32 Player_BowgunAmmoSwitch(Player *pl)
     if (Quest_PhaseIsOver(1) == 1) {
         return 0;
     }
-    if (pl->unk816 != 0) {
+    if (pl->ammoMenuLock != 0) {
         return 0;
     }
     if (pl->stateGroup == PL_GROUP_WEAPON) {
@@ -1783,8 +2001,8 @@ s32 Player_BowgunAmmoSwitch(Player *pl)
         pl->savedRoundsLoaded = pl->roundsLoaded;
         pl->savedCoatingSlot = pl->coatingSlot;
     }
-    if (pl->input.held2 & 4) {
-        if (pl->input.pressed2 & 0x40) {
+    if (pl->input.held2 & PAD_L2) {
+        if (pl->input.pressed2 & PAD_CROSS) {
             if (pl->ammoSlot == 0xFF) {
                 pl->ammoSlot = Bowgun_NextAmmoSlot(pl, 0, 3);
             } else {
@@ -1795,7 +2013,7 @@ s32 Player_BowgunAmmoSwitch(Player *pl)
                 pl->pouchHudFlags |= 8;
                 Sound_PlaySeFlat(0, 0x12, 0);
             }
-        } else if (pl->input.pressed2 & 0x100) {
+        } else if (pl->input.pressed2 & PAD_TRIANGLE) {
             if (pl->ammoSlot == 0xFF) {
                 pl->ammoSlot = Bowgun_NextAmmoSlot(pl, 0, 2);
             } else {
@@ -1826,11 +2044,16 @@ s32 Player_BowgunAmmoSwitch(Player *pl)
     return 0;
 }
 
-u8 Player_PushNotice3(s32 arg0)
+u8 Player_PushNotice3(s32 noticeValue)
 {
-    return Notice_Push(1, 3, arg0);
+    return Notice_Push(1, 3, noticeValue);
 }
 
+/*
+ * Returns 1 when the player's status 2 build-up is above 0, 2 when status 4's
+ * is, else 0; Player_Update turns the result into PL_REACT_STATUS2 or
+ * PL_REACT_STATUS4.
+ */
 static s32 Player_PickStatusState(Player *pl)
 {
     if (pl->status2Buildup > 0) {
@@ -1842,6 +2065,11 @@ static s32 Player_PickStatusState(Player *pl)
     return 0;
 }
 
+/*
+ * Returns the heading a stick points to in the world: the stick's angle plus
+ * the camera's yaw (Camera_GetYaw), as 16 bits. i 0 is the left stick
+ * (input.stickAngle), 1 the right stick (input.rightStickAngle).
+ */
 s32 Player_GetStickYaw(Player *pl, s32 i)
 {
     s32 yaw = Camera_GetYaw() & 0xFFFF;
@@ -1849,6 +2077,11 @@ s32 Player_GetStickYaw(Player *pl, s32 i)
     return ((&pl->input.stickAngle)[i] + yaw) & 0xFFFF;
 }
 
+/*
+ * Sets pl->targetYaw to the left stick's heading (input.stickAngle plus the
+ * camera's yaw), unless the camera is turning behind the player
+ * (CamCtl_IsTurningBehind).
+ */
 void Player_FaceStick(Player *pl)
 {
     if (CamCtl_IsTurningBehind() != 1) {
@@ -1856,10 +2089,18 @@ void Player_FaceStick(Player *pl)
     }
 }
 
+/*
+ * Returns how far the left stick is pushed: 0 for none (also for a gunner
+ * with the weapon drawn and pl->aimMode 1), 1 for a tilt (input.stickTilt) of
+ * 40 or more, 3 for 120 or more (a run), and 5 when the sheathed player in
+ * PL_GROUP_ACTION holds PAD_R2 with the stick pushed (the dash; not while
+ * PL_ACT_RUN_AFTER_DASH waits out dashDelay). The second parameter is not
+ * used.
+ */
 u8 Player_StickMoveLevel(Player *pl, s32 unused)
 {
     u8 lvl = 0;
-    u16 v;
+    u16 tilt;
 
     switch (pl->weaponType) {
     case WEAPON_HEAVY_BOWGUN:
@@ -1879,53 +2120,68 @@ u8 Player_StickMoveLevel(Player *pl, s32 unused)
     case WEAPON_GUNLANCE:
         break;
     }
-    v = pl->input.stickTilt;
-    if (v >= 120) {
+    tilt = pl->input.stickTilt;
+    if (tilt >= 120) {
         lvl = 3;
-    } else if (v >= 85) {
+    } else if (tilt >= 85) {
         lvl = 1;
-    } else if (v >= 40) {
+    } else if (tilt >= 40) {
         lvl = 1;
     }
-    if (pl->action == 0 && pl->weaponOut == 0 && (pl->input.held & 0x10) && lvl != 0
+    if (pl->action == 0 && pl->weaponOut == 0 && (pl->input.held & PAD_R2) && lvl != 0
         && (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH) == 0 || pl->dashDelay == 0)) {
         return 5;
     }
     return lvl;
 }
 
+/*
+ * Works out whether a monster fights the player. First copies inBattle to
+ * prevInBattle and clears it. For each monster in the player's area that is
+ * active, visible, flagged startsBattle, not in EM_GROUP_DEFEAT, has noticed
+ * this player and is in combat, it sets the player's bit in the monster's
+ * combatPlayers, pl->inBattle = 1, pl->target to the monster and
+ * pl->targetAngle to the angle from the monster to the player plus 0x4000;
+ * for Velocidrome, Gendrome and Iodrome it also sets pl->unk73A_combat.
+ */
 void Player_UpdateInBattle(Player *pl)
 {
     s16 i;
     u8 bit;
-    Em *m;
-    s32 t;
+    Em *monster;
+    s32 monsterType;
 
     bit = 1 << pl->index;
     pl->prevInBattle = pl->inBattle;
     pl->inBattle = 0;
-    for (i = 0, m = gEms; i < 20; i++, m++) {
-        if (m->area == pl->area && m->active != 0 && m->visible != 0 && m->startsBattle != 0 && m->stateGroup != 5
-            && (m->noticed & bit) && m->combat == 1) {
-            m->combatPlayers |= bit;
+    for (i = 0, monster = gEms; i < 20; i++, monster++) {
+        if (monster->area == pl->area && monster->active != 0 && monster->visible != 0 && monster->startsBattle != 0 && monster->stateGroup != 5
+            && (monster->noticed & bit) && monster->combat == 1) {
+            monster->combatPlayers |= bit;
             pl->inBattle = 1;
-            pl->target = m;
-            pl->targetAngle = (u16) (Vec_Heading(&m->posX, pl->pos) + 0x4000);
-            t = m->type;
-            if (t == 0x1B || t == 0x1C || t == 0x1F) {
+            pl->target = monster;
+            pl->targetAngle = (u16) (Vec_Heading(&monster->posX, pl->pos) + 0x4000);
+            monsterType = monster->type;
+            if (monsterType == 0x1B || monsterType == 0x1C || monsterType == 0x1F) {
                 pl->unk73A_combat = 1;
             }
         }
     }
 }
 
+/*
+ * Called with a player (typed Em): returns 1 on the frame a battle begins
+ * (inBattle set and not prevInBattle, and the byte Player.unk73A_combat still
+ * 0, which it sets to 1), 0xFF while in a battle otherwise, 0 outside a
+ * battle.
+ */
 static s32 Player_EnteredBattle(Em *em)
 {
-    u8 temp_v1;
+    u8 battleFlag;
 
-    temp_v1 = em->inBattle;
-    if (temp_v1 != 0) {
-        if ((temp_v1 != em->prevInBattle) && (em->combatPlayers == 0)) {
+    battleFlag = em->inBattle;
+    if (battleFlag != 0) {
+        if ((battleFlag != em->prevInBattle) && (em->combatPlayers == 0)) {
             em->combatPlayers = 1;
             return 1;
         }
@@ -1937,13 +2193,13 @@ static s32 Player_EnteredBattle(Em *em)
 //---
 s16 Player_CheckRideSlip(Player *pl)
 {
-    Em *m;
+    Em *monster;
     s16 i;
     f32 len;
     f32 lim;
 
-    for (m = gEms, i = 0; i < 20; i++, m++) {
-        if (pl->rideEm == m->slotNo && m->type != 0x37) {
+    for (monster = gEms, i = 0; i < 20; i++, monster++) {
+        if (pl->rideEm == monster->slotNo && monster->type != 0x37) {
             return 0;
         }
     }
@@ -1965,6 +2221,10 @@ s16 Player_CheckRideSlip(Player *pl)
     return 0;
 }
 
+/*
+ * Takes the stamina cost of a dash (Player_AddStamina): 15, or 8 with skill
+ * 0xB6, or 18 with skill 0xB7.
+ */
 void Player_UseDashStamina(Player *pl)
 {
     if (Player_HasSkill(pl, 0xB6) == 1) {
@@ -1978,12 +2238,19 @@ void Player_UseDashStamina(Player *pl)
     Player_AddStamina(pl, -0xF);
 }
 
+/*
+ * The input on a climbable wall; returns 1 when it started a state, else 0.
+ * The stick up (input.stickDir & PAD_UP) requests PL_ACT_WALL_CLIMB_UP_FAST
+ * when PAD_R2 is held (taking the dash stamina, Player_UseDashStamina, unless
+ * noTurn is nonzero), else PL_ACT_WALL_CLIMB_UP; the stick down does the same
+ * with the DOWN states; PAD_CROSS requests PL_ACT_WALL_LET_GO.
+ */
 s32 Player_WallClimbInput(Player *pl, s16 noTurn)
 {
-    u16 s = pl->input.stickDir;
+    u16 stick = pl->input.stickDir;
 
-    if (s & 0x2000) {
-        if (pl->input.held & 0x10) {
+    if (stick & 0x2000) {
+        if (pl->input.held & PAD_R2) {
             if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_UP_FAST) == 0) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_UP_FAST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 if (noTurn == 0) {
@@ -1995,8 +2262,8 @@ s32 Player_WallClimbInput(Player *pl, s16 noTurn)
         }
         return 1;
     }
-    if (s & 0x1000) {
-        if (pl->input.held & 0x10) {
+    if (stick & 0x1000) {
+        if (pl->input.held & PAD_R2) {
             if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_DOWN_FAST) == 0) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_CLIMB_DOWN_FAST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 if (noTurn == 0) {
@@ -2008,22 +2275,33 @@ s32 Player_WallClimbInput(Player *pl, s16 noTurn)
         }
         return 1;
     }
-    if (pl->input.pressed & 0x40) {
+    if (pl->input.pressed & PAD_CROSS) {
         Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_WALL_LET_GO, 0);
         return 1;
     }
     return 0;
 }
 
+/*
+ * Starts the action of the action spot the player stands at
+ * (Player_FindActionSpot gives its position, angle and kind), when mode
+ * allows. Kind 1 moves to the spot and starts PL_ACT_SPIT_ROAST_START; 3
+ * PL_ACT_SUPPLY_BOX; 4 PL_ACT_TAKE_REWARDS; 7 PL_ACT_DELIVERY_BOX (not once
+ * the quest is over); 9 PL_ACT_START_COUNTDOWN (while gScene.countdownOn is
+ * 0); 5 (the bed) opens PL_ACT_BED_MENU with mode 0, else moves to a place
+ * beside the spot by the player's index (gSpotLineupOffsets) and starts
+ * PL_ACT_BED_LIE_DOWN. Other kinds, or none, start PL_ACT_TRADE when a trader
+ * is near (Player_NearTrader).
+ */
 void Player_StartSpotAction(Player *pl, s32 mode)
 {
     s8 kind;
     u16 angle;
     f32 pos[3];
-    f32 d[3];
-    f32 v[3];
+    f32 worldOffset[3];
+    f32 localOffset[3];
     s32 ang[3];
-    f32 m[16];
+    f32 rotMtx[16];
 
     switch (Player_FindActionSpot((Player *)pl, (f32 *)pos, &angle, (u8 *)&kind)) {
     case 0:
@@ -2031,7 +2309,7 @@ void Player_StartSpotAction(Player *pl, s32 mode)
     case 6:
     case 8:
     default:
-        if ((u8) Player_NearEmKind10(pl)) {
+        if ((u8) Player_NearTrader(pl)) {
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TRADE, 0);
         }
         break;
@@ -2059,12 +2337,12 @@ void Player_StartSpotAction(Player *pl, s32 mode)
         ang[0] = 0;
         ang[1] = angle;
         ang[2] = 0;
-        Mtx_FromAnglesXYZ(ang, m);
-        Vec_Set(v, 120.0f * gSpotLineupOffsets[pl->index], 0.0f, 0.0f);
-        Vec_Rotate(d, v, m);
-        pl->moveTo[0] += d[0];
-        pl->moveTo[1] += d[1];
-        pl->moveTo[2] += d[2];
+        Mtx_FromAnglesXYZ(ang, rotMtx);
+        Vec_Set(localOffset, 120.0f * gSpotLineupOffsets[pl->index], 0.0f, 0.0f);
+        Vec_Rotate(worldOffset, localOffset, rotMtx);
+        pl->moveTo[0] += worldOffset[0];
+        pl->moveTo[1] += worldOffset[1];
+        pl->moveTo[2] += worldOffset[2];
         pl->targetYaw = angle;
         Player_StartMoveTo(pl, 0x14);
         Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BED_LIE_DOWN, 0);
@@ -2083,10 +2361,19 @@ void Player_StartSpotAction(Player *pl, s32 mode)
     }
 }
 
+/*
+ * PAD_R1 held: each weapon's own action. mode 0 and 2 are for a sheathed
+ * weapon (it is drawn into the action), 1 for a drawn one; mode 2 first drops
+ * a carried item. Great sword: PL_REACT_GUARD_START (the lance, sword and
+ * shield and gunlance draw into PL_REACT_GUARD_DRAW when sheathed); hammer:
+ * Hammer_StartCharge; hunting horn: HuntingHorn_StartPlaying; dual swords:
+ * the demon mode (DualSwords_DemonToggle; mode 1 can also end it); long
+ * sword: LongSword_SpiritDraw; bow: Bow_DrawToAim (sheathed only).
+ */
 void Player_HoldSpecialInput(Player *pl, u8 mode)
 {
 
-    if (pl->input.held & 0x80) {
+    if (pl->input.held & PAD_R1) {
         if (mode == 0 || mode == 2) {
             switch (pl->weaponType) {
             case WEAPON_GREAT_SWORD:
@@ -2169,14 +2456,26 @@ void Player_HoldSpecialInput(Player *pl, u8 mode)
     }
 }
 
-void Player_TryGather(Player *pl, s32 a)
+/*
+ * Starts gathering at a gather point or a mine point. mode 0 is PAD_CIRCLE
+ * standing, 1 crouched, 2 the item button with a tool selected; nothing
+ * happens near the trader (Player_NearTrader) unless mode is 2. At a gather
+ * point (Player_GetGatherPoint) of kind 0, modes 0 and 1 enter PL_ACT_GATHER
+ * or PL_ACT_GATHER_CROUCHED; mode 2 at kind 3 with a pickaxe selected faces
+ * the point and enters PL_ACT_MINE, at kind 4 with a net PL_ACT_BUG_NET, and
+ * the wrong tool plays sound 0x15. In modes 0 and 1 a mine point under the
+ * player (MinePoint_FindNearPlayer) then enters PL_ACT_GATHER_DROP,
+ * PL_ACT_GATHER_SPECIAL (type 5) or PL_ACT_CARVE (type 2), or their crouched
+ * forms.
+ */
+void Player_TryGather(Player *pl, s32 mode)
 {
     f32 pos[3];
     u16 kind;
     u16 id;
-    u16 r;
+    u16 mineType;
 
-    if ((u8) Player_NearEmKind10(pl) && (u8) a != 2) {
+    if ((u8) Player_NearTrader(pl) && (u8) mode != 2) {
         return;
     }
     if (Player_GetGatherPoint(pl, &kind, pos) == 0xFFFF) {
@@ -2184,17 +2483,17 @@ void Player_TryGather(Player *pl, s32 a)
     }
     switch (kind) {
     case 0:
-        if ((u8) a == 2) {
+        if ((u8) mode == 2) {
             goto other;
         }
-        if ((u8) a == 0) {
+        if ((u8) mode == 0) {
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER, 0);
         } else {
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_CROUCHED, 0);
         }
         break;
     case 3:
-        if ((u8) a == 2) {
+        if ((u8) mode == 2) {
             switch (pl->pouch[pl->pouchCursor].item) {
             case 150:
             case 151:
@@ -2212,7 +2511,7 @@ void Player_TryGather(Player *pl, s32 a)
         }
         break;
     case 4:
-        if ((u8) a == 2) {
+        if ((u8) mode == 2) {
             id = pl->pouch[pl->pouchCursor].item;
             switch (id) {
             case 153:
@@ -2238,18 +2537,18 @@ void Player_TryGather(Player *pl, s32 a)
         case 153:
         case 154:
         case 155:
-            if ((u8) a == 2) {
+            if ((u8) mode == 2) {
                 Sound_PlaySeFlat(0, 0x15, 0);
             }
             break;
         }
         break;
     }
-    if ((u8) a != 2) {
-        r = MinePoint_FindNearPlayer(pl);
-        if (r != 0xFFFF) {
-            if ((u8) a == 0) {
-                switch (r) {
+    if ((u8) mode != 2) {
+        mineType = MinePoint_FindNearPlayer(pl);
+        if (mineType != 0xFFFF) {
+            if ((u8) mode == 0) {
+                switch (mineType) {
                 default:
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_DROP, 0);
                     break;
@@ -2261,7 +2560,7 @@ void Player_TryGather(Player *pl, s32 a)
                     break;
                 }
             } else {
-                switch (r) {
+                switch (mineType) {
                 default:
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GATHER_DROP_CROUCHED, 0);
                     break;
@@ -2277,6 +2576,19 @@ void Player_TryGather(Player *pl, s32 a)
     }
 }
 
+/*
+ * The input of the crouched states; always returns 0 (another player's copy
+ * online does nothing). By gScene.questPhase it requests the quest's start
+ * (phase 4, while questStartDone is 0), end (5, 6), abort (7) or leave (8) event
+ * state. Otherwise it sets freeState and, by Player_StickMoveLevel, walks
+ * crouched (PL_ACT_CROUCH_WALK, or PL_ACT_CROUCH_WALK_FAST at level 3) or
+ * stops (PL_ACT_CROUCH_STOP); PAD_CROSS stands up (PL_ACT_CROUCH_STAND_UP)
+ * unless mustCrouch is set. Unless the quest is over, it then starts requested
+ * gestures, draws the weapon on a right-stick flick (PL_ACT_DRAW), runs
+ * Player_HoldSpecialInput, uses an item on PAD_SQUARE (Player_TryGather mode
+ * 2, Player_UseItem) and handles PAD_CIRCLE (an offered item, a spot,
+ * gathering) or a pending offer (PL_ACT_OFFER_ITEM).
+ */
 s32 Player_CrouchInput(Player *pl)
 {
 
@@ -2285,7 +2597,7 @@ s32 Player_CrouchInput(Player *pl)
     }
     switch (gScene.questPhase) {
     case 4:
-        if (pl->unk7E5 == 0) {
+        if (pl->questStartDone == 0) {
             Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_QUEST_START, 0);
             return 0;
         }
@@ -2327,27 +2639,27 @@ s32 Player_CrouchInput(Player *pl)
         }
         break;
     }
-    if ((pl->input.pressed & 0x40) && pl->unk668 == 0) {
+    if ((pl->input.pressed & PAD_CROSS) && pl->mustCrouch == 0) {
         Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_STAND_UP, 0);
     }
     if (Quest_PhaseIsOver(1) == 1) {
         return 0;
     }
     if (pl->actRequest != 0) {
-        Player_StartAct(pl);
+        Player_StartGesture(pl);
     }
-    if (pl->unk668 == 0) {
-        if (pl->input.stickDirPressed & 0x3C) {
+    if (pl->mustCrouch == 0) {
+        if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DRAW, 0);
         }
         Player_HoldSpecialInput(pl, 0);
     }
-    if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+    if ((pl->input.pressed & PAD_SQUARE) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
         Player_TryGather(pl, 2);
         Player_UseItem(pl, 0);
         pl->pouchHudFlags |= 1;
     }
-    if (pl->input.pressed & 0x20) {
+    if (pl->input.pressed & PAD_CIRCLE) {
         if (Player_TakeOfferedItem(pl) == 0) {
             Player_StartSpotAction(pl, 0);
             Player_TryGather(pl, 1);
@@ -2402,21 +2714,30 @@ void Player_WeaponAttackInput(Player *pl, s32 arg)
     }
 }
 
+/*
+ * The input while the guard is held, for the local player (any player
+ * offline) before the quest's end. Lance: the stick walks (PL_ACT_GUARD_WALK,
+ * unless motion 0x3F3 plays), PAD_R3 and a right-stick flick start
+ * Lance_GuardAttack (0 and 1). Gunlance: Gunlance_GuardInput, else the same
+ * guard walk. Sword and shield: PAD_CROSS with stamina 75 or more rolls
+ * (PL_ACT_ROLL), a flick up gives SwordShield_GuardSlash. Great sword and
+ * long sword: PAD_CROSS with stamina 75 or more rolls.
+ */
 void Player_GuardInput(Player *pl)
 {
-    u8 temp_a0;
+    u8 weapon;
 
     if (((Player_IsLocal(pl) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1)) {
-        temp_a0 = pl->weaponType;
-        switch (temp_a0) {
+        weapon = pl->weaponType;
+        switch (weapon) {
         case 3:
             if ((Player_StickMoveLevel(pl, 0) & 0xFF) && (pl->motionId[0] != 0x3F3)) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_GUARD_WALK, PL_SET_SNAP_POS);
             }
-            if (pl->input.pressed & 1) {
+            if (pl->input.pressed & PAD_R3) {
                 Lance_GuardAttack(pl, 0);
             }
-            if (pl->input.stickDirPressed & 0x3C) {
+            if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
                 Lance_GuardAttack(pl, 1);
             }
             break;
@@ -2426,16 +2747,16 @@ void Player_GuardInput(Player *pl)
             }
             break;
         case 4:
-            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+            if ((pl->input.pressed & PAD_CROSS) && (pl->stamina >= 0x4B)) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             }
-            if (pl->input.stickDirPressed & 0x20) {
+            if (pl->input.stickDirPressed & PAD_RSTICK_UP) {
                 SwordShield_GuardSlash(pl);
             }
             break;
         case 0:
         case 7:
-            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+            if ((pl->input.pressed & PAD_CROSS) && (pl->stamina >= 0x4B)) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             }
             break;
@@ -2443,6 +2764,16 @@ void Player_GuardInput(Player *pl)
     }
 }
 
+/*
+ * Turns the player to run along the wall it touches (rot[1] and targetYaw set
+ * to the contact's direction plus or minus 0x4000); returns 0 for none (not
+ * in the current area, or no wall hit), 1 or 2. It reads the first of the
+ * player's wall contacts (gEmWallContacts, ended by flags 0): a contact with
+ * flags bit 1 and a wall ahead in wallHitDirs (mask 0xE0000007) turns by
+ * -0x4000 for side 0 or +0x4000 for side 1 and returns 1; any other contact
+ * turns by +0x4000 only for side 1 and returns 2. Player_CheckClimb starts
+ * PL_ACT_WALL_GRAB on 1.
+ */
 s8 Player_TurnAlongWall(Player *pl, s16 side)
 {
     s16 i;
@@ -2480,6 +2811,12 @@ s8 Player_TurnAlongWall(Player *pl, s16 side)
     return 0;
 }
 
+/*
+ * As Player_TurnAlongWall for the wall at one side: side 0 needs a wall ahead
+ * in wallHitDirs (mask 0xE0000007), side 1 one behind (mask 0x3E000). Side 0
+ * with a flags bit 1 contact turns by -0x4000 and returns 1, side 1 turns by
+ * +0x4000 and returns 2. Returns 0 otherwise.
+ */
 s32 Player_TurnAlongWallSide(Player *pl, s16 side)
 {
     s16 i;
@@ -2511,6 +2848,13 @@ s32 Player_TurnAlongWallSide(Player *pl, s16 side)
     return 0;
 }
 
+/*
+ * Starts a climb or a hop when the player runs at a wall or a ledge; returns
+ * 1 when it started a state, else 0. Player_TurnAlongWall returning 1 enters
+ * PL_ACT_WALL_GRAB. The floor 55 units ahead (Player_FloorAheadAbove) decides
+ * the rest: 60 to 180 above the player requests PL_ACT_STEP_UP, 180 to 210
+ * PL_ACT_LEDGE_GRAB, 210 to 300 PL_ACT_JUMP_TO_LEDGE.
+ */
 u8 Player_CheckClimb(Player *pl)
 {
     f32 dist;
@@ -2543,20 +2887,20 @@ u8 Player_CheckClimb(Player *pl)
 /* Uses the selected pouch item (see config/symbols/game.txt). */
 void Player_UseItem(Player *pl, u8 mode)
 {
-    f32 v[3];
+    f32 spotPos[3];
     u16 ang;
     u8 k;
 
     if (Pouch_CursorCount(pl) <= 0) {
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         return;
     }
     if (mode == 2) {
         switch (pl->pouch[pl->pouchCursor].item) {
-        case 0x61:
+        case ITEM_ID_MONSTER_BOMB:
             if (Item_RideItemUsable() == 1) {
                 pl->useItem = pl->pouch[pl->pouchCursor].item;
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_LARGE_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
@@ -2593,7 +2937,7 @@ void Player_UseItem(Player *pl, u8 mode)
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2619,31 +2963,31 @@ void Player_UseItem(Player *pl, u8 mode)
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_THROW_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
         break;
-    case 0x5B:
-    case 0x5C:
-    case 0x5F:
-    case 0x60:
+    case ITEM_ID_SMALL_BARREL_BOMB:
+    case ITEM_ID_SMALL_BARREL_BOMB_B:
+    case ITEM_ID_LAUNCHED_BARREL_BOMB:
+    case ITEM_ID_LAUNCHED_BARREL_BOMB_B:
         if (Item_CanUseSmallBarrelBomb() == 1) {
             goto drink;
         }
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
-    case 0x56:
+    case ITEM_ID_NO_BOMB_AREA_ITEM:
         if (Scene_InNoBarrelBombArea() == 1) {
             goto drink;
         }
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
-    case 0x28:
-    case 0x2C:
-    case 0x2E:
-    case 0x2D:
+    case ITEM_ID_MEAT:
+    case ITEM_ID_BAIT_POISON:
+    case ITEM_ID_BAIT_STATUS2:
+    case ITEM_ID_BAIT_STATUS4:
         if (Scene_CanPlaceKind3() == 1) {
         drink:
             if (pl->action == 0) {
@@ -2656,55 +3000,55 @@ void Player_UseItem(Player *pl, u8 mode)
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
-    case 0x5D:
-    case 0x5E:
-    case 0x29A:
+    case ITEM_ID_LARGE_BARREL_BOMB:
+    case ITEM_ID_LARGE_BARREL_BOMB_B:
+    case ITEM_ID_SUPPLY_LARGE_BARREL_BOMB:
         if (Item_CanPlaceLargeBarrelBomb() == 1) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_LARGE_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
-    case 0x62:
+    case ITEM_ID_PLACED_BOMB:
         if (Item_CanPlaceKind1() == 1) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_PLACE_LARGE_ITEM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
-    case 0x55:
-    case 0x296:
+    case ITEM_ID_TRAP:
+    case ITEM_ID_SUPPLY_TRAP:
         if (Item_CanPlaceKind2() == 1) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
-    case 0x54:
-    case 0x299:
+    case ITEM_ID_PITFALL_TRAP:
+    case ITEM_ID_SUPPLY_PITFALL_TRAP:
         if (Player_GetAreaAmbModel(pl) >= 0) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2742,7 +3086,7 @@ void Player_UseItem(Player *pl, u8 mode)
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2754,33 +3098,33 @@ void Player_UseItem(Player *pl, u8 mode)
     case 0x93:
     case 0x94:
     case 0x95:
-        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 2) {
+        if (Player_FindActionSpot((Player *)pl, (f32 *)spotPos, &ang, (u8 *)&k) == 2) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             pl->targetYaw = ang;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_CAST, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
-    case 0x2A6:
-        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 0xB) {
+    case ITEM_ID_DELIVERY:
+        if (Player_FindActionSpot((Player *)pl, (f32 *)spotPos, &ang, (u8 *)&k) == 0xB) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SET_TRAP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
     case 0x29B:
-        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 6) {
-            pl->moveTo[0] = v[0];
-            pl->moveTo[1] = v[1];
-            pl->moveTo[2] = v[2];
+        if (Player_FindActionSpot((Player *)pl, (f32 *)spotPos, &ang, (u8 *)&k) == 6) {
+            pl->moveTo[0] = spotPos[0];
+            pl->moveTo[1] = spotPos[1];
+            pl->moveTo[2] = spotPos[2];
             pl->targetYaw = ang;
             Player_StartMoveTo(pl, 0x14);
             pl->stateRand = k;
@@ -2788,63 +3132,63 @@ void Player_UseItem(Player *pl, u8 mode)
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
     case 0x2B7:
-        if (Player_FindActionSpot((Player *)pl, (f32 *)v, &ang, (u8 *)&k) == 0xA) {
-            pl->targetYaw = Vec_Heading(pl->pos, v) - 0x4000;
+        if (Player_FindActionSpot((Player *)pl, (f32 *)spotPos, &ang, (u8 *)&k) == 0xA) {
+            pl->targetYaw = Vec_Heading(pl->pos, spotPos) - 0x4000;
             pl->stateRand = k;
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPOT_ITEM_STRIKE, PL_SET_KEEP_RAND);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
-    case 0xB7:
-    case 0xB:
-    case 0x1A:
-    case 0x7:
-    case 0x8:
-    case 0x292:
-    case 0x9:
-    case 0xA:
-    case 0x1B:
-    case 0x298:
-    case 0x1C:
-    case 0xD:
-    case 0xE:
-    case 0xF:
-    case 0x10:
-    case 0x12:
-    case 0x13:
-    case 0x293:
-    case 0x104:
-    case 0xB8:
-    case 0xC7:
-    case 0xCE:
-    case 0xCF:
-    case 0x15:
-    case 0x16:
-    case 0x22:
-    case 0x17:
-    case 0xC:
-    case 0xCA:
-    case 0x11:
-    case 0x14:
-    case 0x1E:
-    case 0xC8:
-        if (func_00723BC0((Em *)pl) == 0) {
+    case ITEM_ID_HEAL_20:
+    case ITEM_ID_CURE_POISON:
+    case ITEM_ID_HEAL_10_CURE:
+    case ITEM_ID_HEAL_30:
+    case ITEM_ID_HEAL_50:
+    case ITEM_ID_SUPPLY_HEAL_30:
+    case ITEM_ID_MAX_HP_10:
+    case ITEM_ID_MAX_HP_20:
+    case ITEM_ID_MAX_HP_FULL:
+    case ITEM_ID_SUPPLY_MAX_HP_FULL:
+    case ITEM_ID_MAX_ALL:
+    case ITEM_ID_STAMINA_LOCK:
+    case ITEM_ID_STAMINA_LOCK_LONG:
+    case ITEM_ID_ATTACK_DRUG:
+    case ITEM_ID_ATTACK_DRUG_STRONG:
+    case ITEM_ID_DEFENSE_DRUG:
+    case ITEM_ID_DEFENSE_DRUG_STRONG:
+    case ITEM_ID_SUPPLY_MAX_STAMINA_75:
+    case ITEM_ID_HURT_CURE_CHANCE:
+    case ITEM_ID_CURE_CHANCE:
+    case ITEM_ID_POISON_GAMBLE:
+    case ITEM_ID_ATTACK_SHARED:
+    case ITEM_ID_DEFENSE_SHARED:
+    case ITEM_ID_COOL_DRINK:
+    case ITEM_ID_HOT_DRINK:
+    case ITEM_ID_HEAL_50_TEAM:
+    case ITEM_ID_DETECT:
+    case ITEM_ID_REGEN:
+    case ITEM_ID_MAX_STAMINA_75_B:
+    case ITEM_ID_ATTACK_BURST:
+    case ITEM_ID_DEFENSE_BURST:
+    case ITEM_ID_MAX_STAMINA_75:
+    case ITEM_ID_RANDOM:
+        if (Player_Status6Active(pl) == 0) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DRINK, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2854,13 +3198,13 @@ void Player_UseItem(Player *pl, u8 mode)
     case 0x9F:
     case 0x9E:
     case 0xA0:
-        if (Pouch_HasItem28(pl) == 1) {
+        if (Pouch_HasMeat(pl) == 1) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_START, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2884,7 +3228,7 @@ void Player_UseItem(Player *pl, u8 mode)
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2892,39 +3236,39 @@ void Player_UseItem(Player *pl, u8 mode)
         pl->useItem = pl->pouch[pl->pouchCursor].item;
         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_HORN_PLAY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         break;
-    case 0xB0:
-    case 0xB1:
-    case 0xB2:
-    case 0xB3:
+    case ITEM_ID_TEAM_HEAL:
+    case ITEM_ID_TEAM_CURE:
+    case ITEM_ID_TEAM_ATTACK:
+    case ITEM_ID_TEAM_DEFENSE:
         pl->useItem = pl->pouch[pl->pouchCursor].item;
         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_TEAM_ITEM_USE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         break;
-    case 0x2F:
-    case 0x30:
-    case 0x31:
-    case 0x32:
-    case 0xEB:
-    case 0xF7:
-    case 0xF8:
-    case 0x33:
-    case 0x34:
-    case 0x35:
-    case 0x36:
-    case 0x37:
-    case 0x38:
-    case 0x39:
-    case 0x3A:
-    case 0x3B:
-    case 0x3C:
-    case 0x3D:
-    case 0x3E:
-        if (func_00723BC0((Em *)pl) == 0) {
+    case ITEM_ID_FOOD_STAMINA_75:
+    case ITEM_ID_FOOD_STAMINA_150:
+    case ITEM_ID_FOOD_STAMINA_FULL:
+    case ITEM_ID_FOOD_STAMINA_GAMBLE:
+    case ITEM_ID_FOOD_HEAL_20:
+    case ITEM_ID_FOOD_PRIZE_A:
+    case ITEM_ID_FOOD_PRIZE_B:
+    case ITEM_ID_FOOD_HOT:
+    case ITEM_ID_FOOD_HOT_STAMINA:
+    case ITEM_ID_FOOD_COOL:
+    case ITEM_ID_FOOD_COOL_STAMINA:
+    case ITEM_ID_FOOD_CURE:
+    case ITEM_ID_FOOD_CURE_STAMINA:
+    case ITEM_ID_FOOD_RESTORE:
+    case ITEM_ID_FOOD_REGEN_SHORT:
+    case ITEM_ID_FOOD_REGEN:
+    case ITEM_ID_FOOD_REGEN_B:
+    case ITEM_ID_FOOD_REGEN_LONG:
+    case ITEM_ID_FOOD_RESTORE_B:
+        if (Player_Status6Active(pl) == 0) {
             pl->useItem = pl->pouch[pl->pouchCursor].item;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_EAT, 0);
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2938,7 +3282,7 @@ void Player_UseItem(Player *pl, u8 mode)
         } else {
             Sound_PlaySeFlat(0, 0x15, 0);
             if (mode == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         }
         break;
@@ -2962,17 +3306,27 @@ void Player_UseItem(Player *pl, u8 mode)
     default:
         Sound_PlaySeFlat(0, 0x15, 0);
         if (mode == 1) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
 extern s32 gPouchFullTakeText;
+/*
+ * Returns 1 when the player starts taking an item another player holds out to
+ * it, else 0 (always 0 offline, and while pl->offerNoticeTimer runs). The
+ * giver is another active player in the same area, in PL_ACT_OFFER_ITEM,
+ * offering to this player (offerTo), within 300 units, with an item of rarity
+ * below 3. If the pouch has room it copies offerItem and offerCount, tells
+ * the giver when the player is local (QSync_SendPlayer 7) and requests
+ * PL_ACT_TAKE_ITEM_WAIT; otherwise it pushes a notice and sets
+ * offerNoticeTimer to 90.
+ */
 s32 Player_TakeOfferedItem(Player *pl)
 {
     s16 i;
-    Player *o;
+    Player *giver;
 
     if (Game_IsOnline() == 0) {
         return 0;
@@ -2980,32 +3334,32 @@ s32 Player_TakeOfferedItem(Player *pl)
     if (pl->offerNoticeTimer != 0) {
         return 0;
     }
-    o = gPlayers;
-    for (i = 0; i < gScene.playerCount; i++, o++) {
-        if (i != pl->index && o->active != 0 && o->area == pl->area && Player_IsState(o, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM) != 0
-            && o->offerTo == pl->index && Vec_Distance(pl->pos, o->pos) <= 300.0f && gItemData[o->offerItem].rarity < 3) {
-            if (Pouch_Count(pl, o->offerItem) == 0) {
+    giver = gPlayers;
+    for (i = 0; i < gScene.playerCount; i++, giver++) {
+        if (i != pl->index && giver->active != 0 && giver->area == pl->area && Player_IsState(giver, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM) != 0
+            && giver->offerTo == pl->index && Vec_Distance(pl->pos, giver->pos) <= 300.0f && gItemData[giver->offerItem].rarity < 3) {
+            if (Pouch_Count(pl, giver->offerItem) == 0) {
                 if (Pouch_HasFreeSlot(pl) != 0) {
-                    pl->offerItem = o->offerItem;
-                    pl->offerCount = o->offerCount;
+                    pl->offerItem = giver->offerItem;
+                    pl->offerCount = giver->offerCount;
                     if (Player_IsLocal(pl) == 1) {
-                        QSync_SendPlayer(pl, 7, o->index);
+                        QSync_SendPlayer(pl, QSYNC_PL_ITEM_ASK, giver->index);
                     }
                     Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TAKE_ITEM_WAIT, 0);
                     return 1;
                 }
                 Notice_PushItem((char *)gPouchFullTakeText);
                 pl->offerNoticeTimer = 0x5A;
-            } else if (Pouch_Room(pl, o->offerItem) >= o->offerCount) {
-                pl->offerItem = o->offerItem;
-                pl->offerCount = o->offerCount;
+            } else if (Pouch_Room(pl, giver->offerItem) >= giver->offerCount) {
+                pl->offerItem = giver->offerItem;
+                pl->offerCount = giver->offerCount;
                 if (Player_IsLocal(pl) == 1) {
-                    QSync_SendPlayer(pl, 7, o->index);
+                    QSync_SendPlayer(pl, QSYNC_PL_ITEM_ASK, giver->index);
                 }
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TAKE_ITEM_WAIT, 0);
                 return 1;
             } else {
-                Notice_Push(1, 0xF, o->offerItem);
+                Notice_Push(1, 0xF, giver->offerItem);
                 pl->offerNoticeTimer = 0x5A;
             }
             return 0;
@@ -3014,14 +3368,33 @@ s32 Player_TakeOfferedItem(Player *pl)
     return 0;
 }
 
+/*
+ * The idle input of the local player (others return at once);
+ * Player_StateIdle calls it with arg 0, Player_StateMove with 1 (variant 9),
+ * and arg goes to Bow_AttackInput as needPress. By gScene.questPhase it
+ * requests the quest's start, end, abort or leave state. Riding a monster
+ * (rideState) it throws the player off (PL_REACT_TOSSED_BACK) while the giant
+ * it stands on has quakeTimer set, else walks (PL_ACT_RIDE_WALK) and handles
+ * the offer, spot, gather and item buttons. On foot with the weapon drawn it
+ * walks (PL_ACT_WALK_DRAWN), sheathes on PAD_CIRCLE, PAD_SQUARE or PAD_R2
+ * with the stick, and runs Player_HoldSpecialInput and
+ * Player_WeaponAttackInput. Sheathed, Player_StickMoveLevel picks the walks,
+ * the run (or PL_ACT_TURN_AROUND) or the dash (PL_ACT_FLEE_DASH when fighting
+ * a monster not ahead, else PL_ACT_DASH); PAD_CROSS rolls or crouches,
+ * PAD_SQUARE gathers or uses an item, PAD_CIRCLE climbs or takes the offer,
+ * spot or gather point, a right-stick flick draws or attacks as it draws, and
+ * PAD_R3 starts PL_WPN_SHARED_ATTACK. Both also start an item offer, the
+ * battle alert (PL_ACT_BATTLE_ALERT, when Player_EnteredBattle returns 1),
+ * the stun (PL_REACT_STUN) and the mash status (PL_REACT_MASH_START).
+ */
 void Player_IdleActions(Player *pl, s32 arg)
 {
-    Em *m = gEms;
+    Em *monster = gEms;
     s16 i;
     u8 k;
-    u8 r;
+    u8 stickLevel;
     u8 drew;
-    u16 d;
+    u16 yawDelta;
 
     if (Game_IsOnline() == 0) {
         if (Player_IsLocal(pl) == 0) {
@@ -3031,17 +3404,17 @@ void Player_IdleActions(Player *pl, s32 arg)
         return;
     }
     drew = 0;
-    if (gScene.questPhase == 4 && pl->unk7E5 == 0) {
+    if (gScene.questPhase == 4 && pl->questStartDone == 0) {
         Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_QUEST_START, 0);
         return;
     }
     pl->freeState = 1;
     if (pl->rideState != 0) {
         k = pl->rideEm;
-        for (i = 0; i < 20; i++, m++) {
-            if (k == m->slotNo && (m->type == 7 || m->type == 0x32 || m->type == 0x3A || m->type == 0x48 ||
-                                   m->type == 0x37)) {
-                if (m->quakeTimer != 0) {
+        for (i = 0; i < 20; i++, monster++) {
+            if (k == monster->slotNo && (monster->type == 7 || monster->type == 0x32 || monster->type == 0x3A || monster->type == 0x48 ||
+                                   monster->type == 0x37)) {
+                if (monster->quakeTimer != 0) {
                     Player_SetState(pl, PL_GROUP_REACT, PL_REACT_TOSSED_BACK, 0);
                     return;
                 }
@@ -3056,13 +3429,13 @@ void Player_IdleActions(Player *pl, s32 arg)
         if (Quest_PhaseIsOver(1) == 1) {
             return;
         }
-        if (pl->input.pressed & 0x20) {
+        if (pl->input.pressed & PAD_CIRCLE) {
             if (Player_TakeOfferedItem(pl) == 0) {
                 Player_StartSpotAction(pl, 0);
                 Player_TryGather(pl, 0);
             }
         }
-        if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+        if ((pl->input.pressed & PAD_SQUARE) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
             Player_UseItem(pl, 2);
             pl->pouchHudFlags |= 1;
         }
@@ -3080,45 +3453,45 @@ void Player_IdleActions(Player *pl, s32 arg)
             return;
         }
         if (pl->weaponOut != 0) {
-            r = Player_StickMoveLevel(pl, 1);
-            switch (r) {
+            stickLevel = Player_StickMoveLevel(pl, 1);
+            switch (stickLevel) {
             case 0:
                 break;
             case 1:
             case 2:
             case 3:
-                if (pl->state != 0x24 && pl->state != 3 && pl->state != 0x74 && pl->unk668 == 0) {
+                if (pl->state != 0x24 && pl->state != 3 && pl->state != 0x74 && pl->mustCrouch == 0) {
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALK_DRAWN, 0);
                 }
                 break;
             case 4:
                 break;
             }
-            if (r != 0 && pl->unk668 != 0 && pl->state != 0x3B) {
+            if (stickLevel != 0 && pl->mustCrouch != 0 && pl->state != 0x3B) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
             if (Quest_PhaseIsOver(1) == 1) {
                 return;
             }
             if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
             switch (pl->weaponType) {
             case WEAPON_SWORD_SHIELD:
-                if ((pl->input.pressed & 0x20) || ((pl->input.pressed & 0x10) && pl->input.stickTilt >= 0x28)) {
+                if ((pl->input.pressed & PAD_CIRCLE) || ((pl->input.pressed & PAD_R2) && pl->input.stickTilt >= 0x28)) {
                     if (Player_TestFlag(pl, 0x1200) == 0) {
                         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SHEATHE, 0);
                     } else {
                         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SHEATHE_MOVING, 0);
                     }
-                } else if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+                } else if ((pl->input.pressed & PAD_SQUARE) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
                     Player_TryGather(pl, 2);
                     Player_UseItem(pl, 0);
                     pl->pouchHudFlags |= 1;
                 }
                 break;
             default:
-                if ((pl->input.pressed & 0x220) || ((pl->input.pressed & 0x10) && pl->input.stickTilt >= 0x28)) {
+                if ((pl->input.pressed & (PAD_SQUARE | PAD_CIRCLE)) || ((pl->input.pressed & PAD_R2) && pl->input.stickTilt >= 0x28)) {
                     if (Player_TestFlag(pl, 0x1200) == 0) {
                         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_SHEATHE, 0);
                     } else {
@@ -3147,28 +3520,28 @@ void Player_IdleActions(Player *pl, s32 arg)
                 Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_START, 0);
             }
         } else {
-            r = Player_StickMoveLevel(pl, 0);
-            switch (r) {
+            stickLevel = Player_StickMoveLevel(pl, 0);
+            switch (stickLevel) {
             case 0:
                 break;
             case 1:
-                if (pl->state != 0x49 && pl->state != 0x24 && pl->unk668 == 0) {
+                if (pl->state != 0x49 && pl->state != 0x24 && pl->mustCrouch == 0) {
                     Player_FaceStick(pl);
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALK_SLOW, 0);
                 }
                 break;
             case 2:
-                if (pl->state != 2 && pl->state != 0x24 && pl->unk668 == 0) {
+                if (pl->state != 2 && pl->state != 0x24 && pl->mustCrouch == 0) {
                     Player_FaceStick(pl);
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALK, 0);
                 }
                 break;
             case 3:
                 if (pl->state != 1 && pl->state != 0x3F && pl->state != 0x13 && pl->state != 0x24 &&
-                    pl->state != 0x1F && pl->unk668 == 0) {
+                    pl->state != 0x1F && pl->mustCrouch == 0) {
                     Player_FaceStick(pl);
-                    d = pl->targetYaw + 0x10000 - pl->rot[1];
-                    if (d >= 0x6000U && d < 0xA001U) {
+                    yawDelta = pl->targetYaw + 0x10000 - pl->rot[1];
+                    if (yawDelta >= 0x6000U && yawDelta < 0xA001U) {
                         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_TURN_AROUND, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                     } else {
                         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN, 0);
@@ -3189,15 +3562,15 @@ void Player_IdleActions(Player *pl, s32 arg)
                 break;
             }
             if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
-            if (r != 0 && pl->unk668 != 0 && pl->state != 0x3B) {
+            if (stickLevel != 0 && pl->mustCrouch != 0 && pl->state != 0x3B) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
             if (Quest_PhaseIsOver(1) == 1) {
                 return;
             }
-            if (pl->input.pressed & 0x40) {
+            if (pl->input.pressed & PAD_CROSS) {
                 if (pl->input.stickTilt >= 0x55) {
                     if (pl->stamina >= 0x4B) {
                         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
@@ -3206,7 +3579,7 @@ void Player_IdleActions(Player *pl, s32 arg)
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH, 0);
                 }
             }
-            if ((pl->input.pressed & 0x200) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
+            if ((pl->input.pressed & PAD_SQUARE) && pl->itemUseDelay == 0 && pl->itemSelect == 0) {
                 Player_TryGather(pl, 2);
                 Player_UseItem(pl, 0);
                 pl->pouchHudFlags |= 1;
@@ -3215,7 +3588,7 @@ void Player_IdleActions(Player *pl, s32 arg)
             if ((drew == 0 ? pl->input.pressed : pl->input.held) & 0x20) {
                 Player_CheckClimb(pl);
             }
-            if (pl->input.stickDirPressed & 0x3C) {
+            if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
                 if (Player_TestFlag(pl, 0x2000600) == 0) {
                     if (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN) {
                         Bowgun_DrawAttack(pl, 0);
@@ -3259,10 +3632,10 @@ void Player_IdleActions(Player *pl, s32 arg)
                     }
                 }
             }
-            if (pl->input.pressed & 1) {
+            if (pl->input.pressed & PAD_R3) {
                 Player_SetState(pl, PL_GROUP_WEAPON, PL_WPN_SHARED_ATTACK, PL_SET_SNAP_POS);
             }
-            if (pl->input.pressed & 0x20) {
+            if (pl->input.pressed & PAD_CIRCLE) {
                 if (Player_TakeOfferedItem(pl) == 0) {
                     Player_StartSpotAction(pl, 0);
                     Player_TryGather(pl, 0);
@@ -3290,11 +3663,21 @@ void Player_IdleActions(Player *pl, s32 arg)
     }
 }
 
+/*
+ * The aim of a bowgun in its drawn idle (motion 0x3E9) for the local gunner.
+ * It sets aimLockTimer (10, or 5 after a vertical change) while the aim mode
+ * or a recent aim holds, and blends the aim layers (Player_SetAimLayers,
+ * motions 0x3ED and 0x3EE); without them it needs PAD_L1 held and PAD_L2 not.
+ * The D-pad up and down change pl->aimWeight by 5 (Bowgun_AddAimWeight,
+ * reversed by gScene.aimReverse in the aim mode), left and right turn
+ * pl->targetYaw by 0x240. A left-stick tilt of 0x28 or more does the same in
+ * steps that grow with the tilt.
+ */
 void Player_BowgunAim(Player *pl)
 {
-    s8 s;
-    s8 a;
-    u16 da;
+    s8 stickStep;
+    s8 dpadStep;
+    u16 yawStep;
 
     if (Player_IsLocal(pl) == 0) {
         return;
@@ -3310,26 +3693,26 @@ void Player_BowgunAim(Player *pl)
     }
     Player_SetAimLayers(pl, 0x3ED, 0x3EE);
     if (pl->aimLockTimer == 0 && pl->aimMode == 0) {
-        if (pl->input.held & 4) {
+        if (pl->input.held & PAD_L2) {
             return;
         }
-        if (!(pl->input.held & 8)) {
+        if (!(pl->input.held & PAD_L1)) {
             return;
         }
     }
-    if (pl->input.held & 0x3000) {
-        a = 5;
+    if (pl->input.held & (PAD_UP | PAD_DOWN)) {
+        dpadStep = 5;
         if (pl->aimMode != 0 && gScene.aimReverse != 0) {
-            a *= -1;
+            dpadStep *= -1;
         }
-        if (pl->input.held & 0x2000) {
-            Bowgun_AddAimWeight(pl, a);
+        if (pl->input.held & PAD_UP) {
+            Bowgun_AddAimWeight(pl, dpadStep);
         } else {
-            Bowgun_AddAimWeight(pl, (s8) -a);
+            Bowgun_AddAimWeight(pl, (s8) -dpadStep);
         }
         pl->aimLockTimer = 5;
     }
-    if (pl->input.held & 0x800) {
+    if (pl->input.held & PAD_LEFT) {
         pl->aimLockTimer = 10;
         if (pl->aimMode != 0 && gScene.aimReverse == 2) {
             pl->targetYaw -= 0x240;
@@ -3337,7 +3720,7 @@ void Player_BowgunAim(Player *pl)
             pl->targetYaw += 0x240;
         }
     }
-    if (pl->input.held & 0x400) {
+    if (pl->input.held & PAD_RIGHT) {
         pl->aimLockTimer = 10;
         if (pl->aimMode != 0 && gScene.aimReverse == 2) {
             pl->targetYaw += 0x240;
@@ -3347,58 +3730,62 @@ void Player_BowgunAim(Player *pl)
     }
     Player_SetAimLayers(pl, 0x3ED, 0x3EE);
     if (pl->aimLockTimer != 0 || pl->aimMode != 0) {
-        if (!(pl->input.stickDir & 0x3C00) || pl->input.stickTilt < 0x28) {
+        if (!(pl->input.stickDir & PAD_DPAD) || pl->input.stickTilt < 0x28) {
             return;
         }
-        s = 1;
-        da = 0x4C;
+        stickStep = 1;
+        yawStep = 0x4C;
         if (pl->input.stickTilt >= 0x78) {
-            s = 8;
-            da = 0x200;
+            stickStep = 8;
+            yawStep = 0x200;
         } else if (pl->input.stickTilt >= 0x5A) {
-            s = 4;
-            da = 0xC0;
+            stickStep = 4;
+            yawStep = 0xC0;
         } else if (pl->input.stickTilt >= 0x3C) {
-            s = 2;
-            da = 0x80;
+            stickStep = 2;
+            yawStep = 0x80;
         }
-        if (pl->input.stickDir & 0x3000) {
+        if (pl->input.stickDir & (PAD_UP | PAD_DOWN)) {
             if (gScene.aimReverse != 0) {
-                s = -s;
+                stickStep = -stickStep;
             }
-            s = (s8) s;
-            if (pl->input.stickDir & 0x2000) {
-                Bowgun_AddAimWeight(pl, s);
+            stickStep = (s8) stickStep;
+            if (pl->input.stickDir & PAD_UP) {
+                Bowgun_AddAimWeight(pl, stickStep);
             } else {
-                Bowgun_AddAimWeight(pl, (s8) -s);
+                Bowgun_AddAimWeight(pl, (s8) -stickStep);
             }
             pl->aimLockTimer = 5;
             Player_SetAimLayers(pl, 0x3ED, 0x3EE);
         }
-        if (pl->input.stickDir & 0x800) {
+        if (pl->input.stickDir & PAD_LEFT) {
             pl->aimLockTimer = 10;
             if (gScene.aimReverse == 2) {
-                pl->targetYaw -= da;
+                pl->targetYaw -= yawStep;
             } else {
-                pl->targetYaw += da;
+                pl->targetYaw += yawStep;
             }
         }
-        if (pl->input.stickDir & 0x400) {
+        if (pl->input.stickDir & PAD_RIGHT) {
             pl->aimLockTimer = 10;
             if (gScene.aimReverse == 2) {
-                pl->targetYaw += da;
+                pl->targetYaw += yawStep;
             } else {
-                pl->targetYaw -= da;
+                pl->targetYaw -= yawStep;
             }
         }
     }
     Player_SetAimLayers(pl, 0x3ED, 0x3EE);
 }
 
-static void Player_AddAimPitch(Player *pl, s16 d)
+/*
+ * Adds delta to pl->aimPitch, keeping it within 0x2000 (45 degrees) either
+ * way.
+ */
+static void Player_AddAimPitch(Player *pl, s16 delta)
 {
-    pl->aimPitch += d;
-    if (d >= 0) {
+    pl->aimPitch += delta;
+    if (delta >= 0) {
         if (pl->aimPitch >= 0x2000) {
             pl->aimPitch = 0x2000;
         }
@@ -3409,33 +3796,48 @@ static void Player_AddAimPitch(Player *pl, s16 d)
     }
 }
 
-static void Player_AddAimPitchPct(Player *pl, s8 d)
+/*
+ * Adds delta to pl->aimPitchPct (kept within -100 to 100) and sets
+ * pl->aimPitch from it: the percentage of 45 degrees upward when it is
+ * positive, of 35 degrees downward when negative, as a 16-bit turn.
+ */
+static void Player_AddAimPitchPct(Player *pl, s8 delta)
 {
-    f32 f;
-    s8 v;
+    f32 fraction;
+    s8 pct;
 
-    pl->aimPitchPct += d;
+    pl->aimPitchPct += delta;
     if (pl->aimPitchPct > 100) {
         pl->aimPitchPct = 100;
     }
     if (pl->aimPitchPct < -100) {
         pl->aimPitchPct = -100;
     }
-    v = pl->aimPitchPct;
-    f = v / 100.0f;
-    if (v >= 0) {
-        pl->aimPitch = 0.5f + (65536.0f * (45.0f * f)) / 360.0f;
+    pct = pl->aimPitchPct;
+    fraction = pct / 100.0f;
+    if (pct >= 0) {
+        pl->aimPitch = 0.5f + (65536.0f * (45.0f * fraction)) / 360.0f;
         return;
     }
-    pl->aimPitch = 0.5f + (65536.0f * (35.0f * f)) / 360.0f;
+    pl->aimPitch = 0.5f + (65536.0f * (35.0f * fraction)) / 360.0f;
 }
 
+/*
+ * The aim input of the local player whose current motion is mot: the
+ * binoculars (motions 7 and 8) and the mounted gun (motion 0x19E). It needs
+ * aimLockTimer or aimMode, else PAD_L1 held and PAD_L2 not. The D-pad up and
+ * down change the pitch by 0x400 a frame (Player_AddAimPitch; the mounted gun
+ * 4 percent, Player_AddAimPitchPct), left and right turn pl->targetYaw by
+ * 0x180; a left-stick tilt of 0x28 or more does the same in larger steps by
+ * the tilt. For the mounted gun targetYaw stays within 0x4000 of
+ * pl->yawCenter. gScene.aimReverse flips the directions.
+ */
 void Player_UpdateLean(Player *pl, s32 mot)
 {
-    s8 s;
-    s8 a;
-    u16 da;
-    u16 d;
+    s8 stickStep;
+    s8 dpadStep;
+    u16 yawStep;
+    u16 yawOffset;
 
     if (Player_IsLocal(pl) == 0) {
         return;
@@ -3447,34 +3849,34 @@ void Player_UpdateLean(Player *pl, s32 mot)
         pl->aimLockTimer = 10;
     }
     if (pl->aimLockTimer == 0 && pl->aimMode == 0) {
-        if (pl->input.held & 4) {
+        if (pl->input.held & PAD_L2) {
             return;
         }
-        if (!(pl->input.held & 8)) {
+        if (!(pl->input.held & PAD_L1)) {
             return;
         }
     }
-    if (pl->input.held & 0x3000) {
-        a = 4;
+    if (pl->input.held & (PAD_UP | PAD_DOWN)) {
+        dpadStep = 4;
         if (pl->aimMode != 0 && gScene.aimReverse != 0) {
-            a *= -1;
+            dpadStep *= -1;
         }
-        if (pl->input.held & 0x2000) {
+        if (pl->input.held & PAD_UP) {
             if ((u16) mot != 0x19E) {
-                Player_AddAimPitch(pl, a << 8);
+                Player_AddAimPitch(pl, dpadStep << 8);
             } else {
-                Player_AddAimPitchPct(pl, a);
+                Player_AddAimPitchPct(pl, dpadStep);
             }
         } else {
             if ((u16) mot != 0x19E) {
-                Player_AddAimPitch(pl, -a << 8);
+                Player_AddAimPitch(pl, -dpadStep << 8);
             } else {
-                Player_AddAimPitchPct(pl, (s8) -a);
+                Player_AddAimPitchPct(pl, (s8) -dpadStep);
             }
         }
         pl->aimLockTimer = 5;
     }
-    if (pl->input.held & 0x800) {
+    if (pl->input.held & PAD_LEFT) {
         pl->aimLockTimer = 10;
         if (gScene.aimReverse == 2) {
             pl->targetYaw -= 0x180;
@@ -3482,7 +3884,7 @@ void Player_UpdateLean(Player *pl, s32 mot)
             pl->targetYaw += 0x180;
         }
     }
-    if (pl->input.held & 0x400) {
+    if (pl->input.held & PAD_RIGHT) {
         pl->aimLockTimer = 10;
         if (gScene.aimReverse == 2) {
             pl->targetYaw += 0x180;
@@ -3491,67 +3893,75 @@ void Player_UpdateLean(Player *pl, s32 mot)
         }
     }
     if (pl->aimLockTimer != 0 || pl->aimMode != 0) {
-        if ((pl->input.stickDir & 0x3C00) && pl->input.stickTilt >= 0x28) {
-            s = 1;
-            da = 0x4C;
+        if ((pl->input.stickDir & PAD_DPAD) && pl->input.stickTilt >= 0x28) {
+            stickStep = 1;
+            yawStep = 0x4C;
             if (pl->input.stickTilt >= 0x78) {
-                s = 8;
-                da = 0x200;
+                stickStep = 8;
+                yawStep = 0x200;
             } else if (pl->input.stickTilt >= 0x5A) {
-                s = 4;
-                da = 0xC0;
+                stickStep = 4;
+                yawStep = 0xC0;
             } else if (pl->input.stickTilt >= 0x3C) {
-                s = 2;
-                da = 0x80;
+                stickStep = 2;
+                yawStep = 0x80;
             }
-            if (pl->input.stickDir & 0x3000) {
+            if (pl->input.stickDir & (PAD_UP | PAD_DOWN)) {
                 if (gScene.aimReverse != 0) {
-                    s = -s;
+                    stickStep = -stickStep;
                 }
-                s = (s8) s;
-                if (pl->input.stickDir & 0x2000) {
+                stickStep = (s8) stickStep;
+                if (pl->input.stickDir & PAD_UP) {
                     if ((u16) mot != 0x19E) {
-                        Player_AddAimPitch(pl, s << 8);
+                        Player_AddAimPitch(pl, stickStep << 8);
                     } else {
-                        Player_AddAimPitchPct(pl, s);
+                        Player_AddAimPitchPct(pl, stickStep);
                     }
                 } else {
                     if ((u16) mot != 0x19E) {
-                        Player_AddAimPitch(pl, -s << 8);
+                        Player_AddAimPitch(pl, -stickStep << 8);
                     } else {
-                        Player_AddAimPitchPct(pl, (s8) -s);
+                        Player_AddAimPitchPct(pl, (s8) -stickStep);
                     }
                 }
                 pl->aimLockTimer = 5;
             }
-            if (pl->input.stickDir & 0x800) {
+            if (pl->input.stickDir & PAD_LEFT) {
                 pl->aimLockTimer = 10;
                 if (gScene.aimReverse == 2) {
-                    pl->targetYaw -= da;
+                    pl->targetYaw -= yawStep;
                 } else {
-                    pl->targetYaw += da;
+                    pl->targetYaw += yawStep;
                 }
             }
-            if (pl->input.stickDir & 0x400) {
+            if (pl->input.stickDir & PAD_RIGHT) {
                 pl->aimLockTimer = 10;
                 if (gScene.aimReverse == 2) {
-                    pl->targetYaw += da;
+                    pl->targetYaw += yawStep;
                 } else {
-                    pl->targetYaw -= da;
+                    pl->targetYaw -= yawStep;
                 }
             }
         }
     }
     if ((u16) mot == 0x19E) {
-        d = pl->targetYaw - pl->yawCenter;
-        if (d <= 0x8000U && d > 0x4000U) {
+        yawOffset = pl->targetYaw - pl->yawCenter;
+        if (yawOffset <= 0x8000U && yawOffset > 0x4000U) {
             pl->targetYaw = pl->yawCenter + 0x4000;
-        } else if (d >= 0x8000U && d < 0xC000U) {
+        } else if (yawOffset >= 0x8000U && yawOffset < 0xC000U) {
             pl->targetYaw = pl->yawCenter - 0x4000;
         }
     }
 }
 
+/*
+ * PL_ACT_IDLE. By the current motion: the idle motions 1 and 0x3F switch to
+ * the tired idle 0x193 when staminaMax is below 76 (and back once it is above
+ * 75), motion 1 switches to 0x3F after 240 frames for gender 1; motion 0x15
+ * ends in motion 5, which makes an effect every 32 frames; a gunner's drawn
+ * idle 0x3E9 blends the aim layers. A bowgun user then runs Player_BowgunAim;
+ * every player runs Player_IdleActions.
+ */
 void Player_StateIdle(Player *pl, s32 unused)
 {
     u16 motion = pl->motionId[0];
@@ -3595,12 +4005,26 @@ void Player_StateIdle(Player *pl, s32 unused)
     Player_IdleActions(pl, 0);
 }
 
+/*
+ * The walks and runs. variant: 0 PL_ACT_RUN, 1 PL_ACT_WALK, 2
+ * PL_ACT_WALK_DRAWN, 3 PL_ACT_RIDE_WALK, 4 PL_ACT_MOVE_KEEP_MOTION, 5
+ * PL_ACT_CROUCH_WALK_ALT, 6 PL_ACT_RUN_AFTER_DASH, 7 PL_ACT_WALK_SLOW, 8
+ * PL_ACT_GUARD_WALK, 9 PL_ACT_BOW_WALK. Step 0 starts the variant's motion
+ * (another player's copy online only does that). Once 10 frames have passed
+ * with the stick released (Player_StickMoveLevel 0) the state ends: a run in
+ * PL_ACT_RUN_STOP, the drawn walk in the idle of gDrawnWalkStopIdle (variant
+ * 9: BOW_AIM_RESUME), the guard walk in PL_REACT_GUARD_HOLD (also when PAD_R1
+ * is let go), the rest in idle. The stick turns the player
+ * (Player_FaceStick); the drawn walk takes extra steps for the hunting horn
+ * and the dual swords' demon mode; Player_IdleActions (Player_GuardInput for
+ * variant 8) reads the input last.
+ */
 void Player_StateMove(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
-    u8 r;
-    u8 t;
+    f32 move[3];
+    f32 delta[3];
+    u8 stickLevel;
+    u8 level;
 
     if (pl->step == 0) {
         pl->step++;
@@ -3671,32 +4095,32 @@ void Player_StateMove(Player *pl, s32 variant)
     if (Player_IsLocal(pl) == 0 && Game_IsOnline() == 1) {
         return;
     }
-    r = Player_StickMoveLevel(pl, pl->weaponOut) & 0xFF;
+    stickLevel = Player_StickMoveLevel(pl, pl->weaponOut) & 0xFF;
     if (pl->stateVar1 != 0) {
         pl->stateVar1--;
     }
     if (pl->timer > 0) {
         pl->timer--;
     }
-    t = r;
-    if (t == 0 && pl->timer == 0) {
+    level = stickLevel;
+    if (level == 0 && pl->timer == 0) {
         if (pl->motionId[0] == 0x3EC) {
             if (variant == 9) {
                 Player_SetState(pl, PL_GROUP_WEAPON, BOW_AIM_RESUME, PL_SET_SNAP_POS);
             } else {
-                Player_BeginState(pl, 0, gDrawnWalkStopIdle[pl->weaponType], 0);
+                Player_ReturnToIdle(pl, 0, gDrawnWalkStopIdle[pl->weaponType], 0);
             }
         } else if (pl->motionId[0] == 3 || pl->motionId[0] == 4) {
             if (pl->stateVar1 == 0) {
                 pl->freeState = 1;
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
             } else {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             }
         } else if (pl->motionId[0] == 0x3F3) {
             Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
         } else {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         return;
     }
@@ -3711,7 +4135,7 @@ void Player_StateMove(Player *pl, s32 variant)
         }
         break;
     case 3:
-        if (t < 3) {
+        if (level < 3) {
             pl->freeState = 1;
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
             return;
@@ -3723,15 +4147,15 @@ void Player_StateMove(Player *pl, s32 variant)
         }
         break;
     case 0x3F3:
-        if (!(pl->input.held & 0x80)) {
+        if (!(pl->input.held & PAD_R1)) {
             Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
         }
         break;
     }
-    if (pl->unk668 != 0 && (variant != 5 || variant != 8)) {
+    if (pl->mustCrouch != 0 && (variant != 5 || variant != 8)) {
         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
     }
-    if (t != 0) {
+    if (level != 0) {
         Player_FaceStick(pl);
     }
     if (Player_IsLocal(pl) == 0) {
@@ -3739,21 +4163,21 @@ void Player_StateMove(Player *pl, s32 variant)
     }
     if (variant == 2 && pl->weaponType == WEAPON_HUNTING_HORN && Player_IsLocal(pl) == 1 && pl->motionId[0] == 0x3EC &&
         Player_HasMealEffect(pl, 0) == 1 && pl->mealEffect[0] > 0) {
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 8.0f;
-        Vec_Rotate(d, v, pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[2] += d[2];
+        move[0] = 0.0f;
+        move[1] = 0.0f;
+        move[2] = 8.0f;
+        Vec_Rotate(delta, move, pl->rotMtx);
+        pl->pos[0] += delta[0];
+        pl->pos[2] += delta[2];
     }
     if (variant == 2 && pl->weaponType == WEAPON_DUAL_SWORDS && Player_IsLocal(pl) == 1 && pl->motionId[0] == 0x3EC &&
         pl->demonMode != 0) {
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 2.0f;
-        Vec_Rotate(d, v, pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[2] += d[2];
+        move[0] = 0.0f;
+        move[1] = 0.0f;
+        move[2] = 2.0f;
+        Vec_Rotate(delta, move, pl->rotMtx);
+        pl->pos[0] += delta[0];
+        pl->pos[2] += delta[2];
     }
     if (variant != 8) {
         if (variant == 9) {
@@ -3766,6 +4190,16 @@ void Player_StateMove(Player *pl, s32 variant)
     }
 }
 
+/*
+ * Draws or sheathes the weapon. variant: 0 PL_ACT_DRAW, 1 PL_ACT_SHEATHE, 2
+ * PL_ACT_SHEATHE_MOVING, 3 PL_ACT_SHEATHE_TO_CROUCH, 4
+ * PL_ACT_SHEATHE_TO_USE_ITEM, 5 PL_ACT_DRAW_MOVING. Step 0 takes the motion,
+ * blend and new weaponOut from the weapon type's row of gDrawMotions,
+ * gSheatheMotions, gSheatheMovingMotions or gDrawMovingMotions, and drops a
+ * carried item. When the motion ends variant 3 requests PL_ACT_CROUCH,
+ * variant 4 has the local player use the selected item (Player_UseItem, mode
+ * 1), the others return to idle.
+ */
 void Player_StateDrawSheathe(Player *pl, u32 variant)
 {
 
@@ -3807,13 +4241,13 @@ void Player_StateDrawSheathe(Player *pl, u32 variant)
         if (pl->motion[0].playing == 0) {
             switch (variant) {
             case 0:
-                Player_BeginState(pl, 0, gDrawMotions[pl->weaponType].next, 0);
+                Player_ReturnToIdle(pl, 0, gDrawMotions[pl->weaponType].next, 0);
                 break;
             case 1:
-                Player_BeginState(pl, 0, gSheatheMotions[pl->weaponType].next, 0);
+                Player_ReturnToIdle(pl, 0, gSheatheMotions[pl->weaponType].next, 0);
                 break;
             case 2:
-                Player_BeginState(pl, 0, gSheatheMovingMotions[pl->weaponType].next, 0);
+                Player_ReturnToIdle(pl, 0, gSheatheMovingMotions[pl->weaponType].next, 0);
                 break;
             case 3:
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH, PL_SET_NO_SYNC);
@@ -3824,10 +4258,10 @@ void Player_StateDrawSheathe(Player *pl, u32 variant)
                     pl->pouchHudFlags |= 1;
                     break;
                 }
-                Player_BeginState(pl, 0, gDrawMotions[pl->weaponType].next, 0);
+                Player_ReturnToIdle(pl, 0, gDrawMotions[pl->weaponType].next, 0);
                 break;
             case 5:
-                Player_BeginState(pl, 0, gDrawMovingMotions[pl->weaponType].next, 0);
+                Player_ReturnToIdle(pl, 0, gDrawMovingMotions[pl->weaponType].next, 0);
                 break;
             }
         }
@@ -3835,11 +4269,21 @@ void Player_StateDrawSheathe(Player *pl, u32 variant)
     }
 }
 
+/*
+ * variant 0 PL_ACT_LEAP_OFF_LEDGE: a jump forward off a ledge (forward 20, up
+ * 18; a ridden monster is left); 1 PL_ACT_FALL (forward 8, down 10).
+ * pl->timer counts the time aloft. Falling, the player grabs a ledge ahead
+ * (PL_ACT_LEDGE_GRAB, with hp above 0 and fallGrabCount under 21), else lands on
+ * pl->floorY: the local player at 0 health dies (Player_Die), 30 or more
+ * frames aloft request PL_ACT_LAND_HARD, else a landing motion plays and the
+ * state returns to idle, or resumes the dash (PL_ACT_DASH_RESUME, or
+ * PL_ACT_FLEE_DASH in battle) when the dash was held on landing.
+ */
 void Player_StateLeapOrFall(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
-    f32 t;
+    f32 move[3];
+    f32 delta[3];
+    f32 ledgeY;
 
     pl->timer++;
     switch (pl->step) {
@@ -3887,15 +4331,15 @@ void Player_StateLeapOrFall(Player *pl, s32 variant)
         if (pl->vel[2] < 0.0f) {
             pl->vel[2] = 0.0f;
         }
-        v[0] = pl->vel[0];
-        v[1] = pl->vel[1];
-        v[2] = pl->vel[2];
-        Vec_Rotate(d, v, pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[1] += d[1];
-        pl->pos[2] += d[2];
+        move[0] = pl->vel[0];
+        move[1] = pl->vel[1];
+        move[2] = pl->vel[2];
+        Vec_Rotate(delta, move, pl->rotMtx);
+        pl->pos[0] += delta[0];
+        pl->pos[1] += delta[1];
+        pl->pos[2] += delta[2];
         if (pl->vel[1] < 0.0f) {
-            if (Player_FloorAheadAbove(pl, &t, 55.0f, 180.0f, 30.0f) && pl->hp > 0 && pl->unk893 < 21) {
+            if (Player_FloorAheadAbove(pl, &ledgeY, 55.0f, 180.0f, 30.0f) && pl->hp > 0 && pl->fallGrabCount < 21) {
                 pl->targetYaw = pl->rot[1];
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB, PL_SET_SNAP_POS);
                 break;
@@ -3915,7 +4359,7 @@ void Player_StateLeapOrFall(Player *pl, s32 variant)
                 break;
             }
             pl->step++;
-            if (pl->weaponOut == 0 && (pl->input.held & 0x10) && (Player_StickMoveLevel(pl, 0) & 0xFF)) {
+            if (pl->weaponOut == 0 && (pl->input.held & PAD_R2) && (Player_StickMoveLevel(pl, 0) & 0xFF)) {
                 pl->stateVar1 = 1;
                 Player_SetMotionPair(pl, 0x10, 0, 0);
             } else {
@@ -3927,7 +4371,7 @@ void Player_StateLeapOrFall(Player *pl, s32 variant)
     case 2:
         if (pl->motion[0].playing == 0) {
             if (pl->stateVar1 == 0) {
-                Player_BeginState(pl, 0, 8, 0);
+                Player_ReturnToIdle(pl, 0, 8, 0);
             } else if (pl->inBattle == 0) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DASH_RESUME, 0);
             } else {
@@ -3938,11 +4382,18 @@ void Player_StateLeapOrFall(Player *pl, s32 variant)
     }
 }
 
+/*
+ * variant 0 PL_ACT_JUMP_TO_LEDGE (a crouch, then a jump up toward a high
+ * ledge), 1 PL_ACT_WALL_LET_GO, 2 PL_ACT_LEDGE_DROP (first moves the player
+ * 195 down and 30 back). Then it moves with Player_MoveAccel, grabs a ledge
+ * ahead while falling (not after PL_ACT_LEDGE_DROP) and lands as
+ * Player_StateLeapOrFall does.
+ */
 void Player_StateClimbAirborne(Player *pl, s32 variant)
 {
     f32 y;
-    f32 v[3];
-    f32 d[3];
+    f32 move[3];
+    f32 delta[3];
 
     pl->timer++;
     switch (pl->step) {
@@ -3956,12 +4407,12 @@ void Player_StateClimbAirborne(Player *pl, s32 variant)
             break;
         case 2:
             pl->pos[1] -= 195.0f;
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = -30.0f;
-            Vec_Rotate(d, v, (f32 *) pl->worldMtx);
-            pl->pos[0] += d[0];
-            pl->pos[2] += d[2];
+            move[0] = 0.0f;
+            move[1] = 0.0f;
+            move[2] = -30.0f;
+            Vec_Rotate(delta, move, (f32 *) pl->worldMtx);
+            pl->pos[0] += delta[0];
+            pl->pos[2] += delta[2];
         case 1:
             pl->step = 2;
             Player_SetMoveMode(pl, 2, 0, 0);
@@ -4021,12 +4472,18 @@ void Player_StateClimbAirborne(Player *pl, s32 variant)
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 3, 0);
+            Player_ReturnToIdle(pl, 0, 3, 0);
         }
         break;
     }
 }
 
+/*
+ * variant 0 PL_ACT_CROUCH: crouches down (motion 7, then the held crouch,
+ * motion 8), sheathes and drops a carried item; 1 PL_ACT_CROUCH_HOLD:
+ * straight to the held crouch. From step 2 Player_CrouchInput reads the
+ * crouched controls every frame.
+ */
 void Player_StateCrouch(Player *pl, s32 variant)
 {
     u8 carry;
@@ -4097,7 +4554,7 @@ void Player_StateBedMenu(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer <= 0) {
             if (Quest_PhaseIsOver(1) == 1 || pl->deliveryMenu == 0) {
-                Player_BeginState(pl, 0, 2, 0);
+                Player_ReturnToIdle(pl, 0, 2, 0);
             } else if (pl->deliveryMenu == 1) {
                 pl->deliveryMenu = 0;
                 switch (pl->menuCursor) {
@@ -4106,11 +4563,11 @@ void Player_StateBedMenu(Player *pl, s32 unused)
                     break;
                 case 1:
                     Quest_Start();
-                    Player_BeginState(pl, 0, 2, 0);
+                    Player_ReturnToIdle(pl, 0, 2, 0);
                     break;
                 case 2:
                     Quest_Abort();
-                    Player_BeginState(pl, 0, 2, 0);
+                    Player_ReturnToIdle(pl, 0, 2, 0);
                     break;
                 }
             }
@@ -4121,9 +4578,18 @@ void Player_StateBedMenu(Player *pl, s32 unused)
 
 void Player_StateToIdle(Player *pl, s32 unused)
 {
-    Player_BeginState(pl, 0, 0x2, 0);
+    Player_ReturnToIdle(pl, 0, 0x2, 0);
 }
 
+/*
+ * Throws pl->useItem. variant: 0 PL_ACT_THROW_ITEM, 1 PL_ACT_THROW_ITEM_ALT,
+ * 2 PL_ACT_RETURN_TO_CAMP. At the release frame it makes the thrown object
+ * (ItemAttack_Create, the type by the item); one item makes the effect
+ * Boomerang_Create instead and is used up only on a 1 in 8 roll. While the quest
+ * runs one of the item is used up. When the motion ends variant 2 sends the
+ * local player to the camp area (gScene.campArea: areaMoveState 1, nextArea,
+ * that area's start position, QSync_SendPlayer); the others return to idle.
+ */
 void Player_StateThrowItem(Player *pl, s32 variant)
 {
     s8 kind;
@@ -4155,61 +4621,61 @@ void Player_StateThrowItem(Player *pl, s32 variant)
             nouse = 0;
             switch (pl->useItem) {
             case 0x4C:
-                Eff03_Create(pl, 0, kind);
+                ItemAttack_Create(pl, 0, kind);
                 break;
             case 0x4E:
-                Eff03_Create(pl, 7, kind);
+                ItemAttack_Create(pl, 7, kind);
                 break;
             case 0x48:
-                Eff03_Create(pl, 1, kind);
+                ItemAttack_Create(pl, 1, kind);
                 break;
             case 0x297:
-                Eff03_Create(pl, 1, kind);
+                ItemAttack_Create(pl, 1, kind);
                 break;
             case 0x4B:
-                Eff03_Create(pl, 5, kind);
+                ItemAttack_Create(pl, 5, kind);
                 break;
             case 0x4D:
-                Eff03_Create(pl, 0xb, kind);
+                ItemAttack_Create(pl, 0xb, kind);
                 break;
             case 0x47:
-                Eff03_Create(pl, 6, kind);
+                ItemAttack_Create(pl, 6, kind);
                 break;
             case 0xD7:
-                Eff03_Create(pl, 8, kind);
+                ItemAttack_Create(pl, 8, kind);
                 break;
             case 0x49:
-                Eff03_Create(pl, 9, kind);
+                ItemAttack_Create(pl, 9, kind);
                 break;
             case 0x50:
-                Eff03_Create(pl, 0xa, kind);
+                ItemAttack_Create(pl, 0xa, kind);
                 break;
             case 0x41:
-                Eff03_Create(pl, 0xc, kind);
+                ItemAttack_Create(pl, 0xc, kind);
                 break;
             case 0x42:
-                Eff03_Create(pl, 0xd, kind);
+                ItemAttack_Create(pl, 0xd, kind);
                 break;
             case 0x43:
-                Eff03_Create(pl, 0xe, kind);
+                ItemAttack_Create(pl, 0xe, kind);
                 break;
             case 0x44:
-                Eff03_Create(pl, 0xf, kind);
+                ItemAttack_Create(pl, 0xf, kind);
                 break;
             case 0x45:
-                Eff03_Create(pl, 0x15, kind);
+                ItemAttack_Create(pl, 0x15, kind);
                 break;
             case 0x2BA:
-                Eff03_Create(pl, 0x11, kind);
+                ItemAttack_Create(pl, 0x11, kind);
                 break;
             case 0x2BB:
-                Eff03_Create(pl, 0x12, kind);
+                ItemAttack_Create(pl, 0x12, kind);
                 break;
             case 0x2BC:
-                Eff03_Create(pl, 0x13, kind);
+                ItemAttack_Create(pl, 0x13, kind);
                 break;
             case 0x4F:
-                Eff03_Create(pl, 0x17, kind);
+                ItemAttack_Create(pl, 0x17, kind);
                 break;
             case 0x40:
                 if (pl->prevStateGroup == 0 && pl->prevState == 0x49) {
@@ -4224,7 +4690,7 @@ void Player_StateThrowItem(Player *pl, s32 variant)
                 if (nouse == 0 && Player_IsLocal(pl) == 1) {
                     Notice_Push(1, 5, 0x40);
                 }
-                Eff28_Create((Em *) pl, kind, nouse);
+                Boomerang_Create((Em *) pl, kind, nouse);
                 break;
             }
             if (Quest_PhaseIsOver(1) == 0 && nouse == 0) {
@@ -4234,10 +4700,10 @@ void Player_StateThrowItem(Player *pl, s32 variant)
         if (pl->motion[0].playing == 0) {
             switch (variant) {
             case 0:
-                Player_BeginState(pl, 0, 0xA, 0);
+                Player_ReturnToIdle(pl, 0, 0xA, 0);
                 break;
             case 1:
-                Player_BeginState(pl, 0, 2, 0);
+                Player_ReturnToIdle(pl, 0, 2, 0);
                 break;
             case 2:
                 if (Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
@@ -4252,7 +4718,7 @@ void Player_StateThrowItem(Player *pl, s32 variant)
                     pl->noHitTimer = 5;
                     QSync_SendPlayer(pl, 5, 0);
                 } else {
-                    Player_BeginState(pl, 0, 2, 0);
+                    Player_ReturnToIdle(pl, 0, 2, 0);
                 }
                 break;
             }
@@ -4263,14 +4729,22 @@ void Player_StateThrowItem(Player *pl, s32 variant)
     }
 }
 
+/*
+ * variant 0 PL_ACT_LEDGE_HANG, 1 PL_ACT_LEDGE_GRAB (first steps 55 forward
+ * onto the ledge at the floor's height, Em_GetFloorYAbove). Hangs from a
+ * ledge (motion 0x11); a grab after PL_ACT_FALL counts pl->fallGrabCount up. Pulls
+ * up (PL_ACT_LEDGE_PULL_UP) when the motion ends, on PAD_CIRCLE or with the
+ * stick up; the local player lets go (PL_ACT_LEDGE_DROP) on a new stick-down
+ * press once pl->timer (30) is 0.
+ */
 void Player_StateLedgeHang(Player *pl, s32 variant)
 {
     f32 y;
     s32 ang[3];
-    f32 v[3];
+    f32 offset[3];
     f32 pos[3];
-    f32 d[3];
-    f32 m[16];
+    f32 delta[3];
+    f32 yawMtx[16];
 
     pl->noPushTimer = 2;
     switch (pl->step) {
@@ -4285,25 +4759,25 @@ void Player_StateLedgeHang(Player *pl, s32 variant)
             ang[0] = 0;
             ang[1] = pl->rot[1];
             ang[2] = 0;
-            Mtx_FromAnglesXYZ(ang, m);
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = 55.0f;
-            Vec_Rotate(d, v, m);
-            pos[0] = pl->pos[0] + d[0];
-            pos[1] = pl->pos[1] + d[1];
-            pos[2] = pl->pos[2] + d[2];
+            Mtx_FromAnglesXYZ(ang, yawMtx);
+            offset[0] = 0.0f;
+            offset[1] = 0.0f;
+            offset[2] = 55.0f;
+            Vec_Rotate(delta, offset, yawMtx);
+            pos[0] = pl->pos[0] + delta[0];
+            pos[1] = pl->pos[1] + delta[1];
+            pos[2] = pl->pos[2] + delta[2];
             if (Em_GetFloorYAbove((Em *) pl, pos, &y) == 1) {
                 pl->pos[1] = y;
             }
-            v[2] = 55.0f;
-            Vec_Rotate(d, v, (f32 *) pl->worldMtx);
-            pl->pos[0] += d[0];
-            pl->pos[1] += d[1];
-            pl->pos[2] += d[2];
+            offset[2] = 55.0f;
+            Vec_Rotate(delta, offset, (f32 *) pl->worldMtx);
+            pl->pos[0] += delta[0];
+            pl->pos[1] += delta[1];
+            pl->pos[2] += delta[2];
         }
         if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB) == 1 && pl->prevStateGroup == 0 && pl->prevState == 9) {
-            pl->unk893++;
+            pl->fallGrabCount++;
         }
         break;
     case 1:
@@ -4313,15 +4787,21 @@ void Player_StateLedgeHang(Player *pl, s32 variant)
                 pl->timer = 0;
             }
         }
-        if (pl->motion[0].playing == 0 || (pl->input.pressed & 0x20) || (pl->input.stickDir & 0x2000)) {
+        if (pl->motion[0].playing == 0 || (pl->input.pressed & PAD_CIRCLE) || (pl->input.stickDir & PAD_UP)) {
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_PULL_UP, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
-        } else if (Player_IsLocal(pl) == 1 && (pl->input.stickDirPressed & 0x1000) && pl->timer == 0) {
+        } else if (Player_IsLocal(pl) == 1 && (pl->input.stickDirPressed & PAD_DOWN) && pl->timer == 0) {
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_DROP, PL_SET_SNAP_POS);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_RIDE_STAGGER: the stagger of a player standing on a monster that
+ * carries it fast (Player_CheckRideSlip). Plays motion 0x1A until the
+ * distance the monster moves the player (rideDelta) is under the limit again,
+ * then returns to idle.
+ */
 void Player_StateRideStagger(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -4332,17 +4812,23 @@ void Player_StateRideStagger(Player *pl, s32 variant)
         break;
     case 1:
         if (Player_CheckRideSlip(pl) == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
         }
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
         }
         break;
     }
 }
 
+/*
+ * variant 0 PL_ACT_PLACE_ITEM, 1 PL_ACT_PLACE_ITEM_CROUCHED: sets a tool item
+ * down (a barrel bomb). At entry the local player runs Item_UseTool, which
+ * makes the placed object for pl->useItem and uses one up. Variant 0 returns
+ * to idle, variant 1 to PL_ACT_CROUCH_HOLD.
+ */
 void Player_StatePlaceItem(Player *pl, s32 variant)
 {
     s32 timer;
@@ -4378,7 +4864,7 @@ void Player_StatePlaceItem(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 2, 0);
+            Player_ReturnToIdle(pl, 0, 2, 0);
         }
         break;
     case 3:
@@ -4389,6 +4875,11 @@ void Player_StatePlaceItem(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_ACT_KNEEL_TO_PLACE: kneels (motion 7) before placing an item; then the
+ * local player requests PL_ACT_PLACE_ITEM, and another player's copy holds
+ * the crouch pose.
+ */
 void Player_StateKneelToPlace(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -4415,6 +4906,16 @@ void Player_StateKneelToPlace(Player *pl, s32 unused)
     }
 }
 
+/*
+ * The roll. variant 0 PL_ACT_ROLL, 1 PL_ACT_ROLL_FROM_CROUCH (stands up
+ * first). Costs 75 stamina, sets the hit-free frames (Player_SetEvadeFrames)
+ * and drops a carried item. With the weapon drawn the local player's sword
+ * and shield and dual swords take a flick up (PAD_RSTICK_UP) in frames 10-44
+ * and then turn 0x2000 toward the held side (PAD_LEFT, PAD_RIGHT) into
+ * SwordShield_EvadeAttack or DualSwords_EvadeAttack; the hammer charges from
+ * the roll (Hammer_ChargeFromRoll) at frame 40 with PAD_R1 held. Returns to
+ * idle when the motion ends.
+ */
 void Player_StateRoll(Player *pl, s32 variant)
 {
 
@@ -4453,17 +4954,17 @@ void Player_StateRoll(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
         } else if (Player_IsLocal(pl) == 1 && variant == 0 && pl->weaponOut != 0) {
             switch (pl->weaponType) {
             case WEAPON_SWORD_SHIELD:
             case WEAPON_DUAL_SWORDS:
-                if ((pl->input.stickDirPressed & 0x20) && Motion_InFrameRange(pl, 0, 10.0f, 44.0f) && pl->stateVar0 == 0) {
+                if ((pl->input.stickDirPressed & PAD_RSTICK_UP) && Motion_InFrameRange(pl, 0, 10.0f, 44.0f) && pl->stateVar0 == 0) {
                     pl->stateVar0 = 1;
-                    if (pl->input.stickDir & 0x800) {
+                    if (pl->input.stickDir & PAD_LEFT) {
                         pl->stateVar0 = 2;
                     }
-                    if (pl->input.stickDir & 0x400) {
+                    if (pl->input.stickDir & PAD_RIGHT) {
                         pl->stateVar0 = 3;
                     }
                 }
@@ -4484,7 +4985,7 @@ void Player_StateRoll(Player *pl, s32 variant)
                 }
                 break;
             case WEAPON_HAMMER:
-                if (Motion_ReachedFrame(pl, 0, 40.0f) && (pl->input.held & 0x80)) {
+                if (Motion_ReachedFrame(pl, 0, 40.0f) && (pl->input.held & PAD_R1)) {
                     Hammer_ChargeFromRoll(pl);
                 }
                 break;
@@ -4497,11 +4998,11 @@ void Player_StateRoll(Player *pl, s32 variant)
 //---
 void Player_StateStepUp(Player *pl, s32 unused)
 {
-    f32 v[3];
+    f32 offset[3];
     f32 pos[4];
-    f32 d[4];
+    f32 delta[4];
     f32 y;
-    f32 *vz;
+    f32 *offsetZ;
     f32 *dy;
     f32 *dz;
 
@@ -4512,39 +5013,48 @@ void Player_StateStepUp(Player *pl, s32 unused)
         pl->motionTime = 0;
         Player_SetMotionPair(pl, 0x12, 0, 0x58);
         pl->targetYaw = pl->rot[1];
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        vz = &v[2];
-        *vz = 55.0f;
-        Vec_Rotate(d, v, (f32 *) pl->worldMtx);
-        dy = &d[1];
-        dz = &d[2];
-        pos[0] = pl->pos[0] + d[0];
+        offset[0] = 0.0f;
+        offset[1] = 0.0f;
+        offsetZ = &offset[2];
+        *offsetZ = 55.0f;
+        Vec_Rotate(delta, offset, (f32 *) pl->worldMtx);
+        dy = &delta[1];
+        dz = &delta[2];
+        pos[0] = pl->pos[0] + delta[0];
         pos[1] = pl->pos[1] + *dy;
         pos[2] = pl->pos[2] + *dz;
         if (Em_GetFloorYAbove((Em *) pl, pos, &y) == 1) {
             pl->pos[1] = y;
         }
-        *vz = 55.0f;
-        Vec_Rotate(d, v, (f32 *) pl->worldMtx);
-        pl->pos[0] += d[0];
+        *offsetZ = 55.0f;
+        Vec_Rotate(delta, offset, (f32 *) pl->worldMtx);
+        pl->pos[0] += delta[0];
         pl->pos[1] += *dy;
         pl->pos[2] += *dz;
         Player_SetMoveMode(pl, 0, 0, 0);
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * The sprint (PAD_R2, sheathed). variant 0 PL_ACT_DASH, 1 PL_ACT_DASH_RESUME
+ * (picked up mid-stride). Uses stamina each frame: under 76 requests
+ * PL_ACT_DASH_TIRED; PAD_CROSS with 75 or more rolls, a drop ahead leaps off
+ * (PL_ACT_LEAP_OFF_LEDGE), and in battle with the heading more than 0x2000
+ * off pl->targetAngle it becomes PL_ACT_FLEE_DASH. With PAD_R2 released the
+ * local player goes to PL_ACT_RUN_AFTER_DASH (full stick, once dashDelay is
+ * 0) or PL_ACT_RUN_STOP.
+ */
 void Player_StateDash(Player *pl, s32 variant)
 {
-    u8 r;
-    f32 v[3];
-    f32 d[3];
+    u8 stickLevel;
+    f32 move[3];
+    f32 delta[3];
 
     pl->freeState = 1;
     switch (pl->step) {
@@ -4576,7 +5086,7 @@ void Player_StateDash(Player *pl, s32 variant)
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DASH_TIRED, 0);
             break;
         }
-        if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B && Quest_PhaseIsOver(1) == 0) {
+        if ((pl->input.pressed & PAD_CROSS) && pl->stamina >= 0x4B && Quest_PhaseIsOver(1) == 0) {
             pl->targetYaw = pl->rot[1];
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             break;
@@ -4593,17 +5103,17 @@ void Player_StateDash(Player *pl, s32 variant)
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_FLEE_DASH, 0);
             break;
         }
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 5.0f;
-        Vec_Rotate(d, v, (f32 *) pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[2] += d[2];
+        move[0] = 0.0f;
+        move[1] = 0.0f;
+        move[2] = 5.0f;
+        Vec_Rotate(delta, move, (f32 *) pl->rotMtx);
+        pl->pos[0] += delta[0];
+        pl->pos[2] += delta[2];
         if (Player_IsLocal(pl) != 0) {
-            r = Player_StickMoveLevel(pl, 0);
-            if (r != 5 && (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0)) {
+            stickLevel = Player_StickMoveLevel(pl, 0);
+            if (stickLevel != 5 && (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0)) {
                 if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_DASH_TIRED) == 0 || pl->stamina > 0) {
-                    if (r == 3) {
+                    if (stickLevel == 3) {
                         if (pl->dashDelay == 0) {
                             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH, 0);
                         } else {
@@ -4619,7 +5129,7 @@ void Player_StateDash(Player *pl, s32 variant)
             } else {
                 Player_IdleActions(pl, 0);
             }
-            if (pl->unk668 != 0) {
+            if (pl->mustCrouch != 0) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
         }
@@ -4627,11 +5137,20 @@ void Player_StateDash(Player *pl, s32 variant)
     }
 }
 
+/*
+ * The sprint away from the monster being fought. variant: 0 PL_ACT_FLEE_DASH,
+ * 1 PL_ACT_DASH_TIRED, 2 PL_ACT_FLEE_DASH_RESUME (after the dive). Costs
+ * stamina each frame. Except when tired: under 76 stamina requests
+ * PL_ACT_DASH_TIRED, leaving the battle or facing pl->targetAngle again goes
+ * to PL_ACT_DASH_RESUME, PAD_CROSS dives (PL_ACT_DIVE), a drop ahead leaps
+ * off. With PAD_R2 released it goes to PL_ACT_RUN_AFTER_DASH or
+ * PL_ACT_RUN_STOP; a tired player with no stamina to PL_ACT_OUT_OF_BREATH.
+ */
 void Player_StateFleeDash(Player *pl, s32 variant)
 {
-    u8 r;
-    f32 v[3];
-    f32 d[3];
+    u8 stickLevel;
+    f32 move[3];
+    f32 delta[3];
 
     pl->freeState = 1;
     switch (pl->step) {
@@ -4667,7 +5186,7 @@ void Player_StateFleeDash(Player *pl, s32 variant)
         } else {
             Player_UseStamina(pl, -1);
         }
-        if ((pl->input.pressed & 0x40) && variant != 1 && pl->stamina >= 0x4B) {
+        if ((pl->input.pressed & PAD_CROSS) && variant != 1 && pl->stamina >= 0x4B) {
             pl->targetYaw = pl->rot[1];
             Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_DIVE, PL_SET_SNAP_POS);
             break;
@@ -4680,17 +5199,17 @@ void Player_StateFleeDash(Player *pl, s32 variant)
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LEAP_OFF_LEDGE, 0);
             break;
         }
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 1.5f;
-        Vec_Rotate(d, v, (f32 *) pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[2] += d[2];
+        move[0] = 0.0f;
+        move[1] = 0.0f;
+        move[2] = 1.5f;
+        Vec_Rotate(delta, move, (f32 *) pl->rotMtx);
+        pl->pos[0] += delta[0];
+        pl->pos[2] += delta[2];
         if (Player_IsLocal(pl) != 0) {
-            r = Player_StickMoveLevel(pl, 0);
-            if (r != 5 && (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0)) {
+            stickLevel = Player_StickMoveLevel(pl, 0);
+            if (stickLevel != 5 && (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0)) {
                 if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_DASH_TIRED) == 0 || pl->stamina > 0) {
-                    if (r == 3 && variant != 1) {
+                    if (stickLevel == 3 && variant != 1) {
                         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_RUN_AFTER_DASH, 0);
                     } else {
                         pl->freeState = 1;
@@ -4702,7 +5221,7 @@ void Player_StateFleeDash(Player *pl, s32 variant)
             } else {
                 Player_IdleActions(pl, 0);
             }
-            if (pl->unk668 != 0) {
+            if (pl->mustCrouch != 0) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_CROUCH_WALK, 0);
             }
         }
@@ -4710,6 +5229,10 @@ void Player_StateFleeDash(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_ACT_OUT_OF_BREATH: the stamina ran out. Sheathes and pants for 150
+ * frames, then refills the stamina to staminaMax and returns to idle.
+ */
 void Player_StateOutOfBreath(Player *pl, s32 variant)
 {
     Player_AddStamina(pl, 4);
@@ -4743,12 +5266,16 @@ void Player_StateOutOfBreath(Player *pl, s32 variant)
     case 3:
         if (pl->motion[0].playing == 0) {
             Player_AddStamina(pl, (s32) pl->staminaMax);
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_TIRED_STOP: plays the tired sprint's motion once, then returns to
+ * idle (no entry seen).
+ */
 void Player_StateTiredStop(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -4759,12 +5286,16 @@ void Player_StateTiredStop(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 5, 0);
+            Player_ReturnToIdle(pl, 0, 5, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_LAND_HARD: the landing from a long fall. Clears rideState, shakes
+ * the pad and the camera, and returns to idle when the motion ends.
+ */
 void Player_StateHardLanding(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -4778,12 +5309,18 @@ void Player_StateHardLanding(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_WALL_HOLD: holds still on a climbable wall in the pose of the climb
+ * it came from (PLF_NO_ROOT_MOVE). Every frame it presses the player into the
+ * wall (Player_StepBack) and Player_WallClimbInput starts the climbs or lets
+ * go.
+ */
 void Player_StateWallHold(Player *pl, s32 unused)
 {
     u8 step;
@@ -4813,9 +5350,16 @@ void Player_StateWallHold(Player *pl, s32 unused)
     Player_WallClimbInput(pl, 0);
 }
 
+/*
+ * variant 0 PL_ACT_WALL_CLIMB_UP, 1 PL_ACT_WALL_CLIMB_UP_FAST (faster, each
+ * cycle costs the dash stamina). At frames 46 and 90 the local player reads
+ * the stick (Player_WallClimbInput; no input holds, PL_ACT_WALL_HOLD). No
+ * stamina left requests PL_ACT_WALL_LET_GO; a ledge top ahead
+ * PL_ACT_LEDGE_GRAB.
+ */
 void Player_StateWallClimbUp(Player *player, s32 variant)
 {
-    f32 h;
+    f32 ledgeY;
     u16 motion;
     u8 step;
 
@@ -4855,13 +5399,18 @@ void Player_StateWallClimbUp(Player *player, s32 variant)
         Player_RequestState((void *) player, PL_GROUP_ACTION, PL_ACT_WALL_LET_GO, 0);
         return;
     }
-    if (Player_FloorAheadAbove((void *) player, &h, 55.0f, 180.0f, 30.0f) != 0) {
+    if (Player_FloorAheadAbove((void *) player, &ledgeY, 55.0f, 180.0f, 30.0f) != 0) {
         player->targetYaw = (s16) player->rot[1];
         Player_RequestState((void *) player, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB, 0);
     }
     Player_StepBack(player, 1);
 }
 
+/*
+ * variant 0 PL_ACT_WALL_CLIMB_DOWN, 1 PL_ACT_WALL_CLIMB_DOWN_FAST; as
+ * Player_StateWallClimbUp, downward. No stamina left requests
+ * PL_ACT_WALL_LET_GO; reaching pl->floorY PL_ACT_WALL_DISMOUNT.
+ */
 void Player_StateWallClimbDown(Player *pl, s32 variant)
 {
     u16 motion;
@@ -4909,6 +5458,9 @@ void Player_StateWallClimbDown(Player *pl, s32 variant)
     Player_StepBack(pl, 1);
 }
 
+/*
+ * PL_ACT_WALL_DISMOUNT: steps off the foot of the wall, then returns to idle.
+ */
 void Player_StateWallDismount(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -4920,7 +5472,7 @@ void Player_StateWallDismount(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
             break;
         }
         Player_StepBack(pl, 1);
@@ -4928,6 +5480,11 @@ void Player_StateWallDismount(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_ACT_WALL_GRAB: starts a wall climb (from Player_CheckClimb): turns to
+ * face the wall (Player_TurnAlongWallSide, side 0) and at frame 90 of the
+ * climb motion requests PL_ACT_WALL_HOLD.
+ */
 void Player_StateWallGrab(Player *pl, s32 unused)
 {
     pl->noPushTimer = 2;
@@ -4948,6 +5505,7 @@ void Player_StateWallGrab(Player *pl, s32 unused)
     Player_StepBack(pl, 1);
 }
 
+/* PL_ACT_RUN_STOP: the skid at the end of a run or a sprint, then idle. */
 void Player_StateRunStop(Player *pl, s32 unused)
 {
     pl->freeState = 1;
@@ -4959,12 +5517,19 @@ void Player_StateRunStop(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 0xA, 0);
+            Player_ReturnToIdle(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_SET_TRAP: kneels to set a trap or a device for pl->useItem
+ * (Player_UseItem sends the placed devices, the special mine point items and
+ * the delivery item of an action spot of kind 0xB here). At frame 60 of the
+ * second motion the local player requests PL_ACT_SET_TRAP_DONE; another
+ * player's copy finishes the motion and returns to idle.
+ */
 void Player_StateSetTrap(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -4990,12 +5555,18 @@ void Player_StateSetTrap(Player *pl, s32 unused)
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 0xA, 0);
+            Player_ReturnToIdle(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_SET_TRAP_DONE: at entry the local player applies the item: the
+ * quest's delivery item is delivered (Quest_DeliverFromPouch, mode 1), any
+ * other goes through Item_UseMisc (its effect or its special mine point, one
+ * used up). Then stands up and returns to idle.
+ */
 void Player_StateSetTrapDone(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -5004,7 +5575,7 @@ void Player_StateSetTrapDone(Player *pl, s32 unused)
         Player_SetMoveMode(pl, 0, 0, 0);
         Player_SetMotionPair(pl, 0x19A, 0, 0x3C);
         if (Player_IsLocal(pl) == 1) {
-            if (pl->useItem == 0x2A6) {
+            if (pl->useItem == ITEM_ID_DELIVERY) {
                 Quest_DeliverFromPouch(pl, 1);
                 break;
             }
@@ -5019,12 +5590,19 @@ void Player_StateSetTrapDone(Player *pl, s32 unused)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 0xA, 0);
+            Player_ReturnToIdle(pl, 0, 0xA, 0);
         }
         break;
     }
 }
 
+/*
+ * The sidestep with the weapon drawn. variant 0 PL_ACT_EVADE_RIGHT, 1
+ * PL_ACT_EVADE_LEFT. Costs 75 stamina and sets the hit-free frames; the long
+ * sword has its own motions. The sword and shield and the dual swords chain
+ * their evade attack as in Player_StateRoll (frames 10-42). Returns to idle
+ * when the motion ends.
+ */
 void Player_StateSideEvade(Player *pl, s32 variant)
 {
     u8 dir;
@@ -5055,19 +5633,19 @@ void Player_StateSideEvade(Player *pl, s32 variant)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
             break;
         }
         if (Player_IsLocal(pl) == 1 && pl->weaponOut != 0) {
             switch (pl->weaponType) {
             case WEAPON_SWORD_SHIELD:
             case WEAPON_DUAL_SWORDS:
-                if ((pl->input.stickDirPressed & 0x20) && Motion_InFrameRange(pl, 0, 10.0f, 42.0f) != 0 && pl->stateVar0 == 0) {
+                if ((pl->input.stickDirPressed & PAD_RSTICK_UP) && Motion_InFrameRange(pl, 0, 10.0f, 42.0f) != 0 && pl->stateVar0 == 0) {
                     pl->stateVar0 = 1;
-                    if (pl->input.stickDir & 0x800) {
+                    if (pl->input.stickDir & PAD_LEFT) {
                         pl->stateVar0 = 2;
                     }
-                    if (pl->input.stickDir & 0x400) {
+                    if (pl->input.stickDir & PAD_RIGHT) {
                         pl->stateVar0 = 3;
                     }
                 }
@@ -5093,9 +5671,21 @@ void Player_StateSideEvade(Player *pl, s32 variant)
     }
 }
 
-/* unk_70A290's .data (0x8C3500-0x8C3C90) */
+/*
+ * unk_70A290's .data (0x8C3500-0x8C3C90): the scene events' records
+ * (ScEventRec). ScEvent_VersusEnd is the arena cup's versus quest's: no
+ * area, done flag or camera; ScEvent_CheckAlwaysA starts it and
+ * ScEvent_RunVersusEnd runs the end of the match. The <Monster>Sighting
+ * records are the scenes a story quest starts with (ScEvent_Init picks one
+ * by gScene.questId; plsel's gallery replays them through
+ * gGalleryScEvents). Each plays once per save, the first time the hunter
+ * enters the record's area (ScEvent_CheckDay), and then sets its doneFlag.
+ * ScEvent_RunA shows the record's camera following the first monster of
+ * camGroup, with its jingle and music, while the monster's Update holds it
+ * in EM_GROUP_EVENT.
+ */
 extern ScEventRec ScEvent_Cam5;
-ScEventRec ScEvent_Seq61A9 = {
+ScEventRec ScEvent_VersusEnd = {
     { 0, 0, 0, 0, 0, 0, 0, 0, 0, { 0 }, ScEvent_CheckAlwaysA, ScEvent_RunVersusEnd },
 };
 ScEventRec ScEvent_DemoCam7 = {
@@ -5119,67 +5709,67 @@ ScEventRec ScEvent_DemoCam3A = {
 ScEventRec ScEvent_DemoCam37 = {
 #include "game/008C35E0.inc"
 };
-ScEventRec ScEvent_Seq3EB = {
+ScEventRec ScEvent_VelocidromeSighting = {
 #include "game/008C3600.inc"
 };
-ScEventRec ScEvent_Seq3ED = {
+ScEventRec ScEvent_BulldromeSighting = {
 #include "game/008C3620.inc"
 };
-ScEventRec ScEvent_Seq1389 = {
+ScEventRec ScEvent_DaimyoHermitaurSighting = {
 #include "game/008C3640.inc"
 };
-ScEventRec ScEvent_Seq3F4 = {
+ScEventRec ScEvent_CongalalaSighting = {
 #include "game/008C3660.inc"
 };
-ScEventRec ScEvent_Seq3F8 = {
+ScEventRec ScEvent_RathianSighting = {
 #include "game/008C3680.inc"
 };
-ScEventRec ScEvent_Seq138A = {
+ScEventRec ScEvent_KushalaJungleSighting = {
 #include "game/008C36A0.inc"
 };
-ScEventRec ScEvent_Seq138C = {
+ScEventRec ScEvent_KushalaSnowSighting = {
 #include "game/008C36C0.inc"
 };
-ScEventRec ScEvent_Seq138D = {
+ScEventRec ScEvent_LunastraTeostraVolcano8Sighting = {
 #include "game/008C36E0.inc"
 };
-ScEventRec ScEvent_Seq138F = {
+ScEventRec ScEvent_LunastraTeostraTowerSighting = {
 #include "game/008C3700.inc"
 };
-ScEventRec ScEvent_Seq1771 = {
+ScEventRec ScEvent_GarugaSighting = {
 #include "game/008C3720.inc"
 };
-ScEventRec ScEvent_Seq438 = {
+ScEventRec ScEvent_ChameleosSighting = {
 #include "game/008C3740.inc"
 };
-ScEventRec ScEvent_Seq431 = {
+ScEventRec ScEvent_LunastraTeostraVolcano7Sighting = {
 #include "game/008C3760.inc"
 };
-ScEventRec ScEvent_Seq424 = {
+ScEventRec ScEvent_BlangongaSighting = {
 #include "game/008C3780.inc"
 };
-ScEventRec ScEvent_Seq42F = {
+ScEventRec ScEvent_ShogunCeanataurSighting = {
 #include "game/008C37A0.inc"
 };
-ScEventRec ScEvent_Seq3F0 = {
+ScEventRec ScEvent_KutkuSighting = {
 #include "game/008C37C0.inc"
 };
-ScEventRec ScEvent_Seq422 = {
+ScEventRec ScEvent_KhezuSighting = {
 #include "game/008C37E0.inc"
 };
-ScEventRec ScEvent_Seq406 = {
+ScEventRec ScEvent_DiablosSighting = {
 #include "game/008C3800.inc"
 };
-ScEventRec ScEvent_Seq42C = {
+ScEventRec ScEvent_GraviosSighting = {
 #include "game/008C3820.inc"
 };
-ScEventRec ScEvent_Seq1390 = {
+ScEventRec ScEvent_MonoblosSighting = {
 #include "game/008C3840.inc"
 };
-ScEventRec ScEvent_Seq436 = {
+ScEventRec ScEvent_RathalosSighting = {
 #include "game/008C3860.inc"
 };
-ScEventRec ScEvent_Seq426 = {
+ScEventRec ScEvent_KirinSighting = {
 #include "game/008C3880.inc"
 };
 ScEventRec ScEvent_Seq1 = {
@@ -5220,12 +5810,12 @@ ScEventRec ScEvent_Cam5 = {
 };
 /* Read by plsel as a table of GalView pointers by gallery entry (Galex_QuestTask, unk_D74450.c). */
 ScEventHead *gGalleryScEvents[48] = {
-    &ScEvent_Seq3ED.head, &ScEvent_Seq3EB.head, &ScEvent_Seq3F0.head, &ScEvent_Seq1389.head,
-    0, &ScEvent_Seq3F4.head, 0, &ScEvent_Seq3F8.head,
-    &ScEvent_Seq138A.head, &ScEvent_Seq422.head, &ScEvent_Seq424.head, &ScEvent_Seq42F.head,
-    &ScEvent_Seq406.head, &ScEvent_Seq138C.head, 0, &ScEvent_Seq138D.head,
-    &ScEvent_Seq431.head, &ScEvent_Seq42C.head, &ScEvent_Seq138F.head, &ScEvent_Seq426.head,
-    &ScEvent_Seq436.head, &ScEvent_Seq1390.head, &ScEvent_Seq438.head, &ScEvent_Seq1771.head,
+    &ScEvent_BulldromeSighting.head, &ScEvent_VelocidromeSighting.head, &ScEvent_KutkuSighting.head, &ScEvent_DaimyoHermitaurSighting.head,
+    0, &ScEvent_CongalalaSighting.head, 0, &ScEvent_RathianSighting.head,
+    &ScEvent_KushalaJungleSighting.head, &ScEvent_KhezuSighting.head, &ScEvent_BlangongaSighting.head, &ScEvent_ShogunCeanataurSighting.head,
+    &ScEvent_DiablosSighting.head, &ScEvent_KushalaSnowSighting.head, 0, &ScEvent_LunastraTeostraVolcano8Sighting.head,
+    &ScEvent_LunastraTeostraVolcano7Sighting.head, &ScEvent_GraviosSighting.head, &ScEvent_LunastraTeostraTowerSighting.head, &ScEvent_KirinSighting.head,
+    &ScEvent_RathalosSighting.head, &ScEvent_MonoblosSighting.head, &ScEvent_ChameleosSighting.head, &ScEvent_GarugaSighting.head,
     &ScEvent_DemoCam7.head, &ScEvent_DemoCam37.head, &ScEvent_DemoCam2.head, &ScEvent_DemoCam24.head,
     &ScEvent_DemoCam47.head, &ScEvent_DemoCam3A.head, 0, 0,
     0, 0, 0, 0,
@@ -5252,7 +5842,7 @@ WeaponMotion gDrawMovingMotions[12] = {
 #include "game/008C3C30.inc"
 };
 
-/* ---- 0x716360 (was unk_716360.c) ---- */
+/* ---- From Player_StateBedLieDown (0x716360): once unk_716360.c ---- */
 /* prototypes of callees (round 13) */
 void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 void GreatSword_RunState(Player *em);
@@ -5298,7 +5888,7 @@ void Player_SetEvadeFrames(Player *em);
 u8 Player_InCurrentArea(void *obj);
 s32 Quest_GetDeliveryTarget(Player *p, s32 slot, ItemStack *out);
 u16 Quest_DeliverItem(Player *pl, u16 item, s16 count);
-s32 Player_NearEmKind10(void *obj);
+s32 Player_NearTrader(void *obj);
 u16 Gather_AtPoint(Player *p);
 u16 Gather_AtMinePoint(Player *p);
 u8 Notice_PushItem(char *item);
@@ -5320,7 +5910,7 @@ void StageObj_Stun_CreatePlayer(Player *em, u8 k);
 extern s8 gStunMashNeed[];
 void Player_AddSharpness(Player *p, s16 n);
 s32 Player_FloorAheadBelow(Player *em, u16 above, f32 fwd, f32 up);
-s32 func_3B5440(Em *em);
+s32 Player_HasCarryBonus(Player *pl);
 s32 Player_GatherAtSpot(Player *em, u16 kind, u16 stat);
 void Quest_GiveRewards(Player *p);
 s16 Pouch_GiveItem(Player *p, u16 item, s16 key, u8 flags);
@@ -5352,8 +5942,8 @@ void Player_SetMoveMode(Player *, u16 mode, s16 flag1, s16 flag2);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
 void Player_StartIdleMotion(Player *p, s32 a, s32 b);
 void Quest_StartCountdown(Player *p);
-void Eff00_Create(Player *, u8);
-void Eff22_CreateForPlayer(Player *, u8 kind);
+void PlayerAttack_Create(Player *, u8);
+void StageShot_CreateForPlayer(Player *, u8 kind);
 s32 Player_CrouchInput(Player *);
 void Player_UpdateLean(Player *, s32);
 void Player_StateIdle(Player *, s32);
@@ -5415,13 +6005,13 @@ void StageObj_K1B_Create(s8, s16 *);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 void Sound_PlayPlayerSe(void *obj, s32 id, s32 a, void *pos, s32 b, s32 c);
 s32 Motion_ReachedFrame(void *, s32, f32);
-void CamCtl_TurnToObj_Unk(u8 *o);
+void CamCtl_TurnToPlayerFront(u8 *o);
 void CamShake_ReqA(void *, s32 i);
 void CamReq_Mode0A(void);
 s32 ItemGet_Reserve(s32 arg0, u16 *arg1);
 s32 Quest_PhaseIsOver(s32);
 void Vib_StartLocal(void *port, s32 i);
-void Player_BeginState(Player *p, s32 action, s32 a2, s32 a3);
+void Player_ReturnToIdle(Player *p, s32 action, s32 a2, s32 a3);
 u16 Pouch_FindCarryItem(Player *);
 void Player_ResetAim(Player *p);
 void Lure_Spawn(Player *pl, u8 k);
@@ -5459,9 +6049,15 @@ void Player_StateBedLieDown(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_ACT_BED_SLEEP: sleeps on the bed, regaining 1 health a frame
+ * (Player_AddHp) with a puff effect three times a second; the local player
+ * gets up (PL_ACT_BED_GET_UP) after 120 frames. Walls are ignored
+ * (fieldCollide 0).
+ */
 void Player_StateBedSleep(Player *pl, s32 variant)
 {
-    f32 v[3];
+    f32 fxOffset[3];
 
     pl->noPushTimer = 2;
     pl->fieldCollide = 0;
@@ -5473,7 +6069,7 @@ void Player_StateBedSleep(Player *pl, s32 variant)
         pl->motionTime = 0;
         pl->timer = 120;
         Player_SetMotionPair(pl, 0x1AB, 0, 0);
-        Effect06_SpawnAtBone(pl, 0, 0, 10, 4.0f);
+        Effect06_SpawnAtBone(pl, 0, ITEM_GLOW_HEAL, 10, 4.0f);
         break;
     case 1:
         if (--pl->timer <= 0 && Player_IsLocal(pl) == 1) {
@@ -5485,20 +6081,23 @@ void Player_StateBedSleep(Player *pl, s32 variant)
         } else if (pl->motionId[0] == 0x1AC && pl->motion[0].playing == 0) {
             Player_SetMotionPair(pl, 0x1AB, 4, 0);
         }
-        v[0] = 0.0f;
-        v[1] = 20.0f;
-        v[2] = 0.0f;
+        fxOffset[0] = 0.0f;
+        fxOffset[1] = 20.0f;
+        fxOffset[2] = 0.0f;
         switch (gScene.frame % 60) {
         case 0:
         case 10:
         case 20:
-            Effect06_SpawnAt(pl, 4, 20, v, 0.8f);
+            Effect06_SpawnAt(pl, 4, 20, fxOffset, 0.8f);
         }
         Player_AddHp(pl, 1);
         break;
     }
 }
 
+/*
+ * PL_ACT_BED_GET_UP: turns half a turn and gets up from the bed, then idle.
+ */
 void Player_StateBedGetUp(Player *pl, s32 unused)
 {
     pl->noPushTimer = 2;
@@ -5514,12 +6113,20 @@ void Player_StateBedGetUp(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * Aims the mounted gun of an action spot of kind 6. variant 0
+ * PL_ACT_MOUNTED_GUN_AIM (resets the pitch), 1 PL_ACT_MOUNTED_GUN_REAIM
+ * (after a shot, keeps it). yawCenter is the spot's angle; the local player
+ * aims with Player_UpdateLean. After 30 frames PAD_CIRCLE or PAD_R3 with the
+ * gun's ammo item in the pouch requests PL_ACT_MOUNTED_GUN_FIRE; after 60
+ * frames PAD_CROSS (selector closed) or the quest's end returns to idle.
+ */
 void Player_StateMountedGunAim(Player *pl, s32 variant)
 {
     f32 pos[3];
@@ -5557,22 +6164,27 @@ void Player_StateMountedGunAim(Player *pl, s32 variant)
         }
         if (Player_IsLocal(pl) == 1) {
             if (Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
                 break;
             }
             Player_UpdateLean(pl, 0x19E);
-            if (pl->stateVar0 == 0 && (pl->input.pressed & 0x21) && Pouch_Count(pl, 0x29B) != 0) {
+            if (pl->stateVar0 == 0 && (pl->input.pressed & (PAD_CIRCLE | PAD_R3)) && Pouch_Count(pl, 0x29B) != 0) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_FIRE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW | PL_SET_SYNC_ALT);
                 break;
             }
-            if (pl->timer == 0 && (pl->input.pressed2 & 0x40) && pl->itemSelect == 0) {
-                Player_BeginState(pl, 0, 6, 0);
+            if (pl->timer == 0 && (pl->input.pressed2 & PAD_CROSS) && pl->itemSelect == 0) {
+                Player_ReturnToIdle(pl, 0, 6, 0);
             }
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_MOUNTED_GUN_FIRE: uses up one of the gun's ammo item, shakes the pad
+ * and makes the shot (StageShot_CreateForPlayer type 0). After 60 frames it aims
+ * again (PL_ACT_MOUNTED_GUN_REAIM) while ammo is left, else returns to idle.
+ */
 void Player_StateMountedGunFire(Player *pl, s32 variant)
 {
 
@@ -5587,7 +6199,7 @@ void Player_StateMountedGunFire(Player *pl, s32 variant)
         if (Player_IsLocal(pl) != 1 || Pouch_Count(pl, 0x29B) != 0) {
             Pouch_Add(pl, 0x29B, -1);
             Vib_StartLocal(pl, 2);
-            Eff22_CreateForPlayer(pl, 0);
+            StageShot_CreateForPlayer(pl, STAGESHOT_MOUNTED_GUN);
         }
         break;
     case 1:
@@ -5597,12 +6209,17 @@ void Player_StateMountedGunFire(Player *pl, s32 variant)
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_REAIM, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 break;
             }
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_CANNON_FIRE: fires the cannon of an action spot of kind 8 (from the
+ * carry state): pad and camera shakes and the shot StageShot_CreateForPlayer(pl,
+ * 1), then idle.
+ */
 void Player_StateCannonFire(Player *pl, s32 unused)
 {
     pl->noPushTimer = 2;
@@ -5614,7 +6231,7 @@ void Player_StateCannonFire(Player *pl, s32 unused)
         Player_UpdateMotionTime(pl, 0);
         Vib_StartLocal(pl, 3);
         CamShake_ReqA(pl, 5);
-        Eff22_CreateForPlayer(pl, 1U);
+        StageShot_CreateForPlayer(pl, STAGESHOT_CANNON);
         break;
     case 1:
         if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
@@ -5624,12 +6241,13 @@ void Player_StateCannonFire(Player *pl, s32 unused)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/* PL_ACT_CROUCH_STAND_UP: stands up from the crouch, then idle. */
 void Player_StateCrouchStandUp(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -5642,12 +6260,16 @@ void Player_StateCrouchStandUp(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_LEDGE_PULL_UP: climbs up from the ledge hang (the step-up motion),
+ * then idle.
+ */
 void Player_StateLedgePullUp(Player *pl, s32 unused)
 {
     pl->noPushTimer = 2;
@@ -5661,12 +6283,18 @@ void Player_StateLedgePullUp(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_CROUCH_WALK: walks crouched. The local player rolls out
+ * (PL_ACT_ROLL_FROM_CROUCH) on PAD_CROSS with 75 stamina and mustCrouch clear;
+ * otherwise Player_CrouchInput reads the controls, and stops the walk only
+ * once pl->timer (15) is 0.
+ */
 void Player_StateCrouchWalk(Player *pl, s32 unused)
 {
     s32 timer;
@@ -5688,7 +6316,7 @@ void Player_StateCrouchWalk(Player *pl, s32 unused)
             pl->timer = timer - 1;
         }
         if (Player_IsLocal(pl) == 1) {
-            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B) && (pl->unk668 == 0)) {
+            if ((pl->input.pressed & PAD_CROSS) && (pl->stamina >= 0x4B) && (pl->mustCrouch == 0)) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL_FROM_CROUCH, PL_SET_SNAP_POS);
                 break;
             }
@@ -5699,6 +6327,10 @@ void Player_StateCrouchWalk(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_ACT_CROUCH_STOP: stops the crouched walk; after 12 frames it switches to
+ * PL_ACT_CROUCH_HOLD.
+ */
 void Player_StateCrouchStop(Player *pl, s32 variant)
 {
     s16 blend;
@@ -5725,6 +6357,10 @@ void Player_StateCrouchStop(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_ACT_CROUCH_WALK_FAST: the faster crouched walk (the stick fully pushed);
+ * controls as Player_StateCrouchWalk.
+ */
 void Player_StateCrouchWalkFast(Player *pl, s32 unused)
 {
     s32 timer;
@@ -5745,7 +6381,7 @@ void Player_StateCrouchWalkFast(Player *pl, s32 unused)
             pl->timer = timer - 1;
         }
         if (Player_IsLocal(pl) == 1) {
-            if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B) && (pl->unk668 == 0)) {
+            if ((pl->input.pressed & PAD_CROSS) && (pl->stamina >= 0x4B) && (pl->mustCrouch == 0)) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_ROLL_FROM_CROUCH, PL_SET_SNAP_POS);
                 break;
             }
@@ -5756,6 +6392,10 @@ void Player_StateCrouchWalkFast(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_ACT_BATTLE_ALERT: the start of a battle with the weapon sheathed: one
+ * motion, then idle.
+ */
 void Player_StateBattleAlert(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -5767,12 +6407,17 @@ void Player_StateBattleAlert(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_TURN_AROUND: the quick half turn when the stick is pushed back
+ * against a run (Player_IdleActions). Takes targetYaw at once, then requests
+ * PL_ACT_RUN_AFTER_DASH.
+ */
 void Player_StateTurnAround(Player *pl, s32 unused)
 {
     pl->freeState = 1;
@@ -5796,41 +6441,48 @@ void Player_StateTurnAround(Player *pl, s32 unused)
 /* moves the player 3 units back along its heading (forward when fwd is set) */
 void Player_StepBack(Player *pl, s32 fwd)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 stepVec[3];
+    f32 stepWorld[3];
     s32 ang[3];
-    f32 m[16];
+    f32 yawMtx[16];
 
     ang[0] = 0;
     ang[2] = 0;
     ang[1] = pl->rot[1];
-    Mtx_FromAnglesXYZ(ang, m);
-    v[0] = 0.0f;
-    v[1] = 0.0f;
-    v[2] = -3.0f;
+    Mtx_FromAnglesXYZ(ang, yawMtx);
+    stepVec[0] = 0.0f;
+    stepVec[1] = 0.0f;
+    stepVec[2] = -3.0f;
     if ((s16) fwd) {
-        v[2] *= -1.0f;
+        stepVec[2] *= -1.0f;
     }
-    Vec_Rotate(d, v, m);
-    pl->pos[0] += d[0];
-    pl->pos[2] += d[2];
+    Vec_Rotate(stepWorld, stepVec, yawMtx);
+    pl->pos[0] += stepWorld[0];
+    pl->pos[2] += stepWorld[2];
 }
 
+/*
+ * The local player's input with its back to a wall: the left stick's world
+ * heading (Player_GetStickYaw) against the player's picks
+ * PL_ACT_WALL_SIDLE_POS (0x2000 to 0x6000 off), PL_ACT_WALL_SIDLE_NEG (0xA000
+ * to 0xE000) or PL_ACT_WALL_PRESS_HOLD. PAD_CROSS, or no wall behind
+ * (Player_TurnAlongWallSide, side 1), requests PL_ACT_RUN_STOP.
+ */
 void Player_UpdateWallSidle(Player *pl)
 {
-    s32 d;
+    s32 angleDelta;
 
     if (Player_IsLocal(pl) != 0) {
         switch (Player_StickMoveLevel(pl, 0)) {
         case 1:
         case 2:
         case 3:
-            d = (u16) ((u16) Player_GetStickYaw(pl, 0) - *(u16 *) &pl->rot[1]);
-            if (d >= 0x2000 && d <= 0x6000) {
+            angleDelta = (u16) ((u16) Player_GetStickYaw(pl, 0) - *(u16 *) &pl->rot[1]);
+            if (angleDelta >= 0x2000 && angleDelta <= 0x6000) {
                 if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_POS) == 0) {
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_POS, 0);
                 }
-            } else if (d >= 0xA000 && d <= 0xE000) {
+            } else if (angleDelta >= 0xA000 && angleDelta <= 0xE000) {
                 if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_NEG) == 0) {
                     Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_WALL_SIDLE_NEG, 0);
                 }
@@ -5844,13 +6496,19 @@ void Player_UpdateWallSidle(Player *pl)
             }
             break;
         }
-        if ((pl->input.pressed & 0x40) || !(Player_TurnAlongWallSide(pl, 1) & 0xFF)) {
+        if ((pl->input.pressed & PAD_CROSS) || !(Player_TurnAlongWallSide(pl, 1) & 0xFF)) {
             pl->freeState = 1;
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_RUN_STOP, 0);
         }
     }
 }
 
+/*
+ * variant 0 PL_ACT_WALL_PRESS (puts its back to a wall), 1
+ * PL_ACT_WALL_PRESS_HOLD (from frame 30 of the same motion). Pressed back
+ * into the wall every frame (Player_StepBack); from frame 30
+ * Player_UpdateWallSidle reads the stick.
+ */
 void Player_StateWallPress(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -5874,6 +6532,11 @@ void Player_StateWallPress(Player *pl, s32 variant)
     }
 }
 
+/*
+ * variant 0 PL_ACT_WALL_SIDLE_NEG, 1 PL_ACT_WALL_SIDLE_POS: sidles along a
+ * wall with its back to it, pressed into it every frame;
+ * Player_UpdateWallSidle reads the stick.
+ */
 void Player_StateWallSidle(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -5896,10 +6559,16 @@ void Player_StateWallSidle(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_ACT_DIVE: the forward dive from the flee sprint. Costs 75 stamina and is
+ * hit-free until the landing; the player leaps 16 forward and lands on
+ * pl->floorY with a pad and camera shake. Then PL_ACT_FLEE_DASH_RESUME with
+ * PAD_R2 held, else PL_ACT_RUN_STOP.
+ */
 void Player_StateDive(Player *pl, s32 unused)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 move[3];
+    f32 delta[3];
 
     switch (pl->step) {
     case 0:
@@ -5917,13 +6586,13 @@ void Player_StateDive(Player *pl, s32 unused)
             pl->step++;
             Player_SetMotionPair(pl, 0x2F, 0, 0);
             pl->pos[1] += 100.0f;
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = 16.0f;
-            Vec_Rotate(d, v, (f32 *) pl->worldMtx);
-            pl->vel[0] = d[0];
+            move[0] = 0.0f;
+            move[1] = 0.0f;
+            move[2] = 16.0f;
+            Vec_Rotate(delta, move, (f32 *) pl->worldMtx);
+            pl->vel[0] = delta[0];
             pl->vel[1] = 3.0f;
-            pl->vel[2] = d[2];
+            pl->vel[2] = delta[2];
             Player_ClearAccel(pl);
             Player_StartJump(pl, 8);
         }
@@ -5943,7 +6612,7 @@ void Player_StateDive(Player *pl, s32 unused)
     case 3:
         if (pl->motion[0].playing == 0) {
             pl->noHitTimer = 0;
-            if (pl->input.held & 0x10) {
+            if (pl->input.held & PAD_R2) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FLEE_DASH_RESUME, 0);
             } else {
                 pl->freeState = 1;
@@ -5963,7 +6632,7 @@ s32 Player_GatherAtSpot(Player *pl, u16 kind, u16 stat)
     u16 item;
     u16 sel;
     u16 id;
-    s16 r;
+    s16 giveResult;
 
     if (Quest_PhaseIsOver(1) == 1) {
         return 0;
@@ -6003,7 +6672,7 @@ s32 Player_GatherAtSpot(Player *pl, u16 kind, u16 stat)
         case 0x2A4:
             Notice_Push(1, 0x13, item);
             break;
-        case 0x2A6:
+        case ITEM_ID_DELIVERY:
             Notice_Push(1, 0x14, item);
             break;
         }
@@ -6020,8 +6689,8 @@ s32 Player_GatherAtSpot(Player *pl, u16 kind, u16 stat)
         if (kind == 1) {
             MsgEvent_Check(0xD);
         }
-        r = Pouch_GiveItem(pl, item, pl->gotItem, 3);
-        switch (r) {
+        giveResult = Pouch_GiveItem(pl, item, pl->gotItem, 3);
+        switch (giveResult) {
         case 0:
         case 1:
         case 2:
@@ -6043,6 +6712,16 @@ s32 Player_GatherAtSpot(Player *pl, u16 kind, u16 stat)
     return 0;
 }
 
+/*
+ * The standing gathers. variant: 0 PL_ACT_GATHER, 2 PL_ACT_TAKE_REWARDS
+ * (Quest_GiveRewards), 3 PL_ACT_CARVE, 4 PL_ACT_MINE and 5 PL_ACT_BUG_NET
+ * (with the tool pl->useItem), 6 PL_ACT_GATHER_SPECIAL, 7 PL_ACT_GATHER_DROP.
+ * When pl->timer runs out (60 frames, 40 with a tool) the local player
+ * gathers once (Player_GatherAtSpot); the pickaxe and the net break on a 1 in
+ * n roll by the tool (skills change the odds). Skill 0x97 speeds the motion.
+ * When the motion ends it returns to idle, or picks up a gathered carried
+ * item (PL_GROUP_CARRY, PL_CARRY_PICKED_UP).
+ */
 void Player_StateGather(Player *pl, u32 variant)
 {
     u16 n;
@@ -6180,14 +6859,14 @@ void Player_StateGather(Player *pl, u32 variant)
                 case 2:
                 case 6:
                 case 7:
-                    Player_BeginState(pl, 0, 0xA, 0);
+                    Player_ReturnToIdle(pl, 0, 0xA, 0);
                     break;
                 case 3:
                 case 5:
-                    Player_BeginState(pl, 0, 6, 0);
+                    Player_ReturnToIdle(pl, 0, 6, 0);
                     break;
                 default:
-                    Player_BeginState(pl, 0, 4, 0);
+                    Player_ReturnToIdle(pl, 0, 4, 0);
                     break;
                 }
             } else {
@@ -6201,6 +6880,14 @@ void Player_StateGather(Player *pl, u32 variant)
     }
 }
 
+/*
+ * The crouched forms of Player_StateGather's gather, carve, special and drop.
+ * variant: 0 PL_ACT_GATHER_CROUCHED, 1 PL_ACT_CARVE_CROUCHED, 2
+ * PL_ACT_GATHER_SPECIAL_CROUCHED, 3 PL_ACT_GATHER_DROP_CROUCHED; the variant
+ * is also the kind passed to Player_GatherAtSpot, which the local player
+ * calls once at pl->timer 60. Ends in PL_ACT_CROUCH_HOLD, or the pickup of a
+ * carried item.
+ */
 void Player_StateGatherCrouched(Player *pl, s32 variant)
 {
     ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
@@ -6279,6 +6966,12 @@ void Player_StateGatherCrouched(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_ACT_SPIT_ROAST_START: sets up the spit roast (Player_UseItem with a
+ * meat, or an action spot of kind 1): clears cookTimer and cookResult and
+ * turns the camera to the spit (CamCtl_TurnToPlayerFront); then
+ * PL_ACT_SPIT_ROAST.
+ */
 void Player_StateSpitRoastStart(Player *pl, s32 unused)
 {
     ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
@@ -6292,7 +6985,7 @@ void Player_StateSpitRoastStart(Player *pl, s32 unused)
         pl->cookTimer = 0;
         pl->cookResult = 0;
         Player_SetMotionPair(pl, 0x320, -4, 0);
-        CamCtl_TurnToObj_Unk((u8 *) pl);
+        CamCtl_TurnToPlayerFront((u8 *) pl);
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
@@ -6302,6 +6995,10 @@ void Player_StateSpitRoastStart(Player *pl, s32 unused)
     }
 }
 
+/*
+ * variant 0 PL_ACT_SPIT_ROAST_SUCCESS (done or gourmet), 1
+ * PL_ACT_SPIT_ROAST_FAIL (raw, rare or burnt): one motion, then idle.
+ */
 void Player_StateSpitRoastEnd(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -6317,22 +7014,28 @@ void Player_StateSpitRoastEnd(Player *pl, s32 variant)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * The fishing input (Player_StateFishWait), local player: returns to idle
+ * when the state group changed or the quest is over. In PL_ACT_FISH_WAIT,
+ * PAD_CIRCLE reels in: PL_ACT_FISH_REEL with a bite on the line (fishTimer
+ * above 0), else PL_ACT_FISH_REEL_BAITED or PL_ACT_FISH_REEL_EMPTY by baited.
+ */
 void Player_UpdateFishingInput(Player *pl)
 {
 
     if (Player_IsLocal(pl) != 0) {
         if (pl->stateGroup != PL_GROUP_ACTION) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             return;
         }
         if (Quest_PhaseIsOver(1) == 1) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             return;
         }
         switch (pl->state) {
@@ -6341,7 +7044,7 @@ void Player_UpdateFishingInput(Player *pl)
         case 0x53:
             break;
         case 0x50:
-            if (pl->input.pressed & 0x20) {
+            if (pl->input.pressed & PAD_CIRCLE) {
                 if (pl->fishTimer > 0) {
                     Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_REEL, 0);
                 } else if (pl->baited == 1) {
@@ -6353,7 +7056,7 @@ void Player_UpdateFishingInput(Player *pl)
             break;
         case 0x51:
         case 0x52:
-            if (pl->input.pressed & 0x20) {
+            if (pl->input.pressed & PAD_CIRCLE) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_FISH_REEL, 0);
             }
             break;
@@ -6361,6 +7064,10 @@ void Player_UpdateFishingInput(Player *pl)
     }
 }
 
+/*
+ * variant 0 PL_ACT_FISH_READY, 1 PL_ACT_FISH_WAIT (the line out): notes a
+ * bite in stateVar1 and runs Player_UpdateFishingInput.
+ */
 void Player_StateFishWait(Player *pl, s32 variant)
 {
     ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
@@ -6389,6 +7096,10 @@ void Player_StateFishWait(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_ACT_FISH_CAST: casts the line at an action spot of kind 2 (sets baited);
+ * at frame 104 makes the lure (Lure_Spawn), then PL_ACT_FISH_WAIT.
+ */
 void Player_StateFishCast(Player *pl, s32 unused)
 {
     ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
@@ -6420,6 +7131,13 @@ void Player_StateFishCast(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_ACT_FISH_REEL: reels in. A monster that took this player's bait (hooked,
+ * hookedBy) is kept in stateVar0. With none, the catch: the local player uses
+ * up the bait, gets gotItemId (Pouch_GiveItem) with a jingle and counts the
+ * quest stat; with a monster on the line the reel repeats twice and the bait
+ * is lost. Then idle.
+ */
 void Player_StateFishReel(Player *pl, s32 variant)
 {
     Em *em = gEms;
@@ -6438,7 +7156,7 @@ void Player_StateFishReel(Player *pl, s32 variant)
         Player_SetMoveMode(pl, 0, 0, 0);
         Player_SetFlag(pl, 0x80000);
         pl->weaponOut = 0;
-        for (i = 0; i < 20; i++, em++) {
+        for (i = 0; i < EM_COUNT; i++, em++) {
             if (em->active != 0 && em->area == pl->area && em->hooked != 0 && em->hookedBy == pl->index) {
                 pl->stateVar0 = 1;
             }
@@ -6452,7 +7170,7 @@ void Player_StateFishReel(Player *pl, s32 variant)
                 Player_SetMotionPair(pl, 0x328, 2, 0);
                 break;
             }
-            for (i = 0; i < 20; i++, em++) {
+            for (i = 0; i < EM_COUNT; i++, em++) {
                 if (em->area == pl->area && em->hooked != 0 && em->hookedBy == pl->index) {
                     pl->stateVar0 = 1;
                 }
@@ -6482,7 +7200,7 @@ void Player_StateFishReel(Player *pl, s32 variant)
             QuestStats_Add(0xD, 1);
         }
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 2, 0);
+            Player_ReturnToIdle(pl, 0, 2, 0);
         }
         break;
     case 3:
@@ -6493,12 +7211,17 @@ void Player_StateFishReel(Player *pl, s32 variant)
         break;
     case 4:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * variant 0 PL_ACT_FISH_REEL_EMPTY (the bait lost), 1 PL_ACT_FISH_REEL_BAITED
+ * (the bait kept): reels in nothing; the local player gets a notice, variant
+ * 0 uses up the bait. Then idle.
+ */
 void Player_StateFishReelEmpty(Player *pl, s32 variant)
 {
     ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
@@ -6522,63 +7245,78 @@ void Player_StateFishReelEmpty(Player *pl, s32 variant)
             }
         }
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 2, 0);
+            Player_ReturnToIdle(pl, 0, 2, 0);
         }
         break;
     }
 }
 
+/*
+ * Returns the item's row of gSpitMeats (the spit roast's timings and
+ * results), 0 to 12; 0 for the first meat item and for any item not in the
+ * list.
+ */
 u8 SpitMeat_Kind(u16 item)
 {
-    u8 r = 0;
+    u8 kind = 0;
 
     switch (item) {
     case 0x294:
-        r = 0;
+        kind = 0;
         break;
     case 0x9C:
-        r = 1;
+        kind = 1;
         break;
     case 0x9D:
-        r = 2;
+        kind = 2;
         break;
     case 0x9E:
-        r = 3;
+        kind = 3;
         break;
     case 0x9F:
-        r = 4;
+        kind = 4;
         break;
     case 0xA0:
-        r = 5;
+        kind = 5;
         break;
     case 0xA4:
-        r = 6;
+        kind = 6;
         break;
     case 0xA5:
-        r = 7;
+        kind = 7;
         break;
     case 0xA6:
-        r = 8;
+        kind = 8;
         break;
     case 0xA7:
-        r = 9;
+        kind = 9;
         break;
     case 0xA3:
-        r = 10;
+        kind = 10;
         break;
     case 0xA8:
-        r = 11;
+        kind = 11;
         break;
     case 0xA9:
-        r = 12;
+        kind = 12;
         break;
     }
-    return r;
+    return kind;
 }
 
+/*
+ * PL_ACT_SPIT_ROAST: turns the meat. The row m of gSpitMeats (SpitMeat_Kind
+ * of pl->useItem) times cookResult as cookTimer counts: 0 raw, 1 rare (from
+ * m->rare), 2 done (m->done), 4 gourmet (m->gourmetLen frames from m->gourmet
+ * after done), 3 burnt (m->doneLen after done); skills 0xC6 to 0xC8 shift the
+ * windows. The local player takes the meat off with PAD_CIRCLE or at the time
+ * limit: the meat is used up and, from rare on, the result's item given with
+ * a jingle and a notice. Raw, rare and burnt request PL_ACT_SPIT_ROAST_FAIL,
+ * done and gourmet PL_ACT_SPIT_ROAST_SUCCESS.
+ */
 void Player_StateSpitRoast(Player *pl, s32 unused)
 {
-    SpitMeat *m;
+    SpitMeat *meat;
     s16 done;
     s16 doneLen;
     s16 gourmet;
@@ -6588,7 +7326,7 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
     s16 n;
     ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
     pl->noPushTimer = 2;
-    m = &gSpitMeats[SpitMeat_Kind(pl->useItem)];
+    meat = &gSpitMeats[SpitMeat_Kind(pl->useItem)];
     switch (pl->step) {
     case 0:
         pl->step++;
@@ -6598,14 +7336,14 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
         Player_SetMotionPair(pl, 0x323, 4, Rand_Next(1) & 0x3F);
         pl->cookTimer = 0;
         pl->cookResult = 0;
-        Jingle_Play(pl, m->jingle);
+        Jingle_Play(pl, meat->jingle);
         break;
     case 1:
         pl->cookTimer++;
-        done = m->done;
-        doneLen = m->doneLen;
-        gourmet = m->gourmet;
-        gourmetLen = m->gourmetLen;
+        done = meat->done;
+        doneLen = meat->doneLen;
+        gourmet = meat->gourmet;
+        gourmetLen = meat->gourmetLen;
         if (Player_HasSkill(pl, 0xC6) == 1) {
             done -= 2;
             doneLen += 4;
@@ -6635,7 +7373,7 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
             } else {
                 pl->cookResult = 2;
             }
-        } else if (pl->cookTimer >= m->rare) {
+        } else if (pl->cookTimer >= meat->rare) {
             pl->cookResult = 1;
         } else {
             pl->cookResult = 0;
@@ -6645,7 +7383,7 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
         } else {
             limit = 330;
         }
-        if (Player_IsLocal(pl) == 1 && ((pl->input.pressed & 0x20) || pl->cookTimer >= limit)) {
+        if (Player_IsLocal(pl) == 1 && ((pl->input.pressed & PAD_CIRCLE) || pl->cookTimer >= limit)) {
             Bgm_StopEvent(pl);
             switch (pl->cookResult) {
             case 0:
@@ -6656,17 +7394,17 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
                 break;
             case 1:
                 if (Quest_PhaseIsOver(1) == 0) {
-                    if (m->raw == 0) {
+                    if (meat->raw == 0) {
                         Pouch_Add(pl, 0x28, -1);
                     } else {
                         Pouch_Add(pl, pl->useItem, -1);
                         Pouch_Add(pl, 0xA2, 1);
                     }
-                    Notice_Push(1, 9, m->itemRare);
+                    Notice_Push(1, 9, meat->itemRare);
                     Jingle_Play(pl, 0xE);
                     n = pl->gotItem;
-                    if ((s16) Pouch_GiveItem(pl, m->itemRare, n, 0) == 3) {
-                        Player_PushNotice3(m->itemRare);
+                    if ((s16) Pouch_GiveItem(pl, meat->itemRare, n, 0) == 3) {
+                        Player_PushNotice3(meat->itemRare);
                     }
                 }
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_FAIL, 0);
@@ -6674,14 +7412,14 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
             case 2:
             case 4:
                 if (Quest_PhaseIsOver(1) == 0) {
-                    if (m->raw == 0) {
+                    if (meat->raw == 0) {
                         Pouch_Add(pl, 0x28, -1);
                     } else {
                         Pouch_Add(pl, pl->useItem, -1);
                         Pouch_Add(pl, 0xA2, 1);
                     }
                     if (pl->cookResult == 4) {
-                        switch (m->jingle) {
+                        switch (meat->jingle) {
                         case 0x1E:
                             j = 0x22;
                             break;
@@ -6701,7 +7439,7 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
                             break;
                         }
                     } else {
-                        switch (m->jingle) {
+                        switch (meat->jingle) {
                         case 0x1E:
                             j = 0x21;
                             break;
@@ -6723,16 +7461,16 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
                     }
                     Jingle_Play(pl, j);
                     if (pl->cookResult == 4) {
-                        Notice_Push(1, 9, m->itemGourmet);
+                        Notice_Push(1, 9, meat->itemGourmet);
                         n = pl->gotItem;
-                        if ((s16) Pouch_GiveItem(pl, m->itemGourmet, n, 0) == 3) {
-                            Player_PushNotice3(m->itemGourmet);
+                        if ((s16) Pouch_GiveItem(pl, meat->itemGourmet, n, 0) == 3) {
+                            Player_PushNotice3(meat->itemGourmet);
                         }
                     } else {
-                        Notice_Push(1, 9, m->itemDone);
+                        Notice_Push(1, 9, meat->itemDone);
                         n = pl->gotItem;
-                        if ((s16) Pouch_GiveItem(pl, m->itemDone, n, 0) == 3) {
-                            Player_PushNotice3(m->itemDone);
+                        if ((s16) Pouch_GiveItem(pl, meat->itemDone, n, 0) == 3) {
+                            Player_PushNotice3(meat->itemDone);
                         }
                     }
                 }
@@ -6740,17 +7478,17 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
                 break;
             case 3:
                 if (Quest_PhaseIsOver(1) == 0) {
-                    if (m->raw == 0) {
+                    if (meat->raw == 0) {
                         Pouch_Add(pl, 0x28, -1);
                     } else {
                         Pouch_Add(pl, pl->useItem, -1);
                         Pouch_Add(pl, 0xA2, 1);
                     }
-                    Notice_Push(1, 0xA, m->itemBurnt);
+                    Notice_Push(1, 0xA, meat->itemBurnt);
                     Jingle_Play(pl, 0x10);
                     n = pl->gotItem;
-                    if ((s16) Pouch_GiveItem(pl, m->itemBurnt, n, 0) == 3) {
-                        Player_PushNotice3(m->itemBurnt);
+                    if ((s16) Pouch_GiveItem(pl, meat->itemBurnt, n, 0) == 3) {
+                        Player_PushNotice3(meat->itemBurnt);
                     }
                 }
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_SPIT_ROAST_FAIL, 0);
@@ -6761,6 +7499,12 @@ void Player_StateSpitRoast(Player *pl, s32 unused)
     }
 }
 
+/*
+ * variant 0 PL_ACT_START_COUNTDOWN (strikes the countdown spot, an action
+ * spot of kind 9: Quest_StartCountdown), 1 PL_ACT_SPOT_ITEM_STRIKE (the spot
+ * item at an action spot of kind 0xA: StageShot_CreateForPlayer type 7, one item
+ * used up). Then idle.
+ */
 void Player_StateSpotStrike(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -6771,20 +7515,25 @@ void Player_StateSpotStrike(Player *pl, s32 variant)
             Quest_StartCountdown((Player *) pl);
             break;
         }
-        Eff22_CreateForPlayer(pl, 7U);
+        StageShot_CreateForPlayer(pl, STAGESHOT_ARENA_STRIKE);
         Pouch_Add(pl, (s32) pl->useItem, -1);
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * variant 0 PL_ACT_SUPPLY_BOX, 1 PL_ACT_DELIVERY_BOX: stands hit-free while
+ * the box's menu is open (supplyBoxOpen, or deliveryOpen with the cursor
+ * reset); returns to idle once the menu clears its flag or the quest is over.
+ */
 void Player_StateBoxMenu(Player *pl, s32 variant)
 {
-    u8 var_v0;
+    u8 isOpen;
 
     pl->noPushTimer = 2;
     pl->noHitTimer = 5;
@@ -6808,23 +7557,28 @@ void Player_StateBoxMenu(Player *pl, s32 variant)
         break;
     case 1:
         if (variant == 0) {
-            var_v0 = pl->supplyBoxOpen;
+            isOpen = pl->supplyBoxOpen;
         } else {
-            var_v0 = pl->deliveryOpen;
+            isOpen = pl->deliveryOpen;
         }
-        if (var_v0 & 0xFF) {
+        if (isOpen & 0xFF) {
             if (Quest_PhaseIsOver(1) == 1) {
                 goto block_17;
             }
         } else {
 block_17:
             pl->noHitTimer = 0;
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * variant 0 PL_ACT_DRINK, 1 PL_ACT_EAT. When the motion ends the local player
+ * requests PL_ACT_APPLY_ITEM, another player's copy returns to idle. Skill
+ * 0xBC speeds the eating; skill 0xBD replays part of it up to 4 times.
+ */
 void Player_StateConsume(Player *pl, s32 variant)
 {
     u8 stateVar0;
@@ -6852,7 +7606,7 @@ void Player_StateConsume(Player *pl, s32 variant)
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_APPLY_ITEM, 0);
                 break;
             }
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if (variant == 1) {
@@ -6877,6 +7631,10 @@ void Player_StateConsume(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_ACT_APPLY_ITEM: at entry the local player applies the item just consumed
+ * (Item_Use of pl->useItem); then idle.
+ */
 void Player_StateApplyItem(Player *pl, s32 unused)
 {
     ItemGet_Reserve((s32) pl, (u16 *) &pl->gotItem);
@@ -6891,12 +7649,16 @@ void Player_StateApplyItem(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_KNEEL_TO_PLACE_CROUCHED: as Player_StateKneelToPlace from the
+ * crouch; at frame 20 the local player requests PL_ACT_PLACE_ITEM_CROUCHED.
+ */
 void Player_StateKneelToPlaceCrouched(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -6922,6 +7684,10 @@ void Player_StateKneelToPlaceCrouched(Player *pl, s32 unused)
     }
 }
 
+/*
+ * Starts the trade cooldown: pl->tradeCooldown = 9000 frames unless it still
+ * runs.
+ */
 static void Player_StartTradeTimer(Player *pl)
 {
     if (pl->tradeCooldown <= 0) {
@@ -6929,6 +7695,13 @@ static void Player_StartTradeTimer(Player *pl)
     }
 }
 
+/*
+ * PL_ACT_TRADE: trades with the trader (EM_KIND_TRADER; from
+ * Player_StartSpotAction). Stands hit-free while its message shows
+ * (tradeMsgTimer 60), then idle. tradeCount counts the trades up to 7; from 4
+ * on half of them jump to 7, and reaching 7 starts the cooldown
+ * (Player_StartTradeTimer).
+ */
 void Player_StateTrade(Player *pl, s32 variant)
 {
 
@@ -6954,12 +7727,18 @@ void Player_StateTrade(Player *pl, s32 variant)
         break;
     case 1:
         if (pl->tradeMsgTimer == 0) {
-            Player_BeginState(pl, 0, 2, 0);
+            Player_ReturnToIdle(pl, 0, 2, 0);
         }
         break;
     }
 }
 
+/*
+ * variant 0 PL_ACT_HORN_PLAY (the horn item), 1 PL_ACT_TEAM_ITEM_USE (a team
+ * item). The motion repeats: the horn up to 3 times (PAD_CROSS from frame 44
+ * ends it), then PL_ACT_HORN_END; the team item twice, then
+ * PL_ACT_TEAM_ITEM_END.
+ */
 void Player_StateInstrumentPlay(Player *pl, s32 variant)
 {
 
@@ -6979,7 +7758,7 @@ void Player_StateInstrumentPlay(Player *pl, s32 variant)
     case 1:
         switch (variant) {
         case 0:
-            if (pl->stateVar0 >= 3 || (Motion_ReachedFrame(pl, 0, 44.0f) != 0 && (pl->input.pressed & 0x40))) {
+            if (pl->stateVar0 >= 3 || (Motion_ReachedFrame(pl, 0, 44.0f) != 0 && (pl->input.pressed & PAD_CROSS))) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_HORN_END, 0);
             } else if (Motion_PassedFrame(pl, 0, pl->motion[0].frameCount) != 0) {
                 pl->stateVar0++;
@@ -6998,6 +7777,12 @@ void Player_StateInstrumentPlay(Player *pl, s32 variant)
     }
 }
 
+/*
+ * variant 0 PL_ACT_HORN_END, 1 PL_ACT_TEAM_ITEM_END (the local player applies
+ * the team item, Item_UseTeamPowder). At entry the local player may use up
+ * pl->useItem on a 1 in n roll by the item; skills 0x98 to 0x9B and the
+ * hunting horn change the odds. Then idle.
+ */
 void Player_StateInstrumentEnd(Player *pl, s32 variant)
 {
     u16 chance = 1;
@@ -7015,16 +7800,16 @@ void Player_StateInstrumentEnd(Player *pl, s32 variant)
                 Item_UseTeamPowder(pl);
             }
             switch (pl->useItem) {
-            case 0xB0:
+            case ITEM_ID_TEAM_HEAL:
                 chance = 12;
                 break;
-            case 0xB1:
+            case ITEM_ID_TEAM_CURE:
                 chance = 12;
                 break;
-            case 0xB2:
+            case ITEM_ID_TEAM_ATTACK:
                 chance = 8;
                 break;
-            case 0xB3:
+            case ITEM_ID_TEAM_DEFENSE:
                 chance = 8;
                 break;
             }
@@ -7049,12 +7834,17 @@ void Player_StateInstrumentEnd(Player *pl, s32 variant)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_SHARPEN: sharpens with the whetstone pl->useItem. At frame 260 one
+ * item is used up and Player_AddSharpness adds 100 to 200 by the item (half
+ * with skill 0x27); skill 0x26 skips part of the motion. Then idle.
+ */
 void Player_StateSharpen(Player *pl, s32 unused)
 {
     s16 n;
@@ -7091,12 +7881,18 @@ void Player_StateSharpen(Player *pl, s32 unused)
             Player_AddSharpness(pl, n);
         }
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * Looks through the binoculars in the aim view (aimMode 1). variant 0
+ * PL_ACT_BINOCULARS (crouches first), 1 PL_ACT_BINOCULARS_CROUCHED.
+ * Player_UpdateLean aims; PAD_CROSS or the quest's end ends it
+ * (Player_ResetAim, PL_ACT_CROUCH_HOLD).
+ */
 void Player_StateBinoculars(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -7124,7 +7920,7 @@ void Player_StateBinoculars(Player *pl, s32 variant)
     case 2:
         Player_UpdateLean(pl, 8);
         if (Player_IsLocal(pl) != 0) {
-            if (!(pl->input.pressed & 0x40)) {
+            if (!(pl->input.pressed & PAD_CROSS)) {
                 if (Quest_PhaseIsOver(1) == 1) {
                     goto block_15;
                 }
@@ -7138,6 +7934,11 @@ block_15:
     }
 }
 
+/*
+ * PL_ACT_OFFER_ITEM: holds an item out to another player (offerItem,
+ * offerCount, offerTo). The local player ends it (PL_ACT_OFFER_ITEM_END) with
+ * PAD_CROSS or once offerState is set (a taker asked: qnet_sync's message 7).
+ */
 void Player_StateOfferItem(Player *pl, s32 unused)
 {
     pl->offerStarted = 1;
@@ -7151,13 +7952,19 @@ void Player_StateOfferItem(Player *pl, s32 unused)
         pl->offerState = 0U;
         break;
     case 1:
-        if ((Player_IsLocal(pl) == 1) && ((pl->input.pressed & 0x40) || (pl->offerState != 0))) {
+        if ((Player_IsLocal(pl) == 1) && ((pl->input.pressed & PAD_CROSS) || (pl->offerState != 0))) {
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_OFFER_ITEM_END, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_TAKE_ITEM_WAIT: waits for the giver's answer
+ * (Player_TakeOfferedItem). offerState 1 (the item arrived, qnet_sync's
+ * message 8) requests PL_ACT_TAKE_ITEM; a refusal (2) or 601 frames without
+ * an answer return to idle.
+ */
 void Player_StateTakeItemWait(Player *pl, s32 unused)
 {
     s32 timer;
@@ -7184,13 +7991,14 @@ void Player_StateTakeItemWait(Player *pl, s32 unused)
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_TAKE_ITEM, 0);
                 break;
             }
-            Player_BeginState(pl, 0, 2, 0);
+            Player_ReturnToIdle(pl, 0, 2, 0);
         } else {
         }
         break;
     }
 }
 
+/* PL_ACT_OFFER_ITEM_END: the giver's closing motion, then idle. */
 void Player_StateOfferItemEnd(Player *pl, s32 unused)
 {
     pl->offerStarted = 1;
@@ -7205,12 +8013,15 @@ void Player_StateOfferItemEnd(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_TAKE_ITEM: the taker's motion once the item has arrived, then idle.
+ */
 void Player_StateTakeItem(Player *pl, s32 unused)
 {
     pl->offerStarted = 1;
@@ -7225,18 +8036,29 @@ void Player_StateTakeItem(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * The lance's and the gunlance's hop. variant: 0 PL_ACT_LANCE_HOP_SIDE_A, 1
+ * PL_ACT_LANCE_HOP_SIDE_B, 2 PL_ACT_LANCE_HOP_BACK, 3
+ * PL_ACT_LANCE_HOP_BACK_LONG. Costs 75 stamina and sets the hit-free frames.
+ * From 30 frames before the motion's end a flick of the attack stick picks
+ * the next weapon state into stateVar1 (0xFF none): down LANCE_UPPER_THRUST,
+ * or for the gunlance GLANCE_HOP_RELOAD (clip not full) or
+ * GLANCE_UPPER_THRUST; any other flick LANCE_THRUST or GLANCE_THRUST. From 10
+ * frames before the end the left stick steers and the picked state starts in
+ * PL_GROUP_WEAPON; with none it returns to idle.
+ */
 void Player_StateLanceHop(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
-    u16 a;
-    u16 b;
+    f32 move[3];
+    f32 delta[3];
+    u16 flickAngle;
+    u16 steerAngle;
     switch (pl->step) {
     case 0:
         pl->step++;
@@ -7265,41 +8087,41 @@ void Player_StateLanceHop(Player *pl, s32 variant)
         case 1:
             if (pl->weaponType == WEAPON_GUNLANCE && Motion_ReachedFrame(pl, 0, 20.0f) == 0) {
                 if (variant == 0) {
-                    v[0] = 9.0f;
+                    move[0] = 9.0f;
                 } else {
-                    v[0] = -9.0f;
+                    move[0] = -9.0f;
                 }
-                v[1] = 0.0f;
-                v[2] = 0.0f;
-                Vec_Rotate(d, v, pl->rotMtx);
-                pl->pos[0] += d[0];
-                pl->pos[2] += d[2];
+                move[1] = 0.0f;
+                move[2] = 0.0f;
+                Vec_Rotate(delta, move, pl->rotMtx);
+                pl->pos[0] += delta[0];
+                pl->pos[2] += delta[2];
             }
             break;
         case 3:
             if (Motion_ReachedFrame(pl, 0, 28.0f) == 0) {
-                v[0] = 0.0f;
-                v[1] = 0.0f;
-                v[2] = -8.0f;
-                Vec_Rotate(d, v, pl->rotMtx);
-                pl->pos[0] += d[0];
-                pl->pos[2] += d[2];
+                move[0] = 0.0f;
+                move[1] = 0.0f;
+                move[2] = -8.0f;
+                Vec_Rotate(delta, move, pl->rotMtx);
+                pl->pos[0] += delta[0];
+                pl->pos[2] += delta[2];
             }
             break;
         }
         if (Motion_ReachedFrame(pl, 0, pl->motion[0].frameCount - 30.0f) != 0 && Player_IsLocal(pl) == 1) {
-            if (pl->input.stickDirPressed & 0x3C) {
-                a = pl->input.rightStickAngle + 0x1555;
+            if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
+                flickAngle = pl->input.rightStickAngle + 0x1555;
                 switch (pl->weaponType) {
                 case WEAPON_LANCE:
-                    if (a < 0xAAAC) {
+                    if (flickAngle < 0xAAAC) {
                         pl->stateVar1 = 0;
                     } else {
                         pl->stateVar1 = 1;
                     }
                     break;
                 case WEAPON_GUNLANCE:
-                    if (a < 0xAAAC) {
+                    if (flickAngle < 0xAAAC) {
                         pl->stateVar1 = 0;
                     } else if (pl->roundsLoaded < pl->clipSize) {
                         pl->stateVar1 = 0x1B;
@@ -7310,15 +8132,15 @@ void Player_StateLanceHop(Player *pl, s32 variant)
                 }
             }
             if (Motion_ReachedFrame(pl, 0, pl->motion[0].frameCount - 10.0f) != 0 && pl->stateVar1 != 0xFF) {
-                if (pl->input.stickDir & 0x3C00) {
-                    b = pl->input.stickAngle - 0x1555;
-                    if (b >= 0xAAAB) {
+                if (pl->input.stickDir & PAD_DPAD) {
+                    steerAngle = pl->input.stickAngle - 0x1555;
+                    if (steerAngle >= 0xAAAB) {
                         if (pl->weaponType == WEAPON_GUNLANCE) {
                             pl->targetYaw -= 0x1555;
                         } else {
                             pl->targetYaw -= 0x1000;
                         }
-                    } else if (b >= 0x5555) {
+                    } else if (steerAngle >= 0x5555) {
                         if (pl->weaponType == WEAPON_GUNLANCE) {
                             pl->targetYaw += 0x1555;
                         } else {
@@ -7331,15 +8153,19 @@ void Player_StateLanceHop(Player *pl, s32 variant)
         }
         if (pl->motion[0].playing == 0) {
             if (variant == 2) {
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
             } else {
-                Player_BeginState(pl, 0, 8, 0);
+                Player_ReturnToIdle(pl, 0, 8, 0);
             }
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_PLACE_LARGE_ITEM: crouches to place a large item (pl->useItem); at
+ * frame 78 the local player requests PL_ACT_PLACE_LARGE_ITEM_SET.
+ */
 void Player_StatePlaceLargeItem(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -7365,6 +8191,10 @@ void Player_StatePlaceLargeItem(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_ACT_PLACE_LARGE_ITEM_SET: the local player puts it down (Item_UsePlaced:
+ * the placed object, one item used up); then idle.
+ */
 void Player_StatePlaceLargeItemSet(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -7381,12 +8211,18 @@ void Player_StatePlaceLargeItemSet(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_ACT_HORN_ITEM_PLAY: plays one of the horn items, as PL_ACT_HORN_PLAY:
+ * the item sets the rounds (stateVar0, 1 to 3) and the use-up odds
+ * (stateVar1: 1 in 8, 12 or 16). At the end the local player may use the item
+ * up (skills and the hunting horn save it sometimes); then idle.
+ */
 void Player_StateHornItemPlay(Player *pl, s32 variant)
 {
 
@@ -7446,12 +8282,18 @@ void Player_StateHornItemPlay(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * Runs the handler of the player's state in PL_GROUP_ACTION (idle, moving,
+ * climbing, items, the bed, fishing, gathering, the lance hops). States that
+ * share a handler pass a variant (each handler's comment lists them); a state
+ * with no case returns to idle.
+ */
 void Player_RunActionState(Player *pl)
 {
     switch (pl->state) {
@@ -7831,28 +8673,38 @@ void Player_RunActionState(Player *pl)
         Player_StateGatherCrouched(pl, 3);
         break;
     default:
-        Player_BeginState(pl, 0, 4, 0);
+        Player_ReturnToIdle(pl, 0, 4, 0);
         break;
     }
 }
 
+/*
+ * PL_WPN_SHARED_ATTACK, the attack every weapon shares: one motion with
+ * PlayerAttack 5, then idle. The second parameter is unused.
+ */
 void Player_StateSharedAttack(Player *pl, s32 unused)
 {
     switch (pl->step) {
     case 0:
         pl->step++;
         Player_SetMotionPair(pl, 0x32, 4, 0);
-        Eff00_Create(pl, 5U);
+        PlayerAttack_Create(pl, 5U);
         Player_SetMoveMode(pl, 0, 1, 0);
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * Runs the handler of the player's state in PL_GROUP_WEAPON:
+ * PL_WPN_SHARED_ATTACK goes to Player_StateSharedAttack, any other state to
+ * the drawn weapon's dispatcher by pl->weaponType (the two bowguns share
+ * Bowgun_RunState). Clears pl->unk310 first.
+ */
 void Player_RunWeaponState(Player *pl)
 {
     pl->unk310 = 0;
@@ -7895,6 +8747,10 @@ void Player_RunWeaponState(Player *pl)
     }
 }
 
+/*
+ * PL_REACT_KNOCKDOWN_FRONT: falls, gets up and returns to idle, unhittable
+ * throughout (noHitTimer).
+ */
 void Player_StateKnockdownFront(Player *pl)
 {
     pl->noHitTimer = 2;
@@ -7913,17 +8769,24 @@ void Player_StateKnockdownFront(Player *pl)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             pl->noHitTimer = 6;
         }
         break;
     }
 }
 
+/*
+ * A guarded hit slides the player back with the guard sound and a pad shake.
+ * variant 0 PL_REACT_GUARD_STAGGER (a short slide), 1
+ * PL_REACT_GUARD_KNOCKBACK (a long one, the heavy bowgun with its own
+ * motion). The lance, gunlance and heavy bowgun slide less. Ends in
+ * PL_REACT_GUARD_HOLD for the lance and gunlance, else in idle.
+ */
 void Player_StateGuardRecoil(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 slideLocal[3];
+    f32 slideWorld[3];
 
     switch (pl->step) {
     case 0:
@@ -7944,53 +8807,53 @@ void Player_StateGuardRecoil(Player *pl, s32 variant)
         pl->weaponOut = 1;
         break;
     case 1:
-        v[2] = 0.0f;
+        slideLocal[2] = 0.0f;
         if (variant == 0) {
             if (Motion_ReachedFrame(pl, 0, 30.0f) == 0) {
-                v[0] = 0.0f;
-                v[1] = 0.0f;
+                slideLocal[0] = 0.0f;
+                slideLocal[1] = 0.0f;
                 switch (pl->weaponType) {
                 case WEAPON_LANCE:
                 case WEAPON_GUNLANCE:
                 case WEAPON_HEAVY_BOWGUN:
-                    v[2] = -15.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 32.0f)) / 360.0f);
+                    slideLocal[2] = -15.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 32.0f)) / 360.0f);
                     break;
                 case WEAPON_GREAT_SWORD:
                 case WEAPON_LONG_SWORD:
                 case WEAPON_SWORD_SHIELD:
-                    v[2] = -20.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 32.0f)) / 360.0f);
+                    slideLocal[2] = -20.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 32.0f)) / 360.0f);
                     break;
                 }
-                Vec_Rotate(d, v, pl->rotMtx);
-                pl->pos[0] += d[0];
-                pl->pos[2] += d[2];
+                Vec_Rotate(slideWorld, slideLocal, pl->rotMtx);
+                pl->pos[0] += slideWorld[0];
+                pl->pos[2] += slideWorld[2];
             }
         } else {
-            v[0] = 0.0f;
-            v[1] = 0.0f;
+            slideLocal[0] = 0.0f;
+            slideLocal[1] = 0.0f;
             switch (pl->weaponType) {
             case WEAPON_LANCE:
             case WEAPON_GUNLANCE:
             case WEAPON_HEAVY_BOWGUN:
                 if (Motion_ReachedFrame(pl, 0, 90.0f) == 0) {
-                    v[2] = -16.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 104.0f)) / 360.0f);
+                    slideLocal[2] = -16.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 104.0f)) / 360.0f);
                 }
                 break;
             case WEAPON_GREAT_SWORD:
             case WEAPON_LONG_SWORD:
                 if (Motion_ReachedFrame(pl, 0, 104.0f) == 0) {
-                    v[2] = -22.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 104.0f)) / 360.0f);
+                    slideLocal[2] = -22.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 104.0f)) / 360.0f);
                 }
                 break;
             case WEAPON_SWORD_SHIELD:
                 if (Motion_ReachedFrame(pl, 0, 94.0f) == 0) {
-                    v[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 94.0f)) / 360.0f);
+                    slideLocal[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 94.0f)) / 360.0f);
                 }
                 break;
             }
-            Vec_Rotate(d, v, pl->rotMtx);
-            pl->pos[0] += d[0];
-            pl->pos[2] += d[2];
+            Vec_Rotate(slideWorld, slideLocal, pl->rotMtx);
+            pl->pos[0] += slideWorld[0];
+            pl->pos[2] += slideWorld[2];
         }
         if (pl->motion[0].playing == 0) {
             switch (pl->weaponType) {
@@ -7999,13 +8862,13 @@ void Player_StateGuardRecoil(Player *pl, s32 variant)
                 Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
                 break;
             case WEAPON_SWORD_SHIELD:
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
                 break;
             case WEAPON_GREAT_SWORD:
             case WEAPON_LONG_SWORD:
             case WEAPON_HEAVY_BOWGUN:
             default:
-                Player_BeginState(pl, 0, 0xA, 0);
+                Player_ReturnToIdle(pl, 0, 0xA, 0);
                 break;
             }
         }
@@ -8013,12 +8876,19 @@ void Player_StateGuardRecoil(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_REACT_BLOWN_BACK: flung backward onto the back. Ends the demon mode and
+ * launches the player up and back; it lands near pl->floorY (impact sound,
+ * armour rattle), lies, gets up and returns to idle. With no health left the
+ * local player faints (PL_GROUP_FAINT, PL_FAINT_FACE_UP); another player's
+ * copy waits on the ground. Unhittable throughout.
+ */
 void Player_StateBlownBack(Player *pl)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 kickLocal[3];
+    f32 kickWorld[3];
     s32 ang[3];
-    f32 m[16];
+    f32 yawMtx[16];
     f32 y;
 
     pl->noHitTimer = 2;
@@ -8027,9 +8897,9 @@ void Player_StateBlownBack(Player *pl)
         pl->step++;
         pl->demonMode = 0;
         Player_SetMotionPair(pl, 0xCD, 0, 0x10);
-        Em_GetBonePos(pl, 2, v);
-        if (pl->pos[1] < v[1]) {
-            pl->pos[1] = v[1];
+        Em_GetBonePos(pl, 2, kickLocal);
+        if (pl->pos[1] < kickLocal[1]) {
+            pl->pos[1] = kickLocal[1];
         }
         Player_SetMoveMode(pl, 2, 0, 1);
         pl->rideState = 0;
@@ -8037,13 +8907,13 @@ void Player_StateBlownBack(Player *pl)
         ang[0] = 0;
         ang[1] = pl->rot[1];
         ang[2] = 0;
-        Mtx_FromAnglesXYZ(ang, m);
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = -11.17f;
-        Vec_Rotate(d, v, m);
-        pl->vel[0] = 2.0f * d[0];
-        pl->vel[2] = 2.0f * d[2];
+        Mtx_FromAnglesXYZ(ang, yawMtx);
+        kickLocal[0] = 0.0f;
+        kickLocal[1] = 0.0f;
+        kickLocal[2] = -11.17f;
+        Vec_Rotate(kickWorld, kickLocal, yawMtx);
+        pl->vel[0] = 2.0f * kickWorld[0];
+        pl->vel[2] = 2.0f * kickWorld[2];
         pl->vel[1] = 6.0f;
         Player_StartJump(pl, 0xC);
         pl->vel[1] = 0.0f;
@@ -8079,13 +8949,13 @@ void Player_StateBlownBack(Player *pl)
                 Player_RequestStateSynced(pl, PL_GROUP_FAINT, PL_FAINT_FACE_UP, 0);
             } else {
                 pl->step = 4;
-                Player_SetFlag(pl, 0x20000);
+                Player_SetFlag(pl, PLF_NO_ROOT_MOVE);
             }
         }
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
             pl->noHitTimer = 6;
         }
         break;
@@ -8094,6 +8964,13 @@ void Player_StateBlownBack(Player *pl)
     }
 }
 
+/*
+ * The guard. variant 0 PL_REACT_GUARD_START, 1 PL_REACT_GUARD_HOLD, 2
+ * PL_REACT_GUARD_HOLD_ALT (differs for the gunlance only). The motions are
+ * the weapon's. For the local player (any player offline), from frame 18
+ * letting go of PAD_R1 requests PL_REACT_GUARD_END, and Player_GuardInput
+ * starts the guard's actions (not for the heavy bowgun).
+ */
 void Player_StateGuard(Player *pl, s32 variant)
 {
 
@@ -8144,7 +9021,7 @@ void Player_StateGuard(Player *pl, s32 variant)
         break;
     case 1:
         if (Player_IsLocal(pl) == 1 || Game_IsOnline() == 0) {
-            if (pl->motionTime > 18 && !(pl->input.held & 0x80)) {
+            if (pl->motionTime > 18 && !(pl->input.held & PAD_R1)) {
                 Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_END, 0);
                 break;
             }
@@ -8171,6 +9048,10 @@ void Player_StateGuard(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_REACT_ROAR_STRONG: braces against the strongest roar, unhittable until
+ * frame 64, with effects until frame 40; then idle.
+ */
 void Player_StateRoarStrong(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -8183,7 +9064,7 @@ void Player_StateRoarStrong(Player *pl, s32 variant)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             pl->noHitTimer = 6;
             break;
         }
@@ -8198,12 +9079,17 @@ void Player_StateRoarStrong(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_REACT_BLOWN_FORWARD: flung forward onto the face; as
+ * Player_StateBlownBack without the jump, and the local player faints into
+ * PL_FAINT_FACE_DOWN.
+ */
 void Player_StateBlownForward(Player *pl)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 kickLocal[3];
+    f32 kickWorld[3];
     s32 ang[3];
-    f32 m[16];
+    f32 yawMtx[16];
     f32 y;
 
     pl->noHitTimer = 2;
@@ -8212,9 +9098,9 @@ void Player_StateBlownForward(Player *pl)
         pl->step++;
         pl->demonMode = 0;
         Player_SetMotionPair(pl, 0xD0, 0, 0);
-        Em_GetBonePos(pl, 2, v);
-        if (pl->pos[1] < v[1]) {
-            pl->pos[1] = v[1];
+        Em_GetBonePos(pl, 2, kickLocal);
+        if (pl->pos[1] < kickLocal[1]) {
+            pl->pos[1] = kickLocal[1];
         }
         pl->targetYaw = pl->rot[1];
         Player_SetMoveMode(pl, 2, 0, 1);
@@ -8223,13 +9109,13 @@ void Player_StateBlownForward(Player *pl)
         ang[0] = 0;
         ang[1] = (u16) pl->rot[1];
         ang[2] = 0;
-        Mtx_FromAnglesXYZ(ang, m);
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 11.5f;
-        Vec_Rotate(d, v, m);
-        pl->vel[0] = 2.0f * d[0];
-        pl->vel[2] = 2.0f * d[2];
+        Mtx_FromAnglesXYZ(ang, yawMtx);
+        kickLocal[0] = 0.0f;
+        kickLocal[1] = 0.0f;
+        kickLocal[2] = 11.5f;
+        Vec_Rotate(kickWorld, kickLocal, yawMtx);
+        pl->vel[0] = 2.0f * kickWorld[0];
+        pl->vel[2] = 2.0f * kickWorld[2];
         pl->vel[1] = 0.0f;
         pl->accel[1] = -0.25f;
         pl->timer = 16;
@@ -8263,13 +9149,13 @@ void Player_StateBlownForward(Player *pl)
                 Player_RequestStateSynced(pl, PL_GROUP_FAINT, PL_FAINT_FACE_DOWN, 0);
             } else {
                 pl->step = 4;
-                Player_SetFlag(pl, 0x20000);
+                Player_SetFlag(pl, PLF_NO_ROOT_MOVE);
             }
         }
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
             pl->noHitTimer = 6;
         }
         break;
@@ -8278,6 +9164,10 @@ void Player_StateBlownForward(Player *pl)
     }
 }
 
+/*
+ * PL_REACT_KNOCKDOWN_BACK: falls, gets up and returns to idle, unhittable
+ * throughout.
+ */
 void Player_StateKnockdownBack(Player *pl)
 {
     pl->noHitTimer = 2;
@@ -8296,19 +9186,25 @@ void Player_StateKnockdownBack(Player *pl)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             pl->noHitTimer = 6;
         }
         break;
     }
 }
 
+/*
+ * Thrown into the air, landing lying down. variant 0 PL_REACT_TOSSED_BACK, 1
+ * PL_REACT_TOSSED_FORWARD: the direction and the motions. Ends the demon mode
+ * and launches the player; on landing it turns half a turn, gets up and
+ * returns to idle. Unhittable throughout.
+ */
 void Player_StateTossed(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 kickLocal[3];
+    f32 kickWorld[3];
     s32 ang[3];
-    f32 m[16];
+    f32 yawMtx[16];
     f32 z;
 
     pl->noHitTimer = 2;
@@ -8321,9 +9217,9 @@ void Player_StateTossed(Player *pl, s32 variant)
         } else {
             Player_SetMotionPair(pl, 0xDB, 0, 0);
         }
-        Em_GetBonePos(pl, 2, v);
-        if (pl->pos[1] < v[1]) {
-            pl->pos[1] = v[1];
+        Em_GetBonePos(pl, 2, kickLocal);
+        if (pl->pos[1] < kickLocal[1]) {
+            pl->pos[1] = kickLocal[1];
         }
         Player_SetMoveMode(pl, 2, 0, 1);
         pl->rideState = 0;
@@ -8331,18 +9227,18 @@ void Player_StateTossed(Player *pl, s32 variant)
         ang[0] = 0;
         ang[1] = pl->rot[1];
         ang[2] = 0;
-        Mtx_FromAnglesXYZ(ang, m);
-        v[0] = 0.0f;
-        v[1] = 0.0f;
+        Mtx_FromAnglesXYZ(ang, yawMtx);
+        kickLocal[0] = 0.0f;
+        kickLocal[1] = 0.0f;
         if (variant != 0) {
             z = 7.0f;
         } else {
             z = -7.0f;
         }
-        v[2] = z;
-        Vec_Rotate(d, v, m);
-        pl->vel[0] = 2.0f * d[0];
-        pl->vel[2] = 2.0f * d[2];
+        kickLocal[2] = z;
+        Vec_Rotate(kickWorld, kickLocal, yawMtx);
+        pl->vel[0] = 2.0f * kickWorld[0];
+        pl->vel[2] = 2.0f * kickWorld[2];
         pl->vel[1] = 20.0f;
         pl->accel[1] = -8.0f / 11.0f;
         break;
@@ -8374,13 +9270,16 @@ void Player_StateTossed(Player *pl, s32 variant)
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
             pl->noHitTimer = 6;
         }
         break;
     }
 }
 
+/*
+ * PL_REACT_GUARD_END: lowers the guard with the weapon's motion, then idle.
+ */
 void Player_StateGuardEnd(Player *pl)
 {
     switch (pl->step) {
@@ -8406,17 +9305,22 @@ void Player_StateGuardEnd(Player *pl)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 2, 0);
+            Player_ReturnToIdle(pl, 0, 2, 0);
         }
         break;
     }
 }
 
+/*
+ * The light hit. variant 0 PL_REACT_FLINCH_FRONT (pushed back), 1
+ * PL_REACT_FLINCH_BACK (pushed forward), relative to pl->targetYaw until
+ * frame 16; the motion depends on weaponOut. Then idle.
+ */
 void Player_StateFlinch(Player *pl, s32 variant)
 {
-    f32 v[3];
+    f32 pushLocal[3];
     s32 ang[3];
-    f32 m[16];
+    f32 yawMtx[16];
     f32 z;
 
     switch (pl->step) {
@@ -8432,28 +9336,33 @@ void Player_StateFlinch(Player *pl, s32 variant)
         ang[0] = 0;
         ang[2] = 0;
         ang[1] = pl->targetYaw;
-        Mtx_FromAnglesXYZ(ang, m);
-        v[0] = 0.0f;
-        v[1] = 0.0f;
+        Mtx_FromAnglesXYZ(ang, yawMtx);
+        pushLocal[0] = 0.0f;
+        pushLocal[1] = 0.0f;
         if (variant != 0) {
             z = 4.0f;
         } else {
             z = -4.0f;
         }
-        v[2] = z;
-        Vec_Rotate(&pl->vel[0], v, m);
+        pushLocal[2] = z;
+        Vec_Rotate(&pl->vel[0], pushLocal, yawMtx);
         break;
     case 1:
         if (Motion_ReachedFrame(pl, 0, 16.0f) == 0) {
             Player_Move(pl);
         }
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_REACT_GUARD_PUSH: a light guarded hit: a short guard motion, the guard
+ * sound and a pad shake, then PL_REACT_GUARD_HOLD (the heavy bowgun returns
+ * to idle).
+ */
 void Player_StateGuardPush(Player *pl)
 {
     switch (pl->step) {
@@ -8473,7 +9382,7 @@ void Player_StateGuardPush(Player *pl)
     case 1:
         if (pl->motion[0].playing == 0) {
             if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
                 break;
             }
             Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_GUARD_HOLD, 0);
@@ -8483,10 +9392,16 @@ void Player_StateGuardPush(Player *pl)
     }
 }
 
+/*
+ * The roar that holds the player in place. variant 0 PL_REACT_ROAR, 1
+ * PL_REACT_ROAR_SHORT. Pushed back until frame 40 with effects; the short
+ * form ends at its first pass of frame 44, the long one at its second. Then
+ * idle.
+ */
 void Player_StateRoar(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 slideLocal[3];
+    f32 slideWorld[3];
 
     switch (pl->step) {
     case 0:
@@ -8501,12 +9416,12 @@ void Player_StateRoar(Player *pl, s32 variant)
             pl->step = 3;
             Player_SetMotionPair(pl, 0xE2, 6, 0x14);
         } else if (Motion_ReachedFrame(pl, 0, 40.0f) == 0) {
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 42.0f)) / 360.0f);
-            Vec_Rotate(d, v, pl->rotMtx);
-            pl->pos[0] += d[0];
-            pl->pos[2] += d[2];
+            slideLocal[0] = 0.0f;
+            slideLocal[1] = 0.0f;
+            slideLocal[2] = -18.0f * Math_Cos(6.2831855f * (90.0f * (pl->motion[0].frame / 42.0f)) / 360.0f);
+            Vec_Rotate(slideWorld, slideLocal, pl->rotMtx);
+            pl->pos[0] += slideWorld[0];
+            pl->pos[2] += slideWorld[2];
             if (pl->motionTime % 7 == 0) {
                 Effect0D_SpawnForPlayer(pl, 5, 9);
                 Effect0D_SpawnForPlayer(pl, 8, 9);
@@ -8526,12 +9441,17 @@ void Player_StateRoar(Player *pl, s32 variant)
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 0xC, 0);
+            Player_ReturnToIdle(pl, 0, 0xC, 0);
         }
         break;
     }
 }
 
+/*
+ * The wind pressure: the player braces in a looping motion. variant 0
+ * PL_REACT_WIND (4 loops), 1 PL_REACT_WIND_SHORT (one); stateVar0 counts
+ * them. Then an ending motion and idle.
+ */
 void Player_StateWind(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -8560,12 +9480,17 @@ void Player_StateWind(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 0xC, 0);
+            Player_ReturnToIdle(pl, 0, 0xC, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_REACT_FLINCH_CARRYING and PL_REACT_FLINCH_CARRYING2: a flinch in place
+ * that keeps the carried item (Player_RunReactState drops it in every other
+ * react state). Then idle.
+ */
 void Player_StateFlinchCarrying(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -8581,12 +9506,16 @@ void Player_StateFlinchCarrying(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * Ends the stun build-up (pl->status5Buildup and its delay) and blocks the
+ * item button for 30 frames (itemUseDelay).
+ */
 static void Player_ClearStun(Player *pl)
 {
     pl->status5Delay = 0;
@@ -8594,6 +9523,12 @@ static void Player_ClearStun(Player *pl)
     pl->itemUseDelay = 0x1E;
 }
 
+/*
+ * PL_REACT_STUN: dazed, with the stun effect, in 5 stages (stateVar1 counts
+ * down). A stage ends after 300 frames, or sooner once the presses counted in
+ * stateVar0 reach gStunMashNeed[stage] (doubled with skill 9). After the last
+ * stage it clears the stun and returns to idle.
+ */
 void Player_StateStun(Player *pl, s32 unused)
 {
     s8 need;
@@ -8620,7 +9555,7 @@ void Player_StateStun(Player *pl, s32 unused)
             pl->stateVar0 = 0;
             pl->stateVar1--;
             pl->timer = 300;
-        } else if ((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) {
+        } else if ((pl->input.pressed & PL_ANY_BUTTON) || (pl->input.stickDirPressed & (PAD_DPAD | PL_RSTICK_ANY))) {
             pl->stateVar0++;
             need = gStunMashNeed[pl->stateVar1];
             if (Player_HasSkill(pl, 9) == 1) {
@@ -8634,12 +9569,16 @@ void Player_StateStun(Player *pl, s32 unused)
         }
         if (pl->stateVar1 == 0) {
             Player_ClearStun(pl);
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_REACT_14: one motion with the weapon sheathed, then idle (no entry
+ * seen).
+ */
 void Player_StateReact14(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -8652,15 +9591,21 @@ void Player_StateReact14(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_REACT_STATUS2: falls, then lies for 240 frames (halved with skill 4,
+ * doubled with skill 6) regaining stamina; each press takes a frame off (once
+ * per 3 frames). Then gets up and returns to idle. Entry clears the status 2
+ * build-up, the stun and the mash status.
+ */
 void Player_StateStatus2(Player *pl, s32 variant)
 {
-    f32 v[3];
+    f32 effectOffset[3];
 
     switch (pl->step) {
     case 0:
@@ -8691,7 +9636,7 @@ void Player_StateStatus2(Player *pl, s32 variant)
         if (pl->stateVar1 > 0) {
             pl->stateVar1--;
         }
-        if (((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) && pl->stateVar1 == 0) {
+        if (((pl->input.pressed & PL_ANY_BUTTON) || (pl->input.stickDirPressed & (PAD_DPAD | PL_RSTICK_ANY))) && pl->stateVar1 == 0) {
             pl->stateVar1 = 3;
             pl->timer--;
         }
@@ -8700,25 +9645,32 @@ void Player_StateStatus2(Player *pl, s32 variant)
             Player_SetMotionPair(pl, 0xCF, 0, 0);
             break;
         }
-        v[0] = 0.0f;
-        v[1] = 20.0f;
-        v[2] = 0.0f;
+        effectOffset[0] = 0.0f;
+        effectOffset[1] = 20.0f;
+        effectOffset[2] = 0.0f;
         switch (gScene.frame % 60) {
         case 0:
         case 10:
         case 20:
-            Effect06_SpawnAt(pl, 4, 20, v, 0.8f);
+            Effect06_SpawnAt(pl, 4, 20, effectOffset, 0.8f);
         }
         Player_AddStamina(pl, 2);
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * The status 4 fall. variant 0 PL_REACT_STATUS4 (falls, unhittable, then
+ * lies), 1 PL_REACT_STATUS4_HIT (hit while down: lies at once and keeps
+ * recoverTimer). Lies for recoverTimer frames (150, halved with skill 1,
+ * doubled with skill 3); each press takes a frame off. Then gets up,
+ * unhittable, and returns to idle.
+ */
 void Player_StateStatus4(Player *pl, s32 variant)
 {
 
@@ -8769,7 +9721,7 @@ void Player_StateStatus4(Player *pl, s32 variant)
         if (pl->stateVar1 > 0) {
             pl->stateVar1--;
         }
-        if (((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) && pl->stateVar1 == 0) {
+        if (((pl->input.pressed & PL_ANY_BUTTON) || (pl->input.stickDirPressed & (PAD_DPAD | PL_RSTICK_ANY))) && pl->stateVar1 == 0) {
             pl->stateVar1 = 3;
             pl->recoverTimer--;
         }
@@ -8791,13 +9743,17 @@ void Player_StateStatus4(Player *pl, s32 variant)
     case 3:
         pl->noHitTimer = 2;
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             pl->noHitTimer = 6;
         }
         break;
     }
 }
 
+/*
+ * PL_REACT_GUARD_DRAW (lance, sword and shield, gunlance): draws the weapon
+ * straight into the guard, then PL_REACT_GUARD_HOLD.
+ */
 void Player_StateGuardDraw(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -8816,13 +9772,22 @@ void Player_StateGuardDraw(Player *pl, s32 unused)
     }
 }
 
+/*
+ * The mash status's input for the local player. caller: 0 from
+ * Player_StateMashIdle, 1 from the walk and the run. A press (once per 2
+ * frames, mashTimer) takes 10 off pl->mashLeft (doubled with skill 0x10,
+ * halved with skill 0x12); at 0 the mash ends (PL_STATUS_ICON_MASH cleared)
+ * with PL_REACT_MASH_FREE. Otherwise the left stick turns the player and
+ * requests PL_REACT_MASH_RUN (PAD_R2) or PL_REACT_MASH_WALK; released, it
+ * goes back to PL_REACT_MASH_IDLE (for caller 1 once pl->timer is 0).
+ */
 void Player_UpdateMashEscape(Player *pl, s32 caller)
 {
     s16 n;
 
     if (Player_IsLocal(pl) != 0) {
         if (pl->mashTimer == 0) {
-            if ((pl->input.pressed & 0x3FF) || (pl->input.stickDirPressed & 0x3C3C)) {
+            if ((pl->input.pressed & PL_ANY_BUTTON) || (pl->input.stickDirPressed & (PAD_DPAD | PL_RSTICK_ANY))) {
                 if (pl->mashLeft > 0) {
                     n = 10;
                     if (Player_HasSkill(pl, 0x10) == 1) {
@@ -8849,7 +9814,7 @@ void Player_UpdateMashEscape(Player *pl, s32 caller)
         }
         if (pl->input.stickTilt >= 40) {
             Player_FaceStick(pl);
-            if ((pl->input.held & 0x10) && pl->dashDelay == 0) {
+            if ((pl->input.held & PAD_R2) && pl->dashDelay == 0) {
                 if (Player_IsState(pl, PL_GROUP_REACT, PL_REACT_MASH_RUN) == 0) {
                     Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_RUN, 0);
                 }
@@ -8864,6 +9829,7 @@ void Player_UpdateMashEscape(Player *pl, s32 caller)
     }
 }
 
+/* Ends the mash status: clears pl->mashLeft, mashBuildup and mashTimer. */
 static void Player_ClearMash(Player *pl)
 {
     pl->mashLeft = 0;
@@ -8871,6 +9837,13 @@ static void Player_ClearMash(Player *pl)
     pl->mashTimer = 0;
 }
 
+/*
+ * Standing in the mash status. variant 0 PL_REACT_MASH_START (the status
+ * begins: clears the status 2 and 4 build-ups, the stun and the flinch
+ * timers, mashLeft 900; presses count after 15 frames), 1 PL_REACT_MASH_IDLE
+ * (back from walking, running or landing). The local player runs
+ * Player_UpdateMashEscape each frame.
+ */
 void Player_StateMashIdle(Player *pl, s32 variant)
 {
     if (pl->motionId[0] != 0x33) {
@@ -8907,6 +9880,10 @@ void Player_StateMashIdle(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_REACT_MASH_FREE: breaks free of the mash status, with the status effect
+ * object (StageObj_K1B_Create type 0); then idle.
+ */
 void Player_StateMashFree(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -8920,12 +9897,16 @@ void Player_StateMashFree(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * Shaken by a tremor, unable to act. variant 0 PL_REACT_QUAKE (40 frames), 1
+ * PL_REACT_QUAKE_LONG (80); then idle.
+ */
 void Player_StateQuake(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -8943,16 +9924,21 @@ void Player_StateQuake(Player *pl, s32 variant)
         break;
     case 1:
         if (--pl->timer <= 0) {
-            Player_BeginState(pl, 0, 0xC, 0);
+            Player_ReturnToIdle(pl, 0, 0xC, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_REACT_MASH_WALK: walks in the mash status, running
+ * Player_UpdateMashEscape(pl, 1) each frame, with the status effect object
+ * every tenth frame.
+ */
 void Player_StateMashWalk(Player *pl, s32 unused)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 strideLocal[3];
+    f32 strideWorld[3];
 
     switch (pl->step) {
     case 0:
@@ -8965,12 +9951,12 @@ void Player_StateMashWalk(Player *pl, s32 unused)
         Player_SetFlag(pl, 0x1000);
         break;
     case 1:
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 2.0f;
-        Vec_Rotate(d, v, pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[2] += d[2];
+        strideLocal[0] = 0.0f;
+        strideLocal[1] = 0.0f;
+        strideLocal[2] = 2.0f;
+        Vec_Rotate(strideWorld, strideLocal, pl->rotMtx);
+        pl->pos[0] += strideWorld[0];
+        pl->pos[2] += strideWorld[2];
         if (pl->timer > 0) {
             pl->timer--;
         }
@@ -8982,10 +9968,14 @@ void Player_StateMashWalk(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_REACT_MASH_RUN: runs in the mash status; a drop ahead requests
+ * PL_REACT_MASH_JUMP_OFF. Otherwise as Player_StateMashWalk.
+ */
 void Player_StateMashRun(Player *pl, s32 unused)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 strideLocal[3];
+    f32 strideWorld[3];
 
     switch (pl->step) {
     case 0:
@@ -9007,12 +9997,12 @@ void Player_StateMashRun(Player *pl, s32 unused)
             Player_RequestState(pl, PL_GROUP_REACT, PL_REACT_MASH_JUMP_OFF, 0);
             return;
         }
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 5.0f;
-        Vec_Rotate(d, v, pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[2] += d[2];
+        strideLocal[0] = 0.0f;
+        strideLocal[1] = 0.0f;
+        strideLocal[2] = 5.0f;
+        Vec_Rotate(strideWorld, strideLocal, pl->rotMtx);
+        pl->pos[0] += strideWorld[0];
+        pl->pos[2] += strideWorld[2];
         if (pl->timer > 0) {
             pl->timer--;
         }
@@ -9024,10 +10014,16 @@ void Player_StateMashRun(Player *pl, s32 unused)
     }
 }
 
+/*
+ * The mash status in the air. variant 0 PL_REACT_MASH_JUMP_OFF (a hop off a
+ * ledge), 1 PL_REACT_MASH_FALL. pl->timer counts the time aloft: landing
+ * after 50 breaks the mash (Player_ClearMash) with PL_ACT_LAND_HARD, after 30
+ * PL_REACT_MASH_LAND_HARD, else PL_REACT_MASH_LAND.
+ */
 void Player_StateMashAirborne(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 velLocal[3];
+    f32 moveWorld[3];
 
     pl->timer++;
     switch (pl->step) {
@@ -9071,13 +10067,13 @@ void Player_StateMashAirborne(Player *pl, s32 variant)
         if (pl->vel[2] < 0.0f) {
             pl->vel[2] = 0.0f;
         }
-        v[0] = pl->vel[0];
-        v[1] = pl->vel[1];
-        v[2] = pl->vel[2];
-        Vec_Rotate(d, v, pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[1] += d[1];
-        pl->pos[2] += d[2];
+        velLocal[0] = pl->vel[0];
+        velLocal[1] = pl->vel[1];
+        velLocal[2] = pl->vel[2];
+        Vec_Rotate(moveWorld, velLocal, pl->rotMtx);
+        pl->pos[0] += moveWorld[0];
+        pl->pos[1] += moveWorld[1];
+        pl->pos[2] += moveWorld[2];
         if (pl->vel[1] < 0.0f) {
             pl->timer++;
             if (!(pl->floorY < pl->pos[1])) {
@@ -9102,6 +10098,10 @@ void Player_StateMashAirborne(Player *pl, s32 variant)
     }
 }
 
+/*
+ * The landings in the mash status: variant 0 PL_REACT_MASH_LAND_HARD, 1
+ * PL_REACT_MASH_LAND (the motion). Then PL_REACT_MASH_IDLE.
+ */
 void Player_StateMashLand(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -9126,14 +10126,20 @@ void Player_StateMashLand(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_REACT_INHALED: pulled toward a Yama Tsukami. Looks for a visible
+ * EM_KIND_YAMA_TSUKAMI in the player's area and launches the player toward
+ * its bone 0x24 (with none, thrown back as PL_REACT_TOSSED_BACK). Lands,
+ * turns half a turn, gets up and returns to idle.
+ */
 void Player_StateInhaled(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
-    f32 t[3];
+    f32 kickLocal[3];
+    f32 kickWorld[3];
+    f32 pullPos[3];
     s32 ang[3];
     f32 mtx[16];
-    Em *m;
+    Em *inhaler;
     s16 i;
     s16 found;
     switch (pl->step) {
@@ -9142,20 +10148,20 @@ void Player_StateInhaled(Player *pl, s32 variant)
         pl->demonMode = 0;
         Player_SetMotionPair(pl, 0xD5, 0, 0);
         pl->noHitTimer = 10;
-        Em_GetBonePos(pl, 2, v);
-        if (pl->pos[1] < v[1]) {
-            pl->pos[1] = v[1];
+        Em_GetBonePos(pl, 2, kickLocal);
+        if (pl->pos[1] < kickLocal[1]) {
+            pl->pos[1] = kickLocal[1];
         }
         Player_SetMoveMode(pl, 2, 0, 1);
         pl->rideState = 0;
         Player_ClearAccel(pl);
         found = 0;
-        m = gEms;
-        for (i = 0; i < 20; i++, m++) {
-            if (m->active && m->visible && (Player_InCurrentArea(m) & 0xFF) && m->type == 0x3A) {
+        inhaler = gEms;
+        for (i = 0; i < 20; i++, inhaler++) {
+            if (inhaler->active && inhaler->visible && (Player_InCurrentArea(inhaler) & 0xFF) && inhaler->type == 0x3A) {
                 found = 1;
-                Em_BonePos(m, 0x24, t);
-                pl->rot[1] = Vec_Heading(pl->pos, t) + 0x4000;
+                Em_BonePos(inhaler, 0x24, pullPos);
+                pl->rot[1] = Vec_Heading(pl->pos, pullPos) + 0x4000;
                 pl->targetYaw = pl->rot[1];
             }
         }
@@ -9164,24 +10170,24 @@ void Player_StateInhaled(Player *pl, s32 variant)
         ang[2] = 0;
         Mtx_FromAnglesXYZ(ang, mtx);
         if (found == 0) {
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = -7.0f;
-            Vec_Rotate(d, v, mtx);
-            pl->vel[0] = 2.0f * d[0];
-            pl->vel[2] = 2.0f * d[2];
+            kickLocal[0] = 0.0f;
+            kickLocal[1] = 0.0f;
+            kickLocal[2] = -7.0f;
+            Vec_Rotate(kickWorld, kickLocal, mtx);
+            pl->vel[0] = 2.0f * kickWorld[0];
+            pl->vel[2] = 2.0f * kickWorld[2];
             pl->vel[1] = 20.0f;
             pl->accel[1] = -8.0f / 11.0f;
         } else {
-            d[0] = (t[0] - pl->pos[0]) / 50.0f;
-            d[1] = (t[1] - pl->pos[1]) / 50.0f;
-            d[2] = (t[2] - pl->pos[2]) / 50.0f;
-            pl->vel[0] = d[0];
-            pl->vel[2] = d[2];
-            if (d[1] <= 15.0f) {
-                d[1] = 15.0f;
+            kickWorld[0] = (pullPos[0] - pl->pos[0]) / 50.0f;
+            kickWorld[1] = (pullPos[1] - pl->pos[1]) / 50.0f;
+            kickWorld[2] = (pullPos[2] - pl->pos[2]) / 50.0f;
+            pl->vel[0] = kickWorld[0];
+            pl->vel[2] = kickWorld[2];
+            if (kickWorld[1] <= 15.0f) {
+                kickWorld[1] = 15.0f;
             }
-            pl->vel[1] = 2.0f * d[1];
+            pl->vel[1] = 2.0f * kickWorld[1];
             pl->accel[1] = -8.0f / 11.0f;
         }
         break;
@@ -9215,13 +10221,20 @@ void Player_StateInhaled(Player *pl, s32 variant)
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
             pl->noHitTimer = 6;
         }
         break;
     }
 }
 
+/*
+ * Runs the handler of the player's state in PL_GROUP_REACT. First it leaves
+ * the aim mode, closes the box and trade menus, clears noFlinchTimer and flag
+ * 0x80000, and drops a carried item (StageObj_K0C_CreateAtPlayer) in every
+ * state but the carrying flinches. States sharing a handler pass a variant; a
+ * state with no case returns to idle.
+ */
 void Player_RunReactState(Player *pl)
 {
     u8 state;
@@ -9364,7 +10377,7 @@ void Player_RunReactState(Player *pl)
         Player_StateInhaled(pl, 0);
         break;
     default:
-        Player_BeginState(pl, 0, 4, 0);
+        Player_ReturnToIdle(pl, 0, 4, 0);
         break;
     }
 }
@@ -9373,10 +10386,19 @@ extern s32 gRewardZeroText;
 extern s32 gFaintedText;
 extern s32 gRewardZeroText2;
 extern s32 gNoMoreReviveText;
+/*
+ * The faint, PL_GROUP_FAINT. variant 0 PL_FAINT, 1 PL_FAINT_FACE_UP, 2
+ * PL_FAINT_FACE_DOWN (the lying motion). Step 0 counts the faint:
+ * Quest_PlayerFainted for a hunter (FAINT_FAILED and FAINT_QUEST_OVER end in
+ * a wait), Versus_MonsterDown in versus; pl->faints counts up and the notices
+ * are posted. Then the player lies: at 600 frames the local player is sent to
+ * the camp area (QSync_SendPlayer). In versus it revives after 450 frames
+ * instead (PL_EVENT_REVIVE).
+ */
 void Player_StateFaint(Player *pl, s32 variant)
 {
-    s8 f;
-    s8 r;
+    s8 noPenalty;
+    s8 result;
     u8 k;
 
     pl->noPushTimer = 10;
@@ -9402,7 +10424,7 @@ void Player_StateFaint(Player *pl, s32 variant)
             break;
         case 2:
             Player_SetMotionPair(pl, 0xD1, 0, 0x8C);
-            Player_SetFlag(pl, 0x20000);
+            Player_SetFlag(pl, PLF_NO_ROOT_MOVE);
             break;
         }
         Vib_StartLocal(pl, 3);
@@ -9413,19 +10435,19 @@ void Player_StateFaint(Player *pl, s32 variant)
         pl->weaponOut = 0;
         switch (*(u8 *) &pl->stateRand) {
         default:
-            f = 0;
+            noPenalty = 0;
             break;
         case 1:
-            f = 1;
+            noPenalty = 1;
             break;
         }
         if (pl->side == 0) {
-            r = Quest_PlayerFainted(pl, f);
-            if (r != 0 && r != 3) {
+            result = Quest_PlayerFainted(pl, noPenalty);
+            if (result != 0 && result != 3) {
                 pl->step++;
             }
         } else {
-            r = 2;
+            result = 2;
             Versus_MonsterDown((Em *) pl);
         }
         if (pl->faints <= 98) {
@@ -9435,23 +10457,23 @@ void Player_StateFaint(Player *pl, s32 variant)
         }
         if (Player_IsLocal(pl) == 0) {
             Notice_Push(3, 0, pl->index);
-            if (r <= 1) {
+            if (result <= 1) {
                 Quest_ShowValue();
             }
-            if (gQuest.reward <= 0 && r == 1) {
+            if (gQuest.reward <= 0 && result == 1) {
                 Notice_PushItem((char *)gRewardZeroText);
             }
         } else {
             CamReq_Mode0A();
             Notice_PushItem((char *)gFaintedText);
-            if (r <= 1) {
+            if (result <= 1) {
                 Quest_ShowValue();
             }
             if (pl->step <= 1) {
                 Quest_ResetMusicIfIdle();
                 func_367A90();
             } else {
-                if (r == 1) {
+                if (result == 1) {
                     Notice_PushItem((char *)gRewardZeroText2);
                 }
                 Notice_PushItem((char *)gNoMoreReviveText);
@@ -9474,9 +10496,9 @@ void Player_StateFaint(Player *pl, s32 variant)
         }
         if (pl->motionTime == 300 && Player_IsLocal(pl) == 1) {
             switch (gScene.area) {
-            case 0x7C:
-            case 0x7E:
-            case 0x8A:
+            case AREA_TOWER_0x7C:
+            case AREA_TOWER_4:
+            case AREA_TOWER_0x8A:
                 Notice_Push(0, 0x1F, 0);
                 break;
             default:
@@ -9486,15 +10508,15 @@ void Player_StateFaint(Player *pl, s32 variant)
         }
         if (pl->motionTime == 600 && Player_IsLocal(pl) == 1) {
             switch (gScene.area) {
-            case 0x7C:
+            case AREA_TOWER_0x7C:
                 k = 0x54;
                 pl->areaMoveState = 3;
                 break;
-            case 0x7E:
+            case AREA_TOWER_4:
                 k = 0x7D;
                 pl->areaMoveState = 3;
                 break;
-            case 0x8A:
+            case AREA_TOWER_0x8A:
                 k = 0x81;
                 pl->areaMoveState = 3;
                 break;
@@ -9541,6 +10563,11 @@ void Player_StateFaint(Player *pl, s32 variant)
     }
 }
 
+/*
+ * Runs the handler of the player's state in PL_GROUP_FAINT: the three faints
+ * go to Player_StateFaint (variants 0, 1, 2) after closing the box and trade
+ * menus.
+ */
 void Player_RunFaintState(Player *pl)
 {
     pl->supplyBoxOpen = 0;
@@ -9558,14 +10585,21 @@ void Player_RunFaintState(Player *pl)
         Player_StateFaint(pl, 2);
         break;
     default:
-        Player_BeginState(pl, 0, 4, 0);
+        Player_ReturnToIdle(pl, 0, 4, 0);
         break;
     }
 }
 
+/*
+ * PL_EVENT_CART: the cart carries the fainted player away. Step 0 makes the
+ * cart, an EM_KIND_FELYNE_CART monster at the player (pl->cart; with none the
+ * state returns to idle); then the player follows the cart's bone 0x1D and
+ * requests PL_EVENT_CART_DROP when it drops it. The local camera takes mode
+ * 1.
+ */
 void Player_StateCart(Player *pl, s32 variant)
 {
-    Em *m;
+    Em *cartEm;
     s16 i;
     s16 kind;
 
@@ -9578,25 +10612,25 @@ void Player_StateCart(Player *pl, s32 variant)
         kind = -1;
         pl->stateVar0 = 0;
         for (i = 0; i < 4; i++) {
-            if (gScene.emKind[i] == 0x12 && (m = EmSlot_Alloc()) != NULL) {
-                m->modelSlot = i;
-                m->type = gScene.emKind[i];
-                m->area = gScene.area;
-                m->variant = 0;
-                m->variant = 0xFF;
-                m->cartPlayer = pl->index;
-                GmEm_Task(m);
-                m->posX = pl->pos[0];
-                m->posY = pl->pos[1];
-                m->posZ = pl->pos[2];
-                m->rotY = pl->rot[1];
-                pl->cart = m;
+            if (gScene.emKind[i] == 0x12 && (cartEm = EmSlot_Alloc()) != NULL) {
+                cartEm->modelSlot = i;
+                cartEm->type = gScene.emKind[i];
+                cartEm->area = gScene.area;
+                cartEm->variant = 0;
+                cartEm->variant = 0xFF;
+                cartEm->cartPlayer = pl->index;
+                GmEm_Task(cartEm);
+                cartEm->posX = pl->pos[0];
+                cartEm->posY = pl->pos[1];
+                cartEm->posZ = pl->pos[2];
+                cartEm->rotY = pl->rot[1];
+                pl->cart = cartEm;
                 kind = gScene.emKind[i];
                 break;
             }
         }
         if (kind != 0x12) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         } else {
             pl->stateVar1 = 0;
             Player_SetMotionPair(pl, 0xDD, 0, 0);
@@ -9606,21 +10640,25 @@ void Player_StateCart(Player *pl, s32 variant)
         }
         break;
     case 1:
-        m = pl->cart;
-        if (m == NULL) {
-            Player_BeginState(pl, 0, 4, 0);
+        cartEm = pl->cart;
+        if (cartEm == NULL) {
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
-        Em_BonePos(m, 0x1D, &pl->pos[0]);
-        if (m->motionId[0] == 0x3EB) {
+        Em_BonePos(cartEm, 0x1D, &pl->pos[0]);
+        if (cartEm->motionId[0] == 0x3EB) {
             Player_RequestState(pl, PL_GROUP_EVENT, PL_EVENT_CART_DROP, PL_SET_NO_SYNC);
         }
-        pl->rot[1] = m->rotY;
+        pl->rot[1] = cartEm->rotY;
         pl->targetYaw = pl->rot[1];
         break;
     }
 }
 
+/*
+ * PL_EVENT_CART_DROP: the cart drops the player at the camp; the player sinks
+ * to the floor, lies, gets up and returns to idle.
+ */
 void Player_StateCartDrop(Player *pl, s32 unused)
 {
     f32 floorY;
@@ -9655,18 +10693,22 @@ void Player_StateCartDrop(Player *pl, s32 unused)
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_EVENT_QUEST_START: the pose at the quest's start (sets questStartDone), then
+ * idle.
+ */
 void Player_StateQuestStart(Player *pl, s32 unused)
 {
     switch (pl->step) {
     case 0:
         pl->step++;
-        pl->unk7E5 = 1;
+        pl->questStartDone = 1;
         Player_SetMoveMode(pl, 0, 0, 0);
         pl->weaponOut = 0;
         Player_SetMotionPair(pl, 0x197, 4, 0);
@@ -9674,12 +10716,17 @@ void Player_StateQuestStart(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_EVENT_QUEST_END: the quest is cleared or failed: sheathes, plays one
+ * motion, drops a carried item and sets the local camera's mode 0xA; then
+ * waits until the scene changes.
+ */
 void Player_StateQuestEnd(Player *pl, s32 unused)
 {
     u8 carry;
@@ -9705,6 +10752,10 @@ void Player_StateQuestEnd(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_EVENT_REVIVE: the versus revive: gets up, then 150 hit-free frames and
+ * idle.
+ */
 void Player_StateRevive(Player *pl, s32 unused)
 {
     pl->noHitTimer = 4;
@@ -9723,12 +10774,16 @@ void Player_StateRevive(Player *pl, s32 unused)
     case 1:
         if (pl->motion[0].playing == 0) {
             pl->noHitTimer = 0x96;
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_EVENT_LEAVE: collapses and vanishes: after 300 frames pl->active and
+ * pl->visible are cleared.
+ */
 void Player_StateLeave(Player *pl, s32 unused)
 {
     u8 carry;
@@ -9775,6 +10830,10 @@ void Player_StateLeave(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_EVENT_ABORT: the quest is abandoned: two motions, then after 300 frames
+ * pl->active and pl->visible are cleared.
+ */
 void Player_StateQuestAbort(Player *pl, s32 unused)
 {
     u8 carry;
@@ -9821,6 +10880,11 @@ void Player_StateQuestAbort(Player *pl, s32 unused)
     }
 }
 
+/*
+ * Runs the handler of the player's state in PL_GROUP_EVENT (the cart, the
+ * start, the end, the revive, leaving and abandoning), after closing the box
+ * and trade menus.
+ */
 void Player_RunEventState(Player *pl)
 {
     pl->supplyBoxOpen = 0;
@@ -9850,11 +10914,17 @@ void Player_RunEventState(Player *pl)
         Player_StateQuestAbort(pl, 0);
         break;
     default:
-        Player_BeginState(pl, 0, 4, 0);
+        Player_ReturnToIdle(pl, 0, 4, 0);
         break;
     }
 }
 
+/*
+ * Keeps pl->carry current while carrying: for the local player (not while
+ * delivering or handing over) its high nibble is the pouch's carried item
+ * (Item_CarryKind of Pouch_FindCarryItem); the low nibble is set to 4, the
+ * mark the react and event states test when they drop the item.
+ */
 void Player_UpdateCarryKind(Player *pl)
 {
     u16 slot;
@@ -9870,10 +10940,21 @@ void Player_UpdateCarryKind(Player *pl)
     pl->carry = (pl->carry & 0xF0) | 4;
 }
 
+/*
+ * The carry states' input for the local player. caller: 0 from
+ * Player_StateCarryIdle, 1 from the walk and the run (they stop only once
+ * pl->timer is 0). The quest phases 5 to 8 request the end, abort and leave
+ * events; no carried item left requests PL_CARRY_DROP. The stick walks or
+ * runs (PAD_R2); PAD_CROSS rolls or crouches, a flick draws (PL_ACT_DRAW),
+ * PAD_SQUARE drops the item, and PAD_CIRCLE delivers it at the delivery box
+ * (an action spot of kind 7, PL_CARRY_DELIVER), fires the cannon with it at
+ * kind 8 (PL_ACT_CANNON_FIRE), or hands it to a trader (EM_KIND_TRADER,
+ * PL_CARRY_HAND_OVER).
+ */
 void Player_UpdateCarryInput(Player *pl, s32 caller)
 {
     f32 buf[3];
-    ItemStack st;
+    ItemStack wanted;
     u16 ang;
     u8 k;
     s16 i;
@@ -9897,7 +10978,7 @@ void Player_UpdateCarryInput(Player *pl, s32 caller)
             }
             if (pl->input.stickTilt >= 40) {
                 Player_FaceStick(pl);
-                if ((pl->input.held & 0x10) && pl->dashDelay == 0) {
+                if ((pl->input.held & PAD_R2) && pl->dashDelay == 0) {
                     if (Player_IsState(pl, PL_GROUP_CARRY, PL_CARRY_RUN) == 0) {
                         Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_RUN, 0);
                     }
@@ -9912,7 +10993,7 @@ void Player_UpdateCarryInput(Player *pl, s32 caller)
             if (Quest_PhaseIsOver(1) == 1) {
                 break;
             }
-            if (pl->input.pressed & 0x40) {
+            if (pl->input.pressed & PAD_CROSS) {
                 if (pl->input.stickTilt >= 85) {
                     if (pl->stamina >= 75) {
                         Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
@@ -9922,23 +11003,23 @@ void Player_UpdateCarryInput(Player *pl, s32 caller)
                 }
                 return;
             }
-            if (pl->input.stickDirPressed & 0x3C) {
+            if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_DRAW, 0);
                 break;
             }
-            if ((pl->input.pressed & 0x200) && pl->itemSelect == 0) {
+            if ((pl->input.pressed & PAD_SQUARE) && pl->itemSelect == 0) {
                 Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_DROP, 0);
             }
             Player_HoldSpecialInput(pl, 2);
-            if (pl->input.pressed & 0x20) {
+            if (pl->input.pressed & PAD_CIRCLE) {
                 switch (Player_FindActionSpot((Player *)pl, (f32 *)buf, &ang, (u8 *)&k)) {
                 case 7:
                     if (Quest_PhaseIsOver(0) == 1) {
                         break;
                     }
                     for (i = 0; i < 3; i++) {
-                        if (Quest_GetDeliveryTarget(pl, i, &st) == 2 && st.item == (u16) Pouch_FindCarryItem(pl)) {
-                            Quest_DeliverItem(pl, st.item, 1);
+                        if (Quest_GetDeliveryTarget(pl, i, &wanted) == 2 && wanted.item == (u16) Pouch_FindCarryItem(pl)) {
+                            Quest_DeliverItem(pl, wanted.item, 1);
                         }
                     }
                     if ((u16) Pouch_FindCarryItem(pl) == 0xFFFF) {
@@ -9955,7 +11036,7 @@ void Player_UpdateCarryInput(Player *pl, s32 caller)
                     }
                     break;
                 default:
-                    if (Player_NearEmKind10(pl) & 0xFF) {
+                    if (Player_NearTrader(pl) & 0xFF) {
                         Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_HAND_OVER, 0);
                         return;
                     }
@@ -9967,6 +11048,11 @@ void Player_UpdateCarryInput(Player *pl, s32 caller)
     }
 }
 
+/*
+ * Standing with the item. variant 0 PL_CARRY_IDLE, 1 PL_CARRY_PICKED_UP
+ * (input held off 30 frames). Runs Player_UpdateCarryKind and
+ * Player_UpdateCarryInput(pl, 0).
+ */
 void Player_StateCarryIdle(Player *pl, s32 variant)
 {
     s32 timer;
@@ -9996,10 +11082,14 @@ void Player_StateCarryIdle(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_CARRY_WALK: walks with the item; Player_HasCarryBonus (skill 0x5F or carry kind
+ * 6) adds a stride. Runs Player_UpdateCarryInput(pl, 1).
+ */
 void Player_StateCarryWalk(Player *pl, s32 unused)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 strideLocal[3];
+    f32 strideWorld[3];
 
     Player_UpdateCarryKind(pl);
     switch (pl->step) {
@@ -10013,13 +11103,13 @@ void Player_StateCarryWalk(Player *pl, s32 unused)
         Player_SetFlag(pl, 0x1000);
         break;
     case 1:
-        if (func_3B5440((Em *) pl) != 0) {
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = 2.0f;
-            Vec_Rotate(d, v, pl->rotMtx);
-            pl->pos[0] += d[0];
-            pl->pos[2] += d[2];
+        if (Player_HasCarryBonus(pl) != 0) {
+            strideLocal[0] = 0.0f;
+            strideLocal[1] = 0.0f;
+            strideLocal[2] = 2.0f;
+            Vec_Rotate(strideWorld, strideLocal, pl->rotMtx);
+            pl->pos[0] += strideWorld[0];
+            pl->pos[2] += strideWorld[2];
         }
         if (pl->timer > 0) {
             pl->timer--;
@@ -10029,10 +11119,15 @@ void Player_StateCarryWalk(Player *pl, s32 unused)
     }
 }
 
+/*
+ * PL_CARRY_RUN: runs with the item, using stamina (none left:
+ * PL_CARRY_DROP_TIRED); a drop ahead requests PL_CARRY_JUMP_OFF. Runs
+ * Player_UpdateCarryInput(pl, 1).
+ */
 void Player_StateCarryRun(Player *pl, s32 unused)
 {
-    f32 v[3];
-    f32 d[3];
+    f32 strideLocal[3];
+    f32 strideWorld[3];
 
     Player_UpdateCarryKind(pl);
     switch (pl->step) {
@@ -10060,13 +11155,13 @@ void Player_StateCarryRun(Player *pl, s32 unused)
             Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_DROP_TIRED, 0);
             break;
         }
-        if (func_3B5440((Em *) pl) != 0) {
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = 5.0f;
-            Vec_Rotate(d, v, pl->rotMtx);
-            pl->pos[0] += d[0];
-            pl->pos[2] += d[2];
+        if (Player_HasCarryBonus(pl) != 0) {
+            strideLocal[0] = 0.0f;
+            strideLocal[1] = 0.0f;
+            strideLocal[2] = 5.0f;
+            Vec_Rotate(strideWorld, strideLocal, pl->rotMtx);
+            pl->pos[0] += strideWorld[0];
+            pl->pos[2] += strideWorld[2];
         }
         if (pl->timer > 0) {
             pl->timer--;
@@ -10076,6 +11171,12 @@ void Player_StateCarryRun(Player *pl, s32 unused)
     }
 }
 
+/*
+ * Puts the item down. variant 0 PL_CARRY_DROP (the dropped item is made and
+ * the local player's carried item leaves the pouch, with a notice), 1
+ * PL_CARRY_DROP_TIRED (dropped but kept in the pouch), 2 PL_CARRY_DELIVER
+ * (handed in at the delivery box: nothing is dropped). Then idle.
+ */
 void Player_StateCarryPutDown(Player *pl, s32 variant)
 {
     u16 item;
@@ -10111,18 +11212,24 @@ void Player_StateCarryPutDown(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 8, 0);
+            Player_ReturnToIdle(pl, 0, 8, 0);
         }
         break;
     }
 }
 
+/*
+ * The carrier in the air. variant 0 PL_CARRY_JUMP_OFF, 1 PL_CARRY_FALL; as
+ * Player_StateMashAirborne. Landing after 60 frames (50 without
+ * Player_HasCarryBonus) drops the item with PL_ACT_LAND_HARD, after 40 (30)
+ * PL_CARRY_LAND_HARD, else PL_CARRY_LAND.
+ */
 void Player_StateCarryAirborne(Player *pl, s32 variant)
 {
-    f32 v[3];
-    f32 d[3];
-    s16 hi;
-    s16 lo;
+    f32 velLocal[3];
+    f32 moveWorld[3];
+    s16 dropTime;
+    s16 hardTime;
 
     Player_UpdateCarryKind(pl);
     pl->timer++;
@@ -10167,31 +11274,31 @@ void Player_StateCarryAirborne(Player *pl, s32 variant)
         if (pl->vel[2] < 0.0f) {
             pl->vel[2] = 0.0f;
         }
-        v[0] = pl->vel[0];
-        v[1] = pl->vel[1];
-        v[2] = pl->vel[2];
-        Vec_Rotate(d, v, pl->rotMtx);
-        pl->pos[0] += d[0];
-        pl->pos[1] += d[1];
-        pl->pos[2] += d[2];
+        velLocal[0] = pl->vel[0];
+        velLocal[1] = pl->vel[1];
+        velLocal[2] = pl->vel[2];
+        Vec_Rotate(moveWorld, velLocal, pl->rotMtx);
+        pl->pos[0] += moveWorld[0];
+        pl->pos[1] += moveWorld[1];
+        pl->pos[2] += moveWorld[2];
         if (pl->vel[1] < 0.0f) {
             pl->timer++;
             if (!(pl->floorY < pl->pos[1])) {
                 pl->pos[1] = pl->floorY;
                 pl->action = 0;
                 pl->rideState = 0;
-                if (func_3B5440((Em *) pl) == 1) {
-                    hi = 60;
-                    lo = 40;
+                if (Player_HasCarryBonus(pl) == 1) {
+                    dropTime = 60;
+                    hardTime = 40;
                 } else {
-                    hi = 50;
-                    lo = 30;
+                    dropTime = 50;
+                    hardTime = 30;
                 }
-                if (pl->timer >= hi) {
+                if (pl->timer >= dropTime) {
                     pl->carry &= 0xF0;
                     StageObj_K0C_CreateAtPlayer(pl, 4);
                     Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_LAND_HARD, 0);
-                } else if (pl->timer >= lo) {
+                } else if (pl->timer >= hardTime) {
                     Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_LAND_HARD, PL_SET_NO_SYNC);
                 } else {
                     Player_RequestState(pl, PL_GROUP_CARRY, PL_CARRY_LAND, PL_SET_NO_SYNC);
@@ -10202,6 +11309,10 @@ void Player_StateCarryAirborne(Player *pl, s32 variant)
     }
 }
 
+/*
+ * The landings with the item: variant 0 PL_CARRY_LAND_HARD, 1 PL_CARRY_LAND
+ * (the motion). Then PL_CARRY_IDLE.
+ */
 void Player_StateCarryLand(Player *pl, s32 variant)
 {
     Player_UpdateCarryKind(pl);
@@ -10224,6 +11335,11 @@ void Player_StateCarryLand(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_CARRY_HAND_OVER: gives the carried item to the trader (EM_KIND_TRADER):
+ * waits for it to leave the pouch, puts it down, waits for tradeMsgTimer and
+ * returns to idle.
+ */
 void Player_StateCarryHandOver(Player *pl, s32 unused)
 {
     pl->noHitTimer = 3;
@@ -10260,12 +11376,19 @@ void Player_StateCarryHandOver(Player *pl, s32 unused)
         break;
     case 4:
         if (pl->tradeMsgTimer == 0) {
-            Player_BeginState(pl, 0, 2, 0);
+            Player_ReturnToIdle(pl, 0, 2, 0);
         }
         break;
     }
 }
 
+/*
+ * Runs the handler of the player's state in PL_GROUP_CARRY, the weapon
+ * sheathed. Shared handlers get a variant: Player_StateCarryPutDown (drop,
+ * tired drop, deliver), Player_StateCarryAirborne, Player_StateCarryLand,
+ * Player_StateCarryIdle (also PL_CARRY_PICKED_UP). Other states return to
+ * idle.
+ */
 void Player_RunCarryState(Player *pl)
 {
     pl->weaponOut = 0;
@@ -10307,11 +11430,16 @@ void Player_RunCarryState(Player *pl)
         Player_StateCarryHandOver(pl, 0);
         break;
     default:
-        Player_BeginState(pl, 0, 4, 0);
+        Player_ReturnToIdle(pl, 0, 4, 0);
         break;
     }
 }
 
+/*
+ * PL_GESTURE_LIE_DOWN: lies down; the local player gets up
+ * (PL_GESTURE_GET_UP) with the left stick or at the quest's end, or starts a
+ * requested gesture (Player_StartGesture).
+ */
 void Player_StateGestureLieDown(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10328,7 +11456,7 @@ void Player_StateGestureLieDown(Player *pl, s32 unused)
                 break;
             }
             if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         } else {
         }
@@ -10336,6 +11464,7 @@ void Player_StateGestureLieDown(Player *pl, s32 unused)
     }
 }
 
+/* PL_GESTURE_GET_UP: gets up, then idle. */
 void Player_StateGestureGetUp(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10348,16 +11477,22 @@ void Player_StateGestureGetUp(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_GESTURE_SCOUT: the scouting gesture, held at least 60 frames, then left
+ * as the other gestures are. When the area's flyer (func_00379E40,
+ * func_00379E50) is within about 33 degrees of the facing, it sets pl->scoutSpotted
+ * and actDetectTimer (300) once.
+ */
 void Player_StateGestureScout(Player *pl, s32 variant)
 {
     f32 pos[3];
-    s32 d;
+    s32 angleOff;
 
     switch (pl->step) {
     case 0:
@@ -10373,14 +11508,14 @@ void Player_StateGestureScout(Player *pl, s32 variant)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
-            } else if (func_379E40() == 1 && pl->unk8FE == 0) {
+                Player_StartGesture(pl);
+            } else if (func_379E40() == 1 && pl->scoutSpotted == 0) {
                 func_379E50(pos, pl->area);
-                d = (u16) (pl->rot[1] - (u16) (Vec_Heading(pos, pl->pos) + 0x4000));
-                if (d <= 0x1800 || d >= 0xE800) {
-                    pl->unk8FE = 1;
+                angleOff = (u16) (pl->rot[1] - (u16) (Vec_Heading(pos, pl->pos) + 0x4000));
+                if (angleOff <= 0x1800 || angleOff >= 0xE800) {
+                    pl->scoutSpotted = 1;
                     pl->actDetectTimer = 300;
                 }
             }
@@ -10389,6 +11524,11 @@ void Player_StateGestureScout(Player *pl, s32 variant)
     }
 }
 
+/*
+ * PL_GESTURE_03: a looped gesture; from frame 90 the local player moves to
+ * PL_GESTURE_03_END with the left stick or at the quest's end, or starts a
+ * requested gesture.
+ */
 void Player_StateGesture03(Player *pl, s32 variant)
 {
 
@@ -10404,13 +11544,14 @@ void Player_StateGesture03(Player *pl, s32 variant)
             if (pl->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
                 Player_RequestState(pl, PL_GROUP_GESTURE, PL_GESTURE_03_END, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/* PL_GESTURE_03_END: the end of PL_GESTURE_03, then idle. */
 void Player_StateGesture03End(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10423,20 +11564,24 @@ void Player_StateGesture03End(Player *pl, s32 unused)
     case 1:
         if (pl->motion[0].playing == 0) {
             pl->step++;
-            Player_SetFlag(pl, 0x20000);
+            Player_SetFlag(pl, PLF_NO_ROOT_MOVE);
             Player_SetMotionPair(pl, 0xCF, -4, 0x3C);
         }
         break;
     case 2:
-        Player_SetFlag(pl, 0x20000);
+        Player_SetFlag(pl, PLF_NO_ROOT_MOVE);
         if (pl->motion[0].playing == 0) {
-            Player_ClearFlag(pl, 0x20000);
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ClearFlag(pl, PLF_NO_ROOT_MOVE);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
 }
 
+/*
+ * PL_GESTURE_05: a gesture that makes PlayerAttack 0x60 and 0x61 at set
+ * frames; held at least 60 frames, then left as Player_StateGesture06.
+ */
 void Player_StateGesture05(Player *pl, s32 variant)
 {
 
@@ -10453,28 +11598,33 @@ void Player_StateGesture05(Player *pl, s32 variant)
             pl->timer--;
         }
         if (Motion_PassedFrame(pl, 0, 48.0f) != 0) {
-            Eff00_Create(pl, 0x60);
+            PlayerAttack_Create(pl, 0x60);
         }
         if (Motion_PassedFrame(pl, 0, 68.0f) != 0) {
-            Eff00_Create(pl, 0x61);
+            PlayerAttack_Create(pl, 0x61);
         }
         if (Motion_PassedFrame(pl, 0, 168.0f) != 0) {
-            Eff00_Create(pl, 0x61);
+            PlayerAttack_Create(pl, 0x61);
         }
         if (Motion_PassedFrame(pl, 0, 190.0f) != 0) {
-            Eff00_Create(pl, 0x60);
+            PlayerAttack_Create(pl, 0x60);
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt > 39 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 0xA, 0);
+                Player_ReturnToIdle(pl, 0, 0xA, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/*
+ * PL_GESTURE_06 and PL_GESTURE_06_ALT: a gesture held at least 60 frames;
+ * then the local player returns to idle with the left stick or at the quest's
+ * end, or starts a requested gesture (Player_StartGesture).
+ */
 void Player_StateGesture06(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10491,15 +11641,16 @@ void Player_StateGesture06(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 0xA, 0);
+                Player_ReturnToIdle(pl, 0, 0xA, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/* PL_GESTURE_07: a gesture; as Player_StateGesture06. */
 void Player_StateGesture07(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10516,15 +11667,16 @@ void Player_StateGesture07(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 0x4, 0);
+                Player_ReturnToIdle(pl, 0, 0x4, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/* PL_GESTURE_08: a gesture; as Player_StateGesture06. */
 void Player_StateGesture08(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10541,15 +11693,20 @@ void Player_StateGesture08(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/*
+ * The one-shot gestures: one motion, then idle. variant: the row of
+ * gGestureOneShots (0 PL_GESTURE_ONESHOT0, 1 PL_GESTURE_ONESHOT1, 3
+ * PL_GESTURE_ONESHOT3).
+ */
 void Player_StateGestureOneShot(Player *pl, s32 variant)
 {
     switch (pl->step) {
@@ -10561,12 +11718,13 @@ void Player_StateGestureOneShot(Player *pl, s32 variant)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, gGestureOneShots[variant * 2 + 1], 0);
+            Player_ReturnToIdle(pl, 0, gGestureOneShots[variant * 2 + 1], 0);
         }
         break;
     }
 }
 
+/* PL_GESTURE_0A: a gesture; as Player_StateGesture06. */
 void Player_StateGesture0A(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10583,15 +11741,16 @@ void Player_StateGesture0A(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 0x4, 0);
+                Player_ReturnToIdle(pl, 0, 0x4, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/* PL_GESTURE_0B: a gesture; as Player_StateGesture06. */
 void Player_StateGesture0B(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10608,15 +11767,16 @@ void Player_StateGesture0B(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 0xA, 0);
+                Player_ReturnToIdle(pl, 0, 0xA, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/* PL_GESTURE_0C: a gesture; as Player_StateGesture06. */
 void Player_StateGesture0C(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10633,15 +11793,16 @@ void Player_StateGesture0C(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
+/* PL_GESTURE_10: a gesture; as Player_StateGesture06. */
 void Player_StateGesture10(Player *pl, s32 unused)
 {
     switch (pl->step) {
@@ -10658,16 +11819,16 @@ void Player_StateGesture10(Player *pl, s32 unused)
         }
         if (Player_IsLocal(pl) == 1 && pl->timer == 0) {
             if (pl->input.stickTilt >= 40 || Quest_PhaseIsOver(1) == 1) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
             } else if (pl->actRequest != 0) {
-                Player_StartAct(pl);
+                Player_StartGesture(pl);
             }
         }
         break;
     }
 }
 
-/* The 0x716360 part's .data (0x8C3C90-0x8C3DE0) */
+/* The Player_StateBedLieDown part's .data (0x8C3C90-0x8C3DE0) */
 SpitMeat gSpitMeats[13] = {
 #include "game/008C3C90.inc"
 };
@@ -10678,7 +11839,7 @@ s16 gGestureOneShots[8] = {
 #include "game/008C3DD0.inc"
 };
 
-/* ---- 0x722400 (was unk_722400.c) ---- */
+/* ---- From Player_RunGestureState (0x722400): once unk_722400.c ---- */
 /* prototypes of callees (round 13) */
 void Player_UpdateInput(void);
 void EmRathalos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
@@ -10691,7 +11852,7 @@ void Em_LoadReactionSet(Em *em, u8 k);
 void Em_CheckKindRequest(Em *em);
 void Em_AddNeed2(Em *em, s32 n);
 void Em_AddNeed1(Em *em, s32 n);
-void Em_Add7F4(Em *em, s32 n);
+void Em_AddNeed3(Em *em, s32 n);
 void Vec_Copy(f32 *out, f32 *in);
 void Em_TypeSetup(Em *em);
 struct TriHdr;
@@ -10725,137 +11886,137 @@ void Player_CheckPointMessages(u8 *arg0);
 void Player_CheckTeamComboLost(Player *em);
 u8 AreaHit_Raycast(f32 *a, f32 *b, f32 *out, u16 mask);
 void *EmScript_RoutePointScript(Em *em, u8 i);
-s16 *Em_IdSetLookup(Em *em);
-void EmScript_Op7B(Em *em);
+s16 *Em_NextAreas(Em *em);
+void EmScript_AdvanceStateRand(Em *em);
 void Em_ChangeStateRouted(Em *em, s32 a, s32 b, s32 c);
 u8 *EmScript_PickTrigger(Em *em);
 u8 *EmScript_GetPos(Em *em);
 u8 *EmScript_Call(Em *em, u8 *p);
-u8 *EmScript_Op01(Em *em, u8 *p);
-u8 *EmScript_Op02(Em *em, u8 *p);
-u8 *EmScript_Op03(Em *em, u8 *p);
-u8 *EmScript_Op06(Em *em, u8 *p);
-u8 *EmScript_Op08(Em *em, u8 *p);
-u8 *EmScript_Op09(Em *em, u8 *p);
-u8 *EmScript_Op0A(Em *em, u8 *p);
-u8 *EmScript_Op0B(Em *em, u8 *p);
-u8 *EmScript_Op0C(Em *em, u8 *p);
-u8 *EmScript_Op0D(Em *em, u8 *p);
-u8 *EmScript_Op0E(Em *em, u8 *p);
-u8 *EmScript_Op0F(Em *em, u8 *p);
-u8 *EmScript_Op10(Em *em, u8 *p);
-u8 *EmScript_Op11(Em *em, u8 *p);
-u8 *EmScript_Op12(Em *em, u8 *p);
-u8 *EmScript_Op13(Em *em, u8 *p);
-u8 *EmScript_Op14(Em *em, u8 *p);
-u8 *EmScript_Op15(Em *em, u8 *p);
-u8 *EmScript_Op17(Em *em, u8 *p);
-u8 *EmScript_Op18(Em *em, u8 *p);
-u8 *EmScript_Op19(Em *em, u8 *p);
-u8 *EmScript_Op1A(Em *em, u8 *p);
-u8 *EmScript_Op1B(Em *em, u8 *p);
-u8 *EmScript_Op1C(Em *em, u8 *p);
-u8 *EmScript_Op1D(Em *em, u8 *p);
-u8 *EmScript_Op1E(Em *em, u8 *p);
-u8 *EmScript_Op1F(Em *em, u8 *p);
-u8 *EmScript_Op20(Em *em, u8 *p);
-u8 *EmScript_Op21(Em *em, u8 *p);
-u8 *EmScript_Op22(Em *em, u8 *p);
-u8 *EmScript_Op23(Em *em, u8 *p);
-u8 *EmScript_Op24(Em *em, u8 *p);
-u8 *EmScript_Op25(Em *em, u8 *p);
-u8 *EmScript_Op26(Em *em, u8 *p);
-u8 *EmScript_Op27(Em *em, u8 *p);
-u8 *EmScript_Op28(Em *em, u8 *p);
-u8 *EmScript_Op29(Em *em, u8 *p);
-u8 *EmScript_Op2A(Em *em, u8 *p);
-u8 *EmScript_Op2B(Em *em, u8 *p);
-u8 *EmScript_Op2C(Em *em, u8 *p);
-u8 *EmScript_Op2D(Em *em, u8 *p);
-u8 *EmScript_Op2E(Em *em, u8 *p);
-u8 *EmScript_Op2F(Em *em, u8 *p);
-u8 *EmScript_Op30(Em *em, u8 *p);
-u8 *EmScript_Op31(Em *em, u8 *p);
-u8 *EmScript_Op32(Em *em, u8 *p);
-u8 *EmScript_Op33(Em *em, u8 *p);
-u8 *EmScript_Op34(Em *em, u8 *p);
-u8 *EmScript_Op35(Em *em, u8 *p);
-u8 *EmScript_Op36(Em *em, u8 *p);
-u8 *EmScript_Op37(Em *em, u8 *p);
-u8 *EmScript_Op38(Em *em, u8 *p);
-u8 *EmScript_Op39(Em *em, u8 *p);
-u8 *EmScript_Op3A(Em *em, u8 *p);
-u8 *EmScript_Op3B(Em *em, u8 *p);
-u8 *EmScript_Op3C(Em *em, u8 *p);
-u8 *EmScript_Op3D(Em *em, u8 *p);
-u8 *EmScript_Op3E(Em *em, u8 *p);
-u8 *EmScript_Op3F(Em *em, u8 *p);
-u8 *EmScript_Op40(Em *em, u8 *p);
-u8 *EmScript_Op41(Em *em, u8 *p);
-u8 *EmScript_Op42(Em *em, u8 *p);
-u8 *EmScript_Op44(Em *em, u8 *p);
-u8 *EmScript_Op45(Em *em, u8 *p);
-u8 *EmScript_Op46(Em *em, u8 *p);
-u8 *EmScript_Op47(Em *em, u8 *p);
-u8 *EmScript_Op48(Em *em, u8 *p);
-u8 *EmScript_Op49(Em *em, u8 *p);
-u8 *EmScript_Op4A(Em *em, u8 *p);
-u8 *EmScript_Op4B(Em *em, u8 *p);
-u8 *EmScript_Op4C(Em *em, u8 *p);
-u8 *EmScript_Op4D(Em *em, u8 *p);
-u8 *EmScript_Op4E(Em *em, u8 *p);
-u8 *EmScript_Op4F(Em *em, u8 *p);
-u8 *EmScript_Op50(Em *em, u8 *p);
-u8 *EmScript_Op51(Em *em, u8 *p);
-u8 *EmScript_Op52(Em *em, u8 *p);
-u8 *EmScript_Op53(Em *em, u8 *p);
-u8 *EmScript_Op54(Em *em, u8 *p);
-u8 *EmScript_Op55(Em *em, u8 *p);
-u8 *EmScript_Op56(Em *em, u8 *p);
-u8 *EmScript_Op57(Em *em, u8 *p);
-u8 *EmScript_Op58(Em *em, u8 *p);
-u8 *EmScript_Op59(Em *em, u8 *p);
-u8 *EmScript_Op5A(Em *em, u8 *p);
-u8 *EmScript_Op5B(Em *em, u8 *p);
-u8 *EmScript_Op5C(Em *em, u8 *p);
-u8 *EmScript_Op5D(Em *em, u8 *p);
-u8 *EmScript_Op5E(Em *em, u8 *p);
-u8 *EmScript_Op5F(Em *em, u8 *p);
-u8 *EmScript_Op60(Em *em, u8 *p);
-u8 *EmScript_Op61(Em *em, u8 *p);
-u8 *EmScript_Op62(Em *em, u8 *p);
-u8 *EmScript_Op63(Em *em, u8 *p);
-u8 *EmScript_Op64(Em *em, u8 *p);
-u8 *EmScript_Op65(Em *em, u8 *p);
-u8 *EmScript_Op66(Em *em, u8 *p);
-u8 *EmScript_Op67(Em *em, u8 *p);
-s32 EmScript_Op68(Em *em, s32 p);
-u8 *EmScript_Op69(Em *em, u8 *p);
-u8 *EmScript_Op70(Em *em, u8 *p);
-u8 *EmScript_Op71(Em *em, u8 *p);
-u8 *EmScript_Op72(Em *em, u8 *p);
-u8 *EmScript_Op73(Em *em, u8 *p);
-u8 *EmScript_Op74(Em *em, u8 *p);
-u8 *EmScript_Op75(Em *em, u8 *p);
-u8 *EmScript_Op76(Em *em, u8 *p);
-u8 *EmScript_Op77(Em *em, u8 *p);
-u8 *EmScript_Op78(Em *em, u8 *p);
-u8 *EmScript_Op79(Em *em, u8 *p);
-u8 *EmScript_Op7A(Em *em, u8 *p);
-u8 *EmScript_Op7C(Em *em, u8 *p);
-u8 *EmScript_Op80(Em *em, u8 *p);
-u8 *EmScript_Op81(Em *em, u8 *p);
-u8 *EmScript_Op82(Em *em, u8 *p);
-u8 *EmScript_Op83(Em *em, u8 *p);
-u8 *EmScript_Op90(Em *em, u8 *p);
-void *EmScript_Op91(Em *em, u8 *p);
-s32 EmScript_Op92(s32 a, s32 p);
-s32 EmScript_Op93(s32 a, s32 p);
-u8 *EmScript_Op94(Em *em, u8 *p);
-void *EmScript_Op99(Em *em, u8 *p);
-u8 *EmScript_OpFF(Em *em, u8 *p);
+u8 *EmScript_IfSensed(Em *em, u8 *p);
+u8 *EmScript_IfNoticed(Em *em, u8 *p);
+u8 *EmScript_IfCanEnterNextArea(Em *em, u8 *p);
+u8 *EmScript_SetGoal(Em *em, u8 *p);
+u8 *EmScript_IfOnGround(Em *em, u8 *p);
+u8 *EmScript_IfInAir(Em *em, u8 *p);
+u8 *EmScript_SetHitReactMode(Em *em, u8 *p);
+u8 *EmScript_IfCombatIs(Em *em, u8 *p);
+u8 *EmScript_SetVar(Em *em, u8 *p);
+u8 *EmScript_ClearVar(Em *em, u8 *p);
+u8 *EmScript_IfInArea(Em *em, u8 *p);
+u8 *EmScript_StartLoop(Em *em, u8 *p);
+u8 *EmScript_NextLoopPoint(Em *em, u8 *p);
+u8 *EmScript_GoalAlertedPlayer(Em *em, u8 *p);
+u8 *EmScript_GoalNoticedPlayer(Em *em, u8 *p);
+u8 *EmScript_GoalScriptPlayer(Em *em, u8 *p);
+u8 *EmScript_IfTargetOffHeading(Em *em, u8 *p);
+u8 *EmScript_SwitchArea(Em *em, u8 *p);
+u8 *EmScript_SetAreaSeq(Em *em, u8 *p);
+u8 *EmScript_StepAreaSeq(Em *em, u8 *p);
+u8 *EmScript_GoalDestArea(Em *em, u8 *p);
+u8 *EmScript_GoalAreaToward(Em *em, u8 *p);
+u8 *EmScript_IfRequestedIs(Em *em, u8 *p);
+u8 *EmScript_SwitchHpPercent(Em *em, u8 *p);
+u8 *EmScript_SwitchRequestId(Em *em, u8 *p);
+u8 *EmScript_SetRequest(Em *em, u8 *p);
+u8 *EmScript_IfStanceFamily(Em *em, u8 *p);
+u8 *EmScript_SwitchTargetAngle(Em *em, u8 *p);
+u8 *EmScript_IfNeed2Low(Em *em, u8 *p);
+u8 *EmScript_IfGoalNearXZ(Em *em, u8 *p);
+u8 *EmScript_SwitchKindInArea(Em *em, u8 *p);
+u8 *EmScript_Repeat(Em *em, u8 *p);
+u8 *EmScript_StopRepeat(Em *em, u8 *p);
+u8 *EmScript_SetNoAlert(Em *em, u8 *p);
+u8 *EmScript_SwitchVariant(Em *em, u8 *p);
+u8 *EmScript_IfPlayerInArea(Em *em, u8 *p);
+u8 *EmScript_IfAreaTimer1Over(Em *em, u8 *p);
+u8 *EmScript_IfAreaTimer2Over(Em *em, u8 *p);
+u8 *EmScript_IfVarIs(Em *em, u8 *p);
+u8 *EmScript_SwitchKindGroup(Em *em, u8 *p);
+u8 *EmScript_GoalActionGoal(Em *em, u8 *p);
+u8 *EmScript_SelectSightRow(Em *em, u8 *p);
+u8 *EmScript_IfPlayerCarrying(Em *em, u8 *p);
+u8 *EmScript_SetNeed4(Em *em, u8 *p);
+u8 *EmScript_SetGoalKind(Em *em, u8 *p);
+u8 *EmScript_IfHitReactMode(Em *em, u8 *p);
+u8 *EmScript_SwitchHitReactMode(Em *em, u8 *p);
+u8 *EmScript_IfState(Em *em, u8 *p);
+u8 *EmScript_IfRaging(Em *em, u8 *p);
+u8 *EmScript_IfGoalNear(Em *em, u8 *p);
+u8 *EmScript_IfDrill(Em *em, u8 *p);
+u8 *EmScript_IfOnPassThroughFloor(Em *em, u8 *p);
+u8 *EmScript_IfBlind(Em *em, u8 *p);
+u8 *EmScript_IfNoSenseDelay(Em *em, u8 *p);
+u8 *EmScript_IfLinked(Em *em, u8 *p);
+u8 *EmScript_IfLinkCombatSameArea(Em *em, u8 *p);
+u8 *EmScript_IfPrevArea(Em *em, u8 *p);
+u8 *EmScript_SwitchPrevArea(Em *em, u8 *p);
+u8 *EmScript_StartRoute(Em *em, u8 *p);
+u8 *EmScript_SetCombat(Em *em, u8 *p);
+u8 *EmScript_AddHp(Em *em, u8 *p);
+u8 *EmScript_IfGoalAngleOver(Em *em, u8 *p);
+u8 *EmScript_IfLinkSameArea(Em *em, u8 *p);
+u8 *EmScript_IfLonePlayerBait(Em *em, u8 *p);
+u8 *EmScript_IfScriptPlayerState(Em *em, u8 *p);
+u8 *EmScript_IfHooked(Em *em, u8 *p);
+u8 *EmScript_SetDelay(Em *em, u8 *p);
+u8 *EmScript_GoalPlayerFloorSpot(Em *em, u8 *p);
+u8 *EmScript_IfScriptPlayerSeen(Em *em, u8 *p);
+u8 *EmScript_SetAlertBuildup(Em *em, u8 *p);
+u8 *EmScript_SetNoticeCount(Em *em, u8 *p);
+u8 *EmScript_ComputeGoal(Em *em, u8 *p);
+u8 *EmScript_AddNeed2(Em *em, u8 *p);
+u8 *EmScript_AddNeed1(Em *em, u8 *p);
+u8 *EmScript_AddNeed3(Em *em, u8 *p);
+u8 *EmScript_IfStanceUnder(Em *em, u8 *p);
+u8 *EmScript_PickNoticedPlayerReachable(Em *em, u8 *p);
+u8 *EmScript_PickNoticedPlayerInArea(Em *em, u8 *p);
+u8 *EmScript_IfScriptPlayerInArea(Em *em, u8 *p);
+u8 *EmScript_IfScriptPlayerNoticeHigh(Em *em, u8 *p);
+u8 *EmScript_IfQuestId(Em *em, u8 *p);
+u8 *EmScript_SwitchQuestKey(Em *em, u8 *p);
+u8 *EmScript_GoalLinkTarget(Em *em, u8 *p);
+u8 *EmScript_IfOnCeiling(Em *em, u8 *p);
+u8 *EmScript_IfScriptPlayerFloorAttr(Em *em, u8 *p);
+u8 *EmScript_SetNoticeTimer(Em *em, u8 *p);
+u8 *EmScript_IfCeilingAbove(Em *em, u8 *p);
+u8 *EmScript_IfGoalValid(Em *em, u8 *p);
+u8 *EmScript_IfFloorAttr(Em *em, u8 *p);
+u8 *EmScript_PickNoticedPlayerSameFloor(Em *em, u8 *p);
+u8 *EmScript_IfGateOpen(Em *em, u8 *p);
+u8 *EmScript_SetAreaTimer2(Em *em, u8 *p);
+u8 *EmScript_SwitchScriptPlayerFloorAttr(Em *em, u8 *p);
+u8 *EmScript_IfVariantBits(Em *em, u8 *p);
+u8 *EmScript_IfScriptPlayerNoticeOver(Em *em, u8 *p);
+u8 *EmScript_ClearNoticeCounts(Em *em, u8 *p);
+u8 *EmScript_IfAnyPlayerRiding(Em *em, u8 *p);
+u8 *EmScript_IfNotRemote(Em *em, u8 *p);
+s32 EmScript_RestartMain(Em *em, s32 p);
+u8 *EmScript_IfGoalAngleOverCapped(Em *em, u8 *p);
+u8 *EmScript_SwitchType(Em *em, u8 *p);
+u8 *EmScript_IfLevelAtLeast(Em *em, u8 *p);
+u8 *EmScript_IfVersus(Em *em, u8 *p);
+u8 *EmScript_SwitchItemUseKind(Em *em, u8 *p);
+u8 *EmScript_IfVersusItemUsed(Em *em, u8 *p);
+u8 *EmScript_SwitchSpawnParam(Em *em, u8 *p);
+u8 *EmScript_SwitchSeason(Em *em, u8 *p);
+u8 *EmScript_IfDay(Em *em, u8 *p);
+u8 *EmScript_IfGoalPlayerInArc(Em *em, u8 *p);
+u8 *EmScript_SwitchKindQuery(Em *em, u8 *p);
+u8 *EmScript_SwitchBaseArea(Em *em, u8 *p);
+u8 *EmScript_IfInArena(Em *em, u8 *p);
+u8 *EmScript_RandomBranch(Em *em, u8 *p);
+u8 *EmScript_CallScript(Em *em, u8 *p);
+u8 *EmScript_JumpEntry(Em *em, u8 *p);
+u8 *EmScript_SwitchTargetDist(Em *em, u8 *p);
+u8 *EmScript_PlaceAtPoint(Em *em, u8 *p);
+void *EmScript_FacePoint(Em *em, u8 *p);
+s32 EmScript_Nop(s32 a, s32 p);
+s32 EmScript_NopAlt(s32 a, s32 p);
+u8 *EmScript_SwitchScriptValue(Em *em, u8 *p);
+void *EmScript_SetHeading(Em *em, u8 *p);
+u8 *EmScript_End(Em *em, u8 *p);
 s32 EmScript_Start(Em *em, u8 *p);
-s32 func_3BCCB0(EquipItem *item, u8 which);
+s32 Armor_HasPartFlag(EquipItem *item, u8 which);
 s32 Quest_IsVersus(void);
 typedef struct ArmorIds {
     u8 id[4];
@@ -10867,10 +12028,6 @@ typedef struct ArmorCombo {
 } ArmorCombo;
 extern ArmorCombo gArmorCombos[14];
 s32 Side_Match(u8 a, u8 b, u8 none);
-typedef struct EmView818 {
-    u8 pad[0x818];
-    f32 f[4];
-} EmView818;
 typedef struct EmHeadView {
     u8 pad[0x76E];
     u16 head;                   /* 0x76E */
@@ -10947,7 +12104,7 @@ void Player_StateGesture0B(Player *, s32);
 void Player_StateGesture0C(Player *, s32);
 void Player_StateGesture10(Player *, s32);
 void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
-void Player_BeginState(Player *p, s32 action, s32 a2, s32 a3);
+void Player_ReturnToIdle(Player *p, s32 action, s32 a2, s32 a3);
 u16 Player_FindActionSpot(Player *, f32 *, u16 *arg, u8 *);
 void Player_ResetAim(Player *p);
 extern s8 gEmKindTimerIndex[];
@@ -10957,7 +12114,7 @@ s32 Player_HasSkill(Player *p, u8 skill);
 extern s16 gEmCombatInit[];
 void Em_BreakPart(Em *em, s32 part);
 extern s16 gEmKindTimerValues[];
-/* unit's own declaration: with the definition's void (Em *em, s16 n) (game/unk_708850.c), EmScript_Op41: 53 of 79 words differ */
+/* unit's own declaration: with the definition's void (Em *em, s16 n) (game/unk_708850.c), EmScript_AddHp: 53 of 79 words differ */
 void Em_AddHp(Em *em, s32 n);
 s32 Versus_TeamHasFlag(Em *em, s32 kind);
 extern s32 gEmStatusParams[];
@@ -10978,16 +12135,16 @@ s32 Versus_AddGauge(Em *em, u8 n);
 extern s32 gEmNoticeThresholds[];
 void Em_ComputeGoal(Em *em, f32 *out);
 struct AreaTri;
-/* unit's own declaration: the definition (sub_main unk_328CD0.c) returns u8; with it EmScript_Op5C differs (58 of 80 words) */
+/* unit's own declaration: the definition (sub_main unk_328CD0.c) returns u8; with it EmScript_IfCeilingAbove differs (58 of 80 words) */
 s32 AreaGrid2_GetCeiling(f32 *pos, f32 *y, struct AreaTri *info);
-u16 Area_BaseId(u16);
+u16 Map_DayId(u16);
 u8 Daytime_Get(void);
 void Em_RequestSync(Em *em, u8 a);
 void EmScript_Restart(Em *);
-extern s32 gEmAreaValues8A0[];
+extern s32 gEmAreaTimer2Values[];
 extern s32 gEmGoalPoints[];
 extern s32 gQSyncSendPeriod; /* gm_sub; this unit reads its low half */
-s16 *Em_IdSetHas(Em *em, u16 area);
+s16 *Em_NextAreasFrom(Em *em, u16 area);
 /* end of prototypes */
 
 void Player_RunGestureState(Player *pl)
@@ -11049,12 +12206,17 @@ void Player_RunGestureState(Player *pl)
         Player_StateGesture10(pl, 0);
         break;
     default:
-        Player_BeginState(pl, 0, 4, 0);
+        Player_ReturnToIdle(pl, 0, 4, 0);
         break;
     }
 }
 
 void ObjAttach_UpdateAllTimers(void);
+/*
+ * The players' frame: reads the pad (Player_UpdateInput), updates the
+ * PLAYER_SLOTS players (Player_Update), then the attack objects' timers
+ * (ObjAttach_UpdateAllTimers).
+ */
 void Game_UpdatePlayers(void)
 {
     s32 i;
@@ -11066,6 +12228,11 @@ void Game_UpdatePlayers(void)
     ObjAttach_UpdateAllTimers();
 }
 
+/*
+ * Runs the handler of the player's state group (Player_RunActionState ...
+ * Player_RunGestureState for PL_GROUP_ACTION to PL_GROUP_GESTURE), after
+ * setting freeState 0 and fieldCollide 1.
+ */
 void Player_RunState(Player *pl)
 {
     pl->freeState = 0;
@@ -11097,20 +12264,25 @@ void Player_RunState(Player *pl)
     }
 }
 
+/*
+ * Offline, for the local player: when a visible EM_KIND_KUSHALA_DAORA is in
+ * the player's area, sets save event flag 0x81 (the Kushala Daora has been
+ * seen).
+ */
 void Player_CheckKushalaSeen(Player *pl)
 {
-    Em *m;
+    Em *em;
     s16 i;
 
     if (Player_IsLocal(pl) == 0 || Game_IsOnline() == 1) {
         return;
     }
-    m = gEms;
-    for (i = 0; i < 20; i++) {
-        if (m->active != 0 && m->visible != 0 && m->type == 0x36 && m->area == pl->area && Save_TestEventFlag(0x81) == 0) {
+    em = gEms;
+    for (i = 0; i < EM_COUNT; i++) {
+        if (em->active != 0 && em->visible != 0 && em->type == 0x36 && em->area == pl->area && Save_TestEventFlag(0x81) == 0) {
             Save_SetEventFlag(0x81);
         }
-        m++;
+        em++;
     }
 }
 
@@ -11134,13 +12306,12 @@ void Player_Update(Player *pl)
 {
     f32 floorY;
     f32 pos[3];
-    f32 d;
+    f32 fade;
     f32 buf[3];
     f32 y;
-    f32 fy;
+    f32 groundY;
     s32 clamp;
-    u8 g;
-    u8 st;
+    u8 group;
     u8 w;
     s16 n;
 
@@ -11166,11 +12337,11 @@ void Player_Update(Player *pl)
     pl->freeState = 0;
     if (Player_IsLocal(pl) == 1) {
         if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_FALL) == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_GRAB) == 0) {
-            pl->unk893 = 0;
+            pl->fallGrabCount = 0;
         }
         Player_CheckTeamComboLost(pl);
     } else {
-        pl->unk893 = 0;
+        pl->fallGrabCount = 0;
     }
     Player_ReactToHit((struct Player *)pl);
     pl->prevFreeState = 0;
@@ -11236,19 +12407,19 @@ void Player_Update(Player *pl)
         func_330DE0(pl);
     }
     if (pl->action != 2 && pl->rideState == 0 && Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_LEDGE_PULL_UP) == 0 && pl->stateGroup != PL_GROUP_EVENT && (u8) Obj_InCurrentArea(pl)) {
-        fy = pl->floorY;
+        groundY = pl->floorY;
         y = pl->pos[1];
-        if (y < fy) {
-            pl->pos[1] = fy;
+        if (y < groundY) {
+            pl->pos[1] = groundY;
             pl->rideState = 0;
-        } else if (y >= fy) {
-            if (y - fy < 30.0f) {
-                pl->pos[1] = fy;
+        } else if (y >= groundY) {
+            if (y - groundY < 30.0f) {
+                pl->pos[1] = groundY;
                 pl->rideState = 0;
             } else if (pl->hp > 0) {
-            g = pl->stateGroup;
-            if (g != 5) {
-                if (g == 2) {
+            group = pl->stateGroup;
+            if (group != 5) {
+                if (group == 2) {
                 switch (pl->state) {
                 case 27:
                 case 30:
@@ -11274,10 +12445,10 @@ void Player_Update(Player *pl)
     }
     pl->unk417 = 1;
     Player_UpdateAreaPos(pl);
-    g = pl->stateGroup;
-    if (g != 2 && g != 3) {
-        if (pl->weaponOut && (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN) && (pl->input.pressed & 0x80)) {
-            if (g == 0) {
+    group = pl->stateGroup;
+    if (group != 2 && group != 3) {
+        if (pl->weaponOut && (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN) && (pl->input.pressed & PAD_R1)) {
+            if (group == 0) {
                 switch (pl->state) {
                 case 0x1C:
                 case 0x67:
@@ -11293,7 +12464,7 @@ void Player_Update(Player *pl)
                     pl->aimMode ^= 1;
                     break;
                 }
-            } else if (g != 6 && Player_IsState(pl, PL_GROUP_WEAPON, BOWGUN_MELEE) == 0) {
+            } else if (group != 6 && Player_IsState(pl, PL_GROUP_WEAPON, BOWGUN_MELEE) == 0) {
                 pl->aimMode ^= 1;
             }
             if (pl->action == 2) {
@@ -11307,7 +12478,7 @@ void Player_Update(Player *pl)
             }
         } else if (pl->weaponOut == 0) {
             if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_AIM) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_REAIM) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_FIRE) != 0) {
-                if (pl->input.pressed & 0x80) {
+                if (pl->input.pressed & PAD_R1) {
                     pl->aimMode ^= 1;
                 }
             } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_BINOCULARS_CROUCHED) != 0) {
@@ -11349,9 +12520,9 @@ void Player_Update(Player *pl)
         if (Player_IsLocal(pl) == 0 && Player_TestFlag(pl, 0x02001600) != 0) {
             pl->rot[1] = (u16) (Vec_Heading(pl->pos, pl->prevPos) + 0x4000);
         }
-        CamCtl_GetPlayerFade(&d);
+        CamCtl_GetPlayerFade(&fade);
         clamp = Player_InSceneEvent() == 1;
-        if (pl->nearCamera == 0 && !(d < 1.0f)) {
+        if (pl->nearCamera == 0 && !(fade < 1.0f)) {
             OT_AddByDepth(gDrawOt32, pl->drawSlot, 0x20, clamp);
         } else {
             OT_AddByDepth(gDrawOtSorted, pl->drawSlot, 0x40, clamp);
@@ -11361,7 +12532,7 @@ void Player_Update(Player *pl)
         }
         n = *(s16 *)&gQSyncSendPeriod;
         if (pl->syncTimer == 0 && gFrameTick % n == 0) {
-            QSync_SendPlayer(pl, 2, 0);
+            QSync_SendPlayer(pl, QSYNC_PL_POS, 0);
         }
     }
 }
@@ -11371,7 +12542,7 @@ void Player_Update(Player *pl)
 void Player_UpdateAutoTurn(Player *pl)
 {
     s32 step;
-    u32 d;
+    u32 angleDelta;
     u16 turn;
     s32 target;
     s32 dir;
@@ -11395,7 +12566,7 @@ void Player_UpdateAutoTurn(Player *pl)
 turn:
     dir = pl->rot[1];
     target = pl->targetYaw;
-    d = (u16) (target - (u16) dir);
+    angleDelta = (u16) (target - (u16) dir);
     switch (pl->motionId[0]) {
     case 3:
         turn = 0x80;
@@ -11407,7 +12578,7 @@ turn:
         turn = 0;
         break;
     }
-    if ((u16) (d + step) < (u32) (step * 2)) {
+    if ((u16) (angleDelta + step) < (u32) (step * 2)) {
         pl->rot[1] = target;
         pl->unk2B8 = 0;
         if (pl->lean + 0x300 <= 0x600) {
@@ -11417,7 +12588,7 @@ turn:
         } else {
             pl->lean += 0x300;
         }
-    } else if (d < 0x8000U) {
+    } else if (angleDelta < 0x8000U) {
         pl->rot[1] = (u16) (dir + step);
         pl->lean -= turn;
     } else {
@@ -11433,83 +12604,94 @@ turn:
     }
 }
 
+/*
+ * The head turn toward the nearest monster (pl->lookYaw): in motion 0x26
+ * only, picks the nearest active, visible monster within 1500 units
+ * (lookFound) and turns the head toward it by 0x800 a frame, to about 60
+ * degrees either side; without one the turn unwinds.
+ */
 void Player_FindLookTarget(Player *pl)
 {
-    EmHeadView *h = (EmHeadView *) pl;
+    EmHeadView *view = (EmHeadView *) pl;
     u32 i;
     u32 best;
     Em *em;
     f32 min;
-    f32 d;
-    u16 a;
+    f32 dist;
+    u16 relAngle;
 
     best = 0xFF;
-    h->found = 0;
+    view->found = 0;
     min = 1500.0f;
     em = gEms;
     if (pl->motionId[0] == 0x26) {
-        for (i = 0; i < 20; i++, em++) {
+        for (i = 0; i < EM_COUNT; i++, em++) {
             if (em->active != 0 && em->visible != 0) {
-                d = Vec_Distance(&pl->pos[0], &em->posX);
-                if (!(min < d)) {
+                dist = Vec_Distance(&pl->pos[0], &em->posX);
+                if (!(min < dist)) {
                     best = i;
-                    min = d;
-                    h->found = 1;
+                    min = dist;
+                    view->found = 1;
                 }
             }
         }
     }
-    if (h->found == 0) {
-        if (h->head != 0) {
-            if (h->head + 0x400 <= 0x800 && h->head + 0x400 >= 0) {
-                h->head = 0;
-            } else if ((s16) h->head >= 0) {
-                h->head -= 0x400;
+    if (view->found == 0) {
+        if (view->head != 0) {
+            if (view->head + 0x400 <= 0x800 && view->head + 0x400 >= 0) {
+                view->head = 0;
+            } else if ((s16) view->head >= 0) {
+                view->head -= 0x400;
             } else {
-                h->head += 0x400;
+                view->head += 0x400;
             }
         }
     } else {
-        a = (u16) (Vec_Heading(&gEms[best].posX, &pl->pos[0]) + 0x4000) + 0x10000 - pl->rot[1];
-        if (a >= 0x8000) {
-            if (a < 0xD556) {
-                a = -0x2AAA;
+        relAngle = (u16) (Vec_Heading(&gEms[best].posX, &pl->pos[0]) + 0x4000) + 0x10000 - pl->rot[1];
+        if (relAngle >= 0x8000) {
+            if (relAngle < 0xD556) {
+                relAngle = -0x2AAA;
             }
-            if (h->head >= 0x8000) {
-                if (h->head - 0x800 <= a) {
-                    h->head = a;
+            if (view->head >= 0x8000) {
+                if (view->head - 0x800 <= relAngle) {
+                    view->head = relAngle;
                 } else {
-                    h->head = h->head - 0x800;
+                    view->head = view->head - 0x800;
                 }
             } else {
-                h->head -= 0x800;
+                view->head -= 0x800;
             }
         } else {
-            if (a > 0x2AAB) {
-                a = 0x2AAB;
+            if (relAngle > 0x2AAB) {
+                relAngle = 0x2AAB;
             }
-            if (h->head < 0x8000) {
-                if (h->head + 0x800 >= a) {
-                    h->head = a;
+            if (view->head < 0x8000) {
+                if (view->head + 0x800 >= relAngle) {
+                    view->head = relAngle;
                 } else {
-                    h->head = h->head + 0x800;
+                    view->head = view->head + 0x800;
                 }
             } else {
-                h->head += 0x800;
+                view->head += 0x800;
             }
         }
     }
 }
 
+/*
+ * For the local player: the advice message of the action spot it stands at
+ * (MsgEvent_Check: 1 at a spot of kind 3, 3 at the delivery box, 4 at the
+ * bed).
+ */
 void Player_CheckPointMessages(u8 *script)
 {
     f32 pos[3];
-    u16 sp2C;
-    s8 sp2F;
+    u16 spotAngle;
+    s8 spotType;
     s32 spot;
 
     if (Player_IsLocal(script) != 0) {
-        spot = Player_FindActionSpot((Player *)script, (f32 *)pos, &sp2C, (u8 *)&sp2F) & 0xFFFF;
+        spot = Player_FindActionSpot((Player *)script, (f32 *)pos, &spotAngle, (u8 *)&spotType) & 0xFFFF;
         switch (spot) {
         case 3:
             MsgEvent_Check(1);
@@ -11524,6 +12706,11 @@ void Player_CheckPointMessages(u8 *script)
     }
 }
 
+/*
+ * Returns how many of three special items the player holds (0 to 3);
+ * Player_UpdateEnvironment takes that much health every 30 frames, and the
+ * HUD flashes the health bar.
+ */
 s16 Player_CountSpecialItems(Player *pl)
 {
     s16 n = 0;
@@ -11550,13 +12737,13 @@ void Player_CheckTeamCombo(Player *self)
     s16 i;
     s16 n;
     Player *pl;
-    s16 m;
+    s16 slot;
     u8 w;
     u8 *src;
     s16 j;
-    u8 cb;
-    u8 ca;
-    ArmorCombo *c;
+    u8 skill;
+    u8 skillGroup;
+    ArmorCombo *combo;
     s16 k;
 
     self->mealSkill = 0;
@@ -11568,19 +12755,19 @@ void Player_CheckTeamCombo(Player *self)
         }
         have[i] = 0xFF;
         n = 0;
-        if (func_3BCCB0(&pl->equip[2], pl->gender) == 1) {
+        if (Armor_HasPartFlag(&pl->equip[2], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&pl->equip[3], pl->gender) == 1) {
+        if (Armor_HasPartFlag(&pl->equip[3], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&pl->equip[4], pl->gender) == 1) {
+        if (Armor_HasPartFlag(&pl->equip[4], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&pl->equip[5], pl->gender) == 1) {
+        if (Armor_HasPartFlag(&pl->equip[5], pl->gender) == 1) {
             n++;
         }
-        if (func_3BCCB0(&pl->equip[0], pl->gender) == 1) {
+        if (Armor_HasPartFlag(&pl->equip[0], pl->gender) == 1) {
             n++;
         }
         if (n == 0) {
@@ -11588,20 +12775,20 @@ void Player_CheckTeamCombo(Player *self)
         }
         have[i] = pl->style;
     }
-    for (i = 0, c = gArmorCombos; i < 14; i++, c++) {
-        ca = c->a;
-        cb = c->b;
-        src = c->ids.id;
+    for (i = 0, combo = gArmorCombos; i < 14; i++, combo++) {
+        skillGroup = combo->a;
+        skill = combo->b;
+        src = combo->ids.id;
         for (j = 0; j < 4; j++) {
             left[j] = have[j];
             want[j] = *src++;
         }
         for (j = 0; j < 4; j++) {
             w = want[j];
-            for (m = 0; m < 4; m++) {
-                if (w != 0xFF && w == left[m]) {
+            for (slot = 0; slot < 4; slot++) {
+                if (w != 0xFF && w == left[slot]) {
                     want[j] = 0xFF;
-                    left[m] = 0xFF;
+                    left[slot] = 0xFF;
                     break;
                 }
             }
@@ -11611,8 +12798,8 @@ void Player_CheckTeamCombo(Player *self)
                 goto next;
             }
         }
-        self->mealSkillGroup = ca;
-        self->mealSkill = cb;
+        self->mealSkillGroup = skillGroup;
+        self->mealSkill = skill;
         Notice_Push(0, 0x1D, 0);
         return;
     next:;
@@ -11620,6 +12807,10 @@ void Player_CheckTeamCombo(Player *self)
     }
 }
 
+/*
+ * Ends the team combo skill (mealSkill, mealSkillGroup) with a notice when
+ * any of the quest's players has left the quest.
+ */
 void Player_CheckTeamComboLost(Player *pl)
 {
     s16 i;
@@ -11636,106 +12827,126 @@ void Player_CheckTeamComboLost(Player *pl)
     }
 }
 
+/*
+ * The hit-free frames of an evasion: noHitTimer 6, plus 2 with skill 0xAF or
+ * else plus 4 with skill 0xB0.
+ */
 void Player_SetEvadeFrames(Player *pl)
 {
-    s16 v = 6;
+    s16 frames = 6;
 
     if (Player_HasSkill(pl, 0xAF) == 1) {
-        v += 2;
+        frames += 2;
     } else if (Player_HasSkill(pl, 0xB0) == 1) {
-        v += 4;
+        frames += 4;
     }
-    pl->noHitTimer = v;
+    pl->noHitTimer = frames;
 }
 
-s32 func_00723BC0(Em *em)
+/* 1 while status 6 lasts (Player.status6Timer); the drink and eat items
+ * refuse to start then. */
+s32 Player_Status6Active(Player *pl)
 {
-    return (s16) em->spawns[0].goalKind > 0;
+    return pl->status6Timer > 0;
 }
 
-s32 func_00723BD0(Em *em)
+/* 1 while status 7 lasts (Player.status7Timer; the HUD's status icon). */
+s32 Player_Status7Active(Player *pl)
 {
-    return em->spawns[0].timer > 0;
+    return pl->status7Timer > 0;
 }
 
+/*
+ * Returns 1 when the item id is in a fixed list, else 0: the Chameleos
+ * prefers these when it steals from the pouch, and Item_IsUsable refuses them
+ * while status 6 lasts (Player_Status6Active).
+ */
 s32 Item_IsStealable(s32 item)
 {
     switch (item & 0xFFFF) {
-    case 0xB7:
-    case 0xB:
-    case 0x1A:
-    case 7:
-    case 8:
-    case 0x292:
-    case 9:
-    case 0xA:
-    case 0x1B:
-    case 0x298:
-    case 0x1C:
-    case 0xD:
-    case 0xE:
-    case 0xF:
-    case 0x10:
-    case 0x12:
-    case 0x13:
-    case 0x293:
-    case 0x104:
-    case 0xB8:
-    case 0xC7:
-    case 0xCE:
-    case 0xCF:
-    case 0x15:
-    case 0x16:
-    case 0x22:
-    case 0x17:
-    case 0xC:
-    case 0xCA:
-    case 0x11:
-    case 0x14:
-    case 0x1E:
-    case 0xC8:
-    case 0x2F:
-    case 0x30:
-    case 0x31:
-    case 0x32:
-    case 0xEB:
-    case 0xF7:
-    case 0xF8:
-    case 0x33:
-    case 0x34:
-    case 0x35:
-    case 0x36:
-    case 0x37:
-    case 0x38:
-    case 0x39:
-    case 0x3A:
-    case 0x3B:
-    case 0x3C:
-    case 0x3D:
-    case 0x3E:
+    case ITEM_ID_HEAL_20:
+    case ITEM_ID_CURE_POISON:
+    case ITEM_ID_HEAL_10_CURE:
+    case ITEM_ID_HEAL_30:
+    case ITEM_ID_HEAL_50:
+    case ITEM_ID_SUPPLY_HEAL_30:
+    case ITEM_ID_MAX_HP_10:
+    case ITEM_ID_MAX_HP_20:
+    case ITEM_ID_MAX_HP_FULL:
+    case ITEM_ID_SUPPLY_MAX_HP_FULL:
+    case ITEM_ID_MAX_ALL:
+    case ITEM_ID_STAMINA_LOCK:
+    case ITEM_ID_STAMINA_LOCK_LONG:
+    case ITEM_ID_ATTACK_DRUG:
+    case ITEM_ID_ATTACK_DRUG_STRONG:
+    case ITEM_ID_DEFENSE_DRUG:
+    case ITEM_ID_DEFENSE_DRUG_STRONG:
+    case ITEM_ID_SUPPLY_MAX_STAMINA_75:
+    case ITEM_ID_HURT_CURE_CHANCE:
+    case ITEM_ID_CURE_CHANCE:
+    case ITEM_ID_POISON_GAMBLE:
+    case ITEM_ID_ATTACK_SHARED:
+    case ITEM_ID_DEFENSE_SHARED:
+    case ITEM_ID_COOL_DRINK:
+    case ITEM_ID_HOT_DRINK:
+    case ITEM_ID_HEAL_50_TEAM:
+    case ITEM_ID_DETECT:
+    case ITEM_ID_REGEN:
+    case ITEM_ID_MAX_STAMINA_75_B:
+    case ITEM_ID_ATTACK_BURST:
+    case ITEM_ID_DEFENSE_BURST:
+    case ITEM_ID_MAX_STAMINA_75:
+    case ITEM_ID_RANDOM:
+    case ITEM_ID_FOOD_STAMINA_75:
+    case ITEM_ID_FOOD_STAMINA_150:
+    case ITEM_ID_FOOD_STAMINA_FULL:
+    case ITEM_ID_FOOD_STAMINA_GAMBLE:
+    case ITEM_ID_FOOD_HEAL_20:
+    case ITEM_ID_FOOD_PRIZE_A:
+    case ITEM_ID_FOOD_PRIZE_B:
+    case ITEM_ID_FOOD_HOT:
+    case ITEM_ID_FOOD_HOT_STAMINA:
+    case ITEM_ID_FOOD_COOL:
+    case ITEM_ID_FOOD_COOL_STAMINA:
+    case ITEM_ID_FOOD_CURE:
+    case ITEM_ID_FOOD_CURE_STAMINA:
+    case ITEM_ID_FOOD_RESTORE:
+    case ITEM_ID_FOOD_REGEN_SHORT:
+    case ITEM_ID_FOOD_REGEN:
+    case ITEM_ID_FOOD_REGEN_B:
+    case ITEM_ID_FOOD_REGEN_LONG:
+    case ITEM_ID_FOOD_RESTORE_B:
         return 1;
     }
     return 0;
 }
 
+/*
+ * Picks the status a monster begins, or 0: only when none runs (em->status 0)
+ * and the last hit was not attack kind 6 or 9. In the air (EM_STANCE_AIR, or
+ * EM_STANCE_FAMILY for the Kushala family) it ends statuses 1 and 2
+ * (Em_EndStatus1And2) and returns 1; else 4 for a status 4 build-up, 2 for
+ * status 1, 3 for status 2, 5 for status 5 (the stun). Em_UpdateDamage turns
+ * these into EM_DMG_*.
+ */
 u8 Em_PickStatus(Em *em)
 {
     u8 ret = 0;
-    s32 f;
+    s32 pending;
 
     if (em->status == 0 && em->lastAttackKind != 6 && em->lastAttackKind != 9) {
-        f = (u8) (em->statusFlags & ~4);
-        if (f != 0) {
+        pending = (u8) (em->statusFlags & ~4);
+        if (pending != 0) {
             if (em->stance == 2 || ((em->type == 0x36 || em->type == 0x3C || em->type == 0x40 || em->type == 0x41) && em->stance == 1)) {
                 Em_EndStatus1And2(em);
                 ret = 1;
-            } else if ((u8) f & 8) {
+            } else if ((u8) pending & 8) {
                 ret = 4;
-            } else if ((u8) f & 1) {
+            } else if ((u8) pending & 1) {
                 ret = 2;
-            } else if ((u8) f & 2) {
+            } else if ((u8) pending & 2) {
                 ret = 3;
-            } else if ((u8) f & 0x10) {
+            } else if ((u8) pending & 0x10) {
                 ret = 5;
             }
         }
@@ -11743,6 +12954,7 @@ u8 Em_PickStatus(Em *em)
     return ret;
 }
 
+/* Returns 1 while the monster is held (holdTimer or holdTimer2), else 0. */
 s32 Em_IsHeld(Em *em)
 {
     if (*(s8 *) &em->holdTimer) {
@@ -11754,6 +12966,11 @@ s32 Em_IsHeld(Em *em)
     return 0;
 }
 
+/*
+ * Starts the monster's flash blindness: blindTimer from gEmBlindTimes[type],
+ * with the stun stars over its head (StageObj_Stun_CreateEm, type 2) at a
+ * height and size per kind; kinds with no case get none.
+ */
 void Em_StartBlind(Em *em)
 {
     em->blindTimer = gEmBlindTimes[em->type];
@@ -11862,8 +13079,8 @@ s32 EmBlangonga_InStateArmor(Em *em);
  */
 void Em_ApplyFlash(Em *em)
 {
-    u16 st;
-    u8 g;
+    u16 flashState;
+    u8 group;
 
     switch (em->type) {
     case 0xE:
@@ -11971,9 +13188,9 @@ void Em_ApplyFlash(Em *em)
     case 0x2A:
     case 0x31:
         if (em->stance == 2) {
-            st = 9;
+            flashState = 9;
         } else {
-            st = 10;
+            flashState = 10;
         }
         break;
     case 0x6:
@@ -11981,25 +13198,25 @@ void Em_ApplyFlash(Em *em)
     case 0x26:
     case 0x27:
         if (em->stance == 2) {
-            st = 9;
+            flashState = 9;
         } else {
-            st = 10;
+            flashState = 10;
         }
         break;
     case 0x11:
     case 0x16:
     case 0x2F:
         if (em->stance == 2) {
-            st = 9;
+            flashState = 9;
         } else {
-            st = 10;
+            flashState = 10;
         }
         break;
     case 0x28:
         if (em->stance == 2) {
-            st = 9;
+            flashState = 9;
         } else {
-            st = 10;
+            flashState = 10;
         }
         break;
     case 0xE:
@@ -12007,32 +13224,32 @@ void Em_ApplyFlash(Em *em)
     case 0x2B:
     case 0x2C:
         if (em->stance == 2) {
-            st = 9;
+            flashState = 9;
         } else {
-            g = em->stateGroup;
-            if (g == 4 || (g == 0 && em->state == 0x1C) || (g == 0 && em->state == 0x1D)
-                || (g == 0 && em->state == 0x21) || (g == 4 && em->state == 6)
-                || (g == 4 && em->state == 0xD) || (g == 4 && em->state == 0xE)
-                || (g == 4 && em->state == 0x11) || (g == 4 && em->state == 0x12)) {
+            group = em->stateGroup;
+            if (group == 4 || (group == 0 && em->state == 0x1C) || (group == 0 && em->state == 0x1D)
+                || (group == 0 && em->state == 0x21) || (group == 4 && em->state == 6)
+                || (group == 4 && em->state == 0xD) || (group == 4 && em->state == 0xE)
+                || (group == 4 && em->state == 0x11) || (group == 4 && em->state == 0x12)) {
                 return;
             }
-            st = 10;
+            flashState = 10;
         }
         break;
     case 0x2:
     case 0x24:
     case 0x47:
         if (em->stance == 2) {
-            st = 8;
+            flashState = 8;
         } else {
-            st = 7;
+            flashState = 7;
         }
         break;
     case 0x9:
     case 0x17:
         if (em->stance == 0 && em->stateGroup != 4 && em->stateGroup != 5 && em->stateGroup != 6
             && Player_IsState((Player *) em, 4, 2) == 0) {
-            st = 2;
+            flashState = 2;
             Em_StartBlind(em);
             em->timer = em->blindTimer;
             break;
@@ -12043,7 +13260,7 @@ void Em_ApplyFlash(Em *em)
         default:
             if (Player_IsState((Player *) em, 4, 2) == 0 && Player_IsState((Player *) em, 4, 4) == 0) {
                 if (em->stance == 0) {
-                    st = 2;
+                    flashState = 2;
                 }
                 em->blind = 10;
                 Em_StartBlind(em);
@@ -12059,7 +13276,7 @@ void Em_ApplyFlash(Em *em)
     case 0x4:
         if (em->stance == 0 && em->stateGroup != 4 && em->stateGroup != 5 && em->stateGroup != 6
             && Player_IsState((Player *) em, 4, 4) == 0) {
-            st = 4;
+            flashState = 4;
             Em_StartBlind(em);
             em->timer = em->blindTimer;
             break;
@@ -12070,42 +13287,42 @@ void Em_ApplyFlash(Em *em)
     case 0x1E:
     case 0x23:
         if (em->stance == 2) {
-            st = 1;
+            flashState = 1;
         } else {
-            st = 5;
+            flashState = 5;
         }
         break;
     case 0x1B:
     case 0x1C:
     case 0x1F:
         if (em->stance == 2) {
-            st = 1;
+            flashState = 1;
         } else {
-            st = 5;
+            flashState = 5;
         }
         break;
     case 0xC:
     case 0x19:
     case 0x46:
-        st = 5;
+        flashState = 5;
         break;
     case 0x15:
     case 0x2E:
         switch (em->stance) {
         case 0:
-            st = 10;
+            flashState = 10;
             break;
         case 1:
-            st = 4;
+            flashState = 4;
             break;
         case 4:
-            st = 0x11;
+            flashState = 0x11;
             break;
         case 2:
-            st = 9;
+            flashState = 9;
             break;
         default:
-            st = 10;
+            flashState = 10;
             break;
         }
         break;
@@ -12113,36 +13330,36 @@ void Em_ApplyFlash(Em *em)
     case 0x22:
         switch (em->stance) {
         case 0:
-            st = 10;
+            flashState = 10;
             break;
         case 1:
-            st = 4;
+            flashState = 4;
             break;
         case 4:
-            st = 0x11;
+            flashState = 0x11;
             break;
         case 2:
-            st = 9;
+            flashState = 9;
             break;
         default:
-            st = 10;
+            flashState = 10;
             break;
         }
         break;
     case 0x3:
     case 0x45:
-        st = 4;
+        flashState = 4;
         break;
     case 0x13:
     case 0x18:
         if (em->stance != 2) {
-            st = 5;
+            flashState = 5;
         } else {
-            st = 4;
+            flashState = 4;
         }
         break;
     case 0x21:
-        st = 4;
+        flashState = 4;
         break;
     case 0x33:
     case 0x34:
@@ -12150,12 +13367,12 @@ void Em_ApplyFlash(Em *em)
     case 0x3D:
     case 0x3E:
         if (em->stance == 2) {
-            st = 7;
+            flashState = 7;
         } else {
             if (EmBlangonga_IgnoresFlash(em) == 1) {
                 return;
             }
-            st = 1;
+            flashState = 1;
         }
         break;
     case 0x36:
@@ -12163,24 +13380,31 @@ void Em_ApplyFlash(Em *em)
     case 0x40:
     case 0x41:
         if (em->stance == 2 || em->stance == 1) {
-            st = 9;
+            flashState = 9;
         } else {
-            st = 10;
+            flashState = 10;
         }
         break;
     case 0x3B:
         if (em->stance == 2) {
-            st = 9;
+            flashState = 9;
         } else {
-            st = 10;
+            flashState = 10;
         }
         break;
     }
     em->scriptPending = 0;
     /* the game reads a register it never set: st is s0, still the caller's, after case 0x39 with em->stance != 0 */
-    Em_ChangeState(em, 4, st, 3);
+    Em_ChangeState(em, 4, flashState, 3);
 }
 
+/*
+ * Called by GmEm_Update when a grounded monster's flash blindness
+ * (blindTimer) runs out outside EM_GROUP_REACT: puts it into an idle state
+ * that plays one motion. The Rathalos family goes to RATH_IDLE_SHAKE_OFF
+ * (0x19), the Cephadrome kinds to state 7, the Plesioth kinds to state 7 only
+ * on the ground; other kinds are left as they are.
+ */
 void Em_ForceState19(Em *em)
 {
     switch (em->type) {
@@ -12242,18 +13466,28 @@ void Em_ForceState19(Em *em)
     }
 }
 
+/*
+ * The monster's per-frame poison and status build-ups, from the kind's
+ * parameter tables (GmEm_Update, outside EM_GROUP_DEFEAT). While poisoned
+ * (statusFlags bit 4) it counts poisonDamage down, shows the poison effect
+ * once a second, and at each poisonTimer tick takes the kind's poison damage
+ * off hp (hp stays at 1 under guardTimer and for a large monster). When the
+ * poison ends, up to four times (poisonCount) poisonThreshold rises by the
+ * kind's step. The build-ups of poison and of statuses 4, 5, 1 and 2 not
+ * running lose decayAmount every decayInterval frames.
+ */
 void Em_UpdateStatus(Em *em)
 {
-    u8 *param = (u8 *) gEmStatusParams[em->type];
-    EmStatusParam *p4 = gEmStatus4Params[em->type];
-    EmStatusParam *p5 = gEmStatus5Params[em->type];
-    EmStatusParam *p2;
-    EmStatusParam *p1 = gEmStatus1Params[em->type];
+    u8 *poisonParam = (u8 *) gEmStatusParams[em->type];
+    EmStatusParam *status4Param = gEmStatus4Params[em->type];
+    EmStatusParam *status5Param = gEmStatus5Params[em->type];
+    EmStatusParam *status2Param;
+    EmStatusParam *status1Param = gEmStatus1Params[em->type];
     f32 pos[3];
     s32 bone;
     f32 scale;
 
-    p2 = gEmStatus2Params[em->type];
+    status2Param = gEmStatus2Params[em->type];
 
     if (em->statusFlags & 4) {
         if (--em->poisonDamage > 0) {
@@ -12424,8 +13658,8 @@ void Em_UpdateStatus(Em *em)
                 Effect06_SpawnAt(em, 3, bone, pos, scale);
             }
             if (--em->poisonTimer <= 0) {
-                em->poisonTimer = *(s16 *)(param + 0xA);
-                em->hp -= *(s16 *)(param + 6);
+                em->poisonTimer = *(s16 *)(poisonParam + 0xA);
+                em->hp -= *(s16 *)(poisonParam + 6);
                 if (em->hp <= 0 && ((s8) em->guardTimer > 0 || em->large != 0)) {
                     em->hp = 1;
                 }
@@ -12436,13 +13670,13 @@ void Em_UpdateStatus(Em *em)
             em->statusFlags &= ~4;
             if (em->poisonCount < 4) {
                 em->poisonCount++;
-                em->poisonThreshold += *(s16 *)(param + 0xC);
+                em->poisonThreshold += *(s16 *)(poisonParam + 0xC);
             }
         }
     } else if (em->poisonBuildup != 0) {
         if (--em->poisonTimer <= 0) {
-            em->poisonTimer = *(s16 *)(param + 2);
-            em->poisonBuildup -= *(s16 *)(param + 4);
+            em->poisonTimer = *(s16 *)(poisonParam + 2);
+            em->poisonBuildup -= *(s16 *)(poisonParam + 4);
             if (em->poisonBuildup <= 0) {
                 em->poisonBuildup = 0;
                 em->poisonTimer = 0;
@@ -12451,8 +13685,8 @@ void Em_UpdateStatus(Em *em)
     }
     if (!(em->statusFlags & 8) && em->status4Buildup != 0) {
         if (--em->status4Decay <= 0) {
-            em->status4Decay = p4->decayInterval;
-            em->status4Buildup -= p4->decayAmount;
+            em->status4Decay = status4Param->decayInterval;
+            em->status4Buildup -= status4Param->decayAmount;
             if (em->status4Buildup <= 0) {
                 em->status4Buildup = 0;
                 em->status4Decay = 0;
@@ -12461,8 +13695,8 @@ void Em_UpdateStatus(Em *em)
     }
     if (!(em->statusFlags & 0x10) && em->status5Buildup != 0) {
         if (--em->status5Decay <= 0) {
-            em->status5Decay = p5->decayInterval;
-            em->status5Buildup -= p5->decayAmount;
+            em->status5Decay = status5Param->decayInterval;
+            em->status5Buildup -= status5Param->decayAmount;
             if (em->status5Buildup <= 0) {
                 em->status5Buildup = 0;
                 em->status5Decay = 0;
@@ -12471,8 +13705,8 @@ void Em_UpdateStatus(Em *em)
     }
     if (!(em->statusFlags & 1) && em->status1Buildup != 0) {
         if (--em->status1Decay <= 0) {
-            em->status1Decay = p1->decayInterval;
-            em->status1Buildup -= p1->decayAmount;
+            em->status1Decay = status1Param->decayInterval;
+            em->status1Buildup -= status1Param->decayAmount;
             if (em->status1Buildup <= 0) {
                 em->status1Buildup = 0;
                 em->status1Decay = 0;
@@ -12481,8 +13715,8 @@ void Em_UpdateStatus(Em *em)
     }
     if (!(em->statusFlags & 2) && em->status2Buildup != 0) {
         if (--em->status2Decay <= 0) {
-            em->status2Decay = p2->decayInterval;
-            em->status2Buildup -= p2->decayAmount;
+            em->status2Decay = status2Param->decayInterval;
+            em->status2Buildup -= status2Param->decayAmount;
             if (em->status2Buildup <= 0) {
                 em->status2Buildup = 0;
                 em->status2Decay = 0;
@@ -12491,14 +13725,21 @@ void Em_UpdateStatus(Em *em)
     }
 }
 
-void Em_AddPoison(Em *em, s32 arg)
+/*
+ * Adds amount to the monster's poison build-up; nothing for 0, an immune kind
+ * (poisonThreshold 0) or a versus team with flag 1 (Versus_TeamHasFlag).
+ * While poisoned the build-up stays just under the threshold; reaching it
+ * poisons the monster (statusFlags bit 4, poisonDamage the poison's duration,
+ * the first tick at once).
+ */
+void Em_AddPoison(Em *em, s32 amount)
 {
     s16 max;
     u8 *param;
 
     param = (u8 *) gEmStatusParams[em->type];
-    if (Versus_TeamHasFlag((void *) em, 1U) != 1 && arg != 0 && em->poisonThreshold > 0) {
-        em->poisonBuildup = em->poisonBuildup + arg;
+    if (Versus_TeamHasFlag((void *) em, 1U) != 1 && amount != 0 && em->poisonThreshold > 0) {
+        em->poisonBuildup = em->poisonBuildup + amount;
         if (em->statusFlags & 4) {
             max = em->poisonThreshold;
             if (em->poisonBuildup >= max) {
@@ -12516,14 +13757,20 @@ void Em_AddPoison(Em *em, s32 arg)
     }
 }
 
-void Em_AddStatus4(Em *em, s32 arg)
+/*
+ * Adds amount to the status 4 build-up; nothing for 0, an immune kind
+ * (status4Threshold 0) or a versus team with flag 0. Only while status 4 is
+ * not pending (statusFlags bit 8); reaching status4Threshold sets that bit,
+ * which Em_PickStatus turns into the status.
+ */
+void Em_AddStatus4(Em *em, s32 amount)
 {
     EmStatusParam *param;
 
     param = gEmStatus4Params[em->type];
-    if (Versus_TeamHasFlag((void *) em, 0U) != 1 && arg != 0 && em->status4Threshold > 0) {
+    if (Versus_TeamHasFlag((void *) em, 0U) != 1 && amount != 0 && em->status4Threshold > 0) {
         if (!(em->statusFlags & 8)) {
-            em->status4Buildup = em->status4Buildup + arg;
+            em->status4Buildup = em->status4Buildup + amount;
             em->status4Decay = param->decayInterval;
         }
         if (em->status4Buildup >= em->status4Threshold) {
@@ -12532,6 +13779,10 @@ void Em_AddStatus4(Em *em, s32 arg)
     }
 }
 
+/*
+ * As Em_AddStatus4 for status 5, the stun (statusFlags bit 0x10,
+ * status5Threshold), without the versus check.
+ */
 void Em_AddStatus5(Em *em, s32 amount)
 {
     EmStatusParam *prm = gEmStatus5Params[em->type];
@@ -12547,14 +13798,18 @@ void Em_AddStatus5(Em *em, s32 amount)
     }
 }
 
-void Em_AddStatus2(Em *em, s32 arg)
+/*
+ * As Em_AddStatus4 for status 2 (statusFlags bit 2, status2Threshold; versus
+ * flag 2).
+ */
+void Em_AddStatus2(Em *em, s32 amount)
 {
     EmStatusParam *param;
 
     param = gEmStatus2Params[em->type];
-    if (Versus_TeamHasFlag((void *) em, 2U) != 1 && arg != 0 && em->status2Threshold > 0) {
+    if (Versus_TeamHasFlag((void *) em, 2U) != 1 && amount != 0 && em->status2Threshold > 0) {
         if (!(em->statusFlags & 2)) {
-            em->status2Buildup = em->status2Buildup + arg;
+            em->status2Buildup = em->status2Buildup + amount;
             em->status2Decay = param->decayInterval;
         }
         if (em->status2Buildup >= em->status2Threshold) {
@@ -12563,14 +13818,18 @@ void Em_AddStatus2(Em *em, s32 arg)
     }
 }
 
-void Em_AddStatus1(Em *em, s32 status1)
+/*
+ * As Em_AddStatus4 for status 1 (statusFlags bit 1, status1Threshold; versus
+ * flag 2).
+ */
+void Em_AddStatus1(Em *em, s32 amount)
 {
     EmStatusParam *param;
 
     param = gEmStatus1Params[em->type];
-    if (Versus_TeamHasFlag((void *) em, 2U) != 1 && status1 != 0 && em->status1Threshold > 0) {
+    if (Versus_TeamHasFlag((void *) em, 2U) != 1 && amount != 0 && em->status1Threshold > 0) {
         if (!(em->statusFlags & 1)) {
-            em->status1Buildup = em->status1Buildup + status1;
+            em->status1Buildup = em->status1Buildup + amount;
             em->status1Decay = param->decayInterval;
         }
         if (em->status1Buildup >= em->status1Threshold) {
@@ -12611,6 +13870,11 @@ void Em_SetStatus1Timer(Em *em)
     em->scriptPending = 0;
 }
 
+/*
+ * Sets timer for the reaction to attack kind 0x13 (EM_DMG_ATTACK13): the
+ * kind's row of gEmKindTimerValues (by gEmKindTimerIndex[type]), or 10 when
+ * it has none. Also clears scriptPending.
+ */
 void Em_ResetKindTimer(Em *em)
 {
     s8 i = gEmKindTimerIndex[em->type];
@@ -12631,39 +13895,39 @@ s32 Em_HasKindTimer(Em *em)
 /* sums the damage taken per part (scaled by unk728) into *sum and *neg, and passes it on */
 void Em_PickDamagedPart(Em *em, s16 *sum, s16 *neg)
 {
-    EmDamageView *v = (EmDamageView *) em;
+    EmDamageView *view = (EmDamageView *) em;
     u8 best;
     u32 i;
     s16 max;
-    s16 d;
-    u8 *t;
+    s16 damage;
+    u8 *weakRow;
 
     max = 0;
     best = 0;
-    t = gEmDamagedPartTbls[em->type];
+    weakRow = gEmDamagedPartTbls[em->type];
     for (i = 0; i < 8; i++) {
-        d = v->part[i] * em->damageFactor;
-        if (v->part[i] > 0 && d == 0) {
-            d = 1;
+        damage = view->part[i] * em->damageFactor;
+        if (view->part[i] > 0 && damage == 0) {
+            damage = 1;
         }
-        if (d < 0) {
-            *neg -= d;
+        if (damage < 0) {
+            *neg -= damage;
         } else {
-            *sum += d;
-            if (max < v->part[i]) {
-                max = v->part[i];
+            *sum += damage;
+            if (max < view->part[i]) {
+                max = view->part[i];
                 best = i;
             }
         }
     }
-    if (t != NULL) {
-        if ((v->partFlags[t[0]] & t[1]) == t[1]) {
-            v->weak = v->part[t[0]];
-            if (v->weak < 0) {
-                v->weak = 0;
+    if (weakRow != NULL) {
+        if ((view->partFlags[weakRow[0]] & weakRow[1]) == weakRow[1]) {
+            view->weak = view->part[weakRow[0]];
+            if (view->weak < 0) {
+                view->weak = 0;
             }
         } else {
-            v->weak = 0;
+            view->weak = 0;
         }
     }
     if (em->rage == 0 && *sum > 0) {
@@ -12671,14 +13935,18 @@ void Em_PickDamagedPart(Em *em, s16 *sum, s16 *neg)
     }
     em->flinchPart = best;
     if ((s8) em->guardTimer <= 0) {
-        Em_AddStatus1(em, v->status1);
-        Em_AddStatus2(em, v->status2);
-        Em_AddPoison(em, v->poison);
-        Em_AddStatus4(em, v->status4);
-        Em_AddStatus5(em, v->status5);
+        Em_AddStatus1(em, view->status1);
+        Em_AddStatus2(em, view->status2);
+        Em_AddPoison(em, view->poison);
+        Em_AddStatus4(em, view->status4);
+        Em_AddStatus5(em, view->status5);
     }
 }
 
+/*
+ * Breaks each part (0 to 15) set in partsToBreak and not yet in partsBroken
+ * (Em_BreakPart), then adds partsToBreak to partsBroken.
+ */
 void Em_ApplyPartBreaks(Em *em)
 {
     s32 i;
@@ -12703,31 +13971,51 @@ void Em_FlagPartBreak(Em *em, s32 part)
     *(u16 *)((u8 *)em + 0x9A6) = (u16) (*(u16 *)((u8 *)em + 0x9A6) | ((1 << (part & 0xFFFF)) & 0xFFFF));
 }
 
-s32 func_00725820(Em *em, s32 arg1)
+/*
+ * Returns 1 when result, an Em_UpdateDamage result, is a reaction (anything
+ * but EM_DMG_NONE, EM_DMG_KILLED and EM_DMG_DEAD), else 0; em is unused. The
+ * Kushala, Blangonga and Chameleos families' Update functions break parts
+ * when it returns 1.
+ */
+s32 Em_DamageResultIsReaction(Em *em, s32 result)
 {
-    s32 temp_a0;
+    s32 code;
 
-    temp_a0 = arg1 & 0xFF;
-    if ((temp_a0 != 0) && (temp_a0 != 1) && (temp_a0 != 2)) {
+    code = result & 0xFF;
+    if ((code != 0) && (code != 1) && (code != 2)) {
         return 1;
     }
     return 0;
 }
 
 void Em_ResetPartHp(Em *em, u32 i);
+/*
+ * Settles the monster's last hit and statuses and returns an EmDamageResult
+ * (EM_DMG_NONE when there is nothing to react to); *out gets combat as it was
+ * on entry. In EM_GROUP_DEFEAT it returns EM_DMG_NONE, and EM_DMG_DEAD at 0
+ * hp with no hit pending. On a hit it drops the pending triggers 0x02, 0x10,
+ * 0x20 and 0x40, takes the damage of Em_PickDamagedPart off hp and the parts'
+ * hp by partDamageMode, and breaks or flinches the parts that run out. Under
+ * guardTimer hp stays at 1 (EM_DMG_NONE); else 0 hp is EM_DMG_KILLED (a large
+ * monster dies only in the scene's area) and the hit starts combat. The
+ * result then comes from the attack kind (0x13, 9, 6), Em_PickStatus, a flash
+ * (EM_DMG_FLASH) or hitReactMode and the broken parts. Every result but
+ * EM_DMG_HIT also restarts the script (Em_RestartScript); Em_CheckKindRequest
+ * runs last.
+ */
 u8 Em_UpdateDamage(Em *em, u8 *out)
 {
-    EmDamageView *v = (EmDamageView *) em;
+    EmDamageView *view = (EmDamageView *) em;
     s16 sum;
     s16 neg;
     u8 broke;
     u8 first;
     s8 i;
-    s16 d;
+    s16 damage;
     u8 bit;
     s32 (*fn)(Em *);
-    u8 s;
-    u8 r;
+    u8 status;
+    u8 result;
 
     sum = 0;
     neg = 0;
@@ -12755,11 +14043,11 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
         switch (em->partDamageMode) {
         case 1:
             for (i = 0; i < 8; i++) {
-                d = v->part[i] * em->damageFactor;
-                if (v->part[i] > 0 && d == 0) {
-                    d = 1;
+                damage = view->part[i] * em->damageFactor;
+                if (view->part[i] > 0 && damage == 0) {
+                    damage = 1;
                 }
-                em->parts[0].hp -= d;
+                em->parts[0].hp -= damage;
                 if (em->parts[0].hp <= 0) {
                     broke = 1;
                     Em_ResetPartHp(em, 0);
@@ -12775,11 +14063,11 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
             break;
         case 8:
             for (i = 0; i < 8; i++) {
-                d = v->part[i] * em->damageFactor;
-                if (v->part[i] > 0 && d == 0) {
-                    d = 1;
+                damage = view->part[i] * em->damageFactor;
+                if (view->part[i] > 0 && damage == 0) {
+                    damage = 1;
                 }
-                em->parts[i].hp -= d;
+                em->parts[i].hp -= damage;
                 if (em->parts[i].hp <= 0) {
                     broke = 1;
                     Em_ResetPartHp(em, i);
@@ -12791,7 +14079,7 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
                         }
                     }
                     if (first != 0) {
-                        if (v->part[i] > v->part[em->flinchPart]) {
+                        if (view->part[i] > view->part[em->flinchPart]) {
                             em->flinchPart = i;
                         }
                     } else {
@@ -12804,11 +14092,11 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
         case 9:
             em->part8Down = 0;
             for (i = 0; i < 9; i++) {
-                d = v->part[i] * em->damageFactor;
-                if (v->part[i] > 0 && d == 0) {
-                    d = 1;
+                damage = view->part[i] * em->damageFactor;
+                if (view->part[i] > 0 && damage == 0) {
+                    damage = 1;
                 }
-                em->parts[i].hp -= d;
+                em->parts[i].hp -= damage;
                 if (em->parts[i].hp <= 0) {
                     if (i == 8) {
                         fn = em->handlers->unk18;
@@ -12835,7 +14123,7 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
                 reset:
                     Em_ResetPartHp(em, i);
                     if (first != 0) {
-                        if (i < 8 && v->part[i] > v->part[em->flinchPart]) {
+                        if (i < 8 && view->part[i] > view->part[em->flinchPart]) {
                             em->flinchPart = i;
                         }
                     } else {
@@ -12858,13 +14146,13 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
                 return 0;
             }
         } else {
-            if ((em->type == 7 || em->type == 0x32) && Area_DayId(em->area) != 0xC && em->hp < 1000) {
+            if ((em->type == 7 || em->type == 0x32) && Area_DayId(em->area) != AREA_FORTRESS_5 && em->hp < 1000) {
                 em->hp = 1000;
             }
-            if (em->type == 0x37 && Area_BaseId(gScene.map) == 1 && Area_DayId(em->area) != 0xC && em->hp < 1000) {
+            if (em->type == 0x37 && Map_DayId(gScene.map) == MAP_FORTRESS && Area_DayId(em->area) != AREA_FORTRESS_5 && em->hp < 1000) {
                 em->hp = 1000;
             }
-            if ((em->type == 0x3A || em->type == 0x48) && Area_BaseId(gScene.map) == 0xF && Area_DayId(em->area) != 0x7C && em->hp < 1000) {
+            if ((em->type == 0x3A || em->type == 0x48) && Map_DayId(gScene.map) == MAP_TOWER_C && Area_DayId(em->area) != AREA_TOWER_0x7C && em->hp < 1000) {
                 em->hp = 1000;
             }
             if (em->hp <= 0) {
@@ -12885,68 +14173,68 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
             Em_SetCombat(em, 1, gEmCombatInit[em->type]);
         }
         if (Em_IsHeld(em) != 1 && em->lastAttackKind == 0x13 && Em_HasKindTimer(em) == 1) {
-            r = 0x12;
+            result = 0x12;
             goto end;
         }
         if ((s8) em->holdTimer == 0) {
             if (em->lastAttackKind == 9) {
-                r = 3;
+                result = 3;
                 goto end;
             }
             if (em->lastAttackKind == 6) {
-                r = 4;
+                result = 4;
                 goto end;
             }
         }
     }
-    if ((s = Em_PickStatus(em)) != 0 || em->flashed != 0) {
+    if ((status = Em_PickStatus(em)) != 0 || em->flashed != 0) {
         Em_SetCombat(em, 1, gEmCombatInit[em->type]);
     }
-    if (s == 1) {
-        r = 5;
-    } else if (s == 4) {
-        r = 6;
-    } else if (s == 2 && Em_IsHeld(em) == 1 && Em_NearLowHp(em) == 1) {
-        r = 7;
+    if (status == 1) {
+        result = 5;
+    } else if (status == 4) {
+        result = 6;
+    } else if (status == 2 && Em_IsHeld(em) == 1 && Em_NearLowHp(em) == 1) {
+        result = 7;
     } else {
         if (Em_IsHeld(em) == 0 || Em_NearLowHp(em) == 0) {
             em->statusFlags &= 0xFE;
         }
-        if (s == 3) {
-            r = 8;
-        } else if (s == 5) {
-            r = 0x11;
+        if (status == 3) {
+            result = 8;
+        } else if (status == 5) {
+            result = 0x11;
         } else if (em->flashed != 0) {
             em->flashed = 0;
             Em_ApplyFlash(em);
-            r = 9;
+            result = 9;
         } else if (em->hitReceived != 0) {
             if (em->hitReactMode == 2) {
-                r = 0xA;
+                result = 0xA;
             } else {
                 if (em->hitReactMode != 4 && Em_IsHeld(em) == 0) {
                     em->hitReactMode = 0;
                 }
                 if (em->part8Down != 0) {
-                    r = 0xB;
+                    result = 0xB;
                 } else if (em->stateGroup == 4) {
                     return 0;
                 } else if (em->lastAttackKind == 5) {
                     if (broke) {
-                        r = 0x10;
+                        result = 0x10;
                     } else {
-                        r = 0xF;
+                        result = 0xF;
                     }
                 } else if (broke) {
-                    r = 0xC;
+                    result = 0xC;
                 } else {
                     if (em->hitReactMode == 3) {
-                        r = 0xD;
+                        result = 0xD;
                     } else {
                         if (Em_IsHeld(em) == 1) {
                             return 0;
                         }
-                        r = 0xE;
+                        result = 0xE;
                         Em_SelectSightRow(em, 0);
                         Em_LoadReactionSet(em, 0);
                         if (*out == 0 || em->hitReactMode != 0) {
@@ -12961,20 +14249,31 @@ u8 Em_UpdateDamage(Em *em, u8 *out)
         }
     }
 end:
-    if (r != 0xE) {
+    if (result != 0xE) {
         em->scriptPending = 0;
         Em_RestartScript(em);
-        Player_ClearFlag((Player *)em, 0x20000);
+        Player_ClearFlag((Player *)em, PLF_NO_ROOT_MOVE);
     }
     Em_CheckKindRequest(em);
-    return r;
+    return result;
 }
 
-static void EmScript_SetVar95E(Em *em, u8 *script, s32 v)
+/*
+ * Sets scriptAbort to value (script is unused). Nonzero makes EmScript_Run
+ * restart the monster's script (Em_RestartScript) before its next command.
+ * EmScript_Run passes 2 when one run reaches 1000 commands.
+ */
+static void EmScript_SetAbort(Em *em, u8 *script, s32 value)
 {
-    em->scriptAbort = (u8) v;
+    em->scriptAbort = (u8) value;
 }
 
+/*
+ * Resets the monster's script state at its set-up: no call or restart
+ * pending, scriptPlayer -1 (none), the kind's script set (GmLoad_GetEmData)
+ * loaded into script, script 0 started as the main script, the loop and the
+ * area sequence off, destArea and prevArea 0xFFFF (none), the goal cleared.
+ */
 void EmScript_Init(Em *em)
 {
 
@@ -13003,22 +14302,33 @@ void EmScript_Init(Em *em)
     em->curGoalNo = 0;
 }
 
+/*
+ * Runs the monster's script from where it stopped until a command ends the
+ * run; nothing in EM_GROUP_DEFEAT and EM_GROUP_EVENT. It applies a requested
+ * restart (EmScript_Restart), then starts at the first pending trigger's
+ * script (EmScript_PickTrigger) or the thread's saved position
+ * (EmScript_GetPos). Each pass reads the op byte and calls its handler, which
+ * returns the next command. Command 5 reads a group, a state and
+ * routedStateArg, changes state (Em_ChangeStateRouted, not when remote),
+ * saves the position and ends the run. scriptAbort, a NULL pointer or an
+ * unknown op restart the script; 1000 commands in one run set scriptAbort.
+ */
 void EmScript_Run(Em *em)
 {
     u8 run;
     u8 *script;
-    s32 n;
-    s32 a;
-    s32 b;
+    s32 commandCount;
+    s32 group;
+    s32 state;
     s32 self;
 
     run = 1;
     self = (s32) em;
-    n = 0;
-    if (em->stateGroup == 5) {
+    commandCount = 0;
+    if (em->stateGroup == EM_GROUP_DEFEAT) {
         return;
     }
-    if (em->stateGroup == 6) {
+    if (em->stateGroup == EM_GROUP_EVENT) {
         return;
     }
     em->noReact = 0;
@@ -13027,9 +14337,9 @@ void EmScript_Run(Em *em)
         script = EmScript_GetPos(em);
     }
     while (run) {
-        n++;
-        if (n >= 1000) {
-            EmScript_SetVar95E(em, script, 2);
+        commandCount++;
+        if (commandCount >= 1000) {
+            EmScript_SetAbort(em, script, 2);
         }
         if (em->scriptAbort != 0) {
             Em_RestartScript(em);
@@ -13042,13 +14352,13 @@ void EmScript_Run(Em *em)
         }
         switch (*script) {
         case 0x01:
-            script = EmScript_Op01(em, script + 1);
+            script = EmScript_IfSensed(em, script + 1);
             break;
         case 0x02:
-            script = EmScript_Op02(em, script + 1);
+            script = EmScript_IfNoticed(em, script + 1);
             break;
         case 0x03:
-            script = EmScript_Op03(em, script + 1);
+            script = EmScript_IfCanEnterNextArea(em, script + 1);
             break;
         case 0x04:
             em->scriptNo = 0;
@@ -13056,385 +14366,385 @@ void EmScript_Run(Em *em)
             break;
         case 0x05:
             script++;
-            a = *script++;
-            b = *script++;
+            group = *script++;
+            state = *script++;
             em->routedStateArg = *script++;
             if (em->remote == 0) {
-                Em_ChangeStateRouted(em, a, b, 1);
+                Em_ChangeStateRouted(em, group, state, 1);
             }
             EmScript_SetPos(em, script);
             run = 0;
             break;
         case 0x06:
-            script = EmScript_Op06(em, script + 1);
+            script = EmScript_SetGoal(em, script + 1);
             break;
         case 0x07:
             script = (u8 *) EmScript_Start(em, script + 1);
             break;
         case 0x08:
-            script = EmScript_Op08(em, script + 1);
+            script = EmScript_IfOnGround(em, script + 1);
             break;
         case 0x1F:
-            script = EmScript_Op1F(em, script + 1);
+            script = EmScript_IfStanceFamily(em, script + 1);
             break;
         case 0x09:
-            script = EmScript_Op09(em, script + 1);
+            script = EmScript_IfInAir(em, script + 1);
             break;
         case 0x0A:
-            script = EmScript_Op0A(em, script + 1);
+            script = EmScript_SetHitReactMode(em, script + 1);
             break;
         case 0x0B:
-            script = EmScript_Op0B(em, script + 1);
+            script = EmScript_IfCombatIs(em, script + 1);
             break;
         case 0x0C:
-            script = EmScript_Op0C(em, script + 1);
+            script = EmScript_SetVar(em, script + 1);
             break;
         case 0x0D:
-            script = EmScript_Op0D(em, script + 1);
+            script = EmScript_ClearVar(em, script + 1);
             break;
         case 0x0E:
-            script = EmScript_Op0E(em, script + 1);
+            script = EmScript_IfInArea(em, script + 1);
             break;
         case 0x0F:
-            script = EmScript_Op0F(em, script + 1);
+            script = EmScript_StartLoop(em, script + 1);
             break;
         case 0x10:
-            script = EmScript_Op10(em, script + 1);
+            script = EmScript_NextLoopPoint(em, script + 1);
             break;
         case 0x11:
-            script = EmScript_Op11(em, script + 1);
+            script = EmScript_GoalAlertedPlayer(em, script + 1);
             break;
         case 0x12:
-            script = EmScript_Op12(em, script + 1);
+            script = EmScript_GoalNoticedPlayer(em, script + 1);
             break;
         case 0x13:
-            script = EmScript_Op13(em, script + 1);
+            script = EmScript_GoalScriptPlayer(em, script + 1);
             break;
         case 0x14:
-            script = EmScript_Op14(em, script + 1);
+            script = EmScript_IfTargetOffHeading(em, script + 1);
             break;
         case 0x15:
-            script = EmScript_Op15(em, script + 1);
+            script = EmScript_SwitchArea(em, script + 1);
             break;
         case 0x16:
             script = EmScript_Call(em, script + 1);
             break;
         case 0x17:
-            script = EmScript_Op17(em, script + 1);
+            script = EmScript_SetAreaSeq(em, script + 1);
             break;
         case 0x18:
-            script = EmScript_Op18(em, script + 1);
+            script = EmScript_StepAreaSeq(em, script + 1);
             break;
         case 0x19:
-            script = EmScript_Op19(em, script + 1);
+            script = EmScript_GoalDestArea(em, script + 1);
             break;
         case 0x1A:
-            script = EmScript_Op1A(em, script + 1);
+            script = EmScript_GoalAreaToward(em, script + 1);
             break;
         case 0x1B:
-            script = EmScript_Op1B(em, script + 1);
+            script = EmScript_IfRequestedIs(em, script + 1);
             break;
         case 0x1C:
-            script = EmScript_Op1C(em, script + 1);
+            script = EmScript_SwitchHpPercent(em, script + 1);
             break;
         case 0x1D:
-            script = EmScript_Op1D(em, script + 1);
+            script = EmScript_SwitchRequestId(em, script + 1);
             break;
         case 0x1E:
-            script = EmScript_Op1E(em, script + 1);
+            script = EmScript_SetRequest(em, script + 1);
             break;
         case 0x20:
-            script = EmScript_Op20(em, script + 1);
+            script = EmScript_SwitchTargetAngle(em, script + 1);
             break;
         case 0x21:
-            script = EmScript_Op21(em, script + 1);
+            script = EmScript_IfNeed2Low(em, script + 1);
             break;
         case 0x22:
-            script = EmScript_Op22(em, script + 1);
+            script = EmScript_IfGoalNearXZ(em, script + 1);
             break;
         case 0x36:
-            script = EmScript_Op36(em, script + 1);
+            script = EmScript_IfGoalNear(em, script + 1);
             break;
         case 0x23:
-            script = EmScript_Op23(em, script + 1);
+            script = EmScript_SwitchKindInArea(em, script + 1);
             break;
         case 0x24:
-            script = EmScript_Op24(em, script + 1);
+            script = EmScript_Repeat(em, script + 1);
             break;
         case 0x25:
-            script = EmScript_Op25(em, script + 1);
+            script = EmScript_StopRepeat(em, script + 1);
             break;
         case 0x26:
-            script = EmScript_Op26(em, script + 1);
+            script = EmScript_SetNoAlert(em, script + 1);
             break;
         case 0x27:
-            script = EmScript_Op27(em, script + 1);
+            script = EmScript_SwitchVariant(em, script + 1);
             break;
         case 0x28:
-            script = EmScript_Op28(em, script + 1);
+            script = EmScript_IfPlayerInArea(em, script + 1);
             break;
         case 0x29:
-            script = EmScript_Op29(em, script + 1);
+            script = EmScript_IfAreaTimer1Over(em, script + 1);
             break;
         case 0x2A:
-            script = EmScript_Op2A(em, script + 1);
+            script = EmScript_IfAreaTimer2Over(em, script + 1);
             break;
         case 0x2B:
-            script = EmScript_Op2B(em, script + 1);
+            script = EmScript_IfVarIs(em, script + 1);
             break;
         case 0x2C:
-            script = EmScript_Op2C(em, script + 1);
+            script = EmScript_SwitchKindGroup(em, script + 1);
             break;
         case 0x70:
-            script = EmScript_Op70(em, script + 1);
+            script = EmScript_SwitchType(em, script + 1);
             break;
         case 0x2D:
-            script = EmScript_Op2D(em, script + 1);
+            script = EmScript_GoalActionGoal(em, script + 1);
             break;
         case 0x2E:
-            script = EmScript_Op2E(em, script + 1);
+            script = EmScript_SelectSightRow(em, script + 1);
             break;
         case 0x2F:
-            script = EmScript_Op2F(em, script + 1);
+            script = EmScript_IfPlayerCarrying(em, script + 1);
             break;
         case 0x30:
-            script = EmScript_Op30(em, script + 1);
+            script = EmScript_SetNeed4(em, script + 1);
             break;
         case 0x31:
-            script = EmScript_Op31(em, script + 1);
+            script = EmScript_SetGoalKind(em, script + 1);
             break;
         case 0x32:
-            script = EmScript_Op32(em, script + 1);
+            script = EmScript_IfHitReactMode(em, script + 1);
             break;
         case 0x33:
-            script = EmScript_Op33(em, script + 1);
+            script = EmScript_SwitchHitReactMode(em, script + 1);
             break;
         case 0x34:
-            script = EmScript_Op34(em, script + 1);
+            script = EmScript_IfState(em, script + 1);
             break;
         case 0x35:
-            script = EmScript_Op35(em, script + 1);
+            script = EmScript_IfRaging(em, script + 1);
             break;
         case 0x37:
-            script = EmScript_Op37(em, script + 1);
+            script = EmScript_IfDrill(em, script + 1);
             break;
         case 0x38:
-            script = EmScript_Op38(em, script + 1);
+            script = EmScript_IfOnPassThroughFloor(em, script + 1);
             break;
         case 0x39:
-            script = EmScript_Op39(em, script + 1);
+            script = EmScript_IfBlind(em, script + 1);
             break;
         case 0x3A:
-            script = EmScript_Op3A(em, script + 1);
+            script = EmScript_IfNoSenseDelay(em, script + 1);
             break;
         case 0x3B:
-            script = EmScript_Op3B(em, script + 1);
+            script = EmScript_IfLinked(em, script + 1);
             break;
         case 0x3C:
-            script = EmScript_Op3C(em, script + 1);
+            script = EmScript_IfLinkCombatSameArea(em, script + 1);
             break;
         case 0x3D:
-            script = EmScript_Op3D(em, script + 1);
+            script = EmScript_IfPrevArea(em, script + 1);
             break;
         case 0x3E:
-            script = EmScript_Op3E(em, script + 1);
+            script = EmScript_SwitchPrevArea(em, script + 1);
             break;
         case 0x3F:
-            script = EmScript_Op3F(em, script + 1);
+            script = EmScript_StartRoute(em, script + 1);
             break;
         case 0x40:
-            script = EmScript_Op40(em, script + 1);
+            script = EmScript_SetCombat(em, script + 1);
             break;
         case 0x41:
-            script = EmScript_Op41(em, script + 1);
+            script = EmScript_AddHp(em, script + 1);
             break;
         case 0x42:
-            script = EmScript_Op42(em, script + 1);
+            script = EmScript_IfGoalAngleOver(em, script + 1);
             break;
         case 0x69:
-            script = EmScript_Op69(em, script + 1);
+            script = EmScript_IfGoalAngleOverCapped(em, script + 1);
             break;
         case 0x44:
-            script = EmScript_Op44(em, script + 1);
+            script = EmScript_IfLinkSameArea(em, script + 1);
             break;
         case 0x45:
-            script = EmScript_Op45(em, script + 1);
+            script = EmScript_IfLonePlayerBait(em, script + 1);
             break;
         case 0x46:
-            script = EmScript_Op46(em, script + 1);
+            script = EmScript_IfScriptPlayerState(em, script + 1);
             break;
         case 0x47:
-            script = EmScript_Op47(em, script + 1);
+            script = EmScript_IfHooked(em, script + 1);
             break;
         case 0x48:
-            script = EmScript_Op48(em, script + 1);
+            script = EmScript_SetDelay(em, script + 1);
             break;
         case 0x49:
-            script = EmScript_Op49(em, script + 1);
+            script = EmScript_GoalPlayerFloorSpot(em, script + 1);
             break;
         case 0x4A:
-            script = EmScript_Op4A(em, script + 1);
+            script = EmScript_IfScriptPlayerSeen(em, script + 1);
             break;
         case 0x4B:
-            script = EmScript_Op4B(em, script + 1);
+            script = EmScript_SetAlertBuildup(em, script + 1);
             break;
         case 0x4C:
-            script = EmScript_Op4C(em, script + 1);
+            script = EmScript_SetNoticeCount(em, script + 1);
             break;
         case 0x4D:
-            script = EmScript_Op4D(em, script + 1);
+            script = EmScript_ComputeGoal(em, script + 1);
             break;
         case 0x4E:
-            script = EmScript_Op4E(em, script + 1);
+            script = EmScript_AddNeed2(em, script + 1);
             break;
         case 0x4F:
-            script = EmScript_Op4F(em, script + 1);
+            script = EmScript_AddNeed1(em, script + 1);
             break;
         case 0x50:
-            script = EmScript_Op50(em, script + 1);
+            script = EmScript_AddNeed3(em, script + 1);
             break;
         case 0x51:
-            script = EmScript_Op51(em, script + 1);
+            script = EmScript_IfStanceUnder(em, script + 1);
             break;
         case 0x52:
-            script = EmScript_Op52(em, script + 1);
+            script = EmScript_PickNoticedPlayerReachable(em, script + 1);
             break;
         case 0x53:
-            script = EmScript_Op53(em, script + 1);
+            script = EmScript_PickNoticedPlayerInArea(em, script + 1);
             break;
         case 0x54:
-            script = EmScript_Op54(em, script + 1);
+            script = EmScript_IfScriptPlayerInArea(em, script + 1);
             break;
         case 0x55:
-            script = EmScript_Op55(em, script + 1);
+            script = EmScript_IfScriptPlayerNoticeHigh(em, script + 1);
             break;
         case 0x56:
-            script = EmScript_Op56(em, script + 1);
+            script = EmScript_IfQuestId(em, script + 1);
             break;
         case 0x57:
-            script = EmScript_Op57(em, script + 1);
+            script = EmScript_SwitchQuestKey(em, script + 1);
             break;
         case 0x58:
-            script = EmScript_Op58(em, script + 1);
+            script = EmScript_GoalLinkTarget(em, script + 1);
             break;
         case 0x59:
-            script = EmScript_Op59(em, script + 1);
+            script = EmScript_IfOnCeiling(em, script + 1);
             break;
         case 0x5A:
-            script = EmScript_Op5A(em, script + 1);
+            script = EmScript_IfScriptPlayerFloorAttr(em, script + 1);
             break;
         case 0x5B:
-            script = EmScript_Op5B(em, script + 1);
+            script = EmScript_SetNoticeTimer(em, script + 1);
             break;
         case 0x5C:
-            script = EmScript_Op5C(em, script + 1);
+            script = EmScript_IfCeilingAbove(em, script + 1);
             break;
         case 0x5D:
-            script = EmScript_Op5D(em, script + 1);
+            script = EmScript_IfGoalValid(em, script + 1);
             break;
         case 0x5E:
-            script = EmScript_Op5E(em, script + 1);
+            script = EmScript_IfFloorAttr(em, script + 1);
             break;
         case 0x5F:
-            script = EmScript_Op5F(em, script + 1);
+            script = EmScript_PickNoticedPlayerSameFloor(em, script + 1);
             break;
         case 0x60:
-            script = EmScript_Op60(em, script + 1);
+            script = EmScript_IfGateOpen(em, script + 1);
             break;
         case 0x61:
-            script = EmScript_Op61(em, script + 1);
+            script = EmScript_SetAreaTimer2(em, script + 1);
             break;
         case 0x62:
-            script = EmScript_Op62(em, script + 1);
+            script = EmScript_SwitchScriptPlayerFloorAttr(em, script + 1);
             break;
         case 0x63:
-            script = EmScript_Op63(em, script + 1);
+            script = EmScript_IfVariantBits(em, script + 1);
             break;
         case 0x64:
-            script = EmScript_Op64(em, script + 1);
+            script = EmScript_IfScriptPlayerNoticeOver(em, script + 1);
             break;
         case 0x65:
-            script = EmScript_Op65(em, script + 1);
+            script = EmScript_ClearNoticeCounts(em, script + 1);
             break;
         case 0x66:
-            script = EmScript_Op66(em, script + 1);
+            script = EmScript_IfAnyPlayerRiding(em, script + 1);
             break;
         case 0x67:
-            script = EmScript_Op67(em, script + 1);
+            script = EmScript_IfNotRemote(em, script + 1);
             break;
         case 0x68:
-            script = (u8 *) EmScript_Op68(em, (s32) (script + 1));
+            script = (u8 *) EmScript_RestartMain(em, (s32) (script + 1));
             break;
         case 0x80:
-            script = EmScript_Op80(em, script + 1);
+            script = EmScript_RandomBranch(em, script + 1);
             break;
         case 0x81:
-            script = EmScript_Op81(em, script + 1);
+            script = EmScript_CallScript(em, script + 1);
             break;
         case 0x82:
-            script = EmScript_Op82(em, script + 1);
+            script = EmScript_JumpEntry(em, script + 1);
             break;
         case 0x83:
-            script = EmScript_Op83(em, script + 1);
+            script = EmScript_SwitchTargetDist(em, script + 1);
             break;
         case 0x84:
         case 0x7B:
-            EmScript_Op7B(em);
+            EmScript_AdvanceStateRand(em);
             script++;
             break;
         case 0xFF:
-            script = EmScript_OpFF(em, script + 1);
+            script = EmScript_End(em, script + 1);
             break;
         case 0x90:
-            script = EmScript_Op90(em, script + 1);
+            script = EmScript_PlaceAtPoint(em, script + 1);
             break;
         case 0x91:
-            script = EmScript_Op91(em, script + 1);
+            script = EmScript_FacePoint(em, script + 1);
             break;
         case 0x99:
-            script = EmScript_Op99(em, script + 1);
+            script = EmScript_SetHeading(em, script + 1);
             break;
         case 0x92:
-            script = (u8 *) EmScript_Op92(self, (s32) (script + 1));
+            script = (u8 *) EmScript_Nop(self, (s32) (script + 1));
             break;
         case 0x93:
-            script = (u8 *) EmScript_Op93(self, (s32) (script + 1));
+            script = (u8 *) EmScript_NopAlt(self, (s32) (script + 1));
             break;
         case 0x94:
-            script = EmScript_Op94(em, script + 1);
+            script = EmScript_SwitchScriptValue(em, script + 1);
             break;
         case 0x71:
-            script = EmScript_Op71(em, script + 1);
+            script = EmScript_IfLevelAtLeast(em, script + 1);
             break;
         case 0x72:
-            script = EmScript_Op72(em, script + 1);
+            script = EmScript_IfVersus(em, script + 1);
             break;
         case 0x73:
-            script = EmScript_Op73(em, script + 1);
+            script = EmScript_SwitchItemUseKind(em, script + 1);
             break;
         case 0x74:
-            script = EmScript_Op74(em, script + 1);
+            script = EmScript_IfVersusItemUsed(em, script + 1);
             break;
         case 0x75:
-            script = EmScript_Op75(em, script + 1);
+            script = EmScript_SwitchSpawnParam(em, script + 1);
             break;
         case 0x76:
-            script = EmScript_Op76(em, script + 1);
+            script = EmScript_SwitchSeason(em, script + 1);
             break;
         case 0x77:
-            script = EmScript_Op77(em, script + 1);
+            script = EmScript_IfDay(em, script + 1);
             break;
         case 0x78:
-            script = EmScript_Op78(em, script + 1);
+            script = EmScript_IfGoalPlayerInArc(em, script + 1);
             break;
         case 0x79:
-            script = EmScript_Op79(em, script + 1);
+            script = EmScript_SwitchKindQuery(em, script + 1);
             break;
         case 0x7A:
-            script = EmScript_Op7A(em, script + 1);
+            script = EmScript_SwitchBaseArea(em, script + 1);
             break;
         case 0x7C:
-            script = EmScript_Op7C(em, script + 1);
+            script = EmScript_IfInArena(em, script + 1);
             break;
 
         default:
@@ -13446,12 +14756,16 @@ void EmScript_Run(Em *em)
     em->scriptOffset = (s32) em->mainScriptPos - (s32)em->scriptPos;
 }
 
-void EmScript_Op7B(Em *em)
+void EmScript_AdvanceStateRand(Em *em)
 {
     em->stateRand++;
 }
 
-u8 *EmScript_Op01(Em *em, u8 *script)
+/*
+ * Test op 0x01: true when a player is within the monster's sense reach (a
+ * sensedPlayers bit of a quest player).
+ */
+u8 *EmScript_IfSensed(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
@@ -13490,7 +14804,11 @@ u8 *EmScript_Op01(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op02(Em *em, u8 *script)
+/*
+ * Test op 0x02: true when the monster has noticed a player (noticed);
+ * otherwise it also sets scriptPlayer to -1.
+ */
+u8 *EmScript_IfNoticed(Em *em, u8 *script)
 {
     switch (*script) {
     case 0:
@@ -13522,7 +14840,11 @@ u8 *EmScript_Op02(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op03(Em *em, u8 *script)
+/*
+ * Test op 0x03: true when the monster may move on to nextArea (a real area
+ * other than its own, Em_CanEnterArea); otherwise it also clears the goal.
+ */
+u8 *EmScript_IfCanEnterNextArea(Em *em, u8 *script)
 {
     s32 ok;
 
@@ -13578,7 +14900,8 @@ s32 EmScript_Start(Em *em, u8 *script)
     return Em_StartScript(em);
 }
 
-u8 *EmScript_Op08(Em *em, u8 *script)
+/* Test op 0x08: true when stance is EM_STANCE_GROUND. */
+u8 *EmScript_IfOnGround(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -13607,7 +14930,11 @@ u8 *EmScript_Op08(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op1F(Em *em, u8 *script)
+/*
+ * Test op 0x1F: true when stance is EM_STANCE_FAMILY (the family's own
+ * stance).
+ */
+u8 *EmScript_IfStanceFamily(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -13636,7 +14963,8 @@ u8 *EmScript_Op1F(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op09(Em *em, u8 *script)
+/* Test op 0x09: true when stance is EM_STANCE_AIR. */
+u8 *EmScript_IfInAir(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -13665,21 +14993,25 @@ u8 *EmScript_Op09(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op0A(Em *em, u8 *script)
+u8 *EmScript_SetHitReactMode(Em *em, u8 *script)
 {
     em->hitReactMode = *script;
     return script + 1;
 }
 
-u8 *EmScript_Op0B(Em *em, u8 *script)
+/*
+ * Test op 0x0B: true when combat equals the byte (1 fighting the hunters);
+ * also copies combat to scriptCombat.
+ */
+u8 *EmScript_IfCombatIs(Em *em, u8 *script)
 {
-    u8 v;
+    u8 wanted;
 
     switch (*script++) {
     case 0:
-        v = *script++;
+        wanted = *script++;
         em->scriptCombat = em->combat;
-        if (em->combat != v) {
+        if (em->combat != wanted) {
             for (;;) {
                 if (script[0] == 0xB && script[1] == 1) {
                     break;
@@ -13710,16 +15042,16 @@ u8 *EmScript_Op0B(Em *em, u8 *script)
  * checks of cases 6 and 7: the loop hoists &em->work from there into its preheader (between the
  * compare constants 55 and 45) and keeps 0x44/0x45 as the store offsets.
  */
-u8 *EmScript_Op0C(Em *em, u8 *script)
+u8 *EmScript_SetVar(Em *em, u8 *script)
 {
     u8 k;
-    u8 v;
+    u8 value;
     s32 i;
     s32 n;
     u8 *w;
 
     k = *script++;
-    v = *script++;
+    value = *script++;
     if (k == 0) {
         k = 1;
         n = 10;
@@ -13729,21 +15061,21 @@ u8 *EmScript_Op0C(Em *em, u8 *script)
     for (i = 0; i < n; i++, k++) {
         switch (k) {
         case 1:
-            em->blind = v;
+            em->blind = value;
             break;
         case 2:
-            em->need2State = v;
+            em->need2State = value;
             break;
         case 3:
-            em->senseDelay = (s8) v;
+            em->senseDelay = (s8) value;
             break;
         case 4:
-            em->scriptVar = v;
+            em->scriptVar = value;
             break;
         case 5:
             if (em->type == 7 || em->type == 0x32) {
                 if (em->remote == 0) {
-                    em->work = v;
+                    em->work = value;
                 }
             }
             break;
@@ -13751,7 +15083,7 @@ u8 *EmScript_Op0C(Em *em, u8 *script)
             if (em->type == 0xF || em->type == 0x2D) {
                 w = &em->work;
                 if (em->remote == 0) {
-                    w[0x44] = v;
+                    w[0x44] = value;
                 }
             }
             break;
@@ -13759,19 +15091,19 @@ u8 *EmScript_Op0C(Em *em, u8 *script)
             if (em->type == 0xF || em->type == 0x2D) {
                 w = &em->work;
                 if (em->remote == 0) {
-                    w[0x45] = v;
+                    w[0x45] = value;
                 }
             }
             break;
         case 8:
             if (em->type == 0x37 && em->remote == 0) {
-                em->work = v;
+                em->work = value;
             }
             break;
         case 9:
             if (em->type == 0x3A || em->type == 0x48) {
                 if (em->remote == 0) {
-                    em->work = v;
+                    em->work = value;
                 }
             }
             break;
@@ -13780,10 +15112,10 @@ u8 *EmScript_Op0C(Em *em, u8 *script)
     return script;
 }
 
-/* Script op 0x0D: clears the Em byte the byte at p picks (the fields of EmScript_Op0C; 10:
- * unk882 = 0xFFFF); 0 clears all of them. w is set as in EmScript_Op0C.
+/* Script op 0x0D: clears the Em byte the byte at p picks (the fields of EmScript_SetVar; 10:
+ * unk882 = 0xFFFF); 0 clears all of them. w is set as in EmScript_SetVar.
  */
-u8 *EmScript_Op0D(Em *em, u8 *script)
+u8 *EmScript_ClearVar(Em *em, u8 *script)
 {
     u8 k;
     s32 i;
@@ -13859,7 +15191,11 @@ u8 *EmScript_Op0D(Em *em, u8 *script)
     return script + 1;
 }
 
-u8 *EmScript_Op0E(Em *em, u8 *script)
+/*
+ * Test op 0x0E: true when the monster's area is the area of the next two
+ * bytes (high byte first) at the current time of day (Area_IdForCurrentTime).
+ */
+u8 *EmScript_IfInArea(Em *em, u8 *script)
 {
     u16 id;
 
@@ -13893,11 +15229,19 @@ u8 *EmScript_Op0E(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op0F(Em *em, u8 *script)
+/*
+ * Command 0x0F, five bytes: the loop mode (0 to 2, over the points of the
+ * monster's area), the passes, the point list, the script run at each point
+ * and the one run when the loop ends. Saves the thread's resume point, sets
+ * scriptFlags bit 1 (the loop thread) and looks up the area's entry
+ * (Em_FindAreaEntry in table 1): with none the loop is dropped and the script
+ * goes on; else loopCount and areaPointCount are set and it returns the start
+ * of the per-point script.
+ */
+u8 *EmScript_StartLoop(Em *em, u8 *script)
 {
-    u8 *q;
     u8 n;
-    s16 *e;
+    s16 *areaEntry;
 
     em->loopIndex = 0;
     em->loopMode = script[0];
@@ -13911,16 +15255,16 @@ u8 *EmScript_Op0F(Em *em, u8 *script)
     case 0:
     case 1:
     case 2:
-        e = (s16 *)Em_FindAreaEntry(em, em->tables[1], em->area);
-        if (e == NULL) {
+        areaEntry = (s16 *)Em_FindAreaEntry(em, em->tables[1], em->area);
+        if (areaEntry == NULL) {
             em->scriptFlags &= 0xFE;
             return script + 1;
         }
-        if (em->loopMode != 1 && e[1] < n) {
-            n = e[1];
+        if (em->loopMode != 1 && areaEntry[1] < n) {
+            n = areaEntry[1];
         }
         em->loopCount = n;
-        em->areaPointCount = e[1];
+        em->areaPointCount = areaEntry[1];
         em->loopScriptPos = EmScript_LoopScript(em, em->loopScript);
         break;
     }
@@ -13928,7 +15272,7 @@ u8 *EmScript_Op0F(Em *em, u8 *script)
 }
 
 //---
-u8 *EmScript_Op10(Em *em, u8 *script)
+u8 *EmScript_NextLoopPoint(Em *em, u8 *script)
 {
     u8 list[16];
     s8 n;
@@ -13965,7 +15309,11 @@ u8 *EmScript_Op10(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op11(Em *em, u8 *script)
+/*
+ * Sets the goal to the highest-numbered player in alertedPlayers (goalKind
+ * 1); when not remote also pulses the sync (syncPulse[0] 2).
+ */
+u8 *EmScript_GoalAlertedPlayer(Em *em, u8 *script)
 {
     s32 i;
 
@@ -13982,7 +15330,12 @@ u8 *EmScript_Op11(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op12(Em *em, u8 *script)
+/*
+ * Sets the goal to the highest-numbered player in noticed (goalKind 1), which
+ * also becomes scriptPlayer; pulses the sync and ends the loop and
+ * trigger-0x10 threads (scriptFlags bits 1 and 0x10).
+ */
+u8 *EmScript_GoalNoticedPlayer(Em *em, u8 *script)
 {
     s32 i;
 
@@ -14001,46 +15354,55 @@ u8 *EmScript_Op12(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op13(Em *em, u8 *script)
+/*
+ * Sets the goal to the picked player (goalKind 1, goalNo the low nibble of
+ * scriptPlayer), or to no player (0xFFFF) when scriptPlayer is -1.
+ */
+u8 *EmScript_GoalScriptPlayer(Em *em, u8 *script)
 {
-    s8 v;
+    s8 player;
 
     em->goalKind = 1;
     em->goalArg = 0;
-    v = (s8) em->scriptPlayer;
-    if (v == -1) {
+    player = (s8) em->scriptPlayer;
+    if (player == -1) {
         *(u16 *) &em->goalNo = 0xFFFF;
     } else {
-        em->goalNo = v & 0xF;
+        em->goalNo = player & 0xF;
     }
     return script;
 }
 
-u8 *EmScript_Op14(Em *em, u8 *script)
+/*
+ * Test op 0x14 with a byte k in degrees: the block runs when the goal
+ * player's direction is at least k degrees off the heading rotY (the block is
+ * skipped for a goal that is not a player).
+ */
+u8 *EmScript_IfTargetOffHeading(Em *em, u8 *script)
 {
     s32 ok;
     u8 k;
-    u16 a;
-    u16 d;
-    u16 t;
+    u16 limit;
+    u16 angleDelta;
+    u16 targetNo;
     Player *pl;
-    f32 pa[4];
-    f32 pb[4];
+    f32 targetPos[4];
+    f32 targetWorldPos[4];
 
     switch (*script++) {
     case 0:
         k = *script++;
-        a = (s32) (65536.0f * k / 360.0f + 0.5f);
+        limit = (s32) (65536.0f * k / 360.0f + 0.5f);
         ok = 0;
-        if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (t = *(u16 *) &em->goalNo) != -1) {
-            Em_GetTargetPos(em, t, pa);
-            pl = &gPlayers[t];
-            Area_ToWorld(pl->area, pa, pb);
-            d = Math_AngleXZ(em->mapPos, pb) - em->rotY;
-            if (d > 0x8000) {
-                d = 0x10000 - d;
+        if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (targetNo = *(u16 *) &em->goalNo) != -1) {
+            Em_GetTargetPos(em, targetNo, targetPos);
+            pl = &gPlayers[targetNo];
+            Area_ToWorld(pl->area, targetPos, targetWorldPos);
+            angleDelta = Math_AngleXZ(em->mapPos, targetWorldPos) - em->rotY;
+            if (angleDelta > 0x8000) {
+                angleDelta = 0x10000 - angleDelta;
             }
-            if (a > d) {
+            if (limit > angleDelta) {
                 ok = 1;
             }
         } else {
@@ -14081,14 +15443,19 @@ u8 *EmScript_Op14(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op15(Em *em, u8 *script)
+/*
+ * Switch op 0x15 on the monster's area: each case is an area id (two bytes),
+ * and the first with the same day id as area (Area_DayId: an area's day and
+ * night forms match) runs its block.
+ */
+u8 *EmScript_SwitchArea(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u16 v;
+    u16 caseArea;
     u8 ok;
-    u16 d;
-    u16 e;
+    u16 caseDayId;
+    u16 areaDayId;
 
     switch (*script++) {
     case 0:
@@ -14097,12 +15464,12 @@ u8 *EmScript_Op15(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = script[0] << 8;
-                v |= script[1];
+                caseArea = script[0] << 8;
+                caseArea |= script[1];
                 script += 2;
-                d = Area_DayId(v);
-                e = Area_DayId(em->area);
-                if (e == d) {
+                caseDayId = Area_DayId(caseArea);
+                areaDayId = Area_DayId(em->area);
+                if (areaDayId == caseDayId) {
                     break;
                 }
                 script = EmScript_SkipBlock(em, script, 0x15, 3);
@@ -14133,6 +15500,11 @@ u8 *EmScript_Op15(Em *em, u8 *script)
     return script;
 }
 
+/*
+ * Command 0x16: calls subscript number byte of table 9 (EmScript_SubScript),
+ * saving the return in subScriptReturn (EmScript_End's end 3 returns there).
+ * Returns the subscript's start, also stored in scriptPos.
+ */
 u8 *EmScript_Call(Em *em, u8 *script)
 {
     em->subScriptNo = *script;
@@ -14145,7 +15517,7 @@ u8 *EmScript_Call(Em *em, u8 *script)
 /* Command 0x17 (4 argument bytes), once while +0x880 is -1: two pairs of bytes into +0x79A/+0x880 and
  * +0x79B/+0x7A0; a zero +0x880 becomes -1 again. The last step is two increments (`p += 2` is folded
  * into each return). */
-u8 *EmScript_Op17(Em *em, u8 *script)
+u8 *EmScript_SetAreaSeq(Em *em, u8 *script)
 {
     if (em->areaSeqLen != -1) {
         return script + 4;
@@ -14165,22 +15537,22 @@ u8 *EmScript_Op17(Em *em, u8 *script)
 }
 
 //---
-u8 *EmScript_Op18(Em *em, u8 *p)
+u8 *EmScript_StepAreaSeq(Em *em, u8 *pos)
 {
     u8 done = 0;
-    u16 v;
+    u16 entry;
 
     if (em->areaSeqLen == -1) {
-        return p;
+        return pos;
     }
     em->areaSeqActive = 1;
     em->prevArea = 0xFFFF;
     do {
-        v = ((u16 *)EmScript_AreaSeqList(em, em->areaSeqTable))[em->areaSeqPos];
-        if (v >= 0x8000) {
-            *(u16 *) &em->destArea = Area_IdForCurrentTime(*(u16 *) EmScript_PickWeighted(em, em->script[7][v & 0x7FFF]));
+        entry = ((u16 *)EmScript_AreaSeqList(em, em->areaSeqTable))[em->areaSeqPos];
+        if (entry >= 0x8000) {
+            *(u16 *) &em->destArea = Area_IdForCurrentTime(*(u16 *) EmScript_PickWeighted(em, em->script[7][entry & 0x7FFF]));
         } else {
-            *(u16 *) &em->destArea = Area_IdForCurrentTime(v);
+            *(u16 *) &em->destArea = Area_IdForCurrentTime(entry);
         }
         if (*(u16 *) &em->destArea != em->area) {
             goto other;
@@ -14196,15 +15568,19 @@ u8 *EmScript_Op18(Em *em, u8 *p)
             }
         }
     } while (done != 1);
-    return p;
+    return pos;
 other:
-    em->areaSeqNext = p;
-    p = EmScript_AreaSeqScript(em, em->areaSeqScript);
-    em->scriptPos = p;
-    return p;
+    em->areaSeqNext = pos;
+    pos = EmScript_AreaSeqScript(em, em->areaSeqScript);
+    em->scriptPos = pos;
+    return pos;
 }
 
-u8 *EmScript_Op19(Em *em, u8 *script)
+/*
+ * Sets the goal to another area (goalKind 3): goalArg and goalNo are
+ * destArea.
+ */
+u8 *EmScript_GoalDestArea(Em *em, u8 *script)
 {
     u16 dest;
 
@@ -14216,10 +15592,10 @@ u8 *EmScript_Op19(Em *em, u8 *script)
 }
 
 /* Script op 0x1A: walks the route toward area (the two bytes at p): up to 20 steps of
- * Em_PickRoutePoint's pick from the areas Em_IdSetLookup/Em_IdSetHas list, until an area passes
+ * Em_PickRoutePoint's pick from the areas Em_NextAreas/Em_NextAreasFrom list, until an area passes
  * Em_CanEnterArea or the target is reached; the result goes to Em +0x986, +0x77C and +0x77A.
  * `area = area | *p++` (not `|=`) gives the game's stack slot for area. */
-u8 *EmScript_Op1A(Em *em, u8 *script)
+u8 *EmScript_GoalAreaToward(Em *em, u8 *script)
 {
     s16 *list;
     u16 tgt;
@@ -14231,7 +15607,7 @@ u8 *EmScript_Op1A(Em *em, u8 *script)
     s32 i;
     s16 n;
     u16 skip;
-    AreaRecord *a;
+    AreaRecord *areaRec;
     f32 pts[10][3];
     u16 ang[9];
     u16 diff[8];
@@ -14243,7 +15619,7 @@ u8 *EmScript_Op1A(Em *em, u8 *script)
     from = em->area;
     em->goalKind = 3;
     tgt = area;
-    list = Em_IdSetLookup(em);
+    list = Em_NextAreas(em);
     if (list == NULL) {
         *(u16 *) &em->destArea = Area_IdForCurrentTime(area);
         goto end;
@@ -14255,21 +15631,21 @@ u8 *EmScript_Op1A(Em *em, u8 *script)
                 goto end;
             }
         }
-        a = Stage_GetAreaRecord(em->area);
-        pts[8][0] = a->originX + a->sizeX / 2.0f;
-        pts[8][2] = a->originZ + (f32) (a->sizeZ / 2.0f);
-        a = Stage_GetAreaRecord(tgt);
-        pts[9][0] = a->originX + a->sizeX / 2.0f;
-        pts[9][2] = a->originZ + (f32) (a->sizeZ / 2.0f);
+        areaRec = Stage_GetAreaRecord(em->area);
+        pts[8][0] = areaRec->originX + areaRec->sizeX / 2.0f;
+        pts[8][2] = areaRec->originZ + (f32) (areaRec->sizeZ / 2.0f);
+        areaRec = Stage_GetAreaRecord(tgt);
+        pts[9][0] = areaRec->originX + areaRec->sizeX / 2.0f;
+        pts[9][2] = areaRec->originZ + (f32) (areaRec->sizeZ / 2.0f);
         for (i = 0, n = 0; i < 8; i++) {
             if (list[i] == -1) {
                 break;
             }
-            a = Stage_GetAreaRecord(list[i]);
+            areaRec = Stage_GetAreaRecord(list[i]);
             ids[i] = list[i];
-            pts[i][0] = a->originX + a->sizeX / 2.0f;
+            pts[i][0] = areaRec->originX + areaRec->sizeX / 2.0f;
             n++;
-            pts[i][2] = a->originZ + (f32) (a->sizeZ / 2.0f);
+            pts[i][2] = areaRec->originZ + (f32) (areaRec->sizeZ / 2.0f);
         }
         if (n == 1) {
             area = Area_IdForCurrentTime(ids[0]);
@@ -14303,7 +15679,7 @@ u8 *EmScript_Op1A(Em *em, u8 *script)
         }
         skip = from;
         from = Area_IdForCurrentTime(area);
-        list = Em_IdSetHas(em, area);
+        list = Em_NextAreasFrom(em, area);
         if (list == NULL) {
             *(u16 *) &em->destArea = Area_IdForCurrentTime(area);
             goto end;
@@ -14314,14 +15690,18 @@ end:
     return script;
 }
 
-u8 *EmScript_Op1B(Em *em, u8 *script)
+/*
+ * Test op 0x1B: true when requested (1 while a request is pending) equals the
+ * byte.
+ */
+u8 *EmScript_IfRequestedIs(Em *em, u8 *script)
 {
-    u8 v;
+    u8 wanted;
 
     switch (*script++) {
     case 0:
-        v = *script++;
-        if (v != em->requested) {
+        wanted = *script++;
+        if (wanted != em->requested) {
             for (;;) {
                 if (script[0] == 0x1B && script[1] == 1) {
                     break;
@@ -14346,11 +15726,15 @@ u8 *EmScript_Op1B(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op1C(Em *em, u8 *script)
+/*
+ * Switch op 0x1C on the monster's hp percent (hp * 100 / hpMax): the first
+ * case whose limit byte is above it runs its block.
+ */
+u8 *EmScript_SwitchHpPercent(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 limit;
     u8 ok;
     u8 x;
 
@@ -14362,8 +15746,8 @@ u8 *EmScript_Op1C(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                if (v > x) {
+                limit = *script++;
+                if (limit > x) {
                     break;
                 }
                 script = EmScript_SkipBlock(em, script, 0x1C, 3);
@@ -14394,11 +15778,15 @@ u8 *EmScript_Op1C(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op1D(Em *em, u8 *script)
+/*
+ * Switch op 0x1D on requestId; the case values ascend, and a larger value
+ * ends the search.
+ */
+u8 *EmScript_SwitchRequestId(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 caseId;
     u8 ok;
 
     switch (*script++) {
@@ -14408,11 +15796,11 @@ u8 *EmScript_Op1D(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                if (em->requestId == v) {
+                caseId = *script++;
+                if (em->requestId == caseId) {
                     break;
                 }
-                if (v < em->requestId) {
+                if (caseId < em->requestId) {
                     script = EmScript_SkipBlock(em, script, 0x1D, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -14452,7 +15840,11 @@ u8 *EmScript_Op1D(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op1E(Em *em, u8 *script)
+/*
+ * Command 0x1E: cancels the pending request (requested, requestId,
+ * requestPrio, lowHpNeed and the four needs and their states cleared).
+ */
+u8 *EmScript_SetRequest(Em *em, u8 *script)
 {
     em->requested = 0;
     em->requestId = 0;
@@ -14468,16 +15860,21 @@ u8 *EmScript_Op1E(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op20(Em *em, u8 *script)
+/*
+ * Switch op 0x20 on the goal player's direction from the heading (0 straight
+ * ahead, 0x10000 a turn): the first case whose byte * 0x100 is not below it
+ * runs its block; none for a goal that is not a player.
+ */
+u8 *EmScript_SwitchTargetAngle(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u16 v;
+    u16 limit;
     u8 ok;
     u16 k;
     u16 ang;
-    f32 a[4];
-    f32 b[4];
+    f32 targetPos[4];
+    f32 targetWorldPos[4];
     Player *pl;
 
     switch (*script++) {
@@ -14485,10 +15882,10 @@ u8 *EmScript_Op20(Em *em, u8 *script)
         n = script[0];
         script += 3;
         if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (k = *(u16 *) &em->goalNo) != -1) {
-            Em_GetTargetPos(em, k, a);
+            Em_GetTargetPos(em, k, targetPos);
             pl = &gPlayers[k];
-            Area_ToWorld(pl->area, a, b);
-            ang = Math_AngleXZ(em->mapPos, b) - em->rotY;
+            Area_ToWorld(pl->area, targetPos, targetWorldPos);
+            ang = Math_AngleXZ(em->mapPos, targetWorldPos) - em->rotY;
         } else {
             ok = 1;
             do {
@@ -14503,8 +15900,8 @@ u8 *EmScript_Op20(Em *em, u8 *script)
         i = 0;
         if (i < n) {
             do {
-                v = *script++ << 8;
-                if (v >= ang) {
+                limit = *script++ << 8;
+                if (limit >= ang) {
                     break;
                 }
                 script = EmScript_SkipBlock(em, script, 0x20, 3);
@@ -14535,7 +15932,10 @@ u8 *EmScript_Op20(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op21(Em *em, u8 *script)
+/*
+ * Test op 0x21: true when need2Gauge is at or below 30 percent of need2Max.
+ */
+u8 *EmScript_IfNeed2Low(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -14564,9 +15964,12 @@ u8 *EmScript_Op21(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op22(Em *em, u8 *script)
+/*
+ * Test op 0x22: true when the goal is within 100 times the byte on the ground
+ * plane (Vec_DistanceXZ).
+ */
+u8 *EmScript_IfGoalNearXZ(Em *em, u8 *script)
 {
-    u8 v;
     f32 lim;
 
     switch (*script++) {
@@ -14597,9 +16000,12 @@ u8 *EmScript_Op22(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op36(Em *em, u8 *script)
+/*
+ * Test op 0x36: true when the goal is within 100 times the byte
+ * (Vec_Distance).
+ */
+u8 *EmScript_IfGoalNear(Em *em, u8 *script)
 {
-    u8 v;
     f32 lim;
 
     switch (*script++) {
@@ -14630,15 +16036,20 @@ u8 *EmScript_Op36(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op23(Em *em, u8 *script)
+/*
+ * Switch op 0x23 on the monsters sharing the area: a case's kind byte (0x4A:
+ * any large monster, else Em_KindMatches) runs its block when such an active
+ * monster is in the same area (the monster itself included).
+ */
+u8 *EmScript_SwitchKindInArea(Em *em, u8 *script)
 {
     u8 n;
-    u8 v;
+    u8 kind;
     u8 found;
     s32 i;
     s32 j;
     u8 ok;
-    Em *e;
+    Em *other;
 
     switch (*script++) {
     case 0:
@@ -14647,17 +16058,17 @@ u8 *EmScript_Op23(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                for (j = 0, found = 0, e = gEms; j < 20; j++, e++) {
-                    if (e->active != 0) {
-                        if (v == 0x4A) {
-                            if (e->large == 0) {
+                kind = *script++;
+                for (j = 0, found = 0, other = gEms; j < 20; j++, other++) {
+                    if (other->active != 0) {
+                        if (kind == 0x4A) {
+                            if (other->large == 0) {
                                 continue;
                             }
-                        } else if (Em_KindMatches(e->type, v) == 0) {
+                        } else if (Em_KindMatches(other->type, kind) == 0) {
                             continue;
                         }
-                        if ((u8) Obj_SameArea(em, (Player *) e) != 0) {
+                        if ((u8) Obj_SameArea(em, (Player *) other) != 0) {
                             found = 1;
                             break;
                         }
@@ -14694,7 +16105,12 @@ u8 *EmScript_Op23(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op24(Em *em, u8 *script)
+/*
+ * Command 0x24, a counted loop: sub-byte 0 reads the count into repeatCount
+ * and the block's start into repeatPos (0 skips the block); sub-byte 1 at the
+ * block's end counts down and jumps back while above 0.
+ */
+u8 *EmScript_Repeat(Em *em, u8 *script)
 {
 
     switch (*script++) {
@@ -14723,23 +16139,27 @@ u8 *EmScript_Op24(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op25(Em *em, u8 *script)
+u8 *EmScript_StopRepeat(Em *em, u8 *script)
 {
     em->repeatCount = 0;
     return script;
 }
 
-u8 *EmScript_Op26(Em *em, u8 *script)
+u8 *EmScript_SetNoAlert(Em *em, u8 *script)
 {
     em->noAlert = *script;
     return script + 1;
 }
 
-u8 *EmScript_Op27(Em *em, u8 *script)
+/*
+ * Switch op 0x27 on variant (the quest monster entry's); the case values
+ * ascend.
+ */
+u8 *EmScript_SwitchVariant(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 caseVariant;
     u8 ok;
 
     switch (*script++) {
@@ -14749,11 +16169,11 @@ u8 *EmScript_Op27(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                if (em->variant == v) {
+                caseVariant = *script++;
+                if (em->variant == caseVariant) {
                     break;
                 }
-                if (v < em->variant) {
+                if (caseVariant < em->variant) {
                     script = EmScript_SkipBlock(em, script, 0x27, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -14793,11 +16213,15 @@ u8 *EmScript_Op27(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op75(Em *em, u8 *script)
+/*
+ * Switch op 0x75 on spawnParam (the quest monster entry's spawn byte); the
+ * case values ascend.
+ */
+u8 *EmScript_SwitchSpawnParam(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 caseParam;
     u8 ok;
 
     switch (*script++) {
@@ -14807,11 +16231,11 @@ u8 *EmScript_Op75(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                if (em->spawnParam == v) {
+                caseParam = *script++;
+                if (em->spawnParam == caseParam) {
                     break;
                 }
-                if (v < em->spawnParam) {
+                if (caseParam < em->spawnParam) {
                     script = EmScript_SkipBlock(em, script, 0x75, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -14851,11 +16275,15 @@ u8 *EmScript_Op75(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op76(Em *em, u8 *script)
+/*
+ * Switch op 0x76 on the quest's season (Quest_GetSeason); the case values
+ * ascend.
+ */
+u8 *EmScript_SwitchSeason(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 caseSeason;
     u8 ok;
     u8 x;
 
@@ -14867,11 +16295,11 @@ u8 *EmScript_Op76(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                if (x == v) {
+                caseSeason = *script++;
+                if (x == caseSeason) {
                     break;
                 }
-                if (v < x) {
+                if (caseSeason < x) {
                     script = EmScript_SkipBlock(em, script, 0x76, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -14911,27 +16339,31 @@ u8 *EmScript_Op76(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op7A(Em *em, u8 *script)
+/*
+ * Switch op 0x7A on the base area (Map_DayId) of gScene.map; each case's
+ * area is reduced the same way, and the values ascend.
+ */
+u8 *EmScript_SwitchBaseArea(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 caseBase;
     u8 ok;
     u8 x;
 
     switch (*script++) {
     case 0:
-        x = Area_BaseId(gScene.map);
+        x = Map_DayId(gScene.map);
         n = script[0];
         i = 0;
         script += 3;
         if (i < n) {
             do {
-                v = Area_BaseId(*script++);
-                if (x == v) {
+                caseBase = Map_DayId(*script++);
+                if (x == caseBase) {
                     break;
                 }
-                if (v < x) {
+                if (caseBase < x) {
                     script = EmScript_SkipBlock(em, script, 0x7A, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -14971,11 +16403,16 @@ u8 *EmScript_Op7A(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op79(Em *em, u8 *script)
+/*
+ * Switch op 0x79 on a value the kind reports: a query byte is passed to the
+ * kind's ScriptQuery handler (handlers->unk10; 0 with none), and the case
+ * equal to its answer runs its block.
+ */
+u8 *EmScript_SwitchKindQuery(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 caseValue;
     u8 ok;
     u8 x;
     s32 k;
@@ -14995,11 +16432,11 @@ u8 *EmScript_Op79(Em *em, u8 *script)
         i = 0;
         if (i < n) {
             do {
-                v = *script++;
-                if (x == v) {
+                caseValue = *script++;
+                if (x == caseValue) {
                     break;
                 }
-                if (v < x) {
+                if (caseValue < x) {
                     script = EmScript_SkipBlock(em, script, 0x79, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -15039,7 +16476,8 @@ u8 *EmScript_Op79(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op28(Em *em, u8 *script)
+/* Test op 0x28: true when an active quest player is in the monster's area. */
+u8 *EmScript_IfPlayerInArea(Em *em, u8 *script)
 {
     Player *pl = gPlayers;
     s32 i;
@@ -15079,7 +16517,8 @@ u8 *EmScript_Op28(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op29(Em *em, u8 *script)
+/* Test op 0x29: true when areaTimer1 has run out. */
+u8 *EmScript_IfAreaTimer1Over(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15108,7 +16547,8 @@ u8 *EmScript_Op29(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op2A(Em *em, u8 *script)
+/* Test op 0x2A: true when areaTimer2 has run out. */
+u8 *EmScript_IfAreaTimer2Over(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15137,97 +16577,102 @@ u8 *EmScript_Op2A(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op2B(Em *em, u8 *script)
+/*
+ * Test op 0x2B with bytes k and v: true when the value EmScript_SetVar sets
+ * under k (1 blind, 2 need2State, 3 senseDelay, 4 scriptVar, 5 to 9 the
+ * kinds' work bytes) equals v.
+ */
+u8 *EmScript_IfVarIs(Em *em, u8 *script)
 {
     u8 k;
-    u8 v;
-    u8 ne;
+    u8 value;
+    u8 differs;
 
     switch (*script++) {
     case 0:
         k = script[0];
-        v = script[1];
+        value = script[1];
         script += 2;
         switch (k) {
         case 1:
-            if (em->blind == v) {
-                ne = 0;
+            if (em->blind == value) {
+                differs = 0;
             } else {
-                ne = 1;
+                differs = 1;
             }
             break;
         case 2:
-            if (em->need2State == v) {
-                ne = 0;
+            if (em->need2State == value) {
+                differs = 0;
             } else {
-                ne = 1;
+                differs = 1;
             }
             break;
         case 3:
-            if (em->senseDelay == v) {
-                ne = 0;
+            if (em->senseDelay == value) {
+                differs = 0;
             } else {
-                ne = 1;
+                differs = 1;
             }
             break;
         case 4:
-            if (em->scriptVar == v) {
-                ne = 0;
+            if (em->scriptVar == value) {
+                differs = 0;
             } else {
-                ne = 1;
+                differs = 1;
             }
             break;
         case 5:
             if (em->type == 7 || em->type == 0x32) {
-                if (em->work == v) {
-                    ne = 0;
+                if (em->work == value) {
+                    differs = 0;
                 } else {
-                    ne = 1;
+                    differs = 1;
                 }
             }
             break;
         case 6:
             if (em->type == 0xF || em->type == 0x2D) {
-                if ((&em->work)[0x44] == v) {
-                    ne = 0;
+                if ((&em->work)[0x44] == value) {
+                    differs = 0;
                 } else {
-                    ne = 1;
+                    differs = 1;
                 }
             }
             break;
         case 7:
             if (em->type == 0xF || em->type == 0x2D) {
-                if ((&em->work)[0x45] == v) {
-                    ne = 0;
+                if ((&em->work)[0x45] == value) {
+                    differs = 0;
                 } else {
-                    ne = 1;
+                    differs = 1;
                 }
             }
             break;
         case 8:
             if (em->type == 0x37) {
-                if (em->work == v) {
-                    ne = 0;
+                if (em->work == value) {
+                    differs = 0;
                 } else {
-                    ne = 1;
+                    differs = 1;
                 }
             }
             break;
         case 9:
             if (em->type == 0x3A || em->type == 0x48) {
-                if (em->work == v) {
-                    ne = 0;
+                if (em->work == value) {
+                    differs = 0;
                 } else {
-                    ne = 1;
+                    differs = 1;
                 }
             }
             break;
         }
         /* the game reads a register it never set: ne is s0, still the caller's, when the em->type tests fail or k has no case */
-        if (!ne) {
+        if (!differs) {
             break;
         }
-        while (ne) {
+        while (differs) {
             if (script[0] == 0x2B && script[1] == 1) {
                 break;
             }
@@ -15250,7 +16695,11 @@ u8 *EmScript_Op2B(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op2C(Em *em, u8 *script)
+/*
+ * Switch op 0x2C on the monster's kind: the first case whose kind is of the
+ * same group as type (Em_KindMatches) runs its block.
+ */
+u8 *EmScript_SwitchKindGroup(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
@@ -15294,11 +16743,12 @@ u8 *EmScript_Op2C(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op70(Em *em, u8 *script)
+/* Switch op 0x70 on type, exactly; the case values ascend. */
+u8 *EmScript_SwitchType(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 caseType;
     u8 ok;
 
     switch (*script++) {
@@ -15308,11 +16758,11 @@ u8 *EmScript_Op70(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                if (em->type == v) {
+                caseType = *script++;
+                if (em->type == caseType) {
                     break;
                 }
-                if (v < em->type) {
+                if (caseType < em->type) {
                     script = EmScript_SkipBlock(em, script, 0x70, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -15352,7 +16802,11 @@ u8 *EmScript_Op70(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op2D(Em *em, u8 *script)
+/*
+ * Sets the goal to the action spot found before (goalKind 7, goalArg and
+ * goalNo from actionGoal).
+ */
+u8 *EmScript_GoalActionGoal(Em *em, u8 *script)
 {
     em->goalKind = 7;
     em->goalArg = (s16) em->actionGoal[1];
@@ -15360,13 +16814,17 @@ u8 *EmScript_Op2D(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op2E(Em *em, u8 *script)
+u8 *EmScript_SelectSightRow(Em *em, u8 *script)
 {
     Em_SelectSightRow(em, *script);
     return script + 1;
 }
 
-u8 *EmScript_Op2F(Em *em, u8 *script)
+/*
+ * Test op 0x2F: true when any quest player carries an item (the low nibble of
+ * carry).
+ */
+u8 *EmScript_IfPlayerCarrying(Em *em, u8 *script)
 {
     s8 i;
     u8 found;
@@ -15405,7 +16863,11 @@ u8 *EmScript_Op2F(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op30(Em *em, u8 *script)
+/*
+ * Command 0x30: sets need4 (Em_PickRequest turns it into the kind's need-4
+ * request) when any player carries an item (the low nibble of carry).
+ */
+u8 *EmScript_SetNeed4(Em *em, u8 *script)
 {
     s8 i;
     s32 found = 0;
@@ -15422,20 +16884,23 @@ u8 *EmScript_Op30(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op31(Em *em, u8 *script)
+u8 *EmScript_SetGoalKind(Em *em, u8 *script)
 {
     em->goalKind = 8;
     return script;
 }
 
-u8 *EmScript_Op32(Em *em, u8 *script)
+/*
+ * Test op 0x32: true when hitReactMode equals the byte (enum EmHitReactMode).
+ */
+u8 *EmScript_IfHitReactMode(Em *em, u8 *script)
 {
-    u8 v;
+    u8 mode;
 
     switch (*script++) {
     case 0:
-        v = *script++;
-        if (em->hitReactMode != v) {
+        mode = *script++;
+        if (em->hitReactMode != mode) {
             for (;;) {
                 if (script[0] == 0x32 && script[1] == 1) {
                     break;
@@ -15460,11 +16925,12 @@ u8 *EmScript_Op32(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op33(Em *em, u8 *script)
+/* Switch op 0x33 on hitReactMode: n values, each with its block. */
+u8 *EmScript_SwitchHitReactMode(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 mode;
     u8 ok;
 
     switch (*script++) {
@@ -15474,8 +16940,8 @@ u8 *EmScript_Op33(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
-                if (em->hitReactMode == v) {
+                mode = *script++;
+                if (em->hitReactMode == mode) {
                     break;
                 }
                 script = EmScript_SkipBlock(em, script, 0x33, 3);
@@ -15506,17 +16972,18 @@ u8 *EmScript_Op33(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op34(Em *em, u8 *script)
+/* Test op 0x34: true when stateGroup and state equal the two bytes. */
+u8 *EmScript_IfState(Em *em, u8 *script)
 {
-    u8 g;
-    u8 s;
+    u8 wantGroup;
+    u8 wantState;
 
     switch (*script++) {
     case 0:
-        g = script[0];
-        s = script[1];
+        wantGroup = script[0];
+        wantState = script[1];
         script += 2;
-        if (em->stateGroup != g || em->state != s) {
+        if (em->stateGroup != wantGroup || em->state != wantState) {
             for (;;) {
                 if (script[0] == 0x34 && script[1] == 1) {
                     break;
@@ -15541,7 +17008,8 @@ u8 *EmScript_Op34(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op35(Em *em, u8 *script)
+/* Test op 0x35: true while the monster is enraged (rage). */
+u8 *EmScript_IfRaging(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15570,7 +17038,8 @@ u8 *EmScript_Op35(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op37(Em *em, u8 *script)
+/* Test op 0x37: true in a drill quest (gQuest.flags has QUEST_FLAG_DRILL). */
+u8 *EmScript_IfDrill(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15599,7 +17068,13 @@ u8 *EmScript_Op37(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op38(Em *em, u8 *script)
+/*
+ * Test op 0x38: true when the kind of the floor under the monster (floorKind,
+ * in its area) has flag byte 4 set in gAreaKindFlags (sub_main's
+ * func_00330E80). Em_GetFloorInfo does not stand monsters on such triangles;
+ * AreaGrid2_GetFloorHeight gives their height to effects.
+ */
+u8 *EmScript_IfOnPassThroughFloor(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15628,7 +17103,8 @@ u8 *EmScript_Op38(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op39(Em *em, u8 *script)
+/* Test op 0x39: true while the monster is blinded by a flash (blindTimer). */
+u8 *EmScript_IfBlind(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15657,7 +17133,10 @@ u8 *EmScript_Op39(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op3A(Em *em, u8 *script)
+/*
+ * Test op 0x3A: true when senseDelay is 0 (the monster senses the players).
+ */
+u8 *EmScript_IfNoSenseDelay(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15686,7 +17165,11 @@ u8 *EmScript_Op3A(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op3B(Em *em, u8 *script)
+/*
+ * Test op 0x3B: true when the monster has a linked monster (link;
+ * Em_FindLink).
+ */
+u8 *EmScript_IfLinked(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -15715,7 +17198,11 @@ u8 *EmScript_Op3B(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op3C(Em *em, u8 *script)
+/*
+ * Test op 0x3C: true when the linked monster exists, fights (combat 1) and is
+ * in the same area.
+ */
+u8 *EmScript_IfLinkCombatSameArea(Em *em, u8 *script)
 {
     u8 ok;
 
@@ -15755,7 +17242,11 @@ u8 *EmScript_Op3C(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op3D(Em *em, u8 *script)
+/*
+ * Test op 0x3D: true when prevArea, the area the monster came from, is the
+ * area of the two bytes (Area_IdForCurrentTime); 0xFFFF never matches.
+ */
+u8 *EmScript_IfPrevArea(Em *em, u8 *script)
 {
     u8 ok;
     u16 id;
@@ -15796,12 +17287,17 @@ u8 *EmScript_Op3D(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op3E(Em *em, u8 *script)
+/*
+ * Switch op 0x3E on prevArea: n area ids (two bytes each,
+ * Area_IdForCurrentTime), each with its block; a prevArea of 0xFFFF (none)
+ * matches nothing.
+ */
+u8 *EmScript_SwitchPrevArea(Em *em, u8 *script)
 {
     u16 x = em->prevArea;
     u8 n;
     s32 i;
-    u16 v;
+    u16 areaId;
     u8 ok;
 
     switch (*script++) {
@@ -15811,10 +17307,10 @@ u8 *EmScript_Op3E(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = script[0] << 8;
-                v |= script[1];
+                areaId = script[0] << 8;
+                areaId |= script[1];
                 script += 2;
-                if (x == Area_IdForCurrentTime(v) && x != 0xFFFF) {
+                if (x == Area_IdForCurrentTime(areaId) && x != 0xFFFF) {
                     break;
                 }
                 script = EmScript_SkipBlock(em, script, 0x3E, 3);
@@ -15849,21 +17345,21 @@ u8 *EmScript_Op3E(Em *em, u8 *script)
  * area (the one starting nearest when the area has no id at this time), then the point to start
  * at: outside the scene's area the nearest flagged one, inside it the first flagged one in line
  * of sight (AreaHit_Raycast) at height p[2] * 10. */
-u8 *EmScript_Op3F(Em *em, u8 *script)
+u8 *EmScript_StartRoute(Em *em, u8 *script)
 {
-    EmRoute *r;
+    EmRoute *route;
     s16 j;
     s32 found;
     s16 idx;
     u16 area;
     s16 sel;
     EmRouteSet *set;
-    s32 sel2;
-    EmRoutePt *pt;
-    f32 h;
+    s32 nearPoint;
+    EmRoutePt *point;
+    f32 height;
     f32 best;
-    f32 d;
-    f32 v[6];
+    f32 dist;
+    f32 rayPts[6];
     f32 out[3];
 
     found = 0;
@@ -15871,38 +17367,38 @@ u8 *EmScript_Op3F(Em *em, u8 *script)
     area = script[0] << 8;
     area |= script[1];
     em->routeHeight = *(script += 2);
-    h = 10.0f * em->routeHeight;
+    height = 10.0f * em->routeHeight;
     if (em->area == Area_IdForCurrentTime(area)) {
         return script + 1;
     }
     set = (EmRouteSet *) Em_FindAreaEntry(em, em->tables[6], em->area);
-    r = set->routes;
-    if (r == NULL) {
+    route = set->routes;
+    if (route == NULL) {
         return script + 1;
     }
     em->nextArea = Area_IdForCurrentTime(area);
     if (em->nextArea == 0xFFFF) {
         best = -1.0f;
-        for (j = 0; j < set->n; j++, r++) {
-            pt = r->pts;
-            if (pt == NULL) {
+        for (j = 0; j < set->n; j++, route++) {
+            point = route->pts;
+            if (point == NULL) {
                 j = 0;
                 em->routeResult = 7;
                 goto end;
             }
-            d = Vec_DistanceXZ(&em->posX, pt->pos);
+            dist = Vec_DistanceXZ(&em->posX, point->pos);
             if (best == -1.0f) {
                 sel = j;
-                best = d;
-            } else if (!(best <= d)) {
+                best = dist;
+            } else if (!(best <= dist)) {
                 sel = j;
-                best = d;
+                best = dist;
             }
         }
         idx = sel;
     } else {
-        for (idx = 0; idx < set->n; idx++, r++) {
-            if (em->nextArea == Area_IdForCurrentTime(r->area)) {
+        for (idx = 0; idx < set->n; idx++, route++) {
+            if (em->nextArea == Area_IdForCurrentTime(route->area)) {
                 found = 1;
                 break;
             }
@@ -15912,36 +17408,36 @@ u8 *EmScript_Op3F(Em *em, u8 *script)
         }
     }
     em->routeNo = idx;
-    r = set->routes;
-    pt = r[em->routeNo].pts;
+    route = set->routes;
+    point = route[em->routeNo].pts;
     found = 0;
     if (gScene.area != em->area) {
-        sel2 = r[em->routeNo].n;
+        nearPoint = route[em->routeNo].n;
         best = -100.0f;
-        for (j = 0; j < r[em->routeNo].n; j++, pt++) {
-            if (pt->unk10 != 0) {
-                d = Vec_DistanceXZ(&em->posX, pt->pos);
+        for (j = 0; j < route[em->routeNo].n; j++, point++) {
+            if (point->unk10 != 0) {
+                dist = Vec_DistanceXZ(&em->posX, point->pos);
                 if (best < 0.0f) {
-                    sel2 = j;
-                    best = d;
-                } else if (d < best) {
-                    sel2 = j;
-                    best = d;
+                    nearPoint = j;
+                    best = dist;
+                } else if (dist < best) {
+                    nearPoint = j;
+                    best = dist;
                 }
             }
         }
-        pt = r[em->routeNo].pts;
-        pt += sel2;
-        j = sel2;
-        if (sel2 < r[em->routeNo].n) {
+        point = route[em->routeNo].pts;
+        point += nearPoint;
+        j = nearPoint;
+        if (nearPoint < route[em->routeNo].n) {
             found = 1;
         }
     } else {
-        for (j = 0; j < r[em->routeNo].n; j++, pt++) {
-            if (pt->unk10 != 0) {
-                Vec_Set(v, em->posX, em->posY + h, em->posZ);
-                Vec_Set(v + 3, pt->pos[0], pt->pos[1] + h, pt->pos[2]);
-                if (!AreaHit_Raycast(v, v + 3, out, em->collMask)) {
+        for (j = 0; j < route[em->routeNo].n; j++, point++) {
+            if (point->unk10 != 0) {
+                Vec_Set(rayPts, em->posX, em->posY + height, em->posZ);
+                Vec_Set(rayPts + 3, point->pos[0], point->pos[1] + height, point->pos[2]);
+                if (!AreaHit_Raycast(rayPts, rayPts + 3, out, em->collMask)) {
                     found = 1;
                     break;
                 }
@@ -15949,9 +17445,9 @@ u8 *EmScript_Op3F(Em *em, u8 *script)
         }
     }
     if (!found) {
-        pt--;
+        point--;
         em->routeResult = 2;
-        j = r[em->routeNo].n - 1;
+        j = route[em->routeNo].n - 1;
     }
 end:
     if (em->routeResult != 0 && em->remote != 0) {
@@ -15959,7 +17455,7 @@ end:
         j = 0;
         em->routeNo = 0;
         em->routePoint = 0;
-        pt = set->routes[em->routeNo].pts;
+        point = set->routes[em->routeNo].pts;
     }
     if (em->routeResult != 0) {
         em->routeResult = 0;
@@ -15972,11 +17468,15 @@ end:
     em->curGoalArg = *(u16 *) &em->goalArg;
     em->curGoalNo = *(u16 *) &em->goalNo;
     em->routeResume = script + 1;
-    em->routePointScript = pt->unk12;
+    em->routePointScript = point->unk12;
     return EmScript_RoutePointScript(em, em->routePointScript);
 }
 
-u8 *EmScript_Op40(Em *em, u8 *script)
+/*
+ * Command 0x40, one byte: 0 takes the monster out of combat (Em_SetCombat
+ * mode 0), else puts it in combat for the kind's time (gEmCombatInit[type]).
+ */
+u8 *EmScript_SetCombat(Em *em, u8 *script)
 {
     if (*script == 0) {
         Em_SetCombat(em, 0, 0);
@@ -15986,26 +17486,31 @@ u8 *EmScript_Op40(Em *em, u8 *script)
     return script + 1;
 }
 
-u8 *EmScript_Op41(Em *em, u8 *script)
+/*
+ * Command 0x41, one byte: with 0 heals the drome leaders by a share of hpMax
+ * (Em_AddHp: 15 percent for EM_KIND_VELOCIDROME, 10 for EM_KIND_GENDROME and
+ * EM_KIND_IODROME); otherwise nothing.
+ */
+u8 *EmScript_AddHp(Em *em, u8 *script)
 {
-    u8 temp_a1;
+    u8 mode;
     u8 type;
 
     type = em->type;
-    temp_a1 = *script;
+    mode = *script;
     switch (type) {
     case 27:
-        if (!(temp_a1 & 0xFF)) {
+        if (!(mode & 0xFF)) {
             Em_AddHp((Em *) em, (s32) (0.15f * (f32) em->hpMax));
         }
         break;
     case 28:
-        if (!(temp_a1 & 0xFF)) {
+        if (!(mode & 0xFF)) {
             Em_AddHp((Em *) em, (s32) (0.1f * (f32) em->hpMax));
         }
         break;
     case 31:
-        if (!(temp_a1 & 0xFF)) {
+        if (!(mode & 0xFF)) {
             Em_AddHp((Em *) em, (s32) (0.1f * (f32) em->hpMax));
         }
         break;
@@ -16013,24 +17518,28 @@ u8 *EmScript_Op41(Em *em, u8 *script)
     return script + 1;
 }
 
-u8 *EmScript_Op42(Em *em, u8 *script)
+/*
+ * Test op 0x42 with k in degrees: recomputes the goal (Em_ComputeGoal) and is
+ * true when its direction is k degrees or more off the heading rotY.
+ */
+u8 *EmScript_IfGoalAngleOver(Em *em, u8 *script)
 {
     s32 ok;
     u8 k;
-    u16 a;
-    u16 d;
+    u16 limit;
+    u16 angleDelta;
 
     switch (*script++) {
     case 0:
         Em_ComputeGoal(em, em->goal);
         k = *script++;
-        a = (s32) (65536.0f * k / 360.0f + 0.5f);
+        limit = (s32) (65536.0f * k / 360.0f + 0.5f);
         ok = 0;
-        d = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
-        if (d > 0x8000) {
-            d = 0x10000 - d;
+        angleDelta = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
+        if (angleDelta > 0x8000) {
+            angleDelta = 0x10000 - angleDelta;
         }
-        if (a > d) {
+        if (limit > angleDelta) {
             ok = 1;
         }
         if (!ok) {
@@ -16068,24 +17577,29 @@ u8 *EmScript_Op42(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op69(Em *em, u8 *script)
+/*
+ * Test op 0x69, one byte in degrees: like EmScript_IfGoalAngleOver, true when
+ * the goal's direction (Em_ComputeGoal) is at least that many degrees off the
+ * heading rotY. A limit of 90 degrees or more is always true.
+ */
+u8 *EmScript_IfGoalAngleOverCapped(Em *em, u8 *script)
 {
     s32 ok;
-    u8 k;
-    u16 a;
-    u16 d;
+    u8 limitDegrees;
+    u16 limit;
+    u16 angleDelta;
 
     switch (*script++) {
     case 0:
         Em_ComputeGoal(em, em->goal);
-        k = *script++;
-        a = (s32) (65536.0f * k / 360.0f + 0.5f);
+        limitDegrees = *script++;
+        limit = (s32) (65536.0f * limitDegrees / 360.0f + 0.5f);
         ok = 0;
-        d = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
-        if (d > 0x8000) {
-            d = 0x10000 - d;
+        angleDelta = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
+        if (angleDelta > 0x8000) {
+            angleDelta = 0x10000 - angleDelta;
         }
-        if (a > d && a < 0x4000) {
+        if (limit > angleDelta && limit < 0x4000) {
             ok = 1;
         }
         if (!ok) {
@@ -16123,7 +17637,10 @@ u8 *EmScript_Op69(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op44(Em *em, u8 *script)
+/*
+ * Test op 0x44: true when the linked monster exists and is in the same area.
+ */
+u8 *EmScript_IfLinkSameArea(Em *em, u8 *script)
 {
     u8 ok;
 
@@ -16162,7 +17679,7 @@ u8 *EmScript_Op44(Em *em, u8 *script)
 
 /* Command 0x45 (if/else/end): true when exactly one player is in the area and it passes flag 0x80000 and
  * Lure_PlayerHasMonsterBait; the monster then targets it (+0x798). */
-u8 *EmScript_Op45(Em *em, u8 *script)
+u8 *EmScript_IfLonePlayerBait(Em *em, u8 *script)
 {
     Player *pl = gPlayers;
     u8 list[4];
@@ -16215,17 +17732,22 @@ u8 *EmScript_Op45(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op46(Em *em, u8 *script)
+/*
+ * Test op 0x46: true when the picked player (scriptPlayer) is in the state
+ * group and state of the two bytes (Player_IsState); no check for "none
+ * picked".
+ */
+u8 *EmScript_IfScriptPlayerState(Em *em, u8 *script)
 {
-    u8 g;
-    u8 s;
+    u8 group;
+    u8 state;
 
     switch (*script++) {
     case 0:
-        g = script[0];
-        s = script[1];
+        group = script[0];
+        state = script[1];
         script += 2;
-        if (Player_IsState(&gPlayers[(s8) em->scriptPlayer & 0xF], g, s) == 0) {
+        if (Player_IsState(&gPlayers[(s8) em->scriptPlayer & 0xF], group, state) == 0) {
             for (;;) {
                 if (script[0] == 0x46 && script[1] == 1) {
                     break;
@@ -16250,7 +17772,11 @@ u8 *EmScript_Op46(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op47(Em *em, u8 *script)
+/*
+ * Test op 0x47: true when the monster took a player's bait (hooked; the
+ * Plesioth), and clears it.
+ */
+u8 *EmScript_IfHooked(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -16281,15 +17807,20 @@ u8 *EmScript_Op47(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op48(Em *em, u8 *script)
+u8 *EmScript_SetDelay(Em *em, u8 *script)
 {
     em->scriptDelay = *script;
     return script + 1;
 }
 
-u8 *EmScript_Op49(Em *em, u8 *script)
+/*
+ * Command 0x49, one byte: with a picked player, the goal is goalKind 0xB, a
+ * point by that player's floorAttr (Em_ComputeGoal) with preset byte; with
+ * none, goalKind 1 with no player.
+ */
+u8 *EmScript_GoalPlayerFloorSpot(Em *em, u8 *script)
 {
-    s32 v = *script;
+    s32 preset = *script;
 
     if ((s8) em->scriptPlayer == -1) {
         em->goalKind = 1;
@@ -16298,7 +17829,7 @@ u8 *EmScript_Op49(Em *em, u8 *script)
     } else {
         em->goalKind = 0xB;
         em->goalArg = (s8) em->scriptPlayer & 0xF;
-        em->goalNo = (u8) v;
+        em->goalNo = (u8) preset;
     }
     em->curGoalKind = em->goalKind;
     em->curGoalArg = *(u16 *) &em->goalArg;
@@ -16306,7 +17837,11 @@ u8 *EmScript_Op49(Em *em, u8 *script)
     return script + 1;
 }
 
-u8 *EmScript_Op4A(Em *em, u8 *script)
+/*
+ * Test op 0x4A: true when a player is picked and in the monster's sight (its
+ * bit in seen).
+ */
+u8 *EmScript_IfScriptPlayerSeen(Em *em, u8 *script)
 {
     s8 k;
 
@@ -16338,7 +17873,11 @@ u8 *EmScript_Op4A(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op4B(Em *em, u8 *script)
+/*
+ * Command 0x4B: resets the picked player's alertBuildup to 0 (nothing with
+ * none picked).
+ */
+u8 *EmScript_SetAlertBuildup(Em *em, u8 *script)
 {
     s8 idx;
 
@@ -16349,7 +17888,11 @@ u8 *EmScript_Op4B(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op4C(Em *em, u8 *script)
+/*
+ * Command 0x4C: resets the picked player's noticeCount to 0 (nothing with
+ * none picked).
+ */
+u8 *EmScript_SetNoticeCount(Em *em, u8 *script)
 {
     s8 idx;
 
@@ -16360,13 +17903,17 @@ u8 *EmScript_Op4C(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op4D(Em *em, u8 *script)
+u8 *EmScript_ComputeGoal(Em *em, u8 *script)
 {
     Em_ComputeGoal(em, em->goal);
     return script;
 }
 
-u8 *EmScript_Op4E(Em *em, u8 *script)
+/*
+ * Command 0x4E, one byte: with 0 adds half of need2Max to need 2's gauge
+ * (Em_AddNeed2).
+ */
+u8 *EmScript_AddNeed2(Em *em, u8 *script)
 {
     switch (*script) {
     case 0:
@@ -16376,7 +17923,11 @@ u8 *EmScript_Op4E(Em *em, u8 *script)
     return script + 1;
 }
 
-u8 *EmScript_Op4F(Em *em, u8 *script)
+/*
+ * Command 0x4F, one byte: with 0 adds half of need1Max to need 1's gauge
+ * (Em_AddNeed1).
+ */
+u8 *EmScript_AddNeed1(Em *em, u8 *script)
 {
     switch (*script) {
     case 0:
@@ -16386,17 +17937,22 @@ u8 *EmScript_Op4F(Em *em, u8 *script)
     return script + 1;
 }
 
-u8 *EmScript_Op50(Em *em, u8 *script)
+/* Command 0x50, one byte: with 0 adds half of need3Max to need 3's gauge. */
+u8 *EmScript_AddNeed3(Em *em, u8 *script)
 {
     switch (*script) {
     case 0:
-        Em_Add7F4(em, em->need3Max / 2);
+        Em_AddNeed3(em, em->need3Max / 2);
         break;
     }
     return script + 1;
 }
 
-u8 *EmScript_Op51(Em *em, u8 *script)
+/*
+ * Test op 0x51: true while the monster is under the sand or the water
+ * (EM_STANCE_UNDER).
+ */
+u8 *EmScript_IfStanceUnder(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -16428,7 +17984,7 @@ u8 *EmScript_Op51(Em *em, u8 *script)
 /* Script command 0x52: picks the target player into +0x798 among those it is angry with (+0x7E3)
  * and can reach: anger (+0x86C) 50000 or more first, then 30000, by the largest +0x818; else the
  * angriest (none if all are 0); -1 when none. */
-u8 *EmScript_Op52(Em *em, u8 *script)
+u8 *EmScript_PickNoticedPlayerReachable(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
@@ -16448,7 +18004,7 @@ u8 *EmScript_Op52(Em *em, u8 *script)
         if (n >= 2) {
             sel = list[0];
             for (i = 1; i < n; i++) {
-                if (((EmView818 *) em)->f[sel] < ((EmView818 *) em)->f[list[i]]) {
+                if (em->playerDist[sel] < em->playerDist[list[i]]) {
                     sel = list[i];
                 }
             }
@@ -16467,7 +18023,7 @@ u8 *EmScript_Op52(Em *em, u8 *script)
             if (n >= 2) {
                 sel = list[0];
                 for (i = 1; i < n; i++) {
-                    if (((EmView818 *) em)->f[sel] < ((EmView818 *) em)->f[list[i]]) {
+                    if (em->playerDist[sel] < em->playerDist[list[i]]) {
                         sel = list[i];
                     }
                 }
@@ -16512,7 +18068,13 @@ u8 *EmScript_Op52(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op53(Em *em, u8 *script)
+/*
+ * Command 0x53: picks the target into scriptPlayer (-1 for none) among the
+ * noticed, active players in the monster's area not on its side (Side_Match):
+ * a notice count of 50000 or more first, then 30000 or more (the farthest by
+ * playerDist), else the highest count, or at random when all are 0.
+ */
+u8 *EmScript_PickNoticedPlayerInArea(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
@@ -16541,7 +18103,7 @@ u8 *EmScript_Op53(Em *em, u8 *script)
         if (n >= 2) {
             sel = list[0];
             for (i = 1; i < n; i++) {
-                if (((EmView818 *) em)->f[sel] < ((EmView818 *) em)->f[list[i]]) {
+                if (em->playerDist[sel] < em->playerDist[list[i]]) {
                     sel = list[i];
                 }
             }
@@ -16557,7 +18119,7 @@ u8 *EmScript_Op53(Em *em, u8 *script)
             if (n >= 2) {
                 sel = list[0];
                 for (i = 1; i < n; i++) {
-                    if (((EmView818 *) em)->f[sel] < ((EmView818 *) em)->f[list[i]]) {
+                    if (em->playerDist[sel] < em->playerDist[list[i]]) {
                         sel = list[i];
                     }
                 }
@@ -16605,7 +18167,11 @@ u8 *EmScript_Op53(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op54(Em *em, u8 *script)
+/*
+ * Test op 0x54: true when a player is picked, active and in the monster's
+ * area.
+ */
+u8 *EmScript_IfScriptPlayerInArea(Em *em, u8 *script)
 {
     s8 k;
     Player *pl;
@@ -16638,7 +18204,10 @@ u8 *EmScript_Op54(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op55(Em *em, u8 *script)
+/*
+ * Test op 0x55: true when the picked player's noticeCount is 30000 or more.
+ */
+u8 *EmScript_IfScriptPlayerNoticeHigh(Em *em, u8 *script)
 {
     s8 k;
 
@@ -16670,16 +18239,19 @@ u8 *EmScript_Op55(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op56(Em *em, u8 *script)
+/*
+ * Test op 0x56: true when gQuest.stage, the quest id, equals the two bytes.
+ */
+u8 *EmScript_IfQuestId(Em *em, u8 *script)
 {
-    u16 day;
+    u16 questId;
 
     switch (*script++) {
     case 0:
-        day = script[0] << 8;
-        day |= script[1];
+        questId = script[0] << 8;
+        questId |= script[1];
         script += 2;
-        if (gQuest.stage != day) {
+        if (gQuest.stage != questId) {
             for (;;) {
                 if (script[0] == 0x56 && script[1] == 1) {
                     break;
@@ -16704,11 +18276,15 @@ u8 *EmScript_Op56(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op57(Em *em, u8 *script)
+/*
+ * Switch op 0x57 on questKey (the key of the quest's monster entry): n two-
+ * byte values, ascending, each with its block.
+ */
+u8 *EmScript_SwitchQuestKey(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u16 v;
+    u16 listedKey;
     u8 ok;
 
     switch (*script++) {
@@ -16718,13 +18294,13 @@ u8 *EmScript_Op57(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = script[0] << 8;
-                v |= script[1];
+                listedKey = script[0] << 8;
+                listedKey |= script[1];
                 script += 2;
-                if (em->questKey == v) {
+                if (em->questKey == listedKey) {
                     break;
                 }
-                if (v < em->questKey) {
+                if (listedKey < em->questKey) {
                     script = EmScript_SkipBlock(em, script, 0x57, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -16764,7 +18340,11 @@ u8 *EmScript_Op57(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op58(Em *em, u8 *script)
+/*
+ * Command 0x58: the linked monster's target player (link->targetNo) becomes
+ * the goal (goalKind 1; 0xFFFF with no link) and scriptPlayer.
+ */
+u8 *EmScript_GoalLinkTarget(Em *em, u8 *script)
 {
     Em *link = em->link;
 
@@ -16779,7 +18359,8 @@ u8 *EmScript_Op58(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op59(Em *em, u8 *script)
+/* Test op 0x59: true while the monster is on the ceiling (ceilingTimer). */
+u8 *EmScript_IfOnCeiling(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -16808,17 +18389,21 @@ u8 *EmScript_Op59(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op5A(Em *em, u8 *script)
+/*
+ * Test op 0x5A, one byte: true when the current goal is a player (curGoalKind
+ * 1 or 0xB), a player is picked and its floorAttr equals the byte.
+ */
+u8 *EmScript_IfScriptPlayerFloorAttr(Em *em, u8 *script)
 {
-    u8 v;
+    u8 attr;
     s8 k;
 
     switch (*script++) {
     case 0:
-        v = *script++;
+        attr = *script++;
         if (em->curGoalKind == 0xB || em->curGoalKind == 1) {
             k = em->scriptPlayer;
-            if (k != -1 && v == ((Player *) ((u8 *) gPlayers + (k & 0xF) * sizeof(Player)))->floorAttr) {
+            if (k != -1 && attr == ((Player *) ((u8 *) gPlayers + (k & 0xF) * sizeof(Player)))->floorAttr) {
                 break;
             }
         }
@@ -16845,13 +18430,17 @@ u8 *EmScript_Op5A(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op5B(Em *em, u8 *script)
+/*
+ * Command 0x5B, one byte: with 0, zeroes noticeTimer of every player out of
+ * the monster's sight this frame.
+ */
+u8 *EmScript_SetNoticeTimer(Em *em, u8 *script)
 {
-    u8 v = *script;
+    u8 mode = *script;
     s8 i;
 
     for (i = 0; i < gScene.playerCount; i++) {
-        switch (v) {
+        switch (mode) {
         case 0:
             if (!(em->seen & (1 << i))) {
                 em->noticeTimer[i] = 0;
@@ -16862,14 +18451,18 @@ u8 *EmScript_Op5B(Em *em, u8 *script)
     return script + 1;
 }
 
-u8 *EmScript_Op5C(Em *em, u8 *script)
+/*
+ * Test op 0x5C: true when the monster is in gScene.area and
+ * AreaGrid2_GetCeiling finds a ceiling over it.
+ */
+u8 *EmScript_IfCeilingAbove(Em *em, u8 *script)
 {
-    f32 a;
-    f32 b;
+    f32 ceilingY;
+    f32 ceilingInfo;
 
     switch (*script++) {
     case 0:
-        if (em->area != gScene.area || AreaGrid2_GetCeiling(&em->posX, &a, (struct AreaTri *) &b) == 0) {
+        if (em->area != gScene.area || AreaGrid2_GetCeiling(&em->posX, &ceilingY, (struct AreaTri *) &ceilingInfo) == 0) {
             for (;;) {
                 if (script[0] == 0x5C && script[1] == 1) {
                     break;
@@ -16894,7 +18487,11 @@ u8 *EmScript_Op5C(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op5D(Em *em, u8 *script)
+/*
+ * Test op 0x5D: recomputes the goal (Em_ComputeGoal into goal) and is true
+ * when none of its three coordinates is 0.
+ */
+u8 *EmScript_IfGoalValid(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -16924,14 +18521,17 @@ u8 *EmScript_Op5D(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op5E(Em *em, u8 *script)
+/*
+ * Test op 0x5E, one byte: true when the monster's floorAttr equals the byte.
+ */
+u8 *EmScript_IfFloorAttr(Em *em, u8 *script)
 {
-    u8 v;
+    u8 attr;
 
     switch (*script++) {
     case 0:
-        v = *script++;
-        if (*((u8 *) em + 0x662) != v) {
+        attr = *script++;
+        if (*((u8 *) em + 0x662) != attr) {
             for (;;) {
                 if (script[0] == 0x5E && script[1] == 1) {
                     break;
@@ -16956,7 +18556,13 @@ u8 *EmScript_Op5E(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op5F(Em *em, u8 *script)
+/*
+ * Command 0x5F: picks the target into scriptPlayer (-1 for none) among the
+ * noticed, active players in the monster's area standing on the same kind of
+ * floor (floorAttr 1 to 3, or 4 to 10; none on floorAttr 0), by notice count
+ * as EmScript_PickNoticedPlayerInArea.
+ */
+u8 *EmScript_PickNoticedPlayerSameFloor(Em *em, u8 *script)
 {
     s32 i;
     s32 n;
@@ -16996,7 +18602,7 @@ u8 *EmScript_Op5F(Em *em, u8 *script)
         if (n >= 2) {
             sel = list[0];
             for (i = 1; i < n; i++) {
-                if (((EmView818 *) em)->f[sel] < ((EmView818 *) em)->f[list[i]]) {
+                if (em->playerDist[sel] < em->playerDist[list[i]]) {
                     sel = list[i];
                 }
             }
@@ -17012,7 +18618,7 @@ u8 *EmScript_Op5F(Em *em, u8 *script)
             if (n >= 2) {
                 sel = list[0];
                 for (i = 1; i < n; i++) {
-                    if (((EmView818 *) em)->f[sel] < ((EmView818 *) em)->f[list[i]]) {
+                    if (em->playerDist[sel] < em->playerDist[list[i]]) {
                         sel = list[i];
                     }
                 }
@@ -17043,11 +18649,17 @@ u8 *EmScript_Op5F(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op60(Em *em, u8 *script)
+/*
+ * Test op 0x60: true when gScene.skipFlaggedTris is set. AreaObj_K14_Create clears it
+ * for quest 0xBBC and sets it for every other quest; with it set, the area's
+ * collision ignores the triangles flagged 0x4000 and the Fatalis area's
+ * dropping object runs (likely a gate).
+ */
+u8 *EmScript_IfGateOpen(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
-        if (gScene.unk20A == 0) {
+        if (gScene.skipFlaggedTris == 0) {
             for (;;) {
                 if (script[0] == 0x60 && script[1] == 1) {
                     break;
@@ -17073,75 +18685,82 @@ u8 *EmScript_Op60(Em *em, u8 *script)
 }
 
 struct EmIdPair;
-void Em_SetAreaValue8A0(Em *em, struct EmIdPair *pair);
-u8 *EmScript_Op61(Em *em, u8 *script)
+void Em_SetAreaTimer2(Em *em, struct EmIdPair *pair);
+u8 *EmScript_SetAreaTimer2(Em *em, u8 *script)
 {
-    Em_SetAreaValue8A0(em, (struct EmIdPair *)gEmAreaValues8A0[em->type]);
+    Em_SetAreaTimer2(em, (struct EmIdPair *)gEmAreaTimer2Values[em->type]);
     return script;
 }
 
 //---
-/* Command 0x62 (a branch on the target player, 0..3 then 0xFF): picks branch 1 (runs on), 2 or 3 from the
- * target player +0x662 and the monster +0x662, skipping to it; no target: branch 3. As in the game, go is
- * only set on that path (the others read it uninitialized). */
-u8 *EmScript_Op62(Em *em, u8 *script)
+/*
+ * Switch op 0x62 on the floor under the target player (scriptPlayer). After
+ * the sub-op byte come two unused bytes. Block 1 follows the header, blocks 2
+ * and 3 follow the markers 0x62 2 and 0x62 3, and 0x62 0xFF ends the switch.
+ * When the monster's floorAttr is 1, it runs block 2 for a player floorAttr
+ * of 2 or 3, else block 3. Otherwise it runs block 1 for 6 or 8, block 2 for
+ * 4, 5, 7 or 9, else block 3. With no target it runs block 3. A block that
+ * reaches a later marker skips to the end. With a target and block 2 or 3,
+ * searching is read before it is set (as in the game).
+ */
+u8 *EmScript_SwitchScriptPlayerFloorAttr(Em *em, u8 *script)
 {
     Player *pl;
-    s8 k;
-    u8 r;
-    u8 go;
+    s8 targetNo;
+    u8 branch;
+    u8 searching;
     u8 want;
 
     switch (*script++) {
     case 0:
-        k = em->scriptPlayer;
+        targetNo = em->scriptPlayer;
         script += 2;
-        if (k != -1) {
-            pl = &gPlayers[k & 0xF];
+        if (targetNo != -1) {
+            pl = &gPlayers[targetNo & 0xF];
         } else {
-            go = 1;
-            r = 3;
+            searching = 1;
+            branch = 3;
             goto found;
         }
         if (em->floorAttr == 1) {
             switch (*(u16 *) ((u8 *) pl + 0x662)) {
             default:
             case 0:
-                r = 3;
+                branch = 3;
                 break;
             case 2:
             case 3:
-                r = 2;
+                branch = 2;
                 break;
             }
         } else {
             switch (*(u16 *) ((u8 *) pl + 0x662)) {
             case 10:
             default:
-                r = 3;
+                branch = 3;
                 break;
             case 4:
             case 5:
             case 7:
             case 9:
-                r = 2;
+                branch = 2;
                 break;
             case 6:
             case 8:
-                r = 1;
+                branch = 1;
                 break;
             }
         }
-        if (r == 1) {
+        if (branch == 1) {
             break;
         }
     /* the game reads a register it never set: go is s1, still the caller's, when a player is set and r is 2 or 3 */
     found:
-        while (go) {
-            want = r;
+        while (searching) {
+            want = branch;
             script = EmScript_SkipBlock(em, script, 0x62, 0xFF);
             if ((script[0] == 0x62 && script[1] == want) || (script[0] == 0x62 && script[1] == 0xFF)) {
-                go = 0;
+                searching = 0;
             }
             script = EmScript_NextCmd(em, script);
         }
@@ -17164,14 +18783,15 @@ u8 *EmScript_Op62(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op63(Em *em, u8 *script)
+/* Test op 0x63, one byte: true when variant has any bit of the byte. */
+u8 *EmScript_IfVariantBits(Em *em, u8 *script)
 {
-    u8 v;
+    u8 mask;
 
     switch (*script++) {
     case 0:
-        v = *script++;
-        if (!(em->variant & v)) {
+        mask = *script++;
+        if (!(em->variant & mask)) {
             for (;;) {
                 if (script[0] == 0x63 && script[1] == 1) {
                     break;
@@ -17196,7 +18816,8 @@ u8 *EmScript_Op63(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op77(Em *em, u8 *script)
+/* Test op 0x77: true by day (Daytime_Get 0). */
+u8 *EmScript_IfDay(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -17225,11 +18846,15 @@ u8 *EmScript_Op77(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op7C(Em *em, u8 *script)
+/*
+ * Test op 0x7C: true on an arena stage, when Map_DayId(gScene.map) is
+ * MAP_GREAT_ARENA or MAP_ARENA.
+ */
+u8 *EmScript_IfInArena(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
-        if ((u32) ((Area_BaseId(gScene.map) & 0xFF) - 9) > 1) {
+        if ((u32) ((Map_DayId(gScene.map) & 0xFF) - MAP_GREAT_ARENA) > 1) {
             for (;;) {
                 if (script[0] == 0x7C && script[1] == 1) {
                     break;
@@ -17254,29 +18879,33 @@ u8 *EmScript_Op7C(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op78(Em *em, u8 *script)
+/*
+ * Test op 0x78, bytes lo and hi: true when the goal is a player whose
+ * direction from the heading rotY lies between lo * 256 and hi * 256.
+ */
+u8 *EmScript_IfGoalPlayerInArc(Em *em, u8 *script)
 {
     s32 ok;
-    u16 lo;
-    u16 hi;
-    u16 d;
-    u16 t;
+    u16 arcStart;
+    u16 arcEnd;
+    u16 angle;
+    u16 targetNo;
     Player *pl;
-    f32 pa[4];
-    f32 pb[4];
+    f32 localPos[4];
+    f32 worldPos[4];
 
     switch (*script++) {
     case 0:
-        lo = script[0];
-        hi = script[1];
+        arcStart = script[0];
+        arcEnd = script[1];
         ok = 0;
         script += 2;
-        if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (t = *(u16 *) &em->goalNo) != -1) {
-            Em_GetTargetPos(em, t, pa);
-            pl = &gPlayers[t];
-            Area_ToWorld(pl->area, pa, pb);
-            d = Math_AngleXZ(em->mapPos, pb) - em->rotY;
-            if ((u16) (lo << 8) > d || d > (u16) (hi << 8)) {
+        if (em->goalKind == 1 && *(u16 *) &em->goalArg == 0 && (s16) (targetNo = *(u16 *) &em->goalNo) != -1) {
+            Em_GetTargetPos(em, targetNo, localPos);
+            pl = &gPlayers[targetNo];
+            Area_ToWorld(pl->area, localPos, worldPos);
+            angle = Math_AngleXZ(em->mapPos, worldPos) - em->rotY;
+            if ((u16) (arcStart << 8) > angle || angle > (u16) (arcEnd << 8)) {
                 ok = 1;
             }
         } else {
@@ -17317,16 +18946,20 @@ u8 *EmScript_Op78(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op64(Em *em, u8 *script)
+/*
+ * Test op 0x64, one byte: true when the picked player's noticeCount is at
+ * least gEmNoticeThresholds[byte].
+ */
+u8 *EmScript_IfScriptPlayerNoticeOver(Em *em, u8 *script)
 {
-    u8 v;
+    u8 index;
     s8 k;
 
     switch (*script++) {
     case 0:
-        v = *script++;
+        index = *script++;
         k = em->scriptPlayer;
-        if (k == -1 || em->noticeCount[k] < gEmNoticeThresholds[v]) {
+        if (k == -1 || em->noticeCount[k] < gEmNoticeThresholds[index]) {
             for (;;) {
                 if (script[0] == 0x64 && script[1] == 1) {
                     break;
@@ -17351,7 +18984,8 @@ u8 *EmScript_Op64(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op65(Em *em, u8 *script)
+/* Command 0x65: clears every player's noticeCount. */
+u8 *EmScript_ClearNoticeCounts(Em *em, u8 *script)
 {
     em->noticeCount[0] = 0;
     em->noticeCount[1] = 0;
@@ -17360,7 +18994,11 @@ u8 *EmScript_Op65(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op66(Em *em, u8 *script)
+/*
+ * Test op 0x66: true when any player rides a monster (rideState; not
+ * necessarily this one).
+ */
+u8 *EmScript_IfAnyPlayerRiding(Em *em, u8 *script)
 {
     u8 ok = 1;
     Player *pl;
@@ -17399,7 +19037,8 @@ u8 *EmScript_Op66(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op67(Em *em, u8 *script)
+/* Test op 0x67: true when this machine runs the monster (remote 0). */
+u8 *EmScript_IfNotRemote(Em *em, u8 *script)
 {
     s32 ok;
 
@@ -17431,24 +19070,30 @@ u8 *EmScript_Op67(Em *em, u8 *script)
     return script;
 }
 
-s32 EmScript_Op68(Em *em, s32 p)
+s32 EmScript_RestartMain(Em *em, s32 script)
 {
     Em_RestartScript(em);
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op80(Em *em, u8 *script)
+/*
+ * Op 0x80, a weighted random branch: after the branch count, each branch is a
+ * marker with a weight; the roll is stateRand & 0x1F and the first branch
+ * whose running total passes it runs (weight 0 never, 0xFF always). A branch
+ * that reaches the next marker skips to the closing sub-byte 0xFF.
+ */
+u8 *EmScript_RandomBranch(Em *em, u8 *script)
 {
     u16 i;
     u8 sum;
-    u16 r;
+    u16 roll;
     u8 n;
     u8 w;
 
     switch (*script) {
     case 0:
         n = script[1];
-        r = em->stateRand & 0x1F;
+        roll = em->stateRand & 0x1F;
         sum = 0;
         i = 0;
         script += 2;
@@ -17463,7 +19108,7 @@ u8 *EmScript_Op80(Em *em, u8 *script)
                 break;
             }
             sum += w;
-            if (r < sum) {
+            if (roll < sum) {
                 break;
             }
         }
@@ -17498,39 +19143,51 @@ u8 *EmScript_Op80(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op81(Em *em, u8 *p)
+/*
+ * Command 0x81, one byte: calls subscript byte of table 1; the first call
+ * saves the return in scriptCallReturn (EmScript_End's end 1 returns there).
+ * Returns the subscript's start, also in scriptPos.
+ */
+u8 *EmScript_CallScript(Em *em, u8 *pos)
 {
-    em->scriptCallNo = *p;
+    em->scriptCallNo = *pos;
     if (em->scriptCallDepth == 0) {
-        em->scriptCallReturn = p + 1;
+        em->scriptCallReturn = pos + 1;
     }
     em->scriptCallDepth = 1;
-    p = em->script[1][em->scriptCallNo];
-    em->scriptPos = p;
-    return p;
+    pos = em->script[1][em->scriptCallNo];
+    em->scriptPos = pos;
+    return pos;
 }
 
 /* Command 0x82 (2 argument bytes: a script table k and an entry): jumps to script entry of table
  * 0xF + k; the first such jump after a 0x81 jump remembers the return position (+0x760). */
-u8 *EmScript_Op82(Em *em, u8 *p)
+u8 *EmScript_JumpEntry(Em *em, u8 *pos)
 {
     u8 k;
 
-    k = *p++;
-    em->scriptCallEntry = *p++;
+    k = *pos++;
+    em->scriptCallEntry = *pos++;
     if (em->scriptCallDepth == 1) {
-        em->scriptJumpReturn = p;
+        em->scriptJumpReturn = pos;
     }
     em->scriptCallDepth = 2;
-    p = em->script[k + 0xF][em->scriptCallEntry];
-    em->scriptPos = p;
-    return p;
+    pos = em->script[k + 0xF][em->scriptCallEntry];
+    em->scriptPos = pos;
+    return pos;
 }
 
-u8 *EmScript_Op06(Em *em, u8 *script)
+/*
+ * Command 0x06: sets the goal from the bytes (goalKind, goalArg, goalNo).
+ * Kind 3, an area, reads a two-byte area id (Area_IdForCurrentTime) into
+ * nextArea and clears destArea; kind 0xA becomes kind 3 toward the picked
+ * player's area; kind 0xD makes the first other large monster in the area the
+ * goal.
+ */
+u8 *EmScript_SetGoal(Em *em, u8 *script)
 {
     s32 i;
-    Em *m;
+    Em *other;
 
     em->goalKind = script[0];
     switch (em->goalKind) {
@@ -17585,8 +19242,8 @@ u8 *EmScript_Op06(Em *em, u8 *script)
         em->goalNo = *(script += 2);
         script++;
         em->goalNo = 0;
-        for (i = 0, m = gEms; i < 20; i++, m++) {
-            if (m->active != 0 && em->area == m->area && m != em && m->large != 0) {
+        for (i = 0, other = gEms; i < 20; i++, other++) {
+            if (other->active != 0 && em->area == other->area && other != em && other->large != 0) {
                 break;
             }
         }
@@ -17607,10 +19264,10 @@ u8 *EmScript_Op06(Em *em, u8 *script)
 
 /* Command 0x83 (a multi-way branch on distance, 0..5 then 0xFF): picks the first limit (+0x764) the
  * distance to the target reaches and runs that branch; -1: no target, the last one. */
-u8 *EmScript_Op83(Em *em, u8 *script)
+u8 *EmScript_SwitchTargetDist(Em *em, u8 *script)
 {
     s8 k;
-    f32 d;
+    f32 dist;
     u8 n;
     s32 i;
     s32 j;
@@ -17620,18 +19277,18 @@ u8 *EmScript_Op83(Em *em, u8 *script)
     case 0:
         k = em->scriptPlayer;
         if (k == -1) {
-            d = -1.0f;
+            dist = -1.0f;
         } else if (em->curGoalKind == 0xD) {
-            d = Vec_Distance(&em->posX, &gEms[k].posX);
+            dist = Vec_Distance(&em->posX, &gEms[k].posX);
         } else {
             off = (k & 0xF) * 4;
-            d = *(f32 *) (off + (s32) em + 0x818);
+            dist = *(f32 *) (off + (s32) em + 0x818);
         }
         n = *script++;
-        if (d == -1.0f) {
+        if (dist == -1.0f) {
             i = n;
         } else {
-            em->targetDist = d;
+            em->targetDist = dist;
             for (i = 0; i < n; i++) {
                 if (em->targetDist <= ((EmDistView *) em)->limit[i] && ((EmDistView *) em)->limit[i] >= 0.0f) {
                     break;
@@ -17665,19 +19322,30 @@ u8 *EmScript_Op83(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_OpFF(Em *em, u8 *script)
+/*
+ * Op 0xFF, the end of a script thread; the sub-byte says which. 0 restarts
+ * the main script; 1, 2 and 3 return from a call (scriptCallReturn,
+ * scriptJumpReturn, subScriptReturn); 4 and 5 step along the route of
+ * EmScript_StartRoute (4 also moves a large monster into the route's area); 0xF5 to
+ * 0xF7 and 0xFC restart the main script with scriptFlags cleared; 0xF8, 0xF9,
+ * 0xFA and 0xFD end the threads of EM_TRIGGER_RAGE, EM_TRIGGER_SENSED,
+ * EM_TRIGGER_AREA_OBJ and EM_TRIGGER_PART_BUILDUP; 0xFB ends a step of the
+ * area sequence, 0xFE a loop pass and 0xFF repeats the loop script for
+ * loopCount passes. Returns the new position, also in scriptPos.
+ */
+u8 *EmScript_End(Em *em, u8 *script)
 {
     EmRouteSet *set;
     EmRoute *routes;
     EmRoutePt *pts;
-    f32 d;
+    f32 dist;
     f32 lim;
     s8 n;
     s8 i;
-    u8 *q;
+    u8 *listPtr;
     s8 k;
     u8 buf[16];
-    f32 v[4];
+    f32 goalPos[4];
 
     switch (*script) {
     case 0:
@@ -17726,11 +19394,11 @@ u8 *EmScript_OpFF(Em *em, u8 *script)
             break;
         }
         if (em->type == 0x3A || em->type == 0x48) {
-            d = Vec_Distance(&em->posX, pts[em->routePoint].pos);
+            dist = Vec_Distance(&em->posX, pts[em->routePoint].pos);
         } else {
-            d = Vec_DistanceXZ(&em->posX, pts[em->routePoint].pos);
+            dist = Vec_DistanceXZ(&em->posX, pts[em->routePoint].pos);
         }
-        if (!(d <= pts[em->routePoint].radius)) {
+        if (!(dist <= pts[em->routePoint].radius)) {
             if (++*(s8 *) &em->routeMissCount >= 10) {
                 if (em->routePoint == 0) {
                     goto last;
@@ -17868,15 +19536,15 @@ u8 *EmScript_OpFF(Em *em, u8 *script)
         }
         break;
     case 0xFE:
-        Em_ComputeGoal(em, v);
-        d = Vec_DistanceXZ(v, &em->posX);
+        Em_ComputeGoal(em, goalPos);
+        dist = Vec_DistanceXZ(goalPos, &em->posX);
         if (em->type == 2 || em->type == 0x24 || em->type == 0x47 || em->type == 0x37 ||
             em->type == 7 || em->type == 0x32 || em->type == 0x3A || em->type == 0x48) {
             lim = 1000.0f;
         } else {
             lim = 500.0f;
         }
-        if (d <= lim) {
+        if (dist <= lim) {
             em->loopIndex++;
             switch (em->loopMode) {
             case 0:
@@ -17884,10 +19552,10 @@ u8 *EmScript_OpFF(Em *em, u8 *script)
                 n = 0;
                 if (i < (s8) em->areaPointCount) {
                     k = em->loopPoint;
-                    q = buf;
+                    listPtr = buf;
                     do {
                         if (k != i) {
-                            *q++ = i;
+                            *listPtr++ = i;
                             n++;
                         }
                         i++;
@@ -17922,60 +19590,78 @@ u8 *EmScript_OpFF(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op90(Em *em, u8 *script)
+/*
+ * Command 0x90, one byte: moves the monster (and its previous position) to
+ * that point of gEmGoalPoints[type].
+ */
+u8 *EmScript_PlaceAtPoint(Em *em, u8 *script)
 {
-    f32 *v = (f32 *) (gEmGoalPoints[em->type] + *script * sizeof(f32[3]));
+    f32 *point = (f32 *) (gEmGoalPoints[em->type] + *script * sizeof(f32[3]));
 
-    em->posX = v[0];
-    em->posY = v[1];
-    em->posZ = v[2];
+    em->posX = point[0];
+    em->posY = point[1];
+    em->posZ = point[2];
     em->prevPosX = em->posX;
     em->prevPosY = em->posY;
     em->prevPosZ = em->posZ;
     return script + 1;
 }
 
-void * EmScript_Op91(Em *em, u8 *script)
+void * EmScript_FacePoint(Em *em, u8 *script)
 {
     em->rotY = Math_AngleXZ((f32 *) &em->posX, (f32 *) (gEmGoalPoints[em->type] + (*script * 0xC))) & 0xFFFF;
     return script + 1;
 }
 
-void * EmScript_Op99(Em *em, u8 *script)
+void * EmScript_SetHeading(Em *em, u8 *script)
 {
     em->rotY = *script << 8;
     return script + 1;
 }
 
-s32 EmScript_Op92(s32 unused, s32 p)
+/*
+ * Op 0x92: does nothing and returns script, the next command. EmScript_Run
+ * passes the monster as an integer, unused.
+ */
+s32 EmScript_Nop(s32 unused, s32 script)
 {
-    return p;
+    return script;
 }
 
-s32 EmScript_Op93(s32 unused, s32 p)
+/* Op 0x93: the same as EmScript_Nop. */
+s32 EmScript_NopAlt(s32 unused, s32 script)
 {
-    return p;
+    return script;
 }
 
-u8 *EmScript_Op94(Em *em, u8 *script)
+/*
+ * Switch op 0x94 on D_008F5AB8, a value EmScript_Init sets to 0 and nothing
+ * else writes. The header 0x94 0 holds the case count and two more bytes.
+ * Then come ascending case values, each a value byte and its block; 0x94 1
+ * starts each later case, 0x94 2 the default and 0x94 3 the end. It runs the
+ * block of the equal value. A listed value above it sends it to the default
+ * block (or past the end), and a block that reaches the next case or the
+ * default skips to the end.
+ */
+u8 *EmScript_SwitchScriptValue(Em *em, u8 *script)
 {
-    u8 n;
+    u8 caseCount;
     s32 i;
-    u8 v;
+    u8 listedValue;
     u8 ok;
 
     switch (*script++) {
     case 0:
-        n = script[0];
+        caseCount = script[0];
         i = 0;
         script += 3;
-        if (i < n) {
+        if (i < caseCount) {
             do {
-                v = *script++;
-                if (D_008F5AB8 == v) {
+                listedValue = *script++;
+                if (D_008F5AB8 == listedValue) {
                     break;
                 }
-                if (v < D_008F5AB8) {
+                if (listedValue < D_008F5AB8) {
                     script = EmScript_SkipBlock(em, script, 0x94, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -17994,7 +19680,7 @@ u8 *EmScript_Op94(Em *em, u8 *script)
                     break;
                 }
                 i++;
-            } while (i < n);
+            } while (i < caseCount);
         }
         break;
     case 1:
@@ -18015,14 +19701,17 @@ u8 *EmScript_Op94(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op71(Em *em, u8 *script)
+/*
+ * Test op 0x71, one byte: true when the monster's level is at least the byte.
+ */
+u8 *EmScript_IfLevelAtLeast(Em *em, u8 *script)
 {
-    u8 v;
+    u8 minLevel;
 
     switch (*script++) {
     case 0:
-        v = *script++;
-        if (em->level < v) {
+        minLevel = *script++;
+        if (em->level < minLevel) {
             for (;;) {
                 if (script[0] == 0x71 && script[1] == 1) {
                     break;
@@ -18047,7 +19736,8 @@ u8 *EmScript_Op71(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op72(Em *em, u8 *script)
+/* Test op 0x72: true in a versus quest (Quest_IsVersus). */
+u8 *EmScript_IfVersus(Em *em, u8 *script)
 {
     switch (*script++) {
     case 0:
@@ -18076,11 +19766,15 @@ u8 *EmScript_Op72(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op73(Em *em, u8 *script)
+/*
+ * Switch op 0x73 on the item use kind (itemUseKind without bit 0x80): n
+ * values, ascending; the use is cleared once taken.
+ */
+u8 *EmScript_SwitchItemUseKind(Em *em, u8 *script)
 {
     u8 n;
     s32 i;
-    u8 v;
+    u8 listedKind;
     u8 ok;
     u8 x;
 
@@ -18091,13 +19785,13 @@ u8 *EmScript_Op73(Em *em, u8 *script)
         script += 3;
         if (i < n) {
             do {
-                v = *script++;
+                listedKind = *script++;
                 x = em->itemUseKind & ~0x80;
-                if (x == v) {
+                if (x == listedKind) {
                     em->itemUseKind &= 0x80;
                     break;
                 }
-                if (v < x) {
+                if (listedKind < x) {
                     script = EmScript_SkipBlock(em, script, 0x73, 3);
                     if (script[1] == 2 || script[1] == 3) {
                         script += 2;
@@ -18137,15 +19831,19 @@ u8 *EmScript_Op73(Em *em, u8 *script)
     return script;
 }
 
-u8 *EmScript_Op74(Em *em, u8 *script)
+/*
+ * Test op 0x74, one byte: in a versus quest, when the item use kind is above
+ * the byte, adds to the versus gauge (Versus_AddGauge) and is true.
+ */
+u8 *EmScript_IfVersusItemUsed(Em *em, u8 *script)
 {
-    u8 v;
+    u8 minKind;
     u8 n;
 
     switch (*script++) {
     case 0:
-        v = *script++;
-        if (Quest_IsVersus() == 1 && (n = em->itemUseKind & ~0x80) > v) {
+        minKind = *script++;
+        if (Quest_IsVersus() == 1 && (n = em->itemUseKind & ~0x80) > minKind) {
             if (Versus_AddGauge(em, n) == 1) {
                 break;
             }
@@ -18185,32 +19883,39 @@ s32 Em_StartScript(Em *em)
     return (s32)pos;
 }
 
-u8 *EmScript_SkipBlock(Em *em, u8 *script, u8 op, u8 end)
+/*
+ * Skips whole commands from script to the next command of op opcode whose
+ * sub-byte is not 0, stepping over nested blocks of the same op (sub-byte 0
+ * opens one, end closes it), and returns it: the else, end or case marker of
+ * the block skipped. end is 2 for the tests, 3 for the switches and 0xFF for
+ * the branches.
+ */
+u8 *EmScript_SkipBlock(Em *em, u8 *script, u8 opcode, u8 end)
 {
     for (;;) {
-        while (script[0] != op) {
+        while (script[0] != opcode) {
             script = EmScript_NextCmd(em, script);
         }
-        if (script[0] != op || script[1] != 0) {
+        if (script[0] != opcode || script[1] != 0) {
             break;
         }
         script = EmScript_NextCmd(em, script);
         for (;;) {
-            if (script[0] == op && script[1] == end) {
+            if (script[0] == opcode && script[1] == end) {
                 script = EmScript_NextCmd(em, script);
                 break;
             }
-            if (script[0] == op) {
+            if (script[0] == opcode) {
                 script = EmScript_NextCmd(em, script);
             }
-            script = EmScript_SkipBlock(em, script, op, end);
+            script = EmScript_SkipBlock(em, script, opcode, end);
         }
     }
     return script;
 }
 
 /* Skips the command at p (its arguments, and a sub-command where it has one); an unknown command
- * stops the script (EmScript_SetVar95E with 4). The game keeps p in a1 across that call: EmScript_SetVar95E
+ * stops the script (EmScript_SetAbort with 4). The game keeps p in a1 across that call: EmScript_SetAbort
  * is static and defined earlier in this file (catalogue "Arguments kept or reloaded across calls"). */
 u8 *EmScript_NextCmd(Em *em, u8 *script)
 {
@@ -18998,31 +20703,40 @@ u8 *EmScript_NextCmd(Em *em, u8 *script)
         script += 2;
         break;
     default:
-        EmScript_SetVar95E(em, script, 4);
+        EmScript_SetAbort(em, script, 4);
         break;
     }
     return script;
 }
 
-u8 *EmScript_SkipToEnd(Em *em, u8 *script, u8 op)
+/*
+ * At a test's else (sub-byte 1) reached while running: returns the position
+ * past the same op's end (sub-byte 2), stepping over nested blocks.
+ */
+u8 *EmScript_SkipToEnd(Em *em, u8 *script, u8 opcode)
 {
-    Em *e;
+    Em *emCopy;
 
-    if (script[0] == op && script[1] == 2) {
+    if (script[0] == opcode && script[1] == 2) {
         script = EmScript_NextCmd(em, script);
     } else {
-        e = em; /* a copy for the loop (found by the permuter): with em itself MWCC lays the loop out differently */
+        emCopy = em; /* kept for the match: with em itself MWCC lays the loop out differently */
         for (;;) {
-            if (script[0] == op && script[1] == 2) {
-                script = EmScript_NextCmd(e, script);
+            if (script[0] == opcode && script[1] == 2) {
+                script = EmScript_NextCmd(emCopy, script);
                 break;
             }
-            script = EmScript_SkipBlock(e, script, op, 2);
+            script = EmScript_SkipBlock(emCopy, script, opcode, 2);
         }
     }
     return script;
 }
 
+/*
+ * Restarts the monster's script from main script 0 (sets scriptRestart for
+ * EmScript_Restart); on the machine that runs it, with no sync pending, also
+ * asks for a state sync (Em_RequestSync 2).
+ */
 void Em_RestartScript(Em *em)
 {
     if ((em->remote == 0) && (em->syncRequest == 0)) {
@@ -19037,7 +20751,7 @@ void Em_RestartScript(Em *em)
 void Em_EnterNextArea(Em *em)
 {
     f32 v[2][3];
-    AreaRecord *a;
+    AreaRecord *areaRec;
     f32 x;
     f32 z;
 
@@ -19046,37 +20760,37 @@ void Em_EnterNextArea(Em *em)
     Map_GetPosition(v[0], &v[0][2], em->prevArea);
     Map_GetPosition(v[1], &v[1][2], em->area);
     Stage_GetAreaRecord(em->prevArea);
-    a = Stage_GetAreaRecord(em->area);
+    areaRec = Stage_GetAreaRecord(em->area);
     switch ((u16) ((u16) (Math_AngleXZ(v[0], v[1]) + 0x1000) >> 13)) {
     case 4:
-        z = a->sizeZ;
-        x = a->sizeX / 2.0f;
+        z = areaRec->sizeZ;
+        x = areaRec->sizeX / 2.0f;
         break;
     case 5:
-        x = a->sizeX;
-        z = a->sizeZ;
+        x = areaRec->sizeX;
+        z = areaRec->sizeZ;
         break;
     case 6:
-        x = a->sizeX;
-        z = a->sizeZ / 2.0f;
+        x = areaRec->sizeX;
+        z = areaRec->sizeZ / 2.0f;
         break;
     case 7:
         z = 0.0f;
-        x = a->sizeX;
+        x = areaRec->sizeX;
         break;
     case 0:
         z = 0.0f;
-        x = a->sizeX / 2.0f;
+        x = areaRec->sizeX / 2.0f;
         break;
     case 1:
         z = x = 0.0f;
         break;
     case 2:
         x = 0.0f;
-        z = a->sizeZ / 2.0f;
+        z = areaRec->sizeZ / 2.0f;
         break;
     case 3:
-        z = a->sizeZ;
+        z = areaRec->sizeZ;
         x = 0.0f;
         break;
     }
@@ -19089,7 +20803,7 @@ void Em_EnterNextArea(Em *em)
 }
 
 /* Picks the next area of the monster's route: unless its area (Em +0x684) is one of the up to eight
- * areas Em_IdSetLookup lists, the listed area whose centre lies closest in angle to the direction from
+ * areas Em_NextAreas lists, the listed area whose centre lies closest in angle to the direction from
  * area +0x680 to area +0x684 (skipping area +0x882) becomes +0x684. pts[8] and pts[9] are those two
  * centres and ang[8] that direction (the game keeps them in the same arrays). */
 void Em_PickRoutePoint(Em *em)
@@ -19100,7 +20814,7 @@ void Em_PickRoutePoint(Em *em)
     s16 n;
     s16 best;
     u16 bestd;
-    AreaRecord *a;
+    AreaRecord *areaRec;
     f32 pts[10][3];
     u16 ang[9];
     u16 diff[8];
@@ -19109,7 +20823,7 @@ void Em_PickRoutePoint(Em *em)
     if (*(u16 *) &em->destArea == 0xFFFF) {
         *(u16 *) &em->destArea = *(u8 *) &em->nextArea;
     }
-    list = Em_IdSetLookup(em);
+    list = Em_NextAreas(em);
     found = 0;
     if (list != NULL) {
         for (i = 0; i < 8; i++) {
@@ -19127,21 +20841,21 @@ void Em_PickRoutePoint(Em *em)
     if (found) {
         return;
     }
-    a = Stage_GetAreaRecord(em->area);
-    pts[8][0] = a->originX + a->sizeX / 2.0f;
-    pts[8][2] = a->originZ + (f32) (a->sizeZ / 2.0f);
-    a = Stage_GetAreaRecord(em->nextArea);
-    pts[9][0] = a->originX + a->sizeX / 2.0f;
-    pts[9][2] = a->originZ + (f32) (a->sizeZ / 2.0f);
+    areaRec = Stage_GetAreaRecord(em->area);
+    pts[8][0] = areaRec->originX + areaRec->sizeX / 2.0f;
+    pts[8][2] = areaRec->originZ + (f32) (areaRec->sizeZ / 2.0f);
+    areaRec = Stage_GetAreaRecord(em->nextArea);
+    pts[9][0] = areaRec->originX + areaRec->sizeX / 2.0f;
+    pts[9][2] = areaRec->originZ + (f32) (areaRec->sizeZ / 2.0f);
     for (i = 0, n = 0; i < 8; i++) {
         if (list[i] == -1) {
             break;
         }
-        a = Stage_GetAreaRecord(list[i]);
+        areaRec = Stage_GetAreaRecord(list[i]);
         ids[i] = list[i];
-        pts[i][0] = a->originX + a->sizeX / 2.0f;
+        pts[i][0] = areaRec->originX + areaRec->sizeX / 2.0f;
         n++;
-        pts[i][2] = a->originZ + (f32) (a->sizeZ / 2.0f);
+        pts[i][2] = areaRec->originZ + (f32) (areaRec->sizeZ / 2.0f);
     }
     if (n == 1) {
         em->nextArea = Area_IdForCurrentTime(ids[0]);
@@ -19180,70 +20894,70 @@ void Em_PickRoutePoint(Em *em)
  */
 void Em_AreaExitPoint(Em *em, f32 *out)
 {
-    AreaRecord *a;
-    f32 ax;
-    f32 az;
-    f32 bx;
-    f32 bz;
-    f32 s;
-    f32 r;
+    AreaRecord *areaRec;
+    f32 fromX;
+    f32 fromZ;
+    f32 toX;
+    f32 toZ;
+    f32 ratioX;
+    f32 aspect;
     f32 x;
-    f32 t;
-    f32 d;
+    f32 ratioZ;
+    f32 deltaZ;
     f32 z;
-    f32 w;
+    f32 deltaX;
 
-    a = Stage_GetAreaRecord(em->area);
+    areaRec = Stage_GetAreaRecord(em->area);
     Stage_GetAreaRecord(em->nextArea);
-    Map_GetPosition(&ax, &az, em->area);
-    Map_GetPosition(&bx, &bz, em->nextArea);
-    w = bx - ax;
-    d = bz - az;
-    ax = ax - a->originX;
-    az = az - a->originZ;
-    out[0] = w + ax;
-    out[2] = d + az;
+    Map_GetPosition(&fromX, &fromZ, em->area);
+    Map_GetPosition(&toX, &toZ, em->nextArea);
+    deltaX = toX - fromX;
+    deltaZ = toZ - fromZ;
+    fromX = fromX - areaRec->originX;
+    fromZ = fromZ - areaRec->originZ;
+    out[0] = deltaX + fromX;
+    out[2] = deltaZ + fromZ;
     x = out[0];
-    if (!(x <= 0.0f) && x < a->sizeX) {
+    if (!(x <= 0.0f) && x < areaRec->sizeX) {
         z = out[2];
-        if (!(z <= 0.0f) && z < a->sizeZ) {
-            r = a->sizeZ / a->sizeX;
-            if (x < ax) {
-                s = x / ax;
+        if (!(z <= 0.0f) && z < areaRec->sizeZ) {
+            aspect = areaRec->sizeZ / areaRec->sizeX;
+            if (x < fromX) {
+                ratioX = x / fromX;
             } else {
-                s = (a->sizeX - x) / (a->sizeX - ax);
+                ratioX = (areaRec->sizeX - x) / (areaRec->sizeX - fromX);
             }
-            if (z < az) {
-                t = z / ax;
+            if (z < fromZ) {
+                ratioZ = z / fromX;
             } else {
-                t = (a->sizeZ - z) / (a->sizeZ - az);
+                ratioZ = (areaRec->sizeZ - z) / (areaRec->sizeZ - fromZ);
             }
-            t = t * r;
-            if (s <= t) {
-                if (x < ax) {
+            ratioZ = ratioZ * aspect;
+            if (ratioX <= ratioZ) {
+                if (x < fromX) {
                     out[0] = 0.0f;
                 } else {
-                    x = a->sizeX - x;
-                    out[0] = a->sizeX;
+                    x = areaRec->sizeX - x;
+                    out[0] = areaRec->sizeX;
                 }
-                r = r * (s / t);
-                if (out[2] < az) {
-                    out[2] = out[2] - x * r;
+                aspect = aspect * (ratioX / ratioZ);
+                if (out[2] < fromZ) {
+                    out[2] = out[2] - x * aspect;
                 } else {
-                    out[2] = out[2] + x * r;
+                    out[2] = out[2] + x * aspect;
                 }
             } else {
-                if (z < az) {
+                if (z < fromZ) {
                     out[2] = 0.0f;
                 } else {
-                    z = a->sizeZ - z;
-                    out[2] = a->sizeZ;
+                    z = areaRec->sizeZ - z;
+                    out[2] = areaRec->sizeZ;
                 }
-                t = t / s / r;
-                if (out[0] < ax) {
-                    out[0] = out[0] - z * t;
+                ratioZ = ratioZ / ratioX / aspect;
+                if (out[0] < fromX) {
+                    out[0] = out[0] - z * ratioZ;
                 } else {
-                    out[0] = out[0] + z * t;
+                    out[0] = out[0] + z * ratioZ;
                 }
             }
         }
@@ -19251,6 +20965,12 @@ void Em_AreaExitPoint(Em *em, f32 *out)
     out[1] = gAreaGroundY[em->area];
 }
 
+/*
+ * For the families' ChangeState functions on the machine that runs the
+ * monster: sets targetFound from routedStateArg (command 5's third byte): 0
+ * clears it; 1 makes the first player in sense reach (sensedPlayers) the
+ * current goal, or clears it with none.
+ */
 void Em_TargetPlayerInRange(Em *em)
 {
     s32 i;
@@ -19283,17 +21003,24 @@ void Em_TargetPlayerInRange(Em *em)
     }
 }
 
+/*
+ * Picks an entry of a weighted table of the script set (table 7, the area
+ * choices of EmScript_StepAreaSeq): the count is the u16 at +4, then 8-byte entries
+ * with a weight at +4 and an area id at +6. The roll is stateRand & 0x1F:
+ * weight 0 is skipped, 0xFF taken at once, else the first entry whose running
+ * total passes the roll. Returns a pointer to its area id.
+ */
 u8 *EmScript_PickWeighted(Em *em, u8 *script)
 {
     u16 n;
     u16 i;
     u8 sum;
-    u16 r;
+    u16 roll;
     u8 w;
 
     n = *(u16 *) (script + 4);
     sum = 0;
-    r = em->stateRand & 0x1F;
+    roll = em->stateRand & 0x1F;
     script += 6;
     for (i = 0; i < n; i++) {
         w = script[4];
@@ -19306,7 +21033,7 @@ u8 *EmScript_PickWeighted(Em *em, u8 *script)
             break;
         }
         sum += w;
-        if (r < sum) {
+        if (roll < sum) {
             break;
         }
         script += 2;
@@ -19314,7 +21041,7 @@ u8 *EmScript_PickWeighted(Em *em, u8 *script)
     return script;
 }
 
-/* The 0x722400 part's .data (0x8C3DE0-0x8C3E50) */
+/* The Player_RunGestureState part's .data (0x8C3DE0-0x8C3E50) */
 ArmorCombo gArmorCombos[14] = {
 #include "game/008C3DE0.inc"
 };

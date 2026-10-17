@@ -1,7 +1,22 @@
 /*
- * The software keyboard, continued: the unit that holds Kbd_EnterChar (0x3166D0) to the end
- * (Kbd_EnterChar and Kbd_CharIsSpecialKana share one full-width space; its "%s" is another copy than
- * Kbd_DrawCandidateBox's). Its .rodata starts with the kana tables of gKanaDakutenTable.
+ * The software keyboard's main unit, then the follow and orbit cameras
+ * (sub_main 0x314E00-0x31C7E0).
+ * - The keyboard (KbdEntry gKbdState, reached through gKbd; kbd.h): opening
+ *   it for an entry kind (Kbd_Open, Kbd_SetLayout), its frame (Kbd_Run: the
+ *   pad's buttons, the USB keyboard's keys, key repeat), the key sets and
+ *   character modes (KBD_SET_*, KBD_MODE_*), typing kana and converting
+ *   them (the converter's commands, ConvCmd_*), the phrase and gesture
+ *   pages, drawing (Kbd_Draw) and the checks of what an entry kind
+ *   accepts. unk_30EA30.c holds the rest: the USB keys, the text line and
+ *   the conversion. Kbd_EnterChar and Kbd_CharIsSpecialKana share one
+ *   full-width space; its "%s" is another copy than Kbd_DrawCandidateBox's.
+ * - The camera controller (CamCtl gCamCtl; camera.h): its frame
+ *   (CamCtl_Update runs each mode's handlers, CAM_MODE_*), the camera
+ *   data's relocation, the follow camera behind the player (CamFollow_*)
+ *   and the over-the-shoulder orbit (CamOrbit_*); the other modes are in
+ *   unk_31E190.c.
+ * The data part holds the romaji to kana table (gRomajiKanaTbl): pointers
+ * to the romaji and kana strings, declared by address below.
  */
 #include "common.h"
 #include "sprite.h"
@@ -11,9 +26,12 @@
 #include "syssave.h"
 #include "player.h"
 #include "camera.h"
+#include "pad.h"
+#include "sound.h"
 #pragma optimization_level 4
 
 #include "ee_stdarg.h"
+#include "model.h"
 void vsnprintf(char *buf, s32 size, const char *fmt, va_list ap); /* vsnprintf */
 void Font_Printf(const char *fmt, ...);
 extern s32 gTextOff;
@@ -64,7 +82,7 @@ s32 CamFollow_IsBlownAway(void);
 f32 AreaGrid2_GetFloorY(f32 *pos); /* the ground height at pos */
 void Hud_SetCancel(void);
 void Kbd_EmptyInit(void);
-void Player_RequestAct(u8 a);
+void Player_RequestGesture(u8 a);
 void Mem_Fill(void *dst, u8 c, s32 n);
 extern u8 gKbdDakutenSjis[];
 extern u8 gKbdDakutenSjis_1;
@@ -117,61 +135,69 @@ void Kbd_ClearCands(void);
 
 
 /* The size of the character that ends at byte pos of s (moving the cursor back). */
-s32 Sjis_PrevCharSize(u8 *s, s32 pos)
+s32 Sjis_PrevCharSize(u8 *str, s32 pos)
 {
     s32 i;
     s32 size = 0;
     s32 len = 0;
 
-    while (*s != 0 && len < pos) {
-        size = ((*s >= 0x80 && *s < 0xA0) || (*s >= 0xE0 && *s < 0x100)) ? 2 : 1;
+    while (*str != 0 && len < pos) {
+        size = ((*str >= 0x80 && *str < 0xA0) || (*str >= 0xE0 && *str < 0x100)) ? 2 : 1;
         len += size;
         for (i = 0; i < size; i++) {
-            s++;
+            str++;
         }
     }
     return size;
 }
 
 /* The size of the character at byte pos of s (0 for an empty s, -1 when pos is inside a character). */
-s32 Sjis_CharSizeAt(char *s, s32 pos)
+s32 Sjis_CharSizeAt(char *str, s32 pos)
 {
-    u8 *p;
+    u8 *scan;
     s32 i;
-    u8 c;
+    u8 lead;
     s32 size;
 
-    if (strlen(s) == 0) {
+    if (strlen(str) == 0) {
         return 0;
     }
     i = 0;
-    p = (u8 *)s;
-    while (*p != 0 && i < pos) {
-        size = ((*p >= 0x80 && *p < 0xA0) || (*p >= 0xE0 && *p < 0x100)) ? 2 : 1;
+    scan = (u8 *)str;
+    while (*scan != 0 && i < pos) {
+        size = ((*scan >= 0x80 && *scan < 0xA0) || (*scan >= 0xE0 && *scan < 0x100)) ? 2 : 1;
         i += size;
-        p += size;
+        scan += size;
     }
     if (pos < i) {
         return -1;
     }
-    c = s[pos];
-    return ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c < 0x100)) ? 2 : 1;
+    lead = str[pos];
+    return ((lead >= 0x80 && lead <= 0x9F) || (lead >= 0xE0 && lead < 0x100)) ? 2 : 1;
 }
 
+/* Starts the kana-kanji converter for a new entry (ConvCmd_Open). */
 void Kbd_OpenConv(void)
 {
     ConvCmd_Open();
 }
 
+/*
+ * The dakuten key (with kana input on); nothing while converting. On the
+ * hiragana, katakana and half-width katakana sets, and on the gestures page
+ * typing kana (KBD_GESTURE_KANA), adds a dakuten to the kana before the
+ * cursor (Kana_AddDakuten). If that kana takes none, or on another set, it
+ * types the key under the cursor.
+ */
 void Kbd_KanaDakuten(void)
 {
     u8 keySet;
 
     if (gKbd->converting == 0) {
         keySet = gKbd->keySet;
-        if ((keySet > 1U) && (keySet != 6)) {
-            if (gKbd->mode == 0xD) {
-                if (!(gKbd->gestureMode & 0xF)) {
+        if ((keySet > 1U) && (keySet != KBD_SET_HALF_KATA)) {
+            if (gKbd->mode == KBD_MODE_GESTURE) {
+                if (!(gKbd->gestureMode & KBD_GESTURE_KANA)) {
                     goto block_6;
                 }
                 goto block_7;
@@ -187,15 +213,19 @@ block_7:
     }
 }
 
+/*
+ * The handakuten key: as Kbd_KanaDakuten, with a handakuten
+ * (Kana_AddHandakuten).
+ */
 void Kbd_KanaHandakuten(void)
 {
     u8 keySet;
 
     if (gKbd->converting == 0) {
         keySet = gKbd->keySet;
-        if ((keySet > 1U) && (keySet != 6)) {
-            if (gKbd->mode == 0xD) {
-                if (!(gKbd->gestureMode & 0xF)) {
+        if ((keySet > 1U) && (keySet != KBD_SET_HALF_KATA)) {
+            if (gKbd->mode == KBD_MODE_GESTURE) {
+                if (!(gKbd->gestureMode & KBD_GESTURE_KANA)) {
                     goto block_6;
                 }
                 goto block_7;
@@ -217,21 +247,36 @@ typedef struct Tbl17 {
 
 extern Tbl17 gKbdSetIsWide;
 
+/*
+ * 1 when the current key set types two-byte (full-width) characters
+ * (gKbdSetIsWide[keySet]), else 0. The game copies the table to the stack
+ * first.
+ */
 s32 Kbd_SetIsWide(void)
 {
-    Tbl17 t = gKbdSetIsWide;
+    Tbl17 isWide = gKbdSetIsWide;
 
-    return t.v[gKbd->keySet];
+    return isWide.v[gKbd->keySet];
 }
 
-s32 func_003151C0(char *text, u16 *pos)
+/*
+ * The test Kbd_EnterGestures runs on the text and its cursor: a negative
+ * result makes the gestures page type kana (KBD_GESTURE_KANA). It always
+ * returns 0.
+ */
+s32 Kbd_CheckGestureText(char *text, u16 *pos)
 {
     return 0;
 }
 
+/*
+ * Asks the local player for gesture number gesture, counting from 0
+ * (Player_RequestGesture counts from 1), and sets the HUD's cancel flag.
+ * The text and its cursor are not used. Returns 0.
+ */
 s32 Kbd_DoGesture(char *text, u16 *pos, s32 gesture)
 {
-    Player_RequestAct(((gesture & 0xFF) + 1) & 0xFF);
+    Player_RequestGesture(((gesture & 0xFF) + 1) & 0xFF);
     Hud_SetCancel();
     return 0;
 }
@@ -240,25 +285,32 @@ extern s32 gKbdSettings;
 extern u8 gKbdSavedKind;
 extern u8 gKbdSavedKeySet;
 
+/*
+ * Saves the entry kind and its key set for the next Kbd_SetLayout of the
+ * same kind (on a submit, Kbd_Cancel and Kbd_Close). The phrase and gesture
+ * pages are saved as hiragana. With Caps Lock on (USB_LED_CAPS_LOCK), an
+ * alphabet set is saved as its other case (Kbd_ShiftPair), which
+ * Kbd_SetLayout swaps back.
+ */
 void Kbd_SaveKeySet(void)
 {
     gKbdSavedKind = gKbd->kind;
-    if (gKbdSettings & 2) {
+    if (gKbdSettings & USB_LED_CAPS_LOCK) {
         switch (gKbd->keySet) {
-        case 2:
-        case 7:
-        case 0xF:
-        case 0xA:
+        case KBD_SET_WIDE_UPPER:
+        case KBD_SET_ASCII_UPPER:
+        case KBD_SET_ASCII_LOWER:
+        case KBD_SET_WIDE_LOWER:
             if ((s8)Kbd_ShiftPair(gKbd->keySet) >= 0) {
                 gKbdSavedKeySet = Kbd_ShiftPair(gKbd->keySet);
             } else {
                 gKbdSavedKeySet = gKbd->keySet;
             }
             break;
-        case 4:
-        case 5:
-        case 0xD:
-            gKbdSavedKeySet = 0;
+        case KBD_SET_PHRASE1:
+        case KBD_SET_PHRASE2:
+        case KBD_SET_GESTURE:
+            gKbdSavedKeySet = KBD_SET_HIRA;
             break;
         default:
             gKbdSavedKeySet = gKbd->keySet;
@@ -266,10 +318,10 @@ void Kbd_SaveKeySet(void)
         }
     } else {
         switch (gKbd->keySet) {
-        case 4:
-        case 5:
-        case 0xD:
-            gKbdSavedKeySet = 0;
+        case KBD_SET_PHRASE1:
+        case KBD_SET_PHRASE2:
+        case KBD_SET_GESTURE:
+            gKbdSavedKeySet = KBD_SET_HIRA;
             break;
         default:
             gKbdSavedKeySet = gKbd->keySet;
@@ -285,27 +337,32 @@ void Kbd_SetPhrasePage(u8 page)
 
 extern s8 D_00418743[];
 
-/* Looks up the key under the cursor (col: 1..20, row: 0..3) in the layout and points keyPos,
- * key and keyInfo at its entries; returns the key number. */
+/*
+ * Looks up the key under the cursor (col 0..20, row 0..3; the layout's grid
+ * index is col * 4 + row): sets keyIdx and points keyPos and key at the
+ * key's entries. On the phrase pages keyInfo becomes the key's phrase entry
+ * (page 2's entries follow page 1's 12); it is NULL when the layout has no
+ * list. Returns the key index.
+ */
 s8 Kbd_LookupKey(void)
 {
-    u8 *p;
+    u8 *list;
     s32 idx;
 
-    /* the (long) cast (found by the permuter) gives the original registers: row * 4 + column in v1 */
+    /* the grid index is col * 4 + row; the (long) cast is kept for the match (register allocation) */
     idx = (long)(gKbd->col * 4);
     idx += gKbd->row;
     gKbd->keyIdx = gKbd->layout->grid[idx];
     gKbd->keyPos = gKbd->layout->cursors + gKbd->keyIdx;
     gKbd->key = gKbd->layout->keys + gKbd->keyIdx;
-    p = gKbd->layout->extra;
-    if (p != NULL) {
+    list = gKbd->layout->extra;
+    if (list != NULL) {
         switch (gKbd->keySet) {
-        case 4:
-            gKbd->keyInfo = p + D_00418743[gKbd->keyIdx] * 16;
+        case KBD_SET_PHRASE1:
+            gKbd->keyInfo = list + D_00418743[gKbd->keyIdx] * 16;
             break;
-        case 5:
-            gKbd->keyInfo = p + (D_00418743[gKbd->keyIdx] + 12) * 16;
+        case KBD_SET_PHRASE2:
+            gKbd->keyInfo = list + (D_00418743[gKbd->keyIdx] + 12) * 16;
             break;
         }
     } else {
@@ -314,33 +371,42 @@ s8 Kbd_LookupKey(void)
     return gKbd->keyIdx;
 }
 
-void Kbd_InitState(s8 arg0)
+/*
+ * Sets the keyboard up once at start-up: points gKbd at gKbdState, clears
+ * polled and the saved kana-input toggle, and clears unk34.
+ */
+void Kbd_InitState(s8 language)
 {
     gKbd = (KbdEntry *)&gKbdState;
     gKbd->polled = 0;
     gKbdSavedKanaInput = 0;
-    Kbd_ClearUnk34(arg0);
+    Kbd_ClearUnk34(language);
     Kbd_EmptyInit();
 }
 
-void Kbd_ClearUnk34(s8 arg0)
+/* Clears unk34; both branches store 0, language only picks the branch. */
+void Kbd_ClearUnk34(s8 language)
 {
-    if (arg0 == 0) {
-        gKbd->unk34 = arg0;
+    if (language == 0) {
+        gKbd->unk34 = language;
     } else {
         gKbd->unk34 = 0;
     }
 }
 
-static s32 Sjis_IsSingleByte(u8 ch)
+/*
+ * 1 when byte is a one-byte Shift-JIS character, 0 when it is the first
+ * byte of a two-byte one (0x80..0x9F or 0xE0..0xFF).
+ */
+static s32 Sjis_IsSingleByte(u8 byte)
 {
-    s32 c;
+    s32 code;
 
-    c = ch & 0xFF;
-    if ((c >= 0x80) && (c < 0xA0)) {
+    code = byte & 0xFF;
+    if ((code >= 0x80) && (code < 0xA0)) {
         return 0;
     }
-    if ((c >= 0xE0) && (c < 0x100)) {
+    if ((code >= 0xE0) && (code < 0x100)) {
         return 0;
     }
     return 1;
@@ -350,7 +416,7 @@ static s32 Sjis_IsSingleByte(u8 ch)
  * at most max bytes, starting from text (none: empty). */
 extern u8 gKbdKindConfs[][0x38];
 extern u8 gKbdDelay;
-extern u8 gKbdModeReq;
+extern u8 gKbdReplayKey;
 s32 Kbd_GetStartActive(void);
 void Kbd_SetActive(void);
 void Kbd_SetOpen(void);
@@ -363,17 +429,33 @@ extern KbdLayout gKbdSetLayouts[20];
 void Kbd_BindLayouts(s32 unused);
 void Kbd_SetLayout(u8 k);
 extern u8 gKbdKindIs0;
-extern u8 gKbdOpenMode;
+extern u8 gKbdOpenKey;
 extern s8 gKbdPrompt[];
 extern s16 gKbdChatTarget;
 void sceUsbKbSetRepeat(s32 a, s32 b, s32 c);
 
 void *memset(void *dst, s32 c, u32 n);
+/*
+ * Opens the software keyboard.
+ * - kind picks the colours and the phrase and gesture lists
+ *   (gKbdKindConfs[kind]); gKbdKindIs0 records kind 0, whose R2 cycle
+ *   reaches the gestures page.
+ * - layout is the entry kind (Kbd_SetLayout): the barred sets, the starting
+ *   set and the characters accepted.
+ * - max is the text's maximum length (at most 0xFF); text is the starting
+ *   text (NULL: empty), cut so that no two-byte character is split.
+ * A USB key held at the open, other than the Enter keys, Escape and
+ * Backspace, is replayed as a new key once the one-frame delay ends
+ * (gKbdReplayKey, Kbd_Run). Entry kinds 1 to 5 take the pad at once unless
+ * Enter opened them; the others when Kbd_SetStartActive allowed it. Also
+ * sets the USB keyboard's key repeat, restores the kana-input toggle and
+ * clears the chat prompt and target.
+ */
 void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
 {
     u8 *end;
-    u8 *s;
-    u8 k;
+    u8 *scan;
+    u8 openKey;
 
     if (kind == 0) {
         gKbdKindIs0 = 1;
@@ -388,16 +470,16 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
     }
     gKbd->maxLen = max;
     gKbdDelay = 1;
-    k = gKbd->usbKey;
-    switch (k) {
-    case 0x28:
-    case 0x29:
-    case 0x2A:
-    case 0x58:
-        gKbdModeReq = 0;
+    openKey = gKbd->usbKey;
+    switch (openKey) {
+    case USB_KEY_ENTER:
+    case USB_KEY_ESCAPE:
+    case USB_KEY_BACKSPACE:
+    case USB_KEY_KP_ENTER:
+        gKbdReplayKey = 0;
         break;
     default:
-        gKbdModeReq = k;
+        gKbdReplayKey = openKey;
         break;
     }
     gKbd->gestureMode = 0;
@@ -426,20 +508,20 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
         memset(gKbd->text, 0, 0x100);
         strncpy(gKbd->text, text, 0xFF);
         end = (u8 *)&gKbd->text[254];
-        s = (u8 *)gKbd->text;
+        scan = (u8 *)gKbd->text;
         for (;;) {
-            if (s >= end) {
-            if (end == s && Sjis_IsSingleByte(*s) == 0) {
+            if (scan >= end) {
+            if (end == scan && Sjis_IsSingleByte(*scan) == 0) {
                 gKbd->text[254] = 0;
             } else {
                 gKbd->text[255] = 0;
             }
             break;
             }
-            if (Sjis_IsSingleByte(*s) != 0) {
-                s++;
+            if (Sjis_IsSingleByte(*scan) != 0) {
+                scan++;
             } else {
-                s += 2;
+                scan += 2;
             }
         }
         gKbd->textPos = strlen(text);
@@ -451,8 +533,8 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
     case 3:
     case 4:
     case 5:
-        k = gKbd->usbKey;
-        if (k != 0x28 && k != 0x58) {
+        openKey = gKbd->usbKey;
+        if (openKey != USB_KEY_ENTER && openKey != USB_KEY_KP_ENTER) {
             Kbd_SetActive();
         }
         break;
@@ -465,7 +547,7 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
     Kbd_SetOpen();
     Kbd_ClearCands();
     Kbd_OpenConv();
-    gKbdOpenMode = gKbd->usbKey;
+    gKbdOpenKey = gKbd->usbKey;
     memset(&gKbd->usbKey, 0, 10);
     sceUsbKbSetRepeat(0, 10, 4);
     gKbd->kanaInput = gKbdSavedKanaInput;
@@ -477,88 +559,94 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
 extern s32 gKbdLayoutFlags[];
 extern u8 gKbdKeySets[][2];
 
-/* Switches the keyboard to layout k: its flags (gKbdLayoutFlags), the case key
- * (gKbdKeySets[k][0] unless kept; the one saved by Kbd_SaveKeySet when back on
- * the saved layout) and accept (gKbdKeySets[k][1]). */
-void Kbd_SetLayout(u8 k)
+/*
+ * Sets up entry kind entryKind: the barred key sets (gKbdLayoutFlags, plus
+ * both phrase pages when the kind has no phrases); the starting key set
+ * (gKbdKeySets[entryKind][0]: kinds 0, 0xC, 0xD and 0xE keep a current
+ * two-byte set, kind 3 an allowed one and kind 0xB any; the set
+ * Kbd_SaveKeySet saved for the kind wins; with Caps Lock on an alphabet set
+ * swaps case); and the characters accepted (gKbdKeySets[entryKind][1]).
+ * Then updates the mode, the cursor and the symbol mode.
+ */
+void Kbd_SetLayout(u8 entryKind)
 {
-    gKbd->kind = k;
-    gKbd->flags = gKbdLayoutFlags[k];
+    gKbd->kind = entryKind;
+    gKbd->flags = gKbdLayoutFlags[entryKind];
     if (*(s32 *)(gKbd->kindConf + 0x30) == 0) {
-        gKbd->flags |= 0x10;
-        gKbd->flags |= 0x20;
+        gKbd->flags |= KBD_SET_BIT(KBD_SET_PHRASE1);
+        gKbd->flags |= KBD_SET_BIT(KBD_SET_PHRASE2);
     }
-    switch (k) {
+    switch (entryKind) {
     case 0:
     case 0xE:
     case 0xC:
     case 0xD:
         if (Kbd_SetIsWide() == 0) {
-            gKbd->keySet = gKbdKeySets[k][0];
+            gKbd->keySet = gKbdKeySets[entryKind][0];
         }
         break;
     case 3:
         if (gKbd->flags & (1 << gKbd->keySet)) {
-            gKbd->keySet = gKbdKeySets[k][0];
+            gKbd->keySet = gKbdKeySets[entryKind][0];
         }
         break;
     case 0xB:
         break;
     default:
-        gKbd->keySet = gKbdKeySets[k][0];
+        gKbd->keySet = gKbdKeySets[entryKind][0];
         break;
     }
     if (gKbdSavedKind == gKbd->kind) {
         gKbd->keySet = gKbdSavedKeySet;
     }
-    if (gKbdSettings & 2) {
+    if (gKbdSettings & USB_LED_CAPS_LOCK) {
         switch (gKbd->keySet) {
-        case 2:
-        case 7:
-        case 0xF:
-        case 0xA:
+        case KBD_SET_WIDE_UPPER:
+        case KBD_SET_ASCII_UPPER:
+        case KBD_SET_ASCII_LOWER:
+        case KBD_SET_WIDE_LOWER:
             if ((s8)Kbd_ShiftPair(gKbd->keySet) >= 0) {
                 gKbd->keySet = Kbd_ShiftPair(gKbd->keySet);
             }
             break;
         }
     }
-    gKbd->accept = gKbdKeySets[k][1];
+    gKbd->accept = gKbdKeySets[entryKind][1];
     Kbd_UpdateMode();
     Kbd_HomePageCursor();
     Kbd_UpdateSymbolMode();
 }
 
 /*
- * Key repeat for the keyboard (buttons masked with 0x3EFD): a new press is returned at
- * once and arms the timer (repeatWait) for 10 frames; a held button repeats when the timer
- * runs out (4 frames for 0x10 or while converting, 8 for 0x8/0x1/0x80, else 1).
- * The held set is repeatKeys; releasing everything clears it.
+ * Key repeat for the keyboard's buttons (KBD_REPEAT_BUTTONS). A new press
+ * is returned at once and waits 10 frames; a held button then repeats every
+ * 4 frames for R2 or while converting, every 8 for L1, R3 and R1, else every
+ * frame. Kbd_KeyRepeat(0, 0) resets it. Returns the buttons to act on.
  */
 s32 Kbd_KeyRepeat(s16 held, s16 pressed)
 {
     s8 *timer;
-    s32 r;
+    s32 repeated;
     s32 keys;
 
-    pressed &= 0x3EFD;
+    pressed &= KBD_REPEAT_BUTTONS;
     if (pressed) {
         gKbd->repeatKeys = pressed;
         gKbd->repeatWait = 10;
         return pressed;
     }
-    keys = held & 0x3EFD;
+    keys = held & KBD_REPEAT_BUTTONS;
     if ((s16)keys == 0) {
         return gKbd->repeatKeys = 0;
     }
-    r = 0;
+    repeated = 0;
     --gKbd->repeatWait;
     timer = &gKbd->repeatWait;
     if (*timer <= 0) {
         if (gKbd->converting == 0) {
-            if ((s16)keys & 0x10) {
+            if ((s16)keys & PAD_R2) {
                 *timer = 4;
-            } else if (((s16)keys & 0x8) || ((s16)keys & 0x1) || ((s16)keys & 0x80)) {
+            } else if (((s16)keys & PAD_L1) || ((s16)keys & PAD_R3) || ((s16)keys & PAD_R1)) {
                 *timer = 8;
             } else {
                 *timer = 1;
@@ -566,28 +654,33 @@ s32 Kbd_KeyRepeat(s16 held, s16 pressed)
         } else {
             *timer = 4;
         }
-        r = gKbd->repeatKeys &= (s16)keys;
+        repeated = gKbd->repeatKeys &= (s16)keys;
     }
-    return r;
+    return repeated;
 }
 
-void Kbd_PressCmdKey(KbdKey *p)
+/*
+ * A command key (KBD_ACT_COMMAND, the command in ch.b[1]): KBD_CMD_BACKSPACE
+ * deletes back, KBD_CMD_CONVERT starts the conversion (or types the key
+ * while converting), KBD_CMD_SUBMIT submits.
+ */
+void Kbd_PressCmdKey(KbdKey *key)
 {
-    u8 key;
+    u8 cmd;
 
-    key = p->ch.b[1];
-    switch (key) {
-    case 0:
+    cmd = key->ch.b[1];
+    switch (cmd) {
+    case KBD_CMD_BACKSPACE:
         Kbd_DeleteBack(1);
         break;
-    case 1:
+    case KBD_CMD_CONVERT:
         if (gKbd->converting != 0) {
-            Kbd_TypeKey(p);
+            Kbd_TypeKey(key);
             break;
         }
         Kbd_Convert();
         break;
-    case 3:
+    case KBD_CMD_SUBMIT:
         Kbd_Submit();
         break;
     }
@@ -605,69 +698,81 @@ void Kbd_MoveCursor(s16 keys, s16 held);
 void Kbd_NextRow(s32 back);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 
-/* The keyboard's frame update: waits out the gKbdDelay delay, takes the repeated keys,
- * moves the cursor, runs the pressed key or button, and ends with the result in result
- * (1: the text is copied to dst). */
+/*
+ * The keyboard's frame; callers pass gPadState[0]'s held and pressed
+ * buttons. After the gKbdDelay frames it replays gKbdReplayKey, handles the
+ * USB key and takes the repeated buttons (Kbd_KeyRepeat). While the
+ * keyboard is inactive the first button only activates it. Otherwise the
+ * D-pad moves the cursor; CIRCLE runs the key under the cursor by its
+ * action (ch.b[0]); START or TRIANGLE submits, CROSS deletes back, SQUARE
+ * types a space; when not converting, L2 shifts, R1 turns the phrase page,
+ * L1 switches the mode, R2 cycles the phrases or gestures and R3 the chat
+ * target; while converting, L1 and R1 move between segments and L2 and R2
+ * page the candidates. On a submit the text is copied to dst and the key
+ * set saved. Entry kind 0xB then clears the text and stays open. Plays the
+ * frame's sound (KbdEntry.state). Returns KBD_RESULT_SUBMIT,
+ * KBD_RESULT_CANCEL, or 0 while the keyboard is open.
+ */
 s8 Kbd_Run(char *dst, s16 held, s16 pressed)
 {
     KbdKey *key;
     s16 keys;
-    s8 *res;
+    s8 *resultPtr;
 
     gKbd->frame += 1;
     gKbd->submitWait -= 1;
     gKbd->blink += 1;
     if (*(s8 *)&gKbdDelay <= 0) {
         *(s8 *)&gKbdDelay = 0;
-        if (gKbdModeReq != 0) {
+        if (gKbdReplayKey != 0) {
             memset(&gKbd->usbKey, 0, 10);
             gKbd->kanaInput = gKbdSavedKanaInput;
             gKbd->prevKeySet = gKbd->keySet;
-            gKbd->usbNewKey = gKbd->usbKey = gKbdModeReq;
-            gKbdModeReq = 0;
+            gKbd->usbNewKey = gKbd->usbKey = gKbdReplayKey;
+            gKbdReplayKey = 0;
         }
     } else {
         *(s8 *)&gKbdDelay -= 1;
         return 0;
     }
-    gKbd->state = -1;
+    gKbd->state = KBD_SOUND_NONE;
     Kbd_Update();
     keys = Kbd_KeyRepeat(held, pressed);
     if ((held != 0 || keys != 0) && gKbd->active == 0) {
         Kbd_SetActive();
         Kbd_KeyRepeat(0, 0);
-        Sound_PlaySeFlat(0, 0x16, 0);
+        Sound_PlaySeFlat(0, SE_SYS_SELECT, 0);
         return 0;
     }
-    if (keys & 0x3C00) {
-        gKbd->state = 0x17;
+    if (keys & PAD_DPAD) {
+        gKbd->state = SE_SYS_SCROLL;
         Kbd_MoveCursor(keys, held);
-        gKbd->keyFlags &= 0xFD;
+        gKbd->keyFlags &= (u8)~KBD_KEYF_CYCLING;
     }
-    if (keys & 0x20) {
+    if (keys & PAD_CIRCLE) {
         key = gKbd->key;
         if (gKbd->converting == 0) {
             if (gKbd->active == 1 && gKbd->offGrid == 1) {
-                gKbd->state = 0x15;
+                gKbd->state = SE_SYS_REFUSE;
             } else if (key->ch.code == 0) {
-                gKbd->state = 0x15;
+                gKbd->state = SE_SYS_REFUSE;
             } else {
                 switch (key->ch.b[0]) {
                 case 0:
                     break;
-                case 1:
+                case KBD_ACT_SWITCH:
                     Kbd_PressKey(key);
                     break;
-                case 2:
+                case KBD_ACT_COMMAND:
                     Kbd_PressCmdKey(key);
                     break;
-                case 3:
+                case KBD_ACT_PHRASE:
                     Kbd_InsertPhrase();
-                    if (gKbd->keyFlags & 2) {
+                    if (gKbd->keyFlags & KBD_KEYF_CYCLING) {
                         Kbd_Submit();
                     }
                     break;
-                case 4:
+                case KBD_ACT_GESTURE:
                     Kbd_DoGesture(gKbd->text, &gKbd->textPos, key->ch.b[1]);
                     break;
                 default:
@@ -679,51 +784,51 @@ s8 Kbd_Run(char *dst, s16 held, s16 pressed)
             Kbd_TypeKey(key);
             gKbd->blink = 0;
         }
-    } else if (pressed & 0x8000) {
+    } else if (pressed & PAD_START) {
         Kbd_Submit();
-    } else if (keys & 0x40) {
+    } else if (keys & PAD_CROSS) {
         Kbd_DeleteBack(0);
-    } else if (keys & 0x200) {
+    } else if (keys & PAD_SQUARE) {
         Kbd_Space(1);
-    } else if (pressed & 0x100) {
+    } else if (pressed & PAD_TRIANGLE) {
         Kbd_Submit();
-    } else if ((pressed & 4) && gKbd->converting == 0) {
+    } else if ((pressed & PAD_L2) && gKbd->converting == 0) {
         Kbd_ToggleShift();
-    } else if ((keys & 0x80) && gKbd->converting == 0) {
+    } else if ((keys & PAD_R1) && gKbd->converting == 0) {
         Kbd_NextPhrasePage();
     } else if (gKbd->converting == 0) {
-        if (keys & 8) {
+        if (keys & PAD_L1) {
             Kbd_NextRow(0);
-        } else if (keys & 0x10) {
+        } else if (keys & PAD_R2) {
             switch (gKbd->keySet) {
             default:
-            case 4:
-            case 5:
+            case KBD_SET_PHRASE1:
+            case KBD_SET_PHRASE2:
                 Kbd_CyclePhrase();
                 break;
-            case 13:
+            case KBD_SET_GESTURE:
                 Kbd_CycleGesture();
                 break;
             }
-        } else if (keys & 1) {
+        } else if (keys & PAD_R3) {
             Kbd_NextChatTarget();
         }
     } else {
-        if (keys & 8) {
+        if (keys & PAD_L1) {
             Kbd_PrevSegment();
         }
-        if (keys & 0x80) {
+        if (keys & PAD_R1) {
             Kbd_NextSegment();
         }
-        if (keys & 4) {
+        if (keys & PAD_L2) {
             Kbd_PageUp();
         }
-        if (keys & 0x10) {
+        if (keys & PAD_R2) {
             Kbd_PageDown();
         }
     }
     if (gKbd->result != 0) {
-        if (gKbd->result == 1) {
+        if (gKbd->result == KBD_RESULT_SUBMIT) {
             strcpy(dst, gKbd->text);
             Kbd_SaveKeySet();
         }
@@ -733,9 +838,9 @@ s8 Kbd_Run(char *dst, s16 held, s16 pressed)
             gKbd->firstShown = 0;
             gKbd->textPos = 0;
             gKbd->text[0] = 0;
-            res = &gKbd->result;
-            if (*res != -1) {
-                *res = 0;
+            resultPtr = &gKbd->result;
+            if (*resultPtr != KBD_RESULT_CANCEL) {
+                *resultPtr = 0;
                 Kbd_ClearCands();
             }
         } else {
@@ -743,86 +848,95 @@ s8 Kbd_Run(char *dst, s16 held, s16 pressed)
             sceUsbKbClearRbuf(0);
         }
     }
-    if (gKbd->state != -1) {
+    if (gKbd->state != KBD_SOUND_NONE) {
         Sound_PlaySeFlat(0, gKbd->state, 0);
     }
     return gKbd->result;
 }
 
-/* Moves the keyboard cursor by the pressed keys (0x400 right, 0x800 left, 0x1000 down,
- * 0x2000 up): on the key grid (col 0-20, row 0-3) until the key under it
- * (keyIdx) changes, leaving it for the buttons (offGrid) past the top or bottom row; while
- * converting or on the buttons, the text and button moves. */
+/*
+ * Moves the cursor by the D-pad buttons in keys (held is not used). On the
+ * grid LEFT and RIGHT step the column (0..20, wrapping) and UP and DOWN the
+ * row, until the key under the cursor changes; UP from row 0 or DOWN from
+ * row 3 leaves the grid for the text line (offGrid), and back. On the text
+ * line LEFT and RIGHT move the text cursor. While converting LEFT and RIGHT
+ * move the text cursor and UP and DOWN pick the candidate.
+ */
 void Kbd_MoveCursor(s16 keys, s16 held)
 {
-    u8 *row;
-    u8 *dn;
-    s8 key = gKbd->keyIdx;
+    u8 *upRow;
+    u8 *downRow;
+    s8 startKey = gKbd->keyIdx;
 
     if (gKbd->offGrid == 0) {
         if (gKbd->converting != 0) {
             goto text;
         }
         do {
-            if (keys & 0x800) {
+            if (keys & PAD_LEFT) {
                 if (gKbd->col <= 0) {
                     gKbd->col = 20;
                 } else {
                     gKbd->col -= 1;
                 }
-            } else if (keys & 0x400) {
+            } else if (keys & PAD_RIGHT) {
                 gKbd->col += 1;
                 if (gKbd->col > 20) {
                     gKbd->col = 0;
                 }
             }
-            if (keys & 0x2000) {
-                row = &gKbd->row;
-                if (*row == 0) {
+            if (keys & PAD_UP) {
+                upRow = &gKbd->row;
+                if (*upRow == 0) {
                     gKbd->offGrid = 1;
                     gKbd->blink = 0;
                     break;
                 }
-                *row -= 1;
-            } else if (keys & 0x1000) {
-                dn = &gKbd->row;
-                if (*dn == 3) {
+                *upRow -= 1;
+            } else if (keys & PAD_DOWN) {
+                downRow = &gKbd->row;
+                if (*downRow == 3) {
                     gKbd->offGrid = 1;
                     gKbd->blink = 0;
                     break;
                 }
-                *dn += 1;
+                *downRow += 1;
             }
             Kbd_LookupKey();
-        } while (key == gKbd->keyIdx);
+        } while (startKey == gKbd->keyIdx);
     } else if (gKbd->converting != 0) {
         text:
-        if (keys & 0x400) {
+        if (keys & PAD_RIGHT) {
             Kbd_CursorRight();
-        } else if (keys & 0x800) {
+        } else if (keys & PAD_LEFT) {
             Kbd_CursorLeft();
-        } else if (keys & 0x2000) {
+        } else if (keys & PAD_UP) {
             Kbd_PrevCand();
-        } else if (keys & 0x1000) {
+        } else if (keys & PAD_DOWN) {
             Kbd_NextCand();
         }
     } else {
-        if (keys & 0x2000) {
+        if (keys & PAD_UP) {
             gKbd->row = 3;
             gKbd->offGrid = 0;
             Kbd_LookupKey();
-        } else if (keys & 0x1000) {
+        } else if (keys & PAD_DOWN) {
             gKbd->row = 0;
             gKbd->offGrid = 0;
             Kbd_LookupKey();
-        } else if (keys & 0x800) {
+        } else if (keys & PAD_LEFT) {
             Kbd_CursorLeft();
-        } else if (keys & 0x400) {
+        } else if (keys & PAD_RIGHT) {
             Kbd_CursorRight();
         }
     }
 }
 
+/*
+ * Types key: with the pad, in the symbol mode it converts or commits, else
+ * it enters the key's character when converting or on the grid; without
+ * the pad, it types the USB keyboard's key (Kbd_TypeHidKey).
+ */
 void Kbd_TypeKey(KbdKey *key)
 {
     if (gKbd->active == 1) {
@@ -853,17 +967,25 @@ s32 Kana_SwapBeforeCursor(s8 *table);
 extern void *gKanaDakutenTable; /* conversion tables for Kana_SwapBeforeCursor */
 extern void *gKanaHandakutenTable;
 
-/* Enters one key's character (arg0 + 2) into the text field. */
+/*
+ * Enters key's character (ch), unless Kbd_CharBlocked. On a one-byte set it
+ * commits any pending kana and inserts the character into the text at
+ * textPos (up to maxLen). On a two-byte set a full-width space goes into the
+ * text when no kana is pending; any other character goes into the kana at
+ * kanaPos (up to 0x48 bytes), where a dakuten or handakuten key on the kana
+ * sets first tries to mark the kana before the cursor. While converting, a
+ * two-byte key commits the conversion and types nothing.
+ */
 void Kbd_EnterChar(KbdKey *key)
 {
     s8 done;
-    s32 n;
-    u32 m;
+    s32 added;
+    u32 set;
     char buf[4];
 
     done = 0;
     if (Kbd_CharBlocked(key) == 1) {
-        gKbd->state = 0x15;
+        gKbd->state = SE_SYS_REFUSE;
         return;
     }
     if (Kbd_SetIsWide() == 0) {
@@ -874,10 +996,10 @@ void Kbd_EnterChar(KbdKey *key)
             Kbd_KeyRepeat(0, 0);
         }
     single:
-        n = Str_InsertClip(gKbd->text, buf,
+        added = Str_InsertClip(gKbd->text, buf,
             gKbd->textPos, gKbd->maxLen);
-        gKbd->textPos = gKbd->textPos + n;
-        gKbd->state = 0x16;
+        gKbd->textPos = gKbd->textPos + added;
+        gKbd->state = SE_SYS_SELECT;
         return;
     }
     strncpy(buf, (char *)key->ch.b, 2);
@@ -889,23 +1011,23 @@ void Kbd_EnterChar(KbdKey *key)
         if (gKbd->kana[0] == 0) {
             goto single;
         }
-        gKbd->state = 0x15;
+        gKbd->state = SE_SYS_REFUSE;
         return;
     }
-    m = gKbd->keySet;
-    if (!(m <= 1 || m == 6 || m - 8 <= 1
-          || (gKbd->mode == 0xD && (gKbd->gestureMode & 0xF)))) {
+    set = gKbd->keySet;
+    if (!(set <= 1 || set == 6 || set - 8 <= 1
+          || (gKbd->mode == KBD_MODE_GESTURE && (gKbd->gestureMode & KBD_GESTURE_KANA)))) {
         goto skip;
     }
     switch (Kbd_DakutenKeyKind(key)) {
     case 0:
         break;
-    case 1:
+    case KBD_MARK_DAKUTEN:
         if (Kana_SwapBeforeCursor(gKanaDakutenTable)) {
             done = 1;
         }
         break;
-    case 2:
+    case KBD_MARK_HANDAKUTEN:
         if (Kana_SwapBeforeCursor(gKanaHandakutenTable)) {
             done = 1;
         }
@@ -918,49 +1040,56 @@ skip:
             Kbd_CommitKana();
             Kbd_KeyRepeat(0, 0);
         } else {
-            n = Str_InsertClip((char *)gKbd->kana, buf,
+            added = Str_InsertClip((char *)gKbd->kana, buf,
                 gKbd->kanaPos, 0x48);
-            gKbd->kanaPos = gKbd->kanaPos + n;
+            gKbd->kanaPos = gKbd->kanaPos + added;
         }
     }
-    gKbd->state = 0x16;
+    gKbd->state = SE_SYS_SELECT;
 }
 
+/*
+ * R2 off the gestures page: types the phrases in turn. The first press
+ * opens a phrase page and starts the cycle (KBD_KEYF_CYCLING); each later
+ * one moves the cursor 5 columns on, wrapping, and Kbd_InsertPhrase
+ * replaces the text with the phrase under the cursor. Refused while
+ * converting, when a phrase page is barred or the kind has no phrases.
+ */
 void Kbd_CyclePhrase(void)
 {
-    s16 *count;
+    s16 *cyclePosPtr;
     s32 flags;
-    u8 *row;
+    u8 *colPtr;
 
-    if (gKbd->converting != 0 || ((flags = gKbd->flags) & 0x10) ||
-        (flags & 0x20) || *(s32 *)(gKbd->kindConf + 0x30) == 0) {
-        gKbd->state = 0x15;
+    if (gKbd->converting != 0 || ((flags = gKbd->flags) & KBD_SET_BIT(KBD_SET_PHRASE1)) ||
+        (flags & KBD_SET_BIT(KBD_SET_PHRASE2)) || *(s32 *)(gKbd->kindConf + 0x30) == 0) {
+        gKbd->state = SE_SYS_REFUSE;
         return;
     }
-    if (!(gKbd->keyFlags & 2)) {
+    if (!(gKbd->keyFlags & KBD_KEYF_CYCLING)) {
         gKbd->offGrid = 0;
-        gKbd->keyFlags |= 2;
+        gKbd->keyFlags |= KBD_KEYF_CYCLING;
         gKbd->cyclePos = 1;
         switch (gKbd->keySet) {
-        case 4:
+        case KBD_SET_PHRASE1:
         default:
             Kbd_OpenPhrases1();
             break;
-        case 5:
+        case KBD_SET_PHRASE2:
             Kbd_OpenPhrases2();
             break;
         }
     } else {
         gKbd->cyclePos += 5;
-        count = &gKbd->cyclePos;
-        if (*count >= 60) {
-            *count = 1;
+        cyclePosPtr = &gKbd->cyclePos;
+        if (*cyclePosPtr >= 60) {
+            *cyclePosPtr = 1;
         }
         gKbd->col = (gKbd->cyclePos + 1) % 20;
         gKbd->row = (gKbd->cyclePos + 1) / 20;
-        row = &gKbd->col;
-        if (*row > 19 || gKbd->row >= 3) {
-            *row = 5;
+        colPtr = &gKbd->col;
+        if (*colPtr > 19 || gKbd->row >= 3) {
+            *colPtr = 5;
             gKbd->row = 0;
             gKbd->cyclePos = 1;
         }
@@ -968,48 +1097,58 @@ void Kbd_CyclePhrase(void)
     Kbd_InsertPhrase();
 }
 
+/*
+ * R2 on the gestures page: steps the cursor through the gesture keys, as
+ * Kbd_CyclePhrase does. Refused while converting, when the gestures set is
+ * barred or the kind has no gestures.
+ */
 void Kbd_CycleGesture(void)
 {
-    s16 *count;
-    u8 *row;
+    s16 *cyclePosPtr;
+    u8 *colPtr;
 
-    if (gKbd->converting != 0 || (gKbd->flags & 0x2000) ||
+    if (gKbd->converting != 0 || (gKbd->flags & KBD_SET_BIT(KBD_SET_GESTURE)) ||
         *(s32 *)(gKbd->kindConf + 0x28) == 0) {
-        gKbd->state = 0x15;
+        gKbd->state = SE_SYS_REFUSE;
         return;
     }
-    if (!(gKbd->keyFlags & 2)) {
+    if (!(gKbd->keyFlags & KBD_KEYF_CYCLING)) {
         gKbd->offGrid = 0;
-        gKbd->keyFlags |= 2;
+        gKbd->keyFlags |= KBD_KEYF_CYCLING;
         gKbd->cyclePos = 1;
-        gKbd->keySet = 0xD;
+        gKbd->keySet = KBD_SET_GESTURE;
         Kbd_UpdateMode();
         Kbd_HomePageCursor();
         Kbd_EnterGestures();
         Kbd_RefreshLayout();
     } else {
         gKbd->cyclePos += 5;
-        count = &gKbd->cyclePos;
-        if (*count >= 60) {
-            *count = 1;
+        cyclePosPtr = &gKbd->cyclePos;
+        if (*cyclePosPtr >= 60) {
+            *cyclePosPtr = 1;
         }
         gKbd->col = (gKbd->cyclePos + 1) % 20;
         gKbd->row = (gKbd->cyclePos + 1) / 20;
-        row = &gKbd->col;
-        if (*row > 19 || gKbd->row >= 3) {
-            *row = 5;
+        colPtr = &gKbd->col;
+        if (*colPtr > 19 || gKbd->row >= 3) {
+            *colPtr = 5;
             gKbd->row = 0;
             gKbd->cyclePos = 1;
         }
     }
     Kbd_RefreshLayout();
-    gKbd->state = 0x16;
+    gKbd->state = SE_SYS_SELECT;
 }
 
 extern s16 gKbdChatTarget;
 extern s8 gKbdPrompt[];
 s32 Chat_NextTarget(s8 *out, s32 next);
 
+/*
+ * R3 (and the USB Tab key): steps to the next chat target and shows its
+ * name as the prompt (gKbdPrompt). Refused when chat targets are off
+ * (gKbdChatTarget < 0) or the prompt stays empty.
+ */
 void Kbd_NextChatTarget(void)
 {
     s8 name[32];
@@ -1025,18 +1164,23 @@ void Kbd_NextChatTarget(void)
     strncpy((char *)gKbdPrompt, (char *)name, 4);
     gKbdChatTarget = Chat_NextTarget(gKbdPrompt, 0);
     if (gKbdChatTarget < 0 || same) {
-        gKbd->state = 0x15;
+        gKbd->state = SE_SYS_REFUSE;
     } else {
-        gKbd->state = 0x17;
+        gKbd->state = SE_SYS_SCROLL;
     }
 }
 
 extern u8 D_00418739[];
 
+/*
+ * Inserts the phrase of the key under the cursor into the text at textPos
+ * (up to maxLen); during a cycle (KBD_KEYF_CYCLING) it replaces the text.
+ * Nothing on the row of the page's mode key or when the key has no entry.
+ */
 void Kbd_InsertPhrase(void)
 {
     char buf[0x100];
-    s32 n;
+    s32 added;
 
     if (gKbd->row == D_00418739[0]) {
         return;
@@ -1045,89 +1189,104 @@ void Kbd_InsertPhrase(void)
     if (gKbd->keyInfo == NULL) {
         return;
     }
-    if (gKbd->keyFlags & 2) {
+    if (gKbd->keyFlags & KBD_KEYF_CYCLING) {
         Kbd_ClearText();
     }
     if (*(char **)(gKbd->keyInfo + 0xC) == NULL) {
-        gKbd->state = 0x15;
+        gKbd->state = SE_SYS_REFUSE;
         return;
     }
     strcpy(buf, *(char **)(gKbd->keyInfo + 0xC));
-    n = Str_InsertClip(gKbd->text, buf, gKbd->textPos,
+    added = Str_InsertClip(gKbd->text, buf, gKbd->textPos,
                       gKbd->maxLen);
-    gKbd->textPos = gKbd->textPos + n;
-    gKbd->state = 0x16;
+    gKbd->textPos = gKbd->textPos + added;
+    gKbd->state = SE_SYS_SELECT;
 }
 
 extern s8 gKbdWidthPairs[];
 
-static s32 Kbd_WidthPair(u8 i)
+/*
+ * The key set of the other width for set (gKbdWidthPairs), or -1 when there
+ * is none or it is barred.
+ */
+static s32 Kbd_WidthPair(u8 set)
 {
-    s32 v = gKbdWidthPairs[i];
+    s32 pair = gKbdWidthPairs[set];
 
-    if (v >= 0 && !(gKbd->flags & (1 << (s8)v))) {
-        return v;
+    if (pair >= 0 && !(gKbd->flags & (1 << (s8)pair))) {
+        return pair;
     }
     return -1;
 }
 
+/*
+ * Switches to the other width's key set (Kbd_WidthPair), committing any
+ * pending kana and keeping the cursor; refused when there is none.
+ */
 void Kbd_ToggleWidth(void)
 {
-    s32 state = 0x15;
-    s8 k;
-    u8 a;
-    u8 b;
+    s32 state = SE_SYS_REFUSE;
+    s8 pair;
+    u8 savedCol;
+    u8 savedRow;
 
-    k = Kbd_WidthPair(gKbd->keySet);
-    if (k >= 0) {
-        a = gKbd->col;
-        b = gKbd->row;
-        gKbd->keySet = k;
+    pair = Kbd_WidthPair(gKbd->keySet);
+    if (pair >= 0) {
+        savedCol = gKbd->col;
+        savedRow = gKbd->row;
+        gKbd->keySet = pair;
         Kbd_UpdateMode();
         Kbd_HomePageCursor();
         Kbd_CommitKana();
         Kbd_RefreshLayout();
         Kbd_UpdateSymbolMode();
-        gKbd->col = a;
-        gKbd->row = b;
-        state = 0x16;
+        gKbd->col = savedCol;
+        gKbd->row = savedRow;
+        state = SE_SYS_SELECT;
     }
     gKbd->state = state;
 }
 
-/* Backspace: deletes the character before the cursor (or leaves the conversion). The
- * kana store goes through u8 (a char store adds n + kana in the other order). */
+/*
+ * Backspace (CROSS, the backspace key, the USB Backspace key). With nothing
+ * typed (entry kinds 0xC and 0xD excepted) or during a cycle it cancels the
+ * keyboard (KBD_RESULT_CANCEL). Otherwise it deletes the character before
+ * the cursor: two bytes of the pending kana, or one character of the text.
+ * While converting it leaves the conversion instead. The parameter is not
+ * used. The kana is cut through a u8 store for the match (instruction
+ * order).
+ */
 void Kbd_DeleteBack(s32 unused)
 {
-    u8 *mode;
+    u8 *convPtr;
     char *kana;
     s16 *pos;
     s32 size;
-    s32 n;
+    s32 cursor;
     char *text;
 
     if (gKbd->kind != 0xC && gKbd->kind != 0xD &&
         gKbd->kana[0] == 0 && (u8)gKbd->text[0] == 0) {
-        gKbd->result = -1;
-        gKbd->state = 0x14;
+        gKbd->result = KBD_RESULT_CANCEL;
+        gKbd->state = SE_SYS_CANCEL;
         return;
     }
-    if (gKbd->keyFlags & 2) {
-        gKbd->result = -1;
-        gKbd->state = 0x14;
+    if (gKbd->keyFlags & KBD_KEYF_CYCLING) {
+        gKbd->result = KBD_RESULT_CANCEL;
+        gKbd->state = SE_SYS_CANCEL;
         return;
     }
-    mode = &gKbd->converting;
-    if (*mode == 0) {
+    convPtr = &gKbd->converting;
+    if (*convPtr == 0) {
         kana = (char *)gKbd->kana;
         if (*(u8 *)kana != 0) {
-            n = gKbd->kanaPos;
-            if (n == 0) {
-                gKbd->state = 0x15;
+            cursor = gKbd->kanaPos;
+            if (cursor == 0) {
+                gKbd->state = SE_SYS_REFUSE;
                 return;
             }
-            *(u8 *)(kana + n - 2) = 0;
-            strcat(kana, kana + n);
+            *(u8 *)(kana + cursor - 2) = 0;
+            strcat(kana, kana + cursor);
             gKbd->kanaPos -= 2;
             pos = (s16 *)&gKbd->kanaPos;
             if (*pos <= 0) {
@@ -1135,15 +1294,15 @@ void Kbd_DeleteBack(s32 unused)
                 Kbd_KeyRepeat(0, 0);
             }
         } else {
-            n = gKbd->textPos;
+            cursor = gKbd->textPos;
             text = gKbd->text;
-            if (n == 0) {
-                gKbd->state = 0x15;
+            if (cursor == 0) {
+                gKbd->state = SE_SYS_REFUSE;
                 return;
             }
-            size = Sjis_PrevCharSize((u8 *)text, n);
-            *(text + n - size) = 0;
-            strcat(text, text + n);
+            size = Sjis_PrevCharSize((u8 *)text, cursor);
+            *(text + cursor - size) = 0;
+            strcat(text, text + cursor);
             gKbd->textPos = gKbd->textPos - size;
             pos = (s16 *)&gKbd->textPos;
             if (*pos <= 0) {
@@ -1152,102 +1311,112 @@ void Kbd_DeleteBack(s32 unused)
             }
         }
         gKbd->blink = 0;
-        gKbd->state = 0x16;
+        gKbd->state = SE_SYS_SELECT;
         return;
     }
-    *mode = 0;
+    *convPtr = 0;
     gKbd->blink = 0;
     gKbd->offGrid = 0;
     if (gKbd->symbolMode != 0) {
         gKbd->kanaPos = 0;
         gKbd->kana[0] = 0;
     }
-    gKbd->state = 0x16;
+    gKbd->state = SE_SYS_SELECT;
 }
 
+/*
+ * Submits the text (START, TRIANGLE, the submit key). With kana pending it
+ * commits the kana instead. Refused while submitWait (Kbd_SetSubmitWait) is
+ * positive. Otherwise sets KBD_RESULT_SUBMIT, with SE_SYS_SEND, or
+ * SE_SYS_CANCEL for an empty text.
+ */
 void Kbd_Submit(void)
 {
-    s32 *p;
+    s32 *wait;
 
     if (gKbd->kana[0] != 0) {
         Kbd_CommitKana();
         gKbdPhrasePage = 0;
-        gKbd->state = 0x16;
+        gKbd->state = SE_SYS_SELECT;
         return;
     }
-    p = &gKbd->submitWait;
-    if (*p != 0) {
-        if (*p < 0) {
-            *p = 0;
+    wait = &gKbd->submitWait;
+    if (*wait != 0) {
+        if (*wait < 0) {
+            *wait = 0;
         } else {
-            gKbd->state = 0x15;
+            gKbd->state = SE_SYS_REFUSE;
             return;
         }
     }
-    gKbd->result = 1;
+    gKbd->result = KBD_RESULT_SUBMIT;
     if (gKbd->kana[0] == 0 && (u8)gKbd->text[0] == 0) {
-        gKbd->state = 0x14;
+        gKbd->state = SE_SYS_CANCEL;
     } else {
-        gKbd->state = 0x18;
+        gKbd->state = SE_SYS_SEND;
     }
 }
 
 s32 Kbd_FindKind(u8 row, u8 *out1F, u8 *out1E);
 
-/* Moves the cursor to the next (back: previous) of the four rows that
- * Kbd_FindKind accepts; when none, restores the cursor (state 0x15). */
+/*
+ * L1: switches to the next (back: previous) of the four character modes
+ * that Kbd_FindKind allows; from a phrase or gestures page it starts at
+ * hiragana (back: symbols) and sends the cursor home. When none is allowed
+ * the mode and set are restored and the press refused. back is always 0.
+ */
 void Kbd_NextRow(s32 back)
 {
     s32 i;
     s32 found;
-    u8 key;
-    s8 cur;
-    u8 row;
+    u8 savedSet;
+    s8 tryMode;
+    u8 savedMode;
 
-    row = gKbd->mode;
-    key = gKbd->keySet;
+    savedMode = gKbd->mode;
+    savedSet = gKbd->keySet;
     found = 0;
 
-    if (row == 13 || row == 4 || row == 5) {
+    if (savedMode == KBD_MODE_GESTURE || savedMode == KBD_MODE_PHRASE1 || savedMode == KBD_MODE_PHRASE2) {
         if (back) {
-            cur = 0;
+            tryMode = 0;
         } else {
-            cur = 3;
+            tryMode = 3;
         }
     } else {
-        cur = row;
+        tryMode = savedMode;
     }
     for (i = 0; i < 4; i++) {
         if (back) {
-            cur--;
+            tryMode--;
         } else {
-            cur++;
+            tryMode++;
         }
-        cur = (cur + 4) % 4;
-        if (Kbd_FindKind(cur, &gKbd->mode, &gKbd->keySet) == 0 && cur != row) {
+        tryMode = (tryMode + 4) % 4;
+        if (Kbd_FindKind(tryMode, &gKbd->mode, &gKbd->keySet) == 0 && tryMode != savedMode) {
             found = 1;
             break;
         }
     }
     if (!found) {
-        gKbd->keySet = key;
-        gKbd->mode = row;
-        gKbd->state = 0x15;
+        gKbd->keySet = savedSet;
+        gKbd->mode = savedMode;
+        gKbd->state = SE_SYS_REFUSE;
     } else {
         gKbd->cyclePos = 0;
         gKbd->gestureMode = 0;
-        gKbd->keyFlags &= ~2;
-        gKbd->state = 0x16;
-        switch (row) {
-        case 13:
-        case 4:
-        case 5:
+        gKbd->keyFlags &= ~KBD_KEYF_CYCLING;
+        gKbd->state = SE_SYS_SELECT;
+        switch (savedMode) {
+        case KBD_MODE_GESTURE:
+        case KBD_MODE_PHRASE1:
+        case KBD_MODE_PHRASE2:
             gKbd->col = 1;
             gKbd->row = 0;
             break;
         }
     }
-    if (gKbd->keySet == 13) {
+    if (gKbd->keySet == KBD_SET_GESTURE) {
         Kbd_EnterGestures();
     }
     Kbd_UpdateMode();
@@ -1265,22 +1434,29 @@ extern KeyPair gKbdPhrase1Binds[];
 extern KeyPair gKbdPhrase2Binds[];
 
 /* Binds the cursors and grids of the phrases and gestures pages for the keyboard kind. */
-void Kbd_BindLayouts(s32 unused) /* unused: the caller passes 0 */
+/*
+ * Points the gestures page and the two phrase pages of gKbdSetLayouts at
+ * the cursors and grids of the entry kind's binds (gKbdGestureBinds,
+ * gKbdPhrase1Binds, gKbdPhrase2Binds, picked by kindConf +0x28 and +0x30,
+ * entry 0 being none) and at its gesture and phrase lists (kindConf +0x2C
+ * and +0x34). The parameter is not used: the caller passes 0.
+ */
+void Kbd_BindLayouts(s32 unused)
 {
-    KbdLayout *l;
+    KbdLayout *layout;
 
-    l = &gKbdSetLayouts[13];
-    l->cursors = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 0x28)].cursors;
-    l->grid = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 0x28)].grid;
-    l->extra = *(u8 **)(gKbd->kindConf + 0x2C);
-    l = &gKbdSetLayouts[4];
-    l->cursors = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 0x30)].cursors;
-    l->grid = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 0x30)].grid;
-    l->extra = *(u8 **)(gKbd->kindConf + 0x34);
-    l = &gKbdSetLayouts[5];
-    l->cursors = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 0x30)].cursors;
-    l->grid = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 0x30)].grid;
-    l->extra = *(u8 **)(gKbd->kindConf + 0x34);
+    layout = &gKbdSetLayouts[KBD_SET_GESTURE];
+    layout->cursors = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 0x28)].cursors;
+    layout->grid = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 0x28)].grid;
+    layout->extra = *(u8 **)(gKbd->kindConf + 0x2C);
+    layout = &gKbdSetLayouts[KBD_SET_PHRASE1];
+    layout->cursors = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 0x30)].cursors;
+    layout->grid = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 0x30)].grid;
+    layout->extra = *(u8 **)(gKbd->kindConf + 0x34);
+    layout = &gKbdSetLayouts[KBD_SET_PHRASE2];
+    layout->cursors = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 0x30)].cursors;
+    layout->grid = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 0x30)].grid;
+    layout->extra = *(u8 **)(gKbd->kindConf + 0x34);
 }
 
 extern KbdKey gKbdKeysHira_4[];
@@ -1323,10 +1499,14 @@ extern KbdKey gKbdKeysAsciiLower_4[];
 extern KbdKey gKbdKeysAsciiLower_5;
 extern KbdKey gKbdKeysAsciiLower_6;
 
-/* Copies the three switch keys (to the first and second phrases pages and the gestures page:
- * the key after each bind's grid, or a blank key when the keyboard kind has no such page)
- * to keys 4-6 of every keyboard page. The context pointer is a 64-bit local: the game spills it
- * with sq/lq (an s32 or pointer local, or the global itself, is spilled with sw). */
+/*
+ * Copies the three page keys into keys 4-6 of every key table: key 4 opens
+ * the first phrase page, key 5 the second and key 6 the gestures page, each
+ * from the entry kind's binds (gKbdPhrase1Binds, gKbdPhrase2Binds,
+ * gKbdGestureBinds), or a blank key when the kind has no such page. gKbd is
+ * held in a 64-bit local and kindConf read at its offset for the match: the
+ * game spills it with sq/lq.
+ */
 void Kbd_BindStartKeys(void)
 {
     long k = (long)gKbd;
@@ -1342,13 +1522,17 @@ void Kbd_BindStartKeys(void)
             gKbdGestureBinds[*(s32 *)(*(u8 **)((u8 *)k + 0x10) + 0x28)].key;
 }
 
-/* Replaces the character before the kana cursor by its pair in table (4-byte entries: from, to). */
+/*
+ * Replaces the two-byte character before the kana cursor with its pair in
+ * table (a string of 4-byte entries: a character, then its replacement).
+ * Returns 1 when it replaced one (the cursor blink restarts), else 0.
+ */
 s32 Kana_SwapBeforeCursor(s8 *table)
 {
-    s8 *p;
+    s8 *prev;
     u16 code;
     s32 i;
-    s32 n;
+    s32 count;
     s32 pos;
     u16 from;
 
@@ -1356,15 +1540,15 @@ s32 Kana_SwapBeforeCursor(s8 *table)
     if (pos <= 1) {
         return 0;
     }
-    p = (s8 *)&gKbd->kana[pos - 2];
-    code = (p[0] << 8) | (u8)p[1];
-    n = (u32)strlen((char *)table) / 4;
-    for (i = 0; i < n; i++) {
+    prev = (s8 *)&gKbd->kana[pos - 2];
+    code = (prev[0] << 8) | (u8)prev[1];
+    count = (u32)strlen((char *)table) / 4;
+    for (i = 0; i < count; i++) {
         from = (u16)(*table++ << 8);
         from |= (u8)*table++;
         if (from == code) {
-            p[0] = *table++;
-            p[1] = *table++;
+            prev[0] = *table++;
+            prev[1] = *table++;
             gKbd->blink = 0;
             return 1;
         }
@@ -1376,21 +1560,21 @@ s32 Kana_SwapBeforeCursor(s8 *table)
 /* Copies the 2-byte characters of src to dst, turning ASCII letters into full-width (Shift-JIS) ones. */
 void Str_ToWide(s8 *src, s8 *dst)
 {
-    s8 c;
+    s8 character;
 
-    while ((c = *src++) != 0) {
-        if (c >= 'A' && c <= 'Z') {
+    while ((character = *src++) != 0) {
+        if (character >= 'A' && character <= 'Z') {
             dst[0] = 0x82;
-            dst[1] = c + 0x1F;
+            dst[1] = character + 0x1F;
             src++;
             dst += 2;
-        } else if (c >= 'a' && c <= 'z') {
+        } else if (character >= 'a' && character <= 'z') {
             dst[0] = 0x82;
-            dst[1] = c + 0x20;
+            dst[1] = character + 0x20;
             src++;
             dst += 2;
         } else {
-            dst[0] = c;
+            dst[0] = character;
             dst[1] = *src;
             src++;
             dst += 2;
@@ -1401,13 +1585,17 @@ void Str_ToWide(s8 *src, s8 *dst)
 
 void Kbd_FillRect(s32 color, s16 x, s16 y, s16 w, s16 h);
 
+/*
+ * Fills the box of the key under the cursor with color; (dx, dy) is the
+ * keyboard's position, and the box's x and width are scaled by drawScale.
+ */
 void Kbd_DrawCursorBox(s16 dy, s32 color, f32 dx)
 {
-    KbdKeyPos *c = gKbd->keyPos;
+    KbdKeyPos *box = gKbd->keyPos;
     f32 scale = gKbd->drawScale;
 
-    Kbd_FillRect(color, (s16)(s32)(dx + c->x * scale), dy + c->y, (s16)(s32)(dx + scale * (c->x + gKbdBoxSizes[c->kind].w)),
-                  dy + (c->y + gKbdBoxSizes[c->kind].h));
+    Kbd_FillRect(color, (s16)(s32)(dx + box->x * scale), dy + box->y, (s16)(s32)(dx + scale * (box->x + gKbdBoxSizes[box->kind].w)),
+                  dy + (box->y + gKbdBoxSizes[box->kind].h));
 }
 
 typedef struct KeyPos {
@@ -1416,103 +1604,118 @@ typedef struct KeyPos {
 } KeyPos;
 extern KeyPos gKbdSpecialKeyPos[];
 
-/* Draws the box of the special key of the mode, unless the cursor is on it. */
+/*
+ * Fills the box of the current mode's key (gKbdSpecialKeyPos[mode]) with
+ * color, at the keyboard's position (dx, dy). Nothing is drawn when the
+ * cursor is on that key.
+ */
 void Kbd_DrawSpecialKey(s16 dy, s32 color, f32 dx)
 {
-    KbdLayout *l;
-    KbdKeyPos *c;
+    KbdLayout *curLayout;
+    KbdKeyPos *box;
     f32 scale;
-    s32 ofs;
-    s32 cur;
-    u8 row;
-    u8 col;
-    s32 kc;
-    s32 kr;
+    s32 posOffset;
+    s32 gridIdx;
+    u8 keyCol;
+    u8 keyRow;
+    s32 curCol;
+    s32 curRow;
 
-    kc = gKbd->col;
-    kr = gKbd->row;
-    cur = (kc << 2) + kr;
-    ofs = gKbd->mode * sizeof(KeyPos); /* byte offset of the mode's KeyPos */
-    row = (&gKbdSpecialKeyPos->row)[ofs];
-    col = (&gKbdSpecialKeyPos->col)[ofs];
+    curCol = gKbd->col;
+    curRow = gKbd->row;
+    gridIdx = (curCol << 2) + curRow;
+    posOffset = gKbd->mode * sizeof(KeyPos); /* byte offset of the mode's KeyPos */
+    keyCol = (&gKbdSpecialKeyPos->row)[posOffset];
+    keyRow = (&gKbdSpecialKeyPos->col)[posOffset];
     switch (gKbd->mode) {
-    case 4:
-        if (gKbd->layout->grid[cur] == 4 && col == kr) {
+    case KBD_MODE_PHRASE1:
+        if (gKbd->layout->grid[gridIdx] == 4 && keyRow == curRow) {
             return;
         }
         break;
-    case 5:
-        if (gKbd->layout->grid[cur] == 5 && col == kr) {
+    case KBD_MODE_PHRASE2:
+        if (gKbd->layout->grid[gridIdx] == 5 && keyRow == curRow) {
             return;
         }
         break;
-    case 0xD:
-        if (gKbd->layout->grid[cur] == 6 && col == kr) {
+    case KBD_MODE_GESTURE:
+        if (gKbd->layout->grid[gridIdx] == 6 && keyRow == curRow) {
             return;
         }
         break;
     default:
         if (gKbd->active == 1 && gKbd->offGrid == 0 &&
-            row == kc && col == kr) {
+            keyCol == curCol && keyRow == curRow) {
             return;
         }
         break;
     }
-    cur = (row << 2) + col;
-    l = gKbd->layout;
+    gridIdx = (keyCol << 2) + keyRow;
+    curLayout = gKbd->layout;
     scale = gKbd->drawScale;
-    c = &l->cursors[l->grid[cur]];
-    Kbd_FillRect(color, (s16)(s32)(dx + c->x * scale), dy + c->y, (s16)(s32)(dx + scale * (c->x + gKbdBoxSizes[c->kind].w)),
-                  dy + (c->y + gKbdBoxSizes[c->kind].h));
+    box = &curLayout->cursors[curLayout->grid[gridIdx]];
+    Kbd_FillRect(color, (s16)(s32)(dx + box->x * scale), dy + box->y, (s16)(s32)(dx + scale * (box->x + gKbdBoxSizes[box->kind].w)),
+                  dy + (box->y + gKbdBoxSizes[box->kind].h));
 }
 
-void Kbd_FillRect(s32 color, s16 x, s16 y, s16 w, s16 h)
+/* Fills the rectangle from (x, y) to (right, bottom) with color. */
+void Kbd_FillRect(s32 color, s16 x, s16 y, s16 right, s16 bottom)
 {
-    Rect16 r;
+    Rect16 rect;
 
-    r.color = color;
-    r.x = x;
-    r.y = y;
-    r.w = w;
-    r.h = h;
-    Prim_FillRect((struct PrimLine *)&r);
+    rect.color = color;
+    rect.x = x;
+    rect.y = y;
+    rect.w = right;
+    rect.h = bottom;
+    Prim_FillRect((struct PrimLine *)&rect);
 }
 
 s32 Sprite_Draw(Sprite *s);
 
-void Kbd_DrawSprite(u32 color, s16 x, s16 y, s16 w, s16 h, s16 u0, s16 v0, s16 u1, s16 v1)
+/*
+ * Draws width x height pixels at (x, y), tinted color, from the texel
+ * rectangle (texLeft, texTop)-(texRight, texBottom) of the bound texture.
+ */
+void Kbd_DrawSprite(u32 color, s16 x, s16 y, s16 width, s16 height, s16 texLeft, s16 texTop, s16 texRight, s16 texBottom)
 {
-    Sprite s;
+    Sprite sprite;
 
-    s.color = color;
-    s.x = x;
-    s.y = y;
-    s.w = w;
-    s.h = h;
-    s.u0 = u0;
-    s.v0 = v0;
-    s.u1 = u1;
-    s.v1 = v1;
-    Sprite_Draw(&s);
+    sprite.color = color;
+    sprite.x = x;
+    sprite.y = y;
+    sprite.w = width;
+    sprite.h = height;
+    sprite.u0 = texLeft;
+    sprite.v0 = texTop;
+    sprite.u1 = texRight;
+    sprite.v1 = texBottom;
+    Sprite_Draw(&sprite);
 }
 
-extern u8 gKbdOpenMode;
+extern u8 gKbdOpenKey;
 extern u8 gKbdKindIs0;
 
+/*
+ * 1 when the whole keyboard is drawn: while it takes the input or shows a
+ * phrase or gestures page, or when F9, F10 or F12 opened it (F11 for entry
+ * kind 0; gKbdOpenKey). Otherwise only the text line is drawn: 0.
+ * Chat_DrawKbdBox sizes its frame by it.
+ */
 s32 Kbd_KeysShown(void)
 {
     if ((gKbd->active ^ 1) && gKbd->layout->extra == NULL) {
-        switch (gKbdOpenMode) {
-        case 0x44:
+        switch (gKbdOpenKey) {
+        case USB_KEY_F11:
             if (gKbdKindIs0 == 0) {
                 goto no; /* an if/return pair would become a set-on-condition */
             }
             return 1;
         no:
             return 0;
-        case 0x42:
-        case 0x43:
-        case 0x45:
+        case USB_KEY_F9:
+        case USB_KEY_F10:
+        case USB_KEY_F12:
             return 1;
         default:
             return 0;
@@ -1540,19 +1743,19 @@ extern u32 gKbdPulseAmp[];
 extern u32 gKbdLinePulseAmp[];
 extern s8 gKbdPhraseKeyOrder[];
 extern s32 gKbdInactive;
-extern s32 D_005AEA58;
+extern s32 gKbdCursorHideFrames;
 f32 Math_Sin(f32 x);
 void Text_FlushPages(void);
 void Text_DrawCurrentPage(void);
 void Text_SetColor(s16 color);
 void Font_SetSpacing(u8 a, u8 b);
 void Font_SetPos(s16 x, s16 y);
-void Tex_Bind148(void);
+void Kbd_BindGlyphTex(void);
 void Gfx_SetBlendAlphaAdd(s32 a);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 s32 Kbd_ArrowsOnPage(void);
-void Kbd_DrawLine(f32 x, s16 y); /* unit's own declaration: the definition has
- * u32 y_in; Kbd_Draw matches with s16 y (with u32 it was 40 words further off) */
+void Kbd_DrawLine(f32 x, s16 y); /* unit's own declaration: the definition takes a u32 y;
+ * Kbd_Draw's call matches with s16 y */
 void Kbd_DrawCandidateBox(f32 x, s16 y);
 void Kbd_DrawSpecialKey(s16 dy, s32 color, f32 dx);
 
@@ -1560,42 +1763,48 @@ void Kbd_DrawSpecialKey(s16 dy, s32 color, f32 dx);
 #define KBD_COLOR(i) (((KbdColor *)gKbd->kindConf)[i])
 #define KBD_PULSE(v, i, amp) v = KBD_COLW(i) & 0xFFFFFF; v |= (((KBD_COLW(i) >> 24) & 0xFF) + (s8)(sin * (amp))) << 24
 
-/* Draws the software keyboard: the panel, the keys, the page characters, the cursor, the
- * special key of the mode, the key glyphs, then the text line and the candidates.
- * The grid is indexed (col << 2) + row, so the bytes load in the original's order. The box loop
- * counts with i and walks c, so that the page loop's i and c are later webs of both; the page
- * loop sets p after i = 0, in the for's init. A glyph's width is an s32 holding the (s16) of
- * its byte, read like its scale (the glyph loops' saved registers come from it, and from their
- * declaration orders, which also give the stack slots); its texel column is (code & 0xF) << 4.
- * The pulsing colour is set in two statements (KBD_PULSE) so that it is computed before the
- * call's arguments, as in the original. */
-void Kbd_Draw(u8 a)
+/*
+ * Draws the software keyboard at (gKbd->x, gKbd->y); the parameter is not
+ * used. While the keyboard doesn't take the input and shows no phrase or
+ * gestures page, only a strip is drawn: the panel, the text line and the
+ * mode and width keys. Otherwise, in order: the panel; the text line,
+ * pulsing while the cursor is on it; the key boxes; on a phrase or gestures
+ * page the twelve phrase texts; the pulsing cursor box (unless
+ * gKbdCursorHideFrames counts down); the mode key's box; the key glyphs
+ * from the glyph texture (a blocked key as the blank glyph). Then the text
+ * and the conversion candidates.
+ * Kept for the match: the grid is indexed (col << 2) + row so the bytes
+ * load in the original's order; the box loop counts with i and walks box;
+ * a glyph's width is an s32 holding the (s16) of its byte; the glyph
+ * loops' declaration orders give their registers and stack slots.
+ */
+void Kbd_Draw(u8 unused)
 {
-    KbdLayout *l;
-    KbdKey *k;
+    KbdLayout *curLayout;
+    KbdKey *kbdKey;
     f32 x;
     f32 sin;
     s16 y;
     u32 i;
-    KbdKeyPos *c;
-    s8 spec;
-    s8 sel;
+    KbdKeyPos *box;
+    s8 modeKey;
+    s8 cursorKey;
     u32 color;
 
     x = gKbd->x;
     y = gKbd->y;
-    sin = Math_Sin(0.0000958738f * (u16)((gKbd->frame & 0x3F) << 10));
+    sin = Math_Sin(ANGLE16_TO_RAD * (u16)((gKbd->frame & 0x3F) << 10));
     gKbdInactive = gKbd->active ^ 1;
     Text_FlushPages();
     gKbd->drawScale = 1.0f;
     x *= gKbd->drawScale;
     if (gKbdInactive != 0 && gKbd->layout->extra == 0) {
-        switch (gKbdOpenMode) {
-        case 0x42:
-        case 0x43:
-        case 0x44:
-        case 0x45:
-            gKbdOpenMode = 0;
+        switch (gKbdOpenKey) {
+        case USB_KEY_F9:
+        case USB_KEY_F10:
+        case USB_KEY_F11:
+        case USB_KEY_F12:
+            gKbdOpenKey = 0;
             return;
         default:
             Kbd_FillRect(KBD_COLW(0), (s32)(x - 56.0f * gKbd->drawScale), y - 4, (s32)(x + 488.0f * gKbd->drawScale), y + 24);
@@ -1612,30 +1821,30 @@ void Kbd_Draw(u8 a)
         Kbd_FillRect(KBD_COLW(1), (s32)(x + 6.0f * gKbd->drawScale), (s32)y,
                      (s32)(x + 488.0f * gKbd->drawScale - 6.0f * gKbd->drawScale), y + 20);
     }
-    l = gKbd->layout;
-    c = l->cursors;
-    for (i = l->nBoxes; i != 0; i--) {
+    curLayout = gKbd->layout;
+    box = curLayout->cursors;
+    for (i = curLayout->nBoxes; i != 0; i--) {
         if (gKbdInactive != 0 && gKbd->layout->extra == 0) {
             Kbd_DrawSpecialKey(y - gKbd->mode * 17 - 26, KBD_COLW(1), x - 56.0f * gKbd->drawScale);
             Kbd_DrawSpecialKey(y - gKbd->mode * 17 - 26, KBD_COLW(1), x - 30.0f * gKbd->drawScale);
             break;
         }
-        Kbd_FillRect(KBD_COLW(1), (s32)(x + c->x * gKbd->drawScale), y + c->y,
-                     (s32)(x + gKbd->drawScale * (c->x + gKbdBoxSizes[c->kind].w)), y + c->y + gKbdBoxSizes[c->kind].h);
-        c++;
+        Kbd_FillRect(KBD_COLW(1), (s32)(x + box->x * gKbd->drawScale), y + box->y,
+                     (s32)(x + gKbd->drawScale * (box->x + gKbdBoxSizes[box->kind].w)), y + box->y + gKbdBoxSizes[box->kind].h);
+        box++;
     }
-    Tex_Bind148();
-    Gfx_SetState63(1);
-    l = gKbd->layout;
-    if (l->extra != 0 && gKbd->gestureMode == 0) {
+    Kbd_BindGlyphTex();
+    Gfx_SetTexFilter(1);
+    curLayout = gKbd->layout;
+    if (curLayout->extra != 0 && gKbd->gestureMode == 0) {
         s8 cur;
-        s8 *p;
+        s8 *order;
 
-        cur = l->grid[(u32)((gKbd->col << 2) + gKbd->row)];
-        c = l->cursors + 13;
+        cur = curLayout->grid[(u32)((gKbd->col << 2) + gKbd->row)];
+        box = curLayout->cursors + 13;
         Font_SetSpacing(20, 16);
-        for (i = 0, p = gKbdPhraseKeyOrder; i < 12; i++, p++, c++) {
-            Font_SetPos(c->x + x / gKbd->drawScale, y + c->y);
+        for (i = 0, order = gKbdPhraseKeyOrder; i < 12; i++, order++, box++) {
+            Font_SetPos(box->x + x / gKbd->drawScale, y + box->y);
             if (cur == i + 13 && (gKbd->offGrid == 0 || gKbd->active != 1)) {
                 Text_SetColor(1);
             } else {
@@ -1643,29 +1852,29 @@ void Kbd_Draw(u8 a)
             }
             switch (gKbd->keySet) {
             default:
-            case 4:
-                Kbd_Printf(D_0046CC10, gKbd->layout->extra + *p * 16);
+            case KBD_SET_PHRASE1:
+                Kbd_Printf(D_0046CC10, gKbd->layout->extra + *order * 16);
                 break;
-            case 5:
-                Kbd_Printf(D_0046CC10, gKbd->layout->extra + (*p + 12) * 16);
+            case KBD_SET_PHRASE2:
+                Kbd_Printf(D_0046CC10, gKbd->layout->extra + (*order + 12) * 16);
                 break;
             }
         }
     }
-    Gfx_SetState63(0);
-    if ((gKbdInactive == 0 || gKbd->layout->extra != 0) && D_005AEA58 == 0 &&
+    Gfx_SetTexFilter(0);
+    if ((gKbdInactive == 0 || gKbd->layout->extra != 0) && gKbdCursorHideFrames == 0 &&
         (gKbd->offGrid == 0 || Kbd_ArrowsOnPage() == 1)) {
-        k = gKbd->key;
+        kbdKey = gKbd->key;
         Gfx_SetBlendAlphaAdd(1);
-        if (Kbd_CharBlocked(k) == 1) {
+        if (Kbd_CharBlocked(kbdKey) == 1) {
             KBD_PULSE(color, 7, gKbdPulseAmp[0]);
         } else {
             KBD_PULSE(color, 6, gKbdPulseAmp[0]);
         }
         Kbd_DrawCursorBox(y, color, x);
     }
-    if (D_005AEA58 > 0) {
-        D_005AEA58--;
+    if (gKbdCursorHideFrames > 0) {
+        gKbdCursorHideFrames--;
     }
     Gfx_SetBlendAlphaAdd(1);
     if (gKbdInactive != 0 && gKbd->layout->extra == 0) {
@@ -1676,61 +1885,61 @@ void Kbd_Draw(u8 a)
         Kbd_DrawSpecialKey(y, color, x);
     }
     Gfx_SetBlendAlphaAdd(0);
-    Gfx_SetState63(1);
-    l = gKbd->layout;
-    c = l->cursors;
-    k = l->keys;
-    sel = l->grid[(u32)((gKbd->col << 2) + gKbd->row)];
-    spec = l->grid[(u32)((gKbdSpecialKeyPos[gKbd->mode].row << 2) + gKbdSpecialKeyPos[gKbd->mode].col)];
-    if (gKbdInactive != 0 && l->extra == 0) {
-        for (i = 0; i < gKbd->layout->nKeys; i++, c++, k++) {
-            if (i >= 13 || i == spec || i == 7) {
-                s32 gw;
-                s32 sw;
+    Gfx_SetTexFilter(1);
+    curLayout = gKbd->layout;
+    box = curLayout->cursors;
+    kbdKey = curLayout->keys;
+    cursorKey = curLayout->grid[(u32)((gKbd->col << 2) + gKbd->row)];
+    modeKey = curLayout->grid[(u32)((gKbdSpecialKeyPos[gKbd->mode].row << 2) + gKbdSpecialKeyPos[gKbd->mode].col)];
+    if (gKbdInactive != 0 && curLayout->extra == 0) {
+        for (i = 0; i < gKbd->layout->nKeys; i++, box++, kbdKey++) {
+            if (i >= 13 || i == modeKey || i == 7) {
+                s32 glyphW;
+                s32 drawW;
                 s16 pad;
-                s16 gh;
+                s16 glyphH;
                 u8 code;
-                u8 g;
+                u8 glyphIdx;
 
                 if (i >= 13) {
                     break;
                 }
-                if (Kbd_CharBlocked(k) == 1) {
+                if (Kbd_CharBlocked(kbdKey) == 1) {
                     code = 0xC5;
                     color = KBD_COLW(4);
-                    g = 0;
+                    glyphIdx = 0;
                 } else {
                     color = KBD_COLW(3);
-                    code = k->glyph;
-                    g = k->font & 0xF;
+                    code = kbdKey->glyph;
+                    glyphIdx = kbdKey->font & 0xF;
                 }
-                gw = (s16)gKbdGlyphs[g].w;
-                gh = gKbdGlyphs[g].h;
-                sw = (gw * (s16)gKbdGlyphs[g].scale) >> 4;
-                pad = (s16)(gKbd->drawScale * gKbdBoxSizes[c->kind].w) - sw;
-                if (i == sel) {
-                    if (D_005AEA58 == 0 && (gKbd->offGrid == 0 || Kbd_ArrowsOnPage() == 1)) {
+                glyphW = (s16)gKbdGlyphs[glyphIdx].w;
+                glyphH = gKbdGlyphs[glyphIdx].h;
+                drawW = (glyphW * (s16)gKbdGlyphs[glyphIdx].scale) >> 4;
+                pad = (s16)(gKbd->drawScale * gKbdBoxSizes[box->kind].w) - drawW;
+                if (i == cursorKey) {
+                    if (gKbdCursorHideFrames == 0 && (gKbd->offGrid == 0 || Kbd_ArrowsOnPage() == 1)) {
                         color = KBD_COLW(5);
-                    } else if (sel == spec && i < 4) {
+                    } else if (cursorKey == modeKey && i < 4) {
                         color = KBD_COLW(5);
                     } else {
                         color = KBD_COLW(3);
                     }
-                } else if (i == spec) {
+                } else if (i == modeKey) {
                     color = KBD_COLW(5);
                 }
                 if (i == 7) {
-                    s16 w = gKbdGlyphs[0].w;
-                    s16 sc = gKbdGlyphs[0].scale;
-                    s16 h = gKbdGlyphs[0].h;
+                    s16 widthKeyW = gKbdGlyphs[0].w;
+                    s16 widthKeyScale = gKbdGlyphs[0].scale;
+                    s16 widthKeyH = gKbdGlyphs[0].h;
 
                     switch (gKbd->keySet) {
-                    case 6:
-                    case 7:
-                    case 0xB:
-                    case 0xE:
-                    case 0xF:
-                    case 0x10:
+                    case KBD_SET_HALF_KATA:
+                    case KBD_SET_ASCII_UPPER:
+                    case KBD_SET_HALF_SYMBOL:
+                    case KBD_SET_HALF_SMALL_KATA:
+                    case KBD_SET_ASCII_LOWER:
+                    case KBD_SET_DIGIT:
                         code = gKbdWidthKeys[0];
                         break;
                     default:
@@ -1738,55 +1947,55 @@ void Kbd_Draw(u8 a)
                         break;
                     }
                     Kbd_DrawSprite(((s32 *)gKbd->kindConf)[5], x + -20.0f * gKbd->drawScale, y + 3,
-                                   (w * sc) >> 4, h,
+                                   (widthKeyW * widthKeyScale) >> 4, widthKeyH,
                                    ((code & 0xF) << 4) + 1, (code & 0xF0) + 1,
-                                   ((code & 0xF) << 4) - 1 + w, (code & 0xF0) + 16);
+                                   ((code & 0xF) << 4) - 1 + widthKeyW, (code & 0xF0) + 16);
                 } else {
-                    Kbd_DrawSprite(color, (f32)(pad >> 1) + (x + (c->x - 56.0f) * gKbd->drawScale), y + 3, sw, gh,
+                    Kbd_DrawSprite(color, (f32)(pad >> 1) + (x + (box->x - 56.0f) * gKbd->drawScale), y + 3, drawW, glyphH,
                                    ((code & 0xF) << 4) + 1, (code & 0xF0) + 1,
-                                   ((code & 0xF) << 4) - 1 + gw, (code & 0xF0) + 16);
+                                   ((code & 0xF) << 4) - 1 + glyphW, (code & 0xF0) + 16);
                 }
             }
         }
     } else {
-        for (i = 0; i < gKbd->layout->nKeys; i++, c++, k++) {
+        for (i = 0; i < gKbd->layout->nKeys; i++, box++, kbdKey++) {
             u8 code;
-            u8 g;
-            s32 sw;
-            s32 gw;
-            s16 gh;
+            u8 glyphIdx;
+            s32 drawW;
+            s32 glyphW;
+            s16 glyphH;
             s16 pad;
 
-            if (Kbd_CharBlocked(k) == 1) {
+            if (Kbd_CharBlocked(kbdKey) == 1) {
                 code = 0xC5;
                 color = KBD_COLW(4);
-                g = 0;
+                glyphIdx = 0;
             } else {
-                code = k->glyph;
+                code = kbdKey->glyph;
                 color = KBD_COLW(3);
-                g = k->font & 0xF;
+                glyphIdx = kbdKey->font & 0xF;
             }
-            gw = (s16)gKbdGlyphs[g].w;
-            gh = gKbdGlyphs[g].h;
-            sw = (gw * (s16)gKbdGlyphs[g].scale) >> 4;
-            pad = (s16)(gKbd->drawScale * gKbdBoxSizes[c->kind].w) - sw;
-            if (i == sel) {
-                if (D_005AEA58 == 0 && (gKbd->offGrid == 0 || Kbd_ArrowsOnPage() == 1)) {
+            glyphW = (s16)gKbdGlyphs[glyphIdx].w;
+            glyphH = gKbdGlyphs[glyphIdx].h;
+            drawW = (glyphW * (s16)gKbdGlyphs[glyphIdx].scale) >> 4;
+            pad = (s16)(gKbd->drawScale * gKbdBoxSizes[box->kind].w) - drawW;
+            if (i == cursorKey) {
+                if (gKbdCursorHideFrames == 0 && (gKbd->offGrid == 0 || Kbd_ArrowsOnPage() == 1)) {
                     color = KBD_COLW(5);
-                } else if (sel == spec && i < 4) {
+                } else if (cursorKey == modeKey && i < 4) {
                     color = KBD_COLW(5);
                 } else {
                     color = KBD_COLW(3);
                 }
-            } else if (i == spec) {
+            } else if (i == modeKey) {
                 color = KBD_COLW(5);
             }
-            Kbd_DrawSprite(color, (f32)(pad >> 1) + (x + c->x * gKbd->drawScale), y + c->y + 16 - gh, sw, gh,
+            Kbd_DrawSprite(color, (f32)(pad >> 1) + (x + box->x * gKbd->drawScale), y + box->y + 16 - glyphH, drawW, glyphH,
                            ((code & 0xF) << 4) + 1, (code & 0xF0) + 1,
-                           ((code & 0xF) << 4) - 1 + gw, (code & 0xF0) + 16);
+                           ((code & 0xF) << 4) - 1 + glyphW, (code & 0xF0) + 16);
         }
     }
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Kbd_DrawLine(2.0f + (14.0f + x) / gKbd->drawScale, y + 0);
     Kbd_DrawCandidateBox(2.0f + (14.0f + x) / gKbd->drawScale, y - 1);
     Text_DrawCurrentPage();
@@ -1794,61 +2003,66 @@ void Kbd_Draw(u8 a)
 
 void Kbd_ToggleShift(void);
 
-/* A key pressed: Kbd_FindKindEx moves the cursor (then state 0x15), else the
- * key's action by kind (key->ch.b[1]). */
+/*
+ * Runs a switch key (KBD_ACT_SWITCH; its kind in ch.b[1]). When
+ * Kbd_FindKindEx refuses the kind, SE_SYS_REFUSE. A mode key switches to
+ * the key set Kbd_FindKindEx chose (a phrase or gestures page puts the
+ * cursor on its home key); the page keys open those pages; the width keys
+ * toggle the width and the shift keys the shift.
+ */
 void Kbd_PressKey(KbdKey *key)
 {
     if (Kbd_FindKindEx(key->ch.b[1], &gKbd->mode, &gKbd->keySet) != 0) {
-        gKbd->state = 0x15;
+        gKbd->state = SE_SYS_REFUSE;
         return;
     }
     gKbd->cyclePos = 0;
     gKbd->gestureMode = 0;
     Kbd_UpdateSymbolMode();
     switch (key->ch.b[1]) {
-    case 13:
+    case KBD_MODE_GESTURE:
         Kbd_UpdateMode();
         Kbd_HomePageCursor();
         Kbd_EnterGestures();
         Kbd_RefreshLayout();
-        gKbd->state = 0x16;
+        gKbd->state = SE_SYS_SELECT;
         break;
-    case 3:
+    case KBD_MODE_SYMBOL:
         Kbd_UpdateMode();
         Kbd_HomePageCursor();
         if (gKbd->symbolMode != 0) {
             Kbd_ConvertOrCommit();
             Kbd_KeyRepeat(0, 0);
         } else {
-            gKbd->state = 0x16;
+            gKbd->state = SE_SYS_SELECT;
         }
         Kbd_RefreshLayout();
         break;
-    case 4:
+    case KBD_MODE_PHRASE1:
         Kbd_OpenPhrases1();
         break;
-    case 5:
+    case KBD_MODE_PHRASE2:
         Kbd_OpenPhrases2();
         break;
-    case 0:
+    case KBD_MODE_HIRAGANA:
         Kbd_UpdateMode();
         Kbd_HomePageCursor();
         Kbd_RefreshLayout();
-        gKbd->state = 0x16;
+        gKbd->state = SE_SYS_SELECT;
         break;
-    case 1:
-    case 2:
+    case KBD_MODE_KATAKANA:
+    case KBD_MODE_ALNUM:
         Kbd_UpdateMode();
         Kbd_HomePageCursor();
         Kbd_RefreshLayout();
-        gKbd->state = 0x16;
+        gKbd->state = SE_SYS_SELECT;
         break;
-    case 6:
-    case 7:
+    case KBD_SWITCH_TO_HALF:
+    case KBD_SWITCH_TO_FULL:
         Kbd_ToggleWidth();
         break;
-    case 8:
-    case 9:
+    case KBD_SWITCH_SHIFT:
+    case KBD_SWITCH_UNSHIFT:
         Kbd_ToggleShift();
         break;
     case 10:
@@ -1864,16 +2078,20 @@ void Kbd_RefreshLayout(void)
     Kbd_LookupKey();
 }
 
-s32 Kbd_DakutenKeyKind(KbdKey *p)
+/*
+ * KBD_MARK_DAKUTEN when the key types the dakuten mark, KBD_MARK_HANDAKUTEN
+ * the handakuten mark, else 0.
+ */
+s32 Kbd_DakutenKeyKind(KbdKey *kbdKey)
 {
-    u8 key;
+    u8 trailByte;
 
-    key = p->ch.b[1];
-    if ((key == gKbdDakutenSjis_1) && (p->ch.b[0] == gKbdDakutenSjis[0])) {
-        return 1;
+    trailByte = kbdKey->ch.b[1];
+    if ((trailByte == gKbdDakutenSjis_1) && (kbdKey->ch.b[0] == gKbdDakutenSjis[0])) {
+        return KBD_MARK_DAKUTEN;
     }
-    if ((key == gKbdHandakutenSjis_1) && (p->ch.b[0] == gKbdHandakutenSjis[0])) {
-        return 2;
+    if ((trailByte == gKbdHandakutenSjis_1) && (kbdKey->ch.b[0] == gKbdHandakutenSjis[0])) {
+        return KBD_MARK_HANDAKUTEN;
     }
     return 0;
 }
@@ -1903,35 +2121,44 @@ void Kbd_ClearActive(void);
 void Kbd_SaveKeySet(void);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 
+/*
+ * When the keyboard is open: closes it with KBD_RESULT_CANCEL and saves the
+ * key set; plays SE_SYS_CANCEL unless the last Kbd_Run played a sound.
+ */
 void Kbd_Cancel(void)
 {
     if ((s8)Kbd_IsOpen() != 0) {
         Kbd_ClearOpen();
         Kbd_ClearActive();
-        gKbd->result = -1;
-        if (gKbd->state == -1) {
-            Sound_PlaySeFlat(0, 0x14, 0);
+        gKbd->result = KBD_RESULT_CANCEL;
+        if (gKbd->state == KBD_SOUND_NONE) {
+            Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
         }
         Kbd_SaveKeySet();
     }
 }
 
+/* Kbd_Cancel without the sound. */
 void Kbd_Close(void)
 {
     if (Kbd_IsOpen() != 0) {
         Kbd_ClearOpen();
         Kbd_ClearActive();
-        gKbd->result = -1;
+        gKbd->result = KBD_RESULT_CANCEL;
         Kbd_SaveKeySet();
     }
 }
 
-void Kbd_SetPos(s32 n, f32 f)
+void Kbd_SetPos(s32 posY, f32 posX)
 {
-    gKbd->x = f;
-    gKbd->y = (s16) n;
+    gKbd->x = posX;
+    gKbd->y = (s16) posY;
 }
 
+/*
+ * Writes the keyboard's position to *x and *y, or (0, 0) without a keyboard
+ * (gKbd NULL).
+ */
 void Kbd_GetPos(f32 *x, s16 *y)
 {
     if (gKbd != 0) {
@@ -1970,136 +2197,147 @@ void Kbd_ClearOpen(void)
     gKbd->open = 0;
 }
 
-/* The first of kind and its alternatives (by kind: kind | 8, +5, +8, +13, 16) whose bit is
- * clear in the mask flags: kind into outA and it into outB, 0; 1 when all are set (or kind
- * 4, 5, 0xD is off). Kind 2 uses 10 and its alternatives without bit 1 of gKbdSettings. */
-s32 Kbd_FindKind(u8 kind, u8 *outA, u8 *outB)
+/*
+ * Chooses the key set a mode key switches to. firstSet is the key's kind (a
+ * KBD_MODE_*, which is also the mode's first set). It takes the first set,
+ * in this order, that KbdEntry.flags doesn't bar: hiragana, small hiragana;
+ * katakana, small, half-width, half-width small; the alphabets (capitals
+ * first while Caps Lock is on), then the digits; the symbols, then the
+ * half-width ones; other kinds only themselves. Writes the first set to
+ * *outMode and the set taken to *outKeySet (either may be NULL) and returns
+ * 0; returns 1 when every set is barred, or for a page the kind lacks.
+ */
+s32 Kbd_FindKind(u8 firstSet, u8 *outMode, u8 *outKeySet)
 {
     u8 dummy;
-    u8 k2;
-    u8 k4;
-    u8 k1;
-    u8 k3;
+    u8 secondAlt;
+    u8 lastAlt;
+    u8 firstAlt;
+    u8 thirdAlt;
     s32 mask;
 
-    if (outA == NULL) {
-        outA = &dummy;
+    if (outMode == NULL) {
+        outMode = &dummy;
     }
-    if (outB == NULL) {
-        outB = &dummy;
+    if (outKeySet == NULL) {
+        outKeySet = &dummy;
     }
-    switch (kind) {
-    case 0:
-        k2 = kind;
-        k4 = kind;
-        k1 = kind | 8;
-        k3 = kind;
+    switch (firstSet) {
+    case KBD_MODE_HIRAGANA:
+        secondAlt = firstSet;
+        lastAlt = firstSet;
+        firstAlt = firstSet | 8;
+        thirdAlt = firstSet;
         break;
-    case 1:
-        k2 = kind + 5;
-        k4 = kind + 5;
-        k1 = kind | 8;
-        k3 = kind + 13;
+    case KBD_MODE_KATAKANA:
+        secondAlt = firstSet + 5;
+        lastAlt = firstSet + 5;
+        firstAlt = firstSet | 8;
+        thirdAlt = firstSet + 13;
         break;
-    case 2:
-        if (gKbdSettings & 2) {
-            k2 = kind + 5;
-            k4 = 16;
-            k1 = kind | 8;
-            k3 = kind + 13;
+    case KBD_MODE_ALNUM:
+        if (gKbdSettings & USB_LED_CAPS_LOCK) {
+            secondAlt = firstSet + 5;
+            lastAlt = 16;
+            firstAlt = firstSet | 8;
+            thirdAlt = firstSet + 13;
         } else {
-            k1 = 2;
-            kind = 10;
-            k2 = 15;
-            k4 = 16;
-            k3 = 7;
+            firstAlt = 2;
+            firstSet = 10;
+            secondAlt = 15;
+            lastAlt = 16;
+            thirdAlt = 7;
         }
         break;
-    case 3:
-        k2 = kind + 8;
-        k4 = kind + 8;
-        k1 = kind;
-        k3 = kind;
+    case KBD_MODE_SYMBOL:
+        secondAlt = firstSet + 8;
+        lastAlt = firstSet + 8;
+        firstAlt = firstSet;
+        thirdAlt = firstSet;
         break;
-    case 13:
+    case KBD_MODE_GESTURE:
         if (*(s32 *)(gKbd->kindConf + 0x28) == 0) {
             return 1;
         }
         goto one;
-    case 4:
-    case 5:
+    case KBD_MODE_PHRASE1:
+    case KBD_MODE_PHRASE2:
         if (*(s32 *)(gKbd->kindConf + 0x30) == 0) {
             return 1;
         }
     default:
     one:
-        k3 = kind;
-        k1 = kind;
-        k4 = kind;
-        k2 = kind;
+        thirdAlt = firstSet;
+        firstAlt = firstSet;
+        lastAlt = firstSet;
+        secondAlt = firstSet;
         break;
     }
     mask = gKbd->flags;
-    if (mask & (1 << kind)) {
-        if (mask & (1 << k1)) {
-            if (mask & (1 << k2)) {
-                if (mask & (1 << k3)) {
-                    if (!(mask & (1 << k4))) {
-                        *outA = kind;
-                        *outB = k4;
+    if (mask & (1 << firstSet)) {
+        if (mask & (1 << firstAlt)) {
+            if (mask & (1 << secondAlt)) {
+                if (mask & (1 << thirdAlt)) {
+                    if (!(mask & (1 << lastAlt))) {
+                        *outMode = firstSet;
+                        *outKeySet = lastAlt;
                         return 0;
                     }
                 } else {
-                    *outA = kind;
-                    *outB = k3;
+                    *outMode = firstSet;
+                    *outKeySet = thirdAlt;
                     return 0;
                 }
             } else {
-                *outA = kind;
-                *outB = k2;
+                *outMode = firstSet;
+                *outKeySet = secondAlt;
                 return 0;
             }
         } else {
-            *outA = kind;
-            *outB = k1;
+            *outMode = firstSet;
+            *outKeySet = firstAlt;
             return 0;
         }
     } else {
-        *outA = kind;
-        *outB = kind;
+        *outMode = firstSet;
+        *outKeySet = firstSet;
         return 0;
     }
     return 1;
 }
 
-/* Kbd_FindKind for the kinds up to 5 and 0xD; for 6 to 9 whether the key (outB, or keySet) is
- * unavailable (1) or not (0). */
-s32 Kbd_FindKindEx(u8 kind, u8 *outA, u8 *outB)
+/*
+ * Kbd_FindKind for the mode keys; for the switch keys, 0 when the key works
+ * on the key set (*outKeySet, or keySet when it is NULL), else 1: a width
+ * key needs an allowed width pair, KBD_SWITCH_SHIFT an unshifted set and
+ * KBD_SWITCH_UNSHIFT a shifted one with an allowed pair.
+ */
+s32 Kbd_FindKindEx(u8 kind, u8 *outMode, u8 *outKeySet)
 {
-    u8 key;
+    u8 set;
 
-    if (kind <= 5 || kind == 0xD) {
-        return Kbd_FindKind(kind, outA, outB);
+    if (kind <= KBD_MODE_PHRASE2 || kind == KBD_MODE_GESTURE) {
+        return Kbd_FindKind(kind, outMode, outKeySet);
     }
-    if (outB == NULL) {
-        key = gKbd->keySet;
+    if (outKeySet == NULL) {
+        set = gKbd->keySet;
     } else {
-        key = *outB;
+        set = *outKeySet;
     }
     switch (kind) {
-    case 6:
-    case 7:
-        if ((s8)Kbd_WidthPair(key) >= 0) {
+    case KBD_SWITCH_TO_HALF:
+    case KBD_SWITCH_TO_FULL:
+        if ((s8)Kbd_WidthPair(set) >= 0) {
             return 0;
         }
         break;
-    case 8:
-        if ((s8)Kbd_ShiftPair(key) >= 0 && !(gKbd->keySet & 8)) {
+    case KBD_SWITCH_SHIFT:
+        if ((s8)Kbd_ShiftPair(set) >= 0 && !(gKbd->keySet & KBD_SET_SHIFTED)) {
             return 0;
         }
         break;
-    case 9:
-        if ((s8)Kbd_ShiftPair(key) >= 0 && (gKbd->keySet & 8)) {
+    case KBD_SWITCH_UNSHIFT:
+        if ((s8)Kbd_ShiftPair(set) >= 0 && (gKbd->keySet & KBD_SET_SHIFTED)) {
             return 0;
         }
         break;
@@ -2114,48 +2352,62 @@ void Kbd_UpdateMode(void)
 
 extern s8 gKbdShiftSets[];
 
-s32 Kbd_ShiftPair(u8 i)
+/*
+ * The shift pair of key set set (gKbdShiftSets), or -1 when it has none or
+ * it is barred.
+ */
+s32 Kbd_ShiftPair(u8 set)
 {
-    s32 v = gKbdShiftSets[i];
+    s32 pair = gKbdShiftSets[set];
 
-    if (v >= 0 && !(gKbd->flags & (1 << (s8)v))) {
-        return v;
+    if (pair >= 0 && !(gKbd->flags & (1 << (s8)pair))) {
+        return pair;
     }
     return -1;
 }
 
+/*
+ * Switches keySet to its shift pair, keeping the cursor, with SE_SYS_SELECT;
+ * SE_SYS_REFUSE when there is none.
+ */
 void Kbd_ToggleShift(void)
 {
-    s8 k;
-    u8 a;
-    u8 b;
+    s8 pair;
+    u8 savedCol;
+    u8 savedRow;
 
-    k = Kbd_ShiftPair(gKbd->keySet);
-    if (k >= 0) {
-        a = gKbd->col;
-        b = gKbd->row;
-        gKbd->keySet = k;
+    pair = Kbd_ShiftPair(gKbd->keySet);
+    if (pair >= 0) {
+        savedCol = gKbd->col;
+        savedRow = gKbd->row;
+        gKbd->keySet = pair;
         Kbd_UpdateMode();
         Kbd_HomePageCursor();
         Kbd_RefreshLayout();
         Kbd_UpdateSymbolMode();
-        gKbd->state = 0x16;
-        gKbd->col = a;
-        gKbd->row = b;
+        gKbd->state = SE_SYS_SELECT;
+        gKbd->col = savedCol;
+        gKbd->row = savedRow;
         Kbd_LookupKey();
         return;
     }
-    gKbd->state = 0x15;
+    gKbd->state = SE_SYS_REFUSE;
 }
 
 extern u8 gKbdKindIs0;
 
+/*
+ * Steps through the phrase and gestures pages: from another set, the first
+ * phrase page; then by the last page opened (gKbdPhrasePage): the first,
+ * the second, then the gestures page for entry kind 0 (gKbdKindIs0) or the
+ * first again. Leaving a page during a cycle clears the text and ends it.
+ */
 void Kbd_NextPhrasePage(void)
 {
     switch (gKbd->keySet) {
-    case 0xD:
-    case 4:
-    case 5:
+    case KBD_SET_GESTURE:
+    case KBD_SET_PHRASE1:
+    case KBD_SET_PHRASE2:
         break;
     default:
         Kbd_OpenPhrases1();
@@ -2165,50 +2417,54 @@ void Kbd_NextPhrasePage(void)
     case 0:
         Kbd_OpenPhrases1();
         break;
-    case 4:
-        if (gKbd->keyFlags & 2) {
+    case KBD_SET_PHRASE1:
+        if (gKbd->keyFlags & KBD_KEYF_CYCLING) {
             gKbd->cyclePos = 1;
             Kbd_ClearText();
-            gKbd->keyFlags &= 0xFD;
+            gKbd->keyFlags &= (u8)~KBD_KEYF_CYCLING;
         }
         Kbd_OpenPhrases2();
         break;
-    case 5:
-        if (gKbd->keyFlags & 2) {
+    case KBD_SET_PHRASE2:
+        if (gKbd->keyFlags & KBD_KEYF_CYCLING) {
             gKbd->cyclePos = 1;
             Kbd_ClearText();
-            gKbd->keyFlags &= 0xFD;
+            gKbd->keyFlags &= (u8)~KBD_KEYF_CYCLING;
         }
         if (gKbdKindIs0 == 0) {
-            gKbd->keySet = 4;
+            gKbd->keySet = KBD_SET_PHRASE1;
             Kbd_OpenPhrases1();
         } else {
-            gKbd->keySet = 0xD;
+            gKbd->keySet = KBD_SET_GESTURE;
             Kbd_UpdateMode();
             gKbd->col = 5;
             gKbd->row = 0;
             Kbd_EnterGestures();
             Kbd_RefreshLayout();
-            gKbd->state = 0x16;
+            gKbd->state = SE_SYS_SELECT;
         }
         break;
-    case 0xD:
-        if (gKbd->keyFlags & 2) {
+    case KBD_SET_GESTURE:
+        if (gKbd->keyFlags & KBD_KEYF_CYCLING) {
             gKbd->cyclePos = 1;
             Kbd_ClearText();
-            gKbd->keyFlags &= 0xFD;
+            gKbd->keyFlags &= (u8)~KBD_KEYF_CYCLING;
         }
         Kbd_OpenPhrases1();
         break;
     }
 }
 
+/*
+ * On a phrase or gestures page, puts the cursor on the page's home key
+ * (column 5, row 0).
+ */
 void Kbd_HomePageCursor(void)
 {
     switch (gKbd->mode) {
-    case 0xD:
-    case 4:
-    case 5:
+    case KBD_MODE_GESTURE:
+    case KBD_MODE_PHRASE1:
+    case KBD_MODE_PHRASE2:
         gKbd->col = 5;
         gKbd->row = 0;
         break;
@@ -2220,35 +2476,41 @@ extern KbdLayout gKbdAltLayouts_1;
 extern KbdLayout gKbdAltLayouts_2;
 extern KbdLayout gKbdAltLayouts_3;
 
-/* Picks the keyboard layout for the entry kind and the key set (keySet). */
+/*
+ * Sets layout for the entry kind and the key set: kind 7 the second ASCII
+ * capitals layout; kinds 8-10 the alphabets without their symbol keys and
+ * a blank symbol page; kind 6 the ASCII capitals; others the set's own. On
+ * the gestures page typing kana it takes the hiragana layout, or the ASCII
+ * lower case or capitals when hiragana is barred.
+ */
 void Kbd_PickLayout(void)
 {
     u8 *set;
 
     switch (gKbd->kind) {
     case 7:
-        gKbd->layout = &gKbdSetLayouts[17];
+        gKbd->layout = &gKbdSetLayouts[KBD_LAYOUT_ASCII_UPPER2];
         break;
     case 8:
     case 9:
     case 0xA:
         set = &gKbd->keySet;
         switch (*set) {
-        case 2:
-            gKbd->layout = &gKbdSetLayouts[18];
+        case KBD_SET_WIDE_UPPER:
+            gKbd->layout = &gKbdSetLayouts[KBD_LAYOUT_WIDE_UPPER_NOSYM];
             break;
-        case 0xA:
-            gKbd->layout = &gKbdSetLayouts[19];
+        case KBD_SET_WIDE_LOWER:
+            gKbd->layout = &gKbdSetLayouts[KBD_LAYOUT_WIDE_LOWER_NOSYM];
             break;
-        case 7:
+        case KBD_SET_ASCII_UPPER:
             gKbd->layout = gKbdAltLayouts;
             break;
-        case 0xF:
+        case KBD_SET_ASCII_LOWER:
             gKbd->layout = &gKbdAltLayouts_1;
             break;
-        case 3:
-            *set = 0xB;
-        case 0xB:
+        case KBD_SET_SYMBOL:
+            *set = KBD_SET_HALF_SYMBOL;
+        case KBD_SET_HALF_SYMBOL:
             gKbd->layout = &gKbdAltLayouts_2;
             break;
         default:
@@ -2263,40 +2525,53 @@ void Kbd_PickLayout(void)
         gKbd->layout = &gKbdSetLayouts[gKbd->keySet];
         break;
     }
-    if (gKbd->mode == 0xD && (gKbd->gestureMode & 0xF)) {
-        if (!(gKbd->flags & 1)) {
-            gKbd->layout = &gKbdSetLayouts[0];
-        } else if (!(gKbd->flags & 0x8000)) {
-            gKbd->layout = &gKbdSetLayouts[15];
+    if (gKbd->mode == KBD_MODE_GESTURE && (gKbd->gestureMode & KBD_GESTURE_KANA)) {
+        if (!(gKbd->flags & KBD_SET_BIT(KBD_SET_HIRA))) {
+            gKbd->layout = &gKbdSetLayouts[KBD_SET_HIRA];
+        } else if (!(gKbd->flags & KBD_SET_BIT(KBD_SET_ASCII_LOWER))) {
+            gKbd->layout = &gKbdSetLayouts[KBD_SET_ASCII_LOWER];
         } else {
-            gKbd->layout = &gKbdSetLayouts[7];
+            gKbd->layout = &gKbdSetLayouts[KBD_SET_ASCII_UPPER];
         }
     }
 }
 
+/*
+ * Prepares the gestures page: records it as the last page opened and
+ * commits the kana; sets KBD_GESTURE_KANA when Kbd_CheckGestureText is negative
+ * (it never is).
+ */
 void Kbd_EnterGestures(void)
 {
     Kbd_SetPhrasePage(0xDU);
     Kbd_CommitKana();
-    if (func_003151C0(gKbd->text, &gKbd->textPos) < 0) {
-        gKbd->gestureMode = (u8) (gKbd->gestureMode | 0xF);
+    if (Kbd_CheckGestureText(gKbd->text, &gKbd->textPos) < 0) {
+        gKbd->gestureMode = (u8) (gKbd->gestureMode | KBD_GESTURE_KANA);
     }
 }
 
-void func_00319FE0(void)
+/*
+ * Clears gKbdState.polled through its address (D_005AEAD7 is gKbdState +
+ * 0x37) so that Kbd_ReadUsb reads the USB keyboard again; the frame's pad
+ * update calls it.
+ */
+void Kbd_ClearPolled(void)
 {
     D_005AEAD7 = 0;
 }
 
-/* 1 when the code at p is one of eleven kana (keyboard modes 0 and 1) or its second
- * character is a full-width space (D_0046CC08). */
-s32 Kbd_CharIsSpecialKana(KbdKey *p)
+/*
+ * 1 when the key types a full-width space or, on the hiragana and katakana
+ * sets, one of their eleven punctuation marks (by glyph); else 0. Entry
+ * kinds 8-10 refuse these (Kbd_CharBlocked).
+ */
+s32 Kbd_CharIsSpecialKana(KbdKey *key)
 {
     char buf[4];
-    s32 r = 0;
+    s32 found = 0;
 
-    if (gKbd->keySet == 0 || gKbd->keySet == 1) {
-        switch (p->glyph) {
+    if (gKbd->keySet == KBD_SET_HIRA || gKbd->keySet == KBD_SET_KATA) {
+        switch (key->glyph) {
         case 0x98:
         case 0x99:
         case 0xA8:
@@ -2308,145 +2583,165 @@ s32 Kbd_CharIsSpecialKana(KbdKey *p)
         case 0xE0:
         case 0xE1:
         case 0xF3:
-            r = 1;
+            found = 1;
             break;
         }
     }
-    strncpy(buf, (char *)p->ch.b, 2);
+    strncpy(buf, (char *)key->ch.b, 2);
     buf[3] = 0;
     if (strncmp(buf, D_0046CC08, 2) == 0) {
-        r = 1;
+        found = 1;
     }
-    return r;
+    return found;
 }
 
-/* 1 when the character (entry p of a key table) cannot be typed in the current mode. */
-s32 Kbd_CharBlocked(KbdKey *p)
+/*
+ * 1 when the key can't be used now (Kbd_Draw shows the blank glyph): no
+ * character; a switch key Kbd_FindKindEx refuses; for entry kinds 8-10 the
+ * convert key and Kbd_CharIsSpecialKana's characters; for the other kinds
+ * any key but backspace and submit whose character the kind refuses (kind
+ * 0xF Kbd_CharInSet5_Unk's, 1, 2 and 5 Kbd_CharInSet4_Unk's, 7 all but
+ * digits, the hash and the asterisk, 6 all but digits and letters).
+ */
+s32 Kbd_CharBlocked(KbdKey *key)
 {
-    s32 bad = 0;
+    s32 blocked = 0;
 
-    if (p->ch.code == 0) {
-        bad = 1;
-    } else if (p->ch.b[0] == 1) {
-        if (Kbd_FindKindEx(p->ch.b[1], NULL, NULL) != 0) {
-            bad = 1;
+    if (key->ch.code == 0) {
+        blocked = 1;
+    } else if (key->ch.b[0] == KBD_ACT_SWITCH) {
+        if (Kbd_FindKindEx(key->ch.b[1], NULL, NULL) != 0) {
+            blocked = 1;
         }
     } else if (Kbd_KindIs8To10() == 1) {
-        if (p->ch.b[0] == 2 && p->ch.b[1] == 1) {
-            bad = 1;
-        } else if (Kbd_CharIsSpecialKana(p) != 0) {
-            bad = 1;
+        if (key->ch.b[0] == KBD_ACT_COMMAND && key->ch.b[1] == 1) {
+            blocked = 1;
+        } else if (Kbd_CharIsSpecialKana(key) != 0) {
+            blocked = 1;
         }
-    } else if (p->glyph != 0xD1 && p->glyph != 0x7D) {
+    } else if (key->glyph != 0xD1 && key->glyph != 0x7D) {
         switch (gKbd->kind) {
         case 0xF:
-            if (Kbd_CharInSet5_Unk(p) != 0) {
-                bad = 1;
+            if (Kbd_CharInSet5_Unk(key) != 0) {
+                blocked = 1;
             }
             break;
         case 1:
         case 5:
         case 2:
-            if (Kbd_CharInSet4_Unk(p) != 0) {
-                bad = 1;
+            if (Kbd_CharInSet4_Unk(key) != 0) {
+                blocked = 1;
             }
             break;
         case 7:
-            if (Kbd_CharIsPlain(p) != 0) {
-                bad = 1;
+            if (Kbd_CharIsPlain(key) != 0) {
+                blocked = 1;
             }
             break;
         case 6:
-            if (Kbd_CharInRows01(p) == 0 && Kbd_CharInRowsHigh(p) == 0) {
-                bad = 1;
+            if (Kbd_CharInRows01(key) == 0 && Kbd_CharInRowsHigh(key) == 0) {
+                blocked = 1;
             }
             break;
         }
     }
-    return bad;
+    return blocked;
 }
 
-s32 Kbd_CharInSet5_Unk(KbdKey *p)
+/*
+ * 1 when the key's glyph is the percent sign, a corner bracket, the middle
+ * dot or the apostrophe (refused by entry kind 0xF), else 0.
+ */
+s32 Kbd_CharInSet5_Unk(KbdKey *key)
 {
-    s32 r = 0;
+    s32 found = 0;
 
-    switch (p->glyph) {
+    switch (key->glyph) {
     case 0xE3:
     case 0xB5:
     case 0xB6:
     case 0xB9:
     case 0xF1:
-        r = 1;
+        found = 1;
         break;
     }
-    return r;
+    return found;
 }
 
-s32 Kbd_CharInSet4_Unk(KbdKey *p)
+/*
+ * 1 when the key's glyph is the percent sign, a corner bracket or the
+ * middle dot (refused by entry kinds 1, 2 and 5), else 0.
+ */
+s32 Kbd_CharInSet4_Unk(KbdKey *key)
 {
-    s32 r = 0;
+    s32 found = 0;
 
-    switch (p->glyph) {
+    switch (key->glyph) {
     case 0xE3:
     case 0xB5:
     case 0xB6:
     case 0xB9:
-        r = 1;
+        found = 1;
         break;
     }
-    return r;
+    return found;
 }
 
-s32 Kbd_CharInRows01(KbdKey *p)
+/* 1 when the key's glyph is a digit (glyph cells 0x00-0x04, 0x10-0x14). */
+s32 Kbd_CharInRows01(KbdKey *key)
 {
-    u8 c;
+    u8 glyphCode;
 
-    c = p->glyph;
-    if (((s32) c >= 0) && ((s32) c < 5)) {
+    glyphCode = key->glyph;
+    if (((s32) glyphCode >= 0) && ((s32) glyphCode < 5)) {
         return 1;
     }
-    if (((s32) c >= 0x10) && ((s32) c < 0x15)) {
+    if (((s32) glyphCode >= 0x10) && ((s32) glyphCode < 0x15)) {
         return 1;
     }
     return 0;
 }
 
-s32 Kbd_CharInRowsHigh(KbdKey *p)
+/* 1 when the key's glyph is a letter (glyph cells 0x20-0x64 and 0x70). */
+s32 Kbd_CharInRowsHigh(KbdKey *key)
 {
-    s32 c;
+    s32 glyphCode;
 
-    c = p->glyph;
-    if (((s32) c >= 0x20) && ((s32) c < 0x25)) {
+    glyphCode = key->glyph;
+    if (((s32) glyphCode >= 0x20) && ((s32) glyphCode < 0x25)) {
         return 1;
     }
-    if (((s32) c >= 0x30) && ((s32) c < 0x35)) {
+    if (((s32) glyphCode >= 0x30) && ((s32) glyphCode < 0x35)) {
         return 1;
     }
-    if (((s32) c >= 0x40) && ((s32) c < 0x45)) {
+    if (((s32) glyphCode >= 0x40) && ((s32) glyphCode < 0x45)) {
         return 1;
     }
-    if (((s32) c >= 0x50) && ((s32) c < 0x55)) {
+    if (((s32) glyphCode >= 0x50) && ((s32) glyphCode < 0x55)) {
         return 1;
     }
-    if (((s32) c >= 0x60) && ((s32) c < 0x65)) {
+    if (((s32) glyphCode >= 0x60) && ((s32) glyphCode < 0x65)) {
         return 1;
     }
-    if (c == 0x70) {
+    if (glyphCode == 0x70) {
         return 1;
     }
     return 0;
 }
 
-/* Whether the character code at p is a plain one (not 0xE2/0xC5/0xF0 nor one of Kbd_CharInRows01's). */
-s32 Kbd_CharIsPlain(KbdKey *p)
+/*
+ * 1 when entry kind 7 refuses the key: its glyph is none of the digits, the
+ * hash, the asterisk and the blank glyph; else 0.
+ */
+s32 Kbd_CharIsPlain(KbdKey *key)
 {
-    switch (p->glyph) {
+    switch (key->glyph) {
     case 0xE2:
     case 0xC5:
     case 0xF0:
         return 0;
     }
-    if (Kbd_CharInRows01(p) != 1) {
+    if (Kbd_CharInRows01(key) != 1) {
         goto yes; /* a plain if/return pair becomes a set-on-condition */
     }
     return 0;
@@ -2463,30 +2758,41 @@ void Kbd_SaveKanaInput(void)
 void Kbd_Printf(const char *fmt, ...)
 {
     char buf[0x400];
-    va_list ap;
+    va_list args;
 
     if (gTextOff == 0) {
-        va_start(ap, fmt);
-        vsnprintf(buf, 0x3FF, fmt, ap);
+        va_start(args, fmt);
+        vsnprintf(buf, 0x3FF, fmt, args);
         buf[0x3FF] = 0;
         Font_Printf(D_0046CC10, buf);
     }
 }
 
+/* Clears the whole camera controller gCamCtl. */
 void CamCtl_Clear(void)
 {
     Mem_Fill(&gCamCtl, 0U, 0x680);
 }
 
+/*
+ * Drops any pending camera request and puts the follow camera back on the
+ * default distance setting (CAM_DIST_DEFAULT).
+ */
 void CamReq_Reset(void)
 {
     gCamCtl.request = 0;
     gCamCtl.requestArg = NULL;
-    gCamCtl.follow.distNo = 2;
+    gCamCtl.follow.distNo = CAM_DIST_DEFAULT;
 }
 
 void CamCtl_LoadParams(CamCtl *c);
 
+/*
+ * Readies the camera controller for a scene: the next CamCtl_Update sets
+ * the modes up again; the shake requests, the target object, the view flags
+ * and the request are cleared; the local player becomes the one followed,
+ * and CamCtl_LoadParams takes the grid parameters from the camera data.
+ */
 void CamCtl_Init(void)
 {
     *(s32 *)&gCamCtl.inited = 0; /* a word store: inited and its padding */
@@ -2503,59 +2809,60 @@ void CamCtl_Init(void)
 }
 
 
-/* Keeps the loaded camera data h in gCamCtl.data and turns its offsets into pointers: each
- * area's faces and transition table (the areas from h + 0x30: 0x300 bytes, then faceCount
- * faces of 0x40 bytes, then 0x20 more bytes when trans is set), the cells' area lists and the
- * area pointers they list. */
-void CamData_Relocate(CamDataHdr *h)
+/*
+ * Keeps the loaded camera data hdr in gCamCtl.data (NULL: none) and turns
+ * the file's offsets into pointers: each area's faces and transition table,
+ * the grid cells, each cell's area list and the area pointers in the lists.
+ */
+void CamData_Relocate(CamDataHdr *hdr)
 {
-    CamArea *p;
-    CamCell *pair;
-    CamArea **q;
-    s32 n;
-    s32 sum;
+    CamArea *area;
+    CamCell *cell;
+    CamArea **areaList;
+    s32 left;
+    s32 listTotal;
 
-    gCamCtl.data = h; /* the offsets in the file become pointers below */
-    if (h == NULL) {
+    gCamCtl.data = hdr; /* the offsets in the file become pointers below */
+    if (hdr == NULL) {
         return;
     }
-    p = (CamArea *)(h + 1);
-    h->areas = p;
-    n = h->areaCount;
-    if (n != 0) {
+    area = (CamArea *)(hdr + 1);
+    hdr->areas = area;
+    left = hdr->areaCount;
+    if (left != 0) {
         do {
-            if (p->trans != NULL) {
-                p->faces = (CamFace *)((u8 *)p + (s32)p->faces);
-                p->trans = (u8 *)p + (s32)p->trans;
-                p = (CamArea *)((u8 *)((s32)(p + 1) + p->faceCount * 0x40) + 0x20);
+            if (area->trans != NULL) {
+                area->faces = (CamFace *)((u8 *)area + (s32)area->faces);
+                area->trans = (u8 *)area + (s32)area->trans;
+                area = (CamArea *)((u8 *)((s32)(area + 1) + area->faceCount * 0x40) + 0x20);
             } else {
-                p->faces = (CamFace *)((u8 *)p + (s32)p->faces);
-                p = (CamArea *)((s32)(p + 1) + p->faceCount * 0x40);
+                area->faces = (CamFace *)((u8 *)area + (s32)area->faces);
+                area = (CamArea *)((s32)(area + 1) + area->faceCount * 0x40);
             }
-        } while (--n != 0);
+        } while (--left != 0);
     }
-    pair = (CamCell *)((u8 *)h + (s32)h->cells);
-    h->cells = pair;
-    q = (CamArea **)((u8 *)h + (s32)h->areaLists);
-    h->areaLists = q;
-    sum = h->gridH;
-    n = h->gridW * sum;
-    sum = 0;
-    if (n != 0) {
+    cell = (CamCell *)((u8 *)hdr + (s32)hdr->cells);
+    hdr->cells = cell;
+    areaList = (CamArea **)((u8 *)hdr + (s32)hdr->areaLists);
+    hdr->areaLists = areaList;
+    listTotal = hdr->gridH;
+    left = hdr->gridW * listTotal;
+    listTotal = 0;
+    if (left != 0) {
         do {
-            if (pair->count != 0) {
-                pair->areas = (CamArea **)((u8 *)h + (s32)pair->areas);
-                sum += pair->count;
+            if (cell->count != 0) {
+                cell->areas = (CamArea **)((u8 *)hdr + (s32)cell->areas);
+                listTotal += cell->count;
             }
-            pair++;
-        } while (--n != 0);
+            cell++;
+        } while (--left != 0);
     }
-    if (sum != 0) {
+    if (listTotal != 0) {
         do {
-            *q = (CamArea *)((u8 *)h + (s32)*q);
-            sum--;
-            q++;
-        } while (sum != 0);
+            *areaList = (CamArea *)((u8 *)hdr + (s32)*areaList);
+            listTotal--;
+            areaList++;
+        } while (listTotal != 0);
     }
 }
 
@@ -2566,13 +2873,21 @@ void CamCtl_RunMode(CamCtl *c);
 void CamCtl_CheckEmInView(void);
 void Camera_Update(void);
 
-/* The camera script's frame (mode a): starts the script on the first frame
- * (its six entries through gCamModeInit), steps it, runs each entry's update
- * (gCamModeUpdate by kind) and the camera. */
+/*
+ * The camera controller's frame. mode (CamCtl.mode) holds flags that switch
+ * off the monster push (bit 0, Cam_PushOutOfEms) and the wall line test
+ * (bit 1, Cam_LineHitDist). Nothing happens while the followed player is
+ * inactive. On the first frame it finds the player's camera area and runs
+ * each mode's init handler (gCamModeInit). Every frame it tracks the area
+ * the player is in and picks areaMode from the area's kind (CAM_AREA_FOLLOW
+ * the follow camera, the others the rail), runs the modes' update handlers
+ * in order, and CamCtl_RunMode hands the current or the overriding view to
+ * the camera. The target object request lasts one frame.
+ */
 void CamCtl_Update(s32 mode)
 {
-    CamCtl *c = (CamCtl *)&gCamCtl;
-    CamView *e;
+    CamCtl *ctl = (CamCtl *)&gCamCtl;
+    CamView *view;
     Player *pl;
     u32 i;
 
@@ -2581,65 +2896,65 @@ void CamCtl_Update(s32 mode)
     if ((pl = gCamCtl.player)->active == 0) {
         return;
     }
-    CamCtl_ReadPad(c);
-    c->unk3AC = 0;
-    c->cellZ = 0;
-    c->cellX = 0;
-    c->areaChanged = 0;
-    if (c->inited == 0) {
-        c->inited++;
-        c->area = NULL;
-        c->prevAreaId = 0xFF;
-        c->areaId = 0xFF;
-        Cam_FindPlayerArea(c);
-        c->areaId = c->area->id;
-        c->areaMode = 0;
-        if (c->area->kind == 0) {
-            c->areaMode = 0;
+    CamCtl_ReadPad(ctl);
+    ctl->unk3AC = 0;
+    ctl->cellZ = 0;
+    ctl->cellX = 0;
+    ctl->areaChanged = 0;
+    if (ctl->inited == 0) {
+        ctl->inited++;
+        ctl->area = NULL;
+        ctl->prevAreaId = CAM_AREA_ID_NONE;
+        ctl->areaId = CAM_AREA_ID_NONE;
+        Cam_FindPlayerArea(ctl);
+        ctl->areaId = ctl->area->id;
+        ctl->areaMode = CAM_MODE_FOLLOW;
+        if (ctl->area->kind == CAM_AREA_FOLLOW) {
+            ctl->areaMode = CAM_MODE_FOLLOW;
         } else {
-            c->areaMode = 2;
+            ctl->areaMode = CAM_MODE_RAIL;
         }
-        c->prevAreaMode = c->areaMode;
-        e = c->modes;
-        for (i = 0; i < 6; i++, e++) {
-            e->kind = i;
-            *(s32 *)&e->step = 0;
-            gCamModeInit[i](c, e);
-        }
-    }
-    if (c->areaId == 0) {
-        if (Cam_FindPlayerArea(c) > 0) {
-            c->prevAreaId = c->areaId;
-            c->areaId = c->area->id;
-            c->areaChanged = 1;
-        }
-    } else if (CamArea_TestObj(c->area, pl, 2) != 0) {
-        c->prevAreaId = c->areaId;
-        c->areaChanged = 1;
-        if (Cam_FindPlayerArea(c) >= 0) {
-            c->areaId = c->area->id;
+        ctl->prevAreaMode = ctl->areaMode;
+        view = ctl->modes;
+        for (i = 0; i < CAM_MODE_COUNT; i++, view++) {
+            view->kind = i;
+            *(s32 *)&view->step = 0;
+            gCamModeInit[i](ctl, view);
         }
     }
-    c->prevAreaMode = c->areaMode;
-    switch (c->area->kind) {
-    case 0:
-        c->areaMode = 0;
+    if (ctl->areaId == 0) {
+        if (Cam_FindPlayerArea(ctl) > 0) {
+            ctl->prevAreaId = ctl->areaId;
+            ctl->areaId = ctl->area->id;
+            ctl->areaChanged = 1;
+        }
+    } else if (CamArea_TestObj(ctl->area, pl, 2) != 0) {
+        ctl->prevAreaId = ctl->areaId;
+        ctl->areaChanged = 1;
+        if (Cam_FindPlayerArea(ctl) >= 0) {
+            ctl->areaId = ctl->area->id;
+        }
+    }
+    ctl->prevAreaMode = ctl->areaMode;
+    switch (ctl->area->kind) {
+    case CAM_AREA_FOLLOW:
+        ctl->areaMode = CAM_MODE_FOLLOW;
         break;
-    case 1:
-    case 2:
-    case 3:
-        c->areaMode = 2;
+    case CAM_AREA_FIXED:
+    case CAM_AREA_PATH:
+    case CAM_AREA_OFFSET:
+        ctl->areaMode = CAM_MODE_RAIL;
         break;
     }
-    e = c->modes;
-    for (i = 6; i != 0; i--) {
-        gCamModeUpdate[e->kind](c, e);
-        e++;
+    view = ctl->modes;
+    for (i = CAM_MODE_COUNT; i != 0; i--) {
+        gCamModeUpdate[view->kind](ctl, view);
+        view++;
     }
-    CamCtl_RunMode(c);
-    c->targetObj = 0;
+    CamCtl_RunMode(ctl);
+    ctl->targetObj = 0;
     Camera_Update();
-    if (c->followView != 0) {
+    if (ctl->followView != 0) {
         CamCtl_CheckEmInView();
     }
 }
@@ -2650,16 +2965,19 @@ void Camera_SetRoll(f32 roll);
 void Camera_StoreFov(f32 fov);
 void Camera_Update(void);
 
-/* Computes the view from the controller state and hands it to the camera. */
+/*
+ * Runs only the camera script's mode (CamScript_Update), hands its eye,
+ * target, roll and fov to the camera and updates it (seen: plsel).
+ */
 void CamCtl_Apply(void)
 {
-    CamView *v = &gCamCtl.modes[5];
+    CamView *view = &gCamCtl.modes[CAM_MODE_SCRIPT];
 
-    CamScript_Update(&gCamCtl, v);
-    Vec_Copy(gCamera->eye, v->eye);
-    Vec_Copy(gCamera->at, v->at);
-    Camera_SetRoll(v->roll);
-    Camera_StoreFov(v->fov);
+    CamScript_Update(&gCamCtl, view);
+    Vec_Copy(gCamera->eye, view->eye);
+    Vec_Copy(gCamera->at, view->at);
+    Camera_SetRoll(view->roll);
+    Camera_StoreFov(view->fov);
     Camera_Update();
 }
 
@@ -2668,79 +2986,85 @@ s32 CamCtl_GetMode(void)
     return gCamCtl.mode;
 }
 
-extern CamDistSet gCamMode1Defaults;
+extern CamDistSet gCamFollowDefaults;
 f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 
-/* Starts the camera behind the player (the work c->follow, the settings from the camera area). */
-void CamFollow_Init(CamCtl *c, CamView *m)
+/*
+ * The follow camera's init handler (CAM_MODE_FOLLOW; its work is
+ * CamCtl.follow). Its settings are the camera area's in a CAM_AREA_FOLLOW
+ * area and gCamFollowDefaults elsewhere, at setting distNo. The eye goes
+ * behind the player, the goals start at the current eye and target, the
+ * floor under the target is taken, and the follow delay is set to 3 frames.
+ */
+void CamFollow_Init(CamCtl *ctl, CamView *view)
 {
-    f32 in[4];
-    f32 ofs[4];
-    s32 ang[4];
+    f32 ofsLocal[4];
+    f32 ofsWorld[4];
+    s32 angles[4];
     f32 mtx[16];
-    CamFollow *w;
+    CamFollow *work;
     Player *pl;
 
-    pl = c->player;
-    m->yawFrom = 0xFF;
-    w = &c->follow;
-    if (c->area->kind != 0) {
-        w->set = &gCamMode1Defaults;
+    pl = ctl->player;
+    view->yawFrom = CAM_YAW_FROM_NONE;
+    work = &ctl->follow;
+    if (ctl->area->kind != CAM_AREA_FOLLOW) {
+        work->set = &gCamFollowDefaults;
     } else {
-        w->set = &c->area->follow;
+        work->set = &ctl->area->follow;
     }
-    w->dist = &w->set->dist[w->distNo];
-    w->fov = w->fovGoal = w->set->fov;
-    w->roll = w->set->roll;
-    w->yaw = pl->rot[1] + 0x8000;
-    ang[0] = 0;
-    ang[1] = w->yaw;
-    ang[2] = 0;
-    Mtx_FromAnglesXYZ(ang, mtx);
-    in[0] = 0.0f;
-    in[1] = w->dist->back;
-    in[2] = w->dist->up;
-    Vec_Rotate(ofs, in, mtx);
-    w->at[0] = pl->pos[0];
-    w->at[1] = pl->pos[1] + w->dist->atY;
-    w->at[2] = pl->pos[2];
-    w->eye[0] = w->at[0] + ofs[0];
-    w->eye[1] = pl->pos[1] + ofs[1];
-    w->eye[2] = w->at[2] + ofs[2];
-    w->yawGoal = w->yaw;
-    Vec_Copy(w->eyeGoal, w->eye);
-    Vec_Copy(w->atGoal, w->at);
-    w->floorY = AreaGrid2_GetFloorY(w->at);
-    w->unk54 = -1;
-    w->unk79 = 0;
-    Vec_Copy(w->unk18, w->eye);
-    *(s32 *)&w->hitDist = 0;
-    w->unk58 = 0;
-    w->unk60 = 0;
-    w->unk73 = 0;
-    w->heightState = 0;
-    w->heightTimer = 0;
-    w->unk75 = 0;
-    w->blockedTimer = 0;
-    w->turningBehind = 0;
-    w->unk78 = 0;
-    w->unk76 = 0;
-    w->followDelay = 3;
+    work->dist = &work->set->dist[work->distNo];
+    work->fov = work->fovGoal = work->set->fov;
+    work->roll = work->set->roll;
+    work->yaw = pl->rot[1] + 0x8000;
+    angles[0] = 0;
+    angles[1] = work->yaw;
+    angles[2] = 0;
+    Mtx_FromAnglesXYZ(angles, mtx);
+    ofsLocal[0] = 0.0f;
+    ofsLocal[1] = work->dist->back;
+    ofsLocal[2] = work->dist->up;
+    Vec_Rotate(ofsWorld, ofsLocal, mtx);
+    work->at[0] = pl->pos[0];
+    work->at[1] = pl->pos[1] + work->dist->atY;
+    work->at[2] = pl->pos[2];
+    work->eye[0] = work->at[0] + ofsWorld[0];
+    work->eye[1] = pl->pos[1] + ofsWorld[1];
+    work->eye[2] = work->at[2] + ofsWorld[2];
+    work->yawGoal = work->yaw;
+    Vec_Copy(work->eyeGoal, work->eye);
+    Vec_Copy(work->atGoal, work->at);
+    work->floorY = AreaGrid2_GetFloorY(work->at);
+    work->unk54 = -1;
+    work->unk79 = 0;
+    Vec_Copy(work->unk18, work->eye);
+    *(s32 *)&work->hitDist = 0;
+    work->unk58 = 0;
+    work->unk60 = 0;
+    work->unk73 = 0;
+    work->heightState = CAM_HEIGHT_NORMAL;
+    work->heightTimer = 0;
+    work->unk75 = 0;
+    work->blockedTimer = 0;
+    work->turningBehind = 0;
+    work->unk78 = 0;
+    work->unk76 = 0;
+    work->followDelay = 3;
 }
 
 typedef struct Vec3 {
     f32 x, y, z;
 } Vec3;
 
-extern CamDist D_0041C970;
-extern CamDist D_0041C930[2];
-extern s16 D_0041CDC8;
-extern f32 D_0041D2D0[3];
+extern CamDist gCamFallDist;
+extern CamDist gCamBlockedDists[2];
+extern s16 gCamOrbitExitBlend;
+extern f32 gPlayerBodySpheres[3];
 void CamFollow_UpdateCanFollow(CamFollow *w, Player *pl);
 void CamFollow_GetKeys(CamCtl *c, CamFollow *o);
 void CamFollow_UpdateBlocked(CamCtl *c, CamFollow *m);
-s32 CamFollow_PlayerHeightKind(CamFollow *m);
+s32 CamFollow_UpdateFallView(CamFollow *m);
 f32 CamFollow_FloorY(f32 *pos, Player *obj);
 s16 Vec_AngleXZ16(f32 *a, f32 *b);
 s32 Angle_Bump(u32 a, f32 lo, f32 hi, f32 amp);
@@ -2757,493 +3081,531 @@ void Vec_Add(f32 *out, f32 *a, f32 *b);
 f32 AreaGrid2_GetFloorY(f32 *pos);
 f32 CamBlend_EaseStep(CamView *v);
 u32 Player_TestFlag(void *obj, u32 flag);
-/* unit's own declaration: with the definition's s16 (void *obj, u8 state, u8 sub) (sub_main/unk_3A1070.c), CamFollow_Update: 609 of 1014 words differ */
+/* unit's own declaration: s32 arguments and result (the definition's s16 and u8 ones give CamFollow_Update other code) */
 s32 Player_IsState(void *obj, s32 a, s32 b);
 f32 Math_Sqrtf(f32 x);
 s32 AreaGrid_SweepSphere(f32 *from, f32 *to, f32 *hit, u16 flags, f32 radius);
 
 void CamView_SetTransition(CamCtl *p, CamView *t, CamArea *area);
-/* The follow camera's update handler (camera mode 1): picks the distance setting (L2/R2
- * steps it), turns toward the player's back or by the pad, keeps the eye above the floor
- * and out of walls, and blends the view in. */
-void CamFollow_Update(CamCtl *c, CamView *v)
+/*
+ * The follow camera's update handler (CAM_MODE_FOLLOW; its work is
+ * CamCtl.follow), active while areaMode is the follow camera.
+ * Distance setting: CAM_DIST_FALL in the fall view, CAM_DIST_BLOCKED (with
+ * a 70-degree fov) while blockedTimer runs, else distNo, which PAD_UP and
+ * PAD_DOWN step (gScene.camControl swaps them); CAM_DIST_CROUCH replaces
+ * CAM_DIST_DEFAULT while the player crouches.
+ * Yaw goal: toward the battle target; from another mode's view (yawFrom);
+ * turned by the D-pad's left and right; behind the player; following the
+ * player's heading (gScene.camFollow); or swung back after a wall hit. When
+ * the orbit view ends, the camera blends back at the setting nearest the
+ * orbit eye's height.
+ * It then places the eye goal around the player (high while he rides a
+ * monster, low on ledges), keeps the eye above the floor and out of walls
+ * (AreaGrid_SweepSphere) and monsters (Cam_PushOutOfEms), and the target at
+ * most 30 degrees above the eye. After an area change it blends in from
+ * CamCtl.out.
+ */
+void CamFollow_Update(CamCtl *ctl, CamView *view)
 {
     Vec3 off;
-    Vec3 goal;
+    Vec3 rotOfs;
     s32 angles[3];
-    Vec3 base;
+    Vec3 bodyCenter;
     Vec3 hit;
-    Vec3 at1;
+    Vec3 sweepFrom;
     Vec3 pos;
-    Vec3 at2;
-    Vec3 hit2;
-    Vec3 e;
-    f32 r;
+    Vec3 eyeLevelAt;
+    Vec3 eyeHit;
+    Vec3 probe;
+    f32 maxDist;
     f32 mtx[16];
-    CamFollow *w;
+    CamFollow *work;
     Player *pl;
     CamArea *area;
-    u16 mode;
-    u8 keep;
-    u16 old;
+    u16 distKind;
+    u8 autoFollowNow;
+    u16 prevDistNo;
     s32 i;
-    s32 best;
-    f32 bestD;
-    f32 t;
-    f32 lim;
+    s32 bestNo;
+    f32 bestErr;
+    f32 factor;
+    f32 raiseLimit;
     f32 floorY;
     f32 dx;
-    f32 gd;
-    f32 dd;
+    f32 goalDistSq;
+    f32 eyeDistSq;
     f32 len;
-    f32 gx;
-    Vec3 d;
-    f32 r2;
-    f32 ax;
-    f32 az;
-    f32 l;
+    f32 goalDx;
+    Vec3 toAt;
+    f32 farDist;
+    f32 curDx;
+    f32 curDz;
+    f32 curDist;
     f32 dz;
-    f32 x2;
-    f32 z2;
-    f32 s2;
-    f32 h2;
-    f32 gz;
-    s16 step;
-    s32 k;
-    f32 *p;
-    CamDist *dp;
-    s32 diff;
-    u32 dy;
-    s32 hitA;
+    f32 dxSq;
+    f32 dzSq;
+    f32 lenSq;
+    f32 horiz;
+    f32 goalDz;
+    s16 turnStep;
+    s32 fromMode;
+    f32 *fromEye;
+    CamDist *setting;
+    s32 yawDiff;
+    u32 yawGap;
+    s32 eyeBlocked;
 
-    if (c->areaMode != 0) {
-        v->active = 0;
-        v->step = 0;
-        v->blend = 0;
+    if (ctl->areaMode != CAM_MODE_FOLLOW) {
+        view->active = 0;
+        view->step = 0;
+        view->blend = 0;
         return;
     }
-    w = &c->follow;
-    v->active = 1;
-    c->followView = 1;
-    c->playerFade = 1.0f;
-    pl = c->player;
-    area = c->area;
-    CamFollow_UpdateCanFollow(w, pl);
-    CamFollow_GetKeys(c, w);
-    Vec_Copy(w->unk18, w->eye);
-    w->fovGoal = w->set->fov;
-    if (area->kind != 0) {
-        w->set = &gCamMode1Defaults;
+    work = &ctl->follow;
+    view->active = 1;
+    ctl->followView = 1;
+    ctl->playerFade = 1.0f;
+    pl = ctl->player;
+    area = ctl->area;
+    CamFollow_UpdateCanFollow(work, pl);
+    CamFollow_GetKeys(ctl, work);
+    Vec_Copy(work->unk18, work->eye);
+    work->fovGoal = work->set->fov;
+    if (area->kind != CAM_AREA_FOLLOW) {
+        work->set = &gCamFollowDefaults;
     } else {
-        w->set = &area->follow;
+        work->set = &area->follow;
     }
-    if (CamFollow_PlayerHeightKind(w) == 1) {
-        mode = 7;
-        w->dist = &D_0041C970;
-    } else if (w->blockedTimer != 0) {
-        mode = 6;
-        w->dist = &D_0041C930[0];
-        w->fovGoal = 1.2217306f;
+    if (CamFollow_UpdateFallView(work) == 1) {
+        distKind = CAM_DIST_FALL;
+        work->dist = &gCamFallDist;
+    } else if (work->blockedTimer != 0) {
+        distKind = CAM_DIST_BLOCKED;
+        work->dist = &gCamBlockedDists[0];
+        work->fovGoal = 1.2217306f;
     } else {
-        old = w->distNo;
+        prevDistNo = work->distNo;
         if (gScene.camControl == 0) {
-            if ((w->pressed & 0x1000) && w->distNo > 0) {
-                w->distNo--;
+            if ((work->pressed & PAD_DOWN) && work->distNo > 0) {
+                work->distNo--;
             }
-            if ((w->pressed & 0x2000) && w->distNo < 3) {
-                w->distNo++;
+            if ((work->pressed & PAD_UP) && work->distNo < CAM_DIST_MAX) {
+                work->distNo++;
             }
         } else {
-            if ((w->pressed & 0x2000) && w->distNo > 0) {
-                w->distNo--;
+            if ((work->pressed & PAD_UP) && work->distNo > 0) {
+                work->distNo--;
             }
-            if ((w->pressed & 0x1000) && w->distNo < 3) {
-                w->distNo++;
+            if ((work->pressed & PAD_DOWN) && work->distNo < CAM_DIST_MAX) {
+                work->distNo++;
             }
         }
-        if (old != w->distNo) {
-            w->unk76 = 8;
+        if (prevDistNo != work->distNo) {
+            work->unk76 = 8;
         }
-        if (pl->action == 1 && w->distNo == 2) {
-            mode = 4;
-            w->dist = &w->set->dist[4];
+        if (pl->action == 1 && work->distNo == CAM_DIST_DEFAULT) {
+            distKind = CAM_DIST_CROUCH;
+            work->dist = &work->set->dist[CAM_DIST_CROUCH];
         } else {
-            w->dist = &w->set->dist[w->distNo];
-            mode = w->distNo;
+            work->dist = &work->set->dist[work->distNo];
+            distKind = work->distNo;
         }
     }
-    keep = 0;
-    if (c->targetObj != NULL) {
-        w->wallHit = 0;
-        w->yawGoal = pl->targetAngle + 0x8000;
-    } else if ((k = v->yawFrom) != 0xFF) {
-        v->yawFrom = 0xFF;
-        p = c->modes[k].eye;
-        w->yaw = w->yawGoal = Vec_AngleXZ16(p, p + 3);
-    } else if (c->prevAreaMode != 0 && c->prevAreaMode != 1) {
-        w->yaw = w->yawGoal = Vec_AngleXZ16(c->out.eye, c->out.at);
-    } else if (w->held & 0xC00) {
+    autoFollowNow = 0;
+    if (ctl->targetObj != NULL) {
+        work->wallHit = 0;
+        work->yawGoal = pl->targetAngle + 0x8000;
+    } else if ((fromMode = view->yawFrom) != CAM_YAW_FROM_NONE) {
+        view->yawFrom = CAM_YAW_FROM_NONE;
+        fromEye = ctl->modes[fromMode].eye;
+        work->yaw = work->yawGoal = Vec_AngleXZ16(fromEye, fromEye + 3);
+    } else if (ctl->prevAreaMode != CAM_MODE_FOLLOW && ctl->prevAreaMode != CAM_MODE_ORBIT) {
+        work->yaw = work->yawGoal = Vec_AngleXZ16(ctl->out.eye, ctl->out.at);
+    } else if (work->held & (PAD_LEFT | PAD_RIGHT)) {
         if (gScene.camControl != 2) {
-            step = 0x47E;
+            turnStep = 0x47E;
         } else {
-            step = -0x47E;
+            turnStep = -0x47E;
         }
-        if (w->held & 0x800) {
-            w->yawGoal += step;
+        if (work->held & PAD_LEFT) {
+            work->yawGoal += turnStep;
         }
-        if (w->held & 0x400) {
-            w->yawGoal -= step;
+        if (work->held & PAD_RIGHT) {
+            work->yawGoal -= turnStep;
         }
-        w->unk76 = 8;
-    } else if (CamFollow_ShouldTurnBehind(pl, w) != 0) {
-        w->yawGoal = pl->rot[1] + 0x8000;
-        w->turningBehind = 1;
-        w->unk76 = 0x14;
-        keep = w->unk78;
-    } else if (w->heightState == 0 && w->canFollow >= 0 && gScene.camFollow == 0) {
-        diff = (pl->rot[1] ^ 0x8000) - w->yawGoal & 0xFFFF;
-        if (w->canFollow == 0) {
-            w->yawGoal = w->yawGoal + Angle_Bump(diff, 4096.0f, 26624.0f, 0.00021701389f);
+        work->unk76 = 8;
+    } else if (CamFollow_ShouldTurnBehind(pl, work) != 0) {
+        work->yawGoal = pl->rot[1] + 0x8000;
+        work->turningBehind = 1;
+        work->unk76 = 0x14;
+        autoFollowNow = work->unk78;
+    } else if (work->heightState == CAM_HEIGHT_NORMAL && work->canFollow >= 0 && gScene.camFollow == 0) {
+        yawDiff = (pl->rot[1] ^ 0x8000) - work->yawGoal & 0xFFFF;
+        if (work->canFollow == 0) {
+            work->yawGoal = work->yawGoal + Angle_Bump(yawDiff, 4096.0f, 26624.0f, 0.00021701389f);
         } else {
-            w->yawGoal = w->yawGoal + Angle_Bump(diff, 0.0f, 26624.0f, 0.00021701389f);
+            work->yawGoal = work->yawGoal + Angle_Bump(yawDiff, 0.0f, 26624.0f, 0.00021701389f);
         }
-        keep = 1;
-    } else if (w->held & 8) {
+        autoFollowNow = 1;
+    } else if (work->held & PAD_L1) {
         if (Player_TestFlag(pl, 8) != 0) {
-            w->yawGoal = w->yawGoal + Angle_Bump((pl->rot[1] ^ 0x8000) - w->yawGoal & 0xFFFF, 4096.0f, 26624.0f, 0.00013563369f);
+            work->yawGoal = work->yawGoal + Angle_Bump((pl->rot[1] ^ 0x8000) - work->yawGoal & 0xFFFF, 4096.0f, 26624.0f, 0.00013563369f);
         }
-    } else if (w->wallHit != 0) {
-        w->yawGoal += (s16)((s16)((pl->rot[1] ^ 0x8000) - w->yawGoal) >> 3);
-        w->wallHit = 0;
+    } else if (work->wallHit != 0) {
+        work->yawGoal += (s16)((s16)((pl->rot[1] ^ 0x8000) - work->yawGoal) >> 3);
+        work->wallHit = 0;
     }
-    w->unk78 = keep;
-    w->yaw += (s16)((s16)(w->yawGoal - w->yaw) >> 2);
-    if (w->turningBehind != 0 && ((dy = (u16)(w->yawGoal - w->yaw)) < 0x1000 || dy > 0xF000)) {
-        w->turningBehind = 0;
+    work->unk78 = autoFollowNow;
+    work->yaw += (s16)((s16)(work->yawGoal - work->yaw) >> 2);
+    if (work->turningBehind != 0 && ((yawGap = (u16)(work->yawGoal - work->yaw)) < 0x1000 || yawGap > 0xF000)) {
+        work->turningBehind = 0;
     }
-    if (c->prevAreaMode == 1 && w->unk78 == 0) {
-        CamView_StartBlend(v, D_0041CDC8);
-        Vec_Diff(&off.x, c->modes[1].eye, pl->pos);
-        dp = &w->set->dist[1];
-        bestD = 1e8f;
-        best = 0;
-        for (i = 1; i < 4; i++, dp++) {
-            t = dp->back - off.y;
-            if (bestD > t * t) {
-                bestD = t * t;
-                best = i;
+    if (ctl->prevAreaMode == CAM_MODE_ORBIT && work->unk78 == 0) {
+        CamView_StartBlend(view, gCamOrbitExitBlend);
+        Vec_Diff(&off.x, ctl->modes[CAM_MODE_ORBIT].eye, pl->pos);
+        setting = &work->set->dist[1];
+        bestErr = 1e8f;
+        bestNo = 0;
+        for (i = 1; i < 4; i++, setting++) {
+            factor = setting->back - off.y;
+            if (bestErr > factor * factor) {
+                bestErr = factor * factor;
+                bestNo = i;
             }
         }
-        w->distNo = best;
-        mode = (u8)best;
-        w->dist = &w->set->dist[best];
+        work->distNo = bestNo;
+        distKind = (u8)bestNo;
+        work->dist = &work->set->dist[bestNo];
     }
     off.x = 0.0f;
     if (pl->rideState != 3 && pl->rideState != 0) {
         off.y = 400.0f;
         off.z = 400.0f;
-        w->atGoal[1] = 100.0f + pl->pos[1];
+        work->atGoal[1] = 100.0f + pl->pos[1];
     } else if (pl->rideState != 0 || Player_IsState(pl, 0, 0x11) != 0 ||
                Player_IsState(pl, 0, 0x1B) != 0 || Player_IsState(pl, 0, 0x1E) != 0 ||
                Player_IsState(pl, 0, 0x3A) != 0) {
         off.y = 20.0f;
-        off.z = w->dist->up;
-        w->atGoal[1] = 30.0f + pl->pos[1];
+        off.z = work->dist->up;
+        work->atGoal[1] = 30.0f + pl->pos[1];
     } else {
-        off.y = w->dist->back;
-        off.z = w->dist->up;
-        /* An empty check of the setting's target height (from 0 to the eye height), compiled
-         * out (docs/mwcc-matching.md, "Statements scheduled as if a check were still there"): without
-         * it the two loads of the add.s come in the other order (f0/f1 swapped). */
-        if (w->dist->atY < 0.0f || w->dist->atY > w->dist->up) { /* compiled-out check */
+        off.y = work->dist->back;
+        off.z = work->dist->up;
+        /* Kept for the match: an empty check of atY. It compiles to nothing but makes MWCC
+         * load the add's two operands in the original's order (docs/mwcc-matching.md,
+         * "Statements scheduled as if a check were still there"). */
+        if (work->dist->atY < 0.0f || work->dist->atY > work->dist->up) {
         }
-        w->atGoal[1] = pl->pos[1] + w->dist->atY;
+        work->atGoal[1] = pl->pos[1] + work->dist->atY;
     }
-    w->atGoal[0] = pl->pos[0];
-    w->atGoal[2] = pl->pos[2];
+    work->atGoal[0] = pl->pos[0];
+    work->atGoal[2] = pl->pos[2];
     angles[2] = 0;
     angles[0] = 0;
-    angles[1] = w->yaw;
+    angles[1] = work->yaw;
     Mtx_FromAnglesXYZ(angles, mtx);
-    Vec_Rotate(&goal.x, &off.x, mtx);
-    w->eyeGoal[0] = w->atGoal[0] + goal.x;
-    w->eyeGoal[1] = pl->pos[1] + goal.y;
-    w->eyeGoal[2] = w->atGoal[2] + goal.z;
-    if (v->step == 0) {
-        v->step++;
-        Vec_Copy(w->eye, w->eyeGoal);
-        Vec_Copy(w->at, w->atGoal);
-        w->fov = w->fovGoal;
+    Vec_Rotate(&rotOfs.x, &off.x, mtx);
+    work->eyeGoal[0] = work->atGoal[0] + rotOfs.x;
+    work->eyeGoal[1] = pl->pos[1] + rotOfs.y;
+    work->eyeGoal[2] = work->atGoal[2] + rotOfs.z;
+    if (view->step == 0) {
+        view->step++;
+        Vec_Copy(work->eye, work->eyeGoal);
+        Vec_Copy(work->at, work->atGoal);
+        work->fov = work->fovGoal;
     }
-    w->at[0] = w->atGoal[0];
-    w->at[2] = w->atGoal[2];
-    w->at[1] += 0.5f * (w->atGoal[1] - w->at[1]);
+    work->at[0] = work->atGoal[0];
+    work->at[2] = work->atGoal[2];
+    work->at[1] += 0.5f * (work->atGoal[1] - work->at[1]);
     if (CamFollow_IsBlownAway() == 1) {
-        Vec_Add(&base.x, pl->pos, D_0041D2D0);
-        if (AreaGrid_SweepSphere(&base.x, w->at, &off.x, 4, 33.0f) != 0) {
-            Vec_Copy(w->at, &off.x);
+        Vec_Add(&bodyCenter.x, pl->pos, gPlayerBodySpheres);
+        if (AreaGrid_SweepSphere(&bodyCenter.x, work->at, &off.x, 4, 33.0f) != 0) {
+            Vec_Copy(work->at, &off.x);
         }
     }
-    w->fov += 0.05f * (w->fovGoal - w->fov);
-    lim = 100.0f;
-    floorY = AreaGrid2_GetFloorY(w->atGoal);
-    if (-(floorY - w->floorY) < 210.0f) {
-        w->unk54 = 0;
-        w->floorY = floorY;
-        if (w->unk79 != 0) {
-            lim = 256.0f;
-            w->unk79 = 0;
+    work->fov += 0.05f * (work->fovGoal - work->fov);
+    raiseLimit = 100.0f;
+    floorY = AreaGrid2_GetFloorY(work->atGoal);
+    if (-(floorY - work->floorY) < 210.0f) {
+        work->unk54 = 0;
+        work->floorY = floorY;
+        if (work->unk79 != 0) {
+            raiseLimit = 256.0f;
+            work->unk79 = 0;
         }
     } else {
-        switch (w->unk54) {
+        switch (work->unk54) {
         case 0:
-            w->unk54 = 1;
+            work->unk54 = 1;
         case 1:
-            lim = 256.0f;
+            raiseLimit = 256.0f;
             break;
         default:
-            w->unk54 = 0;
-            w->floorY = floorY;
+            work->unk54 = 0;
+            work->floorY = floorY;
             break;
         }
-        w->unk79 = 0;
+        work->unk79 = 0;
     }
-    floorY = CamFollow_FloorY(w->eyeGoal, pl);
-    if (floorY - w->eyeGoal[1] < lim) {
-        floorY += w->dist->floorGap;
-        if (floorY > w->eyeGoal[1]) {
-            w->eyeGoal[1] = floorY;
-            w->unk79 = 1;
+    floorY = CamFollow_FloorY(work->eyeGoal, pl);
+    if (floorY - work->eyeGoal[1] < raiseLimit) {
+        floorY += work->dist->floorGap;
+        if (floorY > work->eyeGoal[1]) {
+            work->eyeGoal[1] = floorY;
+            work->unk79 = 1;
         } else {
-            w->unk54 = -1;
+            work->unk54 = -1;
         }
     }
-    if (w->heightState != 0) {
-        w->unk75 = 0;
-        w->eye[1] += 0.25f * (w->eyeGoal[1] - w->eye[1]);
-        w->eye[0] = w->eyeGoal[0];
-        w->eye[2] = w->eyeGoal[2];
-    } else if (w->unk75 == 0) {
-        hitA = AreaGrid_SweepSphere(w->eye, w->eyeGoal, &hit.x, 0x8009, 28.0f);
-        w->wallHit = AreaGrid_SweepSphere(w->at, w->eyeGoal, &hit.x, 0x8009, 28.0f);
-        if (hitA != 0 && w->wallHit != 0) {
-            w->eye[0] = hit.x;
-            w->eye[1] = hit.y;
-            w->eye[2] = hit.z;
-            w->unk75 = 1;
-            w->unk76 = 8;
+    if (work->heightState != CAM_HEIGHT_NORMAL) {
+        work->unk75 = 0;
+        work->eye[1] += 0.25f * (work->eyeGoal[1] - work->eye[1]);
+        work->eye[0] = work->eyeGoal[0];
+        work->eye[2] = work->eyeGoal[2];
+    } else if (work->unk75 == 0) {
+        eyeBlocked = AreaGrid_SweepSphere(work->eye, work->eyeGoal, &hit.x, CAM_SWEEP_MASK, 28.0f);
+        work->wallHit = AreaGrid_SweepSphere(work->at, work->eyeGoal, &hit.x, CAM_SWEEP_MASK, 28.0f);
+        if (eyeBlocked != 0 && work->wallHit != 0) {
+            work->eye[0] = hit.x;
+            work->eye[1] = hit.y;
+            work->eye[2] = hit.z;
+            work->unk75 = 1;
+            work->unk76 = 8;
         } else {
-            w->eye[1] += 0.125f * (w->eyeGoal[1] - w->eye[1]);
-            w->eye[0] = w->eyeGoal[0];
-            w->eye[2] = w->eyeGoal[2];
+            work->eye[1] += 0.125f * (work->eyeGoal[1] - work->eye[1]);
+            work->eye[0] = work->eyeGoal[0];
+            work->eye[2] = work->eyeGoal[2];
         }
     } else {
-        Vec_Copy(&at1.x, w->at);
-        if (w->eyeGoal[1] < at1.y) {
-            at1.y = 0.5f * (at1.y + w->eyeGoal[1]);
+        Vec_Copy(&sweepFrom.x, work->at);
+        if (work->eyeGoal[1] < sweepFrom.y) {
+            sweepFrom.y = 0.5f * (sweepFrom.y + work->eyeGoal[1]);
         }
-        if (AreaGrid_SweepSphere(&at1.x, w->eyeGoal, &hit.x, 0x8009, 28.0f) != 0) {
-            if (w->unk76 != 0) {
-                w->eye[0] = hit.x;
-                w->eye[1] = hit.y;
-                w->eye[2] = hit.z;
-                w->unk18[0] = hit.x;
-                w->unk18[1] = hit.y;
-                w->unk18[2] = hit.z;
+        if (AreaGrid_SweepSphere(&sweepFrom.x, work->eyeGoal, &hit.x, CAM_SWEEP_MASK, 28.0f) != 0) {
+            if (work->unk76 != 0) {
+                work->eye[0] = hit.x;
+                work->eye[1] = hit.y;
+                work->eye[2] = hit.z;
+                work->unk18[0] = hit.x;
+                work->unk18[1] = hit.y;
+                work->unk18[2] = hit.z;
             } else {
-                r = w->dist->up;
-                dx = w->eye[0] - w->at[0];
-                dz = w->eye[2] - w->at[2];
-                dd = dx * dx + dz * dz;
-                if (dd > r * r) {
-                    t = r / Math_Sqrtf(dd);
-                    pos.x = w->at[0] + dx * t;
-                    pos.y = w->eye[1];
-                    pos.z = w->at[2] + dz * t;
-                    w->wallHit = AreaGrid_SweepSphere(w->at, &pos.x, &hit.x, 0x8009, 28.0f);
-                    if (w->wallHit != 0) {
-                        Vec_Copy(w->eye, &hit.x);
+                maxDist = work->dist->up;
+                dx = work->eye[0] - work->at[0];
+                dz = work->eye[2] - work->at[2];
+                eyeDistSq = dx * dx + dz * dz;
+                if (eyeDistSq > maxDist * maxDist) {
+                    factor = maxDist / Math_Sqrtf(eyeDistSq);
+                    pos.x = work->at[0] + dx * factor;
+                    pos.y = work->eye[1];
+                    pos.z = work->at[2] + dz * factor;
+                    work->wallHit = AreaGrid_SweepSphere(work->at, &pos.x, &hit.x, CAM_SWEEP_MASK, 28.0f);
+                    if (work->wallHit != 0) {
+                        Vec_Copy(work->eye, &hit.x);
                     } else {
-                        Vec_Copy(w->eye, &pos.x);
+                        Vec_Copy(work->eye, &pos.x);
                     }
                 }
-                if (w->unk78 == 0) {
-                    w->yawGoal = Vec_AngleXZ16(w->eye, w->at);
+                if (work->unk78 == 0) {
+                    work->yawGoal = Vec_AngleXZ16(work->eye, work->at);
                 }
             }
         } else {
-            w->unk75 = 0;
+            work->unk75 = 0;
         }
     }
-    if (w->unk76 != 0) {
-        w->unk76--;
+    if (work->unk76 != 0) {
+        work->unk76--;
     }
-    if (w->unk75 == 0) {
-        if (w->heightState == 0) {
-            Cam_PushOutOfEms(w->eye, w->unk18);
-            Cam_LineHitDist(w->eye, w->unk18, &w->hitDist);
+    if (work->unk75 == 0) {
+        if (work->heightState == CAM_HEIGHT_NORMAL) {
+            Cam_PushOutOfEms(work->eye, work->unk18);
+            Cam_LineHitDist(work->eye, work->unk18, &work->hitDist);
         } else {
-            at2.x = w->at[0];
-            at2.y = w->eye[1];
-            at2.z = w->at[2];
-            if (AreaGrid_SweepSphere(&at2.x, w->eye, &hit2.x, 0x8009, 28.0f) != 0) {
-                Vec_Copy(w->eye, &hit2.x);
-                w->yawGoal += 0x400;
+            eyeLevelAt.x = work->at[0];
+            eyeLevelAt.y = work->eye[1];
+            eyeLevelAt.z = work->at[2];
+            if (AreaGrid_SweepSphere(&eyeLevelAt.x, work->eye, &eyeHit.x, CAM_SWEEP_MASK, 28.0f) != 0) {
+                Vec_Copy(work->eye, &eyeHit.x);
+                work->yawGoal += 0x400;
             }
         }
     }
-    if (AreaGrid_SweepSphere(w->eye, w->eyeGoal, &e.x, 0x8009, 28.0f) != 0) {
-        Vec_Diff(&e.x, w->eye, w->at);
-        r2 = 150.0f + w->dist->up;
-        if (e.x * e.x + e.z * e.z > r2 * r2) {
-            Vec_Copy(w->eye, w->eyeGoal);
-            Vec_Copy(w->unk18, w->atGoal);
-            Cam_PushOutOfEms(w->eye, w->unk18);
-            Cam_LineHitDist(w->eye, w->unk18, &w->hitDist);
+    if (AreaGrid_SweepSphere(work->eye, work->eyeGoal, &probe.x, CAM_SWEEP_MASK, 28.0f) != 0) {
+        Vec_Diff(&probe.x, work->eye, work->at);
+        farDist = 150.0f + work->dist->up;
+        if (probe.x * probe.x + probe.z * probe.z > farDist * farDist) {
+            Vec_Copy(work->eye, work->eyeGoal);
+            Vec_Copy(work->unk18, work->atGoal);
+            Cam_PushOutOfEms(work->eye, work->unk18);
+            Cam_LineHitDist(work->eye, work->unk18, &work->hitDist);
         }
     }
-    if (w->unk75 != 0 && mode > 0 && mode < 5) {
-        gx = w->atGoal[0] - w->eyeGoal[0];
-        gz = w->atGoal[2] - w->eyeGoal[2];
-        gd = gx * gx + gz * gz;
-        ax = w->at[0] - w->eye[0];
-        az = w->at[2] - w->eye[2];
-        l = ax * ax + az * az;
-        if (gd > l) {
-            l = Math_Sqrtf(l);
-            if (l > 0.0f) {
-                t = Math_Sqrtf(gd) / l;
-                w->at[0] = w->eye[0] + ax * t;
-                w->at[2] = w->eye[2] + az * t;
+    if (work->unk75 != 0 && distKind > 0 && distKind < 5) {
+        goalDx = work->atGoal[0] - work->eyeGoal[0];
+        goalDz = work->atGoal[2] - work->eyeGoal[2];
+        goalDistSq = goalDx * goalDx + goalDz * goalDz;
+        curDx = work->at[0] - work->eye[0];
+        curDz = work->at[2] - work->eye[2];
+        curDist = curDx * curDx + curDz * curDz;
+        if (goalDistSq > curDist) {
+            curDist = Math_Sqrtf(curDist);
+            if (curDist > 0.0f) {
+                factor = Math_Sqrtf(goalDistSq) / curDist;
+                work->at[0] = work->eye[0] + curDx * factor;
+                work->at[2] = work->eye[2] + curDz * factor;
             }
         }
     }
-    floorY = CamFollow_FloorY(w->eye, pl);
-    floorY += w->dist->floorGap;
-    if (floorY > w->eye[1]) {
-        w->eye[1] = floorY;
+    floorY = CamFollow_FloorY(work->eye, pl);
+    floorY += work->dist->floorGap;
+    if (floorY > work->eye[1]) {
+        work->eye[1] = floorY;
     }
-    if (w->eye[1] < w->at[1]) {
-        Vec_Diff(&d.x, w->at, w->eye);
-        x2 = d.x * d.x;
-        z2 = d.z * d.z;
-        s2 = x2 + d.y * d.y + z2;
-        if (s2 > 0.0f) {
-            h2 = x2 + z2;
-            if (0.75f > h2 / s2) {
-                h2 = Math_Sqrtf(h2);
-                h2 *= 0.57735f;
-                w->at[1] = w->eye[1] + h2;
+    if (work->eye[1] < work->at[1]) {
+        Vec_Diff(&toAt.x, work->at, work->eye);
+        dxSq = toAt.x * toAt.x;
+        dzSq = toAt.z * toAt.z;
+        lenSq = dxSq + toAt.y * toAt.y + dzSq;
+        if (lenSq > 0.0f) {
+            horiz = dxSq + dzSq;
+            if (0.75f > horiz / lenSq) {
+                horiz = Math_Sqrtf(horiz);
+                horiz *= 0.57735f;
+                work->at[1] = work->eye[1] + horiz;
             }
         }
     }
-    CamView_SetTransition(c, v, area);
-    CamFollow_UpdateBlocked(c, w);
-    Vec_Copy(v->eye, w->eye);
-    Vec_Copy(v->at, w->at);
-    switch (v->blend) {
+    CamView_SetTransition(ctl, view, area);
+    CamFollow_UpdateBlocked(ctl, work);
+    Vec_Copy(view->eye, work->eye);
+    Vec_Copy(view->at, work->at);
+    switch (view->blend) {
     case 0:
-        v->roll = w->roll;
-        v->fov = w->fov;
+        view->roll = work->roll;
+        view->fov = work->fov;
         break;
     case 1:
-        Vec_Copy(v->eye0, c->out.eye);
-        Vec_Copy(v->at0, c->out.at);
-        v->roll0 = c->out.roll;
-        v->fov0 = c->out.fov;
-        v->blend++;
+        Vec_Copy(view->eye0, ctl->out.eye);
+        Vec_Copy(view->at0, ctl->out.at);
+        view->roll0 = ctl->out.roll;
+        view->fov0 = ctl->out.fov;
+        view->blend++;
     case 2:
-        t = CamBlend_EaseStep(v);
-        Vec_Lerp(v->eye, v->eye0, v->eye, t);
-        Vec_Lerp(v->at, v->at0, v->at, t);
-        v->roll = v->roll0 * t + w->roll * (1.0f - t);
-        v->fov = v->fov0 * t + w->fov * (1.0f - t);
+        factor = CamBlend_EaseStep(view);
+        Vec_Lerp(view->eye, view->eye0, view->eye, factor);
+        Vec_Lerp(view->at, view->at0, view->at, factor);
+        view->roll = view->roll0 * factor + work->roll * (1.0f - factor);
+        view->fov = view->fov0 * factor + work->fov * (1.0f - factor);
         break;
     }
-    CamView_KeepTargetOnScreen(c, v);
+    CamView_KeepTargetOnScreen(ctl, view);
 }
 
 
+/*
+ * 1 while the follow camera is the view shown and is turning behind the
+ * player (turningBehind), else 0.
+ */
 s32 CamCtl_IsTurningBehind(void)
 {
-    CamCtl *c = (CamCtl *)&gCamCtl;
+    CamCtl *ctl = (CamCtl *)&gCamCtl;
 
     if (gCamCtl.override >= 0) {
         return 0;
     }
-    if (c->areaMode != 0) {
+    if (ctl->areaMode != CAM_MODE_FOLLOW) {
         return 0;
     }
-    return c->follow.turningBehind != 0;
+    return ctl->follow.turningBehind != 0;
 }
 
-void CamCtl_SetTargetObj(u8 *o)
+/*
+ * When obj is the local player, makes the follow camera turn toward the
+ * player's battle target on its next frame (seen: the battle alert).
+ */
+void CamCtl_SetTargetObj(u8 *obj)
 {
-    CamCtl *c = (CamCtl *)&gCamCtl;
+    CamCtl *ctl = (CamCtl *)&gCamCtl;
 
-    if (*(u16 *)(o + 0xC) == gScene.localPlayer) {
-        c->targetObj = o;
+    if (*(u16 *)(obj + 0xC) == gScene.localPlayer) {
+        ctl->targetObj = obj;
     }
 }
 
 
-void CamCtl_TurnToObj_Unk(u8 *o)
+/*
+ * When obj is the local player: turns the follow camera to an eighth of a
+ * turn off the player's front (heading + 0x2000), at the default distance
+ * setting, and clears its wall hit (seen: Player_StateSpitRoastStart).
+ */
+void CamCtl_TurnToPlayerFront(u8 *obj)
 {
-    if (*(u16 *)(o + 0xC) == gScene.localPlayer) {
-        CamFollow *c = &gCamCtl.follow;
+    if (*(u16 *)(obj + 0xC) == gScene.localPlayer) {
+        CamFollow *work = &gCamCtl.follow;
 
-        c->wallHit = 0;
-        c->yawGoal = *(s32 *)(o + 0xA4) + 0x2000;
-        c->distNo = 2;
+        work->wallHit = 0;
+        work->yawGoal = *(s32 *)(obj + 0xA4) + 0x2000;
+        work->distNo = CAM_DIST_DEFAULT;
     }
 }
 
 s32 Cam_PlayerFree(Player *pl);
-s32 func_003ACE10(struct Player *p);
+s32 Player_OnMountedGun(struct Player *p);
 
-/* The camera's pad keys given to the follow camera o, filtered by the player state. */
-void CamFollow_GetKeys(CamCtl *c, CamFollow *o)
+/*
+ * Gives the follow camera's work the camera's pad buttons while the follow
+ * camera is current and the script view is off: all of them while the
+ * player is free (Cam_PlayerFree), less the D-pad on the mounted gun with L1
+ * held; else, unless the keyboard is open, only L1 (L1 and R1 with the bow
+ * drawn, outside the hit and gesture groups). Otherwise none.
+ */
+void CamFollow_GetKeys(CamCtl *ctl, CamFollow *work)
 {
     Player *pl;
 
-    if (c->areaMode == 0 && c->modes[5].active == 0) {
-        pl = c->player;
+    if (ctl->areaMode == CAM_MODE_FOLLOW && ctl->modes[CAM_MODE_SCRIPT].active == 0) {
+        pl = ctl->player;
         if (Cam_PlayerFree(pl) == 1) {
-            o->held = c->padHeld;
-            o->pressed = c->padPressed;
-            if (func_003ACE10(pl) == 1 && (pl->input.held & 8)) {
-                o->held &= 0xC3FF;
-                o->pressed &= 0xC3FF;
+            work->held = ctl->padHeld;
+            work->pressed = ctl->padPressed;
+            if (Player_OnMountedGun(pl) == 1 && (pl->input.held & PAD_L1)) {
+                work->held &= (PAD_ALL & ~PAD_DPAD);
+                work->pressed &= (PAD_ALL & ~PAD_DPAD);
             }
             return;
         }
         if ((s8)Kbd_IsOpen() == 0) {
             if (pl->weaponType == 0xA && pl->weaponOut != 0 && pl->stateGroup != 2 && pl->stateGroup != 6) {
-                o->held = c->padHeld & 0x88;
-                o->pressed = c->padPressed & 0x88;
+                work->held = ctl->padHeld & (PAD_R1 | PAD_L1);
+                work->pressed = ctl->padPressed & (PAD_R1 | PAD_L1);
                 return;
             }
-            o->held = c->padHeld & 8;
-            o->pressed = c->padPressed & 8;
+            work->held = ctl->padHeld & PAD_L1;
+            work->pressed = ctl->padPressed & PAD_L1;
             return;        }
     }
-    o->pressed = 0;
-    o->held = 0;
+    work->pressed = 0;
+    work->held = 0;
 }
 
 
 
-void CamFollow_SetYawFrom(s32 v)
+/*
+ * Makes the follow camera take its yaw from mode's view on its next update.
+ * A negative mode or the script mode gives none (CAM_YAW_FROM_NONE).
+ */
+void CamFollow_SetYawFrom(s32 mode)
 {
-    CamView *w = &gCamCtl.modes[0];
+    CamView *view = &gCamCtl.modes[CAM_MODE_FOLLOW];
 
-    if (v == 5) {
-        v = -1;
+    if (mode == CAM_MODE_SCRIPT) {
+        mode = -1;
     }
-    if (v >= 0) {
-        w->yawFrom = v;
+    if (mode >= 0) {
+        view->yawFrom = mode;
     } else {
-        w->yawFrom = -1;
+        view->yawFrom = -1;
     }
 }
 
@@ -3251,47 +3613,61 @@ s32 AreaGrid_SweepSphere(f32 *from, f32 *to, f32 *hit, u16 flags, f32 radius);
 void Vec_Diff(f32 *out, f32 *a, f32 *b);
 f32 Math_Atan2(f32 y, f32 x);
 
-void CamFollow_UpdateBlocked(CamCtl *c, CamFollow *m)
+/*
+ * The follow camera's blocked view: starts while the player is blown away
+ * (offline) and the sweep from the target goal to the eye goal stops more
+ * than 50 short. blockedTimer is set to CAM_BLOCKED_HOLD, held there while
+ * he is blown away, then counts down; PAD_UP or PAD_DOWN ends it. distNo
+ * becomes 1 and the yaw goal turns to the side the player came from.
+ */
+void CamFollow_UpdateBlocked(CamCtl *ctl, CamFollow *work)
 {
-    f32 d[3];
+    f32 delta[3];
     Player *pl;
 
-    if (m->blockedTimer == 0xF) {
+    if (work->blockedTimer == CAM_BLOCKED_HOLD) {
         if (CamFollow_IsBlownAway() == 1) {
             return;
         }
-        m->blockedTimer--;
+        work->blockedTimer--;
         return;
     }
-    if (m->blockedTimer != 0) {
-        m->blockedTimer--;
-        if (m->pressed & 0x3000) {
-            m->blockedTimer = 0;
+    if (work->blockedTimer != 0) {
+        work->blockedTimer--;
+        if (work->pressed & (PAD_UP | PAD_DOWN)) {
+            work->blockedTimer = 0;
         }
     }
-    if (CamFollow_IsBlownAway() == 1 && AreaGrid_SweepSphere(m->atGoal, m->eyeGoal, d, 0x8009, 28.0f) != 0) {
-        d[0] -= m->eyeGoal[0];
-        d[2] -= m->eyeGoal[2];
-        if (d[0] * d[0] + d[2] * d[2] > 2500.0f) {
-            pl = c->player;
-            m->blockedTimer = 0xF;
-            m->distNo = 1;
-            Vec_Diff(d, pl->prevPos, pl->pos);
-            if (m->unk76 == 0) {
-                m->yawGoal = 10430.378f * Math_Atan2(d[0], d[2]);
+    if (CamFollow_IsBlownAway() == 1 && AreaGrid_SweepSphere(work->atGoal, work->eyeGoal, delta, CAM_SWEEP_MASK, 28.0f) != 0) {
+        delta[0] -= work->eyeGoal[0];
+        delta[2] -= work->eyeGoal[2];
+        if (delta[0] * delta[0] + delta[2] * delta[2] > 2500.0f) {
+            pl = ctl->player;
+            work->blockedTimer = CAM_BLOCKED_HOLD;
+            work->distNo = 1;
+            Vec_Diff(delta, pl->prevPos, pl->pos);
+            if (work->unk76 == 0) {
+                work->yawGoal = RAD_TO_ANGLE16 * Math_Atan2(delta[0], delta[2]);
             }
         }
     }
 }
 
-s32 CamFollow_PlayerHeightKind(CamFollow *m)
+/*
+ * 1 while the follow camera uses its fall setting, else 0. The player's
+ * kind each frame: 0 not airborne, 1 airborne, 2 dropping more than 10 a
+ * frame, 3 dropping more than 300 above the floor. Four frames of kind 3
+ * start the fall view (CAM_HEIGHT_FALL); it holds while the kind is 1 or 3
+ * and for 15 frames after. A hit or a status ends it at once.
+ */
+s32 CamFollow_UpdateFallView(CamFollow *work)
 {
     Player *pl = gCamCtl.player;
     u8 kind;
     f32 ground;
 
     if (pl->stateGroup == 2) {
-        m->heightState = 0;
+        work->heightState = CAM_HEIGHT_NORMAL;
         return 0;
     }
     kind = 0;
@@ -3305,71 +3681,79 @@ s32 CamFollow_PlayerHeightKind(CamFollow *m)
             }
         }
     }
-    switch (m->heightState) {
-    case 0:
+    switch (work->heightState) {
+    case CAM_HEIGHT_NORMAL:
         if (kind <= 2) {
-            m->heightTimer = 4;
+            work->heightTimer = 4;
             break;
         }
-        m->heightTimer -= 1;
-        if (m->heightTimer > 0) {
+        work->heightTimer -= 1;
+        if (work->heightTimer > 0) {
             break;
         }
-        m->heightState++;
-    case 1:
+        work->heightState++;
+    case CAM_HEIGHT_FALL:
         if (kind & 1) {
-            m->heightTimer = 15;
+            work->heightTimer = 15;
             return 1;
         }
-        m->heightTimer -= 1;
-        if (m->heightTimer > 0) {
+        work->heightTimer -= 1;
+        if (work->heightTimer > 0) {
             return 1;
         }
-        m->heightState = 0;
+        work->heightState = CAM_HEIGHT_NORMAL;
         break;
     }
     return 0;
 }
 
-/* The ground height at pos; when it is below obj->0xB0, the height seen from 150 higher. */
-f32 CamFollow_FloorY(f32 *pos, Player *obj)
+/*
+ * The floor height under pos; when the player pl is above that floor, the
+ * floor found from 150 higher instead.
+ */
+f32 CamFollow_FloorY(f32 *pos, Player *pl)
 {
-    f32 v[3];
-    f32 h = AreaGrid2_GetFloorY(pos);
+    f32 probe[3];
+    f32 floorY = AreaGrid2_GetFloorY(pos);
 
-    if (obj->pos[1] <= h) {
-        return h;
+    if (pl->pos[1] <= floorY) {
+        return floorY;
     }
-    Vec_Copy(v, pos);
-    v[1] += 150.0f;
-    return AreaGrid2_GetFloorY(v);
+    Vec_Copy(probe, pos);
+    probe[1] += 150.0f;
+    return AreaGrid2_GetFloorY(probe);
 }
 
 s32 Cam_PlayerCanFollow(Player *pl);
 s32 Player_InBlownAway(struct Player *p);
 
-void CamFollow_UpdateCanFollow(CamFollow *w, Player *pl)
+/*
+ * Updates canFollow from Cam_PlayerCanFollow (-1: the yaw doesn't follow
+ * the player). A change from negative to 0 or 1 waits followDelay frames.
+ * Also sets blownAway while offline and the player is blown away.
+ */
+void CamFollow_UpdateCanFollow(CamFollow *work, Player *pl)
 {
-    s8 v = Cam_PlayerCanFollow(pl);
+    s8 newCanFollow = Cam_PlayerCanFollow(pl);
 
-    if (v >= 0) {
-        if (w->canFollow < 0) {
+    if (newCanFollow >= 0) {
+        if (work->canFollow < 0) {
             if (pl->weaponType == 0xA) {
-                w->followDelay -= 1;
-            } else if (v == 1) {
-                w->followDelay -= 1;
+                work->followDelay -= 1;
+            } else if (newCanFollow == 1) {
+                work->followDelay -= 1;
             }
-            if (w->followDelay > 0) {
-                v = -1;
+            if (work->followDelay > 0) {
+                newCanFollow = -1;
             }
         }
     } else {
-        w->followDelay = 3;
+        work->followDelay = 3;
     }
-    w->canFollow = v;
-    w->blownAway = 0;
+    work->canFollow = newCanFollow;
+    work->blownAway = 0;
     if (gScene.online == 0 && Player_InBlownAway(pl) == 1) {
-        w->blownAway = 1;
+        work->blownAway = 1;
     }
 }
 
@@ -3383,164 +3767,171 @@ s32 CamFollow_IsBlownAway(void)
     return gCamCtl.follow.blownAway != 0;
 }
 
-void CamOrbit_Init(CamCtl *c, CamView *v)
+/*
+ * The orbit camera's init handler: does nothing (CamOrbit_Update sets the
+ * work up at step 0).
+ */
+void CamOrbit_Init(CamCtl *ctl, CamView *view)
 {
 }
 
 void Vec_Add(f32 *out, f32 *a, f32 *b);
 void Vec_Lerp(f32 *out, f32 *a, f32 *b, f32 t);
 f32 CamBlend_EaseStep(CamView *v);
-extern f32 D_0041CDD0[3];
-extern f32 D_0041CDE0[3];
+extern f32 gCamOrbitEyeOfs[3];
+extern f32 gCamOrbitAimOfs[3];
 
 /*
- * The orbit camera's update handler (mode 1, its work c->orbit): while the follow view is
- * active and the follow camera's unk78 holds, it turns its pitch toward the player's
- * aimWeight and its yaw (+-0x800 by where the player faces) around the player, raised by
- * 170 (or blended to the follow camera's distance setting), keeps the eye out of walls
- * (AreaGrid_SweepSphere) and above the ground, and moves the target onto the plane through it.
- * NON_MATCHING: 24 words: the scheduling of the line-plane intersection's madd chains (the
- * game issues the denominator's division before the numerator's madd) and the operand
- * order of the ground-height add.
+ * The orbit camera's update handler (CAM_MODE_ORBIT; its work is
+ * CamCtl.orbit): an over-the-shoulder view that runs while the follow view
+ * is active and follows the player's heading, and then sets areaMode to the
+ * orbit. It starts with a 9-frame blend from the follow camera; its pitch
+ * follows the player's aimWeight and its yaw eases to 0x800 to one side or
+ * the other. The eye is placed around a target 170 above the player, kept
+ * out of walls and above the floor; the target then moves to where the line
+ * from the eye to a point ahead (gCamOrbitAimOfs) crosses the vertical
+ * plane through the target. For the match, the reciprocal of the
+ * denominator is taken before the numerator, and the floor gap is added in
+ * a statement of its own (the original's order).
  */
-void CamOrbit_Update(CamCtl *c, CamView *v)
+void CamOrbit_Update(CamCtl *ctl, CamView *view)
 {
     f32 pos[3];
-    f32 r[3];
-    f32 off[3];
-    f32 off2[3];
-    s32 ang[3];
+    f32 rotOfs[3];
+    f32 eyeOfs[3];
+    f32 aimOfs[3];
+    s32 angles[3];
     f32 hit[3];
     f32 mtx[16];
-    f32 ab[2][3];
+    f32 line[2][3];
     Player *pl;
-    CamOrbit *w;
-    CamFollow *m;
+    CamOrbit *orbitWork;
+    CamFollow *followWork;
     f32 y;
-    f32 t;
-    f32 px;
-    f32 pz;
-    f32 nx;
-    f32 nz;
-    f32 ny;
-    f32 py;
-    f32 d0;
-    f32 d1;
-    f32 d2;
-    f32 h;
-    u32 dd;
+    f32 factor;
+    f32 planeX;
+    f32 planeZ;
+    f32 normalX;
+    f32 normalZ;
+    f32 normalY;
+    f32 planeY;
+    f32 dirX;
+    f32 dirY;
+    f32 dirZ;
+    f32 floorY;
+    u32 faceDiff;
 
-    if (c->modes[0].active == 0) {
-        v->active = 0;
-        *(u16 *)&v->step = 0;
+    if (ctl->modes[CAM_MODE_FOLLOW].active == 0) {
+        view->active = 0;
+        *(u16 *)&view->step = 0;
         return;
     }
-    pl = c->player;
-    m = &c->follow;
-    w = &c->orbit;
-    switch (v->step) {
+    pl = ctl->player;
+    followWork = &ctl->follow;
+    orbitWork = &ctl->orbit;
+    switch (view->step) {
     case 0:
-        if (m->unk78 == 0) {
-            v->active = 0;
-            *(u16 *)&v->step = 0;
+        if (followWork->unk78 == 0) {
+            view->active = 0;
+            *(u16 *)&view->step = 0;
             return;
         }
-        Vec_Copy(w->unk18, c->modes[0].eye);
-        w->pitch = (pl->aimWeight + 100) * 34 - 0xB00;
-        w->dir = 0x800;
-        w->yaw = 0;
-        v->step++;
-        v->blend = 1;
-        v->left = 9;
-        v->rate = 1.0f / v->left;
+        Vec_Copy(orbitWork->unk18, ctl->modes[CAM_MODE_FOLLOW].eye);
+        orbitWork->pitch = (pl->aimWeight + 100) * 34 - 0xB00;
+        orbitWork->dir = 0x800;
+        orbitWork->yaw = 0;
+        view->step++;
+        view->blend = 1;
+        view->left = 9;
+        view->rate = 1.0f / view->left;
         break;
     case 1:
-        w->pitch += (s16)((s16)((pl->aimWeight + 100) * 34 - 0xB00 - w->pitch) >> 2);
-        if (m->unk78 == 0) {
-            v->active = 0;
-            *(u16 *)&v->step = 0;
+        orbitWork->pitch += (s16)((s16)((pl->aimWeight + 100) * 34 - 0xB00 - orbitWork->pitch) >> 2);
+        if (followWork->unk78 == 0) {
+            view->active = 0;
+            *(u16 *)&view->step = 0;
             return;
         }
         break;
     }
-    v->active = 1;
-    c->areaMode = 1;
-    c->followView = 0;
-    dd = ((pl->rot[1] ^ 0x8000) - (m->yaw + w->yaw)) & 0xFFFF;
-    if (dd > 0x100 && dd < 0x7800) {
-        w->dir = -0x800;
-    } else if (dd > 0x8800 && dd < 0xFF00) {
-        w->dir = 0x800;
+    view->active = 1;
+    ctl->areaMode = CAM_MODE_ORBIT;
+    ctl->followView = 0;
+    faceDiff = ((pl->rot[1] ^ 0x8000) - (followWork->yaw + orbitWork->yaw)) & 0xFFFF;
+    if (faceDiff > 0x100 && faceDiff < 0x7800) {
+        orbitWork->dir = -0x800;
+    } else if (faceDiff > 0x8800 && faceDiff < 0xFF00) {
+        orbitWork->dir = 0x800;
     }
-    if (w->dir < 0) {
-        if (w->yaw > -0x800) {
-            w->yaw += (s16)((s16)(-0x800 - w->yaw) * 6 >> 6);
+    if (orbitWork->dir < 0) {
+        if (orbitWork->yaw > -0x800) {
+            orbitWork->yaw += (s16)((s16)(-0x800 - orbitWork->yaw) * 6 >> 6);
         }
-    } else if (w->yaw < 0x800) {
-        w->yaw += (s16)((s16)(0x800 - w->yaw) * 6 >> 6);
+    } else if (orbitWork->yaw < 0x800) {
+        orbitWork->yaw += (s16)((s16)(0x800 - orbitWork->yaw) * 6 >> 6);
     }
-    switch (v->blend) {
+    switch (view->blend) {
     case 0:
-        Vec_Copy(off, D_0041CDD0);
-        Vec_Copy(off2, D_0041CDE0);
+        Vec_Copy(eyeOfs, gCamOrbitEyeOfs);
+        Vec_Copy(aimOfs, gCamOrbitAimOfs);
         y = 170.0f;
         break;
     case 1:
-        (v->blend)++;
+        (view->blend)++;
     case 2:
-        t = CamBlend_EaseStep(v);
-        off[0] = 0.0f;
-        off[1] = 0.0f;
-        off[2] = m->dist->up;
-        Vec_Lerp(off, off, D_0041CDD0, t);
-        off2[2] = 0.0f;
-        off2[1] = 0.0f;
-        off2[0] = 0.0f;
-        Vec_Lerp(off2, off2, D_0041CDE0, t);
-        y = m->dist->atY * t + 170.0f * (1.0f - t);
+        factor = CamBlend_EaseStep(view);
+        eyeOfs[0] = 0.0f;
+        eyeOfs[1] = 0.0f;
+        eyeOfs[2] = followWork->dist->up;
+        Vec_Lerp(eyeOfs, eyeOfs, gCamOrbitEyeOfs, factor);
+        aimOfs[2] = 0.0f;
+        aimOfs[1] = 0.0f;
+        aimOfs[0] = 0.0f;
+        Vec_Lerp(aimOfs, aimOfs, gCamOrbitAimOfs, factor);
+        y = followWork->dist->atY * factor + 170.0f * (1.0f - factor);
         break;
     }
-    w->at[0] = pos[0] = pl->pos[0];
-    w->at[1] = pos[1] = pl->pos[1] + y;
-    w->at[2] = pos[2] = pl->pos[2];
-    ang[0] = w->pitch;
-    ang[1] = m->yaw + w->yaw;
-    ang[2] = 0;
-    Mtx_FromAnglesXYZ(ang, mtx);
-    Vec_Rotate(r, off, mtx);
-    Vec_Add(w->eye, w->at, r);
-    if (AreaGrid_SweepSphere(pos, w->eye, hit, 0x8009, 28.0f) != 0) {
-        Vec_Copy(w->eye, hit);
+    orbitWork->at[0] = pos[0] = pl->pos[0];
+    orbitWork->at[1] = pos[1] = pl->pos[1] + y;
+    orbitWork->at[2] = pos[2] = pl->pos[2];
+    angles[0] = orbitWork->pitch;
+    angles[1] = followWork->yaw + orbitWork->yaw;
+    angles[2] = 0;
+    Mtx_FromAnglesXYZ(angles, mtx);
+    Vec_Rotate(rotOfs, eyeOfs, mtx);
+    Vec_Add(orbitWork->eye, orbitWork->at, rotOfs);
+    if (AreaGrid_SweepSphere(pos, orbitWork->eye, hit, CAM_SWEEP_MASK, 28.0f) != 0) {
+        Vec_Copy(orbitWork->eye, hit);
     }
-    h = CamFollow_FloorY(w->eye, pl);
-    h += m->dist->floorGap;
-    if (h > w->eye[1]) {
-        w->eye[1] = h;
+    floorY = CamFollow_FloorY(orbitWork->eye, pl);
+    floorY += followWork->dist->floorGap;
+    if (floorY > orbitWork->eye[1]) {
+        orbitWork->eye[1] = floorY;
     }
-    ang[1] = m->yaw;
-    Mtx_FromAnglesXYZ(ang, mtx);
-    Vec_Rotate(r, off2, mtx);
-    px = w->at[0];
-    pz = w->at[2];
-    nx = r[0];
-    nz = r[2];
-    ny = 0.0f;
-    py = 0.0f;
-    Vec_Copy(ab[0], w->eye);
-    Vec_Add(ab[1], w->at, r);
-    d0 = ab[1][0] - ab[0][0];
-    d1 = ab[1][1] - ab[0][1];
-    d2 = ab[1][2] - ab[0][2];
-    t = 1.0f / (d0 * nx + d1 * ny + d2 * nz);
-    t = (nx * (px - ab[1][0]) + ny * (py - ab[1][1]) + nz * (pz - ab[1][2])) * t;
-    ab[1][0] += d0 * t;
-    ab[1][1] += d1 * t;
-    ab[1][2] += d2 * t;
-    Vec_Copy(w->at, ab[1]);
-    v->roll = m->roll;
-    v->fov = m->fov;
-    Vec_Copy(v->eye, w->eye);
-    Vec_Copy(v->at, w->at);
+    angles[1] = followWork->yaw;
+    Mtx_FromAnglesXYZ(angles, mtx);
+    Vec_Rotate(rotOfs, aimOfs, mtx);
+    planeX = orbitWork->at[0];
+    planeZ = orbitWork->at[2];
+    normalX = rotOfs[0];
+    normalZ = rotOfs[2];
+    normalY = 0.0f;
+    planeY = 0.0f;
+    Vec_Copy(line[0], orbitWork->eye);
+    Vec_Add(line[1], orbitWork->at, rotOfs);
+    dirX = line[1][0] - line[0][0];
+    dirY = line[1][1] - line[0][1];
+    dirZ = line[1][2] - line[0][2];
+    factor = 1.0f / (dirX * normalX + dirY * normalY + dirZ * normalZ);
+    factor = (normalX * (planeX - line[1][0]) + normalY * (planeY - line[1][1]) + normalZ * (planeZ - line[1][2])) * factor;
+    line[1][0] += dirX * factor;
+    line[1][1] += dirY * factor;
+    line[1][2] += dirZ * factor;
+    Vec_Copy(orbitWork->at, line[1]);
+    view->roll = followWork->roll;
+    view->fov = followWork->fov;
+    Vec_Copy(view->eye, orbitWork->eye);
+    Vec_Copy(view->at, orbitWork->at);
 }
 
 /* unk_314E00's .data (0x4154E0-0x4187B0) */
@@ -4681,7 +5072,7 @@ u8 gKbdKindConfs[5][56] = {
 u32 D_00416860[48] = {
 #include "sub_main/00416860.inc"
 };
-u32 gPhraseEntries[96] = {
+PhraseEntry gPhraseEntries[PHRASE_COUNT] = {
 #include "sub_main/00416920.inc"
 };
 u8 gKbdKeySets[16][2] = {

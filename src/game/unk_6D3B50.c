@@ -5,40 +5,42 @@
 #include "common.h"
 #include "em.h"
 #include "objattach.h"
+#include "em_blangonga.h"
 #include "player.h"
 #include "sprite.h"
 #include "capsule.h"
+#include "area.h"
 
 /* prototypes */
 void StageObj_K12_CreateAtTimed(f32 *pos, s32 kind, u16 a, u16 b);
 s32 Side_Match(u8 a, u8 b, u8 none);
 void Effect0D_SpawnAt(f32 *pos, s32 kind, f32 scale);
-extern s16 Eff22_TimeLimit[];
-extern f32 Eff22_PlayerPtsA[][3];
-extern u16 Eff22_PlayerAngsA[];
-extern f32 Eff22_PlayerPtsB[][3];
-extern u16 Eff22_PlayerAngsB[];
-extern f32 Eff22_PlayerPtsC[][3];
-extern u16 Eff22_PlayerAngsC[];
-void Eff22_PlaySound(ObjAttach *o, s16 n);
-extern void *Eff22_MotionRef;
-extern HitShape *Eff22_Vals088[];
-extern f32 Eff22_Val048ByType[][3];
-extern f32 Eff22_Val058ByType[];
-extern f32 Eff22_Add048B[];
-extern f32 Eff22_Add048A[];
-void Eff22_Draw(DrawSlot *d);
-extern f32 Eff22_SpotPosA[][3];
-extern u16 Eff22_SpotAngA[];
-extern f32 Eff22_SpotPosB[][3];
-extern u16 Eff22_SpotAngB[];
-extern f32 Eff22_SpotPosC[][3];
-extern u16 Eff22_SpotAngC[];
+extern s16 StageShot_TimeLimit[];
+extern f32 StageShot_CannonPtsFortress5[][3];
+extern u16 StageShot_CannonAngsFortress5[];
+extern f32 StageShot_CannonPtsCastle1[][3];
+extern u16 StageShot_CannonAngsCastle1[];
+extern f32 StageShot_CannonPtsBattleTown1[][3];
+extern u16 StageShot_CannonAngsBattleTown1[];
+void StageShot_PlaySound(ObjAttach *o, s16 n);
+extern void *StageShot_RowsPtr;
+extern HitShape *StageShot_HitShapes[];
+extern f32 StageShot_StartVels[][3];
+extern f32 StageShot_Gravities[];
+extern f32 StageShot_RockSpotVels[];
+extern f32 StageShot_CannonSpread[];
+void StageShot_Draw(DrawSlot *d);
+extern f32 StageShot_RockSpotsFortress4[][3];
+extern u16 StageShot_RockAngsFortress4[];
+extern f32 StageShot_RockSpotsFortress3[][3];
+extern u16 StageShot_RockAngsFortress3[];
+extern f32 StageShot_RockSpotsFortress2[][3];
+extern u16 StageShot_RockAngsFortress2[];
 f32 Math_Sin(f32 x);
-void Eff12_DrawModel(ModelMatSet *set, f32 *m);
-void Eff12_PlaySound(ObjAttach *o, s16 kind);
+void PitfallTrap_DrawModel(ModelMatSet *set, f32 *m);
+void PitfallTrap_PlaySound(ObjAttach *o, s16 kind);
 void StageObj_K14_CreateAtYaw(f32 *pos, s32 kind, u16 r, f32 scale);
-/* unit's own declaration: with the definition's void (f32 *pos, s32 v, s16 k, f32 scale) (game/unk_874B90.c), Eff12_Run: 1 of 327 words differ */
+/* unit's own declaration: with the definition's void (f32 *pos, s32 v, s16 k, f32 scale) (game/unk_874B90.c), PitfallTrap_Run: 1 of 327 words differ */
 void StageObj_K11_CreateAtScaled(f32 *pos, u16 r, s32 kind, f32 scale);
 f32 func_364B20(u8 type, f32 dist);
 void StageObj_K0F_Create(f32 *pos, s32 kind, u16 ang, void *owner, f32 scale);
@@ -50,207 +52,207 @@ void Color_EvalKeys(s32 *k, s32 t, u32 *out);
 void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
 s32 Effect_DrawModelAdd(void *list, f32 *v, void *base);
 s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
-extern u8 Eff10_ScaleKeysA[];
-extern u8 Eff10_ScaleKeysB[];
-extern u8 Eff10_Vec3Keys[];
-extern u8 Eff10_ColorKeysA[];
-extern u8 Eff10_ColorKeysB[];
-extern s16 Eff10_Models[];
+extern u8 PlacedItem_BasePartScaleKeys[];
+extern u8 PlacedItem_RaisedPartScaleKeys[];
+extern u8 PlacedItem_SpinPartScaleKeys[];
+extern u8 PlacedItem_BasePartColorKeys[];
+extern u8 PlacedItem_RaisedPartColorKeys[];
+extern s16 PlacedItem_PartModels[];
 u16 Area_DayId(u16 id);
-extern s16 *EmBlangonga_State3Tabs[];
-extern s16 *EmBlangonga_State3TabByZ[];
-extern f32 EmBlangonga_State3PtsA[][3];
-extern f32 EmBlangonga_State3PtsB[][3];
+extern s16 *EmBlangonga_FallListsSnowy3[];
+extern s16 *EmBlangonga_FallListsByZ[];
+extern f32 EmBlangonga_FallPointsSnowy3[][3];
+extern f32 EmBlangonga_FallPointsSnowy8[][3];
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 s32 EmMotion_InFrameRange(void *obj, s32 a, f32 from, f32 to);
 s32 func_364AE0(ObjAttach *o, u16 x);
 void Vec_Diff(f32 *out, f32 *a, f32 *b);
-u16 BowgunShot_MulAddShift(u16 arg0, u16 arg1, s32 arg2, s32 arg3);
-f32 BowgunShot_BitsToSignedFrac(u16 value, u16 bits);
+u16 BowArrow_MulAddShift(u16 arg0, u16 arg1, s32 arg2, s32 arg3);
+f32 BowArrow_BitsToSignedFrac(u16 value, u16 bits);
 f32 Math_Sqrtf(f32 x);
 void Vec_Add(f32 *, f32 *, f32 *);
 void Mtx_Copy(f32 *dst, f32 *src);
-void BowgunShot_ApplyKind(ObjAttach *o);
-f32 BowgunShot_BitsToFrac(u16 arg0, s32 arg1);
-void BowgunShot_ApplyKind2(ObjAttach *o);
-void BowgunShot_Draw(DrawSlot *d);
+void BowArrow_ApplyPower(ObjAttach *o);
+f32 BowArrow_BitsToFrac(u16 arg0, s32 arg1);
+void BowArrow_ApplyEvent(ObjAttach *o);
+void BowArrow_Draw(DrawSlot *d);
 void Vec_RotateSelf(f32 *v, f32 *m);
 EmBone *Em_GetBone(void *obj, s16 bone);
 void Mtx_GetTrans(f32 *out, f32 *m);
 void Vec_RotateX(f32 *v, f32 angle);
-extern void *BowgunShot_MotionRef;
-extern HitShape *BowgunShot_Vals088[];
-extern f32 BowgunShot_KindTimes[][6];
-extern f32 BowgunShot_KindScaleA[];
-extern f32 BowgunShot_KindScaleB[];
-extern f32 BowgunShot_KindBase[];
-extern u8 BowgunShot_LevelScale[];
-u8 Eff10_RunTrap(ObjAttach *o);
+extern void *BowArrow_RowsPtr;
+extern HitShape *BowArrow_HitShapes[];
+extern f32 BowArrow_ChargeFlight[][6];
+extern f32 BowArrow_ChargePowerScale[];
+extern f32 BowArrow_ChargeElementScale[];
+extern f32 BowArrow_ChargeCoatingPower[];
+extern u8 BowArrow_LevelScale[];
+u8 PlacedItem_RunTrap(ObjAttach *o);
 void StageObj_K29_CreateAtDefault(f32 *src, u8 k, f32 scale);
-void Eff10_FollowBone(ObjAttach *o);
-void Eff10_Free(ObjAttach *o);
-void Eff10_InitTrapParts(ObjAttach *o);
-extern s16 Eff10_Motions[];
-extern void *Eff10_MotionDesc;
-extern HitShape *Eff10_Vals08C[];
-void Eff10_DrawMain(DrawSlot *d);
+void PlacedItem_FollowBone(ObjAttach *o);
+void PlacedItem_Free(ObjAttach *o);
+void PlacedItem_InitTrapParts(ObjAttach *o);
+extern s16 PlacedItem_Motions[];
+extern void *PlacedItem_RowsPtr;
+extern HitShape *PlacedItem_Shapes[];
+void PlacedItem_DrawMain(DrawSlot *d);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 s32 Obj_InCurrentArea(void *obj);
 void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-void Eff28_Update(ObjAttach *o);
-s32 EmCephadrome_EffEm14State(Em *em);
-s32 EmKushala_EffEm14State(Em *em);
+void Boomerang_Update(ObjAttach *o);
+s32 EmMelynx_BombState(Em *em);
+s32 EmShakalaka_BombState(Em *em);
 f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
 f32 AreaGrid2_GetFloorY(f32 *pos);
-void Eff09_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
+void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
 void StageObj_K0C_Create(f32 *pos, s16 v, s32 k, u8 c);
-void Eff09_CreateOwned(Player *owner, f32 *pos, s32 kind);
-extern s16 BowgunShot_Kind2Val06F[];
-extern f32 BowgunShot_Kind2Scale[];
-extern s16 BowgunShot_Kind2Val06B[];
+void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
+extern s16 BowArrow_EventHitFx[];
+extern f32 BowArrow_EventPowerScale[];
+extern s16 BowArrow_EventHitSe[];
 void Em_BonePos(void *obj, s16 bone, f32 *out);
 u16 Rand_Next(s32 stream);
-void Eff10_Draw(DrawSlot *d);
-void Eff12_Update(ObjAttach *o);
+void PlacedItem_Draw(DrawSlot *d);
+void PitfallTrap_Update(ObjAttach *o);
 s32 Player_IsLocal(void *obj);
 void Vec_RotateY(f32 *v, f32 angle);
-void Eff28_Draw(DrawSlot *d);
-extern HitShape *Eff28_Val088;
-void Eff10_Run(ObjAttach *o);
-void EffGravios19_Update(ObjAttach *o);
-void EffBlangonga27_Update(ObjAttach *o);
-void Eff22_Update(ObjAttach *o);
-void EffHermitaur26_Update(ObjAttach *o);
-s32 Eff22_FindSpot(f32 *from, f32 *pos, u16 *ang);
+void Boomerang_Draw(DrawSlot *d);
+extern HitShape *Boomerang_HitShapes;
+void PlacedItem_Run(ObjAttach *o);
+void GraviosAttack_Update(ObjAttach *o);
+void BlangongaAttack_Update(ObjAttach *o);
+void StageShot_Update(ObjAttach *o);
+void HermitaurAttack_Update(ObjAttach *o);
+s32 StageShot_FindSpot(f32 *from, f32 *pos, u16 *ang);
 s16 DrawSlotB_Alloc(void);
 DrawSlot *DrawSlotB_Get(s32 i);
 struct MoveObj;
 void MoveObj_StartMotionEntry(struct MoveObj *, s32 a, void *b);
-void Eff12_Draw(DrawSlot *d);
-extern void *Eff12_MotionRef;
-extern HitShape *Eff12_Val088;
-extern s16 *BowgunShot_EventTbls[];
+void PitfallTrap_Draw(DrawSlot *d);
+extern void *PitfallTrap_RowsPtr;
+extern HitShape *PitfallTrap_Val088;
+extern s16 *BowArrow_EventTbls[];
 EmBone *Em_Bone(void *obj, s16 bone);
-void EffEm14_Draw(DrawSlot *d);
+void EmBomb_Draw(DrawSlot *d);
 s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
-void EffEm14_Update(ObjAttach *o);
-void EffEm14_Follow(ObjAttach *o, Em *em);
-void EffEm14_InitTimers(ObjAttach *o);
+void EmBomb_Update(ObjAttach *o);
+void EmBomb_Follow(ObjAttach *o, Em *em);
+void EmBomb_InitTimers(ObjAttach *o);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-void BowgunShot_Update(ObjAttach *o);
-/* The bowgun shot's block of the object buffer (BowgunShot_Create; ObjAttach.buf). */
+void BowArrow_Update(ObjAttach *o);
+/* The bow arrow's block of the object buffer (BowArrow_Create; ObjAttach.buf). */
 typedef struct {
-    u8 bounced;         /* 0x00: 1 once BowgunShot_BounceStep ran (BowgunShot_Draw then stops turning it along its velocity) */
-    u8 event;           /* 0x01: the next entry of the kind's event table (BowgunShot_StepEvents), 0xFF: past the last */
+    u8 bounced;         /* 0x00: 1 once BowArrow_BounceStep ran (BowArrow_Draw then stops turning it along its velocity) */
+    u8 event;           /* 0x01: the next entry of the kind's event table (BowArrow_StepEvents), 0xFF: past the last */
     u8 pad02[2];
-    f32 power;          /* 0x04: the object's power at set up (BowgunShot_ApplyKind2 scales it) */
+    f32 power;          /* 0x04: the object's power at set up (BowArrow_ApplyEvent scales it) */
     f32 attackFactor;   /* 0x08: the player's attackFactor */
-    u8 ammoType;        /* 0x0C: the player's ammoType (BowgunShot_SetKind) */
-    u8 charge;          /* 0x0D: the player's chargeLevel & 3: the row of BowgunShot_KindTimes and the scales */
+    u8 ammoType;        /* 0x0C: the player's ammoType (BowArrow_ApplyCoating) */
+    u8 charge;          /* 0x0D: the player's chargeLevel & 3: the row of BowArrow_ChargeFlight and the scales */
     u8 doneFrames;      /* 0x0E: frames counted once event is 0xFF */
     u8 skills;          /* 0x0F: 1 skill 0x47 (element x1.125), 2 skill 0xBA (range x2), 4 skill 0xB9 (range x0.5) */
     u16 elementFlags;   /* 0x10: the weapon's element bits (Player_WeaponElementFlags) */
     u8 elementLevel;    /* 0x12: the weapon's element value */
-    u8 crit;            /* 0x13: 1 a critical distance (x1.25), 2 too close or far (x0.5) */
-    s16 shot;           /* 0x14: the shot's level: the index into BowgunShot_LevelScale */
-} BowgunShotBuf;
+    u8 crit;            /* 0x13: the affinity roll (BowArrow_Fire): 1 a critical hit (x1.25, HITFX_CRITICAL), 2 a weak one (x0.5, HITFX_WEAK) */
+    s16 shot;           /* 0x14: the shot's level: the index into BowArrow_LevelScale */
+} BowArrowBuf;
 
-void BowgunShot_InitAttack(BowgunShotBuf *b, Player *pl);
-void BowgunShot_SkillFlags(BowgunShotBuf *b, Player *pl);
-extern s16 *BowgunShot_ShotParams[];
-extern u16 BowgunShot_SpreadScale[];
-extern s16 BowgunShot_SpreadDirs[];
+void BowArrow_InitAttack(BowArrowBuf *b, Player *pl);
+void BowArrow_SkillFlags(BowArrowBuf *b, Player *pl);
+extern s16 *BowArrow_ShotParams[];
+extern u16 BowArrow_SpreadScale[];
+extern s16 BowArrow_SpreadDirs[];
 void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
 void Vec_DirToAngles(f32 *dir, s16 *pitch, s16 *yaw);
 void Mtx_RotateX(f32 *m, f32 a);
 void Mtx_RotateY(f32 *m, f32 a);
 s16 Player_GetWeaponStat(Player *p, u8 kind);
 u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-extern void *Eff28_MotionRef;
+extern void *Boomerang_RowsPtr;
 void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-extern s16 EffEm14_Index[];
-void EffEm11_Draw(ObjAttach *o);
-extern HitShape *EffEm11_Vals088[];
-extern void *EffEm11_MotionRef;
-extern void *EffHermitaur26_MotionRef;
-void EffEm14_RunType0(ObjAttach *o);
-void EffEm14_RunType2(ObjAttach *o);
-void EffEm14_RunType4(ObjAttach *o);
+extern s16 EmBomb_Models[];
+void VespoidAttack_Draw(ObjAttach *o);
+extern HitShape *VespoidAttack_HitShapes[];
+extern void *VespoidAttack_RowsPtr;
+extern void *HermitaurAttack_RowsPtr;
+void EmBomb_RunHeld(ObjAttach *o);
+void EmBomb_RunMelynxThrown(ObjAttach *o);
+void EmBomb_RunShakalakaThrown(ObjAttach *o);
 void FlashObj_Remove(EmObj *obj);
 s32 EmBlangonga_IsSmallKind(Em *em);
-extern HitShape *EffBlangonga27_Vals088[];
-extern void *EffBlangonga27_MotionRef;
-u8 BowgunShot_BounceStep(ObjAttach *o);
-void BowgunShot_Move(ObjAttach *o);
-void BowgunShot_Fall(ObjAttach *o);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
-extern HitShape *EffHermitaur26_Vals088[];
-extern HitShape *EffKutku17_Vals088[];
-extern void *EffKutku17_MotionRef;
+extern HitShape *BlangongaAttack_HitShapes[];
+extern void *BlangongaAttack_RowsPtr;
+u8 BowArrow_BounceStep(ObjAttach *o);
+void BowArrow_Move(ObjAttach *o);
+void BowArrow_Fall(ObjAttach *o);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
+extern HitShape *HermitaurAttack_HitShapes[];
+extern HitShape *KutkuAttack_HitShapes[];
+extern void *KutkuAttack_RowsPtr;
 s32 FlashObj_Add(EmObj *obj);
 s32 Model_Draw(u32 h, s32 flags);
 void ObjAttach_Free(ObjAttach *p);
 s32 Player_HasSkill(Player *p, u8 skill);
-void EffEm11_Run(ObjAttach *o);
-void EffEm11_End(ObjAttach *o);
-void EffEm11_Free(ObjAttach *o);
-void Eff12_End(ObjAttach *o);
-void Eff12_Free(ObjAttach *o);
-void EffVelociprey13_Setup(ObjAttach *o);
-void EffVelociprey13_Run(ObjAttach *o);
-void EffVelociprey13_End(ObjAttach *o);
-void EffVelociprey13_Free(ObjAttach *o);
-void EffEm14_End(ObjAttach *o);
-void EffEm14_Free(ObjAttach *o);
-void EffDrome15_Setup(ObjAttach *o);
-void EffDrome15_Run(ObjAttach *o);
-void EffDrome15_End(ObjAttach *o);
-void EffDrome15_Free(ObjAttach *o);
-void EffKhezu16_Setup(ObjAttach *o);
-void EffKhezu16_Run(ObjAttach *o);
-void EffKhezu16_End(ObjAttach *o);
-void EffKhezu16_Free(ObjAttach *o);
-void EffKutku17_End(ObjAttach *o);
-void EffKutku17_Free(ObjAttach *o);
-void EffDiablos18_Setup(ObjAttach *);
-void EffDiablos18_Run(ObjAttach *o);
-void EffDiablos18_End(ObjAttach *o);
-void EffDiablos18_Free(ObjAttach *o);
-void EffGravios19_Setup(ObjAttach *o);
-void EffGravios19_End(ObjAttach *o);
-void EffGravios19_Free(ObjAttach *o);
-void EffPlesioth20_Setup(ObjAttach *o);
-void EffPlesioth20_Run(ObjAttach *o);
-void EffPlesioth20_End(ObjAttach *o);
-void EffPlesioth20_Free(ObjAttach *o);
-void EffCephadrome21_Setup(ObjAttach *o);
-void EffCephadrome21_Run(ObjAttach *o);
-void EffCephadrome21_End(ObjAttach *o);
-void EffCephadrome21_Free(ObjAttach *o);
-void Eff22_Hit(ObjAttach *o);
-void Eff22_End(ObjAttach *o);
-void Eff22_Free(ObjAttach *o);
-void EffCephadrome23_Setup(ObjAttach *o);
-void EffCephadrome23_Run(ObjAttach *o);
-void EffCephadrome23_End(ObjAttach *o);
-void EffCephadrome23_Free(ObjAttach *o);
-void BowgunShot_End(ObjAttach *o);
-void BowgunShot_Free(ObjAttach *o);
-void EffGaruga25_Setup(ObjAttach *o);
-void EffGaruga25_Run(ObjAttach *o);
-void EffGaruga25_End(ObjAttach *o);
-void EffGaruga25_Free(ObjAttach *o);
-void EffHermitaur26_End(ObjAttach *o);
-void EffHermitaur26_Free(ObjAttach *o);
-void EffBlangonga27_End(ObjAttach *o);
-void EffBlangonga27_Free(ObjAttach *o);
-void Eff28_Run(ObjAttach *o);
-void Eff28_End(ObjAttach *o);
-void Eff28_Free(ObjAttach *o);
+void VespoidAttack_Run(ObjAttach *o);
+void VespoidAttack_End(ObjAttach *o);
+void VespoidAttack_Free(ObjAttach *o);
+void PitfallTrap_End(ObjAttach *o);
+void PitfallTrap_Free(ObjAttach *o);
+void VelocipreyAttack_Setup(ObjAttach *o);
+void VelocipreyAttack_Run(ObjAttach *o);
+void VelocipreyAttack_End(ObjAttach *o);
+void VelocipreyAttack_Free(ObjAttach *o);
+void EmBomb_End(ObjAttach *o);
+void EmBomb_Free(ObjAttach *o);
+void DromeAttack_Setup(ObjAttach *o);
+void DromeAttack_Run(ObjAttach *o);
+void DromeAttack_End(ObjAttach *o);
+void DromeAttack_Free(ObjAttach *o);
+void KhezuAttack_Setup(ObjAttach *o);
+void KhezuAttack_Run(ObjAttach *o);
+void KhezuAttack_End(ObjAttach *o);
+void KhezuAttack_Free(ObjAttach *o);
+void KutkuAttack_End(ObjAttach *o);
+void KutkuAttack_Free(ObjAttach *o);
+void DiablosAttack_Setup(ObjAttach *);
+void DiablosAttack_Run(ObjAttach *o);
+void DiablosAttack_End(ObjAttach *o);
+void DiablosAttack_Free(ObjAttach *o);
+void GraviosAttack_Setup(ObjAttach *o);
+void GraviosAttack_End(ObjAttach *o);
+void GraviosAttack_Free(ObjAttach *o);
+void PlesiothAttack_Setup(ObjAttach *o);
+void PlesiothAttack_Run(ObjAttach *o);
+void PlesiothAttack_End(ObjAttach *o);
+void PlesiothAttack_Free(ObjAttach *o);
+void CephadromeAttack_Setup(ObjAttach *o);
+void CephadromeAttack_Run(ObjAttach *o);
+void CephadromeAttack_End(ObjAttach *o);
+void CephadromeAttack_Free(ObjAttach *o);
+void StageShot_Hit(ObjAttach *o);
+void StageShot_End(ObjAttach *o);
+void StageShot_Free(ObjAttach *o);
+void CephalosAttack_Setup(ObjAttach *o);
+void CephalosAttack_Run(ObjAttach *o);
+void CephalosAttack_End(ObjAttach *o);
+void CephalosAttack_Free(ObjAttach *o);
+void BowArrow_End(ObjAttach *o);
+void BowArrow_Free(ObjAttach *o);
+void GarugaAttack_Setup(ObjAttach *o);
+void GarugaAttack_Run(ObjAttach *o);
+void GarugaAttack_End(ObjAttach *o);
+void GarugaAttack_Free(ObjAttach *o);
+void HermitaurAttack_End(ObjAttach *o);
+void HermitaurAttack_Free(ObjAttach *o);
+void BlangongaAttack_End(ObjAttach *o);
+void BlangongaAttack_Free(ObjAttach *o);
+void Boomerang_Run(ObjAttach *o);
+void Boomerang_End(ObjAttach *o);
+void Boomerang_Free(ObjAttach *o);
 s32 Gs_SetState(u8 reg, u32 v);
 void Vec_Copy(f32 *out, f32 *in);
 f32 AreaGrid2_GetFloorYFiltered(f32 *);
@@ -262,202 +264,229 @@ void DrawSlotB_Free(s32);
 void MoveObj_AddVelocity(struct MoveObj *);
 void MoveObj_Integrate(struct MoveObj *);
 extern s16 gBowgunClipShots[][4];
-void BowgunShot_Fire(Player *pl, s16 shot);
+void BowArrow_Fire(Player *pl, s16 shot);
 void StageObj_K29_CreateOnPlayerDefault(Player *p, u8 k, f32 scale);
 f32 Vec_Distance(f32 *a, f32 *b);
 void CamShake_SetAEverywhere(s32);
 extern f32 gCamPos;
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
 s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Eff22_CamShake(ObjAttach *o);
+void StageShot_CamShake(ObjAttach *o);
 void Effect02_SpawnScaled(s16 ang, u8 type, u8 sub, f32 *pos, f32 scale);
 void Effect0D_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 u8 Player_InCurrentArea(void *obj);
 ObjAttach *ObjAttach_Alloc(s32 n);
-void EffDrome15_Update(ObjAttach *o);
-void EffKhezu16_Update(ObjAttach *o);
-void EffKutku17_Update(ObjAttach *o);
-void EffDiablos18_Update(ObjAttach *o);
-void EffPlesioth20_Update(ObjAttach *o);
-void EffCephadrome21_Update(ObjAttach *o);
-void EffCephadrome23_Update(ObjAttach *o);
-void EffGaruga25_Update(ObjAttach *o);
+void DromeAttack_Update(ObjAttach *o);
+void KhezuAttack_Update(ObjAttach *o);
+void KutkuAttack_Update(ObjAttach *o);
+void DiablosAttack_Update(ObjAttach *o);
+void PlesiothAttack_Update(ObjAttach *o);
+void CephadromeAttack_Update(ObjAttach *o);
+void CephalosAttack_Update(ObjAttach *o);
+void GarugaAttack_Update(ObjAttach *o);
 f32 Math_Absf(f32 x);
 s32 Player_TestSetFlags(void *, s32 mask);
 void MoveObj_StartMotionOwned(struct MoveObj *, s32 a, s32 b, void *c);
-extern HitShape *EffDiablos18_Vals088[];
-extern void *EffDiablos18_MotionRef;
-extern HitShape *EffPlesioth20_Vals088[];
-extern void *EffPlesioth20_MotionRef;
-extern HitShape *EffCephadrome21_Vals088[];
-extern void *EffCephadrome21_MotionRef;
-extern HitShape *EffCephadrome23_Vals088[];
-extern void *EffCephadrome23_MotionRef;
-extern HitShape *EffGaruga25_Vals088[];
-extern void *EffGaruga25_MotionRef;
-extern HitShape *EffVelociprey13_Vals088[];
-extern void *EffVelociprey13_MotionRef;
-extern HitShape *EffDrome15_Vals088[];
-extern void *EffDrome15_MotionRef;
-extern HitShape *EffKhezu16_Vals088[];
-extern void *EffKhezu16_MotionRef;
-extern HitShape *EffGravios19_Vals088[];
-extern void *EffGravios19_MotionRef;
-void EffEm11_Create(Em *em, s8 kind);
-void EffVelociprey13_Create(Em *em, s8 kind);
-void EffEm11_Update(ObjAttach *o);
-void EffVelociprey13_Update(ObjAttach *o);
-void EffKutku17_Setup(ObjAttach *o);
-void EffHermitaur26_Run(ObjAttach *o);
-/* BowgunShot_Kinds: 0x20 bytes per kind of the effect updated by BowgunShot_Update */
-typedef struct { s16 unk0; s16 unk2; f32 a; f32 unk8; f32 b; f32 unk10; f32 unk14; f32 unk18; s16 c; u8 type; u8 count; } Rec8A5780;
-extern Rec8A5780 BowgunShot_Kinds[];
-void BowgunShot_Run(ObjAttach *o);
-void BowgunShot_Hit(ObjAttach *o);
-void EffBlangonga27_Setup(ObjAttach *o);
-void EffKutku17_Run(ObjAttach *o);
-void EffEm14_Run(ObjAttach *o);
-void EffEm11_Setup(ObjAttach *o);
-void EffHermitaur26_Setup(ObjAttach *o);
-void Eff28_Hit(ObjAttach *o);
+extern HitShape *DiablosAttack_HitShapes[];
+extern void *DiablosAttack_RowsPtr;
+extern HitShape *PlesiothAttack_HitShapes[];
+extern void *PlesiothAttack_RowsPtr;
+extern HitShape *CephadromeAttack_HitShapes[];
+extern void *CephadromeAttack_RowsPtr;
+extern HitShape *CephalosAttack_HitShapes[];
+extern void *CephalosAttack_RowsPtr;
+extern HitShape *GarugaAttack_HitShapes[];
+extern void *GarugaAttack_RowsPtr;
+extern HitShape *VelocipreyAttack_HitShapes[];
+extern void *VelocipreyAttack_RowsPtr;
+extern HitShape *DromeAttack_HitShapes[];
+extern void *DromeAttack_RowsPtr;
+extern HitShape *KhezuAttack_HitShapes[];
+extern void *KhezuAttack_RowsPtr;
+extern HitShape *GraviosAttack_HitShapes[];
+extern void *GraviosAttack_RowsPtr;
+void VespoidAttack_Create(Em *em, s8 kind);
+void VelocipreyAttack_Create(Em *em, s8 kind);
+void VespoidAttack_Update(ObjAttach *o);
+void VelocipreyAttack_Update(ObjAttach *o);
+void KutkuAttack_Setup(ObjAttach *o);
+void HermitaurAttack_Run(ObjAttach *o);
+/* A row of BowArrow_Kinds (0x20 bytes): one kind of arrow shot. */
+typedef struct {
+    s16 keepSpeed;      /* 0x00: 0, arrow i of a shot flies at speed * (1 - 0.2 i) */
+    s16 eventTbl;       /* 0x02: the index into BowArrow_EventTbls, -1 none */
+    f32 speed;          /* 0x04: the start speed */
+    f32 speedRand;      /* 0x08: the random part of the speed */
+    f32 gravity;        /* 0x0C */
+    f32 gravityRand;    /* 0x10: the random part of the gravity */
+    f32 lift;           /* 0x14: the rise per frame, by the horizontal speed */
+    f32 sway;           /* 0x18: the side drift of the first 20 frames */
+    s16 straightFrames; /* 0x1C: the frames flown without gravity */
+    u8 hitMode;         /* 0x1E: 2 pierces count times; 1 rides the monster's bone */
+    u8 count;           /* 0x1F */
+} BowArrowKind;
+extern BowArrowKind BowArrow_Kinds[];
+void BowArrow_Run(ObjAttach *o);
+void BowArrow_Hit(ObjAttach *o);
+void BlangongaAttack_Setup(ObjAttach *o);
+void KutkuAttack_Run(ObjAttach *o);
+void EmBomb_Run(ObjAttach *o);
+void VespoidAttack_Setup(ObjAttach *o);
+void HermitaurAttack_Setup(ObjAttach *o);
+void Boomerang_Hit(ObjAttach *o);
 void Player_WeaponElementFlags(void *pl, u16 *flags, s8 *level);
-void BowgunShot_Fire(Player *pl, s16 shot);
-void EffEm14_Setup(ObjAttach *o);
-void Eff12_Setup(ObjAttach *o);
-void Eff28_Setup(ObjAttach *o);
-void EffGravios19_Run(ObjAttach *o);
-void BowgunShot_Setup(ObjAttach *o);
-void BowgunShot_State5(ObjAttach *o);
-void EffBlangonga27_Run(ObjAttach *o);
-void Eff12_Run(ObjAttach *o);
-void Eff22_Setup(ObjAttach *o);
-void Eff22_Run(ObjAttach *o);
-s8 BowgunShot_StepEvents(ObjAttach *o);
+void BowArrow_Fire(Player *pl, s16 shot);
+void EmBomb_Setup(ObjAttach *o);
+void PitfallTrap_Setup(ObjAttach *o);
+void Boomerang_Setup(ObjAttach *o);
+void GraviosAttack_Run(ObjAttach *o);
+void BowArrow_Setup(ObjAttach *o);
+void BowArrow_Deflect(ObjAttach *o);
+void BlangongaAttack_Run(ObjAttach *o);
+void PitfallTrap_Run(ObjAttach *o);
+void StageShot_Setup(ObjAttach *o);
+void StageShot_Run(ObjAttach *o);
+s8 BowArrow_StepEvents(ObjAttach *o);
 /* end of prototypes */
 
-/* A part of the trap effect Eff10: three from Eff10Buf.parts, a DrawSlotB slot each (Eff10_Draw). */
+/* A part of the trap effect PlacedItem: three from PlacedItemBuf.parts, a DrawSlotB slot each (PlacedItem_Draw). */
 typedef struct {
     s16 drawSlot;       /* 0x00: its DrawSlotB index */
-    s16 kind;           /* 0x02: its index 0..2, the part's kind (Eff10_RunTrap, Eff10_Draw switch on it) */
+    s16 kind;           /* 0x02: its index 0..2, the part's kind (PlacedItem_RunTrap, PlacedItem_Draw switch on it) */
     DrawSlot *slot;     /* 0x04: DrawSlotB_Get(drawSlot), NULL: none */
     s16 timer;          /* 0x08: frames, from a negative wait; drawn while above 0 */
     s16 frame;          /* 0x0A: the colour key frame (up to 9) */
     u16 angle;          /* 0x0C: turned by 0x2AAB a frame */
     u8 pad0E[2];
-} Eff10Part;
+} PlacedItemPart;
 
-/* The trap effect Eff10's block of the object buffer. */
+/* The trap effect PlacedItem's block of the object buffer. */
 typedef struct {
-    u8 phase;           /* 0x00: Eff10_RunTrap switches on it */
+    u8 phase;           /* 0x00: PlacedItem_RunTrap switches on it */
     u8 unk01;           /* 0x01 */
     u8 unk02;           /* 0x02 */
     u8 unk03;           /* 0x03 */
-    Em *em;             /* 0x04: the monster whose bone it follows (Eff10_FollowBone) */
+    Em *em;             /* 0x04: the monster whose bone it follows (PlacedItem_FollowBone) */
     f32 ofs[3];         /* 0x08: its offset in the bone's frame */
     s16 bone;           /* 0x14 */
     u8 pad16[2];
-    Eff10Part parts[3]; /* 0x18 */
-} Eff10Buf;
+    PlacedItemPart parts[3]; /* 0x18 */
+} PlacedItemBuf;
 
-void Eff10_InitTrapParts(ObjAttach *o)
+/*
+ * Sets up the holding trap's (type 4) three parts in PlacedItemBuf and clears
+ * phase. Each part gets its index as its kind and a DrawSlotB slot drawn by
+ * PlacedItem_Draw at the trap's position (part 1 five higher). Part 2 also
+ * gets a random angle. A part with no free slot gets slot NULL.
+ */
+void PlacedItem_InitTrapParts(ObjAttach *o)
 {
-    Eff10Buf *buf = (Eff10Buf *) o->buf;
-    Eff10Part *p;
+    PlacedItemBuf *buf = (PlacedItemBuf *) o->buf;
+    PlacedItemPart *trapPart;
     s16 i;
 
     buf->phase = 0;
     buf->unk01 = 0;
     buf->unk02 = 0;
     buf->unk03 = 0;
-    p = buf->parts;
-    for (i = 0; i < 3; i++, p++) {
-        p->kind = i;
-        p->timer = 0;
-        p->frame = 0;
-        p->drawSlot = DrawSlotB_Alloc();
-        switch (p->kind) {
+    trapPart = buf->parts;
+    for (i = 0; i < 3; i++, trapPart++) {
+        trapPart->kind = i;
+        trapPart->timer = 0;
+        trapPart->frame = 0;
+        trapPart->drawSlot = DrawSlotB_Alloc();
+        switch (trapPart->kind) {
         case 0:
         case 1:
         default:
-            p->angle = 0;
+            trapPart->angle = 0;
             break;
         case 2:
-            p->angle = Rand_Next(1);
+            trapPart->angle = Rand_Next(1);
             break;
         }
-        if (p->drawSlot != -1) {
-            p->slot = DrawSlotB_Get(p->drawSlot);
-            p->slot->owner = o;
-            p->slot->part = i;
-            p->slot->draw = Eff10_Draw;
-            Vec_Copy(p->slot->pos, o->pos);
-            switch (p->kind) {
+        if (trapPart->drawSlot != -1) {
+            trapPart->slot = DrawSlotB_Get(trapPart->drawSlot);
+            trapPart->slot->owner = o;
+            trapPart->slot->part = i;
+            trapPart->slot->draw = PlacedItem_Draw;
+            Vec_Copy(trapPart->slot->pos, o->pos);
+            switch (trapPart->kind) {
             case 1:
-                p->slot->pos[1] += 5.0f;
+                trapPart->slot->pos[1] += 5.0f;
                 break;
             }
         } else {
-            p->slot = NULL;
+            trapPart->slot = NULL;
         }
     }
 }
 
-void Eff10_Setup(ObjAttach *o)
+/*
+ * Sets a placed item up by type. The barrels (0, 1, 6) get a hurt shape and
+ * ATKF_SHIELDED, so a hit sets them off. Types 2 and 3 get a hit shape that
+ * hits no monster. The holding trap (4) gets a hit shape that hits no player;
+ * it starts hidden, with its set effect, its sound and three parts. The stuck
+ * bomb (5) may hit its owner, follows its bone, and with the bomb skill
+ * (stateVar0 1) has 1.5 times the power, at most 0xFF. Then it takes a
+ * DrawSlotB slot for PlacedItem_DrawMain, or frees the item.
+ */
+void PlacedItem_Setup(ObjAttach *o)
 {
-    u16 v;
+    u16 boosted;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
     o->unk008 = 0xFF;
     o->hitPhase = 0;
-    o->unk01E = 0;
+    o->didHit = 0;
     o->targetEm = 0;
     o->targetPart = 0;
-    if (Eff10_Motions[o->type] != -1) {
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, Eff10_Motions[o->type], &Eff10_MotionDesc);
+    if (PlacedItem_Motions[o->type] != -1) {
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, PlacedItem_Motions[o->type], &PlacedItem_RowsPtr);
     }
     switch (o->type) {
-    case 0:
-    case 1:
-    case 6:
+    case PLACED_LARGE_BARREL_BOMB:
+    case PLACED_LARGE_BARREL_BOMB_B:
+    case PLACED_BOMB:
         o->hitList = 0;
-        o->hurtList = Eff10_Vals08C[o->type];
-        Player_TestSetFlags(o, 0x100);
+        o->hurtList = PlacedItem_Shapes[o->type];
+        Player_TestSetFlags(o, ATKF_SHIELDED);
         break;
-    case 2:
-    case 3:
+    case PLACED_PLAYER_HIT_A:
+    case PLACED_PLAYER_HIT_B:
     default:
-        o->hitList = Eff10_Vals08C[o->type];
+        o->hitList = PlacedItem_Shapes[o->type];
         o->hurtList = 0;
-        Player_TestSetFlags(o, 0x80);
+        Player_TestSetFlags(o, ATKF_NO_EM);
         break;
-    case 4:
-        o->hitList = Eff10_Vals08C[o->type];
+    case PLACED_TRAP:
+        o->hitList = PlacedItem_Shapes[o->type];
         o->hurtList = 0;
-        Player_TestSetFlags(o, 0x400);
+        Player_TestSetFlags(o, ATKF_NO_PLAYER);
         o->rotY = 0;
         o->visible = 0;
         if (gScene.area == o->area) {
             StageObj_K29_CreateAtDefault(o->pos, 5, 1.0f);
             Sound_PlaySeAtPosChecked(1, 0x89, 0, o->pos, 1, 0);
         }
-        Eff10_InitTrapParts(o);
+        PlacedItem_InitTrapParts(o);
         break;
-    case 5:
-        o->hitList = Eff10_Vals08C[o->type];
+    case PLACED_MONSTER_BOMB:
+        o->hitList = PlacedItem_Shapes[o->type];
         o->hurtList = 0;
-        Player_TestSetFlags(o, 4);
-        Eff10_FollowBone(o);
+        Player_TestSetFlags(o, ATKF_HITS_OWNER);
+        PlacedItem_FollowBone(o);
         o->aux = 0;
         switch (o->stateVar0) {
         case 1:
-            v = 1.5f * o->power;
-            if (v > 0xFF) {
-                v = 0xFF;
+            boosted = 1.5f * o->power;
+            if (boosted > 0xFF) {
+                boosted = 0xFF;
             }
-            o->power = v;
+            o->power = boosted;
             break;
         }
         break;
@@ -467,38 +496,50 @@ void Eff10_Setup(ObjAttach *o)
     if (o->drawSlot != -1) {
         o->drawSlotBuf = DrawSlotB_Get(o->drawSlot);
         o->drawSlotBuf->owner = o;
-        o->drawSlotBuf->draw = Eff10_DrawMain;
+        o->drawSlotBuf->draw = PlacedItem_DrawMain;
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
         OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
     } else {
-        Eff10_Free(o);
+        PlacedItem_Free(o);
     }
 }
 
-u8 Eff10_RunTrap(ObjAttach *o)
+/*
+ * The holding trap's frame (PlacedItem_Run, type 4); returns 1 once the trap
+ * is spent, else 0. The trap appears after 2 frames. buf->phase 0: armed. It
+ * catches the monster its hit touched (didHit), or a monster within
+ * func_364B20(type, 500) whose holdTimer2 is above 0 and that is not defeated
+ * or in an event, and makes the StageObj_K0F catch effect. Phase 1: waits up
+ * to 60 frames for the monster's holdTimer2. Phase 2: holds until holdTimer2
+ * runs out; once the monster is defeated or in an event, it stops counting in
+ * gScene.placed2. Every frame it turns, steps its three parts (part 2
+ * restarts every 20 frames, after a random wait of 30-45 frames except while
+ * holding) and queues their draw slots.
+ */
+u8 PlacedItem_RunTrap(ObjAttach *o)
 {
-    Eff10Buf *buf = (Eff10Buf *) o->buf;
-    Eff10Part *p = buf->parts;
-    Em *m = o->targetEm;
-    Em *e;
+    PlacedItemBuf *buf = (PlacedItemBuf *) o->buf;
+    PlacedItemPart *part = buf->parts;
+    Em *target = o->targetEm;
+    Em *em;
     s16 i;
     u8 found = 0;
-    f32 d;
+    f32 dist;
 
     if (o->ownerMotion > 2) {
         o->visible = 1;
     }
     switch (buf->phase) {
     case 0:
-        if (o->unk01E != 0) {
+        if (o->didHit != 0) {
             found = 1;
         } else {
-            for (e = gEms, i = 0; i < 20; i++, e++) {
-                if (e->active != 0 && e->area == o->area && (u32) (e->stateGroup - 5) > 1 && (s8) e->holdTimer2 > 0) {
-                    d = Vec_Distance(o->pos, &e->posX);
-                    if (d <= func_364B20(e->type, 500.0f)) {
-                        o->targetEm = e;
-                        m = e;
+            for (em = gEms, i = 0; i < EM_COUNT; i++, em++) {
+                if (em->active != 0 && em->area == o->area && (u32) (em->stateGroup - EM_GROUP_DEFEAT) > 1 && (s8) em->holdTimer2 > 0) {
+                    dist = Vec_Distance(o->pos, &em->posX);
+                    if (dist <= func_364B20(em->type, 500.0f)) {
+                        o->targetEm = em;
+                        target = em;
                         found = 2;
                         break;
                     }
@@ -508,7 +549,7 @@ u8 Eff10_RunTrap(ObjAttach *o)
         if (found) {
             o->hitPhase = 0;
             o->aux = 0;
-            if (m == NULL) {
+            if (target == NULL) {
                 return 1;
             }
             buf->phase++;
@@ -522,68 +563,68 @@ u8 Eff10_RunTrap(ObjAttach *o)
             o->aux = 0;
             return 1;
         }
-        if (m == NULL) {
+        if (target == NULL) {
             return 1;
         }
-        if (m->active == 0) {
+        if (target->active == 0) {
             return 1;
         }
-        if ((s8) m->holdTimer2 != 0) {
+        if ((s8) target->holdTimer2 != 0) {
             buf->phase++;
         }
         break;
     case 2:
-        if (m == NULL) {
+        if (target == NULL) {
             return 1;
         }
-        if (m->active == 0) {
+        if (target->active == 0) {
             return 1;
         }
-        if (o->stateVar1 == 2 && (m->stateGroup == 6 || m->stateGroup == 5)) {
+        if (o->stateVar1 == 2 && (target->stateGroup == EM_GROUP_EVENT || target->stateGroup == EM_GROUP_DEFEAT)) {
             (gScene.placed2)--;
             o->stateVar1 = 0;
         }
-        if ((s8) m->holdTimer2 <= 0) {
+        if ((s8) target->holdTimer2 <= 0) {
             return 1;
         }
         break;
     }
     o->rotY += 0x1555;
-    for (i = 0; i < 3; i++, p++) {
-        switch (p->kind) {
+    for (i = 0; i < 3; i++, part++) {
+        switch (part->kind) {
         case 0:
         case 1:
         default:
-            if (p->timer >= 2) {
-                p->timer = 0;
+            if (part->timer >= 2) {
+                part->timer = 0;
             }
-            if (p->frame >= 9) {
-                p->frame = 9;
+            if (part->frame >= 9) {
+                part->frame = 9;
             }
             break;
         case 2:
-            if (p->timer >= 20) {
+            if (part->timer >= 20) {
                 if (buf->phase == 2) {
-                    p->timer = 0;
+                    part->timer = 0;
                 } else {
-                    p->timer = -((Rand_Next(1) & 0xF) + 30);
+                    part->timer = -((Rand_Next(1) & 0xF) + 30);
                 }
             }
-            if (p->timer == 0 && o->area == gScene.area) {
+            if (part->timer == 0 && o->area == gScene.area) {
                 Sound_PlaySeAtPosChecked(1, 0x8A, 0, o->pos, 1, 0);
             }
-            p->angle += 0x2AAB;
+            part->angle += 0x2AAB;
             break;
         }
-        (p->timer)++;
-        (p->frame)++;
-        if (p->slot != NULL) {
-            switch (p->kind) {
+        (part->timer)++;
+        (part->frame)++;
+        if (part->slot != NULL) {
+            switch (part->kind) {
             case 2:
-                OT_AddByDepth(gDrawOt32, p->slot, 0x20U, 0);
+                OT_AddByDepth(gDrawOt32, part->slot, 0x20U, 0);
                 break;
             default:
-                OT_AddByDepth(gDrawOtSorted, p->slot, 0x40U, 0);
+                OT_AddByDepth(gDrawOtSorted, part->slot, 0x40U, 0);
                 break;
             }
         }
@@ -591,68 +632,83 @@ u8 Eff10_RunTrap(ObjAttach *o)
     return 0;
 }
 
-void Eff10_FollowBone(ObjAttach *o)
+/*
+ * Places the stuck bomb (type 5) on its monster: PlacedItemBuf.ofs turned by
+ * the matrix of bone buf->bone of buf->em, added to the bone's position, 50
+ * higher.
+ */
+void PlacedItem_FollowBone(ObjAttach *o)
 {
-    Eff10Buf *buf = (Eff10Buf *) o->buf;
-    f32 v[3];
-    f32 *m;
+    PlacedItemBuf *buf = (PlacedItemBuf *) o->buf;
+    f32 rotOfs[3];
+    f32 *boneMtx;
 
-    m = (f32 *)Em_Bone(buf->em, buf->bone);
-    Vec_Rotate(v, buf->ofs, m);
-    o->pos[0] = m[12] + v[0];
-    o->pos[1] = 50.0f + (m[13] + v[1]);
-    o->pos[2] = m[14] + v[2];
+    boneMtx = (f32 *)Em_Bone(buf->em, buf->bone);
+    Vec_Rotate(rotOfs, buf->ofs, boneMtx);
+    o->pos[0] = boneMtx[12] + rotOfs[0];
+    o->pos[1] = 50.0f + (boneMtx[13] + rotOfs[1]);
+    o->pos[2] = boneMtx[14] + rotOfs[2];
 }
 
-void Eff10_Run(ObjAttach *o)
+/*
+ * A placed item's frame. Every item ends after 9000 frames. A barrel (0, 1,
+ * 6) bursts once hit (wasHit): it makes a StageObj_K0E and an Explosion of
+ * kind 2 (type 0) or 0x16 (type 1), both passing the bomb skill in stateVar0,
+ * or of kind 0x21 with its own effects and sound (type 6). Types 2 and 3 keep
+ * their hit window open, and the trap runs PlacedItem_RunTrap. The stuck bomb
+ * follows its bone for 224 frames, then bursts once (hitDelay 5, a sound and
+ * a StageObj_K0E) and hides; it ends when its hit window closes. Then it
+ * queues its draw slot at its position.
+ */
+void PlacedItem_Run(ObjAttach *o)
 {
     if (++o->ownerMotion > 9000) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
     switch (o->type) {
-    case 0:
-    case 1:
-    case 6:
+    case PLACED_LARGE_BARREL_BOMB:
+    case PLACED_LARGE_BARREL_BOMB_B:
+    case PLACED_BOMB:
         if (o->wasHit != 0) {
-            o->state = 2;
-            if (o->type == 0) {
+            o->state = ATTACH_END;
+            if (o->type == PLACED_LARGE_BARREL_BOMB) {
                 if (gScene.area == o->area) {
                     StageObj_K0E_CreateScaled(o->pos, 0, 2.0f);
                 }
-                Eff09_CreateAt(o->pos, 2, o->area, o->stateVar0);
-            } else if (o->type == 1) {
+                Explosion_CreateAt(o->pos, 2, o->area, o->stateVar0);
+            } else if (o->type == PLACED_LARGE_BARREL_BOMB_B) {
                 if (gScene.area == o->area) {
                     StageObj_K0E_CreateScaled(o->pos, 0, 3.0f);
                 }
-                Eff09_CreateAt(o->pos, 0x16, o->area, o->stateVar0);
+                Explosion_CreateAt(o->pos, 0x16, o->area, o->stateVar0);
             } else {
                 if (gScene.area == o->area) {
                     StageObj_K29_CreateAtDefault(o->pos, 0xD, 1.0f);
                     StageObj_K29_CreateAtDefault(o->pos, 0xE, 1.0f);
                     Sound_PlaySeAtPosChecked(1, 0x93, 0, o->pos, 1, 0);
                 }
-                Eff09_CreateAt(o->pos, 0x21, o->area, 0);
+                Explosion_CreateAt(o->pos, 0x21, o->area, 0);
             }
         }
         break;
-    case 2:
-    case 3:
+    case PLACED_PLAYER_HIT_A:
+    case PLACED_PLAYER_HIT_B:
     default:
         o->hitFrames = 99;
         break;
-    case 4:
-        if (Eff10_RunTrap(o) == 1) {
+    case PLACED_TRAP:
+        if (PlacedItem_RunTrap(o) == 1) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         o->hitFrames = 99;
         break;
-    case 5:
+    case PLACED_MONSTER_BOMB:
         if (o->ownerMotion <= 224) {
-            Eff10_FollowBone(o);
+            PlacedItem_FollowBone(o);
             o->hitDelay = 99;
         } else if (o->aux == 0) {
             o->hitDelay = 5;
@@ -664,7 +720,7 @@ void Eff10_Run(ObjAttach *o)
             o->visible = 0;
         }
         if (o->hitPhase == 0) {
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         break;
@@ -675,25 +731,30 @@ void Eff10_Run(ObjAttach *o)
     }
 }
 
-void Eff10_Hit(ObjAttach *o)
+/*
+ * ATTACH_HIT: the placed item hit something this frame. The trap and the
+ * stuck bomb (4, 5) run on (PlacedItem_Run). The others end, type 2 with a
+ * small StageObj_K0E puff, and queue their draw slot.
+ */
+void PlacedItem_Hit(ObjAttach *o)
 {
     switch (o->type) {
-    case 0:
-    case 1:
-    case 3:
-    case 6:
+    case PLACED_LARGE_BARREL_BOMB:
+    case PLACED_LARGE_BARREL_BOMB_B:
+    case PLACED_PLAYER_HIT_B:
+    case PLACED_BOMB:
     default:
-        o->state = 2;
+        o->state = ATTACH_END;
         break;
-    case 2:
-        o->state = 2;
+    case PLACED_PLAYER_HIT_A:
+        o->state = ATTACH_END;
         if (o->area == gScene.area) {
             StageObj_K0E_CreateScaled(o->pos, 0, 1.0f);
         }
         break;
-    case 4:
-    case 5:
-        Eff10_Run(o);
+    case PLACED_TRAP:
+    case PLACED_MONSTER_BOMB:
+        PlacedItem_Run(o);
         return;
     }
     if (o->drawSlotBuf != NULL) {
@@ -702,40 +763,53 @@ void Eff10_Hit(ObjAttach *o)
     }
 }
 
-void Eff10_EndBurst(ObjAttach *o)
+/*
+ * The holding trap's end (PlacedItem_End, type 4): a small StageObj_K0E puff
+ * and sound 0x4D in the current area, then frees the DrawSlotB slots of its
+ * three parts.
+ */
+void PlacedItem_EndBurst(ObjAttach *o)
 {
     s16 i;
-    Eff10Part *p;
+    PlacedItemPart *part;
 
-    p = ((Eff10Buf *) o->buf)->parts;
+    part = ((PlacedItemBuf *) o->buf)->parts;
     if (o->area == gScene.area) {
         StageObj_K0E_CreateScaled(o->pos, 0, 0.5f);
         Sound_PlaySeAtPosChecked(1, 0x4D, 0, o->pos, 1, 0);
     }
     for (i = 0; i < 3; i++) {
-        if (*(s32 *)&p->slot != 0) {
-            DrawSlotB_Free(p->drawSlot);
+        if (*(s32 *)&part->slot != 0) {
+            DrawSlotB_Free(part->drawSlot);
         }
-        p++;
+        part++;
     }
 }
 
-void Eff10_End(ObjAttach *o)
+/*
+ * Hides the placed item, frees its draw slot (and the trap's parts,
+ * PlacedItem_EndBurst) and frees it on the next update.
+ */
+void PlacedItem_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlotB_Free(o->drawSlot);
     }
     switch (o->type) {
-    case 4:
-        Eff10_EndBurst(o);
+    case PLACED_TRAP:
+        PlacedItem_EndBurst(o);
         break;
     }
 }
 
-void Eff10_Free(ObjAttach *o)
+/*
+ * Takes the item off the local player's count (gScene.placed1 when stateVar1
+ * is 1, placed2 when it is 2) and frees it.
+ */
+void PlacedItem_Free(ObjAttach *o)
 {
     switch (o->stateVar1) {
     case 1:
@@ -748,9 +822,13 @@ void Eff10_Free(ObjAttach *o)
     ObjAttach_Free(o);
 }
 
-void Eff10_DrawModel(ModelMatSet *mdl, f32 *m, ModelMat *tex)
+/*
+ * Draws model set mdl with matrix m, lit by the materials tex, then restores
+ * the default draw state.
+ */
+void PlacedItem_DrawModel(ModelMatSet *mdl, f32 *mtx, ModelMat *tex)
 {
-    Gs_SetState(0x1A, (s32) m);
+    Gs_SetState(0x1A, (s32) mtx);
     if (mdl != NULL && mdl->id != -1) {
         Gs_SetLightList(tex, mdl);
         Draw_ApplyStates(mdl->flags);
@@ -759,11 +837,17 @@ void Eff10_DrawModel(ModelMatSet *mdl, f32 *m, ModelMat *tex)
     Draw_SetDefaultState();
 }
 
-void Eff10_DrawMain(DrawSlot *d)
+/*
+ * Draws the placed item's model from gCommonModels[0] while it is visible in
+ * the current area, turned by rotY at pos. The barrels use set 55 at scale 3
+ * (types 0, 5), 4.5 (1) or 2.1 (6); type 6 shows the set's material 1, the
+ * others hide it. Types 2, 3 and 4 use the trap set 116.
+ */
+void PlacedItem_DrawMain(DrawSlot *slot)
 {
-    f32 m[16];
+    f32 mtx[16];
 //{
-    ObjAttach *o = d->owner;
+    ObjAttach *o = slot->owner;
     ModelMat *tex;
     ModelMatSet *model;
     Model *mdl;
@@ -774,22 +858,22 @@ void Eff10_DrawMain(DrawSlot *d)
         if (mdl != NULL && mdl->active != 0) {
             tex = mdl->mats;
             switch (o->type) {
-            case 0:
-            case 5:
-                Mtx_Scale(m, 3.0f, 3.0f, 3.0f);
-                Mtx_RotateY(m, (6.2831855f * o->rotY) / 65536.0f);
+            case PLACED_LARGE_BARREL_BOMB:
+            case PLACED_MONSTER_BOMB:
+                Mtx_Scale(mtx, 3.0f, 3.0f, 3.0f);
+                Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
                 model = &mdl->matSets[55];
                 {
                     s32 i;
                     s32 *ids;
-                    ModelMat *t;
+                    ModelMat *mat;
                     i = 0;
                     if (i < model->count) {
                         ids = (s32 *) model;
                         do {
-                            t = &tex[ids[2]];
+                            mat = &tex[ids[2]];
                             if (i == 1) {
-                                t->alpha = 0.0f;
+                                mat->alpha = 0.0f;
                             }
                             i++;
                             ids++;
@@ -797,21 +881,21 @@ void Eff10_DrawMain(DrawSlot *d)
                     }
                 }
                 break;
-            case 1:
-                Mtx_Scale(m, 4.5f, 4.5f, 4.5f);
-                Mtx_RotateY(m, (6.2831855f * o->rotY) / 65536.0f);
+            case PLACED_LARGE_BARREL_BOMB_B:
+                Mtx_Scale(mtx, 4.5f, 4.5f, 4.5f);
+                Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
                 model = &mdl->matSets[55];
                 {
                     s32 *ids;
                     s32 i;
-                    ModelMat *t;
+                    ModelMat *mat;
                 i = 0;
                     if (i < model->count) {
                         ids = (s32 *) model;
                         do {
-                            t = &tex[ids[2]];
+                            mat = &tex[ids[2]];
                             if (i == 1) {
-                                t->alpha = 0.0f;
+                                mat->alpha = 0.0f;
                             }
                             i++;
                             ids++;
@@ -819,32 +903,32 @@ void Eff10_DrawMain(DrawSlot *d)
                     }
                 }
                 break;
-            case 2:
-            case 3:
-                Mtx_Identity(m);
-                Mtx_RotateY(m, (6.2831855f * o->rotY) / 65536.0f);
+            case PLACED_PLAYER_HIT_A:
+            case PLACED_PLAYER_HIT_B:
+                Mtx_Identity(mtx);
+                Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
                 model = &mdl->matSets[116];
                 break;
-            case 4:
-                Mtx_Scale(m, 1.0f, 1.0f, 1.0f);
-                Mtx_RotateY(m, (6.2831855f * o->rotY) / 65536.0f);
+            case PLACED_TRAP:
+                Mtx_Scale(mtx, 1.0f, 1.0f, 1.0f);
+                Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
                 model = &mdl->matSets[116];
                 break;
-            case 6:
-                Mtx_Scale(m, 2.1f, 2.1f, 2.1f);
-                Mtx_RotateY(m, (6.2831855f * o->rotY) / 65536.0f);
+            case PLACED_BOMB:
+                Mtx_Scale(mtx, 2.1f, 2.1f, 2.1f);
+                Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
                 model = &mdl->matSets[55];
                 {
                     s32 *ids;
                     s32 i;
-                    ModelMat *t;
+                    ModelMat *mat;
                 i = 0;
                     if (i < model->count) {
                         ids = (s32 *) model;
                         do {
-                            t = &tex[ids[2]];
+                            mat = &tex[ids[2]];
                             if (i == 1) {
-                                t->alpha = 1.0f;
+                                mat->alpha = 1.0f;
                             }
                             i++;
                             ids++;
@@ -853,22 +937,29 @@ void Eff10_DrawMain(DrawSlot *d)
                 }
                 break;
             }
-            Mtx_SetTrans(m, o->pos[0], o->pos[1], o->pos[2]);
-            Eff10_DrawModel(model, m, tex);
+            Mtx_SetTrans(mtx, o->pos[0], o->pos[1], o->pos[2]);
+            PlacedItem_DrawModel(model, mtx, tex);
         }
     }
 }
 
-void Eff10_Draw(DrawSlot *d)
+/*
+ * Draws one of the holding trap's parts (slot->part) while its timer is above
+ * 0, with model PlacedItem_PartModels[kind] of gCommonModels[0]. Parts 0 and 1
+ * lie flat, scaled and coloured by their key tables over timer and frame.
+ * Part 2 is drawn additive with a scrolling texture, scaled by its key table
+ * (three times as tall while the trap holds) and turned by its angle.
+ */
+void PlacedItem_Draw(DrawSlot *slot)
 {
     s32 col;
-    f32 sc[3];
+    f32 scale[3];
     f32 rot[3];
-    f32 m[16];
-    f32 t[16];
-    ObjAttach *o = d->owner;
-    Eff10Buf *b = (Eff10Buf *) o->buf;
-    Eff10Part *p = &b->parts[d->part];
+    f32 mtx[16];
+    f32 texMtx[16];
+    ObjAttach *o = slot->owner;
+    PlacedItemBuf *trapBuf = (PlacedItemBuf *) o->buf;
+    PlacedItemPart *trapPart = &trapBuf->parts[slot->part];
     ModelMat *tex;
     u16 flags = 0;
     u16 order;
@@ -876,34 +967,34 @@ void Eff10_Draw(DrawSlot *d)
     Model *set;
     ModelMatSet *mdl;
 
-    if (gScene.area == o->area && o->visible != 0 && p->timer > 0) {
+    if (gScene.area == o->area && o->visible != 0 && trapPart->timer > 0) {
         set = gCommonModels[0];
         if (set != NULL && set->active != 0) {
             tex = set->mats;
-            switch (p->kind) {
+            switch (trapPart->kind) {
             case 0:
-                Key_LerpVec2((f32 *) Eff10_ScaleKeysA, sc, p->timer);
-                Color_EvalKeys((s32 *) Eff10_ColorKeysA, p->frame, (u32 *) &col);
+                Key_LerpVec2((f32 *) PlacedItem_BasePartScaleKeys, scale, trapPart->timer);
+                Color_EvalKeys((s32 *) PlacedItem_BasePartColorKeys, trapPart->frame, (u32 *) &col);
                 rot[0] = -1.5707964f;
                 order = 1;
                 flags |= 2;
                 break;
             case 1:
-                Key_LerpVec2((f32 *) Eff10_ScaleKeysB, sc, p->timer);
-                Color_EvalKeys((s32 *) Eff10_ColorKeysB, p->frame, (u32 *) &col);
+                Key_LerpVec2((f32 *) PlacedItem_RaisedPartScaleKeys, scale, trapPart->timer);
+                Color_EvalKeys((s32 *) PlacedItem_RaisedPartColorKeys, trapPart->frame, (u32 *) &col);
                 rot[0] = -1.5707964f;
                 order = 1;
                 flags |= 2;
                 break;
             case 2:
-                Mtx_Translation(t, 0.0f, 0.375f * (p->timer / 20.0f), 0.0f);
-                Gs_SetState(0x19, (s32) t);
-                Key_LerpVec3((f32 *) Eff10_Vec3Keys, sc, p->timer);
-                if (b->phase == 2) {
-                    sc[1] *= 3.0f;
+                Mtx_Translation(texMtx, 0.0f, 0.375f * (trapPart->timer / 20.0f), 0.0f);
+                Gs_SetState(0x19, (s32) texMtx);
+                Key_LerpVec3((f32 *) PlacedItem_SpinPartScaleKeys, scale, trapPart->timer);
+                if (trapBuf->phase == 2) {
+                    scale[1] *= 3.0f;
                 }
                 col = -1;
-                rot[1] = (6.2831855f * p->angle) / 65536.0f;
+                rot[1] = (6.2831855f * trapPart->angle) / 65536.0f;
                 order = 2;
                 flags |= 4;
                 lit = 0;
@@ -911,29 +1002,33 @@ void Eff10_Draw(DrawSlot *d)
             default:
                 return;
             }
-            Mtx_FromScaleRotTrans(sc, rot, d->pos, order, m);
-            mdl = &set->matSets[Eff10_Models[p->kind]];
+            Mtx_FromScaleRotTrans(scale, rot, slot->pos, order, mtx);
+            mdl = &set->matSets[PlacedItem_PartModels[trapPart->kind]];
             if (lit == 0) {
                 Gs_SetState(0x67, -1);
-                Effect_DrawModelAdd(mdl, m, tex);
+                Effect_DrawModelAdd(mdl, mtx, tex);
             } else {
                 Gs_SetState(0x6C, 0);
-                Effect_DrawModel(mdl, m, col, flags, tex);
+                Effect_DrawModel(mdl, mtx, col, flags, tex);
             }
             Gs_SetState(0x6C, 1);
         }
     }
 }
 
-void EffEm11_Create(Em *em, s8 kind)
+/*
+ * Makes a VespoidAttack for em with row kind of VespoidAttack_Rows (its
+ * type), if a player is in em's area. Clears em's hitPending and contactHit.
+ */
+void VespoidAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 11;
+            o->kind = ATTACH_VESPOID_ATTACK;
             o->type = kind;
-            o->update = EffEm11_Update;
+            o->update = VespoidAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -944,63 +1039,68 @@ void EffEm11_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffEm11_Update(ObjAttach *o)
+/* The VespoidAttack's per-frame update, by ObjAttach.state. */
+void VespoidAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffEm11_Setup(o);
+    case ATTACH_SETUP:
+        VespoidAttack_Setup(o);
         break;
-    case 1:
-        EffEm11_Run(o);
+    case ATTACH_RUN:
+        VespoidAttack_Run(o);
         break;
-    case 2:
-        EffEm11_End(o);
+    case ATTACH_END:
+        VespoidAttack_End(o);
         break;
-    case 3:
-        EffEm11_Run(o);
+    case ATTACH_HIT:
+        VespoidAttack_Run(o);
         break;
     case 4:
-        EffEm11_End(o);
+        VespoidAttack_End(o);
         break;
-    case 5:
-        EffEm11_End(o);
+    case ATTACH_DEFLECTED:
+        VespoidAttack_End(o);
         break;
-    case 9:
-        EffEm11_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        VespoidAttack_End(o);
         break;
     case 7:
-        EffEm11_End(o);
+        VespoidAttack_End(o);
         break;
-    case 6:
-        EffEm11_Free(o);
+    case ATTACH_FREE:
+        VespoidAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffEm11_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes, ATKF_OWNER_CONTACT and the
+ * empty VespoidAttack_Draw. hitDelay is counted from the monster's motion.
+ */
+void VespoidAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
+    Em *em = &gEms[o->idx];
+    s32 blendFrames;
 
     o->state++;
     o->visible = 1;
-    o->draw = EffEm11_Draw;
-    Player_TestSetFlags(o, 0x20);
+    o->draw = VespoidAttack_Draw;
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
     o->wasHit = 0;
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffEm11_MotionRef);
-    o->hitList = EffEm11_Vals088[o->hitListNo];
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &VespoidAttack_RowsPtr);
+    o->hitList = VespoidAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blendFrames = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blendFrames - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -1008,9 +1108,13 @@ void EffEm11_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffEm11_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster is gone, its motion changes or the hit
+ * window closes; types 4 and 10 keep their window open.
+ */
+void VespoidAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 4:
@@ -1018,14 +1122,14 @@ void EffEm11_Run(ObjAttach *o)
         o->hitFrames = 99;
         break;
     }
-    if (m->active == 0) {
+    if (em->active == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -1033,41 +1137,49 @@ void EffEm11_Run(ObjAttach *o)
     }
 }
 
-void EffEm11_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void VespoidAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffEm11_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void VespoidAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffEm11_Draw(ObjAttach *o)
+/* The attack's draw function: it draws nothing. */
+void VespoidAttack_Draw(ObjAttach *o)
 {
 }
 
-void Eff12_Create(Player *pl, s8 kind)
+/*
+ * Sets the player's second trap (Item_UseMisc, items 0x54 and 0x299) 80 ahead
+ * of pl in pl's area; kind is its type (0). A trap of the local player counts
+ * in gScene.placed2 (stateVar1 1).
+ */
+void PitfallTrap_Create(Player *pl, s8 kind)
 {
     ObjAttach *o;
-    f32 v[3];
+    f32 ofs[3];
 
     if ((o = ObjAttach_Alloc(0)) != NULL) {
-        o->kind = 12;
-        o->update = Eff12_Update;
+        o->kind = ATTACH_PITFALL_TRAP;
+        o->update = PitfallTrap_Update;
         o->type = kind;
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 80.0f;
-        Vec_RotateY(v, (6.2831855f * pl->rot[1]) / 65536.0f);
-        o->pos[0] = pl->pos[0] + v[0];
-        o->pos[1] = pl->pos[1] + v[1];
-        o->pos[2] = pl->pos[2] + v[2];
+        ofs[0] = 0.0f;
+        ofs[1] = 0.0f;
+        ofs[2] = 80.0f;
+        Vec_RotateY(ofs, (6.2831855f * pl->rot[1]) / 65536.0f);
+        o->pos[0] = pl->pos[0] + ofs[0];
+        o->pos[1] = pl->pos[1] + ofs[1];
+        o->pos[2] = pl->pos[2] + ofs[2];
         o->owner = pl;
         o->idx = pl->index;
         o->area = pl->area;
@@ -1079,42 +1191,52 @@ void Eff12_Create(Player *pl, s8 kind)
     }
 }
 
-void Eff12_Update(ObjAttach *o)
+/*
+ * The PitfallTrap's per-frame update, by ObjAttach.state; ATTACH_HIT and
+ * state 4 run on.
+ */
+void PitfallTrap_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        Eff12_Setup(o);
+    case ATTACH_SETUP:
+        PitfallTrap_Setup(o);
         break;
-    case 1:
-        Eff12_Run(o);
+    case ATTACH_RUN:
+        PitfallTrap_Run(o);
         break;
-    case 2:
-        Eff12_End(o);
+    case ATTACH_END:
+        PitfallTrap_End(o);
         break;
-    case 3:
-        Eff12_Run(o);
+    case ATTACH_HIT:
+        PitfallTrap_Run(o);
         break;
     case 4:
-        Eff12_Run(o);
+        PitfallTrap_Run(o);
         break;
-    case 5:
-        Eff12_End(o);
+    case ATTACH_DEFLECTED:
+        PitfallTrap_End(o);
         break;
-    case 9:
-        Eff12_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        PitfallTrap_End(o);
         break;
     case 7:
-        Eff12_End(o);
+        PitfallTrap_End(o);
         break;
-    case 6:
-        Eff12_Free(o);
+    case ATTACH_FREE:
+        PitfallTrap_Free(o);
         
     default:
         break;
     }
 }
 
-void Eff12_Setup(ObjAttach *o)
+/*
+ * Sets the trap up: its row (type + 1, by MoveObj_StartMotionEntry), its hit
+ * shapes and no attack flags. It clears its phase (stateVar0), frame count
+ * (ownerMotion) and aux. Then it takes a DrawSlotB slot for PitfallTrap_Draw,
+ * or frees the trap.
+ */
+void PitfallTrap_Setup(ObjAttach *o)
 {
     o->state++;
     o->visible = 1;
@@ -1125,26 +1247,38 @@ void Eff12_Setup(ObjAttach *o)
     o->aux = 0;
     o->isEm = 0;
     Player_TestSetFlags(o, 0);
-    MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Eff12_MotionRef);
-    o->hitList = Eff12_Val088;
+    MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &PitfallTrap_RowsPtr);
+    o->hitList = PitfallTrap_Val088;
     o->hurtList = 0;
     o->drawSlot = DrawSlotB_Alloc();
     if (o->drawSlot != -1) {
         o->drawSlotBuf = DrawSlotB_Get(o->drawSlot);
         o->drawSlotBuf->owner = o;
-        o->drawSlotBuf->draw = Eff12_Draw;
+        o->drawSlotBuf->draw = PitfallTrap_Draw;
     } else {
-        Eff12_Free(o);
+        PitfallTrap_Free(o);
     }
 }
 
-void Eff12_Run(ObjAttach *o)
+/*
+ * The trap's frame, by phase (stateVar0); ownerMotion counts the frames. 0:
+ * being set: smoke puffs and ticks, at frame 55 three stage effects and a
+ * sound, at 60 ready. 1: opens (aux counts for PitfallTrap_Draw) until frame
+ * 121. 2: armed until frame 9121. It catches the monster its hit touched
+ * (setting Em.unk8AD to 6), or a monster within func_364B20(type, 700) whose
+ * holdTimer is above 0 and that is not defeated or in an event. 3: 5 frames,
+ * then phase 6 if nothing was caught (step 0). 4: up to 60 frames for the
+ * monster's holdTimer. 5: holds until holdTimer runs out; once the monster is
+ * defeated or in an event, it stops counting in gScene.placed2. 6: 5 frames,
+ * then ATTACH_END. Every frame it queues its draw slot.
+ */
+void PitfallTrap_Run(ObjAttach *o)
 {
-    Em *m = o->targetEm;
-    Em *e;
+    Em *target = o->targetEm;
+    Em *em;
     s16 i;
     u8 found = 0;
-    f32 d;
+    f32 dist;
 
     o->ownerMotion++;
     switch (o->stateVar0) {
@@ -1155,18 +1289,18 @@ void Eff12_Run(ObjAttach *o)
                     Effect02_SpawnRandomAngle(0xC000, 0, 2, o->pos);
                 }
                 if ((o->ownerMotion & 0xF) == 0) {
-                    Eff12_PlaySound(o, 0);
+                    PitfallTrap_PlaySound(o, 0);
                 }
             }
         } else if (o->ownerMotion == 55 && o->area == gScene.area) {
             StageObj_K14_CreateAtYaw(o->pos, 12, Rand_Next(1), 0.8f);
             StageObj_K11_CreateAtScaled(o->pos, Rand_Next(1), 10, 0.4f);
             StageObj_K14_CreateAtYaw(o->pos, 20, Rand_Next(1), 2.0f);
-            Eff12_PlaySound(o, 1);
+            PitfallTrap_PlaySound(o, 1);
         }
         if (o->ownerMotion >= 60) {
             o->stateVar0++;
-            Eff12_PlaySound(o, 2);
+            PitfallTrap_PlaySound(o, 2);
         }
         break;
     case 1:
@@ -1179,19 +1313,19 @@ void Eff12_Run(ObjAttach *o)
     case 2:
         if (o->ownerMotion >= 9121) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         o->hitFrames = 99;
-        if (o->unk01E != 0) {
+        if (o->didHit != 0) {
             found = 1;
         } else {
-            for (e = gEms, i = 0; i < 20; i++, e++) {
-                if (e->active != 0 && e->area == o->area && (u32) (e->stateGroup - 5) > 1 && (s8) e->holdTimer > 0) {
-                    d = Vec_Distance(o->pos, &e->posX);
-                    if (d <= func_364B20(e->type, 700.0f)) {
-                        o->targetEm = e;
-                        m = e;
+            for (em = gEms, i = 0; i < EM_COUNT; i++, em++) {
+                if (em->active != 0 && em->area == o->area && (u32) (em->stateGroup - EM_GROUP_DEFEAT) > 1 && (s8) em->holdTimer > 0) {
+                    dist = Vec_Distance(o->pos, &em->posX);
+                    if (dist <= func_364B20(em->type, 700.0f)) {
+                        o->targetEm = em;
+                        target = em;
                         found = 2;
                         break;
                     }
@@ -1199,11 +1333,11 @@ void Eff12_Run(ObjAttach *o)
             }
         }
         if (found) {
-            if (m == NULL) {
+            if (target == NULL) {
                 o->step = 0;
             } else {
                 if (found == 1) {
-                    m->unk8AD = 6;
+                    target->unk8AD = 6;
                 }
                 o->step = 1;
             }
@@ -1229,46 +1363,46 @@ void Eff12_Run(ObjAttach *o)
             o->stateVar0 = 6;
             break;
         }
-        if (m == NULL) {
+        if (target == NULL) {
             o->step = 0;
             o->stateVar0 = 6;
             o->hitPhase = 0;
             o->aux = 0;
             break;
         }
-        if (m->active == 0) {
+        if (target->active == 0) {
             o->step = 0;
             o->stateVar0 = 6;
             o->hitPhase = 0;
             o->aux = 0;
             break;
         }
-        if ((s8) m->holdTimer != 0) {
+        if ((s8) target->holdTimer != 0) {
             o->hitPhase = 0;
             o->aux = 0;
             o->stateVar0++;
         }
         break;
     case 5:
-        if (m == NULL) {
+        if (target == NULL) {
             o->step = 0;
             o->stateVar0 = 6;
             o->hitPhase = 0;
             o->aux = 0;
             break;
         }
-        if (m->active == 0) {
+        if (target->active == 0) {
             o->step = 0;
             o->stateVar0 = 6;
             o->hitPhase = 0;
             o->aux = 0;
             break;
         }
-        if (o->stateVar1 != 0 && (m->stateGroup == 6 || m->stateGroup == 5)) {
+        if (o->stateVar1 != 0 && (target->stateGroup == EM_GROUP_EVENT || target->stateGroup == EM_GROUP_DEFEAT)) {
             (gScene.placed2)--;
             o->stateVar1 = 0;
         }
-        if ((s8) m->holdTimer <= 0) {
+        if ((s8) target->holdTimer <= 0) {
             o->hitPhase = 0;
             o->aux = 0;
             o->stateVar0++;
@@ -1277,7 +1411,7 @@ void Eff12_Run(ObjAttach *o)
     case 6:
         if (++o->aux > 5) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         break;
@@ -1288,15 +1422,22 @@ void Eff12_Run(ObjAttach *o)
     OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
 }
 
-void Eff12_End(ObjAttach *o)
+/*
+ * Hides the trap, frees its DrawSlotB slot and frees it on the next update.
+ */
+void PitfallTrap_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     DrawSlotB_Free(o->drawSlot);
 }
 
-void Eff12_Free(ObjAttach *o)
+/*
+ * Takes the trap off gScene.placed2 if it still counts there (stateVar1) and
+ * frees it.
+ */
+void PitfallTrap_Free(ObjAttach *o)
 {
     if (o->stateVar1 != 0) {
         gScene.placed2--;
@@ -1304,109 +1445,122 @@ void Eff12_Free(ObjAttach *o)
     ObjAttach_Free(o);
 }
 
-void Eff12_DrawModel(ModelMatSet *set, f32 *m)
+/* Draws model set `set` with matrix m, without lights. */
+void PitfallTrap_DrawModel(ModelMatSet *set, f32 *mtx)
 {
-    Gs_SetState(0x1A, (s32) m);
+    Gs_SetState(0x1A, (s32) mtx);
     if (set != NULL && set->id != -1) {
         Draw_ApplyStates(set->flags);
         Model_Draw(set->id, 0);
     }
 }
 
-void Eff12_Draw(DrawSlot *d)
+/*
+ * Draws the trap in the current area. Its base (set 116 of gCommonModels[0])
+ * is drawn until it catches (phase below 3). The area's pit models are
+ * gAreaAmbModels[area][0] and the two after it, in gAreaSubModels[0]. The
+ * first two sink and flatten as aux counts in phases 1-2, with a scrolled
+ * texture, and shrink in phase 3. The third grows in phase 3, stays in phases
+ * 4-5 and shrinks in phase 6.
+ */
+void PitfallTrap_Draw(DrawSlot *slot)
 {
-    f32 m[16];
-    f32 m2[16];
-    ObjAttach *o = d->owner;
-    Model *mdlB = gAreaSubModels[0];
+    f32 mtx[16];
+    f32 texMtx[16];
+    ObjAttach *o = slot->owner;
+    Model *areaModel = gAreaSubModels[0];
     ModelMat *tex;
-    Model *mdl = gCommonModels[0];
+    Model *commonModel = gCommonModels[0];
     s16 idx;
-    f32 ty;
-    f32 sx;
-    f32 sz;
-    f32 sy;
-    s32 t;
+    f32 texOfsY;
+    f32 scaleX;
+    f32 scaleZ;
+    f32 scaleY;
+    s32 frames;
 
-    if (o->area == gScene.area && mdlB != NULL && mdlB->active != 0) {
+    if (o->area == gScene.area && areaModel != NULL && areaModel->active != 0) {
         switch (o->stateVar0) {
         case 0:
             break;
         case 1:
         case 2:
-            t = o->aux;
-            sx = 1.0f;
-            sz = sx;
-            if (t < 15) {
-                ty = sx - 0.3f * (t / 15.0f);
-            } else if (t < 30) {
-                ty = 0.7f - 0.2f * ((t - 15) / 15.0f);
+            frames = o->aux;
+            scaleX = 1.0f;
+            scaleZ = scaleX;
+            if (frames < 15) {
+                texOfsY = scaleX - 0.3f * (frames / 15.0f);
+            } else if (frames < 30) {
+                texOfsY = 0.7f - 0.2f * ((frames - 15) / 15.0f);
             } else {
-                ty = 0.5f;
+                texOfsY = 0.5f;
             }
-            if (t > 61) {
-                sy = 0.16f;
-            } else if (t > 15) {
-                sy = 1.0f - 0.84f * Math_Sin((1.5707964f * (t - 15)) / 46.0f);
+            if (frames > 61) {
+                scaleY = 0.16f;
+            } else if (frames > 15) {
+                scaleY = 1.0f - 0.84f * Math_Sin((1.5707964f * (frames - 15)) / 46.0f);
             } else {
-                sy = 1.0f;
+                scaleY = 1.0f;
             }
             break;
         case 3:
-            t = o->aux;
-            sx = 1.0f - t / 5.0f;
-            sy = 0.16f * sx;
-            ty = 0.5f;
-            sz = sx;
+            frames = o->aux;
+            scaleX = 1.0f - frames / 5.0f;
+            scaleY = 0.16f * scaleX;
+            texOfsY = 0.5f;
+            scaleZ = scaleX;
             break;
         case 4:
         case 5:
-            sx = 0.0f;
-            sy = sx;
-            sz = sx;
-            ty = sx;
+            scaleX = 0.0f;
+            scaleY = scaleX;
+            scaleZ = scaleX;
+            texOfsY = scaleX;
             break;
         case 6:
-            t = 5 - o->aux;
-            sy = 0.0f;
-            sz = sy;
-            ty = sy;
-            sx = 1.0f - t / 5.0f;
+            frames = 5 - o->aux;
+            scaleY = 0.0f;
+            scaleZ = scaleY;
+            texOfsY = scaleY;
+            scaleX = 1.0f - frames / 5.0f;
             break;
         }
         idx = gAreaAmbModels[o->area][0];
         Gs_SetState(0x67, -1);
         if (o->stateVar0 < 3) {
-            tex = mdl->mats;
+            tex = commonModel->mats;
             Gs_SetState(0x60, 0x80);
-            Mtx_Identity(m);
-            Mtx_SetTrans(m, o->pos[0], o->pos[1], o->pos[2]);
-            Gs_SetLightList(tex, &mdl->matSets[116]);
-            Eff12_DrawModel(&mdl->matSets[116], m);
+            Mtx_Identity(mtx);
+            Mtx_SetTrans(mtx, o->pos[0], o->pos[1], o->pos[2]);
+            Gs_SetLightList(tex, &commonModel->matSets[116]);
+            PitfallTrap_DrawModel(&commonModel->matSets[116], mtx);
         }
         if (o->stateVar0 != 4 && o->stateVar0 != 5 && o->stateVar0 != 6) {
             Gs_SetState(0x60, 0);
-            Mtx_Scale(m, sx, sy, sz);
-            Mtx_SetTrans(m, o->pos[0], o->pos[1], o->pos[2]);
-            Mtx_Translation(m2, 0.0f, ty, 0.0f);
-            Gs_SetState(0x19, (s32) m2);
-            Eff12_DrawModel(&mdlB->matSets[idx], m);
-            Mtx_Scale(m, sx, sy, sz);
-            Mtx_SetTrans(m, o->pos[0], 2.0f + o->pos[1], o->pos[2]);
-            Gs_SetState(0x19, (s32) m2);
-            Eff12_DrawModel(&mdlB->matSets[idx] + 1, m);
+            Mtx_Scale(mtx, scaleX, scaleY, scaleZ);
+            Mtx_SetTrans(mtx, o->pos[0], o->pos[1], o->pos[2]);
+            Mtx_Translation(texMtx, 0.0f, texOfsY, 0.0f);
+            Gs_SetState(0x19, (s32) texMtx);
+            PitfallTrap_DrawModel(&areaModel->matSets[idx], mtx);
+            Mtx_Scale(mtx, scaleX, scaleY, scaleZ);
+            Mtx_SetTrans(mtx, o->pos[0], 2.0f + o->pos[1], o->pos[2]);
+            Gs_SetState(0x19, (s32) texMtx);
+            PitfallTrap_DrawModel(&areaModel->matSets[idx] + 1, mtx);
         }
         Gs_SetState(0x60, 0x80);
         if ((u32) (o->stateVar0 - 3) <= 2 || o->stateVar0 == 6) {
-            Mtx_Scale(m, 1.0f - sx, 1.0f - sx, 1.0f - sx);
-            Mtx_SetTrans(m, o->pos[0], o->pos[1], o->pos[2]);
-            Eff12_DrawModel(&mdlB->matSets[idx] + 2, m);
+            Mtx_Scale(mtx, 1.0f - scaleX, 1.0f - scaleX, 1.0f - scaleX);
+            Mtx_SetTrans(mtx, o->pos[0], o->pos[1], o->pos[2]);
+            PitfallTrap_DrawModel(&areaModel->matSets[idx] + 2, mtx);
         }
         Draw_SetDefaultState();
     }
 }
 
-void Eff12_PlaySound(ObjAttach *o, s16 kind)
+/*
+ * Plays the trap's sound `kind` at the trap, in the current area only: 0 the
+ * setting tick (0x25), 1 the opening (0x26), 2 ready (0x46).
+ */
+void PitfallTrap_PlaySound(ObjAttach *o, s16 kind)
 {
     if (o->area == gScene.area) {
         switch (kind) {
@@ -1423,15 +1577,20 @@ void Eff12_PlaySound(ObjAttach *o, s16 kind)
     }
 }
 
-void EffVelociprey13_Create(Em *em, s8 kind)
+/*
+ * Makes a VelocipreyAttack for em (the Velociprey family's states,
+ * em_khezu.c) with row kind of VelocipreyAttack_Rows, if a player is in em's
+ * area. Clears em's hitPending and contactHit.
+ */
+void VelocipreyAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 13;
+            o->kind = ATTACH_VELOCIPREY_ATTACK;
             o->type = kind;
-            o->update = EffVelociprey13_Update;
+            o->update = VelocipreyAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -1442,69 +1601,75 @@ void EffVelociprey13_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffVelociprey13_Update(ObjAttach *o)
+/* The VelocipreyAttack's per-frame update, by ObjAttach.state. */
+void VelocipreyAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffVelociprey13_Setup(o);
+    case ATTACH_SETUP:
+        VelocipreyAttack_Setup(o);
         break;
-    case 1:
-        EffVelociprey13_Run(o);
+    case ATTACH_RUN:
+        VelocipreyAttack_Run(o);
         break;
-    case 2:
-        EffVelociprey13_End(o);
+    case ATTACH_END:
+        VelocipreyAttack_End(o);
         break;
-    case 3:
-        EffVelociprey13_Run(o);
+    case ATTACH_HIT:
+        VelocipreyAttack_Run(o);
         break;
     case 4:
-        EffVelociprey13_End(o);
+        VelocipreyAttack_End(o);
         break;
-    case 5:
-        EffVelociprey13_End(o);
+    case ATTACH_DEFLECTED:
+        VelocipreyAttack_End(o);
         break;
-    case 9:
-        EffVelociprey13_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        VelocipreyAttack_End(o);
         break;
     case 7:
-        EffVelociprey13_End(o);
+        VelocipreyAttack_End(o);
         break;
-    case 6:
-        EffVelociprey13_Free(o);
+    case ATTACH_FREE:
+        VelocipreyAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffVelociprey13_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT.
+ * hitDelay is counted from the monster's motion (type 3's from motion layer
+ * 1).
+ */
+void VelocipreyAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
-    s32 b;
+    Em *em = &gEms[o->idx];
+    s32 blendFrames;
+    s32 startFrame;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffVelociprey13_MotionRef);
-    o->hitList = EffVelociprey13_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &VelocipreyAttack_RowsPtr);
+    o->hitList = VelocipreyAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
         if (o->type == 3) {
-            a = Math_Absf(m->motionBlend[1] % 100);
-            b = Math_Absf(m->motionFrame[1]);
+            blendFrames = Math_Absf(em->motionBlend[1] % 100);
+            startFrame = Math_Absf(em->motionFrame[1]);
         } else {
-            a = Math_Absf(m->motionBlend[0] % 100);
-            b = Math_Absf(m->motionFrame[0]);
+            blendFrames = Math_Absf(em->motionBlend[0] % 100);
+            startFrame = Math_Absf(em->motionFrame[0]);
         }
-        o->hitDelay += a - b - 1;
+        o->hitDelay += blendFrames - startFrame - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -1512,13 +1677,16 @@ void EffVelociprey13_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffVelociprey13_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes.
+ */
+void VelocipreyAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -1526,107 +1694,126 @@ void EffVelociprey13_Run(ObjAttach *o)
     }
 }
 
-void EffVelociprey13_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void VelocipreyAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffVelociprey13_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void VelocipreyAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffEm14_Create(Em *em, s8 kind)
+/*
+ * Makes an EmBomb of type kind at em's bones (EmBomb_Follow), in em's area.
+ * Types 0-3 are the Melynx's bombs (EmMelynx_*), 4 and 5 the Shakalaka's
+ * (EmShakalaka_State3_01). Clears em's hitPending and contactHit.
+ */
+void EmBomb_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if ((o = ObjAttach_Alloc(0)) != NULL) {
-        o->kind = 14;
+        o->kind = ATTACH_EM_BOMB;
         o->type = kind;
-        o->update = EffEm14_Update;
+        o->update = EmBomb_Update;
         o->idx = em->index;
         o->isEm = em->isEm;
         o->owner = em;
         o->yaw = em->rotY;
         o->area = em->area;
-        EffEm14_Follow(o, em);
+        EmBomb_Follow(o, em);
         o->keep = 0;
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
         o->side = *(u8 *) &em->side;
     }
 }
 
-void EffEm14_Follow(ObjAttach *o, Em *em)
+/*
+ * Puts the bomb on em: type 4 at bone 6, the others midway between bones 6
+ * and 9, 20 higher (type 1: 20 times its size). It takes em's rotation.
+ */
+void EmBomb_Follow(ObjAttach *o, Em *em)
 {
-    f32 a[3];
-    f32 b[3];
+    f32 bonePos[3];
+    f32 otherBonePos[3];
 
     if (o->type == 4) {
-        Em_BonePos(em, 6, a);
-        o->pos[0] = a[0];
-        o->pos[1] = a[1];
-        o->pos[2] = a[2];
+        Em_BonePos(em, 6, bonePos);
+        o->pos[0] = bonePos[0];
+        o->pos[1] = bonePos[1];
+        o->pos[2] = bonePos[2];
     } else {
-        Em_BonePos(em, 6, a);
-        Em_BonePos(em, 9, b);
-        o->pos[0] = (a[0] + b[0]) / 2.0f;
+        Em_BonePos(em, 6, bonePos);
+        Em_BonePos(em, 9, otherBonePos);
+        o->pos[0] = (bonePos[0] + otherBonePos[0]) / 2.0f;
         switch (o->type) {
         case 1:
-            o->pos[1] = 20.0f * o->velX + (a[1] + b[1]) / 2.0f;
+            o->pos[1] = 20.0f * o->velX + (bonePos[1] + otherBonePos[1]) / 2.0f;
             break;
         default:
-            o->pos[1] = 20.0f + (a[1] + b[1]) / 2.0f;
+            o->pos[1] = 20.0f + (bonePos[1] + otherBonePos[1]) / 2.0f;
             break;
         }
-        o->pos[2] = (a[2] + b[2]) / 2.0f;
+        o->pos[2] = (bonePos[2] + otherBonePos[2]) / 2.0f;
     }
     o->rotX = em->rotX;
     o->rotY = em->rotY;
     o->rotZ = em->rotZ;
 }
 
-void EffEm14_Update(ObjAttach *o)
+/*
+ * The EmBomb's per-frame update, by ObjAttach.state. Any state after
+ * ATTACH_RUN ends it.
+ */
+void EmBomb_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffEm14_Setup(o);
+    case ATTACH_SETUP:
+        EmBomb_Setup(o);
         break;
-    case 1:
-        EffEm14_Run(o);
+    case ATTACH_RUN:
+        EmBomb_Run(o);
         break;
-    case 2:
-        EffEm14_End(o);
+    case ATTACH_END:
+        EmBomb_End(o);
         break;
-    case 3:
-        EffEm14_End(o);
+    case ATTACH_HIT:
+        EmBomb_End(o);
         break;
     case 4:
-        EffEm14_End(o);
+        EmBomb_End(o);
         break;
-    case 5:
-        EffEm14_End(o);
+    case ATTACH_DEFLECTED:
+        EmBomb_End(o);
         break;
-    case 9:
-        EffEm14_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        EmBomb_End(o);
         break;
     case 7:
-        EffEm14_End(o);
+        EmBomb_End(o);
         break;
-    case 6:
-        EffEm14_Free(o);
+    case ATTACH_FREE:
+        EmBomb_Free(o);
         
     default:
         break;
     }
 }
 
-void EffEm14_InitTimers(ObjAttach *o)
+/*
+ * Sets the bomb's counters. aux (the blink gap) is 340. ownerMotion (the
+ * frames it grows in) is 10 for types 4 and 5, else 30. velX (its size) is 0.
+ */
+void EmBomb_InitTimers(ObjAttach *o)
 {
     o->hitPhase = 0;
     o->aux = 0x154;
@@ -1638,9 +1825,17 @@ void EffEm14_InitTimers(ObjAttach *o)
     o->velX = 0.0f;
 }
 
-void EffEm14_RunType0(ObjAttach *o)
+/*
+ * Types 0 and 1, the bomb a Melynx holds (EmMelynx_State0_0B, 0_0F). It grows
+ * to size 1 (type 1: 3); at frame 60 its fuse is lit, then it smokes, ticks
+ * every 15 frames and blinks ever faster. At frame 340 it bursts in the
+ * current area: a StageObj_K0E and an Explosion of kind 0 (type 1: kind 2).
+ * If the Melynx lets go first (EmMelynx_BombState not 1), it vanishes
+ * while still growing, or bursts at once after that.
+ */
+void EmBomb_RunHeld(ObjAttach *o)
 {
-    Em *m = o->owner;
+    Em *em = o->owner;
 
     switch (o->step) {
     case 0:
@@ -1657,7 +1852,7 @@ void EffEm14_RunType0(ObjAttach *o)
                 o->velX = 1.0f;
             }
         }
-        if (EmCephadrome_EffEm14State(m) != 1) {
+        if (EmMelynx_BombState(em) != 1) {
             o->visible ^= 1;
             o->state++;
             return;
@@ -1672,13 +1867,13 @@ void EffEm14_RunType0(ObjAttach *o)
             }
         }
     case 2:
-        if (++o->ownerMotion >= 340 || EmCephadrome_EffEm14State(m) != 1) {
+        if (++o->ownerMotion >= 340 || EmMelynx_BombState(em) != 1) {
             if (o->area == gScene.area) {
                 StageObj_K0E_CreateScaled(o->pos, 0, 1.0f);
                 if (o->type == 1) {
-                    Eff09_CreateAt(o->pos, 2, o->area, 0);
+                    Explosion_CreateAt(o->pos, 2, o->area, 0);
                 } else {
-                    Eff09_CreateAt(o->pos, 0, o->area, 0);
+                    Explosion_CreateAt(o->pos, 0, o->area, 0);
                 }
             }
             o->visible ^= 1;
@@ -1711,17 +1906,24 @@ void EffEm14_RunType0(ObjAttach *o)
         }
         break;
     }
-    EffEm14_Follow(o, m);
+    EmBomb_Follow(o, em);
 }
 
-void EffEm14_RunType2(ObjAttach *o)
+/*
+ * Types 2 and 3, the bomb a Melynx throws (EmMelynx_State3_04: type 2 in
+ * state 4, else 3). It grows at em's bones. Once let go
+ * (EmMelynx_BombState 0), it flies forward (type 2: 10 a frame and 20
+ * up; type 3: 15 and 25; gravity -1). It bursts (Explosion kind 0) at the
+ * floor or after 120 frames. On any other result it vanishes.
+ */
+void EmBomb_RunMelynxThrown(ObjAttach *o)
 {
-    Em *m = o->owner;
-    f32 v[3];
-    f32 d[3];
+    Em *em = o->owner;
+    f32 localVel[3];
+    f32 move[3];
     s32 ang[3];
     f32 mat[16];
-    f32 f;
+    f32 floorY;
 
     switch (o->step) {
     case 0:
@@ -1730,15 +1932,15 @@ void EffEm14_RunType2(ObjAttach *o)
             o->step++;
             o->velX = 1.0f;
         }
-        if (EmCephadrome_EffEm14State(m) != 1) {
+        if (EmMelynx_BombState(em) != 1) {
             o->visible ^= 1;
             o->state++;
         } else {
-            EffEm14_Follow(o, m);
+            EmBomb_Follow(o, em);
         }
         break;
     case 1:
-        switch (EmCephadrome_EffEm14State(m)) {
+        switch (EmMelynx_BombState(em)) {
         case 0:
             o->step++;
             if (o->type == 2) {
@@ -1757,7 +1959,7 @@ void EffEm14_RunType2(ObjAttach *o)
             break;
         case 1:
         follow:
-            EffEm14_Follow(o, m);
+            EmBomb_Follow(o, em);
             break;
         }
         break;
@@ -1766,17 +1968,17 @@ void EffEm14_RunType2(ObjAttach *o)
         ang[1] = o->rotY;
         ang[2] = 0;
         Mtx_FromAnglesYXZ(ang, mat);
-        Vec_Set(v, 0.0f, 0.0f, o->velZ);
-        Vec_Rotate(d, v, mat);
-        o->pos[0] += d[0];
-        o->pos[2] += d[2];
+        Vec_Set(localVel, 0.0f, 0.0f, o->velZ);
+        Vec_Rotate(move, localVel, mat);
+        o->pos[0] += move[0];
+        o->pos[2] += move[2];
         o->pos[1] += o->velY;
         o->velY += o->gravity;
-        f = AreaGrid2_GetFloorY(o->pos);
-        if (--o->ownerMotion <= 0 || o->pos[1] < f) {
+        floorY = AreaGrid2_GetFloorY(o->pos);
+        if (--o->ownerMotion <= 0 || o->pos[1] < floorY) {
             if (o->area == gScene.area) {
                 StageObj_K0E_CreateScaled(o->pos, 0, 1.0f);
-                Eff09_CreateAt(o->pos, 0, o->area, 0);
+                Explosion_CreateAt(o->pos, 0, o->area, 0);
             }
             o->visible ^= 1;
             o->state++;
@@ -1786,14 +1988,21 @@ void EffEm14_RunType2(ObjAttach *o)
     }
 }
 
-void EffEm14_RunType4(ObjAttach *o)
+/*
+ * Types 4 and 5, the bomb a Shakalaka throws (EmShakalaka_State3_01). It
+ * works as EmBomb_RunMelynxThrown but asks EmShakalaka_BombState and grows over 10
+ * frames. Type 5 flies flat and fast (20 forward, 10 up) and bursts with a
+ * StageObj_K0C and an Explosion of kind 0x1A owned by em. Type 4 (15, 25)
+ * bursts with kind 0.
+ */
+void EmBomb_RunShakalakaThrown(ObjAttach *o)
 {
-    Em *m = o->owner;
-    f32 v[3];
-    f32 d[3];
+    Em *em = o->owner;
+    f32 localVel[3];
+    f32 move[3];
     s32 ang[3];
     f32 mat[16];
-    f32 f;
+    f32 floorY;
 
     switch (o->step) {
     case 0:
@@ -1802,15 +2011,15 @@ void EffEm14_RunType4(ObjAttach *o)
             o->step++;
             o->velX = 1.0f;
         }
-        if (EmKushala_EffEm14State(m) != 1) {
+        if (EmShakalaka_BombState(em) != 1) {
             o->visible ^= 1;
             o->state++;
         } else {
-            EffEm14_Follow(o, m);
+            EmBomb_Follow(o, em);
         }
         break;
     case 1:
-        switch (EmKushala_EffEm14State(m)) {
+        switch (EmShakalaka_BombState(em)) {
         case 0:
             o->step++;
             if (o->type == 5) {
@@ -1829,7 +2038,7 @@ void EffEm14_RunType4(ObjAttach *o)
             break;
         case 1:
         follow:
-            EffEm14_Follow(o, m);
+            EmBomb_Follow(o, em);
             break;
         }
         break;
@@ -1838,21 +2047,21 @@ void EffEm14_RunType4(ObjAttach *o)
         ang[1] = o->rotY;
         ang[2] = 0;
         Mtx_FromAnglesYXZ(ang, mat);
-        Vec_Set(v, 0.0f, 0.0f, o->velZ);
-        Vec_Rotate(d, v, mat);
-        o->pos[0] += d[0];
-        o->pos[2] += d[2];
+        Vec_Set(localVel, 0.0f, 0.0f, o->velZ);
+        Vec_Rotate(move, localVel, mat);
+        o->pos[0] += move[0];
+        o->pos[2] += move[2];
         o->pos[1] += o->velY;
         o->velY += o->gravity;
-        f = AreaGrid2_GetFloorY(o->pos);
-        if (--o->ownerMotion <= 0 || o->pos[1] < f) {
+        floorY = AreaGrid2_GetFloorY(o->pos);
+        if (--o->ownerMotion <= 0 || o->pos[1] < floorY) {
             if (o->area == gScene.area) {
                 if (o->type == 5) {
                     StageObj_K0C_Create(o->pos, 0, 5, 4);
-                    Eff09_CreateOwned((Player *)m, o->pos, 0x1A);
+                    Explosion_CreateOwned((Player *)em, o->pos, 0x1A);
                 } else {
                     StageObj_K0E_CreateScaled(o->pos, 0, 1.0f);
-                    Eff09_CreateAt(o->pos, 0, o->area, 0);
+                    Explosion_CreateAt(o->pos, 0, o->area, 0);
                 }
             }
             o->visible ^= 1;
@@ -1863,38 +2072,46 @@ void EffEm14_RunType4(ObjAttach *o)
     }
 }
 
-void EffEm14_Setup(ObjAttach *o)
+/*
+ * Sets the bomb up (EmBomb_InitTimers), takes a DrawSlot for EmBomb_Draw and
+ * runs its first frame. Frees the bomb if no slot is free.
+ */
+void EmBomb_Setup(ObjAttach *o)
 {
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    EffEm14_InitTimers(o);
+    EmBomb_InitTimers(o);
     o->drawSlot = DrawSlot_Alloc();
     if (o->drawSlot != -1) {
         o->drawSlotBuf = DrawSlot_Get(o->drawSlot);
         o->drawSlotBuf->owner = o;
-        o->drawSlotBuf->draw = EffEm14_Draw;
-        EffEm14_Run(o);
+        o->drawSlotBuf->draw = EmBomb_Draw;
+        EmBomb_Run(o);
     } else {
         ObjAttach_Free(o);
     }
 }
 
-void EffEm14_Run(ObjAttach *o)
+/*
+ * Runs the bomb by type (0-1, 2-3, 4-5) and queues its draw slot at its
+ * position.
+ */
+void EmBomb_Run(ObjAttach *o)
 {
     switch (o->type) {
     case 0:
     case 1:
     default:
-        EffEm14_RunType0(o);
+        EmBomb_RunHeld(o);
         break;
     case 2:
     case 3:
-        EffEm14_RunType2(o);
+        EmBomb_RunMelynxThrown(o);
         break;
     case 4:
     case 5:
-        EffEm14_RunType4(o);
+        EmBomb_RunShakalakaThrown(o);
         break;
     }
     if (o->drawSlotBuf != NULL) {
@@ -1903,55 +2120,62 @@ void EffEm14_Run(ObjAttach *o)
     }
 }
 
-void EffEm14_End(ObjAttach *o)
+/* Hides the bomb, frees its draw slot and frees it on the next update. */
+void EmBomb_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffEm14_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void EmBomb_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffEm14_Draw(DrawSlot *d)
+/*
+ * Draws the bomb while visible in the current area: model set
+ * EmBomb_Models[type] of gCommonModels[0], at size velX, turned by rotY. For
+ * the barrel set (0x37) it hides material 1.
+ */
+void EmBomb_Draw(DrawSlot *slot)
 {
-    f32 m[16];
-    ObjAttach *o = d->owner;
+    f32 mtx[16];
+    ObjAttach *o = slot->owner;
     Model *set = gCommonModels[0];
     ModelMat *tex;
     ModelMatSet *mdl;
     s16 idx;
     s32 i;
     s32 *ids;
-    ModelMat *t;
+    ModelMat *mat;
 
     if (o->visible != 0 && o->area == gScene.area && set != NULL && set->active != 0) {
         tex = set->mats;
-        Mtx_Scale(m, o->velX, o->velX, o->velX);
-        Mtx_SetTrans(m, d->pos[0], d->pos[1], d->pos[2]);
-        Mtx_RotateXYZ(m, 0.0f, (6.2831855f * o->rotY) / 65536.0f, 0.0f);
-        idx = EffEm14_Index[o->type];
+        Mtx_Scale(mtx, o->velX, o->velX, o->velX);
+        Mtx_SetTrans(mtx, slot->pos[0], slot->pos[1], slot->pos[2]);
+        Mtx_RotateXYZ(mtx, 0.0f, (6.2831855f * o->rotY) / 65536.0f, 0.0f);
+        idx = EmBomb_Models[o->type];
         mdl = &set->matSets[idx];
         if (idx == 0x37) {
             i = 0;
             if (i < mdl->count) {
                 ids = (s32 *) mdl;
                 do {
-                    t = &tex[ids[2]];
+                    mat = &tex[ids[2]];
                     if (i == 1) {
-                        t->alpha = 0.0f;
+                        mat->alpha = 0.0f;
                     }
                     i++;
                     ids++;
                 } while (i < mdl->count);
             }
         }
-        Gs_SetState(0x1A, (s32) m);
+        Gs_SetState(0x1A, (s32) mtx);
         if (mdl != NULL && mdl->id != -1) {
             Gs_SetLightList(tex, mdl);
             Draw_ApplyStates(mdl->flags);
@@ -1961,15 +2185,20 @@ void EffEm14_Draw(DrawSlot *d)
     }
 }
 
-void EffDrome15_Create(Em *em, s8 kind)
+/*
+ * Makes a DromeAttack for em (Velocidrome, Gendrome, Iodrome: em_drome.c)
+ * with row kind of DromeAttack_Rows, if a player is in em's area. Clears em's
+ * hitPending and contactHit.
+ */
+void DromeAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 15;
+            o->kind = ATTACH_DROME_ATTACK;
             o->type = kind;
-            o->update = EffDrome15_Update;
+            o->update = DromeAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -1980,69 +2209,75 @@ void EffDrome15_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffDrome15_Update(ObjAttach *o)
+/* The DromeAttack's per-frame update, by ObjAttach.state. */
+void DromeAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffDrome15_Setup(o);
+    case ATTACH_SETUP:
+        DromeAttack_Setup(o);
         break;
-    case 1:
-        EffDrome15_Run(o);
+    case ATTACH_RUN:
+        DromeAttack_Run(o);
         break;
-    case 2:
-        EffDrome15_End(o);
+    case ATTACH_END:
+        DromeAttack_End(o);
         break;
-    case 3:
-        EffDrome15_Run(o);
+    case ATTACH_HIT:
+        DromeAttack_Run(o);
         break;
     case 4:
-        EffDrome15_End(o);
+        DromeAttack_End(o);
         break;
-    case 5:
-        EffDrome15_End(o);
+    case ATTACH_DEFLECTED:
+        DromeAttack_End(o);
         break;
-    case 9:
-        EffDrome15_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        DromeAttack_End(o);
         break;
     case 7:
-        EffDrome15_End(o);
+        DromeAttack_End(o);
         break;
-    case 6:
-        EffDrome15_Free(o);
+    case ATTACH_FREE:
+        DromeAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffDrome15_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT.
+ * hitDelay is counted from the monster's motion (type 3's from motion layer
+ * 1).
+ */
+void DromeAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
-    s32 b;
+    Em *em = &gEms[o->idx];
+    s32 blendFrames;
+    s32 startFrame;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffDrome15_MotionRef);
-    o->hitList = EffDrome15_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &DromeAttack_RowsPtr);
+    o->hitList = DromeAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
         if (o->type == 3) {
-            a = Math_Absf(m->motionBlend[1] % 100);
-            b = Math_Absf(m->motionFrame[1]);
+            blendFrames = Math_Absf(em->motionBlend[1] % 100);
+            startFrame = Math_Absf(em->motionFrame[1]);
         } else {
-            a = Math_Absf(m->motionBlend[0] % 100);
-            b = Math_Absf(m->motionFrame[0]);
+            blendFrames = Math_Absf(em->motionBlend[0] % 100);
+            startFrame = Math_Absf(em->motionFrame[0]);
         }
-        o->hitDelay += a - b - 1;
+        o->hitDelay += blendFrames - startFrame - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -2050,13 +2285,16 @@ void EffDrome15_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffDrome15_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes.
+ */
+void DromeAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -2064,30 +2302,37 @@ void EffDrome15_Run(ObjAttach *o)
     }
 }
 
-void EffDrome15_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void DromeAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffDrome15_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void DromeAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffKhezu16_Create(Em *em, s8 kind)
+/*
+ * Makes a KhezuAttack for em (Khezu and Red Khezu, EmKhezu_MotionEffects)
+ * with row kind of KhezuAttack_Rows, if a player is in em's area. Clears em's
+ * hitPending and contactHit.
+ */
+void KhezuAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 16;
+            o->kind = ATTACH_KHEZU_ATTACK;
             o->type = kind;
-            o->update = EffKhezu16_Update;
+            o->update = KhezuAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -2098,69 +2343,75 @@ void EffKhezu16_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffKhezu16_Update(ObjAttach *o)
+/* The KhezuAttack's per-frame update, by ObjAttach.state. */
+void KhezuAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffKhezu16_Setup(o);
+    case ATTACH_SETUP:
+        KhezuAttack_Setup(o);
         break;
-    case 1:
-        EffKhezu16_Run(o);
+    case ATTACH_RUN:
+        KhezuAttack_Run(o);
         break;
-    case 2:
-        EffKhezu16_End(o);
+    case ATTACH_END:
+        KhezuAttack_End(o);
         break;
-    case 3:
-        EffKhezu16_Run(o);
+    case ATTACH_HIT:
+        KhezuAttack_Run(o);
         break;
     case 4:
-        EffKhezu16_End(o);
+        KhezuAttack_End(o);
         break;
-    case 5:
-        EffKhezu16_End(o);
+    case ATTACH_DEFLECTED:
+        KhezuAttack_End(o);
         break;
-    case 9:
-        EffKhezu16_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        KhezuAttack_End(o);
         break;
     case 7:
-        EffKhezu16_End(o);
+        KhezuAttack_End(o);
         break;
-    case 6:
-        EffKhezu16_Free(o);
+    case ATTACH_FREE:
+        KhezuAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffKhezu16_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT.
+ * hitDelay is counted from the monster's motion (type 3's from motion layer
+ * 1).
+ */
+void KhezuAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
-    s32 b;
+    Em *em = &gEms[o->idx];
+    s32 blendFrames;
+    s32 startFrame;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffKhezu16_MotionRef);
-    o->hitList = EffKhezu16_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &KhezuAttack_RowsPtr);
+    o->hitList = KhezuAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
         if (o->type == 3) {
-            a = Math_Absf(m->motionBlend[1] % 100);
-            b = Math_Absf(m->motionFrame[1]);
+            blendFrames = Math_Absf(em->motionBlend[1] % 100);
+            startFrame = Math_Absf(em->motionFrame[1]);
         } else {
-            a = Math_Absf(m->motionBlend[0] % 100);
-            b = Math_Absf(m->motionFrame[0]);
+            blendFrames = Math_Absf(em->motionBlend[0] % 100);
+            startFrame = Math_Absf(em->motionFrame[0]);
         }
-        o->hitDelay += a - b - 1;
+        o->hitDelay += blendFrames - startFrame - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -2168,9 +2419,13 @@ void EffKhezu16_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffKhezu16_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * types 29 and 31 keep their window open.
+ */
+void KhezuAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 29:
@@ -2178,9 +2433,9 @@ void EffKhezu16_Run(ObjAttach *o)
         o->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -2188,30 +2443,37 @@ void EffKhezu16_Run(ObjAttach *o)
     }
 }
 
-void EffKhezu16_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void KhezuAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffKhezu16_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void KhezuAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffKutku17_Create(Em *em, s8 kind)
+/*
+ * Makes a KutkuAttack for em (EmKutku_MotionEffects, EmKutku_State3_12) with
+ * row kind of KutkuAttack_Rows, if a player is in em's area. Clears em's
+ * hitPending and contactHit.
+ */
+void KutkuAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 17;
+            o->kind = ATTACH_KUTKU_ATTACK;
             o->type = kind;
-            o->update = EffKutku17_Update;
+            o->update = KutkuAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -2222,20 +2484,25 @@ void EffKutku17_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffKutku17_Create2(Em *em, s8 kind)
+/*
+ * Makes a KutkuAttack as KutkuAttack_Create does, but with one block of the
+ * object buffer (ObjAttach_Alloc(1)) to hold the flash's EmObj. Its only
+ * caller makes type 22, the flash (EmKutku_MotionEffects).
+ */
+void KutkuAttack_CreateFlash(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(1)) != NULL) {
-            o->kind = 17;
+            o->kind = ATTACH_KUTKU_ATTACK;
             o->type = kind;
-            o->update = EffKutku17_Update;
+            o->update = KutkuAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -2246,82 +2513,93 @@ void EffKutku17_Create2(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffKutku17_Update(ObjAttach *o)
+/* The KutkuAttack's per-frame update, by ObjAttach.state. */
+void KutkuAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffKutku17_Setup(o);
+    case ATTACH_SETUP:
+        KutkuAttack_Setup(o);
         break;
-    case 1:
-        EffKutku17_Run(o);
+    case ATTACH_RUN:
+        KutkuAttack_Run(o);
         break;
-    case 2:
-        EffKutku17_End(o);
+    case ATTACH_END:
+        KutkuAttack_End(o);
         break;
-    case 3:
-        EffKutku17_Run(o);
+    case ATTACH_HIT:
+        KutkuAttack_Run(o);
         break;
     case 4:
-        EffKutku17_End(o);
+        KutkuAttack_End(o);
         break;
-    case 5:
-        EffKutku17_End(o);
+    case ATTACH_DEFLECTED:
+        KutkuAttack_End(o);
         break;
-    case 9:
-        EffKutku17_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        KutkuAttack_End(o);
         break;
     case 7:
-        EffKutku17_End(o);
+        KutkuAttack_End(o);
         break;
-    case 6:
-        EffKutku17_Free(o);
+    case ATTACH_FREE:
+        KutkuAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffKutku17_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT.
+ * hitDelay is counted from the monster's motion. Type 22 also adds its buffer
+ * as a flash (FlashObj_Add) at the monster, radius 2000, for 5 frames.
+ */
+void KutkuAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
-    EmObj *p;
+    Em *em = &gEms[o->idx];
+    s32 blendFrames;
+    EmObj *flash;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffKutku17_MotionRef);
-    o->hitList = EffKutku17_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &KutkuAttack_RowsPtr);
+    o->hitList = KutkuAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blendFrames = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blendFrames - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
     }
     o->drawSlotBuf = NULL;
     if (o->type == 22) {
-        p = (EmObj *) o->buf;
-        Vec_Copy(p->pos, &m->posX);
-        p->radius = 2000.0f;
-        p->goalArg = 0;
-        p->timer = 5;
-        p->area = o->area;
-        FlashObj_Add(p);
+        flash = (EmObj *) o->buf;
+        Vec_Copy(flash->pos, &em->posX);
+        flash->radius = 2000.0f;
+        flash->goalArg = 0;
+        flash->timer = 5;
+        flash->area = o->area;
+        FlashObj_Add(flash);
     }
 }
 
-void EffKutku17_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * types 19, 23 and 28 keep their window open. Type 22 refills its flash's
+ * EmObj.timer every frame and removes the flash when it ends.
+ */
+void KutkuAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 19:
@@ -2333,9 +2611,9 @@ void EffKutku17_Run(ObjAttach *o)
     if (o->type == 22) {
         o->buf[0x14] = 5;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         if (o->type == 22) {
             FlashObj_Remove((EmObj *)o->buf);
         }
@@ -2346,30 +2624,37 @@ void EffKutku17_Run(ObjAttach *o)
     }
 }
 
-void EffKutku17_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void KutkuAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffKutku17_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void KutkuAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffDiablos18_Create(Em *em, s8 kind)
+/*
+ * Makes a DiablosAttack for em (Diablos, Monoblos and their subspecies,
+ * EmDiablos_MotionEffects) with row kind of DiablosAttack_Rows, if a player
+ * is in em's area. Clears em's hitPending and contactHit.
+ */
+void DiablosAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 18;
+            o->kind = ATTACH_DIABLOS_ATTACK;
             o->type = kind;
-            o->update = EffDiablos18_Update;
+            o->update = DiablosAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -2380,62 +2665,67 @@ void EffDiablos18_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffDiablos18_Update(ObjAttach *o)
+/* The DiablosAttack's per-frame update, by ObjAttach.state. */
+void DiablosAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffDiablos18_Setup(o);
+    case ATTACH_SETUP:
+        DiablosAttack_Setup(o);
         break;
-    case 1:
-        EffDiablos18_Run(o);
+    case ATTACH_RUN:
+        DiablosAttack_Run(o);
         break;
-    case 2:
-        EffDiablos18_End(o);
+    case ATTACH_END:
+        DiablosAttack_End(o);
         break;
-    case 3:
-        EffDiablos18_Run(o);
+    case ATTACH_HIT:
+        DiablosAttack_Run(o);
         break;
     case 4:
-        EffDiablos18_End(o);
+        DiablosAttack_End(o);
         break;
-    case 5:
-        EffDiablos18_End(o);
+    case ATTACH_DEFLECTED:
+        DiablosAttack_End(o);
         break;
-    case 9:
-        EffDiablos18_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        DiablosAttack_End(o);
         break;
     case 7:
-        EffDiablos18_End(o);
+        DiablosAttack_End(o);
         break;
-    case 6:
-        EffDiablos18_Free(o);
+    case ATTACH_FREE:
+        DiablosAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffDiablos18_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT.
+ * hitDelay is counted from the monster's motion.
+ */
+void DiablosAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
+    Em *em = &gEms[o->idx];
+    s32 blendFrames;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffDiablos18_MotionRef);
-    o->hitList = EffDiablos18_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &DiablosAttack_RowsPtr);
+    o->hitList = DiablosAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blendFrames = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blendFrames - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -2443,18 +2733,22 @@ void EffDiablos18_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffDiablos18_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * type 14 keeps its window open.
+ */
+void DiablosAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 14:
         o->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -2462,30 +2756,38 @@ void EffDiablos18_Run(ObjAttach *o)
     }
 }
 
-void EffDiablos18_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void DiablosAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffDiablos18_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void DiablosAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffGravios19_Create(Em *em, s8 kind)
+/*
+ * Makes a GraviosAttack for em (Gravios, Black Gravios, Basarios:
+ * EmGravios_MotionEffects, EmGravios_State3_05) with row kind of
+ * GraviosAttack_Rows, if a player is in em's area. Types 4 and 22 face
+ * backward (yaw + 0x8000). Clears em's hitPending and contactHit.
+ */
+void GraviosAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 19;
+            o->kind = ATTACH_GRAVIOS_ATTACK;
             o->type = kind;
-            o->update = EffGravios19_Update;
+            o->update = GraviosAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -2502,69 +2804,75 @@ void EffGravios19_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffGravios19_Update(ObjAttach *o)
+/* The GraviosAttack's per-frame update, by ObjAttach.state. */
+void GraviosAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffGravios19_Setup(o);
+    case ATTACH_SETUP:
+        GraviosAttack_Setup(o);
         break;
-    case 1:
-        EffGravios19_Run(o);
+    case ATTACH_RUN:
+        GraviosAttack_Run(o);
         break;
-    case 2:
-        EffGravios19_End(o);
+    case ATTACH_END:
+        GraviosAttack_End(o);
         break;
-    case 3:
-        EffGravios19_Run(o);
+    case ATTACH_HIT:
+        GraviosAttack_Run(o);
         break;
     case 4:
-        EffGravios19_End(o);
+        GraviosAttack_End(o);
         break;
-    case 5:
-        EffGravios19_End(o);
+    case ATTACH_DEFLECTED:
+        GraviosAttack_End(o);
         break;
-    case 9:
-        EffGravios19_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        GraviosAttack_End(o);
         break;
     case 7:
-        EffGravios19_End(o);
+        GraviosAttack_End(o);
         break;
-    case 6:
-        EffGravios19_Free(o);
+    case ATTACH_FREE:
+        GraviosAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffGravios19_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT.
+ * hitDelay is counted from the monster's motion (type 3's from motion layer
+ * 1).
+ */
+void GraviosAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
-    s32 b;
+    Em *em = &gEms[o->idx];
+    s32 blendFrames;
+    s32 startFrame;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffGravios19_MotionRef);
-    o->hitList = EffGravios19_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &GraviosAttack_RowsPtr);
+    o->hitList = GraviosAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
         if (o->type == 3) {
-            a = Math_Absf(m->motionBlend[1] % 100);
-            b = Math_Absf(m->motionFrame[1]);
+            blendFrames = Math_Absf(em->motionBlend[1] % 100);
+            startFrame = Math_Absf(em->motionFrame[1]);
         } else {
-            a = Math_Absf(m->motionBlend[0] % 100);
-            b = Math_Absf(m->motionFrame[0]);
+            blendFrames = Math_Absf(em->motionBlend[0] % 100);
+            startFrame = Math_Absf(em->motionFrame[0]);
         }
-        o->hitDelay += a - b - 1;
+        o->hitDelay += blendFrames - startFrame - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -2572,39 +2880,47 @@ void EffGravios19_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffGravios19_Run(ObjAttach *o)
+/*
+ * Types 11 and 27 (motion 0x3F9: 11 for Gravios and Black Gravios, 27 for
+ * Basarios) keep their window at 60 frames while the monster plays 0x3F9.
+ * Types 12 and 14 (EmGravios_State3_05) keep theirs at 18 frames while it
+ * plays 0x457. These four end only when the window closes or the monster is
+ * in group 4 or 5. The others end when the motion changes or the window
+ * closes.
+ */
+void GraviosAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 11:
     case 27:
-        if (m->motionId[0] == 0x3F9) {
+        if (em->motionId[0] == EM_MOTION_ID(0, 0x11)) {
             o->hitFrames = 60;
         }
         break;
     case 12:
     case 14:
-        if (m->motionId[0] == 0x457) {
+        if (em->motionId[0] == EM_MOTION_ID(0, 0x6F)) {
             o->hitFrames = 18;
         }
         break;
     }
     if (o->type == 11 || o->type == 27) {
-        if (o->hitPhase == 0 || m->stateGroup == 4 || m->stateGroup == 5) {
+        if (o->hitPhase == 0 || em->stateGroup == EM_GROUP_REACT || em->stateGroup == EM_GROUP_DEFEAT) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
     } else if (o->type == 12 || o->type == 14) {
-        if (o->hitPhase == 0 || m->stateGroup == 4 || m->stateGroup == 5) {
+        if (o->hitPhase == 0 || em->stateGroup == EM_GROUP_REACT || em->stateGroup == EM_GROUP_DEFEAT) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
     } else {
-        if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+        if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
     }
     if (o->drawSlotBuf != NULL) {
@@ -2613,30 +2929,37 @@ void EffGravios19_Run(ObjAttach *o)
     }
 }
 
-void EffGravios19_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void GraviosAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffGravios19_Free(ObjAttach *o)
+/* Frees the object (ObjAttach_Free). */
+void GraviosAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffPlesioth20_Create(Em *em, s8 kind)
+/*
+ * Makes a PlesiothAttack for em (Plesioth and Green Plesioth,
+ * EmPlesioth_MotionEffects) with row kind of PlesiothAttack_Rows, if a player
+ * is in em's area. Clears em's hitPending and contactHit.
+ */
+void PlesiothAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 20;
+            o->kind = ATTACH_PLESIOTH_ATTACK;
             o->type = kind;
-            o->update = EffPlesioth20_Update;
+            o->update = PlesiothAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -2647,62 +2970,67 @@ void EffPlesioth20_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffPlesioth20_Update(ObjAttach *o)
+/* The PlesiothAttack's per-frame update, by ObjAttach.state. */
+void PlesiothAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffPlesioth20_Setup(o);
+    case ATTACH_SETUP:
+        PlesiothAttack_Setup(o);
         break;
-    case 1:
-        EffPlesioth20_Run(o);
+    case ATTACH_RUN:
+        PlesiothAttack_Run(o);
         break;
-    case 2:
-        EffPlesioth20_End(o);
+    case ATTACH_END:
+        PlesiothAttack_End(o);
         break;
-    case 3:
-        EffPlesioth20_Run(o);
+    case ATTACH_HIT:
+        PlesiothAttack_Run(o);
         break;
     case 4:
-        EffPlesioth20_End(o);
+        PlesiothAttack_End(o);
         break;
-    case 5:
-        EffPlesioth20_End(o);
+    case ATTACH_DEFLECTED:
+        PlesiothAttack_End(o);
         break;
-    case 9:
-        EffPlesioth20_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        PlesiothAttack_End(o);
         break;
     case 7:
-        EffPlesioth20_End(o);
+        PlesiothAttack_End(o);
         break;
-    case 6:
-        EffPlesioth20_Free(o);
+    case ATTACH_FREE:
+        PlesiothAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffPlesioth20_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT;
+ * hitDelay is counted from the monster's motion.
+ */
+void PlesiothAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
+    Em *em = &gEms[o->idx];
+    s32 blend;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffPlesioth20_MotionRef);
-    o->hitList = EffPlesioth20_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &PlesiothAttack_RowsPtr);
+    o->hitList = PlesiothAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blend = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blend - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -2710,9 +3038,13 @@ void EffPlesioth20_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffPlesioth20_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * types 14, 19, 23 and 24 keep their window open.
+ */
+void PlesiothAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 14:
@@ -2722,9 +3054,9 @@ void EffPlesioth20_Run(ObjAttach *o)
         o->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -2732,30 +3064,37 @@ void EffPlesioth20_Run(ObjAttach *o)
     }
 }
 
-void EffPlesioth20_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void PlesiothAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffPlesioth20_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void PlesiothAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffCephadrome21_Create(Em *em, s32 kind)
+/*
+ * Makes a CephadromeAttack, a hit zone of Cephadrome's, for em with the row
+ * kind of CephadromeAttack_Rows, if a player is in em's area
+ * (EmCephadrome_CreateAttack). Clears em's hitPending and contactHit.
+ */
+void CephadromeAttack_Create(Em *em, s32 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 21;
+            o->kind = ATTACH_CEPHADROME_ATTACK;
             o->type = kind;
-            o->update = EffCephadrome21_Update;
+            o->update = CephadromeAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -2766,62 +3105,67 @@ void EffCephadrome21_Create(Em *em, s32 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffCephadrome21_Update(ObjAttach *o)
+/* The CephadromeAttack's per-frame update, by ObjAttach.state. */
+void CephadromeAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffCephadrome21_Setup(o);
+    case ATTACH_SETUP:
+        CephadromeAttack_Setup(o);
         break;
-    case 1:
-        EffCephadrome21_Run(o);
+    case ATTACH_RUN:
+        CephadromeAttack_Run(o);
         break;
-    case 2:
-        EffCephadrome21_End(o);
+    case ATTACH_END:
+        CephadromeAttack_End(o);
         break;
-    case 3:
-        EffCephadrome21_Run(o);
+    case ATTACH_HIT:
+        CephadromeAttack_Run(o);
         break;
     case 4:
-        EffCephadrome21_End(o);
+        CephadromeAttack_End(o);
         break;
-    case 5:
-        EffCephadrome21_End(o);
+    case ATTACH_DEFLECTED:
+        CephadromeAttack_End(o);
         break;
-    case 9:
-        EffCephadrome21_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        CephadromeAttack_End(o);
         break;
     case 7:
-        EffCephadrome21_End(o);
+        CephadromeAttack_End(o);
         break;
-    case 6:
-        EffCephadrome21_Free(o);
+    case ATTACH_FREE:
+        CephadromeAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffCephadrome21_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT;
+ * hitDelay is counted from the monster's motion.
+ */
+void CephadromeAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
+    Em *em = &gEms[o->idx];
+    s32 blend;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffCephadrome21_MotionRef);
-    o->hitList = EffCephadrome21_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &CephadromeAttack_RowsPtr);
+    o->hitList = CephadromeAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blend = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blend - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -2829,9 +3173,13 @@ void EffCephadrome21_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffCephadrome21_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * types 14, 19, 23, 24 and 26 keep their window open.
+ */
+void CephadromeAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 14:
@@ -2842,9 +3190,9 @@ void EffCephadrome21_Run(ObjAttach *o)
         o->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -2852,27 +3200,37 @@ void EffCephadrome21_Run(ObjAttach *o)
     }
 }
 
-void EffCephadrome21_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void CephadromeAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffCephadrome21_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void CephadromeAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void Eff22_CreateForPlayer(Player *pl, u8 kind)
+/*
+ * Makes pl's stage shot of type kind. Type 0 is the mounted gun: two shots,
+ * 36.2 to either side, aimed by pl->aimPitchPct, the second 3 frames late.
+ * Type 1 is the cannon: it starts at the area's cannon spot pl->stateRand,
+ * with a random spread from randBits, and is freed outside its three areas.
+ * Type 7 is the arena strike, on pl's side and 45 frames late. Skill 0xC9
+ * sets powerPct 110 for types 0 and 1.
+ */
+void StageShot_CreateForPlayer(Player *pl, u8 kind)
 {
-    f32 v[3];
-    s16 n;
+    f32 ofs[3];
+    s16 count;
     ObjAttach *o;
-    u8 c = 0;
+    u8 powerPercent = 0;
     f32 (*pts)[3];
     u16 *angs;
     s16 i;
@@ -2880,27 +3238,27 @@ void Eff22_CreateForPlayer(Player *pl, u8 kind)
     f32 turn;
 
     switch (kind) {
-    case 0:
-        n = 2;
+    case STAGESHOT_MOUNTED_GUN:
+        count = 2;
         if (Player_HasSkill(pl, 0xC9) == 1) {
-            c = 110;
+            powerPercent = 110;
         }
         break;
-    case 1:
-        n = 1;
+    case STAGESHOT_CANNON:
+        count = 1;
         if (Player_HasSkill(pl, 0xC9) == 1) {
-            c = 110;
+            powerPercent = 110;
         }
         break;
     default:
-        n = 1;
+        count = 1;
         break;
     }
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < count; i++) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 22;
+            o->kind = ATTACH_STAGE_SHOT;
             o->type = kind;
-            o->update = Eff22_Update;
+            o->update = StageShot_Update;
             o->idx = pl->index;
             o->isEm = pl->isEm;
             o->owner = pl;
@@ -2909,9 +3267,9 @@ void Eff22_CreateForPlayer(Player *pl, u8 kind)
             o->randBits = (pl->stateRand & 0xFF00) >> 8;
             o->stateVar1 = 0;
             o->ownerMotion = 0;
-            o->powerPct = c;
+            o->powerPct = powerPercent;
             switch (kind) {
-            case 0:
+            case STAGESHOT_MOUNTED_GUN:
                 o->pos[0] = pl->pos[0];
                 o->pos[1] = pl->pos[1];
                 o->pos[2] = pl->pos[2];
@@ -2925,31 +3283,31 @@ void Eff22_CreateForPlayer(Player *pl, u8 kind)
                 }
                 o->rotY = pl->rot[1];
                 if (i == 0) {
-                    v[0] = 36.2f;
+                    ofs[0] = 36.2f;
                 } else {
-                    v[0] = -36.2f;
+                    ofs[0] = -36.2f;
                     o->ownerMotion = -3;
                 }
-                v[1] = 100.0f;
-                v[2] = 75.0f;
-                Vec_RotateY(v, (6.2831855f * o->rotY) / turn);
-                o->pos[0] += v[0];
-                o->pos[1] += v[1];
-                o->pos[2] += v[2];
+                ofs[1] = 100.0f;
+                ofs[2] = 75.0f;
+                Vec_RotateY(ofs, (6.2831855f * o->rotY) / turn);
+                o->pos[0] += ofs[0];
+                o->pos[1] += ofs[1];
+                o->pos[2] += ofs[2];
                 break;
-            case 1:
+            case STAGESHOT_CANNON:
                 switch (Area_DayId(o->area)) {
-                case 0xC:
-                    pts = Eff22_PlayerPtsA;
-                    angs = Eff22_PlayerAngsA;
+                case AREA_FORTRESS_5:
+                    pts = StageShot_CannonPtsFortress5;
+                    angs = StageShot_CannonAngsFortress5;
                     break;
-                case 0x19:
-                    pts = Eff22_PlayerPtsB;
-                    angs = Eff22_PlayerAngsB;
+                case AREA_CASTLE_1:
+                    pts = StageShot_CannonPtsCastle1;
+                    angs = StageShot_CannonAngsCastle1;
                     break;
-                case 0xB0:
-                    pts = Eff22_PlayerPtsC;
-                    angs = Eff22_PlayerAngsC;
+                case AREA_BATTLE_TOWN_1:
+                    pts = StageShot_CannonPtsBattleTown1;
+                    angs = StageShot_CannonAngsBattleTown1;
                     break;
                 default:
                     ObjAttach_Free(o);
@@ -2958,16 +3316,16 @@ void Eff22_CreateForPlayer(Player *pl, u8 kind)
                 Vec_Copy(o->pos, pts[o->stateVar0]);
                 o->rotX = 0xF05C;
                 o->rotY = angs[o->stateVar0];
-                v[0] = 0.0f;
-                v[1] = 50.0f;
-                v[2] = 255.0f;
-                Vec_RotateX(v, (6.2831855f * o->rotX) / 65536.0f);
-                Vec_RotateY(v, (6.2831855f * o->rotY) / 65536.0f);
-                o->pos[0] += v[0];
-                o->pos[1] += v[1];
-                o->pos[2] += v[2];
+                ofs[0] = 0.0f;
+                ofs[1] = 50.0f;
+                ofs[2] = 255.0f;
+                Vec_RotateX(ofs, (6.2831855f * o->rotX) / 65536.0f);
+                Vec_RotateY(ofs, (6.2831855f * o->rotY) / 65536.0f);
+                o->pos[0] += ofs[0];
+                o->pos[1] += ofs[1];
+                o->pos[2] += ofs[2];
                 break;
-            case 7:
+            case STAGESHOT_ARENA_STRIKE:
                 o->side = pl->side;
                 o->ownerMotion = -45;
                 break;
@@ -2977,28 +3335,33 @@ void Eff22_CreateForPlayer(Player *pl, u8 kind)
     }
 }
 
-void Eff22_CreateAt(f32 *pos, u8 kind, u8 area, s32 ang)
+/*
+ * Makes a StageShot of type kind with no owner at pos in area, facing ang
+ * (for AreaObj_K05_Run and AreaObj_K14_Run). Type 2 makes four objects and
+ * type 8 two; stateVar1, their index, picks each one's hit shapes.
+ */
+void StageShot_CreateAt(f32 *pos, u8 kind, u8 area, s32 ang)
 {
-    s16 n;
+    s16 count;
     s16 i;
     ObjAttach *o;
 
     switch (kind) {
-    case 2:
-        n = 4;
+    case STAGESHOT_AREA_BURST:
+        count = 4;
         break;
-    case 8:
-        n = 2;
+    case STAGESHOT_AREA_PAIR:
+        count = 2;
         break;
     default:
-        n = 1;
+        count = 1;
         break;
     }
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < count; i++) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 22;
+            o->kind = ATTACH_STAGE_SHOT;
             o->type = kind;
-            o->update = Eff22_Update;
+            o->update = StageShot_Update;
             o->idx = 0;
             o->isEm = 0;
             o->owner = NULL;
@@ -3016,18 +3379,23 @@ void Eff22_CreateAt(f32 *pos, u8 kind, u8 area, s32 ang)
     }
 }
 
-void Eff22_CreateAtSpot(Em *em, s32 kind, s32 c)
+/*
+ * Makes Lao-Shan Lung's falling rock (type kind, 4) at the current area's
+ * spot near em (StageShot_FindSpot), if a player is in em's area. spot
+ * (stateVar1) picks its added velocity in StageShot_RockSpotVels.
+ */
+void StageShot_CreateAtSpot(Em *em, s32 kind, s32 spot)
 {
     u16 ang;
     f32 pos[3];
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
-        if (Eff22_FindSpot(&em->posX, pos, &ang) != 0) {
+        if (StageShot_FindSpot(&em->posX, pos, &ang) != 0) {
             if ((o = ObjAttach_Alloc(0)) != NULL) {
-                o->kind = 22;
+                o->kind = ATTACH_STAGE_SHOT;
                 o->type = kind;
-                o->update = Eff22_Update;
+                o->update = StageShot_Update;
                 o->idx = 0;
                 o->isEm = 1;
                 o->owner = em;
@@ -3039,22 +3407,26 @@ void Eff22_CreateAtSpot(Em *em, s32 kind, s32 c)
                 o->rotX = 0;
                 o->rotY = ang;
                 o->stateVar0 = 0;
-                o->stateVar1 = c;
+                o->stateVar1 = spot;
                 o->ownerMotion = 0;
             }
         }
     }
 }
 
-void Eff22_CreateAtPos(Em *em, f32 *pos, s8 kind, u8 n)
+/*
+ * Makes em's StageShot of type kind at pos, if a player is in em's area
+ * (Blangonga's falling objects, type 6). It starts order * 20 frames late.
+ */
+void StageShot_CreateAtPos(Em *em, f32 *pos, s8 kind, u8 order)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 22;
+            o->kind = ATTACH_STAGE_SHOT;
             o->type = kind;
-            o->update = Eff22_Update;
+            o->update = StageShot_Update;
             o->idx = 0;
             o->isEm = 1;
             o->owner = em;
@@ -3066,156 +3438,179 @@ void Eff22_CreateAtPos(Em *em, f32 *pos, s8 kind, u8 n)
             o->rotX = 0;
             o->rotY = 0;
             o->stateVar0 = 0;
-            o->ownerMotion = -n * 20;
+            o->ownerMotion = -order * 20;
         }
     }
 }
 
-void Eff22_Update(ObjAttach *o)
+/*
+ * The StageShot's per-frame update, by ObjAttach.state; ATTACH_HIT goes to
+ * StageShot_Hit.
+ */
+void StageShot_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        Eff22_Setup(o);
+    case ATTACH_SETUP:
+        StageShot_Setup(o);
         break;
-    case 1:
-        Eff22_Run(o);
+    case ATTACH_RUN:
+        StageShot_Run(o);
         break;
-    case 2:
-        Eff22_End(o);
+    case ATTACH_END:
+        StageShot_End(o);
         break;
-    case 3:
-        Eff22_Hit(o);
+    case ATTACH_HIT:
+        StageShot_Hit(o);
         break;
     case 4:
-        Eff22_End(o);
+        StageShot_End(o);
         break;
-    case 5:
-        Eff22_End(o);
+    case ATTACH_DEFLECTED:
+        StageShot_End(o);
         break;
-    case 9:
-        Eff22_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        StageShot_End(o);
         break;
     case 7:
-        Eff22_End(o);
+        StageShot_End(o);
         break;
-    case 6:
-        Eff22_Free(o);
+    case ATTACH_FREE:
+        StageShot_Free(o);
         
     default:
         break;
     }
 }
 
-void Eff22_Setup(ObjAttach *o)
+/*
+ * Sets the shot up from row type + 1 of StageShot_Rows (an ownerless shot
+ * takes it without an owner). Types 4 and 6 also hit players, the others only
+ * monsters. Types 2 and 8 offset their hit shapes by stateVar1. The velocity
+ * (StageShot_StartVels) and gravity (StageShot_Gravities) come by type, plus
+ * the rock's spot velocity or the cannon's random spread, turned by rotX and
+ * rotY. Plays the set-up sound and takes a draw slot (none for types 2, 3 and
+ * 5; it frees itself when none is free); the rock shakes the camera.
+ */
+void StageShot_Setup(ObjAttach *o)
 {
     Em *owner = o->owner;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    if (o->type == 4 || o->type == 6) {
+    if (o->type == STAGESHOT_LAOSHAN_ROCK || o->type == STAGESHOT_FALLING_OBJECT) {
         Player_TestSetFlags(o, 0);
     } else {
-        Player_TestSetFlags(o, 0x400);
+        Player_TestSetFlags(o, ATKF_NO_PLAYER);
     }
     o->aux = 0;
     if (owner == NULL) {
-        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Eff22_MotionRef);
+        MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &StageShot_RowsPtr);
     } else {
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) owner, o->type + 1, &Eff22_MotionRef);
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) owner, o->type + 1, &StageShot_RowsPtr);
     }
     switch (o->type) {
-    case 2:
-    case 8:
-        o->hitList = Eff22_Vals088[o->hitListNo + o->stateVar1];
+    case STAGESHOT_AREA_BURST:
+    case STAGESHOT_AREA_PAIR:
+        o->hitList = StageShot_HitShapes[o->hitListNo + o->stateVar1];
         o->hurtList = 0;
         break;
     default:
-        o->hitList = Eff22_Vals088[o->hitListNo];
+        o->hitList = StageShot_HitShapes[o->hitListNo];
         o->hurtList = 0;
         break;
     }
     Vec_Copy(o->pos2, o->pos);
-    o->velX = Eff22_Val048ByType[o->type][0];
-    o->velY = Eff22_Val048ByType[o->type][1];
-    o->velZ = Eff22_Val048ByType[o->type][2];
+    o->velX = StageShot_StartVels[o->type][0];
+    o->velY = StageShot_StartVels[o->type][1];
+    o->velZ = StageShot_StartVels[o->type][2];
     o->homingTurn = 0.0f;
-    o->gravity = Eff22_Val058ByType[o->type];
+    o->gravity = StageShot_Gravities[o->type];
     o->homingSpeed = 0.0f;
     switch (o->type) {
-    case 4:
-        o->velX += Eff22_Add048B[o->stateVar1 & 3];
-        o->velY += Eff22_Add048B[(o->stateVar1 & 3) + 1];
-        o->velZ += Eff22_Add048B[(o->stateVar1 & 3) + 2];
+    case STAGESHOT_LAOSHAN_ROCK:
+        o->velX += StageShot_RockSpotVels[o->stateVar1 & 3];
+        o->velY += StageShot_RockSpotVels[(o->stateVar1 & 3) + 1];
+        o->velZ += StageShot_RockSpotVels[(o->stateVar1 & 3) + 2];
         break;
-    case 1:
-        o->velX += Eff22_Add048A[o->randBits & 3];
-        o->velY += 0.4f * Eff22_Add048A[(o->randBits >> 2) & 3];
-        o->velZ += Eff22_Add048A[(o->randBits >> 4) & 3];
-        o->gravity += 0.2f * Eff22_Add048A[(o->randBits >> 6) & 3];
+    case STAGESHOT_CANNON:
+        o->velX += StageShot_CannonSpread[o->randBits & 3];
+        o->velY += 0.4f * StageShot_CannonSpread[(o->randBits >> 2) & 3];
+        o->velZ += StageShot_CannonSpread[(o->randBits >> 4) & 3];
+        o->gravity += 0.2f * StageShot_CannonSpread[(o->randBits >> 6) & 3];
         break;
     }
     Vec_RotateX(&o->velX, (6.2831855f * o->rotX) / 65536.0f);
     Vec_RotateY(&o->velX, (6.2831855f * o->rotY) / 65536.0f);
-    Eff22_PlaySound(o, 0);
+    StageShot_PlaySound(o, 0);
     switch (o->type) {
-    case 0:
-    case 1:
-    case 4:
-    case 6:
-    case 7:
+    case STAGESHOT_MOUNTED_GUN:
+    case STAGESHOT_CANNON:
+    case STAGESHOT_LAOSHAN_ROCK:
+    case STAGESHOT_FALLING_OBJECT:
+    case STAGESHOT_ARENA_STRIKE:
     default:
         o->drawSlot = DrawSlot_Alloc();
         if (o->drawSlot != -1) {
             o->drawSlotBuf = DrawSlot_Get(o->drawSlot);
             o->drawSlotBuf->owner = o;
-            o->drawSlotBuf->draw = Eff22_Draw;
+            o->drawSlotBuf->draw = StageShot_Draw;
             Vec_Copy(o->drawSlotBuf->pos, o->pos);
-            if (o->type != 1 && o->type != 0 && o->type != 7) {
+            if (o->type != STAGESHOT_CANNON && o->type != STAGESHOT_MOUNTED_GUN && o->type != STAGESHOT_ARENA_STRIKE) {
                 OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
             }
-            if (o->type == 4 && o->area == gScene.area) {
-                Eff22_CamShake(o);
+            if (o->type == STAGESHOT_LAOSHAN_ROCK && o->area == gScene.area) {
+                StageShot_CamShake(o);
             }
         } else {
             ObjAttach_Free(o);
         }
         break;
-    case 2:
-    case 3:
-    case 5:
+    case STAGESHOT_AREA_BURST:
+    case STAGESHOT_AREA_PULSE:
+    case STAGESHOT_AREA_DROP:
         o->drawSlotBuf = NULL;
         break;
     }
 }
 
-void Eff22_Run(ObjAttach *o)
+/*
+ * Counts ownerMotion (the frames; negative is a start delay) and ends the
+ * shot past StageShot_TimeLimit[type]; except type 7, an open hit window
+ * stays open. Types 0 and 1 fire after 5 or 10 frames (sound, StageObj_K12
+ * effects) and end at the floor. Types 2, 3 and 8 move only for 4 frames; 3
+ * reopens its hit every 25 frames, 8 once after 20. The rock (4) crashes 50
+ * above the floor (shake, sound, dust), 6 falls to the floor, and 7 rises
+ * under the first visible monster of another side for 4 frames, holds for 15,
+ * then sinks.
+ */
+void StageShot_Run(ObjAttach *o)
 {
-    Em *e;
-    f32 f;
+    Em *target;
+    f32 groundY;
     s16 i;
-    s16 lay = 1;
+    s16 useOt32 = 1;
 
     o->ownerMotion++;
     Vec_Copy(o->pos2, o->pos);
-    if (o->type != 7 && o->hitFrames != 0) {
+    if (o->type != STAGESHOT_ARENA_STRIKE && o->hitFrames != 0) {
         o->hitFrames = 99;
     }
-    if (o->ownerMotion > Eff22_TimeLimit[o->type]) {
+    if (o->ownerMotion > StageShot_TimeLimit[o->type]) {
         o->hitFrames = 0;
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
     switch (o->type) {
-    case 0:
+    case STAGESHOT_MOUNTED_GUN:
     default:
         if (o->ownerMotion < 5) {
             return;
         }
         if (o->ownerMotion < 13) {
             if (o->ownerMotion == 5) {
-                Eff22_PlaySound(o, 1);
+                StageShot_PlaySound(o, 1);
                 if (o->area == gScene.area) {
                     StageObj_K12_CreateAtTimed(o->pos, 10, o->rotX, o->rotY);
                     StageObj_K12_CreateAtTimed(o->pos, 11, o->rotX, o->rotY);
@@ -3228,15 +3623,15 @@ void Eff22_Run(ObjAttach *o)
         if (o->ownerMotion > 5 && o->pos[1] <= AreaGrid2_GetFloorYFiltered(o->pos)) {
             o->hitFrames = 0;
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
-    case 1:
+    case STAGESHOT_CANNON:
         switch (o->stateVar1) {
         case 0:
             if (o->ownerMotion > 10) {
                 o->stateVar1++;
-                Eff22_PlaySound(o, 1);
+                StageShot_PlaySound(o, 1);
                 if (o->area == gScene.area) {
                     StageObj_K12_CreateAtTimed(o->pos, 10, o->rotX, o->rotY);
                     StageObj_K12_CreateAtTimed(o->pos, 11, o->rotX, o->rotY);
@@ -3248,28 +3643,28 @@ void Eff22_Run(ObjAttach *o)
             if (o->ownerMotion > 15 && o->pos[1] <= AreaGrid2_GetFloorYFiltered(o->pos)) {
                 o->hitFrames = 0;
                 o->hitPhase = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
             }
             break;
         }
         break;
-    case 2:
+    case STAGESHOT_AREA_BURST:
         if (o->ownerMotion <= 4) {
             MoveObj_Integrate((struct MoveObj *)o);
         }
         break;
-    case 3:
+    case STAGESHOT_AREA_PULSE:
         if (++o->aux >= 25) {
-            MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Eff22_MotionRef);
+            MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &StageShot_RowsPtr);
             o->aux = 0;
         }
         if (o->ownerMotion <= 4) {
             MoveObj_Integrate((struct MoveObj *)o);
         }
         break;
-    case 8:
+    case STAGESHOT_AREA_PAIR:
         if (o->stateVar0 == 0 && ++o->aux >= 20) {
-            MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &Eff22_MotionRef);
+            MoveObj_StartMotionEntry((struct MoveObj *)o, o->type + 1, &StageShot_RowsPtr);
             o->aux = 0;
             o->stateVar0++;
         }
@@ -3277,53 +3672,53 @@ void Eff22_Run(ObjAttach *o)
             MoveObj_Integrate((struct MoveObj *)o);
         }
         break;
-    case 4:
+    case STAGESHOT_LAOSHAN_ROCK:
         MoveObj_Integrate((struct MoveObj *)o);
         if (o->ownerMotion > 5) {
             if (o->ownerMotion == 7) {
-                Eff22_PlaySound(o, 1);
+                StageShot_PlaySound(o, 1);
             }
-            f = 50.0f + AreaGrid2_GetFloorYFiltered(o->pos);
-            if (o->pos[1] <= f) {
-                o->pos[1] = f;
+            groundY = 50.0f + AreaGrid2_GetFloorYFiltered(o->pos);
+            if (o->pos[1] <= groundY) {
+                o->pos[1] = groundY;
                 if (o->area == gScene.area) {
-                    Eff22_CamShake(o);
-                    Eff22_PlaySound(o, 2);
+                    StageShot_CamShake(o);
+                    StageShot_PlaySound(o, 2);
                     Effect02_SpawnScaled(0, 0xB, 0, o->pos, 2.0f);
                     Effect02_SpawnScaled(0, 0xB, 1, o->pos, 2.0f);
                     Effect0D_SpawnIfHere(o->owner, o->pos, 0x22, 16.0f);
                 }
                 o->hitFrames = 0;
                 o->hitPhase = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
             }
         }
         break;
-    case 6:
+    case STAGESHOT_FALLING_OBJECT:
         if (o->ownerMotion > 0) {
             MoveObj_Integrate((struct MoveObj *)o);
             if (o->ownerMotion > 5 && o->pos[1] <= AreaGrid2_GetFloorYFiltered(o->pos)) {
                 o->hitFrames = 0;
                 o->hitPhase = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
             }
         }
-        lay = 0;
+        useOt32 = 0;
         break;
-    case 7:
+    case STAGESHOT_ARENA_STRIKE:
         if (o->ownerMotion <= 0) {
             return;
         }
         switch (o->stateVar1) {
         case 0:
             if (o->ownerMotion == 1) {
-                for (i = 0, e = gEms; i < 20; i++, e++) {
-                    if (e->active != 0 && e->visible != 0 && Side_Match(o->side, *(u8 *) &e->side, 1) == 0) {
-                        o->pos[0] = e->posX;
-                        o->pos[1] = e->floorY;
-                        o->pos[2] = e->posZ;
-                        o->rotY = e->rotY;
-                        Eff22_PlaySound(o, 1);
+                for (i = 0, target = gEms; i < 20; i++, target++) {
+                    if (target->active != 0 && target->visible != 0 && Side_Match(o->side, *(u8 *) &target->side, 1) == 0) {
+                        o->pos[0] = target->posX;
+                        o->pos[1] = target->floorY;
+                        o->pos[2] = target->posZ;
+                        o->rotY = target->rotY;
+                        StageShot_PlaySound(o, 1);
                         if (o->area == gScene.area) {
                             Effect0D_SpawnAt(o->pos, 7, 3.0f);
                         }
@@ -3333,7 +3728,7 @@ void Eff22_Run(ObjAttach *o)
                 if (i == 20) {
                     o->hitFrames = 0;
                     o->hitPhase = 0;
-                    o->state = 2;
+                    o->state = ATTACH_END;
                     return;
                 }
             }
@@ -3347,7 +3742,7 @@ void Eff22_Run(ObjAttach *o)
             if (++o->aux >= 15) {
                 o->stateVar1++;
                 o->aux = 0;
-                Eff22_PlaySound(o, 2);
+                StageShot_PlaySound(o, 2);
             }
             break;
         case 2:
@@ -3355,12 +3750,12 @@ void Eff22_Run(ObjAttach *o)
             break;
         }
         break;
-    case 5:
+    case STAGESHOT_AREA_DROP:
         break;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        if (lay == 0) {
+        if (useOt32 == 0) {
             OT_AddByDepth(gDrawOtSorted, o->drawSlotBuf, 0x40U, 0);
         } else {
             OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
@@ -3368,7 +3763,11 @@ void Eff22_Run(ObjAttach *o)
     }
 }
 
-void Eff22_Hit(ObjAttach *o)
+/*
+ * On a hit: types 2, 3, 7 and 8 go on (StageShot_Run); the rock (4) crashes
+ * as on landing and ends; the others end.
+ */
+void StageShot_Hit(ObjAttach *o)
 {
     u8 type;
 
@@ -3376,46 +3775,52 @@ void Eff22_Hit(ObjAttach *o)
     switch (type) {
     case 0x0:
     default:
-        Eff22_End(o);
+        StageShot_End(o);
         break;
     case 2:
     case 3:
     case 7:
     case 8:
-        Eff22_Run(o);
+        StageShot_Run(o);
         break;
     case 4:
         if (o->area == gScene.area) {
-            Eff22_CamShake(o);
+            StageShot_CamShake(o);
             Effect02_SpawnScaled(0, 0xB, 0, o->pos, 2.0f);
             Effect02_SpawnScaled(0, 0xB, 1, o->pos, 2.0f);
             Effect0D_SpawnIfHere(o->owner, o->pos, 0x22, 16.0f);
         }
         o->hitFrames = 0;
         o->hitPhase = 0;
-        Eff22_End(o);
+        StageShot_End(o);
         break;
     }
 }
 
-void Eff22_End(ObjAttach *o)
+/* Hides the shot, frees its draw slot and frees it on the next update. */
+void StageShot_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void Eff22_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void StageShot_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void Eff22_DrawModel(ModelMatSet *mdl, f32 *m, ModelMat *tex)
+/*
+ * Draws model mdl with matrix mtx and the lights of tex (nothing when mdl is
+ * NULL or has no id), then restores the default draw state.
+ */
+void StageShot_DrawModel(ModelMatSet *mdl, f32 *mtx, ModelMat *tex)
 {
-    Gs_SetState(0x1A, (s32) m);
+    Gs_SetState(0x1A, (s32) mtx);
     if (mdl != NULL && mdl->id != -1) {
         Gs_SetLightList(tex, mdl);
         Draw_ApplyStates(mdl->flags);
@@ -3424,13 +3829,20 @@ void Eff22_DrawModel(ModelMatSet *mdl, f32 *m, ModelMat *tex)
     Draw_SetDefaultState();
 }
 
-void Eff22_Draw(DrawSlot *d)
+/*
+ * Draws a StageShot in the current area by type: 0 the gun's shot model of
+ * Fortress 5, Castle 1 and Battle Town 1 and 3, turned along its velocity; 1
+ * the cannon's shot (common model 133); 4 the rock of Fortress 2-4; 6 the
+ * falling object of Snowy Mountains 3 and 8; 7 the Great Arena's object. The
+ * other types draw nothing.
+ */
+void StageShot_Draw(DrawSlot *slot)
 {
-    f32 m[16];
-    f32 t[16];
-    u16 ax;
-    u16 ay;
-    ObjAttach *o = d->owner;
+    f32 mtx[16];
+    f32 texMtx[16];
+    u16 pitch;
+    u16 yaw;
+    ObjAttach *o = slot->owner;
     ModelMat *tex;
     ModelMatSet *mdl;
 
@@ -3438,7 +3850,7 @@ void Eff22_Draw(DrawSlot *d)
         return;
     }
     switch (o->type) {
-    case 0:
+    case STAGESHOT_MOUNTED_GUN:
     {
         Model *bank = gAreaSubModels[0];
 
@@ -3448,33 +3860,33 @@ void Eff22_Draw(DrawSlot *d)
         if (bank->active == 0) {
             return;
         }
-        Mtx_Scale(m, 2.0f, 2.0f, 1.0f);
+        Mtx_Scale(mtx, 2.0f, 2.0f, 1.0f);
         tex = bank->mats;
         switch (o->area) {
-        case 0xC:
-        case 0x4E:
+        case AREA_FORTRESS_5:
+        case AREA_FORTRESS_NIGHT_5:
             mdl = &bank->matSets[4];
             break;
-        case 0x19:
+        case AREA_CASTLE_1:
             mdl = &bank->matSets[13];
             break;
-        case 0xB0:
-        case 0xB4:
+        case AREA_BATTLE_TOWN_1:
+        case AREA_BATTLE_TOWN_NIGHT_1:
             mdl = &bank->matSets[4];
             break;
-        case 0xB2:
-        case 0xB6:
+        case AREA_BATTLE_TOWN_3:
+        case AREA_BATTLE_TOWN_NIGHT_3:
             mdl = &bank->matSets[2];
             break;
         default:
             return;
         }
         }
-        Vec_DirToAngles(&o->velX, (s16 *) &ax, (s16 *) &ay);
-        Mtx_RotateX(m, (6.2831855f * ax) / 65536.0f);
-        Mtx_RotateY(m, (6.2831855f * ay) / 65536.0f);
+        Vec_DirToAngles(&o->velX, (s16 *) &pitch, (s16 *) &yaw);
+        Mtx_RotateX(mtx, (6.2831855f * pitch) / 65536.0f);
+        Mtx_RotateY(mtx, (6.2831855f * yaw) / 65536.0f);
         break;
-    case 1:
+    case STAGESHOT_CANNON:
     {
         Model *bank = gCommonModels[0];
 
@@ -3484,14 +3896,14 @@ void Eff22_Draw(DrawSlot *d)
         if (bank->active == 0) {
             return;
         }
-        Mtx_Identity(m);
+        Mtx_Identity(mtx);
         tex = bank->mats;
         mdl = &bank->matSets[133];
-        Mtx_Translation(t, 0.0f, 0.0f, 0.0f);
-        Gs_SetState(0x19, (s32) t);
+        Mtx_Translation(texMtx, 0.0f, 0.0f, 0.0f);
+        Gs_SetState(0x19, (s32) texMtx);
         break;
     }
-    case 4:
+    case STAGESHOT_LAOSHAN_ROCK:
     {
         Model *bank = gAreaSubModels[0];
 
@@ -3501,21 +3913,21 @@ void Eff22_Draw(DrawSlot *d)
         if (bank->active == 0) {
             return;
         }
-        Mtx_Identity(m);
+        Mtx_Identity(mtx);
         tex = bank->mats;
         switch (o->area) {
-        case 0xB:
-        case 0x1E:
+        case AREA_FORTRESS_4:
+        case AREA_FORTRESS_2:
             mdl = &bank->matSets[2];
             break;
-        case 0x4D:
+        case AREA_FORTRESS_NIGHT_4:
             mdl = &bank->matSets[3];
             break;
-        case 0x1C:
-        case 0x50:
+        case AREA_FORTRESS_3:
+        case AREA_FORTRESS_NIGHT_3:
             mdl = &bank->matSets[24];
             break;
-        case 0x51:
+        case AREA_FORTRESS_NIGHT_2:
             mdl = &bank->matSets[3];
             break;
         default:
@@ -3523,7 +3935,7 @@ void Eff22_Draw(DrawSlot *d)
         }
         break;
     }
-    case 6:
+    case STAGESHOT_FALLING_OBJECT:
     {
         Model *bank = gAreaSubModels[0];
 
@@ -3533,15 +3945,15 @@ void Eff22_Draw(DrawSlot *d)
         if (bank->active == 0) {
             return;
         }
-        Mtx_Scale(m, 1.7f, 1.0f, 1.7f);
+        Mtx_Scale(mtx, 1.7f, 1.0f, 1.7f);
         switch (o->area) {
-        case 0x5E:
+        case AREA_SNOWY_MOUNTAINS_3:
         default:
-        case 0x67:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_3:
             mdl = &bank->matSets[4];
             break;
-        case 0x64:
-        case 0x6D:
+        case AREA_SNOWY_MOUNTAINS_8:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_8:
             mdl = &bank->matSets[7];
             break;
         }
@@ -3549,7 +3961,7 @@ void Eff22_Draw(DrawSlot *d)
         Gs_SetState(0x67, -1);
         break;
     }
-    case 7:
+    case STAGESHOT_ARENA_STRIKE:
     {
         Model *bank = gAreaSubModels[0];
 
@@ -3559,11 +3971,11 @@ void Eff22_Draw(DrawSlot *d)
         if (bank->active == 0) {
             return;
         }
-        Mtx_Identity(m);
+        Mtx_Identity(mtx);
         tex = bank->mats;
         switch (o->area) {
-        case 0x39:
-        case 0x5A:
+        case AREA_GREAT_ARENA_NIGHT_1:
+        case AREA_GREAT_ARENA_1:
             mdl = &bank->matSets[22];
             break;
         default:
@@ -3574,11 +3986,17 @@ void Eff22_Draw(DrawSlot *d)
     default:
         return;
     }
-    Mtx_SetTrans(m, d->pos[0], d->pos[1], d->pos[2]);
-    Eff22_DrawModel(mdl, m, tex);
+    Mtx_SetTrans(mtx, slot->pos[0], slot->pos[1], slot->pos[2]);
+    StageShot_DrawModel(mdl, mtx, tex);
 }
 
-void Eff22_PlaySound(ObjAttach *o, s16 n)
+/*
+ * Plays the shot's sound for event (0 set up, 1 fired or appearing, 2 landing
+ * or striking) if it is in the current area. STAGESHOT_LAOSHAN_ROCK plays
+ * through the Lao-Shan Lung present (Em_PlaySeChecked); STAGESHOT_AREA_DROP
+ * and STAGESHOT_FALLING_OBJECT have none.
+ */
+void StageShot_PlaySound(ObjAttach *o, s16 event)
 {
     Em *em = gEms;
     s16 i;
@@ -3587,8 +4005,8 @@ void Eff22_PlaySound(ObjAttach *o, s16 n)
         return;
     }
     switch (o->type) {
-    case 0:
-        switch (n) {
+    case STAGESHOT_MOUNTED_GUN:
+        switch (event) {
         case 0:
             Sound_PlaySeAtPosChecked(7, 0x38, 0, o->pos, 7, 0);
             break;
@@ -3597,8 +4015,8 @@ void Eff22_PlaySound(ObjAttach *o, s16 n)
             break;
         }
         break;
-    case 1:
-        switch (n) {
+    case STAGESHOT_CANNON:
+        switch (event) {
         case 0:
             break;
         case 1:
@@ -3606,22 +4024,22 @@ void Eff22_PlaySound(ObjAttach *o, s16 n)
             break;
         }
         break;
-    case 2:
-    case 3:
-    case 8:
-        switch (n) {
+    case STAGESHOT_AREA_BURST:
+    case STAGESHOT_AREA_PULSE:
+    case STAGESHOT_AREA_PAIR:
+        switch (event) {
         case 0:
             Sound_PlaySeAtPosChecked(7, 0x34, 0, o->pos, 7, 0);
             break;
         }
         break;
-    case 4:
-        for (i = 0; i < 20; i++, em++) {
-            if (em->active && em->visible && (em->type == 7 || em->type == 0x32)) {
+    case STAGESHOT_LAOSHAN_ROCK:
+        for (i = 0; i < EM_COUNT; i++, em++) {
+            if (em->active && em->visible && (em->type == EM_KIND_LAO_SHAN_LUNG || em->type == EM_KIND_ASHEN_LAO_SHAN_LUNG)) {
                 break;
             }
         }
-        switch (n) {
+        switch (event) {
         case 0:
             Em_PlaySeChecked(em, 0x2C, 0, o->pos, 3, 0);
             break;
@@ -3633,11 +4051,11 @@ void Eff22_PlaySound(ObjAttach *o, s16 n)
             break;
         }
         break;
-    case 5:
-    case 6:
+    case STAGESHOT_AREA_DROP:
+    case STAGESHOT_FALLING_OBJECT:
         break;
-    case 7:
-        switch (n) {
+    case STAGESHOT_ARENA_STRIKE:
+        switch (event) {
         case 1:
             Sound_PlaySeAtPosChecked(7, 0x34, 0, o->pos, 7, 0);
             break;
@@ -3649,12 +4067,17 @@ void Eff22_PlaySound(ObjAttach *o, s16 n)
     }
 }
 
-s32 Eff22_FindSpot(f32 *from, f32 *pos, u16 *ang)
+/*
+ * Finds the falling-rock spot of the current area (Fortress 2, 3 or 4) whose
+ * box holds from, copies its position to pos and its angle to ang, and
+ * returns 1. Returns 0 when there is none.
+ */
+s32 StageShot_FindSpot(f32 *from, f32 *pos, u16 *ang)
 {
     s16 i;
 
     switch (Area_DayId(gScene.area)) {
-    case 0xB:
+    case AREA_FORTRESS_4:
         if (from[0] > 12000.0f && from[0] < 16000.0f && from[2] > 20500.0f && from[2] < 23000.0f) {
             i = 0;
         } else if (from[0] > 12000.0f && from[0] < 16000.0f && from[2] > 26000.0f && from[2] < 29000.0f) {
@@ -3664,10 +4087,10 @@ s32 Eff22_FindSpot(f32 *from, f32 *pos, u16 *ang)
         } else {
             return 0;
         }
-        Vec_Copy(pos, Eff22_SpotPosA[i]);
-        *ang = Eff22_SpotAngA[i];
+        Vec_Copy(pos, StageShot_RockSpotsFortress4[i]);
+        *ang = StageShot_RockAngsFortress4[i];
         return 1;
-    case 0x1C:
+    case AREA_FORTRESS_3:
         if (from[0] > 14000.0f && from[0] < 17000.0f && from[2] > 18000.0f && from[2] < 25000.0f) {
             i = 0;
         } else if (from[0] > 17000.0f && from[0] < 20000.0f && from[2] > 22000.0f && from[2] < 29000.0f) {
@@ -3675,10 +4098,10 @@ s32 Eff22_FindSpot(f32 *from, f32 *pos, u16 *ang)
         } else {
             return 0;
         }
-        Vec_Copy(pos, Eff22_SpotPosB[i]);
-        *ang = Eff22_SpotAngB[i];
+        Vec_Copy(pos, StageShot_RockSpotsFortress3[i]);
+        *ang = StageShot_RockAngsFortress3[i];
         return 1;
-    case 0x1E:
+    case AREA_FORTRESS_2:
         if (from[0] > 9000.0f && from[0] < 13000.0f && from[2] > 21000.0f && from[2] < 26000.0f) {
             i = 0;
         } else if (from[0] > 14000.0f && from[0] < 18000.0f && from[2] > 21000.0f && from[2] < 26000.0f) {
@@ -3688,15 +4111,19 @@ s32 Eff22_FindSpot(f32 *from, f32 *pos, u16 *ang)
         } else {
             return 0;
         }
-        Vec_Copy(pos, Eff22_SpotPosC[i]);
-        *ang = Eff22_SpotAngC[i];
+        Vec_Copy(pos, StageShot_RockSpotsFortress2[i]);
+        *ang = StageShot_RockAngsFortress2[i];
         return 1;
     default:
         return 0;
     }
 }
 
-void Eff22_CamShake(ObjAttach *o)
+/*
+ * Shakes the camera by the shot's distance from it: strength 5 within 500,
+ * down to 0 within 3000, none beyond.
+ */
+void StageShot_CamShake(ObjAttach *o)
 {
     f32 dist;
 
@@ -3726,7 +4153,16 @@ void Eff22_CamShake(ObjAttach *o)
     }
 }
 
-void EmBlangonga_State3Pick(Em *em)
+/*
+ * The heavy slams' falling objects (EmBlangonga_Slam's variant 1,
+ * EmBlangonga_RajangComboSlam): in the two areas that have them (by Area_DayId),
+ * picks two of the area's points and makes a type-6 StageShot object fall at
+ * each. In the first area each object has its own list of points
+ * (EmBlangonga_FallListsSnowy3); in the second one list serves both, chosen by
+ * the monster's z (EmBlangonga_FallListsByZ), and the second pick skips
+ * the first. A list is a count, then indices into the area's points.
+ */
+void EmBlangonga_DropFallingObjects(Em *em)
 {
     s16 pick[2];
     s16 used[2];
@@ -3736,19 +4172,19 @@ void EmBlangonga_State3Pick(Em *em)
     s16 i;
     f32 (*pts)[3];
     s16 j;
-    s16 n;
+    s16 skipped;
 
     switch (Area_DayId(gScene.area)) {
-    case 0x5E:
+    case AREA_SNOWY_MOUNTAINS_3:
         mode = 1;
-        tabs = EmBlangonga_State3Tabs;
-        pts = EmBlangonga_State3PtsA;
+        tabs = EmBlangonga_FallListsSnowy3;
+        pts = EmBlangonga_FallPointsSnowy3;
         break;
-    case 0x64:
+    case AREA_SNOWY_MOUNTAINS_8:
         mode = 0;
-        tab = EmBlangonga_State3TabByZ[(s16) ((em->posZ <= 9000.0f) ^ 1)];
-        tabs = EmBlangonga_State3TabByZ;
-        pts = EmBlangonga_State3PtsB;
+        tab = EmBlangonga_FallListsByZ[(s16) ((em->posZ <= 9000.0f) ^ 1)];
+        tabs = EmBlangonga_FallListsByZ;
+        pts = EmBlangonga_FallPointsSnowy8;
         break;
     default:
         return;
@@ -3763,31 +4199,36 @@ void EmBlangonga_State3Pick(Em *em)
                 used[j] = 0;
             }
         again:
-            n = 0;
+            skipped = 0;
             for (j = 0; j < i; j++) {
                 if (used[j] == 0 && pick[j] <= pick[i]) {
                     used[j] = 1;
-                    n++;
+                    skipped++;
                 }
             }
-            if (n > 0) {
-                pick[i] += n;
+            if (skipped > 0) {
+                pick[i] += skipped;
                 goto again;
             }
         }
-        Eff22_CreateAtPos(em, pts[tab[pick[i] + 1]], 6, i);
+        StageShot_CreateAtPos(em, pts[tab[pick[i] + 1]], STAGESHOT_FALLING_OBJECT, i);
     }
 }
 
-void EffCephadrome23_Create(Em *em, s32 kind)
+/*
+ * Makes a CephalosAttack, a hit zone of Cephalos's, for em with the row kind
+ * of CephalosAttack_Rows, if a player is in em's area
+ * (EmCephadrome_CreateAttack). Clears em's hitPending and contactHit.
+ */
+void CephalosAttack_Create(Em *em, s32 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 23;
+            o->kind = ATTACH_CEPHALOS_ATTACK;
             o->type = kind;
-            o->update = EffCephadrome23_Update;
+            o->update = CephalosAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -3798,62 +4239,67 @@ void EffCephadrome23_Create(Em *em, s32 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffCephadrome23_Update(ObjAttach *o)
+/* The CephalosAttack's per-frame update, by ObjAttach.state. */
+void CephalosAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffCephadrome23_Setup(o);
+    case ATTACH_SETUP:
+        CephalosAttack_Setup(o);
         break;
-    case 1:
-        EffCephadrome23_Run(o);
+    case ATTACH_RUN:
+        CephalosAttack_Run(o);
         break;
-    case 2:
-        EffCephadrome23_End(o);
+    case ATTACH_END:
+        CephalosAttack_End(o);
         break;
-    case 3:
-        EffCephadrome23_Run(o);
+    case ATTACH_HIT:
+        CephalosAttack_Run(o);
         break;
     case 4:
-        EffCephadrome23_End(o);
+        CephalosAttack_End(o);
         break;
-    case 5:
-        EffCephadrome23_End(o);
+    case ATTACH_DEFLECTED:
+        CephalosAttack_End(o);
         break;
-    case 9:
-        EffCephadrome23_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        CephalosAttack_End(o);
         break;
     case 7:
-        EffCephadrome23_End(o);
+        CephalosAttack_End(o);
         break;
-    case 6:
-        EffCephadrome23_Free(o);
+    case ATTACH_FREE:
+        CephalosAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffCephadrome23_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT;
+ * hitDelay is counted from the monster's motion.
+ */
+void CephalosAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
+    Em *em = &gEms[o->idx];
+    s32 blend;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffCephadrome23_MotionRef);
-    o->hitList = EffCephadrome23_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &CephalosAttack_RowsPtr);
+    o->hitList = CephalosAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blend = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blend - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -3861,9 +4307,13 @@ void EffCephadrome23_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffCephadrome23_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * types 14, 19, 23, 24 and 26 keep their window open.
+ */
+void CephalosAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 14:
@@ -3874,9 +4324,9 @@ void EffCephadrome23_Run(ObjAttach *o)
         o->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -3884,39 +4334,53 @@ void EffCephadrome23_Run(ObjAttach *o)
     }
 }
 
-void EffCephadrome23_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void CephalosAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffCephadrome23_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void CephalosAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void Bowgun_FireLoaded(Player *pl, s32 unused)
+/*
+ * Fires the bow's shot through BowArrow_Fire. The shot level comes from
+ * gBowgunClipShots, at the bow's clipRow and pl->chargeLevel. A full charge
+ * (3) adds the StageObj_K29 effect of kind 3.
+ */
+void Bow_FireArrows(Player *pl, s32 unused)
 {
 
     if ((s8) pl->chargeLevel == 3) {
         StageObj_K29_CreateOnPlayerDefault(pl, 3, 1.0f);
     }
-    BowgunShot_Fire(pl, gBowgunClipShots[gGunData[pl->equip[6].id].clipRow][(s8) pl->chargeLevel & 3]);
+    BowArrow_Fire(pl, gBowgunClipShots[gGunData[pl->equip[6].id].clipRow][(s8) pl->chargeLevel & 3]);
 }
 
-void BowgunShot_Create(Player *pl, u16 angle, u8 kind, u8 idx, u8 crit, s16 shot)
+/*
+ * Makes one arrow of a shot for pl. kind is its type (a BowArrow_Kinds row),
+ * angle its yaw, idx its place in the shot (stateVar1; it also varies
+ * randBits), crit 1 a critical hit or 2 a weak one, shot the shot level.
+ * Fills its buffer from the player: charge, attackFactor, coating, element
+ * and skills.
+ */
+void BowArrow_Create(Player *pl, u16 angle, u8 kind, u8 idx, u8 crit, s16 shot)
 {
     ObjAttach *o;
-    BowgunShotBuf *buf;
+    BowArrowBuf *buf;
 
     if ((o = ObjAttach_Alloc(1)) != NULL) {
-        o->kind = 24;
+        o->kind = ATTACH_BOW_ARROW;
         o->type = kind;
-        o->update = BowgunShot_Update;
+        o->update = BowArrow_Update;
         o->idx = pl->index;
         o->isEm = pl->isEm;
         o->owner = pl;
@@ -3926,25 +4390,32 @@ void BowgunShot_Create(Player *pl, u16 angle, u8 kind, u8 idx, u8 crit, s16 shot
         o->stateVar1 = idx;
         o->side = pl->side;
         o->randBits = pl->stateRand * (idx * 2 + 1);
-        buf = (BowgunShotBuf *) o->buf;
+        buf = (BowArrowBuf *) o->buf;
         buf->charge = (s8) pl->chargeLevel & 3;
-        BowgunShot_InitAttack(buf, pl);
-        BowgunShot_SkillFlags(buf, pl);
+        BowArrow_InitAttack(buf, pl);
+        BowArrow_SkillFlags(buf, pl);
         buf->crit = crit;
         buf->shot = shot;
     }
 }
 
-void BowgunShot_Fire(Player *pl, s16 shot)
+/*
+ * Fires the arrows of shot level shot: one per kind in
+ * BowArrow_ShotParams[shot] (ended by -1), fanned by BowArrow_SpreadDirs
+ * times the shot's BowArrow_SpreadScale (levels 4-7 spread wider). One
+ * affinity roll (WSTAT_AFFINITY) gives the first three arrows a critical (1)
+ * or weak (2) hit.
+ */
+void BowArrow_Fire(Player *pl, s16 shot)
 {
     u8 i;
     u8 crit;
-    s16 *p;
+    s16 *kinds;
     u16 spread;
-    u8 c;
-    s16 aff;
+    u8 arrowCrit;
+    s16 affinity;
 
-    p = BowgunShot_ShotParams[shot];
+    kinds = BowArrow_ShotParams[shot];
     i = 0;
 
     switch (shot) {
@@ -3965,122 +4436,135 @@ void BowgunShot_Fire(Player *pl, s16 shot)
         break;
     }
     crit = 0;
-    aff = Player_GetWeaponStat(pl, 8);
-    if (aff < 0) {
-        if (pl->stateRand % 100 < -aff) {
+    affinity = Player_GetWeaponStat(pl, WSTAT_AFFINITY);
+    if (affinity < 0) {
+        if (pl->stateRand % 100 < -affinity) {
             crit = 2;
         }
     } else {
-        if (aff > pl->stateRand % 100) {
+        if (affinity > pl->stateRand % 100) {
             crit = 1;
         }
     }
-    for (; *p != -1; p++, i++) {
+    for (; *kinds != -1; kinds++, i++) {
         if (i <= 2) {
-            c = crit;
+            arrowCrit = crit;
         } else {
-            c = 0;
+            arrowCrit = 0;
         }
-        BowgunShot_Create(pl, BowgunShot_SpreadScale[spread] * BowgunShot_SpreadDirs[i], *p, i, c, shot);
+        BowArrow_Create(pl, BowArrow_SpreadScale[spread] * BowArrow_SpreadDirs[i], *kinds, i, arrowCrit, shot);
     }
 }
 
-void BowgunShot_Update(ObjAttach *o)
+/*
+ * The arrow's per-frame update, by ObjAttach.state: ATTACH_HIT goes to
+ * BowArrow_Hit, ATTACH_DEFLECTED and ATTACH_DEFLECTED_AURA to
+ * BowArrow_Deflect.
+ */
+void BowArrow_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        BowgunShot_Setup(o);
+    case ATTACH_SETUP:
+        BowArrow_Setup(o);
         break;
-    case 1:
-        BowgunShot_Run(o);
+    case ATTACH_RUN:
+        BowArrow_Run(o);
         break;
-    case 2:
-        BowgunShot_End(o);
+    case ATTACH_END:
+        BowArrow_End(o);
         break;
-    case 3:
-        BowgunShot_Hit(o);
+    case ATTACH_HIT:
+        BowArrow_Hit(o);
         break;
     case 4:
-        BowgunShot_End(o);
+        BowArrow_End(o);
         break;
-    case 5:
-        BowgunShot_State5(o);
+    case ATTACH_DEFLECTED:
+        BowArrow_Deflect(o);
         break;
-    case 9:
-        BowgunShot_State5(o);
+    case ATTACH_DEFLECTED_AURA:
+        BowArrow_Deflect(o);
         break;
     case 7:
-        BowgunShot_End(o);
+        BowArrow_End(o);
         break;
-    case 6:
-        BowgunShot_Free(o);
+    case ATTACH_FREE:
+        BowArrow_Free(o);
         
     default:
         break;
     }
 }
 
-void BowgunShot_Setup(ObjAttach *o)
+/*
+ * Sets the arrow up from row type + 1 of BowArrow_Rows and gives it its power
+ * (BowArrow_ApplyPower). Status coatings are not deflected by wind (no
+ * ATKF_WIND_DEFLECTS). It starts at the owner's bone 14, aimed along it plus
+ * rotX/rotY. Speed and gravity come from its BowArrowKind and
+ * BowArrow_ChargeFlight row with a random part, doubled or halved by the
+ * range skills. Takes a draw slot and runs its first frame.
+ */
+void BowArrow_Setup(ObjAttach *o)
 {
-    BowgunShotBuf *b = (BowgunShotBuf *) o->buf;
-    Rec8A5780 *r = &BowgunShot_Kinds[o->type];
+    BowArrowBuf *arrowBuf = (BowArrowBuf *) o->buf;
+    BowArrowKind *row = &BowArrow_Kinds[o->type];
     Em *pl = o->owner;
-    f32 v[3];
-    u16 ax;
-    u16 ay;
+    f32 dir[3];
+    u16 pitch;
+    u16 heading;
     void *bone;
-    f32 *t;
-    f32 sx;
-    f32 sy;
+    f32 *chargeRow;
+    f32 speedRand;
+    f32 gravityRand;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) pl, o->type + 1, &BowgunShot_MotionRef);
-    BowgunShot_ApplyKind(o);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) pl, o->type + 1, &BowArrow_RowsPtr);
+    BowArrow_ApplyPower(o);
     switch (o->elementFlags) {
     case 2:
     case 1:
     case 4:
-        Player_TestSetFlags(o, 9);
+        Player_TestSetFlags(o, ATKF_SHELL_DEFLECTS | ATKF_SHOT);
         break;
     default:
-        Player_TestSetFlags(o, 0x19);
+        Player_TestSetFlags(o, ATKF_SHELL_DEFLECTS | ATKF_SHOT | ATKF_WIND_DEFLECTS);
         break;
     }
-    b->power = o->power;
-    o->hitList = BowgunShot_Vals088[o->hitListNo];
+    arrowBuf->power = o->power;
+    o->hitList = BowArrow_HitShapes[o->hitListNo];
     o->hurtList = 0;
     o->step = 0;
     o->stateVar0 = 0;
-    b->bounced = 0;
-    b->event = 0;
+    arrowBuf->bounced = 0;
+    arrowBuf->event = 0;
     o->ownerMotion = 0;
-    v[0] = 1.0f;
-    v[1] = 0.0f;
-    v[2] = 0.0f;
+    dir[0] = 1.0f;
+    dir[1] = 0.0f;
+    dir[2] = 0.0f;
     bone = Em_GetBone(pl, 14);
-    Vec_RotateSelf(v, bone);
+    Vec_RotateSelf(dir, bone);
     Mtx_GetTrans(o->pos, bone);
-    Vec_DirToAngles(v, (s16 *) &ax, (s16 *) &ay);
-    o->rotX += ax;
-    o->rotY += ay;
+    Vec_DirToAngles(dir, (s16 *) &pitch, (s16 *) &heading);
+    o->rotX += pitch;
+    o->rotY += heading;
     o->yaw = o->rotY;
-    t = BowgunShot_KindTimes[b->charge];
-    sx = r->unk8 * t[1];
-    sy = r->unk10 * t[3];
-    if (b->skills & 2) {
-        sx *= 2.0f;
-        sy *= 2.0f;
+    chargeRow = BowArrow_ChargeFlight[arrowBuf->charge];
+    speedRand = row->speedRand * chargeRow[1];
+    gravityRand = row->gravityRand * chargeRow[3];
+    if (arrowBuf->skills & 2) {
+        speedRand *= 2.0f;
+        gravityRand *= 2.0f;
     }
-    if (b->skills & 4) {
-        sx *= 0.5f;
-        sy *= 0.5f;
+    if (arrowBuf->skills & 4) {
+        speedRand *= 0.5f;
+        gravityRand *= 0.5f;
     }
     o->velX = 0.0f;
     o->velY = 0.0f;
-    o->velZ = r->a + t[0] + sx * BowgunShot_BitsToFrac(o->randBits, 16);
-    switch (r->unk0) {
+    o->velZ = row->speed + chargeRow[0] + speedRand * BowArrow_BitsToFrac(o->randBits, 16);
+    switch (row->keepSpeed) {
     case 0:
         o->velZ *= 1.0f - 0.2f * o->stateVar1;
         break;
@@ -4088,139 +4572,153 @@ void BowgunShot_Setup(ObjAttach *o)
     Vec_RotateX(&o->velX, (6.2831855f * o->rotX) / 65536.0f);
     Vec_RotateY(&o->velX, (6.2831855f * o->rotY) / 65536.0f);
     o->homingTurn = 0.0f;
-    o->gravity = -(r->b + t[2]) + sy * BowgunShot_BitsToFrac(o->randBits >> 1, 15);
+    o->gravity = -(row->gravity + chargeRow[2]) + gravityRand * BowArrow_BitsToFrac(o->randBits >> 1, 15);
     o->homingSpeed = 0.0f;
     Vec_Copy(o->pos2, o->pos);
-    if (r->unk2 != -1) {
-        BowgunShot_ApplyKind2(o);
+    if (row->eventTbl != -1) {
+        BowArrow_ApplyEvent(o);
     }
     o->drawSlot = DrawSlot_Alloc();
     if (o->drawSlot != -1) {
         o->drawSlotBuf = DrawSlot_Get(o->drawSlot);
         o->drawSlotBuf->owner = o;
-        o->drawSlotBuf->draw = BowgunShot_Draw;
-        BowgunShot_Run(o);
+        o->drawSlotBuf->draw = BowArrow_Draw;
+        BowArrow_Run(o);
     } else {
         o->drawSlotBuf = NULL;
     }
 }
 
-void BowgunShot_Move(ObjAttach *o)
+/*
+ * One flying frame of an arrow. After a hit, a hitMode 2 (piercing) arrow
+ * restarts its row 2 frames later at 70% speed; a hitMode 1 arrow rides
+ * targetEm's bone aux until ownerMotion reaches count. Adds the kind's random
+ * sway (first 20 frames) and lift, flies straight for straightFrames, then
+ * with gravity, and ends at the floor. Steps the kind's events
+ * (BowArrow_StepEvents, BowArrow_ApplyEvent).
+ */
+void BowArrow_Move(ObjAttach *o)
 {
-    BowgunShotBuf *b = (BowgunShotBuf *) o->buf;
-    Rec8A5780 *r = &BowgunShot_Kinds[o->type];
-    f32 *t = BowgunShot_KindTimes[b->charge];
-    f32 v[3];
-    f32 p[3];
-    f32 d[3];
+    BowArrowBuf *arrowBuf = (BowArrowBuf *) o->buf;
+    BowArrowKind *row = &BowArrow_Kinds[o->type];
+    f32 *chargeRow = BowArrow_ChargeFlight[arrowBuf->charge];
+    f32 drift[3];
+    f32 bonePos[3];
+    f32 ofs[3];
     f32 mat[16];
     f32 len;
-    f32 s;
+    f32 sway;
     Em *em;
 
     Vec_Copy(o->pos2, o->pos);
     o->hitFrames = 99;
     if (o->stateVar0 > 0) {
-        switch (r->type) {
+        switch (row->hitMode) {
         case 1:
-            if (!(o->ownerMotion < r->count)) {
-                o->state = 2;
+            if (!(o->ownerMotion < row->count)) {
+                o->state = ATTACH_END;
                 return;
             }
             em = o->targetEm;
             if (em == NULL) {
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
             if (em->taskPhase == 3 || em->active == 0) {
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
             Mtx_Copy(mat, (f32 *)Em_GetBone(em, o->aux));
-            Mtx_GetTrans(p, mat);
-            Vec_Rotate(d, &o->velX, mat);
-            o->pos[0] = d[0] + p[0];
-            o->pos[1] = d[1] + p[1];
-            o->pos[2] = d[2] + p[2];
+            Mtx_GetTrans(bonePos, mat);
+            Vec_Rotate(ofs, &o->velX, mat);
+            o->pos[0] = ofs[0] + bonePos[0];
+            o->pos[1] = ofs[1] + bonePos[1];
+            o->pos[2] = ofs[2] + bonePos[2];
             return;
         case 2:
             if (o->aux != 0) {
                 if (--o->aux == 0) {
-                    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, &BowgunShot_MotionRef);
-                    BowgunShot_ApplyKind(o);
-                    o->hitList = BowgunShot_Vals088[0];
+                    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, o->type + 1, &BowArrow_RowsPtr);
+                    BowArrow_ApplyPower(o);
+                    o->hitList = BowArrow_HitShapes[0];
                     o->hurtList = 0;
                     o->velX *= 0.7f;
                     o->velY *= 0.7f;
                     o->velZ *= 0.7f;
-                    BowgunShot_ApplyKind2(o);
+                    BowArrow_ApplyEvent(o);
                 }
             }
             break;
         }
     }
     len = Math_Sqrtf(o->velX * o->velX + o->velZ * o->velZ);
-    if (o->ownerMotion <= 19 && BowgunShot_MulAddShift(o->randBits, o->ownerMotion, 0x3045, 1) <= 0x1FFF) {
-        s = r->unk18 * t[5];
-        if (b->skills & 2) {
-            s *= 2.0f;
+    if (o->ownerMotion <= 19 && BowArrow_MulAddShift(o->randBits, o->ownerMotion, 0x3045, 1) <= 0x1FFF) {
+        sway = row->sway * chargeRow[5];
+        if (arrowBuf->skills & 2) {
+            sway *= 2.0f;
         }
-        if (b->skills & 4) {
-            s *= 0.5f;
+        if (arrowBuf->skills & 4) {
+            sway *= 0.5f;
         }
-        v[0] = s * BowgunShot_BitsToSignedFrac(BowgunShot_MulAddShift(o->randBits, o->ownerMotion, 0x3121, 4), 6);
+        drift[0] = sway * BowArrow_BitsToSignedFrac(BowArrow_MulAddShift(o->randBits, o->ownerMotion, 0x3121, 4), 6);
     } else {
-        v[0] = 0.0f;
+        drift[0] = 0.0f;
     }
-    v[1] = len * (r->unk14 + t[4]) * BowgunShot_BitsToFrac(BowgunShot_MulAddShift(o->randBits, o->ownerMotion, 0x147F, 2), 14);
-    v[2] = 0.0f;
-    Vec_RotateX(v, (6.2831855f * o->rotX) / 65536.0f);
-    Vec_RotateY(v, (6.2831855f * o->rotY) / 65536.0f);
-    Vec_Add(&o->velX, &o->velX, v);
-    if (o->ownerMotion < r->c) {
+    drift[1] = len * (row->lift + chargeRow[4]) * BowArrow_BitsToFrac(BowArrow_MulAddShift(o->randBits, o->ownerMotion, 0x147F, 2), 14);
+    drift[2] = 0.0f;
+    Vec_RotateX(drift, (6.2831855f * o->rotX) / 65536.0f);
+    Vec_RotateY(drift, (6.2831855f * o->rotY) / 65536.0f);
+    Vec_Add(&o->velX, &o->velX, drift);
+    if (o->ownerMotion < row->straightFrames) {
         MoveObj_AddVelocity((struct MoveObj *)o);
     } else {
         MoveObj_Integrate((struct MoveObj *)o);
     }
     if (o->pos[1] <= AreaGrid2_GetFloorYFiltered(o->pos)) {
         o->hitFrames = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
         return;
     }
-    if (BowgunShot_StepEvents(o)) {
-        BowgunShot_ApplyKind2(o);
-        if (b->event == 0xFF) {
-            b->doneFrames = 0;
+    if (BowArrow_StepEvents(o)) {
+        BowArrow_ApplyEvent(o);
+        if (arrowBuf->event == 0xFF) {
+            arrowBuf->doneFrames = 0;
         }
     }
 }
 
-void BowgunShot_Run(ObjAttach *o)
+/*
+ * Moves the arrow: a bounced one (stateVar1 0xFE) tumbles
+ * (BowArrow_BounceStep). Otherwise it ends after 100 frames or 3 frames past
+ * its last event; a batted-back arrow (stateVar1 0xFF) flies by
+ * BowArrow_Fall, the others by BowArrow_Move. Moves its draw slot.
+ */
+void BowArrow_Run(ObjAttach *o)
 {
-    BowgunShotBuf *buf = (BowgunShotBuf *) o->buf;
+    BowArrowBuf *buf = (BowArrowBuf *) o->buf;
 
     if (o->stateVar1 == 0xFE) {
-        if (BowgunShot_BounceStep(o) != 0) {
-            o->state = 2;
+        if (BowArrow_BounceStep(o) != 0) {
+            o->state = ATTACH_END;
             return;
         }
     } else {
         if (++o->ownerMotion > 100) {
             o->hitFrames = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         if (o->stateVar1 != 0xFF) {
             if (buf->event == 0xFF) {
                 if (++buf->doneFrames > 3) {
                     o->hitFrames = 0;
-                    o->state = 2;
+                    o->state = ATTACH_END;
                     return;
                 }
             }
-            BowgunShot_Move(o);
+            BowArrow_Move(o);
         } else {
-            BowgunShot_Fall(o);
+            BowArrow_Fall(o);
         }
     }
     if (o->drawSlotBuf != NULL) {
@@ -4229,49 +4727,56 @@ void BowgunShot_Run(ObjAttach *o)
     }
 }
 
-void BowgunShot_End(ObjAttach *o)
+/* Hides the arrow, frees its draw slot and frees it on the next update. */
+void BowArrow_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void BowgunShot_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void BowArrow_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void BowgunShot_Hit(ObjAttach *o)
+/*
+ * On a hit: a batted-back arrow ends. A piercing arrow (hitMode 2) counts the
+ * hit and flies on, reopening its window 2 frames later while hits are left;
+ * the others end.
+ */
+void BowArrow_Hit(ObjAttach *o)
 {
-    Rec8A5780 *e = &BowgunShot_Kinds[o->type];
+    BowArrowKind *row = &BowArrow_Kinds[o->type];
 
     if (o->stateVar1 == 0xFF) {
-        o->state = 2;
+        o->state = ATTACH_END;
     } else {
-        switch (e->type) {
+        switch (row->hitMode) {
         case 0:
         default:
-            o->state = 2;
+            o->state = ATTACH_END;
             break;
         case 1:
-            o->state = 2;
+            o->state = ATTACH_END;
             break;
         case 2:
-            if (++o->stateVar0 < e->count) {
+            if (++o->stateVar0 < row->count) {
                 o->aux = 2;
             } else {
                 o->hitPhase = 0;
             }
-            o->state = 1;
+            o->state = ATTACH_RUN;
             if (++o->ownerMotion > 100) {
                 o->hitFrames = 0;
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
-            BowgunShot_Move(o);
+            BowArrow_Move(o);
             break;
         }
     }
@@ -4281,14 +4786,21 @@ void BowgunShot_Hit(ObjAttach *o)
     }
 }
 
-void BowgunShot_State5(ObjAttach *o)
+/*
+ * A deflected arrow (ATTACH_DEFLECTED, ATTACH_DEFLECTED_AURA). Either it
+ * bounces off at a random angle (stateVar1 0xFE), or, when func_364AE0 says
+ * so, the monster in targetEm bats it back. It then becomes that monster's
+ * attack (row 12), flying at a point 100 above its shooter's feet (stateVar1
+ * 0xFF), with SE 0x96.
+ */
+void BowArrow_Deflect(ObjAttach *o)
 {
     Em *owner = o->owner;
-    Em *hit = o->targetEm;
-    f32 p[3];
-    f32 v[3];
-    u16 ax;
-    u16 ay;
+    Em *batter = o->targetEm;
+    f32 aim[3];
+    f32 dir[3];
+    u16 pitch;
+    u16 heading;
 
     o->step = 0;
     o->stateVar0 = 0;
@@ -4297,35 +4809,35 @@ void BowgunShot_State5(ObjAttach *o)
     if (func_364AE0(o, o->randBits >> o->stateVar1) == 0) {
         o->stateVar1 = 0xFE;
         o->hitPhase = 0;
-        Vec_Diff(v, o->pos2, o->pos);
-        Vec_DirToAngles(v, (s16 *) &ax, (s16 *) &ay);
-        ax += -(Rand_Next(1) & 0x7FF) - 0x200;
-        ay += (Rand_Next(1) & 0x3FFF) - 0x2000;
+        Vec_Diff(dir, o->pos2, o->pos);
+        Vec_DirToAngles(dir, (s16 *) &pitch, (s16 *) &heading);
+        pitch += -(Rand_Next(1) & 0x7FF) - 0x200;
+        heading += (Rand_Next(1) & 0x3FFF) - 0x2000;
         o->velX = 0.0f;
         o->velY = 1.0f + (Rand_Next(1) & 0x1F);
         o->velZ = 10.0f + (Rand_Next(1) & 7);
         o->homingTurn = 0.0f;
         o->gravity = -1.8f - (Rand_Next(1) & 0x1F) / 32.0f;
         o->homingSpeed = 0.0f;
-        Vec_RotateX(&o->velX, (6.2831855f * ax) / 65536.0f);
-        Vec_RotateY(&o->velX, (6.2831855f * ay) / 65536.0f);
+        Vec_RotateX(&o->velX, (6.2831855f * pitch) / 65536.0f);
+        Vec_RotateY(&o->velX, (6.2831855f * heading) / 65536.0f);
         o->rotX = Rand_Next(1);
         o->rotY = Rand_Next(1);
     } else {
         o->stateVar1 = 0xFF;
-        o->idx = hit->index;
-        o->isEm = hit->isEm;
-        o->owner = hit;
+        o->idx = batter->index;
+        o->isEm = batter->isEm;
+        o->owner = batter;
         Player_TestSetFlags(o, 0);
-        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) hit, 12, &BowgunShot_MotionRef);
-        o->hitList = BowgunShot_Vals088[o->hitListNo];
+        MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) batter, 12, &BowArrow_RowsPtr);
+        o->hitList = BowArrow_HitShapes[o->hitListNo];
         o->hurtList = 0;
-        Vec_Copy(p, &owner->posX);
-        p[1] += 100.0f;
-        Vec_Diff(v, p, o->pos);
-        Vec_DirToAngles(v, (s16 *) &ax, (s16 *) &ay);
-        o->rotX = ax;
-        o->rotY = ay;
+        Vec_Copy(aim, &owner->posX);
+        aim[1] += 100.0f;
+        Vec_Diff(dir, aim, o->pos);
+        Vec_DirToAngles(dir, (s16 *) &pitch, (s16 *) &heading);
+        o->rotX = pitch;
+        o->rotY = heading;
         o->yaw = o->rotY;
         o->velX = 0.0f;
         o->velY = 0.0f;
@@ -4340,11 +4852,15 @@ void BowgunShot_State5(ObjAttach *o)
             Sound_PlaySeAtPosChecked(1, 0x96, 0, o->pos, 6, 0);
         }
     }
-    o->state = 1;
-    BowgunShot_Run(o);
+    o->state = ATTACH_RUN;
+    BowArrow_Run(o);
 }
 
-void BowgunShot_Fall(ObjAttach *o)
+/*
+ * The flight of a batted-back arrow: straight for 20 frames, then with
+ * gravity; it ends at the floor.
+ */
+void BowArrow_Fall(ObjAttach *o)
 {
     Vec_Copy(o->pos2, o->pos);
     o->hitFrames = 0x63;
@@ -4355,13 +4871,17 @@ void BowgunShot_Fall(ObjAttach *o)
     }
     if (o->pos[1] <= AreaGrid2_GetFloorYFiltered(o->pos)) {
         o->hitFrames = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
 }
 
-u8 BowgunShot_BounceStep(ObjAttach *o)
+/*
+ * One frame of a bounced arrow's tumble: no hit, buf->bounced set, it falls
+ * and spins. Returns 1 after 20 frames (the arrow ends), else 0.
+ */
+u8 BowArrow_BounceStep(ObjAttach *o)
 {
-    BowgunShotBuf *buf = (BowgunShotBuf *) o->buf;
+    BowArrowBuf *buf = (BowArrowBuf *) o->buf;
 
     o->hitPhase = 0;
     buf->bounced = 1;
@@ -4373,33 +4893,37 @@ u8 BowgunShot_BounceStep(ObjAttach *o)
     return 0;
 }
 
-void BowgunShot_Draw(DrawSlot *d)
+/*
+ * Draws the arrow (common model 149) at its draw slot, in the current area
+ * only. It is turned along its velocity, or by rotX/rotY once bounced.
+ */
+void BowArrow_Draw(DrawSlot *slot)
 {
-    u16 ax;
-    u16 ay;
-    f32 m[16];
+    u16 pitch;
+    u16 yaw;
+    f32 mtx[16];
     ObjAttach *o;
-    BowgunShotBuf *buf;
+    BowArrowBuf *buf;
     ModelMat *tex;
     Model *set;
     ModelMatSet *mdl;
 
     set = gCommonModels[0];
-    o = d->owner;
-    buf = (BowgunShotBuf *) o->buf;
+    o = slot->owner;
+    buf = (BowArrowBuf *) o->buf;
     if (o->area == gScene.area && set != NULL && set->active != 0) {
         tex = set->mats;
-        Mtx_Translation(m, d->pos[0], d->pos[1], d->pos[2]);
+        Mtx_Translation(mtx, slot->pos[0], slot->pos[1], slot->pos[2]);
         mdl = &set->matSets[149];
         if (buf->bounced == 0) {
-            Vec_DirToAngles(&o->velX, (s16 *) &ax, (s16 *) &ay);
-            Mtx_RotateX(m, (6.2831855f * ax) / 65536.0f);
-            Mtx_RotateY(m, (6.2831855f * ay) / 65536.0f);
+            Vec_DirToAngles(&o->velX, (s16 *) &pitch, (s16 *) &yaw);
+            Mtx_RotateX(mtx, (6.2831855f * pitch) / 65536.0f);
+            Mtx_RotateY(mtx, (6.2831855f * yaw) / 65536.0f);
         } else {
-            Mtx_RotateX(m, (6.2831855f * o->rotX) / 65536.0f);
-            Mtx_RotateY(m, (6.2831855f * o->rotY) / 65536.0f);
+            Mtx_RotateX(mtx, (6.2831855f * o->rotX) / 65536.0f);
+            Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
         }
-        Gs_SetState(0x1A, (s32) m);
+        Gs_SetState(0x1A, (s32) mtx);
         Gs_SetState(0x67, -1);
         Gs_SetState(0x60, 0x80);
         if (mdl != NULL && mdl->id != -1) {
@@ -4411,119 +4935,140 @@ void BowgunShot_Draw(DrawSlot *d)
     }
 }
 
-void BowgunShot_SkillFlags(BowgunShotBuf *b, Player *pl)
+/*
+ * Sets buf->skills from pl's skills: 1 skill 0x47 (coatings x1.125), 2 skill
+ * 0xBA (range x2), 4 skill 0xB9 (range x0.5).
+ */
+void BowArrow_SkillFlags(BowArrowBuf *buf, Player *pl)
 {
-    b->skills = 0;
+    buf->skills = 0;
     if (Player_HasSkill(pl, 0x47) == 1) {
-        b->skills |= 1;
+        buf->skills |= 1;
     }
     if (Player_HasSkill(pl, 0xBA) == 1) {
-        b->skills |= 2;
+        buf->skills |= 2;
     }
     if (Player_HasSkill(pl, 0xB9) == 1) {
-        b->skills |= 4;
+        buf->skills |= 4;
     }
 }
 
+/*
+ * Gives the player's weapon element as ELEMF_* bits in *flags and its value
+ * in *level (0: none): fire, water, thunder, ice or dragon
+ * (Player_GetWeaponStat).
+ */
 void Player_WeaponElementFlags(void *pl, u16 *flags, s8 *level)
 {
-    s16 v;
+    s16 stat;
 
     *flags = 0;
     *level = 0;
-    v = Player_GetWeaponStat(pl, 0);
-    if (v > 0) {
-        *flags |= 0x10;
-        *level = v;
+    stat = Player_GetWeaponStat(pl, WSTAT_FIRE);
+    if (stat > 0) {
+        *flags |= ELEMF_FIRE;
+        *level = stat;
     }
-    v = Player_GetWeaponStat(pl, 1);
-    if (v > 0) {
-        *flags |= 0x20;
-        *level = v;
+    stat = Player_GetWeaponStat(pl, WSTAT_WATER);
+    if (stat > 0) {
+        *flags |= ELEMF_WATER;
+        *level = stat;
     }
-    v = Player_GetWeaponStat(pl, 2);
-    if (v > 0) {
-        *flags |= 0x40;
-        *level = v;
+    stat = Player_GetWeaponStat(pl, WSTAT_THUNDER);
+    if (stat > 0) {
+        *flags |= ELEMF_THUNDER;
+        *level = stat;
     }
-    v = Player_GetWeaponStat(pl, 3);
-    if (v > 0) {
-        *flags |= 0x80;
-        *level = v;
+    stat = Player_GetWeaponStat(pl, WSTAT_ICE);
+    if (stat > 0) {
+        *flags |= ELEMF_ICE;
+        *level = stat;
     }
-    v = Player_GetWeaponStat(pl, 7);
-    if (v > 0) {
-        *flags |= 0x200;
-        *level = v;
+    stat = Player_GetWeaponStat(pl, WSTAT_DRAGON);
+    if (stat > 0) {
+        *flags |= ELEMF_DRAGON;
+        *level = stat;
     }
 }
 
-void BowgunShot_InitAttack(BowgunShotBuf *b, Player *pl)
+/*
+ * Copies pl's attackFactor, ammoType (the loaded coating) and weapon element
+ * into the arrow's buffer.
+ */
+void BowArrow_InitAttack(BowArrowBuf *buf, Player *pl)
 {
-    b->attackFactor = pl->attackFactor;
-    b->ammoType = pl->ammoType;
-    Player_WeaponElementFlags(pl, &b->elementFlags, (s8 *) &b->elementLevel);
+    buf->attackFactor = pl->attackFactor;
+    buf->ammoType = pl->ammoType;
+    Player_WeaponElementFlags(pl, &buf->elementFlags, (s8 *) &buf->elementLevel);
 }
 
-void BowgunShot_SetKind(ObjAttach *o, u8 kind, u8 hit)
+/*
+ * Applies a bow coating to o: 1 power (x1.5 power, only when stabbing), 2
+ * poison, 3 ELEMF_EM_STATUS4, 4 ELEMF_EM_STATUS2. stab is 1 for the bow's
+ * close stab (PlayerAttack_Setup) and 0 for an arrow, whose hitFx is then
+ * 0x18. On the stab a status coating gets elementPower 2, otherwise the
+ * weapon's element applies; status values get skill 0x47's x1.125 and
+ * elements are halved (at least 1).
+ */
+void BowArrow_ApplyCoating(ObjAttach *o, u8 coating, u8 stab)
 {
-    f32 v;
-    f32 k;
+    f32 value;
+    f32 skillScale;
 
     o->elementFlags = 0;
     o->elementPower = 0;
-    switch (kind) {
+    switch (coating) {
     case 2:
-        o->elementFlags = 2;
-        if (hit == 0) {
+        o->elementFlags = ELEMF_POISON;
+        if (stab == 0) {
             o->hitFx = 0x18;
         }
         break;
     case 3:
-        o->elementFlags = 4;
-        if (hit == 0) {
+        o->elementFlags = ELEMF_EM_STATUS4;
+        if (stab == 0) {
             o->hitFx = 0x18;
         }
         break;
     case 4:
-        o->elementFlags = 1;
-        if (hit == 0) {
+        o->elementFlags = ELEMF_EM_STATUS2;
+        if (stab == 0) {
             o->hitFx = 0x18;
         }
         break;
     case 1:
-        if (hit != 0) {
-            v = o->power;
-            v *= 1.5f;
-            if (v > 255.0f) {
-                v = 255.0f;
+        if (stab != 0) {
+            value = o->power;
+            value *= 1.5f;
+            if (value > 255.0f) {
+                value = 255.0f;
             }
-            o->power = v;
+            o->power = value;
         }
         break;
     }
-    if (hit != 0) {
+    if (stab != 0) {
         if (o->elementFlags != 0) {
             o->elementPower = 2;
         } else {
             Player_WeaponElementFlags(o->owner, &o->elementFlags, (s8 *) &o->elementPower);
         }
     }
-    if (o->elementPower > 0 && hit != 0) {
+    if (o->elementPower > 0 && stab != 0) {
         switch (o->elementFlags) {
-        case 2:
-        case 4:
-        case 1:
+        case ELEMF_POISON:
+        case ELEMF_EM_STATUS4:
+        case ELEMF_EM_STATUS2:
             if (Player_HasSkill(o->owner, 0x47) == 1) {
-                k = 1.125f;
+                skillScale = 1.125f;
             } else {
-                k = 1.0f;
+                skillScale = 1.0f;
             }
-            v = o->elementPower * k;
-            if (v > 255.0f) {
-                v = 255.0f;
+            value = o->elementPower * skillScale;
+            if (value > 255.0f) {
+                value = 255.0f;
             }
-            o->elementPower = v;
+            o->elementPower = value;
             break;
         default:
             o->elementPower /= 2;
@@ -4535,74 +5080,88 @@ void BowgunShot_SetKind(ObjAttach *o, u8 kind, u8 hit)
     }
 }
 
-void BowgunShot_ApplyKind(ObjAttach *o)
+/*
+ * Sets the arrow's element and power at set up (not for attackKind 8). A
+ * coating's status power is BowArrow_ChargeCoatingPower[charge] x
+ * BowArrow_LevelScale[shot]; with no coating, the weapon's element is scaled
+ * by BowArrow_ChargeElementScale. Power is multiplied by attackFactor (x1.5
+ * with the power coating) and BowArrow_ChargePowerScale[charge], x1.25 on a
+ * critical or x0.5 on a weak hit, clamped to 1-255.
+ */
+void BowArrow_ApplyPower(ObjAttach *o)
 {
-    BowgunShotBuf *b = (BowgunShotBuf *) o->buf;
-    f32 f;
-    u16 v;
+    BowArrowBuf *arrowBuf = (BowArrowBuf *) o->buf;
+    f32 scale;
+    u16 value;
 
     if (o->attackKind == 8) {
         return;
     }
-    BowgunShot_SetKind(o, b->ammoType, 0);
+    BowArrow_ApplyCoating(o, arrowBuf->ammoType, 0);
     if (o->elementFlags == 0) {
-        o->elementFlags = b->elementFlags;
-        o->elementPower = b->elementLevel;
+        o->elementFlags = arrowBuf->elementFlags;
+        o->elementPower = arrowBuf->elementLevel;
         if (o->elementPower != 0) {
             o->hitFx = 0x18;
-            v = o->elementPower * BowgunShot_KindScaleB[b->charge];
-            if (v == 0) {
-                v = 1;
-            } else if (v > 0xFF) {
-                v = 0xFF;
+            value = o->elementPower * BowArrow_ChargeElementScale[arrowBuf->charge];
+            if (value == 0) {
+                value = 1;
+            } else if (value > 0xFF) {
+                value = 0xFF;
             }
-            o->elementPower = v;
+            o->elementPower = value;
         }
     } else {
-        f = BowgunShot_KindBase[b->charge];
-        if (b->skills & 1) {
-            f *= 1.125f;
+        scale = BowArrow_ChargeCoatingPower[arrowBuf->charge];
+        if (arrowBuf->skills & 1) {
+            scale *= 1.125f;
         }
-        v = BowgunShot_LevelScale[b->shot] * f;
-        if (v > 0xFF) {
-            v = 0xFF;
+        value = BowArrow_LevelScale[arrowBuf->shot] * scale;
+        if (value > 0xFF) {
+            value = 0xFF;
         }
-        o->elementPower = v;
+        o->elementPower = value;
     }
-    f = b->attackFactor;
-    if (b->ammoType == 1) {
-        f *= 1.5f;
+    scale = arrowBuf->attackFactor;
+    if (arrowBuf->ammoType == 1) {
+        scale *= 1.5f;
     }
     if (o->power != 0) {
-        f *= BowgunShot_KindScaleA[b->charge];
-        if (b->crit == 1) {
-            f *= 1.25f;
-            o->hitFx |= 0x80;
-        } else if (b->crit == 2) {
-            f *= 0.5f;
-            o->hitFx |= 0x40;
+        scale *= BowArrow_ChargePowerScale[arrowBuf->charge];
+        if (arrowBuf->crit == 1) {
+            scale *= 1.25f;
+            o->hitFx |= HITFX_CRITICAL;
+        } else if (arrowBuf->crit == 2) {
+            scale *= 0.5f;
+            o->hitFx |= HITFX_WEAK;
         }
-        v = o->power * f;
-        if (v == 0) {
-            v = 1;
-        } else if (v > 0xFF) {
-            v = 0xFF;
+        value = o->power * scale;
+        if (value == 0) {
+            value = 1;
+        } else if (value > 0xFF) {
+            value = 0xFF;
         }
-        o->power = v;
+        o->power = value;
     }
 }
 
-s8 BowgunShot_StepEvents(ObjAttach *o)
+/*
+ * Moves buf->event past the entries of the kind's event table whose frame
+ * ownerMotion has passed; a negative entry ends the list (event 0xFF, hit
+ * window closed). Returns 1 when an entry passed, 0 otherwise or when the
+ * kind has none.
+ */
+s8 BowArrow_StepEvents(ObjAttach *o)
 {
-    Rec8A5780 *r = &BowgunShot_Kinds[o->type];
-    BowgunShotBuf *buf = (BowgunShotBuf *) o->buf;
+    BowArrowKind *row = &BowArrow_Kinds[o->type];
+    BowArrowBuf *buf = (BowArrowBuf *) o->buf;
     s8 ret = 0;
     s16 *tbl;
 
-    if (r->unk2 == -1) {
+    if (row->eventTbl == -1) {
         return ret;
     }
-    tbl = BowgunShot_EventTbls[r->unk2];
+    tbl = BowArrow_EventTbls[row->eventTbl];
     for (; buf->event != 0xFF; buf->event++) {
         if (tbl[buf->event] >= o->ownerMotion) {
             break;
@@ -4617,12 +5176,18 @@ s8 BowgunShot_StepEvents(ObjAttach *o)
     return ret;
 }
 
-void BowgunShot_ApplyKind2(ObjAttach *o)
+/*
+ * Applies event buf->event (0-4) to the arrow. If its hit effect is 10, 12,
+ * 14 or 16 it takes BowArrow_EventHitFx and BowArrow_EventHitSe (keeping the
+ * critical bits). Its power becomes buf->power x BowArrow_EventPowerScale,
+ * clamped to 1-255.
+ */
+void BowArrow_ApplyEvent(ObjAttach *o)
 {
-    BowgunShotBuf *b = (BowgunShotBuf *) o->buf;
-    f32 v;
+    BowArrowBuf *arrowBuf = (BowArrowBuf *) o->buf;
+    f32 newPower;
 
-    if (o->power == 0 || b->event > 4 || b->event == 0xFF) {
+    if (o->power == 0 || arrowBuf->event > 4 || arrowBuf->event == 0xFF) {
         return;
     }
     switch (o->hitFx & 0x3F) {
@@ -4630,33 +5195,41 @@ void BowgunShot_ApplyKind2(ObjAttach *o)
     case 12:
     case 14:
     case 16:
-        o->hitFx = BowgunShot_Kind2Val06F[b->event];
-        if (b->crit == 1) {
-            o->hitFx |= 0x80;
-        } else if (b->crit == 2) {
-            o->hitFx |= 0x40;
+        o->hitFx = BowArrow_EventHitFx[arrowBuf->event];
+        if (arrowBuf->crit == 1) {
+            o->hitFx |= HITFX_CRITICAL;
+        } else if (arrowBuf->crit == 2) {
+            o->hitFx |= HITFX_WEAK;
         }
-        o->hitSe = BowgunShot_Kind2Val06B[b->event];
+        o->hitSe = BowArrow_EventHitSe[arrowBuf->event];
         break;
     }
-    if (b->power != 0.0f) {
-        v = b->power * BowgunShot_Kind2Scale[b->event];
-        if (!(v < 255.0f)) {
+    if (arrowBuf->power != 0.0f) {
+        newPower = arrowBuf->power * BowArrow_EventPowerScale[arrowBuf->event];
+        if (!(newPower < 255.0f)) {
             o->power = 255;
-        } else if (v <= 1.0f) {
+        } else if (newPower <= 1.0f) {
             o->power = 1;
         } else {
-            o->power = v;
+            o->power = newPower;
         }
     }
 }
 
-u16 BowgunShot_MulAddShift(u16 randBits, u16 ownerMotion, s32 arg2, s32 shift)
+/*
+ * Returns (randBits + ownerMotion * mul) >> shift as 16 bits: a pseudo-random
+ * value that changes every frame.
+ */
+u16 BowArrow_MulAddShift(u16 randBits, u16 ownerMotion, s32 mul, s32 shift)
 {
-    return ((s32) ((randBits & 0xFFFF) + ((ownerMotion & 0xFFFF) * (arg2 & 0xFFFF))) >> (shift & 0xFFFF)) & 0xFFFF;
+    return ((s32) ((randBits & 0xFFFF) + ((ownerMotion & 0xFFFF) * (mul & 0xFFFF))) >> (shift & 0xFFFF)) & 0xFFFF;
 }
 
-f32 BowgunShot_BitsToFrac(u16 randBits, s32 bits)
+/*
+ * Returns the low bits bits of randBits, moved to the top of 16 bits, times
+ * 0.000015625 (0 to about 1.02).
+ */
+f32 BowArrow_BitsToFrac(u16 randBits, s32 bits)
 {
     s32 shift;
 
@@ -4664,34 +5237,44 @@ f32 BowgunShot_BitsToFrac(u16 randBits, s32 bits)
     return 0.000015625f * (f32) ((randBits & 0xFFFF & ((0xFFFF >> shift) & 0xFFFF)) << shift);
 }
 
-f32 BowgunShot_BitsToSignedFrac(u16 value, u16 bits)
+/* As BowArrow_BitsToFrac but centred on 0 (about -0.51 to 0.51). */
+f32 BowArrow_BitsToSignedFrac(u16 value, u16 bits)
 {
     u16 shift = 16 - bits;
 
     return 0.000015625f * (s16) (((value & (u16) (0xFFFF >> shift)) << shift) - 0x8000);
 }
 
-void BowgunShot_FlightParams(s16 idx, s32 *pos, f32 *a2, s16 *a3)
+/*
+ * Gives arrow kind idx's start velocity (0, 0, speed) in vel and its gravity
+ * and straightFrames, for the bow's aim arc (StageObj_BowArc_Draw).
+ */
+void BowArrow_FlightParams(s16 idx, s32 *vel, f32 *gravity, s16 *straightFrames)
 {
-    Rec8A5780 *r;
+    BowArrowKind *row;
 
-    pos[0] = 0;
-    pos[1] = 0;
-    r = &BowgunShot_Kinds[idx];
-    *(f32 *) &pos[2] = r->a;
-    *a2 = r->b;
-    *a3 = r->c;
+    vel[0] = 0;
+    vel[1] = 0;
+    row = &BowArrow_Kinds[idx];
+    *(f32 *) &vel[2] = row->speed;
+    *gravity = row->gravity;
+    *straightFrames = row->straightFrames;
 }
 
-void EffGaruga25_Create(Em *em, s8 kind)
+/*
+ * Makes a GarugaAttack, a hit zone of Yian Garuga's, for em with the row kind
+ * of GarugaAttack_Rows, if a player is in em's area. Clears em's hitPending
+ * and contactHit.
+ */
+void GarugaAttack_Create(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 25;
+            o->kind = ATTACH_GARUGA_ATTACK;
             o->type = kind;
-            o->update = EffGaruga25_Update;
+            o->update = GarugaAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -4702,20 +5285,24 @@ void EffGaruga25_Create(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffGaruga25_Create2(Em *em, s8 kind)
+/*
+ * The same as GarugaAttack_Create; EmGaruga_MotionEffects makes type 0x16
+ * with it.
+ */
+void GarugaAttack_CreateForEffects(Em *em, s8 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 25;
+            o->kind = ATTACH_GARUGA_ATTACK;
             o->type = kind;
-            o->update = EffGaruga25_Update;
+            o->update = GarugaAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -4726,62 +5313,67 @@ void EffGaruga25_Create2(Em *em, s8 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffGaruga25_Update(ObjAttach *o)
+/* The GarugaAttack's per-frame update, by ObjAttach.state. */
+void GarugaAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffGaruga25_Setup(o);
+    case ATTACH_SETUP:
+        GarugaAttack_Setup(o);
         break;
-    case 1:
-        EffGaruga25_Run(o);
+    case ATTACH_RUN:
+        GarugaAttack_Run(o);
         break;
-    case 2:
-        EffGaruga25_End(o);
+    case ATTACH_END:
+        GarugaAttack_End(o);
         break;
-    case 3:
-        EffGaruga25_Run(o);
+    case ATTACH_HIT:
+        GarugaAttack_Run(o);
         break;
     case 4:
-        EffGaruga25_End(o);
+        GarugaAttack_End(o);
         break;
-    case 5:
-        EffGaruga25_End(o);
+    case ATTACH_DEFLECTED:
+        GarugaAttack_End(o);
         break;
-    case 9:
-        EffGaruga25_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        GarugaAttack_End(o);
         break;
     case 7:
-        EffGaruga25_End(o);
+        GarugaAttack_End(o);
         break;
-    case 6:
-        EffGaruga25_Free(o);
+    case ATTACH_FREE:
+        GarugaAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffGaruga25_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT;
+ * hitDelay is counted from the monster's motion.
+ */
+void GarugaAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
+    Em *em = &gEms[o->idx];
+    s32 blend;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffGaruga25_MotionRef);
-    o->hitList = EffGaruga25_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &GarugaAttack_RowsPtr);
+    o->hitList = GarugaAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blend = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blend - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -4789,9 +5381,13 @@ void EffGaruga25_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffGaruga25_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * types 19, 23 and 28 keep their window open.
+ */
+void GarugaAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 19:
@@ -4800,9 +5396,9 @@ void EffGaruga25_Run(ObjAttach *o)
         o->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -4810,30 +5406,38 @@ void EffGaruga25_Run(ObjAttach *o)
     }
 }
 
-void EffGaruga25_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void GarugaAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffGaruga25_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void GarugaAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffHermitaur26_Create(Em *em, s32 kind)
+/*
+ * Makes a HermitaurAttack for em with the row kind of HermitaurAttack_Rows,
+ * if a player is in em's area. It is a hit zone of the Hermitaur family's
+ * (EmHermitaur_*: Hermitaur, Daimyo Hermitaur, Shogun Ceanataur). Type 9
+ * faces backward (yaw + 0x8000). Clears em's hitPending and contactHit.
+ */
+void HermitaurAttack_Create(Em *em, s32 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 26;
+            o->kind = ATTACH_HERMITAUR_ATTACK;
             o->type = kind;
-            o->update = EffHermitaur26_Update;
+            o->update = HermitaurAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -4847,79 +5451,85 @@ void EffHermitaur26_Create(Em *em, s32 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffHermitaur26_Update(ObjAttach *o)
+/* The HermitaurAttack's per-frame update, by ObjAttach.state. */
+void HermitaurAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffHermitaur26_Setup(o);
+    case ATTACH_SETUP:
+        HermitaurAttack_Setup(o);
         break;
-    case 1:
-        EffHermitaur26_Run(o);
+    case ATTACH_RUN:
+        HermitaurAttack_Run(o);
         break;
-    case 2:
-        EffHermitaur26_End(o);
+    case ATTACH_END:
+        HermitaurAttack_End(o);
         break;
-    case 3:
-        EffHermitaur26_Run(o);
+    case ATTACH_HIT:
+        HermitaurAttack_Run(o);
         break;
     case 4:
-        EffHermitaur26_End(o);
+        HermitaurAttack_End(o);
         break;
-    case 5:
-        EffHermitaur26_End(o);
+    case ATTACH_DEFLECTED:
+        HermitaurAttack_End(o);
         break;
-    case 9:
-        EffHermitaur26_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        HermitaurAttack_End(o);
         break;
     case 7:
-        EffHermitaur26_End(o);
+        HermitaurAttack_End(o);
         break;
-    case 6:
-        EffHermitaur26_Free(o);
+    case ATTACH_FREE:
+        HermitaurAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffHermitaur26_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row (hit shapes, ATKF_OWNER_CONTACT) at the
+ * monster's position; type 11 starts on the floor. Hit list 5 grows with the
+ * monster (hitScale = scaleX). hitDelay is counted from the monster's motion.
+ */
+void HermitaurAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
+    Em *em = &gEms[o->idx];
+    s32 blend;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffHermitaur26_MotionRef);
-    o->hitList = EffHermitaur26_Vals088[o->hitListNo];
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &HermitaurAttack_RowsPtr);
+    o->hitList = HermitaurAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     switch (o->type) {
     default:
-        Vec_Copy(o->pos, &m->posX);
+        Vec_Copy(o->pos, &em->posX);
         break;
     case 11:
-        Vec_Copy(o->pos, &m->posX);
-        o->pos[1] = m->floorY;
+        Vec_Copy(o->pos, &em->posX);
+        o->pos[1] = em->floorY;
         break;
     }
     switch (o->hitListNo) {
     case 5:
-        o->hitScale = m->scaleX;
+        o->hitScale = em->scaleX;
         break;
     default:
         o->hitScale = 1.0f;
         break;
     }
     if (o->hitDelay != 0) {
-        a = Math_Absf(m->motionBlend[0] % 100);
-        o->hitDelay += a - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        blend = Math_Absf(em->motionBlend[0] % 100);
+        o->hitDelay += blend - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -4927,46 +5537,52 @@ void EffHermitaur26_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffHermitaur26_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the window closes;
+ * types 9 and 27 (EmHermitaur_State1_02) keep it open. Type 11 is Daimyo
+ * Hermitaur's leap (EmHermitaur_State3_0A). It stays open in the air motion
+ * and at frame 4 of the landing becomes hit list 5 on the floor for 8 frames.
+ */
+void HermitaurAttack_Run(ObjAttach *o)
 {
     u8 kind = o->type;
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (kind) {
     default:
-        if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+        if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     case 9:
     case 27:
         o->hitFrames = 99;
-        if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+        if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     case 11:
-        if (m->motionId[0] == 0x3F2) {
+        if (em->motionId[0] == EM_MOTION_ID(0, 0xA)) {
             o->hitFrames = 99;
-        } else if (m->motionId[0] == 0x3F3) {
-            if (Player_PassedFrameScaled(m, 4.0f, 0) != 0 && o->stateVar0 == 0) {
+        } else if (em->motionId[0] == EM_MOTION_ID(0, 0xB)) {
+            if (EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0 && o->stateVar0 == 0) {
                 o->stateVar0++;
                 o->hitListNo = 5;
-                o->hitList = EffHermitaur26_Vals088[o->hitListNo];
+                o->hitList = HermitaurAttack_HitShapes[o->hitListNo];
                 o->hitFrames = 8;
-                o->hitScale = m->scaleX;
-                Vec_Copy(o->pos, &m->posX);
-                o->pos[1] = m->floorY;
+                o->hitScale = em->scaleX;
+                Vec_Copy(o->pos, &em->posX);
+                o->pos[1] = em->floorY;
             }
         } else {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         if (o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     }
@@ -4976,30 +5592,39 @@ void EffHermitaur26_Run(ObjAttach *o)
     }
 }
 
-void EffHermitaur26_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void HermitaurAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffHermitaur26_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void HermitaurAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
-void EffBlangonga27_Create(Em *em, s32 kind)
+/*
+ * Makes a BlangongaAttack for em with the row kind of BlangongaAttack_Rows,
+ * if a player is in em's area. It is a hit zone of the Blangonga family's
+ * (EmBlangonga_*: Blangonga, Congalala, Rajang, Blango, Conga). Types 9, 18,
+ * 20 and 30 face backward (yaw + 0x8000). Clears em's hitPending and
+ * contactHit.
+ */
+void BlangongaAttack_Create(Em *em, s32 kind)
 {
     ObjAttach *o;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((o = ObjAttach_Alloc(0)) != NULL) {
-            o->kind = 27;
+            o->kind = ATTACH_BLANGONGA_ATTACK;
             o->type = kind;
-            o->update = EffBlangonga27_Update;
+            o->update = BlangongaAttack_Update;
             o->idx = em->index;
             o->isEm = em->isEm;
             o->ownerMotion = em->motionId[0];
@@ -5020,72 +5645,79 @@ void EffBlangonga27_Create(Em *em, s32 kind)
             o->rotZ = em->rotZ;
             o->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void EffBlangonga27_Update(ObjAttach *o)
+/* The BlangongaAttack's per-frame update, by ObjAttach.state. */
+void BlangongaAttack_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        EffBlangonga27_Setup(o);
+    case ATTACH_SETUP:
+        BlangongaAttack_Setup(o);
         break;
-    case 1:
-        EffBlangonga27_Run(o);
+    case ATTACH_RUN:
+        BlangongaAttack_Run(o);
         break;
-    case 2:
-        EffBlangonga27_End(o);
+    case ATTACH_END:
+        BlangongaAttack_End(o);
         break;
-    case 3:
-        EffBlangonga27_Run(o);
+    case ATTACH_HIT:
+        BlangongaAttack_Run(o);
         break;
     case 4:
-        EffBlangonga27_End(o);
+        BlangongaAttack_End(o);
         break;
-    case 5:
-        EffBlangonga27_End(o);
+    case ATTACH_DEFLECTED:
+        BlangongaAttack_End(o);
         break;
-    case 9:
-        EffBlangonga27_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        BlangongaAttack_End(o);
         break;
     case 7:
-        EffBlangonga27_End(o);
+        BlangongaAttack_End(o);
         break;
-    case 6:
-        EffBlangonga27_Free(o);
+    case ATTACH_FREE:
+        BlangongaAttack_Free(o);
         
     default:
         break;
     }
 }
 
-void EffBlangonga27_Setup(ObjAttach *o)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT, and
+ * half power for the small kinds (EmBlangonga_IsSmallKind). hitDelay is
+ * counted from the monster's motion; type 3 (EmBlangonga_Strike) uses motion
+ * layer 1.
+ */
+void BlangongaAttack_Setup(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
-    s32 a;
-    s32 b;
+    Em *em = &gEms[o->idx];
+    s32 blend;
+    s32 startFrame;
 
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    Player_TestSetFlags(o, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) m, o->type, &EffBlangonga27_MotionRef);
-    if (EmBlangonga_IsSmallKind(m) == 1) {
+    Player_TestSetFlags(o, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) em, o->type, &BlangongaAttack_RowsPtr);
+    if (EmBlangonga_IsSmallKind(em) == 1) {
         o->power /= 2;
     }
-    o->hitList = EffBlangonga27_Vals088[o->hitListNo];
+    o->hitList = BlangongaAttack_HitShapes[o->hitListNo];
     o->hurtList = 0;
-    o->area = m->area;
+    o->area = em->area;
     if (o->hitDelay != 0) {
         if (o->type == 3) {
-            a = Math_Absf(m->motionBlend[1] % 100);
-            b = Math_Absf(m->motionFrame[1]);
+            blend = Math_Absf(em->motionBlend[1] % 100);
+            startFrame = Math_Absf(em->motionFrame[1]);
         } else {
-            a = Math_Absf(m->motionBlend[0] % 100);
-            b = Math_Absf(m->motionFrame[0]);
+            blend = Math_Absf(em->motionBlend[0] % 100);
+            startFrame = Math_Absf(em->motionFrame[0]);
         }
-        o->hitDelay += a - b - 1;
+        o->hitDelay += blend - startFrame - 1;
         if ((s8) o->hitDelay < 0) {
             o->hitDelay = 0;
         }
@@ -5093,9 +5725,18 @@ void EffBlangonga27_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
-void EffBlangonga27_Run(ObjAttach *o)
+/*
+ * Ends the attack when the monster's motion changes or the window closes. The
+ * charges' types 15, 29 and 35 stay open. 31 (EmBlangonga_CongalalaCombo)
+ * changes hit lists by the combo's frames and at frame 176 closes for the
+ * small kinds; 36 (EmBlangonga_RajangComboSlam) changes them by the frames of
+ * BLANG_MOT_STRIKE_A. 33 (EmBlangonga_Hop) and 39 (EmBlangonga_RajangCharge)
+ * stay open in their motion and last 20 or 26 frames into BLANG_MOT_HOP_LAND
+ * or BLANG_MOT_RAJANG_CHARGE_END.
+ */
+void BlangongaAttack_Run(ObjAttach *o)
 {
-    Em *m = &gEms[o->idx];
+    Em *em = &gEms[o->idx];
 
     switch (o->type) {
     case 0xF:
@@ -5104,56 +5745,56 @@ void EffBlangonga27_Run(ObjAttach *o)
         o->hitFrames = 99;
         break;
     case 0x1F:
-        if (m->motionId[0] == 0x411) {
-            if (EmMotion_ReachedFrame(m, 0, 176.0f)) {
-                if (EmBlangonga_IsSmallKind(m) == 1) {
+        if (em->motionId[0] == EM_MOTION_ID(0, BLANG_MOT_CONGALALA_COMBO)) {
+            if (EmMotion_ReachedFrame(em, 0, 176.0f)) {
+                if (EmBlangonga_IsSmallKind(em) == 1) {
                     o->hitPhase = 0;
                 } else {
                     o->hitListNo = 23;
                 }
-            } else if (EmMotion_ReachedFrame(m, 0, 148.0f)) {
+            } else if (EmMotion_ReachedFrame(em, 0, 148.0f)) {
                 o->hitListNo = 2;
-            } else if (EmMotion_ReachedFrame(m, 0, 98.0f)) {
+            } else if (EmMotion_ReachedFrame(em, 0, 98.0f)) {
                 o->hitListNo = 3;
-            } else if (EmMotion_ReachedFrame(m, 0, 52.0f)) {
+            } else if (EmMotion_ReachedFrame(em, 0, 52.0f)) {
                 o->hitListNo = 2;
             } else {
                 o->hitListNo = 3;
             }
         }
-        o->hitList = EffBlangonga27_Vals088[o->hitListNo];
+        o->hitList = BlangongaAttack_HitShapes[o->hitListNo];
         break;
     case 0x21:
-        if (m->motionId[0] == o->ownerMotion) {
+        if (em->motionId[0] == o->ownerMotion) {
             o->hitFrames = 20;
-        } else if (m->motionId[0] != 0x419 || o->hitPhase == 0) {
+        } else if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_HOP_LAND) || o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         return;
     case 0x24:
         o->hitFrames = 99;
-        if (m->motionId[0] == 0x413) {
-            if (!EmMotion_ReachedFrame(m, 0, 34.0f) || EmMotion_InFrameRange(m, 0, 54.0f, 86.0f)) {
+        if (em->motionId[0] == EM_MOTION_ID(0, BLANG_MOT_STRIKE_A)) {
+            if (!EmMotion_ReachedFrame(em, 0, 34.0f) || EmMotion_InFrameRange(em, 0, 54.0f, 86.0f)) {
                 o->hitListNo = 2;
             } else {
                 o->hitListNo = 3;
             }
         }
-        o->hitList = EffBlangonga27_Vals088[o->hitListNo];
+        o->hitList = BlangongaAttack_HitShapes[o->hitListNo];
         break;
     case 0x27:
-        if (m->motionId[0] == o->ownerMotion) {
+        if (em->motionId[0] == o->ownerMotion) {
             o->hitFrames = 26;
-        } else if (m->motionId[0] != 0x442 || o->hitPhase == 0) {
+        } else if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_RAJANG_CHARGE_END) || o->hitPhase == 0) {
             o->hitPhase = 0;
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         return;
     }
-    if (m->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
-        o->state = 2;
+        o->state = ATTACH_END;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
@@ -5161,58 +5802,68 @@ void EffBlangonga27_Run(ObjAttach *o)
     }
 }
 
-void EffBlangonga27_End(ObjAttach *o)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void BlangongaAttack_End(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->state = 6;
+    o->state = ATTACH_FREE;
     o->visible = 0;
     if (o->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) o->drawSlot);
     }
 }
 
-void EffBlangonga27_Free(ObjAttach *o)
+/* Returns the object to the pool. */
+void BlangongaAttack_Free(ObjAttach *o)
 {
     ObjAttach_Free(o);
 }
 
+/* The boomerang's ObjAttach buffer. */
 typedef struct {
-    f32 dy;     /* 0x00 */
-    f32 vec[3]; /* 0x04 */
-    u16 ang10;  /* 0x10 */
-    u16 ang12;  /* 0x12 */
-    f32 speed;  /* 0x14 */
-    u8 unk18;   /* 0x18 */
-    u8 unk19;   /* 0x19 */
+    f32 releaseHeight;  /* 0x00: the hand's height above the feet at the throw */
+    f32 localVel[3];    /* 0x04: the velocity in the throw's frame */
+    u16 throwYaw;       /* 0x10: the thrower's rotY at the throw */
+    u16 returnYaw;      /* 0x12: the heading back to the thrower, set by the hit */
+    f32 speed;          /* 0x14 */
+    u8 homingFrames;    /* 0x18: the frames of homing turn on the way out */
+    u8 wasHit;          /* 0x19: set by Boomerang_Hit */
     u8 pad1A[2];
-    f32 unk1C;  /* 0x1C */
-    s16 unk20;  /* 0x20 */
-    s16 unk22;  /* 0x22 */
-    f32 unk24;  /* 0x24 */
-    u8 unk28;   /* 0x28 */
-    s8 unk29;   /* 0x29 */
-    s8 unk2A;   /* 0x2A */
-    u8 unk2B;   /* 0x2B */
-    u8 unk2C;   /* 0x2C */
-} Eff28Buf;
+    f32 hitDist;        /* 0x1C: the distance to the thrower at the hit */
+    s16 returnFrame;    /* 0x20: counts the frames of the return */
+    s16 returnFrames;   /* 0x22: the return's length, hitDist / 30 */
+    f32 returnVelY;     /* 0x24: the return arc's vertical speed */
+    u8 spinSe;          /* 0x28: 1 when rotY wraps (plays the spin sound) */
+    s8 timer;           /* 0x29: frames to the drop, then of the drop's bend */
+    s8 spinDownFrames;  /* 0x2A: a grounded boomerang's spin-down */
+    u8 returns;         /* 0x2B: 1, it comes back; 0, it drops */
+    u8 grounded;        /* 0x2C: 1 once a dropping boomerang is on the floor */
+} BoomerangBuf;
 
-void Eff28_Create(Em *em, u8 kind, u8 n)
+/*
+ * Makes the boomerang thrown by thrower at its bone 0x12, if thrower is in
+ * the current area. thrower is a player: Player_StateThrowItem casts it. kind
+ * (0 standing, 1 walking, 2 running) sets the throw's height. returns is
+ * nonzero when the item is not used up, and then it comes back instead of
+ * dropping. It flies in the frame of the thrower's yaw (throwYaw).
+ */
+void Boomerang_Create(Em *thrower, u8 kind, u8 returns)
 {
     f32 pos[3];
     ObjAttach *o;
-    Eff28Buf *b;
+    BoomerangBuf *boomBuf;
 
-    if (Obj_InCurrentArea(em)) {
+    if (Obj_InCurrentArea(thrower)) {
         if ((o = ObjAttach_Alloc(1)) != NULL) {
-            o->kind = 28;
+            o->kind = ATTACH_BOOMERANG;
             o->type = kind;
-            o->update = Eff28_Update;
-            o->idx = em->index;
-            o->isEm = em->isEm;
+            o->update = Boomerang_Update;
+            o->idx = thrower->index;
+            o->isEm = thrower->isEm;
             o->ownerMotion = 0;
-            o->owner = em;
-            o->area = em->area;
-            b = (Eff28Buf *) o->buf;
+            o->owner = thrower;
+            o->area = thrower->area;
+            boomBuf = (BoomerangBuf *) o->buf;
             o->rotY = 0;
             o->rotZ = 0xF000;
             Em_GetBonePos(o->owner, 0x12, pos);
@@ -5222,71 +5873,80 @@ void Eff28_Create(Em *em, u8 kind, u8 n)
             o->velX = 0.0f;
             o->velY = 0.0f;
             o->velZ = 0.0f;
-            o->side = *(u8 *) &em->side;
-            b->ang10 = em->rotY;
-            b->dy = pos[1] - ((Em *) o->owner)->posY;
-            b->unk18 = 22;
-            b->vec[0] = 0.0f;
+            o->side = *(u8 *) &thrower->side;
+            boomBuf->throwYaw = thrower->rotY;
+            boomBuf->releaseHeight = pos[1] - ((Em *) o->owner)->posY;
+            boomBuf->homingFrames = 22;
+            boomBuf->localVel[0] = 0.0f;
             switch (o->type) {
-            case 0:
-                b->vec[1] = 0.0f;
+            case BOOMERANG_FLAT:
+                boomBuf->localVel[1] = 0.0f;
                 break;
-            case 1:
-                b->vec[1] = -12.0f;
+            case BOOMERANG_RISING:
+                boomBuf->localVel[1] = -12.0f;
                 break;
-            case 2:
-                b->vec[1] = 20.0f;
+            case BOOMERANG_SINKING:
+                boomBuf->localVel[1] = 20.0f;
                 break;
             }
-            b->vec[2] = 50.0f;
-            b->unk19 = 0;
-            b->unk20 = 0;
-            b->unk28 = 0;
-            b->unk2B = n;
-            b->unk2C = 0;
-            b->unk2A = 15;
+            boomBuf->localVel[2] = 50.0f;
+            boomBuf->wasHit = 0;
+            boomBuf->returnFrame = 0;
+            boomBuf->spinSe = 0;
+            boomBuf->returns = returns;
+            boomBuf->grounded = 0;
+            boomBuf->spinDownFrames = 15;
         }
     }
 }
 
-void Eff28_Update(ObjAttach *o)
+/*
+ * The boomerang's per-frame update, by ObjAttach.state: ATTACH_HIT goes to
+ * Boomerang_Hit. Its End, Free and Draw are in unk_6E0650.c.
+ */
+void Boomerang_Update(ObjAttach *o)
 {
     switch (o->state) {
-    case 0:
-        Eff28_Setup(o);
+    case ATTACH_SETUP:
+        Boomerang_Setup(o);
         break;
-    case 1:
-        Eff28_Run(o);
+    case ATTACH_RUN:
+        Boomerang_Run(o);
         break;
-    case 2:
-        Eff28_End(o);
+    case ATTACH_END:
+        Boomerang_End(o);
         break;
-    case 3:
-        Eff28_Hit(o);
+    case ATTACH_HIT:
+        Boomerang_Hit(o);
         break;
     case 4:
-        Eff28_End(o);
+        Boomerang_End(o);
         break;
-    case 5:
-        Eff28_End(o);
+    case ATTACH_DEFLECTED:
+        Boomerang_End(o);
         break;
-    case 9:
-        Eff28_End(o);
+    case ATTACH_DEFLECTED_AURA:
+        Boomerang_End(o);
         break;
     case 7:
-        Eff28_End(o);
+        Boomerang_End(o);
         break;
-    case 6:
-        Eff28_Free(o);
+    case ATTACH_FREE:
+        Boomerang_Free(o);
         
     default:
         break;
     }
 }
 
-void Eff28_Setup(ObjAttach *o)
+/*
+ * Sets the boomerang up. One that won't return drops after 13 frames (10 for
+ * type 1). It takes row 1 of Boomerang_Rows and Boomerang_HitShapes, and a
+ * draw slot (it frees itself when none is free), then runs its first frame.
+ */
+void Boomerang_Setup(ObjAttach *o)
 {
-    Eff28Buf *buf = (Eff28Buf *) o->buf;
+    BoomerangBuf *buf = (BoomerangBuf *) o->buf;
 
     o->state++;
     o->step = 0;
@@ -5294,47 +5954,53 @@ void Eff28_Setup(ObjAttach *o)
     o->visible = 1;
     o->draw = NULL;
     o->ownerMotion = 0;
-    if (buf->unk2B <= 0) {
-        if (o->type == 1) {
-            buf->unk29 = 10;
+    if (buf->returns <= 0) {
+        if (o->type == BOOMERANG_RISING) {
+            buf->timer = 10;
         } else {
-            buf->unk29 = 13;
+            buf->timer = 13;
         }
     } else {
-        buf->unk29 = 0;
+        buf->timer = 0;
     }
     o->hitPhase = 0;
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, 1, &Eff28_MotionRef);
-    o->hitList = Eff28_Val088;
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, 1, &Boomerang_RowsPtr);
+    o->hitList = Boomerang_HitShapes;
     o->hurtList = 0;
     o->drawSlot = DrawSlot_Alloc();
     if (o->drawSlot != -1) {
         o->drawSlotBuf = DrawSlot_Get(o->drawSlot);
         o->drawSlotBuf->owner = o;
-        o->drawSlotBuf->draw = Eff28_Draw;
-        Eff28_Run(o);
+        o->drawSlotBuf->draw = Boomerang_Draw;
+        Boomerang_Run(o);
     } else {
         ObjAttach_Free(o);
     }
 }
 
-void Eff28_Hit(ObjAttach *o)
+/*
+ * On a hit: a dropping boomerang that won't return ends. Any other turns
+ * back: it restarts its row with no delay, sets wasHit and plans a half
+ * circle back to the thrower (hitDist, returnYaw, returnFrames = hitDist /
+ * 30, returnVelY), then runs.
+ */
+void Boomerang_Hit(ObjAttach *o)
 {
-    Eff28Buf *b = (Eff28Buf *) o->buf;
+    BoomerangBuf *boomBuf = (BoomerangBuf *) o->buf;
 
-    if (b->unk2B == 0 && o->stateVar0 == 3) {
-        Eff28_End(o);
+    if (boomBuf->returns == 0 && o->stateVar0 == 3) {
+        Boomerang_End(o);
         return;
     }
-    o->state = 1;
-    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, 1, &Eff28_MotionRef);
+    o->state = ATTACH_RUN;
+    MoveObj_StartMotionOwned((struct MoveObj *)o, (s32) o->owner, 1, &Boomerang_RowsPtr);
     o->hitDelay = 0;
-    b->unk19 = 1;
-    b->unk1C = Vec_Distance(o->pos, &((Em *) o->owner)->posX);
-    b->ang12 = Math_Heading(o->pos[0], o->pos[2], ((Em *) o->owner)->posX, ((Em *) o->owner)->posZ) + 0x4000;
-    b->unk22 = b->unk1C / 30.0f;
-    b->unk24 = Math_Absf(o->pos[1] - (((Em *) o->owner)->posY + b->dy - 30.0f)) / b->unk22;
-    Eff28_Run(o);
+    boomBuf->wasHit = 1;
+    boomBuf->hitDist = Vec_Distance(o->pos, &((Em *) o->owner)->posX);
+    boomBuf->returnYaw = Math_Heading(o->pos[0], o->pos[2], ((Em *) o->owner)->posX, ((Em *) o->owner)->posZ) + 0x4000;
+    boomBuf->returnFrames = boomBuf->hitDist / 30.0f;
+    boomBuf->returnVelY = Math_Absf(o->pos[1] - (((Em *) o->owner)->posY + boomBuf->releaseHeight - 30.0f)) / boomBuf->returnFrames;
+    Boomerang_Run(o);
 }
 
 f32 Math_Cos(f32 x);
@@ -5345,29 +6011,38 @@ void Vec_Normalize(f32 *v);
 
 typedef struct {
     f32 x, y, z;
-} Eff28Vec;
+} BoomerangVec;
 
-void Eff28_Run(ObjAttach *o)
+/*
+ * Moves the boomerang by stateVar0. 0 is the outward curve: localVel turned
+ * by throwYaw. It turns back (1) when localVel[2] reaches 0, or drops (3)
+ * after timer frames if it won't return. 1 homes back to the thrower's hand
+ * height, 2 arcs back after a hit (no more hits), and 3 is the drop: the
+ * curve bends down and grows or fades by type, and type 1 slides on the
+ * ground for 15 frames. It ends within 80 of the thrower, on the ground or
+ * after 180 frames; it spins and plays SE 0x88 once per turn.
+ */
+void Boomerang_Run(ObjAttach *o)
 {
     f32 dir[3];
     f32 tgt[3];
-    f32 v[3];
-    Eff28Buf *b;
+    f32 vel[3];
+    BoomerangBuf *boomBuf;
     Em *em;
-    f32 k;
+    f32 curve;
     f32 dy;
-    f32 f;
-    f32 y;
+    f32 scale;
+    f32 targetY;
     f32 len;
-    f32 h;
-    u16 rx;
-    u16 ry;
-    u16 rh;
-    u16 t;
+    f32 headingAngle;
+    u16 pitchStep;
+    u16 yawStep;
+    u16 heading;
+    u16 prevRotY;
 
-    b = (Eff28Buf *) o->buf;
-    *(Eff28Vec *) o->pos2 = *(Eff28Vec *) o->pos;
-    if (b->unk19 == 1) {
+    boomBuf = (BoomerangBuf *) o->buf;
+    *(BoomerangVec *) o->pos2 = *(BoomerangVec *) o->pos;
+    if (boomBuf->wasHit == 1) {
         o->stateVar0 = 2;
         o->hitFrames = 0;
     } else {
@@ -5375,15 +6050,15 @@ void Eff28_Run(ObjAttach *o)
     }
     switch (o->stateVar0) {
     case 0:
-        if (b->vec[2] <= 0.0f) {
-            b->speed = Vec_Length(&o->velX);
+        if (boomBuf->localVel[2] <= 0.0f) {
+            boomBuf->speed = Vec_Length(&o->velX);
             o->homingTurn = 0.0f;
             o->homingSpeed = 0.0f;
             o->stateVar0 = 1;
             o->velX = 1.0f;
             o->velY = 0.0f;
             o->velZ = 0.0f;
-            Vec_RotateY(&o->velX, (6.2831855f * b->ang10) / 65536.0f);
+            Vec_RotateY(&o->velX, (6.2831855f * boomBuf->throwYaw) / 65536.0f);
             o->pos[0] += o->velX;
             o->pos[1] += o->velY;
             o->pos[2] += o->velZ;
@@ -5394,89 +6069,89 @@ void Eff28_Run(ObjAttach *o)
             }
             return;
         }
-        if (b->unk2B == 0) {
-            if (--b->unk29 < 0) {
+        if (boomBuf->returns == 0) {
+            if (--boomBuf->timer < 0) {
                 o->stateVar0 = 3;
                 switch (o->type) {
-                case 0:
-                    b->unk29 = 6;
+                case BOOMERANG_FLAT:
+                    boomBuf->timer = 6;
                     break;
-                case 1:
-                    b->unk29 = 6;
+                case BOOMERANG_RISING:
+                    boomBuf->timer = 6;
                     break;
-                case 2:
-                    b->unk29 = 18;
+                case BOOMERANG_SINKING:
+                    boomBuf->timer = 18;
                     break;
                 }
             }
         }
         switch (o->type) {
-        case 0:
-            k = 3.3333333f;
-            b->vec[1] = 0.0f;
+        case BOOMERANG_FLAT:
+            curve = 3.3333333f;
+            boomBuf->localVel[1] = 0.0f;
             break;
-        case 1:
-            b->vec[1] += 0.48f;
-            k = 5.0f;
+        case BOOMERANG_RISING:
+            boomBuf->localVel[1] += 0.48f;
+            curve = 5.0f;
             break;
-        case 2:
-            b->vec[1] += -0.8f;
-            k = 10.0f;
+        case BOOMERANG_SINKING:
+            boomBuf->localVel[1] += -0.8f;
+            curve = 10.0f;
             break;
         }
-        b->vec[0] = -1.0f * k * Math_Cos((6.2831855f * (180.0f * ((50.0f - b->vec[2]) / 50.0f))) / 360.0f);
-        b->vec[2] += -2.0f;
-        Vec_Copy(&o->velX, b->vec);
-        Vec_RotateY(&o->velX, (6.2831855f * b->ang10) / 65536.0f);
+        boomBuf->localVel[0] = -1.0f * curve * Math_Cos((6.2831855f * (180.0f * ((50.0f - boomBuf->localVel[2]) / 50.0f))) / 360.0f);
+        boomBuf->localVel[2] += -2.0f;
+        Vec_Copy(&o->velX, boomBuf->localVel);
+        Vec_RotateY(&o->velX, (6.2831855f * boomBuf->throwYaw) / 65536.0f);
         break;
     case 1:
         if (o->ownerMotion++ > 180.0f) {
-            o->state = 2;
+            o->state = ATTACH_END;
             break;
         }
         em = (Em *) o->owner;
-        y = em->posY + b->dy - 30.0f;
-        *(Eff28Vec *) tgt = *(Eff28Vec *) &em->posX;
-        tgt[1] = y;
+        targetY = em->posY + boomBuf->releaseHeight - 30.0f;
+        *(BoomerangVec *) tgt = *(BoomerangVec *) &em->posX;
+        tgt[1] = targetY;
         Vec_Sub(dir, tgt, o->pos);
         len = Vec_Length(dir);
         dir[1] = 0.0f;
         Vec_Normalize(dir);
         if (len > 80.0f) {
-        if (b->unk18-- <= 0) {
-            b->unk18 = 0;
-            Vec_Copy(v, &o->velX);
+        if (boomBuf->homingFrames-- <= 0) {
+            boomBuf->homingFrames = 0;
+            Vec_Copy(vel, &o->velX);
             o->velY = 0.0f;
             len = Vec_Length(&o->velX);
             o->velX = dir[0] * len;
             o->velZ = dir[2] * len;
-            o->velY = v[1];
+            o->velY = vel[1];
         } else {
             switch (o->type) {
-            case 0:
-                k = 2.0f;
+            case BOOMERANG_FLAT:
+                curve = 2.0f;
                 break;
-            case 1:
-                k = 1.5f;
+            case BOOMERANG_RISING:
+                curve = 1.5f;
                 break;
-            case 2:
-                k = 1.0f;
+            case BOOMERANG_SINKING:
+                curve = 1.0f;
                 break;
             }
-            dir[0] *= (o->homingTurn += 0.15f * k);
-            dir[2] *= (o->homingTurn += 0.15f * k);
+            dir[0] *= (o->homingTurn += 0.15f * curve);
+            dir[2] *= (o->homingTurn += 0.15f * curve);
             len = Vec_Length(&o->velX);
             o->velX /= len;
             o->velZ /= len;
-            o->velX *= b->speed + o->homingSpeed;
-            o->velZ *= b->speed + o->homingSpeed;
-            o->homingSpeed += 1.5f * k;
+            o->velX *= boomBuf->speed + o->homingSpeed;
+            o->velZ *= boomBuf->speed + o->homingSpeed;
+            o->homingSpeed += 1.5f * curve;
             o->velX += dir[0];
             o->velZ += dir[2];
         }
             dy = o->pos[1] - tgt[1];
             if (dy >= 0.0f) {
-                if (o->type == 0) {
+                if (o->type == BOOMERANG_FLAT) {
                     o->velY += -0.16f;
                 } else {
                     o->velY += -0.8f;
@@ -5485,104 +6160,104 @@ void Eff28_Run(ObjAttach *o)
                 o->velY += 0.48f;
             }
         } else {
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     case 2:
         if (o->ownerMotion++ > 180.0f) {
-            o->state = 2;
+            o->state = ATTACH_END;
             break;
         }
         em = (Em *) o->owner;
-        y = em->posY + b->dy - 30.0f;
-        *(Eff28Vec *) tgt = *(Eff28Vec *) &em->posX;
-        tgt[1] = y;
+        targetY = em->posY + boomBuf->releaseHeight - 30.0f;
+        *(BoomerangVec *) tgt = *(BoomerangVec *) &em->posX;
+        tgt[1] = targetY;
         Vec_Sub(dir, tgt, o->pos);
         len = Vec_Length(dir);
         dir[1] = 0.0f;
         Vec_Normalize(dir);
         if (len > 80.0f) {
-        if (b->unk20++ >= b->unk22) {
-            b->unk18 = 0;
+        if (boomBuf->returnFrame++ >= boomBuf->returnFrames) {
+            boomBuf->homingFrames = 0;
             len = 0.15f + Vec_Length(&o->velX);
             o->velX = dir[0] * len;
             o->velZ = dir[2] * len;
         } else {
-            o->velX = -0.06f * b->unk1C * Math_Cos((6.2831855f * (180.0f * ((f32) b->unk20 / (f32) b->unk22))) / 360.0f);
+            o->velX = -0.06f * boomBuf->hitDist * Math_Cos((6.2831855f * (180.0f * ((f32) boomBuf->returnFrame / (f32) boomBuf->returnFrames))) / 360.0f);
             o->velZ = -30.0f;
-            Vec_RotateY(&o->velX, (6.2831855f * b->ang12) / 65536.0f);
+            Vec_RotateY(&o->velX, (6.2831855f * boomBuf->returnYaw) / 65536.0f);
         }
             dy = o->pos[1] - tgt[1];
             if (dy >= 0.0f) {
-                o->velY = -1.0f * b->unk24;
+                o->velY = -1.0f * boomBuf->returnVelY;
             } else {
-                o->velY = b->unk24;
+                o->velY = boomBuf->returnVelY;
             }
         } else {
-            o->state = 2;
+            o->state = ATTACH_END;
         }
         break;
     case 3:
         if (o->ownerMotion++ > 180.0f) {
-            o->state = 2;
+            o->state = ATTACH_END;
             return;
         }
         switch (o->type) {
-        case 0:
-            rx = 0x250;
-            f = 1.04f;
-            ry = 0x200;
+        case BOOMERANG_FLAT:
+            pitchStep = 0x250;
+            scale = 1.04f;
+            yawStep = 0x200;
             break;
-        case 1:
-            rx = 0x5FF;
+        case BOOMERANG_RISING:
+            pitchStep = 0x5FF;
             if (o->pos[1] <= 10.0f + AreaGrid2_GetFloorYFiltered(o->pos)) {
-                f = 0.98f;
+                scale = 0.98f;
             } else {
-                f = 1.02f;
+                scale = 1.02f;
             }
-            ry = 0;
+            yawStep = 0;
             break;
-        case 2:
-            rx = 0x150;
-            f = 1.025f;
-            ry = 0x150;
+        case BOOMERANG_SINKING:
+            pitchStep = 0x150;
+            scale = 1.025f;
+            yawStep = 0x150;
             break;
         }
-        if (--b->unk29 >= 0) {
-            rh = Math_Heading(b->vec[0], b->vec[2], 0.0f, 0.0f);
-            h = (6.2831855f * rh) / 65536.0f;
-            Vec_RotateY(b->vec, h);
-            if (o->type == 1) {
-                Vec_RotateX(b->vec, -((6.2831855f * rx) / 65536.0f));
+        if (--boomBuf->timer >= 0) {
+            heading = Math_Heading(boomBuf->localVel[0], boomBuf->localVel[2], 0.0f, 0.0f);
+            headingAngle = (6.2831855f * heading) / 65536.0f;
+            Vec_RotateY(boomBuf->localVel, headingAngle);
+            if (o->type == BOOMERANG_RISING) {
+                Vec_RotateX(boomBuf->localVel, -((6.2831855f * pitchStep) / 65536.0f));
                 o->rotZ += 0x200;
             } else {
-                Vec_RotateX(b->vec, (6.2831855f * rx) / 65536.0f);
+                Vec_RotateX(boomBuf->localVel, (6.2831855f * pitchStep) / 65536.0f);
             }
-            Vec_RotateY(b->vec, (6.2831855f * ry) / 65536.0f);
-            Vec_RotateY(b->vec, -1.0f * h);
+            Vec_RotateY(boomBuf->localVel, (6.2831855f * yawStep) / 65536.0f);
+            Vec_RotateY(boomBuf->localVel, -1.0f * headingAngle);
         } else {
-            b->unk29 = 0;
+            boomBuf->timer = 0;
         }
         if (o->pos[1] <= 10.0f + AreaGrid2_GetFloorYFiltered(o->pos)) {
-            if (o->type == 1) {
-                b->vec[1] = 0.0f;
-                b->unk2C = 1;
+            if (o->type == BOOMERANG_RISING) {
+                boomBuf->localVel[1] = 0.0f;
+                boomBuf->grounded = 1;
             } else {
-                o->state = 2;
+                o->state = ATTACH_END;
                 return;
             }
         }
-        b->vec[0] *= f;
-        b->vec[1] *= f;
-        b->vec[2] *= f;
-        Vec_Copy(&o->velX, b->vec);
-        Vec_RotateY(&o->velX, (6.2831855f * b->ang10) / 65536.0f);
+        boomBuf->localVel[0] *= scale;
+        boomBuf->localVel[1] *= scale;
+        boomBuf->localVel[2] *= scale;
+        Vec_Copy(&o->velX, boomBuf->localVel);
+        Vec_RotateY(&o->velX, (6.2831855f * boomBuf->throwYaw) / 65536.0f);
         break;
     }
-    if (o->stateVar0 == 3 && o->type == 1 && b->unk2C == 1) {
-        if (--b->unk2A <= 0) {
-            b->unk2A = 0;
-            o->state = 2;
+    if (o->stateVar0 == 3 && o->type == BOOMERANG_RISING && boomBuf->grounded == 1) {
+        if (--boomBuf->spinDownFrames <= 0) {
+            boomBuf->spinDownFrames = 0;
+            o->state = ATTACH_END;
             return;
         }
     }
@@ -5593,1067 +6268,1067 @@ void Eff28_Run(ObjAttach *o)
         o->pos[1] += o->velY;
     }
     o->pos[2] += o->velZ;
-    t = o->rotY;
-    if (o->type == 1 && b->unk2C == 1) {
-        if (b->unk2A > 0) {
-            o->rotY += (u16) (s32) (0.5f + (65536.0f * (1.1780972f * (b->unk2A / 15))) / 6.2831855f);
+    prevRotY = o->rotY;
+    if (o->type == BOOMERANG_RISING && boomBuf->grounded == 1) {
+        if (boomBuf->spinDownFrames > 0) {
+            o->rotY += (u16) (s32) (0.5f + (65536.0f * (1.1780972f * (boomBuf->spinDownFrames / 15))) / 6.2831855f);
         }
     } else {
         o->rotY += 0x3000;
     }
-    if ((u16) o->rotY < (u16) t) {
-        b->unk28 = 1;
+    if ((u16) o->rotY < (u16) prevRotY) {
+        boomBuf->spinSe = 1;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
         OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20, 0);
     }
-    if (b->unk28 == 1) {
+    if (boomBuf->spinSe == 1) {
         Sound_PlaySeAtPosChecked(1, 0x88, 0, o->pos, 1, 0);
-        b->unk28 = 0;
+        boomBuf->spinSe = 0;
     }
 }
 
 /* unk_6D3B50's .data (0x89EC80-0x8A8700) */
-HitShape Eff10_Vals08C_0[2] = {
+HitShape PlacedItem_Shapes_0[2] = {
 #include "game/0089EC80.inc"
 };
-HitShape Eff10_Vals08C_1[2] = {
+HitShape PlacedItem_Shapes_1[2] = {
 #include "game/0089ECD0.inc"
 };
-HitShape Eff10_Vals08C_2[2] = {
+HitShape PlacedItem_Shapes_2[2] = {
 #include "game/0089ED20.inc"
 };
-HitShape Eff10_Vals08C_4[2] = {
+HitShape PlacedItem_Shapes_4[2] = {
 #include "game/0089ED70.inc"
 };
-HitShape Eff10_Vals08C_5[2] = {
+HitShape PlacedItem_Shapes_5[2] = {
 #include "game/0089EDC0.inc"
 };
-HitShape Eff10_Vals08C_6[2] = {
+HitShape PlacedItem_Shapes_6[2] = {
 #include "game/0089EE10.inc"
 };
-HitShape *Eff10_Vals08C[8] = {
-    Eff10_Vals08C_0, Eff10_Vals08C_1, Eff10_Vals08C_2, Eff10_Vals08C_2,
-    Eff10_Vals08C_4, Eff10_Vals08C_5, Eff10_Vals08C_6, 0,
+HitShape *PlacedItem_Shapes[8] = {
+    PlacedItem_Shapes_0, PlacedItem_Shapes_1, PlacedItem_Shapes_2, PlacedItem_Shapes_2,
+    PlacedItem_Shapes_4, PlacedItem_Shapes_5, PlacedItem_Shapes_6, 0,
 };
-u32 D_0089EE80[30] = {
+u32 PlacedItem_Rows[30] = {
 #include "game/0089EE80.inc"
 };
-void *Eff10_MotionDesc = (void *)D_0089EE80;
-s16 Eff10_Motions[8] = {
+void *PlacedItem_RowsPtr = (void *)PlacedItem_Rows;
+s16 PlacedItem_Motions[8] = {
 #include "game/0089EF00.inc"
 };
-u8 Eff10_ScaleKeysA[48] = {
+u8 PlacedItem_BasePartScaleKeys[48] = {
 #include "game/0089EF10.inc"
 };
-u8 Eff10_ScaleKeysB[48] = {
+u8 PlacedItem_RaisedPartScaleKeys[48] = {
 #include "game/0089EF40.inc"
 };
-u8 Eff10_Vec3Keys[48] = {
+u8 PlacedItem_SpinPartScaleKeys[48] = {
 #include "game/0089EF70.inc"
 };
-u8 Eff10_ColorKeysA[32] = {
+u8 PlacedItem_BasePartColorKeys[32] = {
 #include "game/0089EFA0.inc"
 };
-u8 Eff10_ColorKeysB[32] = {
+u8 PlacedItem_RaisedPartColorKeys[32] = {
 #include "game/0089EFC0.inc"
 };
-s16 Eff10_Models[8] = {
+s16 PlacedItem_PartModels[8] = {
 #include "game/0089EFE0.inc"
 };
-HitShape EffEm11_Vals088_0[4] = {
+HitShape VespoidAttack_HitShapes_0[4] = {
 #include "game/0089EFF0.inc"
 };
-HitShape EffEm11_Vals088_1[2] = {
+HitShape VespoidAttack_HitShapes_1[2] = {
 #include "game/0089F090.inc"
 };
-HitShape EffEm11_Vals088_2[3] = {
+HitShape VespoidAttack_HitShapes_2[3] = {
 #include "game/0089F0E0.inc"
 };
-HitShape EffEm11_Vals088_3[2] = {
+HitShape VespoidAttack_HitShapes_3[2] = {
 #include "game/0089F160.inc"
 };
-HitShape EffEm11_Vals088_4[2] = {
+HitShape VespoidAttack_HitShapes_4[2] = {
 #include "game/0089F1B0.inc"
 };
-HitShape EffEm11_Vals088_5[2] = {
+HitShape VespoidAttack_HitShapes_5[2] = {
 #include "game/0089F200.inc"
 };
-HitShape EffEm11_Vals088_6[2] = {
+HitShape VespoidAttack_HitShapes_6[2] = {
 #include "game/0089F250.inc"
 };
-HitShape EffEm11_Vals088_7[3] = {
+HitShape VespoidAttack_HitShapes_7[3] = {
 #include "game/0089F2A0.inc"
 };
-HitShape EffEm11_Vals088_8[2] = {
+HitShape VespoidAttack_HitShapes_8[2] = {
 #include "game/0089F320.inc"
 };
-HitShape *EffEm11_Vals088[12] = {
-    EffEm11_Vals088_0, EffEm11_Vals088_1, EffEm11_Vals088_2, EffEm11_Vals088_3,
-    EffEm11_Vals088_4, EffEm11_Vals088_5, EffEm11_Vals088_6, EffEm11_Vals088_7,
-    EffEm11_Vals088_8, 0, 0, 0,
+HitShape *VespoidAttack_HitShapes[12] = {
+    VespoidAttack_HitShapes_0, VespoidAttack_HitShapes_1, VespoidAttack_HitShapes_2, VespoidAttack_HitShapes_3,
+    VespoidAttack_HitShapes_4, VespoidAttack_HitShapes_5, VespoidAttack_HitShapes_6, VespoidAttack_HitShapes_7,
+    VespoidAttack_HitShapes_8, 0, 0, 0,
 };
-u32 D_0089F3A0[120] = {
+u32 VespoidAttack_Rows[120] = {
 #include "game/0089F3A0.inc"
 };
-void *EffEm11_MotionRef = (void *)D_0089F3A0;
+void *VespoidAttack_RowsPtr = (void *)VespoidAttack_Rows;
 HitShape D_0089F590[2] = {
 #include "game/0089F590.inc"
 };
-HitShape *Eff12_Val088 = D_0089F590;
-u32 D_0089F5F0[12] = {
+HitShape *PitfallTrap_Val088 = D_0089F590;
+u32 PitfallTrap_Rows[12] = {
 #include "game/0089F5F0.inc"
 };
-void *Eff12_MotionRef = (void *)D_0089F5F0;
-HitShape EffVelociprey13_Vals088_0[2] = {
+void *PitfallTrap_RowsPtr = (void *)PitfallTrap_Rows;
+HitShape VelocipreyAttack_HitShapes_0[2] = {
 #include "game/0089F630.inc"
 };
-HitShape EffVelociprey13_Vals088_1[2] = {
+HitShape VelocipreyAttack_HitShapes_1[2] = {
 #include "game/0089F680.inc"
 };
-HitShape EffVelociprey13_Vals088_2[2] = {
+HitShape VelocipreyAttack_HitShapes_2[2] = {
 #include "game/0089F6D0.inc"
 };
-HitShape EffVelociprey13_Vals088_3[3] = {
+HitShape VelocipreyAttack_HitShapes_3[3] = {
 #include "game/0089F720.inc"
 };
-HitShape EffVelociprey13_Vals088_4[2] = {
+HitShape VelocipreyAttack_HitShapes_4[2] = {
 #include "game/0089F7A0.inc"
 };
-HitShape *EffVelociprey13_Vals088[8] = {
-    EffVelociprey13_Vals088_0, EffVelociprey13_Vals088_1, EffVelociprey13_Vals088_2, EffVelociprey13_Vals088_3,
-    EffVelociprey13_Vals088_4, 0, 0, 0,
+HitShape *VelocipreyAttack_HitShapes[8] = {
+    VelocipreyAttack_HitShapes_0, VelocipreyAttack_HitShapes_1, VelocipreyAttack_HitShapes_2, VelocipreyAttack_HitShapes_3,
+    VelocipreyAttack_HitShapes_4, 0, 0, 0,
 };
-u32 D_0089F810[108] = {
+u32 VelocipreyAttack_Rows[108] = {
 #include "game/0089F810.inc"
 };
-void *EffVelociprey13_MotionRef = (void *)D_0089F810;
-s16 EffEm14_Index[6] = {
+void *VelocipreyAttack_RowsPtr = (void *)VelocipreyAttack_Rows;
+s16 EmBomb_Models[6] = {
 #include "game/0089F9C8.inc"
 };
-HitShape EffDrome15_Vals088_0[2] = {
+HitShape DromeAttack_HitShapes_0[2] = {
 #include "game/0089F9E0.inc"
 };
-HitShape EffDrome15_Vals088_1[2] = {
+HitShape DromeAttack_HitShapes_1[2] = {
 #include "game/0089FA30.inc"
 };
-HitShape EffDrome15_Vals088_2[2] = {
+HitShape DromeAttack_HitShapes_2[2] = {
 #include "game/0089FA80.inc"
 };
-HitShape EffDrome15_Vals088_3[3] = {
+HitShape DromeAttack_HitShapes_3[3] = {
 #include "game/0089FAD0.inc"
 };
-HitShape *EffDrome15_Vals088[4] = {
-    EffDrome15_Vals088_0, EffDrome15_Vals088_1, EffDrome15_Vals088_2, EffDrome15_Vals088_3,
+HitShape *DromeAttack_HitShapes[4] = {
+    DromeAttack_HitShapes_0, DromeAttack_HitShapes_1, DromeAttack_HitShapes_2, DromeAttack_HitShapes_3,
 };
-u32 D_0089FB60[84] = {
+u32 DromeAttack_Rows[84] = {
 #include "game/0089FB60.inc"
 };
-void *EffDrome15_MotionRef = (void *)D_0089FB60;
-HitShape EffKhezu16_Vals088_0[2] = {
+void *DromeAttack_RowsPtr = (void *)DromeAttack_Rows;
+HitShape KhezuAttack_HitShapes_0[2] = {
 #include "game/0089FCC0.inc"
 };
-HitShape EffKhezu16_Vals088_1[2] = {
+HitShape KhezuAttack_HitShapes_1[2] = {
 #include "game/0089FD10.inc"
 };
-HitShape EffKhezu16_Vals088_2[2] = {
+HitShape KhezuAttack_HitShapes_2[2] = {
 #include "game/0089FD60.inc"
 };
-HitShape EffKhezu16_Vals088_3[3] = {
+HitShape KhezuAttack_HitShapes_3[3] = {
 #include "game/0089FDB0.inc"
 };
-HitShape EffKhezu16_Vals088_4[4] = {
+HitShape KhezuAttack_HitShapes_4[4] = {
 #include "game/0089FE30.inc"
 };
-HitShape EffKhezu16_Vals088_5[4] = {
+HitShape KhezuAttack_HitShapes_5[4] = {
 #include "game/0089FED0.inc"
 };
-HitShape EffKhezu16_Vals088_6[2] = {
+HitShape KhezuAttack_HitShapes_6[2] = {
 #include "game/0089FF70.inc"
 };
-HitShape EffKhezu16_Vals088_7[2] = {
+HitShape KhezuAttack_HitShapes_7[2] = {
 #include "game/0089FFC0.inc"
 };
-HitShape EffKhezu16_Vals088_8[3] = {
+HitShape KhezuAttack_HitShapes_8[3] = {
 #include "game/008A0010.inc"
 };
-HitShape EffKhezu16_Vals088_9[3] = {
+HitShape KhezuAttack_HitShapes_9[3] = {
 #include "game/008A0090.inc"
 };
-HitShape EffKhezu16_Vals088_10[2] = {
+HitShape KhezuAttack_HitShapes_10[2] = {
 #include "game/008A0110.inc"
 };
-HitShape EffKhezu16_Vals088_11[2] = {
+HitShape KhezuAttack_HitShapes_11[2] = {
 #include "game/008A0160.inc"
 };
-HitShape EffKhezu16_Vals088_12[2] = {
+HitShape KhezuAttack_HitShapes_12[2] = {
 #include "game/008A01B0.inc"
 };
-HitShape EffKhezu16_Vals088_13[2] = {
+HitShape KhezuAttack_HitShapes_13[2] = {
 #include "game/008A0200.inc"
 };
-HitShape EffKhezu16_Vals088_14[4] = {
+HitShape KhezuAttack_HitShapes_14[4] = {
 #include "game/008A0250.inc"
 };
-HitShape EffKhezu16_Vals088_15[2] = {
+HitShape KhezuAttack_HitShapes_15[2] = {
 #include "game/008A02F0.inc"
 };
-HitShape EffKhezu16_Vals088_16[2] = {
+HitShape KhezuAttack_HitShapes_16[2] = {
 #include "game/008A0340.inc"
 };
-HitShape EffKhezu16_Vals088_17[2] = {
+HitShape KhezuAttack_HitShapes_17[2] = {
 #include "game/008A0390.inc"
 };
-HitShape EffKhezu16_Vals088_18[3] = {
+HitShape KhezuAttack_HitShapes_18[3] = {
 #include "game/008A03E0.inc"
 };
-HitShape EffKhezu16_Vals088_19[2] = {
+HitShape KhezuAttack_HitShapes_19[2] = {
 #include "game/008A0460.inc"
 };
-HitShape EffKhezu16_Vals088_20[2] = {
+HitShape KhezuAttack_HitShapes_20[2] = {
 #include "game/008A04B0.inc"
 };
-HitShape *EffKhezu16_Vals088[24] = {
-    EffKhezu16_Vals088_0, EffKhezu16_Vals088_1, EffKhezu16_Vals088_2, EffKhezu16_Vals088_3,
-    EffKhezu16_Vals088_4, EffKhezu16_Vals088_5, EffKhezu16_Vals088_6, EffKhezu16_Vals088_7,
-    EffKhezu16_Vals088_8, EffKhezu16_Vals088_9, EffKhezu16_Vals088_10, EffKhezu16_Vals088_11,
-    EffKhezu16_Vals088_12, EffKhezu16_Vals088_13, EffKhezu16_Vals088_14, EffKhezu16_Vals088_15,
-    EffKhezu16_Vals088_16, EffKhezu16_Vals088_17, EffKhezu16_Vals088_18, EffKhezu16_Vals088_19,
-    EffKhezu16_Vals088_20, 0, 0, 0,
+HitShape *KhezuAttack_HitShapes[24] = {
+    KhezuAttack_HitShapes_0, KhezuAttack_HitShapes_1, KhezuAttack_HitShapes_2, KhezuAttack_HitShapes_3,
+    KhezuAttack_HitShapes_4, KhezuAttack_HitShapes_5, KhezuAttack_HitShapes_6, KhezuAttack_HitShapes_7,
+    KhezuAttack_HitShapes_8, KhezuAttack_HitShapes_9, KhezuAttack_HitShapes_10, KhezuAttack_HitShapes_11,
+    KhezuAttack_HitShapes_12, KhezuAttack_HitShapes_13, KhezuAttack_HitShapes_14, KhezuAttack_HitShapes_15,
+    KhezuAttack_HitShapes_16, KhezuAttack_HitShapes_17, KhezuAttack_HitShapes_18, KhezuAttack_HitShapes_19,
+    KhezuAttack_HitShapes_20, 0, 0, 0,
 };
-u32 D_008A0560[246] = {
+u32 KhezuAttack_Rows[246] = {
 #include "game/008A0560.inc"
 };
-void *EffKhezu16_MotionRef = (void *)D_008A0560;
-HitShape EffKutku17_Vals088_0[2] = {
+void *KhezuAttack_RowsPtr = (void *)KhezuAttack_Rows;
+HitShape KutkuAttack_HitShapes_0[2] = {
 #include "game/008A0940.inc"
 };
-HitShape EffKutku17_Vals088_1[3] = {
+HitShape KutkuAttack_HitShapes_1[3] = {
 #include "game/008A0990.inc"
 };
-HitShape EffKutku17_Vals088_2[3] = {
+HitShape KutkuAttack_HitShapes_2[3] = {
 #include "game/008A0A10.inc"
 };
-HitShape EffKutku17_Vals088_3[3] = {
+HitShape KutkuAttack_HitShapes_3[3] = {
 #include "game/008A0A90.inc"
 };
-HitShape EffKutku17_Vals088_4[3] = {
+HitShape KutkuAttack_HitShapes_4[3] = {
 #include "game/008A0B10.inc"
 };
-HitShape EffKutku17_Vals088_5[4] = {
+HitShape KutkuAttack_HitShapes_5[4] = {
 #include "game/008A0B90.inc"
 };
-HitShape EffKutku17_Vals088_6[2] = {
+HitShape KutkuAttack_HitShapes_6[2] = {
 #include "game/008A0C30.inc"
 };
-HitShape EffKutku17_Vals088_7[2] = {
+HitShape KutkuAttack_HitShapes_7[2] = {
 #include "game/008A0C80.inc"
 };
-HitShape EffKutku17_Vals088_8[3] = {
+HitShape KutkuAttack_HitShapes_8[3] = {
 #include "game/008A0CD0.inc"
 };
-HitShape EffKutku17_Vals088_9[3] = {
+HitShape KutkuAttack_HitShapes_9[3] = {
 #include "game/008A0D50.inc"
 };
-HitShape EffKutku17_Vals088_10[2] = {
+HitShape KutkuAttack_HitShapes_10[2] = {
 #include "game/008A0DD0.inc"
 };
-HitShape EffKutku17_Vals088_11[2] = {
+HitShape KutkuAttack_HitShapes_11[2] = {
 #include "game/008A0E20.inc"
 };
-HitShape EffKutku17_Vals088_12[2] = {
+HitShape KutkuAttack_HitShapes_12[2] = {
 #include "game/008A0E70.inc"
 };
-HitShape EffKutku17_Vals088_13[2] = {
+HitShape KutkuAttack_HitShapes_13[2] = {
 #include "game/008A0EC0.inc"
 };
-HitShape EffKutku17_Vals088_14[3] = {
+HitShape KutkuAttack_HitShapes_14[3] = {
 #include "game/008A0F10.inc"
 };
-HitShape EffKutku17_Vals088_15[2] = {
+HitShape KutkuAttack_HitShapes_15[2] = {
 #include "game/008A0F90.inc"
 };
-HitShape EffKutku17_Vals088_16[2] = {
+HitShape KutkuAttack_HitShapes_16[2] = {
 #include "game/008A0FE0.inc"
 };
-HitShape EffKutku17_Vals088_17[2] = {
+HitShape KutkuAttack_HitShapes_17[2] = {
 #include "game/008A1030.inc"
 };
-HitShape EffKutku17_Vals088_18[4] = {
+HitShape KutkuAttack_HitShapes_18[4] = {
 #include "game/008A1080.inc"
 };
-HitShape EffKutku17_Vals088_19[2] = {
+HitShape KutkuAttack_HitShapes_19[2] = {
 #include "game/008A1120.inc"
 };
-HitShape EffKutku17_Vals088_20[6] = {
+HitShape KutkuAttack_HitShapes_20[6] = {
 #include "game/008A1170.inc"
 };
-HitShape EffKutku17_Vals088_21[5] = {
+HitShape KutkuAttack_HitShapes_21[5] = {
 #include "game/008A1260.inc"
 };
-HitShape *EffKutku17_Vals088[24] = {
-    EffKutku17_Vals088_0, EffKutku17_Vals088_1, EffKutku17_Vals088_2, EffKutku17_Vals088_3,
-    EffKutku17_Vals088_4, EffKutku17_Vals088_5, EffKutku17_Vals088_6, EffKutku17_Vals088_7,
-    EffKutku17_Vals088_8, EffKutku17_Vals088_9, EffKutku17_Vals088_10, EffKutku17_Vals088_11,
-    EffKutku17_Vals088_12, EffKutku17_Vals088_13, EffKutku17_Vals088_14, EffKutku17_Vals088_15,
-    EffKutku17_Vals088_16, EffKutku17_Vals088_17, EffKutku17_Vals088_18, EffKutku17_Vals088_19,
-    EffKutku17_Vals088_20, EffKutku17_Vals088_21, 0, 0,
+HitShape *KutkuAttack_HitShapes[24] = {
+    KutkuAttack_HitShapes_0, KutkuAttack_HitShapes_1, KutkuAttack_HitShapes_2, KutkuAttack_HitShapes_3,
+    KutkuAttack_HitShapes_4, KutkuAttack_HitShapes_5, KutkuAttack_HitShapes_6, KutkuAttack_HitShapes_7,
+    KutkuAttack_HitShapes_8, KutkuAttack_HitShapes_9, KutkuAttack_HitShapes_10, KutkuAttack_HitShapes_11,
+    KutkuAttack_HitShapes_12, KutkuAttack_HitShapes_13, KutkuAttack_HitShapes_14, KutkuAttack_HitShapes_15,
+    KutkuAttack_HitShapes_16, KutkuAttack_HitShapes_17, KutkuAttack_HitShapes_18, KutkuAttack_HitShapes_19,
+    KutkuAttack_HitShapes_20, KutkuAttack_HitShapes_21, 0, 0,
 };
-u32 D_008A1390[228] = {
+u32 KutkuAttack_Rows[228] = {
 #include "game/008A1390.inc"
 };
-void *EffKutku17_MotionRef = (void *)D_008A1390;
-HitShape EffDiablos18_Vals088_0[2] = {
+void *KutkuAttack_RowsPtr = (void *)KutkuAttack_Rows;
+HitShape DiablosAttack_HitShapes_0[2] = {
 #include "game/008A1730.inc"
 };
-HitShape EffDiablos18_Vals088_1[3] = {
+HitShape DiablosAttack_HitShapes_1[3] = {
 #include "game/008A1780.inc"
 };
-HitShape EffDiablos18_Vals088_2[3] = {
+HitShape DiablosAttack_HitShapes_2[3] = {
 #include "game/008A1800.inc"
 };
-HitShape EffDiablos18_Vals088_3[3] = {
+HitShape DiablosAttack_HitShapes_3[3] = {
 #include "game/008A1880.inc"
 };
-HitShape EffDiablos18_Vals088_4[4] = {
+HitShape DiablosAttack_HitShapes_4[4] = {
 #include "game/008A1900.inc"
 };
-HitShape EffDiablos18_Vals088_5[4] = {
+HitShape DiablosAttack_HitShapes_5[4] = {
 #include "game/008A19A0.inc"
 };
-HitShape EffDiablos18_Vals088_6[2] = {
+HitShape DiablosAttack_HitShapes_6[2] = {
 #include "game/008A1A40.inc"
 };
-HitShape EffDiablos18_Vals088_7[2] = {
+HitShape DiablosAttack_HitShapes_7[2] = {
 #include "game/008A1A90.inc"
 };
-HitShape EffDiablos18_Vals088_8[3] = {
+HitShape DiablosAttack_HitShapes_8[3] = {
 #include "game/008A1AE0.inc"
 };
-HitShape EffDiablos18_Vals088_9[3] = {
+HitShape DiablosAttack_HitShapes_9[3] = {
 #include "game/008A1B60.inc"
 };
-HitShape EffDiablos18_Vals088_10[2] = {
+HitShape DiablosAttack_HitShapes_10[2] = {
 #include "game/008A1BE0.inc"
 };
-HitShape EffDiablos18_Vals088_11[4] = {
+HitShape DiablosAttack_HitShapes_11[4] = {
 #include "game/008A1C30.inc"
 };
-HitShape EffDiablos18_Vals088_12[3] = {
+HitShape DiablosAttack_HitShapes_12[3] = {
 #include "game/008A1CD0.inc"
 };
-HitShape EffDiablos18_Vals088_13[4] = {
+HitShape DiablosAttack_HitShapes_13[4] = {
 #include "game/008A1D50.inc"
 };
-HitShape EffDiablos18_Vals088_14[3] = {
+HitShape DiablosAttack_HitShapes_14[3] = {
 #include "game/008A1DF0.inc"
 };
-HitShape EffDiablos18_Vals088_15[2] = {
+HitShape DiablosAttack_HitShapes_15[2] = {
 #include "game/008A1E70.inc"
 };
-HitShape EffDiablos18_Vals088_16[3] = {
+HitShape DiablosAttack_HitShapes_16[3] = {
 #include "game/008A1EC0.inc"
 };
-HitShape EffDiablos18_Vals088_17[3] = {
+HitShape DiablosAttack_HitShapes_17[3] = {
 #include "game/008A1F40.inc"
 };
-HitShape EffDiablos18_Vals088_18[4] = {
+HitShape DiablosAttack_HitShapes_18[4] = {
 #include "game/008A1FC0.inc"
 };
-HitShape EffDiablos18_Vals088_19[2] = {
+HitShape DiablosAttack_HitShapes_19[2] = {
 #include "game/008A2060.inc"
 };
-HitShape *EffDiablos18_Vals088[20] = {
-    EffDiablos18_Vals088_0, EffDiablos18_Vals088_1, EffDiablos18_Vals088_2, EffDiablos18_Vals088_3,
-    EffDiablos18_Vals088_4, EffDiablos18_Vals088_5, EffDiablos18_Vals088_6, EffDiablos18_Vals088_7,
-    EffDiablos18_Vals088_8, EffDiablos18_Vals088_9, EffDiablos18_Vals088_10, EffDiablos18_Vals088_11,
-    EffDiablos18_Vals088_12, EffDiablos18_Vals088_13, EffDiablos18_Vals088_14, EffDiablos18_Vals088_15,
-    EffDiablos18_Vals088_16, EffDiablos18_Vals088_17, EffDiablos18_Vals088_18, EffDiablos18_Vals088_19,
+HitShape *DiablosAttack_HitShapes[20] = {
+    DiablosAttack_HitShapes_0, DiablosAttack_HitShapes_1, DiablosAttack_HitShapes_2, DiablosAttack_HitShapes_3,
+    DiablosAttack_HitShapes_4, DiablosAttack_HitShapes_5, DiablosAttack_HitShapes_6, DiablosAttack_HitShapes_7,
+    DiablosAttack_HitShapes_8, DiablosAttack_HitShapes_9, DiablosAttack_HitShapes_10, DiablosAttack_HitShapes_11,
+    DiablosAttack_HitShapes_12, DiablosAttack_HitShapes_13, DiablosAttack_HitShapes_14, DiablosAttack_HitShapes_15,
+    DiablosAttack_HitShapes_16, DiablosAttack_HitShapes_17, DiablosAttack_HitShapes_18, DiablosAttack_HitShapes_19,
 };
-u32 D_008A2100[204] = {
+u32 DiablosAttack_Rows[204] = {
 #include "game/008A2100.inc"
 };
-void *EffDiablos18_MotionRef = (void *)D_008A2100;
-HitShape EffGravios19_Vals088_0[2] = {
+void *DiablosAttack_RowsPtr = (void *)DiablosAttack_Rows;
+HitShape GraviosAttack_HitShapes_0[2] = {
 #include "game/008A2440.inc"
 };
-HitShape EffGravios19_Vals088_1[3] = {
+HitShape GraviosAttack_HitShapes_1[3] = {
 #include "game/008A2490.inc"
 };
-HitShape EffGravios19_Vals088_2[3] = {
+HitShape GraviosAttack_HitShapes_2[3] = {
 #include "game/008A2510.inc"
 };
-HitShape EffGravios19_Vals088_3[3] = {
+HitShape GraviosAttack_HitShapes_3[3] = {
 #include "game/008A2590.inc"
 };
-HitShape EffGravios19_Vals088_4[4] = {
+HitShape GraviosAttack_HitShapes_4[4] = {
 #include "game/008A2610.inc"
 };
-HitShape EffGravios19_Vals088_5[6] = {
+HitShape GraviosAttack_HitShapes_5[6] = {
 #include "game/008A26B0.inc"
 };
-HitShape EffGravios19_Vals088_6[2] = {
+HitShape GraviosAttack_HitShapes_6[2] = {
 #include "game/008A27A0.inc"
 };
-HitShape EffGravios19_Vals088_7[2] = {
+HitShape GraviosAttack_HitShapes_7[2] = {
 #include "game/008A27F0.inc"
 };
-HitShape EffGravios19_Vals088_8[3] = {
+HitShape GraviosAttack_HitShapes_8[3] = {
 #include "game/008A2840.inc"
 };
-HitShape EffGravios19_Vals088_9[3] = {
+HitShape GraviosAttack_HitShapes_9[3] = {
 #include "game/008A28C0.inc"
 };
-HitShape EffGravios19_Vals088_10[2] = {
+HitShape GraviosAttack_HitShapes_10[2] = {
 #include "game/008A2940.inc"
 };
-HitShape EffGravios19_Vals088_11[2] = {
+HitShape GraviosAttack_HitShapes_11[2] = {
 #include "game/008A2990.inc"
 };
-HitShape EffGravios19_Vals088_12[2] = {
+HitShape GraviosAttack_HitShapes_12[2] = {
 #include "game/008A29E0.inc"
 };
-HitShape EffGravios19_Vals088_13[2] = {
+HitShape GraviosAttack_HitShapes_13[2] = {
 #include "game/008A2A30.inc"
 };
-HitShape EffGravios19_Vals088_14[4] = {
+HitShape GraviosAttack_HitShapes_14[4] = {
 #include "game/008A2A80.inc"
 };
-HitShape EffGravios19_Vals088_15[2] = {
+HitShape GraviosAttack_HitShapes_15[2] = {
 #include "game/008A2B20.inc"
 };
-HitShape EffGravios19_Vals088_16[3] = {
+HitShape GraviosAttack_HitShapes_16[3] = {
 #include "game/008A2B70.inc"
 };
-HitShape EffGravios19_Vals088_17[2] = {
+HitShape GraviosAttack_HitShapes_17[2] = {
 #include "game/008A2BF0.inc"
 };
-HitShape EffGravios19_Vals088_18[2] = {
+HitShape GraviosAttack_HitShapes_18[2] = {
 #include "game/008A2C40.inc"
 };
-HitShape EffGravios19_Vals088_19[2] = {
+HitShape GraviosAttack_HitShapes_19[2] = {
 #include "game/008A2C90.inc"
 };
-HitShape EffGravios19_Vals088_20[2] = {
+HitShape GraviosAttack_HitShapes_20[2] = {
 #include "game/008A2CE0.inc"
 };
-HitShape EffGravios19_Vals088_21[2] = {
+HitShape GraviosAttack_HitShapes_21[2] = {
 #include "game/008A2D30.inc"
 };
-HitShape EffGravios19_Vals088_22[2] = {
+HitShape GraviosAttack_HitShapes_22[2] = {
 #include "game/008A2D80.inc"
 };
-HitShape *EffGravios19_Vals088[24] = {
-    EffGravios19_Vals088_0, EffGravios19_Vals088_1, EffGravios19_Vals088_2, EffGravios19_Vals088_3,
-    EffGravios19_Vals088_4, EffGravios19_Vals088_5, EffGravios19_Vals088_6, EffGravios19_Vals088_7,
-    EffGravios19_Vals088_8, EffGravios19_Vals088_9, EffGravios19_Vals088_10, EffGravios19_Vals088_11,
-    EffGravios19_Vals088_12, EffGravios19_Vals088_13, EffGravios19_Vals088_14, EffGravios19_Vals088_15,
-    EffGravios19_Vals088_16, EffGravios19_Vals088_17, EffGravios19_Vals088_18, EffGravios19_Vals088_19,
-    EffGravios19_Vals088_20, EffGravios19_Vals088_21, EffGravios19_Vals088_22, 0,
+HitShape *GraviosAttack_HitShapes[24] = {
+    GraviosAttack_HitShapes_0, GraviosAttack_HitShapes_1, GraviosAttack_HitShapes_2, GraviosAttack_HitShapes_3,
+    GraviosAttack_HitShapes_4, GraviosAttack_HitShapes_5, GraviosAttack_HitShapes_6, GraviosAttack_HitShapes_7,
+    GraviosAttack_HitShapes_8, GraviosAttack_HitShapes_9, GraviosAttack_HitShapes_10, GraviosAttack_HitShapes_11,
+    GraviosAttack_HitShapes_12, GraviosAttack_HitShapes_13, GraviosAttack_HitShapes_14, GraviosAttack_HitShapes_15,
+    GraviosAttack_HitShapes_16, GraviosAttack_HitShapes_17, GraviosAttack_HitShapes_18, GraviosAttack_HitShapes_19,
+    GraviosAttack_HitShapes_20, GraviosAttack_HitShapes_21, GraviosAttack_HitShapes_22, 0,
 };
-u32 D_008A2E30[198] = {
+u32 GraviosAttack_Rows[198] = {
 #include "game/008A2E30.inc"
 };
-void *EffGravios19_MotionRef = (void *)D_008A2E30;
-HitShape EffPlesioth20_Vals088_0[2] = {
+void *GraviosAttack_RowsPtr = (void *)GraviosAttack_Rows;
+HitShape PlesiothAttack_HitShapes_0[2] = {
 #include "game/008A3150.inc"
 };
-HitShape EffPlesioth20_Vals088_1[3] = {
+HitShape PlesiothAttack_HitShapes_1[3] = {
 #include "game/008A31A0.inc"
 };
-HitShape EffPlesioth20_Vals088_2[3] = {
+HitShape PlesiothAttack_HitShapes_2[3] = {
 #include "game/008A3220.inc"
 };
-HitShape EffPlesioth20_Vals088_3[2] = {
+HitShape PlesiothAttack_HitShapes_3[2] = {
 #include "game/008A32A0.inc"
 };
-HitShape EffPlesioth20_Vals088_4[4] = {
+HitShape PlesiothAttack_HitShapes_4[4] = {
 #include "game/008A32F0.inc"
 };
-HitShape EffPlesioth20_Vals088_5[4] = {
+HitShape PlesiothAttack_HitShapes_5[4] = {
 #include "game/008A3390.inc"
 };
-HitShape EffPlesioth20_Vals088_6[3] = {
+HitShape PlesiothAttack_HitShapes_6[3] = {
 #include "game/008A3430.inc"
 };
-HitShape EffPlesioth20_Vals088_7[3] = {
+HitShape PlesiothAttack_HitShapes_7[3] = {
 #include "game/008A34B0.inc"
 };
-HitShape EffPlesioth20_Vals088_8[4] = {
+HitShape PlesiothAttack_HitShapes_8[4] = {
 #include "game/008A3530.inc"
 };
-HitShape EffPlesioth20_Vals088_9[3] = {
+HitShape PlesiothAttack_HitShapes_9[3] = {
 #include "game/008A35D0.inc"
 };
-HitShape EffPlesioth20_Vals088_10[2] = {
+HitShape PlesiothAttack_HitShapes_10[2] = {
 #include "game/008A3650.inc"
 };
-HitShape EffPlesioth20_Vals088_11[2] = {
+HitShape PlesiothAttack_HitShapes_11[2] = {
 #include "game/008A36A0.inc"
 };
-HitShape *EffPlesioth20_Vals088[12] = {
-    EffPlesioth20_Vals088_0, EffPlesioth20_Vals088_1, EffPlesioth20_Vals088_2, EffPlesioth20_Vals088_3,
-    EffPlesioth20_Vals088_4, EffPlesioth20_Vals088_5, EffPlesioth20_Vals088_6, EffPlesioth20_Vals088_7,
-    EffPlesioth20_Vals088_8, EffPlesioth20_Vals088_9, EffPlesioth20_Vals088_10, EffPlesioth20_Vals088_11,
+HitShape *PlesiothAttack_HitShapes[12] = {
+    PlesiothAttack_HitShapes_0, PlesiothAttack_HitShapes_1, PlesiothAttack_HitShapes_2, PlesiothAttack_HitShapes_3,
+    PlesiothAttack_HitShapes_4, PlesiothAttack_HitShapes_5, PlesiothAttack_HitShapes_6, PlesiothAttack_HitShapes_7,
+    PlesiothAttack_HitShapes_8, PlesiothAttack_HitShapes_9, PlesiothAttack_HitShapes_10, PlesiothAttack_HitShapes_11,
 };
-u32 D_008A3720[156] = {
+u32 PlesiothAttack_Rows[156] = {
 #include "game/008A3720.inc"
 };
-void *EffPlesioth20_MotionRef = (void *)D_008A3720;
-HitShape EffCephadrome21_Vals088_0[2] = {
+void *PlesiothAttack_RowsPtr = (void *)PlesiothAttack_Rows;
+HitShape CephadromeAttack_HitShapes_0[2] = {
 #include "game/008A39A0.inc"
 };
-HitShape EffCephadrome21_Vals088_1[3] = {
+HitShape CephadromeAttack_HitShapes_1[3] = {
 #include "game/008A39F0.inc"
 };
-HitShape EffCephadrome21_Vals088_2[3] = {
+HitShape CephadromeAttack_HitShapes_2[3] = {
 #include "game/008A3A70.inc"
 };
-HitShape EffCephadrome21_Vals088_3[2] = {
+HitShape CephadromeAttack_HitShapes_3[2] = {
 #include "game/008A3AF0.inc"
 };
-HitShape EffCephadrome21_Vals088_4[4] = {
+HitShape CephadromeAttack_HitShapes_4[4] = {
 #include "game/008A3B40.inc"
 };
-HitShape EffCephadrome21_Vals088_5[4] = {
+HitShape CephadromeAttack_HitShapes_5[4] = {
 #include "game/008A3BE0.inc"
 };
-HitShape EffCephadrome21_Vals088_6[3] = {
+HitShape CephadromeAttack_HitShapes_6[3] = {
 #include "game/008A3C80.inc"
 };
-HitShape EffCephadrome21_Vals088_7[3] = {
+HitShape CephadromeAttack_HitShapes_7[3] = {
 #include "game/008A3D00.inc"
 };
-HitShape EffCephadrome21_Vals088_8[4] = {
+HitShape CephadromeAttack_HitShapes_8[4] = {
 #include "game/008A3D80.inc"
 };
-HitShape EffCephadrome21_Vals088_9[3] = {
+HitShape CephadromeAttack_HitShapes_9[3] = {
 #include "game/008A3E20.inc"
 };
-HitShape EffCephadrome21_Vals088_10[2] = {
+HitShape CephadromeAttack_HitShapes_10[2] = {
 #include "game/008A3EA0.inc"
 };
-HitShape EffCephadrome21_Vals088_11[2] = {
+HitShape CephadromeAttack_HitShapes_11[2] = {
 #include "game/008A3EF0.inc"
 };
-HitShape EffCephadrome21_Vals088_12[2] = {
+HitShape CephadromeAttack_HitShapes_12[2] = {
 #include "game/008A3F40.inc"
 };
-HitShape EffCephadrome21_Vals088_13[2] = {
+HitShape CephadromeAttack_HitShapes_13[2] = {
 #include "game/008A3F90.inc"
 };
-HitShape EffCephadrome21_Vals088_14[2] = {
+HitShape CephadromeAttack_HitShapes_14[2] = {
 #include "game/008A3FE0.inc"
 };
-HitShape *EffCephadrome21_Vals088[16] = {
-    EffCephadrome21_Vals088_0, EffCephadrome21_Vals088_1, EffCephadrome21_Vals088_2, EffCephadrome21_Vals088_3,
-    EffCephadrome21_Vals088_4, EffCephadrome21_Vals088_5, EffCephadrome21_Vals088_6, EffCephadrome21_Vals088_7,
-    EffCephadrome21_Vals088_8, EffCephadrome21_Vals088_9, EffCephadrome21_Vals088_10, EffCephadrome21_Vals088_11,
-    EffCephadrome21_Vals088_12, EffCephadrome21_Vals088_13, EffCephadrome21_Vals088_14, 0,
+HitShape *CephadromeAttack_HitShapes[16] = {
+    CephadromeAttack_HitShapes_0, CephadromeAttack_HitShapes_1, CephadromeAttack_HitShapes_2, CephadromeAttack_HitShapes_3,
+    CephadromeAttack_HitShapes_4, CephadromeAttack_HitShapes_5, CephadromeAttack_HitShapes_6, CephadromeAttack_HitShapes_7,
+    CephadromeAttack_HitShapes_8, CephadromeAttack_HitShapes_9, CephadromeAttack_HitShapes_10, CephadromeAttack_HitShapes_11,
+    CephadromeAttack_HitShapes_12, CephadromeAttack_HitShapes_13, CephadromeAttack_HitShapes_14, 0,
 };
-u32 D_008A4070[180] = {
+u32 CephadromeAttack_Rows[180] = {
 #include "game/008A4070.inc"
 };
-void *EffCephadrome21_MotionRef = (void *)D_008A4070;
-HitShape Eff22_Vals088_0[2] = {
+void *CephadromeAttack_RowsPtr = (void *)CephadromeAttack_Rows;
+HitShape StageShot_HitShapes_0[2] = {
 #include "game/008A4350.inc"
 };
-HitShape Eff22_Vals088_1[2] = {
+HitShape StageShot_HitShapes_1[2] = {
 #include "game/008A43A0.inc"
 };
-HitShape Eff22_Vals088_2[2] = {
+HitShape StageShot_HitShapes_2[2] = {
 #include "game/008A43F0.inc"
 };
-HitShape Eff22_Vals088_3[2] = {
+HitShape StageShot_HitShapes_3[2] = {
 #include "game/008A4440.inc"
 };
-HitShape Eff22_Vals088_4[2] = {
+HitShape StageShot_HitShapes_4[2] = {
 #include "game/008A4490.inc"
 };
-HitShape Eff22_Vals088_5[2] = {
+HitShape StageShot_HitShapes_5[2] = {
 #include "game/008A44E0.inc"
 };
-HitShape Eff22_Vals088_6[2] = {
+HitShape StageShot_HitShapes_6[2] = {
 #include "game/008A4530.inc"
 };
-HitShape Eff22_Vals088_7[2] = {
+HitShape StageShot_HitShapes_7[2] = {
 #include "game/008A4580.inc"
 };
-HitShape Eff22_Vals088_8[2] = {
+HitShape StageShot_HitShapes_8[2] = {
 #include "game/008A45D0.inc"
 };
-HitShape Eff22_Vals088_9[2] = {
+HitShape StageShot_HitShapes_9[2] = {
 #include "game/008A4620.inc"
 };
-HitShape Eff22_Vals088_10[2] = {
+HitShape StageShot_HitShapes_10[2] = {
 #include "game/008A4670.inc"
 };
-HitShape Eff22_Vals088_11[2] = {
+HitShape StageShot_HitShapes_11[2] = {
 #include "game/008A46C0.inc"
 };
-HitShape Eff22_Vals088_12[2] = {
+HitShape StageShot_HitShapes_12[2] = {
 #include "game/008A4710.inc"
 };
-HitShape *Eff22_Vals088[16] = {
-    Eff22_Vals088_0, Eff22_Vals088_1, Eff22_Vals088_2, Eff22_Vals088_3,
-    Eff22_Vals088_4, Eff22_Vals088_5, Eff22_Vals088_6, Eff22_Vals088_7,
-    Eff22_Vals088_8, Eff22_Vals088_9, Eff22_Vals088_10, Eff22_Vals088_11,
-    Eff22_Vals088_12, 0, 0, 0,
+HitShape *StageShot_HitShapes[16] = {
+    StageShot_HitShapes_0, StageShot_HitShapes_1, StageShot_HitShapes_2, StageShot_HitShapes_3,
+    StageShot_HitShapes_4, StageShot_HitShapes_5, StageShot_HitShapes_6, StageShot_HitShapes_7,
+    StageShot_HitShapes_8, StageShot_HitShapes_9, StageShot_HitShapes_10, StageShot_HitShapes_11,
+    StageShot_HitShapes_12, 0, 0, 0,
 };
-u32 D_008A47A0[60] = {
+u32 StageShot_Rows[60] = {
 #include "game/008A47A0.inc"
 };
-void *Eff22_MotionRef = (void *)D_008A47A0;
-f32 Eff22_Val048ByType[9][3] = {
+void *StageShot_RowsPtr = (void *)StageShot_Rows;
+f32 StageShot_StartVels[9][3] = {
 #include "game/008A48A0.inc"
 };
-f32 Eff22_Val058ByType[12] = {
+f32 StageShot_Gravities[12] = {
 #include "game/008A4910.inc"
 };
-s16 Eff22_TimeLimit[16] = {
+s16 StageShot_TimeLimit[16] = {
 #include "game/008A4940.inc"
 };
-f32 Eff22_PlayerPtsA[2][3] = {
+f32 StageShot_CannonPtsFortress5[2][3] = {
 #include "game/008A4960.inc"
 };
-f32 Eff22_PlayerPtsB[2][3] = {
+f32 StageShot_CannonPtsCastle1[2][3] = {
 #include "game/008A4980.inc"
 };
-u16 Eff22_PlayerAngsB[4] = {
+u16 StageShot_CannonAngsCastle1[4] = {
 #include "game/008A4998.inc"
 };
-f32 Eff22_PlayerPtsC[2][3] = {
+f32 StageShot_CannonPtsBattleTown1[2][3] = {
 #include "game/008A49A0.inc"
 };
-u16 Eff22_PlayerAngsC[4] = {
+u16 StageShot_CannonAngsBattleTown1[4] = {
 #include "game/008A49B8.inc"
 };
-f32 Eff22_Add048A[4] = {
+f32 StageShot_CannonSpread[4] = {
 #include "game/008A49C0.inc"
 };
-f32 Eff22_SpotPosA[3][3] = {
+f32 StageShot_RockSpotsFortress4[3][3] = {
 #include "game/008A49D0.inc"
 };
-u16 Eff22_SpotAngA[4] = {
+u16 StageShot_RockAngsFortress4[4] = {
 #include "game/008A49F8.inc"
 };
-f32 Eff22_SpotPosB[2][3] = {
+f32 StageShot_RockSpotsFortress3[2][3] = {
 #include "game/008A4A00.inc"
 };
-u16 Eff22_SpotAngB[4] = {
+u16 StageShot_RockAngsFortress3[4] = {
 #include "game/008A4A18.inc"
 };
-f32 Eff22_SpotPosC[3][3] = {
+f32 StageShot_RockSpotsFortress2[3][3] = {
 #include "game/008A4A20.inc"
 };
-u16 Eff22_SpotAngC[4] = {
+u16 StageShot_RockAngsFortress2[4] = {
 #include "game/008A4A48.inc"
 };
-f32 Eff22_Add048B[12] = {
+f32 StageShot_RockSpotVels[12] = {
 #include "game/008A4A50.inc"
 };
-f32 EmBlangonga_State3PtsA[6][3] = {
+f32 EmBlangonga_FallPointsSnowy3[6][3] = {
 #include "game/008A4A80.inc"
 };
-s16 EmBlangonga_State3Tabs_0[4] = {
+s16 EmBlangonga_FallListsSnowy3_0[4] = {
 #include "game/008A4AC8.inc"
 };
-s16 EmBlangonga_State3Tabs_1[8] = {
+s16 EmBlangonga_FallListsSnowy3_1[8] = {
 #include "game/008A4AD0.inc"
 };
-s16 *EmBlangonga_State3Tabs[4] = {
-    EmBlangonga_State3Tabs_0, EmBlangonga_State3Tabs_1, NULL, NULL,
+s16 *EmBlangonga_FallListsSnowy3[4] = {
+    EmBlangonga_FallListsSnowy3_0, EmBlangonga_FallListsSnowy3_1, NULL, NULL,
 };
-f32 EmBlangonga_State3PtsB[6][3] = {
+f32 EmBlangonga_FallPointsSnowy8[6][3] = {
 #include "game/008A4AF0.inc"
 };
-s16 EmBlangonga_State3TabByZ_0[6] = {
+s16 EmBlangonga_FallListsByZ_0[6] = {
 #include "game/008A4B38.inc"
 };
-s16 EmBlangonga_State3TabByZ_1[6] = {
+s16 EmBlangonga_FallListsByZ_1[6] = {
 #include "game/008A4B48.inc"
 };
-s16 *EmBlangonga_State3TabByZ[2] = {
-    EmBlangonga_State3TabByZ_0, EmBlangonga_State3TabByZ_1,
+s16 *EmBlangonga_FallListsByZ[2] = {
+    EmBlangonga_FallListsByZ_0, EmBlangonga_FallListsByZ_1,
 };
-HitShape EffCephadrome23_Vals088_0[2] = {
+HitShape CephalosAttack_HitShapes_0[2] = {
 #include "game/008A4B60.inc"
 };
-HitShape EffCephadrome23_Vals088_1[3] = {
+HitShape CephalosAttack_HitShapes_1[3] = {
 #include "game/008A4BB0.inc"
 };
-HitShape EffCephadrome23_Vals088_2[3] = {
+HitShape CephalosAttack_HitShapes_2[3] = {
 #include "game/008A4C30.inc"
 };
-HitShape EffCephadrome23_Vals088_3[2] = {
+HitShape CephalosAttack_HitShapes_3[2] = {
 #include "game/008A4CB0.inc"
 };
-HitShape EffCephadrome23_Vals088_4[4] = {
+HitShape CephalosAttack_HitShapes_4[4] = {
 #include "game/008A4D00.inc"
 };
-HitShape EffCephadrome23_Vals088_5[4] = {
+HitShape CephalosAttack_HitShapes_5[4] = {
 #include "game/008A4DA0.inc"
 };
-HitShape EffCephadrome23_Vals088_6[3] = {
+HitShape CephalosAttack_HitShapes_6[3] = {
 #include "game/008A4E40.inc"
 };
-HitShape EffCephadrome23_Vals088_7[3] = {
+HitShape CephalosAttack_HitShapes_7[3] = {
 #include "game/008A4EC0.inc"
 };
-HitShape EffCephadrome23_Vals088_8[4] = {
+HitShape CephalosAttack_HitShapes_8[4] = {
 #include "game/008A4F40.inc"
 };
-HitShape EffCephadrome23_Vals088_9[3] = {
+HitShape CephalosAttack_HitShapes_9[3] = {
 #include "game/008A4FE0.inc"
 };
-HitShape EffCephadrome23_Vals088_10[2] = {
+HitShape CephalosAttack_HitShapes_10[2] = {
 #include "game/008A5060.inc"
 };
-HitShape EffCephadrome23_Vals088_11[2] = {
+HitShape CephalosAttack_HitShapes_11[2] = {
 #include "game/008A50B0.inc"
 };
-HitShape EffCephadrome23_Vals088_12[2] = {
+HitShape CephalosAttack_HitShapes_12[2] = {
 #include "game/008A5100.inc"
 };
-HitShape EffCephadrome23_Vals088_13[2] = {
+HitShape CephalosAttack_HitShapes_13[2] = {
 #include "game/008A5150.inc"
 };
-HitShape EffCephadrome23_Vals088_14[2] = {
+HitShape CephalosAttack_HitShapes_14[2] = {
 #include "game/008A51A0.inc"
 };
-HitShape *EffCephadrome23_Vals088[16] = {
-    EffCephadrome23_Vals088_0, EffCephadrome23_Vals088_1, EffCephadrome23_Vals088_2, EffCephadrome23_Vals088_3,
-    EffCephadrome23_Vals088_4, EffCephadrome23_Vals088_5, EffCephadrome23_Vals088_6, EffCephadrome23_Vals088_7,
-    EffCephadrome23_Vals088_8, EffCephadrome23_Vals088_9, EffCephadrome23_Vals088_10, EffCephadrome23_Vals088_11,
-    EffCephadrome23_Vals088_12, EffCephadrome23_Vals088_13, EffCephadrome23_Vals088_14, 0,
+HitShape *CephalosAttack_HitShapes[16] = {
+    CephalosAttack_HitShapes_0, CephalosAttack_HitShapes_1, CephalosAttack_HitShapes_2, CephalosAttack_HitShapes_3,
+    CephalosAttack_HitShapes_4, CephalosAttack_HitShapes_5, CephalosAttack_HitShapes_6, CephalosAttack_HitShapes_7,
+    CephalosAttack_HitShapes_8, CephalosAttack_HitShapes_9, CephalosAttack_HitShapes_10, CephalosAttack_HitShapes_11,
+    CephalosAttack_HitShapes_12, CephalosAttack_HitShapes_13, CephalosAttack_HitShapes_14, 0,
 };
-u32 D_008A5230[180] = {
+u32 CephalosAttack_Rows[180] = {
 #include "game/008A5230.inc"
 };
-void *EffCephadrome23_MotionRef = (void *)D_008A5230;
-HitShape BowgunShot_Vals088_0[2] = {
+void *CephalosAttack_RowsPtr = (void *)CephalosAttack_Rows;
+HitShape BowArrow_HitShapes_0[2] = {
 #include "game/008A5510.inc"
 };
-HitShape *BowgunShot_Vals088[4] = {
-    BowgunShot_Vals088_0, 0, 0, 0,
+HitShape *BowArrow_HitShapes[4] = {
+    BowArrow_HitShapes_0, 0, 0, 0,
 };
-u32 D_008A5570[78] = {
+u32 BowArrow_Rows[78] = {
 #include "game/008A5570.inc"
 };
-void *BowgunShot_MotionRef = (void *)D_008A5570;
-s16 BowgunShot_ShotParams_0[4] = {
+void *BowArrow_RowsPtr = (void *)BowArrow_Rows;
+s16 BowArrow_ShotParams_0[4] = {
 #include "game/008A56B0.inc"
 };
-s16 BowgunShot_ShotParams_1[4] = {
+s16 BowArrow_ShotParams_1[4] = {
 #include "game/008A56B8.inc"
 };
-s16 BowgunShot_ShotParams_2[4] = {
+s16 BowArrow_ShotParams_2[4] = {
 #include "game/008A56C0.inc"
 };
-s16 BowgunShot_ShotParams_3[6] = {
+s16 BowArrow_ShotParams_3[6] = {
 #include "game/008A56C8.inc"
 };
-s16 BowgunShot_ShotParams_4[4] = {
+s16 BowArrow_ShotParams_4[4] = {
 #include "game/008A56D8.inc"
 };
-s16 BowgunShot_ShotParams_5[4] = {
+s16 BowArrow_ShotParams_5[4] = {
 #include "game/008A56E0.inc"
 };
-s16 BowgunShot_ShotParams_6[6] = {
+s16 BowArrow_ShotParams_6[6] = {
 #include "game/008A56E8.inc"
 };
-s16 BowgunShot_ShotParams_7[6] = {
+s16 BowArrow_ShotParams_7[6] = {
 #include "game/008A56F8.inc"
 };
-s16 BowgunShot_ShotParams_8[4] = {
+s16 BowArrow_ShotParams_8[4] = {
 #include "game/008A5708.inc"
 };
-s16 BowgunShot_ShotParams_9[4] = {
+s16 BowArrow_ShotParams_9[4] = {
 #include "game/008A5710.inc"
 };
-s16 BowgunShot_ShotParams_10[4] = {
+s16 BowArrow_ShotParams_10[4] = {
 #include "game/008A5718.inc"
 };
-s16 BowgunShot_ShotParams_11[8] = {
+s16 BowArrow_ShotParams_11[8] = {
 #include "game/008A5720.inc"
 };
-s16 *BowgunShot_ShotParams[12] = {
-    BowgunShot_ShotParams_0, BowgunShot_ShotParams_1, BowgunShot_ShotParams_2, BowgunShot_ShotParams_3,
-    BowgunShot_ShotParams_4, BowgunShot_ShotParams_5, BowgunShot_ShotParams_6, BowgunShot_ShotParams_7,
-    BowgunShot_ShotParams_8, BowgunShot_ShotParams_9, BowgunShot_ShotParams_10, BowgunShot_ShotParams_11,
+s16 *BowArrow_ShotParams[12] = {
+    BowArrow_ShotParams_0, BowArrow_ShotParams_1, BowArrow_ShotParams_2, BowArrow_ShotParams_3,
+    BowArrow_ShotParams_4, BowArrow_ShotParams_5, BowArrow_ShotParams_6, BowArrow_ShotParams_7,
+    BowArrow_ShotParams_8, BowArrow_ShotParams_9, BowArrow_ShotParams_10, BowArrow_ShotParams_11,
 };
-u16 BowgunShot_SpreadScale[8] = {
+u16 BowArrow_SpreadScale[8] = {
 #include "game/008A5760.inc"
 };
-s16 BowgunShot_SpreadDirs[8] = {
+s16 BowArrow_SpreadDirs[8] = {
 #include "game/008A5770.inc"
 };
-Rec8A5780 BowgunShot_Kinds[11] = {
+BowArrowKind BowArrow_Kinds[11] = {
 #include "game/008A5780.inc"
 };
-s16 BowgunShot_EventTbls_0[8] = {
+s16 BowArrow_EventTbls_0[8] = {
 #include "game/008A58E0.inc"
 };
-s16 BowgunShot_EventTbls_1[8] = {
+s16 BowArrow_EventTbls_1[8] = {
 #include "game/008A58F0.inc"
 };
-s16 BowgunShot_EventTbls_2[8] = {
+s16 BowArrow_EventTbls_2[8] = {
 #include "game/008A5900.inc"
 };
-s16 *BowgunShot_EventTbls[4] = {
-    BowgunShot_EventTbls_0, BowgunShot_EventTbls_1, BowgunShot_EventTbls_2, NULL,
+s16 *BowArrow_EventTbls[4] = {
+    BowArrow_EventTbls_0, BowArrow_EventTbls_1, BowArrow_EventTbls_2, NULL,
 };
-f32 BowgunShot_KindScaleA[4] = {
+f32 BowArrow_ChargePowerScale[4] = {
 #include "game/008A5920.inc"
 };
-f32 BowgunShot_KindScaleB[4] = {
+f32 BowArrow_ChargeElementScale[4] = {
 #include "game/008A5930.inc"
 };
-f32 BowgunShot_KindBase[4] = {
+f32 BowArrow_ChargeCoatingPower[4] = {
 #include "game/008A5940.inc"
 };
-f32 BowgunShot_KindTimes[4][6] = {
+f32 BowArrow_ChargeFlight[4][6] = {
 #include "game/008A5950.inc"
 };
-u8 BowgunShot_LevelScale[16] = {
+u8 BowArrow_LevelScale[16] = {
 #include "game/008A59B0.inc"
 };
-s16 BowgunShot_Kind2Val06F[8] = {
+s16 BowArrow_EventHitFx[8] = {
 #include "game/008A59C0.inc"
 };
-f32 BowgunShot_Kind2Scale[6] = {
+f32 BowArrow_EventPowerScale[6] = {
 #include "game/008A59D0.inc"
 };
-s16 BowgunShot_Kind2Val06B[6] = {
+s16 BowArrow_EventHitSe[6] = {
 #include "game/008A59E8.inc"
 };
-HitShape EffGaruga25_Vals088_0[2] = {
+HitShape GarugaAttack_HitShapes_0[2] = {
 #include "game/008A5A00.inc"
 };
-HitShape EffGaruga25_Vals088_1[3] = {
+HitShape GarugaAttack_HitShapes_1[3] = {
 #include "game/008A5A50.inc"
 };
-HitShape EffGaruga25_Vals088_2[3] = {
+HitShape GarugaAttack_HitShapes_2[3] = {
 #include "game/008A5AD0.inc"
 };
-HitShape EffGaruga25_Vals088_3[3] = {
+HitShape GarugaAttack_HitShapes_3[3] = {
 #include "game/008A5B50.inc"
 };
-HitShape EffGaruga25_Vals088_4[4] = {
+HitShape GarugaAttack_HitShapes_4[4] = {
 #include "game/008A5BD0.inc"
 };
-HitShape EffGaruga25_Vals088_5[4] = {
+HitShape GarugaAttack_HitShapes_5[4] = {
 #include "game/008A5C70.inc"
 };
-HitShape EffGaruga25_Vals088_6[2] = {
+HitShape GarugaAttack_HitShapes_6[2] = {
 #include "game/008A5D10.inc"
 };
-HitShape EffGaruga25_Vals088_7[2] = {
+HitShape GarugaAttack_HitShapes_7[2] = {
 #include "game/008A5D60.inc"
 };
-HitShape EffGaruga25_Vals088_8[3] = {
+HitShape GarugaAttack_HitShapes_8[3] = {
 #include "game/008A5DB0.inc"
 };
-HitShape EffGaruga25_Vals088_9[3] = {
+HitShape GarugaAttack_HitShapes_9[3] = {
 #include "game/008A5E30.inc"
 };
-HitShape EffGaruga25_Vals088_10[2] = {
+HitShape GarugaAttack_HitShapes_10[2] = {
 #include "game/008A5EB0.inc"
 };
-HitShape EffGaruga25_Vals088_11[2] = {
+HitShape GarugaAttack_HitShapes_11[2] = {
 #include "game/008A5F00.inc"
 };
-HitShape EffGaruga25_Vals088_12[2] = {
+HitShape GarugaAttack_HitShapes_12[2] = {
 #include "game/008A5F50.inc"
 };
-HitShape EffGaruga25_Vals088_13[2] = {
+HitShape GarugaAttack_HitShapes_13[2] = {
 #include "game/008A5FA0.inc"
 };
-HitShape EffGaruga25_Vals088_14[4] = {
+HitShape GarugaAttack_HitShapes_14[4] = {
 #include "game/008A5FF0.inc"
 };
-HitShape EffGaruga25_Vals088_15[2] = {
+HitShape GarugaAttack_HitShapes_15[2] = {
 #include "game/008A6090.inc"
 };
-HitShape EffGaruga25_Vals088_16[2] = {
+HitShape GarugaAttack_HitShapes_16[2] = {
 #include "game/008A60E0.inc"
 };
-HitShape EffGaruga25_Vals088_17[2] = {
+HitShape GarugaAttack_HitShapes_17[2] = {
 #include "game/008A6130.inc"
 };
-HitShape EffGaruga25_Vals088_18[4] = {
+HitShape GarugaAttack_HitShapes_18[4] = {
 #include "game/008A6180.inc"
 };
-HitShape EffGaruga25_Vals088_19[2] = {
+HitShape GarugaAttack_HitShapes_19[2] = {
 #include "game/008A6220.inc"
 };
-HitShape EffGaruga25_Vals088_20[6] = {
+HitShape GarugaAttack_HitShapes_20[6] = {
 #include "game/008A6270.inc"
 };
-HitShape EffGaruga25_Vals088_21[5] = {
+HitShape GarugaAttack_HitShapes_21[5] = {
 #include "game/008A6360.inc"
 };
-HitShape EffGaruga25_Vals088_22[4] = {
+HitShape GarugaAttack_HitShapes_22[4] = {
 #include "game/008A6430.inc"
 };
-HitShape *EffGaruga25_Vals088[24] = {
-    EffGaruga25_Vals088_0, EffGaruga25_Vals088_1, EffGaruga25_Vals088_2, EffGaruga25_Vals088_3,
-    EffGaruga25_Vals088_4, EffGaruga25_Vals088_5, EffGaruga25_Vals088_6, EffGaruga25_Vals088_7,
-    EffGaruga25_Vals088_8, EffGaruga25_Vals088_9, EffGaruga25_Vals088_10, EffGaruga25_Vals088_11,
-    EffGaruga25_Vals088_12, EffGaruga25_Vals088_13, EffGaruga25_Vals088_14, EffGaruga25_Vals088_15,
-    EffGaruga25_Vals088_16, EffGaruga25_Vals088_17, EffGaruga25_Vals088_18, EffGaruga25_Vals088_19,
-    EffGaruga25_Vals088_20, EffGaruga25_Vals088_21, EffGaruga25_Vals088_22, 0,
+HitShape *GarugaAttack_HitShapes[24] = {
+    GarugaAttack_HitShapes_0, GarugaAttack_HitShapes_1, GarugaAttack_HitShapes_2, GarugaAttack_HitShapes_3,
+    GarugaAttack_HitShapes_4, GarugaAttack_HitShapes_5, GarugaAttack_HitShapes_6, GarugaAttack_HitShapes_7,
+    GarugaAttack_HitShapes_8, GarugaAttack_HitShapes_9, GarugaAttack_HitShapes_10, GarugaAttack_HitShapes_11,
+    GarugaAttack_HitShapes_12, GarugaAttack_HitShapes_13, GarugaAttack_HitShapes_14, GarugaAttack_HitShapes_15,
+    GarugaAttack_HitShapes_16, GarugaAttack_HitShapes_17, GarugaAttack_HitShapes_18, GarugaAttack_HitShapes_19,
+    GarugaAttack_HitShapes_20, GarugaAttack_HitShapes_21, GarugaAttack_HitShapes_22, 0,
 };
-u32 D_008A6530[240] = {
+u32 GarugaAttack_Rows[240] = {
 #include "game/008A6530.inc"
 };
-void *EffGaruga25_MotionRef = (void *)D_008A6530;
-HitShape EffHermitaur26_Vals088_0[4] = {
+void *GarugaAttack_RowsPtr = (void *)GarugaAttack_Rows;
+HitShape HermitaurAttack_HitShapes_0[4] = {
 #include "game/008A6900.inc"
 };
-HitShape EffHermitaur26_Vals088_1[4] = {
+HitShape HermitaurAttack_HitShapes_1[4] = {
 #include "game/008A69A0.inc"
 };
-HitShape EffHermitaur26_Vals088_2[7] = {
+HitShape HermitaurAttack_HitShapes_2[7] = {
 #include "game/008A6A40.inc"
 };
-HitShape EffHermitaur26_Vals088_3[4] = {
+HitShape HermitaurAttack_HitShapes_3[4] = {
 #include "game/008A6B60.inc"
 };
-HitShape EffHermitaur26_Vals088_4[4] = {
+HitShape HermitaurAttack_HitShapes_4[4] = {
 #include "game/008A6C00.inc"
 };
-HitShape EffHermitaur26_Vals088_5[2] = {
+HitShape HermitaurAttack_HitShapes_5[2] = {
 #include "game/008A6CA0.inc"
 };
-HitShape EffHermitaur26_Vals088_6[8] = {
+HitShape HermitaurAttack_HitShapes_6[8] = {
 #include "game/008A6CF0.inc"
 };
-HitShape EffHermitaur26_Vals088_7[9] = {
+HitShape HermitaurAttack_HitShapes_7[9] = {
 #include "game/008A6E30.inc"
 };
-HitShape EffHermitaur26_Vals088_8[2] = {
+HitShape HermitaurAttack_HitShapes_8[2] = {
 #include "game/008A6FA0.inc"
 };
-HitShape EffHermitaur26_Vals088_9[5] = {
+HitShape HermitaurAttack_HitShapes_9[5] = {
 #include "game/008A6FF0.inc"
 };
-HitShape EffHermitaur26_Vals088_10[5] = {
+HitShape HermitaurAttack_HitShapes_10[5] = {
 #include "game/008A70C0.inc"
 };
-HitShape EffHermitaur26_Vals088_11[9] = {
+HitShape HermitaurAttack_HitShapes_11[9] = {
 #include "game/008A7190.inc"
 };
-HitShape EffHermitaur26_Vals088_12[2] = {
+HitShape HermitaurAttack_HitShapes_12[2] = {
 #include "game/008A7300.inc"
 };
-HitShape *EffHermitaur26_Vals088[16] = {
-    EffHermitaur26_Vals088_0, EffHermitaur26_Vals088_1, EffHermitaur26_Vals088_2, EffHermitaur26_Vals088_3,
-    EffHermitaur26_Vals088_4, EffHermitaur26_Vals088_5, EffHermitaur26_Vals088_6, EffHermitaur26_Vals088_7,
-    EffHermitaur26_Vals088_8, EffHermitaur26_Vals088_9, EffHermitaur26_Vals088_10, EffHermitaur26_Vals088_11,
-    EffHermitaur26_Vals088_12, 0, 0, 0,
+HitShape *HermitaurAttack_HitShapes[16] = {
+    HermitaurAttack_HitShapes_0, HermitaurAttack_HitShapes_1, HermitaurAttack_HitShapes_2, HermitaurAttack_HitShapes_3,
+    HermitaurAttack_HitShapes_4, HermitaurAttack_HitShapes_5, HermitaurAttack_HitShapes_6, HermitaurAttack_HitShapes_7,
+    HermitaurAttack_HitShapes_8, HermitaurAttack_HitShapes_9, HermitaurAttack_HitShapes_10, HermitaurAttack_HitShapes_11,
+    HermitaurAttack_HitShapes_12, 0, 0, 0,
 };
-u32 D_008A7390[204] = {
+u32 HermitaurAttack_Rows[204] = {
 #include "game/008A7390.inc"
 };
-void *EffHermitaur26_MotionRef = (void *)D_008A7390;
-HitShape EffBlangonga27_Vals088_0[3] = {
+void *HermitaurAttack_RowsPtr = (void *)HermitaurAttack_Rows;
+HitShape BlangongaAttack_HitShapes_0[3] = {
 #include "game/008A76D0.inc"
 };
-HitShape EffBlangonga27_Vals088_1[4] = {
+HitShape BlangongaAttack_HitShapes_1[4] = {
 #include "game/008A7750.inc"
 };
-HitShape EffBlangonga27_Vals088_2[2] = {
+HitShape BlangongaAttack_HitShapes_2[2] = {
 #include "game/008A77F0.inc"
 };
-HitShape EffBlangonga27_Vals088_3[2] = {
+HitShape BlangongaAttack_HitShapes_3[2] = {
 #include "game/008A7840.inc"
 };
-HitShape EffBlangonga27_Vals088_4[2] = {
+HitShape BlangongaAttack_HitShapes_4[2] = {
 #include "game/008A7890.inc"
 };
-HitShape EffBlangonga27_Vals088_5[2] = {
+HitShape BlangongaAttack_HitShapes_5[2] = {
 #include "game/008A78E0.inc"
 };
-HitShape EffBlangonga27_Vals088_6[3] = {
+HitShape BlangongaAttack_HitShapes_6[3] = {
 #include "game/008A7930.inc"
 };
-HitShape EffBlangonga27_Vals088_7[2] = {
+HitShape BlangongaAttack_HitShapes_7[2] = {
 #include "game/008A79B0.inc"
 };
-HitShape EffBlangonga27_Vals088_8[4] = {
+HitShape BlangongaAttack_HitShapes_8[4] = {
 #include "game/008A7A00.inc"
 };
-HitShape EffBlangonga27_Vals088_9[4] = {
+HitShape BlangongaAttack_HitShapes_9[4] = {
 #include "game/008A7AA0.inc"
 };
-HitShape EffBlangonga27_Vals088_10[3] = {
+HitShape BlangongaAttack_HitShapes_10[3] = {
 #include "game/008A7B40.inc"
 };
-HitShape EffBlangonga27_Vals088_11[3] = {
+HitShape BlangongaAttack_HitShapes_11[3] = {
 #include "game/008A7BC0.inc"
 };
-HitShape EffBlangonga27_Vals088_12[2] = {
+HitShape BlangongaAttack_HitShapes_12[2] = {
 #include "game/008A7C40.inc"
 };
-HitShape EffBlangonga27_Vals088_13[2] = {
+HitShape BlangongaAttack_HitShapes_13[2] = {
 #include "game/008A7C90.inc"
 };
-HitShape EffBlangonga27_Vals088_14[2] = {
+HitShape BlangongaAttack_HitShapes_14[2] = {
 #include "game/008A7CE0.inc"
 };
-HitShape EffBlangonga27_Vals088_15[2] = {
+HitShape BlangongaAttack_HitShapes_15[2] = {
 #include "game/008A7D30.inc"
 };
-HitShape EffBlangonga27_Vals088_16[3] = {
+HitShape BlangongaAttack_HitShapes_16[3] = {
 #include "game/008A7D80.inc"
 };
-HitShape EffBlangonga27_Vals088_17[2] = {
+HitShape BlangongaAttack_HitShapes_17[2] = {
 #include "game/008A7E00.inc"
 };
-HitShape EffBlangonga27_Vals088_18[4] = {
+HitShape BlangongaAttack_HitShapes_18[4] = {
 #include "game/008A7E50.inc"
 };
-HitShape EffBlangonga27_Vals088_19[2] = {
+HitShape BlangongaAttack_HitShapes_19[2] = {
 #include "game/008A7EF0.inc"
 };
-HitShape EffBlangonga27_Vals088_20[2] = {
+HitShape BlangongaAttack_HitShapes_20[2] = {
 #include "game/008A7F40.inc"
 };
-HitShape EffBlangonga27_Vals088_21[4] = {
+HitShape BlangongaAttack_HitShapes_21[4] = {
 #include "game/008A7F90.inc"
 };
-HitShape EffBlangonga27_Vals088_22[2] = {
+HitShape BlangongaAttack_HitShapes_22[2] = {
 #include "game/008A8030.inc"
 };
-HitShape EffBlangonga27_Vals088_23[2] = {
+HitShape BlangongaAttack_HitShapes_23[2] = {
 #include "game/008A8080.inc"
 };
-HitShape EffBlangonga27_Vals088_24[3] = {
+HitShape BlangongaAttack_HitShapes_24[3] = {
 #include "game/008A80D0.inc"
 };
-HitShape EffBlangonga27_Vals088_25[4] = {
+HitShape BlangongaAttack_HitShapes_25[4] = {
 #include "game/008A8150.inc"
 };
-HitShape *EffBlangonga27_Vals088[28] = {
-    EffBlangonga27_Vals088_0, EffBlangonga27_Vals088_1, EffBlangonga27_Vals088_2, EffBlangonga27_Vals088_3,
-    EffBlangonga27_Vals088_4, EffBlangonga27_Vals088_5, EffBlangonga27_Vals088_6, EffBlangonga27_Vals088_7,
-    EffBlangonga27_Vals088_8, EffBlangonga27_Vals088_9, EffBlangonga27_Vals088_10, EffBlangonga27_Vals088_11,
-    EffBlangonga27_Vals088_12, EffBlangonga27_Vals088_13, EffBlangonga27_Vals088_14, EffBlangonga27_Vals088_15,
-    EffBlangonga27_Vals088_16, EffBlangonga27_Vals088_17, EffBlangonga27_Vals088_18, EffBlangonga27_Vals088_19,
-    EffBlangonga27_Vals088_20, EffBlangonga27_Vals088_21, EffBlangonga27_Vals088_22, EffBlangonga27_Vals088_23,
-    EffBlangonga27_Vals088_24, EffBlangonga27_Vals088_25, 0, 0,
+HitShape *BlangongaAttack_HitShapes[28] = {
+    BlangongaAttack_HitShapes_0, BlangongaAttack_HitShapes_1, BlangongaAttack_HitShapes_2, BlangongaAttack_HitShapes_3,
+    BlangongaAttack_HitShapes_4, BlangongaAttack_HitShapes_5, BlangongaAttack_HitShapes_6, BlangongaAttack_HitShapes_7,
+    BlangongaAttack_HitShapes_8, BlangongaAttack_HitShapes_9, BlangongaAttack_HitShapes_10, BlangongaAttack_HitShapes_11,
+    BlangongaAttack_HitShapes_12, BlangongaAttack_HitShapes_13, BlangongaAttack_HitShapes_14, BlangongaAttack_HitShapes_15,
+    BlangongaAttack_HitShapes_16, BlangongaAttack_HitShapes_17, BlangongaAttack_HitShapes_18, BlangongaAttack_HitShapes_19,
+    BlangongaAttack_HitShapes_20, BlangongaAttack_HitShapes_21, BlangongaAttack_HitShapes_22, BlangongaAttack_HitShapes_23,
+    BlangongaAttack_HitShapes_24, BlangongaAttack_HitShapes_25, 0, 0,
 };
-u32 D_008A8260[252] = {
+u32 BlangongaAttack_Rows[252] = {
 #include "game/008A8260.inc"
 };
-void *EffBlangonga27_MotionRef = (void *)D_008A8260;
+void *BlangongaAttack_RowsPtr = (void *)BlangongaAttack_Rows;
 HitShape D_008A8660[2] = {
 #include "game/008A8660.inc"
 };
-HitShape *Eff28_Val088 = D_008A8660;
-u32 D_008A86C0[12] = {
+HitShape *Boomerang_HitShapes = D_008A8660;
+u32 Boomerang_Rows[12] = {
 #include "game/008A86C0.inc"
 };
-void *Eff28_MotionRef = (void *)D_008A86C0;
+void *Boomerang_RowsPtr = (void *)Boomerang_Rows;

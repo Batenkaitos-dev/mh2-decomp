@@ -3,6 +3,7 @@
 #include "em.h"
 #include "camera.h"
 #include "player.h"
+#include "model.h"
 
 /* prototypes */
 f32 Math_Pow(f32 x, f32 y);
@@ -14,7 +15,7 @@ void CamFixed_UpdateTarget(CamCtl *c, CamView *v, CamFixed *w);
 s32 Cam_PlayerHasFlag80000(Player *pl);
 s32 CamFixed_AreaCamera(CamCtl *c, CamView *v, CamFixed *w);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-s32 func_003ACE10(Player *p);
+s32 Player_OnMountedGun(Player *p);
 void Vec_RotateY(f32 *v, f32 a);
 void Vec_Add(f32 *out, f32 *a, f32 *b);
 extern u8 gAreaCameraIdx[];
@@ -189,8 +190,8 @@ void CamRail_Update(CamCtl *c, CamView *v)
         }
         vec[0] = vec[1] = 0.0f;
         vec[2] = Vec_Length(v->dir);
-        Vec_RotateX(vec, 0.0000958738f * w->rx);
-        Vec_RotateY(vec, 0.0000958738f * w->ry);
+        Vec_RotateX(vec, ANGLE16_TO_RAD * w->rx);
+        Vec_RotateY(vec, ANGLE16_TO_RAD * w->ry);
         Vec_Add(w->at, w->pos, vec);
         break;
     }
@@ -240,7 +241,7 @@ void Vec_Diff(f32 *out, f32 *a, f32 *b);
 void Vec_RotateSelf(f32 *v, f32 *m);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 void Mtx_GetTrans(f32 *out, f32 *m);
-s32 Bowgun_GetOptions(Player *p);
+s32 Bowgun_HasScope(Player *p);
 s32 CamAim_IsSpecialMotion(Player *p);
 void Mtx_FromAngles16Pos(f32 *m, s16 x, s16 y, f32 *pos);
 s32 CamAim_Situation(Player *pl);
@@ -277,7 +278,7 @@ void CamAim_Update(CamCtl *c, CamView *v)
                 return;
             }
             w->unk65 = 1;
-            if (Bowgun_GetOptions(pl) == 1) {
+            if (Bowgun_HasScope(pl) == 1) {
                 w->zoom = 1;
                 w->fovMin = 0.2617994f;
                 w->fovMax = 1.0471976f;
@@ -390,12 +391,12 @@ s32 CamAim_IsSpecialMotion(Player *p)
 void Mtx_FromAngles16Pos(f32 *m, s16 x, s16 y, f32 *pos)
 {
     Mtx_Identity(m);
-    Mtx_RotateXYZ(m, 0.0000958738f * (f32)x, 0.0000958738f * (f32)y, 0.0f);
+    Mtx_RotateXYZ(m, ANGLE16_TO_RAD * (f32)x, ANGLE16_TO_RAD * (f32)y, 0.0f);
     Vec_Copy(&m[12], pos);
 }
 
 /* A class of the player's situation: 3 online, 1 in state 0/0x65 or
- * 0/0x66, 2 when func_003ACE10 is 1, 0 when +2 is 1 or 5, else -1. */
+ * 0/0x66, 2 when Player_OnMountedGun is 1, 0 when +2 is 1 or 5, else -1. */
 s32 CamAim_Situation(Player *pl)
 {
     if (gScene.online != 0) {
@@ -404,7 +405,7 @@ s32 CamAim_Situation(Player *pl)
     if (Player_IsState(pl, 0, 0x65) != 0 || Player_IsState(pl, 0, 0x66) != 0) {
         return 1;
     }
-    if (func_003ACE10(pl) == 1) {
+    if (Player_OnMountedGun(pl) == 1) {
         return 2;
     }
     if (pl->weaponType == 1 || pl->weaponType == 5) {
@@ -506,7 +507,7 @@ s32 CamFixed_AreaCamera(CamCtl *c, CamView *v, CamFixed *w)
         return -1;
     }
     pos = gCamMode4AreaPos[k];
-    a = 0.0000958738f * (s32)*(u16 *)(obj + 0xE);
+    a = ANGLE16_TO_RAD * (s32)*(u16 *)(obj + 0xE);
     v->fov = gCamMode4AreaFovs[k];
     Vec_Copy(d, pos);
     Vec_RotateY(d, a);

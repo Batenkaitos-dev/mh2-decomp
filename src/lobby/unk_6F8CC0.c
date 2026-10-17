@@ -153,7 +153,7 @@ void DrinkContest_Update(void)
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
 s32 Sprite_Draw(Sprite *);
 void Tex_Prepare(s32 n, s32 tex);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Tex_Bind(s32 a);
 void DrinkContest_DrawCounts(void)
 {
@@ -166,7 +166,7 @@ void DrinkContest_DrawCounts(void)
     off = (gFrameTick & 0x10) ? 0 : 6;
     Icon_Draw(140.0f + off, 0x2C, 0x18, 0x18, 0xFF20C0C0, 0x29);
     Icon_Draw(483.0f - off, 0x2C, 0x18, 0x18, 0xFF20C0C0, 0x28);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x168);
     Tex_Bind(0x168);
     for (i = 0; i < 10; i++) {
@@ -691,7 +691,7 @@ void DrinkContest_DrawHit(u32 r, u32 g, u32 b, u32 t, f32 x, f32 y)
     Sprite s;
     f32 off;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x168);
     Tex_Bind(0x168);
     s.v0 = 0x10;
@@ -791,7 +791,7 @@ void DrinkContest_DrawIcon(s16 kind, s16 x, s16 y, s32 tex, u32 color, f32 sy, f
     } else if (kind == 0x15) {
         kind = 1;
     }
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
     s.x = x;
@@ -831,7 +831,7 @@ void DrinkContest_DrawIcon(s16 kind, s16 x, s16 y, s32 tex, u32 color, f32 sy, f
         Sprite_Draw(&s);
         break;
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
 }
 
 /* unk_6F8CC0's .data (0x7EC050-0x7EC170) */

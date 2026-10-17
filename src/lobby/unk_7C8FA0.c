@@ -203,7 +203,7 @@ struct NetSprDef;
 void LobbyLogin_DrawSprites(struct NetSprDef *d, s32 n, s32 dy);
 s32 Gs_SetState(u8, u32);
 s32 Gs_GetState(u8);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 extern LoginSpr gLoginFrameSprites[];
 s32 LoginPad_DecidePressed(s32);
 void LoginSe_Decide(void);
@@ -2955,9 +2955,9 @@ void LobbyLogin_DrawMenu(void)
     Gs_SetState(0x6C, 0);
     Gs_SetState(0xD, 0);
     Gs_SetState(0x5E, 0x32);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     LobbyLogin_DrawSprites((struct NetSprDef *)tbl, 1, 0);
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     for (i = 1; i <= 5; i++) {
         spr = tbl[i];
         if (i == 1) {
@@ -2984,7 +2984,7 @@ void LobbyLogin_DrawMenu(void)
         }
         LobbyLogin_DrawSprites((struct NetSprDef *)&spr, 1, 0);
     }
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     if (p->unk10[1] != 0) {
         LobbyTitle_Draw();
         Gs_SetState(0x5E, 0x28);
@@ -3107,7 +3107,7 @@ void LobbyEntry_DrawSprites(void)
     Gs_SetState(0x6C, 0);
     Gs_SetState(0xD, 0);
     Gs_SetState(0x5E, 0x32);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     LobbyLogin_DrawSprites((struct NetSprDef *)gLoginFrameSprites, 1, 0);
     Gs_SetState(0xD, temp_s1);
     Gs_SetState(0x5E, v);

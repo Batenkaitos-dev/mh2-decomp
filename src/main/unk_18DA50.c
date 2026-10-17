@@ -59,8 +59,8 @@ s32 RateFlag_SetQuiet(u8 bit);
 s32 Prim_FillRect(struct PrimLine *r);
 void *memcpy(void *dst, const void *src, u32 n);
 u8 Notice_PushItem(char *item);
-void SaveFlag_Set(s32 n);
-s32 SaveFlag_Test(s32 n);    /* sub_main: 1 when the save has award n */
+void Save_SetTitle(s32 n);
+s32 Save_HasTitle(s32 n);    /* sub_main: 1 when the save has award n */
 
 void Quest_SetSeason(u8 season) {
     gQuestSeasonFlags = 1 << (season & 0xFF);
@@ -227,7 +227,7 @@ void ColorEdit_DrawFrame(s16 x, s16 y, s16 w, s16 h, s16 border)
 /* The colour editor of the character edit (select): the panel (mode 0),
  * the R, G and B bars, the 16 swatches and the labels. */
 extern u32 gPresetColors[16];              /* the swatches' colours */
-void Gfx_SetState63(s32 a);                   /* sub_main: sprite texture setup */
+void Gfx_SetTexFilter(s32 a);                   /* sub_main: sprite texture setup */
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32 i);
 s32 Sprite_Draw(Sprite *s);
@@ -258,7 +258,7 @@ void ColorEdit_Draw(u8 mode, s16 x, s16 y, u8 r, u8 g, u8 b, u8 sel, u8 pal)
     s16 *py;
 
     if (mode == 0) {
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Tex_Prepare(1, 0xA7);
         Tex_Bind(0xA7);
         spr.color = -1;
@@ -391,8 +391,8 @@ void ColorEdit_Draw(u8 mode, s16 x, s16 y, u8 r, u8 g, u8 b, u8 sel, u8 pal)
 
 extern s32 D_00446A24;
 s32 Award_Grant(s32 n) {
-    if (SaveFlag_Test(n) == 0) {
-        SaveFlag_Set(n);
+    if (Save_HasTitle(n) == 0) {
+        Save_SetTitle(n);
         Notice_PushItem((char *) D_00446A24);
         return 1;
     }
@@ -411,8 +411,8 @@ s32 RateFlag_Set(s32 bit, s32 flag)
     save->rateFlags |= m;
     if ((save->rateFlags & 0xFFF) == 0x7FF) {
         if ((u8)flag == 0) {
-            if (SaveFlag_Test(0x7A) == 0) {
-                SaveFlag_Set(0x7A);
+            if (Save_HasTitle(0x7A) == 0) {
+                Save_SetTitle(0x7A);
             }
             RateFlag_Set(0xB, 0);
         } else {
@@ -539,8 +539,16 @@ MonsterRateGroup gRateGroups[5] = {
 u32 gRateListsInit[20] = {
 #include "main/001BB380.inc"
 };
-u32 D_001BB3D0[28] = {
+/* The last quest id of each group of quest ids, 0 ending the list: Quest_Init
+ * (sub_main) picks the group's table of stage files by it, the lobby's
+ * Quest_GetDiscInfo the group's quest list. */
+u16 gQuestGroupLastIds[16] = {
 #include "main/001BB3D0.inc"
+};
+/* Versus_Init (sub_main) and the lobby's arena feed: per item (0 ends the
+ * table) a value and the team bits. */
+u32 gTeamItemBits[20] = {
+#include "main/001BB3F0.inc"
 };
 u16 D_001BB440[24] = {
 #include "main/001BB440.inc"

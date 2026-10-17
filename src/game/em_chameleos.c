@@ -1,9 +1,9 @@
 /*
- * Monster family: Chameleos (kind 0x3B).
- * The code from the family's setup function (0x84BD60, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: Chameleos (EM_KIND_CHAMELEOS). The code from the family's
+ * setup function (EmChameleos_Setup, called by the per-kind dispatch
+ * Em_TypeSetup) to the next family's. The state functions take the monster
+ * and the work area its state dispatcher passes on (EmWork); Em.step is the
+ * step within the current state. See include/em.h.
  */
 #include "common.h"
 #include "scene.h"
@@ -11,6 +11,7 @@
 #include "em.h"
 #include "player.h"
 #include "objattach.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
 void CamShake_ReqAIf(Em *obj, s32 i);
 void Em_AreaExitPoint(Em *em, f32 *out);
@@ -42,19 +43,19 @@ void Player_ClearFlag(void *, u32 flag);
 s32 Player_MoveFall(Player *p);
 void Player_SetFlag(void *obj, u32 flag);
 s8 QuestEm_Appear(Em *em);
-void EffEm08_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void * EffEm33_Create(Em *, s32, s32, s32, s32);
-ObjAttach *EffEm02_Create(Em *em, s8 kind);
-void EffChameleos40_Create(Em *em, s32 k);
-void EffRemobra26_Create(Em *em, u8 k);
+void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
+void * EmEffectAttack_Create(Em *, s32, s32, s32, s32);
+ObjAttach *BulldromeAttack_Create(Em *em, s8 kind);
+void ChameleosAttack_Create(Em *em, s32 k);
+void RemobraAttack_Create(Em *em, u8 k);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *, void *);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmBulldrome_State0_0B: 97 of 147 words differ, EmChameleos_State0_12: 42 of 80 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
@@ -163,7 +164,7 @@ void EmBulldrome_LaunchFromHit(Em *);
 void EmBulldrome_SetMotionForSide(Em *em, s16 arg1);
 void StageObj_K13_Create(void *owner, s16 v, u8 k);
 void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
 f32 Vec_Distance(f32 *a, f32 *b);
@@ -180,7 +181,7 @@ extern EmFlyParam EmChameleos_FlyParam2;
 f32 Math_Absf(f32 x);
 void Em_InitParts(Em *em);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void EmBulldrome_State8_00(Em *, EmWork *);
 void Em_SetPartScaled(Em *em, s32 bit);
 void QuestEm_LoadPersistentHp(Em *em);
@@ -193,7 +194,7 @@ s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
 void Em_BonePos(void *obj, s32 a, f32 *out);
 void Effect0D_SpawnOnGround(f32 *pos, s32 a, f32 scale);
 s32 EmChameleos_HasFlag43C(Em *em);
-u16 Area_BaseId(u16 area);
+u16 Map_DayId(u16 area);
 void Em_BeginStatus1(Em *em);
 void Em_BeginStatus2(Em *em);
 void Em_EndStatus1(Em *em);
@@ -228,7 +229,7 @@ u16 Rand_Next(s32 stream);
 extern f32 EmBulldrome_Effect0BOfs[3];
 void Em_ApplyPartBreaks(Em *em);
 void Em_FlagPartBreak(Em *em, s32 arg1);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 /* unit's own declaration: with the definition's void (Em *em, s16 k, s16 c, f32 scale) (game/unk_874B90.c), EmChameleos_SpawnK14NearGround: 26 of 39 words differ */
 void StageObj_K14_Create(Em *em, s32, s32, f32);
 extern f32 D_008CAE40;
@@ -257,7 +258,7 @@ void EmBulldrome_EndState(Em *em);
 extern EmCurveKey *EmRemobra_VelYCurves[];
 extern EmCurveKey *EmRemobra_SpeedCurves[];
 void Vec_RotateY(f32 *v, f32 angle);
-void EffEm33_CreateV(Em *, s32, s32, s32, s32, s16);
+void EmEffectAttack_CreateTimed(Em *, s32, s32, s32, s32, s16);
 void Em_MotionDelta(Em *em, f32 *out);
 f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
@@ -284,7 +285,7 @@ void Em_ClearHitReactMode(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_SetStatus4Timer(Em *em);
 void EmRemobra_RunState(Em *em);
-void Em_RaiseTrigger80(Em *em);
+void Em_RaisePlayerAreaTrigger(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
 void Em_CheckLowHp(Em *em, f32 ratio);
 void Em_SetStatus2Timer(Em *em);
@@ -293,9 +294,9 @@ void Em_ResetKindTimer(Em *em);
 s32 ScEvent_CurId(void);
 void EmBulldrome_RunState(Em *em);
 u16 Area_DayId(u16 id);
-void Em_RaiseTrigger80Lax(Em *em);
+void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_DecayNeed2(Em *em);
-s32 func_00725820(Em *arg0, s32 arg1);
+s32 Em_DamageResultIsReaction(Em *arg0, s32 arg1);
 void CamReq_ForMonster(Em *em);
 void EmChameleos_RunState(Em *em, s32 arg1);
 s32 EmChameleos_CanTurnInvisible(Em *em);
@@ -336,7 +337,7 @@ void EmChameleos_Init(Em *em)
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = 0;
     if ((Quest_FindSpecialMonster(em->type) & 0xFF) == 0xFF) {
-        size = Em_ComputeSize(em, 0);
+        size = Em_ComputeMaxHp(em, 0);
         em->hp = size;
         em->hpMax = size;
     } else {
@@ -361,7 +362,7 @@ void EmChameleos_Init(Em *em)
         return;
     }
     em->fxFlags |= 1;
-    em->hit8Count = 1;
+    em->partBreakCount = 1;
 }
 
 void EmChameleos_Start(Em *em)
@@ -598,7 +599,7 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
     f32 pos[3];
     f32 v[3];
 
-    Em_SetHitReactMode(em, 3);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -618,7 +619,7 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
             switch (variant) {
             default:
                 EmChameleos_SpawnGroundEffect(em, 0x29, 0x14, 4.0f);
@@ -667,7 +668,7 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
 void EmChameleos_State0_12(Em *em)
 {
     em->blind = 2;
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     switch (em->step) {
     case 0:
         em->step++;
@@ -697,7 +698,7 @@ void EmChameleos_State0_12(Em *em)
 void EmChameleos_State0_14(Em *em)
 {
     em->blind = 2;
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     switch (em->step) {
     case 0:
         em->step++;
@@ -781,7 +782,7 @@ void EmChameleos_State0_19(Em *em)
 void EmChameleos_State0_1B(Em *em)
 {
     em->blind = 2;
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     switch (em->step) {
     case 0:
         em->step++;
@@ -928,7 +929,7 @@ void EmChameleos_State1_02(Em *em, EmWork *work, u8 variant)
     case 1:
         if (Em_TurnStep(em, &EmChameleos_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmChameleos_EndState(em, 0, 0);
         }
         break;
@@ -951,8 +952,8 @@ void EmChameleos_State1_04(Em *em, s32 unused, s32 variant)
         k = variant & 0xFF;
         switch (k) {
         case 0:
-            if ((em->stateVar0 == 0) && (Player_PassedFrameScaled(em, 34.0f, 0U) != 0)) {
-                EffChameleos40_Create(em, 6);
+            if ((em->stateVar0 == 0) && (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0)) {
+                ChameleosAttack_Create(em, 6);
                 em->stateVar0++;
             }
             break;
@@ -1043,14 +1044,14 @@ void EmChameleos_State2_00(Em *em, EmWork *work)
         ((EmChameleosWork *)work)->unk010 = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 58.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0U) != 0) {
             em->step++;
             em->stance = 2;
         }
         break;
     case 2:
         EmChameleos_UpdateCurves(em);
-        if (Player_PassedFrameScaled(em, 72.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 72.0f, 0U) != 0) {
             em->step++;
         }
         break;
@@ -1293,7 +1294,7 @@ void EmChameleos_State2_08(Em *em, EmWork *work)
         em->timer = 0x258;
         Em_EnterNextArea(em);
         next = *(u16 *) &em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmChameleos_ChangeState(em, 2, 9, 1);
         } else {
@@ -1336,7 +1337,7 @@ void EmChameleos_State2_09(Em *em, EmWork *work)
         em->velZ = 80.0f;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->rotY = (s32) em->aimAngle;
-        *(u16 *) &em->destArea = 0xFFFF;
+        *(u16 *) &em->destArea = AREA_NONE;
         ((EmChameleosWork *)work)->unk010 = 1;
         break;
     case 1:
@@ -1498,7 +1499,7 @@ void EmChameleos_State2_0D(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmChameleos_ChangeState(em, 2, 9, 1);
         } else {
@@ -1954,7 +1955,7 @@ void EmChameleos_State3_00(Em *em, s32 unused, s32 variant)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 36.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0U) != 0) {
             EmChameleos_SpawnGroundEffect(em, 0x29, 0x14, 4.0f);
         }
         if (func_00858980(em) == 1) {
@@ -2107,12 +2108,12 @@ void EmChameleos_State3_06(Em *em, s32 unused, u8 variant)
         break;
     case 2:
         if (variant == 0) {
-            if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
-                EffEm33_Create(em, 9, 0, 0x71C, 0);
+            if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
+                EmEffectAttack_Create(em, 9, 0, 0x71C, 0);
             }
         } else {
-            if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
-                EffEm33_CreateV(em, 0xB, 0, 0xAAB, 0, em->timer - 20);
+            if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
+                EmEffectAttack_CreateTimed(em, 0xB, 0, 0xAAB, 0, em->timer - 20);
             }
         }
         if (--em->timer <= 0) {
@@ -2151,12 +2152,12 @@ void EmChameleos_State3_07(Em *em, s32 unused, u8 variant)
         break;
     case 2:
         if (variant == 0) {
-            if (Player_PassedFrameScaled(em, 6.0f, 0) != 0) {
-                EffEm33_Create(em, 9, 0, 0, 0);
+            if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
+                EmEffectAttack_Create(em, 9, 0, 0, 0);
             }
         } else {
-            if (Player_PassedFrameScaled(em, 6.0f, 0) != 0) {
-                EffEm33_CreateV(em, 0xB, 0, 0, 0, em->timer - 20);
+            if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
+                EmEffectAttack_CreateTimed(em, 0xB, 0, 0, 0, em->timer - 20);
             }
         }
         if (--em->timer <= 0) {
@@ -2193,7 +2194,7 @@ void EmChameleos_State3_08(Em *em, EmWork *work)
             Player_ClearVelocity(em);
             em->velY = 12.0f;
             em->velZ = -7.0f;
-            EffEm33_Create(em, 9, 1, 0x4000, 0);
+            EmEffectAttack_Create(em, 9, 1, 0x4000, 0);
         }
         break;
     case 2:
@@ -2276,7 +2277,7 @@ void EmChameleos_State4_02(Em *em, s32 unused, s32 variant)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 96.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, 0x3E, 0, 0);
         }
@@ -2469,7 +2470,7 @@ void EmChameleos_State4_0A(Em *em)
 
 void EmChameleos_State4_0B(Em *em)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -2490,7 +2491,7 @@ void EmChameleos_State4_0B(Em *em)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmChameleos_State6_00(Em *em, EmWork *work)
@@ -2532,7 +2533,7 @@ void EmChameleos_State6_00(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             EmChameleos_ClearFlag43C(em);
             em->step++;
         }
@@ -2584,7 +2585,7 @@ void EmChameleos_State6_01(Em *em, EmWork *work)
         EmChameleos_ClearFlag43C(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 96.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
             em->step++;
             Em_SetMotion(em, 0x3E, 0, 0);
         }
@@ -2599,14 +2600,14 @@ void EmChameleos_State6_01(Em *em, EmWork *work)
         }
         break;
     case 3:
-        if (Player_PassedFrameScaled(em, 58.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
             em->step++;
             em->stance = 2;
         }
         break;
     case 4:
         EmChameleos_UpdateCurves(em);
-        if (Player_PassedFrameScaled(em, 72.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) {
             em->step++;
         }
         break;
@@ -2704,7 +2705,7 @@ void EmChameleos_State5_00_Hunted(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         break;
     case 1:
-        Player_PassedFrameScaled(em, 212.0f, 0);
+        EmMotion_PassedFrameScaled(em, 212.0f, 0);
         if (em->motion[0].playing == 0) {
             em->timer = 1800;
             em->step++;
@@ -3140,17 +3141,17 @@ void EmChameleos_Update(Em *em)
     u32 r;
 
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80Lax(em);
+    Em_RaisePlayerAreaTriggerLax(em);
     if (em->noAlert != 1 && em->rage == 0) {
-        switch ((u16) Area_BaseId(gScene.map)) {
-        case 2:
+        switch ((u16) Map_DayId(gScene.map)) {
+        case MAP_FOREST_HILLS:
             Em_CheckLowHp(em, 0.15f);
             Em_DecayNeed2(em);
             break;
-        case 4:
+        case MAP_SWAMP:
             Em_CheckLowHp(em, 0.15f);
             break;
-        case 6:
+        case MAP_JUNGLE:
             Em_CheckLowHp(em, 0.15f);
             Em_DecayNeed2(em);
             break;
@@ -3270,14 +3271,14 @@ void EmChameleos_Update(Em *em)
     switch (gQuest.stage) {
     case 0x437:
     case 0x438:
-        if (Area_DayId(em->area) == 0x24 && Save_TestEventFlag(0xA2) == 0) {
-            if (Area_DayId(gScene.area) == 0x24 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if (Area_DayId(em->area) == AREA_FOREST_HILLS_9 && Save_TestEventFlag(0xA2) == 0) {
+            if (Area_DayId(gScene.area) == AREA_FOREST_HILLS_9 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmChameleos_ChangeState(em, 6, 0, 1);
             }
             break;
         }
     default:
-        if (func_00725820(em, r) == 1) {
+        if (Em_DamageResultIsReaction(em, r) == 1) {
             EmChameleos_BreakParts(em, 0);
         }
         if (Quest_IsRunning(0) == 1 && em->stateGroup != 6 && em->stateGroup != 5) {
@@ -3398,7 +3399,7 @@ void EmChameleos_SpawnGroundEffectNearGround(Em *em, s32 arg1, s32 arg2, s32 fla
             pos[0] = em->posX;
             pos[1] = em->floorY;
             pos[2] = em->posZ;
-            EffEm07_CreateAt(em, (f32 *) pos, 3);
+            EmImpactAttack_CreateAt(em, (f32 *) pos, 3);
         }
     }
 }
@@ -3413,7 +3414,7 @@ void EmChameleos_SpawnK14NearGround(Em *em, s32 k, f32 scale, s32 c, s32 flag)
             pos[0] = em->posX;
             pos[1] = em->floorY;
             pos[2] = em->posZ;
-            EffEm07_CreateAt(em, (f32 *) pos, 3);
+            EmImpactAttack_CreateAt(em, (f32 *) pos, 3);
         }
     }
 }
@@ -3460,130 +3461,130 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
     EmChameleos_SpawnK1CInMotions(em, work->fxMotion);
     switch (work->fxMotion) {
     case 0x3EB:
-        if (Player_PassedFrameScaled(em, 52.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 8, 0x14, 4.0f);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0xD, 0x14, 4.0f);
         }
-        if (Player_PassedFrameScaled(em, 66.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0x1A, 0x14, 4.0f);
         }
-        if (Player_PassedFrameScaled(em, 48.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0x1F, 0x14, 4.0f);
         }
         break;
     case 0x3EC:
-        if (Player_PassedFrameScaled(em, 24.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
     case 0x3EF:
-        if (Player_PassedFrameScaled(em, 110.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 110.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
     case 0x3F1:
-        if (Player_PassedFrameScaled(em, 50.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0)) {
             StageObj_K14_Create(em, 2, 0x29, 1.5f * em->scaleX);
         }
-        if (Player_PassedFrameScaled(em, 86.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 86.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 60.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0)) {
             StageObj_K14_Create(em, 0x13, 0, em->scaleX);
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 64.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0)) {
             EmChameleos_SpawnGroundEffectNearGround(em, 1, 7, 0, 8.0f);
         }
         break;
     case 0x3F8:
-        if (Player_PassedFrameScaled(em, 22.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
             EmChameleos_SpawnK14NearGround(em, 1, 1.0f, 0, 0);
         }
-        if (Player_PassedFrameScaled(em, 92.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 92.0f, 0)) {
             EmChameleos_SpawnGroundEffectNearGround(em, 1, 7, 0, 8.0f);
         }
         break;
     case 0x3F9:
-        if (Player_PassedFrameScaled(em, 32.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 32.0f, 0)) {
             EmChameleos_SpawnK14NearGround(em, 0xB, 1.0f, 0, 1);
         }
         break;
     case 0x3FA:
-        if (Player_PassedFrameScaled(em, 36.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0)) {
             EmChameleos_SpawnK14NearGround(em, 1, 1.0f, 0, 1);
         }
         break;
     case 0x3FB:
-        if (Player_PassedFrameScaled(em, 40.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0)) {
             EmChameleos_SpawnGroundEffectNearGround(em, 1, 7, 0, 8.0f);
         }
         break;
     case 0x411:
-        if (Player_PassedFrameScaled(em, 66.0f, 0)) {
-            EffChameleos40_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
+            ChameleosAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 68.0f, 0)) {
-            EffChameleos40_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 68.0f, 0)) {
+            ChameleosAttack_Create(em, 8);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) || Player_PassedFrameScaled(em, 102.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0)) {
             StageObj_K14_Create(em, 2, 0x2B, 1.5f * em->scaleX);
         }
         break;
     case 0x412:
-        if (Player_PassedFrameScaled(em, 86.0f, 0)) {
-            EffChameleos40_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 86.0f, 0)) {
+            ChameleosAttack_Create(em, 9);
         }
         break;
     case 0x415:
-        if (Player_PassedFrameScaled(em, 42.0f, 0)) {
-            EffChameleos40_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0)) {
+            ChameleosAttack_Create(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 44.0f, 0) || Player_PassedFrameScaled(em, 48.0f, 0) || Player_PassedFrameScaled(em, 52.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) || EmMotion_PassedFrameScaled(em, 48.0f, 0) || EmMotion_PassedFrameScaled(em, 52.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0x1F, 0x14, 8.0f);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0)) {
             StageObj_K14_Create(em, 2, 0x2F, 1.5f * em->scaleX);
         }
         break;
     case 0x416:
-        if (Player_PassedFrameScaled(em, 72.0f, 0)) {
-            EffChameleos40_Create(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 72.0f, 0)) {
+            ChameleosAttack_Create(em, 4);
         }
-        if (Player_PassedFrameScaled(em, 84.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0x10, 0xC, 8.0f);
             Em_BonePos(em, 0x10, pos);
             pos[1] = em->floorY;
             if ((u8)(s32)Player_InCurrentArea(em)) {
                 StageObj_K11_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 1.0f);
             }
-            EffEm07_CreateAt(em, (f32 *) pos, 3);
+            EmImpactAttack_CreateAt(em, (f32 *) pos, 3);
         }
         break;
     case 0x418:
-        if (Player_PassedFrameScaled(em, 66.0f, 0) || Player_PassedFrameScaled(em, 162.0f, 0) || Player_PassedFrameScaled(em, 258.0f, 0) || Player_PassedFrameScaled(em, 356.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0) || EmMotion_PassedFrameScaled(em, 258.0f, 0) || EmMotion_PassedFrameScaled(em, 356.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0x10, 7, 8.5f);
             Em_BonePos(em, 0x10, pos);
             pos[1] = em->floorY;
             if ((u8)(s32)Player_InCurrentArea(em)) {
                 StageObj_K11_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 1.0f);
             }
-            EffEm07_CreateAt(em, (f32 *) pos, 3);
+            EmImpactAttack_CreateAt(em, (f32 *) pos, 3);
         }
-        if (Player_PassedFrameScaled(em, 64.0f, 0) || Player_PassedFrameScaled(em, 160.0f, 0) || Player_PassedFrameScaled(em, 256.0f, 0) || Player_PassedFrameScaled(em, 354.0f, 0)) {
-            EffChameleos40_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0) || EmMotion_PassedFrameScaled(em, 160.0f, 0) || EmMotion_PassedFrameScaled(em, 256.0f, 0) || EmMotion_PassedFrameScaled(em, 354.0f, 0)) {
+            ChameleosAttack_Create(em, 7);
         }
         break;
     case 0x419:
-        if (Player_PassedFrameScaled(em, 28.0f, 0)) {
-            EffChameleos40_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
+            ChameleosAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 38.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0)) {
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
             ofs[2] = 200.0f;
@@ -3591,16 +3592,16 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
         }
         break;
     case 0x41A:
-        if (Player_PassedFrameScaled(em, 22.0f, 0)) {
-            EffChameleos40_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
+            ChameleosAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 28.0f, 0)) {
-            EffChameleos40_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
+            ChameleosAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 28.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0x1F, 0x14, 4.0f);
         }
-        if (Player_PassedFrameScaled(em, 38.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0)) {
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
             ofs[2] = 200.0f;
@@ -3608,10 +3609,10 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
         }
         break;
     case 0x41B:
-        if (Player_PassedFrameScaled(em, 26.0f, 0)) {
-            EffChameleos40_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0)) {
+            ChameleosAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0)) {
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
             ofs[2] = 350.0f;
@@ -3619,37 +3620,37 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
         }
         break;
     case 0x426:
-        if (Player_PassedFrameScaled(em, 64.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 64.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 4.0f);
         }
         break;
     case 0x429:
-        if (Player_PassedFrameScaled(em, 12.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0)) {
             StageObj_K14_Create(em, 0xB, 0, em->scaleX);
         }
         break;
     case 0x42A:
-        if (Player_PassedFrameScaled(em, 62.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 62.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
     case 0x42C:
-        if (Player_PassedFrameScaled(em, 468.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 468.0f, 0)) {
             StageObj_K14_Create(em, 0, 0, em->scaleX);
         }
         break;
     case 0x42F:
-        if (Player_PassedFrameScaled(em, 182.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 182.0f, 0)) {
             StageObj_K14_Create(em, 0, 0, em->scaleX);
         }
         break;
     case 0x431:
-        if (Player_PassedFrameScaled(em, 166.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 166.0f, 0)) {
             StageObj_K14_Create(em, 0, 0, em->scaleX);
         }
         break;
     case 0x432:
-        if (Player_PassedFrameScaled(em, 54.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 54.0f, 0)) {
             StageObj_K14_Create(em, 0, 0, em->scaleX);
         }
         break;
@@ -3683,7 +3684,7 @@ s32 EmChameleos_ScriptQuery(Em *em, u8 k)
     case 0:
         return EmChameleos_HasFlag43C(em) == 1;
     case 1:
-        return (u8) Area_BaseId(gScene.map);
+        return (u8) Map_DayId(gScene.map);
     case 2:
         return EmChameleos_WantsInvisible(em);
     }
@@ -3692,7 +3693,7 @@ s32 EmChameleos_ScriptQuery(Em *em, u8 k)
 
 s32 EmChameleos_AllowHit8(Em *em)
 {
-    if (em->stance != 2 && em->hp <= (s16) (0.3f * em->hpMax) && em->hit8Count == 0) {
+    if (em->stance != 2 && em->hp <= (s16) (0.3f * em->hpMax) && em->partBreakCount == 0) {
         return 1;
     }
     return 0;
@@ -3956,7 +3957,7 @@ void EmRemobra_Init(Em *em)
 
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = 2;
-    size = Em_ComputeSize(em, 0);
+    size = Em_ComputeMaxHp(em, 0);
     em->hp = size;
     em->hpMax = size;
     em->scriptPending = 1;
@@ -4160,7 +4161,7 @@ void EmRemobra_UpdateHop(Em *em)
 
     if (em->motionId[0] == 0x3E9) {
         for (i = 0, p = &D_008CAE40; i < 3; i++, p++) {
-            if (Player_PassedFrameScaled(em, *p, 0) != 0) {
+            if (EmMotion_PassedFrameScaled(em, *p, 0) != 0) {
                 w->hopFrames = 0x22;
                 w->hopVel = 14.0f;
                 w->hopAccel = -(w->hopVel / (w->hopFrames / 2));
@@ -4273,8 +4274,8 @@ void EmRemobra_State2_02(Em *em, s32 variant)
         if (em->motionId[0] == 0x3F4) {
             if (em->motion[0].playing == 0) {
                 Em_SetMotion(em, 0xC, 8, 0);
-            } else if (Player_PassedFrameScaled(em, 24.0f, 0)) {
-                EffEm08_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
+            } else if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
+                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
             }
         }
         break;
@@ -4348,7 +4349,7 @@ void EmRemobra_State2_07(Em *em, s32 variant)
         Em_SetMotion(em, 0xA, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 40.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
             if (variant == 0) {
                 em->velY = 30.0f;
@@ -4383,7 +4384,7 @@ void EmRemobra_State2_09(Em *em, s32 variant)
         Em_SetMotion(em, 0xB, 0, 0);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 196.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 196.0f, 0U) != 0) {
             em->step++;
             em->stance = 2;
             em->posY += 400.0f;
@@ -4420,7 +4421,7 @@ void EmRemobra_State2_0A(Em *em)
         if ((u32) ((diff + 0x440) & 0xFFFF) < 0x880U) {
             em->rotY = (s32) target;
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmRemobra_EndState2(em);
         } else if (diff < 0x8000U) {
             em->rotY = (angle + 0x440) & 0xFFFF;
@@ -4766,8 +4767,8 @@ void EmRemobra_State3_00(Em *em, s32 unused)
             EmRemobra_EndState2(em);
             break;
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0U) != 0) {
-            EffRemobra26_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0U) != 0) {
+            RemobraAttack_Create(em, 1);
         }
         break;
     }
@@ -4804,16 +4805,16 @@ void EmRemobra_State3_01(Em *em, s32 variant)
             EmRemobra_EndState2(em);
             break;
         }
-        if (Player_PassedFrameScaled(em, 8.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0U) != 0) {
             switch (variant) {
             case 0:
-                EffEm08_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
+                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
                 break;
             case 1:
-                EffEm08_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
+                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
                 break;
             case 2:
-                EffEm08_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
+                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
                 break;
             }
         }
@@ -4834,8 +4835,8 @@ void EmRemobra_State3_04(Em *em, s32 unused)
             EmRemobra_EndState2(em);
             break;
         }
-        if (Player_PassedFrameScaled(em, 24.0f, 0U) != 0) {
-            EffEm08_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0U) != 0) {
+            EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
         }
         break;
     }
@@ -4862,11 +4863,11 @@ void EmRemobra_State3_05(Em *em, s32 unused)
             EmRemobra_EndState2(em);
             break;
         }
-        if (Player_PassedFrameScaled(em, 104.0f, 0U) != 0) {
-            EffRemobra26_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0U) != 0) {
+            RemobraAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 168.0f, 0U) != 0) {
-            EffRemobra26_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 168.0f, 0U) != 0) {
+            RemobraAttack_Create(em, 3);
         }
         break;
     }
@@ -4927,7 +4928,7 @@ void EmRemobra_State4_01(Em *em, s32 unused)
         em->velY = 10.0f;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 66.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0U) != 0) {
             em->velY = 40.0f;
         }
         em->posY -= em->velY;
@@ -4952,7 +4953,7 @@ void EmRemobra_State4_01(Em *em, s32 unused)
 
 void EmRemobra_State4_02(Em *em, s32 unused)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4977,7 +4978,7 @@ void EmRemobra_State4_02(Em *em, s32 unused)
 
 void EmRemobra_State4_03(Em *em, s32 unused)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -4992,7 +4993,7 @@ void EmRemobra_State4_03(Em *em, s32 unused)
         }
         break;
     case 2:
-        Em_SpawnEffect06Bone(em, 2);
+        Em_SpawnStatus4Effect(em, 2);
         if (--em->timer <= 0) {
             em->step++;
             EmRemobra_ChangeState(em, 2, 0xE, 4);
@@ -5038,7 +5039,7 @@ void EmRemobra_State5_00_Hunted(Em *em)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 158.0f, 0) != 0 && em->stateVar0 == 0) {
+        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0 && em->stateVar0 == 0) {
             em->stateVar0 = 1;
             EmMine_Create(em, 0);
         }
@@ -5097,7 +5098,7 @@ void EmRemobra_State5_02(Em *em)
         em->velY = 10.0f;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 66.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 66.0f, 0U) != 0) {
             em->velY = 40.0f;
         }
         em->posY -= em->velY;
@@ -5306,8 +5307,8 @@ void EmRemobra_MotionEffects(Em *em, EmWork *work)
     motion = work->fxMotion;
     switch (motion) {
     case 0x3E9:
-        if ((Player_PassedFrameScaled(em, 4.0f, 0U) == 0) && (Player_PassedFrameScaled(em, 84.0f, 0U) == 0)) {
-            if (Player_PassedFrameScaled(em, 156.0f, 0U) != 0) {
+        if ((EmMotion_PassedFrameScaled(em, 4.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 84.0f, 0U) == 0)) {
+            if (EmMotion_PassedFrameScaled(em, 156.0f, 0U) != 0) {
                 goto block_15;
             }
             break;
@@ -5316,37 +5317,37 @@ block_15:
         EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
         break;
     case 0x3EA:
-        if (Player_PassedFrameScaled(em, 84.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
         }
         break;
     case 0x3EB:
-        if ((Player_PassedFrameScaled(em, 50.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 102.0f, 0U) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 50.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 102.0f, 0U) != 0)) {
             EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
         }
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 52.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 138.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 138.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffect(em, 1, 4, 2.0f);
         }
         break;
     case 0x3F6:
-        if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
         }
         break;
     case 0x3FC:
-        if (Player_PassedFrameScaled(em, 14.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
         }
         break;
     case 0x3FF:
-        if (Player_PassedFrameScaled(em, 164.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
         }
         break;
@@ -5740,7 +5741,7 @@ block_5:
     case 4:
         switch (state) {
         case 4:
-            em->hit8Count = (s8) em->hit8Count + 1;
+            em->partBreakCount = (s8) em->partBreakCount + 1;
             em->fxFlags |= 1;
             Em_EndAllStatus(em);
             Em_BreakPart(em, 1U);
@@ -6005,7 +6006,7 @@ void EmChameleos_UpdateInvisibility(Em *em)
 s32 EmChameleos_WantsInvisible(Em *em)
 {
     s32 r;
-    if (EmChameleos_InvisibilityBlocked(em) == 1 || Player_IsState(em, 1, 4) || em->hitReactMode == 2 || em->hitReactMode == 4) {
+    if (EmChameleos_InvisibilityBlocked(em) == 1 || Player_IsState(em, 1, 4) || em->hitReactMode == EM_HIT_REACT_WAKE || em->hitReactMode == EM_HIT_REACT_STATUS) {
         return 0;
     }
     r = (u8) EmChameleos_CanTurnInvisible(em);
@@ -6054,7 +6055,7 @@ void EmChameleos_SpawnPeriodicEffect06(Em *em)
     v[0] = 0.0f;
     v[1] = 80.0f;
     v[2] = 290.0f;
-    Em_SpawnEffect06Periodic(em, 0x25, v, 2.0f);
+    Em_SpawnLyingPuffs(em, 0x25, v, 2.0f);
 }
 
 s32 func_00858980(Em *em)
@@ -6107,7 +6108,7 @@ void EmBulldrome_Init(Em *em)
     u8 slotNo;
 
     if (gQuest.stage == 0) {
-        if (gScene.area == 0xF) {
+        if (gScene.area == AREA_SNOWY_MOUNTAINS_NIGHT_9) {
             em->posX = 9500.0f + (150.0f * (f32) (em->slotNo / 8));
             em->posY = 0.0f;
             em->posZ = 9200.0f + (150.0f * (f32) (em->slotNo & 7));
@@ -6121,7 +6122,7 @@ void EmBulldrome_Init(Em *em)
     }
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = 0;
-    size = Em_ComputeSize(em, (s16) em->variant);
+    size = Em_ComputeMaxHp(em, (s16) em->variant);
     em->hp = size;
     em->hpMax = size;
     em->scriptPending = 1;
@@ -6258,7 +6259,7 @@ void EmBulldrome_State0_0B(Em *em, s32 variant)
     s32 k2;
     s32 k;
 
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -6270,7 +6271,7 @@ void EmBulldrome_State0_0B(Em *em, s32 variant)
         }
         break;
     case 1:
-        Em_SpawnEffect06Periodic(em, 0xB, (f32 *) &EmBulldrome_Effect0BOfs, 1.0f);
+        Em_SpawnLyingPuffs(em, 0xB, (f32 *) &EmBulldrome_Effect0BOfs, 1.0f);
         k = variant & 0xFFFF;
         if (k == 2) {
             Em_RegenHp(em, 1, (s32) (0.6f * (f32) em->hpMax), 0xA);
@@ -6448,7 +6449,7 @@ void EmBulldrome_State1_00(Em *em, s32 variant)
         em->aimAngle = em->rotY + 0x4000;
         d = (em->aimAngle - em->rotY) & 0xFFFF;
         if (d <= 0x1000 || d >= 0xF000) {
-            Player_SetFlag((Player *) em, 0x20000);
+            Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
             Em_SetMotion(em, 2, 0, 0);
         } else if (d >= 0x8000) {
             Em_SetMotion(em, 5, 0, 0);
@@ -6459,7 +6460,7 @@ void EmBulldrome_State1_00(Em *em, s32 variant)
     case 1:
         if (Em_TurnStep(em, &EmBulldrome_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmBulldrome_EndState(em);
         }
         break;
@@ -6692,7 +6693,7 @@ void EmBulldrome_State2_01(Em *em)
         if ((u32) ((diff + 0x400) & 0xFFFF) < 0x800U) {
             em->rotY = (s32) ang;
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmBulldrome_ChangeState(em, 2, 2, 4);
         } else if (diff < 0x8000U) {
             em->rotY = (rotY + 0x400) & 0xFFFF;
@@ -6822,13 +6823,13 @@ void EmBulldrome_State3_00(Em *em, s32 variant)
         Em_SetMotion(em, 0xF, 0xA, 0);
         switch (variant) {
         case 0:
-            EffEm02_Create(em, 3);
+            BulldromeAttack_Create(em, 3);
             break;
         case 1:
-            EffEm02_Create(em, 4);
+            BulldromeAttack_Create(em, 4);
             break;
         case 2:
-            EffEm02_Create(em, 5);
+            BulldromeAttack_Create(em, 5);
         }
         break;
     case 1:
@@ -6868,7 +6869,7 @@ void EmBulldrome_State3_06(Em *em)
             w->unk02C = 1;
         }
         Em_SetMotion(em, (w->unk02C & 1) + 0x12, 0, 0);
-        EffEm02_Create(em, 1);
+        BulldromeAttack_Create(em, 1);
         break;
     case 1:
         v = 0xE6;
@@ -6960,7 +6961,7 @@ void EmBulldrome_State4_01(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 10.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) {
             em->step++;
             EmBulldrome_LaunchFromHit(em);
         }
@@ -7026,7 +7027,7 @@ void EmBulldrome_State4_02(Em *em)
 
 void EmBulldrome_State4_03(Em *em)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -7036,7 +7037,7 @@ void EmBulldrome_State4_03(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        Em_SpawnEffect06Bone(em, 2);
+        Em_SpawnStatus4Effect(em, 2);
         if (--em->timer <= 0) {
             em->step++;
             EmBulldrome_ChangeState(em, 0, 0x10, 4);
@@ -7085,13 +7086,13 @@ void EmBulldrome_State4_05(Em *em)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, 0x14, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, 0x47, 0, 0);
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
@@ -7147,7 +7148,7 @@ void EmBulldrome_State5_00_Hunted(Em *em)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             em->step++;
             EmBulldrome_LaunchFromHit(em);
         }
@@ -7307,7 +7308,7 @@ void EmBulldrome_State6_00_Captured(Em *em)
         pos[0] = 0.0f;
         pos[1] = -20.0f;
         pos[2] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0xB, pos, 1.0f);
+        Em_SpawnLyingPuffs(em, 0xB, pos, 1.0f);
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
@@ -7425,7 +7426,7 @@ void EmBulldrome_State8_00(Em *em, EmWork *work)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             v = EmBulldrome_CarveThrowPt;
             StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
         }
@@ -7574,13 +7575,13 @@ void EmBulldrome_Update(Em *em)
         w->unk00C -= 1;
     }
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80(em);
+    Em_RaisePlayerAreaTrigger(em);
     Em_HoldPosNoPlayers(em, 0, 1);
     if (em->noAlert != 1 && em->combat == 1) {
-        switch ((u16) Area_BaseId(gScene.map)) {
-        case 6:
-        case 4:
-        case 0xB:
+        switch ((u16) Map_DayId(gScene.map)) {
+        case MAP_JUNGLE:
+        case MAP_SWAMP:
+        case MAP_SNOWY_MOUNTAINS:
             Em_CheckLowHp(em, 0.3f);
             break;
         }
@@ -7652,7 +7653,7 @@ void EmBulldrome_Update(Em *em)
         EmBulldrome_ChangeState(em, 4, 5, 3);
         break;
     }
-    if ((gQuest.stage == 0x3EC || gQuest.stage == 0x3ED) && Area_DayId(em->area) == 0x73 && Save_TestEventFlag(0x99) == 0) {
+    if ((gQuest.stage == 0x3EC || gQuest.stage == 0x3ED) && Area_DayId(em->area) == AREA_JUNGLE_5 && Save_TestEventFlag(0x99) == 0) {
         if (ScEvent_CurId() == 0x99 && em->stateGroup != 6) {
             EmBulldrome_ChangeState(em, 6, 1, 1);
         }
@@ -7731,11 +7732,11 @@ EmCurveKey *EmRemobra_SpeedCurves[2] = {
 f32 EmRemobra_HopFrames[3] = {
 #include "game/008CAE40.inc"
 };
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 void GmEm_UpdateSfx(Em *em); /* gm_sub */
 void *EmRemobra_Callbacks[8] = {
     EmRemobra_SpawnEffect01, EmRemobra_SpawnEffect01, EmRemobra_TableNop, EmRemobra_UpdateMotionEffects,
-    func_0090A9C0, EmRemobra_Reinit, NULL, NULL,
+    GmEm_ReturnZero, EmRemobra_Reinit, NULL, NULL,
 };
 u32 gEmMotionRows_63[304] = {
 #include "game/008CAE70.inc"
@@ -7774,5 +7775,5 @@ void EmBulldrome_SpawnEffect01(u8 *em);
 void EmBulldrome_TableNop(void);
 void *EmBulldrome_Callbacks[8] = {
     EmBulldrome_SpawnEffect01, EmBulldrome_SpawnEffect01, EmBulldrome_TableNop, GmEm_UpdateSfx,
-    func_0090A9C0, EmBulldrome_Reinit, NULL, NULL,
+    GmEm_ReturnZero, EmBulldrome_Reinit, NULL, NULL,
 };

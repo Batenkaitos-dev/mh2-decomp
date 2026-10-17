@@ -30,7 +30,7 @@ void Gfx_SetBlend(s32, s32);
 void Frame_Draw(void);
 
 void Stream_UpdateMaxVol(s32 apply);
-void Sound_PlaySe73(void);
+void Sound_PlayConfirm(void);
 void Sound_PlayCursorMove(void);
 void Sound_PlayCancel(void);
 struct TexRect;
@@ -236,7 +236,7 @@ void Option_DrawArrows(void)
     Sprite spr;
 
     if (gOptWork->arrowsShown != 0) {
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Tex_Prepare(1, 0x155);
         Tex_Bind(0x155);
         spr.x = gOptWork->arrowLeftX - gOptWork->arrowLeftOfs;
@@ -353,7 +353,7 @@ s32 Option_MainInput(u16 trig, u16 rep)
     case 0:
         if (trig & 0x20) {
             Option_OpenControlPage();
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
         }
         break;
     case 1:
@@ -418,24 +418,24 @@ s32 Option_MainInput(u16 trig, u16 rep)
     case 5:
         if (trig & 0x20) {
             Option_OpenScreenPage();
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
         }
         break;
     case 6:
         if (trig & 0x20) {
             Option_OpenBrightnessPage();
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
         }
         break;
     case 7:
         if (trig & 0x20) {
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
             Option_MainDefaults();
         }
         break;
     case 8:
         if (trig & 0x20) {
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
             return 1;
         }
         break;
@@ -655,14 +655,14 @@ void Option_ControlInput(u16 trig, u16 rep)
         goto common;
     case 5:
         if (trig & 0x20) {
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
             Option_ControlDefaults();
         }
         break;
     case 6:
         if (trig & 0x20) {
             Option_OpenMainPage();
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
         }
         break;
     }
@@ -773,7 +773,7 @@ void Option_DrawFrame(void)
 {
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 4);
     Tex_Bind(4);
     Gs_SetState(0x6C, 0);
@@ -815,7 +815,7 @@ void Option_ScreenPosInput(u16 trig, u16 rep)
         return;
     }
     if (trig & 0x200) {
-        Sound_PlaySe73();
+        Sound_PlayConfirm();
         *offsetX = 0;
         changed = 1;
         *offsetY = 0;
@@ -877,7 +877,7 @@ void Option_DrawCorners(void)
     Sprite cornerRotated;
     s32 i;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 4);
     Tex_Bind(4);
     Gs_SetState(0x6C, 0);
@@ -947,7 +947,7 @@ void Option_DrawScreenPosPage(void)
     Text_DrawShadow(0x1A2, 0x154, 1, 0, buf);
     Tex_Prepare(1, 8);
     Tex_Bind(8);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     spr.w = 0x40;
     spr.h = 0x40;
     spr.u0 = 0;
@@ -1025,7 +1025,7 @@ void Option_BrightnessInput(u16 trig, u16 rep)
         return;
     }
     if (trig & 0x200) {
-        Sound_PlaySe73();
+        Sound_PlayConfirm();
         *levelPtr = 0x80;
     }
 }
@@ -1562,25 +1562,25 @@ s32 NetOption_Input(u16 trig, u16 rep)
         break;
     case 2:
         if (trig & 0x20) {
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
             return 1;
         }
         break;
     case 3:
         if (trig & 0x20) {
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
             return 2;
         }
         break;
     case 4:
         if (trig & 0x20) {
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
             Option_NetDefaults();
         }
         break;
     case 5:
         if (trig & 0x20) {
-            Sound_PlaySe73();
+            Sound_PlayConfirm();
             return -1;
         }
         break;
@@ -1718,7 +1718,7 @@ void NetOption_ConfirmInput(u16 pad, u16 rep)
                 Sound_PlayCursorMove();
                 gOptWork->subCursor ^= 1;
             } else if (buttons & 0x20) {
-                Sound_PlaySe73();
+                Sound_PlayConfirm();
                 if (gOptWork->subCursor == 0) {
                     gOptWork->confirmStep++;
                     gOptWork->timer = 0x14;
@@ -1825,7 +1825,7 @@ void Option_DrawBrightnessStrip(void)
 {
     Sprite spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 5);
     Tex_Bind(5);
     Gs_SetState(0x6C, 0);

@@ -81,7 +81,7 @@ s32 Records_LoadInput(RecordMenu *m, u16 pad)
                     memcpy(m->itemBits, gSave.itemBits, 0x80);
                     break;
                 case 6:
-                    memcpy(m->titleBits, gSave.unk3660, 0x20);
+                    memcpy(m->titleBits, gSave.titles, 0x20);
                     break;
                 case 2:
                     memcpy(m->sizeMax, gSave.sizeMax, 0x100);

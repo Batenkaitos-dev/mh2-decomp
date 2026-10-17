@@ -1,8 +1,16 @@
 /*
- * 0xD64560-0xD64C80: a unit with its own .bss (0xD7BD80) and callback tables
- * in .data; called from the character select flow (plsel.c).
+ * plsel: the player menu of the quest-preparation screen (0xD64560-0xD64C80,
+ * with its .bss pointer at 0xD7BD80 and its tables in .data).
+ *
+ * plsel.c opens it (Plsel_OpenPlayerMenu) for one of the players and runs
+ * it each frame (Plsel_PlayerMenuUpdate, Plsel_DrawPlayerMenu). It reuses
+ * the field menu's state (HudState, which Hud_Init returns) and sub_main's
+ * pages: the pouch, the personal status, the equipment status, the quest's
+ * information, and a page of this file's own (Plsel_DrawStagePage).
  */
 #include "common.h"
+#include "pad.h"
+#include "hud.h"
 extern u8 gHelpShow;
 extern u8 gHelpPage;
 extern s8 gHelpColumn;
@@ -14,28 +22,15 @@ extern s8 gHelpColumn;
 #include "qsync.h"
 
 
-s32 func_00D64B50(void);
-s32 func_00D64B60(s32 arg0);
+s32 Plsel_OpenStagePage(void);
+s32 Plsel_StagePageInput(s32 arg0);
 void Plsel_DrawPouchPage(void);
 
 void ItemList_DrawPouch(s32, s32, s32);
 s32 Game_IsOnline(void);
 void HelpWindow_DrawCurrent(void);
 void Plsel_DrawPlayerMenuList(void);
-void Plsel_DrawMenuPage4(void);
-
-/* What gPlselMenu points to. */
-typedef struct D64Obj {
-    u8 unk00[0x08];
-    Player *unk08;           /* 0x08 */
-    u8 unk0C[0x48 - 0x0C];
-    u8 unk48;                   /* 0x48 */
-    u8 unk49;
-    u8 unk4A;                   /* 0x4A */
-    u8 unk4B[0x50 - 0x4B];
-    u8 unk50;                   /* 0x50 */
-    u8 unk51;                   /* 0x51 */
-} D64Obj;
+void Plsel_DrawStagePage(void);
 
 void *Hud_Init(void);
 void *memcpy(void *, const void *, u32);
@@ -60,11 +55,12 @@ s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
 
 extern s16 gHelpLine;
 
-/* .bss (0xD7BD80): a pointer. The next unit's .bss starts 16-aligned. */
-D64Obj *gPlselMenu;
+/* .bss (0xD7BD80): the menu's state, the field menu's (Hud_Init). The
+ * next unit's .bss starts 16-aligned. */
+HudState *gPlselMenu;
 
 /* .data (0xD76060-0xD76100) */
-ListPanel gPlselMenuPage4Panel = {
+ListPanel gPlselStagePagePanel = {
 #include "plsel/00D76060.inc"
 };
 void EquipStatus_Draw(void); /* sub_main */
@@ -77,17 +73,17 @@ s32 PouchMenu_Open(void *m); /* sub_main */
 u16 PouchMenu_Update(u16 buttons); /* sub_main */
 void QuestMenu_DrawInfo(void); /* sub_main */
 u16 QuestMenu_Update(u16 buttons); /* sub_main */
-u32 gPlselMenuUpdates[8] = {
+u32 gPlselMenuOpens[8] = {
 #include "plsel/00D76080.inc"
 };
 u32 gPlselMenuInputs[6] = {
     (u32)PouchMenu_Update, (u32)PersonalStatus_Update, (u32)EquipStatus_Update, (u32)QuestMenu_Update,
-    (u32)func_00D64B60, 0x00000000,
+    (u32)Plsel_StagePageInput, 0x00000000,
 };
-u8 gPlselMenuHelpA[8] = {
+u8 gPlselMenuHelpOffline[8] = {
 #include "plsel/00D760B8.inc"
 };
-u8 gPlselMenuHelpB[16] = {
+u8 gPlselMenuHelpOnline[16] = {
 #include "plsel/00D760C0.inc"
 };
 u32 gPlselMenuDraws[4] = {
@@ -98,84 +94,104 @@ ListWin gPlselMenuListBox = {
 #include "plsel/00D760E0.inc"
 };
 
-void Plsel_ClosePlayerMenu(void) {
-    gPlselMenu->unk48 = 0;
+/* Closes the player menu and its help line. */
+void Plsel_ClosePlayerMenu(void)
+{
+    gPlselMenu->menuPhase = 0;
     gScene.menuOpen = 0;
     gHelpShow = 0;
 }
 
-void Plsel_OpenPlayerMenu(u16 idx) {
+/*
+ * Opens the player menu for player slot `player`: takes the field menu's
+ * state from Hud_Init, puts the cursor on the first entry with its help
+ * line, gives the player the save's name, recomputes the player's stats
+ * with no meal's bonus, and plays the open sound.
+ */
+void Plsel_OpenPlayerMenu(u16 player)
+{
     Player *pl;
 
     gPlselMenu = Hud_Init();
-    gPlselMenu->unk48 = 0;
+    gPlselMenu->menuPhase = 0;
     gScene.menuOpen = 1;
-    gPlselMenu->unk4A = 0;
+    gPlselMenu->fieldMenuCursor = 0;
     gHelpShow = 1;
     gHelpPage = 0;
     if (Game_IsOnline() == 1) {
-        gHelpLine = gPlselMenuHelpB[gPlselMenu->unk4A];
+        gHelpLine = gPlselMenuHelpOnline[gPlselMenu->fieldMenuCursor];
     } else {
-        gHelpLine = gPlselMenuHelpA[gPlselMenu->unk4A];
+        gHelpLine = gPlselMenuHelpOffline[gPlselMenu->fieldMenuCursor];
     }
-    gPlselMenu->unk08 = &gPlayers[idx];
-    pl = gPlselMenu->unk08;
-    memcpy((u8 *)pl + 0x82C, gSave.name, 0x12);
+    gPlselMenu->player = &gPlayers[player];
+    pl = gPlselMenu->player;
+    memcpy(pl->name, gSave.name, sizeof(gSave.name));
     gScene.mealAttack = gScene.mealDefense = gScene.mealHealth = gScene.mealStamina = 0;
     Player_RecomputeStats(pl);
     Sound_PlaySeFlat(0, 0x11, 0);
 }
 
-void Plsel_PlayerMenuBack(void) {
-    gPlselMenu->unk48 = 0;
+/* Goes back from a page to the menu's list, with the entry's help line. */
+void Plsel_PlayerMenuBack(void)
+{
+    gPlselMenu->menuPhase = 0;
     gHelpShow = 1;
     gHelpPage = 0;
     if (Game_IsOnline() == 1) {
-        gHelpLine = gPlselMenuHelpB[gPlselMenu->unk4A];
+        gHelpLine = gPlselMenuHelpOnline[gPlselMenu->fieldMenuCursor];
     } else {
-        gHelpLine = gPlselMenuHelpA[gPlselMenu->unk4A];
+        gHelpLine = gPlselMenuHelpOffline[gPlselMenu->fieldMenuCursor];
     }
 }
 
-void Plsel_PlayerMenuUpdate(u16 pad) {
-    s32 r;
+/*
+ * The player menu's input, each frame (the chat window first takes it when
+ * open). On the list: the cursor, its help line (the online or offline
+ * table), confirm opens the entry's page (gPlselMenuOpens; a refusal plays
+ * the error sound), start or cancel closes the menu. On a page: the page's
+ * input function (gPlselMenuInputs; the pouch's page gets neither select
+ * nor confirm) returns start to close the menu or cancel to go back.
+ */
+void Plsel_PlayerMenuUpdate(u16 pad)
+{
+    s32 refused;
     u16 ret;
 
     if (Plsel_ChatUpdate() == 1) {
         return;
     }
-    switch (gPlselMenu->unk48) {
+    switch (gPlselMenu->menuPhase) {
     case 0:
-        Menu_CursorUpDown(&gPlselMenu->unk4A, pad, 5);
+        Menu_CursorUpDown(&gPlselMenu->fieldMenuCursor, pad, PLSEL_MENU_COUNT);
         if (Game_IsOnline() == 1) {
-            gHelpLine = gPlselMenuHelpB[gPlselMenu->unk4A];
+            gHelpLine = gPlselMenuHelpOnline[gPlselMenu->fieldMenuCursor];
         } else {
-            gHelpLine = gPlselMenuHelpA[gPlselMenu->unk4A];
+            gHelpLine = gPlselMenuHelpOffline[gPlselMenu->fieldMenuCursor];
         }
-        if (pad & 0x20) {
-            r = ((s32 (*)(void))gPlselMenuUpdates[gPlselMenu->unk4A])();
-            gPlselMenu->unk08 = &gPlayers[gQuestSync.pick];
-            if (r == 0) {
-                gPlselMenu->unk48++;
-                gPlselMenu->unk50 = 0;
+        if (pad & PAD_CIRCLE) {
+            refused = ((s32 (*)(void))gPlselMenuOpens[gPlselMenu->fieldMenuCursor])();
+            gPlselMenu->player = &gPlayers[gQuestSync.pick];
+            if (refused == 0) {
+                gPlselMenu->menuPhase++;
+                gPlselMenu->state = 0;
                 Sound_PlaySeFlat(0, 0x13, 0);
             } else {
                 Sound_PlaySeFlat(0, 0x15, 0);
             }
-        } else if (pad & 0x8040) {
+        } else if (pad & (PAD_START | PAD_CROSS)) {
             Plsel_ClosePlayerMenu();
             Sound_PlaySeFlat(0, 0x14, 0);
         }
         break;
     case 1:
-        if (gPlselMenu->unk4A == 0) {
-            pad &= 0xBFDF;
+        if (gPlselMenu->fieldMenuCursor == PLSEL_MENU_POUCH) {
+            pad &= ~(PAD_SELECT | PAD_CIRCLE);
         }
-        ret = ((s32 (*)(s32))gPlselMenuInputs[gPlselMenu->unk4A])(pad);
-        if (ret & 0x8000) {
+        ret = ((s32 (*)(s32))gPlselMenuInputs[gPlselMenu->fieldMenuCursor])(pad);
+        if (ret & PAD_START) {
             Plsel_ClosePlayerMenu();
             Sound_PlaySeFlat(0, 0x14, 0);
-        } else if (ret & 0x40) {
+        } else if (ret & PAD_CROSS) {
             Plsel_PlayerMenuBack();
             Sound_PlaySeFlat(0, 0x14, 0);
         }
@@ -184,35 +200,42 @@ void Plsel_PlayerMenuUpdate(u16 pad) {
 }
 
 extern char *gFieldMenuTitle[];
-void Plsel_DrawPlayerMenuList(void) {
-    ListWin b;
+/* Draws the menu's list, with the online entries when online. */
+void Plsel_DrawPlayerMenuList(void)
+{
+    ListWin box;
 
     Gfx_SetBlend(4, 5);
-    b = gPlselMenuListBox;
+    box = gPlselMenuListBox;
     if (Game_IsOnline() == 1) {
-        b.items = D_446F90;
+        box.items = D_446F90;
     }
-    ListPanel_DrawDim(&b, gFieldMenuTitle[0], gPlselMenu->unk4A);
+    ListPanel_DrawDim(&box, gFieldMenuTitle[0], gPlselMenu->fieldMenuCursor);
 }
 
-void Plsel_DrawPlayerMenu(void) {
-    D64Obj *o;
+/*
+ * Draws the player menu: the list, or the open entry's page
+ * (gPlselMenuDraws, or the stage page), then the help window when shown.
+ */
+void Plsel_DrawPlayerMenu(void)
+{
+    HudState *menu;
 
-    o = gPlselMenu;
-    switch (o->unk48) {
+    menu = gPlselMenu;
+    switch (menu->menuPhase) {
     case 0:
         Plsel_DrawPlayerMenuList();
         break;
     case 1:
-        switch (o->unk4A) {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-            ((void (*)(void))gPlselMenuDraws[o->unk4A])();
+        switch (menu->fieldMenuCursor) {
+        case PLSEL_MENU_POUCH:
+        case PLSEL_MENU_STATUS:
+        case PLSEL_MENU_EQUIPMENT:
+        case PLSEL_MENU_QUEST:
+            ((void (*)(void))gPlselMenuDraws[menu->fieldMenuCursor])();
             break;
-        case 4:
-            Plsel_DrawMenuPage4();
+        case PLSEL_MENU_STAGE:
+            Plsel_DrawStagePage();
             return;
         }
         break;
@@ -222,50 +245,63 @@ void Plsel_DrawPlayerMenu(void) {
     }
 }
 
-void Plsel_DrawPouchPage(void) {
-    D64Obj *o;
-    u16 v;
+/*
+ * The pouch page: the help line of the item in the selected slot, then the
+ * pouch's item list.
+ */
+void Plsel_DrawPouchPage(void)
+{
+    HudState *menu;
+    u16 item;
 
     gHelpShow = 1;
     gHelpPage = 1;
-    o = gPlselMenu;
-    v = (s16)o->unk08->pouch[o->unk51].item;
+    menu = gPlselMenu;
+    item = (s16)menu->player->pouch[menu->slot].item;
     gHelpColumn = 0;
-    gHelpLine = v + 0x18;
-    ItemList_DrawPouch(o->unk51, 0xA9182, 8);
+    gHelpLine = item + 0x18;
+    ItemList_DrawPouch(menu->slot, 0xA9182, 8);
 }
 
-s32 func_00D64B50(void) {
+s32 Plsel_OpenStagePage(void)
+{
     return 0;
 }
 
-s32 func_00D64B60(s32 arg0) {
-    return arg0;
+s32 Plsel_StagePageInput(s32 buttons)
+{
+    return buttons;
 }
 
 extern s32 D_00446F80;
 extern s32 D_00446FA0;
-void Plsel_DrawMenuPage4(void) {
+/*
+ * The stage page: in its panel (titled for online or offline play), the
+ * lines of gQuest.stage's entry in the game overlay's per-stage text table
+ * (D_896A80, by the stage ids in D_896AF0, which end in 0).
+ */
+void Plsel_DrawStagePage(void)
+{
     s32 y;
     s32 *list;
     s32 i;
-    u16 *p;
-    u16 v;
+    u16 *stage;
+    u16 id;
 
     if (Game_IsOnline() == 0) {
-        ListPanel_Draw(&gPlselMenuPage4Panel, 0, (char *) D_00446F80, -1);
+        ListPanel_Draw(&gPlselStagePagePanel, 0, (char *) D_00446F80, -1);
     } else {
-        ListPanel_Draw(&gPlselMenuPage4Panel, 0, (char *) D_00446FA0, -1);
+        ListPanel_Draw(&gPlselStagePagePanel, 0, (char *) D_00446FA0, -1);
     }
     i = 0;
-    p = D_896AF0;
-    v = *p;
-    while (v != 0) {
-        if (v == gQuest.stage) {
+    stage = D_896AF0;
+    id = *stage;
+    while (id != 0) {
+        if (id == gQuest.stage) {
             break;
         }
-        p++;
-        v = *p;
+        stage++;
+        id = *stage;
         i++;
     }
     list = D_896A80[i];

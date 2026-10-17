@@ -10,6 +10,7 @@
 #include "scene.h"
 #include "sprite.h"
 #include "area.h"
+#include "objattach.h"
 
 extern EmObj *gSightBlockObjs[32];
 
@@ -55,7 +56,7 @@ typedef struct EmSenseView {
 void AreaObj_K0E_Draw(DrawSlot *ds);
 extern f32 AreaObj_K14_SePos[];
 extern f32 D_008B149C[3];
-void Eff22_CreateAt(f32 *pos, u8 kind, u8 area, s32 ang);
+void StageShot_CreateAt(f32 *pos, u8 kind, u8 area, s32 ang);
 void CamShake_SetA(s32 kind, f32 *pos);
 extern s16 AreaObj_K17_AngleTbl[];
 void StageObj_K11_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
@@ -66,7 +67,7 @@ extern f32 *gEmSenseLimits[];
 s8 Em_AngleSector(Em *em, s32 idx);
 void Em_AddAlertBuildup(Em *em, u8 player, u8 idx, s8 kind);
 extern s32 *gEmNoticeDecayRates[];
-s32 EmBlangonga_PartFlagUnset(Em *em, u16 part);
+s32 EmBlangonga_CarriedShown(Em *em, u16 part);
 s32 Em_PartBroken(Em *em, s32 arg1);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 void Effect0D_SpawnAt(f32 *pos, s32 kind, f32 scale);
@@ -117,7 +118,7 @@ extern s16 AreaObj_K0B_Spin[];
 void AreaObj_K0B_Draw(DrawSlot *s);
 u8 Quest_GetSeedByte(u8 i);
 void StageObj_K29_CreateAt(f32 *src, u8 k, u8 c, f32 scale);
-void Eff37_Create(f32 *pos, u8 k, u8 c);
+void VolcanoHazard_Create(f32 *pos, u8 k, u8 c);
 s32 AreaObj_K19_GetPoints(u16 arg0);
 s16 AreaObj_K19_PointCount(u16 arg0);
 extern f32 AreaObj_K09_Type8Pos[];
@@ -252,7 +253,7 @@ void EmKind38_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 s32 Sprite_Draw(Sprite *s);
 void Tex_Prepare(s32 n, s32 tex);
 void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Tex_Bind(s32 i);
 void DrawSlot_Free(s32 i);
 extern u8 AreaObj_K19_PointsA2;
@@ -279,8 +280,8 @@ f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 extern EmAction *gAreaObjList[32];
 u32 Player_TestFlag(void *obj, u32 flag);
-f32 Em_RageScale1(Em *em);
-f32 Em_RageScale2(Em *em);
+f32 Em_LevelAttackFactor(Em *em);
+f32 Em_LevelDamageFactor(Em *em);
 extern EmRageRow *gEmRageTbl[];
 extern s16 AreaObj_K14_Models[];
 void Em_SyncState(Em *em, s32 kind, s32 b, s32 c);
@@ -320,7 +321,7 @@ u32 AreaObj_K09_RunType7(Obj *o)
 
 /* Draws the stage model of the area's entry +0x10 (when there is one) at the object, turned by the
  * object's heading (+0x4E of its data, in 1/65536 turns) and tilted by 10 degrees one way or the other
- * by o[7]; area 0x20 draws it three times bigger. The default-first switch leaves the game's empty
+ * by o[7]; AREA_FOREST_HILLS_6 draws it three times bigger. The default-first switch leaves the game's empty
  * delay slots. */
 void AreaObj_K09_DrawType7(DrawSlot *ds)
 {
@@ -344,7 +345,7 @@ void AreaObj_K09_DrawType7(DrawSlot *ds)
             default:
                 Mtx_Identity(m);
                 break;
-            case 0x20:
+            case AREA_FOREST_HILLS_6:
                 Mtx_Scale(m, 3.0f, 3.0f, 3.0f);
                 break;
             }
@@ -366,13 +367,13 @@ void AreaObj_K09_ResetType8(Obj *o)
 
     if (o->var4 != 0xFF) {
         switch (gScene.area) {
-        case 0x24:
-        case 0xBD:
+        case AREA_FOREST_HILLS_9:
+        case AREA_FOREST_HILLS_NIGHT_9:
             o->pos[0] = 11750.0f + (f32) ((Rand_Next(1) & 0x1FF) - 0x100);
             o->pos[1] = 200.0f;
             o->pos[2] = 9500.0f + (f32) ((Rand_Next(1) & 0x1FF) - 0x100);
             break;
-        case 0x82:
+        case AREA_TOWER_8:
             o->pos[0] = AreaObj_K09_Type8Pos[o->var4 * 3];
             o->pos[1] = D_008B0A14[o->var4 * 3];
             o->pos[2] = D_008B0A18[o->var4 * 3];
@@ -451,7 +452,7 @@ void AreaObj_K09_DrawType8(DrawSlot *ds)
             Gfx_SetBlend(4, 1);
             Gs_SetState(0x60, 0);
             Gs_SetState(0x6C, 0);
-            if (gScene.area == 0x82) {
+            if (gScene.area == AREA_TOWER_8) {
                 Mtx_Identity(m);
             } else {
                 Mtx_Scale(m, o->fvar, o->fvar, o->fvar);
@@ -504,8 +505,8 @@ void AreaObj_K09_SetupType11(Obj *o)
     o->var2 = 0;
     o->timer = Rand_Next(1);
     switch (gScene.area) {
-    case 0x21:
-    case 0xBA:
+    case AREA_FOREST_HILLS_3:
+    case AREA_FOREST_HILLS_NIGHT_3:
         o->pos[0] = AreaObj_K09_Type11Pos[o->var0 * 3];
         o->pos[1] = D_008B0A94[o->var0 * 3] + (f32) ((u8) Rand_Next(1) - 0x80);
         o->pos[2] = D_008B0A98[o->var0 * 3];
@@ -528,8 +529,8 @@ void AreaObj_K09_RunType11(Obj *o)
     o->var2++;
     o->var2 &= 3;
     switch (gScene.area) {
-    case 0x21:
-    case 0xBA:
+    case AREA_FOREST_HILLS_3:
+    case AREA_FOREST_HILLS_NIGHT_3:
         dst[0] = AreaObj_K09_Type11Pos[o->var1 * 3];
         dst[1] = D_008B0A94[o->var1 * 3];
         dst[2] = D_008B0A98[o->var1 * 3];
@@ -838,7 +839,7 @@ void AreaObj_K0B_Free(Obj *o)
     Obj_Free(o);
 }
 
-/* Draws part s->index of the five of AreaObj_K0B_Setup (a stage model per part, in areas 0x1C and 0x50). */
+/* Draws part s->index of the five of AreaObj_K0B_Setup (a stage model per part, in AREA_FORTRESS_3 and AREA_FORTRESS_NIGHT_3). */
 void AreaObj_K0B_Draw(DrawSlot *s)
 {
     ObjPart5 *r = &((ObjPart5 *) ((Obj *) s->owner)->buf)[s->part];
@@ -848,10 +849,10 @@ void AreaObj_K0B_Draw(DrawSlot *s)
 
     if (stage != NULL && stage->active != 0) {
         switch (gScene.area) {
-        case 0x1C:
+        case AREA_FORTRESS_3:
             mdl = &stage->matSets[AreaObj_K0B_ModelsA[r->idx]];
             break;
-        case 0x50:
+        case AREA_FORTRESS_NIGHT_3:
             mdl = &stage->matSets[AreaObj_K0B_ModelsB[r->idx]];
             break;
         default:
@@ -910,14 +911,14 @@ void AreaObj_K0E_Setup(Obj *o)
     o->var3 = 0;
     o->timer = 0;
     switch (Area_DayId(gScene.area)) {
-    case 0x2A:
-    case 0xC3:
+    case AREA_FOREST_HILLS_11:
+    case AREA_FOREST_HILLS_NIGHT_11:
         o->type = 0;
         o->pos[0] = 7227.0f;
         o->pos[1] = -34.0f;
         o->pos[2] = 5795.0f;
         break;
-    case 0x35:
+    case AREA_DESERT_NIGHT_7:
         o->type = 1;
         o->pos[0] = 8800.0f;
         o->pos[1] = 13.0f;
@@ -933,8 +934,8 @@ void AreaObj_K0E_Setup(Obj *o)
         o->var3 = Rand_Next(1) & 0xF;
         o->var4 = Rand_Next(1) % 10 + 55;
         break;
-    case 0x39:
-    case 0x5A:
+    case AREA_GREAT_ARENA_NIGHT_1:
+    case AREA_GREAT_ARENA_1:
         o->type = 2;
         o->pos[0] = 9400.0f;
         o->pos[1] = 18.0f;
@@ -950,8 +951,8 @@ void AreaObj_K0E_Setup(Obj *o)
         o->var3 = Rand_Next(1) & 0xF;
         o->var4 = Rand_Next(1) % 10 + 55;
         break;
-    case 0x30:
-    case 0x8E:
+    case AREA_DESERT_NIGHT_2:
+    case AREA_DESERT_2:
         o->type = 3;
         o->pos[0] = 6200.0f;
         o->pos[1] = 54.0f;
@@ -967,7 +968,7 @@ void AreaObj_K0E_Setup(Obj *o)
         o->var3 = Rand_Next(1) & 0xF;
         o->var4 = Rand_Next(1) % 10 + 55;
         break;
-    case 0x8F:
+    case AREA_DESERT_3:
         o->type = 4;
         o->pos[0] = 10000.0f;
         o->pos[1] = 13.0f;
@@ -983,8 +984,8 @@ void AreaObj_K0E_Setup(Obj *o)
         o->var3 = Rand_Next(1) & 0xF;
         o->var4 = Rand_Next(1) % 10 + 55;
         break;
-    case 0x37:
-    case 0x95:
+    case AREA_DESERT_NIGHT_9:
+    case AREA_DESERT_9:
         o->type = 5;
         o->pos[0] = 10000.0f;
         o->pos[1] = 13.0f;
@@ -1000,8 +1001,8 @@ void AreaObj_K0E_Setup(Obj *o)
         o->var3 = Rand_Next(1) & 0xF;
         o->var4 = Rand_Next(1) % 10 + 55;
         break;
-    case 0x38:
-    case 0x96:
+    case AREA_DESERT_NIGHT_10:
+    case AREA_DESERT_10:
         o->type = 6;
         o->var3 = 100;
         break;
@@ -1251,14 +1252,14 @@ void AreaObj_K0E_Draw(DrawSlot *ds)
                 v = u;
                 switch (i) {
                 case 0:
-                    if (gScene.area == 0x96) {
+                    if (gScene.area == AREA_DESERT_10) {
                         v = 1.0f - at->frame / 100.0f;
                     } else {
                         v = 1.0f - 0.011111111f * at->frame;
                     }
                     break;
                 case 1:
-                    if (gScene.area == 4) {
+                    if (gScene.area == AREA_JUNGLE_NIGHT_3) {
                         v = 1.0f - 0.015625f * at->frame;
                     } else {
                         v = 1.0f - 0.03125f * at->frame;
@@ -1304,7 +1305,7 @@ void AreaObj_K0E_Draw(DrawSlot *ds)
                 Gs_SetState(0x1A, (s32) m1);
                 if (mdl->id != -1) {
                     Draw_ApplyStates(mdl->flags);
-                    Gfx_SetState63(1);
+                    Gfx_SetTexFilter(1);
                     Model_Draw(mdl->id, 0);
                 }
             }
@@ -1324,8 +1325,8 @@ void AreaObj_K10_Create(void)
     switch (gScene.area) {
     default:
         return;
-    case 0xB3:
-    case 0xB7:
+    case AREA_BATTLE_TOWN_0:
+    case AREA_BATTLE_TOWN_NIGHT_0:
         for (i = 0; i < 5; i++) {
             obj = Obj_Alloc(0);
             if (obj != NULL) {
@@ -2109,7 +2110,7 @@ void AreaObj_K13_Draw(DrawSlot *ds)
 #pragma optimization_level reset
 
 /* Creates the kind-0x14 object; in the quests 0xBBD-0xBBF and 0xEA68 (or any but 0xBBC) with a quest
- * running, sets the flag 0x6ADEBA. */
+ * running, sets gScene.skipFlaggedTris (the flag kind 0x14 runs on). */
 void AreaObj_K14_Create(u8 kind)
 {
     Obj *obj;
@@ -2118,14 +2119,14 @@ void AreaObj_K14_Create(u8 kind)
     default:
         switch (gQuest.info->id) {
         case 0xBBC:
-            gScene.unk20A = 0;
+            gScene.skipFlaggedTris = 0;
             break;
         case 0xBBD:
         case 0xBBE:
         case 0xBBF:
         case 0xEA68:
         default:
-            gScene.unk20A = 1;
+            gScene.skipFlaggedTris = 1;
             break;
         }
         break;
@@ -2170,7 +2171,7 @@ void AreaObj_K14_Setup(Obj *o)
     o->draw = NULL;
     o->timer = 0;
     o->fvar = 0.0f;
-    if (gScene.unk20A != 0) {
+    if (gScene.skipFlaggedTris != 0) {
         Vec_Copy(o->pos, AreaObj_K14_PosA[o->type]);
     } else {
         Vec_Copy(o->pos, AreaObj_K14_PosB[o->type]);
@@ -2201,7 +2202,7 @@ void AreaObj_K14_Setup(Obj *o)
     }
 }
 
-/* Kind 0x14's run state (AreaObj_K14_Update, state 1). In object 1, while the flag 0x6ADEBA is set:
+/* Kind 0x14's run state (AreaObj_K14_Update, state 1). In object 1, while gScene.skipFlaggedTris is set:
  * waits for a monster of kind 2, 0x24 or 0x47 in the box x 10900-13000, z 19700-20200, then drops
  * 1750 below its table height with bounces, and after 180 frames rises back to it. */
 void AreaObj_K14_Run(Obj *o)
@@ -2212,7 +2213,7 @@ void AreaObj_K14_Run(Obj *o)
 
     switch (o->type) {
     case 1:
-        if (gScene.unk20A == 0) {
+        if (gScene.skipFlaggedTris == 0) {
             break;
         }
         switch (o->var0) {
@@ -2242,7 +2243,7 @@ void AreaObj_K14_Run(Obj *o)
             v[0] = o->pos[0];
             v[1] = m->floorY;
             v[2] = o->pos[2];
-            Eff22_CreateAt(v, 5, m->area, 0);
+            StageShot_CreateAt(v, STAGESHOT_AREA_DROP, m->area, 0);
             break;
         case 1:
             o->pos[1] += o->fvar;

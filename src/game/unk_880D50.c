@@ -19,7 +19,7 @@ s32 StageObj_K1C_OwnerActive(Em *em);
 
 /* Built at optimization level 4: StageObj_RandomDistinct matches only at 4 and
  * StageObj_K1C_RunChain is closer there; StageObj_K1C_NextStepD only at 3 (a pair below).
- * One unit for K1C: every helper from 0x889030 to 0x88A8E0 serves StageObj_K1C_SetupSeq
+ * One unit for K1C: every helper from StageObj_K1C_NextStepA to StageObj_K1C_Alloc serves StageObj_K1C_SetupSeq
  * and StageObj_K1C_RunSeq. */
 #pragma optimization_level 4
 
@@ -1402,7 +1402,7 @@ extern u32 gStageObjK1C_SeqTbls[];
 s32 EmKushala_GroundEffectStateInWind(Em *em);
 s32 EmKushala_WindActive(Em *em);
 s32 EmKushala_WindActive2(Em *em);
-void EffEm07_CreateAt(Em *em, f32 *pos, s8 kind);
+void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 s32 StageObj_K1C_AllDone(StageObj *o);
 void StageObj_K1C_RestartStepsA(StageObj *o);
 void StageObj_K1C_RestartStepsB(StageObj *o);
@@ -1531,7 +1531,7 @@ void StageObj_K1C_RunSeq(StageObj *o)
                 if (o->pos[1] < em->posY - 1000.0f || EmKushala_GroundEffectStateInWind(em) == 0) {
                     o->ownerIndex = 1;
                 } else {
-                    EffEm07_CreateAt(em, o->pos, 3);
+                    EmImpactAttack_CreateAt(em, o->pos, 3);
                     Em_PlaySeChecked((struct Em *)em, 0x40, 0, o->pos, 6, 0);
                 }
             }

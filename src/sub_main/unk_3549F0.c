@@ -7,9 +7,9 @@
  * icons, and equipment and rarity colours; the map and detect skill
  * queries the map draws with, and the map halves.
  *
- * The menus' button word (GameMenu_GetPad, Pad_StickToDpad): 0x2000 up,
- * 0x1000 down, 0x0800 left, 0x0400 right; 0x0008 and 0x0080 also step left
- * and right where a list has columns.
+ * The menus take the game's button word (pad.h's PAD_*: GameMenu_GetPad,
+ * Pad_StickToDpad); PAD_L1 and PAD_R1 also step left and right where a
+ * list has columns.
  */
 #include "common.h"
 #include "grid.h"
@@ -23,6 +23,8 @@
 
 #include "prim.h"
 #include "hud.h"
+#include "sound.h"
+#include "area.h"
 
 /* An action spot (Player.spot): the start of gather.c's ActionSpot, which
  * no header shares yet. */
@@ -32,7 +34,7 @@ typedef struct Spot {
 } Spot;
 
 s32 Tex_LoadPack(s32 id, s32 slot, s32 kind);
-s32 func_723BC0(Player *p);
+s32 Player_Status6Active(Player *p);
 s32 Item_IsStealable(u16 id); /* unit's own declaration: the definition (game) is s32 Item_IsStealable(s32 arg0); the calls here match only with this one */
 s32 Item_RideItemUsable(void);
 s32 Item_CanPlaceLargeBarrelBomb(void);
@@ -45,14 +47,14 @@ s32 Player_LocalAreaOk_Unk(void);
 s32 Item_UsableOutsideCamp(void);
 s32 Quest_IsVersus(void);
 s16 Player_GetAreaAmbModel(Player *p);
-s32 Pouch_HasItem28(Player *p);
+s32 Pouch_HasMeat(Player *p);
 u16 Player_GetGatherPoint(Player *p, u16 *id, f32 *pos);
 s32 SpecialMine_IsFree(Player *unused0);
 u32 Player_TestFlag(void *obj, u32 flag);
 f32 Math_Sin(f32 x);
 struct PrimLine;
 s32 Prim_FillRect(struct PrimLine *r);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Gfx_SetBlend(s32 a, s32 b);
 void Tex_Prepare(s32 a, s32 b);
 void Tex_Bind(s32 a);
@@ -148,13 +150,13 @@ s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count)
     }
     old = *cur;
     n = old;
-    if (buttons & 0x2000) {
+    if (buttons & PAD_UP) {
         if (old == 0) {
             n = count - 1;
         } else {
             n = old - 1;
         }
-    } else if (buttons & 0x1000) {
+    } else if (buttons & PAD_DOWN) {
         n = old + 1;
         if (n >= count) {
             n = 0;
@@ -162,7 +164,7 @@ s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count)
     }
     if (n != *cur) {
         *cur = n;
-        Sound_PlaySeFlat(0, 0x17, 0);
+        Sound_PlaySeFlat(0, SE_SYS_SCROLL, 0);
         return 1;
     }
     return 0;
@@ -180,13 +182,13 @@ s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count)
     }
     old = *cur;
     n = old;
-    if (buttons & 0x808) {
+    if (buttons & (PAD_LEFT | PAD_L1)) {
         if (old == 0) {
             n = count - 1;
         } else {
             n = old - 1;
         }
-    } else if (buttons & 0x480) {
+    } else if (buttons & (PAD_RIGHT | PAD_R1)) {
         n = old + 1;
         if (n >= count) {
             n = 0;
@@ -194,7 +196,7 @@ s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count)
     }
     if (n != *cur) {
         *cur = n;
-        Sound_PlaySeFlat(0, 0x17, 0);
+        Sound_PlaySeFlat(0, SE_SYS_SCROLL, 0);
         return 1;
     }
     return 0;
@@ -213,8 +215,8 @@ void Menu_GridCursor(Grid *grid, u16 buttons)
     row = grid->row;
     col = grid->col;
 
-    if ((buttons & 0xC00) && grid->cols > 1) {
-        if (buttons & 0x800) {
+    if ((buttons & (PAD_LEFT | PAD_RIGHT)) && grid->cols > 1) {
+        if (buttons & PAD_LEFT) {
             col--;
             if (col < 0) {
                 col = grid->cols - 1;
@@ -230,15 +232,15 @@ void Menu_GridCursor(Grid *grid, u16 buttons)
             grid->row = row;
         }
         grid->col = col;
-        Sound_PlaySeFlat(0, 0x11, 0);
-    } else if (buttons & 0x3000) {
+        Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
+    } else if (buttons & (PAD_UP | PAD_DOWN)) {
         if (col >= grid->cols - 1) {
             rowCount = grid->lastRows;
         } else {
             rowCount = grid->rows;
         }
         if (rowCount > 1) {
-            if (buttons & 0x2000) {
+            if (buttons & PAD_UP) {
                 row--;
                 if (row < 0) {
                     row = rowCount - 1;
@@ -249,7 +251,7 @@ void Menu_GridCursor(Grid *grid, u16 buttons)
                     row = 0;
                 }
             }
-            Sound_PlaySeFlat(0, 0x17, 0);
+            Sound_PlaySeFlat(0, SE_SYS_SCROLL, 0);
         }
         grid->row = row;
     }
@@ -266,7 +268,7 @@ u16 PouchMenu_MoveCursor(u8 *cur, u16 buttons)
     Pouch_MoveCursor(cur, buttons);
     item = gPlayers[gScene.localPlayer].pouch[*cur].item;
     gHelpLine = item + 0x18;
-    PouchMenu_DecoCursor(item, buttons & 0x80);
+    PouchMenu_DecoCursor(item, buttons & PAD_R1);
     return item;
 }
 
@@ -281,8 +283,8 @@ void Pouch_MoveCursor(u8 *cur, u16 buttons)
         Menu_CursorUpDown(cur, buttons, POUCH_MENU_ROWS);
         *cur += POUCH_MENU_ROWS;
     }
-    if (buttons & 0xC00) {
-        if (buttons & 0x800) {
+    if (buttons & (PAD_LEFT | PAD_RIGHT)) {
+        if (buttons & PAD_LEFT) {
             if (*cur < POUCH_MENU_ROWS) {
                 *cur += POUCH_MENU_ROWS * 2;
             }
@@ -293,7 +295,7 @@ void Pouch_MoveCursor(u8 *cur, u16 buttons)
                 *cur -= POUCH_MENU_ROWS * 2;
             }
         }
-        Sound_PlaySeFlat(0, 0x11, 0);
+        Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
     }
 }
 
@@ -316,8 +318,8 @@ u8 PhraseMenu_MoveCursor(u16 buttons, u8 cur)
         Menu_CursorUpDown(&cur, buttons, PHRASE_MENU_ROWS);
         cur += PHRASE_MENU_ROWS * 3;
     }
-    if (buttons & 0xC00) {
-        if (buttons & 0x800) {
+    if (buttons & (PAD_LEFT | PAD_RIGHT)) {
+        if (buttons & PAD_LEFT) {
             if (cur < PHRASE_MENU_ROWS) {
                 cur += PHRASE_MENU_ROWS * PHRASE_MENU_COLUMNS;
             }
@@ -328,7 +330,7 @@ u8 PhraseMenu_MoveCursor(u16 buttons, u8 cur)
                 cur -= PHRASE_MENU_ROWS * PHRASE_MENU_COLUMNS;
             }
         }
-        Sound_PlaySeFlat(0, 0x11, 0);
+        Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
     }
     return cur;
 }
@@ -338,7 +340,7 @@ u8 PhraseMenu_MoveCursor(u16 buttons, u8 cur)
 void PouchMenu_DecoCursor(u16 item, u16 buttons)
 {
     if (gItemData[item].deco != 0 && item != 0) {
-        Menu_CursorLeftRight(&gHelpColumn, buttons & 0x88, 3);
+        Menu_CursorLeftRight(&gHelpColumn, buttons & (PAD_R1 | PAD_L1), 3);
     }
 }
 
@@ -349,14 +351,14 @@ u8 YesNo_Toggle(u16 buttons, u8 choice, u16 mask)
 {
     buttons = buttons & mask;
     if (choice == 0) {
-        if (buttons & 0x1400) {
+        if (buttons & (PAD_DOWN | PAD_RIGHT)) {
             choice = 1;
-            Sound_PlaySeFlat(0, 0x17, 0);
+            Sound_PlaySeFlat(0, SE_SYS_SCROLL, 0);
         }
     } else {
-        if (buttons & 0x2800) {
+        if (buttons & (PAD_UP | PAD_LEFT)) {
             choice = 0;
-            Sound_PlaySeFlat(0, 0x17, 0);
+            Sound_PlaySeFlat(0, SE_SYS_SCROLL, 0);
         }
     }
     return choice;
@@ -376,27 +378,27 @@ u16 Pad_StickToDpad(u8 pad)
     }
     angle = gPadState[pad].degR + 0x1200;
     if (angle < 0x2400) {
-        return 0x400;
+        return PAD_RIGHT;
     }
     if (angle < 0x4000) {
-        return 0x2400;
+        return PAD_UP | PAD_RIGHT;
     }
     if (angle < 0x6400) {
-        return 0x2000;
+        return PAD_UP;
     }
     if (angle < 0x8000) {
-        return 0x2800;
+        return PAD_UP | PAD_LEFT;
     }
     if (angle < 0xA400) {
-        return 0x800;
+        return PAD_LEFT;
     }
     if (angle < 0xC000) {
-        return 0x1800;
+        return PAD_DOWN | PAD_LEFT;
     }
     if (angle < 0xE400) {
-        return 0x1000;
+        return PAD_DOWN;
     }
-    return 0x1400;
+    return PAD_DOWN | PAD_RIGHT;
 }
 
 s32 Chat_InInputMode(void)
@@ -434,7 +436,7 @@ s32 Item_IsUsable(u16 id)
     s16 pointKind;
     u8 ride;
 
-    if (func_723BC0(pl) == 1 && Item_IsStealable(id) == 1) {
+    if (Player_Status6Active(pl) == 1 && Item_IsStealable(id) == 1) {
         return 0;
     }
     ride = pl->rideState;
@@ -470,7 +472,7 @@ s32 Item_IsUsable(u16 id)
     case 0x9E:
     case 0x9F:
     case 0xA0:
-        return Pouch_HasItem28(pl);
+        return Pouch_HasMeat(pl);
     case 0xA2:
     case 0x2F7:
         return 0;
@@ -786,7 +788,7 @@ void Draw_Icons(Icon *icons, u8 count)
 {
     TexRect spr;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gfx_SetBlend(4, 5);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
@@ -872,9 +874,9 @@ s32 Map_GetHalf(u8 stage, u8 area)
     case 14:
     case 15:
         switch (area) {
-        case 0x79:
-        case 0x7A:
-        case 0x7B:
+        case AREA_TOWER_0:
+        case AREA_TOWER_1:
+        case AREA_TOWER_2:
             return MAP_HALF_LEFT;
         default:
             return MAP_HALF_RIGHT;

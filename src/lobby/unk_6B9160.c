@@ -7,6 +7,7 @@
 #include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "save.h"
+#include "area.h"
 /* Level 4: VObj_DrawPicture matches only there; the rest match at both. */
 #pragma optimization_level 4
 void *memset(void *, s32, u32);
@@ -77,7 +78,7 @@ void Mtx_Identity(f32 *m);
 s32 Gs_SetState(u8, u32);
 void Camera_ProjectPoint(f32 *out, f32 *v);
 #include "prim.h"
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32);
 f32 Math_Sin(f32 a);
@@ -108,7 +109,7 @@ void VObj_DrawPicture(Vec3f *pos, u8 kind, u32 ax, u32 ay, s8 *timer)
     f32 w;
     f32 off;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x147);
     Tex_Bind(0x147);
     w = gVObjHeights[gVObjKinds[kind].unk5];
@@ -1273,15 +1274,15 @@ void MealScene_Open(Em *npc)
     Talk_Say(m->msg, 0);
     Npc_HoldRoute(npc);
     switch (gScene.area) {
-    case 0xAD:
+    case AREA_ONLINE_HOUSE_0:
         m->a = 0;
         m->b = 1;
         break;
-    case 0xAE:
+    case AREA_ONLINE_HOUSE_1:
         m->a = 3;
         m->b = 4;
         break;
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_2:
         m->a = 9;
         m->b = 10;
         break;
@@ -1443,17 +1444,17 @@ void MealScene_Update(void)
             m->state++;
             FadeA_Start(2);
             switch (gScene.area) {
-            case 0xAD:
+            case AREA_ONLINE_HOUSE_0:
             default:
                 k = 0;
                 break;
-            case 0xAE:
+            case AREA_ONLINE_HOUSE_1:
                 k = 1;
                 break;
-            case 0xAF:
+            case AREA_ONLINE_HOUSE_2:
                 k = 2;
                 break;
-            case 0x57:
+            case AREA_HUB_0x57:
                 k = 3;
                 break;
             }

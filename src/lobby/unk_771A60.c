@@ -4,6 +4,7 @@
 #include "lobby_globals.h"
 #include "scene.h"
 #include "window.h"
+#include "area.h"
 
 /* prototypes */
 s32 IdList_FindFree(s8 *, s32);
@@ -45,7 +46,7 @@ u16 GameMenu_UpdateChat(u16 pad)
         m = gSubMenuWork;
         cur = &m->subEntry;
         gHelpLine = *cur;
-        if (*cur == 3 && gScene.area == 0x83) {
+        if (*cur == 3 && gScene.area == AREA_HUB_0x83) {
             gHelpLine = 4;
         }
         if (pad & 0x20) {

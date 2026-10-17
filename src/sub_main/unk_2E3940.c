@@ -1,14 +1,20 @@
 /*
- * The start of sub_main: its entry and main loop, system settings, the
- * memory layout and version string, motion frame tests, the text objects
- * and the glyph cache (gFontCache), the model and texture code, matrices,
- * animation curves and math (0x2E3940-0x2EF020; the bones are unk_2EF020.c,
- * another unit: Player_UpdateMotion declares Bone_PosePart and Bone_BlendPart with the
- * float first and u16 ids, which their definitions don't match with). One unit: Font_CreateHandles uses v1 for its temporaries because the
- * static Font_ClearSlots leaves v0 alone, so everything from Font_ClearSlots to
- * Font_CreateHandles is one file; the .data of the old unk_2E3940.c ends where
- * unk_2E6F40.c's starts, and every function matches at level 4.
+ * The start of sub_main (0x2E3940-0x2EF020): its entry and main loop
+ * (sub_main_entry, SubMain_Step), the system settings, the memory layout
+ * (ram_areas.h) and the version string; the pads' frame state (pad.h); the
+ * motion loaders and the player's motion layers (motion.h); the text runs
+ * and the glyph cache (TextRun, FontCache, gFontCache); the draw models
+ * (ModelEntry and MeshDesc, model.h: Model_Create, Model_Draw and the VIF
+ * packet builders); then the animation curves, matrices, vectors,
+ * quaternions and maths.
+ *
+ * The bones (unk_2EF020.c) are another unit: Player_UpdateMotion declares
+ * Bone_PosePart and Bone_BlendPart with the float first and u16 ids, which
+ * their definitions don't match. Everything from Font_ClearSlots to
+ * Font_CreateHandles has to be one unit: Font_CreateHandles uses v1 for its
+ * temporaries because the static Font_ClearSlots leaves v0 alone.
  */
+
 #include "common.h"
 #include "syswork.h"
 #include "syssettings.h"
@@ -23,6 +29,11 @@
 #include "padio.h"
 #include "syssave.h"
 #include "pad.h"
+#include "objhead.h"
+#include "overlay.h"
+#include "render_state.h"
+#include "task.h"
+#include "hw_regs.h"
 
 /* The game compiled this unit at optimization level 4 (Vec_RotateX needs it;
  * every other matched function matches either way). */
@@ -41,24 +52,40 @@ typedef struct TextRun {
     s16 *glyphs;                /* 0x10: glyph indices ended by a negative one, or the string */
 } TextRun;
 
-/* The glyph cache of the text system (gFontCache). */
+/* The glyph cache's sizes. */
+#define FONT_PAGES 7                /* the text pages, drawn in order (a run's page comes from its size: Font_SelectPage) */
+#define FONT_PAGE_RUNS 0x80         /* text runs per page (0xA00 bytes of TextRun each) */
+#define FONT_TEXT_SIZE 0x8000       /* bytes of the runs' strings, all pages together */
+#define FONT_GLYPH_CODES 0x1E80     /* glyph indices (Font_GlyphIndex): FontCache.slot's length */
+#define FONT_SLOT_NONE 0xFFFF       /* FontCache.slot: the glyph is not cached */
+#define FONT_PAL_SIZE 0x40          /* bytes per palette in FontCache.palPixels */
+#define FONT_FILE_ID 0x1712         /* the compressed file of the glyph bits (LoadCompressedFile) */
+
+/* Shift-JIS: the lead byte of a two-byte character, and the full-width space,
+ * which draws nothing. */
+#define SJIS_IS_LEAD(c) (((c) >= 0x80 && (c) <= 0x9F) || ((c) >= 0xE0 && (c) < 0x100))
+#define SJIS_SPACE 0x8140
+
+/* The glyph cache of the text system (gFontCache), at the start of
+ * gFontArena. The fields the comments call "copied" come from the font's
+ * FontDesc at Font_Init and nothing reads them. */
 typedef struct FontCache {
     s32 font;                   /* 0x0000: the index in gFontDescs */
-    s32 unk04;                  /* 0x0004 */
+    s32 unk04;                  /* 0x0004: copied (FontDesc.unk00) */
     s32 width;                  /* 0x0008: glyph pixels */
     s32 height;                 /* 0x000C */
-    s32 unk10;                  /* 0x0010 */
-    s32 unk14;                  /* 0x0014 */
-    s32 unk18;                  /* 0x0018 */
+    s32 unk10;                  /* 0x0010: copied (FontDesc.unk0C) */
+    s32 unk14;                  /* 0x0014: copied (FontDesc.unk10) */
+    s32 unk18;                  /* 0x0018: copied (FontDesc.unk14) */
     u32 glyphs;                 /* 0x001C: glyphs of the font */
     s32 glyphBytes;             /* 0x0020: bytes per glyph at bits */
     s32 (*palInfo)[4];          /* 0x0024: per palette, 4 words for Font_SetPalette */
     s32 palCount;               /* 0x0028 */
     s32 texCount;               /* 0x002C: pages */
-    s32 unk30;                  /* 0x0030 */
-    s32 unk34;                  /* 0x0034 */
-    s32 unk38;                  /* 0x0038 */
-    s32 unk3C;                  /* 0x003C: bytes from D_004B1940 to the end of text */
+    s32 unk30;                  /* 0x0030: copied (FontDesc.unk30) */
+    s32 unk34;                  /* 0x0034: copied (FontDesc.unk34) */
+    s32 unk38;                  /* 0x0038: copied (FontDesc.unk38) */
+    s32 arenaUsed;              /* 0x003C: bytes of gFontArena in use, to the end of text; nothing reads it */
     s32 loaded;                 /* 0x0040: bits is loaded */
     s32 defAdvance;             /* 0x0044: the font's advance (TextObj_Reset) */
     s32 defCharH;               /* 0x0048: the font cell height (TextObj_Reset) */
@@ -70,29 +97,29 @@ typedef struct FontCache {
     s16 y;                      /* 0x005A */
     u8 advance;                 /* 0x005C: of new runs (Font_SetSpacing) */
     u8 charH;                   /* 0x005D: the glyph height of new runs (Font_SetSpacing) */
-    u8 unk5E;                   /* 0x005E */
-    u8 unk5F;                   /* 0x005F */
-    u8 *palPixels;              /* 0x0060: the palettes, 0x40 bytes each */
-    s32 runCount[7];            /* 0x0064: per page, its text runs */
-    s32 runPrev[7];             /* 0x0080: runCount of the frame before */
-    TextRun *runs[7];    /* 0x009C: per page */
+    u8 lineGapOn;               /* 0x005E: Text_PrintCodes adds lineGap to each new line (Text_PrintfStyled) */
+    u8 lineGap;                 /* 0x005F: pixels */
+    u8 *palPixels;              /* 0x0060: the palettes, FONT_PAL_SIZE bytes each */
+    s32 runCount[FONT_PAGES];   /* 0x0064: per page, its text runs */
+    s32 runPrev[FONT_PAGES];    /* 0x0080: runCount of the frame before */
+    TextRun *runs[FONT_PAGES];  /* 0x009C: per page, FONT_PAGE_RUNS runs */
     u32 textLen;                /* 0x00B8: bytes used in text (at most 0x8000) */
     char *text;                 /* 0x00BC: the runs' strings */
     s32 halfWidth;              /* 0x00C0: one-byte characters advance half a glyph (else 2/3) */
     s32 runPage;                /* 0x00C4: the page of new runs (Font_SelectPage) */
     s32 page;                   /* 0x00C8: the page being filled */
-    s32 pageDone[7];            /* 0x00CC: per page, drawn this frame */
+    s32 pageDone[FONT_PAGES];   /* 0x00CC: per page, drawn this frame */
     s32 max;                    /* 0x00E8: slots */
     s32 perPage;                /* 0x00EC: slots per page (texture) */
     f32 scale;                  /* 0x00F0: the display width / 640 */
     s32 clutNew;                /* 0x00F4: of new runs */
     s32 palNew;                 /* 0x00F8: of new runs */
     s32 glyphMode;              /* 0x00FC: new runs take glyph indices, not a string */
-    u8 pad100[0x104 - 0x100];
-    s16 pageFirst[7];           /* 0x0104: per page, its first slot */
-    s16 pageEnd[7];             /* 0x0112: per page, the slot after its last */
-    u16 *pageGlyphs[7];         /* 0x0120: per page, the glyph of each slot */
-    u16 slot[0x1E80];           /* 0x013C: per glyph (Font_GlyphIndex), its slot or 0xFFFF */
+    s32 unk100;                 /* 0x0100: set to -1 by Font_BeginPage; nothing reads it */
+    s16 pageFirst[FONT_PAGES];  /* 0x0104: per page, its first slot */
+    s16 pageEnd[FONT_PAGES];    /* 0x0112: per page, the slot after its last */
+    u16 *pageGlyphs[FONT_PAGES]; /* 0x0120: per page, the glyph of each slot */
+    u16 slot[FONT_GLYPH_CODES]; /* 0x013C: per glyph (Font_GlyphIndex), its slot or FONT_SLOT_NONE */
     s32 used;                   /* 0x3E3C: slots in use */
     u32 *tex;                   /* 0x3E40: per page, a texture handle */
     u32 *pal;                   /* 0x3E44: palette handles */
@@ -126,10 +153,10 @@ void Gs_SetTableColor(s32 a);
 extern s32 gFlipCountdown; /* main */
 extern s32 gDispWidth; /* main: display width (divided by 640 for the font scale) */
 extern s32 gSysFrameMode; /* main */
-s32 Table_GetWordAt8(u8 *base, s32 i);
+s32 MotionPack_GroupCount(u8 *base, s32 i);
 void func_6B6700(void); /* select overlay: Option_SetDefaults (select.txt) */
 void Pad_UpdatePorts(void);
-void func_002E4560(void);
+void SubMain_EmptyFrameHook(void);
 void Mem_InitLayout(void);
 void Version_Build(void);
 void SubMain_OpenLoading(void);
@@ -147,7 +174,7 @@ s32 UsbKb_RunInitStep(void);
 s32 Net_Start(void);
 void Kbd_ReadUsb(void);
 void Kbd_InitState(s8);
-void func_00319FE0(void);
+void Kbd_ClearPolled(void);
 void Brightness_Draw(void);
 void Tex_LoadFile(s32 a, s32 b, s32 c);
 void PlayerLook_ResetLoaded(void);
@@ -180,11 +207,11 @@ extern u8 gQuestFiles;
 extern u8 gShortMailMsg;
 extern u8 gMailBox;
 extern u8 gChatBlockList;
-extern s16 D_005CA910;
+extern s16 gQuestReturnArea;
 extern s8 gOnlineBonusState;
 extern u8 gSoundLoading;
 extern s32 gSaveBuf;
-extern u16 D_006AE190;
+extern u16 gPadDebugModeLast;
 extern u16 gPadDebugMode;
 extern u8 D_6B5CF0;
 void Font_DrawPage(s32 idx);
@@ -209,67 +236,67 @@ extern s32 gAnimData;
 
 /* unk_2E3940's .rodata (0x46A100-0x46A310) */
 #pragma rodata on
-char D_0046A100[0x8] = {
+char gMonthNames_0[0x8] = {
 #include "sub_main/0046A100.inc"
 };
-char D_0046A108[0x8] = {
+char gMonthNames_1[0x8] = {
 #include "sub_main/0046A108.inc"
 };
-char D_0046A110[0x8] = {
+char gMonthNames_2[0x8] = {
 #include "sub_main/0046A110.inc"
 };
-char D_0046A118[0x8] = {
+char gMonthNames_3[0x8] = {
 #include "sub_main/0046A118.inc"
 };
-char D_0046A120[0x8] = {
+char gMonthNames_4[0x8] = {
 #include "sub_main/0046A120.inc"
 };
-char D_0046A128[0x8] = {
+char gMonthNames_5[0x8] = {
 #include "sub_main/0046A128.inc"
 };
-char D_0046A130[0x8] = {
+char gMonthNames_6[0x8] = {
 #include "sub_main/0046A130.inc"
 };
-char D_0046A138[0x8] = {
+char gMonthNames_7[0x8] = {
 #include "sub_main/0046A138.inc"
 };
-char D_0046A140[0x8] = {
+char gMonthNames_8[0x8] = {
 #include "sub_main/0046A140.inc"
 };
-char D_0046A148[0x8] = {
+char gMonthNames_9[0x8] = {
 #include "sub_main/0046A148.inc"
 };
-char D_0046A150[0x8] = {
+char gMonthNames_10[0x8] = {
 #include "sub_main/0046A150.inc"
 };
-char D_0046A158[0x8] = {
+char gMonthNames_11[0x8] = {
 #include "sub_main/0046A158.inc"
 };
-char D_0046A160[0x8] = {
+char gVerFmtMonth[0x8] = {
 #include "sub_main/0046A160.inc"
 };
-char D_0046A168[0x8] = {
+char gVerFmtDay1[0x8] = {
 #include "sub_main/0046A168.inc"
 };
-char D_0046A170[0x8] = {
+char gVerFmtField[0x8] = {
 #include "sub_main/0046A170.inc"
 };
-char D_0046A178[0xC] = {
+char gVerFmtVersion[0xC] = {
 #include "sub_main/0046A178.inc"
 };
-char D_0046A190[0x20] = {
+char gVerRule[0x20] = {
 #include "sub_main/0046A190.inc"
 };
-char D_0046A1B0[0x18] = {
+char gVerTitle[0x18] = {
 #include "sub_main/0046A1B0.inc"
 };
-char D_0046A1C8[0x8] = {
+char gVerFmtChar[0x8] = {
 #include "sub_main/0046A1C8.inc"
 };
-char D_0046A1D0[0x10] = {
+char gVerLineEnd[0x10] = {
 #include "sub_main/0046A1D0.inc"
 };
-char D_0046A1E0[0x20] = {
+char gMotionIdBadFmt[0x20] = {
 #include "sub_main/0046A1E0.inc"
 };
 char D_0046A200[272] = {
@@ -286,7 +313,9 @@ extern s32 *gNetDevCur;
 extern s8 gNetLanMode;
 
 extern s32 gSysExiting;
-/* The resident overlay's main loop. */
+/* The resident overlay's main loop, which never returns: one SubMain_Step per frame
+ * (only frame flips while gSysExiting is set); online, every 32 frames, polls the
+ * network interface for an error. */
 void sub_main_entry(void)
 {
     gSubMainStep = 0;
@@ -312,6 +341,10 @@ void sub_main_entry(void)
     }
 }
 
+/* One frame of sub_main: the first sets everything up and starts select's Boot_Task
+ * (0x6B5CF0, D_6B5CF0 here: select is not linked with sub_main) in task slot 0; then each
+ * runs the tasks and the frame callbacks, or, when a reset is asked for, returns to the
+ * title screen. Returns 0. */
 s32 SubMain_Step(void)
 {
     switch (gSubMainStep) {
@@ -329,7 +362,7 @@ s32 SubMain_Step(void)
         } else {
             Task_RunFrame();
             Callbacks_Run();
-            func_002E4560();
+            SubMain_EmptyFrameHook();
         }
         Sys_FlipFrame(0);
         break;
@@ -342,6 +375,8 @@ s32 SubMain_Step(void)
     return 0;
 }
 
+/* The set-up of the first frame: the network, the USB keyboard, the memory layout, the
+ * tasks, gm_sub and select, the text and sound systems, the mail and quest buffers. */
 void SubMain_Init(void)
 {
     Net_Start();
@@ -361,16 +396,18 @@ void SubMain_Init(void)
     memset(&gMailBox, 0, 0x490U);
     memset(&gQuestFiles, 0, 0x900U);
     memset(&gChatBlockList, 0, 0x1E0U);
-    D_005CA910 = 0;
+    gQuestReturnArea = 0;
     gElderForecastHeard = 0;
     gOnlineBonusState = 0;
     Version_Build();
-    LoadOverlay(2);
+    LoadOverlay(OVERLAY_SELECT);
     SubMain_ResetSystems();
     Kbd_InitState((s32) gSysSettings.language);
     Loading_Stop();
 }
 
+/* The start of each frame: reads the pads and the USB keyboard and clears the frame's
+ * text, free lists and callbacks before the tasks run. */
 void SubMain_BeginFrame(void)
 {
     gSysSettings.unkBF = 0;
@@ -381,9 +418,9 @@ void SubMain_BeginFrame(void)
     Font_FlushSlots();
     Text_UpdatePulse();
     Pad_Update();
-    D_006AE190 = gPadDebugMode;
+    gPadDebugModeLast = gPadDebugMode;
     Pad_UpdatePorts();
-    func_00319FE0();
+    Kbd_ClearPolled();
     Kbd_ReadUsb();
     Text_Reset();
     FreeList_InitAll();
@@ -392,6 +429,8 @@ void SubMain_BeginFrame(void)
 }
 
 extern s32 gLoadingScreenOn;
+/* The end of each frame's drawing: the loading screen, the brightness screen (after the
+ * first frame), then the stream server. */
 void SubMain_EndFrame(void)
 {
     if (gLoadingScreenOn != 0) {
@@ -444,12 +483,14 @@ void SysSettings_Reset(void)
     sys->unk31 = 1;
     Sound_ApplyOutputMode(sys->soundMode);
     Stream_UpdateMaxVol(0);
-    sys->bootMode = 0;
-    sys->taskRequest = 0;
+    sys->bootMode = BOOT_MODE_SCREENS;
+    sys->taskRequest = TASK_REQUEST_NONE;
     Display_SetOffset(gSysSave.options.screenX, gSysSave.options.screenY);
     sys->unk42 = 0;
 }
 
+/* Resets the game's systems for a new start: the save copy, the patches, the chat
+ * phrases, the system settings and the rest (Game_ResetSubsystems). */
 void SubMain_ResetSystems(void)
 {
     func_6B6700();
@@ -462,23 +503,23 @@ void SubMain_ResetSystems(void)
 
 extern u8 gGsColorTable[];
 
-/* Register 0x14 (Gs_SetState) = colour i of the RGB table gGsColorTable, alpha 0xFF. */
+/* The background colour (RS_BG_COLOR) = colour i of the RGB table gGsColorTable, alpha 0xFF. */
 void Gs_SetTableColor(s32 i)
 {
-    u8 *c = &gGsColorTable[i * 3];
-    u8 r;
-    u8 g;
-    u32 v;
+    u8 *rgb = &gGsColorTable[i * 3];
+    u8 red;
+    u8 green;
+    u32 color;
 
-    r = *c++;
-    g = *c++;
-    v = (r << 16) | 0xFF000000;
-    v |= g << 8;
-    Gs_SetState(0x14, *c | v);
+    red = *rgb++;
+    green = *rgb++;
+    color = (red << 16) | 0xFF000000;
+    color |= green << 8;
+    Gs_SetState(RS_BG_COLOR, *rgb | color);
 }
 
+/* main's pointer to the pads as read. */
 extern PadInput *gPadInputPtr;
-/* main's pointer to the pads as read (0x24BBE8; main.txt has no name for it yet) */
 
 /* Per-pad update of pad i, emptied in this build: only the test of its state byte
  * (== 1) is left. Static: Pad_UpdatePorts keeps its counter in a2 across it. */
@@ -495,6 +536,7 @@ static void Pad_UpdatePort(s32 i)
 /* Updates both pads (Pad_UpdatePort), then PadState_UpdateAll. */
 void PadState_UpdateAll(void);
 
+/* Reads both controller ports, then updates their PadStates. */
 void Pad_UpdatePorts(void)
 {
     s32 i;
@@ -505,6 +547,7 @@ void Pad_UpdatePorts(void)
     PadState_UpdateAll();
 }
 
+/* A stick's tilt with the dead zone applied: below 0x2D it counts as 0. */
 u16 Pad_StickDeadZone(u32 x)
 {
     if (x < 0x2D) {
@@ -601,12 +644,10 @@ void PadState_Update(s32 port)
 
 void PadState_Update(s32 i);
 extern s32 gPadDebugSwitch;
-extern s32 gPadOddFrame;
-extern u16 D_006AE0D6;
-extern u16 D_006AE0D2;
-
-/* Updates the four slots (PadState_Update); then, with gPadDebugSwitch set, a debug switch toggled
- * by button 0x8000 that sets gPadDebugMode (0 with 0x20, cycled 0-3 with 0x40, else 0x8000). */
+extern s32 gPadDebugOn;
+/* Updates the four slots (PadState_Update); then, with gPadDebugSwitch set, a debug switch on
+ * the second pad: START toggles it, and while it is on, gPadDebugMode is 0 on CIRCLE, cycles
+ * 0-3 while CROSS is held, and is 0x8000 otherwise. */
 void PadState_UpdateAll(void)
 {
     s32 i;
@@ -617,24 +658,25 @@ void PadState_UpdateAll(void)
     if (gPadDebugSwitch == 0) {
         return;
     }
-    if (D_006AE0D6 & 0x8000) {
-        gPadOddFrame ^= 1;
+    if (gPadState[1].pressed & PAD_START) {
+        gPadDebugOn ^= 1;
     }
-    if (gPadOddFrame != 0) {
-        if (D_006AE0D6 & 0x20) {
+    if (gPadDebugOn != 0) {
+        if (gPadState[1].pressed & PAD_CIRCLE) {
             gPadDebugMode = 0;
-        } else if (D_006AE0D2 & 0x40) {
+        } else if (gPadState[1].held & PAD_CROSS) {
             gPadDebugMode = (u8)(gPadDebugMode + 1) % 4;
         } else {
             gPadDebugMode = 0x8000;
         }
     } else {
-        gPadOddFrame = 0;
+        gPadDebugOn = 0;
         gPadDebugMode = 0;
     }
 }
 
-void func_002E4560(void)
+/* Empty: SubMain_Step calls it after each frame's tasks and callbacks. */
+void SubMain_EmptyFrameHook(void)
 {
 }
 
@@ -646,10 +688,10 @@ extern s16 gTexPrepLast;
 extern s16 gTexPrepLastCount;
 extern s16 gTexPrepFrameCount;
 extern s32 gPadDebugSwitch;
-extern s32 gPadOddFrame;
+extern s32 gPadDebugOn;
 
-/* Clears the system settings (keeping +0xB8), lays out the memory areas and clears the
- * texture handles. */
+/* Clears the system settings (keeping gmSubAddr), lays out the memory areas
+ * (ram_areas.h) and clears the texture handles. */
 void Mem_InitLayout(void)
 {
     s32 keep = gSysSettings.gmSubAddr;
@@ -659,29 +701,29 @@ void Mem_InitLayout(void)
     gSysSettings.gmSubAddr = keep;
     gSysSettings.subMainLoaded = 1;
     gSysSettings.memBase = (u8 *)MEM_AREAS_ADDR;
-    Mem_Fill(gSysSettings.memBase, 0, 0x55E000);
+    Mem_Fill(gSysSettings.memBase, 0, MEM_AREAS_SIZE);
     gSysSettings.selWork = (u8 *)MEM_AREAS_ADDR;
     gSysSettings.unk64 = 0xAE8000;
     gSysSettings.unk68 = 0xAF5200;
-    gSysSettings.bones = (void *)0xB09200;
-    gSysSettings.models = (struct Model *)0xBD1200;
-    gSysSettings.prims = 0xBD5200;
-    gSysSettings.extraBuf = (u8 *)0xBDA200;
-    gSysSettings.lobbyWorkBuf = 0xBEE200;
+    gSysSettings.bones = (void *)BONE_AREA_ADDR;
+    gSysSettings.models = (struct Model *)MODEL_AREA_ADDR;
+    gSysSettings.prims = PRIM_AREA_ADDR;
+    gSysSettings.extraBuf = (u8 *)EXTRA_BUF_ADDR;
+    gSysSettings.lobbyWorkBuf = LOBBY_WORK_ADDR;
     gSysSettings.workArea = (void *)WORK_AREA_ADDR;
-    gSysSettings.stageFile = 0xC22200;
-    gSysSettings.camData = (u8 *)0xC2A200;
+    gSysSettings.stageFile = STAGE_FILE_ADDR;
+    gSysSettings.camData = (u8 *)CAM_DATA_ADDR;
     gSysSettings.dataBuf = (u8 *)ANIM_AREA_ADDR;
     gSysSettings.loadBuf = (u8 *)LOAD_BUF_ADDR;
-    gSysSettings.readBuf = (u8 *)0xF08000;
-    gSysSettings.saveBuf = (struct SaveData *)0xD60200;
+    gSysSettings.readBuf = (u8 *)READ_BUF_ADDR;
+    gSysSettings.saveBuf = (struct SaveData *)SAVE_BUF_ADDR;
     gSysSettings.unkB4 = 0x27E00;
-    gSysSettings.patchArea = 0xAA6780;
+    gSysSettings.patchArea = (s32)PATCH_DATA;
     gSysSettings.unkDC = 0x20040;
     gSysSettings.unk80 = gSysSettings.dataBuf;
     gSysSettings.modelPack = gSysSettings.dataBuf;
     gSysSettings.unk7C = gSysSettings.modelPack;
-    for (i = 0; i < 371; i++) {
+    for (i = 0; i < TEX_HANDLE_COUNT; i++) {
         gTexHandles[i] = 0;
     }
     Tex_ClearIdSlots();
@@ -690,7 +732,7 @@ void Mem_InitLayout(void)
     gTexPrepLastCount = -1;
     gTexPrepFrameCount = 0;
     gPadDebugSwitch = 0;
-    gPadOddFrame = 0;
+    gPadDebugOn = 0;
 }
 
 typedef struct Delims {
@@ -702,18 +744,18 @@ s32 strcmp(char *a, char *b);
 s32 sprintf(char *buf, char *fmt, ...);
 void scePrintf(char *fmt, ...);
 s32 strlen(char *s);
-extern char D_00402220[];       /* the build date, "Mmm dd yyyy" */
-extern char D_00402230[];       /* the build time, "hh:mm:ss" */
+extern char gBuildDate[];       /* the build date, as __DATE__ */
+extern char gBuildTime[];       /* the build time, as __TIME__ */
 extern char *gMonthNames[12];    /* the month names */
 extern Delims gVersionDelims;       /* the separators */
-extern char D_0046A160[];
-extern char D_0046A168[];
-extern char D_0046A170[];
-extern char D_0046A178[];
-extern char D_0046A190[];
-extern char D_0046A1B0[];
-extern char D_0046A1C8[];
-extern char D_0046A1D0[];
+extern char gVerFmtMonth[];
+extern char gVerFmtDay1[];
+extern char gVerFmtField[];
+extern char gVerFmtVersion[];
+extern char gVerRule[];
+extern char gVerTitle[];
+extern char gVerFmtChar[];
+extern char gVerLineEnd[];
 extern s8 gVersionString[];
 
 /* Builds the version string gVersionString (yy mm dd hh mm) from the build date and time, and
@@ -726,48 +768,50 @@ void Version_Build(void)
     char day[8];
     char hour[8];
     char min[8];
-    char yy[8];
-    char mo[8];
-    char dd[8];
-    char hh[8];
-    char mi[8];
+    char yearField[8];
+    char monthField[8];
+    char dayField[8];
+    char hourField[8];
+    char minField[8];
     char date[0x28];
     char time[0x20];
     s32 j;
     s32 i;
 
     delim = gVersionDelims;
-    strcpy(date, D_00402220);
-    strcpy(time, D_00402230);
+    strcpy(date, gBuildDate);
+    strcpy(time, gBuildTime);
     strcpy(month, strtok(date, delim.s));
     strcpy(day, strtok(NULL, delim.s));
     strcpy(year, strtok(NULL, delim.s));
-    strcpy(yy, year + 2);
+    strcpy(yearField, year + 2);
     for (i = 0; i < 12; i++) {
         if (strcmp(gMonthNames[i], month) == 0) {
-            sprintf(mo, D_0046A160, i + 1);
+            sprintf(monthField, gVerFmtMonth, i + 1);
             break;
         }
     }
     if (strlen(day) == 1) {
-        sprintf(dd, D_0046A168, day);
+        sprintf(dayField, gVerFmtDay1, day);
     } else {
-        sprintf(dd, D_0046A170, day);
+        sprintf(dayField, gVerFmtField, day);
     }
     strcpy(hour, strtok(time, delim.s));
     strcpy(min, strtok(NULL, delim.s));
-    sprintf(hh, D_0046A170, hour);
-    sprintf(mi, D_0046A170, min);
-    sprintf((char *)gVersionString, D_0046A178, yy, mo, dd, hh, mi);
-    scePrintf(D_0046A190);
-    scePrintf(D_0046A1B0);
+    sprintf(hourField, gVerFmtField, hour);
+    sprintf(minField, gVerFmtField, min);
+    sprintf((char *)gVersionString, gVerFmtVersion, yearField, monthField, dayField, hourField, minField);
+    scePrintf(gVerRule);
+    scePrintf(gVerTitle);
     for (j = 0; j < 10; j++) {
-        scePrintf(D_0046A1C8, gVersionString[j]);
+        scePrintf(gVerFmtChar, gVersionString[j]);
     }
-    scePrintf(D_0046A1D0);
-    scePrintf(D_0046A190);
+    scePrintf(gVerLineEnd);
+    scePrintf(gVerRule);
 }
 
+/* Loads the loading screen's texture file and opens the loading screen (in the save
+ * buffer), then flips two frames. */
 void SubMain_OpenLoading(void)
 {
     gSoundLoading = 1;
@@ -777,56 +821,51 @@ void SubMain_OpenLoading(void)
     Sys_FlipFrame(0);
 }
 
-typedef struct AnimSet {
-    u16 flags;
-    s16 count;
-    f32 start;
-    f32 end;
-    f32 loop;
-    s32 anims;
-    s32 base;
-    s32 size;
-    u8 pad1C[4];
-} AnimSet;
 extern s32 gCommonMotionGroupFirst[];
 extern void *gMotions[];
 s32 SysHeap_GetMark(void *mark);
 void SysHeap_Release(void *mark);
 s32 Anim_LoadSet(AnimSet *out, u8 *buf, void *f);
-void *Skeleton_CopyBlock14(u8 *obj);
-u8 *Table_GetEntry(u8 *t, s32 n);
+void *AnimSet_CopyToHandle(u8 *obj);
+u8 *MotionPack_GetEntry(u8 *t, s32 n);
 
+/*
+ * Loads the common motion pack (in gSysSettings.loadBuf; MOTIONS_COMMON_GROUPS groups)
+ * into gMotions from 0, and the first index of each group into gCommonMotionGroupFirst.
+ * Each animation file is converted in gSysSettings.dataBuf, under a system-heap mark
+ * released after it, and copied into a memory handle of its own (NULL for no entry).
+ */
 void Anim_SetupCommon(void)
 {
     s32 mark[2];
     AnimSet set;
-    s32 base;
+    s32 groupBase;
     u8 *buf;
-    s32 n;
-    s32 g;
+    s32 count;
+    s32 group;
     s32 j;
-    s32 k;
-    u8 *e;
-    s32 *starts;
-    void **ents;
+    s32 motionIndex;
+    u8 *entry;
+    s32 *groupFirst;
+    void **motions;
 
-    ents = gMotions;
-    starts = gCommonMotionGroupFirst;
+    motions = gMotions;
+    groupFirst = gCommonMotionGroupFirst;
     buf = gSysSettings.loadBuf;
-    k = 0;
-    for (g = 0, base = 0; g < 10; g++, base += 100) {
-        starts[g] = k;
-        n = Table_GetWordAt8(buf, g);
-        for (j = 0; j < n; j++, k++) {
-            e = Table_GetEntry(buf, j + base);
-            if (e != NULL) {
+    motionIndex = 0;
+    for (group = 0, groupBase = 0; group < MOTIONS_COMMON_GROUPS; group++, groupBase += MOTION_GROUP_SIZE) {
+        groupFirst[group] = motionIndex;
+        count = MotionPack_GroupCount(buf, group);
+        for (j = 0; j < count; j++, motionIndex++) {
+            entry = MotionPack_GetEntry(buf, j + groupBase);
+            if (entry != NULL) {
                 SysHeap_GetMark(&mark);
-                Anim_LoadSet(&set, gSysSettings.dataBuf, e);
-                e = Skeleton_CopyBlock14((u8 *)&set);
+                Anim_LoadSet(&set, gSysSettings.dataBuf, entry);
+                entry = AnimSet_CopyToHandle((u8 *)&set);
                 SysHeap_Release(&mark);
-                ents[k] = e;
+                motions[motionIndex] = entry;
             } else {
-                ents[k] = NULL;
+                motions[motionIndex] = NULL;
             }
         }
     }
@@ -835,40 +874,40 @@ void Anim_SetupCommon(void)
 extern s32 gPlayerMotionGroupFirst[][8]; /* the first set index of each group, per set */
 
 /*
- * As Anim_SetupCommon for the six groups of set idx: loads each animation set of the table
- * in gLoadBuf into gMotions[710 + idx * 300 ...], the first index of each group into
- * gPlayerMotionGroupFirst[idx].
+ * As Anim_SetupCommon for the six groups of set slot: loads each animation set of the table
+ * in gLoadBuf into gMotions[MOTIONS_PLAYER_FIRST + slot * MOTIONS_PER_PLAYER ...], the first index of each group into
+ * gPlayerMotionGroupFirst[slot].
  */
-void Anim_SetupPlayer(s32 idx)
+void Anim_SetupPlayer(s32 slot)
 {
-    s32 base;
-    s32 g;
+    s32 groupBase;
+    s32 group;
     s32 j;
-    s32 k;
-    s32 *first;
-    s32 n;
+    s32 motionIndex;
+    s32 *groupFirst;
+    s32 count;
     s32 mark[2];
-    u8 *e;
+    u8 *entry;
     AnimSet set;
     void **out;
     u8 *buf;
 
-    out = &gMotions[idx * 300 + 710];
+    out = &gMotions[slot * MOTIONS_PER_PLAYER + MOTIONS_PLAYER_FIRST];
     buf = gSysSettings.loadBuf;
-    k = 0;
-    g = 0;
-    first = gPlayerMotionGroupFirst[idx];
-    for (base = 0; g < 6; g++, first++, base += 100) {
-        *first = k;
-        n = Table_GetWordAt8(buf, g);
-        for (j = 0; j < n; j++, out++, k++) {
-            e = Table_GetEntry(buf, j + base);
-            if (e != NULL) {
+    motionIndex = 0;
+    group = 0;
+    groupFirst = gPlayerMotionGroupFirst[slot];
+    for (groupBase = 0; group < MOTIONS_PLAYER_GROUPS; group++, groupFirst++, groupBase += MOTION_GROUP_SIZE) {
+        *groupFirst = motionIndex;
+        count = MotionPack_GroupCount(buf, group);
+        for (j = 0; j < count; j++, out++, motionIndex++) {
+            entry = MotionPack_GetEntry(buf, j + groupBase);
+            if (entry != NULL) {
                 SysHeap_GetMark(&mark);
-                Anim_LoadSet(&set, gSysSettings.dataBuf, e);
-                e = Skeleton_CopyBlock14((u8 *)&set);
+                Anim_LoadSet(&set, gSysSettings.dataBuf, entry);
+                entry = AnimSet_CopyToHandle((u8 *)&set);
                 SysHeap_Release(&mark);
-                *out = e;
+                *out = entry;
             } else {
                 *out = NULL;
             }
@@ -880,41 +919,41 @@ extern s32 gEmMotionGroupFirst[][8]; /* as gPlayerMotionGroupFirst, for these se
 u8 EmKind_MotionGroupCount(s16 kind);
 
 /*
- * As Anim_SetupPlayer for the 2 * EmKind_MotionGroupCount(kind) groups of set idx, into
- * gMotions[1910 + idx * 600 ...] and gEmMotionGroupFirst[idx]. The copy p has its own variable,
- * and base = g * 100 is set after the store (MWCC strength-reduces it as in the game).
+ * As Anim_SetupPlayer for the 2 * EmKind_MotionGroupCount(kind) groups of set slot, into
+ * gMotions[MOTIONS_EM_FIRST + slot * MOTIONS_PER_EM ...] and gEmMotionGroupFirst[slot]. The copy has its own
+ * variable, and groupBase is set after the store, for the match (MWCC strength-reduces it).
  */
-void Anim_SetupEm(s32 idx, s32 kind)
+void Anim_SetupEm(s32 slot, s32 kind)
 {
     s32 mark[2];
     AnimSet set;
     u8 *buf;
-    s32 k;
-    s32 n;
-    u8 *e;
+    s32 motionIndex;
+    s32 count;
+    u8 *entry;
     void **out;
-    void *p;
-    s32 base;
-    s32 g;
+    void *copy;
+    s32 groupBase;
+    s32 group;
     s32 j;
     s32 groups;
 
-    out = &gMotions[idx * 600 + 1910];
+    out = &gMotions[slot * MOTIONS_PER_EM + MOTIONS_EM_FIRST];
     buf = gSysSettings.loadBuf;
     groups = EmKind_MotionGroupCount(kind) * 2;
-    k = 0;
-    for (g = 0; g < groups; g++) {
-        gEmMotionGroupFirst[idx][g] = k;
-        base = g * 100;
-        n = Table_GetWordAt8(buf, g);
-        for (j = 0; j < n; j++, out++, k++) {
-            e = Table_GetEntry(buf, j + base);
-            if (e != NULL) {
+    motionIndex = 0;
+    for (group = 0; group < groups; group++) {
+        gEmMotionGroupFirst[slot][group] = motionIndex;
+        groupBase = group * MOTION_GROUP_SIZE;
+        count = MotionPack_GroupCount(buf, group);
+        for (j = 0; j < count; j++, out++, motionIndex++) {
+            entry = MotionPack_GetEntry(buf, j + groupBase);
+            if (entry != NULL) {
                 SysHeap_GetMark(&mark);
-                Anim_LoadSet(&set, gSysSettings.dataBuf, e);
-                p = Skeleton_CopyBlock14((u8 *)&set);
+                Anim_LoadSet(&set, gSysSettings.dataBuf, entry);
+                copy = AnimSet_CopyToHandle((u8 *)&set);
                 SysHeap_Release(&mark);
-                *out = p;
+                *out = copy;
             } else {
                 *out = NULL;
             }
@@ -923,37 +962,37 @@ void Anim_SetupEm(s32 idx, s32 kind)
 }
 
 /* As Anim_SetupPlayer for the first two groups of the sets Anim_SetupEm loads (into
- * gMotions[1910 + idx * 600 ...] and gEmMotionGroupFirst[idx]). */
-void Anim_SetupEmSlot(s32 idx)
+ * gMotions[MOTIONS_EM_FIRST + slot * MOTIONS_PER_EM ...] and gEmMotionGroupFirst[slot]). */
+void Anim_SetupEmSlot(s32 slot)
 {
-    s32 base;
-    s32 g;
+    s32 groupBase;
+    s32 group;
     s32 j;
-    s32 k;
-    s32 *first;
-    s32 n;
+    s32 motionIndex;
+    s32 *groupFirst;
+    s32 count;
     s32 mark[2];
-    u8 *e;
+    u8 *entry;
     AnimSet set;
     void **out;
     u8 *buf;
 
-    out = &gMotions[idx * 600 + 1910];
+    out = &gMotions[slot * MOTIONS_PER_EM + MOTIONS_EM_FIRST];
     buf = gSysSettings.loadBuf;
-    k = 0;
-    g = 0;
-    first = gEmMotionGroupFirst[idx];
-    for (base = 0; g < 2; g++, first++, base += 100) {
-        *first = k;
-        n = Table_GetWordAt8(buf, g);
-        for (j = 0; j < n; j++, out++, k++) {
-            e = Table_GetEntry(buf, j + base);
-            if (e != NULL) {
+    motionIndex = 0;
+    group = 0;
+    groupFirst = gEmMotionGroupFirst[slot];
+    for (groupBase = 0; group < 2; group++, groupFirst++, groupBase += MOTION_GROUP_SIZE) {
+        *groupFirst = motionIndex;
+        count = MotionPack_GroupCount(buf, group);
+        for (j = 0; j < count; j++, out++, motionIndex++) {
+            entry = MotionPack_GetEntry(buf, j + groupBase);
+            if (entry != NULL) {
                 SysHeap_GetMark(&mark);
-                Anim_LoadSet(&set, gSysSettings.dataBuf, e);
-                e = Skeleton_CopyBlock14((u8 *)&set);
+                Anim_LoadSet(&set, gSysSettings.dataBuf, entry);
+                entry = AnimSet_CopyToHandle((u8 *)&set);
                 SysHeap_Release(&mark);
-                *out = e;
+                *out = entry;
             } else {
                 *out = NULL;
             }
@@ -962,51 +1001,56 @@ void Anim_SetupEmSlot(s32 idx)
 }
 
 /*
- * Entry n of table t: groups of 100 (group n / 100: its count at +0, the offset of its
- * offsets at +4), each an offset from t (-1: none); NULL when there is none. The copy b
- * of t, made first, is the result (v0); t itself walks to the offsets.
+ * Entry index of a motion pack (a loaded file of animation files): the entries come in
+ * groups of MOTION_GROUP_SIZE (group index / 100: its count at +0, the offset of its
+ * offsets at +4), each an offset from the pack (-1: none); NULL when there is none.
+ * The copy `start` of the pack, made first, gives the result (for the match: v0);
+ * pack itself walks to the offsets.
  */
-u8 *Table_GetEntry(u8 *t, s32 n)
+u8 *MotionPack_GetEntry(u8 *pack, s32 index)
 {
-    u8 *b = t;
-    s32 *g;
-    s32 i;
-    s32 off;
+    u8 *start = pack;
+    s32 *group;
+    s32 inGroup;
+    s32 offset;
 
-    g = (s32 *)(t + (n / 100) * 8);
-    i = n % 100;
-    if (i >= g[0]) {
+    group = (s32 *)(pack + (index / MOTION_GROUP_SIZE) * 8);
+    inGroup = index % MOTION_GROUP_SIZE;
+    if (inGroup >= group[0]) {
         return NULL;
     }
-    t = (u8 *)((s32 *)t + g[1] / 4);
-    off = ((s32 *)t)[i];
-    if (off == -1) {
+    pack = (u8 *)((s32 *)pack + group[1] / 4);
+    offset = ((s32 *)pack)[inGroup];
+    if (offset == -1) {
         return NULL;
     }
-    b += off;
-    return b;
+    start += offset;
+    return start;
 }
 
-s32 Table_GetWordAt8(u8 *base, s32 i)
+/* The number of entries of a group of a motion pack. */
+s32 MotionPack_GroupCount(u8 *pack, s32 group)
 {
-    return *(s32 *)(base + i * 8);
+    return *(s32 *)(pack + group * 8);
 }
 
-void Bone_GetAnimMoveFrom(f32 fparg0, f32 fparg1, f32 *out, EmBone *b)
+/* The root motion of bone's animation from fromFrame to toFrame (Bone_GetAnimMove);
+ * a negative fromFrame counts as 0, keeping the length. */
+void Bone_GetAnimMoveFrom(f32 fromFrame, f32 toFrame, f32 *out, EmBone *bone)
 {
-    if (fparg0 < 0.0f) {
-        Bone_GetAnimMove(out, b, 0.0f, fparg1 - fparg0);
+    if (fromFrame < 0.0f) {
+        Bone_GetAnimMove(out, bone, 0.0f, toFrame - fromFrame);
         return;
     }
-    Bone_GetAnimMove(out, b, fparg0, fparg1);
+    Bone_GetAnimMove(out, bone, fromFrame, toFrame);
 }
 
-/* dst = a * s + b * t (3-vectors). */
-void Vec_Blend(f32 *dst, f32 *a, f32 *b, f32 s, f32 t)
+/* dst = first * weightFirst + second * weightSecond (3-vectors). */
+void Vec_Blend(f32 *dst, f32 *first, f32 *second, f32 weightFirst, f32 weightSecond)
 {
-    dst[0] = a[0] * s + b[0] * t;
-    dst[1] = a[1] * s + b[1] * t;
-    dst[2] = a[2] * s + b[2] * t;
+    dst[0] = first[0] * weightFirst + second[0] * weightSecond;
+    dst[1] = first[1] * weightFirst + second[1] * weightSecond;
+    dst[2] = first[2] * weightFirst + second[2] * weightSecond;
 }
 
 f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
@@ -1016,136 +1060,139 @@ f32 *Mtx_RotateVec(f32 *m, f32 *in, f32 *out);
 u32 Player_TestFlag(void *obj, u32 flag);
 void Player_ClearFlag(void *obj, u32 flag);
 
-/* Moves p by v turned and scaled by p's rotation and scale (not while flag 0x20000 is set);
- * with flag 0x4000000 set, only clears it. */
-void Player_MoveLocal(Player *p, f32 *v)
+/* Moves the player by move, turned and scaled by its rotation and scale (not while
+ * PLF_NO_ROOT_MOVE is set); with flag 0x4000000 set, it only clears that flag (a move
+ * skipped once). */
+void Player_MoveLocal(Player *pl, f32 *move)
 {
-    f32 d[4];
-    f32 m[16];
-    f32 s[16];
+    f32 delta[4];
+    f32 mtx[16];
+    f32 scaleMtx[16];
 
-    if (Player_TestFlag(p, 0x4000000)) {
-        Player_ClearFlag(p, 0x4000000);
+    if (Player_TestFlag(pl, 0x4000000)) {
+        Player_ClearFlag(pl, 0x4000000);
         return;
     }
-    Mtx_FromAnglesXYZ(p->rot, m);
-    Mtx_Scale(s, p->scale[0], p->scale[1], p->scale[2]);
-    Mtx_Mul(m, m, s);
-    Mtx_RotateVec(m, v, d);
-    if (!Player_TestFlag(p, 0x20000)) {
-        p->pos[0] += d[0];
-        p->pos[1] += d[1];
-        p->pos[2] += d[2];
+    Mtx_FromAnglesXYZ(pl->rot, mtx);
+    Mtx_Scale(scaleMtx, pl->scale[0], pl->scale[1], pl->scale[2]);
+    Mtx_Mul(mtx, mtx, scaleMtx);
+    Mtx_RotateVec(mtx, move, delta);
+    if (!Player_TestFlag(pl, PLF_NO_ROOT_MOVE)) {
+        pl->pos[0] += delta[0];
+        pl->pos[1] += delta[1];
+        pl->pos[2] += delta[2];
     }
 }
 
 /* unit's own declaration: with the definition's s32 (EmBone *b, s32 h, s32 id) (sub_main/unk_2EF020.c), Player_UpdateMotion: 1 of 311 words differ */
 s32 Bone_SetPartAnim(struct EmBone *b, s32 h, u16 id);
 void Debug_Message(char *unused0, s32 unused1, s32 unused2, s32 unused3);
-extern char D_0046A1E0[];
+extern char gMotionIdBadFmt[];
 f32 Motion_GetLength(s32 h);
 s32 Anim_GetLoopTime(s32 h, f32 *out);
 
-/* Starts motion id +0x29C[part] on the player's layer part at frame `frame`,
- * directly (n == 0) or blended over |n| + 1 frames (n < 0: backwards). */
-void Player_BeginLayerMotion(Player *p, s32 frame, s32 n, s32 part)
+/* Starts motion motionId[part] on the player's layer `part` at frame `frame`, directly
+ * (blendLen == 0) or blended over |blendLen| + 1 frames (blendLen < 0: without the root
+ * motion). The id is read as in Player_SetPartAnim. */
+void Player_BeginLayerMotion(Player *pl, s32 frame, s32 blendLen, s32 part)
 {
     u16 id;
-    Model *md;
-    void **e;
-    s32 r;
+    Model *plModel;
+    void **slot;
+    s32 inSet;
 
-    id = p->motionId[part];
-    md = p->model;
-    r = id % 1000;
-    if (p->isEm == 0 || (p->unk01E != 0 && p->unk01F[0] != 0)) {
-        if (id >= 1000) {
-            e = &gMotions[p->index * 300 + 710];
-            e += gPlayerMotionGroupFirst[p->index][r / 100];
+    id = pl->motionId[part];
+    plModel = pl->model;
+    inSet = id % MOTION_ID_SET;
+    if (pl->isEm == 0 || (pl->ownTask != 0 && pl->playerMotions != 0)) {
+        if (id >= MOTION_ID_SET) {
+            slot = &gMotions[pl->index * MOTIONS_PER_PLAYER + MOTIONS_PLAYER_FIRST];
+            slot += gPlayerMotionGroupFirst[pl->index][inSet / MOTION_GROUP_SIZE];
         } else {
-            e = gMotions;
-            e += gCommonMotionGroupFirst[r / 100];
+            slot = gMotions;
+            slot += gCommonMotionGroupFirst[inSet / MOTION_GROUP_SIZE];
         }
     } else {
-        if (id >= 1000) {
-            e = &gMotions[p->unk30F[0] * 600 + 1910];
-            e += gEmMotionGroupFirst[p->unk30F[0]][r / 100];
+        if (id >= MOTION_ID_SET) {
+            slot = &gMotions[pl->emModelSlot * MOTIONS_PER_EM + MOTIONS_EM_FIRST];
+            slot += gEmMotionGroupFirst[pl->emModelSlot][inSet / MOTION_GROUP_SIZE];
         } else {
-            Debug_Message(D_0046A1E0, (s16)id, 0, 0);
+            Debug_Message(gMotionIdBadFmt, (s16)id, 0, 0);
         }
     }
-    if (p->isEm == 0 || p->unk01E != 0) {
-        e += r % 100;
+    if (pl->isEm == 0 || pl->ownTask != 0) {
+        slot += inSet % MOTION_GROUP_SIZE;
     } else {
-        e = (void **)((s32 *)e + r % 100);
+        slot = (void **)((s32 *)slot + inSet % MOTION_GROUP_SIZE);
     }
-    if (n != 0) {
-        if (n < 0) {
-            p->motion[part].blend = -1;
-            n = -n;
+    if (blendLen != 0) {
+        if (blendLen < 0) {
+            pl->motion[part].blend = -1;
+            blendLen = -blendLen;
         } else {
-            p->motion[part].blend = 1;
+            pl->motion[part].blend = 1;
         }
-        Bone_SetPartAnim(md->partBones2[0], *(s32 *)e, (u16)part);
-        p->motion[part].blendFrameCount = Motion_GetLength(*(s32 *)e);
-        p->motion[part].blendLoop = Anim_GetLoopTime(*(s32 *)e, &p->motion[part].blendLoopFrame);
-        p->motion[part].blendFrame = frame;
-        p->motion[part].blendFrames = n + 1;
-        p->motion[part].blendT = p->motion[part].blendStep = 1.0f / (n + 1);
-        p->motion[part].blendMotion = (s32 *)e;
+        Bone_SetPartAnim(plModel->partBones2[0], *(s32 *)slot, (u16)part);
+        pl->motion[part].blendFrameCount = Motion_GetLength(*(s32 *)slot);
+        pl->motion[part].blendLoop = Anim_GetLoopTime(*(s32 *)slot, &pl->motion[part].blendLoopFrame);
+        pl->motion[part].blendFrame = frame;
+        pl->motion[part].blendFrames = blendLen + 1;
+        pl->motion[part].blendT = pl->motion[part].blendStep = 1.0f / (blendLen + 1);
+        pl->motion[part].blendMotion = (s32 *)slot;
     } else {
-        Bone_SetPartAnim(md->partBones[0], *(s32 *)e, (u16)part);
-        p->motion[part].frameCount = Motion_GetLength(*(s32 *)e);
-        p->motion[part].loop = Anim_GetLoopTime(*(s32 *)e, &p->motion[part].loopFrame);
-        p->motion[part].frame = frame;
-        p->motion[part].blendFrames = 0;
-        p->motion[part].blend = 0;
-        p->motion[part].blendMotion = (s32 *)e;
+        Bone_SetPartAnim(plModel->partBones[0], *(s32 *)slot, (u16)part);
+        pl->motion[part].frameCount = Motion_GetLength(*(s32 *)slot);
+        pl->motion[part].loop = Anim_GetLoopTime(*(s32 *)slot, &pl->motion[part].loopFrame);
+        pl->motion[part].frame = frame;
+        pl->motion[part].blendFrames = 0;
+        pl->motion[part].blend = 0;
+        pl->motion[part].blendMotion = (s32 *)slot;
     }
-    p->motion[part].playing = 1;
+    pl->motion[part].playing = 1;
     if (part == 0) {
-        p->motion[0].move[0] = 0.0f;
-        p->motion[0].move[1] = 0.0f;
-        p->motion[0].move[2] = 0.0f;
+        pl->motion[0].move[0] = 0.0f;
+        pl->motion[0].move[1] = 0.0f;
+        pl->motion[0].move[2] = 0.0f;
     }
 }
 
-/* Sets the animation of part `part` of the player's model from its id in
- * +0x670 (thousands: the set: 0 common (gCommonMotionGroupFirst), else the weapon's
- * (+0xC, gPlayerMotionGroupFirst) or, for the other players' kind, +0x30F's (gEmMotionGroupFirst);
- * hundreds: the group; the rest: the entry). */
-void Player_SetPartAnim(Player *p, s32 part)
+/* Sets the animation of part `part` of the player's model from its id in partAnimMotion
+ * (MOTION_ID_SET: the set: 0 the common set (gCommonMotionGroupFirst), else the player's
+ * own (gPlayerMotionGroupFirst) or, for an object that isn't a player, the monster set of
+ * its unk30F (gEmMotionGroupFirst); then MOTION_GROUP_SIZE: the group; the rest: the
+ * entry). */
+void Player_SetPartAnim(Player *pl, s32 part)
 {
     u16 id;
-    Model *md;
-    void **e;
-    s32 r;
+    Model *plModel;
+    void **slot;
+    s32 inSet;
 
-    id = p->partAnimMotion[part];
-    md = p->model;
-    r = id % 1000;
-    if (p->isEm == 0 || (p->unk01E != 0 && p->unk01F[0] != 0)) {
-        if (id >= 1000) {
-            e = &gMotions[p->index * 300 + 710];
-            e += gPlayerMotionGroupFirst[p->index][r / 100];
+    id = pl->partAnimMotion[part];
+    plModel = pl->model;
+    inSet = id % MOTION_ID_SET;
+    if (pl->isEm == 0 || (pl->ownTask != 0 && pl->playerMotions != 0)) {
+        if (id >= MOTION_ID_SET) {
+            slot = &gMotions[pl->index * MOTIONS_PER_PLAYER + MOTIONS_PLAYER_FIRST];
+            slot += gPlayerMotionGroupFirst[pl->index][inSet / MOTION_GROUP_SIZE];
         } else {
-            e = gMotions;
-            e += gCommonMotionGroupFirst[r / 100];
+            slot = gMotions;
+            slot += gCommonMotionGroupFirst[inSet / MOTION_GROUP_SIZE];
         }
     } else {
-        if (id >= 1000) {
-            e = &gMotions[p->unk30F[0] * 600 + 1910];
-            e += gEmMotionGroupFirst[p->unk30F[0]][r / 100];
+        if (id >= MOTION_ID_SET) {
+            slot = &gMotions[pl->emModelSlot * MOTIONS_PER_EM + MOTIONS_EM_FIRST];
+            slot += gEmMotionGroupFirst[pl->emModelSlot][inSet / MOTION_GROUP_SIZE];
         } else {
-            Debug_Message(D_0046A1E0, (s16)id, 0, 0);
+            Debug_Message(gMotionIdBadFmt, (s16)id, 0, 0);
         }
     }
-    if (p->isEm == 0 || p->unk01E != 0) {
-        e += r % 100;
+    if (pl->isEm == 0 || pl->ownTask != 0) {
+        slot += inSet % MOTION_GROUP_SIZE;
     } else {
-        e = (void **)((s32 *)e + r % 100);
+        slot = (void **)((s32 *)slot + inSet % MOTION_GROUP_SIZE);
     }
-    Bone_SetPartAnim(md->partBones2[0], *(s32 *)e, (u16)part);
+    Bone_SetPartAnim(plModel->partBones2[0], *(s32 *)slot, (u16)part);
 }
 
 /* The definitions (unk_2EF020.c) take the float first too (the same registers either way). */
@@ -1153,110 +1200,111 @@ s32 Bone_PosePart(f32 t, struct EmBone *b, u16 id); /* unit's own declaration: t
 s32 Bone_BlendPart(f32 wa, f32 wb, struct EmBone *a, struct EmBone *b, u16 id); /* unit's own declaration: as Bone_PosePart */
 f32 Math_Hermite(f32 t, f32 a, f32 b, f32 c, f32 d, f32 e, f32 f);
 
-/* Advances the player's motion layers: poses each active layer, blends a layer into
- * its next motion (dir != 0) with the root motion of layer 0, loops or stops a layer at its
- * end (1 when one ended) and blends the part overrides (unk66C, weight unk678 %). */
-s32 Player_UpdateMotion(Player *p)
+/* Advances the player's motion layers: poses each active layer, blends a layer into its
+ * next motion (blend != 0) with the root motion of layer 0, moves the player by layer 0's
+ * root motion (Player_MoveLocal), loops or stops a layer at its end, and blends the part
+ * overrides (partAnimOn, weight partAnimWeight %). Returns 1 when a layer ended. */
+s32 Player_UpdateMotion(Player *pl)
 {
-    Model *md = p->model;
-    EmBone *bones = md->bones;
+    Model *plModel = pl->model;
+    EmBone *bones = plModel->bones;
     u16 i;
     s32 done = 0;
-    f32 g;
-    f32 h;
-    f32 t;
-    f32 d[4];
-    f32 a[4];
-    f32 b[4];
+    f32 weightFrom;
+    f32 weightTo;
+    f32 loopStart;
+    f32 rootMove[4];
+    f32 moveFrom[4];
+    f32 moveTo[4];
 
     for (i = 0; i < 4; i++) {
-        if (i < p->motionLayerCount) {
-            if (p->motion[i].blend != 0) {
-                Bone_PosePart(p->motion[i].frame, md->partBones[0], i);
-                Bone_PosePart(p->motion[i].blendFrame, md->partBones2[0], i);
-                Bone_GetAnimMoveFrom(p->motion[0].frame, p->motion[0].frame + p->motion[0].step, a, md->partBones[0]->child);
-                h = Math_Hermite(p->motion[i].blendT, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
-                g = 1.0f - h;
-                Bone_BlendPart(g, h, md->partBones[0], md->partBones2[0], i);
+        if (i < pl->motionLayerCount) {
+            if (pl->motion[i].blend != 0) {
+                Bone_PosePart(pl->motion[i].frame, plModel->partBones[0], i);
+                Bone_PosePart(pl->motion[i].blendFrame, plModel->partBones2[0], i);
+                Bone_GetAnimMoveFrom(pl->motion[0].frame, pl->motion[0].frame + pl->motion[0].step, moveFrom, plModel->partBones[0]->child);
+                weightTo = Math_Hermite(pl->motion[i].blendT, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f);
+                weightFrom = 1.0f - weightTo;
+                Bone_BlendPart(weightFrom, weightTo, plModel->partBones[0], plModel->partBones2[0], i);
                 if (i == 0) {
-                    Bone_GetAnimMoveFrom(p->motion[0].blendFrame, p->motion[0].blendFrame + p->motion[0].step, b, md->partBones2[0]->child);
-                    Vec_Blend(d, a, b, g, h);
-                    if (p->motion[i].blend > 0) {
-                        Player_MoveLocal(p, d);
+                    Bone_GetAnimMoveFrom(pl->motion[0].blendFrame, pl->motion[0].blendFrame + pl->motion[0].step, moveTo, plModel->partBones2[0]->child);
+                    Vec_Blend(rootMove, moveFrom, moveTo, weightFrom, weightTo);
+                    if (pl->motion[i].blend > 0) {
+                        Player_MoveLocal(pl, rootMove);
                     }
                     bones[1].local[12] = 0.0f;
                     bones[1].local[13] = 0.0f;
                     bones[1].local[14] = 0.0f;
                 }
-                p->motion[i].blendT += p->motion[i].blendStep;
-                if (--p->motion[i].blendFrames <= 0.0f) {
-                    p->motion[i].blend = 0;
-                    Bone_SetPartAnim(md->partBones[0], *p->motion[i].blendMotion, i);
-                    p->motion[i].frameCount = p->motion[i].blendFrameCount;
-                    p->motion[i].loop = p->motion[i].blendLoop;
-                    p->motion[i].loopFrame = p->motion[i].blendLoopFrame;
-                    p->motion[i].prevFrame = p->motion[i].blendFrame;
-                    p->motion[i].frame = p->motion[i].blendFrame + p->motion[i].step;
-                    p->motion[i].blendFrames = 0;
+                pl->motion[i].blendT += pl->motion[i].blendStep;
+                if (--pl->motion[i].blendFrames <= 0.0f) {
+                    pl->motion[i].blend = 0;
+                    Bone_SetPartAnim(plModel->partBones[0], *pl->motion[i].blendMotion, i);
+                    pl->motion[i].frameCount = pl->motion[i].blendFrameCount;
+                    pl->motion[i].loop = pl->motion[i].blendLoop;
+                    pl->motion[i].loopFrame = pl->motion[i].blendLoopFrame;
+                    pl->motion[i].prevFrame = pl->motion[i].blendFrame;
+                    pl->motion[i].frame = pl->motion[i].blendFrame + pl->motion[i].step;
+                    pl->motion[i].blendFrames = 0;
                 }
             } else {
-                Bone_PosePart(p->motion[i].frame, md->partBones[0], i);
-                if (p->partAnimOn[i] != 0) {
-                    Player_SetPartAnim(p, i);
-                    Bone_PosePart(p->motion[i].frame, md->partBones2[0], i);
-                    h = (f32)(u32)p->partAnimWeight[i] / 100.0f;
-                    Bone_BlendPart(1.0f - h, h, md->partBones[0], md->partBones2[0], i);
+                Bone_PosePart(pl->motion[i].frame, plModel->partBones[0], i);
+                if (pl->partAnimOn[i] != 0) {
+                    Player_SetPartAnim(pl, i);
+                    Bone_PosePart(pl->motion[i].frame, plModel->partBones2[0], i);
+                    weightTo = (f32)(u32)pl->partAnimWeight[i] / 100.0f;
+                    Bone_BlendPart(1.0f - weightTo, weightTo, plModel->partBones[0], plModel->partBones2[0], i);
                 }
                 if (i == 0) {
-                    Bone_GetAnimMoveFrom(p->motion[i].frame - p->motion[i].step, p->motion[i].frame, d, md->partBones[0]->child);
-                    Player_MoveLocal(p, d);
-                    d[0] = bones[1].local[12] - p->motion[0].move[0];
-                    d[1] = bones[1].local[13] - p->motion[0].move[1];
-                    d[2] = bones[1].local[14] - p->motion[0].move[2];
-                    p->motion[0].move[0] = bones[1].local[12];
-                    p->motion[0].move[1] = bones[1].local[13];
-                    p->motion[0].move[2] = bones[1].local[14];
+                    Bone_GetAnimMoveFrom(pl->motion[i].frame - pl->motion[i].step, pl->motion[i].frame, rootMove, plModel->partBones[0]->child);
+                    Player_MoveLocal(pl, rootMove);
+                    rootMove[0] = bones[1].local[12] - pl->motion[0].move[0];
+                    rootMove[1] = bones[1].local[13] - pl->motion[0].move[1];
+                    rootMove[2] = bones[1].local[14] - pl->motion[0].move[2];
+                    pl->motion[0].move[0] = bones[1].local[12];
+                    pl->motion[0].move[1] = bones[1].local[13];
+                    pl->motion[0].move[2] = bones[1].local[14];
                     bones[1].local[12] = 0.0f;
                     bones[1].local[13] = 0.0f;
                     bones[1].local[14] = 0.0f;
                 }
-                p->motion[i].prevFrame = p->motion[i].frame;
-                p->motion[i].frame += p->motion[i].step;
-                if (!(p->motion[i].frame <= p->motion[i].frameCount)) {
-                    if (p->motion[i].loop != 0) {
-                        t = p->motion[i].loopFrame;
-                        if (!(t < 1.0f)) {
-                            t -= 1.0f;
+                pl->motion[i].prevFrame = pl->motion[i].frame;
+                pl->motion[i].frame += pl->motion[i].step;
+                if (!(pl->motion[i].frame <= pl->motion[i].frameCount)) {
+                    if (pl->motion[i].loop != 0) {
+                        loopStart = pl->motion[i].loopFrame;
+                        if (!(loopStart < 1.0f)) {
+                            loopStart -= 1.0f;
                         }
-                        Bone_PosePart(t, md->partBones[0], i);
+                        Bone_PosePart(loopStart, plModel->partBones[0], i);
                         if (i == 0) {
-                            p->motion[i].move[0] = bones[1].local[12];
-                            p->motion[i].move[1] = bones[1].local[13];
-                            p->motion[i].move[2] = bones[1].local[14];
+                            pl->motion[i].move[0] = bones[1].local[12];
+                            pl->motion[i].move[1] = bones[1].local[13];
+                            pl->motion[i].move[2] = bones[1].local[14];
                         }
-                        Bone_PosePart(p->motion[i].frameCount, md->partBones[0], i);
-                        p->motion[i].frame = p->motion[i].loopFrame;
+                        Bone_PosePart(pl->motion[i].frameCount, plModel->partBones[0], i);
+                        pl->motion[i].frame = pl->motion[i].loopFrame;
                         if (i == 0) {
                             bones[1].local[12] = 0.0f;
                             bones[1].local[13] = 0.0f;
                             bones[1].local[14] = 0.0f;
                         }
-                        p->motion[i].playing = 0;
+                        pl->motion[i].playing = 0;
                         done = 1;
                     } else {
                         done = 1;
-                        p->motion[i].frame = p->motion[i].frameCount;
-                        p->motion[i].playing = 0;
+                        pl->motion[i].frame = pl->motion[i].frameCount;
+                        pl->motion[i].playing = 0;
                     }
-                    if (p->partAnimOn[i] != 0) {
-                        Bone_PosePart(p->motion[i].frame, md->partBones[0], i);
-                        Player_SetPartAnim(p, i);
-                        Bone_PosePart(p->motion[i].frame, md->partBones2[0], i);
-                        h = (f32)(u32)p->partAnimWeight[i] / 100.0f;
-                        Bone_BlendPart(1.0f - h, h, md->partBones[0], md->partBones2[0], i);
+                    if (pl->partAnimOn[i] != 0) {
+                        Bone_PosePart(pl->motion[i].frame, plModel->partBones[0], i);
+                        Player_SetPartAnim(pl, i);
+                        Bone_PosePart(pl->motion[i].frame, plModel->partBones2[0], i);
+                        weightTo = (f32)(u32)pl->partAnimWeight[i] / 100.0f;
+                        Bone_BlendPart(1.0f - weightTo, weightTo, plModel->partBones[0], plModel->partBones2[0], i);
                     }
                 } else {
-                    p->motion[i].playing = 1;
+                    pl->motion[i].playing = 1;
                 }
             }
         }
@@ -1264,33 +1312,28 @@ s32 Player_UpdateMotion(Player *p)
     return done;
 }
 
-/* The motion layers of an animated object (a player or a monster: both from +0x154). */
-typedef struct MotionObj {
-    u8 unk000[0x154];
-    MotionLayer motion[4];      /* 0x154 */
-} MotionObj;
 
 /* 1 when the motion of layer passes frame during this step (frame to frame + speed,
  * wrapping to the loop frame at the end of a looping motion); 0 while motions are held. */
 s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame)
 {
-    Player *p = obj;
-    MotionObj *o = (MotionObj *)p;
+    Player *pl = obj;
+    ObjHead *head = (ObjHead *)pl;
     s32 wrapped = 0;
     f32 next;
     f32 cur;
     f32 end;
 
-    if (o->motion[0].blend != 0) {
+    if (head->motion[0].blend != 0) {
         return 0;
     }
-    cur = o->motion[layer].frame;
-    end = o->motion[layer].frameCount;
-    next = cur + o->motion[layer].step;
+    cur = head->motion[layer].frame;
+    end = head->motion[layer].frameCount;
+    next = cur + head->motion[layer].step;
     if (!(next <= end)) {
-        if (o->motion[layer].loop) {
+        if (head->motion[layer].loop) {
             wrapped = 1;
-            next = o->motion[layer].loopFrame + (next - end);
+            next = head->motion[layer].loopFrame + (next - end);
         } else {
             next = end;
         }
@@ -1307,27 +1350,29 @@ s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame)
     return 0;
 }
 
-s32 Player_PassedFrameScaled(void *obj, f32 frame, s32 layer)
+/* Motion_PassedFrame for a monster; frame 2 is scaled by the monster's motion speed
+ * when that isn't 1. */
+s32 EmMotion_PassedFrameScaled(void *obj, f32 frame, s32 layer)
 {
-    Player *p = obj;
-    f32 k;
+    Em *em = obj;
+    f32 speed;
 
-    k = p->resist[3];
-    if (k != 1.0f && frame == 2.0f) {
-        frame *= k;
+    speed = em->motionSpeed;
+    if (speed != 1.0f && frame == 2.0f) {
+        frame *= speed;
     }
-    return Motion_PassedFrame(p, layer, frame);
+    return Motion_PassedFrame(em, layer, frame);
 }
 
 /* 1 once the motion of layer has reached frame (0 while motions are held). */
 s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame)
 {
-    MotionObj *o = obj;
+    ObjHead *head = obj;
 
-    if (o->motion[0].blend != 0) {
+    if (head->motion[0].blend != 0) {
         return 0;
     }
-    if (frame <= o->motion[layer].frame) {
+    if (frame <= head->motion[layer].frame) {
         return 1;
     }
     return 0;
@@ -1339,22 +1384,23 @@ s32 EmMotion_ReachedFrame(void *em, s32 layer, f32 frame)
     return Motion_ReachedFrame(em, layer, frame);
 }
 
-/* 1 while the motion of layer is at or past from but before to. */
-s32 Motion_InFrameRange(void *obj, s32 layer, f32 from, f32 to)
+/* 1 while the motion of layer is at or past `from` but before `until`. */
+s32 Motion_InFrameRange(void *obj, s32 layer, f32 from, f32 until)
 {
-    if (Motion_ReachedFrame(obj, layer, from) != 0 && Motion_ReachedFrame(obj, layer, to) == 0) {
+    if (Motion_ReachedFrame(obj, layer, from) != 0 && Motion_ReachedFrame(obj, layer, until) == 0) {
         return 1;
     }
     return 0;
 }
 
 /* Motion_InFrameRange for the monsters. */
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to)
+s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 until)
 {
-    return Motion_InFrameRange(em, layer, from, to);
+    return Motion_InFrameRange(em, layer, from, until);
 }
 
-/* A font of gFontDescs (0x3C bytes). */
+/* A font of gFontDescs (0x3C bytes). Font_Init copies it into the cache;
+ * the unk fields are copied there and nothing reads them. */
 typedef struct FontDesc {
     s32 unk00;
     s32 width;
@@ -1362,89 +1408,90 @@ typedef struct FontDesc {
     s32 unk0C;
     s32 unk10;
     s32 unk14;
-    s32 palInfo;
+    s32 palInfo;                /* the address of the palettes' colours, 4 words each */
     s32 palCount;
-    s32 texCount;
-    s32 glyphs;
-    s32 glyphBytes;
-    s32 bitsSize;
+    s32 texCount;               /* pages of the cache (textures of 256 x 256) */
+    s32 glyphs;                 /* glyphs of the font */
+    s32 glyphBytes;             /* bytes per glyph, 2 bits a pixel */
+    s32 bitsSize;               /* bytes of the glyph bits */
     s32 unk30;
     s32 unk34;
     s32 unk38;
 } FontDesc;
 
 extern FontDesc gFontDescs[];
-extern u8 D_004B1940[];
+extern u8 gFontArena[];
 s32 LoadCompressedFile(u8 *dst, s32 id);
 void Font_ResetState(void);
 void Font_CreateHandles(void);
 
-/* Sets up the font cache (gFontCache) in D_004B1940: the font descriptor's fields, the page glyph
- * lists, the texture and palette tables, the glyph bits and the text runs; loads the glyph bits
- * (file 0x1712) once. Round 21: bits rounded up in two steps (in one, every temporary moves). */
+/* Sets up the glyph cache (gFontCache) in gFontArena: the font descriptor's fields, the page
+ * glyph lists, the texture and palette tables, the glyph bits and the text runs; loads the
+ * glyph bits (FONT_FILE_ID) once. The bits' size is rounded up in two statements: in one,
+ * every temporary takes another register. */
 void Font_Init(s32 unused0)
 {
-    FontDesc *d;
+    FontDesc *desc;
     s32 bits;
     s32 i;
     u8 *base;
-    u8 *p;
+    u8 *cursor;
 
-    base = D_004B1940;
+    base = gFontArena;
 
-    p = (u8 *)(((u32)base + 0x3F) & ~0x3F);
-    gFontCache = (FontCache *)p;
+    cursor = (u8 *)(((u32)base + 0x3F) & ~0x3F);
+    gFontCache = (FontCache *)cursor;
     memset(gFontCache, 0, sizeof(FontCache));
-    p += 0x3E80;
+    cursor += 0x3E80;
     gFontCache->font = 0;
-    d = gFontDescs;
-    d += gFontCache->font;
-    gFontCache->unk04 = d->unk00;
-    gFontCache->width = d->width;
-    gFontCache->height = d->height;
-    gFontCache->unk10 = d->unk0C;
-    gFontCache->unk14 = d->unk10;
-    gFontCache->unk18 = d->unk14;
-    gFontCache->glyphs = d->glyphs;
-    gFontCache->glyphBytes = d->glyphBytes;
-    gFontCache->palInfo = (void *)d->palInfo;
-    gFontCache->palCount = d->palCount;
-    gFontCache->texCount = d->texCount;
-    gFontCache->unk30 = d->unk30;
-    gFontCache->unk34 = d->unk34;
-    gFontCache->unk38 = d->unk38;
-    bits = d->bitsSize + 0x3F;
+    desc = gFontDescs;
+    desc += gFontCache->font;
+    gFontCache->unk04 = desc->unk00;
+    gFontCache->width = desc->width;
+    gFontCache->height = desc->height;
+    gFontCache->unk10 = desc->unk0C;
+    gFontCache->unk14 = desc->unk10;
+    gFontCache->unk18 = desc->unk14;
+    gFontCache->glyphs = desc->glyphs;
+    gFontCache->glyphBytes = desc->glyphBytes;
+    gFontCache->palInfo = (void *)desc->palInfo;
+    gFontCache->palCount = desc->palCount;
+    gFontCache->texCount = desc->texCount;
+    gFontCache->unk30 = desc->unk30;
+    gFontCache->unk34 = desc->unk34;
+    gFontCache->unk38 = desc->unk38;
+    bits = desc->bitsSize + 0x3F;
     bits &= ~0x3F;
     gFontCache->perPage = (0x100U / gFontCache->width) * (0x100U / gFontCache->height);
     gFontCache->max = gFontCache->perPage * gFontCache->texCount;
-    for (i = 0; i < 7; i++) {
-        gFontCache->pageGlyphs[i] = (u16 *)p;
-        p += gFontCache->max * 2;
+    for (i = 0; i < FONT_PAGES; i++) {
+        gFontCache->pageGlyphs[i] = (u16 *)cursor;
+        cursor += gFontCache->max * 2;
     }
-    p = (u8 *)(((u32)p + 0x3F) & ~0x3F);
-    gFontCache->tex = (u32 *)p;
-    p += gFontCache->texCount * 4;
-    gFontCache->pal = (u32 *)p;
-    p += gFontCache->texCount * 4;
-    p = (u8 *)(((u32)p + 0x3F) & ~0x3F);
-    gFontCache->palPixels = p;
-    p += ((gFontCache->palCount << 6) + 0x3F) & ~0x3F;
-    gFontCache->bits = p;
-    p += bits;
-    gFontCache->runs[0] = (TextRun *)p;
-    gFontCache->runs[1] = (TextRun *)(p + 0xA00);
-    gFontCache->runs[2] = (TextRun *)(p + 0x1400);
-    gFontCache->runs[3] = (TextRun *)(p + 0x1E00);
-    gFontCache->runs[4] = (TextRun *)(p + 0x2800);
-    gFontCache->runs[5] = (TextRun *)(p + 0x3200);
-    gFontCache->runs[6] = (TextRun *)(p + 0x3C00);
-    gFontCache->text = (char *)(p + 0x4600);
+    cursor = (u8 *)(((u32)cursor + 0x3F) & ~0x3F);
+    gFontCache->tex = (u32 *)cursor;
+    cursor += gFontCache->texCount * 4;
+    gFontCache->pal = (u32 *)cursor;
+    cursor += gFontCache->texCount * 4;
+    cursor = (u8 *)(((u32)cursor + 0x3F) & ~0x3F);
+    gFontCache->palPixels = cursor;
+    cursor += ((gFontCache->palCount << 6) + 0x3F) & ~0x3F;
+    gFontCache->bits = cursor;
+    cursor += bits;
+    gFontCache->runs[0] = (TextRun *)cursor;
+    gFontCache->runs[1] = (TextRun *)(cursor + 0xA00);
+    gFontCache->runs[2] = (TextRun *)(cursor + 0x1400);
+    gFontCache->runs[3] = (TextRun *)(cursor + 0x1E00);
+    gFontCache->runs[4] = (TextRun *)(cursor + 0x2800);
+    gFontCache->runs[5] = (TextRun *)(cursor + 0x3200);
+    gFontCache->runs[6] = (TextRun *)(cursor + 0x3C00);
+    gFontCache->text = (char *)(cursor + 0x4600);
     gFontCache->defAdvance = gFontCache->width;
     gFontCache->defCharH = gFontCache->height;
-    gFontCache->unk3C = (s32)p + 0x4600 + 0x8000 - (s32)base;
+    gFontCache->arenaUsed = (s32)cursor + 0x4600 + FONT_TEXT_SIZE - (s32)base;
     Font_CreateHandles();
     if (gFontCache->loaded == 0) {
-        LoadCompressedFile(gFontCache->bits, 0x1712);
+        LoadCompressedFile(gFontCache->bits, FONT_FILE_ID);
         gFontCache->loaded = 1;
     }
     gFontCache->scale = (f32)gDispWidth / 640.0f;
@@ -1453,13 +1500,14 @@ void Font_Init(s32 unused0)
 
 static void Font_SelectPage(void);
 
-/* Resets the text object gFontCache: the 7 layers' slots (as Font_ClearPage), the position,
- * the size (10.0), the colours from +0x44/+0x48; then the size index (Font_SelectPage). */
+/* Resets the glyph cache's text state: every page's runs (as Font_ClearPage), the position,
+ * the size (10.0), the font's advance and height, the text buffer; then the page of new
+ * runs (Font_SelectPage). */
 void TextObj_Reset(void)
 {
     s32 i;
 
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < FONT_PAGES; i++) {
         gFontCache->runCount[i] = 0;
         gFontCache->runPrev[i] = 0;
         gFontCache->pageDone[i] = 0;
@@ -1474,39 +1522,40 @@ void TextObj_Reset(void)
     Font_SelectPage();
 }
 
-void Font_ClearPage(s32 layer)
+/* Clears page `page`'s runs, this frame's and the last, and its drawn flag. */
+void Font_ClearPage(s32 page)
 {
-    s32 ofs;
-
-    ofs = layer * 4;
-    *(s32 *)((u8 *)(ofs + (s32)gFontCache) + 0x64) = 0;
-    *(s32 *)((u8 *)(ofs + (s32)gFontCache) + 0x80) = 0;
-    *(s32 *)((u8 *)(ofs + (s32)gFontCache) + 0xCC) = 0;
+    gFontCache->runCount[page] = 0;
+    gFontCache->runPrev[page] = 0;
+    gFontCache->pageDone[page] = 0;
 }
 
+/* Empties the glyph cache: every glyph's slot (FONT_SLOT_NONE) and every page's range. */
 static void Font_ClearSlots(void)
 {
     s32 i;
-    u16 *s;
+    u16 *slotEntry;
 
     gFontCache->used = 0;
-    s = gFontCache->slot;
-    for (i = 0; i < 0x1E80; i++) {
-        *s++ = 0xFFFF;
+    slotEntry = gFontCache->slot;
+    for (i = 0; i < FONT_GLYPH_CODES; i++) {
+        *slotEntry++ = FONT_SLOT_NONE;
     }
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < FONT_PAGES; i++) {
         gFontCache->pageFirst[i] = 0;
         gFontCache->pageEnd[i] = 0;
         gFontCache->pageDone[i] = 0;
     }
 }
 
+/* Empties the glyph cache and clears the count of runs that found their page full. */
 void Font_FlushSlots(void)
 {
     Font_ClearSlots();
     gFontRunCount = 0;
 }
 
+/* Resets the text state (TextObj_Reset), one-byte characters half wide. */
 void Font_ResetState(void)
 {
     TextObj_Reset();
@@ -1514,37 +1563,39 @@ void Font_ResetState(void)
 }
 
 /* Sets the four colours of palette slot `slot`: in gFontCache's table and in the locked palette. */
-void Font_SetPalette(s32 slot, u32 handle, u32 c0, u32 c1, u32 c2, u32 c3)
+void Font_SetPalette(s32 slot, u32 handle, u32 colorA, u32 colorB, u32 colorC, u32 colorD)
 {
-    u32 c[4];
+    u32 colors[4];
     Image img;
-    u32 *d;
-    u32 *p;
+    u32 *cacheDst;
+    u32 *paletteDst;
     s32 i;
 
     if (handle == 0) {
         return;
     }
-    c[0] = c0;
-    c[1] = c1;
-    c[2] = c2;
-    c[3] = c3;
+    colors[0] = colorA;
+    colors[1] = colorB;
+    colors[2] = colorC;
+    colors[3] = colorD;
     flLockPalette(NULL, handle, &img, 2);
-    d = (u32 *)(gFontCache->palPixels + slot * 64);
-    p = (u32 *)img.pixels;
+    cacheDst = (u32 *)(gFontCache->palPixels + slot * FONT_PAL_SIZE);
+    paletteDst = (u32 *)img.pixels;
     for (i = 0; i < 4; i++) {
-        *d++ = c[i];
-        *p++ = c[i];
+        *cacheDst++ = colors[i];
+        *paletteDst++ = colors[i];
     }
     flUnlockPalette(handle);
 }
 
-void Font_SetSpacing(u8 a, u8 b)
+/* The advance and the line height of new runs, in pixels. */
+void Font_SetSpacing(u8 penStep, u8 lineStep)
 {
-    gFontCache->advance = (s8) a;
-    gFontCache->charH = (s8) b;
+    gFontCache->advance = (s8) penStep;
+    gFontCache->charH = (s8) lineStep;
 }
 
+/* The page of the next text run, from the glyph size (size / 1000 of the 7 pages). */
 static void Font_SelectPage(void)
 {
     s32 page;
@@ -1553,12 +1604,13 @@ static void Font_SelectPage(void)
     if (page < 0) {
         page = 0;
     }
-    if (page >= 7) {
-        page = 6;
+    if (page >= FONT_PAGES) {
+        page = FONT_PAGES - 1;
     }
     gFontCache->runPage = page;
 }
 
+/* The next text run's position; also picks its page. */
 void Font_SetPos(s16 x, s16 y)
 {
     gFontCache->runX = x;
@@ -1575,71 +1627,77 @@ static void Font_NextPage(s32 unused0, s32 unused1, s32 unused2)
     if (page < 0) {
         page = 0;
     }
-    if (page >= 7) {
-        page = 6;
+    if (page >= FONT_PAGES) {
+        page = FONT_PAGES - 1;
     }
     gFontCache->runPage = page;
 }
 
+/* The glyph size of new runs; it also picks their page (Font_SelectPage). */
 void Font_SetSize(f32 size)
 {
     gFontCache->size = size;
     Font_SelectPage();
 }
 
+/* The colour of new runs, 0xRRGGBB, with palette mode 0: kept in the GS's order (red in
+ * the low byte) with alpha 0x80, which the GS reads as opaque. */
 void Font_SetColor(s32 color)
 {
     Font_SetPal(0);
     gFontCache->clutNew = (s32) ((color & 0xFF00) | (((color & 0xFF) << 0x10) | ((u32) (color & 0xFF0000) >> 0x10)) | 0x80000000);
 }
 
+/* As Font_SetColor, without setting the palette mode. */
 static void Font_SetColorRaw(s32 rgb)
 {
     gFontCache->clutNew = (s32) ((rgb & 0xFF00) | (((rgb & 0xFF) << 0x10) | ((u32) (rgb & 0xFF0000) >> 0x10)) | 0x80000000);
 }
 
-/*
- * Sets the text colour: -1 the default (gTextPulseColor), -2 and -3 modes 2 and 3 with colour 0,
- * 0-15 colour c of gFontColors in mode 0. Font_SetColorRaw is static (only this file calls
- * it): MWCC then knows it leaves v0 alone and keeps v0 out of the index, as in the game.
- */
 extern u32 gTextPulseColor;
 extern u32 gFontColors[];
 
-void Font_SetColorIndex(s16 c)
+/*
+ * Sets the text colour: -1 the pulsing one (gTextPulseColor), -2 and -3 palette modes 2
+ * and 3 with colour 0, 0-15 that colour of gFontColors in mode 0. Font_SetColorRaw is
+ * static (only this file calls it): MWCC then knows it leaves v0 alone and keeps v0 out
+ * of the index, as in the game.
+ */
+void Font_SetColorIndex(s16 index)
 {
     s16 mode;
 
-    if (c >= 0x10) {
+    if (index >= 0x10) {
         return;
     }
-    switch (c) {
+    switch (index) {
     case -1:
         Font_SetPal(0);
         Font_SetColor(gTextPulseColor);
         return;
     case -2:
         mode = 2;
-        c = 0;
+        index = 0;
         break;
     case -3:
         mode = 3;
-        c = 0;
+        index = 0;
         break;
     default:
-        if (c >= 0x10) {
+        if (index >= 0x10) {
             return;
         }
         mode = 0;
         break;
     }
     Font_SetPal(mode);
-    Font_SetColorRaw(gFontColors[c]);
+    Font_SetColorRaw(gFontColors[index]);
 }
 
-void Font_SetPal(s32 a)
+/* The palette mode of new runs. */
+void Font_SetPal(s32 palette)
 {
-    gFontCache->palNew = a;
+    gFontCache->palNew = palette;
 }
 
 s32 Font_GetPal(void)
@@ -1647,6 +1705,7 @@ s32 Font_GetPal(void)
     return gFontCache->palNew;
 }
 
+/* The colour of new runs, 0xAARRGGBB (Font_SetColor's order). */
 u32 Font_GetColor(void)
 {
     s32 clutNew;
@@ -1655,36 +1714,36 @@ u32 Font_GetColor(void)
     return ((clutNew & 0xFF) << 0x10) | ((clutNew & 0xFF00FF00) | ((u32) (clutNew & 0xFF0000) >> 0x10));
 }
 
-void Font_SetHalfWidth(s32 a)
+/* One-byte characters advance half a glyph; the argument is ignored. */
+void Font_SetHalfWidth(s32 unused)
 {
     gFontCache->halfWidth = 1;
 }
 
-/* The glyph cell (20 bytes) for the current size of the text object gFontCache: its slot
- * (+0x64[size]) in the size's cell table (+0x9C[size]); while the slot holds 0x80 or
- * more, the next size is tried (Font_NextPage); NULL when the size stops changing. */
-u8 *Font_NewRun(void)
+/* A free text run on the page of new runs. While that page is full, the run moves to the
+ * next page (Font_NextPage) and gFontRunCount counts it; NULL when the last page is full.
+ * The caller counts the run in runCount. Font_NextPage's arguments keep the page's
+ * address and the counts in the registers the game uses. */
+TextRun *Font_NewRun(void)
 {
-    s32 *size;
-    u8 *t;
-    s32 k;
-    s32 s;
+    s32 *page;
+    s32 runIndex;
+    s32 oldPage;
 
     for (;;) {
-        size = (s32 *)((u8 *)gFontCache + 0xC4);
-        t = (u8 *)gFontCache + *size * 4;
-        k = *(s32 *)(t + 0x64);
-        if (k < 0x80) {
+        page = &gFontCache->runPage;
+        runIndex = gFontCache->runCount[*page];
+        if (runIndex < FONT_PAGE_RUNS) {
             break;
         }
         gFontRunCount++;
-        s = *size;
-        Font_NextPage((s32)size, k, s);
-        if (s == gFontCache->runPage) {
+        oldPage = *page;
+        Font_NextPage((s32)page, runIndex, oldPage);
+        if (oldPage == gFontCache->runPage) {
             return NULL;
         }
     }
-    return *(u8 **)(t + 0x9C) + k * 20;
+    return &gFontCache->runs[*page][runIndex];
 }
 
 /* Getters and setters of the glyph cache's fields; strlen. */
@@ -1718,29 +1777,29 @@ s32 Font_GetHalfWidth(void)
     return gFontCache->halfWidth;
 }
 
-s32 FontCache_GetUnk5E(void)
+s32 Font_IsLineGapOn(void)
 {
-    return gFontCache->unk5E;
+    return gFontCache->lineGapOn;
 }
 
-s32 FontCache_GetUnk5F(void)
+s32 Font_GetLineGap(void)
 {
-    return (s16)gFontCache->unk5F;
+    return (s16)gFontCache->lineGap;
 }
 
-void FontCache_SetUnk5E(u8 v)
+void Font_SetLineGapOn(u8 value)
 {
-    gFontCache->unk5E = v;
+    gFontCache->lineGapOn = value;
 }
 
-void FontCache_SetUnk5F(s32 v)
+void Font_SetLineGap(s32 value)
 {
-    gFontCache->unk5F = v;
+    gFontCache->lineGap = value;
 }
 
-s32 Str_Length(char *s)
+s32 Str_Length(char *str)
 {
-    return strlen(s);
+    return strlen(str);
 }
 
 #include "ee_stdarg.h"
@@ -1751,44 +1810,44 @@ s32 vsprintf(char *buf, const char *fmt, va_list ap);
  * glyph indices up to the negative one that ends them. */
 void Font_Printf(char *fmt, ...)
 {
-    TextRun *r;
-    va_list ap;
-    s16 *s;
-    s16 *d;
+    TextRun *run;
+    va_list args;
+    s16 *src;
+    s16 *dst;
 
-    r = (TextRun *)Font_NewRun();
-    if (r != NULL) {
+    run = Font_NewRun();
+    if (run != NULL) {
         gFontCache->runCount[gFontCache->runPage]++;
-        r->x = gFontCache->runX;
-        r->y = gFontCache->runY;
-        r->size = gFontCache->size;
-        r->advance = gFontCache->advance;
-        r->charH = gFontCache->charH;
-        r->clut = gFontCache->clutNew;
-        r->pal = gFontCache->palNew;
-        r->isGlyphs = gFontCache->glyphMode;
+        run->x = gFontCache->runX;
+        run->y = gFontCache->runY;
+        run->size = gFontCache->size;
+        run->advance = gFontCache->advance;
+        run->charH = gFontCache->charH;
+        run->clut = gFontCache->clutNew;
+        run->pal = gFontCache->palNew;
+        run->isGlyphs = gFontCache->glyphMode;
         if (gFontCache->glyphMode == 0) {
-            r->glyphs = (s16 *)(gFontCache->text + gFontCache->textLen);
-            va_start(ap, fmt);
-            gFontCache->textLen += vsprintf((char *)r->glyphs, fmt, ap);
-            if (gFontCache->textLen >= 0x8000) {
-                gFontCache->textLen = 0x7FFF;
+            run->glyphs = (s16 *)(gFontCache->text + gFontCache->textLen);
+            va_start(args, fmt);
+            gFontCache->textLen += vsprintf((char *)run->glyphs, fmt, args);
+            if (gFontCache->textLen >= FONT_TEXT_SIZE) {
+                gFontCache->textLen = FONT_TEXT_SIZE - 1;
             }
             gFontCache->text[gFontCache->textLen] = 0;
             gFontCache->textLen++;
         } else {
             gFontCache->textLen = (gFontCache->textLen + 1) & ~1;
-            r->glyphs = (s16 *)(gFontCache->text + gFontCache->textLen);
-            d = r->glyphs;
-            s = (s16 *)fmt;
+            run->glyphs = (s16 *)(gFontCache->text + gFontCache->textLen);
+            dst = run->glyphs;
+            src = (s16 *)fmt;
             for (;;) {
-                *d = *s;
+                *dst = *src;
                 gFontCache->textLen += 2;
-                if (*s < 0) {
+                if (*src < 0) {
                     break;
                 }
-                d++;
-                s++;
+                dst++;
+                src++;
             }
             gFontCache->text[gFontCache->textLen] = 0;
             gFontCache->textLen++;
@@ -1799,19 +1858,19 @@ void Font_Printf(char *fmt, ...)
 /* Draws the text runs of page idx once a frame; all pages; the frame's end. */
 void Font_DrawPage(s32 idx)
 {
-    TextRun *e;
+    TextRun *run;
     s32 k;
 
-    if (idx < 7) {
+    if (idx < FONT_PAGES) {
         if (gFontCache->pageDone[idx] == 0 && gFontCache->runCount[idx] != 0) {
             gFontCache->page = idx;
             Font_BeginPage();
-            e = gFontCache->runs[idx];
-            for (k = 0; k < gFontCache->runCount[idx]; k++, e++) {
-                if (e->isGlyphs == 0) {
-                    Text_DrawString(e);
+            run = gFontCache->runs[idx];
+            for (k = 0; k < gFontCache->runCount[idx]; k++, run++) {
+                if (run->isGlyphs == 0) {
+                    Text_DrawString(run);
                 } else {
-                    Text_DrawRun(e);
+                    Text_DrawRun(run);
                 }
             }
             Font_EndFrame();
@@ -1820,24 +1879,26 @@ void Font_DrawPage(s32 idx)
     }
 }
 
+/* Draws the text runs of all 7 pages. */
 void Font_DrawAllPages(void)
 {
     s32 i;
 
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < FONT_PAGES; i++) {
         Font_DrawPage(i);
     }
 }
 
+/* Draws the text runs of all 7 pages, then starts the next frame's runs. */
 void Font_DrawAndClearPages(void)
 {
     s32 i;
 
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < FONT_PAGES; i++) {
         Font_DrawPage(i);
         gFontCache->pageDone[i] = 0;
     }
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < FONT_PAGES; i++) {
         gFontCache->runPrev[i] = gFontCache->runCount[i];
         gFontCache->runCount[i] = 0;
     }
@@ -1850,27 +1911,27 @@ extern Image gFontClutImage;
 void Font_CreateHandles(void)
 {
     s32 i;
-    u32 *h;
+    u32 *texHandle;
     s32 (*info)[4];
     u8 *pixels;
-    u32 *p;
-    u32 j;
-    u32 ph;
+    u32 *palHandle;
+    u32 palIndex;
+    u32 handle;
 
-    h = gFontCache->tex;
+    texHandle = gFontCache->tex;
     for (i = 0; i < gFontCache->texCount; i++) {
-        *h++ = flCreateTextureHandle(&gFontImage, 4);
+        *texHandle++ = flCreateTextureHandle(&gFontImage, 4);
     }
-    p = gFontCache->pal;
+    palHandle = gFontCache->pal;
     info = gFontCache->palInfo;
     pixels = gFontCache->palPixels;
-    for (j = 0; j < gFontCache->palCount; j++) {
+    for (palIndex = 0; palIndex < gFontCache->palCount; palIndex++) {
         gFontClutImage.pixels = pixels;
-        ph = flCreatePaletteHandle(&gFontClutImage, 4);
-        *p++ = ph;
-        Font_SetPalette(j, ph, (*info)[0], (*info)[1], (*info)[2], (*info)[3]);
+        handle = flCreatePaletteHandle(&gFontClutImage, 4);
+        *palHandle++ = handle;
+        Font_SetPalette(palIndex, handle, (*info)[0], (*info)[1], (*info)[2], (*info)[3]);
         info++;
-        pixels += 0x40;
+        pixels += FONT_PAL_SIZE;
     }
     Font_ClearSlots();
 }
@@ -1880,80 +1941,80 @@ s32 Font_GlyphIndex(u32 code);
 
 s32 Sjis_FromAscii(u8 c);
 
-/* Draws the Shift-JIS string of run r (newlines go down by r->charH). */
-void Text_DrawString(TextRun *r)
+/* Draws the Shift-JIS string of run (newlines go down by run->charH). */
+void Text_DrawString(TextRun *run)
 {
-    u8 *s = (u8 *)r->glyphs;
-    u32 c;
+    u8 *str = (u8 *)run->glyphs;
+    u32 code;
     s32 narrow;
     s32 k;
 
-    gFontCache->x = r->x;
-    gFontCache->y = r->y;
+    gFontCache->x = run->x;
+    gFontCache->y = run->y;
     for (;;) {
-        c = *s++;
-        if (c == 0) {
+        code = *str++;
+        if (code == 0) {
             break;
         }
-        if (c == '\n') {
-            gFontCache->x = r->x;
-            gFontCache->y += r->charH;
+        if (code == '\n') {
+            gFontCache->x = run->x;
+            gFontCache->y += run->charH;
             continue;
         }
-        if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c < 0x100)) {
-            if (*s == 0) {
+        if (SJIS_IS_LEAD(code)) {
+            if (*str == 0) {
                 break;
             }
-            c <<= 8;
-            c |= *s++;
+            code <<= 8;
+            code |= *str++;
             narrow = 0;
         } else {
-            c = Sjis_FromAscii(c);
+            code = Sjis_FromAscii(code);
             narrow = 1;
         }
-        if (c != 0x8140) {
-            k = Font_GlyphIndex(c);
+        if (code != SJIS_SPACE) {
+            k = Font_GlyphIndex(code);
             if (k >= 0) {
-                Font_DrawGlyph(k, r);
+                Font_DrawGlyph(k, run);
             }
         }
         if (!narrow) {
-            gFontCache->x += r->advance;
+            gFontCache->x += run->advance;
         } else if (gFontCache->halfWidth != 0) {
-            gFontCache->x += r->advance / 2;
+            gFontCache->x += run->advance / 2;
         } else {
-            gFontCache->x += r->advance * 2 / 3;
+            gFontCache->x += run->advance * 2 / 3;
         }
     }
 }
 
 
-/* Draws the glyphs of run r from its position, one advance apart (Font_DrawGlyph). */
-void Text_DrawRun(TextRun *r)
+/* Draws the glyphs of run from its position, one advance apart (Font_DrawGlyph). */
+void Text_DrawRun(TextRun *run)
 {
-    s16 *g = r->glyphs;
-    s32 c;
+    s16 *glyph = run->glyphs;
+    s32 code;
 
-    gFontCache->x = r->x;
-    gFontCache->y = r->y;
+    gFontCache->x = run->x;
+    gFontCache->y = run->y;
     for (;;) {
-        c = *g++;
-        if (c < 0) {
+        code = *glyph++;
+        if (code < 0) {
             break;
         }
-        if ((u32)c < gFontCache->glyphs) {
-            Font_DrawGlyph(c, r);
+        if ((u32)code < gFontCache->glyphs) {
+            Font_DrawGlyph(code, run);
         }
-        gFontCache->x += r->advance;
+        gFontCache->x += run->advance;
     }
 }
 
 /* 2 for a Shift-JIS lead byte (0x80-0x9F, 0xE0-0xFF), 1 otherwise. */
-s32 Sjis_CharBytes(u8 *s)
+s32 Sjis_CharBytes(u8 *str)
 {
-    s32 c = *s;
+    s32 lead = *str;
 
-    if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c < 0x100)) {
+    if (SJIS_IS_LEAD(lead)) {
         return 2;
     }
     return 1;
@@ -1972,56 +2033,55 @@ extern u32 gPacketEnd;
  */
 static void Font_SetTexRegs(u32 key)
 {
-    u32 *p;
-    TexRec *t;
-    TexRec *c;
+    u32 *out;
+    TexRec *tex;
+    TexRec *clut;
 
-    t = &gTexRecs[(key & 0xFFFF) - 1];
-    c = &gPalRecs[((key & 0xFFFF0000) >> 16) - 1];
-    p = (u32 *)gFontCache->pkt;
+    tex = &gTexRecs[(key & 0xFFFF) - 1];
+    clut = &gPalRecs[((key & 0xFFFF0000) >> 16) - 1];
+    out = (u32 *)gFontCache->pkt;
 
-    if (gPacketEnd - (u32)p < 0x40) {
+    if (gPacketEnd - (u32)out < 0x40) {
         return;
     }
-    p[0] = 0;
-    p[1] = 0;
-    p[2] = 0;
-    p[3] = 0x50000003;
-    ((u64 *)p)[2] = 0x1000000000008002;
-    ((u64 *)p)[3] = 0xE;
-    ((u64 *)p)[4] = GS_TEX0(t->vram, 4, t->psm, t->tw, t->th, 1, 0, c->vram, c->psm, 0, 0, 2);
-    ((u64 *)p)[5] = 6;
-    ((u64 *)p)[6] = ((u64)gFontCache->keySet << 5) | ((u64)gFontCache->keySet << 6);
-    ((u64 *)p)[7] = 0x14;
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0x50000003;
+    ((u64 *)out)[2] = 0x1000000000008002;
+    ((u64 *)out)[3] = 0xE;
+    ((u64 *)out)[4] = GS_TEX0(tex->vram, 4, tex->psm, tex->tw, tex->th, 1, 0, clut->vram, clut->psm, 0, 0, 2);
+    ((u64 *)out)[5] = GS_REG_TEX0_1;
+    ((u64 *)out)[6] = ((u64)gFontCache->keySet << 5) | ((u64)gFontCache->keySet << 6);
+    ((u64 *)out)[7] = GS_REG_TEX1_1;
     gFontCache->pkt += 0x40;
 }
 
 extern s32 gDispHeight; /* main */
 
-/* Adds the sprite of the glyph in cache slot slot, w x h from the pen, to the font packets
- * (clut is the TEX0 palette word). Static, as Font_DrawGlyph (its only caller) needs: MWCC
- * then knows which registers it clobbers.
- * Round 30: the far texel corner in place (`tw = u + tw - 1; v += th;`: the game keeps
- * v + th in v's own register), the screen offsets added in place after the frame-mode
- * halving (`x0 += ox;` ...: the game's adds are in x0/x1/y0/y1's own registers), y0 a
- * copy of y scaled in place (`y0 = y; ... y0 *= 16;`).
- * Earlier rounds: scale read before x0, slot % perPage assigned back to slot (the game's
- * mfhi a0), x s16 (the game extends it again for x + w), y an int cast back to s16 for
- * y + h (the game extends y again after x1's conversion branch).
+/* Adds the sprite of the glyph in cache slot `slot`, glyphW x glyphH from the pen, to the
+ * font packets (clut is the TEX0 palette word); the cells are cellW x cellH in 256-texel
+ * pages. Static, as Font_DrawGlyph (its only caller) needs: MWCC then knows which
+ * registers it clobbers.
+ * The order and the types are the game's register use, kept for the match: the far texel
+ * corner computed in place (`cellW = texU + cellW - 1; texV += cellH;`), the screen
+ * offsets added in place after the frame-mode halving, top a copy of y scaled in place;
+ * scale read before left, slot % perPage assigned back to slot, x an s16 (the game
+ * extends it again for x + glyphW), y an int cast back to s16 for y + glyphH.
  */
-static void Font_AddGlyphSprite(s32 slot, u32 clut, s16 w, s16 h)
+static void Font_AddGlyphSprite(s32 slot, u32 clut, s16 glyphW, s16 glyphH)
 {
-    u32 *p;
-    u32 u;
-    u32 v;
-    u32 x0;
-    u32 x1;
-    u32 y0;
-    s32 ox;
-    u32 y1;
-    s32 oy;
-    u32 tw;
-    u32 th;
+    u32 *out;
+    u32 texU;
+    u32 texV;
+    u32 left;
+    u32 right;
+    u32 top;
+    s32 originX;
+    u32 bottom;
+    s32 originY;
+    u32 cellW;
+    u32 cellH;
     s16 x;
     s32 y;
     f32 scale;
@@ -2029,93 +2089,97 @@ static void Font_AddGlyphSprite(s32 slot, u32 clut, s16 w, s16 h)
     if (gPacketEnd - (u32)gFontCache->pkt < 0x50) {
         return;
     }
-    tw = gFontCache->width;
-    th = gFontCache->height;
+    cellW = gFontCache->width;
+    cellH = gFontCache->height;
     gFontCache->sprites++;
-    p = (u32 *)gFontCache->pkt;
-    p[0] = 0;
-    p[1] = 0;
-    p[2] = 0;
-    p[3] = 0x50000004;
-    ((u64 *)p)[2] = 0x8001 | ((u64)0x64000000 << 32);
-    ((u64 *)p)[3] = 0x535310;
-    ((u64 *)p)[4] = 0x156;
-    ((u64 *)p)[5] = clut;
+    out = (u32 *)gFontCache->pkt;
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0x50000004;
+    ((u64 *)out)[2] = 0x8001 | ((u64)0x64000000 << 32);
+    ((u64 *)out)[3] = 0x535310;
+    ((u64 *)out)[4] = 0x156;
+    ((u64 *)out)[5] = clut;
     slot = slot % gFontCache->perPage;
-    u = tw * (slot % (0x100 / tw));
-    v = th * (slot / (0x100 / th));
-    ((u64 *)p)[6] = (u32)(u * 16 + 8) | ((u64)(u32)(v * 16 + 8) << 16);
-    ox = ((0x1000 - gDispWidth) / 2) * 16;
-    oy = ((0x1000 - gDispHeight) / 2) * 16;
+    texU = cellW * (slot % (0x100 / cellW));
+    texV = cellH * (slot / (0x100 / cellH));
+    ((u64 *)out)[6] = (u32)(texU * 16 + 8) | ((u64)(u32)(texV * 16 + 8) << 16);
+    originX = ((0x1000 - gDispWidth) / 2) * 16;
+    originY = ((0x1000 - gDispHeight) / 2) * 16;
     x = gFontCache->x;
     scale = gFontCache->scale;
-    x0 = 16.0f * (x * scale);
+    left = 16.0f * (x * scale);
     y = gFontCache->y;
-    x1 = 16.0f * (scale * (x + w));
-    y0 = y;
-    y1 = (s16)y + h;
-    y0 *= 16;
-    y1 *= 16;
+    right = 16.0f * (scale * (x + glyphW));
+    top = y;
+    bottom = (s16)y + glyphH;
+    top *= 16;
+    bottom *= 16;
     if (gSysFrameMode == 0) {
-        y0 >>= 1;
-        y1 >>= 1;
+        top >>= 1;
+        bottom >>= 1;
     }
-    x0 += ox;
-    x1 += ox;
-    y0 += oy;
-    y1 += oy;
-    tw = u + tw - 1;
-    v += th;
-    ((u64 *)p)[7] = (u32)x0 | ((u64)(u32)y0 << 16) | ((u64)0xFFFFFFFF << 32);
-    ((u64 *)p)[8] = (u32)(tw * 16 + 8) | ((u64)(u32)(v * 16 + 8) << 16);
-    ((u64 *)p)[9] = (u32)x1 | ((u64)(u32)y1 << 16) | ((u64)0xFFFFFFFF << 32);
+    left += originX;
+    right += originX;
+    top += originY;
+    bottom += originY;
+    cellW = texU + cellW - 1;
+    texV += cellH;
+    ((u64 *)out)[7] = (u32)left | ((u64)(u32)top << 16) | ((u64)0xFFFFFFFF << 32);
+    ((u64 *)out)[8] = (u32)(cellW * 16 + 8) | ((u64)(u32)(texV * 16 + 8) << 16);
+    ((u64 *)out)[9] = (u32)right | ((u64)(u32)bottom << 16) | ((u64)0xFFFFFFFF << 32);
     gFontCache->pkt += 0x50;
 }
 
 /*
- * Draws glyph c of run r from the glyph cache: switches the texture and palette when
+ * Draws glyph `glyph` of run from the glyph cache: switches the texture and palette when
  * they change (Font_SetTexRegs), then the sprite (Font_AddGlyphSprite).
  * Its registers come from Font_AddGlyphSprite being static C defined before it: MWCC then
- * knows that it leaves v0 alone, keeps v0 live to the end and puts slot, clut and r in
+ * knows that it leaves v0 alone, keeps v0 live to the end and puts slot, clut and run in
  * t7-t9 as the game does. slot is an s32 (the game passes the lhu value without a mask).
  */
-void Font_DrawGlyph(s32 glyph, TextRun *r)
+void Font_DrawGlyph(s32 glyph, TextRun *run)
 {
     s32 clut;
     u32 key;
     s32 slot = gFontCache->slot[glyph];
 
-    if (slot == 0xFFFF) {
+    if (slot == FONT_SLOT_NONE) {
         return;
     }
-    if (r->pal < 0) {
+    if (run->pal < 0) {
         clut = gFontCache->clut;
     } else {
-        clut = r->clut;
+        clut = run->clut;
     }
     key = gFontCache->tex[slot / gFontCache->perPage];
-    key |= gFontCache->pal[(u8)r->pal] << 16;
+    key |= gFontCache->pal[(u8)run->pal] << 16;
     if (key != gFontCache->key || gFontCache->keySet != 1) {
         gFontCache->key = key;
         gFontCache->keySet = 1;
         Font_SetTexRegs(key);
     }
-    Font_AddGlyphSprite(slot, clut, r->advance, r->charH);
+    Font_AddGlyphSprite(slot, clut, run->advance, run->charH);
 }
 
 extern s32 gPacketCur;
+/* Starts drawing a page of text: the render states for glyphs (alpha test, no depth
+ * write, blend 4, 5), the page's glyphs cached and uploaded (Font_CachePage,
+ * Font_UploadGlyphs), and a new packet in the packet buffer, its first quadword kept
+ * for the DMA tag Font_EndFrame writes. */
 void Font_BeginPage(void)
 {
     s32 pkt;
 
     Gs_SetState(0x61, 0x01000000);
-    Gs_SetState(0x60, 0);
-    Gs_SetState(0x5F, 5);
+    Gs_SetState(RS_ALPHA_REF, 0);
+    Gs_SetState(RS_ALPHA_TEST, RS_CMP_NOTEQUAL);
     gSysSettings.blendA = 0xFF;
     gSysSettings.blendB = 0xFF;
     Gfx_SetBlend(4, 5);
-    Gs_SetState(0x6C, 0);
-    *(s32 *)((u8 *)gFontCache + 0x100) = -1;
+    Gs_SetState(RS_ZWRITE, 0);
+    gFontCache->unk100 = -1;
     Font_CachePage();
     Font_UploadGlyphs();
     gFontCache->pktBase = (u8 *)((gPacketCur + 0xF) & ~0xF);
@@ -2142,18 +2206,18 @@ void Font_EndFrame(void)
     u32 *base;
     u32 *end;
     s32 i;
-    u32 *h;
-    u32 *p;
+    u32 *texHandle;
+    u32 *palHandle;
     s32 j;
 
     if (gFontCache->pktBase < gFontCache->pkt) {
         base = (u32 *)gFontCache->pktBase;
-        base[0] = (((u32)(gFontCache->pkt - (u8 *)base) >> 4) - 1) | 0x10000000;
+        base[0] = (((u32)(gFontCache->pkt - (u8 *)base) >> 4) - 1) | DMA_TAG_CNT;
         base[1] = 0;
         base[2] = 0;
         base[3] = 0;
         end = (u32 *)gFontCache->pkt;
-        end[0] = 0xF0000001;
+        end[0] = DMA_TAG_IRQ | DMA_TAG_END | 1;
         end[1] = 0;
         end[2] = 0;
         end[3] = 0;
@@ -2162,16 +2226,16 @@ void Font_EndFrame(void)
         Packet_Alloc(gFontCache->pkt - gFontCache->pktBase, 0x10);
         DmaQueue_AddChain(0, (u32)gFontCache->pktBase & 0x0FFFFFFF, end, &gDmaQueue);
     }
-    Gs_SetState(0x5F, 4);
-    Gs_SetState(0x6C, 1);
-    for (i = 0, h = gFontCache->tex; i < gFontCache->texCount; i++, h++) {
-        if ((u16)*h != 0) {
-            Tex_Evict(&gTexRecs[(u16)*h - 1]);
+    Gs_SetState(RS_ALPHA_TEST, RS_CMP_GREATER);
+    Gs_SetState(RS_ZWRITE, 1);
+    for (i = 0, texHandle = gFontCache->tex; i < gFontCache->texCount; i++, texHandle++) {
+        if ((u16)*texHandle != 0) {
+            Tex_Evict(&gTexRecs[(u16)*texHandle - 1]);
         }
     }
-    for (j = 0, p = gFontCache->pal; j < gFontCache->palCount; j++, p++) {
-        if (*p != 0) {
-            Tex_Evict(&gPalRecs[*p - 1]);
+    for (j = 0, palHandle = gFontCache->pal; j < gFontCache->palCount; j++, palHandle++) {
+        if (*palHandle != 0) {
+            Tex_Evict(&gPalRecs[*palHandle - 1]);
         }
     }
 }
@@ -2180,19 +2244,19 @@ s32 Font_SjisToJis(u32 code);
 
 /* The low byte of a JIS code. An inline helper: written as `jis & 0xFF` in place,
  * MWCC schedules that mask before the high byte's shift. */
-static inline s32 Jis_Low(s32 c)
+static inline s32 Jis_Low(s32 jis)
 {
-    return c & 0xFF;
+    return jis & 0xFF;
 }
 
 /* The font glyph index of a Shift-JIS code (row * 94 + column of its JIS code), or -1
- * past the table (0x1E80 glyphs). */
+ * past the table (FONT_GLYPH_CODES glyphs). */
 s32 Font_GlyphIndex(u32 code)
 {
     s32 jis = Font_SjisToJis(code);
     s32 i = ((jis >> 8) - 0x21) * 94 + (Jis_Low(jis) - 0x21);
 
-    if (i >= 0x1E80) {
+    if (i >= FONT_GLYPH_CODES) {
         i = -1;
     }
     return i;
@@ -2202,32 +2266,32 @@ s32 Font_GlyphIndex(u32 code)
  * Shift JIS to JIS X 0208: the lead byte (0x81-0x9F, 0xE0-0xEF) gives the row pair, the
  * trail byte (0x40-0x7E, 0x80-0x9E, 0x9F-0xFC) the column and the odd/even row.
  * The second lead-byte case, the second trail-byte case and the sum are done in 64 bits
- * (daddiu, then dsll32/dsra32): h is the lead byte as a long, computed by the same
- * expression as hi (MWCC shares the andi, so h needs no masking or extension).
+ * (daddiu, then dsll32/dsra32): lead is the lead byte as a long, computed by the same
+ * expression as jisHigh (MWCC shares the andi, so lead needs no masking or extension).
  */
-s32 Font_SjisToJis(u32 c)
+s32 Font_SjisToJis(u32 sjis)
 {
-    s32 hi = (c >> 8) & 0xFF;
-    long h = (c >> 8) & 0xFF;
-    u32 lo = c & 0xFF;
-    long l;
+    s32 jisHigh = (sjis >> 8) & 0xFF;
+    long lead = (sjis >> 8) & 0xFF;
+    u32 jisLow = sjis & 0xFF;
+    long trail;
 
-    if (hi >= 0x81 && hi < 0xA0) {
-        hi -= 0x81;
-    } else if (hi >= 0xE0 && hi < 0xF0) {
-        hi = h - 0xC1;
+    if (jisHigh >= 0x81 && jisHigh < 0xA0) {
+        jisHigh -= 0x81;
+    } else if (jisHigh >= 0xE0 && jisHigh < 0xF0) {
+        jisHigh = lead - 0xC1;
     }
-    l = lo;
-    hi <<= 1;
-    if (l >= 0x40 && l < 0x7F) {
-        lo -= 0x40;
-    } else if (l >= 0x80 && l < 0x9F) {
-        lo = l - 0x41;
-    } else if (l >= 0x9F && l < 0xFD) {
-        lo -= 0x9F;
-        hi++;
+    trail = jisLow;
+    jisHigh <<= 1;
+    if (trail >= 0x40 && trail < 0x7F) {
+        jisLow -= 0x40;
+    } else if (trail >= 0x80 && trail < 0x9F) {
+        jisLow = trail - 0x41;
+    } else if (trail >= 0x9F && trail < 0xFD) {
+        jisLow -= 0x9F;
+        jisHigh++;
     }
-    return (((long)(u32)hi + 1) << 8) + (long)lo + 0x2021;
+    return (((long)(u32)jisHigh + 1) << 8) + (long)jisLow + 0x2021;
 }
 
 s32 Dma_WaitIdle(void);
@@ -2296,18 +2360,18 @@ void Font_Expand2To4(u8 *src, u8 *dst)
 {
     s32 row;
     s32 i;
-    s32 h;
-    s32 n;
-    u16 *d;
-    s32 b;
+    s32 rows;
+    s32 rowBytes;
+    u16 *out;
+    s32 packed;
 
-    h = gFontCache->height;
-    n = (u32)((gFontCache->width + 3) & ~3) >> 2;
-    for (row = 0; row < h; row++) {
-        d = (u16 *)dst;
-        for (i = 0; i < n; i++) {
-            b = *src++;
-            *d++ = ((b & 0xC0) >> 6) | (b & 0x30) | ((b & 0xC) << 6) | ((b & 3) << 12);
+    rows = gFontCache->height;
+    rowBytes = (u32)((gFontCache->width + 3) & ~3) >> 2;
+    for (row = 0; row < rows; row++) {
+        out = (u16 *)dst;
+        for (i = 0; i < rowBytes; i++) {
+            packed = *src++;
+            *out++ = ((packed & 0xC0) >> 6) | (packed & 0x30) | ((packed & 0xC) << 6) | ((packed & 3) << 12);
         }
         dst += 0x80;
     }
@@ -2320,7 +2384,7 @@ static s16 Font_MaxPageEnd(void)
     s32 i;
     s16 max = 0;
 
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < FONT_PAGES; i++) {
         if (gFontCache->pageEnd[i] > max) {
             max = gFontCache->pageEnd[i];
         }
@@ -2333,56 +2397,56 @@ s32 Font_CacheGlyph(u16 c);
 /* Starts a new page of the glyph cache and gives every glyph of its text runs a slot. */
 void Font_CachePage(void)
 {
-    FontCache *f;
+    FontCache *cache;
     s16 end;
-    TextRun *r;
+    TextRun *run;
     s32 i;
     s32 n;
-    s16 *g;
-    u8 *s;
-    u32 c;
+    s16 *glyph;
+    u8 *str;
+    u32 code;
     s32 k;
 
-    f = gFontCache;
+    cache = gFontCache;
     end = Font_MaxPageEnd();
-    f->pageEnd[f->page] = end;
-    f->pageFirst[f->page] = end;
+    cache->pageEnd[cache->page] = end;
+    cache->pageFirst[cache->page] = end;
     n = gFontCache->runCount[gFontCache->page];
-    r = gFontCache->runs[gFontCache->page];
-    for (i = 0; i < n; i++, r++) {
-        if (r->isGlyphs != 0) {
-            g = r->glyphs;
+    run = gFontCache->runs[gFontCache->page];
+    for (i = 0; i < n; i++, run++) {
+        if (run->isGlyphs != 0) {
+            glyph = run->glyphs;
             for (;;) {
-                k = *g++;
+                k = *glyph++;
                 if (k < 0) {
                     break;
                 }
                 Font_CacheGlyph(k);
             }
         } else {
-            s = (u8 *)r->glyphs;
+            str = (u8 *)run->glyphs;
             for (;;) {
-                c = *s++;
-                if (c == 0) {
+                code = *str++;
+                if (code == 0) {
                     break;
                 }
-                if (c == '\n') {
+                if (code == '\n') {
                     continue;
                 }
-                if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c < 0x100)) {
-                    if (*s == 0) {
+                if (SJIS_IS_LEAD(code)) {
+                    if (*str == 0) {
                         break;
                     }
-                    c <<= 8;
-                    c |= *s++;
+                    code <<= 8;
+                    code |= *str++;
                 } else {
-                    c = Sjis_FromAscii(c);
+                    code = Sjis_FromAscii(code);
                 }
-                if (c == 0x8140) {
+                if (code == SJIS_SPACE) {
                     continue;
                 }
-                k = Font_GlyphIndex(c);
-                if (k >= 0 && k < 0x1E80) {
+                k = Font_GlyphIndex(code);
+                if (k >= 0 && k < FONT_GLYPH_CODES) {
                     Font_CacheGlyph(k);
                 }
             }
@@ -2390,84 +2454,87 @@ void Font_CachePage(void)
     }
 }
 
-/* Gives glyph c a slot of the cache (on the current page) unless it has one; 0 when full. */
-s32 Font_CacheGlyph(u16 c)
+/* Gives glyph code a slot of the cache (on the current page) unless it has one; 0 when full. */
+s32 Font_CacheGlyph(u16 code)
 {
-    if (gFontCache->slot[c] != 0xFFFF) {
+    if (gFontCache->slot[code] != FONT_SLOT_NONE) {
         return 1;
     }
     if (gFontCache->used >= gFontCache->max) {
         return 0;
     }
-    gFontCache->slot[c] = gFontCache->used;
-    gFontCache->pageGlyphs[gFontCache->page][gFontCache->pageEnd[gFontCache->page] - gFontCache->pageFirst[gFontCache->page]] = c;
+    gFontCache->slot[code] = gFontCache->used;
+    gFontCache->pageGlyphs[gFontCache->page][gFontCache->pageEnd[gFontCache->page] - gFontCache->pageFirst[gFontCache->page]] = code;
     gFontCache->used++;
     gFontCache->pageEnd[gFontCache->page]++;
     return 1;
 }
 
-s32 Sjis_FromAscii(u8 c)
+/* The two-byte code of the glyph the font draws for a one-byte character: the full-width
+ * space below 0x21, else a glyph of the font's row 0x85 (the trail byte skips 0x7F, as
+ * Shift-JIS does; 0xA5 is the exception). */
+s32 Sjis_FromAscii(u8 ascii)
 {
-    s32 temp_v1;
+    s32 code;
 
-    temp_v1 = c & 0xFF;
-    if (temp_v1 < 0x21) {
-        return 0x8140;
+    code = ascii & 0xFF;
+    if (code < 0x21) {
+        return SJIS_SPACE;
     }
-    if (temp_v1 < 0x60) {
-        return temp_v1 + 0x7FFF + 0x520;
+    if (code < 0x60) {
+        return code + 0x7FFF + 0x520;
     }
-    if (temp_v1 < 0x80) {
-        return temp_v1 + 0x7FFF + 0x521;
+    if (code < 0x80) {
+        return code + 0x7FFF + 0x521;
     }
-    if (temp_v1 == 0xA5) {
+    if (code == 0xA5) {
         return 0x85A3;
     }
-    return temp_v1 + 0x7FFF + 0x4FF;
+    return code + 0x7FFF + 0x4FF;
 }
 
 extern u8 *gSjisAsciiTable;
 
-/* dst = src with its one-byte characters widened to two-byte Shift-JIS ones (the table at
+/* out = text with its one-byte characters widened to two-byte Shift-JIS ones (the table at
  * gSjisAsciiTable); two-byte characters are copied. */
-void Sjis_Widen(char *from, char *to)
+void Sjis_Widen(char *text, char *out)
 {
-    u8 *src = (u8 *)from;
-    u8 *dst = (u8 *)to;
-    s32 c;
-    u8 *t;
+    u8 *src = (u8 *)text;
+    u8 *dst = (u8 *)out;
+    s32 lead;
+    u8 *wideChar;
 
-    while ((c = *src) != 0) {
-        if ((c >= 0x80 && c <= 0x9F) || (c >= 0xE0 && c < 0x100)) {
-            dst[0] = c;
+    while ((lead = *src) != 0) {
+        if (SJIS_IS_LEAD(lead)) {
+            dst[0] = lead;
             dst[1] = src[1];
             src += 2;
             dst += 2;
         } else {
-            t = gSjisAsciiTable + c * 2;
+            wideChar = gSjisAsciiTable + lead * 2;
             src++;
-            dst[0] = t[0];
-            dst[1] = t[1];
+            dst[0] = wideChar[0];
+            dst[1] = wideChar[1];
             dst += 2;
         }
     }
     *dst = 0;
 }
 
-extern char D_00402490[];
+extern char gSjisDigits[];
 char *strncpy(char *dst, const char *src, u32 n);
 
-/* dst = the last three decimal digits of n as two-byte Shift-JIS digits (D_00402490), no
+/* dst = the last three decimal digits of n as two-byte Shift-JIS digits (gSjisDigits), no
  * terminator. */
 void Sjis_PutDigits3(char *dst, s32 n)
 {
     s32 i;
-    s32 d;
+    s32 digit;
 
-    for (i = 0, d = 1000; i < 3; i++) {
-        n %= d;
-        d /= 10;
-        strncpy(dst, &D_00402490[n / d * 2], 2);
+    for (i = 0, digit = 1000; i < 3; i++) {
+        n %= digit;
+        digit /= 10;
+        strncpy(dst, &gSjisDigits[n / digit * 2], 2);
         dst += 2;
     }
 }
@@ -2478,12 +2545,12 @@ extern u32 gTextPulseColor;
 /* gTextPulseColor = a colour pulsing with a sine over 32 frames (around 0x50, 0xE4, 0xF7). */
 void Text_UpdatePulse(void)
 {
-    f32 s = Math_Sin(3.1415927f / 32768.0f * (u16)((gFontCache->pulse & 0x1F) << 11));
-    s8 r = 64.0f * s;
-    s8 g = 20.0f * s;
-    s8 b = 7.0f * s;
+    f32 wave = Math_Sin(3.1415927f / 32768.0f * (u16)((gFontCache->pulse & 0x1F) << 11));
+    s8 red = 64.0f * wave;
+    s8 green = 20.0f * wave;
+    s8 blue = 7.0f * wave;
 
-    gTextPulseColor = 0xFF000000 | (u8)(r + 0x50) << 16 | (u8)(g + 0xE4) << 8 | (u8)(b + 0xF7);
+    gTextPulseColor = 0xFF000000 | (u8)(red + 0x50) << 16 | (u8)(green + 0xE4) << 8 | (u8)(blue + 0xF7);
     gFontCache->pulse++;
 }
 
@@ -2507,35 +2574,35 @@ extern s32 gRenderFlags2;
 s32 Model_Create(MeshDesc *hdr, u32 flags)
 {
     u32 i;
-    ModelEntry *e;
+    ModelEntry *entry;
     u8 *dst;
 
-    for (i = 0; i < 0x180; i++) {
+    for (i = 0; i < DRAW_MODEL_COUNT; i++) {
         if (gModelPool[i].used == 0) {
             break;
         }
     }
-    e = &gModelPool[i];
-    Mem_Fill(e, 0, sizeof(ModelEntry));
-    e->used = hdr->flags;
-    e->unk08 = hdr->format;
-    e->flags = flags;
-    e->unk50 = 0;
-    e->unk54 = 0;
-    if (!(flags & 4)) {
-        e->size = 0x30;
-        e->size += (hdr->stripsSize + 0xF) & ~0xF;
-        e->size += (hdr->vertsSize + 0xF) & ~0xF;
-        e->file = Mem_Alloc(e->size, 3);
-        dst = Mem_GetAddr(e->file);
+    entry = &gModelPool[i];
+    Mem_Fill(entry, 0, sizeof(ModelEntry));
+    entry->used = hdr->flags;
+    entry->vtxFormat = hdr->format;
+    entry->flags = flags;
+    entry->unk50 = 0;
+    entry->boneMask = 0;
+    if (!(flags & MODEL_NO_COPY)) {
+        entry->size = 0x30;
+        entry->size += (hdr->stripsSize + 0xF) & ~0xF;
+        entry->size += (hdr->vertsSize + 0xF) & ~0xF;
+        entry->file = Mem_Alloc(entry->size, 3);
+        dst = Mem_GetAddr(entry->file);
         Mem_Copy(dst, hdr, 0x24);
         dst += 0x30;
         Mem_Copy(dst, hdr->strips, hdr->stripsSize);
         dst += (hdr->stripsSize + 0xF) & ~0xF;
         Mem_Copy(dst, hdr->verts, hdr->vertsSize);
     }
-    e->frame = gRenderFlags2;
-    if (Model_Setup(e, hdr) == 0) {
+    entry->renderFlags = gRenderFlags2;
+    if (Model_Setup(entry, hdr) == 0) {
         Model_FreeHandle(i + 1);
         return 0;
     }
@@ -2550,17 +2617,18 @@ void Model_BuildPartPackets(ModelEntry *e, s32 n, s32 prog, s32 dst, u8 *mat);
 
 extern s32 gModelCount;
 /*
- * Sets up model e from its file header hdr: its VU1 program, packets, textures and parts;
- * 0 when no program fits. Counts the models (0x1E8B78, main).
+ * Sets up model entry from its mesh hdr: picks the VU1 program, sizes and allocates its
+ * data, builds the VIF and part packets and collects the textures. Returns 1, or 0 when no
+ * program fits. Counts the models (gModelCount).
  */
-s32 Model_Setup(ModelEntry *e, MeshDesc *hdr)
+s32 Model_Setup(ModelEntry *entry, MeshDesc *hdr)
 {
-    Vu1_SelectProgram(e, hdr);
-    if (e->prog != -1) {
-        Model_SetupEntry(hdr, e, 0);
-        Model_BuildVifPackets(hdr, e);
-        Model_CollectTextures(e, 0);
-        Model_BuildPartPackets(e, e->partCount, e->progInfo[5], e->unk24 + (s32)Mem_GetAddr(e->data), e->mat);
+    Vu1_SelectProgram(entry, hdr);
+    if (entry->prog != -1) {
+        Model_SetupEntry(hdr, entry, 0);
+        Model_BuildVifPackets(hdr, entry);
+        Model_CollectTextures(entry, 0);
+        Model_BuildPartPackets(entry, entry->partCount, entry->progInfo[5], entry->pktOfs + (s32)Mem_GetAddr(entry->data), entry->mat);
     } else {
         return 0;
     }
@@ -2569,15 +2637,16 @@ s32 Model_Setup(ModelEntry *e, MeshDesc *hdr)
 }
 
 /*
- * hdr = the 0x24-byte header of model file obj (its handle at +0x14), then hdr+8 = its
- * data (after 0x30 bytes) and hdr+0x10 = the data after that (the size at +0x1C, 16-aligned).
+ * Rebuilds the mesh hdr from model entry's copy of the file (Model_Create): its 0x24-byte
+ * header, with strips and verts pointed into the copy (the strips at +0x30, the vertices
+ * after them, 16-aligned).
  */
-void Model_ReadHeader(ModelEntry *e, MeshDesc *hdr)
+void Model_ReadHeader(ModelEntry *entry, MeshDesc *hdr)
 {
     MeshDesc *base;
     u8 *data;
 
-    data = Mem_GetAddr(e->file);
+    data = Mem_GetAddr(entry->file);
     base = (MeshDesc *)data;
     data += 0x30;
     Mem_Copy(hdr, base, 0x24);
@@ -2589,7 +2658,13 @@ void Model_ReadHeader(ModelEntry *e, MeshDesc *hdr)
 extern s32 gModelPktSteps[];
 extern s32 gVu1ProgLayouts[][2];
 
-void Model_SetupEntry(MeshDesc *hdr, ModelEntry *e, s32 unused)
+/*
+ * Walks the strips of mesh hdr to size model entry's VIF data (batches cut at the program's
+ * buffer, progInfo[8], and a new DMA CNT tag every 1 MB); counts the strips' vertices,
+ * triangles and material runs, marks the materials used as the model's parts, and allocates
+ * the data block (the VIF data, the chain table and the part packets).
+ */
+void Model_SetupEntry(MeshDesc *hdr, ModelEntry *entry, s32 unused)
 {
     s8 used[0x20];
     s32 i;
@@ -2598,7 +2673,7 @@ void Model_SetupEntry(MeshDesc *hdr, ModelEntry *e, s32 unused)
     s32 *info;
     u16 len;
     s32 step;
-    s32 sz;
+    s32 vtxBytes;
     s32 limit;
     s32 lastA;
     s32 curA;
@@ -2607,40 +2682,40 @@ void Model_SetupEntry(MeshDesc *hdr, ModelEntry *e, s32 unused)
     s32 lastB;
     s32 curB;
     s32 count;
-    u16 *p;
+    u16 *stream;
 
     total = 0;
-    info = e->progInfo;
+    info = entry->progInfo;
     off = 0;
     Mem_Fill(used, 0, 0x20);
     count = hdr->count;
     lastA = -1;
-    p = hdr->strips;
+    stream = hdr->strips;
     curA = 0;
     lastB = lastA;
     curB = 0;
     step = 0;
     cnt = 0;
-    e->unk40 = 0;
-    e->unk3C = 0;
-    e->unk44 = 0;
+    entry->stripVtxCount = 0;
+    entry->triCount = 0;
+    entry->matRunCount = 0;
     limit = info[8] + 0x20;
     for (i = 0; i < count; i++) {
-        len = *p & 0x3FFF;
-        e->unk40 += len;
-        e->unk3C += len - 2;
+        len = *stream & MESH_STRIP_LEN;
+        entry->stripVtxCount += len;
+        entry->triCount += len - 2;
         flags = hdr->flags;
-        p++;
-        if (flags & 0x100000) {
-            curA = *p;
-            p++;
+        stream++;
+        if (flags & MESH_STRIP_MAT) {
+            curA = *stream;
+            stream++;
         }
-        if (flags & 0x200000) {
-            curB = *p;
-            p++;
+        if (flags & MESH_STRIP_SKIN) {
+            curB = *stream;
+            stream++;
         }
-        if (flags & 0x1000) {
-            p += len;
+        if (flags & MESH_INDEXED) {
+            stream += len;
         }
         if (lastA != curA) {
             if (cnt != 0) {
@@ -2653,7 +2728,7 @@ void Model_SetupEntry(MeshDesc *hdr, ModelEntry *e, s32 unused)
             lastB = curB;
             off = 0x30;
             step = 0x20;
-            e->unk44++;
+            entry->matRunCount++;
         } else if (lastB != curB) {
             if (cnt != 0) {
                 off += step;
@@ -2668,9 +2743,9 @@ void Model_SetupEntry(MeshDesc *hdr, ModelEntry *e, s32 unused)
             step = 0x20;
         }
         if (len > 0) {
-            sz = gVu1ProgLayouts[info[6]][0];
+            vtxBytes = gVu1ProgLayouts[info[6]][0];
             do {
-                if ((u32)(step + sz) >= (u32)info[8]) {
+                if ((u32)(step + vtxBytes) >= (u32)info[8]) {
                     off += step;
                     if ((u32)(off + limit) >= 0x100000) {
                         total += off;
@@ -2682,60 +2757,37 @@ void Model_SetupEntry(MeshDesc *hdr, ModelEntry *e, s32 unused)
                 }
                 len--;
                 cnt++;
-                step += sz;
+                step += vtxBytes;
             } while (len != 0);
         }
     }
     off += step;
     total += off;
-    e->unk18 = total;
-    e->partCount = 0;
+    entry->vifSize = total;
+    entry->partCount = 0;
     for (i = 0; i < 0x20; i++) {
         if (used[i] != 0) {
-            e->mat[e->partCount++] = i;
+            entry->mat[entry->partCount++] = i;
         }
     }
-    e->unk30 = (e->partCount * 4 + 0xF) & ~0xF;
-    e->pktSize = (e->partCount * gModelPktSteps[info[5]] + 0xF) & ~0xF;
-    e->pktSize += 0x20;
-    e->unk2C = (e->unk18 + 0xF) & ~0xF;
-    e->unk24 = e->unk2C + ((e->unk30 + 0xF) & ~0xF);
+    entry->chainTblSize = (entry->partCount * 4 + 0xF) & ~0xF;
+    entry->pktSize = (entry->partCount * gModelPktSteps[info[5]] + 0xF) & ~0xF;
+    entry->pktSize += 0x20;
+    entry->chainTblOfs = (entry->vifSize + 0xF) & ~0xF;
+    entry->pktOfs = entry->chainTblOfs + ((entry->chainTblSize + 0xF) & ~0xF);
     count = ((total + 0xF) & ~0xF);
-    count += ((e->unk30 + 0xF) & ~0xF);
-    count += ((e->pktSize + 0xF) & ~0xF);
-    e->data = Mem_Alloc(count, 3);
-    e->dataAddr = Mem_GetAddr(e->data);
+    count += ((entry->chainTblSize + 0xF) & ~0xF);
+    count += ((entry->pktSize + 0xF) & ~0xF);
+    entry->data = Mem_Alloc(count, 3);
+    entry->dataAddr = Mem_GetAddr(entry->data);
 }
 
-/* Vertex formats 0x25, 0x35 and 0x135. */
-typedef struct Vtx25 {
-    f32 pos[3];
-    f32 nrm[3];
-    u32 col;
-} Vtx25;
-
-typedef struct Vtx35 {
-    f32 pos[3];
-    f32 nrm[3];
-    u32 col;
-    f32 uv[2];
-} Vtx35;
-
-typedef struct Vtx135 {
-    f32 pos[3];
-    f32 nrm[3];
-    u32 col;
-    f32 uv[2];
-    u32 bones;                  /* 0x24: four bone indexes, the first in the top byte */
-    u32 weights;                /* 0x28: their weights */
-} Vtx135;
-
-/* progInfo[10]: the bone matrices. */
-typedef struct BoneInfo {
-    s32 *base;
-    s32 off;
-    s32 size;
-} BoneInfo;
+/* progInfo[10], for the skinned programs: where the bone matrices are in VU1 memory. */
+typedef struct Vu1BoneLayout {
+    s32 *base;                  /* bone matrix 0; &base[n] is bone n's (4 quadwords each) */
+    s32 off;                    /* the normal matrices' start, in those units */
+    s32 size;                   /* quadwords per normal matrix */
+} Vu1BoneLayout;
 
 /* The GIF tag fields per program (progInfo[7]): PRIM, REGS and NREG. */
 typedef struct GifInfo {
@@ -2757,17 +2809,18 @@ extern f32 gDispTexScaleU;
  * string): per material a DMA chain of VIF unpacks of the strips' vertices (position,
  * normal, colour, texture coordinates and bone weights, as the program's bits ask), each
  * batch with its GIF tag. Batches are cut where the program's buffer (progInfo[8]) would
- * overflow, and a DMA cnt tag every 1 MB. offs (at data + unk2C) gets each material's chain.
+ * overflow, and a DMA CNT tag every 1 MB. offs (at data + chainTblOfs) gets each material's
+ * chain.
  */
-void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
+void Model_BuildVifPackets(MeshDesc *mesh, ModelEntry *entry)
 {
-    s32 *info = e->progInfo;
+    s32 *info = entry->progInfo;
     s32 bits = gVu1ProgLayouts[info[6]][1];
-    s32 a[4] = {0};
-    s32 b[4] = {0};
+    s32 boneIdx[4] = {0};
+    s32 boneWt[4] = {0};
     u32 starts[0x20];
     u32 base;
-    u32 qv;
+    u32 unpackPos;
     u32 tag;
     s32 cnt;
     s32 lastA;
@@ -2775,7 +2828,7 @@ void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
     s32 lastB;
     s32 curB;
     u32 step;
-    u32 sz;
+    u32 vtxBytes;
     s32 count;
     u32 raw;
     s32 *offs;
@@ -2787,15 +2840,15 @@ void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
     s32 i;
     s32 j;
     s32 k;
-    u32 q;
-    u16 *p;
-    u32 *t;
+    u32 out;
+    u16 *stream;
+    u32 *walk;
     u32 *w;
-    f32 *wt;
-    u32 *r;
-    Vtx25 *v25;
-    Vtx35 *v35;
-    Vtx135 *v135;
+    f32 *weightOut;
+    u32 *lastQw;
+    MeshVtxCol *colVtx;
+    MeshVtxTex *texVtx;
+    MeshVtxSkin *skinVtx;
 
     for (i = 0; i < 0x20; i++) {
         starts[i] = 0;
@@ -2803,82 +2856,82 @@ void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
     prim = gVu1GifInfos[info[7]].prim;
     regs = gVu1GifInfos[info[7]].regs;
     nreg = gVu1GifInfos[info[7]].nreg;
-    if ((e->frame & 0x18000) == 0x8000) {
+    if ((entry->renderFlags & 0x18000) == 0x8000) {
         prim |= 0x20;
     }
-    base = (u32)Mem_GetAddr(e->data);
-    q = base;
-    p = h->strips;
-    count = h->count;
+    base = (u32)Mem_GetAddr(entry->data);
+    out = base;
+    stream = mesh->strips;
+    count = mesh->count;
     limit = info[8] + 0x20;
     lastA = -1;
     lastB = lastA;
     curA = 0;
     curB = 0;
     cnt = 0;
-    offs = (s32 *)(base + e->unk2C);
+    offs = (s32 *)(base + entry->chainTblOfs);
     for (i = 0; i < count; i++) {
-        raw = *p;
+        raw = *stream;
         toggle = 0;
-        p++;
-        if (h->flags & 0x100000) {
-            curA = *p;
-            p++;
+        stream++;
+        if (mesh->flags & MESH_STRIP_MAT) {
+            curA = *stream;
+            stream++;
         }
-        if (h->flags & 0x200000) {
-            curB = *p;
-            p++;
+        if (mesh->flags & MESH_STRIP_SKIN) {
+            curB = *stream;
+            stream++;
         }
         if (lastA != curA) {
             if (cnt != 0) {
-                qv = (u32)Vif_UnpackV4((u128 *)qv, step >> 4, 0);
+                unpackPos = (u32)Vif_UnpackV4((u128 *)unpackPos, step >> 4, 0);
                 switch (lastB) {
                 case 0:
-                    ((u32 *)qv)[0] = 1;
+                    ((u32 *)unpackPos)[0] = 1;
                     break;
                 case 1:
-                    ((u32 *)qv)[0] = 2;
+                    ((u32 *)unpackPos)[0] = 2;
                     break;
                 }
-                ((u32 *)qv)[1] = ((nreg << 4) * (cnt + 2) >> 4) + 1;
-                ((u64 *)qv)[1] = 0;
-                ((u64 *)qv)[2] = GIF_TAG(cnt, prim, nreg);
-                ((u32 *)qv)[6] = regs;
-                ((u32 *)qv)[7] = 0;
-                q = (u32)Vif_MsCnt((u128 *)q);
+                ((u32 *)unpackPos)[1] = ((nreg << 4) * (cnt + 2) >> 4) + 1;
+                ((u64 *)unpackPos)[1] = 0;
+                ((u64 *)unpackPos)[2] = GIF_TAG(cnt, prim, nreg);
+                ((u32 *)unpackPos)[6] = regs;
+                ((u32 *)unpackPos)[7] = 0;
+                out = (u32)Vif_MsCnt((u128 *)out);
                 if (tag == starts[lastA]) {
-                    DmaTag_Ret((u128 *)tag, ((q - tag) >> 4) - 1, 0, 0);
+                    DmaTag_Ret((u128 *)tag, ((out - tag) >> 4) - 1, 0, 0);
                     offs[lastA] = tag - base;
                 } else {
-                    t = (u32 *)starts[lastA];
+                    walk = (u32 *)starts[lastA];
                     do {
-                        switch (t[0] & 0x70000000) {
-                        case 0x10000000:
-                        case 0x20000000:
-                            t = (u32 *)((u8 *)t + ((t[0] & 0xFFFF) + 1) * 16);
+                        switch (walk[0] & DMA_TAG_ID_MASK) {
+                        case DMA_TAG_CNT:
+                        case DMA_TAG_NEXT:
+                            walk = (u32 *)((u8 *)walk + ((walk[0] & 0xFFFF) + 1) * 16);
                             break;
-                        case 0x60000000:
-                            DmaTag_Next((u128 *)t, t[0] & 0xFFFF, tag, 0, 0);
-                            t = NULL;
+                        case DMA_TAG_RET:
+                            DmaTag_Next((u128 *)walk, walk[0] & 0xFFFF, tag, 0, 0);
+                            walk = NULL;
                             break;
                         }
-                    } while (t != NULL);
-                    DmaTag_Ret((u128 *)tag, ((q - tag) >> 4) - 1, 0, 0);
+                    } while (walk != NULL);
+                    DmaTag_Ret((u128 *)tag, ((out - tag) >> 4) - 1, 0, 0);
                 }
                 cnt = 0;
             }
-            tag = q;
+            tag = out;
             lastA = curA;
             lastB = curB;
             if (starts[curA] == 0) {
-                starts[curA] = q;
+                starts[curA] = out;
             }
-            qv = q + 0x10;
-            q += 0x40;
+            unpackPos = out + 0x10;
+            out += 0x40;
             step = 0x20;
         } else if (lastB != curB) {
             if (cnt != 0) {
-                w = (u32 *)Vif_UnpackV4((u128 *)qv, step >> 4, 0);
+                w = (u32 *)Vif_UnpackV4((u128 *)unpackPos, step >> 4, 0);
                 switch (lastB) {
                 case 0:
                     w[0] = 1;
@@ -2892,23 +2945,23 @@ void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
                 ((u64 *)w)[2] = GIF_TAG(cnt, prim, nreg);
                 w[6] = regs;
                 w[7] = 0;
-                q = (u32)Vif_MsCnt((u128 *)q);
-                if (q - tag + limit >= 0x100000) {
-                    DmaTag_Cnt((u128 *)tag, ((q - tag) >> 4) - 1, 0, 0);
-                    tag = q;
-                    q += 0x10;
+                out = (u32)Vif_MsCnt((u128 *)out);
+                if (out - tag + limit >= 0x100000) {
+                    DmaTag_Cnt((u128 *)tag, ((out - tag) >> 4) - 1, 0, 0);
+                    tag = out;
+                    out += 0x10;
                 }
                 cnt = 0;
             }
-            qv = q;
-            q += 0x30;
+            unpackPos = out;
+            out += 0x30;
             lastB = curB;
             step = 0x20;
         }
-        for (j = 0; j < (raw & 0x3FFF); j++) {
-            sz = gVu1ProgLayouts[info[6]][0];
-            if (step + sz >= (u32)info[8]) {
-                w = (u32 *)Vif_UnpackV4((u128 *)qv, step >> 4, 0);
+        for (j = 0; j < (raw & MESH_STRIP_LEN); j++) {
+            vtxBytes = gVu1ProgLayouts[info[6]][0];
+            if (step + vtxBytes >= (u32)info[8]) {
+                w = (u32 *)Vif_UnpackV4((u128 *)unpackPos, step >> 4, 0);
                 switch (lastB) {
                 case 0:
                     w[0] = 1;
@@ -2922,198 +2975,198 @@ void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
                 ((u64 *)w)[2] = GIF_TAG(cnt, prim, nreg);
                 w[6] = regs;
                 w[7] = 0;
-                q = (u32)Vif_MsCnt((u128 *)q);
-                if (q - tag + limit >= 0x100000) {
-                    DmaTag_Cnt((u128 *)tag, ((q - tag) >> 4) - 1, 0, 0);
-                    tag = q;
-                    q += 0x10;
+                out = (u32)Vif_MsCnt((u128 *)out);
+                if (out - tag + limit >= 0x100000) {
+                    DmaTag_Cnt((u128 *)tag, ((out - tag) >> 4) - 1, 0, 0);
+                    tag = out;
+                    out += 0x10;
                 }
-                qv = q;
+                unpackPos = out;
                 step = 0x20;
-                q += 0x30;
+                out += 0x30;
                 cnt = 0;
             }
-            step += sz;
+            step += vtxBytes;
             cnt++;
-            switch (h->format) {
+            switch (mesh->format) {
             case 0x25:
-                if (h->flags & 0x1000) {
-                    v25 = &((Vtx25 *)h->verts)[*p];
-                    p++;
+                if (mesh->flags & MESH_INDEXED) {
+                    colVtx = &((MeshVtxCol *)mesh->verts)[*stream];
+                    stream++;
                 } else {
-                    v25++;
+                    colVtx++;
                 }
                 if (bits & 1) {
-                    ((f32 *)q)[0] = v25->pos[0];
-                    ((f32 *)q)[1] = v25->pos[1];
-                    ((f32 *)q)[2] = v25->pos[2];
+                    ((f32 *)out)[0] = colVtx->pos[0];
+                    ((f32 *)out)[1] = colVtx->pos[1];
+                    ((f32 *)out)[2] = colVtx->pos[2];
                     if (j < 2) {
-                        ((u32 *)q)[3] = 0x8000;
+                        ((u32 *)out)[3] = 0x8000;
                     } else {
-                        ((u32 *)q)[3] = 0;
+                        ((u32 *)out)[3] = 0;
                     }
-                    q += 0x10;
+                    out += 0x10;
                 }
                 if (bits & 2) {
-                    ((f32 *)q)[0] = v25->nrm[0];
-                    ((f32 *)q)[1] = v25->nrm[1];
-                    ((f32 *)q)[2] = v25->nrm[2];
+                    ((f32 *)out)[0] = colVtx->nrm[0];
+                    ((f32 *)out)[1] = colVtx->nrm[1];
+                    ((f32 *)out)[2] = colVtx->nrm[2];
                     if (toggle == 0) {
-                        ((f32 *)q)[3] = 1.0f;
+                        ((f32 *)out)[3] = 1.0f;
                     } else {
-                        ((f32 *)q)[3] = -1.0f;
+                        ((f32 *)out)[3] = -1.0f;
                     }
-                    q += 0x10;
+                    out += 0x10;
                 }
                 if (bits & 4) {
-                    if (!(e->frame & 0xF00)) {
-                        ((f32 *)q)[0] = (v25->col >> 16) & 0xFF;
-                        ((f32 *)q)[1] = (v25->col >> 8) & 0xFF;
-                        ((f32 *)q)[2] = v25->col & 0xFF;
+                    if (!(entry->renderFlags & 0xF00)) {
+                        ((f32 *)out)[0] = (colVtx->col >> 16) & 0xFF;
+                        ((f32 *)out)[1] = (colVtx->col >> 8) & 0xFF;
+                        ((f32 *)out)[2] = colVtx->col & 0xFF;
                     } else {
-                        ((f32 *)q)[0] = Gs_AlphaFromByte((v25->col >> 16) & 0xFF, 1);
-                        ((f32 *)q)[1] = Gs_AlphaFromByte((v25->col >> 8) & 0xFF, 1);
-                        ((f32 *)q)[2] = Gs_AlphaFromByte(v25->col & 0xFF, 1);
+                        ((f32 *)out)[0] = Gs_AlphaFromByte((colVtx->col >> 16) & 0xFF, 1);
+                        ((f32 *)out)[1] = Gs_AlphaFromByte((colVtx->col >> 8) & 0xFF, 1);
+                        ((f32 *)out)[2] = Gs_AlphaFromByte(colVtx->col & 0xFF, 1);
                     }
-                    ((f32 *)q)[3] = Gs_AlphaFromByte((v25->col >> 24) & 0xFF, 0);
-                    q += 0x10;
+                    ((f32 *)out)[3] = Gs_AlphaFromByte((colVtx->col >> 24) & 0xFF, 0);
+                    out += 0x10;
                 }
                 break;
             case 0x35:
-                if (h->flags & 0x1000) {
-                    v35 = &((Vtx35 *)h->verts)[*p];
-                    p++;
+                if (mesh->flags & MESH_INDEXED) {
+                    texVtx = &((MeshVtxTex *)mesh->verts)[*stream];
+                    stream++;
                 } else {
-                    v35++;
+                    texVtx++;
                 }
                 if (bits & 1) {
-                    ((f32 *)q)[0] = v35->pos[0];
-                    ((f32 *)q)[1] = v35->pos[1];
-                    ((f32 *)q)[2] = v35->pos[2];
+                    ((f32 *)out)[0] = texVtx->pos[0];
+                    ((f32 *)out)[1] = texVtx->pos[1];
+                    ((f32 *)out)[2] = texVtx->pos[2];
                     if (j < 2) {
-                        ((u32 *)q)[3] = 0x8000;
+                        ((u32 *)out)[3] = 0x8000;
                     } else {
-                        ((u32 *)q)[3] = 0;
+                        ((u32 *)out)[3] = 0;
                     }
-                    q += 0x10;
+                    out += 0x10;
                 }
                 if (bits & 2) {
-                    ((f32 *)q)[0] = v35->nrm[0];
-                    ((f32 *)q)[1] = v35->nrm[1];
-                    ((f32 *)q)[2] = v35->nrm[2];
+                    ((f32 *)out)[0] = texVtx->nrm[0];
+                    ((f32 *)out)[1] = texVtx->nrm[1];
+                    ((f32 *)out)[2] = texVtx->nrm[2];
                     if (toggle == 0) {
-                        ((f32 *)q)[3] = 1.0f;
+                        ((f32 *)out)[3] = 1.0f;
                     } else {
-                        ((f32 *)q)[3] = -1.0f;
+                        ((f32 *)out)[3] = -1.0f;
                     }
-                    q += 0x10;
+                    out += 0x10;
                 }
                 if (bits & 4) {
-                    if (!(e->frame & 0xF00)) {
-                        ((f32 *)q)[0] = Gs_AlphaFromByte((v35->col >> 16) & 0xFF, 0);
-                        ((f32 *)q)[1] = Gs_AlphaFromByte((v35->col >> 8) & 0xFF, 0);
-                        ((f32 *)q)[2] = Gs_AlphaFromByte(v35->col & 0xFF, 0);
+                    if (!(entry->renderFlags & 0xF00)) {
+                        ((f32 *)out)[0] = Gs_AlphaFromByte((texVtx->col >> 16) & 0xFF, 0);
+                        ((f32 *)out)[1] = Gs_AlphaFromByte((texVtx->col >> 8) & 0xFF, 0);
+                        ((f32 *)out)[2] = Gs_AlphaFromByte(texVtx->col & 0xFF, 0);
                     } else {
-                        ((f32 *)q)[0] = Gs_AlphaFromByte((v35->col >> 16) & 0xFF, 1);
-                        ((f32 *)q)[1] = Gs_AlphaFromByte((v35->col >> 8) & 0xFF, 1);
-                        ((f32 *)q)[2] = Gs_AlphaFromByte(v35->col & 0xFF, 1);
+                        ((f32 *)out)[0] = Gs_AlphaFromByte((texVtx->col >> 16) & 0xFF, 1);
+                        ((f32 *)out)[1] = Gs_AlphaFromByte((texVtx->col >> 8) & 0xFF, 1);
+                        ((f32 *)out)[2] = Gs_AlphaFromByte(texVtx->col & 0xFF, 1);
                     }
-                    ((f32 *)q)[3] = Gs_AlphaFromByte((v35->col >> 24) & 0xFF, 0);
-                    q += 0x10;
+                    ((f32 *)out)[3] = Gs_AlphaFromByte((texVtx->col >> 24) & 0xFF, 0);
+                    out += 0x10;
                 }
                 if (bits & 8) {
-                    r = (u32 *)q;
-                    ((f32 *)q)[0] = v35->uv[0];
-                    ((f32 *)q)[1] = v35->uv[1];
-                    ((f32 *)q)[2] = 1.0f;
-                    ((u32 *)q)[3] = 0;
-                    q += 0x10;
-                    if (e->flags & 0x20) {
-                        ((f32 *)r)[0] = ((f32 *)r)[0] * gDispTexScaleU;
-                        ((f32 *)r)[1] = ((f32 *)r)[1] * gDispTexScaleV;
+                    lastQw = (u32 *)out;
+                    ((f32 *)out)[0] = texVtx->uv[0];
+                    ((f32 *)out)[1] = texVtx->uv[1];
+                    ((f32 *)out)[2] = 1.0f;
+                    ((u32 *)out)[3] = 0;
+                    out += 0x10;
+                    if (entry->flags & MODEL_SCALE_UV) {
+                        ((f32 *)lastQw)[0] = ((f32 *)lastQw)[0] * gDispTexScaleU;
+                        ((f32 *)lastQw)[1] = ((f32 *)lastQw)[1] * gDispTexScaleV;
                     }
                 }
                 break;
             case 0x135:
-                if (h->flags & 0x1000) {
-                    v135 = &((Vtx135 *)h->verts)[*p];
-                    p++;
+                if (mesh->flags & MESH_INDEXED) {
+                    skinVtx = &((MeshVtxSkin *)mesh->verts)[*stream];
+                    stream++;
                 } else {
-                    v135++;
+                    skinVtx++;
                 }
                 if (bits & 1) {
-                    ((f32 *)q)[0] = v135->pos[0];
-                    ((f32 *)q)[1] = v135->pos[1];
-                    ((f32 *)q)[2] = v135->pos[2];
+                    ((f32 *)out)[0] = skinVtx->pos[0];
+                    ((f32 *)out)[1] = skinVtx->pos[1];
+                    ((f32 *)out)[2] = skinVtx->pos[2];
                     if (j < 2) {
-                        ((u32 *)q)[3] = 0x8000;
+                        ((u32 *)out)[3] = 0x8000;
                     } else {
-                        ((u32 *)q)[3] = 0;
+                        ((u32 *)out)[3] = 0;
                     }
-                    q += 0x10;
+                    out += 0x10;
                 }
                 if (bits & 2) {
-                    ((f32 *)q)[0] = v135->nrm[0];
-                    ((f32 *)q)[1] = v135->nrm[1];
-                    ((f32 *)q)[2] = v135->nrm[2];
+                    ((f32 *)out)[0] = skinVtx->nrm[0];
+                    ((f32 *)out)[1] = skinVtx->nrm[1];
+                    ((f32 *)out)[2] = skinVtx->nrm[2];
                     if (toggle == 0) {
-                        ((f32 *)q)[3] = 1.0f;
+                        ((f32 *)out)[3] = 1.0f;
                     } else {
-                        ((f32 *)q)[3] = -1.0f;
+                        ((f32 *)out)[3] = -1.0f;
                     }
-                    q += 0x10;
+                    out += 0x10;
                 }
                 if (bits & 4) {
-                    if (!(e->frame & 0xF00)) {
-                        ((f32 *)q)[0] = Gs_AlphaFromByte((v135->col >> 16) & 0xFF, 0);
-                        ((f32 *)q)[1] = Gs_AlphaFromByte((v135->col >> 8) & 0xFF, 0);
-                        ((f32 *)q)[2] = Gs_AlphaFromByte(v135->col & 0xFF, 0);
+                    if (!(entry->renderFlags & 0xF00)) {
+                        ((f32 *)out)[0] = Gs_AlphaFromByte((skinVtx->col >> 16) & 0xFF, 0);
+                        ((f32 *)out)[1] = Gs_AlphaFromByte((skinVtx->col >> 8) & 0xFF, 0);
+                        ((f32 *)out)[2] = Gs_AlphaFromByte(skinVtx->col & 0xFF, 0);
                     } else {
-                        ((f32 *)q)[0] = Gs_AlphaFromByte((v135->col >> 16) & 0xFF, 1);
-                        ((f32 *)q)[1] = Gs_AlphaFromByte((v135->col >> 8) & 0xFF, 1);
-                        ((f32 *)q)[2] = Gs_AlphaFromByte(v135->col & 0xFF, 1);
+                        ((f32 *)out)[0] = Gs_AlphaFromByte((skinVtx->col >> 16) & 0xFF, 1);
+                        ((f32 *)out)[1] = Gs_AlphaFromByte((skinVtx->col >> 8) & 0xFF, 1);
+                        ((f32 *)out)[2] = Gs_AlphaFromByte(skinVtx->col & 0xFF, 1);
                     }
-                    ((f32 *)q)[3] = Gs_AlphaFromByte((v135->col >> 24) & 0xFF, 0);
-                    q += 0x10;
+                    ((f32 *)out)[3] = Gs_AlphaFromByte((skinVtx->col >> 24) & 0xFF, 0);
+                    out += 0x10;
                 }
                 if (bits & 8) {
-                    r = (u32 *)q;
-                    ((f32 *)q)[0] = v135->uv[0];
-                    ((f32 *)q)[1] = v135->uv[1];
-                    ((f32 *)q)[2] = 1.0f;
-                    ((u32 *)q)[3] = 0;
-                    q += 0x10;
-                    if (e->flags & 0x20) {
-                        ((f32 *)r)[0] = ((f32 *)r)[0] * gDispTexScaleU;
-                        ((f32 *)r)[1] = ((f32 *)r)[1] * gDispTexScaleV;
+                    lastQw = (u32 *)out;
+                    ((f32 *)out)[0] = skinVtx->uv[0];
+                    ((f32 *)out)[1] = skinVtx->uv[1];
+                    ((f32 *)out)[2] = 1.0f;
+                    ((u32 *)out)[3] = 0;
+                    out += 0x10;
+                    if (entry->flags & MODEL_SCALE_UV) {
+                        ((f32 *)lastQw)[0] = ((f32 *)lastQw)[0] * gDispTexScaleU;
+                        ((f32 *)lastQw)[1] = ((f32 *)lastQw)[1] * gDispTexScaleV;
                     }
                 }
                 if ((bits & 0x10) && (bits & 0x20)) {
-                    r = (u32 *)q;
-                    wt = (f32 *)(q + 0x10);
-                    q += 0x20;
-                    a[0] = (v135->bones >> 24) & 0xFF;
-                    a[1] = (v135->bones >> 16) & 0xFF;
-                    a[2] = (v135->bones >> 8) & 0xFF;
-                    a[3] = v135->bones & 0xFF;
-                    b[0] = (v135->weights >> 24) & 0xFF;
-                    b[1] = (v135->weights >> 16) & 0xFF;
-                    b[2] = (v135->weights >> 8) & 0xFF;
-                    b[3] = v135->weights & 0xFF;
-                    *(u128 *)r = 0;
-                    *(u128 *)wt = 0;
+                    lastQw = (u32 *)out;
+                    weightOut = (f32 *)(out + 0x10);
+                    out += 0x20;
+                    boneIdx[0] = (skinVtx->bones >> 24) & 0xFF;
+                    boneIdx[1] = (skinVtx->bones >> 16) & 0xFF;
+                    boneIdx[2] = (skinVtx->bones >> 8) & 0xFF;
+                    boneIdx[3] = skinVtx->bones & 0xFF;
+                    boneWt[0] = (skinVtx->weights >> 24) & 0xFF;
+                    boneWt[1] = (skinVtx->weights >> 16) & 0xFF;
+                    boneWt[2] = (skinVtx->weights >> 8) & 0xFF;
+                    boneWt[3] = skinVtx->weights & 0xFF;
+                    *(u128 *)lastQw = 0;
+                    *(u128 *)weightOut = 0;
                     switch (lastB) {
                     case 0:
-                        r[0] = (u32)&((BoneInfo *)info[10])->base[a[0]];
-                        e->unk54 |= 1 << a[0];
-                        r[1] = (u32)&((BoneInfo *)info[10])->base[((BoneInfo *)info[10])->off] + a[0] * ((BoneInfo *)info[10])->size;
-                        wt[0] = 100.0f;
+                        lastQw[0] = (u32)&((Vu1BoneLayout *)info[10])->base[boneIdx[0]];
+                        entry->boneMask |= 1 << boneIdx[0];
+                        lastQw[1] = (u32)&((Vu1BoneLayout *)info[10])->base[((Vu1BoneLayout *)info[10])->off] + boneIdx[0] * ((Vu1BoneLayout *)info[10])->size;
+                        weightOut[0] = 100.0f;
                         break;
                     case 1:
                         for (k = 0; k < 4; k++) {
-                            r[k] = (u32)&((BoneInfo *)info[10])->base[a[k]];
-                            e->unk54 |= 1 << a[k];
-                            wt[k] = b[k] / 255.0f;
+                            lastQw[k] = (u32)&((Vu1BoneLayout *)info[10])->base[boneIdx[k]];
+                            entry->boneMask |= 1 << boneIdx[k];
+                            weightOut[k] = boneWt[k] / 255.0f;
                         }
                         break;
                     }
@@ -3124,7 +3177,7 @@ void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
         }
     }
     if (cnt != 0) {
-        w = (u32 *)Vif_UnpackV4((u128 *)qv, step >> 4, 0);
+        w = (u32 *)Vif_UnpackV4((u128 *)unpackPos, step >> 4, 0);
         switch (lastB) {
         case 0:
             w[0] = 1;
@@ -3138,57 +3191,57 @@ void Model_BuildVifPackets(MeshDesc *h, ModelEntry *e)
         ((u64 *)w)[2] = GIF_TAG(cnt, prim, nreg);
         w[6] = regs;
         w[7] = 0;
-        q = (u32)Vif_MsCnt((u128 *)q);
+        out = (u32)Vif_MsCnt((u128 *)out);
     }
     if (tag == starts[lastA]) {
-        DmaTag_Ret((u128 *)tag, ((q - tag) >> 4) - 1, 0, 0);
+        DmaTag_Ret((u128 *)tag, ((out - tag) >> 4) - 1, 0, 0);
         offs[lastA] = tag - base;
     } else {
-        t = (u32 *)starts[lastA];
+        walk = (u32 *)starts[lastA];
         do {
-            switch (t[0] & 0x70000000) {
-            case 0x10000000:
-            case 0x20000000:
-                t = (u32 *)((u8 *)t + ((t[0] & 0xFFFF) + 1) * 16);
+            switch (walk[0] & DMA_TAG_ID_MASK) {
+            case DMA_TAG_CNT:
+            case DMA_TAG_NEXT:
+                walk = (u32 *)((u8 *)walk + ((walk[0] & 0xFFFF) + 1) * 16);
                 break;
-            case 0x60000000:
-                DmaTag_Next((u128 *)t, t[0] & 0xFFFF, tag, 0, 0);
-                t = NULL;
+            case DMA_TAG_RET:
+                DmaTag_Next((u128 *)walk, walk[0] & 0xFFFF, tag, 0, 0);
+                walk = NULL;
                 break;
             }
-        } while (t != NULL);
-        DmaTag_Ret((u128 *)tag, ((q - tag) >> 4) - 1, 0, 0);
+        } while (walk != NULL);
+        DmaTag_Ret((u128 *)tag, ((out - tag) >> 4) - 1, 0, 0);
     }
-    if (e->unk18 != q - base) {
-        Debug_Printf("A = %x B = %x, %x @flPS2ConvClayData", base, q, e->unk18);
+    if (entry->vifSize != out - base) {
+        Debug_Printf("A = %x B = %x, %x @flPS2ConvClayData", base, out, entry->vifSize);
     }
 }
 
 /* A 0..255 alpha as the GS's 0..128 (mode 0) or as 0..1 (mode 1). */
-f32 Gs_AlphaFromByte(u32 a, s32 mode)
+f32 Gs_AlphaFromByte(u32 byteVal, s32 mode)
 {
-    f32 r = 0.0f;
+    f32 result = 0.0f;
 
     if (mode == 0) {
-        if (a == 0xFF) {
-            r = 128.0f;
-        } else if (a != 0) {
-            a >>= 1;
-            if (a == 0) {
-                a = 1;
+        if (byteVal == 0xFF) {
+            result = 128.0f;
+        } else if (byteVal != 0) {
+            byteVal >>= 1;
+            if (byteVal == 0) {
+                byteVal = 1;
             }
-            r = a;
+            result = byteVal;
         }
     } else {
-        r = a / 255.0f;
-        if (r > 1.0f) {
-            r = 1.0f;
+        result = byteVal / 255.0f;
+        if (result > 1.0f) {
+            result = 1.0f;
         }
-        if (r < 0.0f) {
-            r = 0.0f;
+        if (result < 0.0f) {
+            result = 0.0f;
         }
     }
-    return r;
+    return result;
 }
 
 void Model_BuildPartPacket(u8 *part, u32 *dst, s32 prog, s32 mat);
@@ -3196,7 +3249,7 @@ extern s32 gModelPktSteps[];
 
 /* The DMA packets of the n parts mat[] of model e (Model_BuildPartPacket, a step of gModelPktSteps[prog]
  * bytes each) from dst, closed by an END tag. */
-void Model_BuildPartPackets(ModelEntry *e, s32 n, s32 prog, s32 dst, u8 *mat)
+void Model_BuildPartPackets(ModelEntry *entry, s32 n, s32 prog, s32 dst, u8 *mat)
 {
     s32 i;
     s32 step;
@@ -3204,8 +3257,8 @@ void Model_BuildPartPackets(ModelEntry *e, s32 n, s32 prog, s32 dst, u8 *mat)
     u8 *base;
 
     step = gModelPktSteps[prog];
-    base = e->dataAddr;
-    parts = (s32 *)(base + e->unk2C);
+    base = entry->dataAddr;
+    parts = (s32 *)(base + entry->chainTblOfs);
     for (i = 0; i < n; i++) {
         Model_BuildPartPacket(base + parts[mat[i]], (u32 *)dst, prog, mat[i]);
         dst += step;
@@ -3229,181 +3282,181 @@ extern u32 D_0020E134;
  * (Gs_SetTexRegs, or fixed ones for kinds 1 and 4), the material's colours and an MSCNT. */
 void Model_BuildPartPacket(u8 *part, u32 *dst, s32 prog, s32 mat)
 {
-    ModelMat *m = &gRsMaterials[mat];
-    u8 *p;
+    ModelMat *material = &gRsMaterials[mat];
+    u8 *pkt;
     s32 lod;
-    s32 on;
+    s32 isPow2;
 
     switch (prog) {
     case 0:
-        p = (u8 *)dst;
-        DmaTag_Call((u128 *)p, 0xC, (u32)part, 0, 0);
-        Vif_UnpackV4((u128 *)(p + 0x10), 0xA, 0);
-        *(u128 *)(p + 0x20) = 0;
-        *(u64 *)(p + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
-        *(u32 *)(p + 0x38) = 0xE;
-        *(u32 *)(p + 0x3C) = 0;
-        Gs_SetTexRegs(m->tex, (u64 *)(p + 0x40), (u64 *)(p + 0x50), (u64 *)(p + 0x60),
-                      (u64 *)(p + 0x70), (u64 *)(p + 0x80), (u64 *)(p + 0x90));
-        *(f32 *)(p + 0xA0) = m->rgb[0];
-        *(f32 *)(p + 0xA4) = m->rgb[1];
-        *(f32 *)(p + 0xA8) = m->rgb[2];
-        *(f32 *)(p + 0xAC) = 128.0f * m->alpha;
-        *(f32 *)(p + 0xB0) = m->unk24[0];
-        *(f32 *)(p + 0xB4) = m->unk24[1];
-        *(f32 *)(p + 0xB8) = m->unk24[2];
-        *(f32 *)(p + 0xBC) = m->unk24[3];
-        Vif_MsCnt((u128 *)(p + 0xC0));
+        pkt = (u8 *)dst;
+        DmaTag_Call((u128 *)pkt, 0xC, (u32)part, 0, 0);
+        Vif_UnpackV4((u128 *)(pkt + 0x10), 0xA, 0);
+        *(u128 *)(pkt + 0x20) = 0;
+        *(u64 *)(pkt + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
+        *(u32 *)(pkt + 0x38) = 0xE;
+        *(u32 *)(pkt + 0x3C) = 0;
+        Gs_SetTexRegs(material->tex, (u64 *)(pkt + 0x40), (u64 *)(pkt + 0x50), (u64 *)(pkt + 0x60),
+                      (u64 *)(pkt + 0x70), (u64 *)(pkt + 0x80), (u64 *)(pkt + 0x90));
+        *(f32 *)(pkt + 0xA0) = material->rgb[0];
+        *(f32 *)(pkt + 0xA4) = material->rgb[1];
+        *(f32 *)(pkt + 0xA8) = material->rgb[2];
+        *(f32 *)(pkt + 0xAC) = 128.0f * material->alpha;
+        *(f32 *)(pkt + 0xB0) = material->unk24[0];
+        *(f32 *)(pkt + 0xB4) = material->unk24[1];
+        *(f32 *)(pkt + 0xB8) = material->unk24[2];
+        *(f32 *)(pkt + 0xBC) = material->unk24[3];
+        Vif_MsCnt((u128 *)(pkt + 0xC0));
         break;
     case 1:
-        p = (u8 *)dst;
-        DmaTag_Call((u128 *)p, 0xC, (u32)part, 0, 0);
-        Vif_UnpackV4((u128 *)(p + 0x10), 0xA, 0);
-        *(u128 *)(p + 0x20) = 0;
-        *(u64 *)(p + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
-        *(u32 *)(p + 0x38) = 0xE;
-        *(u32 *)(p + 0x3C) = 0;
-        *(u64 *)(p + 0x40) = 0;
-        *(u64 *)(p + 0x48) = 0x3B;
-        *(u64 *)(p + 0x50) = 0;
-        *(u64 *)(p + 0x58) = 0x14;
-        *(u64 *)(p + 0x60) = 0;
-        *(u64 *)(p + 0x68) = 6;
-        *(u64 *)(p + 0x70) = 0;
-        *(u64 *)(p + 0x78) = 8;
-        *(u64 *)(p + 0x80) = 0;
-        *(u64 *)(p + 0x88) = 0x34;
-        *(u64 *)(p + 0x90) = 0;
-        *(u64 *)(p + 0x98) = 0x36;
-        *(f32 *)(p + 0xA0) = m->rgb[0];
-        *(f32 *)(p + 0xA4) = m->rgb[1];
-        *(f32 *)(p + 0xA8) = m->rgb[2];
-        *(f32 *)(p + 0xAC) = 128.0f * m->alpha;
-        *(f32 *)(p + 0xB0) = m->unk24[0];
-        *(f32 *)(p + 0xB4) = m->unk24[1];
-        *(f32 *)(p + 0xB8) = m->unk24[2];
-        *(f32 *)(p + 0xBC) = m->unk24[3];
-        Vif_MsCnt((u128 *)(p + 0xC0));
+        pkt = (u8 *)dst;
+        DmaTag_Call((u128 *)pkt, 0xC, (u32)part, 0, 0);
+        Vif_UnpackV4((u128 *)(pkt + 0x10), 0xA, 0);
+        *(u128 *)(pkt + 0x20) = 0;
+        *(u64 *)(pkt + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
+        *(u32 *)(pkt + 0x38) = 0xE;
+        *(u32 *)(pkt + 0x3C) = 0;
+        *(u64 *)(pkt + 0x40) = 0;
+        *(u64 *)(pkt + 0x48) = 0x3B;
+        *(u64 *)(pkt + 0x50) = 0;
+        *(u64 *)(pkt + 0x58) = 0x14;
+        *(u64 *)(pkt + 0x60) = 0;
+        *(u64 *)(pkt + 0x68) = 6;
+        *(u64 *)(pkt + 0x70) = 0;
+        *(u64 *)(pkt + 0x78) = 8;
+        *(u64 *)(pkt + 0x80) = 0;
+        *(u64 *)(pkt + 0x88) = 0x34;
+        *(u64 *)(pkt + 0x90) = 0;
+        *(u64 *)(pkt + 0x98) = 0x36;
+        *(f32 *)(pkt + 0xA0) = material->rgb[0];
+        *(f32 *)(pkt + 0xA4) = material->rgb[1];
+        *(f32 *)(pkt + 0xA8) = material->rgb[2];
+        *(f32 *)(pkt + 0xAC) = 128.0f * material->alpha;
+        *(f32 *)(pkt + 0xB0) = material->unk24[0];
+        *(f32 *)(pkt + 0xB4) = material->unk24[1];
+        *(f32 *)(pkt + 0xB8) = material->unk24[2];
+        *(f32 *)(pkt + 0xBC) = material->unk24[3];
+        Vif_MsCnt((u128 *)(pkt + 0xC0));
         break;
     case 2:
-        p = (u8 *)dst;
-        DmaTag_Call((u128 *)p, 0xE, (u32)part, 0, 0);
-        Vif_UnpackV4((u128 *)(p + 0x10), 0xC, 0);
-        *(u128 *)(p + 0x20) = 0;
-        *(u64 *)(p + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
-        *(u32 *)(p + 0x38) = 0xE;
-        *(u32 *)(p + 0x3C) = 0;
-        Gs_SetTexRegs(m->tex, (u64 *)(p + 0x40), (u64 *)(p + 0x50), (u64 *)(p + 0x60),
-                      (u64 *)(p + 0x70), (u64 *)(p + 0x80), (u64 *)(p + 0x90));
-        *(f32 *)(p + 0xA0) = m->rgb[0];
-        *(f32 *)(p + 0xA4) = m->rgb[1];
-        *(f32 *)(p + 0xA8) = m->rgb[2];
-        *(f32 *)(p + 0xAC) = 128.0f * m->alpha;
-        *(f32 *)(p + 0xB0) = m->unk24[0];
-        *(f32 *)(p + 0xB4) = m->unk24[1];
-        *(f32 *)(p + 0xB8) = m->unk24[2];
-        *(f32 *)(p + 0xBC) = m->unk24[3];
-        *(f32 *)(p + 0xC0) = m->unk14[0];
-        *(f32 *)(p + 0xC4) = m->unk14[1];
-        *(f32 *)(p + 0xC8) = m->unk14[2];
-        *(f32 *)(p + 0xCC) = m->unk14[3];
-        switch (m->size) {
+        pkt = (u8 *)dst;
+        DmaTag_Call((u128 *)pkt, 0xE, (u32)part, 0, 0);
+        Vif_UnpackV4((u128 *)(pkt + 0x10), 0xC, 0);
+        *(u128 *)(pkt + 0x20) = 0;
+        *(u64 *)(pkt + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
+        *(u32 *)(pkt + 0x38) = 0xE;
+        *(u32 *)(pkt + 0x3C) = 0;
+        Gs_SetTexRegs(material->tex, (u64 *)(pkt + 0x40), (u64 *)(pkt + 0x50), (u64 *)(pkt + 0x60),
+                      (u64 *)(pkt + 0x70), (u64 *)(pkt + 0x80), (u64 *)(pkt + 0x90));
+        *(f32 *)(pkt + 0xA0) = material->rgb[0];
+        *(f32 *)(pkt + 0xA4) = material->rgb[1];
+        *(f32 *)(pkt + 0xA8) = material->rgb[2];
+        *(f32 *)(pkt + 0xAC) = 128.0f * material->alpha;
+        *(f32 *)(pkt + 0xB0) = material->unk24[0];
+        *(f32 *)(pkt + 0xB4) = material->unk24[1];
+        *(f32 *)(pkt + 0xB8) = material->unk24[2];
+        *(f32 *)(pkt + 0xBC) = material->unk24[3];
+        *(f32 *)(pkt + 0xC0) = material->unk14[0];
+        *(f32 *)(pkt + 0xC4) = material->unk14[1];
+        *(f32 *)(pkt + 0xC8) = material->unk14[2];
+        *(f32 *)(pkt + 0xCC) = material->unk14[3];
+        switch (material->size) {
         case 0:
         case 1:
         case 2:
-            on = lod = 1;
+            isPow2 = lod = 1;
             break;
         case 4:
             lod = 2;
-            on = 1;
+            isPow2 = 1;
             break;
         case 8:
             lod = 3;
-            on = 1;
+            isPow2 = 1;
             break;
         case 0x10:
             lod = 4;
-            on = 1;
+            isPow2 = 1;
             break;
         case 0x20:
             lod = 5;
-            on = 1;
+            isPow2 = 1;
             break;
         case 0x40:
             lod = 6;
-            on = 1;
+            isPow2 = 1;
             break;
         case 0x80:
             lod = 7;
-            on = 1;
+            isPow2 = 1;
             break;
         case 0x100:
             lod = 8;
-            on = 1;
+            isPow2 = 1;
             break;
         default:
-            lod = m->size - 1;
-            on = 0;
+            lod = material->size - 1;
+            isPow2 = 0;
             break;
         }
-        *(s32 *)(p + 0xD0) = lod;
-        *(s32 *)(p + 0xD4) = on;
-        *(s32 *)(p + 0xD8) = 0;
-        *(s32 *)(p + 0xDC) = 0;
-        Vif_MsCnt((u128 *)(p + 0xE0));
+        *(s32 *)(pkt + 0xD0) = lod;
+        *(s32 *)(pkt + 0xD4) = isPow2;
+        *(s32 *)(pkt + 0xD8) = 0;
+        *(s32 *)(pkt + 0xDC) = 0;
+        Vif_MsCnt((u128 *)(pkt + 0xE0));
         break;
     case 3:
-        p = (u8 *)dst;
-        DmaTag_Call((u128 *)p, 0xA, (u32)part, 0, 0);
-        Vif_UnpackV4((u128 *)(p + 0x10), 8, 0);
-        *(u128 *)(p + 0x20) = 0;
-        *(u64 *)(p + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
-        *(u32 *)(p + 0x38) = 0xE;
-        *(u32 *)(p + 0x3C) = 0;
-        Gs_SetTexRegs(m->tex, (u64 *)(p + 0x40), (u64 *)(p + 0x50), (u64 *)(p + 0x60),
-                      (u64 *)(p + 0x70), (u64 *)(p + 0x80), (u64 *)(p + 0x90));
-        Vif_MsCnt((u128 *)(p + 0xA0));
+        pkt = (u8 *)dst;
+        DmaTag_Call((u128 *)pkt, 0xA, (u32)part, 0, 0);
+        Vif_UnpackV4((u128 *)(pkt + 0x10), 8, 0);
+        *(u128 *)(pkt + 0x20) = 0;
+        *(u64 *)(pkt + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
+        *(u32 *)(pkt + 0x38) = 0xE;
+        *(u32 *)(pkt + 0x3C) = 0;
+        Gs_SetTexRegs(material->tex, (u64 *)(pkt + 0x40), (u64 *)(pkt + 0x50), (u64 *)(pkt + 0x60),
+                      (u64 *)(pkt + 0x70), (u64 *)(pkt + 0x80), (u64 *)(pkt + 0x90));
+        Vif_MsCnt((u128 *)(pkt + 0xA0));
         break;
     case 4:
-        p = (u8 *)dst;
-        DmaTag_Call((u128 *)p, 0xB, (u32)part, 0, 0);
-        Vif_UnpackV4((u128 *)(p + 0x10), 9, 0);
-        *(u128 *)(p + 0x20) = 0;
-        *(u64 *)(p + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
-        *(u32 *)(p + 0x38) = 0xE;
-        *(u32 *)(p + 0x3C) = 0;
-        *(u64 *)(p + 0x40) = 0;
-        *(u64 *)(p + 0x48) = 0x3B;
-        *(u64 *)(p + 0x50) = 0;
-        *(u64 *)(p + 0x58) = 0x14;
-        *(u64 *)(p + 0x60) = 0;
-        *(u64 *)(p + 0x68) = 6;
-        *(u64 *)(p + 0x70) = 0;
-        *(u64 *)(p + 0x78) = 8;
-        *(u64 *)(p + 0x80) = 0;
-        *(u64 *)(p + 0x88) = 0x34;
-        *(u64 *)(p + 0x90) = 0;
-        *(u64 *)(p + 0x98) = 0x36;
-        *(u128 *)(p + 0xA0) = 0;
-        Vif_MsCnt((u128 *)(p + 0xB0));
+        pkt = (u8 *)dst;
+        DmaTag_Call((u128 *)pkt, 0xB, (u32)part, 0, 0);
+        Vif_UnpackV4((u128 *)(pkt + 0x10), 9, 0);
+        *(u128 *)(pkt + 0x20) = 0;
+        *(u64 *)(pkt + 0x30) = 0x8006 | ((u64)0x10000000 << 32);
+        *(u32 *)(pkt + 0x38) = 0xE;
+        *(u32 *)(pkt + 0x3C) = 0;
+        *(u64 *)(pkt + 0x40) = 0;
+        *(u64 *)(pkt + 0x48) = 0x3B;
+        *(u64 *)(pkt + 0x50) = 0;
+        *(u64 *)(pkt + 0x58) = 0x14;
+        *(u64 *)(pkt + 0x60) = 0;
+        *(u64 *)(pkt + 0x68) = 6;
+        *(u64 *)(pkt + 0x70) = 0;
+        *(u64 *)(pkt + 0x78) = 8;
+        *(u64 *)(pkt + 0x80) = 0;
+        *(u64 *)(pkt + 0x88) = 0x34;
+        *(u64 *)(pkt + 0x90) = 0;
+        *(u64 *)(pkt + 0x98) = 0x36;
+        *(u128 *)(pkt + 0xA0) = 0;
+        Vif_MsCnt((u128 *)(pkt + 0xB0));
         break;
     case 5:
-        p = (u8 *)dst;
-        DmaTag_Call((u128 *)p, 0x10, (u32)part, 0, 0);
-        Vif_UnpackV4((u128 *)(p + 0x10), 0xE, 0);
-        *(u128 *)(p + 0x20) = 0;
-        *(u64 *)(p + 0x30) = 0x800B | ((u64)0x10000000 << 32);
-        *(u32 *)(p + 0x38) = 0xE;
-        *(u32 *)(p + 0x3C) = 0;
-        Gs_SetTexRegs2(m->tex, (u64 *)(p + 0x40), (u64 *)(p + 0x50), (u64 *)(p + 0x60),
-                       (u64 *)(p + 0x70), (u64 *)(p + 0x80), (u64 *)(p + 0x90),
-                       D_0020E134, (u64 *)(p + 0xA0), (u64 *)(p + 0xB0),
-                       (u64 *)(p + 0xC0), (u64 *)(p + 0xD0), (u64 *)(p + 0xE0));
-        *(f32 *)(p + 0xF0) = m->rgb[0];
-        *(f32 *)(p + 0xF4) = m->rgb[1];
-        *(f32 *)(p + 0xF8) = m->rgb[2];
-        *(f32 *)(p + 0xFC) = 128.0f * m->alpha;
-        Vif_MsCnt((u128 *)(p + 0x100));
+        pkt = (u8 *)dst;
+        DmaTag_Call((u128 *)pkt, 0x10, (u32)part, 0, 0);
+        Vif_UnpackV4((u128 *)(pkt + 0x10), 0xE, 0);
+        *(u128 *)(pkt + 0x20) = 0;
+        *(u64 *)(pkt + 0x30) = 0x800B | ((u64)0x10000000 << 32);
+        *(u32 *)(pkt + 0x38) = 0xE;
+        *(u32 *)(pkt + 0x3C) = 0;
+        Gs_SetTexRegs2(material->tex, (u64 *)(pkt + 0x40), (u64 *)(pkt + 0x50), (u64 *)(pkt + 0x60),
+                       (u64 *)(pkt + 0x70), (u64 *)(pkt + 0x80), (u64 *)(pkt + 0x90),
+                       D_0020E134, (u64 *)(pkt + 0xA0), (u64 *)(pkt + 0xB0),
+                       (u64 *)(pkt + 0xC0), (u64 *)(pkt + 0xD0), (u64 *)(pkt + 0xE0));
+        *(f32 *)(pkt + 0xF0) = material->rgb[0];
+        *(f32 *)(pkt + 0xF4) = material->rgb[1];
+        *(f32 *)(pkt + 0xF8) = material->rgb[2];
+        *(f32 *)(pkt + 0xFC) = 128.0f * material->alpha;
+        Vif_MsCnt((u128 *)(pkt + 0x100));
         break;
     }
 }
@@ -3465,102 +3518,102 @@ s32 Gs_BuildTexRegs(u32 handle, u64 *texa, u64 *tex1, u64 *tex0, u64 *clamp, u64
 extern u32 gRenderFlags;
 /* The GS texture registers (A+D pairs: TEXA, TEX1_1, TEX0_1, CLAMP_1, MIPTBP1_1, MIPTBP2_1)
  * for texture tex (Gs_BuildTexRegs, main), or cleared when tex is 0. */
-void Gs_SetTexRegs(u32 tex, u64 *texa, u64 *tex1, u64 *tex0, u64 *clamp, u64 *mip1, u64 *mip2)
+void Gs_SetTexRegs(u32 tex, u64 *texa, u64 *tex1Reg, u64 *tex0Reg, u64 *clamp, u64 *miptbp1Reg, u64 *miptbp2Reg)
 {
     if (tex != 0) {
-        Gs_BuildTexRegs(tex, texa, tex1, tex0, clamp, mip1, mip2, gRenderFlags);
-        texa[1] = 0x3B;
-        tex1[1] = 0x14;
-        tex0[1] = 0x06;
-        clamp[1] = 0x08;
-        mip1[1] = 0x34;
-        mip2[1] = 0x36;
+        Gs_BuildTexRegs(tex, texa, tex1Reg, tex0Reg, clamp, miptbp1Reg, miptbp2Reg, gRenderFlags);
+        texa[1] = GS_REG_TEXA;
+        tex1Reg[1] = GS_REG_TEX1_1;
+        tex0Reg[1] = GS_REG_TEX0_1;
+        clamp[1] = GS_REG_CLAMP_1;
+        miptbp1Reg[1] = GS_REG_MIPTBP1_1;
+        miptbp2Reg[1] = GS_REG_MIPTBP2_1;
     } else {
         texa[0] = 0;
-        texa[1] = 0x3B;
-        tex1[0] = 0;
-        tex1[1] = 0x14;
-        tex0[0] = 0;
-        tex0[1] = 0x06;
+        texa[1] = GS_REG_TEXA;
+        tex1Reg[0] = 0;
+        tex1Reg[1] = GS_REG_TEX1_1;
+        tex0Reg[0] = 0;
+        tex0Reg[1] = GS_REG_TEX0_1;
         clamp[0] = 0;
-        clamp[1] = 0x08;
-        mip1[0] = 0;
-        mip1[1] = 0x34;
-        mip2[0] = 0;
-        mip2[1] = 0x36;
+        clamp[1] = GS_REG_CLAMP_1;
+        miptbp1Reg[0] = 0;
+        miptbp1Reg[1] = GS_REG_MIPTBP1_1;
+        miptbp2Reg[0] = 0;
+        miptbp2Reg[1] = GS_REG_MIPTBP2_1;
     }
 }
 
 /* As Gs_SetTexRegs for both drawing contexts: tex for context 1, tex2 for context 2 (whose
  * MIPTBP registers get 0x34 and 0x36 when it has a texture, 0x35 and 0x37 when not). */
-void Gs_SetTexRegs2(u32 tex, u64 *texa, u64 *tex1, u64 *tex0, u64 *clamp, u64 *mip1, u64 *mip2,
-                   u32 tex2, u64 *tex1b, u64 *tex0b, u64 *clampb, u64 *mip1b, u64 *mip2b)
+void Gs_SetTexRegs2(u32 tex, u64 *texa, u64 *tex1Reg, u64 *tex0Reg, u64 *clamp, u64 *miptbp1Reg, u64 *miptbp2Reg,
+                   u32 tex2, u64 *tex1Reg2, u64 *tex0Reg2, u64 *clamp2, u64 *miptbp1Reg2, u64 *miptbp2Reg2)
 {
     if (tex != 0) {
-        Gs_BuildTexRegs(tex, texa, tex1, tex0, clamp, mip1, mip2, gRenderFlags);
-        texa[1] = 0x3B;
-        tex1[1] = 0x14;
-        tex0[1] = 0x06;
-        clamp[1] = 0x08;
-        mip1[1] = 0x34;
-        mip2[1] = 0x36;
+        Gs_BuildTexRegs(tex, texa, tex1Reg, tex0Reg, clamp, miptbp1Reg, miptbp2Reg, gRenderFlags);
+        texa[1] = GS_REG_TEXA;
+        tex1Reg[1] = GS_REG_TEX1_1;
+        tex0Reg[1] = GS_REG_TEX0_1;
+        clamp[1] = GS_REG_CLAMP_1;
+        miptbp1Reg[1] = GS_REG_MIPTBP1_1;
+        miptbp2Reg[1] = GS_REG_MIPTBP2_1;
     } else {
         texa[0] = 0;
-        texa[1] = 0x3B;
-        tex1[0] = 0;
-        tex1[1] = 0x14;
-        tex0[0] = 0;
-        tex0[1] = 0x06;
+        texa[1] = GS_REG_TEXA;
+        tex1Reg[0] = 0;
+        tex1Reg[1] = GS_REG_TEX1_1;
+        tex0Reg[0] = 0;
+        tex0Reg[1] = GS_REG_TEX0_1;
         clamp[0] = 0;
-        clamp[1] = 0x08;
-        mip1[0] = 0;
-        mip1[1] = 0x34;
-        mip2[0] = 0;
-        mip2[1] = 0x36;
+        clamp[1] = GS_REG_CLAMP_1;
+        miptbp1Reg[0] = 0;
+        miptbp1Reg[1] = GS_REG_MIPTBP1_1;
+        miptbp2Reg[0] = 0;
+        miptbp2Reg[1] = GS_REG_MIPTBP2_1;
     }
     if (tex2 != 0) {
-        Gs_BuildTexRegs(tex2, texa, tex1b, tex0b, clampb, mip1b, mip2b, gRenderFlags);
-        texa[1] = 0x3B;
-        tex1b[1] = 0x15;
-        tex0b[1] = 0x07;
-        clampb[1] = 0x09;
-        mip1b[1] = 0x34;
-        mip2b[1] = 0x36;
+        Gs_BuildTexRegs(tex2, texa, tex1Reg2, tex0Reg2, clamp2, miptbp1Reg2, miptbp2Reg2, gRenderFlags);
+        texa[1] = GS_REG_TEXA;
+        tex1Reg2[1] = GS_REG_TEX1_2;
+        tex0Reg2[1] = GS_REG_TEX0_2;
+        clamp2[1] = GS_REG_CLAMP_2;
+        miptbp1Reg2[1] = GS_REG_MIPTBP1_1;
+        miptbp2Reg2[1] = GS_REG_MIPTBP2_1;
     } else {
         texa[0] = 0;
-        texa[1] = 0x3B;
-        tex1b[0] = 0;
-        tex1b[1] = 0x15;
-        tex0b[0] = 0;
-        tex0b[1] = 0x07;
-        clampb[0] = 0;
-        clampb[1] = 0x09;
-        mip1b[0] = 0;
-        mip1b[1] = 0x35;
-        mip2b[0] = 0;
-        mip2b[1] = 0x37;
+        texa[1] = GS_REG_TEXA;
+        tex1Reg2[0] = 0;
+        tex1Reg2[1] = GS_REG_TEX1_2;
+        tex0Reg2[0] = 0;
+        tex0Reg2[1] = GS_REG_TEX0_2;
+        clamp2[0] = 0;
+        clamp2[1] = GS_REG_CLAMP_2;
+        miptbp1Reg2[0] = 0;
+        miptbp1Reg2[1] = GS_REG_MIPTBP1_2;
+        miptbp2Reg2[0] = 0;
+        miptbp2Reg2[1] = GS_REG_MIPTBP2_2;
     }
 }
 
 /* The textures of e: partTex[i] = the texture of part i's material, tex[] the distinct ones. */
-static void Model_CollectTextures(ModelEntry *e, s32 unused)
+static void Model_CollectTextures(ModelEntry *entry, s32 unused)
 {
     s32 i;
     s32 j;
-    ModelMat *m;
+    ModelMat *material;
 
-    e->texCount = 0;
-    for (i = 0; i < e->partCount; i++) {
-        m = &gRsMaterials[e->mat[i]];
-        e->partTex[i] = 0;
-        if (m->tex != 0) {
-            e->partTex[i] = m->tex;
-            for (j = 0; j < e->texCount; j++) {
-                if (e->tex[j] == m->tex) {
+    entry->texCount = 0;
+    for (i = 0; i < entry->partCount; i++) {
+        material = &gRsMaterials[entry->mat[i]];
+        entry->partTex[i] = 0;
+        if (material->tex != 0) {
+            entry->partTex[i] = material->tex;
+            for (j = 0; j < entry->texCount; j++) {
+                if (entry->tex[j] == material->tex) {
                     goto next;
                 }
             }
-            e->tex[e->texCount++] = m->tex;
+            entry->tex[entry->texCount++] = material->tex;
         }
     next:;
     }
@@ -3572,16 +3625,16 @@ void Model_Relocate(ModelEntry *e);
 void Model_RelocateAll(void)
 {
     s32 i;
-    ModelEntry *e;
+    ModelEntry *entry;
 
     i = 0;
-    e = gModelPool;
+    entry = gModelPool;
     do {
-        if (e->used != 0 && e->data != NULL) {
-            Model_Relocate(e);
+        if (entry->used != 0 && entry->data != NULL) {
+            Model_Relocate(entry);
         }
         i++;
-        e++;
+        entry++;
     } while (i < 0x180);
 }
 
@@ -3589,35 +3642,35 @@ void Model_RelocateAll(void)
  * After model e's data moved (its handle compacted): the new address, each part's DMA
  * chain start, and the NEXT tags inside the chains relocated.
  */
-void Model_Relocate(ModelEntry *e)
+void Model_Relocate(ModelEntry *entry)
 {
-    u8 *old = e->dataAddr;
-    u8 *base = Mem_GetAddr(e->data);
+    u8 *old = entry->dataAddr;
+    u8 *base = Mem_GetAddr(entry->data);
     u32 i;
     s32 *ofs;
-    u8 *p;
+    u8 *partPkt;
     u8 *tag;
     u32 w;
-    u8 *t;
+    u8 *walk;
 
-    e->dataAddr = base;
-    ofs = (s32 *)(base + e->unk2C);
-    p = base + e->unk24;
-    for (i = 0; i < e->partCount; i++, ofs++) {
+    entry->dataAddr = base;
+    ofs = (s32 *)(base + entry->chainTblOfs);
+    partPkt = base + entry->pktOfs;
+    for (i = 0; i < entry->partCount; i++, ofs++) {
         tag = base + *ofs;
-        *(u8 **)(p + 4) = tag;
-        t = tag;
-        p += (*(u16 *)p + 1) * 16;
+        *(u8 **)(partPkt + 4) = tag;
+        walk = tag;
+        partPkt += (*(u16 *)partPkt + 1) * 16;
         do {
-            w = *(u32 *)t;
-            switch (w & 0x70000000) {
-            case 0x10000000:
-                t += ((w & 0xFFFF) + 1) * 16;
+            w = *(u32 *)walk;
+            switch (w & DMA_TAG_ID_MASK) {
+            case DMA_TAG_CNT:
+                walk += ((w & 0xFFFF) + 1) * 16;
                 break;
-            case 0x20000000:
-                t = *(u8 **)(t + 4) = *(u8 **)(t + 4) - (s32)old + (s32)base;
+            case DMA_TAG_NEXT:
+                walk = *(u8 **)(walk + 4) = *(u8 **)(walk + 4) - (s32)old + (s32)base;
                 break;
-            case 0x60000000:
+            case DMA_TAG_RET:
                 tag = NULL;
                 break;
             }
@@ -3636,103 +3689,103 @@ void Model_SetTexRegs(s32 n, s32 prog, u8 *pkt, s32 *partTex);
  * packets, makes its textures resident, runs its VU1 program's packet builder
  * (progInfo[4]) and queues the chains (with a CALL of the program when it changed).
  */
-s32 Model_Draw(u32 h, s32 flags)
+s32 Model_Draw(u32 handle, s32 flags)
 {
-    ModelEntry *e = &gModelPool[h - 1];
+    ModelEntry *entry = &gModelPool[handle - 1];
     MeshDesc hdr;
     u8 *top;
-    u32 *q;
+    u32 *progCall;
     u32 *last;
     u8 *end;
     u8 *pkt;
-    u8 *data = e->dataAddr;
+    u8 *data = entry->dataAddr;
 
     if (gSysWork.noDraw != 0) {
         return 1;
     }
-    if (!(e->flags & 4)) {
-        if (e->frame != gRenderFlags2) {
+    if (!(entry->flags & MODEL_NO_COPY)) {
+        if (entry->renderFlags != gRenderFlags2) {
             Dma_FlushQueue();
-            e->frame = gRenderFlags2;
-            if (e->data != NULL) {
-                Mem_Free(e->data);
+            entry->renderFlags = gRenderFlags2;
+            if (entry->data != NULL) {
+                Mem_Free(entry->data);
             }
-            Model_ReadHeader(e, &hdr);
-            if (Model_Setup(e, &hdr) == 0) {
+            Model_ReadHeader(entry, &hdr);
+            if (Model_Setup(entry, &hdr) == 0) {
                 return 0;
             }
             Mem_Compact();
-            pkt = e->dataAddr + e->unk24;
-        } else if (e->flags & 2) {
-            pkt = data + e->unk24;
+            pkt = entry->dataAddr + entry->pktOfs;
+        } else if (entry->flags & MODEL_PREBUILT) {
+            pkt = data + entry->pktOfs;
         } else {
-            pkt = Packet_Alloc(e->pktSize, 0x10);
-            Model_BuildPartPackets(e, e->partCount, e->progInfo[5], (s32)pkt, e->mat);
-            Model_CollectTextures(e, 0);
+            pkt = Packet_Alloc(entry->pktSize, 0x10);
+            Model_BuildPartPackets(entry, entry->partCount, entry->progInfo[5], (s32)pkt, entry->mat);
+            Model_CollectTextures(entry, 0);
         }
-        if (e->texCount != 0) {
-            Tex_MakeResident(e->texCount, (u32 *)e->tex);
-            Model_SetTexRegs(e->partCount, e->progInfo[5], pkt, e->partTex);
+        if (entry->texCount != 0) {
+            Tex_MakeResident(entry->texCount, (u32 *)entry->tex);
+            Model_SetTexRegs(entry->partCount, entry->progInfo[5], pkt, entry->partTex);
         }
-    } else if (e->flags & 2) {
-        pkt = Packet_Alloc(e->pktSize, 0x10);
-        Mem_CopyQwords(data + e->unk24, pkt, (u32)e->pktSize >> 4);
-        if (e->texCount != 0) {
-            Tex_MakeResident(e->texCount, (u32 *)e->tex);
-            Model_SetTexRegs(e->partCount, e->progInfo[5], pkt, e->partTex);
+    } else if (entry->flags & MODEL_PREBUILT) {
+        pkt = Packet_Alloc(entry->pktSize, 0x10);
+        Mem_CopyQwords(data + entry->pktOfs, pkt, (u32)entry->pktSize >> 4);
+        if (entry->texCount != 0) {
+            Tex_MakeResident(entry->texCount, (u32 *)entry->tex);
+            Model_SetTexRegs(entry->partCount, entry->progInfo[5], pkt, entry->partTex);
         }
     } else {
-        pkt = Packet_Alloc(e->pktSize, 0x10);
-        Model_CollectTextures(e, 0);
-        if (e->texCount != 0) {
-            Tex_MakeResident(e->texCount, (u32 *)e->tex);
+        pkt = Packet_Alloc(entry->pktSize, 0x10);
+        Model_CollectTextures(entry, 0);
+        if (entry->texCount != 0) {
+            Tex_MakeResident(entry->texCount, (u32 *)entry->tex);
         }
-        Model_BuildPartPackets(e, e->partCount, e->progInfo[5], (s32)pkt, e->mat);
+        Model_BuildPartPackets(entry, entry->partCount, entry->progInfo[5], (s32)pkt, entry->mat);
     }
-    end = pkt + e->partCount * gModelPktSteps[e->progInfo[5]];
-    gSysWork.vu1Size = (u32)(e->progInfo[3] - e->progInfo[2]) >> 3;
-    top = ((u8 *(*)(ModelEntry *, u32, u8 *))e->progInfo[4])(e, (u32)(e->progInfo[1] - e->progInfo[2]) >> 3, pkt);
-    if (gSysWork.vu1Prog != e->prog) {
-        gSysWork.vu1Prog = e->prog;
-        q = Packet_Alloc(0x40, 0x10);
-        q[0] = 0x50000001;
-        q[1] = e->progInfo[0];
-        *(u64 *)&q[2] = 0;
-        last = q + 8;
-        last[0] = 0xF0000001;
+    end = pkt + entry->partCount * gModelPktSteps[entry->progInfo[5]];
+    gSysWork.vu1Size = (u32)(entry->progInfo[3] - entry->progInfo[2]) >> 3;
+    top = ((u8 *(*)(ModelEntry *, u32, u8 *))entry->progInfo[4])(entry, (u32)(entry->progInfo[1] - entry->progInfo[2]) >> 3, pkt);
+    if (gSysWork.vu1Prog != entry->prog) {
+        gSysWork.vu1Prog = entry->prog;
+        progCall = Packet_Alloc(0x40, 0x10);
+        progCall[0] = DMA_TAG_CALL | 1;
+        progCall[1] = entry->progInfo[0];
+        *(u64 *)&progCall[2] = 0;
+        last = progCall + 8;
+        last[0] = DMA_TAG_IRQ | DMA_TAG_END | 1;
         last[1] = 0;
         *(u64 *)&last[2] = 0;
-        *(u128 *)&q[12] = 0;
-        *(u128 *)&q[4] = 0;
-        DmaQueue_AddChain(0, (u32)q & 0x0FFFFFFF, last, &gDmaQueue);
+        *(u128 *)&progCall[12] = 0;
+        *(u128 *)&progCall[4] = 0;
+        DmaQueue_AddChain(0, (u32)progCall & 0x0FFFFFFF, last, &gDmaQueue);
     }
     DmaQueue_AddChain(0, ((u32)top & 0x0FFFFFFF) | 0x50000000, (u32 *)end, &gDmaQueue);
     return 1;
 }
 
 /* Frees model h (its handles and pool entry); 0 when h is not a model in use. */
-s32 Model_FreeHandle(u32 h)
+s32 Model_FreeHandle(u32 handle)
 {
-    ModelEntry *e = &gModelPool[h - 1];
+    ModelEntry *entry = &gModelPool[handle - 1];
 
-    if (h == 0) {
+    if (handle == 0) {
         return 0;
     }
-    if (h > 0x180) {
+    if (handle > 0x180) {
         return 0;
     }
-    if (e->used == 0) {
+    if (entry->used == 0) {
         return 0;
     }
     Dma_FlushQueue();
-    e->used = 0;
-    if (e->file != NULL) {
-        Mem_Free(e->file);
+    entry->used = 0;
+    if (entry->file != NULL) {
+        Mem_Free(entry->file);
     }
-    if (e->data != NULL) {
-        Mem_Free(e->data);
+    if (entry->data != NULL) {
+        Mem_Free(entry->data);
     }
-    Mem_Fill(e, 0, sizeof(ModelEntry));
+    Mem_Fill(entry, 0, sizeof(ModelEntry));
     gModelCount--;
     return 1;
 }
@@ -3757,388 +3810,394 @@ s16 Anim_FindKeysSM(AnimCurve *c, KeySM **pa, KeySM **pb, s16 cur, f32 t);
 f32 Anim_LerpKeys(f32 x, f32 y0, f32 x0, f32 y1, f32 x1);
 f32 Anim_CubicKeys(f32 x, f32 y0, f32 x0, f32 y1, f32 x1, f32 d0, f32 d1);
 
-/* The value of curve c at time t (*cur: the key found last time, a hint kept by the caller). */
-f32 Anim_EvalCurve(f32 t, AnimCurve *c, s16 *cur)
+/* The value of curve at time (*hint: the key found last time, kept by the caller). */
+f32 Anim_EvalCurve(f32 time, AnimCurve *curve, s16 *hint)
 {
-    f32 v;
+    f32 value;
 
-    switch (c->type) {
+    switch (curve->type) {
     case ANIM_KEY_F32_LINEAR:
-        v = Anim_EvalLinearF(c, cur, t);
+        value = Anim_EvalLinearF(curve, hint, time);
         break;
     case ANIM_KEY_F32_CUBIC:
-        v = Anim_EvalCubicF(c, cur, t);
+        value = Anim_EvalCubicF(curve, hint, time);
         break;
     case ANIM_KEY_F32_MIXED:
-        v = Anim_EvalMixedF(c, cur, t);
+        value = Anim_EvalMixedF(curve, hint, time);
         break;
     case ANIM_KEY_S16_LINEAR:
-        v = Anim_EvalLinearS(c, cur, t);
+        value = Anim_EvalLinearS(curve, hint, time);
         break;
     case ANIM_KEY_S16_CUBIC:
-        v = Anim_EvalCubicS(c, cur, t);
+        value = Anim_EvalCubicS(curve, hint, time);
         break;
     case ANIM_KEY_S16_MIXED:
-        v = Anim_EvalMixedS(c, cur, t);
+        value = Anim_EvalMixedS(curve, hint, time);
         break;
     }
-    return v;
+    return value;
 }
 
 /* Format 0x21: linear between f32 keys. */
-f32 Anim_EvalLinearF(AnimCurve *c, s16 *cur, f32 t)
+f32 Anim_EvalLinearF(AnimCurve *curve, s16 *hint, f32 time)
 {
-    KeyF2 *a = NULL;
-    KeyF2 *b = NULL;
+    KeyF2 *prevKey = NULL;
+    KeyF2 *nextKey = NULL;
 
-    *cur = Anim_FindKeysF2(c, &a, &b, *cur, t);
-    if (b == NULL) {
-        return a->v;
+    *hint = Anim_FindKeysF2(curve, &prevKey, &nextKey, *hint, time);
+    if (nextKey == NULL) {
+        return prevKey->v;
     }
-    return Anim_LerpKeys(t, a->v, a->t, b->v, b->t);
+    return Anim_LerpKeys(time, prevKey->v, prevKey->t, nextKey->v, nextKey->t);
 }
 
 /* Format 0x22: cubic between f32 keys. */
-f32 Anim_EvalCubicF(AnimCurve *c, s16 *cur, f32 t)
+f32 Anim_EvalCubicF(AnimCurve *curve, s16 *hint, f32 time)
 {
-    KeyF4 *a = NULL;
-    KeyF4 *b = NULL;
+    KeyF4 *prevKey = NULL;
+    KeyF4 *nextKey = NULL;
 
-    *cur = Anim_FindKeysF4(c, &a, &b, *cur, t);
-    if (b == NULL) {
-        return a->v;
+    *hint = Anim_FindKeysF4(curve, &prevKey, &nextKey, *hint, time);
+    if (nextKey == NULL) {
+        return prevKey->v;
     }
-    return Anim_CubicKeys(t, a->v, a->t, a->out, b->v, b->t, b->in);
+    return Anim_CubicKeys(time, prevKey->v, prevKey->t, prevKey->out, nextKey->v, nextKey->t, nextKey->in);
 }
 
 /* Format 0x23: f32 keys, linear (0x10000) or cubic (0x20000) by the first key of the pair. */
-f32 Anim_EvalMixedF(AnimCurve *c, s16 *cur, f32 t)
+f32 Anim_EvalMixedF(AnimCurve *curve, s16 *hint, f32 time)
 {
-    KeyFM *a = NULL;
-    KeyFM *b = NULL;
+    KeyFM *prevKey = NULL;
+    KeyFM *nextKey = NULL;
 
-    *cur = Anim_FindKeysFM(c, &a, &b, *cur, t);
-    if (b == NULL) {
-        return a->v;
+    *hint = Anim_FindKeysFM(curve, &prevKey, &nextKey, *hint, time);
+    if (nextKey == NULL) {
+        return prevKey->v;
     }
-    switch (a->mode) {
+    switch (prevKey->mode) {
     case ANIM_KEY_MODE_LINEAR:
-        return Anim_LerpKeys(t, a->v, a->t, b->v, b->t);
+        return Anim_LerpKeys(time, prevKey->v, prevKey->t, nextKey->v, nextKey->t);
     case ANIM_KEY_MODE_CUBIC:
-        return Anim_CubicKeys(t, a->v, a->t, a->out, b->v, b->t, b->in);
+        return Anim_CubicKeys(time, prevKey->v, prevKey->t, prevKey->out, nextKey->v, nextKey->t, nextKey->in);
     }
     return 0.0f;
 }
 
 /* Format 0x11: linear between s16 keys. */
-f32 Anim_EvalLinearS(AnimCurve *c, s16 *cur, f32 t)
+f32 Anim_EvalLinearS(AnimCurve *curve, s16 *hint, f32 time)
 {
-    KeyS2 *a = NULL;
-    KeyS2 *b = NULL;
+    KeyS2 *prevKey = NULL;
+    KeyS2 *nextKey = NULL;
 
-    *cur = Anim_FindKeysS2(c, &a, &b, *cur, t);
-    if (b == NULL) {
-        return a->v;
+    *hint = Anim_FindKeysS2(curve, &prevKey, &nextKey, *hint, time);
+    if (nextKey == NULL) {
+        return prevKey->v;
     }
-    return Anim_LerpKeys(t, a->v, a->t, b->v, b->t);
+    return Anim_LerpKeys(time, prevKey->v, prevKey->t, nextKey->v, nextKey->t);
 }
 
 /* Format 0x12: cubic between s16 keys. */
-f32 Anim_EvalCubicS(AnimCurve *c, s16 *cur, f32 t)
+f32 Anim_EvalCubicS(AnimCurve *curve, s16 *hint, f32 time)
 {
-    KeyS4 *a = NULL;
-    KeyS4 *b = NULL;
+    KeyS4 *prevKey = NULL;
+    KeyS4 *nextKey = NULL;
 
-    *cur = Anim_FindKeysS4(c, &a, &b, *cur, t);
-    if (b == NULL) {
-        return a->v;
+    *hint = Anim_FindKeysS4(curve, &prevKey, &nextKey, *hint, time);
+    if (nextKey == NULL) {
+        return prevKey->v;
     }
-    return Anim_CubicKeys(t, a->v, a->t, a->out, b->v, b->t, b->in);
+    return Anim_CubicKeys(time, prevKey->v, prevKey->t, prevKey->out, nextKey->v, nextKey->t, nextKey->in);
 }
 
 /* Format 0x13: s16 keys, linear or cubic by the first key of the pair. */
-f32 Anim_EvalMixedS(AnimCurve *c, s16 *cur, f32 t)
+f32 Anim_EvalMixedS(AnimCurve *curve, s16 *hint, f32 time)
 {
-    KeySM *a = NULL;
-    KeySM *b = NULL;
+    KeySM *prevKey = NULL;
+    KeySM *nextKey = NULL;
 
-    *cur = Anim_FindKeysSM(c, &a, &b, *cur, t);
-    if (b == NULL) {
-        return a->v;
+    *hint = Anim_FindKeysSM(curve, &prevKey, &nextKey, *hint, time);
+    if (nextKey == NULL) {
+        return prevKey->v;
     }
-    switch (a->mode) {
+    switch (prevKey->mode) {
     case ANIM_KEY_MODE_LINEAR:
-        return Anim_LerpKeys(t, a->v, a->t, b->v, b->t);
+        return Anim_LerpKeys(time, prevKey->v, prevKey->t, nextKey->v, nextKey->t);
     case ANIM_KEY_MODE_CUBIC:
-        return Anim_CubicKeys(t, a->v, a->t, a->out, b->v, b->t, b->in);
+        return Anim_CubicKeys(time, prevKey->v, prevKey->t, prevKey->out, nextKey->v, nextKey->t, nextKey->in);
     }
     return 0.0f;
 }
 
 /*
- * The keys of c around time t, searched from key cur: *pa and *pb = the keys before and
- * after t (*pb NULL at a key, before the first or after the last); returns *pa's index.
+ * The keys of curve around time, searched from key hint: *prevKeyOut and *nextKeyOut = the
+ * keys before and after time (*nextKeyOut NULL at a key, before the first or after the
+ * last); returns *prevKeyOut's index.
  * The five below do the same for the other key formats.
  */
-s16 Anim_FindKeysF2(AnimCurve *c, KeyF2 **pa, KeyF2 **pb, s16 cur, f32 t)
+s16 Anim_FindKeysF2(AnimCurve *curve, KeyF2 **prevKeyOut, KeyF2 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyF2 *k = (KeyF2 *)(c->keys + gAnimCurveKeys);
+    KeyF2 *key = (KeyF2 *)(curve->keys + gAnimCurveKeys);
 
-    *pa = NULL;
-    *pb = NULL;
-    if (t <= k[0].t || c->count == 1) {
-        *pa = k;
-        *pb = NULL;
+    *prevKeyOut = NULL;
+    *nextKeyOut = NULL;
+    if (time <= key[0].t || curve->count == 1) {
+        *prevKeyOut = key;
+        *nextKeyOut = NULL;
         return 0;
     }
-    if (!(t < k[c->count - 1].t)) {
-        *pa = &k[c->count - 1];
-        *pb = NULL;
-        return c->count - 1;
+    if (!(time < key[curve->count - 1].t)) {
+        *prevKeyOut = &key[curve->count - 1];
+        *nextKeyOut = NULL;
+        return curve->count - 1;
     }
-    if (cur < 0) {
-        cur = 0;
-    } else if (cur >= c->count) {
-        cur = c->count - 1;
+    if (hint < 0) {
+        hint = 0;
+    } else if (hint >= curve->count) {
+        hint = curve->count - 1;
     }
-    k += cur;
+    key += hint;
     for (;;) {
-        if (k->t == t) {
-            *pa = k;
-            *pb = NULL;
-            return cur;
+        if (key->t == time) {
+            *prevKeyOut = key;
+            *nextKeyOut = NULL;
+            return hint;
         }
-        if (k->t < t && t < k[1].t) {
-            *pa = k;
-            *pb = k + 1;
-            return cur;
+        if (key->t < time && time < key[1].t) {
+            *prevKeyOut = key;
+            *nextKeyOut = key + 1;
+            return hint;
         }
-        if (t < k->t) {
-            k--;
-            cur--;
+        if (time < key->t) {
+            key--;
+            hint--;
         } else {
-            k++;
-            cur++;
+            key++;
+            hint++;
         }
     }
 }
 
-s16 Anim_FindKeysF4(AnimCurve *c, KeyF4 **pa, KeyF4 **pb, s16 cur, f32 t)
+/* Anim_FindKeysF2 for KeyF4 keys. */
+s16 Anim_FindKeysF4(AnimCurve *curve, KeyF4 **prevKeyOut, KeyF4 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyF4 *k = (KeyF4 *)(c->keys + gAnimCurveKeys);
+    KeyF4 *key = (KeyF4 *)(curve->keys + gAnimCurveKeys);
 
-    *pa = NULL;
-    *pb = NULL;
-    if (t <= k[0].t || c->count == 1) {
-        *pa = k;
-        *pb = NULL;
+    *prevKeyOut = NULL;
+    *nextKeyOut = NULL;
+    if (time <= key[0].t || curve->count == 1) {
+        *prevKeyOut = key;
+        *nextKeyOut = NULL;
         return 0;
     }
-    if (!(t < k[c->count - 1].t)) {
-        *pa = &k[c->count - 1];
-        *pb = NULL;
-        return c->count - 1;
+    if (!(time < key[curve->count - 1].t)) {
+        *prevKeyOut = &key[curve->count - 1];
+        *nextKeyOut = NULL;
+        return curve->count - 1;
     }
-    if (cur < 0) {
-        cur = 0;
-    } else if (cur >= c->count) {
-        cur = c->count - 1;
+    if (hint < 0) {
+        hint = 0;
+    } else if (hint >= curve->count) {
+        hint = curve->count - 1;
     }
-    k += cur;
+    key += hint;
     for (;;) {
-        if (k->t == t) {
-            *pa = k;
-            *pb = NULL;
-            return cur;
+        if (key->t == time) {
+            *prevKeyOut = key;
+            *nextKeyOut = NULL;
+            return hint;
         }
-        if (k->t < t && t < k[1].t) {
-            *pa = k;
-            *pb = k + 1;
-            return cur;
+        if (key->t < time && time < key[1].t) {
+            *prevKeyOut = key;
+            *nextKeyOut = key + 1;
+            return hint;
         }
-        if (t < k->t) {
-            k--;
-            cur--;
+        if (time < key->t) {
+            key--;
+            hint--;
         } else {
-            k++;
-            cur++;
+            key++;
+            hint++;
         }
     }
 }
 
-s16 Anim_FindKeysFM(AnimCurve *c, KeyFM **pa, KeyFM **pb, s16 cur, f32 t)
+/* Anim_FindKeysF2 for KeyFM keys. */
+s16 Anim_FindKeysFM(AnimCurve *curve, KeyFM **prevKeyOut, KeyFM **nextKeyOut, s16 hint, f32 time)
 {
-    KeyFM *k = (KeyFM *)(c->keys + gAnimCurveKeys);
+    KeyFM *key = (KeyFM *)(curve->keys + gAnimCurveKeys);
 
-    *pa = NULL;
-    *pb = NULL;
-    if (t <= k[0].t || c->count == 1) {
-        *pa = k;
-        *pb = NULL;
+    *prevKeyOut = NULL;
+    *nextKeyOut = NULL;
+    if (time <= key[0].t || curve->count == 1) {
+        *prevKeyOut = key;
+        *nextKeyOut = NULL;
         return 0;
     }
-    if (!(t < k[c->count - 1].t)) {
-        *pa = &k[c->count - 1];
-        *pb = NULL;
-        return c->count - 1;
+    if (!(time < key[curve->count - 1].t)) {
+        *prevKeyOut = &key[curve->count - 1];
+        *nextKeyOut = NULL;
+        return curve->count - 1;
     }
-    if (cur < 0) {
-        cur = 0;
-    } else if (cur >= c->count) {
-        cur = c->count - 1;
+    if (hint < 0) {
+        hint = 0;
+    } else if (hint >= curve->count) {
+        hint = curve->count - 1;
     }
-    k += cur;
+    key += hint;
     for (;;) {
-        if (k->t == t) {
-            *pa = k;
-            *pb = NULL;
-            return cur;
+        if (key->t == time) {
+            *prevKeyOut = key;
+            *nextKeyOut = NULL;
+            return hint;
         }
-        if (k->t < t && t < k[1].t) {
-            *pa = k;
-            *pb = k + 1;
-            return cur;
+        if (key->t < time && time < key[1].t) {
+            *prevKeyOut = key;
+            *nextKeyOut = key + 1;
+            return hint;
         }
-        if (t < k->t) {
-            k--;
-            cur--;
+        if (time < key->t) {
+            key--;
+            hint--;
         } else {
-            k++;
-            cur++;
+            key++;
+            hint++;
         }
     }
 }
 
-s16 Anim_FindKeysS2(AnimCurve *c, KeyS2 **pa, KeyS2 **pb, s16 cur, f32 t)
+/* Anim_FindKeysF2 for KeyS2 keys. */
+s16 Anim_FindKeysS2(AnimCurve *curve, KeyS2 **prevKeyOut, KeyS2 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyS2 *k = (KeyS2 *)(c->keys + gAnimCurveKeys);
+    KeyS2 *key = (KeyS2 *)(curve->keys + gAnimCurveKeys);
 
-    *pa = NULL;
-    *pb = NULL;
-    if (t <= k[0].t || c->count == 1) {
-        *pa = k;
-        *pb = NULL;
+    *prevKeyOut = NULL;
+    *nextKeyOut = NULL;
+    if (time <= key[0].t || curve->count == 1) {
+        *prevKeyOut = key;
+        *nextKeyOut = NULL;
         return 0;
     }
-    if (!(t < k[c->count - 1].t)) {
-        *pa = &k[c->count - 1];
-        *pb = NULL;
-        return c->count - 1;
+    if (!(time < key[curve->count - 1].t)) {
+        *prevKeyOut = &key[curve->count - 1];
+        *nextKeyOut = NULL;
+        return curve->count - 1;
     }
-    if (cur < 0) {
-        cur = 0;
-    } else if (cur >= c->count) {
-        cur = c->count - 1;
+    if (hint < 0) {
+        hint = 0;
+    } else if (hint >= curve->count) {
+        hint = curve->count - 1;
     }
-    k += cur;
+    key += hint;
     for (;;) {
-        if (k->t == t) {
-            *pa = k;
-            *pb = NULL;
-            return cur;
+        if (key->t == time) {
+            *prevKeyOut = key;
+            *nextKeyOut = NULL;
+            return hint;
         }
-        if (k->t < t && t < k[1].t) {
-            *pa = k;
-            *pb = k + 1;
-            return cur;
+        if (key->t < time && time < key[1].t) {
+            *prevKeyOut = key;
+            *nextKeyOut = key + 1;
+            return hint;
         }
-        if (t < k->t) {
-            k--;
-            cur--;
+        if (time < key->t) {
+            key--;
+            hint--;
         } else {
-            k++;
-            cur++;
+            key++;
+            hint++;
         }
     }
 }
 
-s16 Anim_FindKeysS4(AnimCurve *c, KeyS4 **pa, KeyS4 **pb, s16 cur, f32 t)
+/* Anim_FindKeysF2 for KeyS4 keys. */
+s16 Anim_FindKeysS4(AnimCurve *curve, KeyS4 **prevKeyOut, KeyS4 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyS4 *k = (KeyS4 *)(c->keys + gAnimCurveKeys);
+    KeyS4 *key = (KeyS4 *)(curve->keys + gAnimCurveKeys);
 
-    *pa = NULL;
-    *pb = NULL;
-    if (t <= k[0].t || c->count == 1) {
-        *pa = k;
-        *pb = NULL;
+    *prevKeyOut = NULL;
+    *nextKeyOut = NULL;
+    if (time <= key[0].t || curve->count == 1) {
+        *prevKeyOut = key;
+        *nextKeyOut = NULL;
         return 0;
     }
-    if (!(t < k[c->count - 1].t)) {
-        *pa = &k[c->count - 1];
-        *pb = NULL;
-        return c->count - 1;
+    if (!(time < key[curve->count - 1].t)) {
+        *prevKeyOut = &key[curve->count - 1];
+        *nextKeyOut = NULL;
+        return curve->count - 1;
     }
-    if (cur < 0) {
-        cur = 0;
-    } else if (cur >= c->count) {
-        cur = c->count - 1;
+    if (hint < 0) {
+        hint = 0;
+    } else if (hint >= curve->count) {
+        hint = curve->count - 1;
     }
-    k += cur;
+    key += hint;
     for (;;) {
-        if (k->t == t) {
-            *pa = k;
-            *pb = NULL;
-            return cur;
+        if (key->t == time) {
+            *prevKeyOut = key;
+            *nextKeyOut = NULL;
+            return hint;
         }
-        if (k->t < t && t < k[1].t) {
-            *pa = k;
-            *pb = k + 1;
-            return cur;
+        if (key->t < time && time < key[1].t) {
+            *prevKeyOut = key;
+            *nextKeyOut = key + 1;
+            return hint;
         }
-        if (t < k->t) {
-            k--;
-            cur--;
+        if (time < key->t) {
+            key--;
+            hint--;
         } else {
-            k++;
-            cur++;
+            key++;
+            hint++;
         }
     }
 }
 
-s16 Anim_FindKeysSM(AnimCurve *c, KeySM **pa, KeySM **pb, s16 cur, f32 t)
+/* Anim_FindKeysF2 for KeySM keys. */
+s16 Anim_FindKeysSM(AnimCurve *curve, KeySM **prevKeyOut, KeySM **nextKeyOut, s16 hint, f32 time)
 {
-    KeySM *k = (KeySM *)(c->keys + gAnimCurveKeys);
+    KeySM *key = (KeySM *)(curve->keys + gAnimCurveKeys);
 
-    *pa = NULL;
-    *pb = NULL;
-    if (t <= k[0].t || c->count == 1) {
-        *pa = k;
-        *pb = NULL;
+    *prevKeyOut = NULL;
+    *nextKeyOut = NULL;
+    if (time <= key[0].t || curve->count == 1) {
+        *prevKeyOut = key;
+        *nextKeyOut = NULL;
         return 0;
     }
-    if (!(t < k[c->count - 1].t)) {
-        *pa = &k[c->count - 1];
-        *pb = NULL;
-        return c->count - 1;
+    if (!(time < key[curve->count - 1].t)) {
+        *prevKeyOut = &key[curve->count - 1];
+        *nextKeyOut = NULL;
+        return curve->count - 1;
     }
-    if (cur < 0) {
-        cur = 0;
-    } else if (cur >= c->count) {
-        cur = c->count - 1;
+    if (hint < 0) {
+        hint = 0;
+    } else if (hint >= curve->count) {
+        hint = curve->count - 1;
     }
-    k += cur;
+    key += hint;
     for (;;) {
-        if (k->t == t) {
-            *pa = k;
-            *pb = NULL;
-            return cur;
+        if (key->t == time) {
+            *prevKeyOut = key;
+            *nextKeyOut = NULL;
+            return hint;
         }
-        if (k->t < t && t < k[1].t) {
-            *pa = k;
-            *pb = k + 1;
-            return cur;
+        if (key->t < time && time < key[1].t) {
+            *prevKeyOut = key;
+            *nextKeyOut = key + 1;
+            return hint;
         }
-        if (t < k->t) {
-            k--;
-            cur--;
+        if (time < key->t) {
+            key--;
+            hint--;
         } else {
-            k++;
-            cur++;
+            key++;
+            hint++;
         }
     }
 }
-/* The line through (x0, y0) and (x1, y1) at x. */
-asm f32 Anim_LerpKeys(f32 x, f32 y0, f32 x0, f32 y1, f32 x1)
+/* The value at time on the line through (prevTime, prevValue) and (nextTime, nextValue). */
+asm f32 Anim_LerpKeys(f32 time, f32 prevValue, f32 prevTime, f32 nextValue, f32 nextTime)
 {
     .set noreorder
     mfc1 t0, f12
@@ -4172,8 +4231,9 @@ asm f32 Anim_LerpKeys(f32 x, f32 y0, f32 x0, f32 y1, f32 x1)
     jr ra
     nop
 }
-/* A cubic curve between two keys, at x (from the key values and two slopes). */
-asm f32 Anim_CubicKeys(f32 x, f32 y0, f32 x0, f32 y1, f32 x1, f32 d0, f32 d1)
+/* The value at time on the cubic between two keys (their values and times, the first key's
+ * out slope and the second key's in slope). */
+asm f32 Anim_CubicKeys(f32 time, f32 prevValue, f32 prevTime, f32 prevOutSlope, f32 nextValue, f32 nextTime, f32 nextInSlope)
 {
     .set noreorder
     mfc1 t0, f12
@@ -4405,7 +4465,7 @@ L002EC4D8:
 /* out[0] = sin a, out[1] = cos a (VU0 polynomial). Static: Math_GetSinCos
  * keeps values in t1 and a2 across the call, which MWCC only does for a
  * static callee it has compiled. */
-static asm void Math_SinCos(f32 *out, f32 a)
+static asm void Math_SinCos(f32 *out, f32 angle)
 {
     .set noreorder
     /* Handwritten function */
@@ -4495,7 +4555,7 @@ L002EC668:
     sqc2 vf6, 0x0(a0)
 }
 
-extern Mtx44Copy gMtxSlots[];
+extern MtxSlot gMtxSlots[];
 
 /* The camera's matrices. */
 extern f32 gMtxProj[16];
@@ -4531,105 +4591,107 @@ void Math_GetSinCos(f32 *s, f32 *c, f32 a);
 asm void Mtx_Identity(f32 *m);
 asm void Mtx_Mul(f32 *dst, f32 *a, f32 *b);
 
-/* Matrix slot i = a perspective projection (Mtx_Perspective, Camera_StoreProjection), then the camera matrices. */
-void Camera_SetPerspective(s32 i, f32 n, f32 f, f32 fov, f32 aspect)
+/* Matrix slot `slot` = a perspective projection (Mtx_Perspective, Camera_StoreProjection), then
+ * the camera matrices. */
+void Camera_SetPerspective(s32 slot, f32 nearZ, f32 farZ, f32 fov, f32 aspect)
 {
-    f32 *m = gMtxSlots[i].m[0];
+    f32 *mtx = gMtxSlots[slot].m[0];
 
-    Mtx_Perspective(m, n, f, fov, aspect);
-    Camera_StoreProjection(m);
+    Mtx_Perspective(mtx, nearZ, farZ, fov, aspect);
+    Camera_StoreProjection(mtx);
     Mtx_Mul(gMtxProjClip, gMtxCamProj, gMtxClip);
     Mtx_Mul(gMtxProjScreen, gMtxCamProj, gMtxScreen);
 }
 
-/* m = a perspective projection: near n, far f, vertical field of view fov, aspect ratio. */
-void Mtx_Perspective(f32 *m, f32 n, f32 f, f32 fov, f32 aspect)
+/* mtx = a perspective projection: depth nearZ to farZ, vertical field of view fov (radians),
+ * aspect ratio aspect. */
+void Mtx_Perspective(f32 *mtx, f32 nearZ, f32 farZ, f32 fov, f32 aspect)
 {
-    f32 c;
-    f32 s;
+    f32 cosHalf;
+    f32 sinHalf;
 
     fov *= 0.5f;
-    Math_GetSinCos(&s, &c, fov);
-    Mtx_Identity(m);
-    m[0] = c / s / aspect;
-    m[5] = c / s;
-    m[10] = -(n + f) / (n - f);
-    m[11] = -1.0f;
-    m[14] = -(2.0f * n * f) / (n - f);
-    m[15] = 0.0f;
+    Math_GetSinCos(&sinHalf, &cosHalf, fov);
+    Mtx_Identity(mtx);
+    mtx[0] = cosHalf / sinHalf / aspect;
+    mtx[5] = cosHalf / sinHalf;
+    mtx[10] = -(nearZ + farZ) / (nearZ - farZ);
+    mtx[11] = -1.0f;
+    mtx[14] = -(2.0f * nearZ * farZ) / (nearZ - farZ);
+    mtx[15] = 0.0f;
 }
 
-/* The x and y scale of m (a projection) for the viewport; the result in gViewportMtx. */
-/* Reads main's render-state globals by name (config/symbols/main.txt): with raw
- * addresses MWCC can't move their loads above the matrix stores. */
-void Camera_StoreProjection(f32 *m)
+/* gViewportMtx = proj (a projection) with its x and y scale fitted to the viewport.
+ * This function and the two viewport ones below read main's render-state globals by
+ * name: as raw addresses, MWCC can't move their loads above the matrix stores. */
+void Camera_StoreProjection(f32 *proj)
 {
-    Mtx_Copy(gViewportMtx, m);
+    Mtx_Copy(gViewportMtx, proj);
     gViewportMtx[0] = 2.0f * gViewportMtx[0] / (gViewClipW / (0.5f * gViewW));
     gViewportMtx[5] = 2.0f * gViewportMtx[5] / (gViewClipH / (0.5f * gViewH));
 }
 
-/* Matrix slot i = an orthographic screen matrix for the viewport (x, y, w, h), then the camera
- * matrices and the GS viewport (Gs_SetScissor; y and h halved while gSysFrameMode is 0). */
-void Camera_SetOrtho(s32 i, s32 x, s32 y, s32 w, s32 h, f32 n, f32 f)
+/* Matrix slot `slot` = an orthographic screen matrix for the viewport (x, y, width, height),
+ * then the camera matrices and the GS scissor (y and height halved while gSysFrameMode is
+ * 0: a field, half the lines). */
+void Camera_SetOrtho(s32 slot, s32 x, s32 y, s32 width, s32 height, f32 nearZ, f32 farZ)
 {
-    Camera_SetViewport(gMtxSlots[i].m[0], x, y, w, h, n, f);
+    Camera_SetViewport(gMtxSlots[slot].m[0], x, y, width, height, nearZ, farZ);
     Camera_StoreProjection(gMtxCamProj);
     Mtx_Mul(gMtxProjClip, gMtxCamProj, gMtxClip);
     Mtx_Mul(gMtxProjScreen, gMtxCamProj, gMtxScreen);
     if (gSysFrameMode == 0) {
         y /= 2;
-        h /= 2;
+        height /= 2;
     }
-    Gs_SetScissor(x, y, w, h, 2);
+    Gs_SetScissor(x, y, width, height, 2);
 }
 
 /*
- * The viewport (x, y, w, h; depth n to f) into gMtxScreen and the screen matrix m, and
- * the viewport globals of main; then Camera_SetViewportMtx.
+ * The viewport (x, y, width, height; depth nearZ to farZ) into gMtxScreen and the screen
+ * matrix `screen` (centred on the GS's 2048, 2048), and the viewport globals of main;
+ * then Camera_SetViewportMtx.
  */
-/* Reads main's render-state globals by name (config/symbols/main.txt): with raw
- * addresses MWCC can't move their loads above the matrix stores. */
-void Camera_SetViewport(f32 *m, s32 x, s32 y, s32 w, s32 h, f32 n, f32 f)
+void Camera_SetViewport(f32 *screen, s32 x, s32 y, s32 width, s32 height, f32 nearZ, f32 farZ)
 {
-    f32 hw;
-    f32 hh;
-    f32 d;
+    f32 halfW;
+    f32 halfH;
+    f32 depth;
 
-    hw = w / 2;
-    hh = h / 2;
+    halfW = width / 2;
+    halfH = height / 2;
     Mtx_Identity(gMtxScreen);
-    gMtxScreen[0] = hw;
-    gMtxScreen[5] = -hh;
-    d = f - n;
-    gMtxScreen[10] = d;
-    gMtxScreen[12] = x + hw;
-    gMtxScreen[13] = y + hh;
-    gMtxScreen[14] = n;
+    gMtxScreen[0] = halfW;
+    gMtxScreen[5] = -halfH;
+    depth = farZ - nearZ;
+    gMtxScreen[10] = depth;
+    gMtxScreen[12] = x + halfW;
+    gMtxScreen[13] = y + halfH;
+    gMtxScreen[14] = nearZ;
     gMtxScreen[15] = 1.0f;
     if (gSysFrameMode == 0) {
         y /= 2;
-        h /= 2;
+        height /= 2;
     }
-    hw = w / 2;
-    hh = h / 2;
-    Mtx_Identity(m);
-    m[0] = hw;
-    m[5] = -hh;
-    m[10] = d;
-    m[12] = x + hw;
-    m[13] = y + hh;
-    m[15] = 1.0f;
-    m[10] *= 0.5f * -gSysZMax;
-    m[12] += 2048 - (gDispWidth >> 1);
-    m[13] += 2048 - (gDispHeight >> 1);
-    m[14] = 0.5f * gSysZMax;
-    gViewCenterX = m[12];
-    gViewCenterY = m[13];
+    halfW = width / 2;
+    halfH = height / 2;
+    Mtx_Identity(screen);
+    screen[0] = halfW;
+    screen[5] = -halfH;
+    screen[10] = depth;
+    screen[12] = x + halfW;
+    screen[13] = y + halfH;
+    screen[15] = 1.0f;
+    screen[10] *= 0.5f * -gSysZMax;
+    screen[12] += 2048 - (gDispWidth >> 1);
+    screen[13] += 2048 - (gDispHeight >> 1);
+    screen[14] = 0.5f * gSysZMax;
+    gViewCenterX = screen[12];
+    gViewCenterY = screen[13];
     gViewX = x;
     gViewY = y;
-    gViewW = w;
-    gViewH = h;
+    gViewW = width;
+    gViewH = height;
     gViewClipW = 2048.0f - gViewCenterX;
     if (gViewClipW < 0.0f) {
         gViewClipW *= -1.0f;
@@ -4640,32 +4702,30 @@ void Camera_SetViewport(f32 *m, s32 x, s32 y, s32 w, s32 h, f32 n, f32 f)
         gViewClipH *= -1.0f;
     }
     gViewClipH = 2048.0f - gViewClipH;
-    Camera_SetViewportMtx(0, 0, gViewClipW, gViewClipH, n, f);
+    Camera_SetViewportMtx(0, 0, gViewClipW, gViewClipH, nearZ, farZ);
 }
 
-/* gMtxProj = the viewport matrix for a w x h screen (depth n to f). */
-/* Reads main's render-state globals by name (config/symbols/main.txt): with raw
- * addresses MWCC can't move their loads above the matrix stores. */
-void Camera_SetViewportMtx(s32 x, s32 y, s32 w, s32 h, f32 n, f32 f)
+/* gMtxProj = the viewport matrix for a width x height screen (depth nearZ to farZ). */
+void Camera_SetViewportMtx(s32 x, s32 y, s32 width, s32 height, f32 nearZ, f32 farZ)
 {
-    f32 hw;
-    f32 hh;
+    f32 halfW;
+    f32 halfH;
 
     Mtx_Identity(gMtxProj);
-    hw = w / 2;
-    hh = h / 2;
-    gMtxProj[0] = hw;
-    gMtxProj[5] = -hh;
+    halfW = width / 2;
+    halfH = height / 2;
+    gMtxProj[0] = halfW;
+    gMtxProj[5] = -halfH;
     gMtxProj[15] = 1.0f;
-    gMtxProj[10] = f - n;
+    gMtxProj[10] = farZ - nearZ;
     gMtxProj[10] *= 0.5f * -gSysZMax;
     gMtxProj[14] = 0.5f * gSysZMax;
     gMtxProj[12] = gViewCenterX;
     gMtxProj[13] = gViewCenterY;
 }
 extern u8 gMtxIdentity[];
-/* m = the identity matrix (the copy at 0x20D7D0). */
-asm void Mtx_Identity(f32 *m)
+/* mtx = the identity matrix (copied from gMtxIdentity). */
+asm void Mtx_Identity(f32 *mtx)
 {
     .set noreorder
     la v1, gMtxIdentity
@@ -4679,8 +4739,8 @@ asm void Mtx_Identity(f32 *m)
     jr ra
     sqc2 vf7, 0x30(a0)
 }
-/* The 3x3 part of m becomes the identity; the translation stays. */
-asm void Mtx_ClearRotation(f32 *m)
+/* The 3x3 part of mtx becomes the identity; the translation stays. */
+asm void Mtx_ClearRotation(f32 *mtx)
 {
     .set noreorder
     la v1, gMtxIdentity
@@ -4698,8 +4758,8 @@ asm void Mtx_ClearRotation(f32 *m)
     jr ra
     sqc2 vf10, 0x20(a0)
 }
-/* m = a scale matrix. */
-asm void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z)
+/* mtx = a scale matrix. */
+asm void Mtx_Scale(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     la v1, gMtxIdentity
@@ -4722,8 +4782,8 @@ asm void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z)
     jr ra
     sqc2 vf6, 0x20(a0)
 }
-/* The 3x3 part of m becomes a scale; the translation stays. */
-asm void Mtx_SetScale(f32 *m, f32 x, f32 y, f32 z)
+/* The 3x3 part of mtx becomes a scale; the translation stays. */
+asm void Mtx_SetScale(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     la v1, gMtxIdentity
@@ -4750,8 +4810,8 @@ asm void Mtx_SetScale(f32 *m, f32 x, f32 y, f32 z)
     jr ra
     sqc2 vf6, 0x20(a0)
 }
-/* m = a translation matrix. */
-asm void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z)
+/* mtx = a translation matrix. */
+asm void Mtx_Translation(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     la v1, gMtxIdentity
@@ -4778,37 +4838,40 @@ asm void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z)
 void Mtx_SetScale(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_Concat3x3(f32 *m, f32 *a);
 
-/* The 3x3 part of m = m * scale(x, y, z). */
-void Mtx_ScaleBy(f32 *m, f32 x, f32 y, f32 z)
+/* The 3x3 part of mtx = mtx * scale(x, y, z). */
+void Mtx_ScaleBy(f32 *mtx, f32 x, f32 y, f32 z)
 {
-    f32 tmp[16];
+    f32 scale[16];
 
-    Mtx_SetScale(tmp, x, y, z);
-    Mtx_Concat3x3(m, tmp);
+    Mtx_SetScale(scale, x, y, z);
+    Mtx_Concat3x3(mtx, scale);
 }
 
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z)
+/* mtx's translation = (x, y, z). */
+void Mtx_SetTrans(f32 *mtx, f32 x, f32 y, f32 z)
 {
-    m[12] = x;
-    m[13] = y;
-    m[14] = z;
+    mtx[12] = x;
+    mtx[13] = y;
+    mtx[14] = z;
 }
 
-void Mtx_AddTrans(f32 *m, f32 *v)
+/* mtx's translation += offset. */
+void Mtx_AddTrans(f32 *mtx, f32 *offset)
 {
-    m[12] = (m[12] + v[0]);
-    m[13] = (m[13] + v[1]);
-    m[14] = (m[14] + v[2]);
+    mtx[12] = (mtx[12] + offset[0]);
+    mtx[13] = (mtx[13] + offset[1]);
+    mtx[14] = (mtx[14] + offset[2]);
 }
 
-void Mtx_GetTrans(f32 *out, f32 *m)
+/* out = mtx's translation. */
+void Mtx_GetTrans(f32 *out, f32 *mtx)
 {
-    out[0] = m[12];
-    out[1] = m[13];
-    out[2] = m[14];
+    out[0] = mtx[12];
+    out[1] = mtx[13];
+    out[2] = mtx[14];
 }
-/* m = m * (rotation about x). */
-asm void Mtx_RotateX(f32 *m, f32 a)
+/* mtx = mtx * (rotation by angle about x). */
+asm void Mtx_RotateX(f32 *mtx, f32 angle)
 {
     .set noreorder
     addiu sp, sp, -0x20
@@ -4849,8 +4912,8 @@ asm void Mtx_RotateX(f32 *m, f32 a)
     jr ra
     addiu sp, sp, 0x20
 }
-/* m = m * (rotation about y). */
-asm void Mtx_RotateY(f32 *m, f32 a)
+/* mtx = mtx * (rotation by angle about y). */
+asm void Mtx_RotateY(f32 *mtx, f32 angle)
 {
     .set noreorder
     addiu sp, sp, -0x20
@@ -4891,8 +4954,8 @@ asm void Mtx_RotateY(f32 *m, f32 a)
     jr ra
     addiu sp, sp, 0x20
 }
-/* m = m * (rotation about z). */
-asm void Mtx_RotateZ(f32 *m, f32 a)
+/* mtx = mtx * (rotation by angle about z). */
+asm void Mtx_RotateZ(f32 *mtx, f32 angle)
 {
     .set noreorder
     addiu sp, sp, -0x20
@@ -4932,8 +4995,8 @@ asm void Mtx_RotateZ(f32 *m, f32 a)
     jr ra
     addiu sp, sp, 0x20
 }
-/* The rotation part of m = rotations about x, then y, then z. */
-asm void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z)
+/* The rotation part of mtx = rotations about x, then y, then z. */
+asm void Mtx_SetRotXYZ(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     addiu sp, sp, -0x60
@@ -5050,8 +5113,8 @@ asm void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z)
     jr ra
     addiu sp, sp, 0x60
 }
-/* The rotation part of m = rotations about z, then y, then x. */
-asm void Mtx_SetRotZYX(f32 *m, f32 x, f32 y, f32 z)
+/* The rotation part of mtx = rotations about z, then y, then x. */
+asm void Mtx_SetRotZYX(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     addiu sp, sp, -0x60
@@ -5168,8 +5231,8 @@ asm void Mtx_SetRotZYX(f32 *m, f32 x, f32 y, f32 z)
     jr ra
     addiu sp, sp, 0x60
 }
-/* m rotated about x, then y, then z. */
-asm void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z)
+/* mtx rotated about x, then y, then z. */
+asm void Mtx_RotateXYZ(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     addiu sp, sp, -0x40
@@ -5273,8 +5336,8 @@ asm void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z)
     jr ra
     addiu sp, sp, 0x40
 }
-/* m rotated about x, then z, then y. */
-asm void Mtx_RotateXZY(f32 *m, f32 x, f32 y, f32 z)
+/* mtx rotated about x, then z, then y. */
+asm void Mtx_RotateXZY(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     addiu sp, sp, -0x40
@@ -5378,8 +5441,8 @@ asm void Mtx_RotateXZY(f32 *m, f32 x, f32 y, f32 z)
     jr ra
     addiu sp, sp, 0x40
 }
-/* m rotated about y, then x, then z. */
-asm void Mtx_RotateYXZ(f32 *m, f32 x, f32 y, f32 z)
+/* mtx rotated about y, then x, then z. */
+asm void Mtx_RotateYXZ(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     addiu sp, sp, -0x40
@@ -5485,8 +5548,8 @@ asm void Mtx_RotateYXZ(f32 *m, f32 x, f32 y, f32 z)
     jr ra
     addiu sp, sp, 0x40
 }
-/* m rotated about z, then x, then y. */
-asm void Mtx_RotateZXY(f32 *m, f32 x, f32 y, f32 z)
+/* mtx rotated about z, then x, then y. */
+asm void Mtx_RotateZXY(f32 *mtx, f32 x, f32 y, f32 z)
 {
     .set noreorder
     addiu sp, sp, -0x40
@@ -5601,42 +5664,42 @@ asm void Vec_Normalize(f32 *v);
 asm f32 Vec_Dot(f32 *a, f32 *b);
 asm void Vec_Cross(f32 *out, f32 *a, f32 *b);
 
-/* m = the view matrix of a camera at eye looking at at, with up as the up direction. */
-void Mtx_LookAt(f32 *m, f32 *eye, f32 *at, f32 *up)
+/* mtx = the view matrix of a camera at eye looking at target, with up as the up direction. */
+void Mtx_LookAt(f32 *mtx, f32 *eye, f32 *target, f32 *up)
 {
-    f32 x[3];
-    f32 y[3];
-    f32 z[3];
-    Vec3Copy u;
+    f32 side[3];
+    f32 upAxis[3];
+    f32 back[3];
+    Vec3Copy upDir;
 
-    z[0] = eye[0] - at[0];
-    z[1] = eye[1] - at[1];
-    z[2] = eye[2] - at[2];
-    u = *(Vec3Copy *)up;
-    Vec_Normalize(z);
-    Vec_Normalize((f32 *)&u);
-    Vec_Cross(x, (f32 *)&u, z);
-    Vec_Normalize(x);
-    Vec_Cross(y, z, x);
-    m[3] = 0.0f;
-    m[7] = 0.0f;
-    m[11] = 0.0f;
-    m[15] = 1.0f;
-    m[0] = x[0];
-    m[4] = x[1];
-    m[8] = x[2];
-    m[1] = y[0];
-    m[5] = y[1];
-    m[9] = y[2];
-    m[2] = z[0];
-    m[6] = z[1];
-    m[10] = z[2];
-    m[12] = -Vec_Dot(eye, x);
-    m[13] = -Vec_Dot(eye, y);
-    m[14] = -Vec_Dot(eye, z);
+    back[0] = eye[0] - target[0];
+    back[1] = eye[1] - target[1];
+    back[2] = eye[2] - target[2];
+    upDir = *(Vec3Copy *)up;
+    Vec_Normalize(back);
+    Vec_Normalize((f32 *)&upDir);
+    Vec_Cross(side, (f32 *)&upDir, back);
+    Vec_Normalize(side);
+    Vec_Cross(upAxis, back, side);
+    mtx[3] = 0.0f;
+    mtx[7] = 0.0f;
+    mtx[11] = 0.0f;
+    mtx[15] = 1.0f;
+    mtx[0] = side[0];
+    mtx[4] = side[1];
+    mtx[8] = side[2];
+    mtx[1] = upAxis[0];
+    mtx[5] = upAxis[1];
+    mtx[9] = upAxis[2];
+    mtx[2] = back[0];
+    mtx[6] = back[1];
+    mtx[10] = back[2];
+    mtx[12] = -Vec_Dot(eye, side);
+    mtx[13] = -Vec_Dot(eye, upAxis);
+    mtx[14] = -Vec_Dot(eye, back);
 }
-/* Transposes the 3x3 part of m. */
-asm void Mtx_Transpose3x3(f32 *m)
+/* Transposes the 3x3 part of mtx. */
+asm void Mtx_Transpose3x3(f32 *mtx)
 {
     .set noreorder
     lqc2 vf8, 0x0(a0)
@@ -5659,8 +5722,8 @@ asm void Mtx_Transpose3x3(f32 *m)
     jr ra
     sqc2 vf6, 0x20(a0)
 }
-/* dst = a * b (4x4, row vectors). */
-asm void Mtx_Mul(f32 *dst, f32 *a, f32 *b)
+/* dst = lhs * rhs (4x4, row vectors). */
+asm void Mtx_Mul(f32 *dst, f32 *lhs, f32 *rhs)
 {
     .set noreorder
     lqc2 vf4, 0x0(a2)
@@ -5694,8 +5757,8 @@ asm void Mtx_Mul(f32 *dst, f32 *a, f32 *b)
     jr ra
     nop
 }
-/* m = m * a (4x4). */
-asm void Mtx_Concat(f32 *m, f32 *a)
+/* mtx = mtx * other (4x4). */
+asm void Mtx_Concat(f32 *mtx, f32 *other)
 {
     .set noreorder
     lqc2 vf4, 0x0(a1)
@@ -5729,8 +5792,8 @@ asm void Mtx_Concat(f32 *m, f32 *a)
     jr ra
     nop
 }
-/* The 3x3 part of dst = a * b (3x3); the rest of dst stays. */
-asm void Mtx_Mul3x3(f32 *dst, f32 *a, f32 *b)
+/* The 3x3 part of dst = lhs * rhs (3x3); the rest of dst stays. */
+asm void Mtx_Mul3x3(f32 *dst, f32 *lhs, f32 *rhs)
 {
     .set noreorder
     lqc2 vf4, 0x0(a2)
@@ -5757,8 +5820,8 @@ asm void Mtx_Mul3x3(f32 *dst, f32 *a, f32 *b)
     jr ra
     nop
 }
-/* The 3x3 part of m = m * a (3x3). */
-asm void Mtx_Concat3x3(f32 *m, f32 *a)
+/* The 3x3 part of mtx = mtx * other (3x3). */
+asm void Mtx_Concat3x3(f32 *mtx, f32 *other)
 {
     .set noreorder
     lqc2 vf4, 0x0(a1)
@@ -5852,20 +5915,22 @@ asm void Mtx_Copy(f32 *dst, f32 *src)
     sq t1, 0x30(a0)
 }
 
-void Mtx_CopyRot(f32 *m, f32 *src)
+/* The 3x3 part of mtx = src's. */
+void Mtx_CopyRot(f32 *mtx, f32 *src)
 {
-    m[0] = src[0];
-    m[1] = src[1];
-    m[2] = src[2];
-    m[4] = src[4];
-    m[5] = src[5];
-    m[6] = src[6];
-    m[8] = src[8];
-    m[9] = src[9];
-    m[10] = src[10];
+    mtx[0] = src[0];
+    mtx[1] = src[1];
+    mtx[2] = src[2];
+    mtx[4] = src[4];
+    mtx[5] = src[5];
+    mtx[6] = src[6];
+    mtx[8] = src[8];
+    mtx[9] = src[9];
+    mtx[10] = src[10];
 }
-/* a * wa + b * wb, the rotation made orthonormal again (rows 0 and 1, then their cross products). */
-asm void Mtx_Blend(f32 *dst, f32 *a, f32 *b, f32 wa, f32 wb)
+/* dst = first * weightFirst + second * weightSecond, the rotation made orthonormal again
+ * (rows 0 and 1, then their cross products). */
+asm void Mtx_Blend(f32 *dst, f32 *first, f32 *second, f32 weightFirst, f32 weightSecond)
 {
     .set noreorder
     vmr32.xyzw vf6, vf0
@@ -5918,8 +5983,8 @@ asm void Mtx_Blend(f32 *dst, f32 *a, f32 *b, f32 wa, f32 wb)
     jr ra
     sqc2 vf7, 0x30(a0)
 }
-/* out = v * (the 3x3 part of m). */
-asm void Vec_Rotate(f32 *out, f32 *v, f32 *m)
+/* out = vec * (the 3x3 part of mtx). */
+asm void Vec_Rotate(f32 *out, f32 *vec, f32 *mtx)
 {
     .set noreorder
     lwc1 f2, 0x0(a1)
@@ -5948,8 +6013,8 @@ asm void Vec_Rotate(f32 *out, f32 *v, f32 *m)
     jr ra
     addiu sp, sp, 0x10
 }
-/* v = v * (the 3x3 part of m). */
-asm void Vec_RotateSelf(f32 *v, f32 *m)
+/* vec = vec * (the 3x3 part of mtx). */
+asm void Vec_RotateSelf(f32 *vec, f32 *mtx)
 {
     .set noreorder
     lwc1 f2, 0x0(a0)
@@ -5978,8 +6043,8 @@ asm void Vec_RotateSelf(f32 *v, f32 *m)
     jr ra
     addiu sp, sp, 0x10
 }
-/* out = v * m (4 components). */
-asm void Vec4_Transform(f32 *out, f32 *v, f32 *m)
+/* out = vec * mtx (4 components). */
+asm void Vec4_Transform(f32 *out, f32 *vec, f32 *mtx)
 {
     .set noreorder
     lwc1 f3, 0x0(a1)
@@ -6014,8 +6079,8 @@ asm void Vec4_Transform(f32 *out, f32 *v, f32 *m)
     jr ra
     addiu sp, sp, 0x10
 }
-/* v = v * m (4 components). */
-asm void Vec4_TransformSelf(f32 *v, f32 *m)
+/* vec = vec * mtx (4 components). */
+asm void Vec4_TransformSelf(f32 *vec, f32 *mtx)
 {
     .set noreorder
     lwc1 f3, 0x0(a0)
@@ -6050,8 +6115,8 @@ asm void Vec4_TransformSelf(f32 *v, f32 *m)
     jr ra
     addiu sp, sp, 0x10
 }
-/* out = (v, 1) * m divided by its w. */
-asm void Vec_Project(f32 *out, f32 *v, f32 *m)
+/* out = (vec, 1) * mtx divided by its w. */
+asm void Vec_Project(f32 *out, f32 *vec, f32 *mtx)
 {
     .set noreorder
     lwc1 f0, 0x0(a1)
@@ -6090,46 +6155,46 @@ asm void Vec_Project(f32 *out, f32 *v, f32 *m)
     addiu sp, sp, 0x10
 }
 
-/* v rotated by a about the x axis. */
-void Vec_RotateX(f32 *v, f32 a)
+/* vec rotated by angle about the x axis. */
+void Vec_RotateX(f32 *vec, f32 angle)
 {
-    f32 s;
-    f32 c;
-    Vec3Copy t;
+    f32 sinA;
+    f32 cosA;
+    Vec3Copy orig;
 
-    t = *(Vec3Copy *)v;
-    Math_GetSinCos(&s, &c, a);
-    v[1] = c * t.y - s * t.z;
-    v[2] = s * t.y + c * t.z;
+    orig = *(Vec3Copy *)vec;
+    Math_GetSinCos(&sinA, &cosA, angle);
+    vec[1] = cosA * orig.y - sinA * orig.z;
+    vec[2] = sinA * orig.y + cosA * orig.z;
 }
 
-/* v rotated by a about the y axis. */
-void Vec_RotateY(f32 *v, f32 a)
+/* vec rotated by angle about the y axis. */
+void Vec_RotateY(f32 *vec, f32 angle)
 {
-    f32 s;
-    f32 c;
-    Vec3Copy t;
+    f32 sinA;
+    f32 cosA;
+    Vec3Copy orig;
 
-    t = *(Vec3Copy *)v;
-    Math_GetSinCos(&s, &c, a);
-    v[0] = c * t.x + s * t.z;
-    v[2] = -s * t.x + c * t.z;
+    orig = *(Vec3Copy *)vec;
+    Math_GetSinCos(&sinA, &cosA, angle);
+    vec[0] = cosA * orig.x + sinA * orig.z;
+    vec[2] = -sinA * orig.x + cosA * orig.z;
 }
 
-/* v rotated by a about the z axis. */
-void Vec_RotateZ(f32 *v, f32 a)
+/* vec rotated by angle about the z axis. */
+void Vec_RotateZ(f32 *vec, f32 angle)
 {
-    f32 s;
-    f32 c;
-    Vec3Copy t;
+    f32 sinA;
+    f32 cosA;
+    Vec3Copy orig;
 
-    t = *(Vec3Copy *)v;
-    Math_GetSinCos(&s, &c, a);
-    v[0] = c * t.x - s * t.y;
-    v[1] = s * t.x + c * t.y;
+    orig = *(Vec3Copy *)vec;
+    Math_GetSinCos(&sinA, &cosA, angle);
+    vec[0] = cosA * orig.x - sinA * orig.y;
+    vec[1] = sinA * orig.x + cosA * orig.y;
 }
-/* |v|. */
-asm f32 Vec_Length(f32 *v)
+/* |vec|. */
+asm f32 Vec_Length(f32 *vec)
 {
     .set noreorder
     lwc1 f2, 0x0(a0)
@@ -6152,8 +6217,8 @@ asm f32 Vec_Length(f32 *v)
     jr ra
     addiu sp, sp, 0x10
 }
-/* |a - b|. */
-asm f32 Vec_Distance(f32 *a, f32 *b)
+/* |from - to|. */
+asm f32 Vec_Distance(f32 *from, f32 *to)
 {
     .set noreorder
     lwc1 f2, 0x0(a0)
@@ -6185,8 +6250,8 @@ asm f32 Vec_Distance(f32 *a, f32 *b)
     jr ra
     addiu sp, sp, 0x20
 }
-/* v = v / |v|. */
-asm void Vec_Normalize(f32 *v)
+/* vec = vec / |vec|. */
+asm void Vec_Normalize(f32 *vec)
 {
     .set noreorder
     lwc1 f2, 0x0(a0)
@@ -6215,8 +6280,8 @@ asm void Vec_Normalize(f32 *v)
     jr ra
     addiu sp, sp, 0x10
 }
-/* a . b (3 components). */
-asm f32 Vec_Dot(f32 *a, f32 *b)
+/* lhs . rhs (3 components). */
+asm f32 Vec_Dot(f32 *lhs, f32 *rhs)
 {
     .set noreorder
     lwc1 f2, 0x0(a0)
@@ -6244,8 +6309,8 @@ asm f32 Vec_Dot(f32 *a, f32 *b)
     jr ra
     addiu sp, sp, 0x20
 }
-/* out = a x b. */
-asm void Vec_Cross(f32 *out, f32 *a, f32 *b)
+/* out = lhs x rhs. */
+asm void Vec_Cross(f32 *out, f32 *lhs, f32 *rhs)
 {
     .set noreorder
     lwc1 f2, 0x0(a1)
@@ -6298,24 +6363,24 @@ u32 Math_RadToAngle(f32 rad)
 /* A 16-bit angle (0x10000 a turn) in radians, in (-pi, pi]. */
 f32 Math_Angle16ToRad(u16 angle)
 {
-    f32 r = 3.1415927f * (0.0054931641f * angle) / 180.0f;
+    f32 rad = 3.1415927f * (0.0054931641f * angle) / 180.0f;
 
-    if (r > 3.1415927f) {
-        r += -6.2831855f;
+    if (rad > 3.1415927f) {
+        rad += -6.2831855f;
     }
-    return r;
+    return rad;
 }
 
-/* A matrix into slot i of the table at 0x20D830 (main). */
-void MtxSlot_Store(s32 i, Mtx44Copy *m)
+/* mtx into slot `slot` of main's matrix table gMtxSlots. */
+void MtxSlot_Store(s32 slot, MtxSlot *mtx)
 {
-    gMtxSlots[i] = *m;
+    gMtxSlots[slot] = *mtx;
 }
 
-/* Slot i of the matrix table at 0x20D830 (main) into m. */
-void MtxSlot_Load(Mtx44Copy *m, s32 i)
+/* Slot `slot` of main's matrix table gMtxSlots into mtx. */
+void MtxSlot_Load(MtxSlot *mtx, s32 slot)
 {
-    *m = gMtxSlots[i];
+    *mtx = gMtxSlots[slot];
 }
 
 extern f32 gMtxView[];
@@ -6323,16 +6388,17 @@ extern f32 gMtxProjScreen[];
 void Mtx_Concat(f32 *m, f32 *a);
 void Vec_Project(f32 *out, f32 *v, f32 *m);
 
-/* out = v projected by the matrix of slot 0 of gMtxSlots times gMtxView times gMtxProjScreen. */
-void Camera_ProjectPoint(f32 *out, f32 *v)
+/* out = point projected by gMtxSlots[0] * gMtxView * gMtxProjScreen. */
+void Camera_ProjectPoint(f32 *out, f32 *point)
 {
-    f32 m[16];
+    f32 mtx[16];
 
-    Mtx_Mul(m, (f32 *)gMtxSlots, gMtxView);
-    Mtx_Concat(m, gMtxProjScreen);
-    Vec_Project(out, v, m);
+    Mtx_Mul(mtx, (f32 *)gMtxSlots, gMtxView);
+    Mtx_Concat(mtx, gMtxProjScreen);
+    Vec_Project(out, point, mtx);
 }
 
+/* |x|. */
 f32 Math_Absf(f32 x)
 {
     f32 ret;
@@ -6395,14 +6461,14 @@ f32 Math_Cos(f32 x)
     return Math_CosVu0(x);
 }
 
-/* *s = sin a, *c = cos a. */
-void Math_GetSinCos(f32 *s, f32 *c, f32 a)
+/* *sinOut = sin angle, *cosOut = cos angle. */
+void Math_GetSinCos(f32 *sinOut, f32 *cosOut, f32 angle)
 {
-    f32 sc[4];
+    f32 sinCos[4];
 
-    Math_SinCos(sc, a);
-    *s = sc[0];
-    *c = sc[1];
+    Math_SinCos(sinCos, angle);
+    *sinOut = sinCos[0];
+    *cosOut = sinCos[1];
 }
 
 f32 floorf(f32 x);
@@ -6433,96 +6499,99 @@ asm f32 Math_Sqrtf(f32 x)
     nop
 }
 
-/* The rotation matrix of quaternion q (x, y, z, w), scaled by 2 / |q|^2 (0 for a zero q). */
-void Quat_ToMatrix(f32 *q, f32 (*m)[4])
+/* The rotation matrix of quaternion quat (x, y, z, w), scaled by 2 / |quat|^2 (0 for a
+ * zero quat). */
+void Quat_ToMatrix(f32 *quat, f32 (*mtx)[4])
 {
-    f32 n = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
-    f32 s;
+    f32 normSq = quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] + quat[3] * quat[3];
+    f32 scale;
     f32 xx, yy, zz, xy, xz, yz, wx, wy, wz;
 
-    s = (n > 0.0f) ? 2.0f / n : 0.0f;
-    xx = s * (q[0] * q[0]);
-    xy = s * (q[0] * q[1]);
-    xz = s * (q[0] * q[2]);
-    wx = s * (q[3] * q[0]);
-    yy = s * (q[1] * q[1]);
-    yz = s * (q[1] * q[2]);
-    wy = s * (q[3] * q[1]);
-    wz = s * (q[3] * q[2]);
-    zz = s * (q[2] * q[2]);
-    m[0][0] = 1.0f - (yy + zz);
-    m[0][1] = xy + wz;
-    m[0][2] = xz - wy;
-    m[1][0] = xy - wz;
-    m[1][1] = 1.0f - (xx + zz);
-    m[1][2] = yz + wx;
-    m[2][0] = xz + wy;
-    m[2][1] = yz - wx;
-    m[2][2] = 1.0f - (xx + yy);
-    m[0][3] = m[1][3] = m[2][3] = 0.0f;
-    m[3][0] = m[3][1] = m[3][2] = 0.0f;
-    m[3][3] = 1.0f;
+    scale = (normSq > 0.0f) ? 2.0f / normSq : 0.0f;
+    xx = scale * (quat[0] * quat[0]);
+    xy = scale * (quat[0] * quat[1]);
+    xz = scale * (quat[0] * quat[2]);
+    wx = scale * (quat[3] * quat[0]);
+    yy = scale * (quat[1] * quat[1]);
+    yz = scale * (quat[1] * quat[2]);
+    wy = scale * (quat[3] * quat[1]);
+    wz = scale * (quat[3] * quat[2]);
+    zz = scale * (quat[2] * quat[2]);
+    mtx[0][0] = 1.0f - (yy + zz);
+    mtx[0][1] = xy + wz;
+    mtx[0][2] = xz - wy;
+    mtx[1][0] = xy - wz;
+    mtx[1][1] = 1.0f - (xx + zz);
+    mtx[1][2] = yz + wx;
+    mtx[2][0] = xz + wy;
+    mtx[2][1] = yz - wx;
+    mtx[2][2] = 1.0f - (xx + yy);
+    mtx[0][3] = mtx[1][3] = mtx[2][3] = 0.0f;
+    mtx[3][0] = mtx[3][1] = mtx[3][2] = 0.0f;
+    mtx[3][3] = 1.0f;
 }
 
-/* q (its axis in q[0..2]) = the rotation by angle about that axis, as a quaternion. */
-void Quat_FromAxisAngle(f32 *q, f32 angle)
+/* quat (its axis in quat[0..2]) = the rotation by angle about that axis. */
+void Quat_FromAxisAngle(f32 *quat, f32 angle)
 {
     f32 len;
-    f32 s;
+    f32 halfSin;
 
     angle *= 0.5f;
-    len = Math_Sqrtf(q[0] * q[0] + q[1] * q[1] + q[2] * q[2]);
-    q[3] = 0.0f;
-    q[0] /= len;
-    q[1] /= len;
-    q[2] /= len;
-    s = Math_Sin(angle);
-    q[3] = Math_Cos(angle);
-    q[0] *= s;
-    q[1] *= s;
-    q[2] *= s;
+    len = Math_Sqrtf(quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2]);
+    quat[3] = 0.0f;
+    quat[0] /= len;
+    quat[1] /= len;
+    quat[2] /= len;
+    halfSin = Math_Sin(angle);
+    quat[3] = Math_Cos(angle);
+    quat[0] *= halfSin;
+    quat[1] *= halfSin;
+    quat[2] *= halfSin;
 }
 
-void Quat_Set(f32 *axis, f32 *q, f32 angle)
+/* quat = the rotation by angle about axis. */
+void Quat_Set(f32 *axis, f32 *quat, f32 angle)
 {
-    q[3] = 0.0f;
-    q[0] = axis[0];
-    q[1] = axis[1];
-    q[2] = axis[2];
-    Quat_FromAxisAngle(q, angle);
+    quat[3] = 0.0f;
+    quat[0] = axis[0];
+    quat[1] = axis[1];
+    quat[2] = axis[2];
+    Quat_FromAxisAngle(quat, angle);
 }
 
 /*
- * Whether the sphere at p of radius r is in the view volume fr (four side planes through
- * the eye at fr[0], fr[4], fr[8], fr[12]; the depth range at fr[16], fr[17]); out = p in
- * view space (m).
+ * Whether the sphere at center of the given radius is in the view volume `planes` (four
+ * side planes through the eye at planes[0], [4], [8], [12]; the depth range at planes[16],
+ * [17]); out = center in view space (mtx, the view matrix).
  */
-s32 Frustum_TestSphere(f32 *p, f32 *out, f32 *m, f32 *fr, f32 r)
+s32 Frustum_TestSphere(f32 *center, f32 *out, f32 *mtx, f32 *planes, f32 radius)
 {
-    out[2] = m[2] * p[0] + m[6] * p[1] + m[10] * p[2] + m[14];
-    if (out[2] - r > fr[16]) {
+    out[2] = mtx[2] * center[0] + mtx[6] * center[1] + mtx[10] * center[2] + mtx[14];
+    if (out[2] - radius > planes[16]) {
         return 0;
     }
-    if (out[2] + r < fr[17]) {
+    if (out[2] + radius < planes[17]) {
         return 0;
     }
-    out[0] = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
-    if (out[0] * fr[0] + out[2] * fr[2] > r) {
+    out[0] = mtx[0] * center[0] + mtx[4] * center[1] + mtx[8] * center[2] + mtx[12];
+    if (out[0] * planes[0] + out[2] * planes[2] > radius) {
         return 0;
     }
-    if (out[0] * fr[4] + out[2] * fr[6] > r) {
+    if (out[0] * planes[4] + out[2] * planes[6] > radius) {
         return 0;
     }
-    out[1] = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
-    if (out[1] * fr[9] + out[2] * fr[10] > r) {
+    out[1] = mtx[1] * center[0] + mtx[5] * center[1] + mtx[9] * center[2] + mtx[13];
+    if (out[1] * planes[9] + out[2] * planes[10] > radius) {
         return 0;
     }
-    if (out[1] * fr[13] + out[2] * fr[14] > r) {
+    if (out[1] * planes[13] + out[2] * planes[14] > radius) {
         return 0;
     }
     return 1;
 }
 
+/* Makes the animation data in memory handle `handle` current (its keys too). */
 void Anim_SetData(s32 handle)
 {
     gAnimData = (s32) (Mem_GetAddr((void *) handle));
@@ -6536,57 +6605,61 @@ void Anim_SetData(s32 handle)
 void *Skeleton_CopyData(u8 *skel)
 {
     u8 *src = *(u8 **)(skel + 8);
-    void *h = Mem_Alloc(*(s32 *)(src + 0xC), 4);
-    u8 *dst = Mem_GetAddr(h);
+    void *handle = Mem_Alloc(*(s32 *)(src + 0xC), 4);
+    u8 *dst = Mem_GetAddr(handle);
     u32 i;
-    u8 *s = src;
+    u8 *from = src;
 
     for (i = 0; i < *(u32 *)(src + 0xC); i++) {
-        *dst++ = *s++;
+        *dst++ = *from++;
     }
-    return h;
+    return handle;
 }
 
-/* A copy of the block at +0x14 of obj (its size at +0x18, copied by words) in a new handle. */
-void *Skeleton_CopyBlock14(u8 *obj)
+/* A copy of a converted animation set (set->base, whose first object is the set itself,
+ * with the block's size; copied by words) in a new memory handle, which it returns. The
+ * set is read as bytes, like Skeleton_CopyData's. */
+void *AnimSet_CopyToHandle(u8 *set)
 {
-    u8 *src = *(u8 **)(obj + 0x14);
-    void *h = Mem_Alloc(*(s32 *)(src + 0x18), 4);
-    u32 *dst = Mem_GetAddr(h);
+    u8 *src = *(u8 **)(set + 0x14);
+    void *handle = Mem_Alloc(*(s32 *)(src + 0x18), 4);
+    u32 *dst = Mem_GetAddr(handle);
     u32 i;
-    u32 *s = (u32 *)src;
+    u32 *from = (u32 *)src;
 
     for (i = 0; i < *(u32 *)(src + 0x18) / 4; i++) {
-        *dst++ = *s++;
+        *dst++ = *from++;
     }
-    return h;
+    return handle;
 }
 
-s32 Model_FreeBlock(void *p)
+/* Frees a memory handle; returns 1. Mem_FreeRet1 is the same. */
+s32 Model_FreeBlock(void *block)
 {
-    Mem_Free(p);
+    Mem_Free(block);
     return 1;
 }
 
-s32 Mem_FreeRet1(void *p)
+/* Frees a memory handle (a motion of gMotions); returns 1. */
+s32 Mem_FreeRet1(void *block)
 {
-    Mem_Free(p);
+    Mem_Free(block);
     return 1;
 }
 
 /* unk_2E3940's .data (0x4021C0-0x402570) */
-extern char D_0046A100[];
-extern char D_0046A108[];
-extern char D_0046A110[];
-extern char D_0046A118[];
-extern char D_0046A120[];
-extern char D_0046A128[];
-extern char D_0046A130[];
-extern char D_0046A138[];
-extern char D_0046A140[];
-extern char D_0046A148[];
-extern char D_0046A150[];
-extern char D_0046A158[];
+extern char gMonthNames_0[];
+extern char gMonthNames_1[];
+extern char gMonthNames_2[];
+extern char gMonthNames_3[];
+extern char gMonthNames_4[];
+extern char gMonthNames_5[];
+extern char gMonthNames_6[];
+extern char gMonthNames_7[];
+extern char gMonthNames_8[];
+extern char gMonthNames_9[];
+extern char gMonthNames_10[];
+extern char gMonthNames_11[];
 extern char D_0046A200[];
 #pragma explicit_zero_data on
 u32 D_004021C0[16] = {
@@ -6599,16 +6672,16 @@ u32 D_004021C0[16] = {
 u8 gGsColorTable[32] = {
 #include "sub_main/00402200.inc"
 };
-char D_00402220[0x10] = {
+char gBuildDate[0x10] = {
 #include "sub_main/00402220.inc"
 };
-char D_00402230[0x10] = {
+char gBuildTime[0x10] = {
 #include "sub_main/00402230.inc"
 };
 char *gMonthNames[12] = {
-    D_0046A100, D_0046A108, D_0046A110, D_0046A118,
-    D_0046A120, D_0046A128, D_0046A130, D_0046A138,
-    D_0046A140, D_0046A148, D_0046A150, D_0046A158,
+    gMonthNames_0, gMonthNames_1, gMonthNames_2, gMonthNames_3,
+    gMonthNames_4, gMonthNames_5, gMonthNames_6, gMonthNames_7,
+    gMonthNames_8, gMonthNames_9, gMonthNames_10, gMonthNames_11,
 };
 Delims gVersionDelims = {
 #include "sub_main/00402270.inc"
@@ -6629,7 +6702,7 @@ Image gFontClutImage = {
 #include "sub_main/00402440.inc"
 };
 u8 *gSjisAsciiTable = (u8 *)D_0046A200;
-char D_00402490[0x20] = {
+char gSjisDigits[0x20] = {
 #include "sub_main/00402490.inc"
 };
 s32 gModelPktSteps[8] = {

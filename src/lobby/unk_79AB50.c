@@ -5,6 +5,7 @@
 #include "save.h"
 #include "pad.h"
 #include "lobby/unk_79AB50.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "area.h"
 
 /* prototypes */
 void TownPc_State01(Player *a);
@@ -443,10 +444,10 @@ void TownPc_State80(Player *pl)
     case 2:
         if (pl->motion[0].playing <= 0) {
             Save_RestorePouch(pl);
-            if (gScene.area == 0x89) {
+            if (gScene.area == AREA_HUB_0x89) {
                 g = ActSpot_GetList(pl->area) + 0x108;
                 k = 0;
-            } else if (gScene.area == 0x83) {
+            } else if (gScene.area == AREA_HUB_0x83) {
                 g = ActSpot_GetList(pl->area) + 0x48;
                 k = 1;
             } else {

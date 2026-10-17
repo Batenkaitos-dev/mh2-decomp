@@ -111,7 +111,7 @@ void LobbyPkt_6714(s32 src, u16 n, u8 v, u8 arg3)
 void LobbyNotify_6702(void)
 {
     memset(&gLobbyNet.x6702, 0, 0x124);
-    LobbyMsg_GetU8(&gLobbyNet.x6702.unk120, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C + 3, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C + 2, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C + 1, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.text, 0x100, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.name, 0x10, LobbyMsg_GetBlob(&gLobbyNet.x6702, 8, gLobbyRecvData))))))));
+    LobbyMsg_GetU8(&gLobbyNet.x6702.unk120, LobbyMsg_GetU8(gLobbyNet.x6702.r.color + 3, LobbyMsg_GetU8(gLobbyNet.x6702.r.color + 2, LobbyMsg_GetU8(gLobbyNet.x6702.r.color + 1, LobbyMsg_GetU8(gLobbyNet.x6702.r.color, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.text, 0x100, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.name, 0x10, LobbyMsg_GetBlob(&gLobbyNet.x6702, 8, gLobbyRecvData))))))));
     Lobby_RouteMessage(0xB);
 }
 
@@ -177,7 +177,7 @@ void LobbyReply_670B(void)
 void LobbyNotify_670C(void)
 {
     memset(&gLobbyNet.x6702, 0, 0x124);
-    LobbyMsg_GetU8(&gLobbyNet.x6702.unk120, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C + 3, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C + 2, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C + 1, LobbyMsg_GetU8(gLobbyNet.x6702.r.unk11C, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.text, 0x100, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.name, 0x10, LobbyMsg_GetBlob(&gLobbyNet.x6702, 8, gLobbyRecvData))))))));
+    LobbyMsg_GetU8(&gLobbyNet.x6702.unk120, LobbyMsg_GetU8(gLobbyNet.x6702.r.color + 3, LobbyMsg_GetU8(gLobbyNet.x6702.r.color + 2, LobbyMsg_GetU8(gLobbyNet.x6702.r.color + 1, LobbyMsg_GetU8(gLobbyNet.x6702.r.color, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.text, 0x100, LobbyMsg_GetBlob(gLobbyNet.x6702.r.u.name, 0x10, LobbyMsg_GetBlob(&gLobbyNet.x6702, 8, gLobbyRecvData))))))));
     Lobby_RouteMessage(0xC);
 }
 

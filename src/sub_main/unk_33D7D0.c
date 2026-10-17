@@ -51,7 +51,7 @@ void ItemHud_Update(void);
  * The field's per-frame update: the players (outside events, or in a
  * versus quest), then each monster: its bones, then the game overlay's
  * monster task, or sub_main's own state runner for the objects set up by
- * Em_SetupKind (Em.unk01E set). Then the push-apart (outside events), the
+ * Em_SetupKind (Em.ownTask set). Then the push-apart (outside events), the
  * BGM, a second field collision for each player and monster the push moved,
  * and the matrices, lights, stage objects, attachments, objects, areas,
  * timers and the item HUD.
@@ -69,7 +69,7 @@ void Field_UpdateAll(void)
     for (i = 0; i < 20; i++, em++) {
         if (em->active) {
             Em_CopyBoneMatrices(em);
-            if (em->unk01E == 0) {
+            if (em->ownTask == 0) {
                 if (GmEm_Task(em) == 0) {
                     Em_UpdateMatrix(em);
                     Em_CarryRiders(em);
@@ -123,7 +123,7 @@ void DrawPool_ClearHud(void);
 void Hud_ResetMenuState(void);
 void Kbd_Close(void);
 void Chat_SetColor(s16 color);
-void Chat_InitMode(void);
+void Chat_PickSendTarget(void);
 void Chat_ShowWindows(void);
 void GameMenu_Reset(void);
 void BoxMenu_InitWork(void);
@@ -190,7 +190,7 @@ void *Hud_Init(void)
         gChatHideNames = 0;
     }
     gChatWindowSel = 1;
-    Chat_InitMode();
+    Chat_PickSendTarget();
     gChatWinHold = 0;
     Chat_ShowWindows();
     gHudState->mapScaleX = 1.0f / gMapScales[gScene.map][0];
@@ -235,10 +235,10 @@ void *Hud_Init(void)
         gHudDrawHooks[2].draw = (DrawSlotFn)Hud_DrawLayer2B;
         gHudDrawHooks[3].draw = (DrawSlotFn)Hud_DrawLayer3B;
     } else {
-        gHudState->timer[0] = -1;
-        gHudState->timer[1] = -1;
-        gHudState->timer[2] = -1;
-        gHudState->timer[3] = -1;
+        gHudState->statusTimer[0] = -1;
+        gHudState->statusTimer[1] = -1;
+        gHudState->statusTimer[2] = -1;
+        gHudState->statusTimer[3] = -1;
         gHudState->mapOff = 0;
         gHudState->timeLeft = Quest_GetTime(0);
         gHudState->timeTotal = Quest_GetTime(1);
@@ -257,7 +257,7 @@ void DrawPool_ClearHud(void);
 void Hud_ResetMenuState(void);
 void Kbd_Close(void);
 void Chat_SetColor(s16 color);
-void Chat_InitMode(void);
+void Chat_PickSendTarget(void);
 void Chat_ShowWindows(void);
 void GameMenu_Reset(void);
 void BoxMenu_InitWork(void);
@@ -307,7 +307,7 @@ void Hud_StartQuest(void)
     gChatLog.win.timer = 0;
     Chat_SetColor(-1);
     gChatWindowSel = 1;
-    Chat_InitMode();
+    Chat_PickSendTarget();
     Chat_ShowWindows();
     gHudState->pingTimer[3] = -1;
     gHudState->pingTimer[2] = -1;
@@ -336,10 +336,10 @@ void Hud_StartQuest(void)
         gHudDrawHooks[2].draw = (DrawSlotFn)Hud_DrawLayer2B;
         gHudDrawHooks[3].draw = (DrawSlotFn)Hud_DrawLayer3B;
     } else {
-        gHudState->timer[0] = -1;
-        gHudState->timer[1] = -1;
-        gHudState->timer[2] = -1;
-        gHudState->timer[3] = -1;
+        gHudState->statusTimer[0] = -1;
+        gHudState->statusTimer[1] = -1;
+        gHudState->statusTimer[2] = -1;
+        gHudState->statusTimer[3] = -1;
         gHudState->mapOff = 0;
         gHudState->clockHand = 0;
         gHudState->pouchBarState = 0;

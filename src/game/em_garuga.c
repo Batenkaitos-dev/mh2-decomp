@@ -1,15 +1,16 @@
 /*
- * Monster family: Yian Garuga (kind 0x28).
- * The code from the family's setup function (0x744430, called by the per-kind
- * dispatch Em_TypeSetup) to the next family's. The state functions take
- * the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * Monster family: Yian Garuga (EM_KIND_YIAN_GARUGA). The code from the
+ * family's setup function (EmGaruga_Setup, called by the per-kind dispatch
+ * Em_TypeSetup) to the next family's. The state functions take the monster
+ * and the work area its state dispatcher passes on (EmWork); Em.step is the
+ * step within the current state. See include/em.h.
  */
 #include "common.h"
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
 #include "player.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
 u16 Rand_Next(s32 stream);
 void GmEm_ResetSize(Em *em);
@@ -45,8 +46,8 @@ void Player_SetFlag(void *obj, u32 flag);
 s8 QuestEm_Appear(Em *em);
 void QuestEm_Captured(Em *em);
 s32 Save_TestEventFlag(s32);
-void EffEm08_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void EffGaruga25_Create(Em *, s8);
+void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
+void GarugaAttack_Create(Em *, s8);
 void Em_SelectSightRow(Em *em, u8 idx);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *em, void *ang);
@@ -57,16 +58,16 @@ void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnEffect06Bone(Em *em, s32 a);
+void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetGoal12(Em *em);
+void Em_SetTrapTimeGoal(Em *em);
 /* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmGaruga_State0_12: 45 of 94 words differ, EmGaruga_State0_15: 43 of 92 words differ */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_ResetToBasePose(Em *em);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySeAtBoneOnFrame2(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
+void Em_PlaySeAtBoneOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
 void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p);
 s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
@@ -94,7 +95,7 @@ void EmGaruga_State5_02_HuntedFalling(Em *, EmWork *);
 void EmGaruga_RunGroup0(Em *em, EmWork *work);
 void EmGaruga_RunGroup1(Em *em, EmWork *work);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void EffGaruga25_Create2(Em *em, s8 kind);
+void GarugaAttack_CreateForEffects(Em *em, s8 kind);
 void StageObj_K0F_CreateAtMarked(f32 *pos, s32 k, s32 c, f32 scale);
 void StageObj_K0F_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
 void Mtx_GetTrans(f32 *out, f32 *m);
@@ -119,12 +120,12 @@ void StageObj_K13_Create(void *owner, s16 v, u8 k);
 void StageObj_K14_Create(Em *em, s16 k, s16 c, f32 scale);
 /* unit's own declaration: with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale) (game/unk_874B90.c), EmGaruga_State4_15: 66 of 98 words differ, EmGaruga_State4_16: 43 of 74 words differ */
 void StageObj_Stun_CreateEm(Em *, s32, s32, s32, f32, f32);
-s32 Player_PassedFrameScaled(void *p, f32 frame, s32 layer);
+s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 f32 Vec_Distance(f32 *a, f32 *b);
 void CamShake_ReqAIf(Em *obj, s32 i);
 f32 Vec_DistanceXZ(f32 *a, f32 *b);
-u16 Area_BaseId(u16);
+u16 Map_DayId(u16);
 void Versus_MarkDefeat(Em *em);
 s32 Versus_BothDefeated(void);
 s32 QuestEm_CanAppear(Em *em);
@@ -149,7 +150,7 @@ typedef struct EmGarugaVec {
 } EmGarugaVec;
 extern EmGarugaVec EmGaruga_CarveThrowPt __attribute__((aligned(8)));
 extern EmCurveKey *EmGaruga_MoveVelYCurves[];
-void Em_SpawnEffect06Periodic(Em *em, s32 bone, f32 *pos, f32 scale);
+void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
 void QuestEm_Hunted(Em *em);
 s8 EmMine_Create(Em *em, s32 idx);
@@ -166,11 +167,11 @@ u16 Area_DayId(u16 id);
 void StageObj_K09_Create(Em *);
 void Em_SetPartScaled(Em *em, s32 bit);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeSize(Em *em, s16 idx);
+s32 Em_ComputeMaxHp(Em *em, s16 idx);
 s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaiseTrigger80Lax(Em *em);
+void Em_RaisePlayerAreaTriggerLax(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetGoal12Dist(Em *em, u8 *p);
+void Em_SetTrapTime(Em *em, u8 *p);
 void Em_SetStatus4Timer(Em *em);
 void Em_SetStatus1Timer(Em *em);
 void Em_SetStatus2Timer(Em *em);
@@ -208,43 +209,43 @@ void EmGaruga_Init(Em *em)
             em->posY = 0.0f;
             em->posZ = 6000.0f;
             break;
-        case 0xF:
+        case AREA_SNOWY_MOUNTAINS_NIGHT_9:
             em->posX = 7900.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 1050.0f;
             em->posZ = 13900.0f;
             break;
-        case 0x12:
+        case AREA_JUNGLE_NIGHT_5:
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 200.0f;
             em->posZ = 8000.0f;
             break;
-        case 0x16:
+        case AREA_JUNGLE_NIGHT_7:
             em->posX = 9900.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 300.0f;
             em->posZ = 10350.0f;
             break;
-        case 0x18:
+        case AREA_DESERT_NIGHT_11:
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 5700.0f;
             em->rotY = 0x4000;
             break;
-        case 0x1B:
+        case AREA_VOLCANO_NIGHT_9:
             em->posX = 14300.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 7100.0f;
             break;
-        case 0x21:
+        case AREA_FOREST_HILLS_3:
             em->posX = 17300.0f;
             em->posY = 0.0f;
             em->posZ = 18000.0f;
             break;
-        case 0x25:
+        case AREA_FOREST_HILLS_4:
             em->posX = 9750.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 300.0f;
             em->posZ = 7750.0f;
             break;
-        case 0x28:
+        case AREA_FOREST_HILLS_5:
             em->posX = 10500.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 9500.0f;
@@ -259,7 +260,7 @@ void EmGaruga_Init(Em *em)
     Em_SetMotionRow(em, 1, 0, 0);
     em->stance = 0;
     w->fxMotion = 0;
-    hp = Em_ComputeSize(em, 0);
+    hp = Em_ComputeMaxHp(em, 0);
     em->hp = hp;
     em->hpMax = hp;
     em->scriptPending = 1;
@@ -290,7 +291,7 @@ void EmGaruga_Start(Em *em)
     switch (gQuest.stage) {
     case 0x1771:
         if (Save_TestEventFlag(0xA1) == 0) {
-            em->area = Area_IdForCurrentTime(0x77U);
+            em->area = Area_IdForCurrentTime(AREA_JUNGLE_9);
             em->posX = 10051.0f;
             em->posY = 1040.0f;
             em->posZ = 8395.0f;
@@ -305,8 +306,8 @@ void EmGaruga_Start(Em *em)
 void EmGaruga_Reinit(Em *em)
 {
     EmGaruga_Init(em);
-    if ((Area_BaseId((u16) gScene.map) & 0xFFFF) == 9) {
-        em->area = Area_IdForCurrentTime(0x5AU);
+    if ((Map_DayId((u16) gScene.map) & 0xFFFF) == MAP_GREAT_ARENA) {
+        em->area = Area_IdForCurrentTime(AREA_GREAT_ARENA_1);
         if (em->variant == 0) {
             em->rotY = 0x8A76;
             em->posX = 11948.9f;
@@ -560,8 +561,8 @@ void EmGaruga_State0_0B(Em *em)
     }
     EmGaruga_RestartLayerMotion(em, 0);
     EmGaruga_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 0x38, 0x21, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 0x68, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x38, 0x21, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x68, 0x1F, 0x23, 1);
 }
 
 void EmGaruga_State0_0C(Em *em)
@@ -600,8 +601,8 @@ void EmGaruga_State0_0D(Em *em)
     }
     EmGaruga_RestartLayerMotion(em, 0);
     EmGaruga_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnFrame2(em, 2, 0x20, 0x23, 1);
-    Em_PlaySeAtBoneOnFrame2(em, 0x4A, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 2, 0x20, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 0x4A, 0x1F, 0x23, 1);
 }
 
 void EmGaruga_State0_0E(Em *em)
@@ -701,7 +702,7 @@ void EmGaruga_State0_11(Em *em)
 
 void EmGaruga_State0_12(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -736,7 +737,7 @@ void EmGaruga_State0_12(Em *em)
 
 void EmGaruga_State0_13(Em *em)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -747,7 +748,7 @@ void EmGaruga_State0_13(Em *em)
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 200.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0) {
             em->step++;
             EmGaruga_ChangeState(em, 0, 0x28, 4);
         }
@@ -786,7 +787,7 @@ void EmGaruga_State0_28(Em *em)
 
 void EmGaruga_State0_14(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -818,7 +819,7 @@ void EmGaruga_State0_14(Em *em)
 
 void EmGaruga_State0_15(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -944,7 +945,7 @@ void EmGaruga_State0_1A(Em *em)
 
 void EmGaruga_State0_1B(Em *em)
 {
-    Em_SetHitReactMode(em, 2U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1005,7 +1006,7 @@ void EmGaruga_State0_1D(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1030,7 +1031,7 @@ void EmGaruga_State0_1D(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
@@ -1041,7 +1042,7 @@ void EmGaruga_State0_1F(Em *em, EmWork *work)
     f32 pos[3];
 
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 2);
+    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
@@ -1066,7 +1067,7 @@ void EmGaruga_State0_1F(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
@@ -1177,7 +1178,7 @@ void EmGaruga_State1_03(Em *em)
     case 1:
         if (Em_TurnStep(em, &EmGaruga_TurnParams[0]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmGaruga_EndState(em, 0, 0);
         }
         break;
@@ -1222,7 +1223,7 @@ void EmGaruga_State1_05(Em *em)
     case 1:
         if (Em_TurnStep(em, &EmGaruga_TurnParams[1]) == 1) {
             em->step++;
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmGaruga_EndState(em, 0, 0);
         }
         break;
@@ -1342,7 +1343,7 @@ void EmGaruga_State2_00(Em *em, EmWork *work)
         work->flyGuard = 0;
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 38.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0U) != 0) {
             em->step++;
             em->stance = 2;
             EmGaruga_UpdateCurves(em);
@@ -1389,7 +1390,7 @@ void EmGaruga_State2_01_FlyInLand(Em *em, EmWork *work)
         if (em->velY < -10.0f) {
             em->velY += 0.75f;
         }
-        if (!((630.0f + em->floorY) <= em->posY) && ((Player_PassedFrameScaled(em, 10.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 86.0f, 0U) != 0) || (Player_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
+        if (!((630.0f + em->floorY) <= em->posY) && ((EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 86.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
             em->step++;
             Em_SetMotion(em, 0xB, 0, 0);
             em->velY = (em->floorY - em->posY) / 30.0f;
@@ -1763,7 +1764,7 @@ void EmGaruga_State2_08(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmGaruga_ChangeState(em, 2, 9, 1);
         } else {
@@ -1803,7 +1804,7 @@ void EmGaruga_State2_09(Em *em, EmWork *work)
         em->velZ = 80.0f;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->rotY = em->aimAngle;
-        *(u16 *) &em->destArea = 0xFFFF;
+        *(u16 *) &em->destArea = AREA_NONE;
         work->flyGuard = 1;
         break;
     case 1:
@@ -2000,7 +2001,7 @@ void EmGaruga_State2_0D(Em *em, EmWork *work)
         em->timer = 600;
         Em_EnterNextArea(em);
         next = *(u16 *)&em->destArea;
-        if (em->nextArea == next || next == 0xFFFF) {
+        if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
             EmGaruga_ChangeState(em, 2, 9, 1);
         } else {
@@ -2625,7 +2626,7 @@ void EmGaruga_State3_04(Em *em, EmWork *work)
         if (--em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, 0x5B, 0, 0);
-            EffGaruga25_Create(em, 0x24);
+            GarugaAttack_Create(em, 0x24);
         }
         break;
     case 2:
@@ -2698,10 +2699,10 @@ void EmGaruga_State3_07(Em *em, EmWork *work)
             if (!(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-        } else if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -2736,10 +2737,10 @@ void EmGaruga_State3_08(Em *em, EmWork *work)
             if (!(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-        } else if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0xE39, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xE39, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -2774,10 +2775,10 @@ void EmGaruga_State3_09(Em *em, EmWork *work)
             if (!(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-        } else if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0xF1C8, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xF1C8, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -2811,20 +2812,20 @@ void EmGaruga_State3_0A(Em *em, EmWork *work)
         if ((EmMotion_ReachedFrame(em, 0, 256.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 316.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create((Em *) em, 0x1A, 1, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
         }
-        if (Player_PassedFrameScaled(em, 164.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -2993,7 +2994,7 @@ void EmGaruga_State4_04(Em *em, EmWork *work)
         Em_SetMotion(em, 0x41, 0, 0);
         break;
     case 1:
-        if ((Player_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
             em->meshShown[1] = 0;
         }
         if ((EmMotion_ReachedFrame(em, 0, 52.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 122.0f) == 0)) {
@@ -3099,7 +3100,7 @@ void EmGaruga_State4_07(Em *em, EmWork *work)
         Em_RestartScript(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 14.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
             em->step++;
             EmGaruga_EndState2(em, 1);
             em->velY = 0.0f;
@@ -3216,7 +3217,7 @@ void EmGaruga_State4_0A(Em *em, EmWork *work)
 
 void EmGaruga_State4_0B(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3239,12 +3240,12 @@ void EmGaruga_State4_0B(Em *em, EmWork *work)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmGaruga_State4_0C(Em *em, EmWork *work)
 {
-    Em_SetHitReactMode(em, 3U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3307,7 +3308,7 @@ void EmGaruga_State4_0D(Em *em, EmWork *work)
 void EmGaruga_State4_0E(Em *em, EmWork *work)
 {
     em->holdTimer = 5;
-    Em_SetHitReactMode(em, 4U);
+    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
@@ -3319,7 +3320,7 @@ void EmGaruga_State4_0E(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             EmGaruga_ChangeState(em, 4, 0x11, 3);
         }
         break;
@@ -3329,7 +3330,7 @@ void EmGaruga_State4_0E(Em *em, EmWork *work)
         }
         break;
     }
-    Em_SpawnEffect06Bone(em, 2);
+    Em_SpawnStatus4Effect(em, 2);
 }
 
 void EmGaruga_State4_10(Em *em, EmWork *work)
@@ -3420,7 +3421,7 @@ void EmGaruga_State4_12(Em *em, EmWork *work)
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->blind = 0;
             EmGaruga_ChangeState(em, 4, 0xD, 3);
         }
@@ -3448,7 +3449,7 @@ void EmGaruga_State4_13(Em *em, EmWork *work)
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             em->blind = 0;
             EmGaruga_ChangeState(em, 4, 0xD, 3);
         }
@@ -3529,7 +3530,7 @@ void EmGaruga_State4_16(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetGoal12(em);
+            Em_SetTrapTimeGoal(em);
             EmGaruga_ChangeState(em, 4, 0x17, 3);
         }
         break;
@@ -3578,13 +3579,13 @@ void EmGaruga_State4_18(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, 0x3C, 0, 0);
-        Player_SetFlag((Player *) em, 0x20000U);
+        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
             Em_SetMotion(em, 0x4C, 0xC, 0);
-            Player_ClearFlag(em, 0x20000);
+            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
@@ -3741,20 +3742,20 @@ block_11:
         if ((EmMotion_ReachedFrame(em, 0, 256.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 316.0f) == 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create((Em *) em, 0x1A, 1, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 78.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
         }
-        if (Player_PassedFrameScaled(em, 164.0f, 0U) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
             StageObj_K11_CreateAtBone(em, 0x24, 1, 0);
             StageObj_K11_CreateAtBone(em, 0x24, 2, 0);
-            EffEm08_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
+            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -3823,7 +3824,7 @@ void EmGaruga_State6_04_Captured(Em *em)
         pos[0] = 0.0f;
         pos[1] = 10.0f;
         pos[2] = 140.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, pos, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
         if (++em->stateVar0 % 135 == 0) {
             Em_PlaySeAtBone(em, 0x57, 0x23);
         }
@@ -3898,7 +3899,7 @@ void EmGaruga_State8_00_CarveStart(Em *em, EmWork *work)
         }
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             v = EmGaruga_CarveThrowPt;
             StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
         }
@@ -4076,7 +4077,7 @@ void EmGaruga_State5_00_Hunted(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         break;
     case 1:
-        if (Player_PassedFrameScaled(em, 212.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 212.0f, 0) != 0) {
             CamShake_ReqAIf(em, 2);
         }
         if (em->motion[0].playing == 0) {
@@ -4205,7 +4206,7 @@ void EmGaruga_State5_02_HuntedFalling(Em *em, EmWork *work)
         }
         break;
     case 2:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             em->step++;
             em->timer = 0;
             Em_SetMotion(em, 0x52, 6, 0);
@@ -4704,9 +4705,9 @@ void EmGaruga_Update(Em *em)
     EmFlyerWork *w = (EmFlyerWork *)&em->work;
 
     Em_UpdateCombatTimer(em);
-    Em_RaiseTrigger80Lax(em);
+    Em_RaisePlayerAreaTriggerLax(em);
     if (em->noAlert != 1 && em->rage == 0) {
-        Area_BaseId(gScene.map);
+        Map_DayId(gScene.map);
     }
     if (w->fxMotion != 0) {
         w->fxMotion -= 1;
@@ -4730,11 +4731,11 @@ void EmGaruga_Update(Em *em)
     case 3:
     case 4:
         if ((s8) em->holdTimer == 0) {
-            if (em->rage != 0 && em->status == 0) {
+            if (em->rage != 0 && em->status == EM_STATUS_NONE) {
                 EmGaruga_ChangeState(em, 4, 0x10, 3);
             } else {
-                Em_SetGoal12Dist(em, buf);
-                Em_SetGoal12(em);
+                Em_SetTrapTime(em, buf);
+                Em_SetTrapTimeGoal(em);
                 EmGaruga_ChangeState(em, 4, 0xC, 3);
             }
         }
@@ -4826,7 +4827,7 @@ void EmGaruga_Update(Em *em)
         break;
     case 12:
     case 16:
-        Player_ClearFlag(em, 0x20000);
+        Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         if (em->stance == 2) {
             EmGaruga_ChangeState(em, 4, 8, 3);
         } else {
@@ -4883,8 +4884,8 @@ void EmGaruga_Update(Em *em)
     }
     switch (gQuest.stage) {
     case 0x1771:
-        if (Area_DayId(em->area) == 0x77 && Save_TestEventFlag(0xA1) == 0) {
-            if (Area_DayId(gScene.area) == 0x77 && gScene.eventRunning == 1 && em->stateGroup != 6) {
+        if (Area_DayId(em->area) == AREA_JUNGLE_9 && Save_TestEventFlag(0xA1) == 0) {
+            if (Area_DayId(gScene.area) == AREA_JUNGLE_9 && gScene.eventRunning == 1 && em->stateGroup != 6) {
                 EmGaruga_ChangeState(em, 6, 0, 1);
             }
             break;
@@ -4943,7 +4944,7 @@ void EmGaruga_RunState(Em *em, s32 work)
 
 void EmGaruga_RequestOnFrame(void *em, s32 frame, s32 i)
 {
-    if (Player_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
+    if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
         CamShake_ReqAIf(em, i);
     }
 }
@@ -4967,31 +4968,31 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
     case 0x3EB:
         EmGaruga_RequestOnFrame(em, 0x34, 1);
         EmGaruga_RequestOnFrame(em, 0x74, 1);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 2);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 2);
         }
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffGaruga25_Create(em, 3);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            GarugaAttack_Create(em, 3);
         }
-        if (Player_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            EffGaruga25_Create(em, 4);
+        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
+            GarugaAttack_Create(em, 4);
         }
         break;
     case 0x3EC:
-        if (Player_PassedFrameScaled(em, 38.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0, 1.0f);
         }
         break;
     case 0x3ED:
         EmGaruga_RequestOnFrame(em, 0x3C, 1);
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 5);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 5);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffGaruga25_Create(em, 6);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            GarugaAttack_Create(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create((Em *) em, 0x1A, 1, 1.0f);
@@ -4999,22 +5000,22 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         break;
     case 0x3EE:
         EmGaruga_RequestOnFrame(em, 0x3C, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffGaruga25_Create(em, 7);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            GarugaAttack_Create(em, 7);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 8);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
             StageObj_K14_Create((Em *) em, 0x1A, 0, 1.0f);
         }
         break;
     case 0x3EF:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffGaruga25_Create(em, 9);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            GarugaAttack_Create(em, 9);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0xA);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0xA);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
@@ -5027,11 +5028,11 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x3F0:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0xB);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0xB);
         }
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0xC);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0xC);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
@@ -5044,23 +5045,23 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x3F2:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x19);
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x19);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x1A);
         }
-        if (Player_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x1A);
+        if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x1A);
         }
         break;
     case 0x3F3:
-        if (Player_PassedFrameScaled(em, 52.0f, 0) || Player_PassedFrameScaled(em, 104.0f, 0) || Player_PassedFrameScaled(em, 162.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
             Effect0D_SpawnForEmScaled(em, 2, 7, 5.0f);
         }
         break;
     case 0x3F5:
-        if ((Player_PassedFrameScaled(em, 26.0f, 0) != 0) || (Player_PassedFrameScaled(em, 52.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 1, 7, 5.0f);
         }
         break;
@@ -5074,7 +5075,7 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x3F7:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) || Player_PassedFrameScaled(em, 86.0f, 0) || Player_PassedFrameScaled(em, 160.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) || EmMotion_PassedFrameScaled(em, 86.0f, 0) || EmMotion_PassedFrameScaled(em, 160.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create((Em *) em, 1, 0, 1.0f);
             }
@@ -5089,32 +5090,32 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x3F9:
-        if (Player_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x13);
+        if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x13);
         }
-        if ((Player_PassedFrameScaled(em, 12.0f, 0) != 0) || (Player_PassedFrameScaled(em, 72.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0)) {
             StageObj_K14_Create((Em *) em, 2, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 40.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0, 1.0f);
         }
         break;
     case 0x3FA:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) || Player_PassedFrameScaled(em, 102.0f, 0) || Player_PassedFrameScaled(em, 156.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0) || EmMotion_PassedFrameScaled(em, 156.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 StageObj_K14_Create((Em *) em, 1, 0, 1.0f);
             }
         }
-        if ((em->rage != 0) && (Player_PassedFrameScaled(em, 38.0f, 0) != 0)) {
+        if ((em->rage != 0) && (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0)) {
             StageObj_K14_Create((Em *) em, 0x19, 5, 1.0f);
             StageObj_K14_Create((Em *) em, 0x19, 4, 1.0f);
         }
         break;
     case 0x3FB:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0xD);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0xD);
         }
-        if (Player_PassedFrameScaled(em, 16.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             EmGaruga_SpawnK14Type0B(em);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 18.0f, 44.0f) != 0) && !(gScene.frame & 3)) {
@@ -5125,56 +5126,56 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         v4[1] = 10.0f;
         v4[2] = 140.0f;
         v4[0] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, v4, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, v4, 1.6f);
         break;
     case 0x40A:
         v3[1] = 10.0f;
         v3[2] = 140.0f;
         v3[0] = 0.0f;
-        Em_SpawnEffect06Periodic(em, 0x22, v3, 1.6f);
+        Em_SpawnLyingPuffs(em, 0x22, v3, 1.6f);
         break;
     case 0x40C:
-        if (Player_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EffGaruga25_Create(em, 1);
+        if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
+            GarugaAttack_Create(em, 1);
         }
-        if (Player_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x21);
+        if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x21);
         }
         break;
     case 0x40E:
-        if (Player_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0xF);
+        if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0xF);
         }
-        if (Player_PassedFrameScaled(em, 156.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0, 0, 1.0f);
         }
         break;
     case 0x410:
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             Mtx_GetTrans(v2, em->model->bones[35].world);
             StageObj_K0F_CreateOnEm(em, 5, 1, 1.0f);
-            EffGaruga25_Create2(em, 0x16);
+            GarugaAttack_CreateForEffects(em, 0x16);
         }
         break;
     case 0x411:
-        if (Player_PassedFrameScaled(em, 108.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x25);
+        if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x25);
         }
-        if (Player_PassedFrameScaled(em, 104.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 1, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 200.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 200.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 1, 0, 1.0f);
         }
         break;
     case 0x412:
         EmGaruga_RequestOnFrame(em, 0x2C, 1);
         EmGaruga_RequestOnFrame(em, 0x49, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             if (em->state == 0xC) {
-                EffGaruga25_Create(em, 0x27);
+                GarugaAttack_Create(em, 0x27);
             } else {
-                EffGaruga25_Create(em, 0x11);
+                GarugaAttack_Create(em, 0x11);
             }
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
@@ -5184,11 +5185,11 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
     case 0x413:
         EmGaruga_RequestOnFrame(em, 0x2C, 1);
         EmGaruga_RequestOnFrame(em, 0x49, 1);
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             if (em->state == 0xC) {
-                EffGaruga25_Create(em, 0x27);
+                GarugaAttack_Create(em, 0x27);
             } else {
-                EffGaruga25_Create(em, 0x11);
+                GarugaAttack_Create(em, 0x11);
             }
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
@@ -5196,8 +5197,8 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x417:
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x22);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x22);
         }
         break;
     case 0x41B:
@@ -5209,119 +5210,119 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x41C:
-        if ((em->stateGroup == 2) && (em->state == 0xC) && (Player_PassedFrameScaled(em, 70.0f, 0) != 0)) {
+        if ((em->stateGroup == 2) && (em->state == 0xC) && (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0)) {
             Mtx_GetTrans(v1, em->model->bones[35].world);
             if (Player_InCurrentArea(em) & 0xFF) {
                 StageObj_K0F_CreateAtMarked(v1, 4, 0, 1.0f);
             }
-            EffGaruga25_Create2(em, 0x16);
+            GarugaAttack_CreateForEffects(em, 0x16);
         }
-        if (Player_PassedFrameScaled(em, 72.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 4, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 1, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 84.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 84.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 4, 1, 1.0f);
         }
         break;
     case 0x421:
-        if (Player_PassedFrameScaled(em, 12.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 4, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 5, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 28.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x1B);
+        if (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x1B);
         }
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x1F);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x1F);
         }
-        if (Player_PassedFrameScaled(em, 36.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x20);
+        if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x20);
         }
         break;
     case 0x424:
-        if (Player_PassedFrameScaled(em, 44.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 62.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x16, 7, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 80.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 1, 0x80, 0.5f);
         }
         break;
     case 0x425:
-        if (Player_PassedFrameScaled(em, 24.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
         }
         break;
     case 0x429:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0x80, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 128.0f, 0) != 0) || (Player_PassedFrameScaled(em, 164.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
             StageObj_K14_Create((Em *) em, 3, 0x80, 0.6f);
         }
-        if (Player_PassedFrameScaled(em, 60.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 1, 0x80, 1.0f);
         }
         break;
     case 0x42C:
-        if (Player_PassedFrameScaled(em, 270.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 270.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0x12, 0x80, 0.9f);
         }
         break;
     case 0x42D:
         EmGaruga_RequestOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0x12, 0x80, 1.0f);
         }
         break;
     case 0x432:
         EmGaruga_RequestOnFrame(em, 0x1A, 2);
-        if (Player_PassedFrameScaled(em, 26.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0x12, 0x81, 1.0f);
         }
         break;
     case 0x436:
-        if (Player_PassedFrameScaled(em, 8.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0xB, 0, 1.0f);
         }
         break;
     case 0x437:
-        if (Player_PassedFrameScaled(em, 48.0f, 0) || Player_PassedFrameScaled(em, 106.0f, 0) || Player_PassedFrameScaled(em, 174.0f, 0)) {
-            EffGaruga25_Create(em, 0x10);
+        if (EmMotion_PassedFrameScaled(em, 48.0f, 0) || EmMotion_PassedFrameScaled(em, 106.0f, 0) || EmMotion_PassedFrameScaled(em, 174.0f, 0)) {
+            GarugaAttack_Create(em, 0x10);
         }
         break;
     case 0x43C:
-        if (Player_PassedFrameScaled(em, 42.0f, 0) || Player_PassedFrameScaled(em, 60.0f, 0) || Player_PassedFrameScaled(em, 80.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 60.0f, 0) || EmMotion_PassedFrameScaled(em, 80.0f, 0)) {
             StageObj_K14_Create((Em *) em, 1, 0, 1.0f);
         }
         break;
     case 0x43F:
-        if (Player_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x26);
+        if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x26);
         }
         break;
     case 0x442:
-        if ((Player_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create((Em *) em, 9, 0, 1.0f);
             StageObj_K14_Create((Em *) em, 0xE, 0, 1.0f);
         }
-        if ((Player_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
+        if ((EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             StageObj_K14_Create((Em *) em, 9, 0, 1.0f);
             StageObj_K14_Create((Em *) em, 0xE, 0, 1.0f);
         }
         break;
     case 0x443:
-        if (Player_PassedFrameScaled(em, 34.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0, 1.0f);
         }
-        if (Player_PassedFrameScaled(em, 70.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 2, 0, 1.0f);
         }
         if ((EmMotion_ReachedFrame(em, 0, 96.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 120.0f) == 0) && (((s32) gScene.frame % 6) == 0)) {
@@ -5332,7 +5333,7 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x447:
-        if (Player_PassedFrameScaled(em, 10.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 0xB, 0x80, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 4.0f, 60.0f) != 0) && !(gScene.frame & 3)) {
@@ -5350,8 +5351,8 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x44C:
-        if (Player_PassedFrameScaled(em, 118.0f, 0) || Player_PassedFrameScaled(em, 164.0f, 0) || Player_PassedFrameScaled(em, 204.0f, 0)) {
-            EffGaruga25_Create(em, 0x23);
+        if (EmMotion_PassedFrameScaled(em, 118.0f, 0) || EmMotion_PassedFrameScaled(em, 164.0f, 0) || EmMotion_PassedFrameScaled(em, 204.0f, 0)) {
+            GarugaAttack_Create(em, 0x23);
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 54.0f, 250.0f) || EmMotion_InFrameRange(em, 0, 282.0f, 296.0f)) {
@@ -5363,7 +5364,7 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x44D:
-        if (Player_PassedFrameScaled(em, 52.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 1, 0x80, 1.0f);
         }
         if (em->rage != 0) {
@@ -5376,27 +5377,27 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x44E:
-        if ((Player_PassedFrameScaled(em, 32.0f, 0) != 0) || (Player_PassedFrameScaled(em, 54.0f, 0) != 0) || (Player_PassedFrameScaled(em, 74.0f, 0) != 0) || (Player_PassedFrameScaled(em, 92.0f, 0) != 0)) {
-            EffGaruga25_Create(em, 0x18);
+        if ((EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0)) {
+            GarugaAttack_Create(em, 0x18);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 10.0f, 20.0f) != 0) && !(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-            if ((Player_PassedFrameScaled(em, 30.0f, 0) != 0) || (Player_PassedFrameScaled(em, 54.0f, 0) != 0) || (Player_PassedFrameScaled(em, 72.0f, 0) != 0) || (Player_PassedFrameScaled(em, 92.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
                 break;
             }
         }
         break;
     case 0x450:
-        if (Player_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x17);
+        if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x17);
         }
-        if ((Player_PassedFrameScaled(em, 18.0f, 0) != 0) || (Player_PassedFrameScaled(em, 60.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x1A, 3, 4.0f);
         }
-        if ((Player_PassedFrameScaled(em, 38.0f, 0) != 0) || (Player_PassedFrameScaled(em, 80.0f, 0) != 0)) {
+        if ((EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0)) {
             Effect0D_SpawnForEmScaled(em, 0x14, 3, 4.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 54.0f, 112.0f) != 0) && !(gScene.frame & 3)) {
@@ -5404,30 +5405,30 @@ void EmGaruga_MotionEffects(Em *em, EmGarugaFxWork *work)
         }
         break;
     case 0x452:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0x12);
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0x12);
         }
-        if ((Player_PassedFrameScaled(em, 50.0f, 0) != 0) || (Player_PassedFrameScaled(em, 76.0f, 0) != 0) || (Player_PassedFrameScaled(em, 96.0f, 0) != 0) || (Player_PassedFrameScaled(em, 116.0f, 0) != 0)) {
-            EffGaruga25_Create(em, 0x18);
+        if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 116.0f, 0) != 0)) {
+            GarugaAttack_Create(em, 0x18);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             StageObj_K14_Create((Em *) em, 3, 0, 1.0f);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 24.0f, 42.0f) != 0) && !(gScene.frame & 3)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
             }
-            if ((Player_PassedFrameScaled(em, 54.0f, 0) != 0) || (Player_PassedFrameScaled(em, 80.0f, 0) != 0) || (Player_PassedFrameScaled(em, 100.0f, 0) != 0) || (Player_PassedFrameScaled(em, 122.0f, 0) != 0)) {
+            if ((EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0)) {
                 StageObj_K14_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
                 break;
             }
         }
         break;
     case 0x455:
-        if (Player_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            EffGaruga25_Create(em, 0xE);
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
+            GarugaAttack_Create(em, 0xE);
         }
-        if (Player_PassedFrameScaled(em, 20.0f, 0) || Player_PassedFrameScaled(em, 92.0f, 0) || Player_PassedFrameScaled(em, 152.0f, 0)) {
+        if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 92.0f, 0) || EmMotion_PassedFrameScaled(em, 152.0f, 0)) {
             Effect0D_SpawnForEmScaled(em, 2, 7, 3.0f);
         }
         break;
@@ -5536,7 +5537,7 @@ block_14:
             goto block_21;
         }
 block_17:
-        if ((em->stance != 2) && ((s8) em->hit8Count == 0)) {
+        if ((em->stance != 2) && ((s8) em->partBreakCount == 0)) {
             return 1;
         }
         goto block_21;
@@ -5834,7 +5835,7 @@ void EmGaruga_SetGroup4State(Em *em, u16 state, u8 mode)
     case 4:
         Em_EndAllStatus(em);
         em->fxFlags |= 1;
-        em->hit8Count = (s8) em->hit8Count + 1;
+        em->partBreakCount = (s8) em->partBreakCount + 1;
         break;
     case 11:
         Em_BeginStatus4(em);
@@ -7517,10 +7518,10 @@ EmGarugaVec EmGaruga_CarveThrowPt = {
 #include "game/008C42D8.inc"
 };
 extern EmCurveKey EmCephadrome_VelYCurves_3[];
-s32 func_0090A9C0(void); /* gm_sub */
+s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmGaruga_Callbacks[8] = {
     EmGaruga_SpawnEffects, EmGaruga_SpawnEffects, EmGaruga_TableNop, EmGaruga_UpdateMotionEffects,
-    func_0090A9C0, EmGaruga_Reinit, EmGaruga_AllowHit8, NULL,
+    GmEm_ReturnZero, EmGaruga_Reinit, EmGaruga_AllowHit8, NULL,
 };
 EmCurveKey EmGaruga_MoveVelYCurves_0[8] = {
 #include "game/008C4310.inc"

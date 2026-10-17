@@ -1,6 +1,7 @@
 /*
- * Monster family: Bulldrome (kind 0x44), from its setup function (0x85BF00,
- * called by the per-kind dispatch Em_TypeSetup) to 0x868110. Where the
+ * Monster family: Bulldrome (EM_KIND_BULLDROME), from its setup function
+ * (EmBulldrome_Setup, called by the per-kind dispatch Em_TypeSetup) to
+ * the end of the file (unk_868110.c follows, at 0x868110). Where the
  * family's code ends is not established. See include/em.h.
  */
 #include "common.h"
@@ -12,6 +13,7 @@
 #include "player.h"
 #include "stageobj.h"
 #include "lobby_vobj.h"
+#include "area.h"
 /* prototypes of callees (round 13) */
 u8 Player_InCurrentArea(void *obj);
 
@@ -212,7 +214,7 @@ void Effect01_Spawn(void *obj, s16 type);
 StageObj *StageObj_K05_Create(void *owner, s32 arg1, s32 kind);
 f32 *Em_Bone(void *obj, s32 bone); /* unit's own declaration: with the definition's EmBone *(void *obj, s16 bone) (sub_main/unk_3DDBA0.c), EmFxSpark_BonePos 34 of 35 words differ */
 void Mtx_Copy(f32 *dst, f32 *src);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_RotateY(f32 *m, f32 a);
@@ -293,8 +295,8 @@ void Vec_Add(f32 *out, f32 *a, f32 *b);
 void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
 struct EmBone;
 void Bone_UpdateWorldScaledRoot(struct EmBone *b, f32 *m);
-struct Mtx44Copy;
-void Bone_StoreMatricesTo(struct Mtx44Copy *tbl, struct EmBone *b);
+struct MtxSlot;
+void Bone_StoreMatricesTo(struct MtxSlot *tbl, struct EmBone *b);
 void Bone_StoreMatrices(struct EmBone *b);
 void Mtx_Blend(f32 *dst, f32 *a, f32 *b, f32 wa, f32 wb);
 f32 Vec_Length(f32 *v);
@@ -311,7 +313,7 @@ extern s16 D_008CDB18[];
 void Tex_Prepare(s32 a, s32 b);
 struct GmEmPartTbl;        /* gm_sub gm_em.c */
 void GmEm_SetMeshAlphas(Em *em, s32 mode, struct GmEmPartTbl *tbl);
-void MtxSlot_LoadList(s16 *list, struct Mtx44Copy *tbl);
+void MtxSlot_LoadList(s16 *list, struct MtxSlot *tbl);
 extern u8 gBoneMatrixBuf[];
 extern u8 gModelPartLists[];
 extern u8 StageObj_K09_OfsXKeys[];
@@ -367,7 +369,7 @@ extern f32 StageObj_K05_ScalesA[];
 extern f32 StageObj_K05_ScalesB[];
 void StageObj_K05_GetMatrix(f32 *m, StageObj *fx, Em *em, s16 alt);
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Eff09_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
+void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
 s32 Sound_PlaySeAtPosChecked(s32, s32, s32, void *, s32, s32);
 void EmFxSeg_BoneMatrix(f32 *m, StageObj *fx, Em *em, EmFxSeg *seg, s16 kind);
 void EmFxSeg_SideOffset(f32 *out, StageObj *fx, Em *owner, EmFxSeg *seg);
@@ -1219,7 +1221,7 @@ void StageObj_K00_Draw(DrawSlot *node)
 
     if (mdl != NULL && mdl->active != 0) {
         tex = mdl->mats;
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         Mtx_Translation(m, p->pos[0], p->pos[1], p->pos[2]);
         Mtx_RotateXYZ(m, (6.2831855f * p->rot[0]) / 65536.0f, (6.2831855f * p->rot[1]) / 65536.0f, (6.2831855f * p->rot[2]) / 65536.0f);
         Gs_SetState(0x1A, (s32) m);
@@ -1238,7 +1240,7 @@ void StageObj_K00_Draw(DrawSlot *node)
             Model_Draw(mesh->id, 0);
         }
         Draw_SetDefaultState();
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
     }
 }
 
@@ -2678,7 +2680,7 @@ void StageObj_K05_Draw(DrawSlot *node)
         }
     done:
         Bone_StoreMatrices((struct EmBone *) ((u8 *) mdl->bones));
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         mesh = &mdl->matSets[D_008CDB18[fx->type]];
         tex = mdl->mats;
         switch (fx->type) {
@@ -3417,37 +3419,37 @@ u8 EmFxTri_AreaType(Em *em)
 
     dayId = Area_DayId(em->area) & 0xFFFF;
     switch (dayId) {
-    case 0x8E:
-    case 0x91:
+    case AREA_DESERT_2:
+    case AREA_DESERT_5:
         return 1U;
-    case 0x5D:
-    case 0x5E:
-    case 0x76:
-    case 0x9A:
-    case 0x9B:
+    case AREA_SNOWY_MOUNTAINS_2:
+    case AREA_SNOWY_MOUNTAINS_3:
+    case AREA_JUNGLE_8:
+    case AREA_SWAMP_3:
+    case AREA_SWAMP_4:
         return 3U;
-    case 0x5F:
-    case 0x61:
+    case AREA_SNOWY_MOUNTAINS_4:
+    case AREA_SNOWY_MOUNTAINS_6:
         return 0U;
-    case 0x20:
-    case 0x21:
-    case 0x22:
-    case 0x23:
-    case 0x24:
-    case 0x25:
-    case 0x28:
-    case 0x2A:
-    case 0x6F:
-    case 0x75:
-    case 0x77:
-    case 0x9C:
-    case 0x9D:
-    case 0x9E:
+    case AREA_FOREST_HILLS_6:
+    case AREA_FOREST_HILLS_3:
+    case AREA_FOREST_HILLS_10:
+    case AREA_FOREST_HILLS_8:
+    case AREA_FOREST_HILLS_9:
+    case AREA_FOREST_HILLS_4:
+    case AREA_FOREST_HILLS_5:
+    case AREA_FOREST_HILLS_11:
+    case AREA_JUNGLE_1:
+    case AREA_JUNGLE_7:
+    case AREA_JUNGLE_9:
+    case AREA_SWAMP_5:
+    case AREA_SWAMP_6:
+    case AREA_SWAMP_7:
         return 2U;
-    case 0xA2:
-    case 0xA7:
-    case 0xA8:
-    case 0xA9:
+    case AREA_VOLCANO_1:
+    case AREA_VOLCANO_6:
+    case AREA_VOLCANO_7:
+    case AREA_VOLCANO_8:
         return 4U;
     default:
         return 0U;
@@ -3773,12 +3775,12 @@ void StageObj_K09_Draw(DrawSlot *node)
                 Mtx_Concat3x3(t, m);
                 Bone_UpdateWorldScaledRoot((struct EmBone *) sk, t);
             }
-            Bone_StoreMatricesTo((struct Mtx44Copy *) gBoneMatrixBuf, (struct EmBone *) sk);
+            Bone_StoreMatricesTo((struct MtxSlot *) gBoneMatrixBuf, (struct EmBone *) sk);
             mesh = (s32 *) (*(s32 *) (mdl + 0x30) + 0x8C);
             Tex_Prepare(0xA, em->modelSlot * 20 + 0xA3);
             if (mesh[0] != -1) {
                 GmEm_SetMeshAlphas(em, 1, *(void **) (mdl + 0x30));
-                MtxSlot_LoadList((s16 *) (gModelPartLists + em->modelSlot * 0x420 + 0x42), (struct Mtx44Copy *) gBoneMatrixBuf);
+                MtxSlot_LoadList((s16 *) (gModelPartLists + em->modelSlot * 0x420 + 0x42), (struct MtxSlot *) gBoneMatrixBuf);
                 Draw_ApplyStates(mesh[0x22]);
                 Model_Draw(mesh[0], 0);
             }
@@ -4148,7 +4150,7 @@ void StageObj_K0B_Draw(DrawSlot *node)
     }
     Gs_SetState(0x60, 0);
     Gs_SetState(0x6C, 0);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     n = fx->timer - 1;
     tex = mdl->mats;
     if (n <= 0) {
@@ -4391,7 +4393,7 @@ void StageObj_K0C_DrawType0(StageObj *fx)
     f32 m[16];
 
     if (mdl != NULL && mdl->active != 0) {
-        Gfx_SetState63(0);
+        Gfx_SetTexFilter(0);
         Mtx_Scale(m, fx->scale, fx->scale, fx->scale);
         Mtx_SetTrans(m, fx->pos[0], 30.0f + fx->pos[1], fx->pos[2]);
         Mtx_RotateY(m, (6.2831855f * (u16) fx->angle) / 65536.0f);
@@ -4760,7 +4762,7 @@ void StageObj_K0C_RunType4(StageObj *fx)
                 if (fx->angle2 == gScene.area) {
                     StageObj_K0E_CreateScaled(fx->node->pos, 0, 1.0f);
                 }
-                Eff09_CreateAt(fx->node->pos, 0, fx->angle2, 0);
+                Explosion_CreateAt(fx->node->pos, 0, fx->angle2, 0);
                 return;
             }
         }
@@ -5051,7 +5053,7 @@ u32 gEmKindTables_68[8] = {
 u32 gEmAreaTimer1Values_68[4] = {
 #include "game/008CC590.inc"
 };
-u32 gEmAreaValues8A0_68[16] = {
+u32 gEmAreaTimer2Values_68[16] = {
 #include "game/008CC5A0.inc"
 };
 EmCurveKey EmFatalis_MoveVelYCurves_1[17] = {

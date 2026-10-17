@@ -1,12 +1,14 @@
 /*
- * Player helpers: resetting a player's action state, and copying the pad
- * input into each player's input block every frame.
+ * Player helpers: clearing a player's action state and returning it to the
+ * idle motion (Player_ReturnToIdle, called by most of the player's states
+ * when they end), and copying the pad input into the local player's input
+ * block every frame (Player_CopyPadInput), with the menus' input locks.
  *
- * func_003AC3A0 and Player_ClearMotion are static: they are only called from this
- * file, and MWCC uses the register usage of static functions defined earlier
- * in the file. After calling the empty func_003AC3A0 it knows a0 still holds
- * the player, so Player_BeginStateKeepParts passes the player to the next calls without
- * setting a0 again.
+ * Player_ResetActionStub and Player_ClearMotion are static: MWCC uses the
+ * register use of a static function defined earlier in the file, so after
+ * the empty Player_ResetActionStub it knows a0 still holds the player, and
+ * Player_ReturnToIdleKeepParts passes it on without setting a0 again (the
+ * match needs this).
  */
 #include "common.h"
 #include "quest.h"
@@ -22,110 +24,122 @@ s32 Game_IsOnline(void);
 s32 Quest_IsVersus(void);
 void Player_ClearPartOverrides(Player *p);
 void Player_SetAction(Player *p, u8 action);          /* p->action = action */
-void func_003ABE90(Player *p, s16 a, s32 b);
+void Player_SetAirIdle(Player *p, s16 a, s32 b);
 void Player_SetIdle(Player *p, s32 a, s32 b, s32 c);
 void Player_UpdateMotionTime(Player *p, s16 step);
 void Player_CopyPadInput(s32 playerNo);
 
-static void func_003AC3A0(Player *p)
+static void Player_ResetActionStub(Player *pl)
 {
 }
 
-void Player_ClearActionState(Player *p)
+/* Clears the per-state values a player's state leaves behind: the motion
+ * start, the hit window, the timers and flags (all but 0x100). */
+void Player_ClearActionState(Player *pl)
 {
-    *(u32 *)&p->unk004 = 0;
-    p->unk2B4 = 0;
-    *(u16 *)p->motionStarted = 0;
-    p->unk3A0 = 0;
-    p->motionTime = 0;
-    p->hitDelay = 0;
-    p->hitFrames = 0;
-    p->unk4BA = 0;
-    p->flags &= 0x100;
-    p->stateFlags = 0;
-    p->motion[0].unk04 = p->index;
-    p->motion[1].unk04 = p->index;
-    p->unk430 = 0;
-    p->unk2B8 = 0;
-    p->noHitTimer = 0;
-    p->unk434 = 0;
-    p->timer = 0;
-    p->unk392 = 0;
-    p->unk4C4 = 0;
-    p->unk4C1 = 0;
-    p->unk3F8 = 0;
-    p->unk417 = 0;
-    if (p->weaponType != 9) {
-        p->weaponTimer = 0;
+    *(u32 *)&pl->unk004 = 0;
+    pl->unk2B4 = 0;
+    *(u16 *)pl->motionStarted = 0;
+    pl->unk3A0 = 0;
+    pl->motionTime = 0;
+    pl->hitDelay = 0;
+    pl->hitFrames = 0;
+    pl->unk4BA = 0;
+    pl->flags &= 0x100;
+    pl->stateFlags = 0;
+    pl->motion[0].unk04 = pl->index;
+    pl->motion[1].unk04 = pl->index;
+    pl->unk430 = 0;
+    pl->unk2B8 = 0;
+    pl->noHitTimer = 0;
+    pl->unk434 = 0;
+    pl->timer = 0;
+    pl->unk392 = 0;
+    pl->unk4C4 = 0;
+    pl->unk4C1 = 0;
+    pl->unk3F8 = 0;
+    pl->unk417 = 0;
+    if (pl->weaponType != WEAPON_GUNLANCE) {
+        pl->weaponTimer = 0;
     }
-    p->carry = 0;
-    p->motion[0].step = 2.0f;
-    p->motion[1].step = 2.0f;
+    pl->carry = 0;
+    pl->motion[0].step = 2.0f;
+    pl->motion[1].step = 2.0f;
 }
 
-static void Player_ClearMotion(Player *p)
+/* Stops the player's movement (velocity, acceleration) and clears its flags
+ * but 0x104. */
+static void Player_ClearMotion(Player *pl)
 {
-    p->vel[0] = 0.0f;
-    p->vel[1] = 0.0f;
-    p->vel[2] = 0.0f;
-    p->accel[0] = 0.0f;
-    p->accel[1] = 0.0f;
-    p->accel[2] = 0.0f;
-    p->flags &= 0x104;
+    pl->vel[0] = 0.0f;
+    pl->vel[1] = 0.0f;
+    pl->vel[2] = 0.0f;
+    pl->accel[0] = 0.0f;
+    pl->accel[1] = 0.0f;
+    pl->accel[2] = 0.0f;
+    pl->flags &= 0x104;
 }
 
-void Player_BeginState(Player *p, s32 action, s32 a2, s32 a3)
+/*
+ * Ends the player's state and returns it to idle: the ground idle
+ * (Player_SetIdle with blend and startFrame, quiet with action bit 0x80),
+ * or the air idle when action is 2 (Player_SetAirIdle, startFrame as its
+ * variant). The part overrides are cleared too.
+ */
+void Player_ReturnToIdle(Player *pl, s32 action, s32 blend, s32 startFrame)
 {
-    s32 flag80 = action & 0x80;
+    s32 quiet = action & 0x80;
 
-    Player_ClearActionState(p);
-    func_003AC3A0(p);
-    Player_ClearPartOverrides(p);
-    p->freeState = 1;
+    Player_ClearActionState(pl);
+    Player_ResetActionStub(pl);
+    Player_ClearPartOverrides(pl);
+    pl->freeState = 1;
     if ((action & ~0x80) != 2) {
-        Player_ClearMotion(p);
-        p->action = 0;
+        Player_ClearMotion(pl);
+        pl->action = 0;
     } else {
-        Player_SetAction(p, 2);
+        Player_SetAction(pl, 2);
     }
-    switch (p->action) {
+    switch (pl->action) {
     default:
-        Player_SetIdle(p, a2, a3, flag80);
+        Player_SetIdle(pl, blend, startFrame, quiet);
         break;
     case 2:
-        func_003ABE90(p, a2, a3);
+        Player_SetAirIdle(pl, blend, startFrame);
         break;
     case 0xF:
         break;
     }
-    Player_UpdateMotionTime(p, 0);
+    Player_UpdateMotionTime(pl, 0);
 }
 
-void Player_BeginStateKeepParts(Player *p, s32 action, s32 a2, s32 a3)
+/* Player_ReturnToIdle without clearing the part overrides. */
+void Player_ReturnToIdleKeepParts(Player *pl, s32 action, s32 blend, s32 startFrame)
 {
-    s32 flag80 = action & 0x80;
+    s32 quiet = action & 0x80;
 
-    Player_ClearActionState(p);
-    func_003AC3A0(p);
+    Player_ClearActionState(pl);
+    Player_ResetActionStub(pl);
     if ((action & ~0x80) != 2) {
-        Player_ClearMotion(p);
-        p->action = 0;
+        Player_ClearMotion(pl);
+        pl->action = 0;
     } else {
-        Player_SetAction(p, 2);
+        Player_SetAction(pl, 2);
     }
-    switch (p->action) {
+    switch (pl->action) {
     default:
-        Player_SetIdle(p, a2, a3, flag80);
+        Player_SetIdle(pl, blend, startFrame, quiet);
         break;
     case 2:
-        func_003ABE90(p, a2, a3);
+        Player_SetAirIdle(pl, blend, startFrame);
         break;
     case 0xF:
         break;
     }
-    Player_UpdateMotionTime(p, 0);
+    Player_UpdateMotionTime(pl, 0);
 }
 
+/* Copies the pad input into the local player's input block (Player_CopyPadInput). */
 void Player_UpdateInput(void)
 {
     if (Game_IsOnline() == 0) {
@@ -144,7 +158,7 @@ void Player_UpdateInput(void)
 void Player_CopyPadInput(s32 playerNo)
 {
     Player *player = &gPlayers[playerNo];
-    PlayerInput *in = &player->input;
+    PlayerInput *padIn = &player->input;
     u16 port;
 
     if (Game_IsOnline() == 0) {
@@ -154,64 +168,65 @@ void Player_CopyPadInput(s32 playerNo)
     }
     port &= 1;
 
-    in->stickDir = gPadInput.stickDir[port].cur;
-    in->prevStickDir = gPadInput.stickDir[port].prev;
-    in->prevStickDirPressed = in->stickDirPressed;
-    in->stickDirPressed = in->stickDir & ~in->prevStickDir;
-    in->stickAngle = gPadInput.stickAngle[port].cur;
-    in->rightStickAngle = gPadInput.stickAngle[port].prev;
-    in->stickTilt = gPadInput.stickTilt[port].cur;
-    in->rightStickTilt = gPadInput.stickTilt[port].prev;
+    padIn->stickDir = gPadInput.stickDir[port].cur;
+    padIn->prevStickDir = gPadInput.stickDir[port].prev;
+    padIn->prevStickDirPressed = padIn->stickDirPressed;
+    padIn->stickDirPressed = padIn->stickDir & ~padIn->prevStickDir;
+    padIn->stickAngle = gPadInput.stickAngle[port].left;
+    padIn->rightStickAngle = gPadInput.stickAngle[port].right;
+    padIn->stickTilt = gPadInput.stickTilt[port].left;
+    padIn->rightStickTilt = gPadInput.stickTilt[port].right;
 
-    in->held = gPadInput.buttons[port].cur;
-    in->prevHeld = gPadInput.buttons[port].prev;
-    in->prevPressed = in->pressed;
-    in->pressed = in->held & ~in->prevHeld;
-    in->changed = (in->held ^ in->prevHeld) | (in->held ^ gPadInput.buttons[port].cur);
-    in->held2 = in->held;
-    in->prevHeld2 = in->prevHeld;
-    in->pressed2 = in->pressed;
-    in->prevPressed2 = in->prevPressed;
+    padIn->held = gPadInput.buttons[port].cur;
+    padIn->prevHeld = gPadInput.buttons[port].prev;
+    padIn->prevPressed = padIn->pressed;
+    padIn->pressed = padIn->held & ~padIn->prevHeld;
+    padIn->changed = (padIn->held ^ padIn->prevHeld) | (padIn->held ^ gPadInput.buttons[port].cur);
+    padIn->held2 = padIn->held;
+    padIn->prevHeld2 = padIn->prevHeld;
+    padIn->pressed2 = padIn->pressed;
+    padIn->prevPressed2 = padIn->prevPressed;
 
     if (gScene.eventRunning != 0 && Quest_IsVersus() == 1) {
-        Mem_Fill(in, 0, sizeof(PlayerInput));
+        Mem_Fill(padIn, 0, sizeof(PlayerInput));
     }
 
     if (Hud_InputBlocked() == 0 && player->supplyBoxOpen == 0 && player->deliveryMenu == 0 && player->deliveryOpen == 0 &&
         gQuest.inputLock == 0) {
         if (player->itemSelect != 0) {
-            in->held &= 0x90;
-            in->prevHeld &= 0x90;
-            in->pressed &= 0x90;
-            in->prevPressed &= 0x90;
+            padIn->held &= PAD_R1 | PAD_R2;
+            padIn->prevHeld &= PAD_R1 | PAD_R2;
+            padIn->pressed &= PAD_R1 | PAD_R2;
+            padIn->prevPressed &= PAD_R1 | PAD_R2;
         }
     } else {
         if (player->supplyBoxOpen == 0 && player->deliveryOpen == 0 && player->deliveryMenu == 0 && gQuest.inputLock == 0) {
-            in->stickDir &= 0x3C00;
-            in->prevStickDir &= 0x3C00;
-            in->prevStickDirPressed &= 0x3C00;
-            in->stickDirPressed &= 0x3C00;
+            padIn->stickDir &= PAD_DPAD;
+            padIn->prevStickDir &= PAD_DPAD;
+            padIn->prevStickDirPressed &= PAD_DPAD;
+            padIn->stickDirPressed &= PAD_DPAD;
         } else {
-            in->stickDir = 0;
-            in->prevStickDir = 0;
-            in->prevStickDirPressed = 0;
-            in->stickDirPressed = 0;
+            padIn->stickDir = 0;
+            padIn->prevStickDir = 0;
+            padIn->prevStickDirPressed = 0;
+            padIn->stickDirPressed = 0;
         }
-        in->rightStickAngle = 0;
-        in->rightStickTilt = 0;
-        in->held = 0;
-        in->prevHeld = 0;
-        in->pressed = 0;
-        in->prevPressed = 0;
-        in->held2 = 0;
-        in->prevHeld2 = 0;
-        in->pressed2 = 0;
-        in->prevPressed2 = 0;
-        in->changed = 0;
+        padIn->rightStickAngle = 0;
+        padIn->rightStickTilt = 0;
+        padIn->held = 0;
+        padIn->prevHeld = 0;
+        padIn->pressed = 0;
+        padIn->prevPressed = 0;
+        padIn->held2 = 0;
+        padIn->prevHeld2 = 0;
+        padIn->pressed2 = 0;
+        padIn->prevPressed2 = 0;
+        padIn->changed = 0;
     }
 }
 
-void Player_PlaySeAtSelf(u8 *a0, s32 a1)
+/* Plays sound seId at the player's position. */
+void Player_PlaySeAtSelf(u8 *obj, s32 seId)
 {
-    Player_PlaySe((Player *) a0, a1, 0, a0 + 0xAC, 1, 0);
+    Player_PlaySe((Player *) obj, seId, 0, ((Player *) obj)->pos, 1, 0);
 }

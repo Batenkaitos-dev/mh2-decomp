@@ -8,6 +8,7 @@
 #include "m2c_macros.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
+#include "area.h"
 
 typedef struct SprUV {
     s16 u;
@@ -54,9 +55,9 @@ void MyHouse_DrawLabel(void)
         return;
     }
     switch (gScene.area) {
-    case 0xAD:
-    case 0xAE:
-    case 0xAF:
+    case AREA_ONLINE_HOUSE_0:
+    case AREA_ONLINE_HOUSE_1:
+    case AREA_ONLINE_HOUSE_2:
         if (MyHouse_InOwnHouse() == 1) {
             return;
         }
@@ -135,7 +136,7 @@ void Lobby_DrawNameLayer(u8 *t)
 
 void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 s32 Gs_SetState(u8, u32);
 void Camera_ProjectPoint(f32 *out, f32 *pos);
 void Mtx_Identity(f32 *m);
@@ -198,7 +199,7 @@ void NameTags_Draw(void *t)
         Text_SetSize(*(s32 *)((u8 *)t + 0x18));
         Tex_Prepare(1, 0x155);
         Tex_Bind(0x155);
-        Gfx_SetState63(1);
+        Gfx_SetTexFilter(1);
         Gs_SetState(0x60, 0);
         i = 0;
         p = gPlayers;
@@ -519,11 +520,11 @@ void NameTags_DrawMembers(u8 *t)
                 }
                 break;
             case 0x18:
-                if (spot->area == 0x89 && Game_IsOnline() == 1) {
+                if (spot->area == AREA_HUB_0x89 && Game_IsOnline() == 1) {
                     sprintf(buf, gSpotActionTexts[0], LobbyArea_Name(0x84));
                 } else {
                     spot = me->spot;
-                    if ((spot->area == 0x85 && gScene.area == 0x86) || (spot->area == 0x86 && gScene.area == 0x85)) {
+                    if ((spot->area == AREA_HUB_0x85 && gScene.area == AREA_HUB_0x86) || (spot->area == AREA_HUB_0x86 && gScene.area == AREA_HUB_0x85)) {
                         sprintf(buf, gSpotActionTexts[spot->kind]);
                     } else {
                         sprintf(buf, gSpotActionTexts[0], LobbyArea_Name(spot->area));
@@ -621,7 +622,7 @@ void Gfx_DrawPulseGradient(s16 x, s16 y, s16 w, s16 h, u32 color, u8 dir)
 }
 
 extern SprUV2 gSprite155UVs[];
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 s32 Gs_SetState(u8, u32);
 void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
@@ -633,7 +634,7 @@ s16 Lobby_DrawSprite155(s16 x, s16 y, s32 i)
 
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Gs_SetState(0x60, 0);
     r.y = y;
     r.x = (f32)x;

@@ -66,7 +66,7 @@ s32 Game_IsOnline(void);
 s32 Quest_IsRunning(s32 ending);
 s32 Save_TestEventFlag(s32);
 s32 Quest_IsTraining(void);
-s32 Save_TestListBit(u16);
+s32 Save_IsQuestCleared(u16);
 /* unit's own declaration: with the definition's s32 (s32 arg0) (main/unk_18DA50.c), Plsel_CheckAwards: 160 of 252 words differ, Plsel_CheckAwardsOffline: 162 of 285 words differ ... */
 s32 Award_Grant(u16);
 
@@ -76,8 +76,8 @@ s32 LoadCompressedFile(u8 *dst, s32 id);
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 void Sound_ReloadBank7(void);
 s32 Save_AddCounterPoints(void);
-s32 SaveFlag_Test(s32);
-void SaveFlag_Set(s32);
+s32 Save_HasTitle(s32);
+void Save_SetTitle(s32);
 
 /* The .bss object at 0xD7BD90 (0xD0 bytes). */
 typedef struct PlselRec {
@@ -144,7 +144,7 @@ u16 Record_GroupSmallest(SaveData *save, u8 group, u8 *out);
 void PlselRes_Close(void);
 void PlselRes_BeginClose(void);
 
-void Gfx_SetState63(s32);
+void Gfx_SetTexFilter(s32);
 void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
 s32 Sprite_Draw(Sprite *s);
@@ -213,7 +213,7 @@ extern char *D_46A0C8[];
 s32 Quest_IsMustOrder(void);
 u16 Save_RankFromPoints(SaveData *s);
 s32 QuestGoal_IsDone(s32);
-s32 AddHrPoints(s32);
+s32 Hr_AddPoints(s32);
 
 void Plsel_CheckRankAwards(s16 arg0);
 
@@ -749,7 +749,7 @@ s32 Plsel_RollBonus(void) {
         p += 2;
         v = *p;
     }
-    if (cur == 0x35 && SaveFlag_Test(0x8D) == 0) {
+    if (cur == 0x35 && Save_HasTitle(0x8D) == 0) {
         return 0;
     }
     if ((Rand_Next(1) & 0x1F) < p[1]) {
@@ -807,7 +807,7 @@ void Rate_ListAdd(s16 kind, s8 n); /* unit's own declaration: the definition (ma
 void Player_BackupPouch(Player *, s32);
 void Versus_ConsumeTeamItem(void);
 void Quest_UpdateSaveRecords(s32);
-void Save_SetListBit(u16);
+void Save_MarkQuestCleared(u16);
 void QuestEm_SavePersistentHp(void);
 void Quest_RollRewards(void);
 void Stream_FadeOut(s32, s32);
@@ -881,7 +881,7 @@ void Plsel_ResultsUpdate(void) {
         memset(w, 0, 0x3B88);
         Plsel_CountHunts(w);
         if (Quest_IsDrill() == 1) {
-            w->unk3B83 = Save_TestListBit(gQuest.stage);
+            w->unk3B83 = Save_IsQuestCleared(gQuest.stage);
             Plsel_ComputeRewards(&gPlayers[sc->localPlayer]);
             Save_RestorePouch(&gPlayers[sc->localPlayer]);
         }
@@ -950,10 +950,10 @@ void Plsel_ResultsUpdate(void) {
             Quest_UpdateSaveRecords(0);
             if (Game_IsOnline() == 1) {
                 if (Quest_IsMustOrder() == 0 || gScene.questPaid != 0) {
-                    Save_SetListBit(gQuest.stage);
+                    Save_MarkQuestCleared(gQuest.stage);
                 }
             } else {
-                Save_SetListBit(gQuest.stage);
+                Save_MarkQuestCleared(gQuest.stage);
             }
             if (Quest_IsTraining() == 1) {
                 Plsel_CheckTrainingAwards();
@@ -1595,13 +1595,13 @@ s16 Plsel_ItemBoxMenu(void) {
                         goto cancel;
                     }
                     if (t->t.unkC[0] == 0) {
-                        if (SaveFlag_Test(0x1E) == 0) {
+                        if (Save_HasTitle(0x1E) == 0) {
                             t->flag = 1;
                         } else {
                             t->flag = 0;
                         }
                         Save_AddMoney(t->money);
-                        if (SaveFlag_Test(0x1E) == 0) {
+                        if (Save_HasTitle(0x1E) == 0) {
                             t->flag = 0;
                         }
                         t->t.unk2 = 1;
@@ -1787,7 +1787,7 @@ void Plsel_DrawMoney(void) {
     Text_SetColor(0);
     Font_SetPos(0x1B8, 0x10);
     Text_Draw(txt);
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
     s.u0 = 0x9B;
@@ -1879,7 +1879,7 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag) {
         rc.y1 = rc.y0 + 0x1C;
         Prim_FillRect((struct PrimLine *)&rc);
     }
-    Gfx_SetState63(0);
+    Gfx_SetTexFilter(0);
     Tex_Prepare(1, 0x144);
     Tex_Bind(0x144);
     s.w = 0x28;
@@ -2017,7 +2017,7 @@ s32 Dojo_GetBestScore(u16);
 /* unit's own declaration: with the definition's void (s32 a, s32 value) (sub_main/unk_3B4C80.c), Plsel_ComputeRewards: 2 of 590 words differ */
 void Dojo_SetBestTime(u16, u32);
 void Dojo_SetBestScore(s32 a, s32 value);
-s32 Save_GetZenny(void);
+s32 Save_GetPoints(void);
 
 /* Works out the quest rewards into the rewards list: the pouch sold, the
  * goals, the hunting categories and monsters, the time bonus and the pages
@@ -2147,7 +2147,7 @@ void Plsel_ComputeRewards(Player *pl) {
     }
     l->linesShown = 12;
     l->screen = 0;
-    l->zenny = Save_GetZenny();
+    l->zenny = Save_GetPoints();
     l->pageCount[0] = 1;
     l->pages[l->pageCount[0] - 1] = 0;
     if (l->huntReward != 0) {
@@ -2496,7 +2496,7 @@ INCLUDE_RODATA("asm/plsel/nonmatchings/unk_D67530", D_00D7BBA8);
 void Plsel_RewardListDraw(void);
 void Plsel_BuildRewardLines(PlselList *l);
 void PlselRes_BeginClose(void);
-void Save_AddZenny(s32);
+void Save_AddPoints(s32);
 void FadeA_Start(s32);
 
 s32 Plsel_RewardListTask(PlselRewTask *t) {
@@ -2632,7 +2632,7 @@ s32 Plsel_RewardListTask(PlselRewTask *t) {
             l->pageCur = 0;
             l->revealLine = 0;
             l->zenny += l->payout;
-            Save_AddZenny(l->payout);
+            Save_AddPoints(l->payout);
             Plsel_BuildRewardLines(l);
             t->wait = 20;
             t->timeout = 3600;
@@ -3564,7 +3564,7 @@ void Plsel_ComputeReward(void) {
     w->hrpTotal += w->hrpSubA;
     w->hrpTotal += w->hrpSubB;
     w->hrpTotal += w->hrpDeaths;
-    w->hrpResult = AddHrPoints(w->hrpTotal);
+    w->hrpResult = Hr_AddPoints(w->hrpTotal);
     w->hrPoints = gSave.hrPoints;
     w->rankAfter = Save_RankFromPoints(&gSave);
     if (w->rankAfter != w->rankBefore) {
@@ -3667,7 +3667,7 @@ void Plsel_CheckAwardsOffline(void) {
     p = gPlselOfflineAwardsC;
     b = *p;
     while (b != 0xFFFF) {
-        if (Save_TestListBit(b) == 0) {
+        if (Save_IsQuestCleared(b) == 0) {
             break;
         }
         p++;
@@ -3680,7 +3680,7 @@ void Plsel_CheckAwardsOffline(void) {
     p = gPlselOfflineAwardsD;
     b = *p;
     while (b != 0xFFFF) {
-        if (Save_TestListBit(b) == 0) {
+        if (Save_IsQuestCleared(b) == 0) {
             break;
         }
         p++;
@@ -3695,7 +3695,7 @@ void Plsel_CheckAwardsOffline(void) {
     p = gPlselOfflineAwardsE;
     b = *p;
     while (b != 0xFFFF) {
-        if (Save_TestListBit(b) == 0) {
+        if (Save_IsQuestCleared(b) == 0) {
             break;
         }
         p++;
@@ -3797,7 +3797,7 @@ void Plsel_CheckAwards(void) {
     p = gPlselAwardTblB;
     b = *p;
     while (b != 0xFFFF) {
-        if (Save_TestListBit(b) == 0) {
+        if (Save_IsQuestCleared(b) == 0) {
             break;
         }
         p++;
@@ -3809,7 +3809,7 @@ void Plsel_CheckAwards(void) {
     p = gPlselAwardTblC;
     b = *p;
     while (b != 0xFFFF) {
-        if (Save_TestListBit(b) == 0) {
+        if (Save_IsQuestCleared(b) == 0) {
             break;
         }
         p++;
@@ -3821,7 +3821,7 @@ void Plsel_CheckAwards(void) {
     p = gPlselTrainingAwards;
     b = *p;
     while (b != 0xFFFF) {
-        if (Save_TestListBit(b) == 0) {
+        if (Save_IsQuestCleared(b) == 0) {
             break;
         }
         p++;
@@ -3840,7 +3840,7 @@ void Plsel_CheckTrainingAwards(void) {
         p = gPlselTrainingAwards;
         id = *p;
         while (id != 0xFFFF) {
-            if (Save_TestListBit(id) == 0) {
+            if (Save_IsQuestCleared(id) == 0) {
                 break;
             }
             p++;
@@ -4508,8 +4508,8 @@ s32 Plsel_SaveRecordMenu(void) {
             strcpy((char *)gSave.arenaEms[i].name, TXT(0x00D7BC70) /* the default name of an arena record's monster */);
             gSave.arenaEms[i].emKind = gQuestEmSizePct;
             gSave.arenaEms[i].level = gQuest.capturedLevel;
-            gSave.arenaEms[i].unk8 = 100;
-            gSave.arenaEms[i].unk18 = 2;
+            gSave.arenaEms[i].conditionPoints = 100;
+            gSave.arenaEms[i].condition = 2;
             gSave.arenaEms[i].sizePct = gQuest.capturedSize;
         }
         break;
@@ -4599,9 +4599,9 @@ void Plsel_DrawSaveRecordMenu(void) {
     Font_SetSpacing(0x12, 0x12);
     if (w->menuStep < 3) {
         rec.emKind = gQuestEmSizePct;
-        rec.unk8 = 100;
+        rec.conditionPoints = 100;
         t = gQuest.capturedLevel;
-        rec.unk18 = 2;
+        rec.condition = 2;
         rec.level = t;
         rec.sizePct = gQuest.capturedSize;
         for (i = 0, tbl = gArenaEmLineFmts; i < 4; i++, y += 0x14, tbl++) {
@@ -4680,7 +4680,7 @@ void Plsel_SnapshotVersusMonster(void) {
 void PlselRes_DrawArrow(s32 flag, s16 x, s16 y, s32 mode) {
     Sprite s;
 
-    Gfx_SetState63(1);
+    Gfx_SetTexFilter(1);
     Tex_Prepare(1, 0x155);
     Tex_Bind(0x155);
     s.x = x;
@@ -4770,8 +4770,8 @@ void Plsel_CheckCounterNotices(void) {
         w->noticeCount++;
         w->unk3B82 = 1;
     }
-    if ((gSave.rateFlags & 0x800) && SaveFlag_Test(0x7A) == 0) {
-        SaveFlag_Set(0x7A);
+    if ((gSave.rateFlags & 0x800) && Save_HasTitle(0x7A) == 0) {
+        Save_SetTitle(0x7A);
         Plsel_QueueAward(0x7A);
     }
 }
@@ -4814,8 +4814,8 @@ void Plsel_AddCounterPoints(void) {
             w->noticeCount++;
             w->unk3B82 = 1;
         }
-        if ((gSave.rateFlags & 0x800) && SaveFlag_Test(0x7A) == 0) {
-            SaveFlag_Set(0x7A);
+        if ((gSave.rateFlags & 0x800) && Save_HasTitle(0x7A) == 0) {
+            Save_SetTitle(0x7A);
             Plsel_QueueAward(0x7A);
         }
     }

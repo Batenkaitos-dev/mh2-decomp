@@ -60,7 +60,7 @@ s8 Em_AngleSector(Em *em, s32 idx);
 extern s32 (**gEmPlayerActionKinds[])[4];
 void Em_AddAlertBuildup(Em *em, u8 player, u8 idx, s8 kind);
 extern s32 *gEmNoticeDecayRates[];
-s32 EmBlangonga_PartFlagUnset(Em *em, u16 a);
+s32 EmBlangonga_CarriedShown(Em *em, u16 a);
 s32 Em_PartBroken(Em *em, s32 arg1);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 void Effect0D_SpawnAt(f32 *pos, s32 kind, f32 scale);
@@ -111,7 +111,7 @@ extern s16 AreaObj_K0B_Spin[];
 void AreaObj_K0B_Draw(DrawSlot *s);
 u8 Quest_GetSeedByte(u8 k);
 void StageObj_K29_CreateAt(f32 *src, u8 k, u8 c, f32 scale);
-void Eff37_Create(f32 *pos, u8 a, u8 b);
+void VolcanoHazard_Create(f32 *pos, u8 a, u8 b);
 s32 AreaObj_K19_GetPoints(u16 arg0);
 s16 AreaObj_K19_PointCount(u16 arg0);
 extern f32 AreaObj_K09_Type8Pos[];
@@ -276,7 +276,7 @@ void EmKind38_ChangeState(Em *, s32, s32, s32);
 s32 Sprite_Draw(Sprite *s);
 void Tex_Prepare(s32 n, s32 tex);
 void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetState63(s32 a);
+void Gfx_SetTexFilter(s32 a);
 void Tex_Bind(s32 i);
 void DrawSlot_Free(s32 id);
 extern u8 AreaObj_K19_PointsA2;
@@ -303,8 +303,8 @@ f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 extern EmAction *gAreaObjList[32];
 u32 Player_TestFlag(void *obj, u32 flag);
-f32 Em_RageScale1(Em *em);
-f32 Em_RageScale2(Em *em);
+f32 Em_LevelAttackFactor(Em *em);
+f32 Em_LevelDamageFactor(Em *em);
 extern EmRageRow *gEmRageTbl[];
 extern s16 AreaObj_K14_Models[];
 void Em_SyncState(Em *em, s32 kind, s32 b, s32 c);
@@ -1216,7 +1216,7 @@ void Em_CheckRageByHp(Em *em, s16 n)
     if (em->type == 0x34) {
         pct = em->need1Gauge * 100 / em->need1Max;
     } else if (em->type == 0x35) {
-        if (EmBlangonga_PartFlagUnset(em, 6) == 0) {
+        if (EmBlangonga_CarriedShown(em, 6) == 0) {
             return;
         }
         pct = em->hp * 100 / em->hpMax;
@@ -1272,8 +1272,8 @@ void Em_StartRage2(Em *em)
         em->ragePending = 0;
         em->rage = 1;
         em->rageTimer = rage->time;
-        em->attackFactor = rage->attackFactor * Em_RageScale1((Em *) em);
-        em->damageFactor = rage->damageFactor * Em_RageScale2((Em *) em);
+        em->attackFactor = rage->attackFactor * Em_LevelAttackFactor((Em *) em);
+        em->damageFactor = rage->damageFactor * Em_LevelDamageFactor((Em *) em);
         em->scriptPending = 1;
         em->triggers |= 8;
         em->triggers &= 0xFD;
@@ -1288,8 +1288,8 @@ void Em_StartRage(Em *em)
     if (rage != NULL) {
         em->rage = 1;
         em->rageTimer = rage->time;
-        em->attackFactor = rage->attackFactor * Em_RageScale1((Em *) em);
-        em->damageFactor = rage->damageFactor * Em_RageScale2((Em *) em);
+        em->attackFactor = rage->attackFactor * Em_LevelAttackFactor((Em *) em);
+        em->damageFactor = rage->damageFactor * Em_LevelDamageFactor((Em *) em);
     }
 }
 
@@ -1309,8 +1309,8 @@ void Em_StartPendingRage(Em *em)
         } else {
             em->rageTimer = (s16) em->timer;
         }
-        em->attackFactor = rage->attackFactor * Em_RageScale1((Em *) em);
-        em->damageFactor = rage->damageFactor * Em_RageScale2((Em *) em);
+        em->attackFactor = rage->attackFactor * Em_LevelAttackFactor((Em *) em);
+        em->damageFactor = rage->damageFactor * Em_LevelDamageFactor((Em *) em);
         em->versusGauge = 0;
     }
 }
@@ -2294,7 +2294,7 @@ s32 Game_IsOnline(void);
 u16 Rand_Next(s32 stream);
 u8 Quest_FindSpecialMonster(u8 type);
 s32 Player_HasSkill(Player *p, u8 skill);
-s32 LightBowgun_HasOption10(Player *player);
+s32 LightBowgun_HasSilencer(Player *player);
 s32 Obj_SameArea(void *obj, Player *b);
 void QSync_SendEm(Em *em, s32 a, s32 b); /* unit's own declaration: the definition (gm_sub qnet_sync.c) takes u8 kind, u8 arg; u8 here changes Em_SyncState */
 void Em_ChangeStateRouted(Em *em, s32 a, s32 b, s32 c);
@@ -2835,7 +2835,7 @@ u8 EmObj_AlertMonsters(EmObj *obj)
     Player *player;
     EmReaction *r;
 
-    for (i = 0; i < 20; i++, em++) {
+    for (i = 0; i < EM_COUNT; i++, em++) {
         if (em->active == 0) {
             continue;
         }
@@ -2863,7 +2863,7 @@ EmReaction *Em_GetReaction(Em *em, u8 kind, u8 player)
     case 1:
         if (Player_HasSkill(p, 0x14) == 1) {
             kind += 8;
-        } else if (LightBowgun_HasOption10(p) == 1) {
+        } else if (LightBowgun_HasSilencer(p) == 1) {
             kind = 0x12;
         }
         break;

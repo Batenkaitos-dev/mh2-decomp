@@ -15,7 +15,7 @@ s32 Game_IsOnline(void);
 s32 Cond_Check(u16 id);
 s32 Save_TestEventFlag(s32 flag);
 /* unit's own declaration: with the definition's u16 (u16 area) (sub_main/unk_376C00.c), Quest_IsOffered: 2 of 224 words differ */
-s32 Area_MapGroup(u16 id);
+s32 Map_Group(u16 id);
 s32 Monster_IsAvailable(u16 id);
 s32 ElderForecast_QuestAppears(u16 id, s32 kind);
 
@@ -171,7 +171,7 @@ s32 Quest_IsOffered(u16 id, s32 kind, s32 all)
         return 0;
     }
     if (Game_IsOnline() == 0) {
-        if (MapGroup_IsOpen(Area_MapGroup(q->map)) == 0) {
+        if (MapGroup_IsOpen(Map_Group(q->map)) == 0) {
             return 0;
         }
         switch (id) {
@@ -303,7 +303,7 @@ s32 Quest_IsOffered(u16 id, s32 kind, s32 all)
             break;
         }
     } else {
-        if (MapGroup_IsOpen(Area_MapGroup(q->map)) == 0) {
+        if (MapGroup_IsOpen(Map_Group(q->map)) == 0) {
             return 0;
         }
         switch (id) {

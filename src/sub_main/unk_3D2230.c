@@ -283,7 +283,7 @@ void Effect1A_Draw(DrawSlot *s)
         return;
     }
     if (gScene.online != 0) {
-        if (p->stateGroup == 1) {
+        if (p->stateGroup == PL_GROUP_WEAPON) {
             return;
         }
         if (gLockOnMarkSkip != 0) {

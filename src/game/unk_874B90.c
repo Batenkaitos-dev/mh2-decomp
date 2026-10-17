@@ -164,7 +164,7 @@ f32 Area_GroundOffset(u16 area);
 void Effect08_Spawn(f32 *pos, s32 a, s32 b, f32 f);
 s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
 s16 StageObj_K14_PlaceAtEm(f32 *pos, Em *em, s16 k, s16 c);
-void Eff01_CreateAt(Em *em, f32 *pos, s32 kind); /* unit's own declaration: the definition takes s8 kind; s8 here changes one function */ /* unit's own declaration: with the definition's void (Em *em, f32 *pos, s8 kind) (game/unk_6BB9D0.c), StageObj_K14_PlaceAtEm 22 of 1210 words differ */
+void RathalosAttack_CreateAt(Em *em, f32 *pos, s32 kind); /* unit's own declaration: the definition takes s8 kind; s8 here changes one function */ /* unit's own declaration: with the definition's void (Em *em, f32 *pos, s8 kind) (game/unk_6BB9D0.c), StageObj_K14_PlaceAtEm 22 of 1210 words differ */
 s8 StageObj_K14_SpawnEffects(Em *em, f32 *pos, s32 mode, f32 scale);
 EmBone *Em_Bone(void *obj, s16 bone);
 void Vec_RotateSelf(f32 *v, f32 *m);
@@ -236,8 +236,8 @@ extern void *StageObj_K14_Curves[];
 extern f32 StageObj_K14_Drift[];
 extern s16 StageObj_K14_Sectors[];
 u16 Mtx_Heading(f32 *m);
-void Eff04_CreateOnObj(StageObj *s, s8 kind);
-void Eff01_CreateOnObj(StageObj *s, s8 kind);
+void FatalisAttack_CreateOnObj(StageObj *s, s8 kind);
+void RathalosAttack_CreateOnObj(StageObj *s, s8 kind);
 s32 Em_TypeUsesK14(u8 type);
 extern s16 *StageObj_K14_DelayLists[];
 extern f32 StageObj_K14_Sizes[];
@@ -1821,7 +1821,7 @@ void StageObj_K14_Setup(StageObj *o)
                     if (fx) {
                         switch (o->type) {
                         case 1:
-                            Eff04_CreateOnObj(o, 0x15);
+                            FatalisAttack_CreateOnObj(o, 0x15);
                             break;
                         }
                     }
@@ -1854,23 +1854,23 @@ void StageObj_K14_Setup(StageObj *o)
                         switch (o->type) {
                         case 1:
                             if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                                Eff01_CreateOnObj(o, 0x21);
+                                RathalosAttack_CreateOnObj(o, 0x21);
                             } else {
-                                Eff01_CreateOnObj(o, 0x2C);
+                                RathalosAttack_CreateOnObj(o, 0x2C);
                             }
                             break;
                         case 9:
                             if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                                Eff01_CreateOnObj(o, 0x27);
+                                RathalosAttack_CreateOnObj(o, 0x27);
                             } else {
-                                Eff01_CreateOnObj(o, 0x2E);
+                                RathalosAttack_CreateOnObj(o, 0x2E);
                             }
                             break;
                         case 11:
                             if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                                Eff01_CreateOnObj(o, 0x26);
+                                RathalosAttack_CreateOnObj(o, 0x26);
                             } else {
-                                Eff01_CreateOnObj(o, 0x2D);
+                                RathalosAttack_CreateOnObj(o, 0x2D);
                             }
                             break;
                         }
@@ -1903,7 +1903,7 @@ void StageObj_K14_Setup(StageObj *o)
                 case 0x24:
                 case 0x47:
                     if (fx) {
-                        Eff04_CreateOnObj(o, 0x15);
+                        FatalisAttack_CreateOnObj(o, 0x15);
                     }
                     switch (o->var2) {
                     case 0xB:
@@ -1938,9 +1938,9 @@ void StageObj_K14_Setup(StageObj *o)
                 case 0x28:
                     if (fx) {
                         if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                            Eff01_CreateOnObj(o, 0x20);
+                            RathalosAttack_CreateOnObj(o, 0x20);
                         } else {
-                            Eff01_CreateOnObj(o, 0x30);
+                            RathalosAttack_CreateOnObj(o, 0x30);
                         }
                     }
                     break;
@@ -3533,7 +3533,7 @@ s16 StageObj_K14_PlaceAtEm(f32 *pos, Em *em, s16 k, s16 c)
         break;
     }
     if ((g = StageObj_K14_FindGround(em, pos, k)) != 0 && kind != 0) {
-        Eff01_CreateAt(em, pos, kind);
+        RathalosAttack_CreateAt(em, pos, kind);
     }
     return g;
 }

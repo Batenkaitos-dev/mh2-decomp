@@ -1,6 +1,7 @@
 #include "common.h"
 
 #include "scene.h"
+#include "area.h"
 extern s16 gClockSpinAddDays;
 extern u8 gLobbyLevel1Sel;
 s32 LobbyTime_IsPm(void);
@@ -20,7 +21,7 @@ void LobbyWorld_OnAddDays(void)
             Offer_Generate();
         }
     } else if (Game_IsOnline() == 1 && gLobbyLevel1Sel != 0) {
-        if (gScene.area == 0x87) {
+        if (gScene.area == AREA_HUB_0x87) {
             LobbyBgm_Play(0, 0, 0);
         } else {
             LobbyBgm_Play(0, 0, 1);

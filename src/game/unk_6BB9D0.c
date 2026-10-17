@@ -2,25 +2,33 @@
  * The drawn weapons' states, second part (the first is unk_6AF280.c, which
  * says how they work): the hunting horn (its swings, its play stances, the
  * notes and the songs), the gunlance and the bow. Then the attack objects
- * made by these states and by the monsters, kinds of ObjAttach
- * (include/objattach.h), each with its Create, Update (switching on
- * ObjAttach.state), Setup, Run, End and Free:
- * - Eff00: a player's weapon attack, its type the attack id (a row of the
- *   player attack table);
- * - Eff01: a wyvern's body attack; Eff02: a small monster's attack that
- *   reports its contact to its owner; Eff04: Fatalis's; Eff05: Lao-Shan
- *   Lung's;
- * - Eff03: an item the player throws or places (bombs, the thrown items);
- * - Eff06: the bowgun's shot (Bowgun_FireShot), and its pellets.
+ * made by these states and by the monsters: families of ObjAttach
+ * (include/objattach.h: enum ObjAttachKind), each with its Create, Update
+ * (switching on ObjAttach.state, enum ObjAttachState), Setup, Run, End and
+ * Free. An attack's type is a row of its family's Rows table (the hit's
+ * delay, length, power, kind and element, copied over the object), and its
+ * hit shapes a list of its HitShapes table:
+ * - PlayerAttack: a player's weapon hit, made by the weapon states;
+ * - RathalosAttack, FatalisAttack, LaoShanAttack: those monsters' body
+ *   attacks (em_rathalos.c, em_laoshan.c, and stage objects);
+ * - EmContactAttack: Kirin's, Melynx's, Anteka's and Mosswine's attacks,
+ *   which report what they touch to their owner;
+ * - ItemAttack: an item a player throws or puts down (enum ItemAttackMode);
+ * - BowgunShot: the bowgun's shot (Bowgun_FireShot) and its pellets; its
+ *   flight is in unk_6C7AE0.c. The bow's arrows are BowArrow (unk_6D3B50.c).
  */
 #include "common.h"
 #include "em.h"
 #include "objhead.h"
 #include "objattach.h"
+#include "pad.h"
 #include "player.h"
 #include "stageobj.h"
 #include "sprite.h"
 #include "capsule.h"
+#include "render_state.h"
+#include "qsync.h"
+#include "item.h"
 
 /* prototypes */
 s32 Player_HasMealEffect(Player *pl, s16 kind);
@@ -30,29 +38,29 @@ void QSync_SendPlayer(Player *p, s32 kind, u16 mode);
 extern char *gHornSongTexts[];
 s32 sprintf(char *, const char *, ...);
 u8 Notice_PushText(char *s);
-extern ArrowParam gArrowParams[];
-extern s32 Eff06_PlayerFlags[];
-extern void *Eff06_MotionRef;
-extern HitShape *Eff06_Vals088[];
-void Eff06_InitWeapon(Eff06Buf *b, Player *pl);
-void Eff06_InitSkills(Eff06Buf *b, Player *pl);
-void Eff06_CalcPower(ObjAttach *o);
-void Eff06_ApplyKind(ObjAttach *o);
-f32 Eff06_BitsToFrac(u16 arg0, s32 arg1);
+extern BowgunShotParam gBowgunShotParams[];
+extern s32 BowgunShot_PlayerFlags[];
+extern void *BowgunShot_RowsPtr;
+extern HitShape *BowgunShot_HitShapes[];
+void BowgunShot_InitWeapon(BowgunShotBuf *b, Player *pl);
+void BowgunShot_InitSkills(BowgunShotBuf *b, Player *pl);
+void BowgunShot_CalcPower(ObjAttach *o);
+void BowgunShot_ApplyKind(ObjAttach *o);
+f32 BowgunShot_BitsToFrac(u16 arg0, s32 arg1);
 f32 Math_Atan2(f32 y, f32 x);
 f32 Math_Sqrtf(f32 x);
-void Eff06_PlaySe(ObjAttach *o, s16 kind);
-extern void *Eff00_MotionRef;
-extern HitShape *Eff00_Vals088[];
+void BowgunShot_PlaySe(ObjAttach *o, s16 kind);
+extern void *PlayerAttack_RowsPtr;
+extern HitShape *PlayerAttack_HitShapes[];
 s16 Player_GetWeaponStat(Player *p, u8 kind);
-void BowgunShot_SetKind(ObjAttach *o, u8 a, u8 b);
+void BowArrow_ApplyCoating(ObjAttach *o, u8 a, u8 b);
 s32 CamCtl_IsAiming(Player *pl);
 void StageObj_K12_CreateOwned(s32 owner, s16 v, s32 k);
 void StageObj_K12_CreateOnEm(Player *em, s16 v, s32 k, u8 c);
-void Eff06_BoneLaunchPos(f32 *out, Player *p, s32 *ang, s16 bone);
+void BowgunShot_BoneLaunchPos(f32 *out, Player *p, s32 *ang, s16 bone);
 void StageObj_K0F_CreateNoOwner(f32 *pos, u8 k, u8 c, u16 v, f32 scale);
 void StageObj_K29_CreateAt(f32 *src, u8 k, u8 c, f32 scale);
-void Eff06_Create(Player *em, u8 kind, s16 arg2, f32 scale);
+void BowgunShot_Create(Player *em, u8 kind, s16 arg2, f32 scale);
 extern s16 Gunlance_ShellMotions[][2];
 extern s16 D_00897022[][2];
 void StageObj_K29_CreateOnPlayerDefault(Player *p, u8 k, f32 scale);
@@ -60,18 +68,18 @@ s32 func_364AE0(ObjAttach *o, u16 x);
 void Vec_Diff(f32 *out, f32 *a, f32 *b);
 u16 Rand_Next(s32 stream);
 void Vec_RotateX(f32 *v, f32 angle);
-extern s16 Eff03_Models[];
+extern s16 ItemAttack_Models[];
 void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
 void Mtx_RotateX(f32 *m, f32 a);
 void Mtx_RotateY(f32 *m, f32 a);
 void Draw_ApplyStates(u32);
 s32 Model_Draw(u32 h, s32 flags);
 void Draw_SetDefaultState(void);
-extern s8 Eff03_NoDefault[];
-extern f32 Eff03_DefaultTblA[][2];
-extern f32 Eff03_DefaultTblB[][2];
-extern f32 Eff03_DefaultTblC[][2];
-void Eff09_Create(Player *owner, f32 *pos, s32 kind);
+extern s8 ItemAttack_HitsInFlight[];
+extern f32 ItemAttack_ThrowSpeedsAlt[][2];
+extern f32 ItemAttack_ThrowSpeeds[][2];
+extern f32 ItemAttack_LobSpeeds[][2];
+void Explosion_Create(Player *owner, f32 *pos, s32 kind);
 void StageObj_K0E_CreateOwned(f32 *pos, s16 k, f32 scale, void *owner);
 StageObj *StageObj_K0F_CreateAt(f32 *pos, s32 k, s32 c, f32 scale);
 void StageObj_K0C_CreateFromAttach(ObjAttach *oa, s32 k, u8 c);
@@ -82,7 +90,7 @@ void Effect02_SpawnRandomAngle(u16 a, u16 b, u8 type, f32 *pos);
 void Vec_DirToAngles(f32 *dir, s16 *pitch, s16 *yaw);
 void Vec_RotateY(f32 *v, f32 angle);
 void CamShake_ReqB(void *obj, s32 i);
-void Bowgun_FireLoaded(Player *em, s32 arg1);
+void Bow_FireArrows(Player *em, s32 arg1);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
 u16 Bowgun_NextAmmoSlot(Player *p, u16 slot, u8 dir);
 void Bowgun_LoadAmmo(Player *p, s32 a);
@@ -91,11 +99,11 @@ void StageObj_Gun_CreateShell(void *owner, u8 lvl);
 void StageObj_Gun_CreateType4(void *owner);
 void StageObj_Gun_CreateType6(void *owner);
 void Player_ClearPartOverrides(Player *em);
-extern f32 Eff03_ScaleKeysA[];
-extern f32 Eff03_ScaleKeysB[];
-extern u8 Eff03_ColorKeysA[];
-extern u8 Eff03_ColorKeysB[];
-extern s16 Eff03_PartModels[];
+extern f32 ItemAttack_ScaleKeysA[];
+extern f32 ItemAttack_ScaleKeysB[];
+extern u8 ItemAttack_ColorKeysA[];
+extern u8 ItemAttack_ColorKeysB[];
+extern s16 ItemAttack_PartModels[];
 extern f32 gCamMatrix[];
 extern f32 gCamYawMtx[];
 void Key_LerpVec2(f32 *k, volatile f32 *out, f32 t);
@@ -113,8 +121,8 @@ void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 void Mtx_GetTrans(f32 *out, f32 *m);
 EmBone *Em_GetBone(void *obj, s16 bone);
 static void Bow_SetAimLayers(Player *em, u16 motA, u16 motB);
-void Eff03_Update(ObjAttach *o);
-extern s8 Eff03_KindOn[];
+void ItemAttack_Update(ObjAttach *o);
+extern s8 ItemAttack_HasSide[];
 s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 void Player_FaceStick(Player *em);
@@ -127,51 +135,61 @@ void Player_SetFlag(void *obj, u32 flag);
 s32 Bow_CheckInput(Player *em, s32 arg1);
 extern u8 HuntingHorn_SongNotes[];
 void HuntingHorn_PlaySong(Player *em, u8 song, u8 quiet);
-void Eff03_SetupType2(ObjAttach *o);
-void Eff03_SetupType1(ObjAttach *o);
+void ItemAttack_SetupHopping(ObjAttach *o);
+void ItemAttack_SetupPlaced(ObjAttach *o);
 s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
-void Eff03_SetupDefault(ObjAttach *o);
-void Eff03_Draw(DrawSlot *d);
+void ItemAttack_SetupThrown(ObjAttach *o);
+void ItemAttack_Draw(DrawSlot *d);
 s16 DrawSlotB_Alloc(void);
 DrawSlot *DrawSlotB_Get(s32 i);
-void Eff03_DrawPart(DrawSlot *d);
-typedef struct AttachPart { s16 slot; s16 idx; DrawSlot *node; s16 unk08; s16 unk0A; s16 unk0C; s16 unk0E; } AttachPart;
-void Eff06_Update(ObjAttach *o);
-void Eff00_Update(ObjAttach *o);
-void Eff02_Update(ObjAttach *o);
-void Eff05_Update(ObjAttach *o);
+void ItemAttack_DrawPart(DrawSlot *d);
+/* ItemAttack's two parts (kind 0x16): its buffer's 16-byte blocks, each with
+ * its own draw slot (ItemAttack_InitParts, ItemAttack_AnimParts,
+ * ItemAttack_DrawPart). */
+typedef struct AttachPart {
+    s16 slot;       /* the draw slot (DrawSlotB_Alloc), -1: none */
+    s16 idx;        /* 0 the low part, 1 the high one (+1060) */
+    DrawSlot *node; /* DrawSlotB_Get(slot), NULL: none */
+    s16 frame;      /* the animation frame, 1-4 (scale keys, the texture's quarter) */
+    s16 time;       /* frames since the start (colour keys) */
+    s16 unk0C;
+    s16 unk0E;
+} AttachPart;
+void BowgunShot_Update(ObjAttach *o);
+void PlayerAttack_Update(ObjAttach *o);
+void EmContactAttack_Update(ObjAttach *o);
+void LaoShanAttack_Update(ObjAttach *o);
 u8 Player_InCurrentArea(void *obj);
 ObjAttach *ObjAttach_Alloc(s32 n);
-void Eff01_Update(ObjAttach *o);
-void Eff04_Update(ObjAttach *o);
+void RathalosAttack_Update(ObjAttach *o);
+void FatalisAttack_Update(ObjAttach *o);
 /* the calls cast to u8: this unit's code takes the value as u8 */
 s32 Obj_InCurrentArea(void *obj);
 s32 Side_Match(u8 a, u8 b, u8 none);
-typedef struct AttachSprite { s16 unk0; s16 kind; void *draw; s16 frame; s16 time; u8 pad[4]; } AttachSprite;
-void Eff03_Fall(ObjAttach *o);
-s32 Eff03_BounceStep(ObjAttach *o);
-extern s8 Eff03_KindParams[];
-void Eff03_RunDefault(ObjAttach *o);
-void Eff03_RunType1(ObjAttach *o);
-void Eff03_RunType2(ObjAttach *o);
-extern HitShape *Eff04_Vals088[];
-extern void *Eff04_MotionRef;
-void Eff02_DrawNop(ObjAttach *o);
-void Eff05_DrawNop(ObjAttach *o);
-extern HitShape *Eff02_Vals088[];
-extern void *Eff02_MotionRef;
-extern HitShape *Eff05_Vals088[];
-extern void *Eff05_MotionRef;
+void ItemAttack_FlyBack(ObjAttach *o);
+s32 ItemAttack_BounceOff(ObjAttach *o);
+extern s8 ItemAttack_Modes[];
+void ItemAttack_RunThrown(ObjAttach *o);
+void ItemAttack_RunPlaced(ObjAttach *o);
+void ItemAttack_RunHopping(ObjAttach *o);
+extern HitShape *FatalisAttack_HitShapes[];
+extern void *FatalisAttack_RowsPtr;
+void EmContactAttack_DrawNop(ObjAttach *o);
+void LaoShanAttack_DrawNop(ObjAttach *o);
+extern HitShape *EmContactAttack_HitShapes[];
+extern void *EmContactAttack_RowsPtr;
+extern HitShape *LaoShanAttack_HitShapes[];
+extern void *LaoShanAttack_RowsPtr;
 f32 Math_Absf(f32 x);
-extern HitShape *Eff01_Vals088[];
-extern void *Eff01_MotionRef;
-void Eff00_AttachTransform(ObjAttach *o, Player *p);
+extern HitShape *RathalosAttack_HitShapes[];
+extern void *RathalosAttack_RowsPtr;
+void PlayerAttack_PlaceOnWeapon(ObjAttach *o, Player *p);
 void HuntingHorn_CheckSongs(Player *em);
 void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 void StageObj_K0E_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Eff09_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
-void Eff03_InitParts(ObjAttach *o);
+void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
+void ItemAttack_InitParts(ObjAttach *o);
 void StageObj_K10_CreateAt(f32 *pos, u8 k, s16 v, u8 c, f32 scale);
 f32 AreaGrid2_GetFloorYFiltered(f32 *);
 struct MoveObj;
@@ -210,36 +228,36 @@ void Bow_StateAim(Player *, s32);
 void Bow_StateChargeWalk(Player *, s32);
 void Bow_StateEvade(Player *, s32);
 void Bow_StateLoadCoating(Player *, s32);
-void Eff00_Create(Player *, u8);
-void Eff00_CreateArrow(Player *, s8);
-void Eff00_Setup(ObjAttach *o);
-void Eff00_Run(ObjAttach *o);
-void Eff00_End(ObjAttach *o);
-void Eff00_Free(ObjAttach *o);
-void Eff01_Setup(ObjAttach *o);
-void Eff01_Run(ObjAttach *o);
-void Eff01_End(ObjAttach *o);
-void Eff01_Free(ObjAttach *o);
-void Eff02_Setup(ObjAttach *o);
-void Eff02_Run(ObjAttach *o);
-void Eff02_End(ObjAttach *o);
-void Eff02_Free(ObjAttach *o);
-void Eff03_Setup(ObjAttach *o);
-void Eff03_Run(ObjAttach *o);
-void Eff03_EndImpact(ObjAttach *o);
-void Eff03_Hit(ObjAttach *o);
-void Eff03_FreeDrawSlots(ObjAttach *o);
-void Eff03_End(ObjAttach *o);
-void Eff03_Free(ObjAttach *o);
-void Eff04_Setup(ObjAttach *o);
-void Eff04_Run(ObjAttach *o);
-void Eff04_End(ObjAttach *o);
-void Eff04_Free(ObjAttach *o);
-void Eff05_Setup(ObjAttach *o);
-void Eff05_Run(ObjAttach *o);
-void Eff05_End(ObjAttach *o);
-void Eff05_Free(ObjAttach *o);
-void EffGunlance38_Create(Player *, s8);
+void PlayerAttack_Create(Player *, u8);
+void PlayerAttack_CreateBowStab(Player *, s8);
+void PlayerAttack_Setup(ObjAttach *o);
+void PlayerAttack_Run(ObjAttach *o);
+void PlayerAttack_End(ObjAttach *o);
+void PlayerAttack_Free(ObjAttach *o);
+void RathalosAttack_Setup(ObjAttach *o);
+void RathalosAttack_Run(ObjAttach *o);
+void RathalosAttack_End(ObjAttach *o);
+void RathalosAttack_Free(ObjAttach *o);
+void EmContactAttack_Setup(ObjAttach *o);
+void EmContactAttack_Run(ObjAttach *o);
+void EmContactAttack_End(ObjAttach *o);
+void EmContactAttack_Free(ObjAttach *o);
+void ItemAttack_Setup(ObjAttach *o);
+void ItemAttack_Run(ObjAttach *o);
+void ItemAttack_OnHit(ObjAttach *o);
+void ItemAttack_Deflect(ObjAttach *o);
+void ItemAttack_FreeDrawSlots(ObjAttach *o);
+void ItemAttack_End(ObjAttach *o);
+void ItemAttack_Free(ObjAttach *o);
+void FatalisAttack_Setup(ObjAttach *o);
+void FatalisAttack_Run(ObjAttach *o);
+void FatalisAttack_End(ObjAttach *o);
+void FatalisAttack_Free(ObjAttach *o);
+void LaoShanAttack_Setup(ObjAttach *o);
+void LaoShanAttack_Run(ObjAttach *o);
+void LaoShanAttack_End(ObjAttach *o);
+void LaoShanAttack_Free(ObjAttach *o);
+void GunlanceBlast_Create(Player *, s8);
 void StageObj_Gun_CreateReload(void *owner, u8 k);
 s32 Motion_ReachedFrame(void *, s32, f32);
 void CamShake_ReqA(void *obj, s32 i);
@@ -247,16 +265,16 @@ s32 Game_IsOnline(void);
 s32 Quest_PhaseIsOver(s32);
 void DrawSlot_Free(s32);
 void DrawSlotB_Free(s32);
-void Player_BeginState(Player *p, s32 action, s32 a2, s32 a3);
+void Player_ReturnToIdle(Player *p, s32 action, s32 a2, s32 a3);
 void MoveObj_Integrate(struct MoveObj *);
 void Player_TickWeaponTimer(Player *p);
 extern u8 gBladeSpecialMarks;
 s32 Player_HasSkill(Player *p, u8 skill);
 s32 Player_TestSetFlags(void *, s32 mask);
 void MoveObj_StartMotionOwned(struct MoveObj *, s32 a, s32 b, void *c);
-extern HitShape *Eff03_Vals088[];
-extern void *Eff03_MotionRef;
-extern s8 Eff03_Motions[];
+extern HitShape *ItemAttack_HitShapes[];
+extern void *ItemAttack_RowsPtr;
+extern s8 ItemAttack_AttackRow[];
 void Effect06_SpawnAtBone(Player *p, s16 type, u8 sub, s16 bone, f32 scale);
 s32 Motion_InFrameRange(void *, s32, f32, f32);
 void Vib_StartLocal(void *port, s32 i);
@@ -267,18 +285,6 @@ void Player_SetEvadeFrames(Player *);
 void Player_ResetAim(Player *p);
 void Player_AddStamina(Player *p, s16 n);
 void Player_PlaySe(Player *pl, s32 id, s32 a, void *pos, s32 b, s32 c);
-/* The hunting horn's attacks (HuntingHorn_StatePlayAttack's variants): the note, the motions and the attack id. */
-typedef struct HornAttack {
-    s16 note;       /* 0x0: the note played (0-3) */
-    s16 unk2;       /* 0x2: 0: no wind-up motion */
-    s16 motion;     /* 0x4 */
-    s16 unk6;       /* 0x6 */
-    s16 motion2;    /* 0x8: after the wind-up */
-    s16 unkA;       /* 0xA */
-    s16 unkC;       /* 0xC */
-    u8 attack;      /* 0xE: Eff00_Create */
-    u8 unkF;
-} HornAttack;
 extern HornAttack HuntingHorn_Attacks[];
 extern s16 HuntingHorn_NoteFrames[];     /* per note: the frame of its sound effect, 0: none */
 /* end of prototypes */
@@ -286,7 +292,7 @@ extern s16 HuntingHorn_NoteFrames[];     /* per note: the frame of its sound eff
 /*
  * The left swing. variant: 0 HORN_SWING_LEFT, 1 HORN_SWING_LEFT_LATE, 2
  * HORN_SWING_LEFT_SLOW, 3 HORN_DRAW_ATTACK, 4 HORN_BOUNCE_SWING.
- * input.pressed 0x80 in frames 40-60 enters HORN_STANCE_DOWN_AFTER_LEFT.
+ * input.pressed PAD_R1 in frames 40-60 enters HORN_STANCE_DOWN_AFTER_LEFT.
  */
 void HuntingHorn_StateSwingLeft(Player *pl, s32 variant)
 {
@@ -311,7 +317,7 @@ void HuntingHorn_StateSwingLeft(Player *pl, s32 variant)
             if (variant == 2) {
                 pl->motionSpeed = 0.77f;
             }
-            Eff00_Create(pl, 0x51);
+            PlayerAttack_Create(pl, 0x51);
             break;
         case 3:
             pl->step++;
@@ -330,22 +336,22 @@ void HuntingHorn_StateSwingLeft(Player *pl, s32 variant)
             if (variant == 3) {
                 Player_SetMotionPair(pl, 0x579, 0, 0x1A);
                 Player_UpdateMotionTime(pl, 0);
-                Eff00_Create(pl, 0x63);
+                PlayerAttack_Create(pl, 0x63);
                 break;
             }
             Player_SetMotionPair(pl, 0x579, 0, 0xA);
             Player_UpdateMotionTime(pl, 0);
-            Eff00_Create(pl, 0x51);
+            PlayerAttack_Create(pl, 0x51);
         }
         break;
     case 2:
         if (HuntingHorn_CheckHit(pl) != 1) {
             if (pl->motion[0].playing == 0) {
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
                 break;
             }
             if (Player_IsLocal(pl) == 1) {
-                if (Motion_InFrameRange(pl, 0, 40.0f, 60.0f) != 0 && pl->stateVar0 == 0 && (pl->input.pressed & 0x80)) {
+                if (Motion_InFrameRange(pl, 0, 40.0f, 60.0f) != 0 && pl->stateVar0 == 0 && (pl->input.pressed & PAD_R1)) {
                     pl->stateVar0 = 1;
                 }
                 if (Motion_ReachedFrame(pl, 0, 60.0f) != 0 && pl->stateVar0 != 0) {
@@ -362,7 +368,7 @@ void HuntingHorn_StateSwingLeft(Player *pl, s32 variant)
 }
 
 /*
- * HORN_SWING_RIGHT: input.pressed 0x80 in frames 42-62 enters
+ * HORN_SWING_RIGHT: input.pressed PAD_R1 in frames 42-62 enters
  * HORN_STANCE_DOWN_AFTER_RIGHT; the combo window is frames 80-104.
  */
 void HuntingHorn_StateSwingRight(Player *pl, s32 unused)
@@ -377,18 +383,18 @@ void HuntingHorn_StateSwingRight(Player *pl, s32 unused)
         pl->stateVar1 = 0;
         Player_SetMotionPair(pl, 0x57A, 4, 0);
         Player_UpdateMotionTime(pl, 0);
-        Eff00_Create(pl, 0x52U);
+        PlayerAttack_Create(pl, 0x52U);
         Player_SetMoveMode(pl, 0, 1, 0);
         pl->noFlinchTimer = 0x32;
         break;
     case 1:
         if (HuntingHorn_CheckHit(pl) != 1) {
             if (pl->motion[0].playing == 0) {
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
                 break;
             }
             if (Player_IsLocal(pl) == 1) {
-                if ((Motion_InFrameRange(pl, 0, 42.0f, 62.0f) != 0) && (pl->stateVar0 == 0) && (pl->input.pressed & 0x80)) {
+                if ((Motion_InFrameRange(pl, 0, 42.0f, 62.0f) != 0) && (pl->stateVar0 == 0) && (pl->input.pressed & PAD_R1)) {
                     pl->stateVar0 = 1U;
                 }
                 if ((Motion_ReachedFrame(pl, 0, 62.0f) != 0) && (pl->stateVar0 != 0)) {
@@ -406,7 +412,7 @@ void HuntingHorn_StateSwingRight(Player *pl, s32 unused)
 }
 
 /*
- * HORN_SWING_DOWN: input.pressed 0x80 in frames 32-52 enters
+ * HORN_SWING_DOWN: input.pressed PAD_R1 in frames 32-52 enters
  * HORN_STANCE_DOWN_AFTER_DOWN; else the combo window.
  */
 void HuntingHorn_StateSwingDown(Player *pl, s32 unused)
@@ -421,18 +427,18 @@ void HuntingHorn_StateSwingDown(Player *pl, s32 unused)
         pl->stateVar1 = 0;
         Player_SetMotionPair(pl, 0x57C, 4, 0);
         Player_UpdateMotionTime(pl, 0);
-        Eff00_Create(pl, 0x53U);
+        PlayerAttack_Create(pl, 0x53U);
         Player_SetMoveMode(pl, 0, 1, 0);
         pl->noFlinchTimer = 0x1E;
         break;
     case 1:
         if (HuntingHorn_CheckHit(pl) != 1) {
             if (pl->motion[0].playing == 0) {
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
                 break;
             }
             if (Player_IsLocal(pl) == 1) {
-                if ((Motion_InFrameRange(pl, 0, 32.0f, 52.0f) != 0) && (pl->stateVar0 == 0) && (pl->input.pressed & 0x80)) {
+                if ((Motion_InFrameRange(pl, 0, 32.0f, 52.0f) != 0) && (pl->stateVar0 == 0) && (pl->input.pressed & PAD_R1)) {
                     pl->stateVar0 = 1U;
                 }
                 if (Motion_InFrameRange(pl, 0, 32.0f, 52.0f) != 0) {
@@ -471,18 +477,18 @@ void HuntingHorn_StateSwingDownNext(Player *pl, s32 variant)
             pl->step++;
             Player_SetMotionPair(pl, 0x57C, 0, 0xC);
             Player_UpdateMotionTime(pl, 0);
-            Eff00_Create(pl, 0x54);
+            PlayerAttack_Create(pl, 0x54);
         }
         break;
     case 2:
         if (HuntingHorn_CheckHit(pl) != 1) {
             if (pl->motion[0].playing == 0) {
-                Player_BeginState(pl, 0, 6, 0);
+                Player_ReturnToIdle(pl, 0, 6, 0);
                 break;
             }
             if (Player_IsLocal(pl) == 1) {
                 if (variant == 0) {
-                    if (Motion_InFrameRange(pl, 0, 32.0f, 52.0f) != 0 && pl->stateVar0 == 0 && (pl->input.pressed & 0x80)) {
+                    if (Motion_InFrameRange(pl, 0, 32.0f, 52.0f) != 0 && pl->stateVar0 == 0 && (pl->input.pressed & PAD_R1)) {
                         pl->stateVar0 = 1;
                     }
                     if (Motion_InFrameRange(pl, 0, 32.0f, 52.0f) != 0) {
@@ -527,7 +533,7 @@ void HuntingHorn_StateBounce(Player *pl, s32 variant)
                 break;
             }
         } else {
-            if (Motion_InFrameRange(pl, 0, 2.0f, 30.0f) != 0 && pl->stateVar0 == 0 && pl->itemSelect == 0 && (pl->input.stickDirPressed & 0x3C)) {
+            if (Motion_InFrameRange(pl, 0, 2.0f, 30.0f) != 0 && pl->stateVar0 == 0 && pl->itemSelect == 0 && (pl->input.stickDirPressed & PL_RSTICK_ANY)) {
                 pl->stateVar0 = 1;
             }
             break;
@@ -535,7 +541,7 @@ void HuntingHorn_StateBounce(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
         }
         break;
     }
@@ -557,7 +563,7 @@ void HuntingHorn_StatePlayStart(Player *pl, s32 variant)
             pl->step = 2;
             Player_SetMotionPair(pl, 0x584, 2, 0);
             Player_UpdateMotionTime(pl, 0);
-            Eff00_Create(pl, 0x5EU);
+            PlayerAttack_Create(pl, 0x5EU);
             break;
         }
         Player_SetMotionPair(pl, 0x597, 4, 0);
@@ -567,7 +573,7 @@ void HuntingHorn_StatePlayStart(Player *pl, s32 variant)
             pl->step++;
             Player_SetMotionPair(pl, 0x584, 0, 0x26);
             Player_UpdateMotionTime(pl, 0);
-            Eff00_Create(pl, 0x5EU);
+            PlayerAttack_Create(pl, 0x5EU);
         }
         break;
     case 2:
@@ -597,7 +603,7 @@ void HuntingHorn_StatePlayAttack(Player *pl, s32 variant)
         Player_SetMotionPair(pl, a->motion, a->unk6, 0);
         if (a->unk2 == 0) {
             pl->step = 2;
-            Eff00_Create(pl, a->attack);
+            PlayerAttack_Create(pl, a->attack);
         } else {
             pl->step++;
         }
@@ -607,7 +613,7 @@ void HuntingHorn_StatePlayAttack(Player *pl, s32 variant)
         if (pl->motion[0].playing == 0) {
             pl->step++;
             Player_SetMotionPair(pl, a->motion2, a->unkC, a->unkA);
-            Eff00_Create(pl, a->attack);
+            PlayerAttack_Create(pl, a->attack);
         }
         break;
     case 2:
@@ -682,7 +688,7 @@ void HuntingHorn_StatePlayEnd(Player *pl, s32 variant)
             pl->step = 2;
             Player_SetMotionPair(pl, 0x585, 2, 0);
             Player_UpdateMotionTime(pl, 0);
-            Eff00_Create(pl, 0x5FU);
+            PlayerAttack_Create(pl, 0x5FU);
             break;
         case 1:
             pl->step++;
@@ -700,12 +706,12 @@ void HuntingHorn_StatePlayEnd(Player *pl, s32 variant)
             pl->step++;
             Player_SetMotionPair(pl, 0x585, 0, 0x1A);
             Player_UpdateMotionTime(pl, 0);
-            Eff00_Create(pl, 0x5FU);
+            PlayerAttack_Create(pl, 0x5FU);
         }
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if ((Player_IsLocal(pl) == 1) && (Motion_ReachedFrame(pl, 0, 66.0f) != 0)) {
@@ -730,16 +736,16 @@ void HuntingHorn_StateSlam(Player *pl, s32 unused)
         Player_SetMoveMode(pl, 0, 1, 0);
         Player_SetMotionPair(pl, 0x57B, 2, 0);
         Player_UpdateMotionTime(pl, 0);
-        Eff00_Create(pl, 0x55U);
+        PlayerAttack_Create(pl, 0x55U);
         pl->noFlinchTimer = 0x3C;
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if (Motion_PassedFrame(pl, 0, 84.0f) != 0) {
-            Eff00_Create(pl, 0x56U);
+            PlayerAttack_Create(pl, 0x56U);
         }
         if (Motion_PassedFrame(pl, 0, 86.0f) != 0) {
             Vib_StartLocal(pl, 2);
@@ -889,7 +895,7 @@ s32 HuntingHorn_AttackInput(Player *pl)
 {
     s32 dir;
 
-    if (pl->input.stickDirPressed & 0x3C) {
+    if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
         dir = (pl->input.rightStickAngle + 0x1C72) & 0xFFFF;
         if (dir < 0x471D) {
             Player_RequestState(pl, PL_GROUP_WEAPON, HORN_SWING_RIGHT, PL_SET_SNAP_POS);
@@ -902,7 +908,7 @@ s32 HuntingHorn_AttackInput(Player *pl)
         }
         return 1;
     }
-    if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
+    if ((pl->input.pressed & PAD_CROSS) && (pl->stamina >= 0x4B)) {
         Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         return 1;
     }
@@ -920,8 +926,8 @@ void HuntingHorn_CheckInput(Player *pl, u32 caller)
     s32 dir;
 
     if ((Player_IsLocal(pl) != 0 || Game_IsOnline() != 1) && Quest_PhaseIsOver(1) != 1 && pl->itemSelect == 0) {
-        if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B && caller != 5) {
-            if (pl->input.stickDir & 0x3C00) {
+        if ((pl->input.pressed & PAD_CROSS) && pl->stamina >= 0x4B && caller != 5) {
+            if (pl->input.stickDir & PAD_DPAD) {
                 dir = (u16) (pl->input.stickAngle + 0x4000);
                 if (dir < 0x5C72) {
                     Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
@@ -938,7 +944,7 @@ void HuntingHorn_CheckInput(Player *pl, u32 caller)
         if (caller == 4 || caller == 6) {
             return;
         }
-        if (pl->input.stickDirPressed & 0x3C) {
+        if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
             dir = (u16) (pl->input.rightStickAngle + 0x1C72);
             if (dir < 0x471D) {
                 if (caller == 0 || caller - 2 <= 1 || caller == 5) {
@@ -972,8 +978,8 @@ void HuntingHorn_PlayInput(Player *pl, s32 stance)
     s32 dir2;
 
     if (((Player_IsLocal(pl) != 0) || (Game_IsOnline() != 1)) && (Quest_PhaseIsOver(1) != 1) && (pl->itemSelect == 0)) {
-        if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
-            if (pl->input.stickDir & 0x3C00) {
+        if ((pl->input.pressed & PAD_CROSS) && (pl->stamina >= 0x4B)) {
+            if (pl->input.stickDir & PAD_DPAD) {
                 dir = (pl->input.stickAngle + 0x4000) & 0xFFFF;
                 if (dir < 0x5C72) {
                     Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_EVADE_RIGHT, PL_SET_SNAP_POS);
@@ -986,7 +992,7 @@ void HuntingHorn_PlayInput(Player *pl, s32 stance)
                 Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
             }
         }
-        if (pl->input.stickDirPressed & 0x3C) {
+        if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
             dir2 = (pl->input.rightStickAngle + 0x2000) & 0xFFFF;
             if (dir2 < 0x4001) {
                 switch (stance) {
@@ -1048,7 +1054,7 @@ void HuntingHorn_DrawAttack(Player *pl)
 }
 
 /*
- * input.held 0x80 (Player_HoldSpecialInput): HORN_PLAY_START, or
+ * input.held PAD_R1 (Player_HoldSpecialInput): HORN_PLAY_START, or
  * HORN_DRAW_PLAY_START when sheathed.
  */
 void HuntingHorn_StartPlaying(Player *pl, s32 sheathed)
@@ -1535,13 +1541,13 @@ void HuntingHorn_PlaySong(Player *p, u8 song, u8 quiet)
         break;
     }
     if (quiet == 0) {
-        QSync_SendPlayer(p, 10, 0);
+        QSync_SendPlayer(p, QSYNC_PL_POS_SONG, 0);
     }
     if (Player_IsLocal(p) == 1) {
         switch (song) {
         case 0:
         case 1:
-            Effect06_SpawnAtBone(p, 0, 2, 10, 4.0f);
+            Effect06_SpawnAtBone(p, 0, ITEM_GLOW_ATTACK, 10, 4.0f);
             break;
         default:
             pl = gPlayers;
@@ -1556,7 +1562,7 @@ void HuntingHorn_PlaySong(Player *p, u8 song, u8 quiet)
                         case 4:
                             break;
                         default:
-                            Effect06_SpawnAtBone(pl, 0, 2, 10, 4.0f);
+                            Effect06_SpawnAtBone(pl, 0, ITEM_GLOW_ATTACK, 10, 4.0f);
                             break;
                         }
                     }
@@ -1592,7 +1598,7 @@ void HuntingHorn_SongFxAllies(Player *p)
                 case 4:
                     break;
                 default:
-                    Effect06_SpawnAtBone(pl, 0, 2, 10, 4.0f);
+                    Effect06_SpawnAtBone(pl, 0, ITEM_GLOW_ATTACK, 10, 4.0f);
                     break;
                 }
             }
@@ -1611,7 +1617,7 @@ void HuntingHorn_SongFxSelf(Player *pl)
     case 4:
         break;
     default:
-        Effect06_SpawnAtBone(pl, 0, 2, 0xA, 4.0f);
+        Effect06_SpawnAtBone(pl, 0, ITEM_GLOW_ATTACK, 10, 4.0f);
         break;
     }
 }
@@ -1838,28 +1844,28 @@ void Gunlance_StateThrust(Player *pl, s32 variant)
         case 0:
             pl->step = 2;
             Player_SetMotionPair(pl, 0x57D, 4, 0);
-            Eff00_Create(pl, 0x3F);
+            PlayerAttack_Create(pl, 0x3F);
             break;
         case 1:
             pl->step++;
             Player_SetMotionPair(pl, 0x3F2, 2, 0);
             pl->weaponOut = 1;
-            Eff00_Create(pl, 0x41);
+            PlayerAttack_Create(pl, 0x41);
             break;
         case 2:
         case 3:
             pl->step = 2;
             Player_SetMotionPair(pl, 0x57D, 6, 0xA);
             if (variant == 3) {
-                Eff00_Create(pl, 0x42);
+                PlayerAttack_Create(pl, 0x42);
             } else {
-                Eff00_Create(pl, 0x3F);
+                PlayerAttack_Create(pl, 0x3F);
             }
             break;
         case 4:
             pl->step = 2;
             Player_SetMotionPair(pl, 0x57D, 4, 0xA);
-            Eff00_Create(pl, 0x3F);
+            PlayerAttack_Create(pl, 0x3F);
             break;
         }
         break;
@@ -1871,11 +1877,11 @@ void Gunlance_StateThrust(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
             break;
         }
         if (Gunlance_CheckHit(pl) != 1 && Player_IsLocal(pl) == 1 && Motion_InFrameRange(pl, 0, 36.0f, 62.0f) != 0) {
-            if (pl->input.pressed & 1) {
+            if (pl->input.pressed & PAD_R3) {
                 if (pl->roundsLoaded == 0 || Gunlance_CanShell(pl) == 0) {
                     Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_SHELL_EMPTY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 } else {
@@ -1890,7 +1896,7 @@ void Gunlance_StateThrust(Player *pl, s32 variant)
 }
 
 /*
- * Creates the shell's blast effect (EffGunlance38), kind 1-3 by the shelling
+ * Creates the shell's blast effect (GunlanceBlast), kind 1-3 by the shelling
  * type, bladeSpecial % 3.
  */
 void Gunlance_ShellEffect(Player *pl)
@@ -1900,13 +1906,13 @@ void Gunlance_ShellEffect(Player *pl)
     kind = (s32) pl->bladeSpecial % 3;
     switch (kind) {
     case 0:
-        EffGunlance38_Create(pl, 1);
+        GunlanceBlast_Create(pl, 1);
         break;
     case 1:
-        EffGunlance38_Create(pl, 2);
+        GunlanceBlast_Create(pl, 2);
         break;
     case 2:
-        EffGunlance38_Create(pl, 3);
+        GunlanceBlast_Create(pl, 3);
         break;
     }
 }
@@ -1990,7 +1996,7 @@ void Gunlance_StateShell(Player *pl, s32 variant)
             pl->timer = 0;
         }
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
             break;
         }
         if (Motion_PassedFrame(pl, 0, 2.0f) != 0 && (u8)Obj_InCurrentArea(pl) == 1) {
@@ -2031,13 +2037,13 @@ void Gunlance_StateShell(Player *pl, s32 variant)
             break;
         }
         if (Player_IsLocal(pl) == 1) {
-            if (Motion_InFrameRange(pl, 0, lo, hi) != 0 && (pl->input.pressed & 1)) {
+            if (Motion_InFrameRange(pl, 0, lo, hi) != 0 && (pl->input.pressed & PAD_R3)) {
                 if (pl->roundsLoaded == 0 || Gunlance_CanShell(pl) == 0) {
                     Player_RequestState(pl, PL_GROUP_WEAPON, GLANCE_SHELL_EMPTY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 } else {
                     Player_RequestState(pl, 1, st, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 }
-            } else if (Motion_ReachedFrame(pl, 0, 42.0f) != 0 && (pl->input.stickDirPressed & 0x3C)
+            } else if (Motion_ReachedFrame(pl, 0, 42.0f) != 0 && (pl->input.stickDirPressed & PL_RSTICK_ANY)
                        && ((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
                 switch (variant) {
                 case 0:
@@ -2075,7 +2081,7 @@ void Gunlance_StateGuardThrust(Player *pl, s32 variant)
         default:
             pl->step = 2;
             Player_SetMotionPair(pl, 0x588, 2, 0);
-            Eff00_Create(pl, 0x43);
+            PlayerAttack_Create(pl, 0x43);
             break;
         case 3:
         case 4:
@@ -2088,7 +2094,7 @@ void Gunlance_StateGuardThrust(Player *pl, s32 variant)
         if (pl->motion[0].playing == 0) {
             pl->step++;
             Player_SetMotionPair(pl, 0x588, 0, 8);
-            Eff00_Create(pl, 0x43);
+            PlayerAttack_Create(pl, 0x43);
         }
         break;
     case 2:
@@ -2097,7 +2103,7 @@ void Gunlance_StateGuardThrust(Player *pl, s32 variant)
             break;
         }
         if (Gunlance_CheckHit(pl) != 1 && Player_IsLocal(pl) == 1 && Motion_InFrameRange(pl, 0, 36.0f, 50.0f) != 0) {
-            if (pl->input.pressed & 1) {
+            if (pl->input.pressed & PAD_R3) {
                 if (pl->roundsLoaded == 0 || Gunlance_CanShell(pl) == 0) {
                     Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_SHELL_EMPTY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 } else {
@@ -2212,13 +2218,13 @@ void Gunlance_StateWyvernFire(Player *pl, s32 variant)
         break;
     case 3:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 6, 0);
+            Player_ReturnToIdle(pl, 0, 6, 0);
             break;
         }
         if (Motion_PassedFrame(pl, 0, 2.0f) != 0) {
             StageObj_K12_CreateGunlanceShell(pl, 3);
             StageObj_Gun_CreateShell(pl, 3);
-            EffGunlance38_Create(pl, 4);
+            GunlanceBlast_Create(pl, 4);
             Player_AddSharpness(pl, -10);
             Vib_StartLocal(pl, 2);
             CamShake_ReqA(pl, 2);
@@ -2245,16 +2251,16 @@ void Gunlance_StateUpperThrust(Player *pl, s32 unused)
         pl->stateVar1 = 0;
         Player_SetMoveMode(pl, 0, 1, 0);
         Player_SetMotionPair(pl, 0x57E, 4, 0xA);
-        Eff00_Create(pl, 0x40);
+        PlayerAttack_Create(pl, 0x40);
         pl->noFlinchTimer = 0x19;
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if (Gunlance_CheckHit(pl) != 1 && Player_IsLocal(pl) == 1 && Motion_InFrameRange(pl, 0, 54.0f, 80.0f) != 0) {
-            if (pl->input.pressed & 1) {
+            if (pl->input.pressed & PAD_R3) {
                 if (pl->roundsLoaded == 0 || Gunlance_CanShell(pl) == 0) {
                     Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_SHELL_EMPTY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                 } else {
@@ -2287,7 +2293,7 @@ void Gunlance_StateReload(Player *pl, s32 variant)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if (Motion_PassedFrame(pl, 0, 44.0f) != 0) {
@@ -2317,7 +2323,7 @@ void Gunlance_StateLunge(Player *pl, s32 variant)
         case 0:
             pl->step = 2;
             Player_SetMotionPair(pl, 0x581, 4, 0xA);
-            Eff00_Create(pl, 0x46);
+            PlayerAttack_Create(pl, 0x46);
             break;
         case 1:
             pl->step++;
@@ -2329,12 +2335,12 @@ void Gunlance_StateLunge(Player *pl, s32 variant)
         if (pl->motion[0].playing == 0) {
             pl->step++;
             Player_SetMotionPair(pl, 0x581, 0, 0x2A);
-            Eff00_Create(pl, 0x46);
+            PlayerAttack_Create(pl, 0x46);
         }
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if (Gunlance_CheckHit(pl) != 1) {
@@ -2347,7 +2353,7 @@ void Gunlance_StateLunge(Player *pl, s32 variant)
                 pl->pos[2] += out[2];
             }
             if (Player_IsLocal(pl) == 1 && Motion_InFrameRange(pl, 0, 78.0f, 98.0f) != 0) {
-                if (pl->input.pressed & 1) {
+                if (pl->input.pressed & PAD_R3) {
                     if (pl->roundsLoaded == 0 || Gunlance_CanShell(pl) == 0) {
                         Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_SHELL_EMPTY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                     } else {
@@ -2381,11 +2387,11 @@ void Gunlance_StateBounce(Player *pl, s32 variant)
             if (Motion_ReachedFrame(pl, 0, 42.0f) != 0) {
                 Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_BOUNCE_THRUST, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
             }
-        } else if (Motion_InFrameRange(pl, 0, 10.0f, 40.0f) != 0 && pl->stateVar0 == 0 && pl->itemSelect == 0 && (pl->input.stickDirPressed & 0x3C)) {
+        } else if (Motion_InFrameRange(pl, 0, 10.0f, 40.0f) != 0 && pl->stateVar0 == 0 && pl->itemSelect == 0 && (pl->input.stickDirPressed & PL_RSTICK_ANY)) {
             pl->stateVar0 = 1;
         }
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
@@ -2406,7 +2412,7 @@ void Gunlance_StateShellEmpty(Player *pl, s32 variant)
     case 1:
         if (pl->motion[0].playing == 0) {
             if (variant == 0) {
-                Player_BeginState(pl, 0, 4, 0);
+                Player_ReturnToIdle(pl, 0, 4, 0);
                 break;
             }
             Gunlance_ReturnToGuardAlt(pl);
@@ -2520,17 +2526,17 @@ void Gunlance_RunState(Player *pl)
 s32 Gunlance_AttackInput(Player *pl)
 {
 
-    if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+    if ((pl->input.pressed & PAD_CROSS) && pl->stamina >= 0x4B) {
         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_BACK, PL_SET_SNAP_POS);
     }
-    if (pl->input.pressed & 1) {
+    if (pl->input.pressed & PAD_R3) {
         if (pl->roundsLoaded == 0 || Gunlance_CanShell(pl) == 0) {
             Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_SHELL_EMPTY, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
             Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_SHELL, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         }
     }
-    if (pl->input.stickDirPressed & 0x3C) {
+    if (pl->input.stickDirPressed & PL_RSTICK_ANY) {
         if (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
             if (pl->input.stickTilt >= 0x78) {
                 Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_LUNGE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
@@ -2564,8 +2570,8 @@ s32 Gunlance_CheckInput(Player *pl, s32 caller)
     if (pl->itemSelect != 0) {
         return 0;
     }
-    if ((pl->input.pressed & 0x40) && (pl->stamina >= 0x4B)) {
-        if (pl->input.stickDir & 0x3C00) {
+    if ((pl->input.pressed & PAD_CROSS) && (pl->stamina >= 0x4B)) {
+        if (pl->input.stickDir & PAD_DPAD) {
             dir = (pl->input.stickAngle + 0x2000) & 0xFFFF;
             if (dir < 0x6000) {
                 Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_SIDE_B, PL_SET_SNAP_POS);
@@ -2581,7 +2587,7 @@ s32 Gunlance_CheckInput(Player *pl, s32 caller)
         Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_LANCE_HOP_BACK, PL_SET_SNAP_POS);
         return 1;
     }
-    if ((pl->input.stickDirPressed & 0x3C) && (caller != 3)) {
+    if ((pl->input.stickDirPressed & PL_RSTICK_ANY) && (caller != 3)) {
         if (((pl->input.rightStickAngle + 0x1555) & 0xFFFF) < 0xAAAC) {
             state = pl->state;
             switch (state) {
@@ -2641,7 +2647,7 @@ s32 Gunlance_GuardInput(Player *pl, s32 unused)
 {
     u16 btn;
 
-    if (pl->input.pressed & 1) {
+    if (pl->input.pressed & PAD_R3) {
         if (pl->weaponTimer == 0) {
             Player_SetState(pl, PL_GROUP_WEAPON, GLANCE_WYVERN_FIRE, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         } else {
@@ -2690,7 +2696,7 @@ s32 Bow_ArcVisible(void *obj, u16 ignoreButton)
     case BOW_CHARGE_AFTER_SHOT:
     case BOW_CHARGE_AFTER_STAB:
     case BOW_DRAW_CHARGE:
-        if (ignoreButton == 0 && Player_IsLocal(pl) == 1 && !(pl->input.held & 0x80)) {
+        if (ignoreButton == 0 && Player_IsLocal(pl) == 1 && !(pl->input.held & PAD_R1)) {
             return 0;
         }
         if (pl->motionId[0] == 0x57D) {
@@ -2703,7 +2709,7 @@ s32 Bow_ArcVisible(void *obj, u16 ignoreButton)
     case BOW_AIM:
     case BOW_AIM_RESUME:
         if (ignoreButton == 0 && Player_IsLocal(pl) == 1) {
-            if (!(pl->input.held & 0x80)) {
+            if (!(pl->input.held & PAD_R1)) {
                 return 0;
             }
             if (pl->motion[0].blend == 1) {
@@ -2791,7 +2797,7 @@ void Bow_UpdateAim(Player *pl, s32 layers)
     if (pl->aimLockTimer != 0 || pl->aimMode != 0) {
         pl->aimLockTimer = 10;
     }
-    if (pl->aimLockTimer == 0 && pl->aimMode == 0 && (pl->input.held & 4)) {
+    if (pl->aimLockTimer == 0 && pl->aimMode == 0 && (pl->input.held & PAD_L2)) {
         return;
     }
     h = pl->input.held;
@@ -2810,7 +2816,7 @@ void Bow_UpdateAim(Player *pl, s32 layers)
         }
         pl->aimLockTimer = 5;
     }
-    if (pl->input.held & 0x800) {
+    if (pl->input.held & PAD_LEFT) {
         pl->aimLockTimer = 10;
         if (pl->aimMode != 0 && gScene.aimReverse == 2) {
             pl->targetYaw -= 0x240;
@@ -2818,7 +2824,7 @@ void Bow_UpdateAim(Player *pl, s32 layers)
             pl->targetYaw += 0x240;
         }
     }
-    if (pl->input.held & 0x400) {
+    if (pl->input.held & PAD_RIGHT) {
         pl->aimLockTimer = 10;
         if (pl->aimMode != 0 && gScene.aimReverse == 2) {
             pl->targetYaw += 0x240;
@@ -2886,7 +2892,7 @@ s32 Bow_CheckHit(Player *pl)
 }
 
 /*
- * The shot (Bowgun_FireLoaded): chargeLevel set, a coating used up. variant:
+ * The shot (Bow_FireArrows): chargeLevel set, a coating used up. variant:
  * 0 BOW_FIRE (charge level 1 or more), 1 BOW_FIRE_QUICK (level 0). The window
  * evades or charges again; it ends in BOW_AIM_RESUME.
  */
@@ -2913,7 +2919,7 @@ void Bow_StateFire(Player *pl, s32 variant)
         Vib_StartLocal(pl, 0);
         CamShake_ReqB(pl, 1);
         pl->chargeLevel = Bow_ChargeLevel(pl);
-        Bowgun_FireLoaded(pl, 0);
+        Bow_FireArrows(pl, 0);
         pl->weaponTimer = 0;
         if (Player_HasSkill(pl, 0x33) == 0) {
             pl->roundsLoaded--;
@@ -2951,11 +2957,11 @@ void Bow_StateFire(Player *pl, s32 variant)
             f = 22.0f;
         }
         if (Motion_ReachedFrame(pl, 0, f) != 0) {
-            if ((pl->input.pressed & 0x40) && pl->stamina >= 0x4B) {
+            if ((pl->input.pressed & PAD_CROSS) && pl->stamina >= 0x4B) {
                 Player_RequestState(pl, PL_GROUP_WEAPON, BOW_EVADE, PL_SET_SNAP_POS);
                 break;
             }
-            if (pl->input.stickDir & 0x10) {
+            if (pl->input.stickDir & PAD_RSTICK_DOWN) {
                 Player_RequestState(pl, PL_GROUP_WEAPON, BOW_CHARGE_AFTER_SHOT, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
             }
         }
@@ -3047,7 +3053,7 @@ void Bow_StateCharge(Player *pl, u32 variant)
     case 2:
         Bow_TickCharge(pl);
         if (Player_IsLocal(pl) == 1 && Motion_ReachedFrame(pl, 0, 40.0f) != 0) {
-            if (!(pl->input.stickDir & 0x10) || pl->stamina <= 0) {
+            if (!(pl->input.stickDir & PAD_RSTICK_DOWN) || pl->stamina <= 0) {
                 if (Bow_ChargeLevel(pl) == 0) {
                     Bow_UpdateAmmoType(pl);
                     Player_RequestState(pl, PL_GROUP_WEAPON, BOW_FIRE_QUICK, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
@@ -3080,7 +3086,7 @@ void Bow_StateToIdle(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 0, 0);
+            Player_ReturnToIdle(pl, 0, 0, 0);
         }
         break;
     }
@@ -3103,7 +3109,7 @@ void Bow_StateStab(Player *pl, s32 variant)
         if (variant == 0) {
             pl->step = 2;
             Player_SetMotionPair(pl, 0x585, 4, 0);
-            Eff00_CreateArrow(pl, 0x3C);
+            PlayerAttack_CreateBowStab(pl, 0x3C);
         } else {
             pl->step++;
             Player_SetMotionPair(pl, 0x3F6, 2, 0);
@@ -3116,7 +3122,7 @@ void Bow_StateStab(Player *pl, s32 variant)
             pl->step++;
             Player_UpdateMotionTime(pl, 0);
             Player_SetMotionPair(pl, 0x585, 4, 0x18);
-            Eff00_CreateArrow(pl, 0x3C);
+            PlayerAttack_CreateBowStab(pl, 0x3C);
         }
         break;
     case 2:
@@ -3124,16 +3130,16 @@ void Bow_StateStab(Player *pl, s32 variant)
             break;
         }
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if (pl->stateVar0 == 0xFF) {
             if (Motion_InFrameRange(pl, 0, 34.0f, 64.0f) != 0) {
-                if ((pl->input.stickDirPressed & 0x20) && pl->aimLockTimer == 0 && pl->aimMode == 0) {
+                if ((pl->input.stickDirPressed & PAD_RSTICK_UP) && pl->aimLockTimer == 0 && pl->aimMode == 0) {
                     pl->stateVar0 = 4;
-                } else if (pl->input.pressed & 0x40) {
+                } else if (pl->input.pressed & PAD_CROSS) {
                     pl->stateVar0 = 0x12;
-                } else if (pl->input.stickDir & 0x10) {
+                } else if (pl->input.stickDir & PAD_RSTICK_DOWN) {
                     pl->stateVar0 = 0x13;
                 }
             }
@@ -3172,11 +3178,11 @@ void Bow_StateStab2(Player *pl, s32 unused)
         pl->stateVar0 = 0;
         Player_SetMotionPair(pl, 0x586, 4, 0);
         Player_SetMoveMode(pl, 0, 1, 0);
-        Eff00_CreateArrow(pl, 0x3D);
+        PlayerAttack_CreateBowStab(pl, 0x3D);
         break;
     case 1:
         if ((Bow_CheckHit(pl) != 1) && (pl->motion[0].playing == 0)) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
@@ -3217,8 +3223,8 @@ void Bow_StateAim(Player *pl, s32 variant)
         break;
     case 2:
         if (Player_IsLocal(pl) == 1) {
-            if (!(pl->input.held & 0x80) && pl->aimMode == 0) {
-                Player_BeginState(pl, 0, 0xA, 0);
+            if (!(pl->input.held & PAD_R1) && pl->aimMode == 0) {
+                Player_ReturnToIdle(pl, 0, 0xA, 0);
             } else {
                 Bow_UpdateAim(pl, 0);
                 Bow_CheckInput(pl, 1);
@@ -3249,7 +3255,7 @@ void Bow_StateChargeWalk(Player *pl, s32 unused)
         if (Player_IsLocal(pl) == 1) {
             if (Player_StickMoveLevel(pl, 0) == 0) {
                 Player_RequestState(pl, PL_GROUP_WEAPON, BOW_CHARGE_RESUME, PL_SET_SNAP_POS);
-            } else if (!(pl->input.stickDir & 0x10) || pl->stamina <= 0) {
+            } else if (!(pl->input.stickDir & PAD_RSTICK_DOWN) || pl->stamina <= 0) {
                 if (Bow_ChargeLevel(pl) == 0) {
                     Bow_UpdateAmmoType(pl);
                     Player_RequestState(pl, PL_GROUP_WEAPON, BOW_FIRE_QUICK, PL_SET_SNAP_POS);
@@ -3305,15 +3311,15 @@ void Bow_StateEvade(Player *pl, s32 variant)
         break;
     case 2:
         if (pl->motion[0].playing == 0) {
-            if (pl->input.held & 0x80) {
+            if (pl->input.held & PAD_R1) {
                 Player_RequestState(pl, PL_GROUP_WEAPON, BOW_AIM, PL_SET_SNAP_POS);
                 break;
             }
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
             break;
         }
         if (Player_IsLocal(pl) == 1) {
-            if (Motion_InFrameRange(pl, 0, 32.0f, 42.0f) != 0 && (pl->input.pressed & 0x40) && pl->stateVar0 == 0) {
+            if (Motion_InFrameRange(pl, 0, 32.0f, 42.0f) != 0 && (pl->input.pressed & PAD_CROSS) && pl->stateVar0 == 0) {
                 pl->stateVar0 = 1;
             }
             if (Motion_PassedFrame(pl, 0, 42.0f) != 0 && pl->stateVar0 != 0 && pl->stamina >= 75) {
@@ -3356,7 +3362,7 @@ void Bow_StateBounce(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
@@ -3400,7 +3406,7 @@ void Bow_StateLoadCoating(Player *pl, s32 unused)
         break;
     case 1:
         if (pl->motion[0].playing == 0) {
-            Player_BeginState(pl, 0, 4, 0);
+            Player_ReturnToIdle(pl, 0, 4, 0);
         }
         break;
     }
@@ -3491,8 +3497,8 @@ s32 Bow_AttackInput(Player *pl, s32 needPress)
 {
     u8 f;
 
-    if (pl->stamina >= 0x4B && (pl->input.pressed & 0x40)) {
-        if (pl->input.stickDir & 0x3C00) {
+    if (pl->stamina >= 0x4B && (pl->input.pressed & PAD_CROSS)) {
+        if (pl->input.stickDir & PAD_DPAD) {
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         } else {
             Player_RequestState(pl, PL_GROUP_WEAPON, BOW_EVADE, PL_SET_SNAP_POS);
@@ -3500,11 +3506,11 @@ s32 Bow_AttackInput(Player *pl, s32 needPress)
         return 1;
     }
     if (needPress == 0) {
-        if (pl->input.held & 0x80) {
+        if (pl->input.held & PAD_R1) {
             Player_RequestState(pl, PL_GROUP_WEAPON, BOW_AIM, PL_SET_SNAP_POS);
             return 1;
         }
-    } else if (pl->input.pressed & 0x80) {
+    } else if (pl->input.pressed & PAD_R1) {
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_AIM, PL_SET_SNAP_POS);
         return 1;
     }
@@ -3513,16 +3519,16 @@ s32 Bow_AttackInput(Player *pl, s32 needPress)
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_AIM_RESUME, PL_SET_SNAP_POS);
         return 1;
     }
-    if (pl->input.stickDir & 0x10) {
+    if (pl->input.stickDir & PAD_RSTICK_DOWN) {
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_CHARGE_FROM_IDLE, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
         return 1;
     }
-    if ((pl->input.stickDirPressed & 0x20) && pl->aimLockTimer == 0 && f == 0) {
+    if ((pl->input.stickDirPressed & PAD_RSTICK_UP) && pl->aimLockTimer == 0 && f == 0) {
         Bow_UpdateAmmoType(pl);
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_STAB, PL_SET_SNAP_POS);
         return 1;
     }
-    if ((pl->input.pressed & 1) && pl->pouch[pl->ammoSlot].item != 0x87 && pl->coatingSlot == 0xFF) {
+    if ((pl->input.pressed & PAD_R3) && pl->pouch[pl->ammoSlot].item != 0x87 && pl->coatingSlot == 0xFF) {
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_LOAD_COATING, PL_SET_SNAP_POS);
         return 1;
     }
@@ -3550,8 +3556,8 @@ s32 Bow_CheckInput(Player *pl, s32 caller)
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_BOW_WALK, 0);
         }
     }
-    if (pl->stamina >= 0x4B && (pl->input.pressed & 0x40)) {
-        if (pl->input.stickDir & 0x3C00) {
+    if (pl->stamina >= 0x4B && (pl->input.pressed & PAD_CROSS)) {
+        if (pl->input.stickDir & PAD_DPAD) {
             Player_RequestState(pl, PL_GROUP_ACTION, PL_ACT_ROLL, PL_SET_SNAP_POS);
         } else {
             Player_RequestState(pl, PL_GROUP_WEAPON, BOW_EVADE, PL_SET_SNAP_POS);
@@ -3561,16 +3567,16 @@ s32 Bow_CheckInput(Player *pl, s32 caller)
     if (caller == 0) {
         return 0;
     }
-    if (pl->input.stickDir & 0x10) {
+    if (pl->input.stickDir & PAD_RSTICK_DOWN) {
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_CHARGE, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
         return 1;
     }
-    if ((pl->input.stickDirPressed & 0x20) && pl->aimLockTimer == 0 && pl->aimMode == 0) {
+    if ((pl->input.stickDirPressed & PAD_RSTICK_UP) && pl->aimLockTimer == 0 && pl->aimMode == 0) {
         Bow_UpdateAmmoType(pl);
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_STAB, PL_SET_SNAP_POS);
         return 1;
     }
-    if ((pl->input.pressed & 1) && pl->pouch[pl->ammoSlot].item != 0x87 && pl->coatingSlot == 0xFF) {
+    if ((pl->input.pressed & PAD_R3) && pl->pouch[pl->ammoSlot].item != 0x87 && pl->coatingSlot == 0xFF) {
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_LOAD_COATING, PL_SET_SNAP_POS);
         return 1;
     }
@@ -3583,7 +3589,7 @@ s32 Bow_CheckInput(Player *pl, s32 caller)
  */
 void Bow_DrawAttack(Player *pl)
 {
-    if (pl->input.stickDir & 0x10) {
+    if (pl->input.stickDir & PAD_RSTICK_DOWN) {
         Player_RequestState(pl, PL_GROUP_WEAPON, BOW_DRAW_CHARGE, PL_SET_KEEP_PARTS | PL_SET_SNAP_POS);
         return;
     }
@@ -3597,14 +3603,19 @@ void Bow_DrawToAim(Player *pl)
     Player_RequestState(pl, PL_GROUP_WEAPON, BOW_DRAW_AIM, PL_SET_SNAP_POS);
 }
 
-void Eff00_Create(Player *pl, u8 kind)
+/*
+ * Makes a PlayerAttack for pl: an ObjAttach that follows pl and hits with the
+ * row attackId of PlayerAttack_Rows from pl's current motion. Clears pl's
+ * hitPending and contactHit for the new attack.
+ */
+void PlayerAttack_Create(Player *pl, u8 attackId)
 {
     ObjAttach *obj;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        obj->kind = 0;
-        obj->type = kind;
-        obj->update = Eff00_Update;
+        obj->kind = ATTACH_PLAYER_ATTACK;
+        obj->type = attackId;
+        obj->update = PlayerAttack_Update;
         obj->idx = pl->index;
         obj->isEm = pl->isEm;
         obj->ownerMotion = pl->motionId[0];
@@ -3620,18 +3631,23 @@ void Eff00_Create(Player *pl, u8 kind)
         obj->side = *(u8 *) &pl->side;
         obj->unk080 = 0;
         pl->hitPending = 0;
-        pl->attackHit800 = 0;
+        pl->contactHit = 0;
     }
 }
 
-void Eff00_CreateDual(Player *pl, s32 kind, s32 arg2)
+/*
+ * PlayerAttack_Create for the dual swords: mirrored (bit 0) swaps the hit
+ * shape lists 9 and 10, the two blades (PlayerAttack_Setup). Leaves
+ * contactHit alone.
+ */
+void PlayerAttack_CreateDual(Player *pl, s32 attackId, s32 mirrored)
 {
     ObjAttach *obj;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        obj->kind = 0;
-        obj->type = kind;
-        obj->update = Eff00_Update;
+        obj->kind = ATTACH_PLAYER_ATTACK;
+        obj->type = attackId;
+        obj->update = PlayerAttack_Update;
         obj->idx = pl->index;
         obj->isEm = pl->isEm;
         obj->ownerMotion = pl->motionId[0];
@@ -3639,7 +3655,7 @@ void Eff00_CreateDual(Player *pl, s32 kind, s32 arg2)
         obj->yaw = pl->rot[1];
         obj->randBits = pl->stateRand;
         obj->stateVar0 = 0;
-        obj->stateVar1 = arg2;
+        obj->stateVar1 = mirrored;
         obj->rotX = pl->rot[0];
         obj->rotY = pl->rot[1];
         obj->rotZ = pl->rot[2];
@@ -3650,14 +3666,19 @@ void Eff00_CreateDual(Player *pl, s32 kind, s32 arg2)
     }
 }
 
-void Eff00_CreateArrow(Player *pl, s8 kind)
+/*
+ * PlayerAttack_Create for the bow's close stab (attack ids 0x3C, 0x3D): it
+ * carries the loaded coating, pl->ammoType, which PlayerAttack_Setup applies
+ * (BowArrow_ApplyCoating).
+ */
+void PlayerAttack_CreateBowStab(Player *pl, s8 attackId)
 {
     ObjAttach *obj;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        obj->kind = 0;
-        obj->type = kind;
-        obj->update = Eff00_Update;
+        obj->kind = ATTACH_PLAYER_ATTACK;
+        obj->type = attackId;
+        obj->update = PlayerAttack_Update;
         obj->idx = pl->index;
         obj->isEm = pl->isEm;
         obj->ownerMotion = pl->motionId[0];
@@ -3675,44 +3696,53 @@ void Eff00_CreateArrow(Player *pl, s8 kind)
     }
 }
 
-void Eff00_Update(ObjAttach *obj)
+/*
+ * The PlayerAttack's per-frame update, by ObjAttach.state. A hit (ATTACH_HIT)
+ * keeps the window open two more frames and runs on.
+ */
+void PlayerAttack_Update(ObjAttach *obj)
 {
     switch (obj->state) {
-    case 0:
-        Eff00_Setup(obj);
+    case ATTACH_SETUP:
+        PlayerAttack_Setup(obj);
         break;
-    case 1:
-        Eff00_Run(obj);
+    case ATTACH_RUN:
+        PlayerAttack_Run(obj);
         break;
-    case 2:
-        Eff00_End(obj);
+    case ATTACH_END:
+        PlayerAttack_End(obj);
         break;
-    case 3:
-        obj->state = 1;
+    case ATTACH_HIT:
+        obj->state = ATTACH_RUN;
         (obj)->hitFrames += 2;
-        Eff00_Run(obj);
+        PlayerAttack_Run(obj);
         break;
     case 4:
-        Eff00_End(obj);
+        PlayerAttack_End(obj);
         break;
-    case 5:
-        Eff00_End(obj);
+    case ATTACH_DEFLECTED:
+        PlayerAttack_End(obj);
         break;
-    case 9:
-        Eff00_End(obj);
+    case ATTACH_DEFLECTED_AURA:
+        PlayerAttack_End(obj);
         break;
     case 7:
-        Eff00_End(obj);
+        PlayerAttack_End(obj);
         break;
-    case 6:
-        Eff00_Free(obj);
+    case ATTACH_FREE:
+        PlayerAttack_Free(obj);
         
     default:
         break;
     }
 }
 
-void Eff00_AttachTransform(ObjAttach *obj, Player *pl)
+/*
+ * Puts the attack's capsule on the weapon: pos and pos2 are the hit shape's
+ * two z offsets (a[2], b[2]) along bone 0xE, turned by a fixed rotation. Used
+ * for hit shapes whose bone is 0x7E.
+ */
+void PlayerAttack_PlaceOnWeapon(ObjAttach *obj, Player *pl)
 {
     f32 *iy;
     f32 *iz;
@@ -3749,20 +3779,28 @@ void Eff00_AttachTransform(ObjAttach *obj, Player *pl)
     obj->pos[2] += *oz;
 }
 
-void Eff00_Setup(ObjAttach *obj)
+/*
+ * Sets the attack up from its row (MoveObj_StartMotionOwned copies it over
+ * hitDelay..unk075): the hit shapes, the attack flags, the weapon's element
+ * (and, one hit in three, its status) and the affinity's roll (a critical hit
+ * 1.25 times the power, a weak one half; only from sharpness level 3). The
+ * dual swords' demon mode adds 35 % power. hitDelay is counted from the
+ * motion's blend and current frame.
+ */
+void PlayerAttack_Setup(ObjAttach *obj)
 {
     Player *pl = &gPlayers[obj->idx];
-    s16 v;
-    s32 k;
+    s16 stat;
+    s32 blendFrames;
     f32 in[3];
     f32 out[3];
-    u8 f;
+    u8 takesElement;
 
-    f = 0;
+    takesElement = 0;
     obj->state++;
     obj->visible = 1;
     obj->draw = NULL;
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) pl, obj->type, &Eff00_MotionRef);
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) pl, obj->type, &PlayerAttack_RowsPtr);
     if (obj->stateVar1 & 1) {
         switch (obj->hitListNo) {
         case 9:
@@ -3773,11 +3811,11 @@ void Eff00_Setup(ObjAttach *obj)
             break;
         }
     }
-    obj->hitList = Eff00_Vals088[obj->hitListNo];
+    obj->hitList = PlayerAttack_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
     obj->area = pl->area;
     if (obj->hitList->bone == 0x7E) {
-        Eff00_AttachTransform(obj, pl);
+        PlayerAttack_PlaceOnWeapon(obj, pl);
     }
     switch (obj->type) {
     case 0xB:
@@ -3790,8 +3828,8 @@ void Eff00_Setup(ObjAttach *obj)
         obj->pos[1] += out[1];
         obj->pos[2] += out[2];
         obj->aux = 4;
-        Player_TestSetFlags(obj, 0x60);
-        f = 1;
+        Player_TestSetFlags(obj, ATKF_OWNER_CONTACT | ATKF_WEAPON);
+        takesElement = 1;
         break;
     case 0x3E:
         in[0] = 117.0f;
@@ -3799,7 +3837,7 @@ void Eff00_Setup(ObjAttach *obj)
         in[2] = 187.0f;
         Vec_Rotate(out, in, (f32 *)Em_GetBone(pl, 0xE));
         Mtx_GetTrans(obj->pos, Em_GetBone(pl, 0xE)->world);
-        f = 1;
+        takesElement = 1;
         obj->pos[0] += out[0];
         obj->pos[1] += out[1];
         obj->pos[2] += out[2];
@@ -3809,74 +3847,74 @@ void Eff00_Setup(ObjAttach *obj)
     case 0x1D:
     case 0x60:
     case 0x61:
-        Player_TestSetFlags(obj, 0x20);
+        Player_TestSetFlags(obj, ATKF_OWNER_CONTACT);
         break;
     case 0x3C:
     case 0x3D:
-        Player_TestSetFlags(obj, 0x60);
-        BowgunShot_SetKind(obj, obj->stateVar0, 1);
+        Player_TestSetFlags(obj, ATKF_OWNER_CONTACT | ATKF_WEAPON);
+        BowArrow_ApplyCoating(obj, obj->stateVar0, 1);
         break;
     default:
-        Player_TestSetFlags(obj, 0x60);
-        f = 1;
+        Player_TestSetFlags(obj, ATKF_OWNER_CONTACT | ATKF_WEAPON);
+        takesElement = 1;
         break;
     }
-    if (f) {
-        v = Player_GetWeaponStat(pl, 0);
-        if (v > 0) {
-            obj->elementFlags |= 0x10;
-            obj->elementPower = v;
+    if (takesElement) {
+        stat = Player_GetWeaponStat(pl, WSTAT_FIRE);
+        if (stat > 0) {
+            obj->elementFlags |= ELEMF_FIRE;
+            obj->elementPower = stat;
         }
-        v = Player_GetWeaponStat(pl, 1);
-        if (v > 0) {
-            obj->elementFlags |= 0x20;
-            obj->elementPower = v;
+        stat = Player_GetWeaponStat(pl, WSTAT_WATER);
+        if (stat > 0) {
+            obj->elementFlags |= ELEMF_WATER;
+            obj->elementPower = stat;
         }
-        v = Player_GetWeaponStat(pl, 2);
-        if (v > 0) {
-            obj->elementFlags |= 0x40;
-            obj->elementPower = v;
+        stat = Player_GetWeaponStat(pl, WSTAT_THUNDER);
+        if (stat > 0) {
+            obj->elementFlags |= ELEMF_THUNDER;
+            obj->elementPower = stat;
         }
-        v = Player_GetWeaponStat(pl, 3);
-        if (v > 0) {
-            obj->elementFlags |= 0x80;
-            obj->elementPower = v;
+        stat = Player_GetWeaponStat(pl, WSTAT_ICE);
+        if (stat > 0) {
+            obj->elementFlags |= ELEMF_ICE;
+            obj->elementPower = stat;
         }
-        v = Player_GetWeaponStat(pl, 7);
-        if (v > 0) {
-            obj->elementFlags |= 0x200;
-            obj->elementPower = v;
+        stat = Player_GetWeaponStat(pl, WSTAT_DRAGON);
+        if (stat > 0) {
+            obj->elementFlags |= ELEMF_DRAGON;
+            obj->elementPower = stat;
         }
         if (pl->stateRand % 3 == 0) {
-            v = Player_GetWeaponStat(pl, 4);
-            if (v > 0) {
-                obj->elementFlags |= 2;
-                obj->elementPower = v;
+            stat = Player_GetWeaponStat(pl, WSTAT_POISON);
+            if (stat > 0) {
+                obj->elementFlags |= ELEMF_POISON;
+                obj->elementPower = stat;
             }
-            v = Player_GetWeaponStat(pl, 5);
-            if (v > 0) {
-                obj->elementFlags |= 4;
-                obj->elementPower = v;
+            stat = Player_GetWeaponStat(pl, WSTAT_STATUS_TYPE2);
+            if (stat > 0) {
+                obj->elementFlags |= ELEMF_EM_STATUS4;
+                obj->elementPower = stat;
             }
-            v = Player_GetWeaponStat(pl, 6);
-            if (v > 0) {
-                obj->elementFlags |= 1;
-                obj->elementPower = v;
+            stat = Player_GetWeaponStat(pl, WSTAT_STATUS_TYPE3);
+            if (stat > 0) {
+                obj->elementFlags |= ELEMF_EM_STATUS2;
+                obj->elementPower = stat;
             }
         }
     }
-    obj->hitFx &= 0x3F;
-    v = Player_GetWeaponStat(pl, 8);
-    if (v != 0 && pl->sharpnessLevel >= 3) {
-        if (v < 0) {
-            if (pl->stateRand % 100 < -v) {
+    obj->hitFx &= HITFX_KIND_MASK;
+    stat = Player_GetWeaponStat(pl, WSTAT_AFFINITY);
+    if (stat != 0 && pl->sharpnessLevel >= 3) {
+        if (stat < 0) {
+            if (pl->stateRand % 100 < -stat) {
 
                 obj->power >>= 1;
-                obj->hitFx |= 0x40;
+                obj->hitFx |= HITFX_WEAK;
             }
-        } else if (v > pl->stateRand % 100) {
+        } else if (stat > pl->stateRand % 100) {
             obj->power = (s32) (1.25f * obj->power);
-            obj->hitFx |= 0x80;
+            obj->hitFx |= HITFX_CRITICAL;
         }
     }
     if (pl->weaponType == WEAPON_DUAL_SWORDS && pl->demonMode != 0) {
@@ -3885,15 +3923,19 @@ void Eff00_Setup(ObjAttach *obj)
         obj->power = 1.35f * obj->power;
     }
     if (obj->hitDelay != 0) {
-        k = Math_Absf(pl->motionBlend[0] % 100);
-        obj->hitDelay += k - (s32) (Math_Absf((u16) pl->motionFrame[0]) / 2.0f) - 1;
+        blendFrames = Math_Absf(pl->motionBlend[0] % 100);
+        obj->hitDelay += blendFrames - (s32) (Math_Absf((u16) pl->motionFrame[0]) / 2.0f) - 1;
         if ((s8) obj->hitDelay < 0) {
             obj->hitDelay = 0;
         }
     }
 }
 
-static void Eff00_PauseInHitStop(ObjAttach *obj)
+/*
+ * Keeps the hit window open while the player is in hit stop or slowed after a
+ * hit.
+ */
+static void PlayerAttack_PauseInHitStop(ObjAttach *obj)
 {
     Player *pl;
 
@@ -3903,14 +3945,20 @@ static void Eff00_PauseInHitStop(ObjAttach *obj)
     }
 }
 
-void Eff00_Run(ObjAttach *obj)
+/*
+ * Follows the weapon and ends the attack when the player's motion changes
+ * (attack 8 also lasts through motion 0x57F, 0x64 through 0x57E, 0x13 holds
+ * its window open for the whole motion); attacks 0xB and 0x56 last four
+ * frames, 0x60 and 0x61 until their window closes.
+ */
+void PlayerAttack_Run(ObjAttach *obj)
 {
     Player *pl = &gPlayers[obj->idx];
 
     if (obj->hitList->bone == 0x7E && obj->type != 0x44) {
-        Eff00_AttachTransform(obj, pl);
+        PlayerAttack_PlaceOnWeapon(obj, pl);
     }
-    Eff00_PauseInHitStop(obj);
+    PlayerAttack_PauseInHitStop(obj);
     switch (obj->type) {
     case 8:
         if (pl->motionId[0] == obj->ownerMotion || pl->motionId[0] == 0x57F) {
@@ -3944,32 +3992,38 @@ void Eff00_Run(ObjAttach *obj)
         if (pl->motionId[0] != obj->ownerMotion) {
         end:
             obj->hitPhase = 0;
-            obj->state = 2;
+            obj->state = ATTACH_END;
         }
         break;
     }
 }
 
-void Eff00_End(ObjAttach *obj)
+/* Hides the attack and frees it on the next update. */
+void PlayerAttack_End(ObjAttach *obj)
 {
-    obj->state = 6;
+    obj->state = ATTACH_FREE;
     obj->visible = 0;
 }
 
-void Eff00_Free(ObjAttach *obj)
+/* Returns the object to the pool. */
+void PlayerAttack_Free(ObjAttach *obj)
 {
     ObjAttach_Free(obj);
 }
 
-void Eff01_Create(Em *em, s8 kind)
+/*
+ * Makes a RathalosAttack for em with the row attackId of RathalosAttack_Rows,
+ * if a player is in em's area. Clears em's hitPending and contactHit.
+ */
+void RathalosAttack_Create(Em *em, s8 attackId)
 {
     ObjAttach *obj;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((obj = ObjAttach_Alloc(0)) != NULL) {
-            obj->kind = 1;
-            obj->type = kind;
-            obj->update = Eff01_Update;
+            obj->kind = ATTACH_RATHALOS_ATTACK;
+            obj->type = attackId;
+            obj->update = RathalosAttack_Update;
             obj->idx = em->index;
             obj->isEm = em->isEm;
             obj->ownerMotion = em->motionId[0];
@@ -3980,21 +4034,25 @@ void Eff01_Create(Em *em, s8 kind)
             obj->rotZ = em->rotZ;
             obj->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void Eff01_CreateOnObj(StageObj *s, s8 kind)
+/*
+ * RathalosAttack_Create at the stage object src's position, for src's owner
+ * (and without the area check): the attack starts at step 1.
+ */
+void RathalosAttack_CreateOnObj(StageObj *src, s8 attackId)
 {
     ObjAttach *obj;
     Em *em;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        em = s->owner;
-        obj->kind = 1;
-        obj->type = kind;
-        obj->update = Eff01_Update;
+        em = src->owner;
+        obj->kind = ATTACH_RATHALOS_ATTACK;
+        obj->type = attackId;
+        obj->update = RathalosAttack_Update;
         obj->idx = em->index;
         obj->isEm = em->isEm;
         obj->ownerMotion = em->motionId[0];
@@ -4004,23 +4062,27 @@ void Eff01_CreateOnObj(StageObj *s, s8 kind)
         obj->rotY = em->rotY;
         obj->rotZ = em->rotZ;
         obj->side = *(u8 *) &em->side;
-        obj->pos[0] = s->pos[0];
-        obj->pos[1] = s->pos[1];
-        obj->pos[2] = s->pos[2];
+        obj->pos[0] = src->pos[0];
+        obj->pos[1] = src->pos[1];
+        obj->pos[2] = src->pos[2];
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
         obj->step = 1;
     }
 }
 
-void Eff01_CreateAt(Em *em, f32 *pos, s8 kind)
+/*
+ * RathalosAttack_Create at pos (without the area check): the attack starts at
+ * step 1.
+ */
+void RathalosAttack_CreateAt(Em *em, f32 *pos, s8 attackId)
 {
     ObjAttach *obj;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        obj->kind = 1;
-        obj->type = kind;
-        obj->update = Eff01_Update;
+        obj->kind = ATTACH_RATHALOS_ATTACK;
+        obj->type = attackId;
+        obj->update = RathalosAttack_Update;
         obj->idx = em->index;
         obj->isEm = em->isEm;
         obj->ownerMotion = em->motionId[0];
@@ -4034,60 +4096,65 @@ void Eff01_CreateAt(Em *em, f32 *pos, s8 kind)
         obj->pos[1] = pos[1];
         obj->pos[2] = pos[2];
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
         obj->step = 1;
     }
 }
 
-void Eff01_Update(ObjAttach *obj)
+/* The RathalosAttack's per-frame update, by ObjAttach.state. */
+void RathalosAttack_Update(ObjAttach *obj)
 {
     switch (obj->state) {
-    case 0:
-        Eff01_Setup(obj);
+    case ATTACH_SETUP:
+        RathalosAttack_Setup(obj);
         break;
-    case 1:
-        Eff01_Run(obj);
+    case ATTACH_RUN:
+        RathalosAttack_Run(obj);
         break;
-    case 2:
-        Eff01_End(obj);
+    case ATTACH_END:
+        RathalosAttack_End(obj);
         break;
-    case 3:
-        Eff01_Run(obj);
+    case ATTACH_HIT:
+        RathalosAttack_Run(obj);
         break;
     case 4:
-        Eff01_End(obj);
+        RathalosAttack_End(obj);
         break;
-    case 5:
-        Eff01_End(obj);
+    case ATTACH_DEFLECTED:
+        RathalosAttack_End(obj);
         break;
-    case 9:
-        Eff01_End(obj);
+    case ATTACH_DEFLECTED_AURA:
+        RathalosAttack_End(obj);
         break;
     case 7:
-        Eff01_End(obj);
+        RathalosAttack_End(obj);
         break;
-    case 6:
-        Eff01_Free(obj);
+    case ATTACH_FREE:
+        RathalosAttack_Free(obj);
         
     default:
         break;
     }
 }
 
-void Eff01_Setup(ObjAttach *obj)
+/*
+ * Sets the attack up from its row: the hit shapes and ATKF_OWNER_CONTACT;
+ * hitDelay is counted from the monster's motion.
+ */
+void RathalosAttack_Setup(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
+    Em *em = &gEms[obj->idx];
 
     obj->state++;
     obj->visible = 1;
     obj->draw = NULL;
-    Player_TestSetFlags(obj, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) m, obj->type, &Eff01_MotionRef);
-    obj->hitList = Eff01_Vals088[obj->hitListNo];
+    Player_TestSetFlags(obj, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) em, obj->type, &RathalosAttack_RowsPtr);
+    obj->hitList = RathalosAttack_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
-    obj->area = m->area;
+    obj->area = em->area;
     if (obj->hitDelay != 0) {
-        obj->hitDelay += (s32) Math_Absf((s16) m->motionBlend[0] % 100) - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        obj->hitDelay += (s32) Math_Absf((s16) em->motionBlend[0] % 100) - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) obj->hitDelay < 0) {
             obj->hitDelay = 0;
         }
@@ -4095,9 +4162,13 @@ void Eff01_Setup(ObjAttach *obj)
     obj->drawSlotBuf = NULL;
 }
 
-void Eff01_Run(ObjAttach *obj)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes;
+ * attacks 0x18 and 0x22 keep their window open.
+ */
+void RathalosAttack_Run(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
+    Em *em = &gEms[obj->idx];
 
     switch (obj->type) {
     case 0x18:
@@ -4105,9 +4176,9 @@ void Eff01_Run(ObjAttach *obj)
         obj->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != obj->ownerMotion || obj->hitPhase == 0) {
+    if (em->motionId[0] != obj->ownerMotion || obj->hitPhase == 0) {
         obj->hitPhase = 0;
-        obj->state = 2;
+        obj->state = ATTACH_END;
     }
     if (obj->drawSlotBuf != NULL) {
         Vec_Copy(obj->drawSlotBuf->pos, obj->pos);
@@ -4115,22 +4186,27 @@ void Eff01_Run(ObjAttach *obj)
     }
 }
 
-void Eff01_End(ObjAttach *obj)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void RathalosAttack_End(ObjAttach *obj)
 {
     obj->hitPhase = 0;
-    obj->state = 6;
+    obj->state = ATTACH_FREE;
     obj->visible = 0;
     if (obj->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) obj->drawSlot);
     }
 }
 
-void Eff01_Free(ObjAttach *obj)
+void RathalosAttack_Free(ObjAttach *obj)
 {
     ObjAttach_Free(obj);
 }
 
-ObjAttach *Eff02_Create(Em *em, s8 kind)
+/*
+ * Makes an EmContactAttack for em with the row attackId of
+ * EmContactAttack_Rows, if a player is in em's area; returns it, or NULL.
+ */
+ObjAttach *EmContactAttack_Create(Em *em, s8 attackId)
 {
     ObjAttach *obj;
 
@@ -4138,9 +4214,9 @@ ObjAttach *Eff02_Create(Em *em, s8 kind)
         return NULL;
     }
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        obj->kind = 2;
-        obj->type = kind;
-        obj->update = Eff02_Update;
+        obj->kind = ATTACH_EM_CONTACT_ATTACK;
+        obj->type = attackId;
+        obj->update = EmContactAttack_Update;
         obj->idx = em->index;
         obj->isEm = em->isEm;
         obj->ownerMotion = em->motionId[0];
@@ -4151,61 +4227,67 @@ ObjAttach *Eff02_Create(Em *em, s8 kind)
         obj->rotZ = em->rotZ;
         obj->side = *(u8 *) &em->side;
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
     }
     return obj;
 }
 
-void Eff02_Update(ObjAttach *obj)
+/* The EmContactAttack's per-frame update, by ObjAttach.state. */
+void EmContactAttack_Update(ObjAttach *obj)
 {
     switch (obj->state) {
-    case 0:
-        Eff02_Setup(obj);
+    case ATTACH_SETUP:
+        EmContactAttack_Setup(obj);
         break;
-    case 1:
-        Eff02_Run(obj);
+    case ATTACH_RUN:
+        EmContactAttack_Run(obj);
         break;
-    case 2:
-        Eff02_End(obj);
+    case ATTACH_END:
+        EmContactAttack_End(obj);
         break;
-    case 3:
-        Eff02_Run(obj);
+    case ATTACH_HIT:
+        EmContactAttack_Run(obj);
         break;
     case 4:
-        Eff02_End(obj);
+        EmContactAttack_End(obj);
         break;
-    case 5:
-        Eff02_End(obj);
+    case ATTACH_DEFLECTED:
+        EmContactAttack_End(obj);
         break;
-    case 9:
-        Eff02_End(obj);
+    case ATTACH_DEFLECTED_AURA:
+        EmContactAttack_End(obj);
         break;
     case 7:
-        Eff02_End(obj);
+        EmContactAttack_End(obj);
         break;
-    case 6:
-        Eff02_Free(obj);
+    case ATTACH_FREE:
+        EmContactAttack_Free(obj);
         
     default:
         break;
     }
 }
 
-void Eff02_Setup(ObjAttach *obj)
+/*
+ * Sets the attack up from row attackId + 1: the hit shapes,
+ * ATKF_OWNER_CONTACT and ATKF_REPORT_CONTACT (the owner learns what it
+ * touched); hitDelay is counted from the monster's motion.
+ */
+void EmContactAttack_Setup(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
+    Em *em = &gEms[obj->idx];
 
     obj->state++;
     obj->visible = 1;
-    obj->draw = Eff02_DrawNop;
-    Player_TestSetFlags(obj, 0x820);
+    obj->draw = EmContactAttack_DrawNop;
+    Player_TestSetFlags(obj, ATKF_OWNER_CONTACT | ATKF_REPORT_CONTACT);
     obj->wasHit = 0;
-    obj->area = m->area;
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) m, obj->type + 1, &Eff02_MotionRef);
-    obj->hitList = Eff02_Vals088[obj->hitListNo];
+    obj->area = em->area;
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) em, obj->type + 1, &EmContactAttack_RowsPtr);
+    obj->hitList = EmContactAttack_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
     if (obj->hitDelay != 0) {
-        obj->hitDelay += (s32) Math_Absf((s16) m->motionBlend[0] % 100) - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        obj->hitDelay += (s32) Math_Absf((s16) em->motionBlend[0] % 100) - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) obj->hitDelay < 0) {
             obj->hitDelay = 0;
         }
@@ -4213,9 +4295,14 @@ void Eff02_Setup(ObjAttach *obj)
     obj->drawSlotBuf = NULL;
 }
 
-void Eff02_Run(ObjAttach *obj)
+/*
+ * Ends the attack when the monster's motion changes, the hit window closes or
+ * the monster's task leaves its run phase; some attacks keep their window
+ * open.
+ */
+void EmContactAttack_Run(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
+    Em *em = &gEms[obj->idx];
 
     switch (obj->type) {
     case 2:
@@ -4232,146 +4319,165 @@ void Eff02_Run(ObjAttach *obj)
         obj->hitFrames = 99;
         break;
     }
-    if (m->motionId[0] != obj->ownerMotion || obj->hitPhase == 0 || m->taskPhase >= 2) {
+    if (em->motionId[0] != obj->ownerMotion || obj->hitPhase == 0 || em->taskPhase >= 2) {
         obj->hitPhase = 0;
-        obj->state = 2;
+        obj->state = ATTACH_END;
     } else if (obj->drawSlotBuf != NULL) {
         Vec_Copy(obj->drawSlotBuf->pos, obj->pos);
         OT_AddByDepth(gDrawOt32, obj->drawSlotBuf, 0x20U, 0);
     }
 }
 
-void Eff02_End(ObjAttach *obj)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void EmContactAttack_End(ObjAttach *obj)
 {
     obj->hitPhase = 0;
-    obj->state = 6;
+    obj->state = ATTACH_FREE;
     obj->visible = 0;
     if (obj->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) obj->drawSlot);
     }
 }
 
-void Eff02_Free(ObjAttach *obj)
+void EmContactAttack_Free(ObjAttach *obj)
 {
     ObjAttach_Free(obj);
 }
 
-void Eff02_DrawNop(ObjAttach *obj)
+void EmContactAttack_DrawNop(ObjAttach *obj)
 {
 }
 
-void Eff03_Create(void *obj, s32 kind, s8 arg2)
+/*
+ * Makes an ItemAttack: the item type (a row of ItemAttack_Modes and the other
+ * ItemAttack tables) thrown or put down by owner, a player. throwRow picks
+ * the throw's speeds (ItemAttack_SetupThrown). A thrown item starts at the
+ * hand (part record 18), a placed one at the feet; nothing is made for a
+ * thrown item outside the current area. Item 0x16 takes the second pool and
+ * plays its sound.
+ */
+void ItemAttack_Create(void *owner, s32 type, s8 throwRow)
 {
-    Player *pl = obj;
-    ObjHead *e = obj;
-    s16 n;
-    ObjAttach *o;
-    s8 *t = &Eff03_KindParams[kind];
+    Player *pl = owner;
+    ObjHead *head = owner;
+    s16 pool;
+    ObjAttach *item;
+    s8 *mode = &ItemAttack_Modes[type];
 
-    if (*t == 1 || *t == 2 || (u8)Obj_InCurrentArea(pl) != 0) {
-        switch (kind) {
+    if (*mode == ITEM_PLACED || *mode == ITEM_HOPPING || (u8)Obj_InCurrentArea(pl) != 0) {
+        switch (type) {
         case 0x16:
-            n = 1;
+            pool = 1;
             break;
         default:
-            n = 0;
+            pool = 0;
             break;
         }
-        if ((o = ObjAttach_Alloc(n)) != NULL) {
-            o->kind = 3;
-            o->type = kind;
-            o->stateVar1 = arg2;
-            o->update = Eff03_Update;
-            o->idx = e->index;
-            o->isEm = e->isEm;
-            o->ownerMotion = 0;
-            o->owner = obj;
-            o->yaw = e->rot[1];
-            o->rotX = 0;
-            o->rotY = e->rot[1];
-            o->rotZ = 0;
-            o->area = e->area;
-            if (Eff03_KindOn[kind] != 0) {
-                o->side = e->side;
+        if ((item = ObjAttach_Alloc(pool)) != NULL) {
+            item->kind = ATTACH_ITEM_ATTACK;
+            item->type = type;
+            item->stateVar1 = throwRow;
+            item->update = ItemAttack_Update;
+            item->idx = head->index;
+            item->isEm = head->isEm;
+            item->ownerMotion = 0;
+            item->owner = owner;
+            item->yaw = head->rot[1];
+            item->rotX = 0;
+            item->rotY = head->rot[1];
+            item->rotZ = 0;
+            item->area = head->area;
+            if (ItemAttack_HasSide[type] != 0) {
+                item->side = head->side;
             }
-            switch (*t) {
-            case 1:
-            case 2:
-                o->pos[0] = e->pos[0];
-                o->pos[1] = 21.0f + e->pos[1];
-                o->pos[2] = e->pos[2];
-                o->keep = 1;
+            switch (*mode) {
+            case ITEM_PLACED:
+            case ITEM_HOPPING:
+                item->pos[0] = head->pos[0];
+                item->pos[1] = 21.0f + head->pos[1];
+                item->pos[2] = head->pos[2];
+                item->keep = 1;
                 break;
             default:
-                o->pos[0] = ((f32 *) pl->partRecs[18])[28];
-                o->pos[1] = ((f32 *) pl->partRecs[18])[29];
-                o->pos[2] = ((f32 *) pl->partRecs[18])[30];
-                o->keep = 0;
+                item->pos[0] = ((f32 *) pl->partRecs[18])[28];
+                item->pos[1] = ((f32 *) pl->partRecs[18])[29];
+                item->pos[2] = ((f32 *) pl->partRecs[18])[30];
+                item->keep = 0;
                 break;
             }
-            if (o->type == 0x16 && gScene.area == o->area) {
-                Sound_PlaySeAtPosChecked(1, 0x91, 0, o->pos, 1, 0);
+            if (item->type == 0x16 && gScene.area == item->area) {
+                Sound_PlaySeAtPosChecked(1, 0x91, 0, item->pos, 1, 0);
             }
-            o->velX = 0;
-            o->velY = 0;
-            o->velZ = 0;
-            o->homingTurn = 0;
-            o->gravity = 0;
-            o->homingSpeed = 0;
-            o->randBits = e->stateRand;
+            item->velX = 0;
+            item->velY = 0;
+            item->velZ = 0;
+            item->homingTurn = 0;
+            item->gravity = 0;
+            item->homingSpeed = 0;
+            item->randBits = head->stateRand;
         }
     }
 }
 
-void Eff03_Update(ObjAttach *obj)
+/*
+ * The ItemAttack's per-frame update, by ObjAttach.state: a hit bursts items
+ * 20 and 24 (ItemAttack_OnHit); a deflected item bounces off or flies back
+ * (ItemAttack_Deflect).
+ */
+void ItemAttack_Update(ObjAttach *obj)
 {
     switch (obj->state) {
-    case 0:
-        Eff03_Setup(obj);
+    case ATTACH_SETUP:
+        ItemAttack_Setup(obj);
         break;
-    case 1:
-        Eff03_Run(obj);
+    case ATTACH_RUN:
+        ItemAttack_Run(obj);
         break;
-    case 2:
-        Eff03_End(obj);
+    case ATTACH_END:
+        ItemAttack_End(obj);
         break;
-    case 3:
-        Eff03_EndImpact(obj);
+    case ATTACH_HIT:
+        ItemAttack_OnHit(obj);
         break;
     case 4:
-        Eff03_End(obj);
+        ItemAttack_End(obj);
         break;
-    case 5:
-        Eff03_Hit(obj);
+    case ATTACH_DEFLECTED:
+        ItemAttack_Deflect(obj);
         break;
-    case 9:
-        Eff03_Hit(obj);
+    case ATTACH_DEFLECTED_AURA:
+        ItemAttack_Deflect(obj);
         break;
     case 7:
-        Eff03_End(obj);
+        ItemAttack_End(obj);
         break;
-    case 6:
-        Eff03_Free(obj);
+    case ATTACH_FREE:
+        ItemAttack_Free(obj);
         
     default:
         break;
     }
 }
 
-void Eff03_Setup(ObjAttach *obj)
+/*
+ * Sets the item up by its mode, then takes a draw slot (the second pool for a
+ * placed item) and runs the first frame; frees the object when no slot is
+ * left.
+ */
+void ItemAttack_Setup(ObjAttach *obj)
 {
     obj->state++;
     obj->visible = 1;
     obj->draw = NULL;
-    switch (Eff03_KindParams[obj->type]) {
-    case 1:
-        Eff03_SetupType1(obj);
+    switch (ItemAttack_Modes[obj->type]) {
+    case ITEM_PLACED:
+        ItemAttack_SetupPlaced(obj);
         break;
-    case 2:
-        Eff03_SetupType2(obj);
+    case ITEM_HOPPING:
+        ItemAttack_SetupHopping(obj);
         break;
     default:
-        Eff03_SetupDefault(obj);
+        ItemAttack_SetupThrown(obj);
         break;
     }
     Vec_Copy(obj->pos2, obj->pos);
@@ -4388,45 +4494,52 @@ void Eff03_Setup(ObjAttach *obj)
     }
     if (obj->drawSlot != -1) {
         obj->drawSlotBuf->owner = obj;
-        obj->drawSlotBuf->draw = Eff03_Draw;
-        Eff03_Run(obj);
+        obj->drawSlotBuf->draw = ItemAttack_Draw;
+        ItemAttack_Run(obj);
     } else {
         ObjAttach_Free(obj);
     }
 }
 
-void Eff03_SetupDefault(ObjAttach *obj)
+/*
+ * A thrown item: its hit row, its flags (0x12 hits no player, 8 is deflected
+ * by wind), and its velocity from the throw's speeds (ItemAttack_LobSpeeds
+ * for 0xC-0xF and 0x15, the other table when the thrower's motion is 0x1A1).
+ * Skill 0x2D throws 1.5 times as far, skill 0x47 adds an eighth to the
+ * element power; stateVar0 keeps both as bits 2 and 4.
+ */
+void ItemAttack_SetupThrown(ObjAttach *obj)
 {
     Player *owner = obj->owner;
-    f32 (*tbl)[2];
-    f32 *pz;
+    f32 (*speeds)[2];
+    f32 *forward;
     f32 in[3];
     f32 out[3];
-    f32 f;
+    f32 power;
 
     switch (obj->type) {
     case 0x12:
-        Player_TestSetFlags(obj, 0x400);
+        Player_TestSetFlags(obj, ATKF_NO_PLAYER);
         break;
     case 8:
-        Player_TestSetFlags(obj, 0x10);
+        Player_TestSetFlags(obj, ATKF_WIND_DEFLECTS);
         break;
     default:
         Player_TestSetFlags(obj, 0);
         break;
     }
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) owner, Eff03_Motions[obj->type], &Eff03_MotionRef);
-    obj->hitList = Eff03_Vals088[obj->hitListNo];
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) owner, ItemAttack_AttackRow[obj->type], &ItemAttack_RowsPtr);
+    obj->hitList = ItemAttack_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
-    if (Eff03_NoDefault[obj->type] == 0) {
+    if (ItemAttack_HitsInFlight[obj->type] == 0) {
         obj->hitPhase = 0;
     }
     switch (obj->type) {
     default:
         if (owner->motionId[0] == 0x1A1) {
-            tbl = Eff03_DefaultTblA;
+            speeds = ItemAttack_ThrowSpeedsAlt;
         } else {
-            tbl = Eff03_DefaultTblB;
+            speeds = ItemAttack_ThrowSpeeds;
         }
         obj->gravity = -0.8f;
         break;
@@ -4435,79 +4548,88 @@ void Eff03_SetupDefault(ObjAttach *obj)
     case 0xE:
     case 0xF:
     case 0x15:
-        tbl = Eff03_DefaultTblC;
+        speeds = ItemAttack_LobSpeeds;
         obj->gravity = -0.04f;
         break;
     }
     in[0] = 0.0f;
     in[1] = 0.0f;
-    pz = &in[2];
-    *pz = tbl[obj->stateVar1][0];
+    forward = &in[2];
+    *forward = speeds[obj->stateVar1][0];
     obj->stateVar0 = 0;
     if (Player_HasSkill(owner, 0x2D) == 1) {
-        *pz *= 1.5f;
+        *forward *= 1.5f;
         obj->stateVar0 |= 2;
     }
     if (Player_HasSkill(owner, 0x47) == 1) {
         obj->stateVar0 |= 4;
         if (obj->elementPower > 0) {
-            f = 1.125f * obj->elementPower;
-            if (f > 255.0f) {
-                f = 255.0f;
+            power = 1.125f * obj->elementPower;
+            if (power > 255.0f) {
+                power = 255.0f;
             }
-            obj->elementPower = f;
+            obj->elementPower = power;
         }
     }
     Vec_Rotate((f32 *) out, (f32 *) in, (f32 *) owner->worldMtx);
     obj->velX = 2.0f * out[0];
-    obj->velY = 2.0f * tbl[obj->stateVar1][1];
+    obj->velY = 2.0f * speeds[obj->stateVar1][1];
     obj->velZ = 2.0f * out[2];
     obj->homingTurn = 0;
     obj->homingSpeed = 0;
     obj->stateVar1 = 0;
 }
 
-void Eff03_InitParts(ObjAttach *obj)
+/*
+ * Item 0x16's two parts: a draw slot each from the second pool, at 5 and 1060
+ * above the item.
+ */
+void ItemAttack_InitParts(ObjAttach *obj)
 {
-    AttachPart *e = (AttachPart *) obj->buf;
+    AttachPart *part = (AttachPart *) obj->buf;
     s16 i;
 
-    for (i = 0; i < 2; i++, e++) {
-        e->idx = i;
-        e->unk08 = 0;
-        e->unk0A = 0;
-        e->slot = DrawSlotB_Alloc();
-        e->unk0C = 0;
-        if (e->slot != -1) {
-            e->node = DrawSlotB_Get(e->slot);
-            e->node->owner = obj;
-            e->node->part = i;
-            e->node->draw = Eff03_DrawPart;
-            Vec_Copy(e->node->pos, obj->pos);
-            switch (e->idx) {
+    for (i = 0; i < 2; i++, part++) {
+        part->idx = i;
+        part->frame = 0;
+        part->time = 0;
+        part->slot = DrawSlotB_Alloc();
+        part->unk0C = 0;
+        if (part->slot != -1) {
+            part->node = DrawSlotB_Get(part->slot);
+            part->node->owner = obj;
+            part->node->part = i;
+            part->node->draw = ItemAttack_DrawPart;
+            Vec_Copy(part->node->pos, obj->pos);
+            switch (part->idx) {
             case 0:
-                e->node->pos[1] += 5.0f;
+                part->node->pos[1] += 5.0f;
                 break;
             case 1:
-                e->node->pos[1] += 1060.0f;
+                part->node->pos[1] += 1060.0f;
                 break;
             }
         } else {
-            e->node = NULL;
+            part->node = NULL;
         }
     }
 }
 
-void Eff03_SetupType1(ObjAttach *obj)
+/*
+ * A placed item: no hit of its own; aux starts at 75 (the fuse's blink).
+ * Skill 0x48 sets stateVar0 1 (passed to the burst). Item 0x16 makes its
+ * parts, the others a ground effect.
+ */
+void ItemAttack_SetupPlaced(ObjAttach *obj)
 {
     void *owner = obj->owner;
 
     Player_TestSetFlags(obj, 0);
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) owner, Eff03_Motions[obj->type], &Eff03_MotionRef);
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) owner, ItemAttack_AttackRow[obj->type], &ItemAttack_RowsPtr);
     obj->hitList = 0;
     obj->hurtList = 0;
     obj->hitPhase = 0;
-    if (Player_HasSkill(owner, 0x48) == 1) {
+    if (Player_HasSkill(owner, SKILL_COMBINE_SURE) == 1) {
         obj->stateVar0 = 1;
     } else {
         obj->stateVar0 = 0;
@@ -4516,7 +4638,7 @@ void Eff03_SetupType1(ObjAttach *obj)
     obj->aux = 0x4B;
     switch (obj->type) {
     case 0x16:
-        Eff03_InitParts(obj);
+        ItemAttack_InitParts(obj);
         break;
     default:
         if (obj->area == gScene.area) {
@@ -4526,17 +4648,21 @@ void Eff03_SetupType1(ObjAttach *obj)
     }
 }
 
-void Eff03_SetupType2(ObjAttach *obj)
+/*
+ * A hopping item: its hit row, no hit until it jumps; SKILL_COMBINE_SURE sets
+ * stateVar0 1 (passed to the burst).
+ */
+void ItemAttack_SetupHopping(ObjAttach *obj)
 {
-    s32 p;
+    s32 owner;
 
-    p = (s32) obj->owner;
+    owner = (s32) obj->owner;
     Player_TestSetFlags(obj, 0);
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, p, Eff03_Motions[obj->type], &Eff03_MotionRef);
-    obj->hitList = Eff03_Vals088[obj->hitListNo];
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, owner, ItemAttack_AttackRow[obj->type], &ItemAttack_RowsPtr);
+    obj->hitList = ItemAttack_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
     obj->hitPhase = 0;
-    if (Player_HasSkill((Player *) p, 0x48) == 1) {
+    if (Player_HasSkill((Player *) owner, SKILL_COMBINE_SURE) == 1) {
         obj->stateVar0 = 1;
     } else {
         obj->stateVar0 = 0;
@@ -4545,27 +4671,31 @@ void Eff03_SetupType2(ObjAttach *obj)
     obj->aux = 0;
 }
 
-void Eff03_Run(ObjAttach *obj)
+/*
+ * Moves the item: flying back (stateVar1 0xFF), bouncing off (0xFE, ended
+ * after 30 frames) or by its mode; then draws it at its position.
+ */
+void ItemAttack_Run(ObjAttach *obj)
 {
 
     Vec_Copy(obj->pos2, obj->pos);
     if (obj->stateVar1 == 0xFF) {
-        Eff03_Fall(obj);
+        ItemAttack_FlyBack(obj);
     } else if (obj->stateVar1 == 0xFE) {
-        if (Eff03_BounceStep(obj) & 0xFF) {
-            obj->state = 2;
+        if (ItemAttack_BounceOff(obj) & 0xFF) {
+            obj->state = ATTACH_END;
             return;
         }
     } else {
-        switch (Eff03_KindParams[obj->type]) {
+        switch (ItemAttack_Modes[obj->type]) {
         default:
-            Eff03_RunDefault(obj);
+            ItemAttack_RunThrown(obj);
             break;
-        case 1:
-            Eff03_RunType1(obj);
+        case ITEM_PLACED:
+            ItemAttack_RunPlaced(obj);
             break;
-        case 2:
-            Eff03_RunType2(obj);
+        case ITEM_HOPPING:
+            ItemAttack_RunHopping(obj);
             break;
         }
     }
@@ -4575,11 +4705,17 @@ void Eff03_Run(ObjAttach *obj)
     }
 }
 
-void Eff03_RunDefault(ObjAttach *obj)
+/*
+ * A thrown item flies; ownerMotion counts its frames. Item 1 bursts after 13
+ * frames (8 with skill 0x2D), item 9 after 16; items 0xC-0xF and 0x15 fall
+ * faster after 15 frames. On the floor it ends, leaving its mark (items 0, 5,
+ * 7, 11, 17 and 23 make a stage object, and 11, 17 and 23 their burst).
+ */
+void ItemAttack_RunThrown(ObjAttach *obj)
 {
     Player *owner = obj->owner;
-    f32 y;
-    s16 lim;
+    f32 floorY;
+    s16 fuseFrames;
 
     MoveObj_Integrate((struct MoveObj *)obj);
     if (obj->type == 1) {
@@ -4587,30 +4723,30 @@ void Eff03_RunDefault(ObjAttach *obj)
     } else {
         obj->hitFrames = 0x63;
     }
-    y = AreaGrid2_GetFloorYFiltered(obj->pos);
+    floorY = AreaGrid2_GetFloorYFiltered(obj->pos);
     obj->ownerMotion++;
     switch (obj->type) {
     case 1:
-        lim = (obj->stateVar0 & 2) ? 8 : 13;
-        if (lim <= obj->ownerMotion) {
+        fuseFrames = (obj->stateVar0 & 2) ? 8 : 13;
+        if (fuseFrames <= obj->ownerMotion) {
             if (obj->side != 0) {
-                Eff09_Create(obj->owner, obj->pos, 0x1B);
+                Explosion_Create(obj->owner, obj->pos, 0x1B);
             }
             if ((u8)Obj_InCurrentArea(owner) != 0) {
                 StageObj_K0E_CreateOwned(obj->pos, 4, 1.0f, owner);
                 Sound_PlaySeAtPosChecked(1, 0x47, 0, obj->pos, 0xF, 0);
             }
-            obj->state = 2;
+            obj->state = ATTACH_END;
             return;
         }
         break;
     case 9:
         if (obj->ownerMotion >= 16) {
-            Eff09_Create(obj->owner, obj->pos, 0xD);
+            Explosion_Create(obj->owner, obj->pos, 0xD);
             if (obj->area == gScene.area) {
                 StageObj_K0F_CreateAt(obj->pos, 4, 0, 0.5f);
             }
-            obj->state = 2;
+            obj->state = ATTACH_END;
             return;
         }
         break;
@@ -4631,9 +4767,9 @@ void Eff03_RunDefault(ObjAttach *obj)
         }
         break;
     }
-    if (obj->pos[1] <= y) {
-        if (obj->pos[1] > y - 100.0f) {
-            obj->pos[1] = y;
+    if (obj->pos[1] <= floorY) {
+        if (obj->pos[1] > floorY - 100.0f) {
+            obj->pos[1] = floorY;
         }
         switch (obj->type) {
         case 0:
@@ -4650,63 +4786,72 @@ void Eff03_RunDefault(ObjAttach *obj)
         case 11:
             if (obj->area == gScene.area) {
                 StageObj_K0C_Create(obj->pos, 0, 5, 3);
-                Eff09_Create(obj->owner, obj->pos, 0x13);
+                Explosion_Create(obj->owner, obj->pos, 0x13);
             }
             break;
         case 17:
             if (obj->area == gScene.area) {
                 StageObj_K0C_Create(obj->pos, 0, 5, 4);
-                Eff09_Create(obj->owner, obj->pos, 0x1A);
+                Explosion_Create(obj->owner, obj->pos, 0x1A);
             }
             break;
         case 23:
             if (obj->area == gScene.area) {
                 StageObj_K0C_Create(obj->pos, 0, 5, 5);
-                Eff09_Create(obj->owner, obj->pos, 0x24);
+                Explosion_Create(obj->owner, obj->pos, 0x24);
             }
             break;
         }
         obj->hitPhase = 0;
         obj->visible = 0;
-        obj->state = 2;
+        obj->state = ATTACH_END;
     }
 }
 
-void Eff03_AnimSprites(ObjAttach *obj)
+/*
+ * Steps item 0x16's two parts: frames 1-4 in a loop, the low part restarting
+ * after 16 frames, the high one holding at 65; draws them.
+ */
+void ItemAttack_AnimParts(ObjAttach *obj)
 {
-    AttachSprite *e = (AttachSprite *) (obj)->buf;
+    AttachPart *part = (AttachPart *) obj->buf;
     s16 i;
 
-    for (i = 0; i < 2; i++, e++) {
-        e->frame++;
-        e->time++;
-        switch (e->kind) {
+    for (i = 0; i < 2; i++, part++) {
+        part->frame++;
+        part->time++;
+        switch (part->idx) {
         case 0:
-            if (e->frame > 4) {
-                e->frame = 1;
+            if (part->frame > 4) {
+                part->frame = 1;
             }
-            if (e->time > 16) {
-                e->frame = 1;
+            if (part->time > 16) {
+                part->frame = 1;
             }
             break;
         case 1:
-            if (e->frame > 4) {
-                e->frame = 1;
+            if (part->frame > 4) {
+                part->frame = 1;
             }
-            if (e->time > 0x41) {
-                e->time = 0x41;
+            if (part->time > 0x41) {
+                part->time = 0x41;
             }
             break;
         }
-        if (e->frame > 0 && e->time > 0 && e->draw != NULL) {
-            OT_AddByDepth(gDrawOtSorted, e->draw, 0x40, 0);
+        if (part->frame > 0 && part->time > 0 && part->node != NULL) {
+            OT_AddByDepth(gDrawOtSorted, part->node, 0x40, 0);
         }
     }
 }
 
-void Eff03_RunType1(ObjAttach *obj)
+/*
+ * A placed item's fuse: it bursts after 75 frames (item 0x10 a larger burst,
+ * 0x16 its own effects). Until then it ticks every 15 frames, smokes, and
+ * from frame 55 blinks faster (aux, scaled by 0.8 each blink, is the gap).
+ */
+void ItemAttack_RunPlaced(ObjAttach *obj)
 {
-    s16 n;
+    s16 frames;
 
     if (++obj->ownerMotion >= 0x4B) {
         if (obj->area == gScene.area) {
@@ -4714,35 +4859,35 @@ void Eff03_RunType1(ObjAttach *obj)
             case 0x10:
                 obj->visible ^= 1;
                 StageObj_K0E_CreateScaled(obj->pos, 0, 1.5f);
-                Eff09_CreateAt(obj->pos, 0x14, obj->area, obj->stateVar0);
+                Explosion_CreateAt(obj->pos, 0x14, obj->area, obj->stateVar0);
                 break;
             case 0x16:
                 StageObj_K29_CreateAtDefault(obj->pos, 0xD, 1.5f);
                 StageObj_K29_CreateAtDefault(obj->pos, 0xE, 1.5f);
-                Eff09_CreateAt(obj->pos, 0x21, obj->area, 0);
+                Explosion_CreateAt(obj->pos, 0x21, obj->area, 0);
                 Sound_PlaySeAtPosChecked(1, 0x93, 0, obj->pos, 1, 0);
                 break;
             default:
                 obj->visible ^= 1;
                 StageObj_K0E_CreateScaled(obj->pos, 0, 1.0f);
-                Eff09_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
+                Explosion_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
                 break;
             }
         }
-        obj->state = 2;
+        obj->state = ATTACH_END;
         return;
     }
     switch (obj->type) {
     default:
     case 4:
     case 0x10:
-        n = obj->ownerMotion;
-        if (n >= 0x37) {
+        frames = obj->ownerMotion;
+        if (frames >= 0x37) {
             obj->visible ^= 1;
             break;
         }
         if (obj->stateVar1 == 0) {
-            if (0.8f * obj->aux > (f32) (0x37 - n)) {
+            if (0.8f * obj->aux > (f32) (0x37 - frames)) {
                 obj->visible ^= 1;
                 if (0x37 - obj->ownerMotion > 2) {
                     obj->stateVar1 = 2;
@@ -4756,8 +4901,8 @@ void Eff03_RunType1(ObjAttach *obj)
             if (obj->ownerMotion == 1) {
                 Sound_PlaySeAtPosChecked(1, 0x24, 0, obj->pos, 1, 0);
             }
-            n = obj->ownerMotion;
-            if (n != 0 && n % 15 == 0) {
+            frames = obj->ownerMotion;
+            if (frames != 0 && frames % 15 == 0) {
                 Sound_PlaySeAtPosChecked(1, 0x25, 0, obj->pos, 1, 0);
             }
             if (obj->ownerMotion & 1) {
@@ -4769,17 +4914,22 @@ void Eff03_RunType1(ObjAttach *obj)
         if (obj->ownerMotion == 0x3E && gScene.area == obj->area) {
             Sound_PlaySeAtPosChecked(1, 0x92, 0, obj->pos, 1, 0);
         }
-        Eff03_AnimSprites(obj);
+        ItemAttack_AnimParts(obj);
         break;
     }
 }
 
-void Eff03_RunType2(ObjAttach *obj)
+/*
+ * A hopping item: after 26 frames it jumps (item 0x18 also forward along its
+ * yaw), opens its hit 7 frames later, spins, and bursts 18 frames after the
+ * jump.
+ */
+void ItemAttack_RunHopping(ObjAttach *obj)
 {
-    f32 v[3];
-    u16 a;
-    u16 b;
-    s16 n;
+    f32 effectPos[3];
+    u16 yaw;
+    u16 pitch;
+    s16 frames;
 
     obj->ownerMotion++;
     MoveObj_Integrate((struct MoveObj *)obj);
@@ -4795,10 +4945,10 @@ void Eff03_RunType2(ObjAttach *obj)
                 Vec_RotateY(&obj->velX, (6.2831855f * obj->rotY) / 65536.0f);
             }
             if (obj->area == gScene.area) {
-                v[0] = obj->pos[0];
-                v[1] = obj->pos[1] - 20.0f;
-                v[2] = obj->pos[2];
-                Effect0D_SpawnAt(v, 7, 0.5f);
+                effectPos[0] = obj->pos[0];
+                effectPos[1] = obj->pos[1] - 20.0f;
+                effectPos[2] = obj->pos[2];
+                Effect0D_SpawnAt(effectPos, 7, 0.5f);
             }
         }
         break;
@@ -4811,21 +4961,21 @@ void Eff03_RunType2(ObjAttach *obj)
         obj->rotX += 0x2000;
         obj->rotY += 0x2000;
         if (obj->area == gScene.area) {
-            n = obj->ownerMotion;
-            if (n != 0 && n % 15 == 0) {
+            frames = obj->ownerMotion;
+            if (frames != 0 && frames % 15 == 0) {
                 Sound_PlaySeAtPosChecked(1, 0x25, 0, obj->pos, 1, 0);
             }
             if (obj->ownerMotion & 1) {
-                Vec_DirToAngles(&obj->velX, (s16 *) &a, (s16 *) &b);
-                Effect02_SpawnRandomAngle(a + 0x8000, b, 2, obj->pos);
+                Vec_DirToAngles(&obj->velX, (s16 *) &yaw, (s16 *) &pitch);
+                Effect02_SpawnRandomAngle(yaw + 0x8000, pitch, 2, obj->pos);
             }
         }
         if (obj->ownerMotion >= 0x12) {
             if (obj->area == gScene.area) {
                 StageObj_K0E_CreateScaled(obj->pos, 0, 1.0f);
-                Eff09_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
+                Explosion_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
             }
-            obj->state = 2;
+            obj->state = ATTACH_END;
         }
         break;
     }
@@ -4834,34 +4984,41 @@ void Eff03_RunType2(ObjAttach *obj)
     }
 }
 
-void Eff03_EndImpact(ObjAttach *obj)
+/* A hit: items 20 and 24 burst where they are; every item then ends. */
+void ItemAttack_OnHit(ObjAttach *obj)
 {
 
     switch (obj->type) {
     case 20:
         if (obj->area == gScene.area) {
             StageObj_K0E_CreateScaled(obj->pos, 0, 1.0f);
-            Eff09_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
+            Explosion_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
         }
         break;
     case 24:
         if (obj->area == gScene.area) {
             StageObj_K0E_CreateScaled(obj->pos, 0, 1.0f);
-            Eff09_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
+            Explosion_CreateAt(obj->pos, 0, obj->area, obj->stateVar0);
         }
         break;
     }
-    Eff03_End(obj);
+    ItemAttack_End(obj);
 }
 
-void Eff03_Hit(ObjAttach *obj)
+/*
+ * A deflected item (ATTACH_DEFLECTED, ATTACH_DEFLECTED_AURA). Either it
+ * bounces off at a random angle (stateVar1 0xFE), or, when func_364AE0 says
+ * so, the monster in targetEm bats it back: it becomes that monster's attack
+ * (row 0xC) flying at its thrower's chest (stateVar1 0xFF).
+ */
+void ItemAttack_Deflect(ObjAttach *obj)
 {
     Em *owner = obj->owner;
-    Em *t = obj->targetEm;
-    f32 v[3];
-    f32 d[3];
-    u16 a;
-    u16 b;
+    Em *batter = obj->targetEm;
+    f32 aim[3];
+    f32 dir[3];
+    u16 yaw;
+    u16 pitch;
 
     obj->step = 0;
     obj->stateVar0 = 0;
@@ -4870,33 +5027,33 @@ void Eff03_Hit(ObjAttach *obj)
     if (func_364AE0(obj, obj->randBits) == 0) {
         obj->stateVar1 = 0xFE;
         obj->hitPhase = 0;
-        Vec_Diff(d, obj->pos2, obj->pos);
-        Vec_DirToAngles(d, (s16 *) &a, (s16 *) &b);
-        a += -(Rand_Next(1) & 0x7FF) - 0x200;
-        b += (Rand_Next(1) & 0x1FFF) - 0x1000;
+        Vec_Diff(dir, obj->pos2, obj->pos);
+        Vec_DirToAngles(dir, (s16 *) &yaw, (s16 *) &pitch);
+        yaw += -(Rand_Next(1) & 0x7FF) - 0x200;
+        pitch += (Rand_Next(1) & 0x1FFF) - 0x1000;
         obj->velX = 0.0f;
         obj->velY = Rand_Next(1) & 7;
         obj->velZ = 7.0f + (Rand_Next(1) & 3);
         obj->homingTurn = 0.0f;
         obj->gravity = -1.5f - (Rand_Next(1) & 0x1F) / 32.0f;
         obj->homingSpeed = 0.0f;
-        Vec_RotateX(&obj->velX, (6.2831855f * a) / 65536.0f);
-        Vec_RotateY(&obj->velX, (6.2831855f * b) / 65536.0f);
+        Vec_RotateX(&obj->velX, (6.2831855f * yaw) / 65536.0f);
+        Vec_RotateY(&obj->velX, (6.2831855f * pitch) / 65536.0f);
     } else {
         obj->stateVar1 = 0xFF;
-        obj->idx = t->index;
-        obj->isEm = t->isEm;
-        obj->owner = t;
+        obj->idx = batter->index;
+        obj->isEm = batter->isEm;
+        obj->owner = batter;
         Player_TestSetFlags(obj, 0);
-        MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) t, 0xC, &Eff03_MotionRef);
-        obj->hitList = Eff03_Vals088[obj->hitListNo];
+        MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) batter, 0xC, &ItemAttack_RowsPtr);
+        obj->hitList = ItemAttack_HitShapes[obj->hitListNo];
         obj->hurtList = 0;
-        Vec_Copy(v, &owner->posX);
-        v[1] += 150.0f;
-        Vec_Diff(d, v, obj->pos);
-        Vec_DirToAngles(d, (s16 *) &a, (s16 *) &b);
-        obj->rotX = a;
-        obj->rotY = b;
+        Vec_Copy(aim, &owner->posX);
+        aim[1] += 150.0f;
+        Vec_Diff(dir, aim, obj->pos);
+        Vec_DirToAngles(dir, (s16 *) &yaw, (s16 *) &pitch);
+        obj->rotX = yaw;
+        obj->rotY = pitch;
         obj->yaw = obj->rotY;
         obj->velX = 0.0f;
         obj->velY = 0.0f;
@@ -4911,11 +5068,14 @@ void Eff03_Hit(ObjAttach *obj)
             Sound_PlaySeAtPosChecked(1, 0x96, 0, obj->pos, 6, 0);
         }
     }
-    obj->state = 1;
-    Eff03_Run(obj);
+    obj->state = ATTACH_RUN;
+    ItemAttack_Run(obj);
 }
 
-void Eff03_Fall(ObjAttach *obj)
+/*
+ * A batted-back item flies with its window open until it reaches the floor.
+ */
+void ItemAttack_FlyBack(ObjAttach *obj)
 {
     obj->hitFrames = 99;
     if (++obj->ownerMotion < 0) {
@@ -4925,18 +5085,22 @@ void Eff03_Fall(ObjAttach *obj)
     }
     if (obj->pos[1] <= AreaGrid2_GetFloorYFiltered(obj->pos)) {
         obj->hitFrames = 0;
-        obj->state = 2;
+        obj->state = ATTACH_END;
     }
 }
 
-s32 Eff03_BounceStep(ObjAttach *obj)
+/*
+ * A bouncing item tumbles for 30 frames without a hit; returns 1 when it is
+ * over.
+ */
+s32 ItemAttack_BounceOff(ObjAttach *obj)
 {
-    s16 t;
+    s16 frames;
 
     obj->hitPhase = 0;
-    t = obj->ownerMotion + 1;
-    obj->ownerMotion = t;
-    if (t > 30) {
+    frames = obj->ownerMotion + 1;
+    obj->ownerMotion = frames;
+    if (frames > 30) {
         return 1;
     }
     MoveObj_Integrate((struct MoveObj *)obj);
@@ -4945,23 +5109,28 @@ s32 Eff03_BounceStep(ObjAttach *obj)
     return 0;
 }
 
-void Eff03_FreeDrawSlots(ObjAttach *obj)
+/* Frees item 0x16's two parts' draw slots. */
+void ItemAttack_FreeDrawSlots(ObjAttach *obj)
 {
-    u8 *p = obj->buf;
+    AttachPart *part = (AttachPart *) obj->buf;
     s16 i;
 
     for (i = 0; i < 2; i++) {
-        if (*(s32 *) (p + 4) != 0) {
-            DrawSlotB_Free(*(s16 *) p);
+        if (part->node != NULL) {
+            DrawSlotB_Free(part->slot);
         }
-        p += 0x10;
+        part++;
     }
 }
 
-void Eff03_End(ObjAttach *obj)
+/*
+ * Hides the item, frees its draw slot (and item 0x16's parts) and frees it on
+ * the next update.
+ */
+void ItemAttack_End(ObjAttach *obj)
 {
     obj->hitPhase = 0;
-    obj->state = 6;
+    obj->state = ATTACH_FREE;
     obj->visible = 0;
     if (obj->drawSlotBuf != NULL) {
         if (obj->keep == 1) {
@@ -4972,71 +5141,82 @@ void Eff03_End(ObjAttach *obj)
     }
     switch (obj->type) {
     case 0x16:
-        Eff03_FreeDrawSlots(obj);
+        ItemAttack_FreeDrawSlots(obj);
         break;
     }
 }
 
-void Eff03_Free(ObjAttach *obj)
+void ItemAttack_Free(ObjAttach *obj)
 {
     ObjAttach_Free(obj);
 }
 
-void Eff03_DrawPart(DrawSlot *n)
+/*
+ * Draws one of item 0x16's parts while it is shown in the current area: part
+ * 0 faces the camera, part 1 turns with the camera's yaw and steps through
+ * the four quarters of its texture; both are scaled and coloured by their
+ * keys.
+ */
+void ItemAttack_DrawPart(DrawSlot *slot)
 {
-    f32 m[16];
-    f32 t[16];
+    f32 mtx[16];
+    f32 uvMtx[16];
     f32 scale[3];
     f32 rot[3];
     u32 col;
-    ObjAttach *obj = n->owner;
-    AttachPart *e = (AttachPart *) obj->buf + n->part;
+    ObjAttach *obj = slot->owner;
+    AttachPart *part = (AttachPart *) obj->buf + slot->part;
     ModelMat *tex;
     Model *stage = gCommonModels[0];
     ModelMatSet *mdl;
-    u8 k;
+    u8 facing;
 
-    if (gScene.area == obj->area && obj->visible != 0 && e->unk08 > 0) {
+    if (gScene.area == obj->area && obj->visible != 0 && part->frame > 0) {
         tex = stage->mats;
-        switch (e->idx) {
+        switch (part->idx) {
         case 0:
-            Key_LerpVec2(Eff03_ScaleKeysA, scale, e->unk08);
-            Color_EvalKeys((s32 *) Eff03_ColorKeysA, e->unk0A, &col);
-            k = 1;
+            Key_LerpVec2(ItemAttack_ScaleKeysA, scale, part->frame);
+            Color_EvalKeys((s32 *) ItemAttack_ColorKeysA, part->time, &col);
+            facing = 1;
             break;
         case 1:
-            Key_LerpVec2(Eff03_ScaleKeysB, scale, e->unk08);
-            Color_EvalKeys((s32 *) Eff03_ColorKeysB, e->unk0A, &col);
-            Mtx_Translation(t, 0.25f * (e->unk08 & 1), 0.0625f * ((e->unk08 >> 1) & 1), 0.0f);
-            Gs_SetState(0x19, (s32) t);
-            k = 2;
+            Key_LerpVec2(ItemAttack_ScaleKeysB, scale, part->frame);
+            Color_EvalKeys((s32 *) ItemAttack_ColorKeysB, part->time, &col);
+            Mtx_Translation(uvMtx, 0.25f * (part->frame & 1), 0.0625f * ((part->frame >> 1) & 1), 0.0f);
+            Gs_SetState(0x19, (s32) uvMtx);
+            facing = 2;
             break;
         default:
             return;
         }
-        Mtx_FromScaleRotTrans(scale, rot, n->pos, 0, m);
-        mdl = &stage->matSets[Eff03_PartModels[e->idx]];
-        switch (k) {
+        Mtx_FromScaleRotTrans(scale, rot, slot->pos, 0, mtx);
+        mdl = &stage->matSets[ItemAttack_PartModels[part->idx]];
+        switch (facing) {
         case 0:
             break;
         case 1:
-            Vec_RotateSelf(m, gCamMatrix);
+            Vec_RotateSelf(mtx, gCamMatrix);
             break;
         case 2:
-            Vec_RotateSelf(m, gCamYawMtx);
+            Vec_RotateSelf(mtx, gCamYawMtx);
             break;
         }
         Gs_SetState(0x6C, 0);
-        Effect_DrawModel(mdl, m, col, 2, tex);
+        Effect_DrawModel(mdl, mtx, col, 2, tex);
         Gs_SetState(0x6C, 1);
     }
 }
 
-void Eff03_Draw(DrawSlot *n)
+/*
+ * Draws the item's model (ItemAttack_Models[type]) at its position: a thrown
+ * item tumbles (0xC-0xF and 0x15 keep their yaw), a placed one turns by its
+ * yaw, a hopping one by its spin.
+ */
+void ItemAttack_Draw(DrawSlot *slot)
 {
-    f32 m[16];
+    f32 mtx[16];
     Model *stage = gCommonModels[0];
-    ObjAttach *obj = n->owner;
+    ObjAttach *obj = slot->owner;
     ModelMat *mats;
     ModelMatSet *mdl;
     ModelMat *mat;
@@ -5044,42 +5224,42 @@ void Eff03_Draw(DrawSlot *n)
 
     if (obj->area == gScene.area && stage != NULL && stage->active != 0) {
         mats = stage->mats;
-        Mtx_Translation(m, n->pos[0], n->pos[1], n->pos[2]);
-        switch (Eff03_KindParams[obj->type]) {
-        case 0:
+        Mtx_Translation(mtx, slot->pos[0], slot->pos[1], slot->pos[2]);
+        switch (ItemAttack_Modes[obj->type]) {
+        case ITEM_THROWN:
             switch (obj->type) {
             case 0xC:
             case 0xD:
             case 0xE:
             case 0xF:
             case 0x15:
-                Mtx_RotateXYZ(m, 0.0f, (6.2831855f * (u16) obj->yaw) / 65536.0f, 0.0f);
+                Mtx_RotateXYZ(mtx, 0.0f, (6.2831855f * (u16) obj->yaw) / 65536.0f, 0.0f);
                 break;
             default:
-                Mtx_RotateXYZ(m, (6.2831855f * ((obj->ownerMotion << 11) & 0xFFFF)) / 65536.0f, 0.0f, 0.0f);
+                Mtx_RotateXYZ(mtx, (6.2831855f * ((obj->ownerMotion << 11) & 0xFFFF)) / 65536.0f, 0.0f, 0.0f);
                 break;
             }
             break;
-        case 1:
-            Mtx_RotateY(m, (6.2831855f * obj->rotY) / 65536.0f);
+        case ITEM_PLACED:
+            Mtx_RotateY(mtx, (6.2831855f * obj->rotY) / 65536.0f);
             break;
-        case 2:
-            Mtx_RotateX(m, (6.2831855f * obj->rotX) / 65536.0f);
-            Mtx_RotateY(m, (6.2831855f * obj->rotY) / 65536.0f);
+        case ITEM_HOPPING:
+            Mtx_RotateX(mtx, (6.2831855f * obj->rotX) / 65536.0f);
+            Mtx_RotateY(mtx, (6.2831855f * obj->rotY) / 65536.0f);
             break;
         }
-        mdl = stage->matSets + Eff03_Models[obj->type];
-        Gs_SetState(0x1A, (s32) m);
+        mdl = stage->matSets + ItemAttack_Models[obj->type];
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         if (mdl != NULL && mdl->id != -1) {
             for (i = 0; i < mdl->count; i++) {
                 mat = &mats[mdl->mat[i]];
-                if (i == 1 && Eff03_Models[obj->type] == 0x37) {
+                if (i == 1 && ItemAttack_Models[obj->type] == 0x37) {
                     mat->alpha = 0.0f;
                 }
                 mat->rgb[0] = 1.0f;
                 mat->rgb[1] = 1.0f;
                 mat->rgb[2] = 1.0f;
-                Gs_SetState((u8) (i + 0x3A), (s32) mat);
+                Gs_SetState((u8) RS_MATERIAL(i), (s32) mat);
             }
             Draw_ApplyStates(mdl->flags);
             Model_Draw(mdl->id, 0);
@@ -5088,15 +5268,19 @@ void Eff03_Draw(DrawSlot *n)
     }
 }
 
-void Eff04_Create(Em *em, s8 kind)
+/*
+ * Makes a FatalisAttack for em with the row attackId of FatalisAttack_Rows,
+ * if a player is in em's area.
+ */
+void FatalisAttack_Create(Em *em, s8 attackId)
 {
     ObjAttach *obj;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((obj = ObjAttach_Alloc(0)) != NULL) {
-            obj->kind = 4;
-            obj->type = kind;
-            obj->update = Eff04_Update;
+            obj->kind = ATTACH_FATALIS_ATTACK;
+            obj->type = attackId;
+            obj->update = FatalisAttack_Update;
             obj->idx = em->index;
             obj->isEm = em->isEm;
             obj->ownerMotion = em->motionId[0];
@@ -5107,21 +5291,25 @@ void Eff04_Create(Em *em, s8 kind)
             obj->rotZ = em->rotZ;
             obj->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
         }
     }
 }
 
-void Eff04_CreateOnObj(StageObj *s, s8 kind)
+/*
+ * FatalisAttack_Create at the stage object src's position, for src's owner
+ * (without the area check).
+ */
+void FatalisAttack_CreateOnObj(StageObj *src, s8 attackId)
 {
     ObjAttach *obj;
     Em *em;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        em = s->owner;
-        obj->kind = 4;
-        obj->type = kind;
-        obj->update = Eff04_Update;
+        em = src->owner;
+        obj->kind = ATTACH_FATALIS_ATTACK;
+        obj->type = attackId;
+        obj->update = FatalisAttack_Update;
         obj->idx = em->index;
         obj->isEm = em->isEm;
         obj->ownerMotion = em->motionId[0];
@@ -5130,73 +5318,78 @@ void Eff04_CreateOnObj(StageObj *s, s8 kind)
         obj->rotX = em->rotX;
         obj->rotY = em->rotY;
         obj->rotZ = em->rotZ;
-        obj->pos[0] = s->pos[0];
-        obj->pos[1] = s->pos[1];
-        obj->pos[2] = s->pos[2];
+        obj->pos[0] = src->pos[0];
+        obj->pos[1] = src->pos[1];
+        obj->pos[2] = src->pos[2];
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
         obj->step = 1;
     }
 }
 
-void Eff04_Update(ObjAttach *obj)
+/* The FatalisAttack's per-frame update, by ObjAttach.state. */
+void FatalisAttack_Update(ObjAttach *obj)
 {
     switch (obj->state) {
-    case 0:
-        Eff04_Setup(obj);
+    case ATTACH_SETUP:
+        FatalisAttack_Setup(obj);
         break;
-    case 1:
-        Eff04_Run(obj);
+    case ATTACH_RUN:
+        FatalisAttack_Run(obj);
         break;
-    case 2:
-        Eff04_End(obj);
+    case ATTACH_END:
+        FatalisAttack_End(obj);
         break;
-    case 3:
-        Eff04_Run(obj);
+    case ATTACH_HIT:
+        FatalisAttack_Run(obj);
         break;
     case 4:
-        Eff04_End(obj);
+        FatalisAttack_End(obj);
         break;
-    case 5:
-        Eff04_End(obj);
+    case ATTACH_DEFLECTED:
+        FatalisAttack_End(obj);
         break;
-    case 9:
-        Eff04_End(obj);
+    case ATTACH_DEFLECTED_AURA:
+        FatalisAttack_End(obj);
         break;
     case 7:
-        Eff04_End(obj);
+        FatalisAttack_End(obj);
         break;
-    case 6:
-        Eff04_Free(obj);
+    case ATTACH_FREE:
+        FatalisAttack_Free(obj);
         
     default:
         break;
     }
 }
 
-void Eff04_Setup(ObjAttach *obj)
+/*
+ * Sets the attack up from its row; attack 3 counts hitDelay from the
+ * monster's second motion layer.
+ */
+void FatalisAttack_Setup(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
-    s32 a;
-    s32 b;
+    Em *em = &gEms[obj->idx];
+    s32 blendFrames;
+    s32 motionFrame;
 
     obj->state++;
     obj->visible = 1;
     obj->draw = NULL;
-    Player_TestSetFlags(obj, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) m, obj->type, &Eff04_MotionRef);
-    obj->hitList = Eff04_Vals088[obj->hitListNo];
+    Player_TestSetFlags(obj, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) em, obj->type, &FatalisAttack_RowsPtr);
+    obj->hitList = FatalisAttack_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
-    obj->area = m->area;
+    obj->area = em->area;
     if (obj->hitDelay != 0) {
         if (obj->type == 3) {
-            a = Math_Absf((s16) m->motionBlend[1] % 100);
-            b = Math_Absf(m->motionFrame[1]);
+            blendFrames = Math_Absf((s16) em->motionBlend[1] % 100);
+            motionFrame = Math_Absf(em->motionFrame[1]);
         } else {
-            a = Math_Absf((s16) m->motionBlend[0] % 100);
-            b = Math_Absf(m->motionFrame[0]);
+            blendFrames = Math_Absf((s16) em->motionBlend[0] % 100);
+            motionFrame = Math_Absf(em->motionFrame[0]);
         }
-        obj->hitDelay += a - b - 1;
+        obj->hitDelay += blendFrames - motionFrame - 1;
         if ((s8) obj->hitDelay < 0) {
             obj->hitDelay = 0;
         }
@@ -5204,9 +5397,14 @@ void Eff04_Setup(ObjAttach *obj)
     obj->drawSlotBuf = NULL;
 }
 
-void Eff04_Run(ObjAttach *obj)
+/*
+ * Ends the attack when the monster's motion changes or the window closes.
+ * Attack 0x1E lasts while the monster's state is group 3's 0xC, 0xD or 0x14:
+ * its window opens for 60 frames once the motion is 0x40C.
+ */
+void FatalisAttack_Run(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
+    Em *em = &gEms[obj->idx];
 
     switch (obj->type) {
     case 2:
@@ -5216,7 +5414,7 @@ void Eff04_Run(ObjAttach *obj)
     if (obj->type == 0x1E) {
         switch (obj->stateVar0) {
         case 0:
-            if (m->motionId[0] == 0x40C) {
+            if (em->motionId[0] == 0x40C) {
                 obj->stateVar0++;
                 obj->hitFrames = 0x3C;
             } else {
@@ -5224,19 +5422,19 @@ void Eff04_Run(ObjAttach *obj)
             }
             break;
         case 1:
-            if (m->motionId[0] != 0x40C || obj->hitPhase == 0) {
+            if (em->motionId[0] != 0x40C || obj->hitPhase == 0) {
                 obj->hitPhase = 0;
-                obj->state = 2;
+                obj->state = ATTACH_END;
             }
             break;
         }
-        if (m->stateGroup != 3 || ((u32) (m->state - 0xC) > 1 && m->state != 0x14) || m->stateGroup == 4 || m->stateGroup == 5) {
+        if (em->stateGroup != 3 || ((u32) (em->state - 0xC) > 1 && em->state != 0x14) || em->stateGroup == 4 || em->stateGroup == 5) {
             obj->hitPhase = 0;
-            obj->state = 2;
+            obj->state = ATTACH_END;
         }
-    } else if (m->motionId[0] != obj->ownerMotion || obj->hitPhase == 0) {
+    } else if (em->motionId[0] != obj->ownerMotion || obj->hitPhase == 0) {
         obj->hitPhase = 0;
-        obj->state = 2;
+        obj->state = ATTACH_END;
     }
     if (obj->drawSlotBuf != NULL) {
         Vec_Copy(obj->drawSlotBuf->pos, obj->pos);
@@ -5244,30 +5442,35 @@ void Eff04_Run(ObjAttach *obj)
     }
 }
 
-void Eff04_End(ObjAttach *obj)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void FatalisAttack_End(ObjAttach *obj)
 {
     obj->hitPhase = 0;
-    obj->state = 6;
+    obj->state = ATTACH_FREE;
     obj->visible = 0;
     if (obj->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) obj->drawSlot);
     }
 }
 
-void Eff04_Free(ObjAttach *obj)
+void FatalisAttack_Free(ObjAttach *obj)
 {
     ObjAttach_Free(obj);
 }
 
-void Eff05_Create(Em *em, s8 kind)
+/*
+ * Makes a LaoShanAttack for em with the row attackId of LaoShanAttack_Rows,
+ * if a player is in em's area.
+ */
+void LaoShanAttack_Create(Em *em, s8 attackId)
 {
     ObjAttach *obj;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((obj = ObjAttach_Alloc(0)) != NULL) {
-            obj->kind = 5;
-            obj->type = kind;
-            obj->update = Eff05_Update;
+            obj->kind = ATTACH_LAOSHAN_ATTACK;
+            obj->type = attackId;
+            obj->update = LaoShanAttack_Update;
             obj->idx = em->index;
             obj->isEm = em->isEm;
             obj->ownerMotion = em->motionId[0];
@@ -5278,22 +5481,26 @@ void Eff05_Create(Em *em, s8 kind)
             obj->rotZ = em->rotZ;
             obj->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
             obj->step = 0;
             obj->hitSpan = 0;
         }
     }
 }
 
-void Eff05_CreateEx(Em *em, s32 kind, s32 arg2)
+/*
+ * LaoShanAttack_Create with a hit window of span frames (halved for attack
+ * 0x47, the only user).
+ */
+void LaoShanAttack_CreateSpan(Em *em, s32 attackId, s32 span)
 {
     ObjAttach *obj;
 
     if (Player_InCurrentArea(em) & 0xFF) {
         if ((obj = ObjAttach_Alloc(0)) != NULL) {
-            obj->kind = 5;
-            obj->type = kind;
-            obj->update = Eff05_Update;
+            obj->kind = ATTACH_LAOSHAN_ATTACK;
+            obj->type = attackId;
+            obj->update = LaoShanAttack_Update;
             obj->idx = em->index;
             obj->isEm = em->isEm;
             obj->ownerMotion = em->motionId[0];
@@ -5304,21 +5511,22 @@ void Eff05_CreateEx(Em *em, s32 kind, s32 arg2)
             obj->rotZ = em->rotZ;
             obj->side = *(u8 *) &em->side;
             em->hitPending = 0;
-            em->attackHit800 = 0;
+            em->contactHit = 0;
             obj->step = 0;
-            obj->hitSpan = arg2;
+            obj->hitSpan = span;
         }
     }
 }
 
-void Eff05_CreateAt(Em *em, f32 *pos, s8 kind)
+/* LaoShanAttack_Create at pos (without the area check). */
+void LaoShanAttack_CreateAt(Em *em, f32 *pos, s8 attackId)
 {
     ObjAttach *obj;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        obj->kind = 5;
-        obj->type = kind;
-        obj->update = Eff05_Update;
+        obj->kind = ATTACH_LAOSHAN_ATTACK;
+        obj->type = attackId;
+        obj->update = LaoShanAttack_Update;
         obj->idx = em->index;
         obj->isEm = em->isEm;
         obj->ownerMotion = em->motionId[0];
@@ -5332,22 +5540,26 @@ void Eff05_CreateAt(Em *em, f32 *pos, s8 kind)
         obj->pos[1] = pos[1];
         obj->pos[2] = pos[2];
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
         obj->step = 1;
         obj->hitSpan = 0;
     }
 }
 
-void Eff05_CreateOnObj(StageObj *s, s8 kind)
+/*
+ * LaoShanAttack_Create at the stage object src's position, for src's owner
+ * (without the area check).
+ */
+void LaoShanAttack_CreateOnObj(StageObj *src, s8 attackId)
 {
     ObjAttach *obj;
     Em *em;
 
     if ((obj = ObjAttach_Alloc(0)) != NULL) {
-        em = s->owner;
-        obj->kind = 5;
-        obj->type = kind;
-        obj->update = Eff05_Update;
+        em = src->owner;
+        obj->kind = ATTACH_LAOSHAN_ATTACK;
+        obj->type = attackId;
+        obj->update = LaoShanAttack_Update;
         obj->idx = em->index;
         obj->isEm = em->isEm;
         obj->ownerMotion = em->motionId[0];
@@ -5356,68 +5568,73 @@ void Eff05_CreateOnObj(StageObj *s, s8 kind)
         obj->rotX = em->rotX;
         obj->rotY = em->rotY;
         obj->rotZ = em->rotZ;
-        obj->pos[0] = s->pos[0];
-        obj->pos[1] = s->pos[1];
-        obj->pos[2] = s->pos[2];
+        obj->pos[0] = src->pos[0];
+        obj->pos[1] = src->pos[1];
+        obj->pos[2] = src->pos[2];
         em->hitPending = 0;
-        em->attackHit800 = 0;
+        em->contactHit = 0;
         obj->step = 1;
         obj->hitSpan = 0;
     }
 }
 
-void Eff05_Update(ObjAttach *obj)
+/* The LaoShanAttack's per-frame update, by ObjAttach.state. */
+void LaoShanAttack_Update(ObjAttach *obj)
 {
     switch (obj->state) {
-    case 0:
-        Eff05_Setup(obj);
+    case ATTACH_SETUP:
+        LaoShanAttack_Setup(obj);
         break;
-    case 1:
-        Eff05_Run(obj);
+    case ATTACH_RUN:
+        LaoShanAttack_Run(obj);
         break;
-    case 2:
-        Eff05_End(obj);
+    case ATTACH_END:
+        LaoShanAttack_End(obj);
         break;
-    case 3:
-        Eff05_End(obj);
+    case ATTACH_HIT:
+        LaoShanAttack_End(obj);
         break;
     case 4:
-        Eff05_End(obj);
+        LaoShanAttack_End(obj);
         break;
-    case 5:
-        Eff05_End(obj);
+    case ATTACH_DEFLECTED:
+        LaoShanAttack_End(obj);
         break;
-    case 9:
-        Eff05_End(obj);
+    case ATTACH_DEFLECTED_AURA:
+        LaoShanAttack_End(obj);
         break;
     case 7:
-        Eff05_End(obj);
+        LaoShanAttack_End(obj);
         break;
-    case 6:
-        Eff05_Free(obj);
+    case ATTACH_FREE:
+        LaoShanAttack_Free(obj);
         
     default:
         break;
     }
 }
 
-void Eff05_Setup(ObjAttach *obj)
+/*
+ * Sets the attack up from its row; hitDelay is counted from the monster's
+ * motion.
+ */
+void LaoShanAttack_Setup(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
+    Em *em = &gEms[obj->idx];
 
     obj->state++;
     obj->visible = 1;
-    obj->draw = Eff05_DrawNop;
-    Player_TestSetFlags(obj, 0x20);
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) m, obj->type, &Eff05_MotionRef);
-    obj->hitList = Eff05_Vals088[obj->hitListNo];
+    obj->draw = LaoShanAttack_DrawNop;
+    Player_TestSetFlags(obj, ATKF_OWNER_CONTACT);
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) em, obj->type, &LaoShanAttack_RowsPtr);
+    obj->hitList = LaoShanAttack_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
-    obj->area = m->area;
+    obj->area = em->area;
     if (obj->type == 0x47) {
         obj->hitFrames = obj->hitSpan / 2;
     }
     if (obj->hitDelay != 0) {
-        obj->hitDelay += (s32) Math_Absf((s16) m->motionBlend[0] % 100) - (s32) Math_Absf(m->motionFrame[0]) - 1;
+        obj->hitDelay += (s32) Math_Absf((s16) em->motionBlend[0] % 100) - (s32) Math_Absf(em->motionFrame[0]) - 1;
         if ((s8) obj->hitDelay < 0) {
             obj->hitDelay = 0;
         }
@@ -5425,13 +5642,16 @@ void Eff05_Setup(ObjAttach *obj)
     obj->drawSlotBuf = NULL;
 }
 
-void Eff05_Run(ObjAttach *obj)
+/*
+ * Ends the attack when the monster's motion changes or the hit window closes.
+ */
+void LaoShanAttack_Run(ObjAttach *obj)
 {
-    Em *m = &gEms[obj->idx];
+    Em *em = &gEms[obj->idx];
 
-    if (m->motionId[0] != obj->ownerMotion || obj->hitPhase == 0) {
+    if (em->motionId[0] != obj->ownerMotion || obj->hitPhase == 0) {
         obj->hitPhase = 0;
-        obj->state = 2;
+        obj->state = ATTACH_END;
     }
     if (obj->drawSlotBuf != NULL) {
         Vec_Copy(obj->drawSlotBuf->pos, obj->pos);
@@ -5439,116 +5659,128 @@ void Eff05_Run(ObjAttach *obj)
     }
 }
 
-void Eff05_End(ObjAttach *obj)
+/* Hides the attack, frees its draw slot and frees it on the next update. */
+void LaoShanAttack_End(ObjAttach *obj)
 {
     obj->hitPhase = 0;
-    obj->state = 6;
+    obj->state = ATTACH_FREE;
     obj->visible = 0;
     if (obj->drawSlotBuf != NULL) {
         DrawSlot_Free((s32) obj->drawSlot);
     }
 }
 
-void Eff05_Free(ObjAttach *obj)
+void LaoShanAttack_Free(ObjAttach *obj)
 {
     ObjAttach_Free(obj);
 }
 
-void Eff05_DrawNop(ObjAttach *obj)
+void LaoShanAttack_DrawNop(ObjAttach *obj)
 {
 }
 
-void Bowgun_FireShot(Player *pl, s32 ammo, s32 arg2, f32 scale)
+/*
+ * The bowgun's shot: the muzzle's flash and smoke by the ammunition kind
+ * (ammo with bit 0x80 names it, else pl->ammoType; not for the local player
+ * while aiming), then the shot itself (BowgunShot_Create with pl->ammoType).
+ * bone is the gun bone the effects start from.
+ */
+void Bowgun_FireShot(Player *pl, s32 ammo, s32 bone, f32 scale)
 {
-    f32 v[3];
-    s32 ang[3];
-    u8 k;
+    f32 launchPos[3];
+    s32 launchAngles[3];
+    u8 kind;
 
     if ((ammo & 0x80) == 0) {
-        k = pl->ammoType;
+        kind = pl->ammoType;
     } else {
-        k = ammo & 0x7F;
+        kind = ammo & 0x7F;
     }
     if ((pl->index != gScene.localPlayer || CamCtl_IsAiming(pl) == 0) && (u8)Obj_InCurrentArea(pl) == 1) {
-        switch (k) {
+        switch (kind) {
         default:
-            StageObj_K12_CreateOwned((s32) pl, arg2, 0);
-            StageObj_K12_CreateOwned((s32) pl, arg2, 1);
-            StageObj_K12_CreateOwned((s32) pl, arg2, 2);
+            StageObj_K12_CreateOwned((s32) pl, bone, 0);
+            StageObj_K12_CreateOwned((s32) pl, bone, 1);
+            StageObj_K12_CreateOwned((s32) pl, bone, 2);
             break;
         case 20:
         case 21:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 0);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 0);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 0);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 0);
             break;
         case 26:
         case 27:
         case 28:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 3);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 3);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 3);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 3);
             break;
         case 22:
         case 23:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 1);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 1);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 1);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 1);
             break;
         case 24:
         case 25:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 2);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 2);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 2);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 2);
             break;
         case 29:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 8);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 8);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 8);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 8);
             break;
         case 30:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 6);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 6);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 6);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 6);
             break;
         case 31:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 7);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 7);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 7);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 7);
             break;
         case 19:
-            Eff06_BoneLaunchPos(v, pl, ang, arg2);
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 9);
-            StageObj_K0F_CreateNoOwner(v, 8, 1, (u16) pl->rot[1], 0.25f);
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 9);
+            StageObj_K0F_CreateNoOwner(launchPos, 8, 1, (u16) pl->rot[1], 0.25f);
             break;
         case 17:
-            Eff06_BoneLaunchPos(v, pl, ang, arg2);
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 0xA);
-            StageObj_K0F_CreateNoOwner(v, 9, 1, (u16) pl->rot[1], 0.25f);
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 0xA);
+            StageObj_K0F_CreateNoOwner(launchPos, 9, 1, (u16) pl->rot[1], 0.25f);
             break;
         case 16:
-            Eff06_BoneLaunchPos(v, pl, ang, arg2);
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 0xB);
-            StageObj_K0F_CreateNoOwner(v, 2, 1, (u16) pl->rot[1], 0.4f);
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 0xB);
+            StageObj_K0F_CreateNoOwner(launchPos, 2, 1, (u16) pl->rot[1], 0.4f);
             break;
         case 15:
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 0xC);
-            StageObj_K12_CreateOnEm(pl, arg2, 6, 0xC);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 0xC);
+            StageObj_K12_CreateOnEm(pl, bone, 6, 0xC);
             break;
         case 18:
-            Eff06_BoneLaunchPos(v, pl, ang, arg2);
-            StageObj_K12_CreateOnEm(pl, arg2, 5, 0xD);
-            StageObj_K29_CreateAt(v, 0xC, 1, 0.4f);
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            StageObj_K12_CreateOnEm(pl, bone, 5, 0xD);
+            StageObj_K29_CreateAt(launchPos, 0xC, 1, 0.4f);
             break;
         }
     }
-    Eff06_Create(pl, pl->ammoType, arg2, scale);
+    BowgunShot_Create(pl, pl->ammoType, bone, scale);
 }
 
-void Eff06_Create(Player *pl, u8 kind, s16 arg2, f32 scale)
+/*
+ * Makes a BowgunShot of ammunition kind (a row of gBowgunShotParams) for pl;
+ * bone goes to aux, the gun bone it starts from; scale is the shot's power
+ * scale.
+ */
+void BowgunShot_Create(Player *pl, u8 kind, s16 bone, f32 scale)
 {
     ObjAttach *obj;
-    Eff06Buf *b;
+    BowgunShotBuf *buf;
 
     if ((obj = ObjAttach_Alloc(1)) != NULL) {
-        b = (Eff06Buf *) obj->buf;
-        obj->kind = 6;
+        buf = (BowgunShotBuf *) obj->buf;
+        obj->kind = ATTACH_BOWGUN_SHOT;
         obj->type = kind;
-        obj->aux = arg2;
-        obj->update = Eff06_Update;
+        obj->aux = bone;
+        obj->update = BowgunShot_Update;
         obj->idx = pl->index;
         obj->isEm = pl->isEm;
         obj->owner = pl;
@@ -5557,130 +5789,140 @@ void Eff06_Create(Player *pl, u8 kind, s16 arg2, f32 scale)
         obj->stateVar1 = 0;
         obj->area = pl->area;
         obj->side = *(u8 *) &pl->side;
-        b->scale = scale;
+        buf->scale = scale;
     }
 }
 
-void Eff06_Scatter(ObjAttach *obj, u8 *p, f32 f)
+/*
+ * Splits a shot into pellets (the scatter shot): params gives their kind and
+ * count; each copies the shot's flight with its own random bits, and power
+ * goes to the source's buffer (the source's, not the new pellet's).
+ */
+void BowgunShot_Scatter(ObjAttach *obj, u8 *params, f32 power)
 {
     s16 i;
-    u8 kind = p[0];
-    s32 m;
-    s16 n = *(s16 *) (p + 2);
-    ObjAttach *c;
-    u8 *b;
+    u8 kind = params[0];
+    s32 randMul;
+    s16 count = *(s16 *) (params + 2);
+    ObjAttach *pellet;
+    BowgunShotBuf *buf;
 
-    Eff06_PlaySe(obj, 0);
+    BowgunShot_PlaySe(obj, 0);
     i = 0;
-    if (i < n) {
-        m = 1;
+    if (i < count) {
+        randMul = 1;
         do {
-            if ((c = ObjAttach_Alloc(1)) != NULL) {
-                b = obj->buf;
-                c->kind = 6;
-                c->type = kind;
-                c->aux = obj->aux;
-                c->update = Eff06_Update;
-                c->idx = ((Em *) obj->owner)->index;
-                c->isEm = ((Em *) obj->owner)->isEm;
-                c->owner = obj->owner;
-                c->yaw = *(u16 *) &obj->yaw;
-                c->rotX = obj->rotX;
-                c->rotY = obj->rotY;
-                c->pos[0] = obj->pos[0];
-                c->pos[1] = obj->pos[1];
-                c->pos[2] = obj->pos[2];
-                c->velX = obj->velX;
-                c->velY = obj->velY;
-                c->velZ = obj->velZ;
-                c->randBits = obj->randBits * m;
-                c->stateVar1 = i;
-                c->area = obj->area;
-                c->side = obj->side;
+            if ((pellet = ObjAttach_Alloc(1)) != NULL) {
+                buf = (BowgunShotBuf *) obj->buf;
+                pellet->kind = ATTACH_BOWGUN_SHOT;
+                pellet->type = kind;
+                pellet->aux = obj->aux;
+                pellet->update = BowgunShot_Update;
+                pellet->idx = ((Em *) obj->owner)->index;
+                pellet->isEm = ((Em *) obj->owner)->isEm;
+                pellet->owner = obj->owner;
+                pellet->yaw = *(u16 *) &obj->yaw;
+                pellet->rotX = obj->rotX;
+                pellet->rotY = obj->rotY;
+                pellet->pos[0] = obj->pos[0];
+                pellet->pos[1] = obj->pos[1];
+                pellet->pos[2] = obj->pos[2];
+                pellet->velX = obj->velX;
+                pellet->velY = obj->velY;
+                pellet->velZ = obj->velZ;
+                pellet->randBits = obj->randBits * randMul;
+                pellet->stateVar1 = i;
+                pellet->area = obj->area;
+                pellet->side = obj->side;
                 /* the source's buffer, not the new object's */
-                *(f32 *) (b + 0x1C) = f;
+                buf->scale = power;
             }
             i++;
-            m += 2;
-        } while (i < n);
+            randMul += 2;
+        } while (i < count);
     }
 }
 
 extern f32 D_0045EB04[];
 extern f32 D_0045EB24[];
 extern f32 D_006AEE04[];
-void Eff06_Init(ObjAttach *obj)
+/*
+ * Sets a shot up from its row of gBowgunShotParams: the weapon's level and
+ * skills, the affinity's roll (crit 1 or a weak 2), the power, and the launch
+ * speed (the level row's, plus the level bits' extras).
+ */
+void BowgunShot_Init(ObjAttach *obj)
 {
-    f32 m[16];
-    Eff06Buf *buf = (Eff06Buf *) obj->buf;
-    ArrowParam *e = &gArrowParams[obj->type];
+    f32 mtx[16];
+    BowgunShotBuf *buf = (BowgunShotBuf *) obj->buf;
+    BowgunShotParam *param = &gBowgunShotParams[obj->type];
     Player *pl = obj->owner;
-    u8 *t;
-    u8 fl;
-    s16 v;
-    f32 a;
-    f32 b;
-    f32 c;
+    u8 *levelRow;
+    u8 bits;
+    s16 affinity;
+    f32 speed;
+    f32 speedRand;
+    f32 gravityRand;
 
     obj->state++;
     obj->visible = 1;
     obj->draw = NULL;
     obj->ownerMotion = 0;
-    Player_TestSetFlags(obj, Eff06_PlayerFlags[obj->type]);
-    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) pl, obj->type + 1, &Eff06_MotionRef);
+    Player_TestSetFlags(obj, BowgunShot_PlayerFlags[obj->type]);
+    MoveObj_StartMotionOwned((struct MoveObj *)obj, (s32) pl, obj->type + 1, &BowgunShot_RowsPtr);
     buf->crit = 0;
     if (obj->type != 0x20) {
-        Eff06_InitWeapon(buf, pl);
-        Eff06_InitSkills(buf, pl);
-        v = Player_GetWeaponStat(pl, 8);
-        if (v < 0) {
-            if (obj->randBits % 100 < -v) {
+        BowgunShot_InitWeapon(buf, pl);
+        BowgunShot_InitSkills(buf, pl);
+        affinity = Player_GetWeaponStat(pl, WSTAT_AFFINITY);
+        if (affinity < 0) {
+            if (obj->randBits % 100 < -affinity) {
                 buf->crit = 2;
             }
-        } else if (v > obj->randBits % 100) {
+        } else if (affinity > obj->randBits % 100) {
             buf->crit = 1;
         }
-        Eff06_CalcPower(obj);
-        t = buf->levelRow;
-        fl = buf->level;
-        a = *(f32 *) (t + 4);
-        b = *(f32 *) (t + 8);
-        c = *(f32 *) (t + 0xC);
-        if (fl & 0x10) {
-            a += D_006AEE04[0];
-            b += D_006AEE04[1];
-            c += D_006AEE04[2];
+        BowgunShot_CalcPower(obj);
+        levelRow = buf->levelRow;
+        bits = buf->level;
+        speed = *(f32 *) (levelRow + 4);
+        speedRand = *(f32 *) (levelRow + 8);
+        gravityRand = *(f32 *) (levelRow + 0xC);
+        if (bits & 0x10) {
+            speed += D_006AEE04[0];
+            speedRand += D_006AEE04[1];
+            gravityRand += D_006AEE04[2];
         }
-        if (fl & 0x20) {
+        if (bits & 0x20) {
             if (buf->unk27 == 0) {
-                a += D_0045EB24[0];
-                b += D_0045EB24[1];
-                c += D_0045EB24[2];
+                speed += D_0045EB24[0];
+                speedRand += D_0045EB24[1];
+                gravityRand += D_0045EB24[2];
             } else {
-                a += D_0045EB04[0];
-                b += D_0045EB04[1];
-                c += D_0045EB04[2];
+                speed += D_0045EB04[0];
+                speedRand += D_0045EB04[1];
+                gravityRand += D_0045EB04[2];
             }
         }
-        fl = buf->skills;
-        a *= e->speed;
-        b *= e->speedRand;
-        c *= e->gravityRand;
-        if (fl & 0x10) {
-            b *= 2.0f;
-            c *= 2.0f;
+        bits = buf->skills;
+        speed *= param->speed;
+        speedRand *= param->speedRand;
+        gravityRand *= param->gravityRand;
+        if (bits & 0x10) {
+            speedRand *= 2.0f;
+            gravityRand *= 2.0f;
         }
-        if (fl & 0x20) {
-            b *= 0.5f;
-            c *= 0.5f;
+        if (bits & 0x20) {
+            speedRand *= 0.5f;
+            gravityRand *= 0.5f;
         }
     } else {
-        a = e->speed;
-        b = e->speedRand;
-        c = e->gravityRand;
+        speed = param->speed;
+        speedRand = param->speedRand;
+        gravityRand = param->gravityRand;
     }
     buf->power = obj->power;
-    obj->hitList = Eff06_Vals088[obj->hitListNo];
+    obj->hitList = BowgunShot_HitShapes[obj->hitListNo];
     obj->hurtList = 0;
     obj->step = 0;
     obj->stateVar0 = 0;
@@ -5690,53 +5932,53 @@ void Eff06_Init(ObjAttach *obj)
     buf->unk03 = 0;
     obj->homingTurn = 0.0f;
     obj->homingSpeed = 0.0f;
-    switch (e->kind) {
+    switch (param->kind) {
     case 4:
     default:
     case 0:
     case 1:
-        if (e->model == 0x62) {
+        if (param->model == 0x62) {
             buf->bounced = 1;
             obj->rotZ = Rand_Next(1);
-            if (e->kind == 4) {
+            if (param->kind == 4) {
                 obj->hitPhase = 0;
             }
         }
-        Eff06_BoneLaunchPos(obj->pos, pl, &obj->rotX, obj->aux);
+        BowgunShot_BoneLaunchPos(obj->pos, pl, &obj->rotX, obj->aux);
         obj->velX = 0.0f;
         obj->velY = 0.0f;
-        obj->velZ = a + b * Eff06_BitsToFrac(obj->randBits, 0x10);
+        obj->velZ = speed + speedRand * BowgunShot_BitsToFrac(obj->randBits, 0x10);
         Vec_RotateX(&obj->velX, (6.2831855f * obj->rotX) / 65536.0f);
         Vec_RotateY(&obj->velX, (6.2831855f * obj->rotY) / 65536.0f);
-        obj->gravity = -(e->gravity + c * Eff06_BitsToFrac(obj->randBits >> 1, 0xF));
+        obj->gravity = -(param->gravity + gravityRand * BowgunShot_BitsToFrac(obj->randBits >> 1, 0xF));
         break;
     case 2:
-        Mtx_Copy(m, (f32 *)Em_GetBone(pl, obj->aux));
-        obj->velX = a + b * Eff06_BitsToFrac(obj->randBits >> 2, 0xE);
+        Mtx_Copy(mtx, (f32 *)Em_GetBone(pl, obj->aux));
+        obj->velX = speed + speedRand * BowgunShot_BitsToFrac(obj->randBits >> 2, 0xE);
         if ((obj->randBits >> 3) & 1) {
             obj->velX = -obj->velX;
         }
-        obj->velY = 2.0f * (a + b * Eff06_BitsToFrac(obj->randBits >> 4, 0xC));
-        obj->velZ = a + b * Eff06_BitsToFrac(obj->randBits >> 5, 0xB);
+        obj->velY = 2.0f * (speed + speedRand * BowgunShot_BitsToFrac(obj->randBits >> 4, 0xC));
+        obj->velZ = speed + speedRand * BowgunShot_BitsToFrac(obj->randBits >> 5, 0xB);
         if ((obj->randBits >> 6) & 1) {
             obj->velZ = -obj->velZ;
         }
         obj->rotX = (u16) (s32) (0.5f + 65536.0f * Math_Atan2(obj->velY, Math_Sqrtf(obj->velX * obj->velX + obj->velZ * obj->velZ)) / 6.2831855f);
         obj->rotY = (u16) (s32) (0.5f + 65536.0f * Math_Atan2(obj->velX, obj->velZ) / 6.2831855f) + 0x8000;
-        obj->gravity = -(e->gravity + c * Eff06_BitsToFrac(obj->randBits >> 7, 9));
+        obj->gravity = -(param->gravity + gravityRand * BowgunShot_BitsToFrac(obj->randBits >> 7, 9));
         break;
     }
     Vec_Copy(obj->pos2, obj->pos);
     Vec_Copy(buf->drawPos, obj->pos);
-    Eff06_PlaySe(obj, 1);
-    if (e->life == 0xFF) {
+    BowgunShot_PlaySe(obj, 1);
+    if (param->life == 0xFF) {
         buf->phase = 2;
     } else {
         buf->phase = 0;
     }
     buf->unk17 = 0;
-    if (e->powerTbl != -1) {
-        Eff06_ApplyKind(obj);
+    if (param->powerTbl != -1) {
+        BowgunShot_ApplyKind(obj);
     }
 }
 
@@ -5753,397 +5995,397 @@ u8 HuntingHorn_SongNotes[128] = {
 s16 Gunlance_ShellMotions[8][2] = {
 #include "game/00897020.inc"
 };
-HitShape Eff00_Vals088_0[4] = {
+HitShape PlayerAttack_HitShapes_0[4] = {
 #include "game/00897040.inc"
 };
-HitShape Eff00_Vals088_1[3] = {
+HitShape PlayerAttack_HitShapes_1[3] = {
 #include "game/008970E0.inc"
 };
-HitShape Eff00_Vals088_2[3] = {
+HitShape PlayerAttack_HitShapes_2[3] = {
 #include "game/00897160.inc"
 };
-HitShape Eff00_Vals088_3[2] = {
+HitShape PlayerAttack_HitShapes_3[2] = {
 #include "game/008971E0.inc"
 };
-HitShape Eff00_Vals088_4[2] = {
+HitShape PlayerAttack_HitShapes_4[2] = {
 #include "game/00897230.inc"
 };
-HitShape Eff00_Vals088_5[2] = {
+HitShape PlayerAttack_HitShapes_5[2] = {
 #include "game/00897280.inc"
 };
-HitShape Eff00_Vals088_6[2] = {
+HitShape PlayerAttack_HitShapes_6[2] = {
 #include "game/008972D0.inc"
 };
-HitShape Eff00_Vals088_7[2] = {
+HitShape PlayerAttack_HitShapes_7[2] = {
 #include "game/00897320.inc"
 };
-HitShape Eff00_Vals088_8[2] = {
+HitShape PlayerAttack_HitShapes_8[2] = {
 #include "game/00897370.inc"
 };
-HitShape Eff00_Vals088_9[2] = {
+HitShape PlayerAttack_HitShapes_9[2] = {
 #include "game/008973C0.inc"
 };
-HitShape Eff00_Vals088_10[2] = {
+HitShape PlayerAttack_HitShapes_10[2] = {
 #include "game/00897410.inc"
 };
-HitShape Eff00_Vals088_11[3] = {
+HitShape PlayerAttack_HitShapes_11[3] = {
 #include "game/00897460.inc"
 };
-HitShape Eff00_Vals088_12[2] = {
+HitShape PlayerAttack_HitShapes_12[2] = {
 #include "game/008974E0.inc"
 };
-HitShape Eff00_Vals088_13[2] = {
+HitShape PlayerAttack_HitShapes_13[2] = {
 #include "game/00897530.inc"
 };
-HitShape Eff00_Vals088_14[2] = {
+HitShape PlayerAttack_HitShapes_14[2] = {
 #include "game/00897580.inc"
 };
-HitShape Eff00_Vals088_15[2] = {
+HitShape PlayerAttack_HitShapes_15[2] = {
 #include "game/008975D0.inc"
 };
-HitShape Eff00_Vals088_16[2] = {
+HitShape PlayerAttack_HitShapes_16[2] = {
 #include "game/00897620.inc"
 };
-HitShape Eff00_Vals088_17[2] = {
+HitShape PlayerAttack_HitShapes_17[2] = {
 #include "game/00897670.inc"
 };
-HitShape Eff00_Vals088_18[2] = {
+HitShape PlayerAttack_HitShapes_18[2] = {
 #include "game/008976C0.inc"
 };
-HitShape Eff00_Vals088_19[2] = {
+HitShape PlayerAttack_HitShapes_19[2] = {
 #include "game/00897710.inc"
 };
-HitShape *Eff00_Vals088[20] = {
-    Eff00_Vals088_0, Eff00_Vals088_1, Eff00_Vals088_2, Eff00_Vals088_3,
-    Eff00_Vals088_4, Eff00_Vals088_5, Eff00_Vals088_6, Eff00_Vals088_7,
-    Eff00_Vals088_8, Eff00_Vals088_9, Eff00_Vals088_10, Eff00_Vals088_11,
-    Eff00_Vals088_12, Eff00_Vals088_13, Eff00_Vals088_14, Eff00_Vals088_15,
-    Eff00_Vals088_16, Eff00_Vals088_17, Eff00_Vals088_18, Eff00_Vals088_19,
+HitShape *PlayerAttack_HitShapes[20] = {
+    PlayerAttack_HitShapes_0, PlayerAttack_HitShapes_1, PlayerAttack_HitShapes_2, PlayerAttack_HitShapes_3,
+    PlayerAttack_HitShapes_4, PlayerAttack_HitShapes_5, PlayerAttack_HitShapes_6, PlayerAttack_HitShapes_7,
+    PlayerAttack_HitShapes_8, PlayerAttack_HitShapes_9, PlayerAttack_HitShapes_10, PlayerAttack_HitShapes_11,
+    PlayerAttack_HitShapes_12, PlayerAttack_HitShapes_13, PlayerAttack_HitShapes_14, PlayerAttack_HitShapes_15,
+    PlayerAttack_HitShapes_16, PlayerAttack_HitShapes_17, PlayerAttack_HitShapes_18, PlayerAttack_HitShapes_19,
 };
-u32 D_008977B0[606] = {
+u32 PlayerAttack_Rows[606] = {
 #include "game/008977B0.inc"
 };
-void *Eff00_MotionRef = (void *)D_008977B0;
-HitShape Eff01_Vals088_0[2] = {
+void *PlayerAttack_RowsPtr = (void *)PlayerAttack_Rows;
+HitShape RathalosAttack_HitShapes_0[2] = {
 #include "game/00898130.inc"
 };
-HitShape Eff01_Vals088_1[3] = {
+HitShape RathalosAttack_HitShapes_1[3] = {
 #include "game/00898180.inc"
 };
-HitShape Eff01_Vals088_2[3] = {
+HitShape RathalosAttack_HitShapes_2[3] = {
 #include "game/00898200.inc"
 };
-HitShape Eff01_Vals088_3[3] = {
+HitShape RathalosAttack_HitShapes_3[3] = {
 #include "game/00898280.inc"
 };
-HitShape Eff01_Vals088_4[4] = {
+HitShape RathalosAttack_HitShapes_4[4] = {
 #include "game/00898300.inc"
 };
-HitShape Eff01_Vals088_5[2] = {
+HitShape RathalosAttack_HitShapes_5[2] = {
 #include "game/008983A0.inc"
 };
-HitShape Eff01_Vals088_6[2] = {
+HitShape RathalosAttack_HitShapes_6[2] = {
 #include "game/008983F0.inc"
 };
-HitShape Eff01_Vals088_7[2] = {
+HitShape RathalosAttack_HitShapes_7[2] = {
 #include "game/00898440.inc"
 };
-HitShape Eff01_Vals088_8[3] = {
+HitShape RathalosAttack_HitShapes_8[3] = {
 #include "game/00898490.inc"
 };
-HitShape Eff01_Vals088_9[3] = {
+HitShape RathalosAttack_HitShapes_9[3] = {
 #include "game/00898510.inc"
 };
-HitShape Eff01_Vals088_10[2] = {
+HitShape RathalosAttack_HitShapes_10[2] = {
 #include "game/00898590.inc"
 };
-HitShape Eff01_Vals088_11[2] = {
+HitShape RathalosAttack_HitShapes_11[2] = {
 #include "game/008985E0.inc"
 };
-HitShape Eff01_Vals088_12[2] = {
+HitShape RathalosAttack_HitShapes_12[2] = {
 #include "game/00898630.inc"
 };
-HitShape Eff01_Vals088_13[2] = {
+HitShape RathalosAttack_HitShapes_13[2] = {
 #include "game/00898680.inc"
 };
-HitShape Eff01_Vals088_14[4] = {
+HitShape RathalosAttack_HitShapes_14[4] = {
 #include "game/008986D0.inc"
 };
-HitShape Eff01_Vals088_15[2] = {
+HitShape RathalosAttack_HitShapes_15[2] = {
 #include "game/00898770.inc"
 };
-HitShape Eff01_Vals088_16[6] = {
+HitShape RathalosAttack_HitShapes_16[6] = {
 #include "game/008987C0.inc"
 };
-HitShape *Eff01_Vals088[20] = {
-    Eff01_Vals088_0, Eff01_Vals088_1, Eff01_Vals088_2, Eff01_Vals088_3,
-    Eff01_Vals088_4, Eff01_Vals088_5, Eff01_Vals088_6, Eff01_Vals088_7,
-    Eff01_Vals088_8, Eff01_Vals088_9, Eff01_Vals088_10, Eff01_Vals088_11,
-    Eff01_Vals088_12, Eff01_Vals088_13, Eff01_Vals088_14, Eff01_Vals088_15,
-    Eff01_Vals088_16, 0, 0, 0,
+HitShape *RathalosAttack_HitShapes[20] = {
+    RathalosAttack_HitShapes_0, RathalosAttack_HitShapes_1, RathalosAttack_HitShapes_2, RathalosAttack_HitShapes_3,
+    RathalosAttack_HitShapes_4, RathalosAttack_HitShapes_5, RathalosAttack_HitShapes_6, RathalosAttack_HitShapes_7,
+    RathalosAttack_HitShapes_8, RathalosAttack_HitShapes_9, RathalosAttack_HitShapes_10, RathalosAttack_HitShapes_11,
+    RathalosAttack_HitShapes_12, RathalosAttack_HitShapes_13, RathalosAttack_HitShapes_14, RathalosAttack_HitShapes_15,
+    RathalosAttack_HitShapes_16, 0, 0, 0,
 };
-u32 D_00898900[294] = {
+u32 RathalosAttack_Rows[294] = {
 #include "game/00898900.inc"
 };
-void *Eff01_MotionRef = (void *)D_00898900;
-HitShape Eff02_Vals088_0[2] = {
+void *RathalosAttack_RowsPtr = (void *)RathalosAttack_Rows;
+HitShape EmContactAttack_HitShapes_0[2] = {
 #include "game/00898DA0.inc"
 };
-HitShape Eff02_Vals088_1[2] = {
+HitShape EmContactAttack_HitShapes_1[2] = {
 #include "game/00898DF0.inc"
 };
-HitShape Eff02_Vals088_2[2] = {
+HitShape EmContactAttack_HitShapes_2[2] = {
 #include "game/00898E40.inc"
 };
-HitShape Eff02_Vals088_3[2] = {
+HitShape EmContactAttack_HitShapes_3[2] = {
 #include "game/00898E90.inc"
 };
-HitShape Eff02_Vals088_4[2] = {
+HitShape EmContactAttack_HitShapes_4[2] = {
 #include "game/00898EE0.inc"
 };
-HitShape Eff02_Vals088_5[2] = {
+HitShape EmContactAttack_HitShapes_5[2] = {
 #include "game/00898F30.inc"
 };
-HitShape Eff02_Vals088_6[2] = {
+HitShape EmContactAttack_HitShapes_6[2] = {
 #include "game/00898F80.inc"
 };
-HitShape Eff02_Vals088_7[2] = {
+HitShape EmContactAttack_HitShapes_7[2] = {
 #include "game/00898FD0.inc"
 };
-HitShape *Eff02_Vals088[8] = {
-    Eff02_Vals088_0, Eff02_Vals088_1, Eff02_Vals088_2, Eff02_Vals088_3,
-    Eff02_Vals088_4, Eff02_Vals088_5, Eff02_Vals088_6, Eff02_Vals088_7,
+HitShape *EmContactAttack_HitShapes[8] = {
+    EmContactAttack_HitShapes_0, EmContactAttack_HitShapes_1, EmContactAttack_HitShapes_2, EmContactAttack_HitShapes_3,
+    EmContactAttack_HitShapes_4, EmContactAttack_HitShapes_5, EmContactAttack_HitShapes_6, EmContactAttack_HitShapes_7,
 };
-u32 D_00899040[144] = {
+u32 EmContactAttack_Rows[144] = {
 #include "game/00899040.inc"
 };
-void *Eff02_MotionRef = (void *)D_00899040;
-HitShape Eff03_Vals088_0[2] = {
+void *EmContactAttack_RowsPtr = (void *)EmContactAttack_Rows;
+HitShape ItemAttack_HitShapes_0[2] = {
 #include "game/00899290.inc"
 };
-HitShape Eff03_Vals088_1[2] = {
+HitShape ItemAttack_HitShapes_1[2] = {
 #include "game/008992E0.inc"
 };
-HitShape Eff03_Vals088_2[2] = {
+HitShape ItemAttack_HitShapes_2[2] = {
 #include "game/00899330.inc"
 };
-HitShape *Eff03_Vals088[4] = {
-    Eff03_Vals088_0, Eff03_Vals088_1, Eff03_Vals088_2, 0,
+HitShape *ItemAttack_HitShapes[4] = {
+    ItemAttack_HitShapes_0, ItemAttack_HitShapes_1, ItemAttack_HitShapes_2, 0,
 };
-u32 D_00899390[84] = {
+u32 ItemAttack_Rows[84] = {
 #include "game/00899390.inc"
 };
-void *Eff03_MotionRef = (void *)D_00899390;
-s8 Eff03_Motions[32] = {
+void *ItemAttack_RowsPtr = (void *)ItemAttack_Rows;
+s8 ItemAttack_AttackRow[32] = {
 #include "game/008994F0.inc"
 };
-s8 Eff03_NoDefault[32] = {
+s8 ItemAttack_HitsInFlight[32] = {
 #include "game/00899510.inc"
 };
-s8 Eff03_KindOn[32] = {
+s8 ItemAttack_HasSide[32] = {
 #include "game/00899530.inc"
 };
-s8 Eff03_KindParams[32] = {
+s8 ItemAttack_Modes[32] = {
 #include "game/00899550.inc"
 };
-s16 Eff03_Models[32] = {
+s16 ItemAttack_Models[32] = {
 #include "game/00899570.inc"
 };
-f32 Eff03_ScaleKeysA[12] = {
+f32 ItemAttack_ScaleKeysA[12] = {
 #include "game/008995B0.inc"
 };
-f32 Eff03_ScaleKeysB[8] = {
+f32 ItemAttack_ScaleKeysB[8] = {
 #include "game/008995E0.inc"
 };
-u8 Eff03_ColorKeysA[32] = {
+u8 ItemAttack_ColorKeysA[32] = {
 #include "game/00899600.inc"
 };
-u8 Eff03_ColorKeysB[48] = {
+u8 ItemAttack_ColorKeysB[48] = {
 #include "game/00899620.inc"
 };
-s16 Eff03_PartModels[8] = {
+s16 ItemAttack_PartModels[8] = {
 #include "game/00899650.inc"
 };
-f32 Eff03_DefaultTblA[4][2] = {
+f32 ItemAttack_ThrowSpeedsAlt[4][2] = {
 #include "game/00899660.inc"
 };
-f32 Eff03_DefaultTblB[4][2] = {
+f32 ItemAttack_ThrowSpeeds[4][2] = {
 #include "game/00899680.inc"
 };
-f32 Eff03_DefaultTblC[4][2] = {
+f32 ItemAttack_LobSpeeds[4][2] = {
 #include "game/008996A0.inc"
 };
-HitShape Eff04_Vals088_0[2] = {
+HitShape FatalisAttack_HitShapes_0[2] = {
 #include "game/008996C0.inc"
 };
-HitShape Eff04_Vals088_1[2] = {
+HitShape FatalisAttack_HitShapes_1[2] = {
 #include "game/00899710.inc"
 };
-HitShape Eff04_Vals088_2[5] = {
+HitShape FatalisAttack_HitShapes_2[5] = {
 #include "game/00899760.inc"
 };
-HitShape Eff04_Vals088_3[2] = {
+HitShape FatalisAttack_HitShapes_3[2] = {
 #include "game/00899830.inc"
 };
-HitShape Eff04_Vals088_4[2] = {
+HitShape FatalisAttack_HitShapes_4[2] = {
 #include "game/00899880.inc"
 };
-HitShape Eff04_Vals088_5[2] = {
+HitShape FatalisAttack_HitShapes_5[2] = {
 #include "game/008998D0.inc"
 };
-HitShape Eff04_Vals088_6[2] = {
+HitShape FatalisAttack_HitShapes_6[2] = {
 #include "game/00899920.inc"
 };
-HitShape Eff04_Vals088_7[2] = {
+HitShape FatalisAttack_HitShapes_7[2] = {
 #include "game/00899970.inc"
 };
-HitShape Eff04_Vals088_8[2] = {
+HitShape FatalisAttack_HitShapes_8[2] = {
 #include "game/008999C0.inc"
 };
-HitShape Eff04_Vals088_9[6] = {
+HitShape FatalisAttack_HitShapes_9[6] = {
 #include "game/00899A10.inc"
 };
-HitShape Eff04_Vals088_10[2] = {
+HitShape FatalisAttack_HitShapes_10[2] = {
 #include "game/00899B00.inc"
 };
-HitShape Eff04_Vals088_11[3] = {
+HitShape FatalisAttack_HitShapes_11[3] = {
 #include "game/00899B50.inc"
 };
-HitShape Eff04_Vals088_12[2] = {
+HitShape FatalisAttack_HitShapes_12[2] = {
 #include "game/00899BD0.inc"
 };
-HitShape Eff04_Vals088_13[8] = {
+HitShape FatalisAttack_HitShapes_13[8] = {
 #include "game/00899C20.inc"
 };
-HitShape Eff04_Vals088_14[3] = {
+HitShape FatalisAttack_HitShapes_14[3] = {
 #include "game/00899D60.inc"
 };
-HitShape Eff04_Vals088_15[3] = {
+HitShape FatalisAttack_HitShapes_15[3] = {
 #include "game/00899DE0.inc"
 };
-HitShape Eff04_Vals088_16[2] = {
+HitShape FatalisAttack_HitShapes_16[2] = {
 #include "game/00899E60.inc"
 };
-HitShape Eff04_Vals088_17[2] = {
+HitShape FatalisAttack_HitShapes_17[2] = {
 #include "game/00899EB0.inc"
 };
-HitShape Eff04_Vals088_18[3] = {
+HitShape FatalisAttack_HitShapes_18[3] = {
 #include "game/00899F00.inc"
 };
-HitShape *Eff04_Vals088[20] = {
-    Eff04_Vals088_0, Eff04_Vals088_1, Eff04_Vals088_2, Eff04_Vals088_3,
-    Eff04_Vals088_4, Eff04_Vals088_5, Eff04_Vals088_6, Eff04_Vals088_7,
-    Eff04_Vals088_8, Eff04_Vals088_9, Eff04_Vals088_10, Eff04_Vals088_11,
-    Eff04_Vals088_12, Eff04_Vals088_13, Eff04_Vals088_14, Eff04_Vals088_15,
-    Eff04_Vals088_16, Eff04_Vals088_17, Eff04_Vals088_18, 0,
+HitShape *FatalisAttack_HitShapes[20] = {
+    FatalisAttack_HitShapes_0, FatalisAttack_HitShapes_1, FatalisAttack_HitShapes_2, FatalisAttack_HitShapes_3,
+    FatalisAttack_HitShapes_4, FatalisAttack_HitShapes_5, FatalisAttack_HitShapes_6, FatalisAttack_HitShapes_7,
+    FatalisAttack_HitShapes_8, FatalisAttack_HitShapes_9, FatalisAttack_HitShapes_10, FatalisAttack_HitShapes_11,
+    FatalisAttack_HitShapes_12, FatalisAttack_HitShapes_13, FatalisAttack_HitShapes_14, FatalisAttack_HitShapes_15,
+    FatalisAttack_HitShapes_16, FatalisAttack_HitShapes_17, FatalisAttack_HitShapes_18, 0,
 };
-u32 D_00899FD0[216] = {
+u32 FatalisAttack_Rows[216] = {
 #include "game/00899FD0.inc"
 };
-void *Eff04_MotionRef = (void *)D_00899FD0;
-HitShape Eff05_Vals088_0[2] = {
+void *FatalisAttack_RowsPtr = (void *)FatalisAttack_Rows;
+HitShape LaoShanAttack_HitShapes_0[2] = {
 #include "game/0089A340.inc"
 };
-HitShape Eff05_Vals088_1[2] = {
+HitShape LaoShanAttack_HitShapes_1[2] = {
 #include "game/0089A390.inc"
 };
-HitShape Eff05_Vals088_2[3] = {
+HitShape LaoShanAttack_HitShapes_2[3] = {
 #include "game/0089A3E0.inc"
 };
-HitShape Eff05_Vals088_3[3] = {
+HitShape LaoShanAttack_HitShapes_3[3] = {
 #include "game/0089A460.inc"
 };
-HitShape Eff05_Vals088_4[2] = {
+HitShape LaoShanAttack_HitShapes_4[2] = {
 #include "game/0089A4E0.inc"
 };
-HitShape Eff05_Vals088_5[4] = {
+HitShape LaoShanAttack_HitShapes_5[4] = {
 #include "game/0089A530.inc"
 };
-HitShape Eff05_Vals088_6[3] = {
+HitShape LaoShanAttack_HitShapes_6[3] = {
 #include "game/0089A5D0.inc"
 };
-HitShape Eff05_Vals088_7[5] = {
+HitShape LaoShanAttack_HitShapes_7[5] = {
 #include "game/0089A650.inc"
 };
-HitShape Eff05_Vals088_8[3] = {
+HitShape LaoShanAttack_HitShapes_8[3] = {
 #include "game/0089A720.inc"
 };
-HitShape Eff05_Vals088_9[4] = {
+HitShape LaoShanAttack_HitShapes_9[4] = {
 #include "game/0089A7A0.inc"
 };
-HitShape Eff05_Vals088_10[5] = {
+HitShape LaoShanAttack_HitShapes_10[5] = {
 #include "game/0089A840.inc"
 };
-HitShape Eff05_Vals088_11[3] = {
+HitShape LaoShanAttack_HitShapes_11[3] = {
 #include "game/0089A910.inc"
 };
-HitShape Eff05_Vals088_12[2] = {
+HitShape LaoShanAttack_HitShapes_12[2] = {
 #include "game/0089A990.inc"
 };
-HitShape Eff05_Vals088_13[2] = {
+HitShape LaoShanAttack_HitShapes_13[2] = {
 #include "game/0089A9E0.inc"
 };
-HitShape Eff05_Vals088_14[2] = {
+HitShape LaoShanAttack_HitShapes_14[2] = {
 #include "game/0089AA30.inc"
 };
-HitShape Eff05_Vals088_15[2] = {
+HitShape LaoShanAttack_HitShapes_15[2] = {
 #include "game/0089AA80.inc"
 };
-HitShape Eff05_Vals088_16[2] = {
+HitShape LaoShanAttack_HitShapes_16[2] = {
 #include "game/0089AAD0.inc"
 };
-HitShape Eff05_Vals088_17[2] = {
+HitShape LaoShanAttack_HitShapes_17[2] = {
 #include "game/0089AB20.inc"
 };
-HitShape Eff05_Vals088_18[2] = {
+HitShape LaoShanAttack_HitShapes_18[2] = {
 #include "game/0089AB70.inc"
 };
-HitShape Eff05_Vals088_19[2] = {
+HitShape LaoShanAttack_HitShapes_19[2] = {
 #include "game/0089ABC0.inc"
 };
-HitShape *Eff05_Vals088[20] = {
-    Eff05_Vals088_0, Eff05_Vals088_1, Eff05_Vals088_2, Eff05_Vals088_3,
-    Eff05_Vals088_4, Eff05_Vals088_5, Eff05_Vals088_6, Eff05_Vals088_7,
-    Eff05_Vals088_8, Eff05_Vals088_9, Eff05_Vals088_10, Eff05_Vals088_11,
-    Eff05_Vals088_12, Eff05_Vals088_13, Eff05_Vals088_14, Eff05_Vals088_15,
-    Eff05_Vals088_16, Eff05_Vals088_17, Eff05_Vals088_18, Eff05_Vals088_19,
+HitShape *LaoShanAttack_HitShapes[20] = {
+    LaoShanAttack_HitShapes_0, LaoShanAttack_HitShapes_1, LaoShanAttack_HitShapes_2, LaoShanAttack_HitShapes_3,
+    LaoShanAttack_HitShapes_4, LaoShanAttack_HitShapes_5, LaoShanAttack_HitShapes_6, LaoShanAttack_HitShapes_7,
+    LaoShanAttack_HitShapes_8, LaoShanAttack_HitShapes_9, LaoShanAttack_HitShapes_10, LaoShanAttack_HitShapes_11,
+    LaoShanAttack_HitShapes_12, LaoShanAttack_HitShapes_13, LaoShanAttack_HitShapes_14, LaoShanAttack_HitShapes_15,
+    LaoShanAttack_HitShapes_16, LaoShanAttack_HitShapes_17, LaoShanAttack_HitShapes_18, LaoShanAttack_HitShapes_19,
 };
-u32 D_0089AC60[528] = {
+u32 LaoShanAttack_Rows[528] = {
 #include "game/0089AC60.inc"
 };
-void *Eff05_MotionRef = (void *)D_0089AC60;
-HitShape Eff06_Vals088_0[2] = {
+void *LaoShanAttack_RowsPtr = (void *)LaoShanAttack_Rows;
+HitShape BowgunShot_HitShapes_0[2] = {
 #include "game/0089B4B0.inc"
 };
-HitShape Eff06_Vals088_1[2] = {
+HitShape BowgunShot_HitShapes_1[2] = {
 #include "game/0089B500.inc"
 };
-HitShape Eff06_Vals088_2[2] = {
+HitShape BowgunShot_HitShapes_2[2] = {
 #include "game/0089B550.inc"
 };
-HitShape Eff06_Vals088_3[2] = {
+HitShape BowgunShot_HitShapes_3[2] = {
 #include "game/0089B5A0.inc"
 };
-HitShape Eff06_Vals088_4[2] = {
+HitShape BowgunShot_HitShapes_4[2] = {
 #include "game/0089B5F0.inc"
 };
-HitShape Eff06_Vals088_5[2] = {
+HitShape BowgunShot_HitShapes_5[2] = {
 #include "game/0089B640.inc"
 };
-HitShape Eff06_Vals088_6[2] = {
+HitShape BowgunShot_HitShapes_6[2] = {
 #include "game/0089B690.inc"
 };
-HitShape *Eff06_Vals088[8] = {
-    Eff06_Vals088_0, Eff06_Vals088_1, Eff06_Vals088_2, Eff06_Vals088_3,
-    Eff06_Vals088_4, Eff06_Vals088_5, Eff06_Vals088_6, 0,
+HitShape *BowgunShot_HitShapes[8] = {
+    BowgunShot_HitShapes_0, BowgunShot_HitShapes_1, BowgunShot_HitShapes_2, BowgunShot_HitShapes_3,
+    BowgunShot_HitShapes_4, BowgunShot_HitShapes_5, BowgunShot_HitShapes_6, 0,
 };
-u32 D_0089B700[210] = {
+u32 BowgunShot_Rows[210] = {
 #include "game/0089B700.inc"
 };
-void *Eff06_MotionRef = (void *)D_0089B700;
-ArrowParam gArrowParams[33] = {
+void *BowgunShot_RowsPtr = (void *)BowgunShot_Rows;
+BowgunShotParam gBowgunShotParams[33] = {
 #include "game/0089BA50.inc"
 };
-s32 Eff06_PlayerFlags[34] = {
+s32 BowgunShot_PlayerFlags[34] = {
 #include "game/0089BF00.inc"
 };

@@ -5,7 +5,7 @@
 #include "adx.h"
 
 /*
- * Streaming of the Capcom core (main 0x192EF0-0x194830): the two ADXT
+ * Streaming of the Capcom core: the two ADXT
  * stream channels (the music manager of sub_main, Bgm_*, plays through
  * channel 0), the AFS partitions and the file loaders, and the queue of
  * background file reads.
@@ -37,10 +37,10 @@ typedef struct StreamChan {
 extern StreamChan gStreamChan[STREAM_CHAN_COUNT];
 extern ADXT gStreamAdxt[STREAM_CHAN_COUNT];
 
-/* unk_192EF0.c */
+/* ADX's set-up. */
 void Adx_Init(void);
 
-/* unk_1930E0.c: background file reads */
+/* Background file reads. */
 void Stream_Update(void);
 void Load_Idle(void);
 void FileQueue_Init(void);
@@ -50,7 +50,7 @@ void FileQueue_Cancel(void);
 s32 FileQueue_IsBusy(void);
 void FileQueue_Flush(void);
 
-/* unk_1937A0.c: starting and stopping the streams */
+/* Starting and stopping the streams. */
 void Stream_Init(void);
 void Stream_Play(s32 ch, s32 flid);
 void Stream_PlayMusicVol(s32 ch, s32 flid);
@@ -63,7 +63,7 @@ void Stream_StartPrepared(s32 ch);
 void Stream_Pause(s32 ch, s32 pause);
 void Stream_Stop(s32 ch);
 
-/* unk_193CB0.c: volumes and fades, AFS loaders */
+/* Volumes and fades, AFS loaders. */
 void Stream_Reset(void);
 void Stream_UpdateMaxVol(s32 apply);
 void Stream_SetVol(s32 ch, s32 vol);

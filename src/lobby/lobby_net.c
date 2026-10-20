@@ -1,6 +1,6 @@
 /*
  * The lobby protocol's message layer.
- * NETWORK: this code must stay byte-for-byte for online play.
+ * Network code: it stays byte for byte, as the whole build does.
  *
  * - Requests: up to 0x80 pending requests (NetReq, LobbyNet.req), each
  *   waiting for the reply whose echo is its sequence number, plus 0x10 of a
@@ -16,6 +16,15 @@
  *   writers append big-endian fields and obfuscated blobs
  *   (Net_LockrockObfuscate), LobbyPkt_End closes it and LobbyPkt_Send sends
  *   it with NetTcp_Send.
+ * - Routing: a notification or a request of the server's goes on to the
+ *   handler registered for its route (Lobby_RouteMessage, NET_ROUTE_*); a
+ *   reply completes the request it answers (NetReq_OnReply).
+ * - The session's own commands: leaving the lobby (6002), logging out
+ *   (6006), the keep-alive (6001) and the server's closing notices
+ *   (6003-6007).
+ * - At the end, the command tables (code, kind, flag and the handler
+ *   gLobbyCmdHandler calls for each entry); the request and reply functions
+ *   of the other commands follow in the next files, by command family.
  */
 #include "lobby_net.h"
 
@@ -24,12 +33,6 @@ extern void (*gNetHandlers[])(NetMsg m, NetMsg *pm);
 extern struct {
     u16 seq;
 } gLobbyCmdSeq;
-typedef struct LobbyBig {
-    u8 b[0x294A4];
-} LobbyBig;
-typedef struct LobbyRec124 {
-    u8 b[0x124];
-} LobbyRec124;
 
 void LobbyMsg_ReadErrText(void);
 void Net_CallHandler(s32 i, s32 b);
@@ -40,104 +43,131 @@ extern u8 gLobbyCmdKind[];
 extern u8 gLobbyCmdFlag[];
 extern LobbyHdr gLobbyRecvHdr;
 char *strcpy(void *dst, const void *src);
-s32 LobbyPkt_EntryFlag(u16 kind, u16 arg1);
-s32 LobbyPkt_6002(void);
-s32 LobbyPkt_6006(void);
+s32 LobbyPkt_EntryKind(u16 kind, u16 arg1);
+s32 LobbyPkt_LobbyLeave(void);
+s32 LobbyPkt_Logout(void);
 void LobbyMsg_ReadU16U8b2(void *a, void *b);
 s32 Lobby_RecvPacket(s32 sock, u8 *hdr, u8 *data, u32 max);
 
-s32 NetTask6_GetRecs(s32 a, NetRecs2 *dst)
+/* Copies the third level's records (gLobbyNet.recs2) out; returns 0. */
+s32 NetLevel2RecsTask_GetRecs(s32 unused, NetRecs2 *dst)
 {
     *dst = gLobbyNet.recs2;
     return 0;
 }
 
+/*
+ * The reply to 6507, a command the client never sends: completes its request.
+ */
 void LobbyReply_6507(void)
 {
-    Lobby_RouteMessage(0);
+    Lobby_RouteMessage(NET_ROUTE_NONE);
 }
 
-s32 LobbyReq_6418(u16 v, void (*onReply)(NetMsg, NetMsg *))
+/*
+ * Asks for the kind of level-2 entry id (6418); onReply gets the answer.
+ * Returns the request's slot, -1 if none is free.
+ */
+s32 LobbyReq_Level2Kind(u16 id, void (*onReply)(NetMsg, NetMsg *))
 {
     s32 i;
 
     i = NetReq_Alloc(1, NULL, onReply);
     if (i != -1) {
-        gLobbyNet.req[i].seq = LobbyPkt_EntryFlag(2, v);
+        gLobbyNet.req[i].seq = LobbyPkt_EntryKind(2, id);
         return i;
     }
     return -1;
 }
 
-/* the reply to 6418 and its notification: u16 id, u8; route 0x36 */
-void LobbyReply_6418(void)
+/*
+ * The reply to 6418, or the same as a notification: u16 id, u8 kind, stored
+ * in the level-2 list's entry.
+ */
+void LobbyReply_Level2Kind(void)
 {
-    u8 v;
+    u8 entryKind;
     u16 id;
 
     if (gLobbyNet.replyErr == 0) {
-        LobbyMsg_ReadU16U8b2(&id, &v);
+        LobbyMsg_ReadU16U8b2(&id, &entryKind);
         gLobbyNet.list2[id - 1].id = id;
-        gLobbyNet.list2[id - 1].kind = v;
-        gLobbyNet.list2[id - 1].flags |= 0x400;
+        gLobbyNet.list2[id - 1].kind = entryKind;
+        gLobbyNet.list2[id - 1].flags |= NET_ENTRY_KIND;
     }
-    Lobby_RouteMessage(0x36);
+    Lobby_RouteMessage(NET_ROUTE_LEVEL2_KIND);
 }
 
-void Net_SetHandler(s32 i, void (*f)(NetMsg, NetMsg *))
+/* Registers the handler of a route: Lobby_RouteMessage(route) calls it. */
+void Net_SetHandler(s32 route, void (*handler)(NetMsg, NetMsg *))
 {
-    gNetHandlers[i] = f;
+    gNetHandlers[route] = handler;
 }
 
-void Net_CallHandler(s32 i, s32 b)
+/*
+ * Calls the handler of a route (if one is registered) with a message of
+ * kind 1 whose flag is the route.
+ */
+void Net_CallHandler(s32 route, s32 unused)
 {
-    NetMsg m;
+    NetMsg msg;
 
-    m.flag = i;
-    m.kind = 1;
-    if (gNetHandlers[(u16)i] != NULL) {
-        gNetHandlers[(u16)i](m, NULL);
+    msg.flag = route;
+    msg.kind = 1;
+    if (gNetHandlers[(u16)route] != NULL) {
+        gNetHandlers[(u16)route](msg, NULL);
     }
 }
 
-void Lobby_RouteMessage(s32 a)
+/*
+ * Passes a message received on. A notification or a request of the server's
+ * goes to the handler of route (none for 0); a reply completes the request it
+ * answers (NetReq_OnReply), with kind 0, or -1 and the error text read when
+ * the reply reports an error.
+ */
+void Lobby_RouteMessage(s32 route)
 {
-    NetMsg m;
+    NetMsg msg;
 
-    if (gLobbyNet.flag == 0x10 || gLobbyNet.flag == 1) {
-        if (a != 0) {
-            Net_CallHandler(a, 0);
+    if (gLobbyNet.flag == LOBBY_FLAG_NOTIFY || gLobbyNet.flag == LOBBY_FLAG_REQUEST) {
+        if (route != 0) {
+            Net_CallHandler(route, 0);
         }
         return;
     }
-    if (gLobbyNet.flag == 2) {
+    if (gLobbyNet.flag == LOBBY_FLAG_REPLY) {
         if (gLobbyNet.replyErr == 0) {
-            m.kind = 0;
+            msg.kind = 0;
         } else {
-            m.kind = -1;
+            msg.kind = -1;
             LobbyMsg_ReadErrText();
         }
-        NetReq_OnReply(m, 1, 0);
+        NetReq_OnReply(msg, 1, 0);
     }
 }
 
+/* Frees every request slot. */
 void NetReq_ClearAll(void)
 {
     memset(gLobbyNet.req, 0, sizeof(gLobbyNet.req));
 }
 
+/* Stops every network task. */
 void NetTask_ClearAll(void)
 {
     memset(gLobbyNet.task, 0, sizeof(gLobbyNet.task));
 }
 
-/* a free request slot, -1 if none */
+/*
+ * Takes a free request slot for a request about to be sent, with the
+ * callbacks of its reply; returns the slot, -1 if none is free.
+ */
 s32 NetReq_Alloc(u8 state, void (*onTick)(s32), void (*onReply)(NetMsg, NetMsg *))
 {
     s32 i;
 
-    for (i = 0; i < 0x80; i++) {
-        if (gLobbyNet.req[i].state == 0) {
+    for (i = 0; i < NET_REQ_COUNT; i++) {
+        if (gLobbyNet.req[i].state == NET_REQ_FREE) {
             gLobbyNet.req[i].state = state;
             gLobbyNet.req[i].unk19 = 0;
             gLobbyNet.req[i].onReply = onReply;
@@ -148,42 +178,44 @@ s32 NetReq_Alloc(u8 state, void (*onTick)(s32), void (*onReply)(NetMsg, NetMsg *
     return -1;
 }
 
-/* takes request slot i of req2 (fixed slots)
- * NON_MATCHING: the original computes the slot address in other registers */
+/* Takes fixed request slot i (gLobbyNet.req2) whatever it held; returns 1. */
 s32 NetReq_TakeFixed(s32 i, void (*onTick)(s32), void (*onReply)(NetMsg, NetMsg *))
 {
-    NetReq *r = &gLobbyNet.req2[i];
+    NetReq *req = &gLobbyNet.req2[i];
 
-    r->state = 1;
-    r->unk19 = 0;
-    r->onReply = onReply;
-    r->onTick = onTick;
+    req->state = NET_REQ_WAITING;
+    req->unk19 = 0;
+    req->onReply = onReply;
+    req->onTick = onTick;
     return 1;
 }
 
-/* the reply received: frees the request it answers and calls its callback;
- * returns the slot, -1 if none */
-s32 NetReq_OnReply(NetMsg m, s32 a, s32 b)
+/*
+ * The reply received (its echo is the request's sequence number): frees the
+ * request it answers and calls the request's onReply with msg. Returns the
+ * slot, -1 if no request waits for it.
+ */
+s32 NetReq_OnReply(NetMsg msg, s32 unusedA, s32 unusedB)
 {
     s32 i;
     u16 echo = gLobbyNet.echo;
 
-    for (i = 0; i < 0x80; i++) {
+    for (i = 0; i < NET_REQ_COUNT; i++) {
         if (echo == gLobbyNet.req[i].seq) {
-            gLobbyNet.req[i].state = 0;
+            gLobbyNet.req[i].state = NET_REQ_FREE;
             gLobbyNet.req[i].unk19 = 0;
             if (gLobbyNet.req[i].onReply != NULL) {
-                gLobbyNet.req[i].onReply(m, &m);
+                gLobbyNet.req[i].onReply(msg, &msg);
             }
             return i;
         }
     }
-    for (i = 0; i < 0x10; i++) {
+    for (i = 0; i < NET_REQ2_COUNT; i++) {
         if (echo == gLobbyNet.req2[i].seq) {
-            gLobbyNet.req2[i].state = 0;
+            gLobbyNet.req2[i].state = NET_REQ_FREE;
             gLobbyNet.req2[i].unk19 = 0;
             if (gLobbyNet.req2[i].onReply != NULL) {
-                gLobbyNet.req2[i].onReply(m, &m);
+                gLobbyNet.req2[i].onReply(msg, &msg);
             }
             return i;
         }
@@ -191,16 +223,20 @@ s32 NetReq_OnReply(NetMsg m, s32 a, s32 b)
     return -1;
 }
 
+/*
+ * Once a frame: runs onTick of every request that asks for it, then the
+ * dispatcher of every active network task.
+ */
 void Net_TickRequests(void)
 {
     s32 i;
 
-    for (i = 0; i < 0x80; i++) {
-        if (gLobbyNet.req[i].state == 2 && gLobbyNet.req[i].onTick != NULL) {
+    for (i = 0; i < NET_REQ_COUNT; i++) {
+        if (gLobbyNet.req[i].state == NET_REQ_TICKING && gLobbyNet.req[i].onTick != NULL) {
             gLobbyNet.req[i].onTick(i);
         }
     }
-    for (i = 0; i < 0x10; i++) {
+    for (i = 0; i < NET_TASK_COUNT; i++) {
         if (gLobbyNet.task[i].active == 1 && gLobbyNet.task[i].func != NULL) {
             gLobbyNet.task[i].func(i);
         }
@@ -213,8 +249,8 @@ s32 NetReq_CountFree(void)
     s32 n = 0;
     s32 i;
 
-    for (i = 0; i < 0x80; i++) {
-        if (gLobbyNet.req[i].state == 0) {
+    for (i = 0; i < NET_REQ_COUNT; i++) {
+        if (gLobbyNet.req[i].state == NET_REQ_FREE) {
             n++;
         }
     }
@@ -226,7 +262,7 @@ s32 NetReq_FindReply(void)
 {
     s32 i;
 
-    for (i = 0; i < 0x80; i++) {
+    for (i = 0; i < NET_REQ_COUNT; i++) {
         if (gLobbyNet.echo == gLobbyNet.req[i].seq) {
             return i;
         }
@@ -238,12 +274,12 @@ s32 NetReq_FindReply(void)
 s32 Lobby_DispatchCommand(u16 cmd, s32 kind, u8 flag)
 {
     s32 i;
-    u16 c;
+    u16 code;
 
-    for (i = 0; i < 0x155; i++) {
-        c = gLobbyCmdHi[i] << 8;
-        c |= gLobbyCmdLo[i];
-        if (gLobbyCmdKind[i] != 8 && cmd == c && gLobbyCmdFlag[i] == flag && gLobbyCmdHandler[i] != NULL) {
+    for (i = 0; i < LOBBY_CMD_COUNT; i++) {
+        code = gLobbyCmdHi[i] << 8;
+        code |= gLobbyCmdLo[i];
+        if (gLobbyCmdKind[i] != LOBBY_KIND_SEND && cmd == code && gLobbyCmdFlag[i] == flag && gLobbyCmdHandler[i] != NULL) {
             gLobbyCmdHandler[i]();
             return 1;
         }
@@ -265,8 +301,8 @@ s32 Lobby_ReceiveAll(s32 sock)
     got = 0;
     i = 0;
     gLobbyNet.frames++;
-    for (i = 0; i < 4; i++) {
-        gLobbyNet.recvResult = Lobby_RecvPacket(gLobbyNet.sock, (u8 *)&gLobbyRecvHdr, gLobbyRecvData, 0x1000);
+    for (i = 0; i < LOBBY_RECV_PER_FRAME; i++) {
+        gLobbyNet.recvResult = Lobby_RecvPacket(gLobbyNet.sock, (u8 *)&gLobbyRecvHdr, gLobbyRecvData, LOBBY_RECV_MAX);
         switch (gLobbyNet.recvResult) {
         default:
             got = 1;
@@ -301,128 +337,152 @@ void Lobby_HandleMessage(void)
     }
 }
 
-s32 LobbyReq_6002(void (*onReply)(NetMsg, NetMsg *))
+/*
+ * Leaves the lobby but keeps the session (6002): before a server switch, a
+ * web page or a quest. Returns the request's slot, -1 if none is free.
+ */
+s32 LobbyReq_LobbyLeave(void (*onReply)(NetMsg, NetMsg *))
 {
     s32 i;
 
     i = NetReq_Alloc(1, NULL, onReply);
     if (i != -1) {
-        gLobbyNet.req[i].seq = LobbyPkt_6002();
+        gLobbyNet.req[i].seq = LobbyPkt_LobbyLeave();
         return i;
     }
     return -1;
 }
 
-s32 LobbyPkt_6002(void)
+/* Sends 6002 (no payload); returns its sequence number. */
+s32 LobbyPkt_LobbyLeave(void)
 {
     s32 seq;
 
-    seq = LobbyPkt_BeginCmd(&gLobbyPkt, 2);
+    seq = LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_LOBBY_LEAVE);
     LobbyPkt_End(&gLobbyPkt);
     LobbyPkt_Send(&gLobbyPkt);
     return seq;
 }
 
-void LobbyReply_6002(void)
+/*
+ * The reply to 6002: completes the request, kind -1 with the error text on an error.
+ */
+void LobbyReply_LobbyLeave(void)
 {
-    NetMsg m;
+    NetMsg msg;
 
-    if (gLobbyNet.flag == 2) {
+    if (gLobbyNet.flag == LOBBY_FLAG_REPLY) {
         if (gLobbyNet.replyErr == 0) {
-            m.kind = 0;
+            msg.kind = 0;
         } else {
-            m.kind = -1;
+            msg.kind = -1;
             LobbyMsg_ReadErrText();
         }
-        NetReq_OnReply(m, 1, 0);
+        NetReq_OnReply(msg, 1, 0);
     }
 }
 
-s32 LobbyReq_6006(void (*onReply)(NetMsg, NetMsg *))
+/* Logs out (6006). Returns the request's slot, -1 if none is free. */
+s32 LobbyReq_Logout(void (*onReply)(NetMsg, NetMsg *))
 {
     s32 i;
 
     i = NetReq_Alloc(1, NULL, onReply);
     if (i != -1) {
-        gLobbyNet.req[i].seq = LobbyPkt_6006();
+        gLobbyNet.req[i].seq = LobbyPkt_Logout();
         return i;
     }
     return -1;
 }
 
-s32 LobbyPkt_6006(void)
+/* Sends 6006 (no payload); returns its sequence number. */
+s32 LobbyPkt_Logout(void)
 {
     s32 seq;
 
-    seq = LobbyPkt_BeginCmd(&gLobbyPkt, 4);
+    seq = LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_LOGOUT);
     LobbyPkt_End(&gLobbyPkt);
     LobbyPkt_Send(&gLobbyPkt);
     return seq;
 }
 
-void LobbyReply_6006(void)
+/*
+ * The reply to 6006: completes the request, kind -1 with the error text on an error.
+ */
+void LobbyReply_Logout(void)
 {
-    NetMsg m;
+    NetMsg msg;
 
-    if (gLobbyNet.flag == 2) {
+    if (gLobbyNet.flag == LOBBY_FLAG_REPLY) {
         if (gLobbyNet.replyErr == 0) {
-            m.kind = 0;
+            msg.kind = 0;
         } else {
-            m.kind = -1;
+            msg.kind = -1;
             LobbyMsg_ReadErrText();
         }
-        NetReq_OnReply(m, 1, 0);
+        NetReq_OnReply(msg, 1, 0);
     }
 }
 
-s32 LobbyNet_GetErrText(char *a)
+/* Copies the error text of the last reply that reported one; returns 0. */
+s32 LobbyNet_GetErrText(char *dst)
 {
-    strcpy(a, gLobbyNet.errText);
+    strcpy(dst, gLobbyNet.errText);
     return 0;
 }
 
-void LobbySrvReq_6001(void)
+/*
+ * The server's keep-alive request (6001): answers it and notes the answer sent.
+ */
+void LobbySrvReq_Keepalive(void)
 {
-    LobbyPkt_6001();
-    gLobbyNet.sent6001 = 1;
+    LobbyPkt_Keepalive();
+    gLobbyNet.sentKeepalive = 1;
 }
 
-void LobbyPkt_6001(void)
+/* Sends the keep-alive's answer (6001, no payload). */
+void LobbyPkt_Keepalive(void)
 {
-    LobbyPkt_BeginCmd(&gLobbyPkt, 1);
+    LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_KEEPALIVE_ANSWER);
     LobbyPkt_End(&gLobbyPkt);
     LobbyPkt_Send(&gLobbyPkt);
 }
 
-void LobbyNotify_6003(void)
+/* The server closes the session (6003): keeps its text and routes it. */
+void LobbyNotify_ServerClose(void)
 {
     LobbyMsg_ReadErrText();
-    Lobby_RouteMessage(2);
+    Lobby_RouteMessage(NET_ROUTE_SERVER_CLOSE);
 }
 
-void LobbyNotify_6004(void)
+/* The departure for a quest is cancelled (6004). */
+void LobbyNotify_DepartCancel(void)
 {
-    Lobby_RouteMessage(5);
+    Lobby_RouteMessage(NET_ROUTE_DEPART_CANCEL);
 }
 
-void LobbyNotify_6005(void)
-{
-    LobbyMsg_ReadErrText();
-    Lobby_RouteMessage(6);
-}
-
-void LobbyNotify_6007(void)
+/* The departure for a quest failed (6005): keeps the server's text. */
+void LobbyNotify_DepartError(void)
 {
     LobbyMsg_ReadErrText();
-    Lobby_RouteMessage(7);
+    Lobby_RouteMessage(NET_ROUTE_DEPART_ERROR);
 }
 
+/* The server sends the player out of the lobby (6007), with a text. */
+void LobbyNotify_ServerLeave(void)
+{
+    LobbyMsg_ReadErrText();
+    Lobby_RouteMessage(NET_ROUTE_SERVER_LEAVE);
+}
+
+/* Reads a byte of a message; returns the next field. */
 u8 *LobbyMsg_GetU8(void *dst, u8 *src)
 {
     *(u8 *)dst = *src;
     return src + 1;
 }
 
+/* Reads a big-endian u16 of a message; returns the next field. */
 u8 *LobbyMsg_GetU16(void *dst, u8 *src)
 {
     ((u8 *)dst)[1] = src[0];
@@ -430,6 +490,7 @@ u8 *LobbyMsg_GetU16(void *dst, u8 *src)
     return src + 2;
 }
 
+/* Reads a big-endian u32 of a message; returns the next field. */
 u8 *LobbyMsg_GetU32(void *dst, u8 *src)
 {
     ((u8 *)dst)[3] = src[0];
@@ -439,7 +500,10 @@ u8 *LobbyMsg_GetU32(void *dst, u8 *src)
     return src + 4;
 }
 
-/* a string: a big-endian length, then the characters */
+/*
+ * Reads a string (a big-endian u16 length, then the characters) and ends it
+ * with a 0; returns the next field.
+ */
 u8 *LobbyMsg_GetString(void *dst, u8 *src)
 {
     u16 n;
@@ -450,6 +514,7 @@ u8 *LobbyMsg_GetString(void *dst, u8 *src)
     return src + (n + 2);
 }
 
+/* Reads n bytes; returns the next field. */
 u8 *LobbyMsg_GetBytes(void *dst, u8 *src, u16 n)
 {
     memcpy(dst, src, n);
@@ -473,348 +538,378 @@ u8 *LobbyMsg_GetBlob(void *dst, u16 max, u8 *src)
     return src + (n + 2);
 }
 
+/* Reads the error text a reply carries (a blob) into gLobbyNet.errText. */
 void LobbyMsg_ReadErrText(void)
 {
-    memset(gLobbyNet.errText, 0, 0x300);
-    LobbyMsg_GetBlob(gLobbyNet.errText, 0x300, gLobbyRecvData);
+    memset(gLobbyNet.errText, 0, sizeof(gLobbyNet.errText));
+    LobbyMsg_GetBlob(gLobbyNet.errText, sizeof(gLobbyNet.errText), gLobbyRecvData);
 }
 
+/* Reads the first field of the message received, a byte. */
 u8 *LobbyMsg_ReadU8(void *dst)
 {
     return LobbyMsg_GetU8(dst, gLobbyRecvData);
 }
 
+/* Reads the first field of the message received, a u16. */
 u8 *LobbyMsg_RecvU16(void *dst)
 {
     return LobbyMsg_GetU16(dst, gLobbyRecvData);
 }
 
+/* Reads the first field of the message received, a u32. */
 u8 *LobbyMsg_ReadU32(void *dst)
 {
     return LobbyMsg_GetU32(dst, gLobbyRecvData);
 }
 
-u8 *LobbyMsg_ReadU8Str(void *a, void *b)
+/* Reads the message received as a byte and a string. */
+u8 *LobbyMsg_ReadU8Str(void *first, void *second)
 {
-    return LobbyMsg_GetString(b, LobbyMsg_GetU8(a, gLobbyRecvData));
+    return LobbyMsg_GetString(second, LobbyMsg_GetU8(first, gLobbyRecvData));
 }
 
-u8 *LobbyMsg_ReadU8U8(void *a, void *b)
+/* Reads the message received as two bytes. */
+u8 *LobbyMsg_ReadU8U8(void *first, void *second)
 {
-    return LobbyMsg_GetU8(b, LobbyMsg_GetU8(a, gLobbyRecvData));
+    return LobbyMsg_GetU8(second, LobbyMsg_GetU8(first, gLobbyRecvData));
 }
 
-u8 *LobbyMsg_ReadU16U8(void *a, void *b)
+/* Reads the message received as a u16 and a byte. */
+u8 *LobbyMsg_ReadU16U8(void *first, void *second)
 {
-    return LobbyMsg_GetU8(b, LobbyMsg_GetU16(a, gLobbyRecvData));
+    return LobbyMsg_GetU8(second, LobbyMsg_GetU16(first, gLobbyRecvData));
 }
 
-u8 *LobbyMsg_ReadU16U16(void *a, void *b)
+/* Reads the message received as two u16. */
+u8 *LobbyMsg_ReadU16U16(void *first, void *second)
 {
-    return LobbyMsg_GetU16(b, LobbyMsg_GetU16(a, gLobbyRecvData));
+    return LobbyMsg_GetU16(second, LobbyMsg_GetU16(first, gLobbyRecvData));
 }
 
-u8 *LobbyMsg_ReadU16U32(void *a, void *b)
+/* Reads the message received as a u16 and a u32. */
+u8 *LobbyMsg_ReadU16U32(void *first, void *second)
 {
-    return LobbyMsg_GetU32(b, LobbyMsg_GetU16(a, gLobbyRecvData));
+    return LobbyMsg_GetU32(second, LobbyMsg_GetU16(first, gLobbyRecvData));
 }
 
-u8 *LobbyMsg_ReadU8U8Str(void *a, void *b, void *c)
+/* Reads the message received as two bytes and a string. */
+u8 *LobbyMsg_ReadU8U8Str(void *first, void *second, void *third)
 {
-    return LobbyMsg_GetString(c, LobbyMsg_GetU8(b, LobbyMsg_GetU8(a, gLobbyRecvData)));
+    return LobbyMsg_GetString(third, LobbyMsg_GetU8(second, LobbyMsg_GetU8(first, gLobbyRecvData)));
 }
 
-/* starts a request (magic 0x81): code and flag from the command tables;
- * returns its sequence number */
-u16 LobbyPkt_BeginCmd(LobbyPkt *p, u16 cmd)
+/*
+ * Starts gLobbyPkt as the message of entry `entry` of the command tables
+ * (its code and flag): a reply echoes the request received, anything else
+ * takes the next sequence number. Returns the sequence number, which the
+ * reply will echo.
+ */
+u16 LobbyPkt_BeginCmd(LobbyPkt *pkt, u16 entry)
 {
-    memset(p->data, 0, 0x300);
-    p->cmd[0] = gLobbyCmdHi[cmd];
-    p->cmd[1] = gLobbyCmdLo[cmd];
-    p->flag = gLobbyCmdFlag[cmd];
-    p->len = 0;
-    p->pos = 0;
-    p->magic = 0x81;
-    if (p->flag == 2) {
+    memset(pkt->data, 0, sizeof(pkt->data));
+    pkt->cmd[0] = gLobbyCmdHi[entry];
+    pkt->cmd[1] = gLobbyCmdLo[entry];
+    pkt->flag = gLobbyCmdFlag[entry];
+    pkt->len = 0;
+    pkt->pos = 0;
+    pkt->magic = LOBBY_MAGIC_CMD;
+    if (pkt->flag == LOBBY_FLAG_REPLY) {
         gLobbyPkt.echo[0] = gLobbyRecvHdr.echo[0];
         gLobbyPkt.echo[1] = gLobbyRecvHdr.echo[1];
     } else {
         gLobbyCmdSeq.seq++;
-        p->echo[0] = gLobbyCmdSeq.seq >> 8;
-        p->echo[1] = gLobbyCmdSeq.seq;
+        pkt->echo[0] = gLobbyCmdSeq.seq >> 8;
+        pkt->echo[1] = gLobbyCmdSeq.seq;
     }
-    p->ff[0] = 0xFF;
-    p->ff[1] = 0xFF;
-    p->ff[2] = 0xFF;
-    p->unkC = 0;
+    pkt->ff[0] = 0xFF;
+    pkt->ff[1] = 0xFF;
+    pkt->ff[2] = 0xFF;
+    pkt->err = 0;
     return gLobbyCmdSeq.seq;
 }
 
 /* starts a message (magic 0x82) with a raw code, echoing the message received */
-void LobbyPkt_Begin(LobbyPkt *p, u16 cmd)
+void LobbyPkt_Begin(LobbyPkt *pkt, u16 rawCode)
 {
-    s32 c;
+    s32 code;
 
-    memset(p->data, 0, 0x300);
-    c = cmd;
-    p->cmd[0] = c >> 8;
-    p->cmd[1] = c;
-    p->len = 0;
-    p->pos = 0;
-    p->magic = 0x82;
-    p->ff[0] = 0xFF;
-    p->ff[1] = 0xFF;
-    p->ff[2] = 0xFF;
-    p->flag = 0;
-    p->unkC = 0;
-    memcpy(p->echo, gLobbyRecvHdr.echo, 2);
+    memset(pkt->data, 0, sizeof(pkt->data));
+    code = rawCode;
+    pkt->cmd[0] = code >> 8;
+    pkt->cmd[1] = code;
+    pkt->len = 0;
+    pkt->pos = 0;
+    pkt->magic = LOBBY_MAGIC_RAW;
+    pkt->ff[0] = 0xFF;
+    pkt->ff[1] = 0xFF;
+    pkt->ff[2] = 0xFF;
+    pkt->flag = 0;
+    pkt->err = 0;
+    memcpy(pkt->echo, gLobbyRecvHdr.echo, 2);
 }
 
-void LobbyPkt_SetFlag(LobbyPkt *p, u8 flag)
+/* Sets the message's flag (LOBBY_FLAG_*). */
+void LobbyPkt_SetFlag(LobbyPkt *pkt, u8 flag)
 {
-    p->flag = flag;
+    pkt->flag = flag;
 }
 
-void func_00719440(LobbyPkt *p, u8 v)
+/* Sets a reply's error byte: 0xFF refuses the server's request. */
+void LobbyPkt_SetError(LobbyPkt *pkt, u8 err)
 {
-    p->unkC = v;
+    pkt->err = err;
 }
 
 /* closes the message: the payload size into the header */
-void LobbyPkt_End(LobbyPkt *p)
+void LobbyPkt_End(LobbyPkt *pkt)
 {
-    p->size[0] = p->pos >> 8;
-    p->size[1] = p->pos;
+    pkt->size[0] = pkt->pos >> 8;
+    pkt->size[1] = pkt->pos;
 }
 
-void LobbyPkt_PutU8(LobbyPkt *p, u8 v)
+/* Appends a byte to the payload. */
+void LobbyPkt_PutU8(LobbyPkt *pkt, u8 value)
 {
-    *((u8 *)p + p->pos + 0x10) = v;
-    p->len++;
-    p->pos++;
+    /* pkt->data[pkt->pos], written as an offset from the packet's start:
+     * the compiler then adds the two in the game's order */
+    *((u8 *)pkt + pkt->pos + 0x10) = value;
+    pkt->len++;
+    pkt->pos++;
 }
 
-void LobbyPkt_PutU16(LobbyPkt *p, u16 v)
+/* Appends a big-endian u16 to the payload. */
+void LobbyPkt_PutU16(LobbyPkt *pkt, u16 value)
 {
-    s32 x = v;
-    u8 *d = (u8 *)p + p->pos;
+    s32 wide = value;
+    u8 *dst = &pkt->data[pkt->pos];
 
-    d[0x10] = x >> 8;
-    d[0x11] = x;
-    p->len += 2;
-    p->pos += 2;
+    dst[0] = wide >> 8;
+    dst[1] = wide;
+    pkt->len += 2;
+    pkt->pos += 2;
 }
 
-void LobbyPkt_PutU32(LobbyPkt *p, u32 v)
+/* Appends a big-endian u32 to the payload. */
+void LobbyPkt_PutU32(LobbyPkt *pkt, u32 value)
 {
-    u8 *d = &p->data[p->pos];
+    u8 *dst = &pkt->data[pkt->pos];
 
-    d[0] = v >> 24;
-    d[1] = v >> 16;
-    d[2] = v >> 8;
-    d[3] = v;
-    p->len += 4;
-    p->pos += 4;
+    dst[0] = value >> 24;
+    dst[1] = value >> 16;
+    dst[2] = value >> 8;
+    dst[3] = value;
+    pkt->len += 4;
+    pkt->pos += 4;
 }
 
-void LobbyPkt_PutBytes(LobbyPkt *p, void *src, u16 n)
+/* Appends n bytes to the payload as they are. */
+void LobbyPkt_PutBytes(LobbyPkt *pkt, void *src, u16 n)
 {
-    memcpy(&p->data[p->pos], src, n);
-    p->len += n;
-    p->pos += n;
+    memcpy(&pkt->data[pkt->pos], src, n);
+    pkt->len += n;
+    pkt->pos += n;
 }
 
 /* an obfuscated blob: length + 2, the checksum, the bytes */
-void LobbyPkt_PutBlob(LobbyPkt *p, void *src, u16 n)
+void LobbyPkt_PutBlob(LobbyPkt *pkt, void *src, u16 n)
 {
     u8 buf[0x210];
     s32 sum;
 
-    sum = Net_LockrockObfuscate(buf, src, (u16)((u16)(p->echo[0] << 8) + p->echo[1]), n, gLobbyNet.key);
-    LobbyPkt_PutU16(p, n + 2);
-    LobbyPkt_PutU16(p, sum);
-    LobbyPkt_PutBytes(p, buf, n);
+    sum = Net_LockrockObfuscate(buf, src, (u16)((u16)(pkt->echo[0] << 8) + pkt->echo[1]), n, gLobbyNet.key);
+    LobbyPkt_PutU16(pkt, n + 2);
+    LobbyPkt_PutU16(pkt, sum);
+    LobbyPkt_PutBytes(pkt, buf, n);
 }
 
-void LobbyPkt_PutBlob2(LobbyPkt *p, void *src, u16 n)
+/* The same as LobbyPkt_PutBlob (the login's password is sent with it). */
+void LobbyPkt_PutBlob2(LobbyPkt *pkt, void *src, u16 n)
 {
     u8 buf[0x210];
     s32 sum;
 
-    sum = Net_LockrockObfuscate(buf, src, (u16)((u16)(p->echo[0] << 8) + p->echo[1]), n, gLobbyNet.key);
-    LobbyPkt_PutU16(p, n + 2);
-    LobbyPkt_PutU16(p, sum);
-    LobbyPkt_PutBytes(p, buf, n);
+    sum = Net_LockrockObfuscate(buf, src, (u16)((u16)(pkt->echo[0] << 8) + pkt->echo[1]), n, gLobbyNet.key);
+    LobbyPkt_PutU16(pkt, n + 2);
+    LobbyPkt_PutU16(pkt, sum);
+    LobbyPkt_PutBytes(pkt, buf, n);
 }
 
-void LobbyPkt_PutBytes2(LobbyPkt *p, void *src, u16 n)
+/* The same as LobbyPkt_PutBytes. */
+void LobbyPkt_PutBytes2(LobbyPkt *pkt, void *src, u16 n)
 {
-    LobbyPkt_PutBytes(p, src, n);
+    LobbyPkt_PutBytes(pkt, src, n);
 }
 
-s32 LobbyPkt_Send(LobbyPkt *p)
+/*
+ * Sends the message: the header from magic, then the payload. Returns
+ * NetTcp_Send's result.
+ */
+s32 LobbyPkt_Send(LobbyPkt *pkt)
 {
-    return NetTcp_Send(gLobbyNet.sock, &p->magic, p->len + 12);
+    return NetTcp_Send(gLobbyNet.sock, &pkt->magic, pkt->len + LOBBY_HEADER_SIZE);
 }
 
-/* lobby_net's .data (0x7EC980-0x7ED460) */
-void LobbyNotify_6003(void);
-void LobbyNotify_6004(void);
-void LobbyNotify_6005(void);
-void LobbyNotify_6007(void);
-void LobbyNotify_6010(void);
-void LobbyNotify_6104(void);
-void LobbyNotify_6106(void);
-void LobbyNotify_6121(void);
-void LobbyNotify_6122(void);
+/* The command tables: for each entry the code's high and low bytes, its kind
+ * (LOBBY_KIND_*), its flag (LOBBY_FLAG_*) and the handler of a message
+ * received; LobbyPkt_BeginCmd takes an entry's index. */
+void LobbyNotify_ServerClose(void);
+void LobbyNotify_DepartCancel(void);
+void LobbyNotify_DepartError(void);
+void LobbyNotify_ServerLeave(void);
+void LobbyNotify_ServerMessage(void);
+void LobbyNotify_LoginDone(void);
+void LobbyNotify_ServerIdRange(void);
+void LobbyNotify_PatchHeader(void);
+void LobbyNotify_PatchData(void);
 void LobbyNotify_6123(void);
-void LobbyNotify_6131(void);
-void LobbyNotify_6191(void);
-void LobbyNotify_6193(void);
-void LobbyNotify_6307(void);
-void LobbyNotify_640C(void);
-void LobbyNotify_6410(void);
-void LobbyNotify_6411(void);
+void LobbyNotify_CharaList(void);
+void LobbyNotify_UserCard(void);
+void LobbyNotify_UserCardPart(void);
+void LobbyNotify_Level0Kick(void);
+void LobbyNotify_Level1Kick(void);
+void LobbyNotify_Level1UserOut(void);
+void LobbyNotify_Level1UserIn(void);
 void LobbyNotify_6414(void);
-void LobbyNotify_6502(void);
-void LobbyNotify_6503(void);
-void LobbyNotify_6505(void);
-void LobbyNotify_6506(void);
-void LobbyNotify_6702(void);
-void LobbyNotify_6705(void);
-void LobbyNotify_6708(void);
-void LobbyNotify_670C(void);
-void LobbyNotify_670E(void);
-void LobbyNotify_6885(void);
-void LobbyNotify_68B0(void);
-void LobbyNotify_6910(void);
-void LobbyReply_6002(void);
-void LobbyReply_6006(void);
-void LobbyReply_600E(void);
-void LobbyReply_6132(void);
-void LobbyReply_6139(void);
+void LobbyNotify_Level2UserOut(void);
+void LobbyNotify_Level2UserIn(void);
+void LobbyNotify_Level2Kick(void);
+void LobbyNotify_Level2MembersNotify(void);
+void LobbyNotify_ChatMessage(void);
+void LobbyNotify_ShortMail(void);
+void LobbyNotify_TownMsg(void);
+void LobbyNotify_ChatTellMessage(void);
+void LobbyNotify_TownMsgToRecv(void);
+void LobbyNotify_TownDataChanged(void);
+void LobbyNotify_LoginWebPage(void);
+void LobbyNotify_PartyReady(void);
+void LobbyReply_LobbyLeave(void);
+void LobbyReply_Logout(void);
+void LobbyReply_Ping(void);
+void LobbyReply_CharaSelect(void);
+void LobbyReply_QuestRecord(void);
 void LobbyReply_6143(void);
 void LobbyReply_6144(void);
 void LobbyReply_6145(void);
 void LobbyReply_6146(void);
-void LobbyReply_6148(void);
-void LobbyReply_6149(void);
-void LobbyReply_614C(void);
-void LobbyReply_614D(void);
+void LobbyReply_SaveSummaryBegin(void);
+void LobbyReply_SaveSummaryPart(void);
+void LobbyReply_LoginInfo(void);
+void LobbyReply_CharaSelectText(void);
 void LobbyReply_6181(void);
 void LobbyReply_6188(void);
-void LobbyReply_6190(void);
-void LobbyReply_6192(void);
-void LobbyReply_61A0(void);
-void LobbyReply_61A1(void);
+void LobbyReply_HunterCard(void);
+void LobbyReply_HunterCardPart(void);
+void LobbyReply_LoginParams(void);
+void LobbyReply_QnetTimeouts(void);
 void LobbyReply_6202(void);
-void LobbyReply_6203(void);
-void LobbyReply_6204(void);
-void LobbyReply_6205(void);
-void LobbyReply_6206(void);
-void LobbyReply_6207(void);
-void LobbyReply_6208(void);
-void LobbyReply_6209(void);
-void LobbyReply_620A(void);
-void LobbyReply_620B(void);
-void LobbyReply_6301(void);
-void LobbyReply_6302(void);
-void LobbyReply_6303(void);
-void LobbyReply_6304(void);
-void LobbyReply_6305(void);
-void LobbyReply_6306(void);
-void LobbyReply_6308(void);
-void LobbyReply_630A(void);
+void LobbyReply_Level0Count(void);
+void LobbyReply_Level0Name(void);
+void LobbyReply_Level0Values(void);
+void LobbyReply_Level0State(void);
+void LobbyReply_Level0Enter(void);
+void LobbyReply_LeaveAll(void);
+void LobbyReply_EnterLevels(void);
+void LobbyReply_Level0Text(void);
+void LobbyReply_Level0Kind(void);
+void LobbyReply_Level1Count(void);
+void LobbyReply_Level1Name(void);
+void LobbyReply_Level1Values(void);
+void LobbyReply_Level1State(void);
+void LobbyReply_Level1Enter(void);
+void LobbyReply_Level0Leave(void);
+void LobbyReply_Level1Text(void);
+void LobbyReply_Level1Users(void);
 void LobbyReply_630B(void);
-void LobbyReply_630C(void);
-void LobbyReply_630D(void);
-void LobbyReply_630E(void);
-void LobbyReply_6310(void);
-void LobbyReply_6311(void);
-void LobbyReply_6312(void);
-void LobbyReply_6313(void);
-void LobbyReply_6314(void);
-void LobbyReply_6315(void);
-void LobbyReply_6316(void);
-void LobbyReply_6317(void);
-void LobbyReply_6318(void);
-void LobbyReply_6319(void);
-void LobbyReply_631A(void);
-void LobbyReply_631B(void);
-void LobbyReply_6401(void);
-void LobbyReply_6402(void);
-void LobbyReply_6403(void);
-void LobbyReply_6404(void);
-void LobbyReply_6405(void);
-void LobbyReply_6406(void);
-void LobbyReply_6407(void);
-void LobbyReply_6408(void);
+void LobbyReply_Level1SetColor(void);
+void LobbyReply_Level1Color(void);
+void LobbyReply_Level1Kind(void);
+void LobbyReply_Level1Open(void);
+void LobbyReply_Level1SettingsEnd(void);
+void LobbyReply_Level1NameAllowed(void);
+void LobbyReply_Level1PassAllowed(void);
+void LobbyReply_Level1TextAllowed(void);
+void LobbyReply_Level1SetName(void);
+void LobbyReply_Level1SetPass(void);
+void LobbyReply_Level1SetText(void);
+void LobbyReply_Level1SetGroupInfo(void);
+void LobbyReply_Level1Search(void);
+void LobbyReply_Level1SearchInfo(void);
+void LobbyReply_Level1GroupInfo(void);
+void LobbyReply_Level2Count(void);
+void LobbyReply_Level2Name(void);
+void LobbyReply_Level2Values(void);
+void LobbyReply_Level2State(void);
+void LobbyReply_Level2Locked(void);
+void LobbyReply_Level2Enter(void);
+void LobbyReply_Level2Open(void);
+void LobbyReply_Level1Leave(void);
 void LobbyReply_6409(void);
-void LobbyReply_640A(void);
-void LobbyReply_640B(void);
-void LobbyReply_640D(void);
+void LobbyReply_Level2Users(void);
+void LobbyReply_Level2Limits(void);
+void LobbyReply_Level2Text(void);
 void LobbyReply_640E(void);
 void LobbyReply_640F(void);
-void LobbyReply_6412(void);
+void LobbyReply_Level2Members(void);
 void LobbyReply_6413(void);
-void LobbyReply_6415(void);
+void LobbyReply_Level2Quest(void);
 void LobbyReply_6416(void);
 void LobbyReply_6417(void);
-void LobbyReply_6501(void);
-void LobbyReply_6504(void);
-void LobbyReply_6509(void);
-void LobbyReply_650A(void);
-void LobbyReply_650B(void);
-void LobbyReply_650C(void);
-void LobbyReply_6601(void);
-void LobbyReply_6602(void);
-void LobbyReply_6603(void);
-void LobbyReply_6604(void);
-void LobbyReply_6605(void);
-void LobbyReply_6606(void);
-void LobbyReply_6607(void);
-void LobbyReply_6608(void);
-void LobbyReply_6609(void);
-void LobbyReply_660A(void);
-void LobbyReply_660B(void);
-void LobbyReply_660C(void);
-void LobbyReply_660E(void);
-void LobbyReply_660F(void);
-void LobbyReply_6610(void);
-void LobbyReply_6704(void);
-void LobbyReply_6707(void);
-void LobbyReply_6709(void);
-void LobbyReply_670B(void);
-void LobbyReply_670D(void);
-void LobbyReply_670F(void);
-void LobbyReply_6711(void);
-void LobbyReply_6712(void);
-void LobbyReply_6713(void);
-void LobbyReply_6881(void);
-void LobbyReply_6882(void);
-void LobbyReply_6883(void);
-void LobbyReply_6884(void);
+void LobbyReply_Level2Leave(void);
+void LobbyReply_SetOut(void);
+void LobbyReply_QuestAccept(void);
+void LobbyReply_Level2Color(void);
+void LobbyReply_QuestPost(void);
+void LobbyReply_Level2PostedQuest(void);
+void LobbyReply_Level2NameEditable(void);
+void LobbyReply_Level2PassEditable(void);
+void LobbyReply_Level2RecCount(void);
+void LobbyReply_Level2RecName(void);
+void LobbyReply_Level2RecEditable(void);
+void LobbyReply_Level2RecDefault(void);
+void LobbyReply_Level2RecChoiceCount(void);
+void LobbyReply_Level2RecChoiceName(void);
+void LobbyReply_Level2SetName(void);
+void LobbyReply_Level2SetPass(void);
+void LobbyReply_Level2SetRecChoice(void);
+void LobbyReply_Level2SettingsEnd(void);
+void LobbyReply_Level2RecChoiceValues(void);
+void LobbyReply_Level2TextEditable(void);
+void LobbyReply_Level2SetText(void);
+void LobbyReply_ShortMailSend(void);
+void LobbyReply_UserStatus(void);
+void LobbyReply_UserSearch(void);
+void LobbyReply_ChatTell(void);
+void LobbyReply_TownMsgTo(void);
+void LobbyReply_ChatColorMode(void);
+void LobbyReply_UserFindByName(void);
+void LobbyReply_UserCardFetch(void);
+void LobbyReply_UserProfile(void);
+void LobbyReply_DlList(void);
+void LobbyReply_DlData(void);
+void LobbyReply_DlFileInfo(void);
+void LobbyReply_TownData(void);
 void LobbyReply_6890(void);
-void LobbyReply_6891(void);
-void LobbyReply_6892(void);
+void LobbyReply_CurrentPlace(void);
+void LobbyReply_TownClock(void);
 void LobbyReply_68A0(void);
 void LobbyReply_68A1(void);
-void LobbyReply_68C0(void);
-void LobbyReply_6911(void);
-void LobbyReply_6912(void);
-void LobbyReply_6913(void);
-void LobbyReply_6914(void);
-void LobbyReply_6915(void);
-void LobbyReply_6916(void);
-void LobbyReply_6917(void);
-void LobbySrvReq_6001(void);
-void LobbySrvReq_6101(void);
-void LobbySrvReq_6103(void);
-void LobbySrvReq_6105(void);
-void LobbySrvReq_6124(void);
-void LobbySrvReq_6125(void);
+void LobbyReply_ServerName(void);
+void LobbyReply_PartyCount(void);
+void LobbyReply_PartySelf(void);
+void LobbyReply_PartyMember(void);
+void LobbyReply_PartyText(void);
+void LobbyReply_PartyRoom(void);
+void LobbyReply_PartyServer(void);
+void LobbyReply_PartyMemberValues(void);
+void LobbySrvReq_Keepalive(void);
+void LobbySrvReq_LoginAuth(void);
+void LobbySrvReq_ClientInfo(void);
+void LobbySrvReq_LoginNotice(void);
+void LobbySrvReq_PatchAck(void);
+void LobbySrvReq_PatchEnd(void);
 void LobbySrvReq_6138(void);
-void LobbySrvReq_614A(void);
+void LobbySrvReq_MemoryCheck(void);
 void LobbySrvReq_6189(void);
 void LobbySrvReq_6706(void);
 u8 gLobbyCmdHi[352] = {
@@ -831,90 +926,90 @@ u8 gLobbyCmdFlag[352] = {
 };
 void HttpLbs_Receive(void); /* nethttp */
 void (*gLobbyCmdHandler[344])(void) = {
-    LobbySrvReq_6001, NULL, NULL, LobbyReply_6002,
-    NULL, LobbyReply_6006, LobbyNotify_6003, LobbyNotify_6004,
-    LobbyNotify_6005, LobbyNotify_6007, NULL, LobbyReply_600E,
-    LobbySrvReq_6101, NULL, LobbySrvReq_6103, NULL,
-    LobbyNotify_6104, LobbySrvReq_6105, NULL, LobbyNotify_6131,
-    NULL, LobbyReply_6132, LobbySrvReq_6138, NULL,
+    LobbySrvReq_Keepalive, NULL, NULL, LobbyReply_LobbyLeave,
+    NULL, LobbyReply_Logout, LobbyNotify_ServerClose, LobbyNotify_DepartCancel,
+    LobbyNotify_DepartError, LobbyNotify_ServerLeave, NULL, LobbyReply_Ping,
+    LobbySrvReq_LoginAuth, NULL, LobbySrvReq_ClientInfo, NULL,
+    LobbyNotify_LoginDone, LobbySrvReq_LoginNotice, NULL, LobbyNotify_CharaList,
+    NULL, LobbyReply_CharaSelect, LobbySrvReq_6138, NULL,
     NULL, NULL, LobbyReply_6143, NULL,
-    LobbyReply_614C, NULL, LobbyReply_6190, LobbyNotify_6191,
-    NULL, LobbyReply_6192, LobbyNotify_6193, NULL,
-    LobbyReply_61A0, NULL, LobbyReply_61A1, NULL,
-    LobbyReply_6139, NULL, LobbyReply_614D, LobbySrvReq_614A,
-    NULL, LobbyNotify_68B0, LobbyNotify_6106, NULL,
+    LobbyReply_LoginInfo, NULL, LobbyReply_HunterCard, LobbyNotify_UserCard,
+    NULL, LobbyReply_HunterCardPart, LobbyNotify_UserCardPart, NULL,
+    LobbyReply_LoginParams, NULL, LobbyReply_QnetTimeouts, NULL,
+    LobbyReply_QuestRecord, NULL, LobbyReply_CharaSelectText, LobbySrvReq_MemoryCheck,
+    NULL, LobbyNotify_LoginWebPage, LobbyNotify_ServerIdRange, NULL,
     LobbyReply_6144, NULL, LobbyReply_6145, NULL,
     LobbyReply_6146, LobbyReply_6202, LobbyReply_6202, NULL,
-    LobbyReply_6208, NULL, LobbyReply_6209, NULL,
-    LobbyReply_6207, NULL, LobbyReply_6203, NULL,
-    LobbyReply_6204, NULL, LobbyReply_6205, LobbyReply_6205,
-    NULL, LobbyReply_6206, LobbyReply_6206, NULL,
-    LobbyReply_620A, LobbyReply_620A, NULL, LobbyReply_6306,
-    LobbyNotify_6307, NULL, LobbyReply_620B, LobbyReply_620B,
-    NULL, LobbyReply_6305, NULL, LobbyReply_6408,
-    NULL, LobbyReply_6301, NULL, LobbyReply_6302,
-    LobbyReply_6302, NULL, LobbyReply_6303, LobbyReply_6303,
-    NULL, LobbyReply_6304, LobbyReply_6304, NULL,
-    LobbyReply_6308, LobbyReply_6308, LobbyNotify_640C, NULL,
-    LobbyReply_6310, NULL, LobbyReply_6312, NULL,
-    LobbyReply_6313, NULL, LobbyReply_6314, NULL,
-    LobbyReply_6315, NULL, LobbyReply_6316, NULL,
-    LobbyReply_6311, NULL, LobbyReply_6317, NULL,
-    LobbyReply_630B, LobbyReply_630B, NULL, LobbyReply_630C,
-    NULL, LobbyReply_630D, LobbyReply_630D, NULL,
-    LobbyReply_631B, LobbyReply_631B, NULL, LobbyReply_630A,
-    LobbyNotify_6410, LobbyNotify_6411, NULL, LobbyReply_630E,
-    LobbyReply_630E, NULL, LobbyReply_6406, NULL,
-    LobbyReply_6501, NULL, NULL, LobbyReply_6401,
-    NULL, LobbyReply_6402, LobbyReply_6402, NULL,
-    LobbyReply_6403, LobbyReply_6403, NULL, LobbyReply_6404,
-    LobbyReply_6404, NULL, LobbyReply_640D, LobbyReply_640D,
-    NULL, LobbyReply_650A, LobbyReply_650A, NULL,
-    LobbyReply_650C, LobbyReply_650C, NULL, LobbyReply_6405,
-    LobbyReply_6405, NULL, LobbyReply_640A, NULL,
-    LobbyReply_640B, LobbyReply_640B, NULL, LobbyReply_6409,
-    NULL, LobbyReply_6407, NULL, LobbyReply_6601,
-    NULL, LobbyReply_6602, NULL, LobbyReply_660F,
-    NULL, LobbyReply_6603, NULL, LobbyReply_6604,
-    NULL, LobbyReply_6605, NULL, LobbyReply_6606,
-    NULL, LobbyReply_6607, NULL, LobbyReply_6608,
-    NULL, LobbyReply_660E, NULL, LobbyReply_6609,
-    NULL, LobbyReply_660A, NULL, LobbyReply_6610,
-    NULL, LobbyReply_660B, NULL, LobbyReply_660C,
-    LobbyNotify_6502, LobbyNotify_6503, LobbyNotify_6505, NULL,
-    LobbyReply_6413, LobbyNotify_6414, NULL, LobbyReply_6509,
-    NULL, LobbyReply_650B, NULL, LobbyReply_6507,
-    NULL, LobbyReply_6418, LobbyReply_6418, NULL,
-    LobbyReply_6504, NULL, LobbyReply_6412, LobbyReply_6412,
-    LobbyNotify_6506, NULL, LobbyNotify_6910, NULL,
-    LobbyReply_6911, NULL, LobbyReply_6912, NULL,
-    LobbyReply_6914, NULL, LobbyReply_6913, NULL,
-    LobbyReply_6917, NULL, NULL, LobbyReply_6915,
-    NULL, LobbyReply_6916, NULL, LobbyReply_6181,
+    LobbyReply_LeaveAll, NULL, LobbyReply_EnterLevels, NULL,
+    LobbyReply_Level0Enter, NULL, LobbyReply_Level0Count, NULL,
+    LobbyReply_Level0Name, NULL, LobbyReply_Level0Values, LobbyReply_Level0Values,
+    NULL, LobbyReply_Level0State, LobbyReply_Level0State, NULL,
+    LobbyReply_Level0Text, LobbyReply_Level0Text, NULL, LobbyReply_Level0Leave,
+    LobbyNotify_Level0Kick, NULL, LobbyReply_Level0Kind, LobbyReply_Level0Kind,
+    NULL, LobbyReply_Level1Enter, NULL, LobbyReply_Level1Leave,
+    NULL, LobbyReply_Level1Count, NULL, LobbyReply_Level1Name,
+    LobbyReply_Level1Name, NULL, LobbyReply_Level1Values, LobbyReply_Level1Values,
+    NULL, LobbyReply_Level1State, LobbyReply_Level1State, NULL,
+    LobbyReply_Level1Text, LobbyReply_Level1Text, LobbyNotify_Level1Kick, NULL,
+    LobbyReply_Level1Open, NULL, LobbyReply_Level1NameAllowed, NULL,
+    LobbyReply_Level1PassAllowed, NULL, LobbyReply_Level1TextAllowed, NULL,
+    LobbyReply_Level1SetName, NULL, LobbyReply_Level1SetPass, NULL,
+    LobbyReply_Level1SettingsEnd, NULL, LobbyReply_Level1SetText, NULL,
+    LobbyReply_630B, LobbyReply_630B, NULL, LobbyReply_Level1SetColor,
+    NULL, LobbyReply_Level1Color, LobbyReply_Level1Color, NULL,
+    LobbyReply_Level1GroupInfo, LobbyReply_Level1GroupInfo, NULL, LobbyReply_Level1Users,
+    LobbyNotify_Level1UserOut, LobbyNotify_Level1UserIn, NULL, LobbyReply_Level1Kind,
+    LobbyReply_Level1Kind, NULL, LobbyReply_Level2Enter, NULL,
+    LobbyReply_Level2Leave, NULL, NULL, LobbyReply_Level2Count,
+    NULL, LobbyReply_Level2Name, LobbyReply_Level2Name, NULL,
+    LobbyReply_Level2Values, LobbyReply_Level2Values, NULL, LobbyReply_Level2State,
+    LobbyReply_Level2State, NULL, LobbyReply_Level2Text, LobbyReply_Level2Text,
+    NULL, LobbyReply_Level2Color, LobbyReply_Level2Color, NULL,
+    LobbyReply_Level2PostedQuest, LobbyReply_Level2PostedQuest, NULL, LobbyReply_Level2Locked,
+    LobbyReply_Level2Locked, NULL, LobbyReply_Level2Users, NULL,
+    LobbyReply_Level2Limits, LobbyReply_Level2Limits, NULL, LobbyReply_6409,
+    NULL, LobbyReply_Level2Open, NULL, LobbyReply_Level2NameEditable,
+    NULL, LobbyReply_Level2PassEditable, NULL, LobbyReply_Level2TextEditable,
+    NULL, LobbyReply_Level2RecCount, NULL, LobbyReply_Level2RecName,
+    NULL, LobbyReply_Level2RecEditable, NULL, LobbyReply_Level2RecDefault,
+    NULL, LobbyReply_Level2RecChoiceCount, NULL, LobbyReply_Level2RecChoiceName,
+    NULL, LobbyReply_Level2RecChoiceValues, NULL, LobbyReply_Level2SetName,
+    NULL, LobbyReply_Level2SetPass, NULL, LobbyReply_Level2SetText,
+    NULL, LobbyReply_Level2SetRecChoice, NULL, LobbyReply_Level2SettingsEnd,
+    LobbyNotify_Level2UserOut, LobbyNotify_Level2UserIn, LobbyNotify_Level2Kick, NULL,
+    LobbyReply_6413, LobbyNotify_6414, NULL, LobbyReply_QuestAccept,
+    NULL, LobbyReply_QuestPost, NULL, LobbyReply_6507,
+    NULL, LobbyReply_Level2Kind, LobbyReply_Level2Kind, NULL,
+    LobbyReply_SetOut, NULL, LobbyReply_Level2Members, LobbyReply_Level2Members,
+    LobbyNotify_Level2MembersNotify, NULL, LobbyNotify_PartyReady, NULL,
+    LobbyReply_PartyCount, NULL, LobbyReply_PartySelf, NULL,
+    LobbyReply_PartyText, NULL, LobbyReply_PartyMember, NULL,
+    LobbyReply_PartyMemberValues, NULL, NULL, LobbyReply_PartyRoom,
+    NULL, LobbyReply_PartyServer, NULL, LobbyReply_6181,
     NULL, NULL, NULL, NULL,
     NULL, NULL, NULL, LobbyReply_6188,
-    LobbySrvReq_6189, NULL, LobbyNotify_6121, LobbyNotify_6122,
-    LobbyNotify_6123, LobbySrvReq_6124, NULL, LobbySrvReq_6125,
+    LobbySrvReq_6189, NULL, LobbyNotify_PatchHeader, LobbyNotify_PatchData,
+    LobbyNotify_6123, LobbySrvReq_PatchAck, NULL, LobbySrvReq_PatchEnd,
     NULL, NULL, NULL, HttpLbs_Receive,
-    NULL, LobbyReply_6881, NULL, LobbyReply_6882,
-    NULL, LobbyReply_6883, LobbyNotify_6010, NULL,
-    LobbyReply_6148, NULL, LobbyReply_6149, NULL,
-    LobbyReply_6884, LobbyNotify_6885, NULL, LobbyReply_6890,
-    LobbyReply_6890, NULL, LobbyReply_6891, NULL,
-    LobbyReply_6892, LobbyReply_6892, NULL, LobbyReply_640E,
+    NULL, LobbyReply_DlList, NULL, LobbyReply_DlData,
+    NULL, LobbyReply_DlFileInfo, LobbyNotify_ServerMessage, NULL,
+    LobbyReply_SaveSummaryBegin, NULL, LobbyReply_SaveSummaryPart, NULL,
+    LobbyReply_TownData, LobbyNotify_TownDataChanged, NULL, LobbyReply_6890,
+    LobbyReply_6890, NULL, LobbyReply_CurrentPlace, NULL,
+    LobbyReply_TownClock, LobbyReply_TownClock, NULL, LobbyReply_640E,
     NULL, LobbyReply_640F, LobbyReply_640F, NULL,
-    LobbyNotify_6702, NULL, LobbyReply_670B, LobbyNotify_670C,
-    NULL, LobbyNotify_6708, NULL, LobbyReply_670D,
-    LobbyNotify_670E, NULL, NULL, LobbyReply_6707,
-    NULL, LobbyReply_670F, NULL, LobbyReply_6713,
-    NULL, LobbyReply_6709, NULL, NULL,
-    LobbyReply_6709, NULL, LobbyReply_6415, NULL,
+    LobbyNotify_ChatMessage, NULL, LobbyReply_ChatTell, LobbyNotify_ChatTellMessage,
+    NULL, LobbyNotify_TownMsg, NULL, LobbyReply_TownMsgTo,
+    LobbyNotify_TownMsgToRecv, NULL, NULL, LobbyReply_UserStatus,
+    NULL, LobbyReply_ChatColorMode, NULL, LobbyReply_UserProfile,
+    NULL, LobbyReply_UserSearch, NULL, NULL,
+    LobbyReply_UserSearch, NULL, LobbyReply_Level2Quest, NULL,
     LobbyReply_6416, NULL, NULL, LobbyReply_6417,
-    NULL, LobbyReply_6711, NULL, NULL,
-    LobbyReply_6712, NULL, LobbyReply_6318, NULL,
-    LobbyReply_6319, NULL, NULL, LobbyReply_631A,
-    NULL, LobbyReply_6704, LobbyNotify_6705, LobbySrvReq_6706,
+    NULL, LobbyReply_UserFindByName, NULL, NULL,
+    LobbyReply_UserCardFetch, NULL, LobbyReply_Level1SetGroupInfo, NULL,
+    LobbyReply_Level1Search, NULL, NULL, LobbyReply_Level1SearchInfo,
+    NULL, LobbyReply_ShortMailSend, LobbyNotify_ShortMail, LobbySrvReq_6706,
     NULL, NULL, LobbyReply_68A0, NULL,
-    LobbyReply_68A1, NULL, LobbyReply_68C0, NULL,
+    LobbyReply_68A1, NULL, LobbyReply_ServerName, NULL,
     HttpLbs_Receive, NULL, NULL, NULL,
 };

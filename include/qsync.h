@@ -3,6 +3,7 @@
 
 #include "common.h"
 #include "item.h"
+#include "lobby_state.h"
 
 /*
  * NETWORK: the game messages of the in-quest protocol (gm_sub qnet_sync.c;
@@ -77,7 +78,7 @@ typedef struct QuestSync {
     u8 unkDF;                   /* 0xDF: player 0's */
     u8 unkE0;                   /* 0xE0: player 0's */
     u8 unkE1;
-    u16 pointRatePct;           /* 0xE2: the reward points' rate in percent: the taken preset's +0xC (Plsel_StateChoose); plsel unk_D67530.c applies it */
+    u16 pointRatePct;           /* 0xE2: the reward points' rate in percent: the taken preset's pointRatePct (Plsel_StateChoose); Plsel_ComputeRewards scales the payout by it */
 } QuestSync;
 typedef char QuestSync_size_check[(sizeof(QuestSync) == 0xE4) ? 1 : -1];
 
@@ -87,7 +88,9 @@ extern QuestSync gQuestSync;
 enum QSyncPlayerKind {
     QSYNC_PL_STATE = 1,         /* the whole state */
     QSYNC_PL_POS = 2,           /* the position and health */
-    QSYNC_PL_SPOT = 3,          /* 3 to 5: at an action spot */
+    QSYNC_PL_ENTER_AREA = 3,    /* placed in the area it entered, at its position (the area's player set-up) */
+    QSYNC_PL_FAINT_TO_CAMP = 4, /* placed at the camp after a faint (Player_StateFaint) */
+    QSYNC_PL_RELOCATED = 5,     /* placed somewhere new: at the camp by an item (Player_StateThrowItem's PL_ACT_RETURN_TO_CAMP), or offline by an area's exit spot (Player_CheckActionSpot) */
     QSYNC_PL_HANDOVER = 6,      /* the state while handing over an item */
     QSYNC_PL_ITEM_ASK = 7,      /* asks another player for an item */
     QSYNC_PL_ITEM_ANSWER = 8,   /* the answer: given or refused */
@@ -100,7 +103,7 @@ enum QSyncPlayerKind {
 #define QSYNC_LEN_PL_STATE 0x2F     /* kinds 1 and 9: k1, to ammoType */
 #define QSYNC_LEN_PL_POS 0x1E       /* kind 2: k2, to area */
 #define QSYNC_LEN_PL_POS_SONG 0x1F  /* kind 10: k2, to hornSong */
-#define QSYNC_LEN_PL_SPOT 0x17      /* kinds 3-5: k3 */
+#define QSYNC_LEN_PL_PLACE 0x17     /* kinds 3-5: k3 */
 #define QSYNC_LEN_PL_HANDOVER 0x28  /* kind 6: k6 */
 #define QSYNC_LEN_PL_ITEM 0xC       /* kinds 7 and 8: k7 */
 
@@ -146,7 +149,7 @@ typedef union QSyncPlayerData {
         u16 area;           /* 0x1C */
         u8 hornSong;        /* 0x1E: Player.hornSong (kind 10) */
     } k2;
-    struct {                /* kinds 3-5 (len 0x17): at an action spot */
+    struct {                /* kinds 3-5 (len 0x17): the player placed in an area */
         f32 pos[3];         /* 0x04: Player.startPos */
         u16 angle;          /* 0x10: Player.startAngle (also the receiver's targetYaw) */
         u16 area;           /* 0x12: Player.nextArea (the receiver's area) */
@@ -405,7 +408,6 @@ enum QSyncStateKind {
 #define QSYNC_LEN_ST_SETUP 0x22         /* kind 2: k2 */
 #define QSYNC_LEN_ST_QUEST_EVENT 0xE    /* kind 6: k6 */
 
-#define QSYNC_USER_ID_LEN 8             /* k2.userId: a user id (gMyUserId), a row of gScene.preset */
 #define QSYNC_PICK_TAKEN 0x80           /* k12.pick and gQuestSync.picks[]: the preset hunter is taken */
 #define QSYNC_PICK_INDEX 0x7F           /* the preset hunter's index under QSYNC_PICK_TAKEN */
 
@@ -433,7 +435,7 @@ typedef union QSyncStateData {
         u8 unk17;           /* 0x17: gQuestSync.unkDF (player 0's) */
         u8 startItemList;   /* 0x18: gQuestSync.startItemList[who] */
         u8 unk19;
-        s8 userId[QSYNC_USER_ID_LEN]; /* 0x1A: the sender's user id, gMyUserId (into gScene.preset[who], which holds the players' ids) */
+        s8 userId[LOBBY_USER_ID_LEN]; /* 0x1A: the sender's user id, gMyUserId (into gScene.userIds[who], which holds the players' ids) */
     } k2;
     struct {                /* kind 6 (len 0xE): a quest event, gQuest's 10-byte net message (Quest_HandleNetMsg) */
         u8 from;            /* 0x04: Quest.msgFrom */

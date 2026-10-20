@@ -9,7 +9,7 @@
 #include "window.h"            /* ListPanel, ListWin, Panel, Frame */
 #include "chat_log.h"          /* ChatLine (PlselSelWork.log) */
 
-/* The player select overlay (plsel.bin, loaded at 0xD60200). */
+/* The player select overlay (plsel.bin). */
 
 
 /* The rewards list (PlselWork.rewList, 0x1A64 bytes up to noticeCount): text
@@ -58,10 +58,10 @@ typedef struct PlselList {
 } PlselList;
 
 /* Its work area (include/plsel.spec lists the fields). t[n] in the comments:
- * the results screen format string that prints the field (sub_main D_469EB0,
- * Plsel_BuildResultText). */
+ * the results screen's format text that prints the field (Plsel_BuildResultText
+ * reads them from sub_main's texts). */
 typedef struct PlselWork {
-    s32 unk0000;                /* 0x000 */
+    s32 resMode;                /* 0x000: the results page up: 0 the money pages, 1 the hunter rank points, 3 the size records, 4 the arena monster (RES_MODE_*) */
     s32 moneyTotal;             /* 0x004: the money paid (all four sums; Save_AddMoney); t[4] */
     s32 questMoney;             /* 0x008: the quest reward: fees and goal rewards (t[1], t[20]) */
     s32 monsterMoney;           /* 0x00C: the monsters' trade price total (t[2], t[11]) */
@@ -151,8 +151,8 @@ typedef struct PlselWork {
     u16 questSmallest[0x50];    /* 0x3AE0: smallest size of the quest */
     u8 lowRankCut;              /* 0x3B80: 1: rank over 30 on a quest under 5 stars: 60% of the points and money */
     u8 wtdDouble;               /* 0x3B81: 1: the WTD fee counts double (Plsel_SumRecordRewards) */
-    u8 unk3B82;                 /* 0x3B82 */
-    u8 unk3B83;                 /* 0x3B83 */
+    u8 rateNoticeQueued;        /* 0x3B82: 1 once the notice that the rates are open is queued */
+    u8 clearedBefore;           /* 0x3B83: a drill: whether its quest was cleared before this clear (its notice comes on the first) */
     s32 pointRate;              /* 0x3B84: the points' percent (Plsel_ResetPointRate) */
 } PlselWork;
 typedef char PlselWork_size_check[(sizeof(PlselWork) == 0x3B88) ? 1 : -1];
@@ -181,18 +181,21 @@ typedef struct PlselSelWork {
 typedef char PlselSelWork_size_check[(sizeof(PlselSelWork) == 0x13DC) ? 1 : -1];
 
 #define gPlselSelWork (*(PlselSelWork **)&gOverlayWorkPtr)
+#define PLSEL_CHAT_LOG_LEN 64       /* PlselSelWork.log's entries, a ring: the indices wrap with & (PLSEL_CHAT_LOG_LEN - 1) */
+#define PLSEL_CHAT_ROW_LEN 0x16     /* the text bytes of a chat log row; a two-byte character may end one byte past it, and such a row is drawn narrower */
 
 /* The list panels and windows of the overlay are window.h's ListPanel, ListWin and Panel. */
 
 /* A preset hunter's equipment (14 bytes): the rows of gPlselPresets[set]
- * (four per set, Plsel_CurPreset) and of the stage records D_896D90[stage]
- * (Plsel_ApplyStageEquip). The armour ids go to Player.equip[2..5] and
- * [0] (Plsel_SetupSavedPlayer; the names gArmorHeadNames to gArmorLegsNames). */
+ * (four per set, Plsel_CurPreset) and of the stage records gTrainingPresets[stage]
+ * (Plsel_ApplyStageEquip). The armour ids go to Player.equip's armour slots,
+ * EQUIP_HEAD to EQUIP_WAIST and EQUIP_LEGS (Plsel_SetupSavedPlayer; the names
+ * gArmorHeadNames to gArmorLegsNames). */
 typedef struct PlselPreset {
-    u16 weaponType;             /* 0x0: the weapon's EquipItem type (6 blade, 7 gun) */
+    u16 weaponType;             /* 0x0: the weapon's EquipItem type (EQUIP_BLADE or EQUIP_GUN) */
     u16 weaponId;               /* 0x2 */
     u16 weaponLevel;            /* 0x4 */
-    u8 head;                    /* 0x6: armour ids, EquipItem types 2, 3, 4, 5 and 0 */
+    u8 head;                    /* 0x6: armour ids, of types EQUIP_HEAD, EQUIP_BODY, EQUIP_ARMS, EQUIP_WAIST and EQUIP_LEGS */
     u8 body;                    /* 0x7 */
     u8 arms;                    /* 0x8 */
     u8 waist;                   /* 0x9 */
@@ -205,7 +208,7 @@ typedef char PlselPreset_size_check[(sizeof(PlselPreset) == 0xE) ? 1 : -1];
 /* A preset player's look (16 bytes, gPlselPresetPlayers: Plsel_SetupPresetPlayer). */
 typedef struct PlselPresetPlayer {
     u8 gender;                  /* 0x0 */
-    u8 unk1;                    /* 0x1: Player.equip[1].id */
+    u8 face;                    /* 0x1: the face (Player.equip[EQUIP_SLOT_FACE].id) */
     u8 hairStyle;               /* 0x2 */
     u8 unk3;                    /* 0x3 */
     s32 hairColor;              /* 0x4 */
@@ -256,7 +259,7 @@ enum PlselChooseStep {
     PLSEL_CHOOSE_TAKEN = 5      /* set with PLSEL_SEL_READY once the preset is taken */
 };
 
-/* The player menu's entries (unk_D64560.c; HudState.fieldMenuCursor). */
+/* The player menu's entries (Plsel_DrawPlayerMenuList; HudState.fieldMenuCursor). */
 enum PlselMenuEntry {
     PLSEL_MENU_POUCH,           /* 0: the pouch (sub_main's PouchMenu) */
     PLSEL_MENU_STATUS,          /* 1: the personal status */
@@ -266,12 +269,12 @@ enum PlselMenuEntry {
     PLSEL_MENU_COUNT
 };
 
-/* The gallery's scenes (unk_D74450.c). */
+/* The gallery's quest scenes and town tours (Galex_Task). */
 #define GALEX_QUEST_ID 0x3AB1       /* gNextQuestId of an entry with no quest of its own: the gallery's own stage file (Galex_SetupQuest) */
 #define GALEX_PAIRS_END 0xFF        /* ends gGalexEntryPairs' first list */
 #define GALEX_TOUR_FACILITY_ROW 12  /* gGalexEntryPairs' row of the town tours' facility levels */
 
-/* gGalexQuests' records (0xD79370, 46): per gallery entry (its
+/* gGalexQuests' records (46 of them): per gallery entry (its
  * GAL_ENTRY_MASK value), the quest it plays and for how long. */
 typedef struct GalQuest {
     u16 questId;                /* 0x0: -> gNextQuestId; 0: the gallery's own stage file (GALEX_QUEST_ID) */
@@ -348,5 +351,200 @@ enum EndingMove {
     ENDING_MOVE_SINK,           /* 8: down */
     ENDING_MOVE_RISE            /* 9: up */
 };
+
+/* The quest results screen's own objects (the overlay's .bss and data). */
+/* One entry of gPlselBonus's recs (8 bytes). */
+typedef struct PlselRec {
+    s16 type;
+    s16 id;
+    s16 count;                  /* goal multiples met, monsters hunted, items delivered */
+    s16 reward;                 /* the money per count (the delivery's whole reward) */
+} PlselRec;
+
+/* gPlselBonus: 0xD0 bytes of the file's .bss. */
+typedef struct PlselBonus {
+    u8 unk00[0x08];
+    s32 rewardMoney;            /* 0xD7BD98: gRewardMoney at the results' start */
+    u8 unk0C[0x04];
+    u8 itemsTaken;              /* 0xD7BDA0: 1 when Plsel_TakeSaleItems took a stack */
+    u8 hasBonusRecs;            /* 0xD7BDA1: 1 when Plsel_CheckTargetBonus filled a record */
+    u8 sizeCheckAfter;          /* 0xD7BDA2: the size records are checked from the group after it; only cleared */
+    u8 unk13[0x16 - 0x13];
+    struct {
+        u16 item;
+        s16 count;
+    } items[20];                /* 0xD7BDA6 */
+    u16 deliveredItem;          /* 0xD7BDF6: the delivery record's item */
+    s16 deliveredCount;         /* 0xD7BDF8: and its count */
+    PlselRec recs[8];           /* 0xD7BDFA */
+    u8 unkAA[0xD0 - 0xAA];
+} PlselBonus;
+
+/* A countdown and its flags (gPlselItemBox). */
+typedef struct PlselItemBoxMenu {
+    u8 state;                   /* IBOX_LIST, IBOX_ENTRY, IBOX_DONE */
+    u8 cursor;                  /* the entry: IBOX_ENTRY_BOX, _SELL, _FINISH */
+    u8 subStep;                 /* in the box: IBOX_BOX_*; in the sale: IBOX_SELL_* */
+    u8 infoWindow;              /* the description shown: IBOX_INFO_* */
+    u8 sold;                    /* nonzero: the sale entry ends the menu at once (only cleared here) */
+    u8 entryCount;              /* the entries the cursor moves over */
+    u8 boxCursor;               /* the supply box slot: column | row << 3 */
+    u8 pouchCursor;             /* the pouch slot */
+    s16 timeLeft;               /* frames; the menu closes at 0 */
+    s8 noRoom;                  /* 0: the pouch can't take the box item (its line shows); -1: it can */
+    u8 blinkTimer;              /* counts up after a swap; the next-page icon blinks with it */
+    u8 sellChoice;              /* the sale's question: 0 yes, 1 no */
+    u8 unkD[3];
+} PlselItemBoxMenu;
+
+/* An entry of sub_main's gRecordCountEntries (4 bytes, ends with id 0). */
+typedef struct PlselKind {
+    u16 id;
+    u16 kind;
+} PlselKind;
+
+/* One hunt-count award: granted once the hunted count of `monster` (a
+ * kind, or a group when byMonster is 0) reaches `count`. byMonster 0xFF
+ * ends the list. */
+typedef struct PlselHuntAward
+{
+    u8 byMonster;
+    u8 monster;
+    u8 count;
+    u8 award;
+} PlselHuntAward;
+
+/* gPlselItemBox with the object after it (gPlselItemBoxSale), as the shop menu uses
+ * them: one 0x20-byte work area. */
+typedef struct PlselShop {
+    PlselItemBoxMenu t;               /* 0x00 */
+    s32 money;                  /* 0x10 */
+    s32 flag;                   /* 0x14 */
+} PlselShop;
+
+/* The quest results screen (Plsel_ResultsUpdate). Entries of sub_main's
+ * gPlselTexts that it uses, by their roles. */
+#define PLSEL_TEXT_QUIT_NOTICE 26   /* the five lines of the notice after a quest ended with QUEST_PHASE_QUIT */
+#define PLSEL_TEXT_ITEMBOX_TIME 31  /* the item box menu's time left, in seconds (also the arena record menu's) */
+#define PLSEL_TEXT_STACK_NAME 32    /* the box item's name */
+#define PLSEL_TEXT_STACK_COUNT 33   /* the box item's name and count */
+#define PLSEL_TEXT_NO_ROOM 34       /* the pouch can't take the box item */
+#define PLSEL_TEXT_RESULT_FMTS 44   /* the results pages' line formats (Plsel_BuildResultText) */
+#define PLSEL_TEXT_TITLES_HEADING 69 /* the heading of the hunter titles page */
+#define PLSEL_TEXT_NEW_RECORD 78    /* drawn beside a beaten size record */
+#define PLSEL_TEXT_NOTICES_HEADING 79 /* the heading of the notices page */
+#define PLSEL_TEXT_PROMPT 111       /* the prompt under a page */
+#define PLSEL_TEXT_COUNTDOWN 112    /* a page's time left, in seconds */
+#define PLSEL_TEXT_REWARD_LIST 120  /* the drill rewards list's texts (24) */
+#define PLSEL_TEXT_REWARD_CATEGORIES 144 /* the reward categories' lines (24) */
+
+/* Entries of gHelpTexts_6, the item box menu's page of help texts. */
+#define IBOX_TEXT_SELL_YES 4        /* the sale's yes; no follows it (indexed by sellChoice) */
+#define IBOX_TEXT_DRILL_ENTRIES 10  /* the menu's entries in a drill */
+#define IBOX_TEXT_STACK_VALUE 16    /* the label before a stack's value */
+#define IBOX_TEXT_SALE_TOTAL 17     /* the label before the sale's total */
+#define IBOX_TEXT_VALUE_FMT 18      /* the format of a value */
+#define IBOX_TEXT_MONEY_FMT 19      /* the format of the hunter's money */
+
+/* The steps of the quest results screen (gScene.step in Plsel_ResultsUpdate).
+ * A page's steps come in threes: its set-up, its input, and its fade-out. */
+enum PlselResStep {
+    PLRES_START,                /* 0: the tally; picks the first page */
+    PLRES_ARENA_MENU,           /* 1: keep the captured monster as an arena record? */
+    PLRES_ARENA_OUT,            /* 2: fades out to the item box menu or the money pages */
+    PLRES_ITEMBOX,              /* 3: the item box menu */
+    PLRES_ITEMBOX_OUT,          /* 4: fades out to the next page */
+    PLRES_MONEY,                /* 5: the money pages */
+    PLRES_MONEY_OUT,            /* 6 */
+    PLRES_POINTS_START,         /* 7: online, the hunter rank points page */
+    PLRES_POINTS,               /* 8 */
+    PLRES_POINTS_OUT,           /* 9 */
+    PLRES_TITLES_START,         /* 0xA: the hunter titles earned */
+    PLRES_TITLES,               /* 0xB */
+    PLRES_TITLES_OUT,           /* 0xC */
+    PLRES_RECORDS_START,        /* 0xD: the size records */
+    PLRES_RECORDS,              /* 0xE */
+    PLRES_RECORDS_OUT,          /* 0xF */
+    PLRES_NOTICES_START,        /* 0x10: the notices of what was unlocked */
+    PLRES_NOTICES,              /* 0x11 */
+    PLRES_NOTICES_OUT,          /* 0x12 */
+    PLRES_REWARD_LIST_START,    /* 0x13: a drill's rewards list */
+    PLRES_REWARD_LIST,          /* 0x14 */
+    PLRES_MONSTER,              /* 0x15: after a versus quest, the arena monster page */
+    PLRES_MONSTER_OUT,          /* 0x16 */
+    PLRES_QUIT_NOTICE,          /* 0x17: the notice after QUEST_PHASE_QUIT */
+    PLRES_QUIT_OUT,             /* 0x18 */
+    PLRES_EXIT                  /* 0x19: on to the opening, the ending or the quest's end */
+};
+
+/* PlselWork.closeState: a page's closing (PlselRes_BeginClose, PlselRes_Close). */
+enum PlselResClose {
+    PLRES_OPEN,                 /* 0 */
+    PLRES_CLOSE_ASKED,          /* 1: the page's input asked to close */
+    PLRES_CLOSING               /* 2: closeTimer runs */
+};
+
+/* PlselWork.resMode: which results page is up (Plsel_DrawResultPage picks
+ * what to add by it). */
+enum PlselResMode {
+    RES_MODE_MONEY,             /* 0: the money pages */
+    RES_MODE_POINTS,            /* 1: the hunter rank points */
+    RES_MODE_RECORDS = 3,       /* 3: the size records */
+    RES_MODE_ARENA              /* 4: the arena monster */
+};
+
+/* PlselWork.page: the page whose lines Plsel_BuildResultText builds. */
+enum PlselResPage {
+    RES_PAGE_SUMMARY,           /* 0: the money totals */
+    RES_PAGE_QUEST,             /* 1: the fee and the goals' rewards */
+    RES_PAGE_MONSTERS,          /* 2: the monsters' rewards */
+    RES_PAGE_ITEMS,             /* 3: the items sold */
+    RES_PAGE_POINTS,            /* 4: the hunter rank points */
+    RES_PAGE_RECORDS,           /* 5: a monster group's size records */
+    RES_PAGE_ARENA = 7          /* 7: the arena monster */
+};
+#define RES_MONEY_PAGES 4           /* the money pages, RES_PAGE_SUMMARY to RES_PAGE_ITEMS */
+#define PLRES_PAGE_TIMEOUT 0xE10    /* frames a page or menu waits before it goes on by itself: 2 min */
+#define PLSEL_GROUP_COUNT 0x4A      /* the monster groups the results count by (PlselWork's per-group arrays) */
+#define PLSEL_LIST_END 0xFFFF       /* ends the u16 lists of quests and flags */
+
+/* The item box menu (PlselItemBoxMenu, Plsel_ItemBoxMenu). */
+enum PlselItemBoxState {
+    IBOX_LIST,                  /* 0: the list of entries */
+    IBOX_ENTRY,                 /* 1: inside an entry */
+    IBOX_DONE                   /* 2: closed */
+};
+enum PlselItemBoxEntry {
+    IBOX_ENTRY_BOX,             /* 0: take items from the supply box */
+    IBOX_ENTRY_SELL,            /* 1: sell what is left */
+    IBOX_ENTRY_FINISH           /* 2: finish */
+};
+enum PlselItemBoxStep {
+    IBOX_BOX_PICK = 0,          /* the box: pick a stack */
+    IBOX_BOX_SWAP = 1,          /* the box: pick the pouch slot to swap it with */
+    IBOX_BOX_SWAPPED = 2,       /* the box: swapped */
+    IBOX_SELL_ASK = 0,          /* the sale: the yes/no question */
+    IBOX_SELL_DONE = 1          /* the sale: sold */
+};
+enum PlselItemBoxInfo {
+    IBOX_INFO_NONE,             /* 0 */
+    IBOX_INFO_BOX,              /* 1: the description of the box item */
+    IBOX_INFO_POUCH             /* 2: of the pouch item */
+};
+#define IBOX_TIME_LIMIT 0xE10       /* the menu's clock, frames: 2 min */
+#define IBOX_COLUMNS 8              /* the box grid: 8 columns of 6 rows */
+#define IBOX_ROWS 6
+
+/* The arena record menu (Plsel_SaveRecordMenu): PlselWork.menuStep, and
+ * PlselWork.page as the first question's cursor. */
+enum PlselArenaMenuStep {
+    ARENA_MENU_ASK,             /* 0: keep the captured monster, or not */
+    ARENA_MENU_PICK_SLOT,       /* 1: the slot to keep it in */
+    ARENA_MENU_CONFIRM,         /* 2: overwrite a record (all three in use)? */
+    ARENA_MENU_SAVED,           /* 3: kept */
+    ARENA_MENU_TIMED_OUT        /* 4: the time ran out: the monster was released */
+};
+#define ARENA_CHOICE_KEEP 0
+#define ARENA_CHOICE_SKIP 1
 
 #endif /* PLSEL_H */

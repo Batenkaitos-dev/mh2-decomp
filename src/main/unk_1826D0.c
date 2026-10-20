@@ -1,5 +1,5 @@
 /*
- * 0x1826D0: the memory managers (include/heap.h): the handle heap (gHeap)
+ * The memory managers (include/heap.h): the handle heap (gHeap)
  * and the linear heaps, with their own byte fill and move.
  */
 #include "common.h"
@@ -23,245 +23,283 @@ void Heap_Unlink(Heap *h, s32 i);
 u32 Heap_Compact(Heap *h);
 s32 Heap_AllocTop(Heap *h, u32 size, s32 align);
 
-void Heap_Init(Heap *h, HeapBlock *blocks, s32 count, u32 start, u32 size, s32 align, s32 upward)
+/*
+ * Sets up heap over size bytes from start, with count block records in
+ * blocks (cleared) and blocks aligned to align (a power of two). upward
+ * 1 places blocks from the start up (base is start aligned up), 0 from
+ * the end down (base is the end aligned down). Seen: gHeap, with
+ * HEAP_BLOCK_COUNT records.
+ */
+void Heap_Init(Heap *heap, HeapBlock *blocks, s32 count, u32 start, u32 size, s32 align, s32 upward)
 {
-    h->count = count;
-    h->blocks = blocks;
-    h->size = size;
-    h->upward = upward;
-    h->align = align;
+    heap->count = count;
+    heap->blocks = blocks;
+    heap->size = size;
+    heap->upward = upward;
+    heap->align = align;
     if (upward) {
-        h->base = HEAP_ALIGN(start, align);
+        heap->base = HEAP_ALIGN(start, align);
     } else {
-        h->base = ~(align - 1) & (start + size);
+        heap->base = ~(align - 1) & (start + size);
     }
-    h->cur = h->base;
-    h->used = 0;
-    h->reserved = 0;
-    h->first = 0xFFFF;
+    heap->cur = heap->base;
+    heap->used = 0;
+    heap->reserved = 0;
+    heap->first = 0xFFFF;
     Heap_Fill(blocks, 0, count * 0x10);
 }
 
-s32 Heap_AllocTopAligned(Heap *h, u32 size)
+/* Heap_AllocTop with the heap's own alignment. */
+s32 Heap_AllocTopAligned(Heap *heap, u32 size)
 {
-    return Heap_AllocTop(h, size, h->align);
+    return Heap_AllocTop(heap, size, heap->align);
 }
 
-/* The end of the new block is computed as a pointer (the addition then has
- * the address first). */
-s32 Heap_AllocTop(Heap *h, u32 size, s32 align)
+/*
+ * Allocates size bytes where the next block goes (heap->cur): upward
+ * heaps place it at cur and move cur past it, aligned up to align;
+ * downward heaps place it below cur, aligned down, and move cur to it.
+ * The block is recorded in a new record and linked into the address
+ * list. Returns its handle (record index + 1), or 0 when size is 0, when
+ * the free space is not more than size + align, or when no record is
+ * free.
+ * The end of the new block is computed as a pointer, so that the
+ * addition has the address first, as in the game.
+ */
+s32 Heap_AllocTop(Heap *heap, u32 size, s32 align)
 {
-    s32 i;
+    s32 slot;
 
-    if (Heap_FreeSize(h) <= size + align) {
+    if (Heap_FreeSize(heap) <= size + align) {
         return 0;
     }
     if (size == 0) {
         return 0;
     }
-    i = Heap_NewRecord(h);
-    if (i == 0xFFFF) {
+    slot = Heap_NewRecord(heap);
+    if (slot == 0xFFFF) {
         return 0;
     }
-    h->blocks[i].flags = 0;
-    h->blocks[i].size = size;
-    h->blocks[i].align = h->align;
-    if (h->upward) {
-        h->blocks[i].addr = h->cur;
-        h->cur = HEAP_ALIGN((u32)((u8 *)h->blocks[i].addr + size), align);
+    heap->blocks[slot].flags = 0;
+    heap->blocks[slot].size = size;
+    heap->blocks[slot].align = heap->align;
+    if (heap->upward) {
+        heap->blocks[slot].addr = heap->cur;
+        heap->cur = HEAP_ALIGN((u32)((u8 *)heap->blocks[slot].addr + size), align);
     } else {
-        h->blocks[i].addr = ~(align - 1) & (h->cur - size);
-        h->cur = h->blocks[i].addr;
+        heap->blocks[slot].addr = ~(align - 1) & (heap->cur - size);
+        heap->cur = heap->blocks[slot].addr;
     }
-    h->used += size;
-    Heap_Link(h, i);
-    return i + 1;
+    heap->used += size;
+    Heap_Link(heap, slot);
+    return slot + 1;
 }
 
 /* A block of size bytes in the first gap between blocks that holds it
  * (upward heaps from the lowest address, downward ones from the highest),
  * else after the last block (Heap_AllocTopAligned); returns its handle. */
-s32 Heap_Alloc(Heap *h, u32 size)
+s32 Heap_Alloc(Heap *heap, u32 size)
 {
-    s32 i;
+    s32 slot;
     u32 need;
-    HeapBlock *b;
+    HeapBlock *block;
     HeapBlock *blocks;
     HeapBlock *next;
     u32 addr;
 
-    need = HEAP_ALIGN(size, h->align);
-    i = Heap_NewRecord(h);
-    if (i == 0xFFFF) {
+    need = HEAP_ALIGN(size, heap->align);
+    slot = Heap_NewRecord(heap);
+    if (slot == 0xFFFF) {
         return 0;
     }
-    if (h->first == 0xFFFF) {
-        return Heap_AllocTopAligned(h, size);
+    if (heap->first == 0xFFFF) {
+        return Heap_AllocTopAligned(heap, size);
     }
-    blocks = h->blocks;
-    b = &blocks[h->first];
-    if (h->upward) {
-        while (b->next != 0xFFFF) {
-            next = &blocks[b->next];
-            addr = HEAP_ALIGN(b->addr + b->size, h->align);
+    blocks = heap->blocks;
+    block = &blocks[heap->first];
+    if (heap->upward) {
+        while (block->next != 0xFFFF) {
+            next = &blocks[block->next];
+            addr = HEAP_ALIGN(block->addr + block->size, heap->align);
             if (need <= next->addr - addr) {
-                h->blocks[i].flags = 0;
-                h->blocks[i].size = size;
-                h->blocks[i].align = h->align;
-                h->blocks[i].addr = addr;
-                h->used += size;
-                Heap_Link(h, i);
-                return i + 1;
+                heap->blocks[slot].flags = 0;
+                heap->blocks[slot].size = size;
+                heap->blocks[slot].align = heap->align;
+                heap->blocks[slot].addr = addr;
+                heap->used += size;
+                Heap_Link(heap, slot);
+                return slot + 1;
             }
-            b = next;
+            block = next;
         }
-        addr = HEAP_ALIGN(b->addr + b->size, h->align);
-        if (need <= h->cur - addr) {
-            h->blocks[i].flags = 0;
-            h->blocks[i].size = size;
-            h->blocks[i].align = h->align;
-            h->blocks[i].addr = addr;
-            h->used += size;
-            Heap_Link(h, i);
-            return i + 1;
+        addr = HEAP_ALIGN(block->addr + block->size, heap->align);
+        if (need <= heap->cur - addr) {
+            heap->blocks[slot].flags = 0;
+            heap->blocks[slot].size = size;
+            heap->blocks[slot].align = heap->align;
+            heap->blocks[slot].addr = addr;
+            heap->used += size;
+            Heap_Link(heap, slot);
+            return slot + 1;
         }
     } else {
-        while (b->next != 0xFFFF) {
-            next = &blocks[b->next];
-            if (need <= b->addr - HEAP_ALIGN(next->addr + next->size, h->align)) {
-                h->blocks[i].flags = 0;
-                h->blocks[i].size = size;
-                h->blocks[i].align = h->align;
-                h->blocks[i].addr = b->addr - need;
-                h->used += size;
-                Heap_Link(h, i);
-                return i + 1;
+        while (block->next != 0xFFFF) {
+            next = &blocks[block->next];
+            if (need <= block->addr - HEAP_ALIGN(next->addr + next->size, heap->align)) {
+                heap->blocks[slot].flags = 0;
+                heap->blocks[slot].size = size;
+                heap->blocks[slot].align = heap->align;
+                heap->blocks[slot].addr = block->addr - need;
+                heap->used += size;
+                Heap_Link(heap, slot);
+                return slot + 1;
             }
-            b = next;
+            block = next;
         }
-        if (need <= b->addr - h->cur) {
-            h->blocks[i].flags = 0;
-            h->blocks[i].size = size;
-            h->blocks[i].align = h->align;
-            h->blocks[i].addr = b->addr - need;
-            h->used += size;
-            Heap_Link(h, i);
-            return i + 1;
+        if (need <= block->addr - heap->cur) {
+            heap->blocks[slot].flags = 0;
+            heap->blocks[slot].size = size;
+            heap->blocks[slot].align = heap->align;
+            heap->blocks[slot].addr = block->addr - need;
+            heap->used += size;
+            Heap_Link(heap, slot);
+            return slot + 1;
         }
     }
-    return Heap_AllocTopAligned(h, size);
+    return Heap_AllocTopAligned(heap, size);
 }
 
-u32 Heap_MaxAlloc(Heap *h, u32 size)
+/*
+ * The address of size bytes (rounded up to the alignment) at the far end
+ * of heap: base + size - that for an upward heap, the low end (base -
+ * size) for a downward one. When the free space is short the heap is
+ * compacted first; 0 when it is still short. No block is recorded.
+ * Seen: MainHeap_MaxAlloc.
+ */
+u32 Heap_MaxAlloc(Heap *heap, u32 size)
 {
-    u32 need = HEAP_ALIGN(size, h->align);
+    u32 need = HEAP_ALIGN(size, heap->align);
 
-    if (Heap_FreeSize(h) < need) {
-        Heap_Compact(h);
-        need = HEAP_ALIGN(need, h->align);
-        if (Heap_FreeSize(h) < need) {
+    if (Heap_FreeSize(heap) < need) {
+        Heap_Compact(heap);
+        need = HEAP_ALIGN(need, heap->align);
+        if (Heap_FreeSize(heap) < need) {
             return 0;
         }
     }
-    if (h->upward) {
-        return h->base + h->size - need;
+    if (heap->upward) {
+        return heap->base + heap->size - need;
     }
-    return h->base - h->size;
+    return heap->base - heap->size;
 }
 
-u32 Heap_GetAddr(Heap *h, s32 handle)
+/* The address of handle's block; 0 for handle 0 or past the records. */
+u32 Heap_GetAddr(Heap *heap, s32 handle)
 {
-    s32 i = handle - 1;
+    s32 slot = handle - 1;
 
-    if (i >= h->count || handle == 0) {
+    if (slot >= heap->count || handle == 0) {
         return 0;
     }
-    return h->blocks[i].addr;
+    return heap->blocks[slot].addr;
 }
 
-s32 Heap_Free(Heap *h, s32 handle)
+/*
+ * Frees handle's block: takes its size off heap->used, clears its record
+ * and unlinks it. Returns 1, or 0 when handle is past the records or the
+ * block is already free.
+ */
+s32 Heap_Free(Heap *heap, s32 handle)
 {
-    s32 i = handle - 1;
+    s32 slot = handle - 1;
     u32 size;
 
-    if (i >= h->count) {
+    if (slot >= heap->count) {
         return 0;
     }
-    size = h->blocks[i].size;
+    size = heap->blocks[slot].size;
     if (size == 0) {
         return 0;
     }
-    h->used -= size;
-    h->blocks[i].size = 0;
-    h->blocks[i].addr = 0;
-    Heap_Unlink(h, i);
+    heap->used -= size;
+    heap->blocks[slot].size = 0;
+    heap->blocks[slot].addr = 0;
+    Heap_Unlink(heap, slot);
     return 1;
 }
 
 /* Moves the blocks together (towards the start or the end of the heap), in
  * address order; returns where the next block goes. */
-u32 Heap_Compact(Heap *h)
+u32 Heap_Compact(Heap *heap)
 {
-    HeapBlock *b;
-    HeapBlock *n;
+    HeapBlock *block;
+    HeapBlock *following;
     u32 addr;
 
-    if (h->first == 0xFFFF) {
-        h->cur = h->base;
-        return h->cur;
+    if (heap->first == 0xFFFF) {
+        heap->cur = heap->base;
+        return heap->cur;
     }
-    b = h->blocks + h->first;
-    if (h->upward) {
-        addr = HEAP_ALIGN(h->base, h->align);
-        if (addr != b->addr) {
-            Heap_Move((u8 *)addr, (u8 *)b->addr, b->size);
-            b->addr = addr;
+    block = heap->blocks + heap->first;
+    if (heap->upward) {
+        addr = HEAP_ALIGN(heap->base, heap->align);
+        if (addr != block->addr) {
+            Heap_Move((u8 *)addr, (u8 *)block->addr, block->size);
+            block->addr = addr;
         }
-        while (b->next != 0xFFFF) {
-            n = h->blocks + b->next;
-            addr = HEAP_ALIGN(b->addr + b->size, h->align);
-            if (addr != n->addr) {
-                Heap_Move((u8 *)addr, (u8 *)n->addr, n->size);
-                n->addr = addr;
+        while (block->next != 0xFFFF) {
+            following = heap->blocks + block->next;
+            addr = HEAP_ALIGN(block->addr + block->size, heap->align);
+            if (addr != following->addr) {
+                Heap_Move((u8 *)addr, (u8 *)following->addr, following->size);
+                following->addr = addr;
             }
-            b = n;
+            block = following;
         }
-        h->cur = HEAP_ALIGN(b->addr + b->size, h->align);
+        heap->cur = HEAP_ALIGN(block->addr + block->size, heap->align);
     } else {
-        addr = ~(h->align - 1) & (h->base - b->size);
-        if (addr != b->addr) {
-            Heap_Move((u8 *)addr, (u8 *)b->addr, b->size);
-            b->addr = addr;
+        addr = ~(heap->align - 1) & (heap->base - block->size);
+        if (addr != block->addr) {
+            Heap_Move((u8 *)addr, (u8 *)block->addr, block->size);
+            block->addr = addr;
         }
-        while (b->next != 0xFFFF) {
-            n = h->blocks + b->next;
-            addr = ~(h->align - 1) & (b->addr - n->size);
-            if (addr != n->addr) {
-                Heap_Move((u8 *)addr, (u8 *)n->addr, n->size);
-                n->addr = addr;
+        while (block->next != 0xFFFF) {
+            following = heap->blocks + block->next;
+            addr = ~(heap->align - 1) & (block->addr - following->size);
+            if (addr != following->addr) {
+                Heap_Move((u8 *)addr, (u8 *)following->addr, following->size);
+                following->addr = addr;
             }
-            b = n;
+            block = following;
         }
-        h->cur = b->addr;
+        heap->cur = block->addr;
     }
-    return h->cur;
+    return heap->cur;
 }
 
-u32 Heap_FreeSize(Heap *h)
+/*
+ * The bytes free between heap->cur and the heap's far end, less
+ * heap->reserved.
+ */
+u32 Heap_FreeSize(Heap *heap)
 {
-    if (h->upward) {
-        return h->base + h->size - h->cur - h->reserved;
+    if (heap->upward) {
+        return heap->base + heap->size - heap->cur - heap->reserved;
     }
-    return h->cur - (h->base - h->size) - h->reserved;
+    return heap->cur - (heap->base - heap->size) - heap->reserved;
 }
 
-s32 Heap_NewRecord(Heap *h)
+/*
+ * The index of heap's first free record (size 0), cleared; 0xFFFF when
+ * every record is in use.
+ */
+s32 Heap_NewRecord(Heap *heap)
 {
     s32 i;
 
-    for (i = 0; i < h->count; i++) {
-        if (h->blocks[i].size == 0) {
-            Heap_Fill(h->blocks + i, 0, 0x10);
+    for (i = 0; i < heap->count; i++) {
+        if (heap->blocks[i].size == 0) {
+            Heap_Fill(heap->blocks + i, 0, 0x10);
             return i;
         }
     }
@@ -269,184 +307,213 @@ s32 Heap_NewRecord(Heap *h)
 }
 
 /* Accessors of the block records (inlined; see Heap_Unlink). */
-static inline HeapBlock *Heap_Blocks(Heap *h)
+static inline HeapBlock *Heap_Blocks(Heap *heap)
 {
-    return h->blocks;
+    return heap->blocks;
 }
 
-static inline HeapBlock *Heap_NextOf(HeapBlock *blocks, HeapBlock *b)
+static inline HeapBlock *Heap_NextOf(HeapBlock *blocks, HeapBlock *block)
 {
-    return blocks + b->next;
+    return blocks + block->next;
 }
 
-/* Links block i into the address-ordered list: in front of the first block
- * above it (upward heaps) or below it (downward heaps). */
-void Heap_Link(Heap *h, s32 i)
+/*
+ * Links block slot into the address-ordered list: in front of the first
+ * block above it (upward heaps) or below it (downward heaps).
+ */
+void Heap_Link(Heap *heap, s32 slot)
 {
     s32 next;
-    HeapBlock *b;
-    HeapBlock *n;
+    HeapBlock *block;
+    HeapBlock *neighbor;
     s32 prev;
 
-    b = &h->blocks[i];
-    next = h->first;
+    block = &heap->blocks[slot];
+    next = heap->first;
     prev = 0xFFFF;
 
     if (next == 0xFFFF) {
-        h->first = i;
-        b->prev = 0xFFFF;
-        b->next = 0xFFFF;
+        heap->first = slot;
+        block->prev = 0xFFFF;
+        block->next = 0xFFFF;
         return;
     }
-    n = &h->blocks[next];
-    if (h->upward) {
-        if (n->addr > b->addr) { /* compiled-out check */
+    neighbor = &heap->blocks[next];
+    if (heap->upward) {
+        if (neighbor->addr > block->addr) { /* compiled-out check */
         } else {
-            while (n->addr < b->addr) {
+            while (neighbor->addr < block->addr) {
                 prev = next;
-                next = n->next;
+                next = neighbor->next;
                 if (next == 0xFFFF) {
                     break;
                 }
-                n = &h->blocks[next];
+                neighbor = &heap->blocks[next];
             }
         }
     } else {
-        if (b->addr > n->addr) { /* compiled-out check */
+        if (block->addr > neighbor->addr) { /* compiled-out check */
         } else {
-            while (n->addr > b->addr) {
+            while (neighbor->addr > block->addr) {
                 prev = next;
-                next = n->next;
+                next = neighbor->next;
                 if (next == 0xFFFF) {
                     break;
                 }
-                n = &h->blocks[next];
+                neighbor = &heap->blocks[next];
             }
         }
     }
-    b->prev = prev;
-    b->next = next;
+    block->prev = prev;
+    block->next = next;
     if (prev != 0xFFFF) {
-        n = h->blocks + prev;
-        n->next = i;
+        neighbor = heap->blocks + prev;
+        neighbor->next = slot;
     }
     if (next != 0xFFFF) {
-        n = h->blocks + next;
-        n->prev = i;
-    }
-}
-
-/* Unlinks block i from the address list. The two static inline accessors
- * above (the blocks of a heap, the next block of a block) are what give the
- * original its registers and operand order. */
-void Heap_Unlink(Heap *h, s32 i)
-{
-    HeapBlock *blocks = Heap_Blocks(h);
-    HeapBlock *b = blocks + i;
-    HeapBlock *n;
-
-    if (b->prev != 0xFFFF) {
-        n = blocks + b->prev;
-        n->next = b->next;
-    } else {
-        h->first = b->next;
-        if (h->first == 0xFFFF) {
-            h->cur = h->base;
-        }
-    }
-    if (b->next != 0xFFFF) {
-        blocks = h->blocks;
-        Heap_NextOf(blocks, b)->prev = b->prev;
-    }
-}
-
-s32 LinearHeap_Init(LinearHeap *h, void *start, u32 size, s32 align)
-{
-    h->start = (s32) start;
-    h->align = align;
-    size = HEAP_ALIGN(size, align);
-    h->lo = HEAP_ALIGN((u32)h->start, h->align); /* the no-op cast orders the loads */
-    h->hi = HEAP_ALIGN(h->start + size, h->align);
-    h->pos[0] = h->lo;
-    h->pos[1] = h->hi;
-    return 1;
-}
-
-void *LinearHeap_Alloc(LinearHeap *h, u32 size, s32 fromTop)
-{
-    u32 end;
-    u32 ret;
-
-    size = HEAP_ALIGN(size, h->align);
-    end = h->pos[0] + size;
-    if (h->pos[1] < end) {
-        return 0;
-    }
-    if (fromTop) {
-        h->pos[1] -= size;
-        return (void *)h->pos[1];
-    }
-    ret = h->pos[0];
-    h->pos[0] = end;
-    return (void *)ret;
-}
-
-s32 LinearHeap_GetMark(LinearHeap *h, s32 side, LinearMark *mark)
-{
-    mark->pos = h->pos[side];
-    mark->side = side;
-    return 1;
-}
-
-void LinearHeap_Release(LinearHeap *h, LinearMark *mark)
-{
-    h->pos[mark->side] = mark->pos;
-}
-
-s32 Debug_Sprintf(const char *fmt, ...)
-{
-    va_list ap;
-
-    va_start(ap, fmt);
-    vsprintf(gDebugMsg, fmt, ap);
-    return 1;
-}
-
-void Heap_Fill(void *dst, u8 c, s32 n)
-{
-    s32 i;
-    u8 *p = dst;
-
-    for (i = 0; i < n; i++) {
-        *p++ = c;
+        neighbor = heap->blocks + next;
+        neighbor->prev = slot;
     }
 }
 
 /*
- * memmove. The empty `if` on each byte read is what keeps the source
- * pointer's old value in a register of its own before every step (`move
- * a3, a1; lb t1, 0(a3); addiu a1, a3, 1`): a test of the byte compiled out.
+ * Unlinks block slot from the address list; when the list becomes empty,
+ * heap->cur goes back to base. The two static inline accessors above
+ * (the blocks of a heap, the next block of a block) are what give the
+ * game's registers and operand order.
  */
-void Heap_Move(void *dst, void *src, s32 n)
+void Heap_Unlink(Heap *heap, s32 slot)
+{
+    HeapBlock *blocks = Heap_Blocks(heap);
+    HeapBlock *block = blocks + slot;
+    HeapBlock *neighbor;
+
+    if (block->prev != 0xFFFF) {
+        neighbor = blocks + block->prev;
+        neighbor->next = block->next;
+    } else {
+        heap->first = block->next;
+        if (heap->first == 0xFFFF) {
+            heap->cur = heap->base;
+        }
+    }
+    if (block->next != 0xFFFF) {
+        blocks = heap->blocks;
+        Heap_NextOf(blocks, block)->prev = block->prev;
+    }
+}
+
+/*
+ * Sets up heap over size bytes (rounded up to align) from start, both
+ * ends aligned to align, with nothing allocated. Returns 1.
+ */
+s32 LinearHeap_Init(LinearHeap *heap, void *start, u32 size, s32 align)
+{
+    heap->start = (s32) start;
+    heap->align = align;
+    size = HEAP_ALIGN(size, align);
+    heap->lo = HEAP_ALIGN((u32)heap->start, heap->align); /* the no-op cast orders the loads */
+    heap->hi = HEAP_ALIGN(heap->start + size, heap->align);
+    heap->pos[0] = heap->lo;
+    heap->pos[1] = heap->hi;
+    return 1;
+}
+
+/*
+ * Allocates size bytes (rounded up to the alignment) from the low end
+ * (pos[0], upwards) or, with fromTop, from the high end (pos[1],
+ * downwards). Returns the block, or 0 when the two ends would cross.
+ */
+void *LinearHeap_Alloc(LinearHeap *heap, u32 size, s32 fromTop)
+{
+    u32 end;
+    u32 addr;
+
+    size = HEAP_ALIGN(size, heap->align);
+    end = heap->pos[0] + size;
+    if (heap->pos[1] < end) {
+        return 0;
+    }
+    if (fromTop) {
+        heap->pos[1] -= size;
+        return (void *)heap->pos[1];
+    }
+    addr = heap->pos[0];
+    heap->pos[0] = end;
+    return (void *)addr;
+}
+
+/*
+ * Saves heap's position on side (0 the low end, 1 the high end) in mark,
+ * for LinearHeap_Release. Returns 1.
+ */
+s32 LinearHeap_GetMark(LinearHeap *heap, s32 side, LinearMark *mark)
+{
+    mark->pos = heap->pos[side];
+    mark->side = side;
+    return 1;
+}
+
+/*
+ * Frees what was allocated on mark's side since LinearHeap_GetMark saved
+ * mark, by putting that end back.
+ */
+void LinearHeap_Release(LinearHeap *heap, LinearMark *mark)
+{
+    heap->pos[mark->side] = mark->pos;
+}
+
+/*
+ * Formats a message into gDebugMsg (vsprintf). Returns 1. Seen: the
+ * lobby's image loaders' error messages.
+ */
+s32 Debug_Sprintf(const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    vsprintf(gDebugMsg, fmt, args);
+    return 1;
+}
+
+/* Sets size bytes from dst to value (the heap's own memset). */
+void Heap_Fill(void *dst, u8 value, s32 size)
 {
     s32 i;
-    s8 *d = dst;
-    s8 *s = src;
-    s8 c;
+    u8 *out = dst;
 
-    if (s < d && d < s + n) {
-        d += n - 1;
-        s += n - 1;
-        for (i = 0; i < n; i++) {
-            if (c = *s--) {
+    for (i = 0; i < size; i++) {
+        *out++ = value;
+    }
+}
+
+/*
+ * Copies size bytes from src to dst, safely when they overlap (the
+ * heap's own memmove): backwards when dst lies inside the source.
+ * Kept for the match: the empty if on each byte read keeps the source
+ * pointer's old value in a register of its own before every step, as in
+ * the game; the test of the byte compiles to nothing.
+ */
+void Heap_Move(void *dst, void *src, s32 size)
+{
+    s32 i;
+    s8 *dstByte = dst;
+    s8 *srcByte = src;
+    s8 byte;
+
+    if (srcByte < dstByte && dstByte < srcByte + size) {
+        dstByte += size - 1;
+        srcByte += size - 1;
+        for (i = 0; i < size; i++) {
+            if (byte = *srcByte--) {
             }
-            *d-- = c;
+            *dstByte-- = byte;
         }
     } else {
-        for (i = 0; i < n; i++) {
-            if (c = *s++) {
+        for (i = 0; i < size; i++) {
+            if (byte = *srcByte++) {
             }
-            *d++ = c;
+            *dstByte++ = byte;
         }
     }
 }
@@ -469,159 +536,168 @@ u8 *Image_PixelAddr(s32 x, s32 y, Image *img)
 /* Writes px->color at (px->x, px->y): as a palette index in an indexed
  * image (a nibble of 4-bit images), else scaled into each channel. 0 when
  * the pixel is outside the image. */
-s32 Image_PutPixel(Image *img, ImagePixel *px)
+s32 Image_PutPixel(Image *img, ImagePixel *pixel)
 {
-    u8 *p = Image_PixelAddr(px->x, px->y, img);
-    u32 v;
-    u32 c;
+    u8 *dst = Image_PixelAddr(pixel->x, pixel->y, img);
+    u32 packed;
+    u32 value;
     u32 keep;
     u32 put;
-    s32 r;
-    s32 g;
-    s32 b;
-    s32 a;
+    s32 red;
+    s32 green;
+    s32 blue;
+    s32 alpha;
 
-    if (p == NULL) {
+    if (dst == NULL) {
         return 0;
     }
     if (img->flags & IMAGE_INDEXED) {
         switch (img->bpp) {
         case 4:
-            *(u32 *)p = px->color;
+            *(u32 *)dst = pixel->color;
             break;
         case 2:
-            *(u16 *)p = px->color;
+            *(u16 *)dst = pixel->color;
             break;
         case 1:
-            *p = px->color;
+            *dst = pixel->color;
             break;
         case 0:
             if (img->flags & IMAGE_8BIT) {
-                *p = px->color;
+                *dst = pixel->color;
             } else {
-                c = *p;
-                put = px->color;
-                if ((px->x & 1) ^ (s32)((img->flags & IMAGE_NIBBLE_HI) != 0)) {
-                    keep = c & 0xF0;
+                value = *dst;
+                put = pixel->color;
+                if ((pixel->x & 1) ^ (s32)((img->flags & IMAGE_NIBBLE_HI) != 0)) {
+                    keep = value & 0xF0;
                     put = put & 0xF;
                 } else {
-                    keep = c & 0xF;
+                    keep = value & 0xF;
                     put = (put & 0xF) << 4;
                 }
-                *p = keep | put;
+                *dst = keep | put;
             }
             break;
         }
     } else {
-        c = px->color;
-        r = (c >> 16) & 0xFF;
-        g = (c >> 8) & 0xFF;
-        b = c & 0xFF;
-        a = (c >> 24) & 0xFF;
-        v = ((r * img->r.mask / 0xFF) << img->r.shift) | ((g * img->g.mask / 0xFF) << img->g.shift) |
-            ((b * img->b.mask / 0xFF) << img->b.shift) | ((a * img->a.mask / 0xFF) << img->a.shift);
+        value = pixel->color;
+        red = (value >> 16) & 0xFF;
+        green = (value >> 8) & 0xFF;
+        blue = value & 0xFF;
+        alpha = (value >> 24) & 0xFF;
+        packed = ((red * img->r.mask / 0xFF) << img->r.shift) | ((green * img->g.mask / 0xFF) << img->g.shift) |
+            ((blue * img->b.mask / 0xFF) << img->b.shift) | ((alpha * img->a.mask / 0xFF) << img->a.shift);
         switch (img->bpp) {
         case 2:
-            *(u16 *)p = v;
+            *(u16 *)dst = packed;
             break;
         case 3:
-            p[0] = v;
-            p[1] = v >> 8;
-            p[2] = v >> 16;
+            dst[0] = packed;
+            dst[1] = packed >> 8;
+            dst[2] = packed >> 16;
             break;
         case 4:
-            *(u32 *)p = v;
+            *(u32 *)dst = packed;
             break;
         }
     }
     return 1;
 }
 
+/*
+ * Writes color (0xAARRGGBB, or a palette index) at (x, y) of img through
+ * Image_PutPixel.
+ */
 void Image_SetPixel(Image *img, s32 x, s32 y, u32 color)
 {
-    ImagePixel px;
+    ImagePixel pixel;
 
-    px.x = x;
-    px.y = y;
-    px.color = color;
-    Image_PutPixel(img, &px);
+    pixel.x = x;
+    pixel.y = y;
+    pixel.color = color;
+    Image_PutPixel(img, &pixel);
 }
 
 /* The colour of pixel (x, y) as 0xAARRGGBB: the palette index of an indexed
  * image, else each channel scaled to 8 bits (alpha 0xFF when absent). */
 u32 Image_GetPixel(s32 x, s32 y, Image *img)
 {
-    u8 *p = Image_PixelAddr(x, y, img);
-    u32 v;
-    u32 c;
-    u32 r;
-    u32 g;
-    u32 b;
-    u32 a;
+    u8 *src = Image_PixelAddr(x, y, img);
+    u32 raw;
+    u32 nibblePair;
+    u32 red;
+    u32 green;
+    u32 blue;
+    u32 alpha;
 
-    if (p == NULL) {
+    if (src == NULL) {
         return 0;
     }
     if (img->flags & IMAGE_INDEXED) {
         switch (img->bpp) {
         case 0:
             if (img->flags & IMAGE_8BIT) {
-                v = *p;
+                raw = *src;
             } else {
-                c = *p;
+                nibblePair = *src;
                 if ((x & 1) ^ (s32)((img->flags & IMAGE_NIBBLE_HI) != 0)) {
-                    v = c & 0xF;
+                    raw = nibblePair & 0xF;
                 } else {
-                    v = (c >> 4) & 0xF;
+                    raw = (nibblePair >> 4) & 0xF;
                 }
             }
             break;
         case 1:
-            v = *p;
+            raw = *src;
             break;
         case 2:
-            v = *(u16 *)p;
+            raw = *(u16 *)src;
             break;
         case 4:
-            v = *(u32 *)p;
+            raw = *(u32 *)src;
             break;
         }
-        return v;
+        return raw;
     }
     switch (img->bpp) {
     case 2:
-        v = *(u16 *)p;
+        raw = *(u16 *)src;
         break;
     case 3:
-        v = p[0] | (p[2] << 16 | p[1] << 8);
+        raw = src[0] | (src[2] << 16 | src[1] << 8);
         break;
     case 4:
-        v = *(u32 *)p;
+        raw = *(u32 *)src;
         break;
     }
     if (img->a.bits) {
-        a = ((img->a.mask & (v >> img->a.shift)) * 0xFF) / (u32)img->a.mask;
+        alpha = ((img->a.mask & (raw >> img->a.shift)) * 0xFF) / (u32)img->a.mask;
     } else {
-        a = 0xFF;
+        alpha = 0xFF;
     }
     if (img->r.bits) {
-        r = ((img->r.mask & (v >> img->r.shift)) * 0xFF) / (u32)img->r.mask;
+        red = ((img->r.mask & (raw >> img->r.shift)) * 0xFF) / (u32)img->r.mask;
     } else {
-        r = 0;
+        red = 0;
     }
     if (img->g.bits) {
-        g = ((img->g.mask & (v >> img->g.shift)) * 0xFF) / (u32)img->g.mask;
+        green = ((img->g.mask & (raw >> img->g.shift)) * 0xFF) / (u32)img->g.mask;
     } else {
-        g = 0;
+        green = 0;
     }
     if (img->b.bits) {
-        b = ((img->b.mask & (v >> img->b.shift)) * 0xFF) / (u32)img->b.mask;
+        blue = ((img->b.mask & (raw >> img->b.shift)) * 0xFF) / (u32)img->b.mask;
     } else {
-        b = 0;
+        blue = 0;
     }
-    return (a << 24) | (r << 16) | (g << 8) | b;
+    return (alpha << 24) | (red << 16) | (green << 8) | blue;
 }
 
+/*
+ * Copies the pixels of src into dst over dst's width and height,
+ * converting each through 0xAARRGGBB (Image_GetPixel, Image_SetPixel).
+ * Returns 1. Seen: the texture loaders.
+ */
 s32 Image_Convert(Image *dst, Image *src)
 {
     s32 y;
@@ -635,13 +711,20 @@ s32 Image_Convert(Image *dst, Image *src)
     return 1;
 }
 
-/* The wait is a switch on sceMcInit's result: its case makes the block after
- * the loop a branch target, which MWCC schedules as the game has it (a0's lui
- * and addiu together before a1 = 0); a do-while gives lui, a1, addiu. */
+/*
+ * Sets up the memory card library: calls sceMcInit until it returns
+ * something other than -0x65, then clears a 0x64-byte work area and two
+ * 0xC-byte records (no other use of either in src). Returns 1. Called at
+ * the end of the system's display and DMA set-up.
+ * Kept for the match: the wait is a switch on sceMcInit's result. Its
+ * case makes the code after the loop a branch target, which the compiler
+ * schedules as the game has it; a do-while orders the address loads of
+ * the first Mem_Fill differently.
+ */
 s32 Sys_InitCard(void)
 {
     s32 i;
-    u8 *p;
+    u8 *record;
 
     for (;;) {
         switch (sceMcInit()) {
@@ -651,12 +734,13 @@ s32 Sys_InitCard(void)
         break;
     }
     Mem_Fill(D_00249A10, 0, 0x64);
-    for (i = 0, p = D_002499F0; i < 2; i++, p += 0xC) {
-        Mem_Fill(p, 0, 0xC);
+    for (i = 0, record = D_002499F0; i < 2; i++, record += 0xC) {
+        Mem_Fill(record, 0, 0xC);
     }
     return 1;
 }
 
+/* Sets gPacketMode to 1 and returns 1. */
 s32 Packet_SetMode1Ok(void)
 {
     gPacketMode = 1;

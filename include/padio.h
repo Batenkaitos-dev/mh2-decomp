@@ -2,7 +2,7 @@
 #define PADIO_H
 
 /*
- * The core's pad input (src/main/unk_189F90.c, unk_18AFE0.c), over Sony's
+ * The core's pad input, over Sony's
  * libpad2 (sockets on the device bus, libdbc) and libvib.
  *
  * Every frame (Pad_Update) the port is read (Pad_ReadPort: scePad2Read into
@@ -17,7 +17,7 @@
 /*
  * The core's button bits (PadRaw.buttons, PadInput.held ...): bit i is
  * gPadBit[i]. Bits 0..15 are the buttons, in the order of gPadMapAnalog
- * (unk_18AFE0.c), which gives each its libpad2 bit; bits 16..19 are the
+ *, which gives each its libpad2 bit; bits 16..19 are the
  * left stick and 20..23 the right stick as directions (Pad_StickDirBits),
  * in the D-pad's order. sub_main's PadState_Update reorders them into the
  * game's PAD_* bits (include/pad.h). Named for the default configuration.

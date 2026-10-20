@@ -214,7 +214,7 @@ enum EmKhezuDefeatState {
 
 /* Group 6 (and 7), EM_GROUP_EVENT (EmKhezu_RunEventState). */
 enum EmKhezuEventState {
-    KHEZU_EVENT_STORY = 0x00,           /* the story scene of quest stage 0x422 */
+    KHEZU_EVENT_STORY = 0x00,           /* the story scene of quest stage QUEST_ID_KHEZU_SCENE */
     KHEZU_EVENT_CAPTURED = 0x04,        /* status 1 in holdTimer's hold (0x01-0x03 run the same function) */
     KHEZU_EVENT_CAPTURED_HOLD2 = 0x05   /* status 1 in holdTimer2's hold */
 };
@@ -228,10 +228,5 @@ enum EmKhezuVersusState {
     KHEZU_VS_WAIT_BOTH = 0x98,
     KHEZU_VS_END = 0x99
 };
-
-/* A position (EmKhezu_BaitThrowPt), copied as one struct (the original's copy). */
-typedef struct EmKhezuVec {
-    f32 x, y, z;
-} EmKhezuVec;
 
 #endif /* EM_KHEZU_H */

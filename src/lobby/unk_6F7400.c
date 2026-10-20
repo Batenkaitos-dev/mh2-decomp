@@ -14,7 +14,7 @@ void CamFocus_End(void);
 s32 Game_IsOnline(void);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-extern s8 gTownMsg0DPending;
+extern s8 gTownAreaMsgPending;
 extern u8 gMenuWork;
 s32 Save_TestEventFlag(s32);
 
@@ -26,12 +26,12 @@ void *memset(void *d, s32 c, u32 n);
 void Contest_Draw(u8 *);
 extern NetUser gNetUsers[];
 extern s8 gContestLevel;
-extern u8 gTownSpotId;
+extern u8 gContestSeatId;
 extern s8 gContestTalkLow[];
 extern s8 gContestTalkTop[];
 void Talk_Start(struct Em *npc, s8 quiet);
 void Talk_Say(s32 a, s8 b);
-void TownMsg_Send22(s32 *arg0);
+void TownMsg_SendContestStart(s32 *arg0);
 void Contest_Open(void *obj)
 {
     Player *p = obj;
@@ -51,11 +51,11 @@ void Contest_Open(void *obj)
         } else {
             m->msg = gContestTalkTop;
         }
-        gTownSpotId = 1;
+        gContestSeatId = 1;
         Talk_Start((struct Em *)p, 1); /* a player: the contest's other hunter */
         Talk_Say(*m->msg, 0);
     } else {
-        TownMsg_Send22((s32 *) &gNetUsers[p->index]);
+        TownMsg_SendContestStart((s32 *) &gNetUsers[p->index]);
         m->state = 1;
     }
     m->next = 0;
@@ -81,7 +81,7 @@ void Contest_Close(void)
     }
     gFieldControl = 1;
     gLobby->connected = 1;
-    gTownMsg0DPending = 1;
+    gTownAreaMsgPending = 1;
 }
 
 u16 LobbyPad_Get(s32 a);

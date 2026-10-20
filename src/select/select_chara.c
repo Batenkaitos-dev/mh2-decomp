@@ -1,6 +1,6 @@
 /*
- * select: character creation and character selection, the first unit of
- * the overlay (0x6AF280-0x6B4B30, with its .data and .rodata).
+ * select: character creation and character selection, the overlay's
+ * first file (with its .data and .rodata).
  *
  * gm_sub's main menu starts one of the two tasks:
  * - Chara_CreateTask makes a new character. Its state is sub_main's
@@ -17,6 +17,7 @@
  *   panels and views (CHARA_*).
  */
 #include "common.h"
+#include "card.h"
 #include "window.h"
 extern u8 gOldGameKind;
 #include "syssettings.h"
@@ -59,7 +60,7 @@ extern char *gCharaEditHelpTexts[];
 extern char *gCharaSelectTexts[];
 void Chara_DrawNoMatch(ChrEdit *c);
 void Hud_DrawButtonIconWhite(s32 a, s32 b, s32 c, s32 d, f32 scale);
-/* unit's own declaration: the definition (sub_main/unk_368F10.c) takes an s16 colour; Chara_DrawEquipment matches with this one */
+/* unit's own declaration: an s32 colour as Chara_DrawEquipment passes it; with the definition's s16, the calls compile differently */
 void Text_PrintfAt(s16, s16, s32, const char *, ...);
 s32 Str_Length(char *);                /* a message's width */
 extern char *gCardSavingTexts[];
@@ -1548,8 +1549,8 @@ void Loading_Start(void);
 void Loading_Stop(void);
 void Hud_LoadTextures(void);
 void Anim_LoadCommon(s32);
-void Area_LoadSubModel(s32 arg0);
-void Area_FreeSubModel(void);
+void CharMake_LoadPartsModel(s32 arg0);
+void CharMake_FreePartsModel(void);
 void Mem_Compact(void);
 void Sound_PlaySeFlatPan(u32 slot, u32 id, s32 prog, s32 pan);
 void Sound_PlaySeMusicVol(u32, u32, s32);
@@ -1699,12 +1700,12 @@ void Chara_CreateTask(TaskSlot *task)
                 if (edit->loadedGender == CHARA_GENDER_NONE) {
                     Hud_LoadTextures();
                     Anim_LoadCommon(4);
-                    Area_LoadSubModel(edit->gender);
+                    CharMake_LoadPartsModel(edit->gender);
                     Chara_SetupEditPlayer(player, 0, 0);
                 } else {
-                    Area_FreeSubModel();
+                    CharMake_FreePartsModel();
                     Mem_Compact();
-                    Area_LoadSubModel(edit->gender);
+                    CharMake_LoadPartsModel(edit->gender);
                 }
                 gSysSettings.soundLoading = 0;
                 Loading_Stop();
@@ -1877,7 +1878,7 @@ void Chara_CreateTask(TaskSlot *task)
             Sound_PlaySeFlat(1, 6, 0);
             edit->slot = 0;
             task->mode++;
-            NetMenu_Open(3);
+            NetMenu_Open(NETMENU_MODE_SAVE_NEW);
         } else if (((edit->padPressed & 0x20) && edit->choice == CHARA_CHOICE_NO) || (edit->padPressed & 0x40)) {
             task->mode = CHARA_CREATE_PANELS;
             Chara_PlayCancelSe();
@@ -2146,7 +2147,7 @@ void Chara_DrawEquipIcon(s16 x, s16 y, s16 kind, s16 idx, s32 rarity)
 
 
 u8 Equip_GetRarity(u8 type, u16 id);      /* an item's rarity */
-s32 Rarity_Color(u8 rarity);             /* the rarity's colour; unit's own declaration: the definition (sub_main unk_3549F0.c) returns s16; Chara_DrawEquipment matches with this one */
+s32 Rarity_Color(u8 rarity);             /* the rarity's colour; unit's own declaration: s32 as Chara_DrawEquipment uses it; with the definition's s16 return, the call compiles differently */
 u8 Weapon_GetClass(u8 type, u16 id);
 extern char *gGunNames[];    /* item names by kind */
 extern char *gBladeNames[];
@@ -2351,7 +2352,7 @@ void Chara_SelectTask(TaskSlot *task)
         gSysSettings.soundLoading = 0;
         gCamera->fov = 0.87266463f;
         gCamera->roll = 0.0f;
-        NetMenu_Open(4);
+        NetMenu_Open(NETMENU_MODE_LOAD);
         break;
     case CHARA_SELECT_CARD:
         menuResult = NetMenu_Update();
@@ -2505,9 +2506,9 @@ void Chara_SelectTask(TaskSlot *task)
             if (oldSlot != edit->slot) {
                 Sound_PlaySlotChange();
                 if (Chara_EquipViewOn() == 0) {
-                    *(s32 *)((u8 *)&gPlayers[0].unk53C[4] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].unk53C[8] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].unk53C[12] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[0] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[1] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[2] + edit->slot * 0x970) = 0x01000000;
                 }
             }
         } else if (trig & 0x1000) {
@@ -2524,9 +2525,9 @@ void Chara_SelectTask(TaskSlot *task)
             if (oldSlot != edit->slot) {
                 Sound_PlaySlotChange();
                 if (edit->slot != CHARA_SLOT_NONE && Chara_EquipViewOn() == 0) {
-                    *(s32 *)((u8 *)&gPlayers[0].unk53C[4] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].unk53C[8] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].unk53C[12] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[0] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[1] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[2] + edit->slot * 0x970) = 0x01000000;
                 }
             }
         }

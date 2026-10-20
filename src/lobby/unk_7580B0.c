@@ -5,42 +5,11 @@
 #include "save.h"
 #include "lobby_state.h"
 #include "player.h"
+#include "capsule.h"
 #include "lobby_menu.h"
+#include "lobby_labels.h"
+#include "village_cond.h"
 
-typedef struct ShopLine {
-    /* 0x00 */ EquipItem item;
-    /* 0x0C */ s32 price;
-    /* 0x10 */ u8 noBuy;           /* too expensive or the box is full */
-    /* 0x11 */ u8 unk11[3];
-} ShopLine;
-typedef struct EquipShop {
-    /* 0x00 */ WinSlide win;
-    /* 0x08 */ u8 *npc;             /* the townsperson of the shop (OfferMenu_Open) */
-    /* 0x0C */ s8 state;
-    /* 0x0D */ s8 canWear;
-    /* 0x0E */ u8 unkE[2];
-    /* 0x10 */ s8 unk10;
-    /* 0x11 */ s8 tab;              /* with kind: the title (gEquipGroupTexts[tab * 5 + kind]) */
-    /* 0x12 */ s8 kind;
-    /* 0x13 */ u8 unk13[5];
-    /* 0x18 */ s16 cursor;
-    /* 0x1A */ u8 unk1A[4];
-    /* 0x1E */ s16 view;             /* the page shown (EquipShop_Draw) */
-    /* 0x20 */ char *msg;
-    /* 0x24 */ s16 pages;
-    /* 0x26 */ s16 page;
-    /* 0x28 */ s16 detailPage;      /* the detail page shown (views 1 to 3), up to detailPages */
-    /* 0x2A */ s16 detailPages;
-    /* 0x2C */ s16 count;           /* equipment on sale */
-    /* 0x2E */ s16 lines;           /* lines on the page */
-    /* 0x30 */ ShopLine line[7];
-    /* 0xBC */ EquipItem worn;      /* the equipment worn in the slot of the kind on sale (gSave.equip; type set when none) */
-    /* 0xC8 */ EquipItem item;
-    /* 0xD4 */ EquipItem shown;     /* the item whose model is loaded (EquipShop_TryOn) */
-    /* 0xE0 */ s32 price;
-    /* 0xE4 */ s8 unkE4;
-    /* 0xE5 */ s8 selling;
-} EquipShop;
 typedef struct EquipSell {
     /* 0x00 */ u8 unk0[0x1A];
     /* 0x1A */ s16 row;
@@ -65,7 +34,6 @@ typedef struct BoxPages {
 
 extern u8 gMenuWork[];
 extern LobbyMenu *gLobbyMenu;
-extern char *gEquipNowTexts[];
 extern char *gYesNoTexts[];
 void EquipShop_DrawTitle(void);
 void Menu_DrawMoney(s16 x, s16 y, s8 flag);
@@ -79,23 +47,18 @@ void EquipShop_DrawPreview(void);
 void EquipShop_DrawPageDetail(void);
 void EquipWindow_DrawLocal(struct EquipItem *, s16 x, s16 y, u8 flags, struct EquipItem *);
 extern s8 gMenuInputLock;
-extern char *D_0080C748;
 void Menu_SetYesNo(s8 a);
 s32 Equip_GetSellPrice(EquipItem *item);
 char *Text_FillDollar(char *arg0, s32 arg1);
 void EquipShop_DrawPageSmall(void);
 void EquipShop_DrawNote(void);
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
-extern char *gEquipGroupTexts[];
 void Font_SetSpacing(u8 a, u8 b);
 void Menu_DrawLabelBar(s16 x, s16 y, s16 c, u32 color, char *label, u8 t1, u8 t2);
-extern char *gEquipBuyPromptTexts[];
-extern char *D_0080C744;
 extern u8 gEquipPreview[];
 s16 Box_GetPageCount(SaveData *save);
 s16 Box_GetCapacity(SaveData *save);
 extern s8 gLobbyTextDirty;
-extern char *D_0080C758;
 u16 Box_AddItem(SaveData *save, u8 type, u16 id, u16 level);
 void Save_AddMoney(s32 n);
 void LobbySe_Play(s32 se);
@@ -131,23 +94,23 @@ void Text_PrintfColored(char *fmt, ...);
 void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
 void BoxMenu_DrawItemList(s16 slot, u32 flags, f32 x);
 u32 Equip_GetPrice(u8 type, u16 id);
-s32 Forge_IsFixedPrice(s16 id);
-void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: with the definition's void (s32 x, s32 y, s32 w, s32 h, EquipItem *e) (lobby/unk_78F070.c), EquipShop_DrawLine 100 of 112 words, EquipShop_DrawPage 6 of 176 words, EquipShop_DrawPageSmall 98 of 162 words differ */
+s32 Forge_IsRandomWeapon(s16 id);
+void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: with the definition's void (s32 x, s32 y, s32 w, s32 h, EquipItem *e) (lobby/name_tags.c), EquipShop_DrawLine 100 of 112 words, EquipShop_DrawPage 6 of 176 words, EquipShop_DrawPageSmall 98 of 162 words differ */
 void Item_DrawRarity(s16 x, s16 y, u8 rarity);
 u8 Equip_GetRarity(u8 type, u16 id);
 char *Equip_GetName(u8 type, u16 id);
 
 u16 LobbyPad_Get(s32);
 void Chat_SetWindowMode(s8 a, s8 b);
-void EquipPreview_Show(u8 on);
+void EquipPreview_Hide(u8 hide);
 s32 EquipShop_InputTop(u16 pad);
 s32 WinSlide_Step(WinSlide *w, s16 from, s16 to);
 void EquipPreview_Reset(void);
 void EquipShop_OpenList(void);
 void Chat_SetColor(s16 color);
 void EquipBox_FirstPage(void);
-struct OfferTask;
-void OfferMenu_Open(struct OfferTask *t);
+struct Em;
+void OfferMenu_Open(struct Em *t);
 void CamFocus_SetAside(s8 on);
 void Talk_Say(s32 talk, s8 c);
 s32 EquipShop_InputList(u16 pad);
@@ -167,7 +130,7 @@ void EquipShop_Update(void)
     u16 pad = LobbyPad_Get(0);
 
     Chat_SetWindowMode(2, 2);
-    EquipPreview_Show(1);
+    EquipPreview_Hide(1);
     switch (s->state) {
     case 0:
         switch (EquipShop_InputTop(pad)) {
@@ -184,7 +147,7 @@ void EquipShop_Update(void)
             } else if (s->unk10 == 1) {
                 EquipBox_FirstPage();
             } else {
-                OfferMenu_Open((struct OfferTask *) s->npc);
+                OfferMenu_Open((struct Em *) s->npc);
                 break;
             }
             CamFocus_SetAside(1);
@@ -303,7 +266,7 @@ s32 EquipShop_InputTop(u16 pad)
         } else if (pad & 0x40) {
             LobbySe_Play(4);
             return 3;
-        } else if (s->unkE4 == 0) {
+        } else if (s->hasOffers == 0) {
             s->cursor = Menu_WrapUpDownSe(s->cursor, 2, 2);
         } else {
             s->cursor = Menu_WrapUpDownSe(s->cursor, 3, 2);
@@ -370,11 +333,11 @@ s32 *EquipShop_GetList(s32 i)
     s32 rank;
 
     if (Game_IsOnline() == 1) {
-        if (Cond_Check(0x64) == 1) {
+        if (Cond_Check(COND_HR_GATE_2_HR_31) == 1) {
             rank = 3;
-        } else if (Cond_Check(0x5F) == 1) {
+        } else if (Cond_Check(COND_HR_GATE_1_HR_17) == 1) {
             rank = 2;
-        } else if (Cond_Check(0x5C) == 1) {
+        } else if (Cond_Check(COND_HR_GATE_0_HR_11) == 1) {
             rank = 1;
         } else {
             rank = 0;
@@ -500,9 +463,9 @@ void EquipShop_OpenList(void)
 
 u8 Equip_PreviewSkills(Player *player, struct EquipItem *l);
 u8 Equip_LevelMark(struct EquipItem *e, u8 flags, struct EquipItem *other);
-void StageModels_Free(void);
-s32 Equip_GetModelId(u8 type, u16 id, u8 x); /* unit's own declaration: with the definition's u16 (u16 kind, u16 id, u16 female) (sub_main/unk_33B080.c), EquipShop_TryOn 4 of 127 words, EquipShop_InputList 1 of 218 words differ */
-void StageModels_LoadEquip(u8 type, s32 n, u8 x); /* unit's own declaration: with the definition's void (u16 kind, u16 id, u8 female) (sub_main/unk_33B080.c), EquipShop_TryOn 4 of 127 words, EquipShop_InputList 1 of 218 words differ */
+void EquipPreview_Free(void);
+s32 Equip_GetModelId(u8 type, u16 id, u8 x); /* unit's own declaration: with the definition's u16 (u16 kind, u16 id, u16 female) (sub_main/model_load.c), EquipShop_TryOn 4 of 127 words, EquipShop_InputList 1 of 218 words differ */
+void EquipPreview_Load(u8 type, s32 n, u8 x); /* unit's own declaration: with the definition's void (u16 kind, u16 id, u8 female) (sub_main/model_load.c), EquipShop_TryOn 4 of 127 words, EquipShop_InputList 1 of 218 words differ */
 
 /* The detail of the line under the cursor for the view shown: 3 the
  * wearer's check (Equip_PreviewSkills), 2 the comparison with the box item at
@@ -533,21 +496,21 @@ void EquipShop_TryOn(void)
         if (s->selling == 0) {
             pe = &s->line[s->cursor].item;
             if (pe->type != s->shown.type || pe->id != s->shown.id) {
-                StageModels_Free();
+                EquipPreview_Free();
                 s->shown = *pe;
                 x = gSave.gender;
-                StageModels_LoadEquip(pe->type, Equip_GetModelId(pe->type, pe->id, x), x);
+                EquipPreview_Load(pe->type, Equip_GetModelId(pe->type, pe->id, x), x);
             }
         }
         break;
     }
 }
 
-void EquipPreview_Show(u8 on)
+void EquipPreview_Hide(u8 hide)
 {
     u8 *p = gEquipPreview;
 
-    if (on == 0) {
+    if (hide == 0) {
         *p = 1;
     } else {
         *p = 0;
@@ -618,15 +581,15 @@ s32 EquipShop_InputList(u16 pad)
         if (s->view == 1) {
             if (s->selling == 0) {
                 s->selling = 1;
-                EquipPreview_Show(1);
+                EquipPreview_Hide(1);
             } else {
                 s->selling = 0;
                 e = &s->line[s->cursor].item;
                 if (e->type != s->shown.type || e->id != s->shown.id) {
-                    StageModels_Free();
+                    EquipPreview_Free();
                     s->shown = *e;
                     x = gSave.gender;
-                    StageModels_LoadEquip(e->type, Equip_GetModelId(e->type, e->id, x), x);
+                    EquipPreview_Load(e->type, Equip_GetModelId(e->type, e->id, x), x);
                 }
             }
         }
@@ -734,10 +697,10 @@ void EquipShop_Choose(void)
     Menu_SetYesNo(0);
     gMenuInputLock = 9;
     if (Equip_CanWear(&gSave, &s->item) == 0) {
-        s->msg = D_0080C758;
+        s->msg = gEquipShopTexts[EQUIP_SHOP_TEXT_CANNOT_WEAR];
         s->canWear = 0;
     } else {
-        s->msg = Text_FillDollar((char *) D_0080C748, s->price);
+        s->msg = Text_FillDollar((char *) gEquipShopTexts[EQUIP_SHOP_TEXT_PRICE_ASK], s->price);
         s->canWear = 1;
     }
 }
@@ -766,11 +729,9 @@ void EquipShop_Buy(u8 equip)
 
 s32 LobbyMenu_YesNoInput(s32 msg);
 void LobbyText_Open(s32 a);
-extern char *D_0080C74C;
-extern char *D_0080C754;
 
 /* The buying steps (+0xD) of the equipment shop: confirm the price, then
- * whether to wear it at once (when it can be worn; D_0080C754 when the
+ * whether to wear it at once (when it can be worn; gEquipShopTexts[EQUIP_SHOP_TEXT_WEAPON_CHANGE_WARN] when the
  * weapon's kind changes), each with the detail's pages. 0 bought, 3
  * cancelled, else 2. */
 s32 EquipShop_InputBuy(u16 pad)
@@ -798,7 +759,7 @@ s32 EquipShop_InputBuy(u16 pad)
             case 0:
                 s->canWear++;
                 LobbyText_Open(1);
-                s->msg = Text_FillDollar((char *) D_0080C748, s->price);
+                s->msg = Text_FillDollar((char *) gEquipShopTexts[EQUIP_SHOP_TEXT_PRICE_ASK], s->price);
                 break;
             case 3:
                 return 3;
@@ -825,14 +786,14 @@ s32 EquipShop_InputBuy(u16 pad)
             case 0:
                 if (Equip_CanWear(&gSave, &s->item) == 1) {
                     s->canWear++;
-                    s->msg = D_0080C74C;
+                    s->msg = gEquipShopTexts[EQUIP_SHOP_TEXT_EQUIP_ASK];
                     Menu_SetYesNo(0);
                     gMenuInputLock = 9;
                     switch (s->worn.type) {
                     case 6:
                     case 7:
                         if (s->worn.type != s->item.type) {
-                            s->msg = D_0080C754;
+                            s->msg = gEquipShopTexts[EQUIP_SHOP_TEXT_WEAPON_CHANGE_WARN];
                         }
                         break;
                     }
@@ -888,7 +849,7 @@ void EquipBox_SellPrice(void)
     Menu_SetYesNo(0);
     gMenuInputLock = 9;
     s->price = Equip_GetSellPrice(&gSave.box[slot]);
-    s->msg = Text_FillDollar((char *) D_0080C748, s->price);
+    s->msg = Text_FillDollar((char *) gEquipShopTexts[EQUIP_SHOP_TEXT_PRICE_ASK], s->price);
 }
 
 s32 EquipBox_SellMenu(u16 pad)
@@ -928,9 +889,6 @@ s32 EquipBox_SellMenu(u16 pad)
     return 2;
 }
 
-extern char *gWeaponArmorTexts[];
-extern char *D_0080D104[];
-extern char *gShopBuySellTexts[];
 
 void EquipShop_DrawMenu(void)
 {
@@ -940,8 +898,8 @@ void EquipShop_DrawMenu(void)
     Font_SetSpacing(0x14, 0x14);
     switch (s->canWear) {
     case 0:
-        if (s->unkE4 == 0) {
-            Menu_DrawLabelList(0x1CC, D_0080D104, 2, s->cursor, 0xFFB0B000);
+        if (s->hasOffers == 0) {
+            Menu_DrawLabelList(0x1CC, &gShopMenuTexts[SHOP_MENU_TEXT_BUY], 2, s->cursor, 0xFFB0B000);
         } else {
             Menu_DrawLabelList(0x1CC, gShopBuySellTexts, 3, s->cursor, 0xFFB0B000);
         }
@@ -977,9 +935,6 @@ s32 Box_CountEquip(u8 type, u16 id)
 INCLUDE_RODATA("asm/lobby/nonmatchings/unk_7580B0", D_0083AF90);
 
 extern char D_0083AF90[];
-extern char *gUnknownNameTexts[];
-extern char *D_0080C09C;
-extern char *gCrossMarkTexts;
 void Equip_DrawWearer(EquipItem *e);
 
 /* A line of the equipment shop: the icon (with the price mark unless the
@@ -990,7 +945,7 @@ void EquipShop_DrawLine(s16 x, s16 y, EquipItem *e)
 {
     s32 x2;
 
-    if (Forge_IsFixedPrice(e->id)) {
+    if (Forge_IsRandomWeapon(e->id)) {
         Lobby_DrawEquipIcon(x, y, 0x3C, 0x3C, e);
     } else {
         Lobby_DrawEquipIcon(x, y, 0x3C, 0x3C, e);
@@ -1000,13 +955,13 @@ void EquipShop_DrawLine(s16 x, s16 y, EquipItem *e)
     Font_SetColor(0x80101010);
     x2 = x + 0x4E;
     Font_SetPos(x2, y);
-    if (Forge_IsFixedPrice(e->id)) {
-        Text_PrintfColored(D_0083AF90, gUnknownNameTexts[0]);
+    if (Forge_IsRandomWeapon(e->id)) {
+        Text_PrintfColored(D_0083AF90, gGameMenuLabels[MENU_LABEL_UNKNOWN_NAME]);
     } else {
         Text_PrintfColored(D_0083AF90, Equip_GetName(e->type, e->id));
     }
     Font_SetPos(x2, y += 0x16);
-    Text_PrintfColored("%s%s%3d", D_0080C09C, gCrossMarkTexts, Box_CountEquip(e->type, e->id));
+    Text_PrintfColored("%s%s%3d", gCountLabels[COUNT_LABEL_HELD], gLobbyWords[LOBBY_WORD_TIMES], Box_CountEquip(e->type, e->id));
     Font_SetPos(x2, y += 0x16);
     Equip_DrawWearer(e);
 }
@@ -1019,10 +974,10 @@ void EquipShop_DrawNote(void)
     switch (s->line[s->cursor].item.type) {
     case 6:
     case 7:
-        msg = gEquipBuyPromptTexts[0];
+        msg = gEquipShopTexts[EQUIP_SHOP_TEXT_PICK_WEAPON];
         break;
     default:
-        msg = D_0080C744;
+        msg = gEquipShopTexts[EQUIP_SHOP_TEXT_PICK_ARMOR];
         break;
     }
     Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0x80202020, msg);
@@ -1039,7 +994,6 @@ void EquipShop_DrawFrame(s16 x, s16 y)
 void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 color, u32 color2);
 void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-extern char *gPriceMarks[];
 extern u16 gFrameTick;
 
 /* The equipment shop's page at (x, y): the page counter, each line (the
@@ -1077,7 +1031,7 @@ void EquipShop_DrawPage(s16 x, s16 y)
         } else {
             Font_SetColor(0x80101010);
         }
-        Text_PrintfColored("%-20s %6d%s", Equip_GetName(l->item.type, l->item.id), l->price, gPriceMarks[0]);
+        Text_PrintfColored("%-20s %6d%s", Equip_GetName(l->item.type, l->item.id), l->price, gLobbyWords[LOBBY_WORD_ZENNY]);
         Font_SetPos(x + 0x28, y += 0x16);
     }
     Menu_DrawDashLine(x + 0x14, y0 + 0xBA, 0x12C, 0xFF000000);
@@ -1089,7 +1043,6 @@ void EquipShop_DrawPage(s16 x, s16 y)
 
 void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 color);
-extern char *gPriceMarks[];
 
 /* The equipment shop's page in the small layout: the lines at fixed
  * places, the cursor bar with its blinking arrow. */
@@ -1130,7 +1083,7 @@ void EquipShop_DrawPageSmall(void)
         }
         Text_PrintfColored("%-20s", Equip_GetName(l->item.type, l->item.id));
         Font_SetPos(0xDA, y);
-        Text_PrintfColored("%6d%s", l->price, gPriceMarks[0]);
+        Text_PrintfColored("%6d%s", l->price, gLobbyWords[LOBBY_WORD_ZENNY]);
         Font_SetPos(0x28, y += 0x14);
     }
 }
@@ -1145,13 +1098,10 @@ typedef struct GradBox {
 extern u32 gHeaderBoxColors[4];
 extern s16 gMenuOffsetX;
 extern s16 gMenuOffsetY;
-extern char *D_0080C1FC;
-extern char *D_0080C1F8;
-extern char *D_0080C8E4;
 struct PrimGradRect;
 s32 Prim_FillGradRect(struct PrimGradRect *);
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k); /* unit's own declaration: with the definition's void (s32 x, s32 y, s32 w, s32 h, s32 c1, s32 c2, s16 kind) (lobby/unk_790EC0.c), Equip_DrawPreviewHelp 35 of 152 words differ */
-s16 Lobby_DrawSprite155(s16, s16, s32);
+s16 Lobby_DrawButtonIcon(s16, s16, s32);
 
 /* The window at (gMenuOffsetX, gMenuOffsetY) with a gradient; k 0 adds a
  * header with two icons and labels, k 1 a line of text. */
@@ -1174,20 +1124,20 @@ void Equip_DrawPreviewHelp(u32 color, s8 k)
         x = gMenuOffsetX + 0x136;
         y = gMenuOffsetY + 0x18;
         Win_Draw(x, y, 0x9A, 0x14, color, 0xC0202020, 6);
-        Lobby_DrawSprite155(x + 4, y - 1, 0xF);
-        Lobby_DrawSprite155(x + 0x4C, y - 1, 0xE);
+        Lobby_DrawButtonIcon(x + 4, y - 1, 0xF);
+        Lobby_DrawButtonIcon(x + 0x4C, y - 1, 0xE);
         Font_SetSpacing(0x11, 0x11);
         Font_SetPos(x + 0x1C, y + 1);
-        Text_PrintfColored(D_0083AF90, D_0080C1FC);
+        Text_PrintfColored(D_0083AF90, gTownLabels[TOWN_LABEL_MOVE]);
         Font_SetPos(x + 0x64, y + 1);
-        Text_PrintfColored(D_0083AF90, D_0080C1F8);
+        Text_PrintfColored(D_0083AF90, gTownLabels[TOWN_LABEL_ZOOM]);
     }
     Prim_FillGradRect((struct PrimGradRect *)&b);
     Win_Draw(gMenuOffsetX + 0x136, gMenuOffsetY + 0x36, 0x132, 0x96, color, 0, 6);
     if (k == 1) {
         Font_SetPos(gMenuOffsetX + 0x17C, gMenuOffsetY + 0x6E);
         Font_SetSpacing(0x12, 0x12);
-        Text_Printf(D_0080C8E4);
+        Text_Printf(gForgeTexts[FORGE_TEXT_SELECT_SHOWS_EQUIP]);
     }
 }
 
@@ -1197,7 +1147,7 @@ void EquipShop_DrawList(void)
 
     Equip_DrawPreviewHelp(0xBDB59F6C, s->selling);
     if (s->selling == 0) {
-        EquipPreview_Show(0);
+        EquipPreview_Hide(0);
     }
     EquipShop_DrawPageSmall();
     EquipShop_DrawNote();
@@ -1276,7 +1226,6 @@ void EquipShop_DrawItem(void)
     EquipCompare_Draw(&s->worn, &s->item, 0x136, 0x36, s->detailPage | 0x50);
 }
 
-extern char *gEquipLimitTexts[];
 
 void Equip_DrawWearer(EquipItem *e)
 {
@@ -1326,16 +1275,13 @@ void Equip_DrawWearer(EquipItem *e)
     }
 }
 
-extern char *D_0080C75C;
-extern char *D_0080C764;
-extern char *D_0080C0A4;
 
 void EquipBox_DrawSellNote(s16 x, s16 y)
 {
     EquipSell *s = (EquipSell *)gMenuWork;
     s32 slot = s->col + (s->row * 10 + s->box * 100);
 
-    Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xC0101010, (u8)(s32)EquipSet_RemoveSlot(slot, 1) ? D_0080C764 : D_0080C75C);
+    Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xC0101010, (u8)(s32)EquipSet_RemoveSlot(slot, 1) ? gEquipShopTexts[EQUIP_SHOP_TEXT_PICK_SELL_IN_SET] : gEquipShopTexts[EQUIP_SHOP_TEXT_PICK_SELL]);
     if (s->unk1E != 0) {
         BoxMenu_DrawItemList(slot, (s->page & 7) | 0x10002F8, x + 12);
     } else {
@@ -1343,7 +1289,7 @@ void EquipBox_DrawSellNote(s16 x, s16 y)
         Font_SetSpacing(0x12, 0x12);
         Font_SetColor(0x807F7F7F);
         Font_SetPos(0x1FE, 0x194);
-        Text_Printf(D_0080C0A4);
+        Text_Printf(gGameMenuLabels[MENU_LABEL_DETAILS_GUIDE]);
     }
 }
 
@@ -1403,12 +1349,10 @@ void NpcSetA_Run(u8 *task);
 void NpcSetA_Effect(u8 *task);
 void NpcSetB_Run(u8 *task);
 void NpcSetB_Effect(u8 *task);
-void func_0075C800(void);
+void NpcSetB_Nop(void);
 void NpcSetC_Run(u8 *task);
 void NpcSetC_Effect(u8 *task);
-void func_0075D780(void);
-extern u32 D_007F1900[];
-extern u32 D_007F1960[];
+void NpcSetC_Nop(void);
 u8 gEquipShopTypesTab0[8] = {
 #include "lobby/007F1858.inc"
 };
@@ -1423,15 +1367,26 @@ void *gNpcHandlers_3[8] = {
     NpcSetA_Effect, NULL, NULL, NULL,
 };
 void *gNpcHandlers_2[8] = {
-    NpcSetB_Effect, NpcSetB_Effect, func_0075C800, NpcSetB_Run,
-    func_0075C800, NULL, NULL, NULL,
+    NpcSetB_Effect, NpcSetB_Effect, NpcSetB_Nop, NpcSetB_Run,
+    NpcSetB_Nop, NULL, NULL, NULL,
 };
 u32 gNpcHandlers_1[16] = {
 #include "lobby/007F18C0.inc"
 };
-u32 D_007F1900[24] = {
+/* The lobby's own monster hit tables, which the push-apart and camera code
+ * read while gScene.inLobby is set in place of the game's gEmBoneHits and
+ * gEmPushSpheres: every one of the four kinds has the same one-capsule bone
+ * list and the same one-sphere push list ({x, y, z, radius}; a radius of -1
+ * ends it). */
+HitShape gEmBoneHitsLobbyList[2] = {
 #include "lobby/007F1900.inc"
 };
-u32 D_007F1960[12] = {
+HitShape *gEmBoneHitsLobby[4] = {
+#include "lobby/007F1950.inc"
+};
+f32 gEmPushSpheresLobbyList[8] = {
 #include "lobby/007F1960.inc"
+};
+f32 *gEmPushSpheresLobby[4] = {
+#include "lobby/007F1980.inc"
 };

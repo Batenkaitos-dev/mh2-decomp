@@ -6,8 +6,8 @@
 /*
  * The HUD's shake: one element at a time, owned by an id (gShakeId), is
  * moved by an offset along x or y (gShakeOffset). Shake_Start and
- * Shake_Update (unk_361570.c) start and run it; the queries in
- * unk_3633C0.c tell a menu or a HUD element whether its id shakes and by
+ * Shake_Update start and run it; the queries
+ * tell a menu or a HUD element whether its id shakes and by
  * how much (Shake_CopyOffset). The camera's shake is another thing
  * (camera.h's CamShake).
  */

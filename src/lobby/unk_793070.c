@@ -8,6 +8,7 @@
 #include "save.h"
 #include "pad.h"
 #include "lobby_globals.h"
+#include "lobby_labels.h"
 
 /* MemberCard_DrawRestrict, Profile_DrawRestrict, MemberCard_DrawStatus and Profile_DrawStatus pass
  * their s32 x, y unconverted; the definition's (s16, s16) adds the conversions in all four (s16
@@ -15,7 +16,6 @@
 /* unit's own declaration: (s16, s16) changes 4 functions */
 void Font_SetPos(s32 x, s32 y);
 void Text_PrintfColored(const char *fmt, ...);
-extern M2C_UNK gRestrictTexts;
 s32 WordFilter_Scan(s8 *str, s32 replace);
 
 void Icon_Draw(s32, s32, s32, s32, s32, s32); /* unit's own declaration: with the definition's void (s16 x, s16 y, s16 w, s16 h, u32 color, s32 i) (lobby/unk_790EC0.c), MemberCard_DrawStatus 17 of 36 words, Profile_DrawStatus 16 of 34 words differ */
@@ -67,13 +67,13 @@ s32 Equip_GetSellPrice(EquipItem *item)
 void MemberCard_DrawRestrict(HunterCard *card, s32 x, s32 y)
 {
     Font_SetPos(x, y);
-    Text_PrintfColored(*(char **)((u8 *)&gRestrictTexts + (card->restriction * 4)));
+    Text_PrintfColored(gFriendLimitTexts[card->friendLimit]);
 }
 
 void Profile_DrawRestrict(s32 x, s32 y)
 {
     Font_SetPos(x, y);
-    Text_PrintfColored(*(char **)((u8 *)&gRestrictTexts + (gPlayerText.card.restriction * 4)));
+    Text_PrintfColored(gFriendLimitTexts[gPlayerText.card.friendLimit]);
 }
 
 void MemberCard_DrawStatus(HunterCard *card, s32 x, s32 y)
@@ -81,8 +81,8 @@ void MemberCard_DrawStatus(HunterCard *card, s32 x, s32 y)
     u8 temp_v1;
 
     Font_SetPos(x, y);
-    Text_PrintfColored(*(char **)(&gMemberStatusTexts + (card->chatColor * 4)));
-    temp_v1 = card->chatColor;
+    Text_PrintfColored(*(char **)(&gMemberStatusTexts + (card->onlineMark * 4)));
+    temp_v1 = card->onlineMark;
     if (temp_v1 != 0) {
         Icon_Draw(x, y, 0x19, 0x14, -1, temp_v1 + 0x59);
     }
@@ -94,9 +94,9 @@ void Profile_DrawStatus(s32 x, s32 y)
     HunterCard *s = (HunterCard *)&gPlayerText; /* a cast keeps the address in a register */
 
     Font_SetPos(x, y);
-    Text_PrintfColored(((char **)&gMemberStatusTexts)[s->chatColor]);
-    if (s->chatColor != 0) {
-        Icon_Draw(x, y, 0x19, 0x14, -1, s->chatColor + 0x59);
+    Text_PrintfColored(((char **)&gMemberStatusTexts)[s->onlineMark]);
+    if (s->onlineMark != 0) {
+        Icon_Draw(x, y, 0x19, 0x14, -1, s->onlineMark + 0x59);
     }
 }
 

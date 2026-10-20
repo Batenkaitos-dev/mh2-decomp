@@ -2,7 +2,7 @@
 // Library code: it stays assembly. Public API
 // names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
 
-// Sony libmc: the Sony API names, from the card steps that call them (sub_main unk_3DDBA0.c:
+// Sony libmc: the Sony API names, from the card steps that call them (sub_main card_task.c:
 // Card_WriteFile, Card_ReadFile, Card_MkDir, Card_Delete, Card_Format ...)
 sceMcInit = 0x001246A8; // type:func
 sceMcOpen = 0x00124C00; // type:func

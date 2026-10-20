@@ -1,5 +1,5 @@
 /*
- * main 0x17eb00-0x17f660: placing textures in GS memory (the VramSlot
+ * Placing textures in GS memory (the VramSlot
  * list: finding a gap, evicting textures that are not in use), and the
  * screen texture (gScreenTex, a copy of the frame buffer).
  */
@@ -35,79 +35,93 @@ s32 DmaQueue_AddChain(s32 mode, u32 entry, u32 *last, DmaQueue *q);
 void Dma_QueueStoreImage(void *dst, u32 size, s16 sbp, s16 sbw, s16 psm, s16 sx, s16 sy, s16 w, s16 h,
                          u32 wait);
 
-/* The slot holding t. */
-VramSlot *VramSlot_Find(TexRec *t)
+/*
+ * The VramSlot holding texRec, searched from gVramSlotHead; NULL when
+ * texRec has no GS memory.
+ */
+VramSlot *VramSlot_Find(TexRec *texRec)
 {
-    VramSlot *s;
+    VramSlot *slot;
 
-    for (s = gVramSlotHead; s != NULL; s = s->next) {
-        if (s->tex == t) {
-            return s;
+    for (slot = gVramSlotHead; slot != NULL; slot = slot->next) {
+        if (slot->tex == texRec) {
+            return slot;
         }
     }
     return NULL;
 }
 
-/* Gives t a new slot after `after` (at the start of texture memory when
- * NULL), at the next address aligned for t. */
-s32 VramSlot_Assign(VramSlot *after, TexRec *t)
+/*
+ * Gives texRec a new VramSlot inserted after `after` (at the start of
+ * texture memory, gSysTexBlock, when after is NULL), at the first address
+ * past after's blocks aligned to texRec->align. Sets texRec->vram, marks
+ * it resident and copies its flags, mode, block count and alignment into
+ * the slot. Returns 1, or 0 when no free VramSlot is left.
+ */
+s32 VramSlot_Assign(VramSlot *after, TexRec *texRec)
 {
-    VramSlot *s;
+    VramSlot *slot;
     s16 addr;
 
     if (after == NULL) {
-        if ((s = VramSlot_Alloc(gVramSlots, VRAM_SLOT_MAX)) == NULL) {
+        if ((slot = VramSlot_Alloc(gVramSlots, VRAM_SLOT_MAX)) == NULL) {
             return 0;
         }
-        VramSlot_Insert(after, s);
+        VramSlot_Insert(after, slot);
         addr = gSysTexBlock;
     } else {
-        if ((s = VramSlot_Alloc(gVramSlots, VRAM_SLOT_MAX)) == NULL) {
+        if ((slot = VramSlot_Alloc(gVramSlots, VRAM_SLOT_MAX)) == NULL) {
             return 0;
         }
-        VramSlot_Insert(after, s);
-        addr = ~(t->align - 1) & (t->align - 1 + (after->addr + after->blocks));
+        VramSlot_Insert(after, slot);
+        addr = ~(texRec->align - 1) & (texRec->align - 1 + (after->addr + after->blocks));
     }
-    t->vram = addr;
-    t->resident = 1;
-    s->tex = t;
-    s->flags = t->flags;
-    s->mode = t->mode;
-    s->addr = addr;
-    s->blocks = t->blocks;
-    s->align = t->align;
+    texRec->vram = addr;
+    texRec->resident = 1;
+    slot->tex = texRec;
+    slot->flags = texRec->flags;
+    slot->mode = texRec->mode;
+    slot->addr = addr;
+    slot->blocks = texRec->blocks;
+    slot->align = texRec->align;
     return 1;
 }
 
-/* Gives slot s (a new one at the start when NULL) to t: the slots after it
- * that overlap t's blocks are freed, and its texture is evicted. */
-s32 VramSlot_Replace(VramSlot *s, TexRec *t)
+/*
+ * Gives slot (a new one at the start of texture memory when slot is NULL)
+ * to texRec: the slots after it that overlap texRec's blocks are freed,
+ * and the texture the slot held is evicted (resident 0, mode 4). Returns
+ * 1, or 0 when slot is NULL and no free VramSlot is left. seen: called
+ * with the slot VramSlot_FindVictim found.
+ */
+s32 VramSlot_Replace(VramSlot *slot, TexRec *texRec)
 {
-    if (s == NULL) {
-        if ((s = VramSlot_Alloc(gVramSlots, VRAM_SLOT_MAX)) == NULL) {
+    if (slot == NULL) {
+        if ((slot = VramSlot_Alloc(gVramSlots, VRAM_SLOT_MAX)) == NULL) {
             return 0;
         }
-        VramSlot_Insert(NULL, s);
-        s->addr = gSysTexBlock;
-    } else if (s->next != NULL && s->next->addr - s->addr < t->blocks) {
+        VramSlot_Insert(NULL, slot);
+        slot->addr = gSysTexBlock;
+    } else if (slot->next != NULL && slot->next->addr - slot->addr < texRec->blocks) {
         do {
-            VramSlot_Free(s->next);
-        } while (s->next != NULL && s->next->addr - s->addr < t->blocks);
+            VramSlot_Free(slot->next);
+        } while (slot->next != NULL && slot->next->addr - slot->addr < texRec->blocks);
     }
-    if (s->tex != NULL) {
-        s->tex->resident = 0;
-        s->tex->mode = 4;
+    if (slot->tex != NULL) {
+        slot->tex->resident = 0;
+        slot->tex->mode = 4;
     }
-    t->vram = s->addr;
-    t->resident = 1;
-    s->tex = t;
-    s->flags = t->flags;
-    s->mode = t->mode;
-    s->blocks = t->blocks;
-    s->align = t->align;
+    texRec->vram = slot->addr;
+    texRec->resident = 1;
+    slot->tex = texRec;
+    slot->flags = texRec->flags;
+    slot->mode = texRec->mode;
+    slot->blocks = texRec->blocks;
+    slot->align = texRec->align;
     return 1;
 }
 
+/* Frees every VramSlot in the list. Returns 1. */
 s32 VramSlot_FreeAll(void)
 {
     while (gVramSlotHead != NULL) {
@@ -116,47 +130,52 @@ s32 VramSlot_FreeAll(void)
     return 1;
 }
 
-s32 Tex_Evict(TexRec *t)
+/* Frees the VramSlot holding texRec, if it has one. Returns 1. */
+s32 Tex_Evict(TexRec *texRec)
 {
-    VramSlot *s = VramSlot_Find(t);
+    VramSlot *slot = VramSlot_Find(texRec);
 
-    if (s != NULL) {
-        VramSlot_Free(s);
+    if (slot != NULL) {
+        VramSlot_Free(slot);
     }
     return 1;
 }
 
-/* Places the textures and palettes of n handles in GS memory (gaps only,
- * nothing is evicted); 0 when one does not fit. */
-s32 Tex_Reserve(u32 *handles, s32 n)
+/*
+ * Places the textures and palettes of handleCount handles in GS memory
+ * (gaps only, nothing is evicted). A handle holds a texture number in its
+ * low 16 bits and a palette number in its high 16 bits (1-based into
+ * gTexRecs and gPalRecs, 0: none). Returns 1, or 0 when one does not fit.
+ */
+s32 Tex_Reserve(u32 *handles, s32 handleCount)
 {
-    u32 h;
+    u32 handle;
     s32 i;
-    TexRec *t;
-    VramSlot *s;
+    TexRec *texRec;
+    VramSlot *gapSlot;
 
-    for (i = 0; i < n; i++) {
-        h = *handles++;
-        if ((h & 0xFFFF) != 0) {
-            t = &gTexRecs[(h & 0xFFFF) - 1];
-            if (t->resident == 0) {
-                s = VramSlot_FindGap(t->blocks, t->align);
-                if (s == (VramSlot *)-1) {
+    for (i = 0; i < handleCount; i++) {
+        handle = *handles++;
+        if ((handle & 0xFFFF) != 0) {
+            texRec = &gTexRecs[(handle & 0xFFFF) - 1];
+            if (texRec->resident == 0) {
+                gapSlot = VramSlot_FindGap(texRec->blocks, texRec->align);
+                if (gapSlot == (VramSlot *)-1) {
                     return 0;
                 }
-                if (VramSlot_Assign(s, t) == 0) {
+                if (VramSlot_Assign(gapSlot, texRec) == 0) {
                     return 0;
                 }
             }
         }
-        if ((h & 0xFFFF0000) >> 16 != 0) {
-            t = &gPalRecs[((h & 0xFFFF0000) >> 16) - 1];
-            if (t->resident == 0) {
-                s = VramSlot_FindGap(t->blocks, t->align);
-                if (s == (VramSlot *)-1) {
+        if ((handle & 0xFFFF0000) >> 16 != 0) {
+            texRec = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
+            if (texRec->resident == 0) {
+                gapSlot = VramSlot_FindGap(texRec->blocks, texRec->align);
+                if (gapSlot == (VramSlot *)-1) {
                     return 0;
                 }
-                if (VramSlot_Assign(s, t) == 0) {
+                if (VramSlot_Assign(gapSlot, texRec) == 0) {
                     return 0;
                 }
             }
@@ -169,20 +188,20 @@ s32 Tex_Reserve(u32 *handles, s32 n)
  * texture memory, -1 when there is no room. */
 VramSlot *VramSlot_FindGap(u32 blocks, s32 align)
 {
-    VramSlot *s = gVramSlotHead;
+    VramSlot *slot = gVramSlotHead;
     VramSlot *next;
     u32 start;
     s32 end;
 
-    if (s == NULL) {
+    if (slot == NULL) {
         return NULL;
     }
-    if (s->addr != gSysTexBlock && (u32)(s->addr - gSysTexBlock) >= blocks) {
+    if (slot->addr != gSysTexBlock && (u32)(slot->addr - gSysTexBlock) >= blocks) {
         return NULL;
     }
     for (;;) {
-        end = s->addr + s->blocks;
-        next = s->next;
+        end = slot->addr + slot->blocks;
+        next = slot->next;
         start = ~(align - 1) & (end + (align - 1));
         if (next == NULL) {
             if (end >= VRAM_END) {
@@ -191,77 +210,80 @@ VramSlot *VramSlot_FindGap(u32 blocks, s32 align)
             if (start + blocks >= VRAM_END) {
                 return (VramSlot *)-1;
             }
-            return s;
+            return slot;
         }
         if (start < (u32)next->addr && (u32)(next->addr - start) >= blocks) {
-            return s;
+            return slot;
         }
-        s = next;
+        slot = next;
     }
 }
 
-/* The slot from which t can take GS memory by evicting the textures there
- * (pass 0: only textures of mode 1 or 4, pass 1: any) that are not in
- * handles; NULL when there are no slots, 1 when t fits after the last one,
- * -1 when nothing can be evicted. */
-VramSlot *VramSlot_FindVictim(TexRec *t, u32 *handles, s32 n)
+/*
+ * The slot from which texRec can take GS memory by evicting the textures
+ * there (pass 0: only textures of mode 1 or 4, pass 1: any) that are not
+ * among the handleCount handles; the slot must start at an address
+ * aligned for texRec. Returns NULL when there are no slots, 1 when texRec
+ * fits after the last one, -1 when nothing can be evicted.
+ */
+VramSlot *VramSlot_FindVictim(TexRec *texRec, u32 *handles, s32 handleCount)
 {
-    VramSlot *s2;
+    VramSlot *runSlot;
     VramSlot *first;
     s32 pass = 0;
     s32 i;
-    VramSlot *s;
+    VramSlot *slot;
     VramSlot *last;
-    u32 at;
-    u32 h;
+    u32 alignedAddr;
+    u32 handle;
 
     for (;;) {
-        s = gVramSlotHead;
-        if (s == NULL) {
+        slot = gVramSlotHead;
+        if (slot == NULL) {
             return NULL;
         }
         do {
-            if (pass == 0 && s->mode != 1 && s->mode != 4) {
+            if (pass == 0 && slot->mode != 1 && slot->mode != 4) {
                 goto next;
             }
-            for (i = 0; i < n; i++) {
-                h = handles[i];
-                if ((h & 0xFFFF) != 0 && &gTexRecs[(h & 0xFFFF) - 1] == s->tex) {
+            for (i = 0; i < handleCount; i++) {
+                handle = handles[i];
+                if ((handle & 0xFFFF) != 0 && &gTexRecs[(handle & 0xFFFF) - 1] == slot->tex) {
                     goto next;
                 }
-                if ((h & 0xFFFF0000) >> 16 != 0 && &gPalRecs[((h & 0xFFFF0000) >> 16) - 1] == s->tex) {
+                if ((handle & 0xFFFF0000) >> 16 != 0 && &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1] == slot->tex) {
                     goto next;
                 }
             }
-            at = ~(t->align - 1) & (s->addr + (t->align - 1));
-            if (s->addr != at) {
+            alignedAddr = ~(texRec->align - 1) & (slot->addr + (texRec->align - 1));
+            if (slot->addr != alignedAddr) {
                 goto next;
             }
-            s2 = s->next;
-            if (s2 == NULL) {
-                if (VRAM_END - at < t->blocks) {
+            runSlot = slot->next;
+            if (runSlot == NULL) {
+                if (VRAM_END - alignedAddr < texRec->blocks) {
                     goto next;
                 }
-                return s;
+                return slot;
             }
-            first = s;
-            while (s2->addr - at < t->blocks) {
-                s = s2;
-                if (pass == 0 && s2->mode != 1 && s2->mode != 4) {
+            first = slot;
+            while (runSlot->addr - alignedAddr < texRec->blocks) {
+                slot = runSlot;
+                if (pass == 0 && runSlot->mode != 1 && runSlot->mode != 4) {
                     goto next;
                 }
-                for (i = 0; i < n; i++) {
-                    h = handles[i];
-                    if ((h & 0xFFFF) != 0 && &gTexRecs[(h & 0xFFFF) - 1] == s2->tex) {
+                for (i = 0; i < handleCount; i++) {
+                    handle = handles[i];
+                    if ((handle & 0xFFFF) != 0 && &gTexRecs[(handle & 0xFFFF) - 1] == runSlot->tex) {
                         goto next;
                     }
-                    if ((h & 0xFFFF0000) >> 16 != 0 && &gPalRecs[((h & 0xFFFF0000) >> 16) - 1] == s2->tex) {
+                    if ((handle & 0xFFFF0000) >> 16 != 0 && &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1] == runSlot->tex) {
                         goto next;
                     }
                 }
-                s2 = s2->next;
-                if (s2 == NULL) {
-                    if (VRAM_END - at < t->blocks) {
+                runSlot = runSlot->next;
+                if (runSlot == NULL) {
+                    if (VRAM_END - alignedAddr < texRec->blocks) {
                         goto next;
                     }
                     return first;
@@ -269,10 +291,10 @@ VramSlot *VramSlot_FindVictim(TexRec *t, u32 *handles, s32 n)
             }
             return first;
         next:
-            last = s;
-            s = s->next;
-        } while (s != NULL);
-        if (VRAM_END - (last->addr + last->blocks) >= t->blocks) {
+            last = slot;
+            slot = slot->next;
+        } while (slot != NULL);
+        if (VRAM_END - (last->addr + last->blocks) >= texRec->blocks) {
             return (VramSlot *)1;
         }
         if (pass != 0) {
@@ -310,8 +332,8 @@ void ScreenTex_Init(void *buf)
  * into the screen texture's buffer; fromTex 1 then drops the GS copy. */
 s32 ScreenTex_Capture(s32 fromTex)
 {
-    TexRec *t;
-    s16 src;
+    TexRec *screenTex;
+    s16 srcBlock;
 
     if (gSysNoDraw != 0) {
         return 0;
@@ -320,17 +342,17 @@ s32 ScreenTex_Capture(s32 fromTex)
         return 0;
     }
     Dma_WaitIdle();
-    t = &gScreenTex;
+    screenTex = &gScreenTex;
     if (fromTex == 0) {
         if (gSysCurBuf == 0) {
-            src = gSysFbBlock0;
+            srcBlock = gSysFbBlock0;
         } else {
-            src = gSysFbBlock1;
+            srcBlock = gSysFbBlock1;
         }
     } else {
-        src = t->vram;
+        srcBlock = screenTex->vram;
     }
-    Dma_QueueStoreImage(t->mem, t->size, src, t->width / 64, t->psm, 0, 0, t->width, t->height, 1);
+    Dma_QueueStoreImage(screenTex->mem, screenTex->size, srcBlock, screenTex->width / 64, screenTex->psm, 0, 0, screenTex->width, screenTex->height, 1);
     Dma_WaitIdle();
     if (fromTex == 1) {
         ScreenTex_Release();
@@ -342,34 +364,38 @@ s32 ScreenTex_Capture(s32 fromTex)
  * gap); 0 when there is no room. */
 s32 ScreenTex_Upload(void)
 {
-    TexRec *t = &gScreenTex;
-    VramSlot *s;
-    u128 *p;
+    TexRec *screenTex = &gScreenTex;
+    VramSlot *gapSlot;
+    u128 *endPacket;
 
     if (gScreenTexState == 2) {
         ScreenTex_SetRegs();
         return 1;
     }
     if (gScreenTexState == 1) {
-        t->vram = gScreenTexVram;
-        t->resident = 1;
+        screenTex->vram = gScreenTexVram;
+        screenTex->resident = 1;
     } else {
-        s = VramSlot_FindGap(t->blocks, t->align);
-        if ((s32)s < 0) {
+        gapSlot = VramSlot_FindGap(screenTex->blocks, screenTex->align);
+        if ((s32)gapSlot < 0) {
             return 0;
         }
-        if (VramSlot_Assign(s, t) == 0) {
+        if (VramSlot_Assign(gapSlot, screenTex) == 0) {
             return 0;
         }
     }
-    ScreenTex_Send(t);
-    p = Packet_Alloc(Tex_UploadPacketSize(0), 16);
-    Dma_BuildEndPacket(p, 1);
-    DmaQueue_AddChain(0, (u32)p & 0x0FFFFFFF, (u32 *)p, &gDmaQueue);
+    ScreenTex_Send(screenTex);
+    endPacket = Packet_Alloc(Tex_UploadPacketSize(0), 16);
+    Dma_BuildEndPacket(endPacket, 1);
+    DmaQueue_AddChain(0, (u32)endPacket & 0x0FFFFFFF, (u32 *)endPacket, &gDmaQueue);
     ScreenTex_SetRegs();
     return 1;
 }
 
+/*
+ * Frees the GS block reserved for the screen texture (gScreenTexVram, when
+ * set) and sets gScreenTexState to 0 (none).
+ */
 void ScreenTex_Release(void)
 {
     if (gScreenTexVram != 0) {

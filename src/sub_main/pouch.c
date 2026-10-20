@@ -4,8 +4,8 @@
  * and the bow's ammo and coating slots, health, stamina, hunger and
  * sharpness, the gestures, and two menus run from the player's state: the
  * supply box (SceneState.supply) and the quest's delivery box. Item_Use and
- * its helpers (unk_39C290.c) and the player's states (game overlay,
- * unk_70A290.c) call these; the HUD draws what they keep.
+ * its helpers and the player's states (in the game overlay) call these; the
+ * HUD draws what they keep.
  */
 #include "common.h"
 #include "quest.h"
@@ -482,15 +482,15 @@ void Player_UpdateMoveTo(Player *pl)
     }
 }
 
-/* The first entry of gAreaAmbModels for the player's area, or -1 where a
+/* The first entry of gAreaFxModels for the player's area, or -1 where a
  * kind 2 object can't be placed (Scene_CanPlaceKind2); the pitfall trap is
  * set only when it is 0 or more (Player_UseItem). */
-s16 Player_GetAreaAmbModel(Player *pl)
+s16 Player_GetAreaPitModel(Player *pl)
 {
     if (Scene_CanPlaceKind2() == 0) {
         return -1;
     }
-    return gAreaAmbModels[pl->area][0];
+    return gAreaFxModels[pl->area][0];
 }
 
 /* 1 while the player doesn't flinch: its own timer, an item's
@@ -544,7 +544,7 @@ s32 Player_Damage(Player *pl, s16 damage, s16 lose)
     }
     if (pl->hp <= 0) {
         pl->hpRecoverable = 0;
-        if (pl->action != 2) {
+        if (pl->action != PL_POSTURE_AIRBORNE) {
             Player_Die(pl);
             return 1;
         }
@@ -763,7 +763,7 @@ void Bow_ClearCoatingSlot(Player *pl)
 }
 
 /* Loads the ammo of the selected slot: its kind, the rounds left, and the
- * clip size for this bowgun (+1 with skill 0xB8). */
+ * clip size for this bowgun (+1 with SKILL_LOAD_UP). */
 void Bowgun_LoadAmmo(Player *pl, s32 unused)
 {
     if (pl->equip[EQUIP_SLOT_WEAPON].type == EQUIP_GUN && pl->ammoSlot != POUCH_SLOT_NONE) {
@@ -774,7 +774,7 @@ void Bowgun_LoadAmmo(Player *pl, s32 unused)
             pl->ammoCount = pl->pouch[pl->ammoSlot].count;
         }
         pl->clipSize = gBowgunClipSizes[gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].clipRow][pl->ammoType];
-        if (Player_HasSkill(pl, 0xB8) == 1) {
+        if (Player_HasSkill(pl, SKILL_LOAD_UP) == 1) {
             pl->clipSize++;
         }
         pl->roundsLoaded = 0;
@@ -1065,7 +1065,7 @@ void SupplyBox_Take(Player *pl)
     SupplyBox_StartMove(scene->supply[pl->menuCursor].item, pl->menuCursor);
     item = scene->supply[pl->menuCursor].item;
     switch (item) {
-    case 0x2A4:
+    case ITEM_ID_TRADE_GOODS:
         Notice_Push(1, 0x13, item);
         break;
     case ITEM_ID_DELIVERY:

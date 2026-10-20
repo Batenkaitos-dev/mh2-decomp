@@ -14,7 +14,7 @@ piece's start (the last to the segment's end, or for .bss to bss_size).
 Only Capcom's data counts. The libraries' data stays assembly (the owner's
 rule), so it is left out:
 - nethttp, dnas_ins and dnas_net are Sony's libhttps and DNAS: library, but
-  for nethttp's Capcom front end (text_8FB130, unk_8FB130.c): its .rodata
+  for nethttp's Capcom front end (text_8FB130, http_front.c): its .rodata
   (0x954D50-0x954E60), its .bss (0x95AA00-0x95B130) and its .data
   (0x94FF98-0x950008) count as Capcom's;
 - yn's first .data and .rodata pieces are Sony's netcnfif (yn.yaml);
@@ -27,7 +27,7 @@ rule), so it is left out:
   0x403DF0-0x4045C0, deco_table.c) and .rodata 0x46A3C0-0x46A450 are
   ACCESS's kana-kanji engine's (the pieces named access/);
 - sub_main's .data 0x4054D0-0x4154E0 is the DNAS authentication data and
-  its passphrase (INCLUDE_DATA objects of unk_308BC0.c).
+  its passphrase (INCLUDE_DATA objects of net_front.c).
 lbguild is Capcom's data with no code, test an all-zero stub: they are
 listed but not in the total.
 
@@ -53,7 +53,7 @@ UNCOUNTED = {"lbguild", "test"}
 LIBRARY_RANGES = {
     "main": [(".data", 0x195C00, 0x1BA110), (".rodata", 0x1BCE80, 0x1C7B10)],
     "yn": [(".data", 0xAD1180, 0xAD11A0), (".rodata", 0xAD2280, 0xAD2770)],
-    # the DNAS authentication data (64K) and its passphrase, which unk_308BC0.c passes to the
+    # the DNAS authentication data (64K) and its passphrase, which net_front.c passes to the
     # DNAS library: INCLUDE_DATA objects, taken from the user's original at build time
     # ACCESS's kana-kanji engine (pieces named access/)
     "sub_main": [(".data", 0x403170, 0x403DF0), (".data", 0x4045C0, 0x405178),

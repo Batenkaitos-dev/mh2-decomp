@@ -1,4 +1,4 @@
-# EmSlot_FreeModels (sub_main, src/sub_main/unk_33B080.c)
+# EmSlot_FreeModels (sub_main, src/sub_main/model_load.c)
 
 ## Status
 

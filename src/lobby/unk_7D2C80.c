@@ -1,4 +1,5 @@
 #include "common.h"
+#include "net_save.h"
 #include "syssettings.h"
 #include "net_mode.h"
 #include "em.h"
@@ -9,7 +10,7 @@
 /* prototypes */
 s32 LobbyCard_DecodeNetFile(u16 *p);
 struct NetMenu;
-s32 SaveMenu_SystemIdMatches(struct NetMenu *);
+s32 SaveMenu_SystemDateMatches(struct NetMenu *);
 char * strstr(char *s, char *w);
 extern char ***gLobbyMsgPages[];          /* the pages' texts: NULL-ended lists */
 void *memset(void *dst, s32 c, u32 n);
@@ -21,8 +22,6 @@ s32 sprintf(char *dst, const char *fmt, ...);   /* sprintf */
 void Sjis_PutDigits3(char *dst, s32 n);
 char *strcat(char *dst, const char *src);
 s32 strlen(const char *s);
-extern char gMmbbLoginId[];             /* the id */
-extern char D_5BE6BB[];             /* the password */
 extern char **D_0081B030;
 s32 LobbyMsg_DrawPart(s32 size, s32 page, s32 part, s32 y, s32 lineH);
 void Font_SetSpacing(u8 a, u8 b);
@@ -62,24 +61,23 @@ void LobbyMsg_DrawIcon(s32 kind, s16 x, s16 y, s32 big);
 
 
 extern u8 *gLoadBuf;
-extern u8 gNetSaveData[];               /* the lobby's data saved in the NET file (0x1BEC) */
 void *memcpy(void *dst, const void *src, u32 n);
 void NetMode_BeginCardTask(s32 i);
 void LobbyCard_OpenMsgBox(s8 step, s8 msg);
 void LobbyCard_CloseMsgBox(s8 step);
 s32 LobbyCard_LoadFiles(s32 mode);
 s32 CardOp_SetFiles(s32 *data);
-void CardTask_StartReadClear(s32 slot, u8 *buf, s32 a);
+void CardTask_StartFind(s32 slot, u8 *buf, s32 a);
 void CardTask_Update(void);
 s32 CardTask_Result(void);
 void CardTask_StartSave(s32 slot, u8 *buf);
-void CardTask_StartCheck(void);
+void CardTask_StartPoll(void);
 s32 Card_PortState(s32 slot);
 void LobbyCard_FixNetValues(u8 *data);
 s32 LoginPad_Decide(s32 sound);
 void NetModeMsg_QueueCountdown(u8 id);
 void Browser_SetErrorState(s32 msg);
-void func_00730010(void);
+void Browser_EmptyHook(void);
 s32 NetMode_CardMsgError(s8 c);
 /* end of prototypes */
 
@@ -109,7 +107,7 @@ s32 LobbyCard_RunNetSave(void)
             gNetMode.saveNext = 0;
             gNetMode.saveStep++;
             gNetMode.cardFiles = CardOp_SetFiles((s32 *)((s32)gLoadBuf + 0x20000));
-            CardTask_StartReadClear(gNetMode.slot, gLoadBuf, 0);
+            CardTask_StartFind(gNetMode.slot, gLoadBuf, 0);
         }
         break;
     case 2:
@@ -136,8 +134,8 @@ s32 LobbyCard_RunNetSave(void)
         break;
     case 3:
         LobbyCard_OpenMsgBox(4, 2);
-        memset(gLoadBuf, 0, 0x1BEC);
-        memcpy(gLoadBuf, gNetSaveData, 0x1BEC);
+        memset(gLoadBuf, 0, sizeof(NetSaveData));
+        memcpy(gLoadBuf, &gNetSaveData, sizeof(NetSaveData));
         LobbyCard_FixNetValues(gLoadBuf);
         CardTask_StartSave(gNetMode.slot, gLoadBuf);
         break;
@@ -171,7 +169,7 @@ s32 LobbyCard_RunNetSave(void)
         break;
     case 0x1E:
         LobbyCard_OpenMsgBox(0x1F, 4);
-        CardTask_StartCheck();
+        CardTask_StartPoll();
         break;
     case 0x1F:
         NetModeMsg_QueueCountdown(2);
@@ -195,7 +193,7 @@ s32 LobbyCard_RunNetSave(void)
         break;
     case 0x46:
         LobbyCard_OpenMsgBox(0x47, 6);
-        CardTask_StartCheck();
+        CardTask_StartPoll();
         break;
     case 0x47:
         NetModeMsg_QueueCountdown(2);
@@ -233,7 +231,7 @@ s32 LobbyCard_RunNetSave(void)
     case 0x6E:
         gNetMode.saveStep++;
         gNetMode.percent = 8;
-        func_00730010();
+        Browser_EmptyHook();
         gNetMode.cardMsg = 0;
         break;
     case 0x6F:
@@ -329,7 +327,7 @@ s32 LobbyCard_CheckNetFile(s32 unused)
     if (LobbyCard_DecodeNetFile((void *) (*(void * *)&gLoadBuf)) != 0) {
         return -1;
     }
-    return (SaveMenu_SystemIdMatches((struct NetMenu *)&gCardMenu) == 0) ? -2 : 0;
+    return (SaveMenu_SystemDateMatches((struct NetMenu *)&gCardMenu) == 0) ? -2 : 0;
 }
 
 /* decodes the NET file's data in place (0x2A0 u16 words after an 8-byte
@@ -460,7 +458,7 @@ static s32 LobbyMsg_PartCount(u32 page)
 
 /* expands a help line of page `page` into dst: pages 1, 3 and 5 replace
  * "%s" (the card slot, full width), "%1", "%2", "%a" (the files count),
- * "%i" (the id, gMmbbLoginId) and "%p" (the password D_5BE6BB as stars), and
+ * "%i" (the id, gNetSaveData.mmbbLoginId) and "%p" (the password gNetSaveData.mmbbPassword as stars), and
  * mark the line by the tags "%r" (1 when the timer is 0), "%t" (2), "%y"
  * (3), "%k" (4), "%l" (5, page 5) and "%i"/"%p" (6); page 2 replaces "%e"
  * (the error code) and "%f" (D_0081B030[0] when unk7E is set); other pages
@@ -552,7 +550,7 @@ s32 LobbyMsg_Format(s32 page, char *src, char *dst)
             }
             if ((q = strstr(p, "%i")) != NULL) {
                 strncat(dst, p, q - p);
-                strcpy(buf, gMmbbLoginId);
+                strcpy(buf, gNetSaveData.mmbbLoginId);
                 strcat(dst, buf);
                 p = q + 2;
                 r = 6;
@@ -561,7 +559,7 @@ s32 LobbyMsg_Format(s32 page, char *src, char *dst)
             if ((q = strstr(p, "%p")) != NULL) {
                 strncat(dst, p, q - p);
                 buf[0] = 0;
-                n = strlen(D_5BE6BB);
+                n = strlen(gNetSaveData.mmbbPassword);
                 if (n != 0) {
                     for (i = 0; i < n; i++) {
                         buf[i] = '*';
@@ -997,10 +995,10 @@ void LobbyMsg_DrawList(s32 page, s32 part)
         }
         flags = 0;
         if (part == 0x15) {
-            if (gNetSetupResult == 0) {
+            if (gNetSaveData.setupResult == 0) {
                 flags = 1;
             }
-            if (gMmbbLoginId[0] == 0) {
+            if (gNetSaveData.mmbbLoginId[0] == 0) {
                 flags |= 2;
             }
         }

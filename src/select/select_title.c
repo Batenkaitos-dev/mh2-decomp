@@ -1,6 +1,6 @@
 /*
  * select: the drawing of the title menu, mode select and the character
- * selection (0x6B9B10-0x6BCE20), and the overlay's common drawing helpers.
+ * selection, and the overlay's common drawing helpers.
  *
  * gm_sub's title state machine (gm_main.c) runs these screens; this file
  * draws them and animates their pieces:
@@ -15,8 +15,7 @@
  * (a screen's title in the header font) serve every screen of the
  * overlay. Sel_LoadCommonTextures loads the 16 textures they share.
  *
- * The file owns its .data (0x6CACC0-0x6CB340) and .rodata
- * (0x6CDFD8-0x6CE0F0).
+ * The file owns its .data and .rodata.
  */
 #include "common.h"
 #include "window.h"
@@ -47,7 +46,7 @@ s32 Pack_Count(s32 *buf);
 void *Pack_GetPart(u8 *buf, s32 a);
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 struct TexRect;
-void TexRect_DrawRotated(struct TexRect *, u16); /* unit's own declaration: a u16 angle, though sub_main/unk_363550.c takes s32; Sel_DrawPartsRotated's code needs the u16 */
+void TexRect_DrawRotated(struct TexRect *, u16); /* unit's own declaration: a u16 angle as Sel_DrawPartsRotated passes it; with the definition's s32, the call compiles differently */
 
 extern void *gOptWork;
 extern void *gWorkArea; /* sub_main: the overlays' shared work area */
@@ -369,7 +368,7 @@ void Title_DrawLogo(void)
 
 extern char *gTitleMenuA[];     /* messages (select_psp.c): the title menu */
 extern char *gTitleMenuB[];     /* ... and its help lines, two per entry */
-/* unit's own declaration: s16 x and y, though sub_main/unk_36BE70.c takes s32; Title_DrawMenu's code needs them */
+/* unit's own declaration: s16 x and y as Title_DrawMenu passes them; with the definition's s32, the calls compile differently */
 void Hud_DrawButtonIcon(s32, s16, s16, s32, u32, f32);  /* a button icon */
 s32 Str_Length(char *);                         /* a message's width */
 char *strchr(char *, s32);                  /* strchr */

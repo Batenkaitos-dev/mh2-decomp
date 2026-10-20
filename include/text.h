@@ -2,7 +2,7 @@
 #define TEXT_H
 
 /*
- * The text layer (unk_368F10.c) over the font library (unk_2E3940.c).
+ * The text layer over the font library.
  * Text_PrintCodes and the helpers around it read control codes that start
  * with '~' (Text_ParseCode):
  *   ~Cnn  a colour (Text_SetColor);
@@ -51,7 +51,9 @@
 /* The size of the text functions' buffers (a formatted string with its codes). */
 #define TEXT_BUF_SIZE 0x400
 
-/* The first byte of a two-byte Shift-JIS character. */
+/* Shift-JIS: the first byte of a two-byte character (an unsigned byte), and
+ * the full-width space, which draws nothing. */
 #define SJIS_IS_LEAD(c) (((c) >= 0x80 && (c) <= 0x9F) || ((c) >= 0xE0 && (c) <= 0xFF))
+#define SJIS_SPACE 0x8140
 
 #endif /* TEXT_H */

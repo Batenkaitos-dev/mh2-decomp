@@ -12,11 +12,11 @@
 #include "area.h"
 
 extern u32 gStageFile;      /* base address of the stage file */
-extern IdOffset gOnlineStageData[];
-extern IdOffset gOnlineSeasonalData[];
+extern IdOffset gLobbyStageData[];
+extern IdOffset gLobbySeasonalData[];
 
-/* unit's own declaration: with the definition's u16 (u16 area) (sub_main/unk_376C00.c), Stage_GetAreaRecord: 1 of 27 words differ */
-u16 Area_IdForCurrentTime(s32 x);
+/* unit's own declaration: an s32 parameter as Stage_GetAreaRecord's call passes it; with the definition's u16 the call compiles differently */
+u16 Area_IdForCurrentTime(s32 area);
 u16 Map_AreaIndex(u16 map, u16 area);
 /* the calls cast to u8: this unit's code takes the value as u8 */
 s32 Quest_GetSeason(void);
@@ -24,15 +24,15 @@ u8 Daytime_Get(void);
 s32 LobbyTime_IsAm(void);
 
 /*
- * The stage data of id `id`: offline, from the stage file's id/offset list
- * (gQuest.dataTable; NULL with no stage file); online, from the built-in
- * list gOnlineStageData. NULL when the id is not listed.
+ * The stage data of id `id`: in a quest, from the stage file's id/offset
+ * list (gQuest.dataTable; NULL with no stage file); in the town
+ * (gScene.inLobby), from the built-in list gLobbyStageData. NULL when the id is not listed.
  */
 void *Stage_FindData(u16 id)
 {
     IdOffset *entry;
 
-    if (gScene.online != 1) {
+    if (gScene.inLobby != 1) {
         if (gQuest.stage == 0) {
             return NULL;
         }
@@ -45,7 +45,7 @@ void *Stage_FindData(u16 id)
             }
         }
     }
-    for (entry = gOnlineStageData;; entry++) {
+    for (entry = gLobbyStageData;; entry++) {
         if (entry->id == 0) {
             return NULL;
         }
@@ -60,8 +60,8 @@ void *Stage_FindData(u16 id)
  * gQuest.seasonalData (two offsets per entry, the second for stage tier 1)
  * leads to a table of six id/offset pairs, by season (0 to 2) plus 3 at the
  * daytime Daytime_Get gives 1. Returns the data (the pair's first word, an
- * offset in the stage file) and stores the second word in *out. Online, the
- * built-in gOnlineSeasonalData by morning or afternoon (LobbyTime_IsAm).
+ * offset in the stage file) and stores the second word in *out. In the town
+ * (gScene.inLobby), the built-in gLobbySeasonalData by morning or afternoon (LobbyTime_IsAm).
  */
 void *Stage_GetSeasonalData(s32 index, s32 *out)
 {
@@ -71,7 +71,7 @@ void *Stage_GetSeasonalData(s32 index, s32 *out)
     s32 n;
 
     *out = 0;
-    if (gScene.online != 1) {
+    if (gScene.inLobby != 1) {
         if (gQuest.stage == 0) {
             return NULL;
         }
@@ -86,7 +86,7 @@ void *Stage_GetSeasonalData(s32 index, s32 *out)
         *out = table[n].offset;
         return (u8 *)gStageFile + table[n].id;
     }
-    offsets = (s32 *)gOnlineSeasonalData;
+    offsets = (s32 *)gLobbySeasonalData;
     offsets += index * 2;
     table = (IdOffset *)*offsets;
     n = LobbyTime_IsAm() ^ 1;

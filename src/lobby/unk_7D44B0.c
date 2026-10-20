@@ -1,6 +1,10 @@
 /* Functions matched automatically from m2c's output;
  * the others are still assembly. First-pass C, to be named and typed. */
 #include "common.h"
+#include "lobby_state.h"
+#include "movie.h"
+#include "net_save.h"
+#include "card.h"
 #include "syssettings.h"
 #include "net_mode.h"
 #include "em.h"
@@ -12,17 +16,6 @@
 #include "ram_areas.h"
 #include "obj.h"
 #include "area.h"
-
-/* a timed event (0x18 bytes; LobbyWorld.events, D_008FAD30):
- * LobbyWorld_RunEvents calls func once the world's time reaches the event's */
-typedef struct LobbyWorldEvent {
-    /* 0x00 */ s32 active;
-    /* 0x04 */ s32 year;
-    /* 0x08 */ s32 season;
-    /* 0x0C */ s32 day;
-    /* 0x10 */ u32 tick;            /* added after the days are scaled */
-    /* 0x14 */ void (*func)(void);
-} LobbyWorldEvent;
 
 /*
  * The lobby world's state (gLobbyWorld, 0x200 bytes; the events at +0x130
@@ -170,7 +163,7 @@ extern u32 gLobbyCycle2Pos;
 extern u32 gLobbyTime;
 s32 Game_IsOnline(void);
 extern s32 gTownSeasonDays[3];              /* the seasons lengths in days (the server mode) */
-extern s32 D_008BF0A0;                 /* the year (the server mode) */
+extern s32 gTownYear;                 /* the year (the server mode) */
 void LobbyWorld_ClearEvents(void);
 void LobbyWorld_OnNextDay(void);
 void VillageClock_Wobble(void);
@@ -180,7 +173,7 @@ void LobbyWorld_AddDays(f32 days);
 void LobbyWorld_Skip(u32 n);
 void LobbyWorld_RunEvents(void);
 void CamReq_Cancel(void);
-void CamReq_Mode25(void);
+void CamReq_StageStart(void);
 extern u32 D_0081B7A4[][2];          /* gLobbyBgmInfo[].len through its own label */
 extern u16 *gLobbyBgmFiles[];              /* per track, the stream file of each entry */
 extern f32 D_008FAC10;
@@ -205,8 +198,6 @@ s32 NetMode_ChooseYesNo(void);
 void NetMode_BeginCardTask(s32 i);
 void NetMode_CloseYesNo(void);
 extern u8 gLobbySaveBuf[];                /* the NET file id and password, saved (0x200) */
-extern u8 gMmbbLoginId[];                  /* the id (0xB) */
-extern u8 D_5BE6BB[];                  /* the password (9) */
 u16 Rand_Next(s32 stream);
 s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
@@ -256,7 +247,7 @@ typedef struct LobbyProp {
 typedef char LobbyProp_size_check[(sizeof(LobbyProp) == 0x40) ? 1 : -1]; /* an Obj */
 
 void Vec_Copy(f32 *dst, f32 *src);
-void Effect0D_SpawnAt(f32 *pos, s32 kind, f32 size);
+void PartFx_SpawnAt(f32 *pos, s32 kind, f32 size);
 void LobbyProp_Draw(DrawSlot *d);
 /* end of prototypes */
 
@@ -268,7 +259,7 @@ void NetMode_OpenMenu2(s8 a, s8 b);
 void NetModeMsg_Page3(s32 a0);
 void CardTask_Begin(s32);
 s32 LobbyCard_LoadFiles(s32 mode);
-void CardTask_StartReadClear(s32 a, u8 *buf, s32 c);
+void CardTask_StartFind(s32 a, u8 *buf, s32 c);
 void CardTask_Update(void);
 s32 CardTask_Result(void);
 s32 Card_IsChanged(s32 slot);
@@ -278,7 +269,7 @@ void Card_ClearChanged(void);
 s32 Dnas_StateMachine(s8 *step, s16 *timer, s16 *arg2);
 s32 NetXfer_Step(s8 *st, s16 *timer, u8 *buf, s32 a, s32 max);
 s32 NetXfer_Step2(s8 *st, s16 *timer, u8 *buf, s32 a, s32 max);
-s32 NetXfer_GetState_Unk(void);
+s32 NetXfer_GetResult(void);
 char *strncpy(char *dst, const char *src, u32 n);  /* strncpy */
 void Patch_ExecAll(void);
 void LobbyLogin_FreeTextures(void);
@@ -317,8 +308,8 @@ s32 LobbyBgm_GetEntry(void);
 u32 LobbyBgm_GetEnd(void);
 void LobbyActor_StartScript(Em *o, s16 set, s16 idx);
 void LobbyActor_Update(Em *o);
-void Effect06_Start(s16 k);
-void CamReq_FromTable(u16 a, u16 b);
+void AreaProp_Spawn(s16 k);
+void CamReq_StageShot(u16 a, u16 b);
 void LobbyWorld_StartFades(s32 t, s32 k);
 void LobbyWorld_StepFades(void);
 s32 Debug_IsOn(s32);
@@ -370,7 +361,7 @@ extern s32 D_008FAC60;
 extern s32 D_008FAC5C;
 extern s32 D_008FAC74;
 void Bgm_PlayAreaMusic(u16);
-s32 Bgm_StopInArea87(void);
+s32 Bgm_StopInTownArena(void);
 s32 Stream_GetStat(s32);
 extern s32 D_008FAC8C;
 extern u8 D_008FAC79;
@@ -465,8 +456,8 @@ s32 NetSetup_DeleteAccount(s32 mode)
         if (mode == 1) {
             st->subStep++;
         } else {
-            memcpy(id, gMmbbLoginId, 0xB);
-            memcpy(pw, D_5BE6BB, 9);
+            memcpy(id, gNetSaveData.mmbbLoginId, 0xB);
+            memcpy(pw, gNetSaveData.mmbbPassword, 9);
             st->subStep = 3;
             st->slot = gSysSettings.unk4A;
             NetMode_OpenYesNo(1);
@@ -482,8 +473,8 @@ s32 NetSetup_DeleteAccount(s32 mode)
             break;
         case 1:
             NetMode_CloseYesNo();
-            memset(gMmbbLoginId, 0, 0xB);
-            memset(D_5BE6BB, 0, 9);
+            memset(gNetSaveData.mmbbLoginId, 0, 0xB);
+            memset(gNetSaveData.mmbbPassword, 0, 9);
             st->subStep = 4;
             st->innerStep = 0;
             NetMode_BeginCardTask(1);
@@ -504,8 +495,8 @@ s32 NetSetup_DeleteAccount(s32 mode)
             gSysBusy = 0;
             break;
         case -1:
-            memcpy(gMmbbLoginId, id, 0xB);
-            memcpy(D_5BE6BB, pw, 9);
+            memcpy(gNetSaveData.mmbbLoginId, id, 0xB);
+            memcpy(gNetSaveData.mmbbPassword, pw, 9);
             r = -1;
             gSysBusy = 0;
             break;
@@ -690,11 +681,11 @@ s32 NetSetup_SaveNetFile(void)
     r = 0;
     switch (st->step) {
     case 0:
-        if (gNetSetupResult == 1 && st->ynResult == 0) {
+        if (gNetSaveData.setupResult == 1 && st->ynResult == 0) {
             r = 1;
             break;
         }
-        gNetSetupResult = 1;
+        gNetSaveData.setupResult = 1;
         st->step++;
         st->innerStep = 0;
     case 1:
@@ -845,7 +836,7 @@ s32 LobbyNetXfer_Run(void)
         if (LobbyCard_LoadFiles(1) != 0) {
             st->xferStep++;
             st->slotUsed = D_008FABF8;
-            CardTask_StartReadClear(st->slotUsed, (u8 *) (*(s32 *)&gLoadBuf), 0);
+            CardTask_StartFind(st->slotUsed, (u8 *) (*(s32 *)&gLoadBuf), 0);
         }
         break;
     case 6:
@@ -1008,7 +999,7 @@ s32 LobbyNetXfer_Run(void)
             st->xferState = 0;
             st->timer = 0x20;
             st->netResult = 2;
-            st->err = NetXfer_GetState_Unk();
+            st->err = NetXfer_GetResult();
         }
         break;
     }
@@ -1039,7 +1030,7 @@ s32 LobbyNetXfer_Run(void)
             strncpy((char *)buf2, D_008EDF00, 0xA);
             strncpy((char *)buf2 + 0xA, gNetVerDigits, 4);
             NetMode_ResetToFrame();
-            NetMenu_Open(0x11);
+            NetMenu_Open(NETMENU_MODE_GAME_SAVE_EXTRA);
         }
         break;
     case 15:
@@ -1086,7 +1077,7 @@ s32 LobbyNetXfer_Run(void)
             st->xferState = 0;
             st->timer = 0x20;
             st->netResult = 2;
-            st->err = NetXfer_GetState_Unk();
+            st->err = NetXfer_GetResult();
         }
         break;
     }
@@ -1425,7 +1416,7 @@ block_41:
             gNetStepTimeout -= 1;
             if (gNetStepTimeout <= 0) {
                 NetMode_CloseAll();
-                gNetEntryMode = 0;
+                gNetEntryMode = LOGIN_ENTRY_FIRST;
                 gPortalPage = 3U;
                 NetScene_ToState6();
                 gNetStepTimeout = 0;
@@ -1475,7 +1466,7 @@ s32 LobbyLogin_Exit(void)
         LobbyMenu_SetDraw(0, 0, &Gfx_DrawBlackLineFixed, 0);
         FadeA_Start(2);
         LobbyStream_Stop();
-        NetMenu_Open(8);
+        NetMenu_Open(NETMENU_MODE_GAME_SAVE_LOGOUT);
         gNetConnStep += 1;
         break;
     case 1:
@@ -1844,7 +1835,7 @@ void LobbyWorld_SetClock(u32 time)
         }
         s->seasonDays[i] = *days;
     }
-    s->unk30 = D_008BF0A0;
+    s->unk30 = gTownYear;
     *(u32 *)s->unk0 = 0;
     s->lastVsync = 0;
     s->frames = 0;
@@ -2030,8 +2021,8 @@ void LobbyWorld_CatchUp(void)
     season = gSave.season;
     day = gSave.day;
     LobbyWorld_Skip(D_5D4928 / 30.0f);
-    if (Game_IsOnline() != 1 && gSysSettings.unkE0 != 0) {
-        gSysSettings.unkE0 = 0;
+    if (Game_IsOnline() != 1 && gSysSettings.openingAfterResults != 0) {
+        gSysSettings.openingAfterResults = 0;
         if (season != gSave.season || day != gSave.day) {
             if (s->dayFrac > 0.25f) {
                 LobbyWorld_AddDays(0.8f);
@@ -2065,7 +2056,7 @@ f32 LobbyWorld_GetDayFrac(void)
 }
 
 void LobbyWorld_PlayAreaMusic(void) {
-    Bgm_StopInArea87();
+    Bgm_StopInTownArena();
     Bgm_PlayAreaMusic(gScene.area);
 }
 
@@ -2258,7 +2249,7 @@ void LobbyBgm_Update(void)
         }
         break;
     case 3:
-        if (gScene.area == AREA_HUB_0x87 && r == 1) {
+        if (gScene.area == AREA_TOWN_ARENA && r == 1) {
             LobbyBgm_Play(s->track, s->unk84, 0);
         }
         break;
@@ -2363,7 +2354,7 @@ s32 LobbyBgm_StepPlay(void)
                 LobbyActor_StartScript(s->actor, s->track, s->unk11D);
             }
             if (s->unk11D == 0) {
-                Effect06_Start(0);
+                AreaProp_Spawn(0);
                 s->unk121 = 1;
             }
             LobbyWorld_StartFades(s->track, s->unk11D);
@@ -2374,7 +2365,7 @@ s32 LobbyBgm_StepPlay(void)
         if (LobbyBgm_IsActive() == 0) {
             s->unk118 = 0;
             if (s->unk121 == 1) {
-                Effect06_Start(0);
+                AreaProp_Spawn(0);
                 s->unk121 = 0;
             }
             LobbyBgm_End();
@@ -2390,7 +2381,7 @@ s32 LobbyBgm_StepPlay(void)
         }
         if (s->unk121 == 1 && pos >= LobbyBgm_GetEnd() - 100) {
             s->unk121 = 2;
-            Effect06_Start(0);
+            AreaProp_Spawn(0);
         }
         if (s->unk121 == 2 && pos >= LobbyBgm_GetEnd() - 50 && s->unk11F == 1) {
             CamReq_Cancel();
@@ -2402,7 +2393,7 @@ s32 LobbyBgm_StepPlay(void)
                 LobbyActor_StartScript(s->actor, s->track, s->unk11D);
             }
             if ((s32)pos >= 2 && s->unk11F != 0) {
-                CamReq_FromTable(s->track, s->unk11D - 2);
+                CamReq_StageShot(s->track, s->unk11D - 2);
             }
             LobbyWorld_StartFades(s->track, s->unk11D);
         }
@@ -2674,7 +2665,7 @@ u32 LobbyWorld_GetFadeColor(s32 i)
     return (c[0] << 24) | (c[1] << 16) | (c[2] << 8) | c[3];
 }
 
-u8 func_007D96D0(void)
+u8 LobbyWorld_GetGlowAlpha(void)
 {
     LobbyWorld *s = &gLobbyWorld;
 
@@ -2725,7 +2716,7 @@ void LobbyBgm_SetUnk11F(s32 on)
     if (s->active != 0) {
         if (on == 1) {
             s->unk11F = 1;
-            CamReq_Mode25();
+            CamReq_StageStart();
         } else {
             s->unk11F = 0;
             CamReq_Cancel();
@@ -2969,7 +2960,7 @@ void LobbyWorld_ScheduleEvents(LobbyWorldEvent *ev, s32 *flags)
 void LobbyMovie_Prepare(s32 arg0)
 {
     LobbyBgm_Shutdown();
-    Bgm_StopInArea87();
+    Bgm_StopInTownArena();
     Stream_Stop(0);
     D_008FAD28 = 0;
     D_008FAD29 = (s8) arg0;
@@ -2997,7 +2988,7 @@ s32 LobbyMovie_Run(void)
         break;
     case 1:
         Movie_Update();
-        if (Movie_GetStatus() == 3 || (gPadState[0].pressed & 0x8000)) {
+        if (Movie_GetStatus() == MOVIE_STATUS_FINISHED || (gPadState[0].pressed & 0x8000)) {
             Movie_RequestStop();
             s->movieStep++;
         }
@@ -3110,7 +3101,7 @@ void LobbyProp_Update(LobbyProp *o)
                 break;
             }
             for (i = 0; i < n; i++) {
-                Effect0D_SpawnAt(pos, 7, 8.0f);
+                PartFx_SpawnAt(pos, 7, 8.0f);
                 pos += 3;
             }
         }

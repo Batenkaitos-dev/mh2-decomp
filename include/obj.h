@@ -4,8 +4,8 @@
 #include "common.h"
 
 /*
- * An object of sub_main's first object pool (0x80 objects of 0x40 bytes at
- * 0x5B4FB0; Obj_Alloc, Obj_Free), which the game overlay uses for its
+ * An object of sub_main's first object pool (0x80 objects of 0x40 bytes,
+ * gObjPool; Obj_Alloc, Obj_Free), which the game overlay uses for its
  * short-lived objects: an update function run every frame steps the state
  * in +0x4. The struct is generated from include/obj.spec
  * (tools/gen_struct.py): add fields there.
@@ -40,5 +40,11 @@ typedef struct Obj {
     s16 var5;                   /* 0x03E: per-kind s16: a frame counter (K13 to 1200, the season banner), the notice banner's message */
 } Obj;
 typedef char Obj_size_check[(sizeof(Obj) == 0x40) ? 1 : -1];
+
+/* Obj.kind, as the area's objects set it (seen in their creators). */
+#define OBJ_KIND_NOTICE_BANNER 0x01 /* NoticeBanner_Task */
+#define OBJ_KIND_AREA_PROP 0x06     /* AreaProp_Task */
+#define OBJ_KIND_SOUND 0x0C         /* a sound object (SoundObj_Task) */
+#define OBJ_KIND_AREA_ATMOS 0x0D    /* the area's atmosphere (AreaAtmos_Task) */
 
 #endif /* OBJ_H */

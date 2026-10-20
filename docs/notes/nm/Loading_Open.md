@@ -1,4 +1,4 @@
-# Loading_Open (sub_main, src/sub_main/unk_3D4100.c)
+# Loading_Open (sub_main, src/sub_main/loading_screen.c)
 
 ## Status
 Matched in round 30 (s2), from 18 words; unwrapped. The file's 9 functions MATCH; it has no

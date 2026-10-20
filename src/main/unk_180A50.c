@@ -1,5 +1,5 @@
 /*
- * main 0x180A50-0x182010: GS memory clear, display setup, the clear packets,
+ * GS memory clear, display setup, the clear packets,
  * and the debug output file.
  */
 #include "common.h"
@@ -136,25 +136,25 @@ s32 File_Append(const char *name, void *buf, s32 size);
 void Gs_ClearVram(void)
 {
     u8 buf[0x60];
-    void *h;
-    void *p;
+    void *memHandle;
+    void *zeroPixels;
     u32 i;
     s32 y;
 
     i = 0;
-    h = Mem_Alloc(0x40000, 0);
-    p = Mem_GetAddr(h);
-    Mem_ClearQwords(p, 0x4000);
+    memHandle = Mem_Alloc(0x40000, 0);
+    zeroPixels = Mem_GetAddr(memHandle);
+    Mem_ClearQwords(zeroPixels, 0x4000);
     y = 0;
     do {
         sceGsSetDefLoadImage(buf, 0, 0x10, 0, 0, y, 0x400, 0x40);
         FlushCache(0);
-        sceGsExecLoadImage(buf, p);
+        sceGsExecLoadImage(buf, zeroPixels);
         sceGsSyncPath(0, 0);
         i++;
         y += 0x40;
     } while (i < 0x10);
-    Mem_Free(h);
+    Mem_Free(memHandle);
 }
 
 /* The display setup: frame and Z buffers in GS memory, the display
@@ -171,12 +171,12 @@ void Gs_ClearVram(void)
  * reusing the compare constants. */
 void Gs_SetupDisplay(s32 fbDepth, s32 zDepth, s32 frameMode, s32 tvMode, s32 narrow)
 {
-    s32 w;
-    s32 h;
+    s32 frameWidth;
+    s32 frameHeight;
     s32 lines;
     u32 size;
-    u64 *env;
-    u64 *env2;
+    u64 *firstEnv;
+    u64 *secondEnv;
     u64 fbw;
 
     gSysWork.tvMode = tvMode;
@@ -187,31 +187,31 @@ void Gs_SetupDisplay(s32 fbDepth, s32 zDepth, s32 frameMode, s32 tvMode, s32 nar
     gSysWork.unk3C0 = 0;
     if (narrow != 1) {
         gSysWork.magH = 3;
-        w = 0x280;
+        frameWidth = 0x280;
     } else {
         gSysWork.magH = 4;
-        w = 0x200;
+        frameWidth = 0x200;
     }
     if (frameMode == 0) {
         switch (tvMode) {
         case 0:
         default:
             sceGsResetGraph(0, 1, 2, 1);
-            h = 0xE0;
+            frameHeight = 0xE0;
             lines = 0x1C0;
             gSysWork.dispX = 0x27C;
             gSysWork.dispY = 0x32;
             break;
         case 1:
             sceGsResetGraph(0, 1, 3, 1);
-            h = 0xE0;
+            frameHeight = 0xE0;
             lines = 0x1C0;
             gSysWork.dispX = 0x290;
             gSysWork.dispY = 0x62;
             break;
         case 2:
             sceGsResetGraph(0, 1, 3, 1);
-            h = 0x100;
+            frameHeight = 0x100;
             lines = 0x200;
             gSysWork.dispX = 0x290;
             gSysWork.dispY = 0x48;
@@ -223,30 +223,30 @@ void Gs_SetupDisplay(s32 fbDepth, s32 zDepth, s32 frameMode, s32 tvMode, s32 nar
         default:
             sceGsResetGraph(0, 1, 2, 0);
             gSysWork.dispX = 0x27C;
-            h = 0x1C0;
+            frameHeight = 0x1C0;
             lines = 0x1C0;
             gSysWork.dispY = 0x32;
             break;
         case 1:
             sceGsResetGraph(0, 1, 3, 0);
             gSysWork.dispX = 0x290;
-            h = 0x1C0;
+            frameHeight = 0x1C0;
             lines = 0x1C0;
             gSysWork.dispY = 0x62;
             break;
         case 2:
             sceGsResetGraph(0, 1, 3, 0);
             gSysWork.dispX = 0x290;
-            h = 0x200;
+            frameHeight = 0x200;
             lines = 0x200;
             gSysWork.dispY = 0x48;
             break;
         }
     }
     gSysWork.fbLines = lines;
-    gDispWidth = w;
-    gDispHeight = h;
-    gSysWork.fbWidth = w;
+    gDispWidth = frameWidth;
+    gDispHeight = frameHeight;
+    gSysWork.fbWidth = frameWidth;
     switch (gSysWork.fbDepth) {
     case 2:
         gSysWork.fbPsm = 2;
@@ -265,8 +265,8 @@ void Gs_SetupDisplay(s32 fbDepth, s32 zDepth, s32 frameMode, s32 tvMode, s32 nar
         gSysWork.fbPageH = 0x20;
         break;
     }
-    size = fbDepth * (gSysWork.fbPageH * (((h + gSysWork.fbPageH - 1) / gSysWork.fbPageH) *
-                                    (gSysWork.fbPageW * ((w + gSysWork.fbPageW - 1) / gSysWork.fbPageW))));
+    size = fbDepth * (gSysWork.fbPageH * (((frameHeight + gSysWork.fbPageH - 1) / gSysWork.fbPageH) *
+                                    (gSysWork.fbPageW * ((frameWidth + gSysWork.fbPageW - 1) / gSysWork.fbPageW))));
     gSysWork.fbBlock[0] = Vram_AllocBlock(size) & 0xFFFF;
     gSysWork.fbBlock[1] = Vram_AllocBlock(size) & 0xFFFF;
     switch (gSysWork.zDepth) {
@@ -297,18 +297,18 @@ void Gs_SetupDisplay(s32 fbDepth, s32 zDepth, s32 frameMode, s32 tvMode, s32 nar
         gSysWork.zMax = 16777000.0f;
         break;
     }
-    gSysWork.zBlock = Vram_AllocBlock(zDepth * (gSysWork.zPageW * ((w + gSysWork.zPageW - 1) / gSysWork.zPageW) *
-                                           (gSysWork.zPageH * ((h + gSysWork.zPageH - 1) / gSysWork.zPageH)))) & 0xFFFF;
+    gSysWork.zBlock = Vram_AllocBlock(zDepth * (gSysWork.zPageW * ((frameWidth + gSysWork.zPageW - 1) / gSysWork.zPageW) *
+                                           (gSysWork.zPageH * ((frameHeight + gSysWork.zPageH - 1) / gSysWork.zPageH)))) & 0xFFFF;
     gSysWork.scrollX = 0;
     gSysWork.scrollY = 0;
-    gFrameImage.width = w;
-    gSysWork.offsetX = 0x800 - (w >> 1);
-    gFrameImage.height = h;
-    gSysWork.offsetY = 0x800 - (h >> 1);
+    gFrameImage.width = frameWidth;
+    gSysWork.offsetX = 0x800 - (frameWidth >> 1);
+    gFrameImage.height = frameHeight;
+    gSysWork.offsetY = 0x800 - (frameHeight >> 1);
     gFrameImage.pixels = 0;
     gFrameImage.flags = 0;
     gFrameImage.bpp = gSysWork.fbDepth;
-    gFrameImage.pitch = w * gSysWork.fbDepth;
+    gFrameImage.pitch = frameWidth * gSysWork.fbDepth;
     switch (gSysWork.fbDepth) {
     case 2:
         IMAGE_RGBA5551(&gFrameImage);
@@ -326,49 +326,49 @@ void Gs_SetupDisplay(s32 fbDepth, s32 zDepth, s32 frameMode, s32 tvMode, s32 nar
     Gs_ResetState();
     gSysWork.curBuf = 0;
     gSysWork.field = 1;
-    env = gDrawEnv[0];
-    env2 = gDrawEnv[1];
-    DmaTag_End((u128 *)env, 9, 0, 0);
-    DmaTag_End((u128 *)env2, 9, 0, 0);
+    firstEnv = gDrawEnv[0];
+    secondEnv = gDrawEnv[1];
+    DmaTag_End((u128 *)firstEnv, 9, 0, 0);
+    DmaTag_End((u128 *)secondEnv, 9, 0, 0);
     gDrawEnv[0][2] = 0x1000000000008008;
     gDrawEnv[0][3] = 0xE;
-    env2[2] = 0x1000000000008008;
-    env2[3] = 0xE;
+    secondEnv[2] = 0x1000000000008008;
+    secondEnv[3] = 0xE;
     fbw = (u64)(gDispWidth / 64) << 16;
     gDrawEnv[0][6] = gDrawEnv[0][4] = ((u64)gSysWork.fbPsm << 24) | ((u64)(gSysWork.fbBlock[1] >> 5) | fbw) | ((u64)1 << 32);
     gDrawEnv[0][5] = 0x4C;
     gDrawEnv[0][7] = 0x4D;
-    env2[4] = ((u64)gSysWork.fbPsm << 24) | ((u64)(gSysWork.fbBlock[0] >> 5) | fbw) | ((u64)1 << 32);
-    env2[6] = ((u64)gSysWork.fbPsm << 24) | ((u64)(gSysWork.fbBlock[0] >> 5) | fbw) | ((u64)1 << 32);
-    env2[5] = 0x4C;
-    env2[7] = 0x4D;
+    secondEnv[4] = ((u64)gSysWork.fbPsm << 24) | ((u64)(gSysWork.fbBlock[0] >> 5) | fbw) | ((u64)1 << 32);
+    secondEnv[6] = ((u64)gSysWork.fbPsm << 24) | ((u64)(gSysWork.fbBlock[0] >> 5) | fbw) | ((u64)1 << 32);
+    secondEnv[5] = 0x4C;
+    secondEnv[7] = 0x4D;
     gDrawEnv[0][9] = 0x4E;
     gDrawEnv[0][11] = 0x4F;
     gDrawEnv[0][10] = gDrawEnv[0][8] = (u64)(gSysWork.zBlock >> 5) | ((u64)gSysWork.zPsm << 24);
-    env2[8] = (u64)(gSysWork.zBlock >> 5) | ((u64)gSysWork.zPsm << 24);
-    env2[10] = (u64)(gSysWork.zBlock >> 5) | ((u64)gSysWork.zPsm << 24);
-    env2[9] = 0x4E;
-    env2[11] = 0x4F;
+    secondEnv[8] = (u64)(gSysWork.zBlock >> 5) | ((u64)gSysWork.zPsm << 24);
+    secondEnv[10] = (u64)(gSysWork.zBlock >> 5) | ((u64)gSysWork.zPsm << 24);
+    secondEnv[9] = 0x4E;
+    secondEnv[11] = 0x4F;
     gDrawEnv[0][13] = 0x18;
     gDrawEnv[0][15] = 0x19;
     gDrawEnv[0][14] = gDrawEnv[0][12] = (u64)(gSysWork.offsetX << 4) | ((u64)(gSysWork.offsetY << 4) << 32);
-    env2[12] = (u64)(gSysWork.offsetX << 4) | ((u64)(gSysWork.offsetY << 4) << 32);
-    env2[14] = (u64)(gSysWork.offsetX << 4) | ((u64)(gSysWork.offsetY << 4) << 32);
-    env2[13] = 0x18;
-    env2[15] = 0x19;
+    secondEnv[12] = (u64)(gSysWork.offsetX << 4) | ((u64)(gSysWork.offsetY << 4) << 32);
+    secondEnv[14] = (u64)(gSysWork.offsetX << 4) | ((u64)(gSysWork.offsetY << 4) << 32);
+    secondEnv[13] = 0x18;
+    secondEnv[15] = 0x19;
     if (gSysWork.fbDepth == 2) {
-        env[16] = 1;
-        env2[16] = 1;
+        firstEnv[16] = 1;
+        secondEnv[16] = 1;
     } else {
-        env[16] = 0;
-        env2[16] = 0;
+        firstEnv[16] = 0;
+        secondEnv[16] = 0;
     }
-    env[17] = 0x45;
-    env2[17] = 0x45;
-    env[18] = 1;
-    env2[18] = 1;
-    env[19] = 0x46;
-    env2[19] = 0x46;
+    firstEnv[17] = 0x45;
+    secondEnv[17] = 0x45;
+    firstEnv[18] = 1;
+    secondEnv[18] = 1;
+    firstEnv[19] = 0x46;
+    secondEnv[19] = 0x46;
     DmaTag_End((u128 *) &gClearPacket, 0x13, 1, 0);
     gClearPacket.fba.data = 0;
     gClearPacket.vifFlush = 0x13000000;
@@ -422,11 +422,18 @@ void Gs_SetupDisplay(s32 fbDepth, s32 zDepth, s32 frameMode, s32 tvMode, s32 nar
 #define GS_SET_DISPLAY(dx, dy, magh, dw, dh) \
     ((u64)(dx) | ((u64)(dy) << 12) | ((u64)(magh) << 23) | ((u64)(dw) << 32) | ((u64)(dh) << 44))
 
+/*
+ * Shows frame buffer buf (0 or 1): sends its draw environment
+ * (gDrawEnv[buf], with the field's drawing offset when the frames are
+ * interlaced) and waits for the DMA, then sets the display registers
+ * (PMODE, SMODE2, DISPFB, DISPLAY) for it. boot is 0 from the VBlank
+ * handler (hence iFlushCache), 1 at boot.
+ */
 void Gs_ShowFrame(s32 buf, s32 boot)
 {
     u64 *env = gDrawEnv[buf];
-    s32 dx;
-    s32 dy;
+    s32 displayX;
+    s32 displayY;
 
     if (gSysWork.frameMode != 1) {
         if (gSysWork.field == 1) {
@@ -446,8 +453,8 @@ void Gs_ShowFrame(s32 buf, s32 boot)
     sceDmaSend(gDmaChan[2], env);
     while (sceDmaSync(gDmaChan[2], 1, 0) != 0) {
     }
-    dx = gSysWork.dispX + gSysWork.unk3BC * gSysWork.magH;
-    dy = gSysWork.dispY + gSysWork.unk3C0;
+    displayX = gSysWork.dispX + gSysWork.unk3BC * gSysWork.magH;
+    displayY = gSysWork.dispY + gSysWork.unk3C0;
     if (gSysWork.frameMode == 0) {
         GS_SMODE2 = 3;
         GS_PMODE = 0x66;
@@ -456,7 +463,7 @@ void Gs_ShowFrame(s32 buf, s32 boot)
         } else {
             GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
         }
-        GS_DISPLAY2 = GS_SET_DISPLAY(dx, dy, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
+        GS_DISPLAY2 = GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
     } else if (gSysWork.unk008 == 0) {
         GS_SMODE2 = 1;
         GS_PMODE = 0x7F27;
@@ -467,8 +474,8 @@ void Gs_ShowFrame(s32 buf, s32 boot)
             GS_DISPFB1 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
             GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
         }
-        GS_DISPLAY1 = GS_SET_DISPLAY(dx, dy + 1, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
-        GS_DISPLAY2 = GS_SET_DISPLAY(dx, dy, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
+        GS_DISPLAY1 = GS_SET_DISPLAY(displayX, displayY + 1, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
+        GS_DISPLAY2 = GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
     } else {
         GS_SMODE2 = 1;
         GS_PMODE = 0x66;
@@ -477,7 +484,7 @@ void Gs_ShowFrame(s32 buf, s32 boot)
         } else {
             GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
         }
-        GS_DISPLAY2 = GS_SET_DISPLAY(dx, dy, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
+        GS_DISPLAY2 = GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
     }
     GS_EXTWRITE = 0;
 }
@@ -494,17 +501,17 @@ void Gs_ShowFrame(s32 buf, s32 boot)
  */
 void Gs_ClearFrame(void)
 {
-    u128 *p;
-    s32 oy;
-    s32 ox;
+    u128 *packet;
+    s32 drawOffsetY;
+    s32 drawOffsetX;
 
     gClearPacket.scissor.data = GS_SCISSOR(0, gDispWidth - 1, 0, gDispHeight - 1);
     gClearPacket.rgbaq.data = GS_RGBAQ((gSysBgColor >> 16) & 0xFF, (gSysBgColor >> 8) & 0xFF, gSysBgColor & 0xFF,
                           (gSysBgColor >> 24) & 0xFF, 1);
-    oy = gSysWork.offsetY;
-    ox = gSysWork.offsetX;
-    gClearPacket.xyz[0].data = GS_XYZ(ox << 4, oy << 4, 0);
-    gClearPacket.xyz[1].data = GS_XYZ((ox + gDispWidth) << 4, (oy + gDispHeight) << 4, 0);
+    drawOffsetY = gSysWork.offsetY;
+    drawOffsetX = gSysWork.offsetX;
+    gClearPacket.xyz[0].data = GS_XYZ(drawOffsetX << 4, drawOffsetY << 4, 0);
+    gClearPacket.xyz[1].data = GS_XYZ((drawOffsetX + gDispWidth) << 4, (drawOffsetY + gDispHeight) << 4, 0);
     gClearPacket.scissor1.data = gGsScissor1;
     gClearPacket.scissor2.data = gGsScissor2;
     gClearPacket.test1.data = gGsTest1;
@@ -512,9 +519,9 @@ void Gs_ClearFrame(void)
     gClearPacket.zbuf1.data = gGsZbuf1;
     gClearPacket.zbuf2.data = gGsZbuf2;
     gClearPacket.fba2.data = gClearPacket.fba1.data = gGsFba;
-    p = Packet_Alloc(0x140, 16);
-    Mem_CopyQwords(&gClearPacket, p, 0x14);
-    DmaQueue_AddChain(0, (u32)p & 0x0FFFFFFF, (u32 *)p, &gDmaQueue);
+    packet = Packet_Alloc(0x140, 16);
+    Mem_CopyQwords(&gClearPacket, packet, 0x14);
+    DmaQueue_AddChain(0, (u32)packet & 0x0FFFFFFF, (u32 *)packet, &gDmaQueue);
 }
 
 /* printf to the debug file acrout.txt on the host (cdrom0:, so it fails on
@@ -523,15 +530,15 @@ void Gs_ClearFrame(void)
 s32 Debug_Printf(const char *fmt, ...)
 {
     char buf[0x800];
-    va_list ap;
-    char *p;
+    va_list args;
+    char *tail;
 
-    va_start(ap, fmt);
-    vsprintf(buf, fmt, ap);
-    p = buf + strlen(buf);
-    *p++ = '\r';
-    *p++ = '\n';
-    *p = '\0';
+    va_start(args, fmt);
+    vsprintf(buf, fmt, args);
+    tail = buf + strlen(buf);
+    *tail++ = '\r';
+    *tail++ = '\n';
+    *tail = '\0';
     if (gDebugFileFirst) {
         File_Write("acrout.txt", "Debug Message Output for PS2\r\n", strlen("Debug Message Output for PS2\r\n"));
         gDebugFileFirst = 0;
@@ -562,7 +569,7 @@ s32 Gs_ClearColor(u8 mode, u32 color)
     return 0;
 }
 
-/* unk_180A50's .data (0x1BAA10-0x1BAAA0) */
+/* This file's initialised data. */
 s32 gDebugFileFirst = {
 #include "main/001BAA10.inc"
 };

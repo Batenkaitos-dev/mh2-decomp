@@ -1,5 +1,5 @@
 /*
- * main 0x17f660-0x17fe20: the screen texture sent to GS memory and the GS
+ * The screen texture sent to GS memory and the GS
  * registers to draw with it; loading IOP modules with retries; whole-file
  * reads and writes on cdrom0: (the writes serve the debug log, acrout.txt).
  */
@@ -59,60 +59,69 @@ s32 sceRead(s32 fd, void *buf, s32 size);
 s32 sceWrite(s32 fd, const void *buf, s32 size);
 s32 sceLseek(s32 fd, s32 offset, s32 whence);
 
-/* Sends the pixels of t (32-bit) to its GS address. */
-void ScreenTex_Send(TexRec *t)
+/*
+ * Queues a DMA load of tex's 32-bit pixels (tex->mem, width x height) to
+ * its GS address tex->vram, in a packet taken from Packet_Alloc.
+ */
+void ScreenTex_Send(TexRec *tex)
 {
-    u128 *p;
+    u128 *packet;
     u32 src;
-    s32 w;
-    s32 h;
+    s32 texWidth;
+    s32 texHeight;
     u32 size;
     u128 *last;
     s32 vram;
 
-    w = t->width;
-    h = t->height;
-    src = (u32)t->mem;
-    size = w * h * 4;
-    p = Packet_Alloc(Dma_ImagePacketSize(size), 16);
-    vram = t->vram;
-    last = Dma_BuildLoadImage(p, 1, src, size, vram, w / 64, t->psm, 0, 0, w, h);
-    DmaQueue_AddChain(0, ((u32)p & 0x0FFFFFFF) | 0x10000000, (u32 *)last, &gDmaQueue);
+    texWidth = tex->width;
+    texHeight = tex->height;
+    src = (u32)tex->mem;
+    size = texWidth * texHeight * 4;
+    packet = Packet_Alloc(Dma_ImagePacketSize(size), 16);
+    vram = tex->vram;
+    last = Dma_BuildLoadImage(packet, 1, src, size, vram, texWidth / 64, tex->psm, 0, 0, texWidth, texHeight);
+    DmaQueue_AddChain(0, ((u32)packet & 0x0FFFFFFF) | 0x10000000, (u32 *)last, &gDmaQueue);
 }
 
-/* Sets the texture registers for drawing with the screen texture. */
+/*
+ * Fills gScreenTexPacket from gScreenTex (TEXA alpha 1.0, TEX1 0, TEX0
+ * with its GS address, buffer width, pixel format and size, MIPTBP1 and
+ * MIPTBP2 0) and sends it with Prim_SendPacket. CLAMP is 0 (repeat) when
+ * gRenderFlags has neither of bits 0x60000, else a region clamp to the
+ * texture's width and height.
+ */
 void ScreenTex_SetRegs(void)
 {
     s32 flags = gRenderFlags;
-    TexRec *t = &gScreenTex;
-    u64 *texa = &gScreenTexPacket.texa.data;
-    u64 *tex0 = &gScreenTexPacket.tex0.data;
-    u64 *clamp = &gScreenTexPacket.clamp.data;
-    u64 *mip1 = &gScreenTexPacket.miptbp1.data;
-    u64 *mip2 = &gScreenTexPacket.miptbp2.data;
-    s16 bw;
+    TexRec *tex = &gScreenTex;
+    u64 *texaData = &gScreenTexPacket.texa.data;
+    u64 *tex0Data = &gScreenTexPacket.tex0.data;
+    u64 *clampData = &gScreenTexPacket.clamp.data;
+    u64 *miptbp1Data = &gScreenTexPacket.miptbp1.data;
+    u64 *miptbp2Data = &gScreenTexPacket.miptbp2.data;
+    s16 bufWidth;
 
     gScreenTexPacket.tex1.data = 0;
-    bw = gScreenTex.width / 64;
-    if (bw == 0) {
-        bw = 1;
+    bufWidth = gScreenTex.width / 64;
+    if (bufWidth == 0) {
+        bufWidth = 1;
     }
-    *texa = (u64)0x80 << 32;   /* TA1 0x80: alpha 1.0 */
+    *texaData = (u64)0x80 << 32;   /* TA1 0x80: alpha 1.0 */
     /* TBP0, TBW, PSM, TW, TH; TCC 1 (RGBA) */
-    *tex0 = (u64)t->vram | ((u64)bw << 14) | ((u64)t->psm << 20) | ((u64)t->tw << 26) |
-            ((u64)t->th << 30) | ((u64)1 << 34);
+    *tex0Data = (u64)tex->vram | ((u64)bufWidth << 14) | ((u64)tex->psm << 20) | ((u64)tex->tw << 26) |
+            ((u64)tex->th << 30) | ((u64)1 << 34);
     switch (flags & 0x60000) {
     case 0:
-        *clamp = 0;
+        *clampData = 0;
         break;
     case 0x20000:
     default:
         /* REGION_CLAMP on both axes, 0..width, 0..height */
-        *clamp = 2 | (2 << 2) | ((u64)t->width << 14) | ((u64)t->height << 34);
+        *clampData = 2 | (2 << 2) | ((u64)tex->width << 14) | ((u64)tex->height << 34);
         break;
     }
-    *mip1 = 0;
-    *mip2 = 0;
+    *miptbp1Data = 0;
+    *miptbp2Data = 0;
     Prim_SendPacket((u32 *) &gScreenTexPacket);
 }
 
@@ -181,69 +190,77 @@ void Iop_LoadModule(const char *path, s32 argSize, const char *args, s32 retries
 s32 File_Read(const char *name, void *buf, s32 size)
 {
     char path[0x800];
-    char *p;
-    s32 fd;
+    char *nameStart;
+    s32 fileDesc;
 
     strcpy(path, D_001C7C48);
-    p = path + strlen(path);
+    nameStart = path + strlen(path);
     strcat(path, name);
-    strupr(p);
+    strupr(nameStart);
     strcat(path, D_001C7C50);
     func_00161EC0();
-    fd = sceOpen(path, 1);
-    if (fd < 0) {
+    fileDesc = sceOpen(path, 1);
+    if (fileDesc < 0) {
         func_00161ED8();
         return 0;
     }
-    sceRead(fd, buf, size);
-    sceClose(fd);
+    sceRead(fileDesc, buf, size);
+    sceClose(fileDesc);
     func_00161ED8();
     return 1;
 }
 
-/* Creates (or truncates) the file and writes buf to it. */
+/*
+ * Creates or truncates cdrom0:NAME;1 (NAME upper-cased) and writes size
+ * bytes of buf to it. Returns 1, or 0 when the file cannot be opened.
+ * Debug_Printf uses it to start the debug log.
+ */
 s32 File_Write(const char *name, const void *buf, s32 size)
 {
     char path[0x800];
-    char *p;
-    s32 fd;
+    char *nameStart;
+    s32 fileDesc;
 
     strcpy(path, D_001C7C48);
-    p = path + strlen(path);
+    nameStart = path + strlen(path);
     strcat(path, name);
-    strupr(p);
+    strupr(nameStart);
     strcat(path, D_001C7C50);
     func_00161EC0();
-    if ((fd = sceOpen(path, 0x602)) < 0) {
+    if ((fileDesc = sceOpen(path, 0x602)) < 0) {
         func_00161ED8();
         return 0;
     }
-    sceWrite(fd, buf, size);
-    sceClose(fd);
+    sceWrite(fileDesc, buf, size);
+    sceClose(fileDesc);
     func_00161ED8();
     return 1;
 }
 
-/* Appends buf to the file. */
+/*
+ * Writes size bytes of buf at the end of cdrom0:NAME;1 (NAME
+ * upper-cased). Returns 1, or 0 when the file cannot be opened.
+ * Debug_Printf uses it for each message.
+ */
 s32 File_Append(const char *name, const void *buf, s32 size)
 {
     char path[0x800];
-    char *p;
-    s32 fd;
+    char *nameStart;
+    s32 fileDesc;
 
     strcpy(path, D_001C7C48);
-    p = path + strlen(path);
+    nameStart = path + strlen(path);
     strcat(path, name);
-    strupr(p);
+    strupr(nameStart);
     strcat(path, D_001C7C50);
     func_00161EC0();
-    if ((fd = sceOpen(path, 2)) < 0) {
+    if ((fileDesc = sceOpen(path, 2)) < 0) {
         func_00161ED8();
         return 0;
     }
-    sceLseek(fd, 0, 2);
-    sceWrite(fd, buf, size);
-    sceClose(fd);
+    sceLseek(fileDesc, 0, 2);
+    sceWrite(fileDesc, buf, size);
+    sceClose(fileDesc);
     func_00161ED8();
     return 1;
 }
@@ -252,32 +269,32 @@ s32 File_Append(const char *name, const void *buf, s32 size)
 s32 File_GetSize(const char *name)
 {
     char path[0x800];
-    char *p;
-    s32 fd;
+    char *nameStart;
+    s32 fileDesc;
     s32 size;
 
     strcpy(path, D_001C7C48);
-    p = path + strlen(path);
+    nameStart = path + strlen(path);
     strcat(path, name);
-    strupr(p);
+    strupr(nameStart);
     strcat(path, D_001C7C50);
     func_00161EC0();
-    if ((fd = sceOpen(path, 1)) < 0) {
+    if ((fileDesc = sceOpen(path, 1)) < 0) {
         func_00161ED8();
         return 0;
     }
-    size = sceLseek(fd, 0, 2);
-    sceClose(fd);
+    size = sceLseek(fileDesc, 0, 2);
+    sceClose(fileDesc);
     func_00161ED8();
     return size;
 }
 
-/* unk_17F660's .data (0x1BA990-0x1BAA10) */
+/* This file's initialised data. */
 ScreenTexPacket gScreenTexPacket = {
 #include "main/001BA990.inc"
 };
 
-/* unk_17F660's .rodata (0x1C7C30-0x1C7CF8) */
+/* This file's read-only data. */
 #pragma rodata on
 char D_001C7C30[0x18] = {
 #include "main/001C7C30.inc"

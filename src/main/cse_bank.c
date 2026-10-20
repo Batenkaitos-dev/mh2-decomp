@@ -9,6 +9,11 @@ extern void *gCseBanks[16];
 
 void scePrintf(char *fmt, ...);
 
+/*
+ * Starts the SPU memory map from map (CseSpuMap_Init, which selects page
+ * 0) and empties the bank table gCseBanks. Returns 0, or
+ * CseSpuMap_Init's negative error code when map is not a valid map.
+ */
 s32 CseBank_Init(void *map)
 {
     s32 ret;
@@ -24,6 +29,10 @@ s32 CseBank_Init(void *map)
     return 0;
 }
 
+/*
+ * Selects page page of the SPU memory map (CseSpuMap_SetPage), which lays
+ * out the 16 banks' SPU areas. Returns 0, or the negative error code.
+ */
 s32 CseBank_SetPage(u32 page)
 {
     s32 ret;
@@ -45,6 +54,11 @@ u32 CseBank_GetEffectEnd(s32 core)
     return CseSpuMap_GetEffectEnd(core);
 }
 
+/*
+ * Records head as the header of bank number bank (0..15) in gCseBanks.
+ * Returns 0, or 0x80000001 with a debug message when bank is out of
+ * range.
+ */
 s32 CseBank_Set(u32 bank, void *head)
 {
     if (bank >= 16) {
@@ -57,6 +71,10 @@ s32 CseBank_Set(u32 bank, void *head)
     return 0;
 }
 
+/*
+ * The header recorded for bank number bank (0..15); NULL when none was
+ * set, or with a debug message when bank is out of range.
+ */
 void *CseBank_Get(u32 bank)
 {
     if (bank >= 16) {
@@ -144,11 +162,25 @@ typedef struct CseMergeHead {
  * by byte from the literals, as in the original ("Head" ... "Vagi" are this
  * file's last .rodata). */
 #pragma optimization_level 4
+/*
+ * Builds one bank header (Head, Prog, Smpl and Vagi chunks) at out from
+ * the count bank headers listed in banks: the programs keep their
+ * numbers (a program present in two banks is an error, -1), the samples
+ * and Vagi records are appended, their indices and SPU addresses moved
+ * past the banks before them. Each chunk is padded to 16 bytes with
+ * 0xFF. Returns the merged header's size (also stored in its unkC).
+ * Compiled at optimization level 4: at level 3 the same C allocates
+ * other registers (the max loop's counter, the unrolled loop's limit and
+ * the Prog merge loop's walkers). max is unsigned (the search compares
+ * it so) and the -1 fill loop compares it as an s32. The tags are read
+ * byte by byte from the literals, as in the original (Head ... Vagi are
+ * this file's last .rodata).
+ */
 s32 CseBank_Merge(void *out, void *banks, s32 count)
 {
-    CseMergeHead *h = out;
-    CseMergeHead **in = banks;
-    CseMergeHead *b;
+    CseMergeHead *mergedHead = out;
+    CseMergeHead **srcHeads = banks;
+    CseMergeHead *srcHead;
     CseChunk *vagi;
     CseChunk *smpl;
     u32 max;
@@ -157,37 +189,37 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     s32 size;
     CseMergeProg *prog;
     s32 i;
-    CseMergeProg *src;
-    CseMergeProgram *sp;
-    CseMergeProgram *dp;
-    u32 body;
+    CseMergeProg *srcProgs;
+    CseMergeProgram *srcProgram;
+    CseMergeProgram *dstProgram;
+    u32 spuBase;
     s32 pos;
-    CseChunk *ssrc;
-    u16 base;
-    CseChunk *ss;
-    CseMergeSmpl *ds;
-    CseChunk *vs;
-    u16 vbase;
-    CseChunk *vc;
-    CseMergeVagi *dv;
+    CseChunk *smplCountChunk;
+    u16 smplBase;
+    CseChunk *srcSmplChunk;
+    CseMergeSmpl *dstSmpls;
+    CseChunk *vagiCountChunk;
+    u16 vagiBase;
+    CseChunk *srcVagiChunk;
+    CseMergeVagi *dstVagis;
 
     pos = 0;
-    h->tag = CSE_TAG("Head");
-    h->size = 0x20;
-    h->version = 1;
-    h->unkC = 0;
-    h->bodySize = 0;
-    h->progOffset = 0;
-    h->smplOffset = 0;
-    h->vagiOffset = 0;
+    mergedHead->tag = CSE_TAG("Head");
+    mergedHead->size = 0x20;
+    mergedHead->version = 1;
+    mergedHead->unkC = 0;
+    mergedHead->bodySize = 0;
+    mergedHead->progOffset = 0;
+    mergedHead->smplOffset = 0;
+    mergedHead->vagiOffset = 0;
     for (i = 0; i < count; i++) {
-        h->bodySize += in[i]->bodySize;
+        mergedHead->bodySize += srcHeads[i]->bodySize;
     }
 
     pos += 0x20;
-    h->progOffset = pos;
-    prog = (CseMergeProg *)((u8 *)h + pos);
-    base = 0;
+    mergedHead->progOffset = pos;
+    prog = (CseMergeProg *)((u8 *)mergedHead + pos);
+    smplBase = 0;
     size = 0;
     max = 0;
     size += 0x10;
@@ -196,9 +228,9 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     prog->h.max = 0;
     prog->h.unkC = -1;
     for (i = 0; i < count; i++) {
-        src = (CseMergeProg *)((u8 *)in[i] + in[i]->progOffset);
-        if (max < src->h.max) {
-            max = src->h.max;
+        srcProgs = (CseMergeProg *)((u8 *)srcHeads[i] + srcHeads[i]->progOffset);
+        if (max < srcProgs->h.max) {
+            max = srcProgs->h.max;
         }
     }
     prog->h.max = max;
@@ -207,26 +239,26 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     }
     size += (max + 1) * sizeof(s32);
     for (i = 0; i < count; i++) {
-        b = in[i];
-        src = (CseMergeProg *)((u8 *)b + b->progOffset);
-        ssrc = (CseChunk *)((u8 *)b + b->smplOffset);
-        for (j = 0; j < src->h.max + 1; j++) {
-            if (src->offs[j] != -1) {
-                sp = (CseMergeProgram *)((u8 *)src + src->offs[j]);
+        srcHead = srcHeads[i];
+        srcProgs = (CseMergeProg *)((u8 *)srcHead + srcHead->progOffset);
+        smplCountChunk = (CseChunk *)((u8 *)srcHead + srcHead->smplOffset);
+        for (j = 0; j < srcProgs->h.max + 1; j++) {
+            if (srcProgs->offs[j] != -1) {
+                srcProgram = (CseMergeProgram *)((u8 *)srcProgs + srcProgs->offs[j]);
                 if (prog->offs[j] != -1) {
                     return -1;
                 }
                 prog->offs[j] = size;
-                dp = (CseMergeProgram *)((u8 *)prog + prog->offs[j]);
-                size += sp->h.numSplits * sizeof(CseMergeSplit) + sizeof(CseProgHead);
-                dp->h = sp->h;
-                for (k = 0; k < dp->h.numSplits; k++) {
-                    dp->splits[k] = sp->splits[k];
-                    dp->splits[k].w[6] += base;
+                dstProgram = (CseMergeProgram *)((u8 *)prog + prog->offs[j]);
+                size += srcProgram->h.numSplits * sizeof(CseMergeSplit) + sizeof(CseProgHead);
+                dstProgram->h = srcProgram->h;
+                for (k = 0; k < dstProgram->h.numSplits; k++) {
+                    dstProgram->splits[k] = srcProgram->splits[k];
+                    dstProgram->splits[k].w[6] += smplBase;
                 }
             }
         }
-        base += ssrc->max + 1;
+        smplBase += smplCountChunk->max + 1;
     }
     for (; size & 0xF; size++) {
         ((u8 *)prog)[size] = 0xFF;
@@ -234,27 +266,27 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     pos += size;
     prog->h.size = size;
 
-    h->smplOffset = pos;
-    smpl = (CseChunk *)((u8 *)h + pos);
+    mergedHead->smplOffset = pos;
+    smpl = (CseChunk *)((u8 *)mergedHead + pos);
     size = 0;
-    vbase = 0;
+    vagiBase = 0;
     size += 0x10;
     smpl->tag = CSE_TAG("Smpl");
     smpl->size = 0;
     smpl->max = 0;
     smpl->unkC = -1;
     for (i = 0; i < count; i++) {
-        ds = (CseMergeSmpl *)((u8 *)smpl + size);
-        b = in[i];
-        ss = (CseChunk *)((u8 *)b + b->smplOffset);
-        vs = (CseChunk *)((u8 *)b + b->vagiOffset);
-        smpl->max += ss->max + 1;
-        for (j = 0; j < ss->max + 1; j++) {
-            ds[j] = ((CseSmplChunk *)ss)->smpl[j];
-            ds[j].w[5] += vbase;
+        dstSmpls = (CseMergeSmpl *)((u8 *)smpl + size);
+        srcHead = srcHeads[i];
+        srcSmplChunk = (CseChunk *)((u8 *)srcHead + srcHead->smplOffset);
+        vagiCountChunk = (CseChunk *)((u8 *)srcHead + srcHead->vagiOffset);
+        smpl->max += srcSmplChunk->max + 1;
+        for (j = 0; j < srcSmplChunk->max + 1; j++) {
+            dstSmpls[j] = ((CseSmplChunk *)srcSmplChunk)->smpl[j];
+            dstSmpls[j].w[5] += vagiBase;
         }
-        size += ((u32)ss->max + 1) * sizeof(CseMergeSmpl);
-        vbase += vs->max + 1;
+        size += ((u32)srcSmplChunk->max + 1) * sizeof(CseMergeSmpl);
+        vagiBase += vagiCountChunk->max + 1;
     }
     smpl->max--;
     for (; size & 0xF; size++) {
@@ -263,26 +295,26 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     pos += size;
     smpl->size = size;
 
-    h->vagiOffset = pos;
-    vagi = (CseChunk *)((u8 *)h + pos);
+    mergedHead->vagiOffset = pos;
+    vagi = (CseChunk *)((u8 *)mergedHead + pos);
     size = 0;
-    body = 0;
+    spuBase = 0;
     size += 0x10;
     vagi->tag = CSE_TAG("Vagi");
     vagi->size = 0;
     vagi->max = 0;
     vagi->unkC = -1;
     for (i = 0; i < count; i++) {
-        dv = (CseMergeVagi *)((u8 *)vagi + size);
-        b = in[i];
-        vc = (CseChunk *)((u8 *)b + b->vagiOffset);
-        vagi->max += vc->max + 1;
-        for (j = 0; j < vc->max + 1; j++) {
-            dv[j] = ((CseVagiChunk *)vc)->vagi[j];
-            dv[j].addr += body;
+        dstVagis = (CseMergeVagi *)((u8 *)vagi + size);
+        srcHead = srcHeads[i];
+        srcVagiChunk = (CseChunk *)((u8 *)srcHead + srcHead->vagiOffset);
+        vagi->max += srcVagiChunk->max + 1;
+        for (j = 0; j < srcVagiChunk->max + 1; j++) {
+            dstVagis[j] = ((CseVagiChunk *)srcVagiChunk)->vagi[j];
+            dstVagis[j].addr += spuBase;
         }
-        size += ((u32)vc->max + 1) * sizeof(CseMergeVagi);
-        body += b->bodySize;
+        size += ((u32)srcVagiChunk->max + 1) * sizeof(CseMergeVagi);
+        spuBase += srcHead->bodySize;
     }
     vagi->max--;
     for (; size & 0xF; size++) {
@@ -290,7 +322,7 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     }
     vagi->size = size;
     pos += size;
-    h->unkC = pos;
+    mergedHead->unkC = pos;
     return pos;
 }
 #pragma optimization_level reset

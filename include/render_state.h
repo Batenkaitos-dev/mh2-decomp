@@ -3,7 +3,7 @@
 
 /*
  * The render states: the first argument of main's Gs_SetState
- * (unk_183D20.c), which keeps each in the render flags (gRenderFlags,
+ *, which keeps each in the render flags (gRenderFlags,
  * gRenderFlags2) or a global and writes the GS register it feeds. The
  * names below come from what Gs_SetState does with each. The states it
  * keeps only as bits of the render flags have no name yet (seen, the
@@ -19,7 +19,7 @@
 #define RS_TEXTURE_2 6
 #define RS_TEXTURE_3 7
 #define RS_SCISSOR 0xC              /* 1: scissor to the whole screen (Gs_SetScissor) */
-#define RS_COLOR 0xE                /* a colour, 0xAARRGGBB (gGsColor0E; also kept as floats) */
+#define RS_COLOR 0xE                /* a colour, 0xAARRGGBB (gGsColor; also kept as floats) */
 #define RS_FOG_COLOR 0xF            /* the fog's colour (Gs_SetFogColor) */
 #define RS_FOG_NEAR 0x10            /* the fog's near distance, an f32 passed as its bits */
 #define RS_FOG_FAR 0x11             /* the fog's far distance, an f32 passed as its bits */
@@ -27,6 +27,7 @@
 #define RS_VIEW_MTX 0x16            /* the address of the view matrix to copy (gMtxView) */
 #define RS_PROJ_MTX 0x17            /* the address of the projection matrix to copy (gMtxCamProj) */
 #define RS_ORTHO 0x18               /* the address of an orthographic view: 4 s32, 2 f32 (Camera_SetOrtho) */
+#define RS_UV_MTX 0x19              /* the address of a texture coordinate matrix to copy (gMtxUv): the VU1 programs map ST through rows 0, 1 and 3 */
 #define RS_MTX_SLOT(i) (0x1A + (i)) /* 0x1A-0x39: the address of a matrix for gMtxSlots[i] */
 #define RS_MATERIAL(i) (0x3A + (i)) /* 0x3A-0x59: the address of a ModelMat for gRsMaterials[i] */
 #define RS_LIGHT(i) (0x5A + (i))    /* 0x5A-0x5C: the address of a Light for gRsLights[i] */
@@ -34,7 +35,7 @@
 #define RS_ALPHA_TEST 0x5F          /* the alpha test's comparison, RS_CMP_* (gRenderFlags 0x380000; Gs_SetTest) */
 #define RS_ALPHA_REF 0x60           /* the alpha test's reference value (gGsAlphaRef; Gs_SetTest) */
 #define RS_TEX_FILTER 0x63          /* 0x10000: filtered textures, 0: not (Gs_SetTexFilter; Gfx_SetTexFilter) */
-#define RS_COLOR2 0x67              /* a second colour, 0xAARRGGBB (gGsColor67; also kept as floats) */
+#define RS_COLOR2 0x67              /* a second colour, 0xAARRGGBB (gGsColor2; also kept as floats) */
 #define RS_TEX_LOD_L 0x69           /* the textures' LOD parameter L (gGsTexLodL) */
 #define RS_ZWRITE 0x6C              /* 1: write the depth buffer, 0: mask it (gRenderFlags 0x8000; Gs_SetZbuf) */
 #define RS_ZTEST 0x6D               /* the depth test's comparison, RS_CMP_* (gRenderFlags 0x7000; Gs_SetTest) */
@@ -62,5 +63,32 @@
 #define RS_CMP_NOTEQUAL 5
 #define RS_CMP_GEQUAL 6
 #define RS_CMP_ALWAYS 7
+
+/* RS_ALPHA_REF's value for an opaque draw: texels with less alpha are cut
+ * out. A faded draw sets 0 instead, so that every texel passes. */
+#define RS_ALPHA_REF_OPAQUE 0xC0
+
+/*
+ * Gfx_SetBlend's two factors, the source's and the destination's, in
+ * OpenGL's order (gBlendModes and gBlendModes2 turn them into RS_BLEND's
+ * nibbles). The pairs the game uses: (GFX_BLEND_SRC_ALPHA,
+ * GFX_BLEND_INV_SRC_ALPHA) is RS_BLEND_ALPHA, (GFX_BLEND_SRC_ALPHA,
+ * GFX_BLEND_ONE) adds the source by its alpha, (GFX_BLEND_ONE,
+ * GFX_BLEND_ONE) adds it whole.
+ */
+#define GFX_BLEND_ZERO 0
+#define GFX_BLEND_ONE 1
+#define GFX_BLEND_SRC_ALPHA 4
+#define GFX_BLEND_INV_SRC_ALPHA 5       /* 1 - the source's alpha */
+
+/* RS_ORTHO's argument: an orthographic view (Camera_SetOrtho). */
+typedef struct GsViewport {
+    s32 x;                      /* 0x00 */
+    s32 y;                      /* 0x04 */
+    s32 width;                  /* 0x08 */
+    s32 height;                 /* 0x0C */
+    f32 nearZ;                  /* 0x10: the depth range (Camera.viewport writes its near as an int 0) */
+    f32 farZ;                   /* 0x14 */
+} GsViewport;
 
 #endif /* RENDER_STATE_H */

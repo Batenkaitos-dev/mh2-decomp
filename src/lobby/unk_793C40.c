@@ -30,29 +30,29 @@ s32 Game_IsOnline(void);
 void HunterCard_Apply(s8 idx, void *src);
 void TownPc_Spawn(u8 i, NetUser *u, char *name);
 s32 TownPc_IsSeatedState(u8 arg0, u8 arg1);
-s32 Area_Is86to88(s32 arg0);
+s32 Area_IsTownHall(s32 arg0);
 s32 Area_IsOnlineHouse(s32 arg0);
 s32 TownPc_IsInContest(Player *p);
-void TownMsg_Send0F(void);
-void TownMsg_Send18(void);
-void TownMsg_Send1E(void);
+void TownMsg_SendSeatTaken(void);
+void TownMsg_SendHouseSeatTaken(void);
+void TownMsg_SendContestSeatTaken(void);
 extern u8 gTownSyncWait;
-extern u8 gTownMsg0DPending;
+extern u8 gTownAreaMsgPending;
 s32 Area_HasTownPcs(u16 arg0);
 void Mem_Compact(void);
 void TownPc_LoadModelNow(Player *a0);
 void TownPc_StartLoad(u8 *obj);
 void Lobby_ReceiveWhileWaiting(void);
-void TownMsg_Send0D(void);
+void TownMsg_SendSyncAsk(void);
 void Anim_LoadCommon(s32 a);
 void EmSlot_LoadModel(s32 a, s32 b, s32 c);
 s16 DrawSlot_Alloc(void);
 DrawSlot *DrawSlot_Get(s32 i);
 void DrawCb_Player(DrawSlot *r); /* sub_main: takes its draw slot */
 extern u8 gPlayerHandlerTable[];
-void Actor_SetIdle(void *obj, s32 a1, s32 n, s32 m);
+void Actor_ReturnToIdle(void *obj, s32 a1, s32 n, s32 m);
 void Hit_ResetAll(void);
-void Effect1A_Spawn(Player *p);
+void LockOnMark_Spawn(Player *p);
 extern s32 gTownMode;
 void Player_InitPartTable(s32 idx);
 void Player_LoadWeaponModel(s32 kind, s32 pl);
@@ -133,7 +133,7 @@ s32 TownPc_RefreshChanged(void)
             && LobbyMember_SetRecord(i, &gNetUsers[i], gNetUsers[i].text) == 1) {
             Player_CalcSkills(&gPlayers[i]);
             TownMsg_Send0DTo(i);
-            gPlayers[i].unk3D6[0x16] = 1;
+            gPlayers[i].netActive = 1;
             if (func_193670(gPlayers[i].index) != 0) {
                 gLobby->lookPending[gPlayers[i].index] = 2;
             }
@@ -167,13 +167,13 @@ void TownPc_AddJoined(void)
                         gLobby->lookPending[me->index] = 2;
                     }
                     if (TownPc_IsSeatedState(me->stateGroup, me->state) == 1) {
-                        if (Area_Is86to88(gScene.area) == 1) {
-                            TownMsg_Send0F();
+                        if (Area_IsTownHall(gScene.area) == 1) {
+                            TownMsg_SendSeatTaken();
                         } else if (Area_IsOnlineHouse(gScene.area) == 1) {
-                            TownMsg_Send18();
+                            TownMsg_SendHouseSeatTaken();
                         }
                     } else if (TownPc_IsInContest((Player *)me) == 1) {
-                        TownMsg_Send1E();
+                        TownMsg_SendContestSeatTaken();
                     }
                 }
             }
@@ -222,9 +222,9 @@ void TownPc_SyncMembers(void)
             }
         }
     }
-    if (gTownMsg0DPending == 1) {
-        TownMsg_Send0D();
-        gTownMsg0DPending = 0;
+    if (gTownAreaMsgPending == 1) {
+        TownMsg_SendSyncAsk();
+        gTownAreaMsgPending = 0;
     }
 }
 
@@ -237,7 +237,7 @@ void TownPc_LoadAllModels(void)
         gLobby->areaLoaded = 1;
         if (Game_IsOnline() == 1) {
             Anim_LoadCommon(2);
-        } else if (gSave.unk36E8 != 0) {
+        } else if (gSave.awayFromVillage != 0) {
             Anim_LoadCommon(3);
         } else {
             Anim_LoadCommon(1);
@@ -284,7 +284,7 @@ void TownPc_Spawn(u8 pl, NetUser *u, char *name)
         p->drawSlot->player = p->index;
         p->drawSlot->draw = DrawCb_Player;
     }
-    Actor_SetIdle(p, 0, 0, 0);
+    Actor_ReturnToIdle(p, 0, 0, 0);
     p->state = 1;
     p->handlers = (struct PlayerVt *)gPlayerHandlerTable;
     (*(void (**)(Player *))((u8 *)p->handlers + 0xC))(p);
@@ -301,7 +301,7 @@ void TownPc_InitAll(s32 v)
     do {
         if (p->active != 0) {
             if ((gTownMode != 0xE) && (p->index == gScene.localPlayer)) {
-                Effect1A_Spawn((void *) p);
+                LockOnMark_Spawn((void *) p);
             }
             p->actRequest = 0;
             if (v & 0xFF) {

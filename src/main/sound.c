@@ -67,20 +67,26 @@ void Sound_Init(void)
     Snd_Init();
 }
 
+/*
+ * Points each bank slot's SE table and bank header buffers into
+ * gSndSeData and gSndBankData, packed one after another by the sizes in
+ * gSndSeBufSizes and gSndBankBufSizes, and the SPU map buffer at
+ * gSndSpuMapData. Called once at startup (Sound_Boot).
+ */
 void Sound_InitBuffers(void)
 {
     s32 i;
-    u8 *se;
-    u8 *bank;
+    u8 *seBuf;
+    u8 *bankBuf;
 
     gSndSpuMapBuf = gSndSpuMapData;
-    se = gSndSeData;
-    bank = gSndBankData;
+    seBuf = gSndSeData;
+    bankBuf = gSndBankData;
     for (i = 0; i < 16; i++) {
-        gSndSeBufs[i] = se;
-        gSndBankBufs[i] = bank;
-        se += gSndSeBufSizes[i];
-        bank += gSndBankBufSizes[i];
+        gSndSeBufs[i] = seBuf;
+        gSndBankBufs[i] = bankBuf;
+        seBuf += gSndSeBufSizes[i];
+        bankBuf += gSndBankBufSizes[i];
     }
 }
 
@@ -97,6 +103,7 @@ s32 Sound_Update(void)
     return Snd_Update();
 }
 
+/* The SE table buffer of bank slot slot; NULL when slot is 16 or more. */
 static u8 *Sound_GetSeBuf(u32 slot)
 {
     if (slot >= 16) {
@@ -105,6 +112,7 @@ static u8 *Sound_GetSeBuf(u32 slot)
     return gSndSeBufs[slot];
 }
 
+/* The size in bytes of slot's SE table buffer; 0 when slot is 16 or more. */
 static u32 Sound_GetSeBufSize(u32 slot)
 {
     if (slot >= 16) {
@@ -113,6 +121,7 @@ static u32 Sound_GetSeBufSize(u32 slot)
     return gSndSeBufSizes[slot];
 }
 
+/* The bank header buffer of bank slot slot; NULL when slot is 16 or more. */
 static u8 *Sound_GetBankBuf(u32 slot)
 {
     if (slot >= 16) {
@@ -121,6 +130,10 @@ static u8 *Sound_GetBankBuf(u32 slot)
     return gSndBankBufs[slot];
 }
 
+/*
+ * The size in bytes of slot's bank header buffer; 0 when slot is 16 or
+ * more.
+ */
 static u32 Sound_GetBankBufSize(u32 slot)
 {
     if (slot >= 16) {
@@ -140,6 +153,11 @@ static inline void Sound_SetSe(u32 slot, u8 *src, u32 size)
     Snd_SetSeTable(slot, (CseSeTable *)buf);
 }
 
+/*
+ * Copies a bank header into slot's buffer and hands it to the engine
+ * (Snd_SetBank). Inlined like Sound_SetSe: its arguments are evaluated
+ * before the buffer calls.
+ */
 static inline void Sound_SetBank(u32 slot, u8 *src, u32 size)
 {
     u8 *buf = Sound_GetBankBuf(slot);
@@ -151,34 +169,44 @@ static inline void Sound_SetBank(u32 slot, u8 *src, u32 size)
 
 /* Copies the SE table and bank header of f into slot's buffers and queues
  * the upload of its sample data. */
-/* data is the address of the loaded file, as an integer. */
+/*
+ * Copies the SE table and bank header of a .snd file already in memory
+ * into slot's buffers and queues the upload of its sample data to SPU RAM.
+ * data is the file's address as an integer (file is the same address
+ * read as a SndFile). Returns 0.
+ */
 s32 Sound_LoadBankFile(s32 data, s32 slot)
 {
-    SndFile *f = (SndFile *)data;
+    SndFile *file = (SndFile *)data;
     u8 *head;
 
-    Sound_SetSe(slot, (u8 *)(data + f->seOffset), f->seSize);
-    head = (u8 *)(data + f->headOffset);
-    Sound_SetBank(slot, head, f->headSize);
-    Snd_UploadBank(slot, (u32)(data + f->bodyOffset), Snd_GetBankBodySize(head), 0);
+    Sound_SetSe(slot, (u8 *)(data + file->seOffset), file->seSize);
+    head = (u8 *)(data + file->headOffset);
+    Sound_SetBank(slot, head, file->headSize);
+    Snd_UploadBank(slot, (u32)(data + file->bodyOffset), Snd_GetBankBodySize(head), 0);
     return 0;
 }
 
 /* Like Sound_LoadBankFile with the staged banks merged into one header
  * (built in out) and the staged sample data. */
-s32 Sound_LoadMergedBanks(SndFile *f, u8 *out, u32 slot)
+s32 Sound_LoadMergedBanks(SndFile *file, u8 *out, u32 slot)
 {
-    Sound_SetSe(slot, (u8 *)f + f->seOffset, f->seSize);
+    Sound_SetSe(slot, (u8 *)file + file->seOffset, file->seSize);
     Sound_SetBank(slot, out, Snd_MergeBanks(out, gSndStageHeads, gSndStageCount));
     Snd_UploadBank(slot, (u32)gSndStageBodyBase, Snd_GetBankBodySize(out), 0);
     return 0;
 }
 
-s32 Sound_LoadBank(SndFile *f, u32 slot)
+/*
+ * Loads a .snd file already in memory into bank slot slot
+ * (Sound_LoadBankFile) without waiting for the sample upload. Returns 0,
+ * or the negative result of Sound_LoadBankFile.
+ */
+s32 Sound_LoadBank(SndFile *file, u32 slot)
 {
     s32 ret;
 
-    ret = Sound_LoadBankFile((s32)f, slot);
+    ret = Sound_LoadBankFile((s32)file, slot);
     if (ret < 0) {
         return ret;
     }
@@ -188,11 +216,11 @@ s32 Sound_LoadBank(SndFile *f, u32 slot)
 s32 Sound_CheckTransfer(void);
 
 /* Loads a bank and waits (flipping frames) until its upload is done. */
-s32 Sound_LoadBankWait(SndFile *f, u32 slot)
+s32 Sound_LoadBankWait(SndFile *file, u32 slot)
 {
     s32 ret;
 
-    ret = Sound_LoadBankFile((s32)f, slot);
+    ret = Sound_LoadBankFile((s32)file, slot);
     if (ret < 0) {
         return ret;
     }
@@ -208,14 +236,20 @@ s32 Sound_CheckTransfer(void)
     return Snd_CheckTransfer(0);
 }
 
-s32 Sound_LoadStaged(SndFile *f, u8 *out, u32 slot)
+/*
+ * Loads the banks staged with Sound_StageBank into one slot: the SE table
+ * comes from file, the merged bank header is built in out, and the sample
+ * data is the staged data. Does nothing when nothing is staged. Returns 0,
+ * or the negative result of Sound_LoadMergedBanks.
+ */
+s32 Sound_LoadStaged(SndFile *file, u8 *out, u32 slot)
 {
     s32 ret;
 
     if (gSndStageCount <= 0) {
         return 0;
     }
-    ret = Sound_LoadMergedBanks(f, out, slot);
+    ret = Sound_LoadMergedBanks(file, out, slot);
     if (ret < 0) {
         return ret;
     }
@@ -227,15 +261,19 @@ s32 Sound_SetSpuMapPage(u32 page)
     return Snd_SetSpuMapPage(page);
 }
 
+/*
+ * Sets the reverb of SPU core core (mode, depth, delay, feedback) through
+ * Snd_SetEffect and returns its result.
+ */
 s32 Sound_SetEffect(s32 core, s32 mode, s32 depth, s32 delay, s32 feedback)
 {
-    CseEffect e;
+    CseEffect effect;
 
-    e.mode = mode;
-    e.depth = depth;
-    e.delay = delay;
-    e.feedback = feedback;
-    return Snd_SetEffect(core, &e);
+    effect.mode = mode;
+    effect.depth = depth;
+    effect.delay = delay;
+    effect.feedback = feedback;
+    return Snd_SetEffect(core, &effect);
 }
 
 s32 Sound_StopAll(void)
@@ -248,6 +286,11 @@ s32 Sound_StopBank(s32 slot)
     return Snd_StopBank(slot);
 }
 
+/*
+ * Sets the sound engine's output from the sound option: 0 mono, 1 stereo,
+ * 2 (and any other value) surround, through Snd_SetOutputMode. Called by
+ * Sound_ApplyOutputMode.
+ */
 void Sound_SetOutputMode(s32 mode)
 {
     switch (mode) {
@@ -264,15 +307,19 @@ void Sound_SetOutputMode(s32 mode)
     }
 }
 
-/* One of an SE's four CSE_REQ_MODULATE values (0 if there is no such SE). */
-s32 Sound_GetSeModValue(u32 slot, u32 id, s32 i)
+/*
+ * One of the four CSE_REQ_MODULATE values of SE id in slot:
+ * mod[modIndex] of its first record. 0 when there is no such SE or
+ * modIndex is not 0-3.
+ */
+s32 Sound_GetSeModValue(u32 slot, u32 id, s32 modIndex)
 {
     CseSeRec *rec = Snd_GetSeRecord(slot, id);
 
     if (rec == NULL) {
         return 0;
     }
-    switch (i) {
+    switch (modIndex) {
     case 0:
         return rec->mod[0];
     case 1:
@@ -285,19 +332,23 @@ s32 Sound_GetSeModValue(u32 slot, u32 id, s32 i)
     return 0;
 }
 
-/* Sets an SE record's id2 and id3; ids 70-99 get id3 + 30. The id is offset
- * by a per-table float. */
-void Sound_SetSeIds(u32 slot, u32 id, u8 id2, u8 id3, s32 table)
+/*
+ * Tags the record of SE id in slot with ownerType and ownerSlot (its id2
+ * and id3, by which Snd_SetParam later finds its voices); ids 70-99 get
+ * ownerSlot + 30. The id is offset by gSePosRanges[table].idOffset first.
+ * seen: callers pass an Em's type (plus 100 for SE_SLOT_EM) and slotNo.
+ */
+void Sound_SetSeIds(u32 slot, u32 id, u8 ownerType, u8 ownerSlot, s32 table)
 {
     CseSeRec *rec;
 
     if (id >= 70 && id < 100) {
-        id3 += 30;
+        ownerSlot += 30;
     }
     rec = Snd_GetSeRecord(slot, (u32)((f32)id + gSePosRanges[table].idOffset));
     if (rec != NULL) {
-        rec->id2 = id2;
-        rec->id3 = id3;
+        rec->id2 = ownerType;
+        rec->id3 = ownerSlot;
     }
 }
 
@@ -322,20 +373,20 @@ s32 Sound_PlaySeVolPan(u32 slot, u32 id, s32 vol, s32 pan, s32 unused, s32 prog)
 s32 Sound_PlaySe(u32 slot, u32 id, CseOpt *opt)
 {
     CseSeRec *rec = Snd_GetSeRecord(slot, id);
-    s32 r;
+    s32 modRange;
 
     if (rec == NULL) {
         return 0;
     }
     if (rec->mod[0] != 0) {
         opt->flags |= 0x100;
-        r = rec->mod[0];
-        opt->v[8] = Rand_Next(0) % (r * 2) - r;
+        modRange = rec->mod[0];
+        opt->v[8] = Rand_Next(0) % (modRange * 2) - modRange;
     }
     if (rec->mod[1] != 0) {
         opt->flags |= 0x20;
-        r = rec->mod[1];
-        opt->v[5] += Rand_Next(0) % (r * 2) - r;
+        modRange = rec->mod[1];
+        opt->v[5] += Rand_Next(0) % (modRange * 2) - modRange;
     }
     return Snd_RequestSe(slot, id, opt);
 }
@@ -346,7 +397,7 @@ extern s32 *gSePosCurves2[];       /* second curves (CseOpt.v[7]), or NULL */
 extern SndVec gSndForwardAxis;       /* the listener's forward axis */
 extern f32 gSndVolumeScale[];        /* the SE volume settings */
 extern u8 gViewMatrix[];           /* sub_main: the listener's rotation */
-extern SndVec gCameraPos;      /* sub_main 0x6A9DE0, the listener */
+extern SndVec gCameraPos;      /* sub_main's camera position, the listener */
 #define gSndOutputSetting (gSysSettings.soundMode)
 #define gSndSeVolSetting (gSysSettings.seVolume)
 /* sub_main's vector helpers (asm there, with f32 * parameters): declared
@@ -362,45 +413,45 @@ s32 Bgm_IsBattleState(void);
 
 /*
  * Plays or updates an SE placed at pos: the volume from the kind's curve by
- * the distance to the listener (0x6A9DE0, rotated into its frame), the pan
+ * the distance to the listener (gCameraPos, rotated into its frame), the pan
  * and the front/back flags from the direction. update != 0 only moves the
  * pan of the playing SE. -1 when out of range or silent.
  */
 s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update)
 {
     CseOpt opt = {0};
-    SndVec d;
+    SndVec toListener;
     SndVec side;
-    SndVec fwd;
+    SndVec forward;
     f32 dist;
     f32 step;
     f32 far;
     f32 dot;
-    f32 ang;
-    f32 sy;
+    f32 angle;
+    f32 sideY;
     f32 frac;
     s32 *curve;
     u8 flags;
     s32 *curve2;
     s32 pan;
     s32 vol;
-    s32 vol2;
-    s32 n;
-    s32 c0;
+    s32 curve2Vol;
+    s32 stepIndex;
+    s32 stepVol;
 
-    fwd = gSndForwardAxis;
+    forward = gSndForwardAxis;
     flags = 0;
-    vol2 = 0;
+    curve2Vol = 0;
     step = gSePosRanges[kind].step;
     far = gSePosRanges[kind].far;
     id = (u32)((f32)id + gSePosRanges[kind].idOffset);
     curve2 = gSePosCurves2[kind];
-    d.x = gCameraPos.x - ((f32 *)pos)[0];
-    d.y = gCameraPos.y - ((f32 *)pos)[1];
-    d.z = gCameraPos.z - ((f32 *)pos)[2];
-    Vec_RotateSelf((f32 *) &d, (f32 *) gViewMatrix);
-    d.z -= 238.0f;
-    dist = Math_Sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+    toListener.x = gCameraPos.x - ((f32 *)pos)[0];
+    toListener.y = gCameraPos.y - ((f32 *)pos)[1];
+    toListener.z = gCameraPos.z - ((f32 *)pos)[2];
+    Vec_RotateSelf((f32 *) &toListener, (f32 *) gViewMatrix);
+    toListener.z -= 238.0f;
+    dist = Math_Sqrtf(toListener.x * toListener.x + toListener.y * toListener.y + toListener.z * toListener.z);
     curve = gSePosVolCurves[kind];
     if (Bgm_IsBattleState() == 1) {
         curve += 17;
@@ -416,22 +467,22 @@ s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update)
         vol = curve[0];
         pan = 0;
         if (curve2 != NULL) {
-            vol2 = curve2[0];
+            curve2Vol = curve2[0];
         }
     } else {
-        Vec_Normalize((f32 *) &d);
-        dot = Vec_Dot((f32 *) &fwd, (f32 *) &d);
-        Vec_Cross((f32 *) &side, (f32 *) &fwd, (f32 *) &d);
+        Vec_Normalize((f32 *) &toListener);
+        dot = Vec_Dot((f32 *) &forward, (f32 *) &toListener);
+        Vec_Cross((f32 *) &side, (f32 *) &forward, (f32 *) &toListener);
         Vec_Normalize((f32 *) &side);
-        ang = 360.0f * Math_Acos(dot) / 6.2831855f;
-        ang = (ang < 90.0f) ? ang : 90.0f - (ang - 90.0f);
-        sy = side.y;
-        if (sy > 0.0f) {
-            pan = -(64.0f * (ang / 90.0f));
+        angle = 360.0f * Math_Acos(dot) / 6.2831855f;
+        angle = (angle < 90.0f) ? angle : 90.0f - (angle - 90.0f);
+        sideY = side.y;
+        if (sideY > 0.0f) {
+            pan = -(64.0f * (angle / 90.0f));
         } else {
-            pan = 64.0f * (ang / 90.0f);
+            pan = 64.0f * (angle / 90.0f);
         }
-        flags |= (sy > 0.0f) ? 1 : 0x40;
+        flags |= (sideY > 0.0f) ? 1 : 0x40;
         if (Sound_GetSeModValue(slot, id, 3) == 1) {
             flags |= 1;
         } else {
@@ -446,12 +497,12 @@ s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update)
                 break;
             }
         }
-        n = Math_Floor(dist / step);
-        c0 = curve[n];
-        frac = (dist - step * n) / step;
-        vol = c0 - (s32)(frac * (c0 - curve[n + 1]));
+        stepIndex = Math_Floor(dist / step);
+        stepVol = curve[stepIndex];
+        frac = (dist - step * stepIndex) / step;
+        vol = stepVol - (s32)(frac * (stepVol - curve[stepIndex + 1]));
         if (curve2 != NULL) {
-            vol2 = curve2[n] - (s32)(frac * (curve2[n] - curve2[n + 1]));
+            curve2Vol = curve2[stepIndex] - (s32)(frac * (curve2[stepIndex] - curve2[stepIndex + 1]));
         }
     }
     vol *= gSndVolumeScale[gSndSeVolSetting];
@@ -466,7 +517,7 @@ s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update)
         opt.v[0] = prog;
         opt.flags = 0x1841;
         if (curve2 != NULL) {
-            opt.v[7] = vol2;
+            opt.v[7] = curve2Vol;
             opt.flags |= 0x80;
         }
         return Sound_PlaySe(slot, id, &opt);
@@ -488,6 +539,10 @@ s32 Sound_PlaySeAtPos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 updat
     return Sound_PlaySePos(slot, id, prog, pos, kind, update);
 }
 
+/*
+ * Empties the bank staging used by Sound_StageBank: bank headers are
+ * staged from headBase and sample data from bodyBase.
+ */
 void Sound_InitStaging(u8 *headBase, u8 *bodyBase)
 {
     gSndStageHeadBase = headBase;
@@ -500,19 +555,19 @@ void Sound_InitStaging(u8 *headBase, u8 *bodyBase)
 /* Copies a .snd file's bank header and sample data to the staging areas.
  * The volatile read of headSize reads it through a0, before the parameter
  * is copied to s0, as the game does. */
-void Sound_StageBank(SndFile *f)
+void Sound_StageBank(SndFile *file)
 {
     u8 *head = gSndStageHeadBase + gSndStageHeadUsed;
 
-    memcpy(head, (u8 *)f + f->headOffset, ((volatile SndFile *)f)->headSize);
+    memcpy(head, (u8 *)file + file->headOffset, ((volatile SndFile *)file)->headSize);
     gSndStageHeads[gSndStageCount] = head;
-    memcpy(gSndStageBodyBase + gSndStageBodyUsed, (u8 *)f + f->bodyOffset, f->bodySize);
-    gSndStageHeadUsed += f->headSize;
-    gSndStageBodyUsed += f->bodySize;
+    memcpy(gSndStageBodyBase + gSndStageBodyUsed, (u8 *)file + file->bodyOffset, file->bodySize);
+    gSndStageHeadUsed += file->headSize;
+    gSndStageBodyUsed += file->bodySize;
     gSndStageCount++;
 }
 
-/* sound's .data (0x1BB9E0-0x1BCC80) */
+/* This file's initialised data. */
 u32 gSndSeBufSizes[16] = {
 #include "main/001BB9E0.inc"
 };

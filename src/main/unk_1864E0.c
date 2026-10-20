@@ -1,9 +1,9 @@
 /*
- * main 0x1864e0-0x186d10: the texture registers, which go into a static
+ * The texture registers, which go into a static
  * packet sent with Prim_SendPacket, and the conversions from screen to GS
  * coordinates. A unit of its own: it was built at optimization level 4
- * with copy propagation, where unk_185460.c (the other GS register
- * setters) was built without copy propagation.
+ * with copy propagation, where the unit of the other GS register setters
+ * was built without it.
  */
 #include "common.h"
 #include "dma.h"
@@ -30,6 +30,12 @@ s32 Gs_BuildTexRegs(u32 handle, u64 *texa, u64 *tex1, u64 *tex0, u64 *clamp, u64
                   u32 flags);
 s32 Prim_SendPacket(u32 *pkt);
 
+/*
+ * Builds the texture registers of handle with the render flags
+ * (gRenderFlags) into gTexRegPacket and sends it (Prim_SendPacket).
+ * Returns 1, or 0 (nothing sent) when the texture or its palette is not
+ * in GS memory.
+ */
 s32 Gs_SetTexture(s32 handle)
 {
     if (Gs_BuildTexRegs(handle, &gTexRegTexa, &gTexRegTex1, &gTexRegTex0, &gTexRegClamp, &gTexRegMiptbp1, &gTexRegMiptbp2, gRenderFlags) == 0) {
@@ -39,29 +45,29 @@ s32 Gs_SetTexture(s32 handle)
     return 1;
 }
 
-s32 Gs_BuildTexRegs(u32 handle, u64 *texa, u64 *tex1, u64 *tex0, u64 *clamp, u64 *mip1, u64 *mip2, u32 flags)
+s32 Gs_BuildTexRegs(u32 handle, u64 *texAlphaReg, u64 *texLodReg, u64 *texBaseReg, u64 *clampReg, u64 *mipBaseLow, u64 *mipBaseHigh, u32 flags)
 {
-    TexRec *t;
+    TexRec *texRec;
     TexRec *pal;
-    s16 bw;
+    s16 bufWidth;
     s32 i;
-    s32 w;
-    s32 *pv;
-    s32 *pw;
-    s32 vram[6];
-    s32 bws[6];
+    s32 levelWidth;
+    s32 *levelVramOut;
+    s32 *levelBufWidthOut;
+    s32 levelVram[6];
+    s32 levelBufWidth[6];
 
-    t = &gTexRecs[(handle & 0xFFFF) - 1];
+    texRec = &gTexRecs[(handle & 0xFFFF) - 1];
     if ((handle & 0xFFFF) == 0) {
         return 0;
     }
-    if (t->vram == 0) {
+    if (texRec->vram == 0) {
         return 0;
     }
-    if (t->resident == 0) {
+    if (texRec->resident == 0) {
         return 0;
     }
-    if (t->flags & 4) {
+    if (texRec->flags & 4) {
         if (((handle & 0xFFFF0000) >> 16) == 0) {
             return 0;
         }
@@ -73,85 +79,85 @@ s32 Gs_BuildTexRegs(u32 handle, u64 *texa, u64 *tex1, u64 *tex0, u64 *clamp, u64
             return 0;
         }
     }
-    if ((flags & 0xC00000) == 0 || t->levels == 1) {
+    if ((flags & 0xC00000) == 0 || texRec->levels == 1) {
         if ((flags & 0x10000) == 0x10000) {
-            *tex1 = 0;
+            *texLodReg = 0;
         } else {
-            *tex1 = 0x60;
+            *texLodReg = 0x60;
         }
     } else if ((flags & 0xC00000) == 0x400000) {
         if ((flags & 0x10000) == 0x10000) {
-            *tex1 = ((u64)(t->levels - 1) << 2) | 0x80 | ((u64)gGsTexLodL << 19) |
+            *texLodReg = ((u64)(texRec->levels - 1) << 2) | 0x80 | ((u64)gGsTexLodL << 19) |
                     ((u64)((D_0020E138 << 4) & 0xFFF) << 32);
         } else {
-            *tex1 = ((u64)(t->levels - 1) << 2) | 0x120 | ((u64)gGsTexLodL << 19) |
+            *texLodReg = ((u64)(texRec->levels - 1) << 2) | 0x120 | ((u64)gGsTexLodL << 19) |
                     ((u64)((D_0020E138 << 4) & 0xFFF) << 32);
         }
     } else {
         if ((flags & 0x10000) == 0x10000) {
-            *tex1 = ((u64)(t->levels - 1) << 2) | 0xC0 | ((u64)gGsTexLodL << 19) |
+            *texLodReg = ((u64)(texRec->levels - 1) << 2) | 0xC0 | ((u64)gGsTexLodL << 19) |
                     ((u64)((D_0020E138 << 4) & 0xFFF) << 32);
         } else {
-            *tex1 = ((u64)(t->levels - 1) << 2) | 0x160 | ((u64)gGsTexLodL << 19) |
+            *texLodReg = ((u64)(texRec->levels - 1) << 2) | 0x160 | ((u64)gGsTexLodL << 19) |
                     ((u64)((D_0020E138 << 4) & 0xFFF) << 32);
         }
     }
-    bw = t->width / 64;
-    if (bw == 0) {
-        bw = 1;
+    bufWidth = texRec->width / 64;
+    if (bufWidth == 0) {
+        bufWidth = 1;
     }
-    if (t->flags & 4) {
+    if (texRec->flags & 4) {
         pal = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
         if (pal->fmt == 3) {
-            *texa = 0x80 | ((u64)0x80 << 32);
+            *texAlphaReg = 0x80 | ((u64)0x80 << 32);
         } else {
-            *texa = (u64)0x80 << 32;
+            *texAlphaReg = (u64)0x80 << 32;
         }
-        *tex0 = (u64)t->vram | ((u64)bw << 14) | ((u64)t->psm << 20) | ((u64)t->tw << 26) |
-                ((u64)t->th << 30) | ((u64)1 << 34) | ((u64)pal->vram << 37) |
+        *texBaseReg = (u64)texRec->vram | ((u64)bufWidth << 14) | ((u64)texRec->psm << 20) | ((u64)texRec->tw << 26) |
+                ((u64)texRec->th << 30) | ((u64)1 << 34) | ((u64)pal->vram << 37) |
                 ((u64)pal->psm << 51) | ((u64)2 << 61);
     } else {
-        if (t->fmt == 3) {
-            *texa = 0x80 | ((u64)0x80 << 32);
+        if (texRec->fmt == 3) {
+            *texAlphaReg = 0x80 | ((u64)0x80 << 32);
         } else {
-            *texa = (u64)0x80 << 32;
+            *texAlphaReg = (u64)0x80 << 32;
         }
-        *tex0 = (u64)t->vram | ((u64)bw << 14) | ((u64)t->psm << 20) | ((u64)t->tw << 26) |
-                ((u64)t->th << 30) | ((u64)1 << 34);
+        *texBaseReg = (u64)texRec->vram | ((u64)bufWidth << 14) | ((u64)texRec->psm << 20) | ((u64)texRec->tw << 26) |
+                ((u64)texRec->th << 30) | ((u64)1 << 34);
     }
     switch (flags & 0x60000) {
     case 0:
-        *clamp = 0;
+        *clampReg = 0;
         break;
     case 0x20000:
     default:
-        *clamp = 2 | (2 << 2) | ((u64)t->width << 14) | ((u64)t->height << 34);
+        *clampReg = 2 | (2 << 2) | ((u64)texRec->width << 14) | ((u64)texRec->height << 34);
         break;
     }
-    *mip1 = 0;
-    *mip2 = 0;
-    if (t->levels > 1) {
+    *mipBaseLow = 0;
+    *mipBaseHigh = 0;
+    if (texRec->levels > 1) {
         for (i = 0; i < 6; i++) {
-            vram[i] = 0;
-            bws[i] = 0;
+            levelVram[i] = 0;
+            levelBufWidth[i] = 0;
         }
-        pv = vram;
-        pw = bws;
-        w = t->width >> 1;
-        for (i = 0; i < t->levels - 1; i++) {
-            *pv = Tex_LevelVram(t, i + 1);
-            *pw = w / 64;
-            if (*pw == 0) {
-                *pw = 1;
+        levelVramOut = levelVram;
+        levelBufWidthOut = levelBufWidth;
+        levelWidth = texRec->width >> 1;
+        for (i = 0; i < texRec->levels - 1; i++) {
+            *levelVramOut = Tex_LevelVram(texRec, i + 1);
+            *levelBufWidthOut = levelWidth / 64;
+            if (*levelBufWidthOut == 0) {
+                *levelBufWidthOut = 1;
             }
-            w >>= 1;
-            pv++;
-            pw++;
+            levelWidth >>= 1;
+            levelVramOut++;
+            levelBufWidthOut++;
         }
-        *mip1 = (u64)vram[0] | ((u64)bws[0] << 14) | ((u64)vram[1] << 20) | ((u64)bws[1] << 34) |
-                ((u64)vram[2] << 40) | ((u64)bws[2] << 54);
-        *mip2 = (u64)vram[3] | ((u64)bws[3] << 14) | ((u64)vram[4] << 20) | ((u64)bws[4] << 34) |
-                ((u64)vram[5] << 40) | ((u64)bws[5] << 54);
+        *mipBaseLow = (u64)levelVram[0] | ((u64)levelBufWidth[0] << 14) | ((u64)levelVram[1] << 20) | ((u64)levelBufWidth[1] << 34) |
+                ((u64)levelVram[2] << 40) | ((u64)levelBufWidth[2] << 54);
+        *mipBaseHigh = (u64)levelVram[3] | ((u64)levelBufWidth[3] << 14) | ((u64)levelVram[4] << 20) | ((u64)levelBufWidth[4] << 34) |
+                ((u64)levelVram[5] << 40) | ((u64)levelBufWidth[5] << 54);
     }
     return 1;
 }
@@ -162,6 +168,10 @@ s16 Gs_ScreenX(s16 x)
     return x;
 }
 
+/*
+ * Screen y to GS y: subtracts the scroll (gSysScrollY) and halves it in
+ * field mode (gSysFrameMode 0).
+ */
 s16 Gs_ScreenY(s16 y)
 {
     y -= gSysScrollY;
@@ -177,6 +187,10 @@ f32 Gs_ScreenXf(f32 x)
     return x;
 }
 
+/*
+ * Gs_ScreenY for a float: subtracts gSysScrollY and halves the result in
+ * field mode (gSysFrameMode 0).
+ */
 f32 Gs_ScreenYf(f32 y)
 {
     y -= gSysScrollY;
@@ -186,6 +200,10 @@ f32 Gs_ScreenYf(f32 y)
     return y;
 }
 
+/*
+ * Depth z in -1..1 to a GS Z value: (1 - z) / 2 times gSysZMax, so 1 maps
+ * to 0 and -1 to gSysZMax.
+ */
 f32 Gs_DepthToZ(f32 z)
 {
     z -= 1.0f;
@@ -194,41 +212,47 @@ f32 Gs_DepthToZ(f32 z)
     return z;
 }
 
+/*
+ * Converts a 0xAARRGGBB colour with 0-255 channels to the GS scale where
+ * 0x80 is full: 0xFF becomes 0x80, other nonzero values are halved (at
+ * least 1). alphaOnly nonzero converts only the alpha. Returns the result
+ * in the same layout.
+ */
 u32 Gs_ColorToGs(u32 color, s32 alphaOnly)
 {
-    u8 c[4];
+    u8 channels[4];
     s32 i;
-    u8 *p;
+    u8 *channelPtr;
 
-    c[0] = color >> 16;
-    c[1] = color >> 8;
-    c[2] = color;
-    c[3] = color >> 24;
+    channels[0] = color >> 16;
+    channels[1] = color >> 8;
+    channels[2] = color;
+    channels[3] = color >> 24;
     if (alphaOnly == 0) {
-        for (i = 0, p = c; i < 4; i++, p++) {
-            if (*p == 0xFF) {
-                *p = 0x80;
-            } else if (*p != 0) {
-                *p >>= 1;
-                if (*p == 0) {
-                    *p = 1;
+        for (i = 0, channelPtr = channels; i < 4; i++, channelPtr++) {
+            if (*channelPtr == 0xFF) {
+                *channelPtr = 0x80;
+            } else if (*channelPtr != 0) {
+                *channelPtr >>= 1;
+                if (*channelPtr == 0) {
+                    *channelPtr = 1;
                 }
             }
         }
     } else {
-        if (c[3] == 0xFF) {
-            c[3] = 0x80;
-        } else if (c[3] != 0) {
-            c[3] >>= 1;
-            if (c[3] == 0) {
-                c[3] = 1;
+        if (channels[3] == 0xFF) {
+            channels[3] = 0x80;
+        } else if (channels[3] != 0) {
+            channels[3] >>= 1;
+            if (channels[3] == 0) {
+                channels[3] = 1;
             }
         }
     }
-    return c[2] | ((c[1] << 8) | ((c[3] << 24) | (c[0] << 16)));
+    return channels[2] | ((channels[1] << 8) | ((channels[3] << 24) | (channels[0] << 16)));
 }
 
-/* unk_1864E0's .data (0x1BAB30-0x1BABB0) */
+/* This file's initialised data. */
 u8 gTexRegPacket[32] = {
 #include "main/001BAB30.inc"
 };

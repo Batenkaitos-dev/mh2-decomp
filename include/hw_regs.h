@@ -79,5 +79,13 @@
 #define GS_REG_FRAME_2 0x4D
 #define GS_REG_ZBUF_1 0x4E
 #define GS_REG_ZBUF_2 0x4F
+#define GS_REG_BITBLTBUF 0x50       /* an image transfer's VRAM buffer */
+#define GS_REG_TRXPOS 0x51          /* its position */
+#define GS_REG_TRXREG 0x52          /* its size */
+#define GS_REG_TRXDIR 0x53          /* its direction: 0 starts a transfer to VRAM */
+
+/* The GIF tag's register descriptor A+D: each qword is a value and the
+ * number of the GS register it goes to. */
+#define GIF_REG_AD 0xE
 
 #endif

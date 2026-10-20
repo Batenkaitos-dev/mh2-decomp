@@ -1,4 +1,4 @@
-# Browser_ReadPad (lobby, src/lobby/unk_7303D0.c)
+# Browser_ReadPad (lobby, src/lobby/browser_util.c)
 
 ## Status
 
@@ -24,7 +24,7 @@
    `if name == ".text" and i in func_in:` handle `func_in[i].startswith("Stripped_")` as a
    marker (`renames[i] = f".text.{func_in[i]}"; order.append(("marker", i, None))`), so the
    function is compiled (MWCC's state changes) and its section discarded, as INCLUDE_ASM's
-   markers are. Then in unk_7303D0.c, anywhere before Browser_ReadPad:
+   markers are. Then in browser_util.c, anywhere before Browser_ReadPad:
    `static f64 Stripped_Sub(f64 a, f64 b) { return a - b; }` with a comment (it compiles to a
    tail call of dpsub; no data, no relocations outside its section). Score: Browser_ReadPad
    MATCH, the file's other 8 functions MATCH (func_diff with the function present).

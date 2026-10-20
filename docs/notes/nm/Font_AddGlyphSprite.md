@@ -1,4 +1,4 @@
-# Font_AddGlyphSprite (sub_main, src/sub_main/unk_2E3940.c)
+# Font_AddGlyphSprite (sub_main, src/sub_main/engine_core.c)
 
 ## Status
 Matched (round 30, s6, second session), and made static: Font_DrawGlyph, which waited on it

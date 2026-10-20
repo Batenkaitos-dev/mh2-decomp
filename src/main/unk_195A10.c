@@ -1,13 +1,11 @@
 /*
- * main 0x195a10-0x195c00: more sound bank loads (see unk_195230.c), and
+ * More sound bank loads (after the scene's bank loads), and
  * the two readers of bank files (id: partition << 16 | file).
  */
 #include "common.h"
 #include "syssettings.h"
 #include "stream.h"
 
-/* sub_main system settings (0x6ADF90): its work buffer, and the flag set
- * while banks load */
 
 extern s8 gVoiceBanks[];     /* sub_main: voice banks, 16 per sex */
 

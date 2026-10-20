@@ -2,7 +2,7 @@
 #define PRIM_H
 
 /*
- * The boot ELF's 2D primitives (src/main/unk_186D80.c). Each one copies a
+ * The boot ELF's 2D primitives. Each one copies a
  * GIF packet template (DMA END tag, GIF tag in REGLIST mode, PRIM) to the
  * scratchpad at 0x70000000, writes its register values after it and sends
  * the packet with Prim_SendPacket.

@@ -1,7 +1,7 @@
 /*
  * Capcom memory helpers in the boot ELF: byte fill and copy, wrappers over the
- * heap object at 0x219110, and the heap-block calls the movie player uses
- * (src/sub_main/movie.c: allocate, address of, free).
+ * heap object gSysHeap, and the heap-block calls the movie player uses
+ * (allocate, address of, free).
  */
 #include "common.h"
 #include "syswork.h"
@@ -24,13 +24,14 @@ void Mem_Compact(void);
 void *Mem_Alloc(u32 size, s32 flag);
 void Packet_Reset(void);
 
-void Mem_Fill(void *dst, u8 c, s32 n)
+/* Sets n bytes at dst to value. */
+void Mem_Fill(void *dst, u8 value, s32 n)
 {
-    u8 *d = dst;
+    u8 *cursor = dst;
     s32 i;
 
     for (i = 0; i < n; i++) {
-        *d++ = c;
+        *cursor++ = value;
     }
 }
 
@@ -42,14 +43,14 @@ void Mem_Fill(void *dst, u8 c, s32 n)
 void Mem_Copy(void *dst, void *src, s32 n)
 {
     s32 i;
-    s8 *d = dst;
-    s8 *s = src;
-    s8 c;
+    s8 *dstCursor = dst;
+    s8 *srcCursor = src;
+    s8 value;
 
     for (i = 0; i < n; i++) {
-        if (c = *s++) {
+        if (value = *srcCursor++) {
         }
-        *d++ = c;
+        *dstCursor++ = value;
     }
 }
 
@@ -63,9 +64,9 @@ s32 SysHeap_GetMark(void *mark)
     return LinearHeap_GetMark((struct LinearHeap *)gSysHeap, 0, (struct LinearMark *)mark);
 }
 
-void SysHeap_Release(void *p)
+void SysHeap_Release(void *mark)
 {
-    LinearHeap_Release((LinearHeap *) gSysHeap, p);
+    LinearHeap_Release((LinearHeap *) gSysHeap, mark);
 }
 
 void *SysHeap_AllocTop(u32 size)
@@ -73,16 +74,21 @@ void *SysHeap_AllocTop(u32 size)
     return LinearHeap_Alloc((struct LinearHeap *)gSysHeap, size, 1);
 }
 
-/* Allocates a heap block; on failure, calls Mem_Compact and retries. */
+/*
+ * Allocates a block of size bytes from the main heap; when none is free,
+ * compacts memory (Mem_Compact) and allocates from the heap's top. flag
+ * is not used. Returns the block's handle (Mem_GetAddr gives its
+ * address), NULL when it still fails.
+ */
 void *Mem_Alloc(u32 size, s32 flag)
 {
-    void *p = MainHeap_Alloc(size);
+    void *handle = MainHeap_Alloc(size);
 
-    if (p == NULL) {
+    if (handle == NULL) {
         Mem_Compact();
-        p = MainHeap_AllocTop(size);
+        handle = MainHeap_AllocTop(size);
     }
-    return p;
+    return handle;
 }
 
 void Mem_Free(void *handle)
@@ -95,6 +101,12 @@ void *Mem_GetAddr(void *handle)
     return MainHeap_GetAddr(handle);
 }
 
+/*
+ * Compacts the main heap: holds the flip for 2 frames (gFlipCountdown),
+ * sends and waits for the queued DMA (Dma_FlushQueue), moves the heap's
+ * blocks together (MainHeap_Compact), then fixes the models' pointers to
+ * their moved blocks (Model_RelocateAll).
+ */
 void Mem_Compact(void)
 {
     gFlipCountdown = 2;
@@ -103,6 +115,10 @@ void Mem_Compact(void)
     Model_RelocateAll();
 }
 
+/*
+ * Allocates the two 0xA0000-byte packet buffers (gSysWork.buf), one per
+ * frame, and starts the current one (Packet_Reset).
+ */
 void Packet_InitBuffers(void)
 {
     s32 i;

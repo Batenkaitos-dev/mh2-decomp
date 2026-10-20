@@ -3,7 +3,7 @@
 # overlay's C). Regenerate with: python tools/gen_struct.py include/plsel.spec include/plsel.h
 name PlselWork
 size 0x3B88
-0x0000 s32 unk0000
+0x0000 s32 resMode // the results page up: 0 the money pages, 1 the hunter rank points, 3 the size records, 4 the arena monster (RES_MODE_*)
 0x0004 s32 moneyTotal // the money paid (all four sums; Save_AddMoney); t[4]
 0x0008 s32 questMoney // the quest reward: fees and goal rewards (t[1], t[20])
 0x000C s32 monsterMoney // the monsters' trade price total (t[2], t[11])
@@ -87,6 +87,6 @@ size 0x3B88
 0x3AE0 u16 questSmallest[0x50] // smallest size of the quest
 0x3B80 u8 lowRankCut // 1: rank over 30 on a quest under 5 stars: 60% of the points and money
 0x3B81 u8 wtdDouble // 1: the WTD fee counts double (Plsel_SumRecordRewards)
-0x3B82 u8 unk3B82
-0x3B83 u8 unk3B83
+0x3B82 u8 rateNoticeQueued // 1 once the notice that the rates are open is queued
+0x3B83 u8 clearedBefore // a drill: whether its quest was cleared before this clear (its notice comes on the first)
 0x3B84 s32 pointRate // the points' percent (Plsel_ResetPointRate)

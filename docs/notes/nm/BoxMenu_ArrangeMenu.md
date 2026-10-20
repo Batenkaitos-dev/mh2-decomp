@@ -1,4 +1,4 @@
-# BoxMenu_ArrangeMenu (lobby, src/lobby/unk_760C70.c)
+# BoxMenu_ArrangeMenu (lobby, src/lobby/menu_sheets.c)
 
 ## Status
 

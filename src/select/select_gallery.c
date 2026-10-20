@@ -1,5 +1,5 @@
 /*
- * select: the gallery (0x6BF3B0-0x6C2DB0, with its .data and .rodata),
+ * select: the gallery (with its .data and .rodata),
  * started from gm_sub's main menu.
  *
  * Gallery_Task runs Gallery_Update over GalWork (select.h), at 0x1000 in
@@ -12,6 +12,7 @@
  * the same entry.
  */
 #include "common.h"
+#include "card.h"
 #include "window.h"
 extern s32 gVSyncCount; /* main: +1 every VBlank */
 extern s32 gLoadLastVSync; /* sub_main: gVSyncCount when the loader last ran a frame */
@@ -22,6 +23,7 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "select.h"
 #include "syssettings.h"
 #include "save.h"
+#include "movie.h"
 #include "select/select_gallery.h"   /* the texts this file uses (tools/content_gen.py) */
 
 /* The game compiled this file at optimization level 4 (the build's -O3,p
@@ -281,7 +283,7 @@ GalRec gGalleryScrollBar = {
 GalRec gGalleryScrollRecs[2] __attribute__((aligned(16))) = {
 #include "select/006CBF40.inc"
 };
-/* 16-aligned: the 8 zero bytes before it (0x6CBF78) are padding. */
+/* 16-aligned: the 8 zero bytes before it are padding. */
 s16 gGalleryEntryPagePos[32] __attribute__((aligned(16))) = {
 #include "select/006CBF80.inc"
 };
@@ -623,7 +625,7 @@ s32 Movie_Update(void);
 s32 Movie_GetStatus(void);
 void Movie_RequestStop(void);
 void Movie_Stop(void);
-/* unit's own declaration: s32, though sub_main/unk_3D54B0.c defines it u8; Gallery_Update's code needs the s32 return */
+/* unit's own declaration: declared s32 as Gallery_Update uses it; with the definition's u8 return, the call compiles differently */
 s32 NetMenu_Update(void);
 
 /*
@@ -699,7 +701,7 @@ s32 Gallery_Update(TaskSlot *task)
                 gal->step++;
                 Gallery_StartPanel(gal, 0);
             } else if (pressedNow & PAD_CROSS) {
-                NetMenu_Open(1);
+                NetMenu_Open(NETMENU_MODE_SAVE_SYSTEM);
                 gal->state = GAL_NET_MENU;
                 gal->step = 0;
                 Gallery_PlayCancelSe();
@@ -919,7 +921,7 @@ s32 Gallery_Update(TaskSlot *task)
             gal->step++;
         case 1:
             Movie_Update();
-            if (Movie_GetStatus() == 3 || (gPadState[0].pressed & PAD_CROSS)) {
+            if (Movie_GetStatus() == MOVIE_STATUS_FINISHED || (gPadState[0].pressed & PAD_CROSS)) {
                 Movie_RequestStop();
                 gal->step++;
                 FadeA_Start(2);
@@ -1319,7 +1321,7 @@ void Gallery_DrawNewBlink(s32 unused, s16 x, s16 y, s32 blink)
 s32 sprintf(char *, const char *, ...);    /* sprintf */
 char *strchr(char *, s32);                  /* strchr */
 s32 Str_Length(char *);                         /* a message's width */
-/* unit's own declaration: x and y as s16, though sub_main/unk_36BE70.c takes s32; Gallery_DrawEntryPage and Gallery_DrawList need the s16 */
+/* unit's own declaration: x and y as s16, as Gallery_DrawEntryPage and Gallery_DrawList pass them; with the definition's s32, the calls compile differently */
 void Hud_DrawButtonIcon(s32, s16, s16, s32, u32, f32);  /* a button icon */
 void Gallery_DrawScrollBar(GalWork *g);
 

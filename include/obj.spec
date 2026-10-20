@@ -1,5 +1,5 @@
 # Fields of Obj (include/obj.h), an object of sub_main's first object pool (0x80 of 0x40 bytes at 0x5B4FB0,
-# Obj_Alloc/Obj_Free; sub_main's unk_363550.c, unk_37B570.c and unk_386160.c read it too), which the game overlay uses for its
+# Obj_Alloc/Obj_Free; sub_main's bgm.c, area_draw.c and field_objects.c read it too), which the game overlay uses for its
 # short-lived objects (effects and the like): an update function run every frame steps a state machine in
 # +0x4 (0 set up, 1 run, 2 end, 3 free). Regenerate with:
 #   python tools/gen_struct.py include/obj.spec include/obj.h

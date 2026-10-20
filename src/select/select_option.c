@@ -1,5 +1,5 @@
 /*
- * select: the options and the network options (0x6B6700-0x6B9B10).
+ * select: the options and the network options.
  *
  * Both run as a task (Option_Task, NetOption_Task) over OptWork (select.h,
  * gOptWork). The options have four pages: the main one (sound mode,
@@ -10,10 +10,10 @@
  * starts the network setup guide (the yn overlay). Leaving saves the
  * settings to the memory card when they changed.
  *
- * The file owns its .data (0x6CAB60-0x6CACC0), .rodata (0x6CDF50-0x6CDFD8)
- * and .bss (0x6D2190-0x6D21A8).
+ * The file owns its .data, .rodata and .bss.
  */
 #include "common.h"
+#include "card.h"
 #include "window.h"
 #include "syssettings.h"
 #include "pad.h"
@@ -1253,11 +1253,11 @@ void Option_Start(TaskSlot *task, u16 net)
 }
 
 void Stream_Reset(void);
-/* unit's own declaration: s32, though sub_main/unk_3D54B0.c defines it u8; NetOption_Update's code needs the s32 return */
+/* unit's own declaration: declared s32 as NetOption_Update uses it; with the definition's u8 return, the call compiles differently */
 s32 NetMenu_Update(void);
 void NetMenu_Open(u8 mode);
 void Vib_StopAll(void);
-void func_3240D0(void);
+s32 CamReq_ResetStub(void);
 void Task_StartGmSub(void);
 void Option_DrawMainPage(void);
 void NetOption_DrawPage(void);
@@ -1277,7 +1277,7 @@ void Option_Exit(void *task, s32 net)
             gOptWork->timer = 0;
         } else {
             gOptWork->step++;
-            NetMenu_Open(1);
+            NetMenu_Open(NETMENU_MODE_SAVE_SYSTEM);
         }
         break;
     case 1:
@@ -1293,7 +1293,7 @@ void Option_Exit(void *task, s32 net)
             SysSettings_Reset();
             Stream_Reset();
             Vib_StopAll();
-            func_3240D0();
+            CamReq_ResetStub();
         }
         break;
     case 3:
@@ -1449,7 +1449,7 @@ void NetOption_Update(TaskSlot *task, s32 unused)
             case 1:
                 switch (gOptWork->step) {
                 case 0:
-                    NetMenu_Open(0x12);
+                    NetMenu_Open(NETMENU_MODE_DELETE_LOGIN_ID);
                     gOptWork->step++;
                     break;
                 case 1:
@@ -1488,10 +1488,10 @@ void NetOption_Update(TaskSlot *task, s32 unused)
     }
 }
 
-/* D_006CDFB8, a format that prints one string, sits here in the game's
+/* gSelectFmtString, a format that prints one string, sits here in the game's
  * .rodata, before NetOption_Input's jump table, though only
  * NetOption_DrawConfirm uses it. */
-INCLUDE_RODATA("asm/select/nonmatchings/select_option", D_006CDFB8);
+INCLUDE_RODATA("asm/select/nonmatchings/select_option", gSelectFmtString);
 
 /*
  * The network options' input: two settings that wrap, two rows that open
@@ -1754,7 +1754,7 @@ void NetOption_DrawNetMenuPage(void)
 
 extern char *gNetOptConfirmTexts[];      /* the network options' notice (select_psp.c) */
 extern char *gPouchMenuPanel2_6[];        /* sub_main: the YES/NO strings */
-extern char D_006CDFB8[];
+extern char gSelectFmtString[];
 void Text_SetColor(s16 color);
 void Text_PrintfColored(const char *fmt, ...);
 s32 Str_Length(char *);
@@ -1790,7 +1790,7 @@ void NetOption_DrawConfirm(void)
             lineX = Str_Length(*line);
             lineX = (0x280 - lineX * 9) / 2;
             Font_SetPos(lineX, y);
-            Text_PrintfColored(D_006CDFB8, *line);
+            Text_PrintfColored(gSelectFmtString, *line);
         }
         y += 0x18;
         line++;
@@ -1809,7 +1809,7 @@ void NetOption_DrawConfirm(void)
         } else {
             Font_SetPos(x - 0x1E, 0x144);
         }
-        Text_PrintfColored(D_006CDFB8, *choice);
+        Text_PrintfColored(gSelectFmtString, *choice);
         if (gOptWork->subCursor == j) {
             Menu_DrawGlowBar(x, 0x142, 0x78, 0x18, 0xFF20C0C0);
         }

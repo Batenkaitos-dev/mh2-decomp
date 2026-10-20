@@ -1,8 +1,8 @@
 # Fields of StageObj (include/stageobj.h), an object of sub_main's third object list (StageObj_Alloc(nblk)
-# allocates one: free list D_005AFB60, active list gStageObjList; StageObj_UpdateAll runs +0x20 of each active one every
-# frame, func_00324490 frees one). The game overlay's stage objects use it (src/game/unk_868110.c ..
-# unk_88E760.c): their updates switch on +0x4, their kind is +0x3. The header up to 0x1F is laid out like
-# Obj's (include/obj.h). Regenerate with:
+# allocates one from the free list gStageObjFreeTop onto the active list gStageObjList; StageObj_UpdateAll runs
+# each active one's update every frame, StageObj_Free frees one). The game overlay's stage objects use it: their
+# updates switch on the state, their creators set the kind. The header up to 0x1F is laid out like Obj's.
+# Regenerate with:
 #   python tools/gen_struct.py include/stageobj.spec include/stageobj.h
 name StageObj
 size 0x40
@@ -15,7 +15,7 @@ size 0x40
 0x006 u8 var1 // per-kind scratch byte (a bone index for Em_GetBonePos, an angle << 8 ...)
 0x007 u8 var2 // per-kind scratch byte (0xFF: none in many kinds; an angle << 8 ...)
 0x008 s16 timer // a frame counter
-0x00A s16 angle // a 16-bit angle in most kinds (Vec_RotateY, Mtx_RotateY, StageObj_K1C_CreateAtYaw; yaw from Vec_DirToAngles); a bone index in some
+0x00A s16 angle // a 16-bit angle in most kinds (Vec_RotateY, Mtx_RotateY, MonsterFx_CreateAtYaw; yaw from Vec_DirToAngles); a bone index in some
 0x00C struct StageObj * prev
 0x010 struct StageObj * next
 0x014 void * draw

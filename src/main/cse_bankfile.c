@@ -74,30 +74,35 @@ typedef struct CseBankVagi {
 void scePrintf(char *fmt, ...);
 s32 strncmp(char *a, char *b, u32 n);
 
-s32 CseBankFile_IsHead(void *p)
+s32 CseBankFile_IsHead(void *chunk)
 {
-    return strncmp(p, "Head", 4) == 0;
+    return strncmp(chunk, "Head", 4) == 0;
 }
 
-s32 CseBankFile_IsProg(void *p)
+s32 CseBankFile_IsProg(void *chunk)
 {
-    return strncmp(p, "Prog", 4) == 0;
+    return strncmp(chunk, "Prog", 4) == 0;
 }
 
-s32 CseBankFile_IsSmpl(void *p)
+s32 CseBankFile_IsSmpl(void *chunk)
 {
-    return strncmp(p, "Smpl", 4) == 0;
+    return strncmp(chunk, "Smpl", 4) == 0;
 }
 
-s32 CseBankFile_IsVagi(void *p)
+s32 CseBankFile_IsVagi(void *chunk)
 {
-    return strncmp(p, "Vagi", 4) == 0;
+    return strncmp(chunk, "Vagi", 4) == 0;
 }
 
+/*
+ * The number of key splits of program prog in the bank header head.
+ * Returns 0x80000006 when head is not a Head chunk, 0x80000007 when its
+ * Prog chunk is bad, 0x8000000E when the bank has no program prog.
+ */
 s32 CseBankFile_GetNumSplits(CseBankHead *head, u8 prog)
 {
     CseBankProgs *progs;
-    s32 off;
+    s32 programOffset;
 
     if (CseBankFile_IsHead(head) != 1) {
         scePrintf("[EE]");
@@ -115,24 +120,30 @@ s32 CseBankFile_GetNumSplits(CseBankHead *head, u8 prog)
     if (progs->maxProg < prog) {
         return 0x8000000E;
     }
-    off = progs->offset[prog];
-    if (off == -1) {
+    programOffset = progs->offset[prog];
+    if (programOffset == -1) {
         return 0x8000000E;
     } else {
-        return ((CseProgram *)((u8 *)progs + off))->numSplits;
+        return ((CseProgram *)((u8 *)progs + programOffset))->numSplits;
     }
 }
 
-/* Finds split number split of program prog, and checks that it plays key. */
+/*
+ * Finds split number split of program prog in the bank header head and
+ * fills out with that program, split, sample and Vagi record. Returns 0;
+ * 0x8000000F (out not filled) when the split does not play key;
+ * 0x80000006, 0x80000007, 0x80000008 or 0x80000009 when the Head, Prog,
+ * Smpl or Vagi chunk is bad. prog and split are not range-checked.
+ */
 s32 CseBankFile_GetTone(CseTone *out, CseBankHead *head, u8 prog, u8 key, u8 split)
 {
     CseBankProgs *progs = (CseBankProgs *)((u8 *)head + head->progOffset);
     CseBankSmpl *smpl = (CseBankSmpl *)((u8 *)head + head->smplOffset);
     CseBankVagi *vagi = (CseBankVagi *)((u8 *)head + head->vagiOffset);
-    CseVagi *vg;
-    CseSample *sm;
-    CseSplit *sp;
-    CseProgram *pg;
+    CseVagi *toneVagi;
+    CseSample *toneSample;
+    CseSplit *toneSplit;
+    CseProgram *toneProgram;
 
     if (CseBankFile_IsHead(head) != 1) {
         scePrintf("[EE]");
@@ -158,65 +169,71 @@ s32 CseBankFile_GetTone(CseTone *out, CseBankHead *head, u8 prog, u8 key, u8 spl
         scePrintf(TXT(0x001C8360) /* debug message: a bad VAGI chunk */);
         return 0x80000009;
     }
-    pg = (CseProgram *)((u8 *)progs + progs->offset[prog]);
-    sp = &pg->splits[split];
-    sm = &smpl->samples[sp->sample];
-    vg = &vagi->vagis[sm->vagi];
-    if (key < sp->keyLow || key > sp->keyHigh) {
+    toneProgram = (CseProgram *)((u8 *)progs + progs->offset[prog]);
+    toneSplit = &toneProgram->splits[split];
+    toneSample = &smpl->samples[toneSplit->sample];
+    toneVagi = &vagi->vagis[toneSample->vagi];
+    if (key < toneSplit->keyLow || key > toneSplit->keyHigh) {
         return 0x8000000F;
     }
-    out->prog = pg;
-    out->split = sp;
-    out->sample = sm;
-    out->vagi = vg;
+    out->prog = toneProgram;
+    out->split = toneSplit;
+    out->sample = toneSample;
+    out->vagi = toneVagi;
     return 0;
 }
 
 /*
- * Voice attributes of a tone played at key: volume = program * split *
- * sample (each 0-127), pan = the sum of the three offsets from 64 (clamped at
- * each step), pitch in cents from the three tunings and the distance from
- * the sample's root key.
+ * Fills voice with the attributes of tone played at key: volume = the
+ * program's * the split's * the sample's (each 0-127), pan = the sum of
+ * the three offsets from 64 (clamped at each step), pitch in cents from
+ * the three tunings and the distance from the sample's root key, the
+ * split's ADSR, and the sample data's SPU address (spuBase, the bank's
+ * SPU area, plus the Vagi record's addr). Returns 0.
  */
-s32 CseBankFile_GetVoice(CseVoice *v, CseTone *t, u8 key, u32 spuBase)
+s32 CseBankFile_GetVoice(CseVoice *voice, CseTone *tone, u8 key, u32 spuBase)
 {
     s16 pan;
 
-    v->vol = t->prog->vol;
-    v->vol = v->vol * t->split->vol / 127;
-    v->vol = v->vol * t->sample->vol / 127;
-    pan = t->prog->pan - 64;
+    voice->vol = tone->prog->vol;
+    voice->vol = voice->vol * tone->split->vol / 127;
+    voice->vol = voice->vol * tone->sample->vol / 127;
+    pan = tone->prog->pan - 64;
     if (pan < -64) {
         pan = -64;
     } else if (pan > 63) {
         pan = 63;
     }
-    pan += (s16)(t->split->pan - 64);
+    pan += (s16)(tone->split->pan - 64);
     if (pan < -64) {
         pan = -64;
     } else if (pan > 63) {
         pan = 63;
     }
-    pan += (s16)(t->sample->pan - 64);
+    pan += (s16)(tone->sample->pan - 64);
     if (pan < -64) {
         pan = -64;
     } else if (pan > 63) {
         pan = 63;
     }
-    v->pan = pan + 64;
-    v->pitch = t->prog->coarse * 100 + t->prog->fine;
-    v->pitch += (s16)(t->split->coarse * 100 + t->split->fine);
-    v->pitch += (s16)(t->sample->coarse * 100 + t->sample->fine);
-    v->pitch += (s16)((key - t->sample->root) * 100);
-    v->adsr1 = t->split->adsr1;
-    v->adsr2 = t->split->adsr2;
-    v->unk8 = t->sample->unk0;
-    v->unkA = t->sample->unk2;
-    v->addr = spuBase + t->vagi->addr;
-    v->unkC = t->vagi->unkC;
+    voice->pan = pan + 64;
+    voice->pitch = tone->prog->coarse * 100 + tone->prog->fine;
+    voice->pitch += (s16)(tone->split->coarse * 100 + tone->split->fine);
+    voice->pitch += (s16)(tone->sample->coarse * 100 + tone->sample->fine);
+    voice->pitch += (s16)((key - tone->sample->root) * 100);
+    voice->adsr1 = tone->split->adsr1;
+    voice->adsr2 = tone->split->adsr2;
+    voice->unk8 = tone->sample->unk0;
+    voice->unkA = tone->sample->unk2;
+    voice->addr = spuBase + tone->vagi->addr;
+    voice->unkC = tone->vagi->unkC;
     return 0;
 }
 
+/*
+ * The size of the bank's sample data (head->bodySize); 0x80000006 when
+ * head is not a Head chunk.
+ */
 s32 CseBankFile_GetBodySize(CseBankHead *head)
 {
     if (CseBankFile_IsHead(head) != 1) {

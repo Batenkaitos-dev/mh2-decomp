@@ -13,7 +13,7 @@ What is left, at the last count:
   and more in structs local to one file;
 - data objects still named by their address (`D_00XXXXXX`);
 - small groups of field accesses through raw byte offsets;
-- 33 fakematches ("Fakematches").
+- 31 fakematches ("Fakematches").
 
 ## Ground rules
 
@@ -189,7 +189,7 @@ marker so that they can be counted:
   return type differs from the definition in another file, where the
   calling code matches only with it, is how the game's unit declared it.
   Mark it `/* unit's own declaration: <evidence> */`; proto_check counts
-  these apart (431 at the last count). Where a cast at the call gives the
+  these apart (432 at the last count). Where a cast at the call gives the
   same code, declare the callee as it is defined and cast the call
   instead.
 
@@ -209,7 +209,7 @@ Capcom's own assembly is source: main's 12 memory copy and fill loops
 (`Mem_*`, src/main/mem_loops.s) and sub_main's VU1 microcode (60
 programs, src/sub_main/vu1_microcode.vsm). sub_main's 42 VU0 routines
 are CodeWarrior `asm` functions inside their C files
-(src/sub_main/unk_2E3940.c and unk_2F17C0.c): MWCC never emits VU0 macro
+(src/sub_main/engine_core.c and vu1_packets.c): MWCC never emits VU0 macro
 instructions from C (docs/mwcc-matching.md, "What can't come from C").
 - The YAML keeps an `asm` piece for the range, and configure.py builds it
   from src/<module>/<piece>.s when that file exists. splat still writes

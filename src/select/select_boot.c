@@ -1,5 +1,5 @@
 /*
- * select: the boot of the game (0x6B51B0-0x6B6700).
+ * select: the boot of the game.
  *
  * Select_MainTask runs first: it loads the common textures and sound banks,
  * waits for a controller (with a warning while none is ready), opens the
@@ -13,14 +13,16 @@
  * press on the title screen or the picture starts gm_sub's GmSub_Task,
  * which goes on to the menus.
  *
- * The file owns its .rodata (0x6CDEA0-0x6CDF50) and .bss (0x6D2180).
+ * The file owns its .rodata and .bss.
  */
 #include "common.h"
+#include "card.h"
 #include "padio.h"
 #include "pad.h"
 #include "m2c_macros.h"
 #include "select.h"
 #include "syssettings.h"
+#include "movie.h"
 #include "select/select_boot.h"   /* the texts this file uses (tools/content_gen.py) */
 
 extern PadInput *gPadInputPtr; /* main: -> gPadIn */
@@ -58,13 +60,13 @@ void Rand_InitGauss(void);
 void Rand_Seed(u8 seed);
 void UnreadFlags_Init(void);
 void Model_ResetAll(void);
-void Cam_ResetRequests_Unk(void);
+void Boot_ResetMenus(void);
 void Card_Init(void);
 void Hud_Reset(void);
 void NetMenu_Open(u8 mode);
-/* unit's own declaration: s32, though sub_main/unk_3D54B0.c defines it u8; Select_MainTask's code needs the s32 return */
+/* unit's own declaration: declared s32 as Select_MainTask uses it; with the definition's u8 return, the call compiles differently */
 s32 NetMenu_Update(void);
-u8 func_3DDBA0(void);
+u8 Card_GetSeed(void);
 u8 FadeA_GetState(void);
 void FadeA_Reset(void);
 void Tex_ReleaseCommon(void);
@@ -136,7 +138,7 @@ void Boot_Task(TaskSlot *task)
         Quest_Clear();
         Gfx_ClearModelBuffers();
         Boot_InitWork();
-        gSysSettings.unkE5 = 0;
+        gSysSettings.petDayPending = 0;
         FadeB_Reset();
         Tex_LoadSystemPack(0);
         LobbyDay_SetNoon();
@@ -352,7 +354,7 @@ void Boot_UpdateMovie(void)
         break;
     case 2:
         Movie_Update();
-        if (Movie_GetStatus() == 3) {
+        if (Movie_GetStatus() == MOVIE_STATUS_FINISHED) {
             goto stop;
         }
         gBootWork->movieFrames++;
@@ -368,7 +370,7 @@ void Boot_UpdateMovie(void)
     case 3:
         FadeA_Start(4);
         Movie_Update();
-        if (Movie_GetStatus() == 0) {
+        if (Movie_GetStatus() == MOVIE_STATUS_STOPPED) {
         end_movie:
             Gs_SetTableColor(0);
             Movie_Stop();
@@ -482,7 +484,7 @@ void Select_MainTask(TaskSlot *task)
         Rand_InitGauss();
         UnreadFlags_Init();
         Model_ResetAll();
-        Cam_ResetRequests_Unk();
+        Boot_ResetMenus();
         Card_Init();
         memset(gNextQuest, 0, 0x80);
         Quest_Clear();
@@ -536,7 +538,7 @@ void Select_MainTask(TaskSlot *task)
             task->step++;
             if (gSysSettings.netMenuShown == 0) {
                 gSysSettings.netMenuShown = 1;
-                NetMenu_Open(0);
+                NetMenu_Open(NETMENU_MODE_BOOT);
             } else {
                 task->step++;
                 FadeA_Start(0xB);
@@ -546,7 +548,7 @@ void Select_MainTask(TaskSlot *task)
             if ((u8)NetMenu_Update()) {
                 task->step++;
                 FadeA_Start(0xB);
-                Rand_Seed(func_3DDBA0());
+                Rand_Seed(Card_GetSeed());
             }
             break;
         case 2:

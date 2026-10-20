@@ -1,8 +1,7 @@
 /*
- * The ending (plsel 0xD64C80-0xD67530): the staff roll with the pictures
- * and animated objects behind it, then the closing message. sub_main's
- * scene steps (unk_3240E0.c) and select's gallery run it (Ending_Update
- * each frame).
+ * The ending: the staff roll with the pictures and animated objects
+ * behind it, then the closing message. sub_main's scene steps and select's
+ * gallery run it (Ending_Update each frame).
  *
  * The roll (gEndingRoll) is a page of entries (text, icons, titles,
  * pictures, and spawn marks that start objects) that scrolls up; behind
@@ -231,8 +230,8 @@ extern s32 gTexHandles[];
 s32 Tex_Use(s32 n, u32 *handles);
 void Ending_DrawRectF(TexRect *, f32, f32);
 
-/* .data (0xD76100-0xD78B10). gEndingRoll is the staff roll: its strings
- * are the file's first .rodata (0xD795D8). */
+/* The ending's tables. gEndingRoll is the staff roll: its strings are the
+ * file's first .rodata. */
 u32 gEndingGlyphColors[8] = {
 #include "plsel/00D76100.inc"
 };
@@ -1338,7 +1337,11 @@ void Ending_MoveObjects(void)
 }
 
 void Gfx_SetBlend(s32, s32);
-void TexRect_DrawRotated(TexRect *r, u16 angle); /* unit's own declaration: the angle as u16 here; with the definition's s32 (sub_main/unk_363550.c), Ending_DrawObjects' code differs */
+/* Ending_DrawObjects passes the angle from a table of s16; declared u16,
+ * the call takes it unsigned, as the game's code does, where the
+ * definition's s32 would sign-extend it.
+ * unit's own declaration: declared as the caller uses it. */
+void TexRect_DrawRotated(TexRect *r, u16 angle);
 
 /*
  * Draws the objects: the current step's cell (texture rectangle and size,

@@ -1,4 +1,4 @@
-# GroupBoard_DrawRecruitForm (lobby, src/lobby/unk_6E9310.c)
+# GroupBoard_DrawRecruitForm (lobby, src/lobby/group_board.c)
 
 ## Status
 Matched in round 30 (slot s2), from 15 words. Natural C, no tag.

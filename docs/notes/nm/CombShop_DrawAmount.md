@@ -1,4 +1,4 @@
-# CombShop_DrawAmount (lobby, src/lobby/unk_7766D0.c)
+# CombShop_DrawAmount (lobby, src/lobby/combine_shop.c)
 
 ## Status
 

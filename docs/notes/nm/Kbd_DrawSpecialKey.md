@@ -1,4 +1,4 @@
-# Kbd_DrawSpecialKey (sub_main, src/sub_main/unk_314E00.c, level 4)
+# Kbd_DrawSpecialKey (sub_main, src/sub_main/kbd.c, level 4)
 
 ## Status
 

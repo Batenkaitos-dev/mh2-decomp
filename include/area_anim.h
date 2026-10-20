@@ -3,12 +3,12 @@
 
 /*
  * The parameter blocks of the area animations. The AreaAnim_* functions (sub_main
- * unk_37AC80.c) build a model or texture matrix from one; the area tables of unk_37B570.c
+ * area_anim.c) build a model or texture matrix from one; the area tables of area_draw.c
  * point to them by animation type.
  * - PropRec.data (Area_DrawProp, one block per copy): 1 AnimSpin, 2 UvScroll, 3 UvWave[2],
  *   4 f32 pos[3], 5 AnimRot, 6 AnimRotScale, 7 f32 x and z, 8 and 0x6F AnimScrollPos,
  *   9 AnimScrollSpin, 10 AnimScrollRot, 11 AnimSpin2, 12 UvStep[2].
- * - AreaAnim.arg (AreaSky_Draw): 1 AnimSpin, 2 f32 pos[3], 4 UvScroll, 5 UvWave[2],
+ * - AreaAnim.arg (Area_DrawModels): 1 AnimSpin, 2 f32 pos[3], 4 UvScroll, 5 UvWave[2],
  *   6 AnimScrollSpin, 7 UvStep[2], 8 AnimScrollPos, 9 AnimSpin2.
  */
 
@@ -87,7 +87,7 @@ typedef struct AnimScrollRot {
 typedef char AnimScrollRot_size_check[(sizeof(AnimScrollRot) == 0x8) ? 1 : -1];
 
 /* An animated part's command byte (Area_DrawProp, record +2): the function
- * that builds its matrix (unk_37AC80.c). */
+ * that builds its matrix (area_anim.c). */
 #define AREA_ANIM_CMD_SPIN              1   /* AreaAnim_TranslateSpin */
 #define AREA_ANIM_CMD_UV_SCROLL         2   /* AreaAnim_UvScroll */
 #define AREA_ANIM_CMD_UV_WAVE           3   /* AreaAnim_UvWave */

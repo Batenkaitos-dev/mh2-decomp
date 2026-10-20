@@ -2,6 +2,7 @@
  * memory. include/browser.h. */
 #include "common.h"
 #include "browser.h"
+#include "html.h"
 
 void *memcpy(void *dst, const void *src, u32 n);
 u32 strlen(const char *s);
@@ -58,8 +59,8 @@ s32 Browser_Retry(void)
     if (++w->tries != 2 && Portal_HandleData() == 1) {
         return 1;
     }
-    gBrowserState->pageMode = 0;
-    gBrowserWork->endReason = 3;
+    gBrowserState->pageMode = CSV_KIND_NONE;
+    gBrowserWork->endReason = BROWSER_END_RETRY_FAILED;
     Browser_ShowList(0);
     gBrowserSub->dlgCursor = 1;
     return 2;

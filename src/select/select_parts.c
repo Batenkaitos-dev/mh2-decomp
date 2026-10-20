@@ -1,6 +1,6 @@
 /*
  * select: the drawing and animation of character creation's pages
- * (0x6BCE20-0x6BF3B0), for select_chara.c's tasks.
+ * for character creation's tasks.
  *
  * The first page's two side panels (one per gender) drop in
  * (Parts_DrawSides); the editing page's seven panels (name, type, face,
@@ -11,8 +11,8 @@
  * changes. The state lives in CharaWork (select.h), at 0x1000 in the
  * shared work area; Parts_Animate steps it each frame.
  *
- * The file owns its .data (0x6CB340-0x6CB758: the pieces, positions and
- * label tables) and .rodata (0x6CE0F0-0x6CE188).
+ * The file owns its .data (the pieces, positions and label tables) and
+ * .rodata.
  */
 #include "common.h"
 #include "syssettings.h"

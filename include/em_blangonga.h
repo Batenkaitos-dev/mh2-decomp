@@ -294,11 +294,6 @@ enum EmBlangongaQuery {
     BLANG_QUERY_CARRIED = 6             /* the first carried item shown (item 0: 1, item 2: 2, item 1: 3; none: 0) */
 };
 
-/* A point (EmBlangonga_CarveThrowPt; Shen Gaoren's sound offsets), copied as one struct. */
-typedef struct EmBlangongaVec {
-    f32 x, y, z;
-} EmBlangongaVec;
-
 /* A row of a weight table (EmBlangonga_PickCarried): the rows end with weight 0xFFFF. */
 typedef struct EmBlangongaPickRow {
     u16 weight;
@@ -311,12 +306,5 @@ typedef struct EmBlangongaTurnData {
     EmBlangongaPickRow pick0[4];        /* map 6 (Map_DayId) */
     EmBlangongaPickRow pick1[4];        /* map 4 */
 } EmBlangongaTurnData;
-
-/* An area's entry points (EmBlangonga_EnterNewArea; Em_FindAreaEntry finds it by id). */
-typedef struct EmBlangongaAreaEntry {
-    s16 id;
-    s16 pad;
-    f32 *pts;                           /* the points, three floats each */
-} EmBlangongaAreaEntry;
 
 #endif /* EM_BLANGONGA_H */

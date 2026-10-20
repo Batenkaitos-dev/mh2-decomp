@@ -1,5 +1,5 @@
 /*
- * main 0x193cb0-0x194830: stream volumes and fades (the volume options
+ * Stream volumes and fades (the volume options
  * give each channel a ceiling), and the AFS loaders: partitions made from
  * files of partition 3, whole-file reads, and a small cache of "dmcam"
  * files.
@@ -8,8 +8,6 @@
 #include "syssettings.h"
 #include "stream.h"
 
-/* sub_main system settings (0x6ADF90) */
-/* sub_main work buffer (also the table of contents of partitions 5, 6) */
 
 /* 0.1 dB output volume for each volume step 0..127 (-999 = silent) */
 extern s16 gVolumeDb[128];
@@ -50,7 +48,7 @@ void Stream_Reset(void)
 void Stream_UpdateMaxVol(s32 apply)
 {
     s32 i;
-    StreamChan *c = gStreamChan;
+    StreamChan *chan = gStreamChan;
     u8 *levels;
 
     if (gSysSettings.soundMode == 2) {
@@ -58,34 +56,44 @@ void Stream_UpdateMaxVol(s32 apply)
     } else {
         levels = gVolumeMax;
     }
-    for (i = 0; i < STREAM_CHAN_COUNT; i++, c++) {
+    for (i = 0; i < STREAM_CHAN_COUNT; i++, chan++) {
         if (i == 0) {
-            c->maxVol = levels[gSysSettings.musicVolume];
+            chan->maxVol = levels[gSysSettings.musicVolume];
         } else {
-            c->maxVol = levels[gSysSettings.seVolume];
+            chan->maxVol = levels[gSysSettings.seVolume];
         }
         if (apply == 1) {
-            Stream_SetVol(i, c->maxVol);
+            Stream_SetVol(i, chan->maxVol);
         }
     }
 }
 
-void Stream_SetVol(s32 ch, s32 vol)
+/*
+ * Sets stream channel chanIndex to volume step vol (0-127), capped at the
+ * channel's ceiling (maxVol), and sends the matching output volume from
+ * gVolumeDb (0.1 dB, no lower than -999) to its ADXT handle.
+ */
+void Stream_SetVol(s32 chanIndex, s32 vol)
 {
-    StreamChan *c = &gStreamChan[ch];
-    s32 db;
+    StreamChan *chan = &gStreamChan[chanIndex];
+    s32 volDb;
 
-    if (c->maxVol < vol) {
-        vol = c->maxVol;
+    if (chan->maxVol < vol) {
+        vol = chan->maxVol;
     }
-    c->vol = vol;
-    db = (f32)gVolumeDb[c->vol];
-    if (db < -999) {
-        db = -999;
+    chan->vol = vol;
+    volDb = (f32)gVolumeDb[chan->vol];
+    if (volDb < -999) {
+        volDb = -999;
     }
-    ADXT_SetOutVol(gStreamAdxt[ch], db);
+    ADXT_SetOutVol(gStreamAdxt[chanIndex], volDb);
 }
 
+/*
+ * Applies the sound option: ADX streams go mono when
+ * gSysSettings.soundMode is 0, and the sound engine's output is set from
+ * mode (Sound_SetOutputMode). seen: callers pass the saved soundMode.
+ */
 void Sound_ApplyOutputMode(s32 mode)
 {
     if (gSysSettings.soundMode == 0) {
@@ -96,58 +104,74 @@ void Sound_ApplyOutputMode(s32 mode)
     Sound_SetOutputMode(mode);
 }
 
-s32 Stream_GetStat(s32 ch)
+/*
+ * Reads the ADXT status of stream channel chanIndex, keeps it in the
+ * channel's stat and returns it.
+ */
+s32 Stream_GetStat(s32 chanIndex)
 {
-    StreamChan *c = &gStreamChan[ch];
+    StreamChan *chan = &gStreamChan[chanIndex];
 
-    c->stat = ADXT_GetStat(gStreamAdxt[ch]);
-    return c->stat;
+    chan->stat = ADXT_GetStat(gStreamAdxt[chanIndex]);
+    return chan->stat;
 }
 
-void Stream_FadeOut(s32 ch, s32 frames)
+/*
+ * Starts a fade of stream channel chanIndex from its volume to 0 over
+ * frames frames, stepped by Stream_UpdateFades.
+ */
+void Stream_FadeOut(s32 chanIndex, s32 frames)
 {
-    StreamChan *c = &gStreamChan[ch];
+    StreamChan *chan = &gStreamChan[chanIndex];
 
-    c->fadeFrom = c->vol;
-    c->fadeTo = 0;
-    c->fadeLeft = frames;
-    c->fadeLen = frames;
+    chan->fadeFrom = chan->vol;
+    chan->fadeTo = 0;
+    chan->fadeLeft = frames;
+    chan->fadeLen = frames;
 }
 
-void Stream_FadeToMax(s32 ch, s16 frames)
+/*
+ * Starts a fade of stream channel chanIndex from its volume to its
+ * ceiling (maxVol) over frames frames, stepped by Stream_UpdateFades.
+ */
+void Stream_FadeToMax(s32 chanIndex, s16 frames)
 {
-    StreamChan *c = &gStreamChan[ch];
+    StreamChan *chan = &gStreamChan[chanIndex];
 
-    c->fadeFrom = c->vol;
-    c->fadeTo = c->maxVol;
-    c->fadeLeft = frames;
-    c->fadeLen = frames;
+    chan->fadeFrom = chan->vol;
+    chan->fadeTo = chan->maxVol;
+    chan->fadeLeft = frames;
+    chan->fadeLen = frames;
 }
 
-/* level: 0..127 of the ceiling */
-void Stream_FadeTo(s32 ch, s16 frames, s16 level)
+/*
+ * Starts a fade of stream channel chanIndex from its volume to level
+ * (0-127, a fraction of the channel's ceiling) over frames frames,
+ * stepped by Stream_UpdateFades.
+ */
+void Stream_FadeTo(s32 chanIndex, s16 frames, s16 level)
 {
-    StreamChan *c = &gStreamChan[ch];
+    StreamChan *chan = &gStreamChan[chanIndex];
 
-    c->fadeFrom = c->vol;
-    c->fadeTo = level * c->maxVol / 127;
-    c->fadeLeft = frames;
-    c->fadeLen = frames;
+    chan->fadeFrom = chan->vol;
+    chan->fadeTo = level * chan->maxVol / 127;
+    chan->fadeLeft = frames;
+    chan->fadeLen = frames;
 }
 
 /* Per frame: steps the fades of the playing channels. */
 void Stream_UpdateFades(void)
 {
     s32 i;
-    StreamChan *c = gStreamChan;
-    ADXT *h = gStreamAdxt;
+    StreamChan *chan = gStreamChan;
+    ADXT *adxtHandle = gStreamAdxt;
 
-    for (i = 0; i < STREAM_CHAN_COUNT; i++, h++, c++) {
-        if (c->fadeLeft > 0 && c->stat == ADXT_STAT_PLAYING) {
-            c->fadeLeft--;
-            Stream_SetVol(i, c->fadeFrom + (c->fadeTo - c->fadeFrom) * (c->fadeLen - c->fadeLeft) / c->fadeLen);
+    for (i = 0; i < STREAM_CHAN_COUNT; i++, adxtHandle++, chan++) {
+        if (chan->fadeLeft > 0 && chan->stat == ADXT_STAT_PLAYING) {
+            chan->fadeLeft--;
+            Stream_SetVol(i, chan->fadeFrom + (chan->fadeTo - chan->fadeFrom) * (chan->fadeLen - chan->fadeLeft) / chan->fadeLen);
         }
-        c->stat = ADXT_GetStat(*h);
+        chan->stat = ADXT_GetStat(*adxtHandle);
     }
 }
 
@@ -183,6 +207,11 @@ s32 Afs_ReadFileIdle(s32 flid, s32 ptid, void *buf)
     return size;
 }
 
+/*
+ * Reads the whole of file flid of AFS partition ptid into buf (cleared
+ * first), waiting in a busy loop where Afs_ReadFileIdle runs Load_Idle.
+ * Returns the size read (whole 0x800-byte sectors).
+ */
 s32 Afs_ReadFile(s32 flid, s32 ptid, void *buf)
 {
     ADXF adxf;
@@ -246,7 +275,7 @@ void Dmcam_Init(void *ptinfo, s32 keep)
 }
 
 /* Returns the cached dmcam file of index idx, reading it after the last
- * one (from D_8B4D00 when alt is 1, else D_5FE840) if needed; NULL when
+ * one (in the overlay area when alt is 1, else in sub_main's cache buffer) if needed; NULL when
  * the index has no file or the cache is full. */
 u8 *Dmcam_Load(s32 idx, s32 alt)
 {
@@ -289,6 +318,10 @@ u8 *Dmcam_Load(s32 idx, s32 alt)
     return gDmcamAddr[i];
 }
 
+/*
+ * The cached dmcam file of index idx (by gDmcamFileIds), NULL when it is
+ * not in the cache. seen: a camera script's program counter is set to it.
+ */
 u8 *Dmcam_Find(s32 idx)
 {
     s32 i;
@@ -347,6 +380,10 @@ s32 Afs_ReadOverlay(s32 flid, void *buf)
     return Afs_ReadFile(flid, 4, buf);
 }
 
+/*
+ * Startup sound setup: the bank slot buffers (Sound_InitBuffers), the ADX
+ * library (Adx_Init) and the SPU map (Sound_LoadSpuMap).
+ */
 void Sound_Boot(void)
 {
     Sound_InitBuffers();
@@ -359,7 +396,7 @@ void Stream_Server(void)
     Stream_Update();
 }
 
-/* unk_193CB0's .data (0x1BCE10-0x1BCE20) */
+/* This file's initialised data. */
 u8 gDmcamGroupAlt[2] = {
 #include "main/001BCE10.inc"
 };
@@ -367,7 +404,7 @@ u8 gDmcamGroup[2] = {
 #include "main/001BCE18.inc"
 };
 
-/* unk_193CB0's .rodata (0x1C8530-0x1C8600) */
+/* This file's read-only data. */
 #pragma rodata on
 char D_001C8530[0x8] = {
 #include "main/001C8530.inc"

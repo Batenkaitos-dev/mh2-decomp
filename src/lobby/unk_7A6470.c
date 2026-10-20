@@ -17,11 +17,11 @@ void *memset(void *, s32, u32);
 
 void Bgm_ForgetCurrent(void);
 void Bgm_PlayAreaMusic(u16);
-void SeasonBanner_CreateOnline(s32, s32); /* unit's own declaration: with the definition's void (u8 a, u8 b) (sub_main/unk_386160.c), Town_StartAreaMusic 2 of 115 words differ */
+void SeasonBanner_CreateOnline(s32, s32); /* unit's own declaration: with the definition's void (u8 a, u8 b) (sub_main/field_objects.c), Town_StartAreaMusic 2 of 115 words differ */
 s32 ElderRaid_InState1(void);
 s32 LobbyTime_IsPm(void);
 s32 LobbyWorld_GetSeason(void);
-void Bgm_PlayField(s32, s32);
+void Bgm_PlayTownTune(s32, s32);
 s32 Game_IsOnline(void);
 extern s32 gTownMode;
 u16 Vec_Heading(f32 *a, f32 *b);
@@ -36,7 +36,7 @@ void Save_SetEventFlag(s32 flag);
 s32 Save_TestEventFlag(s32 flag);
 s32 MyHouse_IsOwner(void);
 void LobbyProp_Spawn(void);
-void Effect06_Start(s16 k);
+void AreaProp_Spawn(s16 k);
 void Effect17_SpawnArea(s32);
 
 void Town_AreaEffects(u16 area)
@@ -44,12 +44,12 @@ void Town_AreaEffects(u16 area)
     switch (area) {
     case AREA_HUB_0xAC:
         if (Save_TestEventFlag(0x89) == 0) {
-            Effect06_Start(0);
+            AreaProp_Spawn(0);
         }
         break;
     case AREA_HUB_0x57:
         if (Save_TestEventFlag(0x8A) == 0) {
-            Effect06_Start(0);
+            AreaProp_Spawn(0);
         }
         break;
     case AREA_ONLINE_HOUSE_1:
@@ -78,7 +78,7 @@ void Town_StartAreaMusic(s32 mode)
 
     played = 0;
     Bgm_ForgetCurrent();
-    if (gScene.area == AREA_HUB_0x87) {
+    if (gScene.area == AREA_TOWN_ARENA) {
         if (gTownMode == 0) {
             season = LobbyWorld_GetSeason() & 0xFF;
             SeasonBanner_CreateOnline(season, LobbyTime_IsPm() & 0xFF);
@@ -91,24 +91,24 @@ void Town_StartAreaMusic(s32 mode)
         i = LobbyTime_IsPm();
         if (Game_IsOnline() == 0) {
             if (gSysSettings.offline == 0) {
-                Bgm_PlayField(1, cur);
+                Bgm_PlayTownTune(1, cur);
                 played = 1;
             } else if (cur != gLobbyLastSeason) {
-                Bgm_PlayField(1, cur);
+                Bgm_PlayTownTune(1, cur);
                 played = 1;
             } else if (i != gLobbyLastPm) {
-                Bgm_PlayField(2, i);
+                Bgm_PlayTownTune(2, i);
                 played = 1;
             }
         } else if (mode == 1) {
-            Bgm_PlayField(1, cur);
+            Bgm_PlayTownTune(1, cur);
             played = 1;
         } else if (mode == 5) {
             if (cur != gLobbyLastSeason) {
-                Bgm_PlayField(1, cur);
+                Bgm_PlayTownTune(1, cur);
                 played = 1;
             } else if (i != gLobbyLastPm) {
-                Bgm_PlayField(2, i);
+                Bgm_PlayTownTune(2, i);
                 played = 1;
             }
         }
@@ -148,7 +148,7 @@ void Anim_LoadCommon(s32 a);
 s8 MyHouse_LocalSlot(void);
 void EmSlot_LoadModel(s32 a, s32 b, s32 c);
 void Area_Enter(u16 area);
-void func_007A6460(s8 arg0);
+void Town_SetDrawSky(s8 arg0);
 void Camera_SetPreset(s32 preset);
 void Area_Load(s32 area);
 void Lobby_ReceiveWhileWaiting(void);
@@ -157,10 +157,10 @@ void Light_InitAll(s32 unused0);
 void Area_ApplyFog(u16 area);
 void Area_StartObjects(u16 area);
 void Town_PlaceLocalPlayer(u16 area); /* unit's own declaration: with the definition's void (s32 area) (lobby/unk_7A44D0.c), Town_EnterArea 78 of 269 words differ */
-void TownMsg_Send02Zero(void);
+void TownMsg_SendPlaceOrigin(void);
 void TownMsg_SendArea(u16 area);
-void TownMsg_Send02(Player *obj);
-void TownMsg_Send10(Player *p);
+void TownMsg_SendPlace(Player *obj);
+void TownMsg_SendFacing(Player *p);
 void TownMsg_SendStateNow(Player *p);
 void TownPc_StartLoad(u8 *obj);
 void CamCtl_Init(void);
@@ -233,7 +233,7 @@ u8 Town_EnterArea(u16 area, s32 v)
     gTownMenuOpen = 0;
     Area_Enter(area);
     if (same == 0) {
-        func_007A6460(1);
+        Town_SetDrawSky(1);
     }
     Camera_SetPreset(0);
     if (same == 0) {
@@ -247,16 +247,16 @@ u8 Town_EnterArea(u16 area, s32 v)
     Area_StartObjects(area);
     if (gTownMode != 0x22) {
         gTownMode = 0;
-        me->areaMoveState = 0;
+        me->areaMoveState = PL_AREA_MOVE_NONE;
     }
     Town_AreaEffects(area);
     Town_PlaceLocalPlayer(area);
     gScene.area = area;
     if (Game_IsOnline() == 1) {
-        TownMsg_Send02Zero();
+        TownMsg_SendPlaceOrigin();
         TownMsg_SendArea(gScene.area);
-        TownMsg_Send02(me);
-        TownMsg_Send10(me);
+        TownMsg_SendPlace(me);
+        TownMsg_SendFacing(me);
         TownMsg_SendStateNow(me);
     }
     if (Area_HasTownPcs(gScene.area) == 1) {
@@ -286,12 +286,12 @@ void Town_SetNpcArea(u16 x)
 
 extern u8 *gAreaNpcTables[];
 extern u8 gAreaNpcCounts[];
-/* unit's own declaration: with the definition's s32 (s32 idx, s32 id) (lobby/unk_77A960.c), Town_SpawnNpcs: 6 of 106 words differ */
+/* unit's own declaration: with the definition's s32 (s32 idx, s32 id) (lobby/townspeople.c), Town_SpawnNpcs: 6 of 106 words differ */
 s32 AreaNpc_IsPresent(s32 idx, u16 id);
 Em *EmSlot_Alloc(void);
 void Npc_SetupFromArea(Em *npc, u8 keep, s32 id);
 s32 Area_IsHouse(u16 area);
-s32 Village_NpcRecB(u16 id);
+s32 Village_HasMealVisit(u16 id);
 
 /* spawns the NPCs of the area (the byte at +0x1E is inside Em.roundsLoaded) */
 void Town_SpawnNpcs(u16 area)
@@ -324,7 +324,7 @@ void Town_SpawnNpcs(u16 area)
         }
         n = gAreaNpcCounts[k];
         for (j = 0; j < n; j++, ent += 0x48) {
-            if (Village_NpcRecB(*ent) == 1) {
+            if (Village_HasMealVisit(*ent) == 1) {
                 e = EmSlot_Alloc();
                 if (e != NULL) {
                     *((u8 *)e + 0x1E) = 1;
@@ -337,7 +337,7 @@ void Town_SpawnNpcs(u16 area)
             }
         }
     }
-    memset(&gTutorial, 0, 0x1C);
+    memset(&gNpcScene, 0, 0x1C);
 }
 
 void DrawSlot_ResetAll(void);

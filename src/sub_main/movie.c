@@ -4,14 +4,24 @@
  *
  * Movie_* are the entry points the other modules call: Movie_Play(id) looks
  * the movie up in gMovieDescs and starts it, Movie_Update() runs once per
- * frame, Movie_GetStatus() reports the Sofdec status (0 stopped, 1 preparing,
- * 2 playing, 3 finished, 4 error). MovieSfd_* drive the Sofdec handle: the
- * player is created on first use in an 8 MB block from the game's heap, and
- * each decoded frame is uploaded to VRAM by DMA and drawn as a sprite.
+ * frame, Movie_GetStatus() reports the Sofdec status (MOVIE_STATUS_*).
+ * MovieSfd_* drive the Sofdec handle: the player is created on first use in
+ * an 8 MB block from the game's heap (MovieWork at its start, then
+ * Sofdec's work area and the frame's DMA chain), and each decoded frame is
+ * uploaded to VRAM by DMA and drawn as a sprite.
  */
 #include "common.h"
 #include "syssettings.h"
 #include "dma.h"
+#include "hw_regs.h"
+#include "movie.h"
+
+#define MOVIE_HEAP_SIZE 0x800000        /* the heap block: 8 MB */
+#define MOVIE_SFD_WORK_SIZE 0x7E9E40    /* Sofdec's work area in it */
+#define MOVIE_CHAIN_SIZE 0x16000        /* the frame upload chain after it */
+#define MOVIE_PACKET_SIZE 0xC0          /* each of the two sprite packets after that */
+#define MOVIE_AFS_PARTITION 2           /* the movies are files of AFS02 */
+#define MOVIE_VOLUME_MIN (-960)         /* in 0.1 dB: -96 dB */
 
 extern s32 gSysFbWidth; /* main: gSysWork.fbWidth */
 
@@ -53,7 +63,7 @@ typedef struct MwsfdFrmInf {
     s32 width;          /* 0x08 */
     s32 height;         /* 0x0C */
     s32 unk10[4];
-    s32 unk20;
+    s32 frameNo;        /* 0x20: the frame's number (gMovieFrame) */
     s32 unk24;
     s64 unk28[12];
 } MwsfdFrmInf;
@@ -65,7 +75,7 @@ typedef struct MovieDesc {
     u16 maxKbps;        /* 0x8 */
     u16 width;          /* 0xA */
     u16 height;         /* 0xC */
-    u16 mode;           /* 0xE: 0 = 512x448, 1 = 256x224, 2 = 512x432, 8 lines down */
+    u16 mode;           /* 0xE: MOVIE_MODE_*: how it is drawn */
 } MovieDesc;
 
 typedef struct MoviePlayer {
@@ -73,7 +83,7 @@ typedef struct MoviePlayer {
     MwsfdCrePrm cprm;       /* 0x04 */
     u8 unk34[4];
     MwsfdFrmInf frame;      /* 0x38: the last frame drawn */
-    u8 status;              /* 0xC0: Sofdec status */
+    u8 status;              /* 0xC0: Sofdec status, MOVIE_STATUS_* */
     u8 unkC1[0xB];
     u16 width;              /* 0xCC: picture size */
     u16 height;             /* 0xCE */
@@ -133,7 +143,7 @@ void *Mem_GetAddr(void *handle);               /* heap: address of a block */
 void Mem_Compact(void);
 s32 Dma_WaitIdle(void);                            /* waits for the frame DMA */
 u16 Vram_AllocBlock(u32 size);                          /* VRAM: allocate */
-/* unit's own declaration: with the definition's void (u32 addr) (main/texture.c), Movie_FreeFrame: 3 of 32 words differ */
+/* unit's own declaration: declared as this file's callers use it; with the definition's void (u32 addr), Movie_FreeFrame compiles differently */
 void Vram_FreeBlock(u16 tbp);                          /* VRAM: free */
 s32 Sys_FlipFrame(s32 unused0);                          /* flips a frame */
 s32 Prim_SendPacket(u32 *pkt);                       /* draws a packet */
@@ -149,25 +159,25 @@ u32 MovieSfd_FramePacket(u32 packet, s32 x, s32 y, s32 unk, s32 w, s32 h);
 void MovieSfd_Draw(u32 *pixels, s32 w, s32 h, s32 setupOnly);
 void MovieSfd_Create(void *arg);
 
-/* Flips three frames, then allocates VRAM for a w x h RGBA frame (height
- * rounded up to 32 lines). */
-void Movie_AllocFrame(s32 w, s32 h)
+/* Flips three frames, then allocates VRAM for a width x height RGBA frame
+ * (height rounded up to 32 lines). */
+void Movie_AllocFrame(s32 width, s32 height)
 {
     s32 i;
-    s32 h32;
+    s32 alignedHeight;
 
     for (i = 0; i < 3; i++) {
         gFlipCountdown = 2;
         Sys_FlipFrame(0);
     }
-    h32 = h;
-    if (h % 32 != 0) {
-        h32 = (h / 32 + 1) * 32;
+    alignedHeight = height;
+    if (height % 32 != 0) {
+        alignedHeight = (height / 32 + 1) * 32;
     }
-    gMovieTexBytes = w * h32 * 4;
+    gMovieTexBytes = width * alignedHeight * 4;
     gMovieTexTbp = (u16)Vram_AllocBlock(gMovieTexBytes);
-    gMovieTexWidth = w;
-    gMovieTexHeight = h;
+    gMovieTexWidth = width;
+    gMovieTexHeight = height;
 }
 
 /* Waits for the frame DMA, flips three frames and frees the frame VRAM. */
@@ -198,154 +208,161 @@ typedef union MoviePkt {
 #define PKT_W(pk, a, b) (*(pk).w++ = (a), *(pk).w++ = (b))
 #define PKT_D(pk, a, b) (*(pk).d++ = (a), *(pk).d++ = (b))
 
-/* Builds the DMA chain that uploads a w x h frame at buf to VRAM tbp (psm) in 16x16 blocks:
- * a TEXFLUSH/BITBLTBUF/TRXREG header, then per block a TRXPOS/TRXDIR and an image transfer
- * referencing buf. gMovieWork->blocks gets the first block's address. Returns the end. */
-u32 Movie_BuildUploadChain(u32 chain, void *buf, s32 tbp, s32 psm, s32 w, s32 h)
+/* Builds the DMA chain that uploads a width x height frame at buf to VRAM
+ * tbp (psm) in 16x16 blocks: a TEXFLUSH/BITBLTBUF/TRXREG header, then per
+ * block a TRXPOS/TRXDIR and an image transfer referencing buf (0x40
+ * qwords: 16 by 16 pixels). gMovieWork->blocks gets the first block's
+ * address. Returns the end. The GIF tags: three A+D qwords, then one per
+ * block, then an image of 0x40 qwords. */
+u32 Movie_BuildUploadChain(u32 chain, void *buf, s32 tbp, s32 psm, s32 width, s32 height)
 {
-    MoviePkt pk;
+    MoviePkt pkt;
     s32 i;
     s32 j;
-    s32 bw;
+    s32 bufWidth;
 
-    pk.w = (u32 *)chain;
-    bw = gMovieTexWidth / 64;
-    PKT_W(pk, 0x10000004, 0);
-    PKT_W(pk, 0, 0);
-    PKT_D(pk, 0x1000000000008003, 0xE);
-    PKT_D(pk, 0, 0x3F);
-    PKT_D(pk, ((u64)psm << 56) | (((u64)tbp << 32) | ((u64)bw << 48)), 0x50);
-    PKT_D(pk, 0x10 | ((u64)0x10 << 32), 0x52);
-    gMovieWork->blocks = (u32)pk.w;
-    for (i = 0; i < w / 16; i++) {
-        for (j = 0; j < h / 16; j++) {
-            PKT_W(pk, 0x10000004, 0);
-            PKT_W(pk, 0, 0);
-            PKT_D(pk, 0x1000000000000002, 0xE);
-            PKT_D(pk, ((u64)(i * 16) << 32) | ((u64)(j * 16) << 48), 0x51);
-            PKT_D(pk, 0, 0x53);
-            PKT_D(pk, 0x0800000000008040, 0);
-            PKT_W(pk, 0x30000040, (u32)buf);
-            PKT_W(pk, 0, 0x51000040);
+    pkt.w = (u32 *)chain;
+    bufWidth = gMovieTexWidth / 64;
+    PKT_W(pkt, DMA_TAG_CNT | 4, 0);
+    PKT_W(pkt, 0, 0);
+    PKT_D(pkt, 0x1000000000008003, GIF_REG_AD);
+    PKT_D(pkt, 0, GS_REG_TEXFLUSH);
+    PKT_D(pkt, ((u64)psm << 56) | (((u64)tbp << 32) | ((u64)bufWidth << 48)), GS_REG_BITBLTBUF);
+    PKT_D(pkt, 0x10 | ((u64)0x10 << 32), GS_REG_TRXREG);
+    gMovieWork->blocks = (u32)pkt.w;
+    for (i = 0; i < width / 16; i++) {
+        for (j = 0; j < height / 16; j++) {
+            PKT_W(pkt, DMA_TAG_CNT | 4, 0);
+            PKT_W(pkt, 0, 0);
+            PKT_D(pkt, 0x1000000000000002, GIF_REG_AD);
+            PKT_D(pkt, ((u64)(i * 16) << 32) | ((u64)(j * 16) << 48), GS_REG_TRXPOS);
+            PKT_D(pkt, 0, GS_REG_TRXDIR);
+            PKT_D(pkt, 0x0800000000008040, 0);
+            PKT_W(pkt, DMA_TAG_REF | 0x40, (u32)buf);
+            PKT_W(pkt, 0, 0x51000040); /* VIF DIRECTHL, 0x40 qwords */
         }
     }
-    PKT_W(pk, 0x70000000, 0);
-    PKT_W(pk, 0, 0);
-    return (u32)pk.w;
+    PKT_W(pkt, DMA_TAG_END, 0);
+    PKT_W(pkt, 0, 0);
+    return (u32)pkt.w;
 }
 #undef PKT_W
 #undef PKT_D
 
 /* Points the 0x60-byte packets of the DMA chain (their word at +0x54) at the image's
  * 16x16 blocks of 0x400 bytes, row by row, skipping skip pixels after each row. */
-void Movie_SetupBlockPackets(u32 chain, u32 *pixels, s32 w, s32 h, s32 skip)
+void Movie_SetupBlockPackets(u32 chain, u32 *pixels, s32 width, s32 height, s32 skip)
 {
     s32 i;
     s32 j;
-    u32 *p = (u32 *)chain;
+    u32 *word = (u32 *)chain;
 
-    for (i = 0; i < w / 16; i++) {
-        for (j = 0; j < h / 16; j++) {
-            p += 21;
-            *p++ = (u32)pixels;
-            p += 2;
+    for (i = 0; i < width / 16; i++) {
+        for (j = 0; j < height / 16; j++) {
+            word += 21;
+            *word++ = (u32)pixels;
+            word += 2;
             pixels += 0x100;
         }
         pixels += skip;
     }
 }
 
-/* MovieSfd_FramePacket: the sprite packet that draws the frame texture at (x, y), w x h, depth z. */
-u32 MovieSfd_FramePacket(u32 packet, s32 x, s32 y, s32 z, s32 w, s32 h)
+/* Writes at packet the sprite packet that draws the frame texture at (x,
+ * y), width x height, depth z: the alpha, clamp, texture flush, TEX0 and
+ * TEX1 registers, then a sprite. The texture's size is rounded up to powers
+ * of two (a height between 256 and 512 to 512). Returns the packet's end. */
+u32 MovieSfd_FramePacket(u32 packet, s32 x, s32 y, s32 z, s32 width, s32 height)
 {
-    s32 tw;
+    s32 texWidthLog2;
     s32 ofs;
-    s32 v;
-    s32 r;
-    s32 th2;
-    s32 th;
+    s32 size;
+    s32 odd;
+    s32 drawHeight;
+    s32 texHeightLog2;
     s32 i;
-    u32 *q;
-    u64 *p;
+    u32 *tagWord;
+    u64 *reg;
 
     i = 0;
-    v = gMovieTexWidth;
-    while (v > 1) {
-        r = v % 2;
-        v = v / 2;
+    size = gMovieTexWidth;
+    while (size > 1) {
+        odd = size % 2;
+        size = size / 2;
         i++;
     }
-    /* r is never set when the width is below 2: the game reads t6 unset there too */
-    if (r != 0) {
+    /* odd is never set when the width is below 2: the game's code reads it
+     * unset there too */
+    if (odd != 0) {
         i++;
     }
-    tw = i;
-    for (i = 0, v = 1; i < tw; i++) {
-        v <<= 1;
+    texWidthLog2 = i;
+    for (i = 0, size = 1; i < texWidthLog2; i++) {
+        size <<= 1;
     }
-    if (v < gMovieTexWidth) {
-        tw++;
+    if (size < gMovieTexWidth) {
+        texWidthLog2++;
     }
-    v = gMovieTexHeight;
-    th = 0;
-    if (v > 0x100 && v < 0x200) {
-        v = 0x200;
+    size = gMovieTexHeight;
+    texHeightLog2 = 0;
+    if (size > 0x100 && size < 0x200) {
+        size = 0x200;
     }
-    while (v > 1) {
-        r = v % 2;
-        v = v / 2;
-        th++;
+    while (size > 1) {
+        odd = size % 2;
+        size = size / 2;
+        texHeightLog2++;
     }
-    if (r != 0) {
-        th++;
+    if (odd != 0) {
+        texHeightLog2++;
     }
-    th2 = gMovieTexHeight;
-    if (th2 > 0x1C0) {
-        th2 = 0x1C0;
+    drawHeight = gMovieTexHeight;
+    if (drawHeight > 0x1C0) {
+        drawHeight = 0x1C0;
     }
-    q = (u32 *)packet;
-    *q++ = 0xF000000A;
-    *q++ = 0;
-    *q++ = 0;
-    *q++ = 0x5100000A;
-    p = (u64 *)q;
-    *p++ = 0x1000000000000005;
-    *p++ = 0xE;
-    *p++ = 0x44;
-    *p++ = 0x42;
-    *p++ = 5;
-    *p++ = 8;
-    *p++ = 0;
-    *p++ = 0x3F;
-    *p++ = (u64)gMovieWork->tbp | ((u64)(gMovieTexWidth / 64) << 14) | ((u64)tw << 26)
-        | ((u64)th << 30) | ((u64)1 << 35);
-    *p++ = 6;
-    *p++ = 0x60;
-    *p++ = 0x14;
-    *p++ = 0x6400000000008001;
-    *p++ = 0x535310;
+    tagWord = (u32 *)packet;
+    *tagWord++ = DMA_TAG_END | DMA_TAG_IRQ | 0xA;
+    *tagWord++ = 0;
+    *tagWord++ = 0;
+    *tagWord++ = 0x5100000A; /* VIF DIRECTHL, 0xA qwords */
+    reg = (u64 *)tagWord;
+    *reg++ = 0x1000000000000005; /* five A+D qwords */
+    *reg++ = GIF_REG_AD;
+    *reg++ = 0x44;
+    *reg++ = GS_REG_ALPHA_1;
+    *reg++ = 5;
+    *reg++ = GS_REG_CLAMP_1;
+    *reg++ = 0;
+    *reg++ = GS_REG_TEXFLUSH;
+    *reg++ = (u64)gMovieWork->tbp | ((u64)(gMovieTexWidth / 64) << 14) | ((u64)texWidthLog2 << 26)
+        | ((u64)texHeightLog2 << 30) | ((u64)1 << 35);
+    *reg++ = GS_REG_TEX0_1;
+    *reg++ = 0x60;
+    *reg++ = GS_REG_TEX1_1;
+    *reg++ = 0x6400000000008001; /* the sprite: PRIM, RGBAQ, UV, XYZ2, UV, XYZ2 */
+    *reg++ = 0x535310;
     ofs = ((0x1000 - gSysFbWidth) / 2) * 16;
-    *p++ = 0x116;
-    *p++ = 0x3F80000080808080;
-    *p++ = 0x80008;
-    *p++ = (u64)(ofs + x * 16) | ((u64)(y * 16 + 0x7200) << 16) | ((u64)z << 32);
-    *p++ = (u64)((gMovieTexWidth - 1) * 16 + 8) | ((u64)((th2 - 1) * 16 + 8) << 16);
-    *p++ = (u64)(ofs + (x + w) * 16) | ((u64)((y + h) * 16 + 0x7200) << 16) | ((u64)z << 32);
-    return (u32)p;
+    *reg++ = 0x116;
+    *reg++ = 0x3F80000080808080;
+    *reg++ = 0x80008;
+    *reg++ = (u64)(ofs + x * 16) | ((u64)(y * 16 + 0x7200) << 16) | ((u64)z << 32);
+    *reg++ = (u64)((gMovieTexWidth - 1) * 16 + 8) | ((u64)((drawHeight - 1) * 16 + 8) << 16);
+    *reg++ = (u64)(ofs + (x + width) * 16) | ((u64)((y + height) * 16 + 0x7200) << 16) | ((u64)z << 32);
+    return (u32)reg;
 }
 
 /* Builds the frame upload chain and the two sprite packets. */
 void MovieSfd_BuildPackets(void)
 {
     u8 buf[0x400];
-    s32 h;
+    s32 height;
 
     gMovieWork->tbp = gMovieTexTbp;
     memset(buf, 0, sizeof(buf));
     gMovieWork->packet[0] = gMovieWork->chain + gMovieWork->chainSize;
-    gMovieWork->packet[1] = gMovieWork->chain + gMovieWork->chainSize + 0xC0;
-    h = (gMovieTexHeight > 448) ? 448 : gMovieTexHeight;
-    Movie_BuildUploadChain(gMovieWork->chain, buf, gMovieWork->tbp, 0, gMovieTexWidth, h);
+    gMovieWork->packet[1] = gMovieWork->chain + gMovieWork->chainSize + MOVIE_PACKET_SIZE;
+    height = (gMovieTexHeight > 448) ? 448 : gMovieTexHeight;
+    Movie_BuildUploadChain(gMovieWork->chain, buf, gMovieWork->tbp, 0, gMovieTexWidth, height);
     MovieSfd_FramePacket(gMovieWork->packet[0], gMoviePlayer->dispX, gMoviePlayer->dispY, 1,
                   gMoviePlayer->dispW, gMoviePlayer->dispH);
     MovieSfd_FramePacket(gMovieWork->packet[1], gMoviePlayer->dispX, gMoviePlayer->dispY, 1,
@@ -356,7 +373,7 @@ void MovieSfd_BuildPackets(void)
  * Uploads a decoded frame to VRAM (unless setupOnly) and draws the sprite
  * packets, alternating between the two.
  */
-void MovieSfd_Draw(u32 *pixels, s32 w, s32 h, s32 setupOnly)
+void MovieSfd_Draw(u32 *pixels, s32 width, s32 height, s32 setupOnly)
 {
     s32 skip;
     u32 packet;
@@ -377,10 +394,10 @@ void MovieSfd_Draw(u32 *pixels, s32 w, s32 h, s32 setupOnly)
         }
         pixels += skip;
         gMovieFramePixels = (u32)pixels;
-        if (h > 448) {
-            h = 448;
+        if (height > 448) {
+            height = 448;
         }
-        Movie_SetupBlockPackets(gMovieWork->blocks, pixels, w, h, skip * 2);
+        Movie_SetupBlockPackets(gMovieWork->blocks, pixels, width, height, skip * 2);
         gDmaChan[2]->chcr.tte = 0;
         FlushCache(0);
         Dma_WaitIdle();
@@ -399,45 +416,52 @@ void MovieSfd_Draw(u32 *pixels, s32 w, s32 h, s32 setupOnly)
     }
 }
 
-void MovieSfd_DrawFrame(u32 *pixels, s32 w, s32 h)
+/* Rebuilds the packets, then uploads and draws a decoded frame. */
+void MovieSfd_DrawFrame(u32 *pixels, s32 width, s32 height)
 {
     MovieSfd_BuildPackets();
-    MovieSfd_Draw(pixels, w, h, 0);
+    MovieSfd_Draw(pixels, width, height, 0);
 }
 
-void MovieSfd_SetFrameSize(u32 *pixels, s32 w, s32 h)
+/* Sets the player's picture size, rebuilding the packets when it changes,
+ * and sets up the drawing without uploading. */
+void MovieSfd_SetFrameSize(u32 *pixels, s32 frameWidth, s32 frameHeight)
 {
-    u16 *width = &gMoviePlayer->width;
+    u16 *curWidth = &gMoviePlayer->width;
 
-    if (w != *width || h != gMoviePlayer->height) {
-        *width = w;
-        gMoviePlayer->height = h;
+    if (frameWidth != *curWidth || frameHeight != gMoviePlayer->height) {
+        *curWidth = frameWidth;
+        gMoviePlayer->height = frameHeight;
         MovieSfd_BuildPackets();
     }
-    MovieSfd_Draw(pixels, w, h, 1);
+    MovieSfd_Draw(pixels, frameWidth, frameHeight, 1);
 }
 
-void MovieSfd_AllocWork(s32 w, s32 h)
+/* Takes the 8 MB heap block (allocated once) and lays out MovieWork at
+ * its start: Sofdec's work area 64-byte aligned after it, then the upload
+ * chain. gMovieWork stays NULL when the block can't be had. */
+void MovieSfd_AllocWork(s32 frameWidth, s32 frameHeight)
 {
     gMovieWork = NULL;
     Mem_Compact();
     if (gMovieHeapHandle == NULL) {
-        gMovieHeapHandle = Mem_Alloc(0x800000, 1);
+        gMovieHeapHandle = Mem_Alloc(MOVIE_HEAP_SIZE, 1);
         if (gMovieHeapHandle == NULL) {
             return;
         }
     }
     gMovieHeapBlock = Mem_GetAddr(gMovieHeapHandle);
     gMovieWork = gMovieHeapBlock;
-    memset(gMovieWork, 0, 0x800000);
+    memset(gMovieWork, 0, MOVIE_HEAP_SIZE);
     gMovieWork->work = ((u32)gMovieWork + 0x6B) & ~0x3F;
-    gMovieWork->chainSize = 0x16000;
-    gMovieWork->workSize = 0x7E9E40;
+    gMovieWork->chainSize = MOVIE_CHAIN_SIZE;
+    gMovieWork->workSize = MOVIE_SFD_WORK_SIZE;
     gMovieWork->chain = gMovieWork->work + gMovieWork->workSize;
-    gMovieWork->width = w;
-    gMovieWork->height = h;
+    gMovieWork->width = frameWidth;
+    gMovieWork->height = frameHeight;
 }
 
+/* Frees the frame's VRAM and the heap block. */
 void MovieSfd_FreeWork(void)
 {
     Movie_FreeFrame();
@@ -453,39 +477,40 @@ void MovieSfd_FreeWork(void)
 /*
  * Creates the Sofdec handle in the heap block and sets up the frame
  * packets. The parameter is untyped (void *) and desc its typed copy,
- * declared last: MWCC numbers that copy as a local, which puts desc in s0
- * and h/cprm in s1 as in the game (a MovieDesc * parameter swaps them).
+ * declared last: the compiler numbers that copy as a local, which gives
+ * desc and frameHeight/cprm the registers the game's code uses (a
+ * MovieDesc * parameter swaps them).
  */
 void MovieSfd_Create(void *arg)
 {
-    u16 w;
-    u16 h;
+    u16 frameWidth;
+    u16 frameHeight;
     MwsfdCrePrm *cprm;
     MovieDesc *desc = (MovieDesc *)arg;
 
-    w = desc->width;
-    h = desc->height;
+    frameWidth = desc->width;
+    frameHeight = desc->height;
 
     gMovieFrame = 0;
-    MovieSfd_AllocWork(w, h);
+    MovieSfd_AllocWork(frameWidth, frameHeight);
     if (gMovieHeapBlock == NULL) {
         return;
     }
     gMoviePlayer = &gMoviePlayerData;
-    gMoviePlayer->width = w;
-    gMoviePlayer->height = h;
+    gMoviePlayer->width = frameWidth;
+    gMoviePlayer->height = frameHeight;
     switch (desc->mode) {
-    case 0:
+    case MOVIE_MODE_FULL:
         gMoviePlayer->dispW = 512;
         gMoviePlayer->dispH = 448;
         gMoviePlayer->dispX = 0;
         gMoviePlayer->dispY = 0;
         break;
-    case 1:
+    case MOVIE_MODE_SMALL:
         gMoviePlayer->dispW = 256;
         gMoviePlayer->dispH = 224;
         break;
-    case 2:
+    case MOVIE_MODE_WIDE:
         gMoviePlayer->dispW = 512;
         gMoviePlayer->dispH = 432;
         gMoviePlayer->dispX = 0;
@@ -525,6 +550,8 @@ void MovieSfd_Create(void *arg)
     gMoviePlayer->waitFrames = 0;
 }
 
+/* Starts a movie: creates the player if there is none, sets its volume
+ * from the music volume option, and starts the movie's file. */
 void MovieSfd_Start(MovieDesc *desc)
 {
     MwPly *ply;
@@ -540,13 +567,14 @@ void MovieSfd_Start(MovieDesc *desc)
         }
     }
     vol = gVolumeDb[gVolumeMax[gSysSettings.musicVolume]];
-    if (vol < -960) {
-        vol = -960;
+    if (vol < MOVIE_VOLUME_MIN) {
+        vol = MOVIE_VOLUME_MIN;
     }
     ply->vtbl->setOutVol(ply, vol);
-    mwPlyStartAfs(gMoviePlayer->ply, 2, desc->entry);
+    mwPlyStartAfs(gMoviePlayer->ply, MOVIE_AFS_PARTITION, desc->entry);
 }
 
+/* Asks the player, if any, to stop. */
 void MovieSfd_RequestStop(void)
 {
     MwPly *ply;
@@ -558,6 +586,8 @@ void MovieSfd_RequestStop(void)
     }
 }
 
+/* Stops and destroys the player, then frees the frame and the heap
+ * block. */
 void MovieSfd_Stop(void)
 {
     MwPly *ply;
@@ -574,6 +604,9 @@ void MovieSfd_Stop(void)
     MovieSfd_FreeWork();
 }
 
+/* Once per frame: reads the player's status. Preparing too long stops it;
+ * playing draws the current frame and keeps it; finished asks it to stop;
+ * an error stops it. */
 void MovieSfd_Update(void)
 {
     MwsfdFrmInf frame;
@@ -583,42 +616,43 @@ void MovieSfd_Update(void)
         mwPlyGetPlyInf(gMoviePlayer->ply, buf);
         gMoviePlayer->status = gMoviePlayer->ply->vtbl->getStat(gMoviePlayer->ply);
         switch (gMoviePlayer->status) {
-        case 0:
+        case MOVIE_STATUS_STOPPED:
             break;
-        case 1:
+        case MOVIE_STATUS_PREPARING:
             gMoviePlayer->waitFrames++;
-            if (gMoviePlayer->waitFrames >= 300) {
+            if (gMoviePlayer->waitFrames >= MOVIE_PREPARE_FRAMES) {
                 MovieSfd_Stop();
             }
             break;
-        case 2:
+        case MOVIE_STATUS_PLAYING:
             mwPlyGetCurFrm(gMoviePlayer->ply, &frame);
             MovieSfd_DrawFrame((u32 *)frame.bufadr, gMoviePlayer->width, gMoviePlayer->height);
             if (frame.bufadr != 0) {
                 gMoviePlayer->width = frame.width;
                 gMoviePlayer->height = frame.height;
-                gMovieFrame = frame.unk20;
+                gMovieFrame = frame.frameNo;
                 gMoviePlayer->frame = frame;
                 mwPlyRelCurFrm(gMoviePlayer->ply);
             }
             break;
-        case 3:
+        case MOVIE_STATUS_FINISHED:
             MovieSfd_RequestStop();
             break;
-        case 4:
+        case MOVIE_STATUS_ERROR:
             MovieSfd_Stop();
             break;
         }
     }
 }
 
+/* The player's status, MOVIE_STATUS_STOPPED when there is none. */
 s32 MovieSfd_GetStatus(void)
 {
     if (gMoviePlayer == NULL) {
-        return 0;
+        return MOVIE_STATUS_STOPPED;
     }
     if (gMoviePlayer->ply == NULL) {
-        return 0;
+        return MOVIE_STATUS_STOPPED;
     }
     return gMoviePlayer->status;
 }
@@ -628,6 +662,7 @@ void Movie_PrePlay(void)
 {
 }
 
+/* Starts movie id of gMovieDescs; returns 0. */
 s32 Movie_Play(s32 id)
 {
     MovieSfd_Start(&gMovieDescs[id]);
@@ -654,6 +689,7 @@ s32 Movie_GetStatus(void)
     return MovieSfd_GetStatus();
 }
 
+/* Runs the player once per frame; returns 0. */
 s32 Movie_Update(void)
 {
     MovieSfd_Update();

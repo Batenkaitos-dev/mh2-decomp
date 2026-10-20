@@ -1,4 +1,3 @@
 // Function starts of plsel, pinned for splat.
 // 72 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
 func_00D60240 = 0x00D60240; // type:func
-func_00D72F10 = 0x00D72F10; // type:func

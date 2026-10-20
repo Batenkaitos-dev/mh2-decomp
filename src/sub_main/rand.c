@@ -1,6 +1,6 @@
 /*
  * The game's random number generator, with a few sound helpers that share
- * its address range (0x368B00-0x368F10).
+ * its address range.
  *
  * Rand_Next(stream) is a Lehmer generator on 16-bit state:
  *     x = (x ? x : 1) * 176 mod 65363 (0xFF53)
@@ -8,7 +8,7 @@
  * 950 call sites across the modules); stream 0 is used about 25 times, e.g.
  * by the sound code's random variations. Rand_Seed sets streams 0 and 1 to
  * the same byte; the select screen calls it with the result of
- * func_003DDBA0, which always returns 0, so both streams start from 1.
+ * Card_GetSeed, which always returns 0, so both streams start from 1.
  * Another RAND_SAVED_STREAMS streams (Rand_NextSaved) are copied into the
  * save data. Rand_InitGauss tabulates a bell curve.
  *
@@ -73,11 +73,11 @@ void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback)
     }
 }
 
-/* In AREA_HUB_0x87, clears gBgmId to BGM_NONE; the lobby calls it.
+/* In AREA_TOWN_ARENA, clears gBgmId to BGM_NONE; the lobby calls it.
  * Returns 0. */
-s32 Bgm_StopInArea87(void)
+s32 Bgm_StopInTownArena(void)
 {
-    if (gScene.area != AREA_HUB_0x87) {
+    if (gScene.area != AREA_TOWN_ARENA) {
         return 0;
     }
     gBgmId = BGM_NONE;

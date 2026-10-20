@@ -1,6 +1,6 @@
 /*
  * gm_sub: the monsters' data files and their motion effects in gm_sub's
- * scenes (0x90A390-0x90AB80 with its .data and .bss).
+ * scenes.
  *
  * GmLoad_LoadEmData reads a monster kind's data file from the stage's
  * emcmd partition into the space behind the stage data and relocates its
@@ -15,7 +15,7 @@
 #include "em.h"
 #include "player.h"
 
-/* Per-kind data files, loaded behind the stage data (0x6AE040 + 0x1000) and
+/* Per-kind data files, loaded behind the stage data (gSaveBuf + 0x1000) and
  * relocated in place: gGmKindFileLists[kind] lists each kind's file ids, and
  * gGmLoadSlots[i] keeps the loaded data of slot i (gGmLoadEmIds[i] its id). */
 
@@ -51,17 +51,17 @@ void *memcpy(void *dst, const void *src, u32 n);
 void Emcmd_LoadPartition(void *ptinfo);
 s32 Emcmd_Read(s32 flid, void *buf);
 s32 Overlay_IsLoaded(s32);
-void GmEm_SetQuestSounds(Em *em, u8 *state);
+void GmEm_MotionSounds(Em *em, EmWork *work);
 void GmEm_MotionEffects(Em *em, u8 *state);
 static void GmEm_NoMotionEffect(Em *em);
-void GmEm_QuestFx(Em *em, s16 id);
+void GmEm_SpawnBulldromeRageAura(Em *em, s16 id);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);          /* is the motion at this frame */
 u8 Player_InCurrentArea(void *obj);
-void Effect0D_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 c);
-void Effect0D_SpawnOnGround(f32 *pos, s32 id, f32 scale);
+void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 c);
+void PartFx_SpawnOnGround(f32 *pos, s32 id, f32 scale);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
-void StageObj_K14_Create(Em *em, s16 k, s16 c, f32 scale);
-void Effect01_Spawn(void *obj, s16 type);
+void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
+void Shadow_Spawn(void *obj, s16 type);
 static void GmLoad_Relocate(u32, u32 *, u32 *);
 /* .bss, from the highest address down. */
 u8 gGmLoadEmIds[75];
@@ -80,7 +80,7 @@ static void GmEm_NoMotionEffect(Em *em)
 /*
  * The effects of a monster's motions in gm_sub's scenes: records the
  * current motion (at state + 6, in the monster's work area), runs
- * Bulldrome's quest effects (GmEm_QuestFx), then spawns each motion's
+ * Bulldrome's quest effects (GmEm_SpawnBulldromeRageAura), then spawns each motion's
  * effects at its frames.
  */
 void GmEm_MotionEffects(Em *em, u8 *state)
@@ -91,26 +91,26 @@ void GmEm_MotionEffects(Em *em, u8 *state)
         *(s16 *)(state + 6) = em->motionId[0];
     }
     if (em->type == 0x44) {
-        GmEm_QuestFx(em, *(s16 *)(state + 6));
+        GmEm_SpawnBulldromeRageAura(em, *(s16 *)(state + 6));
     }
     switch (*(s16 *)(state + 6)) {
     case 0x3F6:
         if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
-            Effect0D_SpawnForEmScaled(em, 6, 3, 0.7f);
+            PartFx_SpawnForEmScaled(em, 6, 3, 0.7f);
         }
         break;
     case 0x3F7:
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0)) {
-            Effect0D_SpawnForEmScaled(em, 4, 3, 2.0f);
+            PartFx_SpawnForEmScaled(em, 4, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0)) {
-            Effect0D_SpawnForEmScaled(em, 0x11, 3, 3.5f);
+            PartFx_SpawnForEmScaled(em, 0x11, 3, 3.5f);
         }
         break;
     case 0x3F8:
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) || EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
-            Effect0D_SpawnForEmScaled(em, 6, 3, 1.2f);
-            Effect0D_SpawnForEmScaled(em, 9, 3, 1.2f);
+            PartFx_SpawnForEmScaled(em, 6, 3, 1.2f);
+            PartFx_SpawnForEmScaled(em, 9, 3, 1.2f);
         }
         break;
     case 0x3FA:
@@ -118,44 +118,44 @@ void GmEm_MotionEffects(Em *em, u8 *state)
         if (em->type == 0x44 && (EmMotion_PassedFrameScaled(em, 54.0f, 0) || EmMotion_PassedFrameScaled(em, 168.0f, 0)) && (Player_InCurrentArea(em) & 0xFF)) {
             Em_BonePos(em, 10, bonePos);
             bonePos[1] = em->floorY;
-            Effect0D_SpawnOnGround(bonePos, 7, 0.8f * em->scaleX);
+            PartFx_SpawnOnGround(bonePos, 7, 0.8f * em->scaleX);
         }
         break;
     case 0x3FD:
         if (em->type == 0x44 && EmMotion_PassedFrameScaled(em, 34.0f, 0) && (Player_InCurrentArea(em) & 0xFF)) {
             Em_BonePos(em, 6, bonePos);
             bonePos[1] = em->floorY;
-            Effect0D_SpawnOnGround(bonePos, 4, 2.4f * em->scaleX);
+            PartFx_SpawnOnGround(bonePos, 4, 2.4f * em->scaleX);
         }
         break;
     case 0x3FE:
         if (em->type == 0x44) {
             if (EmMotion_PassedFrameScaled(em, 24.0f, 0) || EmMotion_PassedFrameScaled(em, 94.0f, 0) || EmMotion_PassedFrameScaled(em, 154.0f, 0)) {
-                StageObj_K14_Create(em, 2, 0x2E, 0.5f * em->scaleX);
+                DustCloud_Create(em, 2, 0x2E, 0.5f * em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 62.0f, 0) || EmMotion_PassedFrameScaled(em, 118.0f, 0) || EmMotion_PassedFrameScaled(em, 178.0f, 0)) {
-                StageObj_K14_Create(em, 3, 0x2D, 0.5f * em->scaleX);
+                DustCloud_Create(em, 3, 0x2D, 0.5f * em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 234.0f, 0) && (Player_InCurrentArea(em) & 0xFF)) {
                 Em_BonePos(em, 3, bonePos);
                 bonePos[1] = em->floorY;
-                Effect0D_SpawnOnGround(bonePos, 7, em->scaleX);
+                PartFx_SpawnOnGround(bonePos, 7, em->scaleX);
             }
         }
         break;
     case 0x3FF:
         if (em->type == 0x44 && EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
-            StageObj_K14_Create(em, 0xB, 0, 0.25f * em->scaleX);
+            DustCloud_Create(em, 0xB, 0, 0.25f * em->scaleX);
         }
         break;
     case 0x427:
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0)) {
-            Effect0D_SpawnForEmScaled(em, 2, 7, 0.8f);
+            PartFx_SpawnForEmScaled(em, 2, 7, 0.8f);
         }
         break;
     case 0x42F:
         if (EmMotion_PassedFrameScaled(em, 34.0f, 0)) {
-            Effect0D_SpawnForEmScaled(em, 2, 6, 1.0f);
+            PartFx_SpawnForEmScaled(em, 2, 6, 1.0f);
         }
         break;
     default:
@@ -175,7 +175,7 @@ void GmEm_UpdateSfx(Em *em)
         (*state)++;
         break;
     case 1:
-        GmEm_SetQuestSounds(em, state);
+        GmEm_MotionSounds(em, (EmWork *)state);
         if (Overlay_IsLoaded(3) == 1) {
             GmEm_MotionEffects(em, state);
         }
@@ -186,14 +186,14 @@ void GmEm_UpdateSfx(Em *em)
 /* Calls entry 3 of the monster's function table. */
 void GmEm_CallFunc3(Em *em)
 {
-    em->handlers->unk0C(em);
+    em->handlers->motionFx(em);
 }
 
-/* The function at 0x90A9A0 that gm_em.c's tables point to. The pinned
- * function starts count it as part of GmEm_CallFunc3. */
+/* Spawns effect 1 at the monster: a callback of the monsters' motion
+ * effect tables. */
 void GmEm_SpawnEffect01(Em *em)
 {
-    Effect01_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, 0);
 }
 
 void GmEm_Nop(void)
@@ -257,7 +257,7 @@ void GmLoad_Reset(void)
     gGmLoadEmDataUsed = 0;
 }
 
-/* Opens the emcmd partition of the stage data (0x6AE040). */
+/* Opens the emcmd partition of the stage data (gSaveBuf). */
 void GmLoad_LoadStagePartition(void)
 {
     Emcmd_LoadPartition((void *) gSysSettings.saveBuf);

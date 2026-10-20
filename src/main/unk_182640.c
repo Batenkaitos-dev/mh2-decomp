@@ -1,6 +1,6 @@
 /*
- * Sys_InitHeap (main 0x182640): sets up the main handle heap gHeap
- * (include/heap.h; the heap code is in unk_1826D0.c) over a memory area,
+ * Sys_InitHeap: sets up the main handle heap gHeap
+ * (include/heap.h) over a memory area,
  * with gHeapBlocks' HEAP_BLOCK_COUNT blocks.
  */
 #include "common.h"

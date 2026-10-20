@@ -3,9 +3,9 @@
 #include "common.h"
 
 /*
- * 0x6ADF90 (sub_main's .bss, 0xF4 bytes): the system settings and the memory
- * layout, which the boot ELF's core reads too (gSysSettings in main.txt).
- * SysSettings_Reset (unk_2E3940.c) sets the settings, Mem_InitLayout the
+ * gSysSettings (0x6ADF90, sub_main's .bss, 0xF4 bytes): the system settings
+ * and the memory layout, which the boot ELF's core reads too.
+ * SysSettings_Reset sets the settings, Mem_InitLayout the
  * memory areas (the addresses given are the ones it stores).
  *
  * Portability: sub_main (and the lobby) also reach several fields through
@@ -45,13 +45,13 @@ typedef struct SysSettings {
     /* 0x2E */ u8 texFilter;            /* Gfx_SetTexFilter's cached filter mode (render state 0x63) */
     /* 0x2F */ u8 cameraPreset;         /* gCameraPreset (0xFF after a reset) */
     /* 0x30 */ u8 blendOp;              /* Gfx_SetBlendOp's cached index (render state 0xD) */
-    /* 0x31 */ u8 unk31;                /* Kbd_Draw's argument (unk_363550.c) */
+    /* 0x31 */ u8 unk31;                /* only passed to Kbd_Draw (Chat_DrawKbdBox), which ignores it */
     /* 0x32 */ u8 screenCaptureOk;      /* gScreenCaptureOk */
-    /* 0x33 */ u8 clearCapture;         /* the quest end screen capture: 0x81 asked for (the quest ends: unk_3A1070.c, unk_39C290.c), 0x80 taken (ScreenCapture_Take, then cleared by the quest script), 0 none */
+    /* 0x33 */ u8 clearCapture;         /* the quest end screen capture: 0x81 asked for (the quest ends: quest.c, quest_rules.c), 0x80 taken (ScreenCapture_Take, then cleared by the quest script), 0 none */
     /* 0x34 */ u8 unk34;
     /* 0x35 */ u8 soundLoading;         /* set while a sound bank is read at once */
-    /* 0x36 */ u8 musicVolume;          /* option level 0..7 (D_006A9E51; also the movies' volume) */
-    /* 0x37 */ u8 seVolume;             /* option level 0..7 (D_006A9E52) */
+    /* 0x36 */ u8 musicVolume;          /* option level 0..7 (also the movies' volume) */
+    /* 0x37 */ u8 seVolume;             /* option level 0..7 */
     /* 0x38 */ u8 unk38;
     /* 0x39 */ u8 unk39;
     /* 0x3A */ u8 unk3A;
@@ -63,11 +63,11 @@ typedef struct SysSettings {
     /* 0x40 */ s16 unk40;               /* the lobby clears it with unk3F */
     /* 0x42 */ u8 unk42;
     /* 0x43 */ u8 useSavedEquip;    /* 1: the local players load their save (Quest_InitPlayers) even in quests with preset equipment (GmSub_StepLaunch mode 2; 0 in modes 0 and 1, Chara_CreateTask) */
-    /* 0x44 */ u8 galleryPlay;          /* 1 while the gallery plays a scene (select_gallery.c sets it): the event flags read as clear (Save_TestEventFlag, D_006ADFD4); gm_main tests 2 */
+    /* 0x44 */ u8 galleryPlay;          /* 1 while the gallery plays a scene (the gallery's scene player sets it): the event flags read as clear (Save_TestEventFlag); the quest overlay's main task (gm_sub) tests 2 */
     /* 0x45 */ u8 unk45;
     /* 0x46 */ u8 oldGameKind;          /* gOldGameKind: MH data found at boot (1 MH, 2 MHG, 0 none) */
     /* 0x47 */ u8 portalPage;           /* gPortalPage */
-    /* 0x48 */ u8 pspCharaWait;         /* 1 while the PSP connect task waits for the character select (Chara_SelectTask clears it); func_008FC080 tests it */
+    /* 0x48 */ u8 pspCharaWait;         /* 1 while the PSP connect task waits for the character select (Chara_SelectTask clears it); a routine of the network library tests it */
     /* 0x49 */ u8 unk49;
     /* 0x4A */ u8 unk4A;                /* the lobby keeps a copy of gNetMode.slot here */
     /* 0x4B */ u8 gallerySel;           /* the gallery's selected entry (select_gallery.c stores the cursor - 2 and restores it) */
@@ -104,30 +104,30 @@ typedef struct SysSettings {
     /* 0xB8 */ u32 gmSubAddr;           /* kept by Mem_InitLayout */
     /* 0xBC */ u8 bootMode;             /* gBootMode: Boot_Task's switch (select_boot.c); gm_main sets 1 */
     /* 0xBD */ u8 taskRequest;          /* a task for Task_RunFrame to start, then cleared: 1, 2 the lobby's online tasks (overlay 4), 3 Scene_QuestTask (overlay 3) */
-    /* 0xBE */ u8 brightness;           /* the brightness option 0x38..0xA4, 0x80 neutral (D_006A9E5B; select_option.c prints it - 0x80; above 0x80 a white, below a black overlay, unk_3240E0.c) */
+    /* 0xBE */ u8 brightness;           /* the brightness option 0x38..0xA4, 0x80 neutral (the options screen shows it less 0x80; the scene draws a white overlay above 0x80, a black one below) */
     /* 0xBF */ u8 unkBF;
     /* 0xC0 */ f32 fps;                 /* 59.94 (NTSC) or 50 (PAL) */
     /* 0xC4 */ s8 cardHasChara;         /* 1 once the memory card holds a character (loaded or saved), 0 when none; gm_main then starts at the character entry */
-    /* 0xC5 */ s8 systemSaved;      /* 1 once the system data is saved (CardNew_SaveSystem, CardGame_SaveSystem, CardSave_SaveSystem, Chara_SelectTask); Card_IsFlagE055 tests it */
+    /* 0xC5 */ s8 systemSaved;      /* 1 once the system data is saved (CardNew_SaveSystem, CardGame_SaveSystem, CardSave_SaveSystem, Chara_SelectTask); Card_IsSystemSaved tests it */
     /* 0xC6 */ u8 unkC6[2];
     /* 0xC8 */ u32 lbguildFree;         /* free memory after lbguild's data */
     /* 0xCC */ u32 lbguildFreeSize;
-    /* 0xD0 */ u8 *memFile;             /* file 0x19EB, read through the memory file's seek/read (ACCESS's engine, 0x2FB0C0) */
+    /* 0xD0 */ u8 *memFile;             /* file 0x19EB, read through the memory file's seek/read (the kana-kanji converter's dictionary reads) */
     /* 0xD4 */ s32 memFileSize;
     /* 0xD8 */ s32 patchArea;           /* 0xAA6780: the end of lbguild's free memory; the patch and
                                            memory card work areas start here */
     /* 0xDC */ s32 unkDC;               /* 0x20040 */
-    /* 0xE0 */ u8 unkE0;
+    /* 0xE0 */ u8 openingAfterResults; /* 1: the quest results went on to the opening movie; the lobby clears it on return offline */
     /* 0xE1 */ u8 plselLoaded;
     /* 0xE2 */ u8 loadAnimOn;           /* the loading letters are drawn (Loading_DrawLetters) */
     /* 0xE3 */ s8 loadAnimFrame;
     /* 0xE4 */ s8 loadAnimPhase;        /* 0..11: the step of the letters' bob */
-    /* 0xE5 */ s8 unkE5;
+    /* 0xE5 */ s8 petDayPending;    /* 1 from the lobby scene's start (NetScene_Run) until the town resets the pets' day (Poogie_DailyReset); 0 at boot */
     /* 0xE6 */ u8 unkE6[2];
     /* 0xE8 */ void *questData;         /* the current quest: its stage file header or guild list entry (Quest_SetCurrent) */
     /* 0xEC */ s16 questId;             /* the current quest's id (Quest_SetCurrent) */
     /* 0xEE */ u8 unkEE[2];
-    /* 0xF0 */ s32 questFromList;       /* 1: questData is a guild list entry, 0: a stage file (Quest_SetCurrent; was the label D_006AE080) */
+    /* 0xF0 */ s32 questFromList;       /* 1: questData is a guild list entry, 0: a stage file (Quest_SetCurrent) */
 } SysSettings;                          /* 0xF4 bytes */
 
 typedef char SysSettings_size_check[(sizeof(SysSettings) == 0xF4) ? 1 : -1];

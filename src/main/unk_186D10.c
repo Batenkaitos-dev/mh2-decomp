@@ -1,5 +1,5 @@
 /*
- * Display helpers (main 0x186D10-0x186D80): the display offset, the CRI
+ * Display helpers: the display offset, the CRI
  * libraries' VBlank call, and the flip countdown. A frame's flip is
  * requested by Sys_FlipTick (gSysFlipPending), and VBlankHandler
  * (display.c) shows the new buffer at the next VBlank after gSysFlipAt.

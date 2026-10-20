@@ -4,10 +4,10 @@
 // Sorted by address within each part.
 
 // --- 0x729AC0-0x744D70: the browser (pages, input, links, forms, drawing) ---
-Draw_FullScreen = 0x0072A590; // type:func
+Draw_DimScreen = 0x0072A590; // type:func
 Html_NewPage = 0x0072AC00; // type:func
 Html_Refresh = 0x0072AC10; // type:func
-Html_SetTextColor = 0x0072ACB0; // type:func
+Html_SetBgColor = 0x0072ACB0; // type:func
 Html_SetBase = 0x0072ACF0; // type:func
 Draw_Title = 0x0072AD50; // type:func
 Draw_Text = 0x0072ADE0; // type:func
@@ -30,8 +30,8 @@ Draw_ImageMap = 0x0072B9E0; // type:func
 Draw_Anchor = 0x0072BAE0; // type:func
 Draw_Cell = 0x0072BB90; // type:func
 Draw_Table = 0x0072BD20; // type:func
-Draw_Text11 = 0x0072BE40; // type:func
-Draw_Text12 = 0x0072BF10; // type:func
+Draw_StruckText = 0x0072BE40; // type:func
+Draw_UnderlinedText = 0x0072BF10; // type:func
 Draw_FormBegin = 0x0072BFE0; // type:func
 Draw_Hidden = 0x0072C040; // type:func
 Page_SetDataMode = 0x0072C0A0; // type:func
@@ -41,12 +41,12 @@ Page_ExtendU16 = 0x0072C6E0; // type:func
 Browser_OpenDialog = 0x0072C760; // type:func
 Page_SetKind = 0x0072C7C0; // type:func
 Page_Extend = 0x0072C930; // type:func
-Page_IsHidden = 0x0072CA10; // type:func
-Page_Margins = 0x0072CA60; // type:func
-DlgBack_DrawAll = 0x0072CB40; // type:func
-DlgBack_Create = 0x0072CB50; // type:func
-DlgBack_Update = 0x0072CC00; // type:func
-DlgBack_Draw = 0x0072CDF0; // type:func
+Page_IsDataPage = 0x0072CA10; // type:func
+Page_SetMargins = 0x0072CA60; // type:func
+DlgBackImg_DrawAll = 0x0072CB40; // type:func
+DlgBackImg_Create = 0x0072CB50; // type:func
+DlgBackImg_Update = 0x0072CC00; // type:func
+DlgBackImg_Draw = 0x0072CDF0; // type:func
 DlgPage_DrawAll = 0x0072D000; // type:func
 DlgPage_Create = 0x0072D010; // type:func
 DlgPage_Update = 0x0072D0C0; // type:func
@@ -63,20 +63,20 @@ DlgStatus_DrawAll = 0x0072DB80; // type:func
 DlgStatus_Create = 0x0072DB90; // type:func
 DlgStatus_Update = 0x0072DCA0; // type:func
 DlgStatus_Draw = 0x0072DD30; // type:func
-DlgMsg_DrawAll = 0x0072DF70; // type:func
-DlgMsg_Create = 0x0072DF80; // type:func
-DlgMsg_Update = 0x0072E030; // type:func
-DlgMsg_Draw = 0x0072E090; // type:func
+DlgMenu_DrawAll = 0x0072DF70; // type:func
+DlgMenu_Create = 0x0072DF80; // type:func
+DlgMenu_Update = 0x0072E030; // type:func
+DlgMenu_Draw = 0x0072E090; // type:func
 Browser_OpenKeyboard = 0x0072E270; // type:func
-Browser_Keyboard = 0x0072E340; // type:func
+Browser_RunKeyboard = 0x0072E340; // type:func
 DlgInput_DrawAll = 0x0072E3B0; // type:func
 DlgInput_Create = 0x0072E3C0; // type:func
 DlgInput_Update = 0x0072E470; // type:func
 DlgInput_Draw = 0x0072E4D0; // type:func
-DlgCursor_DrawAll = 0x0072ED80; // type:func
-DlgCursor_Create = 0x0072ED90; // type:func
-DlgCursor_Update = 0x0072EE60; // type:func
-DlgCursor_Draw = 0x0072EEC0; // type:func
+DlgPointer_DrawAll = 0x0072ED80; // type:func
+DlgPointer_Create = 0x0072ED90; // type:func
+DlgPointer_Update = 0x0072EE60; // type:func
+DlgPointer_Draw = 0x0072EEC0; // type:func
 DlgBox_DrawAll = 0x0072F660; // type:func
 DlgBox_Create = 0x0072F670; // type:func
 DlgBox_Update = 0x0072F720; // type:func
@@ -84,6 +84,7 @@ DlgBox_Draw = 0x0072F910; // type:func
 Browser_KeepLogin = 0x0072FBC0; // type:func
 Browser_SaveLogin = 0x0072FDD0; // type:func
 Browser_SetErrorState = 0x0072FFE0; // type:func
+Browser_EmptyHook = 0x00730010; // type:func
 Browser_SetRenderState = 0x00730020; // type:func
 Prim_DrawTri = 0x00730030; // type:func
 Prim_DrawRect = 0x00730100; // type:func
@@ -136,6 +137,8 @@ Browser_LoadFrame = 0x00732150; // type:func
 PageObj_Nop = 0x00732230; // type:func
 Browser_Init = 0x00732240; // type:func
 Browser_CheckConnection = 0x00732910; // type:func
+Browser_InitNothing = 0x007349D0; // type:func an empty function, Browser_InitHook calls it
+Browser_InitHook = 0x007349E0; // type:func Browser_Init calls it, and it calls only Browser_InitNothing
 Browser_CheckNetwork = 0x007329E0; // type:func
 Browser_Update = 0x00732C20; // type:func
 Browser_RunPortal = 0x00732C90; // type:func
@@ -531,13 +534,13 @@ fixed_bd = 0x007F0708;
 fixed_tl = 0x007F0710;
 fixed_td = 0x007F1710;
 inflate_mask = 0x007F1810;
-// "#%s" with a stray newline in its 8 bytes: spliced whole by unk_72AD50.c
-D_00838EE8 = 0x00838EE8; // force_not_migration:True
+// the anchor name format, with a stray newline in its 8 bytes (Draw_Anchor includes it whole)
+gAnchorNameFormat = 0x00838EE8; // size:0x8 force_not_migration:True
 
 // --- Round 14 names (decomp-b14-nlobby) ---
 // frees the browser work, reloads gm_sub
 LobbyKddi_CloseBrowser = 0x007328A0; // type:func
 
 // Round 23 (ndata-h1)
-Dialog_ResetBoxState = 0x00739DE0; // type:func clears fromTop and dlgMode, dlgBoxKind and dlgCursorState 1
-Dialog_ResetMsgState = 0x007399A0; // type:func clears dlgMsgState and dlgMode, dlgCursorState 1
+Dialog_ResetBoxState = 0x00739DE0; // type:func clears fromTop and dlgMode, dlgBoxKind and dlgPointerState 1
+Dialog_ResetMsgState = 0x007399A0; // type:func clears dlgMenuState and dlgMode, dlgPointerState 1

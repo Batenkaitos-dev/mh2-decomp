@@ -1,4 +1,4 @@
-# Gs_UploadImagePacket (sub_main, src/sub_main/unk_3D4100.c)
+# Gs_UploadImagePacket (sub_main, src/sub_main/loading_screen.c)
 
 ## Status
 

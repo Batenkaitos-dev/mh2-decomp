@@ -15,9 +15,10 @@
 #include "lobby_globals.h"
 #include "syssave.h"
 #include "area.h"
+#include "lobby_labels.h"
 
 /* prototypes */
-void Gfx_DrawGauge(s32 x, s32 y, s32 w, s32 h, s32 flags); /* unit's own declaration: with the definition's void (s16 x, s16 y, s16 w, s16 h, s32 flags) (sub_main/unk_363550.c), VillageClock_DrawChatMark 17 of 58 words differ */
+void Gfx_DrawMarker(s32 x, s32 y, s32 w, s32 h, s32 flags); /* unit's own declaration: with the definition's void (s16 x, s16 y, s16 w, s16 h, s32 flags) (sub_main/bgm.c), VillageClock_DrawChatMark 17 of 58 words differ */
 s32 Town_IsMode(s32 arg0);
 void func_00792A50(s32 arg0, s32 arg1);
 void Quest_SetInfo(QuestInfo *q);
@@ -28,13 +29,13 @@ void Tex_Bind(s32);
 /* end of prototypes */
 
 extern s32 gTownMode;
-void Chat_Send6714(s32 arg0, M2C_UNK arg1);
+void Chat_SendLogText(s32 unused, s32 text);
 
 s32 Town_IsMode(s32 mode) {
     return gTownMode == mode;
 }
 
-void Chat_SendText(s32, void *text, s32); /* unit's own declaration: with the definition's void (s32 unused, void *text, u8 color) (lobby/unk_79EA30.c), Chat_SendToTargets 3 of 76 words differ */
+void Chat_SendText(s32, void *text, s32); /* unit's own declaration: with the definition's void (s32 unused, void *text, u8 color) (lobby/town_senders.c), Chat_SendToTargets 3 of 76 words differ */
 char *strcpy(char *dst, const char *src);
 extern u8 gNetUsers;
 extern s8 gChatTargets;
@@ -54,13 +55,13 @@ void Chat_SendToTargets(s32 arg0, void *text, s32 color)
     s8 *dst;
 
     if (gChatToAll != 0) {
-        gLobby->unk3967 = 0;
+        gLobby->chatToTargets = 0;
     } else {
         bit = 1;
         i = 0;
         user = &gNetUsers;
         dst = &gChatTargets;
-        gLobby->unk3967 = 1;
+        gLobby->chatToTargets = 1;
         gChatTargets = 0;
         D_008C0C68 = 0;
         D_008C0C70 = 0;
@@ -81,9 +82,9 @@ void Chat_SendToTargets(s32 arg0, void *text, s32 color)
     Chat_SendText(arg0, text, color);
 }
 
-/* A tail call: passes its own a0/a1 on to Chat_Send6714 (no direct caller in the code; reached through a pointer). */
+/* A tail call: passes its own a0/a1 on to Chat_SendLogText (no direct caller in the code; reached through a pointer). */
 void func_00792A50(s32 arg0, s32 arg1) {
-    Chat_Send6714(arg0, arg1);
+    Chat_SendLogText(arg0, arg1);
 }
 
 void VillageClock_DrawChatMark(s32 x, s32 y)
@@ -91,7 +92,7 @@ void VillageClock_DrawChatMark(s32 x, s32 y)
     s32 flags;
 
     flags = 0;
-    if ((gScene.online == 0) || (gScene.area != AREA_HUB_0x83)) {
+    if ((gScene.inLobby == 0) || (gScene.area != AREA_HUB_0x83)) {
         if (gChatSendTo == 0) {
             if (gChatWinOpen != 0) {
                 flags = 5;
@@ -103,7 +104,7 @@ void VillageClock_DrawChatMark(s32 x, s32 y)
             Gfx_SetBlend(4, 5);
             Tex_Prepare(1, 0x155);
             Tex_Bind(0x155);
-            Gfx_DrawGauge(x, y, 0x14, 0x12, flags);
+            Gfx_DrawMarker(x, y, 0x14, 0x12, flags);
         }
     }
 }
@@ -154,8 +155,6 @@ extern char *D_0080D1DC;
 extern char *gStatusBoxTitles[];
 extern char *D_447754[][2];
 extern char *gSymbolColorNames[];
-extern char *gSymbolColorTexts[];
-extern char *D_0080C07C;
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
 void Menu_DrawFrame(void *b, s16 *pos);
@@ -172,7 +171,7 @@ void Sjis_Widen(char *src, char *dst);
 struct V00793350_0;
 void MemberCard_DrawStatus(HunterCard *card, s32 x, s32 y);
 void MemberCard_DrawRestrict(HunterCard *card, s32 x, s32 y);
-void *LobbyArea_Name(u16 id);
+void *LobbyArea_GetName(u16 id);
 void Text_DrawWrapped33(s16 x, s16 y, s16 lineh, char *s);
 
 /* A member's card, page 0 (name, id, rank...) or 1 (equipment). tab first
@@ -217,13 +216,13 @@ s32 MemberCard_Draw(u8 pl, u8 page)
         StatusPage_DrawWeaponClass(p);
         Font_SetPos(0x132, 0xA2);
         if (card->symbolColor != 0xFF) {
-            Text_PrintfColored("~C05%s~C00%s", gSymbolColorTexts[0], gSymbolColorNames[card->symbolColor]);
+            Text_PrintfColored("~C05%s~C00%s", gNetLabels[NET_LABEL_SYMBOL_COLOR], gSymbolColorNames[card->symbolColor]);
         }
         Font_SetPos(0x17A, 0xB6);
         if (card->hr != 0) {
             Text_PrintfColored(gMemberCardNumFmt, card->hr);
         } else {
-            Text_Draw(D_0080C07C);
+            Text_Draw(gLobbyWords[LOBBY_WORD_UNREGISTERED]);
         }
         Font_SetPos(0x19E, 0xCA);
         sprintf(num, "%4d", card->versusWins);
@@ -232,7 +231,7 @@ s32 MemberCard_Draw(u8 pl, u8 page)
         MemberCard_DrawStatus(card, 0x18C, 0xDE);
         MemberCard_DrawRestrict(card, 0x1D4, 0xF2);
         Font_SetPos(0x19E, 0x106);
-        Text_PrintfColored(LobbyArea_Name(p->area));
+        Text_PrintfColored(LobbyArea_GetName(p->area));
         Text_DrawWrapped33(0x132, 0x13A, 0x14, (char *)card->comment);
         break;
     case 1:

@@ -1,4 +1,4 @@
-# AreaObj_K11_Draw (game, src/game/unk_6F8A10.c)
+# AreaObj_K11_Draw (game, src/game/area_scenery.c)
 
 ## Status
 

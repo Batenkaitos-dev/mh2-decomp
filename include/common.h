@@ -14,6 +14,12 @@ typedef unsigned long long u64;
 typedef float f32;
 typedef double f64;
 
+/* A point or a direction in the world: x, y and z, which the code copies
+ * as one struct. */
+typedef struct Vec3f {
+    f32 x, y, z;
+} Vec3f;
+
 #ifndef NULL
 #define NULL 0
 #endif

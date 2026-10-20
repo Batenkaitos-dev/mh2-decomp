@@ -1,5 +1,5 @@
 /*
- * main 0x180110-0x180640: the packet buffer of the frame (DMA packets are
+ * The packet buffer of the frame (DMA packets are
  * allocated from it: Packet_Alloc), and texture handles made from a TIM2
  * file (Tex_CreateFromTim2).
  */
@@ -39,135 +39,144 @@ void Packet_Reset(void)
     }
 }
 
-/* size bytes of the packet buffer, aligned; when it is full, waits for the
- * DMA to finish and starts it again. */
+/*
+ * Returns size bytes of the frame's packet buffer at the next multiple
+ * of align (a power of two). When the buffer has no room, waits for the
+ * DMA to finish and takes the bytes from the buffer's start.
+ */
 void *Packet_Alloc(u32 size, s32 align)
 {
     u8 *cur = gPacketCur;
-    u8 *p;
+    u8 *block;
     u8 *end;
 
     /* a check compiled out (any empty compound `if` here gives the
      * original's registers) */
     if (align == 0 || (align & (align - 1)) != 0) {
     }
-    p = (u8 *)(~(align - 1) & (u32)(cur + align - 1));
-    end = p + size;
+    block = (u8 *)(~(align - 1) & (u32)(cur + align - 1));
+    end = block + size;
     if (gPacketEnd < end) {
         Dma_WaitIdle();
-        p = gPacketBuf;
-        end = p + size;
+        block = gPacketBuf;
+        end = block + size;
     }
     gPacketCur = end;
-    return p;
+    return block;
 }
 
-/* Texture handle (and palette handle, for 4- and 8-bit pictures) made from
- * picture 0 of a TIM2 file, with its mip levels; 0 when the file is not
- * TIM2. */
+/*
+ * Makes a texture (and, for 4- and 8-bit pictures, a palette) from
+ * picture 0 of the TIM2 file tim2 with all its mip levels: copies the
+ * pixels into a heap block (swizzled when the record asks), turns
+ * 32-bit alpha into the GS range, and uploads them. mode is passed to
+ * Tex_SetupRec, Tex_Upload and the palette calls. Returns the texture
+ * handle in the low 16 bits and the palette handle (0 if none) in the
+ * high 16; 0 when the file is not TIM2.
+ */
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode)
 {
-    Image lv[7];
+    Image levels[7];
     Image pal;
-    u32 th;
-    u32 ph;
-    s32 n;
-    TexRec *t;
-    TexRec *pt;
+    u32 texHandle;
+    u32 palHandle;
+    s32 lastLevel;
+    TexRec *texRec;
+    TexRec *palRec;
     u8 *dst;
     u8 *src;
     s32 i;
-    s32 w;
-    s32 h;
+    s32 levelWidth;
+    s32 levelHeight;
     u32 size;
 
-    ph = 0;
-    th = Tex_FindFree();
-    t = &gTexRecs[(th & 0xFFFF) - 1];
-    n = Tim2_LastLevel(tim2);
-    if (Tim2_DescribeLevels(lv, tim2) == 0) {
+    palHandle = 0;
+    texHandle = Tex_FindFree();
+    texRec = &gTexRecs[(texHandle & 0xFFFF) - 1];
+    lastLevel = Tim2_LastLevel(tim2);
+    if (Tim2_DescribeLevels(levels, tim2) == 0) {
         return 0;
     }
-    Tex_SetupRec(lv, n + 1, th, mode);
-    t->mem = Mem_Alloc(t->size, 2);
-    dst = Mem_GetAddr(t->mem);
-    w = t->width;
-    h = t->height;
-    for (i = 0; i <= n; i++) {
-        switch (lv[i].bpp) {
+    Tex_SetupRec(levels, lastLevel + 1, texHandle, mode);
+    texRec->mem = Mem_Alloc(texRec->size, 2);
+    dst = Mem_GetAddr(texRec->mem);
+    levelWidth = texRec->width;
+    levelHeight = texRec->height;
+    for (i = 0; i <= lastLevel; i++) {
+        switch (levels[i].bpp) {
         case 0:
-            size = (w * h) >> 1;
+            size = (levelWidth * levelHeight) >> 1;
             src = Tim2_GetLevel(tim2, i);
-            if (t->unk36 == 0) {
+            if (texRec->unk36 == 0) {
                 Mem_Copy(dst, src, size);
             } else {
-                Tex_Swizzle(w, h, src, dst, 0);
+                Tex_Swizzle(levelWidth, levelHeight, src, dst, 0);
             }
             break;
         case 1:
-            size = w * h;
+            size = levelWidth * levelHeight;
             src = Tim2_GetLevel(tim2, i);
-            if (t->unk36 == 0) {
+            if (texRec->unk36 == 0) {
                 Mem_Copy(dst, src, size);
             } else {
-                Tex_Swizzle(w, h, src, dst, 1);
+                Tex_Swizzle(levelWidth, levelHeight, src, dst, 1);
             }
             break;
         case 2:
-            size = w * h * 2;
+            size = levelWidth * levelHeight * 2;
             Mem_Copy(dst, Tim2_GetLevel(tim2, i), size);
             break;
         case 3:
-            size = w * h * 4;
+            size = levelWidth * levelHeight * 4;
             Mem_Copy(dst, Tim2_GetLevel(tim2, i), size);
             break;
         case 4:
-            size = w * h * 4;
+            size = levelWidth * levelHeight * 4;
             Mem_Copy(dst, Tim2_GetLevel(tim2, i), size);
-            Tex_AlphaToGs(dst, w, h);
+            Tex_AlphaToGs(dst, levelWidth, levelHeight);
             break;
         }
-        w >>= 1;
-        h >>= 1;
+        levelWidth >>= 1;
+        levelHeight >>= 1;
         dst += size;
     }
-    Tex_Upload(th, mode);
-    if (t->psm == GS_PSMT4 || t->psm == GS_PSMT8) {
-        ph = Pal_FindFree();
-        pt = &gPalRecs[((ph & 0xFFFF0000) >> 16) - 1];
+    Tex_Upload(texHandle, mode);
+    if (texRec->psm == GS_PSMT4 || texRec->psm == GS_PSMT8) {
+        palHandle = Pal_FindFree();
+        palRec = &gPalRecs[((palHandle & 0xFFFF0000) >> 16) - 1];
         Tim2_DescribeClut(&pal, tim2);
-        Pal_SetupRec(&pal, ph, mode);
-        pt->mem = Mem_Alloc(pt->size, 2);
-        dst = Mem_GetAddr(pt->mem);
-        Mem_Copy(dst, Tim2_GetClut(tim2), pt->size);
+        Pal_SetupRec(&pal, palHandle, mode);
+        palRec->mem = Mem_Alloc(palRec->size, 2);
+        dst = Mem_GetAddr(palRec->mem);
+        Mem_Copy(dst, Tim2_GetClut(tim2), palRec->size);
         if (pal.bpp == 4) {
-            Tex_AlphaToGs(dst, pt->width, pt->height);
+            Tex_AlphaToGs(dst, palRec->width, palRec->height);
         }
-        Pal_Upload(ph, mode);
+        Pal_Upload(palHandle, mode);
     }
-    return th | ph;
+    return texHandle | palHandle;
 }
 
 /* 32-bit pixels: alpha to the GS range (0xFF -> 0x80, else halved, 1 at
  * least unless 0). */
-void Tex_AlphaToGs(u8 *pixels, s32 w, s32 h)
+void Tex_AlphaToGs(u8 *pixels, s32 width, s32 height)
 {
     s32 x;
     s32 y;
-    u8 a;
+    u8 alpha;
 
-    for (y = 0; y < h; y++) {
-        for (x = 0; x < w; x++) {
-            a = pixels[3];
-            if (a == 0xFF) {
-                a = 0x80;
-            } else if (a != 0) {
-                a >>= 1;
-                if (a == 0) {
-                    a = 1;
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < width; x++) {
+            alpha = pixels[3];
+            if (alpha == 0xFF) {
+                alpha = 0x80;
+            } else if (alpha != 0) {
+                alpha >>= 1;
+                if (alpha == 0) {
+                    alpha = 1;
                 }
             }
-            pixels[3] = a;
+            pixels[3] = alpha;
             pixels += 4;
         }
     }

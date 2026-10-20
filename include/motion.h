@@ -33,8 +33,8 @@ typedef struct MotionLayer {
 typedef char MotionLayer_size_check[(sizeof(MotionLayer) == 0x50) ? 1 : -1];
 
 /*
- * Animation data: unk_2F17C0.c builds it from the motion files, the Anim_*
- * functions (unk_2E3940.c) evaluate it, and unk_2EF020.c poses the bones
+ * Animation data: the motion file readers (AnimFile_*, Anim_ConvertKeys*)
+ * build it, the Anim_* functions evaluate it, and the Bone_* functions pose the bones
  * with it. A bone's animation is an AnimHeader; its `count` curves are
  * AnimCurves, each driving one value of the bone's pose (EmBone.pose[idx]:
  * 0..2 the scale, 3..5 the rotation, 6..8 the translation) through `count`
@@ -83,9 +83,42 @@ typedef struct KeyS4 { s16 v, t, in, out; } KeyS4;
 typedef struct KeySM { u32 mode; s16 v, t, in, out; } KeySM;
 
 /*
+ * A motion file, as Anim_LoadSet reads it: a header (AnimFileHeader), then `count`
+ * chunks (AnimFileChunk), one per animation, each followed by its `count` curve
+ * records (AnimFileCurve), each followed by its keys in the record's format.
+ */
+#define ANIM_FILE_FLOAT 1               /* AnimFileHeader.type: float keys (ANIM_TYPE_FLOAT) */
+#define ANIM_FILE_FIXED 2               /* fixed-point keys (ANIM_TYPE_FIXED) */
+
+typedef struct AnimFileHeader {
+    u8 type;                    /* 0x00: ANIM_FILE_FLOAT or ANIM_FILE_FIXED */
+    u8 pad01[3];
+    s32 count;                  /* 0x04: the chunks */
+    s32 unk08;
+    s32 loops;                  /* 0x0C: nonzero when the file gives a loop time */
+    f32 loopTime;               /* 0x10 */
+} AnimFileHeader;
+
+typedef struct AnimFileChunk {
+    s32 unk00;
+    s32 count;                  /* 0x04: the curve records that follow */
+    s32 size;                   /* 0x08: the whole chunk's bytes: the next chunk follows */
+} AnimFileChunk;
+
+typedef struct AnimFileCurve {
+    u32 info;                   /* 0x00: ANIM_FILE_CURVE_USED, the key format and the pose value's bit */
+    s32 count;                  /* 0x04: the keys that follow */
+    s32 size;                   /* 0x08: the whole record's bytes: the next record follows */
+} AnimFileCurve;
+
+#define ANIM_FILE_CURVE_USED 0x80000000 /* AnimFileCurve.info: the curve is converted */
+#define ANIM_FILE_KEY_FORMAT(info) (((info) & 0xFF0000) >> 16) /* the key format, ANIM_KEY_* */
+#define ANIM_FILE_POSE_BITS 0x1FF       /* one bit, 1 << n, for the pose value n (AnimCurve.idx) it drives */
+
+/*
  * An animation set (0x20 bytes): the animations of one file, converted by
- * Anim_LoadSet (unk_2F17C0.c) into a buffer that starts with the set
- * itself. The Anim_Setup* loaders (unk_2E3940.c) copy that block into a
+ * Anim_LoadSet into a buffer that starts with the set
+ * itself. The Anim_Setup* loaders copy that block into a
  * memory handle of its own (AnimSet_CopyToHandle): gMotions[] holds them.
  */
 typedef struct AnimSet {
@@ -105,7 +138,7 @@ typedef char AnimSet_size_check[(sizeof(AnimSet) == 0x20) ? 1 : -1];
 
 /*
  * Motion ids and the table of loaded motions (gMotions, filled by the Anim_Setup*
- * loaders of unk_2E3940.c). A motion id is set * MOTION_ID_SET + group *
+ * loaders). A motion id is set * MOTION_ID_SET + group *
  * MOTION_GROUP_SIZE + entry: set 0 is the common set, any other the object's own
  * (Player_SetPartAnim). gMotions holds the common set's motions, then
  * MOTIONS_PER_PLAYER for each player slot from MOTIONS_PLAYER_FIRST, then
@@ -121,5 +154,23 @@ typedef char AnimSet_size_check[(sizeof(AnimSet) == 0x20) ? 1 : -1];
 #define MOTIONS_PER_EM 600
 #define MOTIONS_EM_SLOTS 4
 #define MOTIONS_TOTAL (MOTIONS_EM_FIRST + MOTIONS_EM_SLOTS * MOTIONS_PER_EM) /* gMotions' entries */
+
+/* Keyframe tracks (Key1_Eval, Key2_Eval, Key3_Eval): a time in frames
+ * and a value of one to three floats per key, ended by a time of -1; from
+ * the last key on, its value is used as it is. */
+typedef struct Key1 {
+    f32 t;                      /* the key's time */
+    f32 v;                      /* its value */
+} Key1;
+
+typedef struct Key2 {
+    f32 t;
+    f32 v[2];
+} Key2;
+
+typedef struct Key3 {
+    f32 t;
+    f32 v[3];
+} Key3;
 
 #endif /* MOTION_H */

@@ -29,8 +29,8 @@ extern u8 gLobbyTextDirty;
 extern NetUser gNetUsers[];
 extern char gMyUserId[];
 extern char gMyName[];
-s32 func_3D54C0(s32 a);
-void func_3D54D0(s32 a);
+s32 TownReload_CheckStub(s32 a);
+void TownReload_MarkStub(s32 a);
 void Loading_Reset(void);
 void Player_SetupFromSave(Player *p, SaveData *save);
 void Player_CalcSkills(Player *p);
@@ -46,8 +46,8 @@ void Town_ReloadLocalPlayer(void)
 {
     Player *me = &gPlayers[gScene.localPlayer];
 
-    if (func_3D54C0(0) == 1) {
-        func_3D54D0(1);
+    if (TownReload_CheckStub(0) == 1) {
+        TownReload_MarkStub(1);
     } else {
         Loading_Reset();
     }
@@ -63,7 +63,7 @@ void Town_ReloadLocalPlayer(void)
     gLobbyTextDirty = 1;
     HunterCard_Build(gNetUsers[me->index].text);
     HunterCard_Build(gLobby->members[me->index].text);
-    func_3D54D0(0);
+    TownReload_MarkStub(0);
 }
 
 void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 sel, u8 kind);
@@ -118,12 +118,12 @@ extern s32 gDelayedSeTimer;
 extern s32 gDelayedSeId;
 extern Em *gDelayedSeNpc;
 extern s32 gTownMode;
-void Bgm_Update(void);
-s32 Lobby_GetPlace3928(void);
+void Bgm_TownUpdate(void);
+s32 Lobby_GetPlace(void);
 void TownPc_SyncMembers(void);
 void Npc_SpawnArea(void);
 s32 memcmp(void *a, void *b, s32 n);
-void Em_PlaySeSlot6(Em *em, s32 id, void *pos, s32 b);
+void Em_PlayEmBankSe(Em *em, s32 id, void *pos, s32 b);
 void Save_RestorePouch(Player *p);
 void Notice_Update(void);
 void TownPc_UpdateAll(void);
@@ -161,9 +161,9 @@ void Town_Frame(void)
     Player *q;
 
     Town_TickTimers();
-    Bgm_Update();
+    Bgm_TownUpdate();
     gTownPad = LobbyPad_Get(0);
-    if (Lobby_GetPlace3928() != 0) {
+    if (Lobby_GetPlace() != 0) {
         TownPc_SyncMembers();
     }
     Npc_SpawnArea();
@@ -182,13 +182,13 @@ void Town_Frame(void)
     }
     if (gDelayedSeTimer != 0) {
         if (--gDelayedSeTimer == 0 && gDelayedSeNpc != NULL) {
-            Em_PlaySeSlot6(gDelayedSeNpc, gDelayedSeId, &gDelayedSeNpc->posX, 2);
+            Em_PlayEmBankSe(gDelayedSeNpc, gDelayedSeId, &gDelayedSeNpc->posX, 2);
         }
     }
     Save_RestorePouch(&gPlayers[gScene.localPlayer]);
     Notice_Update();
     TownPc_UpdateAll();
-    gTutorial.ticked = 0;
+    gNpcScene.ticked = 0;
     for (j = 0; j < 20; j++, e++) {
         if (e->active != 0) {
             Em_CopyBoneMatrices(e);
@@ -254,7 +254,7 @@ s32 Town_IsIdleOnline(void)
     return gLobby->connected == 1;
 }
 
-s32 LobbyText_Update(void);
+s32 HunterCard_SendChanged(void);
 extern u8 gLobbyTextDirty;
 
 void MyHouse_RefreshGuests(void)
@@ -274,7 +274,7 @@ void MyHouse_RefreshGuests(void)
             }
         }
         if (n != 0 && gLobbyTextDirty != 0) {
-            LobbyText_Update();
+            HunterCard_SendChanged();
             gLobbyTextDirty = 0;
         }
     }
@@ -290,7 +290,7 @@ void Menu_PushNotice(s32 msg);
 s32 Kbd_IsOpen(void); /* unit's own declaration: the definition (sub_main) returns s8;
  * Town_UpdateMode is 805 words off with s8 */
 void Kbd_Cancel(void);
-void StageModels_Free(void);
+void EquipPreview_Free(void);
 s32 Game_IsOnline(void);
 extern s16 gMenuOffsetY;
 extern s16 gMenuOffsetX;
@@ -348,7 +348,7 @@ void MyHouse_CheckHost(void)
         if (Kbd_IsOpen()) {
             Kbd_Cancel();
         }
-        StageModels_Free();
+        EquipPreview_Free();
         gMenuOffsetY = 0;
         gFieldControl = 1;
         gMenuOffsetX = 0;
@@ -357,9 +357,9 @@ void MyHouse_CheckHost(void)
     }
 }
 
-void LobbyText_UpdatePart(u16 off, u16 n);
+void HunterCard_SendPart(u16 off, u16 n);
 s32 Game_IsOnline(void);
-extern u8 D_008BEB75;
+extern u8 gChatToLobby;
 extern u8 gLobbyLevel1Sel;
 
 void Town_UpdateTextParts(void)
@@ -368,20 +368,20 @@ void Town_UpdateTextParts(void)
     u8 v;
 
     if (Game_IsOnline() != 0 && gFrameTick % 30 == 0) {
-        if (s->restriction != gSave.restriction) {
-            LobbyText_UpdatePart(0xF, 1);
+        if (s->friendLimit != gSave.friendLimit) {
+            HunterCard_SendPart(0xF, 1);
         }
         if (gLobbyLevel1Sel != 0) {
             if (gChatWindowSel == 0) {
-                D_008BEB75 = 1;
+                gChatToLobby = 1;
             } else {
-                D_008BEB75 = 0;
+                gChatToLobby = 0;
             }
-            if (s->unkD7 != D_008BEB75) {
-                LobbyText_UpdatePart(0xD7, 1);
+            if (s->chatToLobby != gChatToLobby) {
+                HunterCard_SendPart(0xD7, 1);
             }
             if (s->title != gSave.title) {
-                LobbyText_UpdatePart(0xE, 1);
+                HunterCard_SendPart(0xE, 1);
             }
             if (gSave.styleBits == 0) {
                 v = 0xFF;
@@ -389,7 +389,7 @@ void Town_UpdateTextParts(void)
                 v = gSave.symbolColor;
             }
             if (s->symbolColor != v) {
-                LobbyText_UpdatePart(0xC, 1);
+                HunterCard_SendPart(0xC, 1);
             }
         }
     }
@@ -401,21 +401,21 @@ void MyHouse_CheckHost(void);
 void Town_UpdateTextParts(void);
 void Npc_RefreshOffers(void);
 s32 Menu_YesNoInput(void);
-s32 LobbyStep_6504(void);
-s32 LobbyStep_6504Leave(void);
+s32 LobbyStep_SetOut(void);
+s32 LobbyStep_SetOutLeave(void);
 s32 Quest_CheckOrder(u16 id);
 s32 BoxMenu_Update(u16 pad);
 s32 GameMenu_Poll(void);
 s32 PcCard_Update(u16 pad);
 s32 Town_ModeDisconnect(void);
-s32 LobbyStep_6501(void);
+s32 LobbyStep_Level2Leave(void);
 void LobbySe_Play(s32 se);
 void TownMsg_SendStatus(void);
-void Actor_SetIdle(void *, s32 a1, s32 n, s32 m);
+void Actor_ReturnToIdle(void *, s32 a1, s32 n, s32 m);
 void Chat_SystemMsg(s32 msg, char *arg);
 void LobbyDialog_OpenWait(void *arg0);
 void LobbyText_Open(s32 msg);
-void LobbyVillage_Begin3(s32 arg0);
+void LobbyVillage_BeginReturn(s32 arg0);
 void GameMenu_Open(void);
 
 void CamFocus_End(void);
@@ -426,13 +426,13 @@ void Hud_StartQuest(void);
 void LobbyMenu_Init(void);
 void Town_CheckQuestParty(void);
 void ArenaMenu_Update(void);
-void PickMenu_Update(void);
+void ShipMenu_Update(void);
 void MoveMenu_Update(void);
 void DojoMenu_Update(void);
 void AreaBoard_Update(void);
 void GroupBoard_Update(void);
 void MealScene_Update(void);
-void Menu4E_Update(void);
+void NpcGift_Update(void);
 void AreaMenu_Update(void);
 void HairMenu_Update(void);
 void ElderForecast_Update(void);
@@ -442,13 +442,13 @@ void PriceInfo_Update(void);
 void OfferMenu_Update(void);
 void Gallery_Run(void);
 void Contest_Update(void);
-void Menu31_Update(void);
+void PoogieMenu_UpdateOutside(void);
 void DrinkContest_Update(void);
 void Mine_UpdateMenu(void);
 void ArenaCup_Update(void);
 void QuestDesk_Update(void);
 void OfficialDesk_Update(void);
-void lobby_entry(void);
+void TownMode_WaitCancel(void);
 void IngredientList_Update(void);
 void Kitchen_Update(void);
 void KitchenGuest_Update(void);
@@ -464,13 +464,13 @@ s32 TownSave_Update(void);
 void QuestCounter_Step(void);
 void Quest_SendPaid(void);
 s32 Talk_Finish(void);
-void PoogiePet_Update(void);
+void PoogieNaming_Update(void);
 void PoogieMenu_Update(void);
 void PoogieMenu_UpdateCare(void);
-void Menu13_Update(void);
+void HousePet_Update(void);
 extern u8 gLobbyLevel2Sel;
 extern u8 gOffersRefreshPending;
-extern u8 D_008BEB63;
+extern u8 gTownCamEndOnClose;
 extern u8 gMemberNamesOff;
 extern s16 gSpotModeTimer;
 extern s8 gQuestMinMembers;
@@ -531,7 +531,7 @@ void Town_UpdateMode(void)
         ArenaMenu_Update();
         break;
     case 0x4C:
-        PickMenu_Update();
+        ShipMenu_Update();
         break;
     case 0x3B:
         MoveMenu_Update();
@@ -549,7 +549,7 @@ void Town_UpdateMode(void)
         MealScene_Update();
         break;
     case 0x4E:
-        Menu4E_Update();
+        NpcGift_Update();
         break;
     case 0x3A:
         AreaMenu_Update();
@@ -579,7 +579,7 @@ void Town_UpdateMode(void)
         Contest_Update();
         break;
     case 0x31:
-        Menu31_Update();
+        PoogieMenu_UpdateOutside();
         break;
     case 0x32:
         DrinkContest_Update();
@@ -597,7 +597,7 @@ void Town_UpdateMode(void)
         OfficialDesk_Update();
         break;
     case 0x2E:
-        lobby_entry();
+        TownMode_WaitCancel();
         break;
     case 0x47:
         IngredientList_Update();
@@ -637,7 +637,7 @@ void Town_UpdateMode(void)
         break;
     case 0x17:
         FLAG39 = 1;
-        if (LobbyStep_6501() == 1) {
+        if (LobbyStep_Level2Leave() == 1) {
             gTownMode = 0x18;
         }
         break;
@@ -648,7 +648,7 @@ void Town_UpdateMode(void)
             gTownMode = 0;
             gTownMenuOpen = 0;
             gPlayers[gScene.localPlayer].input.pressed = 0;
-            if (pl->state != 0x14 && D_008BEB63 == 1) {
+            if (pl->state != 0x14 && gTownCamEndOnClose == 1) {
                 CamFocus_End();
                 CamReq_Cancel();
             }
@@ -705,8 +705,8 @@ void Town_UpdateMode(void)
                     gTownMode = 6;
                     pl->questStatus |= 0x20;
                     gHouseAccess = 0;
-                    D_008BEB75 = 0;
-                    LobbyText_Update();
+                    gChatToLobby = 0;
+                    HunterCard_SendChanged();
                     TownMsg_SendStatus();
                     break;
                 case 1:
@@ -748,8 +748,8 @@ void Town_UpdateMode(void)
                     gTownMode = 6;
                     pl->questStatus |= 0x20;
                     gHouseAccess = 0;
-                    D_008BEB75 = 0;
-                    LobbyText_Update();
+                    gChatToLobby = 0;
+                    HunterCard_SendChanged();
                     TownMsg_SendStatus();
                     break;
                 case 1:
@@ -777,7 +777,7 @@ void Town_UpdateMode(void)
     case 0x19:
     case 0x36:
         if (--gSpotModeTimer <= 0) {
-            Actor_SetIdle(&gPlayers[gScene.localPlayer], 0, 0x14, 0);
+            Actor_ReturnToIdle(&gPlayers[gScene.localPlayer], 0, 0x14, 0);
             gTownMode = 0;
             gTownMenuOpen = 0;
         }
@@ -802,13 +802,13 @@ void Town_UpdateMode(void)
         break;
     case 0x1B:
         FLAG39 = 1;
-        switch (LobbyStep_6504()) {
+        switch (LobbyStep_SetOut()) {
         case 0:
             Chat_SystemMsg(9, 0);
             gPlayers[gScene.localPlayer].questStatus |= 0x20;
             gHouseAccess = 0;
-            D_008BEB75 = 0;
-            LobbyText_Update();
+            gChatToLobby = 0;
+            HunterCard_SendChanged();
             gTownMode = 7;
             break;
         case 1:
@@ -820,7 +820,7 @@ void Town_UpdateMode(void)
     case 0x42:
         FLAG39 = 1;
     case 0x6:
-        switch (LobbyStep_6504()) {
+        switch (LobbyStep_SetOut()) {
         case 0:
             gTownMode = 7;
             Quest_SendPaid();
@@ -856,13 +856,13 @@ void Town_UpdateMode(void)
         break;
     case 0x28:
         FLAG39 = 1;
-        switch (LobbyStep_6504Leave()) {
+        switch (LobbyStep_SetOutLeave()) {
         case 0:
             gFieldControl = 1;
             gTownMenuOpen = 0;
             pl->questStatus = pl->questStatus & ~0x20;
             pl->questStatus |= 0x40;
-            LobbyText_Update();
+            HunterCard_SendChanged();
             gTownMode = 0;
             break;
         case 1:
@@ -919,7 +919,7 @@ void Town_UpdateMode(void)
             LobbyText_Open(0x1A);
             gTownMode = 0xE;
             gLobby->seqStep = 0;
-            gLobby->unk393C = 0;
+            gLobby->spareStep0 = 0;
             gLobby->subStep2 = 0;
             gLobby->subStep = 0;
             break;
@@ -934,14 +934,14 @@ void Town_UpdateMode(void)
         switch (Town_ModeDisconnect()) {
         case 0:
             gLobby->connected = 1;
-            LobbyVillage_Begin3(0);
+            LobbyVillage_BeginReturn(0);
             LobbyText_Open(0x1A);
             FLAG39 = 1;
             break;
         }
         break;
     case 0x10:
-        PoogiePet_Update();
+        PoogieNaming_Update();
         break;
     case 0x11:
         PoogieMenu_Update();
@@ -950,7 +950,7 @@ void Town_UpdateMode(void)
         PoogieMenu_UpdateCare();
         break;
     case 0x13:
-        Menu13_Update();
+        HousePet_Update();
         break;
     case 7:
     case 0x21:
@@ -967,15 +967,15 @@ void Town_UpdateMode(void)
 
 void FileQueue_Cancel(void);
 s32 Menu_PushNoticeOnce(s32);
-s32 LobbyStep_6408(void);
+s32 LobbyStep_Level1Leave(void);
 s32 LobbyScreen_FadeOut(s32);
-void Lobby_SetPlace3928(s32 arg0);
+void Lobby_SetPlace(s32 arg0);
 void Lobby_Disconnect(s32);
 s32 LobbyStep_Level0List(void);
 void Kbd_Cancel(void);
 extern s8 gTownModeStep;
 extern s8 gHouseAccess;
-extern u8 D_008BEB75;
+extern u8 gChatToLobby;
 
 s32 Town_ModeDisconnect(void)
 {
@@ -988,9 +988,9 @@ s32 Town_ModeDisconnect(void)
         LobbyMenu_SetDraw(0, 0, NULL, 0);
         gTownModeStep++;
     case 1:
-        switch (LobbyStep_6408()) {
+        switch (LobbyStep_Level1Leave()) {
         case 0:
-            Lobby_SetPlace3928(0);
+            Lobby_SetPlace(0);
             gTownModeStep++;
             gLobby->seqStep = 0;
             break;
@@ -1015,8 +1015,8 @@ s32 Town_ModeDisconnect(void)
         case 0:
             gTownModeStep = 0;
             gHouseAccess = 0;
-            D_008BEB75 = 0;
-            LobbyText_Update();
+            gChatToLobby = 0;
+            HunterCard_SendChanged();
             return 0;
         }
         break;
@@ -1027,9 +1027,6 @@ s32 Town_ModeDisconnect(void)
     return 2;
 }
 
-typedef struct Vec3f {
-    f32 x, y, z;
-} Vec3f;
 typedef struct SpawnPt {
     Vec3f pos;
     u16 angle;
@@ -1051,8 +1048,8 @@ extern SpawnPt gTownSpawn57Alt;
 extern SpawnPt gTownSpawn57;
 s32 Cond_Check(u16 id);
 u16 Rand_Next(s32 stream);
-void Actor_SetIdle(void *, s32 a1, s32 n, s32 m);
-u8 Area_GetSetIndex(s32 id); /* unit's own declaration: with the definition's u8 (u16 id) (lobby/unk_79EA30.c), Town_PlaceLocalPlayer 1 of 222 words differ */
+void Actor_ReturnToIdle(void *, s32 a1, s32 n, s32 m);
+u8 Area_GetSetIndex(s32 id); /* unit's own declaration: with the definition's u8 (u16 id) (lobby/town_senders.c), Town_PlaceLocalPlayer 1 of 222 words differ */
 
 /* Puts the local player at the entry point of the area (SpawnPt tables;
    some are declared as bytes and read through a cast). (&p->index)[1] is
@@ -1065,8 +1062,8 @@ void Town_PlaceLocalPlayer(s32 area)
     Vec3f *pos;
     s32 k;
 
-    p->unk844 = 0;
-    p->unk867 = 0;
+    p->drunk = 0;
+    p->drinkCount = 0;
     p->spot = NULL;
     p->offerNoticeTimer = 0;
     p->weaponSeMute = 0;
@@ -1104,17 +1101,17 @@ void Town_PlaceLocalPlayer(s32 area)
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case AREA_HUB_0x86:
+        case AREA_TAVERN:
             sp = (SpawnPt *)gTownSpawn86;
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case AREA_HUB_0x87:
+        case AREA_TOWN_ARENA:
             sp = (SpawnPt *)gTownSpawn87;
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
             break;
-        case AREA_HUB_0x88:
+        case AREA_ELDER_HALL:
             sp = (SpawnPt *)gTownSpawn88;
             *pos = sp->pos;
             p->rot[1] = (&p->index)[1] = sp->angle;
@@ -1134,11 +1131,11 @@ void Town_PlaceLocalPlayer(s32 area)
         ((Em **)p)[0x3B4 / 4] = NULL;
     }
     if (gTownMode != 0x22) {
-        Actor_SetIdle(p, 0, 0, 0);
+        Actor_ReturnToIdle(p, 0, 0, 0);
     }
 }
 
-void func_007A6460(s8 arg0) {
+void Town_SetDrawSky(s8 arg0) {
     gAreaState.drawSky = arg0;
 }
 

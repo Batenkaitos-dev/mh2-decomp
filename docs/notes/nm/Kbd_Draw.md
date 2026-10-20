@@ -1,4 +1,4 @@
-# Kbd_Draw (sub_main, src/sub_main/unk_314E00.c)
+# Kbd_Draw (sub_main, src/sub_main/kbd.c)
 
 ## Status
 

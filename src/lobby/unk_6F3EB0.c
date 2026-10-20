@@ -5,6 +5,7 @@
 #include "pad.h"
 #include "player.h"
 #include "lobby_menu.h"
+#include "lobby_labels.h"
 
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
@@ -34,7 +35,7 @@ void Chat_SetWindowMode(s8 a, s8 b);
 s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
 s32 memcmp(void *a, void *b, s32 n);
 void LobbySe_Play(s32);
-void TownMsg_Send14(void *u);
+void TownMsg_SendHouseVisit(void *u);
 void AreaMenu_Open(u16 id);
 void Kbd_SetPos(s32 n, f32 f);
 void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
@@ -89,7 +90,7 @@ void HouseAccess_Update(void)
             u = Member_Get(i);
             t = (HunterCard *)u->text;
             if (((HunterCard *)u->text)->houseAccess == 1) {
-                TownMsg_Send14(u);
+                TownMsg_SendHouseVisit(u);
                 gLobby->memberSlot[gScene.localPlayer] = i + 0x30;
                 LobbyMenu_SetDraw(0, 0, 0, 0);
                 AreaMenu_Open(t->houseLevel + 0xAD);
@@ -137,7 +138,7 @@ void HouseAccess_Update(void)
                 text = (HunterCard *)Member_Get(m->cursor)->text;
                 k = (s8)m->cursor;
                 if (memcmp(text->housePass, m->pass, 9) == 0) {
-                    TownMsg_Send14(&gNetUsers[k]);
+                    TownMsg_SendHouseVisit(&gNetUsers[k]);
                     gLobby->memberSlot[gScene.localPlayer] = k + 0x30;
                     LobbyMenu_SetDraw(0, 0, 0, 0);
                     AreaMenu_Open(text->houseLevel + 0xAD);
@@ -177,11 +178,6 @@ void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
 extern u8 gMenuWork;
 extern NetUser gNetUsers[];
-extern char *D_0080C1C4;
-extern char *gCloseLabelTexts[];
-extern char *D_0080C1CC;
-extern char *gGoneOutTexts[];
-extern char *D_0080C1D4;
 
 /* The member list draw (the 10 NetUsers at gNetUsers and their state
  * icons); x + 10 is a local (lx) for the three lines. */
@@ -200,7 +196,7 @@ void HouseAccess_DrawList(s16 x, s16 y)
     ty += 10;
     Font_SetPos((s16)(x + 0x1E) - 0x14, ty);
     Font_SetColor(0x807F7F28);
-    Text_PrintfColored(D_0080C1D4);
+    Text_PrintfColored(gTownLabels[TOWN_LABEL_HOUSE_ACCESS]);
     if (*(s8 *)(m + 0x11) < 2) {
         Menu_DrawLine(lx, ty + 0x14 + *(s16 *)(m + 0x14) * 0x16, 0xBE, 0x16, 0);
     } else {
@@ -215,22 +211,22 @@ void HouseAccess_DrawList(s16 x, s16 y)
         if (u->id[0] != 0) {
             if (gPlayers[i].area == 0) {
                 Font_SetColor(0x80404040);
-                Text_PrintfColored(gGoneOutTexts[0]);
+                Text_PrintfColored(gTownLabels[TOWN_LABEL_GONE_OUT]);
                 Icon_Draw((s16)(x + 0x1E) - 0x14, ty, 0x14, 0x14, -1, 0x47);
             } else {
                 switch (t->houseAccess) {
                 case 0:
                     Font_SetColor(0x80404040);
-                    Text_PrintfColored(gCloseLabelTexts[0]);
+                    Text_PrintfColored(gTownLabels[TOWN_LABEL_CLOSE]);
                     Icon_Draw((s16)(x + 0x1E) - 0x14, ty, 0x14, 0x14, -1, 0x47);
                     break;
                 case 1:
                     Font_SetColor(0x807F7F7F);
-                    Text_PrintfColored(D_0080C1C4);
+                    Text_PrintfColored(gTownLabels[TOWN_LABEL_OPEN]);
                     break;
                 case 2:
                     Font_SetColor(0x807F7F7F);
-                    Text_PrintfColored(D_0080C1CC);
+                    Text_PrintfColored(gTownLabels[TOWN_LABEL_PASSWORD]);
                     Icon_Draw((s16)(x + 0x1E) - 0x14, ty, 0x14, 0x14, -1, 0x59);
                     break;
                 }

@@ -19,7 +19,7 @@ void HouseAccess_Draw(MenuTask *task) {
     HouseAccess_DrawList(gMenuWork, 0x3C);
 }
 
-void Menu_SetYesNo(u8); /* unit's own declaration: with the definition's void (s8 choice) (lobby/unk_7B0D80.c), QuitMenu_Open 1 of 25 words, QuitMenu_Update 2 of 132 words differ */
+void Menu_SetYesNo(u8); /* unit's own declaration: with the definition's void (s8 choice) (lobby/lobby_dialog.c), QuitMenu_Open 1 of 25 words, QuitMenu_Update 2 of 132 words differ */
 void LobbyDialog_Grow(void);
 void LobbyText_Open(s32);
 void *memset(void *dst, s32 c, u32 n);
@@ -105,27 +105,4 @@ s32 QuitMenu_Update(u16 pad)
         break;
     }
     return 2;
-}
-
-void MoveMenu_Draw(u8 *);
-void MoveMenu_Draw2(u8 *);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void MoveMenu_Open(void)
-{
-    gTownMenuOpen = 1;
-    gTownMode = 0x3B;
-    memset(&gMenuWork, 0, 0xF00);
-    LobbyMenu_Init();
-    LobbyMenu_SetDraw(MoveMenu_Draw, MoveMenu_Draw2, 0, 0);
-    LobbyText_Open(0x84);
-    LobbyDialog_Grow();
-    Menu_SetYesNo(0);
-    LobbySe_Play(8);
-}
-
-void MoveMenu_Close(void) {
-    gTownMenuOpen = 0;
-    gTownMode = 0;
-    gMenuInputLock = 3;
 }

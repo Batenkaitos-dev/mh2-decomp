@@ -105,9 +105,9 @@ segments:
       - [0x31640, asm, cri/sofdec]             # 0x1313C0: CRI Sofdec (MWSFD 3.33, M2V, MPS, MPV, SFD, SFH; Sep 2004), CodeWarrior-built (16-byte aligned)
       - [0x58BB0, asm, cri/adx]                # 0x158930: CRI ADX (ADXT 9.34, ADXF, CVFS, SJ, SVM...; Nov 2004), GCC-built (8-byte aligned)
       - [0x79810, c, dma]  # 0x179590: DMA tags, image uploads, the DMA queue and handlers
-      - [0x7b390, c, unk_17B110]  # automatch: 1 of 1
+      - [0x7b390, c, dma_flush]   # automatch: 1 of 1
       - [0x7B430, c, texture]  # 0x17B1B0: texture and palette handles (flCreatePaletteHandle)
-      - [0x7d4c0, c, unk_17D240]  # automatch: 1 of 1
+      - [0x7d4c0, c, tex_use]     # automatch: 1 of 1
       - [0x7D4D0, c, texconv]  # 0x17D250: texture upload and conversion (flPS2ConvertTextureFromContext), swizzle tables, VRAM blocks
       - [0x7ed80, c, unk_17EB00]  # automatch: 2 of 12
       - [0x7F8E0, c, unk_17F660]
@@ -115,21 +115,21 @@ segments:
       - [0x80390, c, unk_180110]
       - [0x808c0, c, unk_180640]  # automatch: 1 of 1
       - [0x808D0, c, display]  # 0x180650: display and GS setup at boot (InitDisplay), the VBlank handler
-      - [0x80c40, c, unk_1809C0]  # automatch: 1 of 1
+      - [0x80c40, c, flip_frame]  # automatch: 1 of 1
       - [0x80CD0, c, unk_180A50]
       - [0x82290, c, unk_182010]  # automatch: 3 of 3
       - [0x822C0, c, iop]  # 0x182040: IOP reboot and module loading
       - [0x826D0, asm, mem_loops]  # 0x182450: Capcom's hand-written copy, clear and fill loops (Mem_*), built from src/main/mem_loops.s
       - [0x828C0, c, unk_182640]
-      - [0x828f0, c, unk_182670]  # automatch: 6 of 6
+      - [0x828f0, c, main_heap]   # automatch: 6 of 6
       - [0x82950, c, unk_1826D0]
       - [0x83fa0, c, unk_183D20]  # automatch: 3 of 6
       - [0x856E0, c, unk_185460]
       - [0x86760, c, unk_1864E0]
       - [0x86f90, c, unk_186D10]  # automatch: 2 of 3
       - [0x87000, c, unk_186D80]
-      - [0x8a210, c, unk_189F90]  # automatch: 8 of 22
-      - [0x8B260, c, unk_18AFE0]
+      - [0x8a210, c, pad]         # automatch: 8 of 22
+      - [0x8B260, c, pad_port]
       - [0x8ce90, c, unk_18CC10]  # automatch: 1 of 1
       - [0x8CEA0, c, main]  # 0x18CC20: main, the file systems, file loading by id, LoadOverlay, save-data accessors
       - [0x8dcd0, c, unk_18DA50]  # automatch: 8 of 23
@@ -146,7 +146,7 @@ segments:
       - [0x93360, c, unk_1930E0]  # automatch: 2 of 12
       - [0x93A20, c, unk_1937A0]
       - [0x93f30, c, unk_193CB0]  # automatch: 9 of 26
-      - [0x94AB0, c, unk_194830]
+      - [0x94AB0, c, sound_effects]
       - [0x954b0, c, unk_195230]  # automatch: 3 of 8
       - [0x95C90, c, unk_195A10]
       - [0x95E80, data, data]            # .data (0x195C00)
@@ -157,8 +157,8 @@ segments:
       - [0xBAD20, .data, iop]
       - [0xBADB0, .data, unk_1864E0]
       - [0xBAE30, .data, unk_186D80]
-      - [0xBB260, .data, unk_189F90]
-      - [0xBB270, .data, unk_18AFE0]
+      - [0xBB260, .data, pad]
+      - [0xBB270, .data, pad_port]
       - [0xBB3B0, .data, main]
       - [0xBB520, .data, unk_18DA50]
       - [0xBBC60, .data, sound]
@@ -168,7 +168,7 @@ segments:
       - [0xBCF30, .data, unk_192EF0]
       - [0xBCF80, .data, unk_1937A0]
       - [0xBD090, .data, unk_193CB0]
-      - [0xBD0A0, .data, unk_194830]
+      - [0xBD0A0, .data, sound_effects]
       - { start: 0xBD100, type: data, name: rodata, linker_section_order: .rodata }  # .rodata (0x1BCE80)
       - [0xC7D90, .rodata, dma]
       - [0xC7DF0, .rodata, texture]
@@ -179,7 +179,7 @@ segments:
       - [0xC80E0, .rodata, unk_183D20]
       - [0xC8120, .rodata, unk_185460]
       - [0xC8168, .rodata, unk_186D80]
-      - [0xC8190, .rodata, unk_189F90]
+      - [0xC8190, .rodata, pad]
       - [0xC81E0, .rodata, main]
       - [0xC8260, .rodata, unk_18DA50]
       - [0xC8280, .rodata, unk_18EB20]

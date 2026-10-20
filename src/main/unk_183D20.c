@@ -1,14 +1,16 @@
-/* Functions matched automatically from m2c's output;
- * the others are still assembly. First-pass C, to be named and typed. */
+/* The render state's store: Gs_ResetState clears it, Gs_SetState sets one
+ * register of it (the GS registers, the matrices, the material and light
+ * records, the test, blending and Z bits ...) and Gs_GetState reads one. */
 #include "common.h"
 #include "m2c_macros.h"
 #include "model.h"
 #include "light.h"
+#include "render_state.h"
 
 extern s32 gPacketMode;
 extern s32 gSysBgColor;
 extern u32 gRenderFlags2;
-extern u32 gGsColor0E;
+extern u32 gGsColor;
 extern u32 gGsAlphaRef;
 extern u32 gGsStateTextures[];
 extern u32 D_0020E138;
@@ -31,18 +33,18 @@ extern f32 D_0020CBC0[];
 extern u32 D_002191A8;
 extern f32 gGsFogNear;
 extern f32 gGsFogFar;
-extern u32 gGsColor67;
-extern f32 gGsColor67F;
+extern u32 gGsColor2;
+extern f32 gGsColor2F;
 extern f32 D_0020D814;
 extern f32 D_0020D818;
 extern f32 D_0020D81C;
-extern f32 gGsColor0EF;
+extern f32 gGsColorF;
 extern f32 D_0020D824;
 extern f32 D_0020D828;
 extern f32 D_0020D82C;
 extern RsMat gMtxView;
 extern RsMat gMtxCamProj;
-extern RsMat gMtxRs19;
+extern RsMat gMtxUv;
 extern f32 gMtxProjClip[];
 extern f32 gMtxClip[];
 extern f32 gMtxProjScreen[];
@@ -131,7 +133,7 @@ s32 Gs_ResetState(void)
 }
 
 /* Sets a render-state value (the register numbers Gs_GetState reads):
- * matrices and light records (0x1A-0x5C), test, blending and Z bits,
+ * matrices and light records, test, blending and Z bits,
  * colours, textures. Returns 1. */
 s32 Gs_SetState(u8 reg, u32 v)
 {
@@ -153,7 +155,7 @@ s32 Gs_SetState(u8 reg, u32 v)
         k = reg - 0x5A;
         gRsLights[k] = *(Light *)v;
         Vec_Normalize(gRsLights[k].dir);
-        gRsLights[k].amb[3] = 0.0f;
+        gRsLights[k].color[3] = 0.0f;
         gRsLights[k].unk14[3] = 0.0f;
         D_0020CBC0[k] = 1.0f / gRsLights[k].unk50;
         return 1;
@@ -211,10 +213,10 @@ s32 Gs_SetState(u8 reg, u32 v)
             break;
         }
         break;
-    case 4:
-    case 5:
-    case 6:
-    case 7:
+    case RS_TEXTURE:
+    case RS_TEXTURE_1:
+    case RS_TEXTURE_2:
+    case RS_TEXTURE_3:
         tex = v;
         if (reg == 4) {
             Tex_Use(1, &tex);
@@ -228,7 +230,7 @@ s32 Gs_SetState(u8 reg, u32 v)
     case 0xA:
     case 0xB:
         break;
-    case 0xC:
+    case RS_SCISSOR:
         gRenderFlags2 &= ~0x80;
         if (v == 1) {
             gRenderFlags2 |= 0x80;
@@ -242,7 +244,7 @@ s32 Gs_SetState(u8 reg, u32 v)
             Gs_SetAlpha(gRenderFlags, 0);
         }
         break;
-    case 0x5E:
+    case RS_BLEND:
         if ((gRenderFlags & 0xFF) != v) {
             gRenderFlags &= ~0xFF;
             gRenderFlags |= v;
@@ -256,10 +258,10 @@ s32 Gs_SetState(u8 reg, u32 v)
             Gs_SetAlpha(gRenderFlags, 0);
         }
         break;
-    case 0xE:
-        gGsColor0E = v;
-        c = *(volatile u32 *)&gGsColor0E;
-        gGsColor0EF = ((c >> 16) & 0xFF) / 255.0f;
+    case RS_COLOR:
+        gGsColor = v;
+        c = *(volatile u32 *)&gGsColor;
+        gGsColorF = ((c >> 16) & 0xFF) / 255.0f;
         D_0020D824 = ((c >> 8) & 0xFF) / 255.0f;
         D_0020D828 = (c & 0xFF) / 255.0f;
         {
@@ -278,16 +280,16 @@ s32 Gs_SetState(u8 reg, u32 v)
             }
         }
         break;
-    case 0xF:
+    case RS_FOG_COLOR:
         if (gGsFogColor != v) {
             gGsFogColor = v;
             Gs_SetFogColor(v);
         }
         break;
-    case 0x10:
+    case RS_FOG_NEAR:
         gGsFogNear = *(f32 *)&v;
         break;
-    case 0x11:
+    case RS_FOG_FAR:
         gGsFogFar = *(f32 *)&v;
         break;
     case 0x12:
@@ -298,7 +300,7 @@ s32 Gs_SetState(u8 reg, u32 v)
         break;
     case 0x13:
         break;
-    case 0x14:
+    case RS_BG_COLOR:
         Gs_SetBgColor(v);
         break;
     case 0x15:
@@ -307,48 +309,49 @@ s32 Gs_SetState(u8 reg, u32 v)
             gRenderFlags2 |= 2;
         }
         break;
-    case 0x16:
+    case RS_VIEW_MTX:
         gMtxView = *(RsMat *)v;
         break;
-    case 0x17:
+    case RS_PROJ_MTX:
         gMtxCamProj = *(RsMat *)v;
         Mtx_Mul(gMtxProjClip, gMtxCamProj.m, gMtxClip);
         Mtx_Mul(gMtxProjScreen, gMtxCamProj.m, gMtxScreen);
         break;
-    case 0x18:
-        Camera_SetOrtho(0x22, ((s32 *)v)[0], ((s32 *)v)[1], ((s32 *)v)[2], ((s32 *)v)[3], ((f32 *)v)[4], ((f32 *)v)[5]);
+    case RS_ORTHO:
+        Camera_SetOrtho(0x22, ((GsViewport *)v)->x, ((GsViewport *)v)->y, ((GsViewport *)v)->width, ((GsViewport *)v)->height,
+                        ((GsViewport *)v)->nearZ, ((GsViewport *)v)->farZ);
         break;
-    case 0x19:
-        gMtxRs19 = *(RsMat *)v;
+    case RS_UV_MTX:
+        gMtxUv = *(RsMat *)v;
         break;
     case 0x5D:
         gRenderFlags2 &= 0xFFFFFF;
         gRenderFlags2 |= v;
         break;
-    case 0x5F:
+    case RS_ALPHA_TEST:
         switch (v) {
-        case 2:
+        case RS_CMP_EQUAL:
             v = 0x100000;
             break;
-        case 5:
+        case RS_CMP_NOTEQUAL:
             v = 0x280000;
             break;
-        case 4:
+        case RS_CMP_GREATER:
             v = 0x200000;
             break;
-        case 6:
+        case RS_CMP_GEQUAL:
             v = 0x300000;
             break;
-        case 0:
+        case RS_CMP_NEVER:
             v = 0;
             break;
-        case 7:
+        case RS_CMP_ALWAYS:
             v = 0x380000;
             break;
-        case 1:
+        case RS_CMP_LESS:
             v = 0x80000;
             break;
-        case 3:
+        case RS_CMP_LEQUAL:
             v = 0x180000;
             break;
         }
@@ -358,7 +361,7 @@ s32 Gs_SetState(u8 reg, u32 v)
             Gs_SetTest(gRenderFlags, 0);
         }
         break;
-    case 0x60:
+    case RS_ALPHA_REF:
         if (v != gGsAlphaRef) {
             gGsAlphaRef = v;
             Gs_SetTest(gRenderFlags, 0);
@@ -370,7 +373,7 @@ s32 Gs_SetState(u8 reg, u32 v)
             gRenderFlags2 |= 0x4000;
         }
         break;
-    case 0x63:
+    case RS_TEX_FILTER:
         gRenderFlags &= ~0x10000;
         if (v == 0x10000) {
             gRenderFlags |= 0x10000;
@@ -391,16 +394,16 @@ s32 Gs_SetState(u8 reg, u32 v)
             gRenderFlags2 |= 0x20000;
         }
         break;
-    case 0x67:
-        gGsColor67 = v;
-        gGsColor67F = ((v >> 16) & 0xFF) / 255.0f;
+    case RS_COLOR2:
+        gGsColor2 = v;
+        gGsColor2F = ((v >> 16) & 0xFF) / 255.0f;
         D_0020D814 = ((v >> 8) & 0xFF) / 255.0f;
         D_0020D818 = (v & 0xFF) / 255.0f;
         D_0020D81C = ((v >> 24) & 0xFF) / 255.0f;
         break;
     case 0x68:
         break;
-    case 0x69:
+    case RS_TEX_LOD_L:
         gGsTexLodL = v;
         break;
     case 0x6A:
@@ -412,7 +415,7 @@ s32 Gs_SetState(u8 reg, u32 v)
             gRenderFlags |= v;
         }
         break;
-    case 0x6C:
+    case RS_ZWRITE:
         v = (v == 1) ? 0x8000 : 0;
         if ((gRenderFlags & 0x8000) != v) {
             gRenderFlags &= ~0x8000;
@@ -420,7 +423,7 @@ s32 Gs_SetState(u8 reg, u32 v)
             Gs_SetZbuf(gRenderFlags, 0);
         }
         break;
-    case 0x6D:
+    case RS_ZTEST:
         switch (v) {
         case 0:
             v = 0;
@@ -489,7 +492,7 @@ s32 Gs_GetState(u8 reg)
         r = gRenderFlags & 0xC00;
         break;
     case 0xE:
-        r = gGsColor0E;
+        r = gGsColor;
         break;
     case 0xF:
         r = gGsFogColor;

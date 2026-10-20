@@ -10,11 +10,11 @@ LoadCompressedFile = 0x00334970; // type:func
 
 // Scene state (include/scene.h, 0x2BC bytes), also read by the game overlay's C
 gScene = 0x006ADCB0; // size:0x2BC
-gSceneArea = 0x006ADCC4; // size:0x2 // gScene.area, kept for Light_InitAll (unk_331A40.c), whose FAKEMATCH needs the separate symbol
+gSceneArea = 0x006ADCC4; // size:0x2 gScene.area under a name of its own, read by Light_InitAll before its stores as the game does
 // Other data that the game overlay's C reads (its code addresses them directly)
 gEmSenseObjCount = 0x005D8A40; // size:0x1
 
-// Pad state (src/sub_main/unk_36B5B0.c): two PadState of 0x22 bytes, one per
+// Pad state (src/sub_main/game_util.c): two PadState of 0x22 bytes, one per
 // controller port (held +0, pressed +4, repeat +0x18)
 gPadState = 0x006AE0B0; // size:0x44
 D_006AE0B4 = 0x006AE0B4;
@@ -25,7 +25,7 @@ Pad_GetPressedRepeat = 0x0036B760; // type:func
 Pad_GetCursorButtons = 0x0036B7A0; // type:func
 Hud_DrawButtonIcon = 0x0036BE70; // type:func
 // Per-port button words {current, previous} that each player's input block
-// is copied from (src/sub_main/unk_3AC3A0.c)
+// is copied from (src/sub_main/player_idle.c)
 gPadInput = 0x006AE088; // size:0x20
 
 // Players: array of 0x970-byte structs
@@ -55,7 +55,7 @@ gRandSaved = 0x006AE140; // size:0x40
 gRandSeeds = 0x006AE180; // size:0x8
 // 64 flags of 4 bytes that the boot, the quest end and the text code clear and no code reads
 gUnreadFlags = 0x006AE1A0; // size:0x100
-// a frame counter: the village blinks with `& 0x10` (lobby unk_760C70.c,
+// a frame counter: the village blinks with `& 0x10` (lobby menu_sheets.c,
 // unk_7580B0.c); lobby's func_00771310 and func_0078FBE0 match only with it named
 gFrameTick = 0x006AE188;
 gRandGauss = 0x006AE2A0; // size:0xF0
@@ -136,6 +136,7 @@ AveWrap_Lock = 0x00306190; // type:func
 AveWrap_Unlock = 0x003061A0; // type:func
 gAveWrapSema = 0x00405178;
 gAveWrapNoWait = 0x0059BB20;
+gAveWrapUnused = 0x0059BB18; // size:0x8 NETWORK, cleared by AveWrap_Bind beside gAveWrapNoWait and never read
 gAveWrapClient = 0x0059BB30;
 gAveWrapBuf = 0x0059BB80;
 AveTcp_Open = 0x00306460; // type:func
@@ -210,7 +211,7 @@ SupplyBox_IsOpen = 0x003B3F70; // type:func
 SupplyBox_Update = 0x003B4000; // type:func
 Item_PlayUseSound = 0x003B4BC0; // type:func
 
-// Player state and skills (src/sub_main/unk_3AAD20.c, unk_3AC9C0.c): state +0x14/+0x15, flag words +0x398/+0x39C, skills at +0x868 (ids) and +0x894 (groups), 5 slots
+// Player state and skills (src/sub_main/unk_3AAD20.c, player_stats.c): state +0x14/+0x15, flag words +0x398/+0x39C, skills at +0x868 (ids) and +0x894 (groups), 5 slots
 // (unused, {?, item, count}): the local player has count of item
 Cond_HasItems = 0x003AAD20; // type:func
 Quest_OnRemoteKill = 0x003AB370; // type:func
@@ -225,7 +226,7 @@ Player_IsState = 0x003ABD40; // type:func
 Player_TestFlag = 0x003ABD80; // type:func
 Player_SetFlag = 0x003ABDC0; // type:func
 Player_ClearFlag = 0x003ABE00; // type:func
-Player_SetAction = 0x003ABE50; // type:func
+Player_SetPostureOnly = 0x003ABE50; // type:func
 Player_StartIdleMotion = 0x003ABEF0; // type:func
 Player_SetIdle = 0x003AC110; // type:func
 // nonzero for the player of this console (whose changes are sent to the others)
@@ -237,8 +238,8 @@ Player_GetSkill = 0x003AF370; // type:func
 PlayerEm_PushApart = 0x003AF4E0; // type:func
 EmEm_PushApart = 0x003AFA00; // type:func
 
-// Player stats (src/sub_main/unk_3AC9C0.c): attack, defense, resistances, skills from the equipment (Player.equip, 7 pieces of 12 bytes at +0x312), motion layers, movement
-Player_SetMoveMode = 0x003ACC90; // type:func
+// Player stats (src/sub_main/player_stats.c): attack, defense, resistances, skills from the equipment (Player.equip, 7 pieces of 12 bytes at +0x312), motion layers, movement
+Player_SetPosture = 0x003ACC90; // type:func
 Player_UpdateStatusIcons = 0x003ACEA0; // type:func
 // attack +0x630 (1..800) and its factor +0x724
 Player_CalcAttack = 0x003AD120; // type:func
@@ -271,7 +272,7 @@ Player_UpdateMotionTime = 0x003B0890; // type:func
 Obj_InCurrentArea = 0x003B1190; // type:func
 Obj_SameArea = 0x003B11D0; // type:func
 
-// The field: camera, vibration, ordering tables, monster slots, the area state and per-area tables (src/sub_main/unk_376C00.c)
+// The field: camera, vibration, ordering tables, monster slots, the area state and per-area tables (src/sub_main/field_systems.c)
 // inserts a node into a bucket list, sorted by depth
 OT_InsertSorted = 0x00376D70; // type:func
 OT_AddByDepth = 0x003770F0; // type:func
@@ -377,7 +378,7 @@ gMonsterGroups = 0x0044C800;
 gMonsterBaseSize = 0x0044C930;
 gWeaponClassMultipliers = 0x004326C0;
 
-// Text rendering, text boxes, key repeat, options (unk_368F10)
+// Text rendering, text boxes, key repeat, options (text_layer)
 // '~' codes: ~~, ~Cnn colour, ~Ann number, ~Bnn box, ~% skip; mode 0 code, 1 width change, 2 character count
 Text_ParseCode = 0x00369860; // type:func
 // varargs renderer: codes, a character limit, newlines
@@ -422,7 +423,7 @@ gTextIconCount = 0x005BA960; // size:0xE icons queued per text layer
 gTextIcons = 0x005BA7A0; // size:0x1C0 the icons queued per text layer (Text_AddIcon), 8 each
 gTextColors = 0x0043C8C0;
 
-// Save data: HR points, money, event flags, save pouch, item box, presets (unk_3B4C80)
+// Save data: HR points, money, event flags, save pouch, item box, presets (equip_save)
 // the weapon kind (row of D_0045DF80), 0 for other equipment
 Equip_GetKind = 0x003B4DA0; // type:func
 // the weapon class of a weapon
@@ -510,7 +511,7 @@ Save_IsQuestCleared = 0x003B9530; // type:func
 // 0 attack, 1 defense, 2-5 and 13 resistances, from D_005BAD00
 EquipView_GetStat = 0x003B8810; // type:func
 
-// Quests: state machine, monsters, parts, targets, rewards, delivery (unk_3A1070)
+// Quests: state machine, monsters, parts, targets, rewards, delivery (quest)
 // clears the quest state (0x5D8260) except +0x155
 Quest_Clear = 0x003A1070; // type:func
 // loads the quest from the stage file (the default header for stage 0), seeds, rebases pointers
@@ -518,14 +519,14 @@ Quest_Init = 0x003A11A0; // type:func
 // phase 7
 Quest_Abort = 0x003A1BA0; // type:func
 // phase 0-2 -> 3
-Quest_Start = 0x003A1C10; // type:func
+Quest_ClearBySubTarget = 0x003A1C10; // type:func
 // phase 8
 Quest_Finish = 0x003A1CA0; // type:func
 Quest_FinishIfIdle = 0x003A1CD0; // type:func
 Quest_SetStartArea = 0x003A1D00; // type:func
 Quest_ResetMusicIfIdle = 0x003A1F30; // type:func
 Quest_GetStageEmKinds = 0x003A46B0; // type:func the stage-wide monster kinds, up to 4
-Quest_IsRunning = 0x003A1F60; // type:func
+Quest_GetOutcome = 0x003A1F60; // type:func
 Quest_GetTime = 0x003A1FC0; // type:func
 Quest_EnterArea = 0x003A2030; // type:func
 QuestEm_PlaceAtRandomPoint = 0x003A2070; // type:func
@@ -567,7 +568,7 @@ Quest_DeliverFromPouch = 0x003A5370; // type:func
 Quest_GetDeliveryTarget = 0x003A54F0; // type:func
 Quest_DeliverItem = 0x003A55E0; // type:func
 
-// HUD and frame helpers: callbacks, frame draw order, pad input, keyframes (unk_36BE70)
+// HUD and frame helpers: callbacks, frame draw order, pad input, keyframes (frame_draw)
 // byte n of a string starts a two-byte (Shift-JIS) character
 Text_IsDoubleByteAt = 0x0036C1C0; // type:func
 // seconds as "%d:%02d" (a static buffer)
@@ -667,13 +668,13 @@ QuestGoal_OnKillSlot = 0x003A9170; // type:func
 gQuest = 0x005D8260;
 gQuestStats = 0x005D8438;
 
-// Bone trees (unk_36BE70)
+// Bone trees (frame_draw)
 // render states 0x1A + index, over a bone tree
 Bone_SetMatrices = 0x0036DAF0; // type:func
 // as Bone_SetMatrices, with the parent matrix passed down
 Bone_SetMatricesRel = 0x0036DC60; // type:func
 
-// unk_363550: chat target, object pools, 2D primitive queue, music
+// bgm: chat target, object pools, 2D primitive queue, music
 // stores the target index gChatTarget
 Chat_SetTarget = 0x00363640; // type:func
 // steps to the next reachable player and writes the "to <name>" label; returns 0/3/5, -1 when disabled
@@ -707,6 +708,7 @@ ObjAttach_Alloc = 0x003645D0; // type:func
 ObjAttach_Free = 0x003646C0; // type:func
 ObjAttach_UpdateAll = 0x00364780; // type:func
 ObjAttach_DrawAll = 0x00364800; // type:func
+ObjAttach_RollBatBack = 0x00364AE0; // type:func a deflected shot, 0 for ATTACH_DEFLECTED_AURA, else 1 (the monster bats it back) when the roll mod 100 is under 40
 Sprite_RotateVerts = 0x00364BF0; // type:func
 // turns a sprite description into a Prim
 Sprite_Queue = 0x00364DA0; // type:func
@@ -721,9 +723,10 @@ TexRect_DrawRotated2 = 0x00365C60; // type:func
 TexRect_Draw = 0x00366380; // type:func
 Gfx_DrawLine = 0x00366640; // type:func
 Gfx_DrawRectFrame = 0x003666C0; // type:func
-Gfx_DrawGauge = 0x003667D0; // type:func
+Gfx_DrawMarker = 0x003667D0; // type:func the window texture marker icon in a colour of gMarkerColors (flags 0-3), with a red cell over it (8) or a blinking cue beside it (4)
 Bgm_Init = 0x00366950; // type:func
-Bgm_Update = 0x00367150; // type:func
+Bgm_TownUpdate = 0x00367150; // type:func the town music state machine, every frame
+Bgm_PlayFaintMusic = 0x00367A90; // type:func outside a versus quest, BGM 0xB8 faded in with musicState 7 (seen only from Player_StateFaint, the local hunter fainting)
 Bgm_SetPaused = 0x00367AF0; // type:func
 Bgm_ForgetCurrent = 0x00367B00; // type:func
 Bgm_PlayAreaMusic = 0x00367C10; // type:func
@@ -747,7 +750,7 @@ gPrimCount = 0x005BA770;
 gBgmId = 0x005BA782;
 gBgmVolume = 0x005BA784;
 
-// unk_39C290: item use, versus mode, save records, persistent monsters
+// quest_rules: item use, versus mode, save records, persistent monsters
 // local player with skill 0x4E: 1 in 3 chance of +75 max stamina
 Item_StaminaBonus = 0x0039C290; // type:func
 // effects of consumed items by id; 0xC8 (random effect) jumps into the heal/attack/defense/stamina cases
@@ -763,8 +766,8 @@ Item_UseTeamPowder = 0x0039DC80; // type:func
 Pouch_NextSelectable = 0x0039DF20; // type:func
 // skill 0xB4 x1.5, 0xB5 x0.66
 Player_ScaleItemDuration = 0x0039E1C0; // type:func
-Player_ClearMealEffects = 0x0039E290; // type:func
-Player_HasMealEffect = 0x0039E350; // type:func
+Player_ClearSongEffects = 0x0039E290; // type:func
+Player_HasSongEffect = 0x0039E350; // type:func
 Player_ClearBuffs = 0x0039E370; // type:func
 // online stage 25001
 Quest_IsVersus = 0x0039E400; // type:func
@@ -793,7 +796,7 @@ Quest_FindSpecialMonster = 0x003A0820; // type:func
 QuestEm_LoadPersistentHp = 0x003A08D0; // type:func
 QuestEm_SavePersistentHp = 0x003A09F0; // type:func
 
-// unk_3DDBA0: save menu, memory card tasks, monster part and bone helpers
+// card_task: save menu, memory card tasks, monster part and bone helpers
 CardState_SetFlags = 0x003DDBB0; // type:func
 CardState_SetFlag = 0x003DDBD0; // type:func
 SaveBuf_Offset = 0x003DDBE0; // type:func
@@ -807,10 +810,10 @@ Save_CopyToSlot = 0x003DE130; // type:func
 SaveMenu_CopyCharacter = 0x003DE190; // type:func
 SaveMenu_SaveCharacter = 0x003DE270; // type:func
 SaveMenu_LoadCharacter = 0x003DE3B0; // type:func
-SaveBuf_FirstByte = 0x003DE510; // type:func
+SaveFile_IsCharUsed = 0x003DE510; // type:func
 SaveMenu_CheckCharacter = 0x003DE520; // type:func
-Card_IsFlagE055 = 0x003DE690; // type:func
-Card_IsFlagF040 = 0x003DE6B0; // type:func
+Card_IsSystemSaved = 0x003DE690; // type:func
+CardMenu_IsTexOn = 0x003DE6B0; // type:func
 Card_SlotReady = 0x003DE6D0; // type:func
 Card_ReadyCount = 0x003DE710; // type:func
 Card_Lock = 0x003DE760; // type:func
@@ -833,20 +836,20 @@ CardTask_Begin = 0x003DF5A0; // type:func
 CardTask_Update = 0x003DF5F0; // type:func
 CardTask_End = 0x003DF640; // type:func
 CardTask_EndIfDone = 0x003DF670; // type:func
-CardTask_StartCheck = 0x003DF6A0; // type:func
-CardTask_NextSlot = 0x003DF6E0; // type:func
+CardTask_StartPoll = 0x003DF6A0; // type:func
+CardTask_PollStep = 0x003DF6E0; // type:func
 CardTask_StartRead = 0x003DF730; // type:func
-CardTask_WriteStep = 0x003DF7D0; // type:func
-CardTask_StartReadClear = 0x003DF950; // type:func
-CardTask_SpaceStep = 0x003DFA10; // type:func
+CardTask_ReadStep = 0x003DF7D0; // type:func
+CardTask_StartFind = 0x003DF950; // type:func
+CardTask_FindStep = 0x003DFA10; // type:func
 CardTask_StartSave = 0x003DFC90; // type:func
 CardTask_SaveStep = 0x003DFD60; // type:func
 CardTask_SelectFile = 0x003E0160; // type:func
-CardTask_StartDelete = 0x003E0250; // type:func
+CardTask_StartFormat = 0x003E0250; // type:func
 CardTask_FormatStep = 0x003E0290; // type:func
-CardTask_NopStep = 0x003E0300; // type:func
-CardTask_UpdateStep = 0x003E0370; // type:func
-CardTask_DeleteStep = 0x003E04F0; // type:func
+CardTask_StubStep = 0x003E0300; // type:func
+CardTask_DeleteSaveStep = 0x003E0370; // type:func
+CardTask_DeleteDirStep = 0x003E04F0; // type:func
 CardTask_StartList = 0x003E0560; // type:func
 CardTask_ListStep = 0x003E05D0; // type:func
 // -1 while busy
@@ -874,7 +877,7 @@ gCardTask = 0x006AF100;
 gCardOps = 0x00468B10;
 gCardSteps = 0x00468B80;
 
-// unk_399F70: player init and reset, start items, status update
+// player_sys: player init and reset, start items, status update
 // if Player.unk817: clears the pouch and adds a start list (-1 ends it) by unk817 or weapon class
 Pouch_SetStartItems = 0x00399F70; // type:func
 // clears the 10 Player slots and gPlayerSys
@@ -898,6 +901,7 @@ Player_UpdateHitStop = 0x0039C090; // type:func
 // state byte + 15; the 16 bytes before gPlayers
 gPlayerSys = 0x005F89C0;
 gPlayerHandlerTable = 0x0044A190; // size:0x20 the player handlers, Player_NoHandler three times and Player_MotionFxStep, then an empty set
+gSkillTable = 0x0044A9A0; // size:0x490 the skill groups and their thresholds (SkillDef)
 gPlayerHandlers = 0x0044AE90; // points at gPlayerHandlerTable
 gStartItemsByClass = 0x0044A970;
 // by area (SceneState.unk014)
@@ -908,7 +912,7 @@ gVersusStartPos = 0x0044AF60;
 gVersusStartAngle = 0x0044AF78;
 gPlayerSpawnOffset = 0x0044AF20;
 
-// unk_386160: player sound effects at motion frames, season banner
+// field_objects: player sound effects at motion frames, season banner
 // (obj, layer, frame): the motion of that layer passed the frame
 Motion_PassedFrame = 0x002E5C60; // type:func
 // when the layer-0 motion reaches the frame: common SE (bank 1) at the player
@@ -932,10 +936,12 @@ SeasonBanner_End = 0x00387170; // type:func
 SeasonBanner_Free = 0x00387190; // type:func
 SeasonBanner_Draw = 0x003871A0; // type:func
 
-// unk_37AC80: area frame counter, animated area parts; matrix and math helpers
+// area_anim: area frame counter, animated area parts; matrix and math helpers
 // on gAreaState.timerState, 0 -> Area_StartTimers, 1 -> Area_Update (gAreaState.frame +1)
 Area_UpdateTimers = 0x0037AC80; // type:func
 // gAreaState.timerState++ and gAreaState.frame = 0
+Area_HasFlyer = 0x00379E40; // type:func 1 while the area's flyer is present (gAreaState flyer)
+Area_GetFlyerPos = 0x00379E50; // type:func copies the flyer's position (gAreaState flyerPos) when the area has a flyer
 Area_StartTimers = 0x00379EA0; // type:func
 // area part command 4
 AreaAnim_Translate = 0x0037ACE0; // type:func
@@ -976,7 +982,7 @@ Math_Sin = 0x002EEA50; // type:func
 // tail call to main's floorf (0x124428)
 Math_Floor = 0x002EEAB0; // type:func
 
-// unk_339EC0: model and bone slot pools, player weapon model
+// model_pool: model and bone slot pools, player weapon model
 // releases a model's 0x50, bone and 0x8C slots and its handles, then clears the header
 Model_Free = 0x0033A200; // type:func
 // for copies (+0x75 set): bone slots only, then clears
@@ -1001,7 +1007,7 @@ Player_LoadWeaponModel = 0x0033AD30; // type:func
 Player_FreeWeaponModel = 0x0033AF10; // type:func
 // when unk8AE != unk30C
 Player_FreeWeaponModelIfChanged = 0x0033AFC0; // type:func
-StageModels_LoadEquip = 0x0033BBE0; // type:func
+EquipPreview_Load = 0x0033BBE0; // type:func
 Player_LoadPartModels = 0x0033BF90; // type:func
 Player_FreeChangedPartModels = 0x0033C380; // type:func
 Area_LoadSubModels = 0x0033CED0; // type:func
@@ -1013,7 +1019,7 @@ gModelUsed = 0x005B35A0;
 gBones = 0x006ADFFC;
 gBoneUsed = 0x005B2820;
 
-// unk_333D70: file loading, texture packs
+// tex_pack: file loading, texture packs
 // reads file (id | 0x30000) through func_18CDC0 straight into dst; -1 if id < 0 (LoadCompressedFile without the LZ step)
 LoadFile = 0x003349D0; // type:func
 // registers each entry of a loaded pack (at most 100) into gTexHandles[slot + i]; returns the count
@@ -1029,7 +1035,7 @@ gLoadBuf = 0x006ADFE8;
 // LoadCompressedFile reads the compressed file here
 gReadBuf = 0x006ADFEC;
 
-// unk_3549F0: menu cursors, pouch cursor and compaction, usable items
+// menu_util: menu cursors, pouch cursor and compaction, usable items
 // wraps a u8 cursor over n entries on up/down, SE 0x17
 Menu_CursorUpDown = 0x00354B70; // type:func
 // the same with left/right (and the shoulder buttons 0x08/0x80)
@@ -1053,7 +1059,7 @@ Draw_Icons = 0x00356020; // type:func
 // full-width digit (Shift-JIS 0x82, 0x4F + n)
 Text_DrawDigit = 0x00356340; // type:func
 
-// unk_361570: equipment menu, skill points, chat word filter, Shift-JIS helpers, shake
+// equip_parts: equipment menu, skill points, chat word filter, Shift-JIS helpers, shake
 // equipment data byte 2: bit 4 blademaster, bit 8 gunner, bit 1/2 by D_005D4A61 (gender?)
 Equip_DataWearable = 0x00361570; // type:func
 // clears the armour pieces the player can't wear
@@ -1189,8 +1195,8 @@ Mtx_RotateXYZ = 0x002ED560; // type:func
 Mtx_RotateXZY = 0x002ED6F0; // type:func
 Mtx_RotateYXZ = 0x002ED880; // type:func
 Mtx_RotateZXY = 0x002EDA20; // type:func
-Mtx_Mul2 = 0x002F17C0; // type:func
-Mtx_Mul3 = 0x002F1840; // type:func
+Vu1_MtxMul = 0x002F17C0; // type:func
+Vu1_MtxMulChain = 0x002F1840; // type:func
 Math_Atan2 = 0x002EEA20; // type:func
 Math_Atan = 0x002EEA10; // type:func
 Math_Asin = 0x002EE9B0; // type:func
@@ -1276,7 +1282,7 @@ gTextListEnd = 0x00589880;
 // the learned words changed since the last save
 gUserDictDirty = 0x00587D60;
 
-// Motion frame tests (unk_2E3940.c) and the vector and matrix helpers (unk_2E6F40.c, unk_335040.c)
+// Motion frame tests (engine_core.c) and the vector and matrix helpers (unk_2E6F40.c, model_setup.c)
 // 1 once the motion of a layer has reached a frame (0 while motions are held)
 Motion_ReachedFrame = 0x002E5D70; // type:func
 // Motion_ReachedFrame for the monster families
@@ -1404,7 +1410,7 @@ Capsule_HitsRect = 0x003C25F0; // type:func
 Em_UpdateWorldMatrix = 0x003C7A20; // type:func
 // walks a bone tree setting each bone's height from the ground
 Bone_SnapToGround = 0x003C82A0; // type:func
-Effect01_Draw = 0x003C8400; // type:func
+Shadow_Draw = 0x003C8400; // type:func
 // the +0x60/+0x61 timers by unk00B
 ObjAttach_UpdateTimers = 0x003C6C70; // type:func
 // the player twin of ObjAttach_UpdateTimers (+0x3D4/+0x3D5 by +0x414)
@@ -1412,35 +1418,35 @@ Player_UpdateHitTimers = 0x003C3EB0; // type:func
 ObjAttach_HitObjects = 0x003C3FE0; // type:func
 ObjAttach_DamageEm = 0x003C49E0; // type:func
 ObjAttach_DamagePlayer = 0x003C5E60; // type:func
-ObjAttach_HitPlayer = 0x003C65A0; // type:func
+ObjAttach_HitTarget = 0x003C65A0; // type:func
 // the segment from D_006A9DE0 to a point meets one of the area's spheres
 Area_LineBlocked = 0x003861B0; // type:func
 // a kind 0xD effect at a bone of the player, on the ground
 Player_SpawnGroundEffect = 0x003D25F0; // type:func
 // the kind 1 effect objects (StageObj), by state
-Effect01_Update = 0x003C7AE0; // type:func
-Effect01_Setup = 0x003C7B70; // type:func
-Effect01_Run = 0x003C7D20; // type:func
+Shadow_Update = 0x003C7AE0; // type:func
+Shadow_Setup = 0x003C7B70; // type:func
+Shadow_Run = 0x003C7D20; // type:func
 // frees the draw slots
-Effect01_End = 0x003C8100; // type:func
-Effect01_Delete = 0x003C81D0; // type:func
+Shadow_End = 0x003C8100; // type:func
+Shadow_Delete = 0x003C81D0; // type:func
 // for a player, at its bone 10
-Effect01_Spawn = 0x003C8D40; // type:func
+Shadow_Spawn = 0x003C8D40; // type:func
 // the kind 2 effect objects, by state
-Effect02_Update = 0x003C8E10; // type:func
-Effect02_End = 0x003C9500; // type:func
-Effect02_Delete = 0x003C9520; // type:func
-Effect02_Draw = 0x003C9530; // type:func
-// Round 17 (units): one object (unk_323C90.c's u32 D_0041CEC0[8]), so that
-// spimdisasm writes D_0041CEC0+1 and +2 (Effect02_Draw's colour bytes) as C does
-gEffectColors = 0x0041CEC0; // size:0x20 eight RGB colors of effects and stage objects (Effect02_Draw, StageObj_K05_Draw, StageObj_K10_Draw)
-Effect02_SpawnForPlayer = 0x003CA1A0; // type:func
-Effect02_SpawnRandomAngle = 0x003CA250; // type:func
-Effect02_SpawnForOwner = 0x003CA310; // type:func
-Effect02_SpawnAtScaled = 0x003CA3F0; // type:func
-Effect02_SpawnOnOwner = 0x003CA5C0; // type:func
-Effect02_SpawnAt = 0x003CA650; // type:func
-Effect02_SpawnScaled = 0x003CA6E0; // type:func
+HitSpark_Update = 0x003C8E10; // type:func
+HitSpark_End = 0x003C9500; // type:func
+HitSpark_Delete = 0x003C9520; // type:func
+HitSpark_Draw = 0x003C9530; // type:func
+// Round 17 (units): one object (cam_small_requests.c's u32 D_0041CEC0[8]), so that
+// spimdisasm writes D_0041CEC0+1 and +2 (HitSpark_Draw's colour bytes) as C does
+gEffectColors = 0x0041CEC0; // size:0x20 eight RGB colors of effects and stage objects (HitSpark_Draw, WeaponTrail_Draw, HitSplash_Draw)
+HitSpark_SpawnForPlayer = 0x003CA1A0; // type:func
+HitSpark_SpawnRandomAngle = 0x003CA250; // type:func
+HitSpark_SpawnForOwner = 0x003CA310; // type:func
+HitSpark_SpawnAtScaled = 0x003CA3F0; // type:func
+HitSpark_SpawnOnOwner = 0x003CA5C0; // type:func
+HitSpark_SpawnAt = 0x003CA650; // type:func
+HitSpark_SpawnScaled = 0x003CA6E0; // type:func
 // the kind 6 effect objects, by state
 Effect06_Update = 0x003CA790; // type:func
 Effect06_Setup = 0x003CA820; // type:func
@@ -1454,29 +1460,29 @@ Effect06_SpawnAt = 0x003CD840; // type:func
 // sized by weapon type
 Effect06_SpawnWeapon = 0x003CD8A0; // type:func
 // the kind 0xD effect objects, by state
-Effect0D_Update = 0x003CD9C0; // type:func
-Effect0D_Setup = 0x003CDA50; // type:func
-Effect0D_End = 0x003CF070; // type:func
-Effect0D_Delete = 0x003CF100; // type:func
-Effect0D_DrawPart = 0x003CF110; // type:func
-Effect0D_GroundHeight = 0x003D0110; // type:func
-Effect0D_Init = 0x003D0240; // type:func
-Effect0D_PlayerPos = 0x003D0380; // type:func
-Effect0D_SpawnForPlayer = 0x003D0DD0; // type:func
-Effect0D_SpawnForPlayerScaled = 0x003D0EA0; // type:func
-Effect0D_InitForEm = 0x003D0F70; // type:func
-Effect0D_EmPos = 0x003D16E0; // type:func
-Effect0D_SpawnForEm = 0x003D1F30; // type:func
-Effect0D_SpawnForEmScaled = 0x003D2000; // type:func
-Effect0D_SpawnAt = 0x003D20D0; // type:func
-Effect0D_SpawnIfHere = 0x003D2150; // type:func
-Effect0D_SpawnOnGround = 0x003D21B0; // type:func
+PartFx_Update = 0x003CD9C0; // type:func
+PartFx_Setup = 0x003CDA50; // type:func
+PartFx_End = 0x003CF070; // type:func
+PartFx_Delete = 0x003CF100; // type:func
+PartFx_DrawPart = 0x003CF110; // type:func
+PartFx_PutOnGround = 0x003D0110; // type:func
+PartFx_InitForPlayer = 0x003D0240; // type:func
+PartFx_PlayerPos = 0x003D0380; // type:func
+PartFx_SpawnForPlayer = 0x003D0DD0; // type:func
+PartFx_SpawnForPlayerScaled = 0x003D0EA0; // type:func
+PartFx_InitForEm = 0x003D0F70; // type:func
+PartFx_EmPos = 0x003D16E0; // type:func
+PartFx_SpawnForEm = 0x003D1F30; // type:func
+PartFx_SpawnForEmScaled = 0x003D2000; // type:func
+PartFx_SpawnAt = 0x003D20D0; // type:func
+PartFx_SpawnIfHere = 0x003D2150; // type:func
+PartFx_SpawnOnGround = 0x003D21B0; // type:func
 // the kind 0x1A objects of players
-Effect1A_Spawn = 0x003D26B0; // type:func
-Effect1A_Update = 0x003D2710; // type:func
-Effect1A_Setup = 0x003D27A0; // type:func
-Effect1A_End = 0x003D2AC0; // type:func
-Effect1A_Delete = 0x003D2B00; // type:func
+LockOnMark_Spawn = 0x003D26B0; // type:func
+LockOnMark_Update = 0x003D2710; // type:func
+LockOnMark_Setup = 0x003D27A0; // type:func
+LockOnMark_End = 0x003D2AC0; // type:func
+LockOnMark_Delete = 0x003D2B00; // type:func
 
 // Names batch 2 (round 7): the dictionary and text input, fonts and models, bones and animation, stage objects, scenes, the area grid, fishing, notices, network, recipes, camera state
 Text_DrawString = 0x002E7060; // type:func
@@ -1638,12 +1644,12 @@ Notice_PushItem = 0x00380940; // type:func
 NoticeBanner_Start = 0x00380C70; // type:func
 NoticeBanner_Run = 0x00381020; // type:func
 TextNotice_Draw = 0x00381160; // type:func
-Notice_GetColor = 0x00381C10; // type:func
+Area_NightTint = 0x00381C10; // type:func
 AreaProp_Start = 0x00381480; // type:func
 AreaProp_Run = 0x003817C0; // type:func
 SoundObj_Start = 0x00382A60; // type:func
 SoundObj_Run = 0x00382C00; // type:func
-AreaObj_AllocForKind = 0x003830C0; // type:func
+AreaAtmos_Alloc = 0x003830C0; // type:func
 DayTable_GetTime = 0x0037DB20; // type:func
 Sky_Draw = 0x0037E780; // type:func
 Net_InitSockets = 0x00309AD0; // type:func
@@ -1707,7 +1713,7 @@ CamFocus_Start = 0x0031D900; // type:func
 CamFocus_GetState = 0x0031D9B0; // type:func
 CamFocus_Update = 0x0031DAA0; // type:func
 CamFixed_UpdateTarget = 0x0031D730; // type:func
-Obj_UpdateMatrix = 0x00376B50; // type:func
+Player_UpdateWorldMatrix = 0x00376B50; // type:func
 Vu1_PutLightColors = 0x002F1A00; // type:func
 Vu1_CopyMatrixSlots = 0x002F1BA0; // type:func
 Math_Hermite = 0x002F8F70; // type:func
@@ -1771,7 +1777,7 @@ AreaGrid2_GetFloorHeight = 0x0032E420; // type:func
 // with it named (its code keeps D_00895270 across the store); lobby_browser.txt named
 // it until round 8
 gPortalPage = 0x006ADFD7;
-// An s32 the lobby's network screen counts down (unk_7B0150.c); lobby online's
+// An s32 the lobby's network screen counts down (server_list.c); lobby online's
 // func_007B0C30 matches only with it named (a raw address schedules its store
 // differently)
 gNetMenuTimeout = 0x005CADB8; // size:0x4
@@ -1783,9 +1789,9 @@ gPlayerText = 0x005CA920; // size:0x100
 gAccountData = 0x005CAED0;
 // the account id (10 characters), in gAccountData
 gAccountId = 0x005CAEE1;
-// NETWORK: the server socket (unk_308BC0.c, lobby online)
+// NETWORK: the server socket (net_front.c, lobby online)
 gNetSock = 0x0059D650;
-// NETWORK: unk_308BC0.c owns its .rodata; its C functions name these, spliced with INCLUDE_RODATA
+// NETWORK: net_front.c owns its .rodata; its C functions name these, spliced with INCLUDE_RODATA
 D_0046A560 = 0x0046A560; // force_not_migration:True
 D_0046A580 = 0x0046A580; // force_not_migration:True
 D_0046A5A0 = 0x0046A5A0; // force_not_migration:True
@@ -1849,13 +1855,13 @@ Dict_FindPrefix = 0x002FC4D0; // type:func
 BoneHit_Place = 0x003B0BE0; // type:func
 Color_Lerp = 0x0037D890; // type:func
 Light_SetDefault = 0x00332C70; // type:func
-LightSet_SetAmbient = 0x00333640; // type:func
-LightSet_ResetAmbient = 0x00333770; // type:func
-LightSet_FadeAmbient = 0x00333860; // type:func
+LightSet_SetColors = 0x00333640; // type:func
+LightSet_ResetColors = 0x00333770; // type:func
+LightSet_FadeColors = 0x00333860; // type:func
 LightSet_UpdateFade = 0x00333220; // type:func
 Light_InitAll = 0x00332F80; // type:func
 Combine_CanUsePair = 0x00331C50; // type:func
-Obj_DrawParts = 0x00376640; // type:func
+Em_DrawParts = 0x00376640; // type:func
 AnimFile_Header = 0x002F51D0; // type:func
 AnimFile_GetChunk = 0x002F51E0; // type:func
 net_inet_addr = 0x00308BC0; // type:func
@@ -2110,8 +2116,8 @@ Color_EvalKeys = 0x003248F0; // type:func
 Em_FindFloorTri = 0x0032FC30; // type:func
 // a sphere from `from` to `to` against the grid cells around it
 AreaGrid_SweepSphere = 0x00330570; // type:func
-// the model LOD of an object part at pos (D_0043FB70)
-Obj_GetPartLod = 0x00330BD0; // type:func
+// the light colours an object at pos takes from the light zones of the floor kind under it
+Obj_UpdateLightColors = 0x00330BD0; // type:func
 // the recipe of three items in any order, or NULL
 Combine_FindRecipe3 = 0x00331E90; // type:func
 // at least 90% of the visible recipes known
@@ -2142,7 +2148,7 @@ Model_LoadMaterials = 0x00339910; // type:func
 // model idx from data a with the texture pack file tex
 Model_SetupWithPack = 0x00339A30; // type:func
 Model_SetupWithPackRaw = 0x00339B00; // type:func
-StageModels_Free = 0x0033BED0; // type:func
+EquipPreview_Free = 0x0033BED0; // type:func
 // the body and parts 1-5
 Player_FreeModels = 0x0033C220; // type:func
 // for the kind in gScene.unk02A[slot]
@@ -2300,7 +2306,7 @@ Player_Draw = 0x00374810; // type:func
 LightSet_SetupSet = 0x00375030; // type:func
 // the 21 bones by their part scales
 Player_ScaleBones = 0x00376A20; // type:func
-// Obj_UpdateMatrix on the active players
+// Player_UpdateWorldMatrix on the active players
 Players_UpdateMatrices = 0x00376C00; // type:func
 // nonzero gTexHandles[start .. start + 29]
 Tex_CountLoaded = 0x00376C90; // type:func
@@ -2315,13 +2321,13 @@ Area_Update = 0x0037A690; // type:func
 Sky_DrawGradient = 0x0037DC60; // type:func
 Sky_DrawBand = 0x0037E490; // type:func
 // an object of kind 6 of type k
-Effect06_Start = 0x003813A0; // type:func
-AmbientSound_Setup = 0x00383200; // type:func
+AreaProp_Spawn = 0x003813A0; // type:func
+AreaAtmos_Setup = 0x00383200; // type:func
 // between bones 6 and 9 of m
-Obj_PlaceBetweenBones = 0x00387560; // type:func
+ThrownObj_HoldInHands = 0x00387560; // type:func
 // in the current area, from the area table
-Obj_AreaPosition = 0x00387680; // type:func
-Obj_AreaAngle = 0x00387870; // type:func
+ThrownObj_SpotPos = 0x00387680; // type:func
+ThrownObj_SpotAngle = 0x00387870; // type:func
 ThrownObj_AreaModel = 0x00387970; // type:func
 // +0x597: 1 near a large monster
 Player_UpdateNearMonster = 0x003AC9C0; // type:func
@@ -2334,11 +2340,14 @@ Players_PushApart = 0x003AFED0; // type:func
 // the motion, half of a and b
 Player_SetLayerMotion = 0x003B03E0; // type:func
 // the vertical acceleration for `frames` frames
+Player_InputHook = 0x003B0510; // type:func
+Player_RunInputHook = 0x003B0520; // type:func
 Player_StartJump = 0x003B0530; // type:func
-// as Obj_StartMotionEntry with the owner +0xC
-Obj_StartMotionOwned = 0x003B09C0; // type:func
+// as ObjAttach_LoadRow with the owner +0xC
+Player_StartNextHit = 0x003B09B0; // type:func
+ObjAttach_LoadOwnedRow = 0x003B09C0; // type:func
 // an entry of the object table, a new hit id
-Obj_StartMotionEntry = 0x003B0AF0; // type:func
+ObjAttach_LoadRow = 0x003B0AF0; // type:func
 // the floor ahead of the player: 1 with its height in *out
 Player_FloorAheadAbove = 0x003B0F30; // type:func
 Player_FloorAheadBelow = 0x003B1060; // type:func
@@ -2380,18 +2389,18 @@ Em_UpdateState = 0x003C7490; // type:func
 // 0 set up, 1 run, 2 end, 3 free; 1 once freed
 Em_RunByState = 0x003C7860; // type:func
 // the first state for types 0-12
-Effect02_Init = 0x003C8EA0; // type:func
-Effect02_RunTimed = 0x003C9200; // type:func
+HitSpark_Init = 0x003C8EA0; // type:func
+HitSpark_RunTimed = 0x003C9200; // type:func
 // at pos with scale
-Effect02_Spawn = 0x003CA4A0; // type:func
+HitSpark_Spawn = 0x003CA4A0; // type:func
 Effect06_PlaySound = 0x003CD530; // type:func
 // parts age and follow their key curves
-Effect0D_Run = 0x003CE3A0; // type:func
-Effect0D_PlaySound = 0x003D0060; // type:func
+PartFx_Run = 0x003CE3A0; // type:func
+PartFx_PlaySound = 0x003D0060; // type:func
 // the ground effects of kind k at pos
 Effect_SpawnGround = 0x003D2230; // type:func
-Effect1A_Run = 0x003D2840; // type:func
-Effect1A_Draw = 0x003D2B10; // type:func
+LockOnMark_Run = 0x003D2840; // type:func
+LockOnMark_Draw = 0x003D2B10; // type:func
 CardMenu_DrawSlots = 0x003D5B80; // type:func
 CardMenu_RunSetup = 0x003DD0B0; // type:func
 Tri_SegmentHit = 0x003E1100; // type:func
@@ -2410,7 +2419,7 @@ Effect08_Spawn = 0x003E3D10; // type:func
 Effect08_SpawnAtEm = 0x003E3DA0; // type:func
 Effect17_Spawn = 0x003E55E0; // type:func
 Effect17_SpawnArea = 0x003E5680; // type:func
-Obj_ApplyVelocity = 0x003E5CE0; // type:func
+Lure_ApplyVelocity = 0x003E5CE0; // type:func
 Effect2C_Spawn = 0x003E76A0; // type:func
 // p->unk4F4 on the hand, back or holster
 Player_DrawWeapon = 0x00370E00; // type:func
@@ -2437,7 +2446,7 @@ gHudState = 0x005B3930; // size:0x4
 // the HUD and in-game menu state, 0x108 bytes (HudState, hud.h)
 gHudStateBuf = 0x005B3940; // size:0x108
 D_005B396C = 0x005B396C;
-// 1 while the hunter takes pad input in the field (set in unk_368F10.c; the lobby clears it while a menu or talk runs); byte +0x1B of the 0x6ADF90 object
+// 1 while the hunter takes pad input in the field (set in text_layer.c; the lobby clears it while a menu or talk runs); byte +0x1B of the 0x6ADF90 object
 gFieldControl = 0x006ADFAB; // size:0x1
 // 1 when the hunter takes pad input: gFieldControl set, no keyboard open, and online not blocked by the lobby (func_7A4B60)
 Field_ControlEnabled = 0x0036B6E0; // type:func
@@ -2468,7 +2477,7 @@ Vib_IsOff = 0x003775A0; // type:func
 // Vib_Start on port 0, when Player_IsLocal allows it (port unused)
 Vib_StartLocal = 0x00377610; // type:func
 // online only: Effect06_Start(0 .. n - 1)
-Effect06_StartOnline = 0x003789C0; // type:func
+AreaProp_SpawnInLobby = 0x003789C0; // type:func
 // black bars at the top and bottom of the screen, 16 high per unit of n (at most 72)
 Letterbox_Draw = 0x003E7E00; // type:func
 // lead (ncoreh1): clears slot and sets its function, state 0xC
@@ -2701,7 +2710,7 @@ Chat_DrawKbdBox = 0x00363550; // type:func
 // D_005BC49D, D_005BC49E
 Chat_SetWindowMode = 0x00363B00; // type:func
 // (type, index in D_0043B0E0, text)
-Box_Draw = 0x00363BC0; // type:func
+Chat_DrawBox = 0x00363BC0; // type:func the chat box of a send target, its title and marker
 // a monster near the local player
 Bgm_IsBattle = 0x00366990; // type:func
 // D_006ADCC1 4 or 5
@@ -2709,10 +2718,10 @@ Bgm_IsBattleState = 0x00366BD0; // type:func
 // stream 1, stream 0 lowered
 Bgm_PlayEvent = 0x00367800; // type:func
 Bgm_StopEvent = 0x00367890; // type:func
-Bgm_PlayField = 0x00367B10; // type:func
+Bgm_PlayTownTune = 0x00367B10; // type:func the tune of a town event, a new season or a new time of day
 Bgm_FadeInFromZero = 0x00368260; // type:func
 Bgm_FadeToVolume = 0x003682A0; // type:func
-Bgm_AreaVolume = 0x00368530; // type:func
+Bgm_AreaTune = 0x00368530; // type:func the area own tune in gAreaTunes, or 0
 // Gs states 0x3A.. from base[list->idx[i]]
 Gs_SetLightList = 0x00376CD0; // type:func
 DrawPool_Clear = 0x00376DE0; // type:func
@@ -2763,11 +2772,11 @@ CamReq_AreaIntro = 0x00323E20; // type:func
 // state by the object kind (+2)
 CamReq_ForMonster = 0x00323CB0; // type:func
 // state 0x62 + b
-CamReq_Player = 0x00324030; // type:func
+CamReq_VersusDefeat = 0x00324030; // type:func
 // the table by area
 Sky_GetGradient = 0x0037DA80; // type:func
 NoticeBanner_Spawn = 0x00380770; // type:func
-NoticeBanner_SpawnKind4 = 0x003808D0; // type:func
+NoticeBanner_SpawnString = 0x003808D0; // type:func spawns a NOTICE_KIND_STRING banner
 NoticeBanner_Task = 0x00380BE0; // type:func
 NoticeBanner_End = 0x00381130; // type:func
 NoticeBanner_Free = 0x00381150; // type:func
@@ -2777,10 +2786,10 @@ AreaProp_Free = 0x00381C00; // type:func
 SoundObj_Task = 0x00382B30; // type:func
 SoundObj_End = 0x00383090; // type:func
 SoundObj_Free = 0x003830B0; // type:func
-AmbientSound_Spawn = 0x00383130; // type:func
-AmbientSound_Task = 0x00383170; // type:func
-AmbientSound_End = 0x00384F20; // type:func
-AmbientSound_Free = 0x00384F40; // type:func
+AreaAtmos_Spawn = 0x00383130; // type:func
+AreaAtmos_Task = 0x00383170; // type:func
+AreaAtmos_End = 0x00384F20; // type:func
+AreaAtmos_Free = 0x00384F40; // type:func
 // 50 degrees, flag set
 CamFov_Narrow = 0x00384F80; // type:func
 CamFov_Restore = 0x00384FC0; // type:func
@@ -2819,7 +2828,7 @@ Load_CommonModelPack = 0x00334BE0; // type:func
 Load_WeaponModelPack = 0x00334C40; // type:func
 Load_PartModelPack = 0x00334CA0; // type:func
 Load_EmModelPack = 0x00334D30; // type:func
-Load_EmModelPack2 = 0x00334D90; // type:func
+Load_EmPartModelPack = 0x00334D90; // type:func
 Load_EmSlotModelPack = 0x00334DF0; // type:func
 Load_EquipModelPack = 0x00334E50; // type:func
 Load_AreaSubModelPack = 0x00334EF0; // type:func
@@ -2834,10 +2843,10 @@ Anim_SetupEmSlot = 0x002E4E30; // type:func
 // out = camera position + s * v
 Vec_FromCamera = 0x00386160; // type:func
 Area_BoundaryZone = 0x003862D0; // type:func
-UvScroll_Update = 0x00386440; // type:func
+AtmosScroll_Update = 0x00386440; // type:func
 // object kind 0x15 held by the player (unk34), let go at frame 48 of motion 0x432, then falls (gravity 2)
 ThrownObj_Spawn = 0x00387460; // type:func
-ThrownObj_Spawn2 = 0x003874F0; // type:func
+ThrownObj_SpawnForHairMenu = 0x003874F0; // type:func
 ThrownObj_Launch = 0x00387AC0; // type:func
 ThrownObj_Fly = 0x00387B80; // type:func
 ThrownObj_Task = 0x00387BE0; // type:func
@@ -3790,9 +3799,9 @@ SaveFile_Encrypt = 0x003D6580; // type:func
 // undoes SaveFile_Encrypt on m->unk94; unk10 = version bad, unk12 = checksum bad
 SaveFile_Decrypt = 0x003D6710; // type:func
 // the read file's id pair equals the system data's (pairs[0])
-SaveMenu_SystemIdMatches = 0x003D6860; // type:func
+SaveMenu_SystemDateMatches = 0x003D6860; // type:func
 // character k's id pair equals the one just read (unkA8/unkAC)
-SaveMenu_CharIdMatches = 0x003D68F0; // type:func
+SaveMenu_CharDateMatches = 0x003D68F0; // type:func
 // decrypts the read file: 1 if its version or checksum is bad
 SaveMenu_ReadBad = 0x003D6930; // type:func
 // dir 0: merges the card's system part into D_006A9E50; else copies it out
@@ -4006,8 +4015,8 @@ CardLogin_ShowResult = 0x003DD6D0; // type:func
 // NETWORK: mode 18 (options): delete the saved login id from the NET file
 CardMenu_RunDeleteLoginId = 0x003DD740; // type:func
 gPatchStep = 0x006AEF80; // size:0x1
-gPatchXferA = 0x006AEF81; // size:0x1
-gPatchXferB = 0x006AEF82; // size:0x1
+gPatchXferState = 0x006AEF81; // size:0x1 the patch transfer state (NetXfer_Step2)
+gPatchXferTimer = 0x006AEF82; // size:0x1 the patch transfer timer (NetXfer_Step2)
 gPatchResult = 0x006AEF83; // size:0x1
 gPatchHdr = 0x006AEF84; // size:0x4
 gPatchSrc = 0x006AEF88; // size:0x4
@@ -4084,17 +4093,17 @@ Spheres_Touch = 0x003BE2D0; // type:func
 HitList_Next = 0x003C2F60; // type:func
 // HitList_Next through the object owner (o+0x94)
 HitList_NextForObj = 0x003C2FB0; // type:func
-// ObjAttach_HitPlayer when the hitbox is live in the current area
-ObjAttach_TryHitPlayer = 0x003C4880; // type:func
+// ObjAttach_HitTarget when the hitbox is live in the current area
+ObjAttach_TryHitTarget = 0x003C4880; // type:func
 // the heading the player is knocked toward (p->unk3F0)
 ObjAttach_SetHitHeading = 0x003C6500; // type:func
 ObjAttach_UpdateAllTimers = 0x003C6D90; // type:func
 // state handler: EmSlot_Free
 Em_StateFree = 0x003C7850; // type:func
 // calls em->unk3D0[3]
-Em_RunHook3 = 0x003C7AB0; // type:func
+Em_RunMotionFx = 0x003C7AB0; // type:func
 // the lights of list: intensity o+0x6E4 times scale, into GS states 0x3A..
-Effect01_SetLights = 0x003C81E0; // type:func
+Shadow_SetMaterials = 0x003C81E0; // type:func
 // great sword, sword and shield, lance, gunlance, and the heavy bowgun with a shield
 Player_CanGuard = 0x003AF450; // type:func
 // vel += accel, pos += vel
@@ -4102,13 +4111,13 @@ Player_Integrate = 0x003B0660; // type:func
 // velocity and acceleration to 0
 Player_ClearVelocity = 0x003B07A0; // type:func
 // pos += vel
-MoveObj_AddVelocity = 0x003B07E0; // type:func
+ObjAttach_Move = 0x003B07E0; // type:func
 // vel += accel, pos += vel
-MoveObj_Integrate = 0x003B0820; // type:func
-// Obj_StartMotionOwned with motion table c
-MoveObj_StartMotionOwned = 0x003B0AE0; // type:func
-// Obj_StartMotionEntry with motion table b
-MoveObj_StartMotionEntry = 0x003B0BD0; // type:func
+ObjAttach_MoveAccel = 0x003B0820; // type:func
+// ObjAttach_LoadOwnedRow with motion table c
+ObjAttach_StartOwnedAttack = 0x003B0AE0; // type:func
+// ObjAttach_LoadRow with motion table b
+ObjAttach_StartAttack = 0x003B0BD0; // type:func
 // a hit entry at pos, scaled: a sphere (kind 0) or a capsule (kind 1)
 HitShape_Place = 0x003B0DF0; // type:func
 // capsule a-b with radius c[3] * s
@@ -4145,7 +4154,7 @@ CountdownFx_Draw = 0x003E7650; // type:func
 // quest state 5 and the ending entry -2 (a 0) or 0x25 (a 1) of D_005D82B4
 Quest_JumpToEnd = 0x003AAD90; // type:func
 // from states 0-2: state 3 and the ending entry -1 (a 0) or 0x26 (a 1)
-Quest_JumpToStart = 0x003AADF0; // type:func
+Quest_JumpToGoalMet = 0x003AADF0; // type:func
 Quest_TriggerEvent = 0x003A0810; // type:func
 // NETWORK: a quest sync message received in D_005D87B0 (QSync), by type (2 clear ... 16 goal)
 Quest_HandleNetMsg = 0x003AAF60; // type:func
@@ -4323,11 +4332,11 @@ gCaseCands = 0x005AE610; // size:0x400
 gCaseCandCount = 0x005AEA10; // size:0x1
 // the candidate list: 0x101-byte entries (the flag byte, the text)
 gKbdCands = 0x0059E210; // size:0x10100
-D_0059E211 = 0x0059E211;
-D_005AE210 = 0x005AE210;
+gKbdCandText = 0x0059E211; // the text of the first candidate entry, gKbdCands + 1
+gKbdSegText = 0x005AE210; // the text of the conversion segment, gKbdCands + 0x10000
 // the three candidate lines drawn, 0x100 bytes each
 gKbdCandLines = 0x005AE310; // size:0x300
-D_005AE31D = 0x005AE31D;
+gKbdCandLinesCut = 0x005AE31D; // gKbdCandLines + 13, the byte after the three dots of a cut line
 // VU1 packet builder: lights
 Vu1Pkt_L = 0x002F1C00; // type:func
 // VU1 packet builder: matrix slots, lights
@@ -4406,7 +4415,7 @@ CamReq_TargetDown = 0x00323C90; // type:func
 CamReq_BossHunted = 0x00323CA0; // type:func
 // camera state 0x54 (LobbyArea_StartEvent)
 CamReq_LobbyEvent = 0x00323EB0; // type:func
-// camera state 0x55 (TownPc_Action)
+// camera state 0x55 (TownPc_HandleInput)
 CamReq_TownPc = 0x00323EC0; // type:func
 // camera states 0xB.. / 0xE.. (Contest_Play, Contest_Update)
 CamReq_Contest = 0x00323ED0; // type:func
@@ -4531,7 +4540,7 @@ Area_DrawGlowProps = 0x0037EBB0; // type:func
 // draws one entry of a model set with a matrix (Gs_SetState 0x1A) and, if given, the set lights
 Area_DrawEntry = 0x0037EB30; // type:func
 // an ambient sound object update (state 1): volume by type, area and position; slot to the ordering table
-AmbientSound_Update = 0x00383900; // type:func
+AreaAtmos_Update = 0x00383900; // type:func
 // the equipment window detail panel of one item: kind, rank, attack or defence, slots, element and the comparison with the equipped item (other)
 EquipWindow_DrawDetails = 0x0035F330; // type:func
 // the hunter motion effects: per motion (work unk6) and frame, spawns effects and sounds (Work438 area of the object)
@@ -4576,7 +4585,7 @@ gPlayerLookFiles_10 = 0x0042C2A0; // size:0x758 entry 10 of gPlayerLookFiles
 gPlayerLookFiles_11 = 0x0042D120; // size:0x720 entry 11 of gPlayerLookFiles
 gPlayerLookFiles_12 = 0x0042DEC0; // size:0x678 entry 12 of gPlayerLookFiles
 gPlayerLookFiles_13 = 0x0042E5E0; // size:0xB0 entry 13 of gPlayerLookFiles
-// inside the DNAS data (unk_308BC0.c, INCLUDE_DATA D_004054E0): words elsewhere only look like pointers to it
+// inside the DNAS data (net_front.c, INCLUDE_DATA D_004054E0): words elsewhere only look like pointers to it
 D_00410040 = 0x00410040; // size:0x1C0
 
 // Round 15 (types)
@@ -4591,7 +4600,7 @@ D_004054E0 = 0x004054E0; // size:0x10000 (INCLUDE_DATA)
 // Round 16 (data-h1)
 // Message line lists plsel's MsgBox / PlselWin texts point to:
 D_00446F70 = 0x00446F70; // inside the string table D_00446E80
-D_0046A0C0 = 0x0046A0C0; // D_0046A0A0 + 0x20 (unk_3E3D00.c, alias)
+D_0046A0C0 = 0x0046A0C0; // D_0046A0A0 + 0x20 (fishing.c, alias)
 
 // Round 16 (asub-h1)
 // the pouch item bar of the HUD: the selected item and its neighbours sliding in by the timer, the frame, and for gunners the ammo list
@@ -4604,11 +4613,11 @@ Player_InitRecords = 0x00337D30; // type:func
 // Round 17 (xref): names for raw addresses in the C.
 D_0043C73A = 0x0043C73A; // size:0x1
 gBarrelBonusLight = 0x0045EB00; // size:0x20 GUN_OPT_BARREL on a gun other than a heavy bowgun, the attack (s16) and the shot values (f32 at +4) it adds
-D_0045EB04 = 0x0045EB04; // size:0x4
+gBarrelLightShotSpeeds = 0x0045EB04; // size:0x4 GUN_OPT_BARREL on a gun other than a heavy bowgun, as gSilencerShotSpeeds
 gBarrelBonusHeavy = 0x0045EB20; // size:0x20 GUN_OPT_BARREL on a heavy bowgun, as gBarrelBonusLight
-D_0045EB24 = 0x0045EB24; // size:0x4
+gBarrelHeavyShotSpeeds = 0x0045EB24; // size:0x4 GUN_OPT_BARREL on a heavy bowgun, as gSilencerShotSpeeds
 gSilencerBonus = 0x006AEE00; // size:0x4 GUN_OPT_SILENCER, the attack it adds (bss, nothing seen writing it)
-D_006AEE04 = 0x006AEE04; // size:0x4
+gSilencerShotSpeeds = 0x006AEE04; // size:0x4 GUN_OPT_SILENCER, added to a shot level row speed, speed random part and drop random part
 gNothingMoreText = 0x00446AF4; // size:0x4 Player_GatherAtSpot, nothing more seems to be here, inside gNoticeMadeTexts
 gRewardZeroText = 0x00446AF8; // size:0x4 Player_StateFaint, the reward became 0z, inside gNoticeMadeTexts
 gFaintedText = 0x00446AFC; // size:0x4 Player_StateFaint, the player fainted, inside gNoticeMadeTexts
@@ -4632,11 +4641,14 @@ D_005D7214 = 0x005D7214; // size:0x2
 D_006ADB4C = 0x006ADB4C; // size:0x1
 gPadDebugSwitch = 0x006A9E40; // size:0x4 enables the debug switch of PadState_UpdateAll (button 0x8000 sets D_006AE198), cleared by Mem_InitLayout
 gSystemTexFiles = 0x0042F1A0; // size:0x18
+gSystemExtraTexFiles = 0x0042F1B8; // size:0x8 the file Tex_LoadSystemPack mode 0 loads into texture slot 3
 gPlselTexPack = 0x0042F1D8; // size:0x4 the select screen pack file id (Plsel_Setup)
 gChatTitleText = 0x00445F88; // size:0x4 Plsel_DrawChatWindow, the chat title
 gChatTypeTexts = 0x00445F8C; // size:0x4 Chat_CountLogRows, the default chat line texts by type (name format, group chat, chat, to oneself)
 gPlselHelpOffline = 0x00446EF8; // size:0x4 the select screen button help offline (Plsel_DrawEquipPage)
 gPlselHelpOnline = 0x00446EFC; // size:0x4 the same online
+gPlselYesNoTexts = 0x00446F40; // size:0x8 the yes and no answers of the start question (Plsel_DrawEquipPage)
+gPlselMenuOnlineItems = 0x00446F90; // size:0x10 the player menu items online (Plsel_DrawPlayerMenuList)
 gPlselEquipPrompt = 0x00446F3C; // size:0x4 online, the prompt to start with the equipment shown
 gPlselStartPrompt = 0x00446F48; // size:0x4 offline, the start prompt
 gPlselNoRechooseText = 0x00446F50; // size:0x4 the warning that the equipment cannot be chosen again
@@ -4647,11 +4659,9 @@ gPlselReadyText = 0x00446F64; // size:0x4 the ready label of a player who took a
 gPlselWaitLine1 = 0x00446F68; // size:0x4 the first line of the wait for the other players
 gPlselWaitLine2 = 0x00446F6C; // size:0x4 its second line
 gPlselTexts = 0x00469E00; // size:0x2A0 the player select screens texts, Plsel_Draw*
-D_006A39E4 = 0x006A39E4; // size:0x4
-D_006A39E8 = 0x006A39E8; // size:0x4
 gFieldMenuTitle = 0x00445C50; // size:0x8 FieldMenu_DrawList, the menu title
-D_00446F80 = 0x00446F80; // size:0x4
-D_00446FA0 = 0x00446FA0; // size:0x4
+gPlselStageTitleOffline = 0x00446F80; // size:0x4 the stage page title offline (Plsel_DrawStagePage)
+gPlselStageTitleOnline = 0x00446FA0; // size:0x4 the stage page title online
 D_005F89D1 = 0x005F89D1; // size:0x1
 gEquipSetNameFormat = 0x004475C0; // size:0x4 the format of a new equipment set name, numbered from 1 (Chara_MakeSave)
 D_005F93E4 = 0x005F93E4; // size:0x4
@@ -4660,29 +4670,24 @@ D_006A3A04 = 0x006A3A04; // size:0x4
 D_006A3A0C = 0x006A3A0C; // size:0x4
 D_0042F1DC = 0x0042F1DC; // size:0x4
 gNetPppConf = 0x0059D468; // size:0x40 NETWORK the dial-up settings for NetPpp_Connect
-D_0059D8C0 = 0x0059D8C0; // size:0x1
+gNetPppLineModeFirst = 0x0059D8C0; // size:0x1 the first PPP line mode tried (gNetPppLineMode), 3 from the settings, 0 after a reset
 gNetPhyMode = 0x0059D8C8; // size:0x1 NETWORK, the Ethernet link mode from the settings phyConfig (Yn_ExportSettings), passed to NetEth_Start
-D_0059DCE0 = 0x0059DCE0; // size:0x1
+gNetPppFlagSaved = 0x0059DCE0; // size:0x1 the gNetPppConf.flag the last connection worked with
 D_0059DCF0 = 0x0059DCF0; // size:0x2
 D_0059DCF8 = 0x0059DCF8; // size:0x4
 D_0059DE00 = 0x0059DE00; // size:0x1
-D_0041CEC1 = 0x0041CEC1; // size:0x1
-D_0041CEC2 = 0x0041CEC2; // size:0x1
-gStageObjK0CAlphaSet = 0x005BACF0; // size:0x1 set by the first StageObj_K0C type 1 run of a frame, cleared when drawn (StageObj_K0C_DrawType1)
-gStageObjK0CAlpha = 0x005BACF8; // size:0x1 the largest alpha of the StageObj_K0C type 1 objects this frame (StageObj_K0C_RunType1, StageObj_K0C_DrawType1)
-D_0045EB10 = 0x0045EB10; // size:0x4
-D_0045EB14 = 0x0045EB14; // size:0x4
-D_0045EB30 = 0x0045EB30; // size:0x4
-D_0045EB34 = 0x0045EB34; // size:0x4
-D_006AEE10 = 0x006AEE10; // size:0x4
-D_006AEE14 = 0x006AEE14; // size:0x4
-D_004469A0 = 0x004469A0; // size:0x20 a table of eight texts, no reader seen
-D_004469A4 = 0x004469A4; // size:0x4
-D_004469A8 = 0x004469A8; // size:0x4
-D_004469AC = 0x004469AC; // size:0x4
-D_004469B0 = 0x004469B0; // size:0x4
-D_004469B4 = 0x004469B4; // size:0x4
-gQuestCountdown = 0x005D87A4; // size:0x4 frames left (Quest_UpdateTimers counts it down), 0x4650 (10 minutes) with gScene.countdownOn at net message 19, -1 at 18, AreaObj_K05_Run copies it
+gEffectColor0Green = 0x0041CEC1; // size:0x1
+gEffectColor0Blue = 0x0041CEC2; // size:0x1
+ItemProp_SmokeViewQueued = 0x005BACF0; // size:0x1 set by the first StageObj_K0C type 1 run of a frame, cleared when drawn (ItemProp_DrawSmoke)
+ItemProp_SmokeViewAlpha = 0x005BACF8; // size:0x1 the largest alpha of the StageObj_K0C type 1 objects this frame (ItemProp_RunSmoke, ItemProp_DrawSmoke)
+gBarrelLightShotWobble = 0x0045EB10; // size:0x4 as gSilencerShotWobble
+gBarrelLightShotRange = 0x0045EB14; // size:0x4 as gSilencerShotRange
+gBarrelHeavyShotWobble = 0x0045EB30; // size:0x4 as gSilencerShotWobble
+gBarrelHeavyShotRange = 0x0045EB34; // size:0x4 as gSilencerShotRange
+gSilencerShotWobble = 0x006AEE10; // size:0x4 GUN_OPT_SILENCER, added to the row sideways wobble
+gSilencerShotRange = 0x006AEE14; // size:0x4 GUN_OPT_SILENCER, added to the row power stage range factor
+gMsgEventTexts = 0x004469A0; // size:0x20 the advice window frame texts (enum MsgEventText), six and two NULLs
+gQuestCountdown = 0x005D87A4; // size:0x4 frames left (Quest_UpdateTimers counts it down), 0x4650 (10 minutes) with gScene.countdownOn at net message 19, -1 at 18, AreaWeapon_Run copies it
 gAreaObjCount = 0x005D8A60; // size:0x1 the number of objects in gAreaObjList, 0 skips the monsters goal searches (ObjList_Update, Em_FindGoalAction)
 D_005D73E8 = 0x005D73E8; // size:0x4
 D_005D774C = 0x005D774C; // size:0x2
@@ -4705,9 +4710,9 @@ D_0046A0E0 = 0x0046A0E0; // size:0x4
 D_0046A0E4 = 0x0046A0E4; // size:0x4
 D_0046A0E8 = 0x0046A0E8; // size:0x4
 D_0046A0EC = 0x0046A0EC; // size:0x4
-gQuestEmSizePct = 0x005D879C; // size:0x2 the size percent of the quest monster (Monster_SizeFromPercent), 0 none, kept in the arena records (Plsel_SaveRecordMenu, Plsel_RollBonus)
+gQuestCapturedKind = 0x005D879C; // size:0x2 the captured monster's kind, gQuest.capturedType read alone, 0 none, kept in the arena records (Plsel_SaveRecordMenu, Plsel_RollArenaRecord)
 D_006A3A24 = 0x006A3A24; // size:0x4
-D_006AE974 = 0x006AE974; // size:0x4
+gPlselResultsSubTex = 0x006AE974; // size:0x4 a second texture of the results screen (compressed file 0x22), made once by Plsel_LoadResultsTextures, which nothing draws
 D_005D76F7 = 0x005D76F7; // size:0x1
 
 // Round 18 (nsub)
@@ -4730,7 +4735,7 @@ Bone_InitTreeRoot = 0x002EFDD0; // type:func
 Bone_LinkTree = 0x002EFF10; // type:func
 Bone_InitRestPoseUnit = 0x002EFFD0; // type:func
 Bone_InitRestPoseAltUnit = 0x002F0110; // type:func
-Vu1_CopyRowsE = 0x002F1B70; // type:func
+Vu1_PutUvMatrix = 0x002F1B70; // type:func
 ModelFile_GetPartList = 0x002F6770; // type:func
 ModelPart_StripGroupCount = 0x002F7130; // type:func
 ModelPart_StripGroupKind = 0x002F7170; // type:func
@@ -4753,26 +4758,26 @@ TagList_Push = 0x002F97F0; // type:func
 TagList_Pop = 0x002F9810; // type:func
 // keyboard 0 LED mode 0 (sceUsbKbSetLEDMode), then sceUsbKbSync
 UsbKb_StepSetLed = 0x002F9AD0; // type:func
-AvePpp_GetStatus26_Unk = 0x00306C00; // type:func
-AveIf_PollEvent_Unk = 0x003073C0; // type:func
-AveIf_GetEvent_Unk = 0x00307430; // type:func
-AveIf_AckEvent_Unk = 0x003074C0; // type:func
-AveIf_GetOption_Unk = 0x00307510; // type:func
-NetPpp_GetLinkState_Unk = 0x003080F0; // type:func
-NetEth_GetOpt8_Unk = 0x00308810; // type:func
-NetIf_PollEvent_Unk = 0x00308AC0; // type:func
-NetIf_GetEvent_Unk = 0x00308B30; // type:func
-NetIf_AckEvent_Unk = 0x00308B70; // type:func
+AvePpp_GetLinkState = 0x00306C00; // type:func
+AveIf_PollEvent = 0x003073C0; // type:func
+AveIf_GetEvent = 0x00307430; // type:func
+AveIf_AckEvent = 0x003074C0; // type:func
+AveIf_GetOption = 0x00307510; // type:func
+NetPpp_GetLinkState = 0x003080F0; // type:func
+NetIf_GetOption8 = 0x00308810; // type:func
+NetIf_PollEvent = 0x00308AC0; // type:func
+NetIf_GetEvent = 0x00308B30; // type:func
+NetIf_AckEvent = 0x00308B70; // type:func
 NetDev_MatchesDefault = 0x0030A020; // type:func
 NetDev_CheckLink = 0x0030B530; // type:func
-NetPpp_TestFlag_Unk = 0x0030B600; // type:func
-NetPpp_LatchFlag_Unk = 0x0030B660; // type:func
-NetPpp_StepState_Unk = 0x0030B680; // type:func
-NetXfer_GetState_Unk = 0x0030D660; // type:func
+NetPpp_TryOtherFlag = 0x0030B600; // type:func
+NetPpp_SaveFlag = 0x0030B660; // type:func
+NetPpp_NextLineMode = 0x0030B680; // type:func
+NetXfer_GetResult = 0x0030D660; // type:func
 Dnas_GetError = 0x0030D970; // type:func
 Dnas_AuthStep = 0x0030D980; // type:func
-Kbd_ConfirmStep_Unk = 0x00310C60; // type:func
-Kbd_FKeyStep_Unk = 0x00310E80; // type:func
+Kbd_CycleSegmentForm = 0x00310C60; // type:func the Muhenkan key, ConvCmd_SegmentForm1 and ConvCmd_SegmentForm2 in turn
+Kbd_ConvertForm2 = 0x00310E80; // type:func F7, the segment through ConvCmd_SegmentForm2
 Kbd_CommitInput = 0x00311C80; // type:func
 Kbd_KindIs8To10 = 0x00312720; // type:func
 Kbd_NextCandidate = 0x00313BC0; // type:func
@@ -4801,34 +4806,35 @@ CamScript_CopyToEnd = 0x0031E5D0; // type:func
 CamScript_OrbitAngles = 0x0031E6C0; // type:func
 CamCtl_IsRailMode = 0x0031F6A0; // type:func
 CamCtl_IsAiming = 0x0031F6C0; // type:func
-CamCtl_CheckEmInView = 0x0031F750; // type:func
-Cam_GetEmBoneSegment = 0x0031F7F0; // type:func
+CamCtl_CheckPlayerInView = 0x0031F750; // type:func
+Cam_GetPlayerBodySegment = 0x0031F7F0; // type:func
 CamView_KeepTargetOnScreen = 0x0031FBA0; // type:func
-Cam_GetEmLowPoint = 0x0031FD70; // type:func
+Cam_GetPlayerLowPoint = 0x0031FD70; // type:func
 CamCtl_InitDefaultParams = 0x003204B0; // type:func
 CamCtl_LoadParams = 0x00320580; // type:func
 CamArea_TestObj = 0x00320720; // type:func
-Player_ActionInCamRange_Unk = 0x00320840; // type:func
-Player_LocalActionInCamRange_Unk = 0x003208B0; // type:func
+Player_IsOnWall = 0x00320840; // type:func
+Player_LocalIsOnWall = 0x003208B0; // type:func
 CamArea_IsEnabled = 0x003208D0; // type:func
 CamFace_ContainsXZ = 0x00320920; // type:func
 CamView_SetTransition = 0x00320A10; // type:func
 CamBlend_EaseStep = 0x00320AB0; // type:func
-Cam_PlayerHasFlag80000 = 0x00320D80; // type:func
+Player_IsFishing = 0x00320D80; // type:func
 CamFollow_ShouldTurnBehind = 0x003210C0; // type:func
-Player_LocalAreaOk_Unk = 0x00321270; // type:func
+Player_LocalCanUseBinoculars = 0x00321270; // type:func
 CamPoint_GetPos = 0x003212D0; // type:func
 CamPoint_GetPosOr = 0x003213B0; // type:func
 CamCtl_PathPlace = 0x00321C60; // type:func
 Vec_EvalCubic = 0x00321CD0; // type:func
-CamReq_Mode0A = 0x00323DA0; // type:func
-CamReq_Mode01 = 0x00323DE0; // type:func
-CamReq_Mode05 = 0x00323EA0; // type:func
-CamReq_Lobby1B = 0x00323F70; // type:func
-CamReq_Mode25 = 0x00323FA0; // type:func
-CamReq_FromTable = 0x00323FD0; // type:func
-CamReq_Lobby44 = 0x00324070; // type:func
-Cam_ResetRequests_Unk = 0x00324080; // type:func
+CamReq_PlayerDown = 0x00323DA0; // type:func
+CamReq_Cart = 0x00323DE0; // type:func
+CamReq_PlesiothScene = 0x00323EA0; // type:func
+CamReq_TownArea = 0x00323F70; // type:func
+CamReq_StageStart = 0x00323FA0; // type:func
+CamReq_StageShot = 0x00323FD0; // type:func
+CamReq_TownTour = 0x00324070; // type:func
+Boot_ResetMenus = 0x00324080; // type:func
+CamReq_ResetStub = 0x003240D0; // type:func returns 1, called by the options menu exit with the other resets
 Scene_CanPlaceKind3 = 0x00325260; // type:func
 Lure_PlayerHasMonsterBait = 0x00325270; // type:func
 Effect_OwnerColorRow = 0x00325410; // type:func
@@ -4845,7 +4851,7 @@ Item_IsBait = 0x00332B50; // type:func
 Recipe_MatchesFlags = 0x00332BA0; // type:func
 LightSet_UpdateAll = 0x00333120; // type:func
 LightSet_Apply = 0x003337E0; // type:func
-Player_ClearLightColors = 0x00333850; // type:func clears the player's three light colours (+0x540, LightSet_FadeAmbient)
+Player_ClearLightColors = 0x00333850; // type:func clears the player's three light colours (+0x540, LightSet_FadeColors)
 Tex_LoadPackLz = 0x00333F10; // type:func
 Tex_RegisterTim2Pair = 0x00333F70; // type:func
 Tex_LoadPackFile = 0x00334060; // type:func
@@ -4854,8 +4860,8 @@ Tex_LoadCommonPack = 0x00334190; // type:func
 Tex_ReleaseCommon = 0x00334250; // type:func
 Tex_LoadSystemPack = 0x00334260; // type:func
 Tex_LoadSystemPackB = 0x003343B0; // type:func
-Tex_PatchClut_Unk = 0x00334480; // type:func
-Tex_LoadResultTex_Unk = 0x00334550; // type:func
+Tex_LoadQuestEndFile = 0x00334480; // type:func
+Tex_SetQuestEndImages = 0x00334550; // type:func
 Tex_Prepare = 0x003350C0; // type:func
 PlayerLook_ResetLoaded = 0x003351A0; // type:func
 Player_LoadLookModels = 0x00335410; // type:func
@@ -4878,11 +4884,11 @@ Player_BuildPartIds = 0x0033B400; // type:func
 Armor_LacksSexModel = 0x0033B880; // type:func
 Player_PartIdDiffers = 0x0033B930; // type:func
 Look_MapPartId = 0x0033BA50; // type:func
-EmSlotModel_Clear = 0x0033CA60; // type:func
-Area_LoadSubModel = 0x0033D150; // type:func
-Area_FreeSubModel = 0x0033D1F0; // type:func
+EmSlot_ForgetModel = 0x0033CA60; // type:func
+CharMake_LoadPartsModel = 0x0033D150; // type:func
+CharMake_FreePartsModel = 0x0033D1F0; // type:func
 TaskSlot_InitAll = 0x0033D240; // type:func
-TaskSlot_Clear9 = 0x0033D260; // type:func
+TaskSlot_ClearFirstNine = 0x0033D260; // type:func
 TaskSlot_Prepare = 0x0033D620; // type:func
 Task_EndGmSubForNetScene = 0x0033D6A0; // type:func
 Task_EndGmSubForNetSetup = 0x0033D6C0; // type:func
@@ -4937,11 +4943,11 @@ EventFlag_Test = 0x003BD9C0; // type:func
 Equip_IsNoModelArmor = 0x003BDE40; // type:func
 Save_PlayTimeReached = 0x003BDEC0; // type:func
 Seg_ClipYRange = 0x003C2C80; // type:func
-ObjAttach_CanHit_Unk = 0x003C4930; // type:func
+ObjAttach_TargetIsRemote = 0x003C4930; // type:func
 ObjAttach_HitFlags = 0x003C4990; // type:func
 ObjAttach_LinkTarget = 0x003C6BF0; // type:func
-ObjAttach_StepHitTimer_Unk = 0x003C6C00; // type:func
-Em_IncUnk04 = 0x003C7840; // type:func
+ObjAttach_NextMultiHit = 0x003C6C00; // type:func
+Em_NextTaskPhase = 0x003C7840; // type:func
 Player_PrepareMotions = 0x003C7970; // type:func
 Em_BoneMatrix = 0x003E0E80; // type:func
 Em_BoneMatrixB = 0x003E0EB0; // type:func
@@ -4973,7 +4979,7 @@ Hud_DrawPouchBarEnds = 0x00363050; // type:func two sprites of the pouch bar at 
 Hud_AmmoIconSprite = 0x00363100; // type:func the pouch bar's icon sprite, one for the bow (weapon type 10), one for the rest
 Kbd_BindGlyphTex = 0x003634C0; // type:func binds texture 0x148, the keyboard's glyphs (Kbd_Draw)
 Gfx_SetBlendAlphaAdd = 0x003634F0; // type:func Gfx_SetBlend(4, 5), or (4, 1) for a == 1
-Bgm_StopInArea87 = 0x00368C00; // type:func gBgmId = 0xFF in area 0x87
+Bgm_StopInTownArena = 0x00368C00; // type:func clears gBgmId in AREA_TOWN_ARENA
 Gfx_SetBlend = 0x00368F90; // type:func cached Gs_SetState 0x5E from source and destination factor tables (4, 5 - alpha blending, 1, 1 - additive)
 Gfx_SetTexFilter = 0x00369010; // type:func cached Gs_SetState 0x63 (0 - 0x10000, 1 - 0, the default)
 Gfx_SetBlendOp = 0x003691A0; // type:func cached Gs_SetState 0xD (0, 0x400, 0x800), 1 with additive blending darkens (area fade)
@@ -5000,7 +5006,7 @@ ScreenCapture_Take = 0x0036D880; // type:func ScreenTex_Capture into gReadBuf, D
 Pause_DrawCapture = 0x0036D940; // type:func the captured screen behind the pause menu
 Player_DrawBoneMarker = 0x0036F310; // type:func Hud_DrawTargetMarker at offset i (D_0043E5D0) of the player's bone
 Player_HeldPartForMotion = 0x0036F990; // type:func the part (or effect) index of motions 0x327-0x32A by the frames reached
-Player_DrawWeaponPart = 0x0036FBB0; // type:func the weapon part of D_005DA030's model set at a bone, sheathed or held
+Player_DrawHeldProp = 0x0036FBB0; // type:func the weapon part of D_005DA030's model set at a bone, sheathed or held
 Player_PartFlags = 0x00373630; // type:func D_00430690 entry of the player's kind (pl[0x11]) and its selection for slot
 Color_Cycle8 = 0x00373670; // type:func a colour cycling through the 8 of D_0043E620, 16 frames each
 EquipPreview_Reset = 0x003751B0; // type:func clears the preview state's D_005BAD78..D_005BAD84
@@ -5008,17 +5014,17 @@ EquipPreview_SetViewport = 0x003751E0; // type:func the camera's viewport and pr
 Camera_StoreFov = 0x00377B30; // type:func gCamera->fov = fov, without the projection update
 ObjList_Add = 0x003780B0; // type:func adds to the area object list D_005D8C70 (the game overlay monsters' area objects), 0 when full
 ObjList_Remove = 0x00378140; // type:func removes from D_005D8C70
-ObjListAF0_Clear = 0x00378520; // type:func clears the object list D_005D8AF0
+ObjListAF0_Clear = 0x00378520; // type:func clears the object list gUnusedObjs
 ObjListA70_Clear = 0x00378570; // type:func clears the object list D_005D8A70 (checked by the game overlay's monsters)
 ObjListA70_Add = 0x003785C0; // type:func adds to D_005D8A70, 0 when full
 ObjListA70_Remove = 0x00378650; // type:func removes from D_005D8A70
-Area_GroundOffset = 0x00379E00; // type:func 0.0 for every area (Effect0D_GroundHeight)
-AreaSky_Draw = 0x0037CB10; // type:func the area's sky models and lights (gAreaState), from Frame_Draw
+Area_GroundOffset = 0x00379E00; // type:func 0.0 for every area (PartFx_PutOnGround)
+Area_DrawModels = 0x0037CB10; // type:func the area model (its sky first) with its animations, then its props, from Frame_Draw
 Notice_ResetQueue = 0x00380530; // type:func empties the notice queue D_006AE9E0 and its counters
 AreaProp_Draw = 0x00381D90; // type:func an area prop's draw-slot update - its models by area and type
-AmbientSound_Draw = 0x00385000; // type:func the draw-slot update of an ambient sound object (AmbientSound_Setup)
-AmbientSound_AreaValue10 = 0x003866A0; // type:func the ambient sound source's unk10, by the area D_006ADCC4 and the source
-AmbientSound_AreaValue0C = 0x00386B10; // type:func the ambient sound source's unk0C, by the area D_006ADCC4 and the source
+AreaAtmos_Draw = 0x00385000; // type:func the draw-slot update of an area atmosphere object (AreaAtmos_Setup)
+AreaAtmos_LayerAlpha = 0x003866A0; // type:func the alpha of an atmosphere layer, by the area, the layer and the monster state
+AreaAtmos_LayerSpeed = 0x00386B10; // type:func the scroll speed of an atmosphere layer, by the area, the layer and the monster state
 Player_SeAtFrame = 0x00388210; // type:func offline - sound effect se once the motion passes frame
 Player_EffectAtFrame = 0x00395D80; // type:func spawns effect a (by kind) once the motion passes frame (Player_MotionEffects)
 Player_InitForQuest = 0x0039A0A0; // type:func drops absent remote players, preset equipment (unk59A), skills, weapon and part models (Player_SetupQuest)
@@ -5100,14 +5106,19 @@ gMonsterNames = 0x00445620; // size:0x130
 gPlayerIds = 0x005CA8F0; // size:0x20 the four players ids, 8 bytes each (the lobby copies partyCount of them), gQuestReturnArea follows
 gItemColors = 0x00430A70; // size:0x30
 gAreaKindFlags = 0x0043FB70; // size:0x320
-gAreaAmbModels = 0x00441170; // size:0x320
+Obj_UpdateMustCrouch = 0x00330D60; // type:func
+Obj_UpdateFloorHazard = 0x00330DB0; // type:func
+Obj_UpdateFloorEffects = 0x00330DE0; // type:func the light colours, mustCrouch and floorHazard of the floor kind under the object (gAreaKindFlags), each frame in the current area
+Em_UpdateLightColors = 0x00330E30; // type:func for kinds 9 and EM_KIND_MELYNX the light colours of the floor kind under the monster
+Obj_OnPassThroughFloor = 0x00330E80; // type:func flag byte 4 of gAreaKindFlags for the object's area and floor kind, set on the triangles monsters do not stand on
+gAreaFxModels = 0x00441170; // size:0x320
 gFriendList = 0x005C39D0; // size:0x960
 gMyName = 0x005CAA20; // size:0x11
 gCamYawMtx = 0x006A9D70; // size:0x40
 gAnimCurveBuf = 0x00581958; // size:0x4
 gAnimKeyHeap = 0x00581960; // size:0x18
 gBrowserUrl = 0x005CADD0; // size:0x100
-gOnlineBonusState = 0x005D4780; // size:0x1
+gPoogieErrand = 0x005D4780; // size:0x1 the Poogie errand, POOGIE_ERRAND_* (1 away, 2 back with a find)
 gChatBlockList = 0x005C3730; // size:0x1E0
 gAreaGridCellX = 0x005D9FF8; // size:0x4
 gAreaGridCellZ = 0x005D9FFC; // size:0x4
@@ -5153,8 +5164,8 @@ gNetSockClose = 0x0059CB60; // size:0x20
 gNoticeHead = 0x006AE9D0; // size:0x1
 gNoticeCount = 0x006AE9D8; // size:0x1
 gNoticeQueue = 0x006AE9E0; // size:0x3C0
-gLoadScrWork = 0x006AEF58; // size:0x4
-gLightSets = 0x005EC1D0; // size:0x280
+gLoadingScreen = 0x006AEF58; // size:0x4 the loading screen work, NULL while closed
+gLightSets = 0x005EC1D0; // size:0x290 the two light sets after a head of 0x10 bytes (LightSets)
 gChatClassColors = 0x0043B0D0; // size:0x10
 gConvEditLine = 0x0059B820;
 gEquipPreview = 0x005BAD60; // size:0xB0
@@ -5164,6 +5175,9 @@ gRecipesEx = 0x0041E020; // size:0x180
 gNumConvMode = 0x00581C48; // size:0x4
 gRewardMoney = 0x005BC4A0; // size:0x4
 gNetSaveData = 0x005BDD50; // size:0x1BEC
+gNetSaveProxy = 0x005BE6C4; // size:0x208 in gNetSaveData, the proxy settings (YnProxy)
+gNetSaveConfig = 0x005BE9E0; // size:0xA20 in gNetSaveData, the network settings in use (YnConfig)
+gNetSaveConfigProxy = 0x005BF400; // size:0x208 in gNetSaveData, the proxy that goes with gNetSaveConfig (Yn_ApplyEntry)
 gNetSetupResult = 0x005BE9D4; // size:0x1
 gLobbyLastPm = 0x005BFB80; // size:0x1
 gQuestFiles = 0x005BFBA0; // size:0x900
@@ -5179,6 +5193,8 @@ gModelPktSteps = 0x004024B0; // size:0x20
 gUserDictFlags = 0x00403D80; // size:0x4
 gPhraseEntries = 0x00416920; // size:0x180
 gAreaQuadOffsets = 0x0041D1F0; // size:0x20
+gTriUnsharedCorner = 0x0041D210; // size:0x10 by the mask of an edge triangle corners shared with a face triangle, its unshared corner when two are shared
+gFloorSlopeDrop = 0x0041D220; // size:0xB0 the drop per unit of slope Em_FindFloorTri passes Tri_PushOut, only the first entry is read
 gPlayerLookFiles = 0x0042FCF0; // size:0x40
 gAreaSeBanks = 0x0043B6C0; // size:0x200
 gAreaGridCols = 0x005DA000; // size:0x4
@@ -5221,7 +5237,7 @@ KbdChar_Class20 = 0x00304C90; // type:func
 AreaHitTris_Contains = 0x0032A340; // type:func
 Chat_InInputMode = 0x003553C0; // type:func
 gStageObjs = 0x005AFD70;
-gAreaBgm = 0x0043B200;
+gBgmTavernTracks = 0x0043B200; // size:0x18 the six music tracks of AREA_TAVERN (id, volume)
 gBgmIndex = 0x005BA786; // size:0x1
 gBgmVariant = 0x005BA785; // size:0x1
 gHttpsProxy = 0x005C3510; // size:0x110
@@ -5234,13 +5250,20 @@ gPortalUrlB = 0x005CAFED;
 gRecipe3First = 0x0041E250;
 gRecipe3Second = 0x0041E1A0;
 gVoiceBanks = 0x0043C800;
-gAmbSoundCounts = 0x00449F60;
+gAreaAtmosLayerCounts = 0x00449F60; // size:0x20 the atmosphere layers of each object type (16 s16)
+gAtmosScrollSpeeds = 0x00449F00; // size:0x8 the frames per texture scroll of the area atmosphere type 10 layers
+gAtmosScrollSpeedsState0 = 0x00449F08; // size:0x8 the frames per texture scroll of the area atmosphere type 13 layers, monster state 0
+gAtmosScrollSpeedsState1 = 0x00449F10; // size:0x8 the same, monster state 1
+gAtmosScrollSpeedsState2 = 0x00449F18; // size:0x8 the same, monster state 2
+gAtmosScrollSpeedsByState = 0x00449F20; // size:0x10 the type 13 speeds by Area_MonsterState
 gBladeSpecialMarks = 0x0044AE30;
 gEff06PartCounts = 0x00466740;
-gEff0DPartCounts = 0x00467A60;
+gPartFxPartCounts = 0x00467A60;
 gNetStopReq = 0x0059CC28;
 gNetMsgState = 0x0059D660;
 gAreaHits = 0x005B2190;
+gLightFadePos = 0x005B2400; // size:0x30 gLightFadeSources, the positions of the three lights (zero)
+gLightInitPos = 0x005B2430; // size:0x28 gLightInitSources, the positions of light set 0 (zero)
 gLookDelay = 0x005B2460;
 gLookPending = 0x005B2470;
 gHudFades = 0x005B3870;
@@ -5250,7 +5273,7 @@ gTownQuestListsCopy = 0x005BF940;
 gScreenCaptureOk = 0x006ADFC2; // size:0x1
 Jingle_PlayForArea = 0x00368610; // type:func
 Jingle_OnAreaChange = 0x00368700; // type:func
-gPresetChars = 0x005CA4A0;
+gPlayerCardTexts = 0x005CA4A0; // size:0x400 the four players hunter card texts, a UserText each (the lobby copies them, Player_LoadPreset reads them), gMemberNames follows
 gModelPartLists = 0x006A1840;
 
 // Round 21 (ndata)
@@ -5259,7 +5282,7 @@ gSkillNames = 0x00447470; // size:0x160
 gSymbolColorNames = 0x00447700; // size:0x30
 gSeasonNames = 0x00447730;
 gWeaponTypeNames = 0x00446030;
-Player_GetAreaAmbModel = 0x003B2900; // type:func
+Player_GetAreaPitModel = 0x003B2900; // type:func
 Kana_ToJis = 0x002FBAE0; // type:func
 Jis_ToHalfByte = 0x00303750; // type:func
 Jis_LookupHalfSymbol = 0x002FBD20; // type:func
@@ -5271,7 +5294,7 @@ Player_ResetMeshPairs = 0x00395EC0; // type:func shows the first mesh of each of
 Player_ResetAim = 0x003B5870; // type:func
 Em_CollideField = 0x00330EB0; // type:func
 gModelPackIds = 0x0042E8F0; // size:0x550
-gStageNames = 0x00446E80; // size:0x140
+gStageNames = 0x00446E80; // size:0x78
 gSkillEffectNames = 0x00447140; // size:0x330
 gChatNgWordsA = 0x00446340; // size:0xB0
 gChatNgWordsB = 0x004463F0; // size:0x170
@@ -5301,7 +5324,7 @@ gCamFollowDefaults = 0x0041C830; // size:0x100
 gRecipeYieldChances = 0x0041E9F0; // size:0x28
 gRecipeYieldBase = 0x0041EA18; // size:0xC
 gWeaponModelPackFiles = 0x004211A0; // size:0x550
-gEmModelPackFiles = 0x00421950; // size:0x130
+gEmPartModelPackFiles = 0x00421950; // size:0x130 the monsters part model packs by kind, -1 none (Load_EmPartModelPack)
 gAreaSubModelFiles = 0x004220C0; // size:0x320
 gEmSlotAnimFiles = 0x00422410; // size:0x50
 gTexPackFiles = 0x004228C0; // size:0x2C50
@@ -5324,7 +5347,7 @@ gItemListBox = 0x00432350; // size:0x20
 gHornNoteColors = 0x004326F0; // size:0x20
 gChatWhoColors = 0x00432710; // size:0x8
 gHelpTexts = 0x00433880; // size:0x40
-gReverbs = 0x0043B550; // size:0xA0
+gAreaReverbs = 0x0043B550; // size:0xA0
 gAreaReverbIdx = 0x0043B5F0; // size:0xD0
 gAreaTriKindFlags = 0x004407F0; // size:0x320
 gRecipeYieldLabels = 0x00445D70; // size:0x30
@@ -5345,15 +5368,15 @@ gDualSwordRanges = 0x0041CF50; // size:0x30
 gEffectTexIds = 0x0041CF80; // size:0x58
 gPlayerAnimFiles = 0x0041ED50; // size:0x30
 gCommonAnimFiles = 0x0041ED80; // size:0x20
-gEmModelPackFilesA = 0x004216F0; // size:0x130
+gEmMainModelPackFiles = 0x004216F0; // size:0x130 the monsters model packs by kind (Load_EmModelPack)
 gEmAnimFiles = 0x00421820; // size:0x130
 gAreaPackFiles = 0x00421A80; // size:0x320
 gAreaTableFiles = 0x00421DA0; // size:0x320
 gEmSlotModelPackFiles = 0x00422460; // size:0x50
 gCommonModelPackFiles = 0x004224C0; // size:0x20
 gAreaCamDataFiles = 0x004224E0; // size:0x320
-gEquipModelPackFilesA = 0x00422800; // size:0x60
-gEquipModelPackFilesB = 0x00422860; // size:0x60
+gEquipModelPackFilesMale = 0x00422800; // size:0x60
+gEquipModelPackFilesFemale = 0x00422860; // size:0x60
 gAreaTexFiles = 0x00425510; // size:0x318
 gEmSlotTexPacks = 0x0042E690; // size:0x130
 gEmSlotModelPacks = 0x0042E7C0; // size:0x130
@@ -5380,7 +5403,7 @@ gAreaMusicAlts = 0x0043B8C0; // size:0x220
 gAreaJingles = 0x0043BB60; // size:0x118
 gQuestSoundBanks = 0x0043BC80; // size:0x2B0
 gBattleBgmKinds = 0x0043C7D0; // size:0x50
-gAreaBgmVolumes = 0x0043C870; // size:0x50
+gAreaTunes = 0x0043C870; // size:0x50 an area own tune, played once per quest (area, stream)
 gFontDescs = 0x004022C0; // size:0xF0
 gVersionDelims = 0x00402270; // size:0x5
 gFontColors = 0x004023B0; // size:0x40
@@ -5447,7 +5470,7 @@ gEquipSkillPos = 0x0043B030; // size:0x30
 gButtonHintDetailIcons = 0x0043B098; // size:0x8
 gButtonHintSortIcons = 0x0043B0A0; // size:0x20
 gButtonHintSortPos = 0x0043B0C0; // size:0x10
-gBoxDefs = 0x0043B0E0; // size:0x60
+gChatBoxPanels = 0x0043B0E0; // size:0x60 the chat box by chat size
 gTextCodeColors = 0x0043C840; // size:0x30
 gBlendModes = 0x0043C920; // size:0x30
 gBlendModes2 = 0x0043C950; // size:0x28
@@ -5456,9 +5479,9 @@ gBlendOps = 0x0043C980; // size:0x10
 gBlackLineSprite = 0x0043C990; // size:0x14
 gLoadingLetterPos = 0x0043C9E0; // size:0x50
 gMapDayIds = 0x0043ED80; // size:0x40 per map its day map, 0xFFFF the map itself
-gPartLodRecs = 0x0043FE90; // size:0x180
-gPartLodRecs2 = 0x004401B0; // size:0x320
-gPartLodModels = 0x004404D0; // size:0x320
+gAreaLightZones = 0x0043FE90; // size:0x180
+gAreaLightZones2 = 0x004401B0; // size:0x320
+gAreaLightColors = 0x004404D0; // size:0x320
 gAreaTemperatures = 0x00440CA0; // size:0x190
 gAreaProps = 0x00444BC0; // size:0x320
 gVillagePropChoices = 0x00445510; // size:0x10
@@ -5469,6 +5492,18 @@ gEmVariantMeshes = 0x00465640; // size:0x20
 gEmRideQuads = 0x00469460; // size:0x130
 Player_SetMyUserId = 0x003B8310; // type:func
 LobbyDay_SetNoon = 0x003D54E0; // type:func
+Card_GetSeed = 0x003DDBA0; // type:func returns 0, the boot seeds the random numbers with it
+Card_StubFail = 0x003DF2E0; // type:func returns 1, the failure of the card calls
+CardTask_IdleStep = 0x003DF660; // type:func empty, the card task idle step
+Loading_CaptionStub = 0x003D54B0; // type:func empty, Loading_SetMessage calls it for its mode 0
+TownReload_CheckStub = 0x003D54C0; // type:func returns 0, the lobby reloading the local player tests it
+TownReload_MarkStub = 0x003D54D0; // type:func empty, the lobby reloading the local player calls it
+NetMenu_GameSaveStub = 0x003D5B70; // type:func empty, NetMenu_Open calls it for the in-game save modes
+gPatchMagic = 0x004B0240; // size:0xC the magic at the start of the patch records
+gCardSlotFmtName = 0x004B0298; // size:0x8 the card slot windows format for the slot number and name
+gCardSlotFmtTime = 0x004B02A0; // size:0x18 the card slot windows format for the play time and sex
+gCardSlotFmtMoney = 0x004B02B8; // size:0xC the card slot windows format for the money
+gCardSlotPosMid = 0x00468848; // size:0x8 the middle slot position when the last slot is selected
 gSinVu0Coefs = 0x00402550; // size:0x10
 gCamShakeLengths = 0x0041C810; // size:0x10
 gTexCreateKinds = 0x0042F3B8; // size:0x8
@@ -5501,6 +5536,10 @@ gObjFreeList = 0x005B4DA0; // size:0x4
 gObjFreeCount = 0x005B4DA8; // size:0x4
 gObjAttachFreeList = 0x005B6FB8; // size:0x4
 gObjAttachFreeCount = 0x005B6FC0; // size:0x4
+gTimeStrMinSec = 0x005BA990; // size:0x20 Time_FormatMinSec writes its string here
+gTimeStrMinSecInHour = 0x005BA9B0; // size:0x20 Time_FormatMinSecInHour writes its string here
+gCallbacksResetOnAdd = 0x005BA9D0; // size:0x4 nonzero makes Callbacks_Add clear both callback lists first
+Scene_EmptyFrameHook = 0x0036CCE0; // type:func empty, Scene_QuestTask calls it each frame
 gCallbackCount = 0x005BA9D8; // size:0x4
 gCallbacks = 0x005BAA20; // size:0x100
 gLayerCallbackCount = 0x005BAB28; // size:0x4
@@ -5579,7 +5618,7 @@ gFontRunCount = 0x004B1920; // size:0x4
 gFontArena = 0x004B1940; // size:0xD0000 the glyph cache and its buffers (Font_Init)
 gSjisDigits = 0x00402490; // size:0x20 the ten digits as two-byte Shift-JIS characters
 gAreaHitFlags = 0x005B2000; // size:0x10
-gAreaHitPointsB = 0x005B2010; // size:0x80
+gAreaHitPlanePoints = 0x005B2010; // size:0x80
 gAreaHitCapsulePos = 0x005B2110; // size:0x80
 gEmSlotModelIds = 0x005B3620; // size:0x20
 gItemGetSerial = 0x005B3848; // size:0x2
@@ -5600,8 +5639,8 @@ gNoticeWait = 0x006AE9C8; // size:0x1
 gDecoTable = 0x00403DF0; // size:0x7D0
 gOptionMenuRows = 0x004307A0; // size:0x20
 gBoneMtxSlotMaps = 0x0043E5B0; // size:0x20
-gPartModelFiles0 = 0x0041FF80; // size:0x20
-gPartModelFiles1 = 0x00421180; // size:0x20
+gPartModelFilesMale = 0x0041FF80; // size:0x20
+gPartModelFilesFemale = 0x00421180; // size:0x20
 Chat_HideWindows = 0x0035C000; // type:func the lobby calls it before its menus
 Chat_ShowWindows = 0x0035C040; // type:func
 
@@ -5709,20 +5748,20 @@ gRecipeYieldChances_5 = 0x0041E9D0; // size:0x8 entry 5 of gRecipeYieldChances
 gRecipeYieldChances_6 = 0x0041E9D8; // size:0x8 entry 6 of gRecipeYieldChances
 gRecipeYieldChances_7 = 0x0041E9E0; // size:0x8 entry 7 of gRecipeYieldChances
 gRecipeYieldChances_8 = 0x0041E9E8; // size:0x8 entry 8 of gRecipeYieldChances
-gPartModelFiles0_0 = 0x0041EDA0; // size:0x320 entry 0 of gPartModelFiles0
-gPartModelFiles0_1 = 0x0041F0C0; // size:0x70 entry 1 of gPartModelFiles0
-gPartModelFiles0_2 = 0x0041F130; // size:0x370 entry 2 of gPartModelFiles0
-gPartModelFiles0_3 = 0x0041F4A0; // size:0x3B0 entry 3 of gPartModelFiles0
-gPartModelFiles0_4 = 0x0041F850; // size:0x390 entry 4 of gPartModelFiles0
-gPartModelFiles0_5 = 0x0041FBE0; // size:0x340 entry 5 of gPartModelFiles0
-gPartModelFiles0_6 = 0x0041FF20; // size:0x60 entry 6 of gPartModelFiles0
-gPartModelFiles1_0 = 0x0041FFA0; // size:0x60 entry 0 of gPartModelFiles1
-gPartModelFiles1_1 = 0x004202C0; // size:0x70 entry 1 of gPartModelFiles1
-gPartModelFiles1_2 = 0x00420330; // size:0x370 entry 2 of gPartModelFiles1
-gPartModelFiles1_3 = 0x004206A0; // size:0x3B0 entry 3 of gPartModelFiles1
-gPartModelFiles1_4 = 0x00420A50; // size:0x390 entry 4 of gPartModelFiles1
-gPartModelFiles1_5 = 0x00420DE0; // size:0x340 entry 5 of gPartModelFiles1
-gPartModelFiles1_6 = 0x00421120; // size:0x60 entry 6 of gPartModelFiles1
+gPartModelFilesMale_0 = 0x0041EDA0; // size:0x320 entry 0 of gPartModelFilesMale
+gPartModelFilesMale_1 = 0x0041F0C0; // size:0x70 entry 1 of gPartModelFilesMale
+gPartModelFilesMale_2 = 0x0041F130; // size:0x370 entry 2 of gPartModelFilesMale
+gPartModelFilesMale_3 = 0x0041F4A0; // size:0x3B0 entry 3 of gPartModelFilesMale
+gPartModelFilesMale_4 = 0x0041F850; // size:0x390 entry 4 of gPartModelFilesMale
+gPartModelFilesMale_5 = 0x0041FBE0; // size:0x340 entry 5 of gPartModelFilesMale
+gPartModelFilesMale_6 = 0x0041FF20; // size:0x60 entry 6 of gPartModelFilesMale
+gPartModelFilesFemale_0 = 0x0041FFA0; // size:0x320 entry 0 of gPartModelFilesFemale
+gPartModelFilesFemale_1 = 0x004202C0; // size:0x70 entry 1 of gPartModelFilesFemale
+gPartModelFilesFemale_2 = 0x00420330; // size:0x370 entry 2 of gPartModelFilesFemale
+gPartModelFilesFemale_3 = 0x004206A0; // size:0x3B0 entry 3 of gPartModelFilesFemale
+gPartModelFilesFemale_4 = 0x00420A50; // size:0x390 entry 4 of gPartModelFilesFemale
+gPartModelFilesFemale_5 = 0x00420DE0; // size:0x340 entry 5 of gPartModelFilesFemale
+gPartModelFilesFemale_6 = 0x00421120; // size:0x60 entry 6 of gPartModelFilesFemale
 gEmSlotAnimFiles_1 = 0x004223E0; // size:0x10 entry 1 of gEmSlotAnimFiles
 gEmSlotAnimFiles_7 = 0x004223F0; // size:0x8 entry 7 of gEmSlotAnimFiles
 gEmSlotAnimFiles_8 = 0x004223F8; // size:0x8 entry 8 of gEmSlotAnimFiles
@@ -5851,7 +5890,7 @@ gSharpnessTables_3 = 0x0045E740; // size:0x60 entry 3 of gSharpnessTables
 gSharpnessTables_4 = 0x0045E7A0; // size:0x60 entry 4 of gSharpnessTables
 gSharpnessTables_6 = 0x0045E800; // size:0x60 entry 6 of gSharpnessTables
 gAreaKindFlags_170 = 0x0045F070; // size:0x10 entry 170 of gAreaKindFlags
-gPartLodModels_170 = 0x0045F0B0; // size:0x60 entry 170 of gPartLodModels
+gAreaLightColors_170 = 0x0045F0B0; // size:0x60 entry 170 of gAreaLightColors
 gBladeNames_1 = 0x004A00F8; // size:0x8 entry 1 of gBladeNames
 gEmVariantMeshes_0 = 0x004655E0; // size:0x10 entry 0 of gEmVariantMeshes
 gEmVariantMeshes_1 = 0x004655F0; // size:0x10 entry 1 of gEmVariantMeshes
@@ -5863,10 +5902,10 @@ gCardOps_0 = 0x00468850; // size:0xA4 entry 0 of gCardOps
 gCardOps_1 = 0x00468900; // size:0xA4 entry 1 of gCardOps
 gCardOps_2 = 0x004689B0; // size:0xA4 entry 2 of gCardOps
 gCardOps_3 = 0x00468A60; // size:0xA4 entry 3 of gCardOps
-gEmRideQuads_0 = 0x00468BA8; // size:0x8 entry 0 of gEmRideQuads
-gEmRideQuads_7 = 0x00468BB0; // size:0xE0 entry 7 of gEmRideQuads
-gEmRideQuads_55 = 0x00468C90; // size:0x40 entry 55 of gEmRideQuads
-gEmRideQuads_58 = 0x00468CD0; // size:0x790 entry 58 of gEmRideQuads
+gEmRideQuadsNone = 0x00468BA8; // size:0x8 the quads of a monster that cannot be ridden (only the end mark)
+gEmRideQuadsLaoShanLung = 0x00468BB0; // size:0xE0 the quads of the Lao-Shan Lungs (both kinds)
+gEmRideQuadsShenGaoren = 0x00468C90; // size:0x40 the quads of the Shen Gaoren
+gEmRideQuadsYamaTsukami = 0x00468CD0; // size:0x790 the quads of the Yama Tsukami (EM_KIND_YAMA_TSUKAMI)
 gHelpTexts_6 = 0x0046A0A0; // size:0x60 entry 6 of gHelpTexts
 
 // Round 24 (nnames): more entries of named tables (nested TABLE_N_M, and TABLE_N defined in files that were busy)
@@ -8174,7 +8213,7 @@ gHelpTexts_1_219 = 0x004700C0; // size:0x40 entry 219 of gHelpTexts_1
 gHelpTexts_1_225 = 0x004701D0; // size:0x30 entry 225 of gHelpTexts_1
 gFontDescs_0 = 0x00402280; // size:0x40 entry 0 of gFontDescs
 gEmClassNames_0 = 0x00490BD0; // size:0x10 entry 0 of gEmClassNames
-gAreaAmbModels_0 = 0x00441150; // size:0x20 entry 0 of gAreaAmbModels
+gAreaFxModels_0 = 0x00441150; // size:0x20 entry 0 of gAreaFxModels
 gDefaultStageHeader_8 = 0x00441490; // size:0x20 entry 8 of gDefaultStageHeader
 gAreaProps_1 = 0x004431B0; // size:0x60 entry 1 of gAreaProps
 gAreaProps_7 = 0x00443230; // size:0x28 entry 7 of gAreaProps
@@ -8278,7 +8317,7 @@ gBladeDescTexts = 0x004338C0; // size:0x1E60 4 description lines per blade weapo
 gGunDescTexts = 0x00435720; // size:0x800 4 description lines per bowgun, EquipWindow_DrawDetails type 7
 gArmorDescTexts = 0x00435F20; // size:0x4B70 4 description lines per armor piece (all five parts), EquipWindow_DrawDetails
 gAreaAnimTbls = 0x00442E80; // size:0x320 per area model animations (AreaAnim), AreaSky_Draw
-gEffect0DKeys = 0x00467930; // size:0x130 key curves of effect kind 0xD parts, Effect0D_Run (Key_LerpVec3)
+gPartFxKeys = 0x00467930; // size:0x130 key curves of effect kind 0xD parts, PartFx_Run (Key_LerpVec3)
 gEffect06ColorKeys = 0x00466610; // size:0xD8 color key curves of effect kind 6 parts, Effect06_Run (Color_EvalKeys)
 gEffect06PosKeys = 0x00465BF0; // size:0x50 key curves of effect kind 6 parts, Effect06_Run (Key_LerpVec3)
 gSpecialMineRewards = 0x0044BCD0; // size:0x90 reward lists, SpecialMine_Gather
@@ -8290,7 +8329,7 @@ gQuestMenuItemLists = 0x00445920; // size:0x2A8 gQuestMenuPanel item list per qu
 gFieldMenuItemsOffline = 0x00445790; // size:0xB8 gFieldMenuPanel items offline, 9 per menu state, FieldMenu_DrawList
 gFieldMenuItemsOnline = 0x00445750; // size:0x40 gFieldMenuPanel items online, 7 per menu state, FieldMenu_DrawList
 gAreaBlockSpheres = 0x00449BB0; // size:0x320 per area spheres (radius x y z, -1 ends) that block the camera line, Area_LineBlocked
-gObjPartSkipLists = 0x0043EBC0; // size:0x130 per object kind part skip lists, Obj_DrawParts
+gEmNoAlphaTestLists = 0x0043EBC0; // size:0x130 Em_DrawParts, per monster kind the material sets drawn without the alpha test (ended by -1)
 gMonthNames = 0x00402240; // size:0x30 month abbreviations, Version_Build parses __DATE__
 gSparkFxKeys = 0x00469870; // size:0x30 key tracks of the spark effect parts, SparkFx_Run
 gQuestTimedEventTbls = 0x0044B750; // size:0x40 per quest timed event lists, Quest_UpdateTimedEvent
@@ -8312,21 +8351,21 @@ gPlayerPartFlagTbls_8 = 0x004302D0; // size:0xF0 entry 8 of gPlayerPartFlagTbls
 gPlayerPartFlagTbls_9 = 0x004303C0; // size:0xF0 entry 9 of gPlayerPartFlagTbls
 gPlayerPartFlagTbls_10 = 0x004304B0; // size:0xF0 entry 10 of gPlayerPartFlagTbls
 gPlayerPartFlagTbls_11 = 0x004305A0; // size:0xF0 entry 11 of gPlayerPartFlagTbls
-gObjPartSkipLists_0 = 0x0043EB38; // size:0x8 entry 0 of gObjPartSkipLists
-gObjPartSkipLists_14 = 0x0043EB40; // size:0x8 entry 14 of gObjPartSkipLists
-gObjPartSkipLists_15 = 0x0043EB48; // size:0xC entry 15 of gObjPartSkipLists
-gObjPartSkipLists_17 = 0x0043EB58; // size:0x8 entry 17 of gObjPartSkipLists
-gObjPartSkipLists_20 = 0x0043EB60; // size:0x8 entry 20 of gObjPartSkipLists
-gObjPartSkipLists_19 = 0x0043EB68; // size:0x8 entry 19 of gObjPartSkipLists
-gObjPartSkipLists_21 = 0x0043EB70; // size:0x8 entry 21 of gObjPartSkipLists
-gObjPartSkipLists_22 = 0x0043EB78; // size:0x8 entry 22 of gObjPartSkipLists
-gObjPartSkipLists_24 = 0x0043EB80; // size:0x8 entry 24 of gObjPartSkipLists
-gObjPartSkipLists_26 = 0x0043EB88; // size:0x8 entry 26 of gObjPartSkipLists
-gObjPartSkipLists_33 = 0x0043EB90; // size:0x8 entry 33 of gObjPartSkipLists
-gObjPartSkipLists_53 = 0x0043EB98; // size:0x8 entry 53 of gObjPartSkipLists
-gObjPartSkipLists_55 = 0x0043EBA0; // size:0x8 entry 55 of gObjPartSkipLists
-gObjPartSkipLists_59 = 0x0043EBA8; // size:0x8 entry 59 of gObjPartSkipLists
-gObjPartSkipLists_71 = 0x0043EBB0; // size:0x10 entry 71 of gObjPartSkipLists
+gEmNoAlphaTestLists_0 = 0x0043EB38; // size:0x8 entry 0 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_14 = 0x0043EB40; // size:0x8 entry 14 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_15 = 0x0043EB48; // size:0xC entry 15 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_17 = 0x0043EB58; // size:0x8 entry 17 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_20 = 0x0043EB60; // size:0x8 entry 20 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_19 = 0x0043EB68; // size:0x8 entry 19 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_21 = 0x0043EB70; // size:0x8 entry 21 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_22 = 0x0043EB78; // size:0x8 entry 22 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_24 = 0x0043EB80; // size:0x8 entry 24 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_26 = 0x0043EB88; // size:0x8 entry 26 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_33 = 0x0043EB90; // size:0x8 entry 33 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_53 = 0x0043EB98; // size:0x8 entry 53 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_55 = 0x0043EBA0; // size:0x8 entry 55 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_59 = 0x0043EBA8; // size:0x8 entry 59 of gEmNoAlphaTestLists
+gEmNoAlphaTestLists_71 = 0x0043EBB0; // size:0x10 entry 71 of gEmNoAlphaTestLists
 gAreaAnimTbls_1 = 0x00441540; // size:0x20 entry 1 of gAreaAnimTbls
 gAreaAnimTbls_2 = 0x00441570; // size:0x10 entry 2 of gAreaAnimTbls
 gAreaAnimTbls_4 = 0x00441590; // size:0x10 entry 4 of gAreaAnimTbls
@@ -8608,73 +8647,73 @@ gEffect06ColorKeys_50 = 0x004664A0; // size:0x30 entry 50 of gEffect06ColorKeys
 gEffect06ColorKeys_51 = 0x004664D0; // size:0x30 entry 51 of gEffect06ColorKeys
 gEffect06ColorKeys_52 = 0x00466500; // size:0x20 entry 52 of gEffect06ColorKeys
 gEffect06ColorKeys_53 = 0x00466520; // size:0x20 entry 53 of gEffect06ColorKeys
-gEffect0DKeys_0 = 0x00466940; // size:0x50 entry 0 of gEffect0DKeys
-gEffect0DKeys_1 = 0x00466990; // size:0x40 entry 1 of gEffect0DKeys
-gEffect0DKeys_2 = 0x004669D0; // size:0x20 entry 2 of gEffect0DKeys
-gEffect0DKeys_3 = 0x004669F0; // size:0x60 entry 3 of gEffect0DKeys
-gEffect0DKeys_4 = 0x00466A50; // size:0x50 entry 4 of gEffect0DKeys
-gEffect0DKeys_5 = 0x00466AA0; // size:0x30 entry 5 of gEffect0DKeys
-gEffect0DKeys_6 = 0x00466AD0; // size:0x60 entry 6 of gEffect0DKeys
-gEffect0DKeys_7 = 0x00466B30; // size:0x50 entry 7 of gEffect0DKeys
-gEffect0DKeys_8 = 0x00466B80; // size:0x30 entry 8 of gEffect0DKeys
-gEffect0DKeys_9 = 0x00466BB0; // size:0x60 entry 9 of gEffect0DKeys
-gEffect0DKeys_10 = 0x00466C10; // size:0x50 entry 10 of gEffect0DKeys
-gEffect0DKeys_11 = 0x00466C60; // size:0x30 entry 11 of gEffect0DKeys
-gEffect0DKeys_12 = 0x00466C90; // size:0x60 entry 12 of gEffect0DKeys
-gEffect0DKeys_13 = 0x00466CF0; // size:0x40 entry 13 of gEffect0DKeys
-gEffect0DKeys_14 = 0x00466D30; // size:0x20 entry 14 of gEffect0DKeys
-gEffect0DKeys_15 = 0x00466D50; // size:0x50 entry 15 of gEffect0DKeys
-gEffect0DKeys_16 = 0x00466DA0; // size:0x40 entry 16 of gEffect0DKeys
-gEffect0DKeys_17 = 0x00466DE0; // size:0x20 entry 17 of gEffect0DKeys
-gEffect0DKeys_18 = 0x00466E00; // size:0x60 entry 18 of gEffect0DKeys
-gEffect0DKeys_19 = 0x00466E60; // size:0x30 entry 19 of gEffect0DKeys
-gEffect0DKeys_20 = 0x00466E90; // size:0x30 entry 20 of gEffect0DKeys
-gEffect0DKeys_21 = 0x00466EC0; // size:0x40 entry 21 of gEffect0DKeys
-gEffect0DKeys_22 = 0x00466F00; // size:0x40 entry 22 of gEffect0DKeys
-gEffect0DKeys_23 = 0x00466F40; // size:0x20 entry 23 of gEffect0DKeys
-gEffect0DKeys_24 = 0x00466F60; // size:0x40 entry 24 of gEffect0DKeys
-gEffect0DKeys_27 = 0x00466FA0; // size:0x40 entry 27 of gEffect0DKeys
-gEffect0DKeys_30 = 0x00466FE0; // size:0x40 entry 30 of gEffect0DKeys
-gEffect0DKeys_25 = 0x00467020; // size:0x40 entry 25 of gEffect0DKeys
-gEffect0DKeys_28 = 0x00467060; // size:0x70 entry 28 of gEffect0DKeys
-gEffect0DKeys_31 = 0x004670D0; // size:0x60 entry 31 of gEffect0DKeys
-gEffect0DKeys_26 = 0x00467130; // size:0x20 entry 26 of gEffect0DKeys
-gEffect0DKeys_29 = 0x00467150; // size:0x20 entry 29 of gEffect0DKeys
-gEffect0DKeys_32 = 0x00467170; // size:0x20 entry 32 of gEffect0DKeys
-gEffect0DKeys_33 = 0x004671A0; // size:0x40 entry 33 of gEffect0DKeys
-gEffect0DKeys_34 = 0x004671E0; // size:0x40 entry 34 of gEffect0DKeys
-gEffect0DKeys_35 = 0x00467220; // size:0x20 entry 35 of gEffect0DKeys
-gEffect0DKeys_36 = 0x00467240; // size:0x60 entry 36 of gEffect0DKeys
-gEffect0DKeys_37 = 0x004672A0; // size:0x40 entry 37 of gEffect0DKeys
-gEffect0DKeys_38 = 0x004672E0; // size:0x30 entry 38 of gEffect0DKeys
-gEffect0DKeys_39 = 0x00467320; // size:0x40 entry 39 of gEffect0DKeys
-gEffect0DKeys_40 = 0x00467360; // size:0x20 entry 40 of gEffect0DKeys
-gEffect0DKeys_41 = 0x00467380; // size:0x40 entry 41 of gEffect0DKeys
-gEffect0DKeys_43 = 0x004673C0; // size:0x40 entry 43 of gEffect0DKeys
-gEffect0DKeys_45 = 0x00467400; // size:0x40 entry 45 of gEffect0DKeys
-gEffect0DKeys_47 = 0x00467440; // size:0x50 entry 47 of gEffect0DKeys
-gEffect0DKeys_49 = 0x00467490; // size:0x40 entry 49 of gEffect0DKeys
-gEffect0DKeys_51 = 0x004674D0; // size:0x40 entry 51 of gEffect0DKeys
-gEffect0DKeys_42 = 0x00467510; // size:0x20 entry 42 of gEffect0DKeys
-gEffect0DKeys_44 = 0x00467530; // size:0x20 entry 44 of gEffect0DKeys
-gEffect0DKeys_46 = 0x00467550; // size:0x20 entry 46 of gEffect0DKeys
-gEffect0DKeys_50 = 0x00467570; // size:0x20 entry 50 of gEffect0DKeys
-gEffect0DKeys_53 = 0x004675A0; // size:0x50 entry 53 of gEffect0DKeys
-gEffect0DKeys_54 = 0x004675F0; // size:0x40 entry 54 of gEffect0DKeys
-gEffect0DKeys_55 = 0x00467630; // size:0x20 entry 55 of gEffect0DKeys
-gEffect0DKeys_56 = 0x00467670; // size:0x50 entry 56 of gEffect0DKeys
-gEffect0DKeys_57 = 0x004676C0; // size:0x20 entry 57 of gEffect0DKeys
-gEffect0DKeys_58 = 0x004676E0; // size:0x50 entry 58 of gEffect0DKeys
-gEffect0DKeys_60 = 0x00467730; // size:0x40 entry 60 of gEffect0DKeys
-gEffect0DKeys_62 = 0x00467770; // size:0x40 entry 62 of gEffect0DKeys
-gEffect0DKeys_68 = 0x004677B0; // size:0x30 entry 68 of gEffect0DKeys
-gEffect0DKeys_59 = 0x004677E0; // size:0x20 entry 59 of gEffect0DKeys
-gEffect0DKeys_61 = 0x00467800; // size:0x20 entry 61 of gEffect0DKeys
-gEffect0DKeys_63 = 0x00467820; // size:0x20 entry 63 of gEffect0DKeys
-gEffect0DKeys_69 = 0x00467840; // size:0x18 entry 69 of gEffect0DKeys
-gEffect0DKeys_70 = 0x00467880; // size:0x40 entry 70 of gEffect0DKeys
-gEffect0DKeys_71 = 0x004678C0; // size:0x40 entry 71 of gEffect0DKeys
-gEffect0DKeys_72 = 0x00467900; // size:0x20 entry 72 of gEffect0DKeys
+gPartFxKeys_0 = 0x00466940; // size:0x50 entry 0 of gPartFxKeys
+gPartFxKeys_1 = 0x00466990; // size:0x40 entry 1 of gPartFxKeys
+gPartFxKeys_2 = 0x004669D0; // size:0x20 entry 2 of gPartFxKeys
+gPartFxKeys_3 = 0x004669F0; // size:0x60 entry 3 of gPartFxKeys
+gPartFxKeys_4 = 0x00466A50; // size:0x50 entry 4 of gPartFxKeys
+gPartFxKeys_5 = 0x00466AA0; // size:0x30 entry 5 of gPartFxKeys
+gPartFxKeys_6 = 0x00466AD0; // size:0x60 entry 6 of gPartFxKeys
+gPartFxKeys_7 = 0x00466B30; // size:0x50 entry 7 of gPartFxKeys
+gPartFxKeys_8 = 0x00466B80; // size:0x30 entry 8 of gPartFxKeys
+gPartFxKeys_9 = 0x00466BB0; // size:0x60 entry 9 of gPartFxKeys
+gPartFxKeys_10 = 0x00466C10; // size:0x50 entry 10 of gPartFxKeys
+gPartFxKeys_11 = 0x00466C60; // size:0x30 entry 11 of gPartFxKeys
+gPartFxKeys_12 = 0x00466C90; // size:0x60 entry 12 of gPartFxKeys
+gPartFxKeys_13 = 0x00466CF0; // size:0x40 entry 13 of gPartFxKeys
+gPartFxKeys_14 = 0x00466D30; // size:0x20 entry 14 of gPartFxKeys
+gPartFxKeys_15 = 0x00466D50; // size:0x50 entry 15 of gPartFxKeys
+gPartFxKeys_16 = 0x00466DA0; // size:0x40 entry 16 of gPartFxKeys
+gPartFxKeys_17 = 0x00466DE0; // size:0x20 entry 17 of gPartFxKeys
+gPartFxKeys_18 = 0x00466E00; // size:0x60 entry 18 of gPartFxKeys
+gPartFxKeys_19 = 0x00466E60; // size:0x30 entry 19 of gPartFxKeys
+gPartFxKeys_20 = 0x00466E90; // size:0x30 entry 20 of gPartFxKeys
+gPartFxKeys_21 = 0x00466EC0; // size:0x40 entry 21 of gPartFxKeys
+gPartFxKeys_22 = 0x00466F00; // size:0x40 entry 22 of gPartFxKeys
+gPartFxKeys_23 = 0x00466F40; // size:0x20 entry 23 of gPartFxKeys
+gPartFxKeys_24 = 0x00466F60; // size:0x40 entry 24 of gPartFxKeys
+gPartFxKeys_27 = 0x00466FA0; // size:0x40 entry 27 of gPartFxKeys
+gPartFxKeys_30 = 0x00466FE0; // size:0x40 entry 30 of gPartFxKeys
+gPartFxKeys_25 = 0x00467020; // size:0x40 entry 25 of gPartFxKeys
+gPartFxKeys_28 = 0x00467060; // size:0x70 entry 28 of gPartFxKeys
+gPartFxKeys_31 = 0x004670D0; // size:0x60 entry 31 of gPartFxKeys
+gPartFxKeys_26 = 0x00467130; // size:0x20 entry 26 of gPartFxKeys
+gPartFxKeys_29 = 0x00467150; // size:0x20 entry 29 of gPartFxKeys
+gPartFxKeys_32 = 0x00467170; // size:0x20 entry 32 of gPartFxKeys
+gPartFxKeys_33 = 0x004671A0; // size:0x40 entry 33 of gPartFxKeys
+gPartFxKeys_34 = 0x004671E0; // size:0x40 entry 34 of gPartFxKeys
+gPartFxKeys_35 = 0x00467220; // size:0x20 entry 35 of gPartFxKeys
+gPartFxKeys_36 = 0x00467240; // size:0x60 entry 36 of gPartFxKeys
+gPartFxKeys_37 = 0x004672A0; // size:0x40 entry 37 of gPartFxKeys
+gPartFxKeys_38 = 0x004672E0; // size:0x30 entry 38 of gPartFxKeys
+gPartFxKeys_39 = 0x00467320; // size:0x40 entry 39 of gPartFxKeys
+gPartFxKeys_40 = 0x00467360; // size:0x20 entry 40 of gPartFxKeys
+gPartFxKeys_41 = 0x00467380; // size:0x40 entry 41 of gPartFxKeys
+gPartFxKeys_43 = 0x004673C0; // size:0x40 entry 43 of gPartFxKeys
+gPartFxKeys_45 = 0x00467400; // size:0x40 entry 45 of gPartFxKeys
+gPartFxKeys_47 = 0x00467440; // size:0x50 entry 47 of gPartFxKeys
+gPartFxKeys_49 = 0x00467490; // size:0x40 entry 49 of gPartFxKeys
+gPartFxKeys_51 = 0x004674D0; // size:0x40 entry 51 of gPartFxKeys
+gPartFxKeys_42 = 0x00467510; // size:0x20 entry 42 of gPartFxKeys
+gPartFxKeys_44 = 0x00467530; // size:0x20 entry 44 of gPartFxKeys
+gPartFxKeys_46 = 0x00467550; // size:0x20 entry 46 of gPartFxKeys
+gPartFxKeys_50 = 0x00467570; // size:0x20 entry 50 of gPartFxKeys
+gPartFxKeys_53 = 0x004675A0; // size:0x50 entry 53 of gPartFxKeys
+gPartFxKeys_54 = 0x004675F0; // size:0x40 entry 54 of gPartFxKeys
+gPartFxKeys_55 = 0x00467630; // size:0x20 entry 55 of gPartFxKeys
+gPartFxKeys_56 = 0x00467670; // size:0x50 entry 56 of gPartFxKeys
+gPartFxKeys_57 = 0x004676C0; // size:0x20 entry 57 of gPartFxKeys
+gPartFxKeys_58 = 0x004676E0; // size:0x50 entry 58 of gPartFxKeys
+gPartFxKeys_60 = 0x00467730; // size:0x40 entry 60 of gPartFxKeys
+gPartFxKeys_62 = 0x00467770; // size:0x40 entry 62 of gPartFxKeys
+gPartFxKeys_68 = 0x004677B0; // size:0x30 entry 68 of gPartFxKeys
+gPartFxKeys_59 = 0x004677E0; // size:0x20 entry 59 of gPartFxKeys
+gPartFxKeys_61 = 0x00467800; // size:0x20 entry 61 of gPartFxKeys
+gPartFxKeys_63 = 0x00467820; // size:0x20 entry 63 of gPartFxKeys
+gPartFxKeys_69 = 0x00467840; // size:0x18 entry 69 of gPartFxKeys
+gPartFxKeys_70 = 0x00467880; // size:0x40 entry 70 of gPartFxKeys
+gPartFxKeys_71 = 0x004678C0; // size:0x40 entry 71 of gPartFxKeys
+gPartFxKeys_72 = 0x00467900; // size:0x20 entry 72 of gPartFxKeys
 gNetMenuPanels_1 = 0x00468760; // size:0x20 entry 1 of gNetMenuPanels
 gNetMenuPanels_2 = 0x00468780; // size:0x20 entry 2 of gNetMenuPanels
 gNetMenuPanels_3 = 0x004687A0; // size:0x20 entry 3 of gNetMenuPanels
@@ -8693,6 +8732,14 @@ gSparkFxKeys_9 = 0x004697D0; // size:0x20 entry 9 of gSparkFxKeys
 gSparkFxKeys_10 = 0x004697F0; // size:0x60 entry 10 of gSparkFxKeys
 gSparkFxKeys_11 = 0x00469850; // size:0x20 entry 11 of gSparkFxKeys
 gKbdHidWideStrs = 0x004163E0; // size:0x28 per key set kind and shift the 2 byte characters of USB keyboard keys, Kbd_TypeHidKey
+gKbdHidKeypadWideStrs = 0x00416408; // size:0x8 the two-byte strings of the keypad keys, Kbd_TypeHidKey
+gKbdHidNoRomaji = 0x00416428; // size:0x8 per USB key, typed without the romaji table in the half-width katakana sets
+gKbdHidKeypadChars = 0x00416430; // size:0x10 the one-byte characters of the keypad keys
+gKbdKind8Chars = 0x00416460; // size:0x218 the two-byte characters Kbd_CharAllowed accepts
+gKbdShiftLetterPos = 0x0059E200; // size:0x4 kanaPos + 1 where a letter was typed with Shift, 0 none
+gSmallTsuHira = 0x0046B2B8; // size:0x8 the small tsu before a doubled consonant, hiragana
+gSmallTsuKata = 0x0046B2C0; // size:0x8 the same in katakana
+gSmallTsuHalf = 0x0046B2C8; // size:0x8 the same in half-width katakana
 gKbdHidChars = 0x00416410; // size:0x18 per kind and shift the 1 byte characters of USB keyboard keys, Kbd_TypeHidKey
 gEff06PartDurTbls = 0x00466780; // size:0x30 per effect 6 type the part duration lists, Effect06_Run
 gRecipeRateLabels = 0x00445D50; // size:0x20 combination success rate labels (95 percent...), ItemList_DrawPage by rec[4]
@@ -8702,13 +8749,13 @@ gNumberDigitGlyphs_1 = 0x0046A3E0; // size:0x20 entry 1 of gNumberDigitGlyphs
 gEff06PartDurTbls_0 = 0x00466708; // size:0x8 entry 0 of gEff06PartDurTbls
 gEff06PartDurTbls_3 = 0x00466720; // size:0x10 entry 3 of gEff06PartDurTbls
 gEff06PartDurTbls_4 = 0x00466738; // size:0x8 entry 4 of gEff06PartDurTbls
-gOnlineStageData = 0x00469D00; // size:0x30 online (lobby) id and address pairs, 0 ends, Stage_FindData (offline reads gStageFile)
-gOnlineSeasonalData = 0x00469D90; // size:0x10 online per index two id and address lists, Stage_GetSeasonalData
+gLobbyStageData = 0x00469D00; // size:0x30 the town (gScene.inLobby) id and address pairs, 0 ends, Stage_FindData (in a quest it reads gStageFile)
+gLobbySeasonalData = 0x00469D90; // size:0x10 the town (gScene.inLobby) per index two id and address lists, Stage_GetSeasonalData
 gNetMenuYesNoLabels = 0x00467C78; // size:0x8 the two labels of the net menu yes and no choice, NetMenu_YesNo
-gOnlineStageData_1 = 0x00469CA0; // size:0x30 entry 1 of gOnlineStageData
-gOnlineStageData_3 = 0x00469CD0; // size:0x30 entry 3 of gOnlineStageData
-gOnlineSeasonalData_0 = 0x00469D30; // size:0x30 entry 0 of gOnlineSeasonalData
-gOnlineSeasonalData_2 = 0x00469D60; // size:0x30 entry 2 of gOnlineSeasonalData
+gLobbyStageData_1 = 0x00469CA0; // size:0x30 entry 1 of gLobbyStageData
+gLobbyStageData_3 = 0x00469CD0; // size:0x30 entry 3 of gLobbyStageData
+gLobbySeasonalData_0 = 0x00469D30; // size:0x30 entry 0 of gLobbySeasonalData
+gLobbySeasonalData_2 = 0x00469D60; // size:0x30 entry 2 of gLobbySeasonalData
 
 // Round 25 (names)
 Debug_Message = 0x00368C40; // type:func compiled-out debug message, a text and three values (NO PL ACTION, TEXTURE OVERWRITE)
@@ -8720,23 +8767,23 @@ Side_HornItemPlaying = 0x003B5880; // type:func 1 to 7 when an active player of 
 Motion_InitTime = 0x003B0920; // type:func motionTime = frame count minus the blend of layer 0, after a motion is set
 gRarityColors = 0x0043AB48; // size:0x8 text color per rarity (Rarity_Color)
 gNetSockHandles = 0x0059CB90; // size:0x30 AveTcp handle per socket slot, -1 free, -2 opening (net_socket, net_connect, net_recv)
-gNetEventPending = 0x0059BF80; // size:0x1 1 while a network event waits in gNetPendingEvent (NetIf_PollEvent_Unk)
-gNetPendingEvent = 0x0059BF88; // size:0x4 the network event kept by NetIf_PollEvent_Unk until NetIf_GetEvent_Unk
+gNetEventPending = 0x0059BF80; // size:0x1 1 while a network event waits in gNetPendingEvent (NetIf_PollEvent)
+gNetPendingEvent = 0x0059BF88; // size:0x4 the network event kept by NetIf_PollEvent until NetIf_GetEvent
 gNetAuthKey = 0x0059D8D0; // size:0x100 NETWORK, the PPP authentication key (Yn_ExportSettings copies authKey, Net_ConnectPppStep)
 gNetAuthName = 0x0059D9D0; // size:0x100 NETWORK, the PPP authentication name (Yn_ExportSettings copies authName, Net_ConnectPppStep)
 gNetDevCount = 0x0059DE10; // size:0x4 NETWORK, the device list count with the three extra entries, -1 when cleared (NetDev_Refresh)
 gNetDevSeenCount = 0x0059DE18; // size:0x4 NETWORK, the device count at the last refresh, -1 when cleared (NetDev_Refresh)
 gNetXferResult = 0x0059D4C8; // size:0x4 NETWORK, the result of the last transfer call, negative on error (NetXfer_Step)
-gChatTextColor = 0x005BFB98; // size:0x1 the chat text color, set by TextColor_Input, sent at login and in the hunter card
+gOnlineMark = 0x005BFB98; // size:0x1 the player's online mark, set by OnlineMark_Input, sent at login and in the hunter card
 gNetMenuDrawHooks = 0x006A3A10; // size:0x40 two 0x20-byte draw hooks of the net menu (NetMode_Begin, OT_AddAt)
 gEmSizeRanges = 0x006AEDD0; // size:0xA five (min, max) ranges of the rolled monster sizes in percent (QuestEm_RollSize), set from gEmSizeRangeDefaults (Quest_Init) or by the server (Lobby_ApplyServerTimers)
-gBgmTimers = 0x0043B218; // size:0xC the music timer per Bgm index (Bgm_Update, Bgm_PlayAreaMusic)
-Tex147_GetCellUv = 0x00358F90; // type:func UV corners of the 42-pixel cell of an id in texture 0x147 (6 per row, byte map at 0x4328B0), 0xFF gives the fallback cell
+gBgmTavernTrackFrames = 0x0043B218; // size:0xC the frames each track of gBgmTavernTracks plays before the next
+WantedPicture_GetUV = 0x00358F90; // type:func the texel corners of a wanted entry picture cell in the pictures texture (gWantedPictureCells), 0xFF the stand-in cell
 gHostCacheNext = 0x0059C1B0; // size:0x4 NETWORK, the next slot of gHostCache, modulo 8 (net_gethostbyname, net_clear_host_cache)
 gHostCache = 0x0059C1C0; // size:0x9A0 NETWORK, eight resolved host entries (net_gethostbyname)
 gOverlayWorkPtr = 0x006AE018; // size:0x4 a work pointer the overlays share, plsel menu work (include/plsel.h), the lobby patch buffer sent at login
-gBgmFieldPm = 0x005BA788; // size:0x1 the time of day (LobbyTime_IsPm) the field music was chosen for (Bgm_PlayField, Bgm_Update)
-gBgmFieldSeason = 0x005BA789; // size:0x1 the season (LobbyWorld_GetSeason) the field music was chosen for (Bgm_PlayField, Bgm_Update)
+gBgmPm = 0x005BA788; // size:0x1 the time of day (LobbyTime_IsPm) the town music was chosen for
+gBgmSeason = 0x005BA789; // size:0x1 the season (LobbyWorld_GetSeason) the town music was chosen for
 gNoticeWidth = 0x005BB088; // size:0x4 the width of the notice text shown, -1 when none (Notice_OpenText, Hud_Init)
 gMemberNamesOffSaved = 0x005BFB90; // size:0x1 gMemberNamesOff kept by Town_UpdateMode, restored by Lobby_ClearHost
 gServerTriedCount = 0x005CADB0; // size:0x1 the number of servers tried (ServerList_MarkTried, ServerList_TakeCurrent)
@@ -8744,7 +8791,7 @@ gSoundEffectSet = 0x005BA778; // size:0x2 per SPU core, the effect is already se
 gLobbyNetError = 0x005CADC8; // size:0x1 NETWORK, the net screens error code, copied to gNetErrorCode at disconnect (NetScreen_Step1, LobbyNet_DisconnectStep)
 gKbdDelay = 0x005AEA18; // size:0x1 frames the keyboard waits before taking keys, set at Kbd_Open (Kbd_Run)
 gNoticeList = 0x005BB08C; // size:0x4 the choice texts shown under the notice, NULL when none (Notice_OpenText, Notice_Draw)
-gLobbyConnDone = 0x005CADC0; // size:0x1 the lobby connection reached its end (1, LobbyConn_Finish), 2 once NetScreen_Step0 took it in entry mode 3 (portal page), 0 at LobbyConn_Close
+gLobbyConnDone = 0x005CADC0; // size:0x1 the lobby connection reached its end (1, LobbyConn_Fail), 2 once NetScreen_Step0 took it in entry mode 3 (portal page), 0 at LobbyConn_Close
 gQuestOfferId = 0x005BFB70; // size:0x2 the village offer (request) id of the quest taken (OfferMenu_QuestList), completed by Offer_Complete when the quest is cleared, 0 none
 gElderForecastHeard = 0x005BFA40; // size:0x1 set by the talk choice 5 (the forecast of the persistent monster), cleared at boot and login, the quest desk then loads ElderForecast_Load
 gNetDevRpc = 0x0059CC00; // size:0x28 NETWORK, the SIF RPC client of the net device server 0x1270010 (Net_Start, NetDev_CallRpc)
@@ -8764,44 +8811,70 @@ gDrawSlotsB = 0x006A3AD0; // size:0x2000 0x100 PoolEntry draw slots (DrawSlotB_G
 gMovieFrame = 0x006AEE30; // size:0x4 the frame number of the movie playing (MovieSfd_Update), 0 at MovieSfd_Create
 gCardLocked = 0x006AF050; // size:0x4 the memory card lock (Card_Lock, Card_Unlock)
 gCardDirEntry = 0x006AF0C0; // size:0x40 the sceMcGetDir entry read for a card file or directory, its name at 0x20 (Card_GetDirEntry, Card_DeleteDir)
-gBoneMatrixBuf = 0x006A28C0; // size:0x1000 the bone matrices of the model drawn (Bone_StoreMatricesTo, MtxSlot_LoadList, by Obj_DrawParts, StageObj_K09_Draw)
+gCardDeletePath = 0x006AF060; // size:0x60 the path of the file or directory Card_DeleteDir deletes
+gCardFileAttr = 0x00468B40; // size:0x40 the directory entry Card_SetFileInfo reads and writes back with the no-copy attribute
+gCardDirListFmt = 0x004B06A0; // size:0x8 the path format of a directory's entries (Card_DeleteDir, CardTask_StartList)
+gCardPathFmt = 0x004B06A8; // size:0x8 the path format of a file in a directory (CardTask_StartRead, CardTask_SelectFile)
+gCardNameFmt = 0x004B06B0; // size:0x8 the path format of a directory alone (Card_DeleteDir, CardTask_SaveStep)
+gCardSaveTitle1 = 0x004B0570; // size:0x18 the save's title, first line (CardOp.title1 of CARD_OP_SAVE)
+gCardSaveTitle2 = 0x004B0588; // size:0xD the save's title, second line
+gCardIconSysName = 0x004B0598; // size:0xC the name of the icon.sys file of both saves
+gCardSaveIconName = 0x004B05A8; // size:0xC the save's icon file, its three icons
+gCardSystemFileName = 0x004B05C0; // size:0x10 the system file, also the save's directory
+gCardCharFileName0 = 0x004B05D0; // size:0x10 the file of character slot 0
+gCardCharFileName1 = 0x004B05E0; // size:0x10 the file of character slot 1
+gCardCharFileName2 = 0x004B05F0; // size:0x10 the file of character slot 2
+gCardPatchFileName = 0x004B0600; // size:0x10 the patch file
+gNetFileTitle1 = 0x004B0610; // size:0x10 the NET file's title, first line (CardOp.title1 of CARD_OP_NET_FILE)
+gNetFileTitle2 = 0x004B0620; // size:0x10 the NET file's title, second line
+gNetFileIcon1 = 0x004B0630; // size:0x10 the NET file's three icon files
+gNetFileIcon2 = 0x004B0640; // size:0x10
+gNetFileIcon3 = 0x004B0650; // size:0x10
+gNetFileName = 0x004B0660; // size:0x10 the NET file, also its directory
+gCardNoName = 0x004B0670; // size:0x20 the empty name of the earlier games' operations' unused files, then at 0x4B0678 the first Monster Hunter's save directory (gOldMhDirName, an alias)
+gOldMhgDirName = 0x004B0690; // size:0x10 Monster Hunter G's save directory (CARD_OP_OLD_MHG)
+gBoneMatrixBuf = 0x006A28C0; // size:0x1000 the bone matrices of the model drawn (Bone_StoreMatricesTo, MtxSlot_LoadList, by Em_DrawParts, EmTail_Draw)
 gPlselResultsTex = 0x006AE970; // size:0x4 the texture of the results background in plsel (Plsel_LoadResultsTextures, Plsel_DrawResultsBg)
 gSelectDrawHook = 0x006A39D0; // size:0x20 the 0x20-byte draw hook of the character select and plsel screens, its draw function at 0x14 and task at 0x18 (Chara_CreateTask, Plsel_DrawChooseScreen)
-gEmTraderMsgs = 0x00446B30; // the trader monster kind 0x0A messages, four bytes and a text per row, a row per em msgId (EmKind0A_ShowMessage, EmKind0A_GiveRandomItem)
+gEmTraderMsgs = 0x00446B30; // the trader monster kind 0x0A messages, four bytes and a text per row, a row per em msgId (EmTrader_ShowMessage, EmTrader_ShowGiftOrChat)
 gObjPool = 0x005B4FB0; // the 0x80 Obj of the object pool, chained into gObjFreeList (Obj_InitPool)
-gObjAttachPool = 0x005B70D0; // the 0x40 Obj2 of the attachment pool, chained into gObjAttachFreeList (ObjAttach_InitPool)
+gObjAttachPool = 0x005B70D0; // the 0x40 ObjAttach of the attachment pool, chained into gObjAttachFreeList (ObjAttach_InitPool)
 gKeyRepeat = 0x005BA790; // per pad, the key repeat state, repeating and timer (Pad_KeyRepeat)
 gKeyRepeatDelay = 0x005BA798; // per pad, the frames before the next repeat, 10 then 4 (Pad_KeyRepeat)
 gSaveSummaryEquip = 0x005BAE10; // size:0xD0 the EquipSummary built for the save summary (Save_BuildSummary)
 gSaveSummaryBox = 0x005BAEE0; // size:0x1A0 the BoxPage built for the save summary (Save_BuildSummary)
 gPlayerPreview = 0x005B3B90; // a copy of a player with a piece of equipment in place, for the equipment menus (Player_PreviewWith)
-gCamRequests = 0x005AFAA0; // size:0xBC the camera requests, cleared by Cam_ResetRequests_Unk
+gCamRequests = 0x005AFAA0; // size:0xBC the camera requests, cleared by Boot_ResetMenus
+gStageCamReqs = 0x0041CEB0; // size:0x10 per lobby stage track, its first camera request (CamReq_StageShot)
 gCamMode2Segs = 0x005AF120; // the segments camera mode 2 moves along (CamRail_Init, CamRail_Update)
 gCharaTextDrawHook = 0x006A39F0; // size:0x20 the 0x20-byte text draw hook of the character select screen, its draw function at 0x14 (Chara_CreateTask)
 gShakeZeroOffset = 0x005B3B80; // size:0x4 the zero offset Shake_GetOffset returns for an id that is not shaking
 gEmBonePosBuf = 0x005D9CF0; // the translation of each bone of the monster copied, next to gEmBoneMtxBuf (Em_CopyBoneMatrices, Tri_SegmentHit)
 gMemFileBuf = 0x00603840; // the buffer the compressed memory file is loaded into, then gSysSettings.memFile (MemFile_Load)
-gThrownObjPos56 = 0x00449FA0; // the thrown object positions in areas 0x56 and 0x57, by its slot (Obj_AreaPosition)
-gThrownObjPosAD = 0x00449FC0; // the thrown object positions in area 0xAD, by its slot (Obj_AreaPosition)
-gThrownObjPosAE = 0x00449FF0; // the thrown object positions in area 0xAE, by its slot (Obj_AreaPosition)
-gThrownObjPosAF = 0x0044A060; // the thrown object positions in area 0xAF, by its slot (Obj_AreaPosition)
-gThrownObjAngleAD = 0x00449FD8; // the thrown object angles in area 0xAD, by its slot (Obj_AreaAngle)
-gThrownObjAngleAE = 0x0044A038; // the thrown object angles in area 0xAE, by its slot (Obj_AreaAngle)
-gThrownObjAngleAF = 0x0044A120; // the thrown object angles in area 0xAF, by its slot (Obj_AreaAngle)
-gThrownObjModel56 = 0x00449FB0; // the area sub-model of a thrown object in areas 0x56 and 0x57 (ThrownObj_AreaModel)
-gThrownObjModelAD = 0x00449FE0; // the area sub-model of a thrown object in area 0xAD (ThrownObj_AreaModel)
-gThrownObjModelAE = 0x0044A048; // the area sub-model of a thrown object in area 0xAE (ThrownObj_AreaModel)
-gThrownObjModelAF = 0x0044A140; // the area sub-model of a thrown object in area 0xAF (ThrownObj_AreaModel)
-gThrownObjModelK1AD = 0x0044A178; // the area sub-model of a kind 1 thrown object in area 0xAD (ThrownObj_AreaModel)
-gThrownObjModelK1AE = 0x0044A180; // the area sub-model of a kind 1 thrown object in area 0xAE (ThrownObj_AreaModel)
-gThrownObjModelK1AF = 0x0044A188; // the area sub-model of a kind 1 thrown object in area 0xAF (ThrownObj_AreaModel)
-gThrownObjPosK1 = 0x0044A168; // the fixed position of a kind 1 thrown object (Obj_AreaPosition)
+gThrownObjPosHouse = 0x00449FA0; // the thrown object spots in AREA_HOUSE and AREA_HUB_0x57, by its spot (ThrownObj_SpotPos)
+gThrownObjPosOnlineHouse0 = 0x00449FC0; // the thrown object spots in AREA_ONLINE_HOUSE_0 (ThrownObj_SpotPos)
+gThrownObjPosOnlineHouse1 = 0x00449FF0; // the same in AREA_ONLINE_HOUSE_1
+gThrownObjPosOnlineHouse2 = 0x0044A060; // the same in AREA_ONLINE_HOUSE_2
+gThrownObjAngleOnlineHouse0 = 0x00449FD8; // the thrown object angles in AREA_ONLINE_HOUSE_0, by its spot (ThrownObj_SpotAngle)
+gThrownObjAngleOnlineHouse1 = 0x0044A038; // the same in AREA_ONLINE_HOUSE_1
+gThrownObjAngleOnlineHouse2 = 0x0044A120; // the same in AREA_ONLINE_HOUSE_2
+gThrownObjModelHouse = 0x00449FB0; // the area sub-model of a thrown object in AREA_HOUSE and AREA_HUB_0x57, by its step (ThrownObj_AreaModel)
+gThrownObjModelOnlineHouse0 = 0x00449FE0; // the same in AREA_ONLINE_HOUSE_0
+gThrownObjModelOnlineHouse1 = 0x0044A048; // the same in AREA_ONLINE_HOUSE_1
+gThrownObjModelOnlineHouse2 = 0x0044A140; // the same in AREA_ONLINE_HOUSE_2
+gThrownObjModelHairMenuOnlineHouse0 = 0x0044A178; // the area sub-model of the hair menu object in AREA_ONLINE_HOUSE_0 (ThrownObj_AreaModel)
+gThrownObjModelHairMenuOnlineHouse1 = 0x0044A180; // the same in AREA_ONLINE_HOUSE_1
+gThrownObjModelHairMenuOnlineHouse2 = 0x0044A188; // the same in AREA_ONLINE_HOUSE_2
+gThrownObjPosHairMenu = 0x0044A168; // the spot of the hair menu object (ThrownObj_SpotPos)
 
 // Round 27 (names)
 Quest_StepScript = 0x003A9230; // type:func the quest script interpreter, runs commands from pc and returns the next pc (Quest_Update), with the time-limit notices
 Quest_RollRewards = 0x003A9FF0; // type:func fills gScene.supply with the reward items of gQuest.unk070 by goal and luck skill (plsel results)
 MovieSfd_FramePacket = 0x003D3160; // type:func the sprite packet that draws the movie frame texture at x y, w by h, depth z
 Debug_IsOn = 0x00364BB0; // type:func a debug switch by id, always 0 in the retail build (ids 0x17 to 0xAE gate behaviour)
+Quest_DefaultEmKind = 0x00364BC0; // type:func always 0, the first monster kind Plsel_InitSlots gives the quest
+Quest_EmptySetupHook = 0x0033A360; // type:func empty, the last call of the quest set-up (after Quest_EmptyHook) and of the gallery scenes
+Load_EmptyHook = 0x0036BC60; // type:func empty, called by the gallery scenes at their load and at each sound loading frame
 Bgm_IsEventTune = 0x00367770; // type:func the current bgm id is one of the event tunes played on stream 1
 Bgm_StopEventFade = 0x00367960; // type:func as Bgm_StopEvent, stops or fades stream 1 by tune and restores the field volume
 EmKind_MotionGroupCount = 0x003E2E60; // type:func motion groups of a monster kind, byte table at 0x90DDC0 (Anim setup)
@@ -8910,14 +8983,14 @@ gMapPackTexIndex = 0x0042F3C0; // size:0x20 Tex_LoadFile slot 0x154, by gScene.m
 gCommonPackTexSlots = 0x0042F3E0; // size:0x8 Tex_LoadCommonPack, the gTexHandles slot of each part of gSystemTexFiles[5]
 gSystemPackTexSlots = 0x0042F3E8; // size:0x8 Tex_LoadSystemPack, the gTexHandles slot of each part of gSystemTexFiles[0]
 gSystemPackTexSlotsB = 0x0042F3F0; // size:0x10 Tex_LoadSystemPackB, the same slots (it loads 8 and 11 only)
-gBgmFieldEvents = 0x0043B140; // size:0x10 Bgm_PlayField type 0 (id, volume), entry 0 at the farm and village events (lobby)
-gBgmFieldSeasons = 0x0043B150; // size:0x10 Bgm_PlayField type 1 by LobbyWorld_GetSeason (Town_StartAreaMusic, a new season)
-gBgmFieldTimes = 0x0043B160; // size:0x10 Bgm_PlayField type 2 by LobbyTime_IsPm (Town_StartAreaMusic, a new time of day)
-gBgmArea83 = 0x0043B170; // size:0x20 Bgm_PlayAreaMusic area 0x83 (and 0x87), id and volume by season * 4 + LobbyTime_IsPm * 2
-gBgmArea84 = 0x0043B190; // size:0x20 Bgm_PlayAreaMusic area 0x84, id and volume by season * 4 + LobbyTime_IsPm * 2
-gBgmAreasADtoAF = 0x0043B1B0; // size:0x20 Bgm_PlayAreaMusic areas 0xAD 0xAE 0xAF, id and volume by area and LobbyTime_IsPm
+gTownTuneEvents = 0x0043B140; // size:0x10 Bgm_PlayTownTune TOWN_TUNE_EVENT (id, volume), entry 0 at the farm and village events
+gTownTuneSeasons = 0x0043B150; // size:0x10 Bgm_PlayTownTune TOWN_TUNE_SEASON, by LobbyWorld_GetSeason
+gTownTuneTimes = 0x0043B160; // size:0x10 Bgm_PlayTownTune TOWN_TUNE_TIME, by LobbyTime_IsPm
+gBgmHub83 = 0x0043B170; // size:0x20 Bgm_PlayAreaMusic AREA_HUB_0x83 (and AREA_TOWN_ARENA), id and volume by season * 4 + LobbyTime_IsPm * 2
+gBgmHub84 = 0x0043B190; // size:0x20 Bgm_PlayAreaMusic AREA_HUB_0x84, id and volume by season * 4 + LobbyTime_IsPm * 2
+gBgmOnlineHouse = 0x0043B1B0; // size:0x20 Bgm_PlayAreaMusic AREA_ONLINE_HOUSE_0 to 2, id and volume by area and LobbyTime_IsPm
 gBgmFarm = 0x0043B1D0; // size:0x18 Bgm_PlayAreaMusic area 0x89 (and 0xAA-0xAC at half volume), id and volume by Village_AverageLevel * 4 + LobbyTime_IsPm * 2
-gBgmAreas56and57 = 0x0043B1E8; // size:0xC Bgm_PlayAreaMusic areas 0x56 0x57, by LobbyTime_IsPm the id, the volume in 0x57, the volume in 0x56
+gBgmHouse = 0x0043B1E8; // size:0xC Bgm_PlayAreaMusic AREA_HUB_0x57 and AREA_HOUSE, by LobbyTime_IsPm the id, the volume in AREA_HUB_0x57, the volume in AREA_HOUSE
 gPadReplay = 0x006ADF70; // size:0x20 cleared by Pad_ResetInput, per port at +0xA replaying, +0xC the cursor in the replay data (buttons, frames), +0x14 the frames left (Pad_ReadButtons)
 gQuestNoticeTexts = 0x00445560; // size:0x20 the quest notices (Notice_PushItem), [0] the failure notice, [1] the time limit notice (a format with the minutes), [2] the time-up notice, [3] the supply notice
 gSinVu0Poly = 0x00402560; // size:0x10 the sine series coefficients (x^9/9!, -x^7/7!, x^5/5!, -x^3/3!) after gSinVu0Coefs (Math_SinVu0, Math_CosVu0, Math_SinCos)
@@ -8954,8 +9027,8 @@ gNetOptMaxRetriesKey = 0x0059D6E0; // size:0x20 MAX_RETRIES, a key of gNetOptLis
 gNetSockWaitSema = 0x004053A8; // size:0x4 Net_InitSockets, a second semaphore it creates once (count 0, max 1, -1 until then) beside gNetSockSema
 gDayStepTimes = 0x00448410; // size:0x10 the time of day (f32) by the first word of a day table step (DayTable_GetTime)
 gSkyDayTable = 0x004488F0; // size:0x60 the day table of most areas, 8 steps of 3 words (Sky_GetGradient, DayTable_GetTime)
-gSkyDayTable84 = 0x00448950; // size:0x60 the day table of areas 0x84-0x87 (Sky_GetGradient)
-gSkyDayTableAD = 0x004489B0; // size:0x60 the day table of areas 0x56, 0x88, 0xAD-0xAF (Sky_GetGradient)
+gSkyDayTableHubs = 0x00448950; // size:0x60 the day table of AREA_HUB_0x84 to AREA_TOWN_ARENA (Sky_GetGradient)
+gSkyDayTableHouses = 0x004489B0; // size:0x60 the day table of AREA_HOUSE, AREA_ELDER_HALL and the online houses (Sky_GetGradient)
 gKanaDakutenTable = 0x00418710; // size:0x4 a pointer to the kana pairs Kana_SwapBeforeCursor swaps for a dakuten (Kana_AddDakuten, Kbd_EnterChar)
 gKanaHandakutenTable = 0x00418718; // size:0x4 a pointer to the kana pairs Kana_SwapBeforeCursor swaps for a handakuten (Kana_AddHandakuten, Kbd_EnterChar)
 gKbdKindConfs = 0x00416740; // size:0x118 Kbd_Open, gKbd->kindConf by the keyboard kind (5 of 0x38 bytes)
@@ -9008,28 +9081,31 @@ gBlockGaugeRects = 0x00430A30; // size:0x3C Hud_DrawBlockGauge, the gauge's thre
 gPouchSelectorSpritesB = 0x00430C70; // size:0xA0 Hud_DrawPouchSelector, 6 sprites, then the ammo cursor [6] and the bow coating cursor [7]
 gPouchSelectorSpritesC = 0x00430D10; // size:0x30 Hud_DrawPouchSelector, 2 sprites (the bow coating mark)
 gCommentEditMenu = 0x00432640; // CommentEdit_Draw, its MenuDef
-gAmbSeFlagsArea84 = 0x006AE9B8; // size:0x2
-gAmbSeFlagsArea88 = 0x006AE9C0; // size:0x4
-gEff0DType14Starts = 0x00467190; // size:0x8
-gEff0DType14Lens = 0x00467198; // size:0x8
-gEff0DType19Starts = 0x00467310; // size:0x10
-gEff0DType21Lens = 0x00467590; // size:0x10
-gEff0DPlayerColors = 0x00467650; // size:0x1E
-gEff0DType35Starts = 0x00467858; // size:0xC
-gEff0DType35Lens = 0x00467868; // size:0xC
-gEff0DType36Starts = 0x00467920; // size:0x10
-gEff0DPartLens = 0x00467AC0; // size:0x60
-gEff0DKeyStarts = 0x00467B20; // size:0x60
-gEff0DKeyStrides = 0x00467B80; // size:0x60
-gEff0DOnGround = 0x00467BE0; // size:0x60
+gAmbSeFlagsHub84 = 0x006AE9B8; // size:0x2
+gAmbSeFlagsElderHall = 0x006AE9C0; // size:0x4
+gPartFxType14Starts = 0x00467190; // size:0x8
+gPartFxType14Lens = 0x00467198; // size:0x8
+gPartFxType19Starts = 0x00467310; // size:0x10
+gPartFxType21Lens = 0x00467590; // size:0x10
+gPartFxOfferColors = 0x00467650; // size:0x1E
+gPartFxType35Starts = 0x00467858; // size:0xC
+gPartFxType35Lens = 0x00467868; // size:0xC
+gPartFxType36Starts = 0x00467920; // size:0x10
+gPartFxLens = 0x00467AC0; // size:0x60
+gPartFxKeyStarts = 0x00467B20; // size:0x60
+gPartFxKeyStrides = 0x00467B80; // size:0x60
+gPartFxGroundKinds = 0x00467BE0; // size:0x60
 gSeasonIconUVs = 0x00449F80; // size:0x10
 gSeasonIconUVsOnline = 0x00449F90; // size:0x10
 gThrownObjDists = 0x0044A150; // size:0x18
-gThrownObjAngle56 = 0x006AEDB0; // size:0x2
+gThrownObjAngleHouse = 0x006AEDB0; // size:0x2 the thrown object angles in AREA_HOUSE and AREA_HUB_0x57 (bss, never written here)
 gUnwearableCheckSlots = 0x0043B028; // size:0x8
 gHudTabLayout = 0x0043B080; // size:0x18
 gModemInitChat = 0x0059C0B0; // size:0x100
 gModemChat2 = 0x0059BFB0; // size:0x100
+gModemChatCxt = 0x00405180; // size:0x100 NETWORK, the chat script NetModem_GetChat adds for the CXT modem drivers
+gModemChatOst = 0x00405280; // size:0x100 NETWORK, the chat script for the OST modem driver
+gModemChatDefault = 0x00405380; // size:0x21 NETWORK, the chat script for any other modem driver
 gLockOnMarkHeights = 0x00467C40; // size:0x20
 gLockOnMarkColors = 0x00467C60; // size:0x18
 gLobbyMenuLayer0 = 0x006A38D0; // size:0x20
@@ -9053,23 +9129,23 @@ gDictKeyHi = 0x00585958; // size:0x4
 gDictHeader = 0x00585960; // size:0x400
 gDictSavedConvMode = 0x00581C58; // size:0x4
 gDictSavedUserPage = 0x00581C60; // size:0x4
-gAmbSePosArea84 = 0x00448420; // size:0x10 Area_UpdateAmbientSounds area 0x84, the position (Vec3f) of its 1 source
-gAmbSeIdsArea84 = 0x00448430; // size:0x8 Area_UpdateAmbientSounds area 0x84, the sound id of its 1 source
-gAmbSePeriodsArea84 = 0x00448438; // size:0x8 Area_UpdateAmbientSounds area 0x84, the period of its 1 source
-gAmbSeKindsArea84 = 0x00448440; // size:0x8 Area_UpdateAmbientSounds area 0x84, the Sound_PlaySePos kind of its 1 source
-gAmbSeSlotsArea84 = 0x00448448; // size:0x8 Area_UpdateAmbientSounds area 0x84, the sound slot of its 1 source
-gAmbSePosArea88 = 0x00448450; // size:0x18 Area_UpdateAmbientSounds area 0x88, the positions (Vec3f) of its 2 sources
-gAmbSeIdsArea88 = 0x00448468; // size:0x8 Area_UpdateAmbientSounds area 0x88, the sound ids of its 2 sources
-gAmbSePeriodsArea88 = 0x00448470; // size:0x8 Area_UpdateAmbientSounds area 0x88, the periods of its 2 sources
-gAmbSeKindsArea88 = 0x00448478; // size:0x8 Area_UpdateAmbientSounds area 0x88, the Sound_PlaySePos kinds of its 2 sources
-gAmbSeSlotsArea88 = 0x00448480; // size:0x10 Area_UpdateAmbientSounds area 0x88, the sound slots of its 2 sources
-gAmbSePosArea89 = 0x00448490; // size:0x30 Area_UpdateAmbientSounds area 0x89, the positions (Vec3f) of its 4 sources
-gAmbSeIdsArea89 = 0x004484C0; // size:0x10 Area_UpdateAmbientSounds area 0x89, the sound ids of its 4 sources
-gAmbSePeriodsArea89 = 0x004484D0; // size:0x8 Area_UpdateAmbientSounds area 0x89, the periods of its 4 sources
-gAmbSeKindsArea89 = 0x004484D8; // size:0x8 Area_UpdateAmbientSounds area 0x89, the Sound_PlaySePos kinds of its 4 sources
-gAmbSeSlotsArea89 = 0x004484E0; // size:0x8 Area_UpdateAmbientSounds area 0x89, the sound slots of its 4 sources
-gAmbSeFlagsArea89 = 0x004484E8; // size:0x8 Area_UpdateAmbientSounds area 0x89, the condition flags of its 4 sources (1 online am, 0x1000 online pm, 0x400 contest, 0x800 drink contest)
-gArea85EffectPos = 0x004484F0; // size:0xC0 Area_Update area 0x85, 16 positions (Vec3f) where ModelObj_SpawnAt puts a sparkle, three picked by gScene.frame
+gAmbSePosHub84 = 0x00448420; // size:0x10 Area_UpdateAmbientSounds AREA_HUB_0x84, the position (Vec3f) of its 1 source
+gAmbSeIdsHub84 = 0x00448430; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x84, the sound id of its 1 source
+gAmbSePeriodsHub84 = 0x00448438; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x84, the period of its 1 source
+gAmbSeKindsHub84 = 0x00448440; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x84, the Sound_PlaySePos kind of its 1 source
+gAmbSeSlotsHub84 = 0x00448448; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x84, the sound slot of its 1 source
+gAmbSePosElderHall = 0x00448450; // size:0x18 Area_UpdateAmbientSounds AREA_ELDER_HALL, the positions (Vec3f) of its 2 sources
+gAmbSeIdsElderHall = 0x00448468; // size:0x8 Area_UpdateAmbientSounds AREA_ELDER_HALL, the sound ids of its 2 sources
+gAmbSePeriodsElderHall = 0x00448470; // size:0x8 Area_UpdateAmbientSounds AREA_ELDER_HALL, the periods of its 2 sources
+gAmbSeKindsElderHall = 0x00448478; // size:0x8 Area_UpdateAmbientSounds AREA_ELDER_HALL, the Sound_PlaySePos kinds of its 2 sources
+gAmbSeSlotsElderHall = 0x00448480; // size:0x10 Area_UpdateAmbientSounds AREA_ELDER_HALL, the sound slots of its 2 sources
+gAmbSePosHub89 = 0x00448490; // size:0x30 Area_UpdateAmbientSounds AREA_HUB_0x89, the positions (Vec3f) of its 4 sources
+gAmbSeIdsHub89 = 0x004484C0; // size:0x10 Area_UpdateAmbientSounds AREA_HUB_0x89, the sound ids of its 4 sources
+gAmbSePeriodsHub89 = 0x004484D0; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x89, the periods of its 4 sources
+gAmbSeKindsHub89 = 0x004484D8; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x89, the Sound_PlaySePos kinds of its 4 sources
+gAmbSeSlotsHub89 = 0x004484E0; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x89, the sound slots of its 4 sources
+gAmbSeFlagsHub89 = 0x004484E8; // size:0x8 Area_UpdateAmbientSounds AREA_HUB_0x89, the condition flags of its 4 sources (1 online am, 0x1000 online pm, 0x400 contest, 0x800 drink contest)
+gHub85EffectPos = 0x004484F0; // size:0xC0 Area_Update AREA_HUB_0x85, 16 positions (Vec3f) where ModelObj_SpawnAt puts a sparkle, three picked by gScene.frame
 gCombineBookBonus = 0x0041E990; // size:0x8 Combine_RecipeRate, the rate bonus (percent) by the number of combination books (gCombineBookItems) owned in order
 gCombineBookItems = 0x0041E998; // size:0xC Combine_RecipeRate, the item ids of the 5 combination books, counted in the pouch in order
 gHammerKey57CScale = 0x0043D970; // size:0x30 Player_DrawWeapon, a keyframe track (KeyN_Eval) of the hammer, motion 0x57C, bone 3 scale
@@ -9152,13 +9228,14 @@ gGlKeyTimerRot = 0x0043E0A0; // size:0x70 Player_DrawWeapon, a keyframe track (K
 gWpPoseDrawnAlt = 0x0043CA30; // size:0x108 Player_DrawWeapon, by weapon type where the weapon sits (WpPose) on part record 0x12 while Player_MotionPhase is 0
 gWpPoseDrawn = 0x0043CB40; // size:0x108 Player_DrawWeapon, by weapon type where the weapon sits (WpPose) on part record 0xE while Player_MotionPhase is 1 (drawn)
 gWpPoseSheathed = 0x0043CC50; // size:0x108 Player_DrawWeapon, by weapon type where the weapon sits (WpPose) on part record 9 or 10 while Player_MotionPhase is 2 (sheathed)
-gWpPoseMotion19D = 0x0043CD60; // size:0x108 Player_DrawWeapon, by weapon type where the drawn weapon sits (WpPose) in motion 0x19D
+gWpPoseSharpen = 0x0043CD60; // size:0x108 Player_DrawWeapon, by weapon type where the drawn weapon sits (WpPose) in the sharpening motion 0x19D
 gLightSetDirs = 0x0043E650; // size:0x48 LightSet_SetupSet, the light directions of the sets (3 lights each), turned by gCamMatrix
 gLightSetColors = 0x0043E6A0; // size:0x48 LightSet_SetupSet, the light colours of the sets (3 lights each)
 gLightSetAmbients = 0x0043E6F0; // size:0x48 LightSet_SetupSet, the ambient colours of the sets (3 lights each)
-gEquipPreviewEyes = 0x0043E740; // size:0x48 EquipPreview_Draw, the eye point (PvVec) by preview mode, [1] for mode 0xFF
+gEquipPreviewEyes = 0x0043E740; // size:0x48 EquipPreview_Draw, the eye point (EquipPreviewEye) by EquipType, [1] for EQUIP_PREVIEW_FIXED
 gEquipPreviewWpEyeZ = 0x0043E790; // size:0x30 EquipPreview_Draw, modes 6 and 7, the eye distance by weapon class (gWeaponKindClass)
-gEquipPreviewWpPos = 0x0043E7C0; // size:0x108 EquipPreview_Draw, modes 6 and 7, the model position by weapon class (11), then the second part offsets (D_0043E844)
+gEquipPreviewWpPos = 0x0043E7C0; // size:0x108 EquipPreview_Draw, modes 6 and 7, the model position by weapon class (11), then the second part offsets (gEquipPreviewSubPos)
+gPreviewHideTex = 0x006AE96C; // size:0x4 a texture handle, EquipPreview_Draw hides the materials that use it (0 none)
 gFaceBodyTypeMale = 0x0044A200; // size:0x20 Player_BuildPartIds and CharMake_DrawHunter, by face the body part variant (0-3) of a male hunter
 gFaceBodyTypeFemale = 0x0044A220; // size:0x20 Player_BuildPartIds, by face the body part variant (0-3) of a female hunter
 gRarityFmt = 0x00445F80; // size:0x20 HelpWindow_Draw, the item rarity format RARE-%d, then a 0, gChatTitleText and the chat type texts gChatTypeTexts
@@ -9207,7 +9284,7 @@ gSortHintText = 0x00446308; // size:0x8 ButtonHint_DrawSort, the sort hint, then
 gSelectText = 0x00446310; // size:0x8 ButtonHint_DrawSort, the SELECT button, then gPageFmt
 gDecoModeFmt = 0x00446318; // size:0x8 Deco_DrawDetails, the switch line (mode of 3)
 gCommentEditTitle = 0x00446320; // size:0x8 CommentEdit_Draw, the comment editing panel title
-gCommentEditText = 0x00446328; // size:0x8 the comment editing menu entry text (unk_33E620.c data)
+gCommentEditText = 0x00446328; // size:0x8 the comment editing menu entry text (hud.c data)
 gChatTargetTexts = 0x00446330; // size:0x10 Chat_NextTarget and Chat_SendInput, the chat target texts (the quest member command, a player command gChatTargetFmt, target not found, target not typed in)
 gActiveSkillsTitle = 0x00446068; // size:0x4 the active skills box title (gStatusBoxTitles[2]), the lobby EquipDetail_Draw
 gMemberCardNumFmt = 0x00446084; // size:0x4 the lobby MemberCard_Draw, a number
@@ -9218,7 +9295,7 @@ gPageFmt = 0x00446314; // size:0x4 Hud_DrawTab (big) and the lobby BoxMenu_DrawP
 gItemFontColors = 0x00430AA0; // size:0x30 EquipWindow_DrawSlots, the Font_SetColor colour by an item colour (ItemData.color)
 gChatSizeLineGaps = 0x00432720; // size:0x10 Notice_Draw, the extra line step by the chat text size option (gSysSave.options.chatSize)
 gChatSystemRecord = 0x00432730; // size:0x130 Chat_SendInput, a chat record from no player (0xFF) that Chat_AddReceived logs, its text at +0x1C (a gChatTargetTexts error)
-gTex147Cells = 0x004328B0; // size:0x50 Tex147_GetCellUv, by id the cell of texture 0x147 (6 to a row, 0xFF none)
+gWantedPictureCells = 0x004328B0; // size:0x50 WantedPicture_GetUV, by wanted id the cell of the pictures texture (6 to a row, 0xFF none)
 gEqDetailBlade = 0x00432900; // size:0x8 EquipWindow_PickDetails, the detail line list of equipment type 6 (compared with other than type 7)
 gEqDetailBladeDeco = 0x00432908; // size:0x8 EquipWindow_PickDetails, as gEqDetailBlade with decorations
 gEqDetailBladeVsGun = 0x00432910; // size:0x8 EquipWindow_PickDetails, the detail line list of equipment type 6 compared with type 7
@@ -9253,10 +9330,10 @@ gCombineInfoLabels = 0x00445BE8; // size:0x8 CombineMenu_DrawInfo, the result it
 gCombineRateFmt = 0x00445BF0; // size:0x8 CombineMenu_DrawInfo, the success rate (percent)
 gCombineSelectingText = 0x00445BF8; // size:0x8 CombineMenu_DrawInfo, the selecting mark
 gCombineFailLabels = 0x00445C00; // size:0x8 CombineMenu_DrawInfo, the labels after a failure (result, count held)
-gCombine2Text = 0x00445C08; // size:0x8 the two kind combining menu entry (unk_33E620.c MenuDef data)
+gCombine2Text = 0x00445C08; // size:0x8 the two kind combining menu entry (hud.c MenuDef data)
 gCombine2MaterialLabels = 0x00445C10; // size:0x10 CombineMenu_DrawInfo, the material label lines of a two kind combination
 gCombine3MaterialLabels = 0x00445C20; // size:0x10 CombineMenu_DrawInfo, the material label lines of a three kind combination, by selection
-gCombineDoText = 0x00445C30; // size:0x8 the combine menu entry (unk_33E620.c data)
+gCombineDoText = 0x00445C30; // size:0x8 the combine menu entry (hud.c data)
 gPouchInfiniteFmt = 0x00445C38; // size:0x8 Hud_DrawPouchSlotName, an item name with the infinity mark
 gAmmoTensFmt = 0x00445C40; // size:0x8 Hud_DrawBowgunAmmo, the tens of the ammo count
 gItemFullText = 0x00445C48; // size:0x8 Hud_DrawItemWindow, the items are full
@@ -9265,11 +9342,11 @@ gPhraseEditFmt = 0x00445C60; // size:0x8 PhraseMenu_Draw, the phrase editing tit
 gSupplySelectText = 0x00445C70; // size:0x8 SupplyBox_Draw, select the items needed
 gSupplyCannotCarryText = 0x00445C78; // size:0x8 SupplyBox_Draw, cannot carry more of the item
 gSupplyCountFmt = 0x00445C80; // size:0x10 SupplyBox_Draw, an item name and count
-gSubTargetHelpText = 0x00445CD8; // size:0x8 the sub target reached help text (unk_33E620.c)
+gSubTargetHelpText = 0x00445CD8; // size:0x8 the sub target reached help text (hud.c)
 gQuestMenuHelpTexts = 0x00445CE0; // size:0x10 the quest menu help texts (quest retire first)
 gDeliveryMenuTexts = 0x00445CF0; // size:0x10 QuestMenu_DrawDelivery, the delivery menu texts (the title first)
 gDeliveryDoneText = 0x00445D00; // size:0x8 QuestMenu_DrawDelivery, delivered
-gDeliveryHelpText = 0x00445D08; // size:0x8 the item delivery help text (unk_33E620.c)
+gDeliveryHelpText = 0x00445D08; // size:0x8 the item delivery help text (hud.c)
 gCombineListFmt = 0x00445D10; // size:0x8 ItemList_DrawPage, the combination list title and page
 gRecipeMaterialsFmt = 0x00445D20; // size:0x8 ItemList_DrawPage, a recipe and its materials heading
 gRecipeSwitchHint = 0x00445D28; // size:0x8 ItemList_DrawPage, the recipe switch hint
@@ -9284,48 +9361,48 @@ gArenaBaitLabels = 0x00445DD0; // size:0x8 MonsterNote_DrawPage, the name and th
 gMonsterNoteValueFmt = 0x00445DD8; // size:0x8 MonsterNote_DrawPage, a value column (5 wide)
 gEquipStatusTitle = 0x00445EB0; // size:0x8 EquipStatus_Draw, the equipment status panel title
 gOptionMenuTitle = 0x00445EB8; // size:0x8 OptionMenu_Draw, the option menu title
-gGlowPosArea56 = 0x00448A10; // size:0x90 Area_DrawGlowProps areas 0x56/0x57, the positions of its 12 glow models
-gGlowEntryArea56 = 0x00448AA0; // size:0x20 Area_DrawGlowProps areas 0x56/0x57, the model entry of each (6-8 billboarded)
-gGlowPosArea83 = 0x00448AC0; // size:0x90 Area_DrawGlowProps area 0x83, the positions of its 11 glow models
-gGlowEntryArea83 = 0x00448B50; // size:0x20 Area_DrawGlowProps area 0x83, the model entry of each
-gGlowPosArea84 = 0x00448B70; // size:0xA8 Area_DrawGlowProps area 0x84, the positions of its 14 glow models
-gGlowEntryArea84 = 0x00448C20; // size:0x20 Area_DrawGlowProps area 0x84, the model entry of each
-gGlowPosArea85 = 0x00448C40; // size:0x78 Area_DrawGlowProps area 0x85, the positions of its 10 glow models (gAreaSubModels)
-gGlowEntryArea85 = 0x00448CC0; // size:0x20 Area_DrawGlowProps area 0x85, the model entry of each
-gGlowEntryArea86 = 0x00448CE0; // size:0x20 Area_DrawGlowProps area 0x86, the model entry of each of its 9 glow models
-gGlowPosArea86 = 0x00448D00; // size:0x6C Area_DrawGlowProps area 0x86, the positions of its 9 glow models
-gGlowPosArea87 = 0x00448D70; // size:0x60 Area_DrawGlowProps area 0x87, the positions of its 7 glow models (entry 0 of gAreaSubModels)
-gGlowScaleArea87 = 0x00448DD0; // size:0x20 Area_DrawGlowProps area 0x87, the scale of each glow model
-gGlowPosArea88 = 0x00448DF0; // size:0xC0 Area_DrawGlowProps area 0x88, the positions of its 16 glow models
-gGlowScaleArea88 = 0x00448EB0; // size:0x40 Area_DrawGlowProps area 0x88, the scale of each glow model
-gGlowEntryArea88 = 0x00448EF0; // size:0x20 Area_DrawGlowProps area 0x88, the model entry of each (10 is drawn differently)
-gGlowPosArea89 = 0x00448F10; // size:0x90 Area_DrawGlowProps area 0x89, the positions of its 12 glow models
-gGlowScaleArea89 = 0x00448FA0; // size:0x30 Area_DrawGlowProps area 0x89, the scale of each glow model
-gGlowEntryArea89 = 0x00448FD0; // size:0x18 Area_DrawGlowProps area 0x89, the model entry of each (3 pulses)
+gGlowPosHouse = 0x00448A10; // size:0x90 Area_DrawGlowProps AREA_HOUSE and AREA_HUB_0x57, the positions of its 12 glow models
+gGlowEntryHouse = 0x00448AA0; // size:0x20 Area_DrawGlowProps AREA_HOUSE and AREA_HUB_0x57, the model entry of each (6-8 billboarded)
+gGlowPosHub83 = 0x00448AC0; // size:0x90 Area_DrawGlowProps AREA_HUB_0x83, the positions of its 11 glow models
+gGlowEntryHub83 = 0x00448B50; // size:0x20 Area_DrawGlowProps AREA_HUB_0x83, the model entry of each
+gGlowPosHub84 = 0x00448B70; // size:0xA8 Area_DrawGlowProps AREA_HUB_0x84, the positions of its 14 glow models
+gGlowEntryHub84 = 0x00448C20; // size:0x20 Area_DrawGlowProps AREA_HUB_0x84, the model entry of each
+gGlowPosHub85 = 0x00448C40; // size:0x78 Area_DrawGlowProps AREA_HUB_0x85, the positions of its 10 glow models (gAreaSubModels)
+gGlowEntryHub85 = 0x00448CC0; // size:0x20 Area_DrawGlowProps AREA_HUB_0x85, the model entry of each
+gGlowEntryTavern = 0x00448CE0; // size:0x20 Area_DrawGlowProps AREA_TAVERN, the model entry of each of its 9 glow models
+gGlowPosTavern = 0x00448D00; // size:0x6C Area_DrawGlowProps AREA_TAVERN, the positions of its 9 glow models
+gGlowPosTownArena = 0x00448D70; // size:0x60 Area_DrawGlowProps AREA_TOWN_ARENA, the positions of its 7 glow models (entry 0 of gAreaSubModels)
+gGlowScaleTownArena = 0x00448DD0; // size:0x20 Area_DrawGlowProps AREA_TOWN_ARENA, the scale of each glow model
+gGlowPosElderHall = 0x00448DF0; // size:0xC0 Area_DrawGlowProps AREA_ELDER_HALL, the positions of its 16 glow models
+gGlowScaleElderHall = 0x00448EB0; // size:0x40 Area_DrawGlowProps AREA_ELDER_HALL, the scale of each glow model
+gGlowEntryElderHall = 0x00448EF0; // size:0x20 Area_DrawGlowProps AREA_ELDER_HALL, the model entry of each (10 is drawn differently)
+gGlowPosHub89 = 0x00448F10; // size:0x90 Area_DrawGlowProps AREA_HUB_0x89, the positions of its 12 glow models
+gGlowScaleHub89 = 0x00448FA0; // size:0x30 Area_DrawGlowProps AREA_HUB_0x89, the scale of each glow model
+gGlowEntryHub89 = 0x00448FD0; // size:0x18 Area_DrawGlowProps AREA_HUB_0x89, the model entry of each (3 pulses)
 gGlowVillageEntries = 0x00448FE8; // size:0x8 Area_DrawGlowProps area 0x89, the model entry by Village_FacilityLevel(2) 0-2
-gGlowEntryAreaAA = 0x00448FF0; // size:0x10 Area_DrawGlowProps areas 0xAA-0xAC, the model entry of its 4 glow models
-gGlowPosAreaAA = 0x00449000; // size:0x30 Area_DrawGlowProps areas 0xAA-0xAC, the positions of its 4 glow models
-gGlowRotYAreaAA = 0x00449030; // size:0x10 Area_DrawGlowProps areas 0xAA-0xAC, the y rotation of each glow model
-gGlowPosAreaAE = 0x00449040; // size:0x90 Area_DrawGlowProps area 0xAE, the positions of its 12 glow models
-gGlowEntryAreaAE = 0x004490D0; // size:0x20 Area_DrawGlowProps area 0xAE, the model entry of each
-gGlowPosAreaAF = 0x004490F0; // size:0xF0 Area_DrawGlowProps area 0xAF, the positions of its 20 glow models
-gGlowEntryAreaAF = 0x004491E0; // size:0x30 Area_DrawGlowProps area 0xAF, the model entry of each
-gAreaPropPosArea56 = 0x00449210; // size:0x20 AreaProp_Start areas 0x56/0x57, the position of the prop (Effect06)
-gAreaPropRotArea56 = 0x00449230; // size:0x20 AreaProp_Draw areas 0x56/0x57, the x y z rotation of the prop
-gAreaPropPosArea83 = 0x00449250; // size:0x60 AreaProp_Start area 0x83, the position of each prop by its type
-gAreaPropScaleArea83 = 0x004492B0; // size:0x20 AreaProp_Draw area 0x83, the scale by prop type
-gAreaPropEntryArea83 = 0x004492D0; // size:0x10 AreaProp_Draw area 0x83, the model entry by prop type (type 6 also draws the next one)
-gAreaPropPosArea84 = 0x004492E0; // size:0x48 AreaProp_Start area 0x84, the position of each prop by its type
-gAreaPropScaleArea84 = 0x00449330; // size:0x30 AreaProp_Draw area 0x84, the scale by prop type (6 floats), then the model entries by type at +0x18
-gAreaPropPosArea85 = 0x00449360; // size:0x18 AreaProp_Start area 0x85, the position of each prop by its type
-gAreaPropEntryArea85 = 0x00449378; // size:0x8 AreaProp_Draw area 0x85, the model entry by prop type
-gAreaPropPosArea88 = 0x00449380; // size:0x18 AreaProp_Start area 0x88, the position of each prop by its type
-gAreaPropScaleArea88 = 0x00449398; // size:0x8 AreaProp_Draw area 0x88, the scale by prop type
-gAreaPropEntryArea88 = 0x004493A0; // size:0x8 AreaProp_Draw area 0x88, the model entry by prop type
-gAreaPropPosAreaAA = 0x004493A8; // size:0xC AreaProp_Start areas 0xAA-0xAC, the position of the prop
-gAreaPropPosAreaAE = 0x004493B8; // size:0xC AreaProp_Start area 0xAE, the position of the prop
-gAreaPropPosAreaAF = 0x004493C8; // size:0xC AreaProp_Start area 0xAF, the position of the prop
-gAreaPropPosArea89 = 0x006AEDA0; // size:0x10 AreaProp_Start area 0x89, the position of the prop (bss, never written in C)
+gGlowEntryHubAA = 0x00448FF0; // size:0x10 Area_DrawGlowProps areas 0xAA-0xAC, the model entry of its 4 glow models
+gGlowPosHubAA = 0x00449000; // size:0x30 Area_DrawGlowProps areas 0xAA-0xAC, the positions of its 4 glow models
+gGlowRotYHubAA = 0x00449030; // size:0x10 Area_DrawGlowProps areas 0xAA-0xAC, the y rotation of each glow model
+gGlowPosOnlineHouse1 = 0x00449040; // size:0x90 Area_DrawGlowProps AREA_ONLINE_HOUSE_1, the positions of its 12 glow models
+gGlowEntryOnlineHouse1 = 0x004490D0; // size:0x20 Area_DrawGlowProps AREA_ONLINE_HOUSE_1, the model entry of each
+gGlowPosOnlineHouse2 = 0x004490F0; // size:0xF0 Area_DrawGlowProps AREA_ONLINE_HOUSE_2, the positions of its 20 glow models
+gGlowEntryOnlineHouse2 = 0x004491E0; // size:0x30 Area_DrawGlowProps AREA_ONLINE_HOUSE_2, the model entry of each
+gAreaPropPosHouse = 0x00449210; // size:0x20 AreaProp_Start AREA_HOUSE and AREA_HUB_0x57, the position of the prop (Effect06)
+gAreaPropRotHouse = 0x00449230; // size:0x20 AreaProp_Draw AREA_HOUSE and AREA_HUB_0x57, the x y z rotation of the prop
+gAreaPropPosHub83 = 0x00449250; // size:0x60 AreaProp_Start AREA_HUB_0x83, the position of each prop by its type
+gAreaPropScaleHub83 = 0x004492B0; // size:0x20 AreaProp_Draw AREA_HUB_0x83, the scale by prop type
+gAreaPropEntryHub83 = 0x004492D0; // size:0x10 AreaProp_Draw AREA_HUB_0x83, the model entry by prop type (type 6 also draws the next one)
+gAreaPropPosHub84 = 0x004492E0; // size:0x48 AreaProp_Start AREA_HUB_0x84, the position of each prop by its type
+gAreaPropScaleHub84 = 0x00449330; // size:0x30 AreaProp_Draw AREA_HUB_0x84, the scale by prop type (6 floats), then the model entries by type at +0x18 (gAreaPropEntryHub84, a linker alias, since an array of its own would be aligned to 16 bytes)
+gAreaPropPosHub85 = 0x00449360; // size:0x18 AreaProp_Start AREA_HUB_0x85, the position of each prop by its type
+gAreaPropEntryHub85 = 0x00449378; // size:0x8 AreaProp_Draw AREA_HUB_0x85, the model entry by prop type
+gAreaPropPosElderHall = 0x00449380; // size:0x18 AreaProp_Start AREA_ELDER_HALL, the position of each prop by its type
+gAreaPropScaleElderHall = 0x00449398; // size:0x8 AreaProp_Draw AREA_ELDER_HALL, the scale by prop type
+gAreaPropEntryElderHall = 0x004493A0; // size:0x8 AreaProp_Draw AREA_ELDER_HALL, the model entry by prop type
+gAreaPropPosHubAA = 0x004493A8; // size:0xC AreaProp_Start areas 0xAA-0xAC, the position of the prop
+gAreaPropPosOnlineHouse1 = 0x004493B8; // size:0xC AreaProp_Start AREA_ONLINE_HOUSE_1, the position of the prop
+gAreaPropPosOnlineHouse2 = 0x004493C8; // size:0xC AreaProp_Start AREA_ONLINE_HOUSE_2, the position of the prop
+gAreaPropPosHub89 = 0x006AEDA0; // size:0x10 AreaProp_Start AREA_HUB_0x89, the position of the prop (bss, never written in C)
 gRiverPtsDay48 = 0x004493E0; // size:0x30 SoundObj_Run, the three points of the river of Area_DayId 0x48 and 0x9E (sound types 1 and 3 play at the nearest point)
 gRiverPtsDay4B = 0x00449410; // size:0x30 SoundObj_Run, the three river points of Area_DayId 0x4B and 0xA0
 gRiverPtsDay6E = 0x00449440; // size:0x30 SoundObj_Run, the three river points of Area_DayId 0x6E
@@ -9377,15 +9454,15 @@ gSharpnessRawMods = 0x0045F030; // size:0x30 ObjAttach_DamageEm, the raw damage 
 gSharpnessLossByHit = 0x0045F060; // size:0x10 ObjAttach_DamageEm, the Player_AddSharpness amount by hitKind (times 5 on a hard zone)
 gEmVariantShownMeshes = 0x00465660; // size:0x40 Em_SetupKind, the two meshes shown (meshShown) by em variant
 gEmNopHandlers = 0x004656A0; // size:0x20 Em_InitHandlers, the handler table (EmVt) a monster starts with, its no-op handlers
-gShadowPartBones = 0x004656C0; // size:0x10 Effect01_Run (the shadow under its owner), type 2, the bones of the five shadow parts
-gShadowPartScales = 0x004656D0; // size:0x18 Effect01_Run and Effect01_Draw, the scale of each shadow part
-gShadowBonesEm07 = 0x004656E8; // size:0x8 Effect01_Draw, the shadow bones of monster kinds 7 and 0x32
-gShadowBonesEm37 = 0x004656F0; // size:0x8 Effect01_Draw, the shadow bones of monster kind 0x37
-gShadowBonesEm3A = 0x004656F8; // size:0x8 Effect01_Draw, the shadow bones of monster kinds 0x3A and 0x48
-gEffect02ScaleKeys6 = 0x00465700; // size:0x50 Effect02_Draw type 6, the scale keys (Key_LerpVec3) over the timer
-gEffect02Keys12 = 0x00465750; // size:0x30 Effect02_Draw type 12, the Key_LerpVec3 keys over the timer
-gEffect02ColorKeys12 = 0x00465780; // size:0x20 Effect02_Draw type 12, the colour keys (Color_EvalKeys) over the timer
-gNoticeMadeTexts = 0x00446AE0; // size:0x28 NoticeBanner_Start type 4, the made notice (item ga N made), then the notices of the pouch, gathering, reward and fainting (pieces)
+gShadowPartBones = 0x004656C0; // size:0x10 Shadow_Run (the shadow under its owner), type 2, the bones of the five shadow parts
+gShadowPartScales = 0x004656D0; // size:0x18 Shadow_Run and Shadow_Draw, the scale of each shadow part
+gShadowBonesEm07 = 0x004656E8; // size:0x8 Shadow_Draw, the shadow bones of monster kinds 7 and 0x32
+gShadowBonesEm37 = 0x004656F0; // size:0x8 Shadow_Draw, the shadow bones of monster kind 0x37
+gShadowBonesEm3A = 0x004656F8; // size:0x8 Shadow_Draw, the shadow bones of monster kinds 0x3A and 0x48
+gHitSparkScaleKeys6 = 0x00465700; // size:0x50 HitSpark_Draw type 6, the scale keys (Key_LerpVec3) over the timer
+gHitSparkKeys12 = 0x00465750; // size:0x30 HitSpark_Draw type 12, the Key_LerpVec3 keys over the timer
+gHitSparkColorKeys12 = 0x00465780; // size:0x20 HitSpark_Draw type 12, the colour keys (Color_EvalKeys) over the timer
+gNoticeMadeTexts = 0x00446AE0; // size:0x28 NoticeBanner_Start, the pieces of the NOTICE_KIND_ITEM_MADE notice (around the item name and the count), then the notices of the pouch, gathering, reward and fainting (pieces)
 gSharpnessDownText = 0x00446B08; // size:0x8 Player_AddSharpness, the weapon got blunter, then the sharper text (piece)
 gSharpnessFullText = 0x00446B10; // size:0x8 Player_AddSharpness, the notice that the sharpness is full
 gRomajiLetterEntries = 0x00404ED0; // size:0x210 the 11-byte letter-word entries (letter, kana text) in rows by first letter, the rows of gRomajiLetterRows (Romaji_ToKana takes the vowels from the first row)
@@ -9395,22 +9472,35 @@ gArea83SubModelTexFiles = 0x0042F158; // size:0x8 Area_LoadSubModels area 0x83 s
 gArea83SubModelTexFileS1 = 0x0042F160; // size:0x10 Area_LoadSubModels area 0x83 sub 0, the texture file online in season 1
 gArea89SubModelTexFiles = 0x0042F170; // size:0x30 Area_LoadSubModels area 0x89 subs 1-3, the texture file by (sub - 1) * 3 + Village_FacilityLevel(sub)
 gEmSlotTexFiles = 0x0042F1E0; // size:0x50 EmSlot_LoadModel, the texture file of the monster slot model by kind (gNetSetupTexPack is its entry at +0x48)
-gSubModelPairTexFiles = 0x0042F230; // size:0x10 Area_LoadSubModel, the texture file by the file pair i (Stage_LoadFilePair)
-gEquipModelTexFilesM = 0x0042F240; // size:0x60 StageModels_LoadEquip kind 0xFF, the texture file of the male equipment model by id
-gEquipModelTexFilesF = 0x0042F2A0; // size:0x60 StageModels_LoadEquip kind 0xFF, the texture file of the female equipment model by id
+gSubModelPairTexFiles = 0x0042F230; // size:0x10 CharMake_LoadPartsModel, the texture file by the file pair i (Stage_LoadFilePair)
+gEquipModelTexFilesM = 0x0042F240; // size:0x60 EquipPreview_Load kind 0xFF, the texture file of the male equipment model by id
+gEquipModelTexFilesF = 0x0042F2A0; // size:0x60 EquipPreview_Load kind 0xFF, the texture file of the female equipment model by id
 gAreaSubModelKinds = 0x0042FB50; // size:0x8 Area_LoadSubModels, the Model_SetupWithPack kind of sub model i
 gLookPartMap0 = 0x0042FC30; // size:0x40 Look_MapPartId kind 0, rows of 16 by sex, an id found in the row becomes the entry at unk8BC * 4 + k
 gLookPartMap3 = 0x0042FC70; // size:0x40 Look_MapPartId kind 3, rows of 16 by sex
 gLookPartMap4 = 0x0042FCB0; // size:0x40 Look_MapPartId kind 4, rows of 16 by sex
-gLightInitPosDir = 0x0041EBE0; // size:0x8 Light_InitAll, the sources of the three lights positions and directions (set 0)
-gLightInitAmbCol = 0x0041EBE8; // size:0x8 Light_InitAll, the sources of the three lights ambients (times 10) and colours (set 0)
+gUnusedObjCount = 0x005D8A48; // size:0x1 the entries used in gUnusedObjs (only ObjListAF0_Clear touches it)
+gUnusedObjs = 0x005D8AF0; // size:0x80 a list of 32 EmObj pointers that only ObjListAF0_Clear touches
+gCamDefaultEye = 0x0043ED20; // size:0x18 Camera_Reset, the default eye then target (gCamDefaultAt)
+gCamDefaultDir = 0x0043ED38; // size:0xC Camera_Reset, the default view direction (Camera.unk24)
+gAreaLightZonesAlt = 0x00440010; // size:0x1A0 pointers into the light zones as gAreaLightZones, read by no code
+gLightFadeDirs = 0x0041EA30; // size:0x30 gLightFadeSources, the directions of the three lights
+gLightFadeColors = 0x0041EA60; // size:0x30 gLightFadeSources, the colours LightSet_UpdateFade fades light 0 toward
+gLightFadeAmbients = 0x0041EA90; // size:0x30 gLightFadeSources, the ambient parts LightSet_UpdateFade fades light 0 toward
+gLightFadeUnk14 = 0x0041EAC0; // size:0x30 gLightFadeSources, the values for Light.unk14 (1.0)
+gLightFadeSources = 0x0041EAF0; // size:0x28 LightSet_UpdateFade, the tables of a fade (two equal entries, the first read)
+gLightInitDirs = 0x0041EB20; // size:0x30 gLightInitSources, the directions of light set 0
+gLightInitColors = 0x0041EB50; // size:0x30 gLightInitSources, the colours of light set 0 (Light_InitAll multiplies them by 10)
+gLightInitAmbients = 0x0041EB80; // size:0x30 gLightInitSources, the ambient parts of light set 0
+gLightInitUnk14 = 0x0041EBB0; // size:0x30 gLightInitSources, the values for Light.unk14 of light set 0 (1.0)
+gLightInitSources = 0x0041EBE0; // size:0x14 Light_InitAll, the tables light set 0 starts from (positions, directions, colours, ambient parts, unk14)
 gLightDefaultDirs = 0x0041EC00; // size:0x30 Light_SetDefault, the default direction of light i (mode 0, an area without its own lights)
-gLightDirsArea56 = 0x0041EC30; // size:0x30 Light_SetDefault kind 0x56, the direction of light i (mode 0)
-gLightDefaultAmbs = 0x0041EC60; // size:0x30 Light_SetDefault, the default ambient of light i (modes 0 and 1)
-gLightFixedAmbs = 0x0041EC90; // size:0x30 LightSet_SetAmbient and LightSet_UpdateFade, the fixed ambient of light i while the owner +0x597 is set
-gLightAmbsArea56 = 0x0041ECC0; // size:0x30 Light_SetDefault kind 0x56, the ambient of light i (modes 0 and 1)
-gLightDefaultCols = 0x0041ECF0; // size:0x30 Light_SetDefault, the default colour of light i (mode 0)
-gLightColsArea56 = 0x0041ED20; // size:0x30 Light_SetDefault kind 0x56, the colour of light i (mode 0)
+gLightHouseDirs = 0x0041EC30; // size:0x30 Light_SetDefault in AREA_HOUSE, the direction of light i (mode 0)
+gLightDefaultColors = 0x0041EC60; // size:0x30 Light_SetDefault, the default colour of light i (modes 0 and 1)
+gLightFixedColors = 0x0041EC90; // size:0x30 LightSet_SetColors, the colour of light i in the fortress while a large monster is near the object
+gLightHouseColors = 0x0041ECC0; // size:0x30 Light_SetDefault in AREA_HOUSE, the colour of light i (modes 0 and 1)
+gLightDefaultAmbients = 0x0041ECF0; // size:0x30 Light_SetDefault, the default ambient part of light i (mode 0)
+gLightHouseAmbients = 0x0041ED20; // size:0x30 Light_SetDefault in AREA_HOUSE, the ambient part of light i (mode 0)
 gHrPointSteps = 0x0044CA60; // size:0xA0 Hr_PointsForRank, the HrStep entries it walks for the points of a rank
 gObtainFlagItems = 0x0044CB00; // size:0x30 Save_SetItemObtained, the items of which 15 obtained set flag 0x27 (0xFFFF ends)
 gEquipCollectType6 = 0x0044CB30; // size:0x60 EquipCollect_CheckWeapons, the equipment list of type 6, counted by class (Equip_GetClass)
@@ -9445,6 +9535,11 @@ gConvBitMasks = 0x00403D70; // size:0x8
 gNumberPlaceGlyphs = 0x00403DB0; // size:0x4
 gRomajiConf = 0x00404EC0; // size:0x10
 gEff06IconAlphaKeys = 0x004665A0; // size:0x30
+gEff06IconKeysAttackUp = 0x00466540; // size:0x20 Effect06_DrawPart, the colour keys of the attack up icon (gEff06IconColorKeys 0)
+gEff06IconKeysDefenseUp = 0x00466560; // size:0x20 Effect06_DrawPart, the colour keys of the defense up icon (gEff06IconColorKeys 1)
+gEff06IconKeysBothUp = 0x00466580; // size:0x20 Effect06_DrawPart, the colour keys of the icon for both (gEff06IconColorKeys3 0)
+gEff06IconColorKeys3_1 = 0x004665D0; // size:0x20 entry 1 of gEff06IconColorKeys3
+gEff06IconColorKeys3_4 = 0x004665F0; // size:0x20 entry 4 of gEff06IconColorKeys3
 gEff06IconColorKeys = 0x004666E8; // size:0x8
 gEff06IconColorKeys3 = 0x004666F0; // size:0x18
 gEff06PartAges3 = 0x00466710; // size:0x10
@@ -9480,12 +9575,12 @@ gLobbyActorFxIds = 0x0044A868; // size:0x8
 gConvInputEnd = 0x0059B7D0; // size:0x4
 gConvInputCaret = 0x0059B7D8; // size:0x4
 gVersusEmAngles = 0x0044BDF0; // size:0x8
-gFishKindsOffline = 0x004698E0; // size:0x1E0
-gFishKindsOnline = 0x00469AC0; // size:0x1E0
+gFishKindsQuest = 0x004698E0; // size:0x1E0
+gFishKindsLobby = 0x00469AC0; // size:0x1E0
 gFishBiteJitter = 0x00469DA0; // size:0x8
 gFishWaitSecs = 0x00469DA8; // size:0x8
 gLureColors = 0x00469DB0; // size:0x10
-gLureColorDefault = 0x00469DC0; // size:0x4
+gLureColorPulled = 0x00469DC0; // size:0x4
 gRodTipOffsets = 0x00469DD0; // size:0x30
 gKbdKeysHira = 0x00416F50; // size:0x10
 gKbdKeysHira_4 = 0x00416F60; // size:0x120
@@ -9544,26 +9639,27 @@ gConvSuffixTails = 0x004045C0; // size:0x100
 gConvSuffixes = 0x004046C0; // size:0x600
 gConvSuffixIndex = 0x00404CC0; // size:0xC0
 gLoadingImageSizes = 0x00468490; // size:0x30
-gLoadingSprites = 0x004684C0; // size:0x70
+gLoadingSprites = 0x004684C0; // size:0x250
 gGenderLabels = 0x00468820; // size:0x10
 gSkelTreeCount = 0x00581978; // size:0x4
 gCamMode3Offsets = 0x0041C990; // size:0x60
 gCamMode4AreaPos = 0x0041C9F0; // size:0x260
 gCamMode4AreaFovs = 0x0041CC50; // size:0x70
-gResistMealEffects = 0x0044C2A0; // size:0x10
+gResistSongEffects = 0x0044C2A0; // size:0x10
+gSparkFxFirstKeys = 0x004698D0; // size:0x10 SparkFx_Run, the first key track of a spark by the emitter type
 gSparkFxLives = 0x004698B0; // size:0x10
 gSparkFxSteps = 0x004698C0; // size:0x10
 gLoadingBobOffsets = 0x00468710; // size:0x30
 gLoadingStartPos = 0x00468740; // size:0x18
 gCardSlotPos = 0x00468830; // size:0x18
 gFogDefault = 0x004485B0; // size:0x10
-gFogArea56 = 0x004485C0; // size:0x10
-// unk_335040.c
+gFogHouse = 0x004485C0; // size:0x10
+// round 32 lane engine, model_setup.c
 // an empty function the quest set-up and plsel call
 Quest_EmptyHook = 0x003350B0; // type:func
 // the swing chain lists per gender, for the torso's alternative model and its own
-gEquipFxListsAltTorso = 0x0044A858; // size:0x8
-gEquipFxListsTorso = 0x0044A860; // size:0x8
+gEquipFxListsAltHead = 0x0044A858; // size:0x8
+gEquipFxListsHead = 0x0044A860; // size:0x8
 gMonthNames_0 = 0x0046A100; // size:0x8 entry 0 of gMonthNames
 gMonthNames_1 = 0x0046A108; // size:0x8 entry 1 of gMonthNames
 gMonthNames_2 = 0x0046A110; // size:0x8 entry 2 of gMonthNames
@@ -9596,3 +9692,40 @@ gPlayerBodySpheres = 0x0041D2D0; // size:0x20 Em_CollideField, the x y z r spher
 gKbdCursorHideFrames = 0x005AEA58; // size:0x4 Kbd_Draw, frames left that the cursor is not drawn, counted down
 Kbd_CheckGestureText = 0x003151C0; // type:func Kbd_EnterGestures, always 0 (a negative result would make the gestures page type kana)
 Player_OnMountedGun = 0x003ACE10; // type:func 1 in the mounted gun actions (aim, fire, re-aim)
+Cand_IsTextSeg = 0x00304300; // type:func 1 when a candidate's segment is plain text (kind 0x28 or 0x29)
+Conv_ReleaseSlot = 0x002FDF10; // type:func releases a dictionary slot (Slot_Release) and returns 3
+gLoadingBobWave = 0x0043C9B0; // size:0x30 the loading letters' 12 steps of the bob
+gNetUsbLanVendor = 0x0046A508; // size:0xC the vendor name of the USB LAN adaptors (gNetDevNames)
+gNetUsbLanProduct1 = 0x0046A518; // size:0xC the product name of the first USB LAN adaptor (gNetDevNames)
+gNetUsbLanProduct2 = 0x0046A528; // size:0xC the product name of the second USB LAN adaptor (gNetDevNames)
+gNetAdaptorVendor = 0x0046A538; // size:0x8 the vendor name of the network adaptor (gNetDefaultDev)
+gNetAdaptorProduct = 0x0046A540; // size:0x20 the product name of the network adaptor (gNetDefaultDev)
+gNetDefaultDev = 0x00405420; // size:0x38 the network adaptor's NetDevice and an empty one, copied into gNetDevs[34] by Net_Start
+gNetPppLineMode = 0x0059D4B0; // size:0x10 the PPP line mode NetPpp_Connect gets (cycled 1 3 2 0 on PPP error 5)
+gNetPppAuthText = 0x0059DBE0; // size:0x10 the PPP authentication text, used when not empty
+gNetPppConfBuf = 0x0059DBF0; // size:0xF0 a buffer gNetPppConf points at (its field at 0x494), cleared with the network settings
+gNetIfOpt8 = 0x0059D620; // size:0x4 the interface option 8 read at the LAN connection's last step
+gDnasFixedDns = 0x0059D5F0; // size:0x4 1 while the DNAS check runs on the two built-in DNS servers
+net_unused_fail = 0x00308F30; // type:func an unused socket call, always -1
+net_unused_ok1 = 0x00309A70; // type:func an unused socket call, always 0
+net_unused_ok2 = 0x00309A80; // type:func an unused socket call, always 0
+ConvRec_NoteFixedLen = 0x00301730; // type:func keeps a segment's length when it is first fixed
+gKbdSetCharsets = 0x00416440; // size:0x20 the character set of each keyboard (a byte per KbdEntry.keySet)
+// The object pools, the traps and arrows helpers, the music manager
+gObjAttachPoolLast = 0x005BA4FC; // size:0xD4 gObjAttachPool entry 0x3F, which ObjAttach_InitPool reads by its own name
+gBgmVars = 0x005BA780; // size:0x2 the first of the music variables, which Bgm_Init clears with the next eight bytes
+gMarkerColors = 0x0043C820; // size:0x10 the colours of Gfx_DrawMarker
+gMapBattleBgm = 0x0043C830; // size:0x10 the battle music by map, when no monster has its own (Bgm_PlayBattle)
+Em_TrapReach = 0x00364B20; // type:func a trap reach scaled by 1.25 for the largest monster kinds
+Debug_SwitchStub = 0x00364BD0; // type:func empty in the retail build, given debug switch ids 0x64 to 0x68
+Debug_SwitchStubAlt = 0x00364BE0; // type:func empty in the retail build, given debug switch ids 0x64 to 0x66 in one area
+Bgm_IsNpcTunePlaying = 0x00367690; // type:func 1 while BGM_TUNE_NPC plays over the turned-down music
+Bgm_IsDuckingTune = 0x003676D0; // type:func 1 while one of the town tunes plays over the turned-down music
+// The area atmosphere layers of the snowy mountains and the swamp
+gSnowLayerSpeedsState0 = 0x00449ED0; // size:0x10 the snowy mountains atmosphere layer speeds, area state 0 (AreaAtmos_LayerSpeed)
+gSnowLayerSpeedsState1 = 0x00449EE0; // size:0x10 the same, area state 1
+gSnowLayerSpeedsState2 = 0x00449EF0; // size:0x10 the same, area state 2
+gSwampLayerPeriodsState0 = 0x00449F30; // size:0x8 the swamp night atmosphere layer periods (frames per scroll), area state 0
+gSwampLayerPeriodsState1 = 0x00449F38; // size:0x8 the same, area state 1
+gSwampLayerPeriodsState2 = 0x00449F40; // size:0x8 the same, area state 2
+gSwampLayerPeriodsByState = 0x00449F48; // size:0xC gSwampLayerPeriodsState0 to 2, by area state

@@ -1,12 +1,13 @@
 #ifndef YN_H
 #define YN_H
 #include "net_mode.h"
+#include "net_save.h"
 #include "window.h"
 #include "prim.h"
 
 /*
- * The yn overlay (network settings): types shared by
- * src/yn/yn_card.c and src/yn/yn_main.c.
+ * The yn overlay, the network settings: the types its memory card checks
+ * and its settings screens share.
  */
 
 /* sub_main's memory card task, gCardTask at 0x6AF100 (the end of sub_main's
@@ -109,28 +110,6 @@ typedef struct YnNetcnf {
     u8 unk19C34[0x10C];
 } YnNetcnf;
 
-/* The settings being edited, in the game's own form (0xA20 bytes). */
-typedef struct YnConfig {
-    s32 ifcType;                /* 0x000 */
-    u8 unk4;
-    u8 noPppoe;                 /* 0x005: 0: PPPoE (authName, authKey) */
-    u8 fixedIp;                 /* 0x006: 0: DHCP (dhcpHostname), else address/netmask/gateway */
-    u8 dnsSet;                  /* 0x007: dns1/dns2 given */
-    u8 phyConfig;               /* 0x008: 0 auto, 1-4 the ethernet modes */
-    u8 ifcType3;                /* 0x009: 1: interface type 3 (Yn_ConfigToIfc) */
-    u8 unkA[2];
-    char authName[0x200];       /* 0x00C */
-    char authKey[0x200];        /* 0x20C */
-    char dhcpHostname[0x200];   /* 0x40C */
-    u8 address[4];              /* 0x60C */
-    u8 netmask[4];              /* 0x610 */
-    u8 gateway[4];              /* 0x614 */
-    u8 dns1[4];                 /* 0x618 */
-    u8 dns2[4];                 /* 0x61C */
-    char name[0x200];           /* 0x620: the entry's name (Shift-JIS here, EUC-JP in the file) */
-    char vendor[0x100];         /* 0x820 */
-    char product[0x100];        /* 0x920 */
-} YnConfig;
 
 /* A combination of the type 0 list with its device (0x14 bytes, 30 of them
  * at +0x254 of the work area). */
@@ -152,7 +131,7 @@ typedef struct YnEntryKey {
 } YnEntryKey;
 
 /* A network device (0x1C bytes): sub_main's list of the attached ones
- * (gNetDevs, 35 at 0x59DE20; NetDev_ClearList fills it), gNetDevCur the one
+ * (gNetDevs, 35 entries; NetDev_ClearList fills it), gNetDevCur the one
  * in use. NetDev_Identify copies type, driver and the names from the known
  * devices' table (gNetDevNames) row whose ids match the IOP's answer. */
 typedef struct NetDevice {
@@ -166,14 +145,6 @@ typedef struct NetDevice {
 } NetDevice;
 extern NetDevice gNetDevs[35];
 
-/* The proxy settings (0x208 bytes). */
-typedef struct YnProxy {
-    s32 use;                    /* 0x000 */
-    u16 httpPort;               /* 0x004 */
-    u16 httpsPort;              /* 0x006 */
-    char http[0x100];           /* 0x008 */
-    char https[0x100];          /* 0x108 */
-} YnProxy;
 
 /* A window frame, drawn by sub_main.s Window_DrawTextAlpha (0x14 bytes). */
 typedef struct YnWindow {
@@ -195,13 +166,174 @@ typedef struct YnItem {
     char *text;
 } YnItem;
 
+/* The settings list shows YN_LIST_ROWS entries from YnWork.listTop. */
+#define YN_LIST_ROWS 4
+
+/* YnWork.triedSlots: a bit per memory card slot tried by the connect,
+ * and YN_TRIED_FIRST once the first slot has been tried. */
+#define YN_TRIED_FIRST 0x80
+
+/* YnCombo.kind: whether the entry's device is attached (Yn_GetDeviceKind). */
+#define YN_COMBO_ABSENT 0   /* not attached */
+#define YN_COMBO_ETHERNET 1 /* attached, a LAN adaptor (NET_DEV_ETHERNET) */
+#define YN_COMBO_OTHER 2    /* attached, another type */
+
+/* YnWork.state while the settings list runs (Yn_Update). */
+enum YnState {
+    YN_STATE_LOAD_MODULES = 0, /* resets the device list, loads netcnf's modules */
+    YN_STATE_OPEN = 1,         /* after 10 frames: opens netcnf, reads the proxy, picks slot 0 */
+    YN_STATE_SCAN = 2,         /* Yn_ScanCards, then the list */
+    YN_STATE_CONNECT = 3,      /* Yn_Connect, slot by slot (Yn_Init's autoConnect) */
+    YN_STATE_LIST = 4,         /* Yn_UpdateEntryList */
+    YN_STATE_CHOSEN = 5,       /* an entry was applied: quits, returns changed + 1 */
+    YN_STATE_QUIT_ASK = 6,     /* the quit question */
+    YN_STATE_ERROR_QUIT = 7,   /* a message that quits on either button (never set) */
+    YN_STATE_MESSAGE = 8,      /* a message that goes back to the list (never set) */
+    YN_STATE_FINISHED = 9,     /* the connect is over, gNetMode.ynResult is set */
+    YN_STATE_WAIT_CARD = 10    /* rescans once the card goes (never set) */
+};
+
+/* YnWork.state while the proxy screen runs (Yn_UpdateProxy). */
+enum YnProxyState {
+    YN_PROXY_INIT = 0,     /* reads the proxy, sets up the use screen */
+    YN_PROXY_USE = 1,      /* the use / don't use choice */
+    YN_PROXY_FIELDS = 2,   /* the four fields (YnProxyField) */
+    YN_PROXY_KEYBOARD = 3, /* a host name on the software keyboard */
+    YN_PROXY_NUMBER = 4,   /* a port in the number editor */
+    YN_PROXY_CONFIRM = 5,  /* the save question */
+    YN_PROXY_SAVED = 6     /* the saved message; then returns */
+};
+
+/* YnWork.menuCursor on the proxy fields screen: the field chosen. */
+enum YnProxyField {
+    YN_FIELD_HTTP = 0,
+    YN_FIELD_HTTP_PORT = 1,
+    YN_FIELD_HTTPS = 2,
+    YN_FIELD_HTTPS_PORT = 3,
+    YN_FIELD_COUNT = 4
+};
+
+/* YnWork.step on the settings list (Yn_UpdateEntryList). */
+enum YnListStep {
+    YN_LIST_INIT = 0,         /* clears the cursors, reads the proxy */
+    YN_LIST_INPUT = 1,        /* the cursor, the details, the slot switch */
+    YN_LIST_MESSAGE = 5,      /* a message over the list, back to backStep */
+    YN_LIST_ERROR = 6,        /* a message, then rescans the cards */
+    YN_LIST_CARD_MESSAGE = 7, /* a message, then waits for the cards (never set) */
+    YN_LIST_WAIT_CARD = 8,    /* waits for the card check, then rescans */
+    YN_LIST_CHOOSE = 9        /* checks the cursor's entry and applies it */
+};
+
+/* YnWork.step while connecting with the card's settings (Yn_Connect). */
+enum YnConnectStep {
+    YN_CONNECT_STEP_START = 0,       /* slot 0, nothing tried yet */
+    YN_CONNECT_STEP_CHECK_PROXY = 1, /* the proxy must be the saved one */
+    YN_CONNECT_STEP_SCAN = 2,        /* scans the slot, looks for the saved settings */
+    YN_CONNECT_STEP_NEXT_SLOT = 3,   /* the other slot, then scans again */
+    YN_CONNECT_STEP_WAIT_NEXT = 4,   /* waits for PAD_CIRCLE before the next slot (never set) */
+    YN_CONNECT_STEP_CONNECTED = 5    /* the connected message, closed by PAD_CIRCLE or a timer */
+};
+
+/* What Yn_Connect returns; Yn_Update turns each failure into a
+ * NET_YN_ERR_* in gNetMode.error. */
+enum YnConnectResult {
+    YN_CONNECT_DONE = 1,            /* connected with the saved settings */
+    YN_CONNECT_BUSY = 0,
+    YN_CONNECT_ALL_TRIED = -1,      /* both slots tried without the saved settings */
+    YN_CONNECT_NO_CARD = -2,        /* the slot's card went away during the scan */
+    YN_CONNECT_DEVICE = -3,         /* the entry's device isn't attached or won't start */
+    YN_CONNECT_PROXY_CHANGED = -4,  /* the proxy isn't the one saved with the settings */
+    YN_CONNECT_OTHER_PS2 = -5,      /* the file fails netcnf's check (another console's) */
+    YN_CONNECT_CARD_REMOVED = -6,   /* the card went away at the next-slot wait */
+    YN_CONNECT_EMPTY_FILE = -7,     /* the settings file has no entries */
+    YN_CONNECT_NO_MATCH = -8        /* the saved settings aren't in the file */
+};
+
+/* YnWork.scanStep: the card scan's steps (Yn_ScanCards). */
+enum YnScanStep {
+    YN_SCANSTEP_START = 0,       /* clears the scan's results */
+    YN_SCANSTEP_CHECK_SLOTS = 1, /* which slots hold a card */
+    YN_SCANSTEP_PICK_SLOT = 2,   /* the next slot with a card, from scanSlot */
+    YN_SCANSTEP_NEXT_SLOT = 3,   /* the same after a slot without the directory */
+    YN_SCANSTEP_LIST_DIR = 4,    /* looks for the settings directory */
+    YN_SCANSTEP_READ_FILE = 5    /* reads the file's three lists, builds the combinations */
+};
+
+/* What Yn_ScanCards returns; YnWork.scanResult keeps the failures (0 when
+ * the scan succeeded). */
+enum YnScanResult {
+    YN_SCAN_DONE = 1,            /* the combinations are built */
+    YN_SCAN_BUSY = 0,
+    YN_SCAN_NO_SETTINGS = -1,    /* no slot has a usable settings file */
+    YN_SCAN_CARD_CHANGED = -2,   /* the card in the slot changed */
+    YN_SCAN_OTHER_PS2 = -3,      /* the file fails netcnf's check (another console's) */
+    YN_SCAN_SLOT_SWITCHED = -10  /* scanResult only: PAD_L1 switched the slot */
+};
+
+/* YnWork.msg: the message shown, an index into gYnMsgItems (the draw
+ * functions' switches also handle indices this file never sets). */
+enum YnMsg {
+    YN_MSG_NONE = 0,
+    YN_MSG_DEVICE_UNKNOWN = 4,     /* the entry's device isn't in the known devices' table */
+    YN_MSG_DEVICE_ABSENT = 5,      /* the device isn't attached or won't start */
+    YN_MSG_PROXY_CONFIRM = 0x18,   /* the proxy screen's save question */
+    YN_MSG_ENTRY_DETAILS = 0x19,   /* the cursor entry's details (PAD_TRIANGLE) */
+    YN_MSG_QUIT_ASK = 0x1A,        /* the quit question */
+    YN_MSG_DIAL_UP = 0x1B,         /* a dial-up entry (phone numbers, PPP without PPPoE) */
+    YN_MSG_FILE_ERROR = 0x1D,      /* the file fails netcnf's check */
+    YN_MSG_PROXY_SAVED = 0x32,
+    YN_MSG_NO_NAME = 0x33,         /* the entry has no name */
+    YN_MSG_CONNECTED = 0x34
+};
+
+/* YnWork.msgCloseMode: which buttons close a message on the list. */
+#define YN_MSG_CLOSE_CIRCLE 1 /* PAD_CIRCLE only */
+#define YN_MSG_CLOSE_EITHER 2 /* PAD_CIRCLE or PAD_CROSS (so is any value but 1) */
+
+/* YnWork.screen: the screen drawn, an index into gYnScreenItems. */
+enum YnScreen {
+    YN_SCREEN_NONE = 0,
+    YN_SCREEN_LIST = 1,          /* the settings list (Yn_DrawEntryList) */
+    YN_SCREEN_PROXY_USE = 0x16,  /* the proxy's use / don't use choice */
+    YN_SCREEN_PROXY_FIELDS = 0x17
+};
+
+/* YnWork.help: the help line, an index into gYnHelpItems (plus helpVariant). */
+enum YnHelp {
+    YN_HELP_LIST = 1,          /* 1-3 by helpVariant */
+    YN_HELP_PROXY_USE = 0x1F,
+    YN_HELP_PROXY_HOST = 0x20, /* the HTTP proxy's host */
+    YN_HELP_PROXY_PORT = 0x21, /* either port */
+    YN_HELP_PROXY_HTTPS = 0x22 /* the HTTPS proxy's host */
+};
+
+/* YnWork.helpBar: the button hints drawn at the bottom, an index into
+ * gYnHelpBars (Yn_DrawHelpBar). */
+enum YnHelpBarKind {
+    YN_HELPBAR_NONE = 0,
+    YN_HELPBAR_MESSAGE = 1,     /* a message's buttons */
+    YN_HELPBAR_PROXY_ON = 2,    /* the proxy's choice, set to use it */
+    YN_HELPBAR_FIELDS = 4,      /* the proxy fields, the host or port missing */
+    YN_HELPBAR_PROXY_OFF = 5,   /* the proxy's choice, set not to use it */
+    YN_HELPBAR_FIELDS_DONE = 6, /* the proxy fields, ready to save */
+    YN_HELPBAR_LIST = 7         /* the settings list */
+};
+
+/* Yn_DrawIcon's icons drawn by id: the arrows (by where the code draws
+ * them: up and down above and below a port's digit, right and left at
+ * the screen's edges where PAD_RIGHT and PAD_LEFT go). */
+#define YN_ICON_ARROW_RIGHT 0x10
+#define YN_ICON_ARROW_LEFT 0x16
+#define YN_ICON_ARROW_DOWN 0x17
+#define YN_ICON_ARROW_UP 0x18
+
 /* sub_main's network state gNetMode: include/net_mode.h (yn reads unk13, unk14, trySlot, error). */
 
 /* The overlay's work area (0x1AF00 bytes at 0xAD9C80, gYnWork points to it). */
 typedef struct YnWork {
     u32 texPal;                 /* 0x000: the texture handle | the palette handle << 16 (released by Yn_Quit's path) */
     u8 unk004[0x008 - 0x004];
-    s8 unk8;                    /* 0x008 */
+    s8 listDetail;              /* 0x008: the list's detail level: 2 from the list's first step (draws the entry's device line, help variant 2, msgCloseMode 4); the 16 bytes from here are cleared together */
     u8 unk009[0x00B - 0x009];
     s8 cursor;                  /* 0x00B: the settings list's cursor (an entry) */
     s8 listTop;                 /* 0x00C: its first entry shown (four shown) */
@@ -216,7 +348,7 @@ typedef struct YnWork {
     s8 entryCount;              /* 0x01C: the settings file's entries (YnNetcnf_GetCount) */
     u8 cardSlots;               /* 0x01D: memory card slots with a card (bit per slot; Yn_ScanCards) */
     u8 slot;                    /* 0x01E: the memory card slot in use */
-    u8 unk1F;                   /* 0x01F */
+    u8 unk1F;                   /* 0x01F: only cleared (at each card scan) */
     u8 unk020[0x021 - 0x020];
     u8 timer;                   /* 0x021 */
     u8 unk022[0x024 - 0x022];
@@ -233,9 +365,9 @@ typedef struct YnWork {
     u16 numBackup;              /* 0x03E: the value before the edit (put back on cancel) */
     u16 *numTarget;             /* 0x040: the number being edited (Yn_BeginNumberEdit) */
     u16 numStep;                /* 0x044: the digit being changed (1, 10, .. 10000) */
-    s8 unk46;                   /* 0x046 */
-    s8 unk47;                   /* 0x047 */
-    s8 unk48;                   /* 0x048 */
+    s8 unk46;                   /* 0x046: only written: 1 on the list, 0x10 on the proxy screen */
+    s8 msgCloseMode;            /* 0x047: YN_MSG_CLOSE_CIRCLE: only PAD_CIRCLE closes the list's message; 2 or 4 (listDetail 2): either button */
+    s8 unk48;                   /* 0x048: only written: 1 on the list, 0x13 on the proxy screen */
     s8 screen;                  /* 0x049: index into gYnScreenItems / gYnScreenItemCounts */
     u8 msg;                     /* 0x04A: index into gYnMsgItems / gYnMsgItemCounts */
     s8 help;                    /* 0x04B: index into gYnHelpItems / gYnHelpItemCounts */
@@ -245,7 +377,7 @@ typedef struct YnWork {
     char editBuf[0x200];        /* 0x054 */
     YnCombo combos[30];         /* 0x254 */
     u8 unk4AC[0xECC - 0x4AC];
-    YnProxy proxy;              /* 0xECC: copied from and to sub_main (D_5BE6C4, D_5BF400) */
+    YnProxy proxy;              /* 0xECC: copied from and to the NET file data (gNetSaveData.proxy and configProxy) */
     YnCardCheck card;           /* 0x10D4 */
     u8 unk10DA[0x1180 - 0x10DA];
     YnNetcnf netcnf;            /* 0x1180 */

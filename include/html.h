@@ -1,5 +1,5 @@
 /* The lobby's HTML browser (the KDDI "MMBB" portal pages): the parser's and
- * layout's state and tables (lobby overlay 0x744D70-0x753B50).
+ * layout's state and tables, in the lobby overlay.
  *
  * The parser (Html_ParseSome, Html_ParseTag) walks the page text at
  * gHtml->cur. In a tag, it looks the text up in the tag table of the
@@ -13,7 +13,7 @@
 
 #include "common.h"
 
-/* One entry of a tag or attribute table (D_007EF100, D_007EF750 ...). */
+/* One entry of a tag or attribute table (gHtmlModeTags' tables). */
 typedef struct HtmlTag {
     const char *name; /* "<TD ", "</TABLE>", "&LT;", "ALIGN" ... */
     s32 size;         /* strlen(name) + 1 */
@@ -25,8 +25,99 @@ typedef struct HtmlTag {
 typedef struct HtmlTagSet {
     HtmlTag *tags;
     s32 count;
-    s32 unk8;
+    s32 collectText;  /* 1: text between this mode's tags is collected (Html_ParseSome) */
 } HtmlTagSet;
+
+/* The parser's passes over a page (HtmlState.measure; Html_Reset). */
+#define HTML_PASS_DRAW 0            /* lays out and draws */
+#define HTML_PASS_LAYOUT 1          /* the second pass: measures with the tables' sizes known */
+#define HTML_PASS_MEASURE (-10)     /* the first pass: measures the tables */
+
+/* The page's lines (HtmlState.lines): the layout stays on the last. */
+#define HTML_LINES 1000
+
+/* The longest attribute value the tag handlers read (Html_ReadAttrValue,
+ * Html_ReadAttrKeyword); their buffers hold it and its terminator. */
+#define HTML_ATTR_MAX 0x100
+
+/* A table cell's kind (HtmlCell.kind): the tag that opened it. */
+#define HTML_CELL_TABLE 1
+#define HTML_CELL_TR 2
+#define HTML_CELL_TH 3
+#define HTML_CELL_TD 4
+
+/* The text's wrapping flags: a cell's (HtmlCell.flags), and the page's
+ * outside tables (HtmlState.flags). */
+#define HTML_FLAG_PRE 1            /* inside <PRE>: no wrapping, blanks kept */
+#define HTML_FLAG_NOWRAP 2         /* <TD NOWRAP> (HtmlState.nowrap holds it until the cell opens) */
+
+/* A cell's size flags (HtmlCell.sizeFlags), and a column edge's flags
+ * (HtmlCol.flags) while Layout_MeasureColumns measures a table. */
+#define HTML_SIZE_WIDTH 1           /* WIDTH given: the column edge is fixed */
+#define HTML_SIZE_HEIGHT 2          /* HEIGHT given */
+#define HTML_SIZE_NO_GROW 4         /* set with HTML_SIZE_WIDTH: the room left over isn't shared to it */
+#define HTML_SIZE_SPANNED 8         /* a column edge inside a COLSPAN cell */
+#define HTML_SIZE_FIXED (HTML_SIZE_WIDTH | HTML_SIZE_NO_GROW)
+
+/* The columns a table can have (Layout_MeasureColumns' edge arrays). */
+#define HTML_COLS 32
+
+/* gCharClass's bits: the parser's character classes. */
+#define HTML_CHAR_SJIS_LEAD 1       /* a Shift-JIS lead byte: a two-byte character starts */
+#define HTML_CHAR_BLANK 2           /* a space or a tab */
+#define HTML_CHAR_VALUE_END 4       /* ends an unquoted attribute value: a line end, a space, '"' or '>' */
+
+/* The byte &nbsp; leaves in the text: a space that doesn't break. */
+#define HTML_CHAR_NBSP 7
+
+/* The centring depths packed in HtmlState.center and HtmlCell.center. */
+#define HTML_CENTER_DEPTH 0x0F      /* <CENTER>'s depth (at most 15) */
+#define HTML_DIV_CENTER_DEPTH 0xF0  /* <DIV ALIGN=CENTER>'s depth (at most 15) */
+#define HTML_DIV_CENTER_STEP 0x10   /* one <DIV ALIGN=CENTER> */
+#define HTML_DIV_DEPTH_MAX 0x10     /* the <DIV>s whose alignment is kept (HtmlState.divAlign) */
+
+/* An ALIGN keyword's value (gHtmlAlignKeywords). */
+#define HTML_ALIGN_LEFT 1
+#define HTML_ALIGN_CENTER 2
+#define HTML_ALIGN_RIGHT 3
+
+/* A VALIGN keyword's value (gHtmlValignKeywords). Seen: the layout
+ * centres a cell's text at 2 and puts it at the bottom at 3. */
+#define HTML_VALIGN_TOP 1
+#define HTML_VALIGN_MIDDLE 2
+#define HTML_VALIGN_BOTTOM 3
+
+/* The table cells (HtmlState.cells) and the open tables and cells. */
+#define HTML_CELLS 500
+#define HTML_TABLE_DEPTH 16         /* tables nest at most 15 deep (HtmlState.tableDepth, bgStack) */
+
+/* The text waiting in HtmlState.text (0x80 bytes) is laid out first when
+ * more than this many characters wait: room for a two-byte character and
+ * the terminator. */
+#define HTML_TEXT_FULL 0x7D
+
+/* The <FONT SIZE> range: 1 to 7, 3 the base of "+N" and "-N". */
+#define HTML_FONT_SIZE_BASE 3
+#define HTML_FONT_SIZE_MAX 7
+
+/* An <INPUT TYPE>'s value (gInputTypeKeywords; HtmlState.input.type). */
+#define HTML_INPUT_TEXT 0
+#define HTML_INPUT_PASSWORD 1
+#define HTML_INPUT_SUBMIT 2         /* SUBMIT or BUTTON */
+#define HTML_INPUT_RESET 3
+#define HTML_INPUT_RADIO 4
+#define HTML_INPUT_CHECKBOX 5
+#define HTML_INPUT_HIDDEN 6
+#define HTML_INPUT_IMAGE 7
+
+/* The colour names gHtmlColorNames holds. */
+#define HTML_COLOR_NAMES 147
+
+/* What the text being laid out is (HtmlState.link). */
+#define HTML_LINK_NONE 0
+#define HTML_LINK_LOCAL 1           /* inside <A HREF="#name"> */
+#define HTML_LINK_URL 2             /* inside <A HREF=url> */
+#define HTML_LINK_NAME 3            /* inside <A NAME> */
 
 /* A keyword and its value (gInputTypeKeywords INPUT's TYPE, gHtmlAlignKeywords ALIGN,
  * gHtmlValignKeywords VALIGN): {name, value, strlen(name) + 1}. */
@@ -36,6 +127,66 @@ typedef struct HtmlKeyword {
     u8 value;
     u8 pad[2];
 } HtmlKeyword;
+
+/* The <GAME-STYLE> keywords' values (gGameStyleKeywords; Html_GameStyle).
+ * MOUSE to CHOICE_MV turn the page style bits on or off in bit order
+ * (PAGE_STYLE_POINTER ... PAGE_STYLE_NO_MSG_ICON); "KEY=ON" sets a bit. */
+enum GameStyleKeyword {
+    GAME_STYLE_EXIT = 0,        /* EXIT=..:n: the exit number (BrowserWork.exitArgs) */
+    GAME_STYLE_MOUSE = 1,
+    GAME_STYLE_SCROLL = 2,      /* also the scroll setting after a ':' */
+    GAME_STYLE_TITLE = 3,
+    GAME_STYLE_BACK = 4,        /* also the back link (HtmlState.backUrl) */
+    GAME_STYLE_FORWARD = 5,
+    GAME_STYLE_CANCEL = 6,
+    GAME_STYLE_RELOAD = 7,
+    GAME_STYLE_LINK_U = 8,
+    GAME_STYLE_X_SHOW = 9,
+    GAME_STYLE_CHOICE_MV = 10,
+    GAME_STYLE_FRONT_LABEL = 11 /* the front label's number (HtmlState.frontLabel) */
+};
+
+/* A page's style before its <GAME-STYLE> (Html_Parse): every bit but
+ * PAGE_STYLE_BACK, PAGE_STYLE_FORWARD and PAGE_STYLE_MSG_ICON. */
+#define HTML_PAGE_STYLE_DEFAULT (PAGE_STYLE_POINTER | PAGE_STYLE_VSCROLL | PAGE_STYLE_STATUS_BAR | PAGE_STYLE_CANCEL | PAGE_STYLE_RELOAD | PAGE_STYLE_UNDERLINE_LINKS | PAGE_STYLE_NO_MSG_ICON)
+
+/* The page keywords a comment opens with (gPageCommentKeywords;
+ * Html_Comment keeps the value in HtmlState.pageKind, or in accessKey for
+ * the access keys 8, 0xA, 0xB, 0x28 and 0x2C-0x2F). The page kinds'
+ * keywords end as Page_SetKind's PAGE_KIND_* (Html_Parse). Seen of the
+ * others: 2 and 5 are page kinds Page_SetKind doesn't take (2 draws the
+ * page button), 0x14-0x20 are ignored. */
+#define PAGE_KW_NONE 0              /* no keyword: a <CSV> block of the kind set before may follow */
+#define PAGE_KW_TOP_SIGNUP 1
+#define PAGE_KW_INP_SIGNUP 3
+#define PAGE_KW_COMP_SIGNUP 4
+#define PAGE_KW_INP_PWCHANGE 6
+#define PAGE_KW_CMP_PWCHANGE 7
+#define PAGE_KW_LOGIN_ID 9          /* on a COMP-SIGNUP page: the new login id follows (Form_SetLoginId) */
+#define PAGE_KW_PAGE_BUTTON 0xC     /* only draws the page button */
+#define PAGE_KW_CSV_SESSION 0xD     /* 0xD-0x11: a <CSV> block of kind keyword - 0xC follows (CSV_KIND_*) */
+#define PAGE_KW_CSV_ACCOUNT 0xE
+#define PAGE_KW_CSV_SERVERS 0x10
+#define PAGE_KW_CSV_RESULT 0x11
+#define PAGE_KW_CRS_TOP 0x12
+#define PAGE_KW_CRS_MENU 0x13       /* also a CSV_KIND_MENU block */
+#define PAGE_KW_CSV_PORTAL 0x21     /* a CSV_KIND_PORTAL block; a page kind Page_SetKind doesn't take */
+#define PAGE_KW_COMP_LOGIN 0x29
+#define PAGE_KW_KEICAN_MMBB 0x2A
+#define PAGE_KW_CANCAN_MMBB 0x2B
+#define PAGE_KW_CSV_ADD_USER 0x62   /* turns a CSV_KIND_SESSION block into CSV_KIND_ACCOUNT */
+#define PAGE_KW_CSV_ARM 0x63        /* arms the next CSV_KIND_MENU block's first form (HtmlState.csvArmed) */
+
+/* The kinds of <CSV> block (HtmlState.csvKind; Html_Csv reads its quoted
+ * items into the MMBB data's fields, MMBB_FIELD_*, and passes the kind to
+ * Page_SetDataMode). */
+#define CSV_KIND_NONE 0
+#define CSV_KIND_SESSION 1          /* the result, the connection id, field 4 and the next URL */
+#define CSV_KIND_ACCOUNT 2          /* the same with the user id */
+#define CSV_KIND_SERVERS 4          /* the result and up to 40 lobby servers, or the error */
+#define CSV_KIND_RESULT 5           /* the result, and the error's message when it isn't "OK" */
+#define CSV_KIND_MENU 6             /* armed: fields 14 and 15; else field 16 and up to 10 rows of 17-19 */
+#define CSV_KIND_PORTAL 7           /* the result and the error's message */
 
 /* A colour name (gHtmlColorNames, 147 of them: "ALICEBLUE" ...):
  * {name, strlen(name) + 1, r, g, b}. */
@@ -76,7 +227,7 @@ typedef struct HtmlCell {
     u8 *src;                    /* 0x014: the parse position of the row (read again after measuring) */
     u16 index;                  /* 0x018: the cell's own index in cells[] */
     u8 depth;                   /* 0x01A: gHtml->tableDepth when opened (Layout_OpenCell); Layout_DrawCell passes it to Draw_Cell */
-    u8 kind;                    /* 0x01B: 1 <TABLE>, 2 <TR>, 3 <TH>, 4 <TD> */
+    u8 kind;                    /* 0x01B: the tag that opened it, HTML_CELL_* */
     u16 w;                      /* 0x01C */
     u16 h;                      /* 0x01E: the height: HEIGHT of <TABLE>/<TD> (tableAttr/tdAttr.height), else grown to the contents and the row */
     u16 minW;                   /* 0x020: the narrowest width: the longest word or line that can't wrap; a row adds its cells'; COLSPAN cells share it (Layout_MeasureColumns: wmin) */
@@ -99,7 +250,7 @@ typedef struct HtmlCell {
     u16 spanNext;               /* 0x042: the cell below that continues this ROWSPAN cell (0: none) */
     u8 cellCount;               /* 0x044: a row's cells (counted as they close, while measuring) */
     u8 border;                  /* 0x045: BORDER (tableAttr.border; copied down); Draw_Cell's frame width */
-    u8 sizeFlags;               /* 0x046: 1|4: WIDTH given, 2: HEIGHT given */
+    u8 sizeFlags;               /* 0x046: HTML_SIZE_*: WIDTH (HTML_SIZE_FIXED), HEIGHT */
     u8 colSpan;                 /* 0x047: COLSPAN (tdAttr.colSpan; 0: none) */
     u8 rowSpan;                 /* 0x048: ROWSPAN (tdAttr.rowSpan; counts down in the rows below) */
     u8 spanLast;                /* 0x049: 1: the last cell of a COLSPAN run (Layout_CellColSpan) */
@@ -109,7 +260,7 @@ typedef struct HtmlCell {
     u8 rowNo;                   /* 0x04D: a row's index in its table (Layout_RowFromTable: table->rowNo++); a table's row count */
     u8 open;                    /* 0x04E: 1 while the <TABLE> is open (Layout_OpenCell; Layout_RowSpanCell clears); an end tag closes it only then */
     u8 bold;                    /* 0x04F */
-    u8 flags;                   /* 0x050: bit 0: <PRE> (no wrapping) */
+    u8 flags;                   /* 0x050: HTML_FLAG_* */
     u8 center;                  /* 0x051: low nibble: <CENTER> depth, high nibble: <DIV ALIGN=CENTER> depth */
     u8 unk052[0x054 - 0x052];
     s32 bgColor;                /* 0x054: -1: none */
@@ -117,8 +268,8 @@ typedef struct HtmlCell {
 } HtmlCell;
 
 /* A column edge of a table being measured (the stack arrays of
- * Layout_MeasureColumns, 32 columns): the column's right edge from the row's left,
- * and flags (a cell's unk46: 1 WIDTH given; 4; 8 inside a COLSPAN). */
+ * Layout_MeasureColumns, HTML_COLS columns): the column's right edge from the row's
+ * left, and HTML_SIZE_* flags (a cell's sizeFlags, and HTML_SIZE_SPANNED). */
 typedef struct HtmlCol {
     u8 flags;
     u16 x; /* 0x02 */
@@ -237,16 +388,16 @@ typedef struct HtmlState {
     u8 bold;                    /* 0x17C */
     u8 strike;                  /* 0x17D */
     u8 underline;               /* 0x17E */
-    u8 link;                    /* 0x17F: in <A HREF>: 1 "#name", 2 a URL */
+    u8 link;                    /* 0x17F: in <A HREF>: 1 "#name", 2 a URL; 3 in <A NAME> */
     u8 charW;                   /* 0x180: a full-width character's width at the current size (gFullCharWidths) */
     u8 halfW;                   /* 0x181: a half-width character's width (gHalfCharWidths) */
     u16 pageWidth;              /* 0x182: the page width: the widest line, image, input or cell end (Html_MaxU16); 584 at the start (Html_Parse) */
     u16 bottom;                 /* 0x184: the lowest y laid out */
-    s8 measure;                 /* 0x186: nonzero: measuring (-10 a table), nothing is drawn */
+    s8 measure;                 /* 0x186: the pass, HTML_PASS_*: nonzero, measuring, nothing is drawn */
     u8 unk187[0x188 - 0x187];
     u16 lineNo;                 /* 0x188: index into lines[] */
-    u8 nowrap;                  /* 0x18A: <TD NOWRAP>: 2 */
-    u8 flags;                   /* 0x18B: bit 0: <PRE> (no wrapping) */
+    u8 nowrap;                  /* 0x18A: <TD NOWRAP>: HTML_FLAG_NOWRAP */
+    u8 flags;                   /* 0x18B: HTML_FLAG_PRE outside tables */
     u8 pre;                     /* 0x18C: inside <PRE> */
     u8 paragraph;               /* 0x18D: inside <P> */
     u8 pageKind;                /* 0x18E: the page keyword of the comment (Html_Comment), Page_SetKind at the end */
@@ -279,7 +430,7 @@ typedef struct HtmlState {
     u8 unk111D[0x1120 - 0x111D];
     HtmlMeta meta;              /* 0x1120 */
     HtmlArea area;              /* 0x1228: the <AREA> being read */
-    HtmlLine lines[1000];       /* 0x1540 */
+    HtmlLine lines[1000];       /* 0x1540: HTML_LINES */
     HtmlCell cells[500];        /* 0x24E0 */
     u16 cellCount;              /* 0xD890: the last cell of cells[] in use */
     u8 tableDepth;              /* 0xD892 */
@@ -301,7 +452,7 @@ typedef struct HtmlState {
     u8 inFrame;                 /* 0xE96B: Html_Parse argument: a page in a frame: no inputs, selects, options or rules are laid out (Layout_Input, Layout_Option, Layout_Rule ...) */
     u8 divDepth;                /* 0xE96C */
     u8 divAlign[17];            /* 0xE96D: <DIV ALIGN> of each open <DIV> (gHtmlAlignKeywords: 1 LEFT, 2 CENTER, 3 RIGHT) */
-    u16 pageStyle;              /* 0xE97E: the page style bits (Page_SetStyle; Html_GameStyle sets bits 2, 3, 6 and 7); 0x2E7 at the start (Html_Parse) */
+    u16 pageStyle;              /* 0xE97E: the page style bits (PAGE_STYLE_*, Page_SetStyle; Html_GameStyle sets them from <GAME-STYLE>); HTML_PAGE_STYLE_DEFAULT at the start (Html_Parse) */
     u8 backUrl[0x100];          /* 0xE980: <GAME-STYLE> BACK=ON:url (or the url chosen by the exit number): Page_SetStyle's text */
     HtmlMap maps[16];           /* 0xEA80: <MAP NAME> places, set by <IMG USEMAP> */
     u8 mapCount;                /* 0xFAC0 */
@@ -322,9 +473,8 @@ typedef char HtmlArea_size_check[(sizeof(HtmlArea) == 0x318) ? 1 : -1];
 
 extern HtmlState *gHtml;
 
-/* ---- The image decoders (0x7512E0-0x753B50: PNG and BMP into an Image
- * for the texture code; their error strings name them "plPNG...",
- * "plBMP..."). ---- */
+/* ---- The image decoders: PNG and BMP into an Image for the texture
+ * code (their error strings name them "plPNG...", "plBMP..."). ---- */
 #include "image.h"
 #include "zlib.h"
 

@@ -5,7 +5,7 @@
 #include "dma.h"
 
 /*
- * 0x218C70: the core's system work, 0x470 bytes cleared at boot by
+ * gSysWork (0x218C70): the core's system work, 0x470 bytes cleared at boot by
  * Sys_InitWork (display settings, DMA channels, frame buffers ...). Most
  * code reaches its fields directly by address (gSysFrameMode ..., gDmaChan);
  * the C still does, since a struct member is scheduled differently from a
@@ -14,14 +14,13 @@
  * Gs_SetupDisplay(fbDepth, zDepth, frameMode, tvMode, narrow), which the game
  * calls once as (4, 4, 1, 0, 1): a 32-bit 512x448 NTSC frame, 32-bit Z.
  *
- * After it (not cleared with it; gSysHeap is at 0x219110) the frame buffer
- * description that the drawing code reads:
- *   0x219140 0 (the frame buffer's base), 0x219144 width, 0x219148 height,
- *   0x21914C width * fbDepth (bytes per line), 0x219154 fbDepth,
- *   0x219158..0x219184 the pixel format's channel sizes and shifts
- *   (5/5/5/1 for 16-bit, 8/8/8 for 24-bit, 8/8/8/8 for 32-bit),
- *   0x219190 the display height and 0x219198 its width in pixels (the 2D
- *   primitives scale their 640-wide coordinates to it).
+ * After it come gSysHeap and, not cleared with the work, the frame buffer
+ * description that the drawing code reads, gFrameImage: the frame
+ * buffer's base (0), its width and height, the bytes per line (width *
+ * fbDepth), fbDepth, and the pixel format's channel sizes and shifts
+ * (5/5/5/1 for 16-bit, 8/8/8 for 24-bit, 8/8/8/8 for 32-bit). Then
+ * gDispHeight and gDispWidth, the display's size in pixels (the 2D
+ * primitives scale their 640-wide coordinates to it).
  */
 typedef struct SysWork {
     /* 0x000 */ s32 tvMode;             /* 0 NTSC, 1 PAL at NTSC height, 2 PAL 256 lines */
@@ -65,7 +64,7 @@ typedef struct SysWork {
     /* 0x3F8 */ u8 unk3F8[0x414 - 0x3F8];
     /* 0x414 */ void *buf[2];           /* two 0xA0000 blocks (Packet_InitBuffers) */
     /* 0x41C */ u8 unk41C[0x420 - 0x41C];
-    /* The last GS register values the render state sent (unk_185460.c),
+    /* The last GS register values the render state sent,
      * per drawing context: TEST, ZBUF, SCISSOR (and its rectangle). */
     /* 0x420 */ u64 gsTest[2];          /* gGsTest1, gGsTest2 */
     /* 0x430 */ u64 gsZbuf[2];          /* gGsZbuf1, gGsZbuf2 */

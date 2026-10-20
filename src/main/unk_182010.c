@@ -1,5 +1,5 @@
 /*
- * Small setters (main 0x182010-0x182040): the packet buffer's mode and the
+ * Small setters: the packet buffer's mode and the
  * VBlank count of the next flip.
  */
 #include "common.h"

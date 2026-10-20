@@ -4,10 +4,10 @@
 #include "common.h"
 
 /*
- * CRI ADX, EE side: the GCC-built library in main (0x158930-0x179590).
+ * CRI ADX, EE side: the GCC-built library in main.
  * Only the entry points the Capcom core calls. The names come from the
- * library's own error strings ("E0041303:illigal parameter
- * 'ptid'.(ADXF_GetPtStat)") and from the shape of the ADX API.
+ * library's own error strings, which name the function that reports
+ * them, and from the shape of the ADX API.
  */
 
 typedef void *ADXT;     /* player: 0xC4-byte object, 16 of them at 0x19DF20 */

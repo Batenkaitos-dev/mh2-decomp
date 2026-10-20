@@ -23,6 +23,7 @@
 #include "area.h"
 #include "overlay.h"
 #include "item.h"
+#include "chat_log.h"
 
 /* The fort monsters' first two work bytes, as QSync_ApplyEmState reads them:
  * EM_KIND_LAO_SHAN_LUNG and EM_KIND_ASHEN_LAO_SHAN_LUNG, EM_KIND_SHEN_GAOREN,
@@ -39,17 +40,20 @@ typedef char EmFortWork_size_check[(sizeof(EmFortWork) == sizeof(EmWork)) ? 1 : 
 s32 strlen(char *);
 void Chat_LogAddLocal(u8, u8, char *);
 void Plsel_LogChatFrom(u8 slot, u8 flag, char *text);
-/* gScene.preset, the players' user ids (message 10 kind 2), under its own
+/* gScene.userIds, the players' user ids (message 10 kind 2), under its own
  * name: QSync_OnState matches only with the address loaded whole (the
  * field form folds the offset into the store). */
-extern s8 gSceneUserIds[SCENE_PLAYERS][QSYNC_USER_ID_LEN];
+extern s8 gSceneUserIds[SCENE_PLAYERS][LOBBY_USER_ID_LEN];
 
 void QNetIf_Post(void *msg, s32 unused);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
 void SupplyBox_StartMove(u16, u8);
 
 s32 Game_IsOnline(void);
-void Em_ChangeStateRouted(Em *em, u8 a, u8 b, s32 c); /* unit's own declaration: the definition (game unk_701810.c) takes s32 a, s32 b; s32 here changes QSync_OnEm */
+/* QSync_OnEm's calls narrow the group and the state to bytes, as the game's
+ * code does; with the definition's s32 a and b they would pass them whole.
+ * unit's own declaration: declared as the caller uses it. */
+void Em_ChangeStateRouted(Em *em, u8 a, u8 b, s32 c);
 void Em_SpawnPartEffects(Em *em, u8 mask);
 s32 Quest_IsVersus(void);
 void Loading_Stop(void);
@@ -79,7 +83,7 @@ void Item_UsePlaced(Player *p);
 s16 Pouch_Count(Player *p, u16 item);
 u8 PouchBackup_Use(Player *p, u16 item, s16 n);
 s32 Side_Match(u8 a, u8 b, u8 none);
-void HuntingHorn_PlaySong(Player *p, u8 song, u8 quiet); /* the definition (game unk_6BB9D0.c) has (Em *em, ...): the player is passed */
+void HuntingHorn_PlaySong(Player *p, u8 song, u8 quiet);
 void HuntingHorn_SongFxAllies(Player *p);
 void HuntingHorn_SongFxSelf(Player *p);
 
@@ -172,10 +176,10 @@ void QSync_SendPlayer(Player *pl, s32 kind, u16 mode)
             msg.u.k2.staminaMax = pl->staminaMax;
             QSync_QueuePlayerPos(pl, pl->pos);
             break;
-        case QSYNC_PL_SPOT:
-        case QSYNC_PL_SPOT + 1:
-        case QSYNC_PL_SPOT + 2:
-            msg.len = QSYNC_LEN_PL_SPOT;
+        case QSYNC_PL_ENTER_AREA:
+        case QSYNC_PL_FAINT_TO_CAMP:
+        case QSYNC_PL_RELOCATED:
+            msg.len = QSYNC_LEN_PL_PLACE;
             msg.u.k3.pos[0] = pl->startPos[0];
             msg.u.k3.pos[1] = pl->startPos[1];
             msg.u.k3.pos[2] = pl->startPos[2];
@@ -377,9 +381,9 @@ void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg)
             player->targetPos[1] = data->k2.pos[1];
             player->targetPos[2] = data->k2.pos[2];
             break;
-        case QSYNC_PL_SPOT:
-        case QSYNC_PL_SPOT + 1:
-        case QSYNC_PL_SPOT + 2:
+        case QSYNC_PL_ENTER_AREA:
+        case QSYNC_PL_FAINT_TO_CAMP:
+        case QSYNC_PL_RELOCATED:
             player->startPos[0] = data->k3.pos[0];
             player->startPos[1] = data->k3.pos[1];
             player->startPos[2] = data->k3.pos[2];
@@ -388,7 +392,7 @@ void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg)
             player->area = data->k3.area;
             player->carry = data->k3.carry;
             player->mashLeft = (u8)data->k3.mashLeft;
-            if (kind == QSYNC_PL_SPOT + 1) {
+            if (kind == QSYNC_PL_FAINT_TO_CAMP) {
                 switch (player->area) {
                 default:
                     player->visible = 0;
@@ -397,15 +401,15 @@ void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg)
                 case AREA_TOWER_3:
                 case AREA_TOWER_7:
                     player->visible = 1;
-                    player->areaMoveState = 3;
+                    player->areaMoveState = PL_AREA_MOVE_RESPAWN;
                     Player_Reset(player);
                     break;
                 }
             } else {
-                if (kind == QSYNC_PL_SPOT) {
-                    player->areaMoveState = 0;
+                if (kind == QSYNC_PL_ENTER_AREA) {
+                    player->areaMoveState = PL_AREA_MOVE_NONE;
                 } else {
-                    player->areaMoveState = 1;
+                    player->areaMoveState = PL_AREA_MOVE_ENTER;
                 }
                 Player_Reset(player);
             }
@@ -460,7 +464,7 @@ void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg)
                     }
                     Pouch_Add((Player *)player, player->offerItem, -player->offerCount);
                     QSync_SendPlayer(player, QSYNC_PL_ITEM_ANSWER, QSYNC_ITEM_GIVEN);
-                    player->offerState = 0xFF; /* given */
+                    player->offerState = PL_OFFER_GIVEN;
                 } else {
                     QSync_SendPlayer(player, QSYNC_PL_ITEM_ANSWER, QSYNC_ITEM_REFUSED);
                 }
@@ -470,12 +474,12 @@ void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg)
             if (data->k7.asker == gScene.localPlayer) {
                 localPl = (Player *)&gPlayers[gScene.localPlayer];
                 if (data->k7.result & QSYNC_ITEM_GIVEN) {
-                    localPl->offerState = 1; /* received */
+                    localPl->offerState = PL_OFFER_RECEIVED;
                     item = data->k7.item;
                     Pouch_Add((Player *)localPl, item, data->k7.count);
-                    Notice_Push(1, 0xD, item); /* the item received */
+                    Notice_Push(NOTICE_KIND_ITEM, NOTICE_ITEM_RECEIVED, item);
                 } else {
-                    localPl->offerState = 2; /* refused */
+                    localPl->offerState = PL_OFFER_REFUSED;
                 }
             }
             break;
@@ -488,7 +492,7 @@ void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg)
             player->hornSong = data->k2.hornSong;
             player->area = data->k2.area;
             local = (Player *)&gPlayers[gScene.localPlayer];
-            if (local->area == player->area && local->stateGroup != PL_GROUP_FAINT && local->stateGroup != PL_GROUP_EVENT && local->areaMoveState == 0) {
+            if (local->area == player->area && local->stateGroup != PL_GROUP_FAINT && local->stateGroup != PL_GROUP_EVENT && local->areaMoveState == PL_AREA_MOVE_NONE) {
                 switch (player->hornSong) {
                 case 0:
                 case 1:
@@ -577,7 +581,7 @@ void QSync_SendEm(Em *em, u8 kind, u8 arg)
             }
             msg.u.k1.flags = flagBits;
             statusBits = 0;
-            if (em->statusFlags & 4) { /* poisoned */
+            if (em->statusFlags & EM_STATUSF_POISONED) {
                 statusBits |= QSYNC_EM_POISONED;
             }
             if (em->blindTimer != 0) {
@@ -629,7 +633,7 @@ void QSync_SendEm(Em *em, u8 kind, u8 arg)
             msg.u.k1.rand = em->syncRand;
             msg.u.k1.hp = em->hp;
             statusBits = 0;
-            if (em->statusFlags & 4) { /* poisoned */
+            if (em->statusFlags & EM_STATUSF_POISONED) {
                 statusBits |= QSYNC_EM_POISONED;
             }
             if (em->blindTimer != 0) {
@@ -685,7 +689,7 @@ void QSync_SendEm(Em *em, u8 kind, u8 arg)
             }
             msg.u.k3.flags = flagBits;
             statusBits = 0;
-            if (em->statusFlags & 4) { /* poisoned */
+            if (em->statusFlags & EM_STATUSF_POISONED) {
                 statusBits |= QSYNC_EM_POISONED;
             }
             if (em->blindTimer != 0) {
@@ -832,7 +836,7 @@ void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg)
                 }
             }
             status = data->k1.status;
-            if ((status & QSYNC_EM_POISONED) && !(em->statusFlags & 4 /* poisoned */)) {
+            if ((status & QSYNC_EM_POISONED) && !(em->statusFlags & EM_STATUSF_POISONED)) {
                 Em_AddPoison(em, em->poisonThreshold);
             }
             if ((status & QSYNC_EM_FLASHED) && em->blindTimer == 0) {
@@ -848,7 +852,7 @@ void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg)
             }
             if ((status & QSYNC_EM_PAINTED) && em->painted == 0) {
                 em->painted = 1;
-                em->paintTimer = 18000; /* frames: 10 min */
+                em->paintTimer = EM_PAINT_FRAMES; /* 10 min */
             }
             if (!(status & QSYNC_EM_PAINTED) && em->painted != 0) {
                 em->painted = 0;
@@ -895,7 +899,7 @@ void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg)
                 em->rotZ = data->k1.rot[2];
             }
             status = data->k1.status;
-            if ((status & QSYNC_EM_POISONED) && !(em->statusFlags & 4 /* poisoned */)) {
+            if ((status & QSYNC_EM_POISONED) && !(em->statusFlags & EM_STATUSF_POISONED)) {
                 Em_AddPoison(em, em->poisonThreshold);
             }
             if ((status & QSYNC_EM_FLASHED) && em->blindTimer == 0) {
@@ -911,7 +915,7 @@ void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg)
             }
             if ((status & QSYNC_EM_PAINTED) && em->painted == 0) {
                 em->painted = 1;
-                em->paintTimer = 18000; /* frames: 10 min */
+                em->paintTimer = EM_PAINT_FRAMES; /* 10 min */
             }
             if (!(status & QSYNC_EM_PAINTED) && em->painted != 0) {
                 em->painted = 0;
@@ -1000,7 +1004,7 @@ void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg)
             em->syncRand = data->k3.rand;
             em->timer = data->k3.timer;
             status = data->k3.status;
-            if ((status & QSYNC_EM_POISONED) && !(em->statusFlags & 4 /* poisoned */)) {
+            if ((status & QSYNC_EM_POISONED) && !(em->statusFlags & EM_STATUSF_POISONED)) {
                 Em_AddPoison(em, em->poisonThreshold);
             }
             if ((status & QSYNC_EM_FLASHED) && em->blindTimer == 0) {
@@ -1016,7 +1020,7 @@ void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg)
             }
             if ((status & QSYNC_EM_PAINTED) && em->painted == 0) {
                 em->painted = 1;
-                em->paintTimer = 18000; /* frames: 10 min */
+                em->paintTimer = EM_PAINT_FRAMES; /* 10 min */
             }
             if (!(status & QSYNC_EM_PAINTED) && em->painted != 0) {
                 em->painted = 0;
@@ -1404,7 +1408,7 @@ void QSync_SendState(u8 kind, u8 who)
             msg.u.k2.unk14 = sync->unkDC;
             msg.u.k2.unk16 = sync->unkE0;
             msg.u.k2.unk17 = sync->unkDF;
-            for (k = 0; k < QSYNC_USER_ID_LEN; k++) {
+            for (k = 0; k < LOBBY_USER_ID_LEN; k++) {
                 msg.u.k2.userId[k] = ((s8 *)&gScene - 0xE3278)[k];
             }
             break;
@@ -1458,7 +1462,7 @@ void QSync_SendState(u8 kind, u8 who)
 extern u16 gNextQuestId;
 /* Applies game message 10 (QSync_SendState's), by kind (QSyncStateKind):
  * the host's player count; a player's part of gQuestSync and its user id
- * (into gScene.preset), and from player 0 the shared values; gQuest's net
+ * (into gScene.userIds), and from player 0 the shared values; gQuest's net
  * message (Quest_HandleNetMsg applies it); a request to the host for a
  * supply box slot, which marks the slot as QSync_OnSupply does and answers
  * with QSYNC_STATE_SUPPLY_ANSWER (the slot, or QSYNC_SLOT_TAKEN, and the
@@ -1496,7 +1500,7 @@ void QSync_OnState(u8 from, QSyncStateMsg *msg, s32 arg)
             sync->ready[who] = data->k2.ready;
             sync->picks[who] = data->k2.pick;
             dst = gSceneUserIds[who];
-            for (k = 0; k < QSYNC_USER_ID_LEN; k++) {
+            for (k = 0; k < LOBBY_USER_ID_LEN; k++) {
                 dst[k] = data->k2.userId[k];
             }
             if (gScene.localPlayer != gScene.host && who == 0) {

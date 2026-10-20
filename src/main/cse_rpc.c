@@ -151,7 +151,7 @@ void CseRpc_Send(void)
     } while (ret != 0);
 }
 
-/* cse_rpc's .data (0x1BCC80-0x1BCC98) */
+/* This file's initialised data. */
 s32 gCseRpcSema = {
 #include "main/001BCC80.inc"
 };

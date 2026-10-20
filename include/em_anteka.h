@@ -2,8 +2,9 @@
 #define EM_ANTEKA_H
 
 /*
- * The Anteka family's vocabulary (src/game/em_khezu.c, EmAnteka_*): the
- * Anteka (EM_KIND_ANTEKA) and the Kelbi (EM_KIND_KELBI).
+ * The Anteka family's vocabulary (EmAnteka_*): the
+ * Anteka (EM_KIND_ANTEKA) and kind 3, likely the Kelbi (EM_KIND_KELBI: the
+ * name is inferred, the code doesn't show which monster it is).
  * Both run the same functions. Only the Kelbi has Em.gender: a smaller body,
  * a second hp row, and a layer-1 copy of some motions (EmAnteka_SetMotion).
  *

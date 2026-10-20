@@ -50,126 +50,182 @@ segments:
     bss_size: 0xB00
     subsegments:
       - [0x40, asm, text]
-      - [0x80, c, unk_6AF280]         # 0x6AF280: starts with game_entry
-      - [0xC7D0, c, unk_6BB9D0]
-      - [0x188E0, c, unk_6C7AE0]    # 0x6C7AE0: BowgunShot_* and EffEm07_*
-      - [0x1BBF0, c, unk_6CADF0]    # 0x6CADF0: EffEm08_*, level 4
-      - [0x237F0, c, unk_6D29F0]    # 0x6D29F0: Eff09_* and Eff10_*
-      - [0x24950, c, unk_6D3B50]
-      - [0x31450, c, unk_6E0650]    # 0x6E0650: Eff28_* to EffYamatsukami31_*
-      - [0x34900, c, unk_6E3B00]    # 0x6E3B00: EffEm33_*, level 4
-      - [0x3B020, c, unk_6EA220]    # 0x6EA220: EffShakalaka34_*, EffKushala30b_*, EffEm02_*
-      - [0x3BE60, c, unk_6EB060]    # 0x6EB060: object state handlers (two jump tables)
-      - [0x3C390, c, unk_6EB590]
-      - [0x3D480, c, unk_6EC680]
-      - [0x49810, c, unk_6F8A10]
-      - [0x50430, c, unk_6FF630]    # 0x6FF630-0x701810: compiled at optimization level 4
-      - [0x52610, c, unk_701810]
-      - [0x585A0, c, unk_7077A0]    # 0x7077A0: monster status effects and helpers
-      - [0x59650, c, unk_708850]    # 0x708850: monster hit points, motions, sound effects at bones
-      - [0x5B090, c, unk_70A290]
-      - [0x84990, c, unk_733B90]    # 0x733B90: small accessors of an object's tables
-      - [0x84CA0, c, unk_733EA0]
-      - [0x874B0, c, em_drome]        # 0x7366B0: Velocidrome, Gendrome, Iodrome (kinds 0x1B, 0x1C, 0x1F)
-      - [0x95230, c, em_garuga]       # 0x744430: Yian Garuga (0x28)
-      - [0xA9250, c, em_hermitaur]    # 0x758450: Daimyo Hermitaur, Shogun Ceanataur (0x30, 0x43)
-      - [0xB5BE0, c, em_gravios]      # 0x764DE0: Gravios, Black Gravios, Basarios (0x11, 0x2F, 0x16)
-      - [0xC8A30, c, em_kutku]        # 0x777C30: Yian Kut-Ku, Gypceros and subspecies (6, 0x26, 0x14, 0x27)
-      - [0xDADE0, c, em_plesioth]     # 0x789FE0: Plesioth, Green Plesioth (0x15, 0x2E)
-      - [0xF2450, c, em_diablos]      # 0x7A1650: Diablos, Monoblos and subspecies (0xE, 0x2B, 0x1A, 0x2C)
-      - [0xFF200, c, em_khezu]        # 0x7AE400: Khezu, Red Khezu (0xF, 0x2D)
-      - [0x11C0D0, c, em_laoshan]     # 0x7CB2D0: Lao-Shan Lung and Ashen (7, 0x32)
-      - [0x1251D0, c, em_cephadrome]  # 0x7D43D0: Cephadrome, Cephalos (8, 0x22)
-      - [0x138040, c, em_rathalos]    # 0x7E7240: Rathian, Rathalos and subspecies (1, 0xB, 0x25, 0x29, 0x2A, 0x31)
-      - [0x15DBF0, c, em_blangonga]   # 0x80CDF0: Blangonga, Congalala, Rajang (0x33, 0x34, 0x35)
-      - [0x173D00, c, em_shengaoren]  # 0x822F00: Shen Gaoren (0x37)
-      - [0x17DCE0, c, em_kushala]     # 0x82CEE0: Kushala Daora, Lunastra, Teostra (0x36, 0x3C, 0x40, 0x41)
-      - [0x195510, c, em_yamatsukami] # 0x844710: Yama Tsukami (0x3A, 0x48)
-      - [0x19CB60, c, em_chameleos]   # 0x84BD60: Chameleos (0x3B)
-      - [0x1ACD00, c, em_bulldrome]   # 0x85BF00: Bulldrome (0x44) and what follows
-      - [0x1B8F10, c, unk_868110]
-      - [0x1C5990, c, unk_874B90]
-      - [0x1D1B50, c, unk_880D50]
-      - [0x1DF560, c, unk_88E760]
+      - [0x80, c, weapon_states]      # 0x6AF280: starts with game_entry
+      - [0xC7D0, c, horn_gunlance_bow]
+      - [0x188E0, c, bowgun_shot]   # 0x6C7AE0: BowgunShot_* and EffEm07_*
+      - [0x1BBF0, c, em_ranged_attack]  # 0x6CADF0: EffEm08_*, level 4
+      - [0x237F0, c, explosion]     # 0x6D29F0: Eff09_* and Eff10_*
+      - [0x24950, c, attack_families]
+      - [0x31450, c, elder_attacks]  # 0x6E0650: Eff28_* to EffYamatsukami31_*
+      - [0x34900, c, em_effect_attack]  # 0x6E3B00: EffEm33_*, level 4
+      - [0x3B020, c, shakalaka_teostra_bulldrome]  # 0x6EA220: EffShakalaka34_*, EffKushala30b_*, EffEm02_*
+      - [0x3BE60, c, volcano_hazard]  # 0x6EB060: object state handlers (two jump tables)
+      - [0x3C390, c, gunlance_blast]
+      - [0x3D8A0, c, area_objects]
+      - [0x49810, c, area_scenery]
+      - [0x50430, c, em_sight]      # 0x6FF630-0x701810: compiled at optimization level 4
+      - [0x52610, c, em_common]
+      - [0x585A0, c, em_status]     # 0x7077A0: monster status effects and helpers
+      - [0x59650, c, em_helpers]    # 0x708850: monster hit points, motions, sound effects at bones
+      - [0x5B090, c, player_states]
+      - [0x84990, c, em_script_set]  # 0x733B90: small accessors of an object's tables
+      - [0x84CA0, c, player_hit]
+      - [0x86BB0, c, em_drome]        # 0x735DB0: Velocidrome, Gendrome, Iodrome (kinds 0x1B, 0x1C, 0x1F)
+      - [0x8DE60, c, em_kind1d]             # 0x73D060: kind 0x1D
+      - [0x8E580, c, em_kirin]              # 0x73D780: Kirin (0x21)
+      - [0x92980, c, em_garuga]       # 0x741B80: Yian Garuga (0x28)
+      - [0xA2BD0, c, em_hermitaur]    # 0x751DD0: Daimyo Hermitaur, Shogun Ceanataur (0x30, 0x43)
+      - [0xB2B50, c, em_gravios]      # 0x761D50: Gravios, Black Gravios, Basarios (0x11, 0x2F, 0x16)
+      - [0xC1200, c, em_felyne_cart]        # 0x770400: the Felyne cart (0x12)
+      - [0xC1DC0, c, em_vespoid]            # 0x770FC0: Vespoid (0x13)
+      - [0xC5B80, c, em_kutku]        # 0x774D80: Yian Kut-Ku, Gypceros and subspecies (6, 0x26, 0x14, 0x27)
+      - [0xD9350, c, em_plesioth]     # 0x788550: Plesioth, Green Plesioth (0x15, 0x2E)
+      - [0xE6FE0, c, em_trader]             # 0x7961E0: the trader (0xA)
+      - [0xEA170, c, em_apceros]            # 0x799370: Apceros, Popo (0x19, 0x46)
+      - [0xEFFA0, c, em_diablos]      # 0x79F1A0: Diablos, Monoblos and subspecies (0xE, 0x2B, 0x1A, 0x2C)
+      - [0xFD3C0, c, em_khezu]        # 0x7AC5C0: Khezu, Red Khezu (0xF, 0x2D)
+      - [0x10AA00, c, em_velociprey]        # 0x7B9C00: Velociprey, Genprey, Ioprey, Giaprey (0x10, 0xD, 0x1E, 0x23)
+      - [0x112170, c, em_anteka]            # 0x7C1370: Anteka, Kelbi (0x45, 3)
+      - [0x116150, c, em_mosswine]          # 0x7C5350: Mosswine, Bullfango (4, 5)
+      - [0x118EB0, c, em_laoshan]     # 0x7C80B0: Lao-Shan Lung and Ashen (7, 0x32)
+      - [0x1236E0, c, em_cephadrome]  # 0x7D28E0: Cephadrome, Cephalos (8, 0x22)
+      - [0x12FF70, c, em_melynx]            # 0x7DF170: Melynx (0x17)
+      - [0x135470, c, em_rathalos]    # 0x7E4670: Rathian, Rathalos and subspecies (1, 0xB, 0x25, 0x29, 0x2A, 0x31)
+      - [0x14AA50, c, em_fatalis]     # 0x7F9C50: Fatalis (2, 0x24, 0x47)
+      - [0x155300, c, em_blangonga]   # 0x804500: Blangonga, Congalala, Rajang (0x33, 0x34, 0x35)
+      - [0x16BC00, c, em_shengaoren_states] # 0x81AE00: Shen Gaoren's state changes
+      - [0x16C0A0, c, em_kushala_states] # 0x81B2A0: Kushala Daora's wind, state changes, curves
+      - [0x16D2E0, c, em_shengaoren]  # 0x81C4E0: Shen Gaoren (0x37)
+      - [0x179000, c, em_kushala]     # 0x828200: Kushala Daora, Lunastra, Teostra (0x36, 0x3C, 0x40, 0x41)
+      - [0x189EA0, c, em_kind38]            # 0x8390A0: kind 0x38
+      - [0x18C890, c, em_shakalaka]         # 0x83BA90: Shakalaka (0x39)
+      - [0x1910F0, c, em_yamatsukami] # 0x8402F0: Yama Tsukami (0x3A, 0x48)
+      - [0x19AAD0, c, em_chameleos]   # 0x849CD0: Chameleos (0x3B)
+      - [0x1A4520, c, em_remobra]     # 0x853720: Remobra (0x3F)
+      - [0x1A8630, c, em_chameleos_states] # 0x857830: Chameleos's state changes, curves, invisibility
+      - [0x1A9810, c, em_bulldrome]   # 0x858A10: Bulldrome (0x44)
+      - [0x1AD3F0, c, em_fatalis_states] # 0x85C5F0: Fatalis's state changes and curves
+      - [0x1AE120, c, stage_objects]    # 0x85D320: stage objects, effect particles, item props
+      - [0x1B8F10, c, hit_effects]
+      - [0x1C5990, c, dust_flash_effects]
+      - [0x1D1B50, c, monster_effects]
+      - [0x1DF560, c, player_effects]
       # the zeros from StageObj_BowArc_Create's end to .data (0x895300): with the last function
       # in C they are a piece of their own
       - { start: 0x1E60A0, type: data, name: text_end, linker_section_order: .text }
-      - [0x1E6100, .data, unk_6AF280]
-      - [0x1E7CD0, .data, unk_6BB9D0]
-      - [0x1ECD88, .data, unk_6C7AE0]
-      - [0x1ED4F0, .data, unk_6CADF0]
-      - [0x1EEC10, .data, unk_6D29F0]
-      - [0x1EFA80, .data, unk_6D3B50]
-      - [0x1F9500, .data, unk_6E0650]
-      - [0x1FC400, .data, unk_6E3B00]
-      - [0x1FE1A0, .data, unk_6EA220]
-      - [0x1FF5D0, .data, unk_6EB060]
-      - [0x1FF670, .data, unk_6EB590]
-      - [0x1FFA50, .data, unk_6EC680]
-      - [0x201810, .data, unk_6F8A10]
-      - [0x2022A8, .data, unk_6FF630]
-      - [0x20BA10, .data, unk_701810]
-      - [0x20DA98, .data, unk_7077A0]
-      - [0x210250, .data, unk_733EA0]
-      - [0x2107C0, .data, unk_708850]
-      - [0x214300, .data, unk_70A290]
+      - [0x1E6100, .data, weapon_states]
+      - [0x1E7CD0, .data, horn_gunlance_bow]
+      - [0x1ECD88, .data, bowgun_shot]
+      - [0x1ED4F0, .data, em_ranged_attack]
+      - [0x1EEC10, .data, explosion]
+      - [0x1EFA80, .data, attack_families]
+      - [0x1F9500, .data, elder_attacks]
+      - [0x1FC400, .data, em_effect_attack]
+      - [0x1FE1A0, .data, shakalaka_teostra_bulldrome]
+      - [0x1FF5D0, .data, volcano_hazard]
+      - [0x1FF670, .data, gunlance_blast]
+      - [0x1FFB60, .data, area_objects]
+      - [0x201810, .data, area_scenery]
+      - [0x2022A8, .data, em_sight]
+      - [0x20BA10, .data, em_common]
+      - [0x20DA98, .data, em_status]
+      - [0x210250, .data, player_hit]
+      - [0x2107C0, .data, em_helpers]
+      - [0x214300, .data, player_states]
       - [0x214C50, .data, em_drome]
+      - [0x214F40, .data, em_kind1d]
+      - [0x214FC0, .data, em_kirin]
       - [0x214FE0, .data, em_garuga]
       - [0x215890, .data, em_hermitaur]
       - [0x215930, .data, em_gravios]
+      - [0x216150, .data, em_felyne_cart]
+      - [0x216170, .data, em_vespoid]
       - [0x216590, .data, em_kutku]
       - [0x216E70, .data, em_plesioth]
+      - [0x217340, .data, em_trader]
+      - [0x2180B0, .data, em_apceros]
       - [0x218140, .data, em_diablos]
       - [0x218980, .data, em_khezu]
+      - [0x219270, .data, em_velociprey]
+      - [0x219910, .data, em_anteka]
+      - [0x219930, .data, em_mosswine]
       - [0x2199D0, .data, em_laoshan]
       - [0x219A10, .data, em_cephadrome]
+      - [0x219EE0, .data, em_melynx]
       - [0x219F00, .data, em_rathalos]
+      - [0x21A958, .data, em_fatalis]
       - [0x21AA60, .data, em_blangonga]
-      - [0x21AE80, .data, em_shengaoren]
+      - [0x21AC60, .data, em_kushala_states]
+      - [0x21AE50, .data, em_shengaoren]
       - [0x21AF00, .data, em_kushala]
-      - [0x21B7A8, .data, em_yamatsukami]
+      - [0x21B060, .data, em_kind38]
+      - [0x21B110, .data, em_shakalaka]
+      - [0x21B170, .data, em_yamatsukami]
       - [0x21B900, .data, em_chameleos]
-      - [0x21C2E0, .data, em_bulldrome]
-      - [0x21F440, .data, unk_868110]
-      - [0x221620, .data, unk_874B90]
-      - [0x2261B0, .data, unk_880D50]
-      - [0x229990, .data, unk_88E760]
-      - [0x22B370, .rodata, unk_6AF280]
-      - [0x22DD80, .rodata, unk_6BB9D0]
-      - [0x22E150, .rodata, unk_6C7AE0]
-      - [0x22E2B0, .rodata, unk_6CADF0]
-      - [0x22E5F0, .rodata, unk_6D29F0]
-      - [0x22E740, .rodata, unk_6D3B50]
-      - [0x22EC30, .rodata, unk_6E0650]
-      - [0x22ED10, .rodata, unk_6E3B00]
-      - [0x22EF60, .rodata, unk_6EA220]
-      - [0x22EFF0, .rodata, unk_6EB060]
-      - [0x22F040, .rodata, unk_6EB590]
-      - [0x22F0A0, .rodata, unk_6EC680]
-      - [0x23D050, .rodata, unk_6F8A10]
-      - [0x23D1B0, .rodata, unk_701810]
-      - [0x23D400, .rodata, unk_70A290]
-      - [0x23E080, .rodata, unk_733EA0]
-      - [0x23E200, .rodata, em_drome]
-      - [0x23E900, .rodata, em_garuga]
-      - [0x23F030, .rodata, em_hermitaur]
+      - [0x21BA00, .data, em_remobra]
+      - [0x21C130, .data, em_chameleos_states]
+      - [0x21C280, .data, em_bulldrome]
+      - [0x21D3E0, .data, em_fatalis_states]
+      - [0x21DA50, .data, stage_objects]
+      - [0x21F440, .data, hit_effects]
+      - [0x221620, .data, dust_flash_effects]
+      - [0x2261B0, .data, monster_effects]
+      - [0x229990, .data, player_effects]
+      - [0x22B370, .rodata, weapon_states]
+      - [0x22DD80, .rodata, horn_gunlance_bow]
+      - [0x22E150, .rodata, bowgun_shot]
+      - [0x22E2B0, .rodata, em_ranged_attack]
+      - [0x22E5F0, .rodata, explosion]
+      - [0x22E740, .rodata, attack_families]
+      - [0x22EC30, .rodata, elder_attacks]
+      - [0x22ED10, .rodata, em_effect_attack]
+      - [0x22EF60, .rodata, shakalaka_teostra_bulldrome]
+      - [0x22EFF0, .rodata, volcano_hazard]
+      - [0x22F040, .rodata, gunlance_blast]
+      - [0x22F0A0, .rodata, area_objects]
+      - [0x23D050, .rodata, area_scenery]
+      - [0x23D1B0, .rodata, em_common]
+      - [0x23D400, .rodata, player_states]
+      - [0x23E080, .rodata, player_hit]
+      - [0x23E120, .rodata, em_drome]
+      - [0x23E550, .rodata, em_kind1d]
+      - [0x23E5C0, .rodata, em_kirin]
+      - [0x23E750, .rodata, em_garuga]
+      - [0x23EF00, .rodata, em_hermitaur]
       - [0x23F3D0, .rodata, em_gravios]
-      - [0x23FAE0, .rodata, em_kutku]
+      - [0x23F730, .rodata, em_felyne_cart]
+      - [0x23F750, .rodata, em_vespoid]
+      - [0x23F920, .rodata, em_kutku]
       - [0x240170, .rodata, em_plesioth]
+      - [0x240560, .rodata, em_trader]
+      - [0x240660, .rodata, em_apceros]
       - [0x2407F0, .rodata, em_diablos]
       - [0x240AC0, .rodata, em_khezu]
+      - [0x240ED0, .rodata, em_velociprey]
+      - [0x241330, .rodata, em_anteka]
+      - [0x241490, .rodata, em_mosswine]
       - [0x241650, .rodata, em_laoshan]
       - [0x2417F0, .rodata, em_cephadrome]
-      - [0x241E00, .rodata, em_rathalos]
-      - [0x242E20, .rodata, em_blangonga]
-      - [0x243730, .rodata, em_shengaoren]
-      - [0x243B30, .rodata, em_kushala]
-      - [0x2442F0, .rodata, em_yamatsukami]
-      - [0x2445A0, .rodata, em_chameleos]
-      - [0x244BE0, .rodata, em_bulldrome]
-      - [0x244F10, .rodata, unk_868110]
-      - [0x245350, .rodata, unk_874B90]
-      - [0x2457B0, .rodata, unk_880D50]
-      - [0x245CB0, .rodata, unk_88E760]
+      - [0x241B10, .rodata, em_melynx]
+      - [0x241C70, .rodata, em_rathalos]
+      - [0x2425D0, .rodata, em_fatalis]
+      - [0x2429E0, .rodata, em_blangonga]
+      - [0x243400, .rodata, em_shengaoren_states]
+      - [0x2434A0, .rodata, em_kushala_states]
+      - [0x243640, .rodata, em_shengaoren]
+      - [0x2438D0, .rodata, em_kushala]
+      - [0x243EB0, .rodata, em_kind38]
+      - [0x243F90, .rodata, em_shakalaka]
+      - [0x244160, .rodata, em_yamatsukami]
+      - [0x244470, .rodata, em_chameleos]
+      - [0x2447A0, .rodata, em_remobra]
+      - [0x244910, .rodata, em_chameleos_states]
+      - [0x244A30, .rodata, em_bulldrome]
+      - [0x244C40, .rodata, em_fatalis_states]
+      - [0x244D20, .rodata, stage_objects]
+      - [0x244F10, .rodata, hit_effects]
+      - [0x245350, .rodata, dust_flash_effects]
+      - [0x2457B0, .rodata, monster_effects]
+      - [0x245CB0, .rodata, player_effects]
       - { type: bss, vram: 0x8F5200, name: bss }
   - [0x246000]

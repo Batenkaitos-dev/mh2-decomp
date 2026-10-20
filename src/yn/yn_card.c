@@ -1,10 +1,9 @@
 /*
- * yn: the first Capcom unit of the overlay (0xAC96D0-0xAC9B90), after
- * Sony's netcnfif library: memory card slot checks, and the work pointer
- * gYnWork that the rest of the overlay uses. The file owns its .rodata
- * (the network settings directory's name, 0xAD2770) and .bss
- * (0xAD5B40-0xAD9B50). The checks run one frame at a time through
- * sub_main's memory card task (gCardTask, the MC_* names in yn.h).
+ * yn: the first Capcom file of the overlay, after Sony's netcnfif
+ * library: memory card slot checks, and the work pointer gYnWork that the
+ * rest of the overlay uses. The file owns its .rodata (the network
+ * settings directory's name) and .bss. The checks run one frame at a time
+ * through sub_main's memory card task (gCardTask, the MC_* names in yn.h).
  */
 #include "common.h"
 #include "m2c_macros.h"
@@ -13,7 +12,7 @@
 void Stream_Reset(void);
 void CardTask_Begin(s32 mode);
 void CardTask_Update(void);
-void CardTask_StartCheck(void);
+void CardTask_StartPoll(void);
 void CardTask_StartList(s32 a, char *b, u8 *c);
 s32 CardTask_Result(void);
 s32 YnCard_MapError(s32 err);
@@ -55,7 +54,7 @@ s32 YnCard_CheckSlots(YnCardCheck *check)
         MC_SLOT = 0;
         MC_TYPE[0] = -1;
         MC_TYPE[1] = -1;
-        CardTask_StartCheck();
+        CardTask_StartPoll();
     case 1:
         CardTask_Update();
         if (MC_TYPE[0] != -1 && check->slot0Done == 0) {
@@ -102,7 +101,7 @@ s32 YnCard_CheckCurrentSlot(YnCardCheck *check)
         CardTask_Begin(2);
         MC_SLOT = gYnWork->slot;
         gCardTaskTypes[gYnWork->slot] = -1;
-        CardTask_StartCheck();
+        CardTask_StartPoll();
     case 1:
         CardTask_Update();
         slot = gYnWork->slot;

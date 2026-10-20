@@ -1,4 +1,4 @@
-# Em_TurnToward (game, src/game/unk_701810.c)
+# Em_TurnToward (game, src/game/em_common.c)
 
 ## Status
 

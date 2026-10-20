@@ -1,8 +1,7 @@
 /*
  * select: the PSP link, which connects to Monster Hunter Portable on a
- * PSP over USB (0x6C2DB0-0x6C7D80, the overlay's last unit with code; its
- * .data 0x6CC1E0-0x6CD7F8, .rodata 0x6D0720-0x6D0980, .bss
- * 0x6D21A8-0x6D3280).
+ * PSP over USB (the overlay's last file with code, with its .data, .rodata
+ * and .bss).
  *
  * Psp_ConnectTask runs the screens after the character selection: it
  * loads the IOP module for the PSP's USB link and starts Psp_Thread, which
@@ -23,6 +22,7 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "select.h"
 #include "syssave.h"
 #include "save.h"
+#include "quest.h"
 
 /* Sony's kernel thread parameters */
 struct ThreadParam {
@@ -249,7 +249,7 @@ s32 Psp_AnyObjectActive(void);
 void Psp_Release(void);
 void Stream_Stop(s32 ch);
 void Task_StartBootToGmSub(void);
-/* unit's own declaration: with the definition's u8 (void) (sub_main/unk_3D54B0.c), Psp_ConnectTask: 8 of 959 words differ */
+/* unit's own declaration: declared s32 as Psp_ConnectTask uses it; with the definition's u8 return, the call compiles differently */
 s32 NetMenu_Update(void);
 void Gfx_DrawBlackLineFixed(void);
 void Frame_Draw(void);
@@ -729,12 +729,12 @@ void Psp_InitItemMask(void)
     mask = gPspWork->sendBuf;
     for (i = 0; i < 0xE; i++) {
         if (i == 9) {
-            if (Save_TestEventFlag(0x81) == 0) {
+            if (Save_TestEventFlag(EVENT_FLAG_KUSHALA_SEEN) == 0) {
                 continue;
             }
         }
         if (i == 0xA) {
-            if (Save_IsQuestCleared(0x138C) == 0) {
+            if (Save_IsQuestCleared(QUEST_ID_KUSHALA_SNOW_SCENE) == 0) {
                 continue;
             }
         }
@@ -2143,7 +2143,7 @@ extern u32 gPspPromptTexts[2];
 extern u32 gPspValueNames[8];
 char *strcpy(char *, char *);
 char *strchr(char *, s32);                  /* strchr */
-/* unit's own declaration: with the definition's void (s32 id, s32 x, s32 y, s32 depth, u32 color, f32 scale) (sub_main/unk_36BE70.c), Psp_DrawTexts: 677 of 770 words differ */
+/* unit's own declaration: x and y as s16, as Psp_DrawTexts passes them; with the definition's s32, the calls compile differently */
 void Hud_DrawButtonIcon(s32 id, s16 x, s16 y, s32 depth, u32 color, f32 scale);  /* a button icon */
 s32 Str_Length(char *);                         /* a message's width */
 struct Frame;
@@ -2598,7 +2598,7 @@ s32 Psp_IsItemUnlocked(u16 id)
 }
 
 /*
- * The overlay's messages (.data 0x6CD7F8-0x6CDD80, .rodata 0x6D0980-0x6D2180):
+ * The overlay's messages (in .data, their strings in .rodata):
  * the texts of every screen, as tables of string pointers that all the units
  * use. They come after this unit's own data and strings, so they were either
  * a unit of their own with no code, linked last, or defined at the end of

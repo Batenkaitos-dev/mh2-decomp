@@ -10,26 +10,9 @@
 #include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "window.h"
+#include "lobby_labels.h"
 
-typedef struct SprUV {
-    s16 u;
-    s16 v;
-} SprUV;
-typedef struct SprRect {
-    s16 x;
-    s16 y;
-    s16 w;
-    s16 h;
-    s32 color;
-    SprUV uv0;
-    SprUV uv1;
-} SprRect;
-typedef struct SprTex {
-    s32 tex;
-    SprUV uv0;
-    SprUV uv1;
-} SprTex;
-extern SprTex gIconSprites[];
+extern IconSprite gIconSprites[];
 void Gfx_SetTexFilter(s32 a);
 s32 Gs_SetState(u8, u32);
 void Tex_Prepare(s32 n, s32 tex);
@@ -190,21 +173,20 @@ s32 sprintf(char *buf, char *fmt, ...);
 void Font_SetSpacing(u8 a, u8 b);
 u32 Color_Pulse(void);
 void Menu_DrawArrows(s16 x, s16 y, s16 size, char *text, s32 color);
-extern char *D_0080C6AC;
-extern char D_0083B7E0[];
+extern char gLobbyStrFmt[];
 
 void Menu_DrawPageArrows(s16 x, s16 y, s16 page, s16 n, u32 color)
 {
     char buf[0x20];
 
     if (n < 10) {
-        sprintf(buf, "%d%s%d", page + 1, D_0080C6AC, n);
+        sprintf(buf, "%d%s%d", page + 1, gLobbyMarks[LOBBY_MARK_SLASH], n);
     } else {
-        sprintf(buf, "%2d%s%d", page + 1, D_0080C6AC, n);
+        sprintf(buf, "%2d%s%d", page + 1, gLobbyMarks[LOBBY_MARK_SLASH], n);
     }
     Font_SetSpacing(18, 18);
     Font_SetPos(x, y);
-    Text_PrintfColored(D_0083B7E0, buf);
+    Text_PrintfColored(gLobbyStrFmt, buf);
     if (color == 0) {
         color = Color_Pulse();
     }
@@ -226,9 +208,9 @@ void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt)
     Color_Pulse();
     saved = Font_GetColor();
     if (n < 10) {
-        sprintf(buf, "%d%s%d", page + 1, D_0080C6AC, n);
+        sprintf(buf, "%d%s%d", page + 1, gLobbyMarks[LOBBY_MARK_SLASH], n);
     } else {
-        sprintf(buf, "%2d%s%d", page + 1, D_0080C6AC, n);
+        sprintf(buf, "%2d%s%d", page + 1, gLobbyMarks[LOBBY_MARK_SLASH], n);
     }
     Sjis_Widen(buf, conv);
     Font_SetSpacing(18, 18);
@@ -345,16 +327,12 @@ void Menu_DrawFrameBox(s16 x, s16 y, s16 w, s16 h, u32 color)
     Gfx_DrawLine(x + 8, y + 8, w - 10, h - 16, color);
 }
 
-typedef struct SprUV2 {
-    SprUV uv0;
-    SprUV uv1;
-} SprUV2;
-extern SprUV2 gEquipIconUVs[];
+extern IconUV gEquipIconUVs[];
 
 void Icon_DrawEquip(s32 x, s32 y, s32 w, s32 h, s32 color, s32 i)
 {
-    SprRect r;
-    SprUV2 *t = &gEquipIconUVs[i];
+    TexRect r;
+    IconUV *t = &gEquipIconUVs[i];
 
     r.y = y;
     r.h = h;
@@ -452,8 +430,8 @@ void Menu_DrawMailIcon(s16 x, s16 y)
 
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i)
 {
-    SprRect r;
-    SprTex *t = &gIconSprites[i];
+    TexRect r;
+    IconSprite *t = &gIconSprites[i];
 
     r.y = y;
     r.w = w;
@@ -469,13 +447,12 @@ void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i)
     Sprite_Draw((struct Sprite *)&r);
 }
 
-struct TexRect;
-void TexRect_DrawRotated(struct TexRect *r, s32 angle);
+void TexRect_DrawRotated(TexRect *r, s32 angle);
 
 void Icon_DrawRotated(s32 x, s32 y, s32 w, s32 h, s32 color, s32 angle, s32 i)
 {
-    SprRect r;
-    SprTex *t = &gIconSprites[i];
+    TexRect r;
+    IconSprite *t = &gIconSprites[i];
 
     r.y = y;
     r.w = w;
@@ -488,16 +465,15 @@ void Icon_DrawRotated(s32 x, s32 y, s32 w, s32 h, s32 color, s32 angle, s32 i)
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, t->tex);
     Tex_Bind(t->tex);
-    TexRect_DrawRotated((struct TexRect *)&r, angle);
+    TexRect_DrawRotated(&r, angle);
 }
 
-struct TexRect;
-void TexRect_DrawRotatedAt(struct TexRect *r, s16 cx, s16 cy, u32 angle);
+void TexRect_DrawRotatedAt(TexRect *r, s16 cx, s16 cy, u32 angle);
 
 void Icon_DrawRotatedAt(s16 x, s16 y, s16 w, s16 h, u32 color, s32 angle, s32 i, s16 cx, s16 cy)
 {
-    SprRect r;
-    SprTex *t = &gIconSprites[i];
+    TexRect r;
+    IconSprite *t = &gIconSprites[i];
 
     r.y = y;
     r.w = w;
@@ -510,15 +486,15 @@ void Icon_DrawRotatedAt(s16 x, s16 y, s16 w, s16 h, u32 color, s32 angle, s32 i,
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, t->tex);
     Tex_Bind(t->tex);
-    TexRect_DrawRotatedAt((struct TexRect *)&r, cx, cy, angle);
+    TexRect_DrawRotatedAt(&r, cx, cy, angle);
 }
 
-void TexRect_Draw(struct TexRect *r, s8 mode);
+void TexRect_Draw(TexRect *r, s8 mode);
 
 void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode)
 {
-    SprRect r;
-    SprTex *t = &gIconSprites[i];
+    TexRect r;
+    IconSprite *t = &gIconSprites[i];
 
     r.y = y;
     r.w = w;
@@ -531,7 +507,7 @@ void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode)
     Gs_SetState(0x60, 0);
     Tex_Prepare(1, t->tex);
     Tex_Bind(t->tex);
-    TexRect_Draw((struct TexRect *)&r, mode);
+    TexRect_Draw(&r, mode);
 }
 
 typedef struct Rec7FF250 {
@@ -552,10 +528,10 @@ void Icon_DrawPreset(s32 i)
 }
 
 /* unk_790EC0's .data (0x7FEAF0-0x7FF280) */
-SprUV2 gEquipIconUVs[20] = {
+IconUV gEquipIconUVs[20] = {
 #include "lobby/007FEAF0.inc"
 };
-SprTex gIconSprites[48] = {
+IconSprite gIconSprites[48] = {
 #include "lobby/007FEB90.inc"
 };
 u32 gClockSectorTex[288] = {

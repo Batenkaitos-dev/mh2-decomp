@@ -2,6 +2,7 @@
  * the others are still assembly. First-pass C, to be named and typed. */
 #include "common.h"
 #include "lobby_menu.h"
+#include "menu_task.h"
 #include "em.h"
 #include "player.h"
 #include "m2c_macros.h"
@@ -11,11 +12,11 @@
 #include "scene.h"
 
 /* prototypes */
-void TownMsg_Send1B(Player *arg0);
-void TownMsg_Send1F(void *arg0, void *arg1);
-void TownMsg_Send20(void *arg0, s32 arg1);
-void TownMsg_Send04(Player *arg0);
-void TownMsg_Send0D(void);
+void TownMsg_SendContestSeatAsk(Player *arg0);
+void TownMsg_SendContestOpen(void *arg0, void *arg1);
+void TownMsg_SendContestPower(void *arg0, s32 arg1);
+void TownMsg_SendSeatAsk(Player *arg0);
+void TownMsg_SendSyncAsk(void);
 void TownMsg_OnSent(void);
 void TownMsg_SendSelf(u8 len, u8 cmd, void *data);
 void TownMenu_Close(void);
@@ -31,30 +32,30 @@ void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 
-void TownMsg_Send1B(Player *pc) {
+void TownMsg_SendContestSeatAsk(Player *pc) {
     s8 data;
 
     data = (s8) *(u16 *)pc->spot;
-    TownMsg_Send(2, 0x1B, &data);
+    TownMsg_Send(2, TOWN_MSG_CONTEST_SEAT_ASK, &data);
 }
 
-extern s8 gTownSpotId;
+extern s8 gContestSeatId;
 
 extern s8 gTakeSpotId;
 
 extern u8 gNetUsers;
 extern s8 D_008C0148;
 
-void TownMsg_Send1D(Player *p)
+void TownMsg_SendContestSeatFree(Player *p)
 {
-    TownMsg_Send(1, 0x1D, &gTownSpotId);
-    TownMsg_SendSelf(1, 0x1D, &gTownSpotId);
+    TownMsg_Send(1, TOWN_MSG_CONTEST_SEAT_FREE, &gContestSeatId);
+    TownMsg_SendSelf(1, TOWN_MSG_CONTEST_SEAT_FREE, &gContestSeatId);
 }
 
 void *memset(void *dst, s32 c, u32 n);
 char *strcpy(void *dst, const void *src);
 
-void TownMsg_Send1C(char *name, u8 a, u8 b)
+void TownMsg_SendContestSeatAnswer(char *name, u8 a, u8 b)
 {
     u8 buf[0x10];
 
@@ -62,58 +63,58 @@ void TownMsg_Send1C(char *name, u8 a, u8 b)
     buf[0] = a;
     buf[1] = b;
     strcpy(&buf[2], name);
-    TownMsg_Send(0xB, 0x1C, buf);
-    TownMsg_SendSelf(0xB, 0x1C, (s8 *)buf);
+    TownMsg_Send(0xB, TOWN_MSG_CONTEST_SEAT_ANSWER, buf);
+    TownMsg_SendSelf(0xB, TOWN_MSG_CONTEST_SEAT_ANSWER, (s8 *)buf);
 }
 
-void TownMsg_Send1E(void)
+void TownMsg_SendContestSeatTaken(void)
 {
-    TownMsg_Send(1, 0x1E, &gTownSpotId);
-    TownMsg_SendSelf(1, 0x1E, &gTownSpotId);
+    TownMsg_Send(1, TOWN_MSG_CONTEST_SEAT_TAKEN, &gContestSeatId);
+    TownMsg_SendSelf(1, TOWN_MSG_CONTEST_SEAT_TAKEN, &gContestSeatId);
 }
 
-void TownMsg_Send1F(void *arg0, void *arg1) {
-    TownMsg_SendTo(8, 0x1F, arg1, arg0);
-    TownMsg_SendTo(8, 0x1F, arg0, arg1);
+void TownMsg_SendContestOpen(void *arg0, void *arg1) {
+    TownMsg_SendTo(8, TOWN_MSG_CONTEST_OPEN, arg1, arg0);
+    TownMsg_SendTo(8, TOWN_MSG_CONTEST_OPEN, arg0, arg1);
 }
 
-void TownMsg_Send22(s32 *to)
+void TownMsg_SendContestStart(s32 *to)
 {
     s8 data;
 
-    TownMsg_SendTo(1, 0x22, &data, to);
+    TownMsg_SendTo(1, TOWN_MSG_CONTEST_START, &data, to);
 }
 
-void TownMsg_Send20(void *to, s32 power) {
+void TownMsg_SendContestPower(void *to, s32 power) {
     s32 data;
 
     data = power;
-    TownMsg_SendTo(4, 0x20, &data, to);
+    TownMsg_SendTo(4, TOWN_MSG_CONTEST_POWER, &data, to);
 }
 
-void TownMsg_Send21(s32 *to, s8 v)
+void TownMsg_SendContestResult(s32 *to, s8 v)
 {
     s8 data;
 
     data = v;
-    TownMsg_SendTo(1, 0x21, &data, to);
-    TownMsg_SendSelf(1, 0x21, &data);
+    TownMsg_SendTo(1, TOWN_MSG_CONTEST_RESULT, &data, to);
+    TownMsg_SendSelf(1, TOWN_MSG_CONTEST_RESULT, &data);
 }
 
-void TownMsg_Send04(Player *pc) {
+void TownMsg_SendSeatAsk(Player *pc) {
     s8 data;
 
     data = (s8) *(u16 *)pc->spot;
-    TownMsg_Send(2, 4, &data);
+    TownMsg_Send(2, TOWN_MSG_SEAT_ASK, &data);
 }
 
-void TownMsg_Send07(Player *pl)
+void TownMsg_SendSeatFree(Player *pl)
 {
-    TownMsg_Send(1, 7, &gTakeSpotId);
-    TownMsg_SendSelf(1, 7, &gTakeSpotId);
+    TownMsg_Send(1, TOWN_MSG_SEAT_FREE, &gTakeSpotId);
+    TownMsg_SendSelf(1, TOWN_MSG_SEAT_FREE, &gTakeSpotId);
 }
 
-void TownMsg_Send05(char *name, u8 a, u8 b)
+void TownMsg_SendSeatAnswer(char *name, u8 a, u8 b)
 {
     u8 buf[0x10];
 
@@ -121,14 +122,14 @@ void TownMsg_Send05(char *name, u8 a, u8 b)
     buf[0] = a;
     buf[1] = b;
     strcpy(&buf[2], name);
-    TownMsg_Send(0xB, 5, buf);
-    TownMsg_SendSelf(0xB, 5, (s8 *)buf);
+    TownMsg_Send(0xB, TOWN_MSG_SEAT_ANSWER, buf);
+    TownMsg_SendSelf(0xB, TOWN_MSG_SEAT_ANSWER, (s8 *)buf);
 }
 
-void TownMsg_Send0F(void)
+void TownMsg_SendSeatTaken(void)
 {
-    TownMsg_Send(1, 0xF, &gTakeSpotId);
-    TownMsg_SendSelf(1, 0xF, &gTakeSpotId);
+    TownMsg_Send(1, TOWN_MSG_SEAT_TAKEN, &gTakeSpotId);
+    TownMsg_SendSelf(1, TOWN_MSG_SEAT_TAKEN, &gTakeSpotId);
 }
 
 typedef struct PlayerNameMsg {
@@ -145,27 +146,27 @@ void TownMsg_Send0AAll(Player *p)
     memcpy(m.name, (u8 *)gLobby + p->offerTo * 0x11C + 0xA16, 8);
     m.a = p->offerItem;
     m.b = p->offerCount;
-    TownMsg_Send(0xE, 0xA, &m);
+    TownMsg_Send(0xE, TOWN_MSG_OFFER, &m);
 }
 
-void TownMsg_Send0A(Player *p, void *x)
+void TownMsg_SendOffer(Player *p, void *x)
 {
     PlayerNameMsg m;
 
     memcpy(m.name, (u8 *)gLobby + p->offerTo * 0x11C + 0xA16, 8);
     m.a = p->offerItem;
     m.b = p->offerCount;
-    TownMsg_SendTo(0xE, 0xA, &m, x);
+    TownMsg_SendTo(0xE, TOWN_MSG_OFFER, &m, x);
 }
 
-void TownMsg_Send0B(void *x, Player *p)
+void TownMsg_SendOfferTake(void *x, Player *p)
 {
     PlayerNameMsg m;
 
     memcpy(m.name, (u8 *)gLobby + p->offerTo * 0x11C + 0xA16, 8);
     m.a = p->offerItem;
     m.b = p->offerCount;
-    TownMsg_SendTo(0xE, 0xB, &m, x);
+    TownMsg_SendTo(0xE, TOWN_MSG_OFFER_TAKE, &m, x);
 }
 
 typedef struct PlayerNameMsgC {
@@ -175,7 +176,7 @@ typedef struct PlayerNameMsgC {
     u8 c;
 } PlayerNameMsgC;
 
-void TownMsg_Send0C(void *to, u8 c)
+void TownMsg_SendOfferResult(void *to, u8 c)
 {
     PlayerNameMsgC m;
     Player *p = &gPlayers[gScene.localPlayer];
@@ -184,19 +185,19 @@ void TownMsg_Send0C(void *to, u8 c)
     m.a = p->offerItem;
     m.b = p->offerCount;
     m.c = c;
-    TownMsg_SendTo(0xE, 0xC, &m, to);
+    TownMsg_SendTo(0xE, TOWN_MSG_OFFER_RESULT, &m, to);
 }
 
-void TownMsg_Send12(void)
+void TownMsg_SendOfferEnd(void)
 {
-    TownMsg_Send(0, 0x12, 0);
+    TownMsg_Send(0, TOWN_MSG_OFFER_END, 0);
 }
 
-void TownMsg_Send0D(void) {
+void TownMsg_SendSyncAsk(void) {
     s8 data;
 
     data = Area_GetSetIndex(gScene.area);
-    TownMsg_Send(2, 0xD, &data);
+    TownMsg_Send(2, TOWN_MSG_SYNC_ASK, &data);
 }
 
 void TownMsg_Send0DTo(u8 i)
@@ -207,15 +208,15 @@ void TownMsg_Send0DTo(u8 i)
     data = Area_GetSetIndex(gScene.area);
     temp_a1 = (i & 0xFF) * 0x11C;
     if (*(&D_008C0148 + temp_a1) != 0) {
-        TownMsg_SendTo(2, 0xD, &data, (s32 *) (&gNetUsers + temp_a1));
+        TownMsg_SendTo(2, TOWN_MSG_SYNC_ASK, &data, (s32 *) (&gNetUsers + temp_a1));
     }
 }
 
 void Mem_Copy(void *dst, void *src, s32 n);
 s32 Game_IsOnline(void);
-s32 Lobby_GetPlace3928(void);
+s32 Lobby_GetPlace(void);
 s32 Lobby_SendHeld(void);
-void LobbyNet_Send6708(s32 arg0, u16 arg1);
+void LobbyNet_SendTownMsg(s32 arg0, u16 arg1);
 extern s8 gTownMsgCmd;
 extern M2C_UNK gTownMsgData;
 
@@ -227,7 +228,7 @@ void TownMsg_Send(u8 len, u8 cmd, void *data)
 {
     u8 st;
 
-    if (Game_IsOnline() != 0 && Lobby_GetPlace3928() != 0) {
+    if (Game_IsOnline() != 0 && Lobby_GetPlace() != 0) {
         if (cmd == 3 || Lobby_SendHeld() != 1) {
             st = gLobby->phase;
             if (st == 2 || st == 3 || st == 7) {
@@ -240,12 +241,12 @@ send:
         if ((s32)len != 0) {
             Mem_Copy(&gTownMsgData, (void *)((M2C_UNK)data), len);
         }
-        LobbyNet_Send6708((s32)&gTownMsgCmd, (u8)(len + 1));
+        LobbyNet_SendTownMsg((s32)&gTownMsgCmd, (u8)(len + 1));
     }
 }
 
 s32 memcmp(void *, void *, s32);
-s32 LobbyReq_670D(void *src, void *data, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyReq_TownMsgTo(void *src, void *data, u16 n, void (*onReply)(NetMsg, NetMsg *));
 void TownMsg_OnSent(void);
 extern M2C_UNK gMyUserId;
 
@@ -262,7 +263,7 @@ void TownMsg_SendTo(u8 len, u8 cmd, void *data, void *to)
             TownMsg_SendSelf((u8)(len + 1), cmd, data);
             return;
         }
-        LobbyReq_670D(to, &gTownMsgCmd, (u8)(len + 1), (void (*)(NetMsg, NetMsg *))TownMsg_OnSent); /* defined (void): it ignores the reply */
+        LobbyReq_TownMsgTo(to, &gTownMsgCmd, (u8)(len + 1), (void (*)(NetMsg, NetMsg *))TownMsg_OnSent); /* defined (void): it ignores the reply */
     }
 }
 
@@ -285,7 +286,7 @@ void TownMsg_SendSelf(u8 len, u8 cmd, void *data)
 void *memset(void *dst, s32 c, u32 n);
 extern u8 gMenuWork[];
 extern u8 gMenuInputLock;
-void ItemShop_Draw(u8 *);
+void ItemShop_Draw(MenuTask *task);
 
 /* Opens a townsperson's menu (task ItemShop_Draw, menu 2 in the shared work
  * area gMenuWork, a ShopMenu): the townsperson, its id (npc and list.kind), cur

@@ -4,7 +4,7 @@
 #include "common.h"
 
 /*
- * The memory card menu (gCardMenu, 0xBC bytes; unk_3D54B0.c; named NetMenu in round 4):
+ * The memory card menu (gCardMenu, 0xBC bytes):
  * one state machine per mode (CardMenu_Run*), for loading, saving and the NET file.
  * NetMenu_SetState sets the state; each state draws a message box and moves on.
  */
@@ -42,8 +42,9 @@ typedef struct NetMenu {
     s16 blinkPhase;             /* 0x5A: toggled every 15 frames */
     s16 msg;                    /* 0x5C: message id */
     u8 pad5E[2];
-    s32 pairs[4][2];            /* 0x60: [0] the system data's, [1..3] the three characters' */
-    u8 pad80[8];
+    s32 fileDates[4][2];        /* 0x60: the files' date stamps (Card_GetDate's pair): [0] the system file's, [1..3] the three characters' */
+    u8 pad80[4];
+    s32 filesToWrite;           /* 0x84: the card files the save writes, CARD_FILE_* bits (CardState_SetFlag) */
     s32 fileKind;               /* 0x88: the card file: 1 system, 2/4/8 character 0-2, 0x10 patch */
     u8 *iconBuf;                /* 0x8C..0x98: buffers in gLoadBuf: the save icons (file 0x1714/0x1715, CardOp_SetFiles) */
     s32 imageBuf;               /* 0x90: the save image (SaveMenu_CopyAll; an integer: SaveBuf_Offset takes it) */
@@ -53,15 +54,14 @@ typedef struct NetMenu {
     u8 charRead[3];             /* 0x9D: per character slot: 0 none, 1 read, 0x80 bad data, cleared (CardSave_ReadCharacters; SaveMenu_FreeCharSlots switches on it) */
     u8 padA0[2];
     u8 charIndex;               /* 0xA2: the character being read or saved */
-    u8 saveStep;                /* 0xA3: the step of the SaveMenu_* load and save functions (unk_3DDBA0.c's SaveMenu.step); each state clears it before the first call */
+    u8 saveStep;                /* 0xA3: the step of the SaveMenu_* load and save functions (SaveMenu.step); each state clears it before the first call */
     u8 padA4[4];
-    s32 charId0;                /* 0xA8: the character read (SaveMenu_LoadCharacter): its id pair, stored to pairs[charIndex + 1] (SaveMenu_CharIdMatches) */
-    s32 charId1;                /* 0xAC */
-    u8 menuTexOn;               /* 0xB0: 1 in the modes 0, 8, 9 and 0x12 (the ones that load gCardMenuTex; NetMenu_Open) */
+    s32 readDate[2];            /* 0xA8: the date stamp of the character file just read (SaveMenu_LoadCharacter), stored to fileDates[charIndex + 1] (SaveMenu_CharDateMatches) */
+    u8 menuTexOn;               /* 0xB0: 1 in the modes that load gCardMenuTex (NetMenu_Open), which NetMenu_Draw then draws */
     s8 oldSlot;                  /* 0xB1: the slot with Monster Hunter (G) data, -1 none */
     u8 padB2[2];
-    s32 openMode;               /* 0xB4: 0x10 when opened with mode 0x10 (runs as 5) */
-    s32 quitResult;             /* 0xB8: modes 6-8: done, once func_7D2560 finishes */
+    s32 openMode;               /* 0xB4: NETMENU_MODE_SAVE_B when opened with it (it runs as NETMENU_MODE_SAVE), else 0 */
+    s32 quitResult;             /* 0xB8: the online in-game saves (CardMenu_RunGameSaveNet): the done to set once the lobby has saved its NET file (LobbyCard_SaveNetFile) */
 } NetMenu;
 
 typedef char NetMenu_size_check[(sizeof(NetMenu) == 0xBC) ? 1 : -1];

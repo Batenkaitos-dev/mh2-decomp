@@ -53,58 +53,53 @@ segments:
     bss_size: 0xB0E80
     subsegments:
       - [0x40, asm, text]           # the 0x40 zero bytes every overlay's text starts with
-      - [0x80, c, unk_6AF280]       # 0x6AF280: starts with lobby_entry
-      - [0x250, c, unk_6AF450]  # automatch: 1 of 1
-      - [0x2f0, c, unk_6AF4F0]
-      - [0x1370, c, unk_6B0570]  # automatch: 4 of 16
-      - [0x2b70, c, unk_6B1D70]
-      - [0x6100, c, unk_6B5300]  # automatch: 5 of 12
-      - [0x6c70, c, unk_6B5E70]
-      - [0x8630, c, unk_6B7830]  # automatch: 2 of 8
-      - [0x98c0, c, unk_6B8AC0]
-      - [0x9f60, c, unk_6B9160]  # automatch: 14 of 46
-      - [0xd850, c, unk_6BCA50]
-      - [0xf430, c, unk_6BE630]  # automatch: 3 of 4
-      - [0xf6e0, c, unk_6BE8E0]
-      - [0x10190, c, unk_6BF390]  # automatch: 1 of 1
-      - [0x10230, c, unk_6BF430]
-      - [0x11b00, c, unk_6C0D00]
-      - [0x14c40, c, unk_6C3E40]
-      - [0x15be0, c, unk_6C4DE0]  # automatch: 1 of 1
-      - [0x15c40, c, unk_6C4E40]
-      - [0x19060, c, unk_6C8260]  # automatch: 1 of 1
-      - [0x19100, c, unk_6C8300]  # automatch: 3 of 10
-      - [0x19ed0, c, unk_6C90D0]
-      - [0x19f50, c, unk_6C9150]  # automatch: 2 of 8
-      - [0x1a440, c, unk_6C9640]
-      - [0x1c420, c, unk_6CB620]  # automatch: 2 of 2
-      - [0x1c490, c, unk_6CB690]
-      - [0x25f20, c, unk_6D5120]  # automatch: 2 of 4
-      - [0x26130, c, unk_6D5330]
-      - [0x30fd0, c, unk_6E01D0]
-      - [0x349f0, c, unk_6E3BF0]  # automatch: 3 of 17
-      - [0x364b0, c, unk_6E56C0]
-      - [0x37600, c, unk_6E6800]  # automatch: 3 of 5
-      - [0x37f00, c, unk_6E7100]
-      - [0x39020, c, unk_6E8220]  # automatch: 1 of 1
-      - [0x390b0, c, unk_6E82B0]  # automatch: 3 of 15
-      - [0x3a110, c, unk_6E9310]
-      - [0x3ded0, c, unk_6ED0D0]  # automatch: 1 of 1
-      - [0x3df40, c, unk_6ED140]  # automatch: 2 of 8
-      - [0x3e7b0, c, unk_6ED9B0]
-      - [0x3f5f0, c, unk_6EE7F0]  # automatch: 2 of 2
-      - [0x3f670, c, unk_6EE870]
-      - [0x40130, c, unk_6EF330]  # automatch: 1 of 1
-      - [0x40180, c, unk_6EF380]
-      - [0x42460, c, unk_6F1660]  # automatch: 1 of 1
-      - [0x424a0, c, unk_6F16A0]
+      - [0x80, c, wanted]           # 0x6AF280: starts with TownMode_WaitCancel
+      - [0x450, c, records_lists]    # 0x6AF650: starts with Records_RecvPage
+      - [0x1370, c, records_menu]  # automatch: 4 of 16
+      - [0x2b70, c, records_draw]
+      - [0x6100, c, ship_mine_menus]  # automatch: 5 of 12
+      - [0x6c70, c, mine_model_objects]
+      - [0x8d40, c, gallery_board]
+      - [0x98c0, c, gallery_targets]
+      - [0x9f60, c, gallery_objects]  # automatch: 14 of 46
+      - [0xDB30, c, mail_block_list]
+      - [0xE330, c, bird_flock]  # automatch: 3 of 4
+      - [0xF690, c, place_info]
+      - [0x10190, c, place_info_draw]  # automatch: 1 of 1
+      - [0x10240, c, forge_upgrades]
+      - [0x10900, c, drink_mug]
+      - [0x122B0, c, offer_menu]
+      - [0x14C20, c, bait_menu]
+      - [0x15AB0, c, workshop_menu]
+      - [0x16400, c, kitchen]
+      - [0x19060, c, ingredient_list]
+      - [0x19970, c, kitchen_guest]
+      - [0x19FC0, c, official_desk]
+      - [0x1C290, c, dojo_menu]
+      - [0x20A70, c, pets]
+      - [0x25370, c, village_records]
+      - [0x26060, c, town_guide]
+      - [0x27280, c, armor_forge]
+      - [0x2B7D0, c, deco_counter]
+      - [0x30120, c, weapon_forge]
+      - [0x35BD0, c, song_menu]
+      - [0x36400, c, friend_list]
+      - [0x37600, c, friend_add]  # automatch: 3 of 5
+      - [0x38090, c, village_offers]
+      - [0x38F60, c, village_board]  # automatch: 3 of 15
+      - [0x39e40, c, group_board]
+      - [0x3ded0, c, id_search]
+      - [0x3e700, c, name_search]
+      - [0x3f5f0, c, area_search]
+      - [0x40050, c, area_board]
+      - [0x42610, c, unk_6F16A0]
       - [0x43410, c, unk_6F2610]  # automatch: 3 of 9
       - [0x43c80, c, unk_6F2E80]
       - [0x44c30, c, unk_6F3E30]  # automatch: 1 of 1
       - [0x44cb0, c, unk_6F3EB0]
       - [0x455c0, c, unk_6F47C0]  # automatch: 2 of 5
-      - [0x45930, c, unk_6F4B30]
-      - [0x46960, c, unk_6F5B60]  # automatch: 2 of 4
+      - [0x45880, c, move_menu]
+      - [0x46880, c, unk_6F5B60]  # automatch: 2 of 4
       - [0x46f80, c, unk_6F6180]
       - [0x47040, c, unk_6F6240]  # automatch: 1 of 1
       - [0x470d0, c, unk_6F62D0]
@@ -116,210 +111,131 @@ segments:
       - [0x4e4c0, c, unk_6FD6C0]  # automatch: 3 of 9
       - [0x4f560, c, unk_6FE760]
       - [0x506f0, c, unk_6FF8F0]  # automatch: 1 of 1
-      - [0x50740, c, unk_6FF940]
-      - [0x518f0, c, unk_700AF0]  # automatch: 20 of 96
-      - [0x542e0, c, unk_7034E0]
-      - [0x54590, c, unk_703790]  # automatch: 1 of 1
-      - [0x545d0, c, unk_7037D0]
-      - [0x54990, c, unk_703B90]  # automatch: 3 of 8
-      - [0x54d60, c, unk_703F60]
-      - [0x54f60, c, unk_704160]  # automatch: 6 of 12
-      - [0x554a0, c, unk_7046A0]
-      - [0x55cc0, c, unk_704EC0]  # automatch: 1 of 1
-      - [0x55d30, c, unk_704F30]  # automatch: 5 of 13
-      - [0x561b0, c, unk_7053B0]
-      - [0x563a0, c, unk_7055A0]  # automatch: 4 of 16
-      - [0x56b50, c, unk_705D50]
-      - [0x56db0, c, unk_705FB0]  # automatch: 2 of 4
-      - [0x57030, c, unk_706230]
-      - [0x57240, c, unk_706440]  # automatch: 4 of 10
-      - [0x575e0, c, unk_7067E0]
-      - [0x57670, c, unk_706870]  # automatch: 1 of 1
-      - [0x57730, c, unk_706930]
-      - [0x577b0, c, unk_7069B0]  # automatch: 5 of 20
-      - [0x58030, c, unk_707230]
-      - [0x582a0, c, unk_7074A0]  # automatch: 2 of 6
-      - [0x58530, c, unk_707730]  # automatch: 22 of 84
-      - [0x5aea0, c, unk_70A0A0]
-      - [0x5af30, c, unk_70A130]  # automatch: 2 of 3
-      - [0x5b030, c, unk_70A230]
-      - [0x5b720, c, unk_70A920]  # automatch: 20 of 56
-      - [0x5cde0, c, unk_70BFE0]
-      - [0x5d100, c, unk_70C300]  # automatch: 1 of 1
-      - [0x5d150, c, unk_70C350]
-      - [0x5d970, c, unk_70CB70]  # automatch: 1 of 1
-      - [0x5da10, c, unk_70CC10]
-      - [0x5f080, c, unk_70E280]  # automatch: 1 of 1
-      - [0x5f0a0, c, unk_70E2A0]
-      - [0x614b0, c, unk_7106B0]  # automatch: 1 of 1
-      - [0x614d0, c, unk_7106D0]
-      - [0x62390, c, unk_711590]  # automatch: 1 of 1
-      - [0x623d0, c, unk_7115D0]
-      - [0x64300, c, unk_713500]  # automatch: 3 of 13
-      - [0x64950, c, unk_713B50]
-      - [0x64f00, c, unk_714100]  # automatch: 5 of 15
-      - [0x65680, c, unk_714880]
-      - [0x65690, c, unk_714890]  # automatch: 8 of 29
-      - [0x662a0, c, unk_7154A0]
-      - [0x66320, c, unk_715520]  # automatch: 3 of 7
-      - [0x665c0, c, unk_7157C0]
-      - [0x66640, c, unk_715840]  # automatch: 1 of 1
-      - [0x66690, c, unk_715890]
-      - [0x66aa0, c, unk_715CA0]  # automatch: 12 of 39
-      - [0x67c40, c, unk_716E40]
-      - [0x67cc0, c, unk_716EC0]  # automatch: 8 of 28
-      - [0x68f40, c, unk_718140]  # automatch: 2 of 5
+      - [0x50740, c, minigame_draw]
+      - [0x518f0, c, net_chat_downloads]  # automatch: 20 of 96
+      - [0x539e0, c, net_level1_list]
+      - [0x54f60, c, net_levels_enter]  # automatch: 6 of 12
+      - [0x554a0, c, net_level_requests]
+      - [0x55d30, c, net_level1_users_reply]  # automatch: 5 of 13
+      - [0x561b0, c, net_level1_allowed_task]
+      - [0x56b50, c, net_level1_settings_task]
+      - [0x571c0, c, net_level1_settings]  # automatch: 4 of 10
+      - [0x577b0, c, net_login_start]  # automatch: 5 of 20
+      - [0x58030, c, net_login]
+      - [0x59710, c, net_users]   # automatch: 22 of 84
+      - [0x5aea0, c, net_party]
+      - [0x5ba80, c, net_patch_level0]  # automatch: 20 of 56
+      - [0x5cde0, c, net_reply_readers]
+      - [0x5d040, c, bed_menu]
+      - [0x5d970, c, shooting_gallery]
+      - [0x614b0, c, market]
+      - [0x64050, c, net_level2_list]
+      - [0x65690, c, net_level2_settings]
+      - [0x66690, c, net_level2_records]
       - [0x69110, c, lobby_net]
-      - [0x6a4f0, c, unk_7196F0]
-      - [0x6a7a0, c, unk_7199A0]  # automatch: 1 of 1
-      - [0x6a830, c, unk_719A30]
-      - [0x6c250, c, unk_71B450]  # automatch: 2 of 4
-      - [0x6c680, c, unk_71B880]
-      - [0x6ce20, c, unk_71C020]  # automatch: 2 of 4
-      - [0x6d190, c, unk_71C390]
-      - [0x70640, c, unk_71F840]  # automatch: 1 of 1
-      - [0x706a0, c, unk_71F8A0]
-      - [0x73160, c, unk_722360]
-      - [0x7ba00, c, unk_72AC00]  # automatch: 2 of 4
-      - [0x7bb50, c, unk_72AD50]
-      - [0x7d4f0, c, unk_72C6F0]  # automatch: 1 of 1
-      - [0x7d560, c, unk_72C760]  # automatch: 1 of 1
-      - [0x7d5c0, c, unk_72C7C0]
-      - [0x80de0, c, unk_72FFE0]  # automatch: 3 of 9
-      - [0x811d0, c, unk_7303D0]
-      - [0x818d0, c, unk_730AD0]  # automatch: 1 of 1
-      - [0x818e0, c, unk_730AE0]
-      - [0x83030, c, unk_732230]  # automatch: 1 of 1
-      - [0x83040, c, unk_732240]
-      - [0x836a0, c, unk_7328A0]  # automatch: 1 of 1
-      - [0x83710, c, unk_732910]
-      - [0x83c90, c, unk_732E90]  # automatch: 7 of 8
-      - [0x83ec0, c, unk_7330C0]
-      - [0x841d0, c, unk_7333D0]  # automatch: 2 of 6
-      - [0x848b0, c, unk_733AB0]
-      - [0x85420, c, unk_734620]  # automatch: 1 of 1
-      - [0x85490, c, unk_734690]
+      - [0x6a4f0, c, quest_desk]
+      - [0x6c680, c, quest_offers]
+      - [0x6D830, c, quest_desk_draw]
+      - [0x704D0, c, arena_cup]
+      - [0x73160, c, browser_cache_draw]
+      - [0x7ba00, c, page_draw_cmds]
+      - [0x7d560, c, browser_dialogs]
+      - [0x80de0, c, browser_prims]  # automatch: 3 of 9
+      - [0x811d0, c, browser_util]
+      - [0x81890, c, browser_urls]
+      - [0x83040, c, browser_frame]
+      - [0x83ec0, c, portal_steps]
       - [0x85510, c, unk_734710]  # automatch: 9 of 30
       - [0x8baf0, c, unk_73ACF0]
-      - [0x8d020, c, unk_73C220]  # automatch: 2 of 2
-      - [0x8d110, c, unk_73C310]
+      - [0x8d020, c, unk_73C310]
       - [0x91b10, c, unk_740D10]  # automatch: 5 of 11
-      - [0x91fa0, c, unk_7411A0]  # automatch: 1 of 1
       - [0x92010, c, unk_741210]
       - [0x92490, c, unk_741690]  # automatch: 2 of 4
-      - [0x92700, c, unk_741900]
-      - [0x95b70, c, unk_744D70]  # automatch: 2 of 3
-      - [0x95c90, c, unk_744E90]
-      - [0x967b0, c, unk_7459B0]  # automatch: 2 of 4
-      - [0x96870, c, unk_745A70]
-      - [0x96d80, c, unk_745F80]  # automatch: 1 of 1
-      - [0x96da0, c, unk_745FA0]
-      - [0x97080, c, unk_746280]  # automatch: 7 of 34
-      - [0x978d0, c, unk_746AD0]
-      - [0x99850, c, unk_748A50]  # automatch: 1 of 1
-      - [0x99890, c, unk_748A90]
-      - [0x9b030, c, unk_74A230]  # automatch: 2 of 2
-      - [0x9b0c0, c, unk_74A2C0]
-      - [0x9d3f0, c, unk_74C5F0]  # automatch: 1 of 1
-      - [0x9d420, c, unk_74C620]
-      - [0x9de60, c, unk_74D060]  # automatch: 1 of 1
-      - [0x9df10, c, unk_74D110]  # automatch: 2 of 4
-      - [0x9e1f0, c, unk_74D3F0]
+      - [0x92700, c, html_parse]
+      - [0x95b70, c, html_entities]  # automatch: 2 of 3
+      - [0x95c90, c, html_text_tags]
+      - [0x967b0, c, html_map_tags]  # automatch: 2 of 4
+      - [0x96870, c, html_body_attrs]
+      - [0x96da0, c, html_form_tags]
+      - [0x97080, c, html_input_tags]  # automatch: 7 of 34
+      - [0x978d0, c, html_table_tags]
+      - [0x99890, c, html_attr_readers]
+      - [0x9b030, c, layout_lines]  # automatch: 2 of 2
+      - [0x9b0c0, c, layout_text]
+      - [0x9d3f0, c, layout_tables]
+      - [0x9de60, c, layout_table_cells]  # automatch: 2 of 4
+      - [0x9e1f0, c, layout_cells]
       - [0xa21c0, c, unk_7513C0]  # automatch: 4 of 8
       - [0xa4950, c, unk_753B50]  # automatch: 1 of 1
       - [0xa4a10, c, unk_753C10]
       - [0xa7dd0, c, unk_756FD0]  # automatch: 9 of 24
+      - [0xa7fd0, c, lobby_util]
       - [0xa8eb0, c, unk_7580B0]
       - [0xac160, c, unk_75B360]  # automatch: 9 of 21
-      - [0xaf1b0, c, unk_75E3B0]
-      - [0xb0bb0, c, unk_75FDB0]  # automatch: 2 of 5
-      - [0xb1a70, c, unk_760C70]
-      - [0xb90d0, c, unk_7682D0]  # automatch: 1 of 1
-      - [0xb91d0, c, unk_7683D0]
-      - [0xbe900, c, unk_76DB00]  # automatch: 1 of 1
-      - [0xbe940, c, unk_76DB40]
-      - [0xc1210, c, unk_770410]
-      - [0xc1770, c, unk_770970]  # automatch: 8 of 21
-      - [0xc2860, c, unk_771A60]
-      - [0xc35b0, c, unk_7727B0]  # automatch: 2 of 4
-      - [0xc3d30, c, unk_772F30]
-      - [0xc46b0, c, unk_7738B0]  # automatch: 1 of 1
-      - [0xc47a0, c, unk_7739A0]
-      - [0xc4890, c, unk_773A90]  # automatch: 3 of 9
-      - [0xc5b10, c, unk_774D10]
-      - [0xc61d0, c, unk_7753D0]  # automatch: 2 of 2
-      - [0xc62d0, c, unk_7754D0]
-      - [0xc6730, c, unk_775930]  # automatch: 3 of 9
-      - [0xc74d0, c, unk_7766D0]
-      - [0xca510, c, unk_779710]  # automatch: 1 of 1
-      - [0xca560, c, unk_779760]
-      - [0xcb6d0, c, unk_77A8D0]  # automatch: 1 of 1
-      - [0xcb760, c, unk_77A960]
-      - [0xcedd0, c, unk_77DFD0]  # automatch: 2 of 7
-      - [0xcf340, c, unk_77E540]
-      - [0xd0b80, c, unk_77FD80]  # automatch: 9 of 16
-      - [0xd1380, c, unk_780580]
-      - [0xdf2d0, c, unk_78E4D0]  # automatch: 2 of 4
-      - [0xdfe70, c, unk_78F070]
-      - [0xe1ca0, c, unk_790EA0]  # automatch: 1 of 1
+      - [0xaf220, c, village_quest_info]
+      - [0xb0bb0, c, quest_order_terms]  # automatch: 2 of 5
+      - [0xb1a70, c, menu_sheets]
+      - [0xb3190, c, item_box_menu]
+      - [0xb91d0, c, box_menu_draw]
+      - [0xbea20, c, quest_counter]
+      - [0xc1210, c, quest_counter_draw]
+      - [0xc1770, c, game_menu]
+      - [0xc27f0, c, game_menu_chat]
+      - [0xc3d30, c, chat_state]
+      - [0xc40e0, c, game_menu_quit]
+      - [0xc4ae0, c, member_list]
+      - [0xc5ac0, c, game_menu_mail]
+      - [0xc5ec0, c, online_mark]
+      - [0xc61d0, c, game_menu_exit]
+      - [0xc62d0, c, hunter_card]
+      - [0xc7380, c, combine_shop]
+      - [0xc9bd0, c, town_msg]
+      - [0xcbdb0, c, townspeople]
+      - [0xcf340, c, npc_sounds_spawn]
+      - [0xd06e0, c, npc_route_state]
+      - [0xd1380, c, npc_states]
+      - [0xdf2d0, c, npc_scenes]
+      - [0xdfdf0, c, name_tags]
+      - [0xe1ca0, c, int_text]    # automatch: 1 of 1
       - [0xe1cc0, c, unk_790EC0]
       - [0xe3700, c, unk_792900]  # automatch: 4 of 9
       - [0xe3e70, c, unk_793070]
       - [0xe4a10, c, unk_793C10]  # automatch: 1 of 1
       - [0xe4a40, c, unk_793C40]
-      - [0xe57d0, c, unk_7949D0]  # automatch: 4 of 13
-      - [0xeb880, c, unk_79AA80]  # automatch: 1 of 1
-      - [0xeb950, c, unk_79AB50]
-      - [0xed0f0, c, unk_79C2F0]  # automatch: 1 of 1
-      - [0xed110, c, unk_79C310]
-      - [0xef800, c, unk_79EA00]  # automatch: 1 of 1
-      - [0xef830, c, unk_79EA30]
+      - [0xe57d0, c, town_players]  # automatch: 4 of 13
+      - [0xeb880, c, town_player_activities]
+      - [0xed0f0, c, town_input]
+      - [0xef800, c, town_senders]
       - [0xf02e0, c, unk_79F4E0]  # automatch: 2 of 9
       - [0xf05b0, c, unk_79F7B0]
       - [0xf14d0, c, unk_7A06D0]  # automatch: 6 of 25
-      - [0xf1f20, c, unk_7A1120]
+      - [0xf1f20, c, item_shop]
       - [0xf52d0, c, unk_7A44D0]  # automatch: 3 of 14
       - [0xf7270, c, unk_7A6470]
       - [0xf8310, c, unk_7A7510]  # automatch: 1 of 1
       - [0xf8360, c, unk_7A7560]
       - [0xf8fa0, c, unk_7A81A0]  # automatch: 6 of 15
       - [0xf9490, c, unk_7A8690]
-      - [0xffd10, c, unk_7AEF10]  # automatch: 5 of 17
-      - [0x100f50, c, unk_7B0150]
-      - [0x101b80, c, unk_7B0D80]  # automatch: 12 of 37
-      - [0x103f40, c, unk_7B3140]
-      - [0x106fe0, c, unk_7B61E0]  # automatch: 3 of 5
-      - [0x1071a0, c, unk_7B63A0]
-      - [0x108370, c, unk_7B7570]  # automatch: 1 of 1
-      - [0x108450, c, unk_7B7650]
-      - [0x109180, c, unk_7B8380]  # automatch: 3 of 8
-      - [0x109410, c, unk_7B8610]
-      - [0x109fc0, c, unk_7B91C0]  # automatch: 1 of 1
-      - [0x109ff0, c, unk_7B91F0]
-      - [0x10d080, c, unk_7BC280]  # automatch: 1 of 1
-      - [0x10d0f0, c, unk_7BC2F0]
-      - [0x10d1a0, c, unk_7BC3A0]  # automatch: 18 of 35
-      - [0x10e900, c, unk_7BDB00]
-      - [0x10f1d0, c, unk_7BE3D0]  # automatch: 1 of 1
-      - [0x10f230, c, unk_7BE430]
-      - [0x1102c0, c, unk_7BF4C0]  # automatch: 1 of 1
-      - [0x110360, c, unk_7BF560]
-      - [0x111890, c, unk_7C0A90]  # automatch: 1 of 1
-      - [0x111990, c, unk_7C0B90]
-      - [0x112310, c, unk_7C1510]  # automatch: 1 of 1
-      - [0x112340, c, unk_7C1540]
-      - [0x1153d0, c, unk_7C45D0]  # automatch: 2 of 8
-      - [0x115d80, c, unk_7C4F80]
-      - [0x1170c0, c, unk_7C62C0]  # automatch: 1 of 1
-      - [0x117190, c, unk_7C6390]  # automatch: 2 of 4
-      - [0x117490, c, unk_7C6690]  # automatch: 2 of 3
-      - [0x117840, c, unk_7C6A40]
-      - [0x117ec0, c, unk_7C70C0]  # automatch: 3 of 3
-      - [0x118110, c, unk_7C7310]  # automatch: 1 of 1
-      - [0x118160, c, unk_7C7360]  # automatch: 1 of 1
-      - [0x118210, c, unk_7C7410]
+      - [0x1003e0, c, lobby_connect]
+      - [0x100f10, c, server_list]
+      - [0x101b80, c, lobby_dialog]  # automatch: 12 of 37
+      - [0x103f40, c, lobby_steps]
+      - [0x106fe0, c, server_name]  # automatch: 3 of 5
+      - [0x1071a0, c, lobby_leave_menus]
+      - [0x1082E0, c, server_menu]
+      - [0x109410, c, chat_log]
+      - [0x10A570, c, lobby_screen]
+      - [0x10d1a0, c, lobby_exit]  # automatch: 18 of 35
+      - [0x10e900, c, lobby_room]
+      - [0x10f2f0, c, tag_text]
+      - [0x1102c0, c, area_list]
+      - [0x111890, c, lobby_enter]
+      - [0x111eb0, c, lobby_routes]
+      - [0x113A20, c, lobby_login]
+      - [0x115d80, c, lobby_web_users]
+      - [0x1170c0, c, lobby_village]
+      - [0x117ec0, c, lobby_town]
       - [0x119da0, c, unk_7C8FA0]  # automatch: 31 of 95
-      - [0x120080, c, unk_7CF280]
       - [0x120140, c, unk_7CF340]  # automatch: 9 of 15
       - [0x1206b0, c, unk_7CF8B0]
       - [0x1209a0, c, unk_7CFBA0]  # automatch: 7 of 14
@@ -329,22 +245,26 @@ segments:
       - [0x125c10, c, unk_7D44B0]  # starts at 0x7D4E10: 0x7D44B0-0x7D4E10 (the help pages) is unk_7D2C80's unit
       - [0x12bea0, c, unk_7DB0A0]
       - { start: 0x12C600, type: data, name: text_end, linker_section_order: .text }  # the padding after func_007DB600
-      - [0x12C680, .data, unk_6B1D70]
-      - [0x12CCD0, .data, unk_6B5E70]
-      - [0x12D8C0, .data, unk_6B7830]
-      - [0x12D9B0, .data, unk_6B8AC0]
-      - [0x12DBF0, .data, unk_6B9160]
-      - [0x12DE30, .data, unk_6BCA50]
-      - [0x12E0B0, .data, unk_6BF430]
-      - [0x137E10, .data, unk_6C0D00]
-      - [0x138740, .data, unk_6C3E40]
-      - [0x138760, .data, unk_6C4E40]
-      - [0x138970, .data, unk_6CB690]
-      - [0x1392D0, .data, unk_6D5330]
-      - [0x13A160, .data, unk_6E01D0]
-      - [0x13A1E0, .data, unk_6E3BF0]
-      - [0x13A210, .data, unk_6E7100]
-      - [0x13C0C0, .data, unk_6E82B0]
+      - [0x12C680, .data, records_draw]
+      - [0x12CCD0, .data, mine_model_objects]
+      - [0x12D8C0, .data, gallery_board]
+      - [0x12D9B0, .data, gallery_targets]
+      - [0x12DBF0, .data, gallery_objects]
+      - [0x12DF70, .data, bird_flock]
+      - [0x12E0B0, .data, forge_upgrades]
+      - [0x137E10, .data, offer_menu]
+      - [0x138740, .data, bait_menu]
+      - [0x138760, .data, kitchen]
+      - [0x138970, .data, dojo_menu]
+      - [0x138D10, .data, pets]
+      - [0x139150, .data, village_records]
+      - [0x1392D0, .data, town_guide]
+      - [0x1398A0, .data, armor_forge]
+      - [0x1398B0, .data, deco_counter]
+      - [0x13A160, .data, weapon_forge]
+      - [0x13A1E0, .data, song_menu]
+      - [0x13A210, .data, village_offers]
+      - [0x13C0C0, .data, village_board]
       - [0x13C6C0, .data, unk_6F2610]
       - [0x13CC10, .data, unk_6F5B60]
       - [0x13CDF0, .data, unk_6F62D0]
@@ -352,61 +272,61 @@ segments:
       - [0x13CE50, .data, unk_6F8CC0]
       - [0x13CF70, .data, unk_6FB0B0]
       - [0x13CF78, .data, unk_6FE760]
-      - [0x13CFE0, .data, unk_6FF940]
-      - [0x13D0F0, .data, unk_70CC10]
-      - [0x13D3C8, .data, unk_70E2A0]
-      - [0x13D3F0, .data, unk_7106D0]
-      - [0x13D768, .data, unk_7115D0]
+      - [0x13CFE0, .data, minigame_draw]
+      - [0x13D0F0, .data, shooting_gallery]
+      - [0x13D3F0, .data, market]
       - [0x13D780, .data, lobby_net]
-      - [0x13E260, .data, unk_71C390]
-      - [0x13E750, .data, unk_7303D0]
-      - [0x13F840, .data, unk_730AE0]
-      - [0x13F8C0, .data, unk_732910]
-      - [0x13F910, .data, unk_7330C0]
-      - [0x13F920, .data, unk_7333D0]
+      - [0x13E260, .data, quest_desk_draw]
+      - [0x13E750, .data, browser_util]
+      - [0x13F840, .data, browser_urls]
+      - [0x13F8C0, .data, browser_frame]
+      - [0x13F910, .data, portal_steps]
       - [0x13F960, .data, unk_734710]
       - [0x13F9E0, .data, unk_73ACF0]
       - [0x13F9F0, .data, unk_73C310]
       - [0x13FA10, .data, unk_741690]
-      - [0x13FC30, .data, unk_741900]
-      - [0x140C70, .data, unk_745FA0]
-      - [0x140CC0, .data, unk_746AD0]
-      - [0x140D00, .data, unk_748A90]
+      - [0x13FC30, .data, html_parse]
+      - [0x140C70, .data, html_form_tags]
+      - [0x140CC0, .data, html_table_tags]
+      - [0x140D00, .data, html_attr_readers]
       - [0x1414E0, .data, unk_7513C0]
       - [0x141500, .data, unk_756FD0]
       - [0x142658, .data, unk_7580B0]
-      - [0x142790, .data, unk_75E3B0]
-      - [0x1427D0, .data, unk_760C70]
-      - [0x142808, .data, unk_7683D0]
-      - [0x142B20, .data, unk_770970]
-      - [0x142D30, .data, unk_771A60]
-      - [0x142D50, .data, unk_7727B0]
-      - [0x142DD0, .data, unk_772F30]
-      - [0x142E10, .data, unk_773A90]
-      - [0x142E70, .data, unk_774D10]
-      - [0x142EB0, .data, unk_77A960]
-      - [0x14CCA0, .data, unk_77E540]
-      - [0x14F290, .data, unk_780580]
-      - [0x14F650, .data, unk_78F070]
+      - [0x142790, .data, village_quest_info]
+      - [0x1427D0, .data, menu_sheets]
+      - [0x142800, .data, item_box_menu]
+      - [0x142808, .data, box_menu_draw]
+      - [0x142B20, .data, game_menu]
+      - [0x142D30, .data, game_menu_chat]
+      - [0x142DD0, .data, chat_state]
+      - [0x142E10, .data, game_menu_quit]
+      - [0x142E48, .data, member_list]
+      - [0x142E70, .data, game_menu_mail]
+      - [0x142E90, .data, online_mark]
+      - [0x142EB0, .data, townspeople]
+      - [0x14CCA0, .data, npc_sounds_spawn]
+      - [0x14F290, .data, npc_states]
+      - [0x14F650, .data, name_tags]
       - [0x14F8F0, .data, unk_790EC0]
       - [0x150080, .data, unk_792900]
       - [0x150120, .data, unk_793070]
-      - [0x152BE0, .data, unk_7949D0]
-      - [0x153A60, .data, unk_79C310]
-      - [0x15BAD0, .data, unk_79EA30]
-      - [0x15BFA0, .data, unk_7A1120]
+      - [0x152BE0, .data, town_players]
+      - [0x153A60, .data, town_input]
+      - [0x15BAD0, .data, town_senders]
+      - [0x15BFA0, .data, item_shop]
       - [0x15EA70, .data, unk_7A44D0]
       - [0x15EB50, .data, unk_7A8690]
-      - [0x16A1D0, .data, unk_7AEF10]
-      - [0x16A200, .data, unk_7B0D80]
-      - [0x16A250, .data, unk_7B63A0]
-      - [0x16A280, .data, unk_7B8610]
-      - [0x16A3A0, .data, unk_7B91F0]
-      - [0x16A430, .data, unk_7BC2F0]
-      - [0x16A450, .data, unk_7BC3A0]
-      - [0x16A478, .data, unk_7BDB00]
-      - [0x16A4A0, .data, unk_7BE430]
-      - [0x16A500, .data, unk_7C1540]
+      - [0x16A1D0, .data, lobby_connect]
+      - [0x16A200, .data, lobby_dialog]
+      - [0x16A250, .data, lobby_leave_menus]
+      - [0x16A260, .data, server_menu]
+      - [0x16A280, .data, chat_log]
+      - [0x16A3A0, .data, lobby_screen]
+      - [0x16A450, .data, lobby_exit]
+      - [0x16A478, .data, lobby_room]
+      - [0x16A4A0, .data, tag_text]
+      - [0x16A500, .data, lobby_routes]
+      - [0x16A510, .data, lobby_login]
       - [0x16A538, .data, unk_7C8FA0]
       - [0x16A5D0, .data, unk_7CF340]
       - [0x16A640, .data, unk_7CFBA0]
@@ -414,126 +334,129 @@ segments:
       - [0x16B100, .data, unk_7D2C80]
       - [0x16C450, .data, unk_7D44B0]
       - [0x16CAA0, .data, unk_7DB0A0]
-      - [0x176910, .rodata, unk_6AF4F0]
-      - [0x176960, .rodata, unk_6B0570]
-      - [0x1769F0, .rodata, unk_6B1D70]
-      - [0x176AD0, .rodata, unk_6B5300]
-      - [0x176B10, .rodata, unk_6B5E70]
-      - [0x176B90, .rodata, unk_6B7830]
-      - [0x176C60, .rodata, unk_6B8AC0]
-      - [0x176C88, .rodata, unk_6B9160]
-      - [0x176D20, .rodata, unk_6BCA50]
-      - [0x176D28, .rodata, unk_6BE8E0]
-      - [0x176D50, .rodata, unk_6BF430]
-      - [0x176D80, .rodata, unk_6C0D00]
-      - [0x176E40, .rodata, unk_6C3E40]
-      - [0x176E50, .rodata, unk_6C4E40]
-      - [0x176EE0, .rodata, unk_6C8300]
-      - [0x176F20, .rodata, unk_6C9640]
-      - [0x176FA0, .rodata, unk_6CB690]
-      - [0x17D998, .rodata, unk_6D5330]
-      - [0x17F7C0, .rodata, unk_6E01D0]
-      - [0x17F838, .rodata, unk_6E3BF0]
-      - [0x17F870, .rodata, unk_6E56C0]
-      - [0x17F890, .rodata, unk_6E82B0]
-      - [0x188ED0, .rodata, unk_6E9310]
-      - [0x188F90, .rodata, unk_6ED140]
-      - [0x188F98, .rodata, unk_6ED9B0]
-      - [0x188FA0, .rodata, unk_6EE870]
-      - [0x188FB0, .rodata, unk_6EF380]
+      - [0x176910, .rodata, records_lists]
+      - [0x176960, .rodata, records_menu]
+      - [0x1769F0, .rodata, records_draw]
+      - [0x176AD0, .rodata, ship_mine_menus]
+      - [0x176B10, .rodata, mine_model_objects]
+      - [0x176C00, .rodata, gallery_board]
+      - [0x176C60, .rodata, gallery_targets]
+      - [0x176C88, .rodata, gallery_objects]
+      - [0x176D20, .rodata, mail_block_list]
+      - [0x176D28, .rodata, place_info]
+      - [0x176D50, .rodata, drink_mug]
+      - [0x176DB0, .rodata, offer_menu]
+      - [0x176E40, .rodata, bait_menu]
+      - [0x176E50, .rodata, workshop_menu]
+      - [0x176E70, .rodata, kitchen]
+      - [0x176EE0, .rodata, ingredient_list]
+      - [0x176F00, .rodata, kitchen_guest]
+      - [0x176F20, .rodata, official_desk]
+      - [0x176FA0, .rodata, dojo_menu]
+      - [0x17D640, .rodata, pets]
+      - [0x17D998, .rodata, town_guide]
+      - [0x17F730, .rodata, armor_forge]
+      - [0x17F780, .rodata, deco_counter]
+      - [0x17F790, .rodata, weapon_forge]
+      - [0x17F858, .rodata, song_menu]
+      - [0x17F870, .rodata, friend_list]
+      - [0x17F890, .rodata, village_board]
+      - [0x188EB0, .rodata, group_board]
+      - [0x188F90, .rodata, id_search]
+      - [0x188F98, .rodata, name_search]
+      - [0x188FA0, .rodata, area_search]
+      - [0x188FB0, .rodata, area_board]
       - [0x189020, .rodata, unk_6F16A0]
       - [0x189050, .rodata, unk_6F2610]
       - [0x189078, .rodata, unk_6F2E80]
       - [0x189088, .rodata, unk_6F3EB0]
-      - [0x189098, .rodata, unk_6F4B30]
+      - [0x189098, .rodata, move_menu]
       - [0x1890B0, .rodata, unk_6F7AA0]
       - [0x1890D0, .rodata, unk_6F8CC0]
       - [0x189170, .rodata, unk_6FB0B0]
       - [0x189230, .rodata, unk_6FD6C0]
       - [0x189260, .rodata, unk_6FE760]
-      - [0x189290, .rodata, unk_6FF940]
-      - [0x189360, .rodata, unk_700AF0]
-      - [0x189380, .rodata, unk_704160]
-      - [0x189398, .rodata, unk_7046A0]
-      - [0x1893A0, .rodata, unk_7069B0]
-      - [0x1893A8, .rodata, unk_707730]
-      - [0x1893D0, .rodata, unk_70A920]
-      - [0x1893F0, .rodata, unk_70C350]
-      - [0x189410, .rodata, unk_70CC10]
-      - [0x189460, .rodata, unk_70E2A0]
-      - [0x189640, .rodata, unk_7115D0]
-      - [0x1896C8, .rodata, unk_714890]
-      - [0x189710, .rodata, unk_715890]
-      - [0x189770, .rodata, unk_719A30]
-      - [0x1897B0, .rodata, unk_71B880]
-      - [0x189930, .rodata, unk_71C390]
-      - [0x1899B0, .rodata, unk_71F8A0]
-      - [0x189B00, .rodata, unk_722360]
-      - [0x189CD0, .rodata, unk_72AD50]
-      - [0x189D40, .rodata, unk_72C7C0]
-      - [0x189DF0, .rodata, unk_7303D0]
-      - [0x189E18, .rodata, unk_730AE0]
-      - [0x189E58, .rodata, unk_732910]
-      - [0x189E80, .rodata, unk_732E90]
-      - [0x189E98, .rodata, unk_7330C0]
+      - [0x189290, .rodata, minigame_draw]
+      - [0x189360, .rodata, net_level1_list]
+      - [0x189380, .rodata, net_levels_enter]
+      - [0x189398, .rodata, net_level_requests]
+      - [0x1893A0, .rodata, net_login_start]
+      - [0x1893A8, .rodata, net_login]
+      - [0x1893B0, .rodata, net_users]
+      - [0x1893D0, .rodata, net_patch_level0]
+      - [0x1893F0, .rodata, bed_menu]
+      - [0x189410, .rodata, shooting_gallery]
+      - [0x189640, .rodata, market]
+      - [0x1896B0, .rodata, net_level2_list]
+      - [0x1896C8, .rodata, net_level2_settings]
+      - [0x189710, .rodata, net_level2_records]
+      - [0x189770, .rodata, quest_desk]
+      - [0x1897B0, .rodata, quest_offers]
+      - [0x189930, .rodata, quest_desk_draw]
+      - [0x1899B0, .rodata, arena_cup]
+      - [0x189B00, .rodata, browser_cache_draw]
+      - [0x189CD0, .rodata, page_draw_cmds]
+      - [0x189D40, .rodata, browser_dialogs]
+      - [0x189DF0, .rodata, browser_util]
+      - [0x189E18, .rodata, browser_urls]
+      - [0x189E58, .rodata, browser_frame]
+      - [0x189E98, .rodata, portal_steps]
       - [0x189EA0, .rodata, unk_734710]
       - [0x189F70, .rodata, unk_73C310]
       - [0x18A0D0, .rodata, unk_740D10]
       - [0x18A0F0, .rodata, unk_741210]
-      - [0x18A1E0, .rodata, unk_741900]
-      - [0x18AC10, .rodata, unk_745FA0]
-      - [0x18AC68, .rodata, unk_746AD0]
-      - [0x18AC90, .rodata, unk_748A90]
-      - [0x18B4F0, .rodata, unk_74A2C0]
-      - [0x18B540, .rodata, unk_74D3F0]
+      - [0x18A1E0, .rodata, html_parse]
+      - [0x18AC10, .rodata, html_form_tags]
+      - [0x18AC68, .rodata, html_table_tags]
+      - [0x18AC90, .rodata, html_attr_readers]
+      - [0x18B4F0, .rodata, layout_text]
+      - [0x18B540, .rodata, layout_cells]
       - [0x18B560, .rodata, unk_7513C0]
       - [0x18B690, .rodata, unk_753C10]
-      - [0x18BC50, .rodata, unk_756FD0]
+      - [0x18BC50, .rodata, lobby_util]
       - [0x18BD50, .rodata, unk_7580B0]
       - [0x18BDF0, .rodata, unk_75B360]
-      - [0x18BF80, .rodata, unk_75E3B0]
-      - [0x18BFB0, .rodata, unk_75FDB0]
-      - [0x18C130, .rodata, unk_760C70]
-      - [0x18C170, .rodata, unk_7683D0]
-      - [0x18C1D0, .rodata, unk_76DB40]
-      - [0x18C270, .rodata, unk_7727B0]
-      - [0x18C288, .rodata, unk_772F30]
-      - [0x18C2A8, .rodata, unk_773A90]
-      - [0x18C300, .rodata, unk_774D10]
-      - [0x18C320, .rodata, unk_775930]
-      - [0x18C338, .rodata, unk_7766D0]
-      - [0x18C470, .rodata, unk_77E540]
-      - [0x18C4A0, .rodata, unk_77FD80]
-      - [0x18C500, .rodata, unk_780580]
-      - [0x18C590, .rodata, unk_78E4D0]
-      - [0x18C5D0, .rodata, unk_78F070]
-      - [0x18C5F8, .rodata, unk_790EA0]
+      - [0x18BF80, .rodata, village_quest_info]
+      - [0x18BFB0, .rodata, quest_order_terms]
+      - [0x18C130, .rodata, item_box_menu]
+      - [0x18C170, .rodata, box_menu_draw]
+      - [0x18C1D0, .rodata, quest_counter]
+      - [0x18C270, .rodata, game_menu_chat]
+      - [0x18C288, .rodata, chat_state]
+      - [0x18C2A8, .rodata, member_list]
+      - [0x18C300, .rodata, online_mark]
+      - [0x18C320, .rodata, hunter_card]
+      - [0x18C338, .rodata, combine_shop]
+      - [0x18C380, .rodata, town_msg]
+      - [0x18C470, .rodata, npc_route_state]
+      - [0x18C500, .rodata, npc_states]
+      - [0x18C590, .rodata, npc_scenes]
+      - [0x18C5D0, .rodata, name_tags]
+      - [0x18C5F8, .rodata, int_text]
       - [0x18C600, .rodata, unk_790EC0]
       - [0x18C648, .rodata, unk_792900]
       - [0x18C660, .rodata, unk_793070]
-      - [0x18C680, .rodata, unk_79AB50]
-      - [0x18C6C0, .rodata, unk_79C310]
+      - [0x18C680, .rodata, town_player_activities]
+      - [0x18C6C0, .rodata, town_input]
       - [0x18C790, .rodata, unk_79F7B0]
-      - [0x18C7D8, .rodata, unk_7A1120]
+      - [0x18C7D8, .rodata, item_shop]
       - [0x1974D0, .rodata, unk_7A44D0]
       - [0x197610, .rodata, unk_7A8690]
-      - [0x197910, .rodata, unk_7AEF10]
-      - [0x197940, .rodata, unk_7B0150]
-      - [0x197960, .rodata, unk_7B0D80]
-      - [0x1979A0, .rodata, unk_7B3140]
-      - [0x1979A8, .rodata, unk_7B7650]
-      - [0x1979B8, .rodata, unk_7B8610]
-      - [0x1979D0, .rodata, unk_7B91F0]
-      - [0x197A60, .rodata, unk_7BC3A0]
-      - [0x197B58, .rodata, unk_7BE430]
-      - [0x197C10, .rodata, unk_7BF560]
-      - [0x197C50, .rodata, unk_7C0B90]
-      - [0x197C70, .rodata, unk_7C1540]
-      - [0x197D50, .rodata, unk_7C45D0]
-      - [0x197DB0, .rodata, unk_7C4F80]
-      - [0x197DD0, .rodata, unk_7C6690]
-      - [0x197DF0, .rodata, unk_7C6A40]
-      - [0x197E00, .rodata, unk_7C7410]
+      - [0x197910, .rodata, lobby_connect]
+      - [0x197940, .rodata, server_list]
+      - [0x197960, .rodata, lobby_dialog]
+      - [0x1979A0, .rodata, lobby_steps]
+      - [0x1979A8, .rodata, server_menu]
+      - [0x1979B8, .rodata, chat_log]
+      - [0x1979D8, .rodata, lobby_screen]
+      - [0x197A60, .rodata, lobby_exit]
+      - [0x197B58, .rodata, tag_text]
+      - [0x197C10, .rodata, area_list]
+      - [0x197C50, .rodata, lobby_enter]
+      - [0x197C70, .rodata, lobby_login]
+      - [0x197DB0, .rodata, lobby_web_users]
+      - [0x197DD0, .rodata, lobby_village]
+      - [0x197E00, .rodata, lobby_town]
       - [0x197E20, .rodata, unk_7C8FA0]
       - [0x197F48, .rodata, unk_7CF340]
       - [0x197FA0, .rodata, unk_7CFBA0]

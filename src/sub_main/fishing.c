@@ -1,0 +1,2246 @@
+/*
+ * The fishing, and two effects that sit beside it in sub_main's code. All are effect
+ * objects of the stage object list (FxObj, SparkEmitter: include/fxobj.h).
+ * - Effect08_*: allocate and start the spark emitters (kind 8), which SparkFx_Update
+ *   runs.
+ * - The fish (kind 0x17, FishWork): Effect17_SpawnArea starts them at the area's fishing
+ *   spots (FishSpot). Each swims around its home, goes for a local player's lure, nibbles,
+ *   bites (Player.fishTimer) and, once struck, follows the lure out. Its record (FishKind)
+ *   comes from gFishKindsQuest, or gFishKindsLobby in the town.
+ * - The lure (STAGEOBJ_KIND_LURE, LureWork): Lure_Spawn starts it from the cast; it follows the
+ *   player's fishing motions (PL_MOT_FISH_*) and draws the line from the rod tip.
+ * - The countdown (kind 0x2C, Effect2C_Spawn): black bars and the 3, 2, 1 of its last
+ *   90 frames (versus, the town's games).
+ * The .data holds the fishing tables, the town's stage data and the player select and
+ * item box text tables, whose texts make up most of the .rodata.
+ */
+#include "common.h"
+#include "stageobj.h"
+#include "scene.h"
+#include "em.h"
+#include "player.h"
+#include "sprite.h"
+#include "prim.h"
+#include "fxobj.h"
+#include "area.h"
+#include "render_state.h"
+#include "sound.h"
+#include "fishing.h"
+
+u16 Rand_Next(s32 a);
+void Text_SetSize(s32 size);
+struct StageObj *StageObj_AllocTail(s32 n);
+void StageObj_Free(struct StageObj *p);
+u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
+void DrawSlot_Free(s32 id);
+void * Stage_FindData(u16 id);
+void Fish_Start(FxObj *o);
+struct FxObj;
+struct DrawSlot;
+void Fish_Update(struct FxObj *o);
+void Fish_End(FxObj *o);
+void Fish_Free(FxObj *o);
+void Lure_Start(struct FxObj *o);
+void Lure_Update(struct FxObj *o);
+void Lure_End(FxObj *o);
+void Lure_Free(FxObj *o);
+void CountdownFx_Start(FxObj *o);
+void CountdownFx_Run(FxObj *o);
+void CountdownFx_End(FxObj *o);
+void CountdownFx_Free(FxObj *o);
+void Countdown_Draw(s16 t);
+void Letterbox_Draw(s8);
+s32 Gs_SetState(u8 reg, u32 v);
+s16 Effect_MapTexId(s16 id);
+void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
+void Draw_ApplyStates(u32 f);
+s32 Model_Draw(u32 h, s32 flags);
+void Draw_SetDefaultState(void);
+void Vec_Copy(f32 *dst, f32 *src);
+void Vec_RotateSelf(f32 *v, f32 *m);
+void Lure_Draw(struct DrawSlot *slot);
+void Vec_RotateY(f32 *v, f32 angle);
+void Vib_StartLocal(void *player, s32 i);
+s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
+s32 Prim_FillTri(PrimTri *t);
+void Vec_Normalize(f32 *v);
+void Mtx_Identity(f32 *m);
+void Mtx_RotateY(f32 *m, f32 a);
+void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
+void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
+void Mtx_Concat3x3(f32 *m, f32 *a);
+void Mtx_Copy(f32 *dst, f32 *src);
+void Vec_Rotate(f32 *out, f32 *v, f32 *m);
+s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
+s16 DrawSlot_Alloc(void);
+DrawSlot *DrawSlot_Get(s32 i);
+void Em_GetBonePos(void *obj, s16 bone, f32 *out);
+s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
+void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
+void SparkFx_Update(SparkEmitter *e);
+
+SparkEmitter *Effect08_Alloc(s32 unused)
+{
+    return (SparkEmitter *)StageObj_AllocTail(0x1);
+}
+
+void Vec_Copy(f32 *dst, f32 *src);
+
+/* Starts an effect object of kind 8 (update SparkFx_Update) at pos, with +3 = k, +7 = b and the scale. */
+void Effect08_Spawn(f32 *pos, s32 sparkType, s32 tintKind, f32 scale)
+{
+    SparkEmitter *emitter = Effect08_Alloc(sparkType);
+
+    if (emitter != NULL) {
+        emitter->kind = 8;
+        emitter->update = SparkFx_Update;
+        emitter->owner = NULL;
+        emitter->type = sparkType;
+        emitter->tint = tintKind;
+        emitter->scale = scale;
+        Vec_Copy(emitter->pos, pos);
+    }
+}
+
+s32 Obj_InCurrentArea(void *em);
+
+/* Effect08_Spawn at monster em's position (height y), when em is in the current area; em is the emitter's owner. */
+void Effect08_SpawnAtEm(Em *em, s32 sparkType, s32 tintKind, f32 scale, f32 y)
+{
+    SparkEmitter *emitter;
+
+    if ((u8)Obj_InCurrentArea(em)) {
+        if ((emitter = Effect08_Alloc(sparkType)) != NULL) {
+            emitter->kind = 8;
+            emitter->update = SparkFx_Update;
+            emitter->owner = em;
+            emitter->type = sparkType;
+            emitter->tint = tintKind;
+            emitter->scale = scale;
+            Vec_Copy(emitter->pos, &em->posX);
+            emitter->pos[1] = y;
+        }
+    }
+}
+
+/* A fish's update (kind 0x17): runs its state, Fish_Start, Fish_Update, Fish_End or Fish_Free. */
+void Fish_Run(FxObj *fish)
+{
+    u8 state;
+
+    state = fish->state;
+    switch (state) {
+    case 0:
+        Fish_Start(fish);
+        break;
+    case 1:
+        Fish_Update(fish);
+        break;
+    case 2:
+        Fish_End(fish);
+        break;
+    case 3:
+        Fish_Free(fish);
+        break;
+    }
+}
+
+void Fish_Draw(DrawSlot *slot);
+
+/* Next state: takes a draw slot (slotId, slot) that draws with Fish_Draw, then Fish_Update. */
+void Fish_Start(FxObj *fish)
+{
+    fish->state++;
+    fish->step = FISH_STEP_SPAWN;
+    fish->visible = 1;
+    fish->draw = NULL;
+    fish->slotId = DrawSlot_Alloc();
+    if (fish->slotId != -1) {
+        fish->slot = DrawSlot_Get(fish->slotId);
+        fish->slot->owner = (void *)fish;
+        fish->slot->draw = Fish_Draw;
+    } else {
+        fish->slot = NULL;
+    }
+    Fish_Update(fish);
+}
+
+/* The heading from a to b, a quarter turn back (the effects' angle convention). */
+u16 Fx_HeadingTo(f32 *from, f32 *to)
+{
+    return Math_Heading(from[0], from[2], to[0], to[2]) - 0x4000;
+}
+
+/* Whether the bait the player is using (Player.useItem) draws fish kind fishKind: 1 for
+ * ITEM_ID_FISH_BAIT_A, _B, _C and _G and for any other item, 0 for ITEM_ID_FISH_BAIT_LURE_ALT,
+ * and for _D, _E and _F 1 only for the kinds listed under each. */
+s32 Fish_BaitMatches_Unk(Player *pl, s8 fishKind)
+{
+    switch (pl->useItem) {
+    case ITEM_ID_FISH_BAIT_A:
+    case ITEM_ID_FISH_BAIT_B:
+    case ITEM_ID_FISH_BAIT_C:
+    case ITEM_ID_FISH_BAIT_G:
+        break;
+    case ITEM_ID_FISH_BAIT_LURE_ALT:
+        return 0;
+    case ITEM_ID_FISH_BAIT_D:
+        if (fishKind == 3 || fishKind == 10 || fishKind == 11 || fishKind == 20 || fishKind == 23) {
+            break;
+        }
+        return 0;
+    case ITEM_ID_FISH_BAIT_E:
+        if (fishKind == 7 || fishKind == 8 || fishKind == 22) {
+            break;
+        }
+        return 0;
+    case ITEM_ID_FISH_BAIT_F:
+        if (fishKind == 5) {
+            break;
+        }
+        return 0;
+    default:
+        return 1;
+    }
+    return 1;
+}
+
+extern FxObj gStageObjs[];
+s32 Player_IsLocal(void *obj);
+f32 Vec_DistanceXZ(f32 *a, f32 *b);
+
+/* A local player's lure (STAGEOBJ_KIND_LURE, in LURE_STEP_BITE, not claimed) that the fish may bite: within its
+ * radius of home, allowed for its kind (Fish_BaitMatches_Unk) and in front (+-0x3000 of its heading).
+ * Mode 0 aims the fish at it; otherwise the fish claims it (its claimed) once within 30. NULL when none. */
+FxObj *Fish_FindLure(FxObj *fish, FishWork *w, s32 mode)
+{
+    s32 i;
+    FxObj *lure;
+    u16 lureHeading;
+
+    for (i = 0, lure = gStageObjs; i < 128; i++, lure++) { /* the stage object pool */
+        if (lure->kind == STAGEOBJ_KIND_LURE && lure->type != LURE_TYPE_ALT && lure->step == LURE_STEP_BITE && lure->claimed == 0
+            && Player_IsLocal(lure->owner) == 1 && Fish_BaitMatches_Unk(lure->owner, w->kind)
+            && Vec_DistanceXZ(w->home, lure->pos) < w->radius) {
+            lureHeading = Fx_HeadingTo(fish->pos, lure->pos);
+            if ((u16)(lureHeading - w->angles[1] + 0x3000) <= 0x5FFF) {
+                if (mode == 0) {
+                    w->heading = lureHeading;
+                    return lure;
+                }
+                if ((w->dist = Vec_DistanceXZ(fish->pos, lure->pos)) < 30.0f) {
+                    lure->claimed = 1;
+                    return lure;
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+extern FishKind gFishKindsQuest[];
+extern FishKind gFishKindsLobby[];
+
+/* The record of fish kind i: gFishKindsQuest's, or gFishKindsLobby's when gScene.inLobby is 1. */
+static FishKind *Fish_GetKind(s8 i)
+{
+    if (gScene.inLobby != 1) {
+        return &gFishKindsQuest[i];
+    }
+    return &gFishKindsLobby[i];
+}
+
+s8 Fish_PickKind(FxObj *o);
+f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
+void Vec_Rotate(f32 *out, f32 *v, f32 *m);
+
+/* FISH_STEP_SPAWN: picks the fish's kind (Fish_PickKind; none: the object ends), places it at a
+ * random point within half its radius of home, then grows from 0.1 to its kind's size
+ * (FishKind.scale) over 10 frames and goes to FISH_STEP_SWIM. */
+void Fish_StepSpawn(FxObj *fish, FishWork *w)
+{
+    FishKind *rec = Fish_GetKind(w->kind);
+    f32 forward[3];
+    f32 delta[3];
+    s32 rotAngles[3];
+    f32 rotMtx[16];
+    s32 halfRadius;
+
+    switch (fish->phase) {
+    case 0:
+        fish->phase++;
+        w->bright = 0;
+        w->kind = Fish_PickKind(fish);
+        if (w->kind == 0) {
+            fish->state++;
+            fish->step = FISH_STEP_SPAWN;
+            fish->visible = 0;
+        }
+        Vec_Copy(fish->pos, w->home);
+        rotAngles[0] = 0;
+        rotAngles[1] = Rand_Next(1);
+        rotAngles[2] = 0;
+        Mtx_FromAnglesXYZ(rotAngles, rotMtx);
+        halfRadius = (s32)w->radius / 2;
+        forward[2] = Rand_Next(1) % halfRadius;
+        forward[0] = 0.0f;
+        forward[1] = 0.0f;
+        Vec_Rotate(delta, forward, rotMtx);
+        fish->pos[0] += delta[0];
+        fish->pos[1] += delta[1];
+        fish->pos[2] += delta[2];
+        fish->timer = 10;
+        w->angles[2] = 0;
+        w->angles[0] = 0;
+        w->heading = w->angles[1] = (Rand_Next(1) & 0xF) << 12;
+        w->turn = 0x20;
+        w->wiggle = 0;
+        w->scale[0] = w->scale[1] = w->scale[2] = 0.1f;
+        w->angles[0] = 0;
+        break;
+    case 1:
+        w->scale[0] += rec->scale[0] / 10.0f;
+        w->scale[1] += rec->scale[1] / 10.0f;
+        w->scale[2] += rec->scale[2] / 10.0f;
+        if (--fish->timer <= 0.0f) {
+            fish->step = FISH_STEP_SWIM;
+            fish->phase = 0;
+            fish->timer = (Rand_Next(1) & 0x1F) + 10;
+            w->scale[0] = rec->scale[0];
+            w->scale[1] = rec->scale[1];
+            w->scale[2] = rec->scale[2];
+        }
+        break;
+    }
+}
+
+f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
+void Vec_Rotate(f32 *out, f32 *v, f32 *m);
+
+/* FISH_STEP_SWIM: turns toward a heading (a lure's, or a random one back toward home), then
+ * swims forward at a slowing speed; on a lure whose player's baited is set, FISH_STEP_BITE. */
+void Fish_StepSwim(FxObj *fish, FishWork *w)
+{
+    f32 forward[3];
+    f32 delta[3];
+    f32 rotMtx[16];
+    s32 homeHeading;
+
+    switch (fish->phase) {
+    case 0:
+        if (--fish->timer <= 0 || w->angles[1] - w->heading == 0) {
+            fish->phase++;
+            fish->scale = 3.0f;
+            w->wiggle = 0x100;
+            if (Fish_FindLure(fish, w, 0) == NULL) {
+                homeHeading = Fx_HeadingTo(fish->pos, w->home);
+                w->heading = homeHeading - 0x4000 + ((Rand_Next(1) & 0xF) << 11);
+            }
+        }
+        w->turn += (0x20 - w->turn) / 8;
+        Angle_TurnToward(&w->angles[1], &w->heading, w->turn);
+        break;
+    case 1:
+        forward[0] = 0.0f;
+        forward[1] = 0.0f;
+        forward[2] = fish->scale;
+        Mtx_FromAnglesXYZ(w->angles, rotMtx);
+        Vec_Rotate(delta, forward, rotMtx);
+        fish->pos[0] += delta[0];
+        fish->pos[1] += delta[1];
+        fish->pos[2] += delta[2];
+        w->wiggle = -w->wiggle;
+        w->wiggle -= w->wiggle / 2;
+        if ((w->lure = Fish_FindLure(fish, w, 1)) != NULL && w->lure->owner->baited != 0) {
+            fish->step = FISH_STEP_BITE;
+            fish->phase = 0;
+            fish->timer = 3;
+            w->wiggle = 0;
+        } else if ((fish->scale += -0.1f) <= 0.0f) {
+            fish->phase = 0;
+            fish->timer = (Rand_Next(1) & 0x1F) + 10;
+            w->wiggle = 0;
+        }
+        w->turn += (0x100 - w->turn) / 8;
+        Angle_TurnToward(&w->angles[1], &w->heading, w->turn);
+        break;
+    }
+}
+
+s16 Player_IsState(void *obj, u8 a, u8 b);
+s32 Player_HasSkill(Player *p, u8 skill);
+f32 Lure_GetWaterHeight(FxObj *lure);
+extern u16 gFishBiteJitter[];
+
+/* FISH_STEP_BITE: at the lure. It nibbles (up to its kind's count, none with ITEM_ID_FISH_BAIT_G), darting
+ * forward and back, then bites: Player.fishTimer gets the kind's value (doubled with SKILL_FISHING_BITE_X2) and
+ * a vibration; a nibble splashes (effect 7) and vibrates. FISH_STEP_SWIM when the lure is gone or the player
+ * reels in without a bite (PL_ACT_FISH_REEL_BAITED or PL_ACT_FISH_REEL_EMPTY; in the town,
+ * PL_TOWN_FISH_REEL_EMPTY or PL_TOWN_FISH_REEL_BAITED); FISH_STEP_HOOKED when he strikes (PL_ACT_FISH_REEL;
+ * in the town PL_TOWN_FISH_REEL) with no catch pending (gotItemId, set to the kind's item). */
+void Fish_StepBite(FxObj *fish, FishWork *w)
+{
+    FxObj *lure = w->lure;
+    FishKind *rec = Fish_GetKind(w->kind);
+    f32 vec[3];
+    f32 delta[3];
+    f32 rotMtx[16];
+    f32 *vecY;
+    f32 *vecZ;
+
+    if (gScene.inLobby != 1) {
+        if (lure->kind != STAGEOBJ_KIND_LURE || lure->active == 0 || lure->state >= 2
+            || Player_IsState(lure->owner, PL_GROUP_ACTION, PL_ACT_FISH_REEL_BAITED) || Player_IsState(lure->owner, PL_GROUP_ACTION, PL_ACT_FISH_REEL_EMPTY)) {
+            fish->step = FISH_STEP_SWIM;
+            fish->phase = 0;
+            fish->timer = (Rand_Next(1) & 0x1F) + 10;
+            return;
+        }
+        if (lure->owner->gotItemId == 0 && Player_IsState(lure->owner, PL_GROUP_ACTION, PL_ACT_FISH_REEL)) {
+            fish->step = FISH_STEP_HOOKED;
+            fish->phase = 0;
+            lure->owner->gotItemId = rec->item;
+            return;
+        }
+    } else {
+        if (lure->kind != STAGEOBJ_KIND_LURE || lure->active == 0 || lure->state >= 2
+            || Player_IsState(lure->owner, PL_GROUP_ACTION, PL_TOWN_FISH_REEL_EMPTY) || Player_IsState(lure->owner, PL_GROUP_ACTION, PL_TOWN_FISH_REEL_BAITED)) {
+            fish->step = FISH_STEP_SWIM;
+            fish->phase = 0;
+            fish->timer = (Rand_Next(1) & 0x1F) + 10;
+            return;
+        }
+        if (lure->owner->gotItemId == 0 && Player_IsState(lure->owner, PL_GROUP_ACTION, PL_TOWN_FISH_REEL)) {
+            fish->step = FISH_STEP_HOOKED;
+            fish->phase = 0;
+            lure->owner->gotItemId = rec->item;
+            return;
+        }
+    }
+    switch (fish->phase) {
+    case 0:
+        fish->phase++;
+        if (lure->owner->useItem == ITEM_ID_FISH_BAIT_G) {
+            w->nibbles = 0;
+        } else {
+            w->nibbles = Rand_Next(1) % rec->nibbles + 1;
+        }
+    case 1:
+        if (--w->nibbles <= 0) {
+            fish->phase = 5;
+        } else {
+            fish->phase++;
+        }
+        fish->timer = 5;
+        fish->scale = Vec_DistanceXZ(fish->pos, lure->pos) / fish->timer;
+        w->heading = w->angles[1] = Fx_HeadingTo(fish->pos, w->lure->pos);
+        break;
+    case 2:
+    case 5:
+        vec[0] = 0.0f;
+        vecY = &vec[1];
+        *vecY = 0.0f;
+        vecZ = &vec[2];
+        *vecZ = fish->scale;
+        Mtx_FromAnglesXYZ(w->angles, rotMtx);
+        Vec_Rotate(delta, vec, rotMtx);
+        fish->pos[0] += delta[0];
+        fish->pos[1] += delta[1];
+        fish->pos[2] += delta[2];
+        if (--fish->timer <= 0) {
+            if (fish->phase == 5) {
+                lure->owner->fishTimer = rec->biteTime + gFishBiteJitter[Rand_Next(1) & 3];
+                if (Player_HasSkill(lure->owner, SKILL_FISHING_BITE_X2) == 1) {
+                    lure->owner->fishTimer *= 2;
+                }
+                if (!(Rand_Next(1) & 3)) {
+                    lure->owner->baited = 0;
+                }
+                Vib_StartLocal(lure->owner, 1);
+            } else {
+                vec[0] = lure->pos[0];
+                *vecY = 10.0f + Lure_GetWaterHeight(lure);
+                *vecZ = lure->pos[2];
+                Effect08_Spawn(vec, 7, 0, 0.5f);
+                Vib_StartLocal(lure->owner, 4);
+            }
+            fish->phase++;
+            fish->scale = -5.0f;
+            w->accel = 0.5f;
+        }
+        break;
+    case 3:
+    case 6:
+        vec[0] = 0.0f;
+        vec[1] = 0.0f;
+        vec[2] = fish->scale;
+        Mtx_FromAnglesXYZ(w->angles, rotMtx);
+        Vec_Rotate(delta, vec, rotMtx);
+        fish->pos[0] += delta[0];
+        fish->pos[1] += delta[1];
+        fish->pos[2] += delta[2];
+        if ((fish->scale += w->accel) >= 0.0f) {
+            fish->phase++;
+            fish->timer = 20;
+        }
+        break;
+    case 4:
+        if (--fish->timer <= 0) {
+            fish->phase = 1;
+        }
+        break;
+    case 7:
+        if (--fish->timer <= 0) {
+            fish->phase++;
+            fish->timer = (Rand_Next(1) & 0x1F) + 60;
+            w->heading = w->angles[1] + ((Rand_Next(1) & 7) << 12);
+            lure->claimed = 0;
+            fish->scale = 8.0f;
+            w->accel = -0.3f;
+        }
+        break;
+    case 8:
+        vec[0] = 0.0f;
+        vec[1] = 0.0f;
+        vec[2] = fish->scale;
+        Mtx_FromAnglesXYZ(w->angles, rotMtx);
+        Vec_Rotate(delta, vec, rotMtx);
+        fish->pos[0] += delta[0];
+        fish->pos[1] += delta[1];
+        fish->pos[2] += delta[2];
+        if ((fish->scale += w->accel) <= 0.0f) {
+            fish->step = FISH_STEP_SWIM;
+            fish->phase = 0;
+            fish->timer = (Rand_Next(1) & 0x1F) + 10;
+        }
+        break;
+    }
+    Angle_TurnToward(&w->angles[1], &w->heading, 0x100);
+}
+
+s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
+void Vib_StartLocal(void *player, s32 i);
+
+/* FISH_STEP_HOOKED: it follows the lure (turning toward it, a vibration every 10 frames)
+ * until the lure's LURE_STEP_PULL_OUT (then bright); FISH_STEP_WAIT when the lure is gone. */
+void Fish_StepHooked(FxObj *fish, FishWork *w)
+{
+    FxObj *lure = w->lure;
+
+    if (lure->kind != STAGEOBJ_KIND_LURE || lure->active == 0 || lure->state >= 2) {
+        fish->step = FISH_STEP_WAIT;
+        fish->phase = 0;
+        return;
+    }
+    switch (fish->phase) {
+    case 0:
+        fish->phase++;
+        fish->timer = 10;
+    case 1:
+        w->heading = Fx_HeadingTo(fish->pos, lure->pos);
+        Angle_TurnToward(&w->angles[1], &w->heading, 0x800);
+        fish->pos[0] = lure->pos[0];
+        fish->pos[2] = lure->pos[2];
+        if (--fish->timer <= 0) {
+            fish->timer = 10;
+            Vib_StartLocal(lure->owner, 1);
+        }
+        if (lure->step > LURE_STEP_REEL) {
+            fish->phase++;
+            w->bright = 1;
+            Vib_StartLocal(lure->owner, 3);
+        }
+        break;
+    case 2:
+        w->angles[0] = -0x4000;
+        Vec_Copy(fish->pos, lure->pos);
+        break;
+    }
+}
+
+extern s8 gFishWaitSecs[];
+
+extern s8 gFishWaitSecs[];
+
+/* FISH_STEP_WAIT: waits 30 to 30 x gFishWaitSecs[] frames at home (velocity
+ * zero), then starts again at FISH_STEP_SPAWN. */
+void Fish_StepWait(FxObj *fish, FishWork *w)
+{
+    switch (fish->phase) {
+    case 0:
+        fish->phase++;
+        w->bright = 0;
+        fish->timer = gFishWaitSecs[Rand_Next(1) & 3] * 30;
+        w->scale[0] = 0.0f;
+        w->scale[1] = 0.0f;
+        w->scale[2] = 0.0f;
+        Vec_Copy(fish->pos, w->home);
+        break;
+    case 1:
+        if (--fish->timer <= 0.0f) {
+            fish->step = FISH_STEP_SPAWN;
+            fish->phase = 0;
+        }
+        break;
+    }
+}
+
+void Fish_StepSpawn(FxObj *o, FishWork *w);
+void Fish_StepSwim(FxObj *o, FishWork *w);
+void Fish_StepBite(FxObj *o, FishWork *w);
+void Fish_StepHooked(FxObj *o, FishWork *w);
+void Fish_StepWait(FxObj *o, FishWork *w);
+void Vec_Sub(f32 *out, f32 *a, f32 *b);
+f32 Vec_Length(f32 *v);
+void Vec_Normalize(f32 *v);
+s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
+
+/* A fish's update: its step, kept within radius of home (horizontally), then drawn. */
+void Fish_Update(FxObj *fish)
+{
+    u8 step = fish->step;
+    FishWork *w = fish->work;
+    f32 fromHome[3];
+    f32 *fromHomeY;
+
+    switch (step) {
+    case FISH_STEP_SPAWN:
+        Fish_StepSpawn(fish, w);
+        break;
+    case FISH_STEP_SWIM:
+        Fish_StepSwim(fish, w);
+        break;
+    case FISH_STEP_BITE:
+        Fish_StepBite(fish, w);
+        break;
+    case FISH_STEP_HOOKED:
+        Fish_StepHooked(fish, w);
+        break;
+    case FISH_STEP_WAIT:
+        Fish_StepWait(fish, w);
+        break;
+    }
+    if (fish->visible) {
+        if (fish->step <= FISH_STEP_BITE) {
+            Vec_Sub(fromHome, fish->pos, w->home);
+            fromHomeY = &fromHome[1];
+            *fromHomeY = 0.0f;
+            if (Vec_Length(fromHome) > w->radius) {
+                Vec_Normalize(fromHome);
+                fish->pos[0] = w->home[0] + fromHome[0] * w->radius;
+                fish->pos[1] = w->home[1] + *fromHomeY * w->radius;
+                fish->pos[2] = w->home[2] + fromHome[2] * w->radius;
+            }
+        }
+        fish->slot->pos[0] = fish->pos[0];
+        fish->slot->pos[1] = fish->pos[1];
+        fish->slot->pos[2] = fish->pos[2];
+        OT_AddByDepth(gDrawOt32, fish->slot, 0x20, 0);
+    }
+}
+
+void Fish_End(FxObj *fish)
+{
+    fish->state++;
+    DrawSlot_Free(fish->slotId);
+}
+
+void Fish_Free(FxObj *fish)
+{
+    StageObj_Free((struct StageObj *)fish);
+}
+
+extern u8 gFishColors[][3];
+void Mtx_RotateZXY(f32 *m, f32 x, f32 y, f32 z);
+
+/* Draws a fish (the draw slot's update): its kind's model scaled, turned and placed, in its
+ * kind's color (gFishColors), at half brightness unless its bright is set. */
+void Fish_Draw(DrawSlot *slot)
+{
+    FxObj *fish = (FxObj *)slot->owner;
+    FishWork *w = fish->work;
+    FishKind *rec = Fish_GetKind(w->kind);
+    Model *set = gCommonModels[0];
+    f32 mtx[16];
+    ModelMat *base;
+    ModelMatSet *matSet;
+    f32 brightness;
+    u32 color;
+
+    if (set == NULL || set->active == 0) {
+        return;
+    }
+    Gs_SetState(RS_ALPHA_REF, 0x80);
+    matSet = &set->matSets[rec->model];
+    base = set->mats;
+    Mtx_Scale(mtx, w->scale[0], w->scale[1], w->scale[2]);
+    Mtx_RotateZXY(mtx, 6.2831855f * w->angles[0] / 65536.0f, 6.2831855f * (w->angles[1] + w->wiggle) / 65536.0f,
+                  6.2831855f * w->angles[2] / 65536.0f);
+    Mtx_SetTrans(mtx, fish->pos[0], fish->pos[1], fish->pos[2]);
+    Gs_SetState(RS_COLOR2, -1);
+    if (matSet != NULL && matSet->id != -1) {
+        Gs_SetState(RS_ALPHA_REF, 0x80);
+        Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
+        if (w->bright == 0) {
+            brightness = 0.5f;
+        } else {
+            brightness = 1.0f;
+        }
+        color = 0xFF000000 | ((u8)(brightness * gFishColors[rec->color][0]) << 16) | ((u8)(brightness * gFishColors[rec->color][1]) << 8) | (u8)(brightness * gFishColors[rec->color][2]);
+        Gs_SetState(RS_COLOR2, color);
+        Gs_SetLightList(base, matSet);
+        Draw_ApplyStates(matSet->flags);
+        Model_Draw(matSet->id, 0);
+        Draw_SetDefaultState();
+    }
+}
+
+/* A random fish kind from the fish's table, each entry's kind with a chance of its weight
+ * in the table's total; 0 past the end. */
+s8 Fish_PickKind(FxObj *fish)
+{
+    FishWork *w = fish->work;
+    FishTableEntry *entry;
+    u8 total;
+    u8 roll;
+    u8 sum;
+
+    total = 0;
+    for (entry = w->table; entry->weight != 0xFF; entry++) {
+        total += entry->weight;
+    }
+    sum = Rand_Next(0) % total;
+    roll = sum;
+    for (sum = 0, entry = w->table; entry->weight != 0xFF; entry++) {
+        sum += entry->weight;
+        if (roll < sum) {
+            return entry->kind;
+        }
+    }
+    return 0;
+}
+
+void Fish_Run(FxObj *o);
+struct StageObj *StageObj_Alloc(s32 n);
+
+/* Starts an effect object of kind 0x17 (update Fish_Run) from record src: x, y, z to it and to its work's home, the fourth value to its radius. */
+void Effect17_Spawn(s32 spotKind, f32 *src, FishTableEntry *table)
+{
+    FxObj *fish = (FxObj *)StageObj_Alloc(1);
+
+    if (fish != NULL) {
+        FishWork *w = fish->work;
+
+        fish->kind = 0x17;
+        fish->update = Fish_Run;
+        fish->draw = NULL;
+        fish->type = spotKind;
+        w->home[0] = fish->pos[0] = *src++;
+        w->home[1] = fish->pos[1] = *src++;
+        w->home[2] = fish->pos[2] = *src++;
+        w->radius = *src;
+        w->table = table;
+    }
+}
+
+void *Stage_GetSeasonalData(s32 i, s32 *out);
+void Effect17_Spawn(s32 k, f32 *src, FishTableEntry *table);
+
+
+/* Starts the fish of an area: for each of its fishing spots (Stage_FindData(area), up to a
+ * negative kind), Stage_GetSeasonalData(kind) gives the fish table and the count, and
+ * Effect17_Spawn starts that many fish there. Nothing when the area has no spots. */
+void Effect17_SpawnArea(s32 area)
+{
+    FishSpot *spot = Stage_FindData(area);
+    FishTableEntry *table;
+    s32 fishCount;
+
+    if (spot != NULL) {
+        for (;;) {
+            if (spot->kind < 0) {
+                break;
+            }
+            table = Stage_GetSeasonalData(spot->kind, &fishCount);
+            while (fishCount > 0) {
+                Effect17_Spawn(spot->kind, spot->circle, table);
+                fishCount--;
+            }
+            spot++;
+        }
+    }
+}
+
+/* The first fishing spot of an area (the list Effect17_SpawnArea reads): its home x, y, z to
+ * pos; returns its radius, or -1.0 when the area has none. The area's update plays a sound
+ * there while it is positive. */
+f32 Stage_GetDataPoint(s32 area, f32 *pos)
+{
+    f32 *data;
+
+    data = Stage_FindData(area & 0xFFFF);
+    if (data == NULL) {
+        return -1.0f;
+    }
+    pos[0] = data[0];
+    pos[1] = data[1];
+    pos[2] = data[2];
+    return data[3];
+}
+
+struct StageObj *StageObj_Alloc(s32 n);
+void Lure_Run(FxObj *o);
+
+/* Starts player pl's lure (STAGEOBJ_KIND_LURE, update Lure_Run) of type lureType (1 for
+ * ITEM_ID_FISH_BAIT_LURE_ALT, else 0); its colour is the player's (index & 3, gLureColors).
+ * Nothing when no object is free. The cast states call it. */
+void Lure_Spawn(Player *pl, u8 lureType)
+{
+    FxObj *lure = (FxObj *)StageObj_Alloc(1);
+
+    if (lure != NULL) {
+        lure->kind = STAGEOBJ_KIND_LURE;
+        lure->update = Lure_Run;
+        lure->draw = NULL;
+        lure->owner = pl;
+        lure->ownerIndex = (u8)pl->index & 3;
+        lure->type = lureType;
+    }
+}
+
+/* A lure's update (STAGEOBJ_KIND_LURE): runs its state, Lure_Start, Lure_Update, Lure_End or Lure_Free. */
+void Lure_Run(FxObj *lure)
+{
+    u8 state;
+
+    state = lure->state;
+    switch (state) {
+    case 0:
+        Lure_Start(lure);
+        break;
+    case 1:
+        Lure_Update(lure);
+        break;
+    case 2:
+        Lure_End(lure);
+        break;
+    case 3:
+        Lure_Free(lure);
+        break;
+    }
+}
+
+u16 Area_DayId(u16 a);
+f32 Rand_Unit(void);
+f32 Rand_Signed(void);
+
+/* The lure's first state: at the rod (bone 0xE of the player), a random throw velocity turned to
+ * the player's heading, its scale (0.3 for variant 1), the water height of the area (waterY), and a
+ * draw slot drawn by Lure_Draw (none: the lure ends). */
+void Lure_Start(FxObj *lure)
+{
+    Player *pl = lure->owner;
+    LureWork *w = lure->work;
+
+    lure->state++;
+    lure->step = LURE_STEP_FLY;
+    lure->phase = 0;
+    lure->visible = 1;
+    lure->draw = NULL;
+    Em_GetBonePos(pl, PL_BONE_HAND, lure->pos);
+    Vec_Copy(w->target, lure->pos);
+    lure->angle = pl->rot[1];
+    w->counter = 0;
+    w->vel[0] = Rand_Signed();
+    w->vel[1] = 2.0f + 2.0f * Rand_Unit();
+    w->vel[2] = 30.0f + 2.0f * Rand_Unit();
+    w->gravity = -2.0f;
+    switch (lure->type) {
+    default:
+        w->scale = 1.0f;
+        break;
+    case LURE_TYPE_ALT:
+        w->scale = 0.3f;
+        break;
+    }
+    switch (Area_DayId(gScene.area)) {
+    case AREA_JUNGLE_NIGHT_0:
+        w->waterY = -94.0f;
+        break;
+    case AREA_JUNGLE_NIGHT_2:
+        w->waterY = -131.0f;
+        break;
+    case AREA_FOREST_HILLS_0:
+        w->waterY = -10.0f;
+        break;
+    case AREA_FOREST_HILLS_11:
+        w->waterY = -45.0f;
+        break;
+    case AREA_DESERT_NIGHT_2:
+        w->waterY = -20.0f;
+        break;
+    case AREA_VOLCANO_NIGHT_1:
+        w->waterY = -222.0f;
+        break;
+    case AREA_VOLCANO_NIGHT_3:
+        w->waterY = -41.0f;
+        break;
+    case AREA_SWAMP_NIGHT_2:
+        w->waterY = -20.0f;
+        break;
+    case AREA_VOLCANO_9:
+        w->waterY = -10.0f;
+        break;
+    case AREA_SWAMP_NIGHT_9:
+        w->waterY = -20.0f;
+        break;
+    case AREA_SNOWY_MOUNTAINS_7:
+        w->waterY = -50.0f;
+        break;
+    case AREA_JUNGLE_0:
+        w->waterY = -57.0f;
+        break;
+    case AREA_JUNGLE_3:
+        w->waterY = -12.0f;
+        break;
+    case AREA_JUNGLE_4:
+        w->waterY = -64.0f;
+        break;
+    case AREA_JUNGLE_6:
+        w->waterY = -37.0f;
+        break;
+    case AREA_TOWER_0:
+        w->waterY = -447.0f;
+        break;
+    case AREA_TOWER_8:
+        w->waterY = -270.0f;
+        break;
+    case AREA_HUB_0x84:
+        w->waterY = 810.0f;
+        break;
+    case AREA_HUB_0x89:
+        w->waterY = -595.0f;
+        break;
+    case AREA_DESERT_2:
+        w->waterY = 30.0f;
+        break;
+    case AREA_DESERT_4:
+        w->waterY = 0.0f;
+        break;
+    case AREA_DESERT_6:
+        w->waterY = 5.0f;
+        break;
+    case AREA_SWAMP_0:
+        w->waterY = -47.5f;
+        break;
+    case AREA_SWAMP_3:
+        w->waterY = -10.0f;
+        break;
+    case AREA_BATTLE_TOWN_0:
+        w->waterY = 810.0f;
+        break;
+    default:
+        w->waterY = 0.0f;
+        break;
+    }
+    w->line = 0;
+    Vec_RotateY(w->vel, 6.2831855f * lure->angle / 65536.0f);
+    lure->slotId = DrawSlot_Alloc();
+    if (lure->slotId != -1) {
+        lure->slot = DrawSlot_Get(lure->slotId);
+        lure->slot->owner = (void *)lure;
+        lure->slot->draw = Lure_Draw;
+    } else {
+        StageObj_Free((struct StageObj *) lure);
+    }
+}
+
+/* Moves the lure by its velocity, then adds its gravity to the vertical velocity. */
+void Lure_ApplyVelocity(FxObj *lure, LureWork *w)
+{
+    lure->pos[0] += w->vel[0];
+    lure->pos[1] += w->vel[1];
+    lure->pos[2] += w->vel[2];
+    w->vel[1] += w->gravity;
+}
+
+void Effect08_Spawn(f32 *pos, s32 k, s32 b, f32 scale);
+
+/* Effects of kind 8 above pos (at height y + 15): variant 7, or 3 and 0 (k 1), or 4 and 1 (k 2) 5 higher. */
+void Fx_SpawnSplash(f32 *pos, f32 y, f32 scale, u8 pattern)
+{
+    f32 at[3];
+    f32 *atY = &at[1];
+
+    at[0] = pos[0];
+    *atY = 15.0f + y;
+    at[2] = pos[2];
+    switch (pattern) {
+    default:
+        Effect08_Spawn(at, 7, 0, scale);
+        break;
+    case 1:
+        Effect08_Spawn(at, 3, 0, scale);
+        *atY += 5.0f;
+        Effect08_Spawn(at, 0, 0, scale);
+        break;
+    case 2:
+        Effect08_Spawn(at, 4, 0, scale);
+        *atY += 5.0f;
+        Effect08_Spawn(at, 1, 0, scale);
+        break;
+    }
+}
+
+void Vec_RotateY(f32 *v, f32 angle);
+void Vec_Scale(f32 *out, f32 *v, f32 s);
+void Vec_Add(f32 *out, f32 *a, f32 *b);
+void Vec_Sub(f32 *out, f32 *a, f32 *b);
+f32 Vec_Distance(f32 *a, f32 *b);
+void Lure_Cast(FxObj *o, LureWork *w);
+void Fishing_PlaySe(FxObj *o, f32 *pos, s16 k);
+u32 Player_TestFlag(void *obj, u32 flag);
+s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
+s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame);
+void Fish_StepState_Unk(FxObj *o, LureWork *w);
+
+/* The lure while it is out, by its step (LURE_STEP_FLY to LURE_STEP_IN_HAND); then kept
+ * within 100 of its target, drawn, and ended when the player leaves the area or drops the rod. */
+void Lure_Update(FxObj *lure)
+{
+    LureWork *w;
+    Player *pl;
+    f32 vec[3];
+    f32 size;
+    f32 targetDist;
+    s16 reelFrames;
+
+    w = lure->work;
+    pl = lure->owner;
+    lure->timer++;
+    switch (lure->step) {
+    case LURE_STEP_FLY:
+        Lure_ApplyVelocity(lure, w);
+        if (lure->pos[1] < w->waterY - 5.0f) {
+            lure->pos[1] = w->waterY - 5.0f;
+            Vec_Copy(w->target, lure->pos);
+            Fx_SpawnSplash(w->target, w->waterY, 1.0f, 0);
+            w->vel[0] = 0.0f;
+            w->vel[1] = 0.0f;
+            w->vel[2] = 0.0f;
+            w->gravity = 0.0f;
+            lure->step++;
+            w->counter = 0;
+        }
+        break;
+    case LURE_STEP_LANDED:
+        if (Player_TestFlag(pl, PLF_FISHING) == 0) {
+            lure->state++;
+            return;
+        }
+        if (pl->motionId[0] == PL_MOT_FISH_WAIT) {
+            lure->step++;
+        }
+        break;
+    case LURE_STEP_BITE:
+        if (Player_TestFlag(pl, PLF_FISHING) == 0) {
+            lure->state++;
+            return;
+        }
+        if (w->counter < pl->fishTimer) {
+            Fx_SpawnSplash(lure->pos, w->waterY, 1.0f, 0);
+            Fishing_PlaySe(lure, lure->pos, 0);
+            w->vel[1] -= 20.0f + pl->fishTimer;
+            lure->ownerIndex |= LURE_PULLED_UNDER;
+        }
+        w->counter = pl->fishTimer;
+        if (w->counter <= 0) {
+            lure->ownerIndex &= ~LURE_PULLED_UNDER;
+        }
+        if (lure->pos[1] > w->target[1]) {
+            lure->pos[1] = w->target[1];
+        }
+        if (lure->pos[1] < w->target[1]) {
+            w->gravity = 1.0f;
+        } else {
+            w->vel[1] *= 0.2f;
+            w->gravity = 2.0f;
+        }
+        if ((lure->ownerIndex & LURE_PULLED_UNDER) && w->vel[1] > 0.0f) {
+            w->vel[1] = 0.0f;
+        }
+        switch (pl->motionId[0]) {
+        case PL_MOT_FISH_REEL:
+            lure->ownerIndex &= ~LURE_PULLED_UNDER;
+            lure->step++;
+            w->vel[0] = lure->pos[0] - pl->pos[0];
+            w->vel[2] = lure->pos[2] - pl->pos[2];
+            Vec_Normalize(w->vel);
+            switch (pl->gotItemId) {
+            case 0xEE:
+            case 0xEF:
+            case 0xEC:
+                Vec_Scale(w->vel, w->vel, 1.0f);
+                w->strongPull = 0;
+                break;
+            default:
+                Vec_Scale(w->vel, w->vel, 3.0f);
+                w->strongPull = 1;
+                break;
+            }
+            Vec_RotateY(w->vel, (6.2831855f * (f32)((Rand_Next(1) & 0x3F) - 0x20)) / 65536.0f);
+            break;
+        case PL_MOT_FISH_CATCH:
+            lure->ownerIndex &= ~LURE_PULLED_UNDER;
+            w->mode = LURE_MODE_CATCH;
+            Lure_Cast(lure, w);
+            break;
+        case PL_MOT_FISH_REEL_EMPTY:
+            if (Motion_ReachedFrame(pl, 0, 26.0f)) {
+                lure->ownerIndex &= ~LURE_PULLED_UNDER;
+                w->mode = LURE_MODE_EMPTY;
+                Lure_Cast(lure, w);
+            }
+            break;
+        case PL_MOT_FISH_PULLED_DOWN:
+            lure->ownerIndex &= ~LURE_PULLED_UNDER;
+            w->mode = LURE_MODE_PULLED;
+            Lure_Cast(lure, w);
+            break;
+        }
+        Lure_ApplyVelocity(lure, w);
+        break;
+    case LURE_STEP_REEL:
+        Vec_Copy(vec, w->vel);
+        if (w->strongPull == 0) {
+            Vec_Scale(vec, vec, 0.2f);
+            Vec_RotateY(vec, (6.2831855f * (f32)((Rand_Next(1) & 0x7FFF) - 0x4000)) / 65536.0f);
+            size = 1.5f;
+        } else {
+            Vec_Scale(vec, vec, 0.5f);
+            Vec_RotateY(vec, (6.2831855f * (f32)((Rand_Next(1) & 0x3FFF) - 0x2000)) / 65536.0f);
+            size = 3.0f;
+        }
+        Vec_Add(w->vel, w->vel, vec);
+        if (lure->pos[1] > w->target[1]) {
+            lure->pos[1] = w->target[1];
+        }
+        if ((lure->timer & 7) == 0) {
+            Fx_SpawnSplash(lure->pos, w->waterY, size, 1);
+            Fishing_PlaySe(lure, lure->pos, 0);
+        }
+        if (lure->pos[1] < w->target[1]) {
+            w->gravity = 1.0f;
+        } else {
+            w->vel[1] *= 0.2f;
+            w->gravity = 2.0f;
+        }
+        switch (pl->motionId[0]) {
+        case PL_MOT_FISH_REEL:
+            break;
+        case PL_MOT_FISH_CATCH:
+            if (Motion_PassedFrame(pl, 0, 16.0f)) {
+                w->mode = LURE_MODE_CATCH;
+                Lure_Cast(lure, w);
+                Fx_SpawnSplash(lure->pos, w->waterY, size, 2);
+                Fishing_PlaySe(lure, lure->pos, 1);
+            }
+            break;
+        default:
+            lure->state++;
+            return;
+        }
+        Lure_ApplyVelocity(lure, w);
+        break;
+    case LURE_STEP_PULL_OUT:
+        if ((w->mode == LURE_MODE_CATCH && pl->motionId[0] == PL_MOT_FISH_CATCH) || (w->mode == LURE_MODE_EMPTY && pl->motionId[0] == PL_MOT_FISH_REEL_EMPTY) ||
+            (w->mode == LURE_MODE_PULLED && pl->motionId[0] == PL_MOT_FISH_PULLED_DOWN)) {
+            w->counter++;
+            switch (w->mode) {
+            case LURE_MODE_CATCH:
+                size = 0.3f;
+                reelFrames = 35;
+                break;
+            case LURE_MODE_EMPTY:
+                size = 0.5f;
+                reelFrames = 27;
+                break;
+            default:
+                size = 0.5f;
+                reelFrames = 40;
+                break;
+            }
+            switch (lure->type) {
+            default:
+                if (w->scale > size) {
+                    w->scale -= (1.0f - size) / reelFrames;
+                    if (w->scale < size) {
+                        w->scale = size;
+                    }
+                }
+                break;
+            case LURE_TYPE_ALT:
+                size = 0.3f;
+                break;
+            }
+            switch (w->mode) {
+            case LURE_MODE_CATCH:
+            case LURE_MODE_EMPTY:
+                if (w->counter >= reelFrames) {
+                    Em_GetBonePos(pl, PL_BONE_HAND, lure->pos);
+                    lure->pos[1] -= 10.0f;
+                    lure->step++;
+                    w->counter = 0;
+                    w->vel[0] = 0.0f;
+                    w->vel[1] = 0.0f;
+                    w->vel[2] = 0.0f;
+                    w->gravity = 0.0f;
+                    w->scale = size;
+                }
+                break;
+            default:
+                if (w->counter < reelFrames) {
+                    vec[0] = w->target[0] - lure->pos[0];
+                    vec[1] = w->target[1] - lure->pos[1];
+                    vec[2] = w->target[2] - lure->pos[2];
+                    w->vel[0] = 0.09f * vec[0];
+                    w->vel[1] = 0.09f * vec[1];
+                    w->vel[2] = 0.09f * vec[2];
+                } else {
+                    lure->state++;
+                    return;
+                }
+                break;
+            }
+        } else {
+            lure->state++;
+            return;
+        }
+        Lure_ApplyVelocity(lure, w);
+        break;
+    case LURE_STEP_IN_HAND:
+        if ((w->mode == LURE_MODE_CATCH && pl->motionId[0] == PL_MOT_FISH_CATCH) || (w->mode == LURE_MODE_EMPTY && pl->motionId[0] == PL_MOT_FISH_REEL_EMPTY)) {
+            reelFrames = w->mode == LURE_MODE_CATCH ? 50 : 20;
+            if (++w->counter < reelFrames) {
+                Em_GetBonePos(pl, PL_BONE_HAND, lure->pos);
+                lure->pos[1] -= 10.0f;
+            } else {
+                lure->state++;
+                return;
+            }
+        } else {
+            lure->state++;
+            return;
+        }
+        break;
+    }
+    Fish_StepState_Unk(lure, w);
+    if (lure->step == LURE_STEP_REEL) {
+        targetDist = Vec_Distance(lure->pos, w->target);
+        if (targetDist > 100.0f) {
+            Vec_Sub(vec, lure->pos, w->target);
+            Vec_Scale(vec, vec, 100.0f / targetDist);
+            Vec_Add(lure->pos, w->target, vec);
+        }
+    }
+    lure->slot->pos[0] = lure->pos[0];
+    lure->slot->pos[1] = lure->pos[1];
+    lure->slot->pos[2] = lure->pos[2];
+    if ((u8)Obj_InCurrentArea(pl) == 0) {
+        lure->state++;
+        return;
+    }
+    OT_AddByDepth(gDrawOt32, lure->slot, 0x20, 0);
+}
+
+void Lure_End(FxObj *lure)
+{
+    lure->state++;
+    DrawSlot_Free(lure->slotId);
+}
+
+void Lure_Free(FxObj *lure)
+{
+    StageObj_Free((struct StageObj *)lure);
+}
+
+extern u32 gLureColors[];
+extern u32 gLureColorPulled;
+f32 Math_Atan2(f32 y, f32 x);
+f32 Math_Sqrtf(f32 x);
+void Mtx_RotateX(f32 *m, f32 a);
+void Mtx_RotateZ(f32 *m, f32 a);
+void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
+void Player_GetRodTip(f32 *out, Player *p);
+
+/* Draws a lure (the draw slot's update): its model (entry 24 of model set 0 for variant 1, else
+ * the one Effect_MapTexId(0x71) picks), turned and placed at the slot; while the line is out
+ * (line), the line model from the rod tip (Player_GetRodTip) to the lure. */
+void Lure_Draw(DrawSlot *slot)
+{
+    FxObj *lure = (FxObj *)slot->owner;
+    LureWork *w = lure->work;
+    Model *set = gCommonModels[0];
+    f32 rodTip[3];
+    f32 tipToLure[3];
+    f32 mtx[16];
+    f32 uvMtx[16];
+    f32 pitch;
+    f32 roll;
+    ModelMat *base;
+    ModelMatSet *matSet;
+    ModelMatSet *line;
+    f32 *mtxPtr;
+    f32 *tipToLureY;
+
+    if (set != NULL && set->active) {
+        base = set->mats;
+        Mtx_Scale(mtx, w->scale, w->scale, w->scale);
+        switch (lure->type) {
+        case LURE_TYPE_ALT:
+            matSet = &set->matSets[24];
+            break;
+        default:
+            matSet = &set->matSets[Effect_MapTexId(0x71)];
+            break;
+        }
+        Mtx_RotateY(mtx, 6.2831855f * lure->angle / 65536.0f);
+        Mtx_SetTrans(mtx, slot->pos[0], slot->pos[1], slot->pos[2]);
+        if (lure->ownerIndex & LURE_PULLED_UNDER) {
+            Gs_SetState(RS_COLOR2, gLureColorPulled);
+        } else {
+            Gs_SetState(RS_COLOR2, gLureColors[lure->ownerIndex]);
+        }
+        Gs_SetState(RS_MTX_SLOT(0), (u32)(mtxPtr = mtx));
+        Gs_SetLightList(base, matSet);
+        Draw_ApplyStates(matSet->flags);
+        Model_Draw(matSet->id, 0);
+        if (w->line) {
+            line = &set->matSets[Effect_MapTexId(0x7F)];
+            Player_GetRodTip(rodTip, lure->owner);
+            Vec_Sub(tipToLure, slot->pos, rodTip);
+            tipToLureY = &tipToLure[1];
+            pitch = Math_Atan2(-tipToLure[2], Math_Sqrtf(tipToLure[0] * tipToLure[0] + *tipToLureY * *tipToLureY));
+            roll = Math_Atan2(tipToLure[0], -*tipToLureY);
+            Mtx_Scale(mtxPtr, 1.0f, Vec_Length(tipToLure), 1.0f);
+            Mtx_RotateX(mtxPtr, pitch);
+            Mtx_RotateZ(mtxPtr, roll);
+            Mtx_SetTrans(mtxPtr, rodTip[0], rodTip[1], rodTip[2]);
+            Gs_SetState(RS_COLOR2, -1);
+            Gs_SetState(RS_MTX_SLOT(0), (u32)mtxPtr);
+            Mtx_Translation(uvMtx, 0.0f, 0.03125f * w->frame, 0.0f);
+            Gs_SetState(RS_UV_MTX, (u32)uvMtx);
+            Gs_SetLightList(base, line);
+            Draw_ApplyStates(line->flags);
+            Model_Draw(line->id, 0);
+        }
+        Draw_SetDefaultState();
+    }
+}
+
+/* The water height under a lure (its waterY, set by area in Lure_Start). */
+f32 Lure_GetWaterHeight(FxObj *lure)
+{
+    return ((LureWork *)lure->work)->waterY;
+}
+
+static void Lure_SetLaunchVel(f32 *vel, f32 startY, f32 targetY, f32 gravity, f32 frames)
+{
+    vel[1] = (f32) (((targetY - startY) / frames) - (0.5f * gravity * frames));
+}
+
+void Vec_RotateY(f32 *v, f32 angle);
+void Vec_Scale(f32 *out, f32 *v, f32 s);
+
+/* Casts the lure: its target in front of the player (20, 150, 100 turned by his angle), and a
+ * velocity reaching it in 35 frames (mode 0) or 27 (mode 1) under the gravity. */
+void Lure_Cast(FxObj *lure, LureWork *w)
+{
+    f32 offset[3];
+    f32 dir[3];
+    f32 flatTarget[3];
+    Player *pl = lure->owner;
+    f32 *offsetY = &offset[1];
+    f32 *offsetZ = &offset[2];
+    f32 len;
+
+    offset[0] = 20.0f;
+    *offsetY = 150.0f;
+    *offsetZ = 100.0f;
+    Vec_RotateY(offset, 6.2831855f * pl->rot[1] / 65536.0f);
+    w->target[0] = pl->pos[0] + offset[0];
+    w->target[1] = pl->pos[1] + *offsetY;
+    w->target[2] = pl->pos[2] + *offsetZ;
+    lure->step = LURE_STEP_PULL_OUT;
+    switch (w->mode) {
+    case LURE_MODE_CATCH:
+        w->gravity = -2.0f;
+        dir[0] = lure->pos[0];
+        dir[1] = 0.0f;
+        dir[2] = lure->pos[2];
+        flatTarget[0] = w->target[0];
+        flatTarget[1] = 0.0f;
+        flatTarget[2] = w->target[2];
+        Vec_Sub(dir, flatTarget, dir);
+        len = Vec_Length(dir);
+        Vec_Normalize(dir);
+        len /= 35.0f;
+        Vec_Scale(w->vel, dir, len);
+        Lure_SetLaunchVel(w->vel, lure->pos[1], w->target[1], w->gravity, 35.0f);
+        break;
+    case LURE_MODE_EMPTY:
+        w->gravity = -1.0f;
+        dir[0] = lure->pos[0];
+        dir[1] = 0.0f;
+        dir[2] = lure->pos[2];
+        flatTarget[0] = w->target[0];
+        flatTarget[1] = 0.0f;
+        flatTarget[2] = w->target[2];
+        Vec_Sub(dir, flatTarget, dir);
+        len = Vec_Length(dir);
+        Vec_Normalize(dir);
+        len /= 27.0f;
+        Vec_Scale(w->vel, dir, len);
+        Lure_SetLaunchVel(w->vel, lure->pos[1], w->target[1], w->gravity, 27.0f);
+        break;
+    default:
+        w->gravity = 0.0f;
+        w->vel[0] = 0.0f;
+        w->vel[1] = 0.0f;
+        w->vel[2] = 0.0f;
+        break;
+    }
+    w->counter = 0;
+}
+
+/* The lure's line, every frame: while a hooked fish pulls (LURE_STEP_REEL) a 1 in 8 roll each frame
+ * sets line (Lure_Draw draws the line only while it is set) for four frames, which frame
+ * counts and scrolls the line's texture by; in every other step line is cleared. */
+void Fish_StepState_Unk(FxObj *lure, LureWork *w)
+{
+    switch (lure->step) {
+    case LURE_STEP_REEL:
+        if (w->line == 0) {
+            if ((Rand_Next(1) & 7) == 0) {
+                w->line = 1;
+                w->frame = 0;
+            }
+        } else if (++w->frame >= 4) {
+            w->line = 0;
+        }
+        break;
+    default:
+        w->line = 0;
+        break;
+    }
+}
+
+s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
+struct EmBone *Em_GetBone(void *obj, s16 bone);
+void Vec_RotateSelf(f32 *v, f32 *m);
+void Mtx_Identity(f32 *m);
+extern f32 gRodTipOffsets[][3];
+
+/* The tip of the player's rod: bone 0x12 plus (-9.2, -1.7, 12) in its frame, plus the offset
+ * gRodTipOffsets[k] of the cast's bend k, which the casting motions (PL_MOT_FISH_REEL .. PL_MOT_FISH_PULLED_DOWN) set by frame. */
+void Player_GetRodTip(f32 *out, Player *pl)
+{
+    f32 gripOffset[3];
+    f32 bendOffset[3];
+    f32 handMtx[16];
+    f32 bendMtx[16];
+    f32 *gripOffsetY;
+    f32 *bendOffsetY;
+    f32 *gripOffsetZ;
+    f32 *bendOffsetZ;
+    s16 bend;
+
+    switch (pl->motionId[0]) {
+    case PL_MOT_FISH_REEL:
+        if (!Motion_ReachedFrame(pl, 0, 20.0f)) {
+            bend = 0;
+        } else if (!Motion_ReachedFrame(pl, 0, 30.0f)) {
+            bend = 1;
+        } else {
+            bend = 2;
+        }
+        break;
+    case PL_MOT_FISH_CATCH:
+        if (!Motion_ReachedFrame(pl, 0, 20.0f)) {
+            bend = 1;
+        } else if (!Motion_ReachedFrame(pl, 0, 26.0f)) {
+            bend = 2;
+        } else if (!Motion_ReachedFrame(pl, 0, 28.0f)) {
+            bend = 1;
+        } else {
+            bend = 0;
+        }
+        break;
+    case PL_MOT_FISH_REEL_EMPTY:
+        if (!Motion_ReachedFrame(pl, 0, 36.0f)) {
+            bend = 1;
+        } else if (!Motion_ReachedFrame(pl, 0, 40.0f)) {
+            bend = 2;
+        } else if (!Motion_ReachedFrame(pl, 0, 42.0f)) {
+            bend = 1;
+        } else {
+            bend = 0;
+        }
+        break;
+    case PL_MOT_FISH_PULLED_DOWN:
+        if (!Motion_ReachedFrame(pl, 0, 20.0f)) {
+            bend = 1;
+        } else if (Motion_ReachedFrame(pl, 0, 22.0f)) {
+            bend = 2;
+        } else if (Motion_ReachedFrame(pl, 0, 24.0f)) {
+            bend = 1;
+        } else {
+            bend = 0;
+        }
+        break;
+    default:
+        bend = 0;
+        break;
+    }
+    Mtx_Copy(handMtx, (void *)Em_GetBone(pl, PL_BONE_OTHER_HAND));
+    gripOffset[0] = -9.2f;
+    gripOffsetY = &gripOffset[1];
+    *gripOffsetY = -1.7f;
+    gripOffsetZ = &gripOffset[2];
+    *gripOffsetZ = 12.0f;
+    Vec_RotateSelf(gripOffset, handMtx);
+    Mtx_Identity(bendMtx);
+    Mtx_RotateZ(bendMtx, -1.5707964f);
+    Mtx_Concat3x3(bendMtx, handMtx);
+    bendOffset[0] = gRodTipOffsets[bend][0];
+    bendOffsetY = &bendOffset[1];
+    *bendOffsetY = gRodTipOffsets[bend][1];
+    bendOffsetZ = &bendOffset[2];
+    *bendOffsetZ = gRodTipOffsets[bend][2];
+    Vec_RotateSelf(bendOffset, bendMtx);
+    out[0] = bendOffset[0] + (handMtx[12] + gripOffset[0]);
+    out[1] = *bendOffsetY + (handMtx[13] + *gripOffsetY);
+    out[2] = *bendOffsetZ + (handMtx[14] + *gripOffsetZ);
+}
+
+/* Plays a fishing sound at pos from the common bank: 0x2E for sound 0 (the lure's splashes),
+ * 0x70 for sound 1 (the catch lands). The lure is not used. */
+void Fishing_PlaySe(FxObj *lure, f32 *pos, s16 sound)
+{
+    switch (sound) {
+    case 0:
+        Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, 0x2E, 0, pos, 1, 0);
+        break;
+    case 1:
+        Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, 0x70, 0, pos, 1, 0);
+        break;
+    }
+}
+
+/* The countdown's update (kind 0x2C): runs its state, CountdownFx_Start, CountdownFx_Run,
+ * CountdownFx_End or CountdownFx_Free. */
+void CountdownFx_Update(FxObj *countdown)
+{
+    u8 state;
+
+    state = countdown->state;
+    switch (state) {
+    case 0:
+        CountdownFx_Start(countdown);
+        break;
+    case 1:
+        CountdownFx_Run(countdown);
+        break;
+    case 2:
+        CountdownFx_End(countdown);
+        break;
+    case 3:
+        CountdownFx_Free(countdown);
+        break;
+    }
+}
+
+void CountdownFx_Draw(DrawSlot *arg0);
+
+/* Starts the effect: state 1 with a draw slot drawn by CountdownFx_Draw (then CountdownFx_Run), or StageObj_Free when no slot is free. */
+void CountdownFx_Start(FxObj *countdown)
+{
+    countdown->step = 0;
+    countdown->phase = 0;
+    countdown->claimed = 0;
+    countdown->timer = 0;
+    countdown->state = 1;
+    countdown->visible = 1;
+    countdown->draw = NULL;
+    countdown->slotId = DrawSlot_Alloc();
+    if (countdown->slotId != -1) {
+        countdown->slot = DrawSlot_Get(countdown->slotId);
+        countdown->slot->owner = (void *)countdown;
+        countdown->slot->draw = CountdownFx_Draw;
+        CountdownFx_Run(countdown);
+        return;
+    }
+    StageObj_Free((struct StageObj *) countdown);
+}
+
+s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
+void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
+
+/* The countdown's run state, every frame: its time (angle) counts down; the bars (timer) grow
+ * over 5 frames, stay until the time is below -8, then shrink; at 0 it plays the end sound
+ * (not in the town) and ends. Drawn every frame (gDrawOtSorted). Ends at once without a slot. */
+void CountdownFx_Run(FxObj *countdown)
+{
+    if (countdown->slot == NULL) {
+        countdown->state = 2;
+        return;
+    }
+    countdown->angle--;
+    switch (countdown->step) {
+    case 0:
+        if (++countdown->timer >= 5) {
+            countdown->step++;
+        }
+        break;
+    case 1:
+        if (countdown->angle < -8) {
+            countdown->step++;
+        }
+        break;
+    case 2:
+        if (--countdown->timer <= 0) {
+            if (gScene.inLobby != 1) {
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1F, 0);
+            }
+            countdown->state = 2;
+        }
+        break;
+    }
+    OT_AddAt(gDrawOtSorted, countdown->slot, 0, 1);
+}
+
+/* The countdown's end state: frees its draw slot, if it has one, and goes to the free state. */
+void CountdownFx_End(FxObj *countdown)
+{
+    countdown->state = 3;
+    if (countdown->slot != NULL) {
+        DrawSlot_Free(countdown->slotId);
+    }
+}
+
+void CountdownFx_Free(FxObj *countdown)
+{
+    StageObj_Free((struct StageObj *)countdown);
+}
+
+/* Draws the countdown (the draw slot's update): while it is visible, the number of its last
+ * three seconds (Countdown_Draw with its time) and the black bars (Letterbox_Draw with timer). */
+void CountdownFx_Draw(DrawSlot *slot)
+{
+    FxObj *countdown;
+
+    countdown = slot->owner;
+    if (countdown->visible != 0) {
+        Text_SetSize(0);
+        Countdown_Draw(countdown->angle);
+        Letterbox_Draw((s8)countdown->timer);
+    }
+}
+
+void CountdownFx_Update(FxObj *o);
+
+/* Starts an effect object of kind 0x2C (update CountdownFx_Update) with n frames on its clock (angle). */
+void Effect2C_Spawn(s16 frames)
+{
+    FxObj *countdown = (FxObj *)StageObj_Alloc(0);
+
+    if (countdown != NULL) {
+        countdown->kind = 0x2C;
+        countdown->type = 0;
+        countdown->update = CountdownFx_Update;
+        countdown->angle = frames;
+    }
+}
+
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0798);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07A0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07B8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07D0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07F0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0820);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0840);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0860);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0868);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0870);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0898);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B08A8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B08C0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B08E0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0900);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0920);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0940);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0960);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0988);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B09A0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B09C0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A00);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A20);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A40);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A80);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0AA0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0AC0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0AE0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B00);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B20);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B40);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B60);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B80);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B90);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BA0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BB0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BD0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BF0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C10);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C30);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C50);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C70);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C88);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CA0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CB8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CC8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CD8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CE8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D00);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D20);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D40);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D60);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D80);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0DA0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0DC0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0DE0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E00);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E20);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E40);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E60);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E80);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0EA0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0EC0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0EE0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F00);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F20);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F58);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F60);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F80);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FA0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FC0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FE0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FE8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FF0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1000);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1030);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1070);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B10A0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B10D0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B10F0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1110);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1130);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1160);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1190);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B11C0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B11F0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1220);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1250);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1280);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B12A0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B12C0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B12F0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1320);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1350);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1380);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B13A0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B13C0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B13F0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1410);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1440);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1470);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1490);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B14B0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B14D0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B14F0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1510);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1530);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1550);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1570);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1590);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B15B0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B15D0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B15F0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1620);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1650);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1670);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1690);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16A8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16B8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16C8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16D0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16D8);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16E0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1730);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1780);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B17A0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B17D0);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1800);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1830);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1848);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1860);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1878);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1888);
+INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1890);
+
+f32 Math_Absf(f32 x);
+void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
+void Font_SetSpacing(u8 a, u8 b);
+void Countdown_DrawDigit(u8 n, u32 color, f32 scale);
+void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
+
+
+/* The countdown's last seconds: the number (3, 2, 1) with its sound at the start of each second,
+ * drawn larger and fading while the second passes. */
+void Countdown_Draw(s16 framesLeft)
+{
+    u8 sec;
+    u8 sinceShown;
+    u8 stage;
+    s32 alpha;
+    u32 color;
+    f32 scale;
+
+    if (framesLeft <= 0) {
+        return;
+    }
+    sec = (framesLeft - 1) / 30 + 1;
+    switch (sec) {
+    case 3:
+        sinceShown = Math_Absf(framesLeft - 90);
+        if (sinceShown == 6) {
+            if (gScene.inLobby != 1) {
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1C, 0);
+            } else {
+                Sound_PlaySeFlat(6, 0x55, 0);
+            }
+        }
+        break;
+    case 2:
+        sinceShown = Math_Absf(framesLeft - 60);
+        if (sinceShown == 6) {
+            if (gScene.inLobby != 1) {
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1D, 0);
+            } else {
+                Sound_PlaySeFlat(6, 0x56, 0);
+            }
+        }
+        break;
+    case 1:
+        sinceShown = Math_Absf(framesLeft - 30);
+        if (sinceShown == 6) {
+            if (gScene.inLobby != 1) {
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1E, 0);
+            } else {
+                Sound_PlaySeFlat(6, 0x57, 0);
+            }
+        }
+        break;
+    default:
+        sinceShown = 100;
+        break;
+    }
+    if (sinceShown < 2) {
+        stage = 0;
+    } else if (sinceShown < 4 && sinceShown >= 2) {
+        stage = 1;
+    } else if (sinceShown < 6 && sinceShown >= 4) {
+        stage = 2;
+    } else if (sinceShown > 27) {
+        stage = 5;
+    } else if (sinceShown < 28 && sinceShown >= 25) {
+        stage = 4;
+    } else {
+        stage = 3;
+    }
+    switch (stage) {
+    case 0:
+        scale = 8.0f;
+        alpha = 0x4B;
+        break;
+    case 1:
+        scale = 3.0f;
+        alpha = 0x80;
+        break;
+    case 2:
+        scale = 1.0f;
+        alpha = 0x99;
+        break;
+    case 3:
+        scale = 1.1f;
+        alpha = 0xAF;
+        break;
+    case 4:
+        scale = 0.8f;
+        alpha = 0x32;
+        break;
+    case 5:
+    default:
+        alpha = 0;
+        scale = 0.0f;
+        break;
+    }
+    color = (alpha << 24) | 0xA01B00;
+    if (scale > 0.0f) {
+        Countdown_DrawDigit(sec, color, scale);
+    }
+    if (stage < 5) {
+        Font_SetSpacing(0x20, 0x30);
+        Text_PrintfAt(0x138, 0x186, 0, "%i", sec);
+    }
+}
+
+/* A countdown digit (1, 2 or 3) at the screen's center, as one to three triangles of the given
+ * color and size (124 x scale high). */
+void Countdown_DrawDigit(u8 digit, u32 color, f32 scale)
+{
+    PrimTri tri0, tri1, tri2;
+    f32 height = 124.0f * scale;
+    f32 width = 0.865f * height;
+
+    switch (digit) {
+    case 1:
+        tri0.x0 = 320.0f - 0.25f * height;
+        tri0.y0 = 224.0f + 0.5f * width;
+        tri0.x1 = 320.0f + 0.25f * height;
+        tri0.y1 = tri0.y0;
+        tri0.x2 = 320;
+        tri0.y2 = 224.0f - 0.5f * width;
+        tri0.color = color;
+        Prim_FillTri(&tri0);
+        break;
+    case 2:
+        tri0.x0 = 320.0f - 0.5f * height;
+        tri0.y0 = 224.0f + 0.5f * width;
+        tri0.x1 = 320;
+        tri0.y1 = tri0.y0;
+        tri0.x2 = 320.0f - 0.25f * height;
+        tri0.y2 = 224.0f - 0.5f * width;
+        tri1.x0 = tri0.x1;
+        tri1.y0 = tri0.y1;
+        tri1.x1 = 320.0f + 0.5f * height;
+        tri1.y1 = tri1.y0;
+        tri1.x2 = 320.0f + 0.25f * height;
+        tri1.y2 = 224.0f - 0.5f * width;
+        tri0.color = tri1.color = color;
+        Prim_FillTri(&tri0);
+        Prim_FillTri(&tri1);
+        break;
+    case 3:
+        tri0.x0 = 320.0f - 0.5f * height;
+        tri0.y0 = 224.0f + 0.5f * width;
+        tri0.x1 = 320;
+        tri0.y1 = tri0.y0;
+        tri0.x2 = 320.0f - 0.25f * height;
+        tri0.y2 = 224;
+        tri1.x0 = tri0.x1;
+        tri1.y0 = tri0.y1;
+        tri1.x1 = 320.0f + 0.5f * height;
+        tri1.y1 = tri1.y0;
+        tri1.x2 = 320.0f + 0.25f * height;
+        tri1.y2 = tri0.y2;
+        tri2.x0 = tri0.x2;
+        tri2.y0 = tri0.y2;
+        tri2.x1 = tri1.x2;
+        tri2.y1 = tri1.y2;
+        tri2.x2 = 320;
+        tri2.y2 = 224.0f - 0.5f * width;
+        tri0.color = tri1.color = tri2.color = color;
+        Prim_FillTri(&tri0);
+        Prim_FillTri(&tri1);
+        Prim_FillTri(&tri2);
+        break;
+    }
+}
+
+/* Black bars at the top and bottom of the screen (16 high per unit of size, at most 72), two
+ * triangles each. The last function of sub_main's code: the 32 zero words after it, up to the
+ * VU1 programs, are built as a piece of their own. */
+void Letterbox_Draw(s8 size)
+{
+    PrimTri tri0, tri1, tri2, tri3;
+    f32 barHeight = 16.0f * size;
+
+    if (!(barHeight < 72.0f)) {
+        barHeight = 72.0f;
+    }
+    tri0.x0 = 0;
+    tri0.y0 = 0;
+    tri0.x1 = 0x280;
+    tri0.y1 = barHeight;
+    tri0.x2 = 0x280;
+    tri0.y2 = 0;
+    tri0.color = 0xFF000000;
+    tri1.x0 = 0;
+    tri1.y0 = 0;
+    tri1.x1 = 0x280;
+    tri1.y1 = barHeight;
+    tri1.x2 = 0;
+    tri1.y2 = barHeight;
+    tri1.color = 0xFF000000;
+    tri2.x0 = 0;
+    tri2.y0 = 448.0f - barHeight;
+    tri2.x1 = 0x280;
+    tri2.y1 = 0x1C0;
+    tri2.x2 = 0x280;
+    tri2.y2 = 448.0f - barHeight;
+    tri2.color = 0xFF000000;
+    tri3.x0 = 0;
+    tri3.y0 = 448.0f - barHeight;
+    tri3.x1 = 0x280;
+    tri3.y1 = 0x1C0;
+    tri3.x2 = 0;
+    tri3.y2 = 0x1C0;
+    tri3.color = 0xFF000000;
+    Prim_FillTri(&tri0);
+    Prim_FillTri(&tri1);
+    Prim_FillTri(&tri2);
+    Prim_FillTri(&tri3);
+}
+
+/* Zeros to the end of sub_main's .rodata, after Countdown_Draw's jump table and this array's
+ * alignment. */
+const u32 D_004B18C0[16] = { 0 };
+
+/* The file's .data: the fish kinds, the town's stage data, the fishing tables and two text
+ * tables. The externs are this file's .rodata texts. */
+extern char D_004B0FE8[];
+extern char D_004B16E0[];
+extern char D_004B1730[];
+extern char D_004B1780[];
+extern char D_004B17A0[];
+extern char D_004B17D0[];
+extern char D_004B1800[];
+extern char D_004B1830[];
+extern char D_004B1848[];
+extern char D_004B1860[];
+extern char D_004B1878[];
+extern char D_004B1888[];
+extern char D_004B1890[];
+FishKind gFishKindsQuest[24] = {
+#include "sub_main/004698E0.inc"
+};
+FishKind gFishKindsLobby[24] = {
+#include "sub_main/00469AC0.inc"
+};
+u32 gLobbyStageData_1[12] = {
+#include "sub_main/00469CA0.inc"
+};
+u32 gLobbyStageData_3[12] = {
+#include "sub_main/00469CD0.inc"
+};
+u32 gLobbyStageData[12] = {
+#include "sub_main/00469D00.inc"
+};
+u32 gLobbySeasonalData_0[12] = {
+#include "sub_main/00469D30.inc"
+};
+u32 gLobbySeasonalData_2[12] = {
+#include "sub_main/00469D60.inc"
+};
+u32 gLobbySeasonalData[4] = {
+    (u32)gLobbySeasonalData_0, (u32)gLobbySeasonalData_0, (u32)gLobbySeasonalData_2, (u32)gLobbySeasonalData_2,
+};
+u16 gFishBiteJitter[4] = {
+#include "sub_main/00469DA0.inc"
+};
+s8 gFishWaitSecs[8] = {
+#include "sub_main/00469DA8.inc"
+};
+u32 gLureColors[4] = {
+#include "sub_main/00469DB0.inc"
+};
+u32 gLureColorPulled = {
+#include "sub_main/00469DC0.inc"
+};
+f32 gRodTipOffsets[4][3] = {
+#include "sub_main/00469DD0.inc"
+};
+extern char D_004B0798[];
+extern char D_004B07A0[];
+extern char D_004B07B8[];
+extern char D_004B07D0[];
+extern char D_004B07F0[];
+extern char D_004B0820[];
+extern char D_004B0840[];
+extern char D_004B0860[];
+extern char D_004B0868[];
+extern char D_004B0870[];
+extern char D_004B0898[];
+extern char D_004B08A8[];
+extern char D_004B08C0[];
+extern char D_004B08E0[];
+extern char D_004B0900[];
+extern char D_004B0920[];
+extern char D_004B0940[];
+extern char D_004B0960[];
+extern char D_004B0988[];
+extern char D_004B09A0[];
+extern char D_004B09C0[];
+extern char D_004B0A00[];
+extern char D_004B0A20[];
+extern char D_004B0A40[];
+extern char D_004B0A80[];
+extern char D_004B0AA0[];
+extern char D_004B0AC0[];
+extern char D_004B0AE0[];
+extern char D_004B0B00[];
+extern char D_004B0B20[];
+extern char D_004B0B40[];
+extern char D_004B0B60[];
+extern char D_004B0B80[];
+extern char D_004B0B90[];
+extern char D_004B0BA0[];
+extern char D_004B0BB0[];
+extern char D_004B0BD0[];
+extern char D_004B0BF0[];
+extern char D_004B0C10[];
+extern char D_004B0C30[];
+extern char D_004B0C50[];
+extern char D_004B0C70[];
+extern char D_004B0C88[];
+extern char D_004B0CA0[];
+extern char D_004B0CB8[];
+extern char D_004B0CC8[];
+extern char D_004B0CD8[];
+extern char D_004B0CE8[];
+extern char D_004B0D00[];
+extern char D_004B0D20[];
+extern char D_004B0D40[];
+extern char D_004B0D60[];
+extern char D_004B0D80[];
+extern char D_004B0DA0[];
+extern char D_004B0DC0[];
+extern char D_004B0DE0[];
+extern char D_004B0E00[];
+extern char D_004B0E20[];
+extern char D_004B0E40[];
+extern char D_004B0E60[];
+extern char D_004B0E80[];
+extern char D_004B0EA0[];
+extern char D_004B0EC0[];
+extern char D_004B0EE0[];
+extern char D_004B0F00[];
+extern char D_004B0F20[];
+extern char D_004B0F58[];
+extern char D_004B0F60[];
+extern char D_004B0F80[];
+extern char D_004B0FA0[];
+extern char D_004B0FC0[];
+extern char D_004B0FE0[];
+extern char D_004B0FF0[];
+extern char D_004B1000[];
+extern char D_004B1030[];
+extern char D_004B1070[];
+extern char D_004B10A0[];
+extern char D_004B10D0[];
+extern char D_004B10F0[];
+extern char D_004B1110[];
+extern char D_004B1130[];
+extern char D_004B1160[];
+extern char D_004B1190[];
+extern char D_004B11C0[];
+extern char D_004B11F0[];
+extern char D_004B1220[];
+extern char D_004B1250[];
+extern char D_004B1280[];
+extern char D_004B12A0[];
+extern char D_004B12C0[];
+extern char D_004B12F0[];
+extern char D_004B1320[];
+extern char D_004B1350[];
+extern char D_004B1380[];
+extern char D_004B13A0[];
+extern char D_004B13C0[];
+extern char D_004B13F0[];
+extern char D_004B1410[];
+extern char D_004B1440[];
+extern char D_004B1470[];
+extern char D_004B1490[];
+extern char D_004B14B0[];
+extern char D_004B14D0[];
+extern char D_004B14F0[];
+extern char D_004B1510[];
+extern char D_004B1530[];
+extern char D_004B1550[];
+extern char D_004B1570[];
+extern char D_004B1590[];
+extern char D_004B15B0[];
+extern char D_004B15D0[];
+extern char D_004B15F0[];
+extern char D_004B1620[];
+extern char D_004B1650[];
+extern char D_004B1670[];
+extern char D_004B1690[];
+extern char D_004B16A8[];
+extern char D_004B16B8[];
+extern char D_004B16C8[];
+extern char D_004B16D0[];
+extern char D_004B16D8[];
+/* 168 text pointers (into this file's .rodata) that no code names. */
+char *gPlselTexts[168] = {
+    D_004B0798, D_004B0798, D_004B0798, D_004B0798,
+    D_004B0798, D_004B0798, D_004B0798, D_004B07A0,
+    D_004B0798, D_004B0798, D_004B0798, D_004B0798,
+    D_004B0798, D_004B0798, D_004B0798, D_004B0798,
+    D_004B0798, D_004B0798, D_004B0798, D_004B07A0,
+    D_004B0798, D_004B0798, D_004B0798, D_004B0798,
+    D_004B0798, D_004B0798, D_004B07B8, D_004B07D0,
+    D_004B07F0, D_004B0820, D_004B0840, D_004B07A0,
+    D_004B0860, D_004B0868, D_004B0870, D_004B0798,
+    D_004B0798, D_004B0898, D_004B0798, D_004B0798,
+    D_004B0798, D_004B0798, D_004B0798, NULL,
+    D_004B08A8, D_004B08C0, D_004B08E0, D_004B0900,
+    D_004B0920, D_004B0940, D_004B08A8, D_004B0960,
+    D_004B0988, D_004B09A0, D_004B09C0, D_004B0A00,
+    D_004B08A8, D_004B0A20, D_004B0A40, D_004B0A80,
+    D_004B0AA0, D_004B0AC0, D_004B0AE0, D_004B0B00,
+    D_004B0B20, D_004B08A8, D_004B0B40, D_004B0988,
+    D_004B0B60, D_004B0B80, D_004B0B90, D_004B0BA0,
+    D_004B0BB0, D_004B0BD0, D_004B0BF0, D_004B0C10,
+    D_004B0C30, D_004B0C50, D_004B0C70, D_004B0C88,
+    D_004B0CA0, D_004B0CB8, D_004B0CC8, D_004B0CD8,
+    D_004B0CE8, D_004B0D00, D_004B0D20, D_004B0D40,
+    D_004B0D60, D_004B0D80, D_004B0DA0, D_004B0DC0,
+    D_004B0DE0, D_004B0E00, D_004B0E20, D_004B0E40,
+    D_004B0E60, D_004B0E80, D_004B0EA0, D_004B0EC0,
+    D_004B0EE0, D_004B0F00, NULL, NULL,
+    D_004B0F20, D_004B0F58, D_004B0F60, D_004B0F80,
+    D_004B0FA0, D_004B0FC0, D_004B0FE0, (char *)D_004B0FE8,
+    D_004B0FF0, D_004B1000, D_004B1030, D_004B1070,
+    D_004B10A0, D_004B10D0, NULL, NULL,
+    D_004B10F0, D_004B1110, D_004B1130, D_004B1160,
+    D_004B1190, D_004B11C0, D_004B11F0, D_004B1220,
+    D_004B1250, D_004B1250, D_004B1220, D_004B1280,
+    D_004B12A0, D_004B12C0, D_004B12F0, D_004B1320,
+    D_004B1350, D_004B1380, D_004B13A0, D_004B13C0,
+    D_004B13F0, D_004B1410, D_004B1440, D_004B1220,
+    D_004B1470, D_004B1490, D_004B14B0, D_004B14D0,
+    D_004B14F0, D_004B1510, D_004B1530, D_004B1550,
+    D_004B1570, D_004B1590, D_004B15B0, D_004B15D0,
+    D_004B15F0, D_004B1620, D_004B1650, D_004B1670,
+    D_004B1690, D_004B16A8, D_004B16B8, D_004B16C8,
+    D_004B16D0, D_004B16D8, NULL, NULL,
+};
+char *gHelpTexts_6[24] = {
+    D_004B16E0, D_004B1730, D_004B1780, D_004B17A0,
+    D_004B17D0, D_004B1800, NULL, NULL,
+    D_004B1830, D_004B1848, D_004B1830, D_004B0FE8,
+    NULL, NULL, NULL, NULL,
+    D_004B1860, D_004B1878, D_004B1888, D_004B1890,
+    NULL, NULL, NULL, NULL,
+};

@@ -4,7 +4,7 @@
 #include "common.h"
 
 /*
- * sub_main's menu windows (src/sub_main/unk_356380.c): a position, the
+ * sub_main's menu windows (src/sub_main/menu_windows.c): a position, the
  * character size in pixels (charW, charH: Font_SetSpacing's), the text size in
  * characters (lineChars wide, lines high; a line is charH + 2 pixels), a frame
  * style in flags & 7 and colours. Window_DrawTextAlpha and the list windows read a text colour at
@@ -26,6 +26,11 @@
 /* Menu_DrawArrow's and Chat_DrawArrow's flags. */
 #define ARROW_MIRROR        0x1     /* pointing the other way (the texels swapped) */
 #define ARROW_TEXRECT       0x2     /* drawn by TexRect_Draw, mode 2, not as a sprite */
+
+/* Gfx_DrawMarker's flags: the window texture's marker icon (20 by 18 texels). */
+#define MARKER_COLOR_MASK   0x3     /* the colour, gMarkerColors' index */
+#define MARKER_CUE          0x4     /* a blinking cue to its right */
+#define MARKER_ALERT        0x8     /* a red cell drawn over it */
 
 /* A menu window (gChatFrameBox, gPersonalStatusPanels[], gEquipWindowBox...): position, size in cells, colour and flags. */
 typedef struct Window {

@@ -4,6 +4,7 @@
 #include "lobby_state.h"
 #include "lobby_menu.h"
 #include "chat_log.h"
+#include "lobby_labels.h"
 char *strcpy(char *, const char *);
 void *memset(void *, s32, u32);
 
@@ -251,8 +252,8 @@ extern s8 gTalkMode;
 extern s8 D_008BDC02;
 extern s32 gTalkNpcName;
 char *Talk_LineText(u16 id);
-s32 Talk_FirstByte(u16 id);
-s32 Notice_OpenTextN(char *, s32, s32, s32, s32); /* unit's own declaration: with the definition's s32 (char *text, u32 width, s32 mode, s32 sel, s32 arg4) (sub_main/unk_356380.c), Talk_YesNoBox 2 of 147 words differ */
+s32 Talk_LineKind(u16 id);
+s32 Notice_OpenTextN(char *, s32, s32, s32, s32); /* unit's own declaration: with the definition's s32 (char *text, u32 width, s32 mode, s32 sel, s32 arg4) (sub_main/menu_windows.c), Talk_YesNoBox 2 of 147 words differ */
 
 /* the yes/no box of message gTalkLine: 1 when closed, 0 while open */
 s32 Talk_YesNoBox(s8 flags)
@@ -263,7 +264,7 @@ s32 Talk_YesNoBox(s8 flags)
 
     pad = LobbyPad_Get(0);
     text = Talk_LineText(gTalkLine);
-    yes = Talk_FirstByte(gTalkLine);
+    yes = Talk_LineKind(gTalkLine);
     if (gTalkTextFrames >= 0) {
         gTalkTextFrames++;
     }
@@ -339,10 +340,9 @@ void Menu_PushNotice(s32 msg)
     }
 }
 
-extern char *D_0080C6C4;
 extern char *gLobbyEventTexts[];
 s32 sprintf(char *buf, char *fmt, ...);
-s32 Lobby_GetPlace3928(void);
+s32 Lobby_GetPlace(void);
 void Chat_AddReceived(u8 arg0, s8 *arg1);
 void ChatLog_Receive(ChatMsg *msg);
 
@@ -351,8 +351,8 @@ void Chat_SystemMsg(s32 msg, char *arg)
     ChatMsg m;
 
     memset(&m, 0, sizeof(m));
-    strcpy(m.id, D_0080C6C4);
-    strcpy(m.name, D_0080C6C4);
+    strcpy(m.id, gMemberCountTexts[MEMBER_COUNT_SYSTEM_NAME]);
+    strcpy(m.name, gMemberCountTexts[MEMBER_COUNT_SYSTEM_NAME]);
     if (arg == NULL) {
         strcpy(m.text, gLobbyEventTexts[msg]);
     } else {
@@ -361,7 +361,7 @@ void Chat_SystemMsg(s32 msg, char *arg)
     m.color[1] = 6;
     m.color[0] = 6;
     m.color[2] = 6;
-    if (Lobby_GetPlace3928() != 0) {
+    if (Lobby_GetPlace() != 0) {
         Chat_AddReceived(0xFF, (s8 *)&m);
         return;
     }

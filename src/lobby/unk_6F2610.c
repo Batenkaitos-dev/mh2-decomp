@@ -13,7 +13,7 @@ s32 Save_TestEventFlag(s32);
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
 void CamFocus_End(void);
 void CamReq_Cancel(void);
-void StageModels_Free(void);
+void EquipPreview_Free(void);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 void CamFocus_SetAside(s8 arg0);
@@ -41,7 +41,7 @@ extern s8 gTownJingleOn;
 char *Talk_LineText(u16 id);
 char *Text_FillDollar(char *arg0, s32 arg1);
 void Jingle_Play(void *obj, s32 id);
-s32 func_367690(void);
+s32 Bgm_IsNpcTunePlaying(void);
 void HairMenu_Open(Em *npc, s32 b)
 {
     Player *pl = &gPlayers[gScene.localPlayer];
@@ -58,7 +58,7 @@ void HairMenu_Open(Em *npc, s32 b)
     }
     m->withNpc = b;
     m->npc = npc;
-    if (m->withNpc == 1 && func_367690() == 0) {
+    if (m->withNpc == 1 && Bgm_IsNpcTunePlaying() == 0) {
         Jingle_Play(pl, 0xB1);
         gTownJingleOn = 1;
     }
@@ -76,7 +76,7 @@ void HairMenu_Close(void)
     p = &gPlayers[gScene.localPlayer];
     LobbyMenu_SetDraw(0, 0, 0, 0);
     p->target = NULL;
-    StageModels_Free();
+    EquipPreview_Free();
     CamFocus_End();
     CamReq_Cancel();
     gFieldControl = 1;
@@ -146,7 +146,7 @@ void HairMenu_Update(void)
         case 3:
             m->step = 8;
             Talk_Say(4, 0);
-            if (m->withNpc == 1 && func_367690() == 0) {
+            if (m->withNpc == 1 && Bgm_IsNpcTunePlaying() == 0) {
                 Jingle_Play(p, 0xB1);
                 gTownJingleOn = 1;
             }

@@ -2,12 +2,12 @@
 #define HEAP_H
 
 /*
- * The boot ELF's memory managers (src/main/unk_1826D0.c).
+ * The boot ELF's memory managers.
  *
  * Heap: blocks addressed by handles (1-based indices into a table of
  * HeapBlock records), kept in a list ordered by address so that they can be
  * compacted (moved together) when a request doesn't fit. The main heap is
- * gHeap (0x2491B0), with 0x3000 records at 0x2191B0.
+ * gHeap (0x2491B0), with 0x3000 records (gHeapBlocks).
  *
  * LinearHeap: a range allocated from both ends, released back to a saved
  * position (a LinearMark).

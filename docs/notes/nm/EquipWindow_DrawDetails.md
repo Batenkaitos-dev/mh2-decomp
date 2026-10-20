@@ -1,4 +1,4 @@
-# EquipWindow_DrawDetails (sub_main, src/sub_main/unk_356380.c)
+# EquipWindow_DrawDetails (sub_main, src/sub_main/menu_windows.c)
 
 ## Status
 MATCHED in round 30, session 4 (663 -> 0 words; 1128 at the start of round 30). One tagged

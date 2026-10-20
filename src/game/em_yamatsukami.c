@@ -1,10 +1,17 @@
 /*
- * Monster family: Yama Tsukami (EM_KIND_YAMA_TSUKAMI and
- * EM_KIND_YAMA_TSUKAMI_B). The code from the family's setup function
- * (EmYamaTsukami_Setup, called by the per-kind dispatch Em_TypeSetup) to the
- * next family's. The state functions take the monster and the work area its
- * state dispatcher passes on (EmWork); Em.step is the step within the current
- * state. See include/em.h.
+ * The Yama Tsukami family (EM_KIND_YAMA_TSUKAMI and EM_KIND_YAMA_TSUKAMI_B,
+ * include/em_yamatsukami.h): the giant that floats over the fortress. The
+ * file starts with the family's curves (EmYamaTsukami_StartCurves,
+ * UpdateCurves), its state changes (EmYamaTsukami_ChangeState and its
+ * Set<Group>State functions) and its motion sounds, which come before the
+ * setup in the game's code. Then the family's setup (EmYamaTsukami_Setup, called by Em_TypeSetup), its start,
+ * its states by group (each run by EmYamaTsukami_Run<Group>State from
+ * EmYamaTsukami_RunState), its update (EmYamaTsukami_Update: damage, the
+ * part flinches, the tower scene), and its effects: the carcass mine point,
+ * the tentacles' dust, the fortress impact and the body's swelling
+ * (EmYamaTsukamiWork.bodyScale, eased by EmYamaTsukami_EaseToSize and
+ * applied to the bones by EmYamaTsukami_ScaleBones). The file ends with the
+ * family's data.
  */
 #include "common.h"
 #include "scene.h"
@@ -12,17 +19,11 @@
 #include "mine_point.h"
 #include "em.h"
 #include "player.h"
+#include "objattach.h"
 #include "area.h"
 #include "qsync.h"
+#include "em_yamatsukami.h"
 
-/* The work area at Em +0x438 as EmYamaTsukami_InitBoneFloorFlags sees it. */
-typedef struct EmYamaWork {
-    u8 unk00[0x8];
-    s16 unk08;          /* 0x08: the motion EmYamaTsukami_MotionEffects last saw */
-    s8 unk0A;           /* 0x0A */
-    u8 unk0B[0x3C - 0xB];
-    s8 flags[4][2];     /* 0x3C */
-} EmYamaWork;
 
 
 
@@ -41,33 +42,33 @@ void Em_RestartScript(Em *em);
 void EmYamaTsukami_StartCurves(Em *em, u8 kind);
 u8 EmYamaTsukami_UpdateCurves(Em *em);
 void EmYamaTsukami_GetMinePointPos(Em *em, f32 *out);
-void EmYamaTsukami_RunGroup0(Em *);
-void EmYamaTsukami_State1_00(Em *);
-void EmYamaTsukami_State1_01(Em *);
-void EmYamaTsukami_State1_02(Em *, s32);
-void EmYamaTsukami_State2_01(Em *);
-void EmYamaTsukami_State2_04(Em *, s32);
-void EmYamaTsukami_State2_07(Em *, s32);
-void EmYamaTsukami_State2_09(Em *, s32);
-void EmYamaTsukami_State2_0A(Em *, s32);
-void EmYamaTsukami_State2_0B(Em *, s32);
-void EmYamaTsukami_State2_0C(Em *, s32);
-void EmYamaTsukami_State2_14(Em *);
-void EmYamaTsukami_State2_16(Em *em);
-void EmYamaTsukami_State3_00(Em *);
-void EmYamaTsukami_State3_01(Em *, s32);
-void EmYamaTsukami_State3_07(Em *, s32);
-void EmYamaTsukami_State5_00_Hunted(Em *);
-void EmYamaTsukami_State5_01_HuntedFalling(Em *);
-void EmYamaTsukami_State6_01(Em *);
+void EmYamaTsukami_RunIdleState(Em *);
+void EmYamaTsukami_WalkForward(Em *);
+void EmYamaTsukami_WalkBackward(Em *);
+void EmYamaTsukami_Turn(Em *, s32);
+void EmYamaTsukami_RecoverPause(Em *);
+void EmYamaTsukami_FlyToGoal(Em *, s32);
+void EmYamaTsukami_RiseToGoalHeight(Em *, s32);
+void EmYamaTsukami_Rise(Em *, s32);
+void EmYamaTsukami_Descend(Em *, s32);
+void EmYamaTsukami_SurgeForward(Em *, s32);
+void EmYamaTsukami_SurgeBack(Em *, s32);
+void EmYamaTsukami_WaitForHunters(Em *);
+void EmYamaTsukami_SinkToFloor(Em *em);
+void EmYamaTsukami_Summon(Em *);
+void EmYamaTsukami_Spin(Em *, s32);
+void EmYamaTsukami_Smash(Em *, s32);
+void EmYamaTsukami_Die(Em *);
+void EmYamaTsukami_DieFalling(Em *);
+void EmYamaTsukami_WalkIn(Em *);
 void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
 void EmYamaTsukami_MotionEffects(Em *, EmWork *);
-void EmYamaTsukami_EaseToTarget(Em *em, EmWork *work);
-void EmYamaTsukami_InitBoneFloorFlags(Em *em);
-extern s8 EmYamaTsukami_BoneFloorBones[4][2];
+void EmYamaTsukami_EaseToSize(Em *em, EmWork *work);
+void EmYamaTsukami_InitTentacleDust(Em *em);
+extern s8 EmYamaTsukami_TentacleBones[4][2];
 f32 AreaGrid2_GetFloorY(f32 *pos);
-void EmYamaTsukami_SpawnBoneFloorEffects(Em *);
-void EmFxTri_Spawn(Em *em, s16 kind);
+void EmYamaTsukami_UpdateTentacleDust(Em *);
+void EmBodyFx_Spawn(Em *em, s16 kind);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 f32 Vec_Distance(f32 *a, f32 *b);
 u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
@@ -76,34 +77,27 @@ s32 Debug_IsOn(s32);
 void MinePoint_SetArea(s32 slot, u16 area);
 void Player_Integrate(void *);
 void Player_ClearVelocity(void *);
-void Effect01_Spawn(void *obj, s16 type);
+void Shadow_Spawn(void *obj, s16 type);
 void GmEm_ResetSize(); /* unit's own declaration: GmEm_ResetSize reads a0 = em (the incoming argument, still in a0); the call passes no argument */
-extern f32 EmYamatsukami_EaseTargets[];
-extern f32 D_008CAAB0;
-extern f32 D_008CAAB4;
-extern f32 D_008CAAB8;
-extern f32 D_008CAABC;
-extern f32 D_008CAAC0;
-extern f32 D_008CAAC4;
-extern f32 D_008CAAC8;
-extern f32 D_008CAACC;
-typedef struct { s32 t, v; } EmYamaKey;
-extern EmYamaKey *EmYamaTsukami_Keys[];
-static u8 EmYamaTsukami_InterpKeys(Em *em, EmYamaTsukamiWork *w, s32 idx);
+extern f32 EmYamaTsukami_SizeScales[];
+extern f32 EmYamaTsukami_BoneGrowth[8];
+extern f32 EmYamaTsukami_BoneGrowthLast;
+extern f32 EmYamaTsukami_KindBStartPos[3];
+extern EmYamaTsukamiYawKey *EmYamaTsukami_SpinYawKeys[];
+static u8 EmYamaTsukami_TurnByKeys(Em *em, EmYamaTsukamiWork *w, s32 idx);
 f32 Math_Absf(f32 x);
-extern f32 D_008CAAD0;
 u16 Area_DayId(u16 id);
 f32 Math_Sin(f32 x);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
 void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
-void StageObj_K14_Create(Em *em, s16 k, s16 c, f32 scale);
-void StageObj_K14_CreateAt(f32 *pos, u8 k, u8 c, f32 scale);
+void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
+void DustCloud_CreateAt(f32 *pos, u8 k, u8 c, f32 scale);
 u8 Player_InCurrentArea(void *obj);
 void EmYamaTsukami_MotionSounds(Em *, EmWork *);
 static void EmYamaTsukami_MotionEffectsDefault(Em *em);
 EmBone *Em_Bone(void *obj, s16 bone);
 void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-void EmYamaTsukami_SpawnAreaImpactEffects(Em *);
+void EmYamaTsukami_SpawnFortImpact(Em *);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 void Quest_TriggerEvent(Em *em);
 void Em_BreakPart(Em *em, s32 part);
@@ -114,37 +108,1006 @@ u8 Em_UpdateDamage(Em *em, u8 *out);
 s32 MinePoint_Count(s32);
 void QSync_SendEm(Em *em, u8 kind, u8 arg);
 void EmYamaTsukami_RunState(Em *em);
-s32 func_00849C20(Em *em);
+s32 EmYamaTsukami_IsQuakeFreeMotion(Em *em);
 s32 EmMine_Update(Em *em);
 s8 EmMine_Create(Em *em, s32 idx);
 void QuestEm_Hunted(Em *em);
 void CamReq_BossHunted(void);
 void EmYamaTsukami_RemoveMinePoints(Em *em);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void Effect0D_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
+void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
+void PartFx_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
 void CamShake_ReqARange(Em *obj, s32 i, s32 flag);
 void Em_MotionDelta(Em *em, f32 *out);
-void EmKind38_SpawnAtEm(Em *em);
-void Effect0D_SpawnAt(f32 *pos, s32 a, f32 scale);
+void EmKind38_SpawnAtEmBone(Em *em);
+void PartFx_SpawnAt(f32 *pos, s32 a, f32 scale);
 s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-extern f32 D_008CA9A8;
-extern f32 D_008CA9AC;
-extern f32 D_008CA9B0;
 extern f32 gStartPos[];
-extern f32 D_43F0A4[];
-extern f32 D_43F0A8[];
 void EmYamaTsukami_AddMinePoint(Em *em);
+void Em_MoveRotatedAccel(Em *em, void *ang);
+void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
+/* unit's own declaration: group and state are declared u16; with the definition's s32 the callers (EmKind38_ChangeState, EmShakalaka_ChangeState ...) pass the state without the 16-bit mask the game's code applies */
+void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
+void Em_TargetPlayerInRange(Em *);
+s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 /* end of prototypes */
 
+/*
+ * Starts curve kind (enum EmYamaTsukamiCurve) from its first frame: the
+ * speed curves for the surges, the height curve for the others; clears the
+ * velocity.
+ */
+void EmYamaTsukami_StartCurves(Em *em, u8 kind)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
+
+    w->curveNone = 0;
+    w->curveVelY = 0;
+    w->curveSpeed = 0;
+    w->curveKind = kind;
+    switch (w->curveKind) {
+    case YAMA_CURVE_RISE:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_DESCEND:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_RISE_TO_GOAL:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_RISE_TO_GOAL_END:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_SURGE_FORWARD:
+        w->curveSpeed = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_SURGE_BACK:
+        w->curveSpeed = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_SPIN_START:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_SPIN_END:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_DIVE_SLAM:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_9:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_DIE_FALLING:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_SOFT_LAND:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    case YAMA_CURVE_RECOVER_RISE:
+        w->curveVelY = 1;
+        w->curveFrame = 0;
+        break;
+    }
+    Player_ClearVelocity(em);
+}
+
+/* The curve that does nothing. */
+static s32 EmYamaTsukami_CurveNone(Em *em, EmWork *work)
+{
+    return 0;
+}
+
+
+extern EmCurveKey *EmYamaTsukami_VelYCurves[];
+
+/*
+ * The height curve: sets velY from the two keys of EmYamaTsukami_VelYCurves[curveKind]
+ * around the curve frame (the change of height between them, spread over their frames).
+ * Returns 2 at the table's end, where velY falls by 1 a frame down to -50 (or, for a
+ * table that ends with a negative frame, stops and restarts at frame 0); else 0.
+ */
+static u8 EmYamaTsukami_CurveVelY(Em *em, EmWork *work)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *) work;
+    EmCurveKey *key;
+    f32 frame;
+    f32 keyFrame;
+    s32 i;
+    EmCurveKey *keys;
+    u8 ret;
+
+    keys = EmYamaTsukami_VelYCurves[((EmYamaTsukamiWork *)work)->curveKind];
+    ret = 0;
+    if (keys == NULL) {
+        return ret;
+    }
+    frame = w->curveFrame;
+    if (frame != 0.0f && frame != 1.0f) {
+        i = 1;
+        while (i != 0) {
+            key = &keys[i];
+            keyFrame = key->t;
+            if (frame > keyFrame && keyFrame > 0.0f) {
+                i++;
+            } else if (keyFrame == 0.0f) {
+                ret = 2;
+                if (em->velY > -50.0f) {
+                    em->velY -= 1.0f;
+                }
+                break;
+            } else if (keyFrame < 0.0f) {
+                w->curveFrame = 0;
+                ret = 2;
+                em->velY = 0.0f;
+                break;
+            } else {
+                i = 0;
+                em->velY = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
+            }
+        }
+    }
+    return ret;
+}
+
+extern EmCurveKey *EmYamaTsukami_SpeedCurves[];
+
+/*
+ * The speed curve: sets velZ from the two keys of EmYamaTsukami_SpeedCurves[curveKind]
+ * around the curve frame, as EmYamaTsukami_CurveVelY does for the height. Returns 4 at
+ * the table's end, else 0.
+ */
+static u8 EmYamaTsukami_CurveSpeed(Em *em, EmWork *work)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *) work;
+    EmCurveKey *key;
+    f32 frame;
+    f32 keyFrame;
+    s32 i;
+    EmCurveKey *keys;
+    u8 ret;
+
+    keys = EmYamaTsukami_SpeedCurves[((EmYamaTsukamiWork *)work)->curveKind];
+    ret = 0;
+    if (keys == NULL) {
+        return ret;
+    }
+    frame = w->curveFrame;
+    if (frame != 0.0f && frame != 1.0f) {
+        i = 1;
+        while (i != 0) {
+            key = &keys[i];
+            keyFrame = key->t;
+            if (frame > keyFrame && keyFrame != 0.0f) {
+                i++;
+            } else if (keyFrame == 0.0f) {
+                ret = 4;
+                break;
+            } else {
+                i = 0;
+                em->velZ = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
+            }
+        }
+    }
+    return ret;
+}
+
+/*
+ * Runs the curves EmYamaTsukami_StartCurves turned on, advances the curve frame by the
+ * motion's step and, in the air, moves the body by its velocity along its heading
+ * (Em_MoveRotatedAccel). Returns the curves' results or'ed together.
+ */
+u8 EmYamaTsukami_UpdateCurves(Em *em)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
+    u8 ret = 0;
+
+    if (w->curveNone != 0) {
+        ret = EmYamaTsukami_CurveNone(em, (EmWork *) w);
+    }
+    if (w->curveVelY != 0) {
+        ret |= EmYamaTsukami_CurveVelY(em, (EmWork *) w);
+    }
+    if (w->curveSpeed != 0) {
+        ret |= EmYamaTsukami_CurveSpeed(em, (EmWork *) w);
+    }
+    w->curveFrame += (s16) em->motion[0].step;
+    if (em->stance == EM_STANCE_AIR) {
+        w->accelAngX = 0;
+        w->accelAngY = em->rotY;
+        w->accelAngZ = 0;
+        Em_MoveRotatedAccel(em, &w->accelAngX);
+    }
+    return ret;
+}
+
+/* Enters state of group 0: YAMA_IDLE_RECOVER restores the full size. */
+void EmYamaTsukami_SetIdleState(Em *em, u16 state, u8 mode)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
+
+    em->motionSpeed = 1.0f;
+    switch ((u16) state) {
+    case 4:
+        w->bodySize = YAMA_SIZE_FULL;
+        break;
+    }
+    Em_SetStateSync(em, EM_GROUP_IDLE, state, mode);
+}
+
+/*
+ * Enters state of group 1. The walks take the distance to the goal (500
+ * with none), and YAMA_MOVE_BACKWARD becomes YAMA_MOVE_FORWARD when the
+ * goal is within a quarter turn of the facing.
+ */
+void EmYamaTsukami_SetMoveState(Em *em, u16 state, u8 mode)
+{
+    s32 turn;
+
+    em->motionSpeed = 1.0f;
+    switch (state) {
+    case YAMA_MOVE_FORWARD:
+        if (em->curGoalKind == 0) {
+            em->hasGoal = 0;
+            em->goalDist = 500.0f;
+        } else {
+            em->hasGoal = 1;
+            em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        }
+        break;
+    case YAMA_MOVE_BACKWARD:
+        if (em->curGoalKind == 0) {
+            em->hasGoal = 0;
+            em->goalDist = 500.0f;
+        } else {
+            em->hasGoal = 1;
+            em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        }
+        turn = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
+        if ((0 <= turn && turn <= 0x4000) || (turn >= 0xC000 && turn <= 0xFFFF)) {
+            state = YAMA_MOVE_FORWARD;
+        }
+        break;
+    case YAMA_MOVE_TURN:
+        break;
+    }
+    Em_SetStateSync(em, EM_GROUP_MOVE, state, mode);
+}
+
+/*
+ * Enters state of group 2. The turns become YAMA_FLY_IDLE on the owner when
+ * the goal is the target and there is none; the recoveries restore the full
+ * size.
+ */
+void EmYamaTsukami_SetFlyState(Em *em, u16 state, u8 mode)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
+
+    em->motionSpeed = 1.0f;
+    switch (state) {
+    case YAMA_FLY_TURN:
+    case YAMA_FLY_TURN_GUARDED:
+        if (em->remote == 0 && em->curGoalKind == 1 && em->curGoalArg == 0 && em->targetNo == -1) {
+            state = YAMA_FLY_IDLE;
+        }
+        break;
+    case YAMA_FLY_DRIFT_TO_GOAL:
+    case YAMA_FLY_DASH_TO_GOAL:
+        break;
+    case YAMA_FLY_RECOVER:
+        w->bodySize = YAMA_SIZE_FULL;
+        break;
+    case YAMA_FLY_RECOVER_RISE:
+        w->bodySize = YAMA_SIZE_FULL;
+        break;
+    }
+    Em_SetStateSync(em, EM_GROUP_FLY, state, mode);
+}
+
+/* Enters state of group 3. */
+void EmYamaTsukami_SetAttackState(Em *em, u16 state, u8 mode)
+{
+    em->motionSpeed = 1.0f;
+    Em_SetStateSync(em, EM_GROUP_ATTACK, state, mode);
+}
+
+/*
+ * Enters state of group 4 and moves the flinches on: a fall shrinks the
+ * body fully and pauses 30 cycles after it, flinch A leads to B and B to C,
+ * and flinch C shrinks the body a step and starts again at A.
+ */
+void EmYamaTsukami_SetReactState(Em *em, u16 state, u8 mode)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
+
+    em->motionSpeed = 1.0f;
+    switch (state) {
+    case YAMA_REACT_FALL_LAND:
+    case YAMA_REACT_FALL_RECOVER:
+        w->bodySize = YAMA_SIZE_SHRUNK;
+        w->flinchStage = YAMA_FLINCH_STAGE_A;
+        w->pauseCycles = 30;
+        break;
+    case YAMA_REACT_FLINCH_A:
+        w->flinchStage = YAMA_FLINCH_STAGE_B;
+        break;
+    case YAMA_REACT_FLINCH_B:
+        w->flinchStage = YAMA_FLINCH_STAGE_C;
+        break;
+    case YAMA_REACT_FLINCH_C_FROM_FULL:
+        w->bodySize = YAMA_SIZE_HALF;
+        w->flinchStage = YAMA_FLINCH_STAGE_A;
+        break;
+    case YAMA_REACT_FLINCH_C_FROM_HALF:
+        w->bodySize = YAMA_SIZE_SHRUNK;
+        w->flinchStage = YAMA_FLINCH_STAGE_A;
+        break;
+    }
+    Em_SetStateSync(em, EM_GROUP_REACT, state, mode);
+}
+
+/*
+ * Changes the monster's state (group, state, sync mode). The owner first
+ * picks a target in range; a remote copy ignores the owner-only modes. Any
+ * state but YAMA_IDLE and YAMA_FLY_IDLE ends the guard (flyGuard).
+ */
+void EmYamaTsukami_ChangeState(Em *em, u16 group, u16 state, u8 mode)
+{
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
+
+    if (em->remote == 0) {
+        Em_TargetPlayerInRange(em);
+    } else if (mode == EM_SYNC_OWNER || mode == EM_SYNC_OWNER_FLAGGED) {
+        return;
+    }
+    if ((group != 0 || state != 1) && (group != 2 || state != 0)) {
+        w->flyGuard = 0;
+    }
+    switch (group) {
+    case EM_GROUP_IDLE:
+        EmYamaTsukami_SetIdleState(em, state, mode);
+        break;
+    case EM_GROUP_MOVE:
+        EmYamaTsukami_SetMoveState(em, state, mode);
+        break;
+    case EM_GROUP_FLY:
+        EmYamaTsukami_SetFlyState(em, state, mode);
+        break;
+    case EM_GROUP_ATTACK:
+        EmYamaTsukami_SetAttackState(em, state, mode);
+        break;
+    case EM_GROUP_REACT:
+        EmYamaTsukami_SetReactState(em, state, mode);
+        break;
+    case EM_GROUP_DEFEAT:
+    case EM_GROUP_EVENT:
+        em->motionSpeed = 1.0f;
+        Em_SetStateSync(em, group, state, mode);
+        break;
+    }
+}
+
+/*
+ * Plays the sounds of the motion on layer 0 at its frames
+ * (Em_PlaySeAtBoneOnFrame and the volume form: frame, sound id, bone),
+ * switching on the motion EmYamaTsukami_MotionEffects keeps in fxMotion.
+ */
+void EmYamaTsukami_MotionSounds(Em *em, EmWork *work)
+{
+    s16 motion;
+
+    motion = ((EmYamaTsukamiWork *)work)->fxMotion;
+    switch (motion) {
+    case EM_MOTION_ID(0, YAMA_MOT_IDLE):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5A, Sound_RandomSe(0xD, 4, 0xF, 4), 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x70, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xD8, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x140, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x144, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x148, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_RISE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x9E, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x60, 0x4C, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_DESCEND):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x9E, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x60, 0x4C, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF4, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_RISE_TO_GOAL):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x53, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x44, 0x2C, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SURGE_FORWARD):
+    case EM_MOTION_ID(0, YAMA_MOT_SURGE_BACK):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x68, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x6A, 0x2D, 0x10, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0x13, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(0xC, 4, 0xE, 4), 8);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, 0x13, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0x15, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7A, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x82, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 0x13, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x76, Sound_RandomSe(0xC, 4, 0xE, 4), 8);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x92, 0x13, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 0x15, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_RECOVER):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x4C, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x28, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x32, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x94, 0x65, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_FALL):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x51, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x52, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0xA, 3);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_FALL_LAND):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x4C, 0x4B, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x24, 6, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xAC, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE6, Sound_RandomSe(0xC, 4, 0xE, 4), 8);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SOFT_LAND):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x4C, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x16, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x16, 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x10, 0x3F, 0x1A, 5);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x14, 0x3F, 0x20, 5);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x10, 0x3F, 0xA, 5);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x14, 0x3F, 0xF, 5);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0x14, 0x2F);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x42, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_RISE_TO_GOAL_END):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x58, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_RECOVER_RISE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x46, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xB4, 0x58, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xBC, 0x28, 0x24);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xB4, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xD2, 0xA, 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x104, 0x13, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF2, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 0x14, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF4, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10A, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x14, 0x65, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, 0xD):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x52, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0x12, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 0x12, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x13, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0x15, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, Sound_RandomSe(0xD, 4, 0xF, 4), 0xD);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x56, 0x13, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(0xD, 4, 0xF, 4), 8);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x60, 0x14, 0xA);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_RECOVER_PAUSE):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x70, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_DOWNED):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x52, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0, 5, 1, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(1, 3, 2, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x11, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0xB, 0x24);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_GET_UP):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x34, 0x4C, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x48, 6, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 0x10, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x8E, 0x67, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_MOVE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x12, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x46, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_MOVE_CRUISE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x12, 0x46, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_MOVE_STOP):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, Sound_RandomSe(0x65, 4, 0x65, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0x67, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_A):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x48, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x13, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x15, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0xC, 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x13, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x15, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x98, Sound_RandomSe(0, 5, 1, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, Sound_RandomSe(1, 3, 2, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_B):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x48, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x13, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x15, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0xC, 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x13, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x15, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x98, Sound_RandomSe(0, 5, 1, 3), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, Sound_RandomSe(1, 3, 2, 5), 7);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_A):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0x10, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 0x15, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC8, 0xF, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x11, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_B):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0x10, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 0x15, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC8, 0xF, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x11, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_C):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 0xD);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x15, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, 0x13, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(0xD, 4, 0xF, 4), 8);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0x15, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x13, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC2, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_D):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 8);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x15, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, 0x13, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(0xD, 4, 0xF, 4), 0xD);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0x15, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x13, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC2, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SMASH):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, 0x47, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, 0x48, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xE4, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 0x17, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA2, 0x17, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x15, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA4, 0x15, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA2, 0x17, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 0x17, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE2, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xAE, 0x44, 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, 9, 0x17);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SMASH_END):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x64, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5A, Sound_RandomSe(0xD, 4, 0xF, 4), 0x17);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_HOLD_POSE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x56, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x90, 0x27, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x90, 0x67, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_HOLD_POSE_END):
+    case EM_MOTION_ID(0, YAMA_MOT_SUMMON_END):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x58, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x26, 0x15, 0x1A, 6);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x2C, 0x15, 0x20, 6);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_INHALE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, 0x4E, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 0x27, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDE, 0x28, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x104, 0x28, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 0x27, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8E, 0x27, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, 0x27, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE4, 0x27, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x11C, 0x27, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x120, 0x27, 0x2F);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x13A, 0x3C, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x102, 0x3C, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xEE, 0x3E, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x128, 0x3E, 0x24, 9);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_INHALE_END):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x58, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_STRIKE_A):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4D, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x16, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x16, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 0x16, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x16, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 9, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 9, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5E, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x60, 0x65, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_STRIKE_B):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4D, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0x16, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x16, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0x16, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x16, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x42, 0x65, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_STRIKE_B_HOLD):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 9, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 8, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x66, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x10, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0xA, 3);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_STRIKE_RECOVER):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4C, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x82, 0x46, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xB, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x3C, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x98, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8E, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x90, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xFE, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x100, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SPIN_START):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x1E, Sound_RandomSe(0x66, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x10, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SPIN):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x12, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x14, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x14, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x27, 0x2F);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SPIN_END):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x13, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x13, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x15, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x15, 0x20);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x58, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x1E, Sound_RandomSe(0x66, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x10, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_SUMMON):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x56, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x8E, 0x28, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x90, 0x67, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_CRASH_FALL):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x12, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x14, 0x2F);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x66, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_DIVE_SLAM):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x30, 0x57, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xD0, 0xB, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xA0, 0x31, 0xB, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xA8, 0x31, 7, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x68, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xDE, 0x66, 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_CRASH_LIE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x2C, 0x47, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0xC, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0xB, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7E, 7, 3, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x84, 6, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x86, 8, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 8, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 9, 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 9, 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB4, Sound_RandomSe(0, 5, 1, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, Sound_RandomSe(1, 3, 2, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12C, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x130, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_CRASH_GET_UP):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x44, 0x46, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x54, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x72, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x76, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_FLINCH_A):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x49, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 6, 0xF, 2), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 2, 0xF, 6), 0x20);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_FLINCH_B):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4A, 0x24, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0x11, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_DOWNED_FLINCH):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x4A, 0x24);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xE, 4, 0x10, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 0x14, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x66, 9, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 9, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_DIE):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4B, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xDC, 0x46, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xB2, 6, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA2, 0x12, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB0, 9, 0x2A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB6, 0x14, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC2, 8, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x11, 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x92, Sound_RandomSe(0xD, 6, 0xF, 2), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x136, Sound_RandomSe(0xD, 2, 0xF, 6), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x132, Sound_RandomSe(0xD, 6, 0xF, 2), 0xA);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x136, Sound_RandomSe(0xD, 2, 0xF, 6), 0xF);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x11, 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF6, Sound_RandomSe(0xD, 6, 0xF, 2), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x150, 8, 0x20);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x54, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xAC, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_FLINCH_D):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x49, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xE, 4, 0x10, 4), 0x20);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x52, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_EVENT_TURN):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x49, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xE, 4, 0x10, 4), 0x1A);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x52, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_FLINCH_HOVER):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x49, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 0x12, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0x13, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xC, 4, 0xE, 4), 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        break;
+    case EM_MOTION_ID(0, YAMA_MOT_FLINCH_C):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x4B, 0x24);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, Sound_RandomSe(3, 5, 4, 3), 7);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x67, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x4E, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        
+    default:
+        break;
+    }
+}
+
+/*
+ * The family's setup (Em_TypeSetup calls it): clears queryValue and, while
+ * the carcass's mine point exists, moves it to the monster's area and to
+ * its place above bone 2.
+ */
 void EmYamaTsukami_Setup(Em *em)
 {
     f32 pos[4];
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
-    w->unk000 = 0;
+    w->queryValue = 0;
     if (w->mineSlot != -1) {
         MinePoint_SetArea(w->mineSlot, em->area);
         EmYamaTsukami_GetMinePointPos(em, pos);
@@ -152,172 +1115,218 @@ void EmYamaTsukami_Setup(Em *em)
     }
 }
 
+/*
+ * One of the family's table hooks (slots 0 and 1): creates the effect drawn
+ * with the monster (Effect01 type 3) and, for the second kind, the EmBodyFx
+ * effect of kind 5.
+ */
 void EmYamaTsukami_SpawnEffects(Em *em)
 {
-    Effect01_Spawn((Player *) &em->active, 3);
-    if (em->type == 0x48) {
-        EmFxTri_Spawn(em, 5);
+    Shadow_Spawn((Player *) &em->active, 3);
+    if (em->type == EM_KIND_YAMA_TSUKAMI_B) {
+        EmBodyFx_Spawn(em, 5);
     }
 }
 
+/*
+ * Writes the carcass mine point's position to out: 400 above bone 2, along
+ * the bone's rotation.
+ */
 void EmYamaTsukami_GetMinePointPos(Em *em, f32 *out)
 {
-    f32 ofs[3];
-    f32 b[3];
-    f32 a[3];
+    f32 upOfs[3];
+    f32 rotated[3];
+    f32 bonePos[3];
 
-    ofs[1] = 400.0f;
-    ofs[0] = 0.0f;
-    ofs[2] = 0.0f;
-    Em_BonePos(em, 2, a);
-    Vec_Rotate((f32 *) b, (f32 *) ofs, (f32 *) (Em_Bone(em, 2)));
-    out[0] = a[0] + b[0];
-    out[1] = a[1] + b[1];
-    out[2] = a[2] + b[2];
+    upOfs[1] = 400.0f;
+    upOfs[0] = 0.0f;
+    upOfs[2] = 0.0f;
+    Em_BonePos(em, 2, bonePos);
+    Vec_Rotate((f32 *) rotated, (f32 *) upOfs, (f32 *) (Em_Bone(em, 2)));
+    out[0] = bonePos[0] + rotated[0];
+    out[1] = bonePos[1] + rotated[1];
+    out[2] = bonePos[2] + rotated[2];
 }
 
+/*
+ * Makes the carcass's carve point, a mine point of radius 800 with
+ * mineCount carves left and its item table by the quest's tier, at
+ * EmYamaTsukami_GetMinePointPos's position; with no carves left it makes
+ * none (mineSlot -1).
+ */
 void EmYamaTsukami_AddMinePoint(Em *em)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
-    MinePoint pt;
+    MinePoint point;
     f32 pos[3];
 
     if (w->mineCount <= 0) {
         w->mineSlot = -1;
         return;
     }
-    pt.radius = 800.0f;
+    point.radius = 800.0f;
     switch (gQuest.header->tier) {
     default:
-        pt.table = 0x63;
+        point.table = 0x63;
         break;
     case 1:
-        pt.table = 0xE0;
+        point.table = 0xE0;
         break;
     case 2:
-        pt.table = 0x15C;
+        point.table = 0x15C;
         break;
     case 3:
-        pt.table = 0x15C;
+        point.table = 0x15C;
         break;
     }
-    pt.action = MINE_ACTION_CARVE;
-    pt.count = w->mineCount;
-    pt.area = (u8) em->area;
-    pt.flags = 1;
-    pt.timer = 0;
+    point.action = MINE_ACTION_CARVE;
+    point.count = w->mineCount;
+    point.area = (u8) em->area;
+    point.flags = 1;
+    point.timer = 0;
     EmYamaTsukami_GetMinePointPos(em, pos);
-    w->mineSlot = MinePoint_AddUntimed(&pt, pos, 0);
+    w->mineSlot = MinePoint_AddUntimed(&point, pos, 0);
 }
 
+/* Removes the three mine points in minePoints and marks them gone (-1). */
 void EmYamaTsukami_RemoveMinePoints(Em *em)
 {
-    u8 *w = &em->work;
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *) &em->work;
     s32 i;
-    s8 *p;
+    s8 *slot;
 
     for (i = 0; i < 3; i++) {
-        p = (s8 *) (w + i) + 0x39;
-        if (*p != -1) {
-            MinePoint_Remove(*p);
-            *p = -1;
+        slot = &w->minePoints[i];
+        if (*slot != -1) {
+            MinePoint_Remove(*slot);
+            *slot = -1;
         }
     }
 }
 
-void EmYamaTsukami_AnglesToPoint(Em *em, EmWork *work)
+/*
+ * Sets the work's three move angles toward the goal: X pitches the body by
+ * the goal's height over its distance, Y is the heading to the goal less a
+ * quarter turn, Z is 0.
+ */
+void EmYamaTsukami_AimAtGoal(Em *em, EmYamaTsukamiWork *w)
 {
-    work->accelAngZ = 0x10000 - (Math_Heading(Vec_Distance((f32 *) &em->posX, (f32 *) em->goal), em->posY, 0.0f, em->goal[1]) & 0xFFFF);
-    ((EmYamaTsukamiWork *)work)->accelAngY = (s32) ((Math_Heading(em->posX, em->posZ, em->goal[0], em->goal[2]) & 0xFFFF) - 0x4000);
-    ((EmYamaTsukamiWork *)work)->accelAngZ = 0;
+    w->accelAngX = 0x10000 - (Math_Heading(Vec_Distance((f32 *) &em->posX, (f32 *) em->goal), em->posY, 0.0f, em->goal[1]) & 0xFFFF);
+    w->accelAngY = (s32) ((Math_Heading(em->posX, em->posZ, em->goal[0], em->goal[2]) & 0xFFFF) - 0x4000);
+    w->accelAngZ = 0;
 }
 
+/*
+ * The start hook. At the quest's start the monster is placed at the area's
+ * start position. The second kind goes to its fixed place
+ * (EmYamaTsukami_KindBStartPos), sees nobody, stays guarded and leaves no
+ * carcass; the first fights every player and makes its carcass mine point
+ * with three carves. Then: hp from the kind's table, the idle motion, a
+ * random state of group 2, full size, and the flight stance.
+ */
 void EmYamaTsukami_Start(Em *em)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
-    s16 hp;
+    s16 maxHp;
 
     if (gQuest.stage == 0) {
         em->posX = gStartPos[gScene.area * 3];
-        em->posY = D_43F0A4[gScene.area * 3];
-        em->posZ = D_43F0A8[gScene.area * 3];
+        em->posY = gStartPos[gScene.area * 3 + 1];
+        em->posZ = gStartPos[gScene.area * 3 + 2];
     }
-    if (em->type == 0x48) {
+    if (em->type == EM_KIND_YAMA_TSUKAMI_B) {
         Area_DayId(em->area);
-        em->posX = D_008CA9A8;
-        em->posY = D_008CA9AC;
-        em->posZ = D_008CA9B0;
+        em->posX = EmYamaTsukami_KindBStartPos[0];
+        em->posY = EmYamaTsukami_KindBStartPos[1];
+        em->posZ = EmYamaTsukami_KindBStartPos[2];
         em->blind = 2;
         em->unk_InitFlag = 0;
         em->combat = 1;
         w->mineCount = 0;
         w->mineSlot = -1;
-        w->unk038 = 1;
+        w->flyGuard = 1;
     } else {
         em->unk_InitFlag = 1;
         em->combat = 1;
         em->combatPlayers = 0xF;
         em->blind = 0;
-        w->unk038 = 0;
+        w->flyGuard = 0;
         w->mineCount = 3;
         EmYamaTsukami_AddMinePoint(em);
     }
-    hp = Em_ComputeMaxHp(em, 0);
-    em->hp = hp;
-    em->hpMax = hp;
+    maxHp = Em_ComputeMaxHp(em, 0);
+    em->hp = maxHp;
+    em->hpMax = maxHp;
     em->scriptPending = 1;
-    Em_SetMotionRow(em, 1, 0, 0);
+    Em_SetMotionRow(em, YAMA_MOT_IDLE, 0, 0);
     Em_SetStateRand(em, 2, 0);
-    w->unk02E = 0;
-    w->unk000 = 0;
-    w->unk033 = 0xF;
-    w->easeIdx = 2;
+    w->flinchStage = YAMA_FLINCH_STAGE_A;
+    w->queryValue = 0;
+    w->pauseCycles = 15;
+    w->bodySize = YAMA_SIZE_FULL;
     w->easeMode = 0;
-    w->ease[0] = 1.0f;
-    w->ease[1] = 1.0f;
-    w->ease[2] = 1.0f;
-    w->syncTimer = 0x96;
-    em->stance = 2;
+    w->bodyScale[0] = 1.0f;
+    w->bodyScale[1] = 1.0f;
+    w->bodyScale[2] = 1.0f;
+    w->syncTimer = 150;
+    em->stance = EM_STANCE_AIR;
 }
 
+/*
+ * Ends a state on the ground: back to YAMA_IDLE, with the script to choose
+ * the next state.
+ */
 void EmYamaTsukami_EndState(Em *em)
 {
     em->motionSpeed = 1.0f;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    em->stance = 0;
-    EmYamaTsukami_ChangeState(em, 0, 1, 0);
+    em->stance = EM_STANCE_GROUND;
+    EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE, EM_SYNC_LOCAL);
 }
 
-void EmYamaTsukami_EndState2(Em *em)
+/*
+ * Ends a state in the air: back to YAMA_FLY_IDLE, with the script to choose
+ * the next state.
+ */
+void EmYamaTsukami_EndFlyState(Em *em)
 {
     em->motionSpeed = 1.0f;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    em->stance = 2;
-    EmYamaTsukami_ChangeState(em, 2, 0, 0);
+    em->stance = EM_STANCE_AIR;
+    EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_IDLE, EM_SYNC_LOCAL);
 }
 
-void EmYamaTsukami_State0_00(Em *em, EmWork *work)
+/*
+ * YAMA_IDLE_HOLD: keeps the idle motion set unless debug flag 0x4D is on.
+ * The second test compares layer 1 with 1101 (0x44D), which is no layer-1
+ * motion id (those start at 1201), so it always sets the idle again.
+ */
+void EmYamaTsukami_IdleHold(Em *em, EmWork *work)
 {
     if (Debug_IsOn(0x4D) == 0) {
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0xA, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, YAMA_MOT_IDLE)) {
+            Em_SetMotion(em, YAMA_MOT_IDLE, 0xA, 0);
         }
-        if (em->motionId[1] != 0x44D) {
-            Em_SetMotion(em, 1, 0xA, 0);
+        if (em->motionId[1] != 0x44D) { /* 1000 + 100 + the idle; layer 1's ids are 1200 + the motion */
+            Em_SetMotion(em, YAMA_MOT_IDLE, 0xA, 0);
         }
     }
 }
 
-void EmYamaTsukami_State0_01(Em *em, EmWork *work)
+/*
+ * YAMA_IDLE: one cycle of the idle motion on the ground, then
+ * EmYamaTsukami_EndState.
+ */
+void EmYamaTsukami_Idle(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, YAMA_MOT_IDLE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -328,34 +1337,42 @@ void EmYamaTsukami_State0_01(Em *em, EmWork *work)
     }
 }
 
-void EmYamaTsukami_State0_02(Em *em, EmWork *work)
+/*
+ * YAMA_IDLE_DOWNED: lies on the ground for five cycles of the motion, then
+ * gets up (YAMA_IDLE_GET_UP). A remote copy waits for the owner's change.
+ */
+void EmYamaTsukami_Downed(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x14, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, YAMA_MOT_DOWNED, 0, 0);
         em->timer = 5;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                EmYamaTsukami_ChangeState(em, 0, 3, 4);
+                EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_GET_UP, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmYamaTsukami_ChangeState(em, 0, 3, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_GET_UP, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State0_03(Em *em, EmWork *work)
+/*
+ * YAMA_IDLE_GET_UP: gets up, unhurt and with no reactions meanwhile, then
+ * swells back (YAMA_IDLE_RECOVER).
+ */
+void EmYamaTsukami_GetUp(Em *em, EmWork *work)
 {
     em->guardTimer = 5;
     em->noReact = 5;
@@ -363,31 +1380,35 @@ void EmYamaTsukami_State0_03(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x15, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, YAMA_MOT_GET_UP, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_ChangeState(em, 0, 4, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_RECOVER, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmYamaTsukami_ChangeState(em, 0, 4, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_RECOVER, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State0_04(Em *em, EmWork *work)
+/*
+ * YAMA_IDLE_RECOVER: one cycle of the recover motion on the ground (the
+ * body eases back to full size), then EmYamaTsukami_EndState.
+ */
+void EmYamaTsukami_Recover(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x7, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, YAMA_MOT_RECOVER, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -398,53 +1419,59 @@ void EmYamaTsukami_State0_04(Em *em, EmWork *work)
     }
 }
 
-void EmYamaTsukami_RunGroup0(Em *em)
+/* Runs the current state of group 0 (EM_GROUP_IDLE). */
+void EmYamaTsukami_RunIdleState(Em *em)
 {
     EmWork *work = (EmWork *) &em->work;
 
     switch (em->state) {
-    case 0:
-        EmYamaTsukami_State0_00(em, work);
+    case YAMA_IDLE_HOLD:
+        EmYamaTsukami_IdleHold(em, work);
         break;
-    case 1:
-        EmYamaTsukami_State0_01(em, work);
+    case YAMA_IDLE:
+        EmYamaTsukami_Idle(em, work);
         break;
-    case 2:
-        EmYamaTsukami_State0_02(em, work);
+    case YAMA_IDLE_DOWNED:
+        EmYamaTsukami_Downed(em, work);
         break;
-    case 3:
-        EmYamaTsukami_State0_03(em, work);
+    case YAMA_IDLE_GET_UP:
+        EmYamaTsukami_GetUp(em, work);
         break;
-    case 4:
-        EmYamaTsukami_State0_04(em, work);
+    case YAMA_IDLE_RECOVER:
+        EmYamaTsukami_Recover(em, work);
         break;
     }
 }
 
-void EmYamaTsukami_State1_00(Em *em)
+/*
+ * YAMA_MOVE_FORWARD: walks forward by the motion's root movement, turning
+ * toward the goal by up to 0x40 a frame, until goalDist runs out; the
+ * motion then ends the state.
+ */
+void EmYamaTsukami_WalkForward(Em *em)
 {
     f32 pos[3];
-    s32 d;
+    s32 turn;
 
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x16, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
-            d = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
-            if (d <= 0x8000) {
-                if (d <= 0x3F) {
-                    em->rotY += d;
+            turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
+            if (turn <= 0x8000) {
+                if (turn <= 0x3F) {
+                    em->rotY += turn;
                 } else {
                     em->rotY += 0x40;
                 }
             } else {
-                if (d > 0xFFC0) {
-                    em->rotY += d;
+                if (turn > 0xFFC0) {
+                    em->rotY += turn;
                 } else {
                     em->rotY -= 0x40;
                 }
@@ -464,30 +1491,35 @@ void EmYamaTsukami_State1_00(Em *em)
     }
 }
 
-void EmYamaTsukami_State1_01(Em *em)
+/*
+ * YAMA_MOVE_BACKWARD: as EmYamaTsukami_WalkForward with the back turned to
+ * the goal, until the distance walked away (added to goalDist) brings it to
+ * 0.
+ */
+void EmYamaTsukami_WalkBackward(Em *em)
 {
     f32 pos[3];
-    s32 d;
+    s32 turn;
 
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x16, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
-            d = ((((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + 0x8000) & 0xFFFF) - em->rotY) & 0xFFFF;
-            if (d <= 0x8000) {
-                if (d <= 0x3F) {
-                    em->rotY += d;
+            turn = ((((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + 0x8000) & 0xFFFF) - em->rotY) & 0xFFFF;
+            if (turn <= 0x8000) {
+                if (turn <= 0x3F) {
+                    em->rotY += turn;
                 } else {
                     em->rotY += 0x40;
                 }
             } else {
-                if (d > 0xFFC0) {
-                    em->rotY += d;
+                if (turn > 0xFFC0) {
+                    em->rotY += turn;
                 } else {
                     em->rotY -= 0x40;
                 }
@@ -507,13 +1539,19 @@ void EmYamaTsukami_State1_01(Em *em)
     }
 }
 
-void EmYamaTsukami_State1_02(Em *em, s32 variant)
+/*
+ * Turns to the goal, speeding up by 0x20 a frame until half the turn is
+ * made and then slowing down; the motion's end ends the state. variant 0:
+ * on the ground (YAMA_MOVE_TURN); 1: in the air (YAMA_FLY_TURN); 2: in the
+ * air, guarded (YAMA_FLY_TURN_GUARDED).
+ */
+void EmYamaTsukami_Turn(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
-    u32 d;
-    u16 t;
-    s32 s;
-    s32 a;
+    u32 diff;
+    u16 aim;
+    s32 stepAngle;
+    s32 rot;
 
     switch (em->step) {
     case 0:
@@ -521,54 +1559,54 @@ void EmYamaTsukami_State1_02(Em *em, s32 variant)
         em->stateVar0 = 0;
         switch (variant) {
         case 0:
-            em->stance = 0;
-            if (em->motionId[1] == 0x3E9) {
-                Em_SetMotion(em, 1, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            if (em->motionId[1] == EM_MOTION_ID(0, YAMA_MOT_IDLE)) { /* a layer-0 id: never true on layer 1 */
+                Em_SetMotion(em, YAMA_MOT_IDLE, 0, 0);
             }
             break;
         case 2:
-            w->unk038 = 1;
+            w->flyGuard = 1;
         case 1:
-            em->stance = 2;
-            Em_SetMotion(em, 0x16, 0, 0);
+            em->stance = EM_STANCE_AIR;
+            Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
             break;
         }
         em->lookAtTarget = 0;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->timer = 0;
-        d = (em->aimAngle - *(u16 *) &em->rotY) & 0xFFFF;
-        if (d < 0x8000) {
-            w->unk00C = d;
+        diff = (em->aimAngle - *(u16 *) &em->rotY) & 0xFFFF; /* rotY's low half, loaded as a halfword as the game does */
+        if (diff < 0x8000) {
+            w->turnLeft = diff;
         } else {
-            w->unk00C = 0x10000 - d;
+            w->turnLeft = 0x10000 - diff;
         }
-        w->unk00C /= 2;
-        w->unk01C = 0;
+        w->turnLeft /= 2;
+        w->turnSpeed = 0;
         break;
     case 1:
         if (em->stateVar0 == 0) {
-            w->unk01C += 0x20;
-            w->unk00C -= w->unk01C;
-            if (w->unk00C <= 0) {
+            w->turnSpeed += 0x20;
+            w->turnLeft -= w->turnSpeed;
+            if (w->turnLeft <= 0) {
                 em->stateVar0 = 1;
             }
         } else {
-            w->unk01C -= 0x20;
-            if (w->unk01C <= 0) {
-                w->unk01C = 0x20;
+            w->turnSpeed -= 0x20;
+            if (w->turnSpeed <= 0) {
+                w->turnSpeed = 0x20;
             }
         }
-        a = em->rotY;
-        t = em->aimAngle;
-        s = w->unk01C;
-        d = (t - (a & 0xFFFF)) & 0xFFFF;
-        if (((d + s) & 0xFFFF) < s * 2) {
+        rot = em->rotY;
+        aim = em->aimAngle;
+        stepAngle = w->turnSpeed;
+        diff = (aim - (rot & 0xFFFF)) & 0xFFFF;
+        if (((diff + stepAngle) & 0xFFFF) < stepAngle * 2) {
             em->step++;
             em->rotY = em->aimAngle;
-        } else if (d < 0x8000) {
-            em->rotY = (a + s) & 0xFFFF;
+        } else if (diff < 0x8000) {
+            em->rotY = (rot + stepAngle) & 0xFFFF;
         } else {
-            em->rotY = (a - s) & 0xFFFF;
+            em->rotY = (rot - stepAngle) & 0xFFFF;
         }
         break;
     case 2:
@@ -580,7 +1618,7 @@ void EmYamaTsukami_State1_02(Em *em, s32 variant)
                 break;
             case 1:
             case 2:
-                EmYamaTsukami_EndState2(em);
+                EmYamaTsukami_EndFlyState(em);
                 break;
             }
         }
@@ -588,40 +1626,49 @@ void EmYamaTsukami_State1_02(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_RunGroup1(Em *em)
+/* Runs the current state of group 1 (EM_GROUP_MOVE). */
+void EmYamaTsukami_RunMoveState(Em *em)
 {
     switch (em->state) {
-    case 0:
-        EmYamaTsukami_State1_00(em);
+    case YAMA_MOVE_FORWARD:
+        EmYamaTsukami_WalkForward(em);
         break;
-    case 1:
-        EmYamaTsukami_State1_01(em);
+    case YAMA_MOVE_BACKWARD:
+        EmYamaTsukami_WalkBackward(em);
         break;
-    case 2:
-        EmYamaTsukami_State1_02(em, 0);
+    case YAMA_MOVE_TURN:
+        EmYamaTsukami_Turn(em, 0);
         break;
     }
 }
 
-void EmYamaTsukami_State2_00(Em *em)
+/*
+ * YAMA_FLY_IDLE: one cycle of the idle motion in the air, then
+ * EmYamaTsukami_EndFlyState.
+ */
+void EmYamaTsukami_FlyIdle(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 1, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_IDLE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State2_01(Em *em)
+/*
+ * YAMA_FLY_RECOVER_PAUSE: after a short fall, holds the pause motion for
+ * pauseCycles cycles, then rises back (YAMA_FLY_RECOVER_RISE).
+ */
+void EmYamaTsukami_RecoverPause(Em *em)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -629,26 +1676,34 @@ void EmYamaTsukami_State2_01(Em *em)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0xE, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_RECOVER_PAUSE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
-            if (--w->unk033 <= 0) {
+            if (--w->pauseCycles <= 0) {
                 em->step++;
-                EmYamaTsukami_ChangeState(em, 2, 0x12, 4);
+                EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_RECOVER_RISE, EM_SYNC_OWNER_FLAGGED);
             }
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmYamaTsukami_ChangeState(em, 2, 0x12, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_RECOVER_RISE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State2_04(Em *em, s32 variant)
+/*
+ * Floats straight to the goal (EmYamaTsukami_AimAtGoal each frame) with a
+ * speed that swells and ebbs, snapping to the goal when within 10, until
+ * the distance runs out. variant 0: YAMA_FLY_DRIFT_TO_GOAL (10, give or
+ * take 1); 1: YAMA_FLY_DASH_TO_GOAL, guarded (30 frames, then 20, give or
+ * take 2, and a stop motion at the end); 2: YAMA_FLY_DRIFT_TO_GOAL_GUARDED;
+ * 3: YAMA_FLY_CRUISE_TO_GOAL (15, give or take 1.5).
+ */
+void EmYamaTsukami_FlyToGoal(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -656,10 +1711,10 @@ void EmYamaTsukami_State2_04(Em *em, s32 variant)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         Player_ClearVelocity(em);
         em->goalDist = Vec_Distance((f32 *) &em->posX, (f32 *) em->goal);
-        EmYamaTsukami_AnglesToPoint(em, (EmWork *) w);
+        EmYamaTsukami_AimAtGoal(em, w);
         if (em->curGoalKind == 0) {
             em->hasGoal = 0;
         } else {
@@ -668,23 +1723,23 @@ void EmYamaTsukami_State2_04(Em *em, s32 variant)
         em->timer = 0;
         switch (variant) {
         case 1:
-            w->unk038 = 1;
-            Em_SetMotion(em, 0x16, 0, 0);
-            w->unk00B = 30;
+            w->flyGuard = 1;
+            Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
+            w->runUpTimer = 30;
             break;
         case 2:
-            w->unk038 = 1;
+            w->flyGuard = 1;
         case 0:
         case 3:
-            Em_SetMotion(em, 0x16, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
             em->step++;
             break;
         }
         break;
     case 1:
-        if (--w->unk00B <= 0) {
+        if (--w->runUpTimer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x17, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_MOVE_CRUISE, 0, 0);
         }
     case 2:
         switch (variant) {
@@ -700,7 +1755,7 @@ void EmYamaTsukami_State2_04(Em *em, s32 variant)
             break;
         }
         em->timer++;
-        EmYamaTsukami_AnglesToPoint(em, (EmWork *) w);
+        EmYamaTsukami_AimAtGoal(em, w);
         Em_MoveRotated(em, &w->accelAngX);
         if (Vec_DistanceXZ(&em->posX, em->goal) < 10.0f) {
             em->posX = em->goal[0];
@@ -712,20 +1767,25 @@ void EmYamaTsukami_State2_04(Em *em, s32 variant)
         if ((em->goalDist -= em->velZ) <= 0.0f) {
             em->step = 3;
             if (variant == 1) {
-                Em_SetMotion(em, 0x18, 0, 0);
+                Em_SetMotion(em, YAMA_MOT_MOVE_STOP, 0, 0);
             }
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State2_07(Em *em, s32 variant)
+/*
+ * YAMA_FLY_RISE_TO_GOAL_HEIGHT (variant 1: guarded): rises on its curve
+ * until the goal's height or the motion's end, then plays the end motion on
+ * its own curve. The body never goes under the floor.
+ */
+void EmYamaTsukami_RiseToGoalHeight(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -734,26 +1794,26 @@ void EmYamaTsukami_State2_07(Em *em, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 4, 0, 0);
-        EmYamaTsukami_StartCurves(em, 2U);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_RISE_TO_GOAL, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_RISE_TO_GOAL);
         if (variant != 0) {
-            w->unk038 = 1;
+            w->flyGuard = 1;
         }
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if ((em->motion[0].playing == 0) || !(em->posY <= em->goal[1])) {
             em->step++;
-            Em_SetMotion(em, 0xB, 0, 0);
-            EmYamaTsukami_StartCurves(em, 3U);
+            Em_SetMotion(em, YAMA_MOT_RISE_TO_GOAL_END, 0, 0);
+            EmYamaTsukami_StartCurves(em, YAMA_CURVE_RISE_TO_GOAL_END);
         }
         break;
     case 2:
         EmYamaTsukami_UpdateCurves(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
@@ -763,7 +1823,11 @@ void EmYamaTsukami_State2_07(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State2_09(Em *em, s32 variant)
+/*
+ * YAMA_FLY_RISE (variant 1: guarded): one rise motion on its height curve,
+ * kept above the floor.
+ */
+void EmYamaTsukami_Rise(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -772,18 +1836,18 @@ void EmYamaTsukami_State2_09(Em *em, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 2, 0, 0);
-        EmYamaTsukami_StartCurves(em, 0U);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_RISE, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_RISE);
         if (variant != 0) {
-            w->unk038 = 1;
+            w->flyGuard = 1;
         }
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
@@ -793,7 +1857,11 @@ void EmYamaTsukami_State2_09(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State2_0A(Em *em, s32 variant)
+/*
+ * YAMA_FLY_DESCEND (variant 1: guarded): one descent motion on its height
+ * curve, kept above the floor.
+ */
+void EmYamaTsukami_Descend(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -802,18 +1870,18 @@ void EmYamaTsukami_State2_0A(Em *em, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 3, 0, 0);
-        EmYamaTsukami_StartCurves(em, 1U);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_DESCEND, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_DESCEND);
         if (variant != 0) {
-            w->unk038 = 1;
+            w->flyGuard = 1;
         }
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
@@ -823,7 +1891,11 @@ void EmYamaTsukami_State2_0A(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State2_0B(Em *em, s32 variant)
+/*
+ * YAMA_FLY_SURGE_FORWARD (variant 1: guarded): moves on its speed curve
+ * until within 500 of the goal, kept above the floor.
+ */
+void EmYamaTsukami_SurgeForward(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -832,18 +1904,18 @@ void EmYamaTsukami_State2_0B(Em *em, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 5, 0, 0);
-        EmYamaTsukami_StartCurves(em, 4U);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_SURGE_FORWARD, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_SURGE_FORWARD);
         if (variant != 0) {
-            w->unk038 = 1;
+            w->flyGuard = 1;
         }
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 500.0f) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
@@ -853,7 +1925,11 @@ void EmYamaTsukami_State2_0B(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State2_0C(Em *em, s32 variant)
+/*
+ * YAMA_FLY_SURGE_BACK (variant 1: guarded): one motion on its speed curve,
+ * kept above the floor.
+ */
+void EmYamaTsukami_SurgeBack(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -862,18 +1938,18 @@ void EmYamaTsukami_State2_0C(Em *em, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 6, 0, 0);
-        EmYamaTsukami_StartCurves(em, 5U);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_SURGE_BACK, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_SURGE_BACK);
         if (variant != 0) {
-            w->unk038 = 1;
+            w->flyGuard = 1;
         }
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
@@ -883,45 +1959,57 @@ void EmYamaTsukami_State2_0C(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State2_11(Em *em)
+/*
+ * YAMA_FLY_RECOVER: one cycle of the recover motion in the air (the body
+ * eases back to full size), then EmYamaTsukami_EndFlyState.
+ */
+void EmYamaTsukami_FlyRecover(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 7, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_RECOVER, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State2_12(Em *em)
+/*
+ * YAMA_FLY_RECOVER_RISE: rises back on its curve after a short fall, then
+ * EmYamaTsukami_EndFlyState.
+ */
+void EmYamaTsukami_RecoverRise(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0xC, 0, 0);
-        EmYamaTsukami_StartCurves(em, 0xC);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_RECOVER_RISE, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_RECOVER_RISE);
         em->timer = 5;
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if (em->motion[0].playing == 0) {
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State2_14(Em *em)
+/*
+ * YAMA_FLY_WAIT_FOR_HUNTERS: idles until a player in the quest is in the
+ * monster's area (the owner checks), then EmYamaTsukami_EndFlyState.
+ */
+void EmYamaTsukami_WaitForHunters(Em *em)
 {
     s32 i;
 
@@ -929,14 +2017,14 @@ void EmYamaTsukami_State2_14(Em *em)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 1, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_IDLE, 0, 0);
         break;
     case 1:
         if (em->remote == 0) {
             for (i = 0; i < gScene.playerCount; i++) {
                 if (gScene.inQuest[i] == 1 && em->area == gPlayers[i].area) {
-                    EmYamaTsukami_EndState2(em);
+                    EmYamaTsukami_EndFlyState(em);
                     break;
                 }
             }
@@ -945,7 +2033,11 @@ void EmYamaTsukami_State2_14(Em *em)
     }
 }
 
-void EmYamaTsukami_State2_16(Em *em)
+/*
+ * YAMA_FLY_SINK_TO_FLOOR: sinks at about 10 a frame until it reaches the
+ * floor, then plays the move motion out and ends in the air stance.
+ */
+void EmYamaTsukami_SinkToFloor(Em *em)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
@@ -953,11 +2045,11 @@ void EmYamaTsukami_State2_16(Em *em)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         Player_ClearVelocity(em);
         em->goalDist = Vec_Distance((f32 *) &em->posX, (f32 *) em->goal);
         em->timer = 0;
-        Em_SetMotion(em, 0x16, 0, 0);
+        Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
         break;
     case 1:
         em->velY = -10.0f + Math_Sin((6.2831855f * (f32) (em->timer << 0xA)) / 65536.0f);
@@ -971,7 +2063,7 @@ void EmYamaTsukami_State2_16(Em *em)
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
@@ -980,87 +2072,93 @@ void EmYamaTsukami_State2_16(Em *em)
     }
 }
 
-void EmYamaTsukami_RunGroup2(Em *em)
+/* Runs the current state of group 2 (EM_GROUP_FLY), the family's usual one. */
+void EmYamaTsukami_RunFlyState(Em *em)
 {
     switch (em->state) {
-    case 0:
-        EmYamaTsukami_State2_00(em);
+    case YAMA_FLY_IDLE:
+        EmYamaTsukami_FlyIdle(em);
         break;
-    case 1:
-        EmYamaTsukami_State2_01(em);
+    case YAMA_FLY_RECOVER_PAUSE:
+        EmYamaTsukami_RecoverPause(em);
         break;
-    case 2:
-        EmYamaTsukami_State1_02(em, 1);
+    case YAMA_FLY_TURN:
+        EmYamaTsukami_Turn(em, 1);
         break;
-    case 3:
-        EmYamaTsukami_State1_02(em, 2);
+    case YAMA_FLY_TURN_GUARDED:
+        EmYamaTsukami_Turn(em, 2);
         break;
-    case 4:
-        EmYamaTsukami_State2_04(em, 0);
+    case YAMA_FLY_DRIFT_TO_GOAL:
+        EmYamaTsukami_FlyToGoal(em, 0);
         break;
-    case 5:
-        EmYamaTsukami_State2_04(em, 2);
+    case YAMA_FLY_DRIFT_TO_GOAL_GUARDED:
+        EmYamaTsukami_FlyToGoal(em, 2);
         break;
-    case 6:
-        EmYamaTsukami_State2_04(em, 1);
+    case YAMA_FLY_DASH_TO_GOAL:
+        EmYamaTsukami_FlyToGoal(em, 1);
         break;
-    case 7:
-        EmYamaTsukami_State2_07(em, 0);
+    case YAMA_FLY_RISE_TO_GOAL_HEIGHT:
+        EmYamaTsukami_RiseToGoalHeight(em, 0);
         break;
-    case 8:
-        EmYamaTsukami_State2_07(em, 1);
+    case YAMA_FLY_RISE_TO_GOAL_HEIGHT_GUARDED:
+        EmYamaTsukami_RiseToGoalHeight(em, 1);
         break;
-    case 9:
-        EmYamaTsukami_State2_09(em, 0);
+    case YAMA_FLY_RISE:
+        EmYamaTsukami_Rise(em, 0);
         break;
-    case 10:
-        EmYamaTsukami_State2_0A(em, 0);
+    case YAMA_FLY_DESCEND:
+        EmYamaTsukami_Descend(em, 0);
         break;
-    case 11:
-        EmYamaTsukami_State2_0B(em, 0);
+    case YAMA_FLY_SURGE_FORWARD:
+        EmYamaTsukami_SurgeForward(em, 0);
         break;
-    case 12:
-        EmYamaTsukami_State2_0C(em, 0);
+    case YAMA_FLY_SURGE_BACK:
+        EmYamaTsukami_SurgeBack(em, 0);
         break;
-    case 13:
-        EmYamaTsukami_State2_09(em, 1);
+    case YAMA_FLY_RISE_GUARDED:
+        EmYamaTsukami_Rise(em, 1);
         break;
-    case 14:
-        EmYamaTsukami_State2_0A(em, 1);
+    case YAMA_FLY_DESCEND_GUARDED:
+        EmYamaTsukami_Descend(em, 1);
         break;
-    case 15:
-        EmYamaTsukami_State2_0B(em, 1);
+    case YAMA_FLY_SURGE_FORWARD_GUARDED:
+        EmYamaTsukami_SurgeForward(em, 1);
         break;
-    case 16:
-        EmYamaTsukami_State2_0C(em, 1);
+    case YAMA_FLY_SURGE_BACK_GUARDED:
+        EmYamaTsukami_SurgeBack(em, 1);
         break;
-    case 17:
-        EmYamaTsukami_State2_11(em);
+    case YAMA_FLY_RECOVER:
+        EmYamaTsukami_FlyRecover(em);
         break;
-    case 18:
-        EmYamaTsukami_State2_12(em);
+    case YAMA_FLY_RECOVER_RISE:
+        EmYamaTsukami_RecoverRise(em);
         break;
-    case 19:
-        EmYamaTsukami_State2_04(em, 3);
+    case YAMA_FLY_CRUISE_TO_GOAL:
+        EmYamaTsukami_FlyToGoal(em, 3);
         break;
-    case 20:
-        EmYamaTsukami_State2_14(em);
+    case YAMA_FLY_WAIT_FOR_HUNTERS:
+        EmYamaTsukami_WaitForHunters(em);
         break;
-    case 21:
-        EmYamaTsukami_State2_09(em, 0);
+    case YAMA_FLY_RISE_B:
+        EmYamaTsukami_Rise(em, 0);
         break;
-    case 22:
-        EmYamaTsukami_State2_16(em);
+    case YAMA_FLY_SINK_TO_FLOOR:
+        EmYamaTsukami_SinkToFloor(em);
         
     default:
         break;
     }
 }
 
-void EmYamaTsukami_State3_00(Em *em)
+/*
+ * YAMA_ATK_SUMMON: in the summon pose, calls up kind 0x38 monsters at its
+ * bone (EmKind38_SpawnAtEmBone), one after 140 frames and then every 20
+ * frames, five in all less those already alive.
+ */
+void EmYamaTsukami_Summon(Em *em)
 {
     s32 i;
-    Em *m;
+    Em *other;
 
     switch (em->step) {
     case 0:
@@ -1068,11 +2166,11 @@ void EmYamaTsukami_State3_00(Em *em)
         em->stateVar1 = 5;
         em->stateVar0 = 5;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        em->timer = 0x8C;
-        Em_SetMotion(em, 0x31, 0, 0);
-        for (i = 0, m = gEms; i < 20; i++, m++) {
-            if (m->type == 0x38 && m->active != 0 && em->stateVar0 > 0) {
+        em->stance = EM_STANCE_AIR;
+        em->timer = 140;
+        Em_SetMotion(em, YAMA_MOT_SUMMON, 0, 0);
+        for (i = 0, other = gEms; i < 20; i++, other++) {
+            if (other->type == 0x38 && other->active != 0 && em->stateVar0 > 0) {
                 em->stateVar0--;
             }
         }
@@ -1081,65 +2179,79 @@ void EmYamaTsukami_State3_00(Em *em)
         if (--em->timer < 0) {
             if (em->stateVar0 > 0) {
                 em->stateVar0--;
-                EmKind38_SpawnAtEm(em);
+                EmKind38_SpawnAtEmBone(em);
             }
             if (em->stateVar1 > 0) {
                 em->stateVar1--;
-                em->timer = 0x14;
+                em->timer = 20;
             } else {
                 em->step++;
-                Em_SetMotion(em, 0x32, 0, 0);
+                Em_SetMotion(em, YAMA_MOT_SUMMON_END, 0, 0);
             }
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-static u8 EmYamaTsukami_InterpKeys(Em *em, EmYamaTsukamiWork *w, s32 idx)
+/*
+ * Turns the body by key table idx of EmYamaTsukami_SpinYawKeys at the curve
+ * frame: the yaw's change between the two keys around the frame, in
+ * degrees, spread over the frames between them. Returns 2 at the table's
+ * end, else 0.
+ */
+static u8 EmYamaTsukami_TurnByKeys(Em *em, EmYamaTsukamiWork *w, s32 idx)
 {
     u8 ret;
-    EmYamaKey *p;
+    EmYamaTsukamiYawKey *key;
     s32 i;
-    EmYamaKey *tbl;
-    s32 n;
-    s32 t;
-    s32 d;
+    EmYamaTsukamiYawKey *keys;
+    s32 frame;
+    s32 keyFrame;
+    s32 degPerFrame;
 
-    n = w->curveFrame;
+    frame = w->curveFrame;
     ret = 0;
-    tbl = EmYamaTsukami_Keys[idx];
-    d = 0;
-    if ((u32) n > 1) {
+    keys = EmYamaTsukami_SpinYawKeys[idx];
+    degPerFrame = 0;
+    if ((u32) frame > 1) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (n > t && t > 0.0f) {
+            key = &keys[i];
+            keyFrame = key->t;
+            if (frame > keyFrame && keyFrame > 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
+            } else if (keyFrame == 0.0f) {
                 ret = 2;
                 break;
-            } else if (t < 0) {
+            } else if (keyFrame < 0) {
                 w->curveFrame = 0;
                 ret = 2;
                 break;
             } else {
                 i = 0;
-                d = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                degPerFrame = (key->v - key[-1].v) / ((keyFrame - key[-1].t) / em->motion[0].step);
             }
         }
     }
-    em->rotY += (u16) (s32) (0.5f + 65536.0f * d / 360.0f);
+    em->rotY += (u16) (s32) (0.5f + 65536.0f * degPerFrame / 360.0f);
     return ret;
 }
 
-void EmYamaTsukami_State3_01(Em *em, s32 variant)
+/*
+ * Spins with the attack's hit (YamaTsukamiAttack type 0): a spin-up on its
+ * curve and yaw keys, the spin (its step slowed by 0x71 a cycle for ten
+ * cycles, then sped up again), and a spin-down. variant 0
+ * (YAMA_ATK_SPIN_TO_HEIGHT) rises or sinks to the goal's height meanwhile,
+ * at most a 160th of the way a frame; variant 1 (YAMA_ATK_SPIN) spins in
+ * place.
+ */
+void EmYamaTsukami_Spin(Em *em, s32 variant)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
     f32 dy;
@@ -1148,18 +2260,18 @@ void EmYamaTsukami_State3_01(Em *em, s32 variant)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x2E, 0, 0);
-        EmYamaTsukami_StartCurves(em, 6);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_SPIN_START, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_SPIN_START);
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
-        EmYamaTsukami_InterpKeys(em, w, 0);
+        EmYamaTsukami_TurnByKeys(em, w, 0);
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x2F, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_SPIN, 0, 0);
             em->timer = 10;
-            w->unk01C = -0x555;
+            w->turnSpeed = -0x555;
             if (variant == 0) {
                 em->velY = (em->goal[1] - em->posY) / 160.0f;
             }
@@ -1167,7 +2279,7 @@ void EmYamaTsukami_State3_01(Em *em, s32 variant)
         }
         break;
     case 2:
-        em->rotY += w->unk01C;
+        em->rotY += w->turnSpeed;
         if (variant == 0) {
             dy = em->goal[1] - em->posY;
             if (em->velY > dy) {
@@ -1177,7 +2289,7 @@ void EmYamaTsukami_State3_01(Em *em, s32 variant)
         }
         if (em->motion[0].playing == 0 && em->timer > 0) {
             em->timer--;
-            w->unk01C -= 0x71;
+            w->turnSpeed -= 0x71;
         }
         if (variant == 0) {
             if (Math_Absf(em->goal[1] - em->posY) < 100.0f && em->timer <= 0) {
@@ -1190,24 +2302,24 @@ void EmYamaTsukami_State3_01(Em *em, s32 variant)
         }
         break;
     case 3:
-        em->rotY += w->unk01C;
+        em->rotY += w->turnSpeed;
         if (em->motion[0].playing == 0) {
             if (--em->timer < 0) {
                 em->step++;
-                Em_SetMotion(em, 0x30, 0, 0);
-                EmYamaTsukami_StartCurves(em, 7);
+                Em_SetMotion(em, YAMA_MOT_SPIN_END, 0, 0);
+                EmYamaTsukami_StartCurves(em, YAMA_CURVE_SPIN_END);
             } else {
-                w->unk01C += 0x71;
-                Em_SetMotion(em, 0x2F, 0, 0);
+                w->turnSpeed += 0x71;
+                Em_SetMotion(em, YAMA_MOT_SPIN, 0, 0);
             }
         }
         break;
     case 4:
         EmYamaTsukami_UpdateCurves(em);
-        EmYamaTsukami_InterpKeys(em, w, 1);
+        EmYamaTsukami_TurnByKeys(em, w, 1);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
@@ -1216,187 +2328,209 @@ void EmYamaTsukami_State3_01(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State3_02(Em *em)
+/* YAMA_ATK_HOLD_POSE: holds the pose 200 frames, then its end motion. */
+void EmYamaTsukami_HoldPose(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x26, 0, 0);
-        em->timer = 0xC8;
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_HOLD_POSE, 0, 0);
+        em->timer = 200;
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x27, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_HOLD_POSE_END, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_03(Em *em)
+/*
+ * YAMA_ATK_TENTACLE_SLAM_A: the slam motion (its hits come from
+ * EmYamaTsukami_MotionEffects), with dust where each tentacle reaches the
+ * floor.
+ */
+void EmYamaTsukami_TentacleSlamA(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x1E, 0, 0);
-        EmYamaTsukami_InitBoneFloorFlags(em);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_TENTACLE_SLAM_A, 0, 0);
+        EmYamaTsukami_InitTentacleDust(em);
         break;
     case 1:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_04(Em *em)
+/* YAMA_ATK_TENTACLE_SLAM_B, as EmYamaTsukami_TentacleSlamA. */
+void EmYamaTsukami_TentacleSlamB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x1F, 0, 0);
-        EmYamaTsukami_InitBoneFloorFlags(em);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_TENTACLE_SLAM_B, 0, 0);
+        EmYamaTsukami_InitTentacleDust(em);
         break;
     case 1:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_05(Em *em)
+/* YAMA_ATK_TENTACLE_SLAM_C, as EmYamaTsukami_TentacleSlamA. */
+void EmYamaTsukami_TentacleSlamC(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x22, 0, 0);
-        EmYamaTsukami_InitBoneFloorFlags(em);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_TENTACLE_SLAM_C, 0, 0);
+        EmYamaTsukami_InitTentacleDust(em);
         break;
     case 1:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_06(Em *em)
+/* YAMA_ATK_TENTACLE_SLAM_D, as EmYamaTsukami_TentacleSlamA. */
+void EmYamaTsukami_TentacleSlamD(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x23, 0, 0);
-        EmYamaTsukami_InitBoneFloorFlags(em);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_TENTACLE_SLAM_D, 0, 0);
+        EmYamaTsukami_InitTentacleDust(em);
         break;
     case 1:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_07(Em *em, s32 variant)
+/*
+ * The smash: held 450 frames, then its end motion, with the tentacles'
+ * dust. variant 1 (YAMA_ATK_SMASH_FORT) hits the fortress at frame 170: the
+ * owner counts fortHits up to 10 (the tenth raises the quest's event) and
+ * copies it to gScene.fortStage, and every console makes the impact
+ * (EmYamaTsukami_SpawnFortImpact). variant 0 is YAMA_ATK_SMASH.
+ */
+void EmYamaTsukami_Smash(Em *em, s32 variant)
 {
-    struct {
-        u8 unk0;
-        s8 unk1;
-    } *w = (void *) &em->work;
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *) &em->work;
     s8 n;
 
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x24, 0, 0);
-        em->timer = 0x1C2;
-        EmYamaTsukami_InitBoneFloorFlags(em);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_SMASH, 0, 0);
+        em->timer = 450;
+        EmYamaTsukami_InitTentacleDust(em);
         break;
     case 1:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if ((variant == 1) && (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0)) {
             if (em->remote == 0) {
-                n = w->unk1;
+                n = w->fortHits;
                 if (n < 0xA) {
-                    w->unk1 = n + 1;
-                    if (w->unk1 >= 0xA) {
+                    w->fortHits = n + 1;
+                    if (w->fortHits >= 0xA) {
                         Quest_TriggerEvent(em);
                     }
-                    gScene.fortStage = w->unk1;
+                    gScene.fortStage = w->fortHits;
                 }
             }
-            EmYamaTsukami_SpawnAreaImpactEffects(em);
+            EmYamaTsukami_SpawnFortImpact(em);
         }
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x25, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_SMASH_END, 0, 0);
         }
         break;
     case 2:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_08(Em *em)
+/*
+ * YAMA_ATK_DIVE_SLAM: one dive motion on its curve; its hits come from
+ * EmYamaTsukami_MotionEffects.
+ */
+void EmYamaTsukami_DiveSlam(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x34, 0, 0);
-        EmYamaTsukami_StartCurves(em, 8);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_DIVE_SLAM, 0, 0);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_DIVE_SLAM);
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_09(Em *em)
+/*
+ * YAMA_ATK_CRASH: drops to the floor (at least 50 a frame, gravity 10),
+ * lies there 450 frames, gets up and ends on the ground
+ * (EmYamaTsukami_EndState). Unhurt throughout.
+ */
+void EmYamaTsukami_Crash(Em *em)
 {
     em->guardTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x33, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_CRASH_FALL, 0, 0);
         em->noReact = 1;
         if (!(em->velY <= -50.0f)) {
             em->velY = -50.0f;
@@ -1409,17 +2543,17 @@ void EmYamaTsukami_State3_09(Em *em)
         Player_Integrate(em);
         if (em->posY <= em->floorY) {
             em->step++;
-            Em_SetMotion(em, 0x35, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_CRASH_LIE, 0, 0);
             em->posY = em->floorY;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             Player_ClearVelocity(em);
-            em->timer = 0x1C2;
+            em->timer = 450;
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x36, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_CRASH_GET_UP, 0, 0);
         }
         break;
     case 3:
@@ -1431,99 +2565,107 @@ void EmYamaTsukami_State3_09(Em *em)
     }
 }
 
-void EmYamaTsukami_State3_0A(Em *em)
+/* YAMA_ATK_TENTACLE_HIT_A, as EmYamaTsukami_TentacleSlamA with one hit. */
+void EmYamaTsukami_TentacleHitA(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x20, 0, 0);
-        EmYamaTsukami_InitBoneFloorFlags(em);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_TENTACLE_HIT_A, 0, 0);
+        EmYamaTsukami_InitTentacleDust(em);
         break;
     case 1:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_0B(Em *em)
+/* YAMA_ATK_TENTACLE_HIT_B, as EmYamaTsukami_TentacleHitA. */
+void EmYamaTsukami_TentacleHitB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x21, 0, 0);
-        EmYamaTsukami_InitBoneFloorFlags(em);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_TENTACLE_HIT_B, 0, 0);
+        EmYamaTsukami_InitTentacleDust(em);
         break;
     case 1:
-        EmYamaTsukami_SpawnBoneFloorEffects(em);
+        EmYamaTsukami_UpdateTentacleDust(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_0C(Em *em)
+/*
+ * YAMA_ATK_INHALE: a strike, then the inhale for 240 frames; at its frame
+ * 100 it makes the inhale's attack (YamaTsukamiAttack type 0x10) and the
+ * pull toward its mouth (EMFX_YAMA_INHALE).
+ */
+void EmYamaTsukami_Inhale(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x2A, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_STRIKE_A, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->timer = 0xF0;
-            Em_SetMotion(em, 0x28, 0, 0);
+            em->timer = 240;
+            Em_SetMotion(em, YAMA_MOT_INHALE, 0, 0);
         }
         break;
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 100.0f) != 0) {
             em->step++;
             YamaTsukamiAttack_Create(em, 0x10);
-            EmEffectAttack_Create(em, 0, 0, 0, 0);
+            EmEffectAttack_Create(em, EMFX_YAMA_INHALE, 0, 0, 0);
         }
         break;
     case 3:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x29, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_INHALE_END, 0, 0);
         }
         break;
     case 4:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_0D(Em *em)
+/* YAMA_ATK_STRIKE_A: the strike, a 10-frame pause, then the recover motion. */
+void EmYamaTsukami_StrikeA(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x2A, 0, 0);
-        em->timer = 0xA;
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_STRIKE_A, 0, 0);
+        em->timer = 10;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                Em_SetMotion(em, 0x2D, 0, 0);
+                Em_SetMotion(em, YAMA_MOT_STRIKE_RECOVER, 0, 0);
                 break;
             }
         }
@@ -1531,112 +2673,121 @@ void EmYamaTsukami_State3_0D(Em *em)
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State3_0E(Em *em)
+/*
+ * YAMA_ATK_STRIKE_B: the strike for 120 frames, held 200 frames, then the
+ * recover motion.
+ */
+void EmYamaTsukami_StrikeB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        em->timer = 0x78;
-        Em_SetMotion(em, 0x2B, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        em->timer = 120;
+        Em_SetMotion(em, YAMA_MOT_STRIKE_B, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            em->timer = 0xC8;
-            Em_SetMotion(em, 0x2C, 0, 0);
+            em->timer = 200;
+            Em_SetMotion(em, YAMA_MOT_STRIKE_B_HOLD, 0, 0);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x2D, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_STRIKE_RECOVER, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_RunGroup3(Em *em)
+/* Runs the current state of group 3 (EM_GROUP_ATTACK). */
+void EmYamaTsukami_RunAttackState(Em *em)
 {
     switch (em->state) {
-    case 0:
-        EmYamaTsukami_State3_00(em);
+    case YAMA_ATK_SUMMON:
+        EmYamaTsukami_Summon(em);
         break;
-    case 1:
-        EmYamaTsukami_State3_01(em, 0);
+    case YAMA_ATK_SPIN_TO_HEIGHT:
+        EmYamaTsukami_Spin(em, 0);
         break;
-    case 2:
-        EmYamaTsukami_State3_02(em);
+    case YAMA_ATK_HOLD_POSE:
+        EmYamaTsukami_HoldPose(em);
         break;
-    case 3:
-        EmYamaTsukami_State3_03(em);
+    case YAMA_ATK_TENTACLE_SLAM_A:
+        EmYamaTsukami_TentacleSlamA(em);
         break;
-    case 4:
-        EmYamaTsukami_State3_04(em);
+    case YAMA_ATK_TENTACLE_SLAM_B:
+        EmYamaTsukami_TentacleSlamB(em);
         break;
-    case 5:
-        EmYamaTsukami_State3_05(em);
+    case YAMA_ATK_TENTACLE_SLAM_C:
+        EmYamaTsukami_TentacleSlamC(em);
         break;
-    case 6:
-        EmYamaTsukami_State3_06(em);
+    case YAMA_ATK_TENTACLE_SLAM_D:
+        EmYamaTsukami_TentacleSlamD(em);
         break;
-    case 7:
-        EmYamaTsukami_State3_07(em, 0);
+    case YAMA_ATK_SMASH:
+        EmYamaTsukami_Smash(em, 0);
         break;
-    case 8:
-        EmYamaTsukami_State3_08(em);
+    case YAMA_ATK_DIVE_SLAM:
+        EmYamaTsukami_DiveSlam(em);
         break;
-    case 9:
-        EmYamaTsukami_State3_09(em);
+    case YAMA_ATK_CRASH:
+        EmYamaTsukami_Crash(em);
         break;
-    case 10:
-        EmYamaTsukami_State3_0A(em);
+    case YAMA_ATK_TENTACLE_HIT_A:
+        EmYamaTsukami_TentacleHitA(em);
         break;
-    case 11:
-        EmYamaTsukami_State3_0B(em);
+    case YAMA_ATK_TENTACLE_HIT_B:
+        EmYamaTsukami_TentacleHitB(em);
         break;
-    case 12:
-        EmYamaTsukami_State3_0C(em);
+    case YAMA_ATK_INHALE:
+        EmYamaTsukami_Inhale(em);
         break;
-    case 13:
-        EmYamaTsukami_State3_0D(em);
+    case YAMA_ATK_STRIKE_A:
+        EmYamaTsukami_StrikeA(em);
         break;
-    case 14:
-        EmYamaTsukami_State3_0E(em);
+    case YAMA_ATK_STRIKE_B:
+        EmYamaTsukami_StrikeB(em);
         break;
-    case 15:
-        EmYamaTsukami_State3_01(em, 1);
+    case YAMA_ATK_SPIN:
+        EmYamaTsukami_Spin(em, 1);
         break;
-    case 16:
-        EmYamaTsukami_State3_07(em, 1);
+    case YAMA_ATK_SMASH_FORT:
+        EmYamaTsukami_Smash(em, 1);
         
     default:
         break;
     }
 }
 
-void EmYamaTsukami_State4_00(Em *em)
+/*
+ * YAMA_REACT_FALL_LAND: falls (at least 50 a frame, gravity 10), lands with
+ * a timed mine point at its position, then lies down (YAMA_IDLE_DOWNED).
+ */
+void EmYamaTsukami_FallLand(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 8, 0, 0);
+        Em_SetMotion(em, YAMA_MOT_FALL, 0, 0);
         if (!(em->velY <= -50.0f)) {
             em->velY = -50.0f;
         }
@@ -1649,8 +2800,8 @@ void EmYamaTsukami_State4_00(Em *em)
         if (em->posY <= em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 0;
-            Em_SetMotion(em, 9, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, YAMA_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
             EmMine_CreateTimed0(em, &em->posX);
         }
@@ -1659,28 +2810,33 @@ void EmYamaTsukami_State4_00(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             Player_ClearVelocity(em);
-            EmYamaTsukami_ChangeState(em, 0, 2, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_DOWNED, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmYamaTsukami_ChangeState(em, 0, 2, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_DOWNED, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State4_01(Em *em)
+/*
+ * YAMA_REACT_FALL_RECOVER: falls as EmYamaTsukami_FallLand but at most
+ * 1000, catches itself on its curve and pauses in the air
+ * (YAMA_FLY_RECOVER_PAUSE).
+ */
+void EmYamaTsukami_FallRecover(Em *em)
 {
     f32 floorY;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 8, 0, 0);
+        Em_SetMotion(em, YAMA_MOT_FALL, 0, 0);
         if (!(em->velY <= -50.0f)) {
             em->velY = -50.0f;
         }
@@ -1692,17 +2848,12 @@ void EmYamaTsukami_State4_01(Em *em)
     case 1:
         Player_Integrate(em);
         em->goalDist -= em->velY;
-        if (!(em->goalDist <= 0.0f)) {
-            if (em->posY <= em->floorY) {
-                goto block_12;
-            }
-        } else {
-block_12:
+        if (em->goalDist <= 0.0f || em->posY <= em->floorY) {
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0xA, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, YAMA_MOT_SOFT_LAND, 0, 0);
             Player_ClearVelocity(em);
-            EmYamaTsukami_StartCurves(em, 0xB);
+            EmYamaTsukami_StartCurves(em, YAMA_CURVE_SOFT_LAND);
         }
         break;
     case 2:
@@ -1710,12 +2861,12 @@ block_12:
         if (em->motion[0].playing == 0) {
             em->step++;
             Player_ClearVelocity(em);
-            EmYamaTsukami_ChangeState(em, 2, 1, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_RECOVER_PAUSE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmYamaTsukami_ChangeState(em, 2, 1, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_RECOVER_PAUSE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
@@ -1725,25 +2876,30 @@ block_12:
     }
 }
 
-void EmYamaTsukami_State4_02(Em *em, s32 variant)
+/*
+ * Flinch A: variant 0 in the air (YAMA_REACT_FLINCH_A), ending with
+ * EmYamaTsukami_EndFlyState; 1 on the ground (YAMA_REACT_GROUND_FLINCH_A),
+ * ending with EmYamaTsukami_EndState.
+ */
+void EmYamaTsukami_FlinchA(Em *em, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
         if (variant == 0) {
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
-        Em_SetMotion(em, 0x3C, 0, 0);
+        Em_SetMotion(em, YAMA_MOT_FLINCH_A, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             if (variant == 0) {
-                EmYamaTsukami_EndState2(em);
+                EmYamaTsukami_EndFlyState(em);
                 break;
             }
             EmYamaTsukami_EndState(em);
@@ -1753,25 +2909,29 @@ void EmYamaTsukami_State4_02(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State4_03(Em *em, s32 variant)
+/*
+ * Flinch B, as EmYamaTsukami_FlinchA (YAMA_REACT_FLINCH_B,
+ * YAMA_REACT_GROUND_FLINCH_B).
+ */
+void EmYamaTsukami_FlinchB(Em *em, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x3D, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_FLINCH_B, 0, 0);
         if (variant == 0) {
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             if (variant == 0) {
-                EmYamaTsukami_EndState2(em);
+                EmYamaTsukami_EndFlyState(em);
                 break;
             }
             EmYamaTsukami_EndState(em);
@@ -1781,25 +2941,29 @@ void EmYamaTsukami_State4_03(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State4_04(Em *em, s32 variant)
+/*
+ * Flinch C, as EmYamaTsukami_FlinchA; the body shrinks a step meanwhile
+ * (EmYamaTsukami_SetReactState). Both sizes' states run it.
+ */
+void EmYamaTsukami_FlinchC(Em *em, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x43, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_FLINCH_C, 0, 0);
         if (variant == 0) {
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             if (variant == 0) {
-                EmYamaTsukami_EndState2(em);
+                EmYamaTsukami_EndFlyState(em);
                 break;
             }
             EmYamaTsukami_EndState(em);
@@ -1809,153 +2973,173 @@ void EmYamaTsukami_State4_04(Em *em, s32 variant)
     }
 }
 
-void EmYamaTsukami_State4_06(Em *em)
+/*
+ * YAMA_REACT_FLINCH_D: one flinch motion in the air, then
+ * EmYamaTsukami_EndFlyState.
+ */
+void EmYamaTsukami_FlinchD(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x40, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_FLINCH_D, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State4_07(Em *em)
+/* YAMA_REACT_FLINCH_D_B, the same as EmYamaTsukami_FlinchD. */
+void EmYamaTsukami_FlinchDB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x40, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_FLINCH_D, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_EndState2(em);
+            EmYamaTsukami_EndFlyState(em);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State4_08(Em *em)
+/*
+ * YAMA_REACT_DOWNED_FLINCH: a flinch while lying down, then back to
+ * YAMA_IDLE_DOWNED.
+ */
+void EmYamaTsukami_DownedFlinch(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3E, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, YAMA_MOT_DOWNED_FLINCH, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_ChangeState(em, 0, 2, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_DOWNED, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmYamaTsukami_ChangeState(em, 0, 2, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_IDLE, YAMA_IDLE_DOWNED, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State4_0D(Em *em)
+/*
+ * YAMA_REACT_FLINCH_HOVER: a flinch during the pause after a short fall,
+ * then back to YAMA_FLY_RECOVER_PAUSE.
+ */
+void EmYamaTsukami_FlinchHover(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x42, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_FLINCH_HOVER, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmYamaTsukami_ChangeState(em, 2, 1, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_RECOVER_PAUSE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmYamaTsukami_ChangeState(em, 2, 1, 4);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_RECOVER_PAUSE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmYamaTsukami_RunGroup4(Em *em)
+/* Runs the current state of group 4 (EM_GROUP_REACT). */
+void EmYamaTsukami_RunReactState(Em *em)
 {
     switch (em->state) {
-    case 0:
-        EmYamaTsukami_State4_00(em);
+    case YAMA_REACT_FALL_LAND:
+        EmYamaTsukami_FallLand(em);
         break;
-    case 1:
-        EmYamaTsukami_State4_01(em);
+    case YAMA_REACT_FALL_RECOVER:
+        EmYamaTsukami_FallRecover(em);
         break;
-    case 2:
-        EmYamaTsukami_State4_02(em, 0);
+    case YAMA_REACT_FLINCH_A:
+        EmYamaTsukami_FlinchA(em, 0);
         break;
-    case 3:
-        EmYamaTsukami_State4_03(em, 0);
+    case YAMA_REACT_FLINCH_B:
+        EmYamaTsukami_FlinchB(em, 0);
         break;
-    case 4:
-        EmYamaTsukami_State4_04(em, 0);
+    case YAMA_REACT_FLINCH_C_FROM_FULL:
+        EmYamaTsukami_FlinchC(em, 0);
         break;
-    case 5:
-        EmYamaTsukami_State4_04(em, 0);
+    case YAMA_REACT_FLINCH_C_FROM_HALF:
+        EmYamaTsukami_FlinchC(em, 0);
         break;
-    case 6:
-        EmYamaTsukami_State4_06(em);
+    case YAMA_REACT_FLINCH_D:
+        EmYamaTsukami_FlinchD(em);
         break;
-    case 7:
-        EmYamaTsukami_State4_07(em);
+    case YAMA_REACT_FLINCH_D_B:
+        EmYamaTsukami_FlinchDB(em);
         break;
-    case 8:
-        EmYamaTsukami_State4_08(em);
+    case YAMA_REACT_DOWNED_FLINCH:
+        EmYamaTsukami_DownedFlinch(em);
         break;
-    case 9:
-        EmYamaTsukami_State4_02(em, 1);
+    case YAMA_REACT_GROUND_FLINCH_A:
+        EmYamaTsukami_FlinchA(em, 1);
         break;
-    case 10:
-        EmYamaTsukami_State4_03(em, 1);
+    case YAMA_REACT_GROUND_FLINCH_B:
+        EmYamaTsukami_FlinchB(em, 1);
         break;
-    case 11:
-        EmYamaTsukami_State4_04(em, 1);
+    case YAMA_REACT_GROUND_FLINCH_C_FROM_FULL:
+        EmYamaTsukami_FlinchC(em, 1);
         break;
-    case 12:
-        EmYamaTsukami_State4_04(em, 1);
+    case YAMA_REACT_GROUND_FLINCH_C_FROM_HALF:
+        EmYamaTsukami_FlinchC(em, 1);
         break;
-    case 13:
-        EmYamaTsukami_State4_0D(em);
+    case YAMA_REACT_FLINCH_HOVER:
+        EmYamaTsukami_FlinchHover(em);
         
     default:
         break;
     }
 }
 
-void EmYamaTsukami_State5_00_Hunted(Em *em)
+/*
+ * YAMA_DEFEAT_DIE: the death on the ground (QuestEm_Hunted), then the
+ * carcass's carving (EmMine_Create, EmMine_Update). Step 99, set from
+ * outside this code, removes the mine points, gives it 13333 hp and returns
+ * it to YAMA_IDLE.
+ */
+void EmYamaTsukami_Die(Em *em)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x3F, 0, 0);
+        Em_SetMotion(em, YAMA_MOT_DIE, 0, 0);
         em->timer = 0;
         em->lookAtTarget = 0;
-        em->stance = 3;
+        em->stance = EM_STANCE_DEAD;
         QuestEm_Hunted(em);
         break;
     case 1:
@@ -1971,34 +3155,38 @@ void EmYamaTsukami_State5_00_Hunted(Em *em)
     case 0x63:
         em->step++;
         EmYamaTsukami_RemoveMinePoints(em);
-        em->hp = 0x3415;
+        em->hp = 13333;
         EmYamaTsukami_EndState(em);
         break;
     }
 }
 
-void EmYamaTsukami_State5_01_HuntedFalling(Em *em)
+/*
+ * YAMA_DEFEAT_DIE_FALLING: falls on its curve, lands, plays the death and
+ * carves as EmYamaTsukami_Die, with the same step 99.
+ */
+void EmYamaTsukami_DieFalling(Em *em)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 8, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_FALL, 0, 0);
         QuestEm_Hunted(em);
-        EmYamaTsukami_StartCurves(em, 0xA);
+        EmYamaTsukami_StartCurves(em, YAMA_CURVE_DIE_FALLING);
         em->accelX = 0.0f;
         em->accelY = -10.0f;
-        *(s32 *) &em->accelZ = 0;
+        *(s32 *) &em->accelZ = 0; /* stored as the integer 0, as the game does */
         break;
     case 1:
         EmYamaTsukami_UpdateCurves(em);
         if (em->posY <= em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 3;
-            Em_SetMotion(em, 9, 0, 0);
+            em->stance = EM_STANCE_DEAD;
+            Em_SetMotion(em, YAMA_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
         }
         break;
@@ -2007,7 +3195,7 @@ void EmYamaTsukami_State5_01_HuntedFalling(Em *em)
             em->step++;
             EmMine_Create(em, 0);
             em->fieldCollide = 0;
-            Em_SetMotion(em, 0x3F, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_DIE, 0, 0);
         }
         break;
     case 3:
@@ -2015,30 +3203,38 @@ void EmYamaTsukami_State5_01_HuntedFalling(Em *em)
         break;
     case 0x63:
         em->step++;
-        em->hp = 0x3415;
+        em->hp = 13333;
         EmYamaTsukami_RemoveMinePoints(em);
         EmYamaTsukami_EndState(em);
         break;
     }
 }
 
-void EmYamaTsukami_RunGroup5(Em *em)
+/* Runs the current state of group 5 (EM_GROUP_DEFEAT). */
+void EmYamaTsukami_RunDefeatState(Em *em)
 {
     switch (em->state) {
-    case 0:
-        EmYamaTsukami_State5_00_Hunted(em);
+    case YAMA_DEFEAT_DIE:
+        EmYamaTsukami_Die(em);
         break;
-    case 1:
-        EmYamaTsukami_State5_01_HuntedFalling(em);
+    case YAMA_DEFEAT_DIE_FALLING:
+        EmYamaTsukami_DieFalling(em);
         break;
     }
 }
 
-void EmYamaTsukami_State6_00(Em *em)
+/*
+ * YAMA_EVENT_TOWER_FLYBY, the tower's opening scene: three passes between
+ * fixed points at 20 a frame, each until its goal is within 100 or its time
+ * runs out (300, 300 and 900 frames). Then, once EVENT_FLAG_YAMA_TSUKAMI_TOWER_SCENE is set,
+ * the monster moves to its place in AREA_TOWER_3 and waits for the hunters
+ * (YAMA_FLY_WAIT_FOR_HUNTERS). Untouchable and blind throughout.
+ */
+void EmYamaTsukami_TowerFlyby(Em *em)
 {
-    f32 dist;
-    f32 d;
-    f32 d2;
+    f32 distFirst;
+    f32 distSecond;
+    f32 distThird;
     u8 step;
 
     em->senseDelay = 5;
@@ -2049,9 +3245,9 @@ void EmYamaTsukami_State6_00(Em *em)
         GmEm_ResetSize();
         em->step++;
         em->scriptPending = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x16, 0, 0);
-        em->timer = 0x12C;
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
+        em->timer = 300;
         Player_ClearVelocity(em);
         em->velZ = 20.0f;
         em->posX = 12650.0f;
@@ -2064,16 +3260,12 @@ void EmYamaTsukami_State6_00(Em *em)
         break;
     case 1:
         Em_MoveRotated(em, &em->rotX);
-        dist = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer > 0) {
-            if (dist <= 100.0f) {
-                goto block_10;
-            }
+        distFirst = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer > 0 && !(distFirst <= 100.0f)) {
             break;
         }
-block_10:
         em->step++;
-        em->timer = 0x12C;
+        em->timer = 300;
         em->posX = 12650.0f;
         em->posY = 3360.0f;
         em->posZ = 8900.0f;
@@ -2084,15 +3276,10 @@ block_10:
         break;
     case 2:
         Em_MoveRotated(em, &em->rotX);
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer > 0) {
-            if (d <= 100.0f) {
-                goto block_14;
-            }
-        } else {
-block_14:
+        distSecond = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || distSecond <= 100.0f) {
             em->step++;
-            em->timer = 0x384;
+            em->timer = 900;
             em->posX = 4123.0f;
             em->posY = 5000.0f;
             em->posZ = 14785.0f;
@@ -2104,43 +3291,43 @@ block_14:
         break;
     case 3:
         Em_MoveRotated(em, &em->rotX);
-        d2 = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer > 0) {
-            if (d2 <= 100.0f) {
-                goto block_19;
-            }
-        } else {
-block_19:
+        distThird = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || distThird <= 100.0f) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_IDLE, 0, 0);
         }
         break;
     case 4:
-        if (Save_TestEventFlag(0xAF) == 1) {
+        if (Save_TestEventFlag(EVENT_FLAG_YAMA_TSUKAMI_TOWER_SCENE) == 1) {
             em->area = Area_IdForCurrentTime(AREA_TOWER_3);
             em->rotY = 0x4FE0;
             em->posX = 4510.0f;
             em->posY = -2619.0f;
             em->posZ = 12860.0f;
             EmYamaTsukami_Setup(em);
-            EmYamaTsukami_ChangeState(em, 2, 0x14, 0);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_FLY, YAMA_FLY_WAIT_FOR_HUNTERS, EM_SYNC_LOCAL);
         }
         break;
     }
 }
 
-void EmYamaTsukami_State6_01(Em *em)
+/*
+ * YAMA_EVENT_WALK_IN: from a fixed point on the ground, plays the opening
+ * motions, turns for 64 frames, then walks to two fixed goals in turn and
+ * floats (EmYamaTsukami_EndFlyState). Untouchable and blind throughout.
+ */
+void EmYamaTsukami_WalkIn(Em *em)
 {
     f32 pos[3];
-    s32 d;
+    s32 turn;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 1;
-        Em_SetMotion(em, 0x40, 0, 0);
+        em->stance = EM_STANCE_FAMILY;
+        Em_SetMotion(em, YAMA_MOT_FLINCH_D, 0, 0);
         em->posX = 6070.0f;
         em->posY = 0.0f;
         em->posZ = 17350.0f;
@@ -2153,7 +3340,7 @@ void EmYamaTsukami_State6_01(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x41, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_EVENT_TURN, 0, 0);
         }
         break;
     case 2:
@@ -2163,25 +3350,25 @@ void EmYamaTsukami_State6_01(Em *em)
             }
             if (em->motion[0].playing == 0) {
                 em->step++;
-                Em_SetMotion(em, 3, 0, 0);
-                Em_SetMotion(em, 0x42, 0, 0);
+                Em_SetMotion(em, YAMA_MOT_DESCEND, 0, 0);
+                Em_SetMotion(em, YAMA_MOT_FLINCH_HOVER, 0, 0);
             }
         }
         break;
     case 3:
-        if (em->motion[1].playing == 0 && em->motionId[1] == 0x4F2) {
-            Em_SetLayerMotion(em, 0x4B3, 0, 0, 1);
+        if (em->motion[1].playing == 0 && em->motionId[1] == EM_MOTION_ID(1, YAMA_MOT_FLINCH_HOVER)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, YAMA_MOT_DESCEND), 0, 0, 1);
         }
-        d = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
-        if (d <= 0x8000) {
-            if (d <= 0x3F) {
-                em->rotY += d;
+        turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
+        if (turn <= 0x8000) {
+            if (turn <= 0x3F) {
+                em->rotY += turn;
             } else {
                 em->rotY += 0x40;
             }
         } else {
-            if (d > 0xFFC0) {
-                em->rotY += d;
+            if (turn > 0xFFC0) {
+                em->rotY += turn;
             } else {
                 em->rotY -= 0x40;
             }
@@ -2196,16 +3383,16 @@ void EmYamaTsukami_State6_01(Em *em)
         }
         break;
     case 4:
-        d = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
-        if (d <= 0x8000) {
-            if (d <= 0x3F) {
-                em->rotY += d;
+        turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
+        if (turn <= 0x8000) {
+            if (turn <= 0x3F) {
+                em->rotY += turn;
             } else {
                 em->rotY += 0x40;
             }
         } else {
-            if (d > 0xFFC0) {
-                em->rotY += d;
+            if (turn > 0xFFC0) {
+                em->rotY += turn;
             } else {
                 em->rotY -= 0x40;
             }
@@ -2213,33 +3400,44 @@ void EmYamaTsukami_State6_01(Em *em)
         Em_MotionDelta(em, pos);
         if ((em->goalDist -= pos[2]) <= 0.0f) {
             em->step++;
-            Em_SetMotion(em, 3, 0, 0);
+            Em_SetMotion(em, YAMA_MOT_DESCEND, 0, 0);
         }
         break;
     case 5:
         em->step++;
-        EmYamaTsukami_EndState2(em);
+        EmYamaTsukami_EndFlyState(em);
         break;
     }
 }
 
-void EmYamaTsukami_RunGroup6(Em *em)
+/* Runs the current state of group 6 (EM_GROUP_EVENT). */
+void EmYamaTsukami_RunEventState(Em *em)
 {
     switch (em->state) {
-    case 0:
-        EmYamaTsukami_State6_00(em);
+    case YAMA_EVENT_TOWER_FLYBY:
+        EmYamaTsukami_TowerFlyby(em);
         break;
-    case 1:
-        EmYamaTsukami_State6_01(em);
+    case YAMA_EVENT_WALK_IN:
+        EmYamaTsukami_WalkIn(em);
         break;
     }
 }
 
+/*
+ * The monster's update each frame: keeps the carcass mine point on the body
+ * (and drops it once carved out), sends its state every 150 frames (the
+ * first kind; the second stays blind), counts quakeTimer down, reacts to
+ * the damage result (death; a part's flinch by stage, size and stance; the
+ * stun's end), breaks part 0 once part 6 is broken, starts the tower scene
+ * or runs the script, runs the state (twice on a request), keeps guardTimer
+ * while flyGuard is set, and shakes the ground except in the two quiet
+ * motions.
+ */
 void EmYamaTsukami_Update(Em *em)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
     f32 pos[3];
-    u8 buf[4];
+    u8 dmgInfo[4];
 
     if (w->mineSlot != -1) {
         EmYamaTsukami_GetMinePointPos(em, pos);
@@ -2249,98 +3447,98 @@ void EmYamaTsukami_Update(Em *em)
             w->mineSlot = -1;
         }
     }
-    if (em->type == 0x48) {
+    if (em->type == EM_KIND_YAMA_TSUKAMI_B) {
         em->blind = 2;
-    } else if (w->syncTimer != 0 && em->stateGroup != 6 && em->remote == 0) {
+    } else if (w->syncTimer != 0 && em->stateGroup != EM_GROUP_EVENT && em->remote == 0) {
         if (--w->syncTimer <= 0) {
             w->syncTimer = 150;
             QSync_SendEm(em, QSYNC_EMMSG_STATE_NO_PARTS, 0);
         }
     }
-    if (*(s8 *) &em->quakeTimer != 0) {
-        if (--*(s8 *) &em->quakeTimer <= 0) {
+    if (em->quakeTimer != 0) {
+        if (--em->quakeTimer <= 0) {
             em->quakeTimer = 0;
         }
     }
-    switch (Em_UpdateDamage(em, buf) & 0xFF) {
-    case 0:
-    case 3:
-    case 4:
-    case 5:
-    case 6:
-    case 7:
-    case 8:
-    case 9:
-    case 10:
-    case 11:
-    case 13:
-    case 14:
-    case 15:
-    case 16:
-    case 18:
+    switch (Em_UpdateDamage(em, dmgInfo) & 0xFF) {
+    case EM_DMG_NONE:
+    case EM_DMG_ATTACK9:
+    case EM_DMG_ATTACK6:
+    case EM_DMG_STATUS_IN_AIR:
+    case EM_DMG_STATUS4:
+    case EM_DMG_CAPTURED:
+    case EM_DMG_STATUS2:
+    case EM_DMG_FLASH:
+    case EM_DMG_HIT_LYING:
+    case EM_DMG_PART8_DOWN:
+    case EM_DMG_HIT_MODE3:
+    case EM_DMG_HIT:
+    case EM_DMG_ATTACK5:
+    case EM_DMG_ATTACK5_FLINCH:
+    case EM_DMG_ATTACK13:
         break;
-    case 1:
-    case 2:
-        if (em->stance == 0) {
-            EmYamaTsukami_ChangeState(em, 5, 0, 3);
+    case EM_DMG_KILLED:
+    case EM_DMG_DEAD:
+        if (em->stance == EM_STANCE_GROUND) {
+            EmYamaTsukami_ChangeState(em, EM_GROUP_DEFEAT, YAMA_DEFEAT_DIE, EM_SYNC_OWNER);
         } else {
-            EmYamaTsukami_ChangeState(em, 5, 1, 3);
+            EmYamaTsukami_ChangeState(em, EM_GROUP_DEFEAT, YAMA_DEFEAT_DIE_FALLING, EM_SYNC_OWNER);
         }
         break;
-    case 17:
+    case EM_DMG_STATUS5:
         Em_EndStatus5(em);
         break;
-    case 12:
-        if (em->stance == 0) {
-            if (em->stateGroup == 0 && em->state == 2) {
-                EmYamaTsukami_ChangeState(em, 4, 8, 3);
+    case EM_DMG_PART_FLINCH:
+        if (em->stance == EM_STANCE_GROUND) {
+            if (em->stateGroup == EM_GROUP_IDLE && em->state == YAMA_IDLE_DOWNED) {
+                EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_DOWNED_FLINCH, EM_SYNC_OWNER);
             } else {
-                switch (w->unk02E) {
-                case 0:
-                    EmYamaTsukami_ChangeState(em, 4, 9, 3);
+                switch (w->flinchStage) {
+                case YAMA_FLINCH_STAGE_A:
+                    EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_GROUND_FLINCH_A, EM_SYNC_OWNER);
                     break;
-                case 1:
-                    EmYamaTsukami_ChangeState(em, 4, 0xA, 3);
+                case YAMA_FLINCH_STAGE_B:
+                    EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_GROUND_FLINCH_B, EM_SYNC_OWNER);
                     break;
-                case 2:
-                    switch (w->easeIdx) {
-                    case 0:
-                        EmYamaTsukami_ChangeState(em, 4, 0, 3);
+                case YAMA_FLINCH_STAGE_C:
+                    switch (w->bodySize) {
+                    case YAMA_SIZE_SHRUNK:
+                        EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FALL_LAND, EM_SYNC_OWNER);
                         break;
-                    case 1:
-                        EmYamaTsukami_ChangeState(em, 4, 0xC, 3);
+                    case YAMA_SIZE_HALF:
+                        EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_GROUND_FLINCH_C_FROM_HALF, EM_SYNC_OWNER);
                         break;
-                    case 2:
-                        EmYamaTsukami_ChangeState(em, 4, 0xB, 3);
+                    case YAMA_SIZE_FULL:
+                        EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_GROUND_FLINCH_C_FROM_FULL, EM_SYNC_OWNER);
                         break;
                     }
                     break;
                 }
             }
-        } else if (em->stateGroup == 2 && em->state == 1) {
-            EmYamaTsukami_ChangeState(em, 4, 0xD, 3);
+        } else if (em->stateGroup == EM_GROUP_FLY && em->state == YAMA_FLY_RECOVER_PAUSE) {
+            EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FLINCH_HOVER, EM_SYNC_OWNER);
         } else {
-            switch (w->unk02E) {
-            case 0:
-                EmYamaTsukami_ChangeState(em, 4, 2, 3);
+            switch (w->flinchStage) {
+            case YAMA_FLINCH_STAGE_A:
+                EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FLINCH_A, EM_SYNC_OWNER);
                 break;
-            case 1:
-                EmYamaTsukami_ChangeState(em, 4, 3, 3);
+            case YAMA_FLINCH_STAGE_B:
+                EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FLINCH_B, EM_SYNC_OWNER);
                 break;
-            case 2:
-                switch (w->easeIdx) {
-                case 0:
+            case YAMA_FLINCH_STAGE_C:
+                switch (w->bodySize) {
+                case YAMA_SIZE_SHRUNK:
                     if (!(em->posY <= 2000.0f + em->floorY)) {
-                        EmYamaTsukami_ChangeState(em, 4, 1, 3);
+                        EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FALL_RECOVER, EM_SYNC_OWNER);
                     } else {
-                        EmYamaTsukami_ChangeState(em, 4, 0, 3);
+                        EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FALL_LAND, EM_SYNC_OWNER);
                     }
                     break;
-                case 1:
-                    EmYamaTsukami_ChangeState(em, 4, 5, 3);
+                case YAMA_SIZE_HALF:
+                    EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FLINCH_C_FROM_HALF, EM_SYNC_OWNER);
                     break;
-                case 2:
-                    EmYamaTsukami_ChangeState(em, 4, 4, 3);
+                case YAMA_SIZE_FULL:
+                    EmYamaTsukami_ChangeState(em, EM_GROUP_REACT, YAMA_REACT_FLINCH_C_FROM_FULL, EM_SYNC_OWNER);
                     break;
                 }
                 break;
@@ -2351,9 +3549,9 @@ void EmYamaTsukami_Update(Em *em)
     if (em->parts[6].state >= 8) {
         Em_BreakPart(em, 0);
     }
-    if (em->type == 0x3A && Area_DayId(em->area) == AREA_TOWER_0 && Save_TestEventFlag(0xAF) == 0) {
-        if (Area_DayId(gScene.area) == AREA_TOWER_0 && gScene.eventRunning == 1 && em->stateGroup != 6) {
-            EmYamaTsukami_ChangeState(em, 6, 0, 0);
+    if (em->type == EM_KIND_YAMA_TSUKAMI && Area_DayId(em->area) == AREA_TOWER_0 && Save_TestEventFlag(EVENT_FLAG_YAMA_TSUKAMI_TOWER_SCENE) == 0) {
+        if (Area_DayId(gScene.area) == AREA_TOWER_0 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+            EmYamaTsukami_ChangeState(em, EM_GROUP_EVENT, YAMA_EVENT_TOWER_FLYBY, EM_SYNC_LOCAL);
         }
     } else {
         Em_UpdatePendingScript(em);
@@ -2364,64 +3562,73 @@ void EmYamaTsukami_Update(Em *em)
         EmYamaTsukami_RunState(em);
         em->stateRequest = 0;
     }
-    if (w->unk038 != 0) {
+    if (w->flyGuard != 0) {
         em->guardTimer = 2;
     }
-    if (func_00849C20(em) == 1) {
+    if (EmYamaTsukami_IsQuakeFreeMotion(em) == 1) {
         em->quakeTimer = 0;
     } else {
         em->quakeTimer = 5;
     }
 }
 
+/* Runs the current state by group; group 7 runs group 6's states. */
 void EmYamaTsukami_RunState(Em *em)
 {
     switch (em->stateGroup) {
-    case 0:
-        EmYamaTsukami_RunGroup0(em);
+    case EM_GROUP_IDLE:
+        EmYamaTsukami_RunIdleState(em);
         break;
-    case 1:
-        EmYamaTsukami_RunGroup1(em);
+    case EM_GROUP_MOVE:
+        EmYamaTsukami_RunMoveState(em);
         break;
-    case 2:
-        EmYamaTsukami_RunGroup2(em);
+    case EM_GROUP_FLY:
+        EmYamaTsukami_RunFlyState(em);
         break;
-    case 3:
-        EmYamaTsukami_RunGroup3(em);
+    case EM_GROUP_ATTACK:
+        EmYamaTsukami_RunAttackState(em);
         break;
-    case 4:
-        EmYamaTsukami_RunGroup4(em);
+    case EM_GROUP_REACT:
+        EmYamaTsukami_RunReactState(em);
         break;
-    case 5:
-        EmYamaTsukami_RunGroup5(em);
+    case EM_GROUP_DEFEAT:
+        EmYamaTsukami_RunDefeatState(em);
         break;
-    case 6:
-        EmYamaTsukami_RunGroup6(em);
+    case EM_GROUP_EVENT:
+        EmYamaTsukami_RunEventState(em);
         break;
-    case 7:
-        EmYamaTsukami_RunGroup6(em);
+    case EM_GROUP_EVENT2:
+        EmYamaTsukami_RunEventState(em);
         
     default:
         break;
     }
 }
 
+/* The effects of the motions with none: nothing. */
 static void EmYamaTsukami_MotionEffectsDefault(Em *em)
 {
 }
 
+/*
+ * Plays the motion sounds and makes the effects and attacks of the motion
+ * on layer 0 at their frames: the YamaTsukamiAttack hits of the slams,
+ * strikes and the landing, impact attacks, the dust and debris stage
+ * objects, and the dive slam's impact under bone 2 (when a player is in the
+ * area). Keeps the motion in fxMotion.
+ */
 void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
 {
-    EmYamaWork *w = (EmYamaWork *) work;
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *) work;
     f32 pos[3];
 
-    if (em->motionId[0] != w->unk08) {
-        w->unk0A = 0;
-        w->unk08 = (s16) em->motionId[0];
+    if (em->motionId[0] != w->fxMotion) {
+        w->unk00A = 0;
+        w->fxMotion = (s16) em->motionId[0];
     }
     EmYamaTsukami_MotionSounds(em, (EmWork *) w);
-    switch (w->unk08) {
-    case 0x3EE:
+    switch (w->fxMotion) {
+    case EM_MOTION_ID(0, YAMA_MOT_SURGE_BACK):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmImpactAttack_CreateAt(em, &em->posX, 0xA);
         }
@@ -2429,20 +3636,20 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
             EmImpactAttack_CreateAt(em, &em->posX, 0xA);
         }
         break;
-    case 0x3F1:
+    case EM_MOTION_ID(0, YAMA_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0, 4.0f * em->scaleX);
+            DustCloud_Create(em, 0, 0, 4.0f * em->scaleX);
             YamaTsukamiAttack_Create(em, 0x14);
         }
         break;
-    case 0x3F2:
+    case EM_MOTION_ID(0, YAMA_MOT_SOFT_LAND):
         break;
-    case 0x3FD:
+    case EM_MOTION_ID(0, YAMA_MOT_GET_UP):
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0x13, 0, 4.0f * em->scaleX);
+            DustCloud_Create(em, 0x13, 0, 4.0f * em->scaleX);
         }
         break;
-    case 0x406:
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_A):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 2);
         }
@@ -2450,7 +3657,7 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
             YamaTsukamiAttack_Create(em, 3);
         }
         break;
-    case 0x407:
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_B):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 4);
         }
@@ -2458,7 +3665,7 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
             YamaTsukamiAttack_Create(em, 5);
         }
         break;
-    case 0x40A:
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_C):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 6);
         }
@@ -2466,7 +3673,7 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
             YamaTsukamiAttack_Create(em, 7);
         }
         break;
-    case 0x40B:
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_D):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 8);
         }
@@ -2474,60 +3681,60 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
             YamaTsukamiAttack_Create(em, 9);
         }
         break;
-    case 0x40C:
+    case EM_MOTION_ID(0, YAMA_MOT_SMASH):
         if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 0xA);
             YamaTsukamiAttack_Create(em, 0x15);
         }
         break;
-    case 0x41C:
+    case EM_MOTION_ID(0, YAMA_MOT_DIVE_SLAM):
         if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 0x16);
         }
         if ((EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) && (Player_InCurrentArea(em) & 0xFF)) {
             Em_BonePos(em, 2, pos);
             pos[1] -= 300.0f * em->scaleY;
-            StageObj_K14_CreateAt(pos, 0x15, 0, 4.3f * em->scaleX);
-            StageObj_K14_CreateAt(pos, 0xD, 0, 4.3f * em->scaleX);
+            DustCloud_CreateAt(pos, 0x15, 0, 4.3f * em->scaleX);
+            DustCloud_CreateAt(pos, 0xD, 0, 4.3f * em->scaleX);
             EmImpactAttack_CreateAt(em, pos, 0xB);
         }
         break;
-    case 0x41D:
+    case EM_MOTION_ID(0, YAMA_MOT_CRASH_LIE):
         if (EmMotion_PassedFrameScaled(em, 86.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 0xB);
         }
         if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0xB, 0, 4.0f * em->scaleX);
+            DustCloud_Create(em, 0xB, 0, 4.0f * em->scaleX);
             YamaTsukamiAttack_Create(em, 0x13);
         }
         break;
-    case 0x41E:
+    case EM_MOTION_ID(0, YAMA_MOT_CRASH_GET_UP):
         if (EmMotion_PassedFrameScaled(em, 84.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0x13, 0, 4.0f * em->scaleX);
+            DustCloud_Create(em, 0x13, 0, 4.0f * em->scaleX);
         }
         break;
-    case 0x427:
+    case EM_MOTION_ID(0, YAMA_MOT_DIE):
         if (EmMotion_PassedFrameScaled(em, 182.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0, 4.0f * em->scaleX);
+            DustCloud_Create(em, 0, 0, 4.0f * em->scaleX);
         }
         break;
-    case 0x408:
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_A):
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 0xC);
         }
         break;
-    case 0x409:
+    case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_B):
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 0xD);
         }
         break;
-    case 0x412:
+    case EM_MOTION_ID(0, YAMA_MOT_STRIKE_A):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 0xE);
             YamaTsukamiAttack_Create(em, 0x15);
         }
         break;
-    case 0x413:
+    case EM_MOTION_ID(0, YAMA_MOT_STRIKE_B):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
             YamaTsukamiAttack_Create(em, 0xF);
             YamaTsukamiAttack_Create(em, 0x15);
@@ -2539,36 +3746,48 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
     }
 }
 
-void EmYamaTsukami_EaseToTarget(Em *em, EmWork *work)
+/*
+ * Eases bodyScale a 85th of the way toward the row of
+ * EmYamaTsukami_SizeScales for bodySize, each frame (easeMode 0).
+ */
+void EmYamaTsukami_EaseToSize(Em *em, EmWork *work)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)work;
 
     switch (w->easeMode) {
     case 0:
-        w->ease[0] = w->ease[0] + (((f32 (*)[3]) EmYamatsukami_EaseTargets)[w->easeIdx][0] - w->ease[0]) / 85.0f;
-        w->ease[1] = w->ease[1] + (((f32 (*)[3]) EmYamatsukami_EaseTargets)[w->easeIdx][1] - w->ease[1]) / 85.0f;
-        w->ease[2] = w->ease[2] + (((f32 (*)[3]) EmYamatsukami_EaseTargets)[w->easeIdx][2] - w->ease[2]) / 85.0f;
+        /* The table is read through a cast to rows of three: declared two-dimensional, it compiles differently. */
+        w->bodyScale[0] = w->bodyScale[0] + (((f32 (*)[3]) EmYamaTsukami_SizeScales)[w->bodySize][0] - w->bodyScale[0]) / 85.0f;
+        w->bodyScale[1] = w->bodyScale[1] + (((f32 (*)[3]) EmYamaTsukami_SizeScales)[w->bodySize][1] - w->bodyScale[1]) / 85.0f;
+        w->bodyScale[2] = w->bodyScale[2] + (((f32 (*)[3]) EmYamaTsukami_SizeScales)[w->bodySize][2] - w->bodyScale[2]) / 85.0f;
         break;
     }
 }
 
-/* Grows the scale (pose[0..2]) of bones 6, 4 and 0x23 by D_008CAAB0..D_008CAAD0 times the
- * eased factors ease[0], ease[1] and ease[2] (EmYamaTsukami_EaseToTarget); no caller in C. */
-void func_00849700(Em *em, EmBone *bones)
+/*
+ * Swells the body: adds EmYamaTsukami_BoneGrowth (x, y, z per bone; the last value is
+ * EmYamaTsukami_BoneGrowthLast) times bodyScale[0], [1] and [2] to the scale of bones 6,
+ * 4 and 0x23. Em_AdjustKindBones calls it for the family when it poses the bones.
+ */
+void EmYamaTsukami_ScaleBones(Em *em, EmBone *bones)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
-    bones[0x6].pose[0] = bones[0x6].pose[0] + D_008CAAB0 * w->ease[0];
-    bones[0x6].pose[1] = bones[0x6].pose[1] + D_008CAAB4 * w->ease[0];
-    bones[0x6].pose[2] = bones[0x6].pose[2] + D_008CAAB8 * w->ease[0];
-    bones[0x4].pose[0] = bones[0x4].pose[0] + D_008CAABC * w->ease[1];
-    bones[0x4].pose[1] = bones[0x4].pose[1] + D_008CAAC0 * w->ease[1];
-    bones[0x4].pose[2] = bones[0x4].pose[2] + D_008CAAC4 * w->ease[1];
-    bones[0x23].pose[0] = bones[0x23].pose[0] + D_008CAAC8 * w->ease[2];
-    bones[0x23].pose[1] = bones[0x23].pose[1] + D_008CAACC * w->ease[2];
-    bones[0x23].pose[2] = bones[0x23].pose[2] + D_008CAAD0 * w->ease[2];
+    bones[0x6].pose[0] = bones[0x6].pose[0] + EmYamaTsukami_BoneGrowth[0] * w->bodyScale[0];
+    bones[0x6].pose[1] = bones[0x6].pose[1] + EmYamaTsukami_BoneGrowth[1] * w->bodyScale[0];
+    bones[0x6].pose[2] = bones[0x6].pose[2] + EmYamaTsukami_BoneGrowth[2] * w->bodyScale[0];
+    bones[0x4].pose[0] = bones[0x4].pose[0] + EmYamaTsukami_BoneGrowth[3] * w->bodyScale[1];
+    bones[0x4].pose[1] = bones[0x4].pose[1] + EmYamaTsukami_BoneGrowth[4] * w->bodyScale[1];
+    bones[0x4].pose[2] = bones[0x4].pose[2] + EmYamaTsukami_BoneGrowth[5] * w->bodyScale[1];
+    bones[0x23].pose[0] = bones[0x23].pose[0] + EmYamaTsukami_BoneGrowth[6] * w->bodyScale[2];
+    bones[0x23].pose[1] = bones[0x23].pose[1] + EmYamaTsukami_BoneGrowth[7] * w->bodyScale[2];
+    bones[0x23].pose[2] = bones[0x23].pose[2] + EmYamaTsukami_BoneGrowthLast * w->bodyScale[2];
 }
 
+/*
+ * The family's per-frame effects hook: skips the first frame, then runs
+ * EmYamaTsukami_MotionEffects and EmYamaTsukami_EaseToSize.
+ */
 void EmYamaTsukami_UpdateMotionEffects(Em *em)
 {
     EmYamaTsukamiWork *work = (EmYamaTsukamiWork *)&em->work;
@@ -2579,12 +3798,17 @@ void EmYamaTsukami_UpdateMotionEffects(Em *em)
         break;
     case 1:
         EmYamaTsukami_MotionEffects(em, (EmWork *) work);
-        EmYamaTsukami_EaseToTarget(em, (EmWork *) work);
+        EmYamaTsukami_EaseToSize(em, (EmWork *) work);
         break;
     }
 }
 
-void EmYamaTsukami_SpawnAreaImpactEffects(Em *em)
+/*
+ * The fortress impact of YAMA_ATK_SMASH_FORT at a fixed point of the area
+ * (one for AREA_BATTLE_TOWN_1, one for the others): two sounds, the impact
+ * effects, the debris and a camera shake.
+ */
+void EmYamaTsukami_SpawnFortImpact(Em *em)
 {
     f32 pos[3];
 
@@ -2602,15 +3826,20 @@ void EmYamaTsukami_SpawnAreaImpactEffects(Em *em)
     }
     Em_PlaySeChecked(em, 0x45, 0, pos, 9, 0);
     Em_PlaySeChecked(em, 0x44, 0, pos, 9, 0);
-    Effect02_SpawnForOwner(em, 0, 9, 0, pos, 3.0f);
-    Effect02_SpawnForOwner(em, 0, 9, 1, pos, 3.0f);
-    Effect0D_SpawnIfHere(em, pos, 0x22, 30.0f);
+    HitSpark_SpawnForOwner(em, 0, 9, 0, pos, 3.0f);
+    HitSpark_SpawnForOwner(em, 0, 9, 1, pos, 3.0f);
+    PartFx_SpawnIfHere(em, pos, 0x22, 30.0f);
     CamShake_ReqARange(em, 2, 2);
 }
 
-void EmYamaTsukami_InitBoneFloorFlags(Em *em)
+/*
+ * Starts the tentacle dust: for each bone of EmYamaTsukami_TentacleBones, 1
+ * if it is above the floor, else 0 (all 0 when the player's area is
+ * another).
+ */
+void EmYamaTsukami_InitTentacleDust(Em *em)
 {
-    EmYamaWork *w = (EmYamaWork *) &em->work;
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *) &em->work;
     s32 i;
     s32 j;
     f32 pos[3];
@@ -2618,55 +3847,61 @@ void EmYamaTsukami_InitBoneFloorFlags(Em *em)
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 2; j++) {
             if (gScene.area != em->area) {
-                w->flags[i][j] = 0;
+                w->dustState[i][j] = 0;
             } else {
-                Em_BonePos(em, EmYamaTsukami_BoneFloorBones[i][j], pos);
+                Em_BonePos(em, EmYamaTsukami_TentacleBones[i][j], pos);
                 if (pos[1] <= AreaGrid2_GetFloorY(pos)) {
-                    w->flags[i][j] = 0;
+                    w->dustState[i][j] = 0;
                 } else {
-                    w->flags[i][j] = 1;
+                    w->dustState[i][j] = 1;
                 }
             }
         }
     }
 }
 
-void EmYamaTsukami_SpawnBoneFloorEffects(Em *em)
+/*
+ * Makes the dust where a tentacle reaches the floor: a bone that was above
+ * the floor and is now at or under it (the floor is looked for up to 1000
+ * above the body) makes the dust there, and its pair is done. Only in the
+ * player's area.
+ */
+void EmYamaTsukami_UpdateTentacleDust(Em *em)
 {
-    EmYamaWork *w = (EmYamaWork *) &em->work;
+    EmYamaTsukamiWork *w = (EmYamaTsukamiWork *) &em->work;
     s32 i;
     s32 j;
     f32 pos[3];
-    f32 g;
-    f32 y;
-    s8 *f;
+    f32 floorY;
+    f32 boneY;
+    s8 *state;
 
     if (gScene.area != em->area) {
         return;
     }
     for (i = 0; i < 4; i++) {
         for (j = 0; j < 2; j++) {
-            Em_BonePos(em, EmYamaTsukami_BoneFloorBones[i][j], pos);
-            g = AreaGrid2_GetFloorY(pos);
-            f = &w->flags[i][j];
-            switch (*f) {
+            Em_BonePos(em, EmYamaTsukami_TentacleBones[i][j], pos);
+            floorY = AreaGrid2_GetFloorY(pos);
+            state = &w->dustState[i][j];
+            switch (*state) {
             case 0:
-                if (!(pos[1] <= g)) {
-                    *f = 1;
+                if (!(pos[1] <= floorY)) {
+                    *state = 1;
                 }
                 break;
             case 1:
-                y = pos[1];
-                if (!(y <= g)) {
+                boneY = pos[1];
+                if (!(boneY <= floorY)) {
                     pos[1] = 1000.0f + em->posY;
-                    g = AreaGrid2_GetFloorY(pos);
-                    pos[1] = y;
+                    floorY = AreaGrid2_GetFloorY(pos);
+                    pos[1] = boneY;
                 }
-                if (pos[1] <= g) {
-                    pos[1] = g;
-                    Effect0D_SpawnAt(pos, 3, 10.0f * em->scaleX);
-                    w->flags[i][1] = 2;
-                    w->flags[i][0] = 2;
+                if (pos[1] <= floorY) {
+                    pos[1] = floorY;
+                    PartFx_SpawnAt(pos, 3, 10.0f * em->scaleX);
+                    w->dustState[i][1] = 2;
+                    w->dustState[i][0] = 2;
                 }
                 break;
             case 2:
@@ -2676,27 +3911,37 @@ void EmYamaTsukami_SpawnBoneFloorEffects(Em *em)
     }
 }
 
-s32 func_00849C20(Em *em)
+/*
+ * Returns 1 in the two motions that don't shake the ground
+ * (YAMA_MOT_RECOVER_PAUSE, YAMA_MOT_FLINCH_HOVER), else 0.
+ */
+s32 EmYamaTsukami_IsQuakeFreeMotion(Em *em)
 {
     u16 motionId;
 
     motionId = em->motionId[0];
-    if ((motionId == 0x3F6) || (motionId == 0x42A)) {
+    if ((motionId == EM_MOTION_ID(0, YAMA_MOT_RECOVER_PAUSE)) || (motionId == EM_MOTION_ID(0, YAMA_MOT_FLINCH_HOVER))) {
         return 1;
     }
     return 0;
 }
 
-void func_00849C50(void)
+/* An empty hook of the family's table. */
+void EmYamaTsukami_TableNop(void)
 {
 }
 
+/*
+ * The script's question hook: kind 1 asks whether the monster is in
+ * AREA_TOWER_0x53 or AREA_TOWER_3 (1) or elsewhere (0); every other kind
+ * gets queryValue.
+ */
 u8 EmYamaTsukami_ScriptQuery(Em *em, s32 kind)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
     if ((kind & 0xFF) != 1) {
-        return (u8)w->unk000;
+        return (u8)w->queryValue;
     }
     switch (Area_DayId(em->area) & 0xFFFF) {
     case AREA_TOWER_0x53:
@@ -2706,548 +3951,84 @@ u8 EmYamaTsukami_ScriptQuery(Em *em, s32 kind)
     return 0U;
 }
 
-void EmChameleos_MotionSounds(Em *em, EmWork *work)
-{
-    s16 motion;
 
-    motion = work->sndMotion;
-    switch (motion) {
-    case 0x3E9:
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x39, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x102, 0x38, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x182, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x24E, 0x38, 0x26);
-        break;
-    case 0x3EA:
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x39, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x11C, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x12A, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x148, 3, 0xD);
-        break;
-    case 0x3EB:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x49, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 5, 8);
-        break;
-    case 0x3EC:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 5, 8);
-        break;
-    case 0x3ED:
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 3, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x17, 0x11);
-        break;
-    case 0x3EE:
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x17, 0x11);
-        break;
-    case 0x3EF:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 7, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 4, 8);
-        break;
-    case 0x3F1:
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x22, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x14, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x9C, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 4, 8);
-        break;
-    case 0x3F2:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0x5B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x13, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x15, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 3, 0xD);
-        break;
-    case 0x3F3:
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x5B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1C, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x1D, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x1D, 0x2E);
-        break;
-    case 0x3F4:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1A, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x19, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x19, 0x2E);
-        break;
-    case 0x3F5:
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x1A, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x19, 0x2E);
-        break;
-    case 0x3F6:
-    case 0x3F7:
-        Em_PlaySeAtBoneOnFrame(em, 0xD, 0x1A, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x17, 0x19, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x19, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x41, 0x19, 0x2E);
-        break;
-    case 0x3F8:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xB, 0x32);
-        break;
-    case 0x3F9:
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 1, 8);
-        break;
-    case 0x3FA:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xD, 0x32);
-        break;
-    case 0x3FB:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xF, 0x11);
-        break;
-    case 0x3FC:
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 4, 0xD);
-        break;
-    case 0x407:
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x38, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x9C, 0x31, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x39, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x19C, 0x38, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x3A, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x3A, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A4, 0x3A, 0x11);
-        break;
-    case 0x408:
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x37, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x37, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0x1F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0xE4, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xF8, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x16, 0x11);
-        break;
-    case 0x409:
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x38, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x39, 0x26);
-        break;
-    case 0x40A:
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xC, 0x32);
-        break;
-    case 0x40B:
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x58, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x58, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 4, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 4, 0xD);
-        break;
-    case 0x40C:
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5D, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 0x5C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x17, 0x11);
-        break;
-    case 0x40D:
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0x28, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xA, 0x11);
-        break;
-    case 0x411:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xAE, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xCA, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xE6, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x24, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x29, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x24, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x29, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x28, 0x29);
-        break;
-    case 0x412:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x49, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 4, 0xD);
-        break;
-    case 0x413:
-        if ((em->stateGroup == 3) && (em->state == 6)) {
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x18, 0x26);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x4B, 0x26);
-            Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
-            Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
-            break;
-        }
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x3D, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
-        break;
-    case 0x414:
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x4E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 8, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x11);
-        break;
-    case 0x415:
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x4A, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x15, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0xD);
-        break;
-    case 0x416:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x21, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x4B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0x25, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 6, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x16, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 0, 0xD);
-        break;
-    case 0x417:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x1F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x4B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x18, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xB, 0x32);
-        break;
-    case 0x418:
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x38, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x37, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 8, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 8, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x102, 8, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x164, 8, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0xD, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0xD, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xF2, 0xD, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x156, 0xD, 0x11);
-        break;
-    case 0x419:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x24, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x29, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x28, 0x29);
-        break;
-    case 0x41A:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x24, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x29, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x15, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 1, 0x1F);
-        break;
-    case 0x41B:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x24, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x29, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x28, 0x29);
-        break;
-    case 0x41C:
-        if ((em->stateGroup == 3) && (em->state == 7)) {
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x18, 0x26);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x4B, 0x26);
-            Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
-            Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
-            break;
-        }
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x3D, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
-        break;
-    case 0x41D:
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 8, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x11);
-        break;
-    case 0x425:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x2E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0, 0x1A);
-        break;
-    case 0x426:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x54, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 7, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x12, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0xA, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xA, 0x32);
-        break;
-    case 0x427:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x54, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x2E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xB, 0x32);
-        break;
-    case 0x428:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xB, 0x32);
-        break;
-    case 0x429:
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 8, 9, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xF, 0x32);
-        break;
-    case 0x42A:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x57, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x17, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x2A, 0x29);
-        break;
-    case 0x42B:
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x56, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xE, 0x32);
-        break;
-    case 0x42C:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x2F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x35, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x16E, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x190, 0x2C, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0x17, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x16, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x1B2, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x1B6, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x1D8, 7, 2);
-        break;
-    case 0x42D:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x57, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1A);
-        break;
-    case 0x42E:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x5F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x5B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x16, 2);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xE, 0x32);
-        break;
-    case 0x42F:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x5D, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x34, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x12, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x10, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0xB, 0x32);
-        break;
-    case 0x431:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x2C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0xE2, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x17, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 9, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x10, 8);
-        break;
-    case 0x432:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x28, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x16, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x10, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 9, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x32);
-        break;
-    case 0x433:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x5F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x29);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x33, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x17, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 1, 0x1F);
-        
-    case 0x434:
-    default:
-        break;
-    }
-}
-
-/* em_yamatsukami's .data (0x8CA9A8-0x8CAB00) */
-f32 EmYamatsukami_StartPos[3] = {
+/* The file's initialised data, in the game's order */
+EmCurveKey EmYamaTsukami_VelYCurves_0[10] = {
+#include "game/008CA370.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_1[10] = {
+#include "game/008CA3C0.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_2[12] = {
+#include "game/008CA410.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_3[12] = {
+#include "game/008CA470.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_6[12] = {
+#include "game/008CA4D0.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_7[12] = {
+#include "game/008CA530.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_8[18] = {
+#include "game/008CA590.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_9[18] = {
+#include "game/008CA620.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_10[18] = {
+#include "game/008CA6B0.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_11[18] = {
+#include "game/008CA740.inc"
+};
+EmCurveKey EmYamaTsukami_VelYCurves_12[18] = {
+#include "game/008CA7D0.inc"
+};
+EmCurveKey EmYamaTsukami_SpeedCurves_4[12] = {
+#include "game/008CA860.inc"
+};
+EmCurveKey EmYamaTsukami_SpeedCurves_5[14] = {
+#include "game/008CA8C0.inc"
+};
+EmCurveKey *EmYamaTsukami_VelYCurves[16] = {
+    EmYamaTsukami_VelYCurves_0, EmYamaTsukami_VelYCurves_1, EmYamaTsukami_VelYCurves_2, EmYamaTsukami_VelYCurves_3,
+    NULL, NULL, EmYamaTsukami_VelYCurves_6, EmYamaTsukami_VelYCurves_7,
+    EmYamaTsukami_VelYCurves_8, EmYamaTsukami_VelYCurves_9, EmYamaTsukami_VelYCurves_10, EmYamaTsukami_VelYCurves_11,
+    EmYamaTsukami_VelYCurves_12, NULL, NULL, NULL,
+};
+EmCurveKey *EmYamaTsukami_SpeedCurves[14] = {
+    NULL, NULL, NULL, NULL,
+    EmYamaTsukami_SpeedCurves_4, EmYamaTsukami_SpeedCurves_5, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL,
+};
+f32 EmYamaTsukami_KindBStartPos[3] = {
 #include "game/008CA9A8.inc"
 };
-EmYamaKey EmYamaTsukami_Keys_0[12] = {
+EmYamaTsukamiYawKey EmYamaTsukami_SpinStartYawKeys[12] = {
 #include "game/008CA9C0.inc"
 };
-EmYamaKey EmYamaTsukami_Keys_1[11] = {
+EmYamaTsukamiYawKey EmYamaTsukami_SpinEndYawKeys[11] = {
 #include "game/008CAA20.inc"
 };
-EmYamaKey *EmYamaTsukami_Keys[2] = {
-    EmYamaTsukami_Keys_0, EmYamaTsukami_Keys_1,
+EmYamaTsukamiYawKey *EmYamaTsukami_SpinYawKeys[2] = {
+    EmYamaTsukami_SpinStartYawKeys, EmYamaTsukami_SpinEndYawKeys,
 };
-f32 EmYamatsukami_EaseTargets[12] = {
+f32 EmYamaTsukami_SizeScales[12] = {
 #include "game/008CAA80.inc"
 };
-f32 EmYamatsukami_Factors[8] = {
+f32 EmYamaTsukami_BoneGrowth[8] = {
 #include "game/008CAAB0.inc"
 };
-f32 D_008CAAD0 = {
+f32 EmYamaTsukami_BoneGrowthLast = {
 #include "game/008CAAD0.inc"
 };
-s8 EmYamaTsukami_BoneFloorBones[4][2] = {
+s8 EmYamaTsukami_TentacleBones[4][2] = {
 #include "game/008CAAD8.inc"
 };
 void *EmYamaTsukami_Callbacks[8] = {
-    EmYamaTsukami_SpawnEffects, EmYamaTsukami_SpawnEffects, func_00849C50, EmYamaTsukami_UpdateMotionEffects,
-    EmYamaTsukami_ScriptQuery, func_00849C50, NULL, NULL,
+    EmYamaTsukami_SpawnEffects, EmYamaTsukami_SpawnEffects, EmYamaTsukami_TableNop, EmYamaTsukami_UpdateMotionEffects,
+    EmYamaTsukami_ScriptQuery, EmYamaTsukami_TableNop, NULL, NULL,
 };

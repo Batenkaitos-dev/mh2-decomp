@@ -4,7 +4,7 @@
 name YnWork
 size 0x1AF00
 0x0000 u32 texPal // the texture handle | the palette handle << 16 (released by Yn_Quit's path)
-0x0008 s8 unk8
+0x0008 s8 listDetail // the list's detail level: 2 from the list's first step (draws the entry's device line, help variant 2, msgCloseMode 4); the 16 bytes from here are cleared together
 0x000B s8 cursor // the settings list's cursor (an entry)
 0x000C s8 listTop // its first entry shown (four shown)
 0x000D s8 proxyCursor // the proxy menu's cursor (0 use, 1 not: proxy.use = 1 - it)
@@ -16,7 +16,7 @@ size 0x1AF00
 0x001C s8 entryCount // the settings file's entries (YnNetcnf_GetCount)
 0x001D u8 cardSlots // memory card slots with a card (bit per slot; Yn_ScanCards)
 0x001E u8 slot // the memory card slot in use
-0x001F u8 unk1F
+0x001F u8 unk1F // only cleared (at each card scan)
 0x0021 u8 timer
 0x0024 u8 scanStep // Yn_ScanCards' state (0-5)
 0x0025 u8 triedSlots // slots tried by the connect scan (bit per slot; 0x80 after the first)
@@ -30,9 +30,9 @@ size 0x1AF00
 0x003E u16 numBackup // the value before the edit (put back on cancel)
 0x0040 u16 * numTarget // the number being edited (Yn_BeginNumberEdit)
 0x0044 u16 numStep // the digit being changed (1, 10, .. 10000)
-0x0046 s8 unk46
-0x0047 s8 unk47
-0x0048 s8 unk48
+0x0046 s8 unk46 // only written: 1 on the list, 0x10 on the proxy screen
+0x0047 s8 msgCloseMode // YN_MSG_CLOSE_CIRCLE: only PAD_CIRCLE closes the list's message; 2 or 4 (listDetail 2): either button
+0x0048 s8 unk48 // only written: 1 on the list, 0x13 on the proxy screen
 0x0049 s8 screen // index into gYnScreenItems / gYnScreenItemCounts
 0x004A u8 msg // index into gYnMsgItems / gYnMsgItemCounts
 0x004B s8 help // index into gYnHelpItems / gYnHelpItemCounts
@@ -40,7 +40,7 @@ size 0x1AF00
 0x0050 char * editTarget // the string being edited with the keyboard (Yn_OpenKeyboard)
 0x0054 char editBuf[0x200]
 0x0254 YnCombo{20} combos[30]
-0x0ECC YnProxy{520} proxy // copied from and to sub_main (D_5BE6C4, D_5BF400)
+0x0ECC YnProxy{520} proxy // copied from and to the NET file data (gNetSaveData.proxy and configProxy)
 0x10D4 YnCardCheck{6} card
 0x1180 YnNetcnf{105792} netcnf
 0x1AEC0 s32 state // the main state machine (Yn_Update)

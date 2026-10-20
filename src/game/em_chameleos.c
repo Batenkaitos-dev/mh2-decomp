@@ -1,18 +1,30 @@
 /*
- * Monster family: Chameleos (EM_KIND_CHAMELEOS). The code from the family's
- * setup function (EmChameleos_Setup, called by the per-kind dispatch
- * Em_TypeSetup) to the next family's. The state functions take the monster
- * and the work area its state dispatcher passes on (EmWork); Em.step is the
- * step within the current state. See include/em.h.
+ * The Chameleos family (EM_KIND_CHAMELEOS): the elder dragon that walks,
+ * flies, attacks with its tongue (which can steal an item), spits balls and
+ * breath, and cloaks itself. The file holds its motion sounds and effects,
+ * its setup and Init (EmChameleos_Setup, which the per-kind dispatch
+ * Em_TypeSetup calls), the state functions of each group with their
+ * dispatchers (EmChameleos_Run*State) and the per-frame update
+ * (EmChameleos_Update), which also starts the forest scene and the leaving
+ * states. The family's state changes, flight curves and cloak helpers come
+ * after the Remobra family's code in the game's, and are compiled there.
+ *
+ * The state functions take the monster and the work area its state
+ * dispatcher passes on; Em.step is the step within the current state, and
+ * the family keeps its own values in the work area (EmChameleosWork: the
+ * route's legs, the flight guard, the curves, the cloak's shimmer).
+ * em_chameleos.h names the motions and the states.
  */
 #include "common.h"
+#include "item.h"
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "em_chameleos.h"
 #include "player.h"
 #include "objattach.h"
 #include "area.h"
-/* prototypes of callees (round 13) */
+/* prototypes of callees */
 void CamShake_ReqAIf(Em *obj, s32 i);
 void Em_AreaExitPoint(Em *em, f32 *out);
 s32 Area_ContainsPos(s32, f32 *);
@@ -21,149 +33,66 @@ AreaRecord *Stage_GetAreaRecord(u16 x);
 struct EmIdEntry;
 f32 *Em_AreaEntryValue(Em *em, struct EmIdEntry *entry);
 void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-
 
 /* prototypes */
 void EmBulldrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 void EmChameleos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 u8 EmChameleos_UpdateCurves(Em *em);
 s8 EmMine_CreateTimed0(Em *em, f32 *pos);
-void EmRemobra_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_BreakPart(Em *em, s32 part);
-void Em_EndAllStatus(Em *em);
 void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
 void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-/* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmChameleos_ChangeState: 4 of 139 words differ, EmChameleos_SetGroup0State: 1 of 96 words differ ... */
-void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
 u16 Math_AngleXZ(f32 *from, f32 *to);
 void Player_ClearFlag(void *, u32 flag);
 s32 Player_MoveFall(Player *p);
 void Player_SetFlag(void *obj, u32 flag);
-s8 QuestEm_Appear(Em *em);
-void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
 void * EmEffectAttack_Create(Em *, s32, s32, s32, s32);
 ObjAttach *BulldromeAttack_Create(Em *em, s8 kind);
 void ChameleosAttack_Create(Em *em, s32 k);
-void RemobraAttack_Create(Em *em, u8 k);
 void Em_MoveRotated(Em *em, void *src);
 void Em_MoveRotatedAccel(Em *, void *);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_SetHitReactMode(Em *em, u8 a);
-/* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmBulldrome_State0_0B: 97 of 147 words differ, EmChameleos_State0_12: 42 of 80 words differ */
+/* unit's own declaration: declared here as the callers use it; with the definition's s32 (Em *em, s16 n, s16 max, s16 interval), the calls in EmChameleos_Rest compile differently */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_SetHold2(Em *em);
 void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
 u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
 void Em_RestartScript(Em *em);
-void Em_TargetPlayerInRange(Em *);
 void EmChameleos_Init(Em *em);
 void EmChameleos_StealItem(Em *em, Player *p);
-void EmChameleos_State2_01(Em *, EmWork *);
-void EmChameleos_State2_08(Em *, EmWork *);
-void EmChameleos_State2_09(Em *, EmWork *);
-void EmChameleos_State2_0D(Em *, EmWork *);
-void EmChameleos_State2_11(Em *em, EmWork *work);
-void EmChameleos_State3_06(Em *em, s32 arg1, u8 variant);
-void EmChameleos_State3_07(Em *em, s32 arg1, u8 variant);
-void EmChameleos_State6_00(Em *, EmWork *);
-void EmChameleos_State6_01(Em *, EmWork *);
-void EmChameleos_State6_02(Em *, EmWork *);
-void EmChameleos_State5_00_Hunted(Em *, EmWork *);
-void EmChameleos_State5_02_HuntedFalling(Em *, EmWork *);
-void EmChameleos_RunGroup0(Em *em, EmWork *work);
-void EmChameleos_RunGroup1(Em *em, EmWork *work);
-void EmChameleos_RunGroup4(Em *em, EmWork *work);
+void EmChameleos_Land(Em *, EmWork *);
+void EmChameleos_FlyOutOfArea(Em *, EmWork *);
+void EmChameleos_FlyIntoArea(Em *, EmWork *);
+void EmChameleos_FlyThroughArea(Em *, EmWork *);
+void EmChameleos_FlyRouteLoop(Em *em, EmWork *work);
+void EmChameleos_MistPitched(Em *em, s32 arg1, u8 variant);
+void EmChameleos_MistLevel(Em *em, s32 arg1, u8 variant);
+void EmChameleos_ForestEvent(Em *, EmWork *);
+void EmChameleos_LeaveQuest(Em *, EmWork *);
+void EmChameleos_LeaveQuestFromAir(Em *, EmWork *);
+void EmChameleos_Die(Em *, EmWork *);
+void EmChameleos_DieFalling(Em *, EmWork *);
+void EmChameleos_RunIdleState(Em *em, EmWork *work);
+void EmChameleos_RunMoveState(Em *em, EmWork *work);
+void EmChameleos_RunReactState(Em *em, EmWork *work);
 void EmChameleos_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale);
-/* Chameleos' own meanings of the work area's bytes (EmWork, include/em.h, has the shared ones). */
-typedef struct EmChameleosWork {
-    u8 fxStep;                  /* 0x000: UpdateMotionEffects: 0, then 1 (runs MotionEffects) */
-    u8 unk001[0x002 - 0x001];
-    s16 fxMotion;               /* 0x002: the motion id MotionSounds compares */
-    u8 unk004[0x005 - 0x004];
-    u8 unk005;                  /* 0x005: SetGroup2State: 4; State2_06 counts it down */
-    u8 unk006[0x010 - 0x006];
-    s8 unk010;                  /* 0x010: group 2's states set it (0 or 1); Update reads it in group 2 */
-    u8 unk011[0x013 - 0x011];
-    u8 wantInvisible;           /* 0x013: Init: 2; UpdateInvisibility sets it from EmChameleos_WantsInvisible when 0 */
-    s32 unk014;                 /* 0x014: Init: 0 */
-    s32 unk018;                 /* 0x018: Init: 0x2000 */
-    u8 unk01C[0x028 - 0x01C];
-    s32 moveAngCX;              /* 0x028: angles X, Y, Z for Em_MoveRotatedAccel (UpdateCurves; Z at moveAngX) */
-    s32 moveAngCY;              /* 0x02C */
-    s32 moveAngX;               /* 0x030 */
-    s32 moveAngY;               /* 0x034 */
-    s32 moveAngZ;               /* 0x038 */
-    s32 pitchStep;              /* 0x03C */
-    u8 unk040[0x044 - 0x040];
-    s8 curveNone;               /* 0x044: the three curves' run flags (StartCurves, UpdateCurves) */
-    s8 curveVelY;               /* 0x045 */
-    s8 curveSpeed;              /* 0x046 */
-    u8 curveKind;               /* 0x047: the curve tables' index (StartCurves) */
-    s16 curveFrame;             /* 0x048: the curve frame (StartCurves, UpdateCurves) */
-    u8 unk04A[0x04C - 0x04A];
-    u16 unk04C;                 /* 0x04C: Init: 0xFFFF; UpdateInvisibility */
-    s16 unk04E;                 /* 0x04E: Init: 900; UpdateInvisibility counts it down */
-    u8 unk050[0x100 - 0x050];
-} EmChameleosWork;
-typedef char EmChameleosWork_size_check[(sizeof(EmChameleosWork) == sizeof(EmWork)) ? 1 : -1];
 void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work);
-void EmRemobra_MotionSounds(s32 arg0, EmWork *work);
-void EmRemobra_Init(Em *em);
-void EmRemobra_UpdateHop(Em *);
-void EmRemobra_State2_00(Em *em);
-void EmRemobra_State2_02(Em *, s32);
-void EmRemobra_State2_03(Em *, s32, s32);
-void EmRemobra_State2_09(Em *em, s32 variant);
-void EmRemobra_State2_0A(Em *);
-void EmRemobra_State2_0C(Em *em, s32 variant);
-void EmRemobra_State2_0F(Em *, s32);
-void EmRemobra_State2_15(Em *, s32);
-void EmRemobra_State3_01(Em *, s32);
-void EmRemobra_State5_00_Hunted(Em *);
-void EmRemobra_State5_01(Em *em);
-void EmRemobra_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale);
-void EmRemobra_MoveByVelocity(Em *em);
-void EmRemobra_StartCurves(Em *em, u8 a);
-u8 EmRemobra_UpdateCurves(Em *);
-void EmChameleos_SetGroup0State(Em *em, u16 state, u8 mode);
-void EmChameleos_SetGroup1State(Em *em, u16 state, u8 mode);
-void EmChameleos_SetGroup2State(Em *em, u16 state, u8 mode);
-void EmChameleos_SetGroup3State(Em *em, u16 state, u8 mode);
 void EmChameleos_StartCurves(Em *em, u8 kind);
-void EmChameleos_SetFlag43C(Em *em);
-void EmChameleos_ClearFlag43C(Em *em);
+void EmChameleos_SetFullCloak(Em *em);
+void EmChameleos_ClearFullCloak(Em *em);
 s32 EmChameleos_IsInvisible(Em *em);
 s32 EmChameleos_WantsInvisible(Em *);
-s32 EmChameleos_InvisibilityBlocked(Em *em);
-void EmChameleos_SpawnPeriodicEffect06(Em *em);
-s32 func_00858980(Em *em);
-void EmBulldrome_Init(Em *em);
-void EmBulldrome_State0_0B(Em *, s32);
-void EmBulldrome_State1_00(Em *, s32);
-void EmBulldrome_State1_05(Em *em);
-void EmBulldrome_State1_07(Em *em, u8 variant);
-void EmBulldrome_State1_08(Em *em, u8 variant);
-void EmBulldrome_State2_01(Em *);
-void EmBulldrome_State2_02(Em *);
-void EmBulldrome_State3_06(Em *);
-void EmBulldrome_State5_00_Hunted(Em *);
-void EmBulldrome_State5_01_Hunted(Em *);
-void EmBulldrome_State6_00_Captured(Em *);
-void EmBulldrome_State6_01(Em *);
-void EmBulldrome_RunGroup8(Em *em);
+void EmChameleos_SpawnLyingPuffs(Em *em);
+s32 EmChameleos_TongueHitPlayer(Em *em);
 void EmBulldrome_LaunchFromHit(Em *);
-void EmBulldrome_SetMotionForSide(Em *em, s16 arg1);
-void StageObj_K13_Create(void *owner, s16 v, u8 k);
-void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
+void EmBulldrome_SetKnockedMotion(Em *em, s16 arg1);
+void AlertMark_Create(void *owner, s16 v, u8 k);
+void StunStars_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
@@ -174,44 +103,28 @@ s32 QuestEm_CanAppear(Em *em);
 void Player_ClearVelocity(void *);
 void Player_ClearAccel2(void *);
 void Motion_InitTime(void *p, s16 step);
-void Effect01_Spawn(void *obj, s16 type);
+void Shadow_Spawn(void *obj, s16 type);
 extern f32 gAreaGroundY[];
 extern EmFlyParam EmChameleos_FlyParam;
 extern EmFlyParam EmChameleos_FlyParam2;
-f32 Math_Absf(f32 x);
-void Em_InitParts(Em *em);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void EmBulldrome_State8_00(Em *, EmWork *);
 void Em_SetPartScaled(Em *em, s32 bit);
 void QuestEm_LoadPersistentHp(Em *em);
 u8 Quest_FindSpecialMonster(u8 id);
 s32 Em_PartBroken(Em *em, s32 arg1);
-void StageObj_K09_Create(Em *);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
+void EmTail_Create(Em *);
 s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-/* unit's own declaration: with the definition's void (void *obj, s16 bone, f32 *out) (sub_main/unk_3DDBA0.c), EmChameleos_SpawnGroundEffect: 11 of 31 words differ, EmChameleos_SpawnGroundEffectOffset: 53 of 68 words differ ... */
+/* unit's own declaration: declared here as the callers use it; with the definition's void (void *obj, s16 bone, f32 *out), the calls in EmChameleos_SpawnGroundEffect, EmChameleos_SpawnGroundEffectOffset and others compile differently */
 void Em_BonePos(void *obj, s32 a, f32 *out);
-void Effect0D_SpawnOnGround(f32 *pos, s32 a, f32 scale);
-s32 EmChameleos_HasFlag43C(Em *em);
+void PartFx_SpawnOnGround(f32 *pos, s32 a, f32 scale);
+s32 EmChameleos_HasFullCloak(Em *em);
 u16 Map_DayId(u16 area);
-void Em_BeginStatus1(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_ResetNotice(Em *em);
-s32 Game_IsOnline(void);
 void Versus_MarkDefeat(Em *);
 void Em_ResetToBasePose(Em *em);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
 void Em_CheckRageByHp(Em *em, s16 n);
 void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
 void Em_SetTargetAngle(Em *em);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 void Em_StartRage(Em *em);
 void Em_StartPendingRage(Em *em);
 void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
@@ -222,29 +135,22 @@ void Em_AddNeed1(Em *em, s32 n);
 void Em_AddNeed2(Em *em, s32 n);
 void Em_ClearNeed1State(Em *em);
 void Em_ClearNeed2State(Em *em);
-s16 Player_IsState(void *obj, u8 state, u8 sub);
 void MinePoint_Remove(s32);
 void Vec_Copy(f32 *out, f32 *in);
-u16 Rand_Next(s32 stream);
 extern f32 EmBulldrome_Effect0BOfs[3];
 void Em_ApplyPartBreaks(Em *em);
 void Em_FlagPartBreak(Em *em, s32 arg1);
 void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
-/* unit's own declaration: with the definition's void (Em *em, s16 k, s16 c, f32 scale) (game/unk_874B90.c), EmChameleos_SpawnK14NearGround: 26 of 39 words differ */
-void StageObj_K14_Create(Em *em, s32, s32, f32);
-extern f32 D_008CAE40;
-void StageObj_K25_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
+/* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s16 k, s16 c, f32 scale), the calls in EmChameleos_SpawnDustNearGround compile differently */
+void DustCloud_Create(Em *em, s32, s32, f32);
+void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
 void Versus_RouteEmByTeam(Em *em);
 s32 Versus_DefeatCamera(Em *pl);
-typedef struct EmBulldromeVec {
-    f32 x, y, z;
-} EmBulldromeVec;
-extern EmBulldromeVec EmBulldrome_CarveThrowPt __attribute__((aligned(8)));
-void EmChameleos_State1_01(Em *em, EmWork *work);
-void EmChameleos_State1_02(Em *em, EmWork *work, u8 variant);
-void EmChameleos_State1_06(Em *em, EmWork *work);
-void EmChameleos_State4_03(Em *em, EmWork *work, u8 variant);
-void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant);
+void EmChameleos_Limp(Em *em, EmWork *work);
+void EmChameleos_Turn(Em *em, EmWork *work, u8 variant);
+void EmChameleos_BackHop(Em *em, EmWork *work);
+void EmChameleos_KnockDown(Em *em, EmWork *work, u8 variant);
+void EmChameleos_Eat(Em *em, EmWork *work, u8 variant);
 void QuestEm_Hunted(Em *em);
 s8 EmMine_Create(Em *em, s32 idx);
 s32 EmMine_Update(Em *em);
@@ -254,9 +160,6 @@ s32 Save_TestEventFlag(s32);
 void QuestEm_Captured(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
 void Em_ClearPoison(Em *em);
-void EmBulldrome_EndState(Em *em);
-extern EmCurveKey *EmRemobra_VelYCurves[];
-extern EmCurveKey *EmRemobra_SpeedCurves[];
 void Vec_RotateY(f32 *v, f32 angle);
 void EmEffectAttack_CreateTimed(Em *, s32, s32, s32, s32, s16);
 void Em_MotionDelta(Em *em, f32 *out);
@@ -271,10 +174,10 @@ void Em_SelectSightRow(Em *em, u8 idx);
 u8 Player_InCurrentArea(void *obj);
 void Effect08_Spawn(f32 *pos, s32 k, s32 b, f32 scale);
 s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-struct StageObj *StageObj_K1C_CreateOnEm(struct Em *em, u8 k, f32 scale);
+struct StageObj *MonsterFx_CreateOnEm(struct Em *em, u8 k, f32 scale);
 void EmChameleos_MotionSounds(Em *em, EmWork *work);
-void StageObj_K11_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-s32 Quest_IsRunning(s32 ending);
+void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
+s32 Quest_GetOutcome(s32 withLoss);
 s32 Player_HasSkill(Player *p, u8 skill);
 s32 Item_IsStealable(s32 arg0);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
@@ -284,7 +187,6 @@ void Em_UpdatePendingScript(Em *em);
 void Em_ClearHitReactMode(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_SetStatus4Timer(Em *em);
-void EmRemobra_RunState(Em *em);
 void Em_RaisePlayerAreaTrigger(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
 void Em_CheckLowHp(Em *em, f32 ratio);
@@ -292,7 +194,6 @@ void Em_SetStatus2Timer(Em *em);
 void Em_SetStatus5Timer(Em *em);
 void Em_ResetKindTimer(Em *em);
 s32 ScEvent_CurId(void);
-void EmBulldrome_RunState(Em *em);
 u16 Area_DayId(u16 id);
 void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_DecayNeed2(Em *em);
@@ -304,23 +205,558 @@ void EmChameleos_BreakParts(Em *em, s32 apply);
 void EmChameleos_UpdateInvisibility(Em *em);
 /* end of prototypes */
 
+/*
+ * Plays the sounds of Chameleos's motion on layer 0 at its frames
+ * (Em_PlaySeAtBoneOnFrame: frame, sound id, bone), switching on the motion
+ * id in EmWork.sndMotion; two attack states add theirs in the default case.
+ */
+void EmChameleos_MotionSounds(Em *em, EmWork *work)
+{
+    s16 motion;
+
+    motion = work->sndMotion;
+    switch (motion) {
+    case EM_MOTION_ID(0, CHAM_MOT_IDLE):
+        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x39, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x102, 0x38, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x182, 0x31, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x24E, 0x38, 0x26);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_WALK):
+        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x39, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x80, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x11C, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x12A, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x8A, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x78, 3, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 3, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x148, 3, 0xD);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_RUN):
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x49, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 5, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x3E, 5, 8);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_RUN_STOP):
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x32, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x20, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 5, 8);
+        break;
+    case EM_MOTION_ID(0, 0x5):
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x50, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x70, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 3, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x94, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x17, 0x11);
+        break;
+    case EM_MOTION_ID(0, 0x6):
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x50, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x70, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x94, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x17, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_SPIN_TURN):
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x31, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x6A, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x6E, 7, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x96, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0xBA, 4, 8);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_BACK_HOP):
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x22, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x14, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xB, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x54, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x58, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x5A, 3, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x5C, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x8A, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x9C, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0xA0, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x96, 4, 8);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TAKE_OFF):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x36, 0x5B, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x13, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x15, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 3, 0xD);
+        break;
+    case EM_MOTION_ID(0, 0xB):
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x5B, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1C, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x1D, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x1D, 0x2E);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_FLY):
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1A, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x19, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x19, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x19, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x19, 0x2E);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_FLY_START):
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xE, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x1A, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0x19, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x19, 0x2E);
+        break;
+    case EM_MOTION_ID(0, 0xE):
+    case EM_MOTION_ID(0, CHAM_MOT_HOVER_SETTLE):
+        Em_PlaySeAtBoneOnFrame(em, 0xD, 0x1A, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x17, 0x19, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x19, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x19, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x41, 0x19, 0x2E);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_BRAKE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x32, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xB, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xB, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xB, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xB, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xC, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xC, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 7, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 5, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 5, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x8C, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0xB2, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xA0, 1, 8);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_HOVER):
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xD, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TAKE_OFF_END):
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xD, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xF, 0x11);
+        break;
+    case EM_MOTION_ID(0, 0x14):
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 4, 0xD);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_IDLE_ALERT):
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x38, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x9C, 0x31, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x108, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x39, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x19C, 0x38, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x3A, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x3A, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A4, 0x3A, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TURN_TO_GOAL):
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x37, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x37, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x122, 0x1F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0xE4, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x114, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0xF8, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0xE, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x16, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_IDLE_ACTION_A):
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x38, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x31, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x39, 0x26);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_CLOAK):
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5B, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x58, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x5A, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0xC, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xC, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_LIMP):
+        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x58, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x58, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4E, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 4, 3, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 4, 0xD);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_REST):
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5D, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x120, 0x5C, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x6C, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x88, 3, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x17, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_REST_END):
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0x28, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0xA8, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x44, 0xE, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xA, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE_LOW):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0xB4, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0xAE, 3, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0xCA, 3, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0xE6, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x24, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x29, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x24, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x29, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x28, 0x29);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_START):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x49, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 3, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 4, 0xD);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_A):
+        if ((em->stateGroup == EM_GROUP_ATTACK) && (em->state == 6)) {
+            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x18, 0x26);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0x4B, 0x26);
+            Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
+            Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
+            break;
+        }
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0x3D, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_A_END):
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x4E, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 8, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_STOMP):
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x4A, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x15, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x86, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0xD);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TAIL_SLAM):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x21, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x4B, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x96, 0x25, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x56, 6, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x16, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x20, 0, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x90, 0, 0xD);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_BACK_HOP_BALL):
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x1F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x4B, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x18, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 4, 3, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 5, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xB, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xB, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TAIL_POUNDS):
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x38, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x37, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 8, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0xA2, 8, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x102, 8, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x164, 8, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x36, 0xD, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x94, 0xD, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0xF2, 0xD, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x156, 0xD, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x24, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x29, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x28, 0x29);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE_B):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x24, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x29, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x15, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 1, 0x1F);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE_HIGH):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x24, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x29, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x28, 0x29);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_B):
+        if ((em->stateGroup == EM_GROUP_ATTACK) && (em->state == 7)) {
+            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x18, 0x26);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0x4B, 0x26);
+            Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
+            Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
+            break;
+        }
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0x3D, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 6, 2, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_B_END):
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 8, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x11);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_FLINCH_B):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x2E, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_RECOVER):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x54, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x4A, 7, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x12, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 5, 8);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0xA, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xA, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_FLINCH_A):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x54, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x2E, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x52, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x58, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xB, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xB, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0xB, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xB, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_FALL):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xB, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_FALL_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 8, 9, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 7, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xF, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_DOWN):
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x57, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x17, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x2A, 0x29);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_GET_UP):
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x56, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x82, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4A, 2, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x72, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x86, 3, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xB, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xE, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_DIE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x2F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x35, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x16E, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x190, 0x2C, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x60, 0x17, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x16, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x1B2, 0xF, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x1B6, 0xF, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x1D8, 7, 2);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_STATUS4):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x57, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_SHAKE_OFF):
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x5F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x5B, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0x26, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x16, 2);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x11);
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x54, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xE, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_STATUS_DOWN):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x5D, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x34, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x12, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x10, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0xB8, 7, 2);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xE, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0xB, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_COLLAPSE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x2C, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0xE2, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x17, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xC, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xC, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0xA8, 7, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0xB6, 9, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xA0, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x44, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x10, 8);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_PART_BREAK):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0x28, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x16, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 7, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x10, 2);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 9, 0x25);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x32);
+        break;
+    case EM_MOTION_ID(0, CHAM_MOT_PART_BREAK_SPIN):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x5F, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x29);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x33, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x17, 0x26);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x60, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 0xE, 0x32);
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0, 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 0x54, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x98, 4, 8);
+        Em_PlaySeAtBoneOnFrame(em, 0x6A, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0xBE, 4, 0xD);
+        Em_PlaySeAtBoneOnFrame(em, 0xA6, 1, 0x1F);
+
+    case EM_MOTION_ID(0, 0x4C):
+    default:
+        break;
+    }
+}
+
+/*
+ * Per-kind setup (Em_TypeSetup): allows the full cloak
+ * (EmChameleos_SetFullCloak).
+ */
 void EmChameleos_Setup(Em *em)
 {
-    EmChameleos_SetFlag43C(em);
+    EmChameleos_SetFullCloak(em);
 }
 
+/* Creates the alert mark (AlertMark_Create) and effect 01 on the monster. */
 void EmChameleos_SpawnEffects(void *em)
 {
-    StageObj_K13_Create(em, 0x22, 0);
-    Effect01_Spawn((Player *) em, 0);
+    AlertMark_Create(em, 0x22, 0);
+    Shadow_Spawn((Player *) em, 0);
 }
 
+/*
+ * Scales parts 3, 4 and 8, places the monster in a row when no quest runs,
+ * plays CHAM_MOT_IDLE on the ground and sets hp (Em_ComputeMaxHp, or the
+ * quest's persistent hp for a special monster). Sets the flight steps and
+ * invisibility work (invisFade none, shimmerTimer 900, wantInvisible 2),
+ * allows the full cloak, and creates its horn object (EmTail_Create) unless
+ * part 1 is already broken, in which case it marks the horn broken (fxFlags
+ * 1, partBreakCount 1).
+ */
 void EmChameleos_Init(Em *em)
 {
     EmChameleosWork *w = (EmChameleosWork *)&em->work;
 
     f32 fslot;
-    s16 size;
+    s16 maxHp;
     u8 slotNo;
 
     Em_SetPartScaled(em, 3);
@@ -334,12 +770,12 @@ void EmChameleos_Init(Em *em)
         em->posY = 0.0f;
         em->posZ = 9000.0f;
     }
-    Em_SetMotionRow(em, 1, 0, 0);
-    em->stance = 0;
+    Em_SetMotionRow(em, CHAM_MOT_IDLE, 0, 0);
+    em->stance = EM_STANCE_GROUND;
     if ((Quest_FindSpecialMonster(em->type) & 0xFF) == 0xFF) {
-        size = Em_ComputeMaxHp(em, 0);
-        em->hp = size;
-        em->hpMax = size;
+        maxHp = Em_ComputeMaxHp(em, 0);
+        em->hp = maxHp;
+        em->hpMax = maxHp;
     } else {
         QuestEm_LoadPersistentHp(em);
     }
@@ -351,111 +787,134 @@ void EmChameleos_Init(Em *em)
     w->moveAngZ = 0x200;
     w->pitchStep = 0x100;
     w->unk018 = 0x2000;
-    EmChameleos_SetFlag43C(em);
+    EmChameleos_SetFullCloak(em);
     w->unk014 = 0;
-    w->unk04C = 0xFFFF;
-    w->unk04E = 0x384;
+    w->invisFade = 0xFFFF;
+    w->shimmerTimer = 0x384;
     w->wantInvisible = 2;
     em->meshShown[1] = 0;
     if (Em_PartBroken(em, 1) == 0) {
-        StageObj_K09_Create(em);
+        EmTail_Create(em);
         return;
     }
     em->fxFlags |= 1;
     em->partBreakCount = 1;
 }
 
+/* Init, then CHAM_IDLE (or CHAM_IDLE_ALERT in combat). */
 void EmChameleos_Start(Em *em)
 {
     EmChameleos_Init(em);
-    EmChameleos_ChangeState(em, 0, 1, 0);
+    EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE, EM_SYNC_LOCAL);
 }
 
+/* Init only. */
 void EmChameleos_Reinit(Em *em)
 {
     EmChameleos_Init(em);
 }
 
+/*
+ * Ends a ground state: clears lookAtTarget, asks the script for the next
+ * state (scriptPending), speed 1, stance ground, and enters CHAM_IDLE.
+ */
 void EmChameleos_EndState(Em *em, s32 unused1, s32 unused2)
 {
     em->lookAtTarget = 0;
     em->scriptPending = 1;
     em->motionSpeed = 1.0f;
-    em->stance = 0;
-    EmChameleos_ChangeState(em, 0, 1, 0);
+    em->stance = EM_STANCE_GROUND;
+    EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE, EM_SYNC_LOCAL);
 }
 
-void EmChameleos_EndState2(Em *em, u8 next)
+/*
+ * Ends an air state: asks the script for the next state, stance air, and
+ * enters CHAM_FLY_HOVER (next 0), CHAM_FLY_FORWARD (next 1) or
+ * CHAM_FLY_NONE_A (next 2).
+ */
+void EmChameleos_EndAirState(Em *em, u8 nextKind)
 {
-    s32 k;
+    s32 next;
 
-    k = next & 0xFF;
+    next = nextKind & 0xFF;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
     em->motionSpeed = 1.0f;
-    em->stance = 2;
-    switch (k) {
+    em->stance = EM_STANCE_AIR;
+    switch (next) {
     case 0:
-        EmChameleos_ChangeState(em, 2, 2, 0);
+        EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_HOVER, EM_SYNC_LOCAL);
         break;
     case 1:
-        EmChameleos_ChangeState(em, 2, 0xF, 0);
+        EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_FORWARD, EM_SYNC_LOCAL);
         break;
     case 2:
-        EmChameleos_ChangeState(em, 2, 3, 0);
+        EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_NONE_A, EM_SYNC_LOCAL);
         break;
     }
 }
 
-void EmChameleos_StealItem(Em *em, Player *p)
+/*
+ * The tongue's theft: for the local player, while the quest runs and
+ * without SKILL_THEFT_GUARD, takes one of a random pouch item of type 0 and rarity
+ * below 4, preferring items Item_IsStealable accepts, and shows the
+ * stolen-item notice. Called by the tongue attacks when EmChameleos's
+ * tongue-hit test (EmChameleos_TongueHitPlayer) passes, with Em.contact.
+ */
+void EmChameleos_StealItem(Em *em, Player *pl)
 {
     s32 i;
-    s32 nRare;
-    s32 nNormal;
+    s32 nStealable;
+    s32 nOther;
     s16 item;
-    s16 n;
-    s32 rare[20];
-    s32 normal[20];
+    s16 count;
+    s32 stealable[20];
+    s32 other[20];
 
-    if (p->index == gScene.localPlayer && Quest_IsRunning(1) == 0 && Player_HasSkill(p, 0x5C) != 1) {
-        nRare = 0;
-        nNormal = 0;
+    if (pl->index == gScene.localPlayer && Quest_GetOutcome(1) == 0 && Player_HasSkill(pl, SKILL_THEFT_GUARD) != 1) {
+        nStealable = 0;
+        nOther = 0;
         for (i = 0; i < 20; i++) {
-            if (p->pouch[i].item != 0 && gItemData[p->pouch[i].item].type == 0 && gItemData[p->pouch[i].item].rarity < 4) {
-                if (Item_IsStealable(p->pouch[i].item) == 1) {
-                    rare[nRare++] = i;
+            if (pl->pouch[i].item != 0 && gItemData[pl->pouch[i].item].type == 0 && gItemData[pl->pouch[i].item].rarity < 4) {
+                if (Item_IsStealable(pl->pouch[i].item) == 1) {
+                    stealable[nStealable++] = i;
                 } else {
-                    normal[nNormal++] = i;
+                    other[nOther++] = i;
                 }
             }
         }
-        if (nRare > 0) {
-            item = p->pouch[rare[em->stateRand % nRare]].item;
-            n = -1;
-        } else if (nNormal > 0) {
-            item = p->pouch[normal[em->stateRand % nNormal]].item;
-            n = -1;
+        if (nStealable > 0) {
+            item = pl->pouch[stealable[em->stateRand % nStealable]].item;
+            count = -1;
+        } else if (nOther > 0) {
+            item = pl->pouch[other[em->stateRand % nOther]].item;
+            count = -1;
         } else {
             return;
         }
-        Pouch_Add(p, item, n);
-        if (p->index == gScene.localPlayer) {
+        Pouch_Add(pl, item, count);
+        if (pl->index == gScene.localPlayer) {
             Notice_Push(1, 6, item);
         }
     }
 }
 
-void EmChameleos_State0_00(Em *em)
+/*
+ * CHAM_IDLE_STAND: keeps layers 0 and 1 on their idle loops
+ * (EM_MOTION_ID(0,1), EM_MOTION_ID(1,1)) looking at the target until the
+ * timer runs out, then asks the script for the next state.
+ */
+void EmChameleos_Stand(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetLayerMotion(em, 0x3E9, 0xA, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, CHAM_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, CHAM_MOT_IDLE), 0xA, 0, 0);
         }
-        if (em->motionId[1] != 0x4B1) {
-            Em_SetLayerMotion(em, 0x4B1, 0xA, 0, 1);
+        if (em->motionId[1] != EM_MOTION_ID(1, CHAM_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, CHAM_MOT_IDLE), 0xA, 0, 1);
         }
         em->lookAtTarget = 1;
         break;
@@ -467,14 +926,18 @@ void EmChameleos_State0_00(Em *em)
     }
 }
 
-void EmChameleos_State0_01(Em *em)
+/*
+ * CHAM_IDLE: plays CHAM_MOT_IDLE once looking at the target, then the owner
+ * ends the state (EmChameleos_EndState).
+ */
+void EmChameleos_Idle(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_IDLE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -489,14 +952,18 @@ void EmChameleos_State0_01(Em *em)
     }
 }
 
-void EmChameleos_State0_02(Em *em)
+/*
+ * CHAM_IDLE_ALERT: CHAM_IDLE in combat (EmChameleos_SetIdleState's
+ * choice); plays CHAM_MOT_IDLE_ALERT once, then the owner ends the state.
+ */
+void EmChameleos_IdleAlert(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
-        Em_SetMotion(em, 0x1F, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_IDLE_ALERT, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -511,16 +978,21 @@ void EmChameleos_State0_02(Em *em)
     }
 }
 
-void EmChameleos_State0_03(Em *em)
+/*
+ * CHAM_IDLE_FACE_GOAL: plays CHAM_MOT_TURN_TO_GOAL aimed at the goal,
+ * snapping rotY onto the aim when within 0x200, and ends when layer 1's
+ * motion stops.
+ */
+void EmChameleos_FaceGoal(Em *em)
 {
     u16 aimAngle;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x20, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TURN_TO_GOAL, 0, 0);
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         break;
     case 1:
@@ -541,14 +1013,18 @@ void EmChameleos_State0_03(Em *em)
     }
 }
 
-void EmChameleos_State0_04(Em *em)
+/*
+ * CHAM_IDLE_CLOAK_FULL: entered with EmChameleos_SetFullCloak (the full
+ * cloak allowed); plays CHAM_MOT_CLOAK once and ends.
+ */
+void EmChameleos_CloakFull(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x22, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_CLOAK, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -559,14 +1035,19 @@ void EmChameleos_State0_04(Em *em)
     }
 }
 
-void EmChameleos_State0_05(Em *em)
+/*
+ * CHAM_IDLE_CLOAK_SHIMMER: entered with EmChameleos_ClearFullCloak (only the
+ * shimmering cloak); plays CHAM_MOT_CLOAK once and ends. Same body as
+ * EmChameleos_CloakFull.
+ */
+void EmChameleos_CloakShimmer(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x22, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_CLOAK, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -577,14 +1058,15 @@ void EmChameleos_State0_05(Em *em)
     }
 }
 
-void EmChameleos_State0_09(Em *em)
+/* CHAM_IDLE_ACTION_A: plays CHAM_MOT_IDLE_ACTION_A once and ends. */
+void EmChameleos_IdleActionA(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x21, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_IDLE_ACTION_A, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -594,18 +1076,24 @@ void EmChameleos_State0_09(Em *em)
     }
 }
 
-void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
+/*
+ * CHAM_IDLE_EAT_NEED1 (variant 0, one CHAM_MOT_TONGUE) and
+ * CHAM_IDLE_EAT_NEED2 (variant 1, three, each with effect 08 and a sound on
+ * the floor 200 ahead): eats with the tongue (no flinch, sight row 1,
+ * reaction set 1), then gains 5% hp, refills need 1 or need 2 and ends.
+ */
+void EmChameleos_Eat(Em *em, EmWork *work, u8 variant)
 {
     f32 pos[3];
-    f32 v[3];
+    f32 ofs[3];
 
     Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x31, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TONGUE, 0, 0);
         Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         switch (variant) {
@@ -626,14 +1114,14 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
                 break;
             case 1:
                 if (Player_InCurrentArea(em)) {
-                    v[0] = 0.0f;
-                    v[1] = 0.0f;
-                    v[2] = 200.0f * em->scaleZ;
+                    ofs[0] = 0.0f;
+                    ofs[1] = 0.0f;
+                    ofs[2] = 200.0f * em->scaleZ;
                     Em_BonePos(em, 0x29, pos);
-                    Vec_RotateY(v, 6.2831855f * em->rotY / 65536.0f);
-                    pos[0] += v[0];
+                    Vec_RotateY(ofs, 6.2831855f * em->rotY / 65536.0f);
+                    pos[0] += ofs[0];
                     pos[1] = 5.0f + em->floorY;
-                    pos[2] += v[2];
+                    pos[2] += ofs[2];
                     Effect08_Spawn(pos, 0, 0, 2.0f);
                     Sound_PlaySeAtPosChecked(1, 0x2E, 0, pos, 1, 0);
                 }
@@ -658,77 +1146,92 @@ void EmChameleos_State0_0A(Em *em, EmWork *work, u8 variant)
                 Em_LoadReactionSet(em, 0);
                 EmChameleos_EndState(em, 0, 0);
             } else {
-                Em_SetMotion(em, 0x31, 0, 0);
+                Em_SetMotion(em, CHAM_MOT_TONGUE, 0, 0);
             }
         }
         break;
     }
 }
 
-void EmChameleos_State0_12(Em *em)
+/*
+ * CHAM_IDLE_REST: lies resting (CHAM_MOT_REST, blind, a hit wakes it) for
+ * 9000 frames regenerating hp up to half (Em_RegenHp) with the periodic
+ * puffs, then clears the low-hp need and enters CHAM_IDLE_REST_END;
+ * EM_DMG_HIT_LYING ends it the same way (Update).
+ */
+void EmChameleos_Rest(Em *em)
 {
     em->blind = 2;
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x24, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_REST, 0, 0);
         Em_LoadReactionSet(em, 1);
         em->timer = 0x2328;
         break;
     case 1:
-        EmChameleos_SpawnPeriodicEffect06(em);
+        EmChameleos_SpawnLyingPuffs(em);
         Em_RegenHp(em, 1, (s32) (0.5f * (f32) em->hpMax), 6);
         if (--em->timer <= 0) {
             em->step++;
             Em_ClearLowHpNeed(em);
-            EmChameleos_ChangeState(em, 0, 0x17, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmChameleos_ChangeState(em, 0, 0x17, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmChameleos_State0_14(Em *em)
+/*
+ * CHAM_IDLE_STATUS2_DOWN: under status 2 (entered with Em_BeginStatus2),
+ * lies (CHAM_MOT_STATUS_DOWN, blind, a hit wakes it) with the periodic
+ * puffs until the status timer runs out, then CHAM_IDLE_STATUS2_END.
+ */
+void EmChameleos_Status2Down(Em *em)
 {
     em->blind = 2;
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x47, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_STATUS_DOWN, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        EmChameleos_SpawnPeriodicEffect06(em);
+        EmChameleos_SpawnLyingPuffs(em);
         if (--em->timer <= 0) {
             em->step++;
-            EmChameleos_ChangeState(em, 0, 0x18, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmChameleos_ChangeState(em, 0, 0x18, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmChameleos_State0_17(Em *em)
+/*
+ * CHAM_IDLE_REST_END: gets up from rest (CHAM_MOT_REST_END, entered with
+ * Em_RefillNeed3), blind meanwhile, and ends.
+ */
+void EmChameleos_RestEnd(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x25, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CHAM_MOT_REST_END, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -742,13 +1245,17 @@ void EmChameleos_State0_17(Em *em)
     }
 }
 
-void EmChameleos_State0_18(Em *em)
+/*
+ * CHAM_IDLE_STATUS2_END: gets up (CHAM_MOT_GET_UP, entered with
+ * Em_EndStatus2), blind meanwhile, and ends.
+ */
+void EmChameleos_Status2End(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x43, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CHAM_MOT_GET_UP, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -762,13 +1269,14 @@ void EmChameleos_State0_18(Em *em)
     }
 }
 
-void EmChameleos_State0_19(Em *em)
+/* CHAM_IDLE_SHAKE_OFF: plays CHAM_MOT_SHAKE_OFF once and ends. */
+void EmChameleos_ShakeOff(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x46, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CHAM_MOT_SHAKE_OFF, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -779,40 +1287,49 @@ void EmChameleos_State0_19(Em *em)
     }
 }
 
-void EmChameleos_State0_1B(Em *em)
+/*
+ * CHAM_IDLE_STATUS1_DOWN: under status 1 (entered with Em_BeginStatus1),
+ * lies as EmChameleos_Status2Down until the timer runs out, then
+ * CHAM_IDLE_STATUS1_END.
+ */
+void EmChameleos_Status1Down(Em *em)
 {
     em->blind = 2;
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x47, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_STATUS_DOWN, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        EmChameleos_SpawnPeriodicEffect06(em);
+        EmChameleos_SpawnLyingPuffs(em);
         if (--em->timer <= 0) {
             em->step++;
-            EmChameleos_ChangeState(em, 0, 0x1C, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmChameleos_ChangeState(em, 0, 0x1C, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmChameleos_State0_1C(Em *em)
+/*
+ * CHAM_IDLE_STATUS1_END: gets up (CHAM_MOT_GET_UP, entered with
+ * Em_EndStatus1), blind meanwhile, and ends.
+ */
+void EmChameleos_Status1End(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x43, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CHAM_MOT_GET_UP, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -826,13 +1343,18 @@ void EmChameleos_State0_1C(Em *em)
     }
 }
 
-void EmChameleos_State0_20(Em *em)
+/*
+ * CHAM_IDLE_STUN_SHAKE_OFF (entered with Em_EndStatus5) and
+ * CHAM_IDLE_STATUS4_SHAKE_OFF (entered with Em_EndStatus4): plays
+ * CHAM_MOT_SHAKE_OFF once and ends.
+ */
+void EmChameleos_StatusShakeOff(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x46, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CHAM_MOT_SHAKE_OFF, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -843,14 +1365,18 @@ void EmChameleos_State0_20(Em *em)
     }
 }
 
-void EmChameleos_State1_00(Em *em)
+/*
+ * CHAM_MOVE_WALK: walks to the goal (CHAM_MOT_WALK, Em_StepToGoal) and ends
+ * there; below 15% hp EmChameleos_SetMoveState makes it CHAM_MOVE_LIMP.
+ */
+void EmChameleos_Walk(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 2, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_WALK, 0, 0);
         break;
     case 1:
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
@@ -861,29 +1387,35 @@ void EmChameleos_State1_00(Em *em)
     }
 }
 
-void EmChameleos_State1_01(Em *em, EmWork *work)
+/*
+ * CHAM_MOVE_LIMP: walks on CHAM_MOT_LIMP's root motion, turning 0x40 a
+ * frame toward the goal when it has one and counting the distance down
+ * (Em_MotionDelta); ends when the goal is reached or the timer set from the
+ * distance runs out.
+ */
+void EmChameleos_Limp(Em *em, EmWork *work)
 {
     f32 pos[3];
-    s32 d;
+    s32 angDiff;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x23, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_LIMP, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
-            d = (Math_AngleXZ(&em->posX, em->goal) - em->rotY) & 0xFFFF;
-            if (d <= 0x8000) {
-                if (d <= 0x3F) {
-                    em->rotY += d;
+            angDiff = (Math_AngleXZ(&em->posX, em->goal) - em->rotY) & 0xFFFF;
+            if (angDiff <= 0x8000) {
+                if (angDiff <= 0x3F) {
+                    em->rotY += angDiff;
                 } else {
                     em->rotY += 0x40;
                 }
-            } else if (d > 0xFFC0) {
-                em->rotY += d;
+            } else if (angDiff > 0xFFC0) {
+                em->rotY += angDiff;
             } else {
                 em->rotY -= 0x40;
             }
@@ -901,27 +1433,33 @@ void EmChameleos_State1_01(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State1_02(Em *em, EmWork *work, u8 variant)
+/*
+ * CHAM_MOVE_TURN (variant 0) and CHAM_MOVE_TURN_RANDOM (variant 1, first
+ * sets a goal 500 away in a random direction): turns to the target with
+ * EmChameleos_TurnParams (Em_StartTurnToTarget, Em_TurnStep), then clears
+ * EM_FLAG_NO_ROOT_MOTION and ends.
+ */
+void EmChameleos_Turn(Em *em, EmWork *work, u8 variant)
 {
-    f32 v[3];
+    f32 ofs[3];
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         em->speedBonus = 30;
         switch (variant) {
         case 0:
             break;
         case 1:
-            v[0] = 0.0f;
-            v[1] = 0.0f;
-            v[2] = 500.0f;
-            Vec_RotateY(v, 6.2831855f * em->stateRand / 65536.0f);
-            em->goal[0] = em->posX + v[0];
+            ofs[0] = 0.0f;
+            ofs[1] = 0.0f;
+            ofs[2] = 500.0f;
+            Vec_RotateY(ofs, 6.2831855f * em->stateRand / 65536.0f);
+            em->goal[0] = em->posX + ofs[0];
             em->goal[1] = em->posY;
-            em->goal[2] = em->posZ + v[2];
+            em->goal[2] = em->posZ + ofs[2];
             break;
         }
         Em_StartTurnToTarget(em, &EmChameleos_TurnParams[0]);
@@ -936,21 +1474,27 @@ void EmChameleos_State1_02(Em *em, EmWork *work, u8 variant)
     }
 }
 
-void EmChameleos_State1_04(Em *em, s32 unused, s32 variant)
+/*
+ * CHAM_MOVE_RUN (variant 0, a ChameleosAttack of type 6 at frame 34) and
+ * CHAM_MOVE_RUN_NO_HIT (variant 1): runs to the goal (CHAM_MOT_RUN,
+ * Em_StepToGoal), then plays CHAM_MOT_RUN_STOP and ends when layer 1's
+ * motion stops.
+ */
+void EmChameleos_Run(Em *em, s32 unused, s32 variant)
 {
-    s32 k;
+    s32 variant8;
 
     switch (em->step) {
     case 0:
         em->step++;
         em->stateVar0 = 0;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 3, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_RUN, 0, 0);
         break;
     case 1:
-        k = variant & 0xFF;
-        switch (k) {
+        variant8 = variant & 0xFF;
+        switch (variant8) {
         case 0:
             if ((em->stateVar0 == 0) && (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0)) {
                 ChameleosAttack_Create(em, 6);
@@ -962,7 +1506,7 @@ void EmChameleos_State1_04(Em *em, s32 unused, s32 variant)
         }
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
             em->step++;
-            Em_SetMotion(em, 4, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_RUN_STOP, 0, 0);
         }
         break;
     case 2:
@@ -974,14 +1518,18 @@ void EmChameleos_State1_04(Em *em, s32 unused, s32 variant)
     }
 }
 
-void EmChameleos_State1_05(Em *em)
+/*
+ * CHAM_MOVE_SPIN_TURN: plays CHAM_MOT_SPIN_TURN, rotY falling 0x590 a frame
+ * between frames 44 and 90, and ends.
+ */
+void EmChameleos_SpinTurn(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 7, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_SPIN_TURN, 0, 0);
         break;
     case 1:
         if (EmMotion_InFrameRange(em, 0, 44.0f, 90.0f) != 0) {
@@ -995,36 +1543,40 @@ void EmChameleos_State1_05(Em *em)
     }
 }
 
-void EmChameleos_State1_06(Em *em, EmWork *work)
+/*
+ * CHAM_MOVE_BACK_HOP: plays CHAM_MOT_BACK_HOP, airborne (stance air) and
+ * moved back along its facing between frames 44 and 82, and ends.
+ */
+void EmChameleos_BackHop(Em *em, EmWork *work)
 {
-    f32 v[3];
-    f32 out[3];
-    s32 ang[3];
+    f32 back[3];
+    f32 delta[3];
+    s32 angles[3];
     f32 mtx[16];
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 9, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_BACK_HOP, 0, 0);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 44.0f) != 0 && EmMotion_ReachedFrame(em, 0, 82.0f) == 0) {
-            em->stance = 2;
-            ang[0] = 0;
-            ang[1] = em->rotY;
-            ang[2] = 0;
-            Vec_Set(v, 0.0f, 0.0f, -139.46706f);
-            Mtx_FromAnglesYXZ(ang, mtx);
-            Vec_Rotate(out, v, mtx);
-            em->posX += out[0];
-            em->posZ += out[2];
+            em->stance = EM_STANCE_AIR;
+            angles[0] = 0;
+            angles[1] = em->rotY;
+            angles[2] = 0;
+            Vec_Set(back, 0.0f, 0.0f, -139.46706f);
+            Mtx_FromAnglesYXZ(angles, mtx);
+            Vec_Rotate(delta, back, mtx);
+            em->posX += delta[0];
+            em->posZ += delta[2];
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
         if (em->motion[1].playing == 0) {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->step++;
             EmChameleos_EndState(em, 0, 0);
         }
@@ -1032,21 +1584,27 @@ void EmChameleos_State1_06(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_00(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_TAKE_OFF: plays CHAM_MOT_TAKE_OFF with height curve 0, airborne
+ * from frame 58, then rises 30 a frame to 600 (scaled) above the floor,
+ * plays CHAM_MOT_TAKE_OFF_END and enters CHAM_FLY_HOVER
+ * (EmChameleos_EndAirState 0).
+ */
+void EmChameleos_TakeOff(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0xA, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TAKE_OFF, 0, 0);
         EmChameleos_StartCurves(em, 0U);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        ((EmChameleosWork *)work)->flyGuard = 0;
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 58.0f, 0U) != 0) {
             em->step++;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
         }
         break;
     case 2:
@@ -1059,19 +1617,26 @@ void EmChameleos_State2_00(Em *em, EmWork *work)
         em->posY += 30.0f;
         if (!(em->posY < (em->floorY + (600.0f * em->scaleY)))) {
             em->step++;
-            Em_SetMotion(em, 0x13, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_TAKE_OFF_END, 0, 0);
         }
         break;
     case 4:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
 }
 
-void EmChameleos_State2_01(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_LAND: hovers (CHAM_MOT_HOVER) and sinks, its fall speed chosen
+ * to reach 1000 above the floor, until 500 (scaled) above it, then drops to
+ * the floor with CHAM_MOT_LAND and a camera shake, stance ground, and ends.
+ * EmChameleos_SetFlyState turns it into CHAM_FLY_BRAKE_AND_LAND when
+ * flying at speed 50 or more.
+ */
+void EmChameleos_Land(Em *em, EmWork *work)
 {
     f32 floorY;
     f32 dy;
@@ -1079,14 +1644,14 @@ void EmChameleos_State2_01(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         em->rotX = 0;
         em->rotZ = 0;
-        Em_SetMotion(em, 0x12, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
         Player_ClearVelocity(em);
         em->velY = -10.0f;
-        ((EmChameleosWork *)work)->unk010 = 0;
+        ((EmChameleosWork *)work)->flyGuard = 0;
         work->moveAngCX = 0;
         work->moveAngX = 0;
         floorY = em->floorY;
@@ -1106,11 +1671,11 @@ void EmChameleos_State2_01(Em *em, EmWork *work)
         }
         if (!((em->floorY + (500.0f * em->scaleY)) <= em->posY)) {
             em->step++;
-            Em_SetMotion(em, 0x11, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_LAND, 0, 0);
             em->posY = em->floorY;
             em->rotX = 0;
             em->rotZ = 0;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             CamShake_ReqAIf(em, 1);
         }
         break;
@@ -1127,7 +1692,11 @@ void EmChameleos_State2_01(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_02(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_HOVER: plays CHAM_MOT_HOVER once and enters CHAM_FLY_HOVER again
+ * (the script picks what follows).
+ */
+void EmChameleos_Hover(Em *em, EmWork *work)
 {
     f32 floorY;
 
@@ -1135,14 +1704,14 @@ void EmChameleos_State2_02(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x12, 0, 0);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
+        ((EmChameleosWork *)work)->flyGuard = 0;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
@@ -1152,29 +1721,39 @@ void EmChameleos_State2_02(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_03(void)
+/* CHAM_FLY_NONE_A: does nothing (EmChameleos_EndAirState 2 enters it). */
+void EmChameleos_FlyNoneA(void)
 {
 }
 
-void EmChameleos_State2_04(void)
+/* CHAM_FLY_NONE_B: does nothing. */
+void EmChameleos_FlyNoneB(void)
 {
 }
 
-void EmChameleos_State2_05(void)
+/* CHAM_FLY_NONE_C: does nothing. */
+void EmChameleos_FlyNoneC(void)
 {
 }
 
-void EmChameleos_State2_06(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_ROUTE: flies (CHAM_MOT_FLY_START, then CHAM_MOT_FLY;
+ * Em_UpdateFlight with EmChameleos_FlyParam) from area point to area point;
+ * each leg ends within 3000 or when its timer runs out, picks the next
+ * point (curGoalNo + 1, Em_ComputeGoal2) and restarts the state, and after
+ * the legs EmChameleos_SetFlyState gave (4) it enters CHAM_FLY_FORWARD.
+ */
+void EmChameleos_FlyRoute(Em *em, EmWork *work)
 {
     f32 floorY;
-    s32 t;
-    u8 n;
+    s32 legTimer;
+    u8 legs;
     u8 stateVar1;
 
     switch (em->step) {
     case 0:
-        em->stance = 2;
-        Em_SetMotion(em, 0xD, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CHAM_MOT_FLY_START, 0, 0);
         em->step++;
         em->stateVar1 = 0;
         em->lookAtTarget = 0;
@@ -1184,25 +1763,25 @@ void EmChameleos_State2_06(Em *em, EmWork *work)
         if (em->velZ <= 50.0f) {
             em->velZ = 50.0f;
         }
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         break;
     case 1:
         stateVar1 = em->stateVar1;
         if ((stateVar1 == 0) && (em->motion[0].playing == 0)) {
             em->stateVar1 = stateVar1 + 1;
-            Em_SetMotion(em, 0xC, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_FLY, 0, 0);
         }
-        if ((Vec_DistanceXZ(&em->posX, em->goal) <= 3000.0f) || (t = em->timer - 1, em->timer = t, (t <= 0))) {
-            n = ((EmChameleosWork *)work)->unk005 - 1;
-            ((EmChameleosWork *)work)->unk005 = n;
-            if ((n & 0xFF) <= 0) {
-                EmChameleos_EndState2(em, 1U);
+        if ((Vec_DistanceXZ(&em->posX, em->goal) <= 3000.0f) || (legTimer = em->timer - 1, em->timer = legTimer, (legTimer <= 0))) {
+            legs = ((EmChameleosWork *)work)->routeLegs - 1;
+            ((EmChameleosWork *)work)->routeLegs = legs;
+            if ((legs & 0xFF) <= 0) {
+                EmChameleos_EndAirState(em, 1U);
             } else {
                 em->curGoalNo++;
                 em->curGoalNo &= 3;
                 Em_ComputeGoal2(em, em->goal);
                 em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f);
-                EmChameleos_ChangeState(em, 2, 6, 0);
+                EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_ROUTE, EM_SYNC_LOCAL);
             }
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
@@ -1220,7 +1799,12 @@ void EmChameleos_State2_06(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_07(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_HOVER_TO_GOAL: hovers (CHAM_MOT_HOVER) to the goal at speed 20,
+ * turning to it (Em_TurnToGoal 0x100) and pitching toward it, and enters
+ * CHAM_FLY_HOVER near the goal or when the timer runs out.
+ */
+void EmChameleos_HoverToGoal(Em *em, EmWork *work)
 {
     f32 dist;
     f32 floorY;
@@ -1229,11 +1813,11 @@ void EmChameleos_State2_07(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         work->moveAngZ = 0x100;
-        Em_SetMotion(em, 0x12, 0, 0);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
+        ((EmChameleosWork *)work)->flyGuard = 0;
         break;
     case 1:
         Em_TurnToGoal(em, (s32) (u16) work->moveAngZ, 1);
@@ -1247,7 +1831,7 @@ void EmChameleos_State2_07(Em *em, EmWork *work)
         if ((timer <= 0) || (dist <= (10.0f * em->velZ))) {
             em->step++;
             Player_ClearVelocity(em);
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
@@ -1258,7 +1842,15 @@ void EmChameleos_State2_07(Em *em, EmWork *work)
 }
 
 void Hud_TriggerGlow(Em *em);
-void EmChameleos_State2_08(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_OUT_OF_AREA: flies (CHAM_MOT_FLY, speed 50) to the area's exit
+ * point until out of the area, then enters the next area
+ * (Em_EnterNextArea): CHAM_FLY_INTO_AREA when it is the destination (or
+ * there is none), else CHAM_FLY_THROUGH_AREA toward the next one; the last
+ * step retries the change on the owner. EmChameleos_SetFlyState lands it
+ * instead (CHAM_FLY_LAND) when its goal is not an area.
+ */
+void EmChameleos_FlyOutOfArea(Em *em, EmWork *work)
 {
     f32 floorY;
     u16 next;
@@ -1266,13 +1858,13 @@ void EmChameleos_State2_08(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Player_ClearVelocity(em);
         em->velZ = 50.0f;
-        Em_SetMotion(em, 0xC, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_FLY, 0, 0);
         Em_AreaExitPoint(em, (f32 *) em->goal);
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         break;
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
@@ -1296,7 +1888,7 @@ void EmChameleos_State2_08(Em *em, EmWork *work)
         next = *(u16 *) &em->destArea;
         if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
-            EmChameleos_ChangeState(em, 2, 9, 1);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_INTO_AREA, EM_SYNC_SEND);
         } else {
             if (em->remote == 0) {
                 em->nextArea = next;
@@ -1304,7 +1896,7 @@ void EmChameleos_State2_08(Em *em, EmWork *work)
                 em->goalKind = 3;
                 Em_ComputeGoal(em, em->goal);
             }
-            EmChameleos_ChangeState(em, 2, 0xD, 1);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_THROUGH_AREA, EM_SYNC_SEND);
             Hud_TriggerGlow(em);
         }
         break;
@@ -1322,23 +1914,29 @@ void EmChameleos_State2_08(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_09(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_INTO_AREA: faces the goal (an area point from
+ * EmChameleos_SetFlyState) and flies to it at speed 80 (Em_UpdateFlight
+ * 0xE5), clearing destArea, then enters CHAM_FLY_LAND within 1000 or when
+ * the timer runs out (retried on the owner every 600 frames).
+ */
+void EmChameleos_FlyIntoArea(Em *em, EmWork *work)
 {
-    f32 d;
+    f32 goalDist;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         work->moveAngZ = 0x100;
-        Em_SetMotion(em, 0x12, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->rotY = (s32) em->aimAngle;
         *(u16 *) &em->destArea = AREA_NONE;
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         break;
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
@@ -1348,19 +1946,19 @@ void EmChameleos_State2_09(Em *em, EmWork *work)
         work->moveAngCY = em->rotY;
         work->moveAngX = 0;
         Em_MoveRotated(em, &work->moveAngCX);
-        d = Vec_DistanceXZ(&em->posX, em->goal);
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
         em->timer--;
-        if (d <= 1000.0f || em->timer < 0) {
+        if (goalDist <= 1000.0f || em->timer < 0) {
             em->step++;
             em->timer = 600;
-            EmChameleos_ChangeState(em, 2, 1, 1);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_LAND, EM_SYNC_SEND);
         }
         break;
     case 2:
         if (em->remote == 0) {
             if (--em->timer <= 0) {
                 em->timer = 0x258;
-                EmChameleos_ChangeState(em, 2, 1, 1);
+                EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_LAND, EM_SYNC_SEND);
             }
         }
         break;
@@ -1370,24 +1968,30 @@ void EmChameleos_State2_09(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_0A(void)
+/* CHAM_FLY_NONE_D: does nothing. */
+void EmChameleos_FlyNoneD(void)
 {
 }
 
-void EmChameleos_State2_0B(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_TO_GOAL_AND_LAND: flies (CHAM_MOT_FLY, at most speed 100) to the
+ * goal, slowing to 50 within 1000, and enters CHAM_FLY_LAND there or when
+ * the timer runs out (retried every 300 frames).
+ */
+void EmChameleos_FlyToGoalAndLand(Em *em, EmWork *work)
 {
     f32 floorY;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0xC, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_FLY, 0, 0);
         if (!(em->velZ <= 100.0f)) {
             em->velZ = 100.0f;
         }
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         break;
     case 1:
         if (Vec_DistanceXZ(&em->posX, em->goal) <= 1000.0f) {
@@ -1396,7 +2000,7 @@ void EmChameleos_State2_0B(Em *em, EmWork *work)
             }
             em->step++;
             em->timer = 0x12C;
-            EmChameleos_ChangeState(em, 2, 1, 1);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_LAND, EM_SYNC_SEND);
         } else {
             em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
             em->aimAngle = em->aimAngle - em->rotY;
@@ -1408,7 +2012,7 @@ void EmChameleos_State2_0B(Em *em, EmWork *work)
             if (--em->timer <= 0) {
                 em->step++;
                 em->timer = 0x12C;
-                EmChameleos_ChangeState(em, 2, 1, 1);
+                EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_LAND, EM_SYNC_SEND);
             }
         }
         break;
@@ -1423,7 +2027,7 @@ void EmChameleos_State2_0B(Em *em, EmWork *work)
         if (--em->timer <= 0) {
             em->timer = 0x12C;
             if (em->remote == 0) {
-                EmChameleos_ChangeState(em, 2, 1, 1);
+                EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_LAND, EM_SYNC_SEND);
             }
         }
         break;
@@ -1434,38 +2038,45 @@ void EmChameleos_State2_0B(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_0C(void)
+/* CHAM_FLY_NONE_E: does nothing. */
+void EmChameleos_FlyNoneE(void)
 {
 }
 
-void EmChameleos_State2_0D(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_THROUGH_AREA: crosses an area on the way: flies at speed 80 to
+ * the area's entry point (or its centre, at its bottom height), then to its
+ * exit point, and on leaving it enters the next area as
+ * EmChameleos_FlyOutOfArea does; each leg also ends after 900 frames.
+ */
+void EmChameleos_FlyThroughArea(Em *em, EmWork *work)
 {
     AreaRecord *area;
-    f32 *pt;
+    f32 *entryPt;
     u16 next;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         work->moveAngZ = 0x100;
-        Em_SetMotion(em, 0x12, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
         area = Stage_GetAreaRecord(em->area);
         em->goal[1] = area->bottom;
-        pt = Em_AreaEntryValue(em, *em->tables);
-        if (pt == NULL) {
+        entryPt = Em_AreaEntryValue(em, *em->tables);
+        if (entryPt == NULL) {
             em->goal[0] = area->sizeX / 2.0f;
             em->goal[2] = area->sizeZ / 2.0f;
         } else {
-            em->goal[0] = pt[0];
-            em->goal[2] = pt[2];
+            em->goal[0] = entryPt[0];
+            em->goal[2] = entryPt[2];
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->rotY = em->aimAngle;
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         em->timer = 900;
         break;
     case 1:
@@ -1501,7 +2112,7 @@ void EmChameleos_State2_0D(Em *em, EmWork *work)
         next = *(u16 *)&em->destArea;
         if (em->nextArea == next || next == AREA_NONE) {
             Hud_TriggerGlow(em);
-            EmChameleos_ChangeState(em, 2, 9, 1);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_INTO_AREA, EM_SYNC_SEND);
         } else {
             if (em->remote == 0) {
                 em->nextArea = next;
@@ -1509,7 +2120,7 @@ void EmChameleos_State2_0D(Em *em, EmWork *work)
                 em->goalKind = 3;
                 Em_ComputeGoal(em, em->goal);
             }
-            EmChameleos_ChangeState(em, 2, 0xD, 1);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_THROUGH_AREA, EM_SYNC_SEND);
             Hud_TriggerGlow(em);
         }
         break;
@@ -1526,7 +2137,12 @@ void EmChameleos_State2_0D(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_0E(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_ASCEND: hovers (CHAM_MOT_HOVER) and rises, speeding up to 100
+ * once 500 above the floor, until the area's height (gAreaGroundY), then
+ * enters CHAM_FLY_HOVER when the motion ends.
+ */
+void EmChameleos_Ascend(Em *em, EmWork *work)
 {
     f32 floorY;
 
@@ -1534,9 +2150,9 @@ void EmChameleos_State2_0E(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x12, 0, 0);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
+        ((EmChameleosWork *)work)->flyGuard = 0;
         Player_ClearVelocity(em);
         em->velY = 10.0f;
         break;
@@ -1554,7 +2170,7 @@ void EmChameleos_State2_0E(Em *em, EmWork *work)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
@@ -1564,7 +2180,12 @@ void EmChameleos_State2_0E(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_0F(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_FORWARD: flies straight on at its current forward speed (velX,
+ * velY and the acceleration cleared), plays CHAM_MOT_FLY once and enters
+ * CHAM_FLY_FORWARD again.
+ */
+void EmChameleos_FlyForward(Em *em, EmWork *work)
 {
     f32 floorY;
 
@@ -1572,17 +2193,17 @@ void EmChameleos_State2_0F(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0xC, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CHAM_MOT_FLY, 0, 0);
         Player_ClearAccel2(em);
         em->velY = 0.0f;
         em->velX = 0.0f;
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmChameleos_EndState2(em, 1U);
+            EmChameleos_EndAirState(em, 1U);
         }
         break;
     }
@@ -1592,7 +2213,11 @@ void EmChameleos_State2_0F(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_10(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_TURN_TO_GOAL: hovers turning to the goal (Em_TurnToGoal 0x180)
+ * and enters CHAM_FLY_HOVER when it faces it or after 150 frames.
+ */
+void EmChameleos_HoverTurnToGoal(Em *em, EmWork *work)
 {
     f32 floorY;
     s32 done;
@@ -1601,24 +2226,19 @@ void EmChameleos_State2_10(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x12, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
         work->moveAngZ = 0x180;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        ((EmChameleosWork *)work)->unk010 = 0;
+        ((EmChameleosWork *)work)->flyGuard = 0;
         em->timer = 0x96;
         break;
     case 1:
         done = Em_TurnToGoal(em, (s32) (u16) work->moveAngZ, 1) & 0xFF;
-        if (--em->timer > 0) {
-            if (done != 0) {
-                goto block_9;
-            }
-        } else {
-block_9:
+        if (--em->timer <= 0 || done != 0) {
             em->step++;
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
@@ -1628,7 +2248,13 @@ block_9:
     }
 }
 
-void EmChameleos_State2_11(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_ROUTE_LOOP: flies (CHAM_MOT_FLY_START unless already flying,
+ * then CHAM_MOT_FLY; EmChameleos_FlyParam2) to the area points one after
+ * another without end, restarting itself at each point (within 1000 or on
+ * the timer).
+ */
+void EmChameleos_FlyRouteLoop(Em *em, EmWork *work)
 {
     f32 floorY;
     u8 stateVar1;
@@ -1637,40 +2263,35 @@ void EmChameleos_State2_11(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->velX = 0.0f;
         em->velY = 0.0f;
         Player_ClearAccel2(em);
         if (em->velZ < 50.0f) {
             em->stateVar1 = 0;
             em->velZ = 50.0f;
-            Em_SetMotion(em, 0xD, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_FLY_START, 0, 0);
         } else {
             em->stateVar1 = 1;
             if ((u32) (em->motionId[0] - 0x3F4) > 1) {
-                Em_SetMotion(em, 0xD, 0, 0);
+                Em_SetMotion(em, CHAM_MOT_FLY_START, 0, 0);
             }
         }
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         break;
     case 1:
         stateVar1 = em->stateVar1;
         if ((stateVar1 == 0) && (em->motion[0].playing == 0)) {
             em->stateVar1 = stateVar1 + 1;
-            Em_SetMotion(em, 0xC, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_FLY, 0, 0);
         }
-        if (!(Vec_DistanceXZ(&em->posX, em->goal) <= 1000.0f)) {
-            if (--em->timer <= 0) {
-                goto block_16;
-            }
-        } else {
-block_16:
+        if (Vec_DistanceXZ(&em->posX, em->goal) <= 1000.0f || --em->timer <= 0) {
             em->curGoalNo++;
             em->curGoalNo &= 3;
             Em_ComputeGoal2(em, em->goal);
             em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f) + 0x96;
             em->step++;
-            EmChameleos_ChangeState(em, 2, 0x11, 0);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_ROUTE_LOOP, EM_SYNC_LOCAL);
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
@@ -1687,7 +2308,12 @@ block_16:
     }
 }
 
-void EmChameleos_State2_12(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_BRAKE_AND_LAND: brakes from fast flight (CHAM_MOT_BRAKE, curve
+ * 2) levelling rotX and rotZ, then plays CHAM_MOT_HOVER_SETTLE and enters
+ * CHAM_FLY_LAND (retried on the owner every 300 frames).
+ */
+void EmChameleos_BrakeAndLand(Em *em, EmWork *work)
 {
     f32 floorY;
     s32 rotX;
@@ -1696,11 +2322,11 @@ void EmChameleos_State2_12(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x10, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_BRAKE, 0, 0);
         EmChameleos_StartCurves(em, 2U);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        ((EmChameleosWork *)work)->flyGuard = 0;
         break;
     case 1:
         rotX = em->rotX;
@@ -1724,17 +2350,17 @@ void EmChameleos_State2_12(Em *em, EmWork *work)
         if (EmChameleos_UpdateCurves(em) & 0xFF) {
             em->step++;
             Player_ClearVelocity(em);
-            Em_SetMotion(em, 0xF, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_HOVER_SETTLE, 0, 0);
             em->timer = 0x12C;
-            EmChameleos_ChangeState(em, 2, 1, 1);
+            EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_LAND, EM_SYNC_SEND);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->timer = 0x12C;
-            Em_SetMotion(em, 0x12, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
             if (em->remote == 0) {
-                EmChameleos_ChangeState(em, 2, 1, 1);
+                EmChameleos_ChangeState(em, EM_GROUP_FLY, CHAM_FLY_LAND, EM_SYNC_SEND);
             }
         }
         break;
@@ -1745,7 +2371,12 @@ void EmChameleos_State2_12(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_13(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_TO_GOAL: flies (CHAM_MOT_FLY_START unless already flying, then
+ * CHAM_MOT_FLY; EmChameleos_FlyParam2) to the goal and enters
+ * CHAM_FLY_FORWARD within 1000 or when the timer runs out.
+ */
+void EmChameleos_FlyToGoal(Em *em, EmWork *work)
 {
     f32 floorY;
     u16 motionId;
@@ -1755,37 +2386,32 @@ void EmChameleos_State2_13(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->velX = 0.0f;
         em->velY = 0.0f;
         Player_ClearAccel2(em);
         if (em->velZ < 50.0f) {
             em->stateVar1 = 0;
             em->velZ = 50.0f;
-            Em_SetMotion(em, 0xD, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_FLY_START, 0, 0);
         } else {
             em->stateVar1 = 1;
             motionId = em->motionId[0];
-            if ((motionId != 0x3F4) && (motionId != 0x3F6)) {
-                Em_SetMotion(em, 0xD, 0, 0);
+            if ((motionId != EM_MOTION_ID(0, CHAM_MOT_FLY)) && (motionId != EM_MOTION_ID(0, 0xE))) {
+                Em_SetMotion(em, CHAM_MOT_FLY_START, 0, 0);
             }
         }
-        ((EmChameleosWork *)work)->unk010 = 1;
+        ((EmChameleosWork *)work)->flyGuard = 1;
         break;
     case 1:
         stateVar1 = em->stateVar1;
         if ((stateVar1 == 0) && (em->motion[0].playing == 0)) {
             em->stateVar1 = stateVar1 + 1;
-            Em_SetMotion(em, 0xC, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_FLY, 0, 0);
         }
-        if (!(Vec_DistanceXZ(&em->posX, em->goal) <= 1000.0f)) {
-            if (--em->timer <= 0) {
-                goto block_17;
-            }
-        } else {
-block_17:
+        if (Vec_DistanceXZ(&em->posX, em->goal) <= 1000.0f || --em->timer <= 0) {
             em->step++;
-            EmChameleos_EndState2(em, 1U);
+            EmChameleos_EndAirState(em, 1U);
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
@@ -1802,11 +2428,17 @@ block_17:
     }
 }
 
-void EmChameleos_State2_14(void)
+/* CHAM_FLY_NONE_F: does nothing. */
+void EmChameleos_FlyNoneF(void)
 {
 }
 
-void EmChameleos_State2_15(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_STRAFE_TO_GOAL: hovers (CHAM_MOT_HOVER) straight at the goal at
+ * speed 20 without turning its body (yaw and pitch of the move aimed at the
+ * goal), and enters CHAM_FLY_HOVER near it or when the timer runs out.
+ */
+void EmChameleos_StrafeToGoal(Em *em, EmWork *work)
 {
     f32 dist;
     f32 floorY;
@@ -1814,11 +2446,11 @@ void EmChameleos_State2_15(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         work->moveAngZ = 0x100;
-        Em_SetMotion(em, 0x12, 0, 0);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
+        ((EmChameleosWork *)work)->flyGuard = 0;
         break;
     case 1:
         work->moveAngCY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
@@ -1826,15 +2458,10 @@ void EmChameleos_State2_15(Em *em, EmWork *work)
         Em_GetPitchToGoal(em, &work->moveAngCX, 0.0f, 0.0f);
         Em_MoveRotated(em, &work->moveAngCX);
         dist = Vec_Distance((f32 *) &em->posX, (f32 *) em->goal);
-        if (--em->timer > 0) {
-            if (dist <= (10.0f * em->velZ)) {
-                goto block_9;
-            }
-        } else {
-block_9:
+        if (--em->timer <= 0 || dist <= (10.0f * em->velZ)) {
             em->step++;
             Player_ClearVelocity(em);
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
@@ -1844,7 +2471,11 @@ block_9:
     }
 }
 
-void EmChameleos_State2_16(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_BRAKE: brakes (CHAM_MOT_BRAKE, curve 2) levelling rotX and rotZ
+ * until the curves end, then enters CHAM_FLY_HOVER.
+ */
+void EmChameleos_Brake(Em *em, EmWork *work)
 {
     f32 floorY;
     s32 rotX;
@@ -1853,11 +2484,11 @@ void EmChameleos_State2_16(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x10, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_BRAKE, 0, 0);
         EmChameleos_StartCurves(em, 2U);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        ((EmChameleosWork *)work)->flyGuard = 0;
         break;
     case 1:
         rotX = em->rotX;
@@ -1881,7 +2512,7 @@ void EmChameleos_State2_16(Em *em, EmWork *work)
         if (EmChameleos_UpdateCurves(em) & 0xFF) {
             em->step++;
             Player_ClearVelocity(em);
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     case 2:
@@ -1894,11 +2525,17 @@ void EmChameleos_State2_16(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State2_17(void)
+/* CHAM_FLY_NONE_G: does nothing. */
+void EmChameleos_FlyNoneG(void)
 {
 }
 
-void EmChameleos_State2_18(Em *em, EmWork *work)
+/*
+ * CHAM_FLY_RISE: hovers (CHAM_MOT_HOVER) rising at 20 a frame until 1000
+ * above the goal's height or the timer runs out, then enters
+ * CHAM_FLY_HOVER.
+ */
+void EmChameleos_Rise(Em *em, EmWork *work)
 {
     f32 pos[3];
     f32 floorY;
@@ -1908,9 +2545,9 @@ void EmChameleos_State2_18(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x12, 0, 0);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
+        ((EmChameleosWork *)work)->flyGuard = 0;
         work->moveAngCX = 0;
         work->moveAngX = 0;
         Player_ClearVelocity(em);
@@ -1924,7 +2561,7 @@ void EmChameleos_State2_18(Em *em, EmWork *work)
         if ((timer <= 0) || !(em->posY <= (1000.0f + em->goal[1]))) {
             em->step++;
             Player_ClearVelocity(em);
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
@@ -1934,35 +2571,41 @@ void EmChameleos_State2_18(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State3_00(Em *em, s32 unused, s32 variant)
+/*
+ * CHAM_ATK_TONGUE (variant 0: CHAM_MOT_TAIL_POUNDS first) and
+ * CHAM_ATK_TONGUE_QUICK (variant 1): lashes the tongue along the floor
+ * (CHAM_MOT_TONGUE, ground effect at bone 0x29 at frame 36) and steals from
+ * the player the tongue hits (EmChameleos_StealItem), then ends.
+ */
+void EmChameleos_Tongue(Em *em, s32 unused, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
         if (!(variant & 0xFF)) {
-            Em_SetMotion(em, 0x30, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_TAIL_POUNDS, 0, 0);
             break;
         }
-        Em_SetMotion(em, 0x31, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TONGUE, 0, 0);
         em->step++;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x31, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_TONGUE, 0, 0);
         }
         break;
     case 2:
         if (EmMotion_PassedFrameScaled(em, 36.0f, 0U) != 0) {
             EmChameleos_SpawnGroundEffect(em, 0x29, 0x14, 4.0f);
         }
-        if (func_00858980(em) == 1) {
+        if (EmChameleos_TongueHitPlayer(em) == 1) {
             em->step++;
             EmChameleos_StealItem(em, em->contact);
         }
-        
+
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -1972,21 +2615,26 @@ void EmChameleos_State3_00(Em *em, s32 unused, s32 variant)
     }
 }
 
-void EmChameleos_State3_01(Em *em)
+/*
+ * CHAM_ATK_TONGUE_LOW: CHAM_MOT_TONGUE_LOW, stealing from the player the
+ * tongue hits; EmChameleos_SetAttackState picks it for CHAM_ATK_TONGUE_HIGH
+ * when the target is no more than 50 above it.
+ */
+void EmChameleos_TongueLow(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x29, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TONGUE_LOW, 0, 0);
         break;
     case 1:
-        if (func_00858980(em) == 1) {
+        if (EmChameleos_TongueHitPlayer(em) == 1) {
             em->step++;
             EmChameleos_StealItem(em, em->contact);
         }
-        
+
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -1996,14 +2644,18 @@ void EmChameleos_State3_01(Em *em)
     }
 }
 
-void EmChameleos_State3_02(Em *em)
+/*
+ * CHAM_ATK_STOMP: plays CHAM_MOT_STOMP once and ends (its attack and ground
+ * effects come from EmChameleos_MotionEffects).
+ */
+void EmChameleos_Stomp(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->timer = 0x64;
-        em->stance = 0;
-        Em_SetMotion(em, 0x2D, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CHAM_MOT_STOMP, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2014,14 +2666,18 @@ void EmChameleos_State3_02(Em *em)
     }
 }
 
-void EmChameleos_State3_03(Em *em)
+/*
+ * CHAM_ATK_TAIL_SLAM: plays CHAM_MOT_TAIL_SLAM once and ends (the backward
+ * attack and impact come from EmChameleos_MotionEffects).
+ */
+void EmChameleos_TailSlam(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->timer = 0x64;
-        em->stance = 0;
-        Em_SetMotion(em, 0x2E, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CHAM_MOT_TAIL_SLAM, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2032,27 +2688,31 @@ void EmChameleos_State3_03(Em *em)
     }
 }
 
-void EmChameleos_State3_04(Em *em)
+/*
+ * CHAM_ATK_TONGUE_B: CHAM_MOT_TAIL_POUNDS, then CHAM_MOT_TONGUE_B, stealing
+ * from the player the tongue hits, and ends.
+ */
+void EmChameleos_TongueB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
-        Em_SetMotion(em, 0x30, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TAIL_POUNDS, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x32, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_TONGUE_B, 0, 0);
         }
         break;
     case 2:
-        if (func_00858980(em) == 1) {
+        if (EmChameleos_TongueHitPlayer(em) == 1) {
             em->step++;
             EmChameleos_StealItem(em, em->contact);
         }
-        
+
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -2062,21 +2722,25 @@ void EmChameleos_State3_04(Em *em)
     }
 }
 
-void EmChameleos_State3_05(Em *em)
+/*
+ * CHAM_ATK_TONGUE_HIGH: CHAM_MOT_TONGUE_HIGH looking at the target,
+ * stealing from the player the tongue hits, and ends.
+ */
+void EmChameleos_TongueHigh(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
-        Em_SetMotion(em, 0x33, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TONGUE_HIGH, 0, 0);
         break;
     case 1:
-        if (func_00858980(em) == 1) {
+        if (EmChameleos_TongueHitPlayer(em) == 1) {
             em->step++;
             EmChameleos_StealItem(em, em->contact);
         }
-        
+
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -2086,14 +2750,21 @@ void EmChameleos_State3_05(Em *em)
     }
 }
 
-void EmChameleos_State3_06(Em *em, s32 unused, u8 variant)
+/*
+ * CHAM_ATK_BALL_PITCHED (variant 0: a poison ball, EMFX_CHAMELEOS_BALL,
+ * after 10 frames) and CHAM_ATK_BREATH_PITCHED (variant 1: the mist breath,
+ * EMFX_CHAMELEOS_BREATH, for 60 frames): CHAM_MOT_SPIT_START, then
+ * CHAM_MOT_SPIT_A with the attack pitched 0x71C from frame 10, then
+ * CHAM_MOT_SPIT_A_END, and ends.
+ */
+void EmChameleos_MistPitched(Em *em, s32 unused, u8 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x2A, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_SPIT_START, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2103,22 +2774,22 @@ void EmChameleos_State3_06(Em *em, s32 unused, u8 variant)
             } else {
                 em->timer = 60;
             }
-            Em_SetMotion(em, 0x2B, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_SPIT_A, 0, 0);
         }
         break;
     case 2:
         if (variant == 0) {
             if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-                EmEffectAttack_Create(em, 9, 0, 0x71C, 0);
+                EmEffectAttack_Create(em, EMFX_CHAMELEOS_BALL, 0, 0x71C, 0);
             }
         } else {
             if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-                EmEffectAttack_CreateTimed(em, 0xB, 0, 0xAAB, 0, em->timer - 20);
+                EmEffectAttack_CreateTimed(em, EMFX_CHAMELEOS_BREATH, 0, 0xAAB, 0, em->timer - 20);
             }
         }
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x2C, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_SPIT_A_END, 0, 0);
         }
         break;
     case 3:
@@ -2130,14 +2801,19 @@ void EmChameleos_State3_06(Em *em, s32 unused, u8 variant)
     }
 }
 
-void EmChameleos_State3_07(Em *em, s32 unused, u8 variant)
+/*
+ * CHAM_ATK_BALL_LEVEL (variant 0) and CHAM_ATK_BREATH_LEVEL (variant 1): as
+ * EmChameleos_MistPitched with CHAM_MOT_SPIT_B and CHAM_MOT_SPIT_B_END, the
+ * attack level (pitch 0) from frame 6.
+ */
+void EmChameleos_MistLevel(Em *em, s32 unused, u8 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x2A, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_SPIT_START, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2147,22 +2823,22 @@ void EmChameleos_State3_07(Em *em, s32 unused, u8 variant)
             } else {
                 em->timer = 60;
             }
-            Em_SetMotion(em, 0x34, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_SPIT_B, 0, 0);
         }
         break;
     case 2:
         if (variant == 0) {
             if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
-                EmEffectAttack_Create(em, 9, 0, 0, 0);
+                EmEffectAttack_Create(em, EMFX_CHAMELEOS_BALL, 0, 0, 0);
             }
         } else {
             if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
-                EmEffectAttack_CreateTimed(em, 0xB, 0, 0, 0, em->timer - 20);
+                EmEffectAttack_CreateTimed(em, EMFX_CHAMELEOS_BREATH, 0, 0, 0, em->timer - 20);
             }
         }
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x35, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_SPIT_B_END, 0, 0);
         }
         break;
     case 3:
@@ -2174,47 +2850,56 @@ void EmChameleos_State3_07(Em *em, s32 unused, u8 variant)
     }
 }
 
-void EmChameleos_State3_08(Em *em, EmWork *work)
+/*
+ * CHAM_ATK_BACK_HOP_BALL: CHAM_MOT_BACK_HOP_BALL; at frame 88 leaps up and
+ * back (stance air) firing a poison ball (EMFX_CHAMELEOS_BALL variant 1,
+ * pitch 0x4000), and enters CHAM_FLY_HOVER when layer 1's motion ends.
+ */
+void EmChameleos_BackHopBall(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x2F, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_BACK_HOP_BALL, 0, 0);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 88.0f) != 0) {
             em->step++;
-            em->stance = 2;
-            ((EmChameleosWork *)work)->unk010 = 0;
+            em->stance = EM_STANCE_AIR;
+            ((EmChameleosWork *)work)->flyGuard = 0;
             work->moveAngCX = 0;
             work->moveAngCY = em->rotY;
             work->moveAngX = 0;
             Player_ClearVelocity(em);
             em->velY = 12.0f;
             em->velZ = -7.0f;
-            EmEffectAttack_Create(em, 9, 1, 0x4000, 0);
+            EmEffectAttack_Create(em, EMFX_CHAMELEOS_BALL, 1, 0x4000, 0);
         }
         break;
     case 2:
         Em_MoveRotated(em, &work->moveAngCX);
         if (em->motion[1].playing == 0) {
             em->step++;
-            EmChameleos_EndState2(em, 0U);
+            EmChameleos_EndAirState(em, 0U);
         }
         break;
     }
 }
 
-void EmChameleos_State3_0C(Em *em)
+/*
+ * CHAM_ATK_TAIL_POUNDS: plays CHAM_MOT_TAIL_POUNDS once looking at the
+ * target and ends.
+ */
+void EmChameleos_TailPounds(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
-        Em_SetMotion(em, 0x30, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_TAIL_POUNDS, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2225,15 +2910,19 @@ void EmChameleos_State3_0C(Em *em)
     }
 }
 
-void EmChameleos_State4_00(Em *em)
+/*
+ * CHAM_REACT_FLINCH_A: a flinch of part 0 or 6 not yet broken (Update);
+ * restarts the script, plays CHAM_MOT_FLINCH_A and ends.
+ */
+void EmChameleos_FlinchA(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3F, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_FLINCH_A, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2244,15 +2933,19 @@ void EmChameleos_State4_00(Em *em)
     }
 }
 
-void EmChameleos_State4_01(Em *em)
+/*
+ * CHAM_REACT_FLINCH_B: a flinch of parts 1 to 5 not yet broken (Update);
+ * restarts the script, plays CHAM_MOT_FLINCH_B and ends.
+ */
+void EmChameleos_FlinchB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3D, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_FLINCH_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2263,15 +2956,22 @@ void EmChameleos_State4_01(Em *em)
     }
 }
 
-void EmChameleos_State4_02(Em *em, s32 unused, s32 variant)
+/*
+ * CHAM_REACT_STAGGER (variant 0: a broken part 0, 1, 2, 5 or 6's flinch)
+ * and CHAM_REACT_DECLOAK (variant 1: an attack-kind-5 hit while visible,
+ * entered with EmChameleos_ClearFullCloak; drops a timed mine point,
+ * EmMine_CreateTimed0): CHAM_MOT_COLLAPSE, then CHAM_MOT_RECOVER from frame
+ * 96, and ends.
+ */
+void EmChameleos_Stagger(Em *em, s32 unused, s32 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x49, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_COLLAPSE, 0, 0);
         if ((variant & 0xFF) == 1) {
             EmMine_CreateTimed0(em, &em->posX);
         }
@@ -2279,7 +2979,7 @@ void EmChameleos_State4_02(Em *em, s32 unused, s32 variant)
     case 1:
         if (EmMotion_PassedFrameScaled(em, 96.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x3E, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_RECOVER, 0, 0);
         }
         break;
     case 2:
@@ -2291,18 +2991,24 @@ void EmChameleos_State4_02(Em *em, s32 unused, s32 variant)
     }
 }
 
-void EmChameleos_State4_03(Em *em, EmWork *work, u8 variant)
+/*
+ * CHAM_REACT_KNOCK_DOWN (variant 0: a broken part 3 or 4's flinch; lies 120
+ * frames) and CHAM_REACT_STUN (variant 1: entered with Em_BeginStatus5,
+ * stun stars, lies for the stun timer, then CHAM_IDLE_STUN_SHAKE_OFF):
+ * CHAM_MOT_COLLAPSE, CHAM_MOT_DOWN, CHAM_MOT_GET_UP.
+ */
+void EmChameleos_KnockDown(Em *em, EmWork *work, u8 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x49, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_COLLAPSE, 0, 0);
         switch (variant) {
         case 1:
-            StageObj_Stun_CreateEm(em, 1, 0x25, em->timer + em->motion[0].frameCount / 2.0f, 200.0f, 3.5f);
+            StunStars_CreateEm(em, 1, 0x25, em->timer + em->motion[0].frameCount / 2.0f, 200.0f, 3.5f);
             break;
         }
         break;
@@ -2315,13 +3021,13 @@ void EmChameleos_State4_03(Em *em, EmWork *work, u8 variant)
             case 1:
                 break;
             }
-            Em_SetMotion(em, 0x42, 0, 0x18);
+            Em_SetMotion(em, CHAM_MOT_DOWN, 0, 0x18);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x43, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_GET_UP, 0, 0);
         }
         break;
     case 3:
@@ -2333,20 +3039,27 @@ void EmChameleos_State4_03(Em *em, EmWork *work, u8 variant)
                 break;
             case 1:
                 em->step++;
-                EmChameleos_ChangeState(em, 0, 0x20, 4);
+                EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         }
         break;
     case 4:
         if (em->remote == 0) {
-            EmChameleos_ChangeState(em, 0, 0x20, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmChameleos_State4_04(Em *em)
+/*
+ * CHAM_REACT_PART_BREAK: the horn breaks (EM_DMG_PART8_DOWN; ChangeState
+ * counts partBreakCount, sets fxFlags 1 and breaks part 1); cannot be hit
+ * meanwhile (noHitTimer), plays CHAM_MOT_PART_BREAK, then
+ * CHAM_MOT_PART_BREAK_SPIN turning 630 (times the motion speed) a frame to
+ * frame 104, and ends.
+ */
+void EmChameleos_PartBreak(Em *em)
 {
     f32 turnF;
     u32 turn;
@@ -2355,15 +3068,15 @@ void EmChameleos_State4_04(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4A, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_PART_BREAK, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_PART_BREAK_SPIN, 0, 0);
         }
         break;
     case 2:
@@ -2379,29 +3092,39 @@ void EmChameleos_State4_04(Em *em)
     }
 }
 
-void EmChameleos_State4_06(void)
+/* CHAM_REACT_NONE_A: does nothing. */
+void EmChameleos_ReactNoneA(void)
 {
 }
 
-void EmChameleos_State4_07(void)
+/* CHAM_REACT_NONE_B: does nothing. */
+void EmChameleos_ReactNoneB(void)
 {
 }
 
-void EmChameleos_State4_08(Em *em, EmWork *work, s32 variant)
+/*
+ * CHAM_REACT_FALL (variant 0: a status or flinch in the air),
+ * CHAM_REACT_FALL_BLIND (variant 1: blind throughout) and
+ * CHAM_REACT_DECLOAK_FALL (variant 2: an attack-kind-5 hit while flying
+ * visible; drops a timed mine point on landing): falls (CHAM_MOT_FALL,
+ * accelY -10) to the floor, CHAM_MOT_FALL_LAND, lies 60 frames
+ * (CHAM_MOT_DOWN), gets up (CHAM_MOT_GET_UP) and ends.
+ */
+void EmChameleos_Fall(Em *em, EmWork *work, s32 variant)
 {
-    s32 k;
+    s32 variant8;
 
-    k = variant & 0xFF;
-    if (k == 1) {
+    variant8 = variant & 0xFF;
+    if (variant8 == 1) {
         em->blind = 2;
     }
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x40, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_FALL, 0, 0);
         if (!(em->velY <= -50.0f)) {
             em->velY = -50.0f;
         }
@@ -2417,10 +3140,10 @@ void EmChameleos_State4_08(Em *em, EmWork *work, s32 variant)
         if (em->posY <= em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 0;
-            Em_SetMotion(em, 0x41, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, CHAM_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
-            if (k == 2) {
+            if (variant8 == 2) {
                 EmMine_CreateTimed0(em, &em->posX);
                 break;
             }
@@ -2430,13 +3153,13 @@ void EmChameleos_State4_08(Em *em, EmWork *work, s32 variant)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 0x3C;
-            Em_SetMotion(em, 0x42, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_DOWN, 0, 0);
         }
         break;
     case 3:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x43, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_GET_UP, 0, 0);
         }
         break;
     case 4:
@@ -2449,15 +3172,19 @@ void EmChameleos_State4_08(Em *em, EmWork *work, s32 variant)
     }
 }
 
-void EmChameleos_State4_0A(Em *em)
+/*
+ * CHAM_REACT_FLINCH_C: same body as EmChameleos_FlinchB
+ * (CHAM_MOT_FLINCH_B); Update never enters it.
+ */
+void EmChameleos_FlinchC(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3D, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_FLINCH_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2468,42 +3195,55 @@ void EmChameleos_State4_0A(Em *em)
     }
 }
 
-void EmChameleos_State4_0B(Em *em)
+/*
+ * CHAM_REACT_STATUS4: under status 4 (EM_DMG_STATUS4, entered with
+ * Em_BeginStatus4): CHAM_MOT_STATUS4 with the status-4 effect until the
+ * status timer runs out, then CHAM_IDLE_STATUS4_SHAKE_OFF.
+ */
+void EmChameleos_Status4(Em *em)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x45, 0, 0);
+        Em_SetMotion(em, CHAM_MOT_STATUS4, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmChameleos_ChangeState(em, 0, 0x21, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmChameleos_ChangeState(em, 0, 0x21, 4);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
     Em_SpawnStatus4Effect(em, 2);
 }
 
-void EmChameleos_State6_00(Em *em, EmWork *work)
+/*
+ * CHAM_EVENT_FOREST: the scene in AREA_FOREST_HILLS_9 (Update starts it in
+ * quests QUEST_ID_CHAMELEOS_SCENE_1 and QUEST_ID_CHAMELEOS_SCENE_2 until the save's EVENT_FLAG_CHAMELEOS_FOREST_SCENE is set): placed at a fixed spot,
+ * walks a fixed path (CHAM_MOT_WALK, CHAM_MOT_IDLE), turning invisible at
+ * frame 50 of the idle and visible again 1300 from the second point, then
+ * waits for EVENT_FLAG_CHAMELEOS_FOREST_SCENE and ends. Senses and hits are held off
+ * throughout.
+ */
+void EmChameleos_ForestEvent(Em *em, EmWork *work)
 {
-    f32 d;
+    f32 goalDist;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         GmEm_ResetSize(em);
         em->posX = 9712.0f;
@@ -2515,13 +3255,13 @@ void EmChameleos_State6_00(Em *em, EmWork *work)
         em->rotX = 0;
         em->rotY = Math_AngleXZ(&em->posX, em->goal);
         em->rotZ = 0;
-        EmChameleos_SetFlag43C(em);
-        Em_SetMotion(em, 2, 0, 0);
+        EmChameleos_SetFullCloak(em);
+        Em_SetMotion(em, CHAM_MOT_WALK, 0, 0);
         em->timer = 600;
         break;
     case 1:
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || d <= 200.0f) {
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || goalDist <= 200.0f) {
             em->step++;
             em->goal[0] = 10384.0f;
             em->goal[1] = 0.0f;
@@ -2529,38 +3269,38 @@ void EmChameleos_State6_00(Em *em, EmWork *work)
             em->rotX = 0;
             em->rotY = Math_AngleXZ(&em->posX, em->goal);
             em->rotZ = 0;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_IDLE, 0, 0);
         }
         break;
     case 2:
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EmChameleos_ClearFlag43C(em);
+            EmChameleos_ClearFullCloak(em);
             em->step++;
         }
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 600;
-            Em_SetMotion(em, 2, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_WALK, 0, 0);
         }
         break;
     case 4:
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || d <= 1300.0f) {
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || goalDist <= 1300.0f) {
             em->step++;
             em->timer = 600;
-            EmChameleos_SetFlag43C(em);
+            EmChameleos_SetFullCloak(em);
         }
         break;
     case 5:
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || d <= 2000.0f) {
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || goalDist <= 2000.0f) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_IDLE, 0, 0);
         }
         break;
     case 6:
-        if (Save_TestEventFlag(0xA2) == 1) {
+        if (Save_TestEventFlag(EVENT_FLAG_CHAMELEOS_FOREST_SCENE) == 1) {
             em->step++;
             EmChameleos_EndState(em, 0, 0);
         }
@@ -2568,41 +3308,47 @@ void EmChameleos_State6_00(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State6_01(Em *em, EmWork *work)
+/*
+ * CHAM_EVENT_LEAVE: the quest is over (Update) on the ground: turns
+ * invisible, CHAM_MOT_COLLAPSE and CHAM_MOT_RECOVER, takes off (as
+ * EmChameleos_TakeOff), leaves combat and rises out of sight (to height
+ * 50000), then drifts on.
+ */
+void EmChameleos_LeaveQuest(Em *em, EmWork *work)
 {
-    f32 temp;
+    f32 groundY;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x49, 0, 0);
-        ((EmChameleosWork *)work)->unk010 = 0;
-        EmChameleos_ClearFlag43C(em);
+        Em_SetMotion(em, CHAM_MOT_COLLAPSE, 0, 0);
+        ((EmChameleosWork *)work)->flyGuard = 0;
+        EmChameleos_ClearFullCloak(em);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x3E, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_RECOVER, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 0xA, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_TAKE_OFF, 0, 0);
             EmChameleos_StartCurves(em, 0);
         }
         break;
     case 3:
         if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
             em->step++;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
         }
         break;
     case 4:
@@ -2615,13 +3361,13 @@ void EmChameleos_State6_01(Em *em, EmWork *work)
         em->posY += 30.0f;
         if (!(em->posY < em->floorY + 600.0f * em->scaleY)) {
             em->step++;
-            Em_SetMotion(em, 0x13, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_TAKE_OFF_END, 0, 0);
         }
     case 6:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x12, 0, 0);
-            ((EmChameleosWork *)work)->unk010 = 0;
+            Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
+            ((EmChameleosWork *)work)->flyGuard = 0;
             Player_ClearVelocity(em);
             em->velY = 10.0f;
             Em_SetCombat(em, 0, 0);
@@ -2644,15 +3390,20 @@ void EmChameleos_State6_01(Em *em, EmWork *work)
         Em_MoveRotated(em, &em->rotX);
         break;
     }
-    temp = em->floorY;
-    if (em->posY < temp) {
-        em->posY = temp;
+    groundY = em->floorY;
+    if (em->posY < groundY) {
+        em->posY = groundY;
     }
 }
 
-void EmChameleos_State6_02(Em *em, EmWork *work)
+/*
+ * CHAM_EVENT_LEAVE_AIR: the quest is over while flying: hovers, turns
+ * invisible, leaves combat and rises out of sight as EmChameleos_LeaveQuest
+ * does.
+ */
+void EmChameleos_LeaveQuestFromAir(Em *em, EmWork *work)
 {
-    f32 temp;
+    f32 groundY;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -2660,13 +3411,13 @@ void EmChameleos_State6_02(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x12, 0, 0);
-        ((EmChameleosWork *)work)->unk010 = 0;
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CHAM_MOT_HOVER, 0, 0);
+        ((EmChameleosWork *)work)->flyGuard = 0;
         Player_ClearVelocity(em);
         em->velY = 10.0f;
         Em_SetCombat(em, 0, 0);
-        EmChameleos_ClearFlag43C(em);
+        EmChameleos_ClearFullCloak(em);
         break;
     case 1:
         Em_MoveRotated(em, &em->rotX);
@@ -2685,23 +3436,30 @@ void EmChameleos_State6_02(Em *em, EmWork *work)
         Em_MoveRotated(em, &em->rotX);
         break;
     }
-    temp = em->floorY;
-    if (em->posY < temp) {
-        em->posY = temp;
+    groundY = em->floorY;
+    if (em->posY < groundY) {
+        em->posY = groundY;
     }
 }
 
-void EmChameleos_State5_00_Hunted(Em *em, EmWork *work)
+/*
+ * CHAM_DEFEAT_DIE: dies on the ground (CHAM_MOT_DIE, stance dead,
+ * QuestEm_Hunted, EmChameleos_ClearFullCloak; invisibility is blocked in this
+ * group anyway), then leaves a carcass mine point (EmMine_Create) for 1800
+ * frames once it may reappear, removes it and fades out over 150 frames,
+ * then the owner enters CHAM_DEFEAT_REAPPEAR.
+ */
+void EmChameleos_Die(Em *em, EmWork *work)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x44, 0, 0);
-        EmChameleos_ClearFlag43C(em);
+        Em_SetMotion(em, CHAM_MOT_DIE, 0, 0);
+        EmChameleos_ClearFullCloak(em);
         em->lookAtTarget = 0;
-        em->stance = 3;
+        em->stance = EM_STANCE_DEAD;
         QuestEm_Hunted(em);
         break;
     case 1:
@@ -2729,7 +3487,7 @@ void EmChameleos_State5_00_Hunted(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmChameleos_ChangeState(em, 5, 3, 4);
+                EmChameleos_ChangeState(em, EM_GROUP_DEFEAT, CHAM_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -2738,21 +3496,28 @@ void EmChameleos_State5_00_Hunted(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State5_01(void)
+/* CHAM_DEFEAT_NONE: does nothing. */
+void EmChameleos_DefeatNone(void)
 {
 }
 
-void EmChameleos_State5_02_HuntedFalling(Em *em, EmWork *work)
+/*
+ * CHAM_DEFEAT_DIE_FALLING: killed in the air: falls (CHAM_MOT_FALL) to the
+ * floor, CHAM_MOT_FALL_LAND, stance dead and QuestEm_Hunted, then makes the
+ * carcass mine point; its following steps are numbered so that they are
+ * never reached (see NOTE).
+ */
+void EmChameleos_DieFalling(Em *em, EmWork *work)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x40, 0, 0);
-        EmChameleos_ClearFlag43C(em);
+        Em_SetMotion(em, CHAM_MOT_FALL, 0, 0);
+        EmChameleos_ClearFullCloak(em);
         if (em->velY > -50.0f) {
             em->velY = -50.0f;
         }
@@ -2766,9 +3531,9 @@ void EmChameleos_State5_02_HuntedFalling(Em *em, EmWork *work)
         if (em->posY <= em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            Em_SetMotion(em, 0x41, 0, 0);
+            Em_SetMotion(em, CHAM_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
-            em->stance = 3;
+            em->stance = EM_STANCE_DEAD;
             QuestEm_Hunted(em);
         }
         break;
@@ -2796,7 +3561,7 @@ void EmChameleos_State5_02_HuntedFalling(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmChameleos_ChangeState(em, 5, 3, 4);
+                EmChameleos_ChangeState(em, EM_GROUP_DEFEAT, CHAM_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -2804,7 +3569,7 @@ void EmChameleos_State5_02_HuntedFalling(Em *em, EmWork *work)
         break;
     case 0x63:
         if (em->motion[0].playing == 0) {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             EmChameleos_EndState(em, 0, 0);
             em->prevStateGroup = em->stateGroup;
             em->prevState = em->state;
@@ -2813,7 +3578,12 @@ void EmChameleos_State5_02_HuntedFalling(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_State5_03(Em *em, EmWork *work)
+/*
+ * CHAM_DEFEAT_REAPPEAR: when QuestEm_CanAppear allows (ChangeState also
+ * calls QuestEm_Appear), places the monster at a fixed spot and enters
+ * CHAM_IDLE; otherwise advances taskPhase and waits.
+ */
+void EmChameleos_Reappear(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
@@ -2822,7 +3592,7 @@ void EmChameleos_State5_03(Em *em, EmWork *work)
             em->posX = 3743.2f;
             em->posY = 1010.0f;
             em->posZ = 11415.0f;
-            EmChameleos_ChangeState(em, 0, 1, 0);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE, EM_SYNC_LOCAL);
             break;
         }
         em->taskPhase++;
@@ -2831,314 +3601,357 @@ void EmChameleos_State5_03(Em *em, EmWork *work)
     }
 }
 
-void EmChameleos_RunGroup0(Em *em, EmWork *work)
+/*
+ * Dispatcher of EM_GROUP_IDLE: runs the idle state function of em->state,
+ * passing the work area to CHAM_IDLE_EAT_NEED1/_NEED2 with variant 0/1;
+ * CHAM_IDLE_STUN_SHAKE_OFF and CHAM_IDLE_STATUS4_SHAKE_OFF share one
+ * function.
+ */
+void EmChameleos_RunIdleState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmChameleos_State0_00(em);
+    case CHAM_IDLE_STAND:
+        EmChameleos_Stand(em);
         break;
-    case 1:
-        EmChameleos_State0_01(em);
+    case CHAM_IDLE:
+        EmChameleos_Idle(em);
         break;
-    case 2:
-        EmChameleos_State0_02(em);
+    case CHAM_IDLE_ALERT:
+        EmChameleos_IdleAlert(em);
         break;
-    case 3:
-        EmChameleos_State0_03(em);
+    case CHAM_IDLE_FACE_GOAL:
+        EmChameleos_FaceGoal(em);
         break;
-    case 4:
-        EmChameleos_State0_04(em);
+    case CHAM_IDLE_CLOAK_FULL:
+        EmChameleos_CloakFull(em);
         break;
-    case 5:
-        EmChameleos_State0_05(em);
+    case CHAM_IDLE_CLOAK_SHIMMER:
+        EmChameleos_CloakShimmer(em);
         break;
-    case 9:
-        EmChameleos_State0_09(em);
+    case CHAM_IDLE_ACTION_A:
+        EmChameleos_IdleActionA(em);
         break;
-    case 10:
-        EmChameleos_State0_0A(em, work, 0);
+    case CHAM_IDLE_EAT_NEED1:
+        EmChameleos_Eat(em, work, 0);
         break;
-    case 11:
-        EmChameleos_State0_0A(em, work, 1);
+    case CHAM_IDLE_EAT_NEED2:
+        EmChameleos_Eat(em, work, 1);
         break;
-    case 18:
-        EmChameleos_State0_12(em);
+    case CHAM_IDLE_REST:
+        EmChameleos_Rest(em);
         break;
-    case 20:
-        EmChameleos_State0_14(em);
+    case CHAM_IDLE_STATUS2_DOWN:
+        EmChameleos_Status2Down(em);
         break;
-    case 23:
-        EmChameleos_State0_17(em);
+    case CHAM_IDLE_REST_END:
+        EmChameleos_RestEnd(em);
         break;
-    case 24:
-        EmChameleos_State0_18(em);
+    case CHAM_IDLE_STATUS2_END:
+        EmChameleos_Status2End(em);
         break;
-    case 25:
-        EmChameleos_State0_19(em);
+    case CHAM_IDLE_SHAKE_OFF:
+        EmChameleos_ShakeOff(em);
         break;
-    case 27:
-        EmChameleos_State0_1B(em);
+    case CHAM_IDLE_STATUS1_DOWN:
+        EmChameleos_Status1Down(em);
         break;
-    case 28:
-        EmChameleos_State0_1C(em);
+    case CHAM_IDLE_STATUS1_END:
+        EmChameleos_Status1End(em);
         break;
-    case 32:
-        EmChameleos_State0_20(em);
+    case CHAM_IDLE_STUN_SHAKE_OFF:
+        EmChameleos_StatusShakeOff(em);
         break;
-    case 33:
-        EmChameleos_State0_20(em);
+    case CHAM_IDLE_STATUS4_SHAKE_OFF:
+        EmChameleos_StatusShakeOff(em);
         break;
     }
 }
 
-void EmChameleos_RunGroup1(Em *em, EmWork *work)
+/*
+ * Dispatcher of EM_GROUP_MOVE: CHAM_MOVE_TURN/_TURN_RANDOM share a
+ * function (variant 0/1), as do CHAM_MOVE_RUN/_RUN_NO_ATTACK;
+ * CHAM_MOVE_NONE runs nothing.
+ */
+void EmChameleos_RunMoveState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmChameleos_State1_00(em);
+    case CHAM_MOVE_WALK:
+        EmChameleos_Walk(em);
         break;
-    case 1:
-        EmChameleos_State1_01(em, work);
+    case CHAM_MOVE_LIMP:
+        EmChameleos_Limp(em, work);
         break;
-    case 2:
-        EmChameleos_State1_02(em, work, 0);
+    case CHAM_MOVE_TURN:
+        EmChameleos_Turn(em, work, 0);
         break;
-    case 3:
+    case CHAM_MOVE_NONE:
         break;
-    case 4:
-        EmChameleos_State1_04(em, (s32) work, 0);
+    case CHAM_MOVE_RUN:
+        EmChameleos_Run(em, (s32) work, 0);
         break;
-    case 5:
-        EmChameleos_State1_05(em);
+    case CHAM_MOVE_SPIN_TURN:
+        EmChameleos_SpinTurn(em);
         break;
-    case 6:
-        EmChameleos_State1_06(em, work);
+    case CHAM_MOVE_BACK_HOP:
+        EmChameleos_BackHop(em, work);
         break;
-    case 7:
-        EmChameleos_State1_04(em, (s32) work, 1);
+    case CHAM_MOVE_RUN_NO_HIT:
+        EmChameleos_Run(em, (s32) work, 1);
         break;
-    case 8:
-        EmChameleos_State1_02(em, work, 1);
+    case CHAM_MOVE_TURN_RANDOM:
+        EmChameleos_Turn(em, work, 1);
         break;
     }
 }
 
-void EmChameleos_RunGroup2(Em *em, EmWork *work)
+/*
+ * Dispatcher of EM_GROUP_FLY: one function per state; the
+ * CHAM_FLY_NONE_* states run empty functions.
+ */
+void EmChameleos_RunFlyState(Em *em, EmWork *work)
 {
     switch (em->state) {
     case 0:
-        EmChameleos_State2_00(em, work);
+        EmChameleos_TakeOff(em, work);
         break;
     case 1:
-        EmChameleos_State2_01(em, work);
+        EmChameleos_Land(em, work);
         break;
     case 2:
-        EmChameleos_State2_02(em, work);
+        EmChameleos_Hover(em, work);
         break;
     case 3:
-        EmChameleos_State2_03();
+        EmChameleos_FlyNoneA();
         break;
     case 4:
-        EmChameleos_State2_04();
+        EmChameleos_FlyNoneB();
         break;
     case 5:
-        EmChameleos_State2_05();
+        EmChameleos_FlyNoneC();
         break;
     case 6:
-        EmChameleos_State2_06(em, work);
+        EmChameleos_FlyRoute(em, work);
         break;
     case 7:
-        EmChameleos_State2_07(em, work);
+        EmChameleos_HoverToGoal(em, work);
         break;
     case 8:
-        EmChameleos_State2_08(em, work);
+        EmChameleos_FlyOutOfArea(em, work);
         break;
     case 9:
-        EmChameleos_State2_09(em, work);
+        EmChameleos_FlyIntoArea(em, work);
         break;
     case 10:
-        EmChameleos_State2_0A();
+        EmChameleos_FlyNoneD();
         break;
     case 11:
-        EmChameleos_State2_0B(em, work);
+        EmChameleos_FlyToGoalAndLand(em, work);
         break;
     case 12:
-        EmChameleos_State2_0C();
+        EmChameleos_FlyNoneE();
         break;
     case 13:
-        EmChameleos_State2_0D(em, work);
+        EmChameleos_FlyThroughArea(em, work);
         break;
     case 14:
-        EmChameleos_State2_0E(em, work);
+        EmChameleos_Ascend(em, work);
         break;
     case 15:
-        EmChameleos_State2_0F(em, work);
+        EmChameleos_FlyForward(em, work);
         break;
     case 16:
-        EmChameleos_State2_10(em, work);
+        EmChameleos_HoverTurnToGoal(em, work);
         break;
     case 17:
-        EmChameleos_State2_11(em, work);
+        EmChameleos_FlyRouteLoop(em, work);
         break;
     case 18:
-        EmChameleos_State2_12(em, work);
+        EmChameleos_BrakeAndLand(em, work);
         break;
     case 19:
-        EmChameleos_State2_13(em, work);
+        EmChameleos_FlyToGoal(em, work);
         break;
     case 20:
-        EmChameleos_State2_14();
+        EmChameleos_FlyNoneF();
         break;
     case 21:
-        EmChameleos_State2_15(em, work);
+        EmChameleos_StrafeToGoal(em, work);
         break;
     case 22:
-        EmChameleos_State2_16(em, work);
+        EmChameleos_Brake(em, work);
         break;
     case 23:
-        EmChameleos_State2_17();
+        EmChameleos_FlyNoneG();
         break;
     case 24:
-        EmChameleos_State2_18(em, work);
-        
+        EmChameleos_Rise(em, work);
+
     default:
         break;
     }
 }
 
-void EmChameleos_RunGroup3(Em *em, s32 work)
+/*
+ * Dispatcher of EM_GROUP_ATTACK: the tongue, ball and breath attacks share
+ * functions by variant (CHAM_ATK_TONGUE/_TONGUE_QUICK,
+ * CHAM_ATK_BALL_PITCHED/_BREATH_A, CHAM_ATK_BALL_LEVEL/_BREATH_B). Takes
+ * the work area as s32, as RunState passes it.
+ */
+void EmChameleos_RunAttackState(Em *em, s32 work)
 {
     switch (em->state) {
-    case 0:
-        EmChameleos_State3_00(em, work, 0);
+    case CHAM_ATK_TONGUE:
+        EmChameleos_Tongue(em, work, 0);
         break;
-    case 1:
-        EmChameleos_State3_01(em);
+    case CHAM_ATK_TONGUE_LOW:
+        EmChameleos_TongueLow(em);
         break;
-    case 2:
-        EmChameleos_State3_02(em);
+    case CHAM_ATK_STOMP:
+        EmChameleos_Stomp(em);
         break;
-    case 3:
-        EmChameleos_State3_03(em);
+    case CHAM_ATK_TAIL_SLAM:
+        EmChameleos_TailSlam(em);
         break;
-    case 4:
-        EmChameleos_State3_04(em);
+    case CHAM_ATK_TONGUE_B:
+        EmChameleos_TongueB(em);
         break;
-    case 5:
-        EmChameleos_State3_05(em);
+    case CHAM_ATK_TONGUE_HIGH:
+        EmChameleos_TongueHigh(em);
         break;
-    case 6:
-        EmChameleos_State3_06(em, work, 0);
+    case CHAM_ATK_BALL_PITCHED:
+        EmChameleos_MistPitched(em, work, 0);
         break;
-    case 7:
-        EmChameleos_State3_07(em, work, 0);
+    case CHAM_ATK_BALL_LEVEL:
+        EmChameleos_MistLevel(em, work, 0);
         break;
-    case 8:
-        EmChameleos_State3_08(em, (EmWork *) work);
+    case CHAM_ATK_BACK_HOP_BALL:
+        EmChameleos_BackHopBall(em, (EmWork *) work);
         break;
-    case 9:
-        EmChameleos_State3_06(em, work, 1);
+    case CHAM_ATK_BREATH_PITCHED:
+        EmChameleos_MistPitched(em, work, 1);
         break;
-    case 10:
-        EmChameleos_State3_07(em, work, 1);
+    case CHAM_ATK_BREATH_LEVEL:
+        EmChameleos_MistLevel(em, work, 1);
         break;
-    case 11:
-        EmChameleos_State3_00(em, work, 1);
+    case CHAM_ATK_TONGUE_QUICK:
+        EmChameleos_Tongue(em, work, 1);
         break;
-    case 12:
-        EmChameleos_State3_0C(em);
-        
+    case CHAM_ATK_TAIL_POUNDS:
+        EmChameleos_TailPounds(em);
+
     default:
         break;
     }
 }
 
-void EmChameleos_RunGroup4(Em *em, EmWork *work)
+/*
+ * Dispatcher of EM_GROUP_REACT: CHAM_REACT_STAGGER/_DECLOAK,
+ * CHAM_REACT_KNOCK_DOWN/_STUN and CHAM_REACT_FALL/_FALL_BLIND/_DECLOAK_FALL
+ * share functions by variant; CHAM_REACT_NONE_A/_B run empty functions.
+ */
+void EmChameleos_RunReactState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmChameleos_State4_00(em);
+    case CHAM_REACT_FLINCH_A:
+        EmChameleos_FlinchA(em);
         break;
-    case 1:
-        EmChameleos_State4_01(em);
+    case CHAM_REACT_FLINCH_B:
+        EmChameleos_FlinchB(em);
         break;
-    case 2:
-        EmChameleos_State4_02(em, (s32) work, 0);
+    case CHAM_REACT_STAGGER:
+        EmChameleos_Stagger(em, (s32) work, 0);
         break;
-    case 3:
-        EmChameleos_State4_03(em, work, 0);
+    case CHAM_REACT_KNOCK_DOWN:
+        EmChameleos_KnockDown(em, work, 0);
         break;
-    case 4:
-        EmChameleos_State4_04(em);
+    case CHAM_REACT_PART_BREAK:
+        EmChameleos_PartBreak(em);
         break;
-    case 5:
-        EmChameleos_State4_03(em, work, 1);
+    case CHAM_REACT_STUN:
+        EmChameleos_KnockDown(em, work, 1);
         break;
-    case 6:
-        EmChameleos_State4_06();
+    case CHAM_REACT_NONE_A:
+        EmChameleos_ReactNoneA();
         break;
-    case 7:
-        EmChameleos_State4_07();
+    case CHAM_REACT_NONE_B:
+        EmChameleos_ReactNoneB();
         break;
-    case 8:
-        EmChameleos_State4_08(em, work, 0);
+    case CHAM_REACT_FALL:
+        EmChameleos_Fall(em, work, 0);
         break;
-    case 9:
-        EmChameleos_State4_08(em, work, 1);
+    case CHAM_REACT_FALL_BLIND:
+        EmChameleos_Fall(em, work, 1);
         break;
-    case 10:
-        EmChameleos_State4_0A(em);
+    case CHAM_REACT_FLINCH_C:
+        EmChameleos_FlinchC(em);
         break;
-    case 11:
-        EmChameleos_State4_0B(em);
+    case CHAM_REACT_STATUS4:
+        EmChameleos_Status4(em);
         break;
-    case 12:
-        EmChameleos_State4_02(em, (s32) work, 1);
+    case CHAM_REACT_DECLOAK:
+        EmChameleos_Stagger(em, (s32) work, 1);
         break;
-    case 13:
-        EmChameleos_State4_08(em, work, 2);
+    case CHAM_REACT_DECLOAK_FALL:
+        EmChameleos_Fall(em, work, 2);
         break;
     }
 }
 
-void EmChameleos_RunGroup5(Em *em, EmWork *work)
+/*
+ * Dispatcher of EM_GROUP_DEFEAT: CHAM_DEFEAT_DIE, the empty
+ * CHAM_DEFEAT_NONE, CHAM_DEFEAT_DIE_FALLING and CHAM_DEFEAT_REAPPEAR.
+ */
+void EmChameleos_RunDefeatState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmChameleos_State5_00_Hunted(em, work);
+    case CHAM_DEFEAT_DIE:
+        EmChameleos_Die(em, work);
         break;
-    case 1:
-        EmChameleos_State5_01();
+    case CHAM_DEFEAT_NONE:
+        EmChameleos_DefeatNone();
         break;
-    case 2:
-        EmChameleos_State5_02_HuntedFalling(em, work);
+    case CHAM_DEFEAT_DIE_FALLING:
+        EmChameleos_DieFalling(em, work);
         break;
-    case 3:
-        EmChameleos_State5_03(em, work);
+    case CHAM_DEFEAT_REAPPEAR:
+        EmChameleos_Reappear(em, work);
         break;
     }
 }
 
-void EmChameleos_RunGroup6(Em *em, EmWork *work)
+/*
+ * Dispatcher of EM_GROUP_EVENT: CHAM_EVENT_FOREST, CHAM_EVENT_LEAVE and
+ * CHAM_EVENT_LEAVE_AIR; RunState also runs it for group 7.
+ */
+void EmChameleos_RunEventState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmChameleos_State6_00(em, work);
+    case CHAM_EVENT_FOREST:
+        EmChameleos_ForestEvent(em, work);
         break;
-    case 1:
-        EmChameleos_State6_01(em, work);
+    case CHAM_EVENT_LEAVE:
+        EmChameleos_LeaveQuest(em, work);
         break;
-    case 2:
-        EmChameleos_State6_02(em, work);
+    case CHAM_EVENT_LEAVE_AIR:
+        EmChameleos_LeaveQuestFromAir(em, work);
         break;
     }
 }
 
+/*
+ * The per-frame update: combat timer and area trigger, the low-hp check
+ * (15%) and need-2 decay by map while calm, then maps Em_UpdateDamage's
+ * result to a defeat, react or idle state, starts the Forest Hills scene
+ * (CHAM_EVENT_FOREST) or the leaving states when the quest is won, runs the
+ * state (twice on a state request), keeps guardTimer at 2 while flying with
+ * flyGuard set, and updates the invisibility (hitzoneSet 1 while
+ * invisible).
+ */
 void EmChameleos_Update(Em *em)
 {
-    u8 buf[4];
+    u8 dmgOut[4];
     EmChameleosWork *w = (EmChameleosWork *)&em->work;
-    u32 r;
+    u32 dmgResult;
 
     Em_UpdateCombatTimer(em);
     Em_RaisePlayerAreaTriggerLax(em);
@@ -3157,78 +3970,78 @@ void EmChameleos_Update(Em *em)
             break;
         }
     }
-    r = Em_UpdateDamage(em, buf) & 0xFF;
-    switch (r) {
-    case 0:
-    case 3:
-    case 4:
-    case 7:
-    case 9:
-    case 13:
-    case 14:
-    case 18:
+    dmgResult = Em_UpdateDamage(em, dmgOut) & 0xFF;
+    switch (dmgResult) {
+    case EM_DMG_NONE:
+    case EM_DMG_ATTACK9:
+    case EM_DMG_ATTACK6:
+    case EM_DMG_CAPTURED:
+    case EM_DMG_FLASH:
+    case EM_DMG_HIT_MODE3:
+    case EM_DMG_HIT:
+    case EM_DMG_ATTACK13:
         break;
-    case 1:
-    case 2:
-        if (em->stance == 2) {
-            EmChameleos_ChangeState(em, 5, 2, 3);
+    case EM_DMG_KILLED:
+    case EM_DMG_DEAD:
+        if (em->stance == EM_STANCE_AIR) {
+            EmChameleos_ChangeState(em, EM_GROUP_DEFEAT, CHAM_DEFEAT_DIE_FALLING, EM_SYNC_OWNER);
         } else {
-            EmChameleos_ChangeState(em, 5, 0, 3);
+            EmChameleos_ChangeState(em, EM_GROUP_DEFEAT, CHAM_DEFEAT_DIE, EM_SYNC_OWNER);
         }
         break;
-    case 5:
-        if (em->stateGroup != 4 || em->state != 8) {
-            EmChameleos_ChangeState(em, 4, 8, 3);
+    case EM_DMG_STATUS_IN_AIR:
+        if (em->stateGroup != EM_GROUP_REACT || em->state != CHAM_REACT_FALL) {
+            EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_FALL, EM_SYNC_OWNER);
         }
         break;
-    case 6:
-        if ((em->stateGroup != 4 || em->state != 0xB) && (em->stateGroup != 4 || em->state != 8)) {
+    case EM_DMG_STATUS4:
+        if ((em->stateGroup != EM_GROUP_REACT || em->state != CHAM_REACT_STATUS4) && (em->stateGroup != EM_GROUP_REACT || em->state != CHAM_REACT_FALL)) {
             Em_SetStatus4Timer(em);
-            EmChameleos_ChangeState(em, 4, 0xB, 3);
+            EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_STATUS4, EM_SYNC_OWNER);
         }
         break;
-    case 8:
-        if ((em->stateGroup != 0 || em->state != 0x14) && (em->stateGroup != 4 || em->state != 8)) {
+    case EM_DMG_STATUS2:
+        if ((em->stateGroup != EM_GROUP_IDLE || em->state != CHAM_IDLE_STATUS2_DOWN) && (em->stateGroup != EM_GROUP_REACT || em->state != CHAM_REACT_FALL)) {
             Em_SetStatus2Timer(em);
-            EmChameleos_ChangeState(em, 0, 0x14, 3);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS2_DOWN, EM_SYNC_OWNER);
         }
         break;
-    case 10:
+    case EM_DMG_HIT_LYING:
         switch (em->state) {
         case 0x12:
-            EmChameleos_ChangeState(em, 0, 0x17, 3);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_REST_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
         case 0x14:
-            EmChameleos_ChangeState(em, 0, 0x18, 3);
+            EmChameleos_ChangeState(em, EM_GROUP_IDLE, CHAM_IDLE_STATUS2_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
         }
         break;
-    case 11:
-        EmChameleos_ChangeState(em, 4, 4, 3);
+    case EM_DMG_PART8_DOWN:
+        EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_PART_BREAK, EM_SYNC_OWNER);
         break;
-    case 15:
-        if (EmChameleos_HasFlag43C(em) == 1 && (EmChameleos_WantsInvisible(em) & 0xFF) == 0 && (EmChameleos_CanTurnInvisible(em) & 0xFF) == 2) {
-            if (em->stance == 2) {
-                EmChameleos_ChangeState(em, 4, 0xD, 3);
+    case EM_DMG_ATTACK5:
+        if (EmChameleos_HasFullCloak(em) == 1 && (EmChameleos_WantsInvisible(em) & 0xFF) == 0 && (EmChameleos_CanTurnInvisible(em) & 0xFF) == 2) {
+            if (em->stance == EM_STANCE_AIR) {
+                EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_DECLOAK_FALL, EM_SYNC_OWNER);
             } else {
-                EmChameleos_ChangeState(em, 4, 0xC, 3);
+                EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_DECLOAK, EM_SYNC_OWNER);
             }
         }
         break;
-    case 16:
-        if (EmChameleos_HasFlag43C(em) == 1 && EmChameleos_IsInvisible(em) == 0) {
-            if (em->stance == 2) {
-                EmChameleos_ChangeState(em, 4, 0xD, 3);
+    case EM_DMG_ATTACK5_FLINCH:
+        if (EmChameleos_HasFullCloak(em) == 1 && EmChameleos_IsInvisible(em) == 0) {
+            if (em->stance == EM_STANCE_AIR) {
+                EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_DECLOAK_FALL, EM_SYNC_OWNER);
             } else {
-                EmChameleos_ChangeState(em, 4, 0xC, 3);
+                EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_DECLOAK, EM_SYNC_OWNER);
             }
             break;
         }
-    case 12:
-        if (em->stance == 2) {
-            EmChameleos_ChangeState(em, 4, 8, 3);
+    case EM_DMG_PART_FLINCH:
+        if (em->stance == EM_STANCE_AIR) {
+            EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_FALL, EM_SYNC_OWNER);
         } else {
             EmChameleos_BreakParts(em, 1);
             switch (em->flinchPart) {
@@ -3236,60 +4049,60 @@ void EmChameleos_Update(Em *em)
             case 2:
             case 5:
                 if (em->parts[em->flinchPart].state >= 2) {
-                    EmChameleos_ChangeState(em, 4, 2, 3);
+                    EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_STAGGER, EM_SYNC_OWNER);
                 } else {
-                    EmChameleos_ChangeState(em, 4, 1, 3);
+                    EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_FLINCH_B, EM_SYNC_OWNER);
                 }
                 break;
             case 0:
             case 6:
                 if (em->parts[em->flinchPart].state >= 2) {
-                    EmChameleos_ChangeState(em, 4, 2, 3);
+                    EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_STAGGER, EM_SYNC_OWNER);
                 } else {
-                    EmChameleos_ChangeState(em, 4, 0, 3);
+                    EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_FLINCH_A, EM_SYNC_OWNER);
                 }
                 break;
             case 3:
             case 4:
             default:
                 if (em->parts[em->flinchPart].state >= 2) {
-                    EmChameleos_ChangeState(em, 4, 3, 3);
+                    EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_KNOCK_DOWN, EM_SYNC_OWNER);
                 } else {
-                    EmChameleos_ChangeState(em, 4, 1, 3);
+                    EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_FLINCH_B, EM_SYNC_OWNER);
                 }
                 break;
             }
         }
         break;
-    case 17:
-        if ((em->stateGroup != 4 || em->state != 8) && (em->stateGroup != 4 || em->state != 5) && (em->stateGroup != 4 || em->state != 5)) {
+    case EM_DMG_STATUS5:
+        if ((em->stateGroup != EM_GROUP_REACT || em->state != CHAM_REACT_FALL) && (em->stateGroup != EM_GROUP_REACT || em->state != CHAM_REACT_STUN) && (em->stateGroup != EM_GROUP_REACT || em->state != CHAM_REACT_STUN)) {
             Em_SetStatus5Timer(em);
-            EmChameleos_ChangeState(em, 4, 5, 3);
+            EmChameleos_ChangeState(em, EM_GROUP_REACT, CHAM_REACT_STUN, EM_SYNC_OWNER);
         }
         break;
     }
     switch (gQuest.stage) {
-    case 0x437:
-    case 0x438:
-        if (Area_DayId(em->area) == AREA_FOREST_HILLS_9 && Save_TestEventFlag(0xA2) == 0) {
-            if (Area_DayId(gScene.area) == AREA_FOREST_HILLS_9 && gScene.eventRunning == 1 && em->stateGroup != 6) {
-                EmChameleos_ChangeState(em, 6, 0, 1);
+    case QUEST_ID_CHAMELEOS_SCENE_1:
+    case QUEST_ID_CHAMELEOS_SCENE_2:
+        if (Area_DayId(em->area) == AREA_FOREST_HILLS_9 && Save_TestEventFlag(EVENT_FLAG_CHAMELEOS_FOREST_SCENE) == 0) {
+            if (Area_DayId(gScene.area) == AREA_FOREST_HILLS_9 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+                EmChameleos_ChangeState(em, EM_GROUP_EVENT, CHAM_EVENT_FOREST, EM_SYNC_SEND);
             }
             break;
         }
     default:
-        if (Em_DamageResultIsReaction(em, r) == 1) {
+        if (Em_DamageResultIsReaction(em, dmgResult) == 1) {
             EmChameleos_BreakParts(em, 0);
         }
-        if (Quest_IsRunning(0) == 1 && em->stateGroup != 6 && em->stateGroup != 5) {
+        if (Quest_GetOutcome(0) == 1 && em->stateGroup != EM_GROUP_EVENT && em->stateGroup != EM_GROUP_DEFEAT) {
             em->scriptPending = 0;
-            if (em->stance == 2) {
-                EmChameleos_ChangeState(em, 6, 2, 0);
+            if (em->stance == EM_STANCE_AIR) {
+                EmChameleos_ChangeState(em, EM_GROUP_EVENT, CHAM_EVENT_LEAVE_AIR, EM_SYNC_LOCAL);
             } else {
                 if (gScene.area == em->area) {
                     CamReq_ForMonster(em);
                 }
-                EmChameleos_ChangeState(em, 6, 1, 0);
+                EmChameleos_ChangeState(em, EM_GROUP_EVENT, CHAM_EVENT_LEAVE, EM_SYNC_LOCAL);
             }
         }
         Em_UpdatePendingScript(em);
@@ -3301,7 +4114,7 @@ void EmChameleos_Update(Em *em)
         EmChameleos_RunState(em, (s32) w);
         em->stateRequest = 0;
     }
-    if (em->stateGroup == 2 && (s8) w->unk010 == 1) {
+    if (em->stateGroup == EM_GROUP_FLY && (s8) w->flyGuard == 1) {
         em->guardTimer = 2;
     }
     EmChameleos_UpdateInvisibility(em);
@@ -3312,40 +4125,49 @@ void EmChameleos_Update(Em *em)
     }
 }
 
+/*
+ * Saves the previous group and state, then runs the dispatcher of
+ * em->stateGroup (group 7 runs the event dispatcher).
+ */
 void EmChameleos_RunState(Em *em, s32 work)
 {
     em->prevStateGroup = em->stateGroup;
     em->prevState = em->state;
     switch (em->stateGroup) {
-    case 0:
-        EmChameleos_RunGroup0(em, (EmWork *) work);
+    case EM_GROUP_IDLE:
+        EmChameleos_RunIdleState(em, (EmWork *) work);
         break;
-    case 1:
-        EmChameleos_RunGroup1(em, (EmWork *) work);
+    case EM_GROUP_MOVE:
+        EmChameleos_RunMoveState(em, (EmWork *) work);
         break;
-    case 2:
-        EmChameleos_RunGroup2(em, (EmWork *) work);
+    case EM_GROUP_FLY:
+        EmChameleos_RunFlyState(em, (EmWork *) work);
         break;
-    case 3:
-        EmChameleos_RunGroup3(em, work);
+    case EM_GROUP_ATTACK:
+        EmChameleos_RunAttackState(em, work);
         break;
-    case 4:
-        EmChameleos_RunGroup4(em, (EmWork *) work);
+    case EM_GROUP_REACT:
+        EmChameleos_RunReactState(em, (EmWork *) work);
         break;
-    case 5:
-        EmChameleos_RunGroup5(em, (EmWork *) work);
+    case EM_GROUP_DEFEAT:
+        EmChameleos_RunDefeatState(em, (EmWork *) work);
         break;
-    case 6:
-        EmChameleos_RunGroup6(em, (EmWork *) work);
+    case EM_GROUP_EVENT:
+        EmChameleos_RunEventState(em, (EmWork *) work);
         break;
-    case 7:
-        EmChameleos_RunGroup6(em, (EmWork *) work);
-        
+    case EM_GROUP_EVENT2:
+        EmChameleos_RunEventState(em, (EmWork *) work);
+
     default:
         break;
     }
 }
 
+/*
+ * When the flinching part (Em.flinchPart) is part 0, has state above 0 and
+ * partFlags bit 0x20, flags it to break (Em_FlagPartBreak); with apply
+ * nonzero also applies the flagged breaks (Em_ApplyPartBreaks).
+ */
 void EmChameleos_BreakParts(Em *em, s32 apply)
 {
     u8 i = em->flinchPart;
@@ -3362,40 +4184,54 @@ void EmChameleos_BreakParts(Em *em, s32 apply)
     }
 }
 
-void EmChameleos_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale)
+/*
+ * When a player is in the monster's area, spawns ground effect kind
+ * (PartFx_SpawnOnGround) under the given bone, at floor height, scaled by
+ * scaleX.
+ */
+void EmChameleos_SpawnGroundEffect(Em *em, s32 bone, s32 kind, f32 scale)
 {
     f32 pos[3];
-
-    if (Player_InCurrentArea(em)) {
-        Em_BonePos(em, a1, pos);
-        pos[1] = em->floorY;
-        Effect0D_SpawnOnGround(pos, a2, scale * em->scaleX);
-    }
-}
-
-void EmChameleos_SpawnGroundEffectOffset(Em *em, s32 bone, s32 kind, f32 *ofs, f32 scale)
-{
-    f32 pos[3];
-    f32 v[3];
 
     if (Player_InCurrentArea(em)) {
         Em_BonePos(em, bone, pos);
-        Vec_Copy(v, ofs);
-        Vec_RotateY(v, 6.2831855f * em->rotY / 65536.0f);
-        pos[0] += v[0] * em->scaleX;
-        pos[1] = em->floorY + v[1] * em->scaleY;
-        pos[2] += v[2] * em->scaleZ;
-        Effect0D_SpawnOnGround(pos, kind, scale * em->scaleX);
+        pos[1] = em->floorY;
+        PartFx_SpawnOnGround(pos, kind, scale * em->scaleX);
     }
 }
 
-void EmChameleos_SpawnGroundEffectNearGround(Em *em, s32 arg1, s32 arg2, s32 flag, f32 scale)
+/*
+ * As SpawnGroundEffect, with an offset rotated by the monster's yaw and
+ * scaled by its size added to the bone position (height from the floor).
+ */
+void EmChameleos_SpawnGroundEffectOffset(Em *em, s32 bone, s32 kind, f32 *ofs, f32 scale)
+{
+    f32 pos[3];
+    f32 rotOfs[3];
+
+    if (Player_InCurrentArea(em)) {
+        Em_BonePos(em, bone, pos);
+        Vec_Copy(rotOfs, ofs);
+        Vec_RotateY(rotOfs, 6.2831855f * em->rotY / 65536.0f);
+        pos[0] += rotOfs[0] * em->scaleX;
+        pos[1] = em->floorY + rotOfs[1] * em->scaleY;
+        pos[2] += rotOfs[2] * em->scaleZ;
+        PartFx_SpawnOnGround(pos, kind, scale * em->scaleX);
+    }
+}
+
+/*
+ * While within 1000 of the floor, spawns the ground effect
+ * (SpawnGroundEffect) and, with withImpact set, an EmImpactAttack of kind 3
+ * on the floor under the monster.
+ */
+void EmChameleos_SpawnGroundEffectNearGround(Em *em, s32 bone, s32 kind, s32 withImpact, f32 scale)
 {
     f32 pos[3];
 
     if (em->posY <= 1000.0f + em->floorY) {
-        EmChameleos_SpawnGroundEffect(em, arg1, arg2, scale);
-        if (flag & 0xFF) {
+        EmChameleos_SpawnGroundEffect(em, bone, kind, scale);
+        if (withImpact & 0xFF) {
             pos[0] = em->posX;
             pos[1] = em->floorY;
             pos[2] = em->posZ;
@@ -3404,13 +4240,18 @@ void EmChameleos_SpawnGroundEffectNearGround(Em *em, s32 arg1, s32 arg2, s32 fla
     }
 }
 
-void EmChameleos_SpawnK14NearGround(Em *em, s32 k, f32 scale, s32 c, s32 flag)
+/*
+ * While within 1000 of the floor, makes a dust cloud (DustCloud_Create,
+ * scaled by scaleX) and, with withImpact set, an EmImpactAttack of kind 3
+ * on the floor under the monster.
+ */
+void EmChameleos_SpawnDustNearGround(Em *em, s32 dustKind, f32 scale, s32 dustArg, s32 withImpact)
 {
     f32 pos[3];
 
     if (em->posY <= 1000.0f + em->floorY) {
-        StageObj_K14_Create(em, k, c, scale * em->scaleX);
-        if (flag & 0xFF) {
+        DustCloud_Create(em, dustKind, dustArg, scale * em->scaleX);
+        if (withImpact & 0xFF) {
             pos[0] = em->posX;
             pos[1] = em->floorY;
             pos[2] = em->posZ;
@@ -3419,36 +4260,47 @@ void EmChameleos_SpawnK14NearGround(Em *em, s32 k, f32 scale, s32 c, s32 flag)
     }
 }
 
-void EmChameleos_SpawnK1CInMotions(Em *em, s16 motion)
+/*
+ * In the walking, idle, limp and some attack and recover motions, while
+ * enraged, makes MonsterFx 0xD on the monster every 45 frames.
+ */
+void EmChameleos_SpawnRageFx(Em *em, s16 motion)
 {
     switch (motion) {
-    case 0x3E9:
-    case 0x3EA:
-    case 0x3ED:
-    case 0x3EE:
-    case 0x3EF:
-    case 0x3FC:
-    case 0x407:
-    case 0x408:
-    case 0x409:
-    case 0x40A:
-    case 0x40B:
-    case 0x414:
-    case 0x418:
-    case 0x41D:
-    case 0x42E:
-    case 0x433:
+    case EM_MOTION_ID(0, CHAM_MOT_IDLE):
+    case EM_MOTION_ID(0, CHAM_MOT_WALK):
+    case EM_MOTION_ID(0, 0x05):
+    case EM_MOTION_ID(0, 0x06):
+    case EM_MOTION_ID(0, CHAM_MOT_SPIN_TURN):
+    case EM_MOTION_ID(0, 0x14):
+    case EM_MOTION_ID(0, CHAM_MOT_IDLE_ALERT):
+    case EM_MOTION_ID(0, CHAM_MOT_TURN_TO_GOAL):
+    case EM_MOTION_ID(0, CHAM_MOT_IDLE_ACTION_A):
+    case EM_MOTION_ID(0, CHAM_MOT_CLOAK):
+    case EM_MOTION_ID(0, CHAM_MOT_LIMP):
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_A_END):
+    case EM_MOTION_ID(0, CHAM_MOT_TAIL_POUNDS):
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_B_END):
+    case EM_MOTION_ID(0, CHAM_MOT_SHAKE_OFF):
+    case EM_MOTION_ID(0, CHAM_MOT_PART_BREAK_SPIN):
         if (em->rage != 0 && gScene.frame % 45 == 0) {
-            StageObj_K1C_CreateOnEm(em, 0xD, 2.0f * em->scaleX);
+            MonsterFx_CreateOnEm(em, 0xD, 2.0f * em->scaleX);
         }
         break;
     }
 }
 
+/* Empty: the default case of MotionEffects. */
 static void EmChameleos_MotionEffectsDefault(Em *em)
 {
 }
 
+/*
+ * Keeps the layer-0 motion id in fxMotion, plays its sounds (MotionSounds),
+ * the rage effect (SpawnRageFx), and per motion at set frames makes the
+ * ChameleosAttack hit objects, ground effects, dust clouds and impact
+ * attacks of the attacks, landings and steps.
+ */
 void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
 {
     f32 pos[3];
@@ -3458,9 +4310,9 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
         work->fxMotion = em->motionId[0];
     }
     EmChameleos_MotionSounds(em, (EmWork *) work);
-    EmChameleos_SpawnK1CInMotions(em, work->fxMotion);
+    EmChameleos_SpawnRageFx(em, work->fxMotion);
     switch (work->fxMotion) {
-    case 0x3EB:
+    case EM_MOTION_ID(0, CHAM_MOT_RUN):
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 8, 0x14, 4.0f);
         }
@@ -3474,58 +4326,58 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             EmChameleos_SpawnGroundEffect(em, 0x1F, 0x14, 4.0f);
         }
         break;
-    case 0x3EC:
+    case EM_MOTION_ID(0, CHAM_MOT_RUN_STOP):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
-    case 0x3EF:
+    case EM_MOTION_ID(0, CHAM_MOT_SPIN_TURN):
         if (EmMotion_PassedFrameScaled(em, 110.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
-    case 0x3F1:
+    case EM_MOTION_ID(0, CHAM_MOT_BACK_HOP):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0)) {
-            StageObj_K14_Create(em, 2, 0x29, 1.5f * em->scaleX);
+            DustCloud_Create(em, 2, 0x29, 1.5f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 86.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
-    case 0x3F2:
+    case EM_MOTION_ID(0, CHAM_MOT_TAKE_OFF):
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0)) {
-            StageObj_K14_Create(em, 0x13, 0, em->scaleX);
+            DustCloud_Create(em, 0x13, 0, em->scaleX);
         }
         break;
-    case 0x3F3:
+    case EM_MOTION_ID(0, 0xB):
         if (EmMotion_PassedFrameScaled(em, 64.0f, 0)) {
             EmChameleos_SpawnGroundEffectNearGround(em, 1, 7, 0, 8.0f);
         }
         break;
-    case 0x3F8:
+    case EM_MOTION_ID(0, CHAM_MOT_BRAKE):
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
-            EmChameleos_SpawnK14NearGround(em, 1, 1.0f, 0, 0);
+            EmChameleos_SpawnDustNearGround(em, 1, 1.0f, 0, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 92.0f, 0)) {
             EmChameleos_SpawnGroundEffectNearGround(em, 1, 7, 0, 8.0f);
         }
         break;
-    case 0x3F9:
+    case EM_MOTION_ID(0, CHAM_MOT_LAND):
         if (EmMotion_PassedFrameScaled(em, 32.0f, 0)) {
-            EmChameleos_SpawnK14NearGround(em, 0xB, 1.0f, 0, 1);
+            EmChameleos_SpawnDustNearGround(em, 0xB, 1.0f, 0, 1);
         }
         break;
-    case 0x3FA:
+    case EM_MOTION_ID(0, CHAM_MOT_HOVER):
         if (EmMotion_PassedFrameScaled(em, 36.0f, 0)) {
-            EmChameleos_SpawnK14NearGround(em, 1, 1.0f, 0, 1);
+            EmChameleos_SpawnDustNearGround(em, 1, 1.0f, 0, 1);
         }
         break;
-    case 0x3FB:
+    case EM_MOTION_ID(0, CHAM_MOT_TAKE_OFF_END):
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0)) {
             EmChameleos_SpawnGroundEffectNearGround(em, 1, 7, 0, 8.0f);
         }
         break;
-    case 0x411:
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE_LOW):
         if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
             ChameleosAttack_Create(em, 2);
         }
@@ -3533,15 +4385,15 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             ChameleosAttack_Create(em, 8);
         }
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0)) {
-            StageObj_K14_Create(em, 2, 0x2B, 1.5f * em->scaleX);
+            DustCloud_Create(em, 2, 0x2B, 1.5f * em->scaleX);
         }
         break;
-    case 0x412:
+    case EM_MOTION_ID(0, CHAM_MOT_SPIT_START):
         if (EmMotion_PassedFrameScaled(em, 86.0f, 0)) {
             ChameleosAttack_Create(em, 9);
         }
         break;
-    case 0x415:
+    case EM_MOTION_ID(0, CHAM_MOT_STOMP):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0)) {
             ChameleosAttack_Create(em, 3);
         }
@@ -3549,10 +4401,10 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             EmChameleos_SpawnGroundEffect(em, 0x1F, 0x14, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0)) {
-            StageObj_K14_Create(em, 2, 0x2F, 1.5f * em->scaleX);
+            DustCloud_Create(em, 2, 0x2F, 1.5f * em->scaleX);
         }
         break;
-    case 0x416:
+    case EM_MOTION_ID(0, CHAM_MOT_TAIL_SLAM):
         if (EmMotion_PassedFrameScaled(em, 72.0f, 0)) {
             ChameleosAttack_Create(em, 4);
         }
@@ -3561,18 +4413,18 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             Em_BonePos(em, 0x10, pos);
             pos[1] = em->floorY;
             if ((u8)(s32)Player_InCurrentArea(em)) {
-                StageObj_K11_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 1.0f);
+                AttackBurst_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 1.0f);
             }
             EmImpactAttack_CreateAt(em, (f32 *) pos, 3);
         }
         break;
-    case 0x418:
+    case EM_MOTION_ID(0, CHAM_MOT_TAIL_POUNDS):
         if (EmMotion_PassedFrameScaled(em, 66.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0) || EmMotion_PassedFrameScaled(em, 258.0f, 0) || EmMotion_PassedFrameScaled(em, 356.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 0x10, 7, 8.5f);
             Em_BonePos(em, 0x10, pos);
             pos[1] = em->floorY;
             if ((u8)(s32)Player_InCurrentArea(em)) {
-                StageObj_K11_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 1.0f);
+                AttackBurst_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 1.0f);
             }
             EmImpactAttack_CreateAt(em, (f32 *) pos, 3);
         }
@@ -3580,7 +4432,7 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             ChameleosAttack_Create(em, 7);
         }
         break;
-    case 0x419:
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE):
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
             ChameleosAttack_Create(em, 1);
         }
@@ -3591,7 +4443,7 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             EmChameleos_SpawnGroundEffectOffset(em, 0x29, 0x14, ofs, 8.0f);
         }
         break;
-    case 0x41A:
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE_B):
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
             ChameleosAttack_Create(em, 5);
         }
@@ -3608,7 +4460,7 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             EmChameleos_SpawnGroundEffectOffset(em, 0x29, 0x14, ofs, 8.0f);
         }
         break;
-    case 0x41B:
+    case EM_MOTION_ID(0, CHAM_MOT_TONGUE_HIGH):
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0)) {
             ChameleosAttack_Create(em, 1);
         }
@@ -3619,39 +4471,39 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
             EmChameleos_SpawnGroundEffectOffset(em, 0x29, 0x14, ofs, 4.0f);
         }
         break;
-    case 0x426:
+    case EM_MOTION_ID(0, CHAM_MOT_RECOVER):
         if (EmMotion_PassedFrameScaled(em, 64.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 4.0f);
         }
         break;
-    case 0x429:
+    case EM_MOTION_ID(0, CHAM_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0)) {
-            StageObj_K14_Create(em, 0xB, 0, em->scaleX);
+            DustCloud_Create(em, 0xB, 0, em->scaleX);
         }
         break;
-    case 0x42A:
+    case EM_MOTION_ID(0, CHAM_MOT_DOWN):
         if (EmMotion_PassedFrameScaled(em, 62.0f, 0)) {
             EmChameleos_SpawnGroundEffect(em, 1, 7, 8.0f);
         }
         break;
-    case 0x42C:
+    case EM_MOTION_ID(0, CHAM_MOT_DIE):
         if (EmMotion_PassedFrameScaled(em, 468.0f, 0)) {
-            StageObj_K14_Create(em, 0, 0, em->scaleX);
+            DustCloud_Create(em, 0, 0, em->scaleX);
         }
         break;
-    case 0x42F:
+    case EM_MOTION_ID(0, CHAM_MOT_STATUS_DOWN):
         if (EmMotion_PassedFrameScaled(em, 182.0f, 0)) {
-            StageObj_K14_Create(em, 0, 0, em->scaleX);
+            DustCloud_Create(em, 0, 0, em->scaleX);
         }
         break;
-    case 0x431:
+    case EM_MOTION_ID(0, CHAM_MOT_COLLAPSE):
         if (EmMotion_PassedFrameScaled(em, 166.0f, 0)) {
-            StageObj_K14_Create(em, 0, 0, em->scaleX);
+            DustCloud_Create(em, 0, 0, em->scaleX);
         }
         break;
-    case 0x432:
+    case EM_MOTION_ID(0, CHAM_MOT_PART_BREAK):
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0)) {
-            StageObj_K14_Create(em, 0, 0, em->scaleX);
+            DustCloud_Create(em, 0, 0, em->scaleX);
         }
         break;
     default:
@@ -3660,6 +4512,10 @@ void EmChameleos_MotionEffects(Em *em, EmChameleosWork *work)
     }
 }
 
+/*
+ * Skips the first frame (fxStep 0 to 1), then runs MotionEffects every
+ * frame.
+ */
 void EmChameleos_UpdateMotionEffects(Em *em)
 {
     EmChameleosWork *w = (EmChameleosWork *)&em->work;
@@ -3674,15 +4530,21 @@ void EmChameleos_UpdateMotionEffects(Em *em)
     }
 }
 
+/* Empty callback of the family's callback table. */
 void EmChameleos_TableNop(void)
 {
 }
 
-s32 EmChameleos_ScriptQuery(Em *em, u8 k)
+/*
+ * Answers the script's query k: 0 whether the full cloak is on
+ * (HasFullCloak), 1 the current map's day id, 2 the invisibility mode
+ * (WantsInvisible); returns 0 otherwise.
+ */
+s32 EmChameleos_ScriptQuery(Em *em, u8 query)
 {
-    switch (k) {
+    switch (query) {
     case 0:
-        return EmChameleos_HasFlag43C(em) == 1;
+        return EmChameleos_HasFullCloak(em) == 1;
     case 1:
         return (u8) Map_DayId(gScene.map);
     case 2:
@@ -3691,4019 +4553,20 @@ s32 EmChameleos_ScriptQuery(Em *em, u8 k)
     return 0;
 }
 
-s32 EmChameleos_AllowHit8(Em *em)
+/*
+ * Part-break callback: returns 1 when not in the air, hp is at most 30% of
+ * the maximum and the part-break reaction has not run yet (partBreakCount
+ * 0), else 0.
+ */
+s32 EmChameleos_AllowPartBreak(Em *em)
 {
-    if (em->stance != 2 && em->hp <= (s16) (0.3f * em->hpMax) && em->partBreakCount == 0) {
+    if (em->stance != EM_STANCE_AIR && em->hp <= (s16) (0.3f * em->hpMax) && em->partBreakCount == 0) {
         return 1;
     }
     return 0;
 }
 
-/* Remobra's own meanings of the work area's bytes (EmWork, include/em.h, has the shared ones). */
-typedef struct EmRemobraWork {
-    u8 fxStep;                  /* 0x000: UpdateMotionEffects: 0, then 1 */
-    u8 unk001[0x014 - 0x001];
-    f32 home[3];                /* 0x014: Init: the position; ChangeState copies it to the goal */
-    u8 curveNone;               /* 0x020: the three curves' run flags (StartCurves, UpdateCurves) */
-    u8 curveVelY;               /* 0x021 */
-    u8 curveSpeed;              /* 0x022 */
-    u8 curveKind;               /* 0x023: the curve tables' index (StartCurves) */
-    s16 curveFrame;             /* 0x024: the curve frame (StartCurves, UpdateCurves) */
-    u8 unk026[0x028 - 0x026];
-    f32 distLeft;               /* 0x028: ChangeState: the distance to the goal (Vec_DistanceXZ, or 1000) */
-    u16 unk02C;                 /* 0x02C: ChangeState: an angle (Math_AngleXZ to the goal, or rotY plus a random part) */
-    u8 unk02E[0x02F - 0x02E];
-    u8 unk02F;                  /* 0x02F: ChangeState: 0 or 1 */
-    f32 hopVel;                 /* 0x030: UpdateHop: 14, then less hopAccel each frame */
-    f32 hopAccel;               /* 0x034: UpdateHop: -hopVel / (hopFrames / 2) */
-    u8 unk038[0x03A - 0x038];
-    s16 hopFrames;              /* 0x03A: UpdateHop: 0x22 */
-    u8 unk03C[0x100 - 0x03C];
-} EmRemobraWork;
-typedef char EmRemobraWork_size_check[(sizeof(EmRemobraWork) == sizeof(EmWork)) ? 1 : -1];
-
-void EmRemobra_MotionSounds(s32 em, EmWork *work)
-{
-    s16 motion;
-
-    motion = work->fxMotion;
-    switch (motion) {
-    case 0x3E9:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, Sound_RandomSe(0xB, 2, 0xB, 2), 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x94, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x98, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDE, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, 0x1D, 0xE);
-        break;
-    case 0x3EA:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x76, 1, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x50, 0x1A, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 0x20, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x98, 0x20, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, 2, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF4, 0x1B, 0x15);
-        break;
-    case 0x3EB:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0xB, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDE, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, 0x1D, 0xE);
-        break;
-    case 0x3EC:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2B, 0x14, 3);
-        break;
-    case 0x3ED:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2B, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x52, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x55, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7F, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9F, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB4, 0x14, 3);
-        break;
-    case 0x3EE:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2B, 0x14, 3);
-        break;
-    case 0x3EF:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2B, 0x14, 3);
-        break;
-    case 0x3F0:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2B, 0x14, 3);
-        break;
-    case 0x3F1:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2B, 0x14, 3);
-        break;
-    case 0x3F2:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 3, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0x1E, 8);
-        break;
-    case 0x3F3:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 4, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 0x22, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x19, 0x19);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x22, 0x19);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xBC, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC0, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF2, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF6, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x122, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x126, 0x1D, 0xE);
-        break;
-    case 0x3F4:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 5, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2B, 0x14, 3);
-        break;
-    case 0x3F5:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 5, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x1D, 0xE);
-        break;
-    case 0x3F6:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 6, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 0x1D, 0xE);
-        break;
-    case 0x3F7:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 5, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x1D, 0xE);
-        break;
-    case 0x3F8:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 7, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0x1E, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x1E, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, 8, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x15, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x90, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x94, 0x1D, 0xE);
-        break;
-    case 0x3F9:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 9, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x42, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6E, 0x26, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8C, 4, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9A, 0x29, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 0x2A, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x2B, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x2C, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xCC, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xD2, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xFA, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xFE, 0x1D, 0xE);
-        break;
-    case 0x3FA:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x16, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 2, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x64, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 0x1D, 0xE);
-        break;
-    case 0x3FB:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0, 0x16, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 3, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x20, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x36, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0x14, 3);
-        break;
-    case 0x3FC:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0x1A, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, 0x21, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x42, 0x20, 0xE);
-        break;
-    case 0x3FD:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x17, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, Sound_RandomSe(0xA, 5, 2, 3), 0x15);
-        break;
-    case 0x3FE:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, Sound_RandomSe(0xB, 2, 0xB, 2), 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDE, 0xA, 0x15);
-        break;
-    case 0x3FF:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, 0xE, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, 0xF, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 0x1A, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB2, 0x1B, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF4, 0xD, 0x15);
-        break;
-    case 0x400:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 3, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 4, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0x22, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x19, 0x19);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x22, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 4, 0x15);
-        break;
-    case 0x401:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x20, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 1, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x1F, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5A, 2, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x90, 0x1B, 0x15);
-        break;
-    case 0x402:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0xC, 0x15);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA6, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE6, 0x1D, 0xE);
-        
-    default:
-        break;
-    }
-}
-
-void EmRemobra_Init(Em *em)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-
-    s16 size;
-
-    Em_SetMotionRow(em, 1, 0, 0);
-    em->stance = 2;
-    size = Em_ComputeMaxHp(em, 0);
-    em->hp = size;
-    em->hpMax = size;
-    em->scriptPending = 1;
-    em->blind = 0;
-    Em_InitParts(em);
-    w->home[0] = em->posX;
-    w->home[1] = 0.0f;
-    w->home[2] = (f32) em->posZ;
-}
-
-void EmRemobra_Start(Em *em)
-{
-    EmRemobra_Init(em);
-    EmRemobra_ChangeState(em, 2, 9, 0);
-}
-
-void EmRemobra_Reinit(Em *em)
-{
-    EmRemobra_Init(em);
-}
-
-void EmRemobra_ChangeState(Em *em, u16 group, u16 state, u8 mode)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-    f32 d;
-    f32 f;
-
-    switch (group) {
-    case 2:
-        switch (state) {
-        case 10:
-            w->unk02C = Math_AngleXZ(&em->posX, em->goal);
-            break;
-        case 18:
-            w->unk02C = em->rotY + (em->stateRand & 0x3FFF);
-            break;
-        case 2:
-        case 20:
-            d = 1300.0f;
-            goto dist;
-        case 15:
-            d = 300.0f;
-        dist:
-            if (em->curGoalKind == 0) {
-                w->unk02F = 0;
-                em->timer = (em->stateRand % 120 + 180) / 2;
-                w->distLeft = 1000.0f;
-            } else {
-                w->unk02F = 1;
-                w->distLeft = Vec_DistanceXZ(&em->posX, em->goal);
-                if (em->curGoalKind == 1 && em->curGoalArg == 0) {
-                    if (em->targetNo == -1) {
-                        w->unk02F = 0;
-                        w->distLeft = 1000.0f;
-                        break;
-                    }
-                    f = w->distLeft - d;
-                    w->distLeft = f;
-                    if (f <= 0.0f) {
-                        w->distLeft = 0.0f;
-                    }
-                }
-                if (em->curGoalKind == 7) {
-                    f = w->distLeft - d;
-                    w->distLeft = f;
-                    if (f <= 0.0f) {
-                        w->distLeft = 0.0f;
-                    }
-                }
-                em->timer = (s32) w->distLeft / 7;
-            }
-            break;
-        case 19:
-            w->unk02F = 0;
-            f = 600.0f;
-            w->distLeft = f;
-            em->timer = (s32) f / 7;
-            break;
-        case 12:
-            em->timer = (em->stateRand & 3) * 30 + 30;
-            break;
-        case 13:
-            em->timer = 120;
-            if (em->curGoalKind == 0) {
-                em->goal[1] = em->posY;
-                em->goal[1] += (f32) ((u16) Rand_Next(1) % 200) - 50.0f;
-            }
-            break;
-        case 14:
-            Em_EndStatus4(em);
-            break;
-        case 17:
-            Vec_Copy(em->goal, &w->home[0]);
-            em->goal[1] += 20.0f;
-            w->distLeft = Vec_Distance((f32 *) &em->posX, (f32 *) em->goal);
-            break;
-        case 26:
-            em->goal[1] = 500.0f + em->floorY;
-            break;
-        }
-        break;
-    case 5:
-        if (state == 1 && QuestEm_CanAppear(em) == 1) {
-            QuestEm_Appear(em);
-        }
-        break;
-    case 4:
-        switch (state) {
-        case 3:
-            Em_BeginStatus4(em);
-            break;
-        }
-        break;
-    }
-    Em_SetStateSync(em, group, state, mode);
-}
-
-void EmRemobra_EndState(Em *em)
-{
-    em->motionSpeed = 1.0f;
-    em->stance = 0;
-    em->lookAtTarget = 0;
-    em->scriptPending = 1;
-    em->blind = 0;
-    EmRemobra_ChangeState(em, 0, 1, 0);
-}
-
-void EmRemobra_EndState2(Em *em)
-{
-    em->motionSpeed = 1.0f;
-    em->stance = 2;
-    em->lookAtTarget = 0;
-    em->scriptPending = 1;
-    em->blind = 0;
-    EmRemobra_ChangeState(em, 2, 0, 0);
-}
-
-void EmRemobra_State0_00(void)
-{
-}
-
-void EmRemobra_State0_01(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->stance = 0;
-        em->step++;
-        em->timer = ((em->stateRand & 3) * 0x1E) + 0x1E;
-        if (em->motionId[0] != 0x403) {
-            Em_SetMotion(em, 0x1B, 0, 0);
-        }
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            EmRemobra_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_RunGroup0(Em *em)
-{
-    em->prevStateGroup = em->stateGroup;
-    em->prevState = em->state;
-    switch (em->state) {
-    case 0:
-        EmRemobra_State0_00();
-        break;
-    case 1:
-        EmRemobra_State0_01(em);
-        break;
-    }
-}
-
-void EmRemobra_State1_00(Em *em)
-{
-    EmRemobra_EndState(em);
-}
-
-void EmRemobra_RunGroup1(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmRemobra_State1_00(em);
-        break;
-    }
-}
-
-void func_00854BC0(Em *em)
-{
-    *(s16 *)((u8 *)em + 0x472) = 0;
-    em->unk468 = 0;
-    em->unk46C = 0;
-}
-
-void EmRemobra_UpdateHop(Em *em)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-    s16 i;
-    f32 *p;
-
-    if (em->motionId[0] == 0x3E9) {
-        for (i = 0, p = &D_008CAE40; i < 3; i++, p++) {
-            if (EmMotion_PassedFrameScaled(em, *p, 0) != 0) {
-                w->hopFrames = 0x22;
-                w->hopVel = 14.0f;
-                w->hopAccel = -(w->hopVel / (w->hopFrames / 2));
-                w->hopFrames += 1;
-            }
-        }
-        if (w->hopFrames > 0) {
-            w->hopFrames -= 1;
-            em->posY += w->hopVel;
-            w->hopVel += w->hopAccel;
-        }
-    }
-}
-
-void EmRemobra_State2_00(Em *em)
-{
-    f32 posY;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stateVar0 = 0;
-        em->stateVar1 = 0;
-        em->stance = 2;
-        em->timer = 0x1E;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-            func_00854BC0(em);
-        }
-        
-    case 1:
-        if (--em->timer <= 0) {
-            EmRemobra_EndState2(em);
-            break;
-        }
-        posY = em->posY;
-        if (((posY - em->floorY) <= 400.0f) && (em->stateVar0 == 0)) {
-            em->posY += 18.0f;
-            break;
-        }
-        em->stateVar0 = 1;
-        break;
-    }
-}
-
-void EmRemobra_State2_01(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 3, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State2_02(Em *em, s32 variant)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-    s32 d;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        if (variant == 0) {
-            Em_SetMotion(em, 4, 0, 0);
-        } else {
-            Em_SetMotion(em, 0xC, 0, 0);
-        }
-        Player_ClearVelocity(em);
-        em->velZ = 45.0f;
-    case 1:
-        if (w->unk02F != 0) {
-            d = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if (d <= 0x8000) {
-                if (d < 0x100) {
-                    em->rotY += d;
-                } else {
-                    em->rotY += 0x100;
-                }
-            } else if (d > 0xFF00) {
-                em->rotY += d;
-            } else {
-                em->rotY -= 0x100;
-            }
-        }
-        Em_MoveRotatedAccel(em, &em->rotX);
-        if (em->curGoalKind == 1 && em->curGoalArg == 0) {
-            if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 300.0f || --em->timer <= 0) {
-                em->step++;
-                Em_SetMotion(em, 4, 0, 0);
-                em->velZ *= 0.8f;
-                break;
-            }
-        } else {
-            w->distLeft -= em->velZ;
-            if (w->distLeft <= 0.0f) {
-                em->step++;
-                Em_SetMotion(em, 4, 0, 0);
-                em->velZ *= 0.8f;
-                break;
-            }
-        }
-        if (em->motionId[0] == 0x3F4) {
-            if (em->motion[0].playing == 0) {
-                Em_SetMotion(em, 0xC, 8, 0);
-            } else if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
-            }
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_ChangeState(em, 2, 1, 0);
-        } else {
-            Em_MoveRotatedAccel(em, &em->rotX);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State2_03(Em *em, s32 kind, s32 dir)
-{
-    u16 d;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Player_ClearVelocity(em);
-        if (kind == 0) {
-            if (dir == 0) {
-                Em_SetMotion(em, 6, 0, 0);
-            } else {
-                Em_SetMotion(em, 7, 0, 0);
-            }
-            em->velZ = 24.0f;
-        } else {
-            if (dir == 0) {
-                Em_SetMotion(em, 8, 0, 0);
-            } else {
-                Em_SetMotion(em, 9, 0, 0);
-            }
-            em->velZ = 33.75f;
-        }
-        em->timer = 30;
-        Em_MoveRotatedAccel(em, &em->rotX);
-        break;
-    case 1:
-        if (kind == 0) {
-            if (dir == 0) {
-                d = 0x200;
-            } else {
-                d = -0x200;
-            }
-        } else {
-            if (dir == 0) {
-                d = 0x400;
-            } else {
-                d = -0x400;
-            }
-        }
-        em->rotY += d;
-        Em_MoveRotatedAccel(em, &em->rotX);
-        if (--em->timer <= 0) {
-            EmRemobra_ChangeState(em, 2, 2, 0);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State2_07(Em *em, s32 variant)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Player_ClearVelocity(em);
-        Em_SetMotion(em, 0xA, 0, 0);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            em->step++;
-            if (variant == 0) {
-                em->velY = 30.0f;
-                em->accelY = -0.8f;
-                em->velZ = -30.0f;
-                break;
-            }
-            em->velY = 32.0f;
-            em->accelY = -0.8f;
-            em->velZ = -40.0f;
-        }
-        break;
-    case 2:
-        Em_MoveRotatedAccel(em, &em->rotX);
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State2_09(Em *em, s32 variant)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        if (variant == 0) {
-            Em_SetMotion(em, 0xB, 0, 0x5A);
-            break;
-        }
-        Em_SetMotion(em, 0xB, 0, 0);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 196.0f, 0U) != 0) {
-            em->step++;
-            em->stance = 2;
-            em->posY += 400.0f;
-            Em_SetMotionRow(em, 1, 0, 0);
-            if (variant == 2) {
-                em->noReact = 0;
-            }
-            EmRemobra_EndState2(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State2_0A(Em *em)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-    u16 target;
-    u32 diff;
-    s32 angle;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-            func_00854BC0(em);
-        }
-        break;
-    case 1:
-        angle = em->rotY;
-        target = w->unk02C;
-        diff = (target - (angle & 0xFFFF)) & 0xFFFF;
-        if ((u32) ((diff + 0x440) & 0xFFFF) < 0x880U) {
-            em->rotY = (s32) target;
-            em->step++;
-            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-            EmRemobra_EndState2(em);
-        } else if (diff < 0x8000U) {
-            em->rotY = (angle + 0x440) & 0xFFFF;
-        } else {
-            em->rotY = (angle - 0x440) & 0xFFFF;
-        }
-        break;
-    }
-    Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-}
-
-void EmRemobra_State2_0C(Em *em, s32 variant)
-{
-    f32 posY;
-    f32 y;
-    f32 goalY;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-            func_00854BC0(em);
-        }
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            EmRemobra_EndState2(em);
-            break;
-        }
-        posY = 180.0f + em->floorY;
-        if (em->posY < posY) {
-            em->posY = posY;
-            EmRemobra_EndState2(em);
-        }
-        if (variant == 0) {
-            goalY = 600.0f - (f32) ((s32) em->stateRand % 400);
-        } else {
-            goalY = em->goal[1];
-        }
-        if (!(Math_Absf(em->posY - goalY) < 50.0f)) {
-            y = em->posY;
-            if (y <= goalY) {
-                em->posY += 18.0f;
-                break;
-            }
-            em->posY -= 18.0f;
-            break;
-        }
-        EmRemobra_EndState2(em);
-        break;
-    }
-}
-
-void EmRemobra_State2_0F(Em *em, s32 variant)
-{
-    f32 v[3];
-    f32 out[3];
-    s32 ang[3];
-    f32 mtx[16];
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-    s32 d;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-            func_00854BC0(em);
-        }
-        break;
-    case 1:
-        if (w->unk02F != 0) {
-            d = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if (d <= 0x8000) {
-                if (d < 0x280) {
-                    em->rotY += d;
-                } else {
-                    em->rotY += 0x280;
-                }
-            } else if (d > 0xFD80) {
-                em->rotY += d;
-            } else {
-                em->rotY -= 0x280;
-            }
-        }
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 20.0f;
-        ang[0] = 0;
-        ang[1] = em->rotY;
-        ang[2] = 0;
-        Mtx_FromAnglesYXZ(ang, mtx);
-        Vec_Rotate(out, v, mtx);
-        em->posX += out[0];
-        em->posZ += out[2];
-        if (em->curGoalKind == 1 && em->curGoalArg == 0) {
-            if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 300.0f || --em->timer <= 0) {
-                em->step++;
-                EmRemobra_EndState2(em);
-            }
-        } else {
-            w->distLeft -= v[2];
-            if (w->distLeft <= 0.0f) {
-                em->step++;
-                EmRemobra_EndState2(em);
-            }
-        }
-        break;
-    case 2:
-        EmRemobra_EndState2(em);
-        break;
-    }
-}
-
-void EmRemobra_State2_10(Em *em, s32 unused)
-{
-    f32 posY;
-
-    switch (em->step) {
-    case 0:
-        em->stance = 2;
-        if (em->posY <= (400.0f + em->floorY)) {
-            em->step++;
-            if (em->motionId[0] != 0x3E9) {
-                Em_SetMotion(em, 1, 0, 0);
-            }
-            break;
-        }
-        em->step = 2;
-        Em_SetMotion(em, 0x1A, 0, 0);
-        break;
-    case 1:
-        posY = em->posY;
-        if ((posY - em->floorY) <= 400.0f) {
-            em->posY += 24.0f;
-            break;
-        }
-        em->step++;
-        Em_SetMotion(em, 0x1A, 0, 0);
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State2_11(Em *em)
-{
-    f32 floorY;
-
-    switch (em->step) {
-    case 0:
-        em->stance = 2;
-        em->step++;
-        em->timer = ((em->stateRand & 3) * 0xF) + 0x1E;
-        Em_SetMotion(em, 1, 0, 0);
-        Player_ClearVelocity(em);
-        em->velX = 0.0f;
-        em->velY = 0.0f;
-        em->velZ = 20.0f;
-        break;
-    case 1:
-        Em_TurnToGoal(em, 0x5B0, 0);
-        EmRemobra_MoveByVelocity(em);
-        floorY = em->floorY;
-        if (em->posY < floorY) {
-            em->posY = floorY;
-        }
-        if (--em->timer <= 0) {
-            em->step++;
-            EmRemobra_EndState2(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State2_15(Em *em, s32 variant)
-{
-    f32 out[3];
-    s32 ang[3];
-    f32 mtx[16];
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 40;
-        em->stance = 2;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-            func_00854BC0(em);
-        }
-        Player_ClearVelocity(em);
-        switch (variant) {
-        case 0:
-            em->velZ = 20.0f;
-            break;
-        case 1:
-            em->velZ = -23.0f;
-            break;
-        case 2:
-            em->velX = 20.0f;
-            break;
-        case 3:
-            em->velX = -20.0f;
-            break;
-        case 4:
-            em->velY = 20.0f;
-            em->velZ = -23.0f;
-            break;
-        }
-        break;
-    case 1:
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        ang[0] = 0;
-        ang[1] = em->rotY;
-        ang[2] = 0;
-        Mtx_FromAnglesYXZ(ang, mtx);
-        Vec_Rotate(out, &em->velX, mtx);
-        em->posX += out[0];
-        em->posY += out[1];
-        em->posZ += out[2];
-        if (--em->timer <= 0) {
-            em->step++;
-            EmRemobra_EndState2(em);
-        }
-        break;
-    case 2:
-        EmRemobra_EndState2(em);
-        break;
-    }
-}
-
-void EmRemobra_RunGroup2(Em *em)
-{
-    f32 floorY;
-
-    switch (em->state) {
-    case 0:
-        EmRemobra_State2_00(em);
-        break;
-    case 1:
-        EmRemobra_State2_01(em);
-        break;
-    case 2:
-        EmRemobra_State2_02(em, 0);
-        break;
-    case 3:
-        EmRemobra_State2_03(em, 0, 0);
-        break;
-    case 4:
-        EmRemobra_State2_03(em, 0, 1);
-        break;
-    case 5:
-        EmRemobra_State2_03(em, 1, 0);
-        break;
-    case 6:
-        EmRemobra_State2_03(em, 1, 1);
-        break;
-    case 7:
-        EmRemobra_State2_07(em, 0);
-        break;
-    case 8:
-        EmRemobra_State2_07(em, 1);
-        break;
-    case 9:
-        EmRemobra_State2_09(em, 0);
-        break;
-    case 10:
-        EmRemobra_State2_0A(em);
-        break;
-    case 11:
-        EmRemobra_State2_09(em, 1);
-        break;
-    case 12:
-        EmRemobra_State2_0C(em, 0);
-        break;
-    case 13:
-        EmRemobra_State2_0C(em, 1);
-        break;
-    case 14:
-        EmRemobra_State2_09(em, 2);
-        break;
-    case 15:
-        EmRemobra_State2_0F(em, 0);
-        break;
-    case 16:
-        EmRemobra_State2_10(em, 0);
-        break;
-    case 17:
-        EmRemobra_State2_11(em);
-        break;
-    case 18:
-        EmRemobra_State2_0A(em);
-        break;
-    case 19:
-        EmRemobra_State2_0F(em, 0);
-        break;
-    case 20:
-        EmRemobra_State2_02(em, 1);
-        break;
-    case 21:
-        EmRemobra_State2_15(em, 0);
-        break;
-    case 22:
-        EmRemobra_State2_15(em, 1);
-        break;
-    case 23:
-        EmRemobra_State2_15(em, 2);
-        break;
-    case 24:
-        EmRemobra_State2_15(em, 3);
-        break;
-    case 25:
-        EmRemobra_State2_15(em, 4);
-        break;
-    case 26:
-        EmRemobra_State2_0C(em, 1);
-        break;
-    }
-    EmRemobra_UpdateHop(em);
-    floorY = em->floorY;
-    if (em->posY <= floorY) {
-        em->posY = floorY;
-    }
-}
-
-void EmRemobra_State3_00(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 0x10, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-            break;
-        }
-        if (EmMotion_PassedFrameScaled(em, 46.0f, 0U) != 0) {
-            RemobraAttack_Create(em, 1);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State3_01(Em *em, s32 variant)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stateVar0 = 0;
-        em->stance = 2;
-        switch (variant) {
-        case 0:
-            em->timer = 40;
-            break;
-        case 1:
-            em->timer = 50;
-            break;
-        case 2:
-            em->timer = 60;
-            break;
-        }
-        Em_SetMotion(em, 0xE, 0, 0);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0xF, 0, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-            break;
-        }
-        if (EmMotion_PassedFrameScaled(em, 8.0f, 0U) != 0) {
-            switch (variant) {
-            case 0:
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
-                break;
-            case 1:
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
-                break;
-            case 2:
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
-                break;
-            }
-        }
-        break;
-    }
-}
-
-void EmRemobra_State3_04(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 0xC, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-            break;
-        }
-        if (EmMotion_PassedFrameScaled(em, 24.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State3_05(Em *em, s32 unused)
-{
-    f32 floorY;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 0x11, 0, 0);
-        EmRemobra_StartCurves(em, 0U);
-        break;
-    case 1:
-        EmRemobra_UpdateCurves(em);
-        floorY = em->floorY;
-        if (em->posY <= floorY) {
-            em->posY = floorY;
-        }
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-            break;
-        }
-        if (EmMotion_PassedFrameScaled(em, 104.0f, 0U) != 0) {
-            RemobraAttack_Create(em, 2);
-        }
-        if (EmMotion_PassedFrameScaled(em, 168.0f, 0U) != 0) {
-            RemobraAttack_Create(em, 3);
-        }
-        break;
-    }
-}
-
-void EmRemobra_RunGroup3(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmRemobra_State3_00(em, 0);
-        break;
-    case 1:
-        EmRemobra_State3_01(em, 0);
-        break;
-    case 2:
-        EmRemobra_State3_01(em, 1);
-        break;
-    case 3:
-        EmRemobra_State3_01(em, 2);
-        break;
-    case 4:
-        EmRemobra_State3_04(em, 0);
-        break;
-    case 5:
-        EmRemobra_State3_05(em, 0);
-        
-    default:
-        break;
-    }
-}
-
-void EmRemobra_State4_00(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Em_RestartScript(em);
-        Em_SetMotion(em, 0x12, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_EndState2(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State4_01(Em *em, s32 unused)
-{
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 0x13, 0, 0);
-        Em_RestartScript(em);
-        em->velY = 10.0f;
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 66.0f, 0U) != 0) {
-            em->velY = 40.0f;
-        }
-        em->posY -= em->velY;
-        if (em->posY <= em->floorY) {
-            em->step++;
-            em->stance = 0;
-            em->posY = em->floorY;
-            Em_SetMotion(em, 0x14, 0, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            EmRemobra_ChangeState(em, 4, 2, 3);
-        }
-        break;
-    case 3:
-        EmRemobra_ChangeState(em, 4, 2, 3);
-        break;
-    }
-}
-
-void EmRemobra_State4_02(Em *em, s32 unused)
-{
-    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_RestartScript(em);
-        em->timer = 0x96;
-        Em_SetMotion(em, 0x15, 0, 0);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0xB, 0, 0);
-        }
-        break;
-    case 2:
-        if (EmMotion_ReachedFrame(em, 0, 90.0f) != 0) {
-            em->step++;
-            EmRemobra_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_State4_03(Em *em, s32 unused)
-{
-    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0xB, 0, 0);
-        em->noReact = 1;
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (EmMotion_ReachedFrame(em, 0, 90.0f) != 0) {
-            em->step++;
-            Em_SetMotion(em, 0x16, 0, 0);
-        }
-        break;
-    case 2:
-        Em_SpawnStatus4Effect(em, 2);
-        if (--em->timer <= 0) {
-            em->step++;
-            EmRemobra_ChangeState(em, 2, 0xE, 4);
-        }
-        break;
-    case 3:
-        if (em->remote == 0) {
-            EmRemobra_ChangeState(em, 2, 0xE, 4);
-        }
-        break;
-    }
-}
-
-void EmRemobra_RunGroup4(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmRemobra_State4_00(em);
-        break;
-    case 1:
-        EmRemobra_State4_01(em, 0);
-        break;
-    case 2:
-        EmRemobra_State4_02(em, 0);
-        break;
-    case 3:
-        EmRemobra_State4_03(em, 0);
-        break;
-    }
-}
-
-void EmRemobra_State5_00_Hunted(Em *em)
-{
-    em->noPushTimer = 5;
-    Em_SetCombat(em, 0, 0);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stateVar0 = 0;
-        Em_SetMotion(em, 0x19, 0, 0);
-        em->lookAtTarget = 0;
-        em->stance = 3;
-        QuestEm_Hunted(em);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0 && em->stateVar0 == 0) {
-            em->stateVar0 = 1;
-            EmMine_Create(em, 0);
-        }
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            em->timer = 300;
-            em->fieldCollide = 0;
-        }
-        break;
-    case 2:
-        EmMine_Update(em);
-        if (--em->timer <= 0) {
-            em->step++;
-            em->timer = 150;
-            EmMine_Remove(em);
-        }
-        break;
-    case 3:
-        if (em->timer > 0) {
-            em->timer--;
-        }
-        if (em->timer <= 0) {
-            if (em->remote == 0) {
-                EmRemobra_ChangeState(em, 5, 1, 4);
-            }
-        } else {
-            em->alpha = em->timer / 150.0f;
-        }
-        break;
-    }
-}
-
-void EmRemobra_State5_01(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        if (QuestEm_CanAppear(em) == 1) {
-            Em_SetMotionRow(em, 1, 0, 0);
-            EmRemobra_ChangeState(em, 7, 0, 0);
-            break;
-        }
-        em->taskPhase++;
-        break;
-    }
-}
-
-void EmRemobra_State5_02(Em *em)
-{
-    f32 floorY;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        Em_SetMotion(em, 0x13, 0, 0);
-        em->velY = 10.0f;
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 66.0f, 0U) != 0) {
-            em->velY = 40.0f;
-        }
-        em->posY -= em->velY;
-        floorY = em->floorY;
-        if (em->posY <= floorY) {
-            em->posY = floorY;
-            em->step++;
-            Em_SetMotion(em, 0x14, 0, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmRemobra_ChangeState(em, 5, 0, 3);
-        }
-        break;
-    }
-}
-
-void EmRemobra_RunGroup5(Em *em)
-{
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
-    switch (em->state) {
-    case 0:
-        EmRemobra_State5_00_Hunted(em);
-        break;
-    case 1:
-        EmRemobra_State5_01(em);
-        break;
-    case 2:
-        EmRemobra_State5_02(em);
-        break;
-    }
-}
-
-void EmRemobra_State6_00(Em *em)
-{
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-}
-
-void EmRemobra_RunGroup6(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmRemobra_State6_00(em);
-        break;
-    }
-}
-
-void EmRemobra_State7_00(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 1, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            EmRemobra_EndState2(em);
-        }
-        break;
-    }
-}
-
-void EmRemobra_RunGroup7(Em *em)
-{
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
-    em->senseDelay = 5;
-    switch (em->state) {
-    case 0:
-        EmRemobra_State7_00(em);
-        break;
-    }
-}
-
-void EmRemobra_Update(Em *em)
-{
-    u8 buf[3];
-
-    em->motionSpeed = 1.0f;
-    Em_UpdateCombatTimer(em);
-    switch (Em_UpdateDamage(em, buf) & 0xFF) {
-    case 0:
-    case 3:
-    case 4:
-    case 7:
-    case 8:
-    case 9:
-    case 10:
-    case 11:
-    case 18:
-        break;
-    case 1:
-    case 2:
-        if (em->stance == 2) {
-            EmRemobra_ChangeState(em, 5, 2, 3);
-        } else {
-            EmRemobra_ChangeState(em, 5, 0, 3);
-        }
-        em->scriptPending = 0;
-        break;
-    case 5:
-        if (em->stateGroup != 4 || em->state != 1) {
-            EmRemobra_ChangeState(em, 4, 1, 3);
-        }
-        break;
-    case 6:
-        if (em->stateGroup != 4 || em->state != 1) {
-            Em_SetStatus4Timer(em);
-            EmRemobra_ChangeState(em, 4, 3, 3);
-        }
-        break;
-    case 12:
-    case 13:
-        if (em->stance == 2) {
-            EmRemobra_ChangeState(em, 4, 1, 3);
-        }
-        break;
-    case 14:
-        if (em->stance == 2) {
-            EmRemobra_ChangeState(em, 4, 0, 3);
-        }
-        break;
-    case 17:
-        Em_EndStatus5(em);
-        break;
-    case 15:
-    case 16:
-        if (em->stance == 2) {
-            EmRemobra_ChangeState(em, 4, 1, 3);
-        }
-        break;
-    }
-    Em_UpdatePendingScript(em);
-    Em_ClearHitReactMode(em);
-    EmRemobra_RunState(em);
-    if (em->stateRequest != 0) {
-        EmRemobra_RunState(em);
-        em->stateRequest = 0;
-    }
-}
-
-void EmRemobra_RunState(Em *em)
-{
-    switch (em->stateGroup) {
-    case 0:
-        EmRemobra_RunGroup0(em);
-        break;
-    case 1:
-        EmRemobra_RunGroup1(em);
-        break;
-    case 2:
-        EmRemobra_RunGroup2(em);
-        break;
-    case 3:
-        EmRemobra_RunGroup3(em);
-        break;
-    case 4:
-        EmRemobra_RunGroup4(em);
-        break;
-    case 5:
-        EmRemobra_RunGroup5(em);
-        break;
-    case 6:
-        EmRemobra_RunGroup6(em);
-        break;
-    case 7:
-        EmRemobra_RunGroup7(em);
-        
-    default:
-        break;
-    }
-}
-
-void EmRemobra_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale)
-{
-    f32 pos[3];
-
-    if (Player_InCurrentArea(em)) {
-        Em_BonePos(em, a1, pos);
-        pos[1] = em->floorY;
-        Effect0D_SpawnOnGround(pos, a2, scale * em->scaleX);
-    }
-}
-
-void EmRemobra_SpawnGroundEffectNearGround(Em *em, s32 arg1, s32 arg2, f32 scale)
-{
-    if (em->posY <= (300.0f + em->floorY)) {
-        EmRemobra_SpawnGroundEffect(em, arg1, arg2, scale);
-    }
-}
-
-void EmRemobra_MotionEffects(Em *em, EmWork *work)
-{
-    s16 motion;
-    u16 motionId;
-
-    motionId = em->motionId[0];
-    if (motionId != work->fxMotion) {
-        work->fxMotion = (s16) motionId;
-    }
-    EmRemobra_MotionSounds((s32) em, work);
-    motion = work->fxMotion;
-    switch (motion) {
-    case 0x3E9:
-        if ((EmMotion_PassedFrameScaled(em, 4.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 84.0f, 0U) == 0)) {
-            if (EmMotion_PassedFrameScaled(em, 156.0f, 0U) != 0) {
-                goto block_15;
-            }
-            break;
-        }
-block_15:
-        EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
-        break;
-    case 0x3EA:
-        if (EmMotion_PassedFrameScaled(em, 84.0f, 0U) != 0) {
-            EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
-        }
-        break;
-    case 0x3EB:
-        if ((EmMotion_PassedFrameScaled(em, 50.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 102.0f, 0U) != 0)) {
-            EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
-        }
-        break;
-    case 0x3F2:
-        if (EmMotion_PassedFrameScaled(em, 52.0f, 0U) != 0) {
-            EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
-        }
-        break;
-    case 0x3F3:
-        if (EmMotion_PassedFrameScaled(em, 138.0f, 0U) != 0) {
-            EmRemobra_SpawnGroundEffect(em, 1, 4, 2.0f);
-        }
-        break;
-    case 0x3F6:
-        if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
-        }
-        break;
-    case 0x3FC:
-        if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
-            EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
-        }
-        break;
-    case 0x3FF:
-        if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
-            EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
-        }
-        break;
-    }
-}
-
-void EmRemobra_UpdateMotionEffects(Em *em)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-
-    switch (w->fxStep) {
-    case 0:
-        w->fxStep++;
-        break;
-    case 1:
-        EmRemobra_MotionEffects(em, (EmWork *) w);
-        break;
-    }
-}
-
-void EmRemobra_MoveByVelocity(Em *em)
-{
-    f32 v[3];
-
-    Vec_Copy(v, &em->velX);
-    Vec_RotateY(v, 6.2831855f * em->rotY / 65536.0f);
-    em->posX += v[0];
-    em->posY += v[1];
-    em->posZ += v[2];
-}
-
-void EmRemobra_StartCurves(Em *em, u8 a)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-
-    w->curveNone = 0;
-    w->curveVelY = 0;
-    w->curveSpeed = 0;
-    w->curveKind = a;
-    switch (w->curveKind) {
-    case 0:
-        w->curveVelY = 1;
-        w->curveSpeed = 1;
-        w->curveFrame = 0;
-        break;
-    }
-    Player_ClearVelocity(em);
-}
-
-static u8 EmRemobra_CurveVelY(Em *em, EmWork *work)
-{
-    EmCurveKey *p;
-    f32 frame;
-    f32 t;
-    s32 i;
-    EmCurveKey *tbl;
-    u8 ret;
-
-    tbl = EmRemobra_VelYCurves[((EmRemobraWork *)work)->curveKind];
-    ret = 0;
-    if (tbl == NULL) {
-        return ret;
-    }
-    frame = ((EmRemobraWork *)work)->curveFrame;
-    if (frame == 0.0f || frame == 1.0f) {
-        em->velY = tbl->v;
-    } else {
-        i = 1;
-        while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
-                i++;
-            } else if (t == 0.0f) {
-                ret = 2;
-                break;
-            } else {
-                i = 0;
-                em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
-            }
-        }
-    }
-    return ret;
-}
-
-static u8 EmRemobra_CurveSpeed(Em *em, EmWork *work)
-{
-    EmCurveKey *p;
-    f32 frame;
-    f32 t;
-    s32 i;
-    EmCurveKey *tbl;
-    u8 ret;
-
-    tbl = EmRemobra_SpeedCurves[((EmRemobraWork *)work)->curveKind];
-    ret = 0;
-    if (tbl == NULL) {
-        return ret;
-    }
-    frame = ((EmRemobraWork *)work)->curveFrame;
-    if (frame == 0.0f || frame == 1.0f) {
-        em->velZ = tbl->v;
-    } else {
-        i = 1;
-        while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
-                i++;
-            } else if (t == 0.0f) {
-                ret = 4;
-                break;
-            } else {
-                i = 0;
-                em->velZ = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
-            }
-        }
-    }
-    return ret;
-}
-
-u8 EmRemobra_UpdateCurves(Em *em)
-{
-    EmRemobraWork *w = (EmRemobraWork *)&em->work;
-    u8 ret = 0;
-
-    if (w->curveVelY != 0) {
-        ret |= EmRemobra_CurveVelY(em, (EmWork *) w);
-    }
-    if (w->curveSpeed != 0) {
-        ret |= EmRemobra_CurveSpeed(em, (EmWork *) w);
-    }
-    w->curveFrame += (s16) em->motion[0].step;
-    if (em->stance == 2) {
-        Em_MoveRotatedAccel(em, &em->rotX);
-    }
-    return ret;
-}
-
-void EmRemobra_SpawnEffect01(u8 *em)
-{
-    Effect01_Spawn((Player *) em, 0);
-}
-
-void EmRemobra_TableNop(void)
-{
-}
-
-void EmChameleos_SetGroup0State(Em *em, u16 state, u8 mode)
-{
-    em->motionSpeed = 1.0f;
-    switch (state) {
-    case 1:
-        if (em->combat == 1) {
-            state = 2;
-        }
-        break;
-    case 4:
-        EmChameleos_SetFlag43C(em);
-        break;
-    case 5:
-        EmChameleos_ClearFlag43C(em);
-        break;
-    case 18:
-        Em_ResetNotice(em);
-        break;
-    case 20:
-        Em_BeginStatus2(em);
-        break;
-    case 23:
-        Em_RefillNeed3(em);
-        break;
-    case 24:
-        Em_EndStatus2(em);
-        break;
-    case 27:
-        Em_BeginStatus1(em);
-        break;
-    case 28:
-        Em_EndStatus1(em);
-        break;
-    case 32:
-        Em_EndStatus5(em);
-        break;
-    case 33:
-        Em_EndStatus4(em);
-        break;
-    }
-    em->stance = 0;
-    Em_SetStateSync(em, 0, state, mode);
-}
-
-void EmChameleos_SetGroup1State(Em *em, u16 state, u8 mode)
-{
-    f32 f;
-    f32 rate;
-
-    em->stance = 0;
-    em->motionSpeed = 1.0f;
-    switch (state) {
-    case 0:
-        rate = 0.15f;
-        if (em->hp < (s16) (em->hpMax * rate)) {
-            state = 1;
-            goto state1;
-        }
-        Em_SetSpeedScaled(em, 0, 1000.0f, 500.0f);
-        break;
-    case 1:
-    state1:
-        if (em->curGoalKind == 0) {
-            em->hasGoal = 0;
-            em->timer = (em->stateRand % 120 + 180) / 2;
-        } else {
-            em->hasGoal = 1;
-            f = Vec_DistanceXZ(&em->posX, em->goal);
-            em->goalDist = f;
-            em->timer = (s32) f / 7;
-        }
-        if (em->timer > 300) {
-            em->timer = 300;
-        }
-        break;
-    case 4:
-        Em_SetSpeedScaled(em, 2, 1000.0f, 500.0f);
-        break;
-    case 7:
-        em->hasGoal = 0;
-        em->goalDist = 1000.0f;
-        break;
-    case 2:
-    case 3:
-    case 5:
-    case 6:
-        break;
-    }
-    Em_SetStateSync(em, 1, state, mode);
-}
-
-void EmChameleos_SetGroup2State(Em *em, u16 state, u8 mode)
-{
-    EmChameleosWork *w = (EmChameleosWork *)&em->work;
-
-    em->motionSpeed = 1.0f;
-    switch (state) {
-    case 1:
-        if (em->remote == 0 && !(em->velZ < 50.0f)) {
-            state = 18;
-        }
-        break;
-    case 6:
-    case 17:
-        w->unk005 = 4;
-        if (em->remote == 0) {
-            em->goalNo = em->stateRand & 3;
-            em->goalKind = 2;
-            em->goalArg = 2;
-            Em_ComputeGoal(em, em->goal);
-            em->timer = 1.5f * Vec_DistanceXZ(&em->posX, em->goal) / 50.0f;
-        }
-        break;
-    case 7:
-    case 21:
-        Player_ClearVelocity(em);
-        em->velZ = 20.0f;
-        em->timer = (s32) (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) / em->velZ) * 3;
-        break;
-    case 13:
-        Em_TypeSetup(em);
-    case 8:
-        if (em->remote == 0 && em->curGoalKind != 3) {
-            EmChameleos_ChangeState(em, 2, 1, 1);
-            return;
-        }
-        break;
-    case 9:
-        if (em->remote == 0) {
-            em->goalKind = 2;
-            em->goalArg = 3;
-            em->goalNo = 0;
-            Em_ComputeGoal(em, em->goal);
-        }
-        em->timer = 500;
-        Em_TypeSetup(em);
-        break;
-    case 11:
-        if (em->remote == 0) {
-            if (em->areaSeqActive != 0) {
-                em->goalKind = 2;
-                em->goalArg = 3;
-                em->goalNo = 0;
-            }
-            Em_ComputeGoal(em, em->goal);
-        }
-        em->timer = 500;
-        break;
-    case 19:
-        w->unk005 = 1;
-        if (em->remote == 0) {
-            em->timer = 1.5f * Vec_DistanceXZ(&em->posX, em->goal) / 50.0f;
-        }
-        break;
-    case 24:
-        if (em->velZ <= 0.0f) {
-            em->velZ = 20.0f;
-        }
-        if (em->remote == 0) {
-            em->timer = Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) / em->velZ;
-        }
-        break;
-    case 0:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
-    case 10:
-    case 12:
-    case 14:
-    case 15:
-    case 16:
-    case 18:
-    case 20:
-    case 22:
-    case 23:
-        break;
-    }
-    Em_SetStateSync(em, 2, state, mode);
-}
-
-void EmChameleos_SetGroup3State(Em *em, u16 state, u8 mode)
-{
-    f32 pos[3];
-
-    em->motionSpeed = 1.0f;
-    switch (state) {
-    case 5:
-        if (em->remote == 0 && (Game_IsOnline() == 0 || mode != 0) && em->curGoalKind == 1 && em->curGoalArg == 0 &&
-            em->targetNo != -1) {
-            Em_GetTargetPos(em, em->targetNo, pos);
-            if (pos[1] <= em->posY + 50.0f) {
-                state = 1;
-            } else {
-                state = 5;
-            }
-        }
-        break;
-    case 0:
-    case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 6:
-    case 7:
-    case 8:
-        break;
-    }
-    Em_SetStateSync(em, 3, state, mode);
-}
-
-void EmChameleos_ChangeState(Em *em, u16 group, u16 state, u8 mode)
-{
-    if (em->remote == 0) {
-        Em_TargetPlayerInRange(em);
-        goto block_5;
-    }
-    if ((mode == 3) || (mode == 4)) {
-        return;
-    }
-block_5:
-    Em_LoadReactionSet(em, 0);
-    switch (group) {
-    case 0:
-        EmChameleos_SetGroup0State(em, state, mode);
-        return;
-    case 1:
-        EmChameleos_SetGroup1State(em, state, mode);
-        return;
-    case 2:
-        EmChameleos_SetGroup2State(em, state, mode);
-        return;
-    case 3:
-        EmChameleos_SetGroup3State(em, state, mode);
-        return;
-    case 5:
-        if ((state == 3) && (QuestEm_CanAppear(em) == 1)) {
-            QuestEm_Appear(em);
-        }
-        em->motionSpeed = 1.0f;
-        Em_SetStateSync(em, group, state, mode);
-        return;
-    case 4:
-        switch (state) {
-        case 4:
-            em->partBreakCount = (s8) em->partBreakCount + 1;
-            em->fxFlags |= 1;
-            Em_EndAllStatus(em);
-            Em_BreakPart(em, 1U);
-            break;
-        case 5:
-            Em_BeginStatus5(em);
-            break;
-        case 11:
-            Em_BeginStatus4(em);
-            break;
-        case 12:
-        case 13:
-            EmChameleos_ClearFlag43C(em);
-            break;
-        }
-        
-    case 6:
-        em->motionSpeed = 1.0f;
-        Em_SetStateSync(em, group, state, mode);
-        
-    default:
-        return;
-    }
-}
-
-void EmChameleos_StartCurves(Em *em, u8 kind)
-{
-    EmChameleosWork *w = (EmChameleosWork *)&em->work;
-
-    u8 k;
-
-    w->curveNone = 0;
-    w->curveVelY = 0;
-    w->curveSpeed = 0;
-    w->curveKind = kind;
-    k = w->curveKind;
-    switch (k) {
-    case 0:
-        w->curveVelY = 1;
-        w->curveSpeed = 0;
-        w->curveFrame = 0x3A;
-        break;
-    case 1:
-        w->curveVelY = 1;
-        w->curveSpeed = 1;
-        w->curveFrame = 0x66;
-        break;
-    case 2:
-        w->curveVelY = 1;
-        w->curveSpeed = 1;
-        w->curveFrame = 0x4E;
-        break;
-    }
-    Player_ClearVelocity(em);
-}
-
-static s32 EmChameleos_CurveNone(Em *em, EmWork *work)
-{
-    return 0;
-}
-
-
-extern EmCurveKey *EmChameleos_VelYCurves[];
-
-/* The value of curve work[0x47] at the frame in the work area (a table of keys): sets
- * em->velY from the key pair around the frame, 2 at the table's end. */
-static u8 EmChameleos_CurveVelY(Em *em, EmWork *work)
-{
-    EmChameleosWork *w = (EmChameleosWork *) work;
-    EmCurveKey *p;
-    f32 frame;
-    f32 t;
-    s32 i;
-    EmCurveKey *tbl;
-    u8 ret;
-
-    tbl = EmChameleos_VelYCurves[((EmChameleosWork *)work)->curveKind];
-    ret = 0;
-    if (tbl == NULL) {
-        return ret;
-    }
-    frame = w->curveFrame;
-    if (frame != 0.0f && frame != 1.0f) {
-        i = 1;
-        while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t > 0.0f) {
-                i++;
-            } else if (t == 0.0f) {
-                ret = 2;
-                if (em->velY > -50.0f) {
-                    em->velY -= 1.0f;
-                }
-                break;
-            } else if (t < 0.0f) {
-                w->curveFrame = 0;
-                ret = 2;
-                em->velY = 0.0f;
-                break;
-            } else {
-                i = 0;
-                em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
-            }
-        }
-    }
-    return ret;
-}
-
-extern EmCurveKey *EmChameleos_SpeedCurves[];
-
-/* The value of curve work[0x47] at the frame in the work area: sets em->velZ from the key
- * pair around the frame, 4 at the table's end. */
-static u8 EmChameleos_CurveSpeed(Em *em, EmWork *work)
-{
-    EmChameleosWork *w = (EmChameleosWork *) work;
-    EmCurveKey *p;
-    f32 frame;
-    f32 t;
-    s32 i;
-    EmCurveKey *tbl;
-    u8 ret;
-
-    tbl = EmChameleos_SpeedCurves[((EmChameleosWork *)work)->curveKind];
-    ret = 0;
-    if (tbl == NULL) {
-        return ret;
-    }
-    frame = w->curveFrame;
-    if (frame != 0.0f && frame != 1.0f) {
-        i = 1;
-        while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
-                i++;
-            } else if (t == 0.0f) {
-                ret = 4;
-                break;
-            } else {
-                i = 0;
-                em->velZ = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
-            }
-        }
-    }
-    return ret;
-}
-
-/* Runs the family's three curves when their flags in the work area (+0x438) are set, advances
- * the curve frame by the motion's step, and turns toward the target while unk390 is 2. */
-u8 EmChameleos_UpdateCurves(Em *em)
-{
-    EmChameleosWork *w = (EmChameleosWork *)&em->work;
-    u8 ret = 0;
-
-    if ((u8)w->curveNone != 0) {
-        ret = EmChameleos_CurveNone(em, (EmWork *) w);
-    }
-    if ((u8)w->curveVelY != 0) {
-        ret |= EmChameleos_CurveVelY(em, (EmWork *) w);
-    }
-    if ((u8)w->curveSpeed != 0) {
-        ret |= EmChameleos_CurveSpeed(em, (EmWork *) w);
-    }
-    w->curveFrame += (s16) em->motion[0].step;
-    if (em->stance == 2) {
-        w->moveAngCX = 0;
-        w->moveAngCY = em->rotY;
-        w->moveAngX = 0;
-        Em_MoveRotatedAccel(em, &w->moveAngCX);
-    }
-    return ret;
-}
-
-void EmChameleos_SetFlag43C(Em *em)
-{
-    em->unk43C = 1;
-}
-
-void EmChameleos_ClearFlag43C(Em *em)
-{
-    em->unk43C = 0;
-}
-
-s32 EmChameleos_IsInvisible(Em *em)
-{
-    if (em->unk484 != 0xFFFF || (EmChameleos_WantsInvisible(em) & 0xFF) != 0) {
-        return 1;
-    }
-    return 0;
-}
-
-s32 EmChameleos_HasFlag43C(Em *em)
-{
-    return em->unk43C != 0;
-}
-
-void EmChameleos_UpdateInvisibility(Em *em)
-{
-    EmChameleosWork *w = (EmChameleosWork *)&em->work;
-
-    s16 t;
-    s32 want;
-    u16 temp_v0_2;
-    u16 temp_v1;
-
-    t = w->unk04E - 1;
-    w->unk04E = t;
-    if (t <= 0) {
-        w->unk04E = 0x384;
-    }
-    if (EmChameleos_IsInvisible(em) == 1) {
-        temp_v0_2 = w->unk04C;
-        if (temp_v0_2 == 0xFFFF) {
-            if ((em->stateGroup == 6) && (em->state == 0)) {
-                w->unk04C = 1;
-            } else {
-                want = EmChameleos_WantsInvisible(em) & 0xFF;
-                switch (want) {
-                case 0:
-                    w->unk04C = 0xFFFF;
-                    break;
-                case 2:
-                    if (w->wantInvisible == 0) {
-                        w->unk04C = 1;
-                    }
-                    if (w->unk04E == 0x384) {
-                        w->unk04C = 1;
-                    }
-                    break;
-                case 1:
-                    w->unk04C = 1;
-                    break;
-                }
-            }
-        } else {
-            w->unk04C = temp_v0_2 + 1;
-            if ((s32) w->unk04C >= 0x20) {
-                w->unk04C = 0xFFFF;
-            }
-        }
-        w->wantInvisible = EmChameleos_WantsInvisible(em);
-        return;
-    }
-    if (w->wantInvisible == 2) {
-        if (EmChameleos_InvisibilityBlocked(em) == 1) {
-            w->unk04C = 0xFFFF;
-        } else if (w->unk04C == 0xFFFF) {
-            w->unk04C = 0;
-        }
-    }
-    temp_v1 = w->unk04C;
-    if (temp_v1 != 0xFFFF) {
-        w->unk04C = temp_v1 + 1;
-        if ((s32) w->unk04C >= 0x20) {
-            w->unk04C = 0xFFFF;
-        }
-    }
-    w->wantInvisible = 0;
-}
-
-s32 EmChameleos_WantsInvisible(Em *em)
-{
-    s32 r;
-    if (EmChameleos_InvisibilityBlocked(em) == 1 || Player_IsState(em, 1, 4) || em->hitReactMode == EM_HIT_REACT_WAKE || em->hitReactMode == EM_HIT_REACT_STATUS) {
-        return 0;
-    }
-    r = (u8) EmChameleos_CanTurnInvisible(em);
-    if (r == 0) {
-        return r;
-    }
-    switch (em->motionId[0]) {
-    case 0x411: case 0x412: case 0x413: case 0x415: case 0x416: case 0x417:
-    case 0x419: case 0x41A: case 0x41B: case 0x41C:
-        return 0;
-    case 0x414: case 0x418: case 0x41D:
-        return 1;
-    }
-    if (EmChameleos_HasFlag43C(em) == 0) {
-        if (em->stateGroup == 6 && em->state == 0) {
-            return 0;
-        }
-        return 1;
-    }
-    return r;
-}
-
-s32 EmChameleos_CanTurnInvisible(Em *em)
-{
-    if (em->fxFlags & 1) {
-        if (Em_PartBroken(em, 0) != 1) {
-            return 1;
-        }
-        return 0;
-    }
-    return 2;
-}
-
-s32 EmChameleos_InvisibilityBlocked(Em *em)
-{
-    if (em->stateGroup == 5 || Player_IsState(em, 6, 1) || Player_IsState(em, 6, 2)) {
-        return 1;
-    }
-    return 0;
-}
-
-void EmChameleos_SpawnPeriodicEffect06(Em *em)
-{
-    f32 v[3];
-
-    v[0] = 0.0f;
-    v[1] = 80.0f;
-    v[2] = 290.0f;
-    Em_SpawnLyingPuffs(em, 0x25, v, 2.0f);
-}
-
-s32 func_00858980(Em *em)
-{
-    u16 idx;
-    u8 temp_v1;
-    void *temp_a0;
-    void *contact;
-
-    if (em->hitPending != 0) {
-        contact = em->contact;
-        if (contact != NULL) {
-            idx = *(u16 *)((u8 *)contact + 0xC);
-            if (((s32) idx < 4) && (contact == &gPlayers[idx]) && (*(u8 *)((u8 *)contact + 0) != 0)) {
-                temp_a0 = *(void **)((u8 *)em + 0x6F0);
-                if ((*(u8 *)((u8 *)temp_a0 + 2) == 0x28) && ((temp_v1 = *(u8 *)((u8 *)temp_a0 + 3), (temp_v1 == 1)) || (temp_v1 == 2))) {
-                    return 1;
-                }
-            }
-        }
-    }
-    return 0;
-}
-
-/* Bulldrome's own meanings of the work area's bytes (EmWork, include/em.h, has the shared ones). */
-typedef struct EmBulldromeWork {
-    u8 unk000[0x00C - 0x000];
-    u16 unk00C;                 /* 0x00C: Init: 0; Update tests it */
-    s16 unk00E;                 /* 0x00E: Init: 0 */
-    u8 unk010[0x014 - 0x010];
-    f32 home[3];                /* 0x014: Init: the position; State1_05 turns toward it */
-    u8 unk020[0x024 - 0x020];
-    f32 distLeft;               /* 0x024: SetGroup2State: the distance to the goal; State2_02 takes the step from it */
-    u16 unk028;                 /* 0x028: State2_01: Math_AngleXZ to the goal */
-    u8 unk02A[0x02B - 0x02A];
-    u8 unk02B;                  /* 0x02B: SetGroup2State: 1; State2_02 tests it */
-    u8 unk02C;                  /* 0x02C: State1_07: 0 or 1 */
-    u8 unk02D[0x02E - 0x02D];
-    s16 unk02E;                 /* 0x02E: State1_07: 0x135, or a distance / 53 */
-    u8 unk030[0x100 - 0x030];
-} EmBulldromeWork;
-typedef char EmBulldromeWork_size_check[(sizeof(EmBulldromeWork) == sizeof(EmWork)) ? 1 : -1];
-
-void EmBulldrome_Init(Em *em)
-{
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-
-    f32 fslot;
-    s16 size;
-    u8 slotNo;
-
-    if (gQuest.stage == 0) {
-        if (gScene.area == AREA_SNOWY_MOUNTAINS_NIGHT_9) {
-            em->posX = 9500.0f + (150.0f * (f32) (em->slotNo / 8));
-            em->posY = 0.0f;
-            em->posZ = 9200.0f + (150.0f * (f32) (em->slotNo & 7));
-        } else {
-            slotNo = em->slotNo;
-            fslot = (f32) (u32) slotNo;
-            em->posX = 5000.0f + (200.0f * fslot);
-            em->posY = 0.0f;
-            em->posZ = 5000.0f;
-        }
-    }
-    Em_SetMotionRow(em, 1, 0, 0);
-    em->stance = 0;
-    size = Em_ComputeMaxHp(em, (s16) em->variant);
-    em->hp = size;
-    em->hpMax = size;
-    em->scriptPending = 1;
-    em->blind = 0;
-    em->unk_InitFlag = 1;
-    w->unk00C = 0;
-    w->unk00E = 0;
-    w->home[0] = em->posX;
-    w->home[1] = 0.0f;
-    w->home[2] = (f32) em->posZ;
-    Em_InitParts(em);
-}
-
-void EmBulldrome_Start(Em *em)
-{
-    EmBulldrome_Init(em);
-    EmBulldrome_ChangeState(em, 0, 1, 0);
-}
-
-void EmBulldrome_Reinit(Em *em)
-{
-    EmBulldrome_Init(em);
-}
-
-void EmBulldrome_EndState(Em *em)
-{
-    em->motionSpeed = 1.0f;
-    em->stance = 0;
-    em->lookAtTarget = 0;
-    em->fieldCollide = 1;
-    em->scriptPending = 1;
-    EmBulldrome_ChangeState(em, 0, 1, 0);
-}
-
-void EmBulldrome_State0_00(void)
-{
-}
-
-void EmBulldrome_State0_01(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 1, 0xA, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State0_02(void)
-{
-}
-
-void EmBulldrome_State0_03(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 7, 6, 0);
-        Motion_InitTime(em, 0);
-        break;
-    case 1:
-        if (em->motionTime >= 0xF0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State0_04(Em *em, s32 timer)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        em->timer = timer;
-        Em_SetMotion(em, 0xE, 6, 0);
-        break;
-    case 1:
-        Em_TurnToGoal(em, 0x200, 0);
-        if (em->motion[0].playing == 0) {
-            if (--em->timer <= 0) {
-                EmBulldrome_EndState(em);
-            }
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State0_05(void)
-{
-}
-
-void EmBulldrome_State0_06(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x11, 6, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State0_09(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0xB, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State0_0B(Em *em, s32 variant)
-{
-    s32 k2;
-    s32 k;
-
-    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
-    em->blind = 2;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x46, 0, 0);
-        if ((variant & 0xFFFF) == 2) {
-            em->timer = 0x1518;
-        }
-        break;
-    case 1:
-        Em_SpawnLyingPuffs(em, 0xB, (f32 *) &EmBulldrome_Effect0BOfs, 1.0f);
-        k = variant & 0xFFFF;
-        if (k == 2) {
-            Em_RegenHp(em, 1, (s32) (0.6f * (f32) em->hpMax), 0xA);
-        }
-        if (--em->timer <= 0) {
-            em->step++;
-            if (k == 2) {
-                Em_ClearLowHpNeed(em);
-            }
-            switch (k) {
-            case 0:
-                EmBulldrome_ChangeState(em, 0, 0xC, 4);
-                break;
-            case 1:
-                EmBulldrome_ChangeState(em, 0, 0xF, 4);
-                break;
-            case 2:
-                EmBulldrome_ChangeState(em, 0, 0x13, 4);
-                break;
-            }
-        }
-        break;
-    case 2:
-        k2 = variant & 0xFFFF;
-        if (em->remote == 0) {
-            switch (k2) {
-            case 0:
-                EmBulldrome_ChangeState(em, 0, 0xC, 4);
-                break;
-            case 1:
-                EmBulldrome_ChangeState(em, 0, 0xF, 4);
-                break;
-            case 2:
-                EmBulldrome_ChangeState(em, 0, 0x13, 4);
-                break;
-            }
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State0_0C(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        em->blind = 2;
-        Em_SetMotion(em, 0x49, 0, 0);
-        break;
-    case 1:
-        em->blind = 2;
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            em->blind = 0;
-            EmBulldrome_ChangeState(em, 0, 9, 4);
-        }
-        break;
-    case 2:
-        if (em->remote == 0) {
-            EmBulldrome_ChangeState(em, 0, 9, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State0_0D(Em *em)
-{
-    em->guardTimer = 2;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x48, 0, 0);
-        em->noReact = 1;
-        em->rotY = em->rotY + 0x7FFF + 1;
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup0(Em *em)
-{
-    em->prevStateGroup = em->stateGroup;
-    em->prevState = em->state;
-    switch (em->state) {
-    case 0:
-        EmBulldrome_State0_00();
-        break;
-    case 1:
-        EmBulldrome_State0_01(em);
-        break;
-    case 2:
-        EmBulldrome_State0_02();
-        break;
-    case 3:
-        EmBulldrome_State0_03(em);
-        break;
-    case 4:
-        EmBulldrome_State0_04(em, 1);
-        break;
-    case 5:
-        EmBulldrome_State0_05();
-        break;
-    case 6:
-        EmBulldrome_State0_06(em, 1);
-        break;
-    case 7:
-        EmBulldrome_State0_04(em, 2);
-        break;
-    case 8:
-        EmBulldrome_State0_04(em, 4);
-        break;
-    case 9:
-        EmBulldrome_State0_09(em);
-        break;
-    case 10:
-        EmBulldrome_State0_06(em, 0);
-        break;
-    case 11:
-        EmBulldrome_State0_0B(em, 0);
-        break;
-    case 12:
-        EmBulldrome_State0_0C(em, 0);
-        break;
-    case 13:
-        EmBulldrome_State0_0D(em);
-        break;
-    case 14:
-        EmBulldrome_State0_0B(em, 1);
-        break;
-    case 15:
-        EmBulldrome_State0_0C(em, 1);
-        break;
-    case 16:
-        EmBulldrome_State0_0D(em);
-        break;
-    case 17:
-        EmBulldrome_State0_0D(em);
-        break;
-    case 18:
-        EmBulldrome_State0_0B(em, 2);
-        break;
-    case 19:
-        EmBulldrome_State0_0C(em, 2);
-        break;
-    case 20:
-        EmBulldrome_State0_06(em, 0);
-        break;
-    case 21:
-        EmBulldrome_State0_06(em, 0);
-        
-    default:
-        break;
-    }
-}
-
-void EmBulldrome_State1_00(Em *em, s32 variant)
-{
-    u32 d;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        if (variant == 0) {
-            Em_StartTurnToTarget(em, &EmBulldrome_TurnParams[0]);
-            break;
-        }
-        em->aimAngle = em->rotY + 0x4000;
-        d = (em->aimAngle - em->rotY) & 0xFFFF;
-        if (d <= 0x1000 || d >= 0xF000) {
-            Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
-            Em_SetMotion(em, 2, 0, 0);
-        } else if (d >= 0x8000) {
-            Em_SetMotion(em, 5, 0, 0);
-        } else {
-            Em_SetMotion(em, 4, 0, 0);
-        }
-        break;
-    case 1:
-        if (Em_TurnStep(em, &EmBulldrome_TurnParams[0]) == 1) {
-            em->step++;
-            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State1_01(Em *em, s32 variant)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, (u8) variant == 0 ? 2 : 3, 6, 0);
-        break;
-    case 1:
-        if (Em_StepToGoal(em, 0x200, 0) == 1) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State1_03(void)
-{
-}
-
-void EmBulldrome_State1_04(void)
-{
-}
-
-void EmBulldrome_State1_05(Em *em)
-{
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-    s32 timer;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
-        Em_SetMotion(em, 2, 6, 0);
-        break;
-    case 1:
-        timer = em->timer;
-        if (timer > 0) {
-            em->timer = timer - 1;
-        }
-        if ((em->remote == 0) && (em->timer <= 0)) {
-            EmBulldrome_EndState(em);
-            break;
-        }
-        em->targetAngle = Math_AngleXZ(&em->posX, &w->home[0]) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x80);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmBulldrome_State1_07(Em *em, u8 variant)
-{
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-    u16 d;
-    s16 v;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        d = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
-        if (d < 0x8000) {
-            w->unk02C = 0;
-        } else {
-            w->unk02C = 1;
-            d = 0x10000 - d;
-        }
-        if (variant == 0) {
-            w->unk02E = 0x135;
-        } else {
-            if (d < 0x2000) {
-                d = 0x2000;
-            } else if (d > 0x6000) {
-                d = 0x6000;
-            }
-            w->unk02E = d / 53;
-        }
-        Em_SetMotion(em, 5 - w->unk02C, 0, 0);
-        break;
-    case 1:
-        v = 0x135;
-        if (w->unk02C != 0) {
-            v = -0x135;
-        }
-        em->rotY += v;
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State1_08(Em *em, u8 variant)
-{
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-    u16 d;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x15, 0, 0);
-        if (variant == 0) {
-            w->unk02E = 0x26A;
-            break;
-        }
-        d = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
-        if (d < 0x4000) {
-            d = 0x4000;
-        } else if (d > 0xA000) {
-            d = 0xA000;
-        }
-        w->unk02E = d / 53;
-        break;
-    case 1:
-        em->rotY += w->unk02E;
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup1(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmBulldrome_State1_00(em, 0);
-        break;
-    case 1:
-        EmBulldrome_State1_01(em, 0);
-        break;
-    case 2:
-        EmBulldrome_State1_01(em, 1);
-        break;
-    case 3:
-        EmBulldrome_State1_03();
-        break;
-    case 4:
-        EmBulldrome_State1_04();
-        break;
-    case 5:
-        EmBulldrome_State1_05(em);
-        break;
-    case 6:
-        EmBulldrome_State1_00(em, 1);
-        break;
-    case 7:
-        EmBulldrome_State1_07(em, 0);
-        break;
-    case 8:
-        EmBulldrome_State1_08(em, 0);
-        break;
-    case 9:
-        EmBulldrome_State1_07(em, 1);
-        break;
-    case 10:
-        EmBulldrome_State1_08(em, 1);
-        
-    default:
-        break;
-    }
-}
-
-void EmBulldrome_State2_00(Em *em)
-{
-    em->stateArmor = 1;
-    em->noPushTimer = 2;
-    em->guardTimer = 2;
-    em->noReact = 1;
-    em->hideShadowHold = 2;
-    em->hideShadow = 2;
-    em->fieldCollide = 0;
-    em->noHitTimer = 5;
-    em->senseDelay = 5;
-    switch (em->step) {
-    case 0:
-        em->stance = 0;
-        em->step++;
-        Em_SetMotion(em, 0x16, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 2, 1, 4);
-        }
-        break;
-    case 2:
-        if (em->remote == 0) {
-            EmBulldrome_ChangeState(em, 2, 1, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State2_01(Em *em)
-{
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-
-    u16 ang;
-    u32 diff;
-    s32 rotY;
-
-    em->stateArmor = 1;
-    em->noPushTimer = 2;
-    em->guardTimer = 2;
-    em->noReact = 1;
-    em->hideShadowHold = 2;
-    em->hideShadow = 2;
-    em->fieldCollide = 0;
-    em->noHitTimer = 5;
-    em->senseDelay = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        em->lookAtTarget = 0;
-        w->unk028 = Math_AngleXZ(&em->posX, em->goal);
-        Em_SetMotion(em, 0x18, 0, 0);
-        break;
-    case 1:
-        rotY = em->rotY;
-        ang = w->unk028;
-        diff = (ang - (rotY & 0xFFFF)) & 0xFFFF;
-        if ((u32) ((diff + 0x400) & 0xFFFF) < 0x800U) {
-            em->rotY = (s32) ang;
-            em->step++;
-            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-            EmBulldrome_ChangeState(em, 2, 2, 4);
-        } else if (diff < 0x8000U) {
-            em->rotY = (rotY + 0x400) & 0xFFFF;
-        } else {
-            em->rotY = (rotY - 0x400) & 0xFFFF;
-        }
-        break;
-    case 2:
-        if (em->remote == 0) {
-            EmBulldrome_ChangeState(em, 2, 2, 4);
-        }
-        break;
-    }
-    Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-}
-
-void EmBulldrome_State2_02(Em *em)
-{
-    f32 v[3];
-    f32 out[3];
-    s32 ang[3];
-    f32 mtx[16];
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-    s32 d;
-
-    em->stateArmor = 1;
-    em->noPushTimer = 2;
-    em->guardTimer = 2;
-    em->noReact = 1;
-    em->hideShadowHold = 2;
-    em->hideShadow = 2;
-    em->fieldCollide = 0;
-    em->noHitTimer = 5;
-    em->senseDelay = 5;
-    switch (em->step) {
-    case 0:
-        em->stance = 0;
-        em->step++;
-        Em_SetMotion(em, 0x18, 0, 0);
-        break;
-    case 1:
-        if (w->unk02B != 0) {
-            d = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if (d <= 0x8000) {
-                if (d < 0x40) {
-                    em->rotY += d;
-                } else {
-                    em->rotY += 0x40;
-                }
-            } else if (d > 0xFFC0) {
-                em->rotY += d;
-            } else {
-                em->rotY -= 0x40;
-            }
-        }
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 80.0f;
-        ang[0] = 0;
-        ang[1] = em->rotY;
-        ang[2] = 0;
-        Mtx_FromAnglesYXZ(ang, mtx);
-        Vec_Rotate(out, v, mtx);
-        em->posX += out[0];
-        em->posZ += out[2];
-        w->distLeft -= v[2];
-        if (w->distLeft <= 0.0f) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 2, 3, 4);
-        }
-        break;
-    case 2:
-        if (em->remote == 0) {
-            EmBulldrome_ChangeState(em, 2, 3, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State2_03(Em *em)
-{
-    em->stateArmor = 1;
-    em->noPushTimer = 2;
-    em->guardTimer = 2;
-    em->noReact = 1;
-    em->hideShadowHold = 2;
-    em->hideShadow = 2;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x17, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup2(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmBulldrome_State2_00(em);
-        break;
-    case 1:
-        EmBulldrome_State2_01(em);
-        break;
-    case 2:
-        EmBulldrome_State2_02(em);
-        break;
-    case 3:
-        EmBulldrome_State2_03(em);
-        break;
-    }
-}
-
-void EmBulldrome_State3_00(Em *em, s32 variant)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0xF, 0xA, 0);
-        switch (variant) {
-        case 0:
-            BulldromeAttack_Create(em, 3);
-            break;
-        case 1:
-            BulldromeAttack_Create(em, 4);
-            break;
-        case 2:
-            BulldromeAttack_Create(em, 5);
-        }
-        break;
-    case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
-            em->timer = 1;
-        }
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x10, 0xA, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State3_06(Em *em)
-{
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-    u16 d;
-    s16 v;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        d = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
-        if (d < 0x4000) {
-            w->unk02C = 0;
-        } else if (d < 0x8000) {
-            w->unk02C = 2;
-        } else if (d < 0xC000) {
-            w->unk02C = 3;
-        } else {
-            w->unk02C = 1;
-        }
-        Em_SetMotion(em, (w->unk02C & 1) + 0x12, 0, 0);
-        BulldromeAttack_Create(em, 1);
-        break;
-    case 1:
-        v = 0xE6;
-        if (w->unk02C & 1) {
-            v = -0xE6;
-        }
-        em->rotY += v;
-        if (EmMotion_ReachedFrame(em, 0, 60.0f)) {
-            em->step++;
-        }
-        break;
-    case 2:
-        if (EmMotion_InFrameRange(em, 0, 142.0f, 164.0f)) {
-            v = (w->unk02C & 2) == 0 ? 0x35C : 0x92E;
-            if (w->unk02C & 1) {
-                v = -v;
-            }
-            em->rotY += v;
-        }
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup3(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmBulldrome_State3_00(em, 0);
-        break;
-    case 1:
-        EmBulldrome_State3_00(em, 1);
-        break;
-    case 2:
-        EmBulldrome_State3_00(em, 2);
-        break;
-    case 3:
-        EmBulldrome_State3_00(em, 2);
-        break;
-    case 4:
-        EmBulldrome_State3_00(em, 2);
-        break;
-    case 5:
-        EmBulldrome_State3_00(em, 2);
-        break;
-    case 6:
-        EmBulldrome_State3_06(em);
-        
-    default:
-        break;
-    }
-}
-
-void EmBulldrome_State4_00(Em *em)
-{
-    s32 diff;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        diff = (em->hitAngle - em->rotY) & 0xFFFF;
-        if ((diff > 24576) && (diff < 0xA000)) {
-            Em_SetMotion(em, 0x14, 0, 0);
-        } else if (diff < 0x8000) {
-            Em_SetMotion(em, 0x3C, 0, 0);
-        } else {
-            Em_SetMotion(em, 0x3D, 0, 0);
-        }
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State4_01(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        EmBulldrome_SetMotionForSide(em, 0);
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) {
-            em->step++;
-            EmBulldrome_LaunchFromHit(em);
-        }
-        break;
-    case 2:
-        if (!((em->velZ * em->accelZ) < 0.0f)) {
-            em->accelZ = 0.0f;
-        }
-        if (Player_MoveFall((Player *) em) != 0) {
-            em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x3F, 6, 0);
-            em->timer = 0x96;
-        }
-        break;
-    case 3:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x42, 6, 0);
-        }
-        break;
-    case 4:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State4_02(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        EmBulldrome_SetMotionForSide(em, 0xA);
-        EmBulldrome_LaunchFromHit(em);
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (!((em->velZ * em->accelZ) < 0.0f)) {
-            em->accelZ = 0.0f;
-        }
-        if (Player_MoveFall((Player *) em) != 0) {
-            em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x3F, 6, 0);
-            em->timer = 0x96;
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x42, 6, 0);
-        }
-        break;
-    case 3:
-        if (em->motion[0].playing == 0) {
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State4_03(Em *em)
-{
-    Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x47, 0, 0);
-        em->rotY = em->hitAngle + 0x7FFF + 1;
-        Em_RestartScript(em);
-        break;
-    case 1:
-        Em_SpawnStatus4Effect(em, 2);
-        if (--em->timer <= 0) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 0, 0x10, 4);
-        }
-        break;
-    case 2:
-        if (em->remote == 0) {
-            EmBulldrome_ChangeState(em, 0, 0x10, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State4_04(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x47, 0, 0);
-        Em_RestartScript(em);
-        em->noReact = 1;
-        StageObj_Stun_CreateEm(em, 1, 0, *(s16 *)((u8 *)em + 8), 100.0f, 2.2f);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 0, 0x11, 4);
-        }
-        break;
-    case 2:
-        if (em->remote == 0) {
-            EmBulldrome_ChangeState(em, 0, 0x11, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State4_05(Em *em)
-{
-    Em_SetHold2(em);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        em->lookAtTarget = 0;
-        Em_RestartScript(em);
-        Em_SetMotion(em, 0x14, 0, 0);
-        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x47, 0, 0);
-            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 0, 0xD, 4);
-        }
-        break;
-    case 3:
-        if (em->remote == 0) {
-            EmBulldrome_ChangeState(em, 0, 0xD, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup4(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmBulldrome_State4_00(em);
-        break;
-    case 1:
-        EmBulldrome_State4_01(em);
-        break;
-    case 2:
-        EmBulldrome_State4_02(em);
-        break;
-    case 3:
-        EmBulldrome_State4_03(em);
-        break;
-    case 4:
-        EmBulldrome_State4_04(em);
-        break;
-    case 5:
-        EmBulldrome_State4_05(em);
-        
-    default:
-        break;
-    }
-}
-
-void EmBulldrome_State5_00_Hunted(Em *em)
-{
-    em->noHitTimer = 10;
-    em->noPushTimer = 10;
-    Em_SetCombat(em, 0, 0);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        EmBulldrome_SetMotionForSide(em, 0);
-        QuestEm_Hunted(em);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            em->step++;
-            EmBulldrome_LaunchFromHit(em);
-        }
-        break;
-    case 2:
-        if (!(em->velZ * em->accelZ < 0.0f)) {
-            em->accelZ = 0.0f;
-        }
-        if (!(em->velX * em->accelX < 0.0f)) {
-            em->accelX = 0.0f;
-        }
-        if (Player_MoveFall((Player *) em) != 0) {
-            em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x3F, 6, 0);
-            Player_ClearVelocity(em);
-        }
-        break;
-    case 3:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x40, 0, 0);
-            em->timer = 2700;
-            EmMine_Create(em, 0);
-            em->fieldCollide = 0;
-        }
-        break;
-    case 4:
-        EmMine_Update(em);
-        if (--em->timer <= 0) {
-            em->step++;
-            EmMine_Remove(em);
-        }
-        break;
-    case 5:
-        em->alpha -= 1.0f / 60.0f;
-        if (em->alpha <= 0.0f) {
-            em->step++;
-            em->visible = 0;
-        }
-        break;
-    case 6:
-        if (em->remote == 0) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 5, 2, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State5_01_Hunted(Em *em)
-{
-    em->noHitTimer = 10;
-    em->noPushTimer = 10;
-    Em_SetCombat(em, 0, 0);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        EmBulldrome_SetMotionForSide(em, 10);
-        QuestEm_Hunted(em);
-        EmBulldrome_LaunchFromHit(em);
-        break;
-    case 1:
-        if (!(em->velZ * em->accelZ < 0.0f)) {
-            em->accelZ = 0.0f;
-        }
-        if (Player_MoveFall((Player *) em) != 0) {
-            em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x3F, 6, 0);
-            Player_ClearVelocity(em);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x40, 0, 0);
-            em->timer = 2700;
-            EmMine_Create(em, 0);
-            em->fieldCollide = 0;
-        }
-        break;
-    case 3:
-        EmMine_Update(em);
-        if (--em->timer <= 0) {
-            em->step++;
-            EmMine_Remove(em);
-        }
-        break;
-    case 4:
-        em->alpha -= 1.0f / 60.0f;
-        if (em->alpha <= 0.0f) {
-            em->visible = 0;
-            em->step++;
-        }
-        break;
-    case 5:
-        if (em->remote == 0) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 5, 2, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State5_02(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        if (QuestEm_CanAppear(em) == 1) {
-            EmBulldrome_ChangeState(em, 0, 1, 0);
-            break;
-        }
-        em->taskPhase++;
-    case 1:
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup5(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmBulldrome_State5_00_Hunted(em);
-        break;
-    case 1:
-        EmBulldrome_State5_01_Hunted(em);
-        break;
-    case 2:
-        EmBulldrome_State5_02(em);
-        break;
-    }
-}
-
-void EmBulldrome_State6_00_Captured(Em *em)
-{
-    f32 pos[3];
-
-    Em_SetCaptured(em, 1);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x47, 0x1E, 0x24);
-        em->timer = 150;
-        Em_BeginStatus1(em);
-        Em_ClearPoison(em);
-        em->stance = 0;
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            QuestEm_Captured(em);
-            *(s32 *) &em->motionSpeed = 0;
-        }
-        break;
-    case 2:
-        pos[0] = 0.0f;
-        pos[1] = -20.0f;
-        pos[2] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0xB, pos, 1.0f);
-        if (QuestEm_CanAppear(em) != 0) {
-            if (--em->timer <= 0) {
-                em->step++;
-            }
-        }
-        break;
-    case 3:
-        em->alpha -= 1.0f / 60.0f;
-        if (em->alpha <= 0.0f) {
-            em->visible = 0;
-            em->step++;
-        }
-        break;
-    case 4:
-        if (em->remote == 0) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 5, 2, 4);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State6_01(Em *em)
-{
-    em->noHitTimer = 5;
-    em->blind = 2;
-    em->senseDelay = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->lookAtTarget = 0;
-        em->stance = 0;
-        em->fieldCollide = 0;
-        em->posX = 9800.0f;
-        em->posY = -69.0f;
-        em->posZ = 10336.0f;
-        em->goal[0] = 7535.0f;
-        em->goal[1] = -59.0f;
-        em->goal[2] = 9654.0f;
-        em->rotY = Math_AngleXZ(&em->posX, em->goal);
-        GmEm_ResetSize(em);
-        Em_SetMotion(em, 3, 0, 0);
-        em->timer = 300;
-        break;
-    case 1:
-        em->rotY = Math_AngleXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || Vec_DistanceXZ(&em->posX, em->goal) <= 100.0f) {
-            em->step++;
-            Em_SetMotion(em, 1, 10, 0);
-            em->timer = 240;
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x15, 0, 0);
-        }
-        break;
-    case 3:
-        em->rotY += 0x26A;
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0xE, 6, 0);
-            em->goal[0] = 11900.0f;
-            em->goal[1] = -59.0f;
-            em->goal[2] = 10300.0f;
-        }
-        break;
-    case 4:
-        em->rotY += (Math_AngleXZ(&em->posX, em->goal) - em->rotY) >> 4;
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0xF, 10, 0);
-            em->timer = 90;
-            em->rotY = Math_AngleXZ(&em->posX, em->goal);
-        }
-        break;
-    case 5:
-        if (--em->timer <= 0) {
-            em->timer = 0;
-            if (Save_TestEventFlag(0x99) == 1) {
-                em->senseDelay = 0;
-                em->noHitTimer = 0;
-                em->fieldCollide = 1;
-                EmBulldrome_EndState(em);
-            }
-        }
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup6(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmBulldrome_State6_00_Captured(em);
-        break;
-    case 1:
-        EmBulldrome_State6_01(em);
-        break;
-    }
-}
-
-void EmBulldrome_State8_00(Em *em, EmWork *work)
-{
-    EmBulldromeVec v;
-
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-    switch (em->step) {
-    case 0:
-        if (Versus_DefeatCamera(em) == 1) {
-            em->step++;
-            Em_SetMotion(em, 7, 0, 0);
-        }
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            v = EmBulldrome_CarveThrowPt;
-            StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
-        }
-        if (em->motion[0].playing == 0) {
-            Versus_RouteEmByTeam(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State8_01(Em *em)
-{
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x14, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 1, 0, 0);
-            EmBulldrome_ChangeState(em, 8, 0x98, 1);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State8_02(Em *em)
-{
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0xE, 0, 0);
-        em->timer = 5;
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            if (--em->timer <= 0) {
-                em->step++;
-                Em_SetMotion(em, 1, 0, 0);
-                EmBulldrome_ChangeState(em, 8, 0x98, 1);
-            }
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State8_03(Em *em)
-{
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x11, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 1, 0, 0);
-            EmBulldrome_ChangeState(em, 8, 0x98, 1);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State8_98(Em *em)
-{
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-        }
-        
-    case 1:
-        if (Versus_BothDefeated() == 1) {
-            em->step++;
-            EmBulldrome_ChangeState(em, 8, 0x99, 1);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_State8_99(Em *em)
-{
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x5A;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-        }
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            em->senseDelay = 0;
-            em->noHitTimer = 0;
-            EmBulldrome_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmBulldrome_RunGroup8(Em *em)
-{
-    u8 *w = &em->work;
-
-    switch (em->state) {
-    case 0x0:
-        EmBulldrome_State8_00(em, (EmWork *) w);
-        break;
-    case 0x1:
-        EmBulldrome_State8_01(em);
-        break;
-    case 0x2:
-        EmBulldrome_State8_02(em);
-        break;
-    case 0x3:
-        EmBulldrome_State8_03(em);
-        break;
-    case 0x98:
-        EmBulldrome_State8_98(em);
-        break;
-    case 0x99:
-        EmBulldrome_State8_99(em);
-        break;
-    }
-}
-
-void EmBulldrome_Update(Em *em)
-{
-    u8 buf[3];
-    EmBulldromeWork *w = (EmBulldromeWork *)&em->work;
-
-    if (w->unk00C != 0) {
-        w->unk00C -= 1;
-    }
-    Em_UpdateCombatTimer(em);
-    Em_RaisePlayerAreaTrigger(em);
-    Em_HoldPosNoPlayers(em, 0, 1);
-    if (em->noAlert != 1 && em->combat == 1) {
-        switch ((u16) Map_DayId(gScene.map)) {
-        case MAP_JUNGLE:
-        case MAP_SWAMP:
-        case MAP_SNOWY_MOUNTAINS:
-            Em_CheckLowHp(em, 0.3f);
-            break;
-        }
-    }
-    switch (Em_UpdateDamage(em, buf) & 0xFF) {
-    case 0:
-    case 3:
-    case 4:
-    case 9:
-    case 11:
-    case 14:
-    case 15:
-    case 16:
-        break;
-    case 1:
-    case 2:
-        EmBulldrome_ChangeState(em, 5, 0, 3);
-        break;
-    case 5:
-        if (em->stateGroup != 4 || (u32) (em->state - 1) > 1) {
-            EmBulldrome_ChangeState(em, 4, 2, 3);
-        }
-        break;
-    case 6:
-        if (em->stateGroup != 4 || (u32) (em->state - 1) > 1) {
-            Em_RestartScript(em);
-            Em_SetStatus4Timer(em);
-            EmBulldrome_ChangeState(em, 4, 3, 3);
-        }
-        break;
-    case 7:
-        EmBulldrome_ChangeState(em, 6, 0, 3);
-        break;
-    case 8:
-        if (em->stateGroup != 4 || (u32) (em->state - 1) > 1) {
-            Em_SetStatus2Timer(em);
-            EmBulldrome_ChangeState(em, 0, 0xB, 3);
-        }
-        break;
-    case 10:
-        switch (em->state) {
-        case 0xE:
-            EmBulldrome_ChangeState(em, 0, 0xF, 3);
-            break;
-        default:
-            Em_RestartScript(em);
-            EmBulldrome_ChangeState(em, 0, 0xC, 3);
-            break;
-        }
-        break;
-    case 12:
-        if (em->parts[0].state & 3) {
-            EmBulldrome_ChangeState(em, 4, 0, 3);
-        } else {
-            EmBulldrome_ChangeState(em, 4, 1, 3);
-        }
-        break;
-    case 13:
-        EmBulldrome_ChangeState(em, 4, 1, 3);
-        break;
-    case 17:
-        if (em->stateGroup != 4 || (em->state != 4 && em->state != 2)) {
-            Em_SetStatus5Timer(em);
-            EmBulldrome_ChangeState(em, 4, 4, 3);
-        }
-        break;
-    case 18:
-        Em_ResetKindTimer(em);
-        EmBulldrome_ChangeState(em, 4, 5, 3);
-        break;
-    }
-    if ((gQuest.stage == 0x3EC || gQuest.stage == 0x3ED) && Area_DayId(em->area) == AREA_JUNGLE_5 && Save_TestEventFlag(0x99) == 0) {
-        if (ScEvent_CurId() == 0x99 && em->stateGroup != 6) {
-            EmBulldrome_ChangeState(em, 6, 1, 1);
-        }
-    } else {
-        Em_UpdatePendingScript(em);
-    }
-    Em_ClearHitReactMode(em);
-    EmBulldrome_RunState(em);
-    if (em->stateRequest != 0) {
-        EmBulldrome_RunState(em);
-        em->stateRequest = 0;
-    }
-}
-
-void EmBulldrome_RunState(Em *em)
-{
-    switch (em->stateGroup) {
-    case 0:
-        EmBulldrome_RunGroup0(em);
-        break;
-    case 1:
-        EmBulldrome_RunGroup1(em);
-        break;
-    case 2:
-        EmBulldrome_RunGroup2(em);
-        break;
-    case 3:
-        EmBulldrome_RunGroup3(em);
-        break;
-    case 4:
-        EmBulldrome_RunGroup4(em);
-        break;
-    case 5:
-        EmBulldrome_RunGroup5(em);
-        break;
-    case 6:
-        EmBulldrome_RunGroup6(em);
-        break;
-    case 7:
-        EmBulldrome_RunGroup4(em);
-        break;
-    case 8:
-        EmBulldrome_RunGroup8(em);
-        
-    default:
-        break;
-    }
-}
-
-/* em_chameleos's .data (0x8CAB00-0x8CB4E0) */
+/* The file's initialised data, in the game's order */
 EmFlyParam EmChameleos_FlyParam = {
 #include "game/008CAB00.inc"
 };
@@ -7715,65 +4578,5 @@ EmTurnParams EmChameleos_TurnParams[1] = {
 };
 void *EmChameleos_Callbacks[8] = {
     EmChameleos_SpawnEffects, EmChameleos_SpawnEffects, EmChameleos_TableNop, EmChameleos_UpdateMotionEffects,
-    EmChameleos_ScriptQuery, EmChameleos_Reinit, EmChameleos_AllowHit8, NULL,
-};
-EmCurveKey EmRemobra_VelYCurves_0[35] = {
-#include "game/008CAC00.inc"
-};
-EmCurveKey *EmRemobra_VelYCurves[2] = {
-    EmRemobra_VelYCurves_0, NULL,
-};
-EmCurveKey EmRemobra_SpeedCurves_0[35] = {
-#include "game/008CAD20.inc"
-};
-EmCurveKey *EmRemobra_SpeedCurves[2] = {
-    EmRemobra_SpeedCurves_0, NULL,
-};
-f32 EmRemobra_HopFrames[3] = {
-#include "game/008CAE40.inc"
-};
-s32 GmEm_ReturnZero(void); /* gm_sub */
-void GmEm_UpdateSfx(Em *em); /* gm_sub */
-void *EmRemobra_Callbacks[8] = {
-    EmRemobra_SpawnEffect01, EmRemobra_SpawnEffect01, EmRemobra_TableNop, EmRemobra_UpdateMotionEffects,
-    GmEm_ReturnZero, EmRemobra_Reinit, NULL, NULL,
-};
-u32 gEmMotionRows_63[304] = {
-#include "game/008CAE70.inc"
-};
-EmCurveKey EmChameleos_VelYCurves_0[6] = {
-#include "game/008CB330.inc"
-};
-EmCurveKey EmChameleos_VelYCurves_1[10] = {
-#include "game/008CB360.inc"
-};
-EmCurveKey EmChameleos_VelYCurves_2[5] = {
-#include "game/008CB3B0.inc"
-};
-EmCurveKey *EmChameleos_VelYCurves[3] = {
-    EmChameleos_VelYCurves_0, EmChameleos_VelYCurves_1, EmChameleos_VelYCurves_2,
-};
-EmCurveKey EmChameleos_SpeedCurves_1[10] = {
-#include "game/008CB3F0.inc"
-};
-EmCurveKey EmChameleos_SpeedCurves_2[5] = {
-#include "game/008CB440.inc"
-};
-EmCurveKey *EmChameleos_SpeedCurves[3] = {
-    NULL, EmChameleos_SpeedCurves_1, EmChameleos_SpeedCurves_2,
-};
-EmTurnParams EmBulldrome_TurnParams[1] = {
-#include "game/008CB480.inc"
-};
-f32 EmBulldrome_Effect0BOfs[3] = {
-#include "game/008CB4A0.inc"
-};
-EmBulldromeVec EmBulldrome_CarveThrowPt = {
-#include "game/008CB4B0.inc"
-};
-void EmBulldrome_SpawnEffect01(u8 *em);
-void EmBulldrome_TableNop(void);
-void *EmBulldrome_Callbacks[8] = {
-    EmBulldrome_SpawnEffect01, EmBulldrome_SpawnEffect01, EmBulldrome_TableNop, GmEm_UpdateSfx,
-    GmEm_ReturnZero, EmBulldrome_Reinit, NULL, NULL,
+    EmChameleos_ScriptQuery, EmChameleos_Reinit, EmChameleos_AllowPartBreak, NULL,
 };

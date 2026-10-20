@@ -2,10 +2,10 @@
 #define EM_MOSSWINE_H
 
 /*
- * The Mosswine family's vocabulary (src/game/em_khezu.c, EmMosswine_*):
+ * The Mosswine family's vocabulary (EmMosswine_*):
  * Mosswine and Bullfango (EM_KIND_MOSSWINE, EM_KIND_BULLFANGO) share one
  * set of state functions and one numbering of motions and states. The
- * Felyne cart (EM_KIND_FELYNE_CART, em_gravios.c's EmKind12_*) runs copies
+ * Felyne cart (EM_KIND_FELYNE_CART, EmFelyneCart_*) runs copies
  * of some of them.
  *
  * Motions: the kinds' motion table (gEmMotionRows[kind]) has row N play

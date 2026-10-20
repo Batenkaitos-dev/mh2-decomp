@@ -6,6 +6,7 @@
 #include "lobby_menu.h"
 #include "save.h"
 #include "pad.h"
+#include "lobby_labels.h"
 
 typedef struct GradBox {
     s16 x0;
@@ -15,8 +16,6 @@ typedef struct GradBox {
     u32 col[4];
 } GradBox;
 extern u8 gMenuWork;
-extern char *gHairChangeTexts[];
-extern char *gHairShowHintTexts[];
 extern u32 gHeaderBoxColors[4];
 void Font_SetSpacing(u8 a, u8 b);
 void Font_SetPos(s16, s16);
@@ -34,8 +33,8 @@ void HairMenu_DrawConfirm(s16 x, s16 y);
 extern u32 gPresetColors[];
 s32 Kbd_IsOpen(void); /* unit's own declaration: the definition (sub_main) returns s8;
  * HairMenu_ColorInput is 219 words off with s8 */
-void StageModels_Free(void);
-void StageModels_LoadEquip(u16 kind, u16 id, u8 female);
+void EquipPreview_Free(void);
+void EquipPreview_Load(u16 kind, u16 id, u8 female);
 void LobbySe_Play(s32);
 s32 Menu_WrapUpDown(s32, s32);
 s32 Menu_WrapLeftRight(s32, s32);
@@ -50,12 +49,12 @@ s32 HairMenu_ColorInput(u16 pad);
 
 static inline void func_006F2E80_preview(HairMenuWork *w)
 {
-    StageModels_Free();
+    EquipPreview_Free();
     D_5BAE0C = (w->r << 16) | 0xFF000000 | (w->g << 8) | w->b;
     if (w->list.color[w->sel].equip != -2) {
-        StageModels_LoadEquip(0xFF, w->list.color[w->sel].equip, gSave.gender);
+        EquipPreview_Load(0xFF, w->list.color[w->sel].equip, gSave.gender);
     } else {
-        StageModels_LoadEquip(0xFF, gSave.hairStyle, gSave.gender);
+        EquipPreview_Load(0xFF, gSave.hairStyle, gSave.gender);
     }
 }
 
@@ -76,7 +75,7 @@ s32 HairMenu_ListInput(u16 pad)
             if (w->toggle == 0) {
                 func_006F2E80_preview(w);
             } else {
-                StageModels_Free();
+                EquipPreview_Free();
             }
         } else if (pad & 0x20) {
             if (w->list.color[w->sel].rank <= gSave.money) {
@@ -91,7 +90,7 @@ s32 HairMenu_ListInput(u16 pad)
             w->state = 0;
             CamFocus_SetAside(0);
             LobbySe_Play(4);
-            StageModels_Free();
+            EquipPreview_Free();
             return 3;
         } else if (pad & 0xC00) {
             w->page = Menu_WrapLeftRight(w->page, w->pages);
@@ -130,7 +129,7 @@ s32 HairMenu_ListInput(u16 pad)
         switch (Menu_YesNoInput()) {
         case 0:
             w->state = 0;
-            StageModels_Free();
+            EquipPreview_Free();
             return 0;
         case 3:
             w->state--;
@@ -172,15 +171,15 @@ s32 HairMenu_ColorInput(u16 pad)
     if (pad & 0x4000) {
         w->toggle ^= 1;
         if (w->toggle == 0) {
-            StageModels_Free();
+            EquipPreview_Free();
             D_5BAE0C = (w->r << 16) | 0xFF000000 | (w->g << 8) | w->b;
             if (w->list.color[w->sel].equip != -2) {
-                StageModels_LoadEquip(0xFF, w->list.color[w->sel].equip, gSave.gender);
+                EquipPreview_Load(0xFF, w->list.color[w->sel].equip, gSave.gender);
             } else {
-                StageModels_LoadEquip(0xFF, gSave.hairStyle, gSave.gender);
+                EquipPreview_Load(0xFF, gSave.hairStyle, gSave.gender);
             }
         } else {
-            StageModels_Free();
+            EquipPreview_Free();
         }
     } else if (pad & 0x20) {
         if (w->row == 3) {
@@ -293,9 +292,6 @@ void Icon_DrawEquip(s16 x, s16 y, s32 w, s32 h, s32 color, s32 i); /* unit's own
 void Text_PrintfColored(char *fmt, ...);
 void Font_SetColor(s32 color);
 extern char D_00838278[];
-extern char *D_0080C074;
-extern char *gPriceMarks[];
-extern char *D_0080C304;
 void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
 void HairMenu_DrawList(s16 x, s16 y)
 {
@@ -318,9 +314,9 @@ void HairMenu_DrawList(s16 x, s16 y)
             }
             Font_SetPos(x + 0x2E, ty);
             if (gPlayers[gScene.localPlayer].gender == 1) {
-                Text_PrintfColored(D_00838278, m->list.hair[i].name, D_0080C074, m->list.hair[i].cost, gPriceMarks[0]);
+                Text_PrintfColored(D_00838278, m->list.hair[i].name, gLobbyWords[LOBBY_WORD_COLON], m->list.hair[i].cost, gLobbyWords[LOBBY_WORD_ZENNY]);
             } else {
-                Text_PrintfColored(D_00838278, m->list.hair[i].name + 0x20, D_0080C074, m->list.hair[i].cost, gPriceMarks[0]);
+                Text_PrintfColored(D_00838278, m->list.hair[i].name + 0x20, gLobbyWords[LOBBY_WORD_COLON], m->list.hair[i].cost, gLobbyWords[LOBBY_WORD_ZENNY]);
             }
             if (m->list.hair[i].id != -2) {
                 Icon_DrawEquip((s16)(x + 0x2E) - 0x1E, ty, 0x14, 0x14, -1, 0x12);
@@ -333,7 +329,7 @@ void HairMenu_DrawList(s16 x, s16 y)
         } while (i < m->count);
     }
     Font_SetSpacing(0x12, 0x12);
-    Win_DrawText(0x14A, 0x15E, 0x122, 0x50, 0xBDB59F6C, 0xC0101010, D_0080C304);
+    Win_DrawText(0x14A, 0x15E, 0x122, 0x50, 0xBDB59F6C, 0xC0101010, gHairMenuTexts[HAIR_MENU_PRICE_HEAD]);
 }
 
 void ColorEdit_Draw(s32 a, s16 x, s16 y, u8 r, u8 g, u8 b, s32 c, s32 d); /* unit's own declaration: with the definition's void (u8 mode, s16 x, s16 y, u8 r, u8 g, u8 b, u8 sel, u8 pal) (main/unk_18DA50.c), HairMenu_DrawConfirm 5 of 91 words differ */
@@ -341,8 +337,6 @@ void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
 char *Text_FillDollar(char *fmt, s32 n);
 extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
-extern char *gHairColorTexts[];
-extern char *D_0080C30C;
 void HairMenu_DrawConfirm(s16 x, s16 y)
 {
     HairMenuWork *m = (HairMenuWork *)&gMenuWork;
@@ -354,10 +348,10 @@ void HairMenu_DrawConfirm(s16 x, s16 y)
     switch (m->state) {
     case 2:
     case 3:
-        s = gHairColorTexts[0];
+        s = gHairMenuTexts[HAIR_MENU_COLOR_ASK];
         break;
     case 4:
-        s = Text_FillDollar(D_0080C30C, m->list.hair[m->sel].cost);
+        s = Text_FillDollar(gHairMenuTexts[HAIR_MENU_COLOR_HELP], m->list.hair[m->sel].cost);
         Font_SetPos(0x1AE, 0x190);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
@@ -371,7 +365,7 @@ void HairMenu_DrawHeader(void)
     GradBox b;
 
     Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x14A, 0x12, 0x82, 0xFFB0B000, gHairChangeTexts[0], 2, 1);
+    Menu_DrawLabelBar(0x14A, 0x12, 0x82, 0xFFB0B000, gHairMenuTexts[HAIR_MENU_TITLE], 2, 1);
     Menu_DrawMoney(0x1E0, 0x10, 0);
     b.x0 = 0x14A;
     b.y0 = 0x3A;
@@ -386,7 +380,7 @@ void HairMenu_DrawHeader(void)
     if (m->toggle == 1) {
         Font_SetPos(0x17C, 0x9A);
         Font_SetSpacing(0x12, 0x12);
-        Text_Printf(gHairShowHintTexts[0]);
+        Text_Printf(gHairMenuTexts[HAIR_MENU_SHOW_HINT]);
     }
 }
 

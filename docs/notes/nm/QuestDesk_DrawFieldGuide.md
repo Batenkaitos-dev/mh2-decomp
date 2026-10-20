@@ -1,4 +1,4 @@
-# QuestDesk_DrawFieldGuide (lobby, src/lobby/unk_71C390.c)
+# QuestDesk_DrawFieldGuide (lobby, src/lobby/quest_desk_draw.c)
 
 ## Status
 

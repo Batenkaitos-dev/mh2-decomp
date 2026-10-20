@@ -1,8 +1,8 @@
 /*
- * 0x182040: IOP reboot and module loading. The IOP is rebooted with
+ * IOP reboot and module loading. The IOP is rebooted with
  * DNAS300.IMG, then the modules packed in MH2DRIVE.DAT are read to EE
  * 0x1000000, sent to an IOP heap block and started from there (the list
- * at 0x1BAAA0 gives the module and its arguments); DEV9.IRX is loaded if
+ * gIopModArgs gives the module and its arguments); DEV9.IRX is loaded if
  * no dev9 module is resident, then USBKB.IRX.
  */
 #include "common.h"
@@ -172,14 +172,14 @@ void Iop_Init(void)
     Iop_LoadModule(D_001C7E30, 0x10, D_001C7E50, 0);
 }
 
-/* iop's .data (0x1BAAA0-0x1BAB30) */
+/* This file's initialised data. */
 extern char D_001C7D30[];
 extern char D_001C7D50[];
 IopModArg gIopModArgs[12] = {
 #include "main/001BAAA0.inc"
 };
 
-/* iop's .rodata (0x1C7D30-0x1C7E60) */
+/* This file's read-only data. */
 #pragma rodata on
 char D_001C7D30[0x20] = {
 #include "main/001C7D30.inc"

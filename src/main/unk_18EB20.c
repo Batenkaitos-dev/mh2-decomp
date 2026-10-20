@@ -1,6 +1,6 @@
 /*
- * main 0x18EB20-0x18EBA0: one function between the save-data helpers
- * (unk_18DA50.c) and the sound manager (sound.c). No code calls it.
+ * One function between the save-data helpers
+ * and the sound manager (sound.c). No code calls it.
  */
 #include "common.h"
 

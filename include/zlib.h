@@ -292,7 +292,7 @@ int inflate_flush(inflate_blocks_statef *s, z_streamp z, int r);
 #endif /* ZLIB_INTERNAL */
 
 /* The PNG decoder's allocator (zutil.c's zcalloc and zcfree, the game's
- * versions on a heap of its own at gImgHeap: unk_74D3F0.c, unk_7513C0.c) */
+ * versions on a heap of its own at gImgHeap: layout_cells.c, unk_7513C0.c) */
 voidpf zcalloc(voidpf opaque, uInt items, uInt size);
 void zcfree(voidpf opaque, voidpf ptr);
 

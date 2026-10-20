@@ -2,7 +2,8 @@
 #define CAPSULE_H
 
 /*
- * The collision capsules of sub_main (unk_3BE060.c's tests, unk_3AC9C0.c's pushes).
+ * The collision shapes: the capsules and spheres the hit tests and the pushes
+ * between players and monsters build, and the hit lists' records (HitShape).
  */
 
 #include "common.h"
@@ -15,6 +16,17 @@ typedef struct HitCapsule {
     f32 radius;                 /* 0x18 */
 } HitCapsule;
 typedef char HitCapsule_size_check[(sizeof(HitCapsule) == 0x1C) ? 1 : -1];
+
+/* A segment set up for the tests (Segment_Init): its two ends, the direction, the middle and
+ * half its length. */
+typedef struct Segment {
+    f32 a[3];                   /* 0x00 */
+    f32 b[3];                   /* 0x0C */
+    f32 dir[3];                 /* 0x18: b - a */
+    f32 mid[3];                 /* 0x24 */
+    f32 halfLen;                /* 0x30: from a to mid */
+} Segment;
+typedef char Segment_size_check[(sizeof(Segment) == 0x34) ? 1 : -1];
 
 /* A capsule set up for the tests (Capsule_Copy fills it from a HitCapsule): the two ends, the
  * radius, the direction, the middle, half the length plus the radius. */
@@ -35,19 +47,50 @@ typedef struct HitSphere {
 } HitSphere;
 typedef char HitSphere_size_check[(sizeof(HitSphere) == 0x10) ? 1 : -1];
 
-/* A hit shape: one record of a hit list (ObjAttach.hitList and hurtList from the kinds' tables;
- * a monster's gEmBoneHits[type], online D_7F1950), bone -1 ends the list. bone places it: one of
- * the owner's bones (BoneHit_Place), 0x7F a sphere or capsule at the owner's position
- * (HitShape_Place), 0x7E the capsule from an object's pos to pos2 with this radius
- * (Capsule_FromPoints), 0x7D the header of a group of records (HitList_Next): its kind holds the
- * bits of the owner's Em.fxFlags that skip the group, its zone the number of records in it. */
+/* A hit shape: one record of a hit list (ObjAttach.hitList and hurtList from
+ * the kinds' tables; a monster's gEmBoneHits[type], and the online game's own
+ * copy). bone places it: one of the owner's bones (BoneHit_Place), or one of
+ * the HIT_BONE_* codes below. */
+#define HIT_BONE_AT_POS 0x7F    /* a sphere or capsule at the owner's position (HitShape_Place) */
+#define HIT_BONE_SEGMENT 0x7E   /* the capsule from the object's pos to pos2, with this radius (Capsule_FromPoints) */
+#define HIT_BONE_GROUP 0x7D     /* the header of a group of records (HitList_Next): kind holds the owner's Em.fxFlags bits that skip the group, zone the number of records in it */
+#define HIT_BONE_END (-1)       /* ends the list */
+/* HitShape's flag bytes. An attack's hit (ObjAttach_HitTarget) and the
+ * pushes (Cam_PushOutOfEms, PlayerEm_PushApart) test them. ATTACK_TRAP_A and
+ * ATTACK_TRAP_B are the kinds every family takes as a trap (EM_DMG_ATTACK6
+ * and EM_DMG_ATTACK9: RATH_REACT_TRAPPED), and ATTACK_HOLD the one that
+ * gives EM_DMG_ATTACK13 (RATH_REACT_HOLD2). Both pushes skip a shape with HITSHAPE_TRAP_ONLY,
+ * HITSHAPE2_HOLD_ONLY, HITSHAPE_WIND_ONLY or HITSHAPE_HERMIT_ONLY. */
+/* atkFlags */
+#define HITSHAPE_TRAP_HIT 0x01      /* ATTACK_TRAP_A and ATTACK_TRAP_B hit this shape (on a monster this console runs); without it they pass through */
+#define HITSHAPE_WIND_HIT 0x02      /* ATTACK_WIND and ATTACK_WIND_WEAK hit this shape; without it they pass through */
+#define HITSHAPE_TRAP_ONLY 0x04     /* only ATTACK_TRAP_A and ATTACK_TRAP_B hit it, on a monster this console runs */
+/* atkFlags2 */
+#define HITSHAPE2_HOLD_HIT 0x01     /* ATTACK_HOLD hits this shape (on a monster this console runs); without it, it passes through */
+#define HITSHAPE2_HOLD_ONLY 0x02    /* only ATTACK_HOLD hits it, on a monster this console runs */
+/* openFlags: ObjAttach_HitFlags reports bit 1 for a hit on a shape with
+ * either wind bit while Em.windTimer runs, bit 2 for either hermit bit
+ * while Em.hermitTimer runs. */
+#define HITSHAPE_WIND_OPEN 0x01     /* reported while Em.windTimer runs */
+#define HITSHAPE_WIND_ONLY 0x02     /* reported, and hit only while Em.windTimer runs and the attack has flag 0x10 */
+#define HITSHAPE_HERMIT_OPEN 0x04   /* reported while Em.hermitTimer runs */
+#define HITSHAPE_HERMIT_ONLY 0x08   /* reported, and hit only while Em.hermitTimer runs */
+/* ObjAttach_HitFlags' result: which of the shape's open states hold now */
+#define HIT_OPEN_WIND 0x01          /* a wind bit, while Em.windTimer runs */
+#define HIT_OPEN_HERMIT 0x02        /* a hermit bit, while Em.hermitTimer runs */
+/* offFlags */
+#define HITSHAPE_NO_HIT 0x01        /* never hit; PlayerEm_PushApart skips it too */
+#define HITSHAPE_NO_CAM_PUSH 0x02   /* doesn't push the camera out (Cam_PushOutOfEms) */
+#define HITSHAPE_NO_PUSH 0x04       /* doesn't push a player out (PlayerEm_PushApart) */
+#define HIT_SHAPE_SPHERE 0         /* HitShape.kind */
+#define HIT_SHAPE_CAPSULE 1
 typedef struct HitShape {
     s16 bone;                   /* 0x00 */
-    s16 kind;                   /* 0x02: 0 sphere, 1 capsule */
+    s16 kind;                   /* 0x02: 0 sphere, 1 capsule (HIT_SHAPE_SPHERE, HIT_SHAPE_CAPSULE) */
     s16 zone;                   /* 0x04: a monster's: the row of its hit zones (ObjAttach_DamageEm, hitPending); an attack's: 1 picks motion value kind 3 over 2 */
     s16 part;                   /* 0x06: the monster part (& 7: Em.partFlags, hitPartDamage; flinchPart) */
-    u8 atkFlags;                /* 0x08: 1 hit by attack kinds 6 and 9, 2 by 5 and 0xE, 4 only by 6 and 9 on a monster this console runs (ObjAttach_HitPlayer) */
-    u8 atkFlags2;               /* 0x09: 1 hit by attack kind 0x13, 2 only by it on a monster this console runs */
+    u8 atkFlags;                /* 0x08: HITSHAPE_TRAP_HIT, HITSHAPE_WIND_HIT, HITSHAPE_TRAP_ONLY (ObjAttach_HitTarget) */
+    u8 atkFlags2;               /* 0x09: HITSHAPE2_HOLD_HIT, HITSHAPE2_HOLD_ONLY */
     u8 openFlags;               /* 0x0A: 3 while Em.windTimer runs, 0xC while Em.hermitTimer does (ObjAttach_HitFlags); 2 and 8 hit only then */
     u8 offFlags;                /* 0x0B: 1 never hit, 2 no camera push (Cam_PushOutOfEms), 4 no player push (PlayerEm_PushApart) */
     f32 radius;                 /* 0x0C: times the owner's scale (BoneHit_Place) or the object's hitScale */

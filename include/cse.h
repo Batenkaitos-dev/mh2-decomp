@@ -3,8 +3,8 @@
 
 /*
  * EE side of the Capcom Sound Engine (CSE.IRX, "CAPCOM Sound Engine for IOP
- * Ver.0.17") and of the emlRpcQueue request queue, in the boot ELF from
- * 0x18FBA0 to 0x192EF0 (src/main/cse*.c, ml_rpc_queue.c).
+ * Ver.0.17") and of the emlRpcQueue request queue, in the boot ELF (the
+ * cse*.c files and ml_rpc_queue.c).
  *
  * Layers, from the game down:
  *   Snd_*         the game's sound calls (the only entry points used outside)

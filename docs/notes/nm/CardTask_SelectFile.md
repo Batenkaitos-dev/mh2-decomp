@@ -1,4 +1,4 @@
-# CardTask_SelectFile (sub_main, src/sub_main/unk_3DDBA0.c)
+# CardTask_SelectFile (sub_main, src/sub_main/card_task.c)
 
 ## Status
 Matched since round 17, tagged FAKEMATCH (`s32 file = file_in;` declared first). Round 30, s5
@@ -14,8 +14,8 @@ lead" acceptable.
 - No prototype change helps: the parameter is an int index (callers pass `slot + 5`,
   `m->charNo + 5`, 4 and 8, all s32 expressions), so there is no `void *obj`-style type to give
   it. A u32 parameter (with the file's prototype) is 17 words; u8/u16/s8/s16 were 27/55 in
-  round 25. No declaration was changed (the four `(s32 a, s32 b)` prototypes: unk_3DDBA0.c:134,
-  unk_3D54B0.c:31, 1760, 3063).
+  round 25. No declaration was changed (the four `(s32 a, s32 b)` prototypes: card_task.c:134,
+  card_menu.c:31, 1760, 3063).
 - The only other match found is the same trick in another type: `u32 f2 = file;` declared
   first and used only in the loop's `f2 != i` (0 words). Not better than the tagged form.
 

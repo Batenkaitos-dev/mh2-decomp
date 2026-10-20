@@ -11,10 +11,10 @@ s32 Talk_Update(void);
 int abs(int);
 
 /* The drinking contest and arm wrestling (work area gMenuWork; player
- * gTownSpotId - 1 of two). */
+ * gContestSeatId - 1 of two). */
 void *memcpy(void *dst, const void *src, u32 n);
 extern s32 gTownMode;
-extern u8 gTownSpotId;
+extern u8 gContestSeatId;
 extern u8 gMenuWork;
 void Text_SetSize(s32);
 void Contest_DrawPlay(void);
@@ -30,7 +30,7 @@ extern u16 gContestPrizesA[5];
 extern u16 gContestPrizesB[5];
 s16 Pouch_GiveItem(Player *p, u16 item, s16 key, u8 flags);
 extern s32 gTownMenuOpen;
-extern void *gNpcKindSe[];
+extern void *gNpcTalkSe[];
 void *memset(void *dst, s32 c, u32 n);
 void LobbyMenu_Init(void);
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
@@ -39,7 +39,7 @@ u8 *DrinkContest_GetLevel(void);
 s32 Game_IsOnline(void);
 void CamFocus_Start(Em *npc);
 void Actor_SetState(void *, s32, s32);
-void TownPc_TakeSpot(void);
+void TownPc_TakeSeat(void);
 void Npc_PlaySeDelayed(Em *npc, void *p);
 void Talk_Start(Em *npc, s8 quiet);
 void Talk_Say(s32 a, s8 b);
@@ -65,7 +65,7 @@ s32 Contest_TalkUpdate(void)
 void Contest_NpcPress(void)
 {
     ContestMenu *m = (ContestMenu *)&gMenuWork;
-    s8 i = gTownSpotId - 1;
+    s8 i = gContestSeatId - 1;
 
     if (--m->wait <= 0) {
         m->power[i ^ 1] += 4;
@@ -79,7 +79,7 @@ void Contest_NpcPress(void)
 void Contest_PadPress(void)
 {
     ContestMenu *m = (ContestMenu *)&gMenuWork;
-    s8 i = gTownSpotId - 1;
+    s8 i = gContestSeatId - 1;
     u16 pad = gPadState[0].pressed;
 
     if ((pad & 0x20) && m->toggle == 0) {
@@ -91,8 +91,8 @@ void Contest_PadPress(void)
     }
 }
 
-void TownMsg_Send20(void *u, s32 power);
-void TownMsg_Send21(s32 *arg0, s8 arg1);
+void TownMsg_SendContestPower(void *u, s32 power);
+void TownMsg_SendContestResult(s32 *arg0, s8 arg1);
 s32 abs(s32);
 extern NetUser gNetUsers[];
 extern u16 gTownMoveFrames;
@@ -100,7 +100,7 @@ void CamReq_Contest(s32 a, s32 b);
 void Jingle_Play(void *obj, s32 id);
 void CamReq_Cancel(void);
 void Bgm_StopEventFade(Player *p);
-void TownMsg_Send1D(Player *p);
+void TownMsg_SendContestSeatFree(Player *p);
 void TownMsg_SendStateNow(Player *p);
 s32 EmMotion_PassedFrameScaled(void *obj, f32 frame, s32 layer);
 void Contest_PadPress(void);
@@ -110,7 +110,7 @@ s32 Contest_Play(void)
 {
     ContestMenu *m = (ContestMenu *)&gMenuWork;
     Player *p = &gPlayers[gScene.localPlayer];
-    s8 i = gTownSpotId - 1;
+    s8 i = gContestSeatId - 1;
 
     switch (m->phase) {
     case 0:
@@ -164,12 +164,12 @@ s32 Contest_Play(void)
 
                 m->phase = 6;
                 pw = (s32 *)((u8 *)m->power + i * 4);
-                TownMsg_Send20(&gNetUsers[m->who->index], m->power[i]);
+                TownMsg_SendContestPower(&gNetUsers[m->who->index], m->power[i]);
                 if (i == 1 && abs(*pw - m->power[i ^ 1]) <= 0x32) {
                     m->timeLeft = 0x96;
                 } else {
                     m->timeLeft = 0x12C;
-                    TownMsg_Send21((s32 *) (&gNetUsers[m->who->index]), m->result);
+                    TownMsg_SendContestResult((s32 *) (&gNetUsers[m->who->index]), m->result);
                 }
             } else {
                 m->phase++;
@@ -210,7 +210,7 @@ s32 Contest_Play(void)
             }
             if (++m->tick > gTownMoveFrames) {
                 m->tick = 0;
-                TownMsg_Send20(&gNetUsers[m->who->index], m->power[i]);
+                TownMsg_SendContestPower(&gNetUsers[m->who->index], m->power[i]);
             }
         }
         break;
@@ -241,13 +241,13 @@ s32 Contest_Play(void)
         if (Game_IsOnline() == 0) {
             Actor_SetState(m->who, 0, 0x73);
         } else {
-            TownMsg_Send1D(p);
+            TownMsg_SendContestSeatFree(p);
         }
         return 0;
     case 6:
         if (--m->timeLeft <= 0) {
             Actor_SetState(p, 0, 1);
-            TownMsg_Send1D(p);
+            TownMsg_SendContestSeatFree(p);
             TownMsg_SendStateNow(p);
             return 0;
         }
@@ -280,7 +280,7 @@ void Contest_RecvStart(void *msg)
 void Contest_RecvPower(void *src)
 {
     u8 *m = &gMenuWork;
-    s8 i = gTownSpotId - 1;
+    s8 i = gContestSeatId - 1;
 
     if (gTownMode == 0x30) {
         memcpy(m + (i ^ 1) * 4 + 0xC, src, 4);
@@ -290,7 +290,7 @@ void Contest_RecvPower(void *src)
 void Contest_RecvResult(s8 idx, void *data)
 {
     ContestMenu *m = (ContestMenu *)&gMenuWork;
-    s8 i = gTownSpotId - 1;
+    s8 i = gContestSeatId - 1;
 
     if (gTownMode != 0x30) {
         return;
@@ -304,7 +304,7 @@ void Contest_RecvResult(s8 idx, void *data)
             } else {
                 m->result = 1;
             }
-            TownMsg_Send21((s32 *) (&gNetUsers[m->who->index]), m->result);
+            TownMsg_SendContestResult((s32 *) (&gNetUsers[m->who->index]), m->result);
             m->phase = 5;
             m->timeLeft = 0xB4;
             if (m->result == 0) {
@@ -362,7 +362,7 @@ void Contest_RecvResult(s8 idx, void *data)
 void Contest_DrawPlay(void)
 {
     ContestMenu *m = (ContestMenu *)&gMenuWork;
-    s8 i = gTownSpotId - 1;
+    s8 i = gContestSeatId - 1;
 
     switch (m->phase) {
     case 3:
@@ -445,9 +445,9 @@ void DrinkContest_Open(Em *npc)
     if (Game_IsOnline() == 0) {
         CamFocus_Start(npc);
         Actor_SetState(npc, 0, 0x2C);
-        TownPc_TakeSpot();
+        TownPc_TakeSeat();
         if (Game_IsOnline() == 0) {
-            Npc_PlaySeDelayed(m->npc, gNpcKindSe[w->id]);
+            Npc_PlaySeDelayed(m->npc, gNpcTalkSe[w->id]);
         }
         Talk_Start(npc, 0);
         Talk_Say(3, 0);

@@ -1,4 +1,4 @@
-# Tim2_GetImage (main, src/main/unk_18AFE0.c)
+# Tim2_GetImage (main, src/main/pad_port.c)
 
 ## Status
 
@@ -19,7 +19,7 @@
 ## For the lead
 
 - Nothing to change outside the function. The `(u32)i` index stays (round 21's find; the same
-  unsigned-index form is in matched code without a tag, e.g. unk_6E01D0.c's
+  unsigned-index form is in matched code without a tag, e.g. weapon_forge.c's
   `m->list[(u32)cur]`).
 - The rule this adds (black-box): with a same-type copy `ph = p`, a later redefinition of p
   from ph before a loop (`p = ph + k`) lets the unroller's leftover guard read through p while

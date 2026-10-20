@@ -67,8 +67,8 @@ void Draw_ApplyStates(u32);
 void Draw_SetDefaultState(void);
 s32 Gs_SetState(u8 reg, u32 v);
 void Gfx_SetTexFilter(s32);
-void LightSet_SetAmbient(void *obj, s32 n);
-void LightSet_FadeAmbient(void *obj);
+void LightSet_SetColors(void *obj, s32 n);
+void LightSet_FadeColors(void *obj);
 void Vec_AnglesToRad(s32 *in, f32 *out);
 void Bone_UpdateWorldScaledRoot(struct EmBone *b, f32 *m);
 void Bone_StoreMatrices(struct EmBone *b);
@@ -210,8 +210,8 @@ void LobbyActor_Draw(DrawSlot *ds /* unused: the draw-slot walk passes it */)
     if (o->active == 0 || o->visible == 0) {
         return;
     }
-    LightSet_SetAmbient(o, 1);
-    LightSet_FadeAmbient(o);
+    LightSet_SetColors(o, 1);
+    LightSet_FadeColors(o);
     Vec_AnglesToRad(&o->rotX, rad);
     Mtx_Scale(s, o->scaleX, o->scaleY, o->scaleZ);
     Mtx_FromAnglesYXZ(&o->rotX, m);
@@ -391,690 +391,690 @@ ActorKey* *gLobbyActorScripts[32] = {
     NULL, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL,
 };
-u32 D_0081C600[68] = {
+u32 gHornScorePage0[68] = {
 #include "lobby/0081C600.inc"
 };
-u32 D_0081C710[52] = {
+u32 gHornScorePage1[52] = {
 #include "lobby/0081C710.inc"
 };
-u32 D_0081C7E0[96] = {
+u32 gHornScorePage2[96] = {
 #include "lobby/0081C7E0.inc"
 };
-u32 D_0081C960[68] = {
+u32 gHornScorePage3[68] = {
 #include "lobby/0081C960.inc"
 };
-u32 D_0081CA70[116] = {
+u32 gHornScorePage4[116] = {
 #include "lobby/0081CA70.inc"
 };
-u32 D_0081CC40[52] = {
+u32 gOldHornScorePage0[52] = {
 #include "lobby/0081CC40.inc"
 };
-u32 D_0081CD10[60] = {
+u32 gOldHornScorePage1[60] = {
 #include "lobby/0081CD10.inc"
 };
-u32 D_0081CE00[92] = {
+u32 gOldHornScorePage2[92] = {
 #include "lobby/0081CE00.inc"
 };
-u32 D_0081CF70[136] = {
+u32 gOldHornScorePage3[136] = {
 #include "lobby/0081CF70.inc"
 };
-u32 gRecordCats_0_1_0[32] = {
+u32 gRecordGuidePage0_0_0[32] = {
 #include "lobby/0081D190.inc"
 };
-u32 gRecordCats_0_1_1[60] = {
+u32 gRecordGuidePage0_0_1[60] = {
 #include "lobby/0081D210.inc"
 };
-u32 gRecordCats_0_1_2[52] = {
+u32 gRecordGuidePage0_0_2[52] = {
 #include "lobby/0081D300.inc"
 };
-u32 gRecordCats_0_4_0[48] = {
+u32 gRecordGuidePage0_1_0[48] = {
 #include "lobby/0081D3D0.inc"
 };
-u32 gRecordCats_0_4_1[44] = {
+u32 gRecordGuidePage0_1_1[44] = {
 #include "lobby/0081D490.inc"
 };
-u32 gRecordCats_0_7_0[52] = {
+u32 gRecordGuidePage0_2_0[52] = {
 #include "lobby/0081D540.inc"
 };
-u32 gRecordCats_0_7_1[56] = {
+u32 gRecordGuidePage0_2_1[56] = {
 #include "lobby/0081D610.inc"
 };
-u32 gRecordCats_0_10_0[60] = {
+u32 gRecordGuidePage0_3_0[60] = {
 #include "lobby/0081D6F0.inc"
 };
-u32 gRecordCats_0_10_1[48] = {
+u32 gRecordGuidePage0_3_1[48] = {
 #include "lobby/0081D7E0.inc"
 };
-u32 gRecordCats_0_13_0[56] = {
+u32 gRecordGuidePage0_4_0[56] = {
 #include "lobby/0081D8A0.inc"
 };
-u32 gRecordCats_0_13_1[60] = {
+u32 gRecordGuidePage0_4_1[60] = {
 #include "lobby/0081D980.inc"
 };
-u32 gRecordCats_0_13_2[44] = {
+u32 gRecordGuidePage0_4_2[44] = {
 #include "lobby/0081DA70.inc"
 };
-u32 gRecordCats_0_16_0[48] = {
+u32 gRecordGuidePage0_5_0[48] = {
 #include "lobby/0081DB20.inc"
 };
-u32 gRecordCats_0_16_1[48] = {
+u32 gRecordGuidePage0_5_1[48] = {
 #include "lobby/0081DBE0.inc"
 };
-u32 gRecordCats_0_19_0[52] = {
+u32 gRecordGuidePage0_6_0[52] = {
 #include "lobby/0081DCA0.inc"
 };
-u32 gRecordCats_0_19_1[40] = {
+u32 gRecordGuidePage0_6_1[40] = {
 #include "lobby/0081DD70.inc"
 };
-u32 gRecordCats_0_22_0[56] = {
+u32 gRecordGuidePage0_7_0[56] = {
 #include "lobby/0081DE10.inc"
 };
-u32 gRecordCats_0_22_1[52] = {
+u32 gRecordGuidePage0_7_1[52] = {
 #include "lobby/0081DEF0.inc"
 };
-u32 gRecordCats_0_22_2[52] = {
+u32 gRecordGuidePage0_7_2[52] = {
 #include "lobby/0081DFC0.inc"
 };
-u32 gRecordCats_0_22_3[56] = {
+u32 gRecordGuidePage0_7_3[56] = {
 #include "lobby/0081E090.inc"
 };
-u32 gRecordCats_0_25_0[60] = {
+u32 gRecordGuidePage0_8_0[60] = {
 #include "lobby/0081E170.inc"
 };
-u32 gRecordCats_0_25_1[44] = {
+u32 gRecordGuidePage0_8_1[44] = {
 #include "lobby/0081E260.inc"
 };
-u32 gRecordCats_0_28_0[36] = {
+u32 gRecordGuidePage0_9_0[36] = {
 #include "lobby/0081E310.inc"
 };
-u32 gRecordCats_0_28_1[48] = {
+u32 gRecordGuidePage0_9_1[48] = {
 #include "lobby/0081E3A0.inc"
 };
-u32 gRecordCats_0_28_2[40] = {
+u32 gRecordGuidePage0_9_2[40] = {
 #include "lobby/0081E460.inc"
 };
-u32 gRecordCats_0_28_3[52] = {
+u32 gRecordGuidePage0_9_3[52] = {
 #include "lobby/0081E500.inc"
 };
-u32 gRecordCats_0_31_0[52] = {
+u32 gRecordGuidePage0_10_0[52] = {
 #include "lobby/0081E5D0.inc"
 };
-u32 gRecordCats_0_31_1[48] = {
+u32 gRecordGuidePage0_10_1[48] = {
 #include "lobby/0081E6A0.inc"
 };
-u32 gRecordCats_0_34_0[64] = {
+u32 gRecordGuidePage0_11_0[64] = {
 #include "lobby/0081E760.inc"
 };
-u32 gRecordCats_0_34_1[52] = {
+u32 gRecordGuidePage0_11_1[52] = {
 #include "lobby/0081E860.inc"
 };
-u32 gRecordCats_0_34_2[48] = {
+u32 gRecordGuidePage0_11_2[48] = {
 #include "lobby/0081E930.inc"
 };
-u32 gRecordCats_0_37_0[60] = {
+u32 gRecordGuidePage0_12_0[60] = {
 #include "lobby/0081E9F0.inc"
 };
-u32 gRecordCats_0_37_1[64] = {
+u32 gRecordGuidePage0_12_1[64] = {
 #include "lobby/0081EAE0.inc"
 };
-u32 gRecordCats_0_37_2[48] = {
+u32 gRecordGuidePage0_12_2[48] = {
 #include "lobby/0081EBE0.inc"
 };
-u32 gRecordCats_0_40_0[56] = {
+u32 gRecordGuidePage0_13_0[56] = {
 #include "lobby/0081ECA0.inc"
 };
-u32 gRecordCats_0_40_1[40] = {
+u32 gRecordGuidePage0_13_1[40] = {
 #include "lobby/0081ED80.inc"
 };
-u32 gRecordCats_0_43_0[56] = {
+u32 gRecordGuidePage0_14_0[56] = {
 #include "lobby/0081EE20.inc"
 };
-u32 gRecordCats_0_43_1[60] = {
+u32 gRecordGuidePage0_14_1[60] = {
 #include "lobby/0081EF00.inc"
 };
-u32 gRecordCats_1_1_0[40] = {
+u32 gRecordGuidePage1_0_0[40] = {
 #include "lobby/0081EFF0.inc"
 };
-u32 gRecordCats_1_1_1[32] = {
+u32 gRecordGuidePage1_0_1[32] = {
 #include "lobby/0081F090.inc"
 };
-u32 gRecordCats_1_4_0[44] = {
+u32 gRecordGuidePage1_1_0[44] = {
 #include "lobby/0081F110.inc"
 };
-u32 gRecordCats_1_4_1[56] = {
+u32 gRecordGuidePage1_1_1[56] = {
 #include "lobby/0081F1C0.inc"
 };
-u32 gRecordCats_1_4_2[44] = {
+u32 gRecordGuidePage1_1_2[44] = {
 #include "lobby/0081F2A0.inc"
 };
-u32 gRecordCats_1_4_3[40] = {
+u32 gRecordGuidePage1_1_3[40] = {
 #include "lobby/0081F350.inc"
 };
-u32 gRecordCats_1_7_0[48] = {
+u32 gRecordGuidePage1_2_0[48] = {
 #include "lobby/0081F3F0.inc"
 };
-u32 gRecordCats_1_7_1[40] = {
+u32 gRecordGuidePage1_2_1[40] = {
 #include "lobby/0081F4B0.inc"
 };
-u32 gRecordCats_1_10_0[56] = {
+u32 gRecordGuidePage1_3_0[56] = {
 #include "lobby/0081F550.inc"
 };
-u32 gRecordCats_1_10_1[48] = {
+u32 gRecordGuidePage1_3_1[48] = {
 #include "lobby/0081F630.inc"
 };
-u32 gRecordCats_1_13_0[60] = {
+u32 gRecordGuidePage1_4_0[60] = {
 #include "lobby/0081F6F0.inc"
 };
-u32 gRecordCats_1_13_1[48] = {
+u32 gRecordGuidePage1_4_1[48] = {
 #include "lobby/0081F7E0.inc"
 };
-u32 gRecordCats_1_13_2[44] = {
+u32 gRecordGuidePage1_4_2[44] = {
 #include "lobby/0081F8A0.inc"
 };
-u32 gRecordCats_1_16_0[68] = {
+u32 gRecordGuidePage1_5_0[68] = {
 #include "lobby/0081F950.inc"
 };
-u32 gRecordCats_1_16_1[64] = {
+u32 gRecordGuidePage1_5_1[64] = {
 #include "lobby/0081FA60.inc"
 };
-u32 gRecordCats_1_19_0[64] = {
+u32 gRecordGuidePage1_6_0[64] = {
 #include "lobby/0081FB60.inc"
 };
-u32 gRecordCats_1_19_1[56] = {
+u32 gRecordGuidePage1_6_1[56] = {
 #include "lobby/0081FC60.inc"
 };
-u32 gRecordCats_1_22_0[60] = {
+u32 gRecordGuidePage1_7_0[60] = {
 #include "lobby/0081FD40.inc"
 };
-u32 gRecordCats_1_22_1[40] = {
+u32 gRecordGuidePage1_7_1[40] = {
 #include "lobby/0081FE30.inc"
 };
-u32 gRecordCats_1_25_0[60] = {
+u32 gRecordGuidePage1_8_0[60] = {
 #include "lobby/0081FED0.inc"
 };
-u32 gRecordCats_1_28_0[16] = {
+u32 gRecordGuidePage1_9_0[16] = {
 #include "lobby/0081FFC0.inc"
 };
 u32 gLobbyFadeTables_0_0_6_0[40] = {
 #include "lobby/00820000.inc"
 };
-u32 gRecordCats_1_28_1[56] = {
+u32 gRecordGuidePage1_9_1[56] = {
 #include "lobby/008200A0.inc"
 };
-u32 gRecordCats_1_28_2[52] = {
+u32 gRecordGuidePage1_9_2[52] = {
 #include "lobby/00820180.inc"
 };
-u32 gRecordCats_1_28_3[56] = {
+u32 gRecordGuidePage1_9_3[56] = {
 #include "lobby/00820250.inc"
 };
-u32 gRecordCats_2_1_0[64] = {
+u32 gRecordGuidePage2_0_0[64] = {
 #include "lobby/00820330.inc"
 };
-u32 gRecordCats_2_4_0[60] = {
+u32 gRecordGuidePage2_1_0[60] = {
 #include "lobby/00820430.inc"
 };
-u32 gRecordCats_2_4_1[40] = {
+u32 gRecordGuidePage2_1_1[40] = {
 #include "lobby/00820520.inc"
 };
-u32 gRecordCats_2_7_0[48] = {
+u32 gRecordGuidePage2_2_0[48] = {
 #include "lobby/008205C0.inc"
 };
-u32 gRecordCats_2_7_1[56] = {
+u32 gRecordGuidePage2_2_1[56] = {
 #include "lobby/00820680.inc"
 };
-u32 gRecordCats_2_7_2[68] = {
+u32 gRecordGuidePage2_2_2[68] = {
 #include "lobby/00820760.inc"
 };
-u32 gRecordCats_2_10_0[56] = {
+u32 gRecordGuidePage2_3_0[56] = {
 #include "lobby/00820870.inc"
 };
-u32 gRecordCats_2_10_1[44] = {
+u32 gRecordGuidePage2_3_1[44] = {
 #include "lobby/00820950.inc"
 };
-u32 gRecordCats_2_10_2[52] = {
+u32 gRecordGuidePage2_3_2[52] = {
 #include "lobby/00820A00.inc"
 };
-u32 gRecordCats_2_10_3[60] = {
+u32 gRecordGuidePage2_3_3[60] = {
 #include "lobby/00820AD0.inc"
 };
-u32 gRecordCats_2_10_4[64] = {
+u32 gRecordGuidePage2_3_4[64] = {
 #include "lobby/00820BC0.inc"
 };
-u32 gRecordCats_2_13_0[60] = {
+u32 gRecordGuidePage2_4_0[60] = {
 #include "lobby/00820CC0.inc"
 };
-u32 gRecordCats_2_13_1[48] = {
+u32 gRecordGuidePage2_4_1[48] = {
 #include "lobby/00820DB0.inc"
 };
-u32 gRecordCats_2_13_2[60] = {
+u32 gRecordGuidePage2_4_2[60] = {
 #include "lobby/00820E70.inc"
 };
-u32 gRecordCats_2_16_0[56] = {
+u32 gRecordGuidePage2_5_0[56] = {
 #include "lobby/00820F60.inc"
 };
-u32 gRecordCats_2_16_1[64] = {
+u32 gRecordGuidePage2_5_1[64] = {
 #include "lobby/00821040.inc"
 };
-u32 gRecordCats_2_19_0[52] = {
+u32 gRecordGuidePage2_6_0[52] = {
 #include "lobby/00821140.inc"
 };
-u32 gRecordCats_2_19_1[52] = {
+u32 gRecordGuidePage2_6_1[52] = {
 #include "lobby/00821210.inc"
 };
-u32 gRecordCats_2_19_2[52] = {
+u32 gRecordGuidePage2_6_2[52] = {
 #include "lobby/008212E0.inc"
 };
-u32 gRecordCats_2_22_0[60] = {
+u32 gRecordGuidePage2_7_0[60] = {
 #include "lobby/008213B0.inc"
 };
-u32 gRecordCats_2_22_1[44] = {
+u32 gRecordGuidePage2_7_1[44] = {
 #include "lobby/008214A0.inc"
 };
-u32 gRecordCats_2_25_0[48] = {
+u32 gRecordGuidePage2_8_0[48] = {
 #include "lobby/00821550.inc"
 };
-u32 gRecordCats_2_25_1[56] = {
+u32 gRecordGuidePage2_8_1[56] = {
 #include "lobby/00821610.inc"
 };
-u32 gRecordCats_2_28_0[44] = {
+u32 gRecordGuidePage2_9_0[44] = {
 #include "lobby/008216F0.inc"
 };
-u32 gRecordCats_2_28_1[40] = {
+u32 gRecordGuidePage2_9_1[40] = {
 #include "lobby/008217A0.inc"
 };
-u32 gRecordCats_3_1_0[48] = {
+u32 gRecordGuidePage3_0_0[48] = {
 #include "lobby/00821840.inc"
 };
-u32 gRecordCats_3_1_1[44] = {
+u32 gRecordGuidePage3_0_1[44] = {
 #include "lobby/00821900.inc"
 };
-u32 gRecordCats_3_1_2[48] = {
+u32 gRecordGuidePage3_0_2[48] = {
 #include "lobby/008219B0.inc"
 };
-u32 gRecordCats_3_1_3[44] = {
+u32 gRecordGuidePage3_0_3[44] = {
 #include "lobby/00821A70.inc"
 };
-u32 gRecordCats_3_4_0[44] = {
+u32 gRecordGuidePage3_1_0[44] = {
 #include "lobby/00821B20.inc"
 };
-u32 gRecordCats_3_4_1[52] = {
+u32 gRecordGuidePage3_1_1[52] = {
 #include "lobby/00821BD0.inc"
 };
-u32 gRecordCats_3_4_2[48] = {
+u32 gRecordGuidePage3_1_2[48] = {
 #include "lobby/00821CA0.inc"
 };
-u32 gRecordCats_3_7_0[44] = {
+u32 gRecordGuidePage3_2_0[44] = {
 #include "lobby/00821D60.inc"
 };
-u32 gRecordCats_3_7_1[48] = {
+u32 gRecordGuidePage3_2_1[48] = {
 #include "lobby/00821E10.inc"
 };
-u32 gRecordCats_3_7_2[44] = {
+u32 gRecordGuidePage3_2_2[44] = {
 #include "lobby/00821ED0.inc"
 };
-u32 gRecordCats_3_7_3[40] = {
+u32 gRecordGuidePage3_2_3[40] = {
 #include "lobby/00821F80.inc"
 };
-u32 gRecordCats_3_10_0[40] = {
+u32 gRecordGuidePage3_3_0[40] = {
 #include "lobby/00822020.inc"
 };
-u32 gRecordCats_3_10_1[36] = {
+u32 gRecordGuidePage3_3_1[36] = {
 #include "lobby/008220C0.inc"
 };
-u32 gRecordCats_3_10_2[56] = {
+u32 gRecordGuidePage3_3_2[56] = {
 #include "lobby/00822150.inc"
 };
-u32 gRecordCats_3_13_0[48] = {
+u32 gRecordGuidePage3_4_0[48] = {
 #include "lobby/00822230.inc"
 };
-u32 gRecordCats_3_13_1[60] = {
+u32 gRecordGuidePage3_4_1[60] = {
 #include "lobby/008222F0.inc"
 };
-u32 gRecordCats_3_13_2[56] = {
+u32 gRecordGuidePage3_4_2[56] = {
 #include "lobby/008223E0.inc"
 };
-u32 gRecordCats_3_16_0[44] = {
+u32 gRecordGuidePage3_5_0[44] = {
 #include "lobby/008224C0.inc"
 };
-u32 gRecordCats_3_16_1[52] = {
+u32 gRecordGuidePage3_5_1[52] = {
 #include "lobby/00822570.inc"
 };
-u32 gRecordCats_3_16_2[52] = {
+u32 gRecordGuidePage3_5_2[52] = {
 #include "lobby/00822640.inc"
 };
-u32 gRecordCats_3_16_3[48] = {
+u32 gRecordGuidePage3_5_3[48] = {
 #include "lobby/00822710.inc"
 };
-u32 gRecordCats_3_16_4[56] = {
+u32 gRecordGuidePage3_5_4[56] = {
 #include "lobby/008227D0.inc"
 };
-u32 gRecordCats_3_19_0[44] = {
+u32 gRecordGuidePage3_6_0[44] = {
 #include "lobby/008228B0.inc"
 };
-u32 gRecordCats_3_19_1[48] = {
+u32 gRecordGuidePage3_6_1[48] = {
 #include "lobby/00822960.inc"
 };
-u32 gRecordCats_3_22_0[52] = {
+u32 gRecordGuidePage3_7_0[52] = {
 #include "lobby/00822A20.inc"
 };
-u32 gRecordCats_3_22_1[40] = {
+u32 gRecordGuidePage3_7_1[40] = {
 #include "lobby/00822AF0.inc"
 };
-u32 gRecordCats_3_22_2[44] = {
+u32 gRecordGuidePage3_7_2[44] = {
 #include "lobby/00822B90.inc"
 };
-u32 gRecordCats_3_22_3[44] = {
+u32 gRecordGuidePage3_7_3[44] = {
 #include "lobby/00822C40.inc"
 };
-u32 gRecordCats_3_25_0[40] = {
+u32 gRecordGuidePage3_8_0[40] = {
 #include "lobby/00822CF0.inc"
 };
-u32 gRecordCats_3_25_1[48] = {
+u32 gRecordGuidePage3_8_1[48] = {
 #include "lobby/00822D90.inc"
 };
-u32 gRecordCats_3_25_2[48] = {
+u32 gRecordGuidePage3_8_2[48] = {
 #include "lobby/00822E50.inc"
 };
-u32 gRecordCats_3_25_3[48] = {
+u32 gRecordGuidePage3_8_3[48] = {
 #include "lobby/00822F10.inc"
 };
-u32 gRecordCats_3_28_0[36] = {
+u32 gRecordGuidePage3_9_0[36] = {
 #include "lobby/00822FD0.inc"
 };
-u32 gRecordCats_3_28_1[60] = {
+u32 gRecordGuidePage3_9_1[60] = {
 #include "lobby/00823060.inc"
 };
-u32 gRecordCats_3_28_2[52] = {
+u32 gRecordGuidePage3_9_2[52] = {
 #include "lobby/00823150.inc"
 };
-u32 gRecordCats_3_31_0[40] = {
+u32 gRecordGuidePage3_10_0[40] = {
 #include "lobby/00823220.inc"
 };
-u32 gRecordCats_3_31_1[44] = {
+u32 gRecordGuidePage3_10_1[44] = {
 #include "lobby/008232C0.inc"
 };
-u32 gRecordCats_3_31_2[44] = {
+u32 gRecordGuidePage3_10_2[44] = {
 #include "lobby/00823370.inc"
 };
-u32 gRecordCats_3_34_0[44] = {
+u32 gRecordGuidePage3_11_0[44] = {
 #include "lobby/00823420.inc"
 };
-u32 gRecordCats_3_34_1[52] = {
+u32 gRecordGuidePage3_11_1[52] = {
 #include "lobby/008234D0.inc"
 };
-u32 gRecordCats_3_34_2[56] = {
+u32 gRecordGuidePage3_11_2[56] = {
 #include "lobby/008235A0.inc"
 };
-u32 gRecordCats_3_37_0[52] = {
+u32 gRecordGuidePage3_12_0[52] = {
 #include "lobby/00823680.inc"
 };
-u32 gRecordCats_3_37_1[48] = {
+u32 gRecordGuidePage3_12_1[48] = {
 #include "lobby/00823750.inc"
 };
-u32 gRecordCats_3_37_2[52] = {
+u32 gRecordGuidePage3_12_2[52] = {
 #include "lobby/00823810.inc"
 };
-u32 gRecordCats_3_40_0[44] = {
+u32 gRecordGuidePage3_13_0[44] = {
 #include "lobby/008238E0.inc"
 };
-u32 gRecordCats_3_40_1[52] = {
+u32 gRecordGuidePage3_13_1[52] = {
 #include "lobby/00823990.inc"
 };
-u32 gRecordCats_3_40_2[40] = {
+u32 gRecordGuidePage3_13_2[40] = {
 #include "lobby/00823A60.inc"
 };
-u32 gRecordCats_3_40_3[40] = {
+u32 gRecordGuidePage3_13_3[40] = {
 #include "lobby/00823B00.inc"
 };
-u32 gRecordCats_3_43_0[48] = {
+u32 gRecordGuidePage3_14_0[48] = {
 #include "lobby/00823BA0.inc"
 };
-u32 gRecordCats_3_43_1[48] = {
+u32 gRecordGuidePage3_14_1[48] = {
 #include "lobby/00823C60.inc"
 };
-u32 gRecordCats_3_43_2[52] = {
+u32 gRecordGuidePage3_14_2[52] = {
 #include "lobby/00823D20.inc"
 };
-u32 gRecordCats_3_43_3[52] = {
+u32 gRecordGuidePage3_14_3[52] = {
 #include "lobby/00823DF0.inc"
 };
-u32 gRecordCats_3_46_0[40] = {
+u32 gRecordGuidePage3_15_0[40] = {
 #include "lobby/00823EC0.inc"
 };
-u32 gRecordCats_3_46_1[56] = {
+u32 gRecordGuidePage3_15_1[56] = {
 #include "lobby/00823F60.inc"
 };
-u32 gRecordCats_3_46_2[40] = {
+u32 gRecordGuidePage3_15_2[40] = {
 #include "lobby/00824040.inc"
 };
-u32 gRecordCats_3_46_3[52] = {
+u32 gRecordGuidePage3_15_3[52] = {
 #include "lobby/008240E0.inc"
 };
-u32 gRecordCats_3_46_4[60] = {
+u32 gRecordGuidePage3_15_4[60] = {
 #include "lobby/008241B0.inc"
 };
-u32 gRecordCats_3_49_0[72] = {
+u32 gRecordGuidePage3_16_0[72] = {
 #include "lobby/008242A0.inc"
 };
-u32 gRecordCats_3_49_1[36] = {
+u32 gRecordGuidePage3_16_1[36] = {
 #include "lobby/008243C0.inc"
 };
-u32 gRecordCats_3_49_2[52] = {
+u32 gRecordGuidePage3_16_2[52] = {
 #include "lobby/00824450.inc"
 };
-u32 gRecordCats_3_49_3[56] = {
+u32 gRecordGuidePage3_16_3[56] = {
 #include "lobby/00824520.inc"
 };
-u32 gRecordCats_3_52_0[44] = {
+u32 gRecordGuidePage3_17_0[44] = {
 #include "lobby/00824600.inc"
 };
-u32 gRecordCats_3_52_1[40] = {
+u32 gRecordGuidePage3_17_1[40] = {
 #include "lobby/008246B0.inc"
 };
-u32 gRecordCats_3_52_2[56] = {
+u32 gRecordGuidePage3_17_2[56] = {
 #include "lobby/00824750.inc"
 };
-u32 gRecordCats_3_52_3[40] = {
+u32 gRecordGuidePage3_17_3[40] = {
 #include "lobby/00824830.inc"
 };
-u32 gRecordCats_3_55_0[72] = {
+u32 gRecordGuidePage3_18_0[72] = {
 #include "lobby/008248D0.inc"
 };
-u32 gRecordCats_3_55_1[32] = {
+u32 gRecordGuidePage3_18_1[32] = {
 #include "lobby/008249F0.inc"
 };
-u32 gRecordCats_3_55_2[56] = {
+u32 gRecordGuidePage3_18_2[56] = {
 #include "lobby/00824A70.inc"
 };
-u32 gRecordCats_3_55_3[56] = {
+u32 gRecordGuidePage3_18_3[56] = {
 #include "lobby/00824B50.inc"
 };
-u32 gRecordCats_3_58_0[44] = {
+u32 gRecordGuidePage3_19_0[44] = {
 #include "lobby/00824C30.inc"
 };
-u32 gRecordCats_3_58_1[48] = {
+u32 gRecordGuidePage3_19_1[48] = {
 #include "lobby/00824CE0.inc"
 };
-u32 gRecordCats_3_58_2[48] = {
+u32 gRecordGuidePage3_19_2[48] = {
 #include "lobby/00824DA0.inc"
 };
-u32 gRecordCats_3_58_3[40] = {
+u32 gRecordGuidePage3_19_3[40] = {
 #include "lobby/00824E60.inc"
 };
-u32 gRecordCats_3_61_0[52] = {
+u32 gRecordGuidePage3_20_0[52] = {
 #include "lobby/00824F00.inc"
 };
-u32 gRecordCats_3_61_1[56] = {
+u32 gRecordGuidePage3_20_1[56] = {
 #include "lobby/00824FD0.inc"
 };
-u32 gRecordCats_3_61_2[32] = {
+u32 gRecordGuidePage3_20_2[32] = {
 #include "lobby/008250B0.inc"
 };
-u32 gRecordCats_3_64_0[52] = {
+u32 gRecordGuidePage3_21_0[52] = {
 #include "lobby/00825130.inc"
 };
-u32 gRecordCats_3_64_1[40] = {
+u32 gRecordGuidePage3_21_1[40] = {
 #include "lobby/00825200.inc"
 };
-u32 gRecordCats_3_67_0[48] = {
+u32 gRecordGuidePage3_22_0[48] = {
 #include "lobby/008252A0.inc"
 };
-u32 gRecordCats_3_67_1[48] = {
+u32 gRecordGuidePage3_22_1[48] = {
 #include "lobby/00825360.inc"
 };
-u32 gRecordCats_0_0[8] = {
+u32 gRecordGuideEntryName0_0[8] = {
 #include "lobby/00825420.inc"
 };
-u32 gRecordCats_0_3[8] = {
+u32 gRecordGuideEntryName0_1[8] = {
 #include "lobby/00825440.inc"
 };
-u32 gRecordCats_0_6[8] = {
+u32 gRecordGuideEntryName0_2[8] = {
 #include "lobby/00825460.inc"
 };
-u32 gRecordCats_0_9[8] = {
+u32 gRecordGuideEntryName0_3[8] = {
 #include "lobby/00825480.inc"
 };
-u32 gRecordCats_0_12[8] = {
+u32 gRecordGuideEntryName0_4[8] = {
 #include "lobby/008254A0.inc"
 };
-u32 gRecordCats_0_15[8] = {
+u32 gRecordGuideEntryName0_5[8] = {
 #include "lobby/008254C0.inc"
 };
-u32 gRecordCats_0_18[8] = {
+u32 gRecordGuideEntryName0_6[8] = {
 #include "lobby/008254E0.inc"
 };
-u32 gRecordCats_0_21[8] = {
+u32 gRecordGuideEntryName0_7[8] = {
 #include "lobby/00825500.inc"
 };
-u32 gRecordCats_0_24[8] = {
+u32 gRecordGuideEntryName0_8[8] = {
 #include "lobby/00825520.inc"
 };
-u32 gRecordCats_0_27[8] = {
+u32 gRecordGuideEntryName0_9[8] = {
 #include "lobby/00825540.inc"
 };
-u32 gRecordCats_0_30[8] = {
+u32 gRecordGuideEntryName0_10[8] = {
 #include "lobby/00825560.inc"
 };
-u32 gRecordCats_0_33[8] = {
+u32 gRecordGuideEntryName0_11[8] = {
 #include "lobby/00825580.inc"
 };
-u32 gRecordCats_0_36[8] = {
+u32 gRecordGuideEntryName0_12[8] = {
 #include "lobby/008255A0.inc"
 };
-u32 gRecordCats_0_39[8] = {
+u32 gRecordGuideEntryName0_13[8] = {
 #include "lobby/008255C0.inc"
 };
-u32 gRecordCats_0_42[8] = {
+u32 gRecordGuideEntryName0_14[8] = {
 #include "lobby/008255E0.inc"
 };
-u32 gRecordCats_1_0[8] = {
+u32 gRecordGuideEntryName1_0[8] = {
 #include "lobby/00825600.inc"
 };
-u32 gRecordCats_1_3[8] = {
+u32 gRecordGuideEntryName1_1[8] = {
 #include "lobby/00825620.inc"
 };
-u32 gRecordCats_1_6[8] = {
+u32 gRecordGuideEntryName1_2[8] = {
 #include "lobby/00825640.inc"
 };
-u32 gRecordCats_1_9[8] = {
+u32 gRecordGuideEntryName1_3[8] = {
 #include "lobby/00825660.inc"
 };
-u32 gRecordCats_1_12[8] = {
+u32 gRecordGuideEntryName1_4[8] = {
 #include "lobby/00825680.inc"
 };
-u32 gRecordCats_1_15[8] = {
+u32 gRecordGuideEntryName1_5[8] = {
 #include "lobby/008256A0.inc"
 };
-u32 gRecordCats_1_18[8] = {
+u32 gRecordGuideEntryName1_6[8] = {
 #include "lobby/008256C0.inc"
 };
-u32 gRecordCats_1_21[8] = {
+u32 gRecordGuideEntryName1_7[8] = {
 #include "lobby/008256E0.inc"
 };
-u32 gRecordCats_1_24[8] = {
+u32 gRecordGuideEntryName1_8[8] = {
 #include "lobby/00825700.inc"
 };
-u32 gRecordCats_1_27[8] = {
+u32 gRecordGuideEntryName1_9[8] = {
 #include "lobby/00825720.inc"
 };
-u32 gRecordCats_2_0[8] = {
+u32 gRecordGuideEntryName2_0[8] = {
 #include "lobby/00825740.inc"
 };
-u32 gRecordCats_2_3[8] = {
+u32 gRecordGuideEntryName2_1[8] = {
 #include "lobby/00825760.inc"
 };
-u32 gRecordCats_2_6[8] = {
+u32 gRecordGuideEntryName2_2[8] = {
 #include "lobby/00825780.inc"
 };
-u32 gRecordCats_2_9[8] = {
+u32 gRecordGuideEntryName2_3[8] = {
 #include "lobby/008257A0.inc"
 };
-u32 gRecordCats_2_12[8] = {
+u32 gRecordGuideEntryName2_4[8] = {
 #include "lobby/008257C0.inc"
 };
-u32 gRecordCats_2_15[8] = {
+u32 gRecordGuideEntryName2_5[8] = {
 #include "lobby/008257E0.inc"
 };
-u32 gRecordCats_2_18[8] = {
+u32 gRecordGuideEntryName2_6[8] = {
 #include "lobby/00825800.inc"
 };
-u32 gRecordCats_2_21[8] = {
+u32 gRecordGuideEntryName2_7[8] = {
 #include "lobby/00825820.inc"
 };
-u32 gRecordCats_2_24[8] = {
+u32 gRecordGuideEntryName2_8[8] = {
 #include "lobby/00825840.inc"
 };
-u32 gRecordCats_2_27[8] = {
+u32 gRecordGuideEntryName2_9[8] = {
 #include "lobby/00825860.inc"
 };
-u32 gRecordCats_3_0[8] = {
+u32 gRecordGuideEntryName3_0[8] = {
 #include "lobby/00825880.inc"
 };
-u32 gRecordCats_3_3[8] = {
+u32 gRecordGuideEntryName3_1[8] = {
 #include "lobby/008258A0.inc"
 };
-u32 gRecordCats_3_6[8] = {
+u32 gRecordGuideEntryName3_2[8] = {
 #include "lobby/008258C0.inc"
 };
-u32 gRecordCats_3_12[8] = {
+u32 gRecordGuideEntryName3_4[8] = {
 #include "lobby/008258E0.inc"
 };
-u32 gRecordCats_3_18[8] = {
+u32 gRecordGuideEntryName3_6[8] = {
 #include "lobby/00825900.inc"
 };
-u32 gRecordCats_3_24[8] = {
+u32 gRecordGuideEntryName3_8[8] = {
 #include "lobby/00825920.inc"
 };
-u32 gRecordCats_3_30[8] = {
+u32 gRecordGuideEntryName3_10[8] = {
 #include "lobby/00825940.inc"
 };
-u32 gRecordCats_3_36[8] = {
+u32 gRecordGuideEntryName3_12[8] = {
 #include "lobby/00825960.inc"
 };
-u32 gRecordCats_3_42[8] = {
+u32 gRecordGuideEntryName3_14[8] = {
 #include "lobby/00825980.inc"
 };
-u32 gRecordCats_3_48[8] = {
+u32 gRecordGuideEntryName3_16[8] = {
 #include "lobby/008259A0.inc"
 };
-u32 gRecordCats_3_54[8] = {
+u32 gRecordGuideEntryName3_18[8] = {
 #include "lobby/008259C0.inc"
 };
-u32 gRecordCats_3_60[8] = {
+u32 gRecordGuideEntryName3_20[8] = {
 #include "lobby/008259E0.inc"
 };
-u32 gRecordCats_3_66[8] = {
+u32 gRecordGuideEntryName3_22[8] = {
 #include "lobby/00825A00.inc"
 };
-u32 gRecordCats_0_a[16] = {
+u32 gRecordGuideCatName0[16] = {
 #include "lobby/00825A20.inc"
 };
-u32 gRecordCats_1_a[16] = {
+u32 gRecordGuideCatName1[16] = {
 #include "lobby/00825A60.inc"
 };
-u32 gRecordCats_2_a[16] = {
+u32 gRecordGuideCatName2[16] = {
 #include "lobby/00825AA0.inc"
 };
-u32 gRecordCats_3_a[12] = {
+u32 gRecordGuideCatName3[12] = {
 #include "lobby/00825AE0.inc"
 };

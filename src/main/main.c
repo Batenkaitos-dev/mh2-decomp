@@ -1,5 +1,5 @@
 /*
- * 0x18CC20: the boot executable's main and the services every overlay uses.
+ * The boot executable's main and the services every overlay uses.
  * - main: sets up the display, the sound and CRI's file systems, loads
  *   sub_main (include/overlay.h) and runs it; sub_main_entry never returns.
  * - Afs_ReadId: reads one file of the disc's AFS archives, by an id that
@@ -58,8 +58,8 @@ extern s32 gLoadingScreenOn;
 extern QuestRecord gQuestRecord;
 extern u8 gLobbyRateStates[];
 extern u16 gQuestRecordIds[];
-u16 Map_Group(u16, s32); /* unit's own declaration: the definition (sub_main) is u16 Map_Group(u16 map), which ignores a1; QuestRecord_Fill passes a1 = v, and without it changes by 8 of 98 words */
-s32 Quest_IsRunning(s32 ending); /* the definition (sub_main) is s32 Quest_IsRunning(s32 ending): the call here passes a second argument */
+u16 Map_Group(u16, s32); /* unit's own declaration: the definition (sub_main) is u16 Map_Group(u16 map), which ignores a1; QuestRecord_Fill passes a1 = v, and its call compiles as the original's only with that second argument */
+s32 Quest_GetOutcome(s32 withLoss); /* the definition (sub_main) is s32 Quest_GetOutcome(s32 withLoss): the call here passes a second argument */
 extern s32 gRateSnapshot[];
 
 s32 Afs_ReadOverlay(s32 flid, void *buf);
@@ -457,7 +457,7 @@ void *QuestRecord_Clear(void)
  * Fills gQuestRecord for the results from sub_main's state: the quest, its
  * phase, map group, flyer, tier and time. The counts and the hunted and
  * captured tables (kept up during the quest) are cleared unless the first
- * player in the quest is the local one and the quest is still running.
+ * player in the quest is the local one and the quest's goal is met.
  * Kept for the match:
  * - the pointer to the quest's map (info + 0x20, QuestInfo.map read as
  *   a u16) taken before the stores, and the empty check of the tier (0 to
@@ -502,7 +502,7 @@ void QuestRecord_Fill(void)
             break;
         }
     }
-    if (i != gScene.localPlayer || Quest_IsRunning(1) != 1) {
+    if (i != gScene.localPlayer || Quest_GetOutcome(1) != 1) {
         for (j = 0; j < QUEST_RECORD_IDS; j++) {
             rec->counts[j] = 0;
         }
@@ -572,7 +572,7 @@ s32 Quest_GetSeason(void)
     return season;
 }
 
-/* main's .data (0x1BB130-0x1BB2A0) */
+/* This file's initialised data. */
 u8 gOverlayWindow[16] = {
 #include "main/001BB130.inc"
 };

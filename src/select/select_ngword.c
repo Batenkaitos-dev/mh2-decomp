@@ -1,12 +1,12 @@
 /*
- * select: the name check of character creation (0x6B4B30-0x6B51B0).
+ * select: the name check of character creation.
  *
  * NgWord_Check (called by select_chara.c when a name is entered) refuses a
  * name that contains a listed word. The list, gNgWords, is the file's
- * .data (0x6C80A0-0x6CAB60): NgWordRec records of 16 bytes, a word longer
+ * .data: NgWordRec records of 16 bytes, a word longer
  * than 14 characters continuing in the next records. The name is compared
  * in upper case, with look-alike characters folded to letters
- * (NgWord_Normalize). The lobby's WordFilter_Scan (unk_793070.c) is the
+ * (NgWord_Normalize). The lobby's WordFilter_Scan is the
  * same check for chat.
  */
 #include "common.h"

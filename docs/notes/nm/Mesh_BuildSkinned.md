@@ -1,4 +1,4 @@
-# Mesh_BuildSkinned (sub_main, src/sub_main/unk_2F6540.c)
+# Mesh_BuildSkinned (sub_main, src/sub_main/model_file.c)
 
 ## Status
 Matched in round 30 (s6), from 23 words; unwrapped. The file's functions all MATCH; it has no

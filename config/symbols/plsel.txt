@@ -13,8 +13,8 @@ gGalexEntryPairs = 0x00D794E0; // size:0xA0 two lists of byte pairs, the entries
 
 // --- .bss --------------------------------------------------------------------------
 gPlselBonus = 0x00D7BD90; // size:0xD0
-gPlselTimer = 0x00D7BE60; // size:0x10
-gPlselShopMoney = 0x00D7BE70; // size:0x10
+gPlselItemBox = 0x00D7BE60; // size:0x10
+gPlselItemBoxSale = 0x00D7BE70; // size:0x10
 
 // --- sub_main variables that plsel's C names (a named global, unlike a cast
 // address, is known not to alias the other globals) --------------------------------
@@ -53,25 +53,37 @@ Ending_Draw = 0x00D65BF0; // type:func
 Ending_LoadTextures = 0x00D65DB0; // type:func
 Ending_StartObject = 0x00D65EE0; // type:func
 Plsel_CheckSizeRecords = 0x00D67B20; // type:func
-Plsel_TakeQuestItems = 0x00D67FE0; // type:func
-Plsel_RollBonus = 0x00D68130; // type:func
-Plsel_DrawTimerWindow = 0x00D69F10; // type:func
+Plsel_TakeSaleItems = 0x00D67FE0; // type:func
+Plsel_RollArenaRecord = 0x00D68130; // type:func
+Plsel_DrawItemBoxMenu = 0x00D69F10; // type:func
+PlselRes_EmptyCloseHook = 0x00D72F10; // type:func empty, PlselRes_BeginClose calls it first
+
+// --- .rodata of the results screen (strings it formats with) ----------------------
+gPlselStrFmt = 0x00D7BB38; // size:0x8 the plain string format
+gPlselPadSpace = 0x00D7BB88; // size:0x8 a full-width space that pads a name to its column
+gPlselValueSep = 0x00D7BB90; // size:0x8 the full-width separator between a name and its value
+gPlselNameCountFmt = 0x00D7BB98; // size:0x8 the format of a name and a count
+gPlselPointsFmt = 0x00D7BBA0; // size:0x8 the format of a value in points
+gPlselPercentMark = 0x00D7BBA8; // size:0x8 the full-width percent sign
+gPlselArrowUp = 0x00D7BBB0; // size:0x8 the up arrow drawn over a list that scrolls
+gPlselArrowDown = 0x00D7BBB8; // size:0x8 the down arrow drawn under it
+gPlselPageFmt = 0x00D7BBC0; // size:0x8 the format of the page number and count
 Plsel_SumQuestRewards = 0x00D6F8D0; // type:func
 Plsel_SumRecordRewards = 0x00D6FD00; // type:func
 Plsel_QueueAward = 0x00D6FE90; // type:func
 Plsel_CheckRankAwards = 0x00D6FED0; // type:func
 Plsel_ComputeReward = 0x00D6FF90; // type:func
-Plsel_CheckAwardsOffline = 0x00D702F0; // type:func
-Plsel_CheckAwards = 0x00D70810; // type:func
-Plsel_CheckSizeAwards = 0x00D70CA0; // type:func
+Plsel_CheckQuestAwards = 0x00D702F0; // type:func
+Plsel_CheckDrillAwards = 0x00D70810; // type:func
+Plsel_CheckMonsterAwards = 0x00D70CA0; // type:func
 Plsel_DrawResultPage = 0x00D71660; // type:func
 Plsel_SaveRecordMenu = 0x00D72290; // type:func
 Plsel_FormatRecord = 0x00D72630; // type:func
 Plsel_DrawSaveRecordMenu = 0x00D727E0; // type:func
-Plsel_BuildAwardText = 0x00D732D0; // type:func
-Plsel_DrawAwardText = 0x00D73610; // type:func
-Plsel_BuildItemText = 0x00D73930; // type:func
-Plsel_DrawItemText = 0x00D73D10; // type:func
+Plsel_BuildNoticeText = 0x00D732D0; // type:func
+Plsel_DrawNoticeText = 0x00D73610; // type:func
+Plsel_BuildTitleText = 0x00D73930; // type:func
+Plsel_DrawTitleText = 0x00D73D10; // type:func
 Plsel_CountHunts = 0x00D74060; // type:func
 Galex_RollEmLevel = 0x00D75540; // type:func
 Ending_AnimateObject = 0x00D65F60; // type:func
@@ -128,11 +140,10 @@ Plsel_ItemStackValue = 0x00D6A490; // type:func
 Plsel_TallyRewards = 0x00D6FDB0; // type:func
 Plsel_MoveGridCursor = 0x00D69D70; // type:func
 Plsel_ComputeAllRewards = 0x00D70FD0; // type:func
-Plsel_HasQueuedAwards = 0x00D73280; // type:func
+Plsel_HasNotices = 0x00D73280; // type:func
 Plsel_LoadResultsTextures = 0x00D72E70; // type:func
 
 // Round 17 (xref): names for raw addresses in the C.
-D_6ADB14 = 0x006ADB14; // size:0x2
 
 // Round 18 (ngame)
 gPlselMenu = 0x00D7BD80; // size:0x4 the player menu of the select screen (D64Obj)
@@ -170,9 +181,9 @@ PlselRes_DrawMenus = 0x00D67570; // type:func draw callback - the save-record me
 PlselRes_DrawPanel = 0x00D675D0; // type:func draw callback - list panel D_00D78C10[0]
 PlselRes_PlayPageSe = 0x00D67660; // type:func
 Plsel_CheckTargetBonus = 0x00D67C30; // type:func hunting bonus records (gPlselBonus) from gQuest.unk1F4 targets
-Plsel_CheckStoryScene = 0x00D68270; // type:func scene 7 sub 0 after the quest (flags 0x184/0x185/0x187)
-Plsel_CheckStoryScene2 = 0x00D68330; // type:func scene 7 sub 1 (stage 0x138F, flag 0x58)
-PlselRes_DrawCommError = 0x00D69500; // type:func "communication error, quest aborted"
+Plsel_ShouldPlayOpening = 0x00D68270; // type:func scene 7 sub 0 after the quest (flags 0x184/0x185/0x187)
+Plsel_ShouldPlayEnding = 0x00D68330; // type:func scene 7 sub 1 (stage 0x138F, flag 0x58)
+PlselRes_DrawQuitNotice = 0x00D69500; // type:func "communication error, quest aborted"
 Plsel_InitItemBoxMenu = 0x00D695A0; // type:func
 Plsel_ItemBoxHandlePad = 0x00D69E40; // type:func
 Plsel_DrawMoney = 0x00D6A2A0; // type:func
@@ -193,10 +204,10 @@ PlselRes_DrawArrow = 0x00D72D70; // type:func
 PlselRes_Close = 0x00D72F20; // type:func
 Plsel_QueueFlagUnlocks = 0x00D72F70; // type:func
 Plsel_CheckCounterNotices = 0x00D73050; // type:func
-Plsel_QueueOnlineQuestNotice = 0x00D730F0; // type:func
+Plsel_QueueDrillClearNotice = 0x00D730F0; // type:func
 Plsel_AddCounterPoints = 0x00D731D0; // type:func
-PlselRes_AwardPageInput = 0x00D734B0; // type:func
-PlselRes_ItemPageInput = 0x00D73BB0; // type:func
+PlselRes_NoticePageInput = 0x00D734B0; // type:func
+PlselRes_TitlePageInput = 0x00D73BB0; // type:func
 Plsel_QueueQuestUnlock = 0x00D74260; // type:func
 Plsel_QueueQuestUnlocks = 0x00D74320; // type:func
 Galex_TourIndex = 0x00D74E70; // type:func the town tour of gSysSettings.galleryEntry 0x1F-0x24, 0-5
@@ -231,13 +242,13 @@ gPlselResPanels = 0x00D78C10; // size:0x20
 gPlselRewardTbl = 0x00D78C30; // size:0x22
 gPlselRewardSteps = 0x00D78C60; // size:0x11
 gPlselFlagUnlocks = 0x00D78C80; // size:0x90
-gPlselBonusTbl = 0x00D78D10; // size:0x70
-gPlselSizeAwards = 0x00D78D80; // size:0xF0
-gPlselOnlineQuestNotices = 0x00D78E70; // size:0x20
-gPlselTimerWin = 0x00D78E90;
-gPlselTimerText = 0x00D78EB0; // size:0x18
-gPlselTimerIconA = 0x00D78EC8; // size:0x8
-gPlselTimerIconB = 0x00D78ED0; // size:0x8
+gPlselArenaRecordChances = 0x00D78D10; // size:0x70
+gPlselHuntAwards = 0x00D78D80; // size:0xF0
+gPlselDrillNoticeStages = 0x00D78E70; // size:0x20
+gPlselItemBoxWin = 0x00D78E90;
+gPlselItemBoxTimeWin = 0x00D78EB0; // size:0x18
+gPlselItemBoxHintIcon = 0x00D78EC8; // size:0x8
+gPlselItemBoxNextIcon = 0x00D78ED0; // size:0x8
 gPlselResultsBgIcon = 0x00D78ED8; // size:0x8
 gPlselItemBoxFrame = 0x00D78EE0; // size:0x20
 gPlselRankAwardRanks = 0x00D78F00;
@@ -299,6 +310,8 @@ gPlselResPanels_7 = 0x00D78BF0; // size:0x20 entry 7 of gPlselResPanels
 // Round 27 (names)
 Plsel_UpdateSizeRecords = 0x00D676E0; // type:func the largest and smallest monster records after a quest, keeping the old ones for the results
 Plsel_DrillPayout = 0x00D6ABF0; // type:func the payout of a training quest, -1 for other quests (Quest_RollRewards)
+gPlselFmtConcat = 0x00D79598; // size:0x8 the text format that prints two strings one after the other
+gPlselFmtString = 0x00D795A8; // size:0x8 the text format that prints one string
 
 // gm_sub's names, which plsel doesn't link with (as select.txt names yn's entry)
 QSync_SendState = 0x00901790; // type:func gm_sub, sends game message 10 (the quest setup, the preset picks)
@@ -308,3 +321,5 @@ Plsel_DrawDebugMenu = 0x00D606D0; // type:func empty, the debug menu display com
 // the game overlay's data that plsel reads (inside the game object at 0x8962B0 and 0x896D80)
 gPlselPresetStages = 0x00896340; // size:0x44 per preset set, the two stages it serves (u16 pairs, Plsel_PresetSetForStage)
 gTrainingPresets = 0x00896D90; // size:0x50 per training stage, its preset hunter (PlselPreset pointers, Plsel_ApplyStageEquip)
+gStagePageTexts = 0x00896A80; // size:0x70 per stage of gStagePageStageIds, the stage page lines (a list of texts ended by 0, Plsel_DrawStagePage)
+gStagePageStageIds = 0x00896AF0; // size:0x3A the stages that have stage page lines (u16, ended by 0)

@@ -141,7 +141,7 @@ s32 mlRpcQueueSendIntr(void)
     return gMlRpcQueueCount;
 }
 
-/* ml_rpc_queue's .data (0x1BCCA0-0x1BCCB0) */
+/* This file's initialised data. */
 s32 gMlRpcQueueThread = {
 #include "main/001BCCA0.inc"
 };

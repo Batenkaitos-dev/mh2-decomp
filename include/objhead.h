@@ -13,9 +13,9 @@
  * Em's name where it differs, or says that Em has no name there yet. Only
  * the fields both structs agree on, and the ones the shared helpers read,
  * are listed; the rest is padding. The object helpers and the lobby's
- * actor core (unk_7949D0.c) take `void *obj` and read it through
- * `ObjHead *o = obj;` (the round 25 ruling). Every offset here is checked
- * with offsetof against Player's field of the same name and Em's. */
+ * actor core take `void *obj` and read it through
+ * `ObjHead *o = obj;`. Every offset here is checked with offsetof against
+ * Player's field of the same name and Em's. */
 typedef struct ObjHead {
     u8 active;                      /* 0x000 */
     u8 visible;                     /* 0x001 */
@@ -91,7 +91,7 @@ typedef struct ObjHead {
     u16 noPushTimer;                /* 0x410 */
     u8 hitIdNext;                   /* 0x412 */
     u8 pad413[0x414 - 0x413];
-    u8 hitPhase;                    /* 0x414: Player.hitPhase; Em: unk414 */
+    u8 hitPhase;                    /* 0x414: Player.hitPhase, Em.hitPhase */
     u8 pad415[0x417 - 0x415];
     u8 unk417;                      /* 0x417 */
     u8 pad418[0x430 - 0x418];
@@ -118,15 +118,24 @@ typedef struct ObjHead {
     u8 ammoMenuOpen;                /* 0x536 */
     u8 pad537[0x53A - 0x537];
     s16 paintTimer;                 /* 0x53A */
-    u8 pad53C[0x574 - 0x53C];
+    u8 pad53C[0x540 - 0x53C];
+    u32 lightFadeColors[3];         /* 0x540: Em: unnamed; per light of light set 1, the colour it fades from (LightSet_FadeColors) */
+    u8 pad54C[0x574 - 0x54C];
     f32 floorY;                     /* 0x574 */
     u8 pad578[0x588 - 0x578];
     u8 rideState;                   /* 0x588 */
     u8 pad589[0x596 - 0x589];
     u8 pushPriority;                /* 0x596 */
-    u8 pad597[0x653 - 0x597];
+    u8 nearLargeMonster;            /* 0x597: Em: unnamed */
+    u8 pad598[0x653 - 0x598];
     u8 stateRequest;                /* 0x653 */
-    u8 pad654[0x66C - 0x654];
+    u8 pad654[0x660 - 0x654];
+    u8 floorKind;                   /* 0x660: the kind of the floor triangle under the object (AreaTri.kind) */
+    u8 pad661[0x664 - 0x661];
+    f32 (*lightColors)[4];          /* 0x664: the object's own colours of lights 0 and 1 (LightSet_SetColors) */
+    u8 mustCrouch;                  /* 0x668: Player.mustCrouch (AreaKindRow.mustCrouch) */
+    u8 floorHazard;                 /* 0x669: Player.floorHazard (AreaKindRow.hazard) */
+    u8 pad66A[0x66C - 0x66A];
     u8 partAnimOn[4];               /* 0x66C: Em: unnamed */
     u16 partAnimMotion[4];          /* 0x670: Em: unnamed */
     u16 partAnimWeight[4];          /* 0x678: Em: unnamed */
@@ -152,7 +161,7 @@ typedef struct ObjHead {
     u8 pad708[0x70A - 0x708];
     s16 poisonTimer;                /* 0x70A */
     u8 pad70C[0x722 - 0x70C];
-    u8 hideShadow;                  /* 0x722: Em.hideShadow (Player.hideShadow): nonzero: Effect01_Draw skips the shadow */
+    u8 hideShadow;                  /* 0x722: Em.hideShadow (Player.hideShadow): nonzero: Shadow_Draw skips the shadow */
     u8 pad723[0x724 - 0x723];
     f32 attackFactor;               /* 0x724 */
     f32 defenseFactor;              /* 0x728: Em.damageFactor */

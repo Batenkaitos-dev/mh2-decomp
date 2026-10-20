@@ -15,6 +15,12 @@
 #define DMA_TAG_END 0x70000000
 #define DMA_TAG_IRQ 0x80000000
 
+/* VIF codes (a VIF packet's command words): the command in bits 24-31, NUM in
+ * bits 16-23, the immediate in bits 0-15. */
+#define VIF_STCYCL(cl, wl) (0x01000000 | ((wl) << 8) | (cl))  /* write cycle: wl qwords per cl */
+#define VIF_FLUSHA 0x13000000                                  /* wait for the GIF paths to finish */
+#define VIF_MSCALF(addr) ((addr) | 0x15000000)                  /* start the VU program at addr (in doublewords) once the GIF is free */
+#define VIF_UNPACK_V4_32(num, addr) (0x6C000000 | ((num) << 16) | (addr)) /* num qwords of four words to VU memory addr */
 
 /*
  * The boot ELF's DMA layer (src/main/dma.c): DMA tags and VIF codes, image

@@ -4,6 +4,8 @@
 #include "save.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"
+#include "quest.h"             /* TeamEntry: gTeamItemBits, gMonsterNoteMarks */
+#include "lobby_labels.h"
 #pragma optimization_level 4
 
 typedef struct ArenaMenu {
@@ -21,14 +23,14 @@ typedef struct ArenaMenu {
     /* 0x3B */ s8 used;             /* records of gSave.arenaEms in use */
     /* 0x3C */ s8 toggle;
 } ArenaMenu;
-void TownMsg_Send29(void);
+void TownMsg_SendArenaTeams(void);
 void TownMsg_SendStatus(void);
 void LobbyText_Open(s32);
 extern s8 gQuestMinMembers;
 extern s32 gTownMode;
 extern u8 gMenuWork;
-void SaveRecords_DrawPanel(s32, s32, s32, s32); /* unit's own declaration: with the definition's void (s16 x, s16 y, s8 rec, s8 mode) (lobby/unk_71F8A0.c), ArenaMenu_DrawRecord 10 of 22 words differ */
-void TownMsg_Send28(void *, s32);
+void Arena_DrawMonsterList(s32, s32, s32, s32); /* unit's own declaration: with the definition's void (s16 x, s16 y, s8 rec, s8 mode) (lobby/arena_cup.c), ArenaMenu_DrawRecord 10 of 22 words differ */
+void TownMsg_SendArenaTeam(void *, s32);
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern LobbyMenu *gLobbyMenu;
 void LobbySe_Play(s32 se);
@@ -40,50 +42,6 @@ void Font_SetSpacing(u8 a, u8 b);
 void Arena_DrawMonsterInfo(s16 x, s16 y, ArenaEm *r);
 void *memset(void *d, s32 c, u32 n);
 
-void GroupBoard_DrawMembers(s16 x, s16 y, s32 n, WinShake *p, u16 a, s8 show);
-void AreaBoard_DrawRecruit(s16 x, s16 y);
-void GroupBoard_DrawRecruitText(s16 x, s16 y, s16 cur, s16 n);
-void HunterInfo_DrawIfOpen(void);
-void AreaBoard_Draw2(void *task)
-{
-    RoomMenu *m = (RoomMenu *)&gMenuWork;
-    s16 x;
-    s16 y;
-
-    Text_SetSize(*(s32 *)((u8 *)task + 0x18));
-    Font_SetSpacing(0x12, 0x12);
-    x = m->win3.pos + m->shake.dx;
-    y = m->shake.dy + 0x36;
-    switch (m->state) {
-    case 3:
-        x = m->win.pos + m->shake.dx;
-    case 5:
-    case 6:
-    case 7:
-        if (m->unkB90 == 0) {
-            if (m->unkB28 == 2) {
-                HunterInfo_DrawIfOpen();
-            } else {
-                GroupBoard_DrawMembers(x, y, m->slot, &m->shake, m->unkB6E, m->unkB91);
-            }
-        } else {
-            AreaBoard_DrawRecruit(x, y);
-        }
-        break;
-    case 4:
-        switch (m->recruitStep) {
-        case 0:
-            break;
-        case 3:
-            GroupBoard_DrawRecruitText(0x1E, 0x36, m->listCursor, m->listCount);
-        default:
-            AreaBoard_DrawRecruit(x, y);
-            break;
-        }
-        break;
-    }
-}
-
 void Town_CheckQuestParty(void)
 {
     if (gLobby->roomMembers < gQuestMinMembers) {
@@ -92,7 +50,7 @@ void Town_CheckQuestParty(void)
         return;
     }
     if (D_6ADADE != 0 && D_6ADAFA != 0) {
-        TownMsg_Send29();
+        TownMsg_SendArenaTeams();
         TownMsg_SendStatus();
         gTownMode = 0x42;
     }
@@ -133,7 +91,7 @@ void ArenaMenu_Send(void)
         m->value = 0;
     }
     D_6ADB14 = m->record;
-    TownMsg_Send28(&gSave.arenaEms[m->record], m->value);
+    TownMsg_SendArenaTeam(&gSave.arenaEms[m->record], m->value);
     LobbyText_Open(0x8E);
     LobbyMenu_SetDraw(0, 0, 0, 0);
     gFieldControl = 0;
@@ -244,12 +202,6 @@ s32 ArenaMenu_ListInput(u16 pad)
     return 2;
 }
 
-/* An entry of the tables at 0x1BB3F0 and gMonsterNoteMarks[] (sub_main unk_39C290.c: Versus_Init). */
-typedef struct TeamEntry {
-    u16 key;                    /* 0: an item; 0 ends the table */
-    u16 val;
-    u32 bits;
-} TeamEntry;
 extern TeamEntry gTeamItemBits[];
 extern TeamEntry *gMonsterNoteMarks[];
 extern u16 gMonsterNoteIds[];
@@ -384,7 +336,7 @@ void ArenaMenu_DrawRecord(s32 a, s32 b)
         k = 2;
         break;
     }
-    SaveRecords_DrawPanel(a, b, m->record, k);
+    Arena_DrawMonsterList(a, b, m->record, k);
 }
 
 void LobbyDialog_DrawWin(s16 arg0, s16 arg1, s16 arg2, s16 arg3, s32 arg4);
@@ -396,8 +348,6 @@ void Text_PrintfColored(const char *fmt, ...);
 void Font_SetColor(s32 color);
 void Font_SetPos(s16 x, s16 y);
 extern char *gItemNames[];
-extern char *gCrossMarkTexts;
-extern char *D_0080C674;
 void ArenaFeed_DrawList(s16 x, s16 y)
 {
     ArenaMenu *m = (ArenaMenu *)&gMenuWork;
@@ -414,8 +364,8 @@ void ArenaFeed_DrawList(s16 x, s16 y)
     ty += 0x1E;
     Font_SetSpacing(0x14, 0x14);
     if (m->count == 0) {
-        Font_SetPos(Text_CenterX(D_0080C674, x + 0xAD, 0x14), y + 0x86);
-        Text_PrintfColored(D_0080C674);
+        Font_SetPos(Text_CenterX(gArenaFeedTexts[ARENA_FEED_NO_FEED], x + 0xAD, 0x14), y + 0x86);
+        Text_PrintfColored(gArenaFeedTexts[ARENA_FEED_NO_FEED]);
         return;
     }
     i = 0;
@@ -423,7 +373,7 @@ void ArenaFeed_DrawList(s16 x, s16 y)
         Font_SetPos(x + 0x3C, ty);
         item = m->values[i];
         if (item != 0) {
-            Text_PrintfColored("%-18s%s%2d", gItemNames[item], gCrossMarkTexts, SavePouch_Count(item));
+            Text_PrintfColored("%-18s%s%2d", gItemNames[item], gLobbyWords[LOBBY_WORD_TIMES], SavePouch_Count(item));
             Item_DrawIcon((s16)(x + 0x3C) - 0x24, ty - 2, 0x14, item);
             if (i == m->cursor) {
                 sel = item;
@@ -441,10 +391,6 @@ void ArenaFeed_DrawList(s16 x, s16 y);
 void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
 void Win_DrawText(s16, s16, s16, s16, u32, u32, char *);
 void Font_SetPos(s16 x, s16 y);
-extern char *D_0080C664;
-extern char *gTimeLeftSecTexts[];
-extern char *D_0080C66C;
-extern char *gMonsterFeedTexts[];
 void ArenaMenu_Draw(void *task)
 {
     ArenaMenu *m = (ArenaMenu *)&gMenuWork;
@@ -453,10 +399,10 @@ void ArenaMenu_Draw(void *task)
     Text_SetSize(*(s32 *)((u8 *)task + 0x18));
     Font_SetSpacing(0x12, 0x12);
     Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x104, 0x12, 0x15E, 0xFFB0B000, D_0080C664, 2, 1);
+    Menu_DrawLabelBar(0x104, 0x12, 0x15E, 0xFFB0B000, gArenaCupTexts[ARENA_TEXT_PREPARE], 2, 1);
     Font_SetSpacing(0x14, 0x14);
     Font_SetPos(0x1E0, 0x14);
-    Text_Printf(gTimeLeftSecTexts[0], sec);
+    Text_Printf(gArenaCupTexts[ARENA_TEXT_TIME_LEFT], sec);
     switch (m->unk38) {
     case 5:
     case 6:
@@ -469,11 +415,11 @@ void ArenaMenu_Draw(void *task)
     switch (m->unk38) {
     case 0:
     case 1:
-        Win_DrawText(0x104, 0x160, 0x168, 0x50, 0xBDB59F6C, 0x70401010, D_0080C66C);
+        Win_DrawText(0x104, 0x160, 0x168, 0x50, 0xBDB59F6C, 0x70401010, gArenaCupTexts[ARENA_TEXT_SECONDS]);
         break;
     case 5:
     case 6:
-        Win_DrawText(0x104, 0x160, 0x168, 0x50, 0xBDB59F6C, 0x70401010, gMonsterFeedTexts[0]);
+        Win_DrawText(0x104, 0x160, 0x168, 0x50, 0xBDB59F6C, 0x70401010, gArenaFeedTexts[ARENA_FEED_TITLE]);
         break;
     }
 }

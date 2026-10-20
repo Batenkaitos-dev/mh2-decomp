@@ -1,5 +1,5 @@
 /*
- * 0x17B1B0: texture and palette handles: GS memory blocks, creating a
+ * Texture and palette handles: GS memory blocks, creating a
  * handle from an Image (the pixels are converted to the GS layout and sent,
  * mip level by mip level), releasing it, and locking it for the CPU.
  */
@@ -63,109 +63,121 @@ extern DmaQueue gDmaQueue;
 u16 Vram_AllocBlock(u32 size)
 {
     s32 i;
-    u32 n;
-    VramBlock *b;
+    u32 blockCount;
+    VramBlock *block;
 
     if (gVramBlockCount >= 4) {
         return 0;
     }
     VramSlot_FreeAll();
-    n = (((size + 0xFF) >> 8) + 0x1F) & ~0x1F;
-    for (b = gVramBlocks, i = 0; i < 4; i++, b++) {
-        if (b->used == 0) {
+    blockCount = (((size + 0xFF) >> 8) + 0x1F) & ~0x1F;
+    for (block = gVramBlocks, i = 0; i < 4; i++, block++) {
+        if (block->used == 0) {
             break;
         }
     }
-    b->used = 1;
-    b->addr = gSysTexBlock;
-    b->size = n;
+    block->used = 1;
+    block->addr = gSysTexBlock;
+    block->size = blockCount;
     gVramBlockCount++;
-    gSysTexBlock += n;
-    return b->addr;
+    gSysTexBlock += blockCount;
+    return block->addr;
 }
 
 /* Frees the block at addr (which becomes the next free address). */
 void Vram_FreeBlock(u32 addr)
 {
-    VramBlock *b;
+    VramBlock *block;
     s32 i;
 
-    for (i = 0, b = gVramBlocks; i < 0x200; i++, b++) {
-        if (b->addr == (u16)addr) {
+    for (i = 0, block = gVramBlocks; i < 0x200; i++, block++) {
+        if (block->addr == (u16)addr) {
             break;
         }
     }
     if (i != 4) {
         VramSlot_FreeAll();
-        Mem_Fill(b, 0, sizeof(VramBlock));
+        Mem_Fill(block, 0, sizeof(VramBlock));
         gVramBlockCount--;
         gSysTexBlock = (u16)addr;
     }
 }
 
+/*
+ * Creates a texture handle from img (one mip level) with mode (the
+ * TexRec mode: 1 and 4 keep it out of GS memory). Without pixels, GS
+ * memory is reserved and an empty pixel block allocated; otherwise the
+ * pixels are converted to the GS layout and sent (Tex_Upload). Returns the
+ * handle (index + 1 of gTexRecs), 0 when none is free.
+ */
 u32 flCreateTextureHandle(Image *img, s32 mode)
 {
     u32 handle;
-    TexRec *t;
+    TexRec *texRec;
 
     handle = Tex_FindFree();
     if (handle == 0) {
         return 0;
     }
-    t = &gTexRecs[(handle & 0xFFFF) - 1];
+    texRec = &gTexRecs[(handle & 0xFFFF) - 1];
     Tex_SetupRec(img, 1, handle, mode);
     if (img->pixels == NULL) {
         Tex_Reserve(&handle, 1);
-        t->mem = Mem_Alloc(t->size, 2);
+        texRec->mem = Mem_Alloc(texRec->size, 2);
         gTexCount++;
     } else {
-        flPS2ConvertTextureFromContext(img, t, 0);
+        flPS2ConvertTextureFromContext(img, texRec, 0);
         Tex_Upload(handle, mode);
     }
     return handle;
 }
 
+/*
+ * Fills the texture record of handle from img: size, format, mode,
+ * levels mip levels, log2 sizes, GS memory blocks (page-aligned) and
+ * bytes. Returns 1.
+ */
 s32 Tex_SetupRec(Image *img, u32 levels, u32 handle, s32 mode)
 {
-    TexRec *t = &gTexRecs[(handle & 0xFFFF) - 1];
+    TexRec *texRec = &gTexRecs[(handle & 0xFFFF) - 1];
 
-    t->used = 1;
-    t->mode = mode;
-    t->flags = img->flags;
-    t->width = img->width;
-    t->height = img->height;
-    t->unk36 = 0;
-    t->mem = 0;
-    t->locked = NULL;
-    t->lockFlag = 0;
-    t->levels = levels;
+    texRec->used = 1;
+    texRec->mode = mode;
+    texRec->flags = img->flags;
+    texRec->width = img->width;
+    texRec->height = img->height;
+    texRec->unk36 = 0;
+    texRec->mem = 0;
+    texRec->locked = NULL;
+    texRec->lockFlag = 0;
+    texRec->levels = levels;
     switch (img->bpp) {
     case 0:
-        t->psm = GS_PSMT4;
-        t->fmt = 0;
+        texRec->psm = GS_PSMT4;
+        texRec->fmt = 0;
         break;
     case 1:
-        t->psm = GS_PSMT8;
-        t->fmt = 1;
+        texRec->psm = GS_PSMT8;
+        texRec->fmt = 1;
         break;
     case 2:
-        t->psm = GS_PSMCT16;
-        t->fmt = 2;
+        texRec->psm = GS_PSMCT16;
+        texRec->fmt = 2;
         break;
     case 3:
-        t->psm = GS_PSMCT24;
-        t->fmt = 3;
+        texRec->psm = GS_PSMCT24;
+        texRec->fmt = 3;
         break;
     case 4:
-        t->psm = GS_PSMCT32;
-        t->fmt = 4;
+        texRec->psm = GS_PSMCT32;
+        texRec->fmt = 4;
         break;
     }
-    t->tw = Tex_Log2(t->width);
-    t->th = Tex_Log2(t->height);
-    t->blocks = Tex_VramBlocks(t);
-    t->align = 0x20;
-    t->size = Tex_Size(t->psm, t->width, t->height, t->levels);
+    texRec->tw = Tex_Log2(texRec->width);
+    texRec->th = Tex_Log2(texRec->height);
+    texRec->blocks = Tex_VramBlocks(texRec);
+    texRec->align = 0x20;
+    texRec->size = Tex_Size(texRec->psm, texRec->width, texRec->height, texRec->levels);
     return 1;
 }
 
@@ -173,8 +185,8 @@ s32 Tex_SetupRec(Image *img, u32 levels, u32 handle, s32 mode)
  * no GS memory is free). */
 s32 Tex_Upload(u32 handle, s32 mode)
 {
-    TexRec *t = &gTexRecs[(u16)handle - 1];
-    u128 *p;
+    TexRec *texRec = &gTexRecs[(u16)handle - 1];
+    u128 *endPkt;
 
 retry:
     switch (mode) {
@@ -187,150 +199,177 @@ retry:
     default:
         if (Tex_Reserve(&handle, 1) == 0) {
             mode = 4;
-            t->mode = 4;
+            texRec->mode = 4;
             goto retry;
         }
-        Tex_SendLevels(t);
-        p = Packet_Alloc(Tex_UploadPacketSize(t->size), 16);
-        Dma_BuildEndPacket(p, 1);
-        DmaQueue_AddChain(0, (u32)p & 0x0FFFFFFF, (u32 *)p, &gDmaQueue);
+        Tex_SendLevels(texRec);
+        endPkt = Packet_Alloc(Tex_UploadPacketSize(texRec->size), 16);
+        Dma_BuildEndPacket(endPkt, 1);
+        DmaQueue_AddChain(0, (u32)endPkt & 0x0FFFFFFF, (u32 *)endPkt, &gDmaQueue);
         break;
     }
     gTexCount++;
     return 1;
 }
 
-void Tex_SendLevels(TexRec *t)
+/*
+ * Queues the upload of every mip level of rec from its heap pixels (mem)
+ * to its GS address (Tex_LevelVram), one load-image chain per level. When
+ * rec->unk36 is set (swizzled pixels) each level is sent as 32-bit
+ * xferW x xferH.
+ */
+void Tex_SendLevels(TexRec *rec)
 {
     u32 src;
     u32 i;
-    s32 w;
-    s32 h;
+    s32 levelWidth;
+    s32 levelHeight;
 
     s32 size;
-    u128 *p;
+    u128 *pkt;
     u128 *last;
     s32 vram;
 
-    src = (u32)Mem_GetAddr(t->mem);
-    w = t->width;
-    h = t->height;
-    for (i = 0; i < t->levels; i++) {
-        switch (t->psm) {
+    src = (u32)Mem_GetAddr(rec->mem);
+    levelWidth = rec->width;
+    levelHeight = rec->height;
+    for (i = 0; i < rec->levels; i++) {
+        switch (rec->psm) {
         case GS_PSMT4:
-            size = (w * h) >> 1;
+            size = (levelWidth * levelHeight) >> 1;
             break;
         case GS_PSMT8:
-            size = w * h;
+            size = levelWidth * levelHeight;
             break;
         case GS_PSMCT16:
-            size = w * h * 2;
+            size = levelWidth * levelHeight * 2;
             break;
         case GS_PSMCT24:
-            size = w * h * 4;
+            size = levelWidth * levelHeight * 4;
             break;
         case GS_PSMCT32:
-            size = w * h * 4;
+            size = levelWidth * levelHeight * 4;
             break;
         }
-        p = Packet_Alloc(Dma_ImagePacketSize(size), 16);
-        vram = Tex_LevelVram(t, i);
-        if (t->unk36 == 0) {
-            last = Dma_BuildLoadImage(p, 1, src, size, vram, w / 64, t->psm, 0, 0, w, h);
+        pkt = Packet_Alloc(Dma_ImagePacketSize(size), 16);
+        vram = Tex_LevelVram(rec, i);
+        if (rec->unk36 == 0) {
+            last = Dma_BuildLoadImage(pkt, 1, src, size, vram, levelWidth / 64, rec->psm, 0, 0, levelWidth, levelHeight);
         } else {
-            last = Dma_BuildLoadImage(p, 1, src, size, vram, t->xferW / 64, 0, 0, 0, t->xferW, t->xferH);
+            last = Dma_BuildLoadImage(pkt, 1, src, size, vram, rec->xferW / 64, 0, 0, 0, rec->xferW, rec->xferH);
         }
-        DmaQueue_AddChain(0, ((u32)p & 0x0FFFFFFF) | 0x10000000, (u32 *)last, &gDmaQueue);
-        w >>= 1;
-        h >>= 1;
+        DmaQueue_AddChain(0, ((u32)pkt & 0x0FFFFFFF) | 0x10000000, (u32 *)last, &gDmaQueue);
+        levelWidth >>= 1;
+        levelHeight >>= 1;
         src += size;
     }
 }
 
-s32 Tex_LevelVram(TexRec *t, u32 level)
+/*
+ * GS address (256-byte blocks) of mip level level of rec: its vram plus
+ * the sizes of the levels before it. Returns -1 when level is past the
+ * last level or the psm is unknown.
+ */
+s32 Tex_LevelVram(TexRec *rec, u32 level)
 {
     s32 i;
-    s32 w;
-    s32 h;
+    s32 levelWidth;
+    s32 levelHeight;
     s32 vram;
     s32 size;
 
-    if (t->levels <= level) {
+    if (rec->levels <= level) {
         return -1;
     }
-    w = t->width;
-    h = t->height;
-    vram = t->vram;
+    levelWidth = rec->width;
+    levelHeight = rec->height;
+    vram = rec->vram;
     for (i = 0; i < (s32)level; i++) {
-        switch (t->psm) {
+        switch (rec->psm) {
         default:
             return -1;
         case GS_PSMT4:
-            size = (w * h) >> 1;
+            size = (levelWidth * levelHeight) >> 1;
             break;
         case GS_PSMT8:
-            size = w * h;
+            size = levelWidth * levelHeight;
             break;
         case GS_PSMCT16:
-            size = w * h * 2;
+            size = levelWidth * levelHeight * 2;
             break;
         case GS_PSMCT24:
-            size = w * h * 4;
+            size = levelWidth * levelHeight * 4;
             break;
         case GS_PSMCT32:
-            size = w * h * 4;
+            size = levelWidth * levelHeight * 4;
             break;
         }
         vram += (size + 0xFF) / 256;
-        w >>= 1;
-        h >>= 1;
+        levelWidth >>= 1;
+        levelHeight >>= 1;
     }
     return vram;
 }
 
+/*
+ * Handle of the first unused texture record (index + 1 of gTexRecs);
+ * TEX_MAX + 1 when all are in use.
+ */
 u32 Tex_FindFree(void)
 {
     s32 i;
-    TexRec *t = gTexRecs;
+    TexRec *texRec = gTexRecs;
 
-    for (i = 0; i < TEX_MAX; i++, t++) {
-        if (t->used == 0) {
+    for (i = 0; i < TEX_MAX; i++, texRec++) {
+        if (texRec->used == 0) {
             break;
         }
     }
     return i + 1;
 }
 
-/* img: width = the colour count (16 or 256), height 1; 16, 24 or 32 bits. */
+/*
+ * Creates a palette handle from img (width the colour count, 16 or 256;
+ * height 1; 16, 24 or 32 bits) with mode, as flCreateTextureHandle does
+ * for textures; a 256-colour palette is reordered for the GS. Returns the
+ * index + 1 of the palette in gPalRecs (the handle shifted down 16 bits),
+ * 0 when none is free.
+ */
 u32 flCreatePaletteHandle(Image *img, s32 mode)
 {
     u32 handle;
-    TexRec *t;
+    TexRec *palRec;
 
     handle = Pal_FindFree();
     if (handle == 0) {
         return 0;
     }
-    t = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
+    palRec = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
     Pal_SetupRec(img, handle, mode);
     if (img->pixels == NULL) {
         Tex_Reserve(&handle, 1);
-        t->mem = Mem_Alloc(t->size, 2);
+        palRec->mem = Mem_Alloc(palRec->size, 2);
         gPalCount++;
     } else {
         if (img->width == 0x100) {
-            flPS2ConvertTextureFromContext(img, t, 1);
+            flPS2ConvertTextureFromContext(img, palRec, 1);
         } else {
-            flPS2ConvertTextureFromContext(img, t, 0);
+            flPS2ConvertTextureFromContext(img, palRec, 0);
         }
         Pal_Upload(handle, mode);
     }
     return handle >> 16;
 }
 
+/*
+ * Fills the palette record of handle from img: format (16, 24 or 32 bits),
+ * mode, size as a texture (16 x 16 for 256 colours, 8 x 2 for 16), one
+ * level, GS memory blocks and bytes. Returns 1, 0 (with a debug message)
+ * when img is more than one row or of another depth.
+ */
 s32 Pal_SetupRec(Image *img, u32 handle, s32 mode)
 {
-    TexRec *t = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
+    TexRec *palRec = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
 
     if (img->height != 1) {
         Debug_Printf("Supported only 1 palette. Unallocatable. @flCreatePaletteHandle");
@@ -341,45 +380,50 @@ s32 Pal_SetupRec(Image *img, u32 handle, s32 mode)
         Debug_Printf("Not supported texture bit depth @flCreatePaletteHandle");
         return 0;
     case 2:
-        t->psm = GS_PSMCT16;
-        t->fmt = 2;
+        palRec->psm = GS_PSMCT16;
+        palRec->fmt = 2;
         break;
     case 3:
-        t->psm = GS_PSMCT24;
-        t->fmt = 3;
+        palRec->psm = GS_PSMCT24;
+        palRec->fmt = 3;
         break;
     case 4:
-        t->psm = GS_PSMCT32;
-        t->fmt = 4;
+        palRec->psm = GS_PSMCT32;
+        palRec->fmt = 4;
         break;
     }
     if (img->width == 0x100) {
-        t->width = 16;
-        t->height = 16;
+        palRec->width = 16;
+        palRec->height = 16;
     } else {
-        t->width = 8;
-        t->height = 2;
+        palRec->width = 8;
+        palRec->height = 2;
     }
-    t->flags = img->flags;
-    t->mode = mode;
-    t->used = 1;
-    t->tw = Tex_Log2(t->width);
-    t->th = Tex_Log2(t->height);
-    t->unk36 = 0;
-    t->mem = 0;
-    t->locked = NULL;
-    t->lockFlag = 0;
-    t->levels = 1;
-    t->blocks = Pal_VramBlocks(t);
-    t->align = 1;
-    t->size = Tex_Size(t->psm, t->width, t->height, t->levels);
+    palRec->flags = img->flags;
+    palRec->mode = mode;
+    palRec->used = 1;
+    palRec->tw = Tex_Log2(palRec->width);
+    palRec->th = Tex_Log2(palRec->height);
+    palRec->unk36 = 0;
+    palRec->mem = 0;
+    palRec->locked = NULL;
+    palRec->lockFlag = 0;
+    palRec->levels = 1;
+    palRec->blocks = Pal_VramBlocks(palRec);
+    palRec->align = 1;
+    palRec->size = Tex_Size(palRec->psm, palRec->width, palRec->height, palRec->levels);
     return 1;
 }
 
+/*
+ * Sends the palette of handle to GS memory unless mode is 1 or 4 (mode 4
+ * also when no GS memory is free), as Tex_Upload does for textures.
+ * Returns 1.
+ */
 s32 Pal_Upload(u32 handle, s32 mode)
 {
-    TexRec *t = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
-    u128 *p;
+    TexRec *palRec = &gPalRecs[((handle & 0xFFFF0000) >> 16) - 1];
+    u128 *endPkt;
 
 retry:
     switch (mode) {
@@ -392,35 +436,44 @@ retry:
     default:
         if (Tex_Reserve(&handle, 1) == 0) {
             mode = 4;
-            t->mode = 4;
+            palRec->mode = 4;
             goto retry;
         }
-        Tex_SendLevels(t);
-        p = Packet_Alloc(Tex_UploadPacketSize(t->size), 16);
-        Dma_BuildEndPacket(p, 1);
-        DmaQueue_AddChain(0, (u32)p & 0x0FFFFFFF, (u32 *)p, &gDmaQueue);
+        Tex_SendLevels(palRec);
+        endPkt = Packet_Alloc(Tex_UploadPacketSize(palRec->size), 16);
+        Dma_BuildEndPacket(endPkt, 1);
+        DmaQueue_AddChain(0, (u32)endPkt & 0x0FFFFFFF, (u32 *)endPkt, &gDmaQueue);
         break;
     }
     gPalCount++;
     return 1;
 }
 
+/*
+ * Handle of the first unused palette record (index + 1 of gPalRecs,
+ * shifted up 16 bits); TEX_MAX + 1 shifted up 16 bits when all are in use.
+ */
 u32 Pal_FindFree(void)
 {
     s32 i;
-    TexRec *t = gPalRecs;
+    TexRec *palRec = gPalRecs;
 
-    for (i = 0; i < TEX_MAX; i++, t++) {
-        if (t->used == 0) {
+    for (i = 0; i < TEX_MAX; i++, palRec++) {
+        if (palRec->used == 0) {
             break;
         }
     }
     return (i + 1) << 16;
 }
 
+/*
+ * Releases texture handle handle: waits for the DMA queue (Dma_FlushQueue),
+ * frees its GS memory slot and heap pixels and clears the record. Returns
+ * 1, 0 when handle is out of range or unused.
+ */
 s32 flReleaseTextureHandle(u32 handle)
 {
-    TexRec *t = &gTexRecs[handle - 1];
+    TexRec *texRec = &gTexRecs[handle - 1];
 
     if (handle == 0) {
         return 0;
@@ -428,15 +481,15 @@ s32 flReleaseTextureHandle(u32 handle)
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used == 0) {
+    if (texRec->used == 0) {
         return 0;
     }
     Dma_FlushQueue();
-    Tex_Evict(t);
-    if (t->mem != 0) {
-        Mem_Free(t->mem);
+    Tex_Evict(texRec);
+    if (texRec->mem != 0) {
+        Mem_Free(texRec->mem);
     }
-    Mem_Fill(t, 0, sizeof(TexRec));
+    Mem_Fill(texRec, 0, sizeof(TexRec));
     gTexCount--;
     return 1;
 }
@@ -444,7 +497,7 @@ s32 flReleaseTextureHandle(u32 handle)
 /* As flReleaseTextureHandle, without flushing the DMA queue first. */
 s32 Tex_ReleaseKeep(u32 handle)
 {
-    TexRec *t = &gTexRecs[handle - 1];
+    TexRec *texRec = &gTexRecs[handle - 1];
 
     if (handle == 0) {
         return 0;
@@ -452,21 +505,26 @@ s32 Tex_ReleaseKeep(u32 handle)
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used == 0) {
+    if (texRec->used == 0) {
         return 0;
     }
-    Tex_Evict(t);
-    if (t->mem != 0) {
-        Mem_Free(t->mem);
+    Tex_Evict(texRec);
+    if (texRec->mem != 0) {
+        Mem_Free(texRec->mem);
     }
-    Mem_Fill(t, 0, sizeof(TexRec));
+    Mem_Fill(texRec, 0, sizeof(TexRec));
     gTexCount--;
     return 1;
 }
 
+/*
+ * Releases palette handle handle (index + 1 of gPalRecs) as
+ * flReleaseTextureHandle does textures. Returns 1, 0 when handle is out of
+ * range or unused.
+ */
 s32 flReleasePaletteHandle(u32 handle)
 {
-    TexRec *t = &gPalRecs[handle - 1];
+    TexRec *palRec = &gPalRecs[handle - 1];
 
     if (handle == 0) {
         return 0;
@@ -474,22 +532,23 @@ s32 flReleasePaletteHandle(u32 handle)
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used == 0) {
+    if (palRec->used == 0) {
         return 0;
     }
     Dma_FlushQueue();
-    Tex_Evict(t);
-    if (t->mem != 0) {
-        Mem_Free(t->mem);
+    Tex_Evict(palRec);
+    if (palRec->mem != 0) {
+        Mem_Free(palRec->mem);
     }
-    Mem_Fill(t, 0, sizeof(TexRec));
+    Mem_Fill(palRec, 0, sizeof(TexRec));
     gPalCount--;
     return 1;
 }
 
+/* As flReleasePaletteHandle, without flushing the DMA queue first. */
 s32 Pal_ReleaseKeep(u32 handle)
 {
-    TexRec *t = &gPalRecs[handle - 1];
+    TexRec *palRec = &gPalRecs[handle - 1];
 
     if (handle == 0) {
         return 0;
@@ -497,45 +556,55 @@ s32 Pal_ReleaseKeep(u32 handle)
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used == 0) {
+    if (palRec->used == 0) {
         return 0;
     }
-    Tex_Evict(t);
-    if (t->mem != 0) {
-        Mem_Free(t->mem);
+    Tex_Evict(palRec);
+    if (palRec->mem != 0) {
+        Mem_Free(palRec->mem);
     }
-    Mem_Fill(t, 0, sizeof(TexRec));
+    Mem_Fill(palRec, 0, sizeof(TexRec));
     gPalCount--;
     return 1;
 }
 
+/*
+ * Locks texture handle handle for the CPU and describes its pixels in img
+ * (Tex_Lock, flag as there). rect is not used. Returns 1, 0 when handle is
+ * out of range or unused.
+ */
 s32 flLockTexture(void *rect, u32 handle, Image *img, s32 flag)
 {
-    TexRec *t = &gTexRecs[handle - 1];
+    TexRec *texRec = &gTexRecs[handle - 1];
 
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used != 0) {
-        return Tex_Lock(rect, t, img, flag, 0);
+    if (texRec->used != 0) {
+        return Tex_Lock(rect, texRec, img, flag, 0);
     }
     return 0;
 }
 
+/*
+ * Locks palette handle handle for the CPU (Tex_Lock, flag as there) and
+ * describes it in img as one row of 256 or 16 colours. rect is not used.
+ * Returns 1, 0 when handle is out of range or unused.
+ */
 s32 flLockPalette(void *rect, u32 handle, Image *img, s32 flag)
 {
-    TexRec *t = &gPalRecs[handle - 1];
+    TexRec *palRec = &gPalRecs[handle - 1];
 
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used == 0) {
+    if (palRec->used == 0) {
         return 0;
     }
-    if (Tex_Lock(rect, t, img, flag, 1) == 0) {
+    if (Tex_Lock(rect, palRec, img, flag, 1) == 0) {
         return 0;
     }
-    if (t->width == 16 && t->height == 16) {
+    if (palRec->width == 16 && palRec->height == 16) {
         img->width = 0x100;
         img->height = 1;
     } else {
@@ -545,42 +614,50 @@ s32 flLockPalette(void *rect, u32 handle, Image *img, s32 flag)
     return 1;
 }
 
-s32 Tex_Lock(void *rect, TexRec *t, Image *img, s32 flag, s32 pal)
+/*
+ * Hands the pixels of rec to the CPU in img and keeps them in rec->locked;
+ * flag (bits 0-1) picks how. 0: a linear copy converted from the GS
+ * layout (read back from GS memory by Dma_StoreImage when rec has no heap
+ * pixels). 1: a copy in the GS layout. 2 and 3: the heap pixels
+ * themselves (a new buffer when there are none). Sets 2 in img->flags.
+ * rect and isPalette are not used. Returns 1.
+ */
+s32 Tex_Lock(void *rect, TexRec *rec, Image *img, s32 flag, s32 isPalette)
 {
     u8 *buf;
-    u8 *gs;
+    u8 *gsPixels;
     Image src;
 
-    t->lockFlag = flag;
-    img->flags = t->flags;
-    img->width = t->width;
-    img->height = t->height;
+    rec->lockFlag = flag;
+    img->flags = rec->flags;
+    img->width = rec->width;
+    img->height = rec->height;
     switch (flag & 3) {
     case 0:
-        if (t->mem == 0) {
-            gs = MainHeap_MaxAlloc(t->size * 2);
-            buf = gs + t->size;
-            Dma_StoreImage((u32)gs, t->size, t->vram, t->width / 64, t->psm, 0, 0, t->width, t->height);
+        if (rec->mem == 0) {
+            gsPixels = MainHeap_MaxAlloc(rec->size * 2);
+            buf = gsPixels + rec->size;
+            Dma_StoreImage((u32)gsPixels, rec->size, rec->vram, rec->width / 64, rec->psm, 0, 0, rec->width, rec->height);
         } else {
-            buf = MainHeap_MaxAlloc(t->size);
-            gs = Mem_GetAddr(t->mem);
+            buf = MainHeap_MaxAlloc(rec->size);
+            gsPixels = Mem_GetAddr(rec->mem);
         }
-        t->locked = buf;
+        rec->locked = buf;
         img->pixels = buf;
         src.flags = img->flags;
         src.width = img->width;
         src.height = img->height;
-        src.pixels = gs;
-        switch (t->psm) {
+        src.pixels = gsPixels;
+        switch (rec->psm) {
         case GS_PSMT4:
             img->bpp = 0;
             img->pitch = img->width / 2;
-            Mem_Copy(buf, gs, t->size);
+            Mem_Copy(buf, gsPixels, rec->size);
             break;
         case GS_PSMT8:
             img->bpp = 1;
             img->pitch = img->width * img->bpp;
-            Mem_Copy(buf, gs, t->size);
+            Mem_Copy(buf, gsPixels, rec->size);
             break;
         case GS_PSMCT16:
             img->bpp = 2;
@@ -615,87 +692,102 @@ s32 Tex_Lock(void *rect, TexRec *t, Image *img, s32 flag, s32 pal)
         }
         break;
     case 1:
-        buf = MainHeap_MaxAlloc(t->size);
-        if (t->mem == 0) {
-            Dma_StoreImage((u32)buf, t->size, t->vram, t->width / 64, t->psm, 0, 0, t->width, t->height);
+        buf = MainHeap_MaxAlloc(rec->size);
+        if (rec->mem == 0) {
+            Dma_StoreImage((u32)buf, rec->size, rec->vram, rec->width / 64, rec->psm, 0, 0, rec->width, rec->height);
         } else {
-            Mem_Copy(buf, Mem_GetAddr(t->mem), t->size);
+            Mem_Copy(buf, Mem_GetAddr(rec->mem), rec->size);
         }
-        t->locked = buf;
+        rec->locked = buf;
         img->pixels = buf;
-        TEX_GS_DESC(t, img);
+        TEX_GS_DESC(rec, img);
         break;
     case 2:
-        img->pixels = t->mem == 0 ? (t->locked = MainHeap_MaxAlloc(t->size)) : (t->locked = Mem_GetAddr(t->mem));
-        TEX_GS_DESC(t, img);
+        img->pixels = rec->mem == 0 ? (rec->locked = MainHeap_MaxAlloc(rec->size)) : (rec->locked = Mem_GetAddr(rec->mem));
+        TEX_GS_DESC(rec, img);
         break;
     case 3:
-        img->pixels = t->mem == 0 ? (t->locked = MainHeap_MaxAlloc(t->size)) : (t->locked = Mem_GetAddr(t->mem));
-        TEX_GS_DESC(t, img);
+        img->pixels = rec->mem == 0 ? (rec->locked = MainHeap_MaxAlloc(rec->size)) : (rec->locked = Mem_GetAddr(rec->mem));
+        TEX_GS_DESC(rec, img);
         break;
     }
     img->flags |= 2;
     return 1;
 }
 
+/*
+ * Unlocks texture handle handle (Tex_Unlock). Returns its result, 0 when
+ * handle is out of range or unused.
+ */
 s32 flUnlockTexture(u32 handle)
 {
-    TexRec *t = &gTexRecs[handle - 1];
+    TexRec *texRec = &gTexRecs[handle - 1];
 
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used != 0) {
-        return Tex_Unlock(t);
+    if (texRec->used != 0) {
+        return Tex_Unlock(texRec);
     }
     return 0;
 }
 
+/*
+ * Unlocks palette handle handle (Tex_Unlock). Returns its result, 0 when
+ * handle is out of range or unused.
+ */
 s32 flUnlockPalette(u32 handle)
 {
-    TexRec *t = &gPalRecs[handle - 1];
+    TexRec *palRec = &gPalRecs[handle - 1];
 
     if (handle > TEX_MAX) {
         return 0;
     }
-    if (t->used != 0) {
-        return Tex_Unlock(t);
+    if (palRec->used != 0) {
+        return Tex_Unlock(palRec);
     }
     return 0;
 }
 
-s32 Tex_Unlock(TexRec *t)
+/*
+ * Takes back the pixels Tex_Lock handed out. By the lock flag: converts
+ * the linear copy back to the GS layout (0), copies it into the heap
+ * pixels (1) or uses them as they are (2, 3). Clears 2 in rec->flags,
+ * then queues their upload to GS memory and an end packet. A record of
+ * mode 1 or 4 is evicted from GS memory instead. Returns 1.
+ */
+s32 Tex_Unlock(TexRec *rec)
 {
     u8 *buf;
-    u8 *gs;
-    u8 *pix;
+    u8 *gsPixels;
+    u8 *lockedPixels;
     Image src;
     u128 *last;
     Image dst;
-    u128 *p;
+    u128 *pkt;
 
-    gs = NULL;
-    switch (t->lockFlag & 3) {
+    gsPixels = NULL;
+    switch (rec->lockFlag & 3) {
     case 0:
-        if (t->mem != 0) {
-            gs = buf = Mem_GetAddr(t->mem);
-            pix = t->locked;
+        if (rec->mem != 0) {
+            gsPixels = buf = Mem_GetAddr(rec->mem);
+            lockedPixels = rec->locked;
         } else {
-            gs = buf = MainHeap_MaxAlloc(t->size);
-            pix = t->locked;
+            gsPixels = buf = MainHeap_MaxAlloc(rec->size);
+            lockedPixels = rec->locked;
         }
-        src.flags = t->flags;
-        src.width = t->width;
-        src.height = t->height;
-        src.pixels = pix;
-        dst.flags = t->flags;
-        dst.width = t->width;
-        dst.height = t->height;
+        src.flags = rec->flags;
+        src.width = rec->width;
+        src.height = rec->height;
+        src.pixels = lockedPixels;
+        dst.flags = rec->flags;
+        dst.width = rec->width;
+        dst.height = rec->height;
         dst.pixels = buf;
-        switch (t->psm) {
+        switch (rec->psm) {
         case GS_PSMT4:
         case GS_PSMT8:
-            Mem_Copy(buf, pix, t->size);
+            Mem_Copy(buf, lockedPixels, rec->size);
             break;
         case GS_PSMCT16:
             src.bpp = 2;
@@ -730,38 +822,38 @@ s32 Tex_Unlock(TexRec *t)
         }
         break;
     case 1:
-        if (t->mem != 0) {
-            gs = Mem_GetAddr(t->mem);
-            Mem_Copy(gs, t->locked, t->size);
+        if (rec->mem != 0) {
+            gsPixels = Mem_GetAddr(rec->mem);
+            Mem_Copy(gsPixels, rec->locked, rec->size);
         } else {
-            gs = t->locked;
+            gsPixels = rec->locked;
         }
         break;
     case 2:
-        gs = t->locked;
+        gsPixels = rec->locked;
         break;
     case 3:
-        gs = t->locked;
+        gsPixels = rec->locked;
         break;
     }
-    t->flags &= ~2;
-    if (gs != NULL) {
-        if (t->mode == 1 || t->mode == 4) {
-            Tex_Evict(t);
+    rec->flags &= ~2;
+    if (gsPixels != NULL) {
+        if (rec->mode == 1 || rec->mode == 4) {
+            Tex_Evict(rec);
             return 1;
         }
-        p = Packet_Alloc(Dma_ImagePacketSize(t->size), 16);
-        if (t->unk36 == 0) {
-            last = Dma_BuildLoadImage(p, 1, (u32)gs, t->size, t->vram, t->width / 64, t->psm, 0, 0, t->width,
-                                      t->height);
+        pkt = Packet_Alloc(Dma_ImagePacketSize(rec->size), 16);
+        if (rec->unk36 == 0) {
+            last = Dma_BuildLoadImage(pkt, 1, (u32)gsPixels, rec->size, rec->vram, rec->width / 64, rec->psm, 0, 0, rec->width,
+                                      rec->height);
         } else {
-            last = Dma_BuildLoadImage(p, 1, (u32)gs, t->size, t->vram, t->xferW / 64, 0, 0, 0, t->xferW,
-                                      t->xferH);
+            last = Dma_BuildLoadImage(pkt, 1, (u32)gsPixels, rec->size, rec->vram, rec->xferW / 64, 0, 0, 0, rec->xferW,
+                                      rec->xferH);
         }
-        DmaQueue_AddChain(0, ((u32)p & 0x0FFFFFFF) | 0x10000000, (u32 *)last, &gDmaQueue);
-        p = Packet_Alloc(Tex_UploadPacketSize(t->size), 16);
-        Dma_BuildEndPacket(p, 1);
-        DmaQueue_AddChain(0, (u32)p & 0x0FFFFFFF, (u32 *)p, &gDmaQueue);
+        DmaQueue_AddChain(0, ((u32)pkt & 0x0FFFFFFF) | 0x10000000, (u32 *)last, &gDmaQueue);
+        pkt = Packet_Alloc(Tex_UploadPacketSize(rec->size), 16);
+        Dma_BuildEndPacket(pkt, 1);
+        DmaQueue_AddChain(0, (u32)pkt & 0x0FFFFFFF, (u32 *)pkt, &gDmaQueue);
     }
     return 1;
 }

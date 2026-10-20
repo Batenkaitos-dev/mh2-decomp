@@ -1,4 +1,4 @@
-# Menu_DrawQuestSheet (lobby, src/lobby/unk_760C70.c)
+# Menu_DrawQuestSheet (lobby, src/lobby/menu_sheets.c)
 
 ## Status
 

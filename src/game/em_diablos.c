@@ -1,38 +1,52 @@
 /*
- * Monster family: Diablos, Monoblos and their subspecies (EM_KIND_DIABLOS,
- * EM_KIND_BLACK_DIABLOS, EM_KIND_MONOBLOS and EM_KIND_WHITE_MONOBLOS). The
- * code from the family's setup function (EmDiablos_Setup, called by the
- * per-kind dispatch Em_TypeSetup) to the next family's. The state functions
- * take the monster and the work area its state dispatcher passes on (EmWork);
- * Em.step is the step within the current state. See include/em.h.
+ * The Diablos family: Diablos, Black Diablos, Monoblos and White Monoblos
+ * (EM_KIND_DIABLOS, EM_KIND_BLACK_DIABLOS, EM_KIND_MONOBLOS,
+ * EM_KIND_WHITE_MONOBLOS) share all of this code. It runs from the family's
+ * first function, EmDiablos_MotionSounds (its motions' sounds), to the next
+ * family's. EmDiablos_Setup, called by the per-kind dispatch Em_TypeSetup,
+ * sets a monster up; EmDiablos_Update runs it every frame: it turns
+ * Em_UpdateDamage's result into a reaction, starts the desert scenes, runs
+ * the current state through EmDiablos_RunState and keeps the monster on or
+ * under the sand. EmDiablos_ChangeState moves to a state, through the
+ * groups' setters (EmDiablos_SetIdleState ...).
+ *
+ * Each state function takes the monster and its work area (EmWork; the
+ * family's own meanings are EmDiablosWork); Em.step is the step within the
+ * state. em_diablos.h names the motions (DIAB_MOT_*) and the states of each
+ * group. The burrowing takes the flyers' group (EM_GROUP_FLY): under the
+ * sand the monster is in EM_STANCE_UNDER, and its leap out has a few states
+ * in the air. A charge that hits a wall leaves the horn stuck
+ * (DIAB_IDLE_HORN_STUCK); the sand struggles and downs in the sand
+ * (EmDiablos_InSandReactState) start half out of the sand.
  */
 #include "common.h"
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "em_diablos.h"
 #include "player.h"
 #include "area.h"
-/* prototypes of callees (round 13) */
-s32 EmDiablos_InMotion448To44A(Em *em);
+/* prototypes of callees */
+s32 EmDiablos_InSandStuckMotion(Em *em);
 void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
 void Em_MoveRotatedAccel(Em *em, void *ang);
 
 /* prototypes */
 void EmDiablos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Effect02_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void Effect0D_SpawnAt(f32 *pos, s32 kind, f32 scale);
-void Effect0D_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
+void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
+void PartFx_SpawnAt(f32 *pos, s32 kind, f32 scale);
+void PartFx_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
 void Vec_Add(f32 *out, f32 *a, f32 *b);
 void DiablosAttack_Create(Em *em, s8 kind);
-void StageObj_K11_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-void StageObj_K15_Create(Em *em, u8 k);
+void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
+void FallingDebris_Create(Em *em, u8 k);
 s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
-void Effect0D_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
+void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
 u16 Rand_Next(s32 stream);
-void StageObj_K0F_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
-void StageObj_K14_Create(Em *em, s16 k, s16 c, f32 scale);
+void ElementBurst_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
+void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
 void Em_AddHp(Em *em, s16 n);
 void Em_BeginStatus1(Em *em);
 void Em_BeginStatus2(Em *em);
@@ -48,7 +62,7 @@ void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 void QuestEm_Captured(Em *em);
 void Em_MoveRotated(Em *, void *);
-/* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmDiablos_ChangeState: 6 of 193 words differ, EmDiablos_SetGroup0State: 1 of 98 words differ ... */
+/* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmDiablos_ChangeState, EmDiablos_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
 void Em_StartRage(Em *);
 void Em_StartPendingRage(Em *);
@@ -72,34 +86,28 @@ void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
 s32 Em_TurnStep(Em *em, EmTurnParams *t);
 void Em_RestartScript(Em *em);
 void EmDiablos_Init(Em *);
-void EmDiablos_SetUnderground(Em *em, u8 next);
-void EmDiablos_State0_02(Em *, EmWork *);
-void EmDiablos_State0_1D(Em *, EmWork *);
-void EmDiablos_State1_07(Em *, EmWork *);
-void EmDiablos_State2_04(Em *, EmWork *);
-void EmDiablos_State2_08(Em *, EmWork *);
-void EmDiablos_State6_00(Em *, EmWork *);
-void EmDiablos_State6_01(Em *, EmWork *);
-void EmDiablos_State8_00_CarveStart(Em *, EmWork *);
-/* The view of the work area the motion-effects function takes: the current
-   motion at +2 (a real field, so MWCC does not keep its address). */
-typedef struct EmDiablosFxWork {
-    s16 unk000;
-    s16 motion;
-} EmDiablosFxWork;
+void EmDiablos_EndStateInAir(Em *em, u8 next);
+void EmDiablos_HornStuck(Em *, EmWork *);
+void EmDiablos_StatusDownedInSand(Em *, EmWork *);
+void EmDiablos_TurnToGoal(Em *, EmWork *);
+void EmDiablos_BurrowTravelRumble(Em *, EmWork *);
+void EmDiablos_BurrowTravel(Em *, EmWork *);
+void EmDiablos_DiablosDesertScene(Em *, EmWork *);
+void EmDiablos_MonoblosDesertScene(Em *, EmWork *);
+void EmDiablos_VsBait(Em *, EmWork *);
 void EmDiablos_MotionSounds(Em *em, struct EmWork *);
-void EmDiablos_MotionEffects(Em *, EmDiablosFxWork *);
-void EmDiablos_State5_00_Hunted(Em *em, EmWork *work);
-void EmDiablos_State5_01_Hunted(Em *, EmWork *);
-void EmDiablos_State5_02_HuntedFalling(Em *, EmWork *);
-void EmDiablos_RunGroup4(Em *, EmWork *);
-void EmDiablos_State3_End(Em *em, EmWork *work);
+void EmDiablos_MotionEffects(Em *, EmWork *);
+void EmDiablos_Die(Em *em, EmWork *work);
+void EmDiablos_DieInSand(Em *, EmWork *);
+void EmDiablos_DieFalling(Em *, EmWork *);
+void EmDiablos_RunReactState(Em *, EmWork *);
+void EmDiablos_EndAttack(Em *em, EmWork *work);
 void EmDiablos_MoveByVelYCurve(Em *em, s32 kind);
 void EmDiablos_StartCurves(Em *em, u8 kind);
 u8 EmDiablos_UpdateCurves(Em *em);
 s32 EmDiablos_ChargeHitWall(Em *em);
-s32 EmDiablos_InSandState(Em *em);
-void StageObj_K13_Create(void *owner, s16 v, u8 k);
+s32 EmDiablos_InSandReactState(Em *em);
+void AlertMark_Create(void *owner, s16 v, u8 k);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 void CamShake_ReqAIf(Em *obj, s32 i);
@@ -110,7 +118,7 @@ void Player_ClearVelocity(void *);
 void Motion_InitTime(void *p, s16 step);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
 u8 Player_InCurrentArea(void *obj);
-void Effect01_Spawn(void *obj, s16 type);
+void Shadow_Spawn(void *obj, s16 type);
 extern f32 gAreaGroundY[];
 extern EmTurnParams EmDiablos_TurnParams[3];
 void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
@@ -140,30 +148,25 @@ void Em_ClearNeed1State(Em *em);
 void Em_ClearNeed2State(Em *em);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 void MinePoint_Remove(s32);
-void EmDiablos_SetGroup1State(Em *em, u16 state, u8 mode);
-void EmDiablos_SetGroup2State(Em *em, u16 state, u8 mode);
-void EmDiablos_SetGroup3State(Em *em, u16 state, u8 mode);
-void EmDiablos_SetGroup0State(Em *em, u16 state, u8 mode);
+void EmDiablos_SetMoveState(Em *em, u16 state, u8 mode);
+void EmDiablos_SetBurrowState(Em *em, u16 state, u8 mode);
+void EmDiablos_SetAttackState(Em *em, u16 state, u8 mode);
+void EmDiablos_SetIdleState(Em *em, u16 state, u8 mode);
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 void Em_SetPartScaled(Em *em, s32 bit);
 s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void StageObj_K09_Create(Em *);
-void StageObj_K25_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
+void EmTail_Create(Em *);
+void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
 void Versus_RouteEmByTeam(Em *em);
 s32 Versus_DefeatCamera(Em *pl);
-typedef struct EmDiablosVec {
-    f32 x, y, z;
-} EmDiablosVec;
-extern EmDiablosVec EmDiablos_CarveThrowPt __attribute__((aligned(8)));
+/* A position copied whole: the versus bait's position is copied from
+ * EmDiablos_CarveThrowPt as one struct, as the game's code does. */
+extern Vec3f EmDiablos_CarveThrowPt __attribute__((aligned(8)));
 extern EmCurveKey *EmDiablos_MoveVelYCurves[];
 void QuestEm_Hunted(Em *em);
 s8 EmMine_Create(Em *em, s32 idx);
 s32 EmMine_Update(Em *em);
 void EmMine_Remove(Em *em);
-typedef struct EmWork_4E {
-    u8 pad[0x4E];
-    s16 cnt;            /* 0x4E */
-} EmWork_4E;
 s32 Obj_InCurrentArea(void *obj);
 s32 Obj_SameArea(void *obj, Player *b);
 void Vib_Start(s32 port, s32 i);
@@ -175,7 +178,7 @@ void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 s8 EmMine_CreateTimed0(Em *em, f32 *pos);
 s32 Save_TestEventFlag(s32 flag);
 void GmEm_ResetSize(Em *em);
-void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
+void StunStars_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
 s32 Em_UpdateCombatTimer(Em *em);
 void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
@@ -189,52 +192,609 @@ void Em_UpdatePendingScript(Em *em);
 void Em_ClearHitReactMode(Em *em);
 u16 Area_DayId(u16 id);
 void EmDiablos_RunState(Em *em, EmWork *work);
-s32 EmDiablos_ShouldEndState(Em *em);
+s32 EmDiablos_IsBuriedOffSand(Em *em);
 /* end of prototypes */
 
-/* Diablos's own meanings of the work area's bytes (EmWork, include/em.h, has the shared ones). */
-typedef struct EmDiablosWork {
-    u8 fxStep;                  /* 0x000: UpdateMotionEffects: 0, then 1 */
-    u8 unk001[0x006 - 0x001];
-    s16 fxMotion;               /* 0x006: as EmWork's: frames since landing (Init: 0; Update counts it down) */
-    u8 unk008[0x014 - 0x008];
-    u16 goalYaw;                /* 0x014: as EmWork's (Init: 0x4000) */
-    u8 unk016[0x01B - 0x016];
-    s8 rageFade;                /* 0x01B: Update: counts up to 60 while enraged (then rageStep 1), down to 0 otherwise */
-    s32 moveAngBX;              /* 0x01C: as EmWork's */
-    s32 moveAngBY;              /* 0x020 */
-    u8 unk024[0x030 - 0x024];
-    s32 moveAngX;               /* 0x030 */
-    s32 moveAngY;               /* 0x034 */
-    s32 moveAngZ;               /* 0x038 */
-    s32 pitchStep;              /* 0x03C */
-    s32 turnSpeed;              /* 0x040 */
-    s32 rollSpeed;              /* 0x044 */
-    u8 curveNone;               /* 0x048: the three curves' run flags (StartCurves, UpdateCurves) */
-    u8 curveVelY;               /* 0x049 */
-    u8 curveSpeed;              /* 0x04A */
-    u8 curveKind;               /* 0x04B: the curve tables' index (StartCurves) */
-    s16 curveFrame;             /* 0x04C: the curve frame (StartCurves, UpdateCurves, CurveVelY, CurveSpeed) */
-    u8 unk04E[0x100 - 0x04E];
-} EmDiablosWork;
-typedef char EmDiablosWork_size_check[(sizeof(EmDiablosWork) == sizeof(EmWork)) ? 1 : -1];
+void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
+void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
+void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 
+/*
+ * Plays the family's motion sounds on their frames, switching on
+ * work->sndMotion (the layer-0 motion id). Walk, the two turn motions and
+ * the run (ids 0x3EB, 0x3ED, 0x3EE, 0x3F9) stay silent under the sand
+ * (EM_STANCE_UNDER); many listed ids are empty cases.
+ */
+void EmDiablos_MotionSounds(Em *em, EmWork *work)
+{
+    s16 motion;
+
+    motion = work->sndMotion;
+    switch (motion) {
+    case EM_MOTION_ID(0, DIAB_MOT_IDLE):
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_WALK):
+        if (em->stance != EM_STANCE_UNDER) {
+            Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x14);
+            Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
+            break;
+        }
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_TURN_RIGHT):
+        if (em->stance != EM_STANCE_UNDER) {
+            Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x14);
+            Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
+            break;
+        }
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_TURN_LEFT):
+        if (em->stance != EM_STANCE_UNDER) {
+            Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x14);
+            break;
+        }
+        break;
+    case EM_MOTION_ID(0, 0x7):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x48, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x14);
+        break;
+    case EM_MOTION_ID(0, 0x8):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x48, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_LIMP):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DESCEND):
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
+        break;
+    case EM_MOTION_ID(0, 0xC):
+        Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
+        break;
+    case EM_MOTION_ID(0, 0xD):
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xF, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xF, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xF, 0xC);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_AIR):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xD4, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xD8, 0xB, 0xC);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_RUN):
+        if (em->stance != EM_STANCE_UNDER) {
+            Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x23);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0xB, 6);
+            Em_PlaySeAtBoneOnFrame(em, 8, 0xB, 0xC);
+            Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x14);
+            Em_PlaySeAtBoneOnFrame(em, 0x62, 0x1E, 0x14);
+            Em_PlaySeAtBoneOnFrame(em, 0x78, 6, 0x14);
+            Em_PlaySeAtBoneOnFrame(em, 0x80, 0x38, 0x14);
+            Em_PlaySeAtBoneOnFrame(em, 0x90, 6, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 0x96, 0x38, 0x1A);
+            Em_PlaySeAtBoneVolOnFrame(em, 0x78, 0x65, 0x14, 8);
+            Em_PlaySeAtBoneVolOnFrame(em, 0x90, 0x65, 0x1A, 8);
+            break;
+        }
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_LEAP):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xF, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xEE, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xF2, 0xB, 0xC);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x48, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x74, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x96, 1, 0x14);
+        Em_PlaySeAtBoneVolOnFrame(em, 0xE, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, 0x1D):
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xF, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x78, 0xE, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xE, 6);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_REST):
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xB6, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x16C, 0x55, 0x23);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_REST_LIE_DOWN):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_REST_GET_UP):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xB6, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_LIE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_STARE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x4C, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x15, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_GET_UP):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x1E, 0x48, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_COLLAPSE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_LIE_DOWN):
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x57, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x10, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_TAIL_SPIN):
+        Em_PlaySeTypeAtBoneOnFrame(em, 8, 0x4B, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_ALERT_IDLE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x58, 6, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x96, 0x56, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x16, 0);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x58, 0x65, 0x1A, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_TURN_IN_PLACE):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 5, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x78, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x108, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0x23, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x4E, 0x56, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xC, 6);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x11, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x74, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xC2, 3, 0x1A);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x30, 0x65, 0x1A, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_E):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xAA, 3, 0x1A);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x24, 0x65, 0x1A, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_SHAKE_OFF):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_C):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_D):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_PART_BREAK):
+        Em_PlaySeTypeAtBoneInFrames(em, 4, 0xF4, 0x54, 0x23, 6, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x2A, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x130, 0x27, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 4, 0x2C);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x12, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xD2, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x142, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x3E, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x4A, 7, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x11E, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x122, 0xD, 0xC);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x2C, 0x65, 0x1A, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x4A, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_B):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        break;
+    case EM_MOTION_ID(0, 0x43):
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DIE):
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x10, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x108, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x108, 7, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x114, 0x17, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x180, 0x16, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x18, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x8C, 0x17C, 0x2C, 0x23, 6, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x192, 0x2B, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x174, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x176, 0xE, 0xC);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x1A, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_KNOCK_DOWN):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN):
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN_B):
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1F, 0x23);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN_GET_UP):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN_GET_UP_B):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x14);
+        break;
+    case EM_MOTION_ID(0, 0x49):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x1D, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x2A, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x10, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 7, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_KNOCK_DOWN_B):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x18, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_STATUS4):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x5A, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x6E, 0x5F, 0x23);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_FALL):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x14, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_FALL_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 7, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x53, 0x23);
+        Em_PlaySeAtBoneVolOnFrame(em, 0xA, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_IDLE_PAIR_A):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x26, 0x55, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_IDLE_PAIR_B):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x26, 0x55, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x14);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DIE_FALLING):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x37, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, 0x53):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x10, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x58, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x80, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xC6, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x27, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0xD, 0xC);
+        break;
+    case EM_MOTION_ID(0, 0x5A):
+        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xB, 0xC);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_SAND_STRUGGLE):
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x13, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x50, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DOWNED):
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x23);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_DOWNED_GET_UP):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x20, 0x23);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_CHARGE_STOP):
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x10, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x11, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x68, 0x16, 0);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x14, 0x65, 0x1A, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_BURROW):
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x11, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x10, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1D, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1D, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x1D, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x68, 0x1E, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_EMERGE):
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1D, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1E, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x2E, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xA8, 0x48, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 8, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 6, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xB2, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xE8, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xAE, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xB2, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x15, 0x22);
+        Em_PlaySeAtBoneVolOnFrame(em, 0xE, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_POP_OUT):
+        Em_PlaySeAtBoneOnFrame(em, 6, 7, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0x1D, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x44, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x15, 0x22);
+        Em_PlaySeAtBoneVolOnFrame(em, 8, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_A):
+        Em_PlaySeAtBoneOnFrame(em, 8, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x15, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x30, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x94, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x1F, 0x23);
+        Em_PlaySeAtBoneVolOnFrame(em, 8, 0x65, 0x1A, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_B):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x32, 0x5D, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x15, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xD8, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x74, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x78, 0xC, 0xC);
+        Em_PlaySeAtBoneVolOnFrame(em, 0xA, 0x65, 0x1A, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_C):
+        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x14, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x15, 0x2C);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x24, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x14, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x15, 0x2C);
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x1E, 0x2C);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x1E, 0x2C);
+        Em_PlaySeAtBoneOnFrame(em, 0xC6, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xF2, 0, 0x14);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x34, 0x65, 0x2C, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x66, 0x65, 0x2C, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_D):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x35, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x70, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xD8, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x108, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1D, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x14, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x16, 0);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x3A, 0x66, 0, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_ROAR):
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 2, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x13E, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x170, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
+        Em_PlaySeTypeAtBoneInFrames(em, 0x64, 0x140, 0x5B, 0x23, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x130, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_PART6_BREAK):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5E, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x10A, 0x2B, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x36, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x86, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xDC, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x128, 3, 0x1A);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_HORN_STUCK):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x37, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x66, 0x5C, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 0xF, 0xC);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x22, 0x65, 0x2C, 8);
+        break;
+    case EM_MOTION_ID(0, DIAB_MOT_HORN_PULL_FREE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x37, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x28, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x1D, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x6C, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x8E, 5, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
+        Em_PlaySeAtBoneVolOnFrame(em, 0x56, 0x66, 0x22, 8);
+        break;
+    }
+}
+
+/*
+ * An empty per-kind setup hook, called by the per-kind dispatch
+ * Em_TypeSetup.
+ */
 void EmDiablos_Setup(Em *em)
 {
 }
 
+/*
+ * Kind callback slots 0 and 1 (EmDiablos_Callbacks): creates the alert mark
+ * (AlertMark_Create 0x22) and effect 01 type 0 on the monster, the same as
+ * EmKutku/EmRathalos_SpawnEffects.
+ */
 void EmDiablos_SpawnEffects(void *em)
 {
-    StageObj_K13_Create(em, 0x22, 0);
-    Effect01_Spawn((Player *) em, 0);
+    AlertMark_Create(em, 0x22, 0);
+    Shadow_Spawn((Player *) em, 0);
 }
 
+/*
+ * Scales parts 3, 4 and 8. On quest stage 0 it turns the monster by 0x8000
+ * and places it at x 5000 + 1500 * slotNo, z 9000. Then the idle motion,
+ * EM_STANCE_UNDER (under the sand), landTimer 0, hp from Em_ComputeMaxHp,
+ * goalYaw 0x4000, the turn, pitch and roll speeds, rageFade 0, and
+ * surfaceDepth 1000.0. Unless fxFlags bit 0 is set, every family kind hides
+ * mesh 1 and creates stage object K09.
+ */
 void EmDiablos_Init(Em *em)
 {
-    EmDiablosWork *w = (EmDiablosWork *)&em->work;
+    EmDiablosWork *diabWork = (EmDiablosWork *)&em->work;
 
-    f32 fslot;
-    s16 size;
+    f32 slotF;
+    s16 maxHp;
     u8 slotNo;
     u8 fxFlags;
 
@@ -244,119 +804,153 @@ void EmDiablos_Init(Em *em)
     if (gQuest.stage == 0) {
         em->rotY = 0x8000;
         slotNo = em->slotNo;
-        fslot = (f32) (u32) slotNo;
-        em->posX = 5000.0f + (1500.0f * fslot);
+        slotF = (f32) (u32) slotNo;
+        em->posX = 5000.0f + (1500.0f * slotF);
         em->posY = 0.0f;
         em->posZ = 9000.0f;
     }
-    Em_SetMotionRow(em, 1, 0, 0);
-    em->stance = 4;
-    w->fxMotion = 0;
-    size = Em_ComputeMaxHp(em, 0);
-    em->hp = size;
-    em->hpMax = size;
+    Em_SetMotionRow(em, DIAB_MOT_IDLE, 0, 0);
+    em->stance = EM_STANCE_UNDER;
+    diabWork->landTimer = 0;
+    maxHp = Em_ComputeMaxHp(em, 0);
+    em->hp = maxHp;
+    em->hpMax = maxHp;
     em->scriptPending = 1;
     em->blind = 0;
     em->unk_InitFlag = 1;
     em->noAlert = 0;
     em->painted = 0;
-    w->goalYaw = 0x4000;
-    w->pitchStep = 0x100;
-    w->turnSpeed = 0x200;
-    w->rollSpeed = 0x100;
-    w->moveAngBY = 0x2000;
-    w->moveAngBX = 0;
-    w->rageFade = 0;
+    diabWork->goalYaw = 0x4000;
+    diabWork->pitchStep = 0x100;
+    diabWork->turnSpeed = 0x200;
+    diabWork->rollSpeed = 0x100;
+    diabWork->moveAngBY = 0x2000;
+    diabWork->moveAngBX = 0;
+    diabWork->rageFade = 0;
     em->surfaceDepth = 0x447A0000;
     fxFlags = em->fxFlags & 1;
     em->fxFlags = fxFlags;
     if (fxFlags == 0) {
         switch (em->type) {
-        case 0xE:
-        case 0x2B:
-        case 0x1A:
-        case 0x2C:
+        case EM_KIND_DIABLOS:
+        case EM_KIND_BLACK_DIABLOS:
+        case EM_KIND_MONOBLOS:
+        case EM_KIND_WHITE_MONOBLOS:
             em->meshShown[1] = 0;
-            StageObj_K09_Create(em);
+            EmTail_Create(em);
             break;
         }
     }
 }
 
+/*
+ * Runs EmDiablos_Init, then starts under the sand (EM_STANCE_UNDER) in group
+ * DIAB_BURROW_IDLE (the monster task calls it).
+ */
 void EmDiablos_Start(Em *em)
 {
     EmDiablos_Init(em);
-    em->stance = 4;
-    EmDiablos_ChangeState(em, 2, 1, 0);
+    em->stance = EM_STANCE_UNDER;
+    EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_IDLE, EM_SYNC_LOCAL);
 }
 
+/*
+ * Kind callback slot 5: runs EmDiablos_Init again.
+ */
 void EmDiablos_Reinit(Em *em)
 {
     EmDiablos_Init(em);
 }
 
+/*
+ * The ordinary end of a ground state: motionSpeed 1, EM_STANCE_GROUND,
+ * lookAtTarget off, scriptPending, then DIAB_IDLE (EM_SYNC_LOCAL). Both
+ * extra arguments are unused.
+ */
 void EmDiablos_EndState(Em *em, s32 unused1, s32 unused2)
 {
     em->motionSpeed = 1.0f;
-    em->stance = 0;
+    em->stance = EM_STANCE_GROUND;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    EmDiablos_ChangeState(em, 0, 1, 0);
+    EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE, EM_SYNC_LOCAL);
 }
 
-void EmDiablos_EndState2(Em *em)
+/*
+ * Ends a state under the sand: motionSpeed 1, EM_STANCE_UNDER, lookAtTarget
+ * off, scriptPending, then DIAB_BURROW_IDLE (EM_SYNC_LOCAL). Called at the
+ * end of DIAB_BURROW_DIG and of several group-2 states.
+ */
+void EmDiablos_EndStateUnderground(Em *em)
 {
     em->motionSpeed = 1.0f;
-    em->stance = 4;
+    em->stance = EM_STANCE_UNDER;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    EmDiablos_ChangeState(em, 2, 1, 0);
+    EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_IDLE, EM_SYNC_LOCAL);
 }
 
-void EmDiablos_SetUnderground(Em *em, u8 next)
+/*
+ * Ends a state in the air after a leap out of the sand: scriptPending,
+ * motionSpeed 1, EM_STANCE_AIR (air, not under the sand), lookAtTarget off.
+ * With variant 0 (the only one handled) it goes to DIAB_BURROW_AIR_LOOP
+ * through Em_SetStateRand, which draws a new stateRand and skips
+ * EmDiablos_SetBurrowState. Callers are group-2 states (lines 1986, 2019,
+ * 2088, 2147, 2233).
+ */
+void EmDiablos_EndStateInAir(Em *em, u8 variant)
 {
     em->scriptPending = 1;
     em->motionSpeed = 1.0f;
-    em->stance = 2;
+    em->stance = EM_STANCE_AIR;
     em->lookAtTarget = 0;
-    switch (next) {
+    switch (variant) {
     case 0:
-        Em_SetStateRand(em, 2, 0xE);
+        Em_SetStateRand(em, EM_GROUP_FLY, DIAB_BURROW_AIR_LOOP);
         break;
     }
 }
 
+/*
+ * When the given layer (0-2) has stopped, restarts DIAB_MOT_IDLE on it
+ * (blend 10). The upper-body gesture states call it each frame for the
+ * layers they leave idle.
+ */
 void EmDiablos_RestartLayerMotion(Em *em, s32 layer)
 {
     if (em->motion[layer].playing == 0) {
         switch (layer) {
         case 0:
-            Em_SetLayerMotion(em, 0x3E9, 10, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, DIAB_MOT_IDLE), 10, 0, 0);
             break;
         case 1:
-            Em_SetLayerMotion(em, 0x4B1, 10, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, DIAB_MOT_IDLE), 10, 0, 1);
             break;
         case 2:
-            Em_SetLayerMotion(em, 0x579, 10, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, DIAB_MOT_IDLE), 10, 0, 2);
             break;
         }
     }
 }
 
-void EmDiablos_State0_00(Em *em, EmWork *work)
+/*
+ * Puts DIAB_MOT_IDLE on layers 0-2, then asks for the next script action
+ * (scriptPending) when em->timer runs out. The stance is left as it was.
+ */
+void EmDiablos_IdleStand(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetLayerMotion(em, 0x3E9, 0xA, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, DIAB_MOT_IDLE), 0xA, 0, 0);
         }
-        if (em->motionId[1] != 0x44D) {
-            Em_SetLayerMotion(em, 0x4B1, 0xA, 0, 1);
+        if (em->motionId[1] != EM_MOTION_ID(0, 0x65)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, DIAB_MOT_IDLE), 0xA, 0, 1);
         }
-        if (em->motionId[2] != 0x4B1) {
-            Em_SetLayerMotion(em, 0x579, 0xA, 0, 2);
+        if (em->motionId[2] != EM_MOTION_ID(1, DIAB_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, DIAB_MOT_IDLE), 0xA, 0, 2);
         }
         break;
     case 1:
@@ -367,14 +961,19 @@ void EmDiablos_State0_00(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_01(Em *em, EmWork *work)
+/*
+ * Stance 0 and DIAB_MOT_IDLE once on layer 0. When the motion ends (and the
+ * monster is not remote), it calls EmDiablos_EndState, which enters this
+ * state again with scriptPending set.
+ */
+void EmDiablos_Idle(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         break;
     case 1:
         if ((em->remote == 0) && (em->motion[0].playing == 0)) {
@@ -385,44 +984,52 @@ void EmDiablos_State0_01(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_02(Em *em, EmWork *work)
+/*
+ * The horn is stuck in a wall after a charge hit it (EmDiablos_ChargeHitWall
+ * in DIAB_MOVE_RUN, DIAB_MOVE_RUN_AND_STOP and group-3 charges). Plays
+ * DIAB_MOT_HORN_STUCK with an impact hit (EmImpactAttack kind 8) at bone
+ * 0x22 offset (0, 270, 270), and a timed mine point (EmMine_CreateTimed0) on
+ * the floor 320 ahead of bone 1. After 240 frames it plays
+ * DIAB_MOT_HORN_PULL_FREE, then ends.
+ */
+void EmDiablos_HornStuck(Em *em, EmWork *work)
 {
-    f32 v[4];
-    f32 pos[4];
-    void *m;
+    f32 ofs[4];
+    f32 hitPos[4];
+    void *boneMtx;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x72, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_HORN_STUCK, 0, 0);
         em->timer = 240;
-        v[0] = 0.0f;
-        v[1] = 270.0f;
-        v[2] = 270.0f;
-        m = Em_Bone(em, 0x22);
-        Vec_RotateSelf(v, m);
-        Mtx_GetTrans(pos, m);
-        pos[0] += v[0];
-        pos[1] += v[1];
-        pos[2] += v[2];
-        EmImpactAttack_CreateAt(em, pos, 8);
-        v[0] = 0.0f;
-        v[1] = 0.0f;
-        v[2] = 320.0f;
-        m = Em_Bone(em, 1);
-        Vec_RotateSelf(v, m);
-        Mtx_GetTrans(pos, m);
-        pos[0] += v[0];
-        pos[1] = em->floorY;
-        pos[2] += v[2];
-        EmMine_CreateTimed0(em, pos);
+        ofs[0] = 0.0f;
+        ofs[1] = 270.0f;
+        ofs[2] = 270.0f;
+        boneMtx = Em_Bone(em, 0x22);
+        Vec_RotateSelf(ofs, boneMtx);
+        Mtx_GetTrans(hitPos, boneMtx);
+        hitPos[0] += ofs[0];
+        hitPos[1] += ofs[1];
+        hitPos[2] += ofs[2];
+        EmImpactAttack_CreateAt(em, hitPos, 8);
+        ofs[0] = 0.0f;
+        ofs[1] = 0.0f;
+        ofs[2] = 320.0f;
+        boneMtx = Em_Bone(em, 1);
+        Vec_RotateSelf(ofs, boneMtx);
+        Mtx_GetTrans(hitPos, boneMtx);
+        hitPos[0] += ofs[0];
+        hitPos[1] = em->floorY;
+        hitPos[2] += ofs[2];
+        EmMine_CreateTimed0(em, hitPos);
         break;
     case 1:
         if (--em->timer == 0) {
             em->step++;
-            Em_SetMotion(em, 0x73, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_HORN_PULL_FREE, 0, 0);
         }
         break;
     case 2:
@@ -434,14 +1041,19 @@ void EmDiablos_State0_02(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_03(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_ALERT_IDLE and ends after 10 frames, without waiting for
+ * the motion. EmDiablos_SetBurrowState goes here instead of DIAB_BURROW_DIG
+ * when the floor is not sand (surfaceKind 0) in the player's area.
+ */
+void EmDiablos_AlertBrief(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x33, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_ALERT_IDLE, 0, 0);
         em->timer = 0xA;
         break;
     case 1:
@@ -453,14 +1065,18 @@ void EmDiablos_State0_03(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_04(Em *em, EmWork *work)
+/*
+ * Plays one DIAB_MOT_IDLE loop on layer 0 and keeps layers 1 and 2 idle,
+ * then ends.
+ */
+void EmDiablos_IdleOneLoop(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -473,16 +1089,20 @@ void EmDiablos_State0_04(Em *em, EmWork *work)
     EmDiablos_RestartLayerMotion(em, 2);
 }
 
-void EmDiablos_State0_05(Em *em, EmWork *work)
+/*
+ * Plays the layer-1 gesture DIAB_MOT_UPPER_A with layers 0 and 2 idle and a
+ * sound on layer-1 frame 0x24, then ends when layer 1 stops.
+ */
+void EmDiablos_UpperGestureA(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x18, 0, 0);
-        Em_SetLayerMotion(em, 0x3E9, 0xA, 0, 0);
-        Em_SetLayerMotion(em, 0x579, 0xA, 0, 2);
+        Em_SetMotion(em, DIAB_MOT_UPPER_A, 0, 0);
+        Em_SetLayerMotion(em, EM_MOTION_ID(0, DIAB_MOT_IDLE), 0xA, 0, 0);
+        Em_SetLayerMotion(em, EM_MOTION_ID(2, DIAB_MOT_IDLE), 0xA, 0, 2);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -496,14 +1116,18 @@ void EmDiablos_State0_05(Em *em, EmWork *work)
     Em_PlaySeAtBoneOnLayerFrame(em, 0x24, 0x2F, 0x23, 1);
 }
 
-void EmDiablos_State0_06(Em *em, EmWork *work)
+/*
+ * Plays the layer-1 gesture DIAB_MOT_UPPER_B with two layer-1 sounds, then
+ * ends when layer 1 stops.
+ */
+void EmDiablos_UpperGestureB(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x19, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_UPPER_B, 0, 0);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -518,14 +1142,18 @@ void EmDiablos_State0_06(Em *em, EmWork *work)
     Em_PlaySeAtBoneOnLayerFrame(em, 4, 0x17, 0, 1);
 }
 
-void EmDiablos_State0_07(Em *em, EmWork *work)
+/*
+ * Plays the layer-1 gesture DIAB_MOT_UPPER_E with no sounds, then ends when
+ * layer 1 stops.
+ */
+void EmDiablos_UpperGestureE(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x1A, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_UPPER_E, 0, 0);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -538,22 +1166,29 @@ void EmDiablos_State0_07(Em *em, EmWork *work)
     EmDiablos_RestartLayerMotion(em, 2);
 }
 
-void EmDiablos_State0_08(void)
+/*
+ * Empty, so the state never ends by itself.
+ */
+void EmDiablos_IdleNopA(void)
 {
 }
 
-void EmDiablos_State0_09(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_IDLE_PAIR_A (stateRand odd) or DIAB_MOT_IDLE_PAIR_B once,
+ * then ends.
+ */
+void EmDiablos_IdlePairA(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         if (em->stateRand & 1) {
-            Em_SetMotion(em, 0x50, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE_PAIR_A, 0, 0);
             break;
         }
-        Em_SetMotion(em, 0x51, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE_PAIR_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -563,16 +1198,21 @@ void EmDiablos_State0_09(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_0A(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_TURN_IN_PLACE with goalYaw = Math_AngleXZ to the goal.
+ * Until frame 60 it snaps rotY to goalYaw once within 0x200 but never steps
+ * rotY itself. Then it ends when layer 1 stops.
+ */
+void EmDiablos_IdleTurnToGoal(Em *em, EmWork *work)
 {
     u16 goalYaw;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x36, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_TURN_IN_PLACE, 0, 0);
         work->goalYaw = Math_AngleXZ(&em->posX, em->goal);
         break;
     case 1:
@@ -593,14 +1233,18 @@ void EmDiablos_State0_0A(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_0B(Em *em, EmWork *work)
+/*
+ * Plays the layer-1 gesture DIAB_MOT_UPPER_C with sounds on layer-1 frames 2
+ * and 0x6E, then ends.
+ */
+void EmDiablos_UpperGestureC(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x1C, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_UPPER_C, 0, 0);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -615,18 +1259,25 @@ void EmDiablos_State0_0B(Em *em, EmWork *work)
     Em_PlaySeAtBoneOnLayerFrame(em, 0x6E, 0x1F, 0x23, 1);
 }
 
-void EmDiablos_State0_0C(void)
+/*
+ * Empty.
+ */
+void EmDiablos_IdleNopB(void)
 {
 }
 
-void EmDiablos_State0_0D(Em *em, EmWork *work)
+/*
+ * Plays the layer-1 gesture DIAB_MOT_UPPER_D with sounds on layer-1 frames 2
+ * and 0x4A, then ends.
+ */
+void EmDiablos_UpperGestureD(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x14, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_UPPER_D, 0, 0);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -641,35 +1292,42 @@ void EmDiablos_State0_0D(Em *em, EmWork *work)
     Em_PlaySeAtBoneOnLayerFrame(em, 0x4A, 0x1F, 0x23, 1);
 }
 
-void EmDiablos_State0_0E(void)
+/*
+ * Empty.
+ */
+void EmDiablos_IdleNopC(void)
 {
 }
 
-void EmDiablos_State0_0F(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_IDLE_PAIR_A, blends to idle, plays DIAB_MOT_IDLE_PAIR_B,
+ * blends to idle, then ends.
+ */
+void EmDiablos_IdlePairB(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x50, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE_PAIR_A, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].blend == 0) {
             em->step++;
-            Em_SetMotion(em, 0x51, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE_PAIR_B, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
         break;
     case 4:
@@ -681,31 +1339,34 @@ void EmDiablos_State0_0F(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_10(Em *em, EmWork *work)
+/*
+ * The same as EmDiablos_IdlePairB with the order swapped (DIAB_MOT_IDLE_PAIR_B first).
+ */
+void EmDiablos_IdlePairC(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x51, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE_PAIR_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].blend == 0) {
             em->step++;
-            Em_SetMotion(em, 0x50, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE_PAIR_A, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
         break;
     case 4:
@@ -717,14 +1378,19 @@ void EmDiablos_State0_10(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_11(Em *em, EmWork *work)
+/*
+ * Plays the combat idle DIAB_MOT_ALERT_IDLE once, then ends. It also serves
+ * DIAB_IDLE_ALERT_RAGE (EmDiablos_SetIdleState: Em_StartRage) and
+ * DIAB_IDLE_ALERT_PENDING_RAGE (Em_StartPendingRage).
+ */
+void EmDiablos_Alert(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x33, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_ALERT_IDLE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -735,136 +1401,159 @@ void EmDiablos_State0_11(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_12(Em *em, EmWork *work)
+/*
+ * Rests while lying: hit react mode WAKE, blind, and the lying reaction set
+ * (Em_LoadReactionSet 1). Plays DIAB_MOT_REST_LIE_DOWN, then loops
+ * DIAB_MOT_REST for 1800 frames with +1 hp a frame. Then full hp,
+ * Em_ClearLowHpNeed and DIAB_IDLE_REST_END. The setter calls Em_ResetNotice.
+ */
+void EmDiablos_Rest(Em *em, EmWork *work)
 {
-    s16 n;
+    s16 maxHp;
 
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x20, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_REST_LIE_DOWN, 0, 0);
         Em_LoadReactionSet(em, 1);
         em->timer = 0x708;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x1F, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_REST, 0, 0);
         }
         break;
     case 2:
-        n = em->hpMax;
-        if (em->hp < n) {
+        maxHp = em->hpMax;
+        if (em->hp < maxHp) {
             Em_AddHp(em, 1);
         } else {
-            Em_AddHp(em, n);
+            Em_AddHp(em, maxHp);
         }
         if (--em->timer <= 0) {
             em->step++;
             Em_AddHp(em, em->hpMax);
             Em_ClearLowHpNeed(em);
-            EmDiablos_ChangeState(em, 0, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State0_13(void)
+/*
+ * Empty.
+ */
+void EmDiablos_IdleNopD(void)
 {
 }
 
-void EmDiablos_State0_14(Em *em, EmWork *work)
+/*
+ * Under status 2 (the setter calls Em_BeginStatus2; EM_DMG_STATUS2 on the
+ * ground): WAKE mode, lying reaction set, DIAB_MOT_COLLAPSE, then
+ * DIAB_MOT_LIE until em->timer runs out (set by Em_SetStatus2Timer in the
+ * damage handler). Then DIAB_IDLE_STATUS2_END.
+ */
+void EmDiablos_Status2Collapse(Em *em, EmWork *work)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x26, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_COLLAPSE, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x22, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_LIE, 0, 0);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            EmDiablos_ChangeState(em, 0, 0x18, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x18, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State0_15(Em *em, EmWork *work)
+/*
+ * Status 2 (Em_BeginStatus2 in the setter) as a lie-down: plays
+ * DIAB_MOT_LIE_DOWN, then DIAB_MOT_LIE for 600 frames with hp regen as in
+ * the rest. Then full hp, Em_ClearLowHpNeed and DIAB_IDLE_STATUS2_END.
+ */
+void EmDiablos_Status2LieDown(Em *em, EmWork *work)
 {
-    s16 n;
+    s16 maxHp;
 
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x27, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_LIE_DOWN, 0, 0);
         em->timer = 0x258;
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x22, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_LIE, 0, 0);
         }
         break;
     case 2:
-        n = em->hpMax;
-        if (em->hp < n) {
+        maxHp = em->hpMax;
+        if (em->hp < maxHp) {
             Em_AddHp(em, 1);
         } else {
-            Em_AddHp(em, n);
+            Em_AddHp(em, maxHp);
         }
         if (--em->timer <= 0) {
             em->step++;
             Em_AddHp(em, em->hpMax);
             Em_ClearLowHpNeed(em);
-            EmDiablos_ChangeState(em, 0, 0x18, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x18, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State0_16(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_IDLE_PAIR_A once, then ends.
+ */
+void EmDiablos_IdlePairD(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x50, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE_PAIR_A, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -875,13 +1564,18 @@ void EmDiablos_State0_16(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_17(Em *em, EmWork *work)
+/*
+ * After the rest: plays DIAB_MOT_REST_GET_UP with the standing reaction set
+ * (0), blind while it plays, then DIAB_IDLE_SHAKE_OFF. The setter calls
+ * Em_RefillNeed3.
+ */
+void EmDiablos_RestGetUp(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x21, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_REST_GET_UP, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -890,24 +1584,29 @@ void EmDiablos_State0_17(Em *em, EmWork *work)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->blind = 0;
-            EmDiablos_ChangeState(em, 0, 0x19, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x19, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State0_18(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_GET_UP with the standing reaction set and blind while it
+ * plays, then DIAB_IDLE_SHAKE_OFF. It serves DIAB_IDLE_STATUS2_END (setter:
+ * Em_EndStatus2) and DIAB_IDLE_STATUS1_END (Em_EndStatus1).
+ */
+void EmDiablos_StatusGetUp(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x25, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_GET_UP, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -916,24 +1615,29 @@ void EmDiablos_State0_18(Em *em, EmWork *work)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->blind = 0;
-            EmDiablos_ChangeState(em, 0, 0x19, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x19, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State0_19(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_SHAKE_OFF once, then ends. It serves DIAB_IDLE_SHAKE_OFF
+ * and the setter's three shake-offs: STATUS4 (Em_EndStatus4), HOLD2
+ * (holdTimer2 = 0) and STUN (Em_EndStatus5).
+ */
+void EmDiablos_ShakeOff(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3E, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_SHAKE_OFF, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -944,59 +1648,77 @@ void EmDiablos_State0_19(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State0_1A(void)
+/*
+ * Empty.
+ */
+void EmDiablos_IdleNopE(void)
 {
 }
 
-void EmDiablos_State0_1B(Em *em, EmWork *work)
+/*
+ * Under status 1 (setter: Em_BeginStatus1; EM_DMG_CAPTURED when not held, on
+ * the ground): the same as EmDiablos_Status2Collapse, with the timer from
+ * Em_SetStatus1Timer, then DIAB_IDLE_STATUS1_END.
+ */
+void EmDiablos_Status1Collapse(Em *em, EmWork *work)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x26, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_COLLAPSE, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x22, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_LIE, 0, 0);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            EmDiablos_ChangeState(em, 0, 0x1C, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x1C, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State0_1D(Em *em, EmWork *work)
+/*
+ * Downed by status 1 or 2 while under the sand or in a sand state: WAKE
+ * mode, blind, lying reaction set. If the trap/downed motions
+ * (DIAB_MOT_SAND_STRUGGLE-0x62, EmDiablos_InSandStuckMotion) already play,
+ * it goes straight to DIAB_MOT_DOWNED. Otherwise it is EM_STANCE_UNDER while
+ * DIAB_MOT_POP_OUT blends in and EM_STANCE_GROUND after, then
+ * DIAB_MOT_DOWNED. When em->timer runs out it goes to
+ * DIAB_REACT_STATUS2_SAND_GET_UP. It makes lying puffs at bone 0x22 every
+ * frame and a sound every 135 timer frames.
+ */
+void EmDiablos_StatusDownedInSand(Em *em, EmWork *work)
 {
-    f32 pos[3];
+    f32 puffOfs[3];
 
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        if (EmDiablos_InMotion448To44A(em) == 1) {
-            em->stance = 0;
+        if (EmDiablos_InSandStuckMotion(em) == 1) {
+            em->stance = EM_STANCE_GROUND;
             em->step++;
-            Em_SetMotion(em, 0x61, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWNED, 0, 0);
         } else {
-            em->stance = 4;
-            if (em->motionId[0] != 0x451) {
-                Em_SetMotion(em, 0x69, 0, 0);
+            em->stance = EM_STANCE_UNDER;
+            if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_POP_OUT)) {
+                Em_SetMotion(em, DIAB_MOT_POP_OUT, 0, 0);
             }
         }
         em->lookAtTarget = 0;
@@ -1004,45 +1726,50 @@ void EmDiablos_State0_1D(Em *em, EmWork *work)
         break;
     case 1:
         if (em->motion[0].blend != 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
         if (em->motion[0].playing == 0) {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->step++;
-            Em_SetMotion(em, 0x61, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWNED, 0, 0);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            EmDiablos_ChangeState(em, 4, 0x12, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STATUS2_SAND_GET_UP, EM_SYNC_OWNER);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 4, 0x12, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STATUS2_SAND_GET_UP, EM_SYNC_OWNER);
         }
         break;
     }
-    pos[0] = 0.0f;
-    pos[1] = 10.0f;
-    pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    puffOfs[0] = 0.0f;
+    puffOfs[1] = 10.0f;
+    puffOfs[2] = 140.0f;
+    Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
     if (em->timer % 135 == 0) {
         Em_PlaySeAtBone(em, 0x57, 0x23);
     }
 }
 
-void EmDiablos_State1_00(Em *em, EmWork *work)
+/*
+ * Walks with DIAB_MOT_WALK to the goal (Em_StepToGoal 0x40) or, with no
+ * goal, until em->timer runs out, then ends. The setter turns it into
+ * DIAB_MOVE_LIMP below 30% hp.
+ */
+void EmDiablos_Walk(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 3, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_WALK, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
@@ -1061,19 +1788,29 @@ void EmDiablos_State1_00(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State1_01(Em *em, EmWork *work)
+/*
+ * Calls EmDiablos_EndState at once. The setter only sets scriptPending and
+ * returns, so it never enters this state.
+ */
+void EmDiablos_MoveEnd(Em *em, EmWork *work)
 {
     EmDiablos_EndState(em, 0, 0);
 }
 
-void EmDiablos_State1_02(Em *em, EmWork *work)
+/*
+ * Runs with DIAB_MOT_RUN to the goal or until the timer runs out, then ends.
+ * With a goal, a wall hit (EmDiablos_ChargeHitWall: the horn, part 6,
+ * unbroken) goes to DIAB_IDLE_HORN_STUCK. The setter makes it LIMP below 30%
+ * hp and RUN_AND_STOP in combat.
+ */
+void EmDiablos_Run(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_RUN, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
@@ -1083,7 +1820,7 @@ void EmDiablos_State1_02(Em *em, EmWork *work)
                 break;
             }
             if (EmDiablos_ChargeHitWall(em) != 0) {
-                EmDiablos_ChangeState(em, 0, 2, 1);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_HORN_STUCK, EM_SYNC_SEND);
                 break;
             }
         } else {
@@ -1096,12 +1833,17 @@ void EmDiablos_State1_02(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State1_03(Em *em, EmWork *work)
+/*
+ * Turns toward the target with EmDiablos_TurnParams[0]
+ * (Em_StartTurnToTarget/Em_TurnStep), clears EM_FLAG_NO_ROOT_MOTION, then
+ * ends. The setter makes it DIAB_MOVE_TURN_IN_COMBAT in combat.
+ */
+void EmDiablos_Turn(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_StartTurnToTarget(em, &EmDiablos_TurnParams[0]);
         break;
@@ -1115,30 +1857,36 @@ void EmDiablos_State1_03(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State1_04(Em *em, EmWork *work)
+/*
+ * Runs as in EmDiablos_Run (including the wall check), and on reaching the
+ * goal or at the timeout plays DIAB_MOT_CHARGE_STOP, then ends. It serves
+ * DIAB_MOVE_RUN_AND_STOP and DIAB_MOVE_RUN_AND_STOP_SLOW (the setter sets
+ * motionSpeed 0.7). The setter sets speed with Em_SetSpeedScaled flag 2.
+ */
+void EmDiablos_RunAndStop(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_RUN, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
             if (Em_StepToGoal(em, 0x40, 1) == 1) {
                 em->step++;
-                Em_SetMotion(em, 0x64, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_CHARGE_STOP, 0, 0);
                 break;
             }
             if (EmDiablos_ChargeHitWall(em) != 0) {
-                EmDiablos_ChangeState(em, 0, 2, 1);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_HORN_STUCK, EM_SYNC_SEND);
                 break;
             }
         } else {
             if (--em->timer <= 0) {
                 em->step++;
-                Em_SetMotion(em, 0x64, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_CHARGE_STOP, 0, 0);
             }
             break;
         }
@@ -1152,12 +1900,15 @@ void EmDiablos_State1_04(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State1_05(Em *em, EmWork *work)
+/*
+ * The same as EmDiablos_Turn with EmDiablos_TurnParams[1].
+ */
+void EmDiablos_TurnInCombat(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_StartTurnToTarget(em, &EmDiablos_TurnParams[1]);
         break;
@@ -1171,14 +1922,18 @@ void EmDiablos_State1_05(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State1_06(Em *em, EmWork *work)
+/*
+ * Walks with DIAB_MOT_LIMP to the goal or until the timer runs out (capped
+ * at 300 by the setter), then ends.
+ */
+void EmDiablos_Limp(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0xA, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_LIMP, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
@@ -1197,7 +1952,12 @@ void EmDiablos_State1_06(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State1_07(Em *em, EmWork *work)
+/*
+ * Plays DIAB_MOT_TURN_IN_PLACE and turns rotY toward goalYaw by 0x200 a
+ * frame (snapping within 0x200) until frame 60. Then it ends when layer 1
+ * stops.
+ */
+void EmDiablos_TurnToGoal(Em *em, EmWork *work)
 {
     u16 goalYaw;
     u32 diff;
@@ -1206,9 +1966,9 @@ void EmDiablos_State1_07(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x36, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_TURN_IN_PLACE, 0, 0);
         work->goalYaw = Math_AngleXZ(&em->posX, em->goal);
         break;
     case 1:
@@ -1236,17 +1996,24 @@ void EmDiablos_State1_07(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State2_00(Em *em, EmWork *work)
+/*
+ * Digs into the sand: DIAB_MOT_BURROW unless it already plays, noReact, and
+ * guardTimer kept at 2. From frame 100 the shadow is hidden
+ * (hideShadow/hideShadowHold 2). At the motion's end it clears noReact and
+ * calls EmDiablos_EndStateUnderground (EM_STANCE_UNDER,
+ * DIAB_BURROW_IDLE).
+ */
+void EmDiablos_Burrow(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        if (em->motionId[0] != 0x44F) {
-            Em_SetMotion(em, 0x67, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_BURROW)) {
+            Em_SetMotion(em, DIAB_MOT_BURROW, 0, 0);
         }
         em->noReact = 1;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 100.0f) != 0) {
@@ -1256,52 +2023,63 @@ void EmDiablos_State2_00(Em *em, EmWork *work)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->noReact = 0;
-            EmDiablos_EndState2(em);
+            EmDiablos_EndStateUnderground(em);
         }
         break;
     }
     em->guardTimer = 2;
 }
 
-void EmDiablos_State2_01(Em *em, EmWork *work)
+/*
+ * Under the sand (EM_STANCE_UNDER): plays the idle motion once, then (owner
+ * only) EmDiablos_EndStateUnderground, which re-enters this state. EmDiablos_Start enters it;
+ * every burrow state ends here.
+ */
+void EmDiablos_BurrowIdle(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         break;
     case 1:
         if ((em->remote == 0) && (em->motion[0].playing == 0)) {
             em->step++;
-            EmDiablos_EndState2(em);
+            EmDiablos_EndStateUnderground(em);
         }
         break;
     }
 }
 
-void EmDiablos_State2_02(Em *em, EmWork *work)
+/*
+ * Surfaces: plays DIAB_MOT_EMERGE unless it already runs; EM_STANCE_UNDER
+ * while the motion blends in, then ground; shadow hidden before frame 100,
+ * noReact and guardTimer 2 while it plays; then EmDiablos_EndState (ground
+ * idle).
+ */
+void EmDiablos_Emerge(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        if (em->motionId[0] != 0x450) {
-            Em_SetMotion(em, 0x68, 0, 0);
-            em->stance = 4;
+        if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_EMERGE)) {
+            Em_SetMotion(em, DIAB_MOT_EMERGE, 0, 0);
+            em->stance = EM_STANCE_UNDER;
         } else if (em->motion[0].blend != 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
         em->noReact = 1;
         break;
     case 1:
         if (em->motion[0].blend != 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             if (EmMotion_ReachedFrame(em, 0, 100.0f) == 0) {
                 em->hideShadowHold = 2;
                 em->hideShadow = 2;
@@ -1317,77 +2095,91 @@ void EmDiablos_State2_02(Em *em, EmWork *work)
     em->guardTimer = 2;
 }
 
-void EmDiablos_State2_03(Em *em, EmWork *work)
+/*
+ * Under the sand: turns to the target with EmDiablos_TurnParams[2], then
+ * EmDiablos_EndStateUnderground.
+ */
+void EmDiablos_BurrowTurn(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->lookAtTarget = 0;
         Em_StartTurnToTarget(em, &EmDiablos_TurnParams[2]);
         break;
     case 1:
         if (Em_TurnStep(em, &EmDiablos_TurnParams[2]) == 1) {
             em->step++;
-            EmDiablos_EndState2(em);
+            EmDiablos_EndStateUnderground(em);
         }
         break;
     }
 }
 
-void EmDiablos_State2_04(Em *em, EmWork *work)
+/*
+ * Under the sand: DIAB_MOT_RUN (sand trail), camera shake every 8 frames,
+ * pad vibration for the local player within 2000 every 8 frames; steps to
+ * the goal until frame 150, then subtracts the root motion from goalDist;
+ * ends at the goal (or by timer with no goal) with EmDiablos_EndStateUnderground.
+ */
+void EmDiablos_BurrowTravelRumble(Em *em, EmWork *work)
 {
-    EmWork_4E *w = (EmWork_4E *) work;
-    Player *p = &gPlayers[gScene.localPlayer];
-    f32 v[3];
+    EmDiablosWork *diabWork = (EmDiablosWork *) work;
+    Player *pl = &gPlayers[gScene.localPlayer];
+    f32 rootDelta[3];
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0x64);
-        w->cnt = 2;
+        Em_SetMotion(em, DIAB_MOT_RUN, 0, 0x64);
+        diabWork->quakeTimer = 2;
         break;
     case 1:
-        if (--w->cnt == 0) {
+        if (--diabWork->quakeTimer == 0) {
             CamShake_ReqAIf(em, 5);
-            w->cnt = 8;
+            diabWork->quakeTimer = 8;
         }
         if (em->hasGoal != 0) {
             if (EmMotion_ReachedFrame(em, 0, 150.0f) == 0) {
                 Em_StepToGoal(em, 0x40, 1);
             } else {
-                Em_MotionDelta(em, v);
-                em->goalDist -= v[2];
+                Em_MotionDelta(em, rootDelta);
+                em->goalDist -= rootDelta[2];
             }
             if (em->goalDist <= 0.0f) {
                 em->step++;
-                EmDiablos_EndState2(em);
+                EmDiablos_EndStateUnderground(em);
             }
         }
-        if (!(gScene.frame & 7) && Obj_SameArea(em, p) && Obj_InCurrentArea(p) &&
-            Vec_Distance((f32 *) &em->posX, (f32 *) p->pos) < 2000.0f) {
+        if (!(gScene.frame & 7) && Obj_SameArea(em, pl) && Obj_InCurrentArea(pl) &&
+            Vec_Distance((f32 *) &em->posX, (f32 *) pl->pos) < 2000.0f) {
             Vib_Start(0, 2);
         }
         if (em->hasGoal == 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                EmDiablos_EndState2(em);
+                EmDiablos_EndStateUnderground(em);
             }
         }
         break;
     }
 }
 
-void EmDiablos_State2_05(Em *em, EmWork *work)
+/*
+ * Under the sand: DIAB_MOT_WALK, Em_StepToGoal; reaching the goal sets timer
+ * 1; ends on the timer with EmDiablos_EndStateUnderground.
+ */
+void EmDiablos_BurrowWalk(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 3, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_WALK, 0, 0);
         break;
     case 1:
         if (Em_StepToGoal(em, 0x40, 1) == 1) {
@@ -1395,40 +2187,50 @@ void EmDiablos_State2_05(Em *em, EmWork *work)
         }
         if (--em->timer <= 0) {
             em->step++;
-            EmDiablos_EndState2(em);
+            EmDiablos_EndStateUnderground(em);
         }
         break;
     }
 }
 
-void EmDiablos_State2_06(Em *em, EmWork *work)
+/*
+ * From the ground: DIAB_MOT_LEAP with velY curve kind 2; airborne
+ * (EM_STANCE_AIR) from scaled frame 70; when the curves end,
+ * EmDiablos_EndStateInAir (DIAB_BURROW_AIR_LOOP).
+ */
+void EmDiablos_Leap(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x12, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_LEAP, 0, 0);
         EmDiablos_StartCurves(em, 2U);
         work->flyGuard = 0;
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 70.0f, 0U) != 0) {
             em->step++;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             EmDiablos_UpdateCurves(em);
         }
         break;
     case 2:
         if (EmDiablos_UpdateCurves(em)) {
             em->step++;
-            EmDiablos_SetUnderground(em, 0);
+            EmDiablos_EndStateInAir(em, 0);
         }
         break;
     }
 }
 
-void EmDiablos_State2_07(Em *em, EmWork *work)
+/*
+ * Airborne DIAB_MOT_AIR, velY curve 1, turns to the goal at turnSpeed 0x100
+ * for up to 150 frames, then the air loop; posY kept at or above the floor.
+ * Flyer HOVER_TURN copy.
+ */
+void EmDiablos_AirTurn(Em *em, EmWork *work)
 {
     f32 floorY;
     s32 done;
@@ -1437,8 +2239,8 @@ void EmDiablos_State2_07(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0xF, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, DIAB_MOT_AIR, 0, 0);
         work->turnSpeed = 0x100;
         work->goalYaw = Math_AngleXZ(&em->posX, em->goal);
         work->goalYaw = work->goalYaw - em->rotY;
@@ -1448,14 +2250,9 @@ void EmDiablos_State2_07(Em *em, EmWork *work)
     case 1:
         EmDiablos_MoveByVelYCurve(em, 1);
         done = Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 1) & 0xFF;
-        if (--em->timer > 0) {
-            if (done != 0) {
-                goto block_9;
-            }
-        } else {
-block_9:
+        if (--em->timer <= 0 || done != 0) {
             em->step++;
-            EmDiablos_SetUnderground(em, 0);
+            EmDiablos_EndStateInAir(em, 0);
         }
         break;
     }
@@ -1465,42 +2262,52 @@ block_9:
     }
 }
 
-void EmDiablos_State2_08(Em *em, EmWork *work)
+/*
+ * Under the sand: DIAB_MOT_RUN with the 8-frame camera shake, steps to
+ * the goal (no vibration, no root-motion phase); ends at the goal or on the
+ * timer with EmDiablos_EndStateUnderground.
+ */
+void EmDiablos_BurrowTravel(Em *em, EmWork *work)
 {
-    EmWork_4E *w = (EmWork_4E *) work;
+    EmDiablosWork *diabWork = (EmDiablosWork *) work;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0x64);
-        w->cnt = 2;
+        Em_SetMotion(em, DIAB_MOT_RUN, 0, 0x64);
+        diabWork->quakeTimer = 2;
         break;
     case 1:
-        if (--w->cnt == 0) {
+        if (--diabWork->quakeTimer == 0) {
             CamShake_ReqAIf(em, 5);
-            w->cnt = 8;
+            diabWork->quakeTimer = 8;
         }
         if (em->hasGoal != 0) {
             if (Em_StepToGoal(em, 0x40, 1) == 1) {
                 em->step++;
-                EmDiablos_EndState2(em);
+                EmDiablos_EndStateUnderground(em);
                 break;
             }
         } else {
             if (--em->timer <= 0) {
                 em->step++;
-                EmDiablos_EndState2(em);
+                EmDiablos_EndStateUnderground(em);
             }
         }
         break;
     }
 }
 
-void EmDiablos_State2_09(Em *em, EmWork *work)
+/*
+ * Airborne DIAB_MOT_AIR, velY 20, moving until the timer ends or posY passes
+ * goal height + 1000, then the air loop. It aims at a local
+ * position that is never set (the yaw comes from whatever the stack holds).
+ */
+void EmDiablos_AirRise(Em *em, EmWork *work)
 {
-    f32 pos[3];
+    f32 aimPos[3];
     f32 floorY;
     s32 timer;
 
@@ -1508,8 +2315,8 @@ void EmDiablos_State2_09(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0xF, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, DIAB_MOT_AIR, 0, 0);
         work->flyGuard = 0;
         work->moveAngX = 0;
         work->moveAngZ = 0;
@@ -1517,14 +2324,14 @@ void EmDiablos_State2_09(Em *em, EmWork *work)
         em->velY = 20.0f;
         break;
     case 1:
-        work->moveAngY = Math_AngleXZ(&em->posX, pos) & 0xFFFF;
+        work->moveAngY = Math_AngleXZ(&em->posX, aimPos) & 0xFFFF;
         Em_MoveRotated(em, &work->moveAngX);
         timer = em->timer - 1;
         em->timer = timer;
         if ((timer <= 0) || !(em->posY <= (1000.0f + em->goal[1]))) {
             em->step++;
             Player_ClearVelocity(em);
-            EmDiablos_SetUnderground(em, 0);
+            EmDiablos_EndStateInAir(em, 0);
         }
         break;
     }
@@ -1534,26 +2341,34 @@ void EmDiablos_State2_09(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State2_0A(Em *em, EmWork *work)
+/*
+ * Under the sand: idle motion, waits 90 frames, then EmDiablos_EndStateUnderground.
+ */
+void EmDiablos_BurrowWait(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         em->timer = 0x5A;
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmDiablos_EndState2(em);
+            EmDiablos_EndStateUnderground(em);
         }
         break;
     }
 }
 
-void EmDiablos_State2_0B(Em *em, EmWork *work)
+/*
+ * Airborne DIAB_MOT_AIR: turns and pitches to the goal, moves, velY curve 1,
+ * until within 10*velZ of the goal (XZ) or the timer ends; clears velocity,
+ * then the air loop. Flyer HOVER_TO_GOAL copy.
+ */
+void EmDiablos_AirToGoal(Em *em, EmWork *work)
 {
     f32 dist;
     f32 floorY;
@@ -1561,10 +2376,10 @@ void EmDiablos_State2_0B(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         work->turnSpeed = 0x100;
-        Em_SetMotion(em, 0xF, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_AIR, 0, 0);
         work->flyGuard = 0;
         break;
     case 1:
@@ -1575,15 +2390,10 @@ void EmDiablos_State2_0B(Em *em, EmWork *work)
         Em_MoveRotated(em, &work->moveAngX);
         EmDiablos_MoveByVelYCurve(em, 1);
         dist = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer > 0) {
-            if (dist <= (10.0f * em->velZ)) {
-                goto block_9;
-            }
-        } else {
-block_9:
+        if (--em->timer <= 0 || dist <= (10.0f * em->velZ)) {
             em->step++;
             Player_ClearVelocity(em);
-            EmDiablos_SetUnderground(em, 0);
+            EmDiablos_EndStateInAir(em, 0);
         }
         break;
     }
@@ -1593,7 +2403,13 @@ block_9:
     }
 }
 
-void EmDiablos_State2_0C(Em *em, EmWork *work)
+/*
+ * Airborne DIAB_MOT_AIR sinking at velY -10; below floor + 630 at frames
+ * 10/86/160 of the loop it plays DIAB_MOT_DESCEND for 30 frames, then
+ * DIAB_MOT_LAND on the floor (stance ground, camera shake 1), then
+ * EmDiablos_EndState. EmDiablos_Reappear drops the monster in through it.
+ */
+void EmDiablos_AirLand(Em *em, EmWork *work)
 {
     f32 velY;
     f32 floorY;
@@ -1601,11 +2417,11 @@ void EmDiablos_State2_0C(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         em->rotX = 0;
         em->rotZ = 0;
-        Em_SetMotion(em, 0xF, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_AIR, 0, 0);
         Player_ClearVelocity(em);
         em->velY = -10.0f;
         work->flyGuard = 0;
@@ -1617,7 +2433,7 @@ void EmDiablos_State2_0C(Em *em, EmWork *work)
         Em_MoveRotated(em, &work->moveAngX);
         if (!((630.0f + em->floorY) <= em->posY) && ((EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 86.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 160.0f, 0U) != 0))) {
             em->step++;
-            Em_SetMotion(em, 0xB, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DESCEND, 0, 0);
             velY = (em->floorY - em->posY) / 30.0f;
             em->velY = velY;
             if (!(velY < 0.0f)) {
@@ -1633,11 +2449,11 @@ void EmDiablos_State2_0C(Em *em, EmWork *work)
         Em_MoveRotated(em, &work->moveAngX);
         if (--em->timer < 0) {
             em->step++;
-            Em_SetMotion(em, 0x13, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_LAND, 0, 0);
             em->posY = em->floorY;
             em->rotX = 0;
             em->rotZ = 0;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             CamShake_ReqAIf(em, 1);
         }
         break;
@@ -1654,7 +2470,11 @@ void EmDiablos_State2_0C(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State2_0E(Em *em, EmWork *work)
+/*
+ * Airborne DIAB_MOT_AIR once, then the air loop again
+ * (EmDiablos_EndStateInAir targets this state).
+ */
+void EmDiablos_AirLoop(Em *em, EmWork *work)
 {
     f32 floorY;
 
@@ -1662,14 +2482,14 @@ void EmDiablos_State2_0E(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0xF, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, DIAB_MOT_AIR, 0, 0);
         work->flyGuard = 0;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmDiablos_SetUnderground(em, 0);
+            EmDiablos_EndStateInAir(em, 0);
         }
         break;
     }
@@ -1679,7 +2499,15 @@ void EmDiablos_State2_0E(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State2_17(Em *em, EmWork *work)
+/*
+ * Leaps out after the sand struggles (DIAB_REACT_POP_OUT, DIAB_REACT_SAND_STRUGGLE,
+ * DIAB_REACT_STATUS4_SAND_STRUGGLE): DIAB_MOT_LEAP
+ * with curve kind 2, stance air, noReact; below floor + 800 after the
+ * curves, DIAB_MOT_DESCEND with velY to reach the floor in 30 frames; on the
+ * floor DIAB_MOT_LAND, camera shake 2; then landTimer 150 (frames since
+ * landing) and EmDiablos_EndState.
+ */
+void EmDiablos_SandEscape(Em *em, EmWork *work)
 {
     f32 floorY;
     f32 velY;
@@ -1688,9 +2516,9 @@ void EmDiablos_State2_17(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x12, 0xA, 0x60);
+        Em_SetMotion(em, DIAB_MOT_LEAP, 0xA, 0x60);
         EmDiablos_StartCurves(em, 2U);
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->noReact = 1;
         break;
     case 1:
@@ -1702,7 +2530,7 @@ void EmDiablos_State2_17(Em *em, EmWork *work)
     case 2:
         if ((EmDiablos_UpdateCurves(em) & 0xFF) && (em->posY <= (800.0f + em->floorY))) {
             em->step++;
-            Em_SetMotion(em, 0xB, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DESCEND, 0, 0);
             Player_ClearVelocity(em);
             floorY = em->floorY;
             if (em->posY < floorY) {
@@ -1722,15 +2550,15 @@ void EmDiablos_State2_17(Em *em, EmWork *work)
         Em_MoveRotated(em, &work->moveAngX);
         if (em->posY <= em->floorY) {
             em->step++;
-            Em_SetMotion(em, 0x13, 0, 0);
-            em->stance = 0;
+            Em_SetMotion(em, DIAB_MOT_LAND, 0, 0);
+            em->stance = EM_STANCE_GROUND;
             em->posY = em->floorY;
             CamShake_ReqAIf(em, 2);
         }
         break;
     case 4:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            ((EmDiablosWork *) work)->landTimer = 150;
             em->step++;
             EmDiablos_EndState(em, 0, 0);
         }
@@ -1742,15 +2570,20 @@ void EmDiablos_State2_17(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_00(Em *em, EmWork *work)
+/*
+ * Turns to the target within 20 degrees (Em_TurnToTargetMotion with
+ * WALK/TURN_LEFT/TURN_RIGHT), then DIAB_MOT_STARE once, then
+ * EmDiablos_EndState.
+ */
+void EmDiablos_TurnAndStare(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 0x24, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_STARE, 0, 0);
         }
         break;
     case 1:
@@ -1762,75 +2595,89 @@ void EmDiablos_State3_00(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_03(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_STARE once with lookAtTarget set, then EmDiablos_EndAttack.
+ */
+void EmDiablos_Stare(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
-        Em_SetMotion(em, 0x24, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_STARE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
             em->step++;
-            EmDiablos_State3_End(em, work);
+            EmDiablos_EndAttack(em, work);
         }
         break;
     }
 }
 
-void EmDiablos_State3_06(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_TAIL_SPIN twice, rotY + 0x200 a frame, then EmDiablos_EndAttack.
+ * It sets the motion on layer 0 but waits on layer 1's playing flag.
+ */
+void EmDiablos_TailSpin(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x2A, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_TAIL_SPIN, 0, 0);
         Motion_InitTime(em, 0);
         break;
     case 1:
         em->rotY += 0x200;
         if (em->motion[1].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x2A, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_TAIL_SPIN, 0, 0);
         }
         break;
     case 2:
         em->rotY += 0x200;
         if (em->motion[1].playing == 0) {
             em->step++;
-            EmDiablos_State3_End(em, work);
+            EmDiablos_EndAttack(em, work);
         }
         break;
     }
 }
 
-void EmDiablos_State3_0F(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_RUN to the goal (EmDiablos_SetAttackState puts the goal 500
+ * past the target, or 150 frames without a target); a wall hit
+ * (EmDiablos_ChargeHitWall) goes to DIAB_IDLE_HORN_STUCK; at the goal
+ * DIAB_MOT_CHARGE_STOP, then EmDiablos_EndState. Same code as
+ * EmDiablos_RunAndStop.
+ */
+void EmDiablos_Charge(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_RUN, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
             if (Em_StepToGoal(em, 0x40, 1) == 1) {
-                Em_SetMotion(em, 0x64, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_CHARGE_STOP, 0, 0);
                 em->step++;
                 break;
             }
             if (EmDiablos_ChargeHitWall(em) != 0) {
-                EmDiablos_ChangeState(em, 0, 2, 1);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_HORN_STUCK, EM_SYNC_SEND);
                 break;
             }
         } else {
             if (--em->timer <= 0) {
-                Em_SetMotion(em, 0x64, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_CHARGE_STOP, 0, 0);
                 em->step++;
             }
             break;
@@ -1845,29 +2692,32 @@ void EmDiablos_State3_0F(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_10(Em *em, EmWork *work)
+/*
+ * As EmDiablos_Charge (timer dist/30 + 30) but ends with DIAB_MOT_ATTACK_A.
+ */
+void EmDiablos_ChargeAttackA(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_RUN, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
             if (Em_StepToGoal(em, 0x40, 1) == 1) {
-                Em_SetMotion(em, 0x6A, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_ATTACK_A, 0, 0);
                 em->step++;
                 break;
             }
             if (EmDiablos_ChargeHitWall(em) != 0) {
-                EmDiablos_ChangeState(em, 0, 2, 1);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_HORN_STUCK, EM_SYNC_SEND);
                 break;
             }
         } else {
             if (--em->timer <= 0) {
-                Em_SetMotion(em, 0x6A, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_ATTACK_A, 0, 0);
                 em->step++;
             }
             break;
@@ -1882,29 +2732,32 @@ void EmDiablos_State3_10(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_11(Em *em, EmWork *work)
+/*
+ * As EmDiablos_Charge (timer dist/30 + 30) but ends with DIAB_MOT_ATTACK_B.
+ */
+void EmDiablos_ChargeAttackB(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x11, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_RUN, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
             if (Em_StepToGoal(em, 0x40, 1) == 1) {
-                Em_SetMotion(em, 0x6B, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_ATTACK_B, 0, 0);
                 em->step++;
                 break;
             }
             if (EmDiablos_ChargeHitWall(em) != 0) {
-                EmDiablos_ChangeState(em, 0, 2, 1);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_HORN_STUCK, EM_SYNC_SEND);
                 break;
             }
         } else {
             if (--em->timer <= 0) {
-                Em_SetMotion(em, 0x6B, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_ATTACK_B, 0, 0);
                 em->step++;
             }
             break;
@@ -1919,15 +2772,19 @@ void EmDiablos_State3_11(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_1A(Em *em, EmWork *work)
+/*
+ * Turns to the target (20 degrees), then DIAB_MOT_ATTACK_A, then
+ * EmDiablos_EndState.
+ */
+void EmDiablos_TurnAttackA(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 0x6A, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_ATTACK_A, 0, 0);
         }
         break;
     case 1:
@@ -1939,15 +2796,18 @@ void EmDiablos_State3_1A(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_1B(Em *em, EmWork *work)
+/*
+ * Turns to the target, then DIAB_MOT_ATTACK_B, then EmDiablos_EndState.
+ */
+void EmDiablos_TurnAttackB(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 0x6B, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_ATTACK_B, 0, 0);
         }
         break;
     case 1:
@@ -1959,14 +2819,18 @@ void EmDiablos_State3_1B(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_1C(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_ATTACK_C without turning, then EmDiablos_EndState; serves states
+ * 0x1C and 0x1F.
+ */
+void EmDiablos_AttackC(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x6C, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_ATTACK_C, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1977,15 +2841,18 @@ void EmDiablos_State3_1C(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_1D(Em *em, EmWork *work)
+/*
+ * Turns to the target, then DIAB_MOT_ATTACK_D, then EmDiablos_EndState.
+ */
+void EmDiablos_TurnAttackD(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 0x6D, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_ATTACK_D, 0, 0);
         }
         break;
     case 1:
@@ -1997,14 +2864,17 @@ void EmDiablos_State3_1D(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State3_1E(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_ROAR once, then EmDiablos_EndState.
+ */
+void EmDiablos_Roar(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x6F, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_ROAR, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2015,34 +2885,19 @@ void EmDiablos_State3_1E(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State4_00(Em *em)
+/*
+ * Em_RestartScript, DIAB_MOT_FLINCH once, then EmDiablos_EndState (parts
+ * 0/7, EM_DMG_HIT_MODE3).
+ */
+void EmDiablos_Flinch(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        em->lookAtTarget = 0;
-        Em_RestartScript(em);
-        Em_SetMotion(em, 0x3C, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            EmDiablos_EndState(em, 0, 0);
-        }
-        break;
-    }
-}
-
-void EmDiablos_State4_01(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x42, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FLINCH, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2053,15 +2908,19 @@ void EmDiablos_State4_01(Em *em)
     }
 }
 
-void EmDiablos_State4_02(Em *em)
+/*
+ * DIAB_MOT_FLINCH_B once (unbroken part 3/4 and the default parts), then
+ * EmDiablos_EndState.
+ */
+void EmDiablos_FlinchB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3F, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FLINCH_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2072,15 +2931,19 @@ void EmDiablos_State4_02(Em *em)
     }
 }
 
-void EmDiablos_State4_03(Em *em)
+/*
+ * DIAB_MOT_FLINCH_C once (part 5, or part 6 not yet broken), then
+ * EmDiablos_EndState.
+ */
+void EmDiablos_FlinchC(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x40, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FLINCH_C, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2091,67 +2954,102 @@ void EmDiablos_State4_03(Em *em)
     }
 }
 
-void EmDiablos_State4_04(Em *em)
+/*
+ * DIAB_MOT_FLINCH_D once (parts 1/2), then EmDiablos_EndState.
+ */
+void EmDiablos_FlinchD(Em *em)
 {
-    f32 turnF;
-    u32 turn;
-    u8 type;
+    switch (em->step) {
+    case 0:
+        em->step++;
+        em->stance = EM_STANCE_GROUND;
+        em->lookAtTarget = 0;
+        Em_RestartScript(em);
+        Em_SetMotion(em, DIAB_MOT_FLINCH_D, 0, 0);
+        break;
+    case 1:
+        if (em->motion[0].playing == 0) {
+            em->step++;
+            EmDiablos_EndState(em, 0, 0);
+        }
+        break;
+    }
+}
+
+/*
+ * EM_DMG_PART8_DOWN (EmDiablos_ChangeState: fxFlags |= 1, partBreakCount++, all
+ * statuses end); noHitTimer 5; DIAB_MOT_PART_BREAK hides mesh 1 from frame
+ * 6, turns rotY back by 936*motionSpeed a frame in frames 52-122; at the end
+ * rotY -= 8 and DIAB_REACT_PART_BREAK_END (owner).
+ */
+void EmDiablos_PartBreak(Em *em)
+{
+    f32 turnStepF;
+    u32 turnStep;
+    u8 kind;
 
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x41, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_PART_BREAK, 0, 0);
         break;
     case 1:
         if ((EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
-            type = em->type;
-            if ((type != 0x14) && (type != 0x27)) {
+            kind = em->type;
+            if ((kind != 0x14) && (kind != 0x27)) {
                 em->meshShown[1] = 0;
             }
         }
         if ((EmMotion_ReachedFrame(em, 0, 52.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 122.0f) == 0)) {
-            turnF = 936.0f * em->motionSpeed;
-            turn = (u32) turnF;
-            em->rotY -= (s32) turn & 0xFFFF;
+            turnStepF = 936.0f * em->motionSpeed;
+            turnStep = (u32) turnStepF;
+            em->rotY -= (s32) turnStep & 0xFFFF;
         }
         if (em->motion[0].playing == 0) {
             em->step++;
             em->rotY -= 8;
-            EmDiablos_ChangeState(em, 4, 0xF, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_PART_BREAK_END, EM_SYNC_OWNER);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 4, 0xF, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_PART_BREAK_END, EM_SYNC_OWNER);
         }
         break;
     }
 }
 
-void EmDiablos_State4_05(Em *em, EmWork *work, u8 variant)
+/*
+ * Shared knock-down/stun: even variants play KNOCK_DOWN, DOWN, DOWN_GET_UP,
+ * odd ones KNOCK_DOWN_B, DOWN_B, DOWN_GET_UP_B; variants 0/1 lie 120 frames
+ * and end with EmDiablos_EndState; 2/3 (stun) add stun stars, lie for the
+ * status-5 timer and go to DIAB_IDLE_STUN_SHAKE_OFF (shake-off), keeping
+ * prevStateGroup/prevState.
+ */
+void EmDiablos_KnockDown(Em *em, EmWork *work, u8 variant)
 {
     s32 k;
 
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         k = variant;
         if ((k & 1) == 0) {
-            Em_SetMotion(em, 0x45, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_KNOCK_DOWN, 0, 0);
         } else {
-            Em_SetMotion(em, 0x4A, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_KNOCK_DOWN_B, 0, 0);
         }
         switch (k) {
         case 2:
         case 3:
-            StageObj_Stun_CreateEm(em, 1, 0x22, (f32) em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
+            StunStars_CreateEm(em, 1, 0x22, (f32) em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
             break;
         }
         break;
@@ -2160,9 +3058,9 @@ void EmDiablos_State4_05(Em *em, EmWork *work, u8 variant)
             k = variant;
             em->step++;
             if ((k & 1) == 0) {
-                Em_SetMotion(em, 0x46, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_DOWN, 0, 0);
             } else {
-                Em_SetMotion(em, 0x4B, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_DOWN_B, 0, 0);
             }
             if (k != 3 && k != 2) {
                 em->timer = 120;
@@ -2173,9 +3071,9 @@ void EmDiablos_State4_05(Em *em, EmWork *work, u8 variant)
         if (--em->timer <= 0) {
             em->step++;
             if ((variant & 1) == 0) {
-                Em_SetMotion(em, 0x47, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_DOWN_GET_UP, 0, 0);
             } else {
-                Em_SetMotion(em, 0x48, 0, 0);
+                Em_SetMotion(em, DIAB_MOT_DOWN_GET_UP_B, 0, 0);
             }
         }
         break;
@@ -2192,39 +3090,45 @@ void EmDiablos_State4_05(Em *em, EmWork *work, u8 variant)
             case 2:
             case 3:
                 em->step++;
-                EmDiablos_ChangeState(em, 0, 0x23, 4);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         }
         break;
     case 4:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x23, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State4_06(Em *em)
+/*
+ * Attack kind 5 (or a part flinch) under the sand while not raging:
+ * DIAB_MOT_POP_OUT (EM_STANCE_UNDER while blending), then DIAB_MOT_SAND_STRUGGLE
+ * looped for trapTimer 0xD0 with Em_SetTrapTimeGoal, noReact; then
+ * DIAB_BURROW_SAND_ESCAPE (owner).
+ */
+void EmDiablos_PopOutOfSand(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x69, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_POP_OUT, 0, 0);
         em->noReact = 1;
         break;
     case 1:
         if (em->motion[0].blend != 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
         if (em->motion[0].playing == 0) {
-            em->stance = 0;
-            Em_SetMotion(em, 0x60, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
             em->trapTimer = 0xD0;
             Em_SetTrapTimeGoal(em);
             em->step++;
@@ -2232,34 +3136,40 @@ void EmDiablos_State4_06(Em *em)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x60, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         }
         if (--em->trapTimer <= 0) {
             em->step++;
             em->noReact = 0;
-            EmDiablos_ChangeState(em, 2, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_SAND_ESCAPE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 2, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_SAND_ESCAPE, EM_SYNC_OWNER_FLAGGED);
         }
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x60, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         }
         break;
     }
 }
 
-void EmDiablos_State4_07(Em *em)
+/*
+ * DIAB_MOT_PART6_BREAK once, then EmDiablos_EndState. Update picks it for a
+ * part-6 flinch when the part-6 state is 1 or 2 (Diablos, Black Diablos) or
+ * 2 (Monoblos kinds); part 6 at 2 also stops EmDiablos_ChargeHitWall (likely
+ * the horns).
+ */
+void EmDiablos_Part6Break(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x71, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_PART6_BREAK, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2270,15 +3180,20 @@ void EmDiablos_State4_07(Em *em)
     }
 }
 
-void EmDiablos_State4_08(Em *em, EmWork *work)
+/*
+ * EM_DMG_STATUS_IN_AIR or a flinch in stance air: DIAB_MOT_FALL with velY at
+ * most -50 and accelY -10, DIAB_MOT_FALL_LAND on the floor,
+ * DIAB_MOT_DOWN_GET_UP, then EmDiablos_EndState.
+ */
+void EmDiablos_FallFromAir(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4D, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FALL, 0, 0);
         if (em->velY > -50.0f) {
             em->velY = -50.0f;
         }
@@ -2289,15 +3204,15 @@ void EmDiablos_State4_08(Em *em, EmWork *work)
         if (em->posY <= em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 0;
-            Em_SetMotion(em, 0x4E, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, DIAB_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x47, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWN_GET_UP, 0, 0);
         }
         break;
     case 3:
@@ -2310,16 +3225,19 @@ void EmDiablos_State4_08(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State4_09(Em *em, EmWork *work)
+/*
+ * As EmDiablos_FallFromAir with blind 2 every frame; no caller in this file.
+ */
+void EmDiablos_FallFromAirBlind(Em *em, EmWork *work)
 {
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4D, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FALL, 0, 0);
         if (em->velY > -50.0f) {
             em->velY = -50.0f;
         }
@@ -2330,15 +3248,15 @@ void EmDiablos_State4_09(Em *em, EmWork *work)
         if (em->posY <= em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 0;
-            Em_SetMotion(em, 0x4E, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, DIAB_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x47, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWN_GET_UP, 0, 0);
         }
         break;
     case 3:
@@ -2351,15 +3269,18 @@ void EmDiablos_State4_09(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State4_0A(Em *em)
+/*
+ * DIAB_MOT_FLINCH_E once, then EmDiablos_EndState; no caller in this file.
+ */
+void EmDiablos_FlinchE(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3D, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FLINCH_E, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2370,65 +3291,83 @@ void EmDiablos_State4_0A(Em *em)
     }
 }
 
-void EmDiablos_State4_0B(Em *em)
+/*
+ * EM_DMG_STATUS4 on the ground (EmDiablos_ChangeState: Em_BeginStatus4):
+ * DIAB_MOT_STATUS4 until the timer, Em_SpawnStatus4Effect each frame, then
+ * DIAB_IDLE_STATUS4_SHAKE_OFF (shake-off).
+ */
+void EmDiablos_Status4(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4C, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_STATUS4, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmDiablos_ChangeState(em, 0, 0x21, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x21, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
     Em_SpawnStatus4Effect(em, 2);
 }
 
-void EmDiablos_State4_0D(Em *em)
+/*
+ * holdTimer 5 each frame; DIAB_MOT_SAND_STRUGGLE looped, noReact, until trapTimer
+ * ends; clears trapHit and noReact; then DIAB_BURROW_SAND_ESCAPE. Follows
+ * DIAB_REACT_STATUS2_SAND_GET_UP.
+ */
+void EmDiablos_SandStruggle(Em *em)
 {
     em->holdTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x60, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         Em_RestartScript(em);
         em->noReact = 1;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x60, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         }
         if (--em->trapTimer <= 0) {
             em->step++;
-            em->unk8AD = 0;
+            em->trapHit = 0;
             em->noReact = 0;
-            EmDiablos_ChangeState(em, 2, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_SAND_ESCAPE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 2, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_SAND_ESCAPE, EM_SYNC_OWNER_FLAGGED);
         }
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x60, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         }
         break;
     }
 }
 
-void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
+/*
+ * Downed half out of the sand: if a struggle motion (EmDiablos_InSandStuckMotion) already
+ * runs, DIAB_MOT_DOWNED at once, else DIAB_MOT_POP_OUT (EM_STANCE_UNDER
+ * while blending) first; lies for the timer, then Em_SetTrapTimeGoal and the
+ * matching struggle. variant 0 (status 4: hit-react mode STATUS, status-4
+ * effect each frame, then DIAB_REACT_STATUS4_SAND_STRUGGLE); variant 1
+ * (stun: stun stars, then DIAB_REACT_STUN_SAND_STRUGGLE).
+ */
+void EmDiablos_HitDownedInSand(Em *em, EmWork *work, u8 variant)
 {
     s32 k = variant;
 
@@ -2438,17 +3377,17 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        if (EmDiablos_InMotion448To44A(em) == 1) {
-            em->stance = 0;
+        if (EmDiablos_InSandStuckMotion(em) == 1) {
+            em->stance = EM_STANCE_GROUND;
             em->step++;
-            Em_SetMotion(em, 0x61, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWNED, 0, 0);
             if (k == 1) {
-                StageObj_Stun_CreateEm(em, 1, 0x22, (f32) em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
+                StunStars_CreateEm(em, 1, 0x22, (f32) em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
             }
         } else {
-            em->stance = 4;
-            if (em->motionId[0] != 0x451) {
-                Em_SetMotion(em, 0x69, 0, 0);
+            em->stance = EM_STANCE_UNDER;
+            if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_POP_OUT)) {
+                Em_SetMotion(em, DIAB_MOT_POP_OUT, 0, 0);
             }
         }
         em->lookAtTarget = 0;
@@ -2457,16 +3396,16 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
         break;
     case 1:
         if (em->motion[0].blend != 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
         }
         if (em->motion[0].playing == 0) {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->step++;
-            Em_SetMotion(em, 0x61, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWNED, 0, 0);
             if (k == 1) {
-                StageObj_Stun_CreateEm(em, 1, 0x22, (f32) em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
+                StunStars_CreateEm(em, 1, 0x22, (f32) em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
             }
         }
         break;
@@ -2476,10 +3415,10 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
             Em_SetTrapTimeGoal(em);
             switch (k) {
             default:
-                EmDiablos_ChangeState(em, 4, 0x11, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STATUS4_SAND_STRUGGLE, EM_SYNC_OWNER);
                 break;
             case 1:
-                EmDiablos_ChangeState(em, 4, 0x17, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STUN_SAND_STRUGGLE, EM_SYNC_OWNER);
                 break;
             }
         }
@@ -2489,10 +3428,10 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
             switch (k) {
             case 0:
             default:
-                EmDiablos_ChangeState(em, 4, 0x11, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STATUS4_SAND_STRUGGLE, EM_SYNC_OWNER);
                 break;
             case 1:
-                EmDiablos_ChangeState(em, 4, 0x17, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STUN_SAND_STRUGGLE, EM_SYNC_OWNER);
                 break;
             }
         }
@@ -2507,12 +3446,16 @@ void EmDiablos_State4_0E(Em *em, EmWork *work, u8 variant)
     }
 }
 
-void EmDiablos_State4_0F(Em *em)
+/*
+ * EmDiablos_ChangeState resets the base pose and breaks part 2 on entry; sets no
+ * motion, waits for the current one to stop, then EmDiablos_EndState.
+ */
+void EmDiablos_PartBreakEnd(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         Em_RestartScript(em);
         break;
     case 1:
@@ -2524,43 +3467,55 @@ void EmDiablos_State4_0F(Em *em)
     }
 }
 
-void EmDiablos_State4_11(Em *em)
+/*
+ * DIAB_MOT_SAND_STRUGGLE looped with noReact until trapTimer ends, then
+ * DIAB_BURROW_SAND_ESCAPE: DIAB_REACT_STATUS4_SAND_STRUGGLE and
+ * DIAB_REACT_STUN_SAND_STRUGGLE (EmDiablos_ChangeState ends status 4 or 5
+ * on entry).
+ */
+void EmDiablos_SandDownedStruggle(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x60, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         em->noReact = 1;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x60, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         }
         if (--em->trapTimer <= 0) {
             em->step++;
-            EmDiablos_ChangeState(em, 2, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_SAND_ESCAPE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 2, 0x17, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_SAND_ESCAPE, EM_SYNC_OWNER_FLAGGED);
         }
         if (em->motion[0].playing == 0) {
-            Em_SetMotion(em, 0x60, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_SAND_STRUGGLE, 0, 0);
         }
         break;
     }
 }
 
-void EmDiablos_State4_12(Em *em)
+/*
+ * EmDiablos_ChangeState ends status 2; DIAB_MOT_DOWNED_GET_UP with blind 2, then
+ * Em_SetTrapTimeGoal and DIAB_REACT_SAND_STRUGGLE. Entered from
+ * DIAB_IDLE_SAND_DOWNED (status 1/2 in the sand) by its timer or
+ * EM_DMG_HIT_LYING.
+ */
+void EmDiablos_Status2SandGetUp(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x62, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_DOWNED_GET_UP, 0, 0);
         em->blind = 2;
         break;
     case 1:
@@ -2569,53 +3524,65 @@ void EmDiablos_State4_12(Em *em)
             em->step++;
             em->blind = 0;
             Em_SetTrapTimeGoal(em);
-            EmDiablos_ChangeState(em, 4, 0xD, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_SAND_STRUGGLE, EM_SYNC_OWNER);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 4, 0xD, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_SAND_STRUGGLE, EM_SYNC_OWNER);
         }
         break;
     }
 }
 
-void EmDiablos_State4_13(Em *em)
+/*
+ * EM_DMG_ATTACK13 (EmDiablos_ChangeState ends all statuses): Em_SetHold2 each frame;
+ * DIAB_MOT_FLINCH without root motion to frame 52, then DIAB_MOT_STATUS4
+ * until the timer, then DIAB_IDLE_HOLD2_SHAKE_OFF (shake-off).
+ */
+void EmDiablos_Hold2Flinch(Em *em)
 {
     Em_SetHold2(em);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3C, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FLINCH, 0, 0);
         Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x4C, 0xC, 0);
+            Em_SetMotion(em, DIAB_MOT_STATUS4, 0xC, 0);
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            EmDiablos_ChangeState(em, 0, 0x22, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_HOLD2_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmDiablos_ChangeState(em, 0, 0x22, 4);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_HOLD2_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmDiablos_State6_00(Em *em, EmWork *work)
+/*
+ * The Diablos story scene (Update: Diablos kinds, quest stage QUEST_ID_DIABLOS_SCENE,
+ * AREA_DESERT_2, EVENT_FLAG_DIABLOS_SCENE unset): unhittable; placed at a fixed spot,
+ * idles 300 frames, DIAB_MOT_ALERT_IDLE, DIAB_MOT_ROAR, DIAB_MOT_BURROW,
+ * then under the sand travels (DIAB_MOT_RUN) to a fixed goal (300 frames
+ * or within 200), idles until EVENT_FLAG_DIABLOS_SCENE is set, then EmDiablos_EndStateUnderground.
+ */
+void EmDiablos_DiablosDesertScene(Em *em, EmWork *work)
 {
-    f32 d;
+    f32 goalDist;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -2623,32 +3590,32 @@ void EmDiablos_State6_00(Em *em, EmWork *work)
     case 0:
         GmEm_ResetSize(em);
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->posX = 6660.0f;
         em->posY = 50.0f;
         em->posZ = 5737.0f;
         em->rotX = 0;
         em->rotY = 0x2400;
         em->rotZ = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         em->timer = 300;
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, 0x33, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_ALERT_IDLE, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x6F, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_ROAR, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x67, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_BURROW, 0, 0);
         }
         break;
     case 4:
@@ -2658,34 +3625,40 @@ void EmDiablos_State6_00(Em *em, EmWork *work)
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
             em->goal[0] = 11000.0f;
             em->goal[1] = 50.0f;
             em->goal[2] = 8813.0f;
             em->rotY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
             em->timer = 300;
-            Em_SetMotion(em, 0x11, 0, 100);
+            Em_SetMotion(em, DIAB_MOT_RUN, 0, 100);
         }
         break;
     case 5:
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || d <= 200.0f) {
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || goalDist <= 200.0f) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
         break;
     case 6:
-        if (Save_TestEventFlag(0xA8) == 1) {
+        if (Save_TestEventFlag(EVENT_FLAG_DIABLOS_SCENE) == 1) {
             em->step++;
-            EmDiablos_EndState2(em);
+            EmDiablos_EndStateUnderground(em);
         }
         break;
     }
 }
 
-void EmDiablos_State6_01(Em *em, EmWork *work)
+/*
+ * The Monoblos story scene (Monoblos kinds, quest stage QUEST_ID_MONOBLOS_SCENE, EVENT_FLAG_MONOBLOS_SCENE):
+ * starts under the sand at a fixed spot, travels to a goal, DIAB_MOT_EMERGE,
+ * DIAB_MOT_ROAR, is moved to a second spot and charges on the ground to
+ * another goal, idles until EVENT_FLAG_MONOBLOS_SCENE, then EmDiablos_EndState.
+ */
+void EmDiablos_MonoblosDesertScene(Em *em, EmWork *work)
 {
-    f32 d;
+    f32 goalDist;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -2693,7 +3666,7 @@ void EmDiablos_State6_01(Em *em, EmWork *work)
     case 0:
         GmEm_ResetSize(em);
         em->step++;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->posX = 8492.0f;
         em->posY = 50.0f;
         em->posZ = 5247.0f;
@@ -2703,33 +3676,33 @@ void EmDiablos_State6_01(Em *em, EmWork *work)
         em->rotX = 0;
         em->rotY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
         em->rotZ = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         em->timer = 500;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
             em->goal[0] = 5237.0f;
             em->goal[1] = 50.0f;
             em->goal[2] = 10800.0f;
             em->rotY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
             em->timer = 300;
-            Em_SetMotion(em, 0x11, 0, 100);
+            Em_SetMotion(em, DIAB_MOT_RUN, 0, 100);
         }
         break;
     case 2:
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || d <= 200.0f) {
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || goalDist <= 200.0f) {
             em->step++;
-            Em_SetMotion(em, 0x68, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_EMERGE, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].blend != 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         } else {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             if (EmMotion_ReachedFrame(em, 0, 100.0f) == 0) {
                 em->hideShadowHold = 2;
                 em->hideShadow = 2;
@@ -2737,7 +3710,7 @@ void EmDiablos_State6_01(Em *em, EmWork *work)
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x6F, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_ROAR, 0, 0);
         }
         break;
     case 4:
@@ -2750,18 +3723,18 @@ void EmDiablos_State6_01(Em *em, EmWork *work)
             em->goal[1] = 50.0f;
             em->goal[2] = 9100.0f;
             em->rotY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-            Em_SetMotion(em, 0x11, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_RUN, 0, 0);
         }
         break;
     case 5:
-        d = Vec_DistanceXZ(&em->posX, em->goal);
-        if (--em->timer <= 0 || d <= 200.0f) {
+        goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+        if (--em->timer <= 0 || goalDist <= 200.0f) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
         break;
     case 6:
-        if (Save_TestEventFlag(0xAA) == 1) {
+        if (Save_TestEventFlag(EVENT_FLAG_MONOBLOS_SCENE) == 1) {
             em->step++;
             EmDiablos_EndState(em, 0, 0);
         }
@@ -2769,10 +3742,17 @@ void EmDiablos_State6_01(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State6_02_Captured(Em *em, EmWork *work)
+/*
+ * Captured (EM_DMG_CAPTURED with holdTimer2): Em_SetCaptured each frame;
+ * QuestEm_Captured, Em_BeginStatus1, Em_ClearPoison, reaction set 1;
+ * DIAB_MOT_COLLAPSE then DIAB_MOT_LIE; counts 2400 frames while
+ * QuestEm_CanAppear, fades alpha over 150 frames, then DIAB_DEFEAT_REAPPEAR
+ * (reappear, owner).
+ */
+void EmDiablos_Captured(Em *em, EmWork *work)
 {
     s32 timer;
-    s32 t;
+    s32 prevTimer;
 
     Em_SetCaptured(em, 1);
     switch (em->step) {
@@ -2782,15 +3762,15 @@ void EmDiablos_State6_02_Captured(Em *em, EmWork *work)
         em->timer = 0x960;
         Em_BeginStatus1(em);
         Em_ClearPoison(em);
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x26, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_COLLAPSE, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x22, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_LIE, 0, 0);
         }
         break;
     case 2:
@@ -2803,14 +3783,14 @@ void EmDiablos_State6_02_Captured(Em *em, EmWork *work)
         }
         break;
     case 3:
-        t = em->timer;
-        if (t > 0) {
-            em->timer = t - 1;
+        prevTimer = em->timer;
+        if (prevTimer > 0) {
+            em->timer = prevTimer - 1;
         }
         timer = em->timer;
         if (timer <= 0) {
             if (em->remote == 0) {
-                EmDiablos_ChangeState(em, 5, 3, 4);
+                EmDiablos_ChangeState(em, EM_GROUP_DEFEAT, DIAB_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         } else {
@@ -2820,27 +3800,33 @@ void EmDiablos_State6_02_Captured(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State8_00_CarveStart(Em *em, EmWork *work)
+/*
+ * Versus end: once Versus_DefeatCamera is 1, VersusBait_Create for the
+ * player of its side at EmDiablos_CarveThrowPt, DIAB_MOT_STARE, then
+ * DIAB_MOT_ALERT_IDLE and after 30 frames Versus_RouteEmByTeam every frame;
+ * unhittable throughout.
+ */
+void EmDiablos_VsBait(Em *em, EmWork *work)
 {
-    EmDiablosVec v;
+    Vec3f baitPos;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         if (Versus_DefeatCamera(em) == 1) {
-            v = EmDiablos_CarveThrowPt;
-            StageObj_K25_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &v.x);
+            baitPos = EmDiablos_CarveThrowPt;
+            VersusBait_Create(&gPlayers[(u8) em->side - 1], em, 0, 0, &baitPos.x);
             em->step++;
-            Em_SetMotion(em, 0x24, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_STARE, 0, 0);
         }
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 30;
-            Em_SetMotion(em, 0x33, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_ALERT_IDLE, 0, 0);
         }
         break;
     case 2:
@@ -2851,98 +3837,114 @@ void EmDiablos_State8_00_CarveStart(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State8_01(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_FLINCH_E once, idle motion, then DIAB_VS_WAIT_BOTH.
+ */
+void EmDiablos_VsPoseA(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3D, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_FLINCH_E, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
-            EmDiablos_ChangeState(em, 8, 0x98, 1);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
+            EmDiablos_ChangeState(em, EM_GROUP_VERSUS, DIAB_VS_WAIT_BOTH, EM_SYNC_SEND);
         }
         break;
     }
 }
 
-void EmDiablos_State8_02(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_TURN_IN_PLACE once, idle motion, then DIAB_VS_WAIT_BOTH.
+ */
+void EmDiablos_VsPoseB(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x36, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_TURN_IN_PLACE, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
-            EmDiablos_ChangeState(em, 8, 0x98, 1);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
+            EmDiablos_ChangeState(em, EM_GROUP_VERSUS, DIAB_VS_WAIT_BOTH, EM_SYNC_SEND);
         }
         break;
     }
 }
 
-void EmDiablos_State8_03(Em *em, EmWork *work)
+/*
+ * DIAB_MOT_ROAR once, idle motion, then DIAB_VS_WAIT_BOTH.
+ */
+void EmDiablos_VsRoar(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x6F, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, DIAB_MOT_ROAR, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
-            EmDiablos_ChangeState(em, 8, 0x98, 1);
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
+            EmDiablos_ChangeState(em, EM_GROUP_VERSUS, DIAB_VS_WAIT_BOTH, EM_SYNC_SEND);
         }
         break;
     }
 }
 
-void EmDiablos_State8_98(Em *em, EmWork *work)
+/*
+ * EmDiablos_ChangeState calls Versus_MarkDefeat on entry; idle motion; waits
+ * Versus_BothDefeated, then DIAB_VS_END.
+ */
+void EmDiablos_VsWaitBoth(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_IDLE)) {
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         
     case 1:
         if (Versus_BothDefeated() == 1) {
             em->step++;
-            EmDiablos_ChangeState(em, 8, 0x99, 1);
+            EmDiablos_ChangeState(em, EM_GROUP_VERSUS, DIAB_VS_END, EM_SYNC_SEND);
         }
         break;
     }
 }
 
-void EmDiablos_State8_99(Em *em, EmWork *work)
+/*
+ * Idle 90 frames, clears senseDelay and noHitTimer, then EmDiablos_EndState.
+ */
+void EmDiablos_VsEnd(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->timer = 0x5A;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_IDLE)) {
+            Em_SetMotion(em, DIAB_MOT_IDLE, 0, 0);
         }
         break;
     case 1:
@@ -2956,16 +3958,23 @@ void EmDiablos_State8_99(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State5_00_Hunted(Em *em, EmWork *work)
+/*
+ * Dies on the ground: EM_STANCE_DEAD (dead), DIAB_MOT_DIE with
+ * QuestEm_Hunted and a camera shake at frame 212, then the carve point
+ * (EmMine_Create) for 1800 frames once the quest lets it go, a 150-frame
+ * fade-out (alpha) and, on the owner, DIAB_DEFEAT_REAPPEAR (sync mode 4).
+ * Its step 99 (back to idle) is never set in this file.
+ */
+void EmDiablos_Die(Em *em, EmWork *work)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x44, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_DIE, 0, 0);
         em->lookAtTarget = 0;
-        em->stance = 3;
+        em->stance = EM_STANCE_DEAD;
         QuestEm_Hunted(em);
         break;
     case 1:
@@ -2995,7 +4004,7 @@ void EmDiablos_State5_00_Hunted(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmDiablos_ChangeState(em, 5, 3, 4);
+                EmDiablos_ChangeState(em, EM_GROUP_DEFEAT, DIAB_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -3003,7 +4012,7 @@ void EmDiablos_State5_00_Hunted(Em *em, EmWork *work)
         break;
     case 99:
         if (em->motion[0].playing == 0) {
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             EmDiablos_EndState(em, 0, 0);
             em->prevStateGroup = em->stateGroup;
             em->prevState = em->state;
@@ -3012,37 +4021,45 @@ void EmDiablos_State5_00_Hunted(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State5_01_Hunted(Em *em, EmWork *work)
+/*
+ * Dies under the sand: if it already lies or struggles out of the sand
+ * (EmDiablos_InSandStuckMotion) it plays DIAB_MOT_DOWNED at once, else it is
+ * pushed out (DIAB_MOT_POP_OUT, EM_STANCE_UNDER while blending, unless
+ * already playing it) and then lies dead in DIAB_MOT_DOWNED; QuestEm_Hunted,
+ * the carve point for 1800 frames, the fade-out and DIAB_DEFEAT_REAPPEAR as
+ * EmDiablos_Die.
+ */
+void EmDiablos_DieInSand(Em *em, EmWork *work)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        if (EmDiablos_InMotion448To44A(em) == 1) {
+        if (EmDiablos_InSandStuckMotion(em) == 1) {
             QuestEm_Hunted(em);
-            em->stance = 3;
+            em->stance = EM_STANCE_DEAD;
             em->step++;
-            Em_SetMotion(em, 0x61, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWNED, 0, 0);
         } else {
-            em->stance = 4;
-            if (em->motionId[0] != 0x451) {
-                Em_SetMotion(em, 0x69, 0, 0);
+            em->stance = EM_STANCE_UNDER;
+            if (em->motionId[0] != EM_MOTION_ID(0, DIAB_MOT_POP_OUT)) {
+                Em_SetMotion(em, DIAB_MOT_POP_OUT, 0, 0);
             }
         }
         em->lookAtTarget = 0;
         break;
     case 1:
         if (em->motion[0].blend != 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         } else {
-            em->stance = 3;
+            em->stance = EM_STANCE_DEAD;
         }
         if (em->motion[0].playing == 0) {
-            em->stance = 3;
+            em->stance = EM_STANCE_DEAD;
             QuestEm_Hunted(em);
             em->step++;
-            Em_SetMotion(em, 0x61, 0, 0);
+            Em_SetMotion(em, DIAB_MOT_DOWNED, 0, 0);
         }
         break;
     case 2:
@@ -3069,7 +4086,7 @@ void EmDiablos_State5_01_Hunted(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmDiablos_ChangeState(em, 5, 3, 4);
+                EmDiablos_ChangeState(em, EM_GROUP_DEFEAT, DIAB_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -3078,16 +4095,24 @@ void EmDiablos_State5_01_Hunted(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State5_02_HuntedFalling(Em *em, EmWork *work)
+/*
+ * Dies in the air (EM_STANCE_AIR, a leap out of the sand): falls
+ * (DIAB_MOT_FALL, velY at most -50, accelY -10, Em_MoveRotatedAccel) to the
+ * floor, lands (DIAB_MOT_FALL_LAND, EM_STANCE_GROUND, velocity cleared), and
+ * at frame 60 lies dead (DIAB_MOT_DIE_FALLING, EM_STANCE_DEAD,
+ * QuestEm_Hunted); then the carve point, fade-out and DIAB_DEFEAT_REAPPEAR
+ * as EmDiablos_Die.
+ */
+void EmDiablos_DieFalling(Em *em, EmWork *work)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x4D, 0, 0);
+        Em_SetMotion(em, DIAB_MOT_FALL, 0, 0);
         if (em->velY > -50.0f) {
             em->velY = -50.0f;
         }
@@ -3098,8 +4123,8 @@ void EmDiablos_State5_02_HuntedFalling(Em *em, EmWork *work)
         if (em->posY <= em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            em->stance = 0;
-            Em_SetMotion(em, 0x4E, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, DIAB_MOT_FALL_LAND, 0, 0);
             Player_ClearVelocity(em);
         }
         break;
@@ -3107,8 +4132,8 @@ void EmDiablos_State5_02_HuntedFalling(Em *em, EmWork *work)
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             em->step++;
             em->timer = 0;
-            Em_SetMotion(em, 0x52, 6, 0);
-            em->stance = 3;
+            Em_SetMotion(em, DIAB_MOT_DIE_FALLING, 6, 0);
+            em->stance = EM_STANCE_DEAD;
             QuestEm_Hunted(em);
         }
         break;
@@ -3136,7 +4161,7 @@ void EmDiablos_State5_02_HuntedFalling(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmDiablos_ChangeState(em, 5, 3, 4);
+                EmDiablos_ChangeState(em, EM_GROUP_DEFEAT, DIAB_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -3145,14 +4170,21 @@ void EmDiablos_State5_02_HuntedFalling(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_State5_03_Appear(Em *em, EmWork *work)
+/*
+ * When the quest lets the monster come back (QuestEm_CanAppear 1;
+ * EmDiablos_ChangeState already called QuestEm_Appear) it is put at the
+ * area's ground height (gAreaGroundY) in the air (EM_STANCE_AIR) and goes to
+ * DIAB_BURROW_AIR_LAND; otherwise it ends its task (Em.taskPhase 1 -> 2,
+ * finish).
+ */
+void EmDiablos_Reappear(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         if (QuestEm_CanAppear(em) == 1) {
             em->posY = gAreaGroundY[em->area];
-            em->stance = 2;
-            EmDiablos_ChangeState(em, 2, 0xC, 0);
+            em->stance = EM_STANCE_AIR;
+            EmDiablos_ChangeState(em, EM_GROUP_FLY, DIAB_BURROW_AIR_LAND, EM_SYNC_LOCAL);
             break;
         }
         em->taskPhase++;
@@ -3161,383 +4193,433 @@ void EmDiablos_State5_03_Appear(Em *em, EmWork *work)
     }
 }
 
-void EmDiablos_RunGroup0(Em *em, EmWork *work)
+/*
+ * Group 0's dispatcher (EM_GROUP_IDLE). Shares: 28 runs
+ * EmDiablos_StatusGetUp's function (as 24), 33/34/35 run
+ * EmDiablos_ShakeOff's (the shake-offs after statuses 4, hold 2 and 5 by
+ * EmDiablos_SetIdleState's entry actions), 36/37 run EmDiablos_Alert's (entered with
+ * Em_StartRage / Em_StartPendingRage); 30-32 have no case.
+ */
+void EmDiablos_RunIdleState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmDiablos_State0_00(em, work);
+    case DIAB_IDLE_STAND:
+        EmDiablos_IdleStand(em, work);
         break;
-    case 1:
-        EmDiablos_State0_01(em, work);
+    case DIAB_IDLE:
+        EmDiablos_Idle(em, work);
         break;
-    case 2:
-        EmDiablos_State0_02(em, work);
+    case DIAB_IDLE_HORN_STUCK:
+        EmDiablos_HornStuck(em, work);
         break;
-    case 3:
-        EmDiablos_State0_03(em, work);
+    case DIAB_IDLE_ALERT_BRIEF:
+        EmDiablos_AlertBrief(em, work);
         break;
-    case 4:
-        EmDiablos_State0_04(em, work);
+    case DIAB_IDLE_ONE_LOOP:
+        EmDiablos_IdleOneLoop(em, work);
         break;
-    case 5:
-        EmDiablos_State0_05(em, work);
+    case DIAB_IDLE_UPPER_A:
+        EmDiablos_UpperGestureA(em, work);
         break;
-    case 6:
-        EmDiablos_State0_06(em, work);
+    case DIAB_IDLE_UPPER_B:
+        EmDiablos_UpperGestureB(em, work);
         break;
-    case 7:
-        EmDiablos_State0_07(em, work);
+    case DIAB_IDLE_UPPER_E:
+        EmDiablos_UpperGestureE(em, work);
         break;
-    case 8:
-        EmDiablos_State0_08();
+    case DIAB_IDLE_NOP_A:
+        EmDiablos_IdleNopA();
         break;
-    case 9:
-        EmDiablos_State0_09(em, work);
+    case DIAB_IDLE_PAIR_A:
+        EmDiablos_IdlePairA(em, work);
         break;
-    case 10:
-        EmDiablos_State0_0A(em, work);
+    case DIAB_IDLE_TURN_TO_GOAL:
+        EmDiablos_IdleTurnToGoal(em, work);
         break;
-    case 11:
-        EmDiablos_State0_0B(em, work);
+    case DIAB_IDLE_UPPER_C:
+        EmDiablos_UpperGestureC(em, work);
         break;
-    case 12:
-        EmDiablos_State0_0C();
+    case DIAB_IDLE_NOP_B:
+        EmDiablos_IdleNopB();
         break;
-    case 13:
-        EmDiablos_State0_0D(em, work);
+    case DIAB_IDLE_UPPER_D:
+        EmDiablos_UpperGestureD(em, work);
         break;
-    case 14:
-        EmDiablos_State0_0E();
+    case DIAB_IDLE_NOP_C:
+        EmDiablos_IdleNopC();
         break;
-    case 15:
-        EmDiablos_State0_0F(em, work);
+    case DIAB_IDLE_PAIR_B:
+        EmDiablos_IdlePairB(em, work);
         break;
-    case 16:
-        EmDiablos_State0_10(em, work);
+    case DIAB_IDLE_PAIR_C:
+        EmDiablos_IdlePairC(em, work);
         break;
-    case 17:
-        EmDiablos_State0_11(em, work);
+    case DIAB_IDLE_ALERT:
+        EmDiablos_Alert(em, work);
         break;
-    case 18:
-        EmDiablos_State0_12(em, work);
+    case DIAB_IDLE_REST:
+        EmDiablos_Rest(em, work);
         break;
-    case 19:
-        EmDiablos_State0_13();
+    case DIAB_IDLE_NOP_D:
+        EmDiablos_IdleNopD();
         break;
-    case 20:
-        EmDiablos_State0_14(em, work);
+    case DIAB_IDLE_STATUS2_COLLAPSE:
+        EmDiablos_Status2Collapse(em, work);
         break;
-    case 21:
-        EmDiablos_State0_15(em, work);
+    case DIAB_IDLE_STATUS2_LIE_DOWN:
+        EmDiablos_Status2LieDown(em, work);
         break;
-    case 22:
-        EmDiablos_State0_16(em, work);
+    case DIAB_IDLE_PAIR_D:
+        EmDiablos_IdlePairD(em, work);
         break;
-    case 23:
-        EmDiablos_State0_17(em, work);
+    case DIAB_IDLE_REST_END:
+        EmDiablos_RestGetUp(em, work);
         break;
-    case 24:
-        EmDiablos_State0_18(em, work);
+    case DIAB_IDLE_STATUS2_END:
+        EmDiablos_StatusGetUp(em, work);
         break;
-    case 25:
-        EmDiablos_State0_19(em, work);
+    case DIAB_IDLE_SHAKE_OFF:
+        EmDiablos_ShakeOff(em, work);
         break;
-    case 26:
-        EmDiablos_State0_1A();
+    case DIAB_IDLE_NOP_E:
+        EmDiablos_IdleNopE();
         break;
-    case 27:
-        EmDiablos_State0_1B(em, work);
+    case DIAB_IDLE_STATUS1_COLLAPSE:
+        EmDiablos_Status1Collapse(em, work);
         break;
-    case 28:
-        EmDiablos_State0_18(em, work);
+    case DIAB_IDLE_STATUS1_END:
+        EmDiablos_StatusGetUp(em, work);
         break;
-    case 29:
-        EmDiablos_State0_1D(em, work);
+    case DIAB_IDLE_SAND_DOWNED:
+        EmDiablos_StatusDownedInSand(em, work);
         break;
-    case 33:
-        EmDiablos_State0_19(em, work);
+    case DIAB_IDLE_STATUS4_SHAKE_OFF:
+        EmDiablos_ShakeOff(em, work);
         break;
-    case 34:
-        EmDiablos_State0_19(em, work);
+    case DIAB_IDLE_HOLD2_SHAKE_OFF:
+        EmDiablos_ShakeOff(em, work);
         break;
-    case 35:
-        EmDiablos_State0_19(em, work);
+    case DIAB_IDLE_STUN_SHAKE_OFF:
+        EmDiablos_ShakeOff(em, work);
         break;
-    case 36:
-        EmDiablos_State0_11(em, work);
+    case DIAB_IDLE_ALERT_RAGE:
+        EmDiablos_Alert(em, work);
         break;
-    case 37:
-        EmDiablos_State0_11(em, work);
+    case DIAB_IDLE_ALERT_PENDING_RAGE:
+        EmDiablos_Alert(em, work);
         
     default:
         break;
     }
 }
 
-void EmDiablos_RunGroup1(Em *em, EmWork *work)
+/*
+ * Group 1's dispatcher (EM_GROUP_MOVE); DIAB_MOVE_RUN_AND_STOP_SLOW runs
+ * DIAB_MOVE_RUN_AND_STOP's function (the run, at motion speed 0.7 from
+ * EmDiablos_SetMoveState).
+ */
+void EmDiablos_RunMoveState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmDiablos_State1_00(em, work);
+    case DIAB_MOVE_WALK:
+        EmDiablos_Walk(em, work);
         break;
-    case 1:
-        EmDiablos_State1_01(em, work);
+    case DIAB_MOVE_END:
+        EmDiablos_MoveEnd(em, work);
         break;
-    case 2:
-        EmDiablos_State1_02(em, work);
+    case DIAB_MOVE_RUN:
+        EmDiablos_Run(em, work);
         break;
-    case 3:
-        EmDiablos_State1_03(em, work);
+    case DIAB_MOVE_TURN:
+        EmDiablos_Turn(em, work);
         break;
-    case 4:
-        EmDiablos_State1_04(em, work);
+    case DIAB_MOVE_RUN_AND_STOP:
+        EmDiablos_RunAndStop(em, work);
         break;
-    case 5:
-        EmDiablos_State1_05(em, work);
+    case DIAB_MOVE_TURN_IN_COMBAT:
+        EmDiablos_TurnInCombat(em, work);
         break;
-    case 6:
-        EmDiablos_State1_06(em, work);
+    case DIAB_MOVE_LIMP:
+        EmDiablos_Limp(em, work);
         break;
-    case 7:
-        EmDiablos_State1_07(em, work);
+    case DIAB_MOVE_TURN_TO_GOAL:
+        EmDiablos_TurnToGoal(em, work);
         break;
-    case 8:
-        EmDiablos_State1_04(em, work);
+    case DIAB_MOVE_RUN_AND_STOP_SLOW:
+        EmDiablos_RunAndStop(em, work);
         
     default:
         break;
     }
 }
 
-void EmDiablos_RunGroup2(Em *em, EmWork *work)
+/*
+ * Group 2's dispatcher (EM_GROUP_FLY's slot: under the sand,
+ * EM_STANCE_UNDER); no case for 0xD, 0xF-0x16.
+ */
+void EmDiablos_RunBurrowState(Em *em, EmWork *work)
 {
     switch (em->state) {
     case 0:
-        EmDiablos_State2_00(em, work);
+        EmDiablos_Burrow(em, work);
         break;
     case 1:
-        EmDiablos_State2_01(em, work);
+        EmDiablos_BurrowIdle(em, work);
         break;
     case 2:
-        EmDiablos_State2_02(em, work);
+        EmDiablos_Emerge(em, work);
         break;
     case 3:
-        EmDiablos_State2_03(em, work);
+        EmDiablos_BurrowTurn(em, work);
         break;
     case 4:
-        EmDiablos_State2_04(em, work);
+        EmDiablos_BurrowTravelRumble(em, work);
         break;
     case 5:
-        EmDiablos_State2_05(em, work);
+        EmDiablos_BurrowWalk(em, work);
         break;
     case 6:
-        EmDiablos_State2_06(em, work);
+        EmDiablos_Leap(em, work);
         break;
     case 7:
-        EmDiablos_State2_07(em, work);
+        EmDiablos_AirTurn(em, work);
         break;
     case 8:
-        EmDiablos_State2_08(em, work);
+        EmDiablos_BurrowTravel(em, work);
         break;
     case 9:
-        EmDiablos_State2_09(em, work);
+        EmDiablos_AirRise(em, work);
         break;
     case 10:
-        EmDiablos_State2_0A(em, work);
+        EmDiablos_BurrowWait(em, work);
         break;
     case 11:
-        EmDiablos_State2_0B(em, work);
+        EmDiablos_AirToGoal(em, work);
         break;
     case 12:
-        EmDiablos_State2_0C(em, work);
+        EmDiablos_AirLand(em, work);
         break;
     case 14:
-        EmDiablos_State2_0E(em, work);
+        EmDiablos_AirLoop(em, work);
         break;
     case 23:
-        EmDiablos_State2_17(em, work);
+        EmDiablos_SandEscape(em, work);
         break;
     }
 }
 
-void EmDiablos_RunGroup3(Em *em, EmWork *work)
+/*
+ * Group 3's dispatcher (EM_GROUP_ATTACK); 0x1F runs 0x1C's function; only 0,
+ * 3, 6, 0xF-0x11, 0x1A-0x1F have cases.
+ */
+void EmDiablos_RunAttackState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmDiablos_State3_00(em, work);
+    case DIAB_ATK_TURN_AND_STARE:
+        EmDiablos_TurnAndStare(em, work);
         break;
-    case 3:
-        EmDiablos_State3_03(em, work);
+    case DIAB_ATK_STARE:
+        EmDiablos_Stare(em, work);
         break;
-    case 6:
-        EmDiablos_State3_06(em, work);
+    case DIAB_ATK_TAIL_SPIN:
+        EmDiablos_TailSpin(em, work);
         break;
-    case 15:
-        EmDiablos_State3_0F(em, work);
+    case DIAB_ATK_CHARGE:
+        EmDiablos_Charge(em, work);
         break;
-    case 16:
-        EmDiablos_State3_10(em, work);
+    case DIAB_ATK_CHARGE_ATTACK_A:
+        EmDiablos_ChargeAttackA(em, work);
         break;
-    case 17:
-        EmDiablos_State3_11(em, work);
+    case DIAB_ATK_CHARGE_ATTACK_B:
+        EmDiablos_ChargeAttackB(em, work);
         break;
-    case 26:
-        EmDiablos_State3_1A(em, work);
+    case DIAB_ATK_TURN_ATTACK_A:
+        EmDiablos_TurnAttackA(em, work);
         break;
-    case 27:
-        EmDiablos_State3_1B(em, work);
+    case DIAB_ATK_TURN_ATTACK_B:
+        EmDiablos_TurnAttackB(em, work);
         break;
-    case 28:
-        EmDiablos_State3_1C(em, work);
+    case DIAB_ATK_ATTACK_C:
+        EmDiablos_AttackC(em, work);
         break;
-    case 29:
-        EmDiablos_State3_1D(em, work);
+    case DIAB_ATK_TURN_ATTACK_D:
+        EmDiablos_TurnAttackD(em, work);
         break;
-    case 30:
-        EmDiablos_State3_1E(em, work);
+    case DIAB_ATK_ROAR:
+        EmDiablos_Roar(em, work);
         break;
-    case 31:
-        EmDiablos_State3_1C(em, work);
+    case DIAB_ATK_ATTACK_C_B:
+        EmDiablos_AttackC(em, work);
         break;
     }
 }
 
-void EmDiablos_RunGroup4(Em *em, EmWork *work)
+/*
+ * Group 4's dispatcher (EM_GROUP_REACT): EmDiablos_KnockDown serves 5, 0x10,
+ * 0x14, 0x15 (variants 0-3), EmDiablos_HitDownedInSand serves 0xE and 0x16
+ * (variants 0, 1), EmDiablos_SandDownedStruggle serves 0x11 and 0x17; no
+ * case for 0xC.
+ */
+void EmDiablos_RunReactState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmDiablos_State4_00(em);
+    case DIAB_REACT_FLINCH:
+        EmDiablos_Flinch(em);
         break;
-    case 1:
-        EmDiablos_State4_01(em);
+    case DIAB_REACT_FLINCH_B:
+        EmDiablos_FlinchB(em);
         break;
-    case 2:
-        EmDiablos_State4_02(em);
+    case DIAB_REACT_FLINCH_C:
+        EmDiablos_FlinchC(em);
         break;
-    case 3:
-        EmDiablos_State4_03(em);
+    case DIAB_REACT_FLINCH_D:
+        EmDiablos_FlinchD(em);
         break;
-    case 4:
-        EmDiablos_State4_04(em);
+    case DIAB_REACT_PART_BREAK:
+        EmDiablos_PartBreak(em);
         break;
-    case 5:
-        EmDiablos_State4_05(em, work, 0);
+    case DIAB_REACT_KNOCK_DOWN:
+        EmDiablos_KnockDown(em, work, 0);
         break;
-    case 6:
-        EmDiablos_State4_06(em);
+    case DIAB_REACT_POP_OUT:
+        EmDiablos_PopOutOfSand(em);
         break;
-    case 7:
-        EmDiablos_State4_07(em);
+    case DIAB_REACT_PART6_BREAK:
+        EmDiablos_Part6Break(em);
         break;
-    case 8:
-        EmDiablos_State4_08(em, work);
+    case DIAB_REACT_FALL:
+        EmDiablos_FallFromAir(em, work);
         break;
-    case 9:
-        EmDiablos_State4_09(em, work);
+    case DIAB_REACT_FALL_B:
+        EmDiablos_FallFromAirBlind(em, work);
         break;
-    case 0xA:
-        EmDiablos_State4_0A(em);
+    case DIAB_REACT_FLINCH_E:
+        EmDiablos_FlinchE(em);
         break;
-    case 0xB:
-        EmDiablos_State4_0B(em);
+    case DIAB_REACT_STATUS4:
+        EmDiablos_Status4(em);
         break;
-    case 0xD:
-        EmDiablos_State4_0D(em);
+    case DIAB_REACT_SAND_STRUGGLE:
+        EmDiablos_SandStruggle(em);
         break;
-    case 0xE:
-        EmDiablos_State4_0E(em, work, 0);
+    case DIAB_REACT_STATUS4_IN_SAND:
+        EmDiablos_HitDownedInSand(em, work, 0);
         break;
-    case 0xF:
-        EmDiablos_State4_0F(em);
+    case DIAB_REACT_PART_BREAK_END:
+        EmDiablos_PartBreakEnd(em);
         break;
-    case 0x10:
-        EmDiablos_State4_05(em, work, 1);
+    case DIAB_REACT_KNOCK_DOWN_PART3:
+        EmDiablos_KnockDown(em, work, 1);
         break;
-    case 0x11:
-        EmDiablos_State4_11(em);
+    case DIAB_REACT_STATUS4_SAND_STRUGGLE:
+        EmDiablos_SandDownedStruggle(em);
         break;
-    case 0x12:
-        EmDiablos_State4_12(em);
+    case DIAB_REACT_STATUS2_SAND_GET_UP:
+        EmDiablos_Status2SandGetUp(em);
         break;
-    case 0x13:
-        EmDiablos_State4_13(em);
+    case DIAB_REACT_HOLD2:
+        EmDiablos_Hold2Flinch(em);
         break;
-    case 0x14:
-        EmDiablos_State4_05(em, work, 2);
+    case DIAB_REACT_STUN:
+        EmDiablos_KnockDown(em, work, 2);
         break;
-    case 0x15:
-        EmDiablos_State4_05(em, work, 3);
+    case DIAB_REACT_STUN_B:
+        EmDiablos_KnockDown(em, work, 3);
         break;
-    case 0x16:
-        EmDiablos_State4_0E(em, work, 1);
+    case DIAB_REACT_STUN_IN_SAND:
+        EmDiablos_HitDownedInSand(em, work, 1);
         break;
-    case 0x17:
-        EmDiablos_State4_11(em);
+    case DIAB_REACT_STUN_SAND_STRUGGLE:
+        EmDiablos_SandDownedStruggle(em);
         break;
     }
 }
 
-void EmDiablos_RunGroup5(Em *em, EmWork *work)
+/*
+ * Group 5's dispatcher (EM_GROUP_DEFEAT): keeps noPushTimer at 5 and runs
+ * DIE, DIE_IN_SAND, DIE_FALLING, REAPPEAR.
+ */
+void EmDiablos_RunDefeatState(Em *em, EmWork *work)
 {
     em->noPushTimer = 5;
     switch (em->state) {
-    case 0:
-        EmDiablos_State5_00_Hunted(em, work);
+    case DIAB_DEFEAT_DIE:
+        EmDiablos_Die(em, work);
         break;
-    case 1:
-        EmDiablos_State5_01_Hunted(em, work);
+    case DIAB_DEFEAT_DIE_IN_SAND:
+        EmDiablos_DieInSand(em, work);
         break;
-    case 2:
-        EmDiablos_State5_02_HuntedFalling(em, work);
+    case DIAB_DEFEAT_DIE_FALLING:
+        EmDiablos_DieFalling(em, work);
         break;
-    case 3:
-        EmDiablos_State5_03_Appear(em, work);
+    case DIAB_DEFEAT_REAPPEAR:
+        EmDiablos_Reappear(em, work);
         break;
     }
 }
 
-void EmDiablos_RunGroup6(Em *em, EmWork *work)
+/*
+ * Groups 6 and 7's dispatcher (EM_GROUP_EVENT): 0 Diablos's and 1 Monoblos's
+ * first-meeting scenes (Update starts them), 2 captured.
+ */
+void EmDiablos_RunEventState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmDiablos_State6_00(em, work);
+    case DIAB_EVENT_DIABLOS_SCENE:
+        EmDiablos_DiablosDesertScene(em, work);
         break;
-    case 1:
-        EmDiablos_State6_01(em, work);
+    case DIAB_EVENT_MONOBLOS_SCENE:
+        EmDiablos_MonoblosDesertScene(em, work);
         break;
-    case 2:
-        EmDiablos_State6_02_Captured(em, work);
+    case DIAB_EVENT_CAPTURED:
+        EmDiablos_Captured(em, work);
         break;
     }
 }
 
-void EmDiablos_RunGroup8(Em *em, EmWork *work)
+/*
+ * Group 8's dispatcher (EM_GROUP_VERSUS): 0, 1, 2, 3, 0x98, 0x99.
+ */
+void EmDiablos_RunVersusState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0x0:
-        EmDiablos_State8_00_CarveStart(em, work);
+    case DIAB_VS_BAIT:
+        EmDiablos_VsBait(em, work);
         break;
-    case 0x1:
-        EmDiablos_State8_01(em, work);
+    case DIAB_VS_POSE_A:
+        EmDiablos_VsPoseA(em, work);
         break;
-    case 0x2:
-        EmDiablos_State8_02(em, work);
+    case DIAB_VS_POSE_B:
+        EmDiablos_VsPoseB(em, work);
         break;
-    case 0x3:
-        EmDiablos_State8_03(em, work);
+    case DIAB_VS_ROAR:
+        EmDiablos_VsRoar(em, work);
         break;
-    case 0x98:
-        EmDiablos_State8_98(em, work);
+    case DIAB_VS_WAIT_BOTH:
+        EmDiablos_VsWaitBoth(em, work);
         break;
-    case 0x99:
-        EmDiablos_State8_99(em, work);
+    case DIAB_VS_END:
+        EmDiablos_VsEnd(em, work);
         break;
     }
 }
 
+/*
+ * The family's per-frame update (the monster task's per-kind dispatch):
+ * fades the rage tint (rageFade up to 60 while enraged, down to 0
+ * otherwise), holds the position while no hunter is near
+ * (Em_HoldPosNoPlayers, another argument under the sand), ends the state
+ * when it is buried where the floor is no longer sand, counts the landing
+ * timer down, turns Em_UpdateDamage's result into a reaction state, starts the Diablos (quest QUEST_ID_DIABLOS_SCENE) or Monoblos (quest QUEST_ID_MONOBLOS_SCENE)
+ * first-meeting scene in the desert, runs the state (twice on a state
+ * request) and keeps posY/floorY on the sand surface: under it at most
+ * surfaceY - surfaceDepth with floorY 1000 below, standing or dead on it.
+ * Outside the scene's conditions both quests' cases go on to the default
+ * (the goto), as the game's code does.
+ */
 void EmDiablos_Update(Em *em)
 {
-    u8 buf[4];
+    u8 dmgInfo[4];
     EmDiablosWork *w = (EmDiablosWork *)&em->work;
 
     if (em->rage != 0) {
@@ -3560,198 +4642,198 @@ void EmDiablos_Update(Em *em)
     }
     Em_UpdateCombatTimer(em);
     Em_RaisePlayerAreaTriggerLax(em);
-    if (em->stance == 4) {
+    if (em->stance == EM_STANCE_UNDER) {
         Em_HoldPosNoPlayers(em, 0, 3);
     } else {
         Em_HoldPosNoPlayers(em, 0, 1);
     }
-    if (EmDiablos_ShouldEndState(em) == 1) {
+    if (EmDiablos_IsBuriedOffSand(em) == 1) {
         EmDiablos_EndState(em, 0, 0);
     }
-    if (w->fxMotion != 0) {
-        w->fxMotion -= 1;
+    if (w->landTimer != 0) {
+        w->landTimer -= 1;
     }
-    switch (Em_UpdateDamage(em, buf) & 0xFF) {
-    case 0:
-    case 3:
-    case 4:
-    case 9:
-    case 14:
+    switch (Em_UpdateDamage(em, dmgInfo) & 0xFF) {
+    case EM_DMG_NONE:
+    case EM_DMG_ATTACK9:
+    case EM_DMG_ATTACK6:
+    case EM_DMG_FLASH:
+    case EM_DMG_HIT:
         break;
-    case 1:
-    case 2:
-        if (em->stance == 2) {
-            EmDiablos_ChangeState(em, 5, 2, 3);
-        } else if (em->stance == 4 || EmDiablos_InSandState(em) == 1) {
-            EmDiablos_ChangeState(em, 5, 1, 3);
+    case EM_DMG_KILLED:
+    case EM_DMG_DEAD:
+        if (em->stance == EM_STANCE_AIR) {
+            EmDiablos_ChangeState(em, EM_GROUP_DEFEAT, DIAB_DEFEAT_DIE_FALLING, EM_SYNC_OWNER);
+        } else if (em->stance == EM_STANCE_UNDER || EmDiablos_InSandReactState(em) == 1) {
+            EmDiablos_ChangeState(em, EM_GROUP_DEFEAT, DIAB_DEFEAT_DIE_IN_SAND, EM_SYNC_OWNER);
         } else {
-            EmDiablos_ChangeState(em, 5, 0, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_DEFEAT, DIAB_DEFEAT_DIE, EM_SYNC_OWNER);
         }
         break;
-    case 17:
-        if (em->stateGroup != 4 || em->state != 0x16) {
-            if (em->stance == 4 || EmDiablos_InSandState(em) == 1) {
+    case EM_DMG_STATUS5:
+        if (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_STUN_IN_SAND) {
+            if (em->stance == EM_STANCE_UNDER || EmDiablos_InSandReactState(em) == 1) {
                 Em_SetStatus5Timer(em);
-                EmDiablos_ChangeState(em, 4, 0x16, 3);
-            } else if ((em->stateGroup != 4 || em->state != 0x14) && (em->stateGroup != 4 || em->state != 0x15) &&
-                       (em->stateGroup != 4 || em->state != 8)) {
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STUN_IN_SAND, EM_SYNC_OWNER);
+            } else if ((em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_STUN) && (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_STUN_B) &&
+                       (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_FALL)) {
                 Em_SetStatus5Timer(em);
                 if (((em->hitAngle - em->rotY) & 0xFFFF) > 0x8000) {
-                    EmDiablos_ChangeState(em, 4, 0x14, 3);
+                    EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STUN, EM_SYNC_OWNER);
                 } else {
-                    EmDiablos_ChangeState(em, 4, 0x15, 3);
+                    EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STUN_B, EM_SYNC_OWNER);
                 }
             }
         }
         break;
-    case 18:
-        if (EmDiablos_InSandState(em) == 0) {
+    case EM_DMG_ATTACK13:
+        if (EmDiablos_InSandReactState(em) == 0) {
             Em_ResetKindTimer(em);
-            EmDiablos_ChangeState(em, 4, 0x13, 3);
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_HOLD2, EM_SYNC_OWNER);
         }
         break;
-    case 15:
-        if (em->rage == 0 && em->stance == 4 && (em->stateGroup != 4 || em->state != 6)) {
-            EmDiablos_ChangeState(em, 4, 6, 3);
+    case EM_DMG_ATTACK5:
+        if (em->rage == 0 && em->stance == EM_STANCE_UNDER && (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_POP_OUT)) {
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_POP_OUT, EM_SYNC_OWNER);
         }
         break;
-    case 5:
-        if (em->stateGroup != 4 || em->state != 8) {
-            EmDiablos_ChangeState(em, 4, 8, 3);
+    case EM_DMG_STATUS_IN_AIR:
+        if (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_FALL) {
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FALL, EM_SYNC_OWNER);
         }
         break;
-    case 6:
-        if (em->stateGroup != 4 || em->state != 0xE) {
-            if (em->stance == 4 || EmDiablos_InSandState(em) == 1) {
+    case EM_DMG_STATUS4:
+        if (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_STATUS4_IN_SAND) {
+            if (em->stance == EM_STANCE_UNDER || EmDiablos_InSandReactState(em) == 1) {
                 Em_SetStatus4Timer(em);
-                EmDiablos_ChangeState(em, 4, 0xE, 3);
-            } else if ((em->stateGroup != 4 || em->state != 0xB) && (em->stateGroup != 4 || em->state != 8)) {
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STATUS4_IN_SAND, EM_SYNC_OWNER);
+            } else if ((em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_STATUS4) && (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_FALL)) {
                 Em_SetStatus4Timer(em);
-                EmDiablos_ChangeState(em, 4, 0xB, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STATUS4, EM_SYNC_OWNER);
             }
         }
         break;
-    case 7:
+    case EM_DMG_CAPTURED:
         if ((s8) em->holdTimer2 != 0) {
-            EmDiablos_ChangeState(em, 6, 2, 3);
-        } else if (em->stateGroup != 0 || em->state != 0x1D) {
-            if (em->stance == 4 || EmDiablos_InSandState(em) == 1) {
+            EmDiablos_ChangeState(em, EM_GROUP_EVENT, DIAB_EVENT_CAPTURED, EM_SYNC_OWNER);
+        } else if (em->stateGroup != EM_GROUP_IDLE || em->state != DIAB_IDLE_SAND_DOWNED) {
+            if (em->stance == EM_STANCE_UNDER || EmDiablos_InSandReactState(em) == 1) {
                 Em_SetStatus1Timer(em);
-                EmDiablos_ChangeState(em, 0, 0x1D, 3);
-            } else if ((em->stateGroup != 0 || em->state != 0x1B) && (em->stateGroup != 4 || em->state != 8)) {
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_SAND_DOWNED, EM_SYNC_OWNER);
+            } else if ((em->stateGroup != EM_GROUP_IDLE || em->state != DIAB_IDLE_STATUS1_COLLAPSE) && (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_FALL)) {
                 Em_SetStatus1Timer(em);
-                EmDiablos_ChangeState(em, 0, 0x1B, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS1_COLLAPSE, EM_SYNC_OWNER);
             }
         }
         break;
-    case 8:
-        if (em->stateGroup != 0 || em->state != 0x1D) {
-            if (em->stance == 4 || EmDiablos_InSandState(em) == 1) {
+    case EM_DMG_STATUS2:
+        if (em->stateGroup != EM_GROUP_IDLE || em->state != DIAB_IDLE_SAND_DOWNED) {
+            if (em->stance == EM_STANCE_UNDER || EmDiablos_InSandReactState(em) == 1) {
                 Em_SetStatus2Timer(em);
-                EmDiablos_ChangeState(em, 0, 0x1D, 3);
-            } else if ((em->stateGroup != 0 || em->state != 0x14) && (em->stateGroup != 4 || em->state != 8)) {
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_SAND_DOWNED, EM_SYNC_OWNER);
+            } else if ((em->stateGroup != EM_GROUP_IDLE || em->state != DIAB_IDLE_STATUS2_COLLAPSE) && (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_FALL)) {
                 Em_SetStatus2Timer(em);
-                EmDiablos_ChangeState(em, 0, 0x14, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS2_COLLAPSE, EM_SYNC_OWNER);
             }
         }
         break;
-    case 10:
+    case EM_DMG_HIT_LYING:
         switch (em->state) {
-        case 0x14:
-            EmDiablos_ChangeState(em, 0, 0x18, 3);
+        case DIAB_IDLE_STATUS2_COLLAPSE:
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS2_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
-        case 0x1B:
-            EmDiablos_ChangeState(em, 0, 0x1C, 3);
+        case DIAB_IDLE_STATUS1_COLLAPSE:
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_STATUS1_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
-        case 0x1D:
-            EmDiablos_ChangeState(em, 4, 0x12, 3);
+        case DIAB_IDLE_SAND_DOWNED:
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_STATUS2_SAND_GET_UP, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
         }
         break;
-    case 11:
-        EmDiablos_ChangeState(em, 4, 4, 3);
+    case EM_DMG_PART8_DOWN:
+        EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_PART_BREAK, EM_SYNC_OWNER);
         break;
-    case 16:
-        if (em->rage == 0 && em->stance == 4 && (em->stateGroup != 4 || em->state != 6)) {
-            EmDiablos_ChangeState(em, 4, 6, 3);
+    case EM_DMG_ATTACK5_FLINCH:
+        if (em->rage == 0 && em->stance == EM_STANCE_UNDER && (em->stateGroup != EM_GROUP_REACT || em->state != DIAB_REACT_POP_OUT)) {
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_POP_OUT, EM_SYNC_OWNER);
             break;
         }
-    case 12:
+    case EM_DMG_PART_FLINCH:
         Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-        if (em->stance == 2) {
-            EmDiablos_ChangeState(em, 4, 8, 3);
-        } else if (em->stance == 4) {
-            EmDiablos_ChangeState(em, 4, 6, 3);
+        if (em->stance == EM_STANCE_AIR) {
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FALL, EM_SYNC_OWNER);
+        } else if (em->stance == EM_STANCE_UNDER) {
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_POP_OUT, EM_SYNC_OWNER);
         } else {
             switch (em->flinchPart) {
             case 0:
             case 7:
-                EmDiablos_ChangeState(em, 4, 0, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FLINCH, EM_SYNC_OWNER);
                 break;
             case 6:
-                if (em->type == 0xE || em->type == 0x2B) {
+                if (em->type == EM_KIND_DIABLOS || em->type == EM_KIND_BLACK_DIABLOS) {
                     if (em->parts[em->flinchPart].state == 1 || em->parts[em->flinchPart].state == 2) {
-                        EmDiablos_ChangeState(em, 4, 7, 3);
+                        EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_PART6_BREAK, EM_SYNC_OWNER);
                     } else {
-                        EmDiablos_ChangeState(em, 4, 2, 3);
+                        EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FLINCH_C, EM_SYNC_OWNER);
                     }
                 } else if (em->parts[em->flinchPart].state == 2) {
-                    EmDiablos_ChangeState(em, 4, 7, 3);
+                    EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_PART6_BREAK, EM_SYNC_OWNER);
                 } else {
-                    EmDiablos_ChangeState(em, 4, 2, 3);
+                    EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FLINCH_C, EM_SYNC_OWNER);
                 }
                 break;
             case 5:
-                EmDiablos_ChangeState(em, 4, 2, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FLINCH_C, EM_SYNC_OWNER);
                 break;
             case 1:
             case 2:
-                EmDiablos_ChangeState(em, 4, 3, 3);
+                EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FLINCH_D, EM_SYNC_OWNER);
                 break;
             case 3:
             case 4:
             default:
                 if (em->parts[em->flinchPart].state >= 2) {
                     if (em->flinchPart != 3) {
-                        EmDiablos_ChangeState(em, 4, 5, 3);
+                        EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_KNOCK_DOWN, EM_SYNC_OWNER);
                     } else {
-                        EmDiablos_ChangeState(em, 4, 0x10, 3);
+                        EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_KNOCK_DOWN_PART3, EM_SYNC_OWNER);
                     }
                 } else {
-                    EmDiablos_ChangeState(em, 4, 1, 3);
+                    EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FLINCH_B, EM_SYNC_OWNER);
                 }
                 break;
             }
         }
         break;
-    case 13:
-        if (em->stance != 2 && em->stance != 4) {
-            EmDiablos_ChangeState(em, 4, 0, 3);
+    case EM_DMG_HIT_MODE3:
+        if (em->stance != EM_STANCE_AIR && em->stance != EM_STANCE_UNDER) {
+            EmDiablos_ChangeState(em, EM_GROUP_REACT, DIAB_REACT_FLINCH, EM_SYNC_OWNER);
             em->scriptPending = 0;
         }
         break;
     }
     switch (gQuest.stage) {
-    case 0x406:
-        if ((em->type == 0xE || em->type == 0x2B) && Area_DayId(em->area) == AREA_DESERT_2 && Save_TestEventFlag(0xA8) == 0) {
-            if (Area_DayId(gScene.area) == AREA_DESERT_2 && gScene.eventRunning == 1 && em->stateGroup != 6) {
-                EmDiablos_ChangeState(em, 6, 0, 1);
+    case QUEST_ID_DIABLOS_SCENE:
+        if ((em->type == EM_KIND_DIABLOS || em->type == EM_KIND_BLACK_DIABLOS) && Area_DayId(em->area) == AREA_DESERT_2 && Save_TestEventFlag(EVENT_FLAG_DIABLOS_SCENE) == 0) {
+            if (Area_DayId(gScene.area) == AREA_DESERT_2 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+                EmDiablos_ChangeState(em, EM_GROUP_EVENT, DIAB_EVENT_DIABLOS_SCENE, EM_SYNC_SEND);
             }
             break;
         }
-        goto normal;
-    case 0x1390:
-        if ((em->type == 0x1A || em->type == 0x2C) && Area_DayId(em->area) == AREA_DESERT_2 && Save_TestEventFlag(0xAA) == 0) {
-            if (Area_DayId(gScene.area) == AREA_DESERT_2 && gScene.eventRunning == 1 && em->stateGroup != 6) {
-                EmDiablos_ChangeState(em, 6, 1, 1);
+        goto noScene;
+    case QUEST_ID_MONOBLOS_SCENE:
+        if ((em->type == EM_KIND_MONOBLOS || em->type == EM_KIND_WHITE_MONOBLOS) && Area_DayId(em->area) == AREA_DESERT_2 && Save_TestEventFlag(EVENT_FLAG_MONOBLOS_SCENE) == 0) {
+            if (Area_DayId(gScene.area) == AREA_DESERT_2 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
+                EmDiablos_ChangeState(em, EM_GROUP_EVENT, DIAB_EVENT_MONOBLOS_SCENE, EM_SYNC_SEND);
             }
             break;
         }
     default:
-    normal:
+    noScene:
         Em_UpdatePendingScript(em);
         break;
     }
@@ -3762,20 +4844,20 @@ void EmDiablos_Update(Em *em)
         em->stateRequest = 0;
     }
     if (em->surfaceKind != 0 && gScene.area == em->area) {
-        if (em->stance == 4) {
-            f32 t = em->surfaceY - *(f32 *) &em->surfaceDepth;
-            if (!(em->posY <= t)) {
-                em->posY = t;
+        if (em->stance == EM_STANCE_UNDER) {
+            f32 limitY = em->surfaceY - *(f32 *) &em->surfaceDepth;
+            if (!(em->posY <= limitY)) {
+                em->posY = limitY;
             }
-            t = em->surfaceY - 1000.0f;
-            if (!(em->floorY < t)) {
-                em->floorY = t;
+            limitY = em->surfaceY - 1000.0f;
+            if (!(em->floorY < limitY)) {
+                em->floorY = limitY;
             }
             if (em->posY < em->floorY) {
                 em->posY = em->floorY;
             }
         }
-        if (em->stance == 0 || em->stance == 3) {
+        if (em->stance == EM_STANCE_GROUND || em->stance == EM_STANCE_DEAD) {
             em->floorY = em->surfaceY;
             if (em->posY < em->floorY) {
                 em->posY = em->floorY;
@@ -3784,72 +4866,92 @@ void EmDiablos_Update(Em *em)
     }
 }
 
+/*
+ * Stores prevStateGroup/prevState and runs the group's dispatcher; EM_GROUP_EVENT2
+ * runs EM_GROUP_EVENT's.
+ */
 void EmDiablos_RunState(Em *em, EmWork *work)
 {
     em->prevStateGroup = em->stateGroup;
     em->prevState = em->state;
     switch (em->stateGroup) {
-    case 0:
-        EmDiablos_RunGroup0(em, work);
+    case EM_GROUP_IDLE:
+        EmDiablos_RunIdleState(em, work);
         break;
-    case 1:
-        EmDiablos_RunGroup1(em, work);
+    case EM_GROUP_MOVE:
+        EmDiablos_RunMoveState(em, work);
         break;
-    case 2:
-        EmDiablos_RunGroup2(em, work);
+    case EM_GROUP_FLY:
+        EmDiablos_RunBurrowState(em, work);
         break;
-    case 3:
-        EmDiablos_RunGroup3(em, work);
+    case EM_GROUP_ATTACK:
+        EmDiablos_RunAttackState(em, work);
         break;
-    case 4:
-        EmDiablos_RunGroup4(em, work);
+    case EM_GROUP_REACT:
+        EmDiablos_RunReactState(em, work);
         break;
-    case 5:
-        EmDiablos_RunGroup5(em, work);
+    case EM_GROUP_DEFEAT:
+        EmDiablos_RunDefeatState(em, work);
         break;
-    case 6:
-        EmDiablos_RunGroup6(em, work);
+    case EM_GROUP_EVENT:
+        EmDiablos_RunEventState(em, work);
         break;
-    case 7:
-        EmDiablos_RunGroup6(em, work);
+    case EM_GROUP_EVENT2:
+        EmDiablos_RunEventState(em, work);
         break;
-    case 8:
-        EmDiablos_RunGroup8(em, work);
+    case EM_GROUP_VERSUS:
+        EmDiablos_RunVersusState(em, work);
         
     default:
         break;
     }
 }
 
-void EmDiablos_RequestOnFrame(void *em, s32 frame, s32 i)
+/*
+ * Requests camera shake kind shake (CamShake_ReqAIf) on the frame layer 0's
+ * motion passes frame.
+ */
+void EmDiablos_ShakeCamOnFrame(void *em, s32 frame, s32 shake)
 {
     if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
-        CamShake_ReqAIf(em, i);
+        CamShake_ReqAIf(em, shake);
     }
 }
 
+/*
+ * Does nothing: EmDiablos_MotionEffects' default case (motions without effects).
+ */
 static void EmDiablos_MotionEffectsDefault(Em *em)
 {
 }
 
-void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
+/*
+ * Keeps the current motion id (EmWork.sndMotion), runs
+ * EmDiablos_MotionSounds, then per layer-0 motion creates on fixed frames
+ * its attack objects (DiablosAttack_Create kinds), camera shakes, dust
+ * clouds (DustCloud_Create; the rage's kind 0x1A every 4th frame in frame
+ * windows while enraged), sand effects (Effect0D) and debris; the walk's and
+ * run's attacks are skipped under the sand (EM_STANCE_UNDER), where the run
+ * sprays sand at the surface instead.
+ */
+void EmDiablos_MotionEffects(Em *em, EmWork *work)
 {
-    f32 v3[3];
-    f32 v2[3];
-    f32 v1[3];
-    f32 v0[3];
+    f32 pos[3];
+    f32 ofs[3];
+    f32 puffOfs[3];
+    f32 puffOfsB[3];
 
-    if (em->motionId[0] != work->motion) {
-        work->motion = em->motionId[0];
+    if (em->motionId[0] != work->sndMotion) {
+        work->sndMotion = em->motionId[0];
     }
     EmDiablos_MotionSounds(em, (struct EmWork *)work);
-    switch (work->motion) {
-    case 0x3E9:
+    switch (work->sndMotion) {
+    case EM_MOTION_ID(0, DIAB_MOT_IDLE):
         break;
-    case 0x3EB:
-        if (em->stance != 4) {
-            EmDiablos_RequestOnFrame(em, 0x34, 1);
-            EmDiablos_RequestOnFrame(em, 0x74, 1);
+    case EM_MOTION_ID(0, DIAB_MOT_WALK):
+        if (em->stance != EM_STANCE_UNDER) {
+            EmDiablos_ShakeCamOnFrame(em, 0x34, 1);
+            EmDiablos_ShakeCamOnFrame(em, 0x74, 1);
             if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
                 DiablosAttack_Create(em, 2);
             }
@@ -3864,9 +4966,9 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
             break;
         }
         break;
-    case 0x3ED:
-        if (em->stance != 4) {
-            EmDiablos_RequestOnFrame(em, 0x3C, 1);
+    case EM_MOTION_ID(0, DIAB_MOT_TURN_RIGHT):
+        if (em->stance != EM_STANCE_UNDER) {
+            EmDiablos_ShakeCamOnFrame(em, 0x3C, 1);
             if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
                 DiablosAttack_Create(em, 5);
             }
@@ -3874,14 +4976,14 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
                 DiablosAttack_Create(em, 6);
             }
             if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, 1, 1.0f);
+                DustCloud_Create(em, 0x1A, 1, 1.0f);
                 break;
             }
         }
         break;
-    case 0x3EE:
-        if (em->stance != 4) {
-            EmDiablos_RequestOnFrame(em, 0x3C, 1);
+    case EM_MOTION_ID(0, DIAB_MOT_TURN_LEFT):
+        if (em->stance != EM_STANCE_UNDER) {
+            EmDiablos_ShakeCamOnFrame(em, 0x3C, 1);
             if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
                 DiablosAttack_Create(em, 7);
             }
@@ -3889,12 +4991,12 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
                 DiablosAttack_Create(em, 8);
             }
             if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, 0, 1.0f);
+                DustCloud_Create(em, 0x1A, 0, 1.0f);
                 break;
             }
         }
         break;
-    case 0x3EF:
+    case EM_MOTION_ID(0, 0x7):
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
             DiablosAttack_Create(em, 9);
         }
@@ -3903,15 +5005,15 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, 1, 1.0f);
+                DustCloud_Create(em, 0x1A, 1, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 20.0f, 70.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, 0, 1.0f);
+                DustCloud_Create(em, 0x1A, 0, 1.0f);
                 break;
             }
         }
         break;
-    case 0x3F0:
+    case EM_MOTION_ID(0, 0x8):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             DiablosAttack_Create(em, 0xB);
         }
@@ -3920,15 +5022,15 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, 0, 1.0f);
+                DustCloud_Create(em, 0x1A, 0, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 20.0f, 70.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, 1, 1.0f);
+                DustCloud_Create(em, 0x1A, 1, 1.0f);
                 break;
             }
         }
         break;
-    case 0x3F2:
+    case EM_MOTION_ID(0, DIAB_MOT_LIMP):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x19);
         }
@@ -3940,42 +5042,42 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
             break;
         }
         break;
-    case 0x3F3:
+    case EM_MOTION_ID(0, DIAB_MOT_DESCEND):
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
-            Effect0D_SpawnForEmScaled(em, 2, 7, 5.0f);
+            PartFx_SpawnForEmScaled(em, 2, 7, 5.0f);
             break;
         }
         break;
-    case 0x3F4:
+    case EM_MOTION_ID(0, 0xC):
         break;
-    case 0x3F5:
+    case EM_MOTION_ID(0, 0xD):
         if ((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 1, 7, 5.0f);
+            PartFx_SpawnForEmScaled(em, 1, 7, 5.0f);
             break;
         }
         break;
-    case 0x3F7:
+    case EM_MOTION_ID(0, DIAB_MOT_AIR):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) || EmMotion_PassedFrameScaled(em, 86.0f, 0) || EmMotion_PassedFrameScaled(em, 160.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
-                StageObj_K14_Create(em, 1, 0, 1.0f);
+                DustCloud_Create(em, 1, 0, 1.0f);
             }
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 70.0f, 84.0f) || EmMotion_InFrameRange(em, 0, 146.0f, 156.0f) || EmMotion_InFrameRange(em, 0, 220.0f, 234.0f)) {
                 if (!(gScene.frame & 3)) {
-                    StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
         }
         break;
-    case 0x3F9:
-        if (em->stance == 4) {
+    case EM_MOTION_ID(0, DIAB_MOT_RUN):
+        if (em->stance == EM_STANCE_UNDER) {
             if (gScene.area == em->area) {
-                Vec_Set(v3, em->posX, em->surfaceY, em->posZ);
+                Vec_Set(pos, em->posX, em->surfaceY, em->posZ);
                 if (!(gScene.frame & 3)) {
-                    Effect0D_SpawnAt(v3, 0x14, 20.0f);
-                    Em_PlaySeChecked(em, 0x22, 0, v3, 0x18, 0);
+                    PartFx_SpawnAt(pos, 0x14, 20.0f);
+                    Em_PlaySeChecked(em, 0x22, 0, pos, 0x18, 0);
                     break;
                 }
             }
@@ -3984,72 +5086,72 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
                 DiablosAttack_Create(em, 0xE);
             }
             if ((EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 154.0f, 0) != 0)) {
-                StageObj_K14_Create(em, 2, 0, 1.0f);
+                DustCloud_Create(em, 2, 0, 1.0f);
             }
             if ((EmMotion_PassedFrameScaled(em, 88.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0)) {
-                StageObj_K14_Create(em, 3, 0, 1.0f);
+                DustCloud_Create(em, 3, 0, 1.0f);
             }
             if (em->rage != 0) {
                 if ((EmMotion_PassedFrameScaled(em, 106.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0)) {
-                    StageObj_K14_Create(em, 0x19, (Rand_Next(1) & 1) + 2, 1.0f);
+                    DustCloud_Create(em, 0x19, (Rand_Next(1) & 1) + 2, 1.0f);
                 }
                 if ((EmMotion_InFrameRange(em, 0, 4.0f, 50.0f) != 0) && !(gScene.frame & 3)) {
-                    StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
         }
         break;
-    case 0x3FA:
+    case EM_MOTION_ID(0, DIAB_MOT_LEAP):
         if (((EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 140.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 194.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 240.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
-            StageObj_K14_Create(em, 1, 0, 1.0f);
+            DustCloud_Create(em, 1, 0, 1.0f);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 10.0f, 64.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
             }
             if (EmMotion_InFrameRange(em, 0, 136.0f, 140.0f) || EmMotion_InFrameRange(em, 0, 188.0f, 192.0f) || EmMotion_InFrameRange(em, 0, 136.0f, 234.0f)) {
-                StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                 break;
             }
         }
         break;
-    case 0x3FB:
+    case EM_MOTION_ID(0, DIAB_MOT_LAND):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             DiablosAttack_Create(em, 0xD);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0xB, 0, 1.0f);
+            DustCloud_Create(em, 0xB, 0, 1.0f);
         }
         if (em->rage != 0) {
             if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
-                StageObj_K14_Create(em, 0x19, 2, 1.0f);
-                StageObj_K14_Create(em, 0x19, 3, 1.0f);
+                DustCloud_Create(em, 0x19, 2, 1.0f);
+                DustCloud_Create(em, 0x19, 3, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 18.0f, 44.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                 break;
             }
         }
         break;
-    case 0x405:
+    case EM_MOTION_ID(0, 0x1D):
         break;
-    case 0x407:
-        v1[1] = 10.0f;
-        v1[2] = 140.0f;
-        v1[0] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0x22, v1, 1.6f);
+    case EM_MOTION_ID(0, DIAB_MOT_REST):
+        puffOfs[1] = 10.0f;
+        puffOfs[2] = 140.0f;
+        puffOfs[0] = 0.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
         break;
-    case 0x408:
-    case 0x409:
+    case EM_MOTION_ID(0, DIAB_MOT_REST_LIE_DOWN):
+    case EM_MOTION_ID(0, DIAB_MOT_REST_GET_UP):
         break;
-    case 0x40A:
-        v0[1] = 10.0f;
-        v0[2] = 140.0f;
-        v0[0] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0x22, v0, 1.6f);
+    case EM_MOTION_ID(0, DIAB_MOT_LIE):
+        puffOfsB[1] = 10.0f;
+        puffOfsB[2] = 140.0f;
+        puffOfsB[0] = 0.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfsB, 1.6f);
         break;
-    case 0x40C:
+    case EM_MOTION_ID(0, DIAB_MOT_STARE):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             DiablosAttack_Create(em, 1);
         }
@@ -4058,33 +5160,33 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
             break;
         }
         break;
-    case 0x40D:
+    case EM_MOTION_ID(0, DIAB_MOT_GET_UP):
         break;
-    case 0x40E:
+    case EM_MOTION_ID(0, DIAB_MOT_COLLAPSE):
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
             DiablosAttack_Create(em, 0xF);
         }
         if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0, 1.0f);
+            DustCloud_Create(em, 0, 0, 1.0f);
             break;
         }
         break;
-    case 0x40F:
+    case EM_MOTION_ID(0, DIAB_MOT_LIE_DOWN):
         break;
-    case 0x412:
-        EmDiablos_RequestOnFrame(em, 0x2C, 1);
-        EmDiablos_RequestOnFrame(em, 0x49, 1);
+    case EM_MOTION_ID(0, DIAB_MOT_TAIL_SPIN):
+        EmDiablos_ShakeCamOnFrame(em, 0x2C, 1);
+        EmDiablos_ShakeCamOnFrame(em, 0x49, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x11);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
-            StageObj_K14_Create(em, 0x1A, 0, 1.0f);
+            DustCloud_Create(em, 0x1A, 0, 1.0f);
             break;
         }
         break;
-    case 0x41B:
+    case EM_MOTION_ID(0, DIAB_MOT_ALERT_IDLE):
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            StageObj_K14_Create(em, 2, 2, 0.8f);
+            DustCloud_Create(em, 2, 2, 0.8f);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x1B);
@@ -4097,168 +5199,168 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 156.0f, 248.0f) || EmMotion_InFrameRange(em, 0, 276.0f, 346.0f)) {
-                StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                 break;
             }
         }
         break;
-    case 0x41E:
+    case EM_MOTION_ID(0, DIAB_MOT_TURN_IN_PLACE):
         if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x12);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 16.0f, 26.0f) != 0) && !(gScene.frame & 3)) {
-            StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
-    case 0x424:
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x16, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 0x16, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            StageObj_K14_Create(em, 1, 0x80, 0.6f);
+            DustCloud_Create(em, 1, 0x80, 0.6f);
             break;
         }
         break;
-    case 0x425:
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_E):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
             break;
         }
         break;
-    case 0x426:
-    case 0x427:
-    case 0x428:
+    case EM_MOTION_ID(0, DIAB_MOT_SHAKE_OFF):
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_C):
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_D):
         break;
-    case 0x429:
+    case EM_MOTION_ID(0, DIAB_MOT_PART_BREAK):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            StageObj_K14_Create(em, 3, 0x80, 1.0f);
+            DustCloud_Create(em, 3, 0x80, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
-            StageObj_K14_Create(em, 3, 0x80, 0.6f);
+            DustCloud_Create(em, 3, 0x80, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            StageObj_K14_Create(em, 1, 0x80, 1.0f);
+            DustCloud_Create(em, 1, 0x80, 1.0f);
             break;
         }
         break;
-    case 0x42A:
-    case 0x42B:
+    case EM_MOTION_ID(0, DIAB_MOT_FLINCH_B):
+    case EM_MOTION_ID(0, 0x43):
         break;
-    case 0x42C:
+    case EM_MOTION_ID(0, DIAB_MOT_DIE):
         if (EmMotion_PassedFrameScaled(em, 268.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0, 0.9f);
+            DustCloud_Create(em, 0, 0, 0.9f);
             break;
         }
         break;
-    case 0x42D:
-        EmDiablos_RequestOnFrame(em, 0x1A, 2);
+    case EM_MOTION_ID(0, DIAB_MOT_KNOCK_DOWN):
+        EmDiablos_ShakeCamOnFrame(em, 0x1A, 2);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0x12, 0x80, 1.0f);
+            DustCloud_Create(em, 0x12, 0x80, 1.0f);
             break;
         }
         break;
-    case 0x42E:
-    case 0x433:
-    case 0x42F:
-    case 0x430:
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN):
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN_B):
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN_GET_UP):
+    case EM_MOTION_ID(0, DIAB_MOT_DOWN_GET_UP_B):
         break;
-    case 0x431:
-        EmDiablos_RequestOnFrame(em, 0x1A, 2);
+    case EM_MOTION_ID(0, 0x49):
+        EmDiablos_ShakeCamOnFrame(em, 0x1A, 2);
         if ((EmMotion_ReachedFrame(em, 0, 28.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 52.0f) == 0) && !(gScene.frame & 3)) {
-            StageObj_K14_Create(em, 0xA, 0x80, 1.0f);
+            DustCloud_Create(em, 0xA, 0x80, 1.0f);
             break;
         }
         break;
-    case 0x432:
-        EmDiablos_RequestOnFrame(em, 0x1A, 2);
+    case EM_MOTION_ID(0, DIAB_MOT_KNOCK_DOWN_B):
+        EmDiablos_ShakeCamOnFrame(em, 0x1A, 2);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0x12, 0x81, 1.0f);
+            DustCloud_Create(em, 0x12, 0x81, 1.0f);
             break;
         }
         break;
-    case 0x434:
-    case 0x435:
+    case EM_MOTION_ID(0, DIAB_MOT_STATUS4):
+    case EM_MOTION_ID(0, DIAB_MOT_FALL):
         break;
-    case 0x436:
+    case EM_MOTION_ID(0, DIAB_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0xB, 0, 1.0f);
+            DustCloud_Create(em, 0xB, 0, 1.0f);
             break;
         }
         break;
-    case 0x438:
-    case 0x439:
-    case 0x43A:
-    case 0x43B:
-    case 0x442:
+    case EM_MOTION_ID(0, DIAB_MOT_IDLE_PAIR_A):
+    case EM_MOTION_ID(0, DIAB_MOT_IDLE_PAIR_B):
+    case EM_MOTION_ID(0, DIAB_MOT_DIE_FALLING):
+    case EM_MOTION_ID(0, 0x53):
+    case EM_MOTION_ID(0, 0x5A):
         break;
-    case 0x448:
+    case EM_MOTION_ID(0, DIAB_MOT_SAND_STRUGGLE):
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 12.0f, 24.0f) || EmMotion_InFrameRange(em, 0, 46.0f, 90.0f)) {
                 if (!(gScene.frame & 3)) {
-                    StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
         }
         break;
-    case 0x449:
-    case 0x44A:
+    case EM_MOTION_ID(0, DIAB_MOT_DOWNED):
+    case EM_MOTION_ID(0, DIAB_MOT_DOWNED_GET_UP):
         break;
-    case 0x44C:
+    case EM_MOTION_ID(0, DIAB_MOT_CHARGE_STOP):
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x16);
         }
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            StageObj_K14_Create(em, 2, 6, 1.8f);
+            DustCloud_Create(em, 2, 6, 1.8f);
         }
         if ((EmMotion_InFrameRange(em, 0, 40.0f, 80.0f) != 0) && !(gScene.frame & 3)) {
-            Effect0D_SpawnForEmScaled(em, 2, 3, 7.0f);
+            PartFx_SpawnForEmScaled(em, 2, 3, 7.0f);
         }
         if (em->rage != 0) {
             if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
-                StageObj_K14_Create(em, 0x19, 2, 1.0f);
-                StageObj_K14_Create(em, 0x19, 3, 1.0f);
+                DustCloud_Create(em, 0x19, 2, 1.0f);
+                DustCloud_Create(em, 0x19, 3, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 72.0f, 116.0f) != 0) && !(gScene.frame & 3)) {
-                StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                 break;
             }
         }
         break;
-    case 0x44F:
-        EmDiablos_RequestOnFrame(em, 0x68, 4);
+    case EM_MOTION_ID(0, DIAB_MOT_BURROW):
+        EmDiablos_ShakeCamOnFrame(em, 0x68, 4);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x20);
         }
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            StageObj_K14_Create(em, 2, 0, 1.2f);
+            DustCloud_Create(em, 2, 0, 1.2f);
         }
         if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            StageObj_K14_Create(em, 3, 0, 1.2f);
+            DustCloud_Create(em, 3, 0, 1.2f);
         }
         if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
-            StageObj_K14_Create(em, 1, 0, 1.0f);
+            DustCloud_Create(em, 1, 0, 1.0f);
         }
         if ((EmMotion_InFrameRange(em, 0, 40.0f, 62.0f) != 0) && !(gScene.frame & 3)) {
-            Effect0D_SpawnForEmScaled(em, 0xF, 3, 5.0f);
+            PartFx_SpawnForEmScaled(em, 0xF, 3, 5.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 9, 3, 5.0f);
+            PartFx_SpawnForEmScaled(em, 9, 3, 5.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 172.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 184.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 0x29, 3, 6.0f);
+            PartFx_SpawnForEmScaled(em, 0x29, 3, 6.0f);
         }
         if (!(em->fxFlags & 1) && (EmMotion_PassedFrameScaled(em, 180.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 0x2A, 0x13, 0.7f);
+            PartFx_SpawnForEmScaled(em, 0x2A, 0x13, 0.7f);
             break;
         }
         break;
-    case 0x450:
-        EmDiablos_RequestOnFrame(em, 2, 5);
+    case EM_MOTION_ID(0, DIAB_MOT_EMERGE):
+        EmDiablos_ShakeCamOnFrame(em, 2, 5);
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x15);
         }
@@ -4266,69 +5368,69 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
             DiablosAttack_Create(em, 0x21);
         }
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x22, 0x13, 1.4f);
+            PartFx_SpawnForEmScaled(em, 0x22, 0x13, 1.4f);
             if (Player_InCurrentArea(em)) {
-                Em_BonePos(em, 0x22, v3);
-                v3[1] = em->floorY;
-                StageObj_K11_CreateAtScaled(v3, (u16) em->rotY, 8, 1.0f);
+                Em_BonePos(em, 0x22, pos);
+                pos[1] = em->floorY;
+                AttackBurst_CreateAtScaled(pos, (u16) em->rotY, 8, 1.0f);
             }
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 12.0f, 36.0f) || EmMotion_InFrameRange(em, 0, 66.0f, 130.0f) || EmMotion_InFrameRange(em, 0, 168.0f, 204.0f)) {
                 if (!(gScene.frame & 3)) {
-                    StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
         }
         break;
-    case 0x451:
-        EmDiablos_RequestOnFrame(em, 0xC, 3);
+    case EM_MOTION_ID(0, DIAB_MOT_POP_OUT):
+        EmDiablos_ShakeCamOnFrame(em, 0xC, 3);
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 2, 0x13, 1.4f);
+            PartFx_SpawnForEmScaled(em, 2, 0x13, 1.4f);
             if (Player_InCurrentArea(em)) {
-                Em_BonePos(em, 2, v3);
-                v3[1] = em->floorY;
-                StageObj_K11_CreateAtScaled(v3, (u16) em->rotY, 8, 1.0f);
+                Em_BonePos(em, 2, pos);
+                pos[1] = em->floorY;
+                AttackBurst_CreateAtScaled(pos, (u16) em->rotY, 8, 1.0f);
                 break;
             }
         }
         break;
-    case 0x452:
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_A):
         if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x18);
         }
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x14, 3, 5.0f);
+            PartFx_SpawnForEmScaled(em, 0x14, 3, 5.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x14, 3, 5.0f);
+            PartFx_SpawnForEmScaled(em, 0x14, 3, 5.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 86.0f, 152.0f) != 0) && !(gScene.frame & 3)) {
-            StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
-    case 0x453:
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_B):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x10);
         }
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x14, 3, 5.0f);
+            PartFx_SpawnForEmScaled(em, 0x14, 3, 5.0f);
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 8.0f, 24.0f) || EmMotion_InFrameRange(em, 0, 136.0f, 172.0f)) {
                 if (!(gScene.frame & 3)) {
-                    StageObj_K14_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
         }
         break;
-    case 0x454:
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_C):
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x14);
         }
@@ -4337,60 +5439,60 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
         }
         if (!(em->fxFlags & 1)) {
             if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
-                Effect0D_SpawnForEmScaled(em, 0x2B, 7, 2.0f);
+                PartFx_SpawnForEmScaled(em, 0x2B, 7, 2.0f);
             }
             if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
-                Effect0D_SpawnForEmScaled(em, 0x2B, 7, 3.0f);
+                PartFx_SpawnForEmScaled(em, 0x2B, 7, 3.0f);
                 break;
             }
         }
         break;
-    case 0x455:
+    case EM_MOTION_ID(0, DIAB_MOT_ATTACK_D):
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x1E);
         }
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x1A, 3, 2.0f);
+            PartFx_SpawnForEmScaled(em, 0x1A, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x14, 3, 2.0f);
+            PartFx_SpawnForEmScaled(em, 0x14, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x14, 3, 2.0f);
+            PartFx_SpawnForEmScaled(em, 0x14, 3, 2.0f);
             break;
         }
         break;
-    case 0x457:
+    case EM_MOTION_ID(0, DIAB_MOT_ROAR):
         if (EmMotion_PassedFrameScaled(em, 112.0f, 0) != 0) {
             DiablosAttack_Create(em, 0x13);
-            StageObj_K0F_CreateOnEm(em, 5, 6, 1.0f);
+            ElementBurst_CreateOnEm(em, 5, 6, 1.0f);
             break;
         }
         break;
-    case 0x459:
+    case EM_MOTION_ID(0, DIAB_MOT_PART6_BREAK):
         break;
-    case 0x45A:
-        EmDiablos_RequestOnFrame(em, 4, 3);
-        EmDiablos_RequestOnFrame(em, 0x68, 0);
+    case EM_MOTION_ID(0, DIAB_MOT_HORN_STUCK):
+        EmDiablos_ShakeCamOnFrame(em, 4, 3);
+        EmDiablos_ShakeCamOnFrame(em, 0x68, 0);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            v2[1] = 30.0f;
-            v2[0] = 0.0f;
-            v2[2] = 100.0f;
-            Vec_RotateSelf((f32 *) v2, (f32 *) (Em_Bone(em, 0x27)));
-            Em_BonePos(em, 0x27, v3);
-            Vec_Add(v3, v3, v2);
-            Effect02_SpawnForOwner(em, 0, 9, 0, v3, 1.0f);
-            Effect02_SpawnForOwner(em, 0, 9, 1, v3, 1.0f);
-            Effect0D_SpawnIfHere(em, v3, 0x22, 10.0f);
+            ofs[1] = 30.0f;
+            ofs[0] = 0.0f;
+            ofs[2] = 100.0f;
+            Vec_RotateSelf((f32 *) ofs, (f32 *) (Em_Bone(em, 0x27)));
+            Em_BonePos(em, 0x27, pos);
+            Vec_Add(pos, pos, ofs);
+            HitSpark_SpawnForOwner(em, 0, 9, 0, pos, 1.0f);
+            HitSpark_SpawnForOwner(em, 0, 9, 1, pos, 1.0f);
+            PartFx_SpawnIfHere(em, pos, 0x22, 10.0f);
         }
         if (!(gScene.frame & 0x1F)) {
-            StageObj_K15_Create(em, 2);
+            FallingDebris_Create(em, 2);
             break;
         }
         break;
-    case 0x45B:
+    case EM_MOTION_ID(0, DIAB_MOT_HORN_PULL_FREE):
         if (EmMotion_PassedFrameScaled(em, 68.0f, 0) != 0) {
-            StageObj_K15_Create(em, 2);
+            FallingDebris_Create(em, 2);
             break;
         }
         break;
@@ -4400,6 +5502,10 @@ void EmDiablos_MotionEffects(Em *em, EmDiablosFxWork *work)
     }
 }
 
+/*
+ * Callback slot 3 (Em_RunMotionFx) of EmDiablos_Callbacks: skips the first
+ * frame (fxStep 0 -> 1), then runs EmDiablos_MotionEffects every frame.
+ */
 void EmDiablos_UpdateMotionEffects(Em *em)
 {
     EmDiablosWork *w = (EmDiablosWork *)&em->work;
@@ -4409,111 +5515,142 @@ void EmDiablos_UpdateMotionEffects(Em *em)
         w->fxStep++;
         break;
     case 1:
-        EmDiablos_MotionEffects(em, (EmDiablosFxWork *) w);
+        EmDiablos_MotionEffects(em, (EmWork *) w);
         break;
     }
 }
 
-void EmDiablos_State3_End(Em *em, EmWork *work)
+/*
+ * Ends an attack: EmDiablos_EndState (back to DIAB_IDLE, script pending);
+ * called by two group-3 states when their motion ends.
+ */
+void EmDiablos_EndAttack(Em *em, EmWork *work)
 {
     EmDiablos_EndState(em, 0, 0);
 }
 
+/*
+ * Callback slot 2 (EmVt.unk08) of EmDiablos_Callbacks: does nothing.
+ */
 void EmDiablos_TableNop(void)
 {
 }
 
+/*
+ * Callback slot 6 (EmVt.part8DownQuery): returns 1 (part 8 may go down:
+ * EM_DMG_PART8_DOWN, DIAB_REACT_PART_BREAK) when it is not in a sand
+ * reaction state, not in the air (EM_STANCE_AIR) and the part break has not
+ * run yet (partBreakCount 0), else 0.
+ */
 s32 EmDiablos_AllowHit8(Em *em)
 {
-    if ((EmDiablos_InSandState(em) == 0) && (em->stance != 2) && ((s8) em->partBreakCount == 0)) {
+    if ((EmDiablos_InSandReactState(em) == 0) && (em->stance != EM_STANCE_AIR) && ((s8) em->partBreakCount == 0)) {
         return 1;
     }
     return 0;
 }
 
-void EmDiablos_SetGroup0State(Em *em, u16 state, u8 mode)
+/*
+ * Enters an idle state: motion speed 1, EM_STANCE_GROUND, then the state's
+ * own call (the rest resets the notice, the status states begin or end
+ * their status, DIAB_IDLE_REST_END refills need 3, DIAB_IDLE_HOLD2_SHAKE_OFF
+ * clears holdTimer2, the two alerts start the rage); then Em_SetStateSync.
+ */
+void EmDiablos_SetIdleState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 18:
+    case DIAB_IDLE_REST:
         Em_ResetNotice(em);
         break;
-    case 20:
-    case 21:
-    case 29:
+    case DIAB_IDLE_STATUS2_COLLAPSE:
+    case DIAB_IDLE_STATUS2_LIE_DOWN:
+    case DIAB_IDLE_SAND_DOWNED:
         Em_BeginStatus2(em);
         break;
-    case 23:
+    case DIAB_IDLE_REST_END:
         Em_RefillNeed3(em);
         break;
-    case 24:
+    case DIAB_IDLE_STATUS2_END:
         Em_EndStatus2(em);
         break;
-    case 27:
+    case DIAB_IDLE_STATUS1_COLLAPSE:
         Em_BeginStatus1(em);
         break;
-    case 28:
+    case DIAB_IDLE_STATUS1_END:
         Em_EndStatus1(em);
         break;
-    case 33:
+    case DIAB_IDLE_STATUS4_SHAKE_OFF:
         Em_EndStatus4(em);
         break;
-    case 34:
+    case DIAB_IDLE_HOLD2_SHAKE_OFF:
         em->holdTimer2 = 0;
         break;
-    case 35:
+    case DIAB_IDLE_STUN_SHAKE_OFF:
         Em_EndStatus5(em);
         break;
-    case 36:
+    case DIAB_IDLE_ALERT_RAGE:
         Em_StartRage(em);
         break;
-    case 37:
+    case DIAB_IDLE_ALERT_PENDING_RAGE:
         Em_StartPendingRage(em);
         break;
     }
-    em->stance = 0;
-    Em_SetStateSync(em, 0, state, mode);
+    em->stance = EM_STANCE_GROUND;
+    Em_SetStateSync(em, EM_GROUP_IDLE, state, mode);
 }
 
-void EmDiablos_SetGroup1State(Em *em, u16 state, u8 mode)
+/*
+ * Enters a move state (EM_STANCE_GROUND). DIAB_MOVE_WALK and DIAB_MOVE_RUN
+ * become DIAB_MOVE_LIMP below 30% hp, and the run becomes
+ * DIAB_MOVE_RUN_AND_STOP in combat; otherwise walk speed and, without a
+ * goal, a random timer (90 to 149 frames). DIAB_MOVE_END only sets
+ * scriptPending (no state change). DIAB_MOVE_TURN becomes
+ * DIAB_MOVE_TURN_IN_COMBAT in combat. DIAB_MOVE_RUN_AND_STOP_SLOW sets motion
+ * speed 0.7, then as DIAB_MOVE_RUN_AND_STOP: run speed and, without a goal
+ * kind, the random timer. DIAB_MOVE_LIMP keeps the random timer (at most
+ * 300) or measures goalDist to the goal. Then Em_SetStateSync. The gotos
+ * join the cases they name, as the game's code does.
+ */
+void EmDiablos_SetMoveState(Em *em, u16 state, u8 mode)
 {
-    em->stance = 0;
+    em->stance = EM_STANCE_GROUND;
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 0:
-    case 2:
+    case DIAB_MOVE_WALK:
+    case DIAB_MOVE_RUN:
         if (em->hp < (s16) (0.3f * em->hpMax)) {
-            state = 6;
-            goto state6;
+            state = DIAB_MOVE_LIMP;
+            goto limp;
         }
-        if (state == 2 && em->combat == 1) {
-            state = 4;
-            goto state4;
+        if (state == DIAB_MOVE_RUN && em->combat == 1) {
+            state = DIAB_MOVE_RUN_AND_STOP;
+            goto runAndStop;
         }
         Em_SetSpeedScaled(em, 0, 1000.0f, 500.0f);
         if (em->remote == 0 && em->hasGoal == 0) {
             em->timer = (em->stateRand % 120 + 180) / 2;
         }
         break;
-    case 1:
+    case DIAB_MOVE_END:
         em->scriptPending = 1;
         return;
-    case 3:
+    case DIAB_MOVE_TURN:
         if (em->combat == 1) {
-            state = 5;
+            state = DIAB_MOVE_TURN_IN_COMBAT;
         }
         break;
-    case 8:
+    case DIAB_MOVE_RUN_AND_STOP_SLOW:
         em->motionSpeed = 0.7f;
-    case 4:
-    state4:
+    case DIAB_MOVE_RUN_AND_STOP:
+    runAndStop:
         Em_SetSpeedScaled(em, 2, 1000.0f, 500.0f);
         if (em->curGoalKind == 0) {
             em->timer = (em->stateRand % 120 + 180) / 2;
         }
         break;
-    case 6:
-    state6:
+    case DIAB_MOVE_LIMP:
+    limp:
         if (em->curGoalKind == 0) {
             em->hasGoal = 0;
             em->timer = (em->stateRand % 120 + 180) / 2;
@@ -4525,20 +5662,27 @@ void EmDiablos_SetGroup1State(Em *em, u16 state, u8 mode)
             em->timer = 300;
         }
         break;
-    case 5:
-    case 7:
+    case DIAB_MOVE_TURN_IN_COMBAT:
+    case DIAB_MOVE_TURN_TO_GOAL:
         break;
     }
-    Em_SetStateSync(em, 1, state, mode);
+    Em_SetStateSync(em, EM_GROUP_MOVE, state, mode);
 }
 
-void EmDiablos_SetGroup2State(Em *em, u16 state, u8 mode)
+/*
+ * Enters a burrow state: 0 (burrowing) where the floor is not sand in the
+ * player's area changes to DIAB_IDLE_ALERT_BRIEF instead; 4 and 8 run speed and the random
+ * timer; 5 walk speed and the random timer or goalDist / 7; 7 and 11 clear
+ * the velocity, velZ 20 and a timer of three times the frames to the goal; 9
+ * velZ at least 20 and (owner) the frames to the goal; then Em_SetStateSync.
+ */
+void EmDiablos_SetBurrowState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
     switch (state) {
     case 0:
         if (em->surfaceKind == 0 && gScene.area == em->area) {
-            EmDiablos_ChangeState(em, 0, 3, 1);
+            EmDiablos_ChangeState(em, EM_GROUP_IDLE, DIAB_IDLE_ALERT_BRIEF, EM_SYNC_SEND);
             return;
         }
         break;
@@ -4583,25 +5727,31 @@ void EmDiablos_SetGroup2State(Em *em, u16 state, u8 mode)
     case 12:
         break;
     }
-    Em_SetStateSync(em, 2, state, mode);
+    Em_SetStateSync(em, EM_GROUP_FLY, state, mode);
 }
 
-void EmDiablos_SetGroup3State(Em *em, u16 state, u8 mode)
+/*
+ * Enters an attack: 0, 0x1A, 0x1B, 0x1D face the target (Em_SetTargetAngle);
+ * 0xF (charge) goalDist 500 past the goal, or 150 frames with no target;
+ * 0x10, 0x11 goalDist and a timer of dist / 30 + 30 frames, or 150 with no
+ * target; then Em_SetStateSync.
+ */
+void EmDiablos_SetAttackState(Em *em, u16 state, u8 mode)
 {
-    f32 f;
+    f32 dist;
 
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 0:
-    case 26:
-    case 27:
-    case 29:
+    case DIAB_ATK_TURN_AND_STARE:
+    case DIAB_ATK_TURN_ATTACK_A:
+    case DIAB_ATK_TURN_ATTACK_B:
+    case DIAB_ATK_TURN_ATTACK_D:
         Em_SetTargetAngle(em);
         break;
-    case 3:
-    case 6:
+    case DIAB_ATK_STARE:
+    case DIAB_ATK_TAIL_SPIN:
         break;
-    case 15:
+    case DIAB_ATK_CHARGE:
         if (em->targetNo == -1) {
             em->timer = 150;
             em->hasGoal = 0;
@@ -4610,129 +5760,148 @@ void EmDiablos_SetGroup3State(Em *em, u16 state, u8 mode)
             em->goalDist = 500.0f + Vec_DistanceXZ(&em->posX, em->goal);
         }
         break;
-    case 16:
-    case 17:
+    case DIAB_ATK_CHARGE_ATTACK_A:
+    case DIAB_ATK_CHARGE_ATTACK_B:
         if (em->targetNo == -1) {
             em->timer = 150;
             em->hasGoal = 0;
         } else {
             em->hasGoal = 1;
-            f = Vec_DistanceXZ(&em->posX, em->goal);
-            em->goalDist = f;
-            em->timer = (s32) (f / 30.0f) + 30;
+            dist = Vec_DistanceXZ(&em->posX, em->goal);
+            em->goalDist = dist;
+            em->timer = (s32) (dist / 30.0f) + 30;
         }
         break;
     }
-    Em_SetStateSync(em, 3, state, mode);
+    Em_SetStateSync(em, EM_GROUP_ATTACK, state, mode);
 }
 
+/*
+ * Moves to (group, state): the owner aims at a player in range, a remote
+ * copy ignores EM_SYNC_OWNER and EM_SYNC_OWNER_FLAGGED; loads reaction set
+ * 0, runs the group's setter (groups 0-3), marks a versus defeat on
+ * DIAB_VS_WAIT_BOTH, calls QuestEm_Appear on DIAB_DEFEAT_REAPPEAR when the
+ * quest lets it. The reactions: DIAB_REACT_PART_BREAK sets fxFlags bit 1,
+ * counts partBreakCount and ends all statuses; DIAB_REACT_HOLD2 ends all
+ * statuses; DIAB_REACT_STATUS4 and _STATUS4_IN_SAND begin status 4;
+ * DIAB_REACT_PART_BREAK_END resets the pose and breaks part 2; the sand
+ * struggles end status 4, 2 or 5; the stuns begin status 5. Then (falling
+ * into EM_GROUP_EVENT's case) Em_SetStateSync. EM_GROUP_EVENT2 sets nothing.
+ */
 void EmDiablos_ChangeState(Em *em, u16 group, u16 state, u8 mode)
 {
     if (em->remote == 0) {
         Em_TargetPlayerInRange(em);
-    } else if (mode == 3 || mode == 4) {
+    } else if (mode == EM_SYNC_OWNER || mode == EM_SYNC_OWNER_FLAGGED) {
         return;
     }
     Em_LoadReactionSet(em, 0);
     switch (group) {
-    case 0:
-        EmDiablos_SetGroup0State(em, state, mode);
+    case EM_GROUP_IDLE:
+        EmDiablos_SetIdleState(em, state, mode);
         break;
-    case 1:
-        EmDiablos_SetGroup1State(em, state, mode);
+    case EM_GROUP_MOVE:
+        EmDiablos_SetMoveState(em, state, mode);
         break;
-    case 2:
-        EmDiablos_SetGroup2State(em, state, mode);
+    case EM_GROUP_FLY:
+        EmDiablos_SetBurrowState(em, state, mode);
         break;
-    case 3:
-        EmDiablos_SetGroup3State(em, state, mode);
+    case EM_GROUP_ATTACK:
+        EmDiablos_SetAttackState(em, state, mode);
         break;
-    case 8:
+    case EM_GROUP_VERSUS:
         if (state == 0x98) {
             Versus_MarkDefeat(em);
         }
         em->motionSpeed = 1.0f;
         Em_SetStateSync(em, group, state, mode);
         break;
-    case 5:
+    case EM_GROUP_DEFEAT:
         if (state == 3 && QuestEm_CanAppear(em) == 1) {
             QuestEm_Appear(em);
         }
         em->motionSpeed = 1.0f;
         Em_SetStateSync(em, group, state, mode);
         break;
-    case 4:
+    case EM_GROUP_REACT:
         switch (state) {
-        case 4:
+        case DIAB_REACT_PART_BREAK:
             em->fxFlags |= 1;
             em->partBreakCount++;
             Em_EndAllStatus(em);
             break;
-        case 19:
+        case DIAB_REACT_HOLD2:
             Em_EndAllStatus(em);
             break;
-        case 7:
+        case DIAB_REACT_PART6_BREAK:
             break;
-        case 11:
+        case DIAB_REACT_STATUS4:
             Em_BeginStatus4(em);
             break;
-        case 14:
+        case DIAB_REACT_STATUS4_IN_SAND:
             Em_BeginStatus4(em);
             break;
-        case 15:
+        case DIAB_REACT_PART_BREAK_END:
             Em_ResetToBasePose(em);
             Em_BreakPart(em, 2);
             break;
-        case 17:
+        case DIAB_REACT_STATUS4_SAND_STRUGGLE:
             Em_EndStatus4(em);
             break;
-        case 18:
+        case DIAB_REACT_STATUS2_SAND_GET_UP:
             Em_EndStatus2(em);
             break;
-        case 20:
-        case 21:
-        case 22:
+        case DIAB_REACT_STUN:
+        case DIAB_REACT_STUN_B:
+        case DIAB_REACT_STUN_IN_SAND:
             Em_BeginStatus5(em);
             break;
-        case 23:
+        case DIAB_REACT_STUN_SAND_STRUGGLE:
             Em_EndStatus5(em);
             break;
         }
-    case 6:
+    case EM_GROUP_EVENT:
         em->motionSpeed = 1.0f;
         Em_SetStateSync(em, group, state, mode);
         break;
-    case 7:
+    case EM_GROUP_EVENT2:
         break;
     }
 }
 
+/*
+ * Unless layer 0 is blending, sets velY from the key table
+ * EmDiablos_MoveVelYCurves[kind] at the motion's frame (the first key's
+ * value on frames 0 and 1, else the slope between the keys around the frame,
+ * per motion step) and moves along the heading (Em_MoveRotated); called by
+ * two burrow states with kind 1.
+ */
 void EmDiablos_MoveByVelYCurve(Em *em, s32 kind)
 {
     EmWork *work = (EmWork *) &em->work;
-    EmCurveKey *tbl;
-    EmCurveKey *p;
+    EmCurveKey *keys;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyTime;
     s32 i;
 
-    tbl = EmDiablos_MoveVelYCurves[kind];
-    if (tbl != NULL && em->motion[0].blend == 0) {
+    keys = EmDiablos_MoveVelYCurves[kind];
+    if (keys != NULL && em->motion[0].blend == 0) {
         frame = em->motion[0].frame;
         if (frame == 0.0f || frame == 1.0f) {
-            em->velY = tbl->v;
+            em->velY = keys->v;
         } else {
             i = 1;
             while (i != 0) {
-                p = &tbl[i];
-                t = p->t;
-                if (frame > t && t != 0.0f) {
+                key = &keys[i];
+                keyTime = key->t;
+                if (frame > keyTime && keyTime != 0.0f) {
                     i++;
-                } else if (t == 0.0f) {
+                } else if (keyTime == 0.0f) {
                     break;
                 } else {
                     i = 0;
-                    em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                    em->velY = (key->v - key[-1].v) / ((keyTime - key[-1].t) / em->motion[0].step);
                 }
             }
         }
@@ -4743,6 +5912,12 @@ void EmDiablos_MoveByVelYCurve(Em *em, s32 kind)
     }
 }
 
+/*
+ * Starts curve set kind (the tables EmDiablos_VelYCurves/EmDiablos_SpeedCurves): sets
+ * the velY flag (kinds 2, 3, 5, 8-13) and the speed flag (5, 8, 9, 10) with
+ * the kind's start frame, and clears the velocity; called by two states
+ * leaping out of the sand.
+ */
 void EmDiablos_StartCurves(Em *em, u8 kind)
 {
     EmDiablosWork *w = (EmDiablosWork *)&em->work;
@@ -4796,6 +5971,10 @@ void EmDiablos_StartCurves(Em *em, u8 kind)
     Player_ClearVelocity(em);
 }
 
+/*
+ * The first curve slot (flag curveNone, never set by EmDiablos_StartCurves): returns
+ * 0.
+ */
 static s32 EmDiablos_CurveNone(Em *em, EmWork *work)
 {
     return 0;
@@ -4804,45 +5983,49 @@ static s32 EmDiablos_CurveNone(Em *em, EmWork *work)
 
 extern EmCurveKey *EmDiablos_VelYCurves[];
 
-/* The value of curve work[0x4B] at the frame in the work area (a table of keys): sets
- * em->velY from the key pair around the frame, 2 at the table's end. */
+/*
+ * Sets velY from EmDiablos_VelYCurves[curveKind] at curveFrame (the slope
+ * between the keys around it; nothing on frames 0 and 1); past the last key
+ * (time 0) it lets velY fall by 1 a frame down to -50, and a negative key
+ * time resets curveFrame and velY to 0; returns 2 in both end cases, else 0.
+ */
 static u8 EmDiablos_CurveVelY(Em *em, EmWork *work)
 {
     EmDiablosWork *w = (EmDiablosWork *) work;
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyTime;
     s32 i;
-    EmCurveKey *tbl;
+    EmCurveKey *keys;
     u8 ret;
 
-    tbl = EmDiablos_VelYCurves[((EmDiablosWork *)work)->curveKind];
+    keys = EmDiablos_VelYCurves[((EmDiablosWork *)work)->curveKind];
     ret = 0;
-    if (tbl == NULL) {
+    if (keys == NULL) {
         return ret;
     }
     frame = w->curveFrame;
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t > 0.0f) {
+            key = &keys[i];
+            keyTime = key->t;
+            if (frame > keyTime && keyTime > 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
+            } else if (keyTime == 0.0f) {
                 ret = 2;
                 if (em->velY > -50.0f) {
                     em->velY -= 1.0f;
                 }
                 break;
-            } else if (t < 0.0f) {
+            } else if (keyTime < 0.0f) {
                 w->curveFrame = 0;
                 ret = 2;
                 em->velY = 0.0f;
                 break;
             } else {
                 i = 0;
-                em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velY = (key->v - key[-1].v) / ((keyTime - key[-1].t) / em->motion[0].step);
             }
         }
     }
@@ -4851,45 +6034,51 @@ static u8 EmDiablos_CurveVelY(Em *em, EmWork *work)
 
 extern EmCurveKey *EmDiablos_SpeedCurves[];
 
-/* The value of curve work[0x4B] at the frame in the work area: sets em->velZ from the key
- * pair around the frame, 4 at the table's end. */
+/*
+ * Sets velZ from EmDiablos_SpeedCurves[curveKind] at curveFrame (the slope
+ * between the keys around it); returns 4 past the last key (time 0), else 0.
+ */
 static u8 EmDiablos_CurveSpeed(Em *em, EmWork *work)
 {
     EmDiablosWork *w = (EmDiablosWork *) work;
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyTime;
     s32 i;
-    EmCurveKey *tbl;
+    EmCurveKey *keys;
     u8 ret;
 
-    tbl = EmDiablos_SpeedCurves[((EmDiablosWork *)work)->curveKind];
+    keys = EmDiablos_SpeedCurves[((EmDiablosWork *)work)->curveKind];
     ret = 0;
-    if (tbl == NULL) {
+    if (keys == NULL) {
         return ret;
     }
     frame = w->curveFrame;
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
+            key = &keys[i];
+            keyTime = key->t;
+            if (frame > keyTime && keyTime != 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
+            } else if (keyTime == 0.0f) {
                 ret = 4;
                 break;
             } else {
                 i = 0;
-                em->velZ = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velZ = (key->v - key[-1].v) / ((keyTime - key[-1].t) / em->motion[0].step);
             }
         }
     }
     return ret;
 }
 
-/* Runs the family's three curves when their flags in the work area (+0x438) are set, advances
- * the curve frame by the motion's step, and turns toward the target while unk390 is 2. */
+/*
+ * Runs the curves whose flags EmDiablos_StartCurves set, advances curveFrame by the
+ * motion step and, in the air (EM_STANCE_AIR), moves along the heading with
+ * acceleration (Em_MoveRotatedAccel); returns the curves' results or'ed (2
+ * vertical curve done, 4 speed curve done).
+ */
 u8 EmDiablos_UpdateCurves(Em *em)
 {
     EmDiablosWork *w = (EmDiablosWork *)&em->work;
@@ -4905,7 +6094,7 @@ u8 EmDiablos_UpdateCurves(Em *em)
         ret |= EmDiablos_CurveSpeed(em, (EmWork *) w);
     }
     w->curveFrame += (s16) em->motion[0].step;
-    if (em->stance == 2) {
+    if (em->stance == EM_STANCE_AIR) {
         w->moveAngX = 0;
         w->moveAngY = em->rotY;
         w->moveAngZ = 0;
@@ -4914,17 +6103,28 @@ u8 EmDiablos_UpdateCurves(Em *em)
     return ret;
 }
 
-s32 EmDiablos_ShouldEndState(Em *em)
+/*
+ * Returns 1 when the monster is in the player's area under the sand
+ * (EM_STANCE_UNDER) on a floor that is not sand (surfaceKind 0), else 0;
+ * Update then ends the state.
+ */
+s32 EmDiablos_IsBuriedOffSand(Em *em)
 {
     if (!((s32)Player_InCurrentArea(em) & 0xFF)) {
         return 0;
     }
-    if ((em->surfaceKind == 0) && (em->stance == 4)) {
+    if ((em->surfaceKind == 0) && (em->stance == EM_STANCE_UNDER)) {
         return 1;
     }
     return 0;
 }
 
+/*
+ * Returns 1 when the charge drives the horn into a wall: part 6 not broken
+ * (state < 2), the motion past frame 60, a wall straight ahead (wallHitDirs
+ * 0xC0000003) with the special wall flag (wallHitSpecial); the charge states
+ * then go to DIAB_IDLE_HORN_STUCK. Else 0.
+ */
 s32 EmDiablos_ChargeHitWall(Em *em)
 {
     if ((s32) em->parts[6].state >= 2) {
@@ -4936,560 +6136,52 @@ s32 EmDiablos_ChargeHitWall(Em *em)
     return 0;
 }
 
-s32 EmDiablos_InMotion448To44A(Em *em)
+/*
+ * Returns 1 while layer 0 plays DIAB_MOT_SAND_STRUGGLE, DIAB_MOT_DOWNED or
+ * DIAB_MOT_DOWNED_GET_UP (out of the sand already), else 0; the in-sand
+ * death and status states then skip the push-out motion.
+ */
+s32 EmDiablos_InSandStuckMotion(Em *em)
 {
-    u16 m = em->motionId[0];
+    u16 motion = em->motionId[0];
 
-    if ((u32) (m - 0x448) <= 1 || m == 0x44A) {
+    if ((u32) (motion - EM_MOTION_ID(0, DIAB_MOT_SAND_STRUGGLE)) <= 1 || motion == EM_MOTION_ID(0, DIAB_MOT_DOWNED_GET_UP)) {
         return 1;
     }
     return 0;
 }
 
-s32 EmDiablos_InSandState(Em *em)
+/*
+ * Returns 1 in the states that start from under the sand:
+ * DIAB_IDLE_SAND_DOWNED and the reactions DIAB_REACT_POP_OUT, the sand
+ * struggles and the downs in the sand. EmDiablos_Update treats them as under
+ * the sand when it picks a death or status state, and EmDiablos_AllowHit8
+ * refuses the part break in them.
+ */
+s32 EmDiablos_InSandReactState(Em *em)
 {
     u8 stateGroup;
 
     stateGroup = em->stateGroup;
-    if (stateGroup == 0) {
-        if (em->state != 0x1D) {
-            goto block_3;
-        }
-        goto block_24;
-    }
-block_3:
-    if (stateGroup == 4) {
-        if (em->state != 6) {
-            goto block_6;
-        }
-        goto block_24;
-    }
-block_6:
-    if (stateGroup == 4) {
-        if (em->state != 0xD) {
-            goto block_9;
-        }
-        goto block_24;
-    }
-block_9:
-    if (stateGroup == 4) {
-        if (em->state != 0xE) {
-            goto block_12;
-        }
-        goto block_24;
-    }
-block_12:
-    if (stateGroup == 4) {
-        if (em->state != 0x11) {
-            goto block_15;
-        }
-        goto block_24;
-    }
-block_15:
-    if (stateGroup == 4) {
-        if (em->state != 0x12) {
-            goto block_18;
-        }
-        goto block_24;
-    }
-block_18:
-    if (stateGroup == 4) {
-        if (em->state != 0x16) {
-            goto block_21;
-        }
-        goto block_24;
-    }
-block_21:
-    if ((stateGroup == 4) && (em->state == 0x17)) {
-block_24:
+    if ((stateGroup == EM_GROUP_IDLE && em->state == DIAB_IDLE_SAND_DOWNED) ||
+        (stateGroup == EM_GROUP_REACT && em->state == DIAB_REACT_POP_OUT) ||
+        (stateGroup == EM_GROUP_REACT && em->state == DIAB_REACT_SAND_STRUGGLE) ||
+        (stateGroup == EM_GROUP_REACT && em->state == DIAB_REACT_STATUS4_IN_SAND) ||
+        (stateGroup == EM_GROUP_REACT && em->state == DIAB_REACT_STATUS4_SAND_STRUGGLE) ||
+        (stateGroup == EM_GROUP_REACT && em->state == DIAB_REACT_STATUS2_SAND_GET_UP) ||
+        (stateGroup == EM_GROUP_REACT && em->state == DIAB_REACT_STUN_IN_SAND) ||
+        (stateGroup == EM_GROUP_REACT && em->state == DIAB_REACT_STUN_SAND_STRUGGLE)) {
         return 1;
     }
     return 0;
 }
 
-void EmKhezu_MotionSounds(Em *em, EmWork *work)
-{
-    s16 motion;
 
-    motion = work->sndMotion;
-    switch (motion) {
-    case 0x3E9:
-        Em_PlaySeAtBoneOnFrame(em, 0xFA, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x172, 0x57, 0x23);
-        break;
-    case 0x3EB:
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x35, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xBC, 1, 0x1A);
-        break;
-    case 0x3ED:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
-        break;
-    case 0x3EE:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x14);
-        break;
-    case 0x3EF:
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x14);
-        break;
-    case 0x3F0:
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
-        break;
-    case 0x3F2:
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
-        break;
-    case 0x3F3:
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
-        break;
-    case 0x3F7:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, 0xB, 0xC);
-        break;
-    case 0x3FA:
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 9, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0xB, 0xC);
-        break;
-    case 0x3FB:
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 7, 0);
-        break;
-    case 0x407:
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x55, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0x55, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16C, 0x55, 0x23);
-        break;
-    case 0x408:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        break;
-    case 0x409:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x16, 0);
-        break;
-    case 0x40A:
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x59, 0x23);
-        break;
-    case 0x40B:
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x15, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0, 0x1A);
-        break;
-    case 0x40D:
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x48, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
-        break;
-    case 0x40E:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
-        break;
-    case 0x40F:
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x10, 0x1A);
-        break;
-    case 0x413:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x23, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
-        break;
-    case 0x417:
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 0x37, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x16, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x36, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x38, 0x23);
-        break;
-    case 0x41B:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        break;
-    case 0x41E:
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x5B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xFA, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x138, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x16, 0);
-        break;
-    case 0x423:
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
-        break;
-    case 0x424:
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xC, 0xC);
-        break;
-    case 0x425:
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xAA, 3, 0x1A);
-        break;
-    case 0x426:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
-        break;
-    case 0x427:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1A);
-        break;
-    case 0x428:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0, 0x14);
-        break;
-    case 0x42B:
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0);
-        break;
-    case 0x42C:
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x180, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x2C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x192, 0x2F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x174, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x176, 0xE, 0xC);
-        break;
-    case 0x42D:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
-        break;
-    case 0x42E:
-    case 0x433:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x47, 0x23);
-        break;
-    case 0x42F:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1A);
-        break;
-    case 0x430:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x14);
-        break;
-    case 0x432:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
-        break;
-    case 0x434:
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0, 0x1A);
-        break;
-    case 0x435:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x14, 0);
-        break;
-    case 0x436:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 7, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x54, 0x23);
-        break;
-    case 0x437:
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x23, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x22, 0x23);
-        break;
-    case 0x43A:
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        break;
-    case 0x43C:
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x14);
-        break;
-    case 0x442:
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xB, 0xC);
-        break;
-    case 0x447:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x23);
-        break;
-    case 0x448:
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        break;
-    case 0x449:
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x23);
-        break;
-    case 0x44A:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x21, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x20, 0x23);
-        break;
-    case 0x44C:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x59, 0x23);
-        break;
-    case 0x44D:
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x11, 0);
-        break;
-    case 0x44E:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x21, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
-        break;
-    case 0x44F:
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x59, 0x23);
-        break;
-    case 0x450:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 6, 0x1A);
-        break;
-    case 0x451:
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x5B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x16, 0);
-        break;
-    case 0x452:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x15, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xD, 0xC);
-        break;
-    case 0x453:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x54, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 7, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x16, 0);
-        break;
-    case 0x454:
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 6, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 6, 0x14);
-        break;
-    case 0x455:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x15, 0);
-        break;
-    case 0x456:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x14, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x21, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, 0x31, 0x23);
-        break;
-    case 0x457:
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x16, 0);
-        break;
-    case 0x458:
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x21, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xEC, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 0x15, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x12, 0x1A);
-        break;
-    case 0x459:
-        if (em->type == 0xF) {
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
-            Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x23);
-            Em_PlaySeAtBoneOnFrame(em, 0x64, 0x21, 0x23);
-            Em_PlaySeAtBoneOnFrame(em, 0x40, 1, 0x14);
-            Em_PlaySeAtBoneOnFrame(em, 0x88, 1, 0x14);
-            break;
-        }
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x23, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x15, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 2, 0x23);
-        break;
-    case 0x45A:
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x56, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x14, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x15, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x37, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0x36, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0x37, 0);
-        break;
-    case 0x45B:
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0x22);
-        break;
-    case 0x45D:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x54, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 8, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x92, 0x16, 0);
-        break;
-    case 0x45E:
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1C, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x1C, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x1C, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0x1B, 6);
-        break;
-    case 0x45F:
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x1C, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1C, 0x14);
-        break;
-    case 0x460:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x1C, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1C, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1C, 0x14);
-        break;
-    case 0x461:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x1C, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1C, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1C, 0x14);
-        break;
-    }
-}
-
-/* em_diablos's .data (0x8C7340-0x8C7B80) */
+/* The file's initialised data, in the game's order */
 EmTurnParams EmDiablos_TurnParams[3] = {
 #include "game/008C7340.inc"
 };
-EmDiablosVec EmDiablos_CarveThrowPt = {
+Vec3f EmDiablos_CarveThrowPt = {
 #include "game/008C7398.inc"
 };
 s32 GmEm_ReturnZero(void); /* gm_sub */

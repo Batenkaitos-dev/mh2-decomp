@@ -42,8 +42,7 @@ enum OverlayId {
 #define OVERLAY_WINDOW_GM_SUB 3     /* nethttp, gm_sub */
 #define OVERLAY_WINDOW_LBGUILD 5    /* lbguild, at gm_sub's address */
 
-/* The MWo3 header at the start of an overlay image; it is loaded with the
- * image. */
+/* The MWo3 header at the start of an overlay image; it is loaded with the image. */
 typedef struct OverlayHeader {
     u32 magic;          /* 0x00: "MWo3" (Overlay_Relocate checks the "MWo") */
     u32 id;             /* 0x04: the OverlayId */

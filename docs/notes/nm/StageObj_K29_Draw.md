@@ -1,4 +1,4 @@
-# StageObj_K29_Draw (game, src/game/unk_88E760.c)
+# StageObj_K29_Draw (game, src/game/player_effects.c)
 
 ## Status
 

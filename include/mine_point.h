@@ -3,8 +3,8 @@
 #include "common.h"
 
 /*
- * The gathering points placed while a quest runs (sub_main's unk_3A1070.c,
- * from 0x3A5650): a monster's carcass (carved), the items a monster drops
+ * The gathering points placed while a quest runs (the quest's code, from
+ * QuestGoal_DeliveryDone on): a monster's carcass (carved), the items a monster drops
  * (picked up), and the special point the local player makes by using an
  * item. Up to MINE_POINT_COUNT points, in gMinePoints, with the active list
  * gMineActive (oldest first). The stage's own gathering points are
@@ -33,9 +33,12 @@ typedef struct MinePoint {
 #define MINE_TABLE_SPECIAL  0x1000  /* MinePoint.table of the special point (SpecialMine_Gather) */
 #define MINE_POINT_KEEP     0x01    /* MinePoint.flags: never removed to make room, nor at the quest's end */
 
-/* MinePoint.action: what the player does there (the game's Player_TryGather). */
-#define MINE_ACTION_PICK    0       /* picks up items a monster dropped */
+/* MinePoint.action and GatherPoint.action: what the player does there (the
+ * game's Player_TryGather). */
+#define MINE_ACTION_PICK    0       /* picks up items by hand (a gathering point, or what a monster dropped) */
 #define MINE_ACTION_CARVE   2       /* carves a carcass */
+#define MINE_ACTION_MINE    3       /* mines with a pickaxe */
+#define MINE_ACTION_BUG_NET 4       /* catches bugs with a net */
 #define MINE_ACTION_SPECIAL 5       /* gathers the special point */
 
 /* A monster kind's carcass points (gEmMinePoints[kind], 16 bytes each). */
@@ -73,7 +76,7 @@ extern MinePoint gMinePoints[MINE_POINT_COUNT]; /* 0x5D87C0 */
 extern s8 gMineActive[MINE_POINT_COUNT];        /* 0x6AEDE0: the slots in use, oldest first (gQuest.mineCount of them) */
 
 s32 MinePoint_Add(MinePoint *src, f32 *pos, u8 noBonus);
-s32 MinePoint_AddUntimed(MinePoint *pt, f32 *pos, u8 noBonus); /* sub_main unk_3A1070.c */
+s32 MinePoint_AddUntimed(MinePoint *pt, f32 *pos, u8 noBonus); /* sub_main quest.c */
 void MinePoint_Remove(s32 slot);
 void MinePoint_RemoveOldest(void);
 void MinePoint_SetPos(s32 slot, f32 *pos);

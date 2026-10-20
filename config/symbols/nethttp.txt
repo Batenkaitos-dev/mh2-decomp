@@ -3,7 +3,7 @@
 // First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
 nethttp_entry = 0x008FAE80; // type:func
 
-// Round 17 (anet): Capcom's HTTP front end (0x8FB130-0x8FD788, src/nethttp/unk_8FB130.c)
+// Round 17 (anet): Capcom's HTTP front end (0x8FB130-0x8FD788, src/nethttp/http_front.c)
 Http_GetCertSize = 0x008FB130; // type:func
 Http_Init = 0x008FB150; // type:func
 Http_Term = 0x008FB250; // type:func
@@ -39,6 +39,7 @@ Http_LoadAfsPartition = 0x008FD750; // type:func
 Http_ReadBrdata = 0x008FD770; // type:func
 Http_ReadFile = 0x008FD780; // type:func
 gHttpReqMax = 0x0094FF98; // size:0x1
+gHttpsSecureOption = 0x0094FFA0; // size:0x4 the value of libhttps option 0xE, set for https requests only
 gHttpCertSize = 0x0094FFA8; // size:0x8
 gHttpLbsReq = 0x0095AA00; // size:0x4
 gHttpReq = 0x0095AA10; // size:0x720
@@ -46,5 +47,5 @@ gHttpReq = 0x0095AA10; // size:0x720
 // Round 18 (lead, nsub-h1): the libhttps option callbacks Http_SetOptions registers
 // for options 0xA and 0x17, each storing the status byte c into req->async.
 // 0x8FB420 is a function start of its own (splat had it as HttpReq_Step's padding).
-HttpReq_AsyncCb17 = 0x008FB420; // type:func
-HttpReq_AsyncCb0A = 0x008FB430; // type:func
+HttpReq_OnConnectDone = 0x008FB420; // type:func
+HttpReq_OnSendDone = 0x008FB430; // type:func

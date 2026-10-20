@@ -3,6 +3,7 @@
 #include "common.h"
 #include "browser.h"
 #include "lobby_globals.h"
+#include "kbd.h"
 /* Level 4 like its neighbours unk_733AB0.c, unk_734710.c, unk_73C310.c: the
  * other functions match at both levels, Page_Navigate only here. */
 #pragma optimization_level 4
@@ -85,9 +86,9 @@ s32 PageObj_Activate(u16 idx, s32 sound)
 /* Closes the list: the cursor back on the <SELECT>, sound 4. */
 void Select_Close(void)
 {
-    gBrowserSub->cursorY = 10.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y);
+    gBrowserSub->cursorY = 10.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y);
     gBrowserSub->listCount = 0;
-    gBrowserSub->listObj = 0;
+    gBrowserSub->activeObj = 0;
     LobbySe_Play(4);
 }
 
@@ -96,9 +97,9 @@ void Select_Close(void)
  * shown; unk6: the list is above the <SELECT>); sound 1 when it moved. */
 void Select_Down(void)
 {
-    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->listObj]->x - gBrowserState->x);
+    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->x - gBrowserState->x);
     if (gBrowserSub->listUp != 0) {
-        if (gBrowserSub->cursorY <= gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y - 18.0f) {
+        if (gBrowserSub->cursorY <= gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y - 18.0f) {
             gBrowserSub->cursorY += 18;
         } else {
             if (gBrowserSub->listCount <= 10) {
@@ -110,13 +111,13 @@ void Select_Down(void)
             gBrowserSub->listTop++;
         }
     } else if (gBrowserSub->listCount < 11) {
-        if (gBrowserSub->cursorY < 20.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y) + (gBrowserSub->listCount - 1) * 18) {
+        if (gBrowserSub->cursorY < 20.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y) + (gBrowserSub->listCount - 1) * 18) {
             gBrowserSub->cursorY += 18;
         } else {
             return;
         }
     } else {
-        if (gBrowserSub->cursorY < 162.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y))) {
+        if (gBrowserSub->cursorY < 162.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y))) {
             gBrowserSub->cursorY += 18;
         } else {
             if (gBrowserSub->listTop > gBrowserSub->listCount - 10) {
@@ -132,15 +133,15 @@ void Select_Down(void)
  * top; sound 1 when it moved. */
 void Select_Up(void)
 {
-    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->listObj]->x - gBrowserState->x);
+    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->x - gBrowserState->x);
     if (gBrowserSub->listUp != 0) {
         if (gBrowserSub->listCount <= 10) {
-            if (gBrowserSub->cursorY > gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y - (gBrowserSub->listCount - 1) * 18) {
+            if (gBrowserSub->cursorY > gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y - (gBrowserSub->listCount - 1) * 18) {
                 gBrowserSub->cursorY -= 18;
             } else {
                 return;
             }
-        } else if (gBrowserSub->cursorY > gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y - 162.0f) {
+        } else if (gBrowserSub->cursorY > gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y - 162.0f) {
             gBrowserSub->cursorY -= 18;
         } else {
             if (gBrowserSub->listTop == 1) {
@@ -148,7 +149,7 @@ void Select_Up(void)
             }
             gBrowserSub->listTop--;
         }
-    } else if (gBrowserSub->cursorY >= 18.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y))) {
+    } else if (gBrowserSub->cursorY >= 18.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y))) {
         gBrowserSub->cursorY -= 18;
     } else {
         if (gBrowserSub->listTop == 1) {
@@ -167,7 +168,6 @@ typedef struct StickSpeeds {
 extern StickSpeeds gPageStickSpeeds;
 f32 sinf(f32 x); /* main: sinf? */
 f32 cosf(f32 x); /* main: cosf? */
-#define gKbd (gKbd) /* sub_main: the USB keyboard (0x668, 0x669: USB key codes) */
 
 /* Page_Navigate: the page's keys, pad and stick each frame: the left
  * stick moves the pointer (kept inside an open select list); with the
@@ -189,20 +189,20 @@ void Page_Navigate(void)
     BrowserObj *o;
 
     speed = gPageStickSpeeds;
-    if (gBrowserState->page == 1 && (gBrowserState->style & 0x200) >> 9 == 0) {
+    if (gBrowserState->page == PAGE_LOAD_REQUESTED && (gBrowserState->style & PAGE_STYLE_NO_MSG_ICON) >> 9 == 0) {
         return;
     }
-    if ((gBrowserState->style & 1) || gBrowserWork->stickTilt == 0) {
+    if ((gBrowserState->style & PAGE_STYLE_POINTER) || gBrowserWork->stickTilt == 0) {
         a = 3.1415927f * (u32)gBrowserWork->stickDir / 8.0f;
         gBrowserSub->cursorX += (s16)(speed.v[gBrowserWork->stickTilt] * sinf(a));
         gBrowserSub->cursorY -= (s16)(speed.v[gBrowserWork->stickTilt] * cosf(a));
         if (gBrowserSub->listCount > 0) {
             /* The array's address as a u32 plus the byte offset, as this
-             * browser code reads the same array elsewhere (unk_722360.c's
+             * browser code reads the same array elsewhere (browser_cache_draw.c's
              * PAGE_FOCUS, (u32)gBrowserWork + 0x5EC + ...): obj[unk20] would
              * index from gBrowserWork itself (lw 0x5EC(a)), where the game adds
              * 0x5EC first. */
-            o = *(BrowserObj **)((u32)gBrowserWork->obj + gBrowserSub->listObj * 4);
+            o = *(BrowserObj **)((u32)gBrowserWork->obj + gBrowserSub->activeObj * 4);
             x = o->x - gBrowserState->x;
             if (gBrowserSub->cursorX < 10.0f + x) {
                 gBrowserSub->cursorX = 10.0f + x;
@@ -211,14 +211,14 @@ void Page_Navigate(void)
             }
             rows = gBrowserSub->listCount > 10 ? 10 : gBrowserSub->listCount;
             if (gBrowserSub->listUp != 0) {
-                y = gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y;
+                y = gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y;
                 if (gBrowserSub->cursorY < y - (rows * 18 - 9)) {
                     gBrowserSub->cursorY = y - (rows * 18 - 9);
                 } else if (gBrowserSub->cursorY > y - 9.0f) {
                     gBrowserSub->cursorY = y - 9.0f;
                 }
             } else {
-                y = gBrowserWork->obj[gBrowserSub->listObj]->y - gBrowserState->y;
+                y = gBrowserWork->obj[gBrowserSub->activeObj]->y - gBrowserState->y;
                 if (gBrowserSub->cursorY < 9.0f + (20.0f + y)) {
                     gBrowserSub->cursorY = 9.0f + (20.0f + y);
                 } else if (gBrowserSub->cursorY > 20.0f + y + (rows * 18 - 9)) {
@@ -227,7 +227,7 @@ void Page_Navigate(void)
             }
         }
     }
-    if (!(gBrowserState->style & 1) && gBrowserWork->stickTilt != 0) {
+    if (!(gBrowserState->style & PAGE_STYLE_POINTER) && gBrowserWork->stickTilt != 0) {
         if (gBrowserWork->stickReleased == 1) {
             gBrowserWork->stickFirst = 1;
         } else {
@@ -254,15 +254,15 @@ void Page_Navigate(void)
         }
     } else if (D_581AFC == 0x29 && gBrowserSub->listCount > 0) {
         Select_Close();
-    } else if (gKbd[0x668] == 0x2B && gBrowserSub->listCount == 0) {
+    } else if (gKbd->usbKey == USB_KEY_TAB && gBrowserSub->listCount == 0) {
         goto next;
-    } else if (gKbd[0x668] == 0x4B && gBrowserSub->listCount > 0) {
+    } else if (gKbd->usbKey == USB_KEY_PAGE_UP && gBrowserSub->listCount > 0) {
         if (gBrowserSub->listCount <= 10 || gBrowserSub->listTop < 10) {
             gBrowserSub->listTop = 1;
         } else {
             gBrowserSub->listTop -= 9;
         }
-    } else if (gKbd[0x668] == 0x4E && gBrowserSub->listCount > 0) {
+    } else if (gKbd->usbKey == USB_KEY_PAGE_DOWN && gBrowserSub->listCount > 0) {
         if (gBrowserSub->listTop + 9 < gBrowserSub->listCount) {
             gBrowserSub->listTop += 9;
         }
@@ -270,14 +270,14 @@ void Page_Navigate(void)
         switch (D_581AFC) {
         case 0x51:
         case 0x4F:
-            if ((gKbd[0x669] == 0x51 || gKbd[0x669] == 0x4F) && gBrowserSub->listCount > 0) {
+            if ((gKbd->usbPrevKey == USB_KEY_DOWN || gKbd->usbPrevKey == USB_KEY_RIGHT) && gBrowserSub->listCount > 0) {
                 goto down;
             }
             if (gBrowserSub->stickRepeat > 1000) {
                 gBrowserSub->stickRepeat = 0;
             }
-            if (++gBrowserSub->stickRepeat % 8 == 0 || gKbd[0x669] == 0x4F || gKbd[0x669] == 0x51) {
-                if (gBrowserSub->listObj != 0) {
+            if (++gBrowserSub->stickRepeat % 8 == 0 || gKbd->usbPrevKey == USB_KEY_RIGHT || gKbd->usbPrevKey == USB_KEY_DOWN) {
+                if (gBrowserSub->activeObj != 0) {
                     goto down;
                 }
                 goto next;
@@ -285,14 +285,14 @@ void Page_Navigate(void)
             break;
         case 0x52:
         case 0x50:
-            if ((gKbd[0x669] == 0x52 || gKbd[0x669] == 0x50) && gBrowserSub->listCount > 0) {
+            if ((gKbd->usbPrevKey == USB_KEY_UP || gKbd->usbPrevKey == USB_KEY_LEFT) && gBrowserSub->listCount > 0) {
                 goto up;
             }
             if (gBrowserSub->stickRepeat > 1000) {
                 gBrowserSub->stickRepeat = 0;
             }
-            if (++gBrowserSub->stickRepeat % 8 == 0 || gKbd[0x669] == 0x50 || gKbd[0x669] == 0x52) {
-                if (gBrowserSub->listObj != 0) {
+            if (++gBrowserSub->stickRepeat % 8 == 0 || gKbd->usbPrevKey == USB_KEY_LEFT || gKbd->usbPrevKey == USB_KEY_UP) {
+                if (gBrowserSub->activeObj != 0) {
                     goto up;
                 }
                 goto prev;
@@ -310,13 +310,13 @@ void Page_Navigate(void)
                 gBrowserSub->stickRepeat = 0;
             }
             if (++gBrowserSub->stickRepeat % 8 == 0 || ((pressed = gBrowserWork->padPressed) & 0x400) || (pressed & 0x1000)) {
-                if (gBrowserSub->listObj != 0 && gBrowserSub->listCount > 0) {
+                if (gBrowserSub->activeObj != 0 && gBrowserSub->listCount > 0) {
                     Select_Down();
                 } else {
                 next:
                     for (i = gBrowserWork->focus + 1; i < 500; i++) {
                         if (gBrowserWork->obj[i] == NULL || gBrowserWork->obj[i]->active == 0) {
-                            if (gBrowserState->style & 1) {
+                            if (gBrowserState->style & PAGE_STYLE_POINTER) {
                                 for (i = gBrowserWork->focus; i < 500; i++) {
                                     if (gBrowserWork->obj[i] == NULL || gBrowserWork->obj[i]->active == 0 || PageObj_Activate(i, 1)) {
                                         return;
@@ -348,7 +348,7 @@ void Page_Navigate(void)
                 gBrowserSub->stickRepeat = 0;
             }
             if (++gBrowserSub->stickRepeat % 8 == 0 || ((pressed = gBrowserWork->padPressed) & 0x800) || (pressed & 0x2000)) {
-                if (gBrowserSub->listObj != 0 && gBrowserSub->listCount > 0) {
+                if (gBrowserSub->activeObj != 0 && gBrowserSub->listCount > 0) {
                     Select_Up();
                 } else {
                 prev:
@@ -357,7 +357,7 @@ void Page_Navigate(void)
                             return;
                         }
                     }
-                    if (gBrowserState->style & 1) {
+                    if (gBrowserState->style & PAGE_STYLE_POINTER) {
                         for (i = gBrowserWork->focus; i > 0; i--) {
                             if (gBrowserWork->obj[i] == NULL || gBrowserWork->obj[i]->active == 0 || PageObj_Activate(i, 1)) {
                                 return;

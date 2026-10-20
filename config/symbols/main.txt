@@ -472,7 +472,7 @@ gScreenTexPacket = 0x001BA990; // size:0x80
 Tex_CreateFromTim2 = 0x00180210; // type:func
 Tex_AlphaToGs = 0x001805B0; // type:func
 
-// TIM2 pictures (src/main/unk_18AFE0.c): header checks, part addresses, Image descriptions
+// TIM2 pictures (src/main/pad_port.c): header checks, part addresses, Image descriptions
 Tim2_LastLevel = 0x0018C2E0; // type:func
 Tim2_DescribeLevels = 0x0018C330; // type:func
 Tim2_DescribeClut = 0x0018C5F0; // type:func
@@ -484,7 +484,7 @@ Tim2_GetPicture = 0x0018C970; // type:func
 Tim2_GetImage = 0x0018C9F0; // type:func
 Tim2_GetPictClut = 0x0018CB80; // type:func
 
-// Pad input (src/main/unk_189F90.c, unk_18AFE0.c, include/padio.h)
+// Pad input (src/main/pad.c, pad_port.c, include/padio.h)
 Pad_ClearMem = 0x0018A030; // type:func
 Pad_Init = 0x0018A170; // type:func
 Pad_End = 0x0018A1D0; // type:func
@@ -524,12 +524,12 @@ Sprite_Draw = 0x00187A80; // type:func
 // Sound_PlaySeAtPos unless the id is 0xFFFF (round 7 main core)
 Sound_PlaySeAtPosChecked = 0x00194980; // type:func
 
-// The current pad's input record (-> gPadIn, set by the pad code in unk_189F90.c);
-// sub_main's unk_2E3940.c reaches it by address
+// The current pad's input record (-> gPadIn, set by the pad code in pad.c);
+// sub_main's engine_core.c reaches it by address
 gPadInputPtr = 0x0024BBE8;
 
 // main's render state (the viewport and projection), named so that overlays can
-// link them: sub_main's matrix and viewport functions (unk_2E3940.c) read them by name
+// link them: sub_main's matrix and viewport functions (engine_core.c) read them by name
 gViewClipH = 0x0020CB80; // size:0x4
 gViewClipW = 0x0020CB88; // size:0x4
 gViewCenterY = 0x0020CB90; // size:0x4
@@ -595,7 +595,7 @@ gRateGroups = 0x001BB2A0; // size:0xDC
 gRateListsInit = 0x001BB380; // size:0x50
 gQuestGroupLastIds = 0x001BB3D0; // size:0x20 the last quest id of each group of quest ids, 0 ends the list (Quest_Init picks the group of gStageFileTbls, the lobby Quest_GetDiscInfo the group of gGuildQuestLists)
 
-// Sound helpers (src/main/unk_194830.c): flat SE at the SE volume setting (0x6ADFC7), random picks, player and monster SE (round 13)
+// Sound helpers (src/main/sound_effects.c): flat SE at the SE volume setting (0x6ADFC7), random picks, player and monster SE (round 13)
 Sound_PlaySeFlat = 0x00194830; // type:func
 Sound_PlaySeFlatPan = 0x001948A0; // type:func
 Sound_RandomSe = 0x001949B0; // type:func
@@ -709,7 +709,7 @@ PowerOff_Callback = 0x00189F80; // type:func
 Movie_NullCallback = 0x00189FA0; // type:func
 Movie_InitSfd = 0x00189FB0; // type:func
 
-// The pad input (src/main/unk_189F90.c, unk_18AFE0.c, include/padio.h): gPadRaw per port after a read,
+// The pad input (src/main/pad.c, pad_port.c, include/padio.h): gPadRaw per port after a read,
 // gPadIn as read and gPad remapped by gPadConfig (gPadConfigDefault at boot); gPadBit[i] is 1 << i
 Debug_Sprintf = 0x001832E0; // type:func
 gDebugMsg = 0x002491F0; // size:0x800
@@ -784,8 +784,8 @@ Mem_FillWords = 0x00182610; // type:func
 Mem_FillQwords = 0x00182628; // type:func
 
 // Round 17 (xref): bss objects sub_main's code reads (main's own code writes them as scalars).
-gGsColor67F = 0x0020D810; // size:0x10 Gs state 0x67 as floats over 255, copied into the VU1 packets (Vu1Pkt_V, Vu1Pkt_LV)
-gGsColor0EF = 0x0020D820; // size:0x10 Gs state 0xE as floats, RGB over 255 and alpha 0 to 128, scales the lights of the lit VU1 packets (Vu1Pkt_L, Vu1Pkt_SL)
+gGsColor2F = 0x0020D810; // size:0x10 render state RS_COLOR2 as floats over 255, copied into the VU1 packets (Vu1Pkt_V, Vu1Pkt_LV)
+gGsColorF = 0x0020D820; // size:0x10 render state RS_COLOR as floats, RGB over 255 and alpha 0 to 128, the base colour of the VU1 packets (Vu1Pkt_L, Vu1Pkt_SL)
 gGsFogFar = 0x00219100; // size:0x4 Gs state 0x11, the fog end depth (Gs_SetState, Vu1Pkt_D, Vu1Pkt_LD)
 gGsFogNear = 0x00219108; // size:0x4 Gs state 0x10, the fog start depth, with gGsFogFar gives the fog scale of the VU1 packets (Gs_SetState, Vu1Pkt_D)
 gSysExiting = 0x001E8B50; // size:0x4 set at power off (PowerOff_Thread) and before launching the setup guide (Yn_LaunchSetupGuide), stops the VBlank work and the main loop
@@ -806,7 +806,7 @@ Packet_SetMode2Ok = 0x00183D20; // type:func
 Display_SetOffset = 0x00186D10; // type:func
 Display_AdxVint = 0x00186D30; // type:func
 AdxWrap_VintHook = 0x00189F90; // type:func
-NetQuest_SetUnk4C = 0x0018DEA0; // type:func
+NetQuest_SetRareRoll = 0x0018DEA0; // type:func
 NetQuest_SetInfo = 0x0018DEB0; // type:func
 NetQuest_SetStage = 0x0018DED0; // type:func
 QuestId_IsStandard = 0x0018DEE0; // type:func
@@ -818,8 +818,8 @@ Player_PlaySe = 0x00194DC0; // type:func
 Em_PlaySeChecked = 0x00194F40; // type:func
 Em_PlaySeAtPos = 0x00194FD0; // type:func
 Em_PlaySeType = 0x001950A0; // type:func
-Em_PlaySeSlot6 = 0x00195170; // type:func
-Em_PlaySeSlot1 = 0x001951D0; // type:func
+Em_PlayEmBankSe = 0x00195170; // type:func
+Em_PlayCommonSe = 0x001951D0; // type:func
 Sound_Silence = 0x00195230; // type:func
 Sound_LoadCommonBanks = 0x00195840; // type:func
 Sound_ReloadBank7 = 0x00195B20; // type:func
@@ -846,7 +846,7 @@ gMtxClip = 0x0020E0B0; // size:0x40
 gMtxProjClip = 0x0020D710; // size:0x40
 gMtxScreen = 0x0020D790; // size:0x40
 gMtxProjScreen = 0x0020D750; // size:0x40
-gMtxRs19 = 0x0020E0F0; // size:0x40
+gMtxUv = 0x0020E0F0; // size:0x40 render state RS_UV_MTX, the texture coordinate matrix (the Vu1Pkt_ E packets)
 gRsMaterials = 0x0020CD10; // size:0x980
 
 // Round 24 (nnames): tables named by their use (session 2)
@@ -896,8 +896,8 @@ gSysAllocHook = 0x002491E0; // size:0x4 the allocator hook of the model code, se
 gPadVibration = 0x0024BD90; // size:0x1 the vibration request flag (Pad_SetVibrationFlag, Pad_Read)
 gHttpActive = 0x00249A78; // size:0x4 NETWORK, 1 while the http front end is up (set by Http_Init, cleared by Http_Term in nethttp)
 gGsFogColor = 0x002190F8; // size:0x4 Gs state 0xF, the fog color, set through Gs_SetFogColor when it changes (Gs_SetState)
-gGsColor0E = 0x002190F0; // size:0x4 Gs state 0xE, a packed ARGB color, as floats in gGsColor0EF (Gs_SetState)
-gGsColor67 = 0x002190E8; // size:0x4 Gs state 0x67, a packed ARGB color, as floats in gGsColor67F (Gs_SetState)
+gGsColor = 0x002190F0; // size:0x4 render state RS_COLOR, a packed ARGB color, as floats in gGsColorF (Gs_SetState)
+gGsColor2 = 0x002190E8; // size:0x4 render state RS_COLOR2, a packed ARGB color, as floats in gGsColor2F (Gs_SetState)
 gPadButtonMaps = 0x0024BD00; // size:0x80 per port, 16 button mappings (mask and kind) copied from the default maps (Pad_ReadPort, Pad_ConvertData)
 gGsStateTextures = 0x0020E130; // size:0x10 the textures of Gs states 4 to 7 (Gs_SetState, Gs_GetState)
 gPadMapDigital = 0x001BB070; // size:0x40 the 16 button mappings of a digital pad, type 0 (Pad_ReadPort)
@@ -943,3 +943,4 @@ gPersistentEmKinds = 0x001BB9C8; // size:0x8 Quest_FindSpecialMonster, the monst
 gPersistentEmHp = 0x001BB9D0; // size:0x10 QuestEm_LoadPersistentHp, by Quest_FindSpecialMonster index, the hp (and hpMax) a persistent monster starts with
 gSndForwardAxis = 0x001BCC70; // size:0xC Sound_PlaySePos, the listener forward axis (0, 0, 1)
 Sys_InitCard = 0x00183C80; // type:func the memory card set up Sys_Init ends with, sceMcInit (again while it returns -0x65), then clears D_00249A10 (0x64 bytes) and two 0xC-byte records at D_002499F0
+Sound_OnBanksLoaded = 0x00195A00; // type:func empty, called once the select screen sound banks are loaded (Plsel_SelectWaitSound)

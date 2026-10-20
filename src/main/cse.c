@@ -1,7 +1,7 @@
 /*
  * CSE engine API and sound effects (SE).
  *
- * Cse_* are the engine calls; Snd_* (0x190940-0x190B10) are the thin layer
+ * Cse_* are the engine calls; Snd_* are the thin layer
  * the game's sound code uses, and the only functions called from outside the
  * library. An SE table belongs to a bank: each SE id is a chain of 32-byte
  * records (CseSeRec), and CseSe_Request turns each record into one request.
@@ -27,7 +27,12 @@ s32 CseSe_SetTable(u32 bank, CseSeTable *table);
 CseSeRec *CseSe_GetRecord(u32 bank, u32 id);
 s32 CseSe_Request(u16 bank, u16 id, CseSeOpt *opt);
 
-/* arg is sent to the IOP as the CSE_FNO_INIT request. */
+/*
+ * Starts the CSE engine: CseRpc_Init, MlRpcQueue_Init and Cse_InitSeq,
+ * then sends arg to the IOP as the CSE_FNO_INIT request (Cse_ReqInit),
+ * empties the SE tables (CseSe_Init) and resets gCseFrame (count 0, the
+ * 16 unk4 entries -1). Returns 0.
+ */
 s32 Cse_Init(s32 arg)
 {
     u32 i;
@@ -67,39 +72,39 @@ u32 cseCheckVtransStatus(s32 mode)
 {
     u32 req[2];
     u8 *reply;
-    u32 st;
+    u32 statusBits;
     u32 ret;
-    s32 n;
+    s32 numUploads;
 
     req[0] = CSE_REQ_STATUS;
     reply = CseRpc_Call(CSE_FNO_STAT, req, sizeof(req));
-    n = MlRpcQueue_NumUploads();
-    st = 0;
-    if (n != 0) {
-        st |= 1;
+    numUploads = MlRpcQueue_NumUploads();
+    statusBits = 0;
+    if (numUploads != 0) {
+        statusBits |= 1;
     }
     if (reply[10] != 0) {
-        st |= 0x10;
+        statusBits |= 0x10;
     }
     if (reply[9] != 0) {
-        st |= 0x100;
+        statusBits |= 0x100;
     }
     if (reply[8] != 0) {
-        st |= 0x1000;
+        statusBits |= 0x1000;
     }
     switch (mode) {
     case 0:
-        if (st == 0) {
+        if (statusBits == 0) {
             ret = 0;
         } else {
-            ret = st | 0x80000000;
+            ret = statusBits | 0x80000000;
         }
         break;
     case 1:
-        if ((st & 0x111) == 0) {
+        if ((statusBits & 0x111) == 0) {
             ret = 0;
         } else {
-            ret = st | 0x80000000;
+            ret = statusBits | 0x80000000;
         }
         break;
     default:
@@ -152,71 +157,76 @@ s32 Cse_MergeBanks(void *out, void *banks, s32 count)
     return CseBank_Merge(out, banks, count);
 }
 
-/* Unpacks the optional values (defaults: v[11] 100, v[13] and v[14] 0x7F). */
+/*
+ * Plays SE id of bank bank: copies each value of opt whose bit is set in
+ * opt->flags (opt may be NULL) into a CseSeOpt that starts with the
+ * defaults v[11] (volume percentage) 100 and v[13], v[14] 0x7F, and
+ * passes it to CseSe_Request. Returns CseSe_Request's result.
+ */
 s32 Cse_RequestSe(u16 bank, u16 id, CseOpt *opt)
 {
-    CseSeOpt so = {0};
+    CseSeOpt seOpt = {0};
     u32 flags;
     u32 bit;
 
-    so.v[11] = 100;
-    so.v[13] = 0x7F;
-    so.v[14] = 0x7F;
+    seOpt.v[11] = 100;
+    seOpt.v[13] = 0x7F;
+    seOpt.v[14] = 0x7F;
     if (opt != NULL && (flags = opt->flags) != 0) {
         bit = 1;
         do {
             switch (flags & bit) {
             case 1:
-                so.v[0] = opt->v[0];
+                seOpt.v[0] = opt->v[0];
                 break;
             case 2:
-                so.v[1] = opt->v[1];
+                seOpt.v[1] = opt->v[1];
                 break;
             case 4:
-                so.v[2] = opt->v[2];
+                seOpt.v[2] = opt->v[2];
                 break;
             case 8:
-                so.v[3] = opt->v[3];
+                seOpt.v[3] = opt->v[3];
                 break;
             case 0x10:
-                so.v[4] = opt->v[4];
+                seOpt.v[4] = opt->v[4];
                 break;
             case 0x20:
-                so.v[5] = opt->v[5];
+                seOpt.v[5] = opt->v[5];
                 break;
             case 0x40:
-                so.v[6] = opt->v[6];
+                seOpt.v[6] = opt->v[6];
                 break;
             case 0x80:
-                so.v[7] = opt->v[7];
+                seOpt.v[7] = opt->v[7];
                 break;
             case 0x100:
-                so.v[8] = opt->v[8];
+                seOpt.v[8] = opt->v[8];
                 break;
             case 0x200:
-                so.v[9] = opt->v[9];
+                seOpt.v[9] = opt->v[9];
                 break;
             case 0x400:
-                so.v[10] = opt->v[10];
+                seOpt.v[10] = opt->v[10];
                 break;
             case 0x800:
-                so.v[11] = opt->v[11];
+                seOpt.v[11] = opt->v[11];
                 break;
             case 0x1000:
-                so.v[12] = opt->v[12];
+                seOpt.v[12] = opt->v[12];
                 break;
             case 0x2000:
-                so.v[13] = opt->b38;
+                seOpt.v[13] = opt->b38;
                 break;
             case 0x4000:
-                so.v[14] = opt->b39;
+                seOpt.v[14] = opt->b39;
                 break;
             }
             flags &= ~bit;
             bit <<= 1;
         } while (flags != 0);
     }
-    return CseSe_Request(bank, id, &so);
+    return CseSe_Request(bank, id, &seOpt);
 }
 
 s32 Cse_SetParam(s32 bank, s32 id2, s32 id3, CseOpt *opt)
@@ -224,6 +234,11 @@ s32 Cse_SetParam(s32 bank, s32 id2, s32 id3, CseOpt *opt)
     return Cse_ReqSetParam(bank, id2, id3, opt);
 }
 
+/*
+ * Starts the sound engine for the game (Sound_Init): Cse_Init with 0,
+ * stereo output (mono off), and the mixer settings 0xFC0 for core 0 and
+ * 0xFCF for core 1.
+ */
 void Snd_Init(void)
 {
     Cse_Init(0);
@@ -306,9 +321,9 @@ s32 Snd_MergeBanks(void *out, void *banks, s32 count)
     return Cse_MergeBanks(out, banks, count);
 }
 
-s32 Snd_SetEffect(s32 core, CseEffect *e)
+s32 Snd_SetEffect(s32 core, CseEffect *effect)
 {
-    return Cse_ReqSetEffect(core, e->mode, e->depth, e->delay, e->feedback);
+    return Cse_ReqSetEffect(core, effect->mode, effect->depth, effect->delay, effect->feedback);
 }
 
 s32 Snd_StopAll(void)
@@ -331,6 +346,10 @@ s32 Snd_RequestSe(u32 bank, u32 id, CseOpt *opt)
     return Cse_RequestSe(bank, id, opt);
 }
 
+/*
+ * Empties the 16 banks' SE tables (gCseSeTables) and clears the key-on
+ * hook gCseSeKeyOnHook. Returns 0.
+ */
 s32 CseSe_Init(void)
 {
     u32 i;
@@ -353,6 +372,10 @@ s32 CseSe_SetTable(u32 bank, CseSeTable *table)
     return 0;
 }
 
+/*
+ * The record of SE id in bank bank's SE table; NULL when the bank has no
+ * table or id is past its count.
+ */
 CseSeRec *CseSe_GetRecord(u32 bank, u32 id)
 {
     CseSeTable *table = gCseSeTables[bank];
@@ -366,31 +389,37 @@ CseSeRec *CseSe_GetRecord(u32 bank, u32 id)
     return &table->recs[id];
 }
 
-/* A key-on record: starts the program's tones for p->key. The caller
- * passes prog unmasked (an int); it is a u16 from here on. */
-s32 CseSe_KeyOn(CseSeRec *rec, CseParam *p, s32 prog)
+/*
+ * A key-on record: sets param->flags from the record's flags (with
+ * CSE_F_BANK cleared for a CSE_F_GLOBAL record, set otherwise), calls
+ * gCseSeKeyOnHook when one is set, and starts the program's tones for
+ * param->key (Cse_KeyOnProgram). The caller passes prog unmasked (an
+ * int); it is a u16 from here on. Returns Cse_KeyOnProgram's result.
+ */
+s32 CseSe_KeyOn(CseSeRec *rec, CseParam *param, s32 prog)
 {
     if (rec->flags & CSE_F_GLOBAL) {
-        p->flags = rec->flags & ~CSE_F_BANK;
+        param->flags = rec->flags & ~CSE_F_BANK;
     } else {
-        p->flags = rec->flags | CSE_F_BANK;
+        param->flags = rec->flags | CSE_F_BANK;
     }
     if (gCseSeKeyOnHook != NULL) {
-        gCseSeKeyOnHook(p, rec);
+        gCseSeKeyOnHook(param, rec);
     }
-    return Cse_KeyOnProgram(p, (u16)prog);
+    return Cse_KeyOnProgram(param, (u16)prog);
 }
 
 /*
- * Plays SE `id` of a bank: one request per record, following the chain of
+ * Plays SE id of a bank: one request per record, following the chain of
  * records (next) until 0xFFFF or a record pointing back at itself. The
- * record's values are offset by opt's, the volume scaled by opt->v[11] %,
- * then clamped.
+ * record's values are offset by opt's, the volume scaled by opt->v[11]
+ * percent, then volume, pan and bend clamped. Returns -1 when a record
+ * is missing, else the last record's request result (0 when none ran).
  */
 s32 CseSe_Request(u16 bank, u16 id, CseSeOpt *opt)
 {
     CseSeRec *rec;
-    CseParam p = {0};
+    CseParam param = {0};
     s32 ret = 0;
 
     for (;;) {
@@ -398,64 +427,64 @@ s32 CseSe_Request(u16 bank, u16 id, CseSeOpt *opt)
         if (rec == NULL) {
             return -1;
         }
-        p.flags = rec->flags;
-        p.bank = bank;
-        p.key = rec->key;
-        p.vol = rec->vol;
-        p.pan = rec->pan;
-        p.unkE = rec->unkE;
-        p.prio = rec->prio;
-        p.id2 = rec->id2;
-        p.id3 = rec->id3;
-        p.unk18 = rec->unk10;
-        p.unk4 = rec->unk8;
-        p.unk12 = rec->unk14;
-        p.key += opt->v[1];
-        p.id2 += opt->v[2];
-        p.id3 += opt->v[3];
-        p.prio += opt->v[4];
-        p.vol += opt->v[5];
-        p.pan += opt->v[6];
-        p.unkE += opt->v[7];
-        p.bend += opt->v[8];
-        p.unk18 += opt->v[9];
-        p.unk12 += opt->v[10];
-        p.vol = p.vol * opt->v[11] / 100;
-        p.unk4 |= opt->v[12];
-        p.unk13 = opt->v[13];
-        p.unk14 = opt->v[14];
-        if (p.vol < 0) {
-            p.vol = 0;
+        param.flags = rec->flags;
+        param.bank = bank;
+        param.key = rec->key;
+        param.vol = rec->vol;
+        param.pan = rec->pan;
+        param.unkE = rec->unkE;
+        param.prio = rec->prio;
+        param.id2 = rec->id2;
+        param.id3 = rec->id3;
+        param.unk18 = rec->unk10;
+        param.unk4 = rec->unk8;
+        param.unk12 = rec->unk14;
+        param.key += opt->v[1];
+        param.id2 += opt->v[2];
+        param.id3 += opt->v[3];
+        param.prio += opt->v[4];
+        param.vol += opt->v[5];
+        param.pan += opt->v[6];
+        param.unkE += opt->v[7];
+        param.bend += opt->v[8];
+        param.unk18 += opt->v[9];
+        param.unk12 += opt->v[10];
+        param.vol = param.vol * opt->v[11] / 100;
+        param.unk4 |= opt->v[12];
+        param.unk13 = opt->v[13];
+        param.unk14 = opt->v[14];
+        if (param.vol < 0) {
+            param.vol = 0;
         }
-        if (p.vol > 0x7F) {
-            p.vol = 0x7F;
+        if (param.vol > 0x7F) {
+            param.vol = 0x7F;
         }
-        if (p.pan < 0) {
-            p.pan = 0;
+        if (param.pan < 0) {
+            param.pan = 0;
         }
-        if (p.pan > 0x7F) {
-            p.pan = 0x7F;
+        if (param.pan > 0x7F) {
+            param.pan = 0x7F;
         }
-        if (p.bend < -0x2000) {
-            p.bend = -0x2000;
+        if (param.bend < -0x2000) {
+            param.bend = -0x2000;
         }
-        if (p.bend > 0x2063) {
-            p.bend = 0x1FFF;
+        if (param.bend > 0x2063) {
+            param.bend = 0x1FFF;
         }
         switch (rec->type) {
         case 0:
             break;
         case 1:
-            ret = CseSe_KeyOn(rec, &p, rec->prog + opt->v[0]);
+            ret = CseSe_KeyOn(rec, &param, rec->prog + opt->v[0]);
             break;
         case 2:
-            ret = Cse_ReqKeyOff(&p);
+            ret = Cse_ReqKeyOff(&param);
             break;
         case 3:
-            ret = Cse_ReqStop(&p);
+            ret = Cse_ReqStop(&param);
             break;
         case 5:
-            ret = Cse_ReqModulate(&p, rec->mod[0], rec->mod[1], rec->mod[2], rec->mod[3]);
+            ret = Cse_ReqModulate(&param, rec->mod[0], rec->mod[1], rec->mod[2], rec->mod[3]);
             break;
         case 4:
         case 6:
@@ -475,7 +504,7 @@ s32 CseSe_Request(u16 bank, u16 id, CseSeOpt *opt)
     return ret;
 }
 
-/* cse's .data (0x1BCC98-0x1BCCA0) */
+/* This file's initialised data. */
 u8 gSndOutputMode = {
 #include "main/001BCC98.inc"
 };

@@ -11,6 +11,7 @@
 #include "lobby_globals.h"
 #include "lobby_vobj.h"
 #include "lobby_menu.h"
+#include "lobby_labels.h"
 
 #pragma optimization_level 4
 
@@ -360,8 +361,8 @@ void Lobby_Disconnect(s32);
 void FadeA_Start(s32);
 void Stream_Stop(s32);
 s32 LobbyLogin_EnterEntry(s32 a, s32 b);
-void LobbyVillage_Begin2(void);
-void LobbyVillage_Begin1(void);
+void LobbyVillage_BeginStay(void);
+void LobbyVillage_Begin(void);
 void LobbyDialog_OpenWait(void *text);
 void Town_PlaceLocalPlayer(s32 area);
 void LobbyTown_Begin(void);
@@ -434,9 +435,9 @@ s32 Group_Join(V8BD1E0 *g, u16 pad)
             if (gLobby->land == 0) {
                 g->step = 0;
                 if (gLobbyLevel1Sel == 0 && gLobbyLevel0Sel != 0) {
-                    LobbyVillage_Begin2();
+                    LobbyVillage_BeginStay();
                 } else {
-                    LobbyVillage_Begin1();
+                    LobbyVillage_Begin();
                 }
                 FadeB_Start(10);
                 memset(gLobby, 0, 0x1C);
@@ -511,22 +512,11 @@ extern char D_00838390[];
 extern char D_008383A0[];
 extern char D_008383B0[];
 extern char D_008383C0[];
-extern char *D_0080C074;
-extern char *D_0080C4A4;
-extern char *D_0080C4AC;
-extern char *gLimitCondTexts[];
-extern char *D_0080C4EC;
-extern char *gRecruitMsgLabelTexts[];
-extern char *gLocationLabelTexts[];
-extern char *D_0080C524;
-extern char *D_0080C548;
-extern char *gGroupLimitTexts[];
-extern u8 *gHunterStateTexts[];
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
 s32 Text_DisplayLength(char *s);
 void Text_Printf(const char *fmt, ...);
 void LobbyUi_DrawIcon(s16 x, s16 y, s16 size, u32 color, s8 kind);
-u32 LevelList_SlotColor(u8 rank);
+u32 AreaList_KindColor(u8 rank);
 void HunterInfo_DrawGroup(V8BD1E0 *g, s16 x, s16 y)
 {
     Hunter8BD6EC *h = (Hunter8BD6EC *)(u8 *)&gHunterPanel;
@@ -537,18 +527,18 @@ void HunterInfo_DrawGroup(V8BD1E0 *g, s16 x, s16 y)
     ty += 20;
     tx += 14;
     Font_SetPos(tx, ty);
-    Text_PrintfColored(D_00838390, D_0080C4A4, D_0080C074, g->name);
+    Text_PrintfColored(D_00838390, gNetLabels[NET_LABEL_NAME], gLobbyWords[LOBBY_WORD_COLON], g->name);
     Font_SetPos(tx + 144, ty);
-    Text_PrintfColored(D_00838390, D_0080C4AC, D_0080C074, g->unk3CC);
+    Text_PrintfColored(D_00838390, gNetLabels[NET_LABEL_ID], gLobbyWords[LOBBY_WORD_COLON], g->unk3CC);
     Font_SetPos(tx, ty += 20);
-    Text_PrintfColored(D_00838390, D_0080C548, D_0080C074, gHunterStateTexts[h->unk2] + 4);
+    Text_PrintfColored(D_00838390, gNetLabels[NET_LABEL_MARK], gLobbyWords[LOBBY_WORD_COLON], gOnlineMarkNames[h->unk2] + 4);
     if (h->unk2 != 0) {
         Icon_Draw(tx + 72, ty, 0x19, 0x14, -1, h->unk2 + 0x59);
     }
     Font_SetPos(tx, ty += 20);
-    Text_PrintfColored(D_008383A0, gLocationLabelTexts[0]);
+    Text_PrintfColored(D_008383A0, gNetLabels[NET_LABEL_LOCATION]);
     Font_SetColor(0x807F7F7F);
-    tx += Text_DisplayLength(gLocationLabelTexts[0]) * 9 + 22;
+    tx += Text_DisplayLength(gNetLabels[NET_LABEL_LOCATION]) * 9 + 22;
     Font_SetPos(tx, ty);
     Text_PrintfColored("%s", g->place0);
     Font_SetPos(tx, ty += 20);
@@ -557,7 +547,7 @@ void HunterInfo_DrawGroup(V8BD1E0 *g, s16 x, s16 y)
     Font_SetPos(tx, ty += 20);
     if (g->area != 0) {
         Text_PrintfColored("%s", g->place2);
-        color = LevelList_SlotColor(g->rank);
+        color = AreaList_KindColor(g->rank);
         color |= 0xFF000000;
         LobbyUi_DrawIcon(tx - 14, ty + 9, 0x14, color, 2);
     }
@@ -569,27 +559,20 @@ void HunterInfo_DrawGroup(V8BD1E0 *g, s16 x, s16 y)
     LobbyUi_DrawIcon(tx - 14, ty + 9, 0x14, color, 3);
     x = x + 14;
     Font_SetPos(x, ty += 20);
-    Text_Printf(D_008383B0, gRecruitMsgLabelTexts[0], g->message);
+    Text_Printf(D_008383B0, gNetLabels[NET_LABEL_RECRUIT_MSG_LABEL], g->message);
     if (g->rank == 4) {
         Font_SetPos(x, ty += 20);
-        Text_Printf(D_008383B0, gLimitCondTexts[0], gGroupLimitTexts[g->kind]);
+        Text_Printf(D_008383B0, gNetLabels[NET_LABEL_LIMIT_COND], gGroupLimitTexts[g->kind]);
         Font_SetPos(x, ty += 20);
-        Text_Printf(D_008383B0, D_0080C4EC, ((LobbyBC80 *)((s32)(gLobbyWorkBuf + 0x6EF4) + 0x20))->quests[g->target].name);
+        Text_Printf(D_008383B0, gNetLabels[NET_LABEL_TARGET_COLON], ((LobbyBC80 *)((s32)(gLobbyWorkBuf + 0x6EF4) + 0x20))->quests[g->target].name);
     }
     Font_SetPos(x, ty + 20);
-    Text_Printf(D_008383C0, D_0080C524, g->members, g->maxMembers);
+    Text_Printf(D_008383C0, gNetLabels[NET_LABEL_GROUP_MEMBERS], g->members, g->maxMembers);
 }
 
 INCLUDE_RODATA("asm/lobby/nonmatchings/unk_6FB0B0", D_008383B0);
 INCLUDE_RODATA("asm/lobby/nonmatchings/unk_6FB0B0", D_008383C0);
 
-extern char *gHrLabelTexts[];
-extern char *gTitleColonTexts[];
-extern char *D_0080C52C;
-extern char *gSymbolColorTexts[];
-extern char *D_0080C534;
-extern char *gWinsMarkTexts[];
-extern char *D_0080C53C;
 extern char *D_447754[];
 extern char *gWeaponTypeNames[];
 extern char *gSymbolColorNames[];
@@ -605,33 +588,33 @@ void HunterInfo_DrawStatus(V8BD1E0 *g, s16 x, s16 y)
     char buf[0x20];
 
     Font_SetPos(lx + 14, ty += 20);
-    Text_PrintfColored(D_00838390, D_0080C4A4, D_0080C074, g);
+    Text_PrintfColored(D_00838390, gNetLabels[NET_LABEL_NAME], gLobbyWords[LOBBY_WORD_COLON], g);
     Font_SetPos((s16)(lx + 14) + 144, ty);
-    Text_PrintfColored(D_00838390, D_0080C4AC, D_0080C074, g->unk3CC);
+    Text_PrintfColored(D_00838390, gNetLabels[NET_LABEL_ID], gLobbyWords[LOBBY_WORD_COLON], g->unk3CC);
     Font_SetPos(lx + 14, ty += 20);
-    Text_PrintfColored(D_008383B0, gTitleColonTexts[0], D_447754[h->title * 2]);
+    Text_PrintfColored(D_008383B0, gNetLabels[NET_LABEL_TITLE], D_447754[h->title * 2]);
     Font_SetPos(lx + 14, ty += 20);
-    Text_PrintfColored(D_008383B0, D_0080C52C, gWeaponTypeNames[h->weapon]);
+    Text_PrintfColored(D_008383B0, gNetLabels[NET_LABEL_WEAPON_COLON], gWeaponTypeNames[h->weapon]);
     Font_SetPos(lx + 14, ty += 20);
     if (h->color != 0xFF) {
-        Text_PrintfColored(D_008383B0, gSymbolColorTexts[0], gSymbolColorNames[h->color]);
+        Text_PrintfColored(D_008383B0, gNetLabels[NET_LABEL_SYMBOL_COLOR], gSymbolColorNames[h->color]);
     }
     Font_SetPos(lx + 14, ty += 20);
     sprintf(num, "%d", h->hr);
     Sjis_Widen(num, buf);
-    Text_PrintfColored(D_00838390, gHrLabelTexts[0], D_0080C074, buf);
+    Text_PrintfColored(D_00838390, gNetLabels[NET_LABEL_HR], gLobbyWords[LOBBY_WORD_COLON], buf);
     Font_SetPos(lx + 14, ty += 20);
     sprintf(num, "%d", h->arenaWins);
     Sjis_Widen(num, buf);
-    Text_PrintfColored("~C05%s~C00%s~C05%s", D_0080C534, buf, gWinsMarkTexts[0]);
+    Text_PrintfColored("~C05%s~C00%s~C05%s", gNetLabels[NET_LABEL_ARENA_CUP], buf, gNetLabels[NET_LABEL_WINS]);
     Font_SetPos(lx + 14, ty += 20);
-    Text_PrintfColored(D_008383A0, D_0080C53C);
+    Text_PrintfColored(D_008383A0, gNetLabels[NET_LABEL_COMMENT]);
     Font_SetColor(0x807F7F7F);
     Text_DrawWrapped33(lx + 14, ty + 20, 0x14, h->comment);
 }
 
 extern s8 gHunterEquipOrder[];
-void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: with the definition's void (s32 x, s32 y, s32 w, s32 h, EquipItem *e) (lobby/unk_78F070.c), HunterInfo_DrawEquipment 75 of 100 words differ */
+void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: with the definition's void (s32 x, s32 y, s32 w, s32 h, EquipItem *e) (lobby/name_tags.c), HunterInfo_DrawEquipment 75 of 100 words differ */
 char *Equip_GetName(u8 type, u16 id);
 void HunterInfo_DrawEquipment(void *m, s16 x, s16 y)
 {
@@ -642,20 +625,19 @@ void HunterInfo_DrawEquipment(void *m, s16 x, s16 y)
 
     Font_SetPos(x + 60, ty += 24);
     Lobby_DrawEquipIcon(x + 14, ty - 10, 0x24, 0x24, &h->weaponItem);
-    Text_PrintfColored(D_008383B0, D_0080C074, Equip_GetName(h->weaponItem.type, h->weaponItem.id));
+    Text_PrintfColored(D_008383B0, gLobbyWords[LOBBY_WORD_COLON], Equip_GetName(h->weaponItem.type, h->weaponItem.id));
     for (i = 0; i < 5; i++) {
         k = gHunterEquipOrder[i];
         ty += 36;
         Font_SetPos(x + 60, ty);
         Lobby_DrawEquipIcon(x + 14, ty - 10, 0x24, 0x24, &h->armor[k]);
-        Text_PrintfColored(D_008383B0, D_0080C074, Equip_GetName(h->armor[k].type, h->armor[k].id));
+        Text_PrintfColored(D_008383B0, gLobbyWords[LOBBY_WORD_COLON], Equip_GetName(h->armor[k].type, h->armor[k].id));
     }
 }
 
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: with the definition's void (s32 x, s32 y, s32 w, s32 h, s32 c1, s32 c2, s16 kind) (lobby/unk_790EC0.c), HunterInfo_DrawActions 105 of 116 words, HunterInfo_Draw 100 of 108 words, MailMenu_DrawMailbox 239 of 262 words differ */
 void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
 void Menu_DrawLine(s16 x0, s16 y0, s16 x1, s16 y1, s8 flag);
-extern char *gMemberActTexts[];
 void HunterInfo_DrawActions(V8BD1E0 *m, s16 x, s16 y)
 {
     s16 i;
@@ -686,7 +668,6 @@ void HunterInfo_DrawActions(V8BD1E0 *m, s16 x, s16 y)
     }
 }
 
-extern char *D_0080C0E8;
 void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 void HunterInfo_DrawGroup(V8BD1E0 *g, s16 x, s16 y);
 void HunterInfo_DrawStatus(V8BD1E0 *g, s16 x, s16 y);
@@ -702,7 +683,7 @@ void HunterInfo_Draw(V8BD1E0 *m, s16 x, s16 y)
     Gfx_DrawLine(x + 8, ty, 0x144, 0x14, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
     Font_SetPos(x + 14, ty);
-    Text_PrintfColored(D_0080C0E8);
+    Text_PrintfColored(gGameMenuLabels[MENU_LABEL_STATUS]);
     Menu_DrawPageNum(x + 250, ty, m->f3E8, 3, 1);
     if (m->f3EE != 1) {
         HunterInfo_DrawActions(m, x, y);
@@ -934,9 +915,6 @@ const char D_00838420[3] = {
 #include "lobby/00838420.inc"
 };
 extern char *gMailboxMenuTexts[];
-extern char *D_0080D374;
-extern char *D_0080C494;
-extern char *D_0080C4E4;
 void MailMenu_DrawMailbox(MailMenu *m, s16 x, s16 y)
 {
     char wide[0x40];
@@ -953,19 +931,19 @@ void MailMenu_DrawMailbox(MailMenu *m, s16 x, s16 y)
     Text_PrintfColored(gMailboxMenuTexts[0]);
     if (gMailBox[0].id[0] == 0) {
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(Text_CenterX(D_0080D374, x + 0xAA, 0x12), (s16)(y + 0xC) + 0x5A);
-        Text_PrintfColored(D_0080D374);
+        Font_SetPos(Text_CenterX(gEmptyListTexts[EMPTY_LIST_MAIL], x + 0xAA, 0x12), (s16)(y + 0xC) + 0x5A);
+        Text_PrintfColored(gEmptyListTexts[EMPTY_LIST_MAIL]);
         return;
     }
     y += 0x28;
     Font_SetPos(x + 0xC, y);
-    Text_PrintfColored(D_0080C494);
+    Text_PrintfColored(gNetLabels[NET_LABEL_NUMBER]);
     Font_SetPos(x + 0x2A, y);
-    Text_PrintfColored(D_0080C4E4);
+    Text_PrintfColored(gNetLabels[NET_LABEL_MAIL_UNIT]);
     Font_SetPos(x + 0x46, y);
-    Text_PrintfColored(D_0080C4A4);
+    Text_PrintfColored(gNetLabels[NET_LABEL_NAME]);
     Font_SetPos(x + 0xE0, y);
-    Text_PrintfColored(D_0080C4AC);
+    Text_PrintfColored(gNetLabels[NET_LABEL_ID]);
     ty += 0x3A;
     Font_SetColor(0x807F7F7F);
     for (i = 0; i < m->mails; i++) {
@@ -1004,7 +982,6 @@ void MailMenu_DrawMailbox(MailMenu *m, s16 x, s16 y)
     }
 }
 
-extern char *gMailActTexts[];
 void MailMenu_DrawActions(MailMenu *m, s16 x, s16 y)
 {
     s16 i;

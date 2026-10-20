@@ -27,7 +27,7 @@ void Actor_SetStateNow(Player *, u8, u8, u16);
 void CamFocus_End(void);
 s32 Award_Grant(s32 arg0);
 void DrinkContest_Close(void);
-u8 func_00700A50(void);
+u8 PersistentEm_LastKind(void);
 s32 DrinkContest_HpStage(void);
 extern s8 gDrinkTalkLines[];
 extern s32 gDrinkHpTalkLines[];
@@ -118,7 +118,7 @@ void DrinkContest_Update(void)
                 break;
             case 5:
                 gElderForecastHeard = 1;
-                switch (func_00700A50()) {
+                switch (PersistentEm_LastKind()) {
                 case 0x36:
                 default:
                     r = 0;
@@ -526,7 +526,7 @@ s32 Minigame_Update(void)
             switch (m->result) {
             case 1:
                 Actor_SetState(pl, 0, 0x90);
-                pl->unk844 = 1;
+                pl->drunk = 1;
                 m->mode++;
                 break;
             case 0:

@@ -1,5 +1,5 @@
 /*
- * main 0x192ef0-0x1930e0: ADX start-up: the two stream players and the
+ * ADX start-up: the two stream players and the
  * AFS partitions 0..4 (see include/stream.h).
  */
 #include "common.h"
@@ -27,41 +27,52 @@ void Adx_ErrorCallback(void *obj, char *msg);
 s32 ADXF_LoadPartitionNw(s32 ptid, char *fname, void *dir, void *ptinfo);
 s32 func_0015E628(s32 ptid, char *fname, void *dir, void *ptinfo);
 
+/*
+ * Starts ADX: sets Adx_ErrorCallback as the ADXT error function, creates
+ * one ADXT player per stream channel into gStreamAdxt (each retried
+ * until it works, each with 0x301E4 bytes of gAdxtWork and its
+ * gAdxtParams), then loads the AFS partitions of gAfsPartitions,
+ * retrying a failed load and waiting for each read to end. Partitions 0
+ * and 1 load with ADXF_LoadPartitionNw, partition 2 with the other load
+ * call; data.bin is loaded as partition 5 (table of contents at
+ * DATA_TOC_BUF) and partition 3 is file 0 inside it. Last come
+ * Afs_LoadPartition4, Stream_Init and FileQueue_Init.
+ */
 void Adx_Init(void)
 {
-    AdxtParam *p;
+    AdxtParam *adxtParam;
     s32 i;
     u8 *work;
-    ADXT *h;
-    AfsPartition *pt;
-    s32 r;
+    ADXT *adxtSlot;
+    AfsPartition *partition;
+    s32 loadResult;
 
     ADXT_EntryErrFunc(Adx_ErrorCallback, NULL);
-    for (p = gAdxtParams, i = 0, work = gAdxtWork, h = gStreamAdxt; i < STREAM_CHAN_COUNT; i++) {
+    for (adxtParam = gAdxtParams, i = 0, work = gAdxtWork, adxtSlot = gStreamAdxt; i < STREAM_CHAN_COUNT; i++) {
         do {
-            *h = ADXT_Create(p->maxnch, work, p->worksize);
-        } while (*h == NULL);
-        h++;
+            *adxtSlot = ADXT_Create(adxtParam->maxnch, work, adxtParam->worksize);
+        } while (*adxtSlot == NULL);
+        adxtSlot++;
         work += 0x301E4;
-        p++;
+        adxtParam++;
     }
-    pt = gAfsPartitions;
-    for (i = 0; i < 4; i++, pt++) {
+    partition = gAfsPartitions;
+    for (i = 0; i < 4; i++, partition++) {
     retry:
         if (i != 3) {
             if (i != 2) {
-                r = ADXF_LoadPartitionNw(i, pt->fname, NULL, pt->ptinfo);
+                loadResult = ADXF_LoadPartitionNw(i, partition->fname, NULL, partition->ptinfo);
             } else {
-                r = func_0015E628(i, pt->fname, NULL, pt->ptinfo);
+                loadResult = func_0015E628(i, partition->fname, NULL, partition->ptinfo);
             }
-            if (r < 0) {
+            if (loadResult < 0) {
                 goto retry;
             }
             do {
             } while (ADXF_GetPtStat(i) != ADXF_STAT_READEND);
         } else {
             /* data.bin as partition 5, its table of contents at 8 MB */
-            if (func_0015E628(5, pt->fname, NULL, (void *)DATA_TOC_BUF) < 0) {
+            if (func_0015E628(5, partition->fname, NULL, (void *)DATA_TOC_BUF) < 0) {
                 goto retry;
             }
             do {
@@ -70,7 +81,7 @@ void Adx_Init(void)
         if (i == 3) {
             /* partition 3 = file 0 of data.bin */
             do {
-            } while (ADXF_LoadPartitionFromAfsNw(i, 5, 0, pt->ptinfo) < 0);
+            } while (ADXF_LoadPartitionFromAfsNw(i, 5, 0, partition->ptinfo) < 0);
             do {
             } while (ADXF_GetPtStat(i) != ADXF_STAT_READEND);
         }
@@ -80,7 +91,7 @@ void Adx_Init(void)
     FileQueue_Init();
 }
 
-/* unk_192EF0's .data (0x1BCCB0-0x1BCD00) */
+/* This file's initialised data. */
 extern u32 D_001C84F0[];
 extern u32 D_001C8500[];
 extern u32 D_001C8510[];
@@ -96,7 +107,7 @@ AdxtParam gAdxtParams[4] = {
 #include "main/001BCCE0.inc"
 };
 
-/* unk_192EF0's .rodata (0x1C84F0-0x1C8530) */
+/* This file's read-only data. */
 #pragma rodata on
 u32 D_001C84F0[4] = {
 #include "main/001C84F0.inc"

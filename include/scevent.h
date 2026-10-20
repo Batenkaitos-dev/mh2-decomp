@@ -10,7 +10,7 @@ struct ScEvent;
 typedef s32 (*ScEventFn)(struct ScEvent *e);
 
 /* The head of a scene event's record: the game overlay's records (ScEventRec: ScEvent_Cam5, the
- * ScEvent_Seq* and ScEvent_DemoCam* tables of game unk_70A290.c, listed in gGalleryScEvents)
+ * ScEvent_Seq* and ScEvent_DemoCam* tables of game player_states.c, listed in gGalleryScEvents)
  * start with it. ScEvent_Set and ScEvent_StartFrom read the camera and the two callbacks and keep
  * a pointer to the record as the running event's data (ScEvent.data); ScEvent_SetupB sets the
  * callbacks to the B pair. plsel's gallery (Galex_QuestTask) copies a record's head into a local

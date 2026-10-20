@@ -7,25 +7,30 @@
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "scene.h"
+#include "chat_log.h"
+#include "lobby_labels.h"
+#include "lobby_menu.h"
+#include "lobby_text.h"
+#include "pad.h"
 
 s32 Cond_Check(u16 id);
 void Save_SetEventFlag(s32 flag);
 s32 Save_TestEventFlag(s32 flag);
-s32 Dojo_AllCleared10001(void);
-s32 Dojo_AllCleared10101(void);
+s32 Dojo_OnlineDrillsCleared(void);
+s32 Dojo_OnlineChainCleared(void);
 s32 ElderRaid_InState1(void);
 extern s32 gTalkEventFlag;
 s32 Village_Event186Pending(void);
-s32 Town_AreaEventPending(void);
+s32 Town_SleepEventPending(void);
 u8 Village_FacilityLevel(s32 k);
-s32 Gift_Which(void);
-void Gift_Give(s32 gift);
-/* unit's own declaration: with the definition's s16 (s32 arg0) (lobby/unk_6CB690.c), Talk_Check0A: 28 of 47 words differ, Talk_Check0B: 31 of 71 words differ ... */
-s32 Village_GetTimerState(s32);
+s32 PspGift_Pick(void);
+void PspGift_Give(s32 gift);
+/* unit's own declaration: with the definition's s16 (s32 arg0) (lobby/dojo_menu.c), Talk_Check0A: 28 of 47 words differ, Talk_Check0B: 31 of 71 words differ ... */
+s32 Village_MilestoneState(s32);
 s32 PspLink_Count(void);
 s32 Combine_KnowsMostRecipes(void);
-s32 Dojo_AllCleared101(void);
-s32 Dojo_AllCleared201(void);
+s32 Dojo_OfflineDrillsCleared(void);
+s32 Dojo_OfflineChainCleared(void);
 s32 ElderRaid_InState2(void);
 s32 Save_HasTitle(s32);
 s32 Cond_IsLatest(u16 id);
@@ -48,7 +53,7 @@ void Talk_Close(void)
 
     p = &gPlayers[gScene.localPlayer];
     LobbySe_Play(4);
-    p->unk867 = 0;
+    p->drinkCount = 0;
     gMenuInputLock = 0x14;
     gTownMode = 0;
     gTownMenuOpen = 0;
@@ -56,12 +61,12 @@ void Talk_Close(void)
 }
 
 extern u16 gTalkScript;
-struct OfferTask;
-s16 OfferMenu_BuildList(struct OfferTask *t, s32 b);
+struct Em;
+s16 OfferMenu_BuildList(struct Em *t, s32 b);
 void QuestDesk_Open(u8 *npc);
-void DojoMenu_Open(u8 *npc);
-s32 func_006B5340(void);
-void PickMenu_Open(u8 *npc);
+void DojoMenu_Open(struct Em *instructor);
+s32 ShipMenu_IsOffered(void);
+void ShipMenu_Open(u8 *npc);
 void ItemShop_Open(u8 *npc, s8 sel);
 void CombShop_Open(u8 *npc);
 void QuestList_Rebuild(void);
@@ -69,22 +74,22 @@ void Npc_RefreshOffers(void);
 void EquipShop_Open(u8 *npc);
 void Mine_OpenMenu(u8 *npc);
 void TownGuide_Open(void);
-void Workshop_Open(u8 *npc);
+void Workshop_Open(struct Em *npc);
 void ElderForecast_Open(void);
 s32 Menu_PushNoticeOnce(s32);
-void OfficialDesk_Open(u8 *npc);
+void OfficialDesk_Open(struct Em *npc);
 void ArenaCup_Open(u8 *npc);
 void SongMenu_Open(u8 *unused0);
-void IngredientList_Open(u8 *unused0);
+void IngredientList_Open(struct Em *cook);
 void HairMenu_Open(Em *npc, s32 b);
 s32 MyHouse_IsOwner(void);
-void OfferMenu_Open(struct OfferTask *t);
+void OfferMenu_Open(struct Em *t);
 
 void Talk_FollowUp(u16 kind)
 {
     Player *pl = &gPlayers[gScene.localPlayer];
     u8 *npc = pl->target;
-    s8 offers = OfferMenu_BuildList((struct OfferTask *) npc, 0);
+    s8 offers = OfferMenu_BuildList((struct Em *) npc, 0);
 
     switch (gTalkScript) {
     case 1:
@@ -102,12 +107,12 @@ void Talk_FollowUp(u16 kind)
         break;
     case 3:
         if (gTalkEventStep != 5 && Cond_Check(0x1F)) {
-            DojoMenu_Open(npc);
+            DojoMenu_Open((struct Em *)npc);
         }
         break;
     case 5:
-        if (func_006B5340() == 1) {
-            PickMenu_Open(npc);
+        if (ShipMenu_IsOffered() == 1) {
+            ShipMenu_Open(npc);
         }
         break;
     case 7:
@@ -183,7 +188,7 @@ void Talk_FollowUp(u16 kind)
             if (pl->pos[1] < 100.0f && Cond_Check(0x2F) == 1) {
                 EquipShop_Open(npc);
             } else if (Cond_Check(0x2F) == 1) {
-                Workshop_Open(npc);
+                Workshop_Open((struct Em *)npc);
             }
         }
         break;
@@ -192,7 +197,7 @@ void Talk_FollowUp(u16 kind)
         break;
     case 0x37:
         if (Cond_Check(0x59)) {
-            DojoMenu_Open(npc);
+            DojoMenu_Open((struct Em *)npc);
         }
         break;
     case 0x38:
@@ -206,7 +211,7 @@ void Talk_FollowUp(u16 kind)
         }
     case 0x4E:
         if (gTalkEventStep == 0xFFFF || gLobby->elderRaidState != 0) {
-            OfficialDesk_Open(npc);
+            OfficialDesk_Open((struct Em *)npc);
         }
         break;
     case 0x41:
@@ -222,11 +227,11 @@ void Talk_FollowUp(u16 kind)
     case 0xF:
     case 0x68:
     case 0x55:
-        Workshop_Open(npc);
+        Workshop_Open((struct Em *)npc);
         break;
     case 0x71:
         if (gTalkEventStep == 0xFFFF && MyHouse_IsOwner() == 1) {
-            IngredientList_Open(npc);
+            IngredientList_Open((struct Em *)npc);
         }
         break;
     case 0x6F:
@@ -239,7 +244,7 @@ void Talk_FollowUp(u16 kind)
         if (offers == 0) {
             Talk_Close();
         } else {
-            OfferMenu_Open((struct OfferTask *) npc);
+            OfferMenu_Open((struct Em *) npc);
             LobbySe_Play(0x11);
         }
         break;
@@ -250,7 +255,7 @@ void Talk_GiveOnStep3(u16 k)
 {
     switch (k) {
     case 3:
-        Gift_Give(Gift_Which());
+        PspGift_Give(PspGift_Pick());
         break;
     }
 }
@@ -276,7 +281,7 @@ void Talk_StepAction(u16 id, u16 k)
     }
 }
 
-void Npc_ClearAll43B(void);
+void Npc_ClearAllTalked(void);
 s32 Npc_IsType4D(Em *);
 void CamFocus_Start(Em *npc);
 void Talk_Start(Em *npc, s8 quiet);
@@ -294,27 +299,7 @@ s32 sprintf(char *, const char *, ...);
 void Sjis_Widen(char *src, char *dst);
 extern s8 gTalkFinishStep;
 extern s32 gTalkLine;
-extern char *gZennyReceivedTexts[];
-/* A talk of a townsperson kind (gTalkLines[kind][talk]). */
-typedef struct TalkInfo {
-    u8 unk0[3];
-    u8 gift;        /* a gift of gTalkGifts[kind], 0xFF: none */
-} TalkInfo;
-/* A gift given at the end of a talk. */
-typedef struct TalkGift {
-    /* 0x0 */ u16 unk0;
-    /* 0x2 */ u16 kind;         /* 1 money, 2 an item for the pouch, 3 equipment for the box */
-    /* 0x4 */ union {
-        s16 value;              /* money, or the item as the message takes it */
-        u16 item;
-        u8 type;
-    } a;
-    /* 0x6 */ union {
-        s16 count;
-        u16 id;
-    } b;
-} TalkGift;
-extern u8 (*gTalkLines[])[4];
+extern TalkLine *gTalkLines[];
 extern TalkGift *gTalkGifts[];
 
 /* The end of a talk: the gift of gTalkLines/gTalkGifts (money, a pouch item,
@@ -323,7 +308,7 @@ s32 Talk_Finish(void)
 {
     Player *pl = &gPlayers[gScene.localPlayer];
     TalkGift *g;
-    u8 (*talks)[4];
+    TalkLine *talks;
     u8 gift;
     char msg[0x20];
     char buf[0x20];
@@ -346,47 +331,47 @@ s32 Talk_Finish(void)
         case 3:
             if (gTalkEventStep != 0xFFFF) {
                 Talk_StepAction(gTalkScript, gTalkEventStep);
-                Npc_ClearAll43B();
+                Npc_ClearAllTalked();
             }
             talks = gTalkLines[gTalkScript];
             talks += gTalkLine;
-            gift = (*talks)[3];
-            if (gift != 0xFF) {
+            gift = talks->gift;
+            if (gift != TALK_GIFT_NONE) {
                 g = gTalkGifts[gTalkScript];
                 g += gift;
                 switch (g->kind) {
-                case 1:
+                case TALK_GIFT_MONEY:
                     Save_AddMoney(g->a.value);
-                    LobbySe_Play(0xA);
-                    sprintf(msg, gZennyReceivedTexts[0], g->a.value);
+                    LobbySe_Play(LOBBY_SE_MONEY);
+                    sprintf(msg, gTownLabels[TOWN_LABEL_ZENNY_GOT_FMT], g->a.value);
                     Sjis_Widen(msg, buf);
                     Notice_PushText(buf);
                     if (gTalkEventFlag != -1) {
                         Save_SetEventFlag(gTalkEventFlag);
                     }
                     break;
-                case 2:
+                case TALK_GIFT_ITEM:
                     if (SavePouch_Space(g->a.item) >= g->b.count || Item_IsRecordOnly(g->a.item) == 1) {
                         SavePouch_Add(g->a.item, g->b.count);
-                        Notice_Push(1, 0xD, g->a.value);
+                        Notice_Push(NOTICE_KIND_ITEM, NOTICE_ITEM_RECEIVED, g->a.value);
                         if (gTalkEventFlag != -1) {
                             Save_SetEventFlag(gTalkEventFlag);
                         }
                         break;
                     }
-                    Menu_PushNotice(0x15);
+                    Menu_PushNotice(LOBBY_NOTICE_POUCH_FULL);
                     Talk_Close();
                     return 0;
-                case 3:
-                    if ((u16)Box_FindFreeSlot(&gSave) != 0xFFFF) {
+                case TALK_GIFT_EQUIP:
+                    if ((u16)Box_FindFreeSlot(&gSave) != BOX_NONE) {
                         Box_AddItem(&gSave, g->a.type, g->b.id, 0);
-                        Menu_PushNotice(0x23);
+                        Menu_PushNotice(LOBBY_NOTICE_EQUIP_GOT);
                         if (gTalkEventFlag != -1) {
                             Save_SetEventFlag(gTalkEventFlag);
                         }
                         break;
                     }
-                    Menu_PushNotice(0xB);
+                    Menu_PushNotice(LOBBY_NOTICE_BOX_FULL);
                     Talk_Close();
                     return 0;
                 }
@@ -669,7 +654,7 @@ s32 Talk_Check03(u16 k)
         }
         break;
     case 6:
-        if (Dojo_AllCleared101() == 1 && Save_TestEventFlag(0x18F) == 0) {
+        if (Dojo_OfflineDrillsCleared() == 1 && Save_TestEventFlag(0x18F) == 0) {
             gTalkEventFlag = 0x18F;
             Save_SetEventFlag(0x18E);
             Save_SetEventFlag(0x18);
@@ -679,7 +664,7 @@ s32 Talk_Check03(u16 k)
         }
         break;
     case 7:
-        if (Dojo_AllCleared201() == 1 && Save_TestEventFlag(0x190) == 0) {
+        if (Dojo_OfflineChainCleared() == 1 && Save_TestEventFlag(0x190) == 0) {
             gTalkEventFlag = 0x190;
             return 1;
         }
@@ -725,7 +710,7 @@ s32 Talk_Check04(u16 k)
 }
 
 u16 Record_GroupLargest(SaveData *save, u8 group, u8 *out);
-s32 func_006B5340(void);
+s32 ShipMenu_IsOffered(void);
 
 s32 Talk_Check05(u16 k)
 {
@@ -799,7 +784,7 @@ s32 Talk_Check05(u16 k)
         }
         break;
     case 12:
-        if (func_006B5340() == 1 && Save_TestEventFlag(0x1C8) == 0) {
+        if (ShipMenu_IsOffered() == 1 && Save_TestEventFlag(0x1C8) == 0) {
             gTalkEventFlag = 0x1C8;
             return 1;
         }
@@ -1011,7 +996,7 @@ s32 Talk_Check0A(u16 k)
         }
         break;
     case 1:
-        if (Village_GetTimerState(0) != 0) {
+        if (Village_MilestoneState(0) != 0) {
             if (Save_TestEventFlag(0x1A3) == 0) {
                 Save_SetEventFlag(0x1A3);
             }
@@ -1044,7 +1029,7 @@ s32 Talk_Check0B(u16 k)
         }
         break;
     case 2:
-        if (Village_GetTimerState(0) != 0) {
+        if (Village_MilestoneState(0) != 0) {
             Save_SetEventFlag(0x1A5);
             Save_SetEventFlag(0x1A4);
             return 1;
@@ -1232,7 +1217,7 @@ s32 Talk_Check0E(u16 k)
         }
         break;
     case 16:
-        if (Village_GetTimerState(4) == 1) {
+        if (Village_MilestoneState(4) == 1) {
             return 1;
         }
         break;
@@ -1350,7 +1335,7 @@ s32 Talk_Check12(u16 k)
 {
     switch (k) {
     case 3:
-        if (Gift_Which() != -1) {
+        if (PspGift_Pick() != -1) {
             return 1;
         }
         break;
@@ -1361,7 +1346,7 @@ s32 Talk_Check12(u16 k)
         }
         break;
     case 2:
-        if (Village_GetTimerState(3) != 0) {
+        if (Village_MilestoneState(3) != 0) {
             return 1;
         }
         break;
@@ -1420,7 +1405,7 @@ s32 Talk_Check13(u16 k)
         }
         break;
     case 3:
-        if (Town_AreaEventPending() == 1 && Save_TestEventFlag(0x16F) == 0) {
+        if (Town_SleepEventPending() == 1 && Save_TestEventFlag(0x16F) == 0) {
             gTalkEventFlag = 0x16F;
             return 1;
         }
@@ -1553,7 +1538,7 @@ s32 Talk_Check1A(u16 k)
         }
         break;
     case 2:
-        if (Village_GetTimerState(4) == 1) {
+        if (Village_MilestoneState(4) == 1) {
             return 1;
         }
         break;
@@ -1971,13 +1956,13 @@ s32 Talk_Check37(u16 k)
         }
         break;
     case 5:
-        if (Dojo_AllCleared10101() == 1 && Save_TestEventFlag(0x175) == 0) {
+        if (Dojo_OnlineChainCleared() == 1 && Save_TestEventFlag(0x175) == 0) {
             gTalkEventFlag = 0x175;
             return 1;
         }
         break;
     case 6:
-        if (Dojo_AllCleared10001() == 1 && Save_TestEventFlag(0x176) == 0) {
+        if (Dojo_OnlineDrillsCleared() == 1 && Save_TestEventFlag(0x176) == 0) {
             gTalkEventFlag = 0x176;
             return 1;
         }
@@ -2315,7 +2300,7 @@ s32 Talk_Check49(u16 k)
         }
         break;
     case 3:
-        if (gSave.unk36E9 >= 0x32 && Save_TestEventFlag(0x13E) == 0) {
+        if (gSave.songPoints >= 0x32 && Save_TestEventFlag(0x13E) == 0) {
             gTalkEventFlag = 0x13E;
             return 1;
         }
@@ -2965,11 +2950,11 @@ extern u16 gTalkStateId;
 extern u16 gTalkModeId;
 extern s32 gTalkLine;
 extern s8 gTalkMode;
-s32 Village_NpcRecA(u16 kind);
-void Menu4E_Open(Em *npc);
+s32 Village_HasGift(u16 kind);
+void NpcGift_Open(Em *npc);
 s32 Game_IsOnline(void);
 s32 Area_IsHouse(u16 area);
-s32 Village_NpcRecB(u16 kind);
+s32 Village_HasMealVisit(u16 kind);
 void MealScene_Open(Em *npc);
 s32 MyHouse_IsOwner(void);
 u16 Rand_Next(s32 stream);
@@ -2996,13 +2981,13 @@ void Talk_Start(Em *npc, s8 quiet)
     switch (gTownMode) {
     case 4:
     case 5:
-        if (Village_NpcRecA(m->kind) == 1) {
-            Menu4E_Open(npc);
+        if (Village_HasGift(m->kind) == 1) {
+            NpcGift_Open(npc);
             return;
         }
         break;
     }
-    if (Game_IsOnline() == 0 && Area_IsHouse(gScene.area) == 1 && Village_NpcRecB(m->kind) == 1) {
+    if (Game_IsOnline() == 0 && Area_IsHouse(gScene.area) == 1 && Village_HasMealVisit(m->kind) == 1) {
         MealScene_Open(npc);
         return;
     }
@@ -3103,7 +3088,7 @@ void Npc_ResetTalked(void)
     em = (Em *) &gEms;
     do {
         if (em->active != 0) {
-            ((NpcWork *) &em->work)->unk3 = 0;
+            ((NpcWork *) &em->work)->talked = 0;
         }
         i = (s16)((i + 1));
         em++;
@@ -9189,7 +9174,7 @@ TalkSel *gTalkSelects[116] = {
     &gTalkSelects_108, &gTalkSelects_109, &gTalkSelects_110, gTalkSelects_111,
     gTalkSelects_112, &gTalkSelects_113, &gTalkSelects_114, NULL,
 };
-u8 (*gTalkLines[116])[4] = {
+TalkLine *gTalkLines[116] = {
     NULL, (void *)D_0080E420, (void *)D_0080F220, (void *)D_0080F740,
     (void *)D_0080FD50, (void *)D_00810530, (void *)D_00810BC0, (void *)D_00810FF0,
     (void *)D_00811530, (void *)D_008119F0, (void *)D_00811D10, (void *)D_00811E30,
@@ -9282,3 +9267,227 @@ TalkGift *gTalkGifts[116] = {
     (TalkGift *)D_008BFA78, (TalkGift *)D_008BFA88, (TalkGift *)D_008BFA90, (TalkGift *)D_008BFA98,
     (TalkGift *)D_008BFAA0, gTalkGifts_113, (TalkGift *)D_008BFAB0, NULL,
 };
+
+extern s32 gTalkLineText;
+
+/* The text of a talk line (Talk_StepData). */
+char *Talk_LineText(u16 line)
+{
+    return (char *)Talk_StepData(line);
+}
+
+
+/* The kind of the current talk line (TALK_LINE_*). The callers pass the
+ * line (u16), which it does not use: it reads gTalkLine. The pointer is
+ * stepped to the line first (talks += gTalkLine), the order of the game's
+ * address arithmetic. */
+s32 Talk_LineKind(u16 unused)
+{
+    TalkLine *talks;
+
+    talks = gTalkLines[gTalkScript];
+    talks += gTalkLine;
+    return talks->kind;
+}
+
+u16 LobbyPad_Get(s32);
+s32 Notice_OpenTextN(char *text, s32 width, s32 mode, s32 sel, s32 arg4); /* unit's own declaration: declared here with an s32 frame count, as the callers here pass it; with the definition's u32, Talk_RunText and Talk_Step compile two instructions differently each */
+
+/* One frame of the current talk line's text, with no input (the line's
+ * own text, or Talk_StepData's; gTalkTextFrames counts its frames, the
+ * line's kind and the yes/no cursor gTalkMode choose the window).
+ * Returns MENU_RUNNING while the text is still being shown, MENU_DONE once
+ * it is all shown. */
+s32 Talk_RunText(void)
+{
+    s32 text;
+
+    LobbyPad_Get(0);
+    if (gTalkTextFrames >= 0) {
+        gTalkTextFrames++;
+    }
+    text = gTalkLineText != 0 ? gTalkLineText : Talk_StepData((u16)gTalkLine);
+    if (Notice_OpenTextN((char *)text, gTalkTextFrames, Talk_LineKind(gTalkLine), gTalkMode, gTalkNpcName) == 0) {
+        return MENU_DONE;
+    }
+    return MENU_RUNNING;
+}
+
+
+/*
+ * One frame of the talk with the buttons. While the line's text is still
+ * being shown, circle or cross shows it all at once (gTalkTextFrames -1).
+ * Once it is shown:
+ * - a TALK_LINE_NEXT line goes on to the next line with circle or cross;
+ * - a TALK_LINE_ASK line moves the yes/no cursor (gTalkMode) with left and
+ *   right; circle takes the cursor's answer, and cross answers no (the
+ *   first press only moves the cursor to no). The answer skips ahead by
+ *   the line's yesSkip or noSkip; with no skip the talk goes on to the
+ *   next line, or ends when endOnAnswer is 1;
+ * - any other line ends the talk.
+ * Returns MENU_RUNNING while the talk goes on, MENU_DONE at its end.
+ */
+s32 Talk_Step(s8 endOnAnswer)
+{
+    u16 pad = LobbyPad_Get(0);
+    s32 text;
+    s32 kind;
+    TalkLine *talks;
+    s32 skip;
+
+    if (gTalkTextFrames >= 0) {
+        gTalkTextFrames++;
+    }
+    text = gTalkLineText != 0 ? gTalkLineText : Talk_StepData((u16)gTalkLine);
+    kind = Talk_LineKind(gTalkLine);
+    talks = gTalkLines[gTalkScript];
+    talks += gTalkLine;
+    if (Notice_OpenTextN((char *)text, gTalkTextFrames, kind, gTalkMode, gTalkNpcName) == 0) {
+        if (pad & PAD_CIRCLE) {
+            if (kind == TALK_LINE_NEXT) {
+                gTalkTextFrames = 0;
+                gTalkMode = TALK_CHOICE_YES;
+                gTalkLine++;
+            } else if (kind == TALK_LINE_ASK) {
+                if (gTalkMode != TALK_CHOICE_NO) {
+                    LobbySe_Play(LOBBY_SE_CONFIRM_ALT);
+                    if ((skip = talks->yesSkip) != 0) {
+                        gTalkTextFrames = 0;
+                        gTalkMode = TALK_CHOICE_YES;
+                        gTalkLine += skip;
+                    } else if (endOnAnswer == 1) {
+                        gTalkTextFrames = 0;
+                        return MENU_DONE;
+                    } else {
+                        gTalkTextFrames = 0;
+                        gTalkMode = TALK_CHOICE_YES;
+                        gTalkLine++;
+                    }
+                } else {
+                    LobbySe_Play(LOBBY_SE_CANCEL);
+                    if ((skip = talks->noSkip) != 0) {
+                        gTalkTextFrames = 0;
+                        gTalkMode = TALK_CHOICE_YES;
+                        gTalkLine += skip;
+                    } else if (endOnAnswer == 1) {
+                        gTalkTextFrames = 0;
+                        return MENU_DONE;
+                    } else {
+                        gTalkTextFrames = 0;
+                        gTalkMode = TALK_CHOICE_YES;
+                        gTalkLine++;
+                    }
+                }
+            } else {
+                return MENU_DONE;
+            }
+        } else if (pad & PAD_CROSS) {
+            if (kind == TALK_LINE_NEXT) {
+                gTalkTextFrames = 0;
+                gTalkMode = TALK_CHOICE_YES;
+                gTalkLine++;
+            } else if (kind == TALK_LINE_ASK) {
+                LobbySe_Play(LOBBY_SE_CANCEL);
+                if (gTalkMode != TALK_CHOICE_NO) {
+                    gTalkMode = TALK_CHOICE_NO;
+                } else if ((skip = talks->noSkip) != 0) {
+                    gTalkTextFrames = 0;
+                    gTalkMode = TALK_CHOICE_YES;
+                    gTalkLine += skip;
+                } else if (endOnAnswer == 1) {
+                    gTalkTextFrames = 0;
+                    return MENU_DONE;
+                } else {
+                    gTalkTextFrames = 0;
+                    gTalkMode = TALK_CHOICE_YES;
+                    gTalkLine++;
+                }
+            } else {
+                gTalkTextFrames = 0;
+                return MENU_DONE;
+            }
+        } else if (kind == TALK_LINE_ASK) {
+            if (pad & PAD_LEFT) {
+                if (gTalkMode != TALK_CHOICE_YES) {
+                    LobbySe_Play(LOBBY_SE_SCROLL);
+                    gTalkMode = TALK_CHOICE_YES;
+                }
+            } else if (pad & PAD_RIGHT) {
+                if (gTalkMode != TALK_CHOICE_NO) {
+                    LobbySe_Play(LOBBY_SE_SCROLL);
+                    gTalkMode = TALK_CHOICE_NO;
+                }
+            }
+        }
+    } else if (pad & (PAD_CIRCLE | PAD_CROSS)) {
+        gTalkTextFrames = -1;
+    }
+    return MENU_RUNNING;
+}
+
+
+/* Talk_Step, ending on an answer. At the talk's end: MENU_CANCEL when the
+ * last answer was no; otherwise the last line's gift is handed over (money,
+ * with its notice; an item into the pouch, or a notice that it is full; a
+ * piece of equipment into the box, or a notice that it is full) and
+ * MENU_DONE. MENU_RUNNING while the talk goes on. */
+s32 Talk_Update(void)
+{
+    TalkGift *given;
+    TalkLine *talks;
+    u8 giftIndex;
+    s16 count;
+    char msg[0x20];
+    char wide[0x20];
+
+    if (Talk_Step(1) == MENU_DONE) {
+        if (gTalkMode == TALK_CHOICE_NO) {
+            return MENU_CANCEL;
+        }
+        talks = gTalkLines[gTalkScript];
+        talks += gTalkLine;
+        giftIndex = talks->gift;
+        if (giftIndex != TALK_GIFT_NONE) {
+            given = gTalkGifts[gTalkScript];
+            given += giftIndex;
+            switch (given->kind) {
+            case TALK_GIFT_MONEY:
+                Save_AddMoney(given->a.value);
+                LobbySe_Play(LOBBY_SE_MONEY);
+                sprintf(msg, gTownLabels[TOWN_LABEL_ZENNY_GOT_FMT], given->a.value);
+                Sjis_Widen(msg, wide);
+                Notice_PushText(wide);
+                break;
+            case TALK_GIFT_ITEM:
+                count = given->b.count;
+                if (SavePouch_Space(given->a.item) >= count) {
+                    SavePouch_Add(given->a.item, count);
+                    Notice_Push(NOTICE_KIND_ITEM, NOTICE_ITEM_RECEIVED, given->a.value);
+                } else {
+                    Menu_PushNotice(LOBBY_NOTICE_POUCH_FULL);
+                }
+                break;
+            case TALK_GIFT_EQUIP:
+                if ((u16)Box_FindFreeSlot(&gSave) != BOX_NONE) {
+                    Box_AddItem(&gSave, given->a.type, given->b.id, 0);
+                    Menu_PushNotice(LOBBY_NOTICE_EQUIP_GOT);
+                } else {
+                    Menu_PushNotice(LOBBY_NOTICE_BOX_FULL);
+                }
+                break;
+            }
+        }
+        return MENU_DONE;
+    }
+    return MENU_RUNNING;
+}
+
+/* Starts the talk's line `line`, the yes/no cursor at `choice`
+ * (TALK_CHOICE_*), with the line's own text. */
+void Talk_Say(s32 line, s8 choice)
+{
+    gTalkLine = line;
+    gTalkMode = choice;
+    gTalkLineText = 0;
+    gTalkTextFrames = 0;
+}

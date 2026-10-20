@@ -6,8 +6,8 @@
 /*
  * The task system: sub_main's table gTaskSlots holds TASK_SLOT_COUNT slots
  * of 0x20 bytes. TaskSlot_Set starts a task with a function, which then
- * runs with its slot as its argument once a frame (Task_RunFrame, in
- * unk_33B080.c). The bytes from +8 on are the task's own: every task keeps
+ * runs with its slot as its argument once a frame (Task_RunFrame). The
+ * bytes from +8 on are the task's own: every task keeps
  * its state at +8 and the state's step at +9 (plsel_entry, the select
  * tasks, GmSub_Task, the lobby's NetScene_Run, plsel's galex tasks); the
  * rest is named by the tasks that use it.

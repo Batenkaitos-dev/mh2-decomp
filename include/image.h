@@ -2,8 +2,8 @@
 #define IMAGE_H
 
 /*
- * An image in EE memory as the texture converter sees it (the pixel
- * accessors at 0x1835E0-0x183BD0, used by src/main/texconv.c): indexed
+ * An image in EE memory as the texture converter sees it (the Image_*
+ * pixel accessors, which texconv.c uses): indexed
  * (4 or 8 bits) or direct colour (2, 3 or 4 bytes per pixel, each channel
  * described by its bit count, shift and mask). Colours are passed as
  * 0xAARRGGBB.
@@ -100,7 +100,7 @@ s32 Image_Convert(Image *dst, Image *src);
     (img)->b.shift = 16
 #define IMAGE_SET_PITCH(img) (img)->pitch = (img)->width * (img)->bpp
 
-/* A BMP file's header, as Bmp_GetPixels (sub_main unk_2F6540.c) reads it: the
+/* A BMP file's header, as Bmp_GetPixels reads it: the
  * signature, then 32-bit fields at 2-byte alignment, read as halves. */
 typedef struct BmpFileHeader {
     u16 type;                   /* 0x0: BMP_SIGNATURE */
@@ -111,7 +111,7 @@ typedef struct BmpFileHeader {
 #define BMP_SIGNATURE 0x4D42    /* 'BM' */
 
 /*
- * TIM2 pictures, as main's Tim2_* helpers (src/main/unk_18AFE0.c) read them
+ * TIM2 pictures, as main's Tim2_* helpers read them
  * for Tex_CreateFromTim2: a 16-byte file header, then per picture a
  * header, its mip-map header when it has more than one level, the image
  * levels and the palette (CLUT), each part aligned to 16 bytes (format 0)

@@ -8,17 +8,18 @@
 #include "scene.h"
 #include "save.h"
 #include "area.h"
+#include "lobby_text.h"
 
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern s16 gClockWobble;
+void LobbyMenu_Init(void);
+void LobbyMenu_SetDraw(void *, void *, void *, void *);
+s32 Menu_PushNoticeOnce(s32);
+extern s16 gHouseCloseTimer;
+void *memset(void *dst, s32 c, u32 n);
 
-void AreaMenu_Close(void) {
-    gTownMode = 0;
-    gTownMenuOpen = 0;
-}
-
-/* The area menu (gMenuWork): two destinations (AREA_HUB_0x85, AREA_HUB_0x86, AREA_HUB_0x88). */
+/* The area menu (gMenuWork): two destinations (AREA_HUB_0x85, AREA_TAVERN, AREA_ELDER_HALL). */
 typedef struct AreaMenu {
     /* 0x0 */ s8 step;
     /* 0x1 */ s8 sel;
@@ -27,12 +28,44 @@ typedef struct AreaMenu {
     /* 0x8 */ u16 unk8;
 } AreaMenu;
 extern u8 gMenuWork[];
+
+#pragma optimization_level 4
+void AreaMenu_Open(u16 id)
+{
+    AreaMenu *m = (AreaMenu *)gMenuWork;
+    u8 k;
+
+    if (gLobby->questTaken == 1) {
+        Menu_PushNoticeOnce(LOBBY_NOTICE_QUEST_TAKEN);
+        return;
+    }
+    if (gTownMode != 0x2B) {
+        k = gScene.localPlayer;
+        gLobby->memberSlot[k] = k + 0x30;
+    }
+    gHouseCloseTimer = 0;
+    gTownMode = 0x3A;
+    gTownMenuOpen = 1;
+    LobbyMenu_SetDraw(0, 0, 0, 0);
+    memset(&gMenuWork, 0, 0xF00);
+    LobbyMenu_Init();
+    m->unk6 = gScene.area;
+    m->unk8 = id;
+}
+
+#pragma optimization_level reset
+
+void AreaMenu_Close(void) {
+    gTownMode = 0;
+    gTownMenuOpen = 0;
+}
+
 extern LobbyMenu *gLobbyMenu;
 u16 LobbyPad_Get(s32 a);
 s32 Cond_Check(u16 id);
 void LobbyText_Open(s32 a);
 void LobbyDialog_Grow(void);
-void Menu_SetYesNo(u8 a); /* unit's own declaration: with the definition's void (s8 choice) (lobby/unk_7B0D80.c), AreaMenu_Update 1 of 132 words differ */
+void Menu_SetYesNo(u8 a); /* unit's own declaration: with the definition's void (s8 choice) (lobby/lobby_dialog.c), AreaMenu_Update 1 of 132 words differ */
 void LobbySe_Play(s32 se);
 s32 Menu_WrapUpDown(s32 cur, s32 n);
 void AreaMenu_GoTo(u16 area);
@@ -158,7 +191,7 @@ void AreaMenu_GoTo(u16 area)
                 break;
             case 0x57:
                 Save_ClearEventFlag(0x1CE);
-                gSave.unk36E8 = 0;
+                gSave.awayFromVillage = 0;
                 gLobbyStartPosIdx = -1;
                 QuestList_Rebuild();
                 Game_ResetSubsystems();
@@ -169,24 +202,24 @@ void AreaMenu_GoTo(u16 area)
         }
         break;
     case AREA_HUB_0x57:
-        gSave.unk36E8 = 1;
+        gSave.awayFromVillage = 1;
         s = &gAreaGoSpawn57;
         if (m->unk6 == 0x89) {
             gLobbyStartPosIdx = -1;
             QuestList_Rebuild();
         }
         break;
-    case AREA_HUB_0x86:
+    case AREA_TAVERN:
         if (m->unk6 == 0x85 || m->unk6 == 0x88) {
             s = &gAreaGoSpawn86;
         }
         break;
-    case AREA_HUB_0x87:
+    case AREA_TOWN_ARENA:
         if (p->pos[2] < 3500.0f) {
             s = &gAreaGoSpawn87;
         }
         break;
-    case AREA_HUB_0x88:
+    case AREA_ELDER_HALL:
         switch (m->unk6) {
         case 0x85:
             s = &gAreaGoSpawn88From85;

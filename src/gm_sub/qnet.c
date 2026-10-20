@@ -41,7 +41,9 @@ s32 NetTcp_Send(s32, void *, s16);
 void *memmove(void *dst, const void *src, u32 n);
 s64 GetTimerSystemTime(void);
 void TimerBusClock2USec(s64, u32 *, u32 *);
-/* unit's own declaration: the definition (sub_main/unk_30E420.c) is u16 Swap16(s32 x); QuestNet_Parse matches only with this one */
+/* QuestNet_Parse's call compiles as the game's code only with the parameter
+ * declared u16, not the definition's s32 x.
+ * unit's own declaration: declared as the caller uses it. */
 u16 Swap16(u16);
 s32 rand(void);
 s32 NetIf_GetError(void);

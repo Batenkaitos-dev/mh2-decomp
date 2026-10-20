@@ -5,9 +5,8 @@
 
 /*
  * A textured rectangle as Sprite_Draw (main) draws it, 0x14 bytes; also
- * the lobby browser's Prim_Sprite (unk_741900.c). The texture rectangle
+ * the lobby browser's Prim_Sprite. The texture rectangle
  * is two corners (u0, v0)-(u1, v1); the screen one is a corner and a size.
- * Other views of it: unk_3549F0.c (the UVs as Vec2s pairs).
  */
 typedef struct Sprite {
     s16 x, y, w, h;
@@ -16,15 +15,19 @@ typedef struct Sprite {
 } Sprite;
 
 /*
- * A draw slot of sub_main's pools (0x20 bytes): gDrawSlotPool (0x200),
- * gDrawSlotsB (0x100) and gHudDrawHooks (4), in unk_376C00.c. DrawSlot_Alloc
+ * A draw slot of sub_main's pools (0x20 bytes): gDrawSlotPool, gDrawSlotsB and
+ * gHudDrawHooks (their lengths below). DrawSlot_Alloc
  * takes a free one (it sets draw to 1 until the owner sets its callback) and
  * returns its index or -1, DrawSlot_Get gives its address and DrawSlot_Free
  * clears it (DrawSlotB_* for the second pool; DrawSlotB_Free keeps owner and
  * part). Its owner copies its position into pos and puts it into an ordering
- * table every frame (OT_AddByDepth(gDrawOtSorted, slot, 0x40, 0)), whose walk
+ * table every frame (OT_AddByDepth(gDrawOtSorted, slot, DRAW_OT_SORTED_LEN, 0)), whose walk
  * calls draw with the slot.
  */
+#define DRAW_SLOT_POOL_LEN 0x200    /* gDrawSlotPool's slots */
+#define DRAW_SLOTS_B_LEN 0x100      /* gDrawSlotsB's slots */
+#define HUD_DRAW_HOOKS_LEN 4        /* gHudDrawHooks' slots */
+
 struct DrawSlot;
 /* A draw slot's callback: called with the slot (the ordering table walk). */
 typedef void (*DrawSlotFn)(struct DrawSlot *slot);
@@ -42,10 +45,10 @@ typedef struct DrawSlot {
 } DrawSlot;
 typedef char DrawSlot_size_check[(sizeof(DrawSlot) == 0x20) ? 1 : -1];
 
-/* The ordering tables the frame walks (sub_main 0x6A9AD0-0x6A9D00): each entry heads a list of
+/* The ordering tables the frame walks: each entry heads a list of
  * draw slots (DrawSlot.next) that OT_AddByDepth (by depth) and OT_AddAt (at an index) add to.
- * FreeList_Init sets them up (unk_368F10.c) and Task_RunList walks each in the frame's draw order
- * (unk_36BE70.c); the one-entry lists are 8 bytes apart. */
+ * FreeList_Init sets them up and Task_RunList walks each in the frame's draw order
+ *; the one-entry lists are 8 bytes apart. */
 extern u32 gDrawListText0a[1];  /* 0x6A9AD0 */
 extern u32 gDrawListText6[1];   /* 0x6A9AD8 */
 extern u32 gDrawListSky[1];     /* 0x6A9AE0 */
@@ -57,8 +60,13 @@ extern u32 gDrawListText0b[1];  /* 0x6A9B08 */
 extern u32 gDrawListStage[1];   /* 0x6A9B10 */
 extern u32 gDrawOt8[8];         /* 0x6A9B20 */
 extern u32 gDrawOtText3[16];    /* 0x6A9B40 */
-extern u32 gDrawOt32[32];       /* 0x6A9B80: OT_AddByDepth(gDrawOt32, slot, 0x20, ..) */
-extern u32 gDrawOtSorted[64];   /* 0x6A9C00: OT_AddByDepth(gDrawOtSorted, slot, 0x40, ..) */
+extern u32 gDrawOt32[32];       /* 0x6A9B80: OT_AddByDepth(gDrawOt32, slot, DRAW_OT32_LEN, ..) */
+extern u32 gDrawOtSorted[64];   /* 0x6A9C00: OT_AddByDepth(gDrawOtSorted, slot, DRAW_OT_SORTED_LEN, ..) */
+
+/* The entries of the depth-sorted ordering tables: OT_AddByDepth's length argument, which
+ * spreads the view depths over that many lists. */
+#define DRAW_OT32_LEN 0x20          /* gDrawOt32 */
+#define DRAW_OT_SORTED_LEN 0x40     /* gDrawOtSorted */
 
 /* A texture coordinate pair (texels). */
 typedef struct UV {
@@ -66,7 +74,14 @@ typedef struct UV {
     s16 v;
 } UV;
 
-/* A textured rectangle (TexRect_DrawRotated, TexRect_DrawRotatedAt: sub_main unk_363550.c; 0x14 bytes). */
+/* An icon's texture rectangle in gIconUVs (indexed by Icon.kind): two
+ * corners, as TexRect's uv0 and uv1 (Draw_Icons). */
+typedef struct IconUV {
+    UV uv0;
+    UV uv1;
+} IconUV;
+
+/* A textured rectangle (TexRect_DrawRotated, TexRect_DrawRotatedAt; 0x14 bytes). */
 typedef struct TexRect {
     s16 x;                      /* 0x00 */
     s16 y;                      /* 0x02 */

@@ -5,6 +5,7 @@
 #include "save.h"
 #include "quest.h"
 #include "lobby_menu.h"
+#include "lobby_labels.h"
 
 /*
  * The quest menu of this file (work area gMenuWork, updated by
@@ -51,7 +52,6 @@ char *Text_FillDollar(char *fmt, s32 n);
 char *Text_FillDollar2(s32 n);
 u16 Rand_Next(s32 stream);
 extern u8 gMenuWork;
-extern char *gElderDragonInfoTexts[];
 void Text_SetSize(s32);
 void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
 void ElderForecast_DrawPanel(u16 *ids, s16 x, s16 y, s32 list, s32 b);
@@ -291,14 +291,6 @@ extern char *gStageNames[];
 extern char D_00838460[];
 extern char D_00838468[];
 extern char D_00838470[];
-extern char *D_0080C14C;
-extern char *D_0080C2EC;
-extern char *D_0080C074;
-extern char *D_0080C054;
-extern char *D_0080C2FC;
-extern char *D_0080C2F4;
-extern char *gNightTexts[];
-extern char *gTimeOfDayTexts[];
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
 void Text_PrintfColored(char *fmt, ...);
 s32 sprintf(char *buf, char *fmt, ...);
@@ -342,9 +334,9 @@ void ElderForecast_DrawPanel(u16 *ids, s16 x, s16 y, s32 list, s32 b)
     Font_SetColor(0x80301010);
     sprintf(buf, D_00838460, gSeasonNames[list]);
     Font_SetPos(Text_CenterX(buf, x + 0xA0, 0x14) - 0x14, cy);
-    Text_PrintfColored(D_0080C14C, buf);
-    Font_SetPos(Text_CenterX(D_0080C2EC, x + 0x96, 0x14), cy += 0x16);
-    Text_PrintfColored(D_0080C2EC);
+    Text_PrintfColored(gPriceInfoTexts[PRICE_INFO_BRACKET_FMT], buf);
+    Font_SetPos(Text_CenterX(gElderForecastTexts[ELDER_FORECAST_PANEL_TITLE], x + 0x96, 0x14), cy += 0x16);
+    Text_PrintfColored(gElderForecastTexts[ELDER_FORECAST_PANEL_TITLE]);
     Font_SetSpacing(0x12, 0x12);
     Font_SetColor(0x80101010);
     if (Game_IsOnline() == 1) {
@@ -366,20 +358,20 @@ void ElderForecast_DrawPanel(u16 *ids, s16 x, s16 y, s32 list, s32 b)
     sx += 0x28;
     for (i = 0; i < n; i++) {
         Font_SetPos(sx, cy + 0x1E);
-        Text_PrintfColored(D_00838468, gMonsterNames[*mon], D_0080C074);
+        Text_PrintfColored(D_00838468, gMonsterNames[*mon], gLobbyWords[LOBBY_WORD_COLON]);
         Font_SetPos(sx + 0x28, cy += 0x34);
         if (*ids != 0) {
             info = Quest_GetDiscInfo(*ids);
             k = Map_Group(info->map);
             if ((info->flags & 0x80000) && (info->flags & 0x100000)) {
-                Text_PrintfColored(D_00838470, gStageNames[k], D_0080C054, D_0080C2FC);
+                Text_PrintfColored(D_00838470, gStageNames[k], gLobbyWords[LOBBY_WORD_MID_DOT], gElderForecastTexts[ELDER_FORECAST_DAY_NIGHT]);
             } else if (info->flags & 0x80000) {
-                Text_PrintfColored(D_00838470, gStageNames[k], D_0080C054, D_0080C2F4);
+                Text_PrintfColored(D_00838470, gStageNames[k], gLobbyWords[LOBBY_WORD_MID_DOT], gElderForecastTexts[ELDER_FORECAST_DAY]);
             } else {
-                Text_PrintfColored(D_00838470, gStageNames[k], D_0080C054, gNightTexts[0]);
+                Text_PrintfColored(D_00838470, gStageNames[k], gLobbyWords[LOBBY_WORD_MID_DOT], gElderForecastTexts[ELDER_FORECAST_NIGHT]);
             }
         } else {
-            Text_PrintfColored(gTimeOfDayTexts[0]);
+            Text_PrintfColored(gElderForecastTexts[ELDER_FORECAST_NO_TIME]);
         }
         mon++;
         ids++;
@@ -447,7 +439,7 @@ void ElderForecast_Draw(u8 *o)
     Text_SetSize(*(s32 *)(o + 0x18));
     switch (m->mode) {
     case 0:
-        Menu_DrawLabelList(0x1C2, gElderDragonInfoTexts, 3, m->cursor, 0xFFB0B000);
+        Menu_DrawLabelList(0x1C2, gElderForecastTexts, 3, m->cursor, 0xFFB0B000);
         break;
     case 1:
         ElderForecast_DrawPanel(m->shown, m->win.pos, 0x3A, m->list, m->unkC);
@@ -528,7 +520,7 @@ void ElderRaid_SetState(void)
     } else {
         gLobby->elderRaidState = 2;
     }
-    if (*(s16 *)(e + 0x20) != gSave.unk3696 && gLobby->elderRaidState == 1) {
+    if (*(s16 *)(e + 0x20) != gSave.raidStartMovieId && gLobby->elderRaidState == 1) {
         gLobby->movieState = 1;
     }
 }

@@ -1,14 +1,15 @@
 /*
- * 0x180650: display and GS setup at boot (InitDisplay), the VBlank handler
+ * Display and GS setup at boot (InitDisplay), the VBlank handler
  */
 #include "common.h"
 #include "dma.h"
 #include "syswork.h"
 #include "hw_regs.h"
 #include "heap.h"
+#include "ram_areas.h"
 
 extern DmaQueue gDmaQueue;
-extern u8 gSysHeap[];         /* LinearHeap over 0x1068000.. */
+extern u8 gSysHeap[];         /* a LinearHeap over SYS_HEAP_AREA */
 extern s32 D_0021905C;
 extern s32 D_00219060;
 extern void *gSysHeapBase;
@@ -81,16 +82,14 @@ s32 InitDisplay(s32 w, s32 h)
 }
 
 /* Clears the system work and sets up the memory: a linear heap over
- * 0x1068000-0x1F68000, and a block heap in 14 MB taken from it. */
+ * SYS_HEAP_AREA (15 MB), and a block heap in 14 MB taken from it. */
 s32 Sys_InitWork(void)
 {
     void *heap;
 
     Mem_Fill(&gSysWork, 0, 0x470);
     Vram_Init();
-    /* the heap's fixed RAM area (0x1068000, 15 MB): an area of the memory map,
-     * not an object, so it stays a raw address */
-    LinearHeap_Init((LinearHeap *) gSysHeap, (void *) 0x1068000, 0xF00000, 0x40);
+    LinearHeap_Init((LinearHeap *) gSysHeap, SYS_HEAP_AREA, SYS_HEAP_AREA_SIZE, 0x40);
     gSysHeapSize = 0xE00000;
     heap = SysHeap_AllocTop(gSysHeapSize);
     gSysHeapBase = heap;

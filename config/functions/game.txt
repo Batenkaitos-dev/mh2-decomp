@@ -2,17 +2,4 @@
 // 261 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
 func_006AF240 = 0x006AF240; // type:func
 func_006FD010 = 0x006FD010; // type:func
-func_00758860 = 0x00758860; // type:func
-func_00761C70 = 0x00761C70; // type:func
-func_00770310 = 0x00770310; // type:func
-func_00786E50 = 0x00786E50; // type:func
-func_007DE230 = 0x007DE230; // type:func
-func_008261F0 = 0x008261F0; // type:func
-func_0083B8F0 = 0x0083B8F0; // type:func
-func_0083BA70 = 0x0083BA70; // type:func
-func_00849700 = 0x00849700; // type:func
-func_00849C20 = 0x00849C20; // type:func
-func_00849C50 = 0x00849C50; // type:func
-func_00854BC0 = 0x00854BC0; // type:func
-func_00858980 = 0x00858980; // type:func
 func_0088C890 = 0x0088C890; // type:func

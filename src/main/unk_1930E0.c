@@ -1,5 +1,5 @@
 /*
- * main 0x1930e0-0x1937a0: the per-frame stream update and the queue of
+ * The per-frame stream update and the queue of
  * background reads (256 requests: AFS files, named files, or calls made
  * in order with the reads).
  */
@@ -77,7 +77,7 @@ void Load_Idle(void)
         if (Game_IsOnline() == 1 && gSysSettings.gmSubLoaded != 0) {
             func_8FC650();
         }
-        if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1 && Game_IsOnline() == 1 && gScene.online != 0 && D_008EE27E != 0
+        if (Overlay_IsLoaded(OVERLAY_LOBBY) == 1 && Game_IsOnline() == 1 && gScene.inLobby != 0 && D_008EE27E != 0
             && gLobbyState.modelLoading == NULL) {
             Lobby_ReceiveAll(gNetSock);
         }
@@ -87,6 +87,10 @@ void Load_Idle(void)
     }
 }
 
+/*
+ * Empties the background read queue: clears gFileQueue and marks all 256
+ * requests free (type -1).
+ */
 void FileQueue_Init(void)
 {
     s32 i;
@@ -97,34 +101,43 @@ void FileQueue_Init(void)
     }
 }
 
-/* id: ptid << 16 | flid. Waits for the queue to drain when it is full. */
+/*
+ * Queues a read of an AFS file into dst; id is ptid << 16 | flid. When the
+ * next request is still in use (the queue is full), first waits for the
+ * queue to drain (FileQueue_Flush).
+ */
 void FileQueue_AddFile(u32 id, void *dst)
 {
-    FileReq *r = &gFileReqs[gFileQueue.write];
-    FileQueue *q = &gFileQueue;
+    FileReq *req = &gFileReqs[gFileQueue.write];
+    FileQueue *queue = &gFileQueue;
 
-    if (r->type >= 0) {
+    if (req->type >= 0) {
         FileQueue_Flush();
-        r = &gFileReqs[q->write];
+        req = &gFileReqs[queue->write];
     }
-    r->type = FILEREQ_AFS;
-    r->u.id = id;
-    r->dst = dst;
-    q->busy = 1;
-    q->write = ++q->write % 256;
+    req->type = FILEREQ_AFS;
+    req->u.id = id;
+    req->dst = dst;
+    queue->busy = 1;
+    queue->write = ++queue->write % 256;
 }
 
-void FileQueue_AddCall(void (*func)(void), s32 nargs, s32 a0, s32 a1, s32 a2, s32 a3)
+/*
+ * Queues a call of func with the first nargs (0-4) of firstArg..fourthArg,
+ * made in order with the reads (FileQueue_Call). Unlike FileQueue_AddFile
+ * it does not check for a full queue.
+ */
+void FileQueue_AddCall(void (*func)(void), s32 nargs, s32 firstArg, s32 secondArg, s32 thirdArg, s32 fourthArg)
 {
-    FileReq *r = &gFileReqs[gFileQueue.write];
+    FileReq *req = &gFileReqs[gFileQueue.write];
 
-    r->type = FILEREQ_CALL;
-    r->u.func = func;
-    r->nargs = nargs;
-    r->v.args[0] = a0;
-    r->v.args[1] = a1;
-    r->v.args[2] = a2;
-    r->v.args[3] = a3;
+    req->type = FILEREQ_CALL;
+    req->u.func = func;
+    req->nargs = nargs;
+    req->v.args[0] = firstArg;
+    req->v.args[1] = secondArg;
+    req->v.args[2] = thirdArg;
+    req->v.args[3] = fourthArg;
     gFileQueue.busy = 1;
     gFileQueue.write = ++gFileQueue.write % 256;
 }
@@ -133,74 +146,78 @@ void FileQueue_AddCall(void (*func)(void), s32 nargs, s32 a0, s32 a1, s32 a2, s3
  * (a read that fails is retried). */
 void FileQueue_Update(void)
 {
-    FileQueue *q = &gFileQueue;
-    FileReq *r = &gFileReqs[gFileQueue.read];
+    FileQueue *queue = &gFileQueue;
+    FileReq *req = &gFileReqs[gFileQueue.read];
     s32 stat;
 
     switch (gFileQueue.state) {
     case 0:
-        if (q->busy == 0) {
+        if (queue->busy == 0) {
             break;
         }
-        if (q->adxf != NULL) {
-            ADXF_Stop(q->adxf);
-            ADXF_Close(q->adxf);
+        if (queue->adxf != NULL) {
+            ADXF_Stop(queue->adxf);
+            ADXF_Close(queue->adxf);
         }
-        if (r->type == FILEREQ_AFS) {
-            q->adxf = ADXF_OpenAfs((r->u.id >> 16) & 0xFFFF, r->u.id & 0xFFFF);
-            if (q->adxf == NULL) {
+        if (req->type == FILEREQ_AFS) {
+            queue->adxf = ADXF_OpenAfs((req->u.id >> 16) & 0xFFFF, req->u.id & 0xFFFF);
+            if (queue->adxf == NULL) {
                 break;
             }
-            ADXF_ReadNw(q->adxf, ADXF_GetFsizeSct(q->adxf), r->dst);
-            q->state++;
-        } else if (r->type == FILEREQ_CALL) {
-            FileQueue_Call(r);
-            FileQueue_Next(r);
-        } else if (r->type == FILEREQ_NAME) {
-            q->adxf = ADXF_Open(r->v.name, NULL);
-            if (q->adxf == NULL) {
+            ADXF_ReadNw(queue->adxf, ADXF_GetFsizeSct(queue->adxf), req->dst);
+            queue->state++;
+        } else if (req->type == FILEREQ_CALL) {
+            FileQueue_Call(req);
+            FileQueue_Next(req);
+        } else if (req->type == FILEREQ_NAME) {
+            queue->adxf = ADXF_Open(req->v.name, NULL);
+            if (queue->adxf == NULL) {
                 break;
             }
-            ADXF_ReadNw(q->adxf, ADXF_GetFsizeSct(q->adxf), r->dst);
-            q->state++;
+            ADXF_ReadNw(queue->adxf, ADXF_GetFsizeSct(queue->adxf), req->dst);
+            queue->state++;
         }
         break;
     case 1:
-        stat = ADXF_GetStat(q->adxf);
+        stat = ADXF_GetStat(queue->adxf);
         if (stat == ADXF_STAT_READING) {
             break;
         }
-        ADXF_Close(q->adxf);
-        q->adxf = NULL;
+        ADXF_Close(queue->adxf);
+        queue->adxf = NULL;
         if (stat == ADXF_STAT_ERROR) {
             break;
         }
-        FileQueue_Next(r);
-        q->state = 0;
+        FileQueue_Next(req);
+        queue->state = 0;
         break;
     }
 }
 
-void FileQueue_Next(FileReq *r)
+/*
+ * Frees the finished request req and moves the read index on; clears
+ * gFileQueue.busy when the next request is free.
+ */
+void FileQueue_Next(FileReq *req)
 {
-    FileQueue *q = &gFileQueue;
+    FileQueue *queue = &gFileQueue;
 
-    r->type = -1;
+    req->type = -1;
     gFileQueue.read = ++gFileQueue.read % 256;
     if (gFileReqs[gFileQueue.read].type < 0) {
-        q->busy = 0;
+        queue->busy = 0;
     }
 }
 
 /* Drops the queue and the read under way. */
 void FileQueue_Cancel(void)
 {
-    FileQueue *q = &gFileQueue;
+    FileQueue *queue = &gFileQueue;
     s32 i;
 
     if (gFileQueue.adxf != NULL) {
-        ADXF_Stop(q->adxf);
-        ADXF_Close(q->adxf);
+        ADXF_Stop(queue->adxf);
+        ADXF_Close(queue->adxf);
     }
     FileQueue_Init();
     PlayerLook_ResetLoaded();
@@ -217,33 +234,45 @@ s32 FileQueue_IsBusy(void)
     return gFileQueue.busy;
 }
 
-s8 func_00193670(s32 i)
+/*
+ * Whether lobby player playerIndex's look is still to be applied
+ * (gLobbyState.lookPending, nonzero while pending).
+ */
+s8 func_00193670(s32 playerIndex)
 {
-    return gLobbyState.lookPending[i];
+    return gLobbyState.lookPending[playerIndex];
 }
 
-void FileQueue_Call(FileReq *r)
+/*
+ * Runs a FILEREQ_CALL request: calls its function with its first nargs
+ * arguments (0-4); any other count calls nothing.
+ */
+void FileQueue_Call(FileReq *req)
 {
-    void (*func)(void) = r->u.func;
-    s32 a0 = r->v.args[0];
-    s32 a1 = r->v.args[1];
-    s32 a2 = r->v.args[2];
-    s32 a3 = r->v.args[3];
-    s32 n = r->nargs;
+    void (*func)(void) = req->u.func;
+    s32 firstArg = req->v.args[0];
+    s32 secondArg = req->v.args[1];
+    s32 thirdArg = req->v.args[2];
+    s32 fourthArg = req->v.args[3];
+    s32 argCount = req->nargs;
 
-    if (n == 0) {
+    if (argCount == 0) {
         func();
-    } else if (n == 1) {
-        ((void (*)(s32))func)(a0);
-    } else if (n == 2) {
-        ((void (*)(s32, s32))func)(a0, a1);
-    } else if (n == 3) {
-        ((void (*)(s32, s32, s32))func)(a0, a1, a2);
-    } else if (n == 4) {
-        ((void (*)(s32, s32, s32, s32))func)(a0, a1, a2, a3);
+    } else if (argCount == 1) {
+        ((void (*)(s32))func)(firstArg);
+    } else if (argCount == 2) {
+        ((void (*)(s32, s32))func)(firstArg, secondArg);
+    } else if (argCount == 3) {
+        ((void (*)(s32, s32, s32))func)(firstArg, secondArg, thirdArg);
+    } else if (argCount == 4) {
+        ((void (*)(s32, s32, s32, s32))func)(firstArg, secondArg, thirdArg, fourthArg);
     }
 }
 
+/*
+ * Runs the queue until it is empty, calling Load_Idle between steps so the
+ * game keeps ticking.
+ */
 void FileQueue_Flush(void)
 {
     while (FileQueue_IsBusy()) {

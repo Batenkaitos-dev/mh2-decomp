@@ -21,12 +21,12 @@ void Sel_DrawParts(SelPart *p, s32 n, u32 color);   /* select_title.c: draws n p
 
 /* Character creation's work, at 0x1000 in the shared work area. */
 typedef struct CharaWork {
-    union { s8 state; s8 sideState[2]; }; /* 0x000: func_006BD050 runs the two side panels' slide-in states (0-7) in bytes 0 and 1 (as ((s8 *)c)[k]); the character selection's state (CharaSel_Leave sets 2) */
+    union { s8 state; s8 sideState[2]; }; /* 0x000: Parts_DrawSides runs the two side panels' slide-in states (0-7) in bytes 0 and 1 (as ((s8 *)c)[k]); the character selection's state (CharaSel_Leave sets 2) */
     u8 unk2[2];
     s32 unk4;               /* 0x004 */
     s16 slideOut; /* 0x008: 0: the panels slide in (Parts_SlideInPanels), 1: out (Parts_SlideOutPanels); Parts_Animate. The character selection's slot (CharaSel_DrawSlots, CharaSel_Leave) */
     u8 unkA[0x4E];
-    s32 slide[7]; /* 0x058: per panel, its slide step (x offset 80 per step, func_006BDA00): counted down to 0 when sliding in, up to 10 when out (Parts_Animate); [0], [1] and [4] the side panels' timers and shared delay (Parts_Init, func_006BD050) */
+    s32 slide[7]; /* 0x058: per panel, its slide step (x offset 80 per step, Parts_DrawPanels): counted down to 0 when sliding in, up to 10 when out (Parts_Animate); [0], [1] and [4] the side panels' timers and shared delay (Parts_Init, Parts_DrawSides) */
     s32 sliding[7]; /* 0x074: per panel, 1 while it slides (Parts_Animate clears it) */
     u8 unk90[0x7C];
     f32 unk10C[6];          /* 0x10C: only CharaSel_Leave (the CharaSelWork view of 0x108) */
@@ -137,7 +137,6 @@ enum CharaCamera {
 #define CHARA_SLOT_COUNT 3      /* the characters on a memory card */
 #define CHARA_SLOT_NONE 0xFF    /* ChrEdit.slot: none (Chara_MakeSave: write gSave itself) */
 #define CHARA_GENDER_NONE 0xFF  /* ChrEdit.loadedGender: no body model loaded */
-#define CHARA_NAME_LEN 0x12     /* ChrEdit.name and SaveData.name */
 
 /* A record of the name check's list (gNgWords, select_ngword.c): up to 14
  * characters of a word, then its length. A longer word goes on in the next

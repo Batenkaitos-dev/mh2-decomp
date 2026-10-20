@@ -142,11 +142,11 @@ enum EmFatalisDefeatState {
  * event runs and until the kind's event flag is set.
  */
 enum EmFatalisEventState {
-    FAT_EVENT_LEAVE = 0x00,             /* EM_KIND_FATALIS in AREA_CASTLE_1 once the quest runs: flies up and away */
-    FAT_EVENT_FLY_IN = 0x01,            /* EM_KIND_FATALIS's scene in AREA_CASTLE_1 (event flag 0xB0) */
+    FAT_EVENT_LEAVE = 0x00,             /* EM_KIND_FATALIS in AREA_CASTLE_1 once the quest's goal is met: flies up and away */
+    FAT_EVENT_FLY_IN = 0x01,            /* EM_KIND_FATALIS's scene in AREA_CASTLE_1 (EVENT_FLAG_FATALIS_CASTLE_SCENE) */
     FAT_EVENT_LEAVE_FROM_AIR = 0x02,    /* FAT_EVENT_LEAVE from the hover */
-    FAT_EVENT_GET_UP = 0x03,            /* EM_KIND_FATALIS_B's scene in AREA_BATTLEFIELD_1 (event flag 0xB1) */
-    FAT_EVENT_DESCEND = 0x04            /* EM_KIND_FATALIS_C's scene in AREA_TOWER_0x7C (event flag 0xB2) */
+    FAT_EVENT_GET_UP = 0x03,            /* EM_KIND_FATALIS_B's scene in AREA_BATTLEFIELD_1 (EVENT_FLAG_FATALIS_BATTLEFIELD_SCENE) */
+    FAT_EVENT_DESCEND = 0x04            /* EM_KIND_FATALIS_C's scene in AREA_TOWER_0x7C (EVENT_FLAG_FATALIS_TOWER_SCENE) */
 };
 
 #endif /* EM_FATALIS_H */

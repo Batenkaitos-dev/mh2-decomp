@@ -12,7 +12,7 @@
  *
  * The action spots (Player_FindActionSpot, Player_RecordActionSpot) are the
  * places in an area where the player can act (seen: kinds 2 and 0xB in the
- * game's unk_70A290.c): the same kind of list, from Stage_GetActionSpots.
+ * player's states): the same kind of list, from Stage_GetActionSpots.
  * The records (GatherPoint, GatherEntry, ActionSpot) are in quest.h.
  */
 #include "common.h"

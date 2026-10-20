@@ -1,4 +1,4 @@
-# WindowFrame_Draw (sub_main, src/sub_main/unk_356380.c)
+# WindowFrame_Draw (sub_main, src/sub_main/menu_windows.c)
 
 ## Status
 

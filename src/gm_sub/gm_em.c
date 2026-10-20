@@ -1,6 +1,18 @@
-/* Monster management in the quest: per-kind setup and update dispatch
- * (GmEm_SetupKind, GmEm_UpdateKind), sizes, per-kind visual effects, and the
- * per-kind tables of .data (0x90ACC0-0x932C70, still assembly). */
+/*
+ * The monsters in the quest overlay (gm_sub): each monster's task
+ * (GmEm_Task: set-up, update, finish, free), the set-up and update every
+ * kind shares (GmEm_Setup, GmEm_ResetState, GmEm_Update) and the dispatch to
+ * the families' own Start, Init and Update functions by kind (Em.type,
+ * EM_KIND_*); the sizes (GmEm_ResetSize, GmEm_ApplySize); the sounds of the
+ * shared motions (GmEm_MotionSounds); and what Em_DrawParts asks before it
+ * draws a mesh set: the texture scrolls of some kinds (GmEm_SetMeshSetUv)
+ * and each set's materials (GmEm_PrepareMeshSet: alpha, break states,
+ * colours, textures).
+ *
+ * The rest of the file is its .data: the per-kind monster tables the game
+ * overlay's monster code reads (the families' callback tables and data),
+ * generated from the game as u32 words with pointers written as C.
+ */
 #include "common.h"
 #include "sprite.h"
 #include "quest.h"
@@ -10,18 +22,23 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "em.h"
 #include "stageobj.h"
 #include "player.h"
+#include "area.h"
+#include "render_state.h"
 
-/* A render state (Mtx_Identity fills it, Gs_SetState applies it). */
-typedef struct GsFx {
-    u8 unk0[0x30];
-    f32 unk30;                  /* 0x30 */
-    f32 unk34;                  /* 0x34 */
-    u8 unk38[0x40 - 0x38];
-} GsFx;
+/* A texture coordinate matrix (4 x 4 f32): Mtx_Identity fills it, the
+ * scroll functions set its offsets, and Gs_SetState(RS_UV_MTX) hands it to
+ * the VU1 programs, which map a mesh's texture coordinates through rows 0, 1
+ * and 3. Only the offsets are named: nothing here sets the rest. */
+typedef struct UvMtx {
+    f32 rows[12];               /* 0x00: rows 0 to 2 */
+    f32 uOffset;                /* 0x30: row 3: the U offset */
+    f32 vOffset;                /* 0x34: the V offset */
+    f32 row3zw[2];              /* 0x38 */
+} UvMtx;
 
-/* Applies a render state: (id, value). The value is an s32 (a GsFx pointer
- * here): with a GsFx * parameter MWCC loads the two arguments in the other
- * order. */
+/* Applies a render state: (id, value). The value is an s32 (a matrix's or a
+ * material's address here): with a pointer parameter the compiler loads the
+ * two arguments in the other order. */
 s32 Gs_SetState(u8 reg, u32 v);
 void Mtx_Identity(f32 *m);
 f32 Math_Sin(f32);
@@ -29,18 +46,18 @@ void EmMine_RemoveTimed(Em *em);
 s32 EmChameleos_IsInvisible(Em *);
 s32 ScEvent_CurId(void);
 s32 ScEvent_CurFlag1(void);
-StageObj *StageObj_K1C_CreateOnEm(Em *em, u8 k, f32 scale);
+StageObj *MonsterFx_CreateOnEm(Em *em, u8 k, f32 scale);
 void Em_ClearNeed1State(Em *em);
 void Em_ClearNeed2State(Em *em);
 void Em_RefillNeed3(Em *em);
 void Em_AddNeed1(Em *em, s32 n);
 void Em_AddNeed2(Em *em, s32 n);
 void Em_AddNeed3(Em *em, s32 n);
-void GmEm_Fx0F(Em *, s32);
-void GmEm_Fx15(Em *, s32);
-void GmEm_Fx3A(Em *, s32);
-s32 GmEm_Fx3B(Em *, s32);
-void GmEm_Fx47(Em *, s32);
+void GmEm_KhezuScrollUv(Em *, s32);
+void GmEm_PlesiothScrollUv(Em *, s32);
+void GmEm_YamaTsukamiScrollUv(Em *, s32);
+s32 GmEm_ChameleosMeshUv(Em *, s32);
+void GmEm_FatalisCPulseUv(Em *, s32);
 
 struct DrawSlot;
 s32 OT_AddByDepth(u32 *table, struct DrawSlot *node, u32 n, s32 clamp);
@@ -89,7 +106,7 @@ void Player_SetFlag(void *, u32 flag);
 s32 Player_UpdateMotion(Player *);
 void Player_ClearFlag(void *, u32 flag);
 void Em_CollideField(Em *em, u8 keep);
-void func_330E30(Em *);
+void Em_UpdateLightColors(Em *em);
 s32 Game_IsOnline(void);
 void EmScript_Init(Em *em);
 void Em_RestartScript(Em *em);
@@ -97,11 +114,10 @@ f32 Em_LevelAttackFactor(Em *em);
 f32 Em_LevelDamageFactor(Em *em);
 void Em_ApplyAreaValues(Em *em);
 extern f32 gEmBodyScales[];
-extern u8 D_8B15D0[];
+extern u8 gEmPushPriorities[];
 extern s32 gEmKindTables[];
 extern s32 *gEmRateTbl[];
 extern s32 *gEmDecay7ECRates[];
-extern s32 *D_8BC7D0[];
 void EmRathalos_Start(Em *);
 void EmFatalis_Init(Em *);
 void EmAnteka_Start(Em *);
@@ -110,20 +126,20 @@ void EmKutku_Start(Em *);
 void EmLaoshan_Init(Em *);
 void EmCephadrome_Start(Em *);
 void EmMelynx_Start(Em *);
-void EmKind0A_Init(Em *);
+void EmTrader_Init(Em *);
 void EmApceros_Start(Em *);
 void EmVelociprey_Start(Em *);
 void EmDiablos_Start(Em *);
 void EmKhezu_Start(Em *);
 void EmGravios_Start(Em *);
-void EmKind12_Init(Em *);
+void EmFelyneCart_Init(Em *);
 void EmVespoid_Start(Em *);
 void EmPlesioth_Start(Em *);
 void EmDrome_Start(Em *);
 void EmKind1D_Init(Em *);
 void EmKirin_Init(Em *);
 void EmGaruga_Start(Em *);
-void EmHermitaur_Init0(Em *em);
+void EmHermitaur_Start(Em *em);
 void EmShenGaoren_Init(Em *);
 void EmBlangonga_Start(Em *);
 void EmKushala_Start(Em *);
@@ -135,7 +151,7 @@ void EmRemobra_Start(Em *);
 void EmBulldrome_Start(Em *);
 s16 DrawSlot_Alloc(void);
 struct DrawSlot *DrawSlot_Get(s32 i);
-void Obj_DrawParts(DrawSlot *a);
+void Em_DrawParts(DrawSlot *a);
 extern u32 gGmEmCallbackTbl[76];
 void EmRathalos_Update(Em *em);
 void EmGravios_Update(Em *em);
@@ -146,13 +162,13 @@ void EmMosswine_Update(Em *em);
 void EmLaoshan_Update(Em *em);
 void EmCephadrome_Update(Em *em);
 void EmMelynx_Update(Em *em);
-void EmKind0A_Update(Em *);
+void EmTrader_Update(Em *);
 void EmApceros_Update(Em *em);
 void EmKhezu_Update(Em *em);
 void EmDiablos_Update(Em *em);
 void EmVelociprey_Update(Em *em);
 void EmDrome_Update(Em *em);
-void EmKind12_Update(Em *);
+void EmFelyneCart_Update(Em *);
 void EmPlesioth_Update(Em *em);
 void EmVespoid_Update(Em *em);
 void EmKind1D_Update(Em *);
@@ -168,7 +184,7 @@ void EmYamaTsukami_Update(Em *em);
 void EmChameleos_Update(Em *em);
 void EmRemobra_Update(Em *em);
 void EmBulldrome_Update(Em *em);
-/* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
+/* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: that keeps the game's masking instruction */
 u8 EmKind_MotionGroupCount(s16 i);
 void GmEm_SetupKind(Em *);
 void Em_InitParts(Em *);
@@ -179,29 +195,31 @@ void GmEm_Update(Em *);
 void GmEm_CallFunc3(Em *);
 
 
-/* .bss: a per-kind table filled at run time (kind 29's entry of the
- * pointer table at 0x90DB30 points to it). */
-u8 D_009393D0[0x70];
+/* .bss: kind 29's base hp row, filled at run time (gEmBaseHp's entry for
+ * kind 29 points to it). */
+u8 gEmBaseHp_29[0x70];
 
 void EmSlot_Free(Em *e); /* sub_main: e is an EmSlot * */
 void QuestEm_Hunted(Em *em);
 void EmMine_Remove(Em *em);
 
-/* Sets the monster's animation sounds for the quest (state +6, 0x3E9..0x431):
- * Em_PlaySeOnFrame(em, frame, sound), some sounds picked at random with
- * Sound_RandomSe. The C was generated from the m2c output: case blocks in
- * address order, the labels of a block in the reverse of the compare
- * order. */
-void GmEm_SetQuestSounds(Em *em, u8 *state) {
-    if (em->motionId[0] != *(s16 *)(state + 6)) {
-        *(s16 *)(state + 6) = em->motionId[0];
+/* Plays the monster's sounds on frames of its current motion
+ * (Em_PlaySeOnFrame(em, frame, sound)), some picked at random with
+ * Sound_RandomSe; the sounds are the monster bank's. work->fxMotion keeps
+ * the motion id switched on. Kinds 0x20, Mosswine, Bullfango and Bulldrome
+ * differ in three motions. The case blocks follow the order of the game's
+ * code, and each block's labels the reverse of the order it compares them. */
+void GmEm_MotionSounds(Em *em, EmWork *work)
+{
+    if (em->motionId[0] != work->fxMotion) {
+        work->fxMotion = em->motionId[0];
     }
-    switch (*(s16 *)(state + 6)) {
-    case 0x3E9:
+    switch (work->fxMotion) {
+    case EM_MOTION_ID(0, 1):
         Em_PlaySeOnFrame(em, 0x10, Sound_RandomSe(0, 2, 1, 2));
         Em_PlaySeOnFrame(em, 0x4C, Sound_RandomSe(1, 2, 2, 2));
         break;
-    case 0x3EA:
+    case EM_MOTION_ID(0, 2):
         switch (em->type) {
         case 0x20:
             Em_PlaySeOnFrame(em, 0xC, Sound_RandomSe(0, 2, 1, 2));
@@ -210,15 +228,15 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
             Em_PlaySeOnFrame(em, 0x10, 0x12);
             Em_PlaySeOnFrame(em, 0x24, 0x13);
             break;
-        case 0x4:
-        case 0x5:
+        case EM_KIND_MOSSWINE:
+        case EM_KIND_BULLFANGO:
             Em_PlaySeOnFrame(em, 0xC, Sound_RandomSe(0, 2, 1, 2));
             Em_PlaySeOnFrame(em, 0x2A, Sound_RandomSe(1, 2, 2, 2));
             Em_PlaySeOnFrame(em, 6, 0x13);
             Em_PlaySeOnFrame(em, 0x10, 0x12);
             Em_PlaySeOnFrame(em, 0x24, 0x13);
             break;
-        case 0x44:
+        case EM_KIND_BULLDROME:
             Em_PlaySeOnFrame(em, 0xC, Sound_RandomSe(0, 1, 1, 1));
             Em_PlaySeOnFrame(em, 0x2A, Sound_RandomSe(1, 1, 2, 1));
             Em_PlaySeOnFrame(em, 2, 0x13);
@@ -228,22 +246,22 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
             break;
         }
         break;
-    case 0x3EB:
+    case EM_MOTION_ID(0, 3):
         Em_PlaySeOnFrame(em, 0xC, Sound_RandomSe(0, 2, 1, 2));
         Em_PlaySeOnFrame(em, 0x26, Sound_RandomSe(1, 2, 2, 2));
         Em_PlaySeOnFrame(em, 6, 0x12);
         Em_PlaySeOnFrame(em, 0x1E, 0x13);
         Em_PlaySeOnFrame(em, 0x2C, 0x13);
         break;
-    case 0x3EC:
-    case 0x3ED:
+    case EM_MOTION_ID(0, 4):
+    case EM_MOTION_ID(0, 5):
         Em_PlaySeOnFrame(em, 6, Sound_RandomSe(0, 2, 1, 2));
         Em_PlaySeOnFrame(em, 0x46, Sound_RandomSe(1, 2, 2, 2));
         Em_PlaySeOnFrame(em, 0x16, 0x13);
         Em_PlaySeOnFrame(em, 0x38, 0x12);
         Em_PlaySeOnFrame(em, 0x64, 0x13);
         break;
-    case 0x3EE:
+    case EM_MOTION_ID(0, 6):
         Em_PlaySeOnFrame(em, 0x28, Sound_RandomSe(0, 4, 1, 4));
         Em_PlaySeOnFrame(em, 0x3C, Sound_RandomSe(1, 4, 2, 4));
         Em_PlaySeOnFrame(em, 0x50, Sound_RandomSe(0, 4, 1, 4));
@@ -253,7 +271,7 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x28, 0x12);
         Em_PlaySeOnFrame(em, 0xA4, 0x12);
         break;
-    case 0x3EF:
+    case EM_MOTION_ID(0, 7):
         Em_PlaySeOnFrame(em, 0x26, Sound_RandomSe(3, 4, 4, 4));
         Em_PlaySeOnFrame(em, 0x3A, Sound_RandomSe(5, 4, 6, 4));
         Em_PlaySeOnFrame(em, 0x5C, Sound_RandomSe(4, 4, 5, 4));
@@ -268,20 +286,20 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0xA4, 0x12);
         Em_PlaySeOnFrame(em, 0xF6, 0x12);
         break;
-    case 0x3F0:
+    case EM_MOTION_ID(0, 8):
         Em_PlaySeOnFrame(em, 4, Sound_RandomSe(0, 4, 1, 4));
         Em_PlaySeOnFrame(em, 0x24, Sound_RandomSe(0, 4, 1, 4));
         Em_PlaySeOnFrame(em, 4, 0x13);
         Em_PlaySeOnFrame(em, 0x2A, 0x13);
         Em_PlaySeOnFrame(em, 0x34, 0x12);
         break;
-    case 0x3F1:
+    case EM_MOTION_ID(0, 9):
         Em_PlaySeOnFrame(em, 6, Sound_RandomSe(0, 4, 1, 4));
         Em_PlaySeOnFrame(em, 0x46, Sound_RandomSe(0, 2, 1, 2));
         Em_PlaySeOnFrame(em, 0x26, 0x13);
         Em_PlaySeOnFrame(em, 0x4C, 0x13);
         break;
-    case 0x3F2:
+    case EM_MOTION_ID(0, 10):
         Em_PlaySeOnFrame(em, 0x24, Sound_RandomSe(5, 4, 6, 4));
         Em_PlaySeOnFrame(em, 0x3A, Sound_RandomSe(3, 4, 6, 4));
         Em_PlaySeOnFrame(em, 0x80, Sound_RandomSe(5, 4, 6, 4));
@@ -289,41 +307,41 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x16, 0x12);
         Em_PlaySeOnFrame(em, 0x74, 0x13);
         break;
-    case 0x3F3:
+    case EM_MOTION_ID(0, 11):
         Em_PlaySeOnFrame(em, 0x16, 0xF);
         Em_PlaySeOnFrame(em, 0xA, 0x12);
         Em_PlaySeOnFrame(em, 0x52, 0x12);
         break;
-    case 0x3F4:
+    case EM_MOTION_ID(0, 12):
         Em_PlaySeOnFrame(em, 4, 0xE);
         Em_PlaySeOnFrame(em, 0x44, 0xF);
         Em_PlaySeOnFrame(em, 0xC, 0x12);
         Em_PlaySeOnFrame(em, 0x46, 0x13);
         Em_PlaySeOnFrame(em, 0x5E, 0x13);
         break;
-    case 0x3F5:
+    case EM_MOTION_ID(0, 13):
         Em_PlaySeOnFrame(em, 0x18, Sound_RandomSe(3, 4, 4, 4));
         Em_PlaySeOnFrame(em, 0x28, 0x12);
         break;
-    case 0x3F6:
+    case EM_MOTION_ID(0, 14):
         Em_PlaySeOnFrame(em, 0x44, 0xD);
         Em_PlaySeOnFrame(em, 0x24, 0x14);
         Em_PlaySeOnFrame(em, 0x4A, 0x10);
         break;
-    case 0x3F7:
+    case EM_MOTION_ID(0, 15):
         switch (em->type) {
         case 0x20:
             Em_PlaySeOnFrame(em, 0x14, 8);
             Em_PlaySeOnFrame(em, 0x18, 0x13);
             Em_PlaySeOnFrame(em, 0x24, 0x13);
             break;
-        case 0x4:
-        case 0x5:
+        case EM_KIND_MOSSWINE:
+        case EM_KIND_BULLFANGO:
             Em_PlaySeOnFrame(em, 0xA, 0xE);
             Em_PlaySeOnFrame(em, 0x18, 0x13);
             Em_PlaySeOnFrame(em, 0x24, 0x13);
             break;
-        case 0x44:
+        case EM_KIND_BULLDROME:
             Em_PlaySeOnFrame(em, 0x22, Sound_RandomSe(3, 2, 4, 2));
             Em_PlaySeOnFrame(em, 0xA, 0xE);
             Em_PlaySeOnFrame(em, 0x20, 0x19);
@@ -331,22 +349,22 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
             break;
         }
         break;
-    case 0x3F8:
+    case EM_MOTION_ID(0, 16):
         Em_PlaySeOnFrame(em, 0x14, Sound_RandomSe(3, 4, 4, 4));
         Em_PlaySeOnFrame(em, 8, 0x13);
         Em_PlaySeOnFrame(em, 0xE, 0x13);
         Em_PlaySeOnFrame(em, 0xC, 0xD);
         Em_PlaySeOnFrame(em, 0x62, 0x12);
         break;
-    case 0x3F9:
+    case EM_MOTION_ID(0, 17):
         Em_PlaySeOnFrame(em, 0x20, Sound_RandomSe(3, 4, 6, 4));
         Em_PlaySeOnFrame(em, 0x46, 0xF);
         Em_PlaySeOnFrame(em, 0xC8, Sound_RandomSe(4, 4, 5, 4));
         Em_PlaySeOnFrame(em, 0x1C, 0x14);
         Em_PlaySeOnFrame(em, 0x2E, 0x13);
         break;
-    case 0x3FA:
-    case 0x3FB:
+    case EM_MOTION_ID(0, 18):
+    case EM_MOTION_ID(0, 19):
         Em_PlaySeOnFrame(em, 0xE, 0x16);
         Em_PlaySeOnFrame(em, 0x64, Sound_RandomSe(1, 4, 2, 4));
         Em_PlaySeOnFrame(em, 0x74, Sound_RandomSe(0, 4, 1, 4));
@@ -360,7 +378,7 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x11C, 0x13);
         Em_PlaySeOnFrame(em, 0x13E, 0x12);
         break;
-    case 0x3FD:
+    case EM_MOTION_ID(0, 21):
         Em_PlaySeOnFrame(em, 0x1E, Sound_RandomSe(0, 4, 1, 4));
         Em_PlaySeOnFrame(em, 0x68, Sound_RandomSe(5, 4, 6, 4));
         Em_PlaySeOnFrame(em, 0x14, 0x12);
@@ -370,7 +388,7 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x5C, 0x12);
         Em_PlaySeOnFrame(em, 0x68, 0x12);
         break;
-    case 0x3FE:
+    case EM_MOTION_ID(0, 22):
         Em_PlaySeOnFrame(em, 0x1C, Sound_RandomSe(0, 4, 1, 4));
         Em_PlaySeOnFrame(em, 0x52, Sound_RandomSe(5, 4, 6, 4));
         Em_PlaySeOnFrame(em, 8, 0x10);
@@ -385,7 +403,7 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0xAA, 0x10);
         Em_PlaySeOnFrame(em, 0xC8, 0x18);
         break;
-    case 0x3FF:
+    case EM_MOTION_ID(0, 23):
         Em_PlaySeOnFrame(em, 4, 0x17);
         Em_PlaySeOnFrame(em, 8, 0x18);
         Em_PlaySeOnFrame(em, 0xC, 0x16);
@@ -399,13 +417,13 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x94, 0x13);
         Em_PlaySeOnFrame(em, 0x9C, 0x13);
         break;
-    case 0x3FC:
+    case EM_MOTION_ID(0, 20):
         Em_PlaySeOnFrame(em, 8, Sound_RandomSe(7, 4, 8, 4));
         Em_PlaySeOnFrame(em, 0x1A, 0x15);
         Em_PlaySeOnFrame(em, 0x3C, 0x12);
         break;
-    case 0x424:
-    case 0x425:
+    case EM_MOTION_ID(0, 60):
+    case EM_MOTION_ID(0, 61):
         Em_PlaySeOnFrame(em, 0xC, Sound_RandomSe(7, 4, 8, 4));
         Em_PlaySeOnFrame(em, 0x60, Sound_RandomSe(5, 4, 6, 4));
         Em_PlaySeOnFrame(em, 0x26, 0x14);
@@ -413,24 +431,24 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x54, 0x12);
         Em_PlaySeOnFrame(em, 0x6C, 0x12);
         break;
-    case 0x426:
-    case 0x42B:
+    case EM_MOTION_ID(0, 62):
+    case EM_MOTION_ID(0, 67):
         Em_PlaySeOnFrame(em, 0xC, Sound_RandomSe(9, 4, 0xA, 4));
         break;
-    case 0x427:
+    case EM_MOTION_ID(0, 63):
         switch (em->type) {
         case 0x20:
             Em_PlaySeOnFrame(em, 0xE, 0x11);
             Em_PlaySeOnFrame(em, 0x40, 0x10);
             Em_PlaySeOnFrame(em, 0x46, Sound_RandomSe(7, 4, 8, 4));
             break;
-        case 0x4:
-        case 0x5:
+        case EM_KIND_MOSSWINE:
+        case EM_KIND_BULLFANGO:
             Em_PlaySeOnFrame(em, 0xE, 0x11);
             Em_PlaySeOnFrame(em, 0x40, 0x10);
             Em_PlaySeOnFrame(em, 0x46, Sound_RandomSe(7, 4, 8, 4));
             break;
-        case 0x44:
+        case EM_KIND_BULLDROME:
             Em_PlaySeOnFrame(em, 0x10, 9);
             Em_PlaySeOnFrame(em, 0xE, 0x11);
             Em_PlaySeOnFrame(em, 0x40, 0x10);
@@ -438,13 +456,13 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
             break;
         }
         break;
-    case 0x428:
+    case EM_MOTION_ID(0, 64):
         Em_PlaySeOnFrame(em, 8, 0xB);
         Em_PlaySeOnFrame(em, 8, 0x10);
         Em_PlaySeOnFrame(em, 0x1E, 0x10);
         break;
-    case 0x42A:
-    case 0x431:
+    case EM_MOTION_ID(0, 66):
+    case EM_MOTION_ID(0, 73):
         Em_PlaySeOnFrame(em, 0x12, Sound_RandomSe(3, 4, 4, 4));
         Em_PlaySeOnFrame(em, 0x50, 0x10);
         Em_PlaySeOnFrame(em, 0x1E, 0x12);
@@ -453,7 +471,7 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x68, 0x12);
         Em_PlaySeOnFrame(em, 0x80, 0xD);
         break;
-    case 0x430:
+    case EM_MOTION_ID(0, 72):
         Em_PlaySeOnFrame(em, 0x12, Sound_RandomSe(3, 4, 4, 4));
         Em_PlaySeOnFrame(em, 0x16, 0x10);
         Em_PlaySeOnFrame(em, 0x1E, 0x12);
@@ -462,7 +480,7 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x68, 0x12);
         Em_PlaySeOnFrame(em, 0x80, 0xD);
         break;
-    case 0x42F:
+    case EM_MOTION_ID(0, 71):
         Em_PlaySeOnFrame(em, 6, Sound_RandomSe(9, 4, 0xA, 4));
         Em_PlaySeOnFrame(em, 0x24, 0x11);
         Em_PlaySeOnFrame(em, 0x42, Sound_RandomSe(3, 4, 4, 4));
@@ -470,7 +488,7 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
         Em_PlaySeOnFrame(em, 0x7C, Sound_RandomSe(5, 4, 6, 4));
         Em_PlaySeOnFrame(em, 0xB4, Sound_RandomSe(0, 4, 1, 4));
         break;
-    case 0x42E:
+    case EM_MOTION_ID(0, 70):
         Em_PlaySeOnFrame(em, 4, 0xC);
         Em_PlaySeOnFrame(em, 0x14, 0x12);
         Em_PlaySeOnFrame(em, 0x34, 0x12);
@@ -481,7 +499,11 @@ void GmEm_SetQuestSounds(Em *em, u8 *state) {
     }
 }
 
-void GmEm_SetupKind(Em *em) {
+/* Sets up the monster for its kind: hooks the kind's handler table
+ * (gGmEmCallbackTbl) and runs its first entry, takes a draw slot when the
+ * monster is visible, then calls its family's Start or Init function. */
+void GmEm_SetupKind(Em *em)
+{
     em->handlers = (EmVt *)gGmEmCallbackTbl[em->type];
     em->handlers->init(em);
     if (em->visible != 0) {
@@ -489,189 +511,189 @@ void GmEm_SetupKind(Em *em) {
         if (em->drawSlotId != -1) {
             em->drawSlot = DrawSlot_Get(em->drawSlotId);
             em->drawSlot->owner = em;
-            em->drawSlot->draw = Obj_DrawParts;
+            em->drawSlot->draw = Em_DrawParts;
         } else {
             em->drawSlot = NULL;
         }
     }
     switch (em->type) {
-    case 1:
-    case 37:
-    case 42:
+    case EM_KIND_RATHIAN:
+    case EM_KIND_PINK_RATHIAN:
+    case EM_KIND_GOLD_RATHIAN:
         EmRathalos_Start(em);
         break;
-    case 2:
-    case 36:
-    case 71:
+    case EM_KIND_FATALIS:
+    case EM_KIND_FATALIS_B:
+    case EM_KIND_FATALIS_C:
         EmFatalis_Init(em);
         break;
-    case 3:
-    case 69:
+    case EM_KIND_KELBI:
+    case EM_KIND_ANTEKA:
         EmAnteka_Start(em);
         break;
-    case 4:
+    case EM_KIND_MOSSWINE:
         EmMosswine_Start(em);
         break;
-    case 5:
+    case EM_KIND_BULLFANGO:
         EmMosswine_Start(em);
         break;
-    case 6:
-    case 38:
+    case EM_KIND_YIAN_KUT_KU:
+    case EM_KIND_BLUE_YIAN_KUT_KU:
         EmKutku_Start(em);
         break;
-    case 7:
-    case 50:
+    case EM_KIND_LAO_SHAN_LUNG:
+    case EM_KIND_ASHEN_LAO_SHAN_LUNG:
         EmLaoshan_Init(em);
         break;
-    case 8:
+    case EM_KIND_CEPHADROME:
         EmCephadrome_Start(em);
         break;
     case 9:
         EmMelynx_Start(em);
         break;
-    case 10:
-        EmKind0A_Init(em);
+    case EM_KIND_TRADER:
+        EmTrader_Init(em);
         break;
-    case 11:
-    case 41:
-    case 49:
+    case EM_KIND_RATHALOS:
+    case EM_KIND_SILVER_RATHALOS:
+    case EM_KIND_AZURE_RATHALOS:
         EmRathalos_Start(em);
         break;
     case 12:
-    case 70:
+    case EM_KIND_POPO:
         EmApceros_Start(em);
         break;
-    case 13:
+    case EM_KIND_GENPREY:
         EmVelociprey_Start(em);
         break;
-    case 14:
-    case 43:
+    case EM_KIND_DIABLOS:
+    case EM_KIND_BLACK_DIABLOS:
         EmDiablos_Start(em);
         break;
-    case 15:
-    case 45:
+    case EM_KIND_KHEZU:
+    case EM_KIND_RED_KHEZU:
         EmKhezu_Start(em);
         break;
-    case 16:
-    case 35:
+    case EM_KIND_VELOCIPREY:
+    case EM_KIND_GIAPREY:
         EmVelociprey_Start(em);
         break;
-    case 17:
-    case 47:
+    case EM_KIND_GRAVIOS:
+    case EM_KIND_BLACK_GRAVIOS:
         EmGravios_Start(em);
         break;
-    case 18:
-        EmKind12_Init(em);
+    case EM_KIND_FELYNE_CART:
+        EmFelyneCart_Init(em);
         break;
-    case 19:
+    case EM_KIND_VESPOID:
         EmVespoid_Start(em);
         break;
-    case 20:
-    case 39:
+    case EM_KIND_GYPCEROS:
+    case EM_KIND_PURPLE_GYPCEROS:
         EmKutku_Start(em);
         break;
-    case 21:
-    case 46:
+    case EM_KIND_PLESIOTH:
+    case EM_KIND_GREEN_PLESIOTH:
         EmPlesioth_Start(em);
         break;
-    case 22:
+    case EM_KIND_BASARIOS:
         EmGravios_Start(em);
         break;
-    case 23:
+    case EM_KIND_MELYNX:
         EmMelynx_Start(em);
         break;
-    case 24:
+    case EM_KIND_HORNETAUR:
         EmVespoid_Start(em);
         break;
-    case 25:
+    case EM_KIND_APCEROS:
         EmApceros_Start(em);
         break;
-    case 26:
-    case 44:
+    case EM_KIND_MONOBLOS:
+    case EM_KIND_WHITE_MONOBLOS:
         EmDiablos_Start(em);
         break;
-    case 27:
+    case EM_KIND_VELOCIDROME:
         EmDrome_Start(em);
         break;
-    case 28:
+    case EM_KIND_GENDROME:
         EmDrome_Start(em);
         break;
     case 29:
         EmKind1D_Init(em);
         break;
-    case 30:
+    case EM_KIND_IOPREY:
         EmVelociprey_Start(em);
         break;
-    case 31:
+    case EM_KIND_IODROME:
         EmDrome_Start(em);
         break;
     case 32:
         EmMosswine_Start(em);
         break;
-    case 33:
+    case EM_KIND_KIRIN:
         EmKirin_Init(em);
         break;
-    case 34:
+    case EM_KIND_CEPHALOS:
         EmCephadrome_Start(em);
         break;
-    case 40:
+    case EM_KIND_YIAN_GARUGA:
         EmGaruga_Start(em);
         break;
-    case 48:
-        EmHermitaur_Init0(em);
+    case EM_KIND_DAIMYO_HERMITAUR:
+        EmHermitaur_Start(em);
         break;
-    case 55:
+    case EM_KIND_SHEN_GAOREN:
         EmShenGaoren_Init(em);
         break;
-    case 51:
+    case EM_KIND_BLANGONGA:
         EmBlangonga_Start(em);
         break;
-    case 52:
+    case EM_KIND_CONGALALA:
         EmBlangonga_Start(em);
         break;
-    case 53:
+    case EM_KIND_RAJANG:
         EmBlangonga_Start(em);
         break;
-    case 54:
-    case 60:
+    case EM_KIND_KUSHALA_DAORA:
+    case EM_KIND_RUSTED_KUSHALA_DAORA:
         EmKushala_Start(em);
         break;
-    case 64:
-    case 65:
+    case EM_KIND_LUNASTRA:
+    case EM_KIND_TEOSTRA:
         EmKushala_Start(em);
         break;
     case 56:
         EmKind38_Start(em);
         break;
-    case 57:
+    case EM_KIND_SHAKALAKA:
         EmShakalaka_Start(em);
         break;
-    case 58:
+    case EM_KIND_YAMA_TSUKAMI:
         EmYamaTsukami_Start(em);
         break;
-    case 59:
+    case EM_KIND_CHAMELEOS:
         EmChameleos_Start(em);
         break;
-    case 61:
+    case EM_KIND_BLANGO:
         EmBlangonga_Start(em);
         break;
-    case 62:
+    case EM_KIND_CONGA:
         EmBlangonga_Start(em);
         break;
-    case 63:
+    case EM_KIND_REMOBRA:
         EmRemobra_Start(em);
         break;
-    case 66:
-    case 73:
-        EmHermitaur_Init0(em);
+    case EM_KIND_HERMITAUR:
+    case EM_KIND_CEANATAUR:
+        EmHermitaur_Start(em);
         break;
-    case 67:
-        EmHermitaur_Init0(em);
+    case EM_KIND_SHOGUN_CEANATAUR:
+        EmHermitaur_Start(em);
         break;
-    case 68:
+    case EM_KIND_BULLDROME:
         EmBulldrome_Start(em);
         break;
-    case 72:
+    case EM_KIND_YAMA_TSUKAMI_B:
         EmYamaTsukami_Start(em);
         break;
     case 0:
@@ -679,14 +701,18 @@ void GmEm_SetupKind(Em *em) {
     }
 }
 
-void GmEm_ResetSize(Em *em) {
-    f32 s;
+/* Resets the monster to its normal size (sizePct 100): the scale from
+ * bodyScale, and the three need gauges cleared and refilled to their
+ * maxima. */
+void GmEm_ResetSize(Em *em)
+{
+    f32 scale;
 
     em->sizePct = 100;
-    s = em->sizePct / 100.0f;
-    em->scaleX = em->bodyScale * s;
-    em->scaleY = em->bodyScale * s;
-    em->scaleZ = em->bodyScale * s;
+    scale = em->sizePct / 100.0f;
+    em->scaleX = em->bodyScale * scale;
+    em->scaleY = em->bodyScale * scale;
+    em->scaleZ = em->bodyScale * scale;
     Em_ClearNeed2State(em);
     Em_ClearNeed1State(em);
     Em_RefillNeed3(em);
@@ -695,23 +721,31 @@ void GmEm_ResetSize(Em *em) {
     Em_AddNeed3(em, em->need3Max);
 }
 
-void GmEm_ApplySize(Em *em) {
-    f32 s = em->sizePct / 100.0f;
+/* Sets the monster's scale from bodyScale and sizePct. */
+void GmEm_ApplySize(Em *em)
+{
+    f32 scale = em->sizePct / 100.0f;
 
-    em->scaleX = em->bodyScale * s;
-    em->scaleY = em->bodyScale * s;
-    em->scaleZ = em->bodyScale * s;
+    em->scaleX = em->bodyScale * scale;
+    em->scaleY = em->bodyScale * scale;
+    em->scaleZ = em->bodyScale * scale;
 }
 
-f32 GmEm_ScaleBySize(Em *em, f32 v) {
-    return v * (em->sizePct / 100.0f);
+/* Returns value scaled by the monster's size (sizePct). */
+f32 GmEm_ScaleBySize(Em *em, f32 value)
+{
+    return value * (em->sizePct / 100.0f);
 }
 
-void GmEm_ResetState(Em *em) {
+/* Resets the monster's per-quest state: clears its two spawn requests,
+ * restarts its script, sets its three need gauges' maxima and starting
+ * values from the per-kind rows, and clears the other fields it tracks. */
+void GmEm_ResetState(Em *em)
+{
     s8 i;
-    s32 *a;
-    s32 *b;
-    s32 *c;
+    s32 *need1Row;
+    EmRate *need3Row;
+    s32 *need2Row;
 
     em->hostChanged = 0;
     for (i = 0; i < 2; i++) {
@@ -733,9 +767,9 @@ void GmEm_ResetState(Em *em) {
     }
     EmScript_Init(em);
     Em_RestartScript(em);
-    em->k09Obj = 0;
+    em->tailObj = 0;
     em->floorAttr = 1;
-    em->unk414 = 0;
+    em->hitPhase = 0;
     em->visible = 1;
     em->motion[0].step = 2.0f;
     em->motion[1].step = 2.0f;
@@ -745,7 +779,7 @@ void GmEm_ResetState(Em *em) {
     em->scaleX = gEmBodyScales[em->type];
     em->scaleY = gEmBodyScales[em->type];
     em->scaleZ = gEmBodyScales[em->type];
-    if (em->type != 0x12 && em->type != 0xA) {
+    if (em->type != EM_KIND_FELYNE_CART && em->type != EM_KIND_TRADER) {
         GmEm_ApplySize(em);
     }
     if (gQuest.stage == 0) {
@@ -757,7 +791,7 @@ void GmEm_ResetState(Em *em) {
     em->painted = 0;
     em->motionTime = 0;
     EmMine_Remove(em);
-    em->pushPriority = D_8B15D0[em->type];
+    em->pushPriority = gEmPushPriorities[em->type];
     em->bendAngle[0] = 0;
     em->bendAngle[1] = 0;
     em->bendAngle[2] = 0;
@@ -779,20 +813,20 @@ void GmEm_ResetState(Em *em) {
     em->noticeTimer[1] = 0;
     em->noticeTimer[2] = 0;
     em->noticeTimer[3] = 0;
-    a = gEmRateTbl[em->type];
-    b = D_8BC7D0[em->type];
-    c = gEmDecay7ECRates[em->type];
-    em->need2Max = c[0];
-    em->need1Max = a[0];
-    em->need3Max = b[0];
+    need1Row = gEmRateTbl[em->type];
+    need3Row = gEmRateStatus.rate[em->type];
+    need2Row = gEmDecay7ECRates[em->type];
+    em->need2Max = need2Row[0];
+    em->need1Max = need1Row[0];
+    em->need3Max = need3Row->max;
     if (em->need2Gauge <= 0) {
-        em->need2Gauge = c[1];
+        em->need2Gauge = need2Row[1];
     }
     if (em->need1Gauge <= 0) {
-        em->need1Gauge = a[1];
+        em->need1Gauge = need1Row[1];
     }
     if (em->need3Gauge <= 0) {
-        em->need3Gauge = b[1];
+        em->need3Gauge = need3Row->start;
     }
     em->rage = 0;
     em->rageTimer = 0;
@@ -824,7 +858,7 @@ void GmEm_ResetState(Em *em) {
     em->blindTimer = 0;
     em->part8Down = 0;
     em->partBreakCount = 0;
-    em->unk8AD = 0;
+    em->trapHit = 0;
     em->trapTimer = 0;
     em->hideShadowHold = 0;
     em->senseDelay = 0;
@@ -879,7 +913,13 @@ void GmEm_ResetState(Em *em) {
     Em_ApplyAreaValues(em);
 }
 
-void GmEm_Setup(Em *em) {
+/* The task's set-up phase: sets up the model, resets the per-quest state,
+ * motions, sight, reactions, statuses, rage and kind parameters, shows all
+ * 32 meshes and runs the kind's set-up. For a large monster, the first
+ * player in the quest in its area (on another side in versus) becomes its
+ * host. */
+void GmEm_Setup(Em *em)
+{
     s32 i;
 
     EmSlot_SetupModel(em);
@@ -935,144 +975,146 @@ void GmEm_Setup(Em *em) {
     Em_UpdateMatrix(em);
 }
 
-void GmEm_UpdateKind(Em *em) {
+/* Runs the update function of the monster's family, by kind. */
+void GmEm_UpdateKind(Em *em)
+{
     switch (em->type) {
     case 0:
-    case 1:
-    case 11:
-    case 37:
-    case 41:
-    case 42:
-    case 49:
+    case EM_KIND_RATHIAN:
+    case EM_KIND_RATHALOS:
+    case EM_KIND_PINK_RATHIAN:
+    case EM_KIND_SILVER_RATHALOS:
+    case EM_KIND_GOLD_RATHIAN:
+    case EM_KIND_AZURE_RATHALOS:
         EmRathalos_Update(em);
         break;
-    case 17:
-    case 22:
-    case 47:
+    case EM_KIND_GRAVIOS:
+    case EM_KIND_BASARIOS:
+    case EM_KIND_BLACK_GRAVIOS:
         EmGravios_Update(em);
         break;
-    case 6:
-    case 20:
-    case 38:
-    case 39:
+    case EM_KIND_YIAN_KUT_KU:
+    case EM_KIND_GYPCEROS:
+    case EM_KIND_BLUE_YIAN_KUT_KU:
+    case EM_KIND_PURPLE_GYPCEROS:
         EmKutku_Update(em);
         break;
-    case 2:
-    case 36:
-    case 71:
+    case EM_KIND_FATALIS:
+    case EM_KIND_FATALIS_B:
+    case EM_KIND_FATALIS_C:
         EmFatalis_Update(em);
         break;
-    case 3:
-    case 69:
+    case EM_KIND_KELBI:
+    case EM_KIND_ANTEKA:
         EmAnteka_Update(em);
         break;
-    case 4:
-    case 5:
+    case EM_KIND_MOSSWINE:
+    case EM_KIND_BULLFANGO:
     case 32:
         EmMosswine_Update(em);
         break;
-    case 7:
-    case 50:
+    case EM_KIND_LAO_SHAN_LUNG:
+    case EM_KIND_ASHEN_LAO_SHAN_LUNG:
         EmLaoshan_Update(em);
         break;
-    case 8:
-    case 34:
+    case EM_KIND_CEPHADROME:
+    case EM_KIND_CEPHALOS:
         EmCephadrome_Update(em);
         break;
     case 9:
-    case 23:
+    case EM_KIND_MELYNX:
         EmMelynx_Update(em);
         break;
-    case 10:
-        EmKind0A_Update(em);
+    case EM_KIND_TRADER:
+        EmTrader_Update(em);
         break;
     case 12:
-    case 25:
-    case 70:
+    case EM_KIND_APCEROS:
+    case EM_KIND_POPO:
         EmApceros_Update(em);
         break;
-    case 15:
-    case 45:
+    case EM_KIND_KHEZU:
+    case EM_KIND_RED_KHEZU:
         EmKhezu_Update(em);
         break;
-    case 14:
-    case 26:
-    case 43:
-    case 44:
+    case EM_KIND_DIABLOS:
+    case EM_KIND_MONOBLOS:
+    case EM_KIND_BLACK_DIABLOS:
+    case EM_KIND_WHITE_MONOBLOS:
         EmDiablos_Update(em);
         break;
-    case 13:
-    case 16:
-    case 30:
-    case 35:
+    case EM_KIND_GENPREY:
+    case EM_KIND_VELOCIPREY:
+    case EM_KIND_IOPREY:
+    case EM_KIND_GIAPREY:
         EmVelociprey_Update(em);
         break;
-    case 27:
-    case 28:
-    case 31:
+    case EM_KIND_VELOCIDROME:
+    case EM_KIND_GENDROME:
+    case EM_KIND_IODROME:
         EmDrome_Update(em);
         break;
-    case 18:
-        EmKind12_Update(em);
+    case EM_KIND_FELYNE_CART:
+        EmFelyneCart_Update(em);
         break;
-    case 21:
-    case 46:
+    case EM_KIND_PLESIOTH:
+    case EM_KIND_GREEN_PLESIOTH:
         EmPlesioth_Update(em);
         break;
-    case 19:
-    case 24:
+    case EM_KIND_VESPOID:
+    case EM_KIND_HORNETAUR:
         EmVespoid_Update(em);
         break;
     case 29:
         EmKind1D_Update(em);
         break;
-    case 33:
+    case EM_KIND_KIRIN:
         EmKirin_Update(em);
         break;
-    case 40:
+    case EM_KIND_YIAN_GARUGA:
         EmGaruga_Update(em);
         break;
-    case 57:
+    case EM_KIND_SHAKALAKA:
         EmShakalaka_Update(em);
         break;
-    case 48:
-    case 66:
-    case 67:
-    case 73:
+    case EM_KIND_DAIMYO_HERMITAUR:
+    case EM_KIND_HERMITAUR:
+    case EM_KIND_SHOGUN_CEANATAUR:
+    case EM_KIND_CEANATAUR:
         EmHermitaur_Update(em);
         break;
-    case 51:
-    case 52:
-    case 53:
-    case 61:
-    case 62:
+    case EM_KIND_BLANGONGA:
+    case EM_KIND_CONGALALA:
+    case EM_KIND_RAJANG:
+    case EM_KIND_BLANGO:
+    case EM_KIND_CONGA:
         EmBlangonga_Update(em);
         break;
-    case 54:
-    case 60:
-    case 64:
-    case 65:
+    case EM_KIND_KUSHALA_DAORA:
+    case EM_KIND_RUSTED_KUSHALA_DAORA:
+    case EM_KIND_LUNASTRA:
+    case EM_KIND_TEOSTRA:
         EmKushala_Update(em);
         break;
-    case 55:
+    case EM_KIND_SHEN_GAOREN:
         EmShenGaoren_Update(em);
         break;
     case 56:
         EmKind38_Update(em);
         break;
-    case 58:
+    case EM_KIND_YAMA_TSUKAMI:
         EmYamaTsukami_Update(em);
         break;
-    case 59:
+    case EM_KIND_CHAMELEOS:
         EmChameleos_Update(em);
         break;
-    case 63:
+    case EM_KIND_REMOBRA:
         EmRemobra_Update(em);
         break;
-    case 68:
+    case EM_KIND_BULLDROME:
         EmBulldrome_Update(em);
         break;
-    case 72:
+    case EM_KIND_YAMA_TSUKAMI_B:
         EmYamaTsukami_Update(em);
         break;
     }
@@ -1082,15 +1124,16 @@ void GmEm_UpdateKind(Em *em) {
  * update through GmEm_UpdateKind, the render scale). The scale's float
  * registers need the speed in a local of its own, scaled in place
  * (speed *= ...): as one expression they come out rotated. */
-void GmEm_Update(Em *em) {
-    s32 r;
+void GmEm_Update(Em *em)
+{
+    s32 noticed;
     u8 set;
-    u8 a;
-    u8 v;
-    u16 k;
-    f32 f;
+    u8 nearAreaObj;
+    u8 result;
+    u16 dayMap;
+    f32 motionStep;
     f32 speed;
-    EmRageRow *t;
+    EmRageRow *rageRow;
     f32 pos[3];
 
     set = 0;
@@ -1098,7 +1141,7 @@ void GmEm_Update(Em *em) {
     if (Game_IsOnline() == 1 && em->large != 0) {
         QSync_UpdateEmState(em);
     }
-    if (em->stateGroup == 8) {
+    if (em->stateGroup == EM_GROUP_VERSUS) {
         em->noHitTimer = 2;
     }
     Player_TickTimers((Player *) em);
@@ -1106,8 +1149,8 @@ void GmEm_Update(Em *em) {
     if (em->inSceneArea == 0) {
         if (gScene.area == em->area) {
             em->inSceneArea = 1;
-            Em_GetFloorInfoEx(em, &em->posX, (struct TriHdr *) ((u8 *)em + 0x660), &em->floorY, &em->surfaceY);
-            if (em->stance == 0) {
+            Em_GetFloorInfoEx(em, &em->posX, (struct TriHdr *)&em->floorKind, &em->floorY, &em->surfaceY);
+            if (em->stance == EM_STANCE_GROUND) {
                 em->posY = em->floorY;
             }
         }
@@ -1122,7 +1165,7 @@ void GmEm_Update(Em *em) {
     if (gScene.area != em->area) {
         em->enterDelay = 2;
     }
-    if (em->stateGroup != 5 && em->stateGroup != 6 && em->stateGroup != 7 && em->stateGroup != 8) {
+    if (em->stateGroup != EM_GROUP_DEFEAT && em->stateGroup != EM_GROUP_EVENT && em->stateGroup != EM_GROUP_EVENT2 && em->stateGroup != EM_GROUP_VERSUS) {
         if (em->combat == 1) {
             em->senseDelay = 0;
         }
@@ -1135,46 +1178,46 @@ void GmEm_Update(Em *em) {
             }
             Em_SeePlayers(em);
             switch (em->type) {
-            case 1:
-            case 0x2A:
-            case 0x25:
-            case 8:
-            case 0xB:
-            case 0x29:
-            case 0x31:
-            case 0xF:
-            case 0x2D:
-            case 0x14:
-            case 0x27:
-            case 0x30:
-            case 0x33:
-            case 0x34:
-                if (Em_ScriptFlagsFrom(em, 2) == 0 && em->remote == 0 && em->requested == 0) {
-                    a = Em_FindNearAreaObj(em);
+            case EM_KIND_RATHIAN:
+            case EM_KIND_GOLD_RATHIAN:
+            case EM_KIND_PINK_RATHIAN:
+            case EM_KIND_CEPHADROME:
+            case EM_KIND_RATHALOS:
+            case EM_KIND_SILVER_RATHALOS:
+            case EM_KIND_AZURE_RATHALOS:
+            case EM_KIND_KHEZU:
+            case EM_KIND_RED_KHEZU:
+            case EM_KIND_GYPCEROS:
+            case EM_KIND_PURPLE_GYPCEROS:
+            case EM_KIND_DAIMYO_HERMITAUR:
+            case EM_KIND_BLANGONGA:
+            case EM_KIND_CONGALALA:
+                if (Em_ScriptFlagsFrom(em, EM_TRIGGER_AREA_OBJ) == 0 && em->remote == 0 && em->requested == 0) {
+                    nearAreaObj = Em_FindNearAreaObj(em);
                 } else {
-                    a = 0;
+                    nearAreaObj = 0;
                 }
-                if (em->combat == 0 || em->type == 0x34) {
-                    if (a == 1 && Em_ScriptFlagsFrom(em, 2) == 0 && em->noReact == 0) {
-                        em->triggers |= 2;
+                if (em->combat == 0 || em->type == EM_KIND_CONGALALA) {
+                    if (nearAreaObj == 1 && Em_ScriptFlagsFrom(em, EM_TRIGGER_AREA_OBJ) == 0 && em->noReact == 0) {
+                        em->triggers |= EM_TRIGGER_AREA_OBJ;
                     }
                 }
                 break;
             }
-            if (em->ragePending != 0 && em->stateGroup != 4 && em->noReact == 0 && Em_ScriptFlagsFrom(em, 8) == 0) {
+            if (em->ragePending != 0 && em->stateGroup != EM_GROUP_REACT && em->noReact == 0 && Em_ScriptFlagsFrom(em, EM_TRIGGER_RAGE) == 0) {
                 Em_StartRage2(em);
             }
             Em_PickRequest(em);
-            r = (u8)Em_UpdateNoticed(em);
-            if ((em->type == 9 || em->type == 4) && em->combat == 0) {
-                r = 0;
+            noticed = (u8)Em_UpdateNoticed(em);
+            if ((em->type == 9 || em->type == EM_KIND_MOSSWINE) && em->combat == 0) {
+                noticed = 0;
             }
-            if (em->combat == 0 && r != 0 && Em_ScriptFlagsFrom(em, 0x20) == 0 && em->noAlert != 1 && em->noReact == 0) {
+            if (em->combat == 0 && noticed != 0 && Em_ScriptFlagsFrom(em, EM_TRIGGER_NOTICED) == 0 && em->noAlert != 1 && em->noReact == 0) {
                 em->scriptPending = 1;
-                em->triggers |= 0x20;
-                em->triggers &= 0xFD;
+                em->triggers |= EM_TRIGGER_NOTICED;
+                em->triggers &= ~EM_TRIGGER_AREA_OBJ;
             }
-            if (em->combat == 1 && r != 0) {
+            if (em->combat == 1 && noticed != 0) {
                 em->combatTimer = gEmCombatInit[em->type];
             }
             if (em->curGoalKind == 1 && em->curGoalArg == 0) {
@@ -1212,48 +1255,48 @@ void GmEm_Update(Em *em) {
         }
     }
     if (em->rage != 0) {
-        t = gEmRageTbl[em->type];
-        if (t != NULL) {
-            em->motionSpeed = t->motionSpeed;
+        rageRow = gEmRageTbl[em->type];
+        if (rageRow != NULL) {
+            em->motionSpeed = rageRow->motionSpeed;
         }
         if (--em->rageTimer <= 0) {
             Em_EndRage(em);
         }
     }
-    k = Map_DayId(gScene.map);
+    dayMap = Map_DayId(gScene.map);
     switch (em->type) {
-    case 1:
-    case 0x2A:
-    case 0x25:
-    case 0xB:
-    case 0x29:
-    case 0x31:
-    case 6:
-    case 0x26:
-    case 0x14:
-    case 0x27:
-    case 0x28:
-        if (k != 8 && k != 9 && k != 10) {
-            v = Em_InBlockArea2(em);
-            if (em->combat == 0 && v == 1 && Em_ScriptFlagsFrom(em, 0x40) == 0 && em->noReact == 0) {
+    case EM_KIND_RATHIAN:
+    case EM_KIND_GOLD_RATHIAN:
+    case EM_KIND_PINK_RATHIAN:
+    case EM_KIND_RATHALOS:
+    case EM_KIND_SILVER_RATHALOS:
+    case EM_KIND_AZURE_RATHALOS:
+    case EM_KIND_YIAN_KUT_KU:
+    case EM_KIND_BLUE_YIAN_KUT_KU:
+    case EM_KIND_GYPCEROS:
+    case EM_KIND_PURPLE_GYPCEROS:
+    case EM_KIND_YIAN_GARUGA:
+        if (dayMap != MAP_BATTLEFIELD && dayMap != MAP_GREAT_ARENA && dayMap != MAP_ARENA) {
+            result = Em_InBlockArea2(em);
+            if (em->combat == 0 && result == 1 && Em_ScriptFlagsFrom(em, EM_TRIGGER_BLOCK_AREA) == 0 && em->noReact == 0) {
                 em->scriptPending = 1;
-                em->triggers |= 0x40;
+                em->triggers |= EM_TRIGGER_BLOCK_AREA;
             }
         }
         break;
-    case 0xE:
-    case 0x2B:
-    case 0xF:
-    case 0x2D:
-    case 0x11:
-    case 0x2F:
-    case 0x16:
-    case 0x1A:
-    case 0x2C:
-    case 0x15:
-    case 0x2E:
-    case 8:
-    case 0x22:
+    case EM_KIND_DIABLOS:
+    case EM_KIND_BLACK_DIABLOS:
+    case EM_KIND_KHEZU:
+    case EM_KIND_RED_KHEZU:
+    case EM_KIND_GRAVIOS:
+    case EM_KIND_BLACK_GRAVIOS:
+    case EM_KIND_BASARIOS:
+    case EM_KIND_MONOBLOS:
+    case EM_KIND_WHITE_MONOBLOS:
+    case EM_KIND_PLESIOTH:
+    case EM_KIND_GREEN_PLESIOTH:
+    case EM_KIND_CEPHADROME:
+    case EM_KIND_CEPHALOS:
         break;
     }
     if (em->areaTimer1 > 0) {
@@ -1264,13 +1307,13 @@ void GmEm_Update(Em *em) {
             em->areaTimer2--;
         }
     }
-    if (em->stateGroup != 5) {
+    if (em->stateGroup != EM_GROUP_DEFEAT) {
         if (em->blindTimer != 0) {
             if (--em->blindTimer <= 0) {
                 em->blindTimer = 0;
                 if (em->status != 2 && em->status != 1) {
                     em->blind = 0;
-                    if (em->remote == 0 && em->stateGroup != 4 && em->stance == 0) {
+                    if (em->remote == 0 && em->stateGroup != EM_GROUP_REACT && em->stance == EM_STANCE_GROUND) {
                         Em_ForceState19(em);
                     }
                 }
@@ -1281,22 +1324,22 @@ void GmEm_Update(Em *em) {
         Em_UpdateStatus(em);
     }
     if (em->wallHitDirs != 0) {
-        if (em->stateGroup == 2 && em->velY >= 0.0f && em->velZ > 0.0f) {
+        if (em->stateGroup == EM_GROUP_FLY && em->velY >= 0.0f && em->velZ > 0.0f) {
             em->posY += 30.0f;
         }
-        em->unk736 = 2;
+        em->wallTouch = 2;
     } else {
-        em->unk736 = 0;
+        em->wallTouch = 0;
     }
     if (*(u8 *)&em->side != 0) {
         if (em->rageStarted != 0) {
             em->itemUseKind = 0x88;
         } else {
-            v = Side_HornItemPlaying(*(u8 *)&em->side);
-            if (v == 0) {
+            result = Side_HornItemPlaying(*(u8 *)&em->side);
+            if (result == 0) {
                 em->itemUseKind = 0;
             } else if (!(em->itemUseKind & 0x80)) {
-                em->itemUseKind = v | 0x80;
+                em->itemUseKind = result | 0x80;
             }
         }
     }
@@ -1311,26 +1354,26 @@ void GmEm_Update(Em *em) {
     Em_DecayNotice(em);
     speed = em->motionSpeed;
     speed *= (f32)(em->speedBonus + 100) / 100.0f;
-    f = 2.0f * speed;
-    em->motion[0].step = f;
-    em->motion[1].step = f;
-    em->motion[2].step = f;
-    em->motion[3].step = f;
+    motionStep = 2.0f * speed;
+    em->motion[0].step = motionStep;
+    em->motion[1].step = motionStep;
+    em->motion[2].step = motionStep;
+    em->motion[3].step = motionStep;
     if (em->moveFrozen != 0) {
-        if (em->flags & 0x20000) {
+        if (em->flags & EM_FLAG_NO_ROOT_MOTION) {
             set = 1;
         } else {
-            Player_SetFlag(em, 0x20000);
+            Player_SetFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
     }
     Player_UpdateMotion((Player *) em);
     if (em->moveFrozen != 0 && !set) {
-        Player_ClearFlag(em, 0x20000);
+        Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
     }
     Em_CollideField(em, 0);
-    Em_GetFloorInfoEx(em, &em->posX, (struct TriHdr *) ((u8 *)em + 0x660), &em->floorY, &em->surfaceY);
+    Em_GetFloorInfoEx(em, &em->posX, (struct TriHdr *)&em->floorKind, &em->floorY, &em->surfaceY);
     if (*(s8 *)&em->hideShadowHold == 0) {
-        if (em->shadowOff != 0 || em->stance == 4) {
+        if (em->shadowOff != 0 || em->stance == EM_STANCE_UNDER) {
             em->hideShadow = 1;
         } else {
             em->hideShadow = 0;
@@ -1338,9 +1381,9 @@ void GmEm_Update(Em *em) {
     } else if (--*(s8 *)&em->hideShadowHold <= 0) {
         em->hideShadowHold = 0;
     }
-    if (em->stance != 2 && em->stance != 4) {
+    if (em->stance != EM_STANCE_AIR && em->stance != EM_STANCE_UNDER) {
         if (em->surfaceKind != 0) {
-            if (em->type != 8 && em->type != 0xE && em->type != 0x1A && (u32)(em->type - 0x2B) > 1 && em->type != 0x22) {
+            if (em->type != EM_KIND_CEPHADROME && em->type != EM_KIND_DIABLOS && em->type != EM_KIND_MONOBLOS && (u32)(em->type - EM_KIND_BLACK_DIABLOS) > 1 && em->type != EM_KIND_CEPHALOS) {
                 em->floorY = em->surfaceY;
             }
         }
@@ -1354,32 +1397,42 @@ void GmEm_Update(Em *em) {
             em->rotZ = 0;
         }
     }
-    func_330E30(em);
+    Em_UpdateLightColors(em);
 }
 
-void GmEm_Finish(u8 *p) {
-    p[4]++;
-    p[1] = 0;
-    EmMine_RemoveTimed((Em *) p);
+/* The task's finish phase: moves on to the free phase, hides the monster
+ * and removes its timed mines. */
+void GmEm_Finish(Em *em)
+{
+    em->taskPhase++;
+    em->visible = 0;
+    EmMine_RemoveTimed(em);
 }
 
-void GmEm_Free(Em *em) {
+/* The task's last phase: reports the monster hunted (QuestEm_Hunted),
+ * removes its mines and frees its slot. */
+void GmEm_Free(Em *em)
+{
     QuestEm_Hunted(em);
     EmMine_Remove(em);
     EmSlot_Free(em);
 }
 
+/* Returns 0, hiding the monster's shadow, while a scene event that runs
+ * only some small monsters plays: event 0xAB keeps kind 0xC and Popo of
+ * variant 0, event 0xA4 keeps Blango; any other event keeps none. Else 1.
+ * The gotos are the game's control flow. */
 s32 GmEm_CanUpdate(Em *em)
 {
-    s32 ev;
+    s32 eventId;
     u8 kind;
 
     if ((gScene.eventRunning != 0) && (em->large == 0) && (ScEvent_CurFlag1() == 1)) {
-        ev = ScEvent_CurId();
-        switch (ev) {
+        eventId = ScEvent_CurId();
+        switch (eventId) {
         case 0xAB:
             kind = em->type;
-            if ((kind == 0xC) || (kind == 0x46)) {
+            if ((kind == 0xC) || (kind == EM_KIND_POPO)) {
                 if (em->variant != 0) {
                     goto block_10;
                 }
@@ -1389,7 +1442,7 @@ block_10:
             em->hideShadow = 1;
             return 0;
         case 0xA4:
-            if (em->type != 0x3D) {
+            if (em->type != EM_KIND_BLANGO) {
                 em->hideShadow = 1;
                 return 0;
             }
@@ -1404,7 +1457,12 @@ block_15:
     }
 }
 
-s32 GmEm_Task(Em *em) {
+/* The monster's task, each frame, by Em.taskPhase: set-up, update, finish
+ * and free. Then it adds the monster's draw slot to an ordering table:
+ * the Fatalis, Lao-Shan Lung, Shen Gaoren and Yama Tsukami kinds and an
+ * invisible Chameleos go to the sorted one. Returns 1 once freed. */
+s32 GmEm_Task(Em *em)
+{
     switch (em->taskPhase) {
     case 0:
         GmEm_Setup(em);
@@ -1421,7 +1479,7 @@ s32 GmEm_Task(Em *em) {
         if (GmEm_CanUpdate(em) == 0) {
             return 0;
         }
-        GmEm_Finish((u8 *)em);
+        GmEm_Finish(em);
         break;
     case 3:
         GmEm_Free(em);
@@ -1434,17 +1492,17 @@ s32 GmEm_Task(Em *em) {
         em->drawSlot->pos[2] = em->posZ;
         if (em->drawSlot != NULL) {
             if (em->alpha == 1.0f) {
-                if (em->type == 2 || em->type == 0x24 || em->type == 0x47 || em->type == 7 || em->type == 0x32 ||
-                    em->type == 0x37 || em->type == 0x3A || em->type == 0x48) {
+                if (em->type == EM_KIND_FATALIS || em->type == EM_KIND_FATALIS_B || em->type == EM_KIND_FATALIS_C || em->type == EM_KIND_LAO_SHAN_LUNG || em->type == EM_KIND_ASHEN_LAO_SHAN_LUNG ||
+                    em->type == EM_KIND_SHEN_GAOREN || em->type == EM_KIND_YAMA_TSUKAMI || em->type == EM_KIND_YAMA_TSUKAMI_B) {
                     OT_AddByDepth(gDrawOt32, em->drawSlot, 0x20, 1);
-                } else if (em->type == 0x3B && EmChameleos_IsInvisible(em) == 1) {
+                } else if (em->type == EM_KIND_CHAMELEOS && EmChameleos_IsInvisible(em) == 1) {
                     OT_AddByDepth(gDrawOtSorted, em->drawSlot, 0x40, 0);
                 } else {
                     OT_AddByDepth(gDrawOt32, em->drawSlot, 0x20, 0);
                 }
             } else {
-                if (em->type == 2 || em->type == 0x24 || em->type == 0x47 || em->type == 7 || em->type == 0x32 ||
-                    em->type == 0x37 || em->type == 0x3A || em->type == 0x48) {
+                if (em->type == EM_KIND_FATALIS || em->type == EM_KIND_FATALIS_B || em->type == EM_KIND_FATALIS_C || em->type == EM_KIND_LAO_SHAN_LUNG || em->type == EM_KIND_ASHEN_LAO_SHAN_LUNG ||
+                    em->type == EM_KIND_SHEN_GAOREN || em->type == EM_KIND_YAMA_TSUKAMI || em->type == EM_KIND_YAMA_TSUKAMI_B) {
                     OT_AddByDepth(gDrawOtSorted, em->drawSlot, 0x40, 1);
                 } else {
                     OT_AddByDepth(gDrawOtSorted, em->drawSlot, 0x40, 0);
@@ -1456,52 +1514,69 @@ s32 GmEm_Task(Em *em) {
     return 0;
 }
 
-void GmEm_Fx0F(Em *em, s32 mode) {
-    GsFx fx;
+/* The Khezu kinds: mesh set 2's texture scrolls along U (a 64-frame
+ * cycle), except while the monster is defeated. */
+void GmEm_KhezuScrollUv(Em *em, s32 meshSet)
+{
+    UvMtx uvMtx;
 
-    Mtx_Identity((f32 *) &fx);
-    if (em->stateGroup != 5) {
-        switch (mode) {
+    Mtx_Identity((f32 *) &uvMtx);
+    if (em->stateGroup != EM_GROUP_DEFEAT) {
+        switch (meshSet) {
         case 2:
-            fx.unk30 = (gScene.frame & 0x3F) / 64.0f;
+            uvMtx.uOffset = (gScene.frame & 0x3F) / 64.0f;
             break;
         }
     }
-    Gs_SetState(0x19, (s32)&fx);
+    Gs_SetState(RS_UV_MTX, (s32)&uvMtx);
 }
 
-void GmEm_Fx15(Em *em, s32 mode) {
-    GsFx fx;
+/* The Plesioth kinds: mesh set 4's texture scrolls along V (a 64-frame
+ * cycle). */
+void GmEm_PlesiothScrollUv(Em *em, s32 meshSet)
+{
+    UvMtx uvMtx;
 
-    Mtx_Identity((f32 *) &fx);
-    switch (mode) {
+    Mtx_Identity((f32 *) &uvMtx);
+    switch (meshSet) {
     case 4:
-        fx.unk34 = 1.0f - (gScene.frame & 0x3F) / 64.0f;
+        uvMtx.vOffset = 1.0f - (gScene.frame & 0x3F) / 64.0f;
         break;
     }
-    Gs_SetState(0x19, (s32)&fx);
+    Gs_SetState(RS_UV_MTX, (s32)&uvMtx);
 }
 
-void GmEm_Fx3A(Em *em, s32 mode) {
-    GsFx fx;
+/* The Yama Tsukami kinds: mesh sets 1 and 4 scroll along U (a 128-frame
+ * cycle), except while defeated. */
+void GmEm_YamaTsukamiScrollUv(Em *em, s32 meshSet)
+{
+    UvMtx uvMtx;
 
-    Mtx_Identity((f32 *) &fx);
-    if (em->stateGroup != 5) {
-        switch (mode) {
+    Mtx_Identity((f32 *) &uvMtx);
+    if (em->stateGroup != EM_GROUP_DEFEAT) {
+        switch (meshSet) {
         case 1:
         case 4:
-            fx.unk30 = (gScene.frame & 0x7F) / 128.0f;
+            uvMtx.uOffset = (gScene.frame & 0x7F) / 128.0f;
             break;
         }
     }
-    Gs_SetState(0x19, (s32)&fx);
+    Gs_SetState(RS_UV_MTX, (s32)&uvMtx);
 }
 
-s32 GmEm_Fx3B(Em *em, s32 mode) {
-    GsFx fx;
-    u8 *sub = (u8 *)em + 0x438;
+/* Chameleos: mesh sets 5 to 7 offset their texture by the invisibility
+ * fade (none: 0.75 for set 7, else 0); set 7 is skipped once fxFlags bit 0
+ * is set. The other sets are drawn only while it is visible. Returns 0 to
+ * skip the set. */
+s32 GmEm_ChameleosMeshUv(Em *em, s32 meshSet)
+{
+    UvMtx uvMtx;
+    /* work + 0x4C is Em.invisFade, Chameleos' invisibility fade (0xFFFF: none),
+     * read through a pointer to the work area as the game's code does: as
+     * em->invisFade the registers come out in another order */
+    u8 *work = &em->work;
 
-    switch (mode) {
+    switch (meshSet) {
     default:
         return EmChameleos_IsInvisible(em) != 1;
     case 7:
@@ -1510,165 +1585,177 @@ s32 GmEm_Fx3B(Em *em, s32 mode) {
         }
     case 5:
     case 6:
-        Mtx_Identity((f32 *) &fx);
-        if (*(u16 *)(sub + 0x4C) != 0xFFFF) {
-            fx.unk30 = 1.0f - *(u16 *)(sub + 0x4C) / 32.0f;
+        Mtx_Identity((f32 *) &uvMtx);
+        if (*(u16 *)(work + 0x4C) != 0xFFFF) {
+            uvMtx.uOffset = 1.0f - *(u16 *)(work + 0x4C) / 32.0f;
         } else {
-            switch (mode) {
+            switch (meshSet) {
             case 7:
-                fx.unk30 = 0.75f;
+                uvMtx.uOffset = 0.75f;
                 break;
             case 5:
             case 6:
             default:
-                fx.unk30 = 0.0f;
+                uvMtx.uOffset = 0.0f;
                 break;
             }
         }
-        Gs_SetState(0x19, (s32)&fx);
+        Gs_SetState(RS_UV_MTX, (s32)&uvMtx);
         return 1;
     }
 }
 
-void GmEm_Fx47(Em *em, s32 mode) {
-    GsFx fx;
+/* Fatalis C: mesh set 0's texture offset pulses along U (a 128-frame
+ * sine). */
+void GmEm_FatalisCPulseUv(Em *em, s32 meshSet)
+{
+    UvMtx uvMtx;
 
-    switch (mode) {
+    switch (meshSet) {
     case 0:
-        Mtx_Identity((f32 *) &fx);
-        fx.unk30 = 0.15f * (1.0f + Math_Sin(6.2831855f * ((gScene.frame & 0x7F) << 9) / 65536.0f));
-        Gs_SetState(0x19, (s32)&fx);
+        Mtx_Identity((f32 *) &uvMtx);
+        uvMtx.uOffset = 0.15f * (1.0f + Math_Sin(6.2831855f * ((gScene.frame & 0x7F) << 9) / 65536.0f));
+        Gs_SetState(RS_UV_MTX, (s32)&uvMtx);
         break;
     }
 }
 
-s32 GmEm_ApplyFx(Em *em, s32 mode) {
+/* Sets the texture matrix of the monster's mesh set meshSet, for the kinds
+ * that move their textures (Em_DrawParts calls it per set). Returns 0 when
+ * the set must not be drawn (Chameleos only), else 1. */
+s32 GmEm_SetMeshSetUv(Em *em, s32 meshSet)
+{
     switch (em->type) {
-    case 0xF:
-    case 0x2D:
-        GmEm_Fx0F(em, mode);
+    case EM_KIND_KHEZU:
+    case EM_KIND_RED_KHEZU:
+        GmEm_KhezuScrollUv(em, meshSet);
         break;
-    case 0x15:
-    case 0x2E:
-        GmEm_Fx15(em, mode);
+    case EM_KIND_PLESIOTH:
+    case EM_KIND_GREEN_PLESIOTH:
+        GmEm_PlesiothScrollUv(em, meshSet);
         break;
-    case 0x3B:
-        return GmEm_Fx3B(em, mode);
-    case 0x3A:
-    case 0x48:
-        GmEm_Fx3A(em, mode);
+    case EM_KIND_CHAMELEOS:
+        return GmEm_ChameleosMeshUv(em, meshSet);
+    case EM_KIND_YAMA_TSUKAMI:
+    case EM_KIND_YAMA_TSUKAMI_B:
+        GmEm_YamaTsukamiScrollUv(em, meshSet);
         break;
-    case 0x47:
-        GmEm_Fx47(em, mode);
+    case EM_KIND_FATALIS_C:
+        GmEm_FatalisCPulseUv(em, meshSet);
         break;
     }
     return 1;
 }
 
-void GmEm_SetPartFx(s32 a, GsFx *fx, s32 c) {
-    Gs_SetState(c + 0x3A, (s32)fx);
+/* Hands material to the renderer as material slot `slot`
+ * (RS_MATERIAL). owner, the monster, is unused. */
+void GmEm_UploadMaterial(s32 owner, ModelMat *material, s32 slot)
+{
+    Gs_SetState(RS_MATERIAL(slot), (s32)material);
 }
 
-void GmEm_PartColor(Em *em, f32 *out, u16 idx) {
-    f32 v;
-    s8 k = *(s8 *)(idx + (u32)em + 0x45E);
+/* Shen Gaoren: colours the material by the flinch level of part `part`
+ * (its work area's partFlinch, at Em +0x45E): dark red, pulsing red after a
+ * first flinch, bright pulsing red after a second. */
+void GmEm_ShenGaorenFlinchColor(Em *em, ModelMat *material, u16 part)
+{
+    f32 red;
+    s8 flinch = *(s8 *)(part + (u32)em + 0x45E);
 
-    if (k == 0) {
-        v = 25.0f;
-    } else if (k == 1) {
-        v = 100.0f + 30.0f * (0.5f * (1.0f + Math_Sin(6.2831855f * (gScene.frame << 14) / 65536.0f)));
+    if (flinch == 0) {
+        red = 25.0f;
+    } else if (flinch == 1) {
+        red = 100.0f + 30.0f * (0.5f * (1.0f + Math_Sin(6.2831855f * (gScene.frame << 14) / 65536.0f)));
     } else {
-        v = 220.0f + 35.0f * (0.5f * (1.0f + Math_Sin(6.2831855f * (gScene.frame << 14) / 65536.0f)));
+        red = 220.0f + 35.0f * (0.5f * (1.0f + Math_Sin(6.2831855f * (gScene.frame << 14) / 65536.0f)));
     }
-    out[1] = v / 255.0f;
-    out[2] = 40.0f / 255.0f;
-    out[3] = 55.0f / 255.0f;
+    material->rgb[0] = red / 255.0f;
+    material->rgb[1] = 40.0f / 255.0f;
+    material->rgb[2] = 55.0f / 255.0f;
 }
 
-/* A mode's list of meshes (0x8C bytes, one per mode). */
-typedef struct GmEmPartTbl {
-    s32 unk0;
-    s32 num;                    /* 0x4 */
-    s32 idx[33];                /* 0x8: indices into the model's meshes */
-} GmEmPartTbl;
 extern s32 gTexHandles[];
-extern s16 gGmEmKind24MeshTex[];
+extern s16 gGmEmFatalisBMatTex[];
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-/* The block at Em +0x438 (read through a pointer here). */
-typedef struct GmEm438 {
+/* The fields of the monster's work area (Em.work) GmEm_PrepareMeshSet reads,
+ * as the family views name them: EmBlangongaWork's rageTimer and tint,
+ * EmFatalisWork's rageTimer, EmWork's hunted and huntedB. One view of its
+ * own, because reading them through those structs (casts of one pointer)
+ * compiles the function differently from the game's code. */
+typedef struct EmMeshWork {
     u8 unk00[0x38];
-    s16 unk38;                  /* 0x38 */
+    s16 blangRageTimer;         /* 0x38: EmBlangongaWork.rageTimer (Rajang) */
     u8 unk3A[0x41 - 0x3A];
-    u8 unk41;                   /* 0x41: a colour (r, g, b) */
-    u8 unk42;                   /* 0x42 */
-    u8 unk43;                   /* 0x43 */
+    u8 blangTint[3];            /* 0x41: EmBlangongaWork.tint, the body colour (r, g, b) */
     u8 unk44[0x57 - 0x44];
-    s8 unk57;                   /* 0x57 */
+    s8 fatalisRageTimer;        /* 0x57: EmFatalisWork.rageTimer */
     u8 unk58[0x5E - 0x58];
-    u8 unk5E;                   /* 0x5E */
+    u8 hunted;                  /* 0x5E: EmWork.hunted (the dromes) */
     u8 unk5F[0x6E - 0x5F];
-    u8 unk6E;                   /* 0x6E */
-} GmEm438;
+    u8 huntedB;                 /* 0x6E: EmWork.huntedB (the preys) */
+} EmMeshWork;
 void Color_RgbToFloat(f32 *rgb, u32 c);
 s32 Area_IsDay(u16 area);
 s32 Em_PartBroken(Em *em, s32 arg1);
 s32 EmBlangonga_EatPropMode(Em *em);
 s32 EmBlangonga_CarriedShown(Em *em, u16 part);
-u8 EmChameleos_CanTurnInvisible(Em *em); /* unit's own declaration: the definition (game) returns s32 (0, 1 or 2); GmEm_SetMeshAlphas masks the result with andi 0xFF */
+u8 EmChameleos_CanTurnInvisible(Em *em); /* unit's own declaration: the definition (game) returns s32 (0, 1 or 2); declared u8 here because GmEm_PrepareMeshSet's code masks the result to a byte, as a u8 return compiles */
 
-/* Sets the monster's meshes for a mode (a1; tbl holds each mode's list of
- * mesh indices): every listed mesh gets Em +0x6E4 as its alpha, then per kind
- * (em->type, 0x48 cases) and mode some meshes are hidden (alpha 0) by the
- * parts' break states, get a texture or a colour, and are applied with
- * GmEm_SetPartFx. Kind 0x24 first recolours and retextures its 32 meshes
- * (gGmEmKind24MeshTex). Case 9's `switch (n16)` with `default:` first is what leaves
- * the conditional branches' delay slots empty, as in the game.
- * Kind 0x24's 32-mesh loop keeps its two walkers and counter in v1, a0
- * and a1 as the game does only if they wait in the colouring (23 or more
- * neighbours left): the loop's n must be a later web of n (case 1's
- * texture index written as an if/else, a real first web), and g computed
- * in the j == 1 / 14 branch, so that 0.7f's constant overlaps the walkers.
- * Round 30 (docs/notes/nm/GmEm_SetMeshAlphas.md). */
-void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
-    ModelMat *meshes = em->model->mats;
-    ModelMat *p;
+/* Prepares mesh set `set` of the monster's model (sets: the model's
+ * material sets) before it is drawn: every material of the set gets
+ * Em.alpha, then per kind some are hidden (alpha 0) by the parts' break
+ * states, partBreakCount, the rage or a blink cycle, or are recoloured or
+ * retextured; each is handed to the renderer with GmEm_UploadMaterial.
+ * Em_DrawParts calls it per shown set, the Bulldrome's draw for set 1.
+ * Two forms are kept because they give the game's code: the Felyne case's
+ * switch on animFrame lists `default:` first, which leaves its branches'
+ * delay slots empty as in the game; and in Fatalis B's 32-material loop,
+ * texIdx is set by an if/else and shadeDark is computed in the branch for
+ * materials 1 and 14, which keeps the loop's two pointers and its counter
+ * in the registers the game's code uses. */
+void GmEm_PrepareMeshSet(Em *em, s32 set, ModelMatSet *sets)
+{
+    ModelMat *modelMats = em->model->mats;
+    ModelMat *material;
     s32 i;
-    s32 n;
-    s32 n2;
-    s32 m;
-    s16 n16;
-    GmEm438 *b;
-    f32 r;
-    f32 g;
+    s32 texIdx;
+    s32 kind20Tex;
+    s32 cond;
+    s16 animFrame;
+    EmMeshWork *work;
+    f32 shade;
+    f32 shadeDark;
     s32 j;
-    u8 flag;
+    u8 rageTex;
 
     switch (em->type) {
-    case 1: case 0x25: case 0x2A:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Rathian kinds: meshes hidden as parts 1, 2 and 6 break, and the
+     * meshes shown only after the part-break reaction (partBreakCount). */
+    case EM_KIND_RATHIAN: case EM_KIND_PINK_RATHIAN: case EM_KIND_GOLD_RATHIAN:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 0:
-                    if (em->parts[1].state > 0) p->alpha = 0.0f;
+                    if (em->parts[1].state > 0) material->alpha = 0.0f;
                     break;
                 case 1:
-                    if (em->parts[2].state > 0) p->alpha = 0.0f;
+                    if (em->parts[2].state > 0) material->alpha = 0.0f;
                     break;
                 case 5:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1679,7 +1766,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 2:
                     break;
                 case 3:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1687,45 +1774,47 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 switch (i) {
                 case 0:
                 case 1:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[2].state == 0) p->alpha = 0.0f;
+                    if (em->parts[2].state == 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[1].state == 0) p->alpha = 0.0f;
+                    if (em->parts[1].state == 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 1:
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 2:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Fatalis: the head's meshes by part 5's break stage (set 1, and their
+     * broken counterparts in set 4); set 3's textures by parts[7].state. */
+    case EM_KIND_FATALIS:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 1:
                 switch (i) {
                 case 0:
                 case 1:
-                    if (em->parts[5].state >= 3) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 3) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state > 0) p->alpha = 0.0f;
+                    if (em->parts[5].state > 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[5].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1733,47 +1822,49 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 switch (i) {
                 case 1:
                 case 5:
-                    if (em->parts[7].state >= 10) n = 2; else n = 1;
-                    p->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + n];
+                    if (em->parts[7].state >= 10) texIdx = 2; else texIdx = 1;
+                    material->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + texIdx];
                     break;
                 case 3:
                 case 8:
-                    if (em->parts[0].state > 0) p->alpha = 0.0f;
+                    if (em->parts[0].state > 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 1:
-                    if (em->parts[5].state < 3) p->alpha = 0.0f;
+                    if (em->parts[5].state < 3) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state >= 2 || em->parts[5].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2 || em->parts[5].state <= 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[5].state < 2) p->alpha = 0.0f;
+                    if (em->parts[5].state < 2) material->alpha = 0.0f;
                     break;
                 case 0:
-                    if (em->parts[0].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[0].state <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 6: case 0x26:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Yian Kut-Ku kinds: whole and broken meshes by part 6 and the
+     * part-break reaction. */
+    case EM_KIND_YIAN_KUT_KU: case EM_KIND_BLUE_YIAN_KUT_KU:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 5:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1782,150 +1873,156 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 0:
                     break;
                 case 1:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 2:
                 case 3:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 0:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 7: case 0x32:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Lao-Shan Lung kinds: whole meshes (sets 2 and 4) and their broken
+     * counterparts (set 5) by parts 0, 4, 5 and 6. */
+    case EM_KIND_LAO_SHAN_LUNG: case EM_KIND_ASHEN_LAO_SHAN_LUNG:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 2:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 1:
-                    if (em->parts[5].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[0].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[0].state >= 2) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[0].state > 0) p->alpha = 0.0f;
+                    if (em->parts[0].state > 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 0:
-                    if (em->parts[4].state >= 3) p->alpha = 0.0f;
+                    if (em->parts[4].state >= 3) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 5:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 case 1:
-                    if (em->parts[5].state < 2) p->alpha = 0.0f;
+                    if (em->parts[5].state < 2) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[0].state < 2) p->alpha = 0.0f;
+                    if (em->parts[0].state < 2) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[0].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[0].state <= 0) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->parts[4].state < 3) p->alpha = 0.0f;
+                    if (em->parts[4].state < 3) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 8: case 0x22:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            if (em->type == 8) {
-                p->rgb[0] = 101.0f / 255.0f;
-                p->rgb[1] = 96.0f / 255.0f;
-                p->rgb[2] = 65.0f / 255.0f;
+    /* The Cephadrome kinds: Cephadrome tints every material sand-brown;
+     * meshes by part 0 and the part-break reaction. */
+    case EM_KIND_CEPHADROME: case EM_KIND_CEPHALOS:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            if (em->type == EM_KIND_CEPHADROME) {
+                material->rgb[0] = 101.0f / 255.0f;
+                material->rgb[1] = 96.0f / 255.0f;
+                material->rgb[2] = 65.0f / 255.0f;
             }
-            p->alpha = em->alpha;
-            switch (mode) {
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 2:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 5:
                 case 6:
-                    if (em->type == 8 && em->parts[0].state >= 2) p->alpha = 0.0f;
+                    if (em->type == EM_KIND_CEPHADROME && em->parts[0].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 2:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 0:
-                    if (em->parts[0].state < 2) p->alpha = 0.0f;
+                    if (em->parts[0].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 9: case 0x12: case 0x17:
-        n16 = (gFrameTick >> 1) % 10;
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Felyne kinds (9, the cart, Melynx): a 10-step cycle picks the face
+     * mesh (a blink). Em_DrawParts draws these kinds with their own function. */
+    case 9: case EM_KIND_FELYNE_CART: case EM_KIND_MELYNX:
+        animFrame = (gFrameTick >> 1) % 10;
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
             case 1:
-                switch (n16) {
+                switch (animFrame) {
                 default:
                     switch (i) {
                     case 2:
                     case 3:
                     case 4:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -1934,7 +2031,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     case 1:
                     case 3:
                     case 4:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -1943,35 +2040,37 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     case 1:
                     case 2:
                     case 4:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0xB: case 0x29: case 0x31:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Rathalos kinds: as the Rathian kinds, by parts 1, 2 and 6 and the
+     * part-break reaction. */
+    case EM_KIND_RATHALOS: case EM_KIND_SILVER_RATHALOS: case EM_KIND_AZURE_RATHALOS:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 3:
-                    if (em->parts[1].state > 0) p->alpha = 0.0f;
+                    if (em->parts[1].state > 0) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->parts[2].state > 0) p->alpha = 0.0f;
+                    if (em->parts[2].state > 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -1979,72 +2078,74 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 switch (i) {
                 case 0:
                 case 4:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 case 1:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->parts[1].state == 0) p->alpha = 0.0f;
+                    if (em->parts[1].state == 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->parts[2].state == 0) p->alpha = 0.0f;
+                    if (em->parts[2].state == 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 switch (i) {
                 case 4:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 1:
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0xD: case 0x10: case 0x1B: case 0x1C: case 0x1E: case 0x1F: case 0x23:
-        b = (GmEm438 *)&em->work;
+    /* The raptors and their leaders: the eyes blink on a 98-frame cycle (one
+     * of materials 0-3 shown), closed once hunted; material 9 only in two motions. */
+    case EM_KIND_GENPREY: case EM_KIND_VELOCIPREY: case EM_KIND_VELOCIDROME: case EM_KIND_GENDROME: case EM_KIND_IOPREY: case EM_KIND_IODROME: case EM_KIND_GIAPREY:
+        work = (EmMeshWork *)&em->work;
         switch (em->type) {
         case 0x1B:
         case 0x1C:
         case 0x1F:
-            m = b->unk5E;
+            cond = work->hunted;
             break;
         default:
-            m = b->unk6E;
+            cond = work->huntedB;
             break;
         }
-        if (m != 0) n16 = 0; else n16 = gScene.frame % 98;
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            if (em->type == 0x10 || em->type == 0x23 || em->type == 0xD || em->type == 0x1E) {
+        if (cond != 0) animFrame = 0; else animFrame = gScene.frame % 98;
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            if (em->type == EM_KIND_VELOCIPREY || em->type == EM_KIND_GIAPREY || em->type == EM_KIND_GENPREY || em->type == EM_KIND_IOPREY) {
                 switch (i) {
                 case 5:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
             } else {
                 switch (i) {
                 case 4:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
             }
-            switch (n16) {
+            switch (animFrame) {
             case 0:
             case 1:
             case 2:
@@ -2053,7 +2154,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 0:
                 case 1:
                 case 3:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2063,7 +2164,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 0:
                 case 2:
                 case 3:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2073,7 +2174,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 0:
                 case 1:
                 case 2:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2082,171 +2183,176 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 1:
                 case 2:
                 case 3:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
             switch (i) {
             case 9:
-                if (em->motionId[0] != 0x410 && em->motionId[0] != 0x415) p->alpha = 0.0f;
+                if (em->motionId[0] != EM_MOTION_ID(0, 40) && em->motionId[0] != EM_MOTION_ID(0, 45)) material->alpha = 0.0f;
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0xE: case 0x2B:
-        if (em->motionId[0] == 0x459) EmMotion_ReachedFrame(em, 0, 10.0f);
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Diablos kinds: meshes by part 6 and the part-break reaction. */
+    case EM_KIND_DIABLOS: case EM_KIND_BLACK_DIABLOS:
+        if (em->motionId[0] == EM_MOTION_ID(0, 113)) EmMotion_ReachedFrame(em, 0, 10.0f);
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 3:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->parts[6].state > 0) p->alpha = 0.0f;
+                    if (em->parts[6].state > 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 4:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 7:
-                    if (em->parts[6].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[6].state <= 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0xF: case 0x2D:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Khezu kinds: meshes by parts 0 and 6 and the part-break reaction. */
+    case EM_KIND_KHEZU: case EM_KIND_RED_KHEZU:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 switch (i) {
                 case 1:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 3:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->parts[0].state < 2) p->alpha = 0.0f;
+                    if (em->parts[0].state < 2) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x11: case 0x2F:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Gravios kinds: meshes by part 6 and the part-break reaction. */
+    case EM_KIND_GRAVIOS: case EM_KIND_BLACK_GRAVIOS:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 3:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 4:
-                    if (em->parts[6].state > 1) p->alpha = 0.0f;
+                    if (em->parts[6].state > 1) material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->parts[6].state > 0) p->alpha = 0.0f;
+                    if (em->parts[6].state > 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 7:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 case 1:
-                    if (em->parts[6].state == 0) p->alpha = 0.0f;
+                    if (em->parts[6].state == 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x13: case 0x18:
-        n16 = gScene.frame % 9;
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
+    /* Vespoid and Hornetaur: the wings, one of materials 2-4 on a 9-frame
+     * cycle; materials 1 and 5-7 flicker in the flying motions. */
+    case EM_KIND_VESPOID: case EM_KIND_HORNETAUR:
+        animFrame = gScene.frame % 9;
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
             switch (i) {
             case 0:
                 break;
             case 2:
             case 3:
             case 4:
-                switch (n16) {
+                switch (animFrame) {
                 case 0:
                 case 1:
                     switch (i) {
                     case 3:
                     case 4:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -2257,7 +2363,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     switch (i) {
                     case 2:
                     case 3:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -2265,7 +2371,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     switch (i) {
                     case 2:
                     case 4:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -2284,17 +2390,17 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 0x3F2:
                 case 0x3F3:
                 case 0x3F4:
-                    if (em->motionId[0] == 0x3F4 && EmMotion_ReachedFrame(em, 0, 72.0f) == 0) {
+                    if (em->motionId[0] == EM_MOTION_ID(0, 12) && EmMotion_ReachedFrame(em, 0, 72.0f) == 0) {
                         switch (i) {
                         case 6:
                         case 7:
-                            p->alpha = 0.0f;
+                            material->alpha = 0.0f;
                             break;
                         }
                     } else if (gScene.frame & 1) {
                         switch (i) {
                         case 7:
-                            p->alpha = 0.0f;
+                            material->alpha = 0.0f;
                             break;
                         }
                     } else {
@@ -2302,7 +2408,7 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                         case 1:
                         case 5:
                         case 6:
-                            p->alpha = 0.0f;
+                            material->alpha = 0.0f;
                             break;
                         }
                     }
@@ -2311,46 +2417,47 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     switch (i) {
                     case 6:
                     case 7:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x15: case 0x2E:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Plesioth kinds: meshes by part 0 and the part-break reaction. */
+    case EM_KIND_PLESIOTH: case EM_KIND_GREEN_PLESIOTH:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 2:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 5:
                 case 6:
-                    if (em->parts[0].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[0].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 2:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2358,199 +2465,207 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 switch (i) {
                 case 0:
                 case 1:
-                    if (em->parts[0].state < 2) p->alpha = 0.0f;
+                    if (em->parts[0].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x16:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Basarios: meshes by part 6 and the part-break reaction. */
+    case EM_KIND_BASARIOS:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 2:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 4:
-                    if (em->parts[6].state > 0) p->alpha = 0.0f;
+                    if (em->parts[6].state > 0) material->alpha = 0.0f;
                     break;
                 case 5:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 case 1:
-                    if (em->parts[6].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[6].state <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x39:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Shakalaka: the mask meshes (picked by variant) hidden from frame 222
+     * of its death motion. */
+    case EM_KIND_SHAKALAKA:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 0:
                 case 2:
                 case 3:
-                    if (em->motionId[0] == 0x42C && EmMotion_ReachedFrame(em, 0, 222.0f) != 0) p->alpha = 0.0f;
+                    if (em->motionId[0] == EM_MOTION_ID(0, 68) && EmMotion_ReachedFrame(em, 0, 222.0f) != 0) material->alpha = 0.0f;
                     if (em->variant == 3) {
-                        if (i == 2) p->alpha = 0.0f;
+                        if (i == 2) material->alpha = 0.0f;
                     } else {
-                        if (i == 3) p->alpha = 0.0f;
+                        if (i == 3) material->alpha = 0.0f;
                     }
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x1A: case 0x2C:
-        r = 1.0f - 0.172549009f * ((s8) em->unk453 / 60.0f);
-        g = 1.0f - 205.0f / 255.0f * ((s8) em->unk453 / 60.0f);
-        if (em->motionId[0] == 0x459) EmMotion_ReachedFrame(em, 0, 10.0f);
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Monoblos kinds: material 0 tinted red by the rage fade (Em.rageFade,
+     * counted to 60 while enraged); meshes by part 6 and the part-break reaction. */
+    case EM_KIND_MONOBLOS: case EM_KIND_WHITE_MONOBLOS:
+        shade = 1.0f - 0.172549009f * ((s8) em->rageFade / 60.0f);
+        shadeDark = 1.0f - 205.0f / 255.0f * ((s8) em->rageFade / 60.0f);
+        if (em->motionId[0] == EM_MOTION_ID(0, 113)) EmMotion_ReachedFrame(em, 0, 10.0f);
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 0:
-                    p->rgb[0] = r;
-                    p->rgb[1] = g;
-                    p->rgb[2] = g;
+                    material->rgb[0] = shade;
+                    material->rgb[1] = shadeDark;
+                    material->rgb[2] = shadeDark;
                     break;
                 case 4:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 7:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 2:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 4:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x24:
-        m = em->rage;
-        b = (GmEm438 *)&em->work;
-        if (m != 0) {
+    /* Fatalis B: set 0 first recolours its 32 materials (dimmed, then lit
+     * again) and switches them to the rage textures (+8) as the rage comes and
+     * goes; then the meshes as Fatalis'. */
+    case EM_KIND_FATALIS_B:
+        cond = em->rage;
+        work = (EmMeshWork *)&em->work;
+        if (cond != 0) {
             if (em->rageStep == 0) {
-                if (b->unk57 < 30) {
-                    flag = 0;
+                if (work->fatalisRageTimer < 30) {
+                    rageTex = 0;
                 } else {
-                    flag = 1;
+                    rageTex = 1;
                 }
             } else {
-                flag = 1;
+                rageTex = 1;
             }
-        } else if (b->unk57 == -1) {
-            flag = 0;
-        } else if (b->unk57 < 30) {
-            flag = 1;
+        } else if (work->fatalisRageTimer == -1) {
+            rageTex = 0;
+        } else if (work->fatalisRageTimer < 30) {
+            rageTex = 1;
         } else {
-            flag = 0;
+            rageTex = 0;
         }
-        if (mode == 0) {
-            if (b->unk57 > 0) {
-                if (m != 0) {
-                    if (b->unk57 < 30) {
-                        r = 1.1f - 0.9f * (b->unk57 / 30.0f);
+        if (set == 0) {
+            if (work->fatalisRageTimer > 0) {
+                if (cond != 0) {
+                    if (work->fatalisRageTimer < 30) {
+                        shade = 1.1f - 0.9f * (work->fatalisRageTimer / 30.0f);
                     } else {
-                        r = 0.1f + 0.9f * ((b->unk57 - 30) / 10.0f);
+                        shade = 0.1f + 0.9f * ((work->fatalisRageTimer - 30) / 10.0f);
                     }
                 } else {
-                    if (b->unk57 < 30) {
-                        r = 1.1f - 0.9f * (b->unk57 / 30.0f);
+                    if (work->fatalisRageTimer < 30) {
+                        shade = 1.1f - 0.9f * (work->fatalisRageTimer / 30.0f);
                     } else {
-                        r = 0.1f + 0.9f * ((b->unk57 - 30) / 20.0f);
+                        shade = 0.1f + 0.9f * ((work->fatalisRageTimer - 30) / 20.0f);
                     }
                 }
             } else {
-                r = 1.0f;
+                shade = 1.0f;
             }
             for (j = 0; j < 32; j++) {
-                n = gGmEmKind24MeshTex[j];
-                if (flag && n < 8) n += 8;
+                texIdx = gGmEmFatalisBMatTex[j];
+                if (rageTex && texIdx < 8) texIdx += 8;
                 if (j == 1 || j == 14) {
-                    g = 0.7f * r;
-                    meshes[j].rgb[0] = g;
-                    meshes[j].rgb[1] = g;
-                    meshes[j].rgb[2] = g;
+                    shadeDark = 0.7f * shade;
+                    modelMats[j].rgb[0] = shadeDark;
+                    modelMats[j].rgb[1] = shadeDark;
+                    modelMats[j].rgb[2] = shadeDark;
                 } else {
-                    meshes[j].rgb[0] = r;
-                    meshes[j].rgb[1] = r;
-                    meshes[j].rgb[2] = r;
+                    modelMats[j].rgb[0] = shade;
+                    modelMats[j].rgb[1] = shade;
+                    modelMats[j].rgb[2] = shade;
                 }
-                meshes[j].tex = gTexHandles[em->modelSlot * 20 + 0xA3 + n];
+                modelMats[j].tex = gTexHandles[em->modelSlot * 20 + 0xA3 + texIdx];
             }
         }
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 1:
                 switch (i) {
                 case 0:
                 case 1:
-                    if (em->parts[5].state >= 3) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 3) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state > 0) p->alpha = 0.0f;
+                    if (em->parts[5].state > 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[5].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2558,53 +2673,54 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 switch (i) {
                 case 1:
                 case 5:
-                    if (em->parts[7].state >= 10) n = 2; else n = 1;
-                    if (flag) n += 8;
-                    p->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + n];
+                    if (em->parts[7].state >= 10) texIdx = 2; else texIdx = 1;
+                    if (rageTex) texIdx += 8;
+                    material->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + texIdx];
                     break;
                 case 3:
                 case 8:
-                    if (em->parts[0].state > 0) p->alpha = 0.0f;
+                    if (em->parts[0].state > 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 1:
-                    if (em->parts[5].state < 3) p->alpha = 0.0f;
+                    if (em->parts[5].state < 3) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state >= 2 || em->parts[5].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2 || em->parts[5].state <= 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[5].state < 2) p->alpha = 0.0f;
+                    if (em->parts[5].state < 2) material->alpha = 0.0f;
                     break;
                 case 0:
-                    if (em->parts[0].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[0].state <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x47:
-        b = (GmEm438 *)&em->work;
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Fatalis C: as Fatalis, and set 6 (the rage glow) lit by the rage timer. */
+    case EM_KIND_FATALIS_C:
+        work = (EmMeshWork *)&em->work;
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 1:
                 switch (i) {
                 case 0:
                 case 1:
-                    if (em->parts[5].state >= 3) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 3) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state > 0) p->alpha = 0.0f;
+                    if (em->parts[5].state > 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[5].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2612,28 +2728,28 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 switch (i) {
                 case 1:
                 case 5:
-                    if (em->parts[7].state >= 10) n = 2; else n = 1;
-                    p->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + n];
+                    if (em->parts[7].state >= 10) texIdx = 2; else texIdx = 1;
+                    material->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + texIdx];
                     break;
                 case 3:
                 case 8:
-                    if (em->parts[0].state > 0) p->alpha = 0.0f;
+                    if (em->parts[0].state > 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 1:
-                    if (em->parts[5].state < 3) p->alpha = 0.0f;
+                    if (em->parts[5].state < 3) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state >= 2 || em->parts[5].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2 || em->parts[5].state <= 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[5].state < 2) p->alpha = 0.0f;
+                    if (em->parts[5].state < 2) material->alpha = 0.0f;
                     break;
                 case 0:
-                    if (em->parts[0].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[0].state <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
@@ -2641,192 +2757,200 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 if (em->rage != 0) {
                     switch (em->rageStep) {
                     case 0:
-                        if (b->unk57 < 0) {
-                            r = 0.0f;
+                        if (work->fatalisRageTimer < 0) {
+                            shade = 0.0f;
                         } else {
-                            r = b->unk57 / 60.0f;
+                            shade = work->fatalisRageTimer / 60.0f;
                         }
                         break;
                     case 1:
                     default:
-                        r = 1.0f;
+                        shade = 1.0f;
                         break;
                     }
                 } else {
                     switch (em->rageStep) {
                     case 0:
-                        if (b->unk57 < 0) {
-                            r = 0.0f;
+                        if (work->fatalisRageTimer < 0) {
+                            shade = 0.0f;
                         } else {
-                            r = 1.0f - b->unk57 / 60.0f;
+                            shade = 1.0f - work->fatalisRageTimer / 60.0f;
                         }
                         break;
                     case 1:
                     default:
-                        r = 1.0f;
+                        shade = 1.0f;
                         break;
                     }
                 }
-                p->rgb[0] = r;
-                p->rgb[1] = r;
-                p->rgb[2] = r;
+                material->rgb[0] = shade;
+                material->rgb[1] = shade;
+                material->rgb[2] = shade;
                 switch (i) {
                 case 1:
-                    if (em->parts[5].state >= 3) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 3) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state < 3) p->alpha = 0.0f;
+                    if (em->parts[5].state < 3) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[5].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
+    /* Kind 0x20: every material gets the slot's texture 1. */
     case 0x20:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
             if (i == 0) {
-                n2 = 1;
-                p->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + n2];
+                kind20Tex = 1;
+                material->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + kind20Tex];
             }
-            p->alpha = em->alpha;
-            p->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + n2];
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            material->alpha = em->alpha;
+            material->tex = gTexHandles[em->modelSlot * 20 + 0xA3 + kind20Tex];
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x28:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Yian Garuga: whole meshes and their broken counterparts by parts 0, 1,
+     * 2 and 6, and the part-break reaction. */
+    case EM_KIND_YIAN_GARUGA:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 5:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 7:
-                    if (em->parts[1].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[1].state >= 2) material->alpha = 0.0f;
                     break;
                 case 8:
-                    if (em->parts[2].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[2].state >= 2) material->alpha = 0.0f;
                     break;
                 case 9:
-                    if (em->parts[0].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[0].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 0:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->parts[6].state >= 3) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 3) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 case 1:
-                    if (em->parts[1].state < 2) p->alpha = 0.0f;
+                    if (em->parts[1].state < 2) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[6].state < 3) p->alpha = 0.0f;
+                    if (em->parts[6].state < 3) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[2].state < 2) p->alpha = 0.0f;
+                    if (em->parts[2].state < 2) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->parts[0].state < 2) p->alpha = 0.0f;
+                    if (em->parts[0].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x33: case 0x3D:
-        b = (GmEm438 *)&em->work;
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            if (em->type == 0x33) {
-                switch (mode) {
+    /* The Blangonga kinds: material 0 coloured by the work area's tint;
+     * meshes by part 2 and the part-break reaction; a day mesh pair while
+     * defeated. */
+    case EM_KIND_BLANGONGA: case EM_KIND_BLANGO:
+        work = (EmMeshWork *)&em->work;
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            if (em->type == EM_KIND_BLANGONGA) {
+                switch (set) {
                 case 0:
                     switch (i) {
                     case 0:
-                        Color_RgbToFloat(p->rgb, 0xFF000000 | (b->unk41 << 16) | (b->unk42 << 8) | b->unk43);
+                        Color_RgbToFloat(material->rgb, 0xFF000000 | (work->blangTint[0] << 16) | (work->blangTint[1] << 8) | work->blangTint[2]);
                         break;
                     case 4:
-                        if (em->partBreakCount > 0) p->alpha = 0.0f;
+                        if (em->partBreakCount > 0) material->alpha = 0.0f;
                         break;
                     case 5:
-                        if (Em_PartBroken(em, 2) == 1) p->alpha = 0.0f;
+                        if (Em_PartBroken(em, 2) == 1) material->alpha = 0.0f;
                         break;
                     }
                     break;
                 }
             }
-            switch (mode) {
+            switch (set) {
             case 0:
                 switch (i) {
                 case 0:
-                    Color_RgbToFloat(p->rgb, 0xFF000000 | (b->unk41 << 16) | (b->unk42 << 8) | b->unk43);
+                    Color_RgbToFloat(material->rgb, 0xFF000000 | (work->blangTint[0] << 16) | (work->blangTint[1] << 8) | work->blangTint[2]);
                     break;
                 case 1:
-                    if (Area_IsDay(gScene.area) == 0 || em->stateGroup != 5) p->alpha = 0.0f;
+                    if (Area_IsDay(gScene.area) == 0 || em->stateGroup != EM_GROUP_DEFEAT) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 1:
                 switch (i) {
                 case 0:
-                    if (Area_IsDay(gScene.area) == 1 || em->stateGroup == 5) p->alpha = 0.0f;
+                    if (Area_IsDay(gScene.area) == 1 || em->stateGroup == EM_GROUP_DEFEAT) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x34: case 0x3E:
-        b = (GmEm438 *)&em->work;
-        flag = EmBlangonga_EatPropMode(em);
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            if (em->type == 0x34) {
-                switch (mode) {
+    /* The Congalala kinds: meshes by parts 0, 2 and 3; the carried item's and
+     * the food's meshes (sets 6-8); the tint and the day pair as Blangonga. */
+    case EM_KIND_CONGALALA: case EM_KIND_CONGA:
+        work = (EmMeshWork *)&em->work;
+        rageTex = EmBlangonga_EatPropMode(em);
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            if (em->type == EM_KIND_CONGALALA) {
+                switch (set) {
                 case 0:
                     switch (i) {
                     case 0:
-                        if (em->parts[0].state >= 2) p->alpha = 0.0f;
+                        if (em->parts[0].state >= 2) material->alpha = 0.0f;
                         break;
                     case 3:
-                        if (em->parts[2].state >= 2) p->alpha = 0.0f;
+                        if (em->parts[2].state >= 2) material->alpha = 0.0f;
                         break;
                     case 4:
-                        if (em->parts[3].state >= 2) p->alpha = 0.0f;
+                        if (em->parts[3].state >= 2) material->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -2834,45 +2958,45 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                     switch (i) {
                     case 0:
                     case 1:
-                        if (em->parts[0].state < 2) p->alpha = 0.0f;
+                        if (em->parts[0].state < 2) material->alpha = 0.0f;
                         break;
                     }
                     break;
                 case 2:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 4:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (EmBlangonga_CarriedShown(em, 0) == 0 && EmBlangonga_CarriedShown(em, 1) == 0 && EmBlangonga_CarriedShown(em, 2) == 0 && flag != 1) p->alpha = 0.0f;
+                    if (EmBlangonga_CarriedShown(em, 0) == 0 && EmBlangonga_CarriedShown(em, 1) == 0 && EmBlangonga_CarriedShown(em, 2) == 0 && rageTex != 1) material->alpha = 0.0f;
                     break;
                 case 7:
-                    if (EmBlangonga_CarriedShown(em, 0) == 1 || EmBlangonga_CarriedShown(em, 1) == 1 || EmBlangonga_CarriedShown(em, 2) == 1 || flag == 1) p->alpha = 0.0f;
+                    if (EmBlangonga_CarriedShown(em, 0) == 1 || EmBlangonga_CarriedShown(em, 1) == 1 || EmBlangonga_CarriedShown(em, 2) == 1 || rageTex == 1) material->alpha = 0.0f;
                     break;
                 case 8:
                     switch (i) {
                     case 0:
-                        if (EmBlangonga_CarriedShown(em, 0) == 0 || flag != 0) p->alpha = 0.0f;
+                        if (EmBlangonga_CarriedShown(em, 0) == 0 || rageTex != 0) material->alpha = 0.0f;
                         break;
                     case 1:
-                        if (EmBlangonga_CarriedShown(em, 1) == 0 && flag != 1) p->alpha = 0.0f;
+                        if (EmBlangonga_CarriedShown(em, 1) == 0 && rageTex != 1) material->alpha = 0.0f;
                         break;
                     case 2:
-                        if (EmBlangonga_CarriedShown(em, 2) == 0 || flag != 0) p->alpha = 0.0f;
+                        if (EmBlangonga_CarriedShown(em, 2) == 0 || rageTex != 0) material->alpha = 0.0f;
                         break;
                     }
                     break;
                 }
             } else {
-                switch (mode) {
+                switch (set) {
                 case 0:
                     switch (i) {
                     case 0:
                     case 2:
                     case 3:
                     case 4:
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                         break;
                     }
                     break;
@@ -2880,100 +3004,104 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 6:
                 case 7:
                 case 8:
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                     break;
                 }
             }
-            switch (mode) {
+            switch (set) {
             case 0:
                 switch (i) {
                 case 1:
-                    Color_RgbToFloat(p->rgb, 0xFF000000 | (b->unk41 << 16) | (b->unk42 << 8) | b->unk43);
+                    Color_RgbToFloat(material->rgb, 0xFF000000 | (work->blangTint[0] << 16) | (work->blangTint[1] << 8) | work->blangTint[2]);
                     break;
                 case 7:
-                    if (Area_IsDay(gScene.area) == 0 || em->stateGroup != 5) p->alpha = 0.0f;
+                    if (Area_IsDay(gScene.area) == 0 || em->stateGroup != EM_GROUP_DEFEAT) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
-                if (Area_IsDay(gScene.area) == 1 || em->stateGroup == 5) p->alpha = 0.0f;
+                if (Area_IsDay(gScene.area) == 1 || em->stateGroup == EM_GROUP_DEFEAT) material->alpha = 0.0f;
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x35:
-        b = (GmEm438 *)&em->work;
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Rajang: the rage glow (sets 3-5) faded in by the rage timer (/ 15);
+     * meshes by part 0 and the part-break reaction. */
+    case EM_KIND_RAJANG:
+        work = (EmMeshWork *)&em->work;
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 5:
-                    if (em->parts[0].state > 0) p->alpha = 0.0f;
+                    if (em->parts[0].state > 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->parts[0].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[0].state >= 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
-                if (em->partBreakCount > 0) p->alpha = 0.0f;
+                if (em->partBreakCount > 0) material->alpha = 0.0f;
                 break;
             case 3:
                 switch (i) {
                 case 0:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 1:
                     if (em->partBreakCount <= 0) {
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                     } else {
-                        p->alpha *= b->unk38 / 15.0f;
+                        material->alpha *= work->blangRageTimer / 15.0f;
                     }
                     break;
                 }
                 break;
             case 4:
-                p->alpha *= b->unk38 / 15.0f;
+                material->alpha *= work->blangRageTimer / 15.0f;
                 break;
             case 5:
                 switch (i) {
                 case 0:
-                    p->alpha *= b->unk38 / 15.0f;
+                    material->alpha *= work->blangRageTimer / 15.0f;
                     break;
                 case 1:
                     if (EmBlangonga_CarriedShown(em, 6) == 1) {
-                        p->alpha *= b->unk38 / 15.0f;
+                        material->alpha *= work->blangRageTimer / 15.0f;
                     } else {
-                        p->alpha = 0.0f;
+                        material->alpha = 0.0f;
                     }
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x37:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Shen Gaoren: set 0's materials coloured by the flinch level of parts 5,
+     * 6, 3 and 4 (GmEm_ShenGaorenFlinchColor); set 4 by part 2's stage. */
+    case EM_KIND_SHEN_GAOREN:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 0:
-                    GmEm_PartColor(em, &p->unk00, 5);
+                    GmEm_ShenGaorenFlinchColor(em, material, 5);
                     break;
                 case 1:
-                    GmEm_PartColor(em, &p->unk00, 6);
+                    GmEm_ShenGaorenFlinchColor(em, material, 6);
                     break;
                 case 2:
-                    GmEm_PartColor(em, &p->unk00, 3);
+                    GmEm_ShenGaorenFlinchColor(em, material, 3);
                     break;
                 case 3:
-                    GmEm_PartColor(em, &p->unk00, 4);
+                    GmEm_ShenGaorenFlinchColor(em, material, 4);
                     break;
                 }
                 break;
@@ -2982,308 +3110,324 @@ void GmEm_SetMeshAlphas(Em *em, s32 mode, GmEmPartTbl *tbl) {
                 case 0:
                     break;
                 case 1:
-                    if (em->parts[2].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[2].state >= 2) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[2].state < 2) p->alpha = 0.0f;
+                    if (em->parts[2].state < 2) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[2].state >= 4) p->alpha = 0.0f;
+                    if (em->parts[2].state >= 4) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->parts[2].state < 4) p->alpha = 0.0f;
+                    if (em->parts[2].state < 4) material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (em->parts[2].state >= 4) p->alpha = 0.0f;
+                    if (em->parts[2].state >= 4) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->parts[2].state < 4) p->alpha = 0.0f;
+                    if (em->parts[2].state < 4) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x30:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Daimyo Hermitaur: whole and broken pairs by parts 5 and 6; the
+     * shell (set 5) by the part-break count. */
+    case EM_KIND_DAIMYO_HERMITAUR:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 1:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->parts[5].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[5].state >= 2) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->parts[6].state < 2) p->alpha = 0.0f;
+                    if (em->parts[6].state < 2) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->parts[5].state < 2) p->alpha = 0.0f;
+                    if (em->parts[5].state < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 5:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount > 0) p->alpha = 0.0f;
+                    if (em->partBreakCount > 0) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (em->partBreakCount >= 2) p->alpha = 0.0f;
+                    if (em->partBreakCount >= 2) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (em->partBreakCount < 2) p->alpha = 0.0f;
+                    if (em->partBreakCount < 2) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x43:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Shogun Ceanataur: calm and enraged meshes, broken meshes by parts 5
+     * and 6; the shell (set 3) picked by variant, hidden once part 2 breaks. */
+    case EM_KIND_SHOGUN_CEANATAUR:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 0:
                 switch (i) {
                 case 1:
                 case 4:
-                    if (em->rage == 1) p->alpha = 0.0f;
+                    if (em->rage == 1) material->alpha = 0.0f;
                     if (i == 1) goto part6;
                     goto part5;
                 case 0:
                 case 3:
-                    if (em->rage == 0) p->alpha = 0.0f;
+                    if (em->rage == 0) material->alpha = 0.0f;
                     if (i != 0) goto part5;
                 case 2:
                 part6:
-                    if (em->parts[6].state > 0) p->alpha = 0.0f;
+                    if (em->parts[6].state > 0) material->alpha = 0.0f;
                     break;
                 case 5:
                 part5:
-                    if (em->parts[5].state > 0) p->alpha = 0.0f;
+                    if (em->parts[5].state > 0) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (em->parts[6].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[6].state <= 0) material->alpha = 0.0f;
                     break;
                 case 7:
-                    if (em->parts[5].state <= 0) p->alpha = 0.0f;
+                    if (em->parts[5].state <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 if (i != em->variant) {
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                 } else if (em->parts[2].state >= 2) {
-                    p->alpha = 0.0f;
+                    material->alpha = 0.0f;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x40: case 0x41:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Lunastra and Teostra: whole and broken meshes by Em_PartBroken(0) and
+     * (1), and the part-break reaction. */
+    case EM_KIND_LUNASTRA: case EM_KIND_TEOSTRA:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 3:
-                    if (Em_PartBroken(em, 0) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 0) == 1) material->alpha = 0.0f;
                     break;
                 case 4:
-                    if (Em_PartBroken(em, 0) != 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 0) != 1) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 switch (i) {
                 case 4:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 case 5:
                 case 6:
-                    if (Em_PartBroken(em, 1) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) == 1) material->alpha = 0.0f;
                     break;
                 case 7:
-                    if (Em_PartBroken(em, 1) != 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) != 1) material->alpha = 0.0f;
                     break;
                 case 8:
                 case 9:
-                    if (Em_PartBroken(em, 1) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) == 1) material->alpha = 0.0f;
                     break;
                 case 10:
-                    if (Em_PartBroken(em, 1) != 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) != 1) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x36: case 0x3C:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* The Kushala Daora kinds: whole and broken meshes by Em_PartBroken(0)
+     * and (1), and the part-break reaction. */
+    case EM_KIND_KUSHALA_DAORA: case EM_KIND_RUSTED_KUSHALA_DAORA:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 2:
-                    if (Em_PartBroken(em, 0) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 0) == 1) material->alpha = 0.0f;
                     break;
                 case 3:
-                    if (Em_PartBroken(em, 0) != 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 0) != 1) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 3:
                 switch (i) {
                 case 4:
-                    if (Em_PartBroken(em, 1) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) == 1) material->alpha = 0.0f;
                     break;
                 case 5:
-                    if (Em_PartBroken(em, 1) != 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) != 1) material->alpha = 0.0f;
                     break;
                 case 6:
-                    if (Em_PartBroken(em, 1) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) == 1) material->alpha = 0.0f;
                     break;
                 case 7:
-                    if (Em_PartBroken(em, 1) != 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 1) != 1) material->alpha = 0.0f;
                     break;
                 case 8:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x3B:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Chameleos: meshes by part 0 and the part-break reaction; set 8's
+     * material 1 only while it can turn invisible. */
+    case EM_KIND_CHAMELEOS:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 1:
                 switch (i) {
                 case 1:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 2:
                 switch (i) {
                 case 1:
-                    if (Em_PartBroken(em, 0) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 0) == 1) material->alpha = 0.0f;
                     break;
                 case 2:
-                    if (Em_PartBroken(em, 0) == 0) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 0) == 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 4:
                 switch (i) {
                 case 0:
-                    if (em->partBreakCount <= 0) p->alpha = 0.0f;
+                    if (em->partBreakCount <= 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             case 8:
                 switch (i) {
                 case 0:
-                    if (Em_PartBroken(em, 0) == 1) p->alpha = 0.0f;
+                    if (Em_PartBroken(em, 0) == 1) material->alpha = 0.0f;
                     break;
                 case 1:
-                    if (EmChameleos_CanTurnInvisible(em) == 0) p->alpha = 0.0f;
+                    if (EmChameleos_CanTurnInvisible(em) == 0) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
-    case 0x3A:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            switch (mode) {
+    /* Yama Tsukami: set 10's meshes dropped as part 6's state grows. */
+    case EM_KIND_YAMA_TSUKAMI:
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            switch (set) {
             case 10:
                 switch (i) {
                 case 0:
-                    if (em->parts[6].state >= 2) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 2) material->alpha = 0.0f;
                     break;
                 case 1:
                 case 2:
-                    if (em->parts[6].state >= 6) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 6) material->alpha = 0.0f;
                     break;
                 case 3:
                 case 4:
-                    if (em->parts[6].state >= 4) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 4) material->alpha = 0.0f;
                     break;
                 case 5:
                 case 6:
-                    if (em->parts[6].state >= 8) p->alpha = 0.0f;
+                    if (em->parts[6].state >= 8) material->alpha = 0.0f;
                     break;
                 }
                 break;
             }
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
+    /* The other kinds: the alpha only. */
     default:
-        for (i = 0; i < tbl[mode].num; i++) {
-            p = &meshes[tbl[mode].idx[i]];
-            p->alpha = em->alpha;
-            GmEm_SetPartFx((s32)em, (GsFx *)p, i);
+        for (i = 0; i < sets[set].count; i++) {
+            material = &modelMats[sets[set].mat[i]];
+            material->alpha = em->alpha;
+            GmEm_UploadMaterial((s32)em, material, i);
         }
         break;
     }
 }
 
-void GmEm_QuestFx(Em *em, s16 id) {
-    switch (id) {
-    case 0x3E9:
-    case 0x3EA:
-    case 0x3EB:
-    case 0x3EC:
-    case 0x3ED:
-    case 0x3EF:
-    case 0x3F2:
-    case 0x3F3:
-    case 0x3F6:
-    case 0x3F9:
+/* Bulldrome, with its current motion: while it is enraged, every 45 frames
+ * of its idle and moving motions puts a rage aura (monster effect 0xD,
+ * 0.4 times its scale) on it. */
+void GmEm_SpawnBulldromeRageAura(Em *em, s16 motion)
+{
+    switch (motion) {
+    case EM_MOTION_ID(0, 1):
+    case EM_MOTION_ID(0, 2):
+    case EM_MOTION_ID(0, 3):
+    case EM_MOTION_ID(0, 4):
+    case EM_MOTION_ID(0, 5):
+    case EM_MOTION_ID(0, 7):
+    case EM_MOTION_ID(0, 10):
+    case EM_MOTION_ID(0, 11):
+    case EM_MOTION_ID(0, 14):
+    case EM_MOTION_ID(0, 17):
         if (em->rage != 0 && gScene.frame % 45 == 0) {
-            StageObj_K1C_CreateOnEm(em, 0xD, 0.4f * em->scaleX);
+            MonsterFx_CreateOnEm(em, 0xD, 0.4f * em->scaleX);
         }
         break;
     }
 }
 
-/* .data (0x90ACC0-0x932C70): the per-kind monster tables, read by the game
- * overlay (gEmLowHpRatios, gEmScaleRows, D_90DB30, D_90DCE0, gEmSizeLevelFactors there) and by
- * GmEm_SetupKind (gGmEmCallbackTbl), GmEm_SetMeshAlphas (gGmEmKind24MeshTex) and gm_load.c
+/* The file's .data: the per-kind monster tables, read by the game
+ * overlay (gEmLowHpRatios, gEmScaleRows, gEmBaseHp, gEmVersusHpFactors, gEmSizeLevelFactors there) and by
+ * GmEm_SetupKind (gGmEmCallbackTbl), GmEm_PrepareMeshSet (gGmEmFatalisBMatTex) and gm_load.c
  * (the lists of gGmKindFileLists). Generated by tools/gen_data.py: u32 words,
  * pointers as C; give them types when their users are worked on. */
 void GmEm_Nop(void);
@@ -4147,8 +4291,8 @@ extern void *EmGaruga_Callbacks[];
 extern void *EmGravios_Callbacks[];
 extern void *EmHermitaur_Callbacks[];
 extern void *EmKhezu_Callbacks[];
-extern void *EmKind0A_Callbacks[];
-extern void *EmKind12_Callbacks[];
+extern void *EmTrader_Callbacks[];
+extern void *EmFelyneCart_Callbacks[];
 extern void *EmKind1D_Callbacks[];
 extern void *EmKind38_Callbacks[];
 extern void *EmKirin_Callbacks[];
@@ -4168,9 +4312,9 @@ extern void *EmYamaTsukami_Callbacks[];
 u32 gGmEmCallbackTbl[76] = {
     (u32)gGmEmCallbackTbl_0, (u32)EmRathalos_Callbacks, (u32)EmFatalis_Callbacks, (u32)EmAnteka_Callbacks,
     (u32)EmMosswine_Callbacks, (u32)EmMosswine_Callbacks, (u32)EmKutku_Callbacks, (u32)EmLaoshan_Callbacks,
-    (u32)EmCephadrome_Callbacks, (u32)EmMelynx_Callbacks, (u32)EmKind0A_Callbacks, (u32)EmRathalos_Callbacks,
+    (u32)EmCephadrome_Callbacks, (u32)EmMelynx_Callbacks, (u32)EmTrader_Callbacks, (u32)EmRathalos_Callbacks,
     (u32)EmApceros_Callbacks, (u32)EmVelociprey_Callbacks, (u32)EmDiablos_Callbacks, (u32)EmKhezu_Callbacks,
-    (u32)EmVelociprey_Callbacks, (u32)EmGravios_Callbacks, (u32)EmKind12_Callbacks, (u32)EmVespoid_Callbacks,
+    (u32)EmVelociprey_Callbacks, (u32)EmGravios_Callbacks, (u32)EmFelyneCart_Callbacks, (u32)EmVespoid_Callbacks,
     (u32)EmKutku_Callbacks, (u32)EmPlesioth_Callbacks, (u32)EmGravios_Callbacks, (u32)EmMelynx_Callbacks,
     (u32)EmVespoid_Callbacks, (u32)EmApceros_Callbacks, (u32)EmDiablos_Callbacks, (u32)EmDrome_Callbacks,
     (u32)EmDrome_Callbacks, (u32)EmKind1D_Callbacks, (u32)EmVelociprey_Callbacks, (u32)EmDrome_Callbacks,
@@ -4186,8 +4330,8 @@ u32 gGmEmCallbackTbl[76] = {
     (u32)EmBulldrome_Callbacks, (u32)EmAnteka_Callbacks, (u32)EmApceros_Callbacks, (u32)EmFatalis_Callbacks,
     (u32)EmYamaTsukami_Callbacks, (u32)EmHermitaur_Callbacks, 0x00000000, 0x00000000,
 };
-/* The texture offsets of the 32 meshes of kind 0x24 (GmEm_SetMeshAlphas). */
-s16 gGmEmKind24MeshTex[40] = {
+/* The texture offsets of the 32 meshes of kind 0x24 (GmEm_PrepareMeshSet). */
+s16 gGmEmFatalisBMatTex[40] = {
 #include "gm_sub/0090DF40.inc"
 };
 u32 gGmEmCallbackTbl_0[8] = {
@@ -4553,7 +4697,7 @@ u32 D_0090F0B8[3] = {
 };
 extern u32 gEmKindTables_68_0[];
 extern u32 gEmKindTables_68_2[];
-extern u32 D_008C30E0[];
+extern u32 gEmRouteSets[];
 u32 D_0090F0D0[60] = {
 #include "gm_sub/0090F0D0.inc"
 };

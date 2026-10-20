@@ -1,6 +1,7 @@
 /* Functions matched automatically from m2c's output;
  * the others are still assembly. First-pass C, to be named and typed. */
 #include "common.h"
+#include "net_save.h"
 #include "sprite.h"
 #include "net_mode.h"
 #include "m2c_macros.h"
@@ -30,11 +31,9 @@ typedef struct FieldPos {
 extern FieldPos gNetFieldPos[];
 extern ListWin gNetModeFrame;
 extern s32 gCardMenuTex;
-extern char gMmbbLoginId[];
-extern char D_5BE6BB[];
 extern char gNetVerDigits[];
 extern char D_008EDF11[];
-s32 Card_IsFlagF040(void);
+s32 CardMenu_IsTexOn(void);
 s32 Gs_GetState(u8 reg);
 s32 Gs_SetState(u8, u32);
 s32 Tex_Use(s32 n, u32 *handles);
@@ -55,7 +54,7 @@ void Font_SetPos(s16 x, s16 y);
 void Font_Printf(const char *fmt, ...);
 
 /* empty; its one caller (NetMode_RunSetup) passes 0 */
-void func_007CF340(s32 unused) {
+void NetMode_EmptyDrawHook(s32 unused) {
 
 }
 
@@ -74,7 +73,7 @@ void NetMode_Draw(DrawSlot *ds /* unused: the draw-slot walk passes it */)
     s32 r4;
     Sprite s;
 
-    if (Card_IsFlagF040() == 1 && gCardMenuTex != 0) {
+    if (CardMenu_IsTexOn() == 1 && gCardMenuTex != 0) {
         r6C = Gs_GetState(0x6C);
         r5E = Gs_GetState(0x5E);
         r63 = Gs_GetState(0x63);
@@ -190,10 +189,10 @@ void NetMode_PrintField(s32 unused, s32 kind)
     case 4:
         break;
     case 1:
-        strcpy(buf, gMmbbLoginId);
+        strcpy(buf, gNetSaveData.mmbbLoginId);
         break;
     case 2:
-        n = strlen(D_5BE6BB);
+        n = strlen(gNetSaveData.mmbbPassword);
         if (n != 0) {
             for (i = 0; i < n; i++) {
                 buf[i] = '*';

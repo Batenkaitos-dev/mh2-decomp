@@ -36,7 +36,7 @@ The rows of `ninja progress`:
   `NON_MATCHING` block is left.
   - 12,497 are C.
   - 42 are CodeWarrior `asm` functions in their C files
-    (`src/sub_main/unk_2E3940.c` and `unk_2F17C0.c`): VU0 code, which MWCC
+    (`src/sub_main/engine_core.c` and `vu1_packets.c`): VU0 code, which MWCC
     never emits from C ([docs/mwcc-matching.md](docs/mwcc-matching.md),
     "What can't come from C").
   - 12 are main's hand-written copy and fill loops
@@ -63,7 +63,7 @@ The rows of `ninja progress`:
   type, name and size are in the source, and its values and the game's
   texts come from your copy at build time
   ([CONTRIBUTING.md](CONTRIBUTING.md), "Content").
-- **Readability.** 12,400 of the 12,551 functions have real names (the
+- **Readability.** 12,527 of the 12,551 functions have real names (the
   `named` column of `ninja progress`). What is left to name and tidy is
   under [Contributing](#contributing).
 

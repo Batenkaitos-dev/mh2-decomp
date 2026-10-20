@@ -29,7 +29,7 @@ extern PadState gPadState[2];
 
 /*
  * The game's button bits (PadState.held, pressed, repeat ...;
- * PadPortInput.buttons), which PadState_Update (unk_2E3940.c) builds from
+ * PadPortInput.buttons), which PadState_Update builds from
  * the core's bits (PADIO_*, include/padio.h). They are named for the
  * buttons of the default configuration: the core's PadConfig can remap
  * them first. In the menus PAD_CIRCLE confirms and PAD_CROSS cancels.
@@ -52,6 +52,7 @@ extern PadState gPadState[2];
 #define PAD_START 0x8000
 #define PAD_DPAD (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT) /* 0x3C00 */
 #define PAD_ALL 0xFFFF                                      /* every button */
+#define PAD_REPLAY_END 0xFFFF                               /* a pad replay's end marker, in place of a frame count (Pad_ReadButtons) */
 
 /*
  * PadState.dir: the sticks' directions as bits. The left stick uses the
@@ -79,7 +80,7 @@ typedef struct PadStickPair {
     u16 right;  /* the right stick's (magR or degR) */
 } PadStickPair;
 
-/* sub_main 0x6AE088: the pad input per controller port (unk_36BE70.c fills it from gPadState;
+/* The pad input per controller port (Pad_UpdateInput fills it from gPadState;
  * Player_CopyPadInput copies it into a player's PlayerInput, whose stick fields have the same
  * names). The buttons and the direction keep the previous frame's value; the sticks keep
  * both sticks instead. */

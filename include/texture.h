@@ -2,8 +2,8 @@
 #define TEXTURE_H
 
 /*
- * The core's texture and palette handles (src/main/texture.c, texconv.c,
- * unk_17EB00.c): Capcom's fl layer (flCreatePaletteHandle and
+ * The core's texture and palette handles (texture.c, texconv.c and the
+ * VRAM slots): Capcom's fl layer (flCreatePaletteHandle and
  * flPS2ConvertTextureFromContext are named in its error strings).
  *
  * A texture handle is index + 1 of gTexRecs, a palette handle
@@ -56,7 +56,7 @@ typedef struct VramBlock {
     s32 size;
 } VramBlock;
 
-/* A texture's place in GS memory: 512 of them at 0x2151A0, in a list
+/* A texture's place in GS memory: 512 of them (gVramSlots), in a list
  * ordered by address (gVramSlotHead). */
 typedef struct VramSlot {
     /* 0x00 */ struct VramSlot *prev;
@@ -116,7 +116,7 @@ VramSlot *VramSlot_Alloc(VramSlot *table, s32 n);
 void VramSlot_Free(VramSlot *s);
 void VramSlot_Insert(VramSlot *pos, VramSlot *s);
 
-/* unk_17EB00.c */
+/* Finding and assigning VRAM slots; the screen texture. */
 VramSlot *VramSlot_Find(TexRec *t);
 s32 VramSlot_Assign(VramSlot *after, TexRec *t);
 s32 VramSlot_Replace(VramSlot *s, TexRec *t);
@@ -130,7 +130,7 @@ s32 ScreenTex_Capture(s32 fromTex);
 s32 ScreenTex_Upload(void);
 void ScreenTex_Release(void);
 
-/* unk_17F660.c */
+/* Sending the screen texture to the GS. */
 void ScreenTex_Send(TexRec *t);
 void ScreenTex_SetRegs(void);
 s32 ScreenTex_Reserve(u32 *pixels);
@@ -138,7 +138,7 @@ s32 ScreenTex_Reserve(u32 *pixels);
 /* The most textures one pack registers (Tex_RegisterPack). */
 #define TEX_PACK_MAX 100
 
-/* A model's texture pack as Model_SetupLoadedPack passes it (unk_333D70.c):
+/* A model's texture pack as Model_SetupLoadedPack passes it:
  * its count, then its file. */
 typedef struct TexPackHead {
     s32 count;          /* 0x0: the textures (Model.texCount); a second is registered from 2 */
@@ -146,11 +146,31 @@ typedef struct TexPackHead {
 } TexPackHead;
 
 /* The slots of the textures loaded by id (gTexIds, gTexIdHandles;
- * Tex_LoadById, unk_335040.c): the player looks' texture sets. */
+ * Tex_LoadById): the player looks' texture sets. */
 #define TEX_ID_SLOTS 8
 
 /* gTexHandles (sub_main): the texture handles of the game's fixed texture
  * slots, by slot (Mem_InitLayout clears them). */
 #define TEX_HANDLE_COUNT 371
+
+/* The fixed texture slot of the icon sheet: the pad buttons
+ * (Hud_DrawButtonIcon), the weapon classes and the equipment. */
+#define TEX_SLOT_ICONS 0x155
+
+/* The fixed texture slot of the area map: Tex_LoadFile picks its picture
+ * from the map pack by gScene.map; Map_DrawAreaChange draws it. */
+#define TEX_SLOT_AREA_MAP 0x154
+
+/* The fixed texture slot of the pictures: the sheet whose cells
+ * EntryPicture_GetUVf picks (the gallery board and the lobby's lists
+ * bind it before drawing one). */
+#define TEX_SLOT_PICTURES 0x147
+
+/* gScreenCaptureOk: the quest end's screen capture in gReadBuf
+ * (ScreenCapture_Take, ScreenCapture_Draw; the scene reserves its VRAM). */
+#define SCREEN_CAPTURE_STATE 0x7F       /* the mask of its state: */
+#define SCREEN_CAPTURE_TAKEN 1          /* captured */
+#define SCREEN_CAPTURE_RESERVED 2       /* its VRAM is reserved (ScreenTex_Reserve) */
+#define SCREEN_CAPTURE_OPAQUE 0x80      /* every pixel's alpha has been made opaque */
 
 #endif /* TEXTURE_H */

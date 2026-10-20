@@ -4,7 +4,9 @@
  * include/browser.h. */
 #include "common.h"
 #include "browser.h"
+#include "html.h"
 #include "lobby_globals.h"
+#include "kbd.h"
 
 /* Compiled at optimization level 4 (Dialog_PageStep matches only
  * so; every other function matches at 3 and 4). */
@@ -50,7 +52,7 @@ void Page_Navigate(void);
 void Page_Clamp(void);
 s32 BrowserReq_CanReload(void);                       /* History_CanBack? */
 s32 memcmp(const char *a, const char *b, u32 n); /* main: strncmp */
-extern char D_00839058[]; /* "lbs://" */
+extern char gLbsScheme[]; /* "lbs://" */
 extern char D_00839110[];
 extern char D_00839130[];
 void Browser_GoForward(void);
@@ -62,45 +64,33 @@ void Page_DragScroll(void);
 void Page_ScrollInput(void);
 void Page_PointAt(void);
 
-extern char D_00839060[]; /* "user-id" */
 extern u8 gPortalPage; /* sub_main: how the browser was entered (0 .. 3); named in lobby_browser.txt */
-extern char D_00839068[]; /* "connection-id" */
 s32 strcmp(const char *a, const char *b); /* main: strcmp */
 extern char D_00839140[]; /* "https://www01.kddi-mmbb.jp/00000080/CRS-top.jsp" */
 void PageObj_UpdateLayer(s32 layer);
 void PageObj_Free(BrowserObj *o);
 void PageObj_InitPool(void);
 void PageTex_ReleaseAll(void);
-void DlgBack_Create(s32 mode);
+void DlgBackImg_Create(s32 mode);
 void DlgPage_Create(s32 mode);
 void DlgVScroll_Create(s32 mode);
 void DlgHScroll_Create(s32 mode);
 void DlgStatus_Create(s32 mode);
-void DlgMsg_Create(s32 mode);
+void DlgMenu_Create(s32 mode);
 void DlgInput_Create(s32 mode);
-void DlgCursor_Create(s32 mode);
+void DlgPointer_Create(s32 mode);
 void DlgBox_Create(s32 mode);
-void DlgBack_DrawAll(void);
+void DlgBackImg_DrawAll(void);
 void DlgPage_DrawAll(void);
 void DlgVScroll_DrawAll(void);
 void DlgHScroll_DrawAll(void);
 void DlgStatus_DrawAll(void);
-void DlgMsg_DrawAll(void);
+void DlgMenu_DrawAll(void);
 void DlgInput_DrawAll(void);
-void DlgCursor_DrawAll(void);
+void DlgPointer_DrawAll(void);
 void DlgBox_DrawAll(void);
 
 extern u8 gConnCheckState;       /* the lobby connection's state */
-/* The registration record being filled (0x1D0 bytes; unk_72C7C0.c fills it). */
-typedef struct RegRec {
-    s8 name[0x41];  /* 0x000 */
-    s8 x41[0xB];    /* 0x041 */
-    s8 x4C[0x81];   /* 0x04C */
-    s8 xCD[0x81];   /* 0x0CD */
-    s8 num;         /* 0x14E */
-    s8 x14F[0x81];  /* 0x14F */
-} RegRec;
-extern RegRec gRegRecord;
 extern u8 gLobbyPageData[];     /* the registration record kept */
 
 /* The USB keyboard's state (sub_main): +0x668 the key pressed. */
@@ -115,7 +105,7 @@ void Portal_FailStep(void)
     if (BrowserReq_Poll(&gBrowserWork->url) != NULL) {
         gBrowserWork->reqBusy = 0;
         Browser_Fail(0);
-        gBrowserState->mode = 2;
+        gBrowserState->mode = BMODE_END;
         gBrowserState->step = 0;
     }
 }
@@ -128,16 +118,16 @@ void Browser_UpdateFrame(void)
     BrowserState *st = gBrowserState;
     s32 plain = st->initMode;
 
-    if (plain != 0 && st->page != 10 && st->fade >= 0) {
+    if (plain != 0 && st->page != PAGE_LOAD_DONE && st->fade >= 0) {
         Browser_SetRenderState(0x14, 0xFF000001);
         PageObj_UpdateLayer(6);
         Callbacks_Add(DlgBox_DrawAll);
         return;
     }
     if (plain == 0) {
-        Browser_SetRenderState(0x14, st->color);
-    } else if (gBrowserWork->dlgBoxKind == 1 && st->fade == 0) {
-        Browser_SetRenderState(0x14, st->color);
+        Browser_SetRenderState(0x14, st->bgColor);
+    } else if (gBrowserWork->dlgBoxKind == BDLG_KIND_NONE && st->fade == 0) {
+        Browser_SetRenderState(0x14, st->bgColor);
     } else {
         Browser_SetRenderState(0x14, 0xFF000001);
     }
@@ -145,7 +135,7 @@ void Browser_UpdateFrame(void)
         PageObj_UpdateLayer(6);
         Callbacks_Add(DlgBox_DrawAll);
         PageObj_UpdateLayer(8);
-        Callbacks_Add(DlgCursor_DrawAll);
+        Callbacks_Add(DlgPointer_DrawAll);
         return;
     }
     if (gBrowserWork->firstPage != 0) {
@@ -154,7 +144,7 @@ void Browser_UpdateFrame(void)
         return;
     }
     PageObj_UpdateLayer(0);
-    Callbacks_Add(DlgBack_DrawAll);
+    Callbacks_Add(DlgBackImg_DrawAll);
     PageObj_UpdateLayer(1);
     Callbacks_Add(DlgPage_DrawAll);
     PageObj_UpdateLayer(2);
@@ -162,15 +152,15 @@ void Browser_UpdateFrame(void)
     Callbacks_Add(DlgHScroll_DrawAll);
     Callbacks_Add(DlgStatus_DrawAll);
     PageObj_UpdateLayer(3);
-    Callbacks_Add(DlgMsg_DrawAll);
+    Callbacks_Add(DlgMenu_DrawAll);
     PageObj_UpdateLayer(4);
     Callbacks_Add(DlgInput_DrawAll);
-    if (gBrowserWork->dlgInputState == 1) {
+    if (gBrowserWork->dlgInputState == BDLG_INPUT_OPEN) {
         return;
     }
-    if (gBrowserState->page != 10) {
+    if (gBrowserState->page != PAGE_LOAD_DONE) {
         PageObj_UpdateLayer(8);
-        Callbacks_Add(DlgCursor_DrawAll);
+        Callbacks_Add(DlgPointer_DrawAll);
         PageObj_UpdateLayer(6);
         Callbacks_Add(DlgBox_DrawAll);
         return;
@@ -178,16 +168,16 @@ void Browser_UpdateFrame(void)
     PageObj_UpdateLayer(6);
     Callbacks_Add(DlgBox_DrawAll);
     PageObj_UpdateLayer(8);
-    Callbacks_Add(DlgCursor_DrawAll);
+    Callbacks_Add(DlgPointer_DrawAll);
 }
 
-void func_007349D0(void)
+void Browser_InitNothing(void)
 {
 }
 
-void func_007349E0(void)
+void Browser_InitHook(void)
 {
-    func_007349D0();
+    Browser_InitNothing();
 }
 
 s32 PageObj_Activate(u16 idx, s32 sound);
@@ -254,7 +244,7 @@ void Draw_Cmd(u8 kind, u8 sub, u16 x, u16 y, u16 x2, u16 y2, u32 color, u8 size,
     switch (gBrowserTopMode) {
     default:
         return;
-    case 0:
+    case BROWSER_TOP_PORTAL:
         break;
     }
     i = 0;
@@ -459,18 +449,18 @@ void Draw_Cmd(u8 kind, u8 sub, u16 x, u16 y, u16 x2, u16 y2, u32 color, u8 size,
                 o = gBrowserWork->obj[i];
                 switch ((((u8 *)o->s1)[0] - '0') * 10 + (((u8 *)o->s1)[1] - '0')) {
                 case 0:
-                    DRAW_FIELD(xCD)
+                    DRAW_FIELD(box00)
                 case 1:
-                    DRAW_FIELD(name)
+                    DRAW_FIELD(box01)
                 case 2:
                     gBrowserWork->obj[i]->s2 = (char *)gBrowserWork->cmdPtr;
-                    if (gRegRecord.num / 10 != 0) {
+                    if (gRegRecord.box02 / 10 != 0) {
                         num = 2;
-                        *gBrowserWork->cmdPtr++ = gRegRecord.num / 10 + '0';
-                        *gBrowserWork->cmdPtr++ = gRegRecord.num % 10 + '0';
-                    } else if (gRegRecord.num != 0) {
+                        *gBrowserWork->cmdPtr++ = gRegRecord.box02 / 10 + '0';
+                        *gBrowserWork->cmdPtr++ = gRegRecord.box02 % 10 + '0';
+                    } else if (gRegRecord.box02 != 0) {
                         num = 1;
-                        *gBrowserWork->cmdPtr++ = gRegRecord.num % 10 + '0';
+                        *gBrowserWork->cmdPtr++ = gRegRecord.box02 % 10 + '0';
                     } else {
                         num = 0;
                     }
@@ -478,13 +468,13 @@ void Draw_Cmd(u8 kind, u8 sub, u16 x, u16 y, u16 x2, u16 y2, u32 color, u8 size,
                     gBrowserWork->cmdPtr += maxlen - num;
                     break;
                 case 3:
-                    DRAW_FIELD(x41)
+                    DRAW_FIELD(box03)
                 case 8:
-                    DRAW_FIELD(xCD)
+                    DRAW_FIELD(box00)
                 case 5:
-                    DRAW_FIELD(x4C)
+                    DRAW_FIELD(box05)
                 case 7:
-                    DRAW_FIELD(x14F)
+                    DRAW_FIELD(box07)
                 default:
                 dflt:
                     DRAW_VALUE(s2)
@@ -568,7 +558,7 @@ s32 Page_Load(void)
     }
     gBrowserWork->reqBusy = 0;
     gBrowserState->forceStyle8 = 0;
-    switch (r->code) { /* 0 the page, 1 no connection, 2 ... 14 */
+    switch (r->result) { /* 0 the page, 1 no connection, 2 ... 14 */
     case 14:
         gBrowserState->forceStyle8 = 1;
     case 0:
@@ -576,21 +566,21 @@ s32 Page_Load(void)
         memset(gBrowserState->msg, 0, 0x100);
         if (strlen(gBrowserWork->pageData) == 0) {
             gBrowserWork->tries = 2;
-            gBrowserState->pageMode = 0;
+            gBrowserState->pageMode = CSV_KIND_NONE;
             return -2;
         }
         if (gBrowserWork->atMmbbUrl != 0) {
             switch (gPortalPage) {
-            case 1:
-            case 2:
-                gBrowserState->color = 0xFF000001;
+            case PORTAL_PAGE_BACK:
+            case PORTAL_PAGE_NEXT:
+                gBrowserState->bgColor = 0xFF000001;
                 gBrowserState->plain = 1;
                 break;
             }
         }
         if (gBrowserWork->startPosts > 1) {
             gBrowserWork->tries = 2;
-            gBrowserState->pageMode = 0;
+            gBrowserState->pageMode = CSV_KIND_NONE;
             return -2;
         }
         return 1;
@@ -607,7 +597,7 @@ s32 Page_Load(void)
         }
         if (strcmp(BrowserHist_CurUrl(), gMmbbData->f4) == 0 && strcmp(gBrowserUrl, gMmbbData->f4) != 0) {
             gBrowserWork->tries = 2;
-            gBrowserState->pageMode = 0;
+            gBrowserState->pageMode = CSV_KIND_NONE;
             return -2;
         }
         gBrowserState->plain = 0;
@@ -672,9 +662,9 @@ void Page_RequestImages(void)
         }
     }
     if (n > 0) {
-        gBrowserState->page = 8;
+        gBrowserState->page = PAGE_LOAD_IMAGES;
     } else {
-        gBrowserState->page = 10;
+        gBrowserState->page = PAGE_LOAD_DONE;
     }
 }
 
@@ -718,7 +708,7 @@ s8 Page_CheckImages(void)
         }
     }
     if (n == 0) {
-        gBrowserState->page = 10;
+        gBrowserState->page = PAGE_LOAD_DONE;
         return 1;
     }
     failed = 0;
@@ -736,14 +726,14 @@ s8 Page_CheckImages(void)
                         gBrowserWork->texFailOnce = 0;
                         return -1;
                     }
-                    gBrowserState->page = 10;
+                    gBrowserState->page = PAGE_LOAD_DONE;
                     return 1;
                 }
                 break;
             }
         }
     }
-    gBrowserState->page = 8;
+    gBrowserState->page = PAGE_LOAD_IMAGES;
     return 0;
 }
 
@@ -760,26 +750,26 @@ s32 Browser_Timers(void)
     }
     refresh = &gBrowserWork->refreshTimer;
     if (*refresh > 0) {
-        if (gBrowserWork->dlgMsgState != 0) {
+        if (gBrowserWork->dlgMenuState != BDLG_MENU_HIDDEN) {
             return 0;
         }
-        if (gBrowserWork->dlgInputState != 2) {
+        if (gBrowserWork->dlgInputState != BDLG_INPUT_IDLE) {
             return 0;
         }
-        if (gBrowserWork->dlgBoxKind != 1) {
+        if (gBrowserWork->dlgBoxKind != BDLG_KIND_NONE) {
             return 0;
         }
         if (--*refresh == 0) {
             Browser_SetUrl((BrowserWork *) &gBrowserWork->url, gBrowserState->url);
-            if (gBrowserState->page == 8) {
-                Browser_SetStep(8);
+            if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+                Browser_SetStep(PAGE_STEP_RELOAD);
                 return 1;
             }
             Browser_Reload();
             return 1;
         }
     }
-    scroll = &gBrowserWork->moveTimer;
+    scroll = &gBrowserWork->pressTimer;
     if (*scroll > 0) {
         (*scroll)--;
     } else {
@@ -791,14 +781,14 @@ s32 Browser_Timers(void)
 /* Page_CreateFrame: the frame's objects. */
 void Page_CreateFrame(void)
 {
-    DlgBack_Create(1);
+    DlgBackImg_Create(1);
     DlgPage_Create(1);
     DlgVScroll_Create(1);
     DlgHScroll_Create(1);
     DlgStatus_Create(1);
-    DlgMsg_Create(1);
+    DlgMenu_Create(1);
     DlgInput_Create(1);
-    DlgCursor_Create(1);
+    DlgPointer_Create(1);
     DlgBox_Create(1);
 }
 
@@ -820,33 +810,33 @@ void PortalEnd_Step0(void)
     char *id;
 
     if (gBrowserWork->endGoOn != 0) {
-        gPortalPage = 0;
+        gPortalPage = PORTAL_PAGE_TOP;
         if ((u8)gMmbbData->nextUrl[0] != 0) {
             Browser_Go(gMmbbData->nextUrl);
-            id = gBrowserState->field1;
+            id = gBrowserState->formLoginId;
             if ((u8)id[0] != 0 && strcmp(id, gMmbbData->userId) != 0) {
-                BrowserForm_Add(D_00839060, gBrowserState->field1);
+                BrowserForm_Add(gIdFieldNames.name.userId, gBrowserState->formLoginId);
             } else {
-                BrowserForm_Add(D_00839060, gMmbbData->userId);
+                BrowserForm_Add(gIdFieldNames.name.userId, gMmbbData->userId);
             }
-            BrowserForm_Add(D_00839068, gMmbbData->connectionId);
+            BrowserForm_Add(gIdFieldNames.name.connectionId, gMmbbData->connectionId);
             Browser_SetUrl((BrowserWork *) &gBrowserWork->url, gMmbbData->nextUrl);
             BrowserReq_Post(&gBrowserWork->url);
-            gBrowserWork->dlgBoxKind = 3;
+            gBrowserWork->dlgBoxKind = BDLG_KIND_LOADING_SMALL;
             gBrowserState->step = 4;
             return;
         }
     }
     gBrowserWork->freedObjs = 0;
-    gBrowserWork->dlgBackState = 4;
-    gBrowserWork->dlgPageState = 5;
-    gBrowserWork->dlgStatusState = 5;
-    gBrowserWork->dlgHScrollState = 5;
-    gBrowserWork->dlgVScrollState = 5;
-    gBrowserWork->dlgMsgState = 2;
-    gBrowserWork->dlgInputState = 3;
-    gBrowserWork->dlgBoxKind = 0xC;
-    gBrowserWork->dlgCursorState = 3;
+    gBrowserWork->dlgBackImgState = BDLG_BACK_CLOSE;
+    gBrowserWork->dlgPageState = BDLG_PAGE_CLOSE;
+    gBrowserWork->dlgStatusState = BDLG_STATUS_CLOSE;
+    gBrowserWork->dlgHScrollState = BDLG_SCROLL_CLOSE;
+    gBrowserWork->dlgVScrollState = BDLG_SCROLL_CLOSE;
+    gBrowserWork->dlgMenuState = BDLG_MENU_CLOSE;
+    gBrowserWork->dlgInputState = BDLG_INPUT_CLOSE;
+    gBrowserWork->dlgBoxKind = BDLG_KIND_CLOSE;
+    gBrowserWork->dlgPointerState = BDLG_POINTER_CLOSE;
     if (gBrowserState->initMode == 0) {
         Browser_DrawOverlay();
     }
@@ -857,7 +847,7 @@ void PortalEnd_Step0(void)
 void PortalEnd_Step1(void)
 {
     PageObj_UpdateLayer(0);
-    Callbacks_Add(DlgBack_DrawAll);
+    Callbacks_Add(DlgBackImg_DrawAll);
     PageObj_UpdateLayer(1);
     Callbacks_Add(DlgPage_DrawAll);
     PageObj_UpdateLayer(2);
@@ -865,13 +855,13 @@ void PortalEnd_Step1(void)
     Callbacks_Add(DlgHScroll_DrawAll);
     Callbacks_Add(DlgStatus_DrawAll);
     PageObj_UpdateLayer(3);
-    Callbacks_Add(DlgMsg_DrawAll);
+    Callbacks_Add(DlgMenu_DrawAll);
     PageObj_UpdateLayer(4);
     Callbacks_Add(DlgInput_DrawAll);
     PageObj_UpdateLayer(6);
     Callbacks_Add(DlgBox_DrawAll);
     PageObj_UpdateLayer(8);
-    Callbacks_Add(DlgCursor_DrawAll);
+    Callbacks_Add(DlgPointer_DrawAll);
     gBrowserState->step = 2;
 }
 
@@ -894,12 +884,12 @@ void PortalEnd_Step3(void)
 {
     s8 menu;
 
-    if (gBrowserTopMode == 0) {
+    if (gBrowserTopMode == BROWSER_TOP_PORTAL) {
         PageTex_ReleaseAll();
     }
     PageObj_InitPool();
     Font_SetHalfWidth(1);
-    if (gBrowserWork->endGoOn == 0 && gBrowserWork->endReason != 0) {
+    if (gBrowserWork->endGoOn == 0 && gBrowserWork->endReason != BROWSER_END_NONE) {
         Browser_Exit(-1);
         return;
     }
@@ -909,8 +899,8 @@ void PortalEnd_Step3(void)
         Browser_Exit(menu);
         return;
     }
-    if (gConnCheckState != 0) {
-        gConnCheckState = 3;
+    if (gConnCheckState != CONN_LOST_NONE) {
+        gConnCheckState = CONN_LOST_ENDED;
     }
     if (gBrowserWork->loginPosted != 0) {
         Browser_Exit(-100);
@@ -931,15 +921,15 @@ void PortalEnd_Step4(void)
         gBrowserWork->reqBusy = 0;
         gMmbbData->nextUrl[0] = 0;
         gBrowserWork->freedObjs = 0;
-        gBrowserWork->dlgBackState = 4;
-        gBrowserWork->dlgPageState = 5;
-        gBrowserWork->dlgStatusState = 5;
-        gBrowserWork->dlgHScrollState = 5;
-        gBrowserWork->dlgVScrollState = 5;
-        gBrowserWork->dlgMsgState = 2;
-        gBrowserWork->dlgInputState = 3;
-        gBrowserWork->dlgBoxKind = 0xC;
-        gBrowserWork->dlgCursorState = 3;
+        gBrowserWork->dlgBackImgState = BDLG_BACK_CLOSE;
+        gBrowserWork->dlgPageState = BDLG_PAGE_CLOSE;
+        gBrowserWork->dlgStatusState = BDLG_STATUS_CLOSE;
+        gBrowserWork->dlgHScrollState = BDLG_SCROLL_CLOSE;
+        gBrowserWork->dlgVScrollState = BDLG_SCROLL_CLOSE;
+        gBrowserWork->dlgMenuState = BDLG_MENU_CLOSE;
+        gBrowserWork->dlgInputState = BDLG_INPUT_CLOSE;
+        gBrowserWork->dlgBoxKind = BDLG_KIND_CLOSE;
+        gBrowserWork->dlgPointerState = BDLG_POINTER_CLOSE;
         if (gBrowserState->initMode == 0) {
             Browser_DrawOverlay();
         }
@@ -957,7 +947,7 @@ void Dialog_Run(void)
 void Dialog_Reset(void)
 {
     gBrowserSub->dlgStep = 1;
-    gBrowserSub->dlgMode = 0;
+    gBrowserSub->dlgMode = BDLG_MODE_PAGE;
     gBrowserSub->cursorX = 150;
     gBrowserSub->cursorY = 100;
     gBrowserSub->dragX = 0;
@@ -1013,26 +1003,26 @@ void Dialog_PageStep(void)
         return;
     }
     flags = gBrowserState->style;
-    if (((flags & 0x20) >> 5) != 0 && (flags & 1) && gBrowserSub->listCount == 0 &&
-        ((gBrowserWork->padPressed & 0x8000) || gKbd[0x668] == 0x29) && page == 10 && gBrowserState->plain == 0) {
+    if (((flags & PAGE_STYLE_CANCEL) >> 5) != 0 && (flags & PAGE_STYLE_POINTER) && gBrowserSub->listCount == 0 &&
+        ((gBrowserWork->padPressed & 0x8000) || gKbd->usbKey == USB_KEY_ESCAPE) && page == 10 && gBrowserState->plain == 0) {
         LobbySe_Play(0);
-        gBrowserWork->dlgMsgState = 1;
-        gBrowserSub->dlgMode = 2;
-        gBrowserWork->dlgStatusState = 1;
+        gBrowserWork->dlgMenuState = BDLG_MENU_SHOWN;
+        gBrowserSub->dlgMode = BDLG_MODE_MENU;
+        gBrowserWork->dlgStatusState = BDLG_STATUS_TITLE;
         gBrowserSub->dlgCursor = 3;
         gBrowserSub->listCount = 0;
-        gBrowserSub->listObj = 0;
-        gBrowserWork->dlgCursorState = 2;
+        gBrowserSub->activeObj = 0;
+        gBrowserWork->dlgPointerState = BDLG_POINTER_HIDDEN;
         return;
     }
-    if (((flags & 0x40) >> 6) != 0 && ((gBrowserWork->padPressed & 0x200) || gKbd[0x668] == 0x3E)) {
+    if (((flags & PAGE_STYLE_RELOAD) >> 6) != 0 && ((gBrowserWork->padPressed & 0x200) || gKbd->usbKey == USB_KEY_F5)) {
         if (gBrowserState->styleWait != 0 || gBrowserState->fade != 0) {
             return;
         }
         if (BrowserReq_CanReload() == 0) {
             return;
         }
-        if (memcmp(BrowserHist_CurUrl(), D_00839058, strlen(D_00839058)) == 0) {
+        if (memcmp(BrowserHist_CurUrl(), gLbsScheme, strlen(gLbsScheme)) == 0) {
             return;
         }
         page = gBrowserState->page;
@@ -1044,11 +1034,11 @@ void Dialog_PageStep(void)
             return;
         }
         if (page == 8) {
-            Browser_SetStep(10);
+            Browser_SetStep(PAGE_STEP_BACK);
             return;
         }
     }
-    if (((gBrowserState->style & 0x10) >> 4) != 0 && (gBrowserWork->padPressed & 0x100)) {
+    if (((gBrowserState->style & PAGE_STYLE_FORWARD) >> 4) != 0 && (gBrowserWork->padPressed & 0x100)) {
         if (gBrowserState->styleWait != 0 || gBrowserState->fade != 0) {
             return;
         }
@@ -1063,56 +1053,56 @@ void Dialog_PageStep(void)
             if (BrowserHist_CanForward() == 0) {
                 return;
             }
-            Browser_SetStep(7);
+            Browser_SetStep(PAGE_STEP_HISTORY);
             gBrowserState->histDir = 2;
             return;
         }
     }
-    flags = (gBrowserState->style & 8) >> 3;
-    if (flags != 0 && ((gBrowserWork->padPressed & 0x40) || gKbd[0x668] == 0x2A)) {
+    flags = (gBrowserState->style & PAGE_STYLE_BACK) >> 3;
+    if (flags != 0 && ((gBrowserWork->padPressed & 0x40) || gKbd->usbKey == USB_KEY_BACKSPACE)) {
         if (gBrowserState->styleWait != 0 || gBrowserState->fade != 0) {
             return;
         }
         if (strlen(gBrowserState->msg) != 0) {
-            if (gBrowserState->page == 1) {
+            if (gBrowserState->page == PAGE_LOAD_REQUESTED) {
                 return;
             }
             LobbySe_Play(4);
             if (memcmp(gBrowserState->msg, D_00839110, strlen(D_00839110)) == 0) {
-                if (gBrowserState->page == 8) {
-                    Browser_SetStep(12);
+                if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+                    Browser_SetStep(PAGE_STEP_CANCEL);
                     return;
                 }
-                gPortalExit = 2;
+                gPortalExit = PORTAL_EXIT_CANCEL;
                 Browser_Fail(0);
                 return;
             }
             Browser_Go(gBrowserState->msg);
-            gBrowserSub->listObj = 0;
-            if (gBrowserState->page == 8) {
-                Browser_SetStep(8);
+            gBrowserSub->activeObj = 0;
+            if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+                Browser_SetStep(PAGE_STEP_RELOAD);
                 return;
             }
             Browser_Reload();
         } else {
-            if (gBrowserState->page == 1) {
+            if (gBrowserState->page == PAGE_LOAD_REQUESTED) {
                 return;
             }
             LobbySe_Play(4);
-            if (gBrowserState->page == 10) {
+            if (gBrowserState->page == PAGE_LOAD_DONE) {
                 Browser_GoBack();
                 return;
             }
-            if (gBrowserState->page == 8) {
+            if (gBrowserState->page == PAGE_LOAD_IMAGES) {
                 if (BrowserHist_CanBack() == 0) {
                     return;
                 }
-                Browser_SetStep(7);
+                Browser_SetStep(PAGE_STEP_HISTORY);
                 gBrowserState->histDir = 1;
                 return;
             }
         }
-    } else if (flags == 0 && ((gBrowserWork->padPressed & 0x40) || gKbd[0x668] == 0x2A) &&
+    } else if (flags == 0 && ((gBrowserWork->padPressed & 0x40) || gKbd->usbKey == USB_KEY_BACKSPACE) &&
                strlen(gBrowserState->msg) != 0) {
         for (i = 0; i < 500; i++) {
             if (gBrowserWork->obj[i] == NULL || !gBrowserWork->obj[i]->active) {
@@ -1132,7 +1122,7 @@ void Dialog_PageStep(void)
         }
     }
     if (gBrowserState->page >= 8) {
-        if ((gBrowserWork->padPressed & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
+        if ((gBrowserWork->padPressed & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
             Page_Click();
         }
     }
@@ -1149,21 +1139,21 @@ void Dialog_PageStep(void)
         Page_ScrollInput();
     }
     Page_Clamp();
-    if (gBrowserSub->listObj == 0) {
+    if (gBrowserSub->activeObj == 0) {
         Page_PointAt();
     }
 }
 
 void Dialog_InputStep(void)
 {
-    gBrowserWork->dlgInputState = 1;
+    gBrowserWork->dlgInputState = BDLG_INPUT_OPEN;
 }
 
 void Dialog_ResetMsgState(void)
 {
-    gBrowserWork->dlgMsgState = 0;
-    gBrowserWork->dlgCursorState = 1;
-    gBrowserSub->dlgMode = 0;
+    gBrowserWork->dlgMenuState = BDLG_MENU_HIDDEN;
+    gBrowserWork->dlgPointerState = BDLG_POINTER_SHOWN;
+    gBrowserSub->dlgMode = BDLG_MODE_PAGE;
 }
 
 /* Dialog_MenuStep: the dialog's step 2, a menu of three (gBrowserSub->dlgCursor,
@@ -1179,15 +1169,15 @@ void Dialog_MenuStep(void)
     s32 b;
     u8 k;
 
-    if ((gBrowserWork->padPressed & 0x8000) || gKbd[0x668] == 0x29) {
+    if ((gBrowserWork->padPressed & 0x8000) || gKbd->usbKey == USB_KEY_ESCAPE) {
         LobbySe_Play(4);
-        gBrowserWork->dlgMsgState = 0;
-        gBrowserSub->dlgMode = 0;
-        gBrowserWork->dlgCursorState = 1;
+        gBrowserWork->dlgMenuState = BDLG_MENU_HIDDEN;
+        gBrowserSub->dlgMode = BDLG_MODE_PAGE;
+        gBrowserWork->dlgPointerState = BDLG_POINTER_SHOWN;
     }
-    if ((gBrowserWork->padPressed & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
+    if ((gBrowserWork->padPressed & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
         LobbySe_Play(0);
-        if (gBrowserState->page == 8) {
+        if (gBrowserState->page == PAGE_LOAD_IMAGES) {
             return;
         }
         for (i = 0; i < 3; i++) {
@@ -1239,7 +1229,7 @@ void Dialog_MenuStep(void)
                 sel++;
             }
         } else {
-            k = gKbd[0x668];
+            k = gKbd->usbKey;
             if (k == 0x52 || k == 0x51) {
                 if (k == 0x52) {
                     sel--;
@@ -1267,14 +1257,14 @@ void Dialog_MenuStep(void)
 void Dialog_ResetBoxState(void)
 {
     gBrowserState->fromTop = 0;
-    gBrowserWork->dlgBoxKind = 1;
-    gBrowserWork->dlgCursorState = 1;
-    gBrowserSub->dlgMode = 0;
+    gBrowserWork->dlgBoxKind = BDLG_KIND_NONE;
+    gBrowserWork->dlgPointerState = BDLG_POINTER_SHOWN;
+    gBrowserSub->dlgMode = BDLG_MODE_PAGE;
 }
 
 /* Dialog_ChoiceStep: the dialog's step 3, a choice by the box's kind
- * (dlgBoxKind): 4 one of three (with dlgBoxReady 1), 5 yes / no (the square
- * or Esc: no), 6 one of two (with dlgBoxReady 2); the choice's result goes to
+ * (dlgBoxKind): 4 one of three (with dlgQuestion 1), 5 yes / no (the square
+ * or Esc: no), 6 one of two (with dlgQuestion 2); the choice's result goes to
  * formKind. The cursor moves as in Dialog_MenuStep, up to 3 or 2. The pad
  * is read into a second `s32 c` for the cursor (one for both swapped two
  * registers). */
@@ -1288,97 +1278,97 @@ void Dialog_ChoiceStep(void)
     u8 k;
 
     switch (gBrowserWork->dlgBoxKind) {
-    case 4:
+    case BDLG_KIND_MESSAGE:
         max = 3;
         break;
-    case 5:
+    case BDLG_KIND_YES_NO:
         max = 2;
         break;
-    case 6:
+    case BDLG_KIND_CLEAR_LOGIN:
         max = 2;
         break;
     default:
         max = 2;
         break;
     }
-    gBrowserWork->formKind = 0;
+    gBrowserWork->loginSave = 0;
     switch (gBrowserWork->dlgBoxKind) {
-    case 4:
-        if ((gBrowserWork->padPressed & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
-            if (gBrowserWork->dlgBoxReady != 1) {
+    case BDLG_KIND_MESSAGE:
+        if ((gBrowserWork->padPressed & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
+            if (gBrowserWork->dlgQuestion != 1) {
                 return;
             }
             LobbySe_Play(0);
             switch (gBrowserSub->dlgCursor) {
             case 1:
-                gBrowserWork->formKind = 2;
+                gBrowserWork->loginSave = 2;
                 break;
             case 2:
-                gBrowserWork->formKind = 1;
+                gBrowserWork->loginSave = 1;
                 break;
             case 3:
-                gBrowserWork->formKind = 0;
+                gBrowserWork->loginSave = 0;
                 Dialog_ResetBoxState();
                 return;
             }
-            gBrowserWork->formKind += (s8)(gBrowserState->pageKind * 10);
+            gBrowserWork->loginSave += (s8)(gBrowserState->pageKind * 10);
             gBrowserWork->errorKind = 0;
-            gBrowserSub->dlgMode = 4;
+            gBrowserSub->dlgMode = BDLG_MODE_SAVE_LOGIN;
             gBrowserWork->keepLoginStep = 0;
             return;
         }
         goto move;
-    case 5:
+    case BDLG_KIND_YES_NO:
         b = gBrowserWork->padPressed;
-        if ((b & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
+        if ((b & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
             LobbySe_Play(0);
             Dialog_ResetBoxState();
             switch (gBrowserSub->dlgCursor) {
             case 1:
-                gBrowserWork->formKind = 0x3D;
+                gBrowserWork->loginSave = 0x3D;
                 break;
             case 2:
-                if (gBrowserState->page == 8) {
+                if (gBrowserState->page == PAGE_LOAD_IMAGES) {
                     gBrowserState->styleWait = 0;
-                    Browser_SetStep(7);
+                    Browser_SetStep(PAGE_STEP_HISTORY);
                     gBrowserState->histDir = 1;
                     return;
                 }
-                gBrowserWork->formKind = 0x3C;
+                gBrowserWork->loginSave = 0x3C;
                 Browser_GoBack();
                 break;
             }
             return;
         }
-        if ((b & 0x40) || gKbd[0x668] == 0x29) {
+        if ((b & 0x40) || gKbd->usbKey == USB_KEY_ESCAPE) {
             LobbySe_Play(4);
             Dialog_ResetBoxState();
-            if (gBrowserState->page == 8) {
+            if (gBrowserState->page == PAGE_LOAD_IMAGES) {
                 gBrowserState->styleWait = 0;
-                Browser_SetStep(7);
+                Browser_SetStep(PAGE_STEP_HISTORY);
                 gBrowserState->histDir = 1;
                 return;
             }
-            gBrowserWork->formKind = 0x3C;
+            gBrowserWork->loginSave = 0x3C;
             Browser_GoBack();
             return;
         }
         goto move;
-    case 6:
-        if ((gBrowserWork->padPressed & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
-            if (gBrowserWork->dlgBoxReady != 2) {
+    case BDLG_KIND_CLEAR_LOGIN:
+        if ((gBrowserWork->padPressed & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
+            if (gBrowserWork->dlgQuestion != 2) {
                 return;
             }
             LobbySe_Play(0);
             switch (gBrowserSub->dlgCursor) {
             case 1:
-                gBrowserWork->formKind = 0x52;
+                gBrowserWork->loginSave = 0x52;
                 gBrowserWork->errorKind = 0;
-                gBrowserSub->dlgMode = 4;
+                gBrowserSub->dlgMode = BDLG_MODE_SAVE_LOGIN;
                 gBrowserWork->keepLoginStep = 0;
                 break;
             case 2:
-                gBrowserWork->formKind = 0x50;
+                gBrowserWork->loginSave = 0x50;
                 Dialog_ResetBoxState();
                 break;
             }
@@ -1413,7 +1403,7 @@ void Dialog_ChoiceStep(void)
                     sel++;
                 }
             } else {
-                k = gKbd[0x668];
+                k = gKbd->usbKey;
                 if (k == 0x52 || k == 0x51) {
                     if (k == 0x52) {
                         sel--;
@@ -1493,16 +1483,16 @@ s32 Page_PointTo(u16 i, s8 anywhere)
 void Dialog_Register(void)
 {
     Browser_ListCursor(2);
-    if ((gBrowserWork->padPressed & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
+    if ((gBrowserWork->padPressed & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
         switch (gBrowserSub->dlgCursor) {
         case 1:
-            memcpy(gLobbyPageData, &gRegRecord, 0x1D0);
-            if (gBrowserState->page == 8) {
-                Browser_SetStep(0xB);
+            memcpy(gLobbyPageData, &gRegRecord, sizeof(gRegRecord));
+            if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+                Browser_SetStep(PAGE_STEP_GAME_MENU);
                 return;
             }
             LobbySe_Play(0);
-            gPortalExit = 1;
+            gPortalExit = PORTAL_EXIT_GAME_MENU;
             Browser_Fail(0);
             return;
         case 2:
@@ -1510,7 +1500,7 @@ void Dialog_Register(void)
             break;
         }
     }
-    if ((gBrowserWork->padPressed & 0x40) || gKbd[0x668] == 0x29) {
+    if ((gBrowserWork->padPressed & 0x40) || gKbd->usbKey == USB_KEY_ESCAPE) {
         Dialog_Close(0);
     }
 }
@@ -1518,10 +1508,10 @@ void Dialog_Register(void)
 /* Dialog_Ok: the circle button or Enter: 1; the cross or Escape: 0. */
 void Dialog_Ok(void)
 {
-    if ((gBrowserWork->padPressed & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
+    if ((gBrowserWork->padPressed & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
         Dialog_Close(1);
     }
-    if ((gBrowserWork->padPressed & 0x40) || gKbd[0x668] == 0x29) {
+    if ((gBrowserWork->padPressed & 0x40) || gKbd->usbKey == USB_KEY_ESCAPE) {
         Dialog_Close(0);
     }
 }
@@ -1535,7 +1525,7 @@ void Dialog_Exit(void)
     u16 i;
     u16 n;
 
-    gBrowserWork->dlgBoxKind = 0xB;
+    gBrowserWork->dlgBoxKind = BDLG_KIND_EXIT;
     if (gBrowserWork->endReason > 0 && gBrowserWork->netError == 0) {
         if (strcmp(gBrowserState->url, D_00839140) == 0) {
             Browser_ListCursor(2);
@@ -1552,13 +1542,13 @@ void Dialog_Exit(void)
             gBrowserWork->endGoOn = 1;
         }
     }
-    if ((gBrowserWork->padPressed & 0x20) || gKbd[0x668] == 0x28 || gKbd[0x668] == 0x58) {
+    if ((gBrowserWork->padPressed & 0x20) || gKbd->usbKey == USB_KEY_ENTER || gKbd->usbKey == USB_KEY_KP_ENTER) {
         LobbySe_Play(0);
         switch (gPortalPage) {
-        case 0:
-        case 2:
-            gBrowserWork->endReason = 2;
-            if (gBrowserTopMode == 0) {
+        case PORTAL_PAGE_TOP:
+        case PORTAL_PAGE_NEXT:
+            gBrowserWork->endReason = BROWSER_END_LEAVE;
+            if (gBrowserTopMode == BROWSER_TOP_PORTAL) {
                 n = 0;
                 for (i = 0; i < 500; i++) {
                     if (gBrowserWork->obj[i] == NULL || gBrowserWork->obj[i]->active == 0) {
@@ -1569,16 +1559,16 @@ void Dialog_Exit(void)
                     }
                 }
                 if (n) {
-                    gBrowserState->page = 8;
-                    Browser_SetStep(0xB);
+                    gBrowserState->page = PAGE_LOAD_IMAGES;
+                    Browser_SetStep(PAGE_STEP_GAME_MENU);
                     break;
                 }
             }
             gPortalExit = 0;
             Browser_Fail(0);
             break;
-        case 1:
-            if (gBrowserState->page == 8) {
+        case PORTAL_PAGE_BACK:
+            if (gBrowserState->page == PAGE_LOAD_IMAGES) {
                 for (;;) {
                 }
             }

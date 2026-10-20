@@ -5,7 +5,7 @@
 #include "save.h"
 
 /*
- * The system data (gSysSave, sub_main 0x6A9E50, 0x3C74 bytes): the options,
+ * The system data (gSysSave, 0x3C74 bytes): the options,
  * the network options, the chat phrases and the flags saved in the system
  * file (SaveMenu_CopySystem, SysSave_Exchange), and a copy of the loaded
  * character (Save_LoadSlot).
@@ -48,25 +48,43 @@ typedef char PhraseEntry_size_check[(sizeof(PhraseEntry) == 0x10) ? 1 : -1];
 
 typedef struct SysSave {
     SysOptions options;         /* 0x000 */
-    u8 netOptions[16];          /* 0x010: the network options (select_option.c's network page; lobby Lobby_GetNetOption0/1); was gNetOptions, an alias */
+    u8 netOptions[16];          /* 0x010: the network options (the options screen's network page; the lobby's Lobby_GetNetOption0/1) */
     char phrases[PHRASE_COUNT][PHRASE_LEN];     /* 0x020: the chat phrases (Phrase_ResetDefaults copies the defaults; the phrase menu gPhraseEntries) */
-    s32 bonusUnlocked;          /* 0x458: set by SysSave_UnlockBonus or from a card's copy (unk_3D54B0.c); unlocks the
-                                 * character editor's last hair style (option 0x11), and the lobby and select test it
-                                 * with event flag 0x7C */
+    s32 bonusUnlocked;          /* 0x458: set by SysSave_UnlockBonus, or ORed in from the system file (SysSave_Exchange);
+                                 * unlocks the character editor's last hair style (option 0x11), and the lobby and select
+                                 * test it with event flag 0x7C */
     u8 lastSlot;                /* 0x45C: the character slot last saved or loaded (gChrEdit.slot) */
     u8 charSaved;               /* 0x45D: 3 once a character was saved (the PrepareSave states); kept in the system file (SysSave_Exchange); no reader seen */
-    u8 unk45E;                  /* 0x45E-0x461: flags ORed with the card copy's (SysSave_Exchange) */
-    u8 unk45F;
-    u8 unk460;
-    u8 unk461;
+    u8 savedFlags[4];           /* 0x45E: flag bytes kept in the system file and ORed with its copy on a load, like
+                                 * bonusUnlocked (SysSave_Exchange, SysSave_MergeFlags); no code reads them */
     u8 pad462[2];
     SaveData save;              /* 0x464: the character as loaded (Save_LoadSlot loads a slot into it; the character editor builds a new one in it) */
-    u8 pad3C5C[2];
-    u8 oldGameKind;             /* 0x3C5E: copied from the system file (gOldGameKind) */
-    u8 pad3C5F[0x3C64 - 0x3C5F];
+    s8 charsLoaded;             /* 0x3C5C: the characters read from the card: cleared by the card menus' set-up, counted up
+                                 * by the loads (CardSave_ReadCharacters, CardSave_CountFree); no code reads it */
+    u8 pad3C5D;
+    s8 oldGameKind;             /* 0x3C5E: the system file's record of an earlier game's save (SaveMenu_CopySystem); while
+                                 * it is 0, the boot shows the message of the save found (gOldGameKind) */
+    u8 pad3C5F;
+    SaveData *cardSlots;        /* 0x3C60: the three save slots the card menus read and write (gCardSlots, the same word):
+                                 * gLobbySaveBuf in the lobby, else gSaveBuf */
     s32 eventFlags[2][2];       /* 0x3C64: the system data's event flags, a bit each (EventFlag_Set, EventFlag_Test),
                                  * ORed with the card copy's (SysSave_Exchange) */
 } SysSave;                      /* 0x3C74 bytes */
+
+/* The system file's body as the card holds it (at CARD_FILE_BODY in the file; SysSave_Exchange):
+ * the SysSave fields the file keeps. */
+typedef struct SysFileBody {
+    SysOptions options;         /* 0x00: SysSave.options */
+    u8 netOptions[16];          /* 0x10: SysSave.netOptions */
+    s32 bonusUnlocked;          /* 0x20 */
+    u8 lastSlot;                /* 0x24 */
+    u8 charSaved;               /* 0x25 */
+    u8 savedFlags[4];           /* 0x26 */
+    u8 oldGameKind;             /* 0x2A: SysSave.oldGameKind (OLD_GAME_*) */
+    u8 pad2B[0x30 - 0x2B];
+    s32 eventFlags[2][2];       /* 0x30 */
+    char phrases[PHRASE_COUNT][PHRASE_LEN];     /* 0x40: SysSave.phrases */
+} SysFileBody;
 
 extern SysSave gSysSave;
 

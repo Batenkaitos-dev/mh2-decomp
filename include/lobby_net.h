@@ -4,33 +4,214 @@
 #include "common.h"
 #include "lobby_state.h"
 #include "net_tcp.h"
+#include "lobby_cmd.h"
 
 /*
- * The lobby protocol, src/lobby/lobby_net.c.
- * NETWORK code: it must stay byte-for-byte for online play.
+ * The lobby protocol: its messages, requests, tasks and routes, the lists
+ * of the three levels and the records the replies fill (gLobbyNet).
+ * Network code: it stays byte for byte, as the whole build does.
  */
 
 /*
  * An outgoing message: a 12-byte header, sent from +4, then the payload.
  * The header is 82 (or 81) flag cmd(BE16) size(BE16) echo[2] 00 FF FF FF.
  */
+#define LOBBY_HEADER_SIZE 12        /* the header sent before the payload */
+#define LOBBY_MAGIC_CMD 0x81        /* LobbyPkt.magic of a message started from the command tables */
+#define LOBBY_MAGIC_RAW 0x82        /* of one started with a raw code */
+#define LOBBY_RECV_MAX 0x1000       /* the most payload bytes one receive takes (gLobbyRecvData) */
+#define LOBBY_RECV_PER_FRAME 4      /* the most messages Lobby_ReceiveAll takes in one frame */
+
+/* LobbyPkt.flag and LobbyHdr.flag (gLobbyNet.flag for the message received),
+ * and gLobbyCmdFlag[] */
+#define LOBBY_FLAG_REQUEST 1        /* a request: the sender waits for the reply */
+#define LOBBY_FLAG_REPLY 2          /* a reply: echo is the request's sequence number */
+#define LOBBY_FLAG_NOTIFY 0x10      /* a notification the server sends unasked */
+
+/* gLobbyCmdKind[]: an entry of the command tables is a message the client
+ * sends (LobbyPkt_BeginCmd takes its index) or one it receives
+ * (Lobby_DispatchCommand calls its handler) */
+#define LOBBY_KIND_RECV 1
+#define LOBBY_KIND_SEND 8
+#define LOBBY_CMD_COUNT 0x155       /* the command tables' entries */
+
+/* The routes: a notification or a request of the server's is passed by
+ * Lobby_RouteMessage(route) to the handler registered for its route
+ * (Net_SetHandler: LobbyRoute_Register registers them all). Each
+ * route carries one command (its code on the wire in the comment), or a few
+ * of one kind. Routes 4, 0x0F, 0x13, 0x18, 0x1C, 0x27, 0x29-0x2B, 0x2D, 0x2F
+ * and 0x34-0x36 have no handler registered: their messages are dropped. */
+#define NET_ROUTE_COUNT 0x38        /* gNetHandlers' entries */
+enum NetRoute {
+    NET_ROUTE_NONE = 0x00,          /* a reply only: nothing is routed */
+    NET_ROUTE_PARTY_READY = 0x01,   /* 6910: the quest party is complete */
+    NET_ROUTE_SERVER_CLOSE = 0x02,  /* 6003, and an error in 61A0's reply: the server closes the session */
+    NET_ROUTE_SHORT_MAIL = 0x03,    /* 6705: a short mail arrived */
+    NET_ROUTE_6706 = 0x04,          /* 6706, meaning unknown */
+    NET_ROUTE_DEPART_CANCEL = 0x05, /* 6004: the departure for a quest is cancelled */
+    NET_ROUTE_DEPART_ERROR = 0x06,  /* 6005: the same, with the server's text */
+    NET_ROUTE_SERVER_LEAVE = 0x07,  /* 6007: the server sends the player out of the lobby, with a text */
+    NET_ROUTE_LEVEL0_KICK = 0x08,   /* 6307: the server sends the player out of the level-0 entry */
+    NET_ROUTE_LEVEL1_KICK = 0x09,   /* 640C: out of the level-1 entry (the town) */
+    NET_ROUTE_LEVEL2_KICK = 0x0A,   /* 6505: out of the level-2 entry (the quest room) */
+    NET_ROUTE_CHAT_MESSAGE = 0x0B,  /* 6702: a chat message */
+    NET_ROUTE_CHAT_TELL = 0x0C,     /* 670C: a message to the player alone */
+    NET_ROUTE_TOWN_MSG = 0x0D,      /* 6708 and 670E: a town message */
+    NET_ROUTE_6202 = 0x0F,          /* 6202, meaning unknown */
+    NET_ROUTE_LEVEL0_NAME = 0x10,   /* 6204 */
+    NET_ROUTE_LEVEL0_VALUES = 0x11, /* 6205 */
+    NET_ROUTE_LEVEL0_STATE = 0x12,  /* 6206 */
+    NET_ROUTE_LEVEL0_TEXT = 0x13,   /* 620A */
+    NET_ROUTE_LEVEL1_NAME = 0x14,   /* 6302 */
+    NET_ROUTE_LEVEL1_VALUES = 0x15, /* 6303 */
+    NET_ROUTE_LEVEL1_STATE = 0x16,  /* 6304 */
+    NET_ROUTE_LEVEL1_TEXT = 0x17,   /* 6308: the recruiting text */
+    NET_ROUTE_630B = 0x18,          /* 630B, meaning unknown */
+    NET_ROUTE_LEVEL1_COLOR = 0x19,  /* 630D */
+    NET_ROUTE_LEVEL1_USER_IN = 0x1A,  /* 6411: a user entered the town */
+    NET_ROUTE_LEVEL1_USER_OUT = 0x1B, /* 6410: a user left it */
+    NET_ROUTE_640F = 0x1C,          /* 640F, meaning unknown */
+    NET_ROUTE_LEVEL2_NAME = 0x1D,   /* 6402 */
+    NET_ROUTE_LEVEL2_VALUES = 0x1E, /* 6403 */
+    NET_ROUTE_LEVEL2_STATE = 0x1F,  /* 6404 */
+    NET_ROUTE_LEVEL2_TEXT = 0x20,   /* 640D */
+    NET_ROUTE_LEVEL2_LIMITS = 0x21, /* 640B */
+    NET_ROUTE_LEVEL2_LOCKED = 0x22, /* 6405 */
+    NET_ROUTE_LEVEL2_COLOR = 0x23,  /* 650A */
+    NET_ROUTE_LEVEL2_USER_IN = 0x24,  /* 6503: a user entered the quest room */
+    NET_ROUTE_LEVEL2_USER_OUT = 0x25, /* 6502: a user left it */
+    NET_ROUTE_LEVEL2_MEMBERS = 0x26,  /* 6412 and 6506: the room's members */
+    NET_ROUTE_6414 = 0x27,          /* 6414, meaning unknown */
+    NET_ROUTE_USER_IN_KIND4 = 0x29,  /* LobbyNotify_UserInOut's kind 4, which no caller passes */
+    NET_ROUTE_USER_OUT_KIND5 = 0x2A, /* its kind 5, likewise */
+    NET_ROUTE_6890 = 0x2B,          /* 6890, meaning unknown */
+    NET_ROUTE_USER_CARD = 0x2C,     /* 6191 */
+    NET_ROUTE_SERVER_MESSAGE = 0x2D, /* 6010: a text from the server */
+    NET_ROUTE_USER_CARD_PART = 0x2E, /* 6193 */
+    NET_ROUTE_TOWN_CLOCK = 0x2F,    /* 6892 */
+    NET_ROUTE_TOWN_DATA = 0x30,     /* 6884, called directly (Net_CallHandler) */
+    NET_ROUTE_LEVEL2_POSTED_QUEST = 0x31, /* 650C */
+    NET_ROUTE_LEVEL1_GROUP_INFO = 0x33,   /* 631B */
+    NET_ROUTE_LEVEL0_KIND = 0x34,   /* 620B */
+    NET_ROUTE_LEVEL1_KIND = 0x35,   /* 630E */
+    NET_ROUTE_LEVEL2_KIND = 0x36    /* 6418 */
+};
+
+/*
+ * A town message's command: the first byte of a message that travels
+ * on NET_ROUTE_TOWN_MSG between the members of a town (TownMsg_Send to
+ * every member, TownMsg_SendTo to one, TownMsg_SendSelf to the player
+ * itself), then its data. TownMsg_Recv passes each to its handler, by
+ * these names.
+ * - The town's table seats and the contest's seats are kept by the town
+ *   host (LobbyState.hostId), and a house's seats by the house's owner: a
+ *   member asks, the keeper answers yes or no to everyone (the seat and
+ *   the asker's id), and the member then says it took the seat or left
+ *   it.
+ * - Commands 0x09, 0x11 and 0x13 do nothing, and 0x19 is read and
+ *   dropped; nothing in the game sends them, nor 0x26.
+ */
+enum TownMsgCmd {
+    TOWN_MSG_WALK = 0x00,           /* a member's position and area: it walks there (TownMsg_OnMove) */
+    TOWN_MSG_ACTOR = 0x01,          /* a member's state, position and look, to every member (TownMsg_OnActor) */
+    TOWN_MSG_PLACE = 0x02,          /* a member's position: it is put there at once (TownMsg_OnMove) */
+    TOWN_MSG_AREA = 0x03,           /* the area a member moved to (TownMsg_OnArea) */
+    TOWN_MSG_SEAT_ASK = 0x04,       /* a table seat (an ActSpot) is asked of the host */
+    TOWN_MSG_SEAT_ANSWER = 0x05,    /* the host's answer: yes or no, the seat, the asker's id */
+    TOWN_MSG_SOBER = 0x06,          /* the member is no longer drunk */
+    TOWN_MSG_SEAT_FREE = 0x07,      /* a member left its table seat (ActSpot_Release) */
+    TOWN_MSG_ACTOR_TO = 0x08,       /* TOWN_MSG_ACTOR, to one member (the answer to TOWN_MSG_SYNC_ASK) */
+    TOWN_MSG_09 = 0x09,             /* nothing: the only command accepted from outside the town */
+    TOWN_MSG_OFFER = 0x0A,          /* a member holds out items to another (OfferMsg) */
+    TOWN_MSG_OFFER_TAKE = 0x0B,     /* the taker asks for them: the giver checks and answers with TOWN_MSG_OFFER_RESULT */
+    TOWN_MSG_OFFER_RESULT = 0x0C,   /* the giver's answer (OfferResultMsg) */
+    TOWN_MSG_SYNC_ASK = 0x0D,       /* a newcomer asks a member for its area, state, offer, contest seat and tune */
+    TOWN_MSG_NAME_NOTICE = 0x0E,    /* a member's name, shown in the chat as it arrives */
+    TOWN_MSG_SEAT_TAKEN = 0x0F,     /* a member sat at the table seat the host gave it */
+    TOWN_MSG_FACING = 0x10,         /* a member's facing (Player.rot[1]) */
+    TOWN_MSG_11 = 0x11,             /* nothing */
+    TOWN_MSG_OFFER_END = 0x12,      /* the giver's offer is over: members waiting on it go back to idle */
+    TOWN_MSG_13 = 0x13,             /* nothing */
+    TOWN_MSG_HOUSE_VISIT = 0x14,    /* a member went into the house of the member whose id it gives (LobbyState.memberSlot) */
+    TOWN_MSG_HOUSE_SEAT_ASK = 0x15, /* a seat in a house is asked of its owner */
+    TOWN_MSG_HOUSE_SEAT_ANSWER = 0x16, /* the owner's answer: yes or no, the seat, the asker's id */
+    TOWN_MSG_HOUSE_SEAT_FREE = 0x17,   /* a member left its house seat (LobbyState.houseSeatBits) */
+    TOWN_MSG_HOUSE_SEAT_TAKEN = 0x18,  /* a member sat in the house seat its owner gave it */
+    TOWN_MSG_19 = 0x19,             /* read only by a house's guest, seated, and dropped */
+    TOWN_MSG_QUEST_INFO = 0x1A,     /* the quest the party sets out on: its data, the season and the rare roll */
+    TOWN_MSG_CONTEST_SEAT_ASK = 0x1B,    /* a contest seat (gTownSeats) is asked of the host */
+    TOWN_MSG_CONTEST_SEAT_ANSWER = 0x1C, /* the host's answer: yes or no, the seat, the asker's id */
+    TOWN_MSG_CONTEST_SEAT_FREE = 0x1D,   /* a member left its contest seat */
+    TOWN_MSG_CONTEST_SEAT_TAKEN = 0x1E,  /* a member sits in a contest seat (also the answer to TOWN_MSG_SYNC_ASK) */
+    TOWN_MSG_CONTEST_OPEN = 0x1F,   /* the host, both contest seats taken: each contestant gets the other's id */
+    TOWN_MSG_CONTEST_POWER = 0x20,  /* a contestant's power (Contest_RecvPower) */
+    TOWN_MSG_CONTEST_RESULT = 0x21, /* a contest's result (Contest_RecvResult) */
+    TOWN_MSG_CONTEST_START = 0x22,  /* the contest starts (Contest_RecvStart) */
+    TOWN_MSG_BGM = 0x23,            /* the town's tune and its position, played when none is (LobbyBgm_Play) */
+    TOWN_MSG_SONG_ASK = 0x24,       /* a member asks the host to play a song */
+    TOWN_MSG_SONG_ANSWER = 0x25,    /* the host's answer: busy or not, the song, the asker's id */
+    TOWN_MSG_BGM_POS = 0x26,        /* the first tune from a position */
+    TOWN_MSG_ARENA_OPEN = 0x27,     /* the arena quest is paid and the room full: the arena roles 1 and 3 choose (ArenaMenu_Open), the others wait */
+    TOWN_MSG_ARENA_TEAM = 0x28,     /* the second side's monsters and item (gNextQuest.teams[1], .teamItems[1]) */
+    TOWN_MSG_ARENA_TEAMS = 0x29,    /* both sides' monsters and items (gNextQuest.teams, .teamItems) */
+    TOWN_MSG_ARENA_SIDES = 0x2A,    /* who is on which side (gNextQuest.sideIds) */
+    TOWN_MSG_RECORDS_ASK = 0x2B,    /* asks a member for one kind of its records (TownMsg_SendRecords) */
+    TOWN_MSG_RECORDS_ITEMS = 0x2C,  /* the answers: the items seen (gSave.itemBits) */
+    TOWN_MSG_RECORDS_TITLES = 0x2D, /* the titles (gSave.titles) */
+    TOWN_MSG_RECORDS_SIZE_MAX = 0x2E, /* the monsters' largest sizes (gSave.sizeMax) */
+    TOWN_MSG_RECORDS_SIZE_MIN = 0x2F, /* their smallest (gSave.sizeMin) */
+    TOWN_MSG_RECORDS_HUNTED = 0x30, /* how many of each were hunted or captured */
+    TOWN_MSG_KITCHEN = 0x31,        /* the house kitchen's messages (enum KitchenMsg; TownMsg_OnKitchen) */
+    TOWN_MSG_RECORDS_LEGS = 0x32,   /* the equipment made, by EquipType: EQUIP_LEGS */
+    TOWN_MSG_RECORDS_HEAD = 0x33,   /* EQUIP_HEAD */
+    TOWN_MSG_RECORDS_BODY = 0x34,   /* EQUIP_BODY */
+    TOWN_MSG_RECORDS_ARMS = 0x35,   /* EQUIP_ARMS */
+    TOWN_MSG_RECORDS_WAIST = 0x36,  /* EQUIP_WAIST */
+    TOWN_MSG_RECORDS_BLADES = 0x37, /* EQUIP_BLADE */
+    TOWN_MSG_RECORDS_GUNS = 0x38,   /* EQUIP_GUN */
+    TOWN_MSG_POOGIE_POS = 0x39,     /* where the house's Poogie (NPC_POOGIE) stands */
+    TOWN_MSG_RECORDS_WEAPON_TALLY = 0x3A, /* the weapons' tallies (Records_TallyWeapons) */
+    TOWN_MSG_RECORDS_ARMOR_TALLY = 0x3B   /* the armour's (Records_TallyArmor) */
+};
+#define TOWN_MSG_AREAS 16   /* the town's areas a position message can name (gMsgAreaIds, Area_GetSetIndex) */
+
+/* The data of TOWN_MSG_OFFER and TOWN_MSG_OFFER_TAKE (0xE bytes): the
+ * items held out, and the other member's user id. */
+typedef struct OfferMsg {
+    /* 0x0 */ u16 item;
+    /* 0x2 */ u16 count;
+    /* 0x4 */ u8 id[8];             /* LOBBY_USER_ID_LEN bytes */
+    /* 0xC */ u8 padC[2];
+} OfferMsg;
+
+/* The data of TOWN_MSG_OFFER_RESULT (0xE bytes): the giver's answer to
+ * TOWN_MSG_OFFER_TAKE. */
+typedef struct OfferResultMsg {
+    /* 0x0 */ u16 item;
+    /* 0x2 */ s16 count;
+    /* 0x4 */ u8 id[8];             /* the taker's user id */
+    /* 0xC */ u8 refused;           /* 0: the items were given; 1: refused */
+    /* 0xD */ u8 padD;
+} OfferResultMsg;
+
 typedef struct LobbyPkt {
     /* 0x00 */ u16 len;         /* payload bytes written */
     /* 0x02 */ u16 pos;         /* write position in data */
-    /* 0x04 */ u8 magic;        /* 0x82 (LobbyPkt_Begin), 0x81 (LobbyPkt_BeginCmd) */
-    /* 0x05 */ u8 flag;         /* 2: a reply, which echoes the request's echo bytes */
+    /* 0x04 */ u8 magic;        /* LOBBY_MAGIC_CMD (LobbyPkt_BeginCmd) or LOBBY_MAGIC_RAW (LobbyPkt_Begin) */
+    /* 0x05 */ u8 flag;         /* LOBBY_FLAG_*: a reply echoes the request's echo bytes */
     /* 0x06 */ u8 cmd[2];       /* big-endian */
     /* 0x08 */ u8 size[2];      /* big-endian payload size (LobbyPkt_End) */
     /* 0x0A */ u8 echo[2];      /* a request's sequence number, or the echo of a reply */
-    /* 0x0C */ u8 unkC;
+    /* 0x0C */ u8 err;          /* a reply's error byte (LobbyHdr.err at the receiver): 0, or 0xFF for a request refused (LobbyPkt_SetError) */
     /* 0x0D */ u8 ff[3];
     /* 0x10 */ u8 data[0x300];
 } LobbyPkt;
 
+
 /* A received message's header (gLobbyRecvHdr, 0x10 bytes; Lobby_RecvPacket reads it): the
  * outgoing header's layout (LobbyPkt from +4), its byte 8 the reply's error. */
 typedef struct LobbyHdr {
-    /* 0x0 */ u8 magic;         /* the kind << 4 (0x82, 0x81) */
+    /* 0x0 */ u8 magic;         /* the kind << 4 (LOBBY_MAGIC_RAW, LOBBY_MAGIC_CMD) */
     /* 0x1 */ u8 flag;
     /* 0x2 */ u8 cmd[2];        /* big-endian */
     /* 0x4 */ u8 size[2];       /* big-endian payload size */
@@ -45,10 +226,36 @@ typedef char LobbyHdr_size_check[(sizeof(LobbyHdr) == 0x10) ? 1 : -1];
  * the last byte of its 8-byte stack home */
 typedef struct NetMsg {
     s8 kind;
-    s8 flag;                    /* signed: LobbyLogin_OnProgress and LobbyLevel2_OnList read it with lb */
+    s8 flag;                    /* signed: LobbyLogin_OnProgress and LobbyLevel2_OnListDone read it with lb */
     u16 n;
     u16 unk4;
 } NetMsg;
+
+/* NetMsg.kind, as the tasks and replies set it. */
+enum NetMsgKind {
+    NET_MSG_FAILED = -1,            /* a request or a task failed */
+    NET_MSG_DONE = 0,               /* a reply, or a task done */
+    NET_MSG_ROUTE = 1,              /* a route's message: flag is the route */
+    NET_MSG_PROGRESS = 2            /* a task's progress: flag is a NetProgress */
+};
+
+/*
+ * NetMsg.flag in the login task's and the list tasks' onDone calls says
+ * what happened (seen from the senders).
+ */
+enum NetProgress {
+    NET_PROGRESS_LOGIN_DONE = 0,    /* 6104: the login is over */
+    NET_PROGRESS_CHARAS = 1,        /* 6131: the account's characters are in gLobbyNet.charas */
+    NET_PROGRESS_CHARA_CHOSEN = 2,  /* 6132's reply: the character's id */
+    NET_PROGRESS_PATCH_OK = 3,      /* 6125: the patch arrived whole */
+    NET_PROGRESS_NOTICE = 4,        /* 6105: gLobbyNet.loginNotice is whole */
+    NET_PROGRESS_CHARA_FAILED = 7,  /* 6132's reply was an error (kind -1) */
+    NET_PROGRESS_PATCH_BAD = 9,     /* 6125: the patch's checksum is wrong (kind -1) */
+    NET_PROGRESS_LIST_COUNT = 10,   /* a list task has its count: gLobbyNet.nReplies replies to come (kind 2) */
+    NET_PROGRESS_LIST_REPLY = 11,   /* a list task got one of them (kind 2) */
+    NET_PROGRESS_LOGIN_PARAMS = 12, /* 61A0's reply: gLobbyNet.loginParams */
+    NET_PROGRESS_WEB_PAGE = 13      /* 68B0: gNetLoginWebPage */
+};
 
 /* a blob to send: passed by value */
 typedef struct NetBlob {
@@ -59,14 +266,34 @@ typedef struct NetBlob {
 } NetBlob;
 
 /* A request waiting for its reply (the message whose echo is seq). */
+#define NET_REQ_COUNT 0x80          /* gLobbyNet.req */
+#define NET_REQ2_COUNT 0x10         /* gLobbyNet.req2: the fixed slots (NetReq_TakeFixed) */
+#define NET_TASK_COUNT 0x10         /* gLobbyNet.task */
+/* gLobbyNet.task's slots: each runs one sequence of requests (slots 1, 10-12 and 15 are unused) */
+#define NET_TASK_LOGIN 0            /* the login (NetLoginTask) */
+#define NET_TASK_LEVEL0_LIST 2      /* level 0's list (NetLevel0ListTask) */
+#define NET_TASK_LEVEL1_LIST 3      /* level 1's list */
+#define NET_TASK_LEVEL2_LIST 4      /* level 2's list */
+#define NET_TASK_LEVEL1_ALLOWED 5   /* which level-1 settings may be set */
+#define NET_TASK_LEVEL2_RECS 6      /* the level-2 entry's records */
+#define NET_TASK_LEVEL2_SETTINGS 7  /* the level-2 entry's settings sent */
+#define NET_TASK_LEVEL1_SETTINGS 8  /* the level-1 entry's settings sent */
+#define NET_TASK_PARTY 9            /* the quest party */
+#define NET_TASK_DL_LIST 13         /* the files offered for download */
+#define NET_TASK_DL_FILE 14         /* one file downloaded */
+enum NetReqState {
+    NET_REQ_FREE,                   /* 0 */
+    NET_REQ_WAITING,                /* 1: sent, waiting for its reply (every starter) */
+    NET_REQ_TICKING                 /* 2: waiting, and onTick runs every frame */
+};
 typedef struct NetReq {
     /* 0x00 */ void (*onTick)(s32 i);                   /* every frame while state is 2 */
     /* 0x04 */ void (*onReply)(NetMsg m, NetMsg *pm);
-    /* 0x08 */ u8 unk8[0xE];
+    /* 0x08 */ u8 unk8[0xE];                          /* no use seen */
     /* 0x16 */ u16 seq;
-    /* 0x18 */ u8 state;                                /* 0: free */
-    /* 0x19 */ u8 unk19;
-    /* 0x1A */ u8 unk1A;
+    /* 0x18 */ u8 state;                                /* NetReqState */
+    /* 0x19 */ u8 unk19;                              /* cleared with the slot; no read seen */
+    /* 0x1A */ u8 unk1A;                              /* cleared with the slot; no read seen */
     /* 0x1B */ u8 pad1B;
 } NetReq;
 
@@ -78,24 +305,44 @@ typedef struct NetReq {
  * (state 2). A step sends a request; the request's reply callback sets reply
  * (1 or 2, or bits of it and 0x80 for an error), which the next step checks.
  */
+enum NetTaskState {
+    NET_TASK_RUNNING,               /* 0: the steps run */
+    NET_TASK_DONE,                  /* 1: onDone gets kind 0 */
+    NET_TASK_FAILED,                /* 2: onDone gets kind -1 */
+    /* The level-2 settings and records tasks (7 and 6), whose states 0-2 are
+     * stages, end on these instead. */
+    NET_TASK_END_DONE = 10,
+    NET_TASK_END_FAILED = 11
+};
+/* NetLevel2RecsTask's stages: its NetTask.state until NET_TASK_END_*. */
+enum NetRecsStage {
+    RECS_STAGE_COUNTS = 0,          /* 6603 the records' count, 6607 each record's sub-entry count */
+    RECS_STAGE_SENDABLE = 1,        /* 6601, 6602, 660F: what may be sent */
+    RECS_STAGE_FIELDS = 2           /* each record's and each sub-entry's fields */
+};
+enum NetTaskReply {
+    NET_REPLY_NONE,                 /* 0: waiting */
+    NET_REPLY_OK,                   /* 1: the reply came (kind 0) */
+    NET_REPLY_ERROR                 /* 2: it reported an error */
+};
 typedef struct NetTask {
     /* 0x00 */ void (*func)(s32 i);                     /* every frame while active is 1 */
     /* 0x04 */ void (*onDone)(NetMsg m, NetMsg *pm);    /* kind 0: done, -1: failed */
-    /* 0x08 */ u32 idx; /* the record a step works on (NetTask6: gLobbyNet.recs2.rec[idx], counted up); the starters set 0 or 1 */
+    /* 0x08 */ u32 idx; /* the record a step works on (NetLevel2RecsTask: gLobbyNet.recs2.rec[idx], counted up); the starters set 0 or 1 */
     /* 0x0C */ u32 pos; /* the entry or offset a step asks for next (counted up; +0x200 a block for the data reads) */
     /* 0x10 */ s32 unk10;
-    /* 0x14 */ s32 arg;                                 /* the starter's argument: the id the requests name (NetTask6's LobbyReq_66xx) */
-    /* 0x18 */ s32 reqFlags; /* which requests to send for each entry (the starter's flags & mask; the NetListEntry.flags bits: 1 6303, 2 6304, 4 6302...) */
+    /* 0x14 */ s32 arg;                                 /* the starter's argument: the id the requests name (NetLevel2RecsTask's LobbyReq_66xx) */
+    /* 0x18 */ s32 reqFlags; /* which requests to send for each entry: NET_ENTRY_* bits, the starter's flags within the level's NET_LEVELn_REQS */
     /* 0x1C */ s32 unk1C;
     /* 0x20 */ u8 active;
-    /* 0x21 */ u8 state;                                /* 0 running, 1 done, 2 failed */
+    /* 0x21 */ u8 state;                                /* NetTaskState */
     /* 0x22 */ u8 step;
-    /* 0x23 */ u8 reply;                                /* set by its reply callback */
+    /* 0x23 */ u8 reply;                                /* NetTaskReply, set by its reply callback */
     /* 0x24 */ u8 reqCount; /* requests per entry (the bits of reqFlags counted by the starter): nReplies = entries * reqCount; a step waits for that many free requests */
     /* 0x25 */ u8 pad25[3];
 } NetTask;
 
-/* the values of an entry: the replies to 6312, 6313 and 6314 (unk_7055A0.c) */
+/* the values of an entry: the replies to 6312, 6313 and 6314 */
 typedef struct NetEntryVals {
     u8 v[4];
 } NetEntryVals;
@@ -108,31 +355,45 @@ typedef struct NetUserRec {
     /* 0x11C */ u8 color[4];    /* the chat colours, as ChatLine.color: plsel's log copies them (6702 sends them) */
 } NetUserRec;
 
-/* 6892's reply (LobbyReply_6892): five u32, as many u32 as the fifth says
+/* 6892's reply (LobbyReply_TownClock): five u32, as many u32 as the fifth says
  * (at most 12), one more u32 */
-typedef struct Net6892 {
+typedef struct NetTownClock {
     /* 0x00 */ u32 time;             /* the lobby clock in ticks (gLobbyTime = LobbyWorld_TicksToSeconds) */
     /* 0x04 */ u32 dayTicks;         /* gTownDayTicks */
     /* 0x08 */ u32 day;              /* gTownDay */
     /* 0x0C */ u32 season;           /* gTownSeason */
     /* 0x10 */ s32 n;
     /* 0x14 */ u32 list[12];
-    /* 0x44 */ u32 unk44;
-} Net6892;
+    /* 0x44 */ u32 year;             /* gTownYear */
+} NetTownClock;
 
 /*
  * An entry of one of the three levels' lists (gLobbyNet.list0/list1/list2),
- * indexed by the server's id - 1 (the C also reads list1 as D_00852F40[id],
- * the same address). flags says which of the entry's requests were answered;
- * for the second level (63xx; the other levels have their own codes):
- * 1 6303 (users-unk10), 2 6304 (unk1E), 4 6302 (name), 8 6308 (text),
- * 0x10 630B, 0x80 630D (unk4), 0x200 631B (unk188), 0x400 630E (kind).
+ * indexed by the server's id - 1. flags says which of the entry's requests were answered
+ * (NET_ENTRY_*); a list task (NetLevel0ListTask-4) sends the requests its caller's
+ * flags ask for, within its level's mask, and is done when all are answered.
  */
+#define NET_ENTRY_VALUES 0x001      /* users .. unk10 (6205, 6303, 6403) */
+#define NET_ENTRY_STATE 0x002       /* state (6206, 6304, 6404) */
+#define NET_ENTRY_NAME 0x004        /* name (6204, 6302, 6402) */
+#define NET_ENTRY_TEXT 0x008        /* text (620A, 6308, 640D) */
+#define NET_ENTRY_LOCKED 0x010      /* locked (level 1: 630B; level 2: 6405) */
+#define NET_ENTRY_LIMITS 0x020      /* level 2: maxUsers and unk12-unk18 (640B) */
+#define NET_ENTRY_MEMBERS 0x040     /* level 2: roomMembers (6412) */
+#define NET_ENTRY_COLOR 0x080       /* color (630D, 650A) */
+#define NET_ENTRY_POSTED_QUEST 0x100 /* level 2: postedQuest (650C) */
+#define NET_ENTRY_GROUP_INFO 0x200  /* level 1: groupInfo (631B) */
+#define NET_ENTRY_KIND 0x400        /* kind (620B, 630E, 6418) */
+#define NET_LEVEL0_REQS (NET_ENTRY_VALUES | NET_ENTRY_STATE | NET_ENTRY_NAME | NET_ENTRY_TEXT | NET_ENTRY_KIND)
+/* level 1's mask leaves out NET_ENTRY_LOCKED: its 630B is never asked for */
+#define NET_LEVEL1_REQS (NET_LEVEL0_REQS | NET_ENTRY_COLOR | NET_ENTRY_GROUP_INFO)
+#define NET_LEVEL2_REQS (NET_LEVEL0_REQS | NET_ENTRY_LOCKED | NET_ENTRY_LIMITS | NET_ENTRY_MEMBERS \
+                         | NET_ENTRY_COLOR | NET_ENTRY_POSTED_QUEST)
 typedef struct NetListEntry {
     /* 0x000 */ u32 flags;
     /* 0x004 */ s32 color;          /* level 1 (630D): the name colour (Text_SetColor of its low half); level 2: 650A */
     /* 0x008 */ u16 id;
-    /* 0x00A */ u16 users;           /* LevelList_DrawEntries draws users/maxUsers */
+    /* 0x00A */ u16 users;           /* AreaList_DrawEntries draws users/maxUsers */
     /* 0x00C */ u16 questUsers;     /* users out of town: the level-1 list shows users - this as in town */
     /* 0x00E */ u16 maxUsers;        /* level 2: also the first value of 640B's reply */
     /* 0x010 */ u16 unk10;
@@ -140,10 +401,10 @@ typedef struct NetListEntry {
     /* 0x014 */ u16 unk14;
     /* 0x016 */ u16 unk16;
     /* 0x018 */ u16 unk18;
-    /* 0x01A */ u16 roomMembers;    /* 6412 (level 2): NetList2_Get6412 gives gLobby->roomMembers */
+    /* 0x01A */ u16 roomMembers;    /* 6412 (level 2): NetList2_GetMembers gives gLobby->roomMembers */
     /* 0x01C */ u16 unk1C;
     /* 0x01E */ u8 state;           /* 6206, 6304, 6404: 3 and 4 open (LevelEntry.state) */
-    /* 0x01F */ u8 unk1F;
+    /* 0x01F */ u8 locked;          /* level 2: a password is set (6405); level 1: 630B's byte */
     /* 0x020 */ char name[0x44];
     /* 0x064 */ char text[0x101];
     /* 0x165 */ u8 kind;              /* 630E, 6418, 620B (NetList0_GetKind: level 0's kind) */
@@ -154,9 +415,27 @@ typedef struct NetListEntry {
 
 /* a file the server offers for download (6883's reply: u8 index, u32 a, u32 b) */
 typedef struct NetDlFile {
-    /* 0x0 */ u32 a;
-    /* 0x4 */ u32 b;
+    /* 0x0 */ u32 size;
+    /* 0x4 */ u32 stamp;            /* a version or date the server gives with it */
 } NetDlFile;
+
+/* The downloaded quest files in the lobby work buffer (gLobbyWorkBuf): the
+ * QDL_FILE_COUNT files' records as last downloaded (NetDlFile; file 0 is
+ * the quest list, files 1-3 the quests) at +QDL_OFFSET, the list file right
+ * after them (RoomData; QDL_LIST_SIZE bytes are cleared for it), and the
+ * quests in gQuestFiles (sub_main), QUEST_FILE_SIZE bytes each. The list's
+ * word at +0xB88 holds its event bits. */
+#define QDL_OFFSET 0x6EF4
+#define QDL_FILE_COUNT 4
+#define QDL_LIST_SIZE 0x11C4
+#define QUEST_FILE_SIZE 0x300
+#define QDL_SAVED ((NetDlFile *)(*(s32 *)&gLobbyWorkBuf + QDL_OFFSET))
+#define QDL_LIST_FILE ((u8 *)(QDL_SAVED + QDL_FILE_COUNT))
+#define QDL_LIST_EVENT_BITS (*(u16 *)(QDL_LIST_FILE + 0xB88))
+/* The list file's RoomData.areaKindHelp[kind] (at 0x27C), its offsets
+ * added one by one as the game's code adds them: the member's address
+ * through QDL_LIST_FILE compiles differently. */
+#define QDL_AREA_KIND_HELP(kind)     ((u8 *)((s32)(gLobbyWorkBuf + QDL_OFFSET) + QDL_FILE_COUNT * sizeof(NetDlFile)) + ((kind) << 8) + 0x27C)
 
 /* 6417's reply (LobbyReply_6417Read): a third-level entry with up to 4 members */
 typedef struct NetMember4 {
@@ -179,22 +458,22 @@ typedef struct NetInfo6417 {
     /* 0x110 */ NetMember4 members[4];
 } NetInfo6417;
 
-/* 631A's reply (LobbyReply_631ARead): a second-level entry with up to 10 users */
+/* 631A's reply (LobbyReply_Level1SearchInfoRead): a second-level entry with up to 10 users */
 typedef struct NetMember10 {
     /* 0x00 */ char id[8];
     /* 0x08 */ char name[0x14];
-    /* 0x1C */ u16 unk1C;           /* bytes 0-1 of a 0x10-byte blob, little-endian */
-    /* 0x1E */ u8 unk1E;            /* its byte 3 */
+    /* 0x1C */ u16 hr;              /* the hunter rank (bytes 0-1 of a 0x10-byte blob, little-endian) */
+    /* 0x1E */ u8 icon;             /* its byte 3: an icon kind */
     /* 0x1F */ u8 pad1F;
 } NetMember10;
 
-typedef struct NetInfo631A {
-    /* 0x000 */ char name[0x10];
-    /* 0x010 */ u16 unk10;
-    /* 0x012 */ u16 unk12;
-    /* 0x014 */ char text14[0x44];
-    /* 0x058 */ char text58[0x44];
-    /* 0x09C */ u8 unk9C[4];
+typedef struct NetLevel1SearchInfo {
+    /* 0x000 */ char serverId[0x10]; /* the land (server) the group is on: compared with gCurServerId, named by LobbySrv_Name */
+    /* 0x010 */ u16 level0Id;        /* the level-0 entry it is in */
+    /* 0x012 */ u16 level1Id;        /* its own id */
+    /* 0x014 */ char level0Name[0x44];
+    /* 0x058 */ char level1Text[0x44]; /* the recruiting text */
+    /* 0x09C */ u8 groupInfo[4];     /* as NetListEntry.groupInfo */
     /* 0x0A0 */ u16 unkA0[4];
     /* 0x0A8 */ u16 n;              /* users (at most 10) */
     /* 0x0AA */ u16 unkAA;
@@ -202,7 +481,7 @@ typedef struct NetInfo631A {
     /* 0x0AE */ u8 padAE[2];
     /* 0x0B0 */ char textB0[0x104];
     /* 0x1B4 */ NetMember10 users[10];
-} NetInfo631A;
+} NetLevel1SearchInfo;
 
 /* the settings task 8 sends for the second-level entry the player is in
  * (gLobbyNet.settings): 6315 name, 6316 password, 6317 text, 6318 four bytes */
@@ -210,7 +489,7 @@ typedef struct NetEntrySettings {
     /* 0x000 */ char name[0x41];
     /* 0x041 */ char pass[9];
     /* 0x04A */ char text[0x101];
-    /* 0x14B */ u8 b[4];
+    /* 0x14B */ u8 groupInfo[4];     /* 6318 (LevelEntry.groupInfo) */
 } NetEntrySettings;
 
 /* the same for the third-level entry the player is in (gLobbyNet.settings2, sent by
@@ -229,16 +508,16 @@ typedef struct NetEntrySettings2 {
 typedef struct NetRec2 {
     /* 0x0000 */ u8 flags;          /* 1 6604, 2 6606, 8 6605, 4 6607 arrived */
     /* 0x0001 */ char name[0x41];   /* 6604 */
-    /* 0x0042 */ u8 unk42;          /* 6605; 1: task 7 sends settings2.b[i] */
-    /* 0x0043 */ u8 m;              /* 6607: the sub-entries */
-    /* 0x0044 */ u8 unk44;          /* 6606 */
+    /* 0x0042 */ u8 editable;       /* 6605; 1: the player sets it (task 7 sends settings2.b[i]) */
+    /* 0x0043 */ u8 subCount;       /* 6607: how many sub-entries are used */
+    /* 0x0044 */ u8 defaultChoice;  /* 6606: the value chosen at first */
     /* 0x0045 */ u8 subFlags[0x20]; /* 1 6608, 2 660E arrived */
     /* 0x0065 */ char subName[0x20][0x41];  /* 6608 */
     /* 0x0885 */ u8 subN[0x20];     /* 660E: the values */
     /* 0x08A5 */ u8 subData[0x20][0x20][3]; /* 660E */
 } NetRec2;
 
-/* the third level's entry records (gLobbyNet.recs2, 0x294A4 bytes; NetTask6_GetRecs
+/* the third level's entry records (gLobbyNet.recs2, 0x294A4 bytes; NetLevel2RecsTask_GetRecs
  * copies them out): what the server allows to be sent, and the records */
 typedef struct NetRecs2 {
     /* 0x00000 */ u8 sendName;      /* 1: the name may be sent (a u8 reply) */
@@ -248,30 +527,30 @@ typedef struct NetRecs2 {
     /* 0x00004 */ NetRec2 rec[32];
 } NetRecs2;
 
-/* a user's id and data (the notification 6193, 6712's reply) */
-typedef struct Net6193 {
+/* a range of a user's hunter card (the notification 6193, 6712's reply) */
+typedef struct NetUserCardPart {
     /* 0x000 */ char id[8];
     /* 0x008 */ char name[0x14];
     /* 0x01C */ u8 data[0x100];
-    /* 0x11C */ u16 n;
-    /* 0x11E */ u16 x;
+    /* 0x11C */ u16 n;              /* bytes in data */
+    /* 0x11E */ u16 offset;         /* where they go in the card */
     /* 0x120 */ u8 pad120[2];
-} Net6193;
+} NetUserCardPart;
 
 /* the server's 6105 at login: a text, sent in parts of 0x1000 bytes */
-typedef struct Net6105 {
+typedef struct NetLoginNotice {
     /* 0x0000 */ u8 unk0;
     /* 0x0001 */ u8 pad1;
     /* 0x0002 */ u16 unk2;
     /* 0x0004 */ char text[0x1000];
-} Net6105;
+} NetLoginNotice;
 
 /* 614C's reply: a text, in parts too */
-typedef struct Net614C {
+typedef struct NetLoginInfo {
     /* 0x0000 */ u8 unk0;
     /* 0x0001 */ u8 pad1[3];
     /* 0x0004 */ char text[0x1000];
-} Net614C;
+} NetLoginInfo;
 
 /* the paged search results (a request's reply comes in pages: u8 total, u8
  * first, u8 count, u8 last, then count records; while last is 0 the client
@@ -283,33 +562,34 @@ typedef struct Net6416Rec {
     /* 0x0D */ u8 pad[3];
 } Net6416Rec;
 
-typedef struct Net6711Rec {
+typedef struct NetUserFindByNameRec {
     /* 0x00 */ char id[8];
     /* 0x08 */ char name[0x11];
     /* 0x19 */ char text[0xF];
-} Net6711Rec;
+} NetUserFindByNameRec;
 
-typedef struct Net6319Rec {
+#define LEVEL1_SEARCH_MAX_FOUND 100 /* the records a search reply holds at most */
+typedef struct NetLevel1SearchRec {
     /* 0x000 */ char text[0x104];
-    /* 0x104 */ char s104[0x10];
-    /* 0x114 */ u8 b[4];
+    /* 0x104 */ char serverId[0x10]; /* the group's land (server): LobbySrv_Name */
+    /* 0x114 */ u8 groupInfo[4];    /* as NetListEntry.groupInfo: [0] the limit (GROUP_LIMIT_*), [1] the target quest */
     /* 0x118 */ u16 h118;
     /* 0x11A */ u16 h11A;
-    /* 0x11C */ u16 h11C;
-    /* 0x11E */ u16 h11E;
-    /* 0x120 */ u16 h120;
+    /* 0x11C */ u16 users;
+    /* 0x11E */ u16 maxUsers;
+    /* 0x120 */ u16 usersInTown;
     /* 0x122 */ u8 index;           /* its place in the whole list */
     /* 0x123 */ u8 pad123;
-} Net6319Rec;
+} NetLevel1SearchRec;
 
 /* the results of a search as the pages of its reply fill them (a count,
  * then up to 100 records); a new request clears them (memset of the
  * whole struct: 0x6EF4 for 6709, 0xFA4 for 6711) */
-typedef struct NetFound6709 {
+typedef struct NetUserSearchFound {
     /* 0x0000 */ u8 total;              /* the users found */
     /* 0x0001 */ u8 pad1[3];
     /* 0x0004 */ NetUser users[100];
-} NetFound6709;
+} NetUserSearchFound;
 
 typedef struct NetFound6416 {
     /* 0x000 */ u8 total;
@@ -317,49 +597,59 @@ typedef struct NetFound6416 {
     /* 0x004 */ Net6416Rec list[100];
 } NetFound6416;
 
-typedef struct NetFound6711 {
+typedef struct NetUserFindByNameFound {
     /* 0x000 */ u8 total;
     /* 0x001 */ u8 pad1[3];
-    /* 0x004 */ Net6711Rec list[100];
-} NetFound6711;
+    /* 0x004 */ NetUserFindByNameRec list[100];
+} NetUserFindByNameFound;
 
-typedef struct NetFound6319 {
+typedef struct NetLevel1SearchFound {
     /* 0x0000 */ u8 total;
     /* 0x0001 */ u8 pad1[3];
-    /* 0x0004 */ Net6319Rec list[100];
-} NetFound6319;
+    /* 0x0004 */ NetLevel1SearchRec list[LEVEL1_SEARCH_MAX_FOUND];
+} NetLevel1SearchFound;
+
+/* gLobbyNet.level1Search and the records after it, as LobbyNet_GetLevel1Search
+ * hands them out (gGroupSearchResults) */
+typedef struct NetLevel1SearchReply {
+    /* 0x0000 */ u32 head;          /* the reply's first value */
+    /* 0x0004 */ NetLevel1SearchFound found;
+} NetLevel1SearchReply;
 
 /* a search's conditions (6709: up to 8, 6319: up to 4) */
-typedef struct NetCond6709 {
+typedef struct NetUserSearchCond {
     /* 0x00 */ u8 type;             /* 0-6: what data holds (a 6-byte id, a string, bytes) */
     /* 0x01 */ u8 n;
     /* 0x02 */ u8 pad2[2];
     /* 0x04 */ u8 data[0x40];
-} NetCond6709;
+} NetUserSearchCond;
 
-typedef struct NetSearch6709 {
-    /* 0x000 */ u8 unk0;
+typedef struct NetUserSearchQuery {
+    /* 0x000 */ u8 kind;            /* sent as 100 (LobbyUser_Search) */
     /* 0x001 */ u8 n;
     /* 0x002 */ u8 pad2[2];
-    /* 0x004 */ NetCond6709 cond[8];
-} NetSearch6709;
+    /* 0x004 */ NetUserSearchCond cond[8];
+} NetUserSearchQuery;
 
-typedef struct NetCond6319 {
+typedef struct NetLevel1SearchCond {
     /* 0x00 */ u8 type;
     /* 0x01 */ u8 n;
-    /* 0x02 */ u8 v[0x42];
-} NetCond6319;
+    /* 0x02 */ u8 values[0x42];   /* the values matched (LEVEL1_SEARCH_ANY: any) */
+} NetLevel1SearchCond;
+#define LEVEL1_SEARCH_COND_LIMIT 0  /* NetLevel1SearchCond.type: the group's limit, GROUP_LIMIT_* */
+#define LEVEL1_SEARCH_COND_TARGET 1 /* the group's target quest */
+#define LEVEL1_SEARCH_ANY 0xFF      /* a condition's value that matches any */
 
-typedef struct NetSearch6319 {
+typedef struct NetLevel1SearchQuery {
     /* 0x000 */ u8 id[0x10];        /* 0xC bytes sent */
-    /* 0x010 */ u8 unk10;
-    /* 0x011 */ u8 n;
+    /* 0x010 */ u8 maxFound;      /* the most results wanted (LEVEL1_SEARCH_MAX_FOUND) */
+    /* 0x011 */ u8 n;               /* the conditions */
     /* 0x012 */ u8 pad12[2];
-    /* 0x014 */ NetCond6319 cond[4];
-} NetSearch6319;
+    /* 0x014 */ NetLevel1SearchCond cond[4];
+} NetLevel1SearchQuery;
 
 /* 6713's reply: a user's details */
-typedef struct Net6713 {
+typedef struct NetUserProfile {
     /* 0x000 */ u8 s0[0x14];
     /* 0x014 */ u8 s14[0x10];
     /* 0x024 */ u8 s24[0x104];
@@ -377,13 +667,13 @@ typedef struct Net6713 {
     /* 0x3C9 */ u8 b3C9;
     /* 0x3CA */ u8 b3CA;
     /* 0x3CB */ u8 pad3CB;
-} Net6713;
+} NetUserProfile;
 
 /* The quest party task 9 fetches (69xx): 6911 the number of players, 6912 a
  * byte (less one), 6913 and 6917 for each player, 6915 the room's name, 6914 a
  * text, then 6916 the address of the quest server. LobbyRoom_FetchParty copies the
  * players into LobbyState.players and sub_main's tables; the connection then
- * goes to the 6916 address (unk_7B0D80.c: the 1031 challenge, QNetIf_Start). */
+ * goes to the 6916 address (the quest network's 1031 challenge, QNetIf_Start). */
 typedef struct NetPartyMember {
     /* 0x000 */ char id[8];         /* 6913 */
     /* 0x008 */ char name[0x14];    /* 6913 */
@@ -407,20 +697,27 @@ typedef struct NetParty {
     /* 0x114 */ NetPartyMember members[10];
 } NetParty;
 
-/* what the connection was started with (NetTask0_Start, 0x40 bytes; the login
- * code at 0x7C2E9C fills it from sub_main's account data) */
+/* what the connection was started with (NetLoginTask_Start, 0x40 bytes; LobbyEntry_Start
+ * fills it from sub_main's account data) */
 typedef struct NetLoginParams {
     /* 0x00 */ u8 type;             /* 1; nonzero: 6103 is answered with pings (600E) */
-    /* 0x01 */ s8 unk1;             /* sub_main 0x5D46B1 */
+    /* 0x01 */ s8 entry;            /* the network mode's entry (gNetMode.entry) */
     /* 0x02 */ char id[0xB];        /* the account id, 10 characters (sub_main 0x5CAEE1) */
     /* 0x0D */ char pass[0x13];     /* 16 characters (sub_main 0x5CAED0), sent obfuscated */
     /* 0x20 */ u8 *patchBuf;        /* where a patch sent at login goes (sub_main 0x6AE018) */
     /* 0x24 */ s32 unk24[7];
 } NetLoginParams;
 
+/* LevelEntry.groupInfo[0] of a level-1 entry: who may enter it
+ * (LobbyLevel1_CanEnter) */
+#define GROUP_LIMIT_NONE 0          /* everyone */
+#define GROUP_LIMIT_HR_BELOW_31 1   /* hunter ranks below 31 only */
+#define GROUP_LIMIT_HR_31_UP 2      /* hunter rank 31 and above only */
+#define GROUP_LIMIT_SHORT_TEXT 3    /* gGroupLimitTexts[limit + this]: the limit's short form */
+
 /* An entry of one of the three levels as the lobby screens keep it (0x164
  * bytes; level 0 in sub_main's gLobbyLevel0Entries, level 1 in gLobbyLevel1Entries, level 2 in
- * D_008EA200): copied out of gLobbyNet.list0-2 by the NetListN_Get* getters. */
+ * gLobbyLevel2Entries): copied out of gLobbyNet.list0-2 by the NetListN_Get* getters. */
 typedef struct LevelEntry {
     /* 0x000 */ s32 color;          /* level 1 (630D): the name colour (Text_SetColor of its low half); level 2: 650A */
     /* 0x004 */ u16 id;
@@ -430,77 +727,138 @@ typedef struct LevelEntry {
     /* 0x012 */ u16 questUsers;     /* users out of town (users - this: in town) */
     /* 0x014 */ u16 unk14;          /* NetListEntry.unk10 */
     /* 0x016 */ u8 state;           /* 6206, 6304, 6404: 3 and 4 open (enterable) */
-    /* 0x017 */ u8 unk17;           /* level 2: func_00716B00 */
+    /* 0x017 */ u8 locked;          /* level 2: a password is set (NetList2_GetLocked) */
     /* 0x018 */ u8 pad18;
-    /* 0x019 */ u8 unk19;
-    /* 0x01A */ u8 kind;             /* level 0: 1-4 (func_0070C170) */
-    /* 0x01B */ u8 groupInfo[4];    /* level 1 (631B): [0] the group limit kind (gGroupLimitTexts[k + 3]), [1] the quest target */
+    /* 0x019 */ u8 textAllowed;     /* level 1 (6314): whether the entry's text may be set */
+    /* 0x01A */ u8 kind;             /* level 0: 1-4 (NetList0_GetKind) */
+    /* 0x01B */ u8 groupInfo[4];    /* level 1 (631B): [0] the group limit, GROUP_LIMIT_* (gGroupLimitTexts[k + 3]), [1] the quest target */
     /* 0x01F */ char name[0x41];
     /* 0x060 */ char text[0x104];
 } LevelEntry;
+#define LEVEL_ENTRY_FREE 1          /* LevelEntry.state of a level-1 entry no group holds: it can be opened as a new group */
+/* The level-1 entry of id `id` (from 1), its address computed as bytes
+ * (LobbyLevel1_CanEnter): indexed as an array, the compiler adds the
+ * field's offset to the table's address instead. */
+#define LEVEL1_ENTRY(id) ((LevelEntry *)((u8 *)gLobbyLevel1Entries + ((id) - 1U) * sizeof(LevelEntry)))
+#define LEVEL_ENTRY_OPEN 3          /* LevelEntry.state of an area that can be entered (AreaList_Input) */
+#define LEVEL_ENTRY_OPEN_ALT 4      /* also open (enterable); what tells it from LEVEL_ENTRY_OPEN isn't known */
+#define LEVEL0_ENTRY_MAX 25         /* gLobbyLevel0Entries: the areas a server lists at most */
+#define LEVEL1_ENTRY_MAX 45         /* gLobbyLevel1Entries: its entries, cleared together when the village starts */
+#define LEVEL2_ENTRY_MAX 5          /* gLobbyLevel2Entries: a town's quest rooms (ids 1-5) */
 
-/* the patch announced at login (6121), as LobbyNet_GetPatchInfo copies it out */
-typedef struct NetPatchInfo {
-    /* 0x00 */ u32 size;
-    /* 0x04 */ char version[0x10];  /* 10 characters */
-    /* 0x14 */ char tag[8];         /* 4 characters */
-} NetPatchInfo;
+/* A quest of a room's list in the room's data (0x18 bytes). */
+typedef struct RoomQuest {
+    /* 0x00 */ char name[0x14];
+    /* 0x14 */ u8 used;             /* 0: no quest in this entry */
+    /* 0x15 */ u8 unlockKind;       /* enum RoomQuestUnlock: what opens it to the player (GroupBoard_QuestAllowed) */
+    /* 0x16 */ u8 unlockArg1;       /* ROOM_QUEST_UNLOCK_HR: the hunter rank; with a monster hunted: the monster's gSave.hunted slot */
+    /* 0x17 */ u8 unlockArg2;       /* ROOM_QUEST_UNLOCK_HUNTED_HR: the hunter rank */
+} RoomQuest;
+/* RoomQuest.unlockKind */
+enum RoomQuestUnlock {
+    ROOM_QUEST_UNLOCK_NONE = 0,             /* always open */
+    ROOM_QUEST_UNLOCK_HR = 1,               /* a hunter rank of unlockArg1 */
+    ROOM_QUEST_UNLOCK_HUNTED_HR = 2,        /* monster unlockArg1 hunted and a hunter rank of unlockArg2 */
+    ROOM_QUEST_UNLOCK_ARENA_CUP = 3,        /* EVENT_FLAG_ARENA_CUP_OPEN */
+    ROOM_QUEST_UNLOCK_ELDER_RAID = 4,       /* the elder raid running (ElderRaid_InState1) */
+    ROOM_QUEST_UNLOCK_SONG_TRACK_3 = 5,     /* EVENT_FLAG_SONG_TRACK_3 */
+    ROOM_QUEST_UNLOCK_SONG_TRACK_3_HUNTED = 6 /* EVENT_FLAG_SONG_TRACK_3 and monster unlockArg1 hunted */
+};
+/* A recruiting slot of the room's data (the group board). */
+typedef struct RoomSlot {
+    /* 0x00 */ u8 unk0[8];
+    /* 0x08 */ char text[0x18];     /* the recruiting text; empty when the slot is free */
+} RoomSlot;
+#define ROOM_SLOTS 16
+#define GROUP_BOARD_SLOTS 11    /* the slots GroupBoard_Open counts */
+/* The room's data, 0x20 bytes into the block at gLobbyWorkBuf + 0x6EF4: its
+ * quest list (LevelEntry.groupInfo[1] indexes it). */
+#define ROOM_QUESTS 64              /* RoomData.quests: the quests a room offers */
+typedef struct RoomData {
+    /* 0x0000 */ RoomSlot slots[ROOM_SLOTS];
+    /* 0x0200 */ u8 unk200[8];
+    /* 0x0208 */ s8 slotColor[ROOM_SLOTS];  /* each slot's text colour (LobbyStep_Level1SetColor sends it; Text_SetColor draws it) */
+    /* 0x0218 */ s8 slotLocked[ROOM_SLOTS]; /* nonzero: the slot's text can't be picked */
+    /* 0x0228 */ u8 unk228[4];
+    /* 0x022C */ s8 slotKinds[4][ROOM_SLOTS]; /* by area kind (LevelEntry.kind - 1): nonzero where the slot's text is offered */
+    /* 0x026C */ s16 areaKindHr[4][2]; /* each area kind's (LevelEntry.kind 1-4) hunter rank range: the lowest, the highest (Lobby_CanEnterByRank) */
+    /* 0x27C */ char areaKindHelp[4][0x100]; /* the area list's help line for each kind of area (AreaGroup.kind) */
+    /* 0x67C */ u8 unk67C[0x540];
+    /* 0x0BBC */ RoomQuest quests[ROOM_QUESTS];
+    /* 0x11BC */ u16 unk11BC;
+    /* 0x11BE */ u16 arenaFormRows; /* bits 1-3: the arena cup's entry form shows its rows ARENA_FORM_SETTING_1 to _3 (ArenaCup_IsFormRowOpen) */
+    /* 0x11C0 */ u8 unk11C0[4];
+} RoomData;
+typedef char RoomData_size_check[(sizeof(RoomData) == QDL_LIST_SIZE) ? 1 : -1];
+/* The room's data in the lobby work buffer (QDL_LIST_FILE), its address
+ * formed as the group board's code forms it. */
+#define QDL_ROOM ((RoomData *)((s32)(gLobbyWorkBuf + QDL_OFFSET) + QDL_FILE_COUNT * sizeof(NetDlFile)))
 
-/* the player's answer to the server's request 6103 (LobbyPkt_6103: u8 x3,
- * blob (10 bytes), u16 x8), set with LobbyNet_Set6103 */
-typedef struct Net6103 {
+/* the player's answer to the server's request 6103 (LobbyPkt_ClientInfo: u8 x3,
+ * blob (10 bytes), u16 x8), set with LobbyNet_SetClientInfo */
+typedef struct NetClientInfo {
     /* 0x00 */ u8 unk0;
     /* 0x01 */ u8 unk1;
     /* 0x02 */ u8 unk2;
     /* 0x03 */ u8 pad3;
     /* 0x04 */ char version[0x10];  /* gVersionString (10 characters sent) */
     /* 0x14 */ u16 state[8];        /* [0..3] Net_GetDeviceState, [4] the average round trip (600E), [5..7] 0 */
-} Net6103;
+} NetClientInfo;
 
-/* a user entering: the notifications 6702 and 670C (blob id 8, blob name
- * 0x10, blob text 0x100, u8 x4, u8) */
-typedef struct Net6702 {
+/* the client's answer to the server's 6138 (LobbyPkt_6138), kept in
+ * gLobby6138Data, which only the answer reads and the login clears */
+typedef struct Net6138Answer {
+    /* 0x00 */ u8 unk0[0x10];
+    /* 0x10 */ u8 unk10;
+    /* 0x11 */ u8 pad11[3];
+    /* 0x14 */ u16 unk14[8];
+} Net6138Answer;
+
+/* a chat message: the notifications 6702 and 670C (blob id 8, blob name
+ * 0x10, blob text 0x100, u8 x4 the colour, u8 kind) */
+typedef struct NetChatMessage {
     /* 0x000 */ NetUserRec r;
-    /* 0x120 */ u8 unk120;
+    /* 0x120 */ u8 kind;            /* ChatMsg.kind: 1 the log, 2 a balloon (LobbyPkt_ChatSay's kind) */
     /* 0x121 */ u8 pad121[3];
-} Net6702;
+} NetChatMessage;
 
 /* 6705's reply: three strings (a user's id, name and a text) */
-typedef struct Net6705 {
+typedef struct NetShortMail {
     /* 0x00 */ char id[8];
     /* 0x08 */ char name[0x14];
     /* 0x1C */ char text[0x80];
-} Net6705;
+} NetShortMail;
 
-/* 6707's reply: u16 x3, u8 (LobbyReply_6713Read clears all 0x20A bytes) */
-typedef struct Net6707 {
+/* 6707's reply: u16 x3, u8 (LobbyReply_UserProfileRead clears all 0x20A bytes) */
+typedef struct NetUserStatus {
     /* 0x000 */ u16 a;
     /* 0x002 */ u16 b;
     /* 0x004 */ u16 c;
     /* 0x006 */ u8 pad6;
     /* 0x007 */ u8 d;
     /* 0x008 */ u8 unk8[0x202];
-} Net6707;
+} NetUserStatus;
 
 /* a chat message: the notifications 6708 and 670E (blob id 8, blob text 0x300) */
-typedef struct Net6708 {
+typedef struct NetTownMsg {
     /* 0x000 */ char id[8];
     /* 0x008 */ u8 text[0x300];
-} Net6708;
+} NetTownMsg;
 
 /* the notification 68B0 at login: blob text (0x100), u16 n, then n bytes
  * (blob, at most 0x300) if n (the global right after gLobbyNet) */
-typedef struct Net68B0 {
-    /* 0x000 */ char text[0x104];
-    /* 0x104 */ u8 data[0x300];
-    /* 0x404 */ u16 n;
+typedef struct NetLoginWebPage {
+    /* 0x000 */ char url[0x100];    /* the page the lobby opens (gLobbyWebUrl) */
+    /* 0x100 */ u8 pad100[4];
+    /* 0x104 */ u8 text[0x300];     /* a text shown before the page opens */
+    /* 0x404 */ u16 secs;           /* how long the text is shown, in seconds (0: no text) */
     /* 0x406 */ u8 pad406[2];
-} Net68B0;
+} NetLoginWebPage;
 
-/* the notification 6891: three u16 (LobbyNet_Get6891) */
-typedef struct Net6891 {
+/* the notification 6891: three u16 (LobbyNet_GetCurrentPlace) */
+typedef struct NetCurrentPlace {
     u16 v[3];
-} Net6891;
+} NetCurrentPlace;
 
 /* The connection state (gLobbyNet, 0x84A440): one large object; the code
  * reaches its fields at offsets from gLobbyNet (the D_0084xxxx-D_0088xxxx
@@ -510,13 +868,13 @@ typedef struct LobbyNet {
     /* 0x0004 */ u8 unk4[4];
     /* 0x0008 */ s32 unk8;
     /* 0x000C */ u8 unkC[4];
-    /* 0x0010 */ s16 sent6001; /* 1 once 6001 was sent (LobbySrvReq_6001) */
+    /* 0x0010 */ s16 sentKeepalive; /* 1 once 6001 was sent (LobbySrvReq_Keepalive) */
     /* 0x0012 */ u8 unk12[2];
     /* 0x0014 */ u8 unk14;
     /* 0x0015 */ u8 unk15[3];
-    /* 0x0018 */ NetReq req[0x80];
-    /* 0x0E18 */ NetTask task[0x10];
-    /* 0x1098 */ NetReq req2[0x10];
+    /* 0x0018 */ NetReq req[NET_REQ_COUNT];
+    /* 0x0E18 */ NetTask task[NET_TASK_COUNT];
+    /* 0x1098 */ NetReq req2[NET_REQ2_COUNT];
     /* 0x1258 */ u8 unk1258[0x14];
     /* 0x126C */ s32 sock;
     /* 0x1270 */ u32 recvResult;    /* Lobby_RecvPacket; 1 the last part, >= 2 more follow; nethttp reads the bytes left */
@@ -525,11 +883,11 @@ typedef struct LobbyNet {
     /* 0x1278 */ u16 echo;
     /* 0x127A */ u16 size;
     /* 0x127C */ s8 replyErr;       /* nonzero: the reply received reports an error */
-    /* 0x127D */ s8 reqState;       /* the HTTP request state (nethttp unk_8FB130.c) */
+    /* 0x127D */ s8 reqState;       /* the HTTP request state (nethttp http_front.c) */
     /* 0x127E */ u16 key;           /* Net_LockrockObfuscate's key */
     /* 0x1280 */ s32 rxLen;         /* bytes gathered in rxBuf: a long reply's parts are appended (memcpy(rxBuf + rxLen, gLobbyRecvData, len)); 0 at the start */
     /* 0x1284 */ s32 rxSize;        /* rxBuf's size (0x1000); a part is cut to rxSize - rxLen - 1 */
-    /* 0x1288 */ u8 *rxBuf;         /* where a long reply is gathered (buf38C0C) */
+    /* 0x1288 */ u8 *rxBuf;         /* where a long reply is gathered (rxStore) */
     /* 0x128C */ u8 *patchDst;      /* 6122 appends here */
     /* 0x1290 */ s32 unk1290;
     /* 0x1294 */ s16 unk1294;
@@ -546,7 +904,7 @@ typedef struct LobbyNet {
     /* 0x12C2 */ u16 nReplies;      /* the replies a list task expects (count x requests per entry) */
     /* 0x12C4 */ NetLoginParams login;
     /* 0x1304 */ NetUser me;        /* LobbyNet_SetMe */
-    /* 0x1420 */ Net6103 x6103;     /* the answer to the server's 6103 (LobbyNet_Set6103) */
+    /* 0x1420 */ NetClientInfo clientInfo;     /* the answer to the server's 6103 (LobbyNet_SetClientInfo) */
     /* 0x1444 */ u8 unk1444[0x1D6];
     /* 0x161A */ NetEntrySettings settings; /* task 8's */
     /* 0x1769 */ NetEntrySettings2 settings2; /* task 7's */
@@ -554,13 +912,13 @@ typedef struct LobbyNet {
     /* 0x18D9 */ u8 pad18D9[2];
     /* 0x18DB */ NetUser charas[4]; /* 6131's; charas[3]: the one playing (LobbyNet_SetMe sets its id and name) */
     /* 0x1D4B */ NetUser self;      /* the character's id (6132's reply) and name */
-    /* 0x1E67 */ NetUser x6191;
+    /* 0x1E67 */ NetUser userCard;
     /* 0x1F83 */ u8 pad1F83;
-    /* 0x1F84 */ Net6193 x6193;
-    /* 0x20A6 */ Net6193 x6712;
-    /* 0x21C8 */ Net614C x614C;
-    /* 0x31CC */ Net6105 x6105;
-    /* 0x41D0 */ NetUser userInOut; /* the user entering or leaving (func_00704250) */
+    /* 0x1F84 */ NetUserCardPart userCardPart;
+    /* 0x20A6 */ NetUserCardPart userCardFetch;
+    /* 0x21C8 */ NetLoginInfo loginInfo;
+    /* 0x31CC */ NetLoginNotice loginNotice;
+    /* 0x41D0 */ NetUser userInOut; /* the user entering or leaving (LobbyNotify_UserInOut) */
     /* 0x42EC */ NetUserRec users[10]; /* 630A's reply */
     /* 0x4E2C */ NetUserRec users2[10]; /* 640A's reply */
     /* 0x596C */ u8 unk596C[0xB40];
@@ -589,14 +947,14 @@ typedef struct LobbyNet {
     /* 0x36FD8 */ u8 partyAddr[8];  /* 6916: the quest server's IPv4 address (4 bytes, sent as a string) */
     /* 0x36FE0 */ u8 partyPort[8];  /* 6916: its port (2 bytes, big-endian) */
     /* 0x36FE8 */ NetParty party;   /* task 9's */
-    /* 0x37E6C */ Net6705 x6705;
-    /* 0x37F08 */ Net6707 x6707;
+    /* 0x37E6C */ NetShortMail shortMail;
+    /* 0x37F08 */ NetUserStatus userStatus;
     /* 0x38112 */ u8 pad38112[2];
-    /* 0x38114 */ Net6713 x6713;
-    /* 0x384E0 */ Net6702 x6702;    /* a user entering (6702, 670C) */
-    /* 0x38604 */ Net6708 x6708;    /* a chat message (6708, 670E) */
+    /* 0x38114 */ NetUserProfile userProfile;
+    /* 0x384E0 */ NetChatMessage chatMessage;    /* the last chat message (6702, 670C) */
+    /* 0x38604 */ NetTownMsg townMsg;    /* a chat message (6708, 670E) */
     /* 0x3890C */ u8 errText[0x300];  /* the error text a reply carries (LobbyMsg_ReadErrText) */
-    /* 0x38C0C */ u8 buf38C0C[0x2000]; /* unk1288 points here */
+    /* 0x38C0C */ u8 rxStore[0x2000]; /* rxBuf points here */
     /* 0x3AC0C */ u8 dlCount;       /* files offered (6881's reply) */
     /* 0x3AC0D */ u8 dlFile;        /* the file task 14 downloads */
     /* 0x3AC0E */ u8 pad3AC0E[2];
@@ -604,27 +962,27 @@ typedef struct LobbyNet {
     /* 0x3AC14 */ u32 dlSize;
     /* 0x3AC18 */ u32 dlGot;        /* bytes received (6882's replies) */
     /* 0x3AC1C */ NetDlFile dlFiles[32];
-    /* 0x3AD1C */ NetFound6709 found6709; /* 6709's search: the users found */
+    /* 0x3AD1C */ NetUserSearchFound userSearchFound; /* 6709's search: the users found */
     /* 0x41C10 */ u16 searchReq;    /* the request the pages of a search answer (req[]) */
     /* 0x41C12 */ NetFound6416 found6416;
     /* 0x42256 */ NetInfo6417 x6417;
-    /* 0x423E6 */ NetFound6711 found6711;
+    /* 0x423E6 */ NetUserFindByNameFound userFindByNameFound;
     /* 0x4338A */ u8 pad4338A[2];
-    /* 0x4338C */ u32 x6319;
-    /* 0x43390 */ NetFound6319 found6319;
-    /* 0x4A5A4 */ NetInfo631A x631A;
+    /* 0x4338C */ u32 level1Search;
+    /* 0x43390 */ NetLevel1SearchFound level1SearchFound;
+    /* 0x4A5A4 */ NetLevel1SearchInfo level1SearchInfo;
     /* 0x4A898 */ u32 x6890;
-    /* 0x4A89C */ Net6891 x6891;
+    /* 0x4A89C */ NetCurrentPlace currentPlace;
     /* 0x4A8A2 */ u8 pad4A8A2[2];
-    /* 0x4A8A4 */ u32 x61A0[2];     /* 61A0's reply at login */
+    /* 0x4A8A4 */ u32 loginParams[2];     /* 61A0's reply at login */
     /* 0x4A8AC */ u8 x68A0n;
     /* 0x4A8AD */ u8 pad4A8AD[3];
     /* 0x4A8B0 */ char *x68A1Str;
     /* 0x4A8B4 */ u8 x68A0[4];
     /* 0x4A8B8 */ u8 unk4A8B8[8];
     /* 0x4A8C0 */ u8 *x6884Buf;     /* 6884's reply to an ordinary request goes here */
-    /* 0x4A8C4 */ s32 x6884Max;
-    /* 0x4A8C8 */ u8 x6884Slot;     /* the slot byte of that reply */
+    /* 0x4A8C4 */ s32 townDataMax;
+    /* 0x4A8C8 */ u8 townDataSlot;     /* the slot byte of that reply */
     /* 0x4A8C9 */ u8 pad4A8C9[3];
     /* 0x4A8CC */ void *slotBuf[16];    /* the buffers 6885's notice has 6884 fill */
     /* 0x4A90C */ s32 slotMax;
@@ -633,9 +991,9 @@ typedef struct LobbyNet {
     /* 0x4A914 */ u16 slotMask;     /* the slots filled since */
     /* 0x4A916 */ u8 unk4A916[2];
     /* 0x4A918 */ char *x614DDst;   /* 614D's reply: the string goes here */
-    /* 0x4A91C */ s32 x614DMax;
-    /* 0x4A920 */ s32 x614D;        /* the u16 of that reply */
-    /* 0x4A924 */ Net6892 x6892;
+    /* 0x4A91C */ s32 charaSelectTextMax;
+    /* 0x4A920 */ s32 charaSelectText;        /* the u16 of that reply */
+    /* 0x4A924 */ NetTownClock townClock;
 } LobbyNet;
 
 /* sizes: these records are read from and written to the network field by
@@ -648,48 +1006,48 @@ typedef char NetTask_size_check[(sizeof(NetTask) == 0x28) ? 1 : -1];
 typedef char NetEntryVals_size_check[(sizeof(NetEntryVals) == 0x4) ? 1 : -1];
 typedef char NetUser_size_check[(sizeof(NetUser) == 0x11C) ? 1 : -1];
 typedef char NetUserRec_size_check[(sizeof(NetUserRec) == 0x120) ? 1 : -1];
-typedef char Net6892_size_check[(sizeof(Net6892) == 0x48) ? 1 : -1];
+typedef char NetTownClock_size_check[(sizeof(NetTownClock) == 0x48) ? 1 : -1];
 typedef char NetListEntry_size_check[(sizeof(NetListEntry) == 0x18C) ? 1 : -1];
 typedef char NetDlFile_size_check[(sizeof(NetDlFile) == 0x8) ? 1 : -1];
 typedef char NetMember4_size_check[(sizeof(NetMember4) == 0x20) ? 1 : -1];
 typedef char NetInfo6417_size_check[(sizeof(NetInfo6417) == 0x190) ? 1 : -1];
 typedef char NetMember10_size_check[(sizeof(NetMember10) == 0x20) ? 1 : -1];
-typedef char NetInfo631A_size_check[(sizeof(NetInfo631A) == 0x2F4) ? 1 : -1];
+typedef char NetLevel1SearchInfo_size_check[(sizeof(NetLevel1SearchInfo) == 0x2F4) ? 1 : -1];
 typedef char NetEntrySettings_size_check[(sizeof(NetEntrySettings) == 0x14F) ? 1 : -1];
 typedef char NetEntrySettings2_size_check[(sizeof(NetEntrySettings2) == 0x16F) ? 1 : -1];
 typedef char NetRec2_size_check[(sizeof(NetRec2) == 0x14A5) ? 1 : -1];
 typedef char NetRecs2_size_check[(sizeof(NetRecs2) == 0x294A4) ? 1 : -1];
-typedef char Net6193_size_check[(sizeof(Net6193) == 0x122) ? 1 : -1];
-typedef char Net6105_size_check[(sizeof(Net6105) == 0x1004) ? 1 : -1];
-typedef char Net614C_size_check[(sizeof(Net614C) == 0x1004) ? 1 : -1];
-typedef char Net6103_size_check[(sizeof(Net6103) == 0x24) ? 1 : -1];
-typedef char Net6702_size_check[(sizeof(Net6702) == 0x124) ? 1 : -1];
-typedef char Net6705_size_check[(sizeof(Net6705) == 0x9C) ? 1 : -1];
-typedef char Net6707_size_check[(sizeof(Net6707) == 0x20A) ? 1 : -1];
-typedef char Net6708_size_check[(sizeof(Net6708) == 0x308) ? 1 : -1];
-typedef char Net68B0_size_check[(sizeof(Net68B0) == 0x408) ? 1 : -1];
+typedef char NetUserCardPart_size_check[(sizeof(NetUserCardPart) == 0x122) ? 1 : -1];
+typedef char NetLoginNotice_size_check[(sizeof(NetLoginNotice) == 0x1004) ? 1 : -1];
+typedef char NetLoginInfo_size_check[(sizeof(NetLoginInfo) == 0x1004) ? 1 : -1];
+typedef char NetClientInfo_size_check[(sizeof(NetClientInfo) == 0x24) ? 1 : -1];
+typedef char NetChatMessage_size_check[(sizeof(NetChatMessage) == 0x124) ? 1 : -1];
+typedef char NetShortMail_size_check[(sizeof(NetShortMail) == 0x9C) ? 1 : -1];
+typedef char NetUserStatus_size_check[(sizeof(NetUserStatus) == 0x20A) ? 1 : -1];
+typedef char NetTownMsg_size_check[(sizeof(NetTownMsg) == 0x308) ? 1 : -1];
+typedef char NetLoginWebPage_size_check[(sizeof(NetLoginWebPage) == 0x408) ? 1 : -1];
 typedef char Net6416Rec_size_check[(sizeof(Net6416Rec) == 0x10) ? 1 : -1];
-typedef char Net6711Rec_size_check[(sizeof(Net6711Rec) == 0x28) ? 1 : -1];
-typedef char Net6319Rec_size_check[(sizeof(Net6319Rec) == 0x124) ? 1 : -1];
-typedef char NetCond6709_size_check[(sizeof(NetCond6709) == 0x44) ? 1 : -1];
-typedef char NetSearch6709_size_check[(sizeof(NetSearch6709) == 0x224) ? 1 : -1];
-typedef char NetCond6319_size_check[(sizeof(NetCond6319) == 0x44) ? 1 : -1];
-typedef char NetSearch6319_size_check[(sizeof(NetSearch6319) == 0x124) ? 1 : -1];
-typedef char Net6713_size_check[(sizeof(Net6713) == 0x3CC) ? 1 : -1];
+typedef char NetUserFindByNameRec_size_check[(sizeof(NetUserFindByNameRec) == 0x28) ? 1 : -1];
+typedef char NetLevel1SearchRec_size_check[(sizeof(NetLevel1SearchRec) == 0x124) ? 1 : -1];
+typedef char NetUserSearchCond_size_check[(sizeof(NetUserSearchCond) == 0x44) ? 1 : -1];
+typedef char NetUserSearchQuery_size_check[(sizeof(NetUserSearchQuery) == 0x224) ? 1 : -1];
+typedef char NetLevel1SearchCond_size_check[(sizeof(NetLevel1SearchCond) == 0x44) ? 1 : -1];
+typedef char NetLevel1SearchQuery_size_check[(sizeof(NetLevel1SearchQuery) == 0x124) ? 1 : -1];
+typedef char NetUserProfile_size_check[(sizeof(NetUserProfile) == 0x3CC) ? 1 : -1];
 typedef char NetPartyMember_size_check[(sizeof(NetPartyMember) == 0x158) ? 1 : -1];
 typedef char NetParty_size_check[(sizeof(NetParty) == 0xE84) ? 1 : -1];
 typedef char LevelEntry_size_check[(sizeof(LevelEntry) == 0x164) ? 1 : -1];
 extern LevelEntry gLobbyLevel2Entries[5];  /* level 2's entries (lobby) */
 typedef char NetPatchInfo_size_check[(sizeof(NetPatchInfo) == 0x1C) ? 1 : -1];
 typedef char NetLoginParams_size_check[(sizeof(NetLoginParams) == 0x40) ? 1 : -1];
-typedef char NetFound6709_size_check[(sizeof(NetFound6709) == 0x6EF4) ? 1 : -1];
+typedef char NetUserSearchFound_size_check[(sizeof(NetUserSearchFound) == 0x6EF4) ? 1 : -1];
 typedef char NetFound6416_size_check[(sizeof(NetFound6416) == 0x644) ? 1 : -1];
-typedef char NetFound6711_size_check[(sizeof(NetFound6711) == 0xFA4) ? 1 : -1];
-typedef char NetFound6319_size_check[(sizeof(NetFound6319) == 0x7214) ? 1 : -1];
+typedef char NetUserFindByNameFound_size_check[(sizeof(NetUserFindByNameFound) == 0xFA4) ? 1 : -1];
+typedef char NetLevel1SearchFound_size_check[(sizeof(NetLevel1SearchFound) == 0x7214) ? 1 : -1];
 typedef char LobbyNet_size_check[(sizeof(LobbyNet) == 0x4A96C) ? 1 : -1];
 
 extern LobbyNet gLobbyNet;
-extern Net68B0 gNet68B0;       /* 0x894DAC: right after gLobbyNet */
+extern NetLoginWebPage gNetLoginWebPage;       /* 0x894DAC: right after gLobbyNet */
 
 
 extern LobbyPkt gLobbyPkt;     /* the message being built */
@@ -702,18 +1060,18 @@ s32 NetTcp_Recv(s32 sock, void *buf, s16 len);
 void *memcpy(void *dst, const void *src, u32 n);
 void *memset(void *dst, s32 c, u32 n);
 s32 NetTcp_Send(s32 sock, void *data, s16 len);
-s32 Net_LockrockObfuscate(u8 *dst, u8 *src, u16 seed, s32 n, s32 key); /* unit's own declaration: with the definition's s32 (u8 *out, u8 *in, u8 seed, s32 len, s32 salt) (sub_main/unk_308BC0.c), the u8 seed changes LobbyPkt_PutBlob and LobbyPkt_PutBlob2 (lobby_net.c) by 1 of 37 words and HttpLbs_Send (nethttp) by 5 of 174: the callers pass a u16 */
+s32 Net_LockrockObfuscate(u8 *dst, u8 *src, u16 seed, s32 n, s32 key); /* unit's own declaration: declared with the u16 seed the callers pass; with the definition's u8 seed, LobbyPkt_PutBlob, LobbyPkt_PutBlob2 and HttpLbs_Send compile differently */
 u32 strlen(const void *s);
 
 /* requests and replies */
-s32 LobbyReq_6418(u16 arg0, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyReq_Level2Kind(u16 arg0, void (*onReply)(NetMsg, NetMsg *));
 void Lobby_RouteMessage(s32 a);
 s32 NetReq_Alloc(u8 state, void (*onTick)(s32), void (*onReply)(NetMsg, NetMsg *));
 s32 NetReq_OnReply(NetMsg m, s32 a, s32 b);
 void Net_TickRequests(void);
 s32 Lobby_DispatchCommand(u16 cmd, s32 kind, u8 flag);
 void Lobby_HandleMessage(void);
-void LobbyPkt_6001(void);
+void LobbyPkt_Keepalive(void);
 
 /* receiving: each reads one field of src into dst and returns the next field */
 u8 *LobbyMsg_GetU8(void *dst, u8 *src);
@@ -727,7 +1085,7 @@ u8 *LobbyMsg_GetBlob(void *dst, u16 max, u8 *src);
 u16 LobbyPkt_BeginCmd(LobbyPkt *p, u16 cmd);
 void LobbyPkt_Begin(LobbyPkt *p, u16 cmd);
 void LobbyPkt_SetFlag(LobbyPkt *p, u8 flag);
-void func_00719440(LobbyPkt *p, u8 v);
+void LobbyPkt_SetError(LobbyPkt *p, u8 err);
 void LobbyPkt_End(LobbyPkt *p);
 void LobbyPkt_PutU8(LobbyPkt *p, u8 v);
 void LobbyPkt_PutU16(LobbyPkt *p, u16 v);
@@ -737,5 +1095,29 @@ void LobbyPkt_PutBlob(LobbyPkt *p, void *src, u16 n);
 void LobbyPkt_PutBlob2(LobbyPkt *p, void *src, u16 n);
 void LobbyPkt_PutBytes2(LobbyPkt *p, void *src, u16 n);
 s32 LobbyPkt_Send(LobbyPkt *p);
+
+/* LobbyKddi_PortalStep's steps (gLbsConnectStep). */
+enum PortalStep {
+    PORTAL_STEP_START = 0,      /* the sequence player is reset */
+    PORTAL_STEP_OPEN = 1,       /* the browser opens gPortalPage's page */
+    PORTAL_STEP_BROWSE = 2,     /* the browser runs until it ends */
+    PORTAL_STEP_CLOSE = 3,      /* on to the lobby: the browser is closed */
+    PORTAL_STEP_WAIT = 4,       /* two frames' wait */
+    PORTAL_STEP_WAIT2 = 5,
+    PORTAL_STEP_DONE = 6,       /* returns 1 */
+    PORTAL_STEP_TOP_AGAIN = 0x63 /* the portal's top page is opened again */
+};
+
+/* The steps of the quest server's connection: gNetConnStep's values, gLobbyConnSteps' order. */
+enum LobbyConnStep {
+    CONN_CLOSE = 0,         /* LobbyConn_Close */
+    CONN_OPEN = 1,          /* LobbyConn_Open */
+    CONN_WAIT_OPEN = 2,     /* LobbyConn_WaitOpen */
+    CONN_SET_OPTION = 3,    /* LobbyConn_SetOption */
+    CONN_CHALLENGE = 4,     /* LobbyConn_AnswerChallenge */
+    CONN_NEXT = 5,          /* LobbyConn_Next */
+    CONN_START_QUEST = 6,   /* LobbyConn_StartQuest: connected */
+    CONN_FAILED = 7         /* LobbyConn_Fail */
+};
 
 #endif /* LOBBY_NET_H */

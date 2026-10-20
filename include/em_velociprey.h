@@ -2,12 +2,12 @@
 #define EM_VELOCIPREY_H
 
 /*
- * The Velociprey family's vocabulary (src/game/em_khezu.c, EmVelociprey_*):
+ * The Velociprey family's vocabulary (EmVelociprey_*):
  * Velociprey, Genprey, Ioprey and Giaprey (EM_KIND_VELOCIPREY,
  * EM_KIND_GENPREY, EM_KIND_IOPREY, EM_KIND_GIAPREY) share one set of state
  * functions and one numbering of motions and states.
  *
- * Motions: the four kinds and the dromes (src/game/em_drome.c) share one
+ * Motions: the four kinds and the dromes (EmDrome_*) share one
  * motion table (gEmMotionRows[kind]), whose row N plays motion N, so one
  * number serves Em_SetMotion's row and EM_MOTION_ID(layer, motion). The
  * names say what the states that play a motion show. Sides A and B are the
@@ -30,7 +30,7 @@ enum EmVelocipreyMotion {
     VPREY_MOT_LEAP = 0x14,              /* the leap attacks: airborne from frame 22 */
     VPREY_MOT_LEAP_LAND = 0x15,
     VPREY_MOT_STRIKE = 0x16,            /* a melee hit at frame 40 */
-    VPREY_MOT_POUNCE = 0x17,            /* played by the dromes only (em_drome.c): a leap attack on curve kind 1 */
+    VPREY_MOT_POUNCE = 0x17,            /* played by the dromes only (EmDrome_*): a leap attack on curve kind 1 */
     VPREY_MOT_POUNCE_LAND = 0x18,       /* its landing */
     VPREY_MOT_QUICK_STRIKE = 0x19,      /* a melee hit at frame 16 */
     VPREY_MOT_SHOOT = 0x1A,             /* an EmRangedAttack shot at frame 80 */

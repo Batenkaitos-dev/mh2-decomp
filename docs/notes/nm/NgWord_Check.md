@@ -59,5 +59,5 @@ every j-loop register reversed); nc/wc/c retyped in the word[k] state (a1-a7:
   (no web); two definitions reaching one use (a for's init and increment)
   make one.
 - The `(s8)c` cast pattern (`while ((s8)s[i] != 0)` also in
-  sub_main/unk_30EA30.c:1468) may be the same CSE-of-a-load effect: the
+  sub_main/kbd_input.c:1468) may be the same CSE-of-a-load effect: the
   extension comes from a byte load CSE'd across blocks.

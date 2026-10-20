@@ -1,4 +1,4 @@
-# BoxMenu_DrawItemList (lobby, src/lobby/unk_7683D0.c, level 4)
+# BoxMenu_DrawItemList (lobby, src/lobby/box_menu_draw.c, level 4)
 
 ## Status
 

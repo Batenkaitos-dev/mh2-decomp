@@ -9,6 +9,7 @@
 #include "lobby_globals.h"
 #include "pad.h"
 #include "lobby_menu.h"
+#include "lobby_labels.h"
 
 void Font_SetSpacing(u8 a, u8 b);
 void Text_SetSize(s32);
@@ -28,7 +29,7 @@ void ShortMail_Close(void);
 s32 ShortMail_Input(ShortMailMenu *m, u16 pad);
 s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
 void LobbyText_Open(s32);
-s32 LobbyStep_6704(MailEntry *msg);
+s32 LobbyStep_ShortMailSend(MailEntry *msg);
 extern ShortMailMenu gShortMailMenu;
 extern LobbyMenu *gLobbyMenu;
 s32 ShortMail_Step(u16 pad)
@@ -60,7 +61,7 @@ s32 ShortMail_Step(u16 pad)
         break;
     case 2:
         gLobbyMenu->redraw = 1;
-        switch (LobbyStep_6704(&m->mail)) {
+        switch (LobbyStep_ShortMailSend(&m->mail)) {
         case 0:
             m->step = 3;
             LobbyText_Open(0x3B);
@@ -268,12 +269,6 @@ s32 ShortMail_Input(ShortMailMenu *m, u16 pad)
 void Font_SetColor(s32 color);
 void Font_SetPos(s16 x, s16 y);
 void Text_PrintfColored(char *fmt, ...);
-extern char *D_0080C0DC;
-extern char *D_0080C4A4;
-extern char *D_0080C4AC;
-extern char *gMailComposeTexts[];
-extern char *D_0080C544;
-extern char *D_0080C074;
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
 void Sjis_Widen(char *src, char *dst);
 u32 Color_PulseAlpha(u32 color);
@@ -309,20 +304,20 @@ void ShortMail_DrawForm(MailEntry *p, s16 sel, s32 flags, s16 x, s16 y)
     }
     Icon_Draw(x, y, 0x154, 0x122, 0xFFE0D8C8, 0);
     Font_SetColor(0x80301010);
-    t = D_0080C0DC;
+    t = gGameMenuLabels[MENU_LABEL_SHORT_MAIL];
     sx = x;
     Font_SetPos(Text_CenterX(t, x + 0xAA, 0x12), cy += 0xC);
     Text_PrintfColored(t);
     sy = cy;
     Font_SetPos(sx + 0x28, sy + 0x1E);
-    Text_PrintfColored("%s%s", D_0080C4A4, D_0080C074);
+    Text_PrintfColored("%s%s", gNetLabels[NET_LABEL_NAME], gLobbyWords[LOBBY_WORD_COLON]);
     Font_SetColor(0x80101010);
     Font_SetPos(sx + 0x28, sy + 0x34);
     Sjis_Widen((char *)m->name, buf);
     Text_PrintfColored("%s", buf);
     Font_SetColor(0x80301010);
     Font_SetPos(sx + 0x28, sy + 0x4A);
-    Text_PrintfColored("%s%s", D_0080C4AC, D_0080C074);
+    Text_PrintfColored("%s%s", gNetLabels[NET_LABEL_ID], gLobbyWords[LOBBY_WORD_COLON]);
     Font_SetColor(0x80101010);
     Font_SetPos(sx + 0x28, sy + 0x60);
     Sjis_Widen((char *)m->id, buf);
@@ -341,7 +336,7 @@ void ShortMail_DrawForm(MailEntry *p, s16 sel, s32 flags, s16 x, s16 y)
     }
     Font_SetColor(0x80301010);
     Font_SetPos(sx + 0x28, sy + 0x76);
-    Text_PrintfColored("%s%s", gMailComposeTexts[0], D_0080C074);
+    Text_PrintfColored("%s%s", gNetLabels[NET_LABEL_MAIL_BODY], gLobbyWords[LOBBY_WORD_COLON]);
     Font_SetColor(0x80101010);
     by = sy + 0x8C;
     Text_DrawWrapped((s16)(sx + 0x28) - 10, by + 2, 0x16, m->text, 0x1F);
@@ -356,11 +351,11 @@ void ShortMail_DrawForm(MailEntry *p, s16 sel, s32 flags, s16 x, s16 y)
         Gfx_DrawRectFrame(sx + 0x13, by - 1, 0x12E, 0x5C, c);
     }
     if (!f2) {
-        s = D_0080C544;
+        s = gNetLabels[NET_LABEL_SEND];
         tx = Text_CenterX(s, x + 0xAA, 0x12);
         if (sel == 2) {
             c = 0x80301010;
-            Menu_DrawArrowsRev(tx, sy + 0xEE, 0x12, D_0080C544, 0xFF008080);
+            Menu_DrawArrowsRev(tx, sy + 0xEE, 0x12, gNetLabels[NET_LABEL_SEND], 0xFF008080);
         } else {
             c = 0x80404040;
         }
@@ -368,7 +363,7 @@ void ShortMail_DrawForm(MailEntry *p, s16 sel, s32 flags, s16 x, s16 y)
         Font_SetPos(tx, sy + 0xEE);
         Text_PrintfColored("%s", s);
         if (sel == 2) {
-            Menu_DrawArrowsRev(tx, sy + 0xEE, 0x12, D_0080C544, 0xFF008080);
+            Menu_DrawArrowsRev(tx, sy + 0xEE, 0x12, gNetLabels[NET_LABEL_SEND], 0xFF008080);
         }
     }
 }
@@ -379,7 +374,6 @@ void Menu_DrawLine(s16 x, s16 y, s32 w, s32 h, s32 sel); /* unit's own declarati
 void Font_SetColor(s32 color);
 void Font_SetPos(s16 x, s16 y);
 void Text_PrintfColored(char *fmt, ...);
-extern char *gGroupBoardTexts[];
 void ShortMail_DrawActions(ShortMailMenu *m, s16 x, s16 y);
 void ShortMail_DrawActions(ShortMailMenu *m, s16 x, s16 y)
 {
@@ -405,7 +399,7 @@ void ShortMail_DrawActions(ShortMailMenu *m, s16 x, s16 y)
             Menu_DrawLine((s16)(x - 0x96) + 8, y - 1, 0x86, 0x14, sel);
         }
         Font_SetPos((s16)(x - 0x96) + 8, y);
-        Text_PrintfColored(gGroupBoardTexts[0x2F + i]);
+        Text_PrintfColored(gNetLabels[NET_LABEL_FRIEND_LIST + i]);
         y += 0x16;
     }
 }
@@ -415,7 +409,7 @@ void ShortMail_Draw(MenuTask *task) {
     Font_SetSpacing(0x12, 0x12);
 }
 
-void FriendList_Draw(u8 *o);
+void FriendList_Draw(MenuTask *task);
 void ShortMail_DrawForm(MailEntry *p, s16 sel, s32 flags, s16 x, s16 y);
 s32 Kbd_IsOpen(void); /* unit's own declaration: the definition (sub_main) returns s8;
  * ShortMail_Draw2 is 17 words off with s8 */
@@ -440,7 +434,7 @@ void ShortMail_Draw2(MenuTask *task)
         if (m->state == 2) {
             ShortMail_DrawActions(m, row, 0x36);
         } else if (m->state == 5) {
-            FriendList_Draw((u8 *) task);
+            FriendList_Draw(task);
         }
         break;
     }

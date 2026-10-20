@@ -1,4 +1,4 @@
-# DlgInput_Draw (lobby, src/lobby/unk_72C7C0.c)
+# DlgInput_Draw (lobby, src/lobby/browser_dialogs.c)
 
 ## Status
 

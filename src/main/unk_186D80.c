@@ -1,5 +1,7 @@
 /*
- * main 0x186d80-0x189f90
+ * The boot ELF's 2D and 3D primitives (Prim_*: lines, rectangles,
+ * gradients, triangles and sprites, in screen space, as floats and in 3D),
+ * the wait for the frame's flip, and the power-off thread (PowerOff_*).
  */
 #include "common.h"
 #include "dma.h"
@@ -95,6 +97,14 @@ s32 sceCdPowerOff(volatile s32 *stat);
 void PowerOff_Thread(s32 sema);
 void PowerOff_Callback(s32 sema);
 
+/*
+ * The end-of-frame wait, called by Sys_FlipFrame. Runs Sound_Update and
+ * the CRI (ADX) server call. When the frame ended in time (gSysVblanks at
+ * most gSysFlipAt) it stores the GS CSR's FIELD bit in gSysField, requests
+ * the flip (Sys_FlipTick) and keeps calling a CRI library routine until
+ * gSysFlipPending is cleared at the VBlank. A late frame requests the flip
+ * and makes that call once, without waiting.
+ */
 void Sys_WaitFlip(void)
 {
     Sound_Update();
@@ -111,21 +121,34 @@ void Sys_WaitFlip(void)
     func_00162188();
 }
 
-s32 Prim_SendPacket(u32 *pkt)
+/*
+ * Sends a primitive's packet (built at the scratchpad by the Prim_
+ * functions): the DMA tag's low 15 bits give the qwords after the tag.
+ * Sets the tag's top bit, writes the VIF codes FLUSHA (0x13) and DIRECT
+ * (0x51, with the GIF data's qword count) into the tag's upper words,
+ * copies the packet into the frame's packet buffer (Packet_Alloc) and
+ * adds the copy to gDmaQueue's chain. Returns 1.
+ */
+s32 Prim_SendPacket(u32 *packet)
 {
     s32 qwc;
-    u32 *p;
+    u32 *queued;
 
-    qwc = (pkt[0] & 0x7FFF) + 1;
-    p = Packet_Alloc(qwc << 4, 16);
-    pkt[0] |= 0x80000000;
-    pkt[2] = 0x13000000;
-    pkt[3] = (qwc - 1) | 0x51000000;
-    Mem_CopyQwords(pkt, p, qwc);
-    DmaQueue_AddChain(0, ((u32)p & 0x0FFFFFFF) | 0x40000000, p, &gDmaQueue);
+    qwc = (packet[0] & 0x7FFF) + 1;
+    queued = Packet_Alloc(qwc << 4, 16);
+    packet[0] |= 0x80000000;
+    packet[2] = 0x13000000;
+    packet[3] = (qwc - 1) | 0x51000000;
+    Mem_CopyQwords(packet, queued, qwc);
+    DmaQueue_AddChain(0, ((u32)queued & 0x0FFFFFFF) | 0x40000000, queued, &gDmaQueue);
     return 1;
 }
 
+/*
+ * 1 when (x, y) lies within gViewClipW and gViewClipH of the view centre
+ * (gViewCenterX, gViewCenterY) and z is between 0 and gSysZMax, else 0.
+ * Prim_DrawLine's test for each end.
+ */
 static s32 Prim_InViewClip(f32 x, f32 y, f32 z)
 {
     if (gViewCenterX + gViewClipW < x) {
@@ -149,6 +172,11 @@ static s32 Prim_InViewClip(f32 x, f32 y, f32 z)
     return 1;
 }
 
+/*
+ * 1 when z is between 0 and gSysZMax and (x, y), moved by gSysOffsetX
+ * and gSysOffsetY, falls inside the GS's 4096 x 4096 coordinate space,
+ * else 0. Prim_DrawLineF's test for each end.
+ */
 static s32 Prim_InGsRange(f32 x, f32 y, f32 z)
 {
     if (z < 0.0f) {
@@ -172,260 +200,298 @@ static s32 Prim_InGsRange(f32 x, f32 y, f32 z)
     return 1;
 }
 
-s32 Prim_DrawLine(PrimLine *l)
+/*
+ * Draws a line from (x0, y0) to (x1, y1) of line, in the 640-wide screen
+ * coordinates (x scaled to gDispWidth), in line->color (0xAARRGGBB; only
+ * the alpha is converted to the GS's range). Returns 0, drawing nothing,
+ * when an end falls outside the view (Prim_InViewClip), else 1; also 1
+ * when gSysNoDraw is set.
+ */
+s32 Prim_DrawLine(PrimLine *line)
 {
-    u64 *p;
-    u32 c;
+    u64 *gifData;
+    u32 gsColor;
     s16 x, y;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimLinePacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(l->color, 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    x = Gs_ScreenX(l->x0 * ((f32)gDispWidth / 640.0f));
-    y = Gs_ScreenY(l->y0);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(line->color, 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    x = Gs_ScreenX(line->x0 * ((f32)gDispWidth / 640.0f));
+    y = Gs_ScreenY(line->y0);
     if (Prim_InViewClip((s32)x, (s32)y, 1.0f) == 0) {
         return 0;
     }
-    *p++ = GS_XYZ((gSysOffsetX + x) << 4, (gSysOffsetY + y) << 4, (u32)gSysZMax);
-    x = Gs_ScreenX(l->x1 * ((f32)gDispWidth / 640.0f));
-    y = Gs_ScreenY(l->y1);
+    *gifData++ = GS_XYZ((gSysOffsetX + x) << 4, (gSysOffsetY + y) << 4, (u32)gSysZMax);
+    x = Gs_ScreenX(line->x1 * ((f32)gDispWidth / 640.0f));
+    y = Gs_ScreenY(line->y1);
     if (Prim_InViewClip((s32)x, (s32)y, 1.0f) == 0) {
         return 0;
     }
-    *p++ = GS_XYZ((gSysOffsetX + x) << 4, (gSysOffsetY + y) << 4, (u32)gSysZMax);
+    *gifData++ = GS_XYZ((gSysOffsetX + x) << 4, (gSysOffsetY + y) << 4, (u32)gSysZMax);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_FillRect(PrimLine *r)
+/*
+ * Fills the rectangle (x0, y0)-(x1, y1) of rect in the 640-wide screen
+ * coordinates: x is scaled to gDispWidth, the display is centred in the
+ * GS's 4096-pixel space (originX, originY, in 1/16 pixels) and y is
+ * halved in field mode (gSysFrameMode 0). rect->color is 0xAARRGGBB; only
+ * its alpha is converted. Returns 1.
+ */
+s32 Prim_FillRect(PrimLine *rect)
 {
-    u64 *p;
+    u64 *gifData;
     s32 x0, y0, x1, y1;
-    s32 ox, oy;
+    s32 originX, originY;
     f32 scale;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
-    ox = ((0x1000 - gDispWidth) / 2) << 4;
-    oy = ((0x1000 - gDispHeight) / 2) << 4;
+    originX = ((0x1000 - gDispWidth) / 2) << 4;
+    originY = ((0x1000 - gDispHeight) / 2) << 4;
     scale = (f32)gDispWidth / 640.0f;
-    x0 = 16.0f * (r->x0 * scale);
-    y0 = r->y0 << 4;
-    x1 = 16.0f * (r->x1 * scale);
-    y1 = r->y1 << 4;
+    x0 = 16.0f * (rect->x0 * scale);
+    y0 = rect->y0 << 4;
+    x1 = 16.0f * (rect->x1 * scale);
+    y1 = rect->y1 << 4;
     if (gSysFrameMode == 0) {
         y0 >>= 1;
         y1 >>= 1;
     }
-    x0 += ox;
-    x1 += ox;
-    y0 += oy;
-    y1 += oy;
+    x0 += originX;
+    x1 += originX;
+    y0 += originY;
+    y1 += originY;
     Mem_CopyQwords(gPrimRectPacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(r->color, 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    *p++ = GS_XYZ(x0, y0, (u32)gSysZMax);
-    *p++ = GS_XYZ(x1, y1, (u32)gSysZMax);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(rect->color, 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    *gifData++ = GS_XYZ(x0, y0, (u32)gSysZMax);
+    *gifData++ = GS_XYZ(x1, y1, (u32)gSysZMax);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_FillGradRect(PrimGradRect *r)
+/*
+ * Fills the rectangle (x0, y0)-(x1, y1) of rect as Prim_FillRect does,
+ * with a colour per corner (color[0] top left, [1] top right, [2] bottom
+ * left, [3] bottom right) shaded between them. Returns 1.
+ */
+s32 Prim_FillGradRect(PrimGradRect *rect)
 {
-    u64 *p;
+    u64 *gifData;
     s32 x0, x1, y0, y1;
     u64 left, bottom;
-    s32 ox, oy;
+    s32 originX, originY;
     f32 scale;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimGradRectPacket, (void *)SCRATCHPAD, 3);
-    ox = ((0x1000 - gDispWidth) / 2) << 4;
-    oy = ((0x1000 - gDispHeight) / 2) << 4;
+    originX = ((0x1000 - gDispWidth) / 2) << 4;
+    originY = ((0x1000 - gDispHeight) / 2) << 4;
     scale = (f32)gDispWidth / 640.0f;
-    x0 = 16.0f * (r->x0 * scale);
-    y0 = r->y0 << 4;
-    x1 = 16.0f * (r->x1 * scale);
-    y1 = r->y1 << 4;
+    x0 = 16.0f * (rect->x0 * scale);
+    y0 = rect->y0 << 4;
+    x1 = 16.0f * (rect->x1 * scale);
+    y1 = rect->y1 << 4;
     if (gSysFrameMode == 0) {
         y0 >>= 1;
         y1 >>= 1;
     }
-    x0 += ox;
-    x1 += ox;
-    y0 += oy;
-    y1 += oy;
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(r->color[0], 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
+    x0 += originX;
+    x1 += originX;
+    y0 += originY;
+    y1 += originY;
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(rect->color[0], 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
     left = x0;
-    *p++ = GS_XYZ(left, y0, (u32)gSysZMax);
-    c = Gs_ColorToGs(r->color[1], 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    *p++ = GS_XYZ(x1, y0, (u32)gSysZMax);
-    c = Gs_ColorToGs(r->color[2], 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
+    *gifData++ = GS_XYZ(left, y0, (u32)gSysZMax);
+    gsColor = Gs_ColorToGs(rect->color[1], 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    *gifData++ = GS_XYZ(x1, y0, (u32)gSysZMax);
+    gsColor = Gs_ColorToGs(rect->color[2], 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
     bottom = (u64)y1 << 16;
-    *p++ = left | bottom | ((u64)(u32)gSysZMax << 32);
-    c = Gs_ColorToGs(r->color[3], 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    *p++ = (u64)x1 | bottom | ((u64)(u32)gSysZMax << 32);
+    *gifData++ = left | bottom | ((u64)(u32)gSysZMax << 32);
+    gsColor = Gs_ColorToGs(rect->color[3], 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    *gifData++ = (u64)x1 | bottom | ((u64)(u32)gSysZMax << 32);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Sprite_Draw(Sprite *s)
+/*
+ * Draws a textured rectangle with the texture bound before (Tex_Bind): the
+ * screen corner (x, y) of sprite and its size w by h, in the 640-wide
+ * coordinates placed as Prim_FillRect places them, and the texel
+ * rectangle (u0, v0)-(u1, v1). Half a texel is added to the texture
+ * coordinates unless gRenderFlags has bit 0x10000. sprite->color tints it,
+ * each channel converted to the GS's range (0x80 is 1.0). Returns 1.
+ */
+s32 Sprite_Draw(Sprite *sprite)
 {
-    u64 *p;
-    s32 x0;
-    s32 y0;
-    s32 x1;
-    s32 y1;
-    s32 w;
-    s32 h;
-    s32 u1;
-    s32 u0;
-    s32 v0;
-    s32 v1;
-    s32 ox;
-    s32 oy;
+    u64 *gifData;
+    s32 left;
+    s32 top;
+    s32 right;
+    s32 bottom;
+    s32 width;
+    s32 height;
+    s32 texRight;
+    s32 texLeft;
+    s32 texTop;
+    s32 texBottom;
+    s32 originX;
+    s32 originY;
     f32 scale;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
-    ox = ((0x1000 - gDispWidth) / 2) << 4;
-    oy = ((0x1000 - gDispHeight) / 2) << 4;
+    originX = ((0x1000 - gDispWidth) / 2) << 4;
+    originY = ((0x1000 - gDispHeight) / 2) << 4;
     scale = (f32)gDispWidth / 640.0f;
-    x0 = 16.0f * (s->x * scale);
-    y0 = s->y << 4;
-    w = 16.0f * (s->w * scale);
-    h = s->h << 4;
+    left = 16.0f * (sprite->x * scale);
+    top = sprite->y << 4;
+    width = 16.0f * (sprite->w * scale);
+    height = sprite->h << 4;
     if (gSysFrameMode == 0) {
-        y0 >>= 1;
-        h >>= 1;
+        top >>= 1;
+        height >>= 1;
     }
-    x0 += ox;
-    x1 = x0 + w;
-    y0 += oy;
-    y1 = y0 + h;
+    left += originX;
+    right = left + width;
+    top += originY;
+    bottom = top + height;
     Mem_CopyQwords(gSpritePacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(s->color, 0);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    u0 = s->u0 << 4;
-    u1 = s->u1 << 4;
-    v0 = s->v0 << 4;
-    v1 = s->v1 << 4;
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(sprite->color, 0);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    texLeft = sprite->u0 << 4;
+    texRight = sprite->u1 << 4;
+    texTop = sprite->v0 << 4;
+    texBottom = sprite->v1 << 4;
     if (!(gRenderFlags & 0x10000)) {
-        u0 += 8;
-        v0 += 8;
-        u1 += 8;
-        v1 += 8;
+        texLeft += 8;
+        texTop += 8;
+        texRight += 8;
+        texBottom += 8;
     }
-    *p++ = GS_UV(u0, v0);
-    *p++ = GS_XYZ(x0, y0, (u32)gSysZMax);
-    *p++ = GS_UV(u1, v1);
-    *p++ = GS_XYZ(x1, y1, (u32)gSysZMax);
+    *gifData++ = GS_UV(texLeft, texTop);
+    *gifData++ = GS_XYZ(left, top, (u32)gSysZMax);
+    *gifData++ = GS_UV(texRight, texBottom);
+    *gifData++ = GS_XYZ(right, bottom, (u32)gSysZMax);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_FillTri(PrimTri *t)
+/*
+ * Fills the triangle (x0, y0), (x1, y1), (x2, y2) of tri in one colour,
+ * the coordinates placed as Prim_FillRect places them; only the colour's
+ * alpha is converted. Returns 1.
+ */
+s32 Prim_FillTri(PrimTri *tri)
 {
-    u64 *p;
+    u64 *gifData;
     s32 x0, x1, x2, y0, y1, y2;
-    s32 ox, oy;
+    s32 originX, originY;
     f32 scale;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimTriPacket, (void *)SCRATCHPAD, 3);
-    ox = ((0x1000 - gDispWidth) / 2) << 4;
-    oy = ((0x1000 - gDispHeight) / 2) << 4;
+    originX = ((0x1000 - gDispWidth) / 2) << 4;
+    originY = ((0x1000 - gDispHeight) / 2) << 4;
     scale = (f32)gDispWidth / 640.0f;
-    x0 = 16.0f * (t->x0 * scale);
-    y0 = t->y0 << 4;
-    x1 = 16.0f * (t->x1 * scale);
-    y1 = t->y1 << 4;
-    x2 = 16.0f * (t->x2 * scale);
-    y2 = t->y2 << 4;
+    x0 = 16.0f * (tri->x0 * scale);
+    y0 = tri->y0 << 4;
+    x1 = 16.0f * (tri->x1 * scale);
+    y1 = tri->y1 << 4;
+    x2 = 16.0f * (tri->x2 * scale);
+    y2 = tri->y2 << 4;
     if (gSysFrameMode == 0) {
         y0 >>= 1;
         y1 >>= 1;
         y2 >>= 1;
     }
-    x0 += ox;
-    x1 += ox;
-    x2 += ox;
-    y0 += oy;
-    y1 += oy;
-    y2 += oy;
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(t->color, 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    *p++ = GS_XYZ(x0, y0, (u32)gSysZMax);
-    *p++ = GS_XYZ(x1, y1, (u32)gSysZMax);
-    *p++ = GS_XYZ(x2, y2, (u32)gSysZMax);
+    x0 += originX;
+    x1 += originX;
+    x2 += originX;
+    y0 += originY;
+    y1 += originY;
+    y2 += originY;
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(tri->color, 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    *gifData++ = GS_XYZ(x0, y0, (u32)gSysZMax);
+    *gifData++ = GS_XYZ(x1, y1, (u32)gSysZMax);
+    *gifData++ = GS_XYZ(x2, y2, (u32)gSysZMax);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_DrawTexTri(PrimTexTri *t)
+/*
+ * Draws the triangle of tri, placed as Prim_FillTri places it, with the
+ * bound texture: the texel coordinates (u0, v0), (u1, v1), (u2, v2) take
+ * half a texel more unless gRenderFlags has bit 0x10000, and tri->color
+ * tints it (each channel converted). Returns 1.
+ */
+s32 Prim_DrawTexTri(PrimTexTri *tri)
 {
-    u64 *p;
+    u64 *gifData;
     s32 x0, y0, x1, y1, x2, y2;
     s32 u1, u0, v0, v1, u2, v2;
-    s32 ox, oy;
+    s32 originX, originY;
     f32 scale;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
-    ox = ((0x1000 - gDispWidth) / 2) << 4;
-    oy = ((0x1000 - gDispHeight) / 2) << 4;
+    originX = ((0x1000 - gDispWidth) / 2) << 4;
+    originY = ((0x1000 - gDispHeight) / 2) << 4;
     scale = (f32)gDispWidth / 640.0f;
-    x0 = 16.0f * (t->x0 * scale);
-    y0 = t->y0 << 4;
-    x1 = 16.0f * (t->x1 * scale);
-    y1 = t->y1 << 4;
-    x2 = 16.0f * (t->x2 * scale);
-    y2 = t->y2 << 4;
+    x0 = 16.0f * (tri->x0 * scale);
+    y0 = tri->y0 << 4;
+    x1 = 16.0f * (tri->x1 * scale);
+    y1 = tri->y1 << 4;
+    x2 = 16.0f * (tri->x2 * scale);
+    y2 = tri->y2 << 4;
     if (gSysFrameMode == 0) {
         y0 >>= 1;
         y1 >>= 1;
         y2 >>= 1;
     }
-    x0 += ox;
-    y0 += oy;
-    x1 += ox;
-    y1 += oy;
-    x2 += ox;
-    y2 += oy;
+    x0 += originX;
+    y0 += originY;
+    x1 += originX;
+    y1 += originY;
+    x2 += originX;
+    y2 += originY;
     Mem_CopyQwords(gPrimTexTriPacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(t->color, 0);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, 1);
-    u0 = t->u0 << 4;
-    u1 = t->u1 << 4;
-    u2 = t->u2 << 4;
-    v0 = t->v0 << 4;
-    v1 = t->v1 << 4;
-    v2 = t->v2 << 4;
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(tri->color, 0);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
+    u0 = tri->u0 << 4;
+    u1 = tri->u1 << 4;
+    u2 = tri->u2 << 4;
+    v0 = tri->v0 << 4;
+    v1 = tri->v1 << 4;
+    v2 = tri->v2 << 4;
     if (!(gRenderFlags & 0x10000)) {
         u0 += 8;
         v0 += 8;
@@ -434,311 +500,371 @@ s32 Prim_DrawTexTri(PrimTexTri *t)
         u2 += 8;
         v2 += 8;
     }
-    *p++ = GS_UV(u0, v0);
-    *p++ = GS_XYZ(x0, y0, (u32)gSysZMax);
-    *p++ = GS_UV(u1, v1);
-    *p++ = GS_XYZ(x1, y1, (u32)gSysZMax);
-    *p++ = GS_UV(u2, v2);
-    *p++ = GS_XYZ(x2, y2, (u32)gSysZMax);
+    *gifData++ = GS_UV(u0, v0);
+    *gifData++ = GS_XYZ(x0, y0, (u32)gSysZMax);
+    *gifData++ = GS_UV(u1, v1);
+    *gifData++ = GS_XYZ(x1, y1, (u32)gSysZMax);
+    *gifData++ = GS_UV(u2, v2);
+    *gifData++ = GS_XYZ(x2, y2, (u32)gSysZMax);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_DrawLineF(PrimLineF *l)
+/*
+ * Draws a line between line's two vertices, given in screen coordinates
+ * with depth (Gs_ScreenXf, Gs_ScreenYf, Gs_DepthToZ). Returns 0, drawing
+ * nothing, when a vertex falls outside the GS's range (Prim_InGsRange),
+ * else 1.
+ */
+s32 Prim_DrawLineF(PrimLineF *line)
 {
-    u64 *p;
+    u64 *gifData;
     f32 x, y, z;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimLineFPacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(l->color, 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&l->v[0].q);
-    x = Gs_ScreenXf(l->v[0].x);
-    y = Gs_ScreenYf(l->v[0].y);
-    z = Gs_DepthToZ(l->v[0].z);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(line->color, 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&line->v[0].q);
+    x = Gs_ScreenXf(line->v[0].x);
+    y = Gs_ScreenYf(line->v[0].y);
+    z = Gs_DepthToZ(line->v[0].z);
     if (Prim_InGsRange((s32)x, (s32)y, z) == 0) {
         return 0;
     }
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    x = Gs_ScreenXf(l->v[1].x);
-    y = Gs_ScreenYf(l->v[1].y);
-    z = Gs_DepthToZ(l->v[1].z);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    x = Gs_ScreenXf(line->v[1].x);
+    y = Gs_ScreenYf(line->v[1].y);
+    z = Gs_DepthToZ(line->v[1].z);
     if (Prim_InGsRange((s32)x, (s32)y, z) == 0) {
         return 0;
     }
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_DrawTexTriF(PrimTexTriF *t)
+/*
+ * Draws tri's three screen-space vertices (as Prim_DrawLineF converts
+ * them) as a triangle with the bound texture, a colour per vertex and
+ * perspective texture coordinates: each vertex's st times its q (texS,
+ * texT), with q in the colour's Q. No range test. Returns 1.
+ */
+s32 Prim_DrawTexTriF(PrimTexTriF *tri)
 {
-    u64 *p;
+    u64 *gifData;
     f32 x, y, z;
-    f32 s, tq;
-    u32 c;
+    f32 texS, texT;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimTexTriFPacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(t->color[0], 0);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&t->v[0].q);
-    s = t->st[0][0] * t->v[0].q;
-    tq = t->st[0][1] * t->v[0].q;
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&tq);
-    x = Gs_ScreenXf(t->v[0].x);
-    y = Gs_ScreenYf(t->v[0].y);
-    z = Gs_DepthToZ(t->v[0].z);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    c = Gs_ColorToGs(t->color[1], 0);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&t->v[1].q);
-    s = t->st[1][0] * t->v[1].q;
-    tq = t->st[1][1] * t->v[1].q;
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&tq);
-    x = Gs_ScreenXf(t->v[1].x);
-    y = Gs_ScreenYf(t->v[1].y);
-    z = Gs_DepthToZ(t->v[1].z);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    c = Gs_ColorToGs(t->color[2], 0);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&t->v[2].q);
-    s = t->st[2][0] * t->v[2].q;
-    tq = t->st[2][1] * t->v[2].q;
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&tq);
-    x = Gs_ScreenXf(t->v[2].x);
-    y = Gs_ScreenYf(t->v[2].y);
-    z = Gs_DepthToZ(t->v[2].z);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(tri->color[0], 0);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&tri->v[0].q);
+    texS = tri->st[0][0] * tri->v[0].q;
+    texT = tri->st[0][1] * tri->v[0].q;
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(tri->v[0].x);
+    y = Gs_ScreenYf(tri->v[0].y);
+    z = Gs_DepthToZ(tri->v[0].z);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    gsColor = Gs_ColorToGs(tri->color[1], 0);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&tri->v[1].q);
+    texS = tri->st[1][0] * tri->v[1].q;
+    texT = tri->st[1][1] * tri->v[1].q;
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(tri->v[1].x);
+    y = Gs_ScreenYf(tri->v[1].y);
+    z = Gs_DepthToZ(tri->v[1].z);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    gsColor = Gs_ColorToGs(tri->color[2], 0);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&tri->v[2].q);
+    texS = tri->st[2][0] * tri->v[2].q;
+    texT = tri->st[2][1] * tri->v[2].q;
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(tri->v[2].x);
+    y = Gs_ScreenYf(tri->v[2].y);
+    z = Gs_DepthToZ(tri->v[2].z);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_FillRectF(PrimLineF *r)
+/*
+ * Fills the rectangle between rect's two screen-space vertices: x is
+ * scaled to gDispWidth before Gs_ScreenXf, y and the depth are converted
+ * as Prim_DrawLineF converts them. No range test. Returns 1.
+ */
+s32 Prim_FillRectF(PrimLineF *rect)
 {
-    u64 *p;
+    u64 *gifData;
     f32 x, y, z;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimRectFPacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(r->color, 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&r->v[0].q);
-    x = Gs_ScreenXf(r->v[0].x * ((f32)gDispWidth / 640.0f));
-    y = Gs_ScreenYf(r->v[0].y);
-    z = Gs_DepthToZ(r->v[0].z);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    x = Gs_ScreenXf(r->v[1].x * ((f32)gDispWidth / 640.0f));
-    y = Gs_ScreenYf(r->v[1].y);
-    z = Gs_DepthToZ(r->v[1].z);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(rect->color, 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&rect->v[0].q);
+    x = Gs_ScreenXf(rect->v[0].x * ((f32)gDispWidth / 640.0f));
+    y = Gs_ScreenYf(rect->v[0].y);
+    z = Gs_DepthToZ(rect->v[0].z);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    x = Gs_ScreenXf(rect->v[1].x * ((f32)gDispWidth / 640.0f));
+    y = Gs_ScreenYf(rect->v[1].y);
+    z = Gs_DepthToZ(rect->v[1].z);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-/* FAKEMATCH: the (s32) around the y word's `(s32)(...) << 4` has no purpose (the
- * value is s32 already), but only with it does MWCC compute y first and still
- * `or` x into y as the game does; without it, 2 words off (the `or` operands).
- * The scaled x goes through y (y = x * (w / 640.0f), then Gs_ScreenX(y)) so the
- * product lands in f0 as in the game. */
-s32 Prim_DrawSpriteF(PrimSpriteF *sp)
+/*
+ * Draws a textured rectangle between sprite's two vertices with
+ * perspective texture coordinates (st times q). x is scaled to gDispWidth
+ * and placed by Gs_ScreenX; y has gSysScrollY taken off and is halved in
+ * field mode (gSysFrameMode 0); the depth is converted as Gs_DepthToZ
+ * does. Returns 1.
+ * Kept for the match: the (s32) around the y word's (s32)(...) << 4 has
+ * no effect (the value is s32 already), but only with it does the
+ * compiler compute y first and then or x into it as the game does. The
+ * scaled x goes through y (y = x * scale, then Gs_ScreenX(y)) so the
+ * product is in the same register as in the game.
+ */
+s32 Prim_DrawSpriteF(PrimSpriteF *sprite)
 {
-    u64 *p;
+    u64 *gifData;
     f32 x, y;
-    f32 s, t;
-    u32 c;
+    f32 texS, texT;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimSpriteFPacket, (void *)SCRATCHPAD, 3);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(sp->color, 0);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&sp->v[0].q);
-    s = sp->st[0][0] * sp->v[0].q;
-    t = sp->st[0][1] * sp->v[0].q;
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&t);
-    x = sp->v[0].x;
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(sprite->color, 0);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&sprite->v[0].q);
+    texS = sprite->st[0][0] * sprite->v[0].q;
+    texT = sprite->st[0][1] * sprite->v[0].q;
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = sprite->v[0].x;
     y = x * ((f32)gDispWidth / 640.0f);
     x = Gs_ScreenX(y);
     if (gSysFrameMode == 0) {
-        y = 0.5f * (sp->v[0].y - gSysScrollY);
+        y = 0.5f * (sprite->v[0].y - gSysScrollY);
     } else {
-        y = sp->v[0].y - gSysScrollY;
+        y = sprite->v[0].y - gSysScrollY;
     }
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)((s32)(gSysOffsetY + y) << 4),
-                  (u32)(-0.5f * (sp->v[0].z - 1.0f) * gSysZMax));
-    s = sp->st[1][0] * sp->v[1].q;
-    t = sp->st[1][1] * sp->v[1].q;
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&t);
-    x = sp->v[1].x;
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)((s32)(gSysOffsetY + y) << 4),
+                  (u32)(-0.5f * (sprite->v[0].z - 1.0f) * gSysZMax));
+    texS = sprite->st[1][0] * sprite->v[1].q;
+    texT = sprite->st[1][1] * sprite->v[1].q;
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = sprite->v[1].x;
     y = x * ((f32)gDispWidth / 640.0f);
     x = Gs_ScreenX(y);
     if (gSysFrameMode == 0) {
-        y = 0.5f * (sp->v[1].y - gSysScrollY);
+        y = 0.5f * (sprite->v[1].y - gSysScrollY);
     } else {
-        y = sp->v[1].y - gSysScrollY;
+        y = sprite->v[1].y - gSysScrollY;
     }
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)((s32)(gSysOffsetY + y) << 4),
-                  (u32)(-0.5f * (sp->v[1].z - 1.0f) * gSysZMax));
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)((s32)(gSysOffsetY + y) << 4),
+                  (u32)(-0.5f * (sprite->v[1].z - 1.0f) * gSysZMax));
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_DrawRect3D(PrimRect3D *r)
+/*
+ * Fills a rectangle between two world-space corners (rect->p[0], p[1]):
+ * each is projected (Vec_Project) by worldToScreen, the product of
+ * gMtxSlots, gMtxView and gMtxProjScreen, and placed as Prim_DrawLineF
+ * places its vertices; the colour's Q is 1 / w of the first corner. Only
+ * the colour's alpha is converted. Returns 1.
+ */
+s32 Prim_DrawRect3D(PrimRect3D *rect)
 {
-    f32 v[4];
-    f32 m[16];
-    u64 *p;
+    f32 projected[4];
+    f32 worldToScreen[16];
+    u64 *gifData;
     f32 x, y, z;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimRect3DPacket, (void *)SCRATCHPAD, 3);
-    Mtx_Mul(m, gMtxSlots, gMtxView);
-    Mtx_Mul(m, m, gMtxProjScreen);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    Vec_Project(v, r->p[0], m);
-    v[3] = 1.0f / v[3];
-    c = Gs_ColorToGs(r->color, 1);
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&v[3]);
-    x = Gs_ScreenXf(v[0]);
-    y = Gs_ScreenYf(v[1]);
-    z = Gs_DepthToZ(v[2]);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    Vec_Project(v, r->p[1], m);
-    v[3] = 1.0f / v[3];
-    x = Gs_ScreenXf(v[0]);
-    y = Gs_ScreenYf(v[1]);
-    z = Gs_DepthToZ(v[2]);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    Mtx_Mul(worldToScreen, gMtxSlots, gMtxView);
+    Mtx_Mul(worldToScreen, worldToScreen, gMtxProjScreen);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    Vec_Project(projected, rect->p[0], worldToScreen);
+    projected[3] = 1.0f / projected[3];
+    gsColor = Gs_ColorToGs(rect->color, 1);
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&projected[3]);
+    x = Gs_ScreenXf(projected[0]);
+    y = Gs_ScreenYf(projected[1]);
+    z = Gs_DepthToZ(projected[2]);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    Vec_Project(projected, rect->p[1], worldToScreen);
+    projected[3] = 1.0f / projected[3];
+    x = Gs_ScreenXf(projected[0]);
+    y = Gs_ScreenYf(projected[1]);
+    z = Gs_DepthToZ(projected[2]);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_DrawSprite3D(PrimSprite3D *r)
+/*
+ * Draws a textured rectangle between two world-space corners projected as
+ * Prim_DrawRect3D projects them, with perspective texture coordinates
+ * (each corner's st over its w) and sprite->color as the tint (each
+ * channel converted). Returns 1.
+ */
+s32 Prim_DrawSprite3D(PrimSprite3D *sprite)
 {
-    f32 s, t;
-    f32 v[4];
-    f32 m[16];
-    u64 *p;
+    f32 texS, texT;
+    f32 projected[4];
+    f32 worldToScreen[16];
+    u64 *gifData;
     f32 x, y, z;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimSprite3DPacket, (void *)SCRATCHPAD, 3);
-    Mtx_Mul(m, gMtxSlots, gMtxView);
-    Mtx_Mul(m, m, gMtxProjScreen);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(r->color, 0);
-    Vec_Project(v, r->p[0], m);
-    v[3] = 1.0f / v[3];
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&v[3]);
-    s = r->st[0][0] * v[3];
-    t = r->st[0][1] * v[3];
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&t);
-    x = Gs_ScreenXf(v[0]);
-    y = Gs_ScreenYf(v[1]);
-    z = Gs_DepthToZ(v[2]);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    Vec_Project(v, r->p[1], m);
-    v[3] = 1.0f / v[3];
-    s = r->st[1][0] * v[3];
-    t = r->st[1][1] * v[3];
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&t);
-    x = Gs_ScreenXf(v[0]);
-    y = Gs_ScreenYf(v[1]);
-    z = Gs_DepthToZ(v[2]);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    Mtx_Mul(worldToScreen, gMtxSlots, gMtxView);
+    Mtx_Mul(worldToScreen, worldToScreen, gMtxProjScreen);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(sprite->color, 0);
+    Vec_Project(projected, sprite->p[0], worldToScreen);
+    projected[3] = 1.0f / projected[3];
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&projected[3]);
+    texS = sprite->st[0][0] * projected[3];
+    texT = sprite->st[0][1] * projected[3];
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(projected[0]);
+    y = Gs_ScreenYf(projected[1]);
+    z = Gs_DepthToZ(projected[2]);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    Vec_Project(projected, sprite->p[1], worldToScreen);
+    projected[3] = 1.0f / projected[3];
+    texS = sprite->st[1][0] * projected[3];
+    texT = sprite->st[1][1] * projected[3];
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(projected[0]);
+    y = Gs_ScreenYf(projected[1]);
+    z = Gs_DepthToZ(projected[2]);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
-s32 Prim_DrawTexTri3D(PrimTexTri3D *r)
+/*
+ * Draws a textured triangle of three world-space vertices projected as
+ * Prim_DrawRect3D projects them, with a colour per vertex and perspective
+ * texture coordinates (each vertex's st over its w). Returns 1.
+ */
+s32 Prim_DrawTexTri3D(PrimTexTri3D *tri)
 {
-    f32 s, t;
-    f32 v[4];
-    f32 m[16];
-    u64 *p;
+    f32 texS, texT;
+    f32 projected[4];
+    f32 worldToScreen[16];
+    u64 *gifData;
     f32 x, y, z;
-    u32 c;
+    u32 gsColor;
 
     if (gSysNoDraw != 0) {
         return 1;
     }
     Mem_CopyQwords(gPrimTexTri3DPacket, (void *)SCRATCHPAD, 3);
-    Mtx_Mul(m, gMtxSlots, gMtxView);
-    Mtx_Mul(m, m, gMtxProjScreen);
-    p = (u64 *)(SCRATCHPAD + 0x28);
-    c = Gs_ColorToGs(r->color[0], 0);
-    Vec_Project(v, r->p[0], m);
-    v[3] = 1.0f / v[3];
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&v[3]);
-    s = r->st[0][0] * v[3];
-    t = r->st[0][1] * v[3];
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&t);
-    x = Gs_ScreenXf(v[0]);
-    y = Gs_ScreenYf(v[1]);
-    z = Gs_DepthToZ(v[2]);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    c = Gs_ColorToGs(r->color[1], 0);
-    Vec_Project(v, r->p[1], m);
-    v[3] = 1.0f / v[3];
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&v[3]);
-    s = r->st[1][0] * v[3];
-    t = r->st[1][1] * v[3];
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&t);
-    x = Gs_ScreenXf(v[0]);
-    y = Gs_ScreenYf(v[1]);
-    z = Gs_DepthToZ(v[2]);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
-    c = Gs_ColorToGs(r->color[2], 0);
-    Vec_Project(v, r->p[2], m);
-    v[3] = 1.0f / v[3];
-    *p++ = GS_RGBAQ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, (c >> 24) & 0xFF, *(u32 *)&v[3]);
-    s = r->st[2][0] * v[3];
-    t = r->st[2][1] * v[3];
-    *p++ = GS_ST(*(u32 *)&s, *(u32 *)&t);
-    x = Gs_ScreenXf(v[0]);
-    y = Gs_ScreenYf(v[1]);
-    z = Gs_DepthToZ(v[2]);
-    *p++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    Mtx_Mul(worldToScreen, gMtxSlots, gMtxView);
+    Mtx_Mul(worldToScreen, worldToScreen, gMtxProjScreen);
+    gifData = (u64 *)(SCRATCHPAD + 0x28);
+    gsColor = Gs_ColorToGs(tri->color[0], 0);
+    Vec_Project(projected, tri->p[0], worldToScreen);
+    projected[3] = 1.0f / projected[3];
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&projected[3]);
+    texS = tri->st[0][0] * projected[3];
+    texT = tri->st[0][1] * projected[3];
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(projected[0]);
+    y = Gs_ScreenYf(projected[1]);
+    z = Gs_DepthToZ(projected[2]);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    gsColor = Gs_ColorToGs(tri->color[1], 0);
+    Vec_Project(projected, tri->p[1], worldToScreen);
+    projected[3] = 1.0f / projected[3];
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&projected[3]);
+    texS = tri->st[1][0] * projected[3];
+    texT = tri->st[1][1] * projected[3];
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(projected[0]);
+    y = Gs_ScreenYf(projected[1]);
+    z = Gs_DepthToZ(projected[2]);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
+    gsColor = Gs_ColorToGs(tri->color[2], 0);
+    Vec_Project(projected, tri->p[2], worldToScreen);
+    projected[3] = 1.0f / projected[3];
+    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, *(u32 *)&projected[3]);
+    texS = tri->st[2][0] * projected[3];
+    texT = tri->st[2][1] * projected[3];
+    *gifData++ = GS_ST(*(u32 *)&texS, *(u32 *)&texT);
+    x = Gs_ScreenXf(projected[0]);
+    y = Gs_ScreenYf(projected[1]);
+    z = Gs_DepthToZ(projected[2]);
+    *gifData++ = GS_XYZ((s32)(gSysOffsetX + x) << 4, (s32)(gSysOffsetY + y) << 4, (u32)z);
     Prim_SendPacket((u32 *)SCRATCHPAD);
     return 1;
 }
 
+/*
+ * Sets up the power-off handling: creates a semaphore, sets the current
+ * thread's priority to 2, creates and starts PowerOff_Thread (priority 1,
+ * stack gPowerOffStack of 0x2000 bytes) with the semaphore as its
+ * argument, and registers PowerOff_Callback with the library's power-off
+ * hook. Called during the IOP set-up when the power-off module is there.
+ * Returns 1.
+ */
 s32 PowerOff_Init(void)
 {
-    struct ThreadParam tp;
-    SemaParam sp;
+    struct ThreadParam threadParam;
+    SemaParam semaParam;
     s32 sema;
 
-    sp.maxCount = 1;
-    sp.initCount = 0;
-    sp.option = 0;
-    sema = CreateSema(&sp);
+    semaParam.maxCount = 1;
+    semaParam.initCount = 0;
+    semaParam.option = 0;
+    sema = CreateSema(&semaParam);
     ChangeThreadPriority(GetThreadId(), 2);
-    tp.stackSize = 0x2000;
-    tp.gpReg = _gp;
-    tp.entry = PowerOff_Thread;
-    tp.stack = gPowerOffStack;
-    tp.initPriority = 1;
-    func_00114C60(CreateThread(&tp), sema);
+    threadParam.stackSize = 0x2000;
+    threadParam.gpReg = _gp;
+    threadParam.entry = PowerOff_Thread;
+    threadParam.stack = gPowerOffStack;
+    threadParam.initPriority = 1;
+    func_00114C60(CreateThread(&threadParam), sema);
     func_00118378(PowerOff_Callback, sema);
     return 1;
 }
 
+/*
+ * Waits on sema (signalled by PowerOff_Callback), then sets gSysExiting
+ * and shuts the console down: with the hdd module loaded it asks hdd: for
+ * its status (devctl 0x4807); on status 3 it switches the DEV9 bay off
+ * (dev9x: 0x4402), otherwise it closes pfs: (0x5003) and shuts down the
+ * disk (hdd: 0x4806). Without the module it switches DEV9 off. Each of
+ * these devctls but the pfs: one is retried until it succeeds; then
+ * cdrom0: (0x4328) the same way, then sceCdPowerOff until it succeeds
+ * with gPowerOffStat 0, and the thread spins forever.
+ */
 void PowerOff_Thread(s32 sema)
 {
     WaitSema(sema);
@@ -768,12 +894,13 @@ void PowerOff_Thread(s32 sema)
     }
 }
 
+/* The power-off callback: signals sema to wake PowerOff_Thread. */
 void PowerOff_Callback(s32 sema)
 {
     iSignalSema(sema);
 }
 
-/* unk_186D80's .data (0x1BABB0-0x1BAFE0) */
+/* This file's initialised data. */
 u64 gPrimLinePacket_u64[8] = {
 #include "main/001BABB0.inc"
 };

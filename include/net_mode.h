@@ -16,18 +16,18 @@ typedef struct NetModeState {
     /* 0x01 */ u8 step;             /* the mode's step */
     /* 0x02 */ u8 subStep;          /* a screen's step (NetSetup_ShowLoginError; 0xFF: none) */
     /* 0x03 */ u8 innerStep;        /* a step inside a screen's step (LobbyCard_*, Dnas_AuthStep); a count down */
-    /* 0x04 */ s16 percent;         /* printed with a full-width percent sign (NetMode_PrintField); a message box's frames (unk_7D2C80.c) */
+    /* 0x04 */ s16 percent;         /* printed with a full-width percent sign (NetMode_PrintField); the NET file save also counts a message's frames down in it */
     /* 0x06 */ s16 timer;           /* a count down in frames; the card check's frames */
     /* 0x08 */ s16 sel3;            /* a choice of three */
     /* 0x0A */ s16 sel2;            /* a choice of two; the card task's result */
     /* 0x0C */ u8 padC[4];
     /* 0x10 */ s8 unk10;
-    /* 0x11 */ s8 entry;            /* the entry requested (LobbyEntry_Init) */
+    /* 0x11 */ s8 entry;            /* the entry requested (LobbyEntry_Start) */
     /* 0x12 */ u8 pad12;
     /* 0x13 */ u8 ynNoDraw;         /* nonzero: yn adds no draw callback; a failed connect opens no icon */
     /* 0x14 */ u8 ynResult;         /* set when yn finishes: YnWork.changed + 1 */
     /* 0x15 */ u8 pad15;
-    /* 0x16 */ u8 noDraw;           /* bits: 1 skips func_007CF340, 2 skips NetMode_CallDrawScreen */
+    /* 0x16 */ u8 noDraw;           /* bits: 1 skips NetMode_EmptyDrawHook, 2 skips NetMode_CallDrawScreen */
     /* 0x17 */ u8 pad17;
     /* 0x18 */ u8 yesNo;            /* 0 yes, 1 no (NetMode_ChooseYesNo) */
     /* 0x19 */ u8 rowWait;          /* frames to the next row step (NetMode_DrawScreen) */
@@ -61,7 +61,7 @@ typedef struct NetModeState {
     /* 0x64 */ u8 slot;             /* the memory card slot */
     /* 0x65 */ s8 slotUsed;         /* the slot used */
     /* 0x66 */ s16 cardFiles;       /* CardOp_SetFiles */
-    /* 0x68 */ s8 saveStep;         /* the NET file save's step (unk_7D2C80.c) */
+    /* 0x68 */ s8 saveStep;         /* the NET file save's step */
     /* 0x69 */ s8 saveNext;         /* the step after a message */
     /* 0x6A */ s8 cardMsg;          /* the message shown (NetMode_CardMsgError, NetModeMsg_Page3) */
     /* 0x6B */ s8 title;            /* the title text, 1-7 (NetMode_SetTitle; gNetModeTitleTexts) */
@@ -75,7 +75,7 @@ typedef struct NetModeState {
     /* 0x7E */ u8 unk7E;
     /* 0x7F */ s8 netResult;        /* the DNAS or transfer step's outcome: 0 none, 1 running, 2 failed, 3 done */
     /* 0x80 */ s32 err;             /* the error code shown (after an error label) */
-    /* 0x84 */ s32 size;            /* the size of the data sent (unk_7D44B0.c) */
+    /* 0x84 */ s32 size;            /* the size of the data sent (the lobby's data transfer) */
     /* 0x88 */ u8 pad88[2];
     /* 0x8A */ u8 xferStep;         /* LobbyNetXfer_Run's step */
     /* 0x8B */ u8 xferSub;
@@ -93,6 +93,20 @@ typedef struct NetModeState {
     /* 0xDE */ u8 unkDE[2];
 } NetModeState;
 typedef char NetModeState_size_check[(sizeof(NetModeState) == 0xE0) ? 1 : -1];
+
+/* gNetMode.error[slot]: why yn's connect with a slot's settings failed
+ * (Yn_Update, from Yn_Connect's result); the online set-up turns the two
+ * slots' errors into its message. */
+enum NetYnError {
+    NET_YN_ERR_NONE = 0,
+    NET_YN_ERR_OTHER_PS2 = 0x1E,   /* the file fails netcnf's check (another console's) */
+    NET_YN_ERR_NO_SETTINGS = 0x1F, /* the saved settings or proxy aren't on the card */
+    NET_YN_ERR_NO_CARD = 0x20,
+    NET_YN_ERR_CARD_REMOVED = 0x21,
+    NET_YN_ERR_DEVICE = 0x22,      /* the settings' device isn't attached or won't start */
+    NET_YN_ERR_EMPTY_FILE = 0x2D,  /* the settings file has no entries */
+    NET_YN_ERR_NOT_TRIED = 0x7F    /* set by the online set-up before yn runs without drawing */
+};
 
 extern NetModeState gNetMode;
 

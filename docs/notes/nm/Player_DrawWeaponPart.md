@@ -1,4 +1,4 @@
-# Player_DrawWeaponPart (sub_main, src/sub_main/unk_36E1D0.c)
+# Player_DrawWeaponPart (sub_main, src/sub_main/player_draw.c)
 
 ## Status
 

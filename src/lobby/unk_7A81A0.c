@@ -4,12 +4,12 @@
 #include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "save.h"
+#include "lobby_labels.h"
 
 void Font_SetPos(s16, s16);
 void Font_SetColor(s32 color);
 void Text_Printf(const char *fmt, ...);
 void Text_SetSize(s32);
-extern char *D_0080C6CC;
 s32 strlen(const char *s);
 s32 Str_Length(char *s);
 extern s32 gSpotTakenMask;
@@ -21,7 +21,7 @@ void Lobby_DrawPressButton(void) {
         Text_SetSize(5);
         Font_SetPos(0xC8, 0x17C);
         Font_SetColor(0x807F7F28);
-        Text_Printf(D_0080C6CC);
+        Text_Printf(gMiscTexts[MISC_TEXT_PRESS_BUTTON]);
     }
 }
 
@@ -82,7 +82,7 @@ char *Text_FillDollarFmt(char *fmt, char *name) {
     return gTextFillFmtBuf;
 }
 
-s32 Area_Is86to88(s32 area)
+s32 Area_IsTownHall(s32 area)
 {
     switch (area & 0xFFFF) {
     case 0x86:
@@ -155,7 +155,7 @@ s32 ActSpot_IsFree(u32 n)
 s32 MyHouse_InOwnHouse(void);
 s32 Game_IsOnline(void);
 s8 MyHouse_LocalSlot(void);
-/* unit's own declaration: with the definition's u8 (s32 k) (sub_main/unk_3B4C80.c), MyHouse_Level: 1 of 33 words differ */
+/* unit's own declaration: with the definition's u8 (s32 k) (sub_main/equip_save.c), MyHouse_Level: 1 of 33 words differ */
 s32 Village_FacilityLevel(s32);
 typedef struct PlayerRec11C {
     u8 pad0[0xF1];

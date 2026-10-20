@@ -3,7 +3,14 @@
  * include/browser.h. */
 #include "common.h"
 #include "browser.h"
+#include "html.h"
 #include "lobby_globals.h"
+#include "kbd.h"
+
+char *BrowserHist_Forward(void);
+s32 BrowserHist_CanForward(void);
+char *BrowserHist_Back(void);
+s32 BrowserHist_CanBack(void);
 
 /* Compiled at optimization level 4 (Link_Follow matches only so; every
  * other function matches at 3 and 4). */
@@ -33,20 +40,10 @@ typedef struct StickDirs {
 extern StickDirs gPageScrollDx;
 extern StickDirs gPageScrollDy;
 
-#define gKbd (gKbd) /* sub_main: the USB keyboard (0x668, 0x669: USB key codes) */
-
-extern char D_00839060[]; /* "user-id" */
-extern char D_00839068[]; /* "connection-id" */
 
 /* Link_Follow's links: the portal's own (mmbb://...) and the registration
  * record's fields it checks. */
 extern char D_00839110[];
-extern s8 gRegRecord[];
-extern s8 D_008952C1[];
-extern s8 D_008952CC[];
-extern s8 D_0089534D[];
-extern s8 D_008953CE[];
-extern s8 D_008953CF[];
 extern u8 gLobbyPageData[];
 u32 strlen(const char *s);
 s32 memcmp(const char *a, const char *b, u32 n); /* main: strncmp */
@@ -58,6 +55,45 @@ void Browser_SetStep(s8 step);
 void Browser_SetUrl(BrowserWork *w, char *url);
 char *strcat(char *dst, const char *src);
 char *BrowserHist_CurUrl(void); /* the page URL */
+
+/* Goes forward in the history: shows the page again when there is
+ * nowhere to go, else opens the next page (the top page's mark cleared). */
+void Browser_GoForward(void)
+{
+    char *url;
+
+    if (BrowserHist_CanForward() == 0) {
+        Browser_ShowPage();
+        return;
+    }
+    url = BrowserHist_Forward();
+    if (url == NULL) {
+        Browser_ShowPage();
+        return;
+    }
+    gBrowserState->fromTop = 0;
+    Browser_Go(url);
+    Browser_OpenPage();
+}
+
+/* Goes back in the history: shows the page again when there is nowhere
+ * to go, else opens the page before. */
+void Browser_GoBack(void)
+{
+    char *url;
+
+    if (BrowserHist_CanBack() == 0) {
+        Browser_ShowPage();
+        return;
+    }
+    url = BrowserHist_Back();
+    if (url == NULL) {
+        Browser_ShowPage();
+        return;
+    }
+    Browser_Go(url);
+    Browser_OpenPage();
+}
 
 /* Portal_Back: the previous page of the history (or the page again). */
 void Portal_Back(void)
@@ -72,8 +108,8 @@ void Portal_Back(void)
         Browser_ShowPage();
         return;
     }
-    gBrowserWork->dlgMsgState = 0;
-    gBrowserSub->dlgMode = 0;
+    gBrowserWork->dlgMenuState = BDLG_MENU_HIDDEN;
+    gBrowserSub->dlgMode = BDLG_MODE_PAGE;
     gBrowserSub->listCount = 0;
     Browser_Go(url);
     Browser_OpenPage();
@@ -91,7 +127,7 @@ void Page_ScrollInput(void)
     s8 mx;
     u16 b;
 
-    if (!(gBrowserState->style & 1)) {
+    if (!(gBrowserState->style & PAGE_STYLE_POINTER)) {
         return;
     }
     if (gBrowserWork->stickTilt != 0) {
@@ -129,7 +165,7 @@ void Page_ScrollInput(void)
 
         mx += dx.v[d];
         my += dy.v[d];
-        gBrowserSub->listObj = 0;
+        gBrowserSub->activeObj = 0;
         if (gBrowserWork->stick2Tilt == 3) {
             gBrowserState->x += mx * 4;
             gBrowserState->y += my * 4;
@@ -150,16 +186,16 @@ void Page_ScrollInput(void)
     if (gBrowserWork->padHeld & 0x10) {
         Browser_ScrollBy(20, 0);
     }
-    if (gKbd[0x668] == 0x4B) {
+    if (gKbd->usbKey == USB_KEY_PAGE_UP) {
         Browser_ScrollBy(0, -0x168);
     }
-    if (gKbd[0x668] == 0x4E) {
+    if (gKbd->usbKey == USB_KEY_PAGE_DOWN) {
         Browser_ScrollBy(0, 0x168);
     }
-    if (gKbd[0x668] == 0x4A) {
+    if (gKbd->usbKey == USB_KEY_HOME) {
         Browser_ScrollBy(0, -gBrowserState->pageH);
     }
-    if (gKbd[0x668] == 0x4D) {
+    if (gKbd->usbKey == USB_KEY_END) {
         Browser_ScrollBy(0, gBrowserState->pageH);
     }
 }
@@ -183,12 +219,12 @@ void Page_DragScroll(void)
 
     n = gBrowserSub->listCount;
     if (n) {
-        o = gBrowserWork->obj[gBrowserSub->listObj];
+        o = gBrowserWork->obj[gBrowserSub->activeObj];
         top = o->y - (f32)gBrowserState->y;
         left = o->x - (f32)gBrowserState->x;
         right = left + o->w;
         if (n > 10) {
-            if (gBrowserWork->padUnk2 & 0x20) {
+            if (gBrowserWork->padPrevHeld & 0x20) {
                 if (gBrowserSub->dragOfs != 0 && (f32)gBrowserSub->cursorX >= right - 16.0f &&
                     (f32)gBrowserSub->cursorX <= right && gBrowserSub->cursorY != gBrowserSub->dragY) {
                     if (gBrowserSub->listUp != 0) {
@@ -244,7 +280,7 @@ void Page_DragScroll(void)
             }
         }
     } else {
-        if (gBrowserWork->padUnk2 & 0x20) {
+        if (gBrowserWork->padPrevHeld & 0x20) {
             if (gBrowserSub->cursorX > 0x248 && gBrowserSub->cursorX < 0x280 && gBrowserSub->cursorY > 0x10 &&
                 gBrowserSub->cursorY < 0x17C && gBrowserSub->dragX > 0x248) {
                 if (gBrowserSub->cursorY == gBrowserSub->dragY) {
@@ -311,12 +347,12 @@ void Page_PointerScroll(void)
         }
         if (gBrowserSub->cursorY >= gBrowserState->marginTop && gBrowserSub->cursorY < gBrowserState->marginTop + 0x10) {
             Browser_Move(0, -20, 1);
-            gBrowserWork->dlgVScrollState = 3;
+            gBrowserWork->dlgVScrollState = BDLG_SCROLL_FIRST_PRESSED;
             return;
         }
         if (gBrowserSub->cursorY > 0x17C && gBrowserState->marginTop + 0x17C > gBrowserSub->cursorY) {
             Browser_Move(0, 20, 2);
-            gBrowserWork->dlgVScrollState = 4;
+            gBrowserWork->dlgVScrollState = BDLG_SCROLL_SECOND_PRESSED;
             return;
         }
         if (gBrowserSub->cursorY > gBrowserState->marginTop + 0x10 && gBrowserState->marginTop + 0x17C > gBrowserSub->cursorY) {
@@ -333,12 +369,12 @@ void Page_PointerScroll(void)
         gBrowserState->pageW != 0) {
         if (gBrowserSub->cursorX >= gBrowserState->marginRight && gBrowserSub->cursorX < gBrowserState->marginRight + 0x10) {
             Browser_Move(-20, 0, 3);
-            gBrowserWork->dlgHScrollState = 3;
+            gBrowserWork->dlgHScrollState = BDLG_SCROLL_FIRST_PRESSED;
             return;
         }
         if (gBrowserSub->cursorX > 0x24C && gBrowserState->marginRight + 0x248 > gBrowserSub->cursorX) {
             Browser_Move(20, 0, 4);
-            gBrowserWork->dlgHScrollState = 4;
+            gBrowserWork->dlgHScrollState = BDLG_SCROLL_SECOND_PRESSED;
             return;
         }
         if (gBrowserSub->cursorX > gBrowserState->marginRight + 0x10 && gBrowserState->marginRight + 0x24C > gBrowserSub->cursorX) {
@@ -366,14 +402,14 @@ void Page_PointAt(void)
     f32 cx;
     f32 cy;
 
-    if (((gBrowserState->style & 4) >> 2) != 0) {
-        gBrowserWork->dlgStatusState = 1;
+    if (((gBrowserState->style & PAGE_STYLE_STATUS_BAR) >> 2) != 0) {
+        gBrowserWork->dlgStatusState = BDLG_STATUS_TITLE;
     }
-    if (((gBrowserState->style & 2) >> 1) != 0) {
+    if (((gBrowserState->style & PAGE_STYLE_VSCROLL) >> 1) != 0) {
         if (gBrowserSub->cursorX > 0x270 - gBrowserState->marginRight) {
             return;
         }
-        if (((gBrowserState->style & 4) >> 2) != 0) {
+        if (((gBrowserState->style & PAGE_STYLE_STATUS_BAR) >> 2) != 0) {
             if (0x19C - gBrowserState->marginBottom < gBrowserSub->cursorY && gBrowserSub->cursorY < 0x1AC) {
                 return;
             }
@@ -428,7 +464,7 @@ void Page_PointAt(void)
             return;
         }
     }
-    gBrowserWork->dlgStatusState = 1;
+    gBrowserWork->dlgStatusState = BDLG_STATUS_TITLE;
 }
 
 /* Page_Clamp: the scroll position within the page (the view is 0x248 by
@@ -469,19 +505,19 @@ void Page_Clamp(void)
  * button (held or pressed) and no stick is in use, else -1. */
 s32 Browser_Idle(void)
 {
-    u8 *kb = gKbd;
+    KbdEntry *kb = gKbd;
     s32 k;
     u16 b;
 
-    k = kb[0x669];
-    if (k == 0x28 || k == 0x58) {
+    k = kb->usbPrevKey;
+    if (k == USB_KEY_ENTER || k == USB_KEY_KP_ENTER) {
         return -1;
     }
-    if (k == 0x52 || k == 0x4F || k == 0x50 || k == 0x51) {
+    if (k == USB_KEY_UP || k == USB_KEY_RIGHT || k == USB_KEY_LEFT || k == USB_KEY_DOWN) {
         return -1;
     }
-    k = kb[0x668];
-    if (k == 0x52 || k == 0x4F || k == 0x50 || k == 0x51) {
+    k = kb->usbKey;
+    if (k == USB_KEY_UP || k == USB_KEY_RIGHT || k == USB_KEY_LEFT || k == USB_KEY_DOWN) {
         return -1;
     }
     b = gBrowserWork->padHeld;
@@ -508,7 +544,7 @@ void Form_Reset(s32 button);
 extern char D_00839140[]; /* "https://www01.kddi-mmbb.jp/00000080/CRS-top.jsp" */
 
 /* Page_Click: a click of the pointer (gBrowserSub->cursorX, cursorY) on the
- * page: while a select list is open (sub.listObj) it goes to
+ * page: while a select list is open (sub.activeObj) it goes to
  * Select_ListClick; else the object under the pointer acts by kind: text
  * inputs (6, 7) open the software keyboard (a field 4 takes its mode from
  * the two digits of its name), links (2, 17, 18) and image buttons (13)
@@ -547,7 +583,7 @@ void Page_Click(void)
     if (gBrowserSub->cursorX < gBrowserState->marginLeft ||
         gBrowserSub->cursorY < gBrowserState->marginTop || gBrowserSub->cursorX > gBrowserState->marginLeft + 0x248 ||
         gBrowserSub->cursorY > gBrowserState->marginTop + 0x17C) {
-        gBrowserSub->listObj = 0;
+        gBrowserSub->activeObj = 0;
         gBrowserSub->listCount = 0;
         return;
     }
@@ -566,9 +602,9 @@ void Page_Click(void)
         if ((f32)sb->cursorX < x0 || !((f32)sb->cursorX <= o->w + x0)) {
             continue;
         }
-        if (sb->listObj != 0) {
-            if (w->obj[sb->listObj]->kind == 8) {
-                gBrowserSub->listObj = Select_ListClick(sb->listObj);
+        if (sb->activeObj != 0) {
+            if (w->obj[sb->activeObj]->kind == 8) {
+                gBrowserSub->activeObj = Select_ListClick(sb->activeObj);
             }
             return;
         }
@@ -606,9 +642,9 @@ void Page_Click(void)
         switch (o->kind) {
         case 6:
         case 7:
-            gBrowserWork->dlgInputState = 1;
+            gBrowserWork->dlgInputState = BDLG_INPUT_OPEN;
             LobbySe_Play(0);
-            gBrowserSub->listObj = i;
+            gBrowserSub->activeObj = i;
             gBrowserWork->focus = i;
             switch (gBrowserWork->obj[i]->kind) {
             case 6:
@@ -641,8 +677,8 @@ void Page_Click(void)
                 Browser_OpenKeyboard(gBrowserWork->obj[i]->s2, gBrowserWork->obj[i]->sub, 5);
                 break;
             }
-            gBrowserWork->dlgInputState = 1;
-            gBrowserSub->dlgMode = 1;
+            gBrowserWork->dlgInputState = BDLG_INPUT_OPEN;
+            gBrowserSub->dlgMode = BDLG_MODE_INPUT;
             return;
         case 13:
             if (o->active == 2) {
@@ -668,19 +704,19 @@ void Page_Click(void)
             continue;
         case 4:
             gBrowserWork->obj[i]->sub = 1;
-            gBrowserWork->moveTimer = 3;
+            gBrowserWork->pressTimer = 3;
             Form_Reset(i);
             return;
         case 5:
             switch (gBrowserWork->obj[i]->field) {
             case 0:
                 Browser_Go(D_00839140);
-                gBrowserSub->dlgMode = 0;
-                gBrowserSub->listObj = 0;
+                gBrowserSub->dlgMode = BDLG_MODE_PAGE;
+                gBrowserSub->activeObj = 0;
                 gBrowserWork->obj[i]->sub = 1;
-                gBrowserWork->moveTimer = 3;
-                if (gBrowserState->page == 8) {
-                    Browser_SetStep(8);
+                gBrowserWork->pressTimer = 3;
+                if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+                    Browser_SetStep(PAGE_STEP_RELOAD);
                     return;
                 }
                 Browser_Reload();
@@ -692,14 +728,14 @@ void Page_Click(void)
             return;
         case 8:
             LobbySe_Play(0);
-            if (gBrowserSub->listObj == i) {
-                gBrowserSub->listObj = 0;
+            if (gBrowserSub->activeObj == i) {
+                gBrowserSub->activeObj = 0;
                 gBrowserSub->dlgCursor = 0;
             } else {
-                gBrowserSub->listObj = i;
+                gBrowserSub->activeObj = i;
                 gBrowserSub->dlgCursor = gBrowserWork->obj[i]->sub;
                 gBrowserSub->listCount = 0;
-                for (j = gBrowserSub->listObj + 1; j < 500; j++) {
+                for (j = gBrowserSub->activeObj + 1; j < 500; j++) {
                     o = gBrowserWork->obj[j];
                     if (o->kind != 8 || o->tex == 0) {
                         break;
@@ -710,7 +746,7 @@ void Page_Click(void)
                     gBrowserSub->listTop = 1;
                 } else if (gBrowserSub->listCount - gBrowserSub->dlgCursor >= 9) {
                     for (gBrowserSub->listTop = 1; gBrowserSub->listTop < 500; gBrowserSub->listTop++) {
-                        if (gBrowserWork->obj[gBrowserSub->listObj + gBrowserSub->listTop]->tex == gBrowserSub->dlgCursor) {
+                        if (gBrowserWork->obj[gBrowserSub->activeObj + gBrowserSub->listTop]->tex == gBrowserSub->dlgCursor) {
                             break;
                         }
                     }
@@ -722,30 +758,30 @@ void Page_Click(void)
                         Select_Close();
                         return;
                     }
-                    if (180.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y) > 380.0f) {
+                    if (180.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y) > 380.0f) {
                         gBrowserSub->listUp = 1;
-                        gBrowserSub->cursorY = (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y) - 9.0f;
+                        gBrowserSub->cursorY = (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y) - 9.0f;
                     } else {
                         gBrowserSub->listUp = 0;
-                        gBrowserSub->cursorY = 9.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y));
+                        gBrowserSub->cursorY = 9.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y));
                     }
-                    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->listObj]->x - (f32)gBrowserState->x);
+                    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->x - (f32)gBrowserState->x);
                 } else {
-                    if (180.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y) > 380.0f) {
+                    if (180.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y) > 380.0f) {
                         gBrowserSub->listUp = 1;
-                        gBrowserSub->cursorY = (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y) - 9.0f;
+                        gBrowserSub->cursorY = (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y) - 9.0f;
                     } else {
                         gBrowserSub->listUp = 0;
-                        gBrowserSub->cursorY = 9.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y));
+                        gBrowserSub->cursorY = 9.0f + (20.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y));
                     }
-                    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->listObj]->x - (f32)gBrowserState->x);
+                    gBrowserSub->cursorX = 10.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->x - (f32)gBrowserState->x);
                 }
             }
             o = gBrowserWork->obj[i];
             r = o->w + (o->x - (f32)gBrowserState->x);
             if ((f32)gBrowserSub->cursorX > r - 16.0f && (f32)gBrowserSub->cursorX < r) {
                 o->active = 12;
-                gBrowserWork->moveTimer = 3;
+                gBrowserWork->pressTimer = 3;
             }
             return;
         case 11:
@@ -781,7 +817,7 @@ void Page_Click(void)
         }
     }
     if (i == 500) {
-        gBrowserSub->listObj = 0;
+        gBrowserSub->activeObj = 0;
     }
 }
 
@@ -934,7 +970,7 @@ s32 Select_ListClick(s32 i)
         gBrowserSub->dlgCursor = i + gBrowserSub->listTop + m;
         gBrowserWork->obj[i]->s1 = gBrowserWork->obj[i + gBrowserSub->listTop + m]->s1;
         gBrowserWork->obj[i]->sub = gBrowserWork->obj[i + gBrowserSub->listTop + m]->tex;
-        gBrowserSub->cursorY = 10.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y);
+        gBrowserSub->cursorY = 10.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y);
     } else {
         if (gBrowserSub->listCount < 10) {
             for (m = 0; m <= gBrowserSub->listCount; m++) {
@@ -965,7 +1001,7 @@ s32 Select_ListClick(s32 i)
         gBrowserSub->dlgCursor = i + gBrowserSub->listTop + m;
         gBrowserWork->obj[i]->s1 = gBrowserWork->obj[i + gBrowserSub->listTop + m]->s1;
         gBrowserWork->obj[i]->sub = gBrowserWork->obj[i + gBrowserSub->listTop + m]->tex;
-        gBrowserSub->cursorY = 10.0f + (gBrowserWork->obj[gBrowserSub->listObj]->y - (f32)gBrowserState->y);
+        gBrowserSub->cursorY = 10.0f + (gBrowserWork->obj[gBrowserSub->activeObj]->y - (f32)gBrowserState->y);
     }
     gBrowserSub->listCount = 0;
     return 0;
@@ -977,7 +1013,7 @@ s32 Select_ListClick(s32 i)
  * record's fields all given; GAME_MENU_n: back to the game with menu n;
  * BUTTON_OK, BUTTON_NG; BACK_TO_MENU: the lobby server's page with the
  * login's cookies), an anchor (#name: the page scrolled to it) or a URL
- * (a #fragment kept apart in url3). */
+ * (a #fragment kept apart in urlAnchor). */
 void Link_Follow(s32 i)
 {
     s32 n;
@@ -998,7 +1034,7 @@ void Link_Follow(s32 i)
         return;
     }
     if (memcmp(gBrowserWork->obj[i]->s1, "mmbb://EXIT;", strlen("mmbb://EXIT;")) == 0) {
-        if (gBrowserState->page == 8) {
+        if (gBrowserState->page == PAGE_LOAD_IMAGES) {
             return;
         }
         len = strlen(gBrowserWork->obj[i]->s1);
@@ -1025,63 +1061,63 @@ void Link_Follow(s32 i)
     }
 next:
     if (memcmp(gBrowserWork->obj[i]->s1, "mmbb://BB_DOD_KIYAKU", strlen("mmbb://BB_DOD_KIYAKU")) == 0) {
-        if (gBrowserState->page != 8) {
+        if (gBrowserState->page != PAGE_LOAD_IMAGES) {
             Browser_Go("file://src/browser/DATA/KIYAKU_B.HTM");
             Browser_Reload();
         }
     } else if (memcmp(gBrowserWork->obj[i]->s1, "mmbb://REGIST_CHECK?", strlen("mmbb://REGIST_CHECK?")) == 0) {
-        if (gBrowserState->page == 0xA) {
-            if (gRegRecord[0] == 0 || D_008953CE[0] == 0 || D_008952C1[0] == 0 || D_008952CC[0] == 0 ||
-                D_0089534D[0] == 0 || D_008953CF[0] == 0) {
-                gBrowserWork->dlgBoxKind = 8;
-                gBrowserSub->dlgMode = 6;
+        if (gBrowserState->page == PAGE_LOAD_DONE) {
+            if (gRegRecord.box01[0] == 0 || gRegRecord.box02 == 0 || gRegRecord.box03[0] == 0 || gRegRecord.box05[0] == 0 ||
+                gRegRecord.box00[0] == 0 || gRegRecord.box07[0] == 0) {
+                gBrowserWork->dlgBoxKind = BDLG_KIND_REGISTER_INCOMPLETE;
+                gBrowserSub->dlgMode = BDLG_MODE_OK;
                 gBrowserSub->dlgCursor = 1;
                 return;
             }
-            gBrowserWork->dlgBoxKind = 7;
-            gBrowserSub->dlgMode = 5;
+            gBrowserWork->dlgBoxKind = BDLG_KIND_REGISTER_ASK;
+            gBrowserSub->dlgMode = BDLG_MODE_REGISTER;
             gBrowserSub->dlgCursor = 1;
         }
     } else if (memcmp(gBrowserWork->obj[i]->s1, "mmbb://GAME_MENU_", strlen("mmbb://GAME_MENU_")) == 0) {
-        if (gBrowserState->page != 8) {
+        if (gBrowserState->page != PAGE_LOAD_IMAGES) {
             for (k = strlen("mmbb://GAME_MENU_"); (d = (u8)gBrowserWork->obj[i]->s1[k]) >= '0' && d <= '9'; k++) {
                 n = gBrowserWork->gameMenuNo * 10;
                 gBrowserWork->gameMenuNo = n + (d - '0');
             }
-            gPortalExit = 1;
+            gPortalExit = PORTAL_EXIT_GAME_MENU;
             Browser_Fail(0);
         }
     } else if (memcmp(gBrowserWork->obj[i]->s1, "mmbb://BUTTON_OK", strlen("mmbb://BUTTON_OK")) == 0) {
-        memcpy(gLobbyPageData, gRegRecord, 0x1D0);
-        if (gBrowserState->page == 8) {
-            Browser_SetStep(0xB);
+        memcpy(gLobbyPageData, &gRegRecord, sizeof(gRegRecord));
+        if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+            Browser_SetStep(PAGE_STEP_GAME_MENU);
             return;
         }
-        gPortalExit = 1;
+        gPortalExit = PORTAL_EXIT_GAME_MENU;
         Browser_Fail(0);
     } else if (memcmp(gBrowserWork->obj[i]->s1, D_00839110, strlen(D_00839110)) == 0) {
-        if (gBrowserState->page == 8) {
-            Browser_SetStep(0xC);
+        if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+            Browser_SetStep(PAGE_STEP_CANCEL);
             return;
         }
-        gPortalExit = 2;
+        gPortalExit = PORTAL_EXIT_CANCEL;
         Browser_Fail(0);
     } else if (memcmp(gBrowserWork->obj[i]->s1, "mmbb://BACK_TO_MENU", strlen("mmbb://BACK_TO_MENU")) == 0) {
-        gBrowserSub->listObj = 0;
+        gBrowserSub->activeObj = 0;
         if ((u8)gMmbbData->nextUrl[0] != 0 && (u8)gMmbbData->connectionId[0] != 0) {
             Browser_Go(gMmbbData->nextUrl);
-            if ((u8)gBrowserState->field1[0] != 0 && strcmp((char *)(u32)gBrowserState->field1, gMmbbData->userId) != 0) {
-                BrowserForm_Add(D_00839060, gBrowserState->field1);
+            if ((u8)gBrowserState->formLoginId[0] != 0 && strcmp((char *)(u32)gBrowserState->formLoginId, gMmbbData->userId) != 0) {
+                BrowserForm_Add(gIdFieldNames.name.userId, gBrowserState->formLoginId);
             } else {
-                BrowserForm_Add(D_00839060, gMmbbData->userId);
+                BrowserForm_Add(gIdFieldNames.name.userId, gMmbbData->userId);
             }
-            BrowserForm_Add(D_00839068, gMmbbData->connectionId);
+            BrowserForm_Add(gIdFieldNames.name.connectionId, gMmbbData->connectionId);
             gBrowserWork->loginPosted = 1;
             gBrowserWork->atMmbbUrl = 1;
             gBrowserState->plain = 1;
-            gBrowserState->pageMode = 0;
-            if (gBrowserState->page == 8) {
-                Browser_SetStep(9);
+            gBrowserState->pageMode = CSV_KIND_NONE;
+            if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+                Browser_SetStep(PAGE_STEP_OPEN);
                 return;
             }
             BrowserReq_Post(&gBrowserWork->url);
@@ -1120,8 +1156,8 @@ next:
         gBrowserWork->texFailOnce = 1;
         if ((q = strstr(gBrowserWork->obj[i]->s1, "#")) != NULL) {
             memset(gBrowserState->url, 0, 0x100);
-            memset(gBrowserState->url3, 0, 0x100);
-            strcpy(gBrowserState->url3, q);
+            memset(gBrowserState->urlAnchor, 0, 0x100);
+            strcpy(gBrowserState->urlAnchor, q);
             for (k = 0; (u8)gBrowserWork->obj[i]->s1[k] != '#'; k++) {
                 gBrowserState->url[k] = *(u8 *)(gBrowserWork->obj[i]->s1 + k);
             }
@@ -1130,9 +1166,9 @@ next:
         } else {
             Browser_Go(gBrowserWork->obj[i]->s1);
         }
-        gBrowserSub->listObj = 0;
-        if (gBrowserState->page == 8) {
-            Browser_SetStep(8);
+        gBrowserSub->activeObj = 0;
+        if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+            Browser_SetStep(PAGE_STEP_RELOAD);
             return;
         }
         Browser_Reload();
@@ -1236,9 +1272,9 @@ void Form_Submit(s32 button)
         for (i = form; i < 500; i++) {
             if (gBrowserWork->obj[i]->kind == 6) {
                 Browser_Go(gBrowserWork->obj[i]->s2);
-                gBrowserSub->listObj = 0;
+                gBrowserSub->activeObj = 0;
                 gBrowserWork->obj[button]->sub = 1;
-                gBrowserWork->moveTimer = 3;
+                gBrowserWork->pressTimer = 3;
                 Browser_Reload();
                 return;
             }
@@ -1248,7 +1284,7 @@ void Form_Submit(s32 button)
     case 3:
     case 4:
         gBrowserWork->obj[button]->sub = 1;
-        gBrowserWork->moveTimer = 3;
+        gBrowserWork->pressTimer = 3;
         break;
     }
     if (method == 0) {
@@ -1315,15 +1351,15 @@ void Form_Submit(s32 button)
                 strcpy(last, gBrowserWork->obj[i]->s1);
                 switch (gBrowserWork->obj[i]->field) {
                 case 1:
-                    strcpy(gBrowserState->field1, gBrowserWork->obj[i]->s2);
+                    strcpy(gBrowserState->formLoginId, gBrowserWork->obj[i]->s2);
                     break;
                 case 2:
                     strcpy(gBrowserState->field2, gBrowserWork->obj[i]->s2);
                     break;
                 case 3:
                     switch (gBrowserState->pageKind) {
-                    case 4:
-                    case 2:
+                    case PAGE_KIND_PASSWORD_FORM:
+                    case PAGE_KIND_SIGNUP_FORM:
                         memset(gBrowserState->field3, 0, 0x11);
                         strcpy(gBrowserState->field3, gBrowserWork->obj[i]->s2);
                         break;
@@ -1374,9 +1410,9 @@ void Form_Submit(s32 button)
         }
         Browser_Go(query);
         gBrowserState->histDir = 0;
-        gBrowserSub->listObj = 0;
-        if (gBrowserState->page == 8) {
-            Browser_SetStep(8);
+        gBrowserSub->activeObj = 0;
+        if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+            Browser_SetStep(PAGE_STEP_RELOAD);
             return;
         }
         Browser_Reload();
@@ -1413,15 +1449,15 @@ void Form_Submit(s32 button)
                 strcpy(last, gBrowserWork->obj[found]->s1);
                 switch (gBrowserWork->obj[found]->field) {
                 case 1:
-                    strcpy(gBrowserState->field1, gBrowserWork->obj[found]->s2);
+                    strcpy(gBrowserState->formLoginId, gBrowserWork->obj[found]->s2);
                     break;
                 case 2:
                     strcpy(gBrowserState->field2, gBrowserWork->obj[found]->s2);
                     break;
                 case 3:
                     switch (gBrowserState->pageKind) {
-                    case 4:
-                    case 2:
+                    case PAGE_KIND_PASSWORD_FORM:
+                    case PAGE_KIND_SIGNUP_FORM:
                         memset(gBrowserState->field3, 0, 0x11);
                         strcpy(gBrowserState->field3, gBrowserWork->obj[found]->s2);
                         break;
@@ -1456,11 +1492,11 @@ void Form_Submit(s32 button)
             }
         }
     post_done:
-        gBrowserSub->listObj = 0;
+        gBrowserSub->activeObj = 0;
         gBrowserState->histDir = 0;
         Browser_Go(gBrowserWork->obj[form]->s1);
-        if (gBrowserState->page == 8) {
-            Browser_SetStep(9);
+        if (gBrowserState->page == PAGE_LOAD_IMAGES) {
+            Browser_SetStep(PAGE_STEP_OPEN);
             return;
         }
         BrowserReq_Post(&gBrowserWork->url);
@@ -1482,28 +1518,28 @@ s8 Portal_HandleData(void)
     s32 r;
 
     switch (gBrowserState->pageMode) {
-    case 1:
-    case 4:
-        if (strncmp(gMmbbData->f6, "OK", 2) != 0) {
+    case CSV_KIND_SESSION:
+    case CSV_KIND_SERVERS:
+        if (strncmp(gMmbbData->result, "OK", 2) != 0) {
             return -1;
         }
         break;
-    case 5:
-        strncmp(gMmbbData->f6, "OK", 2);
+    case CSV_KIND_RESULT:
+        strncmp(gMmbbData->result, "OK", 2);
         break;
     }
     switch (gBrowserState->pageMode) {
-    case 1:
+    case CSV_KIND_SESSION:
         BrowserForm_Clear();
-        if (BrowserForm_Add(D_00839068, gMmbbData->connectionId) < 0) {
+        if (BrowserForm_Add(gIdFieldNames.name.connectionId, gMmbbData->connectionId) < 0) {
             return -2;
         }
         switch (gBrowserState->pageMode) {
-        case 1:
-            if ((u8)gBrowserState->field1[0] != 0 && strcmp((char *)(u32)gBrowserState->field1, gMmbbData->userId) != 0) {
-                r = BrowserForm_Add(D_00839060, gBrowserState->field1);
+        case CSV_KIND_SESSION:
+            if ((u8)gBrowserState->formLoginId[0] != 0 && strcmp((char *)(u32)gBrowserState->formLoginId, gMmbbData->userId) != 0) {
+                r = BrowserForm_Add(gIdFieldNames.name.userId, gBrowserState->formLoginId);
             } else {
-                r = BrowserForm_Add(D_00839060, gMmbbData->userId);
+                r = BrowserForm_Add(gIdFieldNames.name.userId, gMmbbData->userId);
             }
             if (r < 0) {
                 return -2;
@@ -1515,22 +1551,22 @@ s8 Portal_HandleData(void)
         gBrowserWork->reqBusy = 1;
         gBrowserWork->startPosts++;
         Browser_OpenPage();
-        gBrowserState->color = 0xFF000001;
+        gBrowserState->bgColor = 0xFF000001;
         return 1;
-    case 4:
-    case 5:
-        if ((u8)gBrowserState->field1[0] != 0 && strcmp((char *)(u32)gBrowserState->field1, gMmbbData->userId) != 0) {
-            strcpy(gMmbbData->userId, gBrowserState->field1);
+    case CSV_KIND_SERVERS:
+    case CSV_KIND_RESULT:
+        if ((u8)gBrowserState->formLoginId[0] != 0 && strcmp((char *)(u32)gBrowserState->formLoginId, gMmbbData->userId) != 0) {
+            strcpy(gMmbbData->userId, gBrowserState->formLoginId);
         }
         for (i = 0; i < 40; i++) {
-            if ((u8)gMmbbData->f7[i][0] == 0) {
+            if ((u8)gMmbbData->serverAddr[i][0] == 0) {
                 break;
             }
         }
         Browser_Fail(5);
         return 0;
-    case 6:
-    case 7:
+    case CSV_KIND_MENU:
+    case CSV_KIND_PORTAL:
         return 2;
     default:
         return -9;
@@ -1543,17 +1579,17 @@ s8 Portal_HandleData(void)
 s32 Portal_SetIds(void)
 {
     s32 r;
-    char *id = gBrowserState->field1;
+    char *id = gBrowserState->formLoginId;
 
     if (*(u8 *)id != 0 && strcmp(id, gMmbbData->userId) != 0) {
-        r = BrowserForm_Add(D_00839060, gBrowserState->field1);
+        r = BrowserForm_Add(gIdFieldNames.name.userId, gBrowserState->formLoginId);
     } else {
-        r = BrowserForm_Add(D_00839060, gMmbbData->userId);
+        r = BrowserForm_Add(gIdFieldNames.name.userId, gMmbbData->userId);
     }
     if (r < 0) {
         return -1;
     }
-    if (BrowserForm_Add(D_00839068, gMmbbData->connectionId) < 0) {
+    if (BrowserForm_Add(gIdFieldNames.name.connectionId, gMmbbData->connectionId) < 0) {
         return -1;
     }
     BrowserReq_Post(&gBrowserWork->url);

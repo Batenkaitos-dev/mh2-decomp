@@ -1,34 +1,44 @@
 /*
- * Monster family: Cephadrome and Cephalos (EM_KIND_CEPHADROME and
- * EM_KIND_CEPHALOS). The code from the family's setup function
- * (EmCephadrome_Setup, called by the per-kind dispatch Em_TypeSetup) to the
- * next family's. The state functions take the monster and the work area its
- * state dispatcher passes on (EmWork); Em.step is the step within the current
- * state. See include/em.h.
+ * The Cephadrome family: the Cephadrome and the Cephalos (EM_KIND_CEPHADROME,
+ * EM_KIND_CEPHALOS), sand wyverns that swim under the sand, surface to breathe
+ * sand at the hunters, leap out of the sand and back, and lie beached on
+ * their side after a leap ashore. The file runs from the family's motion
+ * sounds (EmCephadrome_MotionSounds) to its area-point helpers:
+ * - EmCephadrome_Setup (the per-kind setup hook) and Init;
+ * - one function per state, by group (include/em_cephadrome.h names the
+ *   states and the motions; group 2 holds the sand-swimming states), a
+ *   dispatcher per group (EmCephadrome_Run*State) and the Set*State and
+ *   ChangeState functions that enter a state;
+ * - EmCephadrome_Update, which turns Em_UpdateDamage's result into reactions;
+ * - the motion effects, the four fins' fold and wave
+ *   (EmCephadrome_UpdateFins, the same code as the Plesioth's), the movement
+ *   curves of the leaps (StartCurves, UpdateCurves) and the area's points the
+ *   round swims follow (NextAreaPoint, StepAreaPoint).
+ * The state functions take the monster and its work area, read as
+ * EmCephadromeWork; Em.step is the step within the current state.
  */
 #include "common.h"
+#include "scene.h"
 #include "quest.h"
 #include "em.h"
-#include "em_rathalos.h"
+#include "em_cephadrome.h"
 #include "player.h"
-#include "scene.h"
 #include "objattach.h"
 #include "area.h"
-/* prototypes of callees (round 13) */
+/* prototypes of callees */
 void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
 void Em_SetPartScaled(Em *em, s32 bit);
 s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void StageObj_K09_Create(Em *);
+void EmTail_Create(Em *);
 u16 Rand_Next(s32 stream);
 
 /* prototypes */
 void EmCephadrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmCephadrome_RunGroup0(Em *em, EmWork *work);
-void EmCephadrome_RunGroup2(Em *em, EmWork *work);
-void EmCephadrome_RunGroup4(Em *em, EmWork *work);
+void EmCephadrome_RunIdleState(Em *em, EmWork *work);
+void EmCephadrome_RunSandState(Em *em, EmWork *work);
+void EmCephadrome_RunReactState(Em *em, EmWork *work);
 void EmCephadrome_StartCurves(Em *em, u8 kind);
-void EmMelynx_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-/* unit's own declaration: with the definition's void (Em *em, s16 n) (game/unk_708850.c), EmCephadrome_State0_03: 38 of 225 words differ */
+/* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s16 n), the calls in EmCephadrome_EatNeed2 compile differently */
 void Em_AddHp(Em *em, s32 n);
 void Em_BeginStatus1(Em *em);
 void Em_BeginStatus2(Em *em);
@@ -43,16 +53,14 @@ void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
 void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
 void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-/* unit's own declaration: with the definition's void (Em *em, s32 group, s32 state, u8 mode) (game/unk_701810.c), EmCephadrome_ChangeState: 30 of 139 words differ, EmCephadrome_SetGroup0State: 1 of 106 words differ ... */
+/* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmCephadrome_ChangeState, EmCephadrome_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
 u16 Math_AngleXZ(f32 *from, f32 *to);
 void Player_ClearFlag(void *, u32 flag);
 void Player_SetFlag(void *obj, u32 flag);
 s8 QuestEm_Appear(Em *em);
 void QuestEm_Captured(Em *em);
-ObjAttach *EmContactAttack_Create(Em *em, s8 kind);
 void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void EmBomb_Create(Em *, s8);
 void CephadromeAttack_Create(Em *, s32);
 void CephalosAttack_Create(Em *, s32);
 void Em_SelectSightRow(Em *em, u8 idx);
@@ -62,7 +70,6 @@ void Em_MoveRotatedAccel(Em *em, void *ang);
 void Em_LoadReactionSet(Em *em, u8 k);
 void Em_ComputeGoal(Em *em, f32 *target);
 void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_SetRequest(Em *em, u8 a, u8 prio);
 void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
 void Em_ClearLowHpNeed(Em *em);
 void Em_ClearNeed2State(Em *em);
@@ -71,143 +78,77 @@ void Em_ResetNotice(Em *em);
 void Em_SpawnStatus4Effect(Em *em, s32 a);
 void Em_AddNeed2(Em *em, s32 n);
 void Em_SetHitReactMode(Em *em, u8 a);
-/* unit's own declaration: with the definition's s32 (Em *em, s16 n, s16 max, s16 interval) (game/unk_708850.c), EmCephadrome_State0_12: 45 of 94 words differ */
+/* unit's own declaration: declared here as the callers use it; with the definition's s32 (Em *em, s16 n, s16 max, s16 interval), the calls in EmCephadrome_Rest compile differently */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
 void Em_ClearPoison(Em *em);
 void Em_SetHold2(Em *em);
 void Em_SetCaptured(Em *em, s32 a);
 void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
 void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_PlaySeOnFrame(Em *em, s32 frame, s32 se);
 void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
 s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
 void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
 s32 Em_TurnStep(Em *em, EmTurnParams *t);
 void Em_RestartScript(Em *em);
 void Em_TargetPlayerInRange(Em *);
-void EmCephadrome_Reset(Em *);
-void EmCephadrome_State3_06(Em *, EmWork *);
-void EmCephadrome_State6_00_Entrance(Em *em, EmWork *work);
-void EmCephadrome_State5_00_Hunted(Em *, EmWork *);
-void EmCephadrome_State5_01_Hunted(Em *, EmWork *);
-void EmCephadrome_State5_02_HuntedFalling(Em *, EmWork *);
-void EmCephadrome_State5_05_HuntedFalling(Em *, EmWork *);
+void EmCephadrome_Init(Em *);
+void EmCephadrome_LeapAttack(Em *, EmWork *);
+void EmCephadrome_EntranceScene(Em *em, EmWork *work);
+void EmCephadrome_Die(Em *, EmWork *);
+void EmCephadrome_DieHeld(Em *, EmWork *);
+void EmCephadrome_DieUnder(Em *, EmWork *);
+void EmCephadrome_DieFalling(Em *, EmWork *);
 void EmCephadrome_MotionEffects(Em *, EmWork *);
 void EmCephadrome_UpdateFins(Em *em, EmWork *work);
-void EmCephadrome_SpawnSurfaceEffect2(Em *em, f32 scale);
-void EmCephadrome_SpawnSurfaceEffect5(Em *em, f32 scale);
+void EmCephadrome_SpawnWakeEvery4(Em *em, f32 scale);
+void EmCephadrome_SpawnSurfaceSplash(Em *em, f32 scale);
 void EmCephadrome_VibrateNearby(Em *em);
 u8 EmCephadrome_UpdateCurves(Em *);
 u8 EmCephadrome_NextAreaPoint(Em *em, f32 *out);
-void EmMelynx_Reset(Em *);
-void EmMelynx_CapTimerOffTarget(Em *em);
-void EmMelynx_State0_0C(Em *);
-void EmMelynx_State0_0E(Em *);
-void EmMelynx_State1_00(Em *);
-void EmMelynx_State1_02(Em *);
-void EmMelynx_State1_06(Em *);
-void EmMelynx_State1_07(Em *);
-void EmMelynx_State1_0B(Em *);
-void EmMelynx_State3_01(Em *em);
-void EmMelynx_State4_01(Em *);
-void EmMelynx_State4_03(Em *);
-void EmMelynx_State5_00_Hunted(Em *);
-void EmMelynx_State5_01_Hunted(Em *);
-void StageObj_K11_CreateAtBoneB(Em *em, s16 bone, s16 kind, u16 arg3);
-void StageObj_K13_Create(void *owner, s16 v, u8 k);
-void StageObj_K14_Create(Em *em, s16 k, s16 c, f32 scale);
-void StageObj_Stun_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
+void AttackBurst_CreateAtBoneTilted(Em *em, s16 bone, s16 kind, u16 arg3);
+void AlertMark_Create(void *owner, s16 v, u8 k);
+void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
+void StunStars_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
 s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-void Vec_RotateY(f32 *v, f32 angle);
 f32 Vec_Distance(f32 *a, f32 *b);
 void CamShake_ReqAIf(Em *obj, s32 i);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
 void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
 f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
 u16 Area_DayId(u16 id);
 s32 QuestEm_CanAppear(Em *em);
-void Quest_DeductReward(Player *p, u16 item, s16 n);
-void Player_Integrate(void *);
 void Player_ClearVelocity(void *);
 void Motion_InitTime(void *p, s16 step);
 u8 Player_InCurrentArea(void *obj);
-void Effect01_Spawn(void *obj, s16 type);
+void Shadow_Spawn(void *obj, s16 type);
 void Effect08_Spawn(f32 *pos, s32 k, s32 b, f32 scale);
 extern EmTurnParams EmCephadrome_TurnParams[3];
-void EmCephadrome_State2_0A(Em *em, EmWork *work);
-void EmCephadrome_State2_0B(Em *em, EmWork *work);
-void EmCephadrome_State2_10(Em *em, EmWork *work);
-void EmCephadrome_State2_11(Em *em, EmWork *work);
-void EmCephadrome_State4_05(Em *em, EmWork *work, s16 variant);
-void EmCephadrome_State4_06(Em *em, EmWork *work);
-void EmCephadrome_State4_09(Em *em, EmWork *work);
-void EmCephadrome_State4_11(Em *em, EmWork *work, s32 variant);
-void EmCephadrome_State0_04(Em *em, EmWork *work, u8 variant);
-void EmCephadrome_State0_0E(Em *em, EmWork *work);
-void EmCephadrome_State0_10(Em *em, EmWork *work);
+void EmCephadrome_SandRoundNext(Em *em, EmWork *work);
+void EmCephadrome_SandRoundPrev(Em *em, EmWork *work);
+void EmCephadrome_LeapIntoSand(Em *em, EmWork *work);
+void EmCephadrome_LeapFromSand(Em *em, EmWork *work);
+void EmCephadrome_KnockDown(Em *em, EmWork *work, s16 variant);
+void EmCephadrome_FallFromAir(Em *em, EmWork *work);
+void EmCephadrome_FallBlinded(Em *em, EmWork *work);
+void EmCephadrome_ThrownOutOfSand(Em *em, EmWork *work, s32 variant);
+void EmCephadrome_LandFlop(Em *em, EmWork *work, u8 variant);
+void EmCephadrome_Status2CollapseBeached(Em *em, EmWork *work);
+void EmCephadrome_Status1CollapseBeached(Em *em, EmWork *work);
 void QuestEm_Hunted(Em *em);
 s8 EmMine_Create(Em *em, s32 idx);
 s32 EmMine_Update(Em *em);
 void EmMine_Remove(Em *em);
-/* Melynx's own meanings of the work area's bytes (EmWork, include/em.h, has the shared ones). */
-typedef struct EmMelynxWork {
-    u8 faceStep;                /* 0x000: UpdateFace: 0, then 1 (seeds blinkTimer) */
-    u8 unk001[0x004 - 0x001];
-    s16 stateTimer;             /* 0x004: State1_00: 138; State4_03: 58, counted down */
-    u8 unk006[0x00C - 0x006];
-    u16 unk00C;                 /* 0x00C: Reset: 0; Update counts it down */
-    s16 unk00E;                 /* 0x00E: ChangeState and some states: 1; State3_04, and Update when hit: 0; EndState keeps it across its ChangeState */
-    u8 unk010[0x014 - 0x010];
-    f32 home[3];                /* 0x014: Reset: the spawn position (posX, 0, posZ); State1_0C turns to it */
-    ObjAttach *eff;             /* 0x020: State3_01: the EmContactAttack_Create effect (kind 7 or 2) */
-    Player *stolenFrom;         /* 0x024: StealItem: the player robbed; ReturnItem gives the item back to it; DeductReward passes it to Quest_DeductReward */
-    EmObj sense;                /* 0x028: Em_SenseObjects' object; Update places it at the position when hit (radius 3000, kind 1) and adds it to ObjListA70 (alertState 1) */
-    u8 unk044[0x048 - 0x044];
-    u16 blinkTimer;             /* 0x048: UpdateFace: frames, the eyes' frame by (blinkTimer / 2) % 20 */
-    s16 stolenItem;             /* 0x04A: the item StealItem took (Reset: -1, none); ReturnItem gives it back, DeductReward takes it from the quest's reward */
-    s16 stolenCount;            /* 0x04C: StealItem: -1 (Pouch_Add takes one); ReturnItem adds -stolenCount */
-    u8 eyeFrame;                /* 0x04E: UpdateFace: 0 open, 1 and 2 the blink, 3 in groups 4 and 5 */
-    u8 alertState;              /* 0x04F: 0 calm; 1 when hit (sense listed); 2 alerted (Update: something sensed while calm, or sense removed) */
-    u8 unk050[0x100 - 0x050];
-} EmMelynxWork;
-typedef char EmMelynxWork_size_check[(sizeof(EmMelynxWork) == sizeof(EmWork)) ? 1 : -1];
-
-void EmMelynx_ReturnItem(Em *em, EmMelynxWork *w);
-void ObjListA70_Remove(EmObj *obj);
-void EmMine_Drop(Em *em, f32 *pos);
-s32 Player_MoveFall(Player *p);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 extern EmCurveKey *EmCephadrome_VelYCurves[];
-extern EmCurveKey EmCephadrome_Curves_2[];
-extern EmCurveKey *EmCephadrome_Curves[];
+extern EmCurveKey EmCephadrome_SpeedCurves_2[];
+extern EmCurveKey *EmCephadrome_SpeedCurves[];
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void EmCephadrome_StepRouteIndex(Em *em, u8 dir);
+void EmCephadrome_StepAreaPoint(Em *em, u8 dir);
 void Player_ClearAccel2(void *);
 s8 EmMine_CreateTimed0(Em *em, f32 *pos);
-/* unit's own declaration: with the definition's u8 (Player *p, u16 item, s16 n) (sub_main/pouch.c), EmMelynx_ReturnItem: 1 of 62 words differ */
-s32 Pouch_Add(Player *p, u16 item, s16 n);
-s32 Player_IsLocal(void *obj);
-u8 Notice_Push(u8 kind, s16 a, s16 b);
 void Vib_StartLocal(void *port, s32 i);
 s32 Obj_SameArea(void *obj, Player *b);
-void EmMelynx_MotionEffects(Em *em, EmWork *work);
-s32 Quest_IsRunning(s32 ending);
-s32 Player_HasSkill(Player *p, u8 skill);
-s16 Pouch_Count(Player *p, u16 item);
-void GmEm_ApplySize(Em *em);
-extern s16 gEmCombatInit[];
-void Em_InitParts(Em *em);
-s32 EmMelynx_StealItem(Em *em, Player *p, EmMelynxWork *w);
-s16 Player_IsState(void *obj, u8 state, u8 sub);
-void Em_CheckRageByHp(Em *em, s16 n);
-u8 Em_SenseObjects(Em *em, EmObj *self);
-s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
-s32 ObjListA70_Add(EmObj *obj);
-void Em_ResetPartHp(Em *em, u32 i);
 void Em_SetStatus5Timer(Em *em);
 void Em_SetStatus4Timer(Em *em);
 void Em_SetStatus2Timer(Em *em);
@@ -215,92 +156,479 @@ s32 Em_UpdateCombatTimer(Em *em);
 u8 Em_UpdateDamage(Em *em, u8 *out);
 void Em_UpdatePendingScript(Em *em);
 void Em_ClearHitReactMode(Em *em);
-void EmMelynx_RunState(Em *em);
 void Em_RaisePlayerAreaTriggerLax(Em *em);
 void Em_CheckLowHp(Em *em, f32 ratio);
 void Em_ResetKindTimer(Em *em);
-s32 EmCephadrome_ShouldEndState(Em *em);
+s32 EmCephadrome_IsUnderOffSand(Em *em);
 void EmCephadrome_RunState(Em *em, s32 arg1);
-typedef struct EmBEntry {
-    s16 id;
-    s16 n;
-    f32 *pts;
-} EmBEntry;
 struct EmIdEntry;
 struct EmIdEntry *Em_FindAreaEntry(Em *em, struct EmIdEntry *entry, s16 id);
-void Effect0D_SpawnForEm(Em *em, s32 a, s32 b);
-/* A set of meshes (0x8C bytes). */
-typedef struct EmMelynxMeshSet {
-    s32 unk0;
-    s32 count;          /* 0x04 */
-    s32 mesh[33];       /* 0x08 */
-} EmMelynxMeshSet;
-s32 Gs_SetState(u8 reg, u32 v);
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void Effect0D_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
-void EmCephadrome_SpawnK14Type0B(Em *em);
+void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
+void EmCephadrome_SpawnLandingDust(Em *em);
 void EmCephadrome_MotionSounds(Em *em, EmWork *work);
 void EmCephadrome_SetFinMode(Em *em, EmWork *work, s32 mode);
 void EmCephadrome_CreateAttack(Em *em, s32 arg1);
 /* end of prototypes */
 
-/* Cephadrome's own meanings of the work area's bytes (EmWork, include/em.h, has the shared ones). */
-typedef struct EmCephadromeWork {
-    u8 fxStep;                  /* 0x000: UpdateMotionEffects: 0, then 1 */
-    u8 unk001[0x007 - 0x001];
-    u8 unk007;                  /* 0x007: State2_0A counts it down */
-    u8 unk008[0x00A - 0x008];
-    u16 unk00A;                 /* 0x00A: an angle: Reset 0x4000; State6_00_Entrance: Math_AngleXZ to the goal */
-    u8 unk00C[0x00F - 0x00C];
-    u8 finMode;                 /* 0x00F: SetFinMode */
-    s16 unk010;                 /* 0x010 */
-    u8 unk012[0x013 - 0x012];
-    u8 unk013;                  /* 0x013 */
-    s32 unk014;                 /* 0x014 */
-    s32 unk018;                 /* 0x018 */
-    s32 moveAngBX;              /* 0x01C: angles X, Y, Z for Em_MoveRotatedAccel (UpdateCurves: 0, rotY, 0) */
-    s32 moveAngBY;              /* 0x020 */
-    s32 moveAngBZ;              /* 0x024 */
-    s32 unk028;                 /* 0x028: Reset: 0x100 */
-    s32 unk02C;                 /* 0x02C: Reset: 0x200 */
-    s32 unk030;                 /* 0x030: Reset: 0x100 */
-    f32 distLeft;               /* 0x034: the distance left to the goal (Vec_DistanceXZ, or 1000), less velZ each frame */
-    u8 unk038;                  /* 0x038 */
-    u8 unk039;                  /* 0x039 */
-    u8 unk03A;                  /* 0x03A */
-    u8 unk03B[0x03C - 0x03B];
-    u8 curveNone;               /* 0x03C: the three curves' run flags (StartCurves, UpdateCurves) */
-    u8 curveVelY;               /* 0x03D */
-    u8 curveSpeed;              /* 0x03E */
-    u8 curveKind;               /* 0x03F: the curve tables' index (StartCurves) */
-    s16 curveFrame;             /* 0x040: the curve frame (UpdateCurves adds the motion's step) */
-    s16 unk042;                 /* 0x042 */
-    s16 unk044;                 /* 0x044 */
-    s16 unk046;                 /* 0x046 */
-    u16 unk048;                 /* 0x048 */
-    u8 unk04A;                  /* 0x04A */
-    u8 unk04B;                  /* 0x04B */
-    s8 unk04C;                  /* 0x04C */
-    s8 unk04D;                  /* 0x04D */
-    u8 unk04E;                  /* 0x04E */
-    u8 unk04F;                  /* 0x04F */
-    s8 unk050;                  /* 0x050 */
-    s8 unk051;                  /* 0x051 */
-    s16 unk052;                 /* 0x052 */
-    s16 unk054;                 /* 0x054 */
-    s16 unk056;                 /* 0x056 */
-    s16 unk058;                 /* 0x058 */
-    s16 unk05A;                 /* 0x05A */
-    s16 unk05C;                 /* 0x05C */
-    s16 unk05E;                 /* 0x05E */
-    s16 unk060;                 /* 0x060 */
-    u8 unk062[0x100 - 0x062];
-} EmCephadromeWork;
-typedef char EmCephadromeWork_size_check[(sizeof(EmCephadromeWork) == sizeof(EmWork)) ? 1 : -1];
+/*
+ * The motions' sounds: switches on work->prevMotion (the layer-0 motion id
+ * the motion effects keep) and plays sounds at bones on given frames
+ * (Em_PlaySeAtBoneOnFrame, Em_PlaySeTypeAtBoneOnFrame,
+ * Em_PlaySeTypeAtBoneInFrames; some picked at random by Sound_RandomSe).
+ */
+void EmCephadrome_MotionSounds(Em *em, EmWork *work)
+{
+    s16 prevMotion;
 
+    prevMotion = work->prevMotion;
+    switch (prevMotion) {
+    case EM_MOTION_ID(0, CEPH_MOT_IDLE):
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC8, Sound_RandomSe(0x2D, 2, 0x2D, 2), 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x19A, Sound_RandomSe(0x21, 4, 0x21, 4), 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_WALK):
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_RUN):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xA, 0x56, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x64, 6, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_TURN_RIGHT):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x21, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_TURN_LEFT):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x21, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LIMP):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x59, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
+        break;
+    case EM_MOTION_ID(0, 0xB):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
+        break;
+    case EM_MOTION_ID(0, 0x11):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x4F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
+        break;
+    case EM_MOTION_ID(0, 0x12):
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 7, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0xB, 0xC);
+        break;
+    case EM_MOTION_ID(0, 0x13):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 9, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_IDLE_ACTION):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xAA, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xD6, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x114, 0x27, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_REST):
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0xB6, 0x55, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x16C, 0x55, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_REST_START):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_REST_END):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x46, 0x55, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xB6, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1D, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS_LIE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LAND_ATTACK_A):
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x24, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x15, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS_GET_UP):
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS_COLLAPSE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SPIN):
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x23, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_BREATH):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x28, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x4A, 0x51, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x13, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0xBB, 0x13, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x12, 0);
+        break;
+    case EM_MOTION_ID(0, 0x30):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x72, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x14);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FEED):
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1D, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x11, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x74, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x94, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0xC0, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_BLIND):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xAC, 3, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SHAKE_OFF):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_C):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_D):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 3, 0x1A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_B):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        break;
+    case EM_MOTION_ID(0, 0x43):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x46, 0x55, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1E, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_DIE):
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x30, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x1A, 0x56, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FALL_A):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_A):
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 4, 0x22);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x12, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_GET_UP_A):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FALL_B):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_DOWN):
+        Em_PlaySeAtBoneOnFrame(em, 0x14, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 4, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x2C, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x12, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_STAND_STILL):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x2B, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_HEAD_DOWN):
+        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x24, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x22, 0x23);
+        break;
+    case EM_MOTION_ID(0, 0x5F):
+        break;
+    case EM_MOTION_ID(0, 0x60):
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_IDLE):
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SWIM_START):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x65, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SWIM):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SWIM_FAST):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x24, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x15, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x15, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_RISE):
+        Em_PlaySeTypeAtBoneInFrames(em, 0x14, 0x8C, 0x56, 0x23, 6, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x30, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_DIVE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x30, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x30, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0x22);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_TURN_LEFT):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_TURN_RIGHT):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LEAP_ATTACK):
+        Em_PlaySeTypeAtBoneInFrames(em, 4, 0x7C, 0x56, 0x23, 6, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x30, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x22);
+        break;
+    case EM_MOTION_ID(0, 0x6F):
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_BREATH_C):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x34, 0x51, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x19, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_LUNGE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_CIRCLE_RIGHT):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_CIRCLE_LEFT):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x2A);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_BREATH_A):
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x19, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x1A, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x7A, 0x51, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_BREATH_B):
+        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x18, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x19, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x1A, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x7A, 0x51, 0x23);
+        break;
+    case EM_MOTION_ID(0, 0x76):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x26, 0x4C, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x14);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LEAP):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x42, 0x13, 0x22);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LEAP_CROUCH):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x12, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FLOP_A):
+        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x10, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 8, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_BEACHED):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x35, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x35, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x35, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_FLOP_B):
+        Em_PlaySeAtBoneOnFrame(em, 8, 0x34, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 9, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_GET_UP):
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x12, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x36, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x3C, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_TUMBLE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x30, 0x2A);
+        break;
+    case EM_MOTION_ID(0, 0x7F):
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x1A, 0x54, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2E, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_FLAP):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 9, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_FLAP_B):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x32, 9, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
+        break;
+    case EM_MOTION_ID(0, 0x82):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x1D, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x2F, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_RECOVER):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x15, 0x23);
+        break;
+    case EM_MOTION_ID(0, 0x84):
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_RUN_STOP):
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 8, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x14);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SURFACED):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x30, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x22);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_BOTTOMED):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x30, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x22);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_LAND_ATTACK_B):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x12, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x66, 4, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0xD8, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 0x108, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x25, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x1D, 0);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_SIDE_LIE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x122, 0x55, 0x23);
+        break;
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS4_LYING):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x50, 0x51, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 0x9E, 0x54, 0x23);
+        
+        break;
+    }
+}
+
+/*
+ * The family setup (the Em_TypeSetup entry for both kinds): a Cephadrome
+ * (EM_KIND_CEPHADROME) in AREA_DESERT_6 or AREA_DESERT_9 leaves combat
+ * (Em_SetCombat 0), reacts to nothing (noReact) and gets 5 frames of
+ * senseDelay, noHitTimer and noPushTimer; otherwise nothing.
+ */
 void EmCephadrome_Setup(Em *em)
 {
-    if (em->type == 8) {
+    if (em->type == EM_KIND_CEPHADROME) {
         switch (Area_DayId(em->area)) {
         case AREA_DESERT_6:
         case AREA_DESERT_9:
@@ -314,29 +642,42 @@ void EmCephadrome_Setup(Em *em)
     }
 }
 
+/*
+ * Callbacks slots 0 and 1: creates the alert mark (AlertMark_Create type
+ * 0x22) and attached effect 0, as EmPlesioth_SpawnEffects.
+ */
 void EmCephadrome_SpawnEffects(void *em)
 {
-    StageObj_K13_Create(em, 0x22, 0);
-    Effect01_Spawn((Player *) em, 0);
+    AlertMark_Create(em, 0x22, 0);
+    Shadow_Spawn((Player *) em, 0);
 }
 
-void EmCephadrome_Reset(Em *em)
+/*
+ * Sets a Cephadrome or Cephalos up (Start, Reinit): idle motion row 1,
+ * scaled parts 3 and 4, full hp from the size (Em_ComputeMaxHp), the work
+ * defaults and the four fins still, the depth below the sand surface
+ * (surfaceDepth: 450 for the Cephadrome, 250 for the Cephalos); a Cephalos
+ * is also made local (remote 0); the first time (fxFlags bit clear) hides
+ * mesh 1 and creates the stage object of kind 9. Same role as
+ * EmPlesioth_Init.
+ */
+void EmCephadrome_Init(Em *em)
 {
     EmCephadromeWork *w = (EmCephadromeWork *)&em->work;
 
-    s16 size;
+    s16 maxHp;
     u8 fxFlags;
 
-    Em_SetMotionRow(em, 1, 0, 0);
+    Em_SetMotionRow(em, CEPH_MOT_IDLE, 0, 0);
     Em_SetPartScaled(em, 3);
     Em_SetPartScaled(em, 4);
     w->unk010 = 0;
     em->scriptPending = 1;
     em->blind = 0;
-    size = Em_ComputeMaxHp(em, 0);
-    em->hp = size;
-    em->hpMax = size;
-    if (em->type == 8) {
+    maxHp = Em_ComputeMaxHp(em, 0);
+    em->hp = maxHp;
+    em->hpMax = maxHp;
+    if (em->type == EM_KIND_CEPHADROME) {
         em->unk_InitFlag = 1;
     } else {
         em->remote = 0;
@@ -344,7 +685,7 @@ void EmCephadrome_Reset(Em *em)
     }
     em->noAlert = 0;
     em->painted = 0;
-    w->unk00A = 0x4000;
+    w->turnYaw = 0x4000;
     w->unk028 = 0x100;
     w->unk02C = 0x200;
     w->unk030 = 0x100;
@@ -354,27 +695,27 @@ void EmCephadrome_Reset(Em *em)
     w->unk039 = 0;
     w->unk03A = 0;
     w->finMode = 0;
-    w->unk042 = 0;
-    w->unk04A = 0;
-    w->unk04B = 0;
-    w->unk052 = 0;
-    w->unk054 = 0;
-    w->unk044 = 0;
-    w->unk04C = 0;
-    w->unk04D = 0;
-    w->unk056 = 0;
-    w->unk058 = 0;
-    w->unk046 = 0;
-    w->unk04E = 0;
-    w->unk04F = 0;
-    w->unk05A = 0;
-    w->unk05C = 0;
-    w->unk048 = 0;
-    w->unk050 = 0;
-    w->unk051 = 0;
-    w->unk05E = 0;
-    w->unk060 = 0;
-    if (em->type == 8) {
+    w->finWait[0] = 0;
+    w->finState[0][0] = 0;
+    w->finState[0][1] = 0;
+    w->finRot[0].fold = 0;
+    w->finRot[0].wave = 0;
+    w->finWait[1] = 0;
+    w->finState[1][0] = 0;
+    w->finState[1][1] = 0;
+    w->finRot[1].fold = 0;
+    w->finRot[1].wave = 0;
+    w->finWait[2] = 0;
+    w->finState[2][0] = 0;
+    w->finState[2][1] = 0;
+    w->finRot[2].fold = 0;
+    w->finRot[2].wave = 0;
+    w->finWait[3] = 0;
+    w->finState[3][0] = 0;
+    w->finState[3][1] = 0;
+    w->finRot[3].fold = 0;
+    w->finRot[3].wave = 0;
+    if (em->type == EM_KIND_CEPHADROME) {
         *(f32 *) &em->surfaceDepth = 450.0f;
     } else {
         *(f32 *) &em->surfaceDepth = 250.0f;
@@ -383,72 +724,94 @@ void EmCephadrome_Reset(Em *em)
     em->fxFlags = fxFlags;
     if (fxFlags == 0) {
         switch (em->type) {
-        case 8:
-        case 0x22:
+        case EM_KIND_CEPHADROME:
+        case EM_KIND_CEPHALOS:
             em->meshShown[1] = 0;
-            StageObj_K09_Create(em);
+            EmTail_Create(em);
             break;
         }
     }
 }
 
+/*
+ * Starts a monster of the family (the per-kind start in gm_em): Init, then
+ * in the quest-less stage (gQuest.stage 0) a fixed spot 1500 apart per slot
+ * on the ground (EM_STANCE_GROUND), otherwise under the sand
+ * (EM_STANCE_UNDER); either way into the sand idle (CEPH_SAND_IDLE).
+ */
 void EmCephadrome_Start(Em *em)
 {
     f32 fslot;
     u8 slotNo;
 
-    EmCephadrome_Reset(em);
+    EmCephadrome_Init(em);
     if (gQuest.stage == 0) {
         slotNo = em->slotNo;
         fslot = (f32) (u32) slotNo;
         em->posX = 5000.0f + (1500.0f * fslot);
         em->posY = 0.0f;
         em->posZ = 9000.0f;
-        em->stance = 0;
-        EmCephadrome_ChangeState(em, 2, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_IDLE, EM_SYNC_LOCAL);
         return;
     }
-    em->stance = 4;
-    EmCephadrome_ChangeState(em, 2, 0, 0);
+    em->stance = EM_STANCE_UNDER;
+    EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_IDLE, EM_SYNC_LOCAL);
 }
 
+/* Callbacks slot 5: Init again without changing the state. */
 void EmCephadrome_Reinit(Em *em)
 {
-    EmCephadrome_Reset(em);
+    EmCephadrome_Init(em);
 }
 
-void EmCephadrome_EndState(Em *em)
+/*
+ * Ends a state on land: speed 1, stance ground, no look-at, asks the script
+ * for the next state (scriptPending) and goes to CEPH_IDLE (EM_SYNC_LOCAL).
+ * Also called by Update when EmCephadrome_IsUnderOffSand says so.
+ */
+void EmCephadrome_EndGroundState(Em *em)
 {
     em->motionSpeed = 1.0f;
-    em->stance = 0;
+    em->stance = EM_STANCE_GROUND;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    EmCephadrome_ChangeState(em, 0, 1, 0);
+    EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE, EM_SYNC_LOCAL);
 }
 
-void EmCephadrome_EndState2(Em *em)
+/*
+ * Ends a state under the sand: speed 1, stance EM_STANCE_UNDER, no look-at,
+ * asks the script (scriptPending) and goes to the sand idle (CEPH_SAND_IDLE).
+ */
+void EmCephadrome_EndSandState(Em *em)
 {
     em->motionSpeed = 1.0f;
-    em->stance = 4;
+    em->stance = EM_STANCE_UNDER;
     em->lookAtTarget = 0;
     em->scriptPending = 1;
-    EmCephadrome_ChangeState(em, 2, 0, 0);
+    EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_IDLE, EM_SYNC_LOCAL);
 }
 
-void EmCephadrome_State0_00(Em *em, EmWork *work)
+/*
+ * CEPH_IDLE_STAND: puts the three layers on their idle loops
+ * (EM_MOTION_ID(layer, CEPH_MOT_IDLE), blend 10) and stands until the timer
+ * runs out, then asks the script for the next state (scriptPending); never
+ * ends by itself.
+ */
+void EmCephadrome_IdleStand(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetLayerMotion(em, 0x3E9, 0xA, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, CEPH_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, CEPH_MOT_IDLE), 0xA, 0, 0);
         }
-        if (em->motionId[1] != 0x4B1) {
-            Em_SetLayerMotion(em, 0x4B1, 0xA, 0, 1);
+        if (em->motionId[1] != EM_MOTION_ID(1, CEPH_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, CEPH_MOT_IDLE), 0xA, 0, 1);
         }
-        if (em->motionId[2] != 0x579) {
-            Em_SetLayerMotion(em, 0x579, 0xA, 0, 2);
+        if (em->motionId[2] != EM_MOTION_ID(2, CEPH_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, CEPH_MOT_IDLE), 0xA, 0, 2);
         }
         break;
     case 1:
@@ -459,99 +822,110 @@ void EmCephadrome_State0_00(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_State0_01(Em *em, EmWork *work)
+/*
+ * CEPH_IDLE: on the ground, the idle loops of the three layers once (no
+ * blend), then EndGroundState (back to CEPH_IDLE with the script asked)
+ * once the monster is local; the state every land action falls back to.
+ */
+void EmCephadrome_Idle(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetLayerMotion(em, 0x3E9, 0, 0, 0);
+        if (em->motionId[0] != EM_MOTION_ID(0, CEPH_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, CEPH_MOT_IDLE), 0, 0, 0);
         }
-        if (em->motionId[1] != 0x4B1) {
-            Em_SetLayerMotion(em, 0x4B1, 0, 0, 1);
+        if (em->motionId[1] != EM_MOTION_ID(1, CEPH_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, CEPH_MOT_IDLE), 0, 0, 1);
         }
-        if (em->motionId[2] != 0x579) {
-            Em_SetLayerMotion(em, 0x579, 0, 0, 2);
+        if (em->motionId[2] != EM_MOTION_ID(2, CEPH_MOT_IDLE)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, CEPH_MOT_IDLE), 0, 0, 2);
         }
         break;
     case 1:
         if ((em->remote == 0) && (em->motion[0].playing == 0)) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_02(Em *em, EmWork *work)
+/*
+ * CEPH_IDLE_ACTION: plays CEPH_MOT_IDLE_ACTION, then the idle motion once,
+ * then ends on land.
+ */
+void EmCephadrome_IdleAction(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x19, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_IDLE_ACTION, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0x5C);
+            Em_SetMotion(em, CEPH_MOT_IDLE, 0, 0x5C);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_03(Em *em, EmWork *work)
+/*
+ * CEPH_IDLE_EAT_NEED2: lowers its head (CEPH_MOT_HEAD_DOWN, sight row 1,
+ * reaction set 1, no flinch) with dust clouds and a sound on given frames,
+ * then feeds (CEPH_MOT_FEED) gaining 5% of max hp; refills need 2's gauge
+ * (Em_AddNeed2) every frame; at the end restores sight row and reaction set
+ * 0, clears need 2's state (Em_ClearNeed2State) and ends on land.
+ */
+void EmCephadrome_EatNeed2(Em *em, EmWork *work)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x4F, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_HEAD_DOWN, 0, 0);
         Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
-        if ((EmMotion_PassedFrameScaled(em, 56.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 108.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 126.0f, 0U) == 0) && (EmMotion_PassedFrameScaled(em, 138.0f, 0U) == 0)) {
-            if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
-                goto block_12;
-            }
-        } else {
-block_12:
+        if ((EmMotion_PassedFrameScaled(em, 56.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 108.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 126.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 138.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0)) {
             Em_PlaySeAtBone(em, 0x26, 0x23);
-            StageObj_K14_Create(em, 7, 0, 5.0f);
+            DustCloud_Create(em, 7, 0, 5.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 210.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 218.0f, 0U) != 0)) {
-            StageObj_K14_Create(em, 7, 0, 2.5f);
+            DustCloud_Create(em, 7, 0, 2.5f);
         }
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0U) != 0) {
-            StageObj_K14_Create(em, 8, 0, 1.0f);
+            DustCloud_Create(em, 8, 0, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 106.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 130.0f, 0U) != 0)) {
-            StageObj_K14_Create(em, 6, 0, 1.0f);
+            DustCloud_Create(em, 6, 0, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 124.0f, 0U) != 0) {
-            StageObj_K14_Create(em, 6, 1, 1.0f);
+            DustCloud_Create(em, 6, 1, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
-            StageObj_K14_Create(em, 0xF, 0, 1.0f);
+            DustCloud_Create(em, 0xF, 0, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 192.0f, 0U) != 0) {
-            StageObj_K14_Create(em, 0x10, 0, 1.0f);
+            DustCloud_Create(em, 0x10, 0, 1.0f);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x3B, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_FEED, 0, 0);
             Em_AddHp(em, (s32) (0.05f * (f32) em->hpMax));
         }
         break;
@@ -561,99 +935,117 @@ block_12:
             Em_SelectSightRow(em, 0);
             Em_LoadReactionSet(em, 0);
             Em_ClearNeed2State(em);
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
     Em_AddNeed2(em, 0xDE);
 }
 
-void EmCephadrome_State0_04(Em *em, EmWork *work, u8 variant)
+/*
+ * CEPH_IDLE_LAND_FLOP_A, CEPH_IDLE_LAND_FLOP_B: landed from a leap: a flop
+ * (CEPH_MOT_FLOP_A, or CEPH_MOT_FLOP_B for variant 1), lies beached on its
+ * side (CEPH_MOT_BEACHED, stance EM_STANCE_FAMILY), gets up
+ * (CEPH_MOT_GET_UP, stance ground) and ends on land.
+ */
+void EmCephadrome_LandFlop(Em *em, EmWork *work, u8 variant)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         switch (variant) {
         default:
-            Em_SetMotion(em, 0x79, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_FLOP_A, 0, 0);
             break;
         case 1:
-            Em_SetMotion(em, 0x7B, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_FLOP_B, 0, 0);
             break;
         }
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 1;
-            Em_SetMotion(em, 0x7A, 0, 0);
+            em->stance = EM_STANCE_FAMILY;
+            Em_SetMotion(em, CEPH_MOT_BEACHED, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x7C, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, CEPH_MOT_GET_UP, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_05(Em *em, s32 unused, s32 variant)
+/*
+ * CEPH_IDLE_STATUS2_COLLAPSE, CEPH_IDLE_STATUS1_COLLAPSE: collapses
+ * (CEPH_MOT_STATUS_COLLAPSE, reaction set 1) and lies (CEPH_MOT_STATUS_LIE)
+ * blind, woken by a hit (EM_HIT_REACT_WAKE), until the timer runs out; then
+ * CEPH_IDLE_STATUS2_END (variant 0) or CEPH_IDLE_STATUS1_END (variant 1); a
+ * remote copy retries the change once it is local (remote 0).
+ */
+void EmCephadrome_StatusCollapse(Em *em, s32 work, s32 variant)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x26, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_STATUS_COLLAPSE, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x22, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_STATUS_LIE, 0, 0);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
             if (variant == 0) {
-                EmCephadrome_ChangeState(em, 0, 6, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
-            EmCephadrome_ChangeState(em, 0, 0x2A, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
             if (variant == 0) {
-                EmCephadrome_ChangeState(em, 0, 6, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
-            EmCephadrome_ChangeState(em, 0, 0x2A, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS1_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_06(Em *em)
+/*
+ * CEPH_IDLE_STATUS2_END, CEPH_IDLE_STATUS1_END: gets up after the status
+ * (CEPH_MOT_STATUS_GET_UP, reaction set 0) kept blind, then
+ * CEPH_IDLE_SHAKE_OFF.
+ */
+void EmCephadrome_StatusGetUp(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x25, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_STATUS_GET_UP, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -662,82 +1054,95 @@ void EmCephadrome_State0_06(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->blind = 0;
-            EmCephadrome_ChangeState(em, 0, 7, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 7, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_07(Em *em)
+/*
+ * CEPH_IDLE_SHAKE_OFF, CEPH_IDLE_STATUS4_SHAKE_OFF,
+ * CEPH_IDLE_HOLD2_SHAKE_OFF, CEPH_IDLE_STUN_SHAKE_OFF: shakes off
+ * (CEPH_MOT_SHAKE_OFF) and ends on land.
+ */
+void EmCephadrome_ShakeOff(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3E, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_SHAKE_OFF, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_0E(Em *em, EmWork *work)
+/*
+ * CEPH_IDLE_STATUS2_COLLAPSE_BEACHED: under status 2 while beached (stance
+ * EM_STANCE_FAMILY): lies down (CEPH_MOT_LIE_DOWN), flaps
+ * (CEPH_MOT_LIE_FLAP) and lies on its side (CEPH_MOT_SIDE_LIE) blind, woken
+ * by a hit, with sand puffs at bone 0x22 (Em_SpawnLyingPuffs) and a sound
+ * every 135 frames, until the timer runs out; then
+ * CEPH_IDLE_STATUS2_END_BEACHED.
+ */
+void EmCephadrome_Status2CollapseBeached(Em *em, EmWork *work)
 {
-    f32 pos[3];
-    f32 pos2[3];
+    f32 puffOfs[3];
+    f32 puffOfs2[3];
 
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 1;
+        em->stance = EM_STANCE_FAMILY;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x4B, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_LIE_DOWN, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x80, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_LIE_FLAP, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x89, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_SIDE_LIE, 0, 0);
         }
         break;
     case 3:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_ChangeState(em, 0, 0xF, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_END_BEACHED, EM_SYNC_OWNER_FLAGGED);
         }
-        pos[0] = 0.0f;
-        pos[1] = 10.0f;
-        pos[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+        puffOfs[0] = 0.0f;
+        puffOfs[1] = 10.0f;
+        puffOfs[2] = 140.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
         if (em->timer % 135 == 0) {
             Em_PlaySeAtBone(em, 0x57, 0x23);
         }
         break;
     case 4:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 0xF, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_END_BEACHED, EM_SYNC_OWNER_FLAGGED);
         }
-        pos2[0] = 0.0f;
-        pos2[1] = 10.0f;
-        pos2[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, pos2, 1.6f);
+        puffOfs2[0] = 0.0f;
+        puffOfs2[1] = 10.0f;
+        puffOfs2[2] = 140.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfs2, 1.6f);
         if (em->timer % 135 == 0) {
             Em_PlaySeAtBone(em, 0x57, 0x23);
         }
@@ -745,13 +1150,18 @@ void EmCephadrome_State0_0E(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_State0_0F(Em *em)
+/*
+ * CEPH_IDLE_STATUS2_END_BEACHED, CEPH_IDLE_STATUS1_END_BEACHED: gets up
+ * from its side (CEPH_MOT_GET_UP, reaction set 0) kept blind, then
+ * CEPH_IDLE_SHAKE_OFF.
+ */
+void EmCephadrome_StatusGetUpBeached(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x7C, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_GET_UP, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -760,65 +1170,69 @@ void EmCephadrome_State0_0F(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->blind = 0;
-            EmCephadrome_ChangeState(em, 0, 7, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 7, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_10(Em *em, EmWork *work)
+/*
+ * CEPH_IDLE_STATUS1_COLLAPSE_BEACHED: as Status2CollapseBeached under
+ * status 1 (stance ground), then CEPH_IDLE_STATUS1_END_BEACHED.
+ */
+void EmCephadrome_Status1CollapseBeached(Em *em, EmWork *work)
 {
-    f32 pos[3];
-    f32 pos2[3];
+    f32 puffOfs[3];
+    f32 puffOfs2[3];
 
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x4B, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_LIE_DOWN, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x80, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_LIE_FLAP, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x89, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_SIDE_LIE, 0, 0);
         }
         break;
     case 3:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_ChangeState(em, 0, 0x11, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS1_END_BEACHED, EM_SYNC_OWNER_FLAGGED);
         }
-        pos[0] = 0.0f;
-        pos[1] = 10.0f;
-        pos[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+        puffOfs[0] = 0.0f;
+        puffOfs[1] = 10.0f;
+        puffOfs[2] = 140.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
         if (em->timer % 135 == 0) {
             Em_PlaySeAtBone(em, 0x57, 0x23);
         }
         break;
     case 4:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 0x11, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS1_END_BEACHED, EM_SYNC_OWNER_FLAGGED);
         }
-        pos2[0] = 0.0f;
-        pos2[1] = 10.0f;
-        pos2[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, pos2, 1.6f);
+        puffOfs2[0] = 0.0f;
+        puffOfs2[1] = 10.0f;
+        puffOfs2[2] = 140.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfs2, 1.6f);
         if (em->timer % 135 == 0) {
             Em_PlaySeAtBone(em, 0x57, 0x23);
         }
@@ -826,23 +1240,30 @@ void EmCephadrome_State0_10(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_State0_12(Em *em)
+/*
+ * CEPH_IDLE_REST: lies down to rest (CEPH_MOT_REST_START, reaction set 1)
+ * and rests (CEPH_MOT_REST) blind for 9000 frames, regaining 1 hp every 6
+ * frames up to 30% of max hp (Em_RegenHp); then clears the low-hp need
+ * (Em_ClearLowHpNeed) and goes to CEPH_IDLE_REST_END; a hit
+ * (EM_DMG_HIT_LYING in Update) ends it early.
+ */
+void EmCephadrome_Rest(Em *em)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
     em->blind = 2;
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x20, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_REST_START, 0, 0);
         Em_LoadReactionSet(em, 1);
         em->timer = 0x2328;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x1F, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_REST, 0, 0);
         }
         break;
     case 2:
@@ -850,24 +1271,28 @@ void EmCephadrome_State0_12(Em *em)
         if (--em->timer <= 0) {
             em->step++;
             Em_ClearLowHpNeed(em);
-            EmCephadrome_ChangeState(em, 0, 0x13, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 0x13, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_REST_END, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_13(Em *em)
+/*
+ * CEPH_IDLE_REST_END: gets up from the rest (CEPH_MOT_REST_END, reaction
+ * set 0) kept blind, then CEPH_IDLE_SHAKE_OFF.
+ */
+void EmCephadrome_RestEnd(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x21, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_REST_END, 0, 0);
         Em_LoadReactionSet(em, 0);
         em->blind = 2;
         break;
@@ -876,44 +1301,54 @@ void EmCephadrome_State0_13(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->blind = 0;
-            EmCephadrome_ChangeState(em, 0, 7, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 7, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_14(Em *em)
+/*
+ * CEPH_IDLE_EAT_START: lowers its head (CEPH_MOT_HEAD_DOWN, sight row 1,
+ * reaction set 1, no flinch) and at frame 200 goes on with CEPH_IDLE_EAT,
+ * the motion still playing.
+ */
+void EmCephadrome_EatStart(Em *em)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_NO_FLINCH);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x4F, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_HEAD_DOWN, 0, 0);
         Em_SelectSightRow(em, 1);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0) {
             em->step++;
-            EmCephadrome_ChangeState(em, 0, 0x28, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_EAT, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 0x28, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_EAT, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State0_28(Em *em)
+/*
+ * CEPH_IDLE_EAT: restores sight row and reaction set 0, lets
+ * CEPH_MOT_HEAD_DOWN finish, feeds once (CEPH_MOT_FEED) and ends on land;
+ * entering it starts the goal action (Em_StartGoalAction).
+ */
+void EmCephadrome_Eat(Em *em)
 {
     switch (em->step) {
     case 0:
@@ -924,141 +1359,171 @@ void EmCephadrome_State0_28(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x3B, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_FEED, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State1_00(Em *em, EmWork *work)
+/*
+ * CEPH_MOVE_WALK: walks (CEPH_MOT_WALK) to the goal (Em_StepToGoal) and
+ * ends on land.
+ */
+void EmCephadrome_Walk(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 3, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_WALK, 0, 0);
         break;
     case 1:
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State1_01(Em *em, EmWork *work)
+/*
+ * CEPH_MOVE_RUN: runs (CEPH_MOT_RUN) to the goal (Em_StepToGoal), stops
+ * (CEPH_MOT_RUN_STOP) and ends on land.
+ */
+void EmCephadrome_RunAndStop(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 4, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_RUN, 0, 0);
         break;
     case 1:
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
             em->step++;
-            Em_SetMotion(em, 0x85, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_RUN_STOP, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State1_02(Em *em, EmWork *work)
+/*
+ * CEPH_MOVE_TURN: turns toward the target with the land turn row
+ * (EmCephadrome_TurnParams[0]: Em_StartTurnToTarget, Em_TurnStep), clears
+ * EM_FLAG_NO_ROOT_MOTION and ends on land.
+ */
+void EmCephadrome_TurnToTarget(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         Em_StartTurnToTarget(em, &EmCephadrome_TurnParams[0]);
         break;
     case 1:
         if (Em_TurnStep(em, &EmCephadrome_TurnParams[0]) == 1) {
             em->step++;
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State1_03(Em *em, EmWork *work)
+/*
+ * CEPH_MOVE_LIMP: limps (CEPH_MOT_LIMP) to the goal (Em_StepToGoal) and
+ * ends on land; SetMoveState turns a walk into it below a tenth of max
+ * hp.
+ */
+void EmCephadrome_Limp(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0xA, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_LIMP, 0, 0);
         break;
     case 1:
         if (Em_StepToGoal(em, 0x40, 0) == 1) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_00(Em *em)
+/*
+ * CEPH_SAND_IDLE: lies under the sand (stance EM_STANCE_UNDER) playing
+ * CEPH_MOT_SAND_IDLE once, then (owner only) EndSandState, which comes back
+ * here with the script asked; the start state (EmCephadrome_Start) and the
+ * state every sand action falls back to.
+ */
+void EmCephadrome_SandIdle(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x64, 0, 0);
-        em->stance = 4;
+        Em_SetMotion(em, CEPH_MOT_SAND_IDLE, 0, 0);
+        em->stance = EM_STANCE_UNDER;
         break;
     case 1:
         if ((em->remote == 0) && (em->motion[0].playing == 0)) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_01(Em *em)
+/* CEPH_SAND_IDLE_B: as SandIdle with CEPH_MOT_SAND_IDLE_B, then EndSandState. */
+void EmCephadrome_SandIdleB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x6D, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_IDLE_B, 0, 0);
         break;
     case 1:
         if ((em->remote == 0) && (em->motion[0].playing == 0)) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_02(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_CIRCLE_RIGHT_B: as SandCircleRight (132 frames at speed 40,
+ * heading +0x1F0 a frame, CEPH_MOT_SAND_CIRCLE_RIGHT, pitched toward the
+ * goal, sand wake), but rotY is not wrapped to 16 bits; then EndSandState.
+ */
+void EmCephadrome_SandCircleRightB(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x72, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_CIRCLE_RIGHT, 0, 0);
         em->timer = 0x84;
         Player_ClearVelocity(em);
         em->velZ = 40.0f;
@@ -1066,19 +1531,26 @@ void EmCephadrome_State2_02(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         em->rotY += 0x1F0;
         Em_GetPitchToGoal(em, (s32 *) &work->moveAngBX, 0.0f, 0.0f);
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
         Em_MoveRotated(em, &work->moveAngBX);
-        EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+        EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         break;
     }
 }
 
-void EmCephadrome_State2_03(Em *em, s32 unused, s32 variant)
+/*
+ * CEPH_SAND_TURN (variant 0), CEPH_SAND_TURN_NO_REACT (variant 1): turns
+ * under the sand toward the target (EmCephadrome_TurnParams[1]) with a sand
+ * splash (SpawnSurfaceSplash) on entry, then EndSandState; variant 1 sets
+ * noReact and 5 frames of senseDelay, noHitTimer and noPushTimer every
+ * frame.
+ */
+void EmCephadrome_SandTurn(Em *em, s32 unused, s32 variant)
 {
     if ((variant & 0xFF) == 1) {
         em->noReact = 1;
@@ -1090,28 +1562,35 @@ void EmCephadrome_State2_03(Em *em, s32 unused, s32 variant)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         Em_StartTurnToTarget(em, &EmCephadrome_TurnParams[1]);
-        EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+        EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         break;
     case 1:
         if (Em_TurnStep(em, &EmCephadrome_TurnParams[1]) == 1) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_04(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_FORWARD: swims under the sand toward the goal pitched to it
+ * (Em_GetPitchToGoal, Em_MoveRotated): CEPH_MOT_SAND_SWIM_START
+ * accelerating from 5 to at most 50, then CEPH_MOT_SAND_SWIM; ends at the
+ * goal (Em_StepToGoal) or once goalDist is used up (EndSandState).
+ * SetSandState sets the speed scale on entry.
+ */
+void EmCephadrome_SandForward(Em *em, EmWork *work)
 {
 
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x65, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_SWIM_START, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 5.0f;
         em->accelZ = 1.0f;
@@ -1126,11 +1605,11 @@ void EmCephadrome_State2_04(Em *em, EmWork *work)
         }
         if (Em_StepToGoal(em, 0x40, 2) == 1) {
             em->step = 0xA;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x66, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_SAND_SWIM, 0, 0);
         }
         break;
     case 2:
@@ -1144,13 +1623,20 @@ void EmCephadrome_State2_04(Em *em, EmWork *work)
         em->goalDist -= em->velZ;
         if (em->goalDist <= 0.0f) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_05(Em *em, EmWork *work, s32 variant)
+/*
+ * CEPH_SAND_DASH (variant 0), CEPH_SAND_DASH_NO_REACT (variant 1): fast
+ * swim (CEPH_MOT_SAND_SWIM_FAST) toward the goal from motion frame 30 at up
+ * to 100 with the sand wake (SpawnWakeEvery4), ending at the goal;
+ * variant 1 sets noReact and the 5-frame sense, hit and push timers every
+ * frame.
+ */
+void EmCephadrome_SandDash(Em *em, EmWork *work, s32 variant)
 {
     if ((variant & 0xFF) == 1) {
         em->noReact = 1;
@@ -1162,8 +1648,8 @@ void EmCephadrome_State2_05(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x67, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 30.0f;
         em->accelZ = 10.0f;
@@ -1179,43 +1665,54 @@ void EmCephadrome_State2_05(Em *em, EmWork *work, s32 variant)
             }
             if (Em_StepToGoal(em, 0x40, 2) == 1) {
                 em->step++;
-                EmCephadrome_EndState2(em);
+                EmCephadrome_EndSandState(em);
             }
-            EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+            EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_06(Em *em)
+/*
+ * CEPH_SAND_CURVE: plays CEPH_MOT_SAND_CURVE moved by curve set 0
+ * (StartCurves, UpdateCurves), then EndSandState; SetSandState turns this
+ * state into CEPH_SAND_DIVE, so it never runs through ChangeState.
+ */
+void EmCephadrome_SandCurve(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x6E, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_CURVE, 0, 0);
         EmCephadrome_StartCurves(em, 0U);
         break;
     case 1:
         if (EmCephadrome_UpdateCurves(em)) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_07(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_RISE: rises (CEPH_MOT_SAND_RISE, velY up to 50) to the swim
+ * height under the sand top (surfaceY - surfaceDepth), then plays
+ * CEPH_MOT_SAND_SURFACED with one sand wake call and ends under the sand
+ * (EndSandState).
+ */
+void EmCephadrome_SandRise(Em *em, EmWork *work)
 {
-    f32 posY;
+    f32 swimY;
 
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x68, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_RISE, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 20.0f;
         em->velY = 2.0f;
@@ -1230,24 +1727,28 @@ void EmCephadrome_State2_07(Em *em, EmWork *work)
             em->velY = 50.0f;
             em->accelY = 0.0f;
         }
-        posY = em->surfaceY - *(f32 *)&em->surfaceDepth;
-        if (!(em->posY <= posY)) {
-            em->posY = posY;
+        swimY = em->surfaceY - *(f32 *)&em->surfaceDepth;
+        if (!(em->posY <= swimY)) {
+            em->posY = swimY;
             em->step++;
-            Em_SetMotion(em, 0x86, 0, 0);
-            EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+            Em_SetMotion(em, CEPH_MOT_SAND_SURFACED, 0, 0);
+            EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_08(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_DIVE: sinks (CEPH_MOT_SAND_DIVE, velY down to -50) to floorY,
+ * plays CEPH_MOT_SAND_BOTTOMED and ends under the sand.
+ */
+void EmCephadrome_SandDive(Em *em, EmWork *work)
 {
     f32 floorY;
 
@@ -1255,8 +1756,8 @@ void EmCephadrome_State2_08(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x69, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_DIVE, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 20.0f;
         em->velY = -2.0f;
@@ -1275,86 +1776,97 @@ void EmCephadrome_State2_08(Em *em, EmWork *work)
         if (em->posY < floorY) {
             em->posY = floorY;
             em->step++;
-            Em_SetMotion(em, 0x87, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_SAND_BOTTOMED, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_09(Em *em)
+/*
+ * CEPH_SAND_ROUND_TURN: turns toward the next area point
+ * (EmCephadrome_TurnParams[2]) with a sand splash, then
+ * CEPH_SAND_ROUND_NEXT; SetSandState picks it for a round whose goal is
+ * not ahead. A third step re-sends ROUND_NEXT every 300 frames (owner
+ * only).
+ */
+void EmCephadrome_SandRoundTurn(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         Em_StartTurnToTarget(em, &EmCephadrome_TurnParams[2]);
-        EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+        EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         break;
     case 1:
         if (Em_TurnStep(em, &EmCephadrome_TurnParams[2]) == 1) {
             em->step++;
             em->timer = 0x12C;
-            EmCephadrome_ChangeState(em, 2, 0xA, 1);
+            EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_ROUND_NEXT, EM_SYNC_SEND);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->timer = 0x12C;
             if (em->remote == 0) {
-                EmCephadrome_ChangeState(em, 2, 0xA, 1);
+                EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_ROUND_NEXT, EM_SYNC_SEND);
             }
         }
         break;
     }
 }
 
-void EmCephadrome_State2_0A(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_ROUND_NEXT, CEPH_SAND_ROUND_NEXT_LEG: fast swim
+ * (CEPH_MOT_SAND_SWIM_FAST, at least speed 50, 40 for half of the Cephalos
+ * by stateRand) turning to the goal with the sand wake; each leg ends
+ * within 300 of the goal or when em->timer runs out, counts roundLegsLeft
+ * down and, while legs are left, steps the area point forward
+ * (StepAreaPoint 0), times the next leg (1.5 x distance / 50) and enters
+ * CEPH_SAND_ROUND_NEXT_LEG; ends under the sand at 0.
+ */
+void EmCephadrome_SandRoundNext(Em *em, EmWork *work)
 {
-    f32 v;
-    u8 temp;
+    f32 swimSpeed;
+    u8 legsLeft;
 
     switch (em->step) {
     case 0:
-        em->stance = 4;
-        Em_SetMotion(em, 0x67, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0, 0);
         em->step++;
         em->stateVar1 = 0;
         em->lookAtTarget = 0;
         em->velX = 0.0f;
         em->velY = 0.0f;
         Player_ClearAccel2(em);
-        v = 50.0f;
-        if (em->type == 0x22 && (em->stateRand & 0x1F) < 0x10) {
-            v *= 0.8f;
+        swimSpeed = 50.0f;
+        if (em->type == EM_KIND_CEPHALOS && (em->stateRand & 0x1F) < 0x10) {
+            swimSpeed *= 0.8f;
         }
-        if (em->velZ <= v) {
-            em->velZ = v;
+        if (em->velZ <= swimSpeed) {
+            em->velZ = swimSpeed;
         }
         break;
     case 1:
-        if (!(Vec_DistanceXZ(&em->posX, em->goal) <= 300.0f)) {
-            if (--em->timer <= 0) {
-                goto block_9;
-            }
-        } else {
-block_9:
-            temp = ((EmCephadromeWork *)work)->unk007 - 1;
-            ((EmCephadromeWork *)work)->unk007 = temp;
-            if ((temp & 0xFF) <= 0) {
+        if (Vec_DistanceXZ(&em->posX, em->goal) <= 300.0f || --em->timer <= 0) {
+            legsLeft = ((EmCephadromeWork *)work)->roundLegsLeft - 1;
+            ((EmCephadromeWork *)work)->roundLegsLeft = legsLeft;
+            if ((legsLeft & 0xFF) <= 0) {
                 em->step++;
-                EmCephadrome_EndState2(em);
+                EmCephadrome_EndSandState(em);
             } else {
-                EmCephadrome_StepRouteIndex(em, 0);
+                EmCephadrome_StepAreaPoint(em, 0);
                 Em_ComputeGoal2(em, em->goal);
                 em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f);
-                EmCephadrome_ChangeState(em, 2, 0x13, 0);
+                EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_ROUND_NEXT_LEG, EM_SYNC_LOCAL);
             }
         }
         Em_TurnToGoal(em, 0x200, 0);
@@ -1362,51 +1874,51 @@ block_9:
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
         Em_MoveRotated(em, &work->moveAngBX);
-        EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+        EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         break;
     }
 }
 
-void EmCephadrome_State2_0B(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_ROUND_PREV, CEPH_SAND_ROUND_PREV_LEG: as SandRoundNext,
+ * stepping the area point backward (StepAreaPoint 1) and continuing in
+ * CEPH_SAND_ROUND_PREV_LEG.
+ */
+void EmCephadrome_SandRoundPrev(Em *em, EmWork *work)
 {
-    f32 v;
-    u8 temp;
+    f32 swimSpeed;
+    u8 legsLeft;
 
     switch (em->step) {
     case 0:
-        em->stance = 4;
-        Em_SetMotion(em, 0x67, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0, 0);
         em->step++;
         em->stateVar1 = 0;
         em->lookAtTarget = 0;
         em->velX = 0.0f;
         em->velY = 0.0f;
         Player_ClearAccel2(em);
-        v = 50.0f;
-        if (em->type == 0x22 && (em->stateRand & 0x1F) < 0x10) {
-            v *= 0.8f;
+        swimSpeed = 50.0f;
+        if (em->type == EM_KIND_CEPHALOS && (em->stateRand & 0x1F) < 0x10) {
+            swimSpeed *= 0.8f;
         }
-        if (em->velZ <= v) {
-            em->velZ = v;
+        if (em->velZ <= swimSpeed) {
+            em->velZ = swimSpeed;
         }
         break;
     case 1:
-        if (!(Vec_DistanceXZ(&em->posX, em->goal) <= 300.0f)) {
-            if (--em->timer <= 0) {
-                goto block_9;
-            }
-        } else {
-block_9:
-            temp = ((EmCephadromeWork *)work)->unk007 - 1;
-            ((EmCephadromeWork *)work)->unk007 = temp;
-            if ((temp & 0xFF) <= 0) {
+        if (Vec_DistanceXZ(&em->posX, em->goal) <= 300.0f || --em->timer <= 0) {
+            legsLeft = ((EmCephadromeWork *)work)->roundLegsLeft - 1;
+            ((EmCephadromeWork *)work)->roundLegsLeft = legsLeft;
+            if ((legsLeft & 0xFF) <= 0) {
                 em->step++;
-                EmCephadrome_EndState2(em);
+                EmCephadrome_EndSandState(em);
             } else {
-                EmCephadrome_StepRouteIndex(em, 1);
+                EmCephadrome_StepAreaPoint(em, 1);
                 Em_ComputeGoal2(em, em->goal);
                 em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f);
-                EmCephadrome_ChangeState(em, 2, 0x14, 0);
+                EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_ROUND_PREV_LEG, EM_SYNC_LOCAL);
             }
         }
         Em_TurnToGoal(em, 0x200, 0);
@@ -1414,19 +1926,24 @@ block_9:
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
         Em_MoveRotated(em, &work->moveAngBX);
-        EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+        EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         break;
     }
 }
 
-void EmCephadrome_State2_0C(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_CIRCLE_RIGHT: swims a circle for 132 frames at speed 40
+ * (CEPH_MOT_SAND_CIRCLE_RIGHT), the heading rising 0x1F0 a frame, pitched
+ * toward the goal, with the sand wake; then EndSandState.
+ */
+void EmCephadrome_SandCircleRight(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x72, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_CIRCLE_RIGHT, 0, 0);
         em->timer = 0x84;
         Player_ClearVelocity(em);
         em->velZ = 40.0f;
@@ -1434,7 +1951,7 @@ void EmCephadrome_State2_0C(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         em->rotY += 0x1F0;
         em->rotY = (s32) (u16) em->rotY;
@@ -1442,19 +1959,23 @@ void EmCephadrome_State2_0C(Em *em, EmWork *work)
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
         Em_MoveRotated(em, &work->moveAngBX);
-        EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+        EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         break;
     }
 }
 
-void EmCephadrome_State2_0D(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_CIRCLE_LEFT: as SandCircleRight with CEPH_MOT_SAND_CIRCLE_LEFT,
+ * the heading falling 0x1F0 a frame.
+ */
+void EmCephadrome_SandCircleLeft(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x73, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_CIRCLE_LEFT, 0, 0);
         em->timer = 0x84;
         Player_ClearVelocity(em);
         em->velZ = 40.0f;
@@ -1462,7 +1983,7 @@ void EmCephadrome_State2_0D(Em *em, EmWork *work)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         em->rotY -= 0x1F0;
         em->rotY = (s32) (u16) em->rotY;
@@ -1470,20 +1991,28 @@ void EmCephadrome_State2_0D(Em *em, EmWork *work)
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
         Em_MoveRotated(em, &work->moveAngBX);
-        EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+        EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         break;
     }
 }
 
-void EmCephadrome_State2_0E(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_LEAP_ASHORE: leaps up out of the sand (CEPH_MOT_LEAP, velY 132,
+ * velZ 60); on breaking the sand top it turns airborne (stance
+ * EM_STANCE_AIR, velY 50, gravity -5) with a splash, the nearby pad
+ * vibration and a camera shake; it always comes down on floorY and goes to
+ * CEPH_IDLE_LAND_FLOP_A (EmCephadrome_LandFlop), never
+ * back into the sand.
+ */
+void EmCephadrome_LeapAshore(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         Player_ClearVelocity(em);
-        Em_SetMotion(em, 0x77, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_LEAP, 0, 0);
         em->velY = 132.0f;
         em->velZ = 60.0f;
         work->moveAngBX = 0;
@@ -1494,10 +2023,10 @@ void EmCephadrome_State2_0E(Em *em, EmWork *work)
         Em_MoveRotated(em, (s32 *) &work->moveAngBX);
         if (!(em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth))) {
             em->step++;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             em->velY = 50.0f;
             em->accelY = -5.0f;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
             EmCephadrome_VibrateNearby(em);
             CamShake_ReqAIf(em, 3);
         }
@@ -1508,58 +2037,70 @@ void EmCephadrome_State2_0E(Em *em, EmWork *work)
         if ((em->velY < 0.0f) && (em->posY < em->floorY)) {
             em->step++;
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     case 3:
         if (em->remote == 0) {
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_0F(Em *em)
+/*
+ * CEPH_SAND_SURFACE_FLOP: held at the swim height under the sand top, plays
+ * CEPH_MOT_FLOP_A and ends under the sand from motion frame 10.
+ */
+void EmCephadrome_SandSurfaceFlop(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x79, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_FLOP_A, 0, 0);
         Player_ClearVelocity(em);
         em->posY = em->surfaceY - *(f32 *)&em->surfaceDepth;
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0U) != 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_10(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_LEAP_IN: on land crouches (CEPH_MOT_LEAP_CROUCH), leaps
+ * (CEPH_MOT_LEAP, velY 50, velZ 80, gravity -4, splash); coming down over
+ * sand (or out of the player's area) it enters at the swim height, plays
+ * CEPH_MOT_SAND_SWIM_FAST and glides 1000 forward decelerating over 60
+ * frames (distLeft), then ends under the sand; over hard ground it lands on
+ * floorY and goes to CEPH_IDLE_LAND_FLOP_A.
+ */
+void EmCephadrome_LeapIntoSand(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0x0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x78, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_LEAP_CROUCH, 0, 0);
         Player_ClearVelocity(em);
         break;
     case 0x1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 2;
-            Em_SetMotion(em, 0x77, 0, 0);
+            em->stance = EM_STANCE_AIR;
+            Em_SetMotion(em, CEPH_MOT_LEAP, 0, 0);
             em->velY = 50.0f;
             em->velZ = 80.0f;
             em->accelY = -4.0f;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     case 0x2:
@@ -1568,41 +2109,41 @@ void EmCephadrome_State2_10(Em *em, EmWork *work)
         work->moveAngBZ = 0;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         if (em->posY <= (em->surfaceY - *(f32 *)&em->surfaceDepth)) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         }
         if (em->velY < 0.0f) {
             if (gScene.area == em->area) {
                 if (em->surfaceKind != 0) {
                     if (em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth)) {
                         em->step++;
-                        em->stance = 4;
+                        em->stance = EM_STANCE_UNDER;
                         em->posY = em->surfaceY - *(f32 *)&em->surfaceDepth;
                         em->velY = 0.0f;
                         em->accelY = 0.0f;
-                        Em_SetMotion(em, 0x67, 0xA, 0);
+                        Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0xA, 0);
                         ((EmCephadromeWork *)work)->distLeft = 1000.0f;
                         em->timer = 0x3C;
                         em->accelZ = (((EmCephadromeWork *)work)->distLeft - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
-                        EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+                        EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
                     }
                 } else if (em->posY < em->floorY) {
                     em->step = 0x63;
                     em->posY = em->floorY;
-                    EmCephadrome_ChangeState(em, 0, 4, 4);
-                    EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+                    EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+                    EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
                 }
             } else {
                 if (em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth)) {
                     em->step++;
-                    em->stance = 4;
+                    em->stance = EM_STANCE_UNDER;
                     em->posY = em->surfaceY - *(f32 *)&em->surfaceDepth;
                     em->velY = 0.0f;
                     em->accelY = 0.0f;
-                    Em_SetMotion(em, 0x67, 0xA, 0);
+                    Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0xA, 0);
                     ((EmCephadromeWork *)work)->distLeft = 1000.0f;
                     em->timer = 0x3C;
                     em->accelZ = (((EmCephadromeWork *)work)->distLeft - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
-                    EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+                    EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
                 }
             }
         }
@@ -1613,28 +2154,35 @@ void EmCephadrome_State2_10(Em *em, EmWork *work)
         ((EmCephadromeWork *)work)->distLeft -= em->velZ;
         if (((EmCephadromeWork *)work)->distLeft <= 0.0f || em->velZ <= 0.0f) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     case 0x63:
         if (em->remote == 0) {
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_11(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_LEAP: from under the sand leaps (CEPH_MOT_LEAP, velY 100, velZ
+ * 60, gravity -8), airborne with splash, vibration and camera shake on
+ * breaking the top; falling back over sand it re-enters and glides 1000
+ * (CEPH_MOT_SAND_SWIM_FAST) as LeapIntoSand, over hard ground it lands and
+ * goes to CEPH_IDLE_LAND_FLOP_A.
+ */
+void EmCephadrome_LeapFromSand(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0x0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         Player_ClearVelocity(em);
-        Em_SetMotion(em, 0x77, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_LEAP, 0, 0);
         em->velY = 100.0f;
         em->velZ = 60.0f;
         em->accelY = -8.0f;
@@ -1645,8 +2193,8 @@ void EmCephadrome_State2_11(Em *em, EmWork *work)
         work->moveAngBY = em->rotY;
         Em_MoveRotated(em, &work->moveAngBX);
         if (!(em->posY <= (em->surfaceY - *(f32 *)&em->surfaceDepth))) {
-            em->stance = 2;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            em->stance = EM_STANCE_AIR;
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
             em->step++;
             EmCephadrome_VibrateNearby(em);
             CamShake_ReqAIf(em, 3);
@@ -1656,41 +2204,41 @@ void EmCephadrome_State2_11(Em *em, EmWork *work)
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         if (em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth)) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         }
         if (em->velY < 0.0f) {
             if (gScene.area == em->area) {
                 if (em->surfaceKind != 0) {
                     if (em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth)) {
                         em->step++;
-                        em->stance = 4;
+                        em->stance = EM_STANCE_UNDER;
                         em->posY = em->surfaceY - *(f32 *)&em->surfaceDepth;
                         em->velY = 0.0f;
                         em->accelY = 0.0f;
-                        Em_SetMotion(em, 0x67, 0xA, 0);
+                        Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0xA, 0);
                         ((EmCephadromeWork *)work)->distLeft = 1000.0f;
                         em->timer = 0x3C;
                         em->accelZ = (((EmCephadromeWork *)work)->distLeft - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
-                        EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+                        EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
                     }
                 } else if (em->posY < em->floorY) {
                     em->step = 0x63;
                     em->posY = em->floorY;
-                    EmCephadrome_ChangeState(em, 0, 4, 4);
-                    EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+                    EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+                    EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
                 }
             } else {
                 if (em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth)) {
                     em->step++;
                     em->posY = em->surfaceY - *(f32 *)&em->surfaceDepth;
-                    em->stance = 4;
+                    em->stance = EM_STANCE_UNDER;
                     em->velY = 0.0f;
                     em->accelY = 0.0f;
-                    Em_SetMotion(em, 0x67, 0xA, 0);
+                    Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0xA, 0);
                     ((EmCephadromeWork *)work)->distLeft = 1000.0f;
                     em->timer = 0x3C;
                     em->accelZ = (((EmCephadromeWork *)work)->distLeft - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
-                    EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+                    EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
                 }
             }
         }
@@ -1701,38 +2249,43 @@ void EmCephadrome_State2_11(Em *em, EmWork *work)
         ((EmCephadromeWork *)work)->distLeft -= em->velZ;
         if (((EmCephadromeWork *)work)->distLeft <= 0.0f || em->velZ <= 0.0f) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     case 0x63:
         if (em->remote == 0) {
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_12(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_LEAP_ON_LAND: on land crouches (CEPH_MOT_LEAP_CROUCH) and leaps
+ * (CEPH_MOT_LEAP, velY 50, velZ 100, gravity -4, splash), always coming
+ * down on floorY and going to CEPH_IDLE_LAND_FLOP_A.
+ */
+void EmCephadrome_LeapOnLand(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x78, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_LEAP_CROUCH, 0, 0);
         Player_ClearVelocity(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 2;
-            Em_SetMotion(em, 0x77, 0, 0);
+            em->stance = EM_STANCE_AIR;
+            Em_SetMotion(em, CEPH_MOT_LEAP, 0, 0);
             em->velY = 50.0f;
             em->velZ = 100.0f;
             em->accelY = -4.0f;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     case 2:
@@ -1743,47 +2296,57 @@ void EmCephadrome_State2_12(Em *em, EmWork *work)
         if ((em->velY < 0.0f) && (em->posY < em->floorY)) {
             em->step++;
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     case 3:
         if (em->remote == 0) {
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_15(Em *em)
+/*
+ * CEPH_SAND_STATUS4_RECOVER: SetSandState ends status 4 on entry; plays
+ * CEPH_MOT_SAND_RECOVER under the sand, then EndSandState.
+ */
+void EmCephadrome_SandStatus4Recover(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
-        Em_SetMotion(em, 0x83, 0, 0);
+        em->stance = EM_STANCE_UNDER;
+        Em_SetMotion(em, CEPH_MOT_SAND_RECOVER, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_16(Em *em, EmWork *work)
+/*
+ * CEPH_SAND_LEAP_TO_FIXED_POINT: airborne (CEPH_MOT_LEAP) jumps to the
+ * fixed point (6000, -1000, 10000) in 150 frames: faces it, gravity -2,
+ * velY and velZ computed to arrive on time; then puts posY at -1000 and
+ * enters CEPH_SAND_IDLE (EM_SYNC_OWNER_FLAGGED).
+ */
+void EmCephadrome_LeapToFixedPoint(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
+        em->stance = EM_STANCE_AIR;
         Player_ClearVelocity(em);
-        Em_SetMotion(em, 0x77, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_LEAP, 0, 0);
         em->timer = 0x96;
         em->goal[0] = 6000.0f;
         em->goal[1] = -1000.0f;
@@ -1801,270 +2364,322 @@ void EmCephadrome_State2_16(Em *em, EmWork *work)
         if (--em->timer <= 0) {
             em->step++;
             em->posY = -1000.0f;
-            EmCephadrome_ChangeState(em, 2, 0, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_IDLE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
             em->posY = -1000.0f;
-            EmCephadrome_ChangeState(em, 2, 0, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_IDLE, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State2_18(Em *em)
+/*
+ * CEPH_SAND_STATUS2_END, CEPH_SAND_STATUS1_END: SetSandState ends status
+ * 2 or 1 on entry; plays CEPH_MOT_SAND_RECOVER blind (Em.blind 2 every
+ * frame, 0 at the end), then EndSandState.
+ */
+void EmCephadrome_SandStatusRecover(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->blind = 2;
-        Em_SetMotion(em, 0x83, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_SAND_RECOVER, 0, 0);
         break;
     case 1:
         em->blind = 2;
         if (em->motion[0].playing == 0) {
             em->step++;
             em->blind = 0;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_00(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_LAND_A: on land (stance EM_STANCE_GROUND) plays
+ * CEPH_MOT_LAND_ATTACK_A once (its motion effects make attack row 1 at
+ * frame 50), then land idle (EndGroundState).
+ */
+void EmCephadrome_LandAttackA(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x24, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_LAND_ATTACK_A, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_01(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_BREATH: on land plays CEPH_MOT_BREATH; at frame 78 an attack
+ * burst at bone 0x22 and the ranged attack from bone 0x22
+ * (EmRangedAttack_CreateAtBone kind 7, variant 0 for Cephadrome, 1 for
+ * Cephalos, pitched 10 degrees), more bursts at 80 and 82 (attack row 0x19
+ * at 66 from the motion effects); then land idle. SetAttackState sets
+ * EmCephadromeWork.unk013 to 1 on entry.
+ */
+void EmCephadrome_Breath(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x2F, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_BREATH, 0, 0);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x71C);
-            if (em->type == 8) {
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x71C);
+            if (em->type == EM_KIND_CEPHADROME) {
                 EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0x71C, 0);
             } else {
                 EmRangedAttack_CreateAtBone(em, 0x22, 7, 1, 0x71C, 0);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x71C);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x71C);
         }
         if (EmMotion_PassedFrameScaled(em, 82.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x71C);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x71C);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_02(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_SPIN: on land plays CEPH_MOT_SPIN twice (waiting on layer 1)
+ * while turning rotY by -0x200 a frame (attack row 0x10 at frame 30, dust
+ * when enraged), then land idle.
+ */
+void EmCephadrome_SpinAttack(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x2B, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_SPIN, 0, 0);
         Motion_InitTime(em, 0);
         break;
     case 1:
         em->rotY -= 0x200;
         if (em->motion[1].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x2B, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_SPIN, 0, 0);
         }
         break;
     case 2:
         em->rotY -= 0x200;
         if (em->motion[1].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_03(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_SURFACE_BREATH_A: under the sand plays
+ * CEPH_MOT_SURFACE_BREATH_A: sand splashes at frames 38 and 230 and three
+ * ranged attacks from bone 0x22 (kind 7, variant 0 for both kinds, pitched
+ * 25 degrees) at frames 122, 162 and 192, yawed +40, 0 and -40 degrees,
+ * each with three attack bursts the same way; then ends under the sand
+ * (EndSandState).
+ */
+void EmCephadrome_SurfaceBreathA(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x74, 0, 0);
-        em->stance = 4;
+        Em_SetMotion(em, CEPH_MOT_SURFACE_BREATH_A, 0, 0);
+        em->stance = EM_STANCE_UNDER;
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 122.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x1C72);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x1C72);
             EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0x11C7, 0x1C72);
         }
         if (EmMotion_PassedFrameScaled(em, 162.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
             EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0x11C7, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 192.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0xE38F);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0xE38F);
             EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0x11C7, 0xE38F);
         }
         if (EmMotion_PassedFrameScaled(em, 38.0f, 0U) != 0) {
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 230.0f, 0U) != 0) {
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 126.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x1C72);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x1C72);
         }
         if (EmMotion_PassedFrameScaled(em, 166.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 196.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0xE38F);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0xE38F);
         }
         if (EmMotion_PassedFrameScaled(em, 130.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x1C72);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x1C72);
         }
         if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0xE38F);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0xE38F);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_04(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_SURFACE_BREATH_B: as SurfaceBreathA with
+ * CEPH_MOT_SURFACE_BREATH_B and the sweep reversed (ranged attacks yawed
+ * -40, 0, +40 degrees); then ends under the sand.
+ */
+void EmCephadrome_SurfaceBreathB(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x75, 0, 0);
-        em->stance = 4;
+        Em_SetMotion(em, CEPH_MOT_SURFACE_BREATH_B, 0, 0);
+        em->stance = EM_STANCE_UNDER;
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 122.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x1C72);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x1C72);
             EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0x11C7, 0xE38F);
         }
         if (EmMotion_PassedFrameScaled(em, 162.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
             EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0x11C7, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 192.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0xE38F);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0xE38F);
             EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0x11C7, 0x1C72);
         }
         if (EmMotion_PassedFrameScaled(em, 38.0f, 0U) != 0) {
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 230.0f, 0U) != 0) {
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 126.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0xE38F);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0xE38F);
         }
         if (EmMotion_PassedFrameScaled(em, 166.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 196.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x1C72);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x1C72);
         }
         if (EmMotion_PassedFrameScaled(em, 130.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0xE38F);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0xE38F);
         }
         if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 200.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0x1C72);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0x1C72);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_05(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_SURFACE_BREATH_C: under the sand plays
+ * CEPH_MOT_SURFACE_BREATH_C: splashes at frames 26 and 98, one ranged
+ * attack from bone 0x22 at frame 58 (variant by kind, pitched 20 degrees)
+ * with bursts at 58, 60 and 62 (the motion effects add attack row 0x1D and
+ * the pad vibration at 26); then ends under the sand.
+ */
+void EmCephadrome_SurfaceBreathC(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x70, 0, 0);
-        em->stance = 4;
+        Em_SetMotion(em, CEPH_MOT_SURFACE_BREATH_C, 0, 0);
+        em->stance = EM_STANCE_UNDER;
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 58.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
-            if (em->type == 8) {
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
+            if (em->type == EM_KIND_CEPHADROME) {
                 EmRangedAttack_CreateAtBone(em, 0x22, 7, 0, 0xE39, 0);
             } else {
                 EmRangedAttack_CreateAtBone(em, 0x22, 7, 1, 0xE39, 0);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0U) != 0) {
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 98.0f, 0U) != 0) {
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 62.0f, 0U) != 0) {
-            StageObj_K11_CreateAtBoneB((Em *) em, 0x22, 0xC, 0);
+            AttackBurst_CreateAtBoneTilted((Em *) em, 0x22, 0xC, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_06(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_LEAP: from under the sand leaps forward and up
+ * (CEPH_MOT_LEAP_ATTACK, velZ 100, velY 80, attack row 0xE at frame 10);
+ * breaking the top it turns airborne with splash, vibration and camera
+ * shake, stops rising at the sand top and hangs 30 frames, then falls
+ * (gravity -4.5); over sand (or out of the player's area) it re-enters and
+ * glides 1000 with CEPH_MOT_SAND_SWIM_FAST and ends under the sand, over
+ * hard ground it lands and goes to CEPH_IDLE_LAND_FLOP_A.
+ */
+void EmCephadrome_LeapAttack(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0x0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x6C, 0, 0);
-        em->stance = 4;
+        Em_SetMotion(em, CEPH_MOT_LEAP_ATTACK, 0, 0);
+        em->stance = EM_STANCE_UNDER;
         Player_ClearVelocity(em);
         em->velZ = 100.0f;
         em->velY = 80.0f;
@@ -2077,8 +2692,8 @@ void EmCephadrome_State3_06(Em *em, EmWork *work)
         Em_MoveRotated(em, &work->moveAngBX);
         if (!(em->posY <= (em->surfaceY - *(f32 *)&em->surfaceDepth))) {
             em->step++;
-            em->stance = 2;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            em->stance = EM_STANCE_AIR;
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
             EmCephadrome_VibrateNearby(em);
             CamShake_ReqAIf(em, 3);
         }
@@ -2105,21 +2720,21 @@ void EmCephadrome_State3_06(Em *em, EmWork *work)
         if ((gScene.area != em->area) || (em->surfaceKind != 0)) {
             if ((em->posY <= (em->surfaceY - *(f32 *)&em->surfaceDepth)) && (em->velY < 0.0f)) {
                 em->step++;
-                em->stance = 4;
+                em->stance = EM_STANCE_UNDER;
                 em->velY = 0.0f;
                 em->accelY = 0.0f;
-                Em_SetMotion(em, 0x67, 0xA, 0);
+                Em_SetMotion(em, CEPH_MOT_SAND_SWIM_FAST, 0xA, 0);
                 ((EmCephadromeWork *)work)->distLeft = 1000.0f;
                 em->timer = 0x3C;
                 em->accelZ = (((EmCephadromeWork *)work)->distLeft - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
-                EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+                EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
                 break;
             }
         } else if (em->posY < em->floorY) {
             em->step = 0x63;
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     case 0x5:
@@ -2128,45 +2743,57 @@ void EmCephadrome_State3_06(Em *em, EmWork *work)
         ((EmCephadromeWork *)work)->distLeft -= em->velZ;
         if (((EmCephadromeWork *)work)->distLeft <= 0.0f || em->velZ <= 0.0f) {
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     case 0x63:
         if (em->remote == 0) {
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 0, 4, 4);
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_07(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_LAND_B: on land plays CEPH_MOT_LAND_ATTACK_B once (attack row
+ * 0x16 at frame 60), then land idle.
+ */
+void EmCephadrome_LandAttackB(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x88, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_LAND_ATTACK_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State3_08(Em *em, EmWork *work)
+/*
+ * CEPH_ATK_SURFACE_LUNGE: from under the sand lunges forward along the top
+ * (CEPH_MOT_SURFACE_LUNGE, stance EM_STANCE_AIR, velZ 100, velY 16, gravity
+ * -0.8, attack row 0x1B at frame 28) with vibration and camera shake on
+ * entry; from frame 54 brakes to a stop in 18 frames, from frame 84 stops
+ * sinking at the swim height; at the motion's end goes back under the sand
+ * (EndSandState).
+ */
+void EmCephadrome_SurfaceLunge(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 2;
-        Em_SetMotion(em, 0x71, 0, 0);
+        em->stance = EM_STANCE_AIR;
+        Em_SetMotion(em, CEPH_MOT_SURFACE_LUNGE, 0, 0);
         Player_ClearVelocity(em);
         em->velY = 16.0f;
         em->velZ = 100.0f;
@@ -2192,125 +2819,157 @@ void EmCephadrome_State3_08(Em *em, EmWork *work)
             em->accelZ = 0.0f;
         }
         if (em->motion[0].playing == 0) {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
             em->step++;
-            EmCephadrome_EndState2(em);
+            EmCephadrome_EndSandState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_00(Em *em)
+/*
+ * CEPH_REACT_FLINCH: a flinch of parts 0 and 7 on land (EM_DMG_PART_FLINCH,
+ * EM_DMG_ATTACK5_FLINCH), or EM_DMG_HIT_MODE3 when not airborne: plays
+ * CEPH_MOT_FLINCH (restarting CEPH_MOT_IDLE when layers 1 and 2 stop) and
+ * returns to land idle.
+ */
+void EmCephadrome_Flinch(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3C, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_FLINCH, 0, 0);
         break;
     case 1:
         if (em->motion[em->stateVar1].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
             break;
         }
         if (em->motion[1].playing == 0) {
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_IDLE, 0, 0);
         }
         if (em->motion[2].playing == 0) {
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_IDLE, 0, 0);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_01(Em *em)
+/*
+ * CEPH_REACT_FLINCH_B: a flinch of an unbroken part 3 or 4 (or a higher
+ * part) on land: CEPH_MOT_FLINCH_B, then land idle.
+ */
+void EmCephadrome_FlinchB(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x42, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_FLINCH_B, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_02(Em *em)
+/*
+ * CEPH_REACT_FLINCH_C: a flinch of parts 5 and 6 on land:
+ * CEPH_MOT_FLINCH_C, then land idle.
+ */
+void EmCephadrome_FlinchC(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3F, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_FLINCH_C, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_03(Em *em)
+/*
+ * CEPH_REACT_FLINCH_D: a flinch of parts 1 and 2 on land:
+ * CEPH_MOT_FLINCH_D, then land idle.
+ */
+void EmCephadrome_FlinchD(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x40, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_FLINCH_D, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_04(Em *em)
+/*
+ * CEPH_REACT_FLINCH_LYING: a part flinch while beached on land (stance
+ * EM_STANCE_FAMILY); sets stance EM_STANCE_GROUND and plays
+ * CEPH_MOT_LIE_DOWN, CEPH_MOT_LIE_FLAP, CEPH_MOT_GET_UP, then land idle.
+ */
+void EmCephadrome_FlinchLying(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4B, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_LIE_DOWN, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x80, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_LIE_FLAP, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x7C, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_GET_UP, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_05(Em *em, EmWork *work, s16 variant)
+/*
+ * CEPH_REACT_KNOCK_DOWN (variant 1), CEPH_REACT_KNOCK_DOWN_PART3 (0),
+ * CEPH_REACT_STUN_A (3), CEPH_REACT_STUN_B (2): falls over, lies and gets
+ * up; odd variants use CEPH_MOT_FALL_A, LIE_A, LIE_FLAP, GET_UP_A, even
+ * ones FALL_B, LIE_DOWN, LIE_FLAP_B, GET_UP. The stun variants show stun
+ * stars at bone 0x22, lie until em->timer runs out and end in
+ * CEPH_IDLE_STUN_SHAKE_OFF (which ends the stun); the others end in land idle. Records
+ * the state in prevStateGroup/prevState before leaving.
+ */
+void EmCephadrome_KnockDown(Em *em, EmWork *work, s16 variant)
 {
     switch (em->step) {
     case 0:
@@ -2321,7 +2980,7 @@ void EmCephadrome_State4_05(Em *em, EmWork *work, s16 variant)
         switch (variant) {
         case 2:
         case 3:
-            StageObj_Stun_CreateEm(em, 1, 0x22, em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
+            StunStars_CreateEm(em, 1, 0x22, em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
             break;
         }
         break;
@@ -2366,31 +3025,37 @@ void EmCephadrome_State4_05(Em *em, EmWork *work, s16 variant)
             case 2:
             case 3:
                 em->step++;
-                EmCephadrome_ChangeState(em, 0, 0x17, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
                 break;
             default:
-                EmCephadrome_EndState(em);
+                EmCephadrome_EndGroundState(em);
                 break;
             }
         }
         break;
     case 5:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 0x17, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STUN_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_06(Em *em, EmWork *work)
+/*
+ * CEPH_REACT_FALL: EM_DMG_STATUS_IN_AIR, or a part flinch while airborne
+ * (stance EM_STANCE_AIR): falls under gravity -3 with CEPH_MOT_TUMBLE
+ * (stance air above the sand top, under below it); on reaching floorY goes
+ * to CEPH_REACT_LAND, never back into the sand.
+ */
+void EmCephadrome_FallFromAir(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x7E, 0, 0);
-        em->stance = 2;
+        Em_SetMotion(em, CEPH_MOT_TUMBLE, 0, 0);
+        em->stance = EM_STANCE_AIR;
         em->accelY = -3.0f;
         em->accelX = 0.0f;
         em->accelZ = 0.0f;
@@ -2401,60 +3066,71 @@ void EmCephadrome_State4_06(Em *em, EmWork *work)
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, &work->moveAngBX);
         if (!(em->posY < em->surfaceY)) {
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
         } else {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         }
         if (em->posY < em->floorY) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 4, 0x10, 3);
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_LAND, EM_SYNC_OWNER);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_07(Em *em)
+/*
+ * CEPH_REACT_STATUS4_LYING: status 4 (EM_DMG_STATUS4) while beached (stance
+ * EM_STANCE_FAMILY); ChangeState begins status 4 on entry; hit reaction
+ * kept (EM_HIT_REACT_STATUS): CEPH_MOT_LIE_DOWN, CEPH_MOT_LIE_FLAP, then
+ * CEPH_MOT_STATUS4_LYING with the status 4 effect until em->timer runs out,
+ * then CEPH_REACT_STATUS4_LYING_END.
+ */
+void EmCephadrome_Status4Lying(Em *em)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x4B, 0, 0);
-        em->stance = 0;
+        Em_SetMotion(em, CEPH_MOT_LIE_DOWN, 0, 0);
+        em->stance = EM_STANCE_GROUND;
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x80, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_LIE_FLAP, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x8A, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_STATUS4_LYING, 0, 0);
         }
         break;
     case 3:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_ChangeState(em, 4, 0x13, 3);
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_STATUS4_LYING_END, EM_SYNC_OWNER);
         }
         Em_SpawnStatus4Effect(em, 2);
         break;
     case 4:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 4, 0x13, 3);
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_STATUS4_LYING_END, EM_SYNC_OWNER);
         }
         Em_SpawnStatus4Effect(em, 2);
         break;
     }
 }
 
-void EmCephadrome_State4_09(Em *em, EmWork *work)
+/*
+ * CEPH_REACT_FALL_BLIND: as FallFromAir but blinded (Em.blind 2 every
+ * frame); no C code enters it.
+ */
+void EmCephadrome_FallBlinded(Em *em, EmWork *work)
 {
     em->blind = 2;
     switch (em->step) {
@@ -2462,8 +3138,8 @@ void EmCephadrome_State4_09(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x7E, 0, 0);
-        em->stance = 2;
+        Em_SetMotion(em, CEPH_MOT_TUMBLE, 0, 0);
+        em->stance = EM_STANCE_AIR;
         em->accelY = -3.0f;
         em->accelX = 0.0f;
         em->accelZ = 0.0f;
@@ -2474,21 +3150,25 @@ void EmCephadrome_State4_09(Em *em, EmWork *work)
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, &work->moveAngBX);
         if (!(em->posY < em->surfaceY)) {
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
         } else {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
         }
         if (em->posY < em->floorY) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->posY = em->floorY;
-            EmCephadrome_ChangeState(em, 4, 0x10, 3);
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_LAND, EM_SYNC_OWNER);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_0A(Em *em)
+/*
+ * CEPH_REACT_FLINCH_BLIND: blinded (Em.blind 2) on land, plays
+ * CEPH_MOT_FLINCH_BLIND once, then land idle; no C code enters it.
+ */
+void EmCephadrome_FlinchBlinded(Em *em)
 {
     em->blind = 2;
     switch (em->step) {
@@ -2496,63 +3176,73 @@ void EmCephadrome_State4_0A(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3D, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_FLINCH_BLIND, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_0B(Em *em)
+/*
+ * CEPH_REACT_STATUS4: status 4 on land (stance EM_STANCE_GROUND);
+ * ChangeState begins status 4 on entry; hit reaction kept:
+ * CEPH_MOT_STAND_STILL with the status 4 effect until em->timer runs out,
+ * then CEPH_IDLE_STATUS4_SHAKE_OFF (which ends status 4).
+ */
+void EmCephadrome_Status4(Em *em)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4C, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_STAND_STILL, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_ChangeState(em, 0, 0x15, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 2:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 0x15, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
     Em_SpawnStatus4Effect(em, 2);
 }
 
-void EmCephadrome_State4_10(Em *em)
+/*
+ * CEPH_REACT_LAND: came down on land from a fall: CEPH_MOT_FLOP_A (blended
+ * in), CEPH_MOT_GET_UP, then land idle, clearing the velocity.
+ */
+void EmCephadrome_LandAfterFall(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 0x79, 0xC, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_FLOP_A, 0xC, 0);
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x7C, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_GET_UP, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
             em->prevStateGroup = em->stateGroup;
             em->prevState = em->state;
             Player_ClearVelocity(em);
@@ -2561,7 +3251,16 @@ void EmCephadrome_State4_10(Em *em)
     }
 }
 
-void EmCephadrome_State4_11(Em *em, EmWork *work, s32 variant)
+/*
+ * CEPH_REACT_THROWN_OUT (variant 0), CEPH_REACT_THROWN_OUT_ATTACK5 (variant
+ * 1): under the sand (stance EM_STANCE_UNDER) a part flinch, EM_DMG_STATUS4
+ * or EM_DMG_STATUS2 (variant 0) or EM_DMG_ATTACK5 (variant 1) throws it up
+ * out of the sand (velY 100, CEPH_MOT_TUMBLE, splash on leaving; a
+ * Cephadrome hit by variant 1 leaves a timed mine point at the sand top,
+ * EmMine_CreateTimed0); it always lands on floorY: CEPH_MOT_FLOP_A,
+ * CEPH_MOT_LIE_DOWN, CEPH_MOT_GET_UP_A, then land idle.
+ */
+void EmCephadrome_ThrownOutOfSand(Em *em, EmWork *work, s32 variant)
 {
     f32 pos[3];
 
@@ -2570,13 +3269,13 @@ void EmCephadrome_State4_11(Em *em, EmWork *work, s32 variant)
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x7E, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_TUMBLE, 0, 0);
         Player_ClearVelocity(em);
         em->velY = 100.0f;
         em->accelY = -2.75f;
         work->moveAngBX = 0;
         work->moveAngBZ = 0;
-        if ((em->type == 8) && ((variant & 0xFF) == 1)) {
+        if ((em->type == EM_KIND_CEPHADROME) && ((variant & 0xFF) == 1)) {
             pos[0] = em->posX;
             pos[1] = em->surfaceY;
             pos[2] = em->posZ;
@@ -2586,14 +3285,14 @@ void EmCephadrome_State4_11(Em *em, EmWork *work, s32 variant)
     case 1:
         work->moveAngBY = em->rotY;
         if (!(em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth))) {
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             em->velY = 80.0f;
             Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
             em->step++;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
             break;
         }
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         Em_MoveRotated(em, &work->moveAngBX);
         break;
     case 2:
@@ -2601,15 +3300,15 @@ void EmCephadrome_State4_11(Em *em, EmWork *work, s32 variant)
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         if ((em->posY < em->surfaceY) && (em->velY < 0.0f)) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->posY = em->floorY;
-            Em_SetMotion(em, 0x79, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_FLOP_A, 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_LIE_DOWN, 0, 0);
         }
         break;
     case 4:
@@ -2621,80 +3320,101 @@ void EmCephadrome_State4_11(Em *em, EmWork *work, s32 variant)
     case 6:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x47, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_GET_UP_A, 0, 0);
         }
         break;
     case 7:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_13(Em *em)
+/*
+ * CEPH_REACT_STATUS4_LYING_END: ChangeState ends status 4 on entry; still
+ * beached (stance EM_STANCE_FAMILY) gets up (CEPH_MOT_GET_UP), then land
+ * idle.
+ */
+void EmCephadrome_Status4LyingEnd(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x7C, 0, 0);
-        em->stance = 1;
+        Em_SetMotion(em, CEPH_MOT_GET_UP, 0, 0);
+        em->stance = EM_STANCE_FAMILY;
         Em_RestartScript(em);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmCephadrome_EndState(em);
+            EmCephadrome_EndGroundState(em);
         }
         break;
     }
 }
 
-void EmCephadrome_State4_15(Em *em)
+/*
+ * CEPH_REACT_HOLD2: EM_DMG_ATTACK13 (Update resets the kind timer);
+ * ChangeState ends all statuses on entry; the second hold every frame
+ * (Em_SetHold2): CEPH_MOT_FLINCH without root motion up to frame 52, then
+ * CEPH_MOT_STAND_STILL until em->timer runs out, then
+ * CEPH_IDLE_STATUS4_SHAKE_OFF.
+ */
+void EmCephadrome_Hold2(Em *em)
 {
     Em_SetHold2(em);
     switch (em->step) {
     case 0:
         em->step++;
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3C, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_FLINCH, 0, 0);
         Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x4C, 0xC, 0);
+            Em_SetMotion(em, CEPH_MOT_STAND_STILL, 0xC, 0);
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
             em->step++;
-            EmCephadrome_ChangeState(em, 0, 0x15, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     case 3:
         if (em->remote == 0) {
-            EmCephadrome_ChangeState(em, 0, 0x15, 4);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS4_SHAKE_OFF, EM_SYNC_OWNER_FLAGGED);
         }
         break;
     }
 }
 
-void EmCephadrome_State6_00_Entrance(Em *em, EmWork *work)
+/*
+ * CEPH_EVENT_ENTRANCE: a scripted entrance at fixed positions. It swims
+ * under the sand (CEPH_MOT_SWIM) along a fixed route of goals, turning in
+ * place toward work->turnAngle between legs (CEPH_MOT_SAND_TURN_RIGHT, then
+ * _LEFT) with sand wakes, then leaps out (CEPH_MOT_LEAP) with surface
+ * splashes, lands (FLOP_A, BEACHED, GET_UP), does the idle action and
+ * returns to land idle (EmCephadrome_EndGroundState). Keeps senseDelay and
+ * noHitTimer at 5; no C code enters it.
+ */
+void EmCephadrome_EntranceScene(Em *em, EmWork *work)
 {
-    EmCephadromeWork *cw = (EmCephadromeWork *)work;
+    EmCephadromeWork *cephWork = (EmCephadromeWork *)work;
 
     em->senseDelay = 5;
     em->noHitTimer = 5;
     switch (em->step) {
     case 0:
         em->step = 3;
-        em->stance = 4;
+        em->stance = EM_STANCE_UNDER;
         em->posX = 11900.0f;
         em->posY = -*(f32 *)&em->surfaceDepth;
         em->posZ = 5220.0f;
@@ -2704,10 +3424,10 @@ void EmCephadrome_State6_00_Entrance(Em *em, EmWork *work)
         em->rotX = 0;
         em->rotY = Math_AngleXZ(&em->posX, em->goal);
         em->rotZ = 0;
-        cw->distLeft = Vec_DistanceXZ(&em->posX, em->goal);
+        cephWork->distLeft = Vec_DistanceXZ(&em->posX, em->goal);
         Player_ClearVelocity(em);
         em->velZ = 50.0f;
-        Em_SetMotion(em, 0x66, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_SAND_SWIM, 0, 0);
         work->moveAngBX = 0;
         work->moveAngBZ = 0;
         break;
@@ -2715,36 +3435,36 @@ void EmCephadrome_State6_00_Entrance(Em *em, EmWork *work)
         Em_TurnToGoal(em, 0x40, 0);
         work->moveAngBY = em->rotY;
         Em_MoveRotated(em, &work->moveAngBX);
-        cw->distLeft -= em->velZ;
-        if (cw->distLeft <= 0.0f) {
+        cephWork->distLeft -= em->velZ;
+        if (cephWork->distLeft <= 0.0f) {
             em->step++;
             em->goal[0] = 16700.0f;
             em->goal[1] = -*(f32 *)&em->surfaceDepth;
             em->goal[2] = 8450.0f;
-            cw->unk00A = Math_AngleXZ(&em->posX, em->goal);
-            cw->distLeft = Vec_DistanceXZ(&em->posX, em->goal);
-            Em_SetMotion(em, 0x6B, 0, 0);
+            cephWork->turnYaw = Math_AngleXZ(&em->posX, em->goal);
+            cephWork->distLeft = Vec_DistanceXZ(&em->posX, em->goal);
+            Em_SetMotion(em, CEPH_MOT_SAND_TURN_RIGHT, 0, 0);
         }
         break;
     case 2:
         {
-        u32 spd;
-        u16 t;
-        u32 d;
-        s32 a;
-        spd = (32768.0f / (em->motion[0].frameCount / 2.0f)) * em->motionSpeed;
-        a = em->rotY;
-        t = cw->unk00A;
-        d = (t - (a & 0xFFFF)) & 0xFFFF;
+        u32 turnStep;
+        u16 targetYaw;
+        u32 yawDiff;
+        s32 yaw;
+        turnStep = (32768.0f / (em->motion[0].frameCount / 2.0f)) * em->motionSpeed;
+        yaw = em->rotY;
+        targetYaw = cephWork->turnYaw;
+        yawDiff = (targetYaw - (yaw & 0xFFFF)) & 0xFFFF;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x66, 0, 0);
-        } else if (((d + spd) & 0xFFFF) < spd * 2) {
-            em->rotY = t;
-        } else if (d < 0x8000U) {
-            em->rotY = (a + spd) & 0xFFFF;
+            Em_SetMotion(em, CEPH_MOT_SAND_SWIM, 0, 0);
+        } else if (((yawDiff + turnStep) & 0xFFFF) < turnStep * 2) {
+            em->rotY = targetYaw;
+        } else if (yawDiff < 0x8000U) {
+            em->rotY = (yaw + turnStep) & 0xFFFF;
         } else {
-            em->rotY = (a - spd) & 0xFFFF;
+            em->rotY = (yaw - turnStep) & 0xFFFF;
         }
         }
         break;
@@ -2752,37 +3472,37 @@ void EmCephadrome_State6_00_Entrance(Em *em, EmWork *work)
         Em_TurnToGoal(em, 0x40, 0);
         work->moveAngBY = em->rotY;
         Em_MoveRotated(em, &work->moveAngBX);
-        cw->distLeft -= em->velZ;
-        if (cw->distLeft <= 0.0f) {
+        cephWork->distLeft -= em->velZ;
+        if (cephWork->distLeft <= 0.0f) {
             em->step++;
             em->goal[0] = 12728.0f;
             em->goal[1] = -*(f32 *)&em->surfaceDepth;
             em->goal[2] = 13160.0f;
-            cw->unk00A = Math_AngleXZ(&em->posX, em->goal);
-            cw->distLeft = Vec_DistanceXZ(&em->posX, em->goal);
-            Em_SetMotion(em, 0x6A, 0, 0);
+            cephWork->turnYaw = Math_AngleXZ(&em->posX, em->goal);
+            cephWork->distLeft = Vec_DistanceXZ(&em->posX, em->goal);
+            Em_SetMotion(em, CEPH_MOT_SAND_TURN_LEFT, 0, 0);
         }
-        EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+        EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         break;
     case 4:
         {
-        s32 a;
-        u32 spd;
-        u16 t;
-        u32 d;
-        spd = (32768.0f / (em->motion[0].frameCount / 2.0f)) * em->motionSpeed;
-        a = em->rotY;
-        t = cw->unk00A;
-        d = (t - (a & 0xFFFF)) & 0xFFFF;
+        s32 yaw;
+        u32 turnStep;
+        u16 targetYaw;
+        u32 yawDiff;
+        turnStep = (32768.0f / (em->motion[0].frameCount / 2.0f)) * em->motionSpeed;
+        yaw = em->rotY;
+        targetYaw = cephWork->turnYaw;
+        yawDiff = (targetYaw - (yaw & 0xFFFF)) & 0xFFFF;
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x66, 0, 0);
-        } else if (((d + spd) & 0xFFFF) < spd * 2) {
-            em->rotY = t;
-        } else if (d < 0x8000U) {
-            em->rotY = (a + spd) & 0xFFFF;
+            Em_SetMotion(em, CEPH_MOT_SAND_SWIM, 0, 0);
+        } else if (((yawDiff + turnStep) & 0xFFFF) < turnStep * 2) {
+            em->rotY = targetYaw;
+        } else if (yawDiff < 0x8000U) {
+            em->rotY = (yaw + turnStep) & 0xFFFF;
         } else {
-            em->rotY = (a - spd) & 0xFFFF;
+            em->rotY = (yaw - turnStep) & 0xFFFF;
         }
         }
         break;
@@ -2790,28 +3510,28 @@ void EmCephadrome_State6_00_Entrance(Em *em, EmWork *work)
         Em_TurnToGoal(em, 0x40, 0);
         work->moveAngBY = em->rotY;
         Em_MoveRotated(em, &work->moveAngBX);
-        cw->distLeft -= em->velZ;
-        if (cw->distLeft <= 0.0f) {
+        cephWork->distLeft -= em->velZ;
+        if (cephWork->distLeft <= 0.0f) {
             em->step++;
             em->goal[0] = 14380.0f;
             em->goal[1] = 0.0f;
             em->goal[2] = 14930.0f;
             em->rotY = Math_AngleXZ(&em->posX, em->goal);
-            Em_SetMotion(em, 0x77, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_LEAP, 0, 0);
             em->velY = 132.0f;
             em->velZ = 60.0f;
         }
-        EmCephadrome_SpawnSurfaceEffect2(em, 8.0f);
+        EmCephadrome_SpawnWakeEvery4(em, 8.0f);
         break;
     case 6:
         work->moveAngBY = em->rotY;
         Em_MoveRotated(em, &work->moveAngBX);
         if (!(em->posY < (em->surfaceY - *(f32 *)&em->surfaceDepth))) {
             em->step++;
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             em->velY = 50.0f;
             em->accelY = -5.0f;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
         }
         break;
     case 7:
@@ -2820,45 +3540,51 @@ void EmCephadrome_State6_00_Entrance(Em *em, EmWork *work)
         if (em->velY < 0.0f && em->posY < em->floorY) {
             em->step++;
             em->posY = em->floorY;
-            EmCephadrome_SpawnSurfaceEffect5(em, 8.0f);
-            em->stance = 0;
-            Em_SetMotion(em, 0x79, 0, 0);
+            EmCephadrome_SpawnSurfaceSplash(em, 8.0f);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, CEPH_MOT_FLOP_A, 0, 0);
         }
         break;
     case 8:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 1;
-            Em_SetMotion(em, 0x7A, 0, 0);
+            em->stance = EM_STANCE_FAMILY;
+            Em_SetMotion(em, CEPH_MOT_BEACHED, 0, 0);
         }
         break;
     case 9:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x7C, 0, 0);
+            em->stance = EM_STANCE_GROUND;
+            Em_SetMotion(em, CEPH_MOT_GET_UP, 0, 0);
         }
         break;
     case 10:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x19, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_IDLE_ACTION, 0, 0);
         }
         break;
     case 11:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 1, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_IDLE, 0, 0);
         }
         break;
     case 12:
         em->step++;
-        EmCephadrome_EndState(em);
+        EmCephadrome_EndGroundState(em);
         break;
     }
 }
 
-void EmCephadrome_State6_01(Em *em)
+/*
+ * CEPH_EVENT_TO_IDLE: hidden for one frame (visible 0, stance ground,
+ * CEPH_MOT_IDLE, scriptPending 0), then shown again and back to land idle
+ * (EmCephadrome_EndGroundState). Keeps senseDelay and noHitTimer at 5; no C code
+ * enters it.
+ */
+void EmCephadrome_HiddenToIdle(Em *em)
 {
     em->senseDelay = 5;
     em->noHitTimer = 5;
@@ -2866,23 +3592,31 @@ void EmCephadrome_State6_01(Em *em)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 1, 0, 0);
+        em->stance = EM_STANCE_GROUND;
+        Em_SetMotion(em, CEPH_MOT_IDLE, 0, 0);
         em->visible = 0;
         em->scriptPending = 0;
         break;
     case 1:
         em->step++;
         em->visible = 1;
-        EmCephadrome_EndState(em);
+        EmCephadrome_EndGroundState(em);
         break;
     }
 }
 
-void EmCephadrome_State6_02_Captured(Em *em)
+/*
+ * CEPH_EVENT_CAPTURED: captured (EM_DMG_CAPTURED): Em_SetCaptured every
+ * frame, reports the capture (QuestEm_Captured), begins status 1, clears
+ * poison, loads reaction set 1, collapses and lies
+ * (CEPH_MOT_STATUS_COLLAPSE, CEPH_MOT_STATUS_LIE), waits 1800 frames
+ * counted only while QuestEm_CanAppear, fades out over 150 frames, then the
+ * owner moves to CEPH_DEFEAT_REAPPEAR.
+ */
+void EmCephadrome_Captured(Em *em)
 {
-    s32 timer;
-    s32 t;
+    s32 timerLeft;
+    s32 timerPrev;
 
     Em_SetCaptured(em, 1);
     switch (em->step) {
@@ -2892,15 +3626,15 @@ void EmCephadrome_State6_02_Captured(Em *em)
         em->timer = 0x708;
         Em_BeginStatus1(em);
         Em_ClearPoison(em);
-        em->stance = 0;
+        em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x26, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_STATUS_COLLAPSE, 0, 0);
         Em_LoadReactionSet(em, 1);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x22, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_STATUS_LIE, 0, 0);
         }
         break;
     case 2:
@@ -2913,26 +3647,34 @@ void EmCephadrome_State6_02_Captured(Em *em)
         }
         break;
     case 3:
-        t = em->timer;
-        if (t > 0) {
-            em->timer = t - 1;
+        timerPrev = em->timer;
+        if (timerPrev > 0) {
+            em->timer = timerPrev - 1;
         }
-        timer = em->timer;
-        if (timer <= 0) {
+        timerLeft = em->timer;
+        if (timerLeft <= 0) {
             if (em->remote == 0) {
-                EmCephadrome_ChangeState(em, 5, 4, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         } else {
-            em->alpha = (f32) timer / 150.0f;
+            em->alpha = (f32) timerLeft / 150.0f;
         }
         break;
     }
 }
 
-void EmCephadrome_State5_00_Hunted(Em *em, EmWork *work)
+/*
+ * CEPH_DEFEAT_DIE: killed on the ground (EM_DMG_KILLED or DEAD, not held):
+ * out of combat, stance dead, QuestEm_Hunted, CEPH_MOT_DIE (camera shake at
+ * frame 212), then a carve mine point (EmMine_Create) for 900 frames
+ * (Cephadrome counts them only while QuestEm_CanAppear, Cephalos always),
+ * fades out over 150 frames, then the owner moves to CEPH_DEFEAT_REAPPEAR.
+ * Cephalos keeps noHitTimer at 10; both keep noPushTimer at 10.
+ */
+void EmCephadrome_Die(Em *em, EmWork *work)
 {
-    if (em->type == 0x22) {
+    if (em->type == EM_KIND_CEPHALOS) {
         em->noHitTimer = 10;
     }
     em->noPushTimer = 10;
@@ -2940,9 +3682,9 @@ void EmCephadrome_State5_00_Hunted(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x44, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_DIE, 0, 0);
         em->lookAtTarget = 0;
-        em->stance = 3;
+        em->stance = EM_STANCE_DEAD;
         QuestEm_Hunted(em);
         break;
     case 1:
@@ -2958,7 +3700,7 @@ void EmCephadrome_State5_00_Hunted(Em *em, EmWork *work)
         break;
     case 2:
         EmMine_Update(em);
-        if (em->type != 8 || QuestEm_CanAppear(em) != 0) {
+        if (em->type != EM_KIND_CEPHADROME || QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
                 EmMine_Remove(em);
@@ -2972,7 +3714,7 @@ void EmCephadrome_State5_00_Hunted(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmCephadrome_ChangeState(em, 5, 4, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -2981,9 +3723,13 @@ void EmCephadrome_State5_00_Hunted(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_State5_01_Hunted(Em *em, EmWork *work)
+/*
+ * CEPH_DEFEAT_DIE_HELD: killed while held (holdTimer): as EmCephadrome_Die
+ * with CEPH_MOT_DIE_HELD and no camera shake.
+ */
+void EmCephadrome_DieHeld(Em *em, EmWork *work)
 {
-    if (em->type == 0x22) {
+    if (em->type == EM_KIND_CEPHALOS) {
         em->noHitTimer = 10;
     }
     em->noPushTimer = 10;
@@ -2991,9 +3737,9 @@ void EmCephadrome_State5_01_Hunted(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x61, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_DIE_HELD, 0, 0);
         em->lookAtTarget = 0;
-        em->stance = 3;
+        em->stance = EM_STANCE_DEAD;
         QuestEm_Hunted(em);
         break;
     case 1:
@@ -3006,7 +3752,7 @@ void EmCephadrome_State5_01_Hunted(Em *em, EmWork *work)
         break;
     case 2:
         EmMine_Update(em);
-        if (em->type != 8 || QuestEm_CanAppear(em) != 0) {
+        if (em->type != EM_KIND_CEPHADROME || QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
                 EmMine_Remove(em);
@@ -3020,7 +3766,7 @@ void EmCephadrome_State5_01_Hunted(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmCephadrome_ChangeState(em, 5, 4, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -3029,9 +3775,17 @@ void EmCephadrome_State5_01_Hunted(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_State5_02_HuntedFalling(Em *em, EmWork *work)
+/*
+ * CEPH_DEFEAT_DIE_UNDER: killed under the sand, lying on its side, or in
+ * the air below the surface: thrown up (CEPH_MOT_TUMBLE, velY 100) through
+ * the sand until it clears surfaceY less surfaceDepth, then in the air
+ * (velY 80) falls to the floor, flops (CEPH_MOT_FLOP_A), and then goes on
+ * as EmCephadrome_Die (CEPH_MOT_DIE, mine point, fade,
+ * CEPH_DEFEAT_REAPPEAR).
+ */
+void EmCephadrome_DieUnder(Em *em, EmWork *work)
 {
-    if (em->type == 0x22) {
+    if (em->type == EM_KIND_CEPHALOS) {
         em->noHitTimer = 10;
     }
     em->noPushTimer = 10;
@@ -3041,7 +3795,7 @@ void EmCephadrome_State5_02_HuntedFalling(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x7E, 0, 0);
+        Em_SetMotion(em, CEPH_MOT_TUMBLE, 0, 0);
         Player_ClearVelocity(em);
         em->velY = 100.0f;
         em->accelY = -2.75f;
@@ -3051,12 +3805,12 @@ void EmCephadrome_State5_02_HuntedFalling(Em *em, EmWork *work)
     case 1:
         work->moveAngBY = em->rotY;
         if (!(em->posY < em->surfaceY - *(f32 *) &em->surfaceDepth)) {
-            em->stance = 2;
+            em->stance = EM_STANCE_AIR;
             em->velY = 80.0f;
             Em_MoveRotatedAccel(em, &work->moveAngBX);
             em->step++;
         } else {
-            em->stance = 4;
+            em->stance = EM_STANCE_UNDER;
             Em_MoveRotated(em, &work->moveAngBX);
         }
         break;
@@ -3066,18 +3820,18 @@ void EmCephadrome_State5_02_HuntedFalling(Em *em, EmWork *work)
         if (em->posY < em->surfaceY) {
             if (em->velY < 0.0f) {
                 em->step++;
-                em->stance = 0;
+                em->stance = EM_STANCE_GROUND;
                 em->posY = em->floorY;
-                Em_SetMotion(em, 0x79, 0, 0);
+                Em_SetMotion(em, CEPH_MOT_FLOP_A, 0, 0);
             }
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x44, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_DIE, 0, 0);
             em->lookAtTarget = 0;
-            em->stance = 3;
+            em->stance = EM_STANCE_DEAD;
             QuestEm_Hunted(em);
         }
         break;
@@ -3094,7 +3848,7 @@ void EmCephadrome_State5_02_HuntedFalling(Em *em, EmWork *work)
         break;
     case 5:
         EmMine_Update(em);
-        if (em->type != 8 || QuestEm_CanAppear(em) != 0) {
+        if (em->type != EM_KIND_CEPHADROME || QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
                 EmMine_Remove(em);
@@ -3108,7 +3862,7 @@ void EmCephadrome_State5_02_HuntedFalling(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmCephadrome_ChangeState(em, 5, 4, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -3117,13 +3871,19 @@ void EmCephadrome_State5_02_HuntedFalling(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_State5_04(Em *em, EmWork *work)
+/*
+ * CEPH_DEFEAT_REAPPEAR: when the quest lets the monster appear again
+ * (QuestEm_CanAppear 1; ChangeState already called QuestEm_Appear) it
+ * starts again under the sand (stance EM_STANCE_UNDER, CEPH_SAND_IDLE);
+ * otherwise its task is finished (taskPhase).
+ */
+void EmCephadrome_Reappear(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         if (QuestEm_CanAppear(em) == 1) {
-            em->stance = 4;
-            EmCephadrome_ChangeState(em, 2, 0, 0);
+            em->stance = EM_STANCE_UNDER;
+            EmCephadrome_ChangeState(em, EM_GROUP_FLY, CEPH_SAND_IDLE, EM_SYNC_LOCAL);
             break;
         }
         em->taskPhase++;
@@ -3131,7 +3891,13 @@ void EmCephadrome_State5_04(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_State5_05_HuntedFalling(Em *em, EmWork *work)
+/*
+ * CEPH_DEFEAT_DIE_FALLING: killed in the air above the sand surface: falls
+ * (CEPH_MOT_TUMBLE, accelY -3) to the floor, flops (CEPH_MOT_FLOP_A), then
+ * as EmCephadrome_Die. Keeps noPushTimer at 5 (no noHitTimer for Cephalos
+ * here).
+ */
+void EmCephadrome_DieFalling(Em *em, EmWork *work)
 {
     em->noPushTimer = 5;
     Em_SetCombat(em, 0, 0);
@@ -3140,8 +3906,8 @@ void EmCephadrome_State5_05_HuntedFalling(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x7E, 0, 0);
-        em->stance = 2;
+        Em_SetMotion(em, CEPH_MOT_TUMBLE, 0, 0);
+        em->stance = EM_STANCE_AIR;
         em->accelY = -3.0f;
         em->accelX = 0.0f;
         em->accelZ = 0;
@@ -3153,17 +3919,17 @@ void EmCephadrome_State5_05_HuntedFalling(Em *em, EmWork *work)
         Em_MoveRotatedAccel(em, &work->moveAngBX);
         if (em->posY < em->floorY) {
             em->step++;
-            em->stance = 0;
+            em->stance = EM_STANCE_GROUND;
             em->posY = em->floorY;
-            Em_SetMotion(em, 0x79, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_FLOP_A, 0, 0);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x44, 0, 0);
+            Em_SetMotion(em, CEPH_MOT_DIE, 0, 0);
             em->lookAtTarget = 0;
-            em->stance = 3;
+            em->stance = EM_STANCE_DEAD;
             QuestEm_Hunted(em);
         }
         break;
@@ -3180,7 +3946,7 @@ void EmCephadrome_State5_05_HuntedFalling(Em *em, EmWork *work)
         break;
     case 4:
         EmMine_Update(em);
-        if (em->type != 8 || QuestEm_CanAppear(em) != 0) {
+        if (em->type != EM_KIND_CEPHADROME || QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
                 EmMine_Remove(em);
@@ -3194,7 +3960,7 @@ void EmCephadrome_State5_05_HuntedFalling(Em *em, EmWork *work)
         }
         if (em->timer <= 0) {
             if (em->remote == 0) {
-                EmCephadrome_ChangeState(em, 5, 4, 4);
+                EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_REAPPEAR, EM_SYNC_OWNER_FLAGGED);
             }
         } else {
             em->alpha = em->timer / 150.0f;
@@ -3203,494 +3969,532 @@ void EmCephadrome_State5_05_HuntedFalling(Em *em, EmWork *work)
     }
 }
 
-void EmCephadrome_RunGroup0(Em *em, EmWork *work)
+/*
+ * Runs the current group-0 state (EM_GROUP_IDLE); LandFlop serves 4 and 9
+ * (variant 0, 1), StatusCollapse serves 5 and 41 (variant 0, 1), StatusGetUp
+ * serves 6 and 42, StatusGetUpBeached serves 15 and 17, ShakeOff serves 7 and
+ * 21-23.
+ */
+void EmCephadrome_RunIdleState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmCephadrome_State0_00(em, work);
+    case CEPH_IDLE_STAND:
+        EmCephadrome_IdleStand(em, work);
         break;
-    case 1:
-        EmCephadrome_State0_01(em, work);
+    case CEPH_IDLE:
+        EmCephadrome_Idle(em, work);
         break;
-    case 2:
-        EmCephadrome_State0_02(em, work);
+    case CEPH_IDLE_ACTION:
+        EmCephadrome_IdleAction(em, work);
         break;
-    case 3:
-        EmCephadrome_State0_03(em, work);
+    case CEPH_IDLE_EAT_NEED2:
+        EmCephadrome_EatNeed2(em, work);
         break;
-    case 4:
-        EmCephadrome_State0_04(em, work, 0);
+    case CEPH_IDLE_LAND_FLOP_A:
+        EmCephadrome_LandFlop(em, work, 0);
         break;
-    case 5:
-        EmCephadrome_State0_05(em, (s32) work, 0);
+    case CEPH_IDLE_STATUS2_COLLAPSE:
+        EmCephadrome_StatusCollapse(em, (s32) work, 0);
         break;
-    case 6:
-        EmCephadrome_State0_06(em);
+    case CEPH_IDLE_STATUS2_END:
+        EmCephadrome_StatusGetUp(em);
         break;
-    case 7:
-        EmCephadrome_State0_07(em);
+    case CEPH_IDLE_SHAKE_OFF:
+        EmCephadrome_ShakeOff(em);
         break;
-    case 9:
-        EmCephadrome_State0_04(em, work, 1);
+    case CEPH_IDLE_LAND_FLOP_B:
+        EmCephadrome_LandFlop(em, work, 1);
         break;
-    case 14:
-        EmCephadrome_State0_0E(em, work);
+    case CEPH_IDLE_STATUS2_COLLAPSE_BEACHED:
+        EmCephadrome_Status2CollapseBeached(em, work);
         break;
-    case 15:
-        EmCephadrome_State0_0F(em);
+    case CEPH_IDLE_STATUS2_END_BEACHED:
+        EmCephadrome_StatusGetUpBeached(em);
         break;
-    case 16:
-        EmCephadrome_State0_10(em, work);
+    case CEPH_IDLE_STATUS1_COLLAPSE_BEACHED:
+        EmCephadrome_Status1CollapseBeached(em, work);
         break;
-    case 17:
-        EmCephadrome_State0_0F(em);
+    case CEPH_IDLE_STATUS1_END_BEACHED:
+        EmCephadrome_StatusGetUpBeached(em);
         break;
-    case 18:
-        EmCephadrome_State0_12(em);
+    case CEPH_IDLE_REST:
+        EmCephadrome_Rest(em);
         break;
-    case 19:
-        EmCephadrome_State0_13(em);
+    case CEPH_IDLE_REST_END:
+        EmCephadrome_RestEnd(em);
         break;
-    case 20:
-        EmCephadrome_State0_14(em);
+    case CEPH_IDLE_EAT_START:
+        EmCephadrome_EatStart(em);
         break;
-    case 21:
-        EmCephadrome_State0_07(em);
+    case CEPH_IDLE_STATUS4_SHAKE_OFF:
+        EmCephadrome_ShakeOff(em);
         break;
-    case 22:
-        EmCephadrome_State0_07(em);
+    case CEPH_IDLE_HOLD2_SHAKE_OFF:
+        EmCephadrome_ShakeOff(em);
         break;
-    case 23:
-        EmCephadrome_State0_07(em);
+    case CEPH_IDLE_STUN_SHAKE_OFF:
+        EmCephadrome_ShakeOff(em);
         break;
-    case 40:
-        EmCephadrome_State0_28(em);
+    case CEPH_IDLE_EAT:
+        EmCephadrome_Eat(em);
         break;
-    case 41:
-        EmCephadrome_State0_05(em, (s32) work, 1);
+    case CEPH_IDLE_STATUS1_COLLAPSE:
+        EmCephadrome_StatusCollapse(em, (s32) work, 1);
         break;
-    case 42:
-        EmCephadrome_State0_06(em);
+    case CEPH_IDLE_STATUS1_END:
+        EmCephadrome_StatusGetUp(em);
         break;
     }
 }
 
-void EmCephadrome_RunGroup1(Em *em, EmWork *work)
+/* Runs the current group-1 state (EM_GROUP_MOVE): states 0-3. */
+void EmCephadrome_RunMoveState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmCephadrome_State1_00(em, work);
+    case CEPH_MOVE_WALK:
+        EmCephadrome_Walk(em, work);
         break;
-    case 1:
-        EmCephadrome_State1_01(em, work);
+    case CEPH_MOVE_RUN:
+        EmCephadrome_RunAndStop(em, work);
         break;
-    case 2:
-        EmCephadrome_State1_02(em, work);
+    case CEPH_MOVE_TURN:
+        EmCephadrome_TurnToTarget(em, work);
         break;
-    case 3:
-        EmCephadrome_State1_03(em, work);
+    case CEPH_MOVE_LIMP:
+        EmCephadrome_Limp(em, work);
         break;
     }
 }
 
-void EmCephadrome_RunGroup2(Em *em, EmWork *work)
+/*
+ * Runs the current group-2 state (EM_GROUP_FLY: for this family swimming
+ * under the sand, surfacing and leaping); SandTurn serves 3 and 26
+ * (variant 0, 1), SandDash serves 5 and 27, SandRoundNext serves 10 and 19,
+ * SandRoundPrev serves 11 and 20, SandStatusRecover serves 24 and 25; 23 runs nothing.
+ */
+void EmCephadrome_RunSandState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmCephadrome_State2_00(em);
+    case CEPH_SAND_IDLE:
+        EmCephadrome_SandIdle(em);
         break;
-    case 1:
-        EmCephadrome_State2_01(em);
+    case CEPH_SAND_IDLE_B:
+        EmCephadrome_SandIdleB(em);
         break;
-    case 2:
-        EmCephadrome_State2_02(em, work);
+    case CEPH_SAND_CIRCLE_RIGHT_B:
+        EmCephadrome_SandCircleRightB(em, work);
         break;
-    case 3:
-        EmCephadrome_State2_03(em, (s32) work, 0);
+    case CEPH_SAND_TURN:
+        EmCephadrome_SandTurn(em, (s32) work, 0);
         break;
-    case 4:
-        EmCephadrome_State2_04(em, work);
+    case CEPH_SAND_FORWARD:
+        EmCephadrome_SandForward(em, work);
         break;
-    case 5:
-        EmCephadrome_State2_05(em, work, 0);
+    case CEPH_SAND_DASH:
+        EmCephadrome_SandDash(em, work, 0);
         break;
-    case 6:
-        EmCephadrome_State2_06(em);
+    case CEPH_SAND_CURVE:
+        EmCephadrome_SandCurve(em);
         break;
-    case 7:
-        EmCephadrome_State2_07(em, work);
+    case CEPH_SAND_RISE:
+        EmCephadrome_SandRise(em, work);
         break;
-    case 8:
-        EmCephadrome_State2_08(em, work);
+    case CEPH_SAND_DIVE:
+        EmCephadrome_SandDive(em, work);
         break;
-    case 9:
-        EmCephadrome_State2_09(em);
+    case CEPH_SAND_ROUND_TURN:
+        EmCephadrome_SandRoundTurn(em);
         break;
-    case 10:
-        EmCephadrome_State2_0A(em, work);
+    case CEPH_SAND_ROUND_NEXT:
+        EmCephadrome_SandRoundNext(em, work);
         break;
-    case 11:
-        EmCephadrome_State2_0B(em, work);
+    case CEPH_SAND_ROUND_PREV:
+        EmCephadrome_SandRoundPrev(em, work);
         break;
-    case 12:
-        EmCephadrome_State2_0C(em, work);
+    case CEPH_SAND_CIRCLE_RIGHT:
+        EmCephadrome_SandCircleRight(em, work);
         break;
-    case 13:
-        EmCephadrome_State2_0D(em, work);
+    case CEPH_SAND_CIRCLE_LEFT:
+        EmCephadrome_SandCircleLeft(em, work);
         break;
-    case 14:
-        EmCephadrome_State2_0E(em, work);
+    case CEPH_SAND_LEAP_ASHORE:
+        EmCephadrome_LeapAshore(em, work);
         break;
-    case 15:
-        EmCephadrome_State2_0F(em);
+    case CEPH_SAND_SURFACE_FLOP:
+        EmCephadrome_SandSurfaceFlop(em);
         break;
-    case 16:
-        EmCephadrome_State2_10(em, work);
+    case CEPH_SAND_LEAP_IN:
+        EmCephadrome_LeapIntoSand(em, work);
         break;
-    case 17:
-        EmCephadrome_State2_11(em, work);
+    case CEPH_SAND_LEAP:
+        EmCephadrome_LeapFromSand(em, work);
         break;
-    case 18:
-        EmCephadrome_State2_12(em, work);
+    case CEPH_SAND_LEAP_ON_LAND:
+        EmCephadrome_LeapOnLand(em, work);
         break;
-    case 19:
-        EmCephadrome_State2_0A(em, work);
+    case CEPH_SAND_ROUND_NEXT_LEG:
+        EmCephadrome_SandRoundNext(em, work);
         break;
-    case 20:
-        EmCephadrome_State2_0B(em, work);
+    case CEPH_SAND_ROUND_PREV_LEG:
+        EmCephadrome_SandRoundPrev(em, work);
         break;
-    case 21:
-        EmCephadrome_State2_15(em);
+    case CEPH_SAND_STATUS4_RECOVER:
+        EmCephadrome_SandStatus4Recover(em);
         break;
-    case 22:
-        EmCephadrome_State2_16(em, work);
+    case CEPH_SAND_LEAP_TO_FIXED_POINT:
+        EmCephadrome_LeapToFixedPoint(em, work);
         break;
-    case 23:
+    case CEPH_SAND_EMPTY:
         break;
-    case 24:
-        EmCephadrome_State2_18(em);
+    case CEPH_SAND_STATUS2_END:
+        EmCephadrome_SandStatusRecover(em);
         break;
-    case 25:
-        EmCephadrome_State2_18(em);
+    case CEPH_SAND_STATUS1_END:
+        EmCephadrome_SandStatusRecover(em);
         break;
-    case 26:
-        EmCephadrome_State2_03(em, (s32) work, 1);
+    case CEPH_SAND_TURN_NO_REACT:
+        EmCephadrome_SandTurn(em, (s32) work, 1);
         break;
-    case 27:
-        EmCephadrome_State2_05(em, work, 1);
+    case CEPH_SAND_DASH_NO_REACT:
+        EmCephadrome_SandDash(em, work, 1);
         break;
     }
 }
 
-void EmCephadrome_RunGroup3(Em *em, EmWork *work)
+/* Runs the current group-3 state (EM_GROUP_ATTACK): states 0-8. */
+void EmCephadrome_RunAttackState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmCephadrome_State3_00(em, work);
+    case CEPH_ATK_LAND_A:
+        EmCephadrome_LandAttackA(em, work);
         break;
-    case 1:
-        EmCephadrome_State3_01(em, work);
+    case CEPH_ATK_BREATH:
+        EmCephadrome_Breath(em, work);
         break;
-    case 2:
-        EmCephadrome_State3_02(em, work);
+    case CEPH_ATK_SPIN:
+        EmCephadrome_SpinAttack(em, work);
         break;
-    case 3:
-        EmCephadrome_State3_03(em, work);
+    case CEPH_ATK_SURFACE_BREATH_A:
+        EmCephadrome_SurfaceBreathA(em, work);
         break;
-    case 4:
-        EmCephadrome_State3_04(em, work);
+    case CEPH_ATK_SURFACE_BREATH_B:
+        EmCephadrome_SurfaceBreathB(em, work);
         break;
-    case 5:
-        EmCephadrome_State3_05(em, work);
+    case CEPH_ATK_SURFACE_BREATH_C:
+        EmCephadrome_SurfaceBreathC(em, work);
         break;
-    case 6:
-        EmCephadrome_State3_06(em, work);
+    case CEPH_ATK_LEAP:
+        EmCephadrome_LeapAttack(em, work);
         break;
-    case 7:
-        EmCephadrome_State3_07(em, work);
+    case CEPH_ATK_LAND_B:
+        EmCephadrome_LandAttackB(em, work);
         break;
-    case 8:
-        EmCephadrome_State3_08(em, work);
+    case CEPH_ATK_SURFACE_LUNGE:
+        EmCephadrome_SurfaceLunge(em, work);
         
     default:
         break;
     }
 }
 
-void EmCephadrome_RunGroup4(Em *em, EmWork *work)
+/*
+ * Runs the current group-4 state (EM_GROUP_REACT); KnockDown serves 5, 20,
+ * 22, 23 (variants 1, 0, 3, 2), ThrownOutOfSand serves 17 and 18 (variant 0, 1);
+ * 8 and 12-15 run nothing.
+ */
+void EmCephadrome_RunReactState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmCephadrome_State4_00(em);
+    case CEPH_REACT_FLINCH:
+        EmCephadrome_Flinch(em);
         break;
-    case 1:
-        EmCephadrome_State4_01(em);
+    case CEPH_REACT_FLINCH_B:
+        EmCephadrome_FlinchB(em);
         break;
-    case 2:
-        EmCephadrome_State4_02(em);
+    case CEPH_REACT_FLINCH_C:
+        EmCephadrome_FlinchC(em);
         break;
-    case 3:
-        EmCephadrome_State4_03(em);
+    case CEPH_REACT_FLINCH_D:
+        EmCephadrome_FlinchD(em);
         break;
-    case 4:
-        EmCephadrome_State4_04(em);
+    case CEPH_REACT_FLINCH_LYING:
+        EmCephadrome_FlinchLying(em);
         break;
-    case 5:
-        EmCephadrome_State4_05(em, work, 1);
+    case CEPH_REACT_KNOCK_DOWN:
+        EmCephadrome_KnockDown(em, work, 1);
         break;
-    case 6:
-        EmCephadrome_State4_06(em, work);
+    case CEPH_REACT_FALL:
+        EmCephadrome_FallFromAir(em, work);
         break;
-    case 7:
-        EmCephadrome_State4_07(em);
+    case CEPH_REACT_STATUS4_LYING:
+        EmCephadrome_Status4Lying(em);
         break;
-    case 8:
+    case CEPH_REACT_EMPTY_A:
         break;
-    case 9:
-        EmCephadrome_State4_09(em, work);
+    case CEPH_REACT_FALL_BLIND:
+        EmCephadrome_FallBlinded(em, work);
         break;
-    case 10:
-        EmCephadrome_State4_0A(em);
+    case CEPH_REACT_FLINCH_BLIND:
+        EmCephadrome_FlinchBlinded(em);
         break;
-    case 11:
-        EmCephadrome_State4_0B(em);
+    case CEPH_REACT_STATUS4:
+        EmCephadrome_Status4(em);
         break;
-    case 12:
+    case CEPH_REACT_EMPTY_B:
         break;
-    case 13:
+    case CEPH_REACT_EMPTY_C:
         break;
-    case 14:
+    case CEPH_REACT_EMPTY_D:
         break;
-    case 15:
+    case CEPH_REACT_EMPTY_E:
         break;
-    case 16:
-        EmCephadrome_State4_10(em);
+    case CEPH_REACT_LAND:
+        EmCephadrome_LandAfterFall(em);
         break;
-    case 17:
-        EmCephadrome_State4_11(em, work, 0);
+    case CEPH_REACT_THROWN_OUT:
+        EmCephadrome_ThrownOutOfSand(em, work, 0);
         break;
-    case 18:
-        EmCephadrome_State4_11(em, work, 1);
+    case CEPH_REACT_THROWN_OUT_ATTACK5:
+        EmCephadrome_ThrownOutOfSand(em, work, 1);
         break;
-    case 19:
-        EmCephadrome_State4_13(em);
+    case CEPH_REACT_STATUS4_LYING_END:
+        EmCephadrome_Status4LyingEnd(em);
         break;
-    case 20:
-        EmCephadrome_State4_05(em, work, 0);
+    case CEPH_REACT_KNOCK_DOWN_PART3:
+        EmCephadrome_KnockDown(em, work, 0);
         break;
-    case 21:
-        EmCephadrome_State4_15(em);
+    case CEPH_REACT_HOLD2:
+        EmCephadrome_Hold2(em);
         break;
-    case 22:
-        EmCephadrome_State4_05(em, work, 3);
+    case CEPH_REACT_STUN_A:
+        EmCephadrome_KnockDown(em, work, 3);
         break;
-    case 23:
-        EmCephadrome_State4_05(em, work, 2);
+    case CEPH_REACT_STUN_B:
+        EmCephadrome_KnockDown(em, work, 2);
         break;
     }
 }
 
-void EmCephadrome_RunGroup5(Em *em, EmWork *work)
+/*
+ * Runs the current group-5 state (EM_GROUP_DEFEAT): die, die held, die
+ * under the sand, reappear, die falling (no case 3).
+ */
+void EmCephadrome_RunDefeatState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmCephadrome_State5_00_Hunted(em, work);
+    case CEPH_DEFEAT_DIE:
+        EmCephadrome_Die(em, work);
         break;
-    case 1:
-        EmCephadrome_State5_01_Hunted(em, work);
+    case CEPH_DEFEAT_DIE_HELD:
+        EmCephadrome_DieHeld(em, work);
         break;
-    case 2:
-        EmCephadrome_State5_02_HuntedFalling(em, work);
+    case CEPH_DEFEAT_DIE_UNDER:
+        EmCephadrome_DieUnder(em, work);
         break;
-    case 4:
-        EmCephadrome_State5_04(em, work);
+    case CEPH_DEFEAT_REAPPEAR:
+        EmCephadrome_Reappear(em, work);
         break;
-    case 5:
-        EmCephadrome_State5_05_HuntedFalling(em, work);
+    case CEPH_DEFEAT_DIE_FALLING:
+        EmCephadrome_DieFalling(em, work);
         break;
     }
 }
 
-void EmCephadrome_RunGroup6(Em *em, EmWork *work)
+/*
+ * Runs the current group-6 state (EM_GROUP_EVENT; RunState also uses it for
+ * group 7): the entrance, hidden-to-idle, captured.
+ */
+void EmCephadrome_RunEventState(Em *em, EmWork *work)
 {
     switch (em->state) {
-    case 0:
-        EmCephadrome_State6_00_Entrance(em, work);
+    case CEPH_EVENT_ENTRANCE:
+        EmCephadrome_EntranceScene(em, work);
         break;
-    case 1:
-        EmCephadrome_State6_01(em);
+    case CEPH_EVENT_TO_IDLE:
+        EmCephadrome_HiddenToIdle(em);
         break;
-    case 2:
-        EmCephadrome_State6_02_Captured(em);
+    case CEPH_EVENT_CAPTURED:
+        EmCephadrome_Captured(em);
         break;
     }
 }
 
+/*
+ * The family's frame: the combat timer, the area trigger, a monster under
+ * the sand off sand in the hunters' area goes to land idle
+ * (EmCephadrome_IsUnderOffSand, EndGroundState); a calm Cephadrome of variant
+ * other than 1 checks low hp at a tenth (Em_CheckLowHp). Then the reaction
+ * Em_UpdateDamage's result picks (see the NOTE lines), the pending script,
+ * the current state (twice when a state was requested), and on sand in the
+ * hunters' area: under the sand posY is kept between floorY (at most 1000
+ * below surfaceY) and surfaceY less surfaceDepth, on the ground floorY is
+ * surfaceY.
+ */
 void EmCephadrome_Update(Em *em)
 {
-    u8 buf[4];
+    u8 dmgOut[4];
     u8 *w = &em->work;
-    f32 f;
+    f32 limitY;
 
     Em_UpdateCombatTimer(em);
     Em_RaisePlayerAreaTriggerLax(em);
-    if (EmCephadrome_ShouldEndState(em) == 1) {
-        EmCephadrome_EndState(em);
+    if (EmCephadrome_IsUnderOffSand(em) == 1) {
+        EmCephadrome_EndGroundState(em);
     }
-    if (em->noAlert != 1 && em->rage == 0 && em->type == 8 && em->variant != 1) {
+    if (em->noAlert != 1 && em->rage == 0 && em->type == EM_KIND_CEPHADROME && em->variant != 1) {
         Em_CheckLowHp(em, 0.1f);
     }
-    switch (Em_UpdateDamage(em, buf) & 0xFF) {
-    case 0:
-    case 3:
-    case 4:
-    case 9:
-    case 11:
-    case 14:
+    switch (Em_UpdateDamage(em, dmgOut) & 0xFF) {
+    case EM_DMG_NONE:
+    case EM_DMG_ATTACK9:
+    case EM_DMG_ATTACK6:
+    case EM_DMG_FLASH:
+    case EM_DMG_PART8_DOWN:
+    case EM_DMG_HIT:
         break;
-    case 1:
-    case 2:
+    case EM_DMG_KILLED:
+    case EM_DMG_DEAD:
         if ((s8) em->holdTimer != 0) {
-            EmCephadrome_ChangeState(em, 5, 1, 3);
+            EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_DIE_HELD, EM_SYNC_OWNER);
         } else {
             switch (em->stance) {
-            case 4:
-            case 1:
-                EmCephadrome_ChangeState(em, 5, 2, 3);
+            case EM_STANCE_UNDER:
+            case EM_STANCE_FAMILY:
+                EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_DIE_UNDER, EM_SYNC_OWNER);
                 break;
-            case 2:
+            case EM_STANCE_AIR:
                 if (em->posY >= em->surfaceY) {
-                    EmCephadrome_ChangeState(em, 5, 5, 3);
+                    EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_DIE_FALLING, EM_SYNC_OWNER);
                 } else {
-                    EmCephadrome_ChangeState(em, 5, 2, 3);
+                    EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_DIE_UNDER, EM_SYNC_OWNER);
                 }
                 break;
             default:
-            case 0:
-                EmCephadrome_ChangeState(em, 5, 0, 3);
+            case EM_STANCE_GROUND:
+                EmCephadrome_ChangeState(em, EM_GROUP_DEFEAT, CEPH_DEFEAT_DIE, EM_SYNC_OWNER);
                 break;
             }
         }
         break;
-    case 17:
-        if (em->stance == 4) {
+    case EM_DMG_STATUS5:
+        if (em->stance == EM_STANCE_UNDER) {
             Em_EndStatus5(em);
-        } else if ((em->stateGroup != 4 || em->state != 0x16) && (em->stateGroup != 4 || em->state != 0x17) && (em->stateGroup != 4 || em->state != 6)) {
+        } else if ((em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_STUN_A) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_STUN_B) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL)) {
             Em_SetStatus5Timer(em);
             if ((u16) (em->hitAngle - em->rotY) > 0x8000) {
-                EmCephadrome_ChangeState(em, 4, 0x16, 3);
+                EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_STUN_A, EM_SYNC_OWNER);
             } else {
-                EmCephadrome_ChangeState(em, 4, 0x17, 3);
+                EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_STUN_B, EM_SYNC_OWNER);
             }
         }
         break;
-    case 18:
+    case EM_DMG_ATTACK13:
         Em_ResetKindTimer(em);
-        EmCephadrome_ChangeState(em, 4, 0x15, 3);
+        EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_HOLD2, EM_SYNC_OWNER);
         break;
-    case 15:
-        if (em->stance == 4) {
-            EmCephadrome_ChangeState(em, 4, 0x12, 3);
+    case EM_DMG_ATTACK5:
+        if (em->stance == EM_STANCE_UNDER) {
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_THROWN_OUT_ATTACK5, EM_SYNC_OWNER);
         }
         break;
-    case 5:
-        if ((em->stateGroup != 4 || em->state != 6) && (em->stateGroup != 4 || em->state != 0x11) && (em->stateGroup != 4 || em->state != 0x12)) {
-            EmCephadrome_ChangeState(em, 4, 6, 3);
+    case EM_DMG_STATUS_IN_AIR:
+        if ((em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_THROWN_OUT) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_THROWN_OUT_ATTACK5)) {
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FALL, EM_SYNC_OWNER);
         }
         break;
-    case 6:
-        if ((em->stateGroup != 4 || em->state != 0xB) && (em->stateGroup != 4 || em->state != 6) && (em->stateGroup != 4 || em->state != 7) && em->stance == 1) {
+    case EM_DMG_STATUS4:
+        if ((em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_STATUS4) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_STATUS4_LYING) && em->stance == EM_STANCE_FAMILY) {
             Em_SetStatus4Timer(em);
-            EmCephadrome_ChangeState(em, 4, 7, 3);
-        } else if ((em->stateGroup != 4 || em->state != 0xB) && (em->stateGroup != 4 || em->state != 6) && (em->stateGroup != 4 || em->state != 7) && em->stance == 0) {
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_STATUS4_LYING, EM_SYNC_OWNER);
+        } else if ((em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_STATUS4) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_STATUS4_LYING) && em->stance == EM_STANCE_GROUND) {
             Em_SetStatus4Timer(em);
-            EmCephadrome_ChangeState(em, 4, 0xB, 3);
-        } else if ((em->stateGroup != 4 || em->state != 6) && (em->stateGroup != 4 || em->state != 0x11) && (em->stateGroup != 4 || em->state != 0x12) && em->stance == 4) {
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_STATUS4, EM_SYNC_OWNER);
+        } else if ((em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_THROWN_OUT) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_THROWN_OUT_ATTACK5) && em->stance == EM_STANCE_UNDER) {
             Em_SetStatus4Timer(em);
-            EmCephadrome_ChangeState(em, 4, 0x11, 3);
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_THROWN_OUT, EM_SYNC_OWNER);
         }
         break;
-    case 7:
-        EmCephadrome_ChangeState(em, 6, 2, 3);
+    case EM_DMG_CAPTURED:
+        EmCephadrome_ChangeState(em, EM_GROUP_EVENT, CEPH_EVENT_CAPTURED, EM_SYNC_OWNER);
         break;
-    case 8:
-        if ((em->stateGroup != 4 || em->state != 6) && (em->stateGroup != 4 || em->state != 0x11) && (em->stateGroup != 4 || em->state != 0x12) && em->stance == 4) {
-            EmCephadrome_ChangeState(em, 4, 0x11, 3);
-        } else if ((em->stateGroup != 0 || em->state != 0xE) && (em->stateGroup != 4 || em->state != 6) && em->stance == 1) {
+    case EM_DMG_STATUS2:
+        if ((em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_THROWN_OUT) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_THROWN_OUT_ATTACK5) && em->stance == EM_STANCE_UNDER) {
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_THROWN_OUT, EM_SYNC_OWNER);
+        } else if ((em->stateGroup != EM_GROUP_IDLE || em->state != CEPH_IDLE_STATUS2_COLLAPSE_BEACHED) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL) && em->stance == EM_STANCE_FAMILY) {
             Em_SetStatus2Timer(em);
-            EmCephadrome_ChangeState(em, 0, 0xE, 3);
-        } else if ((em->stateGroup != 0 || em->state != 5) && (em->stateGroup != 4 || em->state != 6) && em->stance == 0) {
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_COLLAPSE_BEACHED, EM_SYNC_OWNER);
+        } else if ((em->stateGroup != EM_GROUP_IDLE || em->state != CEPH_IDLE_STATUS2_COLLAPSE) && (em->stateGroup != EM_GROUP_REACT || em->state != CEPH_REACT_FALL) && em->stance == EM_STANCE_GROUND) {
             Em_SetStatus2Timer(em);
-            EmCephadrome_ChangeState(em, 0, 5, 3);
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_COLLAPSE, EM_SYNC_OWNER);
         }
         break;
-    case 10:
+    case EM_DMG_HIT_LYING:
         switch (em->state) {
-        case 5:
-            EmCephadrome_ChangeState(em, 0, 6, 3);
+        case CEPH_IDLE_STATUS2_COLLAPSE:
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
-        case 0xE:
-            EmCephadrome_ChangeState(em, 0, 0xF, 3);
+        case CEPH_IDLE_STATUS2_COLLAPSE_BEACHED:
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS2_END_BEACHED, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
-        case 0x12:
-            EmCephadrome_ChangeState(em, 0, 0x13, 3);
+        case CEPH_IDLE_REST:
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_REST_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
-        case 0x29:
-            EmCephadrome_ChangeState(em, 0, 0x2A, 3);
+        case CEPH_IDLE_STATUS1_COLLAPSE:
+            EmCephadrome_ChangeState(em, EM_GROUP_IDLE, CEPH_IDLE_STATUS1_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
         }
         break;
-    case 12:
-    case 16:
+    case EM_DMG_PART_FLINCH:
+    case EM_DMG_ATTACK5_FLINCH:
         switch (em->stance) {
-        case 0:
-        case 3:
+        case EM_STANCE_GROUND:
+        case EM_STANCE_DEAD:
             switch (em->flinchPart) {
             case 0:
             case 7:
-                EmCephadrome_ChangeState(em, 4, 0, 3);
+                EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FLINCH, EM_SYNC_OWNER);
                 break;
             case 5:
             case 6:
-                EmCephadrome_ChangeState(em, 4, 2, 3);
+                EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FLINCH_C, EM_SYNC_OWNER);
                 break;
             case 1:
             case 2:
-                EmCephadrome_ChangeState(em, 4, 3, 3);
+                EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FLINCH_D, EM_SYNC_OWNER);
                 break;
             case 3:
             case 4:
             default:
                 if (em->parts[em->flinchPart].state >= 2) {
                     if (em->flinchPart != 3) {
-                        EmCephadrome_ChangeState(em, 4, 5, 3);
+                        EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_KNOCK_DOWN, EM_SYNC_OWNER);
                     } else {
-                        EmCephadrome_ChangeState(em, 4, 0x14, 3);
+                        EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_KNOCK_DOWN_PART3, EM_SYNC_OWNER);
                     }
                 } else {
-                    EmCephadrome_ChangeState(em, 4, 1, 3);
+                    EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FLINCH_B, EM_SYNC_OWNER);
                 }
                 break;
             }
             break;
-        case 1:
-            EmCephadrome_ChangeState(em, 4, 4, 3);
+        case EM_STANCE_FAMILY:
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FLINCH_LYING, EM_SYNC_OWNER);
             break;
-        case 2:
-            EmCephadrome_ChangeState(em, 4, 6, 3);
+        case EM_STANCE_AIR:
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FALL, EM_SYNC_OWNER);
             break;
-        case 4:
-            EmCephadrome_ChangeState(em, 4, 0x11, 3);
+        case EM_STANCE_UNDER:
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_THROWN_OUT, EM_SYNC_OWNER);
             break;
         }
         break;
-    case 13:
-        if (em->stance != 2) {
-            EmCephadrome_ChangeState(em, 4, 0, 3);
+    case EM_DMG_HIT_MODE3:
+        if (em->stance != EM_STANCE_AIR) {
+            EmCephadrome_ChangeState(em, EM_GROUP_REACT, CEPH_REACT_FLINCH, EM_SYNC_OWNER);
             em->scriptPending = 0;
         }
         break;
@@ -3703,20 +4507,20 @@ void EmCephadrome_Update(Em *em)
         em->stateRequest = 0;
     }
     if (em->surfaceKind != 0 && gScene.area == em->area) {
-        if (em->stance == 4) {
-            f = em->surfaceY - *(f32 *) &em->surfaceDepth;
-            if (em->posY > f) {
-                em->posY = f;
+        if (em->stance == EM_STANCE_UNDER) {
+            limitY = em->surfaceY - *(f32 *) &em->surfaceDepth;
+            if (em->posY > limitY) {
+                em->posY = limitY;
             }
-            f = em->surfaceY - 1000.0f;
-            if (em->floorY >= f) {
-                em->floorY = f;
+            limitY = em->surfaceY - 1000.0f;
+            if (em->floorY >= limitY) {
+                em->floorY = limitY;
             }
             if (em->posY < em->floorY) {
                 em->posY = em->floorY;
             }
         }
-        if (em->stance == 0) {
+        if (em->stance == EM_STANCE_GROUND) {
             em->floorY = em->surfaceY;
             if (em->posY < em->floorY) {
                 em->posY = em->floorY;
@@ -3725,66 +4529,87 @@ void EmCephadrome_Update(Em *em)
     }
 }
 
+/*
+ * Runs the current state through its group's dispatcher (group 7 through
+ * group 6's), keeping the group and state as the previous ones.
+ */
 void EmCephadrome_RunState(Em *em, s32 work)
 {
     em->prevStateGroup = em->stateGroup;
     em->prevState = em->state;
     switch (em->stateGroup) {
-    case 0:
-        EmCephadrome_RunGroup0(em, (EmWork *) work);
+    case EM_GROUP_IDLE:
+        EmCephadrome_RunIdleState(em, (EmWork *) work);
         break;
-    case 1:
-        EmCephadrome_RunGroup1(em, (EmWork *) work);
+    case EM_GROUP_MOVE:
+        EmCephadrome_RunMoveState(em, (EmWork *) work);
         break;
-    case 2:
-        EmCephadrome_RunGroup2(em, (EmWork *) work);
+    case EM_GROUP_FLY:
+        EmCephadrome_RunSandState(em, (EmWork *) work);
         break;
-    case 3:
-        EmCephadrome_RunGroup3(em, (EmWork *) work);
+    case EM_GROUP_ATTACK:
+        EmCephadrome_RunAttackState(em, (EmWork *) work);
         break;
-    case 4:
-        EmCephadrome_RunGroup4(em, (EmWork *) work);
+    case EM_GROUP_REACT:
+        EmCephadrome_RunReactState(em, (EmWork *) work);
         break;
-    case 5:
-        EmCephadrome_RunGroup5(em, (EmWork *) work);
+    case EM_GROUP_DEFEAT:
+        EmCephadrome_RunDefeatState(em, (EmWork *) work);
         break;
-    case 6:
-        EmCephadrome_RunGroup6(em, (EmWork *) work);
+    case EM_GROUP_EVENT:
+        EmCephadrome_RunEventState(em, (EmWork *) work);
         break;
-    case 7:
-        EmCephadrome_RunGroup6(em, (EmWork *) work);
+    case EM_GROUP_EVENT2:
+        EmCephadrome_RunEventState(em, (EmWork *) work);
         
     default:
         break;
     }
 }
 
-void EmCephadrome_RequestOnFrame(s32 em, s32 frame, s32 i)
+/*
+ * Requests camera shake level `level` (CamShake_ReqAIf) when the motion
+ * passes frame `frame` (as EmPlesioth_CamShakeOnFrame).
+ */
+void EmCephadrome_CamShakeOnFrame(s32 em, s32 frame, s32 level)
 {
     if (EmMotion_PassedFrameScaled((Em *) em, (f32) frame, 0U) != 0) {
-        CamShake_ReqAIf((void *) em, i);
+        CamShake_ReqAIf((void *) em, level);
     }
 }
 
+/* MotionEffects' default case: does nothing. */
 static void EmCephadrome_MotionEffectsDefault(Em *em)
 {
 }
 
+/*
+ * The effects of each motion: keeps the layer-0 motion id in
+ * work->prevMotion, plays its sounds (EmCephadrome_MotionSounds), sets the
+ * fin mode by motion (EmCephadrome_SetFinMode: 1 for the walks, land
+ * attacks and leaps, 0 for the swims, turns and motions under the sand, 3
+ * for resting, lying and the status motions) and on given frames creates
+ * the attack volumes (EmCephadrome_CreateAttack), ground clouds
+ * (DustCloud_Create; extra every 4th frame while enraged), sand sprays
+ * (PartFx_SpawnForEmScaled), the lying puffs (Em_SpawnLyingPuffs), the
+ * landing dust (motion 0x13 at frame 16) and for motion 0x58 a camera shake
+ * at frame 26 with a pad vibration (EmCephadrome_VibrateNearby).
+ */
 void EmCephadrome_MotionEffects(Em *em, EmWork *work)
 {
-    f32 v1[3];
-    f32 v2[3];
-    f32 v3[3];
+    f32 puffOfsA[3];
+    f32 puffOfsB[3];
+    f32 puffOfsC[3];
 
     if (em->motionId[0] != work->prevMotion) {
         work->prevMotion = em->motionId[0];
     }
     EmCephadrome_MotionSounds(em, work);
     switch (work->prevMotion) {
-    case 0x3E9:
+    case EM_MOTION_ID(0, CEPH_MOT_IDLE):
         EmCephadrome_SetFinMode(em, work, 3);
         break;
-    case 0x3EB:
+    case EM_MOTION_ID(0, CEPH_MOT_WALK):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 2);
@@ -3797,7 +4622,7 @@ void EmCephadrome_MotionEffects(Em *em, EmWork *work)
             break;
         }
         break;
-    case 0x3EC:
+    case EM_MOTION_ID(0, CEPH_MOT_RUN):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x13);
@@ -3809,14 +4634,14 @@ void EmCephadrome_MotionEffects(Em *em, EmWork *work)
             EmCephadrome_CreateAttack(em, 0x15);
         }
         if ((EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 0x1A, 3, 4.0f);
+            PartFx_SpawnForEmScaled(em, 0x1A, 3, 4.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 0x14, 3, 4.0f);
+            PartFx_SpawnForEmScaled(em, 0x14, 3, 4.0f);
             break;
         }
         break;
-    case 0x3ED:
+    case EM_MOTION_ID(0, CEPH_MOT_TURN_RIGHT):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 5);
@@ -3825,11 +4650,11 @@ void EmCephadrome_MotionEffects(Em *em, EmWork *work)
             EmCephadrome_CreateAttack(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            StageObj_K14_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 0x1A, 1, 1.0f);
             break;
         }
         break;
-    case 0x3EE:
+    case EM_MOTION_ID(0, CEPH_MOT_TURN_LEFT):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 7);
@@ -3838,11 +4663,11 @@ void EmCephadrome_MotionEffects(Em *em, EmWork *work)
             EmCephadrome_CreateAttack(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            StageObj_K14_Create(em, 0x1A, 0, 1.0f);
+            DustCloud_Create(em, 0x1A, 0, 1.0f);
             break;
         }
         break;
-    case 0x3F2:
+    case EM_MOTION_ID(0, CEPH_MOT_LIMP):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x11);
@@ -3855,339 +4680,339 @@ void EmCephadrome_MotionEffects(Em *em, EmWork *work)
             break;
         }
         break;
-    case 0x3F3:
+    case EM_MOTION_ID(0, 0xB):
         EmCephadrome_SetFinMode(em, work, 1);
         break;
-    case 0x3F9:
+    case EM_MOTION_ID(0, 0x11):
         break;
-    case 0x3FA:
+    case EM_MOTION_ID(0, 0x12):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0) || EmMotion_PassedFrameScaled(em, 156.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
-                StageObj_K14_Create(em, 1, 0, 1.0f);
+                DustCloud_Create(em, 1, 0, 1.0f);
                 break;
             }
         }
         break;
-    case 0x3FB:
+    case EM_MOTION_ID(0, 0x13):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0xD);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
-            EmCephadrome_SpawnK14Type0B(em);
+            EmCephadrome_SpawnLandingDust(em);
             break;
         }
         break;
-    case 0x401:
+    case EM_MOTION_ID(0, CEPH_MOT_IDLE_ACTION):
         EmCephadrome_SetFinMode(em, work, 3);
         break;
-    case 0x407:
-        v1[0] = 0.0f;
-        v1[1] = 10.0f;
-        v1[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, v1, 1.6f);
+    case EM_MOTION_ID(0, CEPH_MOT_REST):
+        puffOfsA[0] = 0.0f;
+        puffOfsA[1] = 10.0f;
+        puffOfsA[2] = 140.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfsA, 1.6f);
         break;
-    case 0x408:
-    case 0x409:
+    case EM_MOTION_ID(0, CEPH_MOT_REST_START):
+    case EM_MOTION_ID(0, CEPH_MOT_REST_END):
         break;
-    case 0x40A:
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS_LIE):
         EmCephadrome_SetFinMode(em, work, 3);
-        v2[0] = 0.0f;
-        v2[1] = 10.0f;
-        v2[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, v2, 1.6f);
+        puffOfsB[0] = 0.0f;
+        puffOfsB[1] = 10.0f;
+        puffOfsB[2] = 140.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfsB, 1.6f);
         break;
-    case 0x40C:
+    case EM_MOTION_ID(0, CEPH_MOT_LAND_ATTACK_A):
         EmCephadrome_SetFinMode(em, work, 3);
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 1);
             break;
         }
         break;
-    case 0x40D:
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS_GET_UP):
         EmCephadrome_SetFinMode(em, work, 3);
         break;
-    case 0x40E:
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS_COLLAPSE):
         EmCephadrome_SetFinMode(em, work, 3);
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0xF);
         }
-        v3[0] = 0.0f;
-        v3[1] = 10.0f;
-        v3[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, v3, 1.6f);
+        puffOfsC[0] = 0.0f;
+        puffOfsC[1] = 10.0f;
+        puffOfsC[2] = 140.0f;
+        Em_SpawnLyingPuffs(em, 0x22, puffOfsC, 1.6f);
         if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0, 1.0f);
+            DustCloud_Create(em, 0, 0, 1.0f);
             break;
         }
         break;
-    case 0x413:
+    case EM_MOTION_ID(0, CEPH_MOT_SPIN):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x10);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
-            StageObj_K14_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 0x1A, 1, 1.0f);
             break;
         }
         break;
-    case 0x417:
+    case EM_MOTION_ID(0, CEPH_MOT_BREATH):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x19);
             break;
         }
         break;
-    case 0x418:
-    case 0x423:
+    case EM_MOTION_ID(0, 0x30):
+    case EM_MOTION_ID(0, CEPH_MOT_FEED):
         break;
-    case 0x424:
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x16, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 0x16, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            StageObj_K14_Create(em, 1, 0x80, 0.5f);
+            DustCloud_Create(em, 1, 0x80, 0.5f);
             break;
         }
         break;
-    case 0x425:
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_BLIND):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
             break;
         }
         break;
-    case 0x426:
+    case EM_MOTION_ID(0, CEPH_MOT_SHAKE_OFF):
         EmCephadrome_SetFinMode(em, work, 3);
         break;
-    case 0x427:
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_C):
         EmCephadrome_SetFinMode(em, work, 1);
         break;
-    case 0x428:
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_D):
         EmCephadrome_SetFinMode(em, work, 1);
         break;
-    case 0x42A:
+    case EM_MOTION_ID(0, CEPH_MOT_FLINCH_B):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 268.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0, 0.9f);
+            DustCloud_Create(em, 0, 0, 0.9f);
             break;
         }
         break;
-    case 0x42B:
+    case EM_MOTION_ID(0, 0x43):
         EmCephadrome_SetFinMode(em, work, 1);
         break;
-    case 0x42C:
+    case EM_MOTION_ID(0, CEPH_MOT_DIE):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0, 0.8f);
+            DustCloud_Create(em, 0, 0, 0.8f);
             break;
         }
         break;
-    case 0x42D:
+    case EM_MOTION_ID(0, CEPH_MOT_FALL_A):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0x12, 0x80, 1.0f);
+            DustCloud_Create(em, 0x12, 0x80, 1.0f);
             break;
         }
         break;
-    case 0x42E:
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_A):
         EmCephadrome_SetFinMode(em, work, 3);
         if ((EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
             break;
         }
         break;
-    case 0x42F:
+    case EM_MOTION_ID(0, CEPH_MOT_GET_UP_A):
         EmCephadrome_SetFinMode(em, work, 3);
         break;
-    case 0x432:
+    case EM_MOTION_ID(0, CEPH_MOT_FALL_B):
         EmCephadrome_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0x12, 0x81, 1.0f);
+            DustCloud_Create(em, 0x12, 0x81, 1.0f);
             break;
         }
         break;
-    case 0x433:
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_DOWN):
         EmCephadrome_SetFinMode(em, work, 3);
         if ((EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
             break;
         }
         break;
-    case 0x434:
+    case EM_MOTION_ID(0, CEPH_MOT_STAND_STILL):
         EmCephadrome_SetFinMode(em, work, 3);
         break;
-    case 0x437:
+    case EM_MOTION_ID(0, CEPH_MOT_HEAD_DOWN):
         break;
-    case 0x447:
+    case EM_MOTION_ID(0, 0x5F):
         EmCephadrome_SetFinMode(em, work, 1);
         break;
-    case 0x448:
+    case EM_MOTION_ID(0, 0x60):
         EmCephadrome_SetFinMode(em, work, 1);
         break;
-    case 0x44C:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_IDLE):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x44D:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SWIM_START):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x44E:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SWIM):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x44F:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SWIM_FAST):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x1A);
             break;
         }
         break;
-    case 0x450:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_RISE):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x451:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_DIVE):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x452:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_TURN_LEFT):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x453:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_TURN_RIGHT):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x454:
+    case EM_MOTION_ID(0, CEPH_MOT_LEAP_ATTACK):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0xE);
             break;
         }
         break;
-    case 0x457:
+    case EM_MOTION_ID(0, 0x6F):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x458:
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_BREATH_C):
         EmCephadrome_SetFinMode(em, work, 0);
-        EmCephadrome_RequestOnFrame((s32) em, 0x1A, 3);
+        EmCephadrome_CamShakeOnFrame((s32) em, 0x1A, 3);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
             EmCephadrome_VibrateNearby(em);
             EmCephadrome_CreateAttack(em, 0x1D);
             break;
         }
         break;
-    case 0x459:
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_LUNGE):
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x1B);
         }
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x45A:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_CIRCLE_RIGHT):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x45B:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_CIRCLE_LEFT):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x45C:
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_BREATH_A):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x45D:
+    case EM_MOTION_ID(0, CEPH_MOT_SURFACE_BREATH_B):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x45E:
+    case EM_MOTION_ID(0, 0x76):
         break;
-    case 0x45F:
+    case EM_MOTION_ID(0, CEPH_MOT_LEAP):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x18);
             break;
         }
         break;
-    case 0x460:
+    case EM_MOTION_ID(0, CEPH_MOT_LEAP_CROUCH):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x461:
+    case EM_MOTION_ID(0, CEPH_MOT_FLOP_A):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            StageObj_K14_Create(em, 0, 0x89, 0.7f);
+            DustCloud_Create(em, 0, 0x89, 0.7f);
             break;
         }
         break;
-    case 0x462:
+    case EM_MOTION_ID(0, CEPH_MOT_BEACHED):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x17);
         }
         if ((EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 6, 3, 8.0f + (0.0005f * (f32) ((u16) Rand_Next(1) & 0x3FF)));
+            PartFx_SpawnForEmScaled(em, 6, 3, 8.0f + (0.0005f * (f32) ((u16) Rand_Next(1) & 0x3FF)));
         }
         if ((EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 0xC, 3, 8.0f + (0.0005f * (f32) ((u16) Rand_Next(1) & 0x3FF)));
+            PartFx_SpawnForEmScaled(em, 0xC, 3, 8.0f + (0.0005f * (f32) ((u16) Rand_Next(1) & 0x3FF)));
             break;
         }
         break;
-    case 0x464:
+    case EM_MOTION_ID(0, CEPH_MOT_GET_UP):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x466:
+    case EM_MOTION_ID(0, CEPH_MOT_TUMBLE):
         EmCephadrome_SetFinMode(em, work, 3);
         break;
-    case 0x467:
+    case EM_MOTION_ID(0, 0x7F):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
             break;
         }
         break;
-    case 0x468:
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_FLAP):
         EmCephadrome_SetFinMode(em, work, 3);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
             break;
         }
         break;
-    case 0x469:
+    case EM_MOTION_ID(0, CEPH_MOT_LIE_FLAP_B):
         EmCephadrome_SetFinMode(em, work, 3);
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            Effect0D_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
             break;
         }
         break;
-    case 0x46A:
+    case EM_MOTION_ID(0, 0x82):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x46B:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_RECOVER):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x46C:
+    case EM_MOTION_ID(0, 0x84):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x46D:
+    case EM_MOTION_ID(0, CEPH_MOT_RUN_STOP):
         EmCephadrome_SetFinMode(em, work, 0);
         if ((EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0)) {
-            Effect0D_SpawnForEmScaled(em, 2, 3, 7.0f);
+            PartFx_SpawnForEmScaled(em, 2, 3, 7.0f);
             break;
         }
         break;
-    case 0x46E:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_SURFACED):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x1C);
             break;
         }
         break;
-    case 0x46F:
+    case EM_MOTION_ID(0, CEPH_MOT_SAND_BOTTOMED):
         EmCephadrome_SetFinMode(em, work, 0);
         break;
-    case 0x470:
+    case EM_MOTION_ID(0, CEPH_MOT_LAND_ATTACK_B):
         EmCephadrome_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
             EmCephadrome_CreateAttack(em, 0x16);
             break;
         }
         break;
-    case 0x471:
-    case 0x472:
+    case EM_MOTION_ID(0, CEPH_MOT_SIDE_LIE):
+    case EM_MOTION_ID(0, CEPH_MOT_STATUS4_LYING):
         break;
     default:
         EmCephadrome_MotionEffectsDefault(em);
@@ -4197,88 +5022,84 @@ void EmCephadrome_MotionEffects(Em *em, EmWork *work)
 
 extern u16 EmCephadrome_FinFoldTarget[];
 
-typedef struct EmCephadromeFins {
-    u8 pad00[0xF];
-    u8 mode;            /* 0x0F */
-    u8 pad10[0x42 - 0x10];
-    s16 wait[4];        /* 0x42 */
-    u8 st[4][2];        /* 0x4A */
-    struct {
-        u16 v;
-        u16 w;
-    } val[4];           /* 0x52 */
-    s16 frame[4];       /* 0x62 */
-    s8 cnt[4];          /* 0x6A */
-} EmCephadromeFins;
-
+/*
+ * Fin i's fold (finRot[i].fold, a turn about x): in fin modes 2 and 3 folds
+ * it to EmCephadrome_FinFoldTarget[i] over 20 frames, in mode 1 opens it back
+ * to 0 over 20 frames; mode 0 leaves it as it is.
+ */
 static void EmCephadrome_UpdateFinFold(Em *em, EmWork *work, s32 i)
 {
-    EmCephadromeFins *p = (EmCephadromeFins *) work;
-    u8 *st;
+    EmCephadromeWork *fins = (EmCephadromeWork *) work;
+    u8 *foldState;
 
-    switch (*(st = &((u8 (*)[2]) p->st)[i][1])) {
+    /* the cast (a no-op) gives the game's operand order (&p->finState[i][1] swaps an addu) */
+    switch (*(foldState = &((u8 (*)[2]) fins->finState)[i][1])) {
     case 0:
-        if (p->mode == 2 || p->mode == 3) {
-            if (p->val[i].v != EmCephadrome_FinFoldTarget[i]) {
-                *st = 2;
-                p->cnt[i] = 20;
+        if (fins->finMode == 2 || fins->finMode == 3) {
+            if (fins->finRot[i].fold != EmCephadrome_FinFoldTarget[i]) {
+                *foldState = 2;
+                fins->finCount[i] = 20;
             }
-        } else if (p->mode == 1) {
-            if (p->val[i].v != 0) {
-                *st = 1;
-                p->cnt[i] = 20;
+        } else if (fins->finMode == 1) {
+            if (fins->finRot[i].fold != 0) {
+                *foldState = 1;
+                fins->finCount[i] = 20;
             }
         }
         break;
     case 1:
-        if (--p->cnt[i] <= 0) {
-            p->val[i].v = 0;
-            *st = 0;
+        if (--fins->finCount[i] <= 0) {
+            fins->finRot[i].fold = 0;
+            *foldState = 0;
         } else {
-            p->val[i].v += (u16) ((0x10000 - p->val[i].v) / p->cnt[i]);
+            fins->finRot[i].fold += (u16) ((0x10000 - fins->finRot[i].fold) / fins->finCount[i]);
         }
         break;
     case 2:
-        if (--p->cnt[i] <= 0) {
-            p->val[i].v = EmCephadrome_FinFoldTarget[i];
-            *st = 0;
+        if (--fins->finCount[i] <= 0) {
+            fins->finRot[i].fold = EmCephadrome_FinFoldTarget[i];
+            *foldState = 0;
         } else {
-            p->val[i].v -= (u16) ((u16) (0x10000 - (EmCephadrome_FinFoldTarget[i] - p->val[i].v)) / p->cnt[i]);
+            fins->finRot[i].fold -= (u16) ((u16) (0x10000 - (EmCephadrome_FinFoldTarget[i] - fins->finRot[i].fold)) / fins->finCount[i]);
         }
         break;
     }
 }
 
-
-typedef struct EmCephFinKey {
+typedef struct EmFinKey {
     u16 f;
     u16 v;
-} EmCephFinKey;
+} EmFinKey;
 
-extern EmCephFinKey *EmCephadrome_FinKeys2[];
-extern EmCephFinKey *EmCephadrome_FinKeys1[];
+extern EmFinKey *EmCephadrome_FinKeys2[];
+extern EmFinKey *EmCephadrome_FinKeys1[];
 extern s16 EmCephadrome_FinWait1[];
 extern s16 EmCephadrome_FinWait2[];
 extern s16 EmCephadrome_FinRewait1[];
 extern s16 EmCephadrome_FinRewait2[];
 
-static inline u8 CephFinFindKey(EmCephFinKey *key, u16 f)
+/*
+ * Returns the index of the first fin key whose frame is at least f; when it
+ * reaches the table's end (a key with frame 0 after the first) it returns
+ * that key's index with bit 0x80 set.
+ */
+static inline u8 EmCephadrome_FinFindKey(EmFinKey *keys, u16 frame)
 {
-    s32 n = 0;
+    s32 idx = 0;
 
     for (;;) {
-        if (!(n != 0) == 0 && key->f == 0) {
-            n = (u8) (n | 0x80);
+        if (!(idx != 0) == 0 && keys->f == 0) {
+            idx = (u8) (idx | 0x80);
             break;
         }
-        if (key->f < f) {
-            n = (u8) (n + 1);
-            key++;
+        if (keys->f < frame) {
+            idx = (u8) (idx + 1);
+            keys++;
         } else {
             break;
         }
     }
-    return n;
+    return idx;
 }
 
 #define FIN_S16(base, j) (*(s16 *) ((u8 *) (base) + (j)))
@@ -4287,75 +5108,79 @@ static inline u8 CephFinFindKey(EmCephFinKey *key, u16 f)
    offset into the s16 arrays; only this gives the game's registers. */
 static void EmCephadrome_UpdateFinWave(s32 j, EmWork *work, s32 i)
 {
-    EmCephadromeFins *p = (EmCephadromeFins *) work;
-    s16 f;
-    EmCephFinKey *tbl;
-    u8 m;
-    u8 *st;
+    EmCephadromeWork *fins = (EmCephadromeWork *) work;
+    s16 keyFrame;
+    EmFinKey *keys;
+    u8 keyIdx;
+    u8 *waveState;
 
     j = i * 2;
-    switch (*(st = (u8 *) p->st + j)) {
+    switch (*(waveState = (u8 *) fins->finState + j)) {
     case 0:
-        if (p->mode == 2) {
-            (*st)++;
-            FIN_S16(p->wait, j) = FIN_S16(EmCephadrome_FinWait2, j);
-        } else if (p->mode == 1) {
-            (*st)++;
-            FIN_S16(p->wait, j) = FIN_S16(EmCephadrome_FinWait1, j);
+        if (fins->finMode == 2) {
+            (*waveState)++;
+            FIN_S16(fins->finWait, j) = FIN_S16(EmCephadrome_FinWait2, j);
+        } else if (fins->finMode == 1) {
+            (*waveState)++;
+            FIN_S16(fins->finWait, j) = FIN_S16(EmCephadrome_FinWait1, j);
         }
         break;
     case 1:
-        if (--FIN_S16(p->wait, j) <= 0) {
-            if (p->mode == 2) {
-                *st = 3;
+        if (--FIN_S16(fins->finWait, j) <= 0) {
+            if (fins->finMode == 2) {
+                *waveState = 3;
             } else {
-                *st = 2;
+                *waveState = 2;
             }
-            FIN_S16(p->wait, j) = 0;
-            FIN_S16(p->frame, j) = 0;
+            FIN_S16(fins->finWait, j) = 0;
+            FIN_S16(fins->finFrame, j) = 0;
         }
         break;
     case 2:
-        f = FIN_S16(p->frame, j)++;
-        tbl = EmCephadrome_FinKeys2[i];
-        m = CephFinFindKey(tbl, f);
-        if (m & 0x80) {
-            if (p->mode == 2) {
-                *st = 1;
-                FIN_S16(p->wait, j) = FIN_S16(EmCephadrome_FinRewait2, j);
-            } else if (p->mode == 1) {
-                *st = 1;
-                FIN_S16(p->wait, j) = FIN_S16(EmCephadrome_FinRewait1, j);
+        keyFrame = FIN_S16(fins->finFrame, j)++;
+        keys = EmCephadrome_FinKeys2[i];
+        keyIdx = EmCephadrome_FinFindKey(keys, keyFrame);
+        if (keyIdx & 0x80) {
+            if (fins->finMode == 2) {
+                *waveState = 1;
+                FIN_S16(fins->finWait, j) = FIN_S16(EmCephadrome_FinRewait2, j);
+            } else if (fins->finMode == 1) {
+                *waveState = 1;
+                FIN_S16(fins->finWait, j) = FIN_S16(EmCephadrome_FinRewait1, j);
             } else {
-                *st = 0;
+                *waveState = 0;
             }
-            p->val[i].w = tbl[m & 0x7F].v;
+            fins->finRot[i].wave = keys[keyIdx & 0x7F].v;
         } else {
-            p->val[i].w += tbl[m].v;
+            fins->finRot[i].wave += keys[keyIdx].v;
         }
         break;
     case 3:
-        f = FIN_S16(p->frame, j)++;
-        tbl = EmCephadrome_FinKeys1[i];
-        m = CephFinFindKey(tbl, f);
-        if (m & 0x80) {
-            if (p->mode == 2) {
-                *st = 1;
-                FIN_S16(p->wait, j) = FIN_S16(EmCephadrome_FinRewait2, j);
-            } else if (p->mode == 1) {
-                *st = 1;
-                FIN_S16(p->wait, j) = FIN_S16(EmCephadrome_FinRewait1, j);
+        keyFrame = FIN_S16(fins->finFrame, j)++;
+        keys = EmCephadrome_FinKeys1[i];
+        keyIdx = EmCephadrome_FinFindKey(keys, keyFrame);
+        if (keyIdx & 0x80) {
+            if (fins->finMode == 2) {
+                *waveState = 1;
+                FIN_S16(fins->finWait, j) = FIN_S16(EmCephadrome_FinRewait2, j);
+            } else if (fins->finMode == 1) {
+                *waveState = 1;
+                FIN_S16(fins->finWait, j) = FIN_S16(EmCephadrome_FinRewait1, j);
             } else {
-                *st = 0;
+                *waveState = 0;
             }
-            p->val[i].w = tbl[m & 0x7F].v;
+            fins->finRot[i].wave = keys[keyIdx & 0x7F].v;
         } else {
-            p->val[i].w += tbl[m].v;
+            fins->finRot[i].wave += keys[keyIdx].v;
         }
         break;
     }
 }
 
+/*
+ * Runs the wave and the fold of the four fins (read by Em_AdjustKindBones;
+ * see the NOTE on its offsets).
+ */
 void EmCephadrome_UpdateFins(Em *em, EmWork *work)
 {
     s32 i;
@@ -4366,7 +5191,11 @@ void EmCephadrome_UpdateFins(Em *em, EmWork *work)
     }
 }
 
-
+/*
+ * Runs EmCephadrome_MotionEffects and EmCephadrome_UpdateFins once the work
+ * area's fxStep is set (the first frame only sets it); slot 3 of
+ * EmCephadrome_Callbacks.
+ */
 void EmCephadrome_UpdateMotionEffects(Em *em)
 {
     EmCephadromeWork *work = (EmCephadromeWork *)&em->work;
@@ -4382,6 +5211,11 @@ void EmCephadrome_UpdateMotionEffects(Em *em)
     }
 }
 
+/*
+ * Sets the fin mode: 0 still, 1 waving, 2 waving folded, 3 folded; mode 1
+ * becomes 2 at a tenth of hpMax or less, mode 3 becomes 0 above it (the
+ * fins fold only when weak; for Plesioth the threshold is a fifth).
+ */
 void EmCephadrome_SetFinMode(Em *em, EmWork *work, s32 mode)
 {
     EmCephadromeWork *w = (EmCephadromeWork *)work;
@@ -4399,12 +5233,22 @@ void EmCephadrome_SetFinMode(Em *em, EmWork *work, s32 mode)
     }
 }
 
-void EmCephadrome_SpawnK14Type0B(Em *em)
+/*
+ * Creates the ground effect of kind 0x14 type 0xB (DustCloud_Create) on
+ * frame 16 of motion 0x13 (as EmPlesioth_SpawnLandingDust).
+ */
+void EmCephadrome_SpawnLandingDust(Em *em)
 {
-    StageObj_K14_Create((Em *) em, 0xB, 0, 1.0f);
+    DustCloud_Create((Em *) em, 0xB, 0, 1.0f);
 }
 
-void EmCephadrome_SpawnSurfaceEffect2(Em *em, f32 scale)
+/*
+ * While the monster is in the hunters' area and no deeper than 100 below
+ * surfaceY less surfaceDepth, every 4th frame spawns Effect08 type 2 at the
+ * sand surface above it, scaled by scale times scaleX (no sound): the wake
+ * of the states that swim under the sand (as EmPlesioth_SpawnWakeEvery4).
+ */
+void EmCephadrome_SpawnWakeEvery4(Em *em, f32 scale)
 {
     f32 pos[3];
     f32 y;
@@ -4418,7 +5262,13 @@ void EmCephadrome_SpawnSurfaceEffect2(Em *em, f32 scale)
     }
 }
 
-void EmCephadrome_SpawnSurfaceEffect5(Em *em, f32 scale)
+/*
+ * In the hunters' area spawns Effect08 type 5 at the sand surface above the
+ * monster (scale times scaleX) with sound 0x1A: the burst where it breaks
+ * the surface, leaping out or diving back in (as
+ * EmPlesioth_SpawnSurfaceSplash).
+ */
+void EmCephadrome_SpawnSurfaceSplash(Em *em, f32 scale)
 {
     f32 pos[3];
 
@@ -4429,265 +5279,315 @@ void EmCephadrome_SpawnSurfaceEffect5(Em *em, f32 scale)
     }
 }
 
+/*
+ * Creates attack row `kind`: CephadromeAttack_Create for
+ * EM_KIND_CEPHADROME, CephalosAttack_Create for the Cephalos.
+ */
 void EmCephadrome_CreateAttack(Em *em, s32 kind)
 {
-    if (em->type == 8) {
+    if (em->type == EM_KIND_CEPHADROME) {
         CephadromeAttack_Create(em, kind);
         return;
     }
     CephalosAttack_Create(em, kind);
 }
 
+/*
+ * Starts pad vibration 3 (Vib_StartLocal) for the local player when active,
+ * in the monster's area and within 1000 of it.
+ */
 void EmCephadrome_VibrateNearby(Em *em)
 {
-    Player *p;
+    Player *player;
     s8 i;
 
-    for (p = gPlayers, i = 0; i < gScene.playerCount; i++, p++) {
-        if (i == gScene.localPlayer && p->active && Obj_SameArea(em, p) && p->active && Vec_Distance((f32 *) p->pos, (f32 *) &em->posX) <= 1000.0f) {
-            Vib_StartLocal(p, 3);
+    for (player = gPlayers, i = 0; i < gScene.playerCount; i++, player++) {
+        if (i == gScene.localPlayer && player->active && Obj_SameArea(em, player) && player->active && Vec_Distance((f32 *) player->pos, (f32 *) &em->posX) <= 1000.0f) {
+            Vib_StartLocal(player, 3);
         }
     }
 }
 
-void func_007DE230(void)
+/* Slot 2 of EmCephadrome_Callbacks: does nothing (as EmPlesioth_TableNop). */
+void EmCephadrome_TableNop(void)
 {
 }
 
-void EmCephadrome_SetGroup0State(Em *em, u16 state, u8 mode)
+/*
+ * Enters idle state `state`: motion speed 1; begins status 2 in 5 and 14,
+ * status 1 in 16 and 41; ends status 2 in 6 and 15, status 1 in 17 and 42,
+ * status 4 in 21, status 5 in 23; 18 resets the notice (Em_ResetNotice), 19
+ * refills need 3, 22 clears holdTimer2, 40 starts goal action 10000; stance
+ * ground, then Em_SetStateSync.
+ */
+void EmCephadrome_SetIdleState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 0x1:
+    case CEPH_IDLE:
         break;
-    case 5:
-    case 14:
+    case CEPH_IDLE_STATUS2_COLLAPSE:
+    case CEPH_IDLE_STATUS2_COLLAPSE_BEACHED:
         Em_BeginStatus2(em);
         break;
-    case 16:
+    case CEPH_IDLE_STATUS1_COLLAPSE_BEACHED:
         Em_BeginStatus1(em);
         break;
-    case 18:
+    case CEPH_IDLE_REST:
         Em_ResetNotice(em);
         break;
-    case 6:
-    case 15:
+    case CEPH_IDLE_STATUS2_END:
+    case CEPH_IDLE_STATUS2_END_BEACHED:
         Em_EndStatus2(em);
         break;
-    case 17:
+    case CEPH_IDLE_STATUS1_END_BEACHED:
         Em_EndStatus1(em);
         break;
-    case 19:
+    case CEPH_IDLE_REST_END:
         Em_RefillNeed3(em);
         break;
-    case 21:
+    case CEPH_IDLE_STATUS4_SHAKE_OFF:
         Em_EndStatus4(em);
         break;
-    case 22:
+    case CEPH_IDLE_HOLD2_SHAKE_OFF:
         em->holdTimer2 = 0;
         break;
-    case 23:
+    case CEPH_IDLE_STUN_SHAKE_OFF:
         Em_EndStatus5(em);
         break;
-    case 40:
+    case CEPH_IDLE_EAT:
         Em_StartGoalAction(em, 0x2710);
         break;
-    case 41:
+    case CEPH_IDLE_STATUS1_COLLAPSE:
         Em_BeginStatus1(em);
         break;
-    case 42:
+    case CEPH_IDLE_STATUS1_END:
         Em_EndStatus1(em);
         break;
     }
-    em->stance = 0;
+    em->stance = EM_STANCE_GROUND;
     Em_SetStateSync(em, 0, state, mode);
 }
 
-void EmCephadrome_SetGroup1State(Em *em, u16 state, u8 mode)
+/*
+ * Enters move state `state` on the ground at motion speed 1: CEPH_MOVE_WALK
+ * runs as CEPH_MOVE_LIMP below a tenth of hpMax; WALK, RUN and LIMP take
+ * speed set 6
+ * (Em_SetSpeedScaled 1000, 550); then Em_SetStateSync.
+ */
+void EmCephadrome_SetMoveState(Em *em, u16 state, u8 mode)
 {
-    em->stance = 0;
+    em->stance = EM_STANCE_GROUND;
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 2:
+    case CEPH_MOVE_TURN:
         break;
-    case 0:
+    case CEPH_MOVE_WALK:
         if (em->hp < (s16) (em->hpMax * 0.1f)) {
-            state = 3;
+            state = CEPH_MOVE_LIMP;
         }
-    case 1:
-    case 3:
+    case CEPH_MOVE_RUN:
+    case CEPH_MOVE_LIMP:
         Em_SetSpeedScaled(em, 6, 1000.0f, 550.0f);
         break;
     }
     Em_SetStateSync(em, 1, state, mode);
 }
 
-void EmCephadrome_SetGroup2State(Em *em, u16 state, u8 mode)
+/*
+ * Enters swim state `state` at motion speed 1: ends status 4 in 21, status
+ * 2 in 24, status 1 in 25; 4, 5 and 27 take speed set 0 (1000, 500), 27
+ * also sets noReact and 5 frames of senseDelay, noHitTimer and noPushTimer;
+ * 6 runs as 8; 10 and 11 (rounds of the area points) set roundLegsLeft 4
+ * and, for a local monster, the nearest area point as goal: within 45
+ * degrees ahead it runs as 11 when the following point is behind, with a
+ * timer of 0.06 frames per unit of distance, otherwise as 9 (a remote one
+ * only computes its goal).
+ */
+void EmCephadrome_SetSandState(Em *em, u16 state, u8 mode)
 {
     EmCephadromeWork *w = (EmCephadromeWork *)&em->work;
-    f32 pos[3];
-    s32 a;
+    f32 nextPoint[3];
+    s32 yawDiff;
 
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 26:
-        if (state == 27) {
+    case CEPH_SAND_TURN_NO_REACT:
+        if (state == CEPH_SAND_DASH_NO_REACT) {
             em->noReact = 1;
             em->senseDelay = 5;
             em->noHitTimer = 5;
             em->noPushTimer = 5;
         }
         break;
-    case 21:
+    case CEPH_SAND_STATUS4_RECOVER:
         Em_EndStatus4(em);
         break;
-    case 24:
+    case CEPH_SAND_STATUS2_END:
         Em_EndStatus2(em);
         break;
-    case 25:
+    case CEPH_SAND_STATUS1_END:
         Em_EndStatus1(em);
         break;
-    case 4:
-    case 5:
-    case 27:
+    case CEPH_SAND_FORWARD:
+    case CEPH_SAND_DASH:
+    case CEPH_SAND_DASH_NO_REACT:
         Em_SetSpeedScaled(em, 0, 1000.0f, 500.0f);
-        if (state == 27) {
+        if (state == CEPH_SAND_DASH_NO_REACT) {
             em->noReact = 1;
             em->senseDelay = 5;
             em->noHitTimer = 5;
             em->noPushTimer = 5;
         }
         break;
-    case 6:
-        state = 8;
+    case CEPH_SAND_CURVE:
+        state = CEPH_SAND_DIVE;
         break;
-    case 10:
-    case 11:
-        w->unk007 = 4;
+    case CEPH_SAND_ROUND_NEXT:
+    case CEPH_SAND_ROUND_PREV:
+        w->roundLegsLeft = 4;
         if (em->remote == 0) {
-            em->goalNo = EmCephadrome_NextAreaPoint(em, pos);
+            em->goalNo = EmCephadrome_NextAreaPoint(em, nextPoint);
             em->goalKind = 2;
             em->goalArg = 2;
             Em_ComputeGoal(em, em->goal);
-            a = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if ((0 <= a && a <= 0x2000) || (a >= 0xE000 && a <= 0xFFFF)) {
-                a = (u16) (Math_AngleXZ(&em->posX, pos) - em->rotY);
-                if (a >= 0x4000 && a <= 0xC000 && state == 10) {
-                    state = 11;
+            yawDiff = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
+            if ((0 <= yawDiff && yawDiff <= 0x2000) || (yawDiff >= 0xE000 && yawDiff <= 0xFFFF)) {
+                yawDiff = (u16) (Math_AngleXZ(&em->posX, nextPoint) - em->rotY);
+                if (yawDiff >= 0x4000 && yawDiff <= 0xC000 && state == CEPH_SAND_ROUND_NEXT) {
+                    state = CEPH_SAND_ROUND_PREV;
                 }
                 em->timer = 1.5f * (Vec_DistanceXZ(&em->posX, em->goal) / 0.5f) / 50.0f;
             } else {
-                state = 9;
+                state = CEPH_SAND_ROUND_TURN;
             }
         } else {
             Em_ComputeGoal2(em, em->goal);
         }
         break;
-    case 0:
-    case 1:
-    case 2:
-    case 3:
-    case 7:
-    case 8:
-    case 9:
-    case 12:
-    case 13:
-    case 14:
-    case 15:
-    case 16:
-    case 17:
-    case 18:
-    case 19:
-    case 20:
-    case 22:
-    case 23:
+    case CEPH_SAND_IDLE:
+    case CEPH_SAND_IDLE_B:
+    case CEPH_SAND_CIRCLE_RIGHT_B:
+    case CEPH_SAND_TURN:
+    case CEPH_SAND_RISE:
+    case CEPH_SAND_DIVE:
+    case CEPH_SAND_ROUND_TURN:
+    case CEPH_SAND_CIRCLE_RIGHT:
+    case CEPH_SAND_CIRCLE_LEFT:
+    case CEPH_SAND_LEAP_ASHORE:
+    case CEPH_SAND_SURFACE_FLOP:
+    case CEPH_SAND_LEAP_IN:
+    case CEPH_SAND_LEAP:
+    case CEPH_SAND_LEAP_ON_LAND:
+    case CEPH_SAND_ROUND_NEXT_LEG:
+    case CEPH_SAND_ROUND_PREV_LEG:
+    case CEPH_SAND_LEAP_TO_FIXED_POINT:
+    case CEPH_SAND_EMPTY:
         break;
     }
     Em_SetStateSync(em, 2, state, mode);
 }
 
-void EmCephadrome_SetGroup3State(Em *em, u16 state, u8 mode)
+/*
+ * Enters attack state `state` at motion speed 1; CEPH_ATK_BREATH sets
+ * EmCephadromeWork.unk013.
+ */
+void EmCephadrome_SetAttackState(Em *em, u16 state, u8 mode)
 {
     EmCephadromeWork *w = (EmCephadromeWork *)&em->work;
 
     em->motionSpeed = 1.0f;
     switch (state) {
-    case 0:
-    case 2:
-    case 4:
-    case 5:
-    case 6:
-    case 7:
-    case 8:
-    case 3:
+    case CEPH_ATK_LAND_A:
+    case CEPH_ATK_SPIN:
+    case CEPH_ATK_SURFACE_BREATH_B:
+    case CEPH_ATK_SURFACE_BREATH_C:
+    case CEPH_ATK_LEAP:
+    case CEPH_ATK_LAND_B:
+    case CEPH_ATK_SURFACE_LUNGE:
+    case CEPH_ATK_SURFACE_BREATH_A:
         break;
-    case 1:
+    case CEPH_ATK_BREATH:
         w->unk013 = 1;
         break;
     }
-    Em_SetStateSync(em, 0x3, state, mode);
+    Em_SetStateSync(em, EM_GROUP_ATTACK, state, mode);
 }
 
+/*
+ * Moves to (group, state): a local monster first targets a player in range
+ * (a remote one ignores sync modes 3 and 4), loads reaction set 0, then the
+ * group's Set function; inline for EM_GROUP_REACT (begins status 4 in
+ * CEPH_REACT_STATUS4_LYING and CEPH_REACT_STATUS4, ends it in
+ * CEPH_REACT_STATUS4_LYING_END, ends all statuses in CEPH_REACT_HOLD2, begins
+ * the stun in CEPH_REACT_STUN_A and _B; motion speed 1), EM_GROUP_DEFEAT
+ * (CEPH_DEFEAT_REAPPEAR makes the monster appear again when the quest lets
+ * it; motion speed kept), EM_GROUP_EVENT and EM_GROUP_VERSUS (motion speed
+ * 1). Other groups do nothing.
+ */
 void EmCephadrome_ChangeState(Em *em, u16 group, u16 state, u8 mode)
 {
     if (em->remote == 0) {
         Em_TargetPlayerInRange(em);
-        goto block_5;
-    }
-    if ((mode == 3) || (mode == 4)) {
+    } else if (mode == EM_SYNC_OWNER || mode == EM_SYNC_OWNER_FLAGGED) {
         return;
     }
-block_5:
     Em_LoadReactionSet(em, 0);
     switch (group) {
-    case 0:
-        EmCephadrome_SetGroup0State(em, state, mode);
+    case EM_GROUP_IDLE:
+        EmCephadrome_SetIdleState(em, state, mode);
         return;
-    case 1:
-        EmCephadrome_SetGroup1State(em, state, mode);
+    case EM_GROUP_MOVE:
+        EmCephadrome_SetMoveState(em, state, mode);
         return;
-    case 2:
-        EmCephadrome_SetGroup2State(em, state, mode);
+    case EM_GROUP_FLY:
+        EmCephadrome_SetSandState(em, state, mode);
         return;
-    case 3:
-        EmCephadrome_SetGroup3State(em, state, mode);
+    case EM_GROUP_ATTACK:
+        EmCephadrome_SetAttackState(em, state, mode);
         return;
-    case 4:
+    case EM_GROUP_REACT:
         switch (state) {
-        case 7:
-        case 11:
+        case CEPH_REACT_STATUS4_LYING:
+        case CEPH_REACT_STATUS4:
             Em_BeginStatus4(em);
             break;
-        case 19:
+        case CEPH_REACT_STATUS4_LYING_END:
             Em_EndStatus4(em);
             break;
-        case 21:
+        case CEPH_REACT_HOLD2:
             Em_EndAllStatus(em);
             break;
-        case 22:
-        case 23:
+        case CEPH_REACT_STUN_A:
+        case CEPH_REACT_STUN_B:
             Em_BeginStatus5(em);
             break;
         }
         em->motionSpeed = 1.0f;
         Em_SetStateSync(em, group, state, mode);
         return;
-    case 5:
-        if ((state == 4) && (QuestEm_CanAppear(em) == 1)) {
+    case EM_GROUP_DEFEAT:
+        if ((state == CEPH_DEFEAT_REAPPEAR) && (QuestEm_CanAppear(em) == 1)) {
             QuestEm_Appear(em);
         }
         Em_SetStateSync(em, group, state, mode);
         return;
-    case 6:
-    case 8:
+    case EM_GROUP_EVENT:
+    case EM_GROUP_VERSUS:
         em->motionSpeed = 1.0f;
         Em_SetStateSync(em, group, state, mode);
-        
+        /* falls through to the return: a `return;` here moves the switch's shared exit */
     default:
         return;
     }
 }
 
+/*
+ * Starts curve set `kind` of the movement curves: kinds 0-2 the vertical
+ * and forward speed curves from frame 0, kind 3 only the vertical one from
+ * frame 0x26; clears the velocity (this file starts only kind 0, from
+ * SandCurve).
+ */
 void EmCephadrome_StartCurves(Em *em, u8 kind)
 {
     EmCephadromeWork *w = (EmCephadromeWork *)&em->work;
@@ -4720,24 +5620,30 @@ void EmCephadrome_StartCurves(Em *em, u8 kind)
     Player_ClearVelocity(em);
 }
 
+/* The curve step of a set without curves: does nothing and returns 0. */
 static s32 EmCephadrome_CurveNone(Em *em, EmWork *work)
 {
     return 0;
 }
 
+/*
+ * The vertical-speed curve (EmCephadrome_VelYCurves[curveKind]): sets velY
+ * from the key pair around curveFrame; at the table's end (a key with t 0)
+ * eases velY down to -50 and returns 2, else 0.
+ */
 static u8 EmCephadrome_CurveVelY(Em *em, EmWork *work)
 {
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyT;
     s32 i;
-    EmCurveKey *tbl;
-    u8 ret;
+    EmCurveKey *keys;
+    u8 endBits;
 
-    tbl = EmCephadrome_VelYCurves[((EmCephadromeWork *)work)->curveKind];
-    ret = 0;
-    if (tbl == NULL) {
-        return ret;
+    keys = EmCephadrome_VelYCurves[((EmCephadromeWork *)work)->curveKind];
+    endBits = 0;
+    if (keys == NULL) {
+        return endBits;
     }
     if (em->motion[0].blend != 0) {
         frame = 0.0f;
@@ -4747,38 +5653,43 @@ static u8 EmCephadrome_CurveVelY(Em *em, EmWork *work)
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
+            key = &keys[i];
+            keyT = key->t;
+            if (frame > keyT && keyT != 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
-                ret = 2;
+            } else if (keyT == 0.0f) {
+                endBits = 2;
                 if (em->velY > -50.0f) {
                     em->velY -= 1.0f;
                 }
                 break;
             } else {
                 i = 0;
-                em->velY = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velY = (key->v - key[-1].v) / ((keyT - key[-1].t) / em->motion[0].step);
             }
         }
     }
-    return ret;
+    return endBits;
 }
 
+/*
+ * The forward-speed curve (EmCephadrome_SpeedCurves[curveKind]): sets velZ
+ * from the key pair around curveFrame; returns 4 at the table's end, else
+ * 0.
+ */
 static u8 EmCephadrome_CurveSpeed(Em *em, EmWork *work)
 {
-    EmCurveKey *p;
+    EmCurveKey *key;
     f32 frame;
-    f32 t;
+    f32 keyT;
     s32 i;
-    EmCurveKey *tbl;
-    u8 ret;
+    EmCurveKey *keys;
+    u8 endBits;
 
-    tbl = EmCephadrome_Curves[((EmCephadromeWork *)work)->curveKind];
-    ret = 0;
-    if (tbl == NULL) {
-        return ret;
+    keys = EmCephadrome_SpeedCurves[((EmCephadromeWork *)work)->curveKind];
+    endBits = 0;
+    if (keys == NULL) {
+        return endBits;
     }
     if (em->motion[0].blend != 0) {
         frame = 0.0f;
@@ -4788,102 +5699,128 @@ static u8 EmCephadrome_CurveSpeed(Em *em, EmWork *work)
     if (frame != 0.0f && frame != 1.0f) {
         i = 1;
         while (i != 0) {
-            p = &tbl[i];
-            t = p->t;
-            if (frame > t && t != 0.0f) {
+            key = &keys[i];
+            keyT = key->t;
+            if (frame > keyT && keyT != 0.0f) {
                 i++;
-            } else if (t == 0.0f) {
-                ret = 4;
+            } else if (keyT == 0.0f) {
+                endBits = 4;
                 break;
             } else {
                 i = 0;
-                em->velZ = (p->v - p[-1].v) / ((t - p[-1].t) / em->motion[0].step);
+                em->velZ = (key->v - key[-1].v) / ((keyT - key[-1].t) / em->motion[0].step);
             }
         }
     }
-    return ret;
+    return endBits;
 }
 
+/*
+ * Runs the curves whose flags are set, advances curveFrame by the motion's
+ * step, and in the air or under the sand moves the monster along its yaw
+ * (Em_MoveRotatedAccel). Returns the curves' end bits (2 vertical, 4
+ * forward).
+ */
 u8 EmCephadrome_UpdateCurves(Em *em)
 {
     EmCephadromeWork *w = (EmCephadromeWork *)&em->work;
-    u8 ret = 0;
+    u8 endBits = 0;
 
     if (w->curveNone != 0) {
-        ret = EmCephadrome_CurveNone(em, (EmWork *) w);
+        endBits = EmCephadrome_CurveNone(em, (EmWork *) w);
     }
     if (w->curveVelY != 0) {
-        ret |= EmCephadrome_CurveVelY(em, (EmWork *) w);
+        endBits |= EmCephadrome_CurveVelY(em, (EmWork *) w);
     }
     if (w->curveSpeed != 0) {
-        ret |= EmCephadrome_CurveSpeed(em, (EmWork *) w);
+        endBits |= EmCephadrome_CurveSpeed(em, (EmWork *) w);
     }
     w->curveFrame += (s16) em->motion[0].step;
-    if (em->stance == 2 || em->stance == 4) {
+    if (em->stance == EM_STANCE_AIR || em->stance == EM_STANCE_UNDER) {
         w->moveAngBX = 0;
         w->moveAngBY = em->rotY;
         w->moveAngBZ = 0;
         Em_MoveRotatedAccel(em, &w->moveAngBX);
     }
-    return ret;
+    return endBits;
 }
 
+/*
+ * Of the area's points (em->tables[2]), finds the one nearest the monster
+ * and writes the following one (index + 1, wrapping) to out. Returns the
+ * nearest one's index; without a table writes (1000, 0, 1000) and returns
+ * 0.
+ */
 u8 EmCephadrome_NextAreaPoint(Em *em, f32 *out)
 {
-    EmBEntry *e;
-    f32 *p;
+    EmAreaPoints *entry;
+    f32 *point;
     u32 i;
-    u8 k;
-    f32 best;
-    f32 d;
-    u8 n;
+    u8 nearest;
+    f32 bestDist;
+    f32 dist;
+    u8 next;
     f32 (*sel)[3];
 
-    k = 0;
-    e = (EmBEntry *)Em_FindAreaEntry(em, (struct EmIdEntry *)(((EmBEntry **) em->tables)[2]), em->area);
-    if (e == NULL || (p = e->pts) == NULL) {
+    nearest = 0;
+    entry = (EmAreaPoints *)Em_FindAreaEntry(em, (struct EmIdEntry *)(((EmAreaPoints **) em->tables)[2]), em->area);
+    if (entry == NULL || (point = entry->pts) == NULL) {
         out[0] = 1000.0f;
         out[1] = 0.0f;
         out[2] = 1000.0f;
-        k = 0;
+        nearest = 0;
     } else {
-        for (i = 0; i < e->n; i++, p += 3) {
-            d = Vec_DistanceXZ(&em->posX, p);
-            if (k == i) {
-                best = d;
-            } else if (best > d) {
-                best = d;
-                k = i;
+        for (i = 0; i < entry->n; i++, point += 3) {
+            dist = Vec_DistanceXZ(&em->posX, point);
+            if (nearest == i) {
+                bestDist = dist;
+            } else if (bestDist > dist) {
+                bestDist = dist;
+                nearest = i;
             }
         }
-        n = k + 1;
-        if (n >= e->n) {
-            n -= e->n;
+        next = nearest + 1;
+        if (next >= entry->n) {
+            next -= entry->n;
         }
-        sel = (f32 (*)[3]) e->pts;
-        out[0] = sel[n][0];
-        out[1] = sel[n][1];
-        out[2] = sel[n][2];
+        sel = (f32 (*)[3]) entry->pts;
+        out[0] = sel[next][0];
+        out[1] = sel[next][1];
+        out[2] = sel[next][2];
     }
-    return k;
+    return nearest;
 }
 
-s32 EmCephadrome_ShouldEndState(Em *em)
+/*
+ * Returns 1 when the monster is in the hunters' area
+ * (Player_InCurrentArea), under the sand (EM_STANCE_UNDER) and the floor
+ * under it is not sand (surfaceKind 0), else 0; Update then sends it to
+ * land idle (EmCephadrome_EndGroundState).
+ */
+s32 EmCephadrome_IsUnderOffSand(Em *em)
 {
     if (!(Player_InCurrentArea(em) & 0xFF)) {
         return 0;
     }
-    if ((em->surfaceKind == 0) && (em->stance == 4)) {
+    if ((em->surfaceKind == 0) && (em->stance == EM_STANCE_UNDER)) {
         return 1;
     }
     return 0;
 }
 
-void EmCephadrome_StepRouteIndex(Em *em, u8 dir)
+/*
+ * Steps curGoalNo to the next area point (dir 0) or the previous one (dir
+ * 1), wrapping by the area's point count (0 without a table). One time in 8
+ * (stateRand) the Cephalos first jumps two points on in AREA_DESERT_1, _5
+ * and _6, and the Cephadrome crosses to a fixed other point in
+ * AREA_DESERT_1 and _5 instead of stepping. Called by the two round swims
+ * (SandRoundNext forward, SandRoundPrev back).
+ */
+void EmCephadrome_StepAreaPoint(Em *em, u8 dir)
 {
-    EmBEntry *e;
+    EmAreaPoints *entry;
 
-    if (em->type == 0x22) {
+    if (em->type == EM_KIND_CEPHALOS) {
         switch (Area_DayId(em->area)) {
         case AREA_DESERT_1:
         case AREA_DESERT_5:
@@ -4943,3016 +5880,49 @@ void EmCephadrome_StepRouteIndex(Em *em, u8 dir)
     } else {
         em->curGoalNo--;
     }
-    e = (EmBEntry *)Em_FindAreaEntry(em, (struct EmIdEntry *)(((EmBEntry **) em->tables)[2]), em->area);
-    if (e != NULL) {
-        while (em->curGoalNo >= e->n) {
-            em->curGoalNo -= e->n;
+    entry = (EmAreaPoints *)Em_FindAreaEntry(em, (struct EmIdEntry *)(((EmAreaPoints **) em->tables)[2]), em->area);
+    if (entry != NULL) {
+        while (em->curGoalNo >= entry->n) {
+            em->curGoalNo -= entry->n;
         }
     } else {
         em->curGoalNo = 0;
     }
 }
 
-void EmMelynx_MotionSounds(Em *em, EmWork *work)
-{
-    s16 motion;
-
-    motion = work->fxMotion;
-    switch (motion) {
-    case 0x3E9:
-        Em_PlaySeOnFrame(em, 4, Sound_RandomSe(0x12, 1, 0x12, 1));
-        break;
-    case 0x3EA:
-        Em_PlaySeOnFrame(em, 0x12, 1);
-        Em_PlaySeOnFrame(em, 0x26, 1);
-        Em_PlaySeOnFrame(em, 0x72, 1);
-        Em_PlaySeOnFrame(em, 0x7E, 1);
-        Em_PlaySeOnFrame(em, 0x98, 1);
-        Em_PlaySeOnFrame(em, 0xCC, 0xC);
-        Em_PlaySeOnFrame(em, 8, 0x1E);
-        Em_PlaySeOnFrame(em, 0x58, 0x1E);
-        Em_PlaySeOnFrame(em, 0xD0, 0x1E);
-        break;
-    case 0x3EB:
-        Em_PlaySeOnFrame(em, 0x26, 0x12);
-        Em_PlaySeOnFrame(em, 6, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x9A, 0x1E);
-        Em_PlaySeOnFrame(em, 0xA4, 0x1E);
-        break;
-    case 0x3EC:
-        Em_PlaySeOnFrame(em, 0xE, Sound_RandomSe(9, 2, 9, 2));
-        Em_PlaySeOnFrame(em, 0x4C, Sound_RandomSe(0xC, 2, 0xC, 2));
-        Em_PlaySeOnFrame(em, 0xA0, Sound_RandomSe(9, 2, 9, 2));
-        Em_PlaySeOnFrame(em, 0xC8, Sound_RandomSe(0xA, 2, 0xA, 2));
-        Em_PlaySeOnFrame(em, 8, 0x1E);
-        Em_PlaySeOnFrame(em, 0x50, 0x1E);
-        Em_PlaySeOnFrame(em, 0x8C, 0x1E);
-        Em_PlaySeOnFrame(em, 0xC8, 0x1E);
-        break;
-    case 0x3ED:
-        Em_PlaySeOnFrame(em, 4, 0x17);
-        Em_PlaySeOnFrame(em, 0xE, 3);
-        break;
-    case 0x3F3:
-        Em_PlaySeOnFrame(em, 0x50, Sound_RandomSe(0x12, 2, 0x12, 2));
-        Em_PlaySeOnFrame(em, 0xC, 0x1E);
-        Em_PlaySeOnFrame(em, 0x1E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x42, 0x1E);
-        Em_PlaySeOnFrame(em, 0x58, 0x1E);
-        Em_PlaySeOnFrame(em, 0x76, 0x1E);
-        Em_PlaySeOnFrame(em, 0x8C, 0x1E);
-        Em_PlaySeOnFrame(em, 0x98, 0x1E);
-        Em_PlaySeOnFrame(em, 0xA2, 0x1E);
-        Em_PlaySeOnFrame(em, 0xAE, 0x1E);
-        Em_PlaySeOnFrame(em, 0xB8, 0x1E);
-        Em_PlaySeOnFrame(em, 0xC2, 0x1E);
-        Em_PlaySeOnFrame(em, 0xAE, 0x1E);
-        break;
-    case 0x3F4:
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0xE, 2, 0xE, 2));
-        Em_PlaySeOnFrame(em, 0xA, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x20, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x38, 0x1E);
-        Em_PlaySeOnFrame(em, 0x44, 0x1E);
-        Em_PlaySeOnFrame(em, 0x4E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x58, 0x1E);
-        Em_PlaySeOnFrame(em, 0x64, 0x1E);
-        Em_PlaySeOnFrame(em, 0x70, 0x1E);
-        break;
-    case 0x3F5:
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0xD, 2, 0xD, 2));
-        Em_PlaySeOnFrame(em, 0xC, 0x21);
-        Em_PlaySeOnFrame(em, 0xC, 0x19);
-        Em_PlaySeOnFrame(em, 0x2A, 0x17);
-        Em_PlaySeOnFrame(em, 0x2E, 0x18);
-        break;
-    case 0x3F6:
-        Em_PlaySeOnFrame(em, 8, 0x1E);
-        Em_PlaySeOnFrame(em, 0x18, 0x1E);
-        Em_PlaySeOnFrame(em, 0x28, 0x1E);
-        break;
-    case 0x3F7:
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0, 2, 0, 2));
-        Em_PlaySeOnFrame(em, 0xC, 0x18);
-        Em_PlaySeOnFrame(em, 0x12, 0x22);
-        Em_PlaySeOnFrame(em, 0x22, 0x18);
-        Em_PlaySeOnFrame(em, 0x28, 0x22);
-        break;
-    case 0x3F8:
-        Em_PlaySeOnFrame(em, 0x2E, Sound_RandomSe(0x11, 1, 0x11, 1));
-        Em_PlaySeOnFrame(em, 0xA, 0x17);
-        Em_PlaySeOnFrame(em, 0x18, 0x17);
-        Em_PlaySeOnFrame(em, 0x26, 0x17);
-        Em_PlaySeOnFrame(em, 0x32, 0x17);
-        break;
-    case 0x3F9:
-        Em_PlaySeOnFrame(em, 0x10, 0x1A);
-        Em_PlaySeOnFrame(em, 0x24, 0x1A);
-        Em_PlaySeOnFrame(em, 0x3A, 0x1A);
-        Em_PlaySeOnFrame(em, 0x4E, 0x1A);
-        Em_PlaySeOnFrame(em, 0x7E, 0x14);
-        Em_PlaySeOnFrame(em, 0x80, 0x19);
-        Em_PlaySeOnFrame(em, 0x78, 6);
-        Em_PlaySeOnFrame(em, 0x9C, 0x1B);
-        break;
-    case 0x3FD:
-        Em_PlaySeOnFrame(em, 2, 0x16);
-        Em_PlaySeOnFrame(em, 0xE, 0x17);
-        Em_PlaySeOnFrame(em, 0x18, 3);
-        Em_PlaySeOnFrame(em, 0x48, 0x17);
-        break;
-    case 0x3FE:
-        Em_PlaySeOnFrame(em, 2, 0x18);
-        Em_PlaySeOnFrame(em, 6, 0x21);
-        Em_PlaySeOnFrame(em, 0x10, 4);
-        break;
-    case 0x3FF:
-        Em_PlaySeOnFrame(em, 0x12, 0x18);
-        Em_PlaySeOnFrame(em, 0x22, 0x17);
-        Em_PlaySeOnFrame(em, 0x2A, 0xB);
-        Em_PlaySeOnFrame(em, 0x70, 0xF);
-        Em_PlaySeOnFrame(em, 0xAA, 0xF);
-        Em_PlaySeOnFrame(em, 0xF0, 0xD);
-        Em_PlaySeOnFrame(em, 0x68, 0x16);
-        Em_PlaySeOnFrame(em, 0x82, 0x17);
-        Em_PlaySeOnFrame(em, 0x8A, 0x16);
-        Em_PlaySeOnFrame(em, 0xA2, 0x17);
-        Em_PlaySeOnFrame(em, 0xA8, 0x16);
-        Em_PlaySeOnFrame(em, 0xBE, 0x17);
-        Em_PlaySeOnFrame(em, 0xC8, 0x16);
-        Em_PlaySeOnFrame(em, 0xE0, 0x17);
-        Em_PlaySeOnFrame(em, 0xE6, 0x20);
-        Em_PlaySeOnFrame(em, 0x124, 0x17);
-        break;
-    case 0x400:
-        Em_PlaySeOnFrame(em, 0x10, 0x1E);
-        Em_PlaySeOnFrame(em, 0x1A, 0x1E);
-        Em_PlaySeOnFrame(em, 0x24, 0x1E);
-        Em_PlaySeOnFrame(em, 0x30, 0x1E);
-        Em_PlaySeOnFrame(em, 0x3A, 0x1E);
-        Em_PlaySeOnFrame(em, 0x46, 0x1E);
-        Em_PlaySeOnFrame(em, 0x52, 0x1E);
-        Em_PlaySeOnFrame(em, 0x92, 0x1E);
-        break;
-    case 0x407:
-        Em_PlaySeOnFrame(em, 0xE, 0xB);
-        Em_PlaySeOnFrame(em, 0x44, 0x13);
-        Em_PlaySeOnFrame(em, 0x52, 0x13);
-        Em_PlaySeOnFrame(em, 0x5E, 0x13);
-        Em_PlaySeOnFrame(em, 0x44, 0x16);
-        Em_PlaySeOnFrame(em, 0x52, 0x16);
-        Em_PlaySeOnFrame(em, 0x5E, 0x16);
-        Em_PlaySeOnFrame(em, 0x70, 0x1C);
-        Em_PlaySeOnFrame(em, 0x72, 6);
-        break;
-    case 0x408:
-        Em_PlaySeOnFrame(em, 4, 0x15);
-        Em_PlaySeOnFrame(em, 0xC, 0x18);
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(5, 4, 7, 4));
-        Em_PlaySeOnFrame(em, 0x1E, 0x15);
-        Em_PlaySeOnFrame(em, 0x36, 0x1A);
-        break;
-    case 0x409:
-        Em_PlaySeOnFrame(em, 8, 0x15);
-        Em_PlaySeOnFrame(em, 6, 0x19);
-        Em_PlaySeOnFrame(em, 0x26, 0x21);
-        Em_PlaySeOnFrame(em, 0x26, 0x1A);
-        break;
-    case 0x40A:
-        Em_PlaySeOnFrame(em, 8, 0x17);
-        Em_PlaySeOnFrame(em, 0xC, 0x21);
-        Em_PlaySeOnFrame(em, 0x26, 0x21);
-        break;
-    case 0x40B:
-        Em_PlaySeOnFrame(em, 0xA, 0x17);
-        Em_PlaySeOnFrame(em, 0xE, 0x21);
-        Em_PlaySeOnFrame(em, 0xE, Sound_RandomSe(5, 4, 7, 4));
-        Em_PlaySeOnFrame(em, 0x16, 0x15);
-        Em_PlaySeOnFrame(em, 0x1E, 0x15);
-        Em_PlaySeOnFrame(em, 0x26, 0x15);
-        Em_PlaySeOnFrame(em, 0x2E, 0x15);
-        Em_PlaySeOnFrame(em, 0x34, 0x15);
-        Em_PlaySeOnFrame(em, 0x3C, 0x15);
-        Em_PlaySeOnFrame(em, 0x44, 0x15);
-        Em_PlaySeOnFrame(em, 0x52, 0x17);
-        Em_PlaySeOnFrame(em, 0x6C, 0x1E);
-        break;
-    case 0x40C:
-        if ((em->stateGroup == 0) && (em->state == 0xF)) {
-            Em_PlaySeOnFrame(em, 4, 0x11);
-            Em_PlaySeOnFrame(em, 0x54, 0x19);
-            Em_PlaySeOnFrame(em, 0x5E, 0x19);
-            Em_PlaySeOnFrame(em, 0x78, 0x18);
-            Em_PlaySeOnFrame(em, 0x3E, 0x24);
-            break;
-        }
-        Em_PlaySeOnFrame(em, 4, 0x11);
-        Em_PlaySeOnFrame(em, 0x54, 0x19);
-        Em_PlaySeOnFrame(em, 0x5E, 0x19);
-        Em_PlaySeOnFrame(em, 0x78, 0x18);
-        Em_PlaySeOnFrame(em, 0x46, 0x23);
-        break;
-    case 0x40D:
-        Em_PlaySeOnFrame(em, 8, 0x18);
-        Em_PlaySeOnFrame(em, 0xE, 0x15);
-        Em_PlaySeOnFrame(em, 0x16, 0x15);
-        Em_PlaySeOnFrame(em, 0x1E, 0x15);
-        Em_PlaySeOnFrame(em, 0x26, 0x15);
-        Em_PlaySeOnFrame(em, 0x2E, 0x15);
-        Em_PlaySeOnFrame(em, 0x34, 0x15);
-        Em_PlaySeOnFrame(em, 0x44, 0x1F);
-        Em_PlaySeOnFrame(em, 0x54, 0x1F);
-        Em_PlaySeOnFrame(em, 0x72, 0x1E);
-        break;
-    case 0x40E:
-        Em_PlaySeOnFrame(em, 0x12, Sound_RandomSe(8, 4, 0xA, 4));
-        Em_PlaySeOnFrame(em, 0x3C, Sound_RandomSe(9, 4, 0xC, 4));
-        Em_PlaySeOnFrame(em, 0x10, 0x15);
-        Em_PlaySeOnFrame(em, 0x40, 0x15);
-        Em_PlaySeOnFrame(em, 0x10, 0x18);
-        Em_PlaySeOnFrame(em, 0x40, 0x18);
-        break;
-    case 0x424:
-        Em_PlaySeOnFrame(em, 4, Sound_RandomSe(5, 4, 7, 4));
-        Em_PlaySeOnFrame(em, 0x32, 0x10);
-        Em_PlaySeOnFrame(em, 0xC, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x20, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x46, 0x1E);
-        Em_PlaySeOnFrame(em, 0xD2, 0x1C);
-        break;
-    case 0x425:
-        Em_PlaySeOnFrame(em, 4, Sound_RandomSe(5, 4, 7, 4));
-        break;
-    case 0x426:
-        Em_PlaySeOnFrame(em, 4, Sound_RandomSe(4, 2, 4, 2));
-        Em_PlaySeOnFrame(em, 4, 0x1C);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1D);
-        Em_PlaySeOnFrame(em, 4, Sound_RandomSe(6, 3, 6, 3));
-        Em_PlaySeOnFrame(em, 0x64, 0x1C);
-        Em_PlaySeOnFrame(em, 0xA, 0x1A);
-        Em_PlaySeOnFrame(em, 0x34, 0x1A);
-        break;
-    case 0x427:
-        Em_PlaySeOnFrame(em, 0x1C, 0x15);
-        Em_PlaySeOnFrame(em, 0x28, 0x15);
-        Em_PlaySeOnFrame(em, 0x34, 0x15);
-        Em_PlaySeOnFrame(em, 0x40, 0x15);
-        Em_PlaySeOnFrame(em, 0x1C, 0x11);
-        Em_PlaySeOnFrame(em, 0x66, 4);
-        Em_PlaySeOnFrame(em, 0x68, 0x16);
-        Em_PlaySeOnFrame(em, 0x80, 0x17);
-        Em_PlaySeOnFrame(em, 0x84, 0x18);
-        break;
-    case 0x428:
-        Em_PlaySeOnFrame(em, 0x14, 0x1E);
-        Em_PlaySeOnFrame(em, 0x22, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2A, 0x1E);
-        Em_PlaySeOnFrame(em, 0x46, 0x1E);
-        Em_PlaySeOnFrame(em, 0x54, 0x1E);
-        Em_PlaySeOnFrame(em, 0x6C, 0x1E);
-        Em_PlaySeOnFrame(em, 0x8C, 0x13);
-        break;
-    case 0x429:
-        Em_PlaySeOnFrame(em, 0x30, 0x13);
-        Em_PlaySeOnFrame(em, 4, 6);
-        break;
-    case 0x42A:
-        Em_PlaySeOnFrame(em, 4, 0x13);
-        Em_PlaySeOnFrame(em, 0x40, 0x1A);
-        Em_PlaySeOnFrame(em, 0x5A, 0x1D);
-        break;
-    case 0x42B:
-        Em_PlaySeOnFrame(em, 4, 0x12);
-        Em_PlaySeOnFrame(em, 0x9C, 0x1D);
-        break;
-    case 0x42E:
-        Em_PlaySeOnFrame(em, 4, 0xC);
-        Em_PlaySeOnFrame(em, 0x100, 1);
-        break;
-    case 0x42F:
-        Em_PlaySeOnFrame(em, 0x10, 0x18);
-        Em_PlaySeOnFrame(em, 0x12, 0x18);
-        Em_PlaySeOnFrame(em, 0x24, 0xC);
-        break;
-    case 0x430:
-        Em_PlaySeOnFrame(em, 0x30, 0xD);
-        Em_PlaySeOnFrame(em, 8, 0x1E);
-        break;
-    case 0x431:
-        Em_PlaySeOnFrame(em, 0xA, 0x12);
-        break;
-    case 0x432:
-        Em_PlaySeOnFrame(em, 8, 0xA);
-        Em_PlaySeOnFrame(em, 0x34, 4);
-        Em_PlaySeOnFrame(em, 0x36, 0x21);
-        Em_PlaySeOnFrame(em, 0x36, 0x20);
-        Em_PlaySeOnFrame(em, 0x16, 0x18);
-        Em_PlaySeOnFrame(em, 0x1E, 0x18);
-        Em_PlaySeOnFrame(em, 0x80, 0x18);
-        Em_PlaySeOnFrame(em, 0x94, 0x18);
-        break;
-    case 0x433:
-        Em_PlaySeOnFrame(em, 0xE, 0xB);
-        break;
-    }
-}
-
-void EmMelynx_Reset(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-    f32 fslot;
-    u8 slotNo;
-    s16 hp;
-
-    if (gQuest.stage == 0) {
-        if (Area_DayId(gScene.area) == AREA_SNOWY_MOUNTAINS_NIGHT_9) {
-            em->posX = 9500.0f + (150.0f * (f32) (em->slotNo / 8));
-            em->posY = 0.0f;
-            em->posZ = 9200.0f + (150.0f * (f32) (em->slotNo & 7));
-        } else {
-            slotNo = em->slotNo;
-            fslot = (f32) (u32) slotNo;
-            em->posX = 2400.0f + (150.0f * fslot);
-            em->posY = 0.0f;
-            em->posZ = 3600.0f;
-        }
-    }
-    em->blind = 0;
-    em->remote = 0;
-    Em_SetMotionRow(em, 1, 0, 0);
-    em->stance = 0;
-    hp = Em_ComputeMaxHp(em, 0);
-    em->hp = hp;
-    em->hpMax = hp;
-    w->unk00E = 0;
-    w->unk00C = 0;
-    w->home[0] = em->posX;
-    w->home[1] = 0.0f;
-    w->home[2] = em->posZ;
-    w->alertState = 0;
-    w->stolenItem = -1;
-    em->painted = 0;
-    if (em->variant & 0x80) {
-        em->scaleZ = 10.0f;
-        em->scaleY = 10.0f;
-        em->scaleX = 10.0f;
-        em->bodyScale = 10.0f;
-        GmEm_ApplySize(em);
-    }
-    switch (em->spawnParam) {
-    case 1:
-        em->spawnParam = 0;
-        Em_SetCombat(em, 1, gEmCombatInit[em->type]);
-        break;
-    }
-    Em_InitParts(em);
-}
-
-void EmMelynx_Start(Em *em)
-{
-    EmMelynx_Reset(em);
-    if (em->variant == 0xC) {
-        EmMelynx_ChangeState(em, 0, 1, 0);
-        return;
-    }
-    if ((Area_DayId(em->area) & 0xFFFF) == AREA_DESERT_8) {
-        if (em->variant != 0) {
-            em->noHitTimer = 0xA;
-            em->noPushTimer = 0xA;
-        }
-        EmMelynx_ChangeState(em, 0, 1, 0);
-        return;
-    }
-    EmMelynx_ChangeState(em, 1, 8, 0);
-}
-
-void EmMelynx_Reinit(Em *em)
-{
-    EmMelynx_Reset(em);
-}
-
-void EmMelynx_DeductReward(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-    s16 v = w->stolenItem;
-
-    if (v != -1) {
-        Quest_DeductReward(w->stolenFrom, v, w->stolenCount);
-    }
-}
-
-void EmMelynx_CapTimerOffTarget(Em *em)
-{
-    s8 t;
-
-    if (em->timer > 0xF) {
-        t = em->targetNo;
-        if (t == -1) {
-            em->timer = 0xF;
-        } else if (em->area != ((Player *) &gPlayers[t])->area) {
-            em->timer = 0xF;
-        }
-    }
-}
-
-void EmMelynx_ChangeState(Em *em, u16 group, u16 state, u8 mode)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    em->unk446 = 0;
-    switch (group) {
-    case 0:
-        em->stance = 0;
-        switch (state) {
-        case 11:
-            break;
-        case 15:
-            break;
-        case 16:
-            Em_EndStatus5(em);
-            break;
-        }
-        break;
-    case 1:
-        em->stance = 0;
-        switch (state) {
-        case 4:
-        default:
-            w->unk00E = 1;
-        case 5:
-        case 6:
-            Em_ComputeGoal2(em, em->goal);
-            break;
-        case 2:
-            em->timer = 600;
-            break;
-        }
-        break;
-    case 3:
-        em->stance = 0;
-        break;
-    case 4:
-        switch (state) {
-        case 1:
-            break;
-        case 4:
-            em->stance = 0;
-            Em_BeginStatus5(em);
-            break;
-        default:
-            em->stance = 0;
-            break;
-        }
-        break;
-    case 5:
-        if (state == 2 && QuestEm_CanAppear(em) == 1) {
-            QuestEm_Appear(em);
-        }
-        break;
-    case 2:
-    case 6:
-        break;
-    }
-    Em_SetStateSync(em, group, state, mode);
-}
-
-void EmMelynx_EndState(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    u16 temp_s0;
-
-    em->motionSpeed = 1.0f;
-    em->scriptPending = 1;
-    temp_s0 = (u16) w->unk00E;
-    EmMelynx_ChangeState(em, 0, 1, 0);
-    w->unk00E = (s16) temp_s0;
-    em->prevStateGroup = em->stateGroup;
-    em->prevState = em->state;
-}
-
-s32 EmMelynx_BombState(Em *em)
-{
-    u8 *w = &em->work;
-
-    if (em->stance != 0 || (u32) (em->stateGroup - 4) <= 2 || em->active == 0) {
-        return -1;
-    }
-    if (em->contactHit != 0) {
-        return -2;
-    }
-    if (*(u16 *) (w + 0xE) != 0) {
-        return 1;
-    }
-    return 0;
-}
-
-s32 EmMelynx_StealItem(Em *em, Player *p, EmMelynxWork *w)
-{
-    s32 list[20];
-    s32 i;
-    s32 n;
-
-    if (p->index != gScene.localPlayer) {
-        return 0;
-    }
-    if (Quest_IsRunning(1)) {
-        return 0;
-    }
-    if (Player_HasSkill(p, 0x5C) == 1) {
-        return 0;
-    }
-    if (Pouch_Count(p, 0xBD) > 0) {
-        w->stolenItem = 0xBD;
-        w->stolenCount = -1;
-    } else if (Pouch_Count(p, 0xF9) > 0) {
-        w->stolenItem = 0xF9;
-        w->stolenCount = -1;
-    } else {
-        for (i = 0, n = 0; i < 20; i++) {
-            if (p->pouch[i].item != 0 && gItemData[p->pouch[i].item].type == 0 && gItemData[p->pouch[i].item].rarity < 4) {
-                list[n] = i;
-                n++;
-            }
-        }
-        if (n == 0) {
-            return 0;
-        }
-        w->stolenItem = p->pouch[list[em->stateRand % n]].item;
-        w->stolenCount = -1;
-    }
-    w->stolenFrom = p;
-    Pouch_Add(p, (u16)w->stolenItem, w->stolenCount);
-    Notice_Push(1, 6, w->stolenItem);
-    return 1;
-}
-
-void EmMelynx_ReturnItem(Em *em, EmMelynxWork *w)
-{
-    if (w->stolenItem != -1) {
-        switch ((u16) Pouch_Add(w->stolenFrom, w->stolenItem, -w->stolenCount)) {
-        case 0:
-        case 1:
-        case 2:
-            if (Player_IsLocal(w->stolenFrom) == 1) {
-                Notice_Push(1, 7, w->stolenItem);
-            }
-            break;
-        case 3:
-            if (Player_IsLocal(w->stolenFrom) == 1) {
-                Notice_Push(1, 3, w->stolenItem);
-            }
-            break;
-        default:
-            if (Player_IsLocal(w->stolenFrom) == 1) {
-                Notice_Push(0, 0xC, 0);
-            }
-            break;
-        }
-        w->stolenItem = -1;
-    }
-}
-
-void EmMelynx_State0_00(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-        }
-        em->timer = (em->stateRand & 0xF) + 5;
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->scriptPending = 1;
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_01(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        if (em->motionId[0] != 0x3E9) {
-            Em_SetMotion(em, 1, 0, 0);
-        }
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_02(Em *em, s32 variant)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        switch (variant) {
-        case 0:
-            Em_SetMotion(em, 2, 0, 0);
-            break;
-        case 1:
-            Em_SetMotion(em, 3, 0, 0);
-            break;
-        case 2:
-            Em_SetMotion(em, 4, 0, 0);
-        }
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_05(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 5, 0, 0);
-        em->timer = 0x78;
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_06(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x1F, 0, 0);
-        StageObj_Stun_CreateEm(em, 1, 2, 0x3C, 30.0f, 1.0f);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x3F, 0, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_07(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x25, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_08(Em *em, s32 unused)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = (em->stateRand & 0x3F) + 0x3C;
-        Em_SetMotion(em, 0x26, 0, 0);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_09(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x96;
-        Em_SetMotion(em, 0x20, 0, 0);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x22, 4, 4);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_0A(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x78;
-        Em_SetMotion(em, 0x23, 0, 0);
-        em->blind = 0;
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_0B(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x14;
-        Em_SetMotion(em, 0x24, 0, 0);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            em->timer = 0x6E;
-            w->unk00E = 1;
-            EmBomb_Create(em, 0);
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_0C(Em *em)
-{
-    f32 pos[3];
-
-    Em_SetHitReactMode(em, EM_HIT_REACT_WAKE);
-    em->blind = 2;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x43, 0, 0);
-        Em_BeginStatus2(em);
-        break;
-    case 1:
-        pos[0] = 0.0f;
-        pos[1] = 0.0f;
-        pos[2] = 10.0f;
-        Em_SpawnLyingPuffs(em, 0xA, pos, 0.6f);
-        if (--em->timer <= 0) {
-            em->step++;
-            EmMelynx_ChangeState(em, 0, 0xD, 4);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_0D(Em *em)
-{
-    em->blind = 2;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_EndStatus2(em);
-        Em_SetMotion(em, 0x3F, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            em->blind = 0;
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_0E(Em *em)
-{
-    EmMelynxWork *w;
-    s16 v;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x11, 0, 0);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 144.0f, 0) != 0) {
-            em->step++;
-        }
-        break;
-    case 2:
-        em->noHitTimer = 10;
-        em->noPushTimer = 10;
-        if (em->motion[0].playing == 0) {
-            w = (EmMelynxWork *)&em->work;
-            if (w->alertState == 1) {
-                ObjListA70_Remove(&w->sense);
-                w->alertState = 2;
-            }
-            v = w->stolenItem;
-            if (v != -1) {
-                Quest_DeductReward(w->stolenFrom, v, w->stolenCount);
-            }
-            QuestEm_Appear(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_0F(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x14;
-        Em_SetMotion(em, 0x24, 0, 0);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            em->timer = 0x6E;
-            w->unk00E = 1;
-            EmBomb_Create(em, 1);
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State0_10(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x3F, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_RunGroup0(Em *em)
-{
-    em->prevStateGroup = em->stateGroup;
-    em->prevState = em->state;
-    switch (em->state) {
-    case 0:
-        EmMelynx_State0_00(em, 0);
-        break;
-    case 1:
-        EmMelynx_State0_01(em, 0);
-        break;
-    case 2:
-        EmMelynx_State0_02(em, 0);
-        break;
-    case 3:
-        EmMelynx_State0_02(em, 1);
-        break;
-    case 4:
-        EmMelynx_State0_02(em, 2);
-        break;
-    case 5:
-        EmMelynx_State0_05(em, 2);
-        break;
-    case 6:
-        EmMelynx_State0_06(em, 0);
-        break;
-    case 7:
-        EmMelynx_State0_07(em, 0);
-        break;
-    case 8:
-        EmMelynx_State0_08(em, 0);
-        break;
-    case 9:
-        EmMelynx_State0_09(em);
-        break;
-    case 10:
-        EmMelynx_State0_0A(em);
-        break;
-    case 11:
-        EmMelynx_State0_0B(em);
-        break;
-    case 12:
-        EmMelynx_State0_0C(em);
-        break;
-    case 13:
-        EmMelynx_State0_0D(em);
-        break;
-    case 14:
-        EmMelynx_State0_0E(em);
-        break;
-    case 15:
-        EmMelynx_State0_0F(em);
-        break;
-    case 16:
-        EmMelynx_State0_10(em);
-        
-    default:
-        break;
-    }
-}
-
-void EmMelynx_State1_00(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 300;
-        w->stateTimer = 0x8A;
-        Em_SetMotion(em, 0xC, 0, 0);
-        break;
-    case 1:
-        if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f || --em->timer <= 0) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        EmMelynx_CapTimerOffTarget(em);
-        break;
-    }
-}
-
-void EmMelynx_State1_01(Em *em)
-{
-    u8 step;
-
-    step = em->step;
-    switch (step) {
-    case 0:
-        em->step = step + 1;
-        Em_SetMotion(em, 0x21, 0, 0);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 46.0f, 0U) != 0) {
-            em->step++;
-            Em_SetMotion(em, 0xE, 0, 0);
-            em->timer = 0x12C;
-        }
-        break;
-    case 2:
-        EmMelynx_CapTimerOffTarget(em);
-        if (!(Vec_DistanceXZ(&em->posX, em->goal) <= 200.0f)) {
-            if (--em->timer <= 0) {
-                goto block_12;
-            }
-        } else {
-block_12:
-            em->step++;
-            Em_SetMotion(em, 0x22, 0, 0);
-        }
-        break;
-    case 3:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State1_02(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0xB, 0, 0);
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        break;
-    case 1:
-        if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f || --em->timer <= 0) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmMelynx_State1_04(Em *em)
-{
-    s32 t;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x8C;
-        Em_SetMotion(em, 0x10, 0, 0);
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        EmContactAttack_Create(em, 4);
-        break;
-    case 1:
-        if ((Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f) || ((em->contactHit != 0) && (em->contact->isEm == 0)) || (t = em->timer - 1, em->timer = t, (t <= 0))) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        EmMelynx_CapTimerOffTarget(em);
-        break;
-    }
-}
-
-void EmMelynx_State1_05(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Em_SetMotion(em, 0xB, 0, 0);
-        Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
-        break;
-    case 1:
-        if (Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800) < 0x800) {
-            Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-    Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-}
-
-void EmMelynx_State1_06(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 300;
-        Em_SetMotion(em, 0xC, 0, 0);
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        break;
-    case 1:
-        if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f || --em->timer <= 0) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmMelynx_State1_07(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 300;
-        Em_SetMotion(em, 0xF, 0, 0);
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        break;
-    case 1:
-        if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f || --em->timer <= 0) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmMelynx_State1_08(Em *em)
-{
-    s32 timer;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
-        Em_SetMotion(em, 0xB, 0, 0);
-        em->targetAngle = (em->stateRand & 0xF) << 0xC;
-        break;
-    case 1:
-        timer = em->timer;
-        if (timer > 0) {
-            em->timer = timer - 1;
-        }
-        if ((em->remote == 0) && (em->timer <= 0)) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x100);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmMelynx_State1_09(Em *em)
-{
-    s32 t;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x64;
-        Em_SetMotion(em, 0x10, 0, 0);
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        break;
-    case 1:
-        if ((Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f) || ((em->contactHit != 0) && (em->contact->isEm == 0)) || (t = em->timer - 1, em->timer = t, (t <= 0))) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        EmMelynx_CapTimerOffTarget(em);
-        break;
-    }
-}
-
-void EmMelynx_State1_0A(Em *em)
-{
-    s32 timer;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x78;
-        Em_SetMotion(em, 0xF, 0, 0);
-        em->targetAngle = (em->stateRand & 0xF) << 0xC;
-        break;
-    case 1:
-        timer = em->timer;
-        if (timer > 0) {
-            em->timer = timer - 1;
-        }
-        if ((em->remote == 0) && (em->timer <= 0)) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x100);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmMelynx_State1_0B(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 300;
-        Em_SetMotion(em, 0xB, 0, 0);
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        break;
-    case 1:
-        if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f || --em->timer <= 0) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmMelynx_State1_0C(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-    s32 timer;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
-        Em_SetMotion(em, 0xB, 0, 0);
-        break;
-    case 1:
-        timer = em->timer;
-        if (timer > 0) {
-            em->timer = timer - 1;
-        }
-        if ((em->remote == 0) && (em->timer <= 0)) {
-            EmMelynx_EndState(em);
-            break;
-        }
-        em->targetAngle = Math_AngleXZ(&em->posX, w->home) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x100);
-        Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        break;
-    }
-}
-
-void EmMelynx_RunGroup1(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmMelynx_State1_00(em);
-        break;
-    case 1:
-        EmMelynx_State1_01(em);
-        break;
-    case 2:
-        EmMelynx_State1_02(em);
-        break;
-    case 4:
-        EmMelynx_State1_04(em);
-        break;
-    case 5:
-        EmMelynx_State1_05(em);
-        break;
-    case 6:
-        EmMelynx_State1_06(em);
-        break;
-    case 7:
-        EmMelynx_State1_07(em);
-        break;
-    case 8:
-        EmMelynx_State1_08(em);
-        break;
-    case 9:
-        EmMelynx_State1_09(em);
-        break;
-    case 10:
-        EmMelynx_State1_0A(em);
-        break;
-    case 11:
-        EmMelynx_State1_0B(em);
-        break;
-    case 12:
-        EmMelynx_State1_0C(em);
-        
-    default:
-        break;
-    }
-}
-
-void EmMelynx_State2_00(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0xD, 0, 0);
-        em->velY = 0.0f;
-        em->accelY = -0.5f;
-        break;
-    case 1:
-        Player_Integrate(em);
-        if (em->posY <= em->floorY) {
-            em->stance = 0;
-            em->posY = em->floorY;
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_RunGroup2(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmMelynx_State2_00(em);
-        break;
-    }
-}
-
-void EmMelynx_State3_00(Em *em)
-{
-    f32 floorY;
-    u8 stance;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x15, 0, 0);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            em->stance = 2;
-            em->velX = 0.0f;
-            em->velY = 16.0f;
-            em->velY = 30.0f;
-            em->velZ = 5.0f;
-            Vec_RotateY(&em->velX, (6.2831855f * (f32) em->rotY) / 65536.0f);
-            em->accelX = 0.0f;
-            em->accelY = -1.0f;
-            em->accelY = -3.0f;
-            em->accelZ = 0.0f;
-            Em_SetMotion(em, 0x16, 0, 0);
-            EmContactAttack_Create(em, 1);
-            em->stateVar0 = 0;
-        }
-        break;
-    case 2:
-        Player_Integrate(em);
-        if ((em->motion[0].playing == 0) && ((em->posY - 50.0f) <= em->floorY)) {
-            if (em->hitPending == 0) {
-                em->step++;
-                Em_SetMotion(em, 0x18, 0, 0);
-                em->velY *= 0.5f;
-                em->accelY = -0.5f;
-                em->stateVar1 = 0;
-                break;
-            }
-            em->step++;
-            Em_SetMotion(em, 0x17, 0, 0);
-            em->stateVar1 = 1;
-        }
-        break;
-    case 3:
-        stance = em->stance;
-        if (stance != 0) {
-            floorY = em->floorY;
-            if ((em->posY <= floorY) && (stance != 0)) {
-                em->posY = floorY;
-                em->stance = 0;
-            } else {
-                Player_Integrate(em);
-            }
-        }
-        if (em->motion[0].playing == 0) {
-            em->posY = em->floorY;
-            em->stance = 0;
-            if (em->stateVar1 != 0) {
-                em->stateVar1 = 0;
-                EmMelynx_EndState(em);
-                break;
-            }
-            EmMelynx_ChangeState(em, 0, 3, 4);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State3_01(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-    Player *p;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0xF, 0, 0);
-        em->targetAngle = Math_AngleXZ(&em->posX, em->goal);
-        if (em->state == 3) {
-            em->timer = 120;
-            w->eff = EmContactAttack_Create(em, 7);
-            em->motionSpeed = 1.2f;
-        } else {
-            em->timer = 60;
-            w->eff = EmContactAttack_Create(em, 2);
-            em->motionSpeed = 1.0f;
-        }
-        break;
-    case 1:
-        if (em->contactHit != 0 && (p = em->contact) != NULL && p->isEm == 0 && p == &gPlayers[p->index] && p->active) {
-            EmMelynx_StealItem(em, p, w);
-            Em_SetRequest(em, 1, 0x90);
-            em->step++;
-            Em_SetMotion(em, 0x17, 0, 0);
-        } else if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 3, 0, 0);
-        } else {
-            if (em->state == 3) {
-                em->targetAngle = Math_AngleXZ(&em->posX, em->goal);
-            }
-            Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
-            Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-            EmMelynx_CapTimerOffTarget(em);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State3_02(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 2;
-        em->velX = 0.0f;
-        em->velY = 16.0f;
-        em->velY = 30.0f;
-        em->velZ = 5.0f;
-        Vec_RotateY(&em->velX, 6.2831855f * em->rotY / 65536.0f);
-        em->accelX = 0.0f;
-        em->accelY = -1.0f;
-        em->accelY = -3.0f;
-        em->accelZ = 0.0f;
-        Em_SetMotion(em, 0x16, 0, 0);
-        EmContactAttack_Create(em, 1);
-        em->stateVar0 = 0;
-        break;
-    case 1:
-        Player_Integrate(em);
-        if (em->motion[0].playing == 0 && em->posY - 50.0f <= em->floorY) {
-            if (em->hitPending == 0) {
-                em->step++;
-                Em_SetMotion(em, 0x18, 0, 0);
-                em->velY *= 0.5f;
-                em->accelY = -0.5f;
-                em->stateVar1 = 0;
-            } else {
-                em->step++;
-                Em_SetMotion(em, 0x18, 0, 0);
-                em->stateVar1 = 1;
-            }
-        }
-        break;
-    case 2:
-        if (em->stance != 0) {
-            if (em->posY <= em->floorY && em->stance != 0) {
-                em->posY = em->floorY;
-                em->stance = 0;
-            } else {
-                Player_Integrate(em);
-            }
-        }
-        if (em->motion[0].playing == 0) {
-            em->posY = em->floorY;
-            em->stance = 0;
-            if (em->stateVar1 != 0) {
-                em->stateVar1 = 0;
-                EmMelynx_EndState(em);
-                break;
-            }
-            EmMelynx_ChangeState(em, 0, 3, 4);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State3_04(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->timer = 0x14;
-        Em_SetMotion(em, 0x24, 0, 0);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            em->timer = 0x3C;
-            w->unk00E = 1;
-            if (em->state == 4) {
-                EmBomb_Create(em, 2);
-                break;
-            }
-            EmBomb_Create(em, 3);
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x4A, 0, 0);
-        }
-        break;
-    case 3:
-        if (EmMotion_PassedFrameScaled(em, 48.0f, 0U) != 0) {
-            em->step++;
-            w->unk00E = 0;
-        }
-        
-    case 4:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_RunGroup3(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmMelynx_State3_00(em);
-        break;
-    case 1:
-        EmMelynx_State3_01(em);
-        break;
-    case 2:
-        EmMelynx_State3_02(em);
-        break;
-    case 3:
-        EmMelynx_State3_01(em);
-        break;
-    case 4:
-        EmMelynx_State3_04(em);
-        break;
-    case 5:
-        EmMelynx_State3_04(em);
-        
-    default:
-        break;
-    }
-}
-
-void EmMelynx_State4_00(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x3C, 0, 0);
-        em->rotY = em->hitAngle + 0x7FFF + 1;
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x40, 0, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State4_01(Em *em)
-{
-    f32 in[3];
-    f32 out[3];
-    s32 ang[3];
-    f32 mtx[16];
-
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x3D, 0, 0);
-        ang[0] = 0;
-        em->rotY = ang[1] = em->hitAngle + 0x7FFF + 1;
-        ang[2] = 0;
-        Mtx_FromAnglesXYZ((s32 *) ang, mtx);
-        in[0] = 0.0f;
-        in[1] = 10.0f;
-        in[2] = -12.0f;
-        Vec_Rotate(out, in, mtx);
-        Player_ClearAccel2(em);
-        em->velX = out[0];
-        em->velY = out[1];
-        em->velZ = out[2];
-        em->accelY = -0.4f;
-        em->accelZ = 0.15f;
-        em->stance = 2;
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (!(em->velZ * em->accelZ < 0.0f)) {
-            em->accelZ = 0.0f;
-        }
-        if (Player_MoveFall((Player *) em) != 0) {
-            em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x3E, 0, 0);
-            em->timer = 90;
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x3F, 0, 0);
-        }
-        break;
-    case 3:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State4_02(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x1F, 0, 0);
-        Em_SetRequest(em, 0U, 0x90U);
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x3F, 0, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State4_03(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    if (em->timer > 0) {
-        em->timer--;
-    }
-    if (em->step <= 3) {
-        Em_SpawnStatus4Effect(em, 2);
-        Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
-    }
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x3C, 0, 0);
-        em->rotY = em->hitAngle + 0x7FFF + 1;
-        Em_BeginStatus4(em);
-        em->noReact = 1;
-        Em_RestartScript(em);
-        break;
-    case 1:
-        if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
-            em->step++;
-            Em_SetMotion(em, 0x41, 0, 0);
-            w->stateTimer = 0x3A;
-        }
-        break;
-    case 2:
-        if (--w->stateTimer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x42, 0, 0);
-        }
-        break;
-    case 3:
-        if (em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x40, 0, 0);
-            Em_EndStatus4(em);
-        }
-        break;
-    case 4:
-        if (em->motion[0].playing == 0) {
-            em->noReact = 0;
-            EmMelynx_EndState(em);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State4_04(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->stance = 0;
-        Em_SetMotion(em, 0x1F, 0, 0);
-        StageObj_Stun_CreateEm(em, 1, 0, *(s16 *)((u8 *)em + 8), 90.0f, 1.0f);
-        break;
-    case 1:
-        if (--em->timer <= 0) {
-            em->step++;
-            EmMelynx_ChangeState(em, 0, 0x10, 4);
-        }
-        break;
-    case 2:
-        if (em->remote == 0) {
-            EmMelynx_ChangeState(em, 0, 0x10, 4);
-        }
-        break;
-    }
-}
-
-void EmMelynx_RunGroup4(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmMelynx_State4_00(em);
-        break;
-    case 1:
-        EmMelynx_State4_01(em);
-        break;
-    case 2:
-        EmMelynx_State4_02(em);
-        break;
-    case 3:
-        EmMelynx_State4_03(em);
-        break;
-    case 4:
-        EmMelynx_State4_04(em);
-        break;
-    }
-}
-
-void EmMelynx_State5_00_Hunted(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-    f32 in[3];
-    f32 out[3];
-    s32 ang[3];
-    f32 mtx[16];
-
-    em->noHitTimer = 10;
-    em->noPushTimer = 10;
-    Em_SetCombat(em, 0, 0);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x3D, 0, 0);
-        in[0] = 0.0f;
-        in[1] = 10.0f;
-        ang[0] = 0;
-        in[2] = -12.0f;
-        em->rotY = ang[1] = em->hitAngle + 0x7FFF + 1;
-        ang[2] = 0;
-        Mtx_FromAnglesXYZ((s32 *) ang, mtx);
-        Vec_Rotate(out, in, mtx);
-        Player_ClearAccel2(em);
-        em->velX = out[0];
-        em->velY = out[1];
-        em->velZ = out[2];
-        em->accelY = -0.4f;
-        em->accelZ = 0.15f;
-        em->stance = 2;
-        EmMelynx_ReturnItem(em, w);
-        QuestEm_Hunted(em);
-        break;
-    case 1:
-        if (!(em->velZ * em->accelZ < 0.0f)) {
-            em->accelZ = 0.0f;
-        }
-        if (Player_MoveFall((Player *) em) != 0) {
-            em->step++;
-            em->stance = 0;
-            Em_SetMotion(em, 0x3E, 0, 0);
-            em->timer = 300;
-        }
-        break;
-    case 2:
-        if (--em->timer <= 0) {
-            em->step++;
-            Em_SetMotion(em, 0x3F, 0, 0);
-        }
-        break;
-    case 3:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x11, 0, 0);
-        }
-        break;
-    case 4:
-        if (em->motion[0].playing == 0) {
-            if (w->alertState == 1) {
-                ObjListA70_Remove(&w->sense);
-                w->alertState = 2;
-            }
-            em->visible = 0;
-            if (em->type == 0x17) {
-                EmMine_Drop(em, &em->posX);
-                EmMelynx_ChangeState(em, 5, 2, 4);
-            } else {
-                EmMelynx_ChangeState(em, 5, 2, 4);
-            }
-        }
-        break;
-    case 5:
-        if (--em->timer <= 0) {
-            EmMine_Remove(em);
-            EmMelynx_ChangeState(em, 5, 2, 4);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State5_01_Hunted(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    em->noHitTimer = 10;
-    em->noPushTimer = 10;
-    Em_SetCombat(em, 0, 0);
-    switch (em->step) {
-    case 0:
-        em->step++;
-        Em_SetMotion(em, 0x3C, 0, 0);
-        em->rotY = em->hitAngle + 0x7FFF + 1;
-        em->stance = 0;
-        EmMelynx_ReturnItem(em, w);
-        QuestEm_Hunted(em);
-        break;
-    case 1:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x40, 0, 0);
-        }
-        break;
-    case 2:
-        if (em->motion[0].playing == 0) {
-            em->step++;
-            Em_SetMotion(em, 0x11, 0, 0);
-        }
-        break;
-    case 3:
-        if (em->motion[0].playing == 0) {
-            if (w->alertState == 1) {
-                ObjListA70_Remove(&w->sense);
-                w->alertState = 2;
-            }
-            em->visible = 0;
-            if (em->type == 0x17) {
-                EmMine_Drop(em, &em->posX);
-                EmMelynx_ChangeState(em, 5, 2, 4);
-            } else {
-                EmMelynx_ChangeState(em, 5, 2, 4);
-            }
-        }
-        break;
-    case 4:
-        if (--em->timer <= 0) {
-            EmMine_Remove(em);
-            EmMelynx_ChangeState(em, 5, 2, 4);
-        }
-        break;
-    }
-}
-
-void EmMelynx_State5_02(Em *em)
-{
-    switch (em->step) {
-    case 0:
-        if (QuestEm_CanAppear(em) == 1) {
-            if (em->variant == 0xC) {
-                EmMelynx_ChangeState(em, 0, 1, 0);
-                break;
-            }
-            EmMelynx_ChangeState(em, 1, 8, 0);
-            break;
-        }
-        em->taskPhase++;
-    case 1:
-        break;
-    }
-}
-
-void EmMelynx_RunGroup5(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmMelynx_State5_00_Hunted(em);
-        break;
-    case 1:
-        EmMelynx_State5_01_Hunted(em);
-        break;
-    case 2:
-        EmMelynx_State5_02(em);
-        break;
-    }
-}
-
-void EmMelynx_State6_00(Em *em)
-{
-    em->senseDelay = 5;
-    em->noHitTimer = 5;
-    switch (em->step) {
-    case 0:
-        em->step++;
-        em->lookAtTarget = 0;
-        em->stance = 0;
-        Em_SetMotion(em, 1, 0, 0);
-        em->visible = 0;
-        em->scriptPending = 0;
-        break;
-    case 1:
-        em->step++;
-        em->visible = 1;
-        EmMelynx_EndState(em);
-        break;
-    }
-}
-
-void EmMelynx_RunGroup6(Em *em)
-{
-    switch (em->state) {
-    case 0:
-        EmMelynx_State6_00(em);
-        break;
-    }
-}
-
-void EmMelynx_Update(Em *em)
-{
-    u8 buf[4];
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-    u32 r;
-
-    if (Area_DayId(em->area) == AREA_DESERT_8 && em->variant != 0) {
-        em->noHitTimer = 10;
-        em->noPushTimer = 10;
-    }
-    if (w->unk00C != 0) {
-        w->unk00C -= 1;
-    }
-    if (em->combat == 1 && em->rage == 0) {
-        Em_CheckRageByHp(em, (s16) (em->rageThreshold / 1800));
-    }
-    r = (u8) Em_SenseObjects(em, &w->sense);
-    if (w->alertState == 0 && em->stance == 0 && em->combat == 0 && r != 0 && Em_ScriptFlagsFrom(em, 4) == 0) {
-        em->triggers |= 4;
-        w->alertState = 2;
-        em->blind = 0;
-    }
-    if (w->alertState == 1) {
-        ObjListA70_Remove(&w->sense);
-        w->alertState = 2;
-    }
-    r = Em_UpdateDamage(em, buf) & 0xFF;
-    switch (r) {
-    case 0:
-    case 3:
-    case 4:
-    case 9:
-    case 11:
-    case 15:
-    case 16:
-    case 18:
-        break;
-    case 1:
-    case 2:
-        if (em->stance == 2) {
-            EmMelynx_ChangeState(em, 5, 0, 3);
-        }
-        EmMelynx_ChangeState(em, 5, 1, 3);
-        break;
-    case 5:
-        if (Player_IsState((Player *) em, 4, 1) == 0) {
-            EmMelynx_ChangeState(em, 4, 1, 3);
-            Em_ResetPartHp(em, 0);
-        }
-        break;
-    case 6:
-        if (Player_IsState((Player *) em, 4, 1) == 0) {
-            Em_SetStatus4Timer(em);
-            EmMelynx_ChangeState(em, 4, 3, 3);
-        }
-        break;
-    case 7:
-        EmMelynx_ChangeState(em, 4, 1, 3);
-        Em_ResetPartHp(em, 0);
-        break;
-    case 8:
-        if (Player_IsState((Player *) em, 4, 1) == 0) {
-            Em_SetStatus2Timer(em);
-            EmMelynx_ChangeState(em, 0, 0xC, 3);
-        }
-        break;
-    case 10:
-        em->blind = 0;
-        Em_EndStatus2(em);
-        EmMelynx_ChangeState(em, 4, 1, 3);
-        break;
-    case 12:
-    case 13:
-        EmMelynx_ChangeState(em, 4, 1, 3);
-        Em_ResetPartHp(em, 0);
-        break;
-    case 14:
-        if (em->stance == 2) {
-            EmMelynx_ChangeState(em, 4, 1, 3);
-            Em_ResetPartHp(em, 0);
-        } else {
-            EmMelynx_ChangeState(em, 4, 0, 3);
-        }
-        em->scriptPending = 0;
-        break;
-    case 17:
-        if ((em->stateGroup != 4 || em->state != 4) && (em->stateGroup != 4 || em->state != 1)) {
-            Em_SetStatus5Timer(em);
-            EmMelynx_ChangeState(em, 4, 4, 3);
-        }
-        break;
-    }
-    if ((u8) r != 0) {
-        w->unk00E = 0;
-        em->blind = 0;
-        if (w->alertState == 0) {
-            Vec_Set(w->sense.pos, em->posX, em->posY, em->posZ);
-            w->sense.radius = 3000.0f;
-            w->sense.area = (u8) em->area;
-            w->sense.kind = 1;
-            ObjListA70_Add(&w->sense);
-            w->alertState = 1;
-        }
-    }
-    Em_UpdatePendingScript(em);
-    Em_ClearHitReactMode(em);
-    EmMelynx_RunState(em);
-    if (em->stateRequest != 0) {
-        EmMelynx_RunState(em);
-        em->stateRequest = 0;
-    }
-}
-
-void EmMelynx_RunState(Em *em)
-{
-    switch (em->stateGroup) {
-    case 0:
-        EmMelynx_RunGroup0(em);
-        break;
-    case 1:
-        EmMelynx_RunGroup1(em);
-        break;
-    case 2:
-        EmMelynx_RunGroup2(em);
-        break;
-    case 3:
-        EmMelynx_RunGroup3(em);
-        break;
-    case 4:
-        EmMelynx_RunGroup4(em);
-        break;
-    case 5:
-        EmMelynx_RunGroup5(em);
-        break;
-    case 6:
-        EmMelynx_RunGroup6(em);
-        break;
-    case 7:
-        EmMelynx_RunGroup0(em);
-        
-    default:
-        break;
-    }
-}
-
-void EmMelynx_MotionEffectsDefault(Em *em)
-{
-}
-
-void EmMelynx_MotionEffects(Em *em, EmWork *work)
-{
-    if (em->motionId[0] != work->fxMotion) {
-        work->fxMotion = em->motionId[0];
-    }
-    EmMelynx_MotionSounds(em, work);
-    switch (work->fxMotion) {
-    case 0x3E9:
-    case 0x3EA:
-    case 0x3EB:
-    case 0x3EC:
-    case 0x3ED:
-    case 0x3F3:
-    case 0x3F4:
-    case 0x3F5:
-    case 0x3F6:
-    case 0x3F7:
-    case 0x3F8:
-        break;
-    case 0x3F9:
-        if (EmMotion_PassedFrameScaled(em, 18.0f, 0)) {
-            StageObj_K14_Create(em, 3, 4, 0.5f);
-        }
-        if (EmMotion_PassedFrameScaled(em, 58.0f, 0)) {
-            StageObj_K14_Create(em, 3, 4, 0.5f);
-        }
-        if (EmMotion_PassedFrameScaled(em, 38.0f, 0)) {
-            StageObj_K14_Create(em, 2, 4, 0.5f);
-        }
-        if (EmMotion_PassedFrameScaled(em, 126.0f, 0)) {
-            Effect0D_SpawnForEm(em, 2, 7);
-        }
-        if (EmMotion_PassedFrameScaled(em, 158.0f, 0)) {
-            Effect0D_SpawnForEm(em, 2, 3);
-        }
-        if (EmMotion_PassedFrameScaled(em, 166.0f, 0)) {
-            Effect0D_SpawnForEm(em, 2, 3);
-        }
-        if (EmMotion_PassedFrameScaled(em, 176.0f, 0)) {
-            Effect0D_SpawnForEm(em, 2, 3);
-        }
-        break;
-    case 0x3FD:
-    case 0x3FE:
-    case 0x3FF:
-    case 0x400:
-    case 0x407:
-    case 0x408:
-    case 0x409:
-    case 0x40A:
-    case 0x40B:
-    case 0x40C:
-    case 0x40D:
-    case 0x40E:
-    case 0x424:
-    case 0x425:
-    case 0x426:
-    case 0x427:
-    case 0x428:
-    case 0x429:
-    case 0x42A:
-    case 0x42B:
-    case 0x42E:
-    case 0x42F:
-    case 0x430:
-    case 0x431:
-    case 0x432:
-    case 0x433:
-        break;
-    default:
-        EmMelynx_MotionEffectsDefault(em);
-        break;
-    }
-}
-
-void EmMelynx_UpdateFace(Em *em)
-{
-    EmMelynxWork *w = (EmMelynxWork *)&em->work;
-
-    switch (w->faceStep) {
-    default:
-        return;
-    case 0:
-        w->faceStep++;
-        w->blinkTimer = em->stateRand & 0xF;
-        break;
-    case 1:
-        if (em->stateGroup == 4 || em->stateGroup == 5) {
-            w->eyeFrame = 3;
-            w->blinkTimer = 2;
-        } else if (em->motionId[0] != 0x42B) {
-            (w->blinkTimer)++;
-            switch ((w->blinkTimer >> 1) % 20) {
-            case 1:
-                w->eyeFrame = 1;
-                break;
-            case 2:
-                w->eyeFrame = 2;
-                break;
-            default:
-                w->eyeFrame = 0;
-                break;
-            }
-        } else {
-            w->blinkTimer = 0;
-            w->eyeFrame = 2;
-        }
-        EmMelynx_MotionEffects(em, (EmWork *) w);
-        break;
-    }
-}
-
-void EmMelynx_SetMeshSetAlpha(Em *em, s32 kind, EmMelynxMeshSet *sets)
-{
-    ModelMat *meshes;
-    s32 i;
-    u8 *w;
-    ModelMat *m;
-
-    meshes = em->model->mats;
-    w = &em->work;
-    for (i = 0; i < sets[kind].count; i++) {
-        m = &meshes[sets[kind].mesh[i]];
-        m->alpha = em->alpha;
-        switch (kind) {
-        case 0:
-        case 1:
-            switch (w[0x4E]) {
-            case 0:
-            default:
-                switch (i) {
-                case 2:
-                case 3:
-                case 4:
-                    m->alpha = 0.0f;
-                    break;
-                }
-                break;
-            case 1:
-                switch (i) {
-                case 1:
-                case 3:
-                case 4:
-                    m->alpha = 0.0f;
-                    break;
-                }
-                break;
-            case 2:
-                switch (i) {
-                case 1:
-                case 2:
-                case 4:
-                    m->alpha = 0.0f;
-                    break;
-                }
-                break;
-            case 3:
-                switch (i) {
-                case 1:
-                case 2:
-                case 3:
-                    m->alpha = 0.0f;
-                    break;
-                }
-                break;
-            }
-            break;
-        }
-        Gs_SetState((i + 0x3A) & 0xFF, (s32) m);
-    }
-}
-
-void EmMelynx_SpawnEffect01(u8 *em)
-{
-    Effect01_Spawn((Player *) em, 0);
-}
-
-void EmMelynx_TableNop(void)
-{
-}
-
-/*
- * The Rathalos family's motion sounds (called by EmRathalos_MotionEffects
- * when the motion changes): per motion, the sounds to play at bones on
- * given frames (Em_PlaySeAtBoneOnFrame(em, frame, sound, bone)). It lies
- * in the Cephadrome range, before Rathalos's setup function.
- */
-void EmRathalos_MotionSounds(Em *em, EmWork *work)
-{
-    s16 motion;
-
-    motion = work->sndMotion;
-    switch (motion) {
-    case EM_MOTION_ID(0, 0x2):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
-        break;
-    case EM_MOTION_ID(0, 0x4):
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TURN_RIGHT):
-        Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TURN_LEFT):
-        Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x14);
-        break;
-    case EM_MOTION_ID(0, 0x7):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x14);
-        break;
-    case EM_MOTION_ID(0, 0x8):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_RUN_STOP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 4, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_LIMP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x59, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_DESCEND):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_GLIDE):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x19, 6);
-        break;
-    case EM_MOTION_ID(0, 0xD):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xF, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FLY):
-    case EM_MOTION_ID(0, 0x55):
-    case EM_MOTION_ID(0, 0x56):
-    case EM_MOTION_ID(0, 0x58):
-    case EM_MOTION_ID(0, 0x59):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x19, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x19, 6);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_HOVER):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, 0xB, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_RUN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x12, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TAKE_OFF):
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 7, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0xB, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TOUCH_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 7, 9);
-        break;
-    case EM_MOTION_ID(0, 0x1D):
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xE, 6);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_LIE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_ROAR):
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xCC, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xFE, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x126, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x23, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x30, 0x49, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x22, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xB8, 0x4C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 0x22, 0x23);
-        break;
-    case EM_MOTION_ID(0, 0x24):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x4C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x15, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_GET_UP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x1E, 0x48, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_COLLAPSE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_LIE_DOWN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x10, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_LEAP):
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 7, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xDA, 0x1B, 6);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_LEAP_LAND):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xC, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x10, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 8, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 6, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN_B):
-        Em_PlaySeTypeAtBoneOnFrame(em, 8, 0x4B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 8, 0x4B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_SWOOP_DIVE):
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1B, 6);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_SWOOP_CLAW):
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x5B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x9C, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1E, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1E, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x1D, 6);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x18, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FIREBALL):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
-        if ((em->stateGroup != 8) || (em->state != 3)) {
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0x23);
-        }
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x28, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x4A, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x13, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBB, 0x13, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x12, 0);
-        break;
-    case EM_MOTION_ID(0, 0x30):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x14);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL_RISE):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0xB, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FIREBALL_B):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x14, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x4E, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xFA, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x12A, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, 0x13, 0);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_ALERT_IDLE):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 6, 0x1A);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xA0, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xE6, 0x5D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x16, 0);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_BACK_HOP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x16, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x48, 0x51, 0x23);
-        if ((em->stateGroup == 3) && (em->state == 0x10)) {
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 0x18, 0x23);
-        }
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x14, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0xB, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_AIR_DIVE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x50, 0x49, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x30, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x92, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xBC, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 0xB, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TURN_IN_PLACE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneInFrames(em, 0x6E, 0x118, 0x5C, 0x23, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xC, 6);
-        break;
-    case EM_MOTION_ID(0, 0x37):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 8, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0x14);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_BACK_HOP_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x28, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FEED):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
-        break;
-    case EM_MOTION_ID(0, 0x3C):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x11, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC4, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
-        break;
-    case EM_MOTION_ID(0, 0x3D):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_SHAKE_OFF):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
-        break;
-    case EM_MOTION_ID(0, 0x3F):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1A);
-        break;
-    case EM_MOTION_ID(0, 0x40):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0x1A);
-        break;
-    case EM_MOTION_ID(0, 0x41):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x2C);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 4, 0x2C);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x142, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0xD, 0xC);
-        break;
-    case EM_MOTION_ID(0, 0x42):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        break;
-    case EM_MOTION_ID(0, 0x43):
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_DIE):
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x180, 0x16, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x18, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x2C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x13A, 0x2F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x174, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x176, 0xE, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_KNOCK_DOWN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_DOWN):
-    case EM_MOTION_ID(0, 0x4B):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x31, 0x23);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_DOWN_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1A);
-        break;
-    case EM_MOTION_ID(0, 0x48):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x14);
-        break;
-    case EM_MOTION_ID(0, 0x49):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 7, 0);
-        break;
-    case EM_MOTION_ID(0, 0x4A):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
-        break;
-    case EM_MOTION_ID(0, 0x4C):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x54, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x74, 0x5A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x1A);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FALL):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x1B, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FALL_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 7, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x2C, 0x23);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_HEAD_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x22, 0x23);
-        break;
-    case EM_MOTION_ID(0, 0x50):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x1A);
-        break;
-    case EM_MOTION_ID(0, 0x51):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x14);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_DIE_FALLING):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x32, 0x54, 0x23);
-        break;
-    case EM_MOTION_ID(0, 0x53):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC6, 0, 0x14);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0xD, 0xC);
-        break;
-    case EM_MOTION_ID(0, 0x54):
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 3, 0x14);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_SWOOP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1C, 0x22);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_LEVEL_OUT):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x30, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xB, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_CHARGE_TRIP):
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, 1, 0x1A);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x10A, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, 0xC, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FLIP):
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x13, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x54, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 0xC, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FLIP_FALL):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xA, 0xC);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_FLIP_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 8, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 1, 0x14);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_TRAPPED):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_STRUGGLE):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x28, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_DOWNED):
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        break;
-    case EM_MOTION_ID(0, RATH_MOT_DOWNED_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x20, 0x23);
-        
-    case EM_MOTION_ID(0, RATH_MOT_IDLE):
-    default:
-        break;
-    }
-}
-
-/* em_cephadrome's .data (0x8C8C10-0x8C9100) */
+/* The file's initialised data, in the game's order */
 extern u32 EmCephadrome_VelYCurves_3[];
 EmTurnParams EmCephadrome_TurnParams[3] = {
 #include "game/008C8C10.inc"
 };
-EmCephFinKey EmCephadrome_FinKeys2_0[8] = {
+EmFinKey EmCephadrome_FinKeys2_0[8] = {
 #include "game/008C8C70.inc"
 };
-EmCephFinKey EmCephadrome_FinKeys2_1[8] = {
+EmFinKey EmCephadrome_FinKeys2_1[8] = {
 #include "game/008C8C90.inc"
 };
-EmCephFinKey EmCephadrome_FinKeys2_2[8] = {
+EmFinKey EmCephadrome_FinKeys2_2[8] = {
 #include "game/008C8CB0.inc"
 };
-EmCephFinKey EmCephadrome_FinKeys2_3[8] = {
+EmFinKey EmCephadrome_FinKeys2_3[8] = {
 #include "game/008C8CD0.inc"
 };
-EmCephFinKey *EmCephadrome_FinKeys2[4] = {
+EmFinKey *EmCephadrome_FinKeys2[4] = {
     EmCephadrome_FinKeys2_0, EmCephadrome_FinKeys2_1, EmCephadrome_FinKeys2_2, EmCephadrome_FinKeys2_3,
 };
-EmCephFinKey EmCephadrome_FinKeys1_0[12] = {
+EmFinKey EmCephadrome_FinKeys1_0[12] = {
 #include "game/008C8D00.inc"
 };
-EmCephFinKey EmCephadrome_FinKeys1_1[12] = {
+EmFinKey EmCephadrome_FinKeys1_1[12] = {
 #include "game/008C8D30.inc"
 };
-EmCephFinKey EmCephadrome_FinKeys1_2[8] = {
+EmFinKey EmCephadrome_FinKeys1_2[8] = {
 #include "game/008C8D60.inc"
 };
-EmCephFinKey EmCephadrome_FinKeys1_3[8] = {
+EmFinKey EmCephadrome_FinKeys1_3[8] = {
 #include "game/008C8D80.inc"
 };
-EmCephFinKey *EmCephadrome_FinKeys1[4] = {
+EmFinKey *EmCephadrome_FinKeys1[4] = {
     EmCephadrome_FinKeys1_0, EmCephadrome_FinKeys1_1, EmCephadrome_FinKeys1_2, EmCephadrome_FinKeys1_3,
 };
 s16 EmCephadrome_FinWait1[4] = {
@@ -7972,7 +5942,7 @@ u16 EmCephadrome_FinFoldTarget[4] = {
 };
 s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmCephadrome_Callbacks[8] = {
-    EmCephadrome_SpawnEffects, EmCephadrome_SpawnEffects, func_007DE230, EmCephadrome_UpdateMotionEffects,
+    EmCephadrome_SpawnEffects, EmCephadrome_SpawnEffects, EmCephadrome_TableNop, EmCephadrome_UpdateMotionEffects,
     GmEm_ReturnZero, EmCephadrome_Reinit, NULL, NULL,
 };
 EmCurveKey EmCephadrome_VelYCurves_0[16] = {
@@ -7987,18 +5957,14 @@ EmCurveKey EmCephadrome_VelYCurves_2[12] = {
 EmCurveKey *EmCephadrome_VelYCurves[4] = {
     EmCephadrome_VelYCurves_0, EmCephadrome_VelYCurves_1, EmCephadrome_VelYCurves_2, (EmCurveKey *)EmCephadrome_VelYCurves_3,
 };
-EmCurveKey EmCephadrome_Curves_0[16] = {
+EmCurveKey EmCephadrome_SpeedCurves_0[16] = {
 #include "game/008C8F70.inc"
 };
-EmCurveKey EmCephadrome_Curves_1[16] = {
+EmCurveKey EmCephadrome_SpeedCurves_1[16] = {
 #include "game/008C8FF0.inc"
 };
-EmCurveKey EmCephadrome_Curves_2[11] = {
+EmCurveKey EmCephadrome_SpeedCurves_2[11] = {
 #include "game/008C9070.inc"
 };
 /* The curves EmCephadrome_CurveSpeed picks from. */
-EmCurveKey *EmCephadrome_Curves[3] = {EmCephadrome_Curves_0, EmCephadrome_Curves_1, EmCephadrome_Curves_2};
-void *EmMelynx_Callbacks[8] = {
-    EmMelynx_SpawnEffect01, EmMelynx_SpawnEffect01, EmMelynx_TableNop, EmMelynx_UpdateFace,
-    GmEm_ReturnZero, EmMelynx_Reinit, NULL, NULL,
-};
+EmCurveKey *EmCephadrome_SpeedCurves[3] = {EmCephadrome_SpeedCurves_0, EmCephadrome_SpeedCurves_1, EmCephadrome_SpeedCurves_2};

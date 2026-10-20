@@ -348,7 +348,7 @@ void GmSub_MoveCursorH(u16 held, u16 pressed, u8 *sel, u8 count)
     }
 }
 
-extern u8 gOnlineBonusState;
+extern u8 gPoogieErrand;
 /*
  * The title screen's steps (GmWork.step, enum GmSubStep): the fade-in and
  * the logo's animation, the title menu, mode select, and the ways back
@@ -474,7 +474,7 @@ s32 GmSub_UpdateMenu(u16 held, u16 pressed)
                 gGmWork->modeChoice = gGmWork->sel;
                 gSave.modeSelChoice = gGmWork->sel;
                 Sound_PlayConfirm();
-                gOnlineBonusState = 0;
+                gPoogieErrand = 0;
                 gGmWork->step = GMSUB_STEP_CHOSEN;
                 FadeA_Start(FADE_OUT_BLACK_SLOW);
                 break;

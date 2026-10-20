@@ -1,14 +1,19 @@
-/* Functions matched automatically from m2c's output;
- * the others are still assembly. First-pass C, to be named and typed. */
+/*
+ * Small helpers over the save data: the season and the time of day, the
+ * monsters' rate groups (Rate_*), the network quest's settings, the colour
+ * editor's panel (ColorEdit_*), the awards and the rate flags (Award_Grant,
+ * RateFlag_*) and the monster notes (MonsterNote_*).
+ */
 #include "common.h"
 #include "m2c_macros.h"
 #include "save.h"
 #include "prim.h"
 #include "sprite.h"
 #include "quest.h"
+#include "award.h"
 extern u16 *gMonsterNoteMarks[];
 
-/* Five groups of monster kinds (0x1BB2A0), each with a range of values:
+/* Five groups of monster kinds (gRateGroups), each with a range of values:
  * the save data keeps a value per kind (+0x2808) and a trend and level
  * byte per kind (+0x28C8). */
 typedef struct MonsterRateEntry {
@@ -43,7 +48,7 @@ extern s32 gLoadLastVSync;      /* sub_main 0x5D4A50: gVSyncCount when the loade
 extern u8 gQuestSeasonFlags;    /* sub_main 0x5D87A9: the quest's season (Quest_GetSeason) */
 
 void Quest_SetSeason(u8 arg0);
-void NetQuest_SetUnk4C(s8 arg0);
+void NetQuest_SetRareRoll(s8 arg0);
 void NetQuest_SetInfo(u8 *arg0);
 void NetQuest_SetStage(u16 arg0);
 s32 QuestId_IsStandard(s32 arg0);
@@ -62,39 +67,54 @@ u8 Notice_PushItem(char *item);
 void Save_SetTitle(s32 n);
 s32 Save_HasTitle(s32 n);    /* sub_main: 1 when the save has award n */
 
+/* Sets the quest's season: gQuestSeasonFlags gets the bit 1 << season. */
 void Quest_SetSeason(u8 season) {
     gQuestSeasonFlags = 1 << (season & 0xFF);
 }
 
+/*
+ * The time of day from gSeasonFlags: DAYTIME_DAY (0) when bit 3 is set,
+ * DAYTIME_NIGHT (1) when bit 4 is set, else 0.
+ */
 u8 Daytime_Get(void)
 {
-    u8 f = gSeasonFlags;
+    u8 flags = gSeasonFlags;
 
-    if (f & 8) {
+    if (flags & 8) {
         return 0;
     }
-    if (f & 0x10) {
+    if (flags & 0x10) {
         return 1;
     }
     return 0;
 }
 
+/*
+ * Sets the time of day: clears bits 3 and 4 of gSeasonFlags and sets bit
+ * time (DAYTIME_SET_DAY 3 or DAYTIME_SET_NIGHT 4).
+ */
 void Daytime_Set(s32 time)
 {
     gSeasonFlags = (u8) (gSeasonFlags & ~0x18);
     gSeasonFlags = (u8) (gSeasonFlags | ((1 << (time & 0xFF)) & 0xFF));
 }
 
+/*
+ * Sets up a new save's monster rates: copies gRateListsInit (0x50 bytes)
+ * into save->rateLists and gives each of the 0x60 monster kinds the
+ * middle of its rate group's range (lo to hi) in save->rateBase, 0 for a
+ * kind in no group. Seen: the character creation (select).
+ */
 void Rate_InitSave(SaveData *save)
 {
     s16 i;
-    s8 g;
+    s8 group;
 
     memcpy(save->rateLists, ((u8 *)gRateListsInit), 0x50);
     for (i = 0; i < 0x60; i++) {
-        g = Rate_GroupOf(i);
-        if (g != -1) {
-            save->rateBase[i] = (gRateGroups[g].hi + gRateGroups[g].lo) / 2;
+        group = Rate_GroupOf(i);
+        if (group != -1) {
+            save->rateBase[i] = (gRateGroups[group].hi + gRateGroups[group].lo) / 2;
         } else {
             save->rateBase[i] = 0;
         }
@@ -108,17 +128,18 @@ void Rate_ListAdd(s16 kind, s32 unused)
 {
     SaveData *save = &gSave;
     s16 i;
-    s8 g = Rate_GroupOf(kind);
+    s8 group = Rate_GroupOf(kind);
 
-    if (g != -1) {
+    if (group != -1) {
         for (i = 0; i < 0x10; i++) {
-            if (save->rateLists[g][i] == 0) {
-                (&save->rateLists[g][0])[(i + 1) % 16] = 0;
+            if (save->rateLists[group][i] == 0) {
+                (&save->rateLists[group][0])[(i + 1) % 16] = 0;
                 if (kind <= 0 || kind >= 0x60) {
-                    /* empty: probably a range check compiled out (the
-                     * schedule needs it; found with decomp-permuter) */
+                    /* Kept for the match: an empty range check. It compiles to
+                     * nothing, but the compiler orders the loop as the
+                     * original does only with it. */
                 }
-                (&save->rateLists[g][0])[i] = kind;
+                (&save->rateLists[group][0])[i] = kind;
                 if (0 < save->rateFree) {
                     save->rateFree--;
                 }
@@ -131,15 +152,15 @@ void Rate_ListAdd(s16 kind, s32 unused)
 /* The rate group (0-4) of a monster kind, -1 when it is in none. */
 s8 Rate_GroupOf(s16 kind)
 {
-    s8 g;
+    s8 group;
     s8 i;
-    MonsterRateGroup *p;
+    MonsterRateGroup *groupDef;
 
-    for (g = 0; g < 5; g++) {
-        p = &gRateGroups[g];
-        for (i = 0; i < p->count; i++) {
-            if (kind == p->entry[i].kind) {
-                return g;
+    for (group = 0; group < 5; group++) {
+        groupDef = &gRateGroups[group];
+        for (i = 0; i < groupDef->count; i++) {
+            if (kind == groupDef->entry[i].kind) {
+                return group;
             }
         }
     }
@@ -149,19 +170,19 @@ s8 Rate_GroupOf(s16 kind)
 /* Sets the rate value of a monster kind and its state byte: the trend
  * (bits 3-4: 2 down, 1 up, 0 unchanged) and the level (bits 0-2: which
  * sixth of its group's range the value is in). */
-void Rate_Set(s32 kind, s32 val)
+void Rate_Set(s32 kind, s32 value)
 {
     SaveData *save = &gSave;
     u16 old;
     u8 trend;
-    u8 st;
-    s8 grp;
-    MonsterRateGroup *g;
+    u8 state;
+    s8 groupIndex;
+    MonsterRateGroup *group;
     u16 step;
-    s8 lv;
+    s8 level;
 
     old = gSave.rateBase[kind];
-    gSave.rateBase[kind] = val;
+    gSave.rateBase[kind] = value;
     if (old > gSave.rateBase[kind]) {
         trend = 2;
     } else if (save->rateBase[kind] > old) {
@@ -169,59 +190,72 @@ void Rate_Set(s32 kind, s32 val)
     } else {
         trend = 0;
     }
-    st = trend * 8;
-    grp = Rate_GroupOf(kind);
-    g = &gRateGroups[grp];
-    step = (g->hi - g->lo) / 6;
-    for (lv = 1; lv < 7; lv++) {
-        if (val < g->lo + step * lv || lv == 6) {
-            st |= (u8)(lv - 1);
+    state = trend * 8;
+    groupIndex = Rate_GroupOf(kind);
+    group = &gRateGroups[groupIndex];
+    step = (group->hi - group->lo) / 6;
+    for (level = 1; level < 7; level++) {
+        if (value < group->lo + step * level || level == 6) {
+            state |= (u8)(level - 1);
             break;
         }
     }
-    save->rateState[kind] = st;
+    save->rateState[kind] = state;
 }
 
 extern s8 D_006ADB4C;
-void NetQuest_SetUnk4C(s8 v) {
-    D_006ADB4C = v;
+/*
+ * Stores rareRoll for the network quest. Seen: Lobby_EnterRollRare's
+ * result, or the byte after the season flags in a town status message.
+ */
+void NetQuest_SetRareRoll(s8 rareRoll) {
+    D_006ADB4C = rareRoll;
 }
 
+/* Copies the network quest's 0x18-byte info block from info. */
 void NetQuest_SetInfo(u8 *info) {
     memcpy(&D_6ADB30, (void *)info, 0x18);
 }
 
 extern s16 gNextQuestId;
+/* Sets gNextQuestId to id. */
 void NetQuest_SetStage(u16 id) {
     gNextQuestId = id;
 }
 
+/* 1 when the low 16 bits of id are at most 10000 (a standard quest). */
 s32 QuestId_IsStandard(s32 id) {
     return (id & 0xFFFF) < 0x2711;
 }
 
+/* 1 when the low 16 bits of id are 50000 or more (a download quest). */
 s32 Quest_IsDownloadId(s32 id) {
     return (id & 0xFFFF) >= 0xC350;
 }
 
-void ColorEdit_DrawFrame(s16 x, s16 y, s16 w, s16 h, s16 border)
+/*
+ * Draws the colour editor's selection frame: a white rectangle at (x, y)
+ * of width by height, with a near-black one inset by border pixels on
+ * every side drawn over it, leaving a white border.
+ */
+void ColorEdit_DrawFrame(s16 x, s16 y, s16 width, s16 height, s16 border)
 {
-    Rect r;
-    s32 b;
+    Rect rect;
+    s32 inset;
 
-    r.x0 = x;
-    r.y0 = y;
-    r.x1 = x + w;
-    r.y1 = y + h;
-    r.color = -1;
-    Prim_FillRect((struct PrimLine *)&r);
-    b = border;
-    r.x0 = x + b;
-    r.y0 = y + b;
-    r.x1 = x + w - b;
-    r.y1 -= b;
-    r.color = 0xFF010101;
-    Prim_FillRect((struct PrimLine *)&r);
+    rect.x0 = x;
+    rect.y0 = y;
+    rect.x1 = x + width;
+    rect.y1 = y + height;
+    rect.color = -1;
+    Prim_FillRect((struct PrimLine *)&rect);
+    inset = border;
+    rect.x0 = x + inset;
+    rect.y0 = y + inset;
+    rect.x1 = x + width - inset;
+    rect.y1 -= inset;
+    rect.color = 0xFF010101;
+    Prim_FillRect((struct PrimLine *)&rect);
 }
 
 /* The colour editor of the character edit (select): the panel (mode 0),
@@ -237,147 +271,158 @@ void Font_SetPos(s16 x, s16 y);              /* text position */
 void Font_SetColor(s32 color);                   /* text colour */
 void Text_PrintfColored(const char *fmt, ...);  /* sub_main's Text_PrintfColored */
 
-/* ly is declared `= 0` (a defensive initialiser: a constant in a declaration is created at
- * the top), which puts the label loop's counter and ly in s0/s1 as in the original (without
- * it, the other way round; round 17's permuter found the same with `ly = 0; spr.v0 = ly;`). The invariants are written inside
- * the loops on purpose: that gives the original's preheaders placed after the function's
- * end. Two earlier permuter finds: py (&rc.y0), as the original reuses the swatch loop's
- * hoisted &rc.y0 in the selected swatch's rectangle, and the bar loop's y computed in ly
- * (shared with the label loop) before ty. */
-void ColorEdit_Draw(u8 mode, s16 x, s16 y, u8 r, u8 g, u8 b, u8 sel, u8 pal)
+/*
+ * Draws the colour editor at (x, y): in mode 0 (the character edit) its
+ * panel sprite first; mode 1 is the lobby's. Three bars show red, green
+ * and blue (a gradient as long as the value, 165 pixels at 255), then the
+ * 16 swatches of gPresetColors, then five labels, each with an arrow
+ * sprite: the R, G and B values and two entries of gSkillNames. selRow
+ * is the selected row (0-2 the bars, 3 the swatches, 4 the last label):
+ * its bar gets a frame, its label's arrow is highlighted and blinks with
+ * gFrameTick. With selRow 3 the swatch swatchIndex is drawn larger in a
+ * frame.
+ * Kept for the match: rowY is declared = 0, which puts the label loop's
+ * counter and rowY in the same registers as the game (without it they
+ * swap). The loop invariants are written inside the loops, which places
+ * the loops' set-up code after the function's end as the game does.
+ * swatchTopPtr points at swatchRect.y0, as the game reuses the swatch
+ * loop's &swatchRect.y0 for the selected swatch's rectangle, and the bar
+ * loop's y is computed in rowY (shared with the label loop) before topY.
+ */
+void ColorEdit_Draw(u8 mode, s16 x, s16 y, u8 red, u8 green, u8 blue, u8 selRow, u8 swatchIndex)
 {
-    PrimGradRect gr;
-    Sprite spr;
-    Rect rc;
+    PrimGradRect barRect;
+    Sprite sprite;
+    Rect swatchRect;
     s16 i;
-    u8 v;
-    s32 col;
-    s32 ly = 0;
-    s16 ty;
-    s16 bx;
-    s16 *py;
+    u8 channelValue;
+    s32 textColor;
+    s32 rowY = 0;
+    s16 topY;
+    s16 leftX;
+    s16 *swatchTopPtr;
 
     if (mode == 0) {
         Gfx_SetTexFilter(1);
         Tex_Prepare(1, 0xA7);
         Tex_Bind(0xA7);
-        spr.color = -1;
-        spr.x = x;
-        spr.y = y;
-        spr.w = 0x144;
-        spr.h = 0xDE;
-        spr.u0 = 0;
-        spr.v0 = 0;
-        spr.u1 = 0xA0;
-        spr.v1 = 0xA8;
-        Sprite_Draw(&spr);
+        sprite.color = -1;
+        sprite.x = x;
+        sprite.y = y;
+        sprite.w = 0x144;
+        sprite.h = 0xDE;
+        sprite.u0 = 0;
+        sprite.v0 = 0;
+        sprite.u1 = 0xA0;
+        sprite.v1 = 0xA8;
+        Sprite_Draw(&sprite);
     }
     for (i = 0; i < 3; i++) {
-        bx = x + 0x73;
-        ly = y + (i * 0x1D + 0x26);
-        ty = ly;
-        if (i == sel) {
-            ColorEdit_DrawFrame(bx - 2, ty - 2, 0xA9, 0x16, 2);
+        leftX = x + 0x73;
+        rowY = y + (i * 0x1D + 0x26);
+        topY = rowY;
+        if (i == selRow) {
+            ColorEdit_DrawFrame(leftX - 2, topY - 2, 0xA9, 0x16, 2);
         }
         switch (i) {
         case 0:
-            v = r;
-            gr.color[0] = 0xFF400101;
-            gr.color[1] = 0xFFFF0101;
+            channelValue = red;
+            barRect.color[0] = 0xFF400101;
+            barRect.color[1] = 0xFFFF0101;
             break;
         case 1:
-            v = g;
-            gr.color[0] = 0xFF014001;
-            gr.color[1] = 0xFF01FF01;
+            channelValue = green;
+            barRect.color[0] = 0xFF014001;
+            barRect.color[1] = 0xFF01FF01;
             break;
         case 2:
-            v = b;
-            gr.color[0] = 0xFF010140;
-            gr.color[1] = 0xFF0101FF;
+            channelValue = blue;
+            barRect.color[0] = 0xFF010140;
+            barRect.color[1] = 0xFF0101FF;
             break;
         }
-        gr.x0 = bx;
-        gr.y0 = ty;
-        gr.y1 = gr.y0 + 0x12;
-        gr.x1 = bx + (s16)(0.64705884f * v);
-        gr.color[2] = gr.color[0];
-        gr.color[3] = gr.color[1];
-        Prim_FillGradRect(&gr);
+        barRect.x0 = leftX;
+        barRect.y0 = topY;
+        barRect.y1 = barRect.y0 + 0x12;
+        barRect.x1 = leftX + (s16)(0.64705884f * channelValue);
+        barRect.color[2] = barRect.color[0];
+        barRect.color[3] = barRect.color[1];
+        Prim_FillGradRect(&barRect);
     }
     for (i = 0; i < 16; i++) {
-        bx = x + (i * 14 + 0x34);
-        ty = y + 0x96;
-        if (sel != 3 || pal != i) {
-            rc.x0 = bx;
-            rc.y0 = ty;
-            rc.x1 = rc.x0 + 14;
-            rc.y1 = rc.y0 + 14;
-            rc.color = gPresetColors[i];
-            Prim_FillRect((struct PrimLine *)&rc);
+        leftX = x + (i * 14 + 0x34);
+        topY = y + 0x96;
+        if (selRow != 3 || swatchIndex != i) {
+            swatchRect.x0 = leftX;
+            swatchRect.y0 = topY;
+            swatchRect.x1 = swatchRect.x0 + 14;
+            swatchRect.y1 = swatchRect.y0 + 14;
+            swatchRect.color = gPresetColors[i];
+            Prim_FillRect((struct PrimLine *)&swatchRect);
         }
     }
-    py = &rc.y0;
-    if (sel == 3) {
-        bx = x + (s32)(pal * 14 + 0x34) - 3;
-        ty = y + 0x92;
-        ColorEdit_DrawFrame(bx - 2, ty - 2, 0x14, 0x1A, 2);
-        rc.x0 = bx;
-        rc.y0 = ty;
-        rc.x1 = rc.x0 + 0x10;
-        rc.y1 = *py + 0x16;
-        rc.color = gPresetColors[pal];
-        Prim_FillRect((struct PrimLine *)&rc);
+    swatchTopPtr = &swatchRect.y0;
+    if (selRow == 3) {
+        leftX = x + (s32)(swatchIndex * 14 + 0x34) - 3;
+        topY = y + 0x92;
+        ColorEdit_DrawFrame(leftX - 2, topY - 2, 0x14, 0x1A, 2);
+        swatchRect.x0 = leftX;
+        swatchRect.y0 = topY;
+        swatchRect.x1 = swatchRect.x0 + 0x10;
+        swatchRect.y1 = *swatchTopPtr + 0x16;
+        swatchRect.color = gPresetColors[swatchIndex];
+        Prim_FillRect((struct PrimLine *)&swatchRect);
     }
     Font_SetSpacing(0x12, 0x12);
     for (i = 0; i < 5; i++) {
-        spr.x = x + 0x16;
-        ly = y + (i * 0x1D + 0x26);
-        spr.y = ly - 2;
+        sprite.x = x + 0x16;
+        rowY = y + (i * 0x1D + 0x26);
+        sprite.y = rowY - 2;
         if (i == 4) {
-            spr.y += 0x12;
+            sprite.y += 0x12;
         }
-        spr.w = 0x18;
-        spr.h = 0x18;
-        spr.u0 = 0xF;
-        spr.v0 = 0;
-        spr.u1 = 0;
-        spr.v1 = 0xF;
-        if (i == sel) {
+        sprite.w = 0x18;
+        sprite.h = 0x18;
+        sprite.u0 = 0xF;
+        sprite.v0 = 0;
+        sprite.u1 = 0;
+        sprite.v1 = 0xF;
+        if (i == selRow) {
             if (mode == 0) {
-                col = 0xFF32DA5D;
-                spr.color = 0xFFFB7103;
+                textColor = 0xFF32DA5D;
+                sprite.color = 0xFFFB7103;
             } else {
-                col = 0xFF32DA5D;
-                spr.color = 0xFFC0C0C0;
+                textColor = 0xFF32DA5D;
+                sprite.color = 0xFFC0C0C0;
             }
             if (gFrameTick & 0x10) {
-                spr.x -= 4;
+                sprite.x -= 4;
             }
         } else if (mode == 0) {
-            col = 0xFF2A2120;
-            spr.color = 0xFF342B2A;
+            textColor = 0xFF2A2120;
+            sprite.color = 0xFF342B2A;
         } else {
-            col = 0xFFC0C0C0;
-            spr.color = 0xFF342B2A;
+            textColor = 0xFFC0C0C0;
+            sprite.color = 0xFF342B2A;
         }
         Tex_Prepare(1, 0x16B);
         Tex_Bind(0x16B);
-        Sprite_Draw(&spr);
-        Font_SetColor(col);
+        Sprite_Draw(&sprite);
+        Font_SetColor(textColor);
         if (i == 4) {
-            Font_SetPos(x + 0x34, ly + 0x12);
+            Font_SetPos(x + 0x34, rowY + 0x12);
         } else {
-            Font_SetPos(x + 0x34, ly);
+            Font_SetPos(x + 0x34, rowY);
         }
         switch (i) {
         case 0:
-            Text_PrintfColored("R(%03d)", r);
+            Text_PrintfColored("R(%03d)", red);
             break;
         case 1:
-            Text_PrintfColored("G(%03d)", g);
+            Text_PrintfColored("G(%03d)", green);
             break;
         case 2:
-            Text_PrintfColored("B(%03d)", b);
+            Text_PrintfColored("B(%03d)", blue);
             break;
         case 3:
             Text_PrintfColored("%s", gSkillNames[0x52]);
@@ -390,9 +435,14 @@ void ColorEdit_Draw(u8 mode, s16 x, s16 y, u8 r, u8 g, u8 b, u8 sel, u8 pal)
 }
 
 extern s32 D_00446A24;
-s32 Award_Grant(s32 n) {
-    if (Save_HasTitle(n) == 0) {
-        Save_SetTitle(n);
+/*
+ * Grants award awardId: when the save does not have it yet, sets it
+ * (Save_SetTitle), pushes the award notice (Notice_PushItem) and returns
+ * 1; returns 0 when the save already has it.
+ */
+s32 Award_Grant(s32 awardId) {
+    if (Save_HasTitle(awardId) == 0) {
+        Save_SetTitle(awardId);
         Notice_PushItem((char *) D_00446A24);
         return 1;
     }
@@ -400,45 +450,62 @@ s32 Award_Grant(s32 n) {
 }
 
 s32 RateFlag_SetAndNotify(s32 styleFlag);
-s32 RateFlag_Set(s32 bit, s32 flag)
+/*
+ * Sets rate flag bit (0-15) in gSave.rateFlags; returns 0 when it was
+ * set already. When that completes flags 0 to 10, AWARD_RATE_FLAGS is
+ * granted and RATE_FLAG_ALL set: with notify 0 quietly (Save_SetTitle, then
+ * RateFlag_Set(RATE_FLAG_ALL, 0)), else with notices (Award_Grant, then
+ * RateFlag_SetAndNotify(RATE_FLAG_ALL)). After setting the flag it returns
+ * Save_TestEventFlag(0xB6).
+ */
+s32 RateFlag_Set(s32 bit, s32 notify)
 {
     SaveData *save = &gSave;
-    s32 m = 1 << ((u8)bit & 0xF);
+    s32 mask = 1 << ((u8)bit & 0xF);
 
-    if (gSave.rateFlags & m) {    /* save->rateFlags: read through the save pointer, it is scheduled differently */
+    if (gSave.rateFlags & mask) {    /* save->rateFlags: read through the save pointer, it is scheduled differently */
         return 0;
     }
-    save->rateFlags |= m;
-    if ((save->rateFlags & 0xFFF) == 0x7FF) {
-        if ((u8)flag == 0) {
-            if (Save_HasTitle(0x7A) == 0) {
-                Save_SetTitle(0x7A);
+    save->rateFlags |= mask;
+    if ((save->rateFlags & RATE_FLAGS_MASK) == RATE_FLAGS_FIRST_11) {
+        if ((u8)notify == 0) {
+            if (Save_HasTitle(AWARD_RATE_FLAGS) == 0) {
+                Save_SetTitle(AWARD_RATE_FLAGS);
             }
-            RateFlag_Set(0xB, 0);
+            RateFlag_Set(RATE_FLAG_ALL, 0);
         } else {
-            Award_Grant(0x7A);
-            RateFlag_SetAndNotify(0xB);
+            Award_Grant(AWARD_RATE_FLAGS);
+            RateFlag_SetAndNotify(RATE_FLAG_ALL);
         }
     }
     return Save_TestEventFlag(0xB6);
 }
 
+/*
+ * Sets rate flag bit (0-15) in gSave.rateFlags without awards or
+ * notices, and RATE_FLAG_ALL when flags 0 to 10 are then all set. Returns 1
+ * when the flag was newly set, 0 when it was set already.
+ */
 s32 RateFlag_SetQuiet(u8 bit)
 {
     SaveData *save = &gSave;
-    s32 m = 1 << (bit & 0xF);
+    s32 mask = 1 << (bit & 0xF);
 
-    if (gSave.rateFlags & m) {    /* save->rateFlags: read through the save pointer, it is scheduled differently */
+    if (gSave.rateFlags & mask) {    /* save->rateFlags: read through the save pointer, it is scheduled differently */
         return 0;
     }
-    save->rateFlags |= m;
-    if ((save->rateFlags & 0xFFF) == 0x7FF) {
-        RateFlag_SetQuiet(0xB);
+    save->rateFlags |= mask;
+    if ((save->rateFlags & RATE_FLAGS_MASK) == RATE_FLAGS_FIRST_11) {
+        RateFlag_SetQuiet(RATE_FLAG_ALL);
     }
     return 1;
 }
 
 extern s32 D_00446A28;
+/*
+ * RateFlag_Set(styleFlag, 1); when that returns 1, pushes the rate
+ * notice (Notice_PushItem) and returns 1, else returns 0.
+ */
 s32 RateFlag_SetAndNotify(s32 styleFlag)
 {
     if (RateFlag_Set(styleFlag, 1) == 1) {
@@ -448,89 +515,103 @@ s32 RateFlag_SetAndNotify(s32 styleFlag)
     return 0;
 }
 
+/*
+ * The index of monster kind id in gMonsterNoteIds (at most 0x49 entries,
+ * ended by 0), or 0xFF when it is not there.
+ */
 s32 MonsterNote_Index(u16 id)
 {
     s32 i;
-    u16 *p;
-    s32 r;
+    u16 *idPtr;
+    s32 index;
 
-    r = 0xFF;
-    for (i = 0, p = gMonsterNoteIds; i < 0x49; i++, p++) {
-        if (*p == 0) {
+    index = 0xFF;
+    for (i = 0, idPtr = gMonsterNoteIds; i < 0x49; i++, idPtr++) {
+        if (*idPtr == 0) {
             break;
         }
-        if (id == *p) {
-            r = i;
+        if (id == *idPtr) {
+            index = i;
             break;
         }
     }
-    return r;
+    return index;
 }
 
+/*
+ * The monster note flags of monster kind id: 0 when it has no note,
+ * else 1 with the entry's four recorded marks (MonsterNote_Record) in
+ * bits 1-4.
+ */
 u8 MonsterNote_GetFlags(u16 id)
 {
     SaveData *save = &gSave;
-    s32 i = MonsterNote_Index(id);
-    s32 v;
+    s32 bitPos = MonsterNote_Index(id);
+    s32 marks;
 
-    if (i == 0xFF) {
+    if (bitPos == 0xFF) {
         return 0;
     }
-    i *= 4;
-    v = (save->unk3688[i >> 3] >> (i & 7)) & 0xF;
-    return v + v + 1;
+    bitPos *= 4;
+    marks = (save->unk3688[bitPos >> 3] >> (bitPos & 7)) & 0xF;
+    return marks + marks + 1;
 }
 
 /* The flags of every entry of the list gMonsterGroups[id] (ended by 0xFF), or'd. */
 u8 MonsterNote_GetListFlags(u16 id)
 {
-    u8 f = 0;
-    u8 *p = gMonsterGroups[id];
-    u8 c;
+    u8 flags = 0;
+    u8 *entry = gMonsterGroups[id];
+    u8 noteId;
 
-    while ((c = *p) != 0xFF) {
-        f |= MonsterNote_GetFlags(c);
-        p++;
+    while ((noteId = *entry) != 0xFF) {
+        flags |= MonsterNote_GetFlags(noteId);
+        entry++;
     }
-    return f;
+    return flags;
 }
 
-/* Records that entry id (an id of gMonsterNoteIds) reached val: when val is the
- * k-th value (k = 1-4) of its list at gMonsterNoteMarks, bit k - 1 of the entry's
- * four bits in the save data is set. 1 when val is in the list. */
-s32 MonsterNote_Record(u16 id, u16 val)
+/*
+ * Records that monster kind id reached value: when value is the k-th
+ * value (k 1-4) of its list in gMonsterNoteMarks, bit k - 1 of the
+ * entry's four bits in the save data is set. Returns 1 when value is in
+ * the list (the 0th value records nothing), 0 when it is not, when value
+ * is 0 or when the kind has no note.
+ */
+s32 MonsterNote_Record(u16 id, u16 value)
 {
     SaveData *save = &gSave;
-    s32 i;
+    s32 bitPos;
     u8 k;
-    u16 *p;
+    u16 *marks;
 
-    if (val == 0) {
+    if (value == 0) {
         return 0;
     }
-    i = MonsterNote_Index(id);
-    if (i == 0xFF) {
+    bitPos = MonsterNote_Index(id);
+    if (bitPos == 0xFF) {
         return 0;
     }
-    p = gMonsterNoteMarks[i];
-    for (k = 0; k < 5; k++, p += 4) {
-        if (*p == val) {
+    marks = gMonsterNoteMarks[bitPos];
+    for (k = 0; k < 5; k++, marks += 4) {
+        if (*marks == value) {
             if (k == 0) {
                 return 1;
             }
-            i *= 4;
-            save->unk3688[i >> 3] |= 1 << ((i & 7) + k - 1);
+            bitPos *= 4;
+            save->unk3688[bitPos >> 3] |= 1 << ((bitPos & 7) + k - 1);
             return 1;
         }
     }
     return 0;
 }
 
+/* Clears gQuest.versusDefeat. */
 void Quest_ClearVersusDefeat(void) {
     gQuest.versusDefeat = 0;
 }
 
-/* unk_18DA50's .data (0x1BB2A0-0x1BB9E0) */
+/* This file's initialised data. */
 extern u32 D_0024C150[];
 extern u32 D_001BB900[];
 MonsterRateGroup gRateGroups[5] = {

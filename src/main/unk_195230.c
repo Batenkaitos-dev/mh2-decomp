@@ -1,5 +1,5 @@
 /*
- * main 0x195230-0x195a10: loading the sound banks of a scene from
+ * Loading the sound banks of a scene from
  * afs01.afs (partition 1), a step per frame through the file queue
  * (SndLoad_*), or at once with Sound_ReadBank (0x195BF0).
  */
@@ -32,7 +32,6 @@ void Sound_StageBank(struct SndFile *f);
 void Sound_QueueBank(u32 id, void *buf);
 s32 Sound_ReadBank(u32 id, void *buf);
 
-/* sub_main system settings (0x6ADF90): its work buffer */
 
 void Sound_Silence(void)
 {
@@ -46,7 +45,7 @@ void SndLoad_Init(s8 count)
 }
 
 /* Stages bank file 0x14D, then one bank per different kind of the list
- * (D_43C6E0[list[i]], kinds 0x26/0x1C, 0x27/0x1D and 0x1B/1 count as the
+ * (each id's kind from sub_main's table of bank kinds; kinds 0x26/0x1C, 0x27/0x1D and 0x1B/1 count as the
  * same); returns 1 when done. */
 s32 SndLoad_ListBanks(u8 *buf, u8 *list)
 {
@@ -245,6 +244,6 @@ s32 Sound_LoadSelectBanks(void *task)
     return 1;
 }
 
-void func_00195A00(void)
+void Sound_OnBanksLoaded(void)
 {
 }

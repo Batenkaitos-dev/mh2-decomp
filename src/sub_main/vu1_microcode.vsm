@@ -26,7 +26,7 @@
 ;   word 0 holds its address).
 ;
 ; How the programs run (Vu1_SelectProgram, the Vu1Pkt_* setups and
-; Model_BuildVifPackets: unk_2EF020.c, unk_2F17C0.c, unk_2E3940.c)
+; Model_BuildVifPackets)
 ; - Each model gets a program by its key (the low 24 bits of its word at 0x0C) and
 ;   format. Before the model's batches its setup sends FLUSHA, STCYCL 4/4, an UNPACK V4-32 of the
 ;   constants to VU 0 (each header lists them) and MSCALF 0, which runs `init`:
@@ -57,7 +57,7 @@
 ;   epilogue sends the two left. So a batch first re-sends the two vertices the
 ;   line still holds, the previous batch's last two (NLOOP + 2).
 ; - Families: by the setup's letters, L three directional lights (and an
-;   ambient), D fog, V a second colour (gGsColor67F), E rows of gMtxRs19, P
+;   ambient), D fog, V a second colour (gGsColor2F), E rows of gMtxUv, P
 ;   clipping, S skinning; the selection key's bits 0x200, 0x8000, 0x20000,
 ;   0x4000 and 0x80, and the skinned formats 0x321135 and 0x221135. Key bit 0x2:
 ;   no vertex colours (a material colour per register block); bit 0x20: normals
@@ -76,10 +76,10 @@
 ;=======================================================================================
 ; Vu1Prog00: three lights, material colour, no vertex colours
 ;
-; gVu1ProgInfo00 (unk_2EF020.c): 116 pairs (928 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo00 (bones.c): 116 pairs (928 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_L (unk_2F17C0.c): an UNPACK of 16 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_L: an UNPACK of 16 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -248,10 +248,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog01: skinned, three lights, material colour, no vertex colours
 ;
-; gVu1ProgInfo01 (unk_2EF020.c): 336 pairs (2688 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo01 (bones.c): 336 pairs (2688 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x202, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SL (unk_2F17C0.c): an UNPACK of 240 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_SL: an UNPACK of 240 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
 ;   9-11     light directions (world space, negated): vf01-vf03
@@ -640,11 +640,11 @@ blended_cont:
 ;=======================================================================================
 ; Vu1Prog02: three lights, material colour, no vertex colours, second colour
 ;
-; gVu1ProgInfo02 (unk_2EF020.c): 118 pairs (944 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo02 (bones.c): 118 pairs (944 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x20202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LV (unk_2F17C0.c): an UNPACK of 17 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
-;   1        second colour: gGsColor67F: vf16
+; Setup Vu1Pkt_LV: an UNPACK of 17 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
+;   1        second colour: gGsColor2F: vf16
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
@@ -801,10 +801,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog03: three lights, normals (key bit 0x20), material colour, no vertex colours
 ;
-; gVu1ProgInfo03 (unk_2EF020.c): 142 pairs (1136 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo03 (bones.c): 142 pairs (1136 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x222, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_L (unk_2F17C0.c): an UNPACK of 16 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_L: an UNPACK of 16 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -985,10 +985,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog04: skinned, three lights, normals (key bit 0x20), material colour, no vertex colours
 ;
-; gVu1ProgInfo04 (unk_2EF020.c): 388 pairs (3104 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo04 (bones.c): 388 pairs (3104 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x222, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SL (unk_2F17C0.c): an UNPACK of 240 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_SL: an UNPACK of 240 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
 ;   9-11     light directions (world space, negated): vf01-vf03
@@ -1429,11 +1429,11 @@ blended_cont:
 ;=======================================================================================
 ; Vu1Prog05: normals (key bit 0x20), second colour
 ;
-; gVu1ProgInfo05 (unk_2EF020.c): 102 pairs (816 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo05 (bones.c): 102 pairs (816 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x20020, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_V (unk_2F17C0.c): an UNPACK of 10 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_V: an UNPACK of 10 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ; Vertices: gVu1ProgLayouts[1], 4 qwords: position, normal, colour, texture coordinates.
@@ -1572,10 +1572,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog06: clipped
 ;
-; gVu1ProgInfo06 (unk_2EF020.c): 408 pairs (3264 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo06 (bones.c): 408 pairs (3264 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x80, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_P (unk_2F17C0.c): an UNPACK of 13 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_P: an UNPACK of 13 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-12     gMtxProj, the projection matrix: vf27-vf30
@@ -2060,11 +2060,11 @@ intersect_skip:
 ;=======================================================================================
 ; Vu1Prog07: second colour, clipped
 ;
-; gVu1ProgInfo07 (unk_2EF020.c): 408 pairs (3264 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo07 (bones.c): 408 pairs (3264 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x20080, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_VP (unk_2F17C0.c): an UNPACK of 14 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_VP: an UNPACK of 14 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-13    gMtxProj, the projection matrix: vf27-vf30
@@ -2549,10 +2549,10 @@ intersect_skip:
 ;=======================================================================================
 ; Vu1Prog08: three lights
 ;
-; gVu1ProgInfo08 (unk_2EF020.c): 110 pairs (880 bytes), batches of up to 4080 bytes;
+; gVu1ProgInfo08 (bones.c): 110 pairs (880 bytes), batches of up to 4080 bytes;
 ; Vu1_SelectProgram's key 0x200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_L (unk_2F17C0.c): an UNPACK of 16 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf16
+; Setup Vu1Pkt_L: an UNPACK of 16 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf16
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -2700,11 +2700,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog09: three lights, second colour
 ;
-; gVu1ProgInfo09 (unk_2EF020.c): 111 pairs (888 bytes), batches of up to 4080 bytes;
+; gVu1ProgInfo09 (bones.c): 111 pairs (888 bytes), batches of up to 4080 bytes;
 ; Vu1_SelectProgram's key 0x20200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LV (unk_2F17C0.c): an UNPACK of 17 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf17
-;   1        second colour: gGsColor67F: vf16
+; Setup Vu1Pkt_LV: an UNPACK of 17 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf17
+;   1        second colour: gGsColor2F: vf16
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
@@ -2854,10 +2854,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog10: unlit, vertex colours
 ;
-; gVu1ProgInfo10 (unk_2EF020.c): 88 pairs (704 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo10 (bones.c): 88 pairs (704 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x0, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_Plain (unk_2F17C0.c): an UNPACK of 9 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_Plain: an UNPACK of 9 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
@@ -2982,10 +2982,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog11: material colour, no vertex colours
 ;
-; gVu1ProgInfo11 (unk_2EF020.c): 97 pairs (776 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo11 (bones.c): 97 pairs (776 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x2, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_Plain (unk_2F17C0.c): an UNPACK of 9 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_Plain: an UNPACK of 9 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ; Vertices: gVu1ProgLayouts[4], 2 qwords: position, texture coordinates.
@@ -3119,11 +3119,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog12: second colour
 ;
-; gVu1ProgInfo12 (unk_2EF020.c): 90 pairs (720 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo12 (bones.c): 90 pairs (720 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x20000, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_V (unk_2F17C0.c): an UNPACK of 10 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_V: an UNPACK of 10 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
@@ -3250,11 +3250,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog13: material colour, no vertex colours, second colour
 ;
-; gVu1ProgInfo13 (unk_2EF020.c): 104 pairs (832 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo13 (bones.c): 104 pairs (832 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x20002, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_V (unk_2F17C0.c): an UNPACK of 10 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf28
+; Setup Vu1Pkt_V: an UNPACK of 10 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf28
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ; Vertices: gVu1ProgLayouts[4], 2 qwords: position, texture coordinates.
@@ -3395,10 +3395,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog14: three lights, normals (key bit 0x20), material colour, no vertex colours, fog
 ;
-; gVu1ProgInfo14 (unk_2EF020.c): 165 pairs (1320 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo14 (bones.c): 165 pairs (1320 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x8222, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LD (unk_2F17C0.c): an UNPACK of 17 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_LD: an UNPACK of 17 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -3603,10 +3603,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog15: skinned, three lights, normals (key bit 0x20), material colour, no vertex colours, fog
 ;
-; gVu1ProgInfo15 (unk_2EF020.c): 455 pairs (3640 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo15 (bones.c): 455 pairs (3640 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x8222, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SLD (unk_2F17C0.c): an UNPACK of 241 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_SLD: an UNPACK of 241 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
 ;   9-11     light directions (world space, negated): vf09, vf10, vf11, vf29, vf30, vf31
@@ -4114,10 +4114,10 @@ blended_cont:
 ;=======================================================================================
 ; Vu1Prog16: three lights, normals (key bit 0x20), material colour, no vertex colours, clipped
 ;
-; gVu1ProgInfo16 (unk_2EF020.c): 497 pairs (3976 bytes), batches of up to 3040 bytes;
+; gVu1ProgInfo16 (bones.c): 497 pairs (3976 bytes), batches of up to 3040 bytes;
 ; Vu1_SelectProgram's key 0x2a2, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LP (unk_2F17C0.c): an UNPACK of 20 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_LP: an UNPACK of 20 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -4695,10 +4695,10 @@ intersect_skip:
 ;=======================================================================================
 ; Vu1Prog17: three lights, material colour, no vertex colours, clipped
 ;
-; gVu1ProgInfo17 (unk_2EF020.c): 438 pairs (3504 bytes), batches of up to 3040 bytes;
+; gVu1ProgInfo17 (bones.c): 438 pairs (3504 bytes), batches of up to 3040 bytes;
 ; Vu1_SelectProgram's key 0x282, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LP (unk_2F17C0.c): an UNPACK of 20 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_LP: an UNPACK of 20 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -5215,10 +5215,10 @@ intersect_skip:
 ;=======================================================================================
 ; Vu1Prog18: three lights, material colour, no vertex colours, fog
 ;
-; gVu1ProgInfo18 (unk_2EF020.c): 119 pairs (952 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo18 (bones.c): 119 pairs (952 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x8202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LD (unk_2F17C0.c): an UNPACK of 17 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_LD: an UNPACK of 17 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -5377,10 +5377,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog19: skinned, three lights, material colour, no vertex colours, fog
 ;
-; gVu1ProgInfo19 (unk_2EF020.c): 372 pairs (2976 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo19 (bones.c): 372 pairs (2976 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x8202, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SLD (unk_2F17C0.c): an UNPACK of 241 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_SLD: an UNPACK of 241 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
 ;   9-11     light directions (world space, negated): vf01-vf03
@@ -5803,11 +5803,11 @@ blended_cont:
 ;=======================================================================================
 ; Vu1Prog20: three lights, material colour, no vertex colours, fog, second colour
 ;
-; gVu1ProgInfo20 (unk_2EF020.c): 123 pairs (984 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo20 (bones.c): 123 pairs (984 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x28202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LDV (unk_2F17C0.c): an UNPACK of 18 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
-;   1        second colour: gGsColor67F: vf17
+; Setup Vu1Pkt_LDV: an UNPACK of 18 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
+;   1        second colour: gGsColor2F: vf17
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
@@ -5970,10 +5970,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog21: three lights, fog
 ;
-; gVu1ProgInfo21 (unk_2EF020.c): 132 pairs (1056 bytes), batches of up to 4080 bytes;
+; gVu1ProgInfo21 (bones.c): 132 pairs (1056 bytes), batches of up to 4080 bytes;
 ; Vu1_SelectProgram's key 0x8200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LD (unk_2F17C0.c): an UNPACK of 17 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf17
+; Setup Vu1Pkt_LD: an UNPACK of 17 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf17
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
@@ -6145,10 +6145,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog22: fog
 ;
-; gVu1ProgInfo22 (unk_2EF020.c): 100 pairs (800 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo22 (bones.c): 100 pairs (800 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x8000, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_D (unk_2F17C0.c): an UNPACK of 10 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_D: an UNPACK of 10 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9        fog range: gGsFogFar and the word after it: vf09
@@ -6286,10 +6286,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog23: material colour, no vertex colours, fog
 ;
-; gVu1ProgInfo23 (unk_2EF020.c): 110 pairs (880 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo23 (bones.c): 110 pairs (880 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x8002, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_D (unk_2F17C0.c): an UNPACK of 10 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_D: an UNPACK of 10 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9        fog range: gGsFogFar and the word after it: vf09
@@ -6437,11 +6437,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog24: three lights, fog, second colour
 ;
-; gVu1ProgInfo24 (unk_2EF020.c): 130 pairs (1040 bytes), batches of up to 4080 bytes;
+; gVu1ProgInfo24 (bones.c): 130 pairs (1040 bytes), batches of up to 4080 bytes;
 ; Vu1_SelectProgram's key 0x28200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LDV (unk_2F17C0.c): an UNPACK of 18 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf18
-;   1        second colour: gGsColor67F: vf17
+; Setup Vu1Pkt_LDV: an UNPACK of 18 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf18
+;   1        second colour: gGsColor2F: vf17
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
@@ -6611,11 +6611,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog25: fog, second colour
 ;
-; gVu1ProgInfo25 (unk_2EF020.c): 103 pairs (824 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo25 (bones.c): 103 pairs (824 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x28000, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DV (unk_2F17C0.c): an UNPACK of 11 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf10
+; Setup Vu1Pkt_DV: an UNPACK of 11 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf10
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10       fog range: gGsFogFar and the word after it: vf09
@@ -6756,11 +6756,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog26: material colour, no vertex colours, fog, second colour
 ;
-; gVu1ProgInfo26 (unk_2EF020.c): 114 pairs (912 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo26 (bones.c): 114 pairs (912 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x28002, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DV (unk_2F17C0.c): an UNPACK of 11 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf10
+; Setup Vu1Pkt_DV: an UNPACK of 11 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf10
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10       fog range: gGsFogFar and the word after it: vf09
@@ -6912,11 +6912,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog27: skinned, material colour, no vertex colours, fog, second colour
 ;
-; gVu1ProgInfo27 (unk_2EF020.c): 242 pairs (1936 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo27 (bones.c): 242 pairs (1936 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x28002, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SDV (unk_2F17C0.c): an UNPACK of 139 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_SDV: an UNPACK of 139 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2        fog range: gGsFogFar and the word after it: vf10
 ;   3-6      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   7-10     gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
@@ -7206,17 +7206,17 @@ blended_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog28: three lights, material colour, no vertex colours, gMtxRs19 rows
+; Vu1Prog28: three lights, material colour, no vertex colours, gMtxUv rows
 ;
-; gVu1ProgInfo28 (unk_2EF020.c): 114 pairs (912 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo28 (bones.c): 114 pairs (912 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x4202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LE (unk_2F17C0.c): an UNPACK of 19 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_LE: an UNPACK of 19 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
 ;   12-15    light colours (three lights and the ambient): vf24-vf27
-;   16-18    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   16-18    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ; Vertices: gVu1ProgLayouts[0], 3 qwords: position, normal, texture coordinates.
 ; Batches at VU 0x13 and 0x13 + 0x1f2 (XTOP); the output follows each.
 ;=======================================================================================
@@ -7363,18 +7363,18 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog29: three lights, material colour, no vertex colours, second colour, gMtxRs19 rows
+; Vu1Prog29: three lights, material colour, no vertex colours, second colour, gMtxUv rows
 ;
-; gVu1ProgInfo29 (unk_2EF020.c): 125 pairs (1000 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo29 (bones.c): 125 pairs (1000 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x24202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LVE (unk_2F17C0.c): an UNPACK of 20 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
-;   1        second colour: gGsColor67F: vf19
+; Setup Vu1Pkt_LVE: an UNPACK of 20 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
+;   1        second colour: gGsColor2F: vf19
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
 ;   13-16    light colours (three lights and the ambient): vf24-vf27
-;   17-19    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   17-19    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ; Vertices: gVu1ProgLayouts[0], 3 qwords: position, normal, texture coordinates.
 ; Batches at VU 0x14 and 0x14 + 0x1f2 (XTOP); the output follows each.
 ;=======================================================================================
@@ -7532,17 +7532,17 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog30: three lights, gMtxRs19 rows
+; Vu1Prog30: three lights, gMtxUv rows
 ;
-; gVu1ProgInfo30 (unk_2EF020.c): 116 pairs (928 bytes), batches of up to 4080 bytes;
+; gVu1ProgInfo30 (bones.c): 116 pairs (928 bytes), batches of up to 4080 bytes;
 ; Vu1_SelectProgram's key 0x4200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LE (unk_2F17C0.c): an UNPACK of 19 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf19
+; Setup Vu1Pkt_LE: an UNPACK of 19 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf19
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
 ;   12-15    light colours (three lights and the ambient): vf12-vf15
-;   16-18    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   16-18    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ; Vertices: gVu1ProgLayouts[1], 4 qwords: position, normal, colour, texture coordinates.
 ; Batches at VU 0x13 and 0x13 + 0x1f2 (XTOP); the output follows each.
 ;=======================================================================================
@@ -7691,18 +7691,18 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog31: three lights, second colour, gMtxRs19 rows
+; Vu1Prog31: three lights, second colour, gMtxUv rows
 ;
-; gVu1ProgInfo31 (unk_2EF020.c): 118 pairs (944 bytes), batches of up to 4080 bytes;
+; gVu1ProgInfo31 (bones.c): 118 pairs (944 bytes), batches of up to 4080 bytes;
 ; Vu1_SelectProgram's key 0x24200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LVE (unk_2F17C0.c): an UNPACK of 20 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf20
-;   1        second colour: gGsColor67F: vf19
+; Setup Vu1Pkt_LVE: an UNPACK of 20 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf20
+;   1        second colour: gGsColor2F: vf19
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
 ;   13-16    light colours (three lights and the ambient): vf12-vf15
-;   17-19    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   17-19    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ; Vertices: gVu1ProgLayouts[1], 4 qwords: position, normal, colour, texture coordinates.
 ; Batches at VU 0x14 and 0x14 + 0x1f2 (XTOP); the output follows each.
 ;=======================================================================================
@@ -7853,15 +7853,15 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog32: material colour, no vertex colours, gMtxRs19 rows
+; Vu1Prog32: material colour, no vertex colours, gMtxUv rows
 ;
-; gVu1ProgInfo32 (unk_2EF020.c): 100 pairs (800 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo32 (bones.c): 100 pairs (800 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x4002, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_E (unk_2F17C0.c): an UNPACK of 12 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_E: an UNPACK of 12 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   9-11     rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   9-11     rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ; Vertices: gVu1ProgLayouts[4], 2 qwords: position, texture coordinates.
 ; Batches at VU 0xc and 0xc + 0x1f7 (XTOP); the output follows each.
 ;=======================================================================================
@@ -7994,16 +7994,16 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog33: material colour, no vertex colours, second colour, gMtxRs19 rows
+; Vu1Prog33: material colour, no vertex colours, second colour, gMtxUv rows
 ;
-; gVu1ProgInfo33 (unk_2EF020.c): 104 pairs (832 bytes), batches of up to 3040 bytes;
+; gVu1ProgInfo33 (bones.c): 104 pairs (832 bytes), batches of up to 3040 bytes;
 ; Vu1_SelectProgram's key 0x24002, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_VE (unk_2F17C0.c): an UNPACK of 13 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf28
+; Setup Vu1Pkt_VE: an UNPACK of 13 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf28
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ; Vertices: gVu1ProgLayouts[4], 2 qwords: position, texture coordinates.
 ; Batches at VU 0xd and 0xd + 0x1f4 (XTOP); the output follows each.
 ;=======================================================================================
@@ -8140,15 +8140,15 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog34: gMtxRs19 rows
+; Vu1Prog34: gMtxUv rows
 ;
-; gVu1ProgInfo34 (unk_2EF020.c): 91 pairs (728 bytes), batches of up to 4000 bytes;
+; gVu1ProgInfo34 (bones.c): 91 pairs (728 bytes), batches of up to 4000 bytes;
 ; Vu1_SelectProgram's key 0x4000, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_E (unk_2F17C0.c): an UNPACK of 12 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_E: an UNPACK of 12 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   9-11     rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   9-11     rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
 ; Batches at VU 0xc and 0xc + 0x1f7 (XTOP); the output follows each.
 ;=======================================================================================
@@ -8272,16 +8272,16 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog35: second colour, gMtxRs19 rows
+; Vu1Prog35: second colour, gMtxUv rows
 ;
-; gVu1ProgInfo35 (unk_2EF020.c): 93 pairs (744 bytes), batches of up to 3840 bytes;
+; gVu1ProgInfo35 (bones.c): 93 pairs (744 bytes), batches of up to 3840 bytes;
 ; Vu1_SelectProgram's key 0x24000, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_VE (unk_2F17C0.c): an UNPACK of 13 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf12
+; Setup Vu1Pkt_VE: an UNPACK of 13 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf12
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
 ; Batches at VU 0xd and 0xd + 0x1f4 (XTOP); the output follows each.
 ;=======================================================================================
@@ -8407,17 +8407,17 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog36: three lights, material colour, no vertex colours, fog, gMtxRs19 rows
+; Vu1Prog36: three lights, material colour, no vertex colours, fog, gMtxUv rows
 ;
-; gVu1ProgInfo36 (unk_2EF020.c): 124 pairs (992 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo36 (bones.c): 124 pairs (992 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0xc202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LDE (unk_2F17C0.c): an UNPACK of 20 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_LDE: an UNPACK of 20 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
 ;   12-15    light colours (three lights and the ambient): vf24-vf27
-;   16-18    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   16-18    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ;   19       fog range: gGsFogFar and the word after it: vf19
 ; Vertices: gVu1ProgLayouts[0], 3 qwords: position, normal, texture coordinates.
 ; Batches at VU 0x14 and 0x14 + 0x1f3 (XTOP); the output follows each.
@@ -8575,18 +8575,18 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog37: skinned, three lights, material colour, no vertex colours, fog, gMtxRs19 rows
+; Vu1Prog37: skinned, three lights, material colour, no vertex colours, fog, gMtxUv rows
 ;
-; gVu1ProgInfo37 (unk_2EF020.c): 354 pairs (2832 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo37 (bones.c): 354 pairs (2832 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0xc202, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SLDE (unk_2F17C0.c): an UNPACK of 244 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_SLDE: an UNPACK of 244 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
 ;   9-11     light directions (world space, negated): vf29-vf31
 ;   12-15    light colours (three lights and the ambient): vf24-vf27
 ;   16       fog range: gGsFogFar and the word after it: vf16
-;   17-19    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf17-vf19
+;   17-19    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf17-vf19
 ;   20-147   bone matrices: the 32 gMtxSlots the model's mask (e+0x54) selects
 ; Vertices: gVu1ProgLayouts[8], 5 qwords: position, normal, texture coordinates, bone indices, bone weights.
 ; Batches at VU 0xf4 and 0xf4 + 0x183 (XTOP); the output follows each.
@@ -8986,18 +8986,18 @@ blended_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog38: three lights, material colour, no vertex colours, fog, second colour, gMtxRs19 rows
+; Vu1Prog38: three lights, material colour, no vertex colours, fog, second colour, gMtxUv rows
 ;
-; gVu1ProgInfo38 (unk_2EF020.c): 129 pairs (1032 bytes), batches of up to 3840 bytes;
+; gVu1ProgInfo38 (bones.c): 129 pairs (1032 bytes), batches of up to 3840 bytes;
 ; Vu1_SelectProgram's key 0x2c202, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LDVE (unk_2F17C0.c): an UNPACK of 21 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
-;   1        second colour: gGsColor67F: vf20
+; Setup Vu1Pkt_LDVE: an UNPACK of 21 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
+;   1        second colour: gGsColor2F: vf20
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
 ;   13-16    light colours (three lights and the ambient): vf24-vf27
-;   17-19    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   17-19    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ;   20       fog range: gGsFogFar and the word after it: vf19
 ; Vertices: gVu1ProgLayouts[0], 3 qwords: position, normal, texture coordinates.
 ; Batches at VU 0x15 and 0x15 + 0x1f3 (XTOP); the output follows each.
@@ -9160,17 +9160,17 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog39: three lights, fog, gMtxRs19 rows
+; Vu1Prog39: three lights, fog, gMtxUv rows
 ;
-; gVu1ProgInfo39 (unk_2EF020.c): 128 pairs (1024 bytes), batches of up to 4000 bytes;
+; gVu1ProgInfo39 (bones.c): 128 pairs (1024 bytes), batches of up to 4000 bytes;
 ; Vu1_SelectProgram's key 0xc200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LDE (unk_2F17C0.c): an UNPACK of 20 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf20
+; Setup Vu1Pkt_LDE: an UNPACK of 20 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf20
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
 ;   12-15    light colours (three lights and the ambient): vf12-vf15
-;   16-18    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   16-18    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ;   19       fog range: gGsFogFar and the word after it: vf19
 ; Vertices: gVu1ProgLayouts[1], 4 qwords: position, normal, colour, texture coordinates.
 ; Batches at VU 0x14 and 0x14 + 0x1f3 (XTOP); the output follows each.
@@ -9332,18 +9332,18 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog40: three lights, fog, second colour, gMtxRs19 rows
+; Vu1Prog40: three lights, fog, second colour, gMtxUv rows
 ;
-; gVu1ProgInfo40 (unk_2EF020.c): 129 pairs (1032 bytes), batches of up to 3840 bytes;
+; gVu1ProgInfo40 (bones.c): 129 pairs (1032 bytes), batches of up to 3840 bytes;
 ; Vu1_SelectProgram's key 0x2c200, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LDVE (unk_2F17C0.c): an UNPACK of 21 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf21
-;   1        second colour: gGsColor67F: vf20
+; Setup Vu1Pkt_LDVE: an UNPACK of 21 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf21
+;   1        second colour: gGsColor2F: vf20
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
 ;   13-16    light colours (three lights and the ambient): vf12-vf15
-;   17-19    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   17-19    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ;   20       fog range: gGsFogFar and the word after it: vf19
 ; Vertices: gVu1ProgLayouts[1], 4 qwords: position, normal, colour, texture coordinates.
 ; Batches at VU 0x15 and 0x15 + 0x1f3 (XTOP); the output follows each.
@@ -9506,15 +9506,15 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog41: material colour, no vertex colours, fog, gMtxRs19 rows
+; Vu1Prog41: material colour, no vertex colours, fog, gMtxUv rows
 ;
-; gVu1ProgInfo41 (unk_2EF020.c): 115 pairs (920 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo41 (bones.c): 115 pairs (920 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0xc002, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DE (unk_2F17C0.c): an UNPACK of 13 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_DE: an UNPACK of 13 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   9-11     rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   9-11     rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ;   12       fog range: gGsFogFar and the word after it: vf12
 ; Vertices: gVu1ProgLayouts[4], 2 qwords: position, texture coordinates.
 ; Batches at VU 0xd and 0xd + 0x1f6 (XTOP); the output follows each.
@@ -9663,16 +9663,16 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog42: material colour, no vertex colours, fog, second colour, gMtxRs19 rows
+; Vu1Prog42: material colour, no vertex colours, fog, second colour, gMtxUv rows
 ;
-; gVu1ProgInfo42 (unk_2EF020.c): 122 pairs (976 bytes), batches of up to 3040 bytes;
+; gVu1ProgInfo42 (bones.c): 122 pairs (976 bytes), batches of up to 3040 bytes;
 ; Vu1_SelectProgram's key 0x2c002, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DVE (unk_2F17C0.c): an UNPACK of 14 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf13
+; Setup Vu1Pkt_DVE: an UNPACK of 14 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf13
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ;   13       fog range: gGsFogFar and the word after it: vf12
 ; Vertices: gVu1ProgLayouts[4], 2 qwords: position, texture coordinates.
 ; Batches at VU 0xe and 0xe + 0x1ea (XTOP); the output follows each.
@@ -9828,15 +9828,15 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog43: fog, gMtxRs19 rows
+; Vu1Prog43: fog, gMtxUv rows
 ;
-; gVu1ProgInfo43 (unk_2EF020.c): 104 pairs (832 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo43 (bones.c): 104 pairs (832 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0xc000, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DE (unk_2F17C0.c): an UNPACK of 13 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_DE: an UNPACK of 13 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   9-11     rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   9-11     rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ;   12       fog range: gGsFogFar and the word after it: vf12
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
 ; Batches at VU 0xd and 0xd + 0x1f6 (XTOP); the output follows each.
@@ -9974,16 +9974,16 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog44: fog, second colour, gMtxRs19 rows
+; Vu1Prog44: fog, second colour, gMtxUv rows
 ;
-; gVu1ProgInfo44 (unk_2EF020.c): 105 pairs (840 bytes), batches of up to 3840 bytes;
+; gVu1ProgInfo44 (bones.c): 105 pairs (840 bytes), batches of up to 3840 bytes;
 ; Vu1_SelectProgram's key 0x2c000, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DVE (unk_2F17C0.c): an UNPACK of 14 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf13
+; Setup Vu1Pkt_DVE: an UNPACK of 14 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf13
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ;   13       fog range: gGsFogFar and the word after it: vf12
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
 ; Batches at VU 0xe and 0xe + 0x1ea (XTOP); the output follows each.
@@ -10124,11 +10124,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog45: fog, second colour, clipped
 ;
-; gVu1ProgInfo45 (unk_2EF020.c): 445 pairs (3560 bytes), batches of up to 2880 bytes;
+; gVu1ProgInfo45 (bones.c): 445 pairs (3560 bytes), batches of up to 2880 bytes;
 ; Vu1_SelectProgram's key 0x28080, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DVP (unk_2F17C0.c): an UNPACK of 15 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf10
+; Setup Vu1Pkt_DVP: an UNPACK of 15 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf10
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10       fog range: gGsFogFar and the word after it: vf09, vf26
@@ -10649,16 +10649,16 @@ intersect_skip:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog46: fog, second colour, gMtxRs19 rows, clipped
+; Vu1Prog46: fog, second colour, gMtxUv rows, clipped
 ;
-; gVu1ProgInfo46 (unk_2EF020.c): 452 pairs (3616 bytes), batches of up to 2880 bytes;
+; gVu1ProgInfo46 (bones.c): 452 pairs (3616 bytes), batches of up to 2880 bytes;
 ; Vu1_SelectProgram's key 0x2c080, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DVEP (unk_2F17C0.c): an UNPACK of 18 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf13
+; Setup Vu1Pkt_DVEP: an UNPACK of 18 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf13
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ;   13       fog range: gGsFogFar and the word after it: vf12, vf26
 ;   14-17    gMtxProj, the projection matrix: vf27-vf30
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
@@ -11184,18 +11184,18 @@ intersect_skip:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog47: three lights, fog, second colour, gMtxRs19 rows, clipped
+; Vu1Prog47: three lights, fog, second colour, gMtxUv rows, clipped
 ;
-; gVu1ProgInfo47 (unk_2EF020.c): 462 pairs (3696 bytes), batches of up to 2720 bytes;
+; gVu1ProgInfo47 (bones.c): 462 pairs (3696 bytes), batches of up to 2720 bytes;
 ; Vu1_SelectProgram's key 0x2c280, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LDVEP (unk_2F17C0.c): an UNPACK of 25 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf16
-;   1        second colour: gGsColor67F: vf21
+; Setup Vu1Pkt_LDVEP: an UNPACK of 25 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf16
+;   1        second colour: gGsColor2F: vf21
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-12    light directions (model space, negated): vf09-vf11
 ;   13-16    light colours (three lights and the ambient): vf12-vf15
-;   17-19    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf17-vf19
+;   17-19    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf17-vf19
 ;   20       fog range: gGsFogFar and the word after it: vf20, vf26
 ;   21-24    gMtxProj, the projection matrix: vf27-vf30
 ; Vertices: gVu1ProgLayouts[1], 4 qwords: position, normal, colour, texture coordinates.
@@ -11733,11 +11733,11 @@ intersect_skip:
 ;=======================================================================================
 ; Vu1Prog48: normals (key bit 0x20), material colour, no vertex colours, fog, second colour
 ;
-; gVu1ProgInfo48 (unk_2EF020.c): 120 pairs (960 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo48 (bones.c): 120 pairs (960 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x28022, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DV (unk_2F17C0.c): an UNPACK of 11 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf10
+; Setup Vu1Pkt_DV: an UNPACK of 11 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf10
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10       fog range: gGsFogFar and the word after it: vf09
@@ -11893,17 +11893,17 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog49: three lights, normals (key bit 0x20), material colour, no vertex colours, gMtxRs19 rows
+; Vu1Prog49: three lights, normals (key bit 0x20), material colour, no vertex colours, gMtxUv rows
 ;
-; gVu1ProgInfo49 (unk_2EF020.c): 135 pairs (1080 bytes), batches of up to 3968 bytes;
+; gVu1ProgInfo49 (bones.c): 135 pairs (1080 bytes), batches of up to 3968 bytes;
 ; Vu1_SelectProgram's key 0x4222, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_LE (unk_2F17C0.c): an UNPACK of 19 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_LE: an UNPACK of 19 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9-11     light directions (model space, negated): vf09-vf11
 ;   12-15    light colours (three lights and the ambient): vf24-vf27
-;   16-18    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16-vf18
+;   16-18    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16-vf18
 ; Vertices: gVu1ProgLayouts[0], 3 qwords: position, normal, texture coordinates.
 ; Batches at VU 0x13 and 0x13 + 0x1f2 (XTOP); the output follows each.
 ;=======================================================================================
@@ -12071,17 +12071,17 @@ vertices_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog50: skinned, three lights, normals (key bit 0x20), material colour, no vertex colours, gMtxRs19 rows
+; Vu1Prog50: skinned, three lights, normals (key bit 0x20), material colour, no vertex colours, gMtxUv rows
 ;
-; gVu1ProgInfo50 (unk_2EF020.c): 346 pairs (2768 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo50 (bones.c): 346 pairs (2768 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x4222, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SLE (unk_2F17C0.c): an UNPACK of 243 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness: vf28
+; Setup Vu1Pkt_SLE: an UNPACK of 243 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness: vf28
 ;   1-4      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
 ;   9-11     light directions (world space, negated): vf01, vf02, vf03, vf20, vf21, vf22
 ;   12-15    light colours (three lights and the ambient): vf24-vf27
-;   16-18    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf16, vf17, vf18, vf20, vf21, vf22
+;   16-18    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf16, vf17, vf18, vf20, vf21, vf22
 ;   19-146   bone matrices: the 32 gMtxSlots the model's mask (e+0x54) selects
 ; Vertices: gVu1ProgLayouts[8], 5 qwords: position, normal, texture coordinates, bone indices, bone weights.
 ; Batches at VU 0xf3 and 0xf3 + 0x183 (XTOP); the output follows each.
@@ -12473,16 +12473,16 @@ blended_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog52: skinned, normals (key bit 0x20), second colour, gMtxRs19 rows
+; Vu1Prog52: skinned, normals (key bit 0x20), second colour, gMtxUv rows
 ;
-; gVu1ProgInfo52 (unk_2EF020.c): 229 pairs (1832 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo52 (bones.c): 229 pairs (1832 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x24020, skinned models (0x321135, 0x221135).
-; Setup Vu1Pkt_SVE (unk_2F17C0.c): an UNPACK of 141 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_SVE: an UNPACK of 141 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2-5      gMtxView x gMtxProjClip: world to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      gMtxView x gViewportMtx: world to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf10-vf12
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf10-vf12
 ;   13-140   bone matrices: the 32 gMtxSlots the model's mask (e+0x54) selects
 ; Vertices: gVu1ProgLayouts[9], 6 qwords: position, normal, colour, texture coordinates, bone indices, bone weights.
 ; Batches at VU 0x8d and 0x8d + 0x1b6 (XTOP); the output follows each.
@@ -12756,16 +12756,16 @@ blended_cont:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog51: normals (key bit 0x20), second colour, gMtxRs19 rows
+; Vu1Prog51: normals (key bit 0x20), second colour, gMtxUv rows
 ;
-; gVu1ProgInfo51 (unk_2EF020.c): 110 pairs (880 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo51 (bones.c): 110 pairs (880 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x24020, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_VE (unk_2F17C0.c): an UNPACK of 13 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_VE: an UNPACK of 13 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf10-vf12
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf10-vf12
 ; Vertices: gVu1ProgLayouts[1], 4 qwords: position, normal, colour, texture coordinates.
 ; Batches at VU 0xd and 0xd + 0x1f6 (XTOP); the output follows each.
 ;=======================================================================================
@@ -12910,11 +12910,11 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog53: normals (key bit 0x20), second colour, clipped
 ;
-; gVu1ProgInfo53 (unk_2EF020.c): 458 pairs (3664 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo53 (bones.c): 458 pairs (3664 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x200a0, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_VP (unk_2F17C0.c): an UNPACK of 14 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_VP: an UNPACK of 14 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10-13    gMtxProj, the projection matrix: vf27-vf30
@@ -13451,11 +13451,11 @@ intersect_skip:
 ;=======================================================================================
 ; Vu1Prog54: normals (key bit 0x20), fog, second colour
 ;
-; gVu1ProgInfo54 (unk_2EF020.c): 136 pairs (1088 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo54 (bones.c): 136 pairs (1088 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x28020, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DV (unk_2F17C0.c): an UNPACK of 11 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf09
+; Setup Vu1Pkt_DV: an UNPACK of 11 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf09
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10       fog range: gGsFogFar and the word after it: vf10
@@ -13629,10 +13629,10 @@ vertices_cont:
 ;=======================================================================================
 ; Vu1Prog55: fog, clipped
 ;
-; gVu1ProgInfo55 (unk_2EF020.c): 465 pairs (3720 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo55 (bones.c): 465 pairs (3720 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x8080, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DP (unk_2F17C0.c): an UNPACK of 14 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_DP: an UNPACK of 14 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1        fog range: gGsFogFar and the word after it: vf09, vf26
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
@@ -14173,15 +14173,15 @@ intersect_skip:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog56: gMtxRs19 rows, clipped
+; Vu1Prog56: gMtxUv rows, clipped
 ;
-; gVu1ProgInfo56 (unk_2EF020.c): 411 pairs (3288 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo56 (bones.c): 411 pairs (3288 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0x4080, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_EP (unk_2F17C0.c): an UNPACK of 16 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_EP: an UNPACK of 16 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   9-11     rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   9-11     rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ;   12-15    gMtxProj, the projection matrix: vf27-vf30
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
 ; Batches at VU 0x10 and 0x10 + 0x1c0 (XTOP); the output follows each.
@@ -14665,16 +14665,16 @@ intersect_skip:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog57: fog, gMtxRs19 rows, clipped
+; Vu1Prog57: fog, gMtxUv rows, clipped
 ;
-; gVu1ProgInfo57 (unk_2EF020.c): 467 pairs (3736 bytes), batches of up to 3200 bytes;
+; gVu1ProgInfo57 (bones.c): 467 pairs (3736 bytes), batches of up to 3200 bytes;
 ; Vu1_SelectProgram's key 0xc080, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DEP (unk_2F17C0.c): an UNPACK of 17 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
+; Setup Vu1Pkt_DEP: an UNPACK of 17 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
 ;   1-4      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   5-8      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   9        fog range: gGsFogFar and the word after it: vf09, vf26
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf10-vf12
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf10-vf12
 ;   13-16    gMtxProj, the projection matrix: vf27-vf30
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
 ; Batches at VU 0x11 and 0x11 + 0x1c0 (XTOP); the output follows each.
@@ -15214,16 +15214,16 @@ intersect_skip:
 .endprogram
 
 ;=======================================================================================
-; Vu1Prog58: second colour, gMtxRs19 rows, clipped
+; Vu1Prog58: second colour, gMtxUv rows, clipped
 ;
-; gVu1ProgInfo58 (unk_2EF020.c): 497 pairs (3976 bytes), batches of up to 2880 bytes;
+; gVu1ProgInfo58 (bones.c): 497 pairs (3976 bytes), batches of up to 2880 bytes;
 ; Vu1_SelectProgram's key 0x24080, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_VEP (unk_2F17C0.c): an UNPACK of 17 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf13
+; Setup Vu1Pkt_VEP: an UNPACK of 17 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf13
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
-;   10-12    rows 0, 1 and 3 of gMtxRs19 (Vu1_CopyRowsE): vf09-vf11
+;   10-12    rows 0, 1 and 3 of gMtxUv (Vu1_PutUvMatrix): vf09-vf11
 ;   13-16    gMtxProj, the projection matrix: vf12, vf27, vf28, vf29, vf30
 ; Vertices: gVu1ProgLayouts[5], 3 qwords: position, colour, texture coordinates.
 ; Batches at VU 0x11 and 0x11 + 0x1c0 (XTOP); the output follows each.
@@ -15795,11 +15795,11 @@ intersect_skip:
 ;=======================================================================================
 ; Vu1Prog59: normals (key bit 0x20), fog, second colour, clipped
 ;
-; gVu1ProgInfo59 (unk_2EF020.c): 490 pairs (3920 bytes), batches of up to 2880 bytes;
+; gVu1ProgInfo59 (bones.c): 490 pairs (3920 bytes), batches of up to 2880 bytes;
 ; Vu1_SelectProgram's key 0x280a0, rigid models (0x21035, 0x121035).
-; Setup Vu1Pkt_DVP (unk_2F17C0.c): an UNPACK of 15 qwords to VU 0, then MSCALF 0:
-;   0        colour: gGsColor0EF, RGB scaled by the model's brightness
-;   1        second colour: gGsColor67F: vf10
+; Setup Vu1Pkt_DVP: an UNPACK of 15 qwords to VU 0, then MSCALF 0:
+;   0        colour: gGsColorF, RGB scaled by the model's brightness
+;   1        second colour: gGsColor2F: vf10
 ;   2-5      gMtxSlots x gMtxView x gMtxProjClip: model to screen (XYZ after the divide by w): vf01-vf04
 ;   6-9      the matrix above x gViewportMtx: model to the clip test's space: vf05-vf08
 ;   10       fog range: gGsFogFar and the word after it: vf09, vf31

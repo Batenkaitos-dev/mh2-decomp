@@ -82,12 +82,17 @@ s32 Cse_ReqInit(s32 arg)
     return 0;
 }
 
-s32 Cse_ReqSetMono(s32 on)
+/*
+ * Queues CSE_REQ_MONO: enable 1 mixes every voice to mono, 0 turns that
+ * off. Returns the request's sequence number. seen: Snd_SetOutputMode
+ * passes 1 for the mono sound option.
+ */
+s32 Cse_ReqSetMono(s32 enable)
 {
     CseReqB req = {0};
 
     req.cmd = CSE_REQ_MONO;
-    req.a = on & 1;
+    req.a = enable & 1;
     return MlRpcQueue_Set(CSE_FNO_COMM, &req, sizeof(req));
 }
 
@@ -96,106 +101,126 @@ s32 Cse_ReqSetMasterVolume(s32 vol)
     return Cse_ReqSetVolume(0xFF, vol);
 }
 
-/* ch 0-15, or 0xFF for the master volume; vol 0-127. */
-s32 Cse_ReqSetVolume(s32 ch, s32 vol)
+/*
+ * Queues CSE_REQ_VOLUME: channel 0-15, or 0xFF for the master volume; vol
+ * 0-127. Returns the request's sequence number.
+ */
+s32 Cse_ReqSetVolume(s32 channel, s32 vol)
 {
     CseReqB req = {0};
 
     req.cmd = CSE_REQ_VOLUME;
-    req.a = (ch == 0xFF) ? ch : (ch & 0xF);
+    req.a = (channel == 0xFF) ? channel : (channel & 0xF);
     req.b = vol & 0x7F;
     return MlRpcQueue_Set(CSE_FNO_COMM, &req, sizeof(req));
 }
 
-/* Sets two modulations (a, b and c, d) of the matching voices. */
-s32 Cse_ReqModulate(CseParam *p, u16 a, u16 b, u16 c, u16 d)
+/*
+ * Queues CSE_REQ_MODULATE for the voices voiceParam matches, with two
+ * modulations (firstModA, firstModB and secondModA, secondModB). Returns
+ * the request's sequence number. seen: the SE requests pass the mod[0..3]
+ * of an SE record of type 5.
+ */
+s32 Cse_ReqModulate(CseParam *voiceParam, u16 firstModA, u16 firstModB, u16 secondModA, u16 secondModB)
 {
     CseReqModulate req = {0};
 
     req.cmd = CSE_REQ_MODULATE;
-    req.param = *p;
-    req.v[0] = a;
-    req.v[1] = b;
-    req.v[2] = c;
-    req.v[3] = d;
+    req.param = *voiceParam;
+    req.v[0] = firstModA;
+    req.v[1] = firstModB;
+    req.v[2] = secondModA;
+    req.v[3] = secondModB;
     return MlRpcQueue_Set(CSE_FNO_COMM, &req, sizeof(req));
 }
 
-s32 Cse_ReqStop(CseParam *p)
+s32 Cse_ReqStop(CseParam *voiceParam)
 {
-    return Cse_ReqParam(p, CSE_REQ_STOP);
+    return Cse_ReqParam(voiceParam, CSE_REQ_STOP);
 }
 
-s32 Cse_ReqKeyOff(CseParam *p)
+s32 Cse_ReqKeyOff(CseParam *voiceParam)
 {
-    return Cse_ReqParam(p, CSE_REQ_KEYOFF);
+    return Cse_ReqParam(voiceParam, CSE_REQ_KEYOFF);
 }
 
+/*
+ * Queues a stop of every voice (an empty CseParam). Returns the request's
+ * sequence number.
+ */
 s32 Cse_ReqStopAll(void)
 {
-    CseParam p = {0};
+    CseParam voiceParam = {0};
 
-    return Cse_ReqParam(&p, CSE_REQ_STOP);
+    return Cse_ReqParam(&voiceParam, CSE_REQ_STOP);
 }
 
+/*
+ * Queues a stop of every voice of bank (0-15). Returns the request's
+ * sequence number.
+ */
 s32 Cse_ReqStopBank(s32 bank)
 {
-    CseParam p = {0};
+    CseParam voiceParam = {0};
 
-    p.flags = CSE_F_BANK;
-    p.bank = bank & 0xF;
-    return Cse_ReqParam(&p, CSE_REQ_STOP);
+    voiceParam.flags = CSE_F_BANK;
+    voiceParam.bank = bank & 0xF;
+    return Cse_ReqParam(&voiceParam, CSE_REQ_STOP);
 }
 
-/* Changes the voices of a bank (-1: every bank) and sound id2 and id3 (-1:
- * any), with the values opt has. */
-s32 Cse_ReqSetParam(s32 bank, s32 id2, s32 id3, CseOpt *opt)
+/*
+ * Changes the voices of a bank (-1: every bank) whose id2 is groupId and
+ * id3 is subGroupId (-1: any), with the values opt has (volume, pan,
+ * bend and the others its flags mark). Returns the request's sequence
+ * number, 0 when it is refused.
+ */
+s32 Cse_ReqSetParam(s32 bank, s32 groupId, s32 subGroupId, CseOpt *opt)
 {
-    CseParam p = {0};
+    CseParam voiceParam = {0};
 
     if (bank == -1) {
-        p.flags |= CSE_F_GLOBAL;
+        voiceParam.flags |= CSE_F_GLOBAL;
     } else {
-        p.bank = bank;
-        p.flags |= CSE_F_BANK;
+        voiceParam.bank = bank;
+        voiceParam.flags |= CSE_F_BANK;
     }
-    if (id2 != -1) {
-        p.id2 = id2;
-        p.flags |= CSE_F_ID2;
+    if (groupId != -1) {
+        voiceParam.id2 = groupId;
+        voiceParam.flags |= CSE_F_ID2;
     }
-    if (id3 != -1) {
-        p.id3 = id3;
-        p.flags |= CSE_F_ID3;
+    if (subGroupId != -1) {
+        voiceParam.id3 = subGroupId;
+        voiceParam.flags |= CSE_F_ID3;
     }
     if (opt->flags & 0x20) {
-        p.flags |= 0x100;
-        p.vol = opt->v[5];
+        voiceParam.flags |= 0x100;
+        voiceParam.vol = opt->v[5];
     }
     if (opt->flags & 0x40) {
-        p.flags |= 0x800;
-        p.pan = opt->v[6];
+        voiceParam.flags |= 0x800;
+        voiceParam.pan = opt->v[6];
     }
     if (opt->flags & 0x80) {
-        p.flags |= 0x2000;
-        p.unkE = opt->v[7];
+        voiceParam.flags |= 0x2000;
+        voiceParam.unkE = opt->v[7];
     }
     if (opt->flags & 0x100) {
-        p.flags |= 0x8000;
-        p.bend = opt->v[8];
+        voiceParam.flags |= 0x8000;
+        voiceParam.bend = opt->v[8];
     }
     if (opt->flags & 0x1000) {
-        p.flags |= 0x800;
-        p.unk4 = opt->v[12];
+        voiceParam.flags |= 0x800;
+        voiceParam.unk4 = opt->v[12];
     }
     if (opt->flags & 0x2000) {
-        p.flags |= 0x10000;
-        p.unk13 = opt->b38;
+        voiceParam.flags |= 0x10000;
+        voiceParam.unk13 = opt->b38;
     }
     if (opt->flags & 0x4000) {
-        p.flags |= 0x20000;
-        p.unk14 = opt->b39;
+        voiceParam.flags |= 0x20000;
+        voiceParam.unk14 = opt->b39;
     }
-    return Cse_ReqParam(&p, CSE_REQ_SETPARAM);
+    return Cse_ReqParam(&voiceParam, CSE_REQ_SETPARAM);
 }
 
 /* The core's effect (reverb): sceSdSetEffectAttr values, and the end of the
@@ -226,67 +251,86 @@ s32 Cse_ReqUpload(u32 src, u32 dst, u32 size)
     return MlRpcQueue_Set(CSE_FNO_UPLOAD, &req, sizeof(req));
 }
 
-s32 Cse_ReqKeyOn(CseVoice *v, CseParam *p)
+/*
+ * Queues CSE_REQ_KEYON: starts one voice with the attributes voiceAttr
+ * (from a tone of the bank) and the targeting and values of voiceParam.
+ * Returns the request's sequence number.
+ */
+s32 Cse_ReqKeyOn(CseVoice *voiceAttr, CseParam *voiceParam)
 {
     CseReqKeyOn req;
 
     req.cmd = CSE_REQ_KEYON;
-    req.voice = *v;
-    req.param = *p;
+    req.voice = *voiceAttr;
+    req.param = *voiceParam;
     return MlRpcQueue_Set(CSE_FNO_COMM, &req, sizeof(req));
 }
 
-/* Starts every split of program prog in bank p->bank that plays key
- * p->key. */
-s32 Cse_KeyOnProgram(CseParam *p, s32 prog)
+/*
+ * Starts every split of program prog in bank voiceParam->bank that plays
+ * key voiceParam->key. Returns the last Cse_ReqKeyOn result, 0 when no
+ * split plays the key.
+ */
+s32 Cse_KeyOnProgram(CseParam *voiceParam, s32 prog)
 {
     CseTone tone = {0};
-    CseVoice v;
+    CseVoice voiceAttr;
     CseBankHead *head;
-    s32 n;
+    s32 splitCount;
     s32 i;
     s32 ret = 0;
 
-    head = CseBank_Get(p->bank);
-    n = CseBankFile_GetNumSplits(head, prog);
-    for (i = 0; i < n; i++) {
-        if (CseBankFile_GetTone(&tone, head, prog, p->key, i) >= 0) {
-            CseBankFile_GetVoice(&v, &tone, p->key, CseBank_GetSpuAddr(p->bank));
-            ret = Cse_ReqKeyOn(&v, p);
+    head = CseBank_Get(voiceParam->bank);
+    splitCount = CseBankFile_GetNumSplits(head, prog);
+    for (i = 0; i < splitCount; i++) {
+        if (CseBankFile_GetTone(&tone, head, prog, voiceParam->key, i) >= 0) {
+            CseBankFile_GetVoice(&voiceAttr, &tone, voiceParam->key, CseBank_GetSpuAddr(voiceParam->bank));
+            ret = Cse_ReqKeyOn(&voiceAttr, voiceParam);
         }
     }
     return ret;
 }
 
-s32 Cse_CheckParam(CseParam *p)
+/*
+ * Checks and fixes a CseParam before it is sent: prio is masked to 0-0x7F
+ * (or set to 0x7F with CSE_F_PRIO when unset) and key to 0-0x7F. Returns
+ * -1, printing the engine's message, when CSE_F_ID2 is set without
+ * CSE_F_GLOBAL, CSE_F_PHYSICAL or CSE_F_BANK, or CSE_F_ID3 without
+ * CSE_F_ID2; else 0.
+ */
+s32 Cse_CheckParam(CseParam *voiceParam)
 {
-    if (p->flags & CSE_F_PRIO) {
-        p->prio &= 0x7F;
+    if (voiceParam->flags & CSE_F_PRIO) {
+        voiceParam->prio &= 0x7F;
     } else {
-        p->flags |= CSE_F_PRIO;
-        p->prio = 0x7F;
+        voiceParam->flags |= CSE_F_PRIO;
+        voiceParam->prio = 0x7F;
     }
-    if (p->flags & CSE_F_ID2) {
-        if (!(p->flags & (CSE_F_GLOBAL | CSE_F_PHYSICAL | CSE_F_BANK))) {
+    if (voiceParam->flags & CSE_F_ID2) {
+        if (!(voiceParam->flags & (CSE_F_GLOBAL | CSE_F_PHYSICAL | CSE_F_BANK))) {
             scePrintf("[EE]");
             scePrintf("(ERR)");
             scePrintf("You should set FLAG_GLOBAL, FLAG_PHYSICAL, or FLAG_BANK\n");
             return -1;
         }
-    } else if (p->flags & CSE_F_ID3) {
+    } else if (voiceParam->flags & CSE_F_ID3) {
         scePrintf("[EE]");
         scePrintf("(ERR)");
         scePrintf("You should set ID2\n");
         return -1;
     }
-    if (p->flags & CSE_F_KEY) {
-        p->key &= 0x7F;
+    if (voiceParam->flags & CSE_F_KEY) {
+        voiceParam->key &= 0x7F;
     }
     return 0;
 }
 
-/* Queues a CseParam request (key off, stop or set parameters). */
-s32 Cse_ReqParam(CseParam *p, u32 cmd)
+/*
+ * Queues a CseParam request (key off, stop or set parameters). Returns the
+ * request's sequence number, 0 for another cmd or when Cse_CheckParam
+ * rejects voiceParam.
+ */
+s32 Cse_ReqParam(CseParam *voiceParam, u32 cmd)
 {
     CseReqParam req = {0};
     u32 seq;
@@ -303,7 +347,7 @@ s32 Cse_ReqParam(CseParam *p, u32 cmd)
         return 0;
     }
     req.cmd = cmd;
-    req.param = *p;
+    req.param = *voiceParam;
     if (Cse_CheckParam(&req.param) == -1) {
         return 0;
     }
@@ -322,6 +366,11 @@ s32 Cse_ReqSetMixer(s16 core, s16 mmix)
     return MlRpcQueue_Set(CSE_FNO_COMM, &req, sizeof(req));
 }
 
+/*
+ * Sets the request sequence counter gCseSeq to 0 the first time it is
+ * called (gCseSeqInit), with interrupts off. Returns 0. Called by
+ * Cse_Init.
+ */
 s32 Cse_InitSeq(void)
 {
     if (gCseSeqInit == 0) {

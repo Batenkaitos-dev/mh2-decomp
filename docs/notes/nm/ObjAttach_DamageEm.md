@@ -1,4 +1,4 @@
-# ObjAttach_DamageEm (sub_main, src/sub_main/unk_3BE060.c)
+# ObjAttach_DamageEm (sub_main, src/sub_main/hit_detection.c)
 
 ## Status
 

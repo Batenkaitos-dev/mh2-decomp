@@ -4,7 +4,7 @@
 #include "common.h"
 
 /* A bone of a model's skeleton (0x190 bytes): the pool Bone_Get hands out (Model +0x24),
- * a tree of siblings and children (sub_main unk_2EF020.c: Bone_UpdateWorld,
+ * a tree of siblings and children (Bone_UpdateWorld,
  * Bone_StoreMatrices). Its matrices are f32[16] (row vectors, the translation at
  * [12..14]: Mtx_GetTrans). Named from the monsters' code, which reads em->model->bones[i]. */
 typedef struct EmBone {
@@ -12,7 +12,7 @@ typedef struct EmBone {
     f32 local[16];              /* 0x040: from the pose at 0x104 (Mtx_FromTransform) */
     f32 skin[16];               /* 0x080: the matrix slot is skin times world (Bone_StoreMatrices) */
     u8 padC0[2];
-    s16 count;                  /* 0x0C2: in a model's first bone, the bones of the tree (Model_Setup's loop, unk_376C00.c) */
+    s16 count;                  /* 0x0C2: in a model's first bone, the bones of the tree (Model_Setup's loop) */
     s16 index;                  /* 0x0C4: a slot of the matrix table gMtxSlots */
     u16 id;                     /* 0x0C6: the part it belongs to */
     struct EmBone *parent;      /* 0x0C8 */
@@ -35,12 +35,11 @@ typedef char EmBone_size_check[(sizeof(EmBone) == 0x190) ? 1 : -1];
 
 /* A material of a model (0x4C bytes; Model +0x10, Model_LoadMaterials; ModelFile_ReadMat
  * fills it from the model file's material record). Gs_SetState's registers 0x3A-0x59 copy one
- * to gRsMaterials (main unk_183D20.c), which Model_BuildPartPacket (sub_main unk_2E3940.c)
- * puts in a part's VU1 packet. */
+ * to gRsMaterials, which Model_BuildPartPacket puts in a part's VU1 packet. */
 typedef struct ModelMat {
     f32 unk00;
-    f32 rgb[3];         /* 0x04: GmEm_PartColor's out[1..3]; the file's 0x10 */
-    f32 alpha;          /* 0x10: 0 hides it (gm_sub GmEm_SetMeshAlphas: from Em +0x6E4); times 128 in the packet */
+    f32 rgb[3];         /* 0x04: GmEm_ShenGaorenFlinchColor's out[1..3]; the file's 0x10 */
+    f32 alpha;          /* 0x10: 0 hides it (gm_sub GmEm_PrepareMeshSet: from Em +0x6E4); times 128 in the packet */
     f32 unk14[4];       /* 0x14: the file's 0x20; in the packet only for VU1 program kind 2, with size */
     f32 unk24[4];       /* 0x24: the file's 0x00; in the packet after the colour */
     s32 unk34[4];       /* 0x34: 0 */
@@ -61,12 +60,11 @@ typedef struct ModelMatSet {
 
 /*
  * A model (0x80 bytes): an entry of the pool at *gModels (0x80 entries,
- * Model_Get, Model_Alloc; unk_339EC0.c). Set up by Model_SetupWithPack,
- * Model_SetupWithPackRaw, Model_SetupWithPackEx (unk_335040.c) and Model_SetupTexPack,
- * Model_SetupTexPackB (unk_339EC0.c). The monsters' and the hunters' skeleton
+ * Model_Get, Model_Alloc). Set up by Model_SetupWithPack,
+ * Model_SetupWithPackRaw, Model_SetupWithPackEx and Model_SetupTexPack,
+ * Model_SetupTexPackB. The monsters' and the hunters' skeleton
  * (Em.model, Player.model at 0x4EC) and the stage objects' common model sets
- * (gCommonModels) are models too. unk_376C00.c has another view
- * of it (ModelHeader).
+ * (gCommonModels) are models too.
  */
 typedef struct Model {
     u8 active;          /* 0x00 */
@@ -91,19 +89,19 @@ typedef struct Model {
     EmBone *partBones[4];   /* 0x44: each part's first bone in bones */
     EmBone *partBones2[4];  /* 0x54: the same in bones2 (kind 2) */
     s32 partSkels[4];   /* 0x64: each part's skeleton copy (Skeleton_CopyData; Bone_InitTreeRoot, Model_FreePartCopies) */
-    u8 boneKind;        /* 0x74: the kind of its bone setup (unk_335040.c; 2: bones2 too, unk_376C00.c) */
-    u8 unk75;           /* 0x75 */
+    u8 boneKind;        /* 0x74: the kind of its bone setup (2: bones2 too) */
+    u8 isCopy;          /* 0x75: nonzero: only its bones are its own, so Model_Free releases only them (Model_FreeCopy); the set-ups clear it */
     u8 unk76[0x80 - 0x76];
 } Model;
 typedef char Model_size_check[(sizeof(Model) == 0x80) ? 1 : -1];
 
 /*
  * A mesh: one part of a model file built for drawing (0x24 bytes; Mesh_BuildRigid and
- * Mesh_BuildSkinned from ModelFile_LoadMesh, sub_main unk_2F6540.c; flPS2ConvClayData, from
+ * Mesh_BuildSkinned from ModelFile_LoadMesh; flPS2ConvClayData, from
  * Model_BuildVifPackets' debug string). Model_Create copies it with its strips and vertices
  * into one block (the strips at +0x30, the vertices after them, 16-aligned) and Model_ReadHeader
  * reads it back from there; Model_SetupEntry and Model_BuildVifPackets build the model's VIF
- * packets from it (sub_main unk_2E3940.c).
+ * packets from it.
  */
 typedef struct MeshDesc {
     u32 flags;          /* 0x00: MESH_* */
@@ -135,7 +133,7 @@ typedef char MeshDesc_size_check[(sizeof(MeshDesc) == 0x24) ? 1 : -1];
 #define MESH_FORMAT_UV 0x10         /* with MESH_FORMAT_COLOR: MeshVtxTex, texture coordinates added */
 #define MESH_FORMAT_SKIN 0x100      /* with both: MeshVtxSkin, bones and weights added */
 
-/* The mesh keys Vu1_SelectProgram (unk_2EF020.c) picks a VU1 program by: ModelEntry.used
+/* The mesh keys Vu1_SelectProgram picks a VU1 program by: ModelEntry.used
  * (the MeshDesc flags) | ModelEntry.vtxFormat, for the meshes the builders make with
  * texture coordinates. */
 #define MESH_KEY_RIGID (MESH_BUILT | MESH_INDEXED | MESH_FORMAT_COLOR | MESH_FORMAT_UV)
@@ -183,7 +181,7 @@ typedef struct MeshVtxSkin {
 #define BONE_POOL_COUNT 0x800
 #define MATSET_POOL_COUNT 0x180
 
-/* Places in the model load buffer (gModelLoadBuf, unk_335040.c): a model
+/* Places in the model load buffer (gModelLoadBuf): a model
  * file at its start, its skeleton file (the pack's part 1) after it; a
  * stage's second file (FilePair) holds the alternative skeleton
  * (Model_InitSkeleton's alt). */
@@ -192,31 +190,30 @@ typedef struct MeshVtxSkin {
 
 Model *Model_Get(s32 i);
 
-/* sub_main 0x5DA070: the current area's four model sets (unk_33B080.c sets them from Model_Get; the
+/* The current area's four model sets (Area_LoadSubModels sets them from Model_Get; the
  * area props and objects draw [0]). */
 extern Model *gAreaSubModels[4];
 
-/* sub_main 0x5DA030: the five common model sets (unk_3240E0.c sets [0], [1], [2], [4] from
- * Model_Get; unk_368F10.c clears them): [0] the one the stage objects, effects and village
+/* The five common model sets (Quest_LoadCommonModels sets [0], [1], [2], [4] from
+ * Model_Get; Game_ResetSubsystems clears them): [0] the one the stage objects, effects and village
  * objects draw from, [2] the bow's aim arc (kind 0x2B). */
 extern Model *gCommonModels[5];
 
 /* gCommonModels read through a pointer cast, as the stage objects' functions that use these
  * read it: their load keeps the declaration's place among the locals, where a plain
- * gCommonModels[0] is a copy of a global numbered after them (docs/mwcc-matching.md, "Saved
- * registers in another order", 2). */
+ * gCommonModels[0] is a copy of a global, which the compiler would put after them. */
 #define gStageModelSet (*(Model **)&gCommonModels)
 #define gStageModelSets ((Model **)&gCommonModels)
 
-/* sub_main 0x441170: per area (gScene.area), 16 material set indices into gAreaSubModels[0]'s
- * matSets, -1: none (unk_37B570.c; most rows are gm_sub's D_0092AD60): [0] the set
- * Player_GetAreaAmbModel checks and PitfallTrap draws (three from it), [1] AmbientSound_Draw's,
- * [2..9] AreaObj_K09_DrawType1..8's. */
-extern s16 *gAreaAmbModels[200];
+/* Per area (gScene.area), 16 material set indices into gAreaSubModels[0]'s
+ * matSets, -1: none (most rows are a table of gm_sub's): [0] the set
+ * Player_GetAreaPitModel checks and PitfallTrap draws (three from it), [1] AreaAtmos_Draw's,
+ * [2..9] the draws of AmbientLife's types 1 to 8 (AmbientLife_DrawFallingLeaf ...). */
+extern s16 *gAreaFxModels[200];
 
 /*
- * A skeleton file (read by unk_2F61D0.c; unk_2F6540.c builds skeletons
- * from it): a SkelFileHeader, then `count` chunks, each a SkelChunk
+ * A skeleton file (read by the skeleton loader; SkelFile_BuildPart builds
+ * skeletons from it): a SkelFileHeader, then `count` chunks, each a SkelChunk
  * header and its data from +0xC. The parts chunk (type
  * SKEL_CHUNK_PARTS) lists each part's root node; every other chunk holds
  * one node, a SkelFileNode. A part's nodes form a tree through child and
@@ -239,7 +236,7 @@ typedef struct SkelChunk {
 } SkelChunk;
 
 /*
- * A model file (unk_2F6540.c's readers) is a tree of chunks in the same
+ * A model file (ModelFile_LoadMesh and its readers) is a tree of chunks in the same
  * container as a skeleton file: each chunk is a 0xC-byte header, s32 type,
  * u32 count (its child chunks, or its records) and u32 size (the whole
  * chunk: the next one follows), then its data. The file is the root chunk.
@@ -317,7 +314,7 @@ typedef struct ModelFileMat {
 /* A part's draw states (MODEL_CHUNK_DRAW_STATES, 0x48 bytes; ModelFile_GetDrawStates
  * copies them out). Each field indexes a table of values for one render state
  * (gDrawState15Values ...) or gives bits of a material set's packed flags
- * (DrawStates_Apply, sub_main unk_335040.c). */
+ * (DrawStates_Apply). */
 typedef struct DrawStates {
     s32 version;    /* 0x00: its high half must be 1 (ModelFile_GetDrawStates returns -2 otherwise) */
     s32 s15;        /* 0x04: gDrawState15Values, state 0x15 */
@@ -354,12 +351,12 @@ typedef struct SkelFileNode {
 } SkelFileNode;
 
 /*
- * A skeleton part as built (SkelFile_BuildPart, unk_2F6540.c, from a
+ * A skeleton part as built (SkelFile_BuildPart, from a
  * skeleton file): this header, then `count` BoneDefs, SkelFile_PartSize
  * bytes in all. It is built in a buffer (gLoadBuf), and the header is
  * copied to the caller's, whose `block` then points at the buffer;
- * Skeleton_CopyData (unk_2E3940.c) copies the block into a memory handle,
- * from which Bone_InitTree (unk_2EF020.c) sets up a model's bones.
+ * Skeleton_CopyData copies the block into a memory handle,
+ * from which Bone_InitTree sets up a model's bones.
  */
 typedef struct SkelHeader {
     s16 unk0;                   /* 0x0: not set by SkelFile_BuildPart */
@@ -385,10 +382,41 @@ typedef struct BoneDef {
     f32 trans[4];               /* 0x30 */
 } BoneDef;
 
+/* For the skinned VU1 programs: where the bone matrices go in VU1 memory. */
+typedef struct Vu1BoneLayout {
+    s32 *base;                  /* bone matrix 0; &base[n] is bone n's (4 quadwords each) */
+    s32 off;                    /* the normal matrices' start, in those units */
+    s32 size;                   /* quadwords per normal matrix */
+} Vu1BoneLayout;
+
+struct ModelEntry;
+
+/*
+ * A VU1 program's descriptor (12 words, gVu1ProgInfo00 ... for the 60 programs;
+ * Vu1_SelectProgram picks one for a model). Model_Draw sends the program's code when
+ * the program changes, then runs the packet builder, which uploads the program's
+ * constants and starts it.
+ */
+typedef struct Vu1ProgInfo {
+    s32 upload;                 /* 0x00: the DMA chain that loads the program's code, which Model_Draw CALLs */
+    s32 start;                  /* 0x04: where the program starts, in bytes (0 in every descriptor) */
+    s32 codeStart;              /* 0x08: where its code goes in VU1 memory, in bytes (0 in every descriptor) */
+    s32 codeEnd;                /* 0x0C: the end of its code: (codeEnd - codeStart) >> 3 is gSysWork.vu1Size */
+    u8 *(*build)(struct ModelEntry *entry, u32 start, u8 *next); /* 0x10: the packet builder (Vu1Pkt_*): start in doublewords, the chain to go on with */
+    s32 pktKind;                /* 0x14: the part packets' kind (gModelPktSteps; Model_BuildPartPackets, Model_SetTexRegs) */
+    s32 layout;                 /* 0x18: the vertex layout (gVu1ProgLayouts) */
+    s32 gifInfo;                /* 0x1C: the GIF tag fields (gVu1GifInfos) */
+    s32 bufSize;                /* 0x20: the batch buffer, in bytes: the VIF data is cut into batches that fit */
+    f32 colorScale;             /* 0x24: 128.0 in every descriptor: the GS's 1.0, by which the builders scale the colours */
+    Vu1BoneLayout *bones;       /* 0x28: the skinned programs' bone matrices, else NULL */
+    s32 pad2C;
+} Vu1ProgInfo;
+typedef char Vu1ProgInfo_size_check[(sizeof(Vu1ProgInfo) == 0x30) ? 1 : -1];
+
 /*
  * An entry of the draw model pool gModelPool (0x180 entries of 0x180 bytes;
  * a draw model's handle is its index + 1): a model file part set up for
- * drawing (Model_Create, Model_Setup; unk_2E3940.c), with its VU1 program
+ * drawing (Model_Create, Model_Setup), with its VU1 program
  * and its materials' textures.
  */
 typedef struct ModelEntry {
@@ -411,7 +439,7 @@ typedef struct ModelEntry {
     s32 stripVtxCount;          /* 0x40: vertices of the strips */
     s32 matRunCount;            /* 0x44: changes of material between strips */
     s32 prog;                   /* 0x48: VU1 program (Vu1_SelectProgram), -1 none */
-    s32 *progInfo;              /* 0x4C */
+    Vu1ProgInfo *progInfo;      /* 0x4C: its program's descriptor */
     s32 unk50;                  /* 0x50: only cleared (Model_Create) */
     s32 boneMask;               /* 0x54: a bit per bone the skinned strips use (Model_BuildVifPackets); the VU1 packets copy those matrix slots */
     u8 pad58[0x60 - 0x58];
@@ -423,7 +451,7 @@ typedef char ModelEntry_size_check[(sizeof(ModelEntry) == 0x180) ? 1 : -1];
 
 #define DRAW_MODEL_COUNT 0x180      /* gModelPool's entries */
 
-/* ModelEntry.flags, Model_Create's flags (unk_335040.c's gMatSetModelKinds gives
+/* ModelEntry.flags, Model_Create's flags (gMatSetModelKinds gives
  * them per kind of model). */
 #define MODEL_PREBUILT 0x2          /* the part packets are built into data (pktOfs) once, not each frame */
 #define MODEL_NO_COPY 0x4           /* no copy of the file is kept, so the data is never rebuilt */
@@ -434,5 +462,9 @@ typedef char ModelEntry_size_check[(sizeof(ModelEntry) == 0x180) ? 1 : -1];
 typedef struct MtxSlot {
     f32 m[4][4];
 } MtxSlot;
+
+/* The slots of gMtxSlots the camera keeps. */
+#define MTX_SLOT_PROJ 0x20  /* the camera's perspective projection (Camera_SetPerspective) */
+#define MTX_SLOT_VIEW 0x21  /* a saved copy of the view matrix gViewMatrix (MtxSlot_Store, MtxSlot_Load) */
 
 #endif /* MODEL_H */

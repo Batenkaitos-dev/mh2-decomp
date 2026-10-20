@@ -1,6 +1,7 @@
 /* Functions matched automatically from m2c's output;
  * the others are still assembly. First-pass C, to be named and typed. */
 #include "common.h"
+#include "net_save.h"
 #include "sprite.h"
 #include "syssettings.h"
 #include "net_mode.h"
@@ -25,7 +26,6 @@ typedef struct Spr {
 } Spr;
 
 extern u8 *gLoadBuf;
-extern u8 gNetSaveData[];               /* the lobby's data saved in the NET file (0x1BEC) */
 void Lobby_SetSysBusy(void);
 void Lobby_ClearSysBusy(void);
 void NetModeMsg_Page1(s32 msg);
@@ -33,11 +33,11 @@ void NetModeMsg_QueueCountdown(u8 id);
 s32 LoginPad_Decide(s32 sound);
 void LobbyCard_FixNetValues(u8 *buf);
 void CardTask_Begin(s32 mode);
-void CardTask_StartReadClear(s32 slot, u8 *buf, s32 a);
+void CardTask_StartFind(s32 slot, u8 *buf, s32 a);
 void CardTask_Update(void);
 s32 CardTask_Result(void);
 void CardTask_StartSave(s32 slot, u8 *buf);
-void CardTask_StartCheck(void);
+void CardTask_StartPoll(void);
 void Card_ClearChanged(void);
 s32 Card_IsChanged(s32 slot);
 void *memset(void *dst, s32 c, u32 n);
@@ -182,7 +182,7 @@ s32 LobbyCard_SaveNetFile(void)
         CardTask_Begin(1);
         LoadCompressedFile((u8 *)((s32)gLoadBuf + 0x20000), 0x1715);
         st->files = CardOp_SetFiles((s32 *)((s32)gLoadBuf + 0x20000));
-        CardTask_StartReadClear(st->slotUsed, gLoadBuf, 0);
+        CardTask_StartFind(st->slotUsed, gLoadBuf, 0);
         break;
     case 1:
         NetModeMsg_Page1(0x2F);
@@ -194,8 +194,8 @@ s32 LobbyCard_SaveNetFile(void)
         case -0xFB:
             st->innerStep++;
             st->slot = st->slotUsed;
-            memset(gLoadBuf, 0, 0x1BEC);
-            memcpy(gLoadBuf, gNetSaveData, 0x1BEC);
+            memset(gLoadBuf, 0, sizeof(NetSaveData));
+            memcpy(gLoadBuf, &gNetSaveData, sizeof(NetSaveData));
             LobbyCard_FixNetValues(gLoadBuf);
             CardTask_StartSave(st->slot, gLoadBuf);
             break;
@@ -209,7 +209,7 @@ s32 LobbyCard_SaveNetFile(void)
             st->msg = 0x18;
         check:
             Card_ClearChanged();
-            CardTask_StartCheck();
+            CardTask_StartPoll();
             st->innerStep = 3;
             st->timer = 0x744;
             break;
@@ -240,7 +240,7 @@ s32 LobbyCard_SaveNetFile(void)
         CardTask_Update();
         if (st->timer > 0) {
             if (Card_IsChanged(st->slotUsed)) {
-                CardTask_StartReadClear(st->slotUsed, gLoadBuf, 0);
+                CardTask_StartFind(st->slotUsed, gLoadBuf, 0);
                 st->innerStep = 1;
             } else if (LoginPad_Decide(2)) {
                 Lobby_ClearSysBusy();

@@ -1,6 +1,7 @@
 /* Functions matched automatically from m2c's output;
  * the others are still assembly. First-pass C, to be named and typed. */
 #include "common.h"
+#include "net_save.h"
 #include "syssettings.h"
 #include "net_mode.h"
 #include "em.h"
@@ -15,6 +16,7 @@
 #include "syssave.h"
 #include "browser.h"
 #include "task.h"
+#include "movie.h"
 s32 NetSetup_ShowLoginError(void);
 void FadeA_Start(s32);
 u8 FadeA_GetState(void);
@@ -61,7 +63,7 @@ s32 NetSetup_SaveNetFile(void);
 s32 NetSetup_Dnas(void);
 s32 LobbyKddi_Portal(void);
 s32 NetSetup_SettingsMenu(void);
-void func_007CF340(s32 unused);
+void NetMode_EmptyDrawHook(s32 unused);
 s32 NetSetup_Login(void);
 s32 NetSetup_Disconnect(void);
 /* end of prototypes */
@@ -146,7 +148,7 @@ extern u32 gLoginItemColors[8];     /* the menu items' colours ([0] unused) */
 extern u32 gLoginLitColors[8];     /* the lit item's colours ([0] unused) */
 extern u8 gLoginPageColorIdx[];
 extern LoginBox gLoginBoxSprites[];
-s32 LobbySrv_ValueAt(s32 i);
+s32 LobbySrv_ColorAt(s32 i);
 void LobbyTitle_Draw(void);
 void NetScene_DrawFrame(void);
 static void NetScene_SetMode(TaskSlot *t, s8 mode);
@@ -222,16 +224,15 @@ void func_007CF650(void);
 void NetMode_OpenFrame(void);
 void NetMode_OpenIconN(s32);
 void *memset(void *, s32, u32);
-extern u8 gNetSaveData[];
 void *memcpy(void *dst, const void *src, u32 n);
 void CardTask_Begin(s32 mode);
 s32 LoadCompressedFile(u8 *, s32);
 s32 CardOp_SetFiles(s32 *data);
-void CardTask_StartReadClear(s32 slot, u8 *buf, s32 a);
+void CardTask_StartFind(s32 slot, u8 *buf, s32 a);
 void CardTask_StartRead(s32 slot, u8 *buf);
 void CardTask_StartSave(s32 slot, u8 *buf);
-void CardTask_StartCheck(void);
-void CardTask_StartDelete(s32 slot);
+void CardTask_StartPoll(void);
+void CardTask_StartFormat(s32 slot);
 void CardTask_Update(void);
 s32 CardTask_Result(void);
 s32 Card_PortState(s32 slot);
@@ -254,7 +255,7 @@ void TaskSlot_End(TaskSlot *t);
 void Task_StartBoot(void);
 void Game_ResetSubsystems(void);
 void TaskSlot_Set(void *func, s16 slot);
-void func_36CCE0(void);   /* func_0036CCE0 (sub_main), empty */
+void Scene_EmptyFrameHook(void);   /* Scene_EmptyFrameHook (sub_main), empty */
 u8 func_8FC6B0(void);     /* QNetIf_GetCount (gm_sub) */
 void func_8FC600(void);   /* QNetIf_UpdateReceive (gm_sub) */
 s32 func_8FC5F0(void);    /* QNetIf_IsRunning (gm_sub) */
@@ -310,10 +311,10 @@ void NetScene_Run(TaskSlot *t)
     s32 i;
     s32 r;
 
-    func_36CCE0();
+    Scene_EmptyFrameHook();
     switch (t->mode) {
     case 0:
-        gSysSettings.unkE5 = 1;
+        gSysSettings.petDayPending = 1;
         if (Game_IsOnline() == 0 && Save_TestEventFlag(0) == 0) {
             NetScene_SetMode(t, 4);
             break;
@@ -330,13 +331,13 @@ void NetScene_Run(TaskSlot *t)
         if (gScene.scene == 6) {
             Gfx_ClearModelBuffers();
             Scene_ResetAll();
-            gScene.online = 1;
+            gScene.inLobby = 1;
             NetScene_SetMode(t, 2);
             break;
         }
         Scene_ResetAll();
         gSysSettings.offline = 0;
-        gScene.online = 1;
+        gScene.inLobby = 1;
         gScene.unk03D = 1;
         gScene.host = 0;
         NetScene_SetMode(t, 1);
@@ -407,7 +408,7 @@ void NetScene_Run(TaskSlot *t)
         case 1:
             Movie_Update();
             r = Movie_GetStatus();
-            if (r == 3 || (r == 2 && (gPadState[0].pressed & 0x8000))) {
+            if (r == MOVIE_STATUS_FINISHED || (r == MOVIE_STATUS_PLAYING && (gPadState[0].pressed & 0x8000))) {
                 FadeA_Start(1);
                 t->step++;
                 Movie_RequestStop();
@@ -461,11 +462,11 @@ static void func_007C9600(void) {
 void NetScene_Finish(TaskSlot *t)
 {
     NetScene_SetMode(t, 3);
-    D_59D661 = 0;
-    gNetMsgState = 4;
-    D_59D662 = 0;
-    D_59D664 = 0;
-    gScene.online = 0;
+    gNetMsgState.handler = 0;
+    gNetMsgState.unk0 = 4;
+    gNetMsgState.step = 0;
+    gNetMsgState.timer = 0;
+    gScene.inLobby = 0;
     gSysSettings.unk40 = 0;
     gScene.playerCount = 0;
 }
@@ -477,7 +478,7 @@ s32 LobbyLogin_StepConnect(TaskSlot *t)
     switch (LobbyLogin_RunConnect()) {
     case 1:
         NetScene_SetStep(t, 2);
-        gScene.online = 1;
+        gScene.inLobby = 1;
         LobbyWorld_Reset();
         Lobby_ResetState();
         return -1;
@@ -520,7 +521,7 @@ s32 LobbyLogin_StateConnect(TaskSlot *t)
         func_007C95F0();
         if (Lobby_Tick() == 0) {
             NetScene_SetStep(t, 3);
-            gNetEntryMode = 3;
+            gNetEntryMode = LOGIN_ENTRY_QUEST_RETURN;
             FadeA_Reset();
         }
         func_007C9600();
@@ -553,8 +554,8 @@ s32 LobbyLogin_StateConnect(TaskSlot *t)
             FadeB_Reset();
             break;
         case 2:
-            gPortalPage = 3;
-            gNetEntryMode = 0;
+            gPortalPage = PORTAL_PAGE_QUIT;
+            gNetEntryMode = LOGIN_ENTRY_FIRST;
             NetScene_ToState6();
             FadeB_Reset();
             break;
@@ -573,7 +574,7 @@ s32 LobbyLogin_StateConnect(TaskSlot *t)
     case 6:
         r = LobbyKddi_PortalScene();
         if (r != 0) {
-            if (r == -1 && gPortalPage == 0) {
+            if (r == -1 && gPortalPage == PORTAL_PAGE_TOP) {
                 NetScene_SetStep(t, 4);
                 gNetConnStep = 0;
                 gLoginState = 1;
@@ -644,7 +645,7 @@ s32 LobbyLogin_StateConnect(TaskSlot *t)
             NetMode_CloseAll();
             break;
         case 5:
-            gNetEntryMode = 3;
+            gNetEntryMode = LOGIN_ENTRY_QUEST_RETURN;
             NetScene_SetStep(t, 1);
             gScene.step = 0;
             break;
@@ -677,7 +678,7 @@ s32 NetScene_StateOffline(TaskSlot *t)
         break;
     case 1:
         t->mode++;
-        D_59D662 = 0x14;
+        gNetMsgState.step = 0x14;
         gSysSettings.offline = 1;
         gSysSettings.unk40 = 0;
         break;
@@ -703,7 +704,7 @@ s32 NetScene_DropConnection(TaskSlot *t)
         Game_ResetSubsystems();
         NetScene_LoadOverlays();
         Town_Reset();
-        gScene.online = 1;
+        gScene.inLobby = 1;
         break;
     case 1:
         r = LobbyNet_AbortSocket();
@@ -717,7 +718,7 @@ s32 NetScene_DropConnection(TaskSlot *t)
         if (--D_59D666 <= 0) {
             if (D_59D668 == 2) {
                 gLoginState = 0;
-                gNetEntryMode = 3;
+                gNetEntryMode = LOGIN_ENTRY_QUEST_RETURN;
                 gNetConnStep = 0;
                 gLbsConnectStep = 0;
                 gNetScreenStep = 0;
@@ -737,7 +738,7 @@ s32 NetScene_DropConnection(TaskSlot *t)
                 gScene.step = 2;
                 NetScene_Restart(t);
             }
-            D_59D661 = 0;
+            gNetMsgState.handler = 0;
             return 1;
         }
         break;
@@ -754,8 +755,8 @@ void NetScene_ToState6(void)
     gLbsConnectStep = 0;
     gNetScreenStep = 0;
     gLoginConnectStep = 0;
-    if (gPortalPage == 0) {
-        gNetEntryMode = 0;
+    if (gPortalPage == PORTAL_PAGE_TOP) {
+        gNetEntryMode = LOGIN_ENTRY_FIRST;
     }
     NetMode_ResetStep();
 }
@@ -934,7 +935,7 @@ void NetSetupTask_Init(TaskSlot *t)
     st->tex[i++] = D_6AE3F8;
     st->tex[i] = gCardMenuTex;
     Mem_Compact();
-    gPortalPage = 0;
+    gPortalPage = PORTAL_PAGE_TOP;
     gBootMode = 1;
     t->mode++;
     t->step = 0;
@@ -1007,7 +1008,7 @@ void NetMode_SetMode(s8 mode) {
 
 void NetMode_Clear(void) {
     memset(&gNetMode, 0, 0xE0);
-    memset(gNetSaveData, 0, 0x1BEC);
+    memset(&gNetSaveData, 0, sizeof(NetSaveData));
 }
 
 s32 NetMode_RunSetup(void)
@@ -1100,7 +1101,7 @@ s32 NetMode_RunSetup(void)
         t = NetSetup_Dnas();
         if (t != 0) {
             if (t == 1) {
-                gPortalPage = 0;
+                gPortalPage = PORTAL_PAGE_TOP;
                 Lobby_SetBootMode(1);
                 NetMode_SetMode(8);
             } else {
@@ -1111,7 +1112,7 @@ s32 NetMode_RunSetup(void)
     case 8:
         t = LobbyKddi_Portal();
         if (t != 0) {
-            if (t == -1 && gPortalPage == 0) {
+            if (t == -1 && gPortalPage == PORTAL_PAGE_TOP) {
                 NetMode_SetMode(0xB);
             } else {
                 NetMode_SetMode(0xA);
@@ -1149,7 +1150,7 @@ s32 NetMode_RunSetup(void)
         break;
     }
     if (!(st->noDraw & 1)) {
-        func_007CF340(0);
+        NetMode_EmptyDrawHook(0);
     }
     if (!(st->noDraw & 2)) {
         NetMode_CallDrawScreen(0);
@@ -1283,7 +1284,7 @@ s32 LobbyCard_Select(void)
                 st->slotUsed = 0;
             }
             st->msg = 0;
-            CardTask_StartReadClear(st->slotUsed, gLoadBuf, 1);
+            CardTask_StartFind(st->slotUsed, gLoadBuf, 1);
             break;
         case 1:
             if (st->cardsFound == 0) {
@@ -1358,7 +1359,7 @@ s32 LobbyCard_Select(void)
                 }
             } else if (st->slotUsed == 0) {
                 st->slotUsed = 1;
-                CardTask_StartReadClear(st->slotUsed, gLoadBuf, 1);
+                CardTask_StartFind(st->slotUsed, gLoadBuf, 1);
                 break;
             }
             if (st->card[0] == 3 && st->card[1] == 3) {
@@ -1474,8 +1475,8 @@ s32 LobbyCard_Select(void)
                     st->msg = 0x1C;
                     goto done;
                 }
-                memset(gNetSaveData, 0, 0x1BEC);
-                memcpy(gNetSaveData, gLoadBuf, 0x1BEC);
+                memset(&gNetSaveData, 0, sizeof(NetSaveData));
+                memcpy(&gNetSaveData, gLoadBuf, sizeof(NetSaveData));
                 st->slot = st->slotUsed;
                 st->msg = 0x28;
                 st->percent = 0x78;
@@ -1535,7 +1536,7 @@ s32 LobbyCard_Select(void)
                 st->subStep++;
                 st->msg = 0;
                 st->slotUsed = st->sel2;
-                CardTask_StartReadClear(st->slotUsed, gLoadBuf, 0);
+                CardTask_StartFind(st->slotUsed, gLoadBuf, 0);
             } else if (LoginPad_Cancel() != 0) {
                 NetMode_CloseYesNoBox();
                 st->slot = st->slotUsed;
@@ -1552,7 +1553,7 @@ s32 LobbyCard_Select(void)
             case -1:
                 break;
             case -254:
-                CardTask_StartCheck();
+                CardTask_StartPoll();
                 st->slot = st->slotUsed;
                 st->msg = 0x10;
                 st->step = 3;
@@ -1561,7 +1562,7 @@ s32 LobbyCard_Select(void)
                 LoginSe_Play9();
                 break;
             case 0:
-                CardTask_StartCheck();
+                CardTask_StartPoll();
                 st->slot = st->slotUsed;
                 st->msg = 0x30;
                 st->step = 5;
@@ -1571,7 +1572,7 @@ s32 LobbyCard_Select(void)
                 break;
             case -253:
                 st->card[st->slotUsed] = 2;
-                memcpy(gLoadBuf, gNetSaveData, 0x1BEC);
+                memcpy(gLoadBuf, &gNetSaveData, sizeof(NetSaveData));
                 CardTask_StartSave(st->slotUsed, gLoadBuf);
                 st->subStep++;
                 break;
@@ -1608,7 +1609,7 @@ s32 LobbyCard_Select(void)
                 LoginSe_Decide();
                 break;
             case -254:
-                CardTask_StartCheck();
+                CardTask_StartPoll();
                 st->slot = st->slotUsed;
                 st->msg = 0x10;
                 st->step = 3;
@@ -1656,7 +1657,7 @@ s32 LobbyCard_Select(void)
             case 1:
                 NetMode_CloseYesNoBox();
                 st->subStep++;
-                CardTask_StartDelete(D_5D4704);
+                CardTask_StartFormat(D_5D4704);
                 break;
             case -1:
                 st->msg = 3;
@@ -1673,8 +1674,8 @@ s32 LobbyCard_Select(void)
             case -1:
                 break;
             case 0:
-                memset(gNetSaveData, 0, 0x1BEC);
-                memcpy(gLoadBuf, gNetSaveData, 0x1BEC);
+                memset(&gNetSaveData, 0, sizeof(NetSaveData));
+                memcpy(gLoadBuf, &gNetSaveData, sizeof(NetSaveData));
                 st->card[st->slotUsed] = 2;
                 CardTask_StartSave(st->slotUsed, gLoadBuf);
                 st->step = 2;
@@ -1707,7 +1708,7 @@ s32 LobbyCard_Select(void)
             break;
         case 1:
             st->card[st->slotUsed] = 2;
-            memcpy(gLoadBuf, gNetSaveData, 0x1BEC);
+            memcpy(gLoadBuf, &gNetSaveData, sizeof(NetSaveData));
             CardTask_StartSave(st->slotUsed, gLoadBuf);
             NetMode_CloseYesNoBox();
             st->step = 2;
@@ -1738,14 +1739,14 @@ s32 LobbyCard_Select(void)
                     NetMode_SeqAStart(0, 0x1E, 1);
                     break;
                 default:
-                    memset(gNetSaveData, 0, 0x1BEC);
+                    memset(&gNetSaveData, 0, sizeof(NetSaveData));
                     st->step = 2;
                     st->subStep = 0;
                     NetMode_CloseYesNoBox();
                     if (st->msg == 8) {
                         st->subStep = 2;
                         st->slotUsed = st->slot;
-                        CardTask_StartReadClear(st->slotUsed, gLoadBuf, 0);
+                        CardTask_StartFind(st->slotUsed, gLoadBuf, 0);
                     }
                     st->msg = 0;
                     break;
@@ -1827,7 +1828,7 @@ s32 LobbyCard_Select(void)
                 st->msg = 0;
                 st->slotUsed = st->sel2;
                 st->slot = st->slotUsed;
-                CardTask_StartReadClear(st->slotUsed, gLoadBuf, 0);
+                CardTask_StartFind(st->slotUsed, gLoadBuf, 0);
             } else if (LoginPad_Cancel() != 0) {
                 NetMode_CloseYesNoBox();
                 st->slot = 0;
@@ -1882,8 +1883,8 @@ s32 LobbyCard_Select(void)
                     st->msg = 0x1C;
                     goto done;
                 }
-                memset(gNetSaveData, 0, 0x1BEC);
-                memcpy(gNetSaveData, gLoadBuf, 0x1BEC);
+                memset(&gNetSaveData, 0, sizeof(NetSaveData));
+                memcpy(&gNetSaveData, gLoadBuf, sizeof(NetSaveData));
                 st->slot = st->slotUsed;
                 st->msg = 0x28;
                 st->percent = 0x78;
@@ -1972,7 +1973,7 @@ s32 NetSetup_Connect(void)
             st->error[1] = st->error[0] = 0x7F;
         }
         NetMode_SeqAReset();
-        gScene.online = 0;
+        gScene.inLobby = 0;
         break;
     case 1:
         st->step++;
@@ -2111,7 +2112,7 @@ s32 NetSetup_Connect(void)
         break;
     case 3:
         st->step++;
-        gScene.online = 1;
+        gScene.inLobby = 1;
         break;
     case 4:
     done:
@@ -2121,7 +2122,7 @@ s32 NetSetup_Connect(void)
         break;
     case 5:
         st->step++;
-        gScene.online = 1;
+        gScene.inLobby = 1;
         break;
     case 6:
     failed:
@@ -2266,7 +2267,7 @@ s32 LobbyKddi_Portal(void)
             strcpy(gBrowserUrl, gPortalUrlB);
             break;
         default:
-            gPortalPage = 0;
+            gPortalPage = PORTAL_PAGE_TOP;
             gBrowserTopMode = 0;
             strcpy(gBrowserUrl, D_00847100);
             break;
@@ -2280,13 +2281,13 @@ open:
         case 0:
             break;
         case 1:
-            if (gPortalPage == 2 || (gPortalPage != 2 && gBrowserState->page == 0)) {
+            if (gPortalPage == PORTAL_PAGE_NEXT || (gPortalPage != PORTAL_PAGE_NEXT && gBrowserState->page == PAGE_LOAD_NONE)) {
                 LobbyKddi_CloseBrowser();
                 r = -1;
-                gPortalPage = 0;
+                gPortalPage = PORTAL_PAGE_TOP;
             } else {
                 st->step++;
-                gPortalPage = 1;
+                gPortalPage = PORTAL_PAGE_BACK;
             }
             break;
         case 2:
@@ -2296,8 +2297,8 @@ open:
         case -1:
             LobbyKddi_CloseBrowser();
             r = -1;
-            gPortalPage = 0;
-            gNetEntryMode = 0;
+            gPortalPage = PORTAL_PAGE_TOP;
+            gNetEntryMode = LOGIN_ENTRY_FIRST;
             break;
         case -100:
             LobbyKddi_CloseBrowser();
@@ -2314,7 +2315,7 @@ open:
     case 4:
         memset(gBrowserUrl, 0, 0x100);
         strcpy(gBrowserUrl, D_00847100);
-        gPortalPage = 0;
+        gPortalPage = PORTAL_PAGE_TOP;
         gBrowserTopMode = 0;
         st->step = 1;
         goto open;
@@ -2327,7 +2328,7 @@ s32 NetSetup_Mode5(void)
     s32 ret;
     s8 res;
 
-    res = gNetSetupResult;
+    res = gNetSaveData.setupResult;
     if (res == 1) {
         gNetMode.unk10 = 1;
     }
@@ -2410,12 +2411,12 @@ void NetSetup_ToSettings(void)
     gNetMode.unk10 = 0;
     gNetMode.ynNoDraw = 0;
     gNetMode.pad17 = 0;
-    gPortalPage = 0;
+    gPortalPage = PORTAL_PAGE_TOP;
 }
 
 s32 NetSetup_Mode2(void) {
     NetMode_SetTitle(3);
-    if (gNetSetupResult == 1) {
+    if (gNetSaveData.setupResult == 1) {
         return 1;
     }
     return -1;
@@ -2475,7 +2476,6 @@ void func_ACE630(void);
 s32 LoginPad_DecideEx(s32 arg0, s32 arg1);
 s32 LoginPad_Cancel(void);
 
-extern s8 gMmbbLoginId;
 /* the network settings menu's steps (NetModeState.unk1): the choice of
  * three (sel3: connect, the ID and password, back) with the ID and
  * password rows skipped while unset, the choice of two (sel2), the
@@ -2500,7 +2500,7 @@ s32 NetSetup_SettingsMenu(void)
         if (st->subStep == 0xFF) {
             NetMode_SetTitle(6);
             st->subStep = 0;
-            if (gNetSetupResult == 1) {
+            if (gNetSaveData.setupResult == 1) {
                 st->sel3 = 1;
             } else {
                 st->sel3 = 0;
@@ -2513,7 +2513,7 @@ s32 NetSetup_SettingsMenu(void)
         if (st->subStep == 2) {
             NetMode_SetTitle(7);
             st->sel3 = 1;
-            if (gNetSetupResult == 1) {
+            if (gNetSaveData.setupResult == 1) {
                 st->sel3 = 1;
             } else {
                 st->sel3 = 0;
@@ -2522,7 +2522,7 @@ s32 NetSetup_SettingsMenu(void)
             st->step = 2;
             st->subStep = 0;
         }
-        if (gNetSetupResult == 1) {
+        if (gNetSaveData.setupResult == 1) {
             st->innerStep = 1;
         }
         st->noDraw = 0;
@@ -2540,13 +2540,13 @@ s32 NetSetup_SettingsMenu(void)
             if ((pad & 0x1000) && st->sel3 < 3) {
                 st->sel3++;
             }
-            if (gNetSetupResult == 0 && st->sel3 == 1) {
+            if (gNetSaveData.setupResult == 0 && st->sel3 == 1) {
                 if (pad & 0x2000) {
                     st->sel3 = 0;
                     LoginMenu_PlayCursorSe();
                     goto select;
                 }
-                if (gMmbbLoginId == 0) {
+                if (gNetSaveData.mmbbLoginId[0] == 0) {
                     st->sel3 = 3;
                 } else {
                     st->sel3 = 2;
@@ -2554,9 +2554,9 @@ s32 NetSetup_SettingsMenu(void)
                 LoginMenu_PlayCursorSe();
                 goto draw;
             }
-            if (gMmbbLoginId == 0 && st->sel3 == 2) {
+            if (gNetSaveData.mmbbLoginId[0] == 0 && st->sel3 == 2) {
                 if (pad & 0x2000) {
-                    if (gNetSetupResult == 0) {
+                    if (gNetSaveData.setupResult == 0) {
                         st->sel3 = 0;
                     } else {
                         st->sel3 = 1;
@@ -2590,7 +2590,7 @@ s32 NetSetup_SettingsMenu(void)
                 NetMode_ResetAnim();
                 break;
             case 2:
-                if (gMmbbLoginId != 0) {
+                if (gNetSaveData.mmbbLoginId[0] != 0) {
                     NetMode_CloseBoxes(0x20);
                     st->step = 4;
                     st->subStep = 0;
@@ -2686,8 +2686,8 @@ s32 NetSetup_SettingsMenu(void)
             NetMode_OpenIcon5();
             st->step = 1;
             st->subStep = 0;
-            if (gMmbbLoginId == 0) {
-                if (gNetSetupResult == 0) {
+            if (gNetSaveData.mmbbLoginId[0] == 0) {
+                if (gNetSaveData.setupResult == 0) {
                     st->sel3 = 0;
                 } else {
                     st->sel3 = 1;
@@ -2753,7 +2753,7 @@ s32 NetSetup_ShowLoginError(void)
         st->subStep++;
     case 1:
         msg = 0;
-        switch (D_59D66E) {
+        switch (gNetMsgState.err) {
         case -2:
             msg = 3;
             break;
@@ -2842,7 +2842,7 @@ s32 LobbyKddi_PortalScene(void)
         st->msg = 0;
         st->noDraw = 3;
         NetMode_SeqAReset();
-        if (gPortalPage == 0) {
+        if (gPortalPage == PORTAL_PAGE_TOP) {
             NetMode_BgmOn();
         }
         break;
@@ -2859,8 +2859,8 @@ s32 LobbyKddi_PortalScene(void)
             strcpy(gBrowserUrl, gPortalUrlB);
             break;
         default:
-            gPortalPage = 0;
-            gNetEntryMode = 0;
+            gPortalPage = PORTAL_PAGE_TOP;
+            gNetEntryMode = LOGIN_ENTRY_FIRST;
             gBrowserTopMode = 0;
             strcpy(gBrowserUrl, D_00847100);
             break;
@@ -2874,13 +2874,13 @@ open:
         case 0:
             break;
         case 1:
-            if (gPortalPage == 2 || (gPortalPage != 2 && gBrowserState->page == 0)) {
+            if (gPortalPage == PORTAL_PAGE_NEXT || (gPortalPage != PORTAL_PAGE_NEXT && gBrowserState->page == PAGE_LOAD_NONE)) {
                 LobbyKddi_CloseBrowser();
                 r = -1;
-                gPortalPage = 0;
+                gPortalPage = PORTAL_PAGE_TOP;
             } else {
                 st->step++;
-                gPortalPage = 1;
+                gPortalPage = PORTAL_PAGE_BACK;
             }
             break;
         case 2:
@@ -2890,8 +2890,8 @@ open:
         case -1:
             LobbyKddi_CloseBrowser();
             r = -1;
-            gPortalPage = 0;
-            gNetEntryMode = 0;
+            gPortalPage = PORTAL_PAGE_TOP;
+            gNetEntryMode = LOGIN_ENTRY_FIRST;
             break;
         case -100:
             LobbyKddi_CloseBrowser();
@@ -2910,8 +2910,8 @@ open:
         NetMode_BgmOn();
         memset(gBrowserUrl, 0, 0x100);
         strcpy(gBrowserUrl, D_00847100);
-        gPortalPage = 0;
-        gNetEntryMode = 0;
+        gPortalPage = PORTAL_PAGE_TOP;
+        gNetEntryMode = LOGIN_ENTRY_FIRST;
         gBrowserTopMode = 0;
         st->step = 1;
         goto open;
@@ -2964,7 +2964,7 @@ void LobbyLogin_DrawMenu(void)
             if (p->unk50 == -1) {
                 spr.color = 0;
             } else {
-                spr.color = LobbySrv_ValueAt(gLobbyMenu->cursor + gLobbyMenu->page * 8) | 0xFF000000;
+                spr.color = LobbySrv_ColorAt(gLobbyMenu->cursor + gLobbyMenu->page * 8) | 0xFF000000;
                 if (p->unk10[1] != 0) {
                     r8 = (spr.color & 0xFF0000) >> 16;
                     g8 = (spr.color & 0xFF00) >> 8;
@@ -3233,7 +3233,7 @@ s32 LoginPad_DecideEx(s32 arg0, s32 arg1)
             break;
         case 1:
             if (arg1 == 1) {
-                if (gMmbbLoginId == 0) {
+                if (gNetSaveData.mmbbLoginId[0] == 0) {
                     LoginSe_Play9();
                 } else {
                     LoginSe_Decide();
@@ -3274,3 +3274,30 @@ s16 gLoginFontCodes[40] = {
 u8 gLoginFontColumns[48] = {
 #include "lobby/008197A0.inc"
 };
+
+/* A yes/no choice on the network screens: left and right move the cursor
+ * (gNetMode.yesNo: 0 yes, 1 no) with the cursor's sound. Returns 1 when yes
+ * is decided, -1 when no is decided or the choice is cancelled, 0 while
+ * choosing. */
+s32 NetMode_ChooseYesNo(void)
+{
+    s32 pad;
+
+    pad = LoginPad_Pressed();
+    if (pad & (PAD_LEFT | PAD_RIGHT)) {
+        if ((pad & PAD_LEFT) && gNetMode.yesNo != 0) {
+            gNetMode.yesNo = 0;
+            LoginSe_Cursor();
+            return 0;
+        }
+        if ((pad & PAD_RIGHT) && gNetMode.yesNo == 0) {
+            gNetMode.yesNo = 1;
+            LoginSe_Cursor();
+            return 0;
+        }
+    }
+    if (LoginPad_Decide(1) != 0) {
+        return (gNetMode.yesNo == 0) ? 1 : -1;
+    }
+    return -(LoginPad_Cancel() != 0);
+}

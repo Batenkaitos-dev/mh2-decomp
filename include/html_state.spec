@@ -22,15 +22,15 @@ size 0xFBC4
 0x17C u8 bold
 0x17D u8 strike
 0x17E u8 underline
-0x17F u8 link // in <A HREF>: 1 "#name", 2 a URL
+0x17F u8 link // in <A HREF>: 1 "#name", 2 a URL; 3 in <A NAME>
 0x180 u8 charW // a full-width character's width at the current size (gFullCharWidths)
 0x181 u8 halfW // a half-width character's width (gHalfCharWidths)
 0x182 u16 pageWidth // the page width: the widest line, image, input or cell end (Html_MaxU16); 584 at the start (Html_Parse)
 0x184 u16 bottom // the lowest y laid out
-0x186 s8 measure // nonzero: measuring (-10 a table), nothing is drawn
+0x186 s8 measure // the pass, HTML_PASS_*: nonzero, measuring, nothing is drawn
 0x188 u16 lineNo // index into lines[]
-0x18A u8 nowrap // <TD NOWRAP>: 2
-0x18B u8 flags // bit 0: <PRE> (no wrapping)
+0x18A u8 nowrap // <TD NOWRAP>: HTML_FLAG_NOWRAP
+0x18B u8 flags // HTML_FLAG_PRE outside tables
 0x18C u8 pre // inside <PRE>
 0x18D u8 paragraph // inside <P>
 0x18E u8 pageKind // the page keyword of the comment (Html_Comment), Page_SetKind at the end
@@ -60,7 +60,7 @@ size 0xFBC4
 0x101C HtmlForm{257} form
 0x1120 HtmlMeta{264} meta
 0x1228 HtmlArea{792} area // the <AREA> being read
-0x1540 HtmlLine{4} lines[1000]
+0x1540 HtmlLine{4} lines[1000] // HTML_LINES
 0x24E0 HtmlCell{92} cells[500]
 0xD890 u16 cellCount // the last cell of cells[] in use
 0xD892 u8 tableDepth
@@ -80,7 +80,7 @@ size 0xFBC4
 0xE96B u8 inFrame // Html_Parse argument: a page in a frame: no inputs, selects, options or rules are laid out (Layout_Input, Layout_Option, Layout_Rule ...)
 0xE96C u8 divDepth
 0xE96D u8 divAlign[17] // <DIV ALIGN> of each open <DIV> (gHtmlAlignKeywords: 1 LEFT, 2 CENTER, 3 RIGHT)
-0xE97E u16 pageStyle // the page style bits (Page_SetStyle; Html_GameStyle sets bits 2, 3, 6 and 7); 0x2E7 at the start (Html_Parse)
+0xE97E u16 pageStyle // the page style bits (PAGE_STYLE_*, Page_SetStyle; Html_GameStyle sets them from <GAME-STYLE>); HTML_PAGE_STYLE_DEFAULT at the start (Html_Parse)
 0xE980 u8 backUrl[0x100] // <GAME-STYLE> BACK=ON:url (or the url chosen by the exit number): Page_SetStyle's text
 0xEA80 HtmlMap{260} maps[16] // <MAP NAME> places, set by <IMG USEMAP>
 0xFAC0 u8 mapCount

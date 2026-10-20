@@ -43,7 +43,7 @@ typedef struct KbdLayout {
 
 typedef char KbdLayout_size_check[(sizeof(KbdLayout) == 0x14) ? 1 : -1];
 
-/* The software keyboard and text entry of sub_main (unk_30EA30.c, unk_314E00.c): the state
+/* The software keyboard and text entry of sub_main: the state
  * gKbdState, reached through the pointer gKbd. Keys at +0x668..+0x671 are USB HID codes. */
 typedef struct KbdEntry {
     KbdLayout *layout;          /* 0x000: the keyboard layout (Kbd_PickLayout) */
@@ -56,7 +56,7 @@ typedef struct KbdEntry {
     s16 repeatKeys;             /* 0x01A: the buttons held for key repeat (Kbd_KeyRepeat) */
     s8 repeatWait;              /* 0x01C: the frames to the next repeat (Kbd_KeyRepeat: 10 after a press, then 4, 8 or 1) */
     u8 kind;                    /* 0x01D: the entry kind: 5 and 10 are passwords (drawn as asterisks) */
-    u8 keySet;                  /* 0x01E: the keyboard (D_00416440: its character set) */
+    u8 keySet;                  /* 0x01E: the keyboard (gKbdSetCharsets: its character set) */
     u8 mode;                    /* 0x01F: the key mode (Kbd_FindKind) */
     s32 flags;                  /* 0x020: the modes not allowed (bits); 8 refuses some ASCII symbols */
     u8 col;                     /* 0x024: the cursor's column (1..20) */
@@ -139,6 +139,38 @@ extern KbdEntry *gKbd;
 #define USB_KEY_DOWN 0x51
 #define USB_KEY_UP 0x52
 #define USB_KEY_KP_ENTER 0x58       /* the keypad's Enter */
+#define USB_KEY_A 0x04              /* the first key; 0x01-0x03 are the HID error codes */
+#define USB_KEY_TAB 0x2B
+#define USB_KEY_SPACE 0x2C
+#define USB_KEY_LBRACKET 0x2F       /* the at-sign key of a Japanese keyboard: the dakuten key */
+#define USB_KEY_RBRACKET 0x30       /* the left-bracket key of a Japanese keyboard: the handakuten key */
+#define USB_KEY_BACKSLASH 0x31
+#define USB_KEY_NONUS_HASH 0x32
+#define USB_KEY_GRAVE 0x35          /* the Hankaku/Zenkaku key of a Japanese keyboard */
+#define USB_KEY_CAPS_LOCK 0x39
+#define USB_KEY_F2 0x3B
+#define USB_KEY_F3 0x3C
+#define USB_KEY_F4 0x3D
+#define USB_KEY_F5 0x3E
+#define USB_KEY_F8 0x41
+#define USB_KEY_PRINT_SCREEN 0x46
+#define USB_KEY_PAUSE 0x48
+#define USB_KEY_INSERT 0x49
+#define USB_KEY_HOME 0x4A
+#define USB_KEY_PAGE_UP 0x4B
+#define USB_KEY_DELETE 0x4C
+#define USB_KEY_END 0x4D
+#define USB_KEY_PAGE_DOWN 0x4E
+#define USB_KEY_NUM_LOCK 0x53
+#define USB_KEY_KP_SLASH 0x54       /* the first keypad key; the keypad is 0x54..0x63 */
+#define USB_KEY_NONUS_BACKSLASH 0x64 /* the first key after the keypad */
+#define USB_KEY_KP_EQUAL_AS400 0x86
+#define USB_KEY_INTL1 0x87          /* the Ro key of a Japanese keyboard */
+#define USB_KEY_KANA 0x88           /* the Katakana/Hiragana key */
+#define USB_KEY_INTL3 0x89          /* the Yen key of a Japanese keyboard */
+#define USB_KEY_HENKAN 0x8A         /* the conversion key */
+#define USB_KEY_MUHENKAN 0x8B       /* the no-conversion key */
+#define USB_KEY_INTL6 0x8C          /* from here on the keys are ignored */
 #define USB_LED_CAPS_LOCK 0x02      /* UsbKbData.leds (gKbdSettings, its copy): Caps Lock is on */
 
 /*
@@ -200,6 +232,35 @@ extern KbdEntry *gKbd;
 
 #define KBD_GESTURE_KANA 0xF            /* KbdEntry.gestureMode: the gestures page types kana */
 #define KBD_KEYF_CYCLING 2              /* KbdEntry.keyFlags: a phrase or gesture cycle runs (R2) */
+#define KBD_KEYF_HALF 1                 /* KbdEntry.keyFlags: the half-width set is on (Kbd_ZenkakuKey) */
+#define KBD_BLINK_HIDDEN 0x20           /* KbdEntry.blink: the cursor is hidden while this bit is set */
+#define KBD_KIND_CHECKED 8              /* KbdEntry.kind: the kind whose characters Kbd_CharAllowed checks */
+#define KBD_LINE_WIDTH 0x2C             /* the bytes of text the entry line shows */
+#define KBD_SYMBOLS_LISTED 5            /* KbdEntry.symbolMode: symbols are typed from the symbol candidates */
+
+/* KbdEntry.accept's bits: what the text accepts. */
+#define KBD_ACCEPT_FIXED_CASE 0x01      /* seen: Kbd_CapsLock doesn't switch the case */
+#define KBD_ACCEPT_NO_PERCENT 0x02      /* no percent sign, full-width or ASCII */
+#define KBD_ACCEPT_DIGITS 0x10          /* digits only */
+#define KBD_ACCEPT_DIGITS_DASH 0x20     /* digits and '-' */
+#define KBD_ACCEPT_DIGITS_UPPER 0x40    /* digits and capitals */
+#define KBD_ACCEPT_DIAL 0x80            /* digits, '-', '*' and '#' */
+
+/* Kbd_MoveOffKey's directions. */
+#define KBD_DIR_LEFT 0
+#define KBD_DIR_RIGHT 1
+#define KBD_DIR_UP 2
+#define KBD_DIR_DOWN 3
+
+/* The USB keys' character tables (gKbdHidChars, gKbdHidWideStrs), by kind. */
+#define KBD_HID_ASCII 2                 /* one-byte characters (+ shift * 3) */
+#define KBD_HID_ROMAJI 4                /* the romaji table's two-byte strings (+ shift * 5) */
+
+/* RomajiEntry.kana[]'s forms, which Kbd_ConvertRomaji takes. */
+#define KBD_KANA_HIRA 0
+#define KBD_KANA_KATA 1
+#define KBD_KANA_HALF 2                 /* half-width katakana */
+#define ROMAJI_TBL_COUNT 240            /* gRomajiKanaTbl's entries */
 #define KBD_MARK_DAKUTEN 1              /* Kbd_DakutenKeyKind's results */
 #define KBD_MARK_HANDAKUTEN 2
 #define KBD_RESULT_SUBMIT 1             /* KbdEntry.result */
@@ -227,13 +288,22 @@ extern RomajiEntry gRomajiKanaTbl[];
 #define KBD_CAND_PAGE 3
 #define KBD_CAND_LINE_SIZE 0x100
 
-/* The USB keyboard (libusbkb; sub_main unk_2F6540.c's UsbKb_* functions). */
+/* The USB keyboard (libusbkb, through the UsbKb_* functions). */
 /* What sceUsbKbGetInfo fills in (gUsbKbInfo, 0x90 bytes). */
 typedef struct UsbKbInfo {
     s32 unk0;                   /* not read */
     s32 connectedCount;         /* 0x4: UsbKb_StepWaitConnect waits for nonzero */
     u8 connected[0x88];         /* 0x8: per keyboard, nonzero when it is connected (UsbKb_IsConnected) */
 } UsbKbInfo;
+
+/* The 9-byte report UsbKb_Poll packs (gUsbKbReport), as a USB keyboard's
+ * boot report: the modifier keys (USB_MOD_*), the LEDs, then up to seven
+ * key codes. */
+typedef struct UsbKbReport {
+    u8 modifiers;               /* 0x0 */
+    u8 leds;                    /* 0x1 */
+    u8 keys[7];                 /* 0x2 */
+} UsbKbReport;
 
 /* A keyboard's state as sceUsbKbRead returns it (gUsbKbData); UsbKb_Poll packs it into
  * the 9-byte report gUsbKbReport. */
@@ -243,5 +313,8 @@ typedef struct UsbKbData {
     s32 keyCount;               /* 0x08: the key codes in keys; 0: no report */
     u16 keys[7];                /* 0x0C: key codes, the report's bytes 2-8 */
 } UsbKbData;
+
+/* Whether the software keyboard is open (nonzero); the follow camera tests it. */
+s8 Kbd_IsOpen(void);
 
 #endif

@@ -9,17 +9,10 @@
 /*
  * The HUD and in-game menu state (gHudState, pointing to gHudStateBuf; Hud_Init fills it
  * for a quest): the local player, the health bar, the pouch, supply box, combine and paged
- * list menus (unk_33D7D0.c, unk_33E230.c, unk_33E620.c). Several menus use the same bytes.
+ * list menus (hud_init.c, hud_query.c, hud.c). Several menus use the same bytes.
  */
 
 struct Player;
-
-/* An icon's texture rectangle in gIconUVs (indexed by Icon.kind): two
- * corners, as TexRect's uv0 and uv1 (Draw_Icons). */
-typedef struct IconUV {
-    UV uv0;
-    UV uv1;
-} IconUV;
 
 /* A recipe the combine list found for an item (Combine_ListRecipesFor): the
  * recipe and its place in the indexes (Combine_FindRecipeIndex). */
@@ -29,7 +22,7 @@ typedef struct RecipeHit {
 } RecipeHit;
 
 /* Map_GetHalf: on stages 13 to 15 the map texture holds two maps side by
- * side, and an area's map is one half of it (the drawing in unk_33E620.c
+ * side, and an area's map is one half of it (the drawing in hud.c
  * takes u 0..0x78 for the left half, 0x78..0xF0 for the right). */
 #define MAP_HALF_WHOLE  0   /* a stage with one map */
 #define MAP_HALF_LEFT   1   /* AREA_TOWER_0 to AREA_TOWER_2 */
@@ -68,7 +61,7 @@ typedef struct RecipeHit {
 #define STATUS_PERSONAL     0   /* the hunter's status (PersonalStatus_*) */
 #define STATUS_EQUIPMENT    1   /* the equipment (EquipStatus_*) */
 #define STATUS_COMMENT      2   /* the comment line (CommentEdit_*) */
-#define STATUS_TEXT_COLOR   3   /* the chat text colour (TextColor_*) */
+#define STATUS_ONLINE_MARK  3   /* the online mark window (OnlineMark_*) */
 #define STATUS_FRIEND_LIMIT 4   /* the lobby's setting (FriendLimit_*) */
 
 /* The info page's entries (InfoMenu_Update, infoEntry): a set lists
@@ -87,6 +80,7 @@ typedef struct RecipeHit {
 #define HELP_PAGE_ITEMS         1       /* the item menus: the drop dialog's lines, then the items' */
 #define HELP_PAGE_PHRASES       3       /* the phrase menu */
 #define HELP_PAGE_LOBBY         4       /* the lobby's menus */
+#define HELP_PAGE_RESULTS_MENU  6       /* the quest results' item box and arena record menus (plsel) */
 #define HELP_PAGE_STATUS        9       /* the status page */
 #define HELP_PAGE_INFO          0xA     /* the info page */
 #define HELP_PAGE_CHAT          0xB     /* the chat menu */
@@ -153,7 +147,7 @@ typedef struct SpriteWords {
 #define SJIS_STAR           0x9A81
 #define SJIS_MONEY_UNIT     0x9A82  /* the full-width letter of the money unit */
 
-/* The menus' cursor layouts (unk_3549F0.c). */
+/* The menus' cursor layouts (menu_util.c). */
 #define POUCH_MENU_ROWS     10  /* the pouch's 20 slots: two columns of 10 */
 #define PHRASE_MENU_ROWS    6   /* the phrase menu: four columns of 6 */
 #define PHRASE_MENU_COLUMNS 4
@@ -168,14 +162,17 @@ typedef struct SpriteWords {
 /* Shake_Start's id: the menu window that slides in (flags SHAKE_AXIS_X)
  * or out (SHAKE_SLIDE) as it opens and closes; its draw takes the offset
  * from Shake_GetOffset(id), and Shake_Update(id) is 1 while it moves. The
- * game overlay uses 7, the lobby 0x10 (unk_33E620.c's menus). */
+ * game overlay uses 7, the lobby 0x10 (hud.c's menus). */
 #define SHAKE_FIELD_MENU    0       /* the field menu's list */
 #define SHAKE_POUCH_MENU    1       /* the pouch, combine and drop windows */
 #define SHAKE_QUEST_MENU    5       /* the quest info pages */
+#define SHAKE_RESULTS_MENU  6       /* the quest results' item box and arena record menus (plsel) */
 #define SHAKE_COMBINE_LIST  8       /* the combine list */
 #define SHAKE_OPTION_MENU   9       /* the options */
 #define SHAKE_MONSTER_LIST  0xD     /* the monster notes */
 #define SHAKE_PHRASE_MENU   0xE     /* the chat phrase menu */
+#define SHAKE_CHAT_HUNTERS  0xF     /* the chat's hunter page (the lobby) */
+#define SHAKE_CHAT_STATE    0x10    /* the chat state page (the lobby) */
 
 /* The menus' D-pad key repeat (Menu_ReadDpad), in frames. */
 #define DPAD_REPEAT_DELAY   8   /* from a press to the first repeat */
@@ -389,7 +386,7 @@ typedef struct HudState {
     u8 equipCursor;             /* 0x090: the equipment status page */
     u8 equipCursorMax;          /* 0x091: its page count (Equip_LevelMark) */
     u8 hasQuestInfo;            /* 0x092: QuestMenu_CheckInfo: 0 online without a quest, else 1 */
-    u8 questMenuOffline;        /* 0x093: 1 offline: picks the quest menu tables (gQuestMenuCursorMax/gQuestMenuKinds) */
+    u8 questMenuInField;        /* 0x093: 1 outside the town (gScene.inLobby 0): picks the quest menu tables (gQuestMenuCursorMax/gQuestMenuKinds) */
     s8 unk94;                   /* 0x094: cleared by InfoMenu_Open; nothing reads it */
     s8 noteMonster;             /* 0x095: the monster shown in the monster notes, -1: none */
     s8 notePage;                /* 0x096: the monster notes' page: MONSTER_NOTE_RECORD set, the records; clear, the materials (0x200 switches) */
@@ -401,7 +398,7 @@ typedef struct HudState {
         struct {
         u8 cockpitOff;              /* 0x09B: the cockpit (HUD) display option: 1 hidden */
         u8 mapOff;                  /* 0x09C: the map display option: 1 hidden (Hud_Init sets it in the online town) */
-        s8 optAimReverse;           /* 0x09D: the option menu copy of gScene.aimReverse (D_006A9E54) */
+        s8 optAimReverse;           /* 0x09D: the option menu copy of gScene.aimReverse */
         s8 optCamFollow;            /* 0x09E: the option menu copy of gSysSave.options.camFollow */
         s8 optCamControl;           /* 0x09F: the option menu copy of gSysSave.options.camControl */
         s8 optVibration;            /* 0x0A0: the option menu copy of gSysSave.options.vibration */

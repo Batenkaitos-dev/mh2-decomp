@@ -759,7 +759,7 @@ MWCC colours temporaries", rule 4.)
    valw.py, 145 functions of lobby and sub_main, seed 5: on 1519/1870 temporaries and 118
    functions fully right; off 1555/1954 and 93), so read a block both ways.
 6. **Checks on matched functions** (valw.py): only 24 of 1870 temporaries have 23 or more
-   neighbours, and the replay colours 8 of them right; the misses are in unk_2F6540.c's
+   neighbours, and the replay colours 8 of them right; the misses are in model_file.c's
    ModelChunk* readers, unrolled loops (x8) where the listing's webs of the walker are not
    MWCC's, so the graph, not the order rule, is off there. No rule beyond 1-4 was found.
 7. **A field address shared by a load and stores is numbered after its base; a pointer local
@@ -932,7 +932,7 @@ schedule off` turns both off and shows the creation order.
    - Trap met on the way: vtry.py replaces the first occurrence in the file; a declaration
      like `    s32 k;
 ` must be anchored on its neighbours, or the change lands in another
-     function (four functions of unk_36E1D0.c declare `s32 k`).
+     function (four functions of player_draw.c declare `s32 k`).
 
 **What round 30's single-function agents found** (round 30; each function's notes, docs/notes/nm/FUNC.md)
 
@@ -1121,7 +1121,7 @@ schedule off` turns both off and shows the creation order.
   after all the locals, in the highest ones (the last parameter gets the
   lowest of those; a narrow one converted at the entry is an exception, see
   "Parameters in each other's saved registers"). With more than six the order
-  can wrap (one function of unk_363550.c gave its first six locals s5..s0 and
+  can wrap (one function of bgm.c gave its first six locals s5..s0 and
   the last two s6, s7). Fix: reorder the declarations. When the order can't be
   read off, try every order: 120 orders take 20 to 60 seconds with
   `func_variants.py`, and the autodecomp tools try the order the registers
@@ -1166,7 +1166,7 @@ schedule off` turns both off and shows the creation order.
   (`for (i = found, found++; i < 4; i++, found++)`). Seen in: func_00D676E0
   and Plsel_BuildItemText (plsel), GmEm_Setup and QSync_OnPlayer (gm_sub),
   ArenaFeed_LoadPage, Html_ParseColor, Html_AttrAreaCoords, Layout_DrawImage
-  and Layout_SpreadColumns (lobby), func_0080E490 and EmKushala_State3_0F
+  and Layout_SpreadColumns (lobby), func_0080E490 and EmKushala_BreathAttack
   (game); in round 8 Portal_PageReady, WeaponForge_OpenUpgrades (the box
   index in the first loop's counter), func_007CA930 and func_007C2750
   (lobby). Round 9: at level 4, a pointer local per loop (`c = l->unk01C;`
@@ -1184,7 +1184,7 @@ schedule off` turns both off and shows the creation order.
   stored three times, `found` and `method` reused by a later loop, one s16
   local for `HasSkill ? 60 : 30` and a later call's result (v0/v1 of a
   `%`), a running total also used as the first loop's temporary. Seen in:
-  func_007209A0, LobbyText_UpdateByte2 and Form_Submit (lobby),
+  func_007209A0, HunterCard_SendChatColor and Form_Submit (lobby),
   func_0070D360 and EmBlangonga_PickCarried (game); func_00702830
   (game, a count then a found flag) is still open.
 - **Parameters in each other's saved registers.** Cause: three parameters kept
@@ -1207,12 +1207,12 @@ schedule off` turns both off and shows the creation order.
   copy (`lbu a1, 3(s6)`) and later ones through a0: a plain statement after
   the initialised declarations (`n = D[o->type];`); as an initialiser it
   reads through a0. Seen in: five network menu states (sub_main
-  unk_3D54B0.c), Sound_StageBank (main), StageObj_K1C_SetupChain (game).
+  card_menu.c), Sound_StageBank (main), StageObj_K1C_SetupChain (game).
 - **A narrow parameter's extended copy in a saved register while the raw
   parameter is passed on.** Fix: `s16 ty = y;` as the first declaration.
   When the copy is extended after the first calls (s0 raw, s1 extended),
   `xs = x + 0;`: MWCC copy-propagates a plain `xs = x`. Seen in: the
-  records' draw functions (lobby unk_6B1D70.c), TownGuide_DrawHeading,
+  records' draw functions (lobby records_draw.c), TownGuide_DrawHeading,
   func_0070F0B0 and func_0070F580 (lobby).
 - **An address, a product or a loop invariant kept in a saved register
   across calls in the original, recomputed in yours.** Cause: MWCC keeps
@@ -1232,7 +1232,7 @@ schedule off` turns both off and shows the creation order.
   a saved register; a variable set only inside a loop that may not run is
   live from the entry. Fix: move its declaration or assignment into or out
   of the loop. `end = (base = G) + K;` gives `base` the higher register.
-  Seen in: unk_333D70.c (sub_main).
+  Seen in: tex_pack.c (sub_main).
 - **Saved registers that no declaration order fixes.** Try the order of
   the statements before a loop (`k = 0; g = 0; first = ...;`, found by the
   permuter), a variable reused for a later value (above), or optimization
@@ -1397,7 +1397,7 @@ temporary still live where another is made pushes it up.
   and is copied to a saved register in both arms: assign it in each arm
   (`if (c) { gs = buf = f(); ... } else { gs = buf = g(); ... }`) and use
   `buf` where v0 is read (a ternary sinks the copy). Seen in:
-  QuestNet_ProcessQueue, QuestNet_OnSysMsg (gm_sub), LobbyText_UpdatePart
+  QuestNet_ProcessQueue, QuestNet_OnSysMsg (gm_sub), HunterCard_SendPart
   (lobby), Tex_Unlock (main).
 - **A switch value in a2 where yours has a1.** Cause: the dispatcher passes
   its second parameter on untouched (`(em, work)`), which keeps a1 live; a
@@ -1570,7 +1570,7 @@ temporary still live where another is made pushes it up.
   reverse, a bound in a u16 extern reloaded every iteration, read it into
   a local first (`cnt = D_008EA8FA;`); a state byte kept in a register
   across a switch is a local (`s8 state = m[0x45]; ... m[0x45] = state +
-  1;`), reloaded it is `m[0x45]++` on an `s8 *m`. Seen in: unk_7077A0.c
+  1;`), reloaded it is `m[0x45]++` on an `s8 *m`. Seen in: em_status.c
   and GreatSword_State19 (game), cse_spumap.c, dma.c, Gs_ShowFrame and
   Gs_SetState (main), func_006C4A00 (select), func_007BFAE0 (lobby). A
   float computed into a local before stores through `o->unk038` makes each
@@ -1605,7 +1605,7 @@ temporary still live where another is made pushes it up.
   byte through a pointer: `p->f--; t = &p->f; if (*(s8 *)t <= 0) { *t =
   30; ...`. Seen in: QSync_OnPlayer (gm_sub), func_006BD050 (select),
   LobbyActor_StartScript, func_007D77A0 and func_007C2FD0 (lobby), the
-  families' Init functions (game), unk_308BC0.c (sub_main). Round 9: `--x ==
+  families' Init functions (game), net_front.c (sub_main). Round 9: `--x ==
   0` in the game (the counter stored, then loaded again) is `x--;` then `if (x
   == 0 ...)` (Plsel_ResultsUpdate, plsel); a value stored twice in a row and
   reloaded between is `*d++ = c[i]; *p++ = c[i];`, where `*p++ = *d++ = c[i]`
@@ -1651,13 +1651,13 @@ temporary still live where another is made pushes it up.
   use in yours.** Fix: read the field in every initialiser
   (`p1 = tblA[em->type]; p2 = tblB[em->type];`) instead of a `u8 type`
   local. Seen in: the second batch's game files (unk_705AC0.c to
-  unk_708850.c).
+  em_helpers.c).
 - **A constant in a `jal`'s delay slot where yours has it in the next `b`'s
   (2 words longer, or the reverse).** Cause: a constant assigned before a
   call goes into the call's slot; assigned after it, into the next branch's.
   The same for other assignments (`last = id; f(...);` puts the `andi` of
   `last` in the slot). Fix: move the assignment across the call. Seen in:
-  unk_39C290.c (sub_main), unk_6D5330.c (lobby).
+  quest_rules.c (sub_main), town_guide.c (lobby).
 - **A store or a pointer step in a `jal`'s delay slot in the original,
   earlier in yours.** Fix: make the callee a static leaf defined earlier, or
   read the arguments into locals, step the pointer, then call. Seen in:
@@ -1718,7 +1718,7 @@ temporary still live where another is made pushes it up.
 - **A value recomputed after a call in the original, reused in yours (or the
   reverse).** Fix: an operation that stops the common subexpression
   (`switch ((s32)hr + 1)`); for the reverse, a local that holds the value
-  (`modId = m->id`). Seen in: unk_3B4C80.c (sub_main), Iop_Init (main).
+  (`modId = m->id`). Seen in: equip_save.c (sub_main), Iop_Init (main).
 - **An address, an offset or a mask computed where no plain C puts it (a
   field's address in a branch's delay slot for the store alone, an offset
   kept out of a relocation, a mask after a shift).** Cause: a
@@ -1934,7 +1934,7 @@ temporary still live where another is made pushes it up.
   int before the call (`alpha = x; f(.., x)`). Seen in: Plsel_ItemBoxMenu
   (plsel), StageObj_K12_CreateOnEm, EmBlangonga_DigThrow, Bow_UpdateAim,
   func_006C6E40 and func_00720340 (game), QuestNet_OnGameMsg (gm_sub),
-  Layout_Input, Html_ParseLength, Deco_DrawRemovePanel, LobbyStep_6310,
+  Layout_Input, Html_ParseLength, Deco_DrawRemovePanel, LobbyStep_Level1Open,
   func_0071F8A0, MailMenu_Update, func_007A1A50 and func_00766A50 (lobby).
   Round 9: a `dsll32`/`dsra32` of an argument before the `jal` means that the
   prototype the caller's file sees takes s16 there, even where the callee's
@@ -2054,7 +2054,7 @@ temporary still live where another is made pushes it up.
   and then masked is `u8 t; if (c) t = 0; else t = 1; near = t;`. A clamp
   to an s16 margin compares with the int expression and stores its cast:
   `if (x1 > 0x280 - s->right) x1 = (s16)(0x280 - s->right);`. Seen in:
-  func_003D6320 and unk_37B570.c (sub_main), Player_State0_3C and
+  func_003D6320 and area_draw.c (sub_main), Player_State0_3C and
   func_006FF450 (game), Layout_InputEnd and Page_DrawFrame (lobby).
   EmFxSpark_Draw (game, the alpha's `andi` sunk into both branches) is
   still open.
@@ -2127,7 +2127,7 @@ temporary still live where another is made pushes it up.
   variable returned as u8 (`u8 ret`, a u8 return type) gives `daddiu v0,
   zero, 2` and no `andi` at the end. Rounds 3 and 4 first listed this as
   unknown. The `daddiu` loads mark the 16-bit and 8-bit locals when you
-  retype a draft. Seen in: func_006D4520 and LobbyStep_670F (lobby),
+  retype a draft. Seen in: func_006D4520 and LobbyStep_ChatColorMode (lobby),
   EmChameleos_SetGroup0State, EmAnteka_Update (a u8 flag set to 1 in a
   loop), func_008465C0, EmGravios_State0_24, Player_State0_0B and
   Player_State3_00 (game).
@@ -2192,7 +2192,7 @@ temporary still live where another is made pushes it up.
   value gets a0 or a1 while the compare form stays (`cy < top + 0x10`, not
   `top + 0x10 > cy`); `if (x % 100 < -v)` puts the `negu` in the `bgez`
   slot where `-v > x % 100` doesn't. Seen in: func_00D676E0 (plsel),
-  unk_361570.c (sub_main), EmRathalos_AirDive, EmYamaTsukami_State3_01
+  equip_parts.c (sub_main), EmRathalos_AirDive, EmYamaTsukami_State3_01
   and Eff00_Setup (game), Page_PointerScroll and Page_PointAt (lobby).
 - **A compare the original keeps and yours folds.** Cause: `(f() == 0) == 1`
   is folded, and so is the test of a local just assigned a constant. Fix:
@@ -2297,7 +2297,7 @@ temporary still live where another is made pushes it up.
   1: f = 1; break; }` (an if/else or a ternary folds into `xori`/`sltiu`).
   Seen in: StageObj_K11_Draw, EmBlangonga_Turn, EmDrome_State3_06,
   Player_State2_21, Player_State5_05 and Player_State3_00 (game),
-  QSync_OnPlayer (gm_sub), LobbyStep_670F and HunterInfo_DrawActions
+  QSync_OnPlayer (gm_sub), LobbyStep_ChatColorMode and HunterInfo_DrawActions
   (lobby). Round 9: `beqz s1, A; b B` with A before B is `switch (k) { case 0:
   A; break; default: B; }` (func_00341D20, sub_main).
 - **`beq A, L; beq B, L; b else`, or `beq A; beq B; bne C, else`.** Cause:
@@ -2511,7 +2511,7 @@ temporary still live where another is made pushes it up.
   `cell = f(); if (*cell != -1) { list = cell; ...` gives `lw a0, 0(v0);
   beq; move s0, v0`. A float assigned in a condition puts the `mov.s` in the
   slot. Fix: the matching form. Seen in: func_006E3C50 (game),
-  NetMenu_DrawMessage and unk_328CD0.c (sub_main), Layout_RowSpanCells and
+  NetMenu_DrawMessage and area_collision.c (sub_main), Layout_RowSpanCells and
   Layout_CellSpanNext (lobby).
 - **A store in each branch in the original, one after the join in yours (or
   the reverse).** Cause: `if (c) G = a; else G = b;` keeps both stores; a
@@ -2545,7 +2545,7 @@ temporary still live where another is made pushes it up.
   entered by a jump to its test in a block after the epilogue (`if (item
   != 0xFFFF)` inverts the loop). Fix: write the redundant code the
   branches show. Seen in: func_006F89D0, LobbyNotify_6121,
-  LobbyStep_Task5Done, func_00770250, ArmorForge_BoxInput, func_00780100
+  LobbyStep_Level1AllowedDone, func_00770250, ArmorForge_BoxInput, func_00780100
   and func_007D9190 (lobby), Gs_GetState, Tim2_GetImage and
   Tim2_CheckHeader (main), func_00D75920 (plsel), EmScript_Op3C,
   func_006F83F0 and func_00796FA0 (game), Yn_LoadModule (yn). Not yet
@@ -2737,9 +2737,9 @@ temporary still live where another is made pushes it up.
   `staticregs.py` (autodecomp) rewrites such drafts and `static.py`
   tries callees static in their file. When callers in two files keep
   registers across the same callee, the two files are one of the game's
-  units (unk_2F6540.c and unk_2F7420.c, sub_main; round 7 found eight more
+  units (model_file.c and unk_2F7420.c, sub_main; round 7 found eight more
   such pairs; round 8 joined more,
-  such as unk_7949D0.c and unk_7952C0.c, lobby). To check before the
+  such as town_players.c and unk_7952C0.c, lobby). To check before the
   files are joined, put a static copy of the callee at the top of a scratch
   copy of the caller's file: func_007960D0 and Png_ReadRow (lobby) match
   that way. The permuter can't help here: it replaces the other functions
@@ -2755,20 +2755,20 @@ temporary still live where another is made pushes it up.
   in another file.** A static function can only be called from its own
   unit, so the two files are one of the game's units: merge them. Round 18
   proved four this way (merged in rounds 19 and 20):
-  Player_Update/Player_PickStatusState (game, unk_70A290.c to
-  unk_722400.c), Npc_StateA1/Npc_StartTurnBack (lobby, unk_780580.c to
-  unk_7873F0.c), Deco_FitsEquip/Armor_GetData (unk_3B4C80.c to
-  unk_3BD5E0.c) and Quest_HandleNetMsg/Quest_SetCleared (unk_3A1070.c to
+  Player_Update/Player_PickStatusState (game, player_states.c to
+  unk_722400.c), Npc_StateA1/Npc_StartTurnBack (lobby, npc_states.c to
+  unk_7873F0.c), Deco_FitsEquip/Armor_GetData (equip_save.c to
+  unk_3BD5E0.c) and Quest_HandleNetMsg/Quest_SetCleared (quest.c to
   unk_3AAD20.c, sub_main). A sweep making each same-file callee static
   matched Font_SetColorIndex, Quest_AddReward and Player_CalcResists
   (sub_main).
-  - Round 19 merged three: unk_780580.c (lobby, five files), unk_3B4C80.c
+  - Round 19 merged three: npc_states.c (lobby, five files), equip_save.c
     (three) and unk_3A6130.c (with unk_3AAD20.c). A merge joins only
     adjacent files (a C file's text is contiguous).
-  - Round 20 merged the other two: unk_70A290.c (game, with unk_716360.c
+  - Round 20 merged the other two: player_states.c (game, with unk_716360.c
     and unk_722400.c: Player_Update 47 words off to 24, then matched with
-    `f32 buf[3]` and a FAKEMATCH mask) and unk_3A1070.c
-    (sub_main, with mine_point.c and unk_3A6130.c: unk_3A1070.c calls
+    `f32 buf[3]` and a FAKEMATCH mask) and quest.c
+    (sub_main, with mine_point.c and unk_3A6130.c: quest.c calls
     Quest_DeliveredCount, static in unk_3A6130.c, so mine_point.c between
     them is in the unit too).
   - **Merging files:** one prototype per function for the whole file
@@ -2806,13 +2806,13 @@ temporary still live where another is made pushes it up.
   The idea: one C file declares a callee one
   way, so callers that need two declarations are two units. In practice:
   - most conflicts are a caller's wrong local or parameter type. Equip_Color
-    in unk_7683D0.c (lobby) fits `(u8, s32, u8)` everywhere once
+    in box_menu_draw.c (lobby) fits `(u8, s32, u8)` everywhere once
     BoxMenu_DrawEquipPick's `alpha` is s32; StageObj_K14_FindGround
     (game) fits one prototyped definition once StageObj_K14_CreateOnEm takes
     `s16 k, s16 c` (MWCC still re-extends them where it uses them). Three
     block-scope FAKEMATCH declarations went that way: try the callers'
     types before splitting.
-  - the game's own units had them: in unk_7A1120.c (lobby) Shop_CanBuy and
+  - the game's own units had them: in item_shop.c (lobby) Shop_CanBuy and
     Shop_DrawSell need `SavePouch_Count(u16)` while ItemInfo_Draw, between
     them, calls it with no argument (no prototype in scope), yet
     Shop_IsUnlockItem is static (Shop_CanBuy needs it) and ItemInfo_Draw
@@ -2821,7 +2821,7 @@ temporary still live where another is made pushes it up.
   evidence (a static callee, data, level), never on the conflict alone.
 - **Pooled string literals prove one unit.** MWCC pools identical literals
   only inside a unit, so one literal used on both sides of a candidate cut
-  means no cut there (round 23, nmsub): "%4d" and "%3d" in unk_356380.c
+  means no cut there (round 23, nmsub): "%4d" and "%3d" in menu_windows.c
   (sub_main) are stored once and used by StatusPage_DrawStats and by
   EquipWindow_DrawDetails, so no split lies between them. The file's .data
   order said the same. In that unit the game's calls pass s16 to
@@ -2829,7 +2829,7 @@ temporary still live where another is made pushes it up.
   file-scope declaration ("redeclared"), and K&R definitions leave the
   calls unprototyped; a block-scope declaration in the caller gives the
   game's calls. With the unit proven, the lead ruled that declaration the
-  original's form, not a FAKEMATCH (unk_7A1120.c above declares
+  original's form, not a FAKEMATCH (item_shop.c above declares
   SavePouch_Count inside functions too). Without such evidence, a
   block-scope declaration that differs from the definition stays a
   FAKEMATCH: try the callers' types first.
@@ -2911,7 +2911,7 @@ temporary still live where another is made pushes it up.
   declaration before it (MWCC's implicit `int f()`); MWCC takes a `()`
   declaration as `(...)` and rejects a later prototype, so the file's other
   callers declare `s32 SavePouch_Count(u16 item);` in their own blocks
-  (SavePouch_Count's callers in unk_7A1120.c, lobby).
+  (SavePouch_Count's callers in item_shop.c, lobby).
 - **A parameter the code never uses.** Cause: a parameter that a caller sets
   is real even when unused, and a wrapper called with more integer arguments
   than it uses takes them (`f(p) { g(p, 1.0f, 1.0f, 1.0f); }`: int and float
@@ -2927,7 +2927,7 @@ temporary still live where another is made pushes it up.
   (sub_main), YnNetcnf_LoadModules (yn), Parts_DrawFacePanel and its two
   twins (select, an unused `sel` the caller passes as 0), Ending_InitObject,
   Ending_AnimateObject and func_00D61AB0 (plsel), func_007C17C0,
-  LobbyRoute_6191, func_007D4EC0 and func_00720710 (lobby).
+  LobbyRoute_UserCard, func_007D4EC0 and func_00720710 (lobby).
 - **An argument in t0.** Cause: the EE ABI passes the 5th to 8th arguments
   in t0-t3 (floats in f12 up, counted separately): a wrapper
   `f(a, b, c, d) { g(a, b, c, d, K); }`; a t0 left from a compare can be the
@@ -2943,22 +2943,22 @@ temporary still live where another is made pushes it up.
   (char *)__builtin_next_arg(last) - (__builtin_args_info(2) >= 8 ? 0 : (8 -
   __builtin_args_info(2)) * 8))`. Since round 31 it is in one header,
   include/ee_stdarg.h (with the host compiler's builtins under MH2_NATIVE):
-  include that, don't copy the define. Seen in: unk_3DDBA0.c (sub_main),
-  unk_773A90.c (lobby, Text_Printf).
+  include that, don't copy the define. Seen in: card_task.c (sub_main),
+  member_list.c (lobby, Text_Printf).
 - **A function that matches alone but not in its file.** Cause: a
   conflicting declaration in the file (prototypes may differ between files,
   each file sees its own). Fix: fit the declaration; `recover.py` merges
   differing pointer parameters to `void *`. The game's own declarations
   differed too: keep each file's as its code needs (`Mmbb_SetField(s8, s8,
-  char *)` in unk_741900.c, whose callers extend the index, against the
-  definition's `u8 idx`; func_007A2D50's item s32 in unk_7766D0.c with
+  char *)` in html_parse.c, whose callers extend the index, against the
+  definition's `u8 idx`; func_007A2D50's item s32 in combine_shop.c with
   `(u16)` casts at two callers). Seen in: the pipeline's drafts (game,
-  lobby), unk_741900.c, unk_7303D0.c and unk_7766D0.c (lobby).
+  lobby), html_parse.c, browser_util.c and combine_shop.c (lobby).
 
 - **A callee declared with another integer type than its definition, and
   the argument registers set in another order.** Cause: the caller's
   header narrows a parameter the definition keeps wide (lobby_net.h had
-  Net_LockrockObfuscate's key as u16, its definition in unk_308BC0.c has
+  Net_LockrockObfuscate's key as u16, its definition in net_front.c has
   s32: the u16 key's register was set before n's `move a3`). Fix: the
   definition's type. Check the definition before trusting a header. Seen
   in: HttpLbs_Send (nethttp); GroupBoard_DrawMemberMenu and
@@ -3115,7 +3115,7 @@ temporary still live where another is made pushes it up.
   member where `f32 pos[3]` with a cast adds the offsets to one base.
   Byte offsets as declared locals (`o8 = k * 8;`, then `D->unk26[0][o8]`)
   keep a table row's address computation in the game's registers. Seen in:
-  func_006C6D40, EmScript_Op14, EmKushala_State3_0F and
+  func_006C6D40, EmScript_Op14, EmKushala_BreathAttack and
   EmVelociprey_Reappear (game), Ending_DrawPictures (plsel),
   Pad_SetVibration (main), LobbyLevel2_EnterFree, TownMsg_Recv,
   LobbyScreen_EnterArea and func_007C33B0 (lobby). Round 9: a table read at
@@ -3149,7 +3149,7 @@ temporary still live where another is made pushes it up.
   address (`((T *)w)->snd.pos` and `(u8 *)w + 0x16C`) aren't merged. A
   typed view of a callback's node gave the game's load order. Seen in:
   GmEm_SetupKind (gm_sub), Em_AddPoison, func_006B5490, func_006C5A40,
-  func_006FF7C0, EmPlesioth_State6_01, EmCephadrome_State6_00,
+  func_006FF7C0, EmPlesioth_EntranceScene, EmCephadrome_EntranceScene,
   EmShenGaoren_MotionEffects, func_00796FA0, StageObj_K0E_RunParts and
   func_006C5C20 (game), func_0079D6C0, SrvMenu_Choose, IdMenu_Redraw,
   Html_TagCenter and LockOn_Update (lobby, a padding element).
@@ -3175,7 +3175,7 @@ temporary still live where another is made pushes it up.
   field (`cur = &m[0xA]`) declared before the base pointer local, with the
   base reloaded from the global after the call. Seen in: EmHermitaur_Setup,
   EmYamaTsukami_State3_07, EmKutku_SetEscapePoint, EmKhezu_NearestCeilingPoint,
-  func_006ED8A0 and func_0070B4F0 (game), SrvMenu_Quit, LobbyStep_6504,
+  func_006ED8A0 and func_0070B4F0 (game), SrvMenu_Quit, LobbyStep_SetOut,
   Layout_Rule, func_007B5DE0, func_00771A60 and func_00774D10 (lobby).
 - **An array base in a register (`addiu a0, w, 0x5EC; addu a0, a0, i*4; lw
   0(a0)`) where yours has `lw 0x5EC(v0)`, or the reverse.** Cause: MWCC
@@ -3223,7 +3223,7 @@ temporary still live where another is made pushes it up.
   where symbols get one each. Those stay raw, or become macros
   (include/hw_regs.h, include/ram_areas.h). Six functions keep raw casts
   for this (DojoMenu_OnlineStart, GroupBoard_DrawSearchForm,
-  func_0075E9E0, LobbyText_UpdateByte2, QuestRecord_Fill,
+  func_0075E9E0, HunterCard_SendChatColor, QuestRecord_Fill,
   Ending_DrawSpriteF). The reverse also happens: a raw sub_main address
   read below a stack store matched only as a named object
   (StageObj_K05_Draw, StageObj_K0E_Draw, game).
@@ -3324,15 +3324,15 @@ temporary still live where another is made pushes it up.
   the function's return) with a `b` to the test is an index loop whose
   pointer MWCC strength-reduces (`while (up[i] != 0)`); the pointer form
   `p = &up[i]; while (*p)` duplicates the test instead. Seen in:
-  Sel_DrawHeader (select), unk_339EC0.c and unk_2F17C0.c (sub_main),
+  Sel_DrawHeader (select), model_pool.c and vu1_packets.c (sub_main),
   WordFilter_Scan (lobby).
 - **Another loop branch (`bnez` against `bgtz` or `blez`).** Cause:
   `do { } while (--n);` gives `bnez`, `n--; } while (n != 0);` gives `bgtz`
   with a signed n; `for (i = 10; i != 0; i--)` gives `bnez` with a `u32 i`
   and `bgtz` with an s32; `if (--n > 0) goto retry;` gives `blez`. Other
   count-down forms: `for (i = n; i != 0; i--, p++)`,
-  `for (; n > 0; n--, p++)`, `while (n-- != 0)`. Seen in: unk_3549F0.c and
-  unk_3DDBA0.c (sub_main).
+  `for (; n > 0; n--, p++)`, `while (n-- != 0)`. Seen in: menu_util.c and
+  card_task.c (sub_main).
 - **A pointer step as its own `addiu` in the original, folded into the load
   offsets in yours (or the reverse).** Cause: MWCC folds `p[2]` and
   `p += 2; *p` into the offsets; post-increments (`a = *p++; b = *p++;`) and
@@ -3386,7 +3386,7 @@ temporary still live where another is made pushes it up.
   QuestList_Build, func_00797040 and WordFilter_Scan (lobby),
   Plsel_CheckAwardsOffline (plsel), EmChameleos_StealItem,
   func_007037F0, HuntingHorn_CheckSongs and StageObj_K0E_RunParts (game),
-  unk_3E0EC0.c (sub_main). Round 9: MWCC strength-reduces `r[i]` of a pointer
+  em_bones.c (sub_main). Round 9: MWCC strength-reduces `r[i]` of a pointer
   held in a register into a walker; the game's base-plus-offset walk (an
   `addu` of base and offset at each use) came from reading the route pointer
   through memory at each use, `(*(NpcRoutePt **)(w + 0xC))[i]`, which MWCC
@@ -3621,7 +3621,7 @@ temporary still live where another is made pushes it up.
   `or 0x80000000`, the constant 0x4F000000).** Cause: a float assigned to a
   `u32` local (or cast `(u16)(u32)`); `(u16)(s32)x` gives `cvt.w.s` only,
   and `u16 r = (s16)(u16)(s32)(x);` gives `cvt.w.s; andi; sext; andi`. Seen
-  in: func_0070B900, the em files and unk_6EC680.c (game),
+  in: func_0070B900, the em files and area_objects.c (game),
   LockOn_SetSector (lobby).
 - **`trunc.w.s` in our objdump listing, `cvt.w.s` in splat's.** It is the
   same instruction (0x46000024; the EE's `cvt.w.s` truncates), and MWCC
@@ -3656,7 +3656,7 @@ temporary still live where another is made pushes it up.
   original.** Fix: `if (best == 0.0f) best = d; else if (d <= best) best =
   d; else continue;`; over a few values, a temporary per compare (`t =
   dist[1]; if (best < t) { best = t; k = 1; }`), since `if (best <
-  dist[1])` loads the value twice. Seen in: unk_3DDBA0.c (sub_main),
+  dist[1])` loads the value twice. Seen in: card_task.c (sub_main),
   EmKutku_SetEscapePoint (game).
 - **`sqrt.s` (objdump: `c1 0xc0044`) between `nop`s, with no call.**
   Cause: `f32 sqrtf(f32);` is an intrinsic: declared so, MWCC emits
@@ -3687,7 +3687,7 @@ temporary still live where another is made pushes it up.
   bigger than declared (scePad2SocketParam is 0x20 bytes); a 16-byte gap
   below the locals is a `NetMsg` received by value, even unused. Seen in:
   func_006F9BF0 (game), the landing states of Garuga, Gravios and Kut-Ku
-  (game), unk_18AFE0.c (main), func_007C17C0 and LobbyRoute_6191 (lobby).
+  (game), pad_port.c (main), func_007C17C0 and LobbyRoute_UserCard (lobby).
 - **A parameter stored to its home slot above the frame (`sw a1,
   0x3C(sp)`).** Cause: the parameter's address is taken
   (`memcpy(buf + 0x1C, &x, 4)`). Seen in: func_0079F210 (lobby).
@@ -3696,7 +3696,7 @@ temporary still live where another is made pushes it up.
   stays in memory; four assignments or a struct of four bytes keep the
   bytes in registers. `volatile` on an uninitialised local gives a read
   from its stack slot. Seen in: LobbyWorld_GetFadeColor (lobby),
-  unk_308BC0.c (sub_main).
+  net_front.c (sub_main).
 - **A frame that fixes a buffer's size.** A frame of 0x120 around one buffer
   at sp+0x10 needs a buffer of 0x101 to 0x110 bytes (`u8 buf[0x100]` gives
   0x110). Seen in: the HTML tag handlers (lobby).
@@ -3706,8 +3706,8 @@ temporary still live where another is made pushes it up.
   writes a small result into the message's spare bytes
   (`func_00717C50(id, &a, (u16 *)&m + 3)`) uses the NetMsg's slot where a
   separate local gets its own. Block scopes and declaration orders didn't
-  help LobbyReply_6912, LobbyStep_6884Done and LobbyLogin_OnSummaryReply
-  (still unmatched). Seen in: LobbyNotify_68B0 and LobbyLevel2_On6412Reply
+  help LobbyReply_6912, LobbyStep_TownDataDone and LobbyLogin_OnSummaryReply
+  (still unmatched). Seen in: LobbyNotify_68B0 and LobbyLevel2_OnLevel2MembersReply
   (lobby).
 - **Another value spilled (`sw`, then `lh`) than in yours.** Fix: change
   which value lives long: Yn_DrawHelpBar matched at level 4 with its height
@@ -3736,7 +3736,7 @@ temporary still live where another is made pushes it up.
   Plsel_DrawFrame (plsel), Title_DrawLogo (select), ArmorForge_MakeDetail,
   WeaponForge_BoxInput, func_006AF950, func_006AFB10, TownMsg_OnMove and
   TownMsg_OnActor (lobby), Slab_Contains, Seg_NearestPoint and
-  unk_3E0EC0.c (sub_main), func_006E9B90 (game).
+  em_bones.c (sub_main), func_006E9B90 (game).
 
 - **A stack slot 12 bytes off.** Cause: a spilled variable gets a packed
   4-byte slot, a compiler temporary a 16-byte one. Seen in:
@@ -3783,8 +3783,8 @@ strings", "Data in C"); these are the symptoms.
   the object before it; `force_not_migration` in the symbol file for a
   single-user object whose owner comes earlier in the text than the previous
   owner. A string right after the jump tables of C functions lands in no
-  `.s` either: `INCLUDE_RODATA` it before its user. Seen in: unk_6EC680.c
-  (game, D_008EC0A0), select_option.c (select), unk_74A2C0.c (lobby, a "").
+  `.s` either: `INCLUDE_RODATA` it before its user. Seen in: area_objects.c
+  (game, D_008EC0A0), select_option.c (select), layout_text.c (lobby, a "").
 - **A module 8 or 16 bytes too long or too short.** Cause: a literal of your
   own where the original shares one (while one user is still assembly, use
   the `INCLUDE_RODATA`'d name; with every user in C the literal is shared);
@@ -3802,8 +3802,8 @@ strings", "Data in C"); these are the symptoms.
   `force_not_migration`). The reverse: 4 zero bytes after a string that are
   only the 8-byte alignment mwcc_cc.py gives the next literal; defining
   them moves every later string by 8. Seen in: QNetIf_OnPlayerLeft
-  (gm_sub), unk_6B9160.c, func_00775240, func_00770250, func_006FCEF0 and
-  the village 2 files (lobby), unk_D74450.c (plsel),
+  (gm_sub), gallery_objects.c, func_00775240, func_00770250, func_006FCEF0 and
+  the village 2 files (lobby), gallery_scene.c (plsel),
   HuntingHorn_ShowSongMessage (game), Gallery_DrawEntryPage (select).
 - **A string symbol in a function of a file that owns its `.rodata` doesn't
   link.** Fix: write the literal; an extern of splat's label fails once the
@@ -3813,7 +3813,7 @@ strings", "Data in C"); these are the symptoms.
   strings joined by a full-width space).
 - **A string before the jump table of a function that uses it later.**
   Cause: its first user was probably dropped by the linker. Fix:
-  `INCLUDE_RODATA` it where it is. Seen in: unk_D67530.c (plsel, "%s"),
+  `INCLUDE_RODATA` it where it is. Seen in: quest_results.c (plsel, "%s"),
   yn_main.c (" " and "").
 - **A function's jump tables in another order.** Cause: MWCC emits them
   last-created first. Seen in: func_00308450 (sub_main).
@@ -3835,7 +3835,7 @@ strings", "Data in C"); these are the symptoms.
 - **A `%lo` paired with the wrong `%hi`.** Cause: GNU ld pairs a HI16 with
   the wrong LO16 when one symbol has two interleaved `%hi` values that
   differ by a carry. Fix: declare a second symbol for the other address.
-  Seen in: unk_363550.c (sub_main, D_005BA4FC).
+  Seen in: bgm.c (sub_main, D_005BA4FC).
 - **The last function of `.text` or of a file, and what follows it.** For
   the build, the zero padding after the last function of `.text` needs a
   `text_end` data piece in the YAML once the function is C (0x80 bytes
@@ -3869,52 +3869,52 @@ strings", "Data in C"); these are the symptoms.
   then check with `func_diff.py` that every function of the file that matched
   still matches. A file that needs both levels is often two of the game's units
   (but not always: "The level can change inside one of Capcom's units"
-  below): split it there when other evidence agrees (round 7 split unk_333D70.c at func_00334260, now
-  unk_334260.c at level 3); `#pragma optimization_level reset` before the
+  below): split it there when other evidence agrees (round 7 split tex_pack.c at func_00334260, now
+  file_load.c at level 3); `#pragma optimization_level reset` before the
   level-3 part works in the meantime (Layout_TextFull's NON_MATCHING block
   is closer at level 3 and carries the pair around it). A pragma region in
-  the middle of a file marks a unit of its own: in round 9 unk_6F8A10.c's
-  level-4 functions 0x6FF630-0x701810 became unk_6FF630.c (with a
-  `.rodata` split), the rest unk_701810.c at level 3. A pragma pair around
+  the middle of a file marks a unit of its own: in round 9 area_scenery.c's
+  level-4 functions 0x6FF630-0x701810 became em_sight.c (with a
+  `.rodata` split), the rest em_common.c at level 3. A pragma pair around
   one NON_MATCHING block keeps a draft's best level until its file is
-  decided (func_0076F0E0 in unk_76DB40.c, lobby). `func_diff.py`,
+  decided (func_0076F0E0 in quest_counter.c, lobby). `func_diff.py`,
   `near_misses.py`, `func_variants.py` and the permuter read the source, so
   they see the pragma.
 - **Where to try it first:** the lobby's HTML parser and layout
   (0x741900-0x7513C0) look like one unit built at level 4, and the
   browser's portal and dialog code (0x72C7C0, 0x733AB0-0x7409A0 or more)
   another: for any near miss there, try the pragma before anything else.
-  Neighbouring files of a level-4 file are candidates too (unk_18AFE0.c
-  joined unk_189F90.c). A file whose functions all match at both levels
+  Neighbouring files of a level-4 file are candidates too (pad_port.c
+  joined pad.c). A file whose functions all match at both levels
   goes to level 4 when one of them needs it (unk_733AB0.c,
   unk_734710.c and unk_73C310.c: Portal_ParseStep, Dialog_PageStep and
   Link_Follow match only at 4; in round 9 unk_73ACF0.c for
-  Page_Navigate). In the game, unk_70A290.c's 0x722400 part and
-  unk_6FF630.c are at level 4; unk_6AF280.c, unk_6EC680.c, unk_733EA0.c and unk_88E760.c match whole
+  Page_Navigate). In the game, player_states.c's 0x722400 part and
+  em_sight.c are at level 4; weapon_states.c, area_objects.c, player_hit.c and player_effects.c match whole
   at both levels.
 - **At level 4 now** (75 files, after round 20):
-  dma.c, texconv.c, unk_1864E0.c, unk_189F90.c, unk_18AFE0.c (main);
-  unk_2E3940.c, unk_2EF020.c, unk_308BC0.c, unk_314AD0.c, unk_314E00.c,
-  unk_333D70.c, unk_33E620.c, unk_356380.c, unk_361570.c, unk_36BE70.c,
-  unk_37B570.c, unk_39C290.c, unk_3A1070.c, unk_3AC9C0.c, unk_3B4C80.c,
-  unk_3BE060.c, unk_3CD9C0.c, unk_3D4100.c, unk_3E0EC0.c (sub_main); ending.c,
-  plsel.c, unk_D67530.c (plsel); select_gallery.c, select_title.c (select);
-  yn_main.c (yn); em_bulldrome.c, unk_6CADF0.c, unk_6E3B00.c,
-  unk_6FF630.c, unk_70A290.c (from 0x722400 on: one unit at both levels,
-  below), unk_880D50.c (game); unk_6B0570.c, unk_6B5300.c, unk_6B5E70.c, unk_6B7830.c, unk_6B8AC0.c,
-  unk_6B9160.c, unk_6BCA50.c, unk_6BF430.c, unk_6C8300.c, unk_6C9640.c,
-  unk_6D5330.c, unk_6E56C0.c, unk_6E7100.c, unk_6E9310.c, unk_6ED140.c,
-  unk_6ED9B0.c, unk_6EE870.c, unk_6F16A0.c, unk_6F4B30.c, unk_6F62D0.c,
-  unk_6F8CC0.c, unk_6FB0B0.c, unk_6FF940.c, unk_7115D0.c,
-  unk_71F8A0.c, unk_72C7C0.c, unk_733AB0.c, unk_734710.c, unk_73ACF0.c, unk_73C310.c,
-  unk_741900.c, unk_748A90.c, unk_74A2C0.c, unk_74C620.c, unk_74D3F0.c,
-  unk_753C10.c (zlib's inflate), unk_7683D0.c, unk_7949D0.c and unk_7BF560.c
+  dma.c, texconv.c, unk_1864E0.c, pad.c, pad_port.c (main);
+  engine_core.c, bones.c, net_front.c, kbd_cand_box.c, kbd.c,
+  tex_pack.c, hud.c, menu_windows.c, equip_parts.c, frame_draw.c,
+  area_draw.c, quest_rules.c, quest.c, player_stats.c, equip_save.c,
+  hit_detection.c, part_effects.c, loading_screen.c, em_bones.c (sub_main); ending.c,
+  plsel.c, quest_results.c (plsel); select_gallery.c, select_title.c (select);
+  yn_main.c (yn); em_bulldrome.c, em_ranged_attack.c, em_effect_attack.c,
+  em_sight.c, player_states.c (from 0x722400 on: one unit at both levels,
+  below), monster_effects.c (game); records_menu.c, ship_mine_menus.c, mine_model_objects.c, gallery_board.c, gallery_targets.c,
+  gallery_objects.c, mail_block_list.c, forge_upgrades.c, ingredient_list.c, official_desk.c,
+  town_guide.c, friend_list.c, village_offers.c, group_board.c, id_search.c,
+  name_search.c, area_search.c, unk_6F16A0.c, move_menu.c, unk_6F62D0.c,
+  unk_6F8CC0.c, unk_6FB0B0.c, minigame_draw.c, unk_7115D0.c,
+  arena_cup.c, browser_dialogs.c, unk_733AB0.c, unk_734710.c, unk_73ACF0.c, unk_73C310.c,
+  html_parse.c, html_attr_readers.c, layout_text.c, layout_tables.c, layout_cells.c,
+  unk_753C10.c (zlib's inflate), box_menu_draw.c, town_players.c and area_list.c
   (lobby).
   Level-3 pairs inside level-4 files, kept as Capcom's own pragmas (next
-  bullet): unk_33E620.c (Map_DrawZoomed, the zoomed twin of Map_DrawArea,
-  between level-4 functions of the same map code) (sub_main); unk_880D50.c
+  bullet): hud.c (Map_DrawZoomed, the zoomed twin of Map_DrawArea,
+  between level-4 functions of the same map code) (sub_main); monster_effects.c
   (StageObj_K1C_NextStepD, one of the K1C family's step helpers, called by
-  the level-4 StageObj_K1C_RunSeq) (game). unk_74A2C0.c (around
+  the level-4 StageObj_K1C_RunSeq) (game). layout_text.c (around
   Layout_TextFull's NON_MATCHING draft) (lobby).
 - **The level can change inside one of Capcom's units** (round 18), so a
   level change alone doesn't prove a unit boundary. The proof:
@@ -3927,12 +3927,12 @@ strings", "Data in C"); these are the symptoms.
   (Player_State0_53 and Player_State0_55) as well as level-4-only ones
   (Player_Update: 452 words off at 3; Player_CheckTeamCombo). Capcom's
   source switched levels inside the unit, with `#pragma
-  optimization_level` or the like. Round 20 merged it: unk_70A290.c
+  optimization_level` or the like. Round 20 merged it: player_states.c
   (game, 0x70A290-0x72E450, the old unk_716360.c and unk_722400.c) is at 3
   up to 0x722400 and at 4 from there. Round 19's merges add one: the Deco
-  unit (unk_3B4C80.c, sub_main) is at 4 up to 0x3BD380 and at 3 from there
+  unit (equip_save.c, sub_main) is at 4 up to 0x3BD380 and at 3 from there
   (`reset`; Equip_CompactDecorations needs 3). The Quest unit
-  (unk_3A1070.c, sub_main, 0x3A1070-0x3AC3A0, merged in round 20 with the
+  (quest.c, sub_main, 0x3A1070-0x3AC3A0, merged in round 20 with the
   old mine_point.c and unk_3A6130.c) is at 4 throughout.
   So:
   - a one-function island of the other level inside one function family is
@@ -3942,39 +3942,39 @@ strings", "Data in C"); these are the symptoms.
     the round 17 splits below), static callees, data a family points back
     at. Round 18's level-only cuts were reverted at the merge (below).
 - **Level-4 pairs in level-3 files** (kept: nothing but the level places a
-  cut there): unk_328CD0.c (sub_main), unk_6F8A10.c (game: around
-  AreaObj_K13_Draw), unk_70E2A0.c and unk_722360.c (lobby), around matched
-  functions and drafts; unk_760C70.c and unk_76DB40.c (lobby), inside
+  cut there): area_collision.c (sub_main), area_scenery.c (game: around
+  AreaObj_K13_Draw), unk_70E2A0.c and browser_cache_draw.c (lobby), around matched
+  functions and drafts; menu_sheets.c and quest_counter.c (lobby), inside
   NON_MATCHING blocks only.
-- **Split for this in round 18:** unk_6E0650.c (game): EffEm33_*
+- **Split for this in round 18:** elder_attacks.c (game): EffEm33_*
   (0x6E3B00-0x6EA220, its .data 0x8AB600-0x8AD3A0 and jump tables closed)
-  is unk_6E3B00.c at level 4; EffShakalaka34_* to EffEm02_* are
-  unk_6EA220.c. The units batch also cut unk_6F8A10.c, unk_70E2A0.c,
-  unk_722360.c and unk_328CD0.c on the level alone; the lead reverted those
+  is em_effect_attack.c at level 4; EffShakalaka34_* to EffEm02_* are
+  shakalaka_teostra_bulldrome.c. The units batch also cut area_scenery.c, unk_70E2A0.c,
+  browser_cache_draw.c and area_collision.c on the level alone; the lead reverted those
   four at the merge, since the level can change inside a unit (above). Their
   level scans and cut points are in round 18's notes.
-- **Split for this in rounds 11-12:** unk_30EA30.c (Kbd_DrawCandidateBox is now
-  unk_314AD0.c), unk_3E0EC0.c (the fishing code, level 3, is now
-  unk_3E3D00.c), unk_2E3940.c (the bones are now unk_2EF020.c), unk_185460.c
-  (its level-4 tail is now unk_1864E0.c), unk_71F8A0.c (round 8's join took in
-  the browser's page code, now unk_722360.c, level 3), unk_76DB40.c (from
-  func_00770410 on, now unk_770410.c: its caller passes a y that
+- **Split for this in rounds 11-12:** kbd_input.c (Kbd_DrawCandidateBox is now
+  kbd_cand_box.c), em_bones.c (the fishing code, level 3, is now
+  fishing.c), engine_core.c (the bones are now bones.c), unk_185460.c
+  (its level-4 tail is now unk_1864E0.c), arena_cup.c (round 8's join took in
+  the browser's page code, now browser_cache_draw.c, level 3), quest_counter.c (from
+  func_00770410 on, now quest_counter_draw.c: its caller passes a y that
   func_0076FA10's s16 parameter would re-extend).
 - **Split for this in round 17** (the two pair files with no NON_MATCHING
-  block left): unk_3CA790.c (sub_main) is now unk_3CA790.c (Effect06_*),
-  unk_3CD9C0.c (Effect0D_*, level 4: Effect0D_Run) and unk_3D2230.c (the
-  ground effects and Effect1A_*); unk_6C7AE0.c (game) is now unk_6C7AE0.c
-  (Eff06_* and EffEm07_*; Eff06_InitSkills needs level 3), unk_6CADF0.c
-  (EffEm08_*, level 4: EffEm08_Run and func_006CF020) and unk_6D29F0.c
+  block left): bone_effects.c (sub_main) is now bone_effects.c (Effect06_*),
+  part_effects.c (PartFx_*, level 4: PartFx_Run) and lock_on_mark.c (the
+  ground effects and Effect1A_*); bowgun_shot.c (game) is now bowgun_shot.c
+  (Eff06_* and EffEm07_*; Eff06_InitSkills needs level 3), em_ranged_attack.c
+  (EffEm08_*, level 4: EffEm08_Run and func_006CF020) and explosion.c
   (Eff09_* and Eff10_*). The cuts follow the function families and each
   unit's .data (a family's pointer table points back at its own animation
   tables, so the data cuts are exact); a function that matches at both
   levels between two families can't be placed by its level. Each new file
   repeats the declarations it uses from the parts before it.
 - **Level 3 needed:** in round 5's scan, level 4 broke one matched function
-  in each of unk_6C7AE0.c, unk_6D3B50.c, unk_7077A0.c (game), unk_715CA0.c
-  (lobby), unk_31E190.c, unk_335040.c, unk_3BD5E0.c and unk_3E3D00.c
-  (sub_main; split from unk_3E0EC0.c in round 11).
+  in each of bowgun_shot.c, attack_families.c, em_status.c (game), unk_715CA0.c
+  (lobby), cam_control.c, model_setup.c, unk_3BD5E0.c and fishing.c
+  (sub_main; split from em_bones.c in round 11).
 - **Seen in:** Ending_DrawStaffRoll (plsel), Yn_Connect (yn), Tex_VramBlocks
   (main); in round 7 Html_ParseSome, Html_PageKeyword, Lbs_Sort, Html_Csv
   and Page_SetKind (lobby), Vec_RotateX (sub_main), the pad helpers
@@ -3997,7 +3997,7 @@ strings", "Data in C"); these are the symptoms.
 - **Scan the level first.** A block tuned at the wrong level looks like a
   hopeless register problem. In round 16 a scan of every NON_MATCHING
   block at levels 2, 3 and 4 (a pragma pair around the block alone)
-  matched Gallery_DrawPrizeList (lobby) and Effect0D_Run (sub_main) at
+  matched Gallery_DrawPrizeList (lobby) and PartFx_Run (sub_main) at
   level 4, took StageObj_K0A_Run (game) from 26 words to 2 at level 3, and
   moved about a dozen more blocks; EffEm08_Run and func_006CF020 (game)
   matched at level 4 inside a level-3 file. Each keeps its level in a
@@ -4009,7 +4009,7 @@ strings", "Data in C"); these are the symptoms.
   13 sub_main files' blocks found five closer at the other level.
 
 - **Other CodeWarrior settings for a whole file.** `#pragma opt_propagation
-  off` (unk_185460.c, main) and `#pragma opt_lifetimes off` (unk_334260.c,
+  off` (unk_185460.c, main) and `#pragma opt_lifetimes off` (file_load.c,
   sub_main: Tex_LoadFile, a pointer stepped N times in an unrolled loop
   whose loads the game doesn't fold into offsets). Such a pragma is fair
   only when every other function of the file still matches; each is an
@@ -4120,7 +4120,7 @@ strings", "Data in C"); these are the symptoms.
   local); func_007D9190's search loop (a repeated test; 9 words left, its
   callers wait for it).
 - **Not explained yet** (worth a fresh look): two locals sharing a stack
-  slot (LobbyReply_6912, LobbyStep_6884Done and LobbyLogin_OnSummaryReply,
+  slot (LobbyReply_6912, LobbyStep_TownDataDone and LobbyLogin_OnSummaryReply,
   lobby); parameters in the lowest saved registers (QSync_OnPlayer, gm_sub:
   a parameter masked or extended once at the entry would give it, see
   "Parameters in each other's saved registers"; untried); every `bc1t`
@@ -4156,7 +4156,7 @@ e.g. under `build/`) and the function's assembly:
 ```sh
 PERM=tools/deps/permuter-venv/bin/python
 $PERM tools/deps/decomp-permuter/import.py build/perm/func.c \
-    asm/sub_main/nonmatchings/unk_2E3940/func_002E6E20.s
+    asm/sub_main/nonmatchings/engine_core/func_002E6E20.s
 $PERM tools/deps/decomp-permuter/permuter.py nonmatchings/func_002E6E20
 ```
 

@@ -1,4 +1,4 @@
-# Plsel_BuildResultText (plsel, src/plsel/unk_D67530.c)
+# Plsel_BuildResultText (plsel, src/plsel/quest_results.c)
 
 ## Status
 
@@ -78,7 +78,7 @@ reproduces both shapes: u16 sz gives ours, s32 sz the 6-word shape)
 - The match uses the accepted stripped-function rule (CONTRIBUTING "Fakematches"): the
   stand-in sits just before Plsel_BuildResultText (nothing after it in the file changes: all
   MATCH). Round 4's plsel notes' stray "%s" before 0xD6ABB0's jump table is the other sign of a
-  stripped function in unk_D67530.c. The file's `char *fptodp(f32);` (line 202) is still used
+  stripped function in quest_results.c. The file's `char *fptodp(f32);` (line 202) is still used
   by two later functions (explicit calls; not changed).
 - Superseded: the s4 note about `f32 Monster_SizeFromPercent(u8 kind, s32 x)` (6 words) is no
   longer needed.
